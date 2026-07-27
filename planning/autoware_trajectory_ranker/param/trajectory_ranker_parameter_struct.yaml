@@ -1,10 +1,4 @@
 trajectory_ranker_params:
-  generator_name_prefixes:
-    type: string_array
-    default_value: [DiffusionPlanner_, MinimumRuleBasedPlanner_Go, MinimumRuleBasedPlanner_Stop]
-    description: List of generator name prefixes
-    read_only: false
-
   safety:
     enable:
       type: bool

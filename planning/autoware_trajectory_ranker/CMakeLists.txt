@@ -13,10 +13,6 @@ include_directories(
   SYSTEM
 )
 
-ament_auto_add_library(simple_trajectory_ranker_node SHARED
-  src/simple_trajectory_ranker_node.cpp
-)
-
 set(trajectory_ranker_lib_target ${PROJECT_NAME}_lib)
 
 ament_auto_add_library(${trajectory_ranker_lib_target} SHARED
@@ -32,13 +28,6 @@ target_link_libraries(${trajectory_ranker_lib_target}
 
 target_compile_options(${trajectory_ranker_lib_target} PUBLIC
   -Wno-error=deprecated-declarations
-)
-
-autoware_agnocast_wrapper_register_node(simple_trajectory_ranker_node
-  PLUGIN "autoware::trajectory_ranker::SimpleTrajectoryRanker"
-  EXECUTABLE simple_trajectory_ranker
-  ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 ament_auto_add_library(${PROJECT_NAME}_plugins SHARED
@@ -101,5 +90,4 @@ endif()
 ament_auto_package(
   INSTALL_TO_SHARE
   config
-  launch
 )

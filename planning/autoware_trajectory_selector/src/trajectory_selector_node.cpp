@@ -67,7 +67,10 @@ void TrajectorySelectorNode::subscribers()
 
 void TrajectorySelectorNode::publishers()
 {
-  pub_trajectories_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
+  pub_concatenated_trajectories_ =
+    create_publisher<CandidateTrajectories>("~/output/concatenated_trajectories", 1);
+  pub_validated_trajectories_ =
+    create_publisher<CandidateTrajectories>("~/output/validated_trajectories", 1);
   pub_scored_trajectories_ =
     create_publisher<ScoredCandidateTrajectories>("~/output/scored_trajectories", 1);
   pub_processing_time_detail_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
@@ -229,6 +232,8 @@ void TrajectorySelectorNode::process_trajectories()
     return;
   }
 
+  pub_concatenated_trajectories_->publish(concatenated_trajectories);
+
   auto context_opt = take_validator_data();
   if (!context_opt) {
     RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "%s", context_opt.error().c_str());
@@ -240,12 +245,10 @@ void TrajectorySelectorNode::process_trajectories()
   const auto & valid_trajectories = validator_report.valid_trajectories;
   const auto & validation_reports = validator_report.validation_reports;
 
-  pub_trajectories_->publish(concatenated_trajectories);
+  pub_validated_trajectories_->publish(valid_trajectories);
 
   const auto input_trajectories =
     to_ranker_input_trajectories(valid_trajectories, validation_reports);
-
-  if (!selector_params_.enable_ranker) return;
 
   const auto scored_trajectories =
     ranker_ptr_->rank_trajectories(input_trajectories, take_ranker_data(valid_trajectories));

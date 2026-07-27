@@ -35,7 +35,7 @@ For each call to `TrajectoryRanker::process()`:
      s*{\mathrm{safety}} + s*{\mathrm{source}} + s*{\mathrm{eval}}
      }
      \]
-     where \(s*_\) are the configured scales and \(p\__\) are the per-trajectory penalties (zero when that term is disabled).
+     where \(s*\_\) are the configured scales and \(p\_\_\) are the per-trajectory penalties (zero when that term is disabled).
 5. **Best selection**: the trajectory with the highest score is retained as `best_trajectory_info` and used to update trajectory history / previous points for subsequent quality metrics.
 
 ### Trajectory sources

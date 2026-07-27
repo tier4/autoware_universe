@@ -1,10 +1,5 @@
 /**:
   ros__parameters:
-    generator_name_prefixes:
-      - "DiffusionPlanner_"
-      - "MinimumRuleBasedPlanner_Go"
-      - "MinimumRuleBasedPlanner_Stop"
-
     safety:
       enable: true
       levels: ["safe", "low_caution", "high_caution", "danger", "fatal"]

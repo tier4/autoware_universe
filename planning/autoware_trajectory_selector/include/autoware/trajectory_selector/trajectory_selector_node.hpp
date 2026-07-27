@@ -152,7 +152,8 @@ private:
   rclcpp::Subscription<CandidateTrajectories>::SharedPtr sub_trajectories_backup_;
 
   // Publishers
-  rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
+  rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_concatenated_trajectories_;
+  rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_validated_trajectories_;
   rclcpp::Publisher<ScoredCandidateTrajectories>::SharedPtr pub_scored_trajectories_;
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     pub_processing_time_detail_;

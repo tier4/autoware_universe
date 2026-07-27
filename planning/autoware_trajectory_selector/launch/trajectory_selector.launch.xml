@@ -19,7 +19,7 @@
 
   <arg name="enable_pseudo_emergency_stop" default="false"/>
 
-  <node pkg="autoware_trajectory_selector" exec="autoware_trajectory_selector_node" name="trajectory_selector_node" output="screen">
+  <node pkg="autoware_trajectory_selector" exec="autoware_trajectory_selector_node" name="trajectory_selector_node" output="screen" launch-prefix="konsole -e gdb -ex run --args">
     <param from="$(var trajectory_selector_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_concatenator_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_validator_param_path)" allow_substs="true"/>
@@ -28,7 +28,7 @@
     <param name="pseudo_emergency_stop.enable" value="$(var enable_pseudo_emergency_stop)"/>
     <remap from="~/input/trajectories_generative" to="$(var input_generative_trajectories)"/>
     <remap from="~/input/trajectories_backup" to="$(var input_backup_trajectories)"/>
-    <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
+    <remap from="~/output/scored_trajectories" to="$(var output_trajectories)"/>
     <remap from="~/input/lanelet2_map" to="$(var input_vector_map)"/>
     <remap from="~/input/odometry" to="$(var input_odometry)"/>
     <remap from="~/input/objects" to="$(var input_objects)"/>
