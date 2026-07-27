@@ -15,6 +15,7 @@
 #include "autoware/trajectory_validator/filters/safety/trajectory_feasibility_filter.hpp"
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
 
@@ -199,13 +200,60 @@ MetricReport TrajectoryFeasibilityFilter::check_yaw_deviation(
 {
   const auto [max_observed, is_ok] =
     is_yaw_deviation_ok(traj_points, context, params_.max_yaw_deviation);
-
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
   return autoware_trajectory_validator::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("yaw_deviation")
+    .metric_value(max_observed)
+    .risk(risk_level);
+}
+
+MetricReport TrajectoryFeasibilityFilter::check_velocity_deviation(
+  const TrajectoryPoints & traj_points, const FilterContext & context) const
+{
+  const auto [max_observed, is_ok] =
+    is_velocity_deviation_ok(traj_points, context, params_.max_velocity_deviation);
+
+  RiskLevel risk_level;
+  risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(get_name())
+    .validator_category(category())
+    .metric_name("velocity_deviation")
+    .metric_value(max_observed)
+    .risk(risk_level);
+}
+
+MetricReport TrajectoryFeasibilityFilter::check_lateral_acceleration(
+  const TrajectoryPoints & traj_points, const FilterContext &) const
+{
+  const auto [max_observed, is_ok] =
+    is_lateral_acceleration_ok(traj_points, params_.max_lateral_acceleration);
+
+  RiskLevel risk_level;
+  risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(get_name())
+    .validator_category(category())
+    .metric_name("lateral_acceleration")
+    .metric_value(max_observed)
+    .risk(risk_level);
+}
+
+MetricReport TrajectoryFeasibilityFilter::check_distance_deviation(
+  const TrajectoryPoints & traj_points, const FilterContext & context) const
+{
+  const auto [max_observed, is_ok] =
+    is_distance_deviation_ok(traj_points, context, params_.max_distance_deviation);
+
+  RiskLevel risk_level;
+  risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(get_name())
+    .validator_category(category())
+    .metric_name("distance_deviation")
     .metric_value(max_observed)
     .risk(risk_level);
 }
@@ -307,6 +355,70 @@ std::pair<double, bool> is_yaw_deviation_ok(
       tf2::getYaw(ego_pose.orientation)));
 
   return {yaw_deviation, yaw_deviation <= max_yaw_deviation};
+}
+
+std::pair<double, bool> is_velocity_deviation_ok(
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  double max_velocity_deviation)
+{
+  if (!context.odometry || traj_points.empty()) {
+    return {0.0, true};
+  }
+
+  const auto nearest_idx = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
+    traj_points, context.odometry->pose.pose);
+  const double ego_speed = context.odometry->twist.twist.linear.x;
+  const double velocity_deviation =
+    std::abs(traj_points.at(nearest_idx).longitudinal_velocity_mps - ego_speed);
+
+  return {velocity_deviation, velocity_deviation <= max_velocity_deviation};
+}
+
+std::pair<double, bool> is_lateral_acceleration_ok(
+  const TrajectoryPoints & traj_points, double max_lateral_acceleration)
+{
+  double max_observed = 0.0;
+  bool is_ok = true;
+
+  if (traj_points.size() < 3) {
+    return {max_observed, is_ok};
+  }
+
+  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
+    const auto & prev_p = traj_points[i - 1].pose.position;
+    const auto & curr_p = traj_points[i].pose.position;
+    const auto & next_p = traj_points[i + 1].pose.position;
+
+    try {
+      const double curvature = autoware_utils_geometry::calc_curvature(prev_p, curr_p, next_p);
+      const double longitudinal_velocity = traj_points[i].longitudinal_velocity_mps;
+      const double lateral_acceleration =
+        std::abs(longitudinal_velocity * longitudinal_velocity * curvature);
+      if (lateral_acceleration > max_lateral_acceleration) {
+        max_observed = std::max(max_observed, lateral_acceleration);
+        is_ok = false;
+      }
+    } catch (...) {  // skip if three points are too close
+      continue;
+    }
+  }
+
+  return {max_observed, is_ok};
+}
+
+std::pair<double, bool> is_distance_deviation_ok(
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  double max_distance_deviation)
+{
+  if (!context.odometry || traj_points.size() < 2) {
+    return {0.0, true};
+  }
+  const auto nearest_idx = autoware::motion_utils::findNearestSegmentIndex(
+    traj_points, context.odometry->pose.pose.position);
+  const double distance_deviation = std::abs(
+    autoware::motion_utils::calcLateralOffset(
+      traj_points, context.odometry->pose.pose.position, nearest_idx));
+  return {distance_deviation, distance_deviation <= max_distance_deviation};
 }
 
 std::pair<double, bool> is_steering_angle_ok(
