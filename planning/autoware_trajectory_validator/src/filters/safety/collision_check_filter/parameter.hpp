@@ -75,13 +75,13 @@ inline bool is_disabled_target_shape_config(const std::vector<std::string> & sha
   return shape_names.size() == 1U && shape_names.front().empty();
 }
 
-struct TargetShapeParams
+struct TargetShapeTypeParams
 {
   bool bbox{true};
   bool polygon{false};
 
-  TargetShapeParams() = default;
-  explicit TargetShapeParams(const std::vector<std::string> & shape_names)
+  TargetShapeTypeParams() = default;
+  explicit TargetShapeTypeParams(const std::vector<std::string> & shape_names)
   : bbox{false}, polygon{false}
   {
     if (is_disabled_target_shape_config(shape_names)) {
@@ -105,14 +105,14 @@ struct TargetShapeParams
     }
   }
 
-  bool contains(const autoware_perception_msgs::msg::Shape & shape) const
+  bool contains(const uint8_t shape_type) const
   {
     using autoware_perception_msgs::msg::Shape;
 
-    if (shape.type == Shape::BOUNDING_BOX) {
+    if (shape_type == Shape::BOUNDING_BOX) {
       return bbox;
     }
-    if (shape.type == Shape::POLYGON) {
+    if (shape_type == Shape::POLYGON) {
       return polygon;
     }
     return false;
@@ -278,7 +278,7 @@ struct DracParams
         extract_labeled_param<bool>(input_acceleration.enable_abandon, key);
     };
 
-    target_shapes = TargetShapeParams(
+    target_shape_types = TargetShapeTypeParams(
       extract_labeled_param<std::vector<std::string>>(drac.enable_assessment, key));
     pet_margin.ego_earlier = extract_labeled_param<double>(drac.pet_margin.ego_earlier, key);
     pet_margin.object_earlier = extract_labeled_param<double>(drac.pet_margin.object_earlier, key);
@@ -317,7 +317,7 @@ struct DracParams
       map_based.object_prioritized_object_earlier);
   }
 
-  TargetShapeParams target_shapes{};
+  TargetShapeTypeParams target_shape_types{};
   PetMargin pet_margin{};
   EgoFootprintMargin ego_footprint_margin{};
   EgoReactionBrakingDelay ego_reaction_braking_delay{};
@@ -336,7 +336,7 @@ struct RssParams
   RssParams(const validator::Params & node_params, const std::string_view key)
   {
     const auto & rss = node_params.collision_check.rss;
-    target_shapes = TargetShapeParams(
+    target_shape_types = TargetShapeTypeParams(
       extract_labeled_param<std::vector<std::string>>(rss.enable_assessment, key));
     stop_distance_margin = extract_labeled_param<double>(rss.stop_distance_margin, key);
     ego_total_braking_delay = extract_labeled_param<double>(rss.ego_total_braking_delay, key);
@@ -349,7 +349,7 @@ struct RssParams
       extract_labeled_param<double>(rss.error_threshold.ego_acceleration, key);
   }
 
-  TargetShapeParams target_shapes{};
+  TargetShapeTypeParams target_shape_types{};
   double stop_distance_margin{2.0};
   double ego_total_braking_delay{0.4};
   EgoFootprintMargin ego_footprint_margin{};

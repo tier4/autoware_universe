@@ -214,7 +214,7 @@ TEST(GeometryTest, IntersectsSatMatchesBoostForPointContactAndNearPointCases)
   expect_both_outcomes_covered("point boundary shifts", saw_intersection, saw_separation);
 }
 
-TEST(TargetShapeParamsTest, SupportsConfiguredShapeTypes)
+TEST(TargetShapeTypeParamsTest, SupportsConfiguredShapeTypes)
 {
   using autoware_perception_msgs::msg::Shape;
 
@@ -227,44 +227,44 @@ TEST(TargetShapeParamsTest, SupportsConfiguredShapeTypes)
   Shape cylinder;
   cylinder.type = Shape::CYLINDER;
 
-  const TargetShapeParams target_shapes({"bbox", "polygon"});
-  EXPECT_TRUE(target_shapes.bbox);
-  EXPECT_TRUE(target_shapes.polygon);
-  EXPECT_TRUE(target_shapes.contains(bbox));
-  EXPECT_TRUE(target_shapes.contains(polygon));
-  EXPECT_FALSE(target_shapes.contains(cylinder));
+  const TargetShapeTypeParams target_shape_types({"bbox", "polygon"});
+  EXPECT_TRUE(target_shape_types.bbox);
+  EXPECT_TRUE(target_shape_types.polygon);
+  EXPECT_TRUE(target_shape_types.contains(bbox.type));
+  EXPECT_TRUE(target_shape_types.contains(polygon.type));
+  EXPECT_FALSE(target_shape_types.contains(cylinder.type));
 }
 
-TEST(TargetShapeParamsTest, EmptyConfigurationDisablesAllShapeTypes)
+TEST(TargetShapeTypeParamsTest, EmptyConfigurationDisablesAllShapeTypes)
 {
   using autoware_perception_msgs::msg::Shape;
 
   Shape bbox;
   bbox.type = Shape::BOUNDING_BOX;
 
-  const TargetShapeParams target_shapes(std::vector<std::string>{});
-  EXPECT_FALSE(target_shapes.bbox);
-  EXPECT_FALSE(target_shapes.polygon);
-  EXPECT_FALSE(target_shapes.contains(bbox));
+  const TargetShapeTypeParams target_shape_types(std::vector<std::string>{});
+  EXPECT_FALSE(target_shape_types.bbox);
+  EXPECT_FALSE(target_shape_types.polygon);
+  EXPECT_FALSE(target_shape_types.contains(bbox.type));
 }
 
-TEST(TargetShapeParamsTest, EmptyStringConfigurationDisablesAllShapeTypes)
+TEST(TargetShapeTypeParamsTest, EmptyStringConfigurationDisablesAllShapeTypes)
 {
   using autoware_perception_msgs::msg::Shape;
 
   Shape bbox;
   bbox.type = Shape::BOUNDING_BOX;
 
-  const TargetShapeParams target_shapes({""});
-  EXPECT_FALSE(target_shapes.bbox);
-  EXPECT_FALSE(target_shapes.polygon);
-  EXPECT_FALSE(target_shapes.contains(bbox));
+  const TargetShapeTypeParams target_shape_types({""});
+  EXPECT_FALSE(target_shape_types.bbox);
+  EXPECT_FALSE(target_shape_types.polygon);
+  EXPECT_FALSE(target_shape_types.contains(bbox.type));
 }
 
-TEST(TargetShapeParamsTest, RejectsUnsupportedShapeTypes)
+TEST(TargetShapeTypeParamsTest, RejectsUnsupportedShapeTypes)
 {
-  EXPECT_THROW(TargetShapeParams({"cylinder"}), std::invalid_argument);
-  EXPECT_THROW(TargetShapeParams({"", "bbox"}), std::invalid_argument);
+  EXPECT_THROW(TargetShapeTypeParams({"cylinder"}), std::invalid_argument);
+  EXPECT_THROW(TargetShapeTypeParams({"", "bbox"}), std::invalid_argument);
 }
 
 }  // namespace
