@@ -69,7 +69,8 @@ bool PointCloudCollisionCheckFilter::is_available_data(
 void PointCloudCollisionCheckFilter::set_planner_data_param()
 {
   const auto & trajectory_polygon_params = params_->trajectory_polygon;
-  // moved from  PlannerData constructor
+  
+  // motion_velocity_planner_common/planner_data.cpp:239-260
   planner_data_->ego_nearest_dist_threshold = trajectory_polygon_params.ego_nearest_dist_threshold;
   planner_data_->ego_nearest_yaw_threshold = trajectory_polygon_params.ego_nearest_yaw_threshold;
   planner_data_->trajectory_polygon_collision_check = {
@@ -78,7 +79,10 @@ void PointCloudCollisionCheckFilter::set_planner_data_param()
     trajectory_polygon_params.enable_to_consider_current_pose,
     trajectory_polygon_params.time_to_convergence};
 
+  // motion_velocity_planner_common/planner_data.hpp:88
   planner_data_->no_ground_pointcloud.preprocess_params_ = params_->preprocess;
+
+  // motion_velocity_planner/node.cpp:262-266（set_velocity_smoother_params）
   planner_data_->min_accel = params_->common.min_accel;
   planner_data_->min_jerk = params_->common.min_jerk;
 }
@@ -86,14 +90,21 @@ void PointCloudCollisionCheckFilter::set_planner_data_param()
 void PointCloudCollisionCheckFilter::update_planner_data(
   const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context)
 {
+  // motion_velocity_planner_common/planner_data.cpp:240-241
   planner_data_->vehicle_info_ = *vehicle_info_ptr_;
+
+  // motion_velocity_planner/node.cpp:160-167
   planner_data_->current_odometry = *context.odometry;
   planner_data_->current_acceleration = *context.acceleration;
+
+  // motion_velocity_planner/node.cpp:211-215
   const auto is_driving_forward =
     autoware::motion_utils::isDrivingForwardWithTwist(raw_trajectory_points);
   if (is_driving_forward) {
     planner_data_->is_driving_forward = is_driving_forward.value();
   }
+
+  // motion_velocity_planner/node.cpp:176-195
   planner_data_->no_ground_pointcloud.preprocess_pointcloud(
     pcc::convert_pointcloud_to_map_frame(
       *context.segmented_pointcloud, context.odometry->pose.pose, params_->excluded_class_ids),
@@ -135,7 +146,6 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
   result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
 
   if (params_->enable_debug_markers) {
-    // judge_stop_feasibility が未実装のため必要制動距離はまだ 0。
     pcc::emit_debug_markers(
       debug_markers_, *debug_data_, *planner_data_, stop_obstacles, 0.0, result.is_feasible,
       candidate_trajectory.generator_id.uuid, rclcpp::Time{context.odometry->header.stamp});
