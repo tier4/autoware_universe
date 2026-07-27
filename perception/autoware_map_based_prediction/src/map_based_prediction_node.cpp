@@ -132,6 +132,7 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
       declare_parameter<double>("max_crosswalk_user_on_road_distance");
     vru_params.use_crosswalk_signal =
       declare_parameter<bool>("crosswalk_with_signal.use_crosswalk_signal");
+    vru_params.max_deceleration = max_decel_params;
     vru_params.traffic_signal.threshold_velocity_assumed_as_stopping =
       declare_parameter<double>("crosswalk_with_signal.threshold_velocity_assumed_as_stopping");
     vru_params.traffic_signal.distance_set_for_no_intention_to_walk =

@@ -151,6 +151,7 @@ void PredictorVru::setLaneletMap(std::shared_ptr<lanelet::LaneletMap> lanelet_ma
 
   fence_module_.buildFromMap(lanelet_map_ptr_);
   vegetation_module_.build_from_map(lanelet_map_ptr_);
+  road_boundary_module_.build_from_map(lanelet_map_ptr_);
 }
 
 void PredictorVru::loadCurrentCrosswalkUsers(const TrackedObjects & objects)
@@ -403,6 +404,20 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     predicted_object, PathCutSource::Vegetation, stamp);
 
   predicted_object.kinematics.predicted_paths = paths_cut_with_vegetation;
+
+  const auto is_crosswalk_signal_red = [this](const lanelet::ConstLanelet & crosswalk) {
+    return params_.use_crosswalk_signal && traffic_signal_module_.isRedSignal(crosswalk);
+  };
+  const std::vector<PredictedPath> paths_cut_with_road_boundary =
+    road_boundary_module_.cut_paths_crossing_road_boundary(
+      predicted_object, within_road, is_crosswalk_signal_red);
+
+  debug::append_path_cut_event_markers(
+    debug_markers, predicted_object.kinematics.predicted_paths, paths_cut_with_road_boundary,
+    predicted_object, PathCutSource::RoadBoundary, stamp);
+
+  predicted_object.kinematics.predicted_paths = paths_cut_with_road_boundary;
+
   const auto n_path = predicted_object.kinematics.predicted_paths.size();
   for (auto & predicted_path : predicted_object.kinematics.predicted_paths) {
     predicted_path.confidence = 1.0 / n_path;

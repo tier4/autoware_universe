@@ -60,6 +60,14 @@ SourceStyle style_for_source(PathCutSource source)
         "fence_cut",
         create_marker_color(0.0, 0.4, 1.0, 0.9),
         create_marker_color(0.0, 0.27, 0.8, 0.9)};
+    case PathCutSource::RoadBoundary:
+      return {
+        "road_boundary_vru_box",
+        "road_boundary_vru_path",
+        "road_boundary_vru_kept",
+        "road_boundary_cut",
+        create_marker_color(1.0, 0.0, 0.53, 0.9),
+        create_marker_color(0.8, 0.0, 0.4, 0.9)};
     case PathCutSource::Vegetation:
     default:
       return {

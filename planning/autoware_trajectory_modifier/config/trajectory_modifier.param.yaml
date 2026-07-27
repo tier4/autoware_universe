@@ -34,6 +34,7 @@
       enable_stop_for_objects: true
       enable_stop_for_pointcloud: false
       stop_margin: 6.0 # [m]
+      minimum_stop_margin: 3.0 # [m]
       lateral_margin: 0.2     # lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
       duplicate_check_threshold: 0.5 # threshold to check if the stop point is already in the trajectory [m]
 
@@ -47,7 +48,6 @@
 
       objects:
         object_types: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard"] # object types to consider for obstacle stop
-        max_velocity_th: 3.0      # maximum velocity threshold for target object [m/s]
         stopped_velocity_th: 0.3 # [m/s]
         max_lateral_velocity_th: 1.0 # [m/s] max lateral velocity (w.r.t ego traj) to consider for obstacle stop
         safety_buffer: 0.1 # [m] safety buffer to expand object shape
@@ -69,17 +69,17 @@
       rss_params:
         enable: true
         object_decel:
-          car: 1.5
-          truck: 1.5
-          bus: 1.5
-          trailer: 1.5
+          car: 1.6
+          truck: 1.6
+          bus: 1.6
+          trailer: 1.6
           motorcycle: 2.0
           bicycle: 3.0
           pedestrian: 5.0
           animal: 5.0
-        ego_decel: 2.5 # [m/s^2]
-        reaction_time: 0.2 # [s]
-        safety_margin: 2.0 # [m]
+        ego_decel: 2.0 # [m/s^2]
+        reaction_time: 0.4 # [s]
+        safety_margin: 3.0 # [m]
         lookahead_horizon: 1.5 # [s]
 
     # Traffic Light Stop Plugin Parameters
@@ -90,6 +90,7 @@
       treat_amber_light_as_red: false
       treat_unknown_light_as_red: false
       overshoot_tolerance: 0.0 # [m]
+      allow_if_cannot_stop_distance: 0.0 # [m]
       th_stable_duration_red: 0.2 # [s]
       th_stable_duration_amber: 0.2 # [s]
       th_amber_rejection_hysteresis: 0.5 # [s]

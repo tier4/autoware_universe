@@ -11,6 +11,7 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 - **Path shifting**: Shifts the centerline path to start from the ego vehicle's current pose, using curvature-aware shift distance calculation based on ego velocity and lateral acceleration limits
 - **Trajectory smoothing**: Applies an Elastic Band smoother for geometric smoothing via a plugin interface
 - **Trajectory modification**: Applies modifier plugins (e.g., obstacle stop) for safety modifications
+- **Map-based stop planning**: Embeds stop points at map-defined stop targets (stop lines, walkways, crosswalks, traffic lights, intersections, private areas) and publishes "Go" / "Stop" candidate trajectories
 - **Velocity optimization**: Computes a jerk-filtered velocity profile respecting constraints on acceleration, jerk, and lateral acceleration
 - **Test mode**: Supports bypassing path planning by directly receiving a `PathWithLaneId` topic
 

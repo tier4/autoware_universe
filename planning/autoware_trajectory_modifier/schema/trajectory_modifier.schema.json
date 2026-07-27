@@ -145,6 +145,12 @@
               "default": 6.0,
               "minimum": 0.0
             },
+            "minimum_stop_margin": {
+              "type": "number",
+              "description": "Minimum distance to maintain from an obstacle when stopped [m]",
+              "default": 3.0,
+              "minimum": 0.0
+            },
             "lateral_margin": {
               "type": "number",
               "description": "Lateral margin on top of ego width from trajectory to consider for obstacle stop [m]",
@@ -219,12 +225,6 @@
                   "items": {
                     "type": "string"
                   }
-                },
-                "max_velocity_th": {
-                  "type": "number",
-                  "description": "Maximum velocity threshold for target object [m/s]",
-                  "default": 5.0,
-                  "minimum": 0.0
                 },
                 "stopped_velocity_th": {
                   "type": "number",
@@ -456,6 +456,12 @@
             "overshoot_tolerance": {
               "type": "number",
               "description": "Overshoot tolerance [m]",
+              "default": 0.0,
+              "minimum": 0.0
+            },
+            "allow_if_cannot_stop_distance": {
+              "type": "number",
+              "description": "allow crossing a stop line within this distance if ego cannot stop before the line plus its margin [m]",
               "default": 0.0,
               "minimum": 0.0
             },

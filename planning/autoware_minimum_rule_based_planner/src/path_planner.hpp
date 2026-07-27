@@ -18,6 +18,7 @@
 #include "type_alias.hpp"
 
 #include <autoware_utils_debug/time_keeper.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/clock.hpp>
 #include <rclcpp/logger.hpp>
 
@@ -50,18 +51,18 @@ struct RouteContext
   std::optional<lanelet::ConstLanelet> closest_preferred_lanelet;
 };
 
+struct Interval
+{
+  double start;
+  double end;
+};
+
 struct WaypointGroup
 {
   struct Waypoint
   {
     lanelet::ConstPoint3d point;
     lanelet::Id lane_id;
-  };
-
-  struct Interval
-  {
-    double start;
-    double end;
   };
 
   std::vector<Waypoint> waypoints;
@@ -110,10 +111,11 @@ public:
 
   // Path planning
   std::optional<PathWithLaneId> plan_path(
-    const geometry_msgs::msg::Pose & current_pose, double ego_velocity);
+    const geometry_msgs::msg::Pose & current_pose, double ego_velocity,
+    const builtin_interfaces::msg::Time & stamp);
   std::optional<PathWithLaneId> generate_path(
     const lanelet::LaneletSequence & lanelet_sequence, double s_start, double s_end,
-    double ego_velocity);
+    double ego_velocity, const builtin_interfaces::msg::Time & stamp);
 
   // Trajectory shifting
   Trajectory shift_trajectory_to_ego(
@@ -150,6 +152,20 @@ namespace utils
 {
 
 /**
+ * @brief get lanelets that are in specified distance backward from target lanelet
+ */
+lanelet::ConstLanelets get_lanelets_up_to(
+  const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data, const double distance,
+  const double offset_distance);
+
+/**
+ * @brief get lanelets that are in specified distance forward from target lanelet
+ */
+lanelet::ConstLanelets get_lanelets_after(
+  const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data, const double distance,
+  const double offset_distance);
+
+/**
  * @brief get lanelets within route that are in specified distance backward from target lanelet
  */
 std::optional<lanelet::ConstLanelets> get_lanelets_within_route_up_to(
@@ -172,6 +188,13 @@ std::optional<lanelet::ConstLanelet> get_previous_lanelet_within_route(
  */
 std::optional<lanelet::ConstLanelet> get_next_lanelet_within_route(
   const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data);
+
+/**
+ * @brief refine path range considering goal pose and intersection
+ */
+Interval refine_path_range(
+  const Interval & range, const lanelet::LaneletSequence & lanelet_sequence,
+  const RouteContext & planner_data, const VehicleInfo & vehicle_info, const double stop_margin);
 
 /**
  * @brief get waypoints in lanelet sequence and group them
@@ -227,13 +250,6 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
   const std::optional<double> & s_right_bound);
 
 /**
- * @brief Recreate the path with a given goal pose
- */
-PathPointTrajectory refine_path_for_goal(
-  const PathPointTrajectory & input, const geometry_msgs::msg::Pose & goal_pose,
-  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset);
-
-/**
  * @brief Extract lanelets from the trajectory
  */
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
@@ -249,13 +265,6 @@ bool is_in_lanelets(const geometry_msgs::msg::Pose & pose, const lanelet::ConstL
  */
 bool is_trajectory_inside_lanelets(
   const PathPointTrajectory & refined_path, const lanelet::ConstLanelets & lanelets);
-
-/**
- * @brief Modify path for smooth goal connection
- */
-std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
-  const PathPointTrajectory & trajectory, const RouteContext & planner_data,
-  const double search_radius_range, const double pre_goal_offset);
 
 }  // namespace utils
 }  // namespace autoware::minimum_rule_based_planner

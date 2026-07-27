@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    trajectory_validator_diagnostic:
-      configured_actions:
-        - uncrossable_boundary_departure_filter:moderate:trajectory_validator_uncrossable_boundary_departure_danger
-      no_candidates_diag_status_name: trajectory_validator_no_candidate_trajectory
+    configured_actions:
+      - uncrossable_boundary_departure_filter:moderate:trajectory_validator_uncrossable_boundary_departure_danger
+      - trajectory_feasibility_filter:comfortable:trajectory_feasibility_filter_high_caution
+    no_candidates_diag_status_name: trajectory_validator_no_candidate_trajectory

@@ -45,20 +45,38 @@
               "required": [],
               "additionalProperties": false
             },
-            "smooth_goal_connection": {
+            "lane_change_failure_stop_margin": {
+              "type": "number",
+              "description": "Stop margin from the end of the final lane when lane change fails. [m]",
+              "default": 0.0,
+              "minimum": 0.0
+            },
+            "early_stop": {
               "type": "object",
               "properties": {
-                "search_radius_range": {
+                "expected_ego_speed_parking": {
                   "type": "number",
-                  "description": "Search radius for goal connection [m]",
-                  "default": 7.5,
+                  "description": "expected ego speed during pull over to the side of the road [m/s]",
+                  "default": 2.8,
                   "minimum": 0.0
                 },
-                "pre_goal_offset": {
+                "max_lat_accel_parking": {
                   "type": "number",
-                  "description": "Offset before goal for smooth connection [m]",
-                  "default": 1.0,
+                  "description": "expected max lateral acceleration during pull over to the side of the road [m/s^2]",
+                  "default": 0.8,
                   "minimum": 0.0
+                },
+                "max_decel_parking": {
+                  "type": "number",
+                  "description": "max longitudinal deceleration used to compute the stopping distance during pull over [m/s^2]",
+                  "default": 1.0,
+                  "minimum": 0.1
+                },
+                "max_jerk_parking": {
+                  "type": "number",
+                  "description": "max longitudinal jerk used to compute the stopping distance during pull over [m/s^3]",
+                  "default": 1.0,
+                  "minimum": 0.1
                 }
               },
               "required": [],
@@ -161,6 +179,55 @@
           "required": [],
           "additionalProperties": false
         },
+        "map_based_stop": {
+          "type": "object",
+          "properties": {
+            "stop_margin_distance": {
+              "type": "number",
+              "description": "Distance to stop before the stop line crossing point (in addition to the vehicle front offset) [m]",
+              "default": 0.0,
+              "minimum": 0.0
+            },
+            "stop_distance_from_crosswalk": {
+              "type": "number",
+              "description": "Distance to stop before a crosswalk/walkway that has no explicit stop line in the map (added to stop_margin_distance and the vehicle front offset) [m]",
+              "default": 3.5,
+              "minimum": 0.0
+            },
+            "stop_distance_from_private_area": {
+              "type": "number",
+              "description": "Distance to stop before a private-area boundary (added to stop_margin_distance and the vehicle front offset) [m]",
+              "default": 3.0,
+              "minimum": 0.0
+            },
+            "stop_distance_from_intersection": {
+              "type": "number",
+              "description": "Distance to stop before the first conflicting priority lane in an intersection (added to stop_margin_distance and the vehicle front offset) [m]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "max_deceleration": {
+              "type": "number",
+              "description": "Maximum deceleration used to judge whether a stop line is reachable (braking distance) [m/s^2]",
+              "default": 4.0,
+              "minimum": 0.0
+            },
+            "max_jerk": {
+              "type": "number",
+              "description": "Maximum jerk used for the jerk-aware braking distance in the reachability judgement [m/s^3]",
+              "default": 5.0,
+              "minimum": 0.0
+            },
+            "stop_point_diff_threshold": {
+              "type": "number",
+              "description": "Minimum arc-length difference for the stop trajectory's stop point to be treated as different from the go trajectory's [m]",
+              "default": 0.5,
+              "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
         "obstacle_stop": {
           "type": "object",
           "properties": {
@@ -256,12 +323,6 @@
                   "items": {
                     "type": "string"
                   }
-                },
-                "max_velocity_th": {
-                  "type": "number",
-                  "description": "Max velocity threshold [m/s]",
-                  "default": 1.0,
-                  "minimum": 0.0
                 },
                 "stopped_velocity_th": {
                   "type": "number",

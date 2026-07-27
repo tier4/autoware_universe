@@ -20,6 +20,7 @@
 #include "autoware/diffusion_planner/utils/marker_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options_ros.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 
 #include <rclcpp/duration.hpp>
@@ -229,6 +230,7 @@ void DiffusionPlanner::set_up_params()
   params_.shadow_mode = this->declare_parameter<bool>("shadow_mode", false);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
+  autoware::mppi_optimizer::declare_first_order_dubins_mppi_runtime_options(*this);
 
   // planning factor params
   planning_factor_params_.enable_stop =
@@ -676,6 +678,8 @@ void DiffusionPlanner::on_timer()
         autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
       mppi_optimizer_->setVehicleParams(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
+      mppi_optimizer_->setRuntimeOptions(
+        autoware::mppi_optimizer::get_first_order_dubins_mppi_runtime_options(*this));
     }
 
     try {
@@ -720,7 +724,7 @@ void DiffusionPlanner::on_timer()
   pub_trajectory_->publish(planner_output.trajectory);
   pub_trajectories_->publish(planner_output.candidate_trajectories);
   pub_objects_->publish(planner_output.predicted_objects);
-  pub_turn_indicators_->publish(planner_output.turn_indicator_command);
+  pub_turn_indicators_->publish(planner_output.turn_indicators_command);
 
   publish_planning_factor(planner_output.trajectory);
 

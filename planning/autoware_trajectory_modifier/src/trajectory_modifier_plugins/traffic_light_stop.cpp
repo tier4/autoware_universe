@@ -35,6 +35,7 @@ autoware::traffic_light_compliance_checker::Parameters to_checker_params(
   p.treat_amber_light_as_red_light = tl_stop_p.treat_amber_light_as_red;
   p.treat_unknown_light_as_red_light = tl_stop_p.treat_unknown_light_as_red;
   p.stop_overshoot_margin = tl_stop_p.overshoot_tolerance;
+  p.allow_if_cannot_stop_distance = tl_stop_p.allow_if_cannot_stop_distance;
   p.stable_duration_threshold_red = tl_stop_p.th_stable_duration_red;
   p.stable_duration_threshold_amber = tl_stop_p.th_stable_duration_amber;
   p.amber_rejection_hysteresis_duration = tl_stop_p.th_amber_rejection_hysteresis;
@@ -166,18 +167,9 @@ bool TrafficLightStop::set_stop_point(TrajectoryPoints & traj_points, const Inpu
 
   if (
     target_stop_point_arc_length < stopping_params_.arrived_distance_threshold ||
-    !utils::insert_stop_point(traj_points, target_stop_point_arc_length, trajectory_length)) {
-    traj_points = std::invoke([&]() {
-      TrajectoryPoints stop_points;
-      auto p = traj_points.front();
-      p.longitudinal_velocity_mps = 0.0;
-      p.acceleration_mps2 = 0.0;
-      p.time_from_start = rclcpp::Duration::from_seconds(0.0);
-      stop_points.push_back(p);
-      p.time_from_start = rclcpp::Duration::from_seconds(trajectory_time_step_);
-      stop_points.push_back(p);
-      return stop_points;
-    });
+    !utils::insert_stop_point(traj_points, target_stop_point_arc_length)) {
+    utils::replace_trajectory_with_stop_point(
+      traj_points, input.current_odometry->pose.pose, trajectory_time_step_);
   }
 
   const auto & stop_pose = traj_points.back().pose;
