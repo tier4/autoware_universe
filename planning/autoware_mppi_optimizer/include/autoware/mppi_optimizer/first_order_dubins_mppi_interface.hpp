@@ -16,6 +16,7 @@
 #define AUTOWARE__MPPI_OPTIMIZER__FIRST_ORDER_DUBINS_MPPI_INTERFACE_HPP_
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
@@ -26,6 +27,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -97,6 +99,30 @@ public:
 
   /** Configure MPPI cost weights (FirstOrderDubinsBicycleCostParams). */
   void setCostParams(const FirstOrderDubinsMppiCostParams & params);
+
+  /** Configure debug logging and ablation options. */
+  void setRuntimeOptions(const FirstOrderDubinsMppiRuntimeOptions & options);
+
+  /**
+   * @brief Optionally write reference/optimized trajectories for offline viz.
+   * @param enable When true, each optimizeTrajectory writes CSVs under directory.
+   * @param directory Output folder (created if missing). Ignored when enable is false.
+   */
+  void setDebugTrajectoryLogging(bool enable, const std::string & directory = "");
+
+  /**
+   * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
+   */
+  void setAblationOptions(
+    bool ignore_obstacles, bool ignore_drivable_area, bool force_cold_start_each_step);
+
+  /**
+   * @brief Copy per-rollout raw costs and normalized importance weights from the last
+   *        optimizeTrajectory / computeStep call (for offline retune histograms).
+   * @param stride Keep every N-th sample (1 = all rollouts). Use >1 to limit CSV size.
+   */
+  bool copySampleCostDistribution(
+    std::vector<float> & raw_costs, std::vector<float> & normalized_weights, int stride = 1) const;
 
   /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.
