@@ -128,8 +128,8 @@
       common:
         max_accel: 1.0
         min_accel: -1.0
-        max_jerk: 1.0
-        min_jerk: -1.0
+        max_jerk: 0.6
+        min_jerk: -0.6
       obstacle_filtering:
         check_inside: true
         stop_obstacle_hold_time_threshold: 1.0
@@ -150,6 +150,7 @@
         ego_nearest_dist_threshold: 3.0
         ego_nearest_yaw_threshold: 1.046
         decimate_trajectory_step_length: 2.0
+        goal_extended_trajectory_length: 6.0
       time_series_association:
         max_time_diff: 0.35
         min_velocity: -5.0

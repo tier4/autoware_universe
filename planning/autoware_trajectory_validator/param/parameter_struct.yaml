@@ -422,22 +422,22 @@ validator:
       max_accel:
         type: double
         default_value: 1.0
-        description: Max acceleration used for ego braking distance estimation (m/s^2).
+        description: Max acceleration used for ego braking distance estimation (m/s^2). Keep in sync with common.param.yaml normal.max_acc.
         read_only: false
       min_accel:
         type: double
         default_value: -1.0
-        description: Min acceleration (deceleration) used for stopping distance (m/s^2, negative).
+        description: Min acceleration (deceleration) used for stopping distance (m/s^2, negative). Keep in sync with common.param.yaml normal.min_acc.
         read_only: false
       max_jerk:
         type: double
-        default_value: 1.0
-        description: Max jerk used for ego braking distance estimation (m/s^3).
+        default_value: 0.6
+        description: Max jerk used for ego braking distance estimation (m/s^3). Keep in sync with common.param.yaml normal.max_jerk.
         read_only: false
       min_jerk:
         type: double
-        default_value: -1.0
-        description: Min jerk used for ego braking distance estimation (m/s^3, negative).
+        default_value: -0.6
+        description: Min jerk used for ego braking distance estimation (m/s^3, negative). Keep in sync with common.param.yaml normal.min_jerk.
         read_only: false
     obstacle_filtering:
       check_inside:
@@ -522,6 +522,11 @@ validator:
         type: double
         default_value: 2.0
         description: Step length used when decimating trajectory points (m).
+        read_only: false
+      goal_extended_trajectory_length:
+        type: double
+        default_value: 6.0
+        description: Length by which the trajectory end is extended when decimating (m).
         read_only: false
     time_series_association:
       max_time_diff:
