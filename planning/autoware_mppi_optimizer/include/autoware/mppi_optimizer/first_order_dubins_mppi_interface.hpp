@@ -114,7 +114,8 @@ public:
    * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
    */
   void setAblationOptions(
-    bool ignore_obstacles, bool ignore_drivable_area, bool force_cold_start_each_step);
+    const bool ignore_obstacles, const bool ignore_drivable_area,
+    const bool force_cold_start_each_step, const bool skip_if_invalid);
 
   /**
    * @brief Copy per-rollout raw costs and normalized importance weights from the last
