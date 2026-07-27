@@ -16,12 +16,15 @@
 
 #include "assessment.hpp"
 
+#include <rclcpp/logging.hpp>
+
 #include <fmt/core.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -30,6 +33,32 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+namespace
+{
+autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr filter_supported_shape_objects(
+  const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr & predicted_objects)
+{
+  auto filtered_objects = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  *filtered_objects = *predicted_objects;
+  filtered_objects->objects.clear();
+  filtered_objects->objects.reserve(predicted_objects->objects.size());
+
+  for (const auto & object : predicted_objects->objects) {
+    if (!is_supported_target_shape_type(object.shape.type)) {
+      RCLCPP_WARN(
+        rclcpp::get_logger("CollisionCheckFilter"),
+        "Unsupported predicted object shape.type for collision check: %u. Supported shape types "
+        "are bbox and polygon.",
+        static_cast<unsigned int>(object.shape.type));
+      continue;
+    }
+    filtered_objects->objects.push_back(object);
+  }
+
+  return filtered_objects;
+}
+}  // namespace
+
 void CollisionCheckFilter::update_parameters(const validator::Params & node_params)
 {
   global_params_ = GlobalParams(node_params.collision_check.global_setting);
@@ -57,13 +86,12 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
                             RiskLevel::_level_type risk_level) {
     RiskLevel risk;
     risk.level = risk_level;
-    reports.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
-        .validator_name(get_name())
-        .validator_category(category())
-        .metric_name(std::string(metric_name))
-        .metric_value(metric_value)
-        .risk(risk));
+    reports.push_back(autoware_trajectory_validator::build<MetricReport>()
+                        .validator_name(get_name())
+                        .validator_category(category())
+                        .metric_name(std::string(metric_name))
+                        .metric_value(metric_value)
+                        .risk(risk));
   };
 
   // DRAC
@@ -114,9 +142,16 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     return {};  // No trajectory to check
   }
 
+  auto filtered_context = context;
+  filtered_context.predicted_objects = filter_supported_shape_objects(context.predicted_objects);
+  if (filtered_context.predicted_objects->objects.empty()) {
+    clear_detection_times();
+    return {};  // No supported objects to check collision with
+  }
+
   trajectory::EgoTrajectoryCache ego_trajectory_cache(
-    candidate_trajectory, rclcpp::Time(context.predicted_objects->header.stamp),
-    rclcpp::Time(context.odometry->header.stamp), global_params_.time_resolution,
+    candidate_trajectory, rclcpp::Time(filtered_context.predicted_objects->header.stamp),
+    rclcpp::Time(filtered_context.odometry->header.stamp), global_params_.time_resolution,
     *vehicle_info_ptr_);
 
   // Object trajectories are independent of the ego candidate trajectory, so they are memoized per
@@ -127,12 +162,14 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
 
   const auto drac_artifact = collision_timing_assessment::assess(
     ego_trajectory_cache, object_trajectory_cache_, candidate_trajectory.turn_indicators_command,
-    *context.odometry, *context.predicted_objects, stop_tracker_, drac_param_map_, global_params_);
-  const auto rss_artifact = rss_deceleration::assess(ego_trajectory_cache, context, rss_param_map_);
+    *filtered_context.odometry, *filtered_context.predicted_objects, stop_tracker_, drac_param_map_,
+    global_params_);
+  const auto rss_artifact =
+    rss_deceleration::assess(ego_trajectory_cache, filtered_context, rss_param_map_);
 
   auto planning_factors = reporter::process_collision_artifacts(
-    *context.odometry, drac_artifact, drac_continuous_times_, rss_artifact, rss_continuous_times_,
-    debug_markers_, global_params_.time_resolution);
+    *filtered_context.odometry, drac_artifact, drac_continuous_times_, rss_artifact,
+    rss_continuous_times_, debug_markers_, global_params_.time_resolution);
 
   return ValidationResult{
     calc_worst_risk({drac_artifact.risk, rss_artifact.risk}) < RiskLevel::DANGER,

@@ -214,5 +214,58 @@ TEST(GeometryTest, IntersectsSatMatchesBoostForPointContactAndNearPointCases)
   expect_both_outcomes_covered("point boundary shifts", saw_intersection, saw_separation);
 }
 
+TEST(TargetShapeParamsTest, SupportsConfiguredShapeTypes)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  Shape bbox;
+  bbox.type = Shape::BOUNDING_BOX;
+
+  Shape polygon;
+  polygon.type = Shape::POLYGON;
+
+  Shape cylinder;
+  cylinder.type = Shape::CYLINDER;
+
+  const TargetShapeParams target_shapes({"bbox", "polygon"});
+  EXPECT_TRUE(target_shapes.bbox);
+  EXPECT_TRUE(target_shapes.polygon);
+  EXPECT_TRUE(target_shapes.contains(bbox));
+  EXPECT_TRUE(target_shapes.contains(polygon));
+  EXPECT_FALSE(target_shapes.contains(cylinder));
+}
+
+TEST(TargetShapeParamsTest, EmptyConfigurationDisablesAllShapeTypes)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  Shape bbox;
+  bbox.type = Shape::BOUNDING_BOX;
+
+  const TargetShapeParams target_shapes(std::vector<std::string>{});
+  EXPECT_FALSE(target_shapes.bbox);
+  EXPECT_FALSE(target_shapes.polygon);
+  EXPECT_FALSE(target_shapes.contains(bbox));
+}
+
+TEST(TargetShapeParamsTest, EmptyStringConfigurationDisablesAllShapeTypes)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  Shape bbox;
+  bbox.type = Shape::BOUNDING_BOX;
+
+  const TargetShapeParams target_shapes({""});
+  EXPECT_FALSE(target_shapes.bbox);
+  EXPECT_FALSE(target_shapes.polygon);
+  EXPECT_FALSE(target_shapes.contains(bbox));
+}
+
+TEST(TargetShapeParamsTest, RejectsUnsupportedShapeTypes)
+{
+  EXPECT_THROW(TargetShapeParams({"cylinder"}), std::invalid_argument);
+  EXPECT_THROW(TargetShapeParams({"", "bbox"}), std::invalid_argument);
+}
+
 }  // namespace
 }  // namespace autoware::trajectory_validator::plugin::safety::geometry

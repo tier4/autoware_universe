@@ -89,9 +89,9 @@ validator:
       enable_assessment:
         base:
           &drac_ea {
-            type: bool,
-            default_value: true,
-            description: DRAC enable_assessment per class,
+            type: string_array,
+            default_value: [bbox],
+            description: 'DRAC target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.',
             read_only: false,
           }
         unknown: *drac_ea
@@ -283,9 +283,9 @@ validator:
       enable_assessment:
         base:
           &rss_ea {
-            type: bool,
-            default_value: true,
-            description: RSS enable_assessment per class,
+            type: string_array,
+            default_value: [bbox, polygon],
+            description: 'RSS target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.',
             read_only: false,
           }
         unknown: *rss_ea
