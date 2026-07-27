@@ -19,7 +19,7 @@
 
   <arg name="enable_pseudo_emergency_stop" default="false"/>
 
-  <node pkg="autoware_trajectory_selector" exec="autoware_trajectory_selector_node" name="trajectory_selector_node" output="screen" launch-prefix="konsole -e gdb -ex run --args">
+  <node pkg="autoware_trajectory_selector" exec="autoware_trajectory_selector_node" name="trajectory_selector_node" output="screen">
     <param from="$(var trajectory_selector_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_concatenator_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_validator_param_path)" allow_substs="true"/>
