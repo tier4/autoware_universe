@@ -22,7 +22,7 @@ control_validator:
       type: double
       description: Low-pass filter gain for the acceleration validator.
 
-  boundary_departure:
+  uncrossable_bound_departure_validator:
     enable:
       type: bool
       description: If true, validate that the control predicted trajectory does not depart an uncrossable boundary.

@@ -252,18 +252,18 @@ void UncrossableBoundDepartureValidator::validate(
   visualization_msgs::msg::MarkerArray & debug_markers)
 {
   if (!enable_) {
-    res.is_valid_boundary_departure = true;
+    res.will_cross_uncrossable_bound = false;
     return;
   }
 
   if (!lanelet_map || lanelet_map->lineStringLayer.empty()) {
-    res.is_valid_boundary_departure = true;
     RCLCPP_DEBUG(logger_, "Lanelet map is not available yet. Skipping boundary departure check.");
+    res.will_cross_uncrossable_bound = false;
     return;
   }
 
-  if (predicted_trajectory.points.size() < 2) {
-    res.is_valid_boundary_departure = true;
+  if (predicted_trajectory.points.empty()) {
+    res.will_cross_uncrossable_bound = false;
     return;
   }
 
@@ -281,10 +281,10 @@ void UncrossableBoundDepartureValidator::validate(
   auto status =
     checker_->update_departure_status(predicted_trajectory.points, ego_state, hysteresis_state_);
 
-  res.is_valid_boundary_departure =
-    status.status != boundary_departure_checker::DepartureType::CRITICAL;
+  res.will_cross_uncrossable_bound =
+    status.status == boundary_departure_checker::DepartureType::CRITICAL;
 
-  if (!res.is_valid_boundary_departure) {
+  if (res.will_cross_uncrossable_bound) {
     std::move(
       status.debug_markers.markers.begin(), status.debug_markers.markers.end(),
       std::back_inserter(debug_markers.markers));
@@ -435,9 +435,10 @@ void ControlValidator::setup_diag()
     }
   });
 
-  d.add(ns + "boundary_departure", [&](auto & stat) {
+  d.add(ns + "uncrossable_bound_departure", [&](auto & stat) {
+    const auto is_ok = !validation_status_.will_cross_uncrossable_bound;
     set_status(
-      stat, validation_status_.is_valid_boundary_departure,
+      stat, is_ok,
       "The control predicted trajectory departs an uncrossable boundary.");
   });
 }
@@ -460,7 +461,7 @@ void ControlValidator::validation_filtering(ControlValidatorStatus & res)
   res.is_valid_latency = true;
   res.is_valid_yaw = true;
   res.is_warn_yaw = false;
-  res.is_valid_boundary_departure = true;
+  res.will_cross_uncrossable_bound = false;
 }
 
 void ControlValidator::on_lanelet_map(const LaneletMapBin::ConstSharedPtr msg)
@@ -616,7 +617,7 @@ bool ControlValidator::is_all_valid(const ControlValidatorStatus & s)
 {
   return s.is_valid_lateral_jerk && s.is_valid_max_distance_deviation && s.is_valid_acc &&
          !s.is_rolling_back && !s.is_over_velocity && !s.has_overrun_stop_point &&
-         !s.will_overrun_stop_point && s.is_valid_yaw && s.is_valid_boundary_departure;
+         !s.will_overrun_stop_point && s.is_valid_yaw && !s.will_cross_uncrossable_bound;
 }
 
 std::string ControlValidator::generate_error_message(const ControlValidatorStatus & s)
@@ -651,7 +652,7 @@ std::string ControlValidator::generate_error_message(const ControlValidatorStatu
     error_messages.push_back("WILL OVERRUN STOP POINT");
   }
 
-  if (!s.is_valid_boundary_departure) {
+  if (s.will_cross_uncrossable_bound) {
     error_messages.push_back("BOUNDARY DEPARTURE");
   }
 
