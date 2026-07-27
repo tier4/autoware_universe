@@ -141,11 +141,9 @@ public:
   /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.
    * @param state Current ego state (updated in place).
-   * @param arc_length Current arc length along the reference path (updated in place).
    * @param sim_time Current simulation time [s].
    */
-  FirstOrderDubinsMppiControl computeStep(
-    FirstOrderDubinsMppiState & state, float & arc_length, float sim_time);
+  FirstOrderDubinsMppiControl computeStep(FirstOrderDubinsMppiState & state, float sim_time);
 
   /**
    * @brief Track a diffusion-planner reference (poses + velocities) with one MPPI step.
