@@ -152,7 +152,7 @@ private:
     SafetyFactorArray & safety_factors) const;
 
   void update_debug_data(
-    const TargetCrosswalks & target_crosswalks,
+    const TrajectoryPoints & traj_points, const TargetCrosswalks & target_crosswalks,
     const std::unordered_set<lanelet::Id> & obstructing_crosswalk_ids,
     const rclcpp::Time & current_time, const double z);
 };

@@ -15,6 +15,7 @@
 #include "autoware/trajectory_validator/filters/traffic_rule/crosswalk_filter.hpp"
 
 #include <autoware/motion_utils/distance/distance.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/Forward.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
@@ -253,8 +254,8 @@ CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
     });
 
   update_debug_data(
-    target_crosswalks, obstructing_crosswalk_ids, context.odometry->header.stamp,
-    context.odometry->pose.pose.position.z);
+    candidate_trajectory.points, target_crosswalks, obstructing_crosswalk_ids,
+    context.odometry->header.stamp, context.odometry->pose.pose.position.z);
 
   RiskLevel risk_level;
   risk_level.level = feasible ? RiskLevel::SAFE : RiskLevel::DANGER;
@@ -511,7 +512,7 @@ bool CrosswalkFilter::is_obstructing_crosswalk(
 }
 
 void CrosswalkFilter::update_debug_data(
-  const std::vector<TargetCrosswalk> & target_crosswalks,
+  const TrajectoryPoints & traj_points, const std::vector<TargetCrosswalk> & target_crosswalks,
   const std::unordered_set<lanelet::Id> & obstructing_crosswalk_ids,
   const rclcpp::Time & current_time, const double z)
 {
@@ -560,6 +561,7 @@ void CrosswalkFilter::update_debug_data(
                            const lanelet::BasicLineString2d & line, const std::string & ns,
                            const int id, const std_msgs::msg::ColorRGBA & color,
                            const double scale = 0.15) {
+    if (line.empty()) return;
     visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
       "map", current_time, ns, id, Marker::LINE_STRIP,
       autoware_utils::create_marker_scale(scale, scale, scale), color);
@@ -614,6 +616,24 @@ void CrosswalkFilter::update_debug_data(
     }
   };
 
+  auto get_arrival_linestring = [&](const TargetCrosswalk & cw) {
+    auto arc_length_to_arrival =
+      cw.crosswalk_info.arc_length_to_stop_line_m - params_.arrived_distance_threshold;
+    auto arrival_pose =
+      motion_utils::calcLongitudinalOffsetPose(traj_points, 0, arc_length_to_arrival);
+    if (!arrival_pose) return lanelet::BasicLineString2d{};
+    const auto left_offset_pose =
+      autoware_utils_geometry::calc_offset_pose(*arrival_pose, 0.0, -1.0, 0.0);
+    const auto right_offset_pose =
+      autoware_utils_geometry::calc_offset_pose(*arrival_pose, 0.0, 1.0, 0.0);
+    lanelet::BasicLineString2d arrival_ls;
+    arrival_ls.emplace_back(
+      lanelet::BasicPoint2d(left_offset_pose.position.x, left_offset_pose.position.y));
+    arrival_ls.emplace_back(
+      lanelet::BasicPoint2d(right_offset_pose.position.x, right_offset_pose.position.y));
+    return arrival_ls;
+  };
+
   int id = 0;
   for (const auto & cw : target_crosswalks) {
     bool is_obstructing = obstructing_crosswalk_ids.count(cw.crosswalk_info.crosswalk->id()) > 0;
@@ -631,6 +651,7 @@ void CrosswalkFilter::update_debug_data(
       const std::string remaining_time_str =
         "remaining waiting time:" + std::to_string(remaining_time) + " s";
       add_text_marker(remaining_time_str, stop_line_pose, "remaining_time", id, white, 0.3);
+      add_line_marker(get_arrival_linestring(cw), "arrival_linestring", id, yellow);
     }
     id++;
   }
