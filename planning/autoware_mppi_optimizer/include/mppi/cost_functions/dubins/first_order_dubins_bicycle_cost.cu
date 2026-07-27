@@ -11,11 +11,9 @@ namespace
 {
 using O = FirstOrderDubinsBicycleParams::OutputIndex;
 using C = FirstOrderDubinsBicycleParams::ControlIndex;
-using mppi::cost::detail::distancePointToSegment;
 using mppi::cost::detail::orientedBoxCorners;
 using mppi::cost::detail::orientedBoxesOverlap;
 using mppi::cost::detail::pointInPolygon;
-using mppi::cost::detail::signedLateralOffsetPointToSegment;
 using mppi::cost::detail::vectorLength;
 
 template <int NUM_TIMESTEPS>
@@ -319,25 +317,10 @@ void FirstOrderDubinsBicycleCostImpl<
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::computeTrackValue(
-  float x, float y) const
+  float x, float y, int timestep) const
 {
-  float min_dist = 0.0F;
-  if (NUM_TIMESTEPS <= 1) {
-    min_dist = vectorLength(x - ref_x_[0], y - ref_y_[0]);
-  } else {
-    min_dist = 1.0E8F;
-    for (int i = 0; i < NUM_TIMESTEPS - 1; ++i) {
-      const float segment_dist =
-        distancePointToSegment(x, y, ref_x_[i], ref_y_[i], ref_x_[i + 1], ref_y_[i + 1]);
-#ifdef __CUDA_ARCH__
-      min_dist = fminf(min_dist, segment_dist);
-#else
-      min_dist = std::min(min_dist, segment_dist);
-#endif
-    }
-  }
-
-  return min_dist;
+  const int t = timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
+  return vectorLength(x - ref_x_[t], y - ref_y_[t]);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -386,44 +369,32 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
-  DYN_PARAMS_T>::computeSignedLateralOffset(const float x, const float y) const
+  DYN_PARAMS_T>::computeSignedLateralOffset(const float x, const float y, int timestep) const
 {
-  if (NUM_TIMESTEPS <= 1) {
-    return x - ref_x_[0];
-  }
-
-  float best_abs = 1.0E8F;
-  float best_signed = 0.0F;
-  for (int i = 0; i < NUM_TIMESTEPS - 1; ++i) {
-    const float signed_offset =
-      signedLateralOffsetPointToSegment(x, y, ref_x_[i], ref_y_[i], ref_x_[i + 1], ref_y_[i + 1]);
+  const int t = timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
+  const float dx = x - ref_x_[t];
+  const float dy = y - ref_y_[t];
 #ifdef __CUDA_ARCH__
-    const float abs_offset = fabsf(signed_offset);
-    if (abs_offset < best_abs) {
-      best_abs = abs_offset;
-      best_signed = signed_offset;
-    }
+  return -dx * sinf(ref_yaw_[t]) + dy * cosf(ref_yaw_[t]);
 #else
-    const float abs_offset = std::fabs(signed_offset);
-    if (abs_offset < best_abs) {
-      best_abs = abs_offset;
-      best_signed = signed_offset;
-    }
+  return -dx * std::sin(ref_yaw_[t]) + dy * std::cos(ref_yaw_[t]);
 #endif
-  }
-
-  return best_signed;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
-  DYN_PARAMS_T>::exceedsLateralBoundary(const float x, const float y) const
+  DYN_PARAMS_T>::exceedsLateralBoundary(const float x, const float y, int timestep) const
 {
   const bool asymmetric =
     this->params_.boundary_threshold_left >= 0.0F || this->params_.boundary_threshold_right >= 0.0F;
+  const float signed_lat = computeSignedLateralOffset(x, y, timestep);
   if (!asymmetric) {
-    return computeTrackValue(x, y) >= this->params_.boundary_threshold;
+#ifdef __CUDA_ARCH__
+    return fabsf(signed_lat) >= this->params_.boundary_threshold;
+#else
+    return std::fabs(signed_lat) >= this->params_.boundary_threshold;
+#endif
   }
 
   const float left_limit = this->params_.boundary_threshold_left >= 0.0F
@@ -432,7 +403,6 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   const float right_limit = this->params_.boundary_threshold_right >= 0.0F
                               ? this->params_.boundary_threshold_right
                               : this->params_.boundary_threshold;
-  const float signed_lat = computeSignedLateralOffset(x, y);
   return signed_lat > left_limit || signed_lat < -right_limit;
 }
 
@@ -535,7 +505,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   detectAndLatchCrash(
     const float x, const float y, const float yaw, const int timestep, int * crash_status) const
 {
-  const bool beyond_lateral_bound = exceedsLateralBoundary(x, y);
+  const bool beyond_lateral_bound = exceedsLateralBoundary(x, y, timestep);
   const bool hit_car = egoIntersectsObstacleAtStep(x, y, yaw, timestep);
   const bool hit_road_border = egoIntersectsRoadBorder(x, y, yaw);
   const int violations = static_cast<int>(beyond_lateral_bound) + static_cast<int>(hit_car) +
@@ -571,7 +541,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float yaw = y[static_cast<int>(O::YAW)];
   const float vel = y[static_cast<int>(O::TOTAL_VELOCITY)];
 
-  const float track_val = computeTrackValue(x_pos, y_pos);
+  const float track_val = computeTrackValue(x_pos, y_pos, timestep);
   const float vel_diff = vel - ref_v_[timestep];
   const float speed_cost = this->params_.speed_coeff * (vel_diff * vel_diff);
   const float track_cost = this->params_.track_coeff * track_val;
@@ -597,7 +567,7 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   const float yaw = y[static_cast<int>(O::YAW)];
   const float vel = y[static_cast<int>(O::TOTAL_VELOCITY)];
 
-  const float track_val = computeTrackValue(x_pos, y_pos);
+  const float track_val = computeTrackValue(x_pos, y_pos, timestep);
   const float vel_diff = vel - ref_v_[timestep];
   const float speed_cost = this->params_.speed_coeff * (vel_diff * vel_diff);
   const float track_cost = this->params_.track_coeff * track_val;
@@ -650,7 +620,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float y_pos = y[static_cast<int>(O::BASELINK_POS_I_Y)];
   const float yaw = y[static_cast<int>(O::YAW)];
   const float vel = y[static_cast<int>(O::TOTAL_VELOCITY)];
-  const float track_val = computeTrackValue(x_pos, y_pos);
+  const float track_val = computeTrackValue(x_pos, y_pos, NUM_TIMESTEPS - 1);
   const float track_cost = this->params_.track_coeff * track_val * 10.0F;
   const float heading_cost =
     this->params_.heading_coeff * computeHeadingValue(yaw, NUM_TIMESTEPS - 1) * 10.0F;

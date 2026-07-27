@@ -77,34 +77,52 @@ from rclpy.utilities import remove_ros_args
 # Rolling window for live measured tire-angle history (replaces a constant axhline).
 MEASURED_STEER_HISTORY_S = 16.0
 
+# Numerical cost params from mppi_optimizer.param.yaml / FirstOrderDubinsMppiCostParams.
+# (Excludes bool/string runtime flags: enable_debug_trajectory_log, ignore_*, etc.)
 DEFAULT_PARAMS: Dict[str, float] = {
-    "lambda": 3000.0,
+    "lambda": 14000.0,
+    "desired_speed": 2.5,
     "speed_coeff": 500.0,
-    "track_coeff": 1000.0,
-    "heading_coeff": 500.0,
+    "track_coeff": 3000.0,
+    "heading_coeff": 1000.0,
     "crash_coeff": 100000.0,
     "boundary_threshold": 0.8,
-    "accel_cmd_coeff": 200.0,
-    "steer_cmd_coeff": 1000.0,
-    "steer_rate_coeff": 3000.0,
+    "boundary_threshold_left": -1.0,
+    "boundary_threshold_right": -1.0,
     "lateral_acceleration_coeff": 500.0,
-    "lateral_jerk_coeff": 3000.0,
-    "longitudinal_jerk_coeff": 1000.0,
+    "lateral_jerk_coeff": 1000.0,
+    "longitudinal_jerk_coeff": 10.0,
+    "accel_cmd_coeff": 0.0,
+    "steer_cmd_coeff": 10.0,
+    "steer_rate_coeff": 0.0,  # cost param; not always present in yaml
     "goal_pos_coeff": 1000.0,
+    "goal_speed_coeff": 200.0,
     "goal_yaw_coeff": 500.0,
+    "goal_terminal_scale": 10.0,
+    "obstacle_collision_margin": 0.2,
 }
 
+# (name, vmin, vmax) — keep in sync with DEFAULT_PARAMS keys.
 SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("lambda", 100.0, 20000.0),
-    ("track_coeff", 0.0, 5000.0),
+    ("desired_speed", 0.0, 20.0),
+    ("track_coeff", 0.0, 10000.0),
     ("speed_coeff", 0.0, 5000.0),
     ("heading_coeff", 0.0, 5000.0),
-    ("steer_cmd_coeff", 0.0, 5000.0),
-    ("steer_rate_coeff", 0.0, 10000.0),
-    ("accel_cmd_coeff", 0.0, 2000.0),
+    ("lateral_acceleration_coeff", 0.0, 5000.0),
     ("lateral_jerk_coeff", 0.0, 10000.0),
     ("longitudinal_jerk_coeff", 0.0, 5000.0),
+    ("accel_cmd_coeff", 0.0, 2000.0),
+    ("steer_cmd_coeff", 0.0, 5000.0),
+    ("steer_rate_coeff", 0.0, 10000.0),
+    ("goal_pos_coeff", 0.0, 5000.0),
+    ("goal_speed_coeff", 0.0, 2000.0),
+    ("goal_yaw_coeff", 0.0, 5000.0),
+    ("goal_terminal_scale", 0.0, 50.0),
     ("boundary_threshold", 0.1, 5.0),
+    ("boundary_threshold_left", -1.0, 5.0),
+    ("boundary_threshold_right", -1.0, 5.0),
+    ("obstacle_collision_margin", 0.0, 2.0),
     ("crash_coeff", 0.0, 500000.0),
 ]
 
@@ -310,76 +328,32 @@ def _wrap_pi(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
-def signed_lateral_offset_point_to_segment(
-    px: float, py: float, x0: float, y0: float, x1: float, y1: float
-) -> float:
-    """Match mppi::cost::detail::signedLateralOffsetPointToSegment (+ = left of tangent)."""
-    dx = x1 - x0
-    dy = y1 - y0
-    len_sq = dx * dx + dy * dy
-    if len_sq < 1.0e-8:
-        return px - x0
-    t = max(0.0, min(1.0, ((px - x0) * dx + (py - y0) * dy) / len_sq))
-    cx = x0 + t * dx
-    cy = y0 + t * dy
-    length = math.hypot(dx, dy)
-    return ((px - cx) * (-dy) + (py - cy) * dx) / length
-
-
-def closest_segment_lat_and_tangent(
-    px: float, py: float, ref_x: Sequence[float], ref_y: Sequence[float]
-) -> Tuple[float, float]:
-    """Signed lateral to closest ref segment and that segment's tangent yaw."""
-    n = min(len(ref_x), len(ref_y))
-    if n <= 0:
-        return float("nan"), float("nan")
-    if n == 1:
-        return px - ref_x[0], 0.0
-    best_abs = 1.0e8
-    best_signed = 0.0
-    best_yaw = 0.0
-    for i in range(n - 1):
-        signed_offset = signed_lateral_offset_point_to_segment(
-            px, py, ref_x[i], ref_y[i], ref_x[i + 1], ref_y[i + 1]
-        )
-        abs_offset = abs(signed_offset)
-        if abs_offset < best_abs:
-            best_abs = abs_offset
-            best_signed = signed_offset
-            best_yaw = math.atan2(ref_y[i + 1] - ref_y[i], ref_x[i + 1] - ref_x[i])
-    return best_signed, best_yaw
-
-
 def signed_lateral_series(
     traj_xy: Optional[Tuple[List[float], List[float]]],
     ref_xy: Optional[Tuple[List[float], List[float]]],
+    ref_heading: Sequence[float],
 ) -> List[float]:
-    if not traj_xy or not ref_xy or not traj_xy[0] or not ref_xy[0]:
+    """Time-indexed lateral error to ref[i], resolved in ref_heading[i]."""
+    if not traj_xy or not ref_xy or not traj_xy[0] or not ref_xy[0] or not ref_heading:
         return []
     ref_x, ref_y = ref_xy
+    n = min(len(traj_xy[0]), len(traj_xy[1]), len(ref_x), len(ref_y), len(ref_heading))
     return [
-        closest_segment_lat_and_tangent(traj_xy[0][i], traj_xy[1][i], ref_x, ref_y)[0]
-        for i in range(len(traj_xy[0]))
+        -(traj_xy[0][i] - ref_x[i]) * math.sin(ref_heading[i])
+        + (traj_xy[1][i] - ref_y[i]) * math.cos(ref_heading[i])
+        for i in range(n)
     ]
 
 
-def heading_error_closest_series(
-    traj_xy: Optional[Tuple[List[float], List[float]]],
+def indexed_heading_error_series(
     traj_heading: Sequence[float],
-    ref_xy: Optional[Tuple[List[float], List[float]]],
+    ref_heading: Sequence[float],
 ) -> List[float]:
-    """Δψ = yaw − tangent at closest reference segment (path-relative heading error)."""
-    if not traj_xy or not ref_xy or not traj_xy[0] or not ref_xy[0] or not traj_heading:
-        return []
-    ref_x, ref_y = ref_xy
-    n = min(len(traj_xy[0]), len(traj_heading))
-    out: List[float] = []
-    for i in range(n):
-        _lat, tangent_yaw = closest_segment_lat_and_tangent(
-            traj_xy[0][i], traj_xy[1][i], ref_x, ref_y
-        )
-        out.append(_wrap_pi(traj_heading[i] - tangent_yaw))
-    return out
+    """Time-indexed heading error Δψ[i] = yaw[i] − ref_yaw[i]."""
+    return [
+        _wrap_pi(traj_heading[i] - ref_heading[i])
+        for i in range(min(len(traj_heading), len(ref_heading)))
+    ]
 
 
 def max_abs(series: Sequence[float]) -> float:
@@ -420,11 +394,11 @@ def frame_from_loaded(
     )
     orig_pos = max_pos_err(frame.reference_xy, frame.optimized_xy)
     orig_vel = max_vel_err(frame.reference_vel, frame.optimized_vel)
-    orig_lat = max_abs(signed_lateral_series(frame.optimized_xy, frame.reference_xy))
+    orig_lat = max_abs(
+        signed_lateral_series(frame.optimized_xy, frame.reference_xy, frame.reference_heading)
+    )
     orig_dpsi = max_abs(
-        heading_error_closest_series(
-            frame.optimized_xy, frame.optimized_heading, frame.reference_xy
-        )
+        indexed_heading_error_series(frame.optimized_heading, frame.reference_heading)
     )
     parts = [
         f"orig max|e_lat|={orig_lat:.3f}m max|Δψ_path|={orig_dpsi:.3f}rad "
@@ -433,16 +407,18 @@ def frame_from_loaded(
     if frame.retuned_xy:
         ret_pos = max_pos_err(frame.reference_xy, frame.retuned_xy)
         ret_vel = max_vel_err(frame.reference_vel, frame.retuned_vel)
-        ret_lat = max_abs(signed_lateral_series(frame.retuned_xy, frame.reference_xy))
-        ret_dpsi = max_abs(
-            heading_error_closest_series(
-                frame.retuned_xy, frame.retuned_heading, frame.reference_xy
-            )
+        ret_lat = max_abs(
+            signed_lateral_series(frame.retuned_xy, frame.reference_xy, frame.reference_heading)
         )
+        ret_dpsi = max_abs(
+            indexed_heading_error_series(frame.retuned_heading, frame.reference_heading)
+        )
+        vs_logged = max_pos_err(frame.optimized_xy, frame.retuned_xy)
         parts.append(
             f"retune max|e_lat|={ret_lat:.3f}m max|Δψ_path|={ret_dpsi:.3f}rad "
             f"max|pos_idx|={ret_pos:.3f}m max|v|={ret_vel:.3f}m/s"
         )
+        parts.append(f"logged↔retune max|Δpos|={vs_logged:.3f}m")
     if frame.raw_costs:
         finite_costs = [c for c in frame.raw_costs if abs(c) < 1.0e20]
         if finite_costs:
@@ -555,13 +531,17 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
 
     if ax_lat is not None:
         ax_lat.clear()
-        ax_lat.set_title("Signed lateral (closest segment)")
+        ax_lat.set_title("Time-indexed lateral error")
         ax_lat.set_xlabel("optimized point index")
         ax_lat.set_ylabel("e_lat [m] (+left)")
         ax_lat.grid(True)
         ax_lat.axhline(0.0, color="0.7", linewidth=0.8, linestyle=":")
-        lat_opt = signed_lateral_series(frame.optimized_xy, frame.reference_xy)
-        lat_ret = signed_lateral_series(frame.retuned_xy, frame.reference_xy)
+        lat_opt = signed_lateral_series(
+            frame.optimized_xy, frame.reference_xy, frame.reference_heading
+        )
+        lat_ret = signed_lateral_series(
+            frame.retuned_xy, frame.reference_xy, frame.reference_heading
+        )
         if lat_opt:
             ax_lat.plot(
                 list(range(len(lat_opt))),
@@ -583,17 +563,13 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
 
     if ax_heading_err is not None:
         ax_heading_err.clear()
-        ax_heading_err.set_title("Heading error vs closest-segment tangent")
+        ax_heading_err.set_title("Time-indexed heading error")
         ax_heading_err.set_xlabel("optimized point index")
-        ax_heading_err.set_ylabel("Δψ_path [rad]")
+        ax_heading_err.set_ylabel("Δψ [rad]")
         ax_heading_err.grid(True)
         ax_heading_err.axhline(0.0, color="0.7", linewidth=0.8, linestyle=":")
-        dpsi_opt = heading_error_closest_series(
-            frame.optimized_xy, frame.optimized_heading, frame.reference_xy
-        )
-        dpsi_ret = heading_error_closest_series(
-            frame.retuned_xy, frame.retuned_heading, frame.reference_xy
-        )
+        dpsi_opt = indexed_heading_error_series(frame.optimized_heading, frame.reference_heading)
+        dpsi_ret = indexed_heading_error_series(frame.retuned_heading, frame.reference_heading)
         if dpsi_opt:
             ax_heading_err.plot(
                 list(range(len(dpsi_opt))),
@@ -703,28 +679,22 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     cmd_handles = []
     cmd_labels = []
     if n_compare > 0:
-        (h_ref,) = ax_steer_cmd.plot(
-            idx,
-            frame.reference_steer[:n_compare],
-            color="tab:orange",
-            linestyle="--",
-            linewidth=2,
-            label="diffusion δ_cmd",
-        )
+        # Diffusion reference leaves front_wheel_angle_rad unset (=0); plotting it makes the
+        # panel look like "steer is always zero". Only show logged / retuned commands.
         (h_opt,) = ax_steer_cmd.plot(
             idx,
             frame.optimized_steer[:n_compare],
-            color="tab:orange",
+            color="tab:red",
             linewidth=2,
             label="MPPI logged δ_cmd",
         )
-        cmd_handles.extend([h_ref, h_opt])
-        cmd_labels.extend(["diffusion δ_cmd", "MPPI logged δ_cmd"])
+        cmd_handles.append(h_opt)
+        cmd_labels.append("MPPI logged δ_cmd")
         if frame.retuned_steer:
             (h_ret,) = ax_steer_cmd.plot(
                 idx,
                 frame.retuned_steer[:n_compare],
-                color="darkorange",
+                color="tab:green",
                 linewidth=2.2,
                 label="MPPI retuned δ_cmd",
             )
@@ -1183,8 +1153,8 @@ class MppiDebugVisualizer(Node):
             )
             if frame.reference_xy and frame.optimized_xy:
                 frame.metrics_text = (
-                    f"max|e_lat|={max_abs(signed_lateral_series(frame.optimized_xy, frame.reference_xy)):.3f}m  "
-                    f"max|Δψ_path|={max_abs(heading_error_closest_series(frame.optimized_xy, frame.optimized_heading, frame.reference_xy)):.3f}rad  "
+                    f"max|e_lat|={max_abs(signed_lateral_series(frame.optimized_xy, frame.reference_xy, frame.reference_heading)):.3f}m  "
+                    f"max|Δψ|={max_abs(indexed_heading_error_series(frame.optimized_heading, frame.reference_heading)):.3f}rad  "
                     f"max|v|={max_vel_err(frame.reference_vel, frame.optimized_vel):.3f}m/s"
                 )
             if frame.measured_steer is not None:
@@ -1251,12 +1221,17 @@ class OfflineLogVisualizer:
                 f"Retune vehicle: wheel_base={self._wheel_base}, "
                 f"ego_length={self._ego_length}, ego_width={self._ego_width}"
             )
+            print(f"Retune binary: {self._retune_bin}")
+            print("Move sliders, then click Retune (or press r). Sliders alone do nothing.")
 
     def _build_retune_controls(self) -> None:
-        slider_h = 0.022
-        top = 0.92
+        n = max(len(SLIDER_SPECS), 1)
+        # Fit all cost-param sliders in the right panel without overlapping buttons.
+        slider_h = min(0.022, 0.72 / n - 0.004)
+        gap = 0.004
+        top = 0.94
         for i, (name, vmin, vmax) in enumerate(SLIDER_SPECS):
-            ax = self._fig.add_axes([0.72, top - i * (slider_h + 0.010), 0.26, slider_h])
+            ax = self._fig.add_axes([0.72, top - i * (slider_h + gap), 0.26, slider_h])
             self._sliders[name] = Slider(
                 ax, name, vmin, vmax, valinit=self._params.get(name, DEFAULT_PARAMS[name])
             )
@@ -1302,6 +1277,7 @@ class OfflineLogVisualizer:
         self._show_current()
 
     def _current_params(self) -> Dict[str, float]:
+        """All known cost params: log/yaml/defaults, overridden by slider values."""
         params = dict(self._params)
         for name, slider in self._sliders.items():
             params[name] = float(slider.val)
@@ -1333,14 +1309,40 @@ class OfflineLogVisualizer:
         for key, value in params.items():
             cmd.extend(["--set", f"{key}={value}"])
 
-        self._status = f"Retuning frame {frame_id}..."
+        lam = params.get("lambda", float("nan"))
+        track = params.get("track_coeff", float("nan"))
+        self._status = (
+            f"Retuning frame {frame_id} via {self._retune_bin.name} "
+            f"(lambda={lam:.0f}, track={track:.0f})..."
+        )
         self._show_current()
         try:
             completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            self._status = completed.stdout.strip().splitlines()[-1] if completed.stdout else "OK"
+            lines = [ln for ln in completed.stdout.splitlines() if ln.strip()]
+            # Prefer the applied_params line when present; else last status line.
+            applied = next((ln for ln in lines if ln.startswith("applied_params ")), "")
+            tail = lines[-1] if lines else "OK"
+            self._status = f"{applied} | {tail}" if applied else tail
+            warn_lines = []
+            if completed.stderr:
+                warn_lines = [ln for ln in completed.stderr.splitlines() if "WARNING:" in ln]
+            # Highlight when retune barely moved vs logged (usually lambda still too high).
+            opt = load_trajectory_csv(self._out_dir / f"{frame_id:06d}_optimized.csv")
+            logged = load_trajectory_csv(self._log_dir / f"{frame_id:06d}_optimized.csv")
+            if opt.x and logged.x:
+                vs = max_pos_err((logged.x, logged.y), (opt.x, opt.y))
+                self._status = f"{self._status} | logged↔retune Δpos={vs:.3f}m"
+                if vs < 0.5 and lam >= 2000.0:
+                    self._status = (
+                        f"{self._status} || tiny Δ — lower lambda to ~100–500 then Retune again"
+                    )
+            if warn_lines:
+                self._status = f"{self._status}  ||  {warn_lines[-1]}"
         except subprocess.CalledProcessError as exc:
             err = (exc.stderr or exc.stdout or str(exc)).strip()
             self._status = f"Retune failed: {err[-240:]}"
+        except FileNotFoundError as exc:
+            self._status = f"Retune failed: {exc}"
         self._show_current()
 
     def _on_key(self, event) -> None:
