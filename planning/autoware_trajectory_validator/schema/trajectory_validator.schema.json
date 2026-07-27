@@ -371,6 +371,12 @@
               "default": 5.0,
               "minimum": 0.0
             },
+            "max_yaw_deviation": {
+              "type": "number",
+              "description": "Maximum allowed yaw deviation from the reference trajectory [rad].",
+              "default": 0.35,
+              "minimum": 0.0
+            },
             "max_velocity_deviation": {
               "type": "number",
               "description": "Maximum allowed velocity deviation from the reference trajectory [m/s].",
