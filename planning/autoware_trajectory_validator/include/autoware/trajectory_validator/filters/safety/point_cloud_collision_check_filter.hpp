@@ -26,7 +26,6 @@ namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_
 {
 // 実体は src/filters/safety/point_cloud_collision_check/ にある。
 class ObstacleStop;   // 移植元 ObstacleStopModule の点群経路
-struct DebugData;     // debug marker の中間データ
 struct Params;        // 移植元が node から読む各パラメータ構造体をまとめたもの
 struct PlannerData;   // 移植元 PlannerData のうち点群停止に必要な分
 struct StopObstacle;  // 停止対象の点群障害物
@@ -72,7 +71,6 @@ private:
   // 停止候補 deque をサイクルをまたいで保持するため、状態は ObstacleStop 側に置く。
   std::unique_ptr<point_cloud_collision_check::ObstacleStop> obstacle_stop_;
   std::unique_ptr<point_cloud_collision_check::Params> params_;
-  std::unique_ptr<point_cloud_collision_check::DebugData> debug_data_;
   std::shared_ptr<point_cloud_collision_check::PlannerData> planner_data_;
 };
 }  // namespace autoware::trajectory_validator::plugin::safety

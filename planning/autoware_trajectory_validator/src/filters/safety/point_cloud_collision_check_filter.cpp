@@ -14,7 +14,6 @@
 
 #include "autoware/trajectory_validator/filters/safety/point_cloud_collision_check_filter.hpp"
 
-#include "point_cloud_collision_check/debug_marker.hpp"
 #include "point_cloud_collision_check/obstacle_stop.hpp"
 
 #include <memory>
@@ -28,7 +27,6 @@ PointCloudCollisionCheckFilter::PointCloudCollisionCheckFilter()
 : ValidatorInterface("point_cloud_collision_check_filter"),
   obstacle_stop_(std::make_unique<pcc::ObstacleStop>()),
   params_(std::make_unique<pcc::Params>()),
-  debug_data_(std::make_unique<pcc::DebugData>()),
   planner_data_(std::make_shared<pcc::PlannerData>())
 {
 }
@@ -85,12 +83,6 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
 
   ValidationResult result{};
   result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
-
-  if (params_->enable_debug_markers) {
-    pcc::emit_debug_markers(
-      debug_markers_, *debug_data_, *planner_data_, stop_obstacles, 0.0, result.is_feasible,
-      candidate_trajectory.generator_id.uuid, rclcpp::Time{context.odometry->header.stamp});
-  }
 
   return result;
 }
