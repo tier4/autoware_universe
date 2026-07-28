@@ -178,6 +178,7 @@ private:
   // Plugin infrastructure
   pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
   std::vector<std::shared_ptr<plugin::ValidatorInterface>> plugins_;
+  std::unordered_set<std::string> active_filter_names_;
 
   // Publishers
   std::shared_ptr<autoware_utils_debug::DebugPublisher> pub_debug_;

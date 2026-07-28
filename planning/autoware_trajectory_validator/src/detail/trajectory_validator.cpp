@@ -33,6 +33,7 @@ using autoware_trajectory_validator::msg::ValidationReport;
 
 TrajectoryValidatorReport TrajectoryValidator::process(
   const autoware_internal_planning_msgs::msg::CandidateTrajectories & input_trajectories,
+  const std::unordered_set<std::string> & active_filter_names,
   const ValidatorContext & context) const
 {
   TrajectoryValidatorReport report;
@@ -54,13 +55,10 @@ TrajectoryValidatorReport TrajectoryValidator::process(
 
     std::vector<autoware_trajectory_validator::msg::MetricReport> combined_metrics;
 
-    std::unordered_set<std::string> shadow_mode_plugin_names;
     for (const auto & plugin : plugins_) {
       PluginEvaluation evaluation;
       evaluation.plugin_name = plugin->get_name();
       evaluation.is_shadow_mode = plugin->is_shadow_mode();
-
-      if (evaluation.is_shadow_mode) shadow_mode_plugin_names.insert(evaluation.plugin_name);
 
       stop_watch.tic(evaluation.plugin_name);
       const auto res = plugin->is_feasible(candidate_trajectory, context);
@@ -106,13 +104,11 @@ TrajectoryValidatorReport TrajectoryValidator::process(
       report.num_feasible_trajectories++;
     }
 
-    // remove metrics from shadow-mode plugins so that they dont affect final trajectory risk level
+    // remove metrics from inactive plugins so that they dont affect final trajectory risk level
     combined_metrics.erase(
       std::remove_if(
         combined_metrics.begin(), combined_metrics.end(),
-        [&](const auto & metric) {
-          return shadow_mode_plugin_names.count(metric.validator_name) > 0;
-        }),
+        [&](const auto & metric) { return active_filter_names.count(metric.validator_name) == 0; }),
       combined_metrics.end());
 
     RiskLevel risk_level;

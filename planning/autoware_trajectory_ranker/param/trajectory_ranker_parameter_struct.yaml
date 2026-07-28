@@ -123,6 +123,8 @@ trajectory_ranker_params:
         default_value: 5.0
         description: Lateral acceleration maximum
         read_only: false
+        validation:
+          gt<>: [0.0]
       decay_weight: *base_decay_param
     longitudinal_jerk:
       enable:
@@ -140,6 +142,8 @@ trajectory_ranker_params:
         default_value: 10.0
         description: Longitudinal jerk maximum
         read_only: false
+        validation:
+          gt<>: [0.0]
       decay_weight: *base_decay_param
     travel_distance:
       enable:
@@ -157,6 +161,8 @@ trajectory_ranker_params:
         default_value: 500.0
         description: Travel distance maximum
         read_only: false
+        validation:
+          gt<>: [0.0]
       decay_weight: *base_decay_param
     lateral_deviation:
       enable:
@@ -174,6 +180,8 @@ trajectory_ranker_params:
         default_value: 10.0
         description: Lateral deviation maximum
         read_only: false
+        validation:
+          gt<>: [0.0]
       decay_weight: *base_decay_param
     steering_consistency:
       enable:
@@ -191,6 +199,8 @@ trajectory_ranker_params:
         default_value: 0.1
         description: Steering consistency maximum
         read_only: false
+        validation:
+          gt<>: [0.0]
       decay_weight: *base_decay_param
     trajectory_consistency:
       enable:
@@ -213,4 +223,6 @@ trajectory_ranker_params:
         default_value: 1.0
         description: Trajectory consistency maximum
         read_only: false
+        validation:
+          gt<>: [0.0]
       decay_weight: *base_decay_param

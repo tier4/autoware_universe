@@ -162,11 +162,9 @@ trajectory_ranker::RankerContext TrajectorySelectorNode::take_ranker_data(
 RiskLevel::_level_type get_trajectory_risk_level(
   const CandidateTrajectory & traj, const ValidationReports & validation_reports)
 {
-  auto itr =
-    std::find_if(validation_reports.begin(), validation_reports.end(), [&](const auto & report) {
-      return autoware_utils_uuid::to_hex_string(traj.generator_id) ==
-             autoware_utils_uuid::to_hex_string(report.generator_id);
-    });
+  auto itr = std::find_if(
+    validation_reports.begin(), validation_reports.end(),
+    [&](const auto & report) { return traj.generator_id == report.generator_id; });
   if (itr == validation_reports.end()) {
     return RiskLevel::FATAL;
   }
