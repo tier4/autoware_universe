@@ -16,6 +16,9 @@
 
 #include "point_cloud_collision_check/obstacle_stop.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
+
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -34,23 +37,79 @@ PointCloudCollisionCheckFilter::PointCloudCollisionCheckFilter()
 PointCloudCollisionCheckFilter::~PointCloudCollisionCheckFilter() = default;
 
 bool PointCloudCollisionCheckFilter::is_available_data(
-  [[maybe_unused]] const CandidateTrajectory & candidate_trajectory,
-  [[maybe_unused]] const FilterContext & context) const
+  const CandidateTrajectory & candidate_trajectory, const FilterContext & context) const
 {
-  // 中身は後続 PR で移植する。未検証の入力を参照しないよう、現状は常に false を返す。
-  return false;
+  if (
+    !context.odometry || !context.acceleration || !vehicle_info_ptr_ ||
+    !context.segmented_pointcloud) {
+    return false;
+  }
+  // odometory can transform only map to baselink
+  if (context.segmented_pointcloud->header.frame_id != "base_link") {
+    return false;
+  }
+  // The decimation spline collapses duplicate points (dx, dy < 1e-6) and needs >= 2 unique points
+  // (autoware_interpolation/src/spline_interpolation_points_2d.cpp:49-67).
+  size_t unique_point_num = 0;
+  for (size_t i = 0; i < candidate_trajectory.points.size(); ++i) {
+    if (i > 0) {
+      const auto & prev = candidate_trajectory.points.at(i - 1).pose.position;
+      const auto & curr = candidate_trajectory.points.at(i).pose.position;
+      if (std::abs(curr.x - prev.x) < 1e-6 && std::abs(curr.y - prev.y) < 1e-6) {
+        continue;
+      }
+    }
+    ++unique_point_num;
+  }
+  return unique_point_num >= 2;
 }
 
 void PointCloudCollisionCheckFilter::set_planner_data_param()
 {
-  // 中身は後続 PR で移植する。
+  const auto & trajectory_polygon_params = params_->trajectory_polygon;
+
+  // motion_velocity_planner_common/planner_data.cpp:239-260
+  planner_data_->ego_nearest_dist_threshold = trajectory_polygon_params.ego_nearest_dist_threshold;
+  planner_data_->ego_nearest_yaw_threshold = trajectory_polygon_params.ego_nearest_yaw_threshold;
+  planner_data_->trajectory_polygon_collision_check = {
+    trajectory_polygon_params.decimate_trajectory_step_length,
+    trajectory_polygon_params.goal_extended_trajectory_length,
+    trajectory_polygon_params.enable_to_consider_current_pose,
+    trajectory_polygon_params.time_to_convergence};
+
+  // motion_velocity_planner_common/planner_data.hpp:88
+  planner_data_->no_ground_pointcloud.preprocess_params_ = params_->preprocess;
+
+  // motion_velocity_planner/node.cpp:262-266（set_velocity_smoother_params）
+  planner_data_->min_accel = params_->common.min_accel;
+  planner_data_->min_jerk = params_->common.min_jerk;
 }
 
 void PointCloudCollisionCheckFilter::update_planner_data(
-  [[maybe_unused]] const std::vector<TrajectoryPoint> & raw_trajectory_points,
-  [[maybe_unused]] const FilterContext & context)
+  const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context)
 {
-  // 中身は後続 PR で移植する。
+  // motion_velocity_planner_common/planner_data.cpp:240-241
+  planner_data_->vehicle_info_ = *vehicle_info_ptr_;
+
+  // motion_velocity_planner/node.cpp:160-167
+  planner_data_->current_odometry = *context.odometry;
+  planner_data_->current_acceleration = *context.acceleration;
+
+  // motion_velocity_planner/node.cpp:211-215
+  const auto is_driving_forward =
+    autoware::motion_utils::isDrivingForwardWithTwist(raw_trajectory_points);
+  if (is_driving_forward) {
+    planner_data_->is_driving_forward = is_driving_forward.value();
+  }
+
+  // motion_velocity_planner/node.cpp:176-195
+  planner_data_->no_ground_pointcloud.preprocess_pointcloud(
+    pcc::convert_pointcloud_to_map_frame(
+      *context.segmented_pointcloud, context.odometry->pose.pose, params_->excluded_class_ids),
+    raw_trajectory_points, planner_data_->current_odometry,
+    planner_data_->calculate_min_deceleration_distance(0.0).value_or(0.0),
+    planner_data_->vehicle_info_, planner_data_->trajectory_polygon_collision_check,
+    planner_data_->ego_nearest_dist_threshold, planner_data_->ego_nearest_yaw_threshold);
 }
 
 bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
