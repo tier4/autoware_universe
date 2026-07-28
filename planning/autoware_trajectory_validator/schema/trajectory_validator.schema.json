@@ -43,6 +43,26 @@
       "required": [],
       "additionalProperties": false
     },
+    "mutual_yield_enabled_per_class": {
+      "type": "object",
+      "properties": {
+        "base": { "type": "boolean", "default": false },
+        "unknown": { "type": "boolean", "default": false },
+        "car": { "type": "boolean", "default": false },
+        "truck": { "type": "boolean", "default": false },
+        "bus": { "type": "boolean", "default": false },
+        "trailer": { "type": "boolean", "default": false },
+        "motorcycle": { "type": "boolean", "default": false },
+        "bicycle": { "type": "boolean", "default": false },
+        "pedestrian": { "type": "boolean", "default": false },
+        "animal": { "type": "boolean", "default": false },
+        "hazard": { "type": "boolean", "default": false },
+        "over_drivable": { "type": "boolean", "default": false },
+        "under_drivable": { "type": "boolean", "default": false }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
     "labeled_double": {
       "type": "object",
       "properties": {
@@ -59,6 +79,23 @@
         "hazard": { "type": "number" },
         "over_drivable": { "type": "number" },
         "under_drivable": { "type": "number" }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "stop_tracking_params": {
+      "type": "object",
+      "properties": {
+        "stopped_velocity_threshold": {
+          "type": "number",
+          "description": "Planar speed below which the vehicle or object is considered stopped [m/s].",
+          "exclusiveMinimum": 0.0
+        },
+        "history_timeout": {
+          "type": "number",
+          "description": "Maximum observation gap retained in the stop history [s].",
+          "minimum": 0.0
+        }
       },
       "required": [],
       "additionalProperties": false
@@ -156,6 +193,15 @@
               "type": "object",
               "description": "Deceleration Rate to Avoid Collision (DRAC) assessment settings.",
               "properties": {
+                "stop_tracking": {
+                  "type": "object",
+                  "properties": {
+                    "ego": { "$ref": "#/definitions/stop_tracking_params" },
+                    "object": { "$ref": "#/definitions/stop_tracking_params" }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                },
                 "enable_assessment": { "$ref": "#/definitions/enable_assessment_per_class" },
                 "pet_margin": {
                   "type": "object",
@@ -226,6 +272,21 @@
                       "default": false,
                       "description": "Use map-based predicted path trajectories for DRAC assessment."
                     },
+                    "mutual_yield_timeout_arbitration": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "$ref": "#/definitions/mutual_yield_enabled_per_class"
+                        },
+                        "min_wait_time": {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "description": "Minimum wait time before resolving a mutual-yield deadlock [s]."
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    },
                     "ego_prioritized_ego_earlier": {
                       "$ref": "#/definitions/drac_assessment"
                     },
@@ -289,7 +350,7 @@
           "required": [],
           "additionalProperties": false
         },
-        "vehicle_constraint": {
+        "trajectory_feasibility": {
           "type": "object",
           "properties": {
             "max_speed": {
@@ -310,6 +371,30 @@
               "default": 5.0,
               "minimum": 0.0
             },
+            "max_yaw_deviation": {
+              "type": "number",
+              "description": "Maximum allowed yaw deviation from the reference trajectory [rad].",
+              "default": 0.35,
+              "minimum": 0.0
+            },
+            "max_velocity_deviation": {
+              "type": "number",
+              "description": "Maximum allowed velocity deviation from the reference trajectory [m/s].",
+              "default": 100.0,
+              "minimum": 0.0
+            },
+            "max_lateral_acceleration": {
+              "type": "number",
+              "description": "Maximum allowed lateral acceleration [m/s²].",
+              "default": 9.8,
+              "minimum": 0.0
+            },
+            "max_distance_deviation": {
+              "type": "number",
+              "description": "Maximum allowed distance deviation from the reference trajectory [m].",
+              "default": 100.0,
+              "minimum": 0.0
+            },
             "max_steering_angle": {
               "type": "number",
               "description": "Maximum allowed front-wheel steering angle [rad].",
@@ -321,6 +406,78 @@
               "description": "Maximum allowed steering rate [rad/s].",
               "default": 0.3,
               "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "crosswalk": {
+          "type": "object",
+          "properties": {
+            "object_types": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of object types to consider as target object (e.g., 'pedestrian', 'bicycle').",
+              "default": ["pedestrian", "bicycle"]
+            },
+            "lon_detection_margin": {
+              "type": "number",
+              "description": "Longitudinal extrusion length of sidewalk-side from crosswalk edge [m].",
+              "default": 2.0,
+              "minimum": 0.0
+            },
+            "lat_detection_margin": {
+              "type": "number",
+              "description": "Lateral extrusion length of sidewalk-side from crosswalk edge [m].",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "object_clear_time_th": {
+              "type": "number",
+              "description": "Duration threshold to clear target object when no longer seen [s].",
+              "default": 0.3,
+              "minimum": 0.0
+            },
+            "distance_hysteresis_th": {
+              "type": "number",
+              "description": "Hysteresis threshold to consider the object as the same object [m].",
+              "default": 0.3,
+              "minimum": 0.0
+            },
+            "overshoot_tolerance": {
+              "type": "number",
+              "description": "Maximum overshoot distance allowed to consider the trajectory feasible [m].",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "nominal_deceleration": {
+              "type": "number",
+              "description": "Nominal deceleration to calculate the stop distance used as trajectory length limit [m/s²].",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "nominal_jerk": {
+              "type": "number",
+              "description": "Nominal jerk to calculate the stop distance used as trajectory length limit [m/s³].",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "stop_duration": {
+              "type": "number",
+              "description": "Minimum duration of the stop to consider the trajectory feasible [s].",
+              "default": 3.0,
+              "minimum": 0.0
+            },
+            "arrived_distance_threshold": {
+              "type": "number",
+              "description": "Threshold to check if the ego vehicle has arrived at crosswalk stop line [m].",
+              "default": 5.0,
+              "minimum": 0.0
+            },
+            "use_trajectory_time": {
+              "type": "boolean",
+              "description": "Whether to use the embedded trajectory time to evaluate the stop duration.",
+              "default": false
             }
           },
           "required": [],

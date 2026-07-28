@@ -103,6 +103,10 @@ TrajectorySelectorNode::take_validator_data()
   }
 
   context.traffic_light_signals = sub_traffic_lights_.take_data();
+  if (!context.traffic_light_signals) {
+    context.traffic_light_signals =
+      std::make_shared<autoware_perception_msgs::msg::TrafficLightGroupArray>();
+  }
 
   context.route = sub_route_.take_data();
 

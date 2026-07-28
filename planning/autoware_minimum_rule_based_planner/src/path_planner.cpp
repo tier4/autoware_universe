@@ -1336,7 +1336,8 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
 }
 
 std::optional<PathWithLaneId> PathPlanner::plan_path(
-  const geometry_msgs::msg::Pose & current_pose, const double ego_velocity)
+  const geometry_msgs::msg::Pose & current_pose, const double ego_velocity,
+  const builtin_interfaces::msg::Time & stamp)
 {
   const auto path_length_backward = params_.path_planning.path_length.backward;
   const auto path_length_forward = params_.path_planning.path_length.forward;
@@ -1382,12 +1383,12 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
     return std::nullopt;
   }
 
-  return generate_path(lanelet_sequence, s_start, s_end, ego_velocity);
+  return generate_path(lanelet_sequence, s_start, s_end, ego_velocity, stamp);
 }
 
 std::optional<PathWithLaneId> PathPlanner::generate_path(
   const lanelet::LaneletSequence & lanelet_sequence, const double s_start, const double s_end,
-  const double ego_velocity)
+  const double ego_velocity, const builtin_interfaces::msg::Time & stamp)
 {
   if (lanelet_sequence.empty()) {
     RCLCPP_ERROR(logger_, "Lanelet sequence is empty");
@@ -1539,7 +1540,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
 
   // Set header which is needed to engage
   finalized_path_with_lane_id.header.frame_id = route_context_.route_frame_id;
-  finalized_path_with_lane_id.header.stamp = clock_->now();
+  finalized_path_with_lane_id.header.stamp = stamp;
 
   const auto [left_bound, right_bound] = utils::get_path_bounds(
     extended_lanelet_sequence,
