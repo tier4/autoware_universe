@@ -527,6 +527,7 @@ int run(int argc, char ** argv)
     frame_mppi.setCostParams(cost_params);
     frame_mppi.setVehicleParams(vehicle_params);
     frame_mppi.setDebugTrajectoryLogging(false);
+    frame_mppi.setRolloutVisualizationEnabled(true);
 
     const auto result =
       frame_mppi.optimizeTrajectory(reference, odom, accel, steering, empty_objects, {}, {});
@@ -552,6 +553,12 @@ int run(int argc, char ** argv)
                 << "\n";
     }
 
+    const std::string rollouts_path = out_dir + "/" + tag + "_rollouts.csv";
+    if (!writeMppiDebugRolloutsCsv(rollouts_path, result.debug.rollouts)) {
+      std::cerr << "Failed to write " << rollouts_path << "\n";
+      return 1;
+    }
+
     if (copy_reference) {
       const std::string out_ref = out_dir + "/" + tag + "_reference.csv";
       if (!writeMppiDebugTrajectoryCsv(out_ref, reference)) {
@@ -566,7 +573,8 @@ int run(int argc, char ** argv)
               << "\n";
     ++processed;
     std::cout << "frame " << frame_id << " baseline_cost=" << result.debug.baseline_cost
-              << " points=" << result.debug.optimized_trajectory.points.size() << "\n";
+              << " points=" << result.debug.optimized_trajectory.points.size()
+              << " rollouts=" << result.debug.rollouts.size() << "\n";
   }
 
   if (processed == 0U) {

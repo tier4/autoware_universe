@@ -63,7 +63,7 @@ __host__ __device__ void comfortTerms(
   const float curvature_dot = sec_sq * steer_rate / wheel_base;
 
   lateral_accel = v * v * curvature;
-  lateral_jerk = v * v * curvature_dot + 2.0F * v * accel * curvature;
+  lateral_jerk = v * v * curvature_dot + 3.0F * v * accel * curvature;
 }
 }  // namespace
 

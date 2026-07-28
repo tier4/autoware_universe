@@ -53,9 +53,9 @@ namespace
 constexpr int kMppiHorizon = 80;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = 0.1F;
-constexpr size_t kMaxIter = 10;
+constexpr size_t kMaxIter = 1;
 constexpr int kNumRollouts = 32 * 1024;
-// constexpr int kMaxVizRollouts = 200;  // rollout viz disabled
+constexpr int kMaxVizRollouts = 200;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
 
 rclcpp::Logger mppiLogger()
@@ -193,7 +193,6 @@ std::vector<mppi::path::PathReferenceSample> buildDiffusionReferenceHorizon(
   return ref;
 }
 
-#if 0  // rollout visualization disabled (~80ms CPU replay of top-K samples)
 void replayRolloutPoints(
   DYN & model, const DYN::state_array & x0, const float * controls, const int horizon,
   const float dt, std::vector<std::pair<float, float>> & points)
@@ -222,7 +221,6 @@ void replayRolloutPoints(
     x = x_next;
   }
 }
-#endif
 
 void fillOptimalHorizonPoints(
   const Mppi::state_trajectory & state_trajectory, std::vector<std::pair<float, float>> & points)
@@ -238,7 +236,6 @@ void fillOptimalHorizonPoints(
   }
 }
 
-#if 0  // rollout visualization disabled
 void copySamplerControlsToHost(
   SAMPLER & sampler, const int horizon, const std::vector<int> & rollout_indices,
   std::vector<float> & host_controls)
@@ -294,7 +291,8 @@ void buildRolloutVisualization(
   fillOptimalHorizonPoints(state_trajectory, debug.optimal_horizon);
   debug.baseline_cost = controller.getBaselineCost();
 
-  const auto & importance = controller.getSampledCostSeq();
+  // IMPORTANT: take by value — see copySampleCostDistribution for nvcc temporary lifetime note.
+  const Mppi::sampled_cost_traj importance = controller.getSampledCostSeq();
   const float baseline = controller.getBaselineCost();
   const int num_rollouts = static_cast<int>(importance.size());
 
@@ -328,7 +326,6 @@ void buildRolloutVisualization(
     ++out_idx;
   }
 }
-#endif
 
 /// @brief check if the given trajectory needs to be optimized
 [[nodiscard]] bool is_optimization_required(const autoware::mppi_optimizer::Trajectory & trajectory)
@@ -414,6 +411,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool skip_if_invalid{false};
   /** Warm-start u_nom from shifted previous u_opt when available. */
   bool use_last_control_as_nominal{false};
+  /** Fill debug.rollouts with top-K weighted samples (CPU replay). Offline retune only by default. */
+  bool enable_rollout_visualization{false};
 
   Impl() : feedback(&model, kDt), sampler(SAMPLER::SAMPLING_PARAMS_T{}) {}
 
@@ -822,6 +821,14 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   impl_->use_last_control_as_nominal = use_last_control_as_nominal;
 }
 
+void FirstOrderDubinsMppiInterface::setRolloutVisualizationEnabled(const bool enable)
+{
+  if (!impl_) {
+    return;
+  }
+  impl_->enable_rollout_visualization = enable;
+}
+
 bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
   std::vector<float> & raw_costs, std::vector<float> & normalized_weights, const int stride) const
 {
@@ -896,6 +903,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
 
   impl_->updateDiffusionReference(
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area);
+    // Capture IC before runStep advances the ego state with the applied control.
+  const DYN::state_array x_at_optimization = impl_->x;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
 
   const auto state_trajectory = impl_->controller->getActualStateSeq();
@@ -989,9 +998,15 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   result.trajectory = output;
   result.debug.reference_trajectory = input;
   result.debug.optimized_trajectory = output;
-  // Rollout visualization disabled (CPU replay of top-K samples was ~80ms).
-  fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
-  result.debug.baseline_cost = impl_->controller->getBaselineCost();
+  if (impl_->enable_rollout_visualization) {
+    buildRolloutVisualization(
+      *impl_->controller, impl_->sampler, impl_->model, x_at_optimization,
+      std::max(impl_->user_cost_params_.lambda, 1.0e-6F), result.debug);
+  } else {
+    fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
+    result.debug.baseline_cost = impl_->controller->getBaselineCost();
+    result.debug.rollouts.clear();
+  }
 
   MppiDebugEgoState ego;
   ego.x = odometry.pose.pose.position.x;

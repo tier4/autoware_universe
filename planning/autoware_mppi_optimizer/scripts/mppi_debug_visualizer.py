@@ -33,6 +33,10 @@ Retune also writes <out_dir>/NNNNNN_costs.csv:
   rollout_index,raw_cost,normalized_weight
 (used for cost / weight distribution histograms in --enable-retune mode).
 
+and <out_dir>/NNNNNN_rollouts.csv:
+  rollout_index,cost,step,x,y
+(top-K weighted sample trajectories overlaid on the XY plot).
+
 Offline retune mode (--enable-retune) overlays a third retuned trajectory and lets you
 re-run mppi_offline_retune with editable cost weights.
 """
@@ -74,8 +78,18 @@ from rclpy.qos import QoSProfile
 from rclpy.qos import ReliabilityPolicy
 from rclpy.utilities import remove_ros_args
 
-# Rolling window for live measured tire-angle history (replaces a constant axhline).
+# Rolling window for live measured tire-angle / command history.
 MEASURED_STEER_HISTORY_S = 16.0
+# Fallback only — same default as FirstOrderDubinsMppiVehicleParams. Prefer ROS /
+# vehicle_params.csv (the τ MPPI already uses in FirstOrderDubinsBicycle).
+VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT = 0.27
+VEHICLE_PARAMS_DEFAULT_WHEEL_BASE = 4.76
+# Must match first_order_dubins_mppi_interface.cu kDt.
+MPPI_DT = 0.1
+
+# Must match first_order_dubins_mppi_interface.cu (kNumRollouts / kMaxVizRollouts).
+MPPI_NUM_ROLLOUTS = 32 * 1024
+MPPI_MAX_VIZ_ROLLOUTS = 200
 
 # Numerical cost params from mppi_optimizer.param.yaml / FirstOrderDubinsMppiCostParams.
 # (Excludes bool/string runtime flags: enable_debug_trajectory_log, ignore_*, etc.)
@@ -244,8 +258,16 @@ class MppiDebugFrame:
     # Live measured δ history: parallel stamp [s] and tire angle [rad] over MEASURED_STEER_HISTORY_S.
     measured_steer_times: List[float] = field(default_factory=list)
     measured_steer_history: List[float] = field(default_factory=list)
+    # Live applied command history: δ_cmd[0] of each optimized trajectory (last 16s).
+    cmd_steer_times: List[float] = field(default_factory=list)
+    cmd_steer_history: List[float] = field(default_factory=list)
+    # First-order lag τ from MPPI vehicle params (FirstOrderDubinsBicycle).
+    steer_time_constant: float = VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT
+    wheel_base: float = VEHICLE_PARAMS_DEFAULT_WHEEL_BASE
     raw_costs: List[float] = field(default_factory=list)
     normalized_weights: List[float] = field(default_factory=list)
+    # Retune top-K rollouts: (cost, xs, ys) from NNNNNN_rollouts.csv.
+    rollouts: List[Tuple[float, List[float], List[float]]] = field(default_factory=list)
     stamp_text: str = ""
     metrics_text: str = ""
 
@@ -286,6 +308,48 @@ def load_costs_csv(path: Path) -> LoadedCostDistribution:
             except (KeyError, ValueError, TypeError):
                 continue
     return dist
+
+
+def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float]]]:
+    """Load top-K rollouts as (cost, xs, ys) ordered by rollout_index."""
+    if not path.is_file():
+        return []
+    by_idx: Dict[int, Tuple[float, List[float], List[float]]] = {}
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                idx = int(row["rollout_index"])
+                cost = float(row["cost"])
+                step = int(row["step"])
+                x = float(row["x"])
+                y = float(row["y"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if idx not in by_idx:
+                by_idx[idx] = (cost, [], [])
+            cost0, xs, ys = by_idx[idx]
+            # Grow lists to cover step index (steps are written in order).
+            while len(xs) <= step:
+                xs.append(float("nan"))
+                ys.append(float("nan"))
+            xs[step] = x
+            ys[step] = y
+            by_idx[idx] = (cost0 if abs(cost0) < 1.0e20 else cost, xs, ys)
+    rollouts: List[Tuple[float, List[float], List[float]]] = []
+    for idx in sorted(by_idx):
+        cost, xs, ys = by_idx[idx]
+        # Drop incomplete leading NaNs if any; keep contiguous prefix of valid points.
+        clean_xs: List[float] = []
+        clean_ys: List[float] = []
+        for xv, yv in zip(xs, ys):
+            if math.isnan(xv) or math.isnan(yv):
+                break
+            clean_xs.append(xv)
+            clean_ys.append(yv)
+        if len(clean_xs) >= 2:
+            rollouts.append((cost, clean_xs, clean_ys))
+    return rollouts
 
 
 def discover_log_frames(log_dir: Path) -> List[int]:
@@ -362,12 +426,81 @@ def max_abs(series: Sequence[float]) -> float:
     return max(abs(v) for v in series)
 
 
+def steer_rate_from_lag(delta: float, delta_cmd: float, tau: float) -> float:
+    """First-order lag rate: δ̇ = -(δ - δ_cmd) / τ = (δ_cmd - δ) / τ."""
+    return -(delta - delta_cmd) / max(tau, 1.0e-4)
+
+
+def steer_rate_along_cmd_sequence(
+    cmd_seq: Sequence[float],
+    delta0: float,
+    tau: float,
+    dt: float,
+) -> List[float]:
+    """Integrate first-order steer lag along a δ_cmd horizon; return δ̇ at each step."""
+    rates: List[float] = []
+    delta = float(delta0)
+    tau_safe = max(tau, 1.0e-4)
+    dt_safe = max(dt, 1.0e-6)
+    for cmd in cmd_seq:
+        rate = steer_rate_from_lag(delta, float(cmd), tau_safe)
+        rates.append(rate)
+        delta = delta + rate * dt_safe
+    return rates
+
+
+def lateral_jerk_at(
+    v: float,
+    accel: float,
+    steer: float,
+    steer_rate: float,
+    wheel_base: float,
+) -> float:
+    """Match comfortTerms(): a_y = v²κ, j_y = v²κ̇ + 2 v a κ."""
+    L = max(wheel_base, 1.0e-4)
+    cos_s = math.cos(steer)
+    sec_sq = 1.0 / max(cos_s * cos_s, 1.0e-6)
+    curvature = math.tan(steer) / L
+    curvature_dot = sec_sq * steer_rate / L
+    return v * v * curvature_dot + 2.0 * v * accel * curvature
+
+
+def lateral_jerk_along_cmd_sequence(
+    cmd_seq: Sequence[float],
+    vel_seq: Sequence[float],
+    accel_seq: Sequence[float],
+    delta0: float,
+    tau: float,
+    wheel_base: float,
+    dt: float,
+) -> List[float]:
+    """Integrate plant δ along δ_cmd; return lateral jerk at each horizon step."""
+    jerks: List[float] = []
+    delta = float(delta0)
+    tau_safe = max(tau, 1.0e-4)
+    dt_safe = max(dt, 1.0e-6)
+    for i, cmd in enumerate(cmd_seq):
+        rate = steer_rate_from_lag(delta, float(cmd), tau_safe)
+        v = float(vel_seq[i]) if i < len(vel_seq) else (float(vel_seq[-1]) if vel_seq else 0.0)
+        a = (
+            float(accel_seq[i])
+            if i < len(accel_seq)
+            else (float(accel_seq[-1]) if accel_seq else 0.0)
+        )
+        jerks.append(lateral_jerk_at(v, a, delta, rate, wheel_base))
+        delta = delta + rate * dt_safe
+    return jerks
+
+
 def frame_from_loaded(
     reference: LoadedTrajectory,
     optimized: LoadedTrajectory,
     stamp_text: str,
     retuned: Optional[LoadedTrajectory] = None,
     costs: Optional[LoadedCostDistribution] = None,
+    rollouts: Optional[List[Tuple[float, List[float], List[float]]]] = None,
+    steer_time_constant: float = VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT,
+    wheel_base: float = VEHICLE_PARAMS_DEFAULT_WHEEL_BASE,
 ) -> MppiDebugFrame:
     frame = MppiDebugFrame(
         reference_xy=(reference.x, reference.y) if reference.x else None,
@@ -388,8 +521,11 @@ def frame_from_loaded(
         reference_steer_rate=reference.steer_rate,
         optimized_steer_rate=optimized.steer_rate,
         retuned_steer_rate=retuned.steer_rate if retuned else [],
+        steer_time_constant=steer_time_constant,
+        wheel_base=wheel_base,
         raw_costs=costs.raw_costs if costs else [],
         normalized_weights=costs.normalized_weights if costs else [],
+        rollouts=list(rollouts) if rollouts else [],
         stamp_text=stamp_text,
     )
     orig_pos = max_pos_err(frame.reference_xy, frame.optimized_xy)
@@ -428,12 +564,32 @@ def frame_from_loaded(
             )
     if frame.normalized_weights:
         parts.append(f"w_max={max(frame.normalized_weights):.4f}")
+    if frame.rollouts:
+        parts.append(
+            f"showing {len(frame.rollouts)} of {MPPI_NUM_ROLLOUTS} "
+            f"top-weighted rollouts (export ≤{MPPI_MAX_VIZ_ROLLOUTS})"
+        )
     frame.metrics_text = "  |  ".join(parts)
     return frame
 
 
 def draw_frame(axes, frame: MppiDebugFrame) -> None:
-    if len(axes) >= 9:
+    if len(axes) >= 10:
+        (
+            ax_xy,
+            ax_lat,
+            ax_heading_err,
+            ax_vel,
+            ax_accel,
+            ax_steer_cmd,
+            ax_steer_meas,
+            ax_lat_jerk,
+            ax_cost,
+            ax_weight,
+        ) = axes
+        ax_heading = None
+    elif len(axes) >= 9:
+        # Retune layout before lateral-jerk panel.
         (
             ax_xy,
             ax_lat,
@@ -445,6 +601,20 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_cost,
             ax_weight,
         ) = axes
+        ax_lat_jerk = None
+        ax_heading = None
+    elif len(axes) >= 8:
+        (
+            ax_xy,
+            ax_lat,
+            ax_heading_err,
+            ax_vel,
+            ax_accel,
+            ax_steer_cmd,
+            ax_steer_meas,
+            ax_lat_jerk,
+        ) = axes
+        ax_cost = ax_weight = None
         ax_heading = None
     elif len(axes) >= 7:
         (
@@ -456,12 +626,13 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_steer_cmd,
             ax_steer_meas,
         ) = axes
+        ax_lat_jerk = None
         ax_cost = ax_weight = None
         ax_heading = None
     else:
         # Pre path-error layout (absolute heading plot).
         ax_xy, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas = axes
-        ax_lat = ax_heading_err = ax_cost = ax_weight = None
+        ax_lat = ax_heading_err = ax_cost = ax_weight = ax_lat_jerk = None
 
     lengths = [len(frame.reference_vel), len(frame.optimized_vel)]
     if frame.retuned_vel:
@@ -479,6 +650,27 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     ax_xy.set_xlabel("x [m]")
     ax_xy.set_ylabel("y [m]")
     ax_xy.grid(True)
+    if frame.rollouts:
+        costs = [c for c, _xs, _ys in frame.rollouts]
+        min_c = min(costs)
+        max_c = max(costs)
+        for cost, xs, ys in frame.rollouts:
+            if max_c > min_c:
+                t = (cost - min_c) / (max_c - min_c)
+            else:
+                t = 0.5
+            # Match mppi_debug_markers.hpp costGradientColor: green (low) -> red (high).
+            ax_xy.plot(xs, ys, color=(t, 1.0 - t, 0.0, 0.35), linewidth=0.7, zorder=1)
+        ax_xy.plot(
+            [],
+            [],
+            color=(0.5, 0.5, 0.0, 0.8),
+            linewidth=0.7,
+            label=(
+                f"rollouts ({len(frame.rollouts)} of {MPPI_NUM_ROLLOUTS} "
+                f"top-weighted, ≤{MPPI_MAX_VIZ_ROLLOUTS} exported)"
+            ),
+        )
     if frame.reference_xy and len(frame.reference_xy[0]) > 0:
         ax_xy.plot(
             frame.reference_xy[0],
@@ -487,6 +679,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             linestyle="--",
             linewidth=2,
             label="diffusion reference",
+            zorder=3,
         )
     if frame.optimized_xy and len(frame.optimized_xy[0]) > 0:
         ax_xy.plot(
@@ -495,6 +688,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             color="red",
             linewidth=2,
             label="MPPI optimized (logged)",
+            zorder=4,
         )
     if frame.retuned_xy and len(frame.retuned_xy[0]) > 0:
         ax_xy.plot(
@@ -503,6 +697,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             color="tab:green",
             linewidth=2.2,
             label="MPPI retuned",
+            zorder=5,
         )
     overlay = frame.stamp_text
     if frame.metrics_text:
@@ -518,7 +713,8 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             bbox={"facecolor": "white", "alpha": 0.85},
         )
     if (
-        (frame.reference_xy and len(frame.reference_xy[0]) > 0)
+        frame.rollouts
+        or (frame.reference_xy and len(frame.reference_xy[0]) > 0)
         or (frame.optimized_xy and len(frame.optimized_xy[0]) > 0)
         or (frame.retuned_xy and len(frame.retuned_xy[0]) > 0)
     ):
@@ -671,99 +867,195 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ax_steer_cmd._steer_rate_twin = None
 
     ax_steer_cmd.clear()
-    ax_steer_cmd.set_title("Command steer δ_cmd + steer rate δ̇")
+    ax_steer_cmd.set_title("Current δ_cmd sequence + lag steer rate δ̇")
     ax_steer_cmd.set_xlabel("point index")
     ax_steer_cmd.set_ylabel("δ_cmd [rad]", color="tab:orange")
     ax_steer_cmd.tick_params(axis="y", labelcolor="tab:orange")
     ax_steer_cmd.grid(True)
     cmd_handles = []
     cmd_labels = []
-    if n_compare > 0:
-        # Diffusion reference leaves front_wheel_angle_rad unset (=0); plotting it makes the
-        # panel look like "steer is always zero". Only show logged / retuned commands.
-        (h_opt,) = ax_steer_cmd.plot(
-            idx,
-            frame.optimized_steer[:n_compare],
-            color="tab:red",
+    # Prefer live/current optimized horizon; fall back to retuned offline overlay.
+    cmd_seq: List[float] = []
+    cmd_label = ""
+    if frame.optimized_steer:
+        cmd_seq = list(frame.optimized_steer)
+        cmd_label = "δ_cmd (current)"
+    elif frame.retuned_steer:
+        cmd_seq = list(frame.retuned_steer)
+        cmd_label = "δ_cmd (retuned)"
+    if cmd_seq:
+        idx_cmd = list(range(len(cmd_seq)))
+        (h_cmd,) = ax_steer_cmd.plot(
+            idx_cmd,
+            cmd_seq,
+            color="tab:orange",
             linewidth=2,
-            label="MPPI logged δ_cmd",
+            label=cmd_label,
         )
-        cmd_handles.append(h_opt)
-        cmd_labels.append("MPPI logged δ_cmd")
-        if frame.retuned_steer:
+        cmd_handles.append(h_cmd)
+        cmd_labels.append(cmd_label)
+        if frame.retuned_steer and frame.optimized_steer:
             (h_ret,) = ax_steer_cmd.plot(
-                idx,
-                frame.retuned_steer[:n_compare],
+                list(range(len(frame.retuned_steer))),
+                frame.retuned_steer,
                 color="tab:green",
                 linewidth=2.2,
-                label="MPPI retuned δ_cmd",
+                label="δ_cmd (retuned)",
             )
             cmd_handles.append(h_ret)
-            cmd_labels.append("MPPI retuned δ_cmd")
+            cmd_labels.append("δ_cmd (retuned)")
 
-    ax_rate = ax_steer_cmd.twinx()
-    ax_steer_cmd._steer_rate_twin = ax_rate
-    ax_rate.set_ylabel("δ̇ [rad/s]", color="tab:purple")
-    ax_rate.tick_params(axis="y", labelcolor="tab:purple")
-    rate_handles = []
-    rate_labels = []
-    if frame.optimized_steer_rate:
-        idx_rate = list(range(len(frame.optimized_steer_rate)))
+        # δ̇ along the command sequence from first-order lag, seeded by current δ_meas.
+        tau = frame.steer_time_constant
+        delta0 = frame.measured_steer if frame.measured_steer is not None else 0.0
+        rates = steer_rate_along_cmd_sequence(cmd_seq, delta0, tau, MPPI_DT)
+        ax_rate = ax_steer_cmd.twinx()
+        ax_steer_cmd._steer_rate_twin = ax_rate
+        ax_rate.set_ylabel("δ̇ [rad/s]", color="tab:purple")
+        ax_rate.tick_params(axis="y", labelcolor="tab:purple")
         (h_rate,) = ax_rate.plot(
-            idx_rate,
-            frame.optimized_steer_rate,
+            idx_cmd,
+            rates,
             color="tab:purple",
-            linewidth=2,
-            label="MPPI logged δ̇",
+            linewidth=1.8,
+            label=f"δ̇=-(δ-δ_cmd)/τ (τ={tau:.2f}s)",
         )
-        rate_handles.append(h_rate)
-        rate_labels.append("MPPI logged δ̇")
-    if frame.retuned_steer_rate:
-        idx_rate = list(range(len(frame.retuned_steer_rate)))
-        (h_rate_ret,) = ax_rate.plot(
-            idx_rate,
-            frame.retuned_steer_rate,
-            color="tab:green",
-            linewidth=2.2,
-            label="MPPI retuned δ̇",
-        )
-        rate_handles.append(h_rate_ret)
-        rate_labels.append("MPPI retuned δ̇")
-    if cmd_handles or rate_handles:
-        ax_steer_cmd.legend(
-            cmd_handles + rate_handles, cmd_labels + rate_labels, loc="best", fontsize=8
+        cmd_handles.append(h_rate)
+        cmd_labels.append(f"δ̇=-(δ-δ_cmd)/τ (τ={tau:.2f}s)")
+        ax_steer_cmd.legend(cmd_handles, cmd_labels, loc="best", fontsize=8)
+    else:
+        ax_steer_cmd.text(
+            0.5,
+            0.5,
+            "waiting for current δ_cmd sequence",
+            ha="center",
+            va="center",
+            transform=ax_steer_cmd.transAxes,
         )
 
     ax_steer_meas.clear()
-    ax_steer_meas.set_title(f"Measured steering history (last {MEASURED_STEER_HISTORY_S:.0f}s)")
+    ax_steer_meas.set_title(
+        f"δ_meas + δ_cmd[0] history (last {MEASURED_STEER_HISTORY_S:.0f}s)"
+    )
     ax_steer_meas.set_xlabel("time [s] (0 = now)")
-    ax_steer_meas.set_ylabel("δ_meas [rad]")
+    ax_steer_meas.set_ylabel("steer [rad]")
     ax_steer_meas.grid(True)
     has_measured_history = len(frame.measured_steer_times) > 0 and len(
         frame.measured_steer_times
     ) == len(frame.measured_steer_history)
+    has_cmd_history = len(frame.cmd_steer_times) > 0 and len(frame.cmd_steer_times) == len(
+        frame.cmd_steer_history
+    )
+    hist_handles = []
+    hist_labels = []
+    t_end_candidates = []
     if has_measured_history:
-        t_end = frame.measured_steer_times[-1]
-        t_rel = [t - t_end for t in frame.measured_steer_times]
-        latest = frame.measured_steer_history[-1]
-        ax_steer_meas.plot(
-            t_rel,
-            frame.measured_steer_history,
-            color="tab:blue",
-            linewidth=1.8,
-            label=f"δ_meas (now={latest:.3f})",
-        )
+        t_end_candidates.append(frame.measured_steer_times[-1])
+    if has_cmd_history:
+        t_end_candidates.append(frame.cmd_steer_times[-1])
+    if t_end_candidates:
+        t_end = max(t_end_candidates)
+        if has_measured_history:
+            t_rel_m = [t - t_end for t in frame.measured_steer_times]
+            latest_m = frame.measured_steer_history[-1]
+            (h_m,) = ax_steer_meas.plot(
+                t_rel_m,
+                frame.measured_steer_history,
+                color="tab:blue",
+                linewidth=1.8,
+                label=f"δ_meas (now={latest_m:.3f})",
+            )
+            hist_handles.append(h_m)
+            hist_labels.append(f"δ_meas (now={latest_m:.3f})")
+        if has_cmd_history:
+            t_rel_c = [t - t_end for t in frame.cmd_steer_times]
+            latest_c = frame.cmd_steer_history[-1]
+            (h_c,) = ax_steer_meas.plot(
+                t_rel_c,
+                frame.cmd_steer_history,
+                color="tab:orange",
+                linewidth=1.8,
+                label=f"δ_cmd[0] (now={latest_c:.3f})",
+            )
+            hist_handles.append(h_c)
+            hist_labels.append(f"δ_cmd[0] (now={latest_c:.3f})")
         ax_steer_meas.set_xlim(-MEASURED_STEER_HISTORY_S, 0.0)
-        ax_steer_meas.legend(loc="best")
+        ax_steer_meas.legend(hist_handles, hist_labels, loc="best")
     else:
         ax_steer_meas.text(
             0.5,
             0.5,
-            "waiting for /vehicle/status/steering_status",
+            "waiting for δ_meas / δ_cmd[0] history",
             ha="center",
             va="center",
             transform=ax_steer_meas.transAxes,
         )
+
+    if ax_lat_jerk is not None:
+        ax_lat_jerk.clear()
+        ax_lat_jerk.set_title("Lateral jerk along current horizon (comfortTerms)")
+        ax_lat_jerk.set_xlabel("point index")
+        ax_lat_jerk.set_ylabel("j_y [m/s³]")
+        ax_lat_jerk.grid(True)
+        jerk_handles = []
+        jerk_labels = []
+        tau = frame.steer_time_constant
+        L = frame.wheel_base
+        delta0 = frame.measured_steer if frame.measured_steer is not None else 0.0
+
+        def _plot_jerk(
+            cmd: Sequence[float],
+            vel: Sequence[float],
+            accel: Sequence[float],
+            *,
+            color: str,
+            label: str,
+            linewidth: float = 2.0,
+        ) -> None:
+            if not cmd:
+                return
+            jerks = lateral_jerk_along_cmd_sequence(
+                cmd, vel, accel, delta0, tau, L, MPPI_DT
+            )
+            (h,) = ax_lat_jerk.plot(
+                list(range(len(jerks))),
+                jerks,
+                color=color,
+                linewidth=linewidth,
+                label=label,
+            )
+            jerk_handles.append(h)
+            jerk_labels.append(label)
+
+        if frame.optimized_steer:
+            _plot_jerk(
+                frame.optimized_steer,
+                frame.optimized_vel,
+                frame.optimized_accel,
+                color="tab:red",
+                label="j_y (current)",
+            )
+        if frame.retuned_steer:
+            _plot_jerk(
+                frame.retuned_steer,
+                frame.retuned_vel,
+                frame.retuned_accel,
+                color="tab:green",
+                label="j_y (retuned)",
+                linewidth=2.2,
+            )
+        if jerk_handles:
+            ax_lat_jerk.axhline(0.0, color="0.5", linewidth=0.8, linestyle="--")
+            ax_lat_jerk.legend(jerk_handles, jerk_labels, loc="best", fontsize=8)
+        else:
+            ax_lat_jerk.text(
+                0.5,
+                0.5,
+                "waiting for δ_cmd / v / a horizon",
+                ha="center",
+                va="center",
+                transform=ax_lat_jerk.transAxes,
+            )
 
     if ax_cost is not None:
         ax_cost.clear()
@@ -825,25 +1117,26 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
 
 def create_figure(*, with_retune_panel: bool = False):
     if with_retune_panel:
-        fig = plt.figure(figsize=(17, 15))
+        fig = plt.figure(figsize=(17, 17))
         gs = gridspec.GridSpec(
-            7,
+            8,
             3,
             figure=fig,
             width_ratios=[1.25, 1.0, 0.78],
-            height_ratios=[1.0, 1.0, 1.0, 1.0, 1.0, 0.85, 0.85],
+            height_ratios=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.85, 0.85],
             wspace=0.30,
             hspace=0.45,
         )
-        ax_xy = fig.add_subplot(gs[0:5, 0])
-        ax_cost = fig.add_subplot(gs[5, 0])
-        ax_weight = fig.add_subplot(gs[6, 0])
+        ax_xy = fig.add_subplot(gs[0:6, 0])
+        ax_cost = fig.add_subplot(gs[6, 0])
+        ax_weight = fig.add_subplot(gs[7, 0])
         ax_lat = fig.add_subplot(gs[0, 1])
         ax_heading_err = fig.add_subplot(gs[1, 1])
         ax_vel = fig.add_subplot(gs[2, 1])
         ax_accel = fig.add_subplot(gs[3, 1])
         ax_steer_cmd = fig.add_subplot(gs[4, 1])
-        ax_steer_meas = fig.add_subplot(gs[5:, 1])
+        ax_steer_meas = fig.add_subplot(gs[5, 1])
+        ax_lat_jerk = fig.add_subplot(gs[6:, 1])
         fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
         return fig, (
             ax_xy,
@@ -853,12 +1146,13 @@ def create_figure(*, with_retune_panel: bool = False):
             ax_accel,
             ax_steer_cmd,
             ax_steer_meas,
+            ax_lat_jerk,
             ax_cost,
             ax_weight,
         )
 
-    fig = plt.figure(figsize=(14, 13))
-    gs = gridspec.GridSpec(6, 2, figure=fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
+    fig = plt.figure(figsize=(14, 15))
+    gs = gridspec.GridSpec(7, 2, figure=fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
     ax_xy = fig.add_subplot(gs[:, 0])
     ax_lat = fig.add_subplot(gs[0, 1])
     ax_heading_err = fig.add_subplot(gs[1, 1])
@@ -866,6 +1160,7 @@ def create_figure(*, with_retune_panel: bool = False):
     ax_accel = fig.add_subplot(gs[3, 1])
     ax_steer_cmd = fig.add_subplot(gs[4, 1])
     ax_steer_meas = fig.add_subplot(gs[5, 1])
+    ax_lat_jerk = fig.add_subplot(gs[6, 1])
     fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
     return fig, (
         ax_xy,
@@ -875,6 +1170,7 @@ def create_figure(*, with_retune_panel: bool = False):
         ax_accel,
         ax_steer_cmd,
         ax_steer_meas,
+        ax_lat_jerk,
     )
 
 
@@ -936,12 +1232,16 @@ def load_params_from_log(log_dir: Path, params_yaml: Optional[Path]) -> Dict[str
 
 def load_vehicle_from_log(
     log_dir: Path, wheel_base: float, ego_width: float, ego_length: float
-) -> Tuple[float, float, float]:
+) -> Tuple[float, float, float, float]:
+    """Return wheel_base, ego_width, ego_length, steer_time_constant from vehicle_params.csv."""
     logged = load_key_value_csv(log_dir / "vehicle_params.csv")
     return (
         logged.get("wheel_base", wheel_base),
         logged.get("ego_width", ego_width),
         logged.get("ego_length", ego_length),
+        logged.get(
+            "steer_time_constant", VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT
+        ),
     )
 
 
@@ -977,17 +1277,29 @@ class MppiDebugVisualizer(Node):
         update_hz: float,
         wheel_base: float,
         measured_steering_topic: str = "/vehicle/status/steering_status",
+        steer_time_constant: Optional[float] = None,
     ) -> None:
         super().__init__("mppi_debug_visualizer")
 
         update_hz = max(update_hz, 1.0)
         self._wheel_base = wheel_base
+        # Same parameter name as simulator_model.param.yaml / MPPI vehicle dynamics.
+        self.declare_parameter(
+            "steer_time_constant", VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT
+        )
+        if steer_time_constant is not None:
+            tau = float(steer_time_constant)
+        else:
+            tau = float(self.get_parameter("steer_time_constant").value)
+        self._steer_time_constant = max(tau, 1.0e-4)
         self._lock = threading.Lock()
         self._frame = MppiDebugFrame()
         self._logged_reference = False
         self._logged_optimized = False
         self._logged_measured_steer = False
+        self._logged_cmd_steer = False
         self._measured_steer_history: Deque[Tuple[float, float]] = deque()
+        self._cmd_steer_history: Deque[Tuple[float, float]] = deque()
 
         qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -1023,6 +1335,10 @@ class MppiDebugVisualizer(Node):
         self.get_logger().info(f"Reference: {prefix}/reference_trajectory")
         self.get_logger().info(f"Optimized: {prefix}/optimized_trajectory")
         self.get_logger().info(f"Measured steer: {measured_steering_topic}")
+        self.get_logger().info(
+            f"Horizon δ̇ uses MPPI first-order steer lag τ={self._steer_time_constant:.4f}s "
+            "(steer_time_constant from vehicle params / ROS)"
+        )
         self.get_logger().info(
             "Subscriptions use RELIABLE QoS (matches diffusion_planner publishers)."
         )
@@ -1096,18 +1412,34 @@ class MppiDebugVisualizer(Node):
 
     def on_optimized_trajectory(self, msg: Trajectory) -> None:
         processed = self._process_trajectory(msg, is_optimized=True)
+        stamp = float(msg.header.stamp.sec) + 1.0e-9 * float(msg.header.stamp.nanosec)
+        if stamp <= 0.0:
+            stamp = self.get_clock().now().nanoseconds * 1.0e-9
+        cmd_seq = list(processed.reference_steer)
+        cmd0 = cmd_seq[0] if cmd_seq else None
         with self._lock:
             self._frame.optimized_xy = processed.reference_xy
             self._frame.optimized_heading = processed.reference_heading
             self._frame.optimized_vel = processed.reference_vel
             self._frame.optimized_accel = processed.reference_accel
-            self._frame.optimized_steer = processed.reference_steer
-            self._frame.optimized_steer_rate = processed.reference_steer_rate
+            self._frame.optimized_steer = cmd_seq
+            self._frame.optimized_steer_rate = []
+            if cmd0 is not None:
+                self._cmd_steer_history.append((stamp, float(cmd0)))
+                cutoff = stamp - MEASURED_STEER_HISTORY_S
+                while self._cmd_steer_history and self._cmd_steer_history[0][0] < cutoff:
+                    self._cmd_steer_history.popleft()
             if not self._frame.stamp_text:
                 self._frame.stamp_text = processed.stamp_text
         if not self._logged_optimized and msg.points:
             self._logged_optimized = True
             self.get_logger().info(f"Receiving optimized_trajectory ({len(msg.points)} points).")
+        if cmd0 is not None and not self._logged_cmd_steer:
+            self._logged_cmd_steer = True
+            self.get_logger().info(
+                f"Recording δ_cmd[0]={cmd0:.4f} rad; "
+                f"plotting last {MEASURED_STEER_HISTORY_S:.0f}s on the history panel."
+            )
 
     def on_measured_steering(self, msg: SteeringReport) -> None:
         steer = float(msg.steering_tire_angle)
@@ -1132,6 +1464,8 @@ class MppiDebugVisualizer(Node):
         with self._lock:
             meas_times = [t for t, _ in self._measured_steer_history]
             meas_vals = [v for _, v in self._measured_steer_history]
+            cmd_times = [t for t, _ in self._cmd_steer_history]
+            cmd_vals = [v for _, v in self._cmd_steer_history]
             frame = MppiDebugFrame(
                 reference_xy=self._frame.reference_xy,
                 optimized_xy=self._frame.optimized_xy,
@@ -1144,10 +1478,14 @@ class MppiDebugVisualizer(Node):
                 reference_steer=list(self._frame.reference_steer),
                 optimized_steer=list(self._frame.optimized_steer),
                 reference_steer_rate=list(self._frame.reference_steer_rate),
-                optimized_steer_rate=list(self._frame.optimized_steer_rate),
+                optimized_steer_rate=[],
                 measured_steer=self._frame.measured_steer,
                 measured_steer_times=meas_times,
                 measured_steer_history=meas_vals,
+                cmd_steer_times=cmd_times,
+                cmd_steer_history=cmd_vals,
+                steer_time_constant=self._steer_time_constant,
+                wheel_base=self._wheel_base,
                 stamp_text=self._frame.stamp_text,
                 metrics_text=self._frame.metrics_text,
             )
@@ -1161,6 +1499,11 @@ class MppiDebugVisualizer(Node):
                 steer_txt = f"δ_meas={frame.measured_steer:.3f}"
                 frame.metrics_text = (
                     f"{frame.metrics_text}  |  {steer_txt}" if frame.metrics_text else steer_txt
+                )
+            if frame.cmd_steer_history:
+                cmd_txt = f"δ_cmd[0]={frame.cmd_steer_history[-1]:.3f}"
+                frame.metrics_text = (
+                    f"{frame.metrics_text}  |  {cmd_txt}" if frame.metrics_text else cmd_txt
                 )
         draw_frame(self._axes, frame)
         self._fig.canvas.draw_idle()
@@ -1180,6 +1523,7 @@ class OfflineLogVisualizer:
         wheel_base: float = 4.76,
         ego_width: float = 1.9,
         ego_length: float = 5.0,
+        steer_time_constant: Optional[float] = None,
     ) -> None:
         self._log_dir = log_dir
         self._frame_ids = discover_log_frames(log_dir)
@@ -1192,8 +1536,19 @@ class OfflineLogVisualizer:
         self._enable_retune = enable_retune
         self._params_yaml = params_yaml
         self._params = load_params_from_log(log_dir, params_yaml)
-        self._wheel_base, self._ego_width, self._ego_length = load_vehicle_from_log(
-            log_dir, wheel_base, ego_width, ego_length
+        (
+            self._wheel_base,
+            self._ego_width,
+            self._ego_length,
+            logged_steer_tau,
+        ) = load_vehicle_from_log(log_dir, wheel_base, ego_width, ego_length)
+        self._steer_time_constant = max(
+            float(
+                steer_time_constant
+                if steer_time_constant is not None
+                else logged_steer_tau
+            ),
+            1.0e-4,
         )
         self._status = "Ready"
         if enable_retune and not (log_dir / "000000_ego.csv").is_file():
@@ -1219,7 +1574,8 @@ class OfflineLogVisualizer:
         if enable_retune:
             print(
                 f"Retune vehicle: wheel_base={self._wheel_base}, "
-                f"ego_length={self._ego_length}, ego_width={self._ego_width}"
+                f"ego_length={self._ego_length}, ego_width={self._ego_width}, "
+                f"steer_time_constant={self._steer_time_constant}"
             )
             print(f"Retune binary: {self._retune_bin}")
             print("Move sliders, then click Retune (or press r). Sliders alone do nothing.")
@@ -1252,6 +1608,7 @@ class OfflineLogVisualizer:
         optimized = load_trajectory_csv(self._log_dir / f"{tag}_optimized.csv")
         retuned = None
         costs = None
+        rollouts = None
         if self._out_dir is not None:
             retuned = load_trajectory_csv(self._out_dir / f"{tag}_optimized.csv")
             if not retuned.x:
@@ -1259,11 +1616,21 @@ class OfflineLogVisualizer:
             costs = load_costs_csv(self._out_dir / f"{tag}_costs.csv")
             if not costs.raw_costs:
                 costs = None
+            rollouts = load_rollouts_csv(self._out_dir / f"{tag}_rollouts.csv")
+            if not rollouts:
+                rollouts = None
         stamp = f"frame: {frame_id} / {self._frame_ids[-1]}"
         if self._enable_retune:
             stamp = f"{stamp}   |   {self._status}"
         return frame_from_loaded(
-            reference, optimized, stamp_text=stamp, retuned=retuned, costs=costs
+            reference,
+            optimized,
+            stamp_text=stamp,
+            retuned=retuned,
+            costs=costs,
+            rollouts=rollouts,
+            steer_time_constant=self._steer_time_constant,
+            wheel_base=self._wheel_base,
         )
 
     def _show_current(self) -> None:
@@ -1434,6 +1801,15 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="Wheel base [m] used to derive steering from path curvature when unset (j6_gen2 ~4.76)",
     )
     parser.add_argument(
+        "--steer-time-constant",
+        type=float,
+        default=None,
+        help=(
+            "Override steer lag τ [s]. Default: live uses ROS param steer_time_constant "
+            "(same as MPPI / simulator_model); offline uses vehicle_params.csv."
+        ),
+    )
+    parser.add_argument(
         "--measured-steering-topic",
         default="/vehicle/status/steering_status",
         help="SteeringReport topic for measured tire angle used by MPPI",
@@ -1466,6 +1842,7 @@ def main() -> None:
             wheel_base=cli.wheel_base,
             ego_width=cli.ego_width,
             ego_length=cli.ego_length,
+            steer_time_constant=cli.steer_time_constant,
         )
         try:
             visualizer.spin()
@@ -1481,6 +1858,7 @@ def main() -> None:
         update_hz=cli.update_hz,
         wheel_base=cli.wheel_base,
         measured_steering_topic=cli.measured_steering_topic,
+        steer_time_constant=cli.steer_time_constant,
     )
 
     try:
