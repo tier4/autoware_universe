@@ -128,6 +128,50 @@ minimum_rule_based_planner:
         validation:
           gt<>: [0.0]
 
+  map_based_stop:
+    stop_margin_distance:
+      type: double
+      default_value: 0.0
+      description: distance to stop before the stop line crossing point (in addition to the vehicle front offset) [m]
+      validation:
+        gt_eq<>: [0.0]
+    stop_distance_from_crosswalk:
+      type: double
+      default_value: 3.5
+      description: distance to stop before a crosswalk/walkway that has no explicit stop line in the map (added to stop_margin_distance and the vehicle front offset) [m]
+      validation:
+        gt_eq<>: [0.0]
+    stop_distance_from_private_area:
+      type: double
+      default_value: 3.0
+      description: distance to stop before a private-area boundary (added to stop_margin_distance and the vehicle front offset) [m]
+      validation:
+        gt_eq<>: [0.0]
+    stop_distance_from_intersection:
+      type: double
+      default_value: 1.0
+      description: distance to stop before the first conflicting priority lane in an intersection (added to stop_margin_distance and the vehicle front offset) [m]
+      validation:
+        gt_eq<>: [0.0]
+    max_deceleration:
+      type: double
+      default_value: 4.0
+      description: maximum deceleration used to judge whether a stop line is reachable (braking distance) [m/s^2]
+      validation:
+        gt<>: [0.0]
+    max_jerk:
+      type: double
+      default_value: 5.0
+      description: maximum jerk used for the jerk-aware braking distance in the reachability judgement [m/s^3]
+      validation:
+        gt<>: [0.0]
+    stop_point_diff_threshold:
+      type: double
+      default_value: 0.5
+      description: minimum arc-length difference for the stop trajectory's stop point to be treated as different from the go trajectory's [m]
+      validation:
+        gt<>: [0.0]
+
   obstacle_stop:
     enable:
       type: bool
@@ -188,10 +232,6 @@ minimum_rule_based_planner:
         type: string_array
         default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard]
         description: object types to consider for obstacle stop
-      max_velocity_th:
-        type: double
-        default_value: 3.0
-        description: maximum velocity threshold for target object [m/s]
       stopped_velocity_th:
         type: double
         default_value: 0.3
@@ -279,25 +319,25 @@ minimum_rule_based_planner:
       object_decel:
         car:
           type: double
-          default_value: 1.5
+          default_value: 1.6
           description: deceleration for car type objects [m/s^2]
           validation:
             bounds<>: [0.0, 10.0]
         truck:
           type: double
-          default_value: 1.5
+          default_value: 1.6
           description: deceleration for truck type objects [m/s^2]
           validation:
             bounds<>: [0.0, 10.0]
         bus:
           type: double
-          default_value: 1.5
+          default_value: 1.6
           description: deceleration for bus type objects [m/s^2]
           validation:
             bounds<>: [0.0, 10.0]
         trailer:
           type: double
-          default_value: 1.5
+          default_value: 1.6
           description: deceleration for trailer type objects [m/s^2]
           validation:
             bounds<>: [0.0, 10.0]
@@ -321,19 +361,19 @@ minimum_rule_based_planner:
             bounds<>: [0.0, 10.0]
       ego_decel:
         type: double
-        default_value: 2.5
+        default_value: 2.0
         description: deceleration for ego vehicle used in RSS calculation [m/s^2]
         validation:
           bounds<>: [0.0, 10.0]
       reaction_time:
         type: double
-        default_value: 0.2
+        default_value: 0.4
         description: reaction time used in RSS calculation [s]
         validation:
           bounds<>: [0.0, 10.0]
       safety_margin:
         type: double
-        default_value: 2.0
+        default_value: 3.0
         description: safety margin used in RSS calculation [m]
         validation:
           bounds<>: [0.0, 10.0]

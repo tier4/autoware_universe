@@ -11,7 +11,7 @@ validator:
     description: List of filter names that run in which results are logged but do not affect trajectory feasibility.
     read_only: false
 
-  vehicle_constraint:
+  trajectory_feasibility:
     max_speed:
       type: double
       default_value: 16.7
@@ -26,6 +26,15 @@ validator:
       type: double
       default_value: 5.0
       description: Maximum allowed deceleration (m/s^2, positive but represents deceleration)
+      read_only: false
+    max_lateral_acceleration:
+      type: double
+      default_value: 9.8
+      description: Maximum allowed absolute lateral acceleration (m/s^2)
+    max_distance_deviation:
+      type: double
+      default_value: 100.0
+      description: Maximum allowed absolute lateral distance deviation from the ego pose (m)
       read_only: false
     max_steering_angle:
       type: double
@@ -46,6 +55,29 @@ validator:
         description: sampling interval used in collision check trajectory generation
         read_only: false
     drac:
+      stop_tracking:
+        ego:
+          stopped_velocity_threshold:
+            type: double
+            default_value: .NAN
+            description: planar speed below which the ego vehicle is considered stopped (m/s)
+            read_only: false
+          history_timeout:
+            type: double
+            default_value: .NAN
+            description: maximum observation gap retained in the ego stop history (s)
+            read_only: false
+        object:
+          stopped_velocity_threshold:
+            type: double
+            default_value: .NAN
+            description: planar speed below which an object is considered stopped (m/s)
+            read_only: false
+          history_timeout:
+            type: double
+            default_value: .NAN
+            description: time after the last observation before an object stop record is removed (s)
+            read_only: false
       enable_assessment:
         base:
           &drac_ea {
@@ -195,6 +227,32 @@ validator:
           default_value: false
           description: Use map based predicted path trajectories for DRAC assessment
           read_only: false
+        mutual_yield_timeout_arbitration:
+          enabled:
+            base:
+              &drac_labeled_mutual_yield_enabled {
+                type: bool,
+                default_value: false,
+                description: Enable mutual-yield arbitration for this object class,
+                read_only: false,
+              }
+            unknown: *drac_labeled_mutual_yield_enabled
+            car: *drac_labeled_mutual_yield_enabled
+            truck: *drac_labeled_mutual_yield_enabled
+            bus: *drac_labeled_mutual_yield_enabled
+            trailer: *drac_labeled_mutual_yield_enabled
+            motorcycle: *drac_labeled_mutual_yield_enabled
+            bicycle: *drac_labeled_mutual_yield_enabled
+            pedestrian: *drac_labeled_mutual_yield_enabled
+            animal: *drac_labeled_mutual_yield_enabled
+            hazard: *drac_labeled_mutual_yield_enabled
+            over_drivable: *drac_labeled_mutual_yield_enabled
+            under_drivable: *drac_labeled_mutual_yield_enabled
+          min_wait_time:
+            type: double
+            default_value: .NAN
+            description: Minimum wait time before resolving a mutual-yield deadlock (s)
+            read_only: false
         ego_prioritized_ego_earlier: *drac_assessment
         ego_prioritized_object_earlier: *drac_assessment
         object_prioritized_ego_earlier: *drac_assessment

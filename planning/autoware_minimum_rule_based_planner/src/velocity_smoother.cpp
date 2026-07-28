@@ -46,7 +46,7 @@ VelocitySmoother::VelocitySmoother(
 
 void VelocitySmoother::optimize(
   TrajectoryPoints & traj_points, const nav_msgs::msg::Odometry & current_odometry,
-  double current_acceleration)
+  double current_acceleration, const bool update_prev_output)
 {
   const double current_speed = current_odometry.twist.twist.linear.x;
   const double & target_pull_out_speed_mps = params_.target_pull_out_speed_mps;
@@ -114,8 +114,10 @@ void VelocitySmoother::optimize(
   if (params_.smooth_velocities) {
     filter_velocity(traj_points, initial_motion_speed, initial_motion_acc, current_odometry);
 
-    // Save output for temporal consistency in next cycle
-    if (!traj_points.empty()) {
+    // Save output for temporal consistency in next cycle (go trajectory only; the stop
+    // trajectory must not overwrite the reference, or its deceleration profile would drag down
+    // the go trajectory's initial speed on the next cycle)
+    if (update_prev_output && !traj_points.empty()) {
       prev_output_ = traj_points;
     }
   }

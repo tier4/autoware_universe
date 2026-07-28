@@ -130,6 +130,27 @@ struct GlobalParams
   }
 };
 
+struct StopTrackingParams
+{
+  double stopped_velocity_threshold{0.3};
+  double history_timeout{0.5};
+
+  StopTrackingParams() = default;
+  explicit StopTrackingParams(
+    const validator::Params::CollisionCheck::Drac::StopTracking::Ego & params)
+  : stopped_velocity_threshold(params.stopped_velocity_threshold),
+    history_timeout(params.history_timeout)
+  {
+  }
+
+  explicit StopTrackingParams(
+    const validator::Params::CollisionCheck::Drac::StopTracking::Object & params)
+  : stopped_velocity_threshold(params.stopped_velocity_threshold),
+    history_timeout(params.history_timeout)
+  {
+  }
+};
+
 struct DracParams
 {
   struct PetMargin
@@ -168,7 +189,14 @@ struct DracParams
 
   struct MapBased
   {
+    struct MutualYieldArbitration
+    {
+      bool enabled{false};
+      double min_wait_time{1.0};
+    };
+
     bool enable_assessment{};
+    MutualYieldArbitration mutual_yield_timeout_arbitration{};
     DracAssessment ego_prioritized_ego_earlier{};
     DracAssessment ego_prioritized_object_earlier{};
     DracAssessment object_prioritized_ego_earlier{};
@@ -217,6 +245,11 @@ struct DracParams
 
     map_based.enable_assessment =
       extract_labeled_param<bool>(drac.map_based.enable_assessment, key);
+    const auto & mutual_yield_timeout_arbitration = drac.map_based.mutual_yield_timeout_arbitration;
+    map_based.mutual_yield_timeout_arbitration.enabled =
+      extract_labeled_param<bool>(mutual_yield_timeout_arbitration.enabled, key);
+    map_based.mutual_yield_timeout_arbitration.min_wait_time =
+      extract_labeled_param<double>(mutual_yield_timeout_arbitration.min_wait_time, key);
     parse_assessment(
       drac.map_based.ego_prioritized_ego_earlier, map_based.ego_prioritized_ego_earlier);
     parse_assessment(
