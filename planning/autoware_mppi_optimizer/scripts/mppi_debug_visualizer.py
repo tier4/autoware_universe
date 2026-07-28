@@ -373,12 +373,8 @@ def max_pos_err(
     ref_xy: Optional[Tuple[List[float], List[float]]],
     opt_xy: Optional[Tuple[List[float], List[float]]],
 ) -> float:
-    if not ref_xy or not opt_xy or not ref_xy[0] or not opt_xy[0]:
-        return float("nan")
-    n = min(len(ref_xy[0]), len(opt_xy[0]))
-    return max(
-        math.hypot(opt_xy[0][i] - ref_xy[0][i], opt_xy[1][i] - ref_xy[1][i]) for i in range(n)
-    )
+    series = indexed_distance_series(opt_xy, ref_xy)
+    return max_abs(series)
 
 
 def max_vel_err(ref_v: Sequence[float], opt_v: Sequence[float]) -> float:
@@ -392,20 +388,17 @@ def _wrap_pi(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
-def signed_lateral_series(
+def indexed_distance_series(
     traj_xy: Optional[Tuple[List[float], List[float]]],
     ref_xy: Optional[Tuple[List[float], List[float]]],
-    ref_heading: Sequence[float],
 ) -> List[float]:
-    """Time-indexed lateral error to ref[i], resolved in ref_heading[i]."""
-    if not traj_xy or not ref_xy or not traj_xy[0] or not ref_xy[0] or not ref_heading:
+    """Index-matched Euclidean distance ‖p[i]−p_ref[i]‖ (matches computeTrackValue)."""
+    if not traj_xy or not ref_xy or not traj_xy[0] or not ref_xy[0]:
         return []
     ref_x, ref_y = ref_xy
-    n = min(len(traj_xy[0]), len(traj_xy[1]), len(ref_x), len(ref_y), len(ref_heading))
+    n = min(len(traj_xy[0]), len(traj_xy[1]), len(ref_x), len(ref_y))
     return [
-        -(traj_xy[0][i] - ref_x[i]) * math.sin(ref_heading[i])
-        + (traj_xy[1][i] - ref_y[i]) * math.cos(ref_heading[i])
-        for i in range(n)
+        math.hypot(traj_xy[0][i] - ref_x[i], traj_xy[1][i] - ref_y[i]) for i in range(n)
     ]
 
 
@@ -530,31 +523,23 @@ def frame_from_loaded(
     )
     orig_pos = max_pos_err(frame.reference_xy, frame.optimized_xy)
     orig_vel = max_vel_err(frame.reference_vel, frame.optimized_vel)
-    orig_lat = max_abs(
-        signed_lateral_series(frame.optimized_xy, frame.reference_xy, frame.reference_heading)
-    )
     orig_dpsi = max_abs(
         indexed_heading_error_series(frame.optimized_heading, frame.reference_heading)
     )
     parts = [
-        f"orig max|e_lat|={orig_lat:.3f}m max|Δψ_path|={orig_dpsi:.3f}rad "
-        f"max|pos_idx|={orig_pos:.3f}m max|v|={orig_vel:.3f}m/s"
+        f"orig max‖Δp‖={orig_pos:.3f}m max|Δψ|={orig_dpsi:.3f}rad max|v|={orig_vel:.3f}m/s"
     ]
     if frame.retuned_xy:
         ret_pos = max_pos_err(frame.reference_xy, frame.retuned_xy)
         ret_vel = max_vel_err(frame.reference_vel, frame.retuned_vel)
-        ret_lat = max_abs(
-            signed_lateral_series(frame.retuned_xy, frame.reference_xy, frame.reference_heading)
-        )
         ret_dpsi = max_abs(
             indexed_heading_error_series(frame.retuned_heading, frame.reference_heading)
         )
         vs_logged = max_pos_err(frame.optimized_xy, frame.retuned_xy)
         parts.append(
-            f"retune max|e_lat|={ret_lat:.3f}m max|Δψ_path|={ret_dpsi:.3f}rad "
-            f"max|pos_idx|={ret_pos:.3f}m max|v|={ret_vel:.3f}m/s"
+            f"retune max‖Δp‖={ret_pos:.3f}m max|Δψ|={ret_dpsi:.3f}rad max|v|={ret_vel:.3f}m/s"
         )
-        parts.append(f"logged↔retune max|Δpos|={vs_logged:.3f}m")
+        parts.append(f"logged↔retune max‖Δp‖={vs_logged:.3f}m")
     if frame.raw_costs:
         finite_costs = [c for c in frame.raw_costs if abs(c) < 1.0e20]
         if finite_costs:
@@ -727,34 +712,30 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
 
     if ax_lat is not None:
         ax_lat.clear()
-        ax_lat.set_title("Time-indexed lateral error")
+        ax_lat.set_title("Index-matched position error (track cost)")
         ax_lat.set_xlabel("optimized point index")
-        ax_lat.set_ylabel("e_lat [m] (+left)")
+        ax_lat.set_ylabel("‖p−p_ref‖ [m]")
         ax_lat.grid(True)
         ax_lat.axhline(0.0, color="0.7", linewidth=0.8, linestyle=":")
-        lat_opt = signed_lateral_series(
-            frame.optimized_xy, frame.reference_xy, frame.reference_heading
-        )
-        lat_ret = signed_lateral_series(
-            frame.retuned_xy, frame.reference_xy, frame.reference_heading
-        )
-        if lat_opt:
+        dist_opt = indexed_distance_series(frame.optimized_xy, frame.reference_xy)
+        dist_ret = indexed_distance_series(frame.retuned_xy, frame.reference_xy)
+        if dist_opt:
             ax_lat.plot(
-                list(range(len(lat_opt))),
-                lat_opt,
+                list(range(len(dist_opt))),
+                dist_opt,
                 color="tab:red",
                 linewidth=2,
                 label="MPPI logged",
             )
-        if lat_ret:
+        if dist_ret:
             ax_lat.plot(
-                list(range(len(lat_ret))),
-                lat_ret,
+                list(range(len(dist_ret))),
+                dist_ret,
                 color="tab:green",
                 linewidth=2.2,
                 label="MPPI retuned",
             )
-        if lat_opt or lat_ret:
+        if dist_opt or dist_ret:
             ax_lat.legend(loc="best", fontsize=8)
 
     if ax_heading_err is not None:
@@ -1491,7 +1472,7 @@ class MppiDebugVisualizer(Node):
             )
             if frame.reference_xy and frame.optimized_xy:
                 frame.metrics_text = (
-                    f"max|e_lat|={max_abs(signed_lateral_series(frame.optimized_xy, frame.reference_xy, frame.reference_heading)):.3f}m  "
+                    f"max‖Δp‖={max_pos_err(frame.reference_xy, frame.optimized_xy):.3f}m  "
                     f"max|Δψ|={max_abs(indexed_heading_error_series(frame.optimized_heading, frame.reference_heading)):.3f}rad  "
                     f"max|v|={max_vel_err(frame.reference_vel, frame.optimized_vel):.3f}m/s"
                 )
