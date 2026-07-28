@@ -269,7 +269,7 @@ void UncrossableBoundDepartureValidator::validate(
 
   if (!checker_) {
     checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
-      lanelet_map, checker_params_, vehicle_info);
+      lanelet_map, params_, vehicle_info);
   }
 
   boundary_departure_checker::EgoDynamicState ego_state;
