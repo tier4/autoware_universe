@@ -30,6 +30,7 @@ void declare_first_order_dubins_mppi_vehicle_dynamics_params(rclcpp::Node & node
   node.declare_parameter("vel_rate_lim", defaults.vel_rate_lim);
   node.declare_parameter("acc_time_delay", defaults.acc_time_delay);
   node.declare_parameter("steer_time_delay", defaults.steer_time_delay);
+  node.declare_parameter("state_prediction_time", defaults.state_prediction_time);
 }
 
 FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params(rclcpp::Node & node)
@@ -44,6 +45,8 @@ FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params(rcl
   params.vel_rate_lim = static_cast<float>(node.get_parameter("vel_rate_lim").as_double());
   params.acc_time_delay = static_cast<float>(node.get_parameter("acc_time_delay").as_double());
   params.steer_time_delay = static_cast<float>(node.get_parameter("steer_time_delay").as_double());
+  params.state_prediction_time =
+    static_cast<float>(node.get_parameter("state_prediction_time").as_double());
   return params;
 }
 
