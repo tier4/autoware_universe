@@ -28,8 +28,17 @@
       "properties": {
         "base": {
           "type": "array",
-          "minItems": 1,
-          "items": { "enum": ["bbox", "polygon"] },
+          "oneOf": [
+            {
+              "minItems": 1,
+              "items": { "enum": ["bbox", "polygon"] }
+            },
+            {
+              "minItems": 1,
+              "maxItems": 1,
+              "items": { "const": "" }
+            }
+          ],
           "default": ["bbox"]
         },
         "unknown": { "$ref": "#/definitions/target_shapes_override" },
@@ -70,8 +79,11 @@
     },
     "target_shapes_override": {
       "type": "array",
-      "default": ["base"],
+      "default": [],
       "oneOf": [
+        {
+          "maxItems": 0
+        },
         {
           "minItems": 1,
           "items": { "enum": ["bbox", "polygon"] }
@@ -80,11 +92,6 @@
           "minItems": 1,
           "maxItems": 1,
           "items": { "const": "" }
-        },
-        {
-          "minItems": 1,
-          "maxItems": 1,
-          "items": { "const": "base" }
         }
       ]
     },
@@ -93,8 +100,17 @@
       "properties": {
         "base": {
           "type": "array",
-          "minItems": 1,
-          "items": { "enum": ["bbox", "polygon"] },
+          "oneOf": [
+            {
+              "minItems": 1,
+              "items": { "enum": ["bbox", "polygon"] }
+            },
+            {
+              "minItems": 1,
+              "maxItems": 1,
+              "items": { "const": "" }
+            }
+          ],
           "default": ["bbox", "polygon"]
         }
       }
