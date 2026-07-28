@@ -70,6 +70,7 @@
     },
     "target_shapes_override": {
       "type": "array",
+      "default": ["base"],
       "oneOf": [
         {
           "minItems": 1,
