@@ -671,8 +671,13 @@ std::string ControlValidator::generate_error_message(const ControlValidatorStatu
 
 void ControlValidator::display_status()
 {
-  if (!display_on_terminal_) return;
   static rclcpp::Clock clock{RCL_ROS_TIME};
+
+  if (validation_status_.will_cross_uncrossable_bound) {
+    RCLCPP_WARN_THROTTLE(get_logger(), clock, 2000, "predicted trajectory cross uncrossable bound");
+  }
+
+  if (!display_on_terminal_) return;
 
   const auto warn = [this](const bool status, const std::string & msg, const double value) {
     if (!status) {
