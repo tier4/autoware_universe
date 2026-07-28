@@ -21,6 +21,8 @@
 #include "autoware_trajectory_validator/autoware_trajectory_validator_param.hpp"
 
 #include <memory>
+#include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
