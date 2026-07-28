@@ -437,9 +437,7 @@ void ControlValidator::setup_diag()
 
   d.add(ns + "uncrossable_bound_departure", [&](auto & stat) {
     const auto is_ok = !validation_status_.will_cross_uncrossable_bound;
-    set_status(
-      stat, is_ok,
-      "The control predicted trajectory departs an uncrossable boundary.");
+    set_status(stat, is_ok, "The control predicted trajectory departs an uncrossable boundary.");
   });
 }
 

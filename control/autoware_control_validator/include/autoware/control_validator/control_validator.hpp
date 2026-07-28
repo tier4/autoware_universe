@@ -262,17 +262,24 @@ public:
   void update_parameters(const ::control_validator::Params & params)
   {
     enable_ = params.uncrossable_bound_departure_validator.enable;
-    checker_params_.lateral_margin_m = params.uncrossable_bound_departure_validator.lateral_margin_m;
-    checker_params_.longitudinal_margin_m = params.uncrossable_bound_departure_validator.longitudinal_margin_m;
-    checker_params_.max_deceleration_mps2 = params.uncrossable_bound_departure_validator.max_deceleration_mps2;
+    checker_params_.lateral_margin_m =
+      params.uncrossable_bound_departure_validator.lateral_margin_m;
+    checker_params_.longitudinal_margin_m =
+      params.uncrossable_bound_departure_validator.longitudinal_margin_m;
+    checker_params_.max_deceleration_mps2 =
+      params.uncrossable_bound_departure_validator.max_deceleration_mps2;
     checker_params_.max_jerk_mps3 = params.uncrossable_bound_departure_validator.max_jerk_mps3;
     checker_params_.brake_delay_s = params.uncrossable_bound_departure_validator.brake_delay_s;
     checker_params_.time_to_departure_cutoff_s =
       params.uncrossable_bound_departure_validator.time_to_departure_cutoff_s;
-    checker_params_.on_time_buffer_s = params.uncrossable_bound_departure_validator.on_time_buffer_s;
-    checker_params_.off_time_buffer_s = params.uncrossable_bound_departure_validator.off_time_buffer_s;
-    checker_params_.enable_developer_marker = params.uncrossable_bound_departure_validator.enable_developer_marker;
-    checker_params_.boundary_types_to_detect = params.uncrossable_bound_departure_validator.boundary_types;
+    checker_params_.on_time_buffer_s =
+      params.uncrossable_bound_departure_validator.on_time_buffer_s;
+    checker_params_.off_time_buffer_s =
+      params.uncrossable_bound_departure_validator.off_time_buffer_s;
+    checker_params_.enable_developer_marker =
+      params.uncrossable_bound_departure_validator.enable_developer_marker;
+    checker_params_.boundary_types_to_detect =
+      params.uncrossable_bound_departure_validator.boundary_types;
     if (checker_) {
       checker_->update_parameters(checker_params_);
     }
