@@ -21,7 +21,11 @@
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
+#include <rclcpp/clock.hpp>
+#include <rclcpp/logging.hpp>
+
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
+#include <autoware_perception_msgs/msg/shape.hpp>
 #include <autoware_utils_math/normalization.hpp>
 
 #include <algorithm>
@@ -92,6 +96,38 @@ std::vector<AgentHistory> transform_sort_trim(
       histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent), histories.end());
   }
   return histories;
+}
+
+// HAZARD objects are not supported by the model, so remap them to PEDESTRIAN
+// to make the planner consider them.
+TrackedObject remap_hazard_to_pedestrian(const TrackedObject & object)
+{
+  const bool is_hazard = autoware::object_recognition_utils::getHighestProbLabel(
+                           object.classification) == ObjectClassification::HAZARD;
+  if (!is_hazard) {
+    return object;
+  }
+
+  TrackedObject remapped = object;
+  for (auto & classification : remapped.classification) {
+    if (classification.label == ObjectClassification::HAZARD) {
+      classification.label = ObjectClassification::PEDESTRIAN;
+    }
+  }
+
+  if (remapped.shape.type != autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
+    static rclcpp::Clock clock{RCL_ROS_TIME};
+    RCLCPP_WARN_THROTTLE(
+      rclcpp::get_logger("diffusion_planner"), clock, constants::LOG_THROTTLE_INTERVAL_MS,
+      "HAZARD object %s has a non-BOX shape (type=%u). Replacing it with a 0.5 m bounding box.",
+      autoware_utils_uuid::to_hex_string(remapped.object_id).c_str(), remapped.shape.type);
+    remapped.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+    remapped.shape.footprint.points.clear();
+    remapped.shape.dimensions.x = 0.5;
+    remapped.shape.dimensions.y = 0.5;
+    remapped.shape.dimensions.z = 0.5;
+  }
+  return remapped;
 }
 
 }  // namespace
@@ -174,7 +210,8 @@ void AgentData::update_histories(const TrackedObjects & objects)
 {
   const rclcpp::Time objects_timestamp(objects.header.stamp);
   std::vector<std::string> found_ids;
-  for (const TrackedObject & object : objects.objects) {
+  for (const TrackedObject & input_object : objects.objects) {
+    const TrackedObject object = remap_hazard_to_pedestrian(input_object);
     if (get_model_label(object) == AgentLabel::IGNORE) {
       continue;
     }
@@ -239,7 +276,8 @@ void AgentData::update_histories(
   last_processed_stamp_ = objects_timestamp;
 
   latest_ids_.clear();
-  for (const TrackedObject & object : objects.objects) {
+  for (const TrackedObject & input_object : objects.objects) {
+    const TrackedObject object = remap_hazard_to_pedestrian(input_object);
     if (get_model_label(object) == AgentLabel::IGNORE) {
       continue;
     }
