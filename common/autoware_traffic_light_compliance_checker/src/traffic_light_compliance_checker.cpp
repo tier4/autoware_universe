@@ -285,9 +285,13 @@ TrafficLightComplianceChecker::check_with_filtered_signals(
     input.current_velocity, input.current_acceleration,
     params_.checked_trajectory_length.deceleration_limit,
     params_.checked_trajectory_length.jerk_limit, params_.delay_response_time);
-  // add the stop_overshoot_margin to not skip points beyond the stop line but within the margin
-  const auto max_trajectory_length =
-    ego_stopping_distance.value_or(0.0) + params_.stop_overshoot_margin;
+  // Floor by min_lookahead_distance so low ego speed still covers nearby stop lines,
+  // while keeping the comfortable-stop cap so far lights are not over-checked
+  // (important for traffic_light_filter which rejects trajectories).
+  // stop_overshoot_margin extends the scan so a stop just past the line is not truncated.
+  const auto max_trajectory_length = std::max(
+    params_.min_lookahead_distance,
+    ego_stopping_distance.value_or(0.0) + params_.stop_overshoot_margin);
   auto length = 0.0;
   auto backward_length = 0.0;
   std::optional<lanelet::BasicPoint2d> stop_point;
