@@ -28,6 +28,7 @@
 #include <std_srvs/srv/trigger.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 
 /**
@@ -86,6 +87,15 @@ private:
    */
   double last_offset_update_;
 
+  /**
+   * @brief Initial steering offset read once from the calibration YAML file at start-up
+   *
+   * The value is assumed to be constant for the lifetime of the node, so the file is read a
+   * single time in the constructor and the result cached here. Empty if the file or the
+   * parameter could not be read.
+   */
+  std::optional<double> initial_calibration_offset_;
+
   // Subscribers
   /**
    * @brief Subscriber for pose
@@ -117,6 +127,16 @@ private:
    * @brief Publisher for steering offset update
    */
   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_steer_offset_update_;
+
+  /**
+   * @brief Publisher for the initial steering offset read from the calibration YAML file
+   */
+  rclcpp::Publisher<Float32Stamped>::SharedPtr pub_initial_calibration_offset_;
+
+  /**
+   * @brief Publisher for the initial calibration offset plus the estimated steering offset
+   */
+  rclcpp::Publisher<Float32Stamped>::SharedPtr pub_cumulative_steer_offset_;
 
   // Timer
   /**
@@ -173,6 +193,15 @@ private:
   tl::expected<double, std::string> write_to_yaml(
     const std::string & file_path, const std::string & param_name, double value,
     const bool accumulate = false) const;
+
+  /**
+   * @brief Read a single double parameter out of a ROS parameter YAML file
+   * @param file_path Path to the YAML file
+   * @param param_name Key to look up under the wildcard 'ros__parameters' node
+   * @return The value on success, or an error string on failure
+   */
+  static tl::expected<double, std::string> read_from_yaml(
+    const std::string & file_path, const std::string & param_name);
 
   /**
    * @brief Publish steering offset estimation results
