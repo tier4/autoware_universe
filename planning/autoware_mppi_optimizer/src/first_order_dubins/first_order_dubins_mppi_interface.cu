@@ -29,7 +29,10 @@
 #include <mppi/utils/gpu_err_chk.cuh>
 #include <rclcpp/logging.hpp>
 
+#include <autoware_planning_msgs/msg/detail/trajectory_point__struct.hpp>
+#include <autoware_vehicle_msgs/msg/detail/steering_report__struct.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/detail/accel_with_covariance_stamped__struct.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <tf2/LinearMath/Quaternion.h>
@@ -554,10 +557,38 @@ struct FirstOrderDubinsMppiInterface::Impl
       const auto & point = reference.points[idx];
       u_nom(accel_idx, t) = std::clamp(point.acceleration_mps2, min_accel, max_accel);
 
-      // Only use an explicit steer command if the reference provides one. Do NOT derive steer
-      // from path curvature: that pre-solves lateral tracking inside u_nom, so MPPI δ_cmd
-      // barely moves when track/heading costs are retuned (samples stay glued to the seed).
-      u_nom(steer_idx, t) = std::clamp(point.front_wheel_angle_rad, -max_steer, max_steer);
+      float steer = point.front_wheel_angle_rad;
+      if (std::abs(steer) <= 1.0E-6F && idx + 1U < reference.points.size()) {
+        size_t lookahead_idx = idx + 1U;
+        float ds = 0.0F;
+        float dx = 0.0F;
+        float dy = 0.0F;
+
+        const float min_chord_length = std::max(1.5F, vehicle_params.wheel_base * 0.5F);
+
+        // Search ahead for a point far enough away to safely calculate curvature
+        while (lookahead_idx < reference.points.size()) {
+          const auto & next = reference.points[lookahead_idx];
+          dx = static_cast<float>(next.pose.position.x - point.pose.position.x);
+          dy = static_cast<float>(next.pose.position.y - point.pose.position.y);
+          ds = std::hypot(dx, dy);
+
+          if (ds >= min_chord_length) {
+            break;
+          }
+          lookahead_idx++;
+        }
+
+        if (ds >= min_chord_length) {
+          const auto & next = reference.points[lookahead_idx];
+          const float yaw0 = static_cast<float>(tf2::getYaw(point.pose.orientation));
+          const float yaw1 = static_cast<float>(tf2::getYaw(next.pose.orientation));
+          const float dyaw = std::atan2(std::sin(yaw1 - yaw0), std::cos(yaw1 - yaw0));
+
+          steer = std::atan(vehicle_params.wheel_base * (dyaw / ds));
+        }
+      }
+      u_nom(steer_idx, t) = std::clamp(steer, -max_steer, max_steer);
     }
   }
 
