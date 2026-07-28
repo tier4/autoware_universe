@@ -313,7 +313,17 @@
                     "bbox": {
                       "type": "array",
                       "description": "Types of bounding box shaped objects to consider for obstacle stop",
-                      "default": ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "unknown"],
+                      "default": [
+                        "car",
+                        "truck",
+                        "bus",
+                        "trailer",
+                        "motorcycle",
+                        "bicycle",
+                        "pedestrian",
+                        "hazard",
+                        "unknown"
+                      ],
                       "items": {
                         "type": "string"
                       }
@@ -321,7 +331,15 @@
                     "polygon": {
                       "type": "array",
                       "description": "Types of polygon shaped objects to consider for obstacle stop",
-                      "default": ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "unknown"],
+                      "default": [
+                        "car",
+                        "truck",
+                        "bus",
+                        "trailer",
+                        "pedestrian",
+                        "hazard",
+                        "unknown"
+                      ],
                       "items": {
                         "type": "string"
                       }
@@ -554,7 +572,18 @@
                 "bbox": {
                   "type": "array",
                   "description": "Types of bounding box shaped objects to consider for surround obstacle stop",
-                  "default": ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "animal", "unknown"],
+                  "default": [
+                    "car",
+                    "truck",
+                    "bus",
+                    "trailer",
+                    "motorcycle",
+                    "bicycle",
+                    "pedestrian",
+                    "hazard",
+                    "animal",
+                    "unknown"
+                  ],
                   "items": {
                     "type": "string"
                   }
@@ -562,7 +591,16 @@
                 "polygon": {
                   "type": "array",
                   "description": "Types of polygon shaped objects to consider for surround obstacle stop",
-                  "default": ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "animal", "unknown"],
+                  "default": [
+                    "car",
+                    "truck",
+                    "bus",
+                    "trailer",
+                    "pedestrian",
+                    "hazard",
+                    "animal",
+                    "unknown"
+                  ],
                   "items": {
                     "type": "string"
                   }

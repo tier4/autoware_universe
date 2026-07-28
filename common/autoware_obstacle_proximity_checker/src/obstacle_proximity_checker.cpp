@@ -195,8 +195,10 @@ std::optional<ProximityObstacle> ProximityChecker::getNearestObstacleByDynamicOb
       return false;
     }
     const auto & object_param = parameters_.obstacle_types_map.at(label);
-    if (object.shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) return object_param.enable_bbox_check;
-    if (object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) return object_param.enable_polygon_check;
+    if (object.shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX)
+      return object_param.enable_bbox_check;
+    if (object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON)
+      return object_param.enable_polygon_check;
     return false;
   };
 

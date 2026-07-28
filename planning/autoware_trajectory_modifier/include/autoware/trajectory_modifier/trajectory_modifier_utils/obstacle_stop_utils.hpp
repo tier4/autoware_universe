@@ -20,8 +20,8 @@
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
 #include <rclcpp/time.hpp>
 
-#include <autoware_perception_msgs/msg/shape.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/shape.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -285,8 +285,10 @@ struct ObjectFilter
               ? ObjectClassification::UNKNOWN
               : autoware::object_recognition_utils::getHighestProbLabel(object.classification);
           if (classification_to_object_type.count(label) == 0) return true;
-          if (object.shape.type == Shape::BOUNDING_BOX) return bbox_object_types_.count(classification_to_object_type.at(label)) == 0;
-          if (object.shape.type == Shape::POLYGON) return polygon_object_types_.count(classification_to_object_type.at(label)) == 0;
+          if (object.shape.type == Shape::BOUNDING_BOX)
+            return bbox_object_types_.count(classification_to_object_type.at(label)) == 0;
+          if (object.shape.type == Shape::POLYGON)
+            return polygon_object_types_.count(classification_to_object_type.at(label)) == 0;
           return true;
         }),
       objects.objects.end());

@@ -75,9 +75,11 @@ Parameters to_proximity_checker_parameters(
     if (label == "truck") return std::make_tuple(front.truck, side.truck, back.truck);
     if (label == "bus") return std::make_tuple(front.bus, side.bus, back.bus);
     if (label == "trailer") return std::make_tuple(front.trailer, side.trailer, back.trailer);
-    if (label == "motorcycle") return std::make_tuple(front.motorcycle, side.motorcycle, back.motorcycle);
+    if (label == "motorcycle")
+      return std::make_tuple(front.motorcycle, side.motorcycle, back.motorcycle);
     if (label == "bicycle") return std::make_tuple(front.bicycle, side.bicycle, back.bicycle);
-    if (label == "pedestrian") return std::make_tuple(front.pedestrian, side.pedestrian, back.pedestrian);
+    if (label == "pedestrian")
+      return std::make_tuple(front.pedestrian, side.pedestrian, back.pedestrian);
     if (label == "hazard") return std::make_tuple(front.hazard, side.hazard, back.hazard);
     if (label == "animal") return std::make_tuple(front.animal, side.animal, back.animal);
     return std::make_tuple(front.unknown, side.unknown, back.unknown);
@@ -88,7 +90,8 @@ Parameters to_proximity_checker_parameters(
     const auto polygon_enabled = is_polygon_enabled(label);
     const auto [front, side, back] = get_object_distance_thresholds(label);
     parameters.object_type_enable_check[label] = bbox_enabled || polygon_enabled;
-    parameters.obstacle_types_map[label] = to_obstacle_type_parameters(front, side, back, bbox_enabled, polygon_enabled);
+    parameters.obstacle_types_map[label] =
+      to_obstacle_type_parameters(front, side, back, bbox_enabled, polygon_enabled);
   };
   set_object_params("unknown");
   set_object_params("car");

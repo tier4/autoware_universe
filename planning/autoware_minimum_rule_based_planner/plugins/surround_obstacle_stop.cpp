@@ -65,7 +65,7 @@ Parameters to_proximity_checker_parameters(const SurroundObstacleStopParams & pa
   auto is_polygon_enabled = [&](const std::string & label) {
     return polygon_enabled_object_types.count(label) > 0;
   };
-  
+
   const auto & front = params.front_distance_th;
   const auto & side = params.side_distance_th;
   const auto & back = params.back_distance_th;
@@ -74,20 +74,23 @@ Parameters to_proximity_checker_parameters(const SurroundObstacleStopParams & pa
     if (label == "truck") return std::make_tuple(front.truck, side.truck, back.truck);
     if (label == "bus") return std::make_tuple(front.bus, side.bus, back.bus);
     if (label == "trailer") return std::make_tuple(front.trailer, side.trailer, back.trailer);
-    if (label == "motorcycle") return std::make_tuple(front.motorcycle, side.motorcycle, back.motorcycle);
+    if (label == "motorcycle")
+      return std::make_tuple(front.motorcycle, side.motorcycle, back.motorcycle);
     if (label == "bicycle") return std::make_tuple(front.bicycle, side.bicycle, back.bicycle);
-    if (label == "pedestrian") return std::make_tuple(front.pedestrian, side.pedestrian, back.pedestrian);
+    if (label == "pedestrian")
+      return std::make_tuple(front.pedestrian, side.pedestrian, back.pedestrian);
     if (label == "hazard") return std::make_tuple(front.hazard, side.hazard, back.hazard);
     if (label == "animal") return std::make_tuple(front.animal, side.animal, back.animal);
     return std::make_tuple(front.unknown, side.unknown, back.unknown);
   };
-  
+
   const auto set_object_params = [&](const std::string & label) {
     const auto bbox_enabled = is_bbox_enabled(label);
     const auto polygon_enabled = is_polygon_enabled(label);
     const auto [front, side, back] = get_object_distance_thresholds(label);
     parameters.object_type_enable_check[label] = bbox_enabled || polygon_enabled;
-    parameters.obstacle_types_map[label] = to_obstacle_type_parameters(front, side, back, bbox_enabled, polygon_enabled);
+    parameters.obstacle_types_map[label] =
+      to_obstacle_type_parameters(front, side, back, bbox_enabled, polygon_enabled);
   };
   set_object_params("unknown");
   set_object_params("car");
@@ -99,7 +102,7 @@ Parameters to_proximity_checker_parameters(const SurroundObstacleStopParams & pa
   set_object_params("pedestrian");
   set_object_params("hazard");
   set_object_params("animal");
-  
+
   parameters.obstacle_types_map["pointcloud"] =
     to_obstacle_type_parameters(front.pointcloud, side.pointcloud, back.pointcloud);
   return parameters;

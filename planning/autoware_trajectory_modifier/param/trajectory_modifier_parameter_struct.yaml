@@ -201,7 +201,8 @@ trajectory_modifier_params:
       target_objects:
         bbox:
           type: string_array
-          default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard, unknown]
+          default_value:
+            [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard, unknown]
           description: Types of bounding box shaped objects to consider for obstacle stop
           read_only: false
         polygon:
@@ -481,7 +482,8 @@ trajectory_modifier_params:
     target_objects:
       bbox:
         type: string_array
-        default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard, animal, unknown]
+        default_value:
+          [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard, animal, unknown]
         description: Types of bounding box shaped objects to consider for surround obstacle stop
         read_only: false
       polygon:
