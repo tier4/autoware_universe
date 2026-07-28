@@ -37,7 +37,7 @@ void log_target_shape_type_params(
   const std::string_view assessment_name, const std::string_view class_name,
   const TargetShapeTypeParams & target_shape_types)
 {
-  RCLCPP_DEBUG(
+  RCLCPP_INFO(
     rclcpp::get_logger("CollisionCheckFilter"),
     "%s collision target shape types: class=%s, bbox=%s, polygon=%s",
     std::string(assessment_name).c_str(), std::string(class_name).c_str(),

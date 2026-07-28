@@ -96,7 +96,7 @@ validator:
           }
         unknown: &drac_ea
           type: string_array
-          default_value: [base]
+          default_value: []
           description: DRAC target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.
           read_only: false
         car: *drac_ea
@@ -280,7 +280,7 @@ validator:
           }
         unknown: &rss_ea
           type: string_array
-          default_value: [base]
+          default_value: []
           description: RSS target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.
           read_only: false
         car: *rss_ea

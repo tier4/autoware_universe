@@ -154,10 +154,7 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string_
     } else if constexpr (std::is_same_v<OutT, std::string>) {
       return static_cast<OutT>(label_value.empty() ? params_struct.base : label_value);
     } else if constexpr (std::is_same_v<OutT, std::vector<std::string>>) {
-      return static_cast<OutT>(
-        label_value.size() == 1U && label_value.front() == kCollisionCheckParamBaseKey
-          ? params_struct.base
-          : label_value);
+      return static_cast<OutT>(label_value.empty() ? params_struct.base : label_value);
     } else {
       return static_cast<OutT>(label_value);
     }
