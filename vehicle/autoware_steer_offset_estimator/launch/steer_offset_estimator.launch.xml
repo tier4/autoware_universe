@@ -5,6 +5,7 @@
   <arg name="steer_offset_log_param_name" default="steer_offset"/>
   <arg name="steer_offset_calibration_file_path" default="$(find-pkg-share autoware_steer_offset_estimator)/config/steer_offset.param.yaml"/>
   <arg name="steer_offset_calibration_param_name" default="residual_steering_offset"/>
+  <arg name="steer_offset_initial_calibration_param_name" default="steering_angle_collection_offset"/>
   <!-- get wheel base from vehicle info -->
   <include file="$(find-pkg-share autoware_global_parameter_loader)/launch/global_params.launch.py"/>
 
