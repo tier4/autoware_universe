@@ -107,4 +107,5 @@ void PointCloudCollisionCheckFilter::update_parameters(const validator::Params &
 namespace safety = autoware::trajectory_validator::plugin::safety;
 
 PLUGINLIB_EXPORT_CLASS(
-  safety::PointCloudCollisionCheckFilter, autoware::trajectory_validator::plugin::ValidatorInterface)
+  safety::PointCloudCollisionCheckFilter,
+  autoware::trajectory_validator::plugin::ValidatorInterface)
