@@ -20,7 +20,7 @@
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
 #include <rclcpp/time.hpp>
 
-#include <autoware_perception_msgs/msg/detail/shape__struct.hpp>
+#include <autoware_perception_msgs/msg/shape.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
