@@ -5,6 +5,7 @@
   <arg name="steer_offset_log_param_name" default="steer_offset"/>
   <arg name="steer_offset_calibration_file_path" default="$(find-pkg-share autoware_steer_offset_estimator)/config/steer_offset.param.yaml"/>
   <arg name="steer_offset_calibration_param_name" default="residual_steering_offset"/>
+  <arg name="steer_offset_initial_calibration_param_name" default="steering_angle_collection_offset"/>
   <!-- get wheel base from vehicle info -->
   <include file="$(find-pkg-share autoware_global_parameter_loader)/launch/global_params.launch.py"/>
 
@@ -16,11 +17,14 @@
     <param name="steer_offset_param_name" value="$(var steer_offset_log_param_name)"/>
     <param name="calibration_file_path" value="$(var steer_offset_calibration_file_path)"/>
     <param name="calibration_param_name" value="$(var steer_offset_calibration_param_name)"/>
+    <param name="initial_calibration_param_name" value="$(var steer_offset_initial_calibration_param_name)"/>
     <remap from="~/input/pose" to="/localization/pose_estimator/pose"/>
     <remap from="~/input/steer" to="/vehicle/status/steering_status"/>
     <remap from="~/output/steering_offset" to="~/steering_offset"/>
     <remap from="~/output/steering_offset_covariance" to="~/steering_offset_covariance"/>
     <remap from="~/output/debug_info" to="~/debug_info"/>
     <remap from="~/output/steering_offset_update" to="~/steering_offset_update"/>
+    <remap from="~/output/initial_calibration_offset" to="~/initial_calibration_offset"/>
+    <remap from="~/output/cumulative_steering_offset" to="~/cumulative_steering_offset"/>
   </node>
 </launch>
