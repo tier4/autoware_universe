@@ -89,7 +89,7 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
 
 void PointCloudCollisionCheckFilter::update_parameters(const validator::Params & params)
 {
-  *params_ = pcc::Params{params};
+  *params_ = pcc::Params{params.point_cloud_collision_check};
   obstacle_stop_->update_parameters(*params_);
   set_planner_data_param();
 }
