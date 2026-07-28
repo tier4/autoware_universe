@@ -14,7 +14,9 @@
 
 #include "autoware/trajectory_validator/filters/safety/point_cloud_collision_check_filter.hpp"
 
-#include "point_cloud_collision_check/obstacle_stop.hpp"
+#include "point_cloud_collision_check/parameter.hpp"
+#include "point_cloud_collision_check/planner_data_lite.hpp"
+#include "point_cloud_collision_check/types.hpp"
 
 #include <memory>
 #include <vector>
@@ -25,9 +27,8 @@ namespace pcc = autoware::trajectory_validator::plugin::safety::point_cloud_coll
 
 PointCloudCollisionCheckFilter::PointCloudCollisionCheckFilter()
 : ValidatorInterface("point_cloud_collision_check_filter"),
-  obstacle_stop_(std::make_unique<pcc::ObstacleStop>()),
   params_(std::make_unique<pcc::Params>()),
-  planner_data_(std::make_shared<pcc::PlannerData>())
+  planner_data_(std::make_unique<pcc::PlannerData>())
 {
 }
 
@@ -53,6 +54,13 @@ void PointCloudCollisionCheckFilter::update_planner_data(
   // 中身は後続 PR で移植する。
 }
 
+std::vector<pcc::StopObstacle> PointCloudCollisionCheckFilter::calc_obstacle_stop(
+  [[maybe_unused]] const std::vector<TrajectoryPoint> & raw_trajectory_points)
+{
+  // 中身は後続 PR で移植する。
+  return {};
+}
+
 bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
   [[maybe_unused]] const std::vector<pcc::StopObstacle> & stop_obstacles,
   [[maybe_unused]] const geometry_msgs::msg::Twist & twist) const
@@ -74,12 +82,7 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
 
   update_planner_data(candidate_trajectory.points, context);
 
-  std::vector<pcc::StopObstacle> stop_obstacles;
-  try {
-    stop_obstacles = obstacle_stop_->calc_obstacle_stop(candidate_trajectory.points, planner_data_);
-  } catch (const std::exception &) {
-    return ValidationResult{};
-  }
+  const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points);
 
   ValidationResult result{};
   result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
@@ -90,7 +93,6 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
 void PointCloudCollisionCheckFilter::update_parameters(const validator::Params & params)
 {
   *params_ = pcc::Params{params};
-  obstacle_stop_->update_parameters(*params_);
   set_planner_data_param();
 }
 }  // namespace autoware::trajectory_validator::plugin::safety
