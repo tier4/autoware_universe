@@ -65,4 +65,70 @@ protected:
   TrackedObject tracked_object_;
 };
 
+TEST_F(AgentEdgeCaseTest, HazardObjectIsRemappedToPedestrian)
+{
+  tracked_object_.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::HAZARD;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  ASSERT_EQ(histories.size(), 1U);
+  const auto & state = histories.front().get_latest_state();
+  EXPECT_EQ(state.label, AgentLabel::PEDESTRIAN);
+  EXPECT_EQ(
+    state.original_info.classification.front().label,
+    autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN);
+  // BOX shape is kept as is
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.x, 5.0);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.y, 2.0);
+}
+
+TEST_F(AgentEdgeCaseTest, HazardObjectWithNonBoxShapeGetsDefaultBox)
+{
+  tracked_object_.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::HAZARD;
+  tracked_object_.shape.type = autoware_perception_msgs::msg::Shape::POLYGON;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  // The polygon hazard object is not skipped because its shape is replaced with a bounding box
+  ASSERT_EQ(histories.size(), 1U);
+  const auto & state = histories.front().get_latest_state();
+  EXPECT_EQ(state.label, AgentLabel::PEDESTRIAN);
+  EXPECT_EQ(state.original_info.shape.type, autoware_perception_msgs::msg::Shape::BOUNDING_BOX);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.x, 0.5);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.y, 0.5);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.z, 0.5);
+}
+
+TEST_F(AgentEdgeCaseTest, NonHazardPolygonObjectIsStillSkipped)
+{
+  tracked_object_.shape.type = autoware_perception_msgs::msg::Shape::POLYGON;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  EXPECT_TRUE(histories.empty());
+}
+
 }  // namespace autoware::diffusion_planner::test
