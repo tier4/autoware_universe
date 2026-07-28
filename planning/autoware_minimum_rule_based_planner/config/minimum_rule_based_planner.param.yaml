@@ -6,6 +6,33 @@
       - "autoware::minimum_rule_based_planner::plugin::ObstacleStop"
       - "autoware::minimum_rule_based_planner::plugin::SurroundObstacleStop"
 
+    start_planner:
+      enable: false
+      ego_stopped_velocity: 0.5
+      activation_lateral_offset: 0.5
+      finish_lateral_offset: 0.2
+      minimum_lateral_accel: 0.2
+      maximum_lateral_accel: 1.0
+      lateral_accel_sampling_num: 4
+      collision_check_margins: [2.0, 1.0, 0.5, 0.1]
+      collision_check_extra_length: 5.0
+      object_velocity_threshold: 1.0
+      object_search_radius: 30.0
+
+    goal_planner:
+      enable: false
+      activation_lateral_offset: 0.5
+      minimum_lateral_accel: 0.2
+      maximum_lateral_accel: 1.0
+      lateral_accel_sampling_num: 4
+      collision_check_margins: [2.0, 1.0, 0.5, 0.1]
+      object_velocity_threshold: 1.0
+      object_search_radius: 50.0
+      turn_signal_distance: 30.0
+
+    smoothing:
+      use_eb_smoother: true
+
     path_planning:
       path_length:
         backward: 5.0
@@ -30,6 +57,12 @@
         minimum_shift_distance: 5.0
         min_speed_for_curvature: 2.77  # [m/s] 10 km/h
         lateral_accel_limit: 1.0      # [m/s^2]
+
+      trajectory_anchor:
+        enable: false
+        backward_distance: 5.0        # [m]
+        max_lateral_deviation: 1.0    # [m]
+        max_yaw_deviation: 0.524      # [rad] 30 deg
 
       waypoint_group:
         separation_threshold: 1.0
@@ -167,6 +200,7 @@
     debug:
       enable_path: true
       enable_shifted_trajectory: true
+      enable_goal_maneuver_trajectory: true
       enable_optimizer_trajectory: true
       enable_modifier_trajectory: true
       enable_output_trajectory: true

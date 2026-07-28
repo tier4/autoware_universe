@@ -864,6 +864,40 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
     s_right_centerline ? s_right_centerline : s_right_bound};
 }
 
+std::optional<geometry_msgs::msg::Pose> find_trajectory_anchor_pose(
+  const Trajectory & previous_trajectory, const geometry_msgs::msg::Pose & ego_pose,
+  const TrajectoryAnchorParams & params)
+{
+  if (previous_trajectory.points.size() < 2) {
+    return std::nullopt;
+  }
+
+  const double lateral_deviation =
+    autoware::motion_utils::calcLateralOffset(previous_trajectory.points, ego_pose.position);
+  if (
+    !std::isfinite(lateral_deviation) ||
+    std::abs(lateral_deviation) > params.max_lateral_deviation) {
+    return std::nullopt;
+  }
+
+  const size_t nearest_idx =
+    autoware::motion_utils::findNearestIndex(previous_trajectory.points, ego_pose.position);
+  const double yaw_deviation = autoware_utils::normalize_radian(
+    tf2::getYaw(ego_pose.orientation) -
+    tf2::getYaw(previous_trajectory.points.at(nearest_idx).pose.orientation));
+  if (std::abs(yaw_deviation) > params.max_yaw_deviation) {
+    return std::nullopt;
+  }
+
+  const auto anchor_pose = autoware::motion_utils::calcLongitudinalOffsetPose(
+    previous_trajectory.points, ego_pose.position, -params.backward_distance);
+  if (!anchor_pose) {
+    // the previous trajectory does not reach that far behind ego (e.g. right after departure)
+    return previous_trajectory.points.front().pose;
+  }
+  return *anchor_pose;
+}
+
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
   const PathPointTrajectory & trajectory, const RouteContext & planner_data)
 {
@@ -946,14 +980,6 @@ double evaluate_quintic_derivative(const QuinticShiftCoeffs & c, const double s)
   const double s2 = s * s;
   const double s3 = s2 * s;
   return c.a1 + 2.0 * c.a2 * s + 3.0 * c.a3 * s2 + 4.0 * c.a4 * s3 + 5.0 * c.a5 * s3 * s;
-}
-
-double compute_shift_length_from_lateral_accel(
-  const double abs_d, const double velocity, const double lateral_accel_limit,
-  const double min_length)
-{
-  return std::max(
-    min_length, velocity * std::sqrt(quintic_kappa_coeff * abs_d / lateral_accel_limit));
 }
 
 double signed_curvature_3pt(
@@ -1261,6 +1287,19 @@ void splice_shift_points(
 
 }  // namespace
 
+namespace utils
+{
+
+double compute_shift_length_from_lateral_accel(
+  const double abs_d, const double velocity, const double lateral_accel_limit,
+  const double min_length)
+{
+  return std::max(
+    min_length, velocity * std::sqrt(quintic_kappa_coeff * abs_d / lateral_accel_limit));
+}
+
+}  // namespace utils
+
 // ===========================================================================
 // PathPlanner member functions
 // ===========================================================================
@@ -1281,9 +1320,18 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
   lanelet::utils::query::getCurrentLanelets(
     route_context_.route_lanelets, current_pose, &current_lanelets);
   if (current_lanelets.empty()) {
-    // Ego is outside route (possibly due to lane change failure)
+    // Ego is outside all route lanelets: either laterally offset from the route (e.g. parked on
+    // a road shoulder) or driven past the current lanelet (e.g. lane change failure)
     if (lanelet::geometry::inside(
           *current_lanelet_, {current_pose.position.x, current_pose.position.y})) {
+      return true;
+    }
+    const auto arc = lanelet::utils::getArcCoordinates({*current_lanelet_}, current_pose);
+    constexpr double lanelet_end_eps = 1e-3;
+    if (arc.length < lanelet::utils::getLaneletLength2d(*current_lanelet_) - lanelet_end_eps) {
+      // Laterally offset but longitudinally still alongside the current lanelet: keep it.
+      // Advancing here would make the current lanelet (and the generated path) run away
+      // forward along the route every cycle while ego stands on the shoulder.
       return true;
     }
     const auto following_lanelets = route_context_.routing_graph_ptr->following(*current_lanelet_);
@@ -1521,8 +1569,13 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     RCLCPP_ERROR(logger_, "Failed to calculate early stop distance");
     return std::nullopt;
   }
+  early_stop_distance_ = *early_stop_dist;
+  // While the goal planner is enabled, defer the early stop crop: the goal planner needs the
+  // path up to the goal projection to plan the pull over, and the node applies
+  // early_stop_distance() as the fallback crop when no pull over is adopted.
+  const double effective_early_stop_dist = params_.goal_planner.enable ? 0.0 : *early_stop_dist;
   const double adjusted_s_path_end_earlystop =
-    std::max(0.0, adjusted_s_path_end - *early_stop_dist);
+    std::max(0.0, adjusted_s_path_end - effective_early_stop_dist);
 
   // Crop end
   if (trajectory->length() > adjusted_s_path_end_earlystop) {
@@ -1590,7 +1643,7 @@ void PathPlanner::interpolate_lane_change_sections(
 
   const double clamped_v =
     std::max(std::max(0.0, ego_velocity), shift_params.min_speed_for_curvature);
-  double L = compute_shift_length_from_lateral_accel(
+  double L = utils::compute_shift_length_from_lateral_accel(
     info.abs_lateral_offset, clamped_v, shift_params.lateral_accel_limit,
     shift_params.minimum_shift_distance);
 
@@ -1637,17 +1690,29 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
   const double ego_velocity, const double ego_yaw_rate, const TrajectoryShiftParams & shift_params,
   const double delta_arc_length)
 {
+  const double clamped_velocity =
+    std::max(std::max(0.0, ego_velocity), shift_params.min_speed_for_curvature);
+  return shift_trajectory_to_pose(
+    trajectory, ego_pose, ego_yaw_rate / clamped_velocity, ego_velocity, shift_params,
+    delta_arc_length);
+}
+
+Trajectory PathPlanner::shift_trajectory_to_pose(
+  const Trajectory & trajectory, const geometry_msgs::msg::Pose & base_pose,
+  const double base_curvature, const double velocity, const TrajectoryShiftParams & shift_params,
+  const double delta_arc_length)
+{
   if (trajectory.points.size() < 2) {
     return trajectory;
   }
 
   const double lateral_offset =
-    autoware::motion_utils::calcLateralOffset(trajectory.points, ego_pose.position);
+    autoware::motion_utils::calcLateralOffset(trajectory.points, base_pose.position);
   const size_t nearest_idx =
-    autoware::motion_utils::findNearestIndex(trajectory.points, ego_pose.position);
-  const double ego_yaw = tf2::getYaw(ego_pose.orientation);
+    autoware::motion_utils::findNearestIndex(trajectory.points, base_pose.position);
+  const double start_yaw = tf2::getYaw(base_pose.orientation);
   const double traj_yaw = tf2::getYaw(trajectory.points.at(nearest_idx).pose.orientation);
-  const double signed_yaw_dev = autoware_utils::normalize_radian(ego_yaw - traj_yaw);
+  const double signed_yaw_dev = autoware_utils::normalize_radian(start_yaw - traj_yaw);
   const double abs_yaw_dev = std::abs(signed_yaw_dev);
 
   if (
@@ -1657,18 +1722,29 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
   }
 
   const double clamped_velocity =
-    std::max(std::max(0.0, ego_velocity), shift_params.min_speed_for_curvature);
+    std::max(std::max(0.0, velocity), shift_params.min_speed_for_curvature);
   const double abs_d = std::abs(lateral_offset);
-  double L = compute_shift_length_from_lateral_accel(
+  double L = utils::compute_shift_length_from_lateral_accel(
     abs_d, clamped_velocity, shift_params.lateral_accel_limit, shift_params.minimum_shift_distance);
 
+  // Signed arc position of the base projection relative to the trajectory start. Negative when
+  // the trajectory starts ahead of the base pose, which happens at the beginning of the route
+  // where refine_path_range() clamps the path start to the vehicle front offset (e.g. starting
+  // from a road shoulder next to a route-start lanelet with no predecessor).
+  const double s_ego_from_start = autoware::motion_utils::calcLongitudinalOffsetToSegment(
+    trajectory.points, 0, base_pose.position);
+  const double behind_start_length = std::min(0.0, s_ego_from_start);
+
+  // The merge point is L ahead of the base pose; when it is behind the trajectory start, the arc
+  // length accumulated from the first point must be shortened accordingly.
+  const double merge_target_length = L + behind_start_length;
   double accumulated_length = 0.0;
   size_t merge_idx = nearest_idx;
   for (size_t i = nearest_idx; i + 1 < trajectory.points.size(); ++i) {
     accumulated_length += autoware_utils::calc_distance2d(
       trajectory.points.at(i).pose.position, trajectory.points.at(i + 1).pose.position);
     merge_idx = i + 1;
-    if (accumulated_length >= L) {
+    if (accumulated_length >= merge_target_length) {
       break;
     }
   }
@@ -1679,36 +1755,50 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
       "Terminal boundary conditions (y=0, y'=0, y''=0) cannot be satisfied; "
       "the shift polynomial will not converge smoothly at the merge point.",
       accumulated_length, L);
-    L = accumulated_length;
+    L = accumulated_length - behind_start_length;
     merge_idx = trajectory.points.size() - 2;
   }
 
-  const double kappa0 = ego_yaw_rate / clamped_velocity;
-  const auto coeffs = compute_quintic_shift_coeffs(lateral_offset, signed_yaw_dev, kappa0, L);
+  const auto coeffs =
+    compute_quintic_shift_coeffs(lateral_offset, signed_yaw_dev, base_curvature, L);
 
   const double ref_velocity = trajectory.points.at(nearest_idx).longitudinal_velocity_mps;
   std::vector<TrajectoryPoint> shifted_points;
 
-  TrajectoryPoint ego_pt;
-  ego_pt.pose = ego_pose;
-  ego_pt.longitudinal_velocity_mps = ref_velocity;
-  shifted_points.push_back(ego_pt);
+  TrajectoryPoint base_pt;
+  base_pt.pose = base_pose;
+  base_pt.longitudinal_velocity_mps = ref_velocity;
+  shifted_points.push_back(base_pt);
 
   for (double s = delta_arc_length; s < L; s += delta_arc_length) {
     const double y_s = evaluate_quintic(coeffs, s);
     const double yp_s = evaluate_quintic_derivative(coeffs, s);
 
-    const auto base_pose =
-      autoware::motion_utils::calcLongitudinalOffsetPose(trajectory.points, ego_pose.position, s);
-    if (!base_pose) {
-      break;
+    geometry_msgs::msg::Pose base;
+    if (s_ego_from_start + s < 0.0) {
+      // The base point at arc s lies before the trajectory start: extrapolate the first point
+      // backward along its heading so the shift section is still generated (otherwise the whole
+      // section would be skipped and the output would jump straight from the base pose to the
+      // merge point).
+      const auto & front_pose = trajectory.points.front().pose;
+      const double front_yaw = tf2::getYaw(front_pose.orientation);
+      base = front_pose;
+      base.position.x += (s_ego_from_start + s) * std::cos(front_yaw);
+      base.position.y += (s_ego_from_start + s) * std::sin(front_yaw);
+    } else {
+      const auto offset_pose = autoware::motion_utils::calcLongitudinalOffsetPose(
+        trajectory.points, base_pose.position, s);
+      if (!offset_pose) {
+        break;
+      }
+      base = *offset_pose;
     }
 
-    const double base_yaw = tf2::getYaw(base_pose->orientation);
+    const double base_yaw = tf2::getYaw(base.orientation);
     TrajectoryPoint pt;
-    pt.pose.position.x = base_pose->position.x + y_s * (-std::sin(base_yaw));
-    pt.pose.position.y = base_pose->position.y + y_s * std::cos(base_yaw);
-    pt.pose.position.z = base_pose->position.z;
+    pt.pose.position.x = base.position.x + y_s * (-std::sin(base_yaw));
+    pt.pose.position.y = base.position.y + y_s * std::cos(base_yaw);
+    pt.pose.position.z = base.position.z;
     pt.pose.orientation =
       autoware_utils::create_quaternion_from_yaw(base_yaw + std::atan2(yp_s, 1.0));
     pt.longitudinal_velocity_mps = ref_velocity;

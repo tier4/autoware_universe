@@ -85,6 +85,14 @@ struct TrajectoryShiftParams
   double lateral_accel_limit{0.5};       // [m/s^2] allowed lateral acceleration budget
 };
 
+struct TrajectoryAnchorParams
+{
+  bool enable{false};                 // connect from the previous trajectory instead of from ego
+  double backward_distance{5.0};      // [m] arc length behind ego where the anchor is taken
+  double max_lateral_deviation{1.0};  // [m] beyond this ego no longer tracks the previous plan
+  double max_yaw_deviation{0.524};    // [rad] beyond this ego no longer tracks the previous plan
+};
+
 // ---------------------------------------------------------------------------
 // PathPlanner class
 // ---------------------------------------------------------------------------
@@ -108,6 +116,7 @@ public:
   const RouteContext & route_context() const;
 
   bool update_current_lanelet(const geometry_msgs::msg::Pose & current_pose);
+  const std::optional<lanelet::ConstLanelet> & current_lanelet() const { return current_lanelet_; }
 
   // Path planning
   std::optional<PathWithLaneId> plan_path(
@@ -122,8 +131,24 @@ public:
     const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose, double ego_velocity,
     double ego_yaw_rate, const TrajectoryShiftParams & shift_params, double delta_arc_length);
 
+  /**
+   * @brief Connect base_pose to the trajectory with a quintic lateral shift and return the
+   * concatenation of the shift section and the trajectory beyond the merge point.
+   * @param base_curvature initial curvature boundary condition of the shift polynomial [1/m]
+   * @param velocity speed used to size the shift length from the lateral acceleration budget
+   */
+  Trajectory shift_trajectory_to_pose(
+    const Trajectory & trajectory, const geometry_msgs::msg::Pose & base_pose,
+    double base_curvature, double velocity, const TrajectoryShiftParams & shift_params,
+    double delta_arc_length);
+
   // Path to trajectory conversion
   Trajectory convert_path_to_trajectory(const PathWithLaneId & path, double resample_interval);
+
+  //! Early stop distance computed by the last generate_path() call. When the goal planner is
+  //! enabled the end crop is deferred (the path reaches the goal projection) and the node
+  //! applies this distance as the fallback crop instead.
+  double early_stop_distance() const { return early_stop_distance_; }
 
   // Params update
   void update_params(const Params & params);
@@ -143,6 +168,7 @@ private:
   VehicleInfo vehicle_info_;
   RouteContext route_context_;
   std::optional<lanelet::ConstLanelet> current_lanelet_;
+  double early_stop_distance_{0.0};
 };
 
 // ---------------------------------------------------------------------------
@@ -248,6 +274,33 @@ PathRange<double> get_arc_length_on_bounds(
 PathRange<std::optional<double>> get_arc_length_on_centerline(
   const lanelet::LaneletSequence & lanelet_sequence, const std::optional<double> & s_left_bound,
   const std::optional<double> & s_right_bound);
+
+/**
+ * @brief compute the longitudinal length of the quintic shift so that the peak lateral
+ * acceleration stays within lateral_accel_limit
+ */
+double compute_shift_length_from_lateral_accel(
+  const double abs_d, const double velocity, const double lateral_accel_limit,
+  const double min_length);
+
+/**
+ * @brief Pose on the previous cycle's trajectory located params.backward_distance behind ego,
+ * used as the base pose the new trajectory is connected from.
+ *
+ * Connecting from ego makes the head geometry a function of the ego pose, so the shape is rebuilt
+ * from scratch every cycle (and near the goal, where the remaining trajectory is shorter than the
+ * shift length, it is rebuilt over the whole remainder). Anchoring behind ego on the line that was
+ * already planned keeps the shape stable between cycles instead; ego converges to the plan through
+ * the controller.
+ *
+ * @return nullopt when ego no longer tracks the previous trajectory (deviation over
+ * max_lateral_deviation / max_yaw_deviation) or the trajectory is too short to anchor on; the
+ * caller then falls back to connecting from ego. When the previous trajectory does not extend
+ * backward_distance behind ego, its first pose is returned.
+ */
+std::optional<geometry_msgs::msg::Pose> find_trajectory_anchor_pose(
+  const Trajectory & previous_trajectory, const geometry_msgs::msg::Pose & ego_pose,
+  const TrajectoryAnchorParams & params);
 
 /**
  * @brief Extract lanelets from the trajectory

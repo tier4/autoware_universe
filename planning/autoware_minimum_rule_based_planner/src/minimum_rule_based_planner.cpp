@@ -78,6 +78,8 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   pub_debug_stop_trajectory_ = this->create_publisher<Trajectory>("~/debug/stop_trajectory", 1);
   pub_debug_shifted_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/shifted_trajectory", 1);
+  pub_debug_goal_maneuver_trajectory_ =
+    this->create_publisher<Trajectory>("~/debug/goal_maneuver_trajectory", 1);
   debug_processing_time_detail_pub_ =
     this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
       "~/debug/processing_time_detail_ms", 1);
@@ -95,6 +97,8 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   path_planner_ =
     std::make_unique<PathPlanner>(get_logger(), get_clock(), time_keeper_, params_, vehicle_info_);
   map_based_stop_planner_ = std::make_unique<MapBasedStopPlanner>(get_logger(), time_keeper_);
+  start_planner_ = std::make_unique<StartPlanner>(get_logger(), vehicle_info_);
+  goal_planner_ = std::make_unique<GoalPlanner>(get_logger(), vehicle_info_);
   timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&MinimumRuleBasedPlannerNode::on_timer, this));
@@ -285,11 +289,48 @@ void MinimumRuleBasedPlannerNode::on_timer()
     path_planner_->convert_path_to_trajectory(*path, params_.path_planning.output.delta_arc_length);
   trajectory.header = path->header;
 
-  // 4. Shift trajectory to ego position
-  trajectory = shift_trajectory_to_ego(trajectory, input_data);
+  turn_indicators_command_ = autoware_vehicle_msgs::msg::TurnIndicatorsCommand::NO_COMMAND;
+
+  // 4. Pull over to the laterally offset goal (or apply the deferred early stop crop).
+  // NOTE: this must run BEFORE the ego shift: the shift merges ego into the (goal-morphed)
+  // trajectory. In the reverse order the shift keeps pulling the head back onto the centerline
+  // while the morph pulls the tail to the goal, and near arrival the two fight within the last
+  // few meters, destabilizing the yaw there.
+  trajectory = plan_goal_maneuver(trajectory, input_data);
+
+  // published before the connection stage so that the pull over shape can be compared against
+  // what the connection / smoothing stages do to it
+  if (params_.debug.enable_goal_maneuver_trajectory) {
+    pub_debug_goal_maneuver_trajectory_->publish(trajectory);
+  }
+
+  // 4.5. Connect the trajectory to the driven line (with pull out planning at departure)
+  trajectory = plan_start_maneuver(trajectory, input_data);
+
+  // Keep the planned geometry (velocities and smoothing are recomputed every cycle anyway) as the
+  // anchor source for the next cycle. See connect_trajectory().
+  previous_trajectory_ = trajectory;
 
   // 5. Smooth path
+  // NOTE: the EB smoother recomputes ALL orientations from the point-to-point directions
+  // (insertOrientation) and resamples on its own sliding grid, which destabilizes the yaw at
+  // both trajectory ends across cycles. Restore the intended end poses afterwards: the front
+  // pose is ego (set by the shift / start planner), the end pose is the goal (when the goal
+  // planner adopted a pull over this cycle).
+  const auto front_pose_before_smooth =
+    trajectory.points.empty() ? std::nullopt : std::make_optional(trajectory.points.front().pose);
   trajectory = smooth_trajectory(trajectory, input_data);
+  if (
+    front_pose_before_smooth && !trajectory.points.empty() &&
+    autoware_utils::calc_distance2d(
+      trajectory.points.front().pose.position, front_pose_before_smooth->position) < 0.5) {
+    trajectory.points.front().pose = *front_pose_before_smooth;
+  }
+  if (goal_maneuver_end_pose_) {
+    constexpr double min_final_segment_length = 0.3;  // [m]
+    goal_planner_utils::pin_trajectory_end(
+      trajectory, *goal_maneuver_end_pose_, min_final_segment_length);
+  }
 
   // 6. Apply trajectory modifiers
   apply_modifiers(trajectory, input_data);
@@ -369,25 +410,182 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
     input_data.odometry_ptr->header.stamp);
 }
 
-Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
-  const Trajectory & trajectory, const InputData & input_data) const
+TrajectoryShiftParams MinimumRuleBasedPlannerNode::make_shift_params() const
 {
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-
-  if (!params_.path_planning.path_shift.enable) return trajectory;
-
   TrajectoryShiftParams shift_params;
   shift_params.minimum_shift_length = params_.path_planning.path_shift.minimum_shift_length;
   shift_params.minimum_shift_yaw = params_.path_planning.path_shift.minimum_shift_yaw;
   shift_params.minimum_shift_distance = params_.path_planning.path_shift.minimum_shift_distance;
   shift_params.min_speed_for_curvature = params_.path_planning.path_shift.min_speed_for_curvature;
   shift_params.lateral_accel_limit = params_.path_planning.path_shift.lateral_accel_limit;
+  return shift_params;
+}
 
+TrajectoryAnchorParams MinimumRuleBasedPlannerNode::make_anchor_params() const
+{
+  TrajectoryAnchorParams anchor_params;
+  anchor_params.enable = params_.path_planning.trajectory_anchor.enable;
+  anchor_params.backward_distance = params_.path_planning.trajectory_anchor.backward_distance;
+  anchor_params.max_lateral_deviation =
+    params_.path_planning.trajectory_anchor.max_lateral_deviation;
+  anchor_params.max_yaw_deviation = params_.path_planning.trajectory_anchor.max_yaw_deviation;
+  return anchor_params;
+}
+
+StartPlannerParams MinimumRuleBasedPlannerNode::make_start_planner_params() const
+{
+  StartPlannerParams params;
+  params.enable = params_.start_planner.enable;
+  params.ego_stopped_velocity = params_.start_planner.ego_stopped_velocity;
+  params.activation_lateral_offset = params_.start_planner.activation_lateral_offset;
+  params.finish_lateral_offset = params_.start_planner.finish_lateral_offset;
+  params.minimum_lateral_accel = params_.start_planner.minimum_lateral_accel;
+  params.maximum_lateral_accel = params_.start_planner.maximum_lateral_accel;
+  params.lateral_accel_sampling_num =
+    static_cast<int>(params_.start_planner.lateral_accel_sampling_num);
+  params.collision_check_margins = params_.start_planner.collision_check_margins;
+  params.collision_check_extra_length = params_.start_planner.collision_check_extra_length;
+  params.object_velocity_threshold = params_.start_planner.object_velocity_threshold;
+  params.object_search_radius = params_.start_planner.object_search_radius;
+  params.minimum_shift_distance = params_.path_planning.path_shift.minimum_shift_distance;
+  params.min_speed_for_curvature = params_.path_planning.path_shift.min_speed_for_curvature;
+  return params;
+}
+
+GoalPlannerParams MinimumRuleBasedPlannerNode::make_goal_planner_params() const
+{
+  GoalPlannerParams params;
+  params.enable = params_.goal_planner.enable;
+  params.activation_lateral_offset = params_.goal_planner.activation_lateral_offset;
+  params.minimum_lateral_accel = params_.goal_planner.minimum_lateral_accel;
+  params.maximum_lateral_accel = params_.goal_planner.maximum_lateral_accel;
+  params.lateral_accel_sampling_num =
+    static_cast<int>(params_.goal_planner.lateral_accel_sampling_num);
+  params.collision_check_margins = params_.goal_planner.collision_check_margins;
+  params.object_velocity_threshold = params_.goal_planner.object_velocity_threshold;
+  params.object_search_radius = params_.goal_planner.object_search_radius;
+  params.turn_signal_distance = params_.goal_planner.turn_signal_distance;
+  params.minimum_shift_distance = params_.path_planning.path_shift.minimum_shift_distance;
+  params.expected_parking_speed = params_.path_planning.early_stop.expected_ego_speed_parking;
+  return params;
+}
+
+Trajectory MinimumRuleBasedPlannerNode::plan_goal_maneuver(
+  const Trajectory & trajectory, const InputData & input_data)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  goal_maneuver_end_pose_.reset();
+  in_pull_over_approach_ = false;
+
+  const auto goal_params = make_goal_planner_params();
+  if (!goal_params.enable) {
+    // the early stop crop was already applied inside generate_path()
+    return trajectory;
+  }
+
+  const auto result = goal_planner_->plan(
+    trajectory, path_planner_->route_context().goal_pose, input_data.odometry_ptr->pose.pose,
+    input_data.predicted_objects_ptr, goal_params);
+
+  if (result.status == GoalPlannerResult::Status::PLANNED) {
+    using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
+    in_pull_over_approach_ = result.in_pull_over_approach;
+    if (
+      result.turn_indicators_command == TurnIndicatorsCommand::ENABLE_LEFT ||
+      result.turn_indicators_command == TurnIndicatorsCommand::ENABLE_RIGHT) {
+      // (on tiny routes where both are active, the departure signal set afterwards wins)
+      turn_indicators_command_ = result.turn_indicators_command;
+    }
+    goal_maneuver_end_pose_ = path_planner_->route_context().goal_pose;
+    return *result.trajectory;
+  }
+
+  // NOT_APPLICABLE / BLOCKED: apply the early stop crop deferred by generate_path()
+  return goal_planner_utils::crop_trajectory_end(trajectory, path_planner_->early_stop_distance());
+}
+
+Trajectory MinimumRuleBasedPlannerNode::plan_start_maneuver(
+  const Trajectory & trajectory, const InputData & input_data)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  const auto start_params = make_start_planner_params();
+  if (!start_params.enable) {
+    return connect_trajectory(trajectory, input_data);
+  }
+
+  const auto & odometry = *input_data.odometry_ptr;
+  const auto generate_candidate = [&](const double lateral_accel) -> std::optional<Trajectory> {
+    auto shift_params = make_shift_params();
+    shift_params.lateral_accel_limit = lateral_accel;
+    auto candidate = path_planner_->shift_trajectory_to_ego(
+      trajectory, odometry.pose.pose, odometry.twist.twist.linear.x, odometry.twist.twist.angular.z,
+      shift_params, params_.path_planning.output.delta_arc_length);
+    if (candidate.points.size() < 2) {
+      return std::nullopt;
+    }
+    return candidate;
+  };
+
+  const auto result = start_planner_->plan(
+    trajectory, odometry.pose.pose, odometry.twist.twist.linear.x, input_data.predicted_objects_ptr,
+    generate_candidate, start_params);
+
+  switch (result.status) {
+    case StartPlannerResult::Status::PLANNED:
+      turn_indicators_command_ = result.turn_indicators_command;
+      return *result.trajectory;
+    case StartPlannerResult::Status::BLOCKED: {
+      // keep the intent (turn signal) but suppress the departure by zeroing the velocity
+      turn_indicators_command_ = result.turn_indicators_command;
+      auto stopped = connect_trajectory(trajectory, input_data);
+      for (auto & point : stopped.points) {
+        point.longitudinal_velocity_mps = 0.0;
+      }
+      return stopped;
+    }
+    case StartPlannerResult::Status::NOT_APPLICABLE:
+    default:
+      return connect_trajectory(trajectory, input_data);
+  }
+}
+
+Trajectory MinimumRuleBasedPlannerNode::connect_trajectory(
+  const Trajectory & trajectory, const InputData & input_data) const
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  if (!params_.path_planning.path_shift.enable) return trajectory;
+
+  // Once ego drives the pull over approach, the tail it is about to follow was deliberately
+  // morphed off the centerline onto the goal. Connecting to ego rebuilds that section every cycle
+  // (and once the remainder is shorter than the shift length, the whole remainder is rebuilt),
+  // which fights the morph and the pinned goal end. Leave it alone: the lateral error is closed by
+  // the controller, and the arrival geometry stays the one the goal planner collision checked.
+  if (in_pull_over_approach_) return trajectory;
+
+  const auto shift_params = make_shift_params();
+  const auto & ego_pose = input_data.odometry_ptr->pose.pose;
   const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
   const double ego_yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
-  const auto shifted_trajectory = path_planner_->shift_trajectory_to_ego(
-    trajectory, input_data.odometry_ptr->pose.pose, ego_velocity, ego_yaw_rate, shift_params,
-    params_.path_planning.output.delta_arc_length);
+
+  const auto anchor_params = make_anchor_params();
+  const auto anchor_pose =
+    (anchor_params.enable && previous_trajectory_)
+      ? utils::find_trajectory_anchor_pose(*previous_trajectory_, ego_pose, anchor_params)
+      : std::optional<geometry_msgs::msg::Pose>{};
+
+  // The anchor lies on the line planned in the previous cycle, so its curvature relative to the
+  // reference is already accounted for by the previous shift: the polynomial starts flat (unlike
+  // the ego connection, which starts with the measured ego curvature yaw_rate / v).
+  const auto shifted_trajectory =
+    anchor_pose ? path_planner_->shift_trajectory_to_pose(
+                    trajectory, *anchor_pose, /*base_curvature=*/0.0, ego_velocity, shift_params,
+                    params_.path_planning.output.delta_arc_length)
+                : path_planner_->shift_trajectory_to_ego(
+                    trajectory, ego_pose, ego_velocity, ego_yaw_rate, shift_params,
+                    params_.path_planning.output.delta_arc_length);
 
   if (params_.debug.enable_shifted_trajectory) {
     Trajectory shifted_traj;
@@ -402,6 +600,11 @@ Trajectory MinimumRuleBasedPlannerNode::smooth_trajectory(
   const Trajectory & trajectory, const InputData & input_data) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  if (!params_.smoothing.use_eb_smoother) {
+    return trajectory;
+  }
+
   auto optimizer_data = make_optimizer_data(input_data);
 
   trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
@@ -507,13 +710,15 @@ void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(
     msg.generator_info.push_back(generator_info);
   };
 
-  const auto add_candidate = [&msg, &add_generator_info](
+  const auto add_candidate = [this, &msg, &add_generator_info](
                                const UUID & generator_id, const std::string & generator_name,
                                const Trajectory & trajectory) {
     autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_traj;
     candidate_traj.header = trajectory.header;
     candidate_traj.generator_id = generator_id;
     candidate_traj.points = trajectory.points;
+    candidate_traj.turn_indicators_command.stamp = trajectory.header.stamp;
+    candidate_traj.turn_indicators_command.command = turn_indicators_command_;
     msg.candidate_trajectories.push_back(candidate_traj);
 
     add_generator_info(generator_id, generator_name);
@@ -543,6 +748,9 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
   if (const auto msg = route_subscriber_.take_data()) {
     if (!msg->segments.empty()) {
       route_ptr_ = msg;
+      // the stored geometry belongs to the previous route: anchoring on it would drag the new
+      // trajectory back onto the old one
+      previous_trajectory_.reset();
     } else {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "input route is empty, ignoring...");
     }

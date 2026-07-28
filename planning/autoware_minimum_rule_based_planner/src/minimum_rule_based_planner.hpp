@@ -16,8 +16,10 @@
 #define MINIMUM_RULE_BASED_PLANNER_HPP_
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
+#include "goal_planner.hpp"
 #include "map_based_stop_planner.hpp"
 #include "path_planner.hpp"
+#include "start_planner.hpp"
 #include "velocity_smoother.hpp"
 
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
@@ -70,8 +72,20 @@ private:
   void update_params();
 
   std::optional<PathWithLaneId> plan_path(const InputData & input_data);
-  Trajectory shift_trajectory_to_ego(
-    const Trajectory & trajectory, const InputData & input_data) const;
+  //! Shift to ego with pull out planning at departure: delegates to StartPlanner when it is
+  //! applicable, otherwise falls back to the plain shift_trajectory_to_ego().
+  Trajectory plan_start_maneuver(const Trajectory & trajectory, const InputData & input_data);
+  //! Pull over to the laterally offset goal: delegates to GoalPlanner when it is enabled and
+  //! applicable, otherwise applies the deferred early stop crop (fallback = current behavior).
+  Trajectory plan_goal_maneuver(const Trajectory & trajectory, const InputData & input_data);
+  //! Connect the planned trajectory to the line the vehicle is on: from a pose taken behind ego
+  //! on the previous cycle's trajectory when the trajectory anchor is enabled and ego still
+  //! tracks it, otherwise from the ego pose itself.
+  Trajectory connect_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
+  TrajectoryShiftParams make_shift_params() const;
+  TrajectoryAnchorParams make_anchor_params() const;
+  StartPlannerParams make_start_planner_params() const;
+  GoalPlannerParams make_goal_planner_params() const;
   Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
   void apply_modifiers(Trajectory & trajectory, const InputData & input_data) const;
 
@@ -122,6 +136,22 @@ private:
   std::unique_ptr<PathPlanner> path_planner_;
   //! MapBasedStopPlanner plans the go/stop trajectories with map-defined stop points embedded
   std::unique_ptr<MapBasedStopPlanner> map_based_stop_planner_;
+  //! StartPlanner plans the departure (pull out) maneuver with collision-checked shift candidates
+  std::unique_ptr<StartPlanner> start_planner_;
+  //! GoalPlanner plans the arrival (pull over) maneuver with collision-checked shift candidates
+  std::unique_ptr<GoalPlanner> goal_planner_;
+  //! turn indicator command attached to the published candidate trajectories
+  //! (set by the start planner during pull out)
+  uint8_t turn_indicators_command_{autoware_vehicle_msgs::msg::TurnIndicatorsCommand::NO_COMMAND};
+  //! goal pose the trajectory end is pinned to after smoothing (set while the goal planner
+  //! adopted a pull over this cycle; the EB smoother recomputes end orientations otherwise)
+  std::optional<geometry_msgs::msg::Pose> goal_maneuver_end_pose_;
+  //! ego is driving the pull over approach this cycle: connect_trajectory() must leave the
+  //! morphed trajectory alone (set by the goal planner, see GoalPlannerResult)
+  bool in_pull_over_approach_{false};
+  //! geometry planned in the previous cycle (after the start/goal maneuvers, before smoothing),
+  //! used by connect_trajectory() as the anchor source; reset when a new route arrives
+  std::optional<Trajectory> previous_trajectory_;
   /** @} */
 
 private:
@@ -203,6 +233,8 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_stop_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
+  //! trajectory as the goal planner left it, before the start maneuver / ego connection
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_goal_maneuver_trajectory_;
   /** @} */
 };
 

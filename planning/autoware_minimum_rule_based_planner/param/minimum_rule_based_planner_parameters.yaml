@@ -12,6 +12,146 @@ minimum_rule_based_planner:
     description: List of plugin names to load
     read_only: false
 
+  start_planner:
+    enable:
+      type: bool
+      default_value: false
+      description: enable pull out planning (sampled shift candidates with collision check) at departure
+
+    ego_stopped_velocity:
+      type: double
+      default_value: 0.5
+      validation:
+        gt<>: [0.0]
+      description: pull out is considered only when ego is slower than this [m/s]
+
+    activation_lateral_offset:
+      type: double
+      default_value: 0.5
+      validation:
+        gt<>: [0.0]
+      description: lateral offset from the reference path to trigger pull out [m]
+
+    finish_lateral_offset:
+      type: double
+      default_value: 0.2
+      validation:
+        gt<>: [0.0]
+      description: lateral offset below which the pull out is considered complete [m]
+
+    minimum_lateral_accel:
+      type: double
+      default_value: 0.2
+      validation:
+        gt<>: [0.0]
+      description: lateral acceleration of the gentlest (longest) shift candidate [m/s^2]
+
+    maximum_lateral_accel:
+      type: double
+      default_value: 1.0
+      validation:
+        gt<>: [0.0]
+      description: lateral acceleration of the sharpest (shortest) shift candidate [m/s^2]
+
+    lateral_accel_sampling_num:
+      type: int
+      default_value: 4
+      validation:
+        gt<>: [0]
+      description: number of sampled shift candidates
+
+    collision_check_margins:
+      type: double_array
+      default_value: [2.0, 1.0, 0.5, 0.1]
+      description: static object collision margins, tried from large to small [m]
+
+    collision_check_extra_length:
+      type: double
+      default_value: 5.0
+      validation:
+        gt<>: [0.0]
+      description: distance checked beyond the shift section [m]
+
+    object_velocity_threshold:
+      type: double
+      default_value: 1.0
+      validation:
+        gt<>: [0.0]
+      description: objects slower than this are treated as static obstacles [m/s]
+
+    object_search_radius:
+      type: double
+      default_value: 30.0
+      validation:
+        gt<>: [0.0]
+      description: objects farther than this from ego are ignored [m]
+
+  goal_planner:
+    enable:
+      type: bool
+      default_value: false
+      description: enable pull over planning (sampled shift candidates with collision check) at arrival
+
+    activation_lateral_offset:
+      type: double
+      default_value: 0.5
+      validation:
+        gt<>: [0.0]
+      description: lateral offset of the goal from the path to trigger pull over [m]
+
+    minimum_lateral_accel:
+      type: double
+      default_value: 0.2
+      validation:
+        gt<>: [0.0]
+      description: lateral acceleration of the gentlest (longest) shift candidate [m/s^2]
+
+    maximum_lateral_accel:
+      type: double
+      default_value: 1.0
+      validation:
+        gt<>: [0.0]
+      description: lateral acceleration of the sharpest (shortest) shift candidate [m/s^2]
+
+    lateral_accel_sampling_num:
+      type: int
+      default_value: 4
+      validation:
+        gt<>: [0]
+      description: number of sampled shift candidates
+
+    collision_check_margins:
+      type: double_array
+      default_value: [2.0, 1.0, 0.5, 0.1]
+      description: static object collision margins, tried from large to small [m]
+
+    object_velocity_threshold:
+      type: double
+      default_value: 1.0
+      validation:
+        gt<>: [0.0]
+      description: objects slower than this are treated as static obstacles [m/s]
+
+    object_search_radius:
+      type: double
+      default_value: 50.0
+      validation:
+        gt<>: [0.0]
+      description: objects farther than this from the goal are ignored [m]
+
+    turn_signal_distance:
+      type: double
+      default_value: 30.0
+      validation:
+        gt<>: [0.0]
+      description: turn signal turns on when ego is within this distance of the shift start [m]
+
+  smoothing:
+    use_eb_smoother:
+      type: bool
+      default_value: true
+      description: apply the elastic band smoother to the trajectory (geometry smoothing)
+
   path_planning:
     waypoint_group:
       separation_threshold:
@@ -125,6 +265,34 @@ minimum_rule_based_planner:
         type: double
         default_value: 0.5
         description: allowed lateral acceleration budget for the shift polynomial (comfort/safety limit) [m/s^2]
+        validation:
+          gt<>: [0.0]
+
+    # Trajectory Anchor Parameters (connect from the previous trajectory instead of from ego)
+    trajectory_anchor:
+      enable:
+        type: bool
+        default_value: false
+        description: connect the trajectory from a pose taken behind ego on the previous cycle's trajectory instead of from the ego pose, so that the shape stays stable across cycles
+
+      backward_distance:
+        type: double
+        default_value: 5.0
+        description: arc length behind ego at which the anchor pose is taken on the previous trajectory (should not exceed path_length.backward by much) [m]
+        validation:
+          gt<>: [0.0]
+
+      max_lateral_deviation:
+        type: double
+        default_value: 1.0
+        description: fall back to connecting from ego when ego is laterally farther than this from the previous trajectory [m]
+        validation:
+          gt<>: [0.0]
+
+      max_yaw_deviation:
+        type: double
+        default_value: 0.524
+        description: fall back to connecting from ego when ego's yaw deviates more than this from the previous trajectory [rad]
         validation:
           gt<>: [0.0]
 
@@ -467,6 +635,11 @@ minimum_rule_based_planner:
       type: bool
       default_value: true
       description: publish debug shifted trajectory
+
+    enable_goal_maneuver_trajectory:
+      type: bool
+      default_value: true
+      description: publish debug trajectory right after the goal maneuver (before the start maneuver / connection)
 
     enable_optimizer_trajectory:
       type: bool

@@ -35,6 +35,7 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 | `~/output/candidate_trajectories`     | `CandidateTrajectories` | Planned trajectory                            |
 | `~/debug/path_with_lane_id`           | `PathWithLaneId`        | Debug: planned path                           |
 | `~/debug/trajectory`                  | `Trajectory`            | Debug: final output trajectory                |
+| `~/debug/goal_maneuver_trajectory`    | `Trajectory`            | Debug: trajectory after the goal maneuver     |
 | `~/debug/shifted_trajectory`          | `Trajectory`            | Debug: trajectory after path shifting         |
 | `~/debug/optimizer/{name}/trajectory` | `Trajectory`            | Debug: trajectory after each optimizer plugin |
 | `~/debug/modifier/{name}/trajectory`  | `Trajectory`            | Debug: trajectory after each modifier plugin  |

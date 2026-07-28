@@ -23,6 +23,154 @@
             "type": "string"
           }
         },
+        "start_planner": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "description": "enable pull out planning (sampled shift candidates with collision check) at departure",
+              "default": false
+            },
+            "ego_stopped_velocity": {
+              "type": "number",
+              "description": "pull out is considered only when ego is slower than this [m/s]",
+              "default": 0.5,
+              "minimum": 0.0
+            },
+            "activation_lateral_offset": {
+              "type": "number",
+              "description": "lateral offset from the reference path to trigger pull out [m]",
+              "default": 0.5,
+              "minimum": 0.0
+            },
+            "finish_lateral_offset": {
+              "type": "number",
+              "description": "lateral offset below which the pull out is considered complete [m]",
+              "default": 0.2,
+              "minimum": 0.0
+            },
+            "minimum_lateral_accel": {
+              "type": "number",
+              "description": "lateral acceleration of the gentlest (longest) shift candidate [m/s^2]",
+              "default": 0.2,
+              "minimum": 0.0
+            },
+            "maximum_lateral_accel": {
+              "type": "number",
+              "description": "lateral acceleration of the sharpest (shortest) shift candidate [m/s^2]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "lateral_accel_sampling_num": {
+              "type": "integer",
+              "description": "number of sampled shift candidates",
+              "default": 4,
+              "minimum": 1
+            },
+            "collision_check_margins": {
+              "type": "array",
+              "description": "static object collision margins, tried from large to small [m]",
+              "default": [2.0, 1.0, 0.5, 0.1],
+              "items": {
+                "type": "number"
+              }
+            },
+            "collision_check_extra_length": {
+              "type": "number",
+              "description": "distance checked beyond the shift section [m]",
+              "default": 5.0,
+              "minimum": 0.0
+            },
+            "object_velocity_threshold": {
+              "type": "number",
+              "description": "objects slower than this are treated as static obstacles [m/s]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "object_search_radius": {
+              "type": "number",
+              "description": "objects farther than this from ego are ignored [m]",
+              "default": 30.0,
+              "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "goal_planner": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "description": "enable pull over planning (sampled shift candidates with collision check) at arrival",
+              "default": false
+            },
+            "activation_lateral_offset": {
+              "type": "number",
+              "description": "lateral offset of the goal from the path to trigger pull over [m]",
+              "default": 0.5,
+              "minimum": 0.0
+            },
+            "minimum_lateral_accel": {
+              "type": "number",
+              "description": "lateral acceleration of the gentlest (longest) shift candidate [m/s^2]",
+              "default": 0.2,
+              "minimum": 0.0
+            },
+            "maximum_lateral_accel": {
+              "type": "number",
+              "description": "lateral acceleration of the sharpest (shortest) shift candidate [m/s^2]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "lateral_accel_sampling_num": {
+              "type": "integer",
+              "description": "number of sampled shift candidates",
+              "default": 4,
+              "minimum": 1
+            },
+            "collision_check_margins": {
+              "type": "array",
+              "description": "static object collision margins, tried from large to small [m]",
+              "default": [2.0, 1.0, 0.5, 0.1],
+              "items": {
+                "type": "number"
+              }
+            },
+            "object_velocity_threshold": {
+              "type": "number",
+              "description": "objects slower than this are treated as static obstacles [m/s]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "object_search_radius": {
+              "type": "number",
+              "description": "objects farther than this from the goal are ignored [m]",
+              "default": 50.0,
+              "minimum": 0.0
+            },
+            "turn_signal_distance": {
+              "type": "number",
+              "description": "turn signal turns on when ego is within this distance of the shift start [m]",
+              "default": 30.0,
+              "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "smoothing": {
+          "type": "object",
+          "properties": {
+            "use_eb_smoother": {
+              "type": "boolean",
+              "description": "apply the elastic band smoother to the trajectory (geometry smoothing)",
+              "default": true
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
         "path_planning": {
           "type": "object",
           "properties": {
@@ -137,6 +285,36 @@
                   "type": "number",
                   "description": "Lateral acceleration limit for shift [m/s^2]",
                   "default": 1.0,
+                  "minimum": 0.0
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "trajectory_anchor": {
+              "type": "object",
+              "properties": {
+                "enable": {
+                  "type": "boolean",
+                  "description": "Connect the trajectory from a pose behind ego on the previous cycle's trajectory instead of from the ego pose",
+                  "default": false
+                },
+                "backward_distance": {
+                  "type": "number",
+                  "description": "Arc length behind ego at which the anchor pose is taken on the previous trajectory [m]",
+                  "default": 5.0,
+                  "minimum": 0.0
+                },
+                "max_lateral_deviation": {
+                  "type": "number",
+                  "description": "Fall back to connecting from ego when ego is laterally farther than this from the previous trajectory [m]",
+                  "default": 1.0,
+                  "minimum": 0.0
+                },
+                "max_yaw_deviation": {
+                  "type": "number",
+                  "description": "Fall back to connecting from ego when ego's yaw deviates more than this from the previous trajectory [rad]",
+                  "default": 0.524,
                   "minimum": 0.0
                 }
               },
@@ -967,6 +1145,11 @@
             "enable_shifted_trajectory": {
               "type": "boolean",
               "description": "Enable shifted trajectory debugging",
+              "default": true
+            },
+            "enable_goal_maneuver_trajectory": {
+              "type": "boolean",
+              "description": "Publish the trajectory right after the goal maneuver (before the start maneuver / connection)",
               "default": true
             },
             "enable_optimizer_trajectory": {
