@@ -18,7 +18,6 @@
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 namespace util
@@ -220,7 +219,7 @@ Time get_newer_stamp(const Time & stamp1, const Time & stamp2)
 namespace autoware::traffic_light
 {
 
-autoware_perception_msgs::msg::TrafficLightGroupArray SignalMatchValidator::validate_signals(
+autoware_perception_msgs::msg::TrafficLightGroupArray SignalMatchValidator::validateSignals(
   const TrafficSignalArray & perception_signals, const TrafficSignalArray & external_signals)
 {
   TrafficSignalArray validated_signals;
@@ -247,7 +246,7 @@ autoware_perception_msgs::msg::TrafficLightGroupArray SignalMatchValidator::vali
 
     // We don't validate the pedestrian signals
     // TODO(TomohitoAndo): Validate pedestrian signals
-    if (is_pedestrian_traffic_light(signal_id)) {
+    if (isPedestrianSignal(signal_id)) {
       validated_signals.traffic_light_groups.emplace_back(
         util::get_highest_confidence_signal(perception_result, external_result, source_priority_));
 
@@ -281,14 +280,23 @@ autoware_perception_msgs::msg::TrafficLightGroupArray SignalMatchValidator::vali
   return validated_signals;
 }
 
-void SignalMatchValidator::set_pedestrian_traffic_light_ids(std::unordered_set<lanelet::Id> ids)
+void SignalMatchValidator::setPedestrianSignals(
+  const std::vector<TrafficLightConstPtr> & pedestrian_signals)
 {
-  pedestrian_traffic_light_ids_ = std::move(ids);
+  for (const auto & pedestrian_signal : pedestrian_signals) {
+    map_pedestrian_signal_regulatory_elements_set_.emplace(pedestrian_signal->id());
+  }
 }
 
-bool SignalMatchValidator::is_pedestrian_traffic_light(const lanelet::Id & signal_id)
+void SignalMatchValidator::setSourcePriority(const SourcePriority source_priority)
 {
-  return pedestrian_traffic_light_ids_.find(signal_id) != pedestrian_traffic_light_ids_.end();
+  source_priority_ = source_priority;
+}
+
+bool SignalMatchValidator::isPedestrianSignal(const lanelet::Id & signal_id)
+{
+  return map_pedestrian_signal_regulatory_elements_set_.find(signal_id) !=
+         map_pedestrian_signal_regulatory_elements_set_.end();
 }
 
 }  // namespace autoware::traffic_light
