@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__MPPI_DEBUG_TRAJECTORY_IO_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__MPPI_DEBUG_TRAJECTORY_IO_HPP_
 
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_trajectory_logger.hpp"
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -86,6 +87,25 @@ inline bool writeMppiDebugCostsCsv(
   out << std::setprecision(9) << std::fixed;
   for (size_t i = 0; i < raw_costs.size(); ++i) {
     out << i << "," << raw_costs[i] << "," << normalized_weights[i] << "\n";
+  }
+  return true;
+}
+
+inline bool writeMppiDebugRolloutsCsv(
+  const std::string & path, const std::vector<FirstOrderDubinsMppiRollout> & rollouts)
+{
+  std::ofstream out(path);
+  if (!out) {
+    return false;
+  }
+  out << "rollout_index,cost,step,x,y\n";
+  out << std::setprecision(9) << std::fixed;
+  for (size_t r = 0; r < rollouts.size(); ++r) {
+    const auto & rollout = rollouts[r];
+    for (size_t s = 0; s < rollout.points.size(); ++s) {
+      out << r << "," << rollout.cost << "," << s << "," << rollout.points[s].first << ","
+          << rollout.points[s].second << "\n";
+    }
   }
   return true;
 }

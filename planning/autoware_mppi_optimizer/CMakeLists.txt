@@ -85,6 +85,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     autoware_vehicle_msgs::autoware_vehicle_msgs__rosidl_generator_cpp
     geometry_msgs::geometry_msgs__rosidl_generator_cpp
     nav_msgs::nav_msgs__rosidl_generator_cpp
+    ${CUDA_cufft_LIBRARY}
   )
   set_target_properties(first_order_dubins_mppi PROPERTIES
     POSITION_INDEPENDENT_CODE ON
