@@ -20,6 +20,11 @@
           "type": "boolean",
           "description": "flag to use x0_delayed as initial state for predicted trajectory",
           "default": true
+        },
+        "use_trajectory_steering_for_feedforward": {
+          "type": "boolean",
+          "description": "in temporal mode, use trajectory steering for feed-forward when at least one input steering value is nonzero; otherwise use geometric curvature",
+          "default": true
         }
       },
       "required": [
