@@ -17,6 +17,8 @@
 
 #include "types.hpp"
 
+#include <tier4_perception_msgs/msg/traffic_light.hpp>
+
 #include <unordered_set>
 #include <utility>
 
@@ -46,10 +48,15 @@ struct ConflictStatus
   StateKey common_state_key;
 };
 
-namespace signal_validator
+class SignalValidator
 {
-ConflictStatus check_conflict(const StateKey & state_a, const StateKey & state_b);
-}  // namespace signal_validator
+public:
+  using TrafficLightElement = tier4_perception_msgs::msg::TrafficLightElement;
+
+  static ConflictStatus checkConflict(const StateKey & state_a, const StateKey & state_b);
+
+  StateKey mergePartialMatch(const StateKey & state_a, const StateKey & state_b);
+};
 
 }  // namespace autoware::traffic_light
 
