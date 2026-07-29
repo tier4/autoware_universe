@@ -197,7 +197,11 @@ public:
   float drivable_poly_y_[kMaxDrivablePolygonVertices] = {};
 
 private:
-  void dataToDevice();
+  void referenceDataToDevice();
+  void obstacleDataToDevice();
+  void roadBorderDataToDevice();
+  void drivableAreaSegmentDataToDevice();
+  void drivableAreaPolygonDataToDevice();
 };
 
 template <int NUM_TIMESTEPS>
