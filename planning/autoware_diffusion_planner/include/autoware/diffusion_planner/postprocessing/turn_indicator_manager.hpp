@@ -37,18 +37,29 @@ using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
  * command:
  *
  *  - The per-cycle argmax is treated as an observation.  Temporal consistency is the
- *    confidence filter: a state change is published only after the *same* contrary
- *    observation has persisted for a confirmation window, and any interruption restarts
- *    the window.  (No logit-margin gate: it would add a calibration-sensitive knob,
- *    while consecutive agreement filters the same single-frame glitches.)
+ *    confidence filter: a command change is published only after evidence has persisted
+ *    for a confirmation window, and an observation agreeing with the published command
+ *    clears all pending evidence.  (No logit-margin gate: it would add a
+ *    calibration-sensitive knob, while consecutive agreement filters the same
+ *    single-frame glitches.)
  *  - Turning ON from DISABLE uses a short window (on_confirmation_duration) so the
- *    blinker starts promptly while single-frame glitches are rejected.
+ *    blinker starts promptly while single-frame glitches are rejected.  Only the *same*
+ *    observation counts, so alternating noise never activates a signal.
  *  - Leaving an active signal (LEFT/RIGHT -> DISABLE, or a direct direction flip) uses
- *    the longer hold_duration window: an active blinker never drops or flips unless the
- *    model insists for that long, which also guarantees a minimum on-time of
- *    hold_duration.
- *  - A malformed logit vector immediately resets to DISABLE so a stale command is never
- *    latched; a backwards timestamp (sim reset / bag loop) restarts the evidence window.
+ *    the longer hold_duration window, which also guarantees a minimum on-time of
+ *    hold_duration.  Two kinds of evidence are timed separately here: a *consistent*
+ *    contrary observation confirms whatever it asserts (turn off, or flip direction),
+ *    while *any* sustained disagreement - including observations that keep changing
+ *    identity - releases to DISABLE.  Oscillation is precisely the state in which a
+ *    definite turn intent must not keep being asserted, so it must not latch the lamp on.
+ *  - A malformed or non-finite logit vector immediately resets to DISABLE so a stale
+ *    command is never latched; a backwards timestamp (sim reset / bag loop) restarts the
+ *    evidence window.
+ *  - The windows are pure timestamp differences and deliberately carry no minimum
+ *    observation count: under a degraded cycle rate a count would stop confirming at all,
+ *    which would latch the published command - a strictly worse failure than the early
+ *    release a stalled planner can otherwise cause, since that release lands on the
+ *    fail-safe state.
  */
 class TurnIndicatorManager
 {
@@ -91,10 +102,14 @@ private:
 
   uint8_t stable_command_{TurnIndicatorsCommand::DISABLE};
 
-  /// Pending contrary observation being confirmed.
+  /// Pending contrary observation being confirmed; only the same identity accumulates.
   uint8_t candidate_command_{TurnIndicatorsCommand::DISABLE};
   bool has_candidate_{false};
   rclcpp::Time candidate_since_{};
+
+  /// Any disagreement with an active command, regardless of which class was observed.
+  bool has_contrary_{false};
+  rclcpp::Time contrary_since_{};
 
   /// Last evaluation stamp, used to detect time regressions.
   rclcpp::Time last_stamp_{};

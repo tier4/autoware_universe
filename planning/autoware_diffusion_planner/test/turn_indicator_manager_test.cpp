@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -118,7 +119,7 @@ TEST(TurnIndicatorManagerTest, DirectionFlipUsesReleaseWindow)
   EXPECT_EQ(manager.evaluate(logits_for(2U), at(2.3)).command, TurnIndicatorsCommand::ENABLE_RIGHT);
 }
 
-TEST(TurnIndicatorManagerTest, MixedContraryEvidenceKeepsRestartingTheWindow)
+TEST(TurnIndicatorManagerTest, SustainedDisagreementReleasesToDisable)
 {
   auto manager = make_manager();
 
@@ -127,14 +128,92 @@ TEST(TurnIndicatorManagerTest, MixedContraryEvidenceKeepsRestartingTheWindow)
   manager.evaluate(logits_for(1U), at(1.1));
   ASSERT_EQ(manager.evaluate(logits_for(1U), at(1.2)).command, TurnIndicatorsCommand::ENABLE_LEFT);
 
-  // Alternating DISABLE / RIGHT never accumulates a consistent window.
+  // Alternating DISABLE / RIGHT never confirms either replacement, so the lamp is held for
+  // the full hold_duration...
   double t = 1.3;
-  for (int i = 0; i < 30; ++i) {
+  for (int i = 0; i < 10; ++i) {
     const std::size_t dense_class = (i % 2 == 0) ? 0U : 2U;
     EXPECT_EQ(
       manager.evaluate(logits_for(dense_class), at(t)).command,
-      TurnIndicatorsCommand::ENABLE_LEFT);
+      TurnIndicatorsCommand::ENABLE_LEFT)
+      << "released early at t=" << t;
     t += 0.1;
+  }
+  // ...but once disagreement has spanned hold_duration the model has clearly stopped
+  // asserting LEFT, so the fail-safe wins over keeping a lamp nobody voted for.
+  EXPECT_EQ(manager.evaluate(logits_for(0U), at(t)).command, TurnIndicatorsCommand::DISABLE);
+}
+
+TEST(TurnIndicatorManagerTest, AgreeingFrameRestartsTheReleaseClock)
+{
+  auto manager = make_manager();
+
+  // Activate LEFT.
+  manager.evaluate(logits_for(1U), at(1.0));
+  manager.evaluate(logits_for(1U), at(1.1));
+  ASSERT_EQ(manager.evaluate(logits_for(1U), at(1.2)).command, TurnIndicatorsCommand::ENABLE_LEFT);
+
+  // Alternating contrary evidence for most of the window...
+  double t = 1.3;
+  for (int i = 0; i < 8; ++i) {
+    manager.evaluate(logits_for(i % 2 == 0 ? 0U : 2U), at(t));
+    t += 0.1;
+  }
+  // ...one agreeing LEFT frame clears it...
+  EXPECT_EQ(manager.evaluate(logits_for(1U), at(t)).command, TurnIndicatorsCommand::ENABLE_LEFT);
+  t += 0.1;
+  // ...so the release clock starts over and the next stretch does not release early.
+  for (int i = 0; i < 8; ++i) {
+    EXPECT_EQ(
+      manager.evaluate(logits_for(i % 2 == 0 ? 0U : 2U), at(t)).command,
+      TurnIndicatorsCommand::ENABLE_LEFT)
+      << "release clock was not restarted (t=" << t << ")";
+    t += 0.1;
+  }
+}
+
+TEST(TurnIndicatorManagerTest, AlternatingNoiseNeverActivatesFromDisable)
+{
+  auto manager = make_manager();
+
+  // From DISABLE the per-identity window still governs, so noise cannot light a lamp.
+  double t = 1.0;
+  for (int i = 0; i < 30; ++i) {
+    EXPECT_EQ(
+      manager.evaluate(logits_for(i % 2 == 0 ? 1U : 2U), at(t)).command,
+      TurnIndicatorsCommand::DISABLE);
+    t += 0.1;
+  }
+}
+
+TEST(TurnIndicatorManagerTest, NonFiniteLogitsResetToDisable)
+{
+  for (const float bad : {std::numeric_limits<float>::quiet_NaN(),
+                          std::numeric_limits<float>::infinity(),
+                          -std::numeric_limits<float>::infinity()}) {
+    for (std::size_t slot = 0; slot < 3U; ++slot) {
+      auto manager = make_manager();
+      // Establish an active command.
+      manager.evaluate(logits_for(2U), at(1.0));
+      manager.evaluate(logits_for(2U), at(1.1));
+      ASSERT_EQ(
+        manager.evaluate(logits_for(2U), at(1.2)).command, TurnIndicatorsCommand::ENABLE_RIGHT);
+
+      // A non-finite logit must not enter the debounce as a legitimate observation: with
+      // std::max_element the argmax would silently collapse to index 0 or skip a class.
+      auto logits = logits_for(2U);
+      logits.at(slot) = bad;
+      EXPECT_EQ(manager.evaluate(logits, at(1.3)).command, TurnIndicatorsCommand::DISABLE)
+        << "slot=" << slot;
+
+      // State was fully reset, so a finite stream re-arms from scratch.
+      EXPECT_EQ(
+        manager.evaluate(logits_for(2U), at(1.4)).command, TurnIndicatorsCommand::DISABLE);
+      EXPECT_EQ(
+        manager.evaluate(logits_for(2U), at(1.5)).command, TurnIndicatorsCommand::DISABLE);
+      EXPECT_EQ(
+        manager.evaluate(logits_for(2U), at(1.6)).command, TurnIndicatorsCommand::ENABLE_RIGHT);
+    }
   }
 }
 
