@@ -324,6 +324,9 @@ private:
   DiffusionPlannerParams params_;
   VehicleSpec vehicle_spec_;
 
+  /// Steady clock backing the throttled warnings on this path.
+  rclcpp::Clock throttle_clock_{RCL_STEADY_TIME};
+
   ObservationNormalization observation_normalization_;
   StateNormalization state_normalization_;
   // HDP predicts per-step ego displacements (velocity representation), while legacy

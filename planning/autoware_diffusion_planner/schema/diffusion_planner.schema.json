@@ -152,11 +152,13 @@
         "turn_indicator_hold_duration": {
           "type": "number",
           "default": 1.0,
+          "minimum": 0.0,
           "description": "Contrary evidence required to release (turn off or flip) an active turn indicator; also its minimum on-time (seconds)"
         },
         "turn_indicator_on_confirmation_duration": {
           "type": "number",
           "default": 0.2,
+          "minimum": 0.0,
           "description": "Consistent evidence required to activate a turn indicator from DISABLE (seconds)"
         },
         "shift_x": {

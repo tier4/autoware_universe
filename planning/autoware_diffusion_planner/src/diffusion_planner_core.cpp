@@ -639,7 +639,7 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
           frame_context.ego_kinematic_state.pose.pose, vehicle_spec_.base_link_to_center)
       : frame_context.ego_kinematic_state.pose.pose;
   const auto expected_turn_indicator_logit_size =
-    static_cast<size_t>(std::max(params_.batch_size, 0)) *
+    static_cast<size_t>(std::max(params_.batch_size, 1)) *
     static_cast<size_t>(TURN_INDICATOR_OUTPUT_DIM);
   const bool turn_indicator_output_valid =
     turn_indicator_logit.size() == expected_turn_indicator_logit_size;
@@ -648,6 +648,16 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
       "Turn-indicator output has " + std::to_string(turn_indicator_logit.size()) +
       " values; expected " + std::to_string(expected_turn_indicator_logit_size) +
       " for the final three-class model.");
+  }
+  // The manager degrades a non-finite logit to DISABLE rather than aborting the planning
+  // cycle for an auxiliary output, so surface it here: an untraceable blinker dropout is
+  // the failure mode this guards against.
+  if (!std::all_of(turn_indicator_logit.begin(), turn_indicator_logit.end(), [](const float v) {
+        return std::isfinite(v);
+      })) {
+    RCLCPP_WARN_THROTTLE(
+      rclcpp::get_logger("diffusion_planner"), throttle_clock_, 5000,
+      "Turn-indicator logits contain non-finite values; forcing the command to DISABLE.");
   }
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(

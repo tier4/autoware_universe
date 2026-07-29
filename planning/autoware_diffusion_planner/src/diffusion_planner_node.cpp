@@ -48,6 +48,17 @@ using diagnostic_msgs::msg::DiagnosticStatus;
 
 namespace
 {
+// A negative window makes `(stamp - since) >= required` true on the first contrary frame,
+// which silently voids the debounce; NaN makes the comparison false forever, which latches
+// the command. Both are rejected wherever the durations can be set.
+bool turn_indicator_durations_valid(const DiffusionPlannerParams & params)
+{
+  return std::isfinite(params.turn_indicator_hold_duration) &&
+         params.turn_indicator_hold_duration >= 0.0 &&
+         std::isfinite(params.turn_indicator_on_confirmation_duration) &&
+         params.turn_indicator_on_confirmation_duration >= 0.0;
+}
+
 std::string compute_file_hash_hex(const std::string & path)
 {
   constexpr std::size_t HASH_READ_BUFFER_BYTES = 64 * 1024;
@@ -204,9 +215,13 @@ void DiffusionPlanner::set_up_params()
   params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
   params_.enable_force_stop = this->declare_parameter<bool>("enable_force_stop", true);
   params_.turn_indicator_hold_duration =
-    this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
+    this->declare_parameter<double>("turn_indicator_hold_duration", 1.0);
   params_.turn_indicator_on_confirmation_duration =
     this->declare_parameter<double>("turn_indicator_on_confirmation_duration", 0.2);
+  if (!turn_indicator_durations_valid(params_)) {
+    throw std::invalid_argument(
+      "turn indicator debounce durations must be finite and non-negative");
+  }
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
   params_.prepend_current_ego_state =
     this->declare_parameter<bool>("prepend_current_ego_state", true);
@@ -347,6 +362,12 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(
       parameters, "turn_indicator_on_confirmation_duration",
       temp_params.turn_indicator_on_confirmation_duration);
+    if (!turn_indicator_durations_valid(temp_params)) {
+      SetParametersResult result;
+      result.successful = false;
+      result.reason = "turn indicator debounce durations must be finite and non-negative";
+      return result;
+    }
     update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     update_param<bool>(
       parameters, "prepend_current_ego_state", temp_params.prepend_current_ego_state);
