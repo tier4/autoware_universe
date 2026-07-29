@@ -17,7 +17,7 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float desired_speed = 2.5F;
   float speed_coeff = 500.0F;
   float track_coeff = 1000.0F;
-  /** Pull toward ref heading at each horizon step: coeff * (yaw - ref_yaw[t])^2; 0 disables. */
+  /** Pull toward yaw interpolated at the nearest path projection; 0 disables. */
   float heading_coeff = 500.0F;
   /** Effective one-time penalty per simultaneous violation after MPPI horizon averaging.
    * crash_status latches the first violation count (1 to 3). */
@@ -104,16 +104,29 @@ public:
 
   void clearDrivableArea();
 
+  /**
+   * Project a position onto the nearest reference-polyline segment.
+   *
+   * The returned yaw and speed are interpolated between the endpoints of that segment. Signed
+   * lateral offset is positive to the left of the segment direction.
+   */
+  __host__ __device__ void computePathProjection(
+    float x, float y, float & distance, float & signed_lateral_offset, float & reference_yaw,
+    float & reference_speed) const;
+
+  /** Euclidean distance to the nearest point on the reference polyline. */
   __host__ __device__ float computeTrackValue(float x, float y) const;
 
-  __host__ __device__ float computeHeadingValue(float yaw, int timestep) const;
+  /** Heading error against yaw interpolated at the nearest path projection. */
+  __host__ __device__ float computeHeadingValue(float x, float y, float yaw) const;
 
   /** Terminal distance-to-goal cost vs ref[NUM_TIMESTEPS - 1] (position, speed, yaw). */
   __host__ __device__ float computeGoalCost(float x, float y, float yaw, float vel) const;
 
+  /** Signed lateral offset from the nearest reference-polyline segment. */
   __host__ __device__ float computeSignedLateralOffset(float x, float y) const;
 
-  /** True if |signed lateral offset to ref| exceeds boundary_threshold(_left/_right). */
+  /** True if distance/signed offset to the nearest path segment exceeds the configured corridor. */
   __host__ __device__ bool exceedsLateralBoundary(const float x, const float y) const;
 
   __host__ __device__ bool egoIntersectsObstacleAtStep(
