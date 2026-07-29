@@ -81,6 +81,11 @@ from std_msgs.msg import Bool
 
 # Rolling window for live measured tire-angle / command history.
 MEASURED_STEER_HISTORY_S = 16.0
+# Rolling window for cycle-to-cycle replan ADE history.
+REPLAN_ADE_HISTORY_S = 16.0
+# Drop this many leading points from the previous plan before comparing (one
+# planning cycle at 10 Hz with MPPI_DT = 0.1 s).
+REPLAN_TIME_SHIFT = 1
 # Fallback only — same default as FirstOrderDubinsMppiVehicleParams. Prefer ROS /
 # vehicle_params.csv (the τ MPPI already uses in FirstOrderDubinsBicycle).
 VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT = 0.27
@@ -274,6 +279,12 @@ class MppiDebugFrame:
     # Live: whether diffusion_planner is applying MPPI to the published trajectory.
     # None = unknown / offline; False = disabled or shadow; True = applied.
     mppi_enabled: Optional[bool] = None
+    # Cycle-to-cycle replan ADE history (time-aligned mean ‖p_k − p_{k-1}‖).
+    # Stamps are absolute seconds in live mode, or frame indices offline.
+    replan_ade_diffusion_times: List[float] = field(default_factory=list)
+    replan_ade_diffusion: List[float] = field(default_factory=list)
+    replan_ade_mppi_times: List[float] = field(default_factory=list)
+    replan_ade_mppi: List[float] = field(default_factory=list)
 
 
 def load_trajectory_csv(path: Path) -> LoadedTrajectory:
@@ -402,6 +413,32 @@ def indexed_distance_series(
     ref_x, ref_y = ref_xy
     n = min(len(traj_xy[0]), len(traj_xy[1]), len(ref_x), len(ref_y))
     return [math.hypot(traj_xy[0][i] - ref_x[i], traj_xy[1][i] - ref_y[i]) for i in range(n)]
+
+
+def copy_xy(
+    xy: Optional[Tuple[List[float], List[float]]],
+) -> Optional[Tuple[List[float], List[float]]]:
+    if not xy or not xy[0]:
+        return None
+    return (list(xy[0]), list(xy[1]))
+
+
+def cycle_to_cycle_ade(
+    prev_xy: Optional[Tuple[List[float], List[float]]],
+    curr_xy: Optional[Tuple[List[float], List[float]]],
+    *,
+    shift: int = REPLAN_TIME_SHIFT,
+) -> Optional[float]:
+    """Mean ‖curr[i] − prev[i+shift]‖ over the overlapping horizon (replan jump ADE)."""
+    if not prev_xy or not curr_xy or not prev_xy[0] or not curr_xy[0]:
+        return None
+    if shift < 0 or len(prev_xy[0]) <= shift or len(prev_xy[1]) <= shift:
+        return None
+    prev_shifted = (prev_xy[0][shift:], prev_xy[1][shift:])
+    series = indexed_distance_series(curr_xy, prev_shifted)
+    if not series:
+        return None
+    return sum(series) / float(len(series))
 
 
 def indexed_heading_error_series(
@@ -604,11 +641,9 @@ def reset_view_baselines(axes) -> None:
 def draw_frame(axes, frame: MppiDebugFrame) -> None:
     saved_views = [(ax, capture_user_view(ax)) for ax in axes if ax is not None]
 
-    if len(axes) >= 12:
+    if len(axes) >= 11:
         (
             ax_xy,
-            ax_x,
-            ax_y,
             ax_lat,
             ax_heading_err,
             ax_vel,
@@ -616,15 +651,15 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_steer_cmd,
             ax_steer_meas,
             ax_lat_jerk,
+            ax_replan_ade,
             ax_cost,
             ax_weight,
         ) = axes
         ax_heading = None
     elif len(axes) >= 10:
+        # Retune layout before replan-ADE panel.
         (
             ax_xy,
-            ax_x,
-            ax_y,
             ax_lat,
             ax_heading_err,
             ax_vel,
@@ -632,11 +667,12 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_steer_cmd,
             ax_steer_meas,
             ax_lat_jerk,
+            ax_cost,
+            ax_weight,
         ) = axes
-        ax_cost = ax_weight = None
+        ax_replan_ade = None
         ax_heading = None
     elif len(axes) >= 9:
-        # Retune layout before lateral-jerk / x-y panels.
         (
             ax_xy,
             ax_lat,
@@ -645,10 +681,10 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_accel,
             ax_steer_cmd,
             ax_steer_meas,
-            ax_cost,
-            ax_weight,
+            ax_lat_jerk,
+            ax_replan_ade,
         ) = axes
-        ax_x = ax_y = ax_lat_jerk = None
+        ax_cost = ax_weight = None
         ax_heading = None
     elif len(axes) >= 8:
         (
@@ -661,7 +697,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_steer_meas,
             ax_lat_jerk,
         ) = axes
-        ax_x = ax_y = None
+        ax_replan_ade = None
         ax_cost = ax_weight = None
         ax_heading = None
     elif len(axes) >= 7:
@@ -674,13 +710,13 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_steer_cmd,
             ax_steer_meas,
         ) = axes
-        ax_x = ax_y = ax_lat_jerk = None
+        ax_lat_jerk = ax_replan_ade = None
         ax_cost = ax_weight = None
         ax_heading = None
     else:
         # Pre path-error layout (absolute heading plot).
         ax_xy, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas = axes
-        ax_x = ax_y = ax_lat = ax_heading_err = ax_cost = ax_weight = ax_lat_jerk = None
+        ax_lat = ax_heading_err = ax_cost = ax_weight = ax_lat_jerk = ax_replan_ade = None
 
     lengths = [len(frame.reference_vel), len(frame.optimized_vel)]
     if frame.retuned_vel:
@@ -847,64 +883,6 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     ax_xy.legend(loc="best")
 
     idx = list(range(n_compare)) if n_compare > 0 else []
-
-    def _plot_xy_component(ax, component: int, ylabel: str, title: str) -> None:
-        """Plot coordinate vs index as Δ from index 0.
-
-        Absolute map coordinates sit near 1e4–1e5 m; a few-metre reverse then looks
-        flat under offset notation / a locked wide y-scale, while the equal-aspect XY
-        plot still shows the fold. Relative values keep both views honest.
-        """
-        ax.clear()
-        ax.set_title(title)
-        ax.set_xlabel("point index")
-        ax.set_ylabel(ylabel)
-        ax.grid(True)
-        ax.axhline(0.0, color="0.7", linewidth=0.8, linestyle=":")
-        plotted = False
-
-        def _delta(series: Sequence[float]) -> List[float]:
-            origin = series[0]
-            return [v - origin for v in series]
-
-        if frame.reference_xy and len(frame.reference_xy[component]) > 0:
-            vals = _delta(frame.reference_xy[component])
-            ax.plot(
-                list(range(len(vals))),
-                vals,
-                color="cyan",
-                linestyle="--",
-                linewidth=2,
-                label="diffusion",
-            )
-            plotted = True
-        if frame.optimized_xy and len(frame.optimized_xy[component]) > 0:
-            vals = _delta(frame.optimized_xy[component])
-            ax.plot(
-                list(range(len(vals))),
-                vals,
-                color="red",
-                linewidth=2,
-                label="MPPI logged",
-            )
-            plotted = True
-        if frame.retuned_xy and len(frame.retuned_xy[component]) > 0:
-            vals = _delta(frame.retuned_xy[component])
-            ax.plot(
-                list(range(len(vals))),
-                vals,
-                color="tab:green",
-                linewidth=2.2,
-                label="MPPI retuned",
-            )
-            plotted = True
-        if plotted:
-            ax.legend(loc="best", fontsize=8)
-
-    if ax_x is not None:
-        _plot_xy_component(ax_x, 0, "Δx from idx0 [m]", "ΔX vs index (must match XY)")
-    if ax_y is not None:
-        _plot_xy_component(ax_y, 1, "Δy from idx0 [m]", "ΔY vs index (must match XY)")
 
     if ax_lat is not None:
         ax_lat.clear()
@@ -1230,6 +1208,76 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
                 transform=ax_lat_jerk.transAxes,
             )
 
+    if ax_replan_ade is not None:
+        ax_replan_ade.clear()
+        ax_replan_ade.set_title(
+            f"Cycle-to-cycle ADE (shift={REPLAN_TIME_SHIFT}·dt vs previous plan)"
+        )
+        ax_replan_ade.set_ylabel("ADE [m]")
+        ax_replan_ade.grid(True)
+        t_diff = list(frame.replan_ade_diffusion_times)
+        ade_diff = list(frame.replan_ade_diffusion)
+        t_mppi = list(frame.replan_ade_mppi_times)
+        ade_mppi = list(frame.replan_ade_mppi)
+        plotted = False
+        all_t = t_diff + t_mppi
+        live_times = bool(all_t) and max(all_t) > 1.0e6
+        if live_times:
+            t0 = max(all_t)
+            x_diff = [t - t0 for t in t_diff]
+            x_mppi = [t - t0 for t in t_mppi]
+            ax_replan_ade.set_xlabel(f"time [s] (0 = now, last {REPLAN_ADE_HISTORY_S:.0f}s)")
+            ax_replan_ade.set_xlim(-REPLAN_ADE_HISTORY_S, 0.0)
+        else:
+            x_diff = t_diff
+            x_mppi = t_mppi
+            ax_replan_ade.set_xlabel("frame index")
+        if ade_diff and len(x_diff) == len(ade_diff):
+            ax_replan_ade.plot(
+                x_diff,
+                ade_diff,
+                color="cyan",
+                linestyle="--",
+                linewidth=2,
+                label="diffusion",
+            )
+            plotted = True
+        if ade_mppi and len(x_mppi) == len(ade_mppi):
+            ax_replan_ade.plot(
+                x_mppi,
+                ade_mppi,
+                color="red",
+                linewidth=2,
+                label="MPPI",
+            )
+            plotted = True
+        if plotted:
+            parts = []
+            if ade_diff:
+                parts.append(f"diff μ={sum(ade_diff) / len(ade_diff):.3f}m")
+            if ade_mppi:
+                parts.append(f"MPPI μ={sum(ade_mppi) / len(ade_mppi):.3f}m")
+            if parts:
+                ax_replan_ade.text(
+                    0.02,
+                    0.98,
+                    "  ".join(parts),
+                    transform=ax_replan_ade.transAxes,
+                    va="top",
+                    fontsize=8,
+                    bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "0.7"},
+                )
+            ax_replan_ade.legend(loc="best", fontsize=8)
+        else:
+            ax_replan_ade.text(
+                0.5,
+                0.5,
+                "waiting for ≥2 successive plans",
+                ha="center",
+                va="center",
+                transform=ax_replan_ade.transAxes,
+            )
+
     if ax_cost is not None:
         ax_cost.clear()
         ax_cost.set_title("Retune cost distribution")
@@ -1300,14 +1348,13 @@ def create_figure(*, with_retune_panel: bool = False):
         # Third column stays empty: _build_retune_controls() places the sliders there.
         fig = plt.figure(figsize=(15, 11))
         gs = gridspec.GridSpec(
-            6, 3, figure=fig, width_ratios=[1.0, 1.0, 0.85], wspace=0.30, hspace=0.55
+            5, 3, figure=fig, width_ratios=[1.0, 1.0, 0.85], wspace=0.30, hspace=0.55
         )
-        ax_x = fig.add_subplot(gs[0, 0])
-        ax_y = fig.add_subplot(gs[1, 0])
-        ax_lat = fig.add_subplot(gs[2, 0])
-        ax_heading_err = fig.add_subplot(gs[3, 0])
-        ax_vel = fig.add_subplot(gs[4, 0])
-        ax_accel = fig.add_subplot(gs[5, 0])
+        ax_lat = fig.add_subplot(gs[0, 0])
+        ax_heading_err = fig.add_subplot(gs[1, 0])
+        ax_vel = fig.add_subplot(gs[2, 0])
+        ax_accel = fig.add_subplot(gs[3, 0])
+        ax_replan_ade = fig.add_subplot(gs[4, 0])
         ax_steer_cmd = fig.add_subplot(gs[0, 1])
         ax_steer_meas = fig.add_subplot(gs[1, 1])
         ax_lat_jerk = fig.add_subplot(gs[2, 1])
@@ -1317,8 +1364,6 @@ def create_figure(*, with_retune_panel: bool = False):
         fig._mppi_related_figures = (trajectory_fig,)
         return fig, (
             ax_xy,
-            ax_x,
-            ax_y,
             ax_lat,
             ax_heading_err,
             ax_vel,
@@ -1326,17 +1371,17 @@ def create_figure(*, with_retune_panel: bool = False):
             ax_steer_cmd,
             ax_steer_meas,
             ax_lat_jerk,
+            ax_replan_ade,
             ax_cost,
             ax_weight,
         )
 
     fig = plt.figure(figsize=(12, 9))
-    gs = gridspec.GridSpec(5, 2, figure=fig, wspace=0.26, hspace=0.55)
-    ax_x = fig.add_subplot(gs[0, 0])
-    ax_y = fig.add_subplot(gs[1, 0])
-    ax_lat = fig.add_subplot(gs[2, 0])
-    ax_heading_err = fig.add_subplot(gs[3, 0])
-    ax_vel = fig.add_subplot(gs[4, 0])
+    gs = gridspec.GridSpec(4, 2, figure=fig, wspace=0.26, hspace=0.55)
+    ax_lat = fig.add_subplot(gs[0, 0])
+    ax_heading_err = fig.add_subplot(gs[1, 0])
+    ax_vel = fig.add_subplot(gs[2, 0])
+    ax_replan_ade = fig.add_subplot(gs[3, 0])
     ax_accel = fig.add_subplot(gs[0, 1])
     ax_steer_cmd = fig.add_subplot(gs[1, 1])
     ax_steer_meas = fig.add_subplot(gs[2, 1])
@@ -1345,8 +1390,6 @@ def create_figure(*, with_retune_panel: bool = False):
     fig._mppi_related_figures = (trajectory_fig,)
     return fig, (
         ax_xy,
-        ax_x,
-        ax_y,
         ax_lat,
         ax_heading_err,
         ax_vel,
@@ -1354,6 +1397,7 @@ def create_figure(*, with_retune_panel: bool = False):
         ax_steer_cmd,
         ax_steer_meas,
         ax_lat_jerk,
+        ax_replan_ade,
     )
 
 
@@ -1550,6 +1594,10 @@ class MppiDebugVisualizer(Node):
         self._logged_mppi_enabled = False
         self._measured_steer_history: Deque[Tuple[float, float]] = deque()
         self._cmd_steer_history: Deque[Tuple[float, float]] = deque()
+        self._prev_reference_xy: Optional[Tuple[List[float], List[float]]] = None
+        self._prev_optimized_xy: Optional[Tuple[List[float], List[float]]] = None
+        self._replan_ade_diffusion: Deque[Tuple[float, float]] = deque()
+        self._replan_ade_mppi: Deque[Tuple[float, float]] = deque()
 
         qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -1609,6 +1657,10 @@ class MppiDebugVisualizer(Node):
             "scroll = zoom, drag = pan, double-click = re-fit one panel, "
             "escape = re-fit all. Zoom persists across updates."
         )
+        self.get_logger().info(
+            f"Cycle-to-cycle ADE: mean ‖p_k − p_{{k-1}}[+{REPLAN_TIME_SHIFT}]‖ "
+            f"over last {REPLAN_ADE_HISTORY_S:.0f}s (diffusion vs MPPI separately)."
+        )
 
         self.create_timer(1.0 / update_hz, self.on_timer)
 
@@ -1667,9 +1719,34 @@ class MppiDebugVisualizer(Node):
             stamp_text=stamp,
         )
 
+    def _append_replan_ade(
+        self,
+        history: Deque[Tuple[float, float]],
+        stamp: float,
+        prev_xy: Optional[Tuple[List[float], List[float]]],
+        curr_xy: Optional[Tuple[List[float], List[float]]],
+    ) -> Optional[Tuple[List[float], List[float]]]:
+        """Compare curr vs prev (time-shifted), append ADE, return curr as new prev."""
+        ade = cycle_to_cycle_ade(prev_xy, curr_xy)
+        if ade is not None:
+            history.append((stamp, ade))
+            cutoff = stamp - REPLAN_ADE_HISTORY_S
+            while history and history[0][0] < cutoff:
+                history.popleft()
+        return copy_xy(curr_xy)
+
     def on_reference_trajectory(self, msg: Trajectory) -> None:
         processed = self._process_trajectory(msg)
+        stamp = float(msg.header.stamp.sec) + 1.0e-9 * float(msg.header.stamp.nanosec)
+        if stamp <= 0.0:
+            stamp = self.get_clock().now().nanoseconds * 1.0e-9
         with self._lock:
+            self._prev_reference_xy = self._append_replan_ade(
+                self._replan_ade_diffusion,
+                stamp,
+                self._prev_reference_xy,
+                processed.reference_xy,
+            )
             self._frame.reference_xy = processed.reference_xy
             self._frame.reference_heading = processed.reference_heading
             self._frame.reference_vel = processed.reference_vel
@@ -1689,6 +1766,12 @@ class MppiDebugVisualizer(Node):
         cmd_seq = list(processed.reference_steer)
         cmd0 = cmd_seq[0] if cmd_seq else None
         with self._lock:
+            self._prev_optimized_xy = self._append_replan_ade(
+                self._replan_ade_mppi,
+                stamp,
+                self._prev_optimized_xy,
+                processed.reference_xy,
+            )
             self._frame.optimized_xy = processed.reference_xy
             self._frame.optimized_heading = processed.reference_heading
             self._frame.optimized_vel = processed.reference_vel
@@ -1746,6 +1829,10 @@ class MppiDebugVisualizer(Node):
             meas_vals = [v for _, v in self._measured_steer_history]
             cmd_times = [t for t, _ in self._cmd_steer_history]
             cmd_vals = [v for _, v in self._cmd_steer_history]
+            ade_diff_t = [t for t, _ in self._replan_ade_diffusion]
+            ade_diff = [v for _, v in self._replan_ade_diffusion]
+            ade_mppi_t = [t for t, _ in self._replan_ade_mppi]
+            ade_mppi = [v for _, v in self._replan_ade_mppi]
             frame = MppiDebugFrame(
                 reference_xy=self._frame.reference_xy,
                 optimized_xy=self._frame.optimized_xy,
@@ -1769,12 +1856,26 @@ class MppiDebugVisualizer(Node):
                 stamp_text=self._frame.stamp_text,
                 metrics_text=self._frame.metrics_text,
                 mppi_enabled=self._frame.mppi_enabled,
+                replan_ade_diffusion_times=ade_diff_t,
+                replan_ade_diffusion=ade_diff,
+                replan_ade_mppi_times=ade_mppi_t,
+                replan_ade_mppi=ade_mppi,
             )
             if frame.reference_xy and frame.optimized_xy:
                 frame.metrics_text = (
                     f"max‖Δp‖={max_pos_err(frame.reference_xy, frame.optimized_xy):.3f}m  "
                     f"max|Δψ|={max_abs(indexed_heading_error_series(frame.optimized_heading, frame.reference_heading)):.3f}rad  "
                     f"max|v|={max_vel_err(frame.reference_vel, frame.optimized_vel):.3f}m/s"
+                )
+            if ade_diff or ade_mppi:
+                parts = []
+                if ade_diff:
+                    parts.append(f"replanADE_diff={ade_diff[-1]:.3f}m")
+                if ade_mppi:
+                    parts.append(f"replanADE_mppi={ade_mppi[-1]:.3f}m")
+                ade_txt = "  ".join(parts)
+                frame.metrics_text = (
+                    f"{frame.metrics_text}  |  {ade_txt}" if frame.metrics_text else ade_txt
                 )
             if frame.measured_steer is not None:
                 steer_txt = f"δ_meas={frame.measured_steer:.3f}"
@@ -1900,7 +2001,7 @@ class OfflineLogVisualizer:
         stamp = f"frame: {frame_id} / {self._frame_ids[-1]}"
         if self._enable_retune:
             stamp = f"{stamp}   |   {self._status}"
-        return frame_from_loaded(
+        frame = frame_from_loaded(
             reference,
             optimized,
             stamp_text=stamp,
@@ -1910,6 +2011,40 @@ class OfflineLogVisualizer:
             steer_time_constant=self._steer_time_constant,
             wheel_base=self._wheel_base,
         )
+        self._fill_offline_replan_ade(frame, up_to_index=self._index)
+        return frame
+
+    def _fill_offline_replan_ade(self, frame: MppiDebugFrame, *, up_to_index: int) -> None:
+        """Populate cycle-to-cycle ADE history from log frames [0 .. up_to_index]."""
+        end = max(0, min(up_to_index, len(self._frame_ids) - 1))
+        start = max(0, end - 200)  # keep the panel readable
+        prev_ref: Optional[Tuple[List[float], List[float]]] = None
+        prev_opt: Optional[Tuple[List[float], List[float]]] = None
+        t_diff: List[float] = []
+        ade_diff: List[float] = []
+        t_mppi: List[float] = []
+        ade_mppi: List[float] = []
+        for i in range(start, end + 1):
+            fid = self._frame_ids[i]
+            tag = f"{fid:06d}"
+            ref = load_trajectory_csv(self._log_dir / f"{tag}_reference.csv")
+            opt = load_trajectory_csv(self._log_dir / f"{tag}_optimized.csv")
+            ref_xy = (ref.x, ref.y) if ref.x else None
+            opt_xy = (opt.x, opt.y) if opt.x else None
+            ade_r = cycle_to_cycle_ade(prev_ref, ref_xy)
+            if ade_r is not None:
+                t_diff.append(float(fid))
+                ade_diff.append(ade_r)
+            ade_o = cycle_to_cycle_ade(prev_opt, opt_xy)
+            if ade_o is not None:
+                t_mppi.append(float(fid))
+                ade_mppi.append(ade_o)
+            prev_ref = copy_xy(ref_xy)
+            prev_opt = copy_xy(opt_xy)
+        frame.replan_ade_diffusion_times = t_diff
+        frame.replan_ade_diffusion = ade_diff
+        frame.replan_ade_mppi_times = t_mppi
+        frame.replan_ade_mppi = ade_mppi
 
     def _show_current(self) -> None:
         frame_id = self._frame_ids[self._index]
