@@ -340,6 +340,14 @@ FootprintTrajectory compute_footprint_trajectory(
 std::tuple<size_t, size_t, double> resolve_interpolation(
   const std::vector<double> & values, const double target_value)
 {
+  if (values.size() < 2U) {
+    throw std::invalid_argument("values must contain at least two elements");
+  }
+
+  if (!std::isfinite(target_value)) {
+    throw std::invalid_argument("target_value must be finite");
+  }
+
   size_t lower_idx = 0;
   size_t upper_idx = 1;
   double ratio = 0.0;
@@ -403,11 +411,6 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_time(
     return InterpolatedState{0.0, point.pose, point.longitudinal_velocity_mps};
   }
 
-  if (time_from_refs_.empty()) {
-    throw std::invalid_argument(
-      "reference_time_ must be set before calling interpolate_state_from_time");
-  }
-
   const double target_time_from_ref = (target_time - reference_time_).seconds();
   const auto [lower_idx, upper_idx, ratio] =
     resolve_interpolation(time_from_refs_, target_time_from_ref);
@@ -431,11 +434,6 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_dist(
   if (trajectory_points_.size() == 1) {
     const auto & point = trajectory_points_.front();
     return InterpolatedState{0.0, point.pose, point.longitudinal_velocity_mps};
-  }
-
-  if (dist_from_fronts_.empty()) {
-    throw std::invalid_argument(
-      "dist_from_fronts_ must be set before calling interpolate_state_from_dist");
   }
 
   const auto [lower_idx, upper_idx, ratio] = resolve_interpolation(dist_from_fronts_, target_dist);

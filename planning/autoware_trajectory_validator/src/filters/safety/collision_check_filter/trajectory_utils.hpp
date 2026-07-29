@@ -31,10 +31,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <iterator>
 #include <map>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -399,7 +401,27 @@ public:
     if (trajectory_points_.empty()) {
       throw std::invalid_argument("points must not be empty");
     }
-  };
+    if (
+      trajectory_points_.size() != time_from_refs_.size() ||
+      trajectory_points_.size() != dist_from_fronts_.size()) {
+      throw std::logic_error("trajectory points, times, and distances must have the same size");
+    }
+
+    const auto is_finite = [](const double value) { return std::isfinite(value); };
+    if (!std::all_of(time_from_refs_.begin(), time_from_refs_.end(), is_finite)) {
+      throw std::invalid_argument("time_from_refs must contain only finite values");
+    }
+    if (!std::all_of(dist_from_fronts_.begin(), dist_from_fronts_.end(), is_finite)) {
+      throw std::invalid_argument("dist_from_fronts must contain only finite values");
+    }
+
+    if (!std::is_sorted(time_from_refs_.begin(), time_from_refs_.end())) {
+      throw std::invalid_argument("time_from_refs must be in non-decreasing order");
+    }
+    if (!std::is_sorted(dist_from_fronts_.begin(), dist_from_fronts_.end())) {
+      throw std::invalid_argument("dist_from_fronts must be in non-decreasing order");
+    }
+  }
   InterpolatedState interpolate_state_from_time(const rclcpp::Time & target_time) const;
   InterpolatedState interpolate_state_from_dist(const double target_dist) const;
 };
