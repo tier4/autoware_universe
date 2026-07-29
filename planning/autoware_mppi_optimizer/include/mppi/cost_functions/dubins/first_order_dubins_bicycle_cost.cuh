@@ -17,8 +17,14 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float desired_speed = 2.5F;
   float speed_coeff = 500.0F;
   float track_coeff = 1000.0F;
+  /** Multiplier on track_coeff * track_val in terminalCost (running state cost uses scale 1). */
+  float track_terminal_scale = 10.0F;
   /** Pull toward ref heading at each horizon step: coeff * (yaw - ref_yaw[t])^2; 0 disables. */
   float heading_coeff = 500.0F;
+  /** Spatial (closest-segment) distance to the reference polyline; 0 disables. */
+  float lateral_distance_coeff = 0.0F;
+  /** Spatial yaw error vs closest-segment tangent: coeff * Δψ^2; 0 disables. */
+  float lateral_yaw_error_coeff = 0.0F;
   /** Per-violation crash penalty; latched crash_status counts violations (1=lateral bound or hit,
    * 2=both). */
   float crash_coeff = 100000.0F;
@@ -47,14 +53,6 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float road_border_collision_margin = 0.2F;
   /** Per-timestep soft cost when the ego footprint crosses a drivable-area boundary. */
   float drivable_area_crossing_coeff = 10000.0F;
-  /** Pull toward ref end position (Euclidean distance [m]); 0 disables. */
-  float goal_pos_coeff = 1000.0F;
-  /** Pull toward ref end speed: coeff * (v - ref_v_end)^2; 0 disables. */
-  float goal_speed_coeff = 0.0F;
-  /** Pull toward ref end heading: coeff * |yaw - ref_yaw_end|; 0 disables. */
-  float goal_yaw_coeff = 500.0F;
-  /** Multiplier on goal terms in terminalCost (running state cost uses scale 1). */
-  float goal_terminal_scale = 10.0F;
 };
 
 template <
@@ -103,17 +101,28 @@ public:
 
   void clearDrivableArea();
 
-  __host__ __device__ float computeTrackValue(float x, float y) const;
+  /** Euclidean position error to the time-aligned reference sample ref[t]. */
+  __host__ __device__ float computeTrackValue(float x, float y, int timestep) const;
 
   __host__ __device__ float computeHeadingValue(float yaw, int timestep) const;
 
-  /** Distance-to-goal cost vs ref[NUM_TIMESTEPS - 1] (position, speed, yaw). */
-  __host__ __device__ float computeGoalCost(float x, float y, float yaw, float vel) const;
+  /**
+   * Pre time-indexed tracking: min Euclidean distance from (x,y) to the reference
+   * polyline (closest segment). Used by lateral_distance_coeff.
+   */
+  __host__ __device__ float computeLateralDistanceValue(float x, float y) const;
 
-  __host__ __device__ float computeSignedLateralOffset(float x, float y) const;
+  /**
+   * Pre time-indexed heading: squared yaw error vs the tangent of the closest
+   * reference segment. Used by lateral_yaw_error_coeff.
+   */
+  __host__ __device__ float computeLateralYawErrorValue(float x, float y, float yaw) const;
 
-  /** True if |signed lateral offset to ref| exceeds boundary_threshold(_left/_right). */
-  __host__ __device__ bool exceedsLateralBoundary(const float x, const float y) const;
+  /** Signed lateral error from ref[t], resolved in ref_yaw[t] (+ = reference-left). */
+  __host__ __device__ float computeSignedLateralOffset(float x, float y, int timestep) const;
+
+  /** True if the time-aligned lateral error exceeds boundary_threshold(_left/_right). */
+  __host__ __device__ bool exceedsLateralBoundary(const float x, const float y, int timestep) const;
 
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep) const;
