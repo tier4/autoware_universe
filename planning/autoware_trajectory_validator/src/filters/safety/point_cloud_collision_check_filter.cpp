@@ -21,11 +21,26 @@
 
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
 namespace pcc = autoware::trajectory_validator::plugin::safety::point_cloud_collision_check;
+
+namespace
+{
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:45-53
+// 一定加減速度で停止するまでに必要な最小距離。
+double calc_minimum_distance_to_stop(
+  const double initial_vel, const double max_acc, const double min_acc)
+{
+  if (initial_vel < 0.0) {
+    return -std::pow(initial_vel, 2) / 2.0 / max_acc;
+  }
+  return -std::pow(initial_vel, 2) / 2.0 / min_acc;
+}
+}  // namespace
 
 PointCloudCollisionCheckFilter::PointCloudCollisionCheckFilter()
 : ValidatorInterface("point_cloud_collision_check_filter"),
@@ -69,7 +84,7 @@ bool PointCloudCollisionCheckFilter::is_available_data(
 void PointCloudCollisionCheckFilter::set_planner_data_param()
 {
   const auto & trajectory_polygon_params = params_->trajectory_polygon;
-  
+
   // motion_velocity_planner_common/planner_data.cpp:239-260
   planner_data_->ego_nearest_dist_threshold = trajectory_polygon_params.ego_nearest_dist_threshold;
   planner_data_->ego_nearest_yaw_threshold = trajectory_polygon_params.ego_nearest_yaw_threshold;
@@ -115,19 +130,36 @@ void PointCloudCollisionCheckFilter::update_planner_data(
 }
 
 bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
-  [[maybe_unused]] const std::vector<pcc::StopObstacle> & stop_obstacles,
-  [[maybe_unused]] const geometry_msgs::msg::Twist & twist) const
+  const std::vector<pcc::StopObstacle> & stop_obstacles, const geometry_msgs::msg::Twist & twist,
+  double & required_distance) const
 {
-  // It is not currently implemented. always return true.
-  bool is_feasible = true;
-  return is_feasible;
+  // 最も手前の衝突距離（RSS 時は障害物制動距離を加算）を取る。
+  std::optional<double> nearest_dist_to_collide;
+  for (const auto & stop_obstacle : stop_obstacles) {
+    const double dist_to_collide =
+      stop_obstacle.dist_to_collide_on_decimated_traj + stop_obstacle.braking_dist.value_or(0.0);
+    if (!nearest_dist_to_collide.has_value() || dist_to_collide < *nearest_dist_to_collide) {
+      nearest_dist_to_collide = dist_to_collide;
+    }
+  }
+
+  required_distance = calc_minimum_distance_to_stop(
+                        twist.linear.x, params_->common.max_accel, params_->common.min_accel) +
+                      params_->stop_planning.stop_margin;
+
+  // 衝突距離が必要制動距離 + stop_margin を下回れば STOP REQUIRED（infeasible）。
+  if (nearest_dist_to_collide.has_value() && *nearest_dist_to_collide < required_distance) {
+    return false;
+  }
+  return true;
 }
 
 PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feasible(
   const CandidateTrajectory & candidate_trajectory, const FilterContext & context)
 {
-  // memo: assume trajectory_selector subscribes "/perception/obstacle_segmentation/pointcloud" or
-  // "/perception/segmented/pointcloud" that was published from ptv3 node
+  // memo: assume trajectory_selector subscribes
+  // "/perception/obstacle_segmentation/filtered_pointcloud" (X2 post-filter) or
+  // "/perception/obstacle_segmentation/pointcloud" / "/perception/segmented/pointcloud"
 
   if (!is_available_data(candidate_trajectory, context)) {
     return ValidationResult{};
@@ -143,12 +175,15 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
   }
 
   ValidationResult result{};
-  result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
+  double required_distance = 0.0;
+  result.is_feasible =
+    judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist, required_distance);
 
   if (params_->enable_debug_markers) {
     pcc::emit_debug_markers(
-      debug_markers_, *debug_data_, *planner_data_, stop_obstacles, 0.0, result.is_feasible,
-      candidate_trajectory.generator_id.uuid, rclcpp::Time{context.odometry->header.stamp});
+      debug_markers_, *debug_data_, *planner_data_, stop_obstacles, required_distance,
+      result.is_feasible, candidate_trajectory.generator_id.uuid,
+      rclcpp::Time{context.odometry->header.stamp});
   }
 
   return result;

@@ -228,6 +228,7 @@ struct Params
       static_cast<int>(p.pointcloud_preprocessing.euclidean_clustering.max_cluster_size);
 
     excluded_class_ids = p.obstacle_filtering.excluded_class_ids;
+    enable_debug_markers = p.debug.enable_markers;
   }
 };
 

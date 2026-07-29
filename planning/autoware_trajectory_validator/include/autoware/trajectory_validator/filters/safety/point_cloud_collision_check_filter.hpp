@@ -64,10 +64,11 @@ private:
   void update_planner_data(
     const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context);
 
-  /// @brief 停止対象から停止可否を判定する。未実装のため現状は常に true を返す。
+  /// @brief 最も手前の衝突距離が必要制動距離 + stop_margin を下回れば false（STOP REQUIRED）。
+  /// @param[out] required_distance 自車の停止距離 + stop_margin（debug 表示用）
   bool judge_stop_feasibility(
     const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
-    const geometry_msgs::msg::Twist & twist) const;
+    const geometry_msgs::msg::Twist & twist, double & required_distance) const;
 
   // 停止候補 deque をサイクルをまたいで保持するため、状態は ObstacleStop 側に置く。
   std::unique_ptr<point_cloud_collision_check::ObstacleStop> obstacle_stop_;
