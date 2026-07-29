@@ -60,7 +60,8 @@ PathPlanner::PathPlanner(
   clock_(std::move(clock)),
   time_keeper_(std::move(time_keeper)),
   params_(params),
-  vehicle_info_(vehicle_info)
+  vehicle_info_(vehicle_info),
+  route_updated_(false)
 {
 }
 
@@ -76,8 +77,10 @@ void PathPlanner::set_planner_data(
       &route_context_.routing_graph_ptr);
   }
 
-  if (route_ptr) {
+  if (route_ptr && route_ptr != prev_route_ptr_) {
     set_route(route_ptr);
+    prev_route_ptr_ = route_ptr;
+    route_updated_ = true;
   }
 }
 
@@ -1267,31 +1270,15 @@ void splice_shift_points(
 
 bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & current_pose)
 {
-  if (!current_lanelet_) {
+  if (!current_lanelet_ || std::exchange(route_updated_, false)) {
     lanelet::ConstLanelet closest;
     if (lanelet::utils::query::getClosestLanelet(
           route_context_.route_lanelets, current_pose, &closest)) {
       current_lanelet_ = closest;
       return true;
     }
+    current_lanelet_ = std::nullopt;
     return false;
-  }
-
-  lanelet::ConstLanelets current_lanelets;
-  lanelet::utils::query::getCurrentLanelets(
-    route_context_.route_lanelets, current_pose, &current_lanelets);
-  if (current_lanelets.empty()) {
-    // Ego is outside route (possibly due to lane change failure)
-    if (lanelet::geometry::inside(
-          *current_lanelet_, {current_pose.position.x, current_pose.position.y})) {
-      return true;
-    }
-    const auto following_lanelets = route_context_.routing_graph_ptr->following(*current_lanelet_);
-    if (following_lanelets.empty()) {
-      return false;
-    }
-    current_lanelet_ = following_lanelets.front();
-    return true;
   }
 
   lanelet::ConstLanelets candidates;
