@@ -1,7 +1,6 @@
 /**:
   ros__parameters:
     # Vehicle actuation dynamics are loaded from $(vehicle_model)_description/config/simulator_model.param.yaml
-    state_prediction_time: 0.1  # constant-velocity/steering projection used for MPPI x0 [s]
 
     # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
     lambda: 5000.0

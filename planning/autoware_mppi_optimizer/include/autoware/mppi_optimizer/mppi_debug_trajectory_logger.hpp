@@ -165,7 +165,6 @@ public:
         out << "vel_rate_lim," << vehicle.vel_rate_lim << "\n";
         out << "acc_time_delay," << vehicle.acc_time_delay << "\n";
         out << "steer_time_delay," << vehicle.steer_time_delay << "\n";
-        out << "state_prediction_time," << vehicle.state_prediction_time << "\n";
       }
     }
     params_written_ = true;
