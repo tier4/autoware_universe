@@ -40,7 +40,6 @@ using point_cloud_collision_check::DebugData;
 using point_cloud_collision_check::DetectionPolygon;
 using point_cloud_collision_check::ObstacleFilteringParam;
 using point_cloud_collision_check::Odometry;
-using point_cloud_collision_check::Params;
 using point_cloud_collision_check::PlannerData;
 using point_cloud_collision_check::PointcloudSegmentationParam;
 using point_cloud_collision_check::PointcloudStopCandidate;
@@ -101,10 +100,6 @@ private:
   bool is_available_data(
     const CandidateTrajectory & candidate_trajectory, const FilterContext & context) const;
 
-  /// @brief planner_data_ のパラメータ由来フィールドを設定する。
-  /// 移植元では PlannerData のコンストラクタと on_set_param が担う。
-  void set_planner_data_param();
-
   /// @brief planner_data_ のトピック由来フィールドを更新し、点群の前処理まで行う。
   /// 移植元では node の update_planner_data が担う。
   void update_planner_data(
@@ -127,7 +122,7 @@ private:
   mutable std::map<PolygonParam, DetectionPolygon> trajectory_polygon_for_inside_map_{};
   rclcpp::Logger logger_{rclcpp::get_logger("point_cloud_collision_check_filter")};
 
-  Params params_{};
+  bool enable_debug_markers_{};
   DebugData debug_data_{};
   std::shared_ptr<PlannerData> planner_data_{std::make_shared<PlannerData>()};
 };

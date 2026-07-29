@@ -17,6 +17,7 @@
 
 #include "types.hpp"
 
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -73,6 +74,32 @@ struct PointcloudPreprocessParams
     int min_cluster_size{};
     int max_cluster_size{};
   } euclidean_clustering;
+
+  PointcloudPreprocessParams() = default;
+  explicit PointcloudPreprocessParams(const validator::Params::PointCloudCollisionCheck & p)
+  {
+    const auto & pp = p.pointcloud_preprocessing;
+    filter_by_trajectory_polygon.enable_monolithic_crop_box =
+      pp.filter_by_trajectory_polygon.enable_monolithic_crop_box;
+    filter_by_trajectory_polygon.enable_multi_polygon_filtering =
+      pp.filter_by_trajectory_polygon.enable_multi_polygon_filtering;
+    filter_by_trajectory_polygon.min_trajectory_length =
+      pp.filter_by_trajectory_polygon.min_trajectory_length;
+    filter_by_trajectory_polygon.braking_distance_scale_factor =
+      pp.filter_by_trajectory_polygon.braking_distance_scale_factor;
+    filter_by_trajectory_polygon.lateral_margin = pp.filter_by_trajectory_polygon.lateral_margin;
+    filter_by_trajectory_polygon.height_margin = pp.filter_by_trajectory_polygon.height_margin;
+    downsample_by_voxel_grid.enable_downsample = pp.downsample_by_voxel_grid.enable_downsample;
+    downsample_by_voxel_grid.voxel_size_x = pp.downsample_by_voxel_grid.voxel_size_x;
+    downsample_by_voxel_grid.voxel_size_y = pp.downsample_by_voxel_grid.voxel_size_y;
+    downsample_by_voxel_grid.voxel_size_z = pp.downsample_by_voxel_grid.voxel_size_z;
+    euclidean_clustering.enable_clustering = pp.euclidean_clustering.enable_clustering;
+    euclidean_clustering.cluster_tolerance = pp.euclidean_clustering.cluster_tolerance;
+    euclidean_clustering.min_cluster_size =
+      static_cast<int>(pp.euclidean_clustering.min_cluster_size);
+    euclidean_clustering.max_cluster_size =
+      static_cast<int>(pp.euclidean_clustering.max_cluster_size);
+  }
 };
 
 /// @brief ptv3 PointCloud2 を名前ベースで読み、map 系の pcl 点群にする。
@@ -169,6 +196,11 @@ struct PlannerData
 
   double min_accel{};
   double min_jerk{};
+
+  // [plugin 固有] class_id フィールドを持つ入力点群から除外するクラス。
+  std::vector<std::int64_t> excluded_class_ids{};
+
+  void update_parameters(const validator::Params::PointCloudCollisionCheck & p);
 
   std::optional<double> calculate_min_deceleration_distance(double target_velocity) const;
 };

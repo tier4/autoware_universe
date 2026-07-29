@@ -424,27 +424,6 @@ bool PointCloudCollisionCheckFilter::is_available_data(
   return unique_point_num >= 2;
 }
 
-void PointCloudCollisionCheckFilter::set_planner_data_param()
-{
-  const auto & trajectory_polygon_params = params_.trajectory_polygon;
-
-  // motion_velocity_planner_common/planner_data.cpp:239-260
-  planner_data_->ego_nearest_dist_threshold = trajectory_polygon_params.ego_nearest_dist_threshold;
-  planner_data_->ego_nearest_yaw_threshold = trajectory_polygon_params.ego_nearest_yaw_threshold;
-  planner_data_->trajectory_polygon_collision_check = {
-    trajectory_polygon_params.decimate_trajectory_step_length,
-    trajectory_polygon_params.goal_extended_trajectory_length,
-    trajectory_polygon_params.enable_to_consider_current_pose,
-    trajectory_polygon_params.time_to_convergence};
-
-  // motion_velocity_planner_common/planner_data.hpp:88
-  planner_data_->no_ground_pointcloud.preprocess_params_ = params_.preprocess;
-
-  // motion_velocity_planner/node.cpp:262-266（set_velocity_smoother_params）
-  planner_data_->min_accel = params_.common.min_accel;
-  planner_data_->min_jerk = params_.common.min_jerk;
-}
-
 void PointCloudCollisionCheckFilter::update_planner_data(
   const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context)
 {
@@ -465,7 +444,8 @@ void PointCloudCollisionCheckFilter::update_planner_data(
   // motion_velocity_planner/node.cpp:176-195
   planner_data_->no_ground_pointcloud.preprocess_pointcloud(
     convert_pointcloud_to_map_frame(
-      *context.segmented_pointcloud, context.odometry->pose.pose, params_.excluded_class_ids),
+      *context.segmented_pointcloud, context.odometry->pose.pose,
+      planner_data_->excluded_class_ids),
     raw_trajectory_points, planner_data_->current_odometry,
     planner_data_->calculate_min_deceleration_distance(0.0).value_or(0.0),
     planner_data_->vehicle_info_, planner_data_->trajectory_polygon_collision_check,
@@ -487,8 +467,8 @@ bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
   }
 
   required_distance = calc_minimum_distance_to_stop(
-                        twist.linear.x, params_.common.max_accel, params_.common.min_accel) +
-                      params_.stop_planning.stop_margin;
+                        twist.linear.x, common_param_.max_accel, common_param_.min_accel) +
+                      stop_planning_param_.stop_margin;
 
   // 衝突距離が必要制動距離 + stop_margin を下回れば STOP REQUIRED（infeasible）。
   if (nearest_dist_to_collide.has_value() && *nearest_dist_to_collide < required_distance) {
@@ -522,7 +502,7 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
   result.is_feasible =
     judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist, required_distance);
 
-  if (params_.enable_debug_markers) {
+  if (enable_debug_markers_) {
     emit_debug_markers(
       debug_markers_, debug_data_, *planner_data_, stop_obstacles, required_distance,
       result.is_feasible, candidate_trajectory.generator_id.uuid,
@@ -536,15 +516,16 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
 // （init のうちパラメータ構築部）
 void PointCloudCollisionCheckFilter::update_parameters(const validator::Params & params)
 {
-  params_ = Params{params.point_cloud_collision_check};
+  const auto & p = params.point_cloud_collision_check;
 
-  common_param_ = params_.common;
-  stop_planning_param_ = params_.stop_planning;
+  common_param_ = CommonParam{p};
+  stop_planning_param_ = StopPlanningParam{p};
   obstacle_filtering_params_ = {
-    {StopObstacleClassification::Type::POINTCLOUD, params_.obstacle_filtering}};
-  pointcloud_segmentation_param_ = params_.pointcloud_segmentation;
+    {StopObstacleClassification::Type::POINTCLOUD, ObstacleFilteringParam{p}}};
+  pointcloud_segmentation_param_ = PointcloudSegmentationParam{p};
 
-  set_planner_data_param();
+  enable_debug_markers_ = p.debug.enable_markers;
+  planner_data_->update_parameters(p);
 }
 }  // namespace autoware::trajectory_validator::plugin::safety
 

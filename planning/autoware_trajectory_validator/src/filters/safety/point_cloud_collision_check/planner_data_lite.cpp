@@ -289,6 +289,25 @@ pcl::PointCloud<pcl::PointXYZ> convert_pointcloud_to_map_frame(
   return out;
 }
 
+// motion_velocity_planner_common/planner_data.cpp:239-260
+// および motion_velocity_planner/node.cpp:262-266（set_velocity_smoother_params）
+void PlannerData::update_parameters(const validator::Params::PointCloudCollisionCheck & p)
+{
+  ego_nearest_dist_threshold = p.trajectory_polygon.ego_nearest_dist_threshold;
+  ego_nearest_yaw_threshold = p.trajectory_polygon.ego_nearest_yaw_threshold;
+  trajectory_polygon_collision_check = {
+    p.trajectory_polygon.decimate_trajectory_step_length,
+    p.trajectory_polygon.goal_extended_trajectory_length,
+    p.trajectory_polygon.enable_to_consider_current_pose, p.trajectory_polygon.time_to_convergence};
+
+  no_ground_pointcloud.preprocess_params_ = PointcloudPreprocessParams{p};
+
+  min_accel = p.common.min_accel;
+  min_jerk = p.common.min_jerk;
+
+  excluded_class_ids = p.obstacle_filtering.excluded_class_ids;
+}
+
 std::optional<double> PlannerData::calculate_min_deceleration_distance(
   const double target_velocity) const
 {
