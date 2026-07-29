@@ -126,6 +126,10 @@ void applyCostParam(
     params.track_coeff = value;
   } else if (key == "heading_coeff") {
     params.heading_coeff = value;
+  } else if (key == "lateral_distance_coeff") {
+    params.lateral_distance_coeff = value;
+  } else if (key == "lateral_yaw_error_coeff") {
+    params.lateral_yaw_error_coeff = value;
   } else if (key == "crash_coeff") {
     params.crash_coeff = value;
   } else if (key == "boundary_threshold") {

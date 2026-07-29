@@ -8,6 +8,9 @@
     speed_coeff: 0.0
     track_coeff: 1000.0
     heading_coeff: 100.0
+    # Spatial (closest-segment) costs restored from pre time-indexed tracking; 0 = off.
+    lateral_distance_coeff: 0.0
+    lateral_yaw_error_coeff: 0.0
     crash_coeff: 10000.0
     boundary_threshold: 0.8
     boundary_threshold_left: -1.0

@@ -36,6 +36,10 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
   node.declare_parameter(param_name(prefix, "speed_coeff"), defaults.speed_coeff);
   node.declare_parameter(param_name(prefix, "track_coeff"), defaults.track_coeff);
   node.declare_parameter(param_name(prefix, "heading_coeff"), defaults.heading_coeff);
+  node.declare_parameter(
+    param_name(prefix, "lateral_distance_coeff"), defaults.lateral_distance_coeff);
+  node.declare_parameter(
+    param_name(prefix, "lateral_yaw_error_coeff"), defaults.lateral_yaw_error_coeff);
   node.declare_parameter(param_name(prefix, "crash_coeff"), defaults.crash_coeff);
   node.declare_parameter(param_name(prefix, "boundary_threshold"), defaults.boundary_threshold);
   node.declare_parameter(
@@ -75,6 +79,10 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     static_cast<float>(node.get_parameter(param_name(prefix, "track_coeff")).as_double());
   params.heading_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "heading_coeff")).as_double());
+  params.lateral_distance_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "lateral_distance_coeff")).as_double());
+  params.lateral_yaw_error_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "lateral_yaw_error_coeff")).as_double());
   params.crash_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "crash_coeff")).as_double());
   params.boundary_threshold =

@@ -132,6 +132,8 @@ public:
         out << "speed_coeff," << cost.speed_coeff << "\n";
         out << "track_coeff," << cost.track_coeff << "\n";
         out << "heading_coeff," << cost.heading_coeff << "\n";
+        out << "lateral_distance_coeff," << cost.lateral_distance_coeff << "\n";
+        out << "lateral_yaw_error_coeff," << cost.lateral_yaw_error_coeff << "\n";
         out << "crash_coeff," << cost.crash_coeff << "\n";
         out << "boundary_threshold," << cost.boundary_threshold << "\n";
         out << "boundary_threshold_left," << cost.boundary_threshold_left << "\n";

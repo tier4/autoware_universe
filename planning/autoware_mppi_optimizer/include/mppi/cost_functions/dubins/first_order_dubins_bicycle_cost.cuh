@@ -19,6 +19,10 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float track_coeff = 1000.0F;
   /** Pull toward ref heading at each horizon step: coeff * (yaw - ref_yaw[t])^2; 0 disables. */
   float heading_coeff = 500.0F;
+  /** Spatial (closest-segment) distance to the reference polyline; 0 disables. */
+  float lateral_distance_coeff = 0.0F;
+  /** Spatial yaw error vs closest-segment tangent: coeff * Δψ^2; 0 disables. */
+  float lateral_yaw_error_coeff = 0.0F;
   /** Per-violation crash penalty; latched crash_status counts violations (1=lateral bound or hit,
    * 2=both). */
   float crash_coeff = 100000.0F;
@@ -107,6 +111,18 @@ public:
   __host__ __device__ float computeTrackValue(float x, float y, int timestep) const;
 
   __host__ __device__ float computeHeadingValue(float yaw, int timestep) const;
+
+  /**
+   * Pre time-indexed tracking: min Euclidean distance from (x,y) to the reference
+   * polyline (closest segment). Used by lateral_distance_coeff.
+   */
+  __host__ __device__ float computeLateralDistanceValue(float x, float y) const;
+
+  /**
+   * Pre time-indexed heading: squared yaw error vs the tangent of the closest
+   * reference segment. Used by lateral_yaw_error_coeff.
+   */
+  __host__ __device__ float computeLateralYawErrorValue(float x, float y, float yaw) const;
 
   /** Distance-to-goal cost vs ref[NUM_TIMESTEPS - 1] (position, speed, yaw). */
   __host__ __device__ float computeGoalCost(float x, float y, float yaw, float vel) const;
