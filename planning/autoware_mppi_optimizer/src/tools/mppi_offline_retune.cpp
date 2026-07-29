@@ -157,9 +157,7 @@ void applyCostParam(
   } else if (key == "goal_terminal_scale") {
     params.goal_terminal_scale = value;
   } else {
-    // Unknown keys must not abort retune: the visualizer may send a superset of
-    // slider names / logged fields that older or newer builds don't share.
-    std::cerr << "WARNING: ignoring unknown cost param '" << key << "'=" << value << "\n";
+    throw std::runtime_error("Unknown cost param: " + key);
   }
 }
 
@@ -460,18 +458,6 @@ int run(int argc, char ** argv)
   if (ec) {
     std::cerr << "Failed to create out-dir: " << ec.message() << "\n";
     return 1;
-  }
-
-  std::cout << "applied_params lambda=" << cost_params.lambda
-            << " track_coeff=" << cost_params.track_coeff
-            << " speed_coeff=" << cost_params.speed_coeff
-            << " heading_coeff=" << cost_params.heading_coeff
-            << " steer_rate_coeff=" << cost_params.steer_rate_coeff << "\n";
-  if (cost_params.lambda >= 5000.0F) {
-    std::cerr
-      << "WARNING: lambda=" << cost_params.lambda
-      << " is very high — softmax weights stay near-uniform and cost-weight edits "
-         "will barely move the trajectory. Try lambda around 100–1500 to see retune effects.\n";
   }
 
   const auto frame_ids = listMppiDebugFrameIds(log_dir);

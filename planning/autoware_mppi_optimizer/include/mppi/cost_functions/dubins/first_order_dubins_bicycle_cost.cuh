@@ -103,19 +103,17 @@ public:
 
   void clearDrivableArea();
 
-  /** Euclidean position error to the time-aligned reference sample ref[t]. */
-  __host__ __device__ float computeTrackValue(float x, float y, int timestep) const;
+  __host__ __device__ float computeTrackValue(float x, float y) const;
 
   __host__ __device__ float computeHeadingValue(float yaw, int timestep) const;
 
   /** Distance-to-goal cost vs ref[NUM_TIMESTEPS - 1] (position, speed, yaw). */
   __host__ __device__ float computeGoalCost(float x, float y, float yaw, float vel) const;
 
-  /** Signed lateral error from ref[t], resolved in ref_yaw[t] (+ = reference-left). */
-  __host__ __device__ float computeSignedLateralOffset(float x, float y, int timestep) const;
+  __host__ __device__ float computeSignedLateralOffset(float x, float y) const;
 
-  /** True if the time-aligned lateral error exceeds boundary_threshold(_left/_right). */
-  __host__ __device__ bool exceedsLateralBoundary(const float x, const float y, int timestep) const;
+  /** True if |signed lateral offset to ref| exceeds boundary_threshold(_left/_right). */
+  __host__ __device__ bool exceedsLateralBoundary(const float x, const float y) const;
 
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep) const;

@@ -121,14 +121,10 @@ public:
 
   /**
    * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
-   * @param use_last_control_as_nominal When true and a previous optimized control sequence
-   *        exists, seed u_nom by shifting that sequence (warm start) instead of reseeding
-   *        from the diffusion reference every cycle.
    */
   void setAblationOptions(
     const bool ignore_obstacles, const bool ignore_drivable_area,
-    const bool force_cold_start_each_step, const bool skip_if_invalid,
-    bool use_last_control_as_nominal = false);
+    const bool force_cold_start_each_step, const bool skip_if_invalid);
 
   /**
    * @brief Copy per-rollout raw costs and normalized importance weights from the last
@@ -141,16 +137,17 @@ public:
   /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.
    * @param state Current ego state (updated in place).
+   * @param arc_length Current arc length along the reference path (updated in place).
    * @param sim_time Current simulation time [s].
    */
-  FirstOrderDubinsMppiControl computeStep(FirstOrderDubinsMppiState & state, float sim_time);
+  FirstOrderDubinsMppiControl computeStep(
+    FirstOrderDubinsMppiState & state, float & arc_length, float sim_time);
 
   /**
    * @brief Track a diffusion-planner reference (poses + velocities) with one MPPI step.
    *
    * Uses the diffusion trajectory directly as the MPPI reference horizon (x, y, yaw, v),
-   * seeds u_nom from the previous optimized controls when use_last_control_as_nominal is set
-   * (otherwise from the reference trajectory), and returns the MPPI-predicted
+   * seeds u_nom from the reference trajectory controls each cycle, and returns the MPPI-predicted
    * feasible state rollout that best tracks that reference.
    *
    * @param input Reference trajectory from the diffusion planner (map frame).
