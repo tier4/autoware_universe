@@ -251,7 +251,21 @@ validator:
             read_only: false
         ego_prioritized_ego_earlier: *drac_assessment
         ego_prioritized_object_earlier: *drac_assessment
-        object_prioritized_ego_earlier: *drac_assessment
+        # Same as the shared DRAC assessment, plus the object deceleration tiers that are only
+        # meaningful when the object has priority and can resolve the conflict by braking itself.
+        object_prioritized_ego_earlier:
+          <<: *drac_assessment
+          object_drac_acceleration:
+            safe_limit:
+              type: double
+              default_value: -0.5
+              description: Required object deceleration at or milder than this is classified as safe
+              read_only: false
+            low_caution_limit:
+              type: double
+              default_value: -1.5
+              description: Required object deceleration down to this is classified as low caution
+              read_only: false
         object_prioritized_object_earlier: *drac_assessment
     rss:
       enable_assessment:

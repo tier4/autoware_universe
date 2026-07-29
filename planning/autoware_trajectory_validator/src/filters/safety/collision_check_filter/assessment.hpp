@@ -34,6 +34,7 @@ namespace autoware::trajectory_validator::plugin::safety::collision_timing_asses
 {
 DracArtifact assess(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
+  const trajectory::ObjectTrajectoryCache & object_trajectory_cache,
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const nav_msgs::msg::Odometry & odometry,
   const autoware_perception_msgs::msg::PredictedObjects & predicted_objects,
