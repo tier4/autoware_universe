@@ -47,13 +47,13 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float road_border_collision_margin = 0.2F;
   /** Per-timestep soft cost when the ego footprint crosses a drivable-area boundary. */
   float drivable_area_crossing_coeff = 10000.0F;
-  /** Pull toward ref end position (Euclidean distance [m]); 0 disables. */
+  /** Terminal pull toward ref end position (Euclidean distance [m]); 0 disables. */
   float goal_pos_coeff = 1000.0F;
-  /** Pull toward ref end speed: coeff * (v - ref_v_end)^2; 0 disables. */
+  /** Terminal pull toward ref end speed: coeff * (v - ref_v_end)^2; 0 disables. */
   float goal_speed_coeff = 0.0F;
-  /** Pull toward ref end heading: coeff * |yaw - ref_yaw_end|; 0 disables. */
+  /** Terminal pull toward ref end heading: coeff * |yaw - ref_yaw_end|; 0 disables. */
   float goal_yaw_coeff = 500.0F;
-  /** Multiplier on goal terms in terminalCost (running state cost uses scale 1). */
+  /** Multiplier on goal terms in terminalCost. */
   float goal_terminal_scale = 10.0F;
 };
 
@@ -107,7 +107,7 @@ public:
 
   __host__ __device__ float computeHeadingValue(float yaw, int timestep) const;
 
-  /** Distance-to-goal cost vs ref[NUM_TIMESTEPS - 1] (position, speed, yaw). */
+  /** Terminal distance-to-goal cost vs ref[NUM_TIMESTEPS - 1] (position, speed, yaw). */
   __host__ __device__ float computeGoalCost(float x, float y, float yaw, float vel) const;
 
   __host__ __device__ float computeSignedLateralOffset(float x, float y) const;
