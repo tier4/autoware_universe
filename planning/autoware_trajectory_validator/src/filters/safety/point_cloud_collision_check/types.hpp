@@ -24,6 +24,7 @@
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
 #include <optional>
@@ -37,6 +38,7 @@
 namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
 {
 using autoware_planning_msgs::msg::TrajectoryPoint;
+using nav_msgs::msg::Odometry;
 using ObjectClassification = autoware_perception_msgs::msg::ObjectClassification;
 using Point2d = autoware_utils_geometry::Point2d;
 using Polygon2d = autoware_utils_geometry::Polygon2d;

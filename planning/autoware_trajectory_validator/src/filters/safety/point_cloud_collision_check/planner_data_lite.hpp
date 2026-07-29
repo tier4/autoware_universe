@@ -81,83 +81,83 @@ pcl::PointCloud<pcl::PointXYZ> convert_pointcloud_to_map_frame(
   const sensor_msgs::msg::PointCloud2 & cloud, const geometry_msgs::msg::Pose & base_link_to_map,
   const std::vector<std::int64_t> & excluded_class_ids);
 
-class Pointcloud
-{
-public:
-  void preprocess_pointcloud(
-    pcl::PointCloud<pcl::PointXYZ> && arg_pointcloud,
-    const std::vector<TrajectoryPoint> & raw_trajectory,
-    const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
-    const VehicleInfo & vehicle_info,
-    const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check,
-    const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold)
-  {
-    pointcloud = arg_pointcloud;
-    const auto preprocessed_result = filter_and_cluster_point_clouds(
-      raw_trajectory, current_odometry, min_deceleration_distance, vehicle_info,
-      trajectory_polygon_collision_check, ego_nearest_dist_threshold, ego_nearest_yaw_threshold);
-    filtered_pointcloud_ptr = preprocessed_result.first;
-    cluster_indices = preprocessed_result.second;
-  }
-
-  pcl::PointCloud<pcl::PointXYZ> pointcloud;
-
-  const pcl::PointCloud<pcl::PointXYZ>::Ptr get_filtered_pointcloud_ptr() const
-  {
-    if (!filtered_pointcloud_ptr) {
-      throw std::runtime_error(
-        "Filtered pointcloud pointer is not set. Please call preprocess_pointcloud() first.");
-    }
-    return filtered_pointcloud_ptr.value();
-  }
-  const std::vector<pcl::PointIndices> get_cluster_indices() const
-  {
-    if (!cluster_indices) {
-      throw std::runtime_error(
-        "Cluster indices are not set. Please call preprocess_pointcloud() first.");
-    }
-    return cluster_indices.value();
-  }
-  pcl::PointCloud<pcl::PointXYZ> extract_clustered_points() const
-  {
-    const auto & clusters = get_cluster_indices();
-    const auto & source_cloud_ptr = get_filtered_pointcloud_ptr();
-
-    std::vector<int> combined_indices;
-    size_t total_points = 0;
-    for (const auto & cluster : clusters) {
-      total_points += cluster.indices.size();
-    }
-    combined_indices.reserve(total_points);
-
-    for (const auto & cluster : clusters) {
-      combined_indices.insert(
-        combined_indices.end(), cluster.indices.begin(), cluster.indices.end());
-    }
-
-    pcl::PointCloud<pcl::PointXYZ> extracted_cloud;
-    pcl::copyPointCloud(*source_cloud_ptr, combined_indices, extracted_cloud);
-
-    return extracted_cloud;
-  }
-
-  PointcloudPreprocessParams preprocess_params_;
-
-private:
-  std::optional<pcl::PointCloud<pcl::PointXYZ>::Ptr> filtered_pointcloud_ptr;
-  std::optional<std::vector<pcl::PointIndices>> cluster_indices;
-
-  std::pair<pcl::PointCloud<pcl::PointXYZ>::Ptr, std::vector<pcl::PointIndices>>
-  filter_and_cluster_point_clouds(
-    const std::vector<TrajectoryPoint> & raw_trajectory,
-    const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
-    const VehicleInfo & vehicle_info,
-    const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check,
-    const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold);
-};
-
 struct PlannerData
 {
+  class Pointcloud
+  {
+  public:
+    void preprocess_pointcloud(
+      pcl::PointCloud<pcl::PointXYZ> && arg_pointcloud,
+      const std::vector<TrajectoryPoint> & raw_trajectory,
+      const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
+      const VehicleInfo & vehicle_info,
+      const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check,
+      const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold)
+    {
+      pointcloud = arg_pointcloud;
+      const auto preprocessed_result = filter_and_cluster_point_clouds(
+        raw_trajectory, current_odometry, min_deceleration_distance, vehicle_info,
+        trajectory_polygon_collision_check, ego_nearest_dist_threshold, ego_nearest_yaw_threshold);
+      filtered_pointcloud_ptr = preprocessed_result.first;
+      cluster_indices = preprocessed_result.second;
+    }
+
+    pcl::PointCloud<pcl::PointXYZ> pointcloud;
+
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr get_filtered_pointcloud_ptr() const
+    {
+      if (!filtered_pointcloud_ptr) {
+        throw std::runtime_error(
+          "Filtered pointcloud pointer is not set. Please call preprocess_pointcloud() first.");
+      }
+      return filtered_pointcloud_ptr.value();
+    }
+    const std::vector<pcl::PointIndices> get_cluster_indices() const
+    {
+      if (!cluster_indices) {
+        throw std::runtime_error(
+          "Cluster indices are not set. Please call preprocess_pointcloud() first.");
+      }
+      return cluster_indices.value();
+    }
+    pcl::PointCloud<pcl::PointXYZ> extract_clustered_points() const
+    {
+      const auto & clusters = get_cluster_indices();
+      const auto & source_cloud_ptr = get_filtered_pointcloud_ptr();
+
+      std::vector<int> combined_indices;
+      size_t total_points = 0;
+      for (const auto & cluster : clusters) {
+        total_points += cluster.indices.size();
+      }
+      combined_indices.reserve(total_points);
+
+      for (const auto & cluster : clusters) {
+        combined_indices.insert(
+          combined_indices.end(), cluster.indices.begin(), cluster.indices.end());
+      }
+
+      pcl::PointCloud<pcl::PointXYZ> extracted_cloud;
+      pcl::copyPointCloud(*source_cloud_ptr, combined_indices, extracted_cloud);
+
+      return extracted_cloud;
+    }
+
+    PointcloudPreprocessParams preprocess_params_;
+
+  private:
+    std::optional<pcl::PointCloud<pcl::PointXYZ>::Ptr> filtered_pointcloud_ptr;
+    std::optional<std::vector<pcl::PointIndices>> cluster_indices;
+
+    std::pair<pcl::PointCloud<pcl::PointXYZ>::Ptr, std::vector<pcl::PointIndices>>
+    filter_and_cluster_point_clouds(
+      const std::vector<TrajectoryPoint> & raw_trajectory,
+      const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
+      const VehicleInfo & vehicle_info,
+      const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check,
+      const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold);
+  };
+
   nav_msgs::msg::Odometry current_odometry{};
   geometry_msgs::msg::AccelWithCovarianceStamped current_acceleration{};
   Pointcloud no_ground_pointcloud{};

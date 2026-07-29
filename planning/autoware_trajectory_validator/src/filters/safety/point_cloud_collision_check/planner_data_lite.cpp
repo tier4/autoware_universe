@@ -37,6 +37,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -297,7 +298,7 @@ std::optional<double> PlannerData::calculate_min_deceleration_distance(
 }
 
 std::pair<pcl::PointCloud<pcl::PointXYZ>::Ptr, std::vector<pcl::PointIndices>>
-Pointcloud::filter_and_cluster_point_clouds(
+PlannerData::Pointcloud::filter_and_cluster_point_clouds(
   const std::vector<TrajectoryPoint> & raw_trajectory,
   const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
   const VehicleInfo & vehicle_info,

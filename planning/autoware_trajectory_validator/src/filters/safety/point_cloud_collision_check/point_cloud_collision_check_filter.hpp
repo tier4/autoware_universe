@@ -12,28 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
+#ifndef FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
+#define FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
+#include "debug_marker.hpp"
+#include "parameter.hpp"
+#include "planner_data_lite.hpp"
+#include "types.hpp"
+
+#include <rclcpp/logger.hpp>
 
 #include <geometry_msgs/msg/twist.hpp>
 
+#include <deque>
+#include <map>
 #include <memory>
+#include <optional>
+#include <unordered_map>
 #include <vector>
-
-namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
-{
-// 実体は src/filters/safety/point_cloud_collision_check/ にある。
-class ObstacleStop;   // 移植元 ObstacleStopModule の点群経路
-struct DebugData;     // debug marker の中間データ
-struct Params;        // 移植元が node から読む各パラメータ構造体をまとめたもの
-struct PlannerData;   // 移植元 PlannerData のうち点群停止に必要な分
-struct StopObstacle;  // 停止対象の点群障害物
-}  // namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+using point_cloud_collision_check::CollisionPointWithDist;
+using point_cloud_collision_check::CommonParam;
+using point_cloud_collision_check::DebugData;
+using point_cloud_collision_check::DetectionPolygon;
+using point_cloud_collision_check::ObstacleFilteringParam;
+using point_cloud_collision_check::Odometry;
+using point_cloud_collision_check::Params;
+using point_cloud_collision_check::PlannerData;
+using point_cloud_collision_check::PointcloudSegmentationParam;
+using point_cloud_collision_check::PointcloudStopCandidate;
+using point_cloud_collision_check::Polygon2d;
+using point_cloud_collision_check::PolygonParam;
+using point_cloud_collision_check::StopObstacle;
+using point_cloud_collision_check::StopObstacleClassification;
+using point_cloud_collision_check::StopPlanningParam;
+using point_cloud_collision_check::TrajectoryPolygonCollisionCheck;
+
 /**
  * @brief PointCloudCollisionCheckFilter class - checks the trajectory against the semantic
  * segmentation point cloud produced by the perception pipeline.
@@ -41,8 +58,7 @@ namespace autoware::trajectory_validator::plugin::safety
 class PointCloudCollisionCheckFilter final : public plugin::ValidatorInterface
 {
 public:
-  PointCloudCollisionCheckFilter();
-  ~PointCloudCollisionCheckFilter() override;
+  PointCloudCollisionCheckFilter() : ValidatorInterface("point_cloud_collision_check_filter") {}
 
   result_t is_feasible(
     const CandidateTrajectory & candidate_trajectory, const FilterContext & context) final;
@@ -50,6 +66,36 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
+  std::optional<double> calc_ego_forwarding_braking_distance(
+    const std::vector<TrajectoryPoint> & traj_points, const Odometry & odometry) const;
+
+  DetectionPolygon get_trajectory_polygon(
+    const std::vector<TrajectoryPoint> & decimated_traj_points, const VehicleInfo & vehicle_info,
+    const geometry_msgs::msg::Pose & current_ego_pose, const PolygonParam & polygon_param,
+    const bool enable_to_consider_current_pose, const double time_to_convergence,
+    const double decimate_trajectory_step_length) const;
+
+  std::optional<CollisionPointWithDist> get_nearest_collision_point(
+    const std::vector<TrajectoryPoint> & traj_points, const std::vector<Polygon2d> & traj_polygons,
+    const PlannerData::Pointcloud & point_cloud, const double x_offset_to_bumper,
+    const VehicleInfo & vehicle_info) const;
+
+  // 前提: is_feasible は1サイクルに1候補のみを処理する（単一候補前提）。
+  void upsert_pointcloud_stop_candidates(
+    const CollisionPointWithDist & nearest_collision_point,
+    const std::vector<TrajectoryPoint> & traj_points, rclcpp::Time latest_point_cloud_time);
+
+  std::vector<StopObstacle> filter_stop_obstacle_for_point_cloud(
+    const Odometry & odometry, const std::vector<TrajectoryPoint> & traj_points,
+    const std::vector<TrajectoryPoint> & decimated_traj_points,
+    const PlannerData::Pointcloud & point_cloud, const VehicleInfo & vehicle_info,
+    const double x_offset_to_bumper,
+    const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check);
+
+  std::vector<StopObstacle> calc_obstacle_stop(
+    const std::vector<TrajectoryPoint> & raw_trajectory_points,
+    const std::shared_ptr<const PlannerData> planner_data);
+
   /// @brief 評価に必要な入力が揃っているかを判定する。
   /// false のとき is_feasible は評価せず feasible（ValidationResult{}）を返す。
   bool is_available_data(
@@ -67,15 +113,24 @@ private:
   /// @brief 最も手前の衝突距離が必要制動距離 + stop_margin を下回れば false（STOP REQUIRED）。
   /// @param[out] required_distance 自車の停止距離 + stop_margin（debug 表示用）
   bool judge_stop_feasibility(
-    const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
-    const geometry_msgs::msg::Twist & twist, double & required_distance) const;
+    const std::vector<StopObstacle> & stop_obstacles, const geometry_msgs::msg::Twist & twist,
+    double & required_distance) const;
 
-  // 停止候補 deque をサイクルをまたいで保持するため、状態は ObstacleStop 側に置く。
-  std::unique_ptr<point_cloud_collision_check::ObstacleStop> obstacle_stop_;
-  std::unique_ptr<point_cloud_collision_check::Params> params_;
-  std::unique_ptr<point_cloud_collision_check::DebugData> debug_data_;
-  std::shared_ptr<point_cloud_collision_check::PlannerData> planner_data_;
+  CommonParam common_param_{};
+  StopPlanningParam stop_planning_param_{};
+  std::unordered_map<StopObstacleClassification::Type, ObstacleFilteringParam>
+    obstacle_filtering_params_{};
+  PointcloudSegmentationParam pointcloud_segmentation_param_{};
+
+  // 停止候補 deque はサイクルをまたいで保持する。
+  std::deque<PointcloudStopCandidate> pointcloud_stop_candidates{};
+  mutable std::map<PolygonParam, DetectionPolygon> trajectory_polygon_for_inside_map_{};
+  rclcpp::Logger logger_{rclcpp::get_logger("point_cloud_collision_check_filter")};
+
+  Params params_{};
+  DebugData debug_data_{};
+  std::shared_ptr<PlannerData> planner_data_{std::make_shared<PlannerData>()};
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
+#endif  // FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
