@@ -144,6 +144,11 @@
           "default": 0.3,
           "description": "Threshold for keeping the stopping state [m/s]"
         },
+        "enable_force_stop": {
+          "type": "boolean",
+          "default": true,
+          "description": "Latch the trajectory to a full stop once the smoothed velocity first drops below stopping_threshold while the ego is moving"
+        },
         "turn_indicator_hold_duration": {
           "type": "number",
           "default": 1.0,
@@ -302,6 +307,7 @@
         "temperature",
         "velocity_smoothing_window",
         "stopping_threshold",
+        "enable_force_stop",
         "turn_indicator_hold_duration",
         "turn_indicator_on_confirmation_duration",
         "prepend_current_ego_state",

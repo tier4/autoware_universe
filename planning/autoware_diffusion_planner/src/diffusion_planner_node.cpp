@@ -202,6 +202,7 @@ void DiffusionPlanner::set_up_params()
   params_.velocity_smoothing_window =
     this->declare_parameter<int64_t>("velocity_smoothing_window", 8);
   params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
+  params_.enable_force_stop = this->declare_parameter<bool>("enable_force_stop", true);
   params_.turn_indicator_hold_duration =
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
   params_.turn_indicator_on_confirmation_duration =
@@ -340,6 +341,7 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<int64_t>(
       parameters, "velocity_smoothing_window", temp_params.velocity_smoothing_window);
     update_param<double>(parameters, "stopping_threshold", temp_params.stopping_threshold);
+    update_param<bool>(parameters, "enable_force_stop", temp_params.enable_force_stop);
     update_param<double>(
       parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
     update_param<double>(
