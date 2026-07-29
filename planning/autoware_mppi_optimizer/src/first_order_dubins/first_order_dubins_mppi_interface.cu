@@ -634,10 +634,6 @@ struct FirstOrderDubinsMppiInterface::Impl
       const size_t idx = std::min(start_idx + static_cast<size_t>(t), reference.points.size() - 1U);
       const auto & point = reference.points[idx];
       u_nom(accel_idx, t) = std::clamp(point.acceleration_mps2, min_accel, max_accel);
-
-      // Only use an explicit steer command if the reference provides one. Do NOT derive steer
-      // from path curvature: that pre-solves lateral tracking inside u_nom, so MPPI δ_cmd
-      // barely moves when track/heading costs are retuned (samples stay glued to the seed).
       u_nom(steer_idx, t) = std::clamp(point.front_wheel_angle_rad, -max_steer, max_steer);
     }
   }
@@ -652,7 +648,62 @@ struct FirstOrderDubinsMppiInterface::Impl
     seedNominalControlFromDiffusionReference(reference, start_idx);
   }
 
+  void overrideNominalControlForOverspeed(const float ego_velocity, const float ego_acceleration)
+  {
+    if (ego_velocity <= max_velocity_limit.front()) {
+      return;
+    }
+
+    const int accel_idx =
+      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+    const float accel_time_constant = std::max(dyn.accel_time_constant, 1.0E-4F);
+    float predicted_velocity = ego_velocity;
+    float predicted_acceleration = ego_acceleration;
+    int overridden_steps = 0;
+
+    // Replace the warm-start/coasting prefix with the strongest deceleration still allowed by
+    // the active comfort/external bound. A genuine upstream safety stop may already have relaxed
+    // min_lon_accel_limit[t] to the physical dynamics limit.
+    for (int t = 0; t < kMppiHorizon; ++t) {
+      const size_t horizon_index = static_cast<size_t>(t);
+      if (predicted_velocity <= max_velocity_limit[horizon_index]) {
+        break;
+      }
+
+      const float deceleration_command =
+        std::clamp(min_lon_accel_limit[horizon_index], dyn.min_accel, 0.0F);
+      u_nom(accel_idx, t) = deceleration_command;
+      ++overridden_steps;
+
+      // Match the model's forward-Euler ordering: v uses the current acceleration state, while
+      // the acceleration command changes the next acceleration state through the first-order lag.
+      predicted_velocity += predicted_acceleration * kDt;
+      predicted_acceleration = std::clamp(
+        predicted_acceleration +
+          (deceleration_command - predicted_acceleration) * kDt / accel_time_constant,
+        dyn.min_accel, dyn.max_accel);
+    }
+
+    RCLCPP_DEBUG(
+      mppiLogger(),
+      "MPPI overspeed nominal override: ego_v=%.3f limit0=%.3f steps=%d accel_limit0=%.3f",
+      ego_velocity, max_velocity_limit.front(), overridden_steps, min_lon_accel_limit.front());
+  }
+
+  void clampNominalAccelerationToActiveLimits()
+  {
+    const int accel_idx =
+      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+    for (int t = 0; t < kMppiHorizon; ++t) {
+      const size_t horizon_index = static_cast<size_t>(t);
+      if (lon_comfort_weight[horizon_index] > 0.0F) {
+        u_nom(accel_idx, t) = std::max(u_nom(accel_idx, t), min_lon_accel_limit[horizon_index]);
+      }
+    }
+  }
+
   void prepareKinematicConstraintProfile(
+    const Trajectory & upstream_reference,
     const FirstOrderDubinsMppiKinematicLimits & dynamic_limits, const float measured_acceleration)
   {
     const float wheel_base = std::max(vehicle_params.wheel_base, 1.0E-4F);
@@ -694,6 +745,23 @@ struct FirstOrderDubinsMppiInterface::Impl
       }
     }
 
+    // Once the resolved ceiling requests a full stop, hold the tracking geometry at that point.
+    // Otherwise linear position tracking can reward creeping along later upstream poses even
+    // though their reference velocities have been clamped to zero.
+    for (int t = 0; t < kRefHorizon; ++t) {
+      const size_t horizon_index = static_cast<size_t>(t);
+      if (max_velocity_limit[horizon_index] < 1.0E-3F && !diffusion_reference.points.empty()) {
+        const size_t hold_index = std::min(horizon_index, diffusion_reference.points.size() - 1U);
+        const auto hold_position = diffusion_reference.points[hold_index].pose.position;
+        for (size_t point_index = hold_index; point_index < diffusion_reference.points.size();
+             ++point_index) {
+          diffusion_reference.points[point_index].pose.position.x = hold_position.x;
+          diffusion_reference.points[point_index].pose.position.y = hold_position.y;
+        }
+        break;
+      }
+    }
+
     for (int t = 0; t < kRefHorizon; ++t) {
       const size_t horizon_index = static_cast<size_t>(t);
       lon_comfort_weight[static_cast<size_t>(t)] = 1.0F;
@@ -706,12 +774,23 @@ struct FirstOrderDubinsMppiInterface::Impl
         const auto & next_point = diffusion_reference.points[next_idx];
 
         const float v_ref = point.longitudinal_velocity_mps;
-        const float next_v_ref = next_point.longitudinal_velocity_mps;
-        const float required_acceleration = (next_v_ref - v_ref) / kDt;
-        if (required_acceleration < min_lon_accel_limit[horizon_index]) {
-          lon_comfort_weight[horizon_index] = 0.0F;
-          min_lon_accel_limit[horizon_index] = dyn.min_accel;
-          ++stop_override_steps;
+        if (!upstream_reference.points.empty()) {
+          const size_t upstream_idx =
+            std::min(horizon_index, upstream_reference.points.size() - 1U);
+          const size_t upstream_next_idx =
+            std::min(upstream_idx + 1U, upstream_reference.points.size() - 1U);
+          const float upstream_v_ref =
+            upstream_reference.points[upstream_idx].longitudinal_velocity_mps;
+          const float upstream_next_v_ref =
+            upstream_reference.points[upstream_next_idx].longitudinal_velocity_mps;
+          const float required_acceleration = (upstream_next_v_ref - upstream_v_ref) / kDt;
+          const bool is_planner_emergency_stop =
+            required_acceleration < min_lon_accel_limit[horizon_index];
+          if (is_planner_emergency_stop) {
+            lon_comfort_weight[horizon_index] = 0.0F;
+            min_lon_accel_limit[horizon_index] = dyn.min_accel;
+            ++stop_override_steps;
+          }
         }
 
         const float dx = static_cast<float>(next_point.pose.position.x - point.pose.position.x);
@@ -821,8 +900,10 @@ struct FirstOrderDubinsMppiInterface::Impl
       steeringTireAngleRad(steering_status), -vehicle_params.max_steer_angle,
       vehicle_params.max_steer_angle);
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE)) = ego_steer;
-    prepareKinematicConstraintProfile(dynamic_limits, measured_ego_accel);
+    prepareKinematicConstraintProfile(reference, dynamic_limits, measured_ego_accel);
     seedNominalControl(diffusion_reference, tracking_start_idx);
+    overrideNominalControlForOverspeed(ego_v, ego_accel);
+    clampNominalAccelerationToActiveLimits();
   }
 
   void uploadBoundarySegments()

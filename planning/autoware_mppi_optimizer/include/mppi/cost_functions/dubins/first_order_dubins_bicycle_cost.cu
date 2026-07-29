@@ -897,7 +897,8 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float velocity_violation =
     deadbandViolation(velocity, kinematic_constraint_profile_.max_velocity_limit[t]);
   const float overspeed_cost =
-    this->params_.overspeed_coeff * velocity_violation * velocity_violation;
+    this->params_.overspeed_coeff *
+    (velocity_violation * velocity_violation + 0.5F * velocity_violation);
 
   float acceleration_cost = 0.0F;
   if (recovery_weight > 0.0F) {
