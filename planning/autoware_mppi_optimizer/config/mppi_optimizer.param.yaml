@@ -2,6 +2,10 @@
   ros__parameters:
     # Vehicle actuation dynamics are loaded from $(vehicle_model)_description/config/simulator_model.param.yaml
 
+    # Steering exploration standard deviation [rad] at a 0.32 m reference wheelbase.
+    # The applied std is this value multiplied by vehicle_wheelbase / 0.32.
+    steer_exploration_std: 0.002
+
     # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
     lambda: 100.0
     desired_speed: 2.5

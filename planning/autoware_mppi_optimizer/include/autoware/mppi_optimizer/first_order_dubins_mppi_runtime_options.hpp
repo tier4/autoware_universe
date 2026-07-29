@@ -23,6 +23,11 @@ namespace autoware::mppi_optimizer
 /** Debug logging and ablation options from mppi_optimizer.param.yaml. */
 struct FirstOrderDubinsMppiRuntimeOptions
 {
+  /**
+   * Steering exploration standard deviation [rad] at the 0.32 m reference wheelbase.
+   * The sampler scales this value by vehicle_wheelbase / 0.32.
+   */
+  float steer_exploration_std{2.0e-3F};
   bool enable_debug_trajectory_log{false};
   /** Empty -> $XDG_CACHE_HOME/autoware/mppi_debug_log or $HOME/.cache/autoware/mppi_debug_log. */
   std::string debug_trajectory_log_directory;

@@ -84,6 +84,24 @@ Notes:
 - `use_last_control_as_nominal` warm-starts `u_nom` from the shifted previous optimized control
   sequence when available; otherwise (and on cold start) reseeds from the diffusion reference.
 
+Steering exploration can be tuned with:
+
+```yaml
+steer_exploration_std: 0.002
+```
+
+This is the sampling standard deviation in radians at the `0.32 m` reference wheelbase. The
+applied standard deviation is:
+
+```text
+steer_exploration_std * vehicle_wheelbase / 0.32
+```
+
+Increasing it gives MPPI more lateral exploration but can increase variation between optimized
+trajectories. Reducing it makes optimization more conservative around the nominal steering
+sequence. The value must be finite and greater than zero. The actual scaled value is printed as
+`steer_std` in the MPPI initialization log.
+
 ### Replay only
 
 ```bash

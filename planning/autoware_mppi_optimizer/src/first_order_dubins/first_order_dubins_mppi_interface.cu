@@ -408,6 +408,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool use_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
+  /** Steering exploration std [rad], normalized to the 0.32 m reference wheelbase. */
+  float steer_exploration_std{FirstOrderDubinsMppiRuntimeOptions{}.steer_exploration_std};
   /** Warm-start u_nom from shifted previous u_opt when available. */
   bool use_last_control_as_nominal{false};
   /** Fill debug.rollouts with top-K weighted samples (CPU replay). Offline retune only by default.
@@ -463,8 +465,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     // a zero (or explicit) steer seed, not from huge white noise.
     // Historical: 0.001 * (L/0.32) ≈ 0.015 rad on j6; 0.01 * (L/0.32) ≈ 0.15 rad was too noisy.
     constexpr float kReferenceWheelBase = 0.32F;
-    constexpr float kReferenceSteerStd = 2e-3F;
-    const float steer_std = kReferenceSteerStd * (vehicle_params.wheel_base / kReferenceWheelBase);
+    const float steer_std =
+      steer_exploration_std * (vehicle_params.wheel_base / kReferenceWheelBase);
 
     sp.std_dev[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] =
       steer_std;
@@ -805,6 +807,16 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
 void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   const FirstOrderDubinsMppiRuntimeOptions & options)
 {
+  if (!impl_) {
+    throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
+  }
+  if (!std::isfinite(options.steer_exploration_std) || options.steer_exploration_std <= 0.0F) {
+    throw std::invalid_argument("steer_exploration_std must be finite and greater than zero");
+  }
+  if (impl_->initialized && impl_->steer_exploration_std != options.steer_exploration_std) {
+    impl_->teardown();
+  }
+  impl_->steer_exploration_std = options.steer_exploration_std;
   setDebugTrajectoryLogging(
     options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
   setAblationOptions(
