@@ -465,6 +465,12 @@
               "default": 0.0,
               "minimum": 0.0
             },
+            "min_lookahead_distance": {
+              "type": "number",
+              "description": "Minimum forward trajectory length to scan for traffic light stop lines even at low ego speed [m]",
+              "default": 20.0,
+              "minimum": 0.0
+            },
             "th_stable_duration_red": {
               "type": "number",
               "description": "Threshold for stable duration of red light [s]",

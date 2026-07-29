@@ -26,6 +26,7 @@
   <depend>angles</depend>
   <depend>autoware_boundary_departure_checker</depend>
   <depend>autoware_internal_planning_msgs</depend>
+  <depend>autoware_lanelet2_extension</depend>
   <depend>autoware_lanelet2_utils</depend>
   <depend>autoware_map_msgs</depend>
   <depend>autoware_motion_utils</depend>
@@ -46,6 +47,7 @@
   <depend>nav_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
   <depend>tl_expected</depend>
   <depend>unique_identifier_msgs</depend>
 

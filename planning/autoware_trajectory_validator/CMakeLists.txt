@@ -41,6 +41,7 @@ ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
   src/filters/safety/collision_check_filter/stop_tracker.cpp
   src/filters/safety/collision_check_filter/trajectory_utils.cpp
   src/filters/traffic_rule/traffic_light_filter.cpp
+  src/filters/traffic_rule/crosswalk_filter.cpp
 )
 
 set_target_properties(autoware_trajectory_validator_plugins PROPERTIES CXX_VISIBILITY_PRESET default)
@@ -142,6 +143,13 @@ if(BUILD_TESTING)
     test/plugins/test_traffic_light_filter.cpp
   )
   target_link_libraries(test_traffic_light_filter
+    autoware_trajectory_validator_plugins
+  )
+
+  ament_add_gtest(test_crosswalk_filter
+    test/plugins/test_crosswalk_filter.cpp
+  )
+  target_link_libraries(test_crosswalk_filter
     autoware_trajectory_validator_plugins
   )
 

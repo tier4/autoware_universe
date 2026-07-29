@@ -67,6 +67,12 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
     load_metric(filter, shadow_mode);
   }
 
+  for (const auto & plugin : plugins_) {
+    if (!plugin->is_shadow_mode()) {
+      active_filter_names_.insert(plugin->get_name());
+    }
+  }
+
   std::sort(plugins_.begin(), plugins_.end(), [](const auto & plugin1, const auto & plugin2) {
     return plugin1->get_name() < plugin2->get_name();
   });
@@ -135,7 +141,7 @@ void TrajectoryValidatorWrapper::publishers()
     std::make_shared<autoware_utils_debug::DebugPublisher>(node_ptr_, "~/debug/validator");
 }
 
-CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
+TrajectoryValidatorReport TrajectoryValidatorWrapper::validate_trajectories(
   const autoware_internal_planning_msgs::msg::CandidateTrajectories & input_trajectories,
   const ValidatorContext & context)
 {
@@ -143,7 +149,7 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
 
   update_parameters();
 
-  const auto report = validator_ptr_->process(input_trajectories, context);
+  const auto report = validator_ptr_->process(input_trajectories, active_filter_names_, context);
 
   for (const auto & table : report.evaluation_tables) {
     for (const auto & eval : table.plugin_evaluations) {
@@ -161,7 +167,7 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
 
   publish_debug(report.evaluation_tables, report.processing_time_ms, context.odometry->pose.pose);
 
-  return input_trajectories;
+  return report;
 }
 
 void TrajectoryValidatorWrapper::publish_validation_reports(
@@ -299,15 +305,6 @@ void TrajectoryValidatorWrapper::publish_processing_time_text(
 std::unique_ptr<TrajectoryValidatorDiagnostic> TrajectoryValidatorWrapper::init_diagnostic(
   rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_parameters_interface) const
 {
-  // Plugin class names are not snake_case; iterate loaded plugins to get the
-  // short names (from get_name()) of the active (non-shadow) validators.
-  std::unordered_set<std::string> active_filter_names;
-  for (const auto & plugin : plugins_) {
-    if (!plugin->is_shadow_mode()) {
-      active_filter_names.insert(plugin->get_name());
-    }
-  }
-
   trajectory_validator_diagnostic::ParamListener diag_param_listener(node_parameters_interface);
   const auto diag_params = diag_param_listener.get_params();
   const auto filter_configured_actions_map =
@@ -316,7 +313,7 @@ std::unique_ptr<TrajectoryValidatorDiagnostic> TrajectoryValidatorWrapper::init_
     *node_ptr_, filter_configured_actions_map, diag_params.no_candidates_diag_status_name);
 
   return std::make_unique<TrajectoryValidatorDiagnostic>(
-    filter_configured_actions_map, diag_params, active_filter_names, std::move(diag_by_name));
+    filter_configured_actions_map, diag_params, active_filter_names_, std::move(diag_by_name));
 }
 
 void TrajectoryValidatorWrapper::publish_diagnostic(const std::vector<ValidationReport> & reports)
