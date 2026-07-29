@@ -956,6 +956,235 @@
           "required": [],
           "additionalProperties": false
         },
+        "acados_mpt": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "description": "run the acados MPT optimizer (see `shadow` for whether its output is used)",
+              "default": false
+            },
+            "shadow": {
+              "type": "boolean",
+              "description": "solve but do not use the result: the published trajectory stays the eb smoother + velocity smoother output and the MPT trajectory goes to its debug topic only. Only the go trajectory is solved in this mode.",
+              "default": true
+            },
+            "limits": {
+              "type": "object",
+              "properties": {
+                "max_velocity": {
+                  "type": "number",
+                  "description": "speed limit [m/s]",
+                  "default": 13.88,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_acceleration": {
+                  "type": "number",
+                  "description": "longitudinal acceleration limit [m/s^2]",
+                  "default": 1.0,
+                  "exclusiveMinimum": 0.0
+                },
+                "min_acceleration": {
+                  "type": "number",
+                  "description": "longitudinal deceleration limit (negative) [m/s^2]",
+                  "default": -1.0,
+                  "exclusiveMaximum": 0.0
+                },
+                "max_jerk": {
+                  "type": "number",
+                  "description": "longitudinal jerk limit [m/s^3]",
+                  "default": 1.6,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_lateral_acceleration": {
+                  "type": "number",
+                  "description": "lateral acceleration limit, imposed exactly as |v^2 * kappa| [m/s^2]",
+                  "default": 0.8,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_steer_rate": {
+                  "type": "number",
+                  "description": "steering angle rate limit [rad/s]",
+                  "default": 0.995,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_curvature": {
+                  "type": "number",
+                  "description": "curvature limit [1/m]; non-positive derives it from the vehicle steer limit",
+                  "default": -1.0
+                },
+                "max_curvature_rate": {
+                  "type": "number",
+                  "description": "|dkappa/ds| box; speed-independent, so it still regularises the shape at v=0 [1/m^2]",
+                  "default": 0.05,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_acceleration_rate": {
+                  "type": "number",
+                  "description": "|da/ds| box; speed-independent, so it still regularises the profile at v=0 [1/s^2]",
+                  "default": 0.5,
+                  "exclusiveMinimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            },
+            "weights": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "type": "number",
+                  "description": "deviation from the input path [1/m^2]",
+                  "default": 1.0
+                },
+                "yaw": {
+                  "type": "number",
+                  "description": "deviation from the input path heading [1/rad^2]",
+                  "default": 1.0
+                },
+                "curvature": {
+                  "type": "number",
+                  "description": "shape smoothing (elastic band smooth_weight counterpart)",
+                  "default": 200.0
+                },
+                "curvature_rate": {
+                  "type": "number",
+                  "description": "shape smoothing",
+                  "default": 10000.0
+                },
+                "squared_speed": {
+                  "type": "number",
+                  "description": "tracking of the reference squared-speed profile",
+                  "default": 0.002
+                },
+                "acceleration": {
+                  "type": "number",
+                  "description": "ride comfort",
+                  "default": 0.1
+                },
+                "acceleration_rate": {
+                  "type": "number",
+                  "description": "ride comfort (jerk counterpart)",
+                  "default": 10.0
+                },
+                "stretch": {
+                  "type": "number",
+                  "description": "pull on (rho - 1); keeps the solver grid near-uniform",
+                  "default": 10000.0
+                },
+                "terminal_position": {
+                  "type": "number",
+                  "description": "",
+                  "default": 10.0
+                },
+                "terminal_yaw": {
+                  "type": "number",
+                  "description": "",
+                  "default": 10.0
+                },
+                "terminal_curvature": {
+                  "type": "number",
+                  "description": "",
+                  "default": 100.0
+                },
+                "terminal_squared_speed": {
+                  "type": "number",
+                  "description": "terminal pull towards a full stop; soft, so a path too short to stop stays feasible",
+                  "default": 1.0
+                },
+                "soft_limit": {
+                  "type": "number",
+                  "description": "L2 penalty on the slacks of the nonlinear limits; large, they are meant to behave as hard",
+                  "default": 1000000.0
+                }
+              },
+              "additionalProperties": false
+            },
+            "stretch": {
+              "type": "object",
+              "properties": {
+                "min_stretch": {
+                  "type": "number",
+                  "description": "lower bound on ds/dxi, the output arc length one reference station step buys",
+                  "default": 0.8,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_stretch": {
+                  "type": "number",
+                  "description": "upper bound on ds/dxi",
+                  "default": 1.25,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_station_error": {
+                  "type": "number",
+                  "description": "bound on the longitudinal offset between a stage and its reference station [m]",
+                  "default": 2.0,
+                  "exclusiveMinimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            },
+            "solver": {
+              "type": "object",
+              "properties": {
+                "max_iterations": {
+                  "type": "integer",
+                  "description": "",
+                  "default": 100,
+                  "exclusiveMinimum": 0
+                },
+                "tolerance": {
+                  "type": "number",
+                  "description": "",
+                  "default": 0.0001,
+                  "exclusiveMinimum": 0.0
+                },
+                "warm_start": {
+                  "type": "boolean",
+                  "description": "",
+                  "default": true
+                },
+                "terminal_position_tolerance": {
+                  "type": "number",
+                  "description": "half-width of the terminal position box [m]",
+                  "default": 0.05,
+                  "exclusiveMinimum": 0.0
+                },
+                "terminal_yaw_tolerance": {
+                  "type": "number",
+                  "description": "half-width of the terminal yaw box [rad]",
+                  "default": 0.02,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_arc_length": {
+                  "type": "number",
+                  "description": "upper bound on the arc length covered by the horizon; longer inputs are cropped [m]",
+                  "default": 150.0,
+                  "exclusiveMinimum": 0.0
+                },
+                "arc_length_per_stage_warn": {
+                  "type": "number",
+                  "description": "warn when the arc length per stage exceeds this (a coarse grid) [m]",
+                  "default": 2.5,
+                  "exclusiveMinimum": 0.0
+                },
+                "verification_tolerance": {
+                  "type": "number",
+                  "description": "absolute slack when checking the solution against the limits",
+                  "default": 0.001,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_dynamics_residual": {
+                  "type": "number",
+                  "description": "largest acceptable NLP equality (dynamics) residual; above it the iterate is not a trajectory",
+                  "default": 0.001,
+                  "exclusiveMinimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
         "debug": {
           "type": "object",
           "properties": {

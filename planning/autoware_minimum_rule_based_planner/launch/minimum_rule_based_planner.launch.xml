@@ -22,6 +22,7 @@
   <arg name="input_acceleration" default="~/input/acceleration"/>
   <arg name="input_objects" default="~/input/objects"/>
   <arg name="input_pointcloud" default="~/input/pointcloud"/>
+  <arg name="input_steering" default="~/input/steering"/>
   <arg name="output_candidate_trajectories" default="~/output/candidate_trajectories"/>
 
   <node pkg="autoware_minimum_rule_based_planner" exec="autoware_minimum_rule_based_planner_node" name="minimum_rule_based_planner_node" output="both">
@@ -39,6 +40,7 @@
     <remap from="~/input/acceleration" to="$(var input_acceleration)"/>
     <remap from="~/input/objects" to="$(var input_objects)"/>
     <remap from="~/input/pointcloud" to="$(var input_pointcloud)"/>
+    <remap from="~/input/steering" to="$(var input_steering)"/>
     <remap from="~/output/candidate_trajectories" to="$(var output_candidate_trajectories)"/>
   </node>
 </launch>

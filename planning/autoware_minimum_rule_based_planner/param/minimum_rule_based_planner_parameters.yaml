@@ -452,6 +452,201 @@ minimum_rule_based_planner:
         bounds<>: [0.0, 10.0]
       read_only: false
 
+  # Joint path-shape / speed-profile optimisation (acados NLP). When enabled it replaces both the
+  # elastic band smoother and the jerk-filtered velocity smoother, which stay loaded as the
+  # fallback for a solve that fails its own verification. The drivable-area / object corridor is
+  # not wired up yet: the path shape is optimised against the limits only.
+  acados_mpt:
+    enable:
+      type: bool
+      default_value: false
+      description: run the acados MPT optimizer (see `shadow` for whether its output is used)
+      read_only: true
+
+    shadow:
+      type: bool
+      default_value: true
+      description: >
+        solve but do not use the result: the published trajectory stays the eb smoother + velocity
+        smoother output and the MPT trajectory goes to its debug topic only. Only the go
+        trajectory is solved in this mode.
+
+    limits:
+      max_velocity:
+        type: double
+        default_value: 13.88
+        description: speed limit [m/s]
+        validation:
+          gt<>: [0.0]
+      max_acceleration:
+        type: double
+        default_value: 1.0
+        description: longitudinal acceleration limit [m/s^2]
+        validation:
+          gt<>: [0.0]
+      min_acceleration:
+        type: double
+        default_value: -1.0
+        description: longitudinal deceleration limit (negative) [m/s^2]
+        validation:
+          lt<>: [0.0]
+      max_jerk:
+        type: double
+        default_value: 1.6
+        description: longitudinal jerk limit [m/s^3]
+        validation:
+          gt<>: [0.0]
+      max_lateral_acceleration:
+        type: double
+        default_value: 0.8
+        description: lateral acceleration limit, imposed exactly as v^2 * kappa [m/s^2]
+        validation:
+          gt<>: [0.0]
+      max_steer_rate:
+        type: double
+        default_value: 0.995
+        description: steering angle rate limit [rad/s]
+        validation:
+          gt<>: [0.0]
+      max_curvature:
+        type: double
+        default_value: -1.0
+        description: curvature limit [1/m]; non-positive derives it from the vehicle steer limit
+      max_curvature_rate:
+        type: double
+        default_value: 0.05
+        description: dkappa/ds box; speed-independent, so it still regularises the shape at v=0 [1/m^2]
+        validation:
+          gt<>: [0.0]
+      max_acceleration_rate:
+        type: double
+        default_value: 0.5
+        description: da/ds box; speed-independent, so it still regularises the profile at v=0 [1/s^2]
+        validation:
+          gt<>: [0.0]
+
+    weights:
+      position:
+        type: double
+        default_value: 1.0
+        description: deviation from the input path [1/m^2]
+      yaw:
+        type: double
+        default_value: 1.0
+        description: deviation from the input path heading [1/rad^2]
+      curvature:
+        type: double
+        default_value: 200.0
+        description: shape smoothing (elastic band smooth_weight counterpart)
+      curvature_rate:
+        type: double
+        default_value: 10000.0
+        description: shape smoothing
+      squared_speed:
+        type: double
+        default_value: 0.002
+        description: tracking of the reference squared-speed profile
+      acceleration:
+        type: double
+        default_value: 0.1
+        description: ride comfort
+      acceleration_rate:
+        type: double
+        default_value: 10.0
+        description: ride comfort (jerk counterpart)
+      stretch:
+        type: double
+        default_value: 10000.0
+        description: pull on (rho - 1); keeps the solver grid near-uniform
+      terminal_position:
+        type: double
+        default_value: 10.0
+      terminal_yaw:
+        type: double
+        default_value: 10.0
+      terminal_curvature:
+        type: double
+        default_value: 100.0
+      terminal_squared_speed:
+        type: double
+        default_value: 1.0
+        description: terminal pull towards a full stop; soft, so a path too short to stop stays feasible
+      soft_limit:
+        type: double
+        default_value: 1000000.0
+        description: L2 penalty on the slacks of the nonlinear limits; large, they are meant to behave as hard
+
+    stretch:
+      min_stretch:
+        type: double
+        default_value: 0.8
+        description: lower bound on ds/dxi, the output arc length one reference station step buys
+        validation:
+          gt<>: [0.0]
+      max_stretch:
+        type: double
+        default_value: 1.25
+        description: upper bound on ds/dxi
+        validation:
+          gt<>: [0.0]
+      max_station_error:
+        type: double
+        default_value: 2.0
+        description: bound on the longitudinal offset between a stage and its reference station [m]
+        validation:
+          gt<>: [0.0]
+
+    solver:
+      max_iterations:
+        type: int
+        default_value: 100
+        validation:
+          gt<>: [0]
+      tolerance:
+        type: double
+        default_value: 0.0001
+        validation:
+          gt<>: [0.0]
+      warm_start:
+        type: bool
+        default_value: true
+      terminal_position_tolerance:
+        type: double
+        default_value: 0.05
+        description: half-width of the terminal position box [m]
+        validation:
+          gt<>: [0.0]
+      terminal_yaw_tolerance:
+        type: double
+        default_value: 0.02
+        description: half-width of the terminal yaw box [rad]
+        validation:
+          gt<>: [0.0]
+      max_arc_length:
+        type: double
+        default_value: 150.0
+        description: upper bound on the arc length covered by the horizon; longer inputs are cropped [m]
+        validation:
+          gt<>: [0.0]
+      arc_length_per_stage_warn:
+        type: double
+        default_value: 2.5
+        description: warn when the arc length per stage exceeds this (a coarse grid) [m]
+        validation:
+          gt<>: [0.0]
+      verification_tolerance:
+        type: double
+        default_value: 0.001
+        description: absolute slack when checking the solution against the limits
+        validation:
+          gt<>: [0.0]
+      max_dynamics_residual:
+        type: double
+        default_value: 0.001
+        description: largest acceptable NLP equality (dynamics) residual; above it the iterate is not a trajectory
+        validation:
+          gt<>: [0.0]
+
   debug:
     enable_path:
       type: bool

@@ -188,6 +188,35 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
     velocity_smoother_ = std::make_unique<VelocitySmoother>(
       vel_params, get_logger(), get_clock(), vehicle_info, std::move(jerk_filtered_smoother));
   }
+
+  // Joint shape / speed optimiser. When it owns the output it replaces both of the above, which
+  // stay loaded as its fallback: a solved NLP is not necessarily a feasible one, and it must never
+  // be the only option in a backup trajectory generator.
+  if (params_.acados_mpt.enable) {
+    // Same engage behaviour, and the same parameters, as the velocity smoother: the NLP pins its
+    // initial speed to the ego's, so without this a trajectory planned from standstill starts at
+    // exactly zero and the controller never leaves its stopped state.
+    EngageParams engage;
+    engage.enable = get_parameter("velocity_smoother.set_engage_speed").as_bool();
+    engage.speed = get_parameter("velocity_smoother.target_pull_out_speed_mps").as_double();
+    engage.acceleration = get_parameter("velocity_smoother.target_pull_out_acc_mps2").as_double();
+    engage.stop_dist_to_prohibit_engage =
+      get_parameter("velocity_smoother.stop_dist_to_prohibit_engage").as_double();
+
+    mpt_optimizer_ = std::make_unique<MptOptimizer>(
+      make_mpt_optimizer_params(params_, vehicle_info_), engage, get_logger(), get_clock());
+    pub_debug_mpt_trajectory_ =
+      this->create_publisher<Trajectory>("~/debug/optimizer/acados_mpt/trajectory", 1);
+    RCLCPP_INFO(
+      get_logger(), "acados MPT optimizer running in %s mode",
+      params_.acados_mpt.shadow ? "shadow (debug topic only)"
+                                : "active (replaces eb_smoother + velocity_smoother)");
+  }
+}
+
+bool MinimumRuleBasedPlannerNode::mpt_owns_output() const
+{
+  return mpt_optimizer_ && !params_.acados_mpt.shadow;
 }
 
 void MinimumRuleBasedPlannerNode::load_modifier_plugins()
@@ -424,23 +453,32 @@ Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
   return shifted_trajectory;
 }
 
+void MinimumRuleBasedPlannerNode::apply_path_smoother(
+  TrajectoryPoints & traj_points, const InputData & input_data) const
+{
+  if (!path_smoother_) return;
+
+  autoware_utils_debug::ScopedTimeTrack st(path_smoother_->get_name(), *time_keeper_);
+  auto optimizer_data = make_optimizer_data(input_data);
+  trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
+  optimizer_params.use_eb_smoother = true;
+  path_smoother_->optimize_trajectory(traj_points, optimizer_params, optimizer_data);
+  if (params_.debug.enable_optimizer_trajectory) {
+    publish_debug_trajectory(path_smoother_->get_name(), traj_points);
+  }
+}
+
 Trajectory MinimumRuleBasedPlannerNode::smooth_trajectory(
   const Trajectory & trajectory, const InputData & input_data) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  auto optimizer_data = make_optimizer_data(input_data);
-
-  trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
-  optimizer_params.use_eb_smoother = true;
 
   auto trajectory_points = trajectory.points;
-  if (path_smoother_) {
-    autoware_utils_debug::ScopedTimeTrack st_path_smoother(
-      path_smoother_->get_name(), *time_keeper_);
-    path_smoother_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
-    if (params_.debug.enable_optimizer_trajectory) {
-      publish_debug_trajectory(path_smoother_->get_name(), trajectory_points);
-    }
+  // The MPT optimiser decides the shape and the speed profile in one problem, so smoothing here
+  // would only pre-shape its input. It still runs on the fallback path (see optimize_velocity),
+  // and in shadow mode, where the published trajectory must stay exactly what it was.
+  if (!mpt_owns_output()) {
+    apply_path_smoother(trajectory_points, input_data);
   }
 
   Trajectory traj;
@@ -474,12 +512,47 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
     update_smoother_state ? "optimize_velocity(go)" : "optimize_velocity(stop)", *time_keeper_);
 
   auto trajectory_points = trajectory.points;
+  const double current_acceleration = input_data.acceleration_ptr->accel.accel.linear.x;
 
-  {
+  bool optimized_by_mpt = false;
+  // In shadow mode only the go trajectory is solved: the result is published for comparison, and
+  // a second solve would double the cost for something nobody reads.
+  if (mpt_optimizer_ && (mpt_owns_output() || update_smoother_state)) {
+    autoware_utils_debug::ScopedTimeTrack st_mpt("acados_mpt", *time_keeper_);
+    // The measured curvature. Without it the NLP pins its initial curvature to a value estimated
+    // from the input path over a couple of metres around the ego, which turns a few centimetres of
+    // lateral offset into a curvature of the wrong sign and magnitude - and since that initial
+    // state is a hard constraint, the trajectory then has to bulge out to unwind it.
+    const auto ego_curvature =
+      input_data.steering_ptr
+        ? std::make_optional(
+            std::tan(input_data.steering_ptr->steering_tire_angle) / vehicle_info_.wheel_base_m)
+        : std::nullopt;
+    if (
+      auto points = mpt_optimizer_->optimize(
+        trajectory_points, *input_data.odometry_ptr, current_acceleration, ego_curvature)) {
+      if (update_smoother_state && params_.debug.enable_optimizer_trajectory) {
+        Trajectory mpt_traj;
+        mpt_traj.header = trajectory.header;
+        mpt_traj.points = *points;
+        pub_debug_mpt_trajectory_->publish(mpt_traj);
+      }
+      if (mpt_owns_output()) {
+        trajectory_points = std::move(*points);
+        optimized_by_mpt = true;
+      }
+    }
+  }
+
+  if (!optimized_by_mpt) {
+    if (mpt_owns_output()) {
+      // The MPT optimiser took the elastic band's place in the pipeline, so the shape reaching
+      // here is unsmoothed; the velocity smoother below takes the shape as given.
+      apply_path_smoother(trajectory_points, input_data);
+    }
     autoware_utils_debug::ScopedTimeTrack st_smoother("velocity_smoother", *time_keeper_);
     velocity_smoother_->optimize(
-      trajectory_points, *input_data.odometry_ptr,
-      input_data.acceleration_ptr->accel.accel.linear.x, update_smoother_state);
+      trajectory_points, *input_data.odometry_ptr, current_acceleration, update_smoother_state);
   }
 
   // Post-optimization resample
@@ -596,6 +669,11 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
   }
   input_data.predicted_objects_ptr = predicted_objects_ptr_;
 
+  if (const auto msg = steering_subscriber_.take_data()) {
+    steering_ptr_ = msg;
+  }
+  input_data.steering_ptr = steering_ptr_;
+
   if (const auto msg = pointcloud_subscriber_.take_data()) {
     obstacle_pointcloud_ptr_ = msg;
   }
@@ -641,6 +719,9 @@ void MinimumRuleBasedPlannerNode::update_params()
 {
   params_ = param_listener_->get_params();
   path_planner_->update_params(params_);
+  if (mpt_optimizer_) {
+    mpt_optimizer_->update_params(make_mpt_optimizer_params(params_, vehicle_info_));
+  }
 
   for (auto & modifier : modifier_plugins_) {
     modifier->update_params(params_);

@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
 #include "map_based_stop_planner.hpp"
+#include "mpt_optimizer.hpp"
 #include "path_planner.hpp"
 #include "velocity_smoother.hpp"
 
@@ -55,6 +56,8 @@ public:
     PredictedObjects::ConstSharedPtr predicted_objects_ptr;
     PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr;
     PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
+    //! optional: only the MPT optimiser uses it, as its initial curvature
+    SteeringReport::ConstSharedPtr steering_ptr;
   };
 
 private:
@@ -73,6 +76,12 @@ private:
   Trajectory shift_trajectory_to_ego(
     const Trajectory & trajectory, const InputData & input_data) const;
   Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
+  //! Geometric smoothing only (elastic band). Skipped in the main pipeline when the MPT optimiser
+  //! owns the output, since that decides the shape itself; still used on its fallback path.
+  void apply_path_smoother(TrajectoryPoints & traj_points, const InputData & input_data) const;
+  //! The MPT optimiser is running *and* its result is what gets published. False in shadow mode,
+  //! where it is solved for the debug topic only and the published trajectory is unchanged.
+  bool mpt_owns_output() const;
   void apply_modifiers(Trajectory & trajectory, const InputData & input_data) const;
 
   //! Build the MapBasedStopPlanner parameters from the node parameters and the vehicle info.
@@ -135,6 +144,9 @@ private:
   std::unique_ptr<OptimizerPluginLoader> plugin_loader_;
   std::shared_ptr<OptimizerPluginInterface> path_smoother_;
   std::unique_ptr<VelocitySmoother> velocity_smoother_;
+  //! Joint shape / speed optimiser replacing the two above. Only created when
+  //! `acados_mpt.enable` is set; the two above stay as its fallback.
+  std::unique_ptr<MptOptimizer> mpt_optimizer_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
     pub_debug_optimizer_module_trajectories_;
   /** @} */
@@ -187,6 +199,11 @@ private:
     this, "~/input/objects"};
   PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
 
+  //! only consumed by the MPT optimiser; the pipeline runs without it
+  autoware_utils::InterProcessPollingSubscriber<SteeringReport> steering_subscriber_{
+    this, "~/input/steering"};
+  SteeringReport::ConstSharedPtr steering_ptr_;
+
   autoware_utils_rclcpp::InterProcessPollingSubscriber<PointCloud2> pointcloud_subscriber_{
     this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
   PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr_;
@@ -203,6 +220,8 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_stop_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
+  //! only created when the MPT optimiser is enabled; carries its go-trajectory output
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_mpt_trajectory_;
   /** @} */
 };
 

@@ -155,6 +155,24 @@
       smooth_velocities: true
       stop_dist_to_prohibit_engage: 0.5
 
+    # Solves shape and speed as one NLP. In shadow mode it only publishes to
+    # ~/debug/optimizer/acados_mpt/trajectory; with shadow: false it replaces the eb smoother and
+    # the velocity smoother above. Every other value is the library default; see the schema.
+    acados_mpt:
+      enable: false
+      shadow: true
+      limits:
+        max_velocity: 13.88
+        max_acceleration: 1.0
+        min_acceleration: -1.0
+        max_jerk: 1.6
+        max_lateral_acceleration: 0.8
+        max_steer_rate: 0.995      # [rad/s] 57 deg/s
+        max_curvature: -1.0        # derive from the vehicle steer limit
+      solver:
+        max_iterations: 100
+        max_arc_length: 150.0
+
     post_resample:
       max_trajectory_length: 300.0
       min_trajectory_length: 30.0
