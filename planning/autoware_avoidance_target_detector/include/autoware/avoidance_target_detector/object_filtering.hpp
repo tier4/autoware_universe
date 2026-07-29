@@ -235,9 +235,7 @@ public:
   /** @brief Update per-object Bayesian filters and prune stale entries. */
   void update_objects(
     const rclcpp::Time & current_time, const Objects & objects, const Trajectory & trajectory,
-    const ExtendedRouteHandler & extended_route_handler,
-    const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
-    bool ego_trajectory_built);
+    const ExtendedRouteHandler & extended_route_handler);
 
   /**
    * @brief Select avoidance targets from objects using updated filter state.
