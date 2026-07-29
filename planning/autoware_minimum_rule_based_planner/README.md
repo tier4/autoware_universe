@@ -39,6 +39,29 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 | `~/debug/optimizer/{name}/trajectory` | `Trajectory`            | Debug: trajectory after each optimizer plugin |
 | `~/debug/modifier/{name}/trajectory`  | `Trajectory`            | Debug: trajectory after each modifier plugin  |
 | `~/debug/processing_time_detail_ms`   | `ProcessingTimeDetail`  | Debug: processing time breakdown              |
+| `~/debug/turn_indicator`              | `MarkerArray`           | Debug: turn signal state and its maneuver     |
+
+## Turn signal
+
+The `turn_indicators_command` field of every published candidate trajectory is filled in by
+`TurnIndicatorDecider`. Both candidates get the same command: they share the path shape and differ
+only in stop position.
+
+Three maneuvers raise a signal, in this priority order:
+
+| Maneuver          | Lit when                                                                                             | Cleared when                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Intersection turn | a `turn_direction=left/right` lanelet is within `max(v * search_time, intersection_search_distance)` | ego's heading matches the heading the turn exits on            |
+| Private-area exit | a `location=private` run rejoining a public lane is within the same distance                         | as above                                                       |
+| Pull-out          | ego is STOPPED more than `departure_lateral_threshold` off the lane centerline (bus stop, shoulder)  | ego is back within `lateral_shift_threshold` of the centerline |
+| Pull-over         | an off-centerline goal is within `pull_over_search_distance`                                         | ego has stopped within `goal_arrival_distance` of the goal     |
+
+Out of scope: lane changes and avoidance. While the upstream planner runs one, ego is laterally
+offset from its lane and this module plans a path back to the centre - but the pull-out latch only
+arms for a **stopped** vehicle, so no signal is raised. `departure_lateral_threshold` must therefore
+stay above the lateral deviation a lane change or avoidance can produce. Pull-out is additionally
+suppressed inside the pull-over range, so the two cannot fight over the direction at an
+off-centerline goal.
 
 ## Parameters
 

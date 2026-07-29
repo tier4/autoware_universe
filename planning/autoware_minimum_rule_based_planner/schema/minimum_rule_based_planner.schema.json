@@ -245,7 +245,7 @@
             },
             "lateral_shift_threshold": {
               "type": "number",
-              "description": "Minimum absolute lateral offset from the main-lane centerline to assert a left/right direction (pull-out / pull-over) [m]",
+              "description": "Lateral offset from the lane centerline at/below which a pull-out is considered finished, and the deadzone for asserting a pull-over direction [m]",
               "default": 0.5,
               "minimum": 0.0
             },
@@ -259,6 +259,36 @@
               "type": "number",
               "description": "Minimum time a turn signal is held on once lit, to suppress chatter [s]",
               "default": 3.0,
+              "minimum": 0.0
+            },
+            "departure_lateral_threshold": {
+              "type": "number",
+              "description": "Lateral offset above which a stopped ego counts as parked off-lane (bus stop / road shoulder) and may raise a pull-out signal; must stay above the lateral deviation a lane change or avoidance can produce so those never blink [m]",
+              "default": 1.5,
+              "minimum": 0.0
+            },
+            "stopped_velocity_threshold": {
+              "type": "number",
+              "description": "Speed at/below which ego counts as stopped, for latching a pull-out and detecting arrival at the goal [m/s]",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "heading_align_threshold": {
+              "type": "number",
+              "description": "Yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared [rad]",
+              "default": 0.15,
+              "exclusiveMinimum": 0.0
+            },
+            "exit_lookahead": {
+              "type": "number",
+              "description": "Distance past a turn lanelet / private-area boundary used to measure the heading the maneuver ends on; also how far behind ego a maneuver still being completed is tracked [m]",
+              "default": 15.0,
+              "exclusiveMinimum": 0.0
+            },
+            "goal_arrival_distance": {
+              "type": "number",
+              "description": "Distance-to-goal at which a stopped ego counts as arrived, clearing the pull-over signal [m]",
+              "default": 1.0,
               "minimum": 0.0
             }
           },
@@ -1019,6 +1049,11 @@
             "enable_output_trajectory": {
               "type": "boolean",
               "description": "Enable output trajectory debugging",
+              "default": true
+            },
+            "enable_turn_indicator_marker": {
+              "type": "boolean",
+              "description": "Publish turn indicator state markers",
               "default": true
             }
           },

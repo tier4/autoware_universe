@@ -53,6 +53,11 @@
       lateral_shift_threshold: 0.5 # [m]
       pull_over_search_distance: 30.0 # [m]
       min_blink_duration: 3.0 # [s]
+      departure_lateral_threshold: 1.5 # [m]
+      stopped_velocity_threshold: 0.1 # [m/s]
+      heading_align_threshold: 0.15 # [rad]
+      exit_lookahead: 15.0 # [m]
+      goal_arrival_distance: 1.0 # [m]
 
     obstacle_stop:
       enable: true
@@ -177,3 +182,4 @@
       enable_optimizer_trajectory: true
       enable_modifier_trajectory: true
       enable_output_trajectory: true
+      enable_turn_indicator_marker: true
