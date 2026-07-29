@@ -79,12 +79,13 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
                             RiskLevel::_level_type risk_level) {
     RiskLevel risk;
     risk.level = risk_level;
-    reports.push_back(autoware_trajectory_validator::build<MetricReport>()
-                        .validator_name(get_name())
-                        .validator_category(category())
-                        .metric_name(std::string(metric_name))
-                        .metric_value(metric_value)
-                        .risk(risk));
+    reports.push_back(
+      autoware_trajectory_validator::build<MetricReport>()
+        .validator_name(get_name())
+        .validator_category(category())
+        .metric_name(std::string(metric_name))
+        .metric_value(metric_value)
+        .risk(risk));
   };
 
   // DRAC
