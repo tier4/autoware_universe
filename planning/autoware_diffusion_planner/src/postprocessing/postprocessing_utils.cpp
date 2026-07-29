@@ -345,6 +345,17 @@ void prepend_current_ego_state(
     return;
   }
 
+  // While stopped, prepending the measured state puts a zero-velocity point at the ego pose.
+  // The longitudinal controller reads that as a stop line at zero distance and latches into its
+  // STOPPED state, so the vehicle never departs once the plan starts accelerating - the pull-away
+  // profile ramps up from nearly zero, so the stale anchor always wins. This prepend exists to
+  // interpolate through planner latency, which only matters once the ego is moving; at a
+  // standstill the planned points already carry the hold-or-depart decision on their own.
+  constexpr double standstill_velocity_mps = 0.1;
+  if (std::abs(longitudinal_velocity_mps) < standstill_velocity_mps) {
+    return;
+  }
+
   TrajectoryPoint current;
   current.pose = pose;
   current.longitudinal_velocity_mps = static_cast<float>(longitudinal_velocity_mps);

@@ -167,7 +167,7 @@
         "prepend_current_ego_state": {
           "type": "boolean",
           "default": true,
-          "description": "For velocity-representation models, prepend the measured ego state at t=0 so controllers can interpolate the reference during planner latency"
+          "description": "For velocity-representation models, prepend the measured ego state at t=0 so controllers can interpolate the reference during planner latency. Skipped while the ego is stopped, where a zero-velocity point at the ego pose would keep the longitudinal controller in its STOPPED state."
         },
         "delay_step": {
           "type": "integer",

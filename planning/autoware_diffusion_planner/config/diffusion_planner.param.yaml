@@ -35,6 +35,7 @@
     shift_x: false
     # HDP predicts +0.1 s onward. Publish the measured t=0 ego state so temporal control can
     # interpolate through planner latency instead of clamping to the first future point.
+    # Skipped while the ego is stopped, where it would instead pin the controller in STOPPED.
     prepend_current_ego_state: true
     delay_step: 0
     line_string_max_step_m: 5.0

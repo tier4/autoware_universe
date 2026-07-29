@@ -194,4 +194,42 @@ TEST(PostprocessingUtilsTest, PrependsMeasuredCurrentEgoStateAtTimeZero)
   EXPECT_EQ(trajectory.points.size(), 3U);
 }
 
+TEST(PostprocessingUtilsTest, SkipsPrependAtStandstillSoTheControllerCanPullAway)
+{
+  Trajectory trajectory;
+  trajectory.points.resize(2);
+  trajectory.points[0].time_from_start = rclcpp::Duration::from_seconds(0.1);
+  // A departure profile ramps up from nearly zero, so the first planned point is still tiny.
+  trajectory.points[0].longitudinal_velocity_mps = 0.03F;
+  trajectory.points[1].time_from_start = rclcpp::Duration::from_seconds(0.2);
+  trajectory.points[1].longitudinal_velocity_mps = 0.09F;
+
+  geometry_msgs::msg::Pose current_pose;
+  current_pose.orientation.w = 1.0;
+
+  // Stopped ego: a zero-velocity point at the ego pose reads as a stop line at zero distance and
+  // keeps the longitudinal controller in its STOPPED state.
+  postprocess::prepend_current_ego_state(trajectory, current_pose, 0.0, 0.0, 0.0, 0.0);
+
+  ASSERT_EQ(trajectory.points.size(), 2U);
+  EXPECT_FLOAT_EQ(trajectory.points[0].longitudinal_velocity_mps, 0.03F);
+}
+
+TEST(PostprocessingUtilsTest, PrependsOnceTheEgoIsCreeping)
+{
+  Trajectory trajectory;
+  trajectory.points.resize(2);
+  trajectory.points[0].time_from_start = rclcpp::Duration::from_seconds(0.1);
+  trajectory.points[1].time_from_start = rclcpp::Duration::from_seconds(0.2);
+
+  geometry_msgs::msg::Pose current_pose;
+  current_pose.orientation.w = 1.0;
+
+  // Above the standstill threshold the latency interpolation is meaningful again.
+  postprocess::prepend_current_ego_state(trajectory, current_pose, 0.5, 0.0, 0.0, 0.0);
+
+  ASSERT_EQ(trajectory.points.size(), 3U);
+  EXPECT_FLOAT_EQ(trajectory.points[0].longitudinal_velocity_mps, 0.5F);
+}
+
 }  // namespace autoware::diffusion_planner::test
