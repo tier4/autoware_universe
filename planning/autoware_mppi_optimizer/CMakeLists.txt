@@ -70,7 +70,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
 
   cuda_add_library(first_order_dubins_mppi SHARED
     src/first_order_dubins/first_order_dubins_mppi_interface.cu
-    src/planning_origin_estimator.cpp
   )
   target_include_directories(first_order_dubins_mppi PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

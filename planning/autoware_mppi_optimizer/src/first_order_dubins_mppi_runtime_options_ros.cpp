@@ -43,16 +43,6 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(param_name(prefix, "skip_if_invalid"), defaults.skip_if_invalid);
   node.declare_parameter(
     param_name(prefix, "use_last_control_as_nominal"), defaults.use_last_control_as_nominal);
-  node.declare_parameter(
-    param_name(prefix, "enable_trajectory_stitching"), defaults.enable_trajectory_stitching);
-  node.declare_parameter(
-    param_name(prefix, "planning_origin_max_position_error"),
-    defaults.planning_origin_max_position_error);
-  node.declare_parameter(
-    param_name(prefix, "planning_origin_max_yaw_error"), defaults.planning_origin_max_yaw_error);
-  node.declare_parameter(
-    param_name(prefix, "trajectory_stitching_prefix_duration"),
-    defaults.trajectory_stitching_prefix_duration);
 }
 
 FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
@@ -71,14 +61,6 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.skip_if_invalid = node.get_parameter(param_name(prefix, "skip_if_invalid")).as_bool();
   options.use_last_control_as_nominal =
     node.get_parameter(param_name(prefix, "use_last_control_as_nominal")).as_bool();
-  options.enable_trajectory_stitching =
-    node.get_parameter(param_name(prefix, "enable_trajectory_stitching")).as_bool();
-  options.planning_origin_max_position_error =
-    node.get_parameter(param_name(prefix, "planning_origin_max_position_error")).as_double();
-  options.planning_origin_max_yaw_error =
-    node.get_parameter(param_name(prefix, "planning_origin_max_yaw_error")).as_double();
-  options.trajectory_stitching_prefix_duration =
-    node.get_parameter(param_name(prefix, "trajectory_stitching_prefix_duration")).as_double();
   return options;
 }
 

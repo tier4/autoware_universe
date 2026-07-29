@@ -36,6 +36,8 @@ struct FirstOrderDubinsMppiVehicleParams
   float vel_rate_lim{7.0F};
   float acc_time_delay{0.1F};
   float steer_time_delay{0.24F};
+  /** Project the measured ego state this far into the future before starting MPPI. */
+  float state_prediction_time{0.1F};
 
   float min_accel() const { return -vel_rate_lim; }
   float max_accel() const { return vel_rate_lim; }

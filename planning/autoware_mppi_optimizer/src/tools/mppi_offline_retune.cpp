@@ -220,6 +220,8 @@ void applyVehicleParam(
     params.acc_time_delay = value;
   } else if (key == "steer_time_delay") {
     params.steer_time_delay = value;
+  } else if (key == "state_prediction_time") {
+    params.state_prediction_time = value;
   } else {
     throw std::runtime_error("Unknown vehicle param: " + key);
   }

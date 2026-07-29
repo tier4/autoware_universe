@@ -32,11 +32,6 @@ struct FirstOrderDubinsMppiRuntimeOptions
   bool skip_if_invalid{false};
   /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle). */
   bool use_last_control_as_nominal{false};
-  /** Use the previous accepted MPPI trajectory as the next origin while ego remains close. */
-  bool enable_trajectory_stitching{true};
-  double planning_origin_max_position_error{0.1};
-  double planning_origin_max_yaw_error{0.05};
-  double trajectory_stitching_prefix_duration{0.2};
 };
 
 }  // namespace autoware::mppi_optimizer
