@@ -86,6 +86,7 @@ void applyUserCostParams(
   cost_params.desired_speed = user.desired_speed;
   cost_params.speed_coeff = user.speed_coeff;
   cost_params.track_coeff = user.track_coeff;
+  cost_params.track_terminal_scale = user.track_terminal_scale;
   cost_params.heading_coeff = user.heading_coeff;
   cost_params.lateral_distance_coeff = user.lateral_distance_coeff;
   cost_params.lateral_yaw_error_coeff = user.lateral_yaw_error_coeff;
@@ -102,10 +103,6 @@ void applyUserCostParams(
   cost_params.obstacle_collision_margin = user.obstacle_collision_margin;
   cost_params.road_border_collision_margin = user.road_border_collision_margin;
   cost_params.drivable_area_crossing_coeff = user.drivable_area_crossing_coeff;
-  cost_params.goal_pos_coeff = user.goal_pos_coeff;
-  cost_params.goal_speed_coeff = user.goal_speed_coeff;
-  cost_params.goal_yaw_coeff = user.goal_yaw_coeff;
-  cost_params.goal_terminal_scale = user.goal_terminal_scale;
 }
 
 FirstOrderDubinsMppiState toHostState(const DYN::state_array & x)
@@ -483,8 +480,6 @@ struct FirstOrderDubinsMppiInterface::Impl
 #endif
     sampler = SAMPLER(sp);
 
-    // Temperature must come from user_cost_params_.lambda (yaml / retune --set), not a
-    // compile-time constant — otherwise slider/param changes never reach the softmax.
     const float lambda = user_cost_params_.lambda;
     controller = std::make_unique<Mppi>(
       &model, &cost, &feedback, &sampler, kDt, kMaxIter, lambda, 0.0F, kMppiHorizon, u_nom);

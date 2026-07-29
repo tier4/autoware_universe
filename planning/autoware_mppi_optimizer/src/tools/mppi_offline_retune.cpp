@@ -124,6 +124,8 @@ void applyCostParam(
     params.speed_coeff = value;
   } else if (key == "track_coeff") {
     params.track_coeff = value;
+  } else if (key == "track_terminal_scale") {
+    params.track_terminal_scale = value;
   } else if (key == "heading_coeff") {
     params.heading_coeff = value;
   } else if (key == "lateral_distance_coeff") {
@@ -152,14 +154,6 @@ void applyCostParam(
     params.longitudinal_jerk_coeff = value;
   } else if (key == "obstacle_collision_margin") {
     params.obstacle_collision_margin = value;
-  } else if (key == "goal_pos_coeff") {
-    params.goal_pos_coeff = value;
-  } else if (key == "goal_speed_coeff") {
-    params.goal_speed_coeff = value;
-  } else if (key == "goal_yaw_coeff") {
-    params.goal_yaw_coeff = value;
-  } else if (key == "goal_terminal_scale") {
-    params.goal_terminal_scale = value;
   } else {
     // Unknown keys must not abort retune: the visualizer may send a superset of
     // slider names / logged fields that older or newer builds don't share.

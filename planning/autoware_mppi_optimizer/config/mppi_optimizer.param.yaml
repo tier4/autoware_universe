@@ -7,6 +7,7 @@
     desired_speed: 2.5
     speed_coeff: 0.0
     track_coeff: 1000.0
+    track_terminal_scale: 10.0
     heading_coeff: 100.0
     # Spatial (closest-segment) costs restored from pre time-indexed tracking; 0 = off.
     lateral_distance_coeff: 0.0
@@ -21,10 +22,6 @@
     accel_cmd_coeff: 50.0
     steer_cmd_coeff: 0.0
     steer_rate_coeff: 0.0
-    goal_pos_coeff: 0.0
-    goal_speed_coeff: 0.0
-    goal_yaw_coeff: 0.0
-    goal_terminal_scale: 0.0
     obstacle_collision_margin: 0.2
     road_border_collision_margin: 0.2
     drivable_area_crossing_coeff: 500.0
@@ -32,7 +29,7 @@
     # Optional offline debug logging for mppi_debug_visualizer.py --log-dir
     # Empty directory resolves to $XDG_CACHE_HOME/autoware/mppi_debug_log
     # (or $HOME/.cache/autoware/mppi_debug_log).
-    enable_debug_trajectory_log: true
+    enable_debug_trajectory_log: false
     debug_trajectory_log_directory: ""
 
     ignore_obstacles: false

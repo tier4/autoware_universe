@@ -104,6 +104,7 @@ DEFAULT_PARAMS: Dict[str, float] = {
     "desired_speed": 2.5,
     "speed_coeff": 500.0,
     "track_coeff": 3000.0,
+    "track_terminal_scale": 10.0,
     "heading_coeff": 1000.0,
     "lateral_distance_coeff": 0.0,
     "lateral_yaw_error_coeff": 0.0,
@@ -117,10 +118,6 @@ DEFAULT_PARAMS: Dict[str, float] = {
     "accel_cmd_coeff": 0.0,
     "steer_cmd_coeff": 10.0,
     "steer_rate_coeff": 0.0,  # cost param; not always present in yaml
-    "goal_pos_coeff": 1000.0,
-    "goal_speed_coeff": 200.0,
-    "goal_yaw_coeff": 500.0,
-    "goal_terminal_scale": 10.0,
     "obstacle_collision_margin": 0.2,
 }
 
@@ -129,6 +126,7 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("lambda", 100.0, 20000.0),
     ("desired_speed", 0.0, 20.0),
     ("track_coeff", 0.0, 10000.0),
+    ("track_terminal_scale", 0.0, 50.0),
     ("speed_coeff", 0.0, 5000.0),
     ("heading_coeff", 0.0, 5000.0),
     ("lateral_distance_coeff", 0.0, 10000.0),
@@ -139,10 +137,6 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("accel_cmd_coeff", 0.0, 2000.0),
     ("steer_cmd_coeff", 0.0, 5000.0),
     ("steer_rate_coeff", 0.0, 10000.0),
-    ("goal_pos_coeff", 0.0, 5000.0),
-    ("goal_speed_coeff", 0.0, 2000.0),
-    ("goal_yaw_coeff", 0.0, 5000.0),
-    ("goal_terminal_scale", 0.0, 50.0),
     ("boundary_threshold", 0.1, 5.0),
     ("boundary_threshold_left", -1.0, 5.0),
     ("boundary_threshold_right", -1.0, 5.0),

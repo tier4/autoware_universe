@@ -87,7 +87,7 @@ Notes:
 ### Replay only
 
 ```bash
-ros2 run autoware_diffusion_planner mppi_debug_visualizer.py -- \
+ros2 run autoware_mppi_optimizer mppi_debug_visualizer.py -- \
   --log-dir "$HOME/.cache/autoware/mppi_debug_log"
 ```
 
@@ -109,7 +109,7 @@ with diffusion reference (cyan), logged MPPI (red), and retuned MPPI (green):
 
 ```bash
 # Option A — visualizer with retune panel
-ros2 run autoware_diffusion_planner mppi_debug_visualizer.py -- \
+ros2 run autoware_mppi_optimizer mppi_debug_visualizer.py -- \
   --log-dir "$HOME/.cache/autoware/mppi_debug_log" \
   --enable-retune \
   --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml

@@ -27,6 +27,7 @@ struct FirstOrderDubinsMppiCostParams
   float desired_speed{3.0F};
   float speed_coeff{500.0F};
   float track_coeff{1000.0F};
+  float track_terminal_scale{10.0F};
   float heading_coeff{500.0F};
   float lateral_distance_coeff{0.0F};
   float lateral_yaw_error_coeff{0.0F};
@@ -44,10 +45,6 @@ struct FirstOrderDubinsMppiCostParams
   float obstacle_collision_margin{0.5F};
   float road_border_collision_margin{0.2F};
   float drivable_area_crossing_coeff{10000.0F};
-  float goal_pos_coeff{1000.0F};
-  float goal_speed_coeff{0.0F};
-  float goal_yaw_coeff{500.0F};
-  float goal_terminal_scale{10.0F};
 };
 
 }  // namespace autoware::mppi_optimizer
