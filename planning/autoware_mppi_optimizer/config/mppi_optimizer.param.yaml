@@ -33,7 +33,8 @@
     debug_trajectory_log_directory: ""
 
     ignore_obstacles: false
-    ignore_drivable_area: true
+    use_road_borders: true
+    use_drivable_area: true
     force_cold_start_each_step: false
     skip_if_invalid: true  # if the MPPI output is invalid (i.e., collides with obstacles or road borders), the input reference is returned
     # Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle).

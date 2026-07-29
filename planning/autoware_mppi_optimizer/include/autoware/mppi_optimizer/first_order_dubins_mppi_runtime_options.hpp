@@ -27,7 +27,10 @@ struct FirstOrderDubinsMppiRuntimeOptions
   /** Empty -> $XDG_CACHE_HOME/autoware/mppi_debug_log or $HOME/.cache/autoware/mppi_debug_log. */
   std::string debug_trajectory_log_directory;
   bool ignore_obstacles{false};
-  bool ignore_drivable_area{false};
+  /** Include road-border segments as hard collision constraints in MPPI. */
+  bool use_road_borders{true};
+  /** Include drivable-area boundary segments as soft constraints in MPPI. */
+  bool use_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
   /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle). */
