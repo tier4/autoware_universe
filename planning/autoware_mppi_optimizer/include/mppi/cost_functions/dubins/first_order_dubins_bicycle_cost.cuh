@@ -29,7 +29,7 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float boundary_threshold_right = -1.0F;
   float accel_cmd_coeff = 0.0F;
   float steer_cmd_coeff = 0.0F;
-  /** Direct cost on steer rate [rad/s]: (steer_cmd - steer) / steer_time_constant. */
+  /** Direct cost on the rate-limited steering-state derivative [rad/s]. */
   float steer_rate_coeff = 0.0F;
   float lateral_acceleration_coeff = 300.0F;
   float lateral_jerk_coeff = 300.0F;
@@ -37,6 +37,7 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float wheel_base = 0.32F;
   float accel_time_constant = 0.15F;
   float steer_time_constant = 0.08F;
+  float max_steer_rate = 3.0F;
   /** Ego OBB for parked-car collision (rear axle at pose; box center offset forward). */
   float ego_length = 0.55F * 1.5F;
   float ego_width = 0.28F * 1.5F;

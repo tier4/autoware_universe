@@ -50,12 +50,12 @@ __host__ __device__ void comfortTerms(
   const float steer_cmd = u[static_cast<int>(C::STEER_CMD)];
 
   const float accel_tau = fmaxf(params.accel_time_constant, 1.0E-4F);
-  const float steer_tau = fmaxf(params.steer_time_constant, 1.0E-4F);
   const float wheel_base = fmaxf(params.wheel_base, 1.0E-4F);
 
   longitudinal_jerk = (accel_cmd - accel) / accel_tau;
 
-  steer_rate = (steer_cmd - steer) / steer_tau;
+  steer_rate = mppi::dynamics::dubins::firstOrderSteeringRate(
+    steer, steer_cmd, params.steer_time_constant, params.max_steer_rate);
   const float curvature = tanf(steer) / wheel_base;
 #ifdef __CUDA_ARCH__
   const float sec_sq = 1.0F / fmaxf(cosf(steer) * cosf(steer), 1.0E-6F);

@@ -61,6 +61,24 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
   float max_accel = 4.0F;
 };
 
+namespace mppi::dynamics::dubins
+{
+/**
+ * Steering-state derivative shared by dynamics propagation and comfort costs.
+ *
+ * Keeping the first-order time-constant floor and rate saturation here prevents the cost model
+ * from penalizing a steering rate that the simulated vehicle cannot execute.
+ */
+__host__ __device__ inline float firstOrderSteeringRate(
+  const float steer, const float steer_cmd, const float steer_time_constant,
+  const float max_steer_rate)
+{
+  const float steer_tau = fmaxf(steer_time_constant, 1.0E-4F);
+  const float unconstrained_rate = (steer_cmd - steer) / steer_tau;
+  return fmaxf(fminf(unconstrained_rate, max_steer_rate), -max_steer_rate);
+}
+}  // namespace mppi::dynamics::dubins
+
 using namespace MPPI_internal;
 
 template <class CLASS_T, class PARAMS_T = FirstOrderDubinsBicycleParams>

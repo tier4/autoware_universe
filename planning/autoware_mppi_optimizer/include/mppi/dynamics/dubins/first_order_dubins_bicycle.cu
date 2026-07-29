@@ -7,12 +7,6 @@ namespace
 using S = FirstOrderDubinsBicycleParams::StateIndex;
 using C = FirstOrderDubinsBicycleParams::ControlIndex;
 
-__host__ __device__ float clampSteerRate(
-  const FirstOrderDubinsBicycleParams & p, const float steer_dot)
-{
-  return fmaxf(fminf(steer_dot, p.max_steer_rate), -p.max_steer_rate);
-}
-
 __host__ __device__ void firstOrderDubinsBicycleDeriv(
   const FirstOrderDubinsBicycleParams & p, const float * state, const float * control,
   float * state_der)
@@ -25,7 +19,6 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
   const float steer_cmd = control[static_cast<int>(C::STEER_CMD)];
 
   const float accel_tau = fmaxf(p.accel_time_constant, 1.0E-4F);
-  const float steer_tau = fmaxf(p.steer_time_constant, 1.0E-4F);
 
   state_der[static_cast<int>(S::ACCELERATION)] = (accel_cmd - accel) / accel_tau;
   state_der[static_cast<int>(S::VEL_X)] = accel;
@@ -37,7 +30,8 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
   state_der[static_cast<int>(S::POS_X)] = v * cos_yaw;
   state_der[static_cast<int>(S::POS_Y)] = v * sin_yaw;
 
-  const float steer_dot = clampSteerRate(p, (steer_cmd - steer) / steer_tau);
+  const float steer_dot = mppi::dynamics::dubins::firstOrderSteeringRate(
+    steer, steer_cmd, p.steer_time_constant, p.max_steer_rate);
   state_der[static_cast<int>(S::STEER_ANGLE)] = steer_dot;
 }
 }  // namespace
