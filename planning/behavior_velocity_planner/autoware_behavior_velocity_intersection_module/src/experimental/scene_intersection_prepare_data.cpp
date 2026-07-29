@@ -258,7 +258,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
   }
 
   // (4) default stop line position on interpolated path
-  const auto temp_default_stopline = [&]() -> std::optional<double> {
+  intersection_stoplines.default_stopline = [&]() -> std::optional<double> {
     const auto map_stop_s = getStopLineIndexFromMap(
       path, left_bound, right_bound, lane_id_interval, assigned_lanelet, planner_data);
     double default_stopline_s = 0.0;
@@ -274,9 +274,6 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
     return default_stopline_s;
   }();
 
-  // default stopline is 0 if not exist.
-  intersection_stoplines.default_stopline = temp_default_stopline.value_or(0.0);
-
   // (5) collision stop line
   intersection_stoplines.collision_stopline = [&]() -> std::optional<double> {
     if (previous_stop_pose.collision_stopline_pose) {
@@ -290,7 +287,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
       return autoware::experimental::trajectory::find_nearest_index(
         path, previous_stop_pose.collision_stopline_pose.value().position);
     }
-    if (!temp_default_stopline) {
+    if (!intersection_stoplines.default_stopline) {
       return std::nullopt;
     }
 
@@ -326,12 +323,11 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
   // (6) occlusion peeking stop line position on interpolated path
   // static position
   const auto static_occlusion_peeking_line_s = [&]() -> std::optional<double> {
-    if (!temp_default_stopline) {
-      return std::nullopt;
-    }
+    const auto temp_default_stopline = intersection_stoplines.default_stopline
+                                         ? intersection_stoplines.default_stopline.value()
+                                         : 0.0;
     // NOTE: if footprints[0] is already inside the attention area, invalid
-    const auto & base_pose0 =
-      path.compute(intersection_stoplines.default_stopline.value()).point.pose;
+    const auto & base_pose0 = path.compute(temp_default_stopline).point.pose;
     const auto path_footprint0 =
       autoware_utils::transform_vector(local_footprint, autoware_utils::pose2transform(base_pose0));
     if (bg::intersects(
