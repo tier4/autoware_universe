@@ -19,8 +19,6 @@
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 
-#include <std_msgs/msg/header.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -356,7 +354,7 @@ void CnnLampRecognizerCore::decode_tlr_output(
   }
 }
 
-CnnLampRecognizerCore::DetectionResult CnnLampRecognizerCore::classify(
+CnnLampRecognizerCore::DetectionResult CnnLampRecognizerCore::infer(
   const std::vector<cv::Mat> & images)
 {
   DetectionResult result;
@@ -542,59 +540,53 @@ cv::Mat CnnLampRecognizerCore::make_debug_image(
   return debug_image;
 }
 
-// ============================== CnnLampRecognizer ==============================
-// ROS adapter: publishes debug images, logs, and delegates recognition to the Node-free core.
+// classify() and make_debug_image() implement ClassifierInterface: they wrap infer() with the
+// per-signal update_traffic_signals mapping and the batch debug composition.
 
-CnnLampRecognizer::CnnLampRecognizer(
-  rclcpp::Node * node_ptr, const CnnLampRecognizerConfig & config)
-: node_ptr_(node_ptr), core_(config)
-{
-  image_pub_ = image_transport::create_publisher(
-    node_ptr_, "~/output/debug/image", rclcpp::QoS{1}.get_rmw_qos_profile());
-}
-
-bool CnnLampRecognizer::getTrafficSignals(
+bool CnnLampRecognizerCore::classify(
   const std::vector<cv::Mat> & images,
   tier4_perception_msgs::msg::TrafficLightArray & traffic_signals)
 {
   if (images.size() != traffic_signals.signals.size()) {
-    RCLCPP_WARN(
-      node_ptr_->get_logger(), "LampRecognizer: image count (%zu) != signal count (%zu)",
-      images.size(), traffic_signals.signals.size());
     return false;
   }
 
-  const CnnLampRecognizerCore::DetectionResult result = core_.classify(images);
+  const DetectionResult result = infer(images);
   if (!result.success) {
-    RCLCPP_ERROR(node_ptr_->get_logger(), "LampRecognizer: inference failed");
     return false;
   }
 
   for (size_t i = 0; i < traffic_signals.signals.size(); ++i) {
-    CnnLampRecognizerCore::update_traffic_signals(
-      result.lamps_per_image[i], traffic_signals.signals[i]);
+    update_traffic_signals(result.lamps_per_image[i], traffic_signals.signals[i]);
   }
 
-  if (image_pub_.getNumSubscribers() > 0 && !images.empty()) {
-    // build debug image by vertically concatenating each image's debug view
-    const int strip_width = 200;
-    const int strip_height = 130;
-    cv::Mat debug_img;
-    for (size_t i = 0; i < images.size(); i++) {
-      cv::Mat debug_img_i = CnnLampRecognizerCore::make_debug_image(
-        images[i], traffic_signals.signals[i], &result.lamps_per_image[i]);
-      cv::resize(debug_img_i, debug_img_i, cv::Size(strip_width, strip_height));
-      if (i == 0) {
-        debug_img = debug_img_i;
-      } else {
-        cv::vconcat(debug_img, debug_img_i, debug_img);
-      }
-    }
-    const auto debug_image_msg =
-      cv_bridge::CvImage(std_msgs::msg::Header(), "rgb8", debug_img).toImageMsg();
-    image_pub_.publish(debug_image_msg);
-  }
+  // Keep the per-image output signals and raw detections so make_debug_image can render the batch
+  // afterwards.
+  last_signals_ = traffic_signals;
+  last_lamps_ = result.lamps_per_image;
+
   return true;
+}
+
+cv::Mat CnnLampRecognizerCore::make_debug_image(const std::vector<cv::Mat> & images) const
+{
+  // Vertically concatenate each image's debug view: boxes from the raw detections and a
+  // label / confidence strip from the output signal, each resized to a fixed strip size.
+  const int strip_width = 200;
+  const int strip_height = 130;
+  cv::Mat debug_image;
+  const size_t count = std::min({images.size(), last_signals_.signals.size(), last_lamps_.size()});
+  for (size_t i = 0; i < count; i++) {
+    cv::Mat strip =
+      CnnLampRecognizerCore::make_debug_image(images[i], last_signals_.signals[i], &last_lamps_[i]);
+    cv::resize(strip, strip, cv::Size(strip_width, strip_height));
+    if (debug_image.empty()) {
+      debug_image = strip;
+    } else {
+      cv::vconcat(debug_image, strip, debug_image);
+    }
+  }
+  return debug_image;
 }
 
 }  // namespace autoware::traffic_light
