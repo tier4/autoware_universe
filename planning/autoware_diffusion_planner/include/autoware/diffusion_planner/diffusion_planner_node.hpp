@@ -44,6 +44,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_srvs/srv/set_bool.hpp>
@@ -180,6 +181,9 @@ private:
     const autoware::mppi_optimizer::FirstOrderDubinsMppiDebug & debug, const std::string & frame_id,
     const rclcpp::Time & stamp);
 
+  /** Publish whether MPPI is currently applied to the output trajectory. */
+  void publish_mppi_enabled(bool enabled);
+
   /**
    * @brief Publish guidance triggered status as a debug message.
    * @param guidance_triggered Map of guidance name to triggered flags per batch.
@@ -232,6 +236,7 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_mppi_reference_trajectory_{nullptr};
   rclcpp::Publisher<Trajectory>::SharedPtr pub_mppi_optimized_trajectory_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_mppi_markers_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_mppi_enabled_{nullptr};
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_lane_marker_{nullptr};

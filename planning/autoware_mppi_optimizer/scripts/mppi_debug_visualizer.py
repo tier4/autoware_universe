@@ -77,6 +77,7 @@ from rclpy.qos import HistoryPolicy
 from rclpy.qos import QoSProfile
 from rclpy.qos import ReliabilityPolicy
 from rclpy.utilities import remove_ros_args
+from std_msgs.msg import Bool
 
 # Rolling window for live measured tire-angle / command history.
 MEASURED_STEER_HISTORY_S = 16.0
@@ -270,6 +271,9 @@ class MppiDebugFrame:
     rollouts: List[Tuple[float, List[float], List[float]]] = field(default_factory=list)
     stamp_text: str = ""
     metrics_text: str = ""
+    # Live: whether diffusion_planner is applying MPPI to the published trajectory.
+    # None = unknown / offline; False = disabled or shadow; True = applied.
+    mppi_enabled: Optional[bool] = None
 
 
 def load_trajectory_csv(path: Path) -> LoadedTrajectory:
@@ -397,9 +401,7 @@ def indexed_distance_series(
         return []
     ref_x, ref_y = ref_xy
     n = min(len(traj_xy[0]), len(traj_xy[1]), len(ref_x), len(ref_y))
-    return [
-        math.hypot(traj_xy[0][i] - ref_x[i], traj_xy[1][i] - ref_y[i]) for i in range(n)
-    ]
+    return [math.hypot(traj_xy[0][i] - ref_x[i], traj_xy[1][i] - ref_y[i]) for i in range(n)]
 
 
 def indexed_heading_error_series(
@@ -526,9 +528,7 @@ def frame_from_loaded(
     orig_dpsi = max_abs(
         indexed_heading_error_series(frame.optimized_heading, frame.reference_heading)
     )
-    parts = [
-        f"orig max‖Δp‖={orig_pos:.3f}m max|Δψ|={orig_dpsi:.3f}rad max|v|={orig_vel:.3f}m/s"
-    ]
+    parts = [f"orig max‖Δp‖={orig_pos:.3f}m max|Δψ|={orig_dpsi:.3f}rad max|v|={orig_vel:.3f}m/s"]
     if frame.retuned_xy:
         ret_pos = max_pos_err(frame.reference_xy, frame.retuned_xy)
         ret_vel = max_vel_err(frame.reference_vel, frame.retuned_vel)
@@ -558,10 +558,57 @@ def frame_from_loaded(
     return frame
 
 
+def _limits_close(a, b, *, rtol: float = 1.0e-6, atol: float = 1.0e-9) -> bool:
+    return all(math.isclose(x, y, rel_tol=rtol, abs_tol=atol) for x, y in zip(a, b))
+
+
+def capture_user_view(ax):
+    """Return current limits once the user has zoomed/panned, else None.
+
+    Every redraw calls ``Axes.clear()``, which drops back to autoscale. Without this a
+    zoom only survives until the next frame. Compare with tolerance so aspect-ratio /
+    tick adjustments cannot spuriously freeze a panel on a bad scale.
+    """
+    if getattr(ax, "_mppi_view_locked", False):
+        return (ax.get_xlim(), ax.get_ylim())
+    baseline = getattr(ax, "_mppi_view_baseline", None)
+    if baseline is None:
+        return None
+    current = (ax.get_xlim(), ax.get_ylim())
+    cur = current[0] + current[1]
+    base = baseline[0] + baseline[1]
+    if not _limits_close(cur, base):
+        ax._mppi_view_locked = True
+        return current
+    return None
+
+
+def apply_view_baseline(ax, saved) -> None:
+    if saved is not None:
+        ax.set_xlim(saved[0])
+        ax.set_ylim(saved[1])
+    ax._mppi_view_baseline = (ax.get_xlim(), ax.get_ylim())
+
+
+def reset_view_baselines(axes) -> None:
+    """Hand every panel back to autoscale (bound to the 'f' key)."""
+    for ax in axes:
+        if ax is None:
+            continue
+        ax._mppi_view_locked = False
+        ax._mppi_view_baseline = None
+        ax.relim()
+        ax.autoscale_view()
+
+
 def draw_frame(axes, frame: MppiDebugFrame) -> None:
-    if len(axes) >= 10:
+    saved_views = [(ax, capture_user_view(ax)) for ax in axes if ax is not None]
+
+    if len(axes) >= 12:
         (
             ax_xy,
+            ax_x,
+            ax_y,
             ax_lat,
             ax_heading_err,
             ax_vel,
@@ -573,8 +620,23 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_weight,
         ) = axes
         ax_heading = None
+    elif len(axes) >= 10:
+        (
+            ax_xy,
+            ax_x,
+            ax_y,
+            ax_lat,
+            ax_heading_err,
+            ax_vel,
+            ax_accel,
+            ax_steer_cmd,
+            ax_steer_meas,
+            ax_lat_jerk,
+        ) = axes
+        ax_cost = ax_weight = None
+        ax_heading = None
     elif len(axes) >= 9:
-        # Retune layout before lateral-jerk panel.
+        # Retune layout before lateral-jerk / x-y panels.
         (
             ax_xy,
             ax_lat,
@@ -586,7 +648,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_cost,
             ax_weight,
         ) = axes
-        ax_lat_jerk = None
+        ax_x = ax_y = ax_lat_jerk = None
         ax_heading = None
     elif len(axes) >= 8:
         (
@@ -599,6 +661,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_steer_meas,
             ax_lat_jerk,
         ) = axes
+        ax_x = ax_y = None
         ax_cost = ax_weight = None
         ax_heading = None
     elif len(axes) >= 7:
@@ -611,13 +674,13 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_steer_cmd,
             ax_steer_meas,
         ) = axes
-        ax_lat_jerk = None
+        ax_x = ax_y = ax_lat_jerk = None
         ax_cost = ax_weight = None
         ax_heading = None
     else:
         # Pre path-error layout (absolute heading plot).
         ax_xy, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas = axes
-        ax_lat = ax_heading_err = ax_cost = ax_weight = ax_lat_jerk = None
+        ax_x = ax_y = ax_lat = ax_heading_err = ax_cost = ax_weight = ax_lat_jerk = None
 
     lengths = [len(frame.reference_vel), len(frame.optimized_vel)]
     if frame.retuned_vel:
@@ -656,8 +719,57 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
                 f"top-weighted, ≤{MPPI_MAX_VIZ_ROLLOUTS} exported)"
             ),
         )
+
+    def _plot_xy_path(ax, xs, ys, *, color, linestyle, linewidth, label, zorder):
+        # Legend handle (single stroke); actual path is drawn segment-by-segment colored
+        # by index so spatial folds read as progressing time, not one ambiguous polyline.
+        ax.plot([], [], color=color, linestyle=linestyle, linewidth=linewidth, label=label)
+        if not xs:
+            return
+        if len(xs) == 1:
+            ax.scatter([xs[0]], [ys[0]], s=36, c=color, marker="o", zorder=zorder)
+            return
+        nseg = len(xs) - 1
+        for i in range(nseg):
+            t = i / max(nseg - 1, 1)
+            if color == "red":
+                seg_color = (0.35 + 0.65 * t, 0.05, 0.05)
+            elif color == "cyan":
+                seg_color = (0.05, 0.45 + 0.40 * t, 0.50 + 0.35 * t)
+            else:
+                seg_color = color
+            ax.plot(
+                xs[i : i + 2],
+                ys[i : i + 2],
+                color=seg_color,
+                linestyle=linestyle,
+                linewidth=linewidth,
+                zorder=zorder,
+                solid_capstyle="round",
+            )
+        ax.scatter(
+            [xs[0]],
+            [ys[0]],
+            s=40,
+            c=color,
+            marker="o",
+            zorder=zorder + 1,
+            edgecolors="k",
+            linewidths=0.6,
+        )
+        ax.annotate(
+            "idx0",
+            (xs[0], ys[0]),
+            textcoords="offset points",
+            xytext=(5, 5),
+            fontsize=8,
+            color=color,
+            zorder=zorder + 1,
+        )
+
     if frame.reference_xy and len(frame.reference_xy[0]) > 0:
-        ax_xy.plot(
+        _plot_xy_path(
+            ax_xy,
             frame.reference_xy[0],
             frame.reference_xy[1],
             color="cyan",
@@ -667,10 +779,12 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             zorder=3,
         )
     if frame.optimized_xy and len(frame.optimized_xy[0]) > 0:
-        ax_xy.plot(
+        _plot_xy_path(
+            ax_xy,
             frame.optimized_xy[0],
             frame.optimized_xy[1],
             color="red",
+            linestyle="-",
             linewidth=2,
             label="MPPI optimized (logged)",
             zorder=4,
@@ -687,6 +801,19 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     overlay = frame.stamp_text
     if frame.metrics_text:
         overlay = f"{overlay}\n{frame.metrics_text}" if overlay else frame.metrics_text
+    status_line = ""
+    status_color = "black"
+    status_background = "white"
+    if frame.mppi_enabled is True:
+        status_line = "MPPI ENABLED (optimized trajectory applied)"
+        status_color = "green"
+        status_background = "#e6ffe6"
+    elif frame.mppi_enabled is False:
+        status_line = "MPPI DISABLED (output is diffusion only)"
+        status_color = "tab:red"
+        status_background = "#ffe6e6"
+    if status_line:
+        overlay = f"{status_line}\n{overlay}" if overlay else status_line
     if overlay:
         ax_xy.text(
             0.02,
@@ -695,8 +822,18 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             transform=ax_xy.transAxes,
             verticalalignment="top",
             fontsize=9,
-            bbox={"facecolor": "white", "alpha": 0.85},
+            color=status_color,
+            fontweight=("bold" if frame.mppi_enabled is not None else "normal"),
+            bbox={
+                "facecolor": status_background,
+                "alpha": 0.9,
+                "edgecolor": status_color if frame.mppi_enabled is not None else "0.7",
+            },
         )
+    if frame.mppi_enabled is True:
+        ax_xy.set_title("Trajectory (MPPI ENABLED)")
+    elif frame.mppi_enabled is False:
+        ax_xy.set_title("Trajectory (MPPI DISABLED)")
     if (
         frame.rollouts
         or (frame.reference_xy and len(frame.reference_xy[0]) > 0)
@@ -705,10 +842,69 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     ):
         ax_xy.relim()
         ax_xy.autoscale_view()
-    ax_xy.set_aspect("equal", adjustable="datalim")
+    # "box" (not "datalim") so an explicit zoom keeps the limits it was given.
+    ax_xy.set_aspect("equal", adjustable="box")
     ax_xy.legend(loc="best")
 
     idx = list(range(n_compare)) if n_compare > 0 else []
+
+    def _plot_xy_component(ax, component: int, ylabel: str, title: str) -> None:
+        """Plot coordinate vs index as Δ from index 0.
+
+        Absolute map coordinates sit near 1e4–1e5 m; a few-metre reverse then looks
+        flat under offset notation / a locked wide y-scale, while the equal-aspect XY
+        plot still shows the fold. Relative values keep both views honest.
+        """
+        ax.clear()
+        ax.set_title(title)
+        ax.set_xlabel("point index")
+        ax.set_ylabel(ylabel)
+        ax.grid(True)
+        ax.axhline(0.0, color="0.7", linewidth=0.8, linestyle=":")
+        plotted = False
+
+        def _delta(series: Sequence[float]) -> List[float]:
+            origin = series[0]
+            return [v - origin for v in series]
+
+        if frame.reference_xy and len(frame.reference_xy[component]) > 0:
+            vals = _delta(frame.reference_xy[component])
+            ax.plot(
+                list(range(len(vals))),
+                vals,
+                color="cyan",
+                linestyle="--",
+                linewidth=2,
+                label="diffusion",
+            )
+            plotted = True
+        if frame.optimized_xy and len(frame.optimized_xy[component]) > 0:
+            vals = _delta(frame.optimized_xy[component])
+            ax.plot(
+                list(range(len(vals))),
+                vals,
+                color="red",
+                linewidth=2,
+                label="MPPI logged",
+            )
+            plotted = True
+        if frame.retuned_xy and len(frame.retuned_xy[component]) > 0:
+            vals = _delta(frame.retuned_xy[component])
+            ax.plot(
+                list(range(len(vals))),
+                vals,
+                color="tab:green",
+                linewidth=2.2,
+                label="MPPI retuned",
+            )
+            plotted = True
+        if plotted:
+            ax.legend(loc="best", fontsize=8)
+
+    if ax_x is not None:
+        _plot_xy_component(ax_x, 0, "Δx from idx0 [m]", "ΔX vs index (must match XY)")
+    if ax_y is not None:
+        _plot_xy_component(ax_y, 1, "Δy from idx0 [m]", "ΔY vs index (must match XY)")
 
     if ax_lat is not None:
         ax_lat.clear()
@@ -915,9 +1111,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         )
 
     ax_steer_meas.clear()
-    ax_steer_meas.set_title(
-        f"δ_meas + δ_cmd[0] history (last {MEASURED_STEER_HISTORY_S:.0f}s)"
-    )
+    ax_steer_meas.set_title(f"δ_meas + δ_cmd[0] history (last {MEASURED_STEER_HISTORY_S:.0f}s)")
     ax_steer_meas.set_xlabel("time [s] (0 = now)")
     ax_steer_meas.set_ylabel("steer [rad]")
     ax_steer_meas.grid(True)
@@ -995,9 +1189,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ) -> None:
             if not cmd:
                 return
-            jerks = lateral_jerk_along_cmd_sequence(
-                cmd, vel, accel, delta0, tau, L, MPPI_DT
-            )
+            jerks = lateral_jerk_along_cmd_sequence(cmd, vel, accel, delta0, tau, L, MPPI_DT)
             (h,) = ax_lat_jerk.plot(
                 list(range(len(jerks))),
                 jerks,
@@ -1095,32 +1287,38 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
                 transform=ax_weight.transAxes,
             )
 
+    for ax, saved in saved_views:
+        apply_view_baseline(ax, saved)
+
 
 def create_figure(*, with_retune_panel: bool = False):
+    trajectory_fig = plt.figure(figsize=(8.5, 7.0))
+    ax_xy = trajectory_fig.add_subplot(1, 1, 1)
+    trajectory_fig.canvas.manager.set_window_title("MPPI Trajectory")
+
     if with_retune_panel:
-        fig = plt.figure(figsize=(17, 17))
+        # Third column stays empty: _build_retune_controls() places the sliders there.
+        fig = plt.figure(figsize=(15, 11))
         gs = gridspec.GridSpec(
-            8,
-            3,
-            figure=fig,
-            width_ratios=[1.25, 1.0, 0.78],
-            height_ratios=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.85, 0.85],
-            wspace=0.30,
-            hspace=0.45,
+            6, 3, figure=fig, width_ratios=[1.0, 1.0, 0.85], wspace=0.30, hspace=0.55
         )
-        ax_xy = fig.add_subplot(gs[0:6, 0])
-        ax_cost = fig.add_subplot(gs[6, 0])
-        ax_weight = fig.add_subplot(gs[7, 0])
-        ax_lat = fig.add_subplot(gs[0, 1])
-        ax_heading_err = fig.add_subplot(gs[1, 1])
-        ax_vel = fig.add_subplot(gs[2, 1])
-        ax_accel = fig.add_subplot(gs[3, 1])
-        ax_steer_cmd = fig.add_subplot(gs[4, 1])
-        ax_steer_meas = fig.add_subplot(gs[5, 1])
-        ax_lat_jerk = fig.add_subplot(gs[6:, 1])
-        fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
+        ax_x = fig.add_subplot(gs[0, 0])
+        ax_y = fig.add_subplot(gs[1, 0])
+        ax_lat = fig.add_subplot(gs[2, 0])
+        ax_heading_err = fig.add_subplot(gs[3, 0])
+        ax_vel = fig.add_subplot(gs[4, 0])
+        ax_accel = fig.add_subplot(gs[5, 0])
+        ax_steer_cmd = fig.add_subplot(gs[0, 1])
+        ax_steer_meas = fig.add_subplot(gs[1, 1])
+        ax_lat_jerk = fig.add_subplot(gs[2, 1])
+        ax_cost = fig.add_subplot(gs[3, 1])
+        ax_weight = fig.add_subplot(gs[4, 1])
+        fig.canvas.manager.set_window_title("MPPI Diagnostics + Retune")
+        fig._mppi_related_figures = (trajectory_fig,)
         return fig, (
             ax_xy,
+            ax_x,
+            ax_y,
             ax_lat,
             ax_heading_err,
             ax_vel,
@@ -1132,19 +1330,23 @@ def create_figure(*, with_retune_panel: bool = False):
             ax_weight,
         )
 
-    fig = plt.figure(figsize=(14, 15))
-    gs = gridspec.GridSpec(7, 2, figure=fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
-    ax_xy = fig.add_subplot(gs[:, 0])
-    ax_lat = fig.add_subplot(gs[0, 1])
-    ax_heading_err = fig.add_subplot(gs[1, 1])
-    ax_vel = fig.add_subplot(gs[2, 1])
-    ax_accel = fig.add_subplot(gs[3, 1])
-    ax_steer_cmd = fig.add_subplot(gs[4, 1])
-    ax_steer_meas = fig.add_subplot(gs[5, 1])
-    ax_lat_jerk = fig.add_subplot(gs[6, 1])
-    fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
+    fig = plt.figure(figsize=(12, 9))
+    gs = gridspec.GridSpec(5, 2, figure=fig, wspace=0.26, hspace=0.55)
+    ax_x = fig.add_subplot(gs[0, 0])
+    ax_y = fig.add_subplot(gs[1, 0])
+    ax_lat = fig.add_subplot(gs[2, 0])
+    ax_heading_err = fig.add_subplot(gs[3, 0])
+    ax_vel = fig.add_subplot(gs[4, 0])
+    ax_accel = fig.add_subplot(gs[0, 1])
+    ax_steer_cmd = fig.add_subplot(gs[1, 1])
+    ax_steer_meas = fig.add_subplot(gs[2, 1])
+    ax_lat_jerk = fig.add_subplot(gs[3, 1])
+    fig.canvas.manager.set_window_title("MPPI Diagnostics")
+    fig._mppi_related_figures = (trajectory_fig,)
     return fig, (
         ax_xy,
+        ax_x,
+        ax_y,
         ax_lat,
         ax_heading_err,
         ax_vel,
@@ -1153,6 +1355,76 @@ def create_figure(*, with_retune_panel: bool = False):
         ax_steer_meas,
         ax_lat_jerk,
     )
+
+
+def redraw_figure_group(fig) -> None:
+    for current_fig in (fig, *getattr(fig, "_mppi_related_figures", ())):
+        current_fig.canvas.draw_idle()
+        current_fig.canvas.flush_events()
+
+
+class AxesNavigator:
+    """Scroll to zoom, drag to pan, double-click to re-fit.
+
+    Self-contained so navigation does not depend on the backend toolbar being usable.
+    """
+
+    ZOOM_STEP = 1.2
+
+    def __init__(self, fig, axes) -> None:
+        self._axes = {ax for ax in axes if ax is not None}
+        self._drag = None
+        for current_fig in (fig, *getattr(fig, "_mppi_related_figures", ())):
+            current_fig.canvas.mpl_connect("scroll_event", self._on_scroll)
+            current_fig.canvas.mpl_connect("button_press_event", self._on_press)
+            current_fig.canvas.mpl_connect("motion_notify_event", self._on_motion)
+            current_fig.canvas.mpl_connect("button_release_event", self._on_release)
+
+    def _on_scroll(self, event) -> None:
+        ax = event.inaxes
+        if ax not in self._axes or event.xdata is None or event.ydata is None:
+            return
+        scale = 1.0 / self.ZOOM_STEP if event.button == "up" else self.ZOOM_STEP
+        x_lo, x_hi = ax.get_xlim()
+        y_lo, y_hi = ax.get_ylim()
+        ax.set_xlim(
+            event.xdata - (event.xdata - x_lo) * scale,
+            event.xdata + (x_hi - event.xdata) * scale,
+        )
+        ax.set_ylim(
+            event.ydata - (event.ydata - y_lo) * scale,
+            event.ydata + (y_hi - event.ydata) * scale,
+        )
+        ax._mppi_view_locked = True
+        ax.figure.canvas.draw_idle()
+
+    def _on_press(self, event) -> None:
+        ax = event.inaxes
+        if event.button != 1 or ax not in self._axes:
+            return
+        if event.dblclick:
+            reset_view_baselines([ax])
+            ax.figure.canvas.draw_idle()
+            return
+        self._drag = (ax, event.xdata, event.ydata)
+
+    def _on_motion(self, event) -> None:
+        if self._drag is None:
+            return
+        ax, anchor_x, anchor_y = self._drag
+        if event.inaxes is not ax or event.xdata is None or event.ydata is None:
+            return
+        dx = anchor_x - event.xdata
+        dy = anchor_y - event.ydata
+        x_lo, x_hi = ax.get_xlim()
+        y_lo, y_hi = ax.get_ylim()
+        ax.set_xlim(x_lo + dx, x_hi + dx)
+        ax.set_ylim(y_lo + dy, y_hi + dy)
+        ax._mppi_view_locked = True
+        ax.figure.canvas.draw_idle()
+
+    def _on_release(self, event) -> None:
+        self._drag = None
 
 
 def load_params_yaml(path: Optional[Path]) -> Dict[str, float]:
@@ -1220,9 +1492,7 @@ def load_vehicle_from_log(
         logged.get("wheel_base", wheel_base),
         logged.get("ego_width", ego_width),
         logged.get("ego_length", ego_length),
-        logged.get(
-            "steer_time_constant", VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT
-        ),
+        logged.get("steer_time_constant", VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT),
     )
 
 
@@ -1265,9 +1535,7 @@ class MppiDebugVisualizer(Node):
         update_hz = max(update_hz, 1.0)
         self._wheel_base = wheel_base
         # Same parameter name as simulator_model.param.yaml / MPPI vehicle dynamics.
-        self.declare_parameter(
-            "steer_time_constant", VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT
-        )
+        self.declare_parameter("steer_time_constant", VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT)
         if steer_time_constant is not None:
             tau = float(steer_time_constant)
         else:
@@ -1279,6 +1547,7 @@ class MppiDebugVisualizer(Node):
         self._logged_optimized = False
         self._logged_measured_steer = False
         self._logged_cmd_steer = False
+        self._logged_mppi_enabled = False
         self._measured_steer_history: Deque[Tuple[float, float]] = deque()
         self._cmd_steer_history: Deque[Tuple[float, float]] = deque()
 
@@ -1287,6 +1556,12 @@ class MppiDebugVisualizer(Node):
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
+        )
+        enabled_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
         )
         # Vehicle status topics are typically SensorDataQoS (BEST_EFFORT).
         measured_qos = QoSProfile(
@@ -1304,17 +1579,22 @@ class MppiDebugVisualizer(Node):
         self.create_subscription(
             Trajectory, f"{prefix}/optimized_trajectory", self.on_optimized_trajectory, qos
         )
+        self.create_subscription(Bool, f"{prefix}/enabled", self.on_mppi_enabled, enabled_qos)
         self.create_subscription(
             SteeringReport, measured_steering_topic, self.on_measured_steering, measured_qos
         )
 
         self._fig, self._axes = create_figure()
+        for fig in (self._fig, *getattr(self._fig, "_mppi_related_figures", ())):
+            fig.canvas.mpl_connect("key_press_event", self._on_key)
+        self._navigator = AxesNavigator(self._fig, self._axes)
         self._configure_window_no_focus_steal()
         plt.show(block=False)
 
         self.get_logger().info("MPPI debug visualizer started (live).")
         self.get_logger().info(f"Reference: {prefix}/reference_trajectory")
         self.get_logger().info(f"Optimized: {prefix}/optimized_trajectory")
+        self.get_logger().info(f"Enabled flag: {prefix}/enabled")
         self.get_logger().info(f"Measured steer: {measured_steering_topic}")
         self.get_logger().info(
             f"Horizon δ̇ uses MPPI first-order steer lag τ={self._steer_time_constant:.4f}s "
@@ -1324,27 +1604,37 @@ class MppiDebugVisualizer(Node):
             "Subscriptions use RELIABLE QoS (matches diffusion_planner publishers)."
         )
         self.get_logger().info("Ensure use_mppi_optimizer:=true in diffusion_planner params.")
+        self.get_logger().info(
+            f"Plot navigation (matplotlib backend: {matplotlib.get_backend()}): "
+            "scroll = zoom, drag = pan, double-click = re-fit one panel, "
+            "escape = re-fit all. Zoom persists across updates."
+        )
 
         self.create_timer(1.0 / update_hz, self.on_timer)
 
-    def _configure_window_no_focus_steal(self) -> None:
-        try:
-            win = self._fig.canvas.manager.window
-        except (AttributeError, TypeError):
-            return
-        if win is None:
-            return
-        if hasattr(win, "attributes"):
-            try:
-                win.attributes("-topmost", False)
-            except Exception:
-                pass
-        try:
-            from PyQt5 import QtCore  # type: ignore[import-not-found]
+    def _on_key(self, event) -> None:
+        if event.key == "escape":
+            reset_view_baselines(self._axes)
 
-            win.setAttribute(QtCore.Qt.WA_ShowWithoutActivating, True)
-        except (ImportError, AttributeError):
-            pass
+    def _configure_window_no_focus_steal(self) -> None:
+        for fig in (self._fig, *getattr(self._fig, "_mppi_related_figures", ())):
+            try:
+                win = fig.canvas.manager.window
+            except (AttributeError, TypeError):
+                continue
+            if win is None:
+                continue
+            if hasattr(win, "attributes"):
+                try:
+                    win.attributes("-topmost", False)
+                except Exception:
+                    pass
+            try:
+                from PyQt5 import QtCore  # type: ignore[import-not-found]
+
+                win.setAttribute(QtCore.Qt.WA_ShowWithoutActivating, True)
+            except (ImportError, AttributeError):
+                pass
 
     def _process_trajectory(self, msg: Trajectory, *, is_optimized: bool = False) -> MppiDebugFrame:
         points = msg.points
@@ -1422,6 +1712,15 @@ class MppiDebugVisualizer(Node):
                 f"plotting last {MEASURED_STEER_HISTORY_S:.0f}s on the history panel."
             )
 
+    def on_mppi_enabled(self, msg: Bool) -> None:
+        with self._lock:
+            self._frame.mppi_enabled = bool(msg.data)
+        if not self._logged_mppi_enabled:
+            self._logged_mppi_enabled = True
+            self.get_logger().info(
+                f"Receiving mppi enabled flag ({'ENABLED' if msg.data else 'DISABLED'})."
+            )
+
     def on_measured_steering(self, msg: SteeringReport) -> None:
         steer = float(msg.steering_tire_angle)
         # SteeringReport carries stamp (not header).
@@ -1469,6 +1768,7 @@ class MppiDebugVisualizer(Node):
                 wheel_base=self._wheel_base,
                 stamp_text=self._frame.stamp_text,
                 metrics_text=self._frame.metrics_text,
+                mppi_enabled=self._frame.mppi_enabled,
             )
             if frame.reference_xy and frame.optimized_xy:
                 frame.metrics_text = (
@@ -1487,8 +1787,7 @@ class MppiDebugVisualizer(Node):
                     f"{frame.metrics_text}  |  {cmd_txt}" if frame.metrics_text else cmd_txt
                 )
         draw_frame(self._axes, frame)
-        self._fig.canvas.draw_idle()
-        self._fig.canvas.flush_events()
+        redraw_figure_group(self._fig)
 
 
 class OfflineLogVisualizer:
@@ -1524,11 +1823,7 @@ class OfflineLogVisualizer:
             logged_steer_tau,
         ) = load_vehicle_from_log(log_dir, wheel_base, ego_width, ego_length)
         self._steer_time_constant = max(
-            float(
-                steer_time_constant
-                if steer_time_constant is not None
-                else logged_steer_tau
-            ),
+            float(steer_time_constant if steer_time_constant is not None else logged_steer_tau),
             1.0e-4,
         )
         self._status = "Ready"
@@ -1540,7 +1835,9 @@ class OfflineLogVisualizer:
         self._out_dir = Path(tempfile.mkdtemp(prefix="mppi_retune_")) if enable_retune else None
         self._retune_bin = retune_bin
         self._fig, self._axes = create_figure(with_retune_panel=enable_retune)
-        self._fig.canvas.mpl_connect("key_press_event", self._on_key)
+        for fig in (self._fig, *getattr(self._fig, "_mppi_related_figures", ())):
+            fig.canvas.mpl_connect("key_press_event", self._on_key)
+        self._navigator = AxesNavigator(self._fig, self._axes)
         self._sliders: Dict[str, Slider] = {}
         if enable_retune:
             if self._retune_bin is None:
@@ -1548,7 +1845,7 @@ class OfflineLogVisualizer:
             self._build_retune_controls()
         self._show_current()
         plt.show(block=False)
-        keys = "left/right or n/p = step, home/end, a = autoplay, q = quit"
+        keys = "left/right or n/p = step, home/end, a = autoplay, escape = re-fit axes, q = quit"
         if enable_retune:
             keys += ", r = retune"
         print(f"Offline MPPI log: {log_dir} ({len(self._frame_ids)} frames). Keys: {keys}.")
@@ -1617,8 +1914,7 @@ class OfflineLogVisualizer:
     def _show_current(self) -> None:
         frame_id = self._frame_ids[self._index]
         draw_frame(self._axes, self._load_frame(frame_id))
-        self._fig.canvas.draw_idle()
-        self._fig.canvas.flush_events()
+        redraw_figure_group(self._fig)
 
     def _step(self, delta: int) -> None:
         self._index = max(0, min(len(self._frame_ids) - 1, self._index + delta))
@@ -1706,10 +2002,14 @@ class OfflineLogVisualizer:
             self._show_current()
         elif event.key == "a":
             self._autoplay = not self._autoplay
+        elif event.key == "escape":
+            reset_view_baselines(self._axes)
+            self._show_current()
         elif event.key == "r" and self._enable_retune:
             self._retune_current()
         elif event.key == "q":
-            plt.close(self._fig)
+            for fig in (self._fig, *getattr(self._fig, "_mppi_related_figures", ())):
+                plt.close(fig)
 
     def spin(self) -> None:
         while plt.fignum_exists(self._fig.number):
@@ -1733,7 +2033,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument(
         "--topic-prefix",
         default=default_prefix,
-        help="Prefix for ~/debug/mppi/{reference,optimized}_trajectory topics",
+        help="Prefix for ~/debug/mppi/{reference,optimized}_trajectory and enabled topics",
     )
     parser.add_argument(
         "--log-dir",

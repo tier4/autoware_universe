@@ -411,7 +411,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool skip_if_invalid{false};
   /** Warm-start u_nom from shifted previous u_opt when available. */
   bool use_last_control_as_nominal{false};
-  /** Fill debug.rollouts with top-K weighted samples (CPU replay). Offline retune only by default. */
+  /** Fill debug.rollouts with top-K weighted samples (CPU replay). Offline retune only by default.
+   */
   bool enable_rollout_visualization{false};
 
   Impl() : feedback(&model, kDt), sampler(SAMPLER::SAMPLING_PARAMS_T{}) {}
@@ -871,6 +872,9 @@ FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
   impl_->sim_time = sim_time;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
   state = toHostState(impl_->x);
+  // Advance the vendor control history after the applied command is consumed so the
+  // next cycle's Savitzky-Golay left-edge taps are the previously applied controls.
+  impl_->controller->slideControlSequence(1);
   return control;
 }
 
@@ -1042,6 +1046,10 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       "MPPI output rejected with crash_status=%d; returning the input trajectory unchanged",
       crash_status);
   }
+
+  // Advance the vendor control history after all getControlSeq / getActualStateSeq reads
+  // so the next cycle's Savitzky-Golay left-edge taps are the previously applied controls.
+  impl_->controller->slideControlSequence(1);
 
   return result;
 }

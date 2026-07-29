@@ -5,7 +5,7 @@
     # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
     lambda: 100.0
     desired_speed: 2.5
-    speed_coeff: 500.0
+    speed_coeff: 0.0
     track_coeff: 1000.0
     heading_coeff: 100.0
     crash_coeff: 10000.0
