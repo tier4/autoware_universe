@@ -12,27 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/safety/point_cloud_collision_check_filter.hpp"
+#include "point_cloud_collision_check_filter.hpp"
 
-#include "point_cloud_collision_check/parameter.hpp"
-#include "point_cloud_collision_check/planner_data_lite.hpp"
-#include "point_cloud_collision_check/types.hpp"
-
-#include <memory>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
 namespace pcc = autoware::trajectory_validator::plugin::safety::point_cloud_collision_check;
-
-PointCloudCollisionCheckFilter::PointCloudCollisionCheckFilter()
-: ValidatorInterface("point_cloud_collision_check_filter"),
-  params_(std::make_unique<pcc::Params>()),
-  planner_data_(std::make_unique<pcc::PlannerData>())
-{
-}
-
-PointCloudCollisionCheckFilter::~PointCloudCollisionCheckFilter() = default;
 
 bool PointCloudCollisionCheckFilter::is_available_data(
   [[maybe_unused]] const CandidateTrajectory & candidate_trajectory,
@@ -92,7 +78,7 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
 
 void PointCloudCollisionCheckFilter::update_parameters(const validator::Params & params)
 {
-  *params_ = pcc::Params{params};
+  params_ = pcc::Params{params};
   set_planner_data_param();
 }
 }  // namespace autoware::trajectory_validator::plugin::safety

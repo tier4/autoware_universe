@@ -12,23 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
+#ifndef FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
+#define FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
+#include "parameter.hpp"
+#include "planner_data_lite.hpp"
+#include "types.hpp"
 
 #include <geometry_msgs/msg/twist.hpp>
 
-#include <memory>
 #include <vector>
-
-namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
-{
-// 実体は src/filters/safety/point_cloud_collision_check/ にある。
-struct Params;        // 移植元が node から読む各パラメータ構造体をまとめたもの
-struct PlannerData;   // 移植元 PlannerData のうち点群停止に必要な分
-struct StopObstacle;  // 停止対象の点群障害物
-}  // namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
 
 namespace autoware::trajectory_validator::plugin::safety
 {
@@ -39,8 +33,8 @@ namespace autoware::trajectory_validator::plugin::safety
 class PointCloudCollisionCheckFilter final : public plugin::ValidatorInterface
 {
 public:
-  PointCloudCollisionCheckFilter();
-  ~PointCloudCollisionCheckFilter() override;
+  PointCloudCollisionCheckFilter() : ValidatorInterface("point_cloud_collision_check_filter") {}
+  ~PointCloudCollisionCheckFilter() override = default;
 
   result_t is_feasible(
     const CandidateTrajectory & candidate_trajectory, const FilterContext & context) final;
@@ -71,9 +65,9 @@ private:
     const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
     const geometry_msgs::msg::Twist & twist) const;
 
-  Params params_{};
-  PlannerData planner_data_{};
+  point_cloud_collision_check::Params params_{};
+  point_cloud_collision_check::PlannerData planner_data_{};
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
+#endif  // FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
