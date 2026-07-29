@@ -295,10 +295,8 @@ inline DebugData make_debug_data(
   const auto nearest = std::min_element(
     stop_obstacles.begin(), stop_obstacles.end(),
     [](const StopObstacle & a, const StopObstacle & b) {
-      const double dist_a =
-        a.dist_to_collide_on_decimated_traj + a.braking_dist.value_or(0.0);
-      const double dist_b =
-        b.dist_to_collide_on_decimated_traj + b.braking_dist.value_or(0.0);
+      const double dist_a = a.dist_to_collide_on_decimated_traj + a.braking_dist.value_or(0.0);
+      const double dist_b = b.dist_to_collide_on_decimated_traj + b.braking_dist.value_or(0.0);
       return dist_a < dist_b;
     });
   if (nearest != stop_obstacles.end()) {

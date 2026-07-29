@@ -145,52 +145,52 @@
         min_accel: -1.0
         max_jerk: 0.6
         min_jerk: -0.6
+      stop_planning:
+        stop_margin: 5.0
+        rss_params:
+          use_rss_stop: true
+          two_wheel_objects_deceleration: -3.0
+          vehicle_objects_deceleration: -1.2
+          no_wheel_objects_deceleration: -10.0
+          pointcloud_deceleration: -1.0
+          velocity_offset: -1.0
+        obstacle_velocity_threshold_enter_fixed_stop: 3.0
       obstacle_filtering:
         check_inside: true
-        stop_obstacle_hold_time_threshold: 1.0
-        excluded_class_ids: [0, 1, 2, 3, 4, 24, 25]
+        trim_trajectory:
+          enable_trimming: true
+          min_trajectory_length: 30.0
+          braking_distance_scale_factor: 1.5
         lateral_margin:
           nominal_margin: 0.3
           additional_wheel_off_track_scale: 0.0
           is_moving_threshold_velocity: 0.5
           additional_is_stop_margin: 0.0
           additional_is_moving_margin: 0.0
-        trim_trajectory:
-          enable_trimming: true
-          min_trajectory_length: 30.0
-          braking_distance_scale_factor: 1.5
+        stop_obstacle_hold_time_threshold: 1.0
+        excluded_class_ids: [0, 1, 2, 3, 4, 24, 25]
+      pointcloud_segmentation:
+        time_series_association:
+          max_time_diff: 0.35
+          min_velocity: -5.0
+          max_velocity: 30.0
+          position_diff: 1.0
+        velocity_estimation:
+          use_estimated_velocity: false
+          min_clamp_velocity: 0.0
+          max_clamp_velocity: 20.0
+          required_velocity_count: 5
+          lpf_gain: 0.9
+        height_margin:
+          margin_from_bottom: 0.5
+          margin_from_top: 0.5
       trajectory_polygon:
+        decimate_trajectory_step_length: 2.0
+        goal_extended_trajectory_length: 6.0
         enable_to_consider_current_pose: true
         time_to_convergence: 1.5
         ego_nearest_dist_threshold: 3.0
         ego_nearest_yaw_threshold: 1.046
-        decimate_trajectory_step_length: 2.0
-        goal_extended_trajectory_length: 6.0
-      time_series_association:
-        max_time_diff: 0.35
-        min_velocity: -5.0
-        max_velocity: 30.0
-        position_diff: 1.0
-      velocity_estimation:
-        use_estimated_velocity: false
-        min_clamp_velocity: 0.0
-        max_clamp_velocity: 20.0
-        required_velocity_count: 5
-        lpf_gain: 0.9
-      height_margin:
-        margin_from_bottom: 0.5
-        margin_from_top: 0.5
-      rss_params:
-        use_rss_stop: true
-        two_wheel_objects_deceleration: -3.0
-        vehicle_objects_deceleration: -1.2
-        no_wheel_objects_deceleration: -10.0
-        pointcloud_deceleration: -1.0
-        velocity_offset: -1.0
-      stop_margin: 5.0
-      obstacle_velocity_threshold_enter_fixed_stop: 3.0
-      debug:
-        enable_markers: false
       pointcloud_preprocessing:
         filter_by_trajectory_polygon:
           enable_monolithic_crop_box: false
@@ -209,3 +209,5 @@
           cluster_tolerance: 1.0
           min_cluster_size: 1
           max_cluster_size: 100000
+      debug:
+        enable_markers: false
