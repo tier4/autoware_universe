@@ -19,8 +19,8 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float track_coeff = 1000.0F;
   /** Pull toward ref heading at each horizon step: coeff * (yaw - ref_yaw[t])^2; 0 disables. */
   float heading_coeff = 500.0F;
-  /** Per-violation crash penalty; latched crash_status counts violations (1=lateral bound or hit,
-   * 2=both). */
+  /** Effective one-time penalty per simultaneous violation after MPPI horizon averaging.
+   * crash_status latches the first violation count (1 to 3). */
   float crash_coeff = 100000.0F;
   float boundary_threshold = 0.8F;
   /** Beyond bound if signed lateral offset exceeds these (path-left = +); <0 falls back to
@@ -131,6 +131,7 @@ public:
   __host__ __device__ bool detectAndLatchCrash(
     const float x, const float y, const float yaw, int timestep, int * crash_status) const;
 
+  /** Unscaled penalty represented by a latched crash status; charged once at horizon scale. */
   __host__ __device__ float latchedCrashCost(const int * crash_status) const;
 
   float computeStateCost(

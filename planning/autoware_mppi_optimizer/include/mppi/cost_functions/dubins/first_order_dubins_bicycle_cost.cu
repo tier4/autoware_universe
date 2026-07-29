@@ -579,10 +579,13 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
                                      ? this->params_.drivable_area_crossing_coeff
                                      : 0.0F;
+  const bool newly_crashed =
+    !isCrashLatched(crash_status) && detectAndLatchCrash(x_pos, y_pos, yaw, timestep, crash_status);
+  // The MPPI framework divides the accumulated trajectory cost by NUM_TIMESTEPS. Apply the crash
+  // penalty once, scaled by the horizon length, so its effective contribution is independent of
+  // the timestep at which the violation is first detected.
   const float crash_cost =
-    isCrashLatched(crash_status) || detectAndLatchCrash(x_pos, y_pos, yaw, timestep, crash_status)
-      ? latchedCrashCost(crash_status)
-      : 0.0F;
+    newly_crashed ? static_cast<float>(NUM_TIMESTEPS) * latchedCrashCost(crash_status) : 0.0F;
 
   return speed_cost + track_cost + heading_cost + drivable_area_cost + crash_cost;
 }
@@ -604,10 +607,11 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
                                      ? this->params_.drivable_area_crossing_coeff
                                      : 0.0F;
+  const bool newly_crashed =
+    !isCrashLatched(crash_status) && detectAndLatchCrash(x_pos, y_pos, yaw, timestep, crash_status);
+  // Keep the effective one-time crash penalty unchanged by the framework's horizon averaging.
   const float crash_cost =
-    isCrashLatched(crash_status) || detectAndLatchCrash(x_pos, y_pos, yaw, timestep, crash_status)
-      ? latchedCrashCost(crash_status)
-      : 0.0F;
+    newly_crashed ? static_cast<float>(NUM_TIMESTEPS) * latchedCrashCost(crash_status) : 0.0F;
 
   return speed_cost + track_cost + heading_cost + drivable_area_cost + crash_cost;
 }
@@ -702,15 +706,7 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
     const Eigen::Ref<const output_array> & y, const Eigen::Ref<const control_array> & u,
     int timestep, int * crash)
 {
-  if (isCrashLatched(crash)) {
-    return latchedCrashCost(crash);
-  }
-
   const float state_cost = computeStateCost(y, timestep, crash);
-  if (isCrashLatched(crash)) {
-    return state_cost;
-  }
-
   return state_cost + computeControlCost(u, timestep, crash) + computeComfortCost(u, y, timestep);
 }
 
@@ -720,15 +716,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   float * y, float * u, int timestep, float * theta_c, int * crash)
 {
   if (threadIdx.y == 0) {
-    if (isCrashLatched(crash)) {
-      return latchedCrashCost(crash);
-    }
-
     const float state_cost = computeStateCost(y, timestep, theta_c, crash);
-    if (isCrashLatched(crash)) {
-      return state_cost;
-    }
-
     return state_cost + computeControlCost(u, timestep, theta_c, crash) +
            computeComfortCost(u, y, timestep);
   }
