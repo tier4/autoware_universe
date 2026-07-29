@@ -71,8 +71,8 @@ private:
     const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
     const geometry_msgs::msg::Twist & twist) const;
 
-  std::unique_ptr<point_cloud_collision_check::Params> params_;
-  std::unique_ptr<point_cloud_collision_check::PlannerData> planner_data_;
+  Params params_{};
+  PlannerData planner_data_{};
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
