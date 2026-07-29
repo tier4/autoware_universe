@@ -83,7 +83,8 @@ void FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::dataToDevice()
+void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::referenceDataToDevice()
 {
   if (!this->GPUMemStatus_) {
     return;
@@ -97,26 +98,48 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     this->cost_d_->ref_v_, ref_v_, sizeof(ref_v_), cudaMemcpyHostToDevice, this->stream_));
   HANDLE_ERROR(cudaMemcpyAsync(
     this->cost_d_->ref_yaw_, ref_yaw_, sizeof(ref_yaw_), cudaMemcpyHostToDevice, this->stream_));
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::obstacleDataToDevice()
+{
+  if (!this->GPUMemStatus_) {
+    return;
+  }
+
+  if (num_obstacles_ > 0) {
+    const size_t trajectory_bytes =
+      static_cast<size_t>(num_obstacles_) * NUM_TIMESTEPS * sizeof(float);
+    const size_t dimension_bytes = static_cast<size_t>(num_obstacles_) * sizeof(float);
+    HANDLE_ERROR(cudaMemcpyAsync(
+      this->cost_d_->obs_x_, obs_x_, trajectory_bytes, cudaMemcpyHostToDevice, this->stream_));
+    HANDLE_ERROR(cudaMemcpyAsync(
+      this->cost_d_->obs_y_, obs_y_, trajectory_bytes, cudaMemcpyHostToDevice, this->stream_));
+    HANDLE_ERROR(cudaMemcpyAsync(
+      this->cost_d_->obs_yaw_, obs_yaw_, trajectory_bytes, cudaMemcpyHostToDevice, this->stream_));
+    HANDLE_ERROR(cudaMemcpyAsync(
+      this->cost_d_->obs_half_length_, obs_half_length_, dimension_bytes, cudaMemcpyHostToDevice,
+      this->stream_));
+    HANDLE_ERROR(cudaMemcpyAsync(
+      this->cost_d_->obs_half_width_, obs_half_width_, dimension_bytes, cudaMemcpyHostToDevice,
+      this->stream_));
+  }
   HANDLE_ERROR(cudaMemcpyAsync(
     &this->cost_d_->num_obstacles_, &num_obstacles_, sizeof(num_obstacles_), cudaMemcpyHostToDevice,
     this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_x_, obs_x_, sizeof(obs_x_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_y_, obs_y_, sizeof(obs_y_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_yaw_, obs_yaw_, sizeof(obs_yaw_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_half_length_, obs_half_length_, sizeof(obs_half_length_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_half_width_, obs_half_width_, sizeof(obs_half_width_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->num_road_border_segments_, &num_road_border_segments_,
-    sizeof(num_road_border_segments_), cudaMemcpyHostToDevice, this->stream_));
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::roadBorderDataToDevice()
+{
+  if (!this->GPUMemStatus_) {
+    return;
+  }
+
   if (num_road_border_segments_ > 0) {
-    const size_t bytes = num_road_border_segments_ * sizeof(float);
+    const size_t bytes = static_cast<size_t>(num_road_border_segments_) * sizeof(float);
     HANDLE_ERROR(cudaMemcpyAsync(
       this->cost_d_->road_border_x0_, road_border_x0_, bytes, cudaMemcpyHostToDevice,
       this->stream_));
@@ -131,10 +154,20 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       this->stream_));
   }
   HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->num_drivable_area_segments_, &num_drivable_area_segments_,
-    sizeof(num_drivable_area_segments_), cudaMemcpyHostToDevice, this->stream_));
+    &this->cost_d_->num_road_border_segments_, &num_road_border_segments_,
+    sizeof(num_road_border_segments_), cudaMemcpyHostToDevice, this->stream_));
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::drivableAreaSegmentDataToDevice()
+{
+  if (!this->GPUMemStatus_) {
+    return;
+  }
+
   if (num_drivable_area_segments_ > 0) {
-    const size_t bytes = num_drivable_area_segments_ * sizeof(float);
+    const size_t bytes = static_cast<size_t>(num_drivable_area_segments_) * sizeof(float);
     HANDLE_ERROR(cudaMemcpyAsync(
       this->cost_d_->drivable_area_x0_, drivable_area_x0_, bytes, cudaMemcpyHostToDevice,
       this->stream_));
@@ -149,13 +182,29 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       this->stream_));
   }
   HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->num_drivable_area_segments_, &num_drivable_area_segments_,
+    sizeof(num_drivable_area_segments_), cudaMemcpyHostToDevice, this->stream_));
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::drivableAreaPolygonDataToDevice()
+{
+  if (!this->GPUMemStatus_) {
+    return;
+  }
+
+  if (num_drivable_vertices_ > 0) {
+    const size_t bytes = static_cast<size_t>(num_drivable_vertices_) * sizeof(float);
+    HANDLE_ERROR(cudaMemcpyAsync(
+      this->cost_d_->drivable_poly_x_, drivable_poly_x_, bytes, cudaMemcpyHostToDevice,
+      this->stream_));
+    HANDLE_ERROR(cudaMemcpyAsync(
+      this->cost_d_->drivable_poly_y_, drivable_poly_y_, bytes, cudaMemcpyHostToDevice,
+      this->stream_));
+  }
+  HANDLE_ERROR(cudaMemcpyAsync(
     &this->cost_d_->num_drivable_vertices_, &num_drivable_vertices_, sizeof(num_drivable_vertices_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->drivable_poly_x_, drivable_poly_x_, sizeof(drivable_poly_x_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->drivable_poly_y_, drivable_poly_y_, sizeof(drivable_poly_y_),
     cudaMemcpyHostToDevice, this->stream_));
 }
 
@@ -190,7 +239,7 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       ref_yaw_[i] = end_yaw;
     }
   }
-  dataToDevice();
+  referenceDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -200,6 +249,10 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     const float * half_width, const int count)
 {
   const int n = std::max(0, std::min(count, kMaxObstacles));
+  if (n == 0) {
+    clearObstacles();
+    return;
+  }
   num_obstacles_ = n;
   for (int i = 0; i < n; ++i) {
     obs_half_length_[i] = half_length[i];
@@ -210,7 +263,7 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       obs_yaw_[i][t] = yaw[i];
     }
   }
-  dataToDevice();
+  obstacleDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -221,6 +274,10 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 {
   const int n = std::max(0, std::min(obstacle_count, kMaxObstacles));
   const int nt = std::max(0, std::min(num_timesteps, NUM_TIMESTEPS));
+  if (n == 0) {
+    clearObstacles();
+    return;
+  }
   num_obstacles_ = n;
   for (int i = 0; i < n; ++i) {
     obs_half_length_[i] = half_length[i];
@@ -237,15 +294,18 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       obs_yaw_[i][t] = obs_yaw_[i][nt - 1];
     }
   }
-  dataToDevice();
+  obstacleDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearObstacles()
 {
+  if (num_obstacles_ == 0) {
+    return;
+  }
   num_obstacles_ = 0;
-  dataToDevice();
+  obstacleDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -253,6 +313,19 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   setRoadBorderSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxRoadBorderSegments);
+  if (n == 0) {
+    clearRoadBorders();
+    return;
+  }
+  bool changed = n != num_road_border_segments_;
+  for (int i = 0; i < n; ++i) {
+    changed = changed || road_border_x0_[i] != segments[i].x0 ||
+              road_border_y0_[i] != segments[i].y0 || road_border_x1_[i] != segments[i].x1 ||
+              road_border_y1_[i] != segments[i].y1;
+  }
+  if (!changed) {
+    return;
+  }
   num_road_border_segments_ = n;
   for (int i = 0; i < n; ++i) {
     road_border_x0_[i] = segments[i].x0;
@@ -260,15 +333,18 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     road_border_x1_[i] = segments[i].x1;
     road_border_y1_[i] = segments[i].y1;
   }
-  dataToDevice();
+  roadBorderDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearRoadBorders()
 {
+  if (num_road_border_segments_ == 0) {
+    return;
+  }
   num_road_border_segments_ = 0;
-  dataToDevice();
+  roadBorderDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -276,6 +352,19 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   setDrivableAreaSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxDrivableAreaSegments);
+  if (n == 0) {
+    clearDrivableAreaSegments();
+    return;
+  }
+  bool changed = n != num_drivable_area_segments_;
+  for (int i = 0; i < n; ++i) {
+    changed = changed || drivable_area_x0_[i] != segments[i].x0 ||
+              drivable_area_y0_[i] != segments[i].y0 || drivable_area_x1_[i] != segments[i].x1 ||
+              drivable_area_y1_[i] != segments[i].y1;
+  }
+  if (!changed) {
+    return;
+  }
   num_drivable_area_segments_ = n;
   for (int i = 0; i < n; ++i) {
     drivable_area_x0_[i] = segments[i].x0;
@@ -283,15 +372,18 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     drivable_area_x1_[i] = segments[i].x1;
     drivable_area_y1_[i] = segments[i].y1;
   }
-  dataToDevice();
+  drivableAreaSegmentDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearDrivableAreaSegments()
 {
+  if (num_drivable_area_segments_ == 0) {
+    return;
+  }
   num_drivable_area_segments_ = 0;
-  dataToDevice();
+  drivableAreaSegmentDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -299,20 +391,34 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   setDrivableAreaPolygon(const float * x, const float * y, const int count)
 {
   const int n = std::max(0, std::min(count, kMaxDrivablePolygonVertices));
+  if (n == 0) {
+    clearDrivableArea();
+    return;
+  }
+  bool changed = n != num_drivable_vertices_;
+  for (int i = 0; i < n; ++i) {
+    changed = changed || drivable_poly_x_[i] != x[i] || drivable_poly_y_[i] != y[i];
+  }
+  if (!changed) {
+    return;
+  }
   num_drivable_vertices_ = n;
   for (int i = 0; i < n; ++i) {
     drivable_poly_x_[i] = x[i];
     drivable_poly_y_[i] = y[i];
   }
-  dataToDevice();
+  drivableAreaPolygonDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearDrivableArea()
 {
+  if (num_drivable_vertices_ == 0) {
+    return;
+  }
   num_drivable_vertices_ = 0;
-  dataToDevice();
+  drivableAreaPolygonDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
