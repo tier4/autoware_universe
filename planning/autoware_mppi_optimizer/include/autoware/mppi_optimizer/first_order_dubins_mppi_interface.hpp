@@ -121,12 +121,14 @@ public:
 
   /**
    * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
+   * @param use_road_borders When true, road-border segments are hard collision constraints.
+   * @param use_drivable_area When true, drivable-area boundary segments are soft constraints.
    * @param use_last_control_as_nominal When true and a previous optimized control sequence
    *        exists, seed u_nom by shifting that sequence (warm start) instead of reseeding
    *        from the diffusion reference every cycle.
    */
   void setAblationOptions(
-    const bool ignore_obstacles, const bool ignore_drivable_area,
+    const bool ignore_obstacles, const bool use_road_borders, const bool use_drivable_area,
     const bool force_cold_start_each_step, const bool skip_if_invalid,
     bool use_last_control_as_nominal = false);
 

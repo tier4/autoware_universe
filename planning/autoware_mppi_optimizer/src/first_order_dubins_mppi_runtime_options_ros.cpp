@@ -37,7 +37,8 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "debug_trajectory_log_directory"), defaults.debug_trajectory_log_directory);
   node.declare_parameter(param_name(prefix, "ignore_obstacles"), defaults.ignore_obstacles);
-  node.declare_parameter(param_name(prefix, "ignore_drivable_area"), defaults.ignore_drivable_area);
+  node.declare_parameter(param_name(prefix, "use_road_borders"), defaults.use_road_borders);
+  node.declare_parameter(param_name(prefix, "use_drivable_area"), defaults.use_drivable_area);
   node.declare_parameter(
     param_name(prefix, "force_cold_start_each_step"), defaults.force_cold_start_each_step);
   node.declare_parameter(param_name(prefix, "skip_if_invalid"), defaults.skip_if_invalid);
@@ -54,8 +55,8 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.debug_trajectory_log_directory =
     node.get_parameter(param_name(prefix, "debug_trajectory_log_directory")).as_string();
   options.ignore_obstacles = node.get_parameter(param_name(prefix, "ignore_obstacles")).as_bool();
-  options.ignore_drivable_area =
-    node.get_parameter(param_name(prefix, "ignore_drivable_area")).as_bool();
+  options.use_road_borders = node.get_parameter(param_name(prefix, "use_road_borders")).as_bool();
+  options.use_drivable_area = node.get_parameter(param_name(prefix, "use_drivable_area")).as_bool();
   options.force_cold_start_each_step =
     node.get_parameter(param_name(prefix, "force_cold_start_each_step")).as_bool();
   options.skip_if_invalid = node.get_parameter(param_name(prefix, "skip_if_invalid")).as_bool();

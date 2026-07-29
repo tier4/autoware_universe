@@ -405,7 +405,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   size_t tracking_start_idx{0U};
   float sim_time{0.0F};
   bool ignore_obstacles{false};
-  bool ignore_drivable_area{false};
+  bool use_road_borders{true};
+  bool use_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
   /** Warm-start u_nom from shifted previous u_opt when available. */
@@ -587,8 +588,8 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     diffusion_reference = reference;
     tracked_objects = ignore_obstacles ? TrackedObjects{} : tracked_objects_in;
-    road_borders = road_borders_in;
-    drivable_area = drivable_area_in;
+    road_borders = use_road_borders ? road_borders_in : std::vector<Segment>{};
+    drivable_area = use_drivable_area ? drivable_area_in : std::vector<Segment>{};
     if (road_borders.size() > static_cast<size_t>(COST::kMaxRoadBorderSegments)) {
       RCLCPP_WARN(
         mppiLogger(), "Road-border segment count %zu exceeds GPU capacity %d; truncating",
@@ -600,9 +601,6 @@ struct FirstOrderDubinsMppiInterface::Impl
         drivable_area.size(), COST::kMaxDrivableAreaSegments);
     }
     obstacles.clear();
-    // Boundary crash is disabled on this stack (isEgoOutsideDrivableArea always false).
-    // ignore_drivable_area remains an ablation API flag; it does not reintroduce road borders.
-    (void)ignore_drivable_area;
 
     // Diffusion reference is already time-aligned (point[t] ≈ after step t). Seed from index 0.
     tracking_start_idx = 0U;
@@ -785,8 +783,9 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   setDebugTrajectoryLogging(
     options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
   setAblationOptions(
-    options.ignore_obstacles, options.ignore_drivable_area, options.force_cold_start_each_step,
-    options.skip_if_invalid, options.use_last_control_as_nominal);
+    options.ignore_obstacles, options.use_road_borders, options.use_drivable_area,
+    options.force_cold_start_each_step, options.skip_if_invalid,
+    options.use_last_control_as_nominal);
 }
 void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
   const bool enable, const std::string & directory)
@@ -799,7 +798,7 @@ void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
 }
 
 void FirstOrderDubinsMppiInterface::setAblationOptions(
-  const bool ignore_obstacles, const bool ignore_drivable_area,
+  const bool ignore_obstacles, const bool use_road_borders, const bool use_drivable_area,
   const bool force_cold_start_each_step, const bool skip_if_invalid,
   const bool use_last_control_as_nominal)
 {
@@ -807,16 +806,17 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
   impl_->ignore_obstacles = ignore_obstacles;
-  impl_->ignore_drivable_area = ignore_drivable_area;
+  impl_->use_road_borders = use_road_borders;
+  impl_->use_drivable_area = use_drivable_area;
   impl_->force_cold_start_each_step = force_cold_start_each_step;
   impl_->skip_if_invalid = skip_if_invalid;
   RCLCPP_INFO(
     mppiLogger(),
-    "MPPI ablation options: ignore_obstacles=%s ignore_drivable_area=%s "
+    "MPPI ablation options: ignore_obstacles=%s use_road_borders=%s use_drivable_area=%s "
     "force_cold_start_each_step=%s skip_if_invalid=%s use_last_control_as_nominal=%s",
-    ignore_obstacles ? "true" : "false", ignore_drivable_area ? "true" : "false",
-    force_cold_start_each_step ? "true" : "false", skip_if_invalid ? "true" : "false",
-    use_last_control_as_nominal ? "true" : "false");
+    ignore_obstacles ? "true" : "false", use_road_borders ? "true" : "false",
+    use_drivable_area ? "true" : "false", force_cold_start_each_step ? "true" : "false",
+    skip_if_invalid ? "true" : "false", use_last_control_as_nominal ? "true" : "false");
   impl_->use_last_control_as_nominal = use_last_control_as_nominal;
 }
 
