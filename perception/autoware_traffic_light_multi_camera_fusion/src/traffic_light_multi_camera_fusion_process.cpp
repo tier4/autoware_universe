@@ -75,12 +75,7 @@ const std::unordered_map<
 
 double get_min_confidence(const tier4_perception_msgs::msg::TrafficLight & signal)
 {
-  // Normally, we should check whether the elements are empty,
-  // but we already know they are not, so we skip the check here
-  return std::min_element(
-           signal.elements.begin(), signal.elements.end(),
-           [](const auto & a, const auto & b) { return a.confidence < b.confidence; })
-    ->confidence;
+  return signal.elements[0].confidence;
 }
 
 bool has_higher_or_equal_priority(const FusionRecord & candidate, const FusionRecord & existing)
