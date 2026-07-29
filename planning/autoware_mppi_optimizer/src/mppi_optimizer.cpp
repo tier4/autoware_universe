@@ -26,8 +26,8 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
-#include <vector>
 #include <string>
+#include <vector>
 
 namespace autoware::mppi_optimizer
 {
