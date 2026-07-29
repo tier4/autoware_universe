@@ -37,9 +37,12 @@ autoware::traffic_light_compliance_checker::Parameters to_checker_params(
   p.stop_overshoot_margin = tl_stop_p.overshoot_tolerance;
   p.allow_if_cannot_stop_distance = tl_stop_p.allow_if_cannot_stop_distance;
   p.min_lookahead_distance = tl_stop_p.min_lookahead_distance;
-  p.stable_duration_threshold_red = tl_stop_p.th_stable_duration_red;
-  p.stable_duration_threshold_amber = tl_stop_p.th_stable_duration_amber;
-  p.amber_rejection_hysteresis_duration = tl_stop_p.th_amber_rejection_hysteresis;
+  p.status_tracker_parameters.stable_duration_threshold_red = tl_stop_p.th_stable_duration_red;
+  p.status_tracker_parameters.stable_duration_threshold_amber = tl_stop_p.th_stable_duration_amber;
+  p.status_tracker_parameters.stable_duration_threshold_unknown =
+    tl_stop_p.th_stable_duration_unknown;
+  p.amber_rejection.hysteresis_duration = tl_stop_p.amber_rejection.th_hysteresis;
+  p.amber_rejection.reject_if_stop_detected = tl_stop_p.amber_rejection.reject_if_stop_detected;
   p.checked_trajectory_length.deceleration_limit = stopping_params.nominal_deceleration;
   p.checked_trajectory_length.jerk_limit = stopping_params.jerk_limit;
   return p;
