@@ -32,16 +32,18 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 
 ### Outputs
 
-| Topic                                     | Type                    | Description                                                             |
-| ----------------------------------------- | ----------------------- | ----------------------------------------------------------------------- |
-| `~/output/candidate_trajectories`         | `CandidateTrajectories` | Planned trajectory                                                      |
-| `~/debug/path_with_lane_id`               | `PathWithLaneId`        | Debug: planned path                                                     |
-| `~/debug/trajectory`                      | `Trajectory`            | Debug: final output trajectory                                          |
-| `~/debug/shifted_trajectory`              | `Trajectory`            | Debug: trajectory after path shifting                                   |
-| `~/debug/optimizer/{name}/trajectory`     | `Trajectory`            | Debug: trajectory after each optimizer plugin                           |
-| `~/debug/optimizer/acados_mpt/trajectory` | `Trajectory`            | Debug: go trajectory after the acados MPT optimizer (only when enabled) |
-| `~/debug/modifier/{name}/trajectory`      | `Trajectory`            | Debug: trajectory after each modifier plugin                            |
-| `~/debug/processing_time_detail_ms`       | `ProcessingTimeDetail`  | Debug: processing time breakdown                                        |
+| Topic                                     | Type                    | Description                                                                                                                                                                  |
+| ----------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `~/output/candidate_trajectories`         | `CandidateTrajectories` | Planned trajectory                                                                                                                                                           |
+| `~/debug/path_with_lane_id`               | `PathWithLaneId`        | Debug: planned path                                                                                                                                                          |
+| `~/debug/trajectory`                      | `Trajectory`            | Debug: final output trajectory                                                                                                                                               |
+| `~/debug/shifted_trajectory`              | `Trajectory`            | Debug: trajectory after path shifting                                                                                                                                        |
+| `~/debug/optimizer/{name}/trajectory`     | `Trajectory`            | Debug: trajectory after each optimizer plugin                                                                                                                                |
+| `~/debug/optimizer/acados_mpt/trajectory` | `Trajectory`            | Debug: go trajectory after the acados MPT optimizer (only when enabled)                                                                                                      |
+| `~/debug/optimizer/acados_mpt/markers`    | `MarkerArray`           | Debug: the acados MPT optimizer's ego pose (`ego`), NLP input points (`input`) and solved points (`output`); published for the go solve whether or not its result was usable |
+| `~/debug/optimizer/acados_mpt/info`       | `StringStamped`         | Debug: the acados MPT optimizer's ego state, input, solver status / residuals / timing and the measured limits of that solve, as text                                        |
+| `~/debug/modifier/{name}/trajectory`      | `Trajectory`            | Debug: trajectory after each modifier plugin                                                                                                                                 |
+| `~/debug/processing_time_detail_ms`       | `ProcessingTimeDetail`  | Debug: processing time breakdown                                                                                                                                             |
 
 ## Parameters
 
@@ -69,16 +71,43 @@ shows the solve cost in `~/debug/processing_time_detail_ms` (`acados_mpt`), whic
 before switching `shadow` off - the go candidate is the expensive one, and a curved route has been
 measured at 134 ms against the 100 ms planning period.
 
-The NLP is fed the trajectory as it leaves the modifiers and the map-based stop planner: its point
-velocities become per-point speed caps, and the first zero becomes the stop station. Deciding shape
+Two solver settings are about time rather than shape. `acados_mpt.solver.max_iterations` (25) is the
+real-time budget - one SQP iteration costs ~2.5 ms, and on a recorded run the median solve took 4 while
+the worst took 100 (760 ms, past the planning period); a cut-off solve falls back.
+`acados_mpt.solver.use_velocity_smoother_guess` (default true) seeds the NLP's speed profile with the
+jerk-filtered velocity smoother, fed the curvature-capped speeds: measured upper bound solve
+p50 12.0 -> 9.6 ms and max 113 -> 55 ms, against ~1 ms for the smoother itself. It borrows the same
+smoother the fallback uses and never updates its state.
+
+`acados_mpt.solver.reference_speed_follows_curvature` (default true) caps the reference speed profile
+at what the path's curvature allows, so an intersection is taken by slowing down rather than by cutting
+a wider corner - without it the reference still asks for the map speed limit through the turn and, the
+speed residual being in `v^2` units, widening the corner is the cheaper way to obey the lateral
+acceleration limit (measured in lsim: 2.7 m off the path). All cost weights are exposed alongside it;
+`weights.position` against `weights.squared_speed` is the same trade-off expressed as a preference.
+
+The NLP is fed the trajectory as it leaves the modifiers and the map-based stop planner, cropped at
+the ego's nearest point: the path is drawn from `path_planning.path_length.backward` metres behind
+the vehicle, and the NLP anchors its horizon at the ego pose, so the part already driven would only
+make its fixed number of stages coarser - and every station measured on the input (the stop station,
+the engage distance) has to count from the same point the horizon does. Its point velocities become
+per-point speed caps, and the first zero becomes the stop station. Deciding shape
 first and speed second means the shape can be made infeasible and the speed planner pays for it in
 deceleration - curvature itself can never be fixed by a velocity filter. Here both are decided
 together, so the optimiser can choose between slowing down and reshaping.
 
 A solved problem is not a satisfied one: the nonlinear limits are slacked, so every solve is
-re-verified against the limits and the dynamics residual. When that verification fails - or the
-solver does - the cycle falls back to the EB smoother plus the velocity smoother, which stay loaded
-for exactly that reason, and logs why. In shadow mode the debug topic simply stops updating.
+re-verified against the limits and the dynamics residual. Two things keep that verdict from rejecting
+trajectories nothing could improve:
+
+- **the limits come in two tiers** (`acados_mpt.limits.*.max` / `.hard_max`). The nominal tier is what
+  the NLP is constrained with; going past it is reported on the `nominal exceeded (reported, not
+fatal)` line of the info topic and the trajectory is still used. Only the hard tier - the vehicle's
+  own limit - rejects a result, so `grep "verdict: LIMIT VIOLATION"` now shows real failures.
+- **the lateral acceleration at stage 0 is excluded** from the verdict: it is the ego's own pinned
+  motion (`ego a_lat` in the info topic), and no iterate can lower it. When that verification fails - or the
+  solver does - the cycle falls back to the EB smoother plus the velocity smoother, which stay loaded
+  for exactly that reason, and logs why. In shadow mode the debug topic simply stops updating.
 
 Two things the NLP needs from the node, both learned the hard way in lsim:
 
@@ -94,3 +123,13 @@ Two things the NLP needs from the node, both learned the hard way in lsim:
 
 Not wired up yet: the drivable-area / object corridor (the path shape is optimised against the
 limits only), and dynamic objects.
+
+### What the unused corridor costs
+
+The corridor is not fed any map or object geometry here, but its constraint rows are fixed at code
+generation time and the QP carries them anyway - 12 nonlinear rows and 8 slacks per stage instead of
+4 and 4. `acados_mpt.corridor.omit_constraint_rows: true` drives the solver generated without them
+(`acados_mpt_optimizer` builds both); it is the same problem otherwise, so the two solve times in
+`~/debug/processing_time_detail_ms` (`acados_mpt`) are directly comparable, and the flag can be
+switched at run time with `ros2 param set`. Measured in the library's own test on a straight 120 m
+path, 8 SQP iterations either way: 36.1 ms with the rows against 26.3 ms without.

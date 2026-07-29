@@ -471,47 +471,92 @@ minimum_rule_based_planner:
         smoother output and the MPT trajectory goes to its debug topic only. Only the go
         trajectory is solved in this mode.
 
+    # Every limit except the steering angle (which is the vehicle's geometry) comes in two tiers:
+    # `max` is the nominal value the optimiser is given as its constraint, `hard_max` the vehicle's own
+    # ceiling. The nominal limits are slacked inside the NLP, so exceeding one is reported and the
+    # trajectory is still used; exceeding a hard one makes the result unusable and the cycle falls back.
     limits:
-      max_velocity:
-        type: double
-        default_value: 13.88
-        description: speed limit [m/s]
-        validation:
-          gt<>: [0.0]
-      max_acceleration:
-        type: double
-        default_value: 1.0
-        description: longitudinal acceleration limit [m/s^2]
-        validation:
-          gt<>: [0.0]
-      min_acceleration:
-        type: double
-        default_value: -1.0
-        description: longitudinal deceleration limit (negative) [m/s^2]
-        validation:
-          lt<>: [0.0]
-      max_jerk:
-        type: double
-        default_value: 1.6
-        description: longitudinal jerk limit [m/s^3]
-        validation:
-          gt<>: [0.0]
-      max_lateral_acceleration:
-        type: double
-        default_value: 0.8
-        description: lateral acceleration limit, imposed exactly as v^2 * kappa [m/s^2]
-        validation:
-          gt<>: [0.0]
-      max_steer_rate:
-        type: double
-        default_value: 0.995
-        description: steering angle rate limit [rad/s]
-        validation:
-          gt<>: [0.0]
+      velocity:
+        max:
+          type: double
+          default_value: 13.88
+          description: nominal speed limit [m/s]
+          validation:
+            gt<>: [0.0]
+        hard_max:
+          type: double
+          default_value: 16.67
+          description: speed above which a result is rejected [m/s]
+          validation:
+            gt<>: [0.0]
+      acceleration:
+        max:
+          type: double
+          default_value: 1.0
+          description: nominal longitudinal acceleration limit [m/s^2]
+          validation:
+            gt<>: [0.0]
+        min:
+          type: double
+          default_value: -1.0
+          description: nominal longitudinal deceleration limit (negative) [m/s^2]
+          validation:
+            lt<>: [0.0]
+        hard_max:
+          type: double
+          default_value: 6.0
+          description: vehicle acceleration limit; above this a result is rejected [m/s^2]
+          validation:
+            gt<>: [0.0]
+        hard_min:
+          type: double
+          default_value: -6.0
+          description: vehicle deceleration limit (negative); below this a result is rejected [m/s^2]
+          validation:
+            lt<>: [0.0]
+      lateral_acceleration:
+        max:
+          type: double
+          default_value: 2.0
+          description: nominal lateral acceleration limit, imposed exactly as v^2 * kappa [m/s^2]
+          validation:
+            gt<>: [0.0]
+        hard_max:
+          type: double
+          default_value: 6.0
+          description: roughly the grip limit; above this a result is rejected [m/s^2]
+          validation:
+            gt<>: [0.0]
+      jerk:
+        max:
+          type: double
+          default_value: 1.6
+          description: nominal longitudinal jerk limit [m/s^3]
+          validation:
+            gt<>: [0.0]
+        hard_max:
+          type: double
+          default_value: 5.0
+          description: jerk above which a result is rejected [m/s^3]
+          validation:
+            gt<>: [0.0]
+      steer_rate:
+        max:
+          type: double
+          default_value: 0.995
+          description: nominal steering angle rate limit [rad/s]
+          validation:
+            gt<>: [0.0]
+        hard_max:
+          type: double
+          default_value: 3.0
+          description: steering actuator rate ceiling; above this a result is rejected [rad/s]
+          validation:
+            gt<>: [0.0]
       max_curvature:
         type: double
         default_value: -1.0
-        description: curvature limit [1/m]; non-positive derives it from the vehicle steer limit
+        description: curvature limit [1/m], single tier (it is the vehicle geometry); non-positive derives it from the steer limit
       max_curvature_rate:
         type: double
         default_value: 0.05
@@ -599,7 +644,11 @@ minimum_rule_based_planner:
     solver:
       max_iterations:
         type: int
-        default_value: 100
+        default_value: 25
+        description: >
+          SQP iteration budget, and with it the worst-case solve time: one iteration costs ~2.5 ms, and
+          on a recorded run the median solve took 4 while the worst took the whole 100 (760 ms, past
+          the planning period). A cut-off solve falls back.
         validation:
           gt<>: [0]
       tolerance:
@@ -640,12 +689,49 @@ minimum_rule_based_planner:
         description: absolute slack when checking the solution against the limits
         validation:
           gt<>: [0.0]
+      use_velocity_smoother_guess:
+        type: bool
+        default_value: true
+        description: >
+          seed the NLP's speed profile with the jerk-filtered velocity smoother's output (fed the
+          curvature-capped speeds). The solve time is dominated by the guess - 12 ms and 4 SQP
+          iterations from the reference against 0.2 ms when handed its own solution - and the smoother
+          costs about 1 ms. It does not update the smoother state the fallback path uses.
+      reference_speed_follows_curvature:
+        type: bool
+        default_value: true
+        description: >
+          cap the cost reference speed at what the reference curvature allows (a_lat_max / |kappa|).
+          Without it the reference asks for the map speed limit through a turn and, because the
+          residual is in v^2 units, widening the corner is cheaper than slowing down: measured at an
+          intersection it left the path by 2.7 m instead of decelerating. false restores the
+          curvature-agnostic reference.
+      curvature_cap_window:
+        type: double
+        default_value: 5.0
+        description: >
+          station window [m] the curvature is averaged over before it becomes that speed cap; the
+          grid's three-point estimate is too local and jitters by as much as the curvature itself
+        validation:
+          gt<>: [0.0]
       max_dynamics_residual:
         type: double
         default_value: 0.001
         description: largest acceptable NLP equality (dynamics) residual; above it the iterate is not a trajectory
         validation:
           gt<>: [0.0]
+
+    corridor:
+      omit_constraint_rows:
+        type: bool
+        default_value: false
+        description: >
+          solve with the variant generated without any corridor row. The row count is fixed at code
+          generation time, so a disabled corridor still costs: its rows are padded to an
+          always-satisfied plane and every QP subproblem carries them. This drives a second,
+          corridor-free solver instead, which is how that cost is measured - and avoided while the
+          corridor is unused. The corridor cannot be imposed at all then; switching it rebuilds the
+          solver, so an A/B comparison of the solve time needs no restart.
 
   debug:
     enable_path:

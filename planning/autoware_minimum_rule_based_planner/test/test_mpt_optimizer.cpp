@@ -110,6 +110,43 @@ TEST(MptOptimizer, FirstZeroVelocityBecomesTheStopStation)
   EXPECT_DOUBLE_EQ(*input.stop_arc_length, 6.0);
 }
 
+/**
+ * The path is drawn from 5 m behind the ego, and the NLP anchors its horizon at the ego pose, so
+ * the part already driven can only make the fixed number of stages coarser.
+ */
+TEST(MptOptimizer, CropsThePathBehindTheEgo)
+{
+  const auto points = make_straight_trajectory(10, 5.0F);
+
+  const auto cropped = crop_behind_ego(points, make_odometry(5.0, 5.0).pose.pose);
+
+  ASSERT_EQ(cropped.size(), 5U);
+  EXPECT_DOUBLE_EQ(cropped.front().pose.position.x, 5.0);
+  EXPECT_DOUBLE_EQ(cropped.back().pose.position.x, 9.0);
+}
+
+/**
+ * The stop station is an arc length along the input, and the library measures the horizon from the
+ * ego: both have to count from the same point. Handing over the uncropped path leaves the two
+ * origins 5 m apart and the deceleration would be planned for a stop line that is not where the
+ * planner put it.
+ */
+TEST(MptOptimizer, StopStationIsMeasuredFromTheEgo)
+{
+  auto points = make_straight_trajectory(10, 5.0F);
+  for (size_t i = 8; i < points.size(); ++i) {
+    points[i].longitudinal_velocity_mps = 0.0F;
+  }
+  const auto odometry = make_odometry(5.0, 5.0);
+
+  const auto input = make_optimization_input(
+    crop_behind_ego(points, odometry.pose.pose), odometry, 0.0, std::nullopt);
+
+  ASSERT_TRUE(input.stop_arc_length.has_value());
+  // The stop sits at x = 8 m and the ego at x = 5 m, so it is 3 m ahead - not 8.
+  EXPECT_DOUBLE_EQ(*input.stop_arc_length, 3.0);
+}
+
 TEST(MptOptimizer, NoStopPointWhenEveryVelocityIsPositive)
 {
   const auto input = make_optimization_input(

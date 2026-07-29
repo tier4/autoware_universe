@@ -185,7 +185,7 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
     auto jerk_filtered_smoother =
       std::make_shared<autoware::velocity_smoother::JerkFilteredSmoother>(*this, time_keeper_);
 
-    velocity_smoother_ = std::make_unique<VelocitySmoother>(
+    velocity_smoother_ = std::make_shared<VelocitySmoother>(
       vel_params, get_logger(), get_clock(), vehicle_info, std::move(jerk_filtered_smoother));
   }
 
@@ -203,10 +203,18 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
     engage.stop_dist_to_prohibit_engage =
       get_parameter("velocity_smoother.stop_dist_to_prohibit_engage").as_double();
 
+    // The velocity smoother is handed over as the NLP's speed guess: the solve time is dominated by
+    // the quality of that guess (12 ms and 4 SQP iterations from the reference, 0.2 ms from its own
+    // solution, measured on a bag) and the smoother costs about 1 ms.
     mpt_optimizer_ = std::make_unique<MptOptimizer>(
-      make_mpt_optimizer_params(params_, vehicle_info_), engage, get_logger(), get_clock());
+      make_mpt_optimizer_params(params_, vehicle_info_), engage, get_logger(), get_clock(),
+      params_.acados_mpt.solver.use_velocity_smoother_guess ? velocity_smoother_ : nullptr);
     pub_debug_mpt_trajectory_ =
       this->create_publisher<Trajectory>("~/debug/optimizer/acados_mpt/trajectory", 1);
+    pub_debug_mpt_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+      "~/debug/optimizer/acados_mpt/markers", 1);
+    pub_debug_mpt_info_ = this->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
+      "~/debug/optimizer/acados_mpt/info", 1);
     RCLCPP_INFO(
       get_logger(), "acados MPT optimizer running in %s mode",
       params_.acados_mpt.shadow ? "shadow (debug topic only)"
@@ -515,22 +523,42 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
   const double current_acceleration = input_data.acceleration_ptr->accel.accel.linear.x;
 
   bool optimized_by_mpt = false;
+  // The measured curvature is not optional here. The NLP pins its initial curvature as a *hard*
+  // constraint, and the only alternative - estimating it from the input path around the ego - spans
+  // barely a metre, so the few centimetres of lateral offset an ego always has become a curvature
+  // of the wrong sign and magnitude that the trajectory then has to bulge out to unwind: measured
+  // on a straight path, a 5 cm offset bulges 0.76 m and a 10 cm one 3.95 m, at over 10 m/s^2 of
+  // lateral acceleration. Solving without it is worse than not solving, so the cycle falls back
+  // instead.
+  const auto ego_curvature =
+    input_data.steering_ptr
+      ? std::make_optional(
+          std::tan(input_data.steering_ptr->steering_tire_angle) / vehicle_info_.wheel_base_m)
+      : std::nullopt;
+  if (mpt_optimizer_ && !ego_curvature) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *throttle_clock_, 5000,
+      "[mpt] no steering report on ~/input/steering; the initial curvature would have to be "
+      "guessed "
+      "from the path, which bends the trajectory metres off a straight lane. Not solving.");
+  }
   // In shadow mode only the go trajectory is solved: the result is published for comparison, and
   // a second solve would double the cost for something nobody reads.
-  if (mpt_optimizer_ && (mpt_owns_output() || update_smoother_state)) {
+  if (mpt_optimizer_ && ego_curvature && (mpt_owns_output() || update_smoother_state)) {
     autoware_utils_debug::ScopedTimeTrack st_mpt("acados_mpt", *time_keeper_);
-    // The measured curvature. Without it the NLP pins its initial curvature to a value estimated
-    // from the input path over a couple of metres around the ego, which turns a few centimetres of
-    // lateral offset into a curvature of the wrong sign and magnitude - and since that initial
-    // state is a hard constraint, the trajectory then has to bulge out to unwind it.
-    const auto ego_curvature =
-      input_data.steering_ptr
-        ? std::make_optional(
-            std::tan(input_data.steering_ptr->steering_tire_angle) / vehicle_info_.wheel_base_m)
-        : std::nullopt;
-    if (
-      auto points = mpt_optimizer_->optimize(
-        trajectory_points, *input_data.odometry_ptr, current_acceleration, ego_curvature)) {
+    auto points = mpt_optimizer_->optimize(
+      trajectory_points, *input_data.odometry_ptr, current_acceleration, ego_curvature);
+    // Outside the `if`: the markers describe the solve whether or not its result was usable, and
+    // the failed ones are the interesting ones. Only the go solve publishes, so the two solves of a
+    // cycle do not overwrite each other on screen.
+    if (update_smoother_state && params_.debug.enable_optimizer_trajectory) {
+      pub_debug_mpt_markers_->publish(mpt_optimizer_->debug_markers());
+      autoware_internal_debug_msgs::msg::StringStamped info;
+      info.stamp = throttle_clock_->now();
+      info.data = mpt_optimizer_->debug_info();
+      pub_debug_mpt_info_->publish(info);
+    }
+    if (points) {
       if (update_smoother_state && params_.debug.enable_optimizer_trajectory) {
         Trajectory mpt_traj;
         mpt_traj.header = trajectory.header;

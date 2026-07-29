@@ -972,60 +972,120 @@
             "limits": {
               "type": "object",
               "properties": {
-                "max_velocity": {
-                  "type": "number",
-                  "description": "speed limit [m/s]",
-                  "default": 13.88,
-                  "exclusiveMinimum": 0.0
+                "velocity": {
+                  "type": "object",
+                  "properties": {
+                    "max": {
+                      "type": "number",
+                      "description": "nominal speed limit [m/s]",
+                      "default": 13.88
+                    },
+                    "hard_max": {
+                      "type": "number",
+                      "description": "speed above which a result is rejected [m/s]",
+                      "default": 16.67
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
                 },
-                "max_acceleration": {
-                  "type": "number",
-                  "description": "longitudinal acceleration limit [m/s^2]",
-                  "default": 1.0,
-                  "exclusiveMinimum": 0.0
+                "acceleration": {
+                  "type": "object",
+                  "properties": {
+                    "max": {
+                      "type": "number",
+                      "description": "nominal longitudinal acceleration limit [m/s^2]",
+                      "default": 1.0
+                    },
+                    "hard_max": {
+                      "type": "number",
+                      "description": "vehicle acceleration limit; above this a result is rejected [m/s^2]",
+                      "default": 6.0
+                    },
+                    "min": {
+                      "type": "number",
+                      "description": "nominal longitudinal deceleration limit (negative) [m/s^2]",
+                      "default": -1.0
+                    },
+                    "hard_min": {
+                      "type": "number",
+                      "description": "vehicle deceleration limit (negative); below this a result is rejected [m/s^2]",
+                      "default": -6.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
                 },
-                "min_acceleration": {
-                  "type": "number",
-                  "description": "longitudinal deceleration limit (negative) [m/s^2]",
-                  "default": -1.0,
-                  "exclusiveMaximum": 0.0
+                "lateral_acceleration": {
+                  "type": "object",
+                  "properties": {
+                    "max": {
+                      "type": "number",
+                      "description": "nominal lateral acceleration limit, imposed exactly as v^2 * kappa [m/s^2]",
+                      "default": 2.0
+                    },
+                    "hard_max": {
+                      "type": "number",
+                      "description": "roughly the grip limit; above this a result is rejected [m/s^2]",
+                      "default": 6.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
                 },
-                "max_jerk": {
-                  "type": "number",
-                  "description": "longitudinal jerk limit [m/s^3]",
-                  "default": 1.6,
-                  "exclusiveMinimum": 0.0
+                "jerk": {
+                  "type": "object",
+                  "properties": {
+                    "max": {
+                      "type": "number",
+                      "description": "nominal longitudinal jerk limit [m/s^3]",
+                      "default": 1.6
+                    },
+                    "hard_max": {
+                      "type": "number",
+                      "description": "jerk above which a result is rejected [m/s^3]",
+                      "default": 5.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
                 },
-                "max_lateral_acceleration": {
-                  "type": "number",
-                  "description": "lateral acceleration limit, imposed exactly as |v^2 * kappa| [m/s^2]",
-                  "default": 0.8,
-                  "exclusiveMinimum": 0.0
-                },
-                "max_steer_rate": {
-                  "type": "number",
-                  "description": "steering angle rate limit [rad/s]",
-                  "default": 0.995,
-                  "exclusiveMinimum": 0.0
+                "steer_rate": {
+                  "type": "object",
+                  "properties": {
+                    "max": {
+                      "type": "number",
+                      "description": "nominal steering angle rate limit [rad/s]",
+                      "default": 0.995
+                    },
+                    "hard_max": {
+                      "type": "number",
+                      "description": "steering actuator rate ceiling; above this a result is rejected [rad/s]",
+                      "default": 3.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
                 },
                 "max_curvature": {
                   "type": "number",
-                  "description": "curvature limit [1/m]; non-positive derives it from the vehicle steer limit",
+                  "description": "curvature limit [1/m], single tier (it is the vehicle geometry); non-positive derives it from the steer limit",
                   "default": -1.0
                 },
                 "max_curvature_rate": {
                   "type": "number",
-                  "description": "|dkappa/ds| box; speed-independent, so it still regularises the shape at v=0 [1/m^2]",
+                  "description": "dkappa/ds box; speed-independent, so it still regularises the shape at v=0 [1/m^2]",
                   "default": 0.05,
                   "exclusiveMinimum": 0.0
                 },
                 "max_acceleration_rate": {
                   "type": "number",
-                  "description": "|da/ds| box; speed-independent, so it still regularises the profile at v=0 [1/s^2]",
+                  "description": "da/ds box; speed-independent, so it still regularises the profile at v=0 [1/s^2]",
                   "default": 0.5,
                   "exclusiveMinimum": 0.0
                 }
               },
+              "required": [],
               "additionalProperties": false
             },
             "weights": {
@@ -1128,8 +1188,8 @@
               "properties": {
                 "max_iterations": {
                   "type": "integer",
-                  "description": "",
-                  "default": 100,
+                  "description": "SQP iteration budget, and with it the worst-case solve time (~2.5 ms per iteration); a cut-off solve falls back",
+                  "default": 25,
                   "exclusiveMinimum": 0
                 },
                 "tolerance": {
@@ -1178,8 +1238,36 @@
                   "description": "largest acceptable NLP equality (dynamics) residual; above it the iterate is not a trajectory",
                   "default": 0.001,
                   "exclusiveMinimum": 0.0
+                },
+                "reference_speed_follows_curvature": {
+                  "type": "boolean",
+                  "description": "cap the cost reference speed at what the reference curvature allows (a_lat_max / |kappa|); without it widening a corner is cheaper than slowing down",
+                  "default": true
+                },
+                "curvature_cap_window": {
+                  "type": "number",
+                  "description": "station window [m] the curvature is averaged over before it becomes that speed cap",
+                  "default": 5.0,
+                  "exclusiveMinimum": 0.0
+                },
+                "use_velocity_smoother_guess": {
+                  "type": "boolean",
+                  "description": "seed the NLP's speed profile with the jerk-filtered velocity smoother's output (fed the curvature-capped speeds); the solve time is dominated by the guess and the smoother costs ~1 ms",
+                  "default": true
                 }
               },
+              "additionalProperties": false
+            },
+            "corridor": {
+              "type": "object",
+              "properties": {
+                "omit_constraint_rows": {
+                  "type": "boolean",
+                  "description": "solve with the variant generated without any corridor row; the rows exist even when the corridor is disabled and cost solve time, and the corridor cannot be imposed at all when they are gone",
+                  "default": false
+                }
+              },
+              "required": [],
               "additionalProperties": false
             }
           },

@@ -162,16 +162,36 @@
       enable: false
       shadow: true
       limits:
-        max_velocity: 13.88
-        max_acceleration: 1.0
-        min_acceleration: -1.0
-        max_jerk: 1.6
-        max_lateral_acceleration: 0.8
-        max_steer_rate: 0.995      # [rad/s] 57 deg/s
-        max_curvature: -1.0        # derive from the vehicle steer limit
+        velocity:
+          max: 13.88          # nominal [m/s]
+          hard_max: 16.67     # rejected above this [m/s]
+        acceleration:
+          min: -1.0           # nominal [m/s^2]
+          max: 1.0            # nominal [m/s^2]
+          hard_min: -6.0      # vehicle limit [m/s^2]
+          hard_max: 6.0       # vehicle limit [m/s^2]
+        lateral_acceleration:
+          max: 2.0            # nominal [m/s^2]
+          hard_max: 6.0       # roughly the grip limit [m/s^2]
+        jerk:
+          max: 1.6            # nominal [m/s^3]
+          hard_max: 5.0       # rejected above this [m/s^3]
+        steer_rate:
+          max: 0.995          # nominal [rad/s] 57 deg/s
+          hard_max: 3.0       # steering actuator ceiling [rad/s]
+        max_curvature: -1.0   # single tier; non-positive derives it from the vehicle steer limit
       solver:
-        max_iterations: 100
+        max_iterations: 25          # ~2.5 ms per iteration, so this bounds the worst case
+        use_velocity_smoother_guess: true  # seed the speed profile with the jerk-filtered smoother
         max_arc_length: 150.0
+        # Cap the reference speed by curvature, so a corner is taken by slowing down rather than by
+        # widening it (the reference is what the cost pulls towards; see the library README).
+        reference_speed_follows_curvature: true
+        curvature_cap_window: 5.0
+      corridor:
+        # The corridor is not fed any map or object geometry yet, but its constraint rows are still
+        # in the problem and cost solve time. true drives the solver generated without them.
+        omit_constraint_rows: false
 
     post_resample:
       max_trajectory_length: 300.0

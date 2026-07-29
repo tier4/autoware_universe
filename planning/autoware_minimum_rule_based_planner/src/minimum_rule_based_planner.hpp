@@ -30,6 +30,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 
 #include <map>
 #include <memory>
@@ -111,6 +112,9 @@ private:
   const UUID stop_generator_uuid_;
   const VehicleInfo vehicle_info_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
+  //! Node::get_clock() is const-qualified away in const methods; the planning pipeline's steps are
+  //! const, so throttled logging from them needs its own handle on the same clock.
+  const rclcpp::Clock::SharedPtr throttle_clock_{get_clock()};
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
@@ -143,7 +147,8 @@ private:
 
   std::unique_ptr<OptimizerPluginLoader> plugin_loader_;
   std::shared_ptr<OptimizerPluginInterface> path_smoother_;
-  std::unique_ptr<VelocitySmoother> velocity_smoother_;
+  //! Shared: the MPT optimiser borrows it for its initial guess (it never updates its state).
+  std::shared_ptr<VelocitySmoother> velocity_smoother_;
   //! Joint shape / speed optimiser replacing the two above. Only created when
   //! `acados_mpt.enable` is set; the two above stay as its fallback.
   std::unique_ptr<MptOptimizer> mpt_optimizer_;
@@ -222,6 +227,11 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
   //! only created when the MPT optimiser is enabled; carries its go-trajectory output
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_mpt_trajectory_;
+  //! ditto: the ego pose, the NLP input point sequence and the solved point sequence
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_mpt_markers_;
+  //! ditto: the ego state it was pinned to, the solver's report and the measured limits, as text
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
+    pub_debug_mpt_info_;
   /** @} */
 };
 

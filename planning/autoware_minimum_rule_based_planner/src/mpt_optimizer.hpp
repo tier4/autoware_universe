@@ -16,13 +16,18 @@
 #define MPT_OPTIMIZER_HPP_
 
 #include "type_alias.hpp"
+#include "velocity_smoother.hpp"
 
 #include <autoware/acados_mpt_optimizer/optimizer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
+#include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner
@@ -37,6 +42,19 @@ namespace mpt = autoware::acados_mpt_optimizer;
  * shape and its speed profile alone, with no drivable-area or object constraint.
  */
 mpt::OptimizerParams make_mpt_optimizer_params(const Params & params, const VehicleInfo & vehicle);
+
+/**
+ * @brief Drop the part of the trajectory the vehicle has already driven.
+ *
+ * The planned path is drawn from `path_planning.path_length.backward` metres behind the ego (5 m as
+ * shipped), so the trajectory reaching the velocity optimisation stage does not start at the
+ * vehicle. The NLP has no use for that part - it anchors its horizon at the ego pose - and every
+ * station the caller measures on the input (the stop station below, the engage distance) is
+ * measured from the first point, so cropping here is what makes those stations and the horizon
+ * share one origin instead of relying on two independent nearest-point searches agreeing.
+ */
+TrajectoryPoints crop_behind_ego(
+  const TrajectoryPoints & traj_points, const geometry_msgs::msg::Pose & ego_pose);
 
 /**
  * @brief Turn one planned trajectory into the NLP input.
@@ -87,9 +105,17 @@ struct EngageParams
 class MptOptimizer
 {
 public:
+  /**
+   * @param velocity_smoother optional. When given, its jerk-filtered profile seeds the NLP's speed
+   * guess: a recorded run spent ~12 ms and 4 SQP iterations per solve and 0.2 ms when handed its
+   * own solution, so the solve time is the guess quality, and the smoother costs about 1 ms. It is
+   * fed the *curvature-capped* speeds rather than the raw map limits, because in a corner the cap
+   * is the better guess (the smoother's own lateral filter has a 2.74 m/s floor) while the smoother
+   * is the better one through the acceleration transitions.
+   */
   MptOptimizer(
     const mpt::OptimizerParams & params, const EngageParams & engage, const rclcpp::Logger & logger,
-    rclcpp::Clock::SharedPtr clock);
+    rclcpp::Clock::SharedPtr clock, std::shared_ptr<VelocitySmoother> velocity_smoother = nullptr);
 
   void update_params(const mpt::OptimizerParams & params);
 
@@ -102,13 +128,57 @@ public:
     const TrajectoryPoints & traj_points, const Odometry & odometry, double acceleration,
     const std::optional<double> & ego_curvature);
 
+  /**
+   * @brief What the last `optimize` call was given and what it produced, for rviz.
+   *
+   * Namespaces `ego`, `input` and `output`, in the frame the caller stamps them with. Rebuilt on
+   * every call - including the ones that fall back, where the output is the last SQP iterate and is
+   * exactly what one needs to look at. Every namespace is always present, empty when it has nothing
+   * to show, so a marker from a previous cycle is overwritten rather than left on screen.
+   */
+  const visualization_msgs::msg::MarkerArray & debug_markers() const { return debug_markers_; }
+
+  /**
+   * @brief One human-readable block per call: the ego state the NLP was pinned to, what it was
+   * given, what the solver reported and how the result measured up against the limits.
+   *
+   * The numbers that decide whether a solve is good are spread over the input, the solver status
+   * and the ConstraintReport, and none of them survives into the published trajectory - so without
+   * this the only way to tell a 26 ms straight solve from a 140 ms one that violated the lateral
+   * acceleration limit is to correlate log lines by hand. Rebuilt on every call, including the ones
+   * that fall back, where it carries the reason.
+   */
+  const std::string & debug_info() const { return debug_info_; }
+
 private:
   //! Raise the profile to the engage speed when pulling out; see EngageParams.
   void apply_engage_speed(
     TrajectoryPoints & traj_points, const TrajectoryPoints & input,
     const Odometry & odometry) const;
 
+  //! Fill debug_markers_ from the ego, the (cropped) NLP input and the solver's points.
+  void build_debug_markers(
+    const Odometry & odometry, const TrajectoryPoints & input,
+    const std::vector<mpt::OptimizedPoint> & output);
+
+  /**
+   * @brief The jerk-filtered speed profile to seed the NLP with, sampled at `traj_points`.
+   *
+   * Empty when there is no smoother. The smoother resamples internally, so its result is mapped
+   * back onto the input stations by arc length. It never sees - and never updates - the state the
+   * fallback path relies on.
+   */
+  std::vector<double> smoothed_guess_velocities(
+    const TrajectoryPoints & traj_points, const Odometry & odometry, double acceleration) const;
+
+  //! Fill debug_info_ from one solve. The paths that never reach the solver set it to their reason.
+  void build_debug_info(const mpt::OptimizationInput & input, const mpt::Result & result);
+
   mpt::Optimizer optimizer_;
+  //! Borrowed, and only for the initial guess; the node keeps using it for the fallback.
+  std::shared_ptr<VelocitySmoother> velocity_smoother_;
+  visualization_msgs::msg::MarkerArray debug_markers_{};
+  std::string debug_info_{};
   EngageParams engage_;
   rclcpp::Logger logger_;
   rclcpp::Clock::SharedPtr clock_;
