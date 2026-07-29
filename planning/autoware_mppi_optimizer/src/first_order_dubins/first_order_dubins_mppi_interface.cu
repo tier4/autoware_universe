@@ -368,7 +368,6 @@ struct FirstOrderDubinsMppiInterface::Impl
   TrackedObjects tracked_objects;
   std::vector<Segment> road_borders;
   std::vector<Segment> drivable_area;
-  mppi::path::Path2D path;
   std::vector<mppi::cost::MovingCarObstacle> obstacles;
 
   DYN model;
@@ -600,7 +599,6 @@ struct FirstOrderDubinsMppiInterface::Impl
         mppiLogger(), "Drivable-area segment count %zu exceeds GPU capacity %d; truncating",
         drivable_area.size(), COST::kMaxDrivableAreaSegments);
     }
-    path = trajectoryToPath2D(reference);
     obstacles.clear();
     // Boundary crash is disabled on this stack (isEgoOutsideDrivableArea always false).
     // ignore_drivable_area remains an ablation API flag; it does not reintroduce road borders.
@@ -907,7 +905,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
 
   impl_->updateDiffusionReference(
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area);
-    // Capture IC before runStep advances the ego state with the applied control.
+  // Capture IC before runStep advances the ego state with the applied control.
   const DYN::state_array x_at_optimization = impl_->x;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
 
