@@ -51,6 +51,34 @@ struct TrajectoryPolygonCollisionCheck
 
 struct PointcloudPreprocessParams
 {
+  PointcloudPreprocessParams() = default;
+  explicit PointcloudPreprocessParams(const validator::Params::PointCloudCollisionCheck & p)
+  {
+    const auto & pp = p.pointcloud_preprocessing;
+    filter_by_trajectory_polygon.enable_monolithic_crop_box =
+      pp.filter_by_trajectory_polygon.enable_monolithic_crop_box;
+    filter_by_trajectory_polygon.enable_multi_polygon_filtering =
+      pp.filter_by_trajectory_polygon.enable_multi_polygon_filtering;
+    filter_by_trajectory_polygon.min_trajectory_length =
+      pp.filter_by_trajectory_polygon.min_trajectory_length;
+    filter_by_trajectory_polygon.braking_distance_scale_factor =
+      pp.filter_by_trajectory_polygon.braking_distance_scale_factor;
+    filter_by_trajectory_polygon.lateral_margin = pp.filter_by_trajectory_polygon.lateral_margin;
+    filter_by_trajectory_polygon.height_margin = pp.filter_by_trajectory_polygon.height_margin;
+
+    downsample_by_voxel_grid.enable_downsample = pp.downsample_by_voxel_grid.enable_downsample;
+    downsample_by_voxel_grid.voxel_size_x = pp.downsample_by_voxel_grid.voxel_size_x;
+    downsample_by_voxel_grid.voxel_size_y = pp.downsample_by_voxel_grid.voxel_size_y;
+    downsample_by_voxel_grid.voxel_size_z = pp.downsample_by_voxel_grid.voxel_size_z;
+
+    euclidean_clustering.enable_clustering = pp.euclidean_clustering.enable_clustering;
+    euclidean_clustering.cluster_tolerance = pp.euclidean_clustering.cluster_tolerance;
+    euclidean_clustering.min_cluster_size =
+      static_cast<int>(pp.euclidean_clustering.min_cluster_size);
+    euclidean_clustering.max_cluster_size =
+      static_cast<int>(pp.euclidean_clustering.max_cluster_size);
+  }
+
   struct FilterByTrajectoryPolygon
   {
     bool enable_monolithic_crop_box{false};
@@ -74,32 +102,6 @@ struct PointcloudPreprocessParams
     int min_cluster_size{};
     int max_cluster_size{};
   } euclidean_clustering;
-
-  PointcloudPreprocessParams() = default;
-  explicit PointcloudPreprocessParams(const validator::Params::PointCloudCollisionCheck & p)
-  {
-    const auto & pp = p.pointcloud_preprocessing;
-    filter_by_trajectory_polygon.enable_monolithic_crop_box =
-      pp.filter_by_trajectory_polygon.enable_monolithic_crop_box;
-    filter_by_trajectory_polygon.enable_multi_polygon_filtering =
-      pp.filter_by_trajectory_polygon.enable_multi_polygon_filtering;
-    filter_by_trajectory_polygon.min_trajectory_length =
-      pp.filter_by_trajectory_polygon.min_trajectory_length;
-    filter_by_trajectory_polygon.braking_distance_scale_factor =
-      pp.filter_by_trajectory_polygon.braking_distance_scale_factor;
-    filter_by_trajectory_polygon.lateral_margin = pp.filter_by_trajectory_polygon.lateral_margin;
-    filter_by_trajectory_polygon.height_margin = pp.filter_by_trajectory_polygon.height_margin;
-    downsample_by_voxel_grid.enable_downsample = pp.downsample_by_voxel_grid.enable_downsample;
-    downsample_by_voxel_grid.voxel_size_x = pp.downsample_by_voxel_grid.voxel_size_x;
-    downsample_by_voxel_grid.voxel_size_y = pp.downsample_by_voxel_grid.voxel_size_y;
-    downsample_by_voxel_grid.voxel_size_z = pp.downsample_by_voxel_grid.voxel_size_z;
-    euclidean_clustering.enable_clustering = pp.euclidean_clustering.enable_clustering;
-    euclidean_clustering.cluster_tolerance = pp.euclidean_clustering.cluster_tolerance;
-    euclidean_clustering.min_cluster_size =
-      static_cast<int>(pp.euclidean_clustering.min_cluster_size);
-    euclidean_clustering.max_cluster_size =
-      static_cast<int>(pp.euclidean_clustering.max_cluster_size);
-  }
 };
 
 /// @brief ptv3 PointCloud2 を名前ベースで読み、map 系の pcl 点群にする。
@@ -110,6 +112,13 @@ pcl::PointCloud<pcl::PointXYZ> convert_pointcloud_to_map_frame(
 
 struct PlannerData
 {
+public:
+  PlannerData() = default;
+  PlannerData(const PlannerData &) = delete;
+  PlannerData & operator=(const PlannerData &) = delete;
+  PlannerData(PlannerData &&) = default;
+  PlannerData & operator=(PlannerData &&) = default;
+
   class Pointcloud
   {
   public:

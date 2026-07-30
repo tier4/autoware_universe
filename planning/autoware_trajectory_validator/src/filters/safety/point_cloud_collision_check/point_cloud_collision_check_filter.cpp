@@ -295,7 +295,7 @@ std::vector<StopObstacle> PointCloudCollisionCheckFilter::filter_stop_obstacle_f
     filtering_param.lateral_margin.nominal_margin) {
     RCLCPP_WARN_ONCE(
       logger_,
-      "pointcloud preprocessing lateral margin in motion_velocity_planner_node (%f) is smaller "
+      "pointcloud preprocessing lateral margin in point_cloud_collision_check_filter (%f) is smaller "
       "than obstacle_stop_module param (%f)",
       point_cloud.preprocess_params_.filter_by_trajectory_polygon.lateral_margin,
       filtering_param.lateral_margin.nominal_margin);
@@ -404,7 +404,7 @@ bool PointCloudCollisionCheckFilter::is_available_data(
     !context.segmented_pointcloud) {
     return false;
   }
-  // odometory can transform only map to baselink
+  // odometory pose can transform only map_to_baselink
   if (context.segmented_pointcloud->header.frame_id != "base_link") {
     return false;
   }
@@ -456,7 +456,7 @@ bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
   const std::vector<StopObstacle> & stop_obstacles, const geometry_msgs::msg::Twist & twist,
   double & required_distance) const
 {
-  // 最も手前の衝突距離（RSS 時は障害物制動距離を加算）を取る。
+  // tmporary impl: 最も手前の衝突距離（RSS 時は障害物制動距離を加算）を取る。
   std::optional<double> nearest_dist_to_collide;
   for (const auto & stop_obstacle : stop_obstacles) {
     const double dist_to_collide =
@@ -466,9 +466,10 @@ bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
     }
   }
 
-  required_distance = calc_minimum_distance_to_stop(
-                        twist.linear.x, common_param_.max_accel, common_param_.min_accel) +
-                      stop_planning_param_.stop_margin;
+  required_distance = stop_planning_param_.stop_margin + calc_minimum_distance_to_stop(
+                        twist.linear.x, 
+                        common_param_.max_accel,
+                         common_param_.min_accel);
 
   // 衝突距離が必要制動距離 + stop_margin を下回れば STOP REQUIRED（infeasible）。
   if (nearest_dist_to_collide.has_value() && *nearest_dist_to_collide < required_distance) {
@@ -523,9 +524,10 @@ void PointCloudCollisionCheckFilter::update_parameters(const validator::Params &
   obstacle_filtering_params_ = {
     {StopObstacleClassification::Type::POINTCLOUD, ObstacleFilteringParam{p}}};
   pointcloud_segmentation_param_ = PointcloudSegmentationParam{p};
+  planner_data_->update_parameters(p);
 
   enable_debug_markers_ = p.debug.enable_markers;
-  planner_data_->update_parameters(p);
+
 }
 }  // namespace autoware::trajectory_validator::plugin::safety
 
