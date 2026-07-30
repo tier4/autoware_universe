@@ -38,6 +38,7 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <tier4_v2x_msgs/msg/virtual_traffic_light_state_array.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
@@ -111,6 +112,9 @@ private:
   autoware_utils_rclcpp::InterProcessPollingSubscriber<
     autoware_planning_msgs::msg::LaneletRoute, autoware_utils_rclcpp::polling_policy::Latest>
     sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<
+    tier4_v2x_msgs::msg::VirtualTrafficLightStateArray>
+    sub_virtual_traffic_light_states_{this, "~/input/virtual_traffic_light_states"};
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_map_;
 
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr

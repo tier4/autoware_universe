@@ -245,3 +245,15 @@ To add a new modifier plugin:
 3. Implement the required virtual methods
 4. Export the plugin with `TrajectoryModifierPluginBase` and register it in `plugins.xml`
 5. Add plugin-specific parameters to the schema and config files
+
+#### Virtual Traffic Light Stop
+
+The Virtual Traffic Light Stop plugin applies map-defined virtual traffic light coordination to
+each candidate trajectory. It stops before a virtual traffic light when no approval is available,
+holds the vehicle at the end line until finalization, and publishes the corresponding
+`tier4_v2x_msgs/msg/InfrastructureCommandArray` on `~/output/infrastructure_commands`.
+
+The plugin consumes `tier4_v2x_msgs/msg/VirtualTrafficLightStateArray` from
+`~/input/virtual_traffic_light_states`. Its state is maintained per virtual traffic light module
+and its command is published once for each candidate-trajectory processing cycle.
+
