@@ -141,10 +141,21 @@ public:
         out << "boundary_threshold_right," << cost.boundary_threshold_right << "\n";
         out << "accel_cmd_coeff," << cost.accel_cmd_coeff << "\n";
         out << "steer_cmd_coeff," << cost.steer_cmd_coeff << "\n";
+        out << "max_velocity," << cost.max_velocity << "\n";
+        out << "max_lon_accel," << cost.max_lon_accel << "\n";
+        out << "min_lon_accel," << cost.min_lon_accel << "\n";
+        out << "max_lon_jerk," << cost.max_lon_jerk << "\n";
+        out << "max_lat_accel," << cost.max_lat_accel << "\n";
+        out << "max_lat_jerk," << cost.max_lat_jerk << "\n";
+        out << "overspeed_coeff," << cost.overspeed_coeff << "\n";
+        out << "longitudinal_acceleration_coeff," << cost.longitudinal_acceleration_coeff << "\n";
         out << "steer_rate_coeff," << cost.steer_rate_coeff << "\n";
         out << "lateral_acceleration_coeff," << cost.lateral_acceleration_coeff << "\n";
         out << "lateral_jerk_coeff," << cost.lateral_jerk_coeff << "\n";
         out << "longitudinal_jerk_coeff," << cost.longitudinal_jerk_coeff << "\n";
+        out << "longitudinal_recovery_coeff," << cost.longitudinal_recovery_coeff << "\n";
+        out << "longitudinal_recovery_time_constant," << cost.longitudinal_recovery_time_constant
+            << "\n";
         out << "obstacle_collision_margin," << cost.obstacle_collision_margin << "\n";
       }
     }

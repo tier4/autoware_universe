@@ -17,6 +17,19 @@ using mppi::cost::detail::orientedBoxesOverlap;
 using mppi::cost::detail::pointInPolygon;
 using mppi::cost::detail::vectorLength;
 
+__host__ __device__ float deadbandViolation(const float value, const float absolute_limit)
+{
+  return fmaxf(0.0F, fabsf(value) - fmaxf(absolute_limit, 0.0F));
+}
+
+__host__ __device__ float intervalViolationSquared(
+  const float value, const float lower_limit, const float upper_limit)
+{
+  const float below = fmaxf(0.0F, lower_limit - value);
+  const float above = fmaxf(0.0F, value - upper_limit);
+  return below * below + above * above;
+}
+
 template <int NUM_TIMESTEPS>
 __host__ __device__ float referenceEndYaw(
   const float * x, const float * y, const float * yaw, int count)
@@ -54,7 +67,9 @@ __host__ __device__ void comfortTerms(
 
   longitudinal_jerk = (accel_cmd - accel) / accel_tau;
 
-  steer_rate = (steer_cmd - steer) / steer_tau;
+  const float unconstrained_steer_rate = (steer_cmd - steer) / steer_tau;
+  steer_rate =
+    fmaxf(fminf(unconstrained_steer_rate, params.max_steer_rate), -params.max_steer_rate);
   const float curvature = tanf(steer) / wheel_base;
 #ifdef __CUDA_ARCH__
   const float sec_sq = 1.0F / fmaxf(cosf(steer) * cosf(steer), 1.0E-6F);
@@ -73,6 +88,18 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   FirstOrderDubinsBicycleCostImpl(cudaStream_t stream)
 {
   this->bindToStream(stream);
+  for (int t = 0; t < NUM_TIMESTEPS; ++t) {
+    kinematic_constraint_profile_.lon_comfort_weight[t] = 1.0F;
+    kinematic_constraint_profile_.lat_comfort_weight[t] = 1.0F;
+    kinematic_constraint_profile_.max_velocity_limit[t] = this->params_.max_velocity;
+    kinematic_constraint_profile_.min_lon_accel_limit[t] = this->params_.min_lon_accel;
+    kinematic_constraint_profile_.max_lon_accel_limit[t] = this->params_.max_lon_accel;
+    kinematic_constraint_profile_.max_lon_jerk_limit[t] = this->params_.max_lon_jerk;
+    kinematic_constraint_profile_.max_lat_accel_limit[t] = this->params_.max_lat_accel;
+    kinematic_constraint_profile_.max_lat_jerk_limit[t] = this->params_.max_lat_jerk;
+    kinematic_constraint_profile_.accel_recovery_limit[t] = 2.0F;
+    kinematic_constraint_profile_.accel_recovery_weight[t] = 0.0F;
+  }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -98,6 +125,20 @@ void FirstOrderDubinsBicycleCostImpl<
     this->cost_d_->ref_v_, ref_v_, sizeof(ref_v_), cudaMemcpyHostToDevice, this->stream_));
   HANDLE_ERROR(cudaMemcpyAsync(
     this->cost_d_->ref_yaw_, ref_yaw_, sizeof(ref_yaw_), cudaMemcpyHostToDevice, this->stream_));
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::kinematicConstraintProfileDataToDevice()
+{
+  if (!this->GPUMemStatus_ || !kinematic_constraint_profile_dirty_) {
+    return;
+  }
+
+  HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->kinematic_constraint_profile_, &kinematic_constraint_profile_,
+    sizeof(kinematic_constraint_profile_), cudaMemcpyHostToDevice, this->stream_));
+  kinematic_constraint_profile_dirty_ = false;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -240,6 +281,50 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     }
   }
   referenceDataToDevice();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  setKinematicConstraintProfile(
+    const float * lon_comfort_weight, const float * lat_comfort_weight,
+    const float * max_velocity_limit, const float * min_lon_accel_limit,
+    const float * max_lon_accel_limit, const float * max_lon_jerk_limit,
+    const float * max_lat_accel_limit, const float * max_lat_jerk_limit,
+    const float * accel_recovery_limit, const float * accel_recovery_weight, const int count)
+{
+  const int n = std::max(0, std::min(count, NUM_TIMESTEPS));
+  for (int t = 0; t < NUM_TIMESTEPS; ++t) {
+    const int src = n > 0 ? std::min(t, n - 1) : -1;
+    kinematic_constraint_profile_.lon_comfort_weight[t] =
+      src >= 0 ? std::clamp(lon_comfort_weight[src], 0.0F, 1.0F) : 1.0F;
+    kinematic_constraint_profile_.lat_comfort_weight[t] =
+      src >= 0 ? std::clamp(lat_comfort_weight[src], 0.0F, 1.0F) : 1.0F;
+    kinematic_constraint_profile_.max_velocity_limit[t] =
+      src >= 0 ? fmaxf(max_velocity_limit[src], 0.0F) : this->params_.max_velocity;
+    kinematic_constraint_profile_.min_lon_accel_limit[t] =
+      src >= 0 ? min_lon_accel_limit[src] : this->params_.min_lon_accel;
+    kinematic_constraint_profile_.max_lon_accel_limit[t] =
+      src >= 0 ? fmaxf(max_lon_accel_limit[src], 0.0F) : this->params_.max_lon_accel;
+    kinematic_constraint_profile_.max_lon_jerk_limit[t] =
+      src >= 0 ? fmaxf(max_lon_jerk_limit[src], 0.0F) : this->params_.max_lon_jerk;
+    kinematic_constraint_profile_.max_lat_accel_limit[t] =
+      src >= 0 ? fmaxf(max_lat_accel_limit[src], 0.0F) : this->params_.max_lat_accel;
+    kinematic_constraint_profile_.max_lat_jerk_limit[t] =
+      src >= 0 ? fmaxf(max_lat_jerk_limit[src], 0.0F) : this->params_.max_lat_jerk;
+    kinematic_constraint_profile_.accel_recovery_limit[t] =
+      src >= 0 ? fmaxf(accel_recovery_limit[src], 0.0F)
+               : fmaxf(this->params_.max_lon_accel, -this->params_.min_lon_accel);
+    kinematic_constraint_profile_.accel_recovery_weight[t] =
+      src >= 0 ? std::clamp(accel_recovery_weight[src], 0.0F, 1.0F) : 0.0F;
+  }
+  kinematic_constraint_profile_dirty_ = true;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::uploadKinematicConstraintProfile()
+{
+  kinematicConstraintProfileDataToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -795,22 +880,75 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ __device__ float
+FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  computeKinematicBarrierCost(
+    const float velocity, const float longitudinal_accel, const float longitudinal_jerk,
+    const float lateral_accel, const float lateral_jerk, const float steer_rate,
+    const int timestep) const
+{
+  const int t = timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
+  const float lon_weight = kinematic_constraint_profile_.lon_comfort_weight[t];
+  const float lat_weight = kinematic_constraint_profile_.lat_comfort_weight[t];
+  const float recovery_weight = kinematic_constraint_profile_.accel_recovery_weight[t];
+
+  // This is independent from speed_coeff tracking against the host-clamped ref_v_[t].
+  // max_velocity_limit[t] is the host-resolved kinematic/external/Lanelet ceiling.
+  const float velocity_violation =
+    deadbandViolation(velocity, kinematic_constraint_profile_.max_velocity_limit[t]);
+  const float overspeed_cost =
+    this->params_.overspeed_coeff * velocity_violation * velocity_violation;
+
+  float acceleration_cost = 0.0F;
+  if (recovery_weight > 0.0F) {
+    const float recovery_violation =
+      deadbandViolation(longitudinal_accel, kinematic_constraint_profile_.accel_recovery_limit[t]);
+    acceleration_cost = recovery_weight * this->params_.longitudinal_recovery_coeff *
+                        recovery_violation * recovery_violation;
+  } else {
+    acceleration_cost = this->params_.longitudinal_acceleration_coeff *
+                        intervalViolationSquared(
+                          longitudinal_accel, kinematic_constraint_profile_.min_lon_accel_limit[t],
+                          kinematic_constraint_profile_.max_lon_accel_limit[t]);
+  }
+
+  const float longitudinal_jerk_violation =
+    deadbandViolation(longitudinal_jerk, kinematic_constraint_profile_.max_lon_jerk_limit[t]);
+  const float longitudinal_cost =
+    lon_weight * (acceleration_cost + this->params_.longitudinal_jerk_coeff *
+                                        longitudinal_jerk_violation * longitudinal_jerk_violation);
+
+  const float lateral_accel_violation =
+    deadbandViolation(lateral_accel, kinematic_constraint_profile_.max_lat_accel_limit[t]);
+  const float lateral_jerk_violation =
+    deadbandViolation(lateral_jerk, kinematic_constraint_profile_.max_lat_jerk_limit[t]);
+  const float lateral_cost =
+    lat_weight *
+    (this->params_.lateral_acceleration_coeff * lateral_accel_violation * lateral_accel_violation +
+     this->params_.lateral_jerk_coeff * lateral_jerk_violation * lateral_jerk_violation);
+
+  const float steer_rate_violation = deadbandViolation(steer_rate, this->params_.max_steer_rate);
+  const float steer_rate_cost =
+    this->params_.steer_rate_coeff * steer_rate_violation * steer_rate_violation;
+
+  return overspeed_cost + longitudinal_cost + lateral_cost + steer_rate_cost;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   computeComfortCost(
     const Eigen::Ref<const control_array> & u, const Eigen::Ref<const output_array> & y,
-    int timestep)
+    const int timestep)
 {
-  (void)timestep;
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
   float steer_rate = 0.0F;
   comfortTerms(
     this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
-  return this->params_.lateral_acceleration_coeff * std::abs(lateral_accel) +
-         this->params_.lateral_jerk_coeff * std::abs(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * std::abs(longitudinal_jerk) +
-         this->params_.steer_rate_coeff * std::abs(steer_rate);
+  return computeKinematicBarrierCost(
+    y(static_cast<int>(O::TOTAL_VELOCITY)), y(static_cast<int>(O::ACCELERATION)), longitudinal_jerk,
+    lateral_accel, lateral_jerk, steer_rate, timestep);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -818,16 +956,14 @@ __device__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::computeComfortCost(
   float * u, float * y, int timestep)
 {
-  (void)timestep;
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
   float steer_rate = 0.0F;
   comfortTerms(this->params_, u, y, lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
-  return this->params_.lateral_acceleration_coeff * fabsf(lateral_accel) +
-         this->params_.lateral_jerk_coeff * fabsf(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * fabsf(longitudinal_jerk) +
-         this->params_.steer_rate_coeff * fabsf(steer_rate);
+  return computeKinematicBarrierCost(
+    y[static_cast<int>(O::TOTAL_VELOCITY)], y[static_cast<int>(O::ACCELERATION)], longitudinal_jerk,
+    lateral_accel, lateral_jerk, steer_rate, timestep);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

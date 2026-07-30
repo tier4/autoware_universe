@@ -16,9 +16,21 @@
     boundary_threshold: 0.8
     boundary_threshold_left: -1.0
     boundary_threshold_right: -1.0
-    lateral_acceleration_coeff: 100.0
-    lateral_jerk_coeff: 200.0
-    longitudinal_jerk_coeff: 100.0
+    # Deadband-quadratic kinematic limits (zero cost inside the limits).
+    max_velocity: 10.0
+    max_lon_accel: 2.0
+    min_lon_accel: -2.0
+    max_lon_jerk: 3.0
+    max_lat_accel: 2.0
+    max_lat_jerk: 3.0
+    # W_overspeed: distinct from speed_coeff tracking against the clamped reference.
+    overspeed_coeff: 10000.0
+    longitudinal_acceleration_coeff: 10000.0
+    lateral_acceleration_coeff: 10000.0
+    lateral_jerk_coeff: 10000.0
+    longitudinal_jerk_coeff: 10000.0
+    longitudinal_recovery_coeff: 20000.0
+    longitudinal_recovery_time_constant: 0.5
     accel_cmd_coeff: 50.0
     steer_cmd_coeff: 250.0
     steer_rate_coeff: 300.0

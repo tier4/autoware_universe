@@ -8,6 +8,7 @@
   <arg name="input_trajectory" default="/planning/scenario_planning/lane_driving/behavior_planning/path"/>
   <arg name="input_odometry" default="/localization/kinematic_state"/>
   <arg name="input_steering_status" default="/vehicle/status/steering_status"/>
+  <arg name="input_external_velocity_limit_mps" default="/planning/scenario_planning/max_velocity_default"/>
   <arg name="output_trajectory" default="/planning/mppi_optimizer/trajectory"/>
 
   <node pkg="autoware_mppi_optimizer" exec="autoware_mppi_optimizer_node" name="mppi_optimizer_node" output="screen">
@@ -17,6 +18,7 @@
     <remap from="~/input/trajectory" to="$(var input_trajectory)"/>
     <remap from="~/input/odometry" to="$(var input_odometry)"/>
     <remap from="~/input/steering_status" to="$(var input_steering_status)"/>
+    <remap from="~/input/external_velocity_limit_mps" to="$(var input_external_velocity_limit_mps)"/>
     <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
   </node>
 </launch>

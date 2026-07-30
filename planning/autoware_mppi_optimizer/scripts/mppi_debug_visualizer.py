@@ -112,9 +112,19 @@ DEFAULT_PARAMS: Dict[str, float] = {
     "boundary_threshold": 0.8,
     "boundary_threshold_left": -1.0,
     "boundary_threshold_right": -1.0,
-    "lateral_acceleration_coeff": 500.0,
-    "lateral_jerk_coeff": 1000.0,
-    "longitudinal_jerk_coeff": 10.0,
+    "max_velocity": 10.0,
+    "max_lon_accel": 2.0,
+    "min_lon_accel": -2.0,
+    "max_lon_jerk": 3.0,
+    "max_lat_accel": 2.0,
+    "max_lat_jerk": 3.0,
+    "overspeed_coeff": 10000.0,
+    "longitudinal_acceleration_coeff": 10000.0,
+    "lateral_acceleration_coeff": 10000.0,
+    "lateral_jerk_coeff": 10000.0,
+    "longitudinal_jerk_coeff": 10000.0,
+    "longitudinal_recovery_coeff": 20000.0,
+    "longitudinal_recovery_time_constant": 0.5,
     "accel_cmd_coeff": 0.0,
     "steer_cmd_coeff": 10.0,
     "steer_rate_coeff": 0.0,  # cost param; not always present in yaml
@@ -131,9 +141,19 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("heading_coeff", 0.0, 5000.0),
     ("lateral_distance_coeff", 0.0, 10000.0),
     ("lateral_yaw_error_coeff", 0.0, 5000.0),
-    ("lateral_acceleration_coeff", 0.0, 5000.0),
-    ("lateral_jerk_coeff", 0.0, 10000.0),
-    ("longitudinal_jerk_coeff", 0.0, 5000.0),
+    ("max_velocity", 0.0, 30.0),
+    ("max_lon_accel", 0.0, 10.0),
+    ("min_lon_accel", -10.0, 0.0),
+    ("max_lon_jerk", 0.0, 20.0),
+    ("max_lat_accel", 0.0, 10.0),
+    ("max_lat_jerk", 0.0, 20.0),
+    ("overspeed_coeff", 0.0, 50000.0),
+    ("longitudinal_acceleration_coeff", 0.0, 50000.0),
+    ("lateral_acceleration_coeff", 0.0, 50000.0),
+    ("lateral_jerk_coeff", 0.0, 50000.0),
+    ("longitudinal_jerk_coeff", 0.0, 50000.0),
+    ("longitudinal_recovery_coeff", 0.0, 100000.0),
+    ("longitudinal_recovery_time_constant", 0.05, 2.0),
     ("accel_cmd_coeff", 0.0, 2000.0),
     ("steer_cmd_coeff", 0.0, 5000.0),
     ("steer_rate_coeff", 0.0, 10000.0),
@@ -1479,6 +1499,8 @@ def load_params_yaml(path: Optional[Path]) -> Dict[str, float]:
             continue
         key, value = line.split(":", 1)
         key = key.strip()
+        if key == "velocity_limit_coeff":
+            key = "overspeed_coeff"
         value = value.strip().strip('"')
         if key in params:
             try:
@@ -1509,6 +1531,8 @@ def load_params_from_log(log_dir: Path, params_yaml: Optional[Path]) -> Dict[str
     """Prefer logged cost_params.csv, then yaml, then defaults."""
     params = dict(DEFAULT_PARAMS)
     logged = load_key_value_csv(log_dir / "cost_params.csv")
+    if "overspeed_coeff" not in logged and "velocity_limit_coeff" in logged:
+        logged["overspeed_coeff"] = logged["velocity_limit_coeff"]
     for key, value in logged.items():
         if key in params:
             params[key] = value

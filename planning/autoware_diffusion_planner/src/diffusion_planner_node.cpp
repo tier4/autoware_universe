@@ -29,10 +29,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <fstream>
 #include <functional>
 #include <iomanip>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -48,6 +50,48 @@ using diagnostic_msgs::msg::DiagnosticStatus;
 
 namespace
 {
+autoware::mppi_optimizer::FirstOrderDubinsMppiKinematicLimits make_mppi_kinematic_limits(
+  const VelocityLimit::ConstSharedPtr & external_limit, const Trajectory & trajectory,
+  const autoware::avoidance_target_detector::ExtendedRouteHandler & route_handler)
+{
+  autoware::mppi_optimizer::FirstOrderDubinsMppiKinematicLimits result;
+  if (external_limit) {
+    if (std::isfinite(external_limit->max_velocity) && external_limit->max_velocity >= 0.0F) {
+      result.max_velocity.push_back(external_limit->max_velocity);
+    }
+    if (external_limit->use_constraints) {
+      const auto & constraints = external_limit->constraints;
+      if (std::isfinite(constraints.max_acceleration) && constraints.max_acceleration >= 0.0F) {
+        result.max_lon_accel.push_back(constraints.max_acceleration);
+      }
+      if (std::isfinite(constraints.min_acceleration) && constraints.min_acceleration <= 0.0F) {
+        result.min_lon_accel.push_back(constraints.min_acceleration);
+      }
+
+      float jerk_limit = std::numeric_limits<float>::infinity();
+      if (std::isfinite(constraints.max_jerk) && constraints.max_jerk >= 0.0F) {
+        jerk_limit = std::min(jerk_limit, constraints.max_jerk);
+      }
+      if (std::isfinite(constraints.min_jerk) && constraints.min_jerk <= 0.0F) {
+        jerk_limit = std::min(jerk_limit, -constraints.min_jerk);
+      }
+      if (std::isfinite(jerk_limit)) {
+        result.max_lon_jerk.push_back(jerk_limit);
+      }
+    }
+  }
+
+  result.map_max_velocity.reserve(trajectory.points.size());
+  for (const auto & point : trajectory.points) {
+    const auto lanelet_limit = route_handler.get_velocity_limit(point.pose.position);
+    result.map_max_velocity.push_back(
+      lanelet_limit && std::isfinite(*lanelet_limit) && *lanelet_limit >= 0.0
+        ? static_cast<float>(*lanelet_limit)
+        : std::numeric_limits<float>::infinity());
+  }
+  return result;
+}
+
 std::string compute_file_hash_hex(const std::string & path)
 {
   constexpr std::size_t HASH_READ_BUFFER_BYTES = 64 * 1024;
@@ -382,6 +426,21 @@ SetParametersResult DiffusionPlanner::on_parameter(
     }
     update_param<bool>(parameters, "use_mppi_optimizer", temp_params.use_mppi_optimizer);
     update_param<bool>(parameters, "shadow_mode", temp_params.shadow_mode);
+    if (mppi_optimizer_) {
+      auto mppi_cost_params =
+        autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this);
+      if (autoware::mppi_optimizer::update_first_order_dubins_mppi_kinematic_cost_params(
+            mppi_cost_params, parameters)) {
+        try {
+          mppi_optimizer_->setCostParams(mppi_cost_params);
+        } catch (const std::invalid_argument & error) {
+          SetParametersResult result;
+          result.successful = false;
+          result.reason = error.what();
+          return result;
+        }
+      }
+    }
     const bool args_path_changed = temp_params.args_path != previous_args_path;
     const bool model_paths_changed =
       temp_params.model_type != previous_model_type ||
@@ -673,15 +732,14 @@ void DiffusionPlanner::on_timer()
         get_road_border_subset(road_border_rtree_, planner_output.trajectory, margin);
       const auto drivable_area_subset =
         get_drivable_area_subset(drivable_area_rtree_, planner_output.trajectory, margin);
+      const auto external_velocity_limit = sub_external_velocity_limit_.take_data();
+      const auto dynamic_limits = make_mppi_kinematic_limits(
+        external_velocity_limit, planner_output.trajectory, *extended_route_handler_);
 
-      auto all_targets = avoidance_targets;
-      all_targets.objects.insert(
-        all_targets.objects.end(), driving_along_targets.objects.begin(),
-        driving_along_targets.objects.end());
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
         ego_steering, avoidance_targets, to_mppi_segments(road_borders_subset),
-        to_mppi_segments(drivable_area_subset));
+        to_mppi_segments(drivable_area_subset), dynamic_limits);
       pub_mppi_markers_->publish(
         autoware::mppi_optimizer::createMppiDebugMarkers(
           mppi_result.debug, road_borders_subset, drivable_area_subset, avoidance_targets,

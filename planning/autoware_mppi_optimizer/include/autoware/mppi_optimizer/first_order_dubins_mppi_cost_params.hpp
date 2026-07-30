@@ -38,10 +38,23 @@ struct FirstOrderDubinsMppiCostParams
   float accel_cmd_coeff{0.0F};
   float steer_cmd_coeff{0.0F};
 
+  /** Deadband-quadratic kinematic constraint limits and weights. */
+  float max_velocity{10.0F};
+  float max_lon_accel{2.0F};
+  float min_lon_accel{-2.0F};
+  float max_lon_jerk{3.0F};
+  float max_lat_accel{2.0F};
+  float max_lat_jerk{3.0F};
+  /** High-priority asymmetric cost for velocity above the resolved per-step ceiling. */
+  float overspeed_coeff{10000.0F};
+  float longitudinal_acceleration_coeff{10000.0F};
   float steer_rate_coeff{0.0F};
-  float lateral_acceleration_coeff{300.0F};
-  float lateral_jerk_coeff{300.0F};
-  float longitudinal_jerk_coeff{10.0F};
+  float lateral_acceleration_coeff{10000.0F};
+  float lateral_jerk_coeff{10000.0F};
+  float longitudinal_jerk_coeff{10000.0F};
+  /** Penalizes failure to enter the exponentially shrinking initial-acceleration funnel. */
+  float longitudinal_recovery_coeff{20000.0F};
+  float longitudinal_recovery_time_constant{0.5F};
   float obstacle_collision_margin{0.5F};
   float road_border_collision_margin{0.2F};
   float drivable_area_crossing_coeff{10000.0F};

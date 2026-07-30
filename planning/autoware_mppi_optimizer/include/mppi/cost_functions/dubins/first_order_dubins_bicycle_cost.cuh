@@ -35,14 +35,27 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float boundary_threshold_right = -1.0F;
   float accel_cmd_coeff = 0.0F;
   float steer_cmd_coeff = 0.0F;
-  /** Direct cost on steer rate [rad/s]: (steer_cmd - steer) / steer_time_constant. */
+  /** Deadband-quadratic kinematic constraint limits and weights. */
+  float max_velocity = 10.0F;
+  float max_lon_accel = 2.0F;
+  float min_lon_accel = -2.0F;
+  float max_lon_jerk = 3.0F;
+  float max_lat_accel = 2.0F;
+  float max_lat_jerk = 3.0F;
+  /** W_overspeed, independent from speed_coeff tracking against ref_v_[t]. */
+  float overspeed_coeff = 10000.0F;
+  float longitudinal_acceleration_coeff = 10000.0F;
+  /** Deadband-quadratic cost beyond the configured steering-rate limit. */
   float steer_rate_coeff = 0.0F;
-  float lateral_acceleration_coeff = 300.0F;
-  float lateral_jerk_coeff = 300.0F;
-  float longitudinal_jerk_coeff = 10.0F;
+  float lateral_acceleration_coeff = 10000.0F;
+  float lateral_jerk_coeff = 10000.0F;
+  float longitudinal_jerk_coeff = 10000.0F;
+  float longitudinal_recovery_coeff = 20000.0F;
+  float longitudinal_recovery_time_constant = 0.5F;
   float wheel_base = 0.32F;
   float accel_time_constant = 0.15F;
   float steer_time_constant = 0.08F;
+  float max_steer_rate = 3.0F;
   /** Ego OBB for parked-car collision (rear axle at pose; box center offset forward). */
   float ego_length = 0.55F * 1.5F;
   float ego_width = 0.28F * 1.5F;
@@ -77,6 +90,23 @@ public:
 
   void setReferenceTrajectory(
     const float * x, const float * y, const float * v, int count, const float * yaw = nullptr);
+
+  /**
+   * Set the host-precomputed per-step effective limits and comfort profile.
+   *
+   * Weight entries are multipliers in [0, 1]. A zero longitudinal multiplier is a
+   * safety-stop exemption; an attenuated lateral multiplier is a high-curvature exemption.
+   * Effective limits have already resolved static, external, and map sources on the host.
+   */
+  void setKinematicConstraintProfile(
+    const float * lon_comfort_weight, const float * lat_comfort_weight,
+    const float * max_velocity_limit, const float * min_lon_accel_limit,
+    const float * max_lon_accel_limit, const float * max_lon_jerk_limit,
+    const float * max_lat_accel_limit, const float * max_lat_jerk_limit,
+    const float * accel_recovery_limit, const float * accel_recovery_weight, int count);
+
+  /** Upload the constraint profile once after all host preparation is complete. */
+  void uploadKinematicConstraintProfile();
 
   /** Static obstacles: same pose replicated at every MPPI horizon step. */
   void setOrientedBoxObstacles(
@@ -157,6 +187,10 @@ public:
 
   __device__ float computeComfortCost(float * u, float * y, int timestep);
 
+  __host__ __device__ float computeKinematicBarrierCost(
+    float velocity, float longitudinal_accel, float longitudinal_jerk, float lateral_accel,
+    float lateral_jerk, float steer_rate, int timestep) const;
+
   __device__ float terminalCost(float * y, float * theta_c);
 
   float computeRunningCost(
@@ -170,6 +204,20 @@ public:
   float ref_y_[NUM_TIMESTEPS] = {};
   float ref_v_[NUM_TIMESTEPS] = {};
   float ref_yaw_[NUM_TIMESTEPS] = {};
+  struct KinematicConstraintProfileData
+  {
+    float lon_comfort_weight[NUM_TIMESTEPS] = {};
+    float lat_comfort_weight[NUM_TIMESTEPS] = {};
+    float max_velocity_limit[NUM_TIMESTEPS] = {};
+    float min_lon_accel_limit[NUM_TIMESTEPS] = {};
+    float max_lon_accel_limit[NUM_TIMESTEPS] = {};
+    float max_lon_jerk_limit[NUM_TIMESTEPS] = {};
+    float max_lat_accel_limit[NUM_TIMESTEPS] = {};
+    float max_lat_jerk_limit[NUM_TIMESTEPS] = {};
+    float accel_recovery_limit[NUM_TIMESTEPS] = {};
+    float accel_recovery_weight[NUM_TIMESTEPS] = {};
+  };
+  KinematicConstraintProfileData kinematic_constraint_profile_{};
   int num_obstacles_ = 0;
   float obs_x_[kMaxObstacles][NUM_TIMESTEPS] = {};
   float obs_y_[kMaxObstacles][NUM_TIMESTEPS] = {};
@@ -192,10 +240,12 @@ public:
 
 private:
   void referenceDataToDevice();
+  void kinematicConstraintProfileDataToDevice();
   void obstacleDataToDevice();
   void roadBorderDataToDevice();
   void drivableAreaSegmentDataToDevice();
   void drivableAreaPolygonDataToDevice();
+  bool kinematic_constraint_profile_dirty_{true};
 };
 
 template <int NUM_TIMESTEPS>

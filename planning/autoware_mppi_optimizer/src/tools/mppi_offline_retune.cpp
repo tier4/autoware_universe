@@ -144,6 +144,22 @@ void applyCostParam(
     params.accel_cmd_coeff = value;
   } else if (key == "steer_cmd_coeff") {
     params.steer_cmd_coeff = value;
+  } else if (key == "max_velocity") {
+    params.max_velocity = value;
+  } else if (key == "max_lon_accel") {
+    params.max_lon_accel = value;
+  } else if (key == "min_lon_accel") {
+    params.min_lon_accel = value;
+  } else if (key == "max_lon_jerk") {
+    params.max_lon_jerk = value;
+  } else if (key == "max_lat_accel") {
+    params.max_lat_accel = value;
+  } else if (key == "max_lat_jerk") {
+    params.max_lat_jerk = value;
+  } else if (key == "overspeed_coeff" || key == "velocity_limit_coeff") {
+    params.overspeed_coeff = value;
+  } else if (key == "longitudinal_acceleration_coeff") {
+    params.longitudinal_acceleration_coeff = value;
   } else if (key == "steer_rate_coeff") {
     params.steer_rate_coeff = value;
   } else if (key == "lateral_acceleration_coeff") {
@@ -152,6 +168,10 @@ void applyCostParam(
     params.lateral_jerk_coeff = value;
   } else if (key == "longitudinal_jerk_coeff") {
     params.longitudinal_jerk_coeff = value;
+  } else if (key == "longitudinal_recovery_coeff") {
+    params.longitudinal_recovery_coeff = value;
+  } else if (key == "longitudinal_recovery_time_constant") {
+    params.longitudinal_recovery_time_constant = value;
   } else if (key == "obstacle_collision_margin") {
     params.obstacle_collision_margin = value;
   } else {
@@ -463,6 +483,7 @@ int run(int argc, char ** argv)
   std::cout << "applied_params lambda=" << cost_params.lambda
             << " track_coeff=" << cost_params.track_coeff
             << " speed_coeff=" << cost_params.speed_coeff
+            << " overspeed_coeff=" << cost_params.overspeed_coeff
             << " heading_coeff=" << cost_params.heading_coeff
             << " steer_rate_coeff=" << cost_params.steer_rate_coeff << "\n";
   if (cost_params.lambda >= 5000.0F) {

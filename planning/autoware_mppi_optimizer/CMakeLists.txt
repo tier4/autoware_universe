@@ -80,6 +80,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     mppi_extensions
     rclcpp::rclcpp
     tf2_geometry_msgs::tf2_geometry_msgs
+    autoware_internal_planning_msgs::autoware_internal_planning_msgs__rosidl_generator_cpp
     autoware_perception_msgs::autoware_perception_msgs__rosidl_generator_cpp
     autoware_planning_msgs::autoware_planning_msgs__rosidl_generator_cpp
     autoware_vehicle_msgs::autoware_vehicle_msgs__rosidl_generator_cpp

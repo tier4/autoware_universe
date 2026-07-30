@@ -39,6 +39,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -61,6 +62,47 @@ constexpr char kLoggerName[] = "first_order_dubins_mppi";
 rclcpp::Logger mppiLogger()
 {
   return rclcpp::get_logger(kLoggerName);
+}
+
+float positiveLimitAt(const std::vector<float> & limits, const size_t index)
+{
+  constexpr float kNoLimit = std::numeric_limits<float>::infinity();
+  if (limits.empty()) {
+    return kNoLimit;
+  }
+  const size_t source_index = limits.size() == 1U ? 0U : index;
+  if (source_index >= limits.size()) {
+    return kNoLimit;
+  }
+  const float value = limits[source_index];
+  return std::isfinite(value) && value >= 0.0F ? value : kNoLimit;
+}
+
+float minimumAccelerationAt(const std::vector<float> & limits, const size_t index)
+{
+  constexpr float kNoLimit = -std::numeric_limits<float>::infinity();
+  if (limits.empty()) {
+    return kNoLimit;
+  }
+  const size_t source_index = limits.size() == 1U ? 0U : index;
+  if (source_index >= limits.size()) {
+    return kNoLimit;
+  }
+  const float value = limits[source_index];
+  return std::isfinite(value) && value <= 0.0F ? value : kNoLimit;
+}
+
+float evasiveLateralComfortWeight(
+  const float reference_lateral_acceleration, const float effective_lateral_accel_limit)
+{
+  if (reference_lateral_acceleration <= effective_lateral_accel_limit) {
+    return 1.0F;
+  }
+  if (effective_lateral_accel_limit <= 0.0F) {
+    return 0.0F;
+  }
+  const float violation = reference_lateral_acceleration - effective_lateral_accel_limit;
+  return std::max(0.0F, 1.0F - violation / effective_lateral_accel_limit);
 }
 
 using DYN = FirstOrderDubinsBicycle;
@@ -96,10 +138,20 @@ void applyUserCostParams(
   cost_params.boundary_threshold_right = user.boundary_threshold_right;
   cost_params.accel_cmd_coeff = user.accel_cmd_coeff;
   cost_params.steer_cmd_coeff = user.steer_cmd_coeff;
+  cost_params.max_velocity = user.max_velocity;
+  cost_params.max_lon_accel = user.max_lon_accel;
+  cost_params.min_lon_accel = user.min_lon_accel;
+  cost_params.max_lon_jerk = user.max_lon_jerk;
+  cost_params.max_lat_accel = user.max_lat_accel;
+  cost_params.max_lat_jerk = user.max_lat_jerk;
+  cost_params.overspeed_coeff = user.overspeed_coeff;
+  cost_params.longitudinal_acceleration_coeff = user.longitudinal_acceleration_coeff;
   cost_params.steer_rate_coeff = user.steer_rate_coeff;
   cost_params.lateral_acceleration_coeff = user.lateral_acceleration_coeff;
   cost_params.lateral_jerk_coeff = user.lateral_jerk_coeff;
   cost_params.longitudinal_jerk_coeff = user.longitudinal_jerk_coeff;
+  cost_params.longitudinal_recovery_coeff = user.longitudinal_recovery_coeff;
+  cost_params.longitudinal_recovery_time_constant = user.longitudinal_recovery_time_constant;
   cost_params.obstacle_collision_margin = user.obstacle_collision_margin;
   cost_params.road_border_collision_margin = user.road_border_collision_margin;
   cost_params.drivable_area_crossing_coeff = user.drivable_area_crossing_coeff;
@@ -345,9 +397,11 @@ void buildRolloutVisualization(
 }
 
 /// @brief override initial 0 velocities with engage velocities
-void set_initial_engage_velocity(autoware::mppi_optimizer::Trajectory & trajectory)
+void set_initial_engage_velocity(
+  autoware::mppi_optimizer::Trajectory & trajectory,
+  const std::array<float, kRefHorizon> & max_velocity_limit)
 {
-  constexpr auto engage_velocity = 0.25;
+  constexpr float engage_velocity = 0.25F;
   if (trajectory.points.size() < 3) return;
   const auto wants_to_move = std::find_if(
                                trajectory.points.begin(), trajectory.points.end(),
@@ -355,8 +409,10 @@ void set_initial_engage_velocity(autoware::mppi_optimizer::Trajectory & trajecto
                                  return p.longitudinal_velocity_mps > engage_velocity;
                                }) != trajectory.points.end();
   if (wants_to_move && trajectory.points[0].longitudinal_velocity_mps < 0.05) {
-    trajectory.points[0].longitudinal_velocity_mps = engage_velocity;
-    trajectory.points[1].longitudinal_velocity_mps = engage_velocity;
+    trajectory.points[0].longitudinal_velocity_mps =
+      std::min(engage_velocity, max_velocity_limit[0]);
+    trajectory.points[1].longitudinal_velocity_mps =
+      std::min(engage_velocity, max_velocity_limit[1]);
   }
 }
 }  // namespace
@@ -396,6 +452,16 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::vector<float> drivable_area_y0;
   std::vector<float> drivable_area_x1;
   std::vector<float> drivable_area_y1;
+  std::array<float, kRefHorizon> lon_comfort_weight{};
+  std::array<float, kRefHorizon> lat_comfort_weight{};
+  std::array<float, kRefHorizon> max_velocity_limit{};
+  std::array<float, kRefHorizon> min_lon_accel_limit{};
+  std::array<float, kRefHorizon> max_lon_accel_limit{};
+  std::array<float, kRefHorizon> max_lon_jerk_limit{};
+  std::array<float, kRefHorizon> max_lat_accel_limit{};
+  std::array<float, kRefHorizon> max_lat_jerk_limit{};
+  std::array<float, kRefHorizon> accel_recovery_limit{};
+  std::array<float, kRefHorizon> accel_recovery_weight{};
 
   bool initialized{false};
   bool road_border_capacity_warning_emitted{false};
@@ -445,6 +511,22 @@ struct FirstOrderDubinsMppiInterface::Impl
     cost_params.ego_width = vehicle_params.ego_width;
     cost_params.ego_axle_to_box_center = vehicle_params.ego_axle_to_box_center;
     cost.setParams(cost_params);
+    lon_comfort_weight.fill(1.0F);
+    lat_comfort_weight.fill(1.0F);
+    max_velocity_limit.fill(user_cost_params_.max_velocity);
+    min_lon_accel_limit.fill(user_cost_params_.min_lon_accel);
+    max_lon_accel_limit.fill(user_cost_params_.max_lon_accel);
+    max_lon_jerk_limit.fill(user_cost_params_.max_lon_jerk);
+    max_lat_accel_limit.fill(user_cost_params_.max_lat_accel);
+    max_lat_jerk_limit.fill(user_cost_params_.max_lat_jerk);
+    accel_recovery_limit.fill(
+      std::max(user_cost_params_.max_lon_accel, -user_cost_params_.min_lon_accel));
+    accel_recovery_weight.fill(0.0F);
+    cost.setKinematicConstraintProfile(
+      lon_comfort_weight.data(), lat_comfort_weight.data(), max_velocity_limit.data(),
+      min_lon_accel_limit.data(), max_lon_accel_limit.data(), max_lon_jerk_limit.data(),
+      max_lat_accel_limit.data(), max_lat_jerk_limit.data(), accel_recovery_limit.data(),
+      accel_recovery_weight.data(), kRefHorizon);
 
     const float kMaxSteer = dyn.max_steer_angle;
     std::array<float2, DYN::CONTROL_DIM> u_rng{};
@@ -503,15 +585,18 @@ struct FirstOrderDubinsMppiInterface::Impl
       "MPPI GPU initialized (horizon=%d, rollouts=%d, dt=%.2f, lambda=%.1f, "
       "wheel_base=%.2f, max_steer=%.2f, steer_std=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
-      "desired_speed=%.2f, boundary_threshold=%.2f, obs_margin=%.2f, road_border_margin=%.2f, "
-      "drivable_area_coeff=%.2f)",
+      "desired_speed=%.2f, v_max=%.2f, lon_accel=[%.2f, %.2f], lon_jerk=%.2f, "
+      "lat_accel=%.2f, lat_jerk=%.2f, boundary_threshold=%.2f, obs_margin=%.2f, "
+      "road_border_margin=%.2f, drivable_area_coeff=%.2f)",
       kMppiHorizon, kNumRollouts, kDt, user_cost_params_.lambda, vehicle_params.wheel_base,
       vehicle_params.max_steer_angle, steer_std, vehicle_params.acc_time_constant,
       vehicle_params.steer_time_constant, vehicle_params.steer_rate_lim,
       vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,
-      vehicle_params.ego_axle_to_box_center, cost_params.desired_speed,
-      cost_params.boundary_threshold, cost_params.obstacle_collision_margin,
-      cost_params.road_border_collision_margin, cost_params.drivable_area_crossing_coeff);
+      vehicle_params.ego_axle_to_box_center, cost_params.desired_speed, cost_params.max_velocity,
+      cost_params.min_lon_accel, cost_params.max_lon_accel, cost_params.max_lon_jerk,
+      cost_params.max_lat_accel, cost_params.max_lat_jerk, cost_params.boundary_threshold,
+      cost_params.obstacle_collision_margin, cost_params.road_border_collision_margin,
+      cost_params.drivable_area_crossing_coeff);
   }
 
   void resetTrackingState()
@@ -567,12 +652,122 @@ struct FirstOrderDubinsMppiInterface::Impl
     seedNominalControlFromDiffusionReference(reference, start_idx);
   }
 
+  void prepareKinematicConstraintProfile(
+    const FirstOrderDubinsMppiKinematicLimits & dynamic_limits, const float measured_acceleration)
+  {
+    const float wheel_base = std::max(vehicle_params.wheel_base, 1.0E-4F);
+    const float recovery_time_constant =
+      std::max(user_cost_params_.longitudinal_recovery_time_constant, 1.0E-4F);
+
+    int stop_override_steps = 0;
+    int lateral_override_steps = 0;
+    int recovery_steps = 0;
+
+    // Resolve every source on the host. The kernel only consumes these effective arrays.
+    for (int t = 0; t < kRefHorizon; ++t) {
+      const size_t horizon_index = static_cast<size_t>(t);
+      max_velocity_limit[horizon_index] = std::min(
+        {user_cost_params_.max_velocity,
+         positiveLimitAt(dynamic_limits.max_velocity, horizon_index),
+         positiveLimitAt(dynamic_limits.map_max_velocity, horizon_index)});
+      min_lon_accel_limit[horizon_index] = std::max(
+        user_cost_params_.min_lon_accel,
+        minimumAccelerationAt(dynamic_limits.min_lon_accel, horizon_index));
+      max_lon_accel_limit[horizon_index] = std::min(
+        user_cost_params_.max_lon_accel,
+        positiveLimitAt(dynamic_limits.max_lon_accel, horizon_index));
+      max_lon_jerk_limit[horizon_index] = std::min(
+        user_cost_params_.max_lon_jerk,
+        positiveLimitAt(dynamic_limits.max_lon_jerk, horizon_index));
+      max_lat_accel_limit[horizon_index] = std::min(
+        user_cost_params_.max_lat_accel,
+        positiveLimitAt(dynamic_limits.max_lat_accel, horizon_index));
+      max_lat_jerk_limit[horizon_index] = std::min(
+        user_cost_params_.max_lat_jerk,
+        positiveLimitAt(dynamic_limits.max_lat_jerk, horizon_index));
+
+      if (!diffusion_reference.points.empty()) {
+        const size_t point_index = std::min(horizon_index, diffusion_reference.points.size() - 1U);
+        auto & point = diffusion_reference.points[point_index];
+        point.longitudinal_velocity_mps =
+          std::min(point.longitudinal_velocity_mps, max_velocity_limit[horizon_index]);
+      }
+    }
+
+    for (int t = 0; t < kRefHorizon; ++t) {
+      const size_t horizon_index = static_cast<size_t>(t);
+      lon_comfort_weight[static_cast<size_t>(t)] = 1.0F;
+      lat_comfort_weight[static_cast<size_t>(t)] = 1.0F;
+
+      if (!diffusion_reference.points.empty()) {
+        const size_t idx = std::min(horizon_index, diffusion_reference.points.size() - 1U);
+        const size_t next_idx = std::min(idx + 1U, diffusion_reference.points.size() - 1U);
+        const auto & point = diffusion_reference.points[idx];
+        const auto & next_point = diffusion_reference.points[next_idx];
+
+        const float v_ref = point.longitudinal_velocity_mps;
+        const float next_v_ref = next_point.longitudinal_velocity_mps;
+        const float required_acceleration = (next_v_ref - v_ref) / kDt;
+        if (required_acceleration < min_lon_accel_limit[horizon_index]) {
+          lon_comfort_weight[horizon_index] = 0.0F;
+          min_lon_accel_limit[horizon_index] = dyn.min_accel;
+          ++stop_override_steps;
+        }
+
+        const float dx = static_cast<float>(next_point.pose.position.x - point.pose.position.x);
+        const float dy = static_cast<float>(next_point.pose.position.y - point.pose.position.y);
+        const float ds = std::hypot(dx, dy);
+        float reference_curvature = 0.0F;
+        if (next_idx != idx && ds > 1.0E-4F) {
+          constexpr float kTwoPi = 6.28318530717958647692F;
+          const float yaw = static_cast<float>(tf2::getYaw(point.pose.orientation));
+          const float next_yaw = static_cast<float>(tf2::getYaw(next_point.pose.orientation));
+          reference_curvature = std::remainder(next_yaw - yaw, kTwoPi) / ds;
+        } else {
+          reference_curvature = std::tan(point.front_wheel_angle_rad) / wheel_base;
+        }
+
+        const float reference_lateral_acceleration = std::abs(v_ref * v_ref * reference_curvature);
+        lat_comfort_weight[horizon_index] = evasiveLateralComfortWeight(
+          reference_lateral_acceleration, max_lat_accel_limit[horizon_index]);
+        if (lat_comfort_weight[horizon_index] < 1.0F) {
+          ++lateral_override_steps;
+        }
+      }
+
+      const float recovery_base_limit = measured_acceleration >= 0.0F
+                                          ? max_lon_accel_limit[horizon_index]
+                                          : -min_lon_accel_limit[horizon_index];
+      const float recovery_limit = std::max(
+        recovery_base_limit, std::abs(measured_acceleration) *
+                               std::exp(-static_cast<float>(t) * kDt / recovery_time_constant));
+      accel_recovery_limit[horizon_index] = recovery_limit;
+      accel_recovery_weight[horizon_index] =
+        recovery_limit > recovery_base_limit + 1.0E-4F ? 1.0F : 0.0F;
+      recovery_steps += accel_recovery_weight[horizon_index] > 0.0F ? 1 : 0;
+    }
+
+    cost.setKinematicConstraintProfile(
+      lon_comfort_weight.data(), lat_comfort_weight.data(), max_velocity_limit.data(),
+      min_lon_accel_limit.data(), max_lon_accel_limit.data(), max_lon_jerk_limit.data(),
+      max_lat_accel_limit.data(), max_lat_jerk_limit.data(), accel_recovery_limit.data(),
+      accel_recovery_weight.data(), kRefHorizon);
+
+    RCLCPP_DEBUG(
+      mppiLogger(),
+      "MPPI kinematic profile: stop_override_steps=%d lateral_override_steps=%d "
+      "initial_accel=%.3f recovery_steps=%d v_limit0=%.3f",
+      stop_override_steps, lateral_override_steps, measured_acceleration, recovery_steps,
+      max_velocity_limit.front());
+  }
+
   void updateDiffusionReference(
     const Trajectory & reference, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects_in, const std::vector<Segment> & road_borders_in,
-    const std::vector<Segment> & drivable_area_in)
+    const std::vector<Segment> & drivable_area_in,
+    const FirstOrderDubinsMppiKinematicLimits & dynamic_limits)
   {
     if (!initialized) {
       setup();
@@ -606,8 +801,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (step_count == 0) {
       resetTrackingState();
     }
-    seedNominalControl(reference, tracking_start_idx);
-
     const float ego_yaw = yawFromOdometry(odometry);
     const float ego_v = static_cast<float>(odometry.twist.twist.linear.x);
 
@@ -618,14 +811,18 @@ struct FirstOrderDubinsMppiInterface::Impl
       static_cast<float>(odometry.pose.pose.position.y);
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW)) = ego_yaw;
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X)) = ego_v;
-    const float ego_accel = std::clamp(
-      longitudinalAccelerationMps2(acceleration), vehicle_params.min_accel(),
-      vehicle_params.max_accel());
+    const float measured_accel_input = longitudinalAccelerationMps2(acceleration);
+    const float measured_ego_accel =
+      std::isfinite(measured_accel_input) ? measured_accel_input : 0.0F;
+    const float ego_accel =
+      std::clamp(measured_ego_accel, vehicle_params.min_accel(), vehicle_params.max_accel());
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACCELERATION)) = ego_accel;
     const float ego_steer = std::clamp(
       steeringTireAngleRad(steering_status), -vehicle_params.max_steer_angle,
       vehicle_params.max_steer_angle);
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE)) = ego_steer;
+    prepareKinematicConstraintProfile(dynamic_limits, measured_ego_accel);
+    seedNominalControl(diffusion_reference, tracking_start_idx);
   }
 
   void uploadBoundarySegments()
@@ -677,6 +874,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       obstacle_count > 0 ? obs_half_length.data() : nullptr,
       obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
     uploadBoundarySegments();
+    cost.uploadKinematicConstraintProfile();
 
     controller->updateImportanceSampler(u_nom);
     controller->computeControl(x, 1);
@@ -769,6 +967,27 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
 {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
+  }
+  const bool valid_limits = std::isfinite(params.max_velocity) && params.max_velocity >= 0.0F &&
+                            std::isfinite(params.max_lon_accel) && params.max_lon_accel >= 0.0F &&
+                            std::isfinite(params.min_lon_accel) && params.min_lon_accel <= 0.0F &&
+                            std::isfinite(params.max_lon_jerk) && params.max_lon_jerk >= 0.0F &&
+                            std::isfinite(params.max_lat_accel) && params.max_lat_accel > 0.0F &&
+                            std::isfinite(params.max_lat_jerk) && params.max_lat_jerk >= 0.0F &&
+                            std::isfinite(params.longitudinal_recovery_time_constant) &&
+                            params.longitudinal_recovery_time_constant > 0.0F;
+  const bool valid_weights =
+    std::isfinite(params.overspeed_coeff) && params.overspeed_coeff >= 0.0F &&
+    std::isfinite(params.longitudinal_acceleration_coeff) &&
+    params.longitudinal_acceleration_coeff >= 0.0F &&
+    std::isfinite(params.longitudinal_jerk_coeff) && params.longitudinal_jerk_coeff >= 0.0F &&
+    std::isfinite(params.lateral_acceleration_coeff) && params.lateral_acceleration_coeff >= 0.0F &&
+    std::isfinite(params.lateral_jerk_coeff) && params.lateral_jerk_coeff >= 0.0F &&
+    std::isfinite(params.longitudinal_recovery_coeff) && params.longitudinal_recovery_coeff >= 0.0F;
+  if (!valid_limits || !valid_weights) {
+    throw std::invalid_argument(
+      "MPPI kinematic limits must be finite with max limits/weights >= 0, min_lon_accel <= 0, "
+      "max_lat_accel > 0, and recovery time constant > 0");
   }
   if (impl_->initialized) {
     impl_->teardown();
@@ -878,7 +1097,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
   const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
   const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
-  const std::vector<Segment> & drivable_area)
+  const std::vector<Segment> & drivable_area,
+  const FirstOrderDubinsMppiKinematicLimits & dynamic_limits)
 {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -901,7 +1121,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const auto start_time = std::chrono::steady_clock::now();
 
   impl_->updateDiffusionReference(
-    input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area);
+    input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
+    dynamic_limits);
   // Capture IC before runStep advances the ego state with the applied control.
   const DYN::state_array x_at_optimization = impl_->x;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
@@ -955,6 +1176,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       break;
     }
     const auto & in_point = input.points[i];
+    const auto & cost_reference_point = impl_->diffusion_reference.points[i];
     const int control_col = static_cast<int>(i);
     const bool use_final = (control_col + 1 >= n_state) && have_final_state;
 
@@ -974,9 +1196,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
         tracked_x, tracked_y, tracked_yaw, control_col, &crash_status);
     }
 
-    const float ref_x = static_cast<float>(in_point.pose.position.x);
-    const float ref_y = static_cast<float>(in_point.pose.position.y);
-    const float ref_v = in_point.longitudinal_velocity_mps;
+    const float ref_x = static_cast<float>(cost_reference_point.pose.position.x);
+    const float ref_y = static_cast<float>(cost_reference_point.pose.position.y);
+    const float ref_v = cost_reference_point.longitudinal_velocity_mps;
 
     max_pos_delta = std::max(max_pos_delta, std::hypot(tracked_x - ref_x, tracked_y - ref_y));
     max_vel_delta = std::max(max_vel_delta, std::abs(tracked_v - ref_v));
@@ -995,10 +1217,10 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_time)
       .count();
 
-  set_initial_engage_velocity(output);
+  set_initial_engage_velocity(output, impl_->max_velocity_limit);
 
   result.trajectory = output;
-  result.debug.reference_trajectory = input;
+  result.debug.reference_trajectory = impl_->diffusion_reference;
   result.debug.optimized_trajectory = output;
   if (impl_->enable_rollout_visualization) {
     buildRolloutVisualization(

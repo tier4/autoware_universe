@@ -73,6 +73,23 @@ struct FirstOrderDubinsMppiOptimizationResult
   FirstOrderDubinsMppiDebug debug;
 };
 
+/**
+ * @brief Optional time-indexed limits supplied by external or map-based sources.
+ *
+ * Empty vectors and missing/non-finite entries mean "no limit from this source". A scalar
+ * source may provide one entry; it is extended over the full MPPI horizon.
+ */
+struct FirstOrderDubinsMppiKinematicLimits
+{
+  std::vector<float> max_velocity;
+  std::vector<float> min_lon_accel;
+  std::vector<float> max_lon_accel;
+  std::vector<float> max_lon_jerk;
+  std::vector<float> max_lat_accel;
+  std::vector<float> max_lat_jerk;
+  std::vector<float> map_max_velocity;
+};
+
 /** Static 2D line segment supplied to the MPPI cost function in map coordinates. */
 struct Segment
 {
@@ -168,13 +185,15 @@ public:
    * (constant-velocity).
    * @param road_borders Static road-border segments used as hard obstacles.
    * @param drivable_area Static drivable-area boundary segments used as a soft constraint.
+   * @param dynamic_limits Optional external and map-based per-step kinematic limits.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
-    const std::vector<Segment> & drivable_area);
+    const std::vector<Segment> & drivable_area,
+    const FirstOrderDubinsMppiKinematicLimits & dynamic_limits = {});
 
 private:
   struct Impl;
