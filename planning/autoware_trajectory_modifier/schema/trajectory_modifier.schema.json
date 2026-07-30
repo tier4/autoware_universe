@@ -13,6 +13,7 @@
             "autoware::trajectory_modifier::plugin::StopPointFixer",
             "autoware::trajectory_modifier::plugin::ObstacleStop",
             "autoware::trajectory_modifier::plugin::TrafficLightStop",
+            "autoware::trajectory_modifier::plugin::VirtualTrafficLightStop",
             "autoware::trajectory_modifier::plugin::VelocityModifier"
           ],
           "items": {
@@ -33,6 +34,11 @@
           "type": "boolean",
           "description": "Enable the traffic light stop modifier plugin",
           "default": true
+        },
+        "use_virtual_traffic_light_stop": {
+          "type": "boolean",
+          "description": "Enable the virtual traffic light stop modifier plugin",
+          "default": false
         },
         "use_surround_obstacle_stop": {
           "type": "boolean",
@@ -493,6 +499,49 @@
               "type": "number",
               "description": "Crossing time limit [s]",
               "default": 2.75,
+              "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "virtual_traffic_light": {
+          "type": "object",
+          "properties": {
+            "max_delay_sec": {
+              "type": "number",
+              "description": "Maximum accepted delay of a virtual traffic light state [s]",
+              "default": 3.0,
+              "minimum": 0.0
+            },
+            "near_line_distance": {
+              "type": "number",
+              "description": "Distance to an end line considered near [m]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "dead_line_margin": {
+              "type": "number",
+              "description": "Margin used to determine whether a line has been crossed [m]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "max_yaw_deviation_deg": {
+              "type": "number",
+              "description": "Maximum yaw deviation used for ego nearest point matching [deg]",
+              "default": 90.0,
+              "minimum": 0.0,
+              "maximum": 180.0
+            },
+            "check_timeout_after_stop_line": {
+              "type": "boolean",
+              "description": "Check virtual traffic light state timeout after crossing the stop line",
+              "default": true
+            },
+            "hold_stop_margin_distance": {
+              "type": "number",
+              "description": "Distance below which a stopped vehicle keeps its current stop point [m]",
+              "default": 0.0,
               "minimum": 0.0
             }
           },

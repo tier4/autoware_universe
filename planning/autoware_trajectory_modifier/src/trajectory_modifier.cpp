@@ -100,6 +100,9 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
 
   auto trajectory_count = 0;
   std::string modified_plugins_str;
+  for (auto & modifier : plugins_) {
+    modifier->begin_cycle(input_data);
+  }
   for (auto & trajectory : output_trajectories.candidate_trajectories) {
     for (auto & modifier : plugins_) {
       const auto modified = modifier->modify_trajectory(trajectory.points, input_data);
@@ -111,6 +114,9 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
       modified_plugins_str += modifier->get_short_name();
     }
     trajectory_count++;
+  }
+  for (auto & modifier : plugins_) {
+    modifier->end_cycle();
   }
   if (!modified_plugins_str.empty()) {
     RCLCPP_INFO_THROTTLE(
@@ -134,6 +140,7 @@ tl::expected<plugin::InputData, std::string> TrajectoryModifier::make_input_data
   input.obstacle_pointcloud = sub_pointcloud_.take_data();
   input.route = sub_route_.take_data();
   input.traffic_light_signals = sub_traffic_lights_.take_data();
+  input.virtual_traffic_light_states = sub_virtual_traffic_light_states_.take_data();
   input.lanelet_map = lanelet_map_ptr_;
 
   if (!input.current_odometry) {
@@ -156,6 +163,11 @@ tl::expected<plugin::InputData, std::string> TrajectoryModifier::make_input_data
   if (!input.traffic_light_signals) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000, "Missing data: traffic_light_signals is not set");
+  }
+  if (!input.virtual_traffic_light_states) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Missing data: virtual_traffic_light_states is not set; VTL modules will request a stop");
   }
   if (!input.lanelet_map) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: lanelet_map is not set");

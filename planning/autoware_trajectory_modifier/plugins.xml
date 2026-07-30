@@ -24,6 +24,12 @@
       Modifies the trajectory to stop at traffic lights
     </description>
   </class>
+  <class type="autoware::trajectory_modifier::plugin::VirtualTrafficLightStop"
+         base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
+    <description>
+      Modifies the trajectory according to virtual traffic light coordination state
+    </description>
+  </class>
   <class type="autoware::trajectory_modifier::plugin::SurroundObstacleStop"
          base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
     <description>

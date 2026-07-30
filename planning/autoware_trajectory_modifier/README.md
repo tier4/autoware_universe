@@ -47,6 +47,17 @@ The Traffic Light Stop plugin serves as a deterministic safety shield operating 
 - **Enforce Traffic Rules Compliance**: Monitors DP trajectory behavior near RED/AMBER traffic lights to ensure ego does not violate traffic rules.
 - **Ensure Definitive Stopping For Mandatory Stops**: Guarantees zero-velocity set-points for RED/AMBER lights to prevent violating mandatory stops or overshooting road stop lines.
 
+#### Virtual Traffic Light Stop
+
+The Virtual Traffic Light Stop plugin applies map-defined virtual traffic light coordination to
+each candidate trajectory. It stops before a virtual traffic light when no approval is available,
+holds the vehicle at the end line until finalization, and publishes the corresponding
+`tier4_v2x_msgs/msg/InfrastructureCommandArray` on `~/output/infrastructure_commands`.
+
+The plugin consumes `tier4_v2x_msgs/msg/VirtualTrafficLightStateArray` from
+`~/input/virtual_traffic_light_states`. Its state is maintained per virtual traffic light module
+and its command is published once for each candidate-trajectory processing cycle.
+
 #### Velocity Modifier
 
 The Velocity Modifier plugins is responsible for ensuring the velocity profile is smooth and feasible, and adjusts the velocity profile if an anomaly is detected while respecting deceleration and jerk constraints.
@@ -59,12 +70,16 @@ This package depends on the following packages:
 - `autoware_planning_msgs`: For output trajectory message types
 - `autoware_motion_utils`: Motion-related utility functions
 - `autoware_trajectory`: Trajectory data structures and utilities
+- `autoware_lanelet2_extension`: Virtual traffic light regulatory elements
+- `tier4_v2x_msgs`: Virtual traffic light state and infrastructure command messages
 - `autoware_utils`: Common utility functions
 
 ## Input/Output
 
 - **Input**: `autoware_internal_planning_msgs::msg::CandidateTrajectories`
 - **Output**: Modified `autoware_internal_planning_msgs::msg::CandidateTrajectories` and selected `autoware_planning_msgs::msg::Trajectory`
+- **Virtual traffic light input**: `tier4_v2x_msgs::msg::VirtualTrafficLightStateArray` on `~/input/virtual_traffic_light_states`
+- **Virtual traffic light output**: `tier4_v2x_msgs::msg::InfrastructureCommandArray` on `~/output/infrastructure_commands`
 
 ## Parameters
 

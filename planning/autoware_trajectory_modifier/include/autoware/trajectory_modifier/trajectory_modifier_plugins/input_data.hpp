@@ -23,6 +23,7 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <tier4_v2x_msgs/msg/virtual_traffic_light_state_array.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
@@ -39,6 +40,8 @@ struct InputData
   std::shared_ptr<lanelet::LaneletMap> lanelet_map = nullptr;
   autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr route = nullptr;
   autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr traffic_light_signals =
+    nullptr;
+  tier4_v2x_msgs::msg::VirtualTrafficLightStateArray::ConstSharedPtr virtual_traffic_light_states =
     nullptr;
 };
 

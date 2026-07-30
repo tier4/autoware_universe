@@ -37,6 +37,7 @@ ament_auto_add_library(${PROJECT_NAME}_plugins SHARED
   src/trajectory_modifier_plugins/obstacle_stop.cpp
   src/trajectory_modifier_plugins/velocity_modifier.cpp
   src/trajectory_modifier_plugins/traffic_light_stop.cpp
+  src/trajectory_modifier_plugins/virtual_traffic_light_stop.cpp
   src/trajectory_modifier_plugins/surround_obstacle_stop.cpp
 )
 

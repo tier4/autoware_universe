@@ -5,10 +5,12 @@
       - "autoware::trajectory_modifier::plugin::SurroundObstacleStop"
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
       - "autoware::trajectory_modifier::plugin::TrafficLightStop"
+      - "autoware::trajectory_modifier::plugin::VirtualTrafficLightStop"
       - "autoware::trajectory_modifier::plugin::VelocityModifier"
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
+    use_virtual_traffic_light_stop: true
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
     trajectory_time_step: 0.1 # [s]
@@ -96,6 +98,15 @@
       th_stable_duration_amber: 0.2 # [s]
       th_amber_rejection_hysteresis: 0.5 # [s]
       crossing_time_limit: 2.75 # [s]
+
+    # Virtual Traffic Light Stop Plugin Parameters
+    virtual_traffic_light:
+      max_delay_sec: 3.0 # [s]
+      near_line_distance: 1.0 # [m]
+      dead_line_margin: 1.0 # [m]
+      max_yaw_deviation_deg: 90.0 # [deg]
+      check_timeout_after_stop_line: true
+      hold_stop_margin_distance: 0.0 # [m]
 
     # Surround Obstacle Stop Plugin Parameters
     surround_obstacle_stop:

@@ -4,6 +4,7 @@ trajectory_modifier_params:
     default_value:
       - autoware::trajectory_modifier::plugin::ObstacleStop,
       - autoware::trajectory_modifier::plugin::StopPointFixer,
+      - autoware::trajectory_modifier::plugin::VirtualTrafficLightStop,
       - autoware::trajectory_modifier::plugin::VelocityModifier,
     description: List of plugin names to load
     read_only: false
@@ -26,6 +27,11 @@ trajectory_modifier_params:
     type: bool
     default_value: false
     description: Enable the use of traffic light stop
+    read_only: false
+  use_virtual_traffic_light_stop:
+    type: bool
+    default_value: false
+    description: Enable the use of virtual traffic light stop
     read_only: false
   use_surround_obstacle_stop:
     type: bool
@@ -459,6 +465,48 @@ trajectory_modifier_params:
       description: Crossing time limit [s]
       validation:
         bounds<>: [0.0, 10.0]
+      read_only: false
+
+  virtual_traffic_light:
+    max_delay_sec:
+      type: double
+      default_value: 3.0
+      description: Maximum accepted delay of a virtual traffic light state [s]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    near_line_distance:
+      type: double
+      default_value: 1.0
+      description: Distance to an end line considered near [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    dead_line_margin:
+      type: double
+      default_value: 1.0
+      description: Margin used to determine whether a line has been crossed [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    max_yaw_deviation_deg:
+      type: double
+      default_value: 90.0
+      description: Maximum yaw deviation used for ego nearest point matching [deg]
+      validation:
+        bounds<>: [0.0, 180.0]
+      read_only: false
+    check_timeout_after_stop_line:
+      type: bool
+      default_value: true
+      description: Check virtual traffic light state timeout after crossing the stop line
+      read_only: false
+    hold_stop_margin_distance:
+      type: double
+      default_value: 0.0
+      description: Distance below which a stopped vehicle keeps its current stop point [m]
+      validation:
+        bounds<>: [0.0, 100.0]
       read_only: false
 
   surround_obstacle_stop:
