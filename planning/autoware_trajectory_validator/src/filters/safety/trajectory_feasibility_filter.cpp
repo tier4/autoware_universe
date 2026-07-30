@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_validator/filters/safety/trajectory_feasibility_filter.hpp"
 
+#include <autoware/lanelet2_utils/kind.hpp>
 #include <autoware/lanelet2_utils/nn_search.hpp>
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -143,6 +144,10 @@ std::optional<double> find_nearest_lanelet_speed_limit_mps(
   const auto nearest_lanelets =
     autoware::experimental::lanelet2_utils::find_nearest(lanelet_map.laneletLayer, search_pose, 10);
   for (const auto & [_, nearest_lanelet] : nearest_lanelets) {
+    if (!autoware::experimental::lanelet2_utils::is_road_lane(nearest_lanelet)) {
+      continue;
+    }
+
     if (const auto speed_limit_mps = to_lanelet_speed_limit_mps(nearest_lanelet)) {
       return speed_limit_mps;
     }
