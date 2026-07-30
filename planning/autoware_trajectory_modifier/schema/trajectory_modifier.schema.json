@@ -11,13 +11,18 @@
           "properties": {
             "limit_velocity_from_map_debug_lanelet_ids": {
               "type": "array",
-              "items": { "type": "integer" },
+              "items": {
+                "type": "integer"
+              },
               "default": [],
               "description": "Lanelet IDs whose map velocity limits are overridden when map limiting is enabled"
             },
             "limit_velocity_from_map_debug_max_velocities": {
               "type": "array",
-              "items": { "type": "number", "minimum": 0.0 },
+              "items": {
+                "type": "number",
+                "minimum": 0.0
+              },
               "default": [],
               "description": "Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs"
             }
@@ -290,7 +295,10 @@
                     "pointcloud": {
                       "type": "array",
                       "description": "Types of pointcloud to consider for obstacle stop",
-                      "default": ["structure", "vegetation"],
+                      "default": [
+                        "structure",
+                        "vegetation"
+                      ],
                       "items": {
                         "type": "string"
                       }
@@ -551,7 +559,11 @@
                 "pointcloud": {
                   "type": "array",
                   "description": "Pointcloud types to consider for surround obstacle stop",
-                  "default": ["hazard", "structure", "vegetation"],
+                  "default": [
+                    "hazard",
+                    "structure",
+                    "vegetation"
+                  ],
                   "items": {
                     "type": "string"
                   }
@@ -952,7 +964,12 @@
               "description": "Minimum jerk limit for velocity smoothing [m/s^3]"
             }
           },
-          "required": ["max_acc", "min_acc", "max_jerk", "min_jerk"]
+          "required": [
+            "max_acc",
+            "min_acc",
+            "max_jerk",
+            "min_jerk"
+          ]
         },
         "trajectory_point_fixer": {
           "type": "object",
@@ -1012,7 +1029,10 @@
               "description": "Time step for kinematic feasibility enforcement [s]. Default: 0.1 s."
             }
           },
-          "required": ["max_yaw_rate_rad_s", "time_step_s"]
+          "required": [
+            "max_yaw_rate_rad_s",
+            "time_step_s"
+          ]
         },
         "trajectory_mpt_optimizer": {
           "type": "object",
@@ -1358,13 +1378,13 @@
               "type": "number",
               "default": 1,
               "minimum": 0,
-              "description": "Target acceleration during pull-out maneuver [m/s²]"
+              "description": "Target acceleration during pull-out maneuver [m/s\u00b2]"
             },
             "max_lateral_accel_mps2": {
               "type": "number",
               "default": 1.5,
               "minimum": 0,
-              "description": "Maximum lateral acceleration [m/s²]"
+              "description": "Maximum lateral acceleration [m/s\u00b2]"
             },
             "min_limited_speed_mps": {
               "type": "number",
@@ -1475,7 +1495,10 @@
                   "description": "Backward length for backward trajectory from base_link [m]"
                 }
               },
-              "required": ["output_delta_arc_length", "output_backward_traj_length"]
+              "required": [
+                "output_delta_arc_length",
+                "output_backward_traj_length"
+              ]
             },
             "elastic_band": {
               "type": "object",
@@ -1494,7 +1517,10 @@
                       "description": "Enable optimization validation"
                     }
                   },
-                  "required": ["enable_warm_start", "enable_optimization_validation"]
+                  "required": [
+                    "enable_warm_start",
+                    "enable_optimization_validation"
+                  ]
                 },
                 "common": {
                   "type": "object",
@@ -1512,7 +1538,10 @@
                       "description": "Delta arc length for optimization [m]"
                     }
                   },
-                  "required": ["num_points", "delta_arc_length"]
+                  "required": [
+                    "num_points",
+                    "delta_arc_length"
+                  ]
                 },
                 "weight": {
                   "type": "object",
@@ -1530,10 +1559,17 @@
                       "description": "Weight for lateral error constraint"
                     }
                   },
-                  "required": ["smooth_weight", "lat_error_weight"]
+                  "required": [
+                    "smooth_weight",
+                    "lat_error_weight"
+                  ]
                 }
               },
-              "required": ["option", "common", "weight"]
+              "required": [
+                "option",
+                "common",
+                "weight"
+              ]
             },
             "ego_nearest_dist_threshold": {
               "type": "number",
@@ -1554,6 +1590,133 @@
             "ego_nearest_dist_threshold",
             "ego_nearest_yaw_threshold"
           ]
+        },
+        "use_detection_area_stop": {
+          "type": "boolean",
+          "description": "Enable the detection area stop modifier plugin",
+          "default": false
+        },
+        "detection_area": {
+          "type": "object",
+          "properties": {
+            "stop_margin": {
+              "type": "number",
+              "default": 0.0,
+              "minimum": 0.0
+            },
+            "target_filtering": {
+              "type": "object",
+              "properties": {
+                "pointcloud": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "unknown": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "car": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "truck": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "bus": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "trailer": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "motorcycle": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "bicycle": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "pedestrian": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "animal": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "hazard": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "over_drivable": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "under_drivable": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "use_dead_line": {
+              "type": "boolean",
+              "default": false
+            },
+            "dead_line_margin": {
+              "type": "number",
+              "default": 5.0,
+              "minimum": 0.0
+            },
+            "unstoppable_policy": {
+              "type": "string",
+              "enum": [
+                "go",
+                "force_stop",
+                "stop_after_stopline"
+              ],
+              "default": "stop_after_stopline"
+            },
+            "max_deceleration": {
+              "type": "number",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "delay_response_time": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0.0
+            },
+            "state_clear_time": {
+              "type": "number",
+              "default": 2.0,
+              "minimum": 0.0
+            },
+            "hold_stop_margin_distance": {
+              "type": "number",
+              "default": 0.0,
+              "minimum": 0.0
+            },
+            "distance_to_judge_over_stop_line": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0.0
+            },
+            "suppress_pass_judge_when_stopping": {
+              "type": "boolean",
+              "default": false
+            },
+            "enable_detected_obstacle_logging": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -1578,10 +1741,14 @@
           "$ref": "#/definitions/trajectory_modifier"
         }
       },
-      "required": ["ros__parameters"],
+      "required": [
+        "ros__parameters"
+      ],
       "additionalProperties": false
     }
   },
-  "required": ["/**"],
+  "required": [
+    "/**"
+  ],
   "additionalProperties": false
 }

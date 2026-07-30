@@ -245,3 +245,13 @@ To add a new modifier plugin:
 3. Implement the required virtual methods
 4. Export the plugin with `TrajectoryModifierPluginBase` and register it in `plugins.xml`
 5. Add plugin-specific parameters to the schema and config files
+
+#### Detection Area Stop
+
+The Detection Area Stop plugin applies map-defined detection areas to candidate trajectories. It
+supports pointcloud and predicted-object detection, target filtering, stop-state hysteresis,
+dead-line handling, and unstoppable stopping policies. The plugin is disabled by default to avoid
+running alongside the legacy behavior-velocity detection area module. Its debug outputs are
+published on `~/detection_area_stop/debug/marker` and `~/detection_area_stop/debug/text`, including
+detection-area geometry, stop/dead-line state, detected obstacle details, and candidate status.
+

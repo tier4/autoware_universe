@@ -177,6 +177,9 @@ void TrajectoryModifier::on_trajectories(const CandidateTrajectories::ConstShare
     return;
   }
 
+  for (auto & modifier_plugin : plugins_) {
+    modifier_plugin->begin_cycle(input.value());
+  }
   CandidateTrajectories output = *msg;
   std::string modified_instances;
   for (std::size_t candidate_index = 0; candidate_index < output.candidate_trajectories.size();
@@ -193,7 +196,11 @@ void TrajectoryModifier::on_trajectories(const CandidateTrajectories::ConstShare
         continue;
       }
       modifier_plugin->publish_planning_factor();
-      if (!modified_instances.empty()) {
+      for (auto & modifier_plugin : plugins_) {
+    modifier_plugin->end_cycle();
+  }
+
+  if (!modified_instances.empty()) {
         modified_instances += ", ";
       }
       modified_instances += modifier_plugin->get_short_name();
