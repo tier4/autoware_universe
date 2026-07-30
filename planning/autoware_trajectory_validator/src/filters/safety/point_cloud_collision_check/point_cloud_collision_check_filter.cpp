@@ -516,11 +516,8 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
   update_planner_data(candidate_trajectory.points, context);
 
   std::vector<StopObstacle> stop_obstacles;
-  try {
-    stop_obstacles = calc_obstacle_stop(candidate_trajectory.points, planner_data_);
-  } catch (const std::exception &) {
-    return ValidationResult{};
-  }
+  stop_obstacles = calc_obstacle_stop(candidate_trajectory.points, planner_data_);
+ 
 
   ValidationResult result{};
   double required_distance = 0.0;
