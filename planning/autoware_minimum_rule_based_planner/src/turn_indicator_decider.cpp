@@ -14,44 +14,41 @@
 
 #include "turn_indicator_decider.hpp"
 
-#include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <autoware/lanelet2_utils/geometry.hpp>
+#include <autoware/lanelet2_utils/intersection.hpp>
+#include <autoware/lanelet2_utils/topology.hpp>
+#include <autoware/motion_utils/trajectory/path_with_lane_id.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils_math/normalization.hpp>
+#include <magic_enum.hpp>
 #include <rclcpp/duration.hpp>
 
 #include <std_msgs/msg/color_rgba.hpp>
 
 #include <tf2/utils.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner
 {
 namespace
 {
-using turn_indicator::LaneAttribute;
+namespace lanelet2_utils = autoware::experimental::lanelet2_utils;
 using turn_indicator::ManeuverKind;
-using turn_indicator::PathPointLite;
+using turn_indicator::Signal;
 using turn_indicator::TurnDirection;
 
-turn_indicator::TurnDirection parse_turn_direction(const std::string & value)
+uint8_t to_command(const TurnDirection direction)
 {
-  if (value == "left") {
-    return TurnDirection::LEFT;
-  }
-  if (value == "right") {
-    return TurnDirection::RIGHT;
-  }
-  return TurnDirection::NONE;
-}
-
-uint8_t to_command(TurnDirection dir)
-{
-  switch (dir) {
+  switch (direction) {
     case TurnDirection::LEFT:
       return TurnIndicatorsCommand::ENABLE_LEFT;
     case TurnDirection::RIGHT:
@@ -62,57 +59,169 @@ uint8_t to_command(TurnDirection dir)
   }
 }
 
-std::string to_string(ManeuverKind kind)
+std::string to_string(const Signal & signal)
 {
-  switch (kind) {
-    case ManeuverKind::INTERSECTION:
-      return "intersection";
-    case ManeuverKind::PRIVATE_EXIT:
-      return "private_exit";
-    case ManeuverKind::PULL_OUT:
-      return "pull_out";
-    case ManeuverKind::PULL_OVER:
-      return "pull_over";
-    case ManeuverKind::NONE:
-    default:
-      return "none";
+  return std::string(magic_enum::enum_name(signal.direction)) + " (" +
+         std::string(magic_enum::enum_name(signal.kind)) + ")";
+}
+
+bool is_private(const lanelet::ConstLanelet & lanelet)
+{
+  return lanelet.attributeOr(lanelet::AttributeNamesString::Location, std::string("")) ==
+         lanelet::AttributeValueString::Private;
+}
+
+//! The lanelet with `id`, or nothing when the map does not hold it.
+std::optional<lanelet::ConstLanelet> find_lanelet(const lanelet::LaneletMap & map, const int64_t id)
+{
+  try {
+    return map.laneletLayer.get(id);
+  } catch (const lanelet::NoSuchPrimitiveError &) {
+    return std::nullopt;
   }
 }
 
-std::string to_string(TurnDirection dir)
+TurnDirection tagged_turn_direction(const lanelet::ConstLanelet & lanelet)
 {
-  switch (dir) {
-    case TurnDirection::LEFT:
-      return "left";
-    case TurnDirection::RIGHT:
-      return "right";
-    case TurnDirection::NONE:
-    default:
-      return "off";
+  const auto direction = lanelet2_utils::get_turn_direction(lanelet);
+  if (direction == lanelet2_utils::TurnDirection::Left) {
+    return TurnDirection::LEFT;
   }
+  if (direction == lanelet2_utils::TurnDirection::Right) {
+    return TurnDirection::RIGHT;
+  }
+  return TurnDirection::NONE;
 }
 
-std::vector<PathPointLite> to_lite_points(const PathWithLaneId & path)
+//! Path heading `offset` metres along the path from `index` (signed), falling back to the path end
+//! (or start) when the path is too short to reach it.
+double path_yaw_at(const PathWithLaneId & path, const std::size_t index, const double offset)
 {
-  std::vector<PathPointLite> points;
-  points.reserve(path.points.size());
-  for (const auto & p : path.points) {
-    PathPointLite lite;
-    lite.x = p.point.pose.position.x;
-    lite.y = p.point.pose.position.y;
-    lite.lane_ids.assign(p.lane_ids.begin(), p.lane_ids.end());
-    points.push_back(std::move(lite));
+  const auto pose = motion_utils::calcLongitudinalOffsetPose(path.points, index, offset);
+  if (pose) {
+    return tf2::getYaw(pose->orientation);
   }
-  return points;
+  const auto & fallback = offset >= 0.0 ? path.points.back() : path.points.front();
+  return tf2::getYaw(fallback.point.pose.orientation);
 }
 
-bool is_same_pose(const geometry_msgs::msg::Pose & a, const geometry_msgs::msg::Pose & b)
+//! An upcoming (or currently occupied) maneuver along the path.
+struct Maneuver
 {
-  constexpr double kEpsilon = 1e-3;
-  return std::abs(a.position.x - b.position.x) < kEpsilon &&
-         std::abs(a.position.y - b.position.y) < kEpsilon &&
-         std::abs(a.orientation.z - b.orientation.z) < kEpsilon &&
-         std::abs(a.orientation.w - b.orientation.w) < kEpsilon;
+  Signal signal;
+  double dist_to_start{0.0};  //!< [m] arc length from ego to its start (negative once inside)
+  double exit_yaw{0.0};       //!< [rad] path heading the maneuver ends on
+  std::size_t start_index{0};
+  std::size_t end_index{0};
+};
+
+//! Distinct lane ids in the order they first appear along the path.
+std::vector<int64_t> ordered_lane_ids(const PathWithLaneId & path)
+{
+  std::vector<int64_t> ids;
+  for (const auto & point : path.points) {
+    for (const auto id : point.lane_ids) {
+      if (std::find(ids.begin(), ids.end(), id) == ids.end()) {
+        ids.push_back(id);
+      }
+    }
+  }
+  return ids;
+}
+
+//! Every maneuver this module signals for, ordered from ego. Two cases, both keyed on the lanelet
+//! run the path traverses:
+//!  - an intersection turn: a lanelet tagged `turn_direction=left/right`;
+//!  - a private-area exit: the boundary where a `location=private` lanelet rejoins a public one.
+//! The private case is handled separately because such a lanelet may be tagged `straight`, or not
+//! tagged at all, so the turn tag alone would miss it.
+//!
+//! A maneuver whose exit lies more than `k_exit_lookahead` behind ego is dropped; one ego is still
+//! completing is kept, so its signal survives until the heading check clears it.
+std::vector<Maneuver> find_maneuvers(
+  const PathWithLaneId & path, const std::size_t ego_index, const RouteContext & route_context,
+  const turn_indicator::TurnSignalParams & params)
+{
+  std::vector<Maneuver> maneuvers;
+  const auto & map = route_context.lanelet_map_ptr;
+  if (!map) {
+    return maneuvers;
+  }
+
+  const auto lane_ids = ordered_lane_ids(path);
+  for (std::size_t i = 0; i < lane_ids.size(); ++i) {
+    const auto range = motion_utils::getPathIndexRangeWithLaneId(path, lane_ids[i]);
+    if (!range) {
+      continue;
+    }
+    const auto lanelet = find_lanelet(*map, lane_ids[i]);
+    if (!lanelet) {
+      continue;
+    }
+
+    // The private run ends here only if the next lanelet along the path is public (or the path
+    // ends). A run of several private lanelets therefore yields exactly one exit. An id the map
+    // does not hold counts as public, so a missing lanelet cannot swallow the exit.
+    const auto next = i + 1 < lane_ids.size() ? find_lanelet(*map, lane_ids[i + 1]) : std::nullopt;
+    const bool leaves_private_area = is_private(*lanelet) && (!next || !is_private(*next));
+    const auto turn_direction = tagged_turn_direction(*lanelet);
+    if (turn_direction == TurnDirection::NONE && !leaves_private_area) {
+      continue;
+    }
+
+    Maneuver maneuver;
+    // A turn is signalled from the entry of its lanelet; a private exit from the boundary itself,
+    // which is where the maneuver actually starts (the private run leading up to it may be long).
+    maneuver.start_index = turn_direction != TurnDirection::NONE ? range->first : range->second;
+    maneuver.end_index = range->second;
+    maneuver.exit_yaw = path_yaw_at(path, range->second, turn_indicator::k_exit_lookahead);
+    maneuver.dist_to_start =
+      motion_utils::calcSignedArcLength(path.points, ego_index, maneuver.start_index);
+
+    if (turn_direction != TurnDirection::NONE) {
+      maneuver.signal = {turn_direction, ManeuverKind::INTERSECTION};
+    } else {
+      // Untagged private exit: take the side from the yaw change across the merge, measured from a
+      // look-ahead BEFORE the boundary - right at it the path is already turning, so the local yaw
+      // change is near zero and every merge would read as straight.
+      const double approach_yaw =
+        path_yaw_at(path, range->second, -turn_indicator::k_exit_lookahead);
+      const double delta = autoware_utils_math::normalize_radian(maneuver.exit_yaw - approach_yaw);
+      if (std::abs(delta) <= params.heading_align_threshold) {
+        continue;  // a geometrically straight merge has no side to signal
+      }
+      maneuver.signal = {
+        delta > 0.0 ? TurnDirection::LEFT : TurnDirection::RIGHT, ManeuverKind::PRIVATE_EXIT};
+    }
+
+    const double dist_to_end =
+      motion_utils::calcSignedArcLength(path.points, ego_index, maneuver.end_index);
+    if (dist_to_end + turn_indicator::k_exit_lookahead <= 0.0) {
+      continue;  // fully behind ego
+    }
+    maneuvers.push_back(maneuver);
+  }
+  return maneuvers;
+}
+
+//! The lane ego is expected to track plus its lateral neighbours, so that a lane change (whose
+//! target lane is not the path's lane) still reports a near-zero offset and cannot raise a signal.
+lanelet::ConstLanelets ego_lanes(
+  const PathWithLaneId & path, const std::size_t ego_index, const RouteContext & route_context)
+{
+  const auto & lane_ids = path.points.at(ego_index).lane_ids;
+  if (lane_ids.empty() || !route_context.lanelet_map_ptr) {
+    return {};
+  }
+  try {
+    const auto lanelet = route_context.lanelet_map_ptr->laneletLayer.get(lane_ids.front());
+    if (!route_context.routing_graph_ptr) {
+      return {lanelet};
+    }
+    return lanelet2_utils::all_neighbor_lanelets(lanelet, route_context.routing_graph_ptr);
+  } catch (const lanelet::NoSuchPrimitiveError &) {
+    return {};
+  }
 }
 
 }  // namespace
@@ -128,168 +237,92 @@ void TurnIndicatorDecider::update_params(const turn_indicator::TurnSignalParams 
   blink_hold_.set_min_duration(params.min_blink_duration);
 }
 
-const turn_indicator::LaneAttributeMap & TurnIndicatorDecider::lane_attributes(
-  const std::vector<PathPointLite> & points, const RouteContext & route_context)
-{
-  const auto * map = route_context.lanelet_map_ptr.get();
-  if (map != cached_map_) {
-    cached_map_ = map;
-    lane_attribute_cache_.clear();
-    neighbour_cache_.clear();
-  }
-  if (map == nullptr) {
-    return lane_attribute_cache_;
-  }
-
-  // Only ids not seen before are looked up, so a steady route costs nothing after the first cycle.
-  for (const auto & point : points) {
-    for (const auto id : point.lane_ids) {
-      if (lane_attribute_cache_.count(id) != 0U) {
-        continue;
-      }
-      LaneAttribute attribute;
-      try {
-        const auto lanelet = map->laneletLayer.get(id);
-        attribute.turn_direction = parse_turn_direction(lanelet.attributeOr("turn_direction", ""));
-        attribute.is_private = std::string(lanelet.attributeOr("location", "")) == "private";
-      } catch (const lanelet::NoSuchPrimitiveError &) {
-        // Leave the default (no turn direction, public) for ids missing from the map.
-      }
-      lane_attribute_cache_[id] = attribute;
-    }
-  }
-  return lane_attribute_cache_;
-}
-
-const lanelet::ConstLanelets & TurnIndicatorDecider::lanes_with_neighbours(
-  const int64_t lane_id, const RouteContext & route_context)
-{
-  const auto cached = neighbour_cache_.find(lane_id);
-  if (cached != neighbour_cache_.end()) {
-    return cached->second;
-  }
-
-  lanelet::ConstLanelets lanes;
-  const auto & map = route_context.lanelet_map_ptr;
-  if (map) {
-    try {
-      const auto lanelet = map->laneletLayer.get(lane_id);
-      lanes.push_back(lanelet);
-      if (route_context.routing_graph_ptr) {
-        const auto & graph = *route_context.routing_graph_ptr;
-        for (const auto & neighbour :
-             {graph.left(lanelet), graph.right(lanelet), graph.adjacentLeft(lanelet),
-              graph.adjacentRight(lanelet)}) {
-          if (neighbour) {
-            lanes.push_back(*neighbour);
-          }
-        }
-      }
-    } catch (const lanelet::NoSuchPrimitiveError &) {
-      // no lanes for this id
-    }
-  }
-  return neighbour_cache_.emplace(lane_id, std::move(lanes)).first->second;
-}
-
 TurnIndicatorsCommand TurnIndicatorDecider::decide(
   const PathWithLaneId & path, const RouteContext & route_context,
   const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity, const rclcpp::Time & stamp)
 {
+  debug_ = TurnIndicatorDebug();
   TurnIndicatorsCommand cmd;
   cmd.stamp = stamp;
 
-  debug_ = TurnIndicatorDebug();
-
-  const auto points = to_lite_points(path);
-  if (points.empty()) {
+  if (path.points.empty()) {
     cmd.command = to_command(blink_hold_.update(TurnDirection::NONE, stamp.seconds()));
-    debug_.command = blink_hold_.current();
+    debug_.signal.direction = blink_hold_.current();
     return cmd;
   }
 
+  // Re-arm the latched pull-out / pull-over states whenever the route changes.
+  if (
+    !latched_goal_pose_ ||
+    autoware_utils_geometry::calc_distance2d(*latched_goal_pose_, route_context.goal_pose) > 1e-3) {
+    latched_goal_pose_ = route_context.goal_pose;
+    pull_out_latch_ = TurnDirection::NONE;
+    arrived_at_goal_ = false;
+  }
+
+  // Reject path points the path traverses in (roughly) the opposite direction to ego, so a route
+  // folding back on itself (U-turn, loop) cannot snap ego onto the wrong leg.
   const double ego_yaw = tf2::getYaw(ego_pose.orientation);
+  const auto aligned_index = motion_utils::findNearestIndex(
+    path.points, ego_pose, std::numeric_limits<double>::max(), M_PI_2);
   const std::size_t ego_index =
-    turn_indicator::nearest_index(points, ego_pose.position.x, ego_pose.position.y, ego_yaw);
-  const auto & attributes = lane_attributes(points, route_context);
+    aligned_index.value_or(motion_utils::findNearestIndex(path.points, ego_pose.position));
 
-  // 1. Intersection turn (lanelet `turn_direction` tag).
-  const auto turn_segments =
-    turn_indicator::find_turn_segments(points, ego_index, attributes, params_);
-  const auto intersection =
-    turn_indicator::decide_maneuver_signal(turn_segments, ego_velocity, ego_yaw, params_);
-
-  // 2. Private-area exit (`location=private` run rejoining a public lane). Handled separately from
-  //    the turn tag because a private exit may be tagged `straight`, or not tagged at all.
-  const auto private_segments =
-    turn_indicator::find_private_exit_segments(points, ego_index, attributes, params_);
-  const auto private_exit =
-    turn_indicator::decide_maneuver_signal(private_segments, ego_velocity, ego_yaw, params_);
-
-  // 3. Arrival (pull-over): signal toward the side the goal sits on while approaching an
-  //    off-centerline goal, and clear once stopped at it.
-  const double distance_to_goal = std::hypot(
-    route_context.goal_pose.position.x - ego_pose.position.x,
-    route_context.goal_pose.position.y - ego_pose.position.y);
-  debug_.distance_to_goal = distance_to_goal;
-
-  if (!has_cached_goal_ || !is_same_pose(cached_goal_pose_, route_context.goal_pose)) {
-    // New route: recompute the (static) goal offset once and re-arm the departure/arrival states.
-    cached_goal_pose_ = route_context.goal_pose;
-    has_cached_goal_ = true;
-    cached_goal_offset_ =
-      route_context.goal_lanelets.empty()
-        ? 0.0
-        : lanelet::utils::getArcCoordinates(route_context.goal_lanelets, route_context.goal_pose)
-            .distance;
-    departure_latch_.reset();
-    arrival_state_.reset();
-  }
-  debug_.goal_lateral_offset = cached_goal_offset_;
-
-  const TurnDirection pull_over =
-    arrival_state_.update(distance_to_goal, cached_goal_offset_, ego_velocity, params_);
-
-  // 4. Departure (pull-out): only latches while ego stands still clear of the lane, so a lane
-  //    change or avoidance (offset but moving) never lights it. Suppressed inside the pull-over
-  //    range so the two cannot fight over the direction while ego pulls into an offset goal.
-  const bool in_pull_over_range = distance_to_goal <= params_.pull_over_search_distance;
-  static const lanelet::ConstLanelets kNoLanes{};
-  const auto & ego_lanes =
-    points[ego_index].lane_ids.empty()
-      ? kNoLanes
-      : lanes_with_neighbours(points[ego_index].lane_ids.front(), route_context);
-  TurnDirection pull_out = TurnDirection::NONE;
-  if (ego_lanes.empty()) {
-    // No usable reference lane this cycle: keep whatever the latch already decided.
-    pull_out = departure_latch_.direction();
-  } else {
-    const double ego_offset = lanelet::utils::getArcCoordinates(ego_lanes, ego_pose).distance;
-    debug_.ego_lateral_offset = ego_offset;
-    pull_out = departure_latch_.update(ego_offset, ego_velocity, in_pull_over_range, params_);
+  // 1./2. Intersection turns and private-area exits, both keyed on the path's lanelets. The
+  //       nearest lit maneuver of each kind competes; an intersection outranks a private exit.
+  const Maneuver * lit_intersection = nullptr;
+  const Maneuver * lit_private_exit = nullptr;
+  const auto maneuvers = find_maneuvers(path, ego_index, route_context, params_);
+  for (const auto & maneuver : maneuvers) {
+    const auto direction = turn_indicator::decide_maneuver_signal(
+      maneuver.signal.direction, maneuver.dist_to_start, ego_yaw, maneuver.exit_yaw, ego_velocity,
+      params_);
+    if (direction == TurnDirection::NONE) {
+      continue;
+    }
+    const Maneuver *& slot =
+      maneuver.signal.kind == ManeuverKind::INTERSECTION ? lit_intersection : lit_private_exit;
+    if (slot == nullptr) {
+      slot = &maneuver;
+    }
   }
 
-  const auto decision = turn_indicator::resolve_priority(
-    intersection.direction, private_exit.direction, pull_out, pull_over);
-  cmd.command = to_command(blink_hold_.update(decision.direction, stamp.seconds()));
+  // 3. Arrival (pull-over): signal toward the side an off-centerline goal sits on.
+  const double dist_to_goal =
+    autoware_utils_geometry::calc_distance2d(ego_pose, route_context.goal_pose);
+  const double goal_offset = route_context.goal_lanelets.empty()
+                               ? 0.0
+                               : lanelet2_utils::get_lateral_distance_to_centerline(
+                                   route_context.goal_lanelets, route_context.goal_pose);
+  const auto pull_over = turn_indicator::decide_pull_over(
+    dist_to_goal, goal_offset, ego_velocity, params_, arrived_at_goal_);
+
+  // 4. Departure (pull-out). Suppressed inside the pull-over range so the two cannot fight over
+  //    the direction while ego pulls into an offset goal.
+  const auto lanes = ego_lanes(path, ego_index, route_context);
+  const auto pull_out =
+    lanes.empty()
+      // No usable reference lane this cycle: keep whatever the latch already decided.
+      ? pull_out_latch_
+      : turn_indicator::decide_pull_out(
+          lanelet2_utils::get_lateral_distance_to_centerline(lanes, ego_pose), ego_velocity,
+          dist_to_goal <= params_.search_distance, params_, pull_out_latch_);
+
+  const auto signal = turn_indicator::resolve_priority(
+    {lit_intersection != nullptr ? lit_intersection->signal : Signal{},
+     lit_private_exit != nullptr ? lit_private_exit->signal : Signal{},
+     Signal{pull_out, ManeuverKind::PULL_OUT}, Signal{pull_over, ManeuverKind::PULL_OVER}});
+  cmd.command = to_command(blink_hold_.update(signal.direction, stamp.seconds()));
 
   // Record what drove the decision, for visualization.
-  debug_.command = blink_hold_.current();
-  debug_.kind = decision.kind;
-  const auto & active_segment = decision.kind == ManeuverKind::INTERSECTION
-                                  ? intersection.segment
-                                  : (decision.kind == ManeuverKind::PRIVATE_EXIT
-                                       ? private_exit.segment
-                                       : std::optional<turn_indicator::ManeuverSegment>{});
-  if (
-    active_segment && active_segment->start_index < path.points.size() &&
-    active_segment->end_index < path.points.size()) {
+  debug_.signal = {blink_hold_.current(), signal.kind};
+  const Maneuver * active = signal.kind == ManeuverKind::INTERSECTION   ? lit_intersection
+                            : signal.kind == ManeuverKind::PRIVATE_EXIT ? lit_private_exit
+                                                                        : nullptr;
+  if (active != nullptr) {
     debug_.has_segment = true;
-    debug_.start_point = path.points[active_segment->start_index].point.pose.position;
-    debug_.end_point = path.points[active_segment->end_index].point.pose.position;
-    debug_.start_yaw = turn_indicator::path_yaw_at(points, active_segment->start_index);
-    debug_.exit_yaw = active_segment->exit_yaw;
-    debug_.dist_to_start = active_segment->dist_to_start;
+    debug_.start_point = path.points.at(active->start_index).point.pose.position;
+    debug_.end_point = path.points.at(active->end_index).point.pose.position;
   }
 
   return cmd;
@@ -298,52 +331,40 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(
 visualization_msgs::msg::MarkerArray create_turn_indicator_markers(
   const TurnIndicatorDebug & debug, const std_msgs::msg::Header & header)
 {
-  using turn_indicator::TurnDirection;
-
   visualization_msgs::msg::MarkerArray markers;
 
-  const auto lifetime = rclcpp::Duration::from_seconds(0.5);
-  const auto colour = [&debug]() {
-    std_msgs::msg::ColorRGBA c;
-    c.a = 0.999;
-    // amber when lit, grey when dark
-    c.r = debug.command == TurnDirection::NONE ? 0.6 : 1.0;
-    c.g = debug.command == TurnDirection::NONE ? 0.6 : 0.7;
-    c.b = debug.command == TurnDirection::NONE ? 0.6 : 0.0;
-    return c;
-  }();
+  const bool lit = debug.signal.direction != turn_indicator::TurnDirection::NONE;
+  std_msgs::msg::ColorRGBA colour;  // amber when lit, grey when dark
+  colour.a = 0.999;
+  colour.r = lit ? 1.0 : 0.6;
+  colour.g = lit ? 0.7 : 0.6;
+  colour.b = lit ? 0.0 : 0.6;
+
+  visualization_msgs::msg::Marker marker;
+  marker.header = header;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.lifetime = rclcpp::Duration::from_seconds(0.5);
+  marker.pose.orientation.w = 1.0;
+  marker.color = colour;
 
   if (debug.has_segment) {
-    visualization_msgs::msg::Marker arrow;
-    arrow.header = header;
-    arrow.ns = "turn_indicator_segment";
-    arrow.id = 0;
-    arrow.type = visualization_msgs::msg::Marker::ARROW;
-    arrow.action = visualization_msgs::msg::Marker::ADD;
-    arrow.lifetime = lifetime;
-    arrow.pose.orientation.w = 1.0;
-    arrow.scale.x = 0.4;  // shaft diameter
-    arrow.scale.y = 0.8;  // head diameter
-    arrow.color = colour;
-    arrow.points.push_back(debug.start_point);
-    arrow.points.push_back(debug.end_point);
-    markers.markers.push_back(arrow);
+    marker.ns = "turn_indicator_segment";
+    marker.type = visualization_msgs::msg::Marker::ARROW;
+    marker.scale.x = 0.4;  // shaft diameter
+    marker.scale.y = 0.8;  // head diameter
+    marker.points = {debug.start_point, debug.end_point};
+    markers.markers.push_back(marker);
+    marker.points.clear();
   }
 
-  visualization_msgs::msg::Marker text;
-  text.header = header;
-  text.ns = "turn_indicator_state";
-  text.id = 0;
-  text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-  text.action = visualization_msgs::msg::Marker::ADD;
-  text.lifetime = lifetime;
-  text.pose.position = debug.has_segment ? debug.start_point : geometry_msgs::msg::Point{};
-  text.pose.position.z += 2.0;
-  text.pose.orientation.w = 1.0;
-  text.scale.z = 1.0;
-  text.color = colour;
-  text.text = to_string(debug.command) + " (" + to_string(debug.kind) + ")";
-  markers.markers.push_back(text);
+  marker.ns = "turn_indicator_state";
+  marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+  marker.pose.position = debug.start_point;
+  marker.pose.position.z += 2.0;
+  marker.scale = geometry_msgs::msg::Vector3();
+  marker.scale.z = 1.0;
+  marker.text = to_string(debug.signal);
+  markers.markers.push_back(marker);
 
   return markers;
 }

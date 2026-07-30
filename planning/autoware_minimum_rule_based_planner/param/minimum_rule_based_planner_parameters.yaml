@@ -173,31 +173,10 @@ minimum_rule_based_planner:
         gt<>: [0.0]
 
   turn_signal:
-    intersection_search_distance:
+    search_distance:
       type: double
       default_value: 30.0
-      description: legal minimum lead distance before an intersection turn [m]
-      validation:
-        gt_eq<>: [0.0]
-
-    search_time:
-      type: double
-      default_value: 3.0
-      description: lead time before a turn; activation distance = max(v * search_time, intersection_search_distance) [s]
-      validation:
-        gt_eq<>: [0.0]
-
-    lateral_shift_threshold:
-      type: double
-      default_value: 0.5
-      description: lateral offset from the lane centerline at/below which a pull-out is considered finished, and the deadzone for asserting a pull-over direction [m]
-      validation:
-        gt_eq<>: [0.0]
-
-    pull_over_search_distance:
-      type: double
-      default_value: 30.0
-      description: distance-to-goal at which the pull-over signal starts [m]
+      description: lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this) [m]
       validation:
         gt_eq<>: [0.0]
 
@@ -205,13 +184,6 @@ minimum_rule_based_planner:
       type: double
       default_value: 3.0
       description: minimum time a turn signal is held on once lit, to suppress chatter [s]
-      validation:
-        gt_eq<>: [0.0]
-
-    departure_lateral_threshold:
-      type: double
-      default_value: 1.5
-      description: lateral offset from the lane centerline above which a STOPPED ego counts as parked off-lane (bus stop / road shoulder) and may raise a pull-out signal; must stay above the lateral deviation a lane change or avoidance can produce so those never blink [m]
       validation:
         gt_eq<>: [0.0]
 
@@ -225,23 +197,9 @@ minimum_rule_based_planner:
     heading_align_threshold:
       type: double
       default_value: 0.15
-      description: yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared [rad]
+      description: yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared; also the gap below which a private-area merge counts as straight and raises no signal [rad]
       validation:
         gt<>: [0.0]
-
-    exit_lookahead:
-      type: double
-      default_value: 15.0
-      description: distance past a turn lanelet / private-area boundary used to measure the heading the maneuver ends on; also how far behind ego a maneuver still being completed is tracked [m]
-      validation:
-        gt<>: [0.0]
-
-    goal_arrival_distance:
-      type: double
-      default_value: 1.0
-      description: distance-to-goal at which a stopped ego counts as arrived, clearing the pull-over signal [m]
-      validation:
-        gt_eq<>: [0.0]
 
   obstacle_stop:
     enable:

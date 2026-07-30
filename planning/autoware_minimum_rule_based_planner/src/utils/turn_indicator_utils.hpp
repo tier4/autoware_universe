@@ -15,24 +15,16 @@
 #ifndef UTILS__TURN_INDICATOR_UTILS_HPP_
 #define UTILS__TURN_INDICATOR_UTILS_HPP_
 
-#include <cstdint>
-#include <optional>
-#include <unordered_map>
-#include <vector>
+#include <initializer_list>
 
 // ---------------------------------------------------------------------------
-// Pure turn-indicator decision logic.
+// Pure turn-indicator decision rules: plain numbers in, direction out, so they can be unit-tested
+// in isolation. The path/lanelet geometry that feeds them lives in turn_indicator_decider.cpp.
 //
-// This header intentionally depends on NOTHING from ROS, lanelet2, or this
-// package's message types. It operates on plain numbers so the decision rules
-// can be unit-tested in isolation. The lanelet/ROS-aware glue lives in
-// turn_indicator_decider.{hpp,cpp}.
-//
-// Scope (see my_docs/TASK_mrbp_turn_indicator.md): intersection turns, private
-// area exits, and departure/arrival at an off-centerline stop (bus stop, road
-// shoulder). Lane changes and avoidance are explicitly OUT of scope - while the
-// upstream planner performs one, this module must stay dark even though ego is
-// laterally offset from its lane centerline.
+// Scope (see my_docs/TASK_mrbp_turn_indicator.md): intersection turns, private area exits, and
+// departure/arrival at an off-centerline stop (bus stop, road shoulder). Lane changes and
+// avoidance are explicitly OUT of scope - while the upstream planner performs one, this module
+// must stay dark even though ego is laterally offset from its lane centerline.
 // ---------------------------------------------------------------------------
 
 namespace autoware::minimum_rule_based_planner::turn_indicator
@@ -43,162 +35,74 @@ enum class TurnDirection { NONE, LEFT, RIGHT };
 //! Which maneuver a signal was raised for (priority resolution + debug).
 enum class ManeuverKind { NONE, INTERSECTION, PRIVATE_EXIT, PULL_OUT, PULL_OVER };
 
-//! Minimal path point: position + the lanelet ids the point belongs to.
-struct PathPointLite
-{
-  double x{0.0};
-  double y{0.0};
-  std::vector<int64_t> lane_ids{};
-};
-
-//! The per-lanelet map attributes this decision needs.
-struct LaneAttribute
-{
-  TurnDirection turn_direction{TurnDirection::NONE};  //!< `turn_direction` tag
-  bool is_private{false};                             //!< `location` tag == "private"
-};
-
-using LaneAttributeMap = std::unordered_map<int64_t, LaneAttribute>;
-
 //! Tunable thresholds (mirrors the param/ `turn_signal:` section).
 struct TurnSignalParams
 {
-  double intersection_search_distance{30.0};  //!< [m] legal min lead distance for a turn (JP: 30m)
-  double search_time{3.0};                    //!< [s] lead time; activation = max(v*t, distance)
-  double lateral_shift_threshold{0.5};        //!< [m] offset at/below which a shift is "finished"
-  double pull_over_search_distance{30.0};     //!< [m] distance-to-goal to start pull-over signal
-  double min_blink_duration{3.0};             //!< [s] min on-time once lit (anti-chatter)
-  double departure_lateral_threshold{1.5};    //!< [m] offset that qualifies as "parked off-lane"
-  double stopped_velocity_threshold{0.1};     //!< [m/s] at/below this ego counts as stopped
-  double heading_align_threshold{0.15};       //!< [rad] ego-vs-exit yaw gap that ends a maneuver
-  double exit_lookahead{15.0};                //!< [m] look-ahead past a maneuver for its exit yaw
-  double goal_arrival_distance{1.0};          //!< [m] distance-to-goal that counts as arrived
+  //! [m] lead distance floor for a maneuver (JP law: 30 m before a turn), and the distance-to-goal
+  //! at which the pull-over signal starts.
+  double search_distance{30.0};
+  double min_blink_duration{3.0};          //!< [s] min on-time once lit (anti-chatter)
+  double stopped_velocity_threshold{0.1};  //!< [m/s] at/below this ego counts as stopped
+  double heading_align_threshold{0.15};    //!< [rad] ego-vs-exit yaw gap that ends a maneuver
 };
 
-//! One upcoming (or currently occupied) maneuver segment along the path.
-struct ManeuverSegment
-{
-  TurnDirection direction{TurnDirection::NONE};
-  ManeuverKind kind{ManeuverKind::NONE};
-  double dist_to_start{0.0};   //!< [m] arc length from ego to the segment start (>= 0)
-  double dist_to_end{0.0};     //!< [m] arc length from ego to the segment end (>= dist_to_start)
-  std::size_t start_index{0};  //!< index into the points vector of the segment start
-  std::size_t end_index{0};    //!< index into the points vector of the segment end
-  double exit_yaw{0.0};        //!< [rad] path heading once the maneuver is complete
-};
+//! [s] lead time before a maneuver; the activation distance grows with speed above the floor.
+constexpr double k_search_time = 3.0;
+//! [m] how far past a maneuver its exit heading is measured, and how far behind ego a maneuver
+//! still being completed is tracked.
+constexpr double k_exit_lookahead = 15.0;
+//! [m] distance-to-goal at which a stopped ego counts as arrived.
+constexpr double k_goal_arrival_distance = 1.0;
+//! [m] offset at/below which a lateral shift counts as finished; also the deadzone for asserting
+//! which side an offset is on.
+constexpr double k_lateral_shift_threshold = 0.5;
+//! [m] offset above which a STOPPED ego counts as parked clear of the lane (bus stop, shoulder).
+//! Must stay above the lateral deviation a lane change or avoidance can produce, or those would
+//! blink too.
+constexpr double k_departure_lateral_threshold = 1.5;
 
 //! The emitted signal plus what raised it.
-struct SignalDecision
+struct Signal
 {
   TurnDirection direction{TurnDirection::NONE};
   ManeuverKind kind{ManeuverKind::NONE};
 };
 
-//! Wrap to (-pi, pi].
-double normalize_angle(double angle);
-
-//! Path heading at `index`, from the neighbouring point. 0.0 for a degenerate (< 2 point) path.
-double path_yaw_at(const std::vector<PathPointLite> & points, std::size_t index);
-
-//! First of the point's lane_ids that maps to a left/right direction, else NONE.
-TurnDirection point_turn_direction(const PathPointLite & point, const LaneAttributeMap & attrs);
-
-//! True if any lanelet the point belongs to is tagged `location=private`.
-bool point_is_private(const PathPointLite & point, const LaneAttributeMap & attrs);
-
-//! Index of the path point nearest to (x, y), ignoring points whose path heading opposes `yaw`
-//! so that a route folding back on itself (U-turn, loop) cannot snap ego onto the wrong leg.
-//! Falls back to the plain nearest point when no candidate agrees with `yaw`. 0 for empty input.
-std::size_t nearest_index(
-  const std::vector<PathPointLite> & points, double x, double y, double yaw);
-
-//! All `turn_direction`-tagged segments along the path, ordered from ego. The scan starts
-//! `exit_lookahead` metres BEHIND ego (so a turn ego is still completing, whose lanelet is already
-//! behind, is still reported) and each segment's end is carried `exit_lookahead` metres past its
-//! lanelet so that `exit_yaw` holds the heading the turn ends on.
-std::vector<ManeuverSegment> find_turn_segments(
-  const std::vector<PathPointLite> & points, std::size_t ego_index, const LaneAttributeMap & attrs,
-  const TurnSignalParams & params);
-
-//! All private-area exits (a `location=private` run that rejoins a public lane) along the path.
-//! Same scan window as find_turn_segments. The direction comes from the exit lanelet's
-//! `turn_direction` when tagged, otherwise from the path's yaw change across the merge; a merge
-//! that is geometrically straight is skipped - there is no side to signal.
-std::vector<ManeuverSegment> find_private_exit_segments(
-  const std::vector<PathPointLite> & points, std::size_t ego_index, const LaneAttributeMap & attrs,
-  const TurnSignalParams & params);
-
-//! Lit while the segment start is within the activation distance, cleared once ego has entered the
-//! segment and its heading matches `exit_yaw` (the spec's "ego aligned with the centerline" end
-//! condition) or the segment has been passed.
-TurnDirection decide_maneuver_signal(
-  const ManeuverSegment & segment, double ego_velocity, double ego_yaw,
-  const TurnSignalParams & params);
-
-//! The signal a set of segments asks for, plus the segment that raised it (for debug).
-struct ActiveManeuver
-{
-  TurnDirection direction{TurnDirection::NONE};
-  std::optional<ManeuverSegment> segment{std::nullopt};
-};
-
-//! First segment of `segments` that asks for a signal, else an empty decision.
-ActiveManeuver decide_maneuver_signal(
-  const std::vector<ManeuverSegment> & segments, double ego_velocity, double ego_yaw,
-  const TurnSignalParams & params);
+//! [m] distance ahead of a maneuver at which its signal comes on.
+double activation_distance(double ego_velocity, const TurnSignalParams & params);
 
 //! Signed offset beyond the deadzone => LEFT (positive) / RIGHT (negative), else NONE.
 TurnDirection direction_from_lateral_offset(double signed_offset, double deadzone);
 
-//! Fixed priority: intersection > private exit > pull_out > pull_over.
-SignalDecision resolve_priority(
-  TurnDirection intersection, TurnDirection private_exit, TurnDirection pull_out,
-  TurnDirection pull_over);
+//! First candidate asking for a light. Callers pass them in priority order:
+//! intersection > private exit > pull-out > pull-over.
+Signal resolve_priority(std::initializer_list<Signal> candidates);
 
-//! Departure (pull-out) detector.
-//!
-//! Latches only when ego is STOPPED while parked clear of the lane centerline
-//! (|offset| > departure_lateral_threshold) - the signature of a bus stop / shoulder start. This
-//! is what keeps the module dark during a lane change or avoidance: there ego is offset but
-//! moving, so it never latches. The latch releases once ego is back within
-//! lateral_shift_threshold of the centerline, i.e. when the departure is complete.
-class DepartureLatch
-{
-public:
-  //! @param signed_offset ego lateral offset from the nearest route lane (+ = left of centerline)
-  //! @param suppressed force-clear (used to keep pull-out and pull-over mutually exclusive)
-  TurnDirection update(
-    double signed_offset, double ego_velocity, bool suppressed, const TurnSignalParams & params);
+//! Lit while the maneuver start is within `activation_distance`, cleared once ego has entered the
+//! maneuver and its heading matches `exit_yaw` (the spec's "ego aligned with the centerline" end
+//! condition).
+//! @param dist_to_start [m] arc length from ego to the maneuver start (negative once inside)
+TurnDirection decide_maneuver_signal(
+  TurnDirection direction, double dist_to_start, double ego_yaw, double exit_yaw,
+  double ego_velocity, const TurnSignalParams & params);
 
-  void reset();
+//! Departure (pull-out): latches only while ego stands still clear of the lane centerline, which
+//! is what keeps this module dark during a lane change or avoidance (offset, but moving). The
+//! latch releases once ego is back on the centerline.
+//! @param signed_offset ego lateral offset from its lane (+ = left of the centerline)
+//! @param suppressed force-clear (keeps pull-out and pull-over from fighting over the direction)
+//! @param[in,out] latched direction currently latched; NONE while not latched
+TurnDirection decide_pull_out(
+  double signed_offset, double ego_velocity, bool suppressed, const TurnSignalParams & params,
+  TurnDirection & latched);
 
-  bool latched() const { return latched_; }
-
-  //! What the latch currently emits (used to ride out cycles with no usable offset).
-  TurnDirection direction() const { return latched_ ? direction_ : TurnDirection::NONE; }
-
-private:
-  bool latched_{false};
-  TurnDirection direction_{TurnDirection::NONE};
-};
-
-//! Arrival (pull-over) detector: signals toward the side the goal sits on while approaching it,
-//! and clears once ego has stopped at the goal so the signal does not stay lit after arrival.
-class ArrivalState
-{
-public:
-  //! @param goal_offset goal lateral offset from the goal lane centerline (+ = left)
-  TurnDirection update(
-    double dist_to_goal, double goal_offset, double ego_velocity, const TurnSignalParams & params);
-
-  //! Call when the route (goal) changes.
-  void reset();
-
-  bool arrived() const { return arrived_; }
-
-private:
-  bool arrived_{false};
-};
+//! Arrival (pull-over): signals toward the side an off-centerline goal sits on while approaching
+//! it, and clears once ego has stopped there so the signal does not stay lit after arrival.
+//! @param goal_offset goal lateral offset from the goal lane centerline (+ = left)
+//! @param[in,out] arrived latched arrival flag; the caller clears it when the route changes
+TurnDirection decide_pull_over(
+  double dist_to_goal, double goal_offset, double ego_velocity, const TurnSignalParams & params,
+  bool & arrived);
 
 //! Minimum-on-duration hold: a lit signal stays on for at least `min_duration` before it may
 //! switch off; switching directly between left and right is allowed immediately.

@@ -85,18 +85,9 @@ void assign_time_from_start(
 turn_indicator::TurnSignalParams make_turn_signal_params(
   const minimum_rule_based_planner::Params & p)
 {
-  turn_indicator::TurnSignalParams params;
-  params.intersection_search_distance = p.turn_signal.intersection_search_distance;
-  params.search_time = p.turn_signal.search_time;
-  params.lateral_shift_threshold = p.turn_signal.lateral_shift_threshold;
-  params.pull_over_search_distance = p.turn_signal.pull_over_search_distance;
-  params.min_blink_duration = p.turn_signal.min_blink_duration;
-  params.departure_lateral_threshold = p.turn_signal.departure_lateral_threshold;
-  params.stopped_velocity_threshold = p.turn_signal.stopped_velocity_threshold;
-  params.heading_align_threshold = p.turn_signal.heading_align_threshold;
-  params.exit_lookahead = p.turn_signal.exit_lookahead;
-  params.goal_arrival_distance = p.turn_signal.goal_arrival_distance;
-  return params;
+  return {
+    p.turn_signal.search_distance, p.turn_signal.min_blink_duration,
+    p.turn_signal.stopped_velocity_threshold, p.turn_signal.heading_align_threshold};
 }
 }  // namespace
 
