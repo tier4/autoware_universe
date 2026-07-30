@@ -440,8 +440,9 @@ void PointCloudCollisionCheckFilter::set_planner_data_param(
 
   planner_data_.no_ground_pointcloud.preprocess_params_ = PointcloudPreprocessParams{p};
 
-  planner_data_.min_accel = p.common.min_accel;
-  planner_data_.min_jerk = p.common.min_jerk;
+  // motion_velocity_planner/node.cpp:262-266（set_velocity_smoother_params）の代替
+  planner_data_.velocity_smoother_.min_decel = p.common.min_accel;
+  planner_data_.velocity_smoother_.min_jerk = p.common.min_jerk;
 
   planner_data_.excluded_class_ids = p.obstacle_filtering.excluded_class_ids;
 }

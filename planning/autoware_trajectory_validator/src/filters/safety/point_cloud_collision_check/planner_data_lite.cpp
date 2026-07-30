@@ -43,11 +43,13 @@ namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_
 {
 namespace
 {
+// motion_velocity_planner_common/planner_data.cpp:88-132
 pcl::PointCloud<pcl::PointXYZ>::Ptr crop_by_monolithic_trajectory_polygon(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
   const PointcloudPreprocessParams::FilterByTrajectoryPolygon & filter_by_trajectory_param,
-  const std::vector<Polygon2d> & traj_polygons,
-  const std::vector<TrajectoryPoint> & decimated_trajectory, const VehicleInfo & vehicle_info)
+  const std::vector<autoware_utils_geometry::Polygon2d> & traj_polygons,
+  const std::vector<TrajectoryPoint> & decimated_trajectory,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
 {
   pcl::CropBox<pcl::PointXYZ> crop_filter;
   crop_filter.setInputCloud(input_pointcloud_ptr);
@@ -85,6 +87,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr crop_by_monolithic_trajectory_polygon(
   return ret_pointcloud_ptr;
 }
 
+// motion_velocity_planner_common/planner_data.cpp:190-202
 pcl::PointCloud<pcl::PointXYZ>::Ptr downsample_by_voxel_grid(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
   const PointcloudPreprocessParams::DownsampleByVoxelGrid & downsample_params)
@@ -98,6 +101,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr downsample_by_voxel_grid(
   return ret_pointcloud_ptr;
 }
 
+// motion_velocity_planner_common/planner_data.cpp:205-222
 std::vector<pcl::PointIndices> make_cluster_indices(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
   const PointcloudPreprocessParams::EuclideanClustering & clustering_params)
@@ -115,6 +119,7 @@ std::vector<pcl::PointIndices> make_cluster_indices(
   return ret_clusters;
 }
 
+// motion_velocity_planner_common/planner_data.cpp:225-236
 std::vector<pcl::PointIndices> make_individual_cluster_indices(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr)
 {
@@ -177,6 +182,7 @@ pcl::PointCloud<pcl::PointXYZ> filter_pointcloud_by_class_id(
 }
 
 // motion_velocity_planner/node.cpp:250-258（process_no_ground_pointcloud の変換部）
+// 差分: TF ではなく odometry.pose の affine を使う。入力は既に pcl::PointXYZ。
 pcl::PointCloud<pcl::PointXYZ> transform_pointcloud_to_map_frame(
   const pcl::PointCloud<pcl::PointXYZ> & cloud, const geometry_msgs::msg::Pose & base_link_to_map)
 {
@@ -197,19 +203,24 @@ pcl::PointCloud<pcl::PointXYZ> transform_pointcloud_to_map_frame(
   return pc_transformed;
 }
 
+// motion_velocity_planner_common/planner_data.cpp:279-286
+// 差分: velocity_smoother_ の実体の代わりに VelocitySmoother（min_decel/min_jerk のみ）を使う。
 std::optional<double> PlannerData::calculate_min_deceleration_distance(
   const double target_velocity) const
 {
   return autoware::motion_utils::calcDecelDistWithJerkAndAccConstraints(
     std::abs(current_odometry.twist.twist.linear.x), target_velocity,
-    current_acceleration.accel.accel.linear.x, min_accel, std::abs(min_jerk), min_jerk);
+    current_acceleration.accel.accel.linear.x, velocity_smoother_.getMinDecel(),
+    std::abs(velocity_smoother_.getMinJerk()), velocity_smoother_.getMinJerk());
 }
 
+// motion_velocity_planner_common/planner_data.cpp:464-534
+// 差分: enable_* フラグと multi_polygon 経路を削除し、常に monolithic crop のみ行う。
 std::pair<pcl::PointCloud<pcl::PointXYZ>::Ptr, std::vector<pcl::PointIndices>>
 PlannerData::Pointcloud::filter_and_cluster_point_clouds(
   const std::vector<TrajectoryPoint> & raw_trajectory,
   const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
-  const VehicleInfo & vehicle_info,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
   const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check,
   const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold)
 {

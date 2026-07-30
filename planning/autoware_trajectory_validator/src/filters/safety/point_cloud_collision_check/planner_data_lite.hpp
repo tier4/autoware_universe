@@ -49,6 +49,17 @@ struct TrajectoryPolygonCollisionCheck
   double time_to_convergence{};
 };
 
+/// velocity_smoother_ の代替。smoother 本体は持たず、
+/// calculate_min_deceleration_distance が読む min_decel / min_jerk だけ持つ。
+struct VelocitySmoother
+{
+  double min_decel{};
+  double min_jerk{};
+
+  double getMinDecel() const { return min_decel; }
+  double getMinJerk() const { return min_jerk; }
+};
+
 struct PointcloudPreprocessParams
 {
   PointcloudPreprocessParams() = default;
@@ -125,7 +136,7 @@ public:
       pcl::PointCloud<pcl::PointXYZ> && arg_pointcloud,
       const std::vector<TrajectoryPoint> & raw_trajectory,
       const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
-      const VehicleInfo & vehicle_info,
+      const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
       const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check,
       const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold)
     {
@@ -188,7 +199,7 @@ public:
     filter_and_cluster_point_clouds(
       const std::vector<TrajectoryPoint> & raw_trajectory,
       const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
-      const VehicleInfo & vehicle_info,
+      const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
       const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check,
       const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold);
   };
@@ -201,9 +212,7 @@ public:
   double ego_nearest_dist_threshold{};
   double ego_nearest_yaw_threshold{};
   TrajectoryPolygonCollisionCheck trajectory_polygon_collision_check{};
-
-  double min_accel{};
-  double min_jerk{};
+  VelocitySmoother velocity_smoother_{};
 
   // [plugin 固有] class_id フィールドを持つ入力点群から除外するクラス。
   std::vector<std::int64_t> excluded_class_ids{};
