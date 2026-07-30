@@ -22,7 +22,6 @@
 
 #include <geometry_msgs/msg/twist.hpp>
 
-#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -68,8 +67,7 @@ private:
 
   /// @brief 点群から停止対象を抽出する。移植元 ObstacleStopModule の plan() の点群経路。
   std::vector<StopObstacle> calc_obstacle_stop(
-    const std::vector<TrajectoryPoint> & raw_trajectory_points,
-    const std::shared_ptr<const PlannerData> planner_data);
+    const std::vector<TrajectoryPoint> & raw_trajectory_points, const PlannerData & planner_data);
 
   /// @brief 停止対象から停止可否を判定する。未実装のため現状は常に true を返す。
   bool judge_stop_feasibility(
@@ -82,7 +80,7 @@ private:
     obstacle_filtering_params_{};
   PointcloudSegmentationParam pointcloud_segmentation_param_{};
 
-  std::shared_ptr<PlannerData> planner_data_{std::make_shared<PlannerData>()};
+  PlannerData planner_data_{};
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 

@@ -57,52 +57,51 @@ bool PointCloudCollisionCheckFilter::is_available_data(
 void PointCloudCollisionCheckFilter::set_planner_data_param(
   const validator::Params::PointCloudCollisionCheck & p)
 {
-  planner_data_->ego_nearest_dist_threshold = p.trajectory_polygon.ego_nearest_dist_threshold;
-  planner_data_->ego_nearest_yaw_threshold = p.trajectory_polygon.ego_nearest_yaw_threshold;
-  planner_data_->trajectory_polygon_collision_check = {
+  planner_data_.ego_nearest_dist_threshold = p.trajectory_polygon.ego_nearest_dist_threshold;
+  planner_data_.ego_nearest_yaw_threshold = p.trajectory_polygon.ego_nearest_yaw_threshold;
+  planner_data_.trajectory_polygon_collision_check = {
     p.trajectory_polygon.decimate_trajectory_step_length,
     p.trajectory_polygon.goal_extended_trajectory_length,
     p.trajectory_polygon.enable_to_consider_current_pose, p.trajectory_polygon.time_to_convergence};
 
-  planner_data_->no_ground_pointcloud.preprocess_params_ = PointcloudPreprocessParams{p};
+  planner_data_.no_ground_pointcloud.preprocess_params_ = PointcloudPreprocessParams{p};
 
-  planner_data_->min_accel = p.common.min_accel;
-  planner_data_->min_jerk = p.common.min_jerk;
+  planner_data_.min_accel = p.common.min_accel;
+  planner_data_.min_jerk = p.common.min_jerk;
 
-  planner_data_->excluded_class_ids = p.obstacle_filtering.excluded_class_ids;
+  planner_data_.excluded_class_ids = p.obstacle_filtering.excluded_class_ids;
 }
 
 void PointCloudCollisionCheckFilter::update_planner_data(
   const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context)
 {
   // motion_velocity_planner_common/planner_data.cpp:240-241
-  planner_data_->vehicle_info_ = *vehicle_info_ptr_;
+  planner_data_.vehicle_info_ = *vehicle_info_ptr_;
 
   // motion_velocity_planner/node.cpp:160-167
-  planner_data_->current_odometry = *context.odometry;
-  planner_data_->current_acceleration = *context.acceleration;
+  planner_data_.current_odometry = *context.odometry;
+  planner_data_.current_acceleration = *context.acceleration;
 
   // motion_velocity_planner/node.cpp:211-215
   const auto is_driving_forward =
     autoware::motion_utils::isDrivingForwardWithTwist(raw_trajectory_points);
   if (is_driving_forward) {
-    planner_data_->is_driving_forward = is_driving_forward.value();
+    planner_data_.is_driving_forward = is_driving_forward.value();
   }
 
   // motion_velocity_planner/node.cpp:176-195
-  planner_data_->no_ground_pointcloud.preprocess_pointcloud(
+  planner_data_.no_ground_pointcloud.preprocess_pointcloud(
     convert_pointcloud_to_map_frame(
-      *context.segmented_pointcloud, context.odometry->pose.pose,
-      planner_data_->excluded_class_ids),
-    raw_trajectory_points, planner_data_->current_odometry,
-    planner_data_->calculate_min_deceleration_distance(0.0).value_or(0.0),
-    planner_data_->vehicle_info_, planner_data_->trajectory_polygon_collision_check,
-    planner_data_->ego_nearest_dist_threshold, planner_data_->ego_nearest_yaw_threshold);
+      *context.segmented_pointcloud, context.odometry->pose.pose, planner_data_.excluded_class_ids),
+    raw_trajectory_points, planner_data_.current_odometry,
+    planner_data_.calculate_min_deceleration_distance(0.0).value_or(0.0),
+    planner_data_.vehicle_info_, planner_data_.trajectory_polygon_collision_check,
+    planner_data_.ego_nearest_dist_threshold, planner_data_.ego_nearest_yaw_threshold);
 }
 
 std::vector<StopObstacle> PointCloudCollisionCheckFilter::calc_obstacle_stop(
   [[maybe_unused]] const std::vector<TrajectoryPoint> & raw_trajectory_points,
-  [[maybe_unused]] const std::shared_ptr<const PlannerData> planner_data)
+  [[maybe_unused]] const PlannerData & planner_data)
 {
   // 中身は後続 PR で移植する。
   return {};
