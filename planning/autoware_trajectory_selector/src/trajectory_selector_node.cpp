@@ -137,8 +137,6 @@ TrajectorySelectorNode::take_validator_data()
 
   context.segmented_pointcloud = sub_segmented_pointcloud_.take_data();
 
-  context.segmented_pointcloud = sub_segmented_pointcloud_.take_data();
-
   context.lanelet_map = lanelet_map_ptr_;
   if (!context.lanelet_map) {
     return tl::make_unexpected("Lanelet map is not available");
