@@ -24,7 +24,7 @@
   <arg name="input_tracked_objects" default="/perception/object_recognition/tracking/objects"/>
   <arg name="input_pointcloud" default="/perception/obstacle_segmentation/pointcloud"/>
   <arg name="input_route" default="/planning/mission_planning/route"/>
-  <arg name="input_virtual_traffic_light_states" default="/perception/virtual_traffic_light_states"/>
+  <arg name="input_virtual_traffic_light_states" default="/system/v2x/virtual_traffic_light_states"/>
   <arg name="input_traffic_signals" default="/perception/traffic_light_recognition/traffic_signals"/>
   <arg name="input_vector_map" default="/map/vector_map"/>
   <arg name="input_external_velocity_limit_mps" default="/planning/scenario_planning/max_velocity_default"/>
