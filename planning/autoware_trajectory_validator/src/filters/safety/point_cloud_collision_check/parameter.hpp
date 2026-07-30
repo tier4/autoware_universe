@@ -31,6 +31,11 @@ struct CommonParam
   double min_accel{};
   double max_jerk{};
   double min_jerk{};
+  // [used only plan_stop]
+  // double limit_max_accel{};
+  // double limit_min_accel{};
+  // double limit_max_jerk{};
+  // double limit_min_jerk{};
 
   CommonParam() = default;
   explicit CommonParam(const validator::Params::PointCloudCollisionCheck & p)
@@ -45,6 +50,8 @@ struct CommonParam
 struct ObstacleFilteringParam
 {
   bool check_inside{};
+  // [used only predicted-object]
+  // bool check_outside{};
 
   struct TrimTrajectoryParam
   {
@@ -57,6 +64,7 @@ struct ObstacleFilteringParam
   {
     double nominal_margin{};
     double additional_wheel_off_track_scale{};
+    // [never taken] create_polygon_param passes object_velocity = nullopt
     double is_moving_threshold_velocity{};
     double additional_is_stop_margin{};
     double additional_is_moving_margin{};
@@ -68,7 +76,23 @@ struct ObstacleFilteringParam
     };
   } lateral_margin;
 
+  // [used only predicted-object]
+  // struct DetectionHeightParam { double top_limit{}; double bottom_limit{}; } detection_height;
+  // double min_object_length{};
+  // double min_velocity_to_reach_collision_point{};
+
   double stop_obstacle_hold_time_threshold{};
+
+  // [used only predicted-object]
+  // struct OutsideObstacleParam {
+  //   double estimation_time_horizon{};
+  //   double max_lateral_velocity{};
+  //   double min_longitudinal_velocity{};
+  //   double max_moving_direction_angle{};
+  //   double deceleration{};
+  // } outside_obstacle;
+  // double crossing_obstacle_collision_time_margin{};
+  // double crossing_obstacle_traj_angle_threshold{};
 
   ObstacleFilteringParam() = default;
   explicit ObstacleFilteringParam(const validator::Params::PointCloudCollisionCheck & p)
@@ -147,6 +171,7 @@ struct RSSParam
 {
   bool use_rss_stop{};
 
+  // [never selected] calc_braking_dist_along_trajectory is called with POINTCLOUD only
   double two_wheel_objects_deceleration{};
   double vehicle_objects_deceleration{};
   double no_wheel_objects_deceleration{};
@@ -157,8 +182,31 @@ struct RSSParam
 struct StopPlanningParam
 {
   double stop_margin{};
+  // [used only plan_stop]
+  // double terminal_stop_margin{};
+  // double min_behavior_stop_margin{};
+  // double behavior_stop_margin_hold_time{};
+  // double max_negative_velocity{};
+  // double stop_margin_opposing_traffic{};
+  // double effective_deceleration_opposing_traffic{};
+  // bool enable_approaching_on_curve{};
+  // double additional_stop_margin_on_curve{};
+  // double min_stop_margin_on_curve{};
+  // double hold_stop_velocity_threshold{};
+  // double hold_stop_distance_threshold{};
+  // double pointcloud_suppression_distance_margin{};
   RSSParam rss_params;
   double obstacle_velocity_threshold_enter_fixed_stop{};
+  // [used only predicted-object]
+  // double obstacle_velocity_threshold_exit_fixed_stop{};
+  // [used only plan_stop]
+  // struct ObjectTypeSpecificParams {
+  //   double limit_min_acc{};
+  //   double sudden_object_acc_threshold{};
+  //   double sudden_object_dist_threshold{};
+  //   bool abandon_to_stop{};
+  // };
+  // std::unordered_map<std::string, ObjectTypeSpecificParams> object_type_specific_param_map;
 
   StopPlanningParam() = default;
   explicit StopPlanningParam(const validator::Params::PointCloudCollisionCheck & p)
