@@ -19,8 +19,11 @@
 
 #include <autoware_lanelet2_extension/regulatory_elements/virtual_traffic_light.hpp>
 
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <tier4_v2x_msgs/msg/infrastructure_command_array.hpp>
 #include <tier4_v2x_msgs/msg/virtual_traffic_light_state_array.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
@@ -56,6 +59,8 @@ public:
 
   void update_params(const TrajectoryModifierParams & params) override;
 
+  void publish_debug_data(const std::string & ns) const override;
+
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
@@ -78,9 +83,12 @@ private:
     std::string instrument_type;
     std::string instrument_id;
     std::vector<tier4_v2x_msgs::msg::KeyValue> custom_tags;
+    geometry_msgs::msg::Point instrument_center;
     ModuleState state{ModuleState::NONE};
     std::optional<State> virtual_traffic_light_state;
     std::optional<tier4_v2x_msgs::msg::InfrastructureCommand> infrastructure_command;
+    std::optional<geometry_msgs::msg::Pose> stop_head_pose_at_stop_line;
+    std::optional<geometry_msgs::msg::Pose> stop_head_pose_at_end_line;
   };
 
   PlannerParam planner_param_;
@@ -91,6 +99,8 @@ private:
   std::vector<Module> modules_;
   rclcpp::Publisher<tier4_v2x_msgs::msg::InfrastructureCommandArray>::SharedPtr
     pub_infrastructure_commands_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr virtual_wall_pub_;
 
   void rebuild_modules(const InputData & input);
   void update_module_states(const InputData & input);
