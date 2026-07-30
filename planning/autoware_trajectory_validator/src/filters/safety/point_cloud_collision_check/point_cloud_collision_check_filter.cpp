@@ -17,12 +17,14 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 
 #include <cmath>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-using point_cloud_collision_check::convert_pointcloud_to_map_frame;
+using point_cloud_collision_check::filter_pointcloud_by_class_id;
 using point_cloud_collision_check::PointcloudPreprocessParams;
+using point_cloud_collision_check::transform_pointcloud_to_map_frame;
 
 bool PointCloudCollisionCheckFilter::is_available_data(
   const CandidateTrajectory & candidate_trajectory, const FilterContext & context) const
@@ -66,8 +68,9 @@ void PointCloudCollisionCheckFilter::set_planner_data_param(
 
   planner_data_.no_ground_pointcloud.preprocess_params_ = PointcloudPreprocessParams{p};
 
-  planner_data_.min_accel = p.common.min_accel;
-  planner_data_.min_jerk = p.common.min_jerk;
+  // motion_velocity_planner/node.cpp:262-266（set_velocity_smoother_params）の代替
+  planner_data_.velocity_smoother_.min_decel = p.common.min_accel;
+  planner_data_.velocity_smoother_.min_jerk = p.common.min_jerk;
 
   planner_data_.excluded_class_ids = p.obstacle_filtering.excluded_class_ids;
 }
@@ -89,11 +92,14 @@ void PointCloudCollisionCheckFilter::update_planner_data(
     planner_data_.is_driving_forward = is_driving_forward.value();
   }
 
+  const auto class_filtered_pointcloud =
+    filter_pointcloud_by_class_id(*context.segmented_pointcloud, planner_data_.excluded_class_ids);
+  auto no_ground_pointcloud =
+    transform_pointcloud_to_map_frame(class_filtered_pointcloud, context.odometry->pose.pose);
+
   // motion_velocity_planner/node.cpp:176-195
   planner_data_.no_ground_pointcloud.preprocess_pointcloud(
-    convert_pointcloud_to_map_frame(
-      *context.segmented_pointcloud, context.odometry->pose.pose, planner_data_.excluded_class_ids),
-    raw_trajectory_points, planner_data_.current_odometry,
+    std::move(no_ground_pointcloud), raw_trajectory_points, planner_data_.current_odometry,
     planner_data_.calculate_min_deceleration_distance(0.0).value_or(0.0),
     planner_data_.vehicle_info_, planner_data_.trajectory_polygon_collision_check,
     planner_data_.ego_nearest_dist_threshold, planner_data_.ego_nearest_yaw_threshold);
