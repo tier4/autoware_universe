@@ -208,8 +208,6 @@ public:
   // [plugin 固有] class_id フィールドを持つ入力点群から除外するクラス。
   std::vector<std::int64_t> excluded_class_ids{};
 
-  void update_parameters(const validator::Params::PointCloudCollisionCheck & p);
-
   std::optional<double> calculate_min_deceleration_distance(double target_velocity) const;
 };
 

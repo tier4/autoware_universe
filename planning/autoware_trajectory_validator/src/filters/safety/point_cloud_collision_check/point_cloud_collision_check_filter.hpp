@@ -27,7 +27,6 @@
 
 #include <deque>
 #include <map>
-#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -92,13 +91,16 @@ private:
     const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check);
 
   std::vector<StopObstacle> calc_obstacle_stop(
-    const std::vector<TrajectoryPoint> & raw_trajectory_points,
-    const std::shared_ptr<const PlannerData> planner_data);
+    const std::vector<TrajectoryPoint> & raw_trajectory_points, const PlannerData & planner_data);
 
   /// @brief 評価に必要な入力が揃っているかを判定する。
   /// false のとき is_feasible は評価せず feasible（ValidationResult{}）を返す。
   bool is_available_data(
     const CandidateTrajectory & candidate_trajectory, const FilterContext & context) const;
+
+  /// @brief planner_data_ のパラメータ由来フィールドを設定する。
+  /// 移植元では PlannerData のコンストラクタと on_set_param が担う。
+  void set_planner_data_param(const validator::Params::PointCloudCollisionCheck & p);
 
   /// @brief planner_data_ のトピック由来フィールドを更新し、点群の前処理まで行う。
   /// 移植元では node の update_planner_data が担う。
@@ -124,7 +126,7 @@ private:
 
   bool enable_debug_markers_{};
   DebugData debug_data_{};
-  std::shared_ptr<PlannerData> planner_data_{std::make_shared<PlannerData>()};
+  PlannerData planner_data_{};
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
