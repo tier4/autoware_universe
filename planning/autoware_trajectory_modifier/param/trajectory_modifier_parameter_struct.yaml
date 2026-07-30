@@ -27,6 +27,11 @@ trajectory_modifier_params:
     default_value: false
     description: Enable the use of traffic light stop
     read_only: false
+  use_detection_area_stop:
+    type: bool
+    default_value: false
+    description: Enable the use of detection area stop
+    read_only: false
   use_surround_obstacle_stop:
     type: bool
     default_value: true
@@ -459,6 +464,143 @@ trajectory_modifier_params:
       description: Crossing time limit [s]
       validation:
         bounds<>: [0.0, 10.0]
+      read_only: false
+
+  detection_area:
+    stop_margin:
+      type: double
+      default_value: 0.0
+      description: Distance to maintain from a detection area stop line [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    target_filtering:
+      pointcloud:
+        type: bool
+        default_value: true
+        description: Enable pointcloud detection in detection areas
+        read_only: false
+      unknown:
+        type: bool
+        default_value: false
+        description: Detect unknown objects in detection areas
+        read_only: false
+      car:
+        type: bool
+        default_value: false
+        description: Detect cars in detection areas
+        read_only: false
+      truck:
+        type: bool
+        default_value: false
+        description: Detect trucks in detection areas
+        read_only: false
+      bus:
+        type: bool
+        default_value: false
+        description: Detect buses in detection areas
+        read_only: false
+      trailer:
+        type: bool
+        default_value: false
+        description: Detect trailers in detection areas
+        read_only: false
+      motorcycle:
+        type: bool
+        default_value: false
+        description: Detect motorcycles in detection areas
+        read_only: false
+      bicycle:
+        type: bool
+        default_value: false
+        description: Detect bicycles in detection areas
+        read_only: false
+      pedestrian:
+        type: bool
+        default_value: false
+        description: Detect pedestrians in detection areas
+        read_only: false
+      animal:
+        type: bool
+        default_value: false
+        description: Detect animals in detection areas
+        read_only: false
+      hazard:
+        type: bool
+        default_value: false
+        description: Detect hazards in detection areas
+        read_only: false
+      over_drivable:
+        type: bool
+        default_value: false
+        description: Detect over-drivable objects in detection areas
+        read_only: false
+      under_drivable:
+        type: bool
+        default_value: false
+        description: Detect under-drivable objects in detection areas
+        read_only: false
+    use_dead_line:
+      type: bool
+      default_value: false
+      description: Ignore detection area obstacles after the dead line
+      read_only: false
+    dead_line_margin:
+      type: double
+      default_value: 5.0
+      description: Detection area dead line margin [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    unstoppable_policy:
+      type: string
+      default_value: stop_after_stopline
+      description: Policy when the vehicle cannot stop before the stop line
+      read_only: false
+    max_deceleration:
+      type: double
+      default_value: 1.0
+      description: Maximum deceleration used for unstoppable detection area handling [m/s^2]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
+    delay_response_time:
+      type: double
+      default_value: 0.5
+      description: Response delay used for braking distance estimation [s]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
+    state_clear_time:
+      type: double
+      default_value: 2.0
+      description: Time without an obstacle before clearing STOP state [s]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    hold_stop_margin_distance:
+      type: double
+      default_value: 0.0
+      description: Distance for holding an existing stop position [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    distance_to_judge_over_stop_line:
+      type: double
+      default_value: 0.5
+      description: Distance after the stop line at which new obstacles are ignored [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    suppress_pass_judge_when_stopping:
+      type: bool
+      default_value: false
+      description: Keep STOP state while the vehicle is stopped
+      read_only: false
+    enable_detected_obstacle_logging:
+      type: bool
+      default_value: false
+      description: Enable detailed detected obstacle logging
       read_only: false
 
   surround_obstacle_stop:

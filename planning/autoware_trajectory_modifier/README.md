@@ -13,6 +13,8 @@ The `autoware_trajectory_modifier` package provides a plugin-based architecture 
 
 The trajectory modifier uses a plugin-based system where different modification algorithms can be implemented as plugins. Each plugin inherits from the `TrajectoryModifierPluginBase` class and implements the required interface.
 
+Plugins may override `begin_cycle()` and `end_cycle()` when an input batch needs to be processed once before the candidate trajectories are modified. The Detection Area Stop plugin uses these hooks to share one pointcloud/object observation across all candidates while keeping each candidate's stop-line intersection independent.
+
 ### Plugin Interface
 
 All modifier plugins must inherit from `TrajectoryModifierPluginBase` and implement:
@@ -47,6 +49,15 @@ The Traffic Light Stop plugin serves as a deterministic safety shield operating 
 - **Enforce Traffic Rules Compliance**: Monitors DP trajectory behavior near RED/AMBER traffic lights to ensure ego does not violate traffic rules.
 - **Ensure Definitive Stopping For Mandatory Stops**: Guarantees zero-velocity set-points for RED/AMBER lights to prevent violating mandatory stops or overshooting road stop lines.
 
+#### Detection Area Stop
+
+The Detection Area Stop plugin applies map-defined detection areas to candidate trajectories. It
+supports pointcloud and predicted-object detection, target filtering, stop-state hysteresis,
+dead-line handling, and unstoppable stopping policies. The plugin is disabled by default to avoid
+running alongside the legacy behavior-velocity detection area module. Its debug outputs are
+published on `~/detection_area_stop/debug/marker` and `~/detection_area_stop/debug/text`, including
+detection-area geometry, stop/dead-line state, detected obstacle details, and candidate status.
+
 #### Velocity Modifier
 
 The Velocity Modifier plugins is responsible for ensuring the velocity profile is smooth and feasible, and adjusts the velocity profile if an anomaly is detected while respecting deceleration and jerk constraints.
@@ -56,9 +67,13 @@ The Velocity Modifier plugins is responsible for ensuring the velocity profile i
 This package depends on the following packages:
 
 - `autoware_internal_planning_msgs`: For candidate trajectory message types
+- `autoware_perception_msgs`: For predicted-object detection input
 - `autoware_planning_msgs`: For output trajectory message types
 - `autoware_motion_utils`: Motion-related utility functions
 - `autoware_trajectory`: Trajectory data structures and utilities
+- `autoware_lanelet2_extension`: Detection area regulatory elements
+- `pcl_conversions`: Pointcloud conversion for map-area detection
+- `autoware_object_recognition_utils`: Predicted-object classification filtering
 - `autoware_utils`: Common utility functions
 
 ## Input/Output

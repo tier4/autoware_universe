@@ -100,6 +100,9 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
 
   auto trajectory_count = 0;
   std::string modified_plugins_str;
+  for (auto & modifier : plugins_) {
+    modifier->begin_cycle(input_data);
+  }
   for (auto & trajectory : output_trajectories.candidate_trajectories) {
     for (auto & modifier : plugins_) {
       const auto modified = modifier->modify_trajectory(trajectory.points, input_data);
@@ -111,6 +114,9 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
       modified_plugins_str += modifier->get_short_name();
     }
     trajectory_count++;
+  }
+  for (auto & modifier : plugins_) {
+    modifier->end_cycle();
   }
   if (!modified_plugins_str.empty()) {
     RCLCPP_INFO_THROTTLE(

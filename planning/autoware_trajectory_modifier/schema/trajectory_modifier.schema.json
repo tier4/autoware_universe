@@ -13,6 +13,7 @@
             "autoware::trajectory_modifier::plugin::StopPointFixer",
             "autoware::trajectory_modifier::plugin::ObstacleStop",
             "autoware::trajectory_modifier::plugin::TrafficLightStop",
+            "autoware::trajectory_modifier::plugin::DetectionAreaStop",
             "autoware::trajectory_modifier::plugin::VelocityModifier"
           ],
           "items": {
@@ -33,6 +34,11 @@
           "type": "boolean",
           "description": "Enable the traffic light stop modifier plugin",
           "default": true
+        },
+        "use_detection_area_stop": {
+          "type": "boolean",
+          "description": "Enable the detection area stop modifier plugin",
+          "default": false
         },
         "use_surround_obstacle_stop": {
           "type": "boolean",
@@ -495,6 +501,56 @@
               "default": 2.75,
               "minimum": 0.0
             }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "detection_area": {
+          "type": "object",
+          "properties": {
+            "stop_margin": { "type": "number", "default": 0.0, "minimum": 0.0 },
+            "target_filtering": {
+              "type": "object",
+              "properties": {
+                "pointcloud": { "type": "boolean", "default": true },
+                "unknown": { "type": "boolean", "default": false },
+                "car": { "type": "boolean", "default": false },
+                "truck": { "type": "boolean", "default": false },
+                "bus": { "type": "boolean", "default": false },
+                "trailer": { "type": "boolean", "default": false },
+                "motorcycle": { "type": "boolean", "default": false },
+                "bicycle": { "type": "boolean", "default": false },
+                "pedestrian": { "type": "boolean", "default": false },
+                "animal": { "type": "boolean", "default": false },
+                "hazard": { "type": "boolean", "default": false },
+                "over_drivable": { "type": "boolean", "default": false },
+                "under_drivable": { "type": "boolean", "default": false }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "use_dead_line": { "type": "boolean", "default": false },
+            "dead_line_margin": { "type": "number", "default": 5.0, "minimum": 0.0 },
+            "unstoppable_policy": {
+              "type": "string",
+              "enum": ["go", "force_stop", "stop_after_stopline"],
+              "default": "stop_after_stopline"
+            },
+            "max_deceleration": { "type": "number", "default": 1.0, "minimum": 0.0 },
+            "delay_response_time": { "type": "number", "default": 0.5, "minimum": 0.0 },
+            "state_clear_time": { "type": "number", "default": 2.0, "minimum": 0.0 },
+            "hold_stop_margin_distance": {
+              "type": "number",
+              "default": 0.0,
+              "minimum": 0.0
+            },
+            "distance_to_judge_over_stop_line": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0.0
+            },
+            "suppress_pass_judge_when_stopping": { "type": "boolean", "default": false },
+            "enable_detected_obstacle_logging": { "type": "boolean", "default": false }
           },
           "required": [],
           "additionalProperties": false

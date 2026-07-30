@@ -12,6 +12,7 @@ generate_parameter_library(trajectory_modifier_param
 ament_auto_add_library(${PROJECT_NAME}_utils SHARED
   src/trajectory_modifier_utils/utils.cpp
   src/trajectory_modifier_utils/obstacle_stop_utils.cpp
+  src/trajectory_modifier_utils/detection_area_utils.cpp
 )
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
@@ -37,6 +38,7 @@ ament_auto_add_library(${PROJECT_NAME}_plugins SHARED
   src/trajectory_modifier_plugins/obstacle_stop.cpp
   src/trajectory_modifier_plugins/velocity_modifier.cpp
   src/trajectory_modifier_plugins/traffic_light_stop.cpp
+  src/trajectory_modifier_plugins/detection_area_stop.cpp
   src/trajectory_modifier_plugins/surround_obstacle_stop.cpp
 )
 
