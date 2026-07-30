@@ -88,6 +88,12 @@ struct FirstOrderDubinsMppiKinematicLimits
   std::vector<float> max_lat_accel;
   std::vector<float> max_lat_jerk;
   std::vector<float> map_max_velocity;
+  /**
+   * Authorizes relaxation to physical braking limits when the upstream profile also requests
+   * braking beyond the resolved comfort bound. False prevents velocity-profile discontinuities
+   * from being interpreted as emergency stops.
+   */
+  bool allow_emergency_longitudinal_override{false};
 };
 
 /** Static 2D line segment supplied to the MPPI cost function in map coordinates. */

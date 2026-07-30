@@ -378,6 +378,24 @@ void buildRolloutVisualization(
   }
 }
 
+Mppi::state_trajectory replayStateTrajectory(
+  DYN & model, const DYN::state_array & initial_state, const Mppi::control_trajectory & controls)
+{
+  Mppi::state_trajectory states = Mppi::state_trajectory::Zero();
+  states.col(0) = initial_state;
+  for (int t = 0; t < kMppiHorizon - 1; ++t) {
+    DYN::state_array state = states.col(t);
+    DYN::control_array control = controls.col(t);
+    model.enforceConstraints(state, control);
+    DYN::state_array next_state = model.getZeroState();
+    DYN::state_array state_derivative = model.getZeroState();
+    DYN::output_array output = DYN::output_array::Zero();
+    model.step(state, next_state, state_derivative, control, output, static_cast<float>(t), kDt);
+    states.col(t + 1) = next_state;
+  }
+  return states;
+}
+
 /// @brief check if the given trajectory needs to be optimized
 [[nodiscard]] bool is_optimization_required(const autoware::mppi_optimizer::Trajectory & trajectory)
 {
@@ -690,16 +708,20 @@ struct FirstOrderDubinsMppiInterface::Impl
       ego_velocity, max_velocity_limit.front(), overridden_steps, min_lon_accel_limit.front());
   }
 
-  void clampNominalAccelerationToActiveLimits()
+  int clampAccelerationToActiveLimits(Mppi::control_trajectory & controls)
   {
     const int accel_idx =
       static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+    int clamped_steps = 0;
     for (int t = 0; t < kMppiHorizon; ++t) {
       const size_t horizon_index = static_cast<size_t>(t);
       if (lon_comfort_weight[horizon_index] > 0.0F) {
-        u_nom(accel_idx, t) = std::max(u_nom(accel_idx, t), min_lon_accel_limit[horizon_index]);
+        const float original = controls(accel_idx, t);
+        controls(accel_idx, t) = std::max(original, min_lon_accel_limit[horizon_index]);
+        clamped_steps += controls(accel_idx, t) != original ? 1 : 0;
       }
     }
+    return clamped_steps;
   }
 
   void prepareKinematicConstraintProfile(
@@ -736,13 +758,29 @@ struct FirstOrderDubinsMppiInterface::Impl
       max_lat_jerk_limit[horizon_index] = std::min(
         user_cost_params_.max_lat_jerk,
         positiveLimitAt(dynamic_limits.max_lat_jerk, horizon_index));
+    }
 
-      if (!diffusion_reference.points.empty()) {
-        const size_t point_index = std::min(horizon_index, diffusion_reference.points.size() - 1U);
-        auto & point = diffusion_reference.points[point_index];
-        point.longitudinal_velocity_mps =
-          std::min(point.longitudinal_velocity_mps, max_velocity_limit[horizon_index]);
+    // Propagate future lower ceilings backwards at the active maximum braking rate. This makes
+    // acceleration during a braking zone immediately violate the effective speed envelope, even
+    // when the eventual stop lies at or beyond the end of the MPPI horizon.
+    for (int t = kRefHorizon - 2; t >= 0; --t) {
+      const size_t horizon_index = static_cast<size_t>(t);
+      const float max_allowed_previous_speed =
+        max_velocity_limit[horizon_index + 1U] - min_lon_accel_limit[horizon_index] * kDt;
+      max_velocity_limit[horizon_index] =
+        std::min(max_velocity_limit[horizon_index], max_allowed_previous_speed);
+    }
+
+    // Clamp tracking velocities only after constructing the monotonic braking envelope.
+    for (int t = 0; t < kRefHorizon; ++t) {
+      if (diffusion_reference.points.empty()) {
+        break;
       }
+      const size_t horizon_index = static_cast<size_t>(t);
+      const size_t point_index = std::min(horizon_index, diffusion_reference.points.size() - 1U);
+      auto & point = diffusion_reference.points[point_index];
+      point.longitudinal_velocity_mps =
+        std::min(point.longitudinal_velocity_mps, max_velocity_limit[horizon_index]);
     }
 
     // Once the resolved ceiling requests a full stop, hold the tracking geometry at that point.
@@ -785,7 +823,17 @@ struct FirstOrderDubinsMppiInterface::Impl
             upstream_reference.points[upstream_next_idx].longitudinal_velocity_mps;
           const float required_acceleration = (upstream_next_v_ref - upstream_v_ref) / kDt;
           const bool is_planner_emergency_stop =
+            dynamic_limits.allow_emergency_longitudinal_override &&
             required_acceleration < min_lon_accel_limit[horizon_index];
+          if (required_acceleration < min_lon_accel_limit[horizon_index]) {
+            RCLCPP_DEBUG(
+              mppiLogger(),
+              "MPPI upstream deceleration candidate: t=%d raw_v=%.3f raw_next_v=%.3f "
+              "a_req=%.3f resolved_min=%.3f emergency_authorized=%s",
+              t, upstream_v_ref, upstream_next_v_ref, required_acceleration,
+              min_lon_accel_limit[horizon_index],
+              dynamic_limits.allow_emergency_longitudinal_override ? "true" : "false");
+          }
           if (is_planner_emergency_stop) {
             lon_comfort_weight[horizon_index] = 0.0F;
             min_lon_accel_limit[horizon_index] = dyn.min_accel;
@@ -903,7 +951,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     prepareKinematicConstraintProfile(reference, dynamic_limits, measured_ego_accel);
     seedNominalControl(diffusion_reference, tracking_start_idx);
     overrideNominalControlForOverspeed(ego_v, ego_accel);
-    clampNominalAccelerationToActiveLimits();
+    (void)clampAccelerationToActiveLimits(u_nom);
   }
 
   void uploadBoundarySegments()
@@ -961,10 +1009,18 @@ struct FirstOrderDubinsMppiInterface::Impl
     controller->computeControl(x, 1);
     cudaStreamSynchronize(controller->stream_);
 
-    const Mppi::control_trajectory u_opt_traj = controller->getControlSeq();
-    u_opt = u_opt_traj;
+    u_opt = controller->getControlSeq();
+    const int clamped_optimized_steps = clampAccelerationToActiveLimits(u_opt);
+    if (clamped_optimized_steps > 0) {
+      // Keep the controller's public/warm-start sequence aligned with the controls that are
+      // actually applied and published.
+      controller->updateImportanceSampler(u_opt);
+      RCLCPP_DEBUG(
+        mppiLogger(), "MPPI clamped %d optimized acceleration commands to active lower bounds",
+        clamped_optimized_steps);
+    }
 
-    DYN::control_array u_apply = u_opt_traj.col(0);
+    DYN::control_array u_apply = u_opt.col(0);
     model.enforceConstraints(x, u_apply);
 
     DYN::state_array x_next = model.getZeroState();
@@ -1208,8 +1264,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const DYN::state_array x_at_optimization = impl_->x;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
 
-  const auto state_trajectory = impl_->controller->getActualStateSeq();
-  const Mppi::control_trajectory u_opt_traj = impl_->controller->getControlSeq();
+  const Mppi::control_trajectory u_opt_traj = impl_->u_opt;
+  const Mppi::state_trajectory state_trajectory =
+    replayStateTrajectory(impl_->model, x_at_optimization, u_opt_traj);
   Trajectory output = input;
 
   const int pos_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X);
@@ -1307,8 +1364,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     buildRolloutVisualization(
       *impl_->controller, impl_->sampler, impl_->model, x_at_optimization,
       std::max(impl_->user_cost_params_.lambda, 1.0e-6F), result.debug);
+    fillOptimalHorizonPoints(state_trajectory, result.debug.optimal_horizon);
   } else {
-    fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
+    fillOptimalHorizonPoints(state_trajectory, result.debug.optimal_horizon);
     result.debug.baseline_cost = impl_->controller->getBaselineCost();
     result.debug.rollouts.clear();
   }

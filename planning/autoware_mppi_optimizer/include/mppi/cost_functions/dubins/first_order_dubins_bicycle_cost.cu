@@ -780,7 +780,9 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float track_val = computeTrackValue(x_pos, y_pos, timestep);
   const float vel_diff = vel - ref_v_[timestep];
   const float speed_cost = this->params_.speed_coeff * (vel_diff * vel_diff);
-  const float track_cost = this->params_.track_coeff * track_val;
+  const float track_cost = kinematic_constraint_profile_.max_velocity_limit[timestep] < 0.1F
+                             ? 0.0F
+                             : this->params_.track_coeff * track_val;
   const float heading_cost = this->params_.heading_coeff * computeHeadingValue(yaw, timestep);
   const float lateral_distance_cost =
     this->params_.lateral_distance_coeff * computeLateralDistanceValue(x_pos, y_pos);
@@ -810,7 +812,9 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   const float track_val = computeTrackValue(x_pos, y_pos, timestep);
   const float vel_diff = vel - ref_v_[timestep];
   const float speed_cost = this->params_.speed_coeff * (vel_diff * vel_diff);
-  const float track_cost = this->params_.track_coeff * track_val;
+  const float track_cost = kinematic_constraint_profile_.max_velocity_limit[timestep] < 0.1F
+                             ? 0.0F
+                             : this->params_.track_coeff * track_val;
   const float heading_cost = this->params_.heading_coeff * computeHeadingValue(yaw, timestep);
   const float lateral_distance_cost =
     this->params_.lateral_distance_coeff * computeLateralDistanceValue(x_pos, y_pos);
@@ -865,7 +869,9 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float yaw = y[static_cast<int>(O::YAW)];
   const float track_val = computeTrackValue(x_pos, y_pos, NUM_TIMESTEPS - 1);
   const float track_cost =
-    this->params_.track_coeff * track_val * this->params_.track_terminal_scale;
+    kinematic_constraint_profile_.max_velocity_limit[NUM_TIMESTEPS - 1] < 0.1F
+      ? 0.0F
+      : this->params_.track_coeff * track_val * this->params_.track_terminal_scale;
   const float heading_cost =
     this->params_.heading_coeff * computeHeadingValue(yaw, NUM_TIMESTEPS - 1) * 10.0F;
   const float lateral_distance_cost =

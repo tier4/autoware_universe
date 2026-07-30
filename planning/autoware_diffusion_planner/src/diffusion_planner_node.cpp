@@ -52,9 +52,11 @@ namespace
 {
 autoware::mppi_optimizer::FirstOrderDubinsMppiKinematicLimits make_mppi_kinematic_limits(
   const VelocityLimit::ConstSharedPtr & external_limit, const Trajectory & trajectory,
-  const autoware::avoidance_target_detector::ExtendedRouteHandler & route_handler)
+  const autoware::avoidance_target_detector::ExtendedRouteHandler & route_handler,
+  const bool allow_emergency_longitudinal_override)
 {
   autoware::mppi_optimizer::FirstOrderDubinsMppiKinematicLimits result;
+  result.allow_emergency_longitudinal_override = allow_emergency_longitudinal_override;
   if (external_limit) {
     if (std::isfinite(external_limit->max_velocity) && external_limit->max_velocity >= 0.0F) {
       result.max_velocity.push_back(external_limit->max_velocity);
@@ -733,8 +735,21 @@ void DiffusionPlanner::on_timer()
       const auto drivable_area_subset =
         get_drivable_area_subset(drivable_area_rtree_, planner_output.trajectory, margin);
       const auto external_velocity_limit = sub_external_velocity_limit_.take_data();
+      const auto first_traffic_light = core_->get_first_traffic_light_on_route(*frame_context);
+      const bool has_red_traffic_light = std::any_of(
+        first_traffic_light.elements.begin(), first_traffic_light.elements.end(),
+        [](const auto & element) {
+          return element.color == autoware_perception_msgs::msg::TrafficLightElement::RED;
+        });
+      const bool has_explicit_emergency_source =
+        !avoidance_targets.objects.empty() || has_red_traffic_light;
       const auto dynamic_limits = make_mppi_kinematic_limits(
-        external_velocity_limit, planner_output.trajectory, *extended_route_handler_);
+        external_velocity_limit, planner_output.trajectory, *extended_route_handler_,
+        has_explicit_emergency_source);
+      // TODO: implement the filter_far_away_objects function that returns all objects that are
+      // within the margin from the trajectory points const auto all_targets =
+      // filter_far_away_objects(avoidance_targets, driving_along_targets,
+      // planner_output.trajectory, margin);
 
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
