@@ -471,7 +471,7 @@ DracArtifact assess(
 
   for (const auto & predicted_object : predicted_objects.objects) {
     const auto & drac_params = drac_param_map.at(to_type_string(predicted_object.classification));
-    if (!drac_params.enable_assessment) {
+    if (!drac_params.target_shape_types.contains(predicted_object.shape.type)) {
       continue;
     }
 
@@ -560,7 +560,7 @@ RssArtifact assess(
 
   for (const auto & object : context.predicted_objects->objects) {
     const auto & rss_params = rss_param_map.at(to_type_string(object.classification));
-    if (!rss_params.enable_assessment) {
+    if (!rss_params.target_shape_types.contains(object.shape.type)) {
       continue;
     }
 

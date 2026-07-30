@@ -88,13 +88,17 @@ validator:
             read_only: false
       enable_assessment:
         base:
-          &drac_ea {
-            type: bool,
-            default_value: true,
-            description: DRAC enable_assessment per class,
+          &drac_ea_base {
+            type: string_array,
+            default_value: [bbox],
+            description: 'DRAC target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.',
             read_only: false,
           }
-        unknown: *drac_ea
+        unknown: &drac_ea
+          type: string_array
+          default_value: []
+          description: DRAC target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.
+          read_only: false
         car: *drac_ea
         truck: *drac_ea
         bus: *drac_ea
@@ -282,13 +286,17 @@ validator:
     rss:
       enable_assessment:
         base:
-          &rss_ea {
-            type: bool,
-            default_value: true,
-            description: RSS enable_assessment per class,
+          &rss_ea_base {
+            type: string_array,
+            default_value: [bbox, polygon],
+            description: 'RSS target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.',
             read_only: false,
           }
-        unknown: *rss_ea
+        unknown: &rss_ea
+          type: string_array
+          default_value: []
+          description: RSS target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.
+          read_only: false
         car: *rss_ea
         truck: *rss_ea
         bus: *rss_ea
