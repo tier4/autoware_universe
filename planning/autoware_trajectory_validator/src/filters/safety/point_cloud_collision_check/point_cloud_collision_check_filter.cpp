@@ -35,10 +35,11 @@ namespace autoware::trajectory_validator::plugin::safety
 namespace polygon_utils = autoware::motion_velocity_planner::polygon_utils;
 namespace utils = autoware::motion_velocity_planner::utils;
 
-using point_cloud_collision_check::convert_pointcloud_to_map_frame;
 using point_cloud_collision_check::emit_debug_markers;
+using point_cloud_collision_check::filter_pointcloud_by_class_id;
 using point_cloud_collision_check::Point2d;
 using point_cloud_collision_check::RSSParam;
+using point_cloud_collision_check::transform_pointcloud_to_map_frame;
 
 namespace
 {
@@ -295,7 +296,8 @@ std::vector<StopObstacle> PointCloudCollisionCheckFilter::filter_stop_obstacle_f
     filtering_param.lateral_margin.nominal_margin) {
     RCLCPP_WARN_ONCE(
       logger_,
-      "pointcloud preprocessing lateral margin in point_cloud_collision_check_filter (%f) is smaller "
+      "pointcloud preprocessing lateral margin in point_cloud_collision_check_filter (%f) is "
+      "smaller "
       "than obstacle_stop_module param (%f)",
       point_cloud.preprocess_params_.filter_by_trajectory_polygon.lateral_margin,
       filtering_param.lateral_margin.nominal_margin);
@@ -441,12 +443,14 @@ void PointCloudCollisionCheckFilter::update_planner_data(
     planner_data_->is_driving_forward = is_driving_forward.value();
   }
 
+  const auto class_filtered_pointcloud =
+    filter_pointcloud_by_class_id(*context.segmented_pointcloud, planner_data_->excluded_class_ids);
+  auto no_ground_pointcloud =
+    transform_pointcloud_to_map_frame(class_filtered_pointcloud, context.odometry->pose.pose);
+
   // motion_velocity_planner/node.cpp:176-195
   planner_data_->no_ground_pointcloud.preprocess_pointcloud(
-    convert_pointcloud_to_map_frame(
-      *context.segmented_pointcloud, context.odometry->pose.pose,
-      planner_data_->excluded_class_ids),
-    raw_trajectory_points, planner_data_->current_odometry,
+    std::move(no_ground_pointcloud), raw_trajectory_points, planner_data_->current_odometry,
     planner_data_->calculate_min_deceleration_distance(0.0).value_or(0.0),
     planner_data_->vehicle_info_, planner_data_->trajectory_polygon_collision_check,
     planner_data_->ego_nearest_dist_threshold, planner_data_->ego_nearest_yaw_threshold);
@@ -466,10 +470,9 @@ bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
     }
   }
 
-  required_distance = stop_planning_param_.stop_margin + calc_minimum_distance_to_stop(
-                        twist.linear.x, 
-                        common_param_.max_accel,
-                         common_param_.min_accel);
+  required_distance =
+    stop_planning_param_.stop_margin +
+    calc_minimum_distance_to_stop(twist.linear.x, common_param_.max_accel, common_param_.min_accel);
 
   // 衝突距離が必要制動距離 + stop_margin を下回れば STOP REQUIRED（infeasible）。
   if (nearest_dist_to_collide.has_value() && *nearest_dist_to_collide < required_distance) {
@@ -527,7 +530,6 @@ void PointCloudCollisionCheckFilter::update_parameters(const validator::Params &
   planner_data_->update_parameters(p);
 
   enable_debug_markers_ = p.debug.enable_markers;
-
 }
 }  // namespace autoware::trajectory_validator::plugin::safety
 

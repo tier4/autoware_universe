@@ -19,6 +19,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/motion_velocity_planner_common/polygon_utils.hpp>
 #include <autoware/motion_velocity_planner_common/utils.hpp>
+#include <autoware_utils_pcl/transforms.hpp>
 
 #include <sensor_msgs/msg/point_field.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
@@ -33,11 +34,9 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <limits>
 #include <memory>
 #include <optional>
-#include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -47,62 +46,6 @@ namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_
 namespace
 {
 namespace bg = boost::geometry;
-
-// PointField を名前で探す。無ければ nullopt
-std::optional<sensor_msgs::msg::PointField> find_field(
-  const sensor_msgs::msg::PointCloud2 & cloud, const std::string & name)
-{
-  for (const auto & field : cloud.fields) {
-    if (field.name == name) {
-      return field;
-    }
-  }
-  return std::nullopt;
-}
-
-// 任意の PointField 数値型を int として読む
-std::int64_t read_field_as_int(const std::uint8_t * ptr, const std::uint8_t datatype)
-{
-  using PF = sensor_msgs::msg::PointField;
-  switch (datatype) {
-    case PF::INT8:
-      return static_cast<std::int64_t>(*reinterpret_cast<const std::int8_t *>(ptr));
-    case PF::UINT8:
-      return static_cast<std::int64_t>(*ptr);
-    case PF::INT16: {
-      std::int16_t v;
-      std::memcpy(&v, ptr, sizeof(v));
-      return static_cast<std::int64_t>(v);
-    }
-    case PF::UINT16: {
-      std::uint16_t v;
-      std::memcpy(&v, ptr, sizeof(v));
-      return static_cast<std::int64_t>(v);
-    }
-    case PF::INT32: {
-      std::int32_t v;
-      std::memcpy(&v, ptr, sizeof(v));
-      return static_cast<std::int64_t>(v);
-    }
-    case PF::UINT32: {
-      std::uint32_t v;
-      std::memcpy(&v, ptr, sizeof(v));
-      return static_cast<std::int64_t>(v);
-    }
-    case PF::FLOAT32: {
-      float v;
-      std::memcpy(&v, ptr, sizeof(v));
-      return static_cast<std::int64_t>(std::lround(v));
-    }
-    case PF::FLOAT64: {
-      double v;
-      std::memcpy(&v, ptr, sizeof(v));
-      return static_cast<std::int64_t>(std::llround(v));
-    }
-    default:
-      return 0;
-  }
-}
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr crop_by_monolithic_trajectory_polygon(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
@@ -239,54 +182,73 @@ std::vector<pcl::PointIndices> make_individual_cluster_indices(
 
 }  // namespace
 
-// [plugin 固有] 移植元 node.cpp:230-259（process_no_ground_pointcloud）に対応する。
-// 入力点群のフォーマットが一定でないため field は名前で読み、class_id フィールドが在るときのみ
-// excluded_class_ids の点を除外する。
-pcl::PointCloud<pcl::PointXYZ> convert_pointcloud_to_map_frame(
-  const sensor_msgs::msg::PointCloud2 & cloud, const geometry_msgs::msg::Pose & base_link_to_map,
-  const std::vector<std::int64_t> & excluded_class_ids)
+// [plugin 固有] class_id フィールド（UINT8、ptv3 出力）が在るときのみ
+// excluded_class_ids の点を除外する。無ければ全点を通す。
+pcl::PointCloud<pcl::PointXYZ> filter_pointcloud_by_class_id(
+  const sensor_msgs::msg::PointCloud2 & cloud, const std::vector<std::int64_t> & excluded_class_ids)
 {
   pcl::PointCloud<pcl::PointXYZ> out;
   out.header = pcl_conversions::toPCL(cloud.header);
-  out.header.frame_id = "map";
   const size_t num_points = static_cast<size_t>(cloud.width) * cloud.height;
   if (num_points == 0) {
     return out;
   }
 
-  const auto & p = base_link_to_map.position;
-  const auto & q = base_link_to_map.orientation;
-  const Eigen::Affine3d affine =
-    Eigen::Translation3d(p.x, p.y, p.z) * Eigen::Quaterniond(q.w, q.x, q.y, q.z).normalized();
-
-  const auto class_field = find_field(cloud, "class_id");
+  const bool has_class_id = std::any_of(
+    cloud.fields.begin(), cloud.fields.end(), [](const auto & field) {
+      return field.name == "class_id" &&
+             field.datatype == sensor_msgs::msg::PointField::UINT8;
+    });
   const std::unordered_set<std::int64_t> excluded(
     excluded_class_ids.begin(), excluded_class_ids.end());
 
   sensor_msgs::PointCloud2ConstIterator<float> it_x(cloud, "x");
   sensor_msgs::PointCloud2ConstIterator<float> it_y(cloud, "y");
   sensor_msgs::PointCloud2ConstIterator<float> it_z(cloud, "z");
+  std::optional<sensor_msgs::PointCloud2ConstIterator<std::uint8_t>> it_class;
+  if (has_class_id && !excluded.empty()) {
+    it_class.emplace(cloud, "class_id");
+  }
 
   out.points.reserve(num_points);
   for (size_t i = 0; i < num_points; ++i, ++it_x, ++it_y, ++it_z) {
-    if (class_field && !excluded.empty()) {
-      const std::uint8_t * cls_ptr = &cloud.data[i * cloud.point_step + class_field->offset];
-      if (excluded.count(read_field_as_int(cls_ptr, class_field->datatype)) > 0) {
+    if (it_class) {
+      const auto class_id = static_cast<std::int64_t>(**it_class);
+      ++(*it_class);
+      if (excluded.count(class_id) > 0) {
         continue;
       }
     }
     if (!std::isfinite(*it_x) || !std::isfinite(*it_y) || !std::isfinite(*it_z)) {
       continue;
     }
-    const Eigen::Vector3d point_map = affine * Eigen::Vector3d(*it_x, *it_y, *it_z);
-    out.points.emplace_back(
-      static_cast<float>(point_map.x()), static_cast<float>(point_map.y()),
-      static_cast<float>(point_map.z()));
+    out.points.emplace_back(*it_x, *it_y, *it_z);
   }
   out.width = out.points.size();
   out.height = 1;
   out.is_dense = false;
   return out;
+}
+
+// motion_velocity_planner/node.cpp:250-258（process_no_ground_pointcloud の変換部）
+pcl::PointCloud<pcl::PointXYZ> transform_pointcloud_to_map_frame(
+  const pcl::PointCloud<pcl::PointXYZ> & cloud, const geometry_msgs::msg::Pose & base_link_to_map)
+{
+  const auto & p = base_link_to_map.position;
+  const auto & q = base_link_to_map.orientation;
+  const Eigen::Affine3d base_link_to_map_affine =
+    Eigen::Translation3d(p.x, p.y, p.z) * Eigen::Quaterniond(q.w, q.x, q.y, q.z).normalized();
+  const Eigen::Affine3f affine = base_link_to_map_affine.cast<float>();
+
+  pcl::PointCloud<pcl::PointXYZ> pc_transformed;
+  if (!cloud.empty()) {
+    autoware_utils_pcl::transform_pointcloud(cloud, pc_transformed, affine);
+  }
+
+  pc_transformed.header = cloud.header;
+  pc_transformed.header.frame_id = "map";
+
+  return pc_transformed;
 }
 
 // motion_velocity_planner_common/planner_data.cpp:239-260

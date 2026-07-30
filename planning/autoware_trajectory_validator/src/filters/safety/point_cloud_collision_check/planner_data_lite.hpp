@@ -104,11 +104,16 @@ struct PointcloudPreprocessParams
   } euclidean_clustering;
 };
 
-/// @brief ptv3 PointCloud2 を名前ベースで読み、map 系の pcl 点群にする。
-/// class_id フィールドが在るときのみ excluded_class_ids の点を除外する。
-pcl::PointCloud<pcl::PointXYZ> convert_pointcloud_to_map_frame(
-  const sensor_msgs::msg::PointCloud2 & cloud, const geometry_msgs::msg::Pose & base_link_to_map,
+/// @brief ptv3 PointCloud2 を名前ベースで読み、入力 frame のまま pcl 点群にする。
+/// class_id（UINT8）フィールドが在るときのみ excluded_class_ids の点を除外する。
+pcl::PointCloud<pcl::PointXYZ> filter_pointcloud_by_class_id(
+  const sensor_msgs::msg::PointCloud2 & cloud,
   const std::vector<std::int64_t> & excluded_class_ids);
+
+/// @brief 点群を map 系へ変換する。移植元は TF を引くが、plugin は TF buffer を持たないため
+/// odometry.pose（base_link→map）を affine として使う。
+pcl::PointCloud<pcl::PointXYZ> transform_pointcloud_to_map_frame(
+  const pcl::PointCloud<pcl::PointXYZ> & cloud, const geometry_msgs::msg::Pose & base_link_to_map);
 
 struct PlannerData
 {
