@@ -39,7 +39,10 @@ using VirtualTrafficLight = lanelet::autoware::VirtualTrafficLight;
 
 tier4_v2x_msgs::msg::KeyValue create_key_value(const std::string & key, const std::string & value)
 {
-  return tier4_v2x_msgs::build<tier4_v2x_msgs::msg::KeyValue>().key(key).value(value);
+  tier4_v2x_msgs::msg::KeyValue key_value;
+  key_value.key = key;
+  key_value.value = value;
+  return key_value;
 }
 
 std::optional<double> find_last_collision_before_line(
@@ -434,7 +437,7 @@ bool VirtualTrafficLightStop::insert_stop_velocity(
     const auto start_s =
       is_stopped && stop_distance < planner_param_.hold_stop_margin_distance ? ego_s : stop_s;
     modified_path.longitudinal_velocity_mps().range(start_s, modified_path.length()).set(0.0);
-    stop_pose = modified_path.compute(std::clamp(stop_s, 0.0, modified_path.length())).point.pose;
+    stop_pose = modified_path.compute(std::clamp(stop_s, 0.0, modified_path.length())).pose;
   }
 
   traj_points = modified_path.restore();
