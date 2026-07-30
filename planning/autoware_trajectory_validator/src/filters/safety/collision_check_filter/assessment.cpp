@@ -245,7 +245,7 @@ RiskLevel::_level_type identify_risk_level(
   const DracParams::EgoDracAcceleration & acceleration_params)
 {
   if (!required_acceleration.has_value()) {
-    return acceleration_params.enable_abandon ? RiskLevel::HIGH_CAUTION : RiskLevel::FATAL;
+    return acceleration_params.enable_abandon ? RiskLevel::LOW_CAUTION : RiskLevel::FATAL;
   }
 
   if (required_acceleration >= acceleration_params.safe_limit) {
