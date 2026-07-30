@@ -119,9 +119,15 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     rclcpp::Time(context.odometry->header.stamp), global_params_.time_resolution,
     *vehicle_info_ptr_);
 
+  // Object trajectories are independent of the ego candidate trajectory, so they are memoized per
+  // object and reused across the multiple is_feasible() calls of one perception frame; the cache
+  // is discarded when the PredictedObjects timestamp changes.
+  object_trajectory_cache_.update(
+    rclcpp::Time(context.predicted_objects->header.stamp), global_params_.time_resolution);
+
   const auto drac_artifact = collision_timing_assessment::assess(
-    ego_trajectory_cache, candidate_trajectory.turn_indicators_command, *context.odometry,
-    *context.predicted_objects, stop_tracker_, drac_param_map_, global_params_);
+    ego_trajectory_cache, object_trajectory_cache_, candidate_trajectory.turn_indicators_command,
+    *context.odometry, *context.predicted_objects, stop_tracker_, drac_param_map_, global_params_);
   const auto rss_artifact = rss_deceleration::assess(ego_trajectory_cache, context, rss_param_map_);
 
   auto planning_factors = reporter::process_collision_artifacts(

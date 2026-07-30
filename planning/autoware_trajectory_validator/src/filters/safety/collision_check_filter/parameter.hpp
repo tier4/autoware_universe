@@ -173,10 +173,23 @@ struct DracParams
     bool enable_abandon{false};
   };
 
+  struct ObjectDracAcceleration
+  {
+    double safe_limit{-0.5};
+    double low_caution_limit{-1.5};
+  };
+
   struct DracAssessment
   {
     bool enable_assessment{true};
     EgoDracAcceleration ego_drac_assessment{};
+  };
+
+  // DracAssessment that, on top of the ego braking, also evaluates whether the object braking on
+  // its own resolves the collision.
+  struct DracAssessmentWithObjectBraking : DracAssessment
+  {
+    ObjectDracAcceleration object_drac_acceleration{};
   };
 
   struct ConstantCurvature
@@ -199,7 +212,7 @@ struct DracParams
     MutualYieldArbitration mutual_yield_timeout_arbitration{};
     DracAssessment ego_prioritized_ego_earlier{};
     DracAssessment ego_prioritized_object_earlier{};
-    DracAssessment object_prioritized_ego_earlier{};
+    DracAssessmentWithObjectBraking object_prioritized_ego_earlier{};
     DracAssessment object_prioritized_object_earlier{};
   };
 
@@ -256,6 +269,14 @@ struct DracParams
       drac.map_based.ego_prioritized_object_earlier, map_based.ego_prioritized_object_earlier);
     parse_assessment(
       drac.map_based.object_prioritized_ego_earlier, map_based.object_prioritized_ego_earlier);
+    const auto & object_drac_acceleration =
+      drac.map_based.object_prioritized_ego_earlier.object_drac_acceleration;
+    auto & output_object_drac_acceleration =
+      map_based.object_prioritized_ego_earlier.object_drac_acceleration;
+    output_object_drac_acceleration.safe_limit =
+      extract_labeled_param<double>(object_drac_acceleration.safe_limit, key);
+    output_object_drac_acceleration.low_caution_limit =
+      extract_labeled_param<double>(object_drac_acceleration.low_caution_limit, key);
     parse_assessment(
       drac.map_based.object_prioritized_object_earlier,
       map_based.object_prioritized_object_earlier);

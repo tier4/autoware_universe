@@ -100,38 +100,66 @@
       "required": [],
       "additionalProperties": false
     },
+    "enable_drac_assessment": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable this DRAC assessment condition."
+    },
+    "ego_drac_acceleration": {
+      "type": "object",
+      "properties": {
+        "safe_limit": {
+          "type": "number",
+          "description": "Ego acceleration limit for a safe DRAC assessment [m/s²]."
+        },
+        "danger_limit": {
+          "type": "number",
+          "description": "Ego acceleration limit for a dangerous DRAC assessment [m/s²]."
+        },
+        "fatal_limit": {
+          "type": "number",
+          "description": "Ego acceleration limit for a fatal DRAC assessment [m/s²]."
+        },
+        "enable_abandon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Treat an unavoidable collision as high caution instead of fatal."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "object_drac_acceleration": {
+      "type": "object",
+      "properties": {
+        "safe_limit": {
+          "type": "number",
+          "description": "Required object deceleration at or milder than this is classified as safe [m/s²]."
+        },
+        "low_caution_limit": {
+          "type": "number",
+          "description": "Required object deceleration down to this is classified as low caution [m/s²]."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
     "drac_assessment": {
       "type": "object",
       "properties": {
-        "enable_assessment": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable this DRAC assessment condition."
-        },
-        "ego_drac_acceleration": {
-          "type": "object",
-          "properties": {
-            "safe_limit": {
-              "type": "number",
-              "description": "Ego acceleration limit for a safe DRAC assessment [m/s²]."
-            },
-            "danger_limit": {
-              "type": "number",
-              "description": "Ego acceleration limit for a dangerous DRAC assessment [m/s²]."
-            },
-            "fatal_limit": {
-              "type": "number",
-              "description": "Ego acceleration limit for a fatal DRAC assessment [m/s²]."
-            },
-            "enable_abandon": {
-              "type": "boolean",
-              "default": false,
-              "description": "Treat an unavoidable collision as high caution instead of fatal."
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        }
+        "enable_assessment": { "$ref": "#/definitions/enable_drac_assessment" },
+        "ego_drac_acceleration": { "$ref": "#/definitions/ego_drac_acceleration" }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "drac_assessment_with_object_braking": {
+      "type": "object",
+      "description": "DRAC assessment that also evaluates the object braking on its own.",
+      "properties": {
+        "enable_assessment": { "$ref": "#/definitions/enable_drac_assessment" },
+        "ego_drac_acceleration": { "$ref": "#/definitions/ego_drac_acceleration" },
+        "object_drac_acceleration": { "$ref": "#/definitions/object_drac_acceleration" }
       },
       "required": [],
       "additionalProperties": false
@@ -294,7 +322,7 @@
                       "$ref": "#/definitions/drac_assessment"
                     },
                     "object_prioritized_ego_earlier": {
-                      "$ref": "#/definitions/drac_assessment"
+                      "$ref": "#/definitions/drac_assessment_with_object_braking"
                     },
                     "object_prioritized_object_earlier": {
                       "$ref": "#/definitions/drac_assessment"

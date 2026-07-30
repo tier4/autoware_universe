@@ -30,6 +30,8 @@ struct FirstOrderDubinsMppiRuntimeOptions
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
+  /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle). */
+  bool use_last_control_as_nominal{false};
 };
 
 }  // namespace autoware::mppi_optimizer

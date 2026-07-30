@@ -19,6 +19,7 @@
 #include "parameter.hpp"
 #include "reporter.hpp"
 #include "stop_tracker.hpp"
+#include "trajectory_utils.hpp"
 #include "types.hpp"
 
 #include <vector>
@@ -43,6 +44,10 @@ private:
 
   reporter::ContinuousDetectionTimes rss_continuous_times_;
   reporter::ContinuousDetectionTimes drac_continuous_times_;
+
+  // Retained across is_feasible() calls so object trajectories are reused within one perception
+  // frame; invalidated via update() when the PredictedObjects timestamp changes.
+  trajectory::ObjectTrajectoryCache object_trajectory_cache_;
 
   void clear_detection_times();
 
