@@ -22,10 +22,20 @@
 
 #include <geometry_msgs/msg/twist.hpp>
 
+#include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+using point_cloud_collision_check::CommonParam;
+using point_cloud_collision_check::ObstacleFilteringParam;
+using point_cloud_collision_check::PlannerData;
+using point_cloud_collision_check::PointcloudSegmentationParam;
+using point_cloud_collision_check::StopObstacle;
+using point_cloud_collision_check::StopObstacleClassification;
+using point_cloud_collision_check::StopPlanningParam;
+
 /**
  * @brief PointCloudCollisionCheckFilter class - checks the trajectory against the semantic
  * segmentation point cloud produced by the perception pipeline.
@@ -49,7 +59,7 @@ private:
 
   /// @brief planner_data_ のパラメータ由来フィールドを設定する。
   /// 移植元では PlannerData のコンストラクタと on_set_param が担う。
-  void set_planner_data_param();
+  void set_planner_data_param(const validator::Params::PointCloudCollisionCheck & p);
 
   /// @brief planner_data_ のトピック由来フィールドを更新し、点群の前処理まで行う。
   /// 移植元では node の update_planner_data が担う。
@@ -57,16 +67,22 @@ private:
     const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context);
 
   /// @brief 点群から停止対象を抽出する。移植元 ObstacleStopModule の plan() の点群経路。
-  std::vector<point_cloud_collision_check::StopObstacle> calc_obstacle_stop(
-    const std::vector<TrajectoryPoint> & raw_trajectory_points);
+  std::vector<StopObstacle> calc_obstacle_stop(
+    const std::vector<TrajectoryPoint> & raw_trajectory_points,
+    const std::shared_ptr<const PlannerData> planner_data);
 
   /// @brief 停止対象から停止可否を判定する。未実装のため現状は常に true を返す。
   bool judge_stop_feasibility(
-    const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
+    const std::vector<StopObstacle> & stop_obstacles,
     const geometry_msgs::msg::Twist & twist) const;
 
-  point_cloud_collision_check::Params params_{};
-  point_cloud_collision_check::PlannerData planner_data_{};
+  CommonParam common_param_{};
+  StopPlanningParam stop_planning_param_{};
+  std::unordered_map<StopObstacleClassification::Type, ObstacleFilteringParam>
+    obstacle_filtering_params_{};
+  PointcloudSegmentationParam pointcloud_segmentation_param_{};
+
+  std::shared_ptr<PlannerData> planner_data_{std::make_shared<PlannerData>()};
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
