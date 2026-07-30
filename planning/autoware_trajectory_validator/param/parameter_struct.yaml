@@ -783,16 +783,6 @@ validator:
         read_only: false
     pointcloud_preprocessing:
       filter_by_trajectory_polygon:
-        enable_monolithic_crop_box:
-          type: bool
-          default_value: false
-          description: If true, crop the pointcloud by a single enveloping trajectory box.
-          read_only: false
-        enable_multi_polygon_filtering:
-          type: bool
-          default_value: true
-          description: If true, filter the pointcloud by each one-step trajectory polygon.
-          read_only: false
         min_trajectory_length:
           type: double
           default_value: 30.0

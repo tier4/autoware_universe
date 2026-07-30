@@ -209,8 +209,6 @@
         ego_nearest_yaw_threshold: 1.046
       pointcloud_preprocessing:
         filter_by_trajectory_polygon:
-          enable_monolithic_crop_box: false
-          enable_multi_polygon_filtering: true
           min_trajectory_length: 30.0
           braking_distance_scale_factor: 1.5
           lateral_margin: 2.0

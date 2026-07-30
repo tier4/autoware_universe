@@ -24,8 +24,6 @@
 #include <sensor_msgs/msg/point_field.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
-#include <boost/geometry.hpp>
-
 #include <pcl/filters/crop_box.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/search/kdtree.h>
@@ -45,8 +43,6 @@ namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_
 {
 namespace
 {
-namespace bg = boost::geometry;
-
 pcl::PointCloud<pcl::PointXYZ>::Ptr crop_by_monolithic_trajectory_polygon(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
   const PointcloudPreprocessParams::FilterByTrajectoryPolygon & filter_by_trajectory_param,
@@ -86,56 +82,6 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr crop_by_monolithic_trajectory_polygon(
 
   auto ret_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
   crop_filter.filter(*ret_pointcloud_ptr);
-  return ret_pointcloud_ptr;
-}
-
-pcl::PointCloud<pcl::PointXYZ>::Ptr filter_by_multi_trajectory_polygon(
-  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
-  const std::vector<Polygon2d> & traj_polygons)
-{
-  auto ret_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
-  ret_pointcloud_ptr->header = input_pointcloud_ptr->header;
-  namespace bg = boost::geometry;
-  namespace bgi = boost::geometry::index;
-  using BoostPoint2D = bg::model::point<double, 2, bg::cs::cartesian>;
-  using BoostValue = std::pair<BoostPoint2D, size_t>;
-
-  std::vector<BoostValue> rtree_data;
-  rtree_data.reserve(input_pointcloud_ptr->points.size());
-
-  {
-    std::transform(
-      input_pointcloud_ptr->points.begin(), input_pointcloud_ptr->points.end(),
-      std::back_inserter(rtree_data), [i = 0](const pcl::PointXYZ & pt) mutable {
-        return std::make_pair(BoostPoint2D(pt.x, pt.y), i++);
-      });
-  }
-
-  bgi::rtree<BoostValue, bgi::quadratic<16>> rtree(rtree_data.begin(), rtree_data.end());
-
-  std::unordered_set<size_t> selected_indices;
-
-  std::for_each(
-    traj_polygons.begin(), traj_polygons.end(), [&](const Polygon2d & one_step_polygon) {
-      bg::model::box<BoostPoint2D> bbox;
-      bg::envelope(one_step_polygon, bbox);
-
-      std::vector<BoostValue> result_s;
-      rtree.query(bgi::intersects(bbox), std::back_inserter(result_s));
-
-      for (const auto & val : result_s) {
-        const BoostPoint2D & pt = val.first;
-        if (bg::within(pt, one_step_polygon)) {
-          selected_indices.insert(val.second);
-        }
-      }
-    });
-
-  ret_pointcloud_ptr->points.reserve(selected_indices.size());
-  std::transform(
-    selected_indices.begin(), selected_indices.end(),
-    std::back_inserter(ret_pointcloud_ptr->points),
-    [&](const size_t idx) { return input_pointcloud_ptr->points[idx]; });
   return ret_pointcloud_ptr;
 }
 
@@ -291,9 +237,7 @@ PlannerData::Pointcloud::filter_and_cluster_point_clouds(
 
   const auto & filter_by_trajectory_param = preprocess_params_.filter_by_trajectory_polygon;
   const auto & traj_poly_param = trajectory_polygon_collision_check;
-  if (
-    !raw_trajectory.empty() && (filter_by_trajectory_param.enable_monolithic_crop_box ||
-                                filter_by_trajectory_param.enable_multi_polygon_filtering)) {
+  if (!raw_trajectory.empty() && !ret_pointcloud_ptr->empty()) {
     const auto decimated_trajectory =
       autoware::motion_velocity_planner::utils::decimate_trajectory_points_from_ego(
         raw_trajectory, current_odometry.pose.pose, ego_nearest_dist_threshold,
@@ -316,16 +260,10 @@ PlannerData::Pointcloud::filter_and_cluster_point_clouds(
         filter_by_trajectory_param.lateral_margin, traj_poly_param.enable_to_consider_current_pose,
         traj_poly_param.time_to_convergence, traj_poly_param.decimate_trajectory_step_length);
 
-    if (filter_by_trajectory_param.enable_monolithic_crop_box && !ret_pointcloud_ptr->empty()) {
-      const auto input_pointcloud_ptr = ret_pointcloud_ptr;
-      ret_pointcloud_ptr = crop_by_monolithic_trajectory_polygon(
-        input_pointcloud_ptr, filter_by_trajectory_param, traj_polygons, decimated_trajectory,
-        vehicle_info);
-    }
-    if (filter_by_trajectory_param.enable_multi_polygon_filtering && !ret_pointcloud_ptr->empty()) {
-      const auto input_pointcloud_ptr = ret_pointcloud_ptr;
-      ret_pointcloud_ptr = filter_by_multi_trajectory_polygon(input_pointcloud_ptr, traj_polygons);
-    }
+    const auto input_pointcloud_ptr = ret_pointcloud_ptr;
+    ret_pointcloud_ptr = crop_by_monolithic_trajectory_polygon(
+      input_pointcloud_ptr, filter_by_trajectory_param, traj_polygons, decimated_trajectory,
+      vehicle_info);
   }
 
   const auto & downsample_params = preprocess_params_.downsample_by_voxel_grid;

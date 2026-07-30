@@ -55,10 +55,6 @@ struct PointcloudPreprocessParams
   explicit PointcloudPreprocessParams(const validator::Params::PointCloudCollisionCheck & p)
   {
     const auto & pp = p.pointcloud_preprocessing;
-    filter_by_trajectory_polygon.enable_monolithic_crop_box =
-      pp.filter_by_trajectory_polygon.enable_monolithic_crop_box;
-    filter_by_trajectory_polygon.enable_multi_polygon_filtering =
-      pp.filter_by_trajectory_polygon.enable_multi_polygon_filtering;
     filter_by_trajectory_polygon.min_trajectory_length =
       pp.filter_by_trajectory_polygon.min_trajectory_length;
     filter_by_trajectory_polygon.braking_distance_scale_factor =
@@ -81,8 +77,6 @@ struct PointcloudPreprocessParams
 
   struct FilterByTrajectoryPolygon
   {
-    bool enable_monolithic_crop_box{false};
-    bool enable_multi_polygon_filtering{false};
     double min_trajectory_length{};
     double braking_distance_scale_factor{};
     double lateral_margin{};
