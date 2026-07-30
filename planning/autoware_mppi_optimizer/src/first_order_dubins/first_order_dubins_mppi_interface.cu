@@ -914,6 +914,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const int pos_y_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y);
   const int yaw_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW);
   const int vel_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X);
+  const int steer_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE);
   const int accel_cmd_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
   const int steer_cmd_idx =
@@ -965,6 +966,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       use_final ? x_final(yaw_idx) : state_trajectory(yaw_idx, control_col + 1);
     const float tracked_v =
       use_final ? x_final(vel_x_idx) : state_trajectory(vel_x_idx, control_col + 1);
+    const float tracked_steer =
+      use_final ? x_final(steer_x_idx) : state_trajectory(steer_x_idx, control_col + 1);
 
     if (impl_->skip_if_invalid && crash_status == 0) {
       (void)impl_->cost.detectAndLatchCrash(
@@ -984,7 +987,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     out_point.pose.orientation = quaternionFromYaw(tracked_yaw);
     out_point.longitudinal_velocity_mps = tracked_v;
     out_point.acceleration_mps2 = u_opt_traj(accel_cmd_idx, control_col);
-    out_point.front_wheel_angle_rad = u_opt_traj(steer_cmd_idx, control_col);
+    out_point.front_wheel_angle_rad = tracked_steer;
     ++i;
   }
 
