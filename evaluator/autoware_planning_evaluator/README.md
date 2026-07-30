@@ -336,20 +336,20 @@ Additional useful information related to planning:
 
 ### Inputs
 
-| Name                             | Type                                                        | Description                                       |
-| -------------------------------- | ----------------------------------------------------------- | ------------------------------------------------- |
-| `~/input/trajectory`             | `autoware_planning_msgs::msg::Trajectory`                   | Main trajectory to evaluate                       |
-| `~/input/reference_trajectory`   | `autoware_planning_msgs::msg::Trajectory`                   | Reference trajectory to use for deviation metrics |
-| `~/input/objects`                | `autoware_perception_msgs::msg::PredictedObjects`           | Obstacles                                         |
-| `~/input/modified_goal`          | `autoware_planning_msgs::msg::PoseWithUuidStamped`          | Modified goal                                     |
-| `~/input/odometry`               | `nav_msgs::msg::Odometry`                                   | Current odometry of the vehicle                   |
-| `~/input/route`                  | `autoware_planning_msgs::msg::LaneletRoute`                 | Route information                                 |
-| `~/input/vector_map`             | `autoware_map_msgs::msg::LaneletMapBin`                     | Vector map information                            |
-| `~/input/acceleration`           | `geometry_msgs::msg::AccelWithCovarianceStamped`            | Current acceleration of the vehicle               |
-| `~/input/steering_status`        | `autoware_vehicle_msgs::msg::SteeringReport`                | Current steering of the vehicle                   |
-| `~/input/turn_indicators_status` | `autoware_vehicle_msgs::msg::TurnIndicatorsReport`          | Current blinker status of the vehicle             |
-| `~/input/validation_reports`     | `autoware_trajectory_validator::msg::ValidationReportArray` | Trajectory validation reports                     |
-| `{topic_prefix}/{module_name}`   | `autoware_internal_planning_msgs::msg::PlanningFactorArray` | Planning factors of each module to evaluate       |
+| Name                             | Type                                                          | Description                                       |
+| -------------------------------- | ------------------------------------------------------------- | ------------------------------------------------- |
+| `~/input/trajectory`             | `autoware_planning_msgs::msg::Trajectory`                     | Main trajectory to evaluate                       |
+| `~/input/reference_trajectory`   | `autoware_planning_msgs::msg::Trajectory`                     | Reference trajectory to use for deviation metrics |
+| `~/input/objects`                | `autoware_perception_msgs::msg::PredictedObjects`             | Obstacles                                         |
+| `~/input/modified_goal`          | `autoware_planning_msgs::msg::PoseWithUuidStamped`            | Modified goal                                     |
+| `~/input/odometry`               | `nav_msgs::msg::Odometry`                                     | Current odometry of the vehicle                   |
+| `~/input/route`                  | `autoware_planning_msgs::msg::LaneletRoute`                   | Route information                                 |
+| `~/input/vector_map`             | `autoware_map_msgs::msg::LaneletMapBin`                       | Vector map information                            |
+| `~/input/acceleration`           | `geometry_msgs::msg::AccelWithCovarianceStamped`              | Current acceleration of the vehicle               |
+| `~/input/steering_status`        | `autoware_vehicle_msgs::msg::SteeringReport`                  | Current steering of the vehicle                   |
+| `~/input/turn_indicators_status` | `autoware_vehicle_msgs::msg::TurnIndicatorsReport`            | Current blinker status of the vehicle             |
+| `~/input/validation_reports`     | `autoware_internal_planning_msgs::msg::ValidationReportArray` | Trajectory validation reports                     |
+| `{topic_prefix}/{module_name}`   | `autoware_internal_planning_msgs::msg::PlanningFactorArray`   | Planning factors of each module to evaluate       |
 
 ### Outputs
 

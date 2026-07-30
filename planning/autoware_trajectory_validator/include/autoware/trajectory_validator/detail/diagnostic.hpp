@@ -18,10 +18,11 @@
 #include "autoware/trajectory_validator/detail/risk_action.hpp"
 
 #include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
-#include <autoware_trajectory_validator/msg/validation_report.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/time.hpp>
+
+#include <autoware_internal_planning_msgs/msg/validation_report.hpp>
 
 #include <memory>
 #include <string>
@@ -131,7 +132,7 @@ public:
    * @param stamp Timestamp forwarded to each DiagnosticsInterface::publish call.
    */
   void update_and_publish(
-    const std::vector<autoware_trajectory_validator::msg::ValidationReport> & reports,
+    const std::vector<autoware_internal_planning_msgs::msg::ValidationReport> & reports,
     const rclcpp::Time & stamp);
 
 private:

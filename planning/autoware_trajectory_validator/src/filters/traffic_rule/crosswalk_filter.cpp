@@ -260,7 +260,7 @@ CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
   RiskLevel risk_level;
   risk_level.level = feasible ? RiskLevel::SAFE : RiskLevel::DANGER;
   metrics.push_back(
-    autoware_trajectory_validator::build<MetricReport>()
+    autoware_internal_planning_msgs::build<MetricReport>()
       .validator_name(get_name())
       .validator_category(category())
       .metric_name("check_crosswalk_obstruction")

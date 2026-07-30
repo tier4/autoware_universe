@@ -18,11 +18,11 @@
 #include "autoware/trajectory_validator/detail/diagnostic.hpp"
 
 #include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
-#include <autoware_trajectory_validator/msg/metric_report.hpp>
-#include <autoware_trajectory_validator/msg/risk_level.hpp>
-#include <autoware_trajectory_validator/msg/validation_report.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_planning_msgs/msg/metric_report.hpp>
+#include <autoware_internal_planning_msgs/msg/risk_level.hpp>
+#include <autoware_internal_planning_msgs/msg/validation_report.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 
 #include <chrono>
@@ -37,9 +37,9 @@ using autoware::trajectory_validator::Action;
 using autoware::trajectory_validator::build_diagnostic_interface_map;
 using autoware::trajectory_validator::FilterConfiguredActionsMap;
 using autoware::trajectory_validator::TrajectoryValidatorDiagnostic;
-using autoware_trajectory_validator::msg::MetricReport;
-using autoware_trajectory_validator::msg::RiskLevel;
-using autoware_trajectory_validator::msg::ValidationReport;
+using autoware_internal_planning_msgs::msg::MetricReport;
+using autoware_internal_planning_msgs::msg::RiskLevel;
+using autoware_internal_planning_msgs::msg::ValidationReport;
 using diagnostic_msgs::msg::DiagnosticArray;
 using diagnostic_msgs::msg::DiagnosticStatus;
 

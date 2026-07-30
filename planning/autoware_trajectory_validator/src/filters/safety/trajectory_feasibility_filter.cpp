@@ -197,7 +197,7 @@ MetricReport TrajectoryFeasibilityFilter::check_speed(
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("speed")
@@ -212,7 +212,7 @@ MetricReport TrajectoryFeasibilityFilter::check_lanelet_speed_limit(
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("lanelet_speed_limit")
@@ -227,7 +227,7 @@ MetricReport TrajectoryFeasibilityFilter::check_acceleration(
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("acceleration")
@@ -242,7 +242,7 @@ MetricReport TrajectoryFeasibilityFilter::check_deceleration(
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("deceleration")
@@ -257,7 +257,7 @@ MetricReport TrajectoryFeasibilityFilter::check_yaw_deviation(
     is_yaw_deviation_ok(traj_points, context, params_.max_yaw_deviation);
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("yaw_deviation")
@@ -273,7 +273,7 @@ MetricReport TrajectoryFeasibilityFilter::check_velocity_deviation(
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("velocity_deviation")
@@ -289,7 +289,7 @@ MetricReport TrajectoryFeasibilityFilter::check_lateral_acceleration(
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("lateral_acceleration")
@@ -305,7 +305,7 @@ MetricReport TrajectoryFeasibilityFilter::check_distance_deviation(
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("distance_deviation")
@@ -321,7 +321,7 @@ MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("steering_angle")
@@ -337,7 +337,7 @@ MetricReport TrajectoryFeasibilityFilter::check_steering_rate(
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
-  return autoware_trajectory_validator::build<MetricReport>()
+  return autoware_internal_planning_msgs::build<MetricReport>()
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("steering_rate")

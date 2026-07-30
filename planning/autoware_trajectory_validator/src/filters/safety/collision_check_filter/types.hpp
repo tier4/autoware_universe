@@ -17,11 +17,11 @@
 
 #include "parameter.hpp"
 
-#include <autoware_trajectory_validator/msg/risk_level.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 
+#include <autoware_internal_planning_msgs/msg/risk_level.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -35,7 +35,7 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-using autoware_trajectory_validator::msg::RiskLevel;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using autoware_utils_geometry::Box2d;
 using autoware_utils_geometry::MultiPoint2d;
 using autoware_utils_geometry::Point2d;
