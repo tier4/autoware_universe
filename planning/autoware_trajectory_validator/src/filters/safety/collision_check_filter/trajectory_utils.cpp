@@ -340,6 +340,14 @@ FootprintTrajectory compute_footprint_trajectory(
 std::tuple<size_t, size_t, double> resolve_interpolation(
   const std::vector<double> & values, const double target_value)
 {
+  if (values.size() < 2U) {
+    throw std::invalid_argument("values must contain at least two elements");
+  }
+
+  if (!std::isfinite(target_value)) {
+    throw std::invalid_argument("target_value must be finite");
+  }
+
   size_t lower_idx = 0;
   size_t upper_idx = 1;
   double ratio = 0.0;
@@ -403,11 +411,6 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_time(
     return InterpolatedState{0.0, point.pose, point.longitudinal_velocity_mps};
   }
 
-  if (time_from_refs_.empty()) {
-    throw std::invalid_argument(
-      "reference_time_ must be set before calling interpolate_state_from_time");
-  }
-
   const double target_time_from_ref = (target_time - reference_time_).seconds();
   const auto [lower_idx, upper_idx, ratio] =
     resolve_interpolation(time_from_refs_, target_time_from_ref);
@@ -431,11 +434,6 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_dist(
   if (trajectory_points_.size() == 1) {
     const auto & point = trajectory_points_.front();
     return InterpolatedState{0.0, point.pose, point.longitudinal_velocity_mps};
-  }
-
-  if (dist_from_fronts_.empty()) {
-    throw std::invalid_argument(
-      "dist_from_fronts_ must be set before calling interpolate_state_from_dist");
   }
 
   const auto [lower_idx, upper_idx, ratio] = resolve_interpolation(dist_from_fronts_, target_dist);
@@ -573,32 +571,42 @@ EgoTrajectoryCache::EgoTrajectoryCache(
   }
 }
 
+namespace
+{
+// Memoization body shared by every trajectory cache. `cache_key` is only used to look up and to
+// insert the entry; the values needed to build the trajectory are captured by `generate`, which is
+// invoked on a cache miss only.
+template <typename Cache, typename CacheKey, typename Generator>
+const TrajectoryData & get_or_emplace_trajectory(
+  Cache & cache, const CacheKey & cache_key, Generator && generate)
+{
+  const auto it = cache.find(cache_key);
+  if (it != cache.end()) {
+    return it->second;
+  }
+  return cache.emplace(cache_key, generate()).first->second;
+}
+}  // namespace
+
 const TrajectoryData & EgoTrajectoryCache::get_or_compute_trajectory_data(
   const EgoTrajectoryGenerationParams & params) const
 {
-  const auto it = trajectory_data_cache_.find(params);
-  if (it != trajectory_data_cache_.end()) {
-    return it->second;
-  }
-
-  const auto [inserted_it, inserted] = trajectory_data_cache_.emplace(
-    params, generate_ego_trajectory(
-              trajectory_interpolator_, sampling_reference_time_, current_time_, time_resolution_,
-              vehicle_info_, params));
-  static_cast<void>(inserted);
-  return inserted_it->second;
+  return get_or_emplace_trajectory(trajectory_data_cache_, params, [&]() {
+    return generate_ego_trajectory(
+      trajectory_interpolator_, sampling_reference_time_, current_time_, time_resolution_,
+      vehicle_info_, params);
+  });
 }
 
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   const autoware_perception_msgs::msg::PredictedPath & predicted_path, double braking_lag,
-  double assumed_acceleration, rclcpp::Duration start_time, double max_time,
-  const builtin_interfaces::msg::Time & stamp, double time_resolution)
+  double assumed_acceleration, double max_time, const rclcpp::Time & stamp, double time_resolution)
 
 {
   auto [times, distances] = time_distance::compute_motion_profile_1d(
     predicted_object.kinematics.initial_twist_with_covariance.twist, braking_lag,
-    assumed_acceleration, start_time.seconds(),
+    assumed_acceleration, 0.0,
     std::min(
       max_time, predicted_path.path.size() * rclcpp::Duration(predicted_path.time_step).seconds()),
     time_resolution);
@@ -614,12 +622,11 @@ TrajectoryData generate_predicted_path_trajectory(
 
 TrajectoryData generate_constant_curvature_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
-  double assumed_acceleration, rclcpp::Duration start_time, double max_time,
-  const builtin_interfaces::msg::Time & stamp, double time_resolution)
+  double assumed_acceleration, double max_time, const rclcpp::Time & stamp, double time_resolution)
 {
   auto [times, distances] = time_distance::compute_motion_profile_1d(
     predicted_object.kinematics.initial_twist_with_covariance.twist, braking_lag,
-    assumed_acceleration, start_time.seconds(), max_time, time_resolution);
+    assumed_acceleration, 0.0, max_time, time_resolution);
 
   auto poses = pose::constant_curvature_predictor::compute(
     predicted_object.kinematics.initial_pose_with_covariance.pose,
@@ -630,6 +637,52 @@ TrajectoryData generate_constant_curvature_trajectory(
     TrajectoryIdentification{
       predicted_object, stamp, "constant_curvature_path", assumed_acceleration},
     std::move(times), std::move(distances), std::move(poses), std::move(footprints));
+}
+
+void ObjectTrajectoryCache::update(const rclcpp::Time & frame_stamp, const double time_resolution)
+{
+  if (time_resolution <= 0.0) {
+    throw std::invalid_argument("time_resolution must be positive");
+  }
+
+  // A new perception frame invalidates every memoized trajectory, so the whole cache is cleared.
+  // time_resolution is assumed fixed, hence it is not part of the invalidation condition.
+  const bool frame_changed = !frame_stamp_.has_value() || *frame_stamp_ != frame_stamp;
+  if (frame_changed) {
+    trajectory_data_cache_.clear();
+    frame_stamp_ = frame_stamp;
+  }
+  time_resolution_ = time_resolution;
+}
+
+const TrajectoryData & ObjectTrajectoryCache::get_or_compute_predicted_path_trajectory(
+  const autoware_perception_msgs::msg::PredictedObject & object, const size_t predicted_path_index,
+  const double braking_lag, const double assumed_acceleration, const double max_time) const
+{
+  const MapBasedTrajectoryParams params{
+    predicted_path_index, braking_lag, assumed_acceleration, max_time};
+
+  auto & cache = trajectory_data_cache_[object.object_id.uuid].map_based;
+  // The perception frame timestamp is forwarded as the trajectory stamp (used by the reporter).
+  return get_or_emplace_trajectory(cache, params, [&]() {
+    return generate_predicted_path_trajectory(
+      object, object.kinematics.predicted_paths.at(predicted_path_index), braking_lag,
+      assumed_acceleration, max_time, frame_stamp_.value(), time_resolution_);
+  });
+}
+
+const TrajectoryData & ObjectTrajectoryCache::get_or_compute_constant_curvature_trajectory(
+  const autoware_perception_msgs::msg::PredictedObject & object, const double braking_lag,
+  const double assumed_acceleration, const double max_time) const
+{
+  const ConstantCurvatureTrajectoryParams params{braking_lag, assumed_acceleration, max_time};
+
+  auto & cache = trajectory_data_cache_[object.object_id.uuid].constant_curvature;
+  // The perception frame timestamp is forwarded as the trajectory stamp (used by the reporter).
+  return get_or_emplace_trajectory(cache, params, [&]() {
+    return generate_constant_curvature_trajectory(
+      object, braking_lag, assumed_acceleration, max_time, frame_stamp_.value(), time_resolution_);
+  });
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety::trajectory

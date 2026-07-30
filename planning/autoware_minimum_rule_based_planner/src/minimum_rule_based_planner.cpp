@@ -54,6 +54,32 @@ minimum_rule_based_planner::plugin::ModifierData make_modifier_data(
   data.obstacle_pointcloud_ptr = input_data.obstacle_pointcloud_ptr;
   return data;
 }
+
+void assign_time_from_start(
+  TrajectoryPoints & traj_points, const geometry_msgs::msg::Point & ego_point)
+{
+  constexpr double k_min_velocity = 1.0;  // [m/s] velocity floor for dt = ds / v
+  constexpr double k_min_dt = 1.0e-3;     // [s] keeps the time base strictly increasing
+
+  if (traj_points.size() < 2) {
+    return;
+  }
+
+  std::vector<double> times{0.0};
+  times.reserve(traj_points.size());
+  for (size_t i = 1; i < traj_points.size(); ++i) {
+    const double ds = autoware_utils::calc_distance2d(traj_points.at(i - 1), traj_points.at(i));
+    const double v =
+      std::max<double>(std::abs(traj_points.at(i - 1).longitudinal_velocity_mps), k_min_velocity);
+    times.push_back(times.back() + std::max(ds / v, k_min_dt));
+  }
+
+  const double ego_time =
+    times.at(autoware::motion_utils::findNearestSegmentIndex(traj_points, ego_point));
+  for (size_t i = 0; i < traj_points.size(); ++i) {
+    traj_points.at(i).time_from_start = rclcpp::Duration::from_seconds(times.at(i) - ego_time);
+  }
+}
 }  // namespace
 
 MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptions & options)
@@ -483,8 +509,9 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
     }
   }
 
-  autoware::motion_utils::calculate_time_from_start(
-    trajectory_points, input_data.odometry_ptr->pose.pose.position);
+  // NOTE(odashima): replaces calculate_time_from_start(), whose time base is not strictly
+  // increasing. This function will be removed once MPPI is implemented.
+  assign_time_from_start(trajectory_points, input_data.odometry_ptr->pose.pose.position);
 
   Trajectory traj;
   traj.header = trajectory.header;

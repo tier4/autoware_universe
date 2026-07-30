@@ -100,38 +100,66 @@
       "required": [],
       "additionalProperties": false
     },
+    "enable_drac_assessment": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable this DRAC assessment condition."
+    },
+    "ego_drac_acceleration": {
+      "type": "object",
+      "properties": {
+        "safe_limit": {
+          "type": "number",
+          "description": "Ego acceleration limit for a safe DRAC assessment [m/s²]."
+        },
+        "danger_limit": {
+          "type": "number",
+          "description": "Ego acceleration limit for a dangerous DRAC assessment [m/s²]."
+        },
+        "fatal_limit": {
+          "type": "number",
+          "description": "Ego acceleration limit for a fatal DRAC assessment [m/s²]."
+        },
+        "enable_abandon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Treat an unavoidable collision as high caution instead of fatal."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "object_drac_acceleration": {
+      "type": "object",
+      "properties": {
+        "safe_limit": {
+          "type": "number",
+          "description": "Required object deceleration at or milder than this is classified as safe [m/s²]."
+        },
+        "low_caution_limit": {
+          "type": "number",
+          "description": "Required object deceleration down to this is classified as low caution [m/s²]."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
     "drac_assessment": {
       "type": "object",
       "properties": {
-        "enable_assessment": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable this DRAC assessment condition."
-        },
-        "ego_drac_acceleration": {
-          "type": "object",
-          "properties": {
-            "safe_limit": {
-              "type": "number",
-              "description": "Ego acceleration limit for a safe DRAC assessment [m/s²]."
-            },
-            "danger_limit": {
-              "type": "number",
-              "description": "Ego acceleration limit for a dangerous DRAC assessment [m/s²]."
-            },
-            "fatal_limit": {
-              "type": "number",
-              "description": "Ego acceleration limit for a fatal DRAC assessment [m/s²]."
-            },
-            "enable_abandon": {
-              "type": "boolean",
-              "default": false,
-              "description": "Treat an unavoidable collision as high caution instead of fatal."
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        }
+        "enable_assessment": { "$ref": "#/definitions/enable_drac_assessment" },
+        "ego_drac_acceleration": { "$ref": "#/definitions/ego_drac_acceleration" }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "drac_assessment_with_object_braking": {
+      "type": "object",
+      "description": "DRAC assessment that also evaluates the object braking on its own.",
+      "properties": {
+        "enable_assessment": { "$ref": "#/definitions/enable_drac_assessment" },
+        "ego_drac_acceleration": { "$ref": "#/definitions/ego_drac_acceleration" },
+        "object_drac_acceleration": { "$ref": "#/definitions/object_drac_acceleration" }
       },
       "required": [],
       "additionalProperties": false
@@ -294,7 +322,7 @@
                       "$ref": "#/definitions/drac_assessment"
                     },
                     "object_prioritized_ego_earlier": {
-                      "$ref": "#/definitions/drac_assessment"
+                      "$ref": "#/definitions/drac_assessment_with_object_braking"
                     },
                     "object_prioritized_object_earlier": {
                       "$ref": "#/definitions/drac_assessment"
@@ -371,6 +399,18 @@
               "default": 5.0,
               "minimum": 0.0
             },
+            "max_yaw_deviation": {
+              "type": "number",
+              "description": "Maximum allowed yaw deviation from the reference trajectory [rad].",
+              "default": 0.35,
+              "minimum": 0.0
+            },
+            "max_velocity_deviation": {
+              "type": "number",
+              "description": "Maximum allowed velocity deviation from the reference trajectory [m/s].",
+              "default": 100.0,
+              "minimum": 0.0
+            },
             "max_lateral_acceleration": {
               "type": "number",
               "description": "Maximum allowed lateral acceleration [m/s²].",
@@ -394,6 +434,78 @@
               "description": "Maximum allowed steering rate [rad/s].",
               "default": 0.3,
               "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "crosswalk": {
+          "type": "object",
+          "properties": {
+            "object_types": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of object types to consider as target object (e.g., 'pedestrian', 'bicycle').",
+              "default": ["pedestrian", "bicycle"]
+            },
+            "lon_detection_margin": {
+              "type": "number",
+              "description": "Longitudinal extrusion length of sidewalk-side from crosswalk edge [m].",
+              "default": 2.0,
+              "minimum": 0.0
+            },
+            "lat_detection_margin": {
+              "type": "number",
+              "description": "Lateral extrusion length of sidewalk-side from crosswalk edge [m].",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "object_clear_time_th": {
+              "type": "number",
+              "description": "Duration threshold to clear target object when no longer seen [s].",
+              "default": 0.3,
+              "minimum": 0.0
+            },
+            "distance_hysteresis_th": {
+              "type": "number",
+              "description": "Hysteresis threshold to consider the object as the same object [m].",
+              "default": 0.3,
+              "minimum": 0.0
+            },
+            "overshoot_tolerance": {
+              "type": "number",
+              "description": "Maximum overshoot distance allowed to consider the trajectory feasible [m].",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "nominal_deceleration": {
+              "type": "number",
+              "description": "Nominal deceleration to calculate the stop distance used as trajectory length limit [m/s²].",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "nominal_jerk": {
+              "type": "number",
+              "description": "Nominal jerk to calculate the stop distance used as trajectory length limit [m/s³].",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "stop_duration": {
+              "type": "number",
+              "description": "Minimum duration of the stop to consider the trajectory feasible [s].",
+              "default": 3.0,
+              "minimum": 0.0
+            },
+            "arrived_distance_threshold": {
+              "type": "number",
+              "description": "Threshold to check if the ego vehicle has arrived at crosswalk stop line [m].",
+              "default": 5.0,
+              "minimum": 0.0
+            },
+            "use_trajectory_time": {
+              "type": "boolean",
+              "description": "Whether to use the embedded trajectory time to evaluate the stop duration.",
+              "default": false
             }
           },
           "required": [],
@@ -444,6 +556,12 @@
               "type": "number",
               "description": "allow crossing a stop line within this distance if ego cannot stop before the line plus its margin [m].",
               "default": 0.0,
+              "minimum": 0.0
+            },
+            "min_lookahead_distance": {
+              "type": "number",
+              "description": "Minimum forward trajectory length to scan for traffic light stop lines even at low ego speed [m].",
+              "default": 20.0,
               "minimum": 0.0
             },
             "stable_duration_threshold_red": {

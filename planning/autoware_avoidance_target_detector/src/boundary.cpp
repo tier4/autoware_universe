@@ -545,7 +545,7 @@ void ExtendedRouteHandler::create_map()
     route_map_->add(lanelet);
   }
 
-  constexpr double k_road_border_near_distance_m = 1.5;
+  constexpr double k_road_border_near_distance_m = 10.0;
   std::set<lanelet::Id> road_border_ids;
   for (const auto lanelet_id : lanelet_ids) {
     if (!map->laneletLayer.exists(lanelet_id)) {

@@ -228,6 +228,7 @@ protected:
     tl.treat_amber_light_as_red = false;
     tl.treat_unknown_light_as_red = false;
     tl.overshoot_tolerance = 0.0;
+    tl.min_lookahead_distance = 20.0;
     tl.th_stable_duration_red = 0.0;
     tl.th_stable_duration_amber = 0.0;
     tl.th_amber_rejection_hysteresis = 0.0;

@@ -63,6 +63,7 @@ protected:
     node_->declare_parameter("traffic_light.stable_duration_threshold_unknown", 0.0);
     node_->declare_parameter("traffic_light.amber_rejection_hysteresis_duration", 0.0);
     node_->declare_parameter("traffic_light.ego_stopped_velocity_threshold", 0.01);
+    node_->declare_parameter("traffic_light.min_lookahead_distance", 20.0);
     node_->declare_parameter("traffic_light.checked_trajectory_length.deceleration_limit", 999.9);
     node_->declare_parameter("traffic_light.checked_trajectory_length.jerk_limit", 999.9);
 
@@ -78,6 +79,7 @@ protected:
     params.traffic_light.stable_duration_threshold_unknown = 0.0;
     params.traffic_light.amber_rejection_hysteresis_duration = 0.0;
     params.traffic_light.ego_stopped_velocity_threshold = 0.01;
+    params.traffic_light.min_lookahead_distance = 20.0;
     params.traffic_light.checked_trajectory_length.deceleration_limit = 999.9;
     params.traffic_light.checked_trajectory_length.jerk_limit = 999.9;
     filter_->update_parameters(params);

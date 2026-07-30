@@ -26,6 +26,8 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace autoware::mppi_optimizer
 {
@@ -62,8 +64,10 @@ void MppiOptimizer::on_trajectory(const Trajectory::ConstSharedPtr msg)
 
   try {
     const autoware_perception_msgs::msg::TrackedObjects empty_tracked_objects;
+    const std::vector<Segment> empty_segments;
     const auto result = mppi_interface_->optimizeTrajectory(
-      *msg, *odometry, std::nullopt, ego_steering, empty_tracked_objects);
+      *msg, *odometry, std::nullopt, ego_steering, empty_tracked_objects, empty_segments,
+      empty_segments);
     Trajectory tracked = result.trajectory;
     tracked.header = msg->header;
     trajectory_pub_->publish(tracked);

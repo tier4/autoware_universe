@@ -124,8 +124,14 @@ void applyCostParam(
     params.speed_coeff = value;
   } else if (key == "track_coeff") {
     params.track_coeff = value;
+  } else if (key == "track_terminal_scale") {
+    params.track_terminal_scale = value;
   } else if (key == "heading_coeff") {
     params.heading_coeff = value;
+  } else if (key == "lateral_distance_coeff") {
+    params.lateral_distance_coeff = value;
+  } else if (key == "lateral_yaw_error_coeff") {
+    params.lateral_yaw_error_coeff = value;
   } else if (key == "crash_coeff") {
     params.crash_coeff = value;
   } else if (key == "boundary_threshold") {
@@ -148,16 +154,10 @@ void applyCostParam(
     params.longitudinal_jerk_coeff = value;
   } else if (key == "obstacle_collision_margin") {
     params.obstacle_collision_margin = value;
-  } else if (key == "goal_pos_coeff") {
-    params.goal_pos_coeff = value;
-  } else if (key == "goal_speed_coeff") {
-    params.goal_speed_coeff = value;
-  } else if (key == "goal_yaw_coeff") {
-    params.goal_yaw_coeff = value;
-  } else if (key == "goal_terminal_scale") {
-    params.goal_terminal_scale = value;
   } else {
-    throw std::runtime_error("Unknown cost param: " + key);
+    // Unknown keys must not abort retune: the visualizer may send a superset of
+    // slider names / logged fields that older or newer builds don't share.
+    std::cerr << "WARNING: ignoring unknown cost param '" << key << "'=" << value << "\n";
   }
 }
 
@@ -460,6 +460,18 @@ int run(int argc, char ** argv)
     return 1;
   }
 
+  std::cout << "applied_params lambda=" << cost_params.lambda
+            << " track_coeff=" << cost_params.track_coeff
+            << " speed_coeff=" << cost_params.speed_coeff
+            << " heading_coeff=" << cost_params.heading_coeff
+            << " steer_rate_coeff=" << cost_params.steer_rate_coeff << "\n";
+  if (cost_params.lambda >= 5000.0F) {
+    std::cerr
+      << "WARNING: lambda=" << cost_params.lambda
+      << " is very high — softmax weights stay near-uniform and cost-weight edits "
+         "will barely move the trajectory. Try lambda around 100–1500 to see retune effects.\n";
+  }
+
   const auto frame_ids = listMppiDebugFrameIds(log_dir);
   if (frame_ids.empty()) {
     std::cerr << "No frames found in " << log_dir << "\n";
@@ -513,9 +525,10 @@ int run(int argc, char ** argv)
     frame_mppi.setCostParams(cost_params);
     frame_mppi.setVehicleParams(vehicle_params);
     frame_mppi.setDebugTrajectoryLogging(false);
+    frame_mppi.setRolloutVisualizationEnabled(true);
 
     const auto result =
-      frame_mppi.optimizeTrajectory(reference, odom, accel, steering, empty_objects);
+      frame_mppi.optimizeTrajectory(reference, odom, accel, steering, empty_objects, {}, {});
 
     const std::string opt_path = out_dir + "/" + tag + "_optimized.csv";
     if (!writeMppiDebugTrajectoryCsv(opt_path, result.debug.optimized_trajectory)) {
@@ -538,6 +551,12 @@ int run(int argc, char ** argv)
                 << "\n";
     }
 
+    const std::string rollouts_path = out_dir + "/" + tag + "_rollouts.csv";
+    if (!writeMppiDebugRolloutsCsv(rollouts_path, result.debug.rollouts)) {
+      std::cerr << "Failed to write " << rollouts_path << "\n";
+      return 1;
+    }
+
     if (copy_reference) {
       const std::string out_ref = out_dir + "/" + tag + "_reference.csv";
       if (!writeMppiDebugTrajectoryCsv(out_ref, reference)) {
@@ -552,7 +571,8 @@ int run(int argc, char ** argv)
               << "\n";
     ++processed;
     std::cout << "frame " << frame_id << " baseline_cost=" << result.debug.baseline_cost
-              << " points=" << result.debug.optimized_trajectory.points.size() << "\n";
+              << " points=" << result.debug.optimized_trajectory.points.size()
+              << " rollouts=" << result.debug.rollouts.size() << "\n";
   }
 
   if (processed == 0U) {

@@ -26,6 +26,7 @@
   <depend>autoware_map_msgs</depend>
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_trajectory_concatenator</depend>
+  <depend>autoware_trajectory_ranker</depend>
   <depend>autoware_trajectory_validator</depend>
   <depend>autoware_utils_debug</depend>
   <depend>autoware_utils_rclcpp</depend>
