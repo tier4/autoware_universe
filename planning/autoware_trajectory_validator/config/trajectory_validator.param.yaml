@@ -173,17 +173,17 @@
         ego_nearest_yaw_threshold: 1.046
       pointcloud_preprocessing:
         filter_by_trajectory_polygon:
-          min_trajectory_length: 30.0
-          braking_distance_scale_factor: 1.5
-          lateral_margin: 2.0
+          min_trajectory_length: 20.0
+          braking_distance_scale_factor: 1.0
+          lateral_margin: 1.0
           height_margin: 1.0
         downsample_by_voxel_grid:
           enable_downsample: true
-          voxel_size_x: 0.05
-          voxel_size_y: 0.05
-          voxel_size_z: 100000.0
+          voxel_size_x: 0.2
+          voxel_size_y: 0.2
+          voxel_size_z: 0.2
         euclidean_clustering:
           enable_clustering: true
-          cluster_tolerance: 1.0
-          min_cluster_size: 1
+          cluster_tolerance: 0.7
+          min_cluster_size: 3
           max_cluster_size: 100000
