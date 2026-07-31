@@ -236,7 +236,11 @@ lanelet::ConstLanelets get_lanelets_after(
     return {};
   }
 
-  if (!lanelets->empty() && !exists(planner_data.goal_lanelets, lanelets->back())) {
+  const bool in_goal_lanelet = exists(planner_data.goal_lanelets, lanelet);
+  const bool last_lanelet_is_goal =
+    !lanelets->empty() && exists(planner_data.goal_lanelets, lanelets->back());
+  const bool reaching_goal = in_goal_lanelet || last_lanelet_is_goal;
+  if (!reaching_goal) {
     return *lanelets;
   }
 
