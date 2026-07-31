@@ -15,6 +15,7 @@
 #ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_
 #define FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_
 
+#include "autoware/trajectory_validator/detail/uuid_hash.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
 #include "types.hpp"
 
@@ -22,16 +23,22 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <rclcpp/duration.hpp>
+#include <rclcpp/time.hpp>
 
 #include <geometry_msgs/msg/pose.hpp>
 
 #include <boost/geometry.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -394,7 +401,27 @@ public:
     if (trajectory_points_.empty()) {
       throw std::invalid_argument("points must not be empty");
     }
-  };
+    if (
+      trajectory_points_.size() != time_from_refs_.size() ||
+      trajectory_points_.size() != dist_from_fronts_.size()) {
+      throw std::logic_error("trajectory points, times, and distances must have the same size");
+    }
+
+    const auto is_finite = [](const double value) { return std::isfinite(value); };
+    if (!std::all_of(time_from_refs_.begin(), time_from_refs_.end(), is_finite)) {
+      throw std::invalid_argument("time_from_refs must contain only finite values");
+    }
+    if (!std::all_of(dist_from_fronts_.begin(), dist_from_fronts_.end(), is_finite)) {
+      throw std::invalid_argument("dist_from_fronts must contain only finite values");
+    }
+
+    if (!std::is_sorted(time_from_refs_.begin(), time_from_refs_.end())) {
+      throw std::invalid_argument("time_from_refs must be in non-decreasing order");
+    }
+    if (!std::is_sorted(dist_from_fronts_.begin(), dist_from_fronts_.end())) {
+      throw std::invalid_argument("dist_from_fronts must be in non-decreasing order");
+    }
+  }
   InterpolatedState interpolate_state_from_time(const rclcpp::Time & target_time) const;
   InterpolatedState interpolate_state_from_dist(const double target_dist) const;
 };
@@ -407,7 +434,6 @@ double project_current_pose_on_trajectory(
 TravelDistanceTrajectory compute_cumulative_distances(const PoseTrajectory & pose_trajectory);
 }  // namespace detail
 
-// todo(takagi): reuse for object trajectory generation
 class EgoTrajectoryCache
 {
 private:
@@ -430,13 +456,83 @@ public:
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   const autoware_perception_msgs::msg::PredictedPath & predicted_path, double braking_lag,
-  double assumed_acceleration, rclcpp::Duration start_time, double max_time,
-  const builtin_interfaces::msg::Time & stamp, double time_resolution);
+  double assumed_acceleration, double max_time, const rclcpp::Time & stamp, double time_resolution);
 
 TrajectoryData generate_constant_curvature_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
-  double assumed_acceleration, rclcpp::Duration start_time, double max_time,
-  const builtin_interfaces::msg::Time & stamp, double time_resolution);
+  double assumed_acceleration, double max_time, const rclcpp::Time & stamp, double time_resolution);
+
+// Parameters identifying one map-based predicted-path trajectory candidate of an object. Together
+// with the object UUID (the outer cache key) this uniquely determines the generated TrajectoryData
+// for a fixed time resolution.
+struct MapBasedTrajectoryParams
+{
+  size_t predicted_path_index{0};
+  double braking_lag{0.0};
+  double assumed_acceleration{0.0};
+  double max_time{0.0};
+
+  bool operator<(const MapBasedTrajectoryParams & rhs) const
+  {
+    return std::tie(predicted_path_index, braking_lag, assumed_acceleration, max_time) <
+           std::tie(
+             rhs.predicted_path_index, rhs.braking_lag, rhs.assumed_acceleration, rhs.max_time);
+  }
+};
+
+// Parameters identifying one constant-curvature trajectory candidate of an object.
+struct ConstantCurvatureTrajectoryParams
+{
+  double braking_lag{0.0};
+  double assumed_acceleration{0.0};
+  double max_time{0.0};
+
+  bool operator<(const ConstantCurvatureTrajectoryParams & rhs) const
+  {
+    return std::tie(braking_lag, assumed_acceleration, max_time) <
+           std::tie(rhs.braking_lag, rhs.assumed_acceleration, rhs.max_time);
+  }
+};
+
+// Lazily generates and memoizes object trajectories keyed by object UUID. Object trajectories are
+// independent of the ego candidate trajectory, so within one perception frame (identified by the
+// PredictedObjects timestamp) the same object trajectory is reused across the multiple
+// is_feasible() calls of that frame. update() must be called once per frame before the
+// get_or_compute_* methods; observing a new timestamp there discards every memoized trajectory.
+// Each generation method keeps its own map so that method-specific parameters stay separated, and
+// std::map keeps returned references valid across later insertions.
+class ObjectTrajectoryCache
+{
+public:
+  // Discards all memoized trajectories when a new PredictedObjects timestamp is observed. Called
+  // once per is_feasible(); repeated calls with the same timestamp are no-ops, so invoking it for
+  // each candidate trajectory of a frame is safe (same convention as ObjectStopTracker). The
+  // timestamp is only available on PredictedObjects (not on a single PredictedObject), so it is
+  // injected here rather than through the get_or_compute_* methods. time_resolution is assumed
+  // fixed and is only used for trajectory generation.
+  void update(const rclcpp::Time & frame_stamp, double time_resolution);
+
+  const TrajectoryData & get_or_compute_predicted_path_trajectory(
+    const autoware_perception_msgs::msg::PredictedObject & object, size_t predicted_path_index,
+    double braking_lag, double assumed_acceleration, double max_time) const;
+
+  const TrajectoryData & get_or_compute_constant_curvature_trajectory(
+    const autoware_perception_msgs::msg::PredictedObject & object, double braking_lag,
+    double assumed_acceleration, double max_time) const;
+
+private:
+  using ObjectId = std::array<uint8_t, 16>;
+
+  struct PerObjectCache
+  {
+    std::map<MapBasedTrajectoryParams, TrajectoryData> map_based;
+    std::map<ConstantCurvatureTrajectoryParams, TrajectoryData> constant_curvature;
+  };
+
+  double time_resolution_{0.0};
+  std::optional<rclcpp::Time> frame_stamp_;
+  mutable std::unordered_map<ObjectId, PerObjectCache, UuidHash> trajectory_data_cache_;
+};
 }  // namespace autoware::trajectory_validator::plugin::safety::trajectory
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_

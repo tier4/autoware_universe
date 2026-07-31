@@ -85,6 +85,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     autoware_vehicle_msgs::autoware_vehicle_msgs__rosidl_generator_cpp
     geometry_msgs::geometry_msgs__rosidl_generator_cpp
     nav_msgs::nav_msgs__rosidl_generator_cpp
+    ${CUDA_cufft_LIBRARY}
   )
   set_target_properties(first_order_dubins_mppi PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -93,17 +94,11 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
 
   ament_auto_add_library(${PROJECT_NAME} SHARED
-    src/mppi_optimizer.cpp
     src/first_order_dubins_mppi_cost_params_ros.cpp
     src/first_order_dubins_mppi_runtime_options_ros.cpp
     src/first_order_dubins_mppi_vehicle_params_ros.cpp
   )
   target_link_libraries(${PROJECT_NAME} first_order_dubins_mppi)
-
-  rclcpp_components_register_node(${PROJECT_NAME}
-    PLUGIN "autoware::mppi_optimizer::MppiOptimizer"
-    EXECUTABLE autoware_mppi_optimizer_node
-  )
 
   add_executable(mppi_offline_retune
     src/tools/mppi_offline_retune.cpp
@@ -149,4 +144,4 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   ament_export_libraries(first_order_dubins_mppi)
   ament_export_dependencies(MPPI-Generic)
 endif()
-ament_auto_package(INSTALL_TO_SHARE config launch)
+ament_auto_package(INSTALL_TO_SHARE config)

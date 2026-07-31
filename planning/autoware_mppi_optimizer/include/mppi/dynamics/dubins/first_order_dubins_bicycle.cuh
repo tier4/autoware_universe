@@ -18,6 +18,8 @@
 #include <mppi/dynamics/dynamics.cuh>
 #include <mppi/utils/angle_utils.cuh>
 
+#include <cmath>
+
 struct FirstOrderDubinsBicycleParams : public DynamicsParams
 {
   enum class StateIndex : int {
@@ -60,6 +62,13 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
   float min_accel = -6.0F;
   float max_accel = 4.0F;
 };
+
+/** Apply the steering-rate limit shared by the dynamics and comfort-cost models. */
+template <class PARAMS_T>
+__host__ __device__ inline float clampSteerRate(const PARAMS_T & params, const float steer_rate)
+{
+  return fmaxf(fminf(steer_rate, params.max_steer_rate), -params.max_steer_rate);
+}
 
 using namespace MPPI_internal;
 

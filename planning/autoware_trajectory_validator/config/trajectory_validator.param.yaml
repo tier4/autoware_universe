@@ -23,12 +23,10 @@
             stopped_velocity_threshold: 0.3
             history_timeout: 0.3
         enable_assessment:
-          # default value is true.
-          unknown: false
-          animal: false
-          hazard: false
-          over_drivable: false
-          under_drivable: false
+          base: [bbox]
+          unknown: [""]
+          over_drivable: [""]
+          under_drivable: [""]
         pet_margin:
           ego_earlier: 0.6
           object_earlier: 1.0
@@ -76,6 +74,9 @@
               danger_limit: -3.0
               fatal_limit: -6.0
               enable_abandon: true
+            object_drac_acceleration:
+              safe_limit: -0.5
+              low_caution_limit: -1.5
           object_prioritized_object_earlier:
             enable_assessment: true
             ego_drac_acceleration:
@@ -85,12 +86,11 @@
               enable_abandon: false
       rss:
         enable_assessment:
-          # default value is true.
-          unknown: false
-          animal: false
-          hazard: false
-          over_drivable: false
-          under_drivable: false
+          base: [bbox, polygon]
+          motorcycle: [bbox]
+          bicycle: [bbox]
+          over_drivable: [""]
+          under_drivable: [""]
         stop_distance_margin: 2.0
         ego_total_braking_delay: 0.4
         ego_footprint_margin:

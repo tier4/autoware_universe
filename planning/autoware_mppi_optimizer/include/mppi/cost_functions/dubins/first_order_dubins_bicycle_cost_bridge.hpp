@@ -20,7 +20,6 @@
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh>
 #include <mppi/cost_functions/parked_car_obstacles.hpp>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
-#include <mppi/path/drivable_area.hpp>
 #include <mppi/path/path_reference_generator.hpp>
 
 #include <algorithm>
@@ -39,6 +38,7 @@ inline void fillFirstOrderDubinsBicycleCostGeometry(
   cost_params.wheel_base = dyn.wheel_base;
   cost_params.accel_time_constant = dyn.accel_time_constant;
   cost_params.steer_time_constant = dyn.steer_time_constant;
+  cost_params.max_steer_rate = dyn.max_steer_rate;
 }
 
 template <int NUM_TIMESTEPS>
@@ -74,45 +74,6 @@ inline void fillFirstOrderDubinsBicycleCostParkedCars(
   }
 
   cost.setOrientedBoxObstacles(obs_x, obs_y, obs_yaw, obs_half_length, obs_half_width, n);
-}
-
-template <int NUM_TIMESTEPS>
-inline void fillFirstOrderDubinsBicycleCostDrivablePolygon(
-  FirstOrderDubinsBicycleCost<NUM_TIMESTEPS> & cost, const mppi::path::Polygon2D & polygon)
-{
-  if (polygon.empty()) {
-    cost.clearDrivableArea();
-    return;
-  }
-
-  constexpr int kMax = FirstOrderDubinsBicycleCost<NUM_TIMESTEPS>::kMaxDrivablePolygonVertices;
-  const int n_in = static_cast<int>(polygon.size());
-  if (n_in <= kMax) {
-    cost.setDrivableAreaPolygon(polygon.x.data(), polygon.y.data(), n_in);
-    return;
-  }
-
-  std::vector<float> x(static_cast<size_t>(kMax));
-  std::vector<float> y(static_cast<size_t>(kMax));
-  for (int i = 0; i < kMax; ++i) {
-    const int src = (i * n_in) / kMax;
-    x[static_cast<size_t>(i)] = polygon.x[static_cast<size_t>(src)];
-    y[static_cast<size_t>(i)] = polygon.y[static_cast<size_t>(src)];
-  }
-  cost.setDrivableAreaPolygon(x.data(), y.data(), kMax);
-}
-
-/** Drivable surface for a stadium-style closed path. */
-template <int NUM_TIMESTEPS>
-inline void fillFirstOrderDubinsBicycleCostStadiumDrivablePolygon(
-  FirstOrderDubinsBicycleCost<NUM_TIMESTEPS> & cost, const mppi::path::Path2D & path,
-  const float road_half_width, const float extra_half_width = 0.0F)
-{
-  constexpr int kMax = FirstOrderDubinsBicycleCost<NUM_TIMESTEPS>::kMaxDrivablePolygonVertices;
-  const float half_width = road_half_width + extra_half_width;
-  const mppi::path::Polygon2D drivable =
-    mppi::path::symmetricPathCorridorPolygon(path, half_width, 0.5F, kMax);
-  fillFirstOrderDubinsBicycleCostDrivablePolygon<NUM_TIMESTEPS>(cost, drivable);
 }
 
 /** Per-horizon obstacle poses: buffers sized obstacle_count * num_timesteps (obstacle-major). */

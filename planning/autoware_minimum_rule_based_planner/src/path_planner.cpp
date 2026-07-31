@@ -873,6 +873,64 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
     s_right_centerline ? s_right_centerline : s_right_bound};
 }
 
+PathPointTrajectory refine_path_for_goal(
+  const PathPointTrajectory & input, const geometry_msgs::msg::Pose & goal_pose,
+  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset)
+{
+  auto contain_goal_lane_id = [&](const PathPointWithLaneId & point) {
+    const auto & ids = point.lane_ids;
+    return std::find(ids.begin(), ids.end(), goal_lane_id) != ids.end();
+  };
+
+  auto outside_circle = [&](const PathPointWithLaneId & point) {
+    return autoware_utils::calc_distance2d(point.point.pose, goal_pose) > search_radius_range;
+  };
+
+  auto closest_to_goal = autoware::experimental::trajectory::closest_with_constraint(
+    input, goal_pose, contain_goal_lane_id);
+
+  // If no point with the goal lane ID exists in the trajectory (e.g. goal is on an adjacent lane),
+  // fall back to the geometrically closest point so the goal connection still applies.
+  if (!closest_to_goal) {
+    closest_to_goal = autoware::experimental::trajectory::closest(input, goal_pose);
+  }
+
+  auto cropped_path = autoware::experimental::trajectory::crop(input, 0, *closest_to_goal);
+
+  auto intervals =
+    autoware::experimental::trajectory::find_intervals(cropped_path, outside_circle, 10);
+
+  std::vector<PathPointWithLaneId> goal_connected_trajectory_points;
+
+  if (!intervals.empty()) {
+    auto cropped = autoware::experimental::trajectory::crop(cropped_path, 0, intervals.back().end);
+    goal_connected_trajectory_points = cropped.restore();
+  } else if (cropped_path.length() > pre_goal_offset) {
+    // If distance from start to goal is smaller than refine_goal_search_radius_range and start is
+    // farther from goal than pre_goal, we just connect start, pre_goal, and goal.
+    goal_connected_trajectory_points = {cropped_path.compute(0)};
+  }
+
+  auto goal = input.compute(autoware::experimental::trajectory::closest(input, goal_pose));
+  goal.point.pose = goal_pose;
+  goal.point.longitudinal_velocity_mps = 0.0;
+
+  const auto pre_goal_pose =
+    autoware_utils::calc_offset_pose(goal_pose, -pre_goal_offset, 0.0, 0.0);
+  auto pre_goal = input.compute(autoware::experimental::trajectory::closest(input, pre_goal_pose));
+  pre_goal.point.pose = pre_goal_pose;
+
+  goal_connected_trajectory_points.push_back(pre_goal);
+  goal_connected_trajectory_points.push_back(goal);
+
+  if (
+    const auto output =
+      autoware::experimental::trajectory::pretty_build(goal_connected_trajectory_points)) {
+    return *output;
+  }
+  return input;
+}
+
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
   const PathPointTrajectory & trajectory, const RouteContext & planner_data)
 {
@@ -900,6 +958,50 @@ bool is_trajectory_inside_lanelets(
   return std::none_of(points.begin(), points.end(), [&](const auto & point) {
     return !is_in_lanelets(point.point.pose, lanelets);
   });
+}
+
+std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
+  const PathPointTrajectory & trajectory, const RouteContext & planner_data,
+  const double search_radius_range, const double pre_goal_offset)
+{
+  if (planner_data.preferred_lanelets.empty()) {
+    return std::nullopt;
+  }
+  // Build the set of lanelets valid for the refined path.
+  // Include goal lanelets so that a path connecting to an adjacent goal lane passes validation.
+  auto lanelets = extract_lanelets_from_trajectory(trajectory, planner_data);
+  for (const auto & goal_ll : planner_data.goal_lanelets) {
+    if (std::find(lanelets.begin(), lanelets.end(), goal_ll) == lanelets.end()) {
+      lanelets.push_back(goal_ll);
+    }
+  }
+
+  // Include lanelets that contain the goal pose (e.g., shoulder lanelets) so that
+  // the trajectory connecting to an off-lane goal passes the inside-lanelets check.
+  const auto goal_point_2d =
+    lanelet::BasicPoint2d(planner_data.goal_pose.position.x, planner_data.goal_pose.position.y);
+  const auto nearest_lanelets =
+    lanelet::geometry::findNearest(planner_data.lanelet_map_ptr->laneletLayer, goal_point_2d, 5);
+  for (const auto & [dist, ll] : nearest_lanelets) {
+    if (
+      lanelet::geometry::inside(ll, goal_point_2d) &&
+      std::find(lanelets.begin(), lanelets.end(), ll) == lanelets.end()) {
+      lanelets.push_back(ll);
+    }
+  }
+
+  // This process is to fit the trajectory inside the lanelets. By reducing
+  // refine_goal_search_radius_range, we can fit the trajectory inside lanelets even if the
+  // trajectory has a high curvature.
+  for (double s = search_radius_range; s > 0; s -= 0.1) {
+    const auto refined_trajectory = refine_path_for_goal(
+      trajectory, planner_data.goal_pose, planner_data.preferred_lanelets.back().id(), s,
+      pre_goal_offset);
+    if (is_trajectory_inside_lanelets(refined_trajectory, lanelets)) {
+      return refined_trajectory;
+    }
+  }
+  return std::nullopt;
 }
 
 }  // namespace utils
@@ -1559,22 +1661,55 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
   // Adjust s_path_end relative to the new trajectory origin
   const auto adjusted_s_path_end = s_path_end - s_path_start;
 
-  // Offset end point to stop before goal
-  const auto early_stop_dist = cal_early_stop(
-    *trajectory, route_context_, params_.path_planning.early_stop.expected_ego_speed_parking,
-    params_.path_planning.early_stop.max_lat_accel_parking,
-    params_.path_planning.early_stop.max_decel_parking,
-    params_.path_planning.early_stop.max_jerk_parking);
-  if (!early_stop_dist.has_value()) {
-    RCLCPP_ERROR(logger_, "Failed to calculate early stop distance");
-    return std::nullopt;
-  }
-  const double adjusted_s_path_end_earlystop =
-    std::max(0.0, adjusted_s_path_end - *early_stop_dist);
+  if (params_.path_planning.early_stop.enable) {
+    // Offset end point to stop before goal
+    const auto early_stop_dist = cal_early_stop(
+      *trajectory, route_context_, params_.path_planning.early_stop.expected_ego_speed_parking,
+      params_.path_planning.early_stop.max_lat_accel_parking,
+      params_.path_planning.early_stop.max_decel_parking,
+      params_.path_planning.early_stop.max_jerk_parking);
+    if (!early_stop_dist.has_value()) {
+      RCLCPP_ERROR(logger_, "Failed to calculate early stop distance");
+      return std::nullopt;
+    }
+    const double adjusted_s_path_end_earlystop =
+      std::max(0.0, adjusted_s_path_end - *early_stop_dist);
 
-  // Crop end
-  if (trajectory->length() > adjusted_s_path_end_earlystop) {
-    trajectory->crop(0., adjusted_s_path_end_earlystop);
+    // Crop end
+    if (trajectory->length() > adjusted_s_path_end_earlystop) {
+      trajectory->crop(0., adjusted_s_path_end_earlystop);
+    }
+  } else {
+    // Connect the path to the goal pose so that ego reaches the goal itself.
+    // Check if the goal point is in the search range
+    // Note: We only see if the goal is approaching the tail of the path.
+    const auto s_path_end_clamped = std::min(trajectory->length(), adjusted_s_path_end);
+    const auto distance_to_goal = autoware_utils::calc_distance2d(
+      trajectory->compute(s_path_end_clamped), route_context_.goal_pose);
+
+    bool goal_connection_applied = false;
+    if (distance_to_goal < params_.path_planning.smooth_goal_connection.search_radius_range) {
+      auto refined_path = utils::modify_path_for_smooth_goal_connection(
+        *trajectory, route_context_,
+        params_.path_planning.smooth_goal_connection.search_radius_range,
+        params_.path_planning.smooth_goal_connection.pre_goal_offset);
+
+      if (refined_path) {
+        refined_path->align_orientation_with_trajectory_direction();
+        *trajectory = *refined_path;
+        goal_connection_applied = true;
+      }
+    }
+
+    // Crop end
+    if (!goal_connection_applied && trajectory->length() > adjusted_s_path_end) {
+      trajectory->crop(0., adjusted_s_path_end);
+    }
+
+    if (trajectory->length() < 1e-3) {
+      RCLCPP_WARN(logger_, "Trajectory length too short after cropping: %f", trajectory->length());
+      return std::nullopt;
+    }
   }
 
   // Compose the polished path

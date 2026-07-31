@@ -7,12 +7,6 @@ namespace
 using S = FirstOrderDubinsBicycleParams::StateIndex;
 using C = FirstOrderDubinsBicycleParams::ControlIndex;
 
-__host__ __device__ float clampSteerRate(
-  const FirstOrderDubinsBicycleParams & p, const float steer_dot)
-{
-  return fmaxf(fminf(steer_dot, p.max_steer_rate), -p.max_steer_rate);
-}
-
 __host__ __device__ void firstOrderDubinsBicycleDeriv(
   const FirstOrderDubinsBicycleParams & p, const float * state, const float * control,
   float * state_der)
