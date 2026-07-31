@@ -108,8 +108,6 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
     this->create_publisher<CandidateTrajectories>("~/output/candidate_trajectories", 1);
   pub_stop_lines_marker_ =
     this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/stop_lines", 1);
-  pub_turn_indicator_marker_ =
-    this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/turn_indicator", 1);
   pub_debug_path_ = this->create_publisher<PathWithLaneId>("~/debug/path_with_lane_id", 1);
   pub_debug_trajectory_ = this->create_publisher<Trajectory>("~/debug/trajectory", 1);
   pub_debug_stop_trajectory_ = this->create_publisher<Trajectory>("~/debug/stop_trajectory", 1);
@@ -368,10 +366,6 @@ void MinimumRuleBasedPlannerNode::on_timer()
 
   // 10. Publish debug information
   publish_debug_outputs(*path, go_trajectory, stop_trajectory);
-  if (params_.debug.enable_turn_indicator_marker) {
-    pub_turn_indicator_marker_->publish(
-      create_turn_indicator_markers(turn_indicator_decider_->debug(), path->header));
-  }
   publish_processing_time();
 }
 

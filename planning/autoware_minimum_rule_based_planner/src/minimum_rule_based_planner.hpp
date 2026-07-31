@@ -130,7 +130,7 @@ private:
   /**
    ***********************************************************
    * @defgroup turn-indicator turn signal output
-   * Decides the turn-signal command (intersection / pull-out / pull-over) written into every
+   * Decides the turn-signal command written into every
    * candidate trajectory's turn_indicators_command field.
    * @{
    */
@@ -212,7 +212,6 @@ private:
 
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_stop_lines_marker_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_turn_indicator_marker_;
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_stop_trajectory_;

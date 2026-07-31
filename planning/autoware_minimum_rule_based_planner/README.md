@@ -39,7 +39,6 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 | `~/debug/optimizer/{name}/trajectory` | `Trajectory`            | Debug: trajectory after each optimizer plugin |
 | `~/debug/modifier/{name}/trajectory`  | `Trajectory`            | Debug: trajectory after each modifier plugin  |
 | `~/debug/processing_time_detail_ms`   | `ProcessingTimeDetail`  | Debug: processing time breakdown              |
-| `~/debug/turn_indicator`              | `MarkerArray`           | Debug: turn signal state and its maneuver     |
 
 ## Turn signal
 
@@ -47,8 +46,8 @@ The `turn_indicators_command` field of every published candidate trajectory is f
 `TurnIndicatorDecider`. Both candidates get the same command: they share the path shape and differ
 only in stop position.
 
-Four maneuvers raise a signal, in this priority order. All distances below are arc lengths along
-the path, and the activation distance is `max(v * 3.0 s, search_distance)`.
+Four maneuvers raise a signal. All distances below are arc lengths along the path, and the
+activation distance is `max(v * 3.0 s, search_distance)`.
 
 | Maneuver          | Lit when                                                                          | Cleared when                                        |
 | ----------------- | --------------------------------------------------------------------------------- | --------------------------------------------------- |
@@ -63,6 +62,11 @@ ego's pose rather than by where the lanelet happens to end. A private lanelet th
 lanelet may be tagged `straight` or not tagged at all, and it then takes its side from the yaw
 change across the merge (a merge that is geometrically straight raises no signal).
 
+The first two rows differ only in how they are detected and where they start from; once found they
+are signalled by the same rule and neither outranks the other - the one ego reaches first along the
+path wins, so an exit ego is still completing keeps the light while the turn beyond it is already
+in range. Pull-out and pull-over are only consulted when no such maneuver is lit, in that order.
+
 Out of scope: lane changes and avoidance. While the upstream planner runs one, ego is laterally
 offset from its lane and this module plans a path back to the centre - but the pull-out latch only
 arms for a **stopped** vehicle, so no signal is raised. The 1.5 m departure threshold must therefore
@@ -70,9 +74,10 @@ stay above the lateral deviation a lane change or avoidance can produce. Pull-ou
 suppressed inside the pull-over range, so the two cannot fight over the direction at an
 off-centerline goal.
 
-The decision rules are pure functions in `src/utils/turn_indicator_utils.hpp` (unit-tested on plain
-numbers); the path and lanelet geometry that feeds them lives in `src/turn_indicator_decider.cpp`.
-The thresholds that are not exposed as parameters are `constexpr` in that header.
+Everything lives in `src/turn_indicator_decider.{hpp,cpp}`. The decision rules sit in the
+`turn_indicator` namespace as pure functions (unit-tested on plain numbers); `TurnIndicatorDecider`
+feeds them the path and lanelet geometry. The thresholds that are not exposed as parameters are
+`constexpr` in the header.
 
 ## Parameters
 

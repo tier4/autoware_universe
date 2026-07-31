@@ -1014,11 +1014,6 @@
               "type": "boolean",
               "description": "Enable output trajectory debugging",
               "default": true
-            },
-            "enable_turn_indicator_marker": {
-              "type": "boolean",
-              "description": "Publish turn indicator state markers",
-              "default": true
             }
           },
           "required": [],

@@ -507,11 +507,6 @@ minimum_rule_based_planner:
       default_value: true
       description: publish debug modifier module trajectories
 
-    enable_turn_indicator_marker:
-      type: bool
-      default_value: true
-      description: publish debug turn indicator state markers
-
   # Post-optimization resample parameters
   post_resample:
     max_trajectory_length:

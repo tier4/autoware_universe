@@ -176,4 +176,3 @@
       enable_optimizer_trajectory: true
       enable_modifier_trajectory: true
       enable_output_trajectory: true
-      enable_turn_indicator_marker: true
