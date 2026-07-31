@@ -15,6 +15,7 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp"
 
 #include <string>
+#include <vector>
 
 namespace autoware::mppi_optimizer
 {
@@ -61,6 +62,9 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
     param_name(prefix, "road_border_collision_margin"), defaults.road_border_collision_margin);
   node.declare_parameter(
     param_name(prefix, "drivable_area_crossing_coeff"), defaults.drivable_area_crossing_coeff);
+  node.declare_parameter(param_name(prefix, "track_center_coeff"), defaults.track_center_coeff);
+  node.declare_parameter(param_name(prefix, "corner_safe_margin"), defaults.corner_safe_margin);
+  node.declare_parameter(param_name(prefix, "corner_buffer_coeff"), defaults.corner_buffer_coeff);
 }
 
 FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
@@ -108,7 +112,56 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "road_border_collision_margin")).as_double());
   params.drivable_area_crossing_coeff = static_cast<float>(
     node.get_parameter(param_name(prefix, "drivable_area_crossing_coeff")).as_double());
+  params.track_center_coeff =
+    static_cast<float>(node.get_parameter(param_name(prefix, "track_center_coeff")).as_double());
+  params.corner_safe_margin =
+    static_cast<float>(node.get_parameter(param_name(prefix, "corner_safe_margin")).as_double());
+  params.corner_buffer_coeff =
+    static_cast<float>(node.get_parameter(param_name(prefix, "corner_buffer_coeff")).as_double());
   return params;
+}
+
+bool update_first_order_dubins_mppi_cost_params(
+  const std::vector<rclcpp::Parameter> & parameters, FirstOrderDubinsMppiCostParams & params,
+  const std::string & prefix)
+{
+  bool updated = false;
+  const auto update = [&](const std::string & name, float & value) {
+    const auto full_name = param_name(prefix, name);
+    for (const auto & parameter : parameters) {
+      if (parameter.get_name() == full_name) {
+        value = static_cast<float>(parameter.as_double());
+        updated = true;
+        return;
+      }
+    }
+  };
+
+  update("lambda", params.lambda);
+  update("desired_speed", params.desired_speed);
+  update("speed_coeff", params.speed_coeff);
+  update("track_coeff", params.track_coeff);
+  update("track_terminal_scale", params.track_terminal_scale);
+  update("heading_coeff", params.heading_coeff);
+  update("lateral_distance_coeff", params.lateral_distance_coeff);
+  update("lateral_yaw_error_coeff", params.lateral_yaw_error_coeff);
+  update("crash_coeff", params.crash_coeff);
+  update("boundary_threshold", params.boundary_threshold);
+  update("boundary_threshold_left", params.boundary_threshold_left);
+  update("boundary_threshold_right", params.boundary_threshold_right);
+  update("accel_cmd_coeff", params.accel_cmd_coeff);
+  update("steer_cmd_coeff", params.steer_cmd_coeff);
+  update("steer_rate_coeff", params.steer_rate_coeff);
+  update("lateral_acceleration_coeff", params.lateral_acceleration_coeff);
+  update("lateral_jerk_coeff", params.lateral_jerk_coeff);
+  update("longitudinal_jerk_coeff", params.longitudinal_jerk_coeff);
+  update("obstacle_collision_margin", params.obstacle_collision_margin);
+  update("road_border_collision_margin", params.road_border_collision_margin);
+  update("drivable_area_crossing_coeff", params.drivable_area_crossing_coeff);
+  update("track_center_coeff", params.track_center_coeff);
+  update("corner_safe_margin", params.corner_safe_margin);
+  update("corner_buffer_coeff", params.corner_buffer_coeff);
+  return updated;
 }
 
 }  // namespace autoware::mppi_optimizer

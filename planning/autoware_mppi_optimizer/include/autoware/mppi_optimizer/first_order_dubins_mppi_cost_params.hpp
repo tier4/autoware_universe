@@ -45,6 +45,12 @@ struct FirstOrderDubinsMppiCostParams
   float obstacle_collision_margin{0.5F};
   float road_border_collision_margin{0.2F};
   float drivable_area_crossing_coeff{10000.0F};
+  /** Path tracking at the ego geometric box center (not rear axle); 0 disables. */
+  float track_center_coeff{0.0F};
+  /** Deadband safe margin [m] for the four-corner drivable-area buffer cost. */
+  float corner_safe_margin{0.4F};
+  /** Quadratic penalty for ego-corner encroachment inside corner_safe_margin; 0 disables. */
+  float corner_buffer_coeff{0.0F};
 };
 
 }  // namespace autoware::mppi_optimizer

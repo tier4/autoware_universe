@@ -25,6 +25,9 @@
     obstacle_collision_margin: 0.2
     road_border_collision_margin: 0.2
     drivable_area_crossing_coeff: 500.0
+    track_center_coeff: 0.0
+    corner_safe_margin: 0.4
+    corner_buffer_coeff: 0.0
 
     # Optional offline debug logging for mppi_debug_visualizer.py --log-dir
     # Empty directory resolves to $XDG_CACHE_HOME/autoware/mppi_debug_log

@@ -1,0 +1,481 @@
+diff --git a/planning/autoware_diffusion_planner/src/diffusion_planner_node.cpp b/planning/autoware_diffusion_planner/src/diffusion_planner_node.cpp
+index e7475e0ded..e902a3f2a7 100644
+--- a/planning/autoware_diffusion_planner/src/diffusion_planner_node.cpp
++++ b/planning/autoware_diffusion_planner/src/diffusion_planner_node.cpp
+@@ -431,6 +431,15 @@ SetParametersResult DiffusionPlanner::on_parameter(
+     debug_params_ = temp_debug_params;
+   }
+
++  if (mppi_optimizer_) {
++    auto mppi_cost_params =
++      autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this);
++    if (autoware::mppi_optimizer::update_first_order_dubins_mppi_cost_params(
++          parameters, mppi_cost_params)) {
++      mppi_optimizer_->setCostParams(mppi_cost_params);
++    }
++  }
++
+   SetParametersResult result;
+   result.successful = true;
+   result.reason = "success";
+diff --git a/planning/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml b/planning/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml
+index 6c5cdfdb44..5ca3a83f8a 100644
+--- a/planning/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml
++++ b/planning/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml
+@@ -25,6 +25,9 @@
+     obstacle_collision_margin: 0.2
+     road_border_collision_margin: 0.2
+     drivable_area_crossing_coeff: 500.0
++    track_center_coeff: 0.0
++    corner_safe_margin: 0.4
++    corner_buffer_coeff: 0.0
+
+     # Optional offline debug logging for mppi_debug_visualizer.py --log-dir
+     # Empty directory resolves to $XDG_CACHE_HOME/autoware/mppi_debug_log
+diff --git a/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp b/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp
+index ee61ad2a81..43c7d0556f 100644
+--- a/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp
++++ b/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp
+@@ -45,6 +45,12 @@ struct FirstOrderDubinsMppiCostParams
+   float obstacle_collision_margin{0.5F};
+   float road_border_collision_margin{0.2F};
+   float drivable_area_crossing_coeff{10000.0F};
++  /** Path tracking at the ego geometric box center (not rear axle); 0 disables. */
++  float track_center_coeff{0.0F};
++  /** Deadband safe margin [m] for the four-corner drivable-area buffer cost. */
++  float corner_safe_margin{0.4F};
++  /** Quadratic penalty for ego-corner encroachment inside corner_safe_margin; 0 disables. */
++  float corner_buffer_coeff{0.0F};
+ };
+
+ }  // namespace autoware::mppi_optimizer
+diff --git a/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp b/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp
+index 04a0e4623d..224c8fcfa1 100644
+--- a/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp
++++ b/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp
+@@ -20,6 +20,7 @@
+ #include <rclcpp/rclcpp.hpp>
+
+ #include <string>
++#include <vector>
+
+ namespace autoware::mppi_optimizer
+ {
+@@ -32,6 +33,14 @@ void declare_first_order_dubins_mppi_cost_params(
+ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
+   const rclcpp::Node & node, const std::string & prefix = "");
+
++/**
++ * Apply matching live ROS parameter changes to params.
++ * Returns true when at least one cost parameter was updated.
++ */
++bool update_first_order_dubins_mppi_cost_params(
++  const std::vector<rclcpp::Parameter> & parameters, FirstOrderDubinsMppiCostParams & params,
++  const std::string & prefix = "");
++
+ }  // namespace autoware::mppi_optimizer
+
+ #endif  // AUTOWARE__MPPI_OPTIMIZER__FIRST_ORDER_DUBINS_MPPI_COST_PARAMS_ROS_HPP_
+diff --git a/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/mppi_debug_trajectory_logger.hpp b/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/mppi_debug_trajectory_logger.hpp
+index 3b87661b62..f6b4fdb792 100644
+--- a/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/mppi_debug_trajectory_logger.hpp
++++ b/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/mppi_debug_trajectory_logger.hpp
+@@ -146,6 +146,11 @@ public:
+         out << "lateral_jerk_coeff," << cost.lateral_jerk_coeff << "\n";
+         out << "longitudinal_jerk_coeff," << cost.longitudinal_jerk_coeff << "\n";
+         out << "obstacle_collision_margin," << cost.obstacle_collision_margin << "\n";
++        out << "road_border_collision_margin," << cost.road_border_collision_margin << "\n";
++        out << "drivable_area_crossing_coeff," << cost.drivable_area_crossing_coeff << "\n";
++        out << "track_center_coeff," << cost.track_center_coeff << "\n";
++        out << "corner_safe_margin," << cost.corner_safe_margin << "\n";
++        out << "corner_buffer_coeff," << cost.corner_buffer_coeff << "\n";
+       }
+     }
+     {
+diff --git a/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/mppi_optimizer.hpp b/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/mppi_optimizer.hpp
+index 5f12b35ec7..5586ac1b6b 100644
+--- a/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/mppi_optimizer.hpp
++++ b/planning/autoware_mppi_optimizer/include/autoware/mppi_optimizer/mppi_optimizer.hpp
+@@ -15,7 +15,10 @@
+ #ifndef AUTOWARE__MPPI_OPTIMIZER__MPPI_OPTIMIZER_HPP_
+ #define AUTOWARE__MPPI_OPTIMIZER__MPPI_OPTIMIZER_HPP_
+
++#include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
++
+ #include <autoware_utils/ros/polling_subscriber.hpp>
++#include <rcl_interfaces/msg/set_parameters_result.hpp>
+ #include <rclcpp/rclcpp.hpp>
+
+ #include <autoware_planning_msgs/msg/trajectory.hpp>
+@@ -23,6 +26,7 @@
+ #include <nav_msgs/msg/odometry.hpp>
+
+ #include <memory>
++#include <vector>
+
+ namespace autoware::mppi_optimizer
+ {
+@@ -40,6 +44,8 @@ public:
+
+ private:
+   void on_trajectory(const Trajectory::ConstSharedPtr msg);
++  rcl_interfaces::msg::SetParametersResult on_parameter(
++    const std::vector<rclcpp::Parameter> & parameters);
+
+   rclcpp::Subscription<Trajectory>::SharedPtr trajectory_sub_;
+   rclcpp::Publisher<Trajectory>::SharedPtr trajectory_pub_;
+@@ -49,6 +55,8 @@ private:
+     this, "~/input/steering_status"};
+
+   std::unique_ptr<FirstOrderDubinsMppiInterface> mppi_interface_;
++  FirstOrderDubinsMppiCostParams cost_params_;
++  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+ };
+
+ }  // namespace autoware::mppi_optimizer
+diff --git a/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cu b/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cu
+index 60e5914db2..f41f63cbaf 100644
+--- a/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cu
++++ b/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cu
+@@ -324,6 +324,22 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
+   return vectorLength(x - ref_x_[t], y - ref_y_[t]);
+ }
+
++template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
++__host__ __device__ float
++FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
++  computeTrackCenterValue(float x, float y, float yaw, int timestep) const
++{
++  const int t = timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
++#ifdef __CUDA_ARCH__
++  const float x_center = x + this->params_.ego_axle_to_box_center * cosf(yaw);
++  const float y_center = y + this->params_.ego_axle_to_box_center * sinf(yaw);
++#else
++  const float x_center = x + this->params_.ego_axle_to_box_center * std::cos(yaw);
++  const float y_center = y + this->params_.ego_axle_to_box_center * std::sin(yaw);
++#endif
++  return vectorLength(x_center - ref_x_[t], y_center - ref_y_[t]);
++}
++
+ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
+   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+@@ -536,6 +552,57 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
+     drivable_area_y0_, drivable_area_x1_, drivable_area_y1_, num_drivable_area_segments_);
+ }
+
++template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
++__host__ __device__ float
++FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
++  computeCornerBufferCost(const float x, const float y, const float yaw) const
++{
++  if (num_drivable_area_segments_ <= 0 || this->params_.corner_buffer_coeff <= 0.0F) {
++    return 0.0F;
++  }
++
++  const float half_length = this->params_.ego_length * 0.5F;
++  const float half_width = this->params_.ego_width * 0.5F;
++#ifdef __CUDA_ARCH__
++  const float cos_yaw = cosf(yaw);
++  const float sin_yaw = sinf(yaw);
++#else
++  const float cos_yaw = std::cos(yaw);
++  const float sin_yaw = std::sin(yaw);
++#endif
++  const float center_x = x + this->params_.ego_axle_to_box_center * cos_yaw;
++  const float center_y = y + this->params_.ego_axle_to_box_center * sin_yaw;
++
++  float corners_x[4];
++  float corners_y[4];
++  orientedBoxCorners(
++    center_x, center_y, cos_yaw, sin_yaw, half_length, half_width, corners_x, corners_y);
++
++  const float margin = this->params_.corner_safe_margin;
++  float total_cost = 0.0F;
++  for (int corner = 0; corner < 4; ++corner) {
++    float min_distance = 1.0E8F;
++    for (int segment = 0; segment < num_drivable_area_segments_; ++segment) {
++      const float distance = distancePointToSegment(
++        corners_x[corner], corners_y[corner], drivable_area_x0_[segment],
++        drivable_area_y0_[segment], drivable_area_x1_[segment], drivable_area_y1_[segment]);
++#ifdef __CUDA_ARCH__
++      min_distance = fminf(min_distance, distance);
++#else
++      min_distance = std::min(min_distance, distance);
++#endif
++    }
++    if (min_distance < margin) {
++      const float violation = margin - min_distance;
++      total_cost += violation * violation;
++    }
++  }
++
++  // distancePointToSegment is unsigned. Boundary crossings remain covered separately by
++  // drivable_area_crossing_coeff.
++  return this->params_.corner_buffer_coeff * total_cost;
++}
++
+ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+ __host__ __device__ bool
+ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::isCrashLatched(
+@@ -598,13 +665,17 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
+   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
+                                      ? this->params_.drivable_area_crossing_coeff
+                                      : 0.0F;
++  const float track_center_cost =
++    this->params_.track_center_coeff *
++    computeTrackCenterValue(x_pos, y_pos, yaw, timestep);
++  const float corner_buffer_cost = computeCornerBufferCost(x_pos, y_pos, yaw);
+   const float crash_cost =
+     isCrashLatched(crash_status) || detectAndLatchCrash(x_pos, y_pos, yaw, timestep, crash_status)
+       ? latchedCrashCost(crash_status)
+       : 0.0F;
+
+   return speed_cost + track_cost + heading_cost + lateral_distance_cost + lateral_yaw_error_cost +
+-         drivable_area_cost + crash_cost;
++         drivable_area_cost + track_center_cost + corner_buffer_cost + crash_cost;
+ }
+
+ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+@@ -628,13 +699,17 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
+   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
+                                      ? this->params_.drivable_area_crossing_coeff
+                                      : 0.0F;
++  const float track_center_cost =
++    this->params_.track_center_coeff *
++    computeTrackCenterValue(x_pos, y_pos, yaw, timestep);
++  const float corner_buffer_cost = computeCornerBufferCost(x_pos, y_pos, yaw);
+   const float crash_cost =
+     isCrashLatched(crash_status) || detectAndLatchCrash(x_pos, y_pos, yaw, timestep, crash_status)
+       ? latchedCrashCost(crash_status)
+       : 0.0F;
+
+   return speed_cost + track_cost + heading_cost + lateral_distance_cost + lateral_yaw_error_cost +
+-         drivable_area_cost + crash_cost;
++         drivable_area_cost + track_center_cost + corner_buffer_cost + crash_cost;
+ }
+
+ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+@@ -684,8 +759,13 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
+   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
+                                      ? this->params_.drivable_area_crossing_coeff
+                                      : 0.0F;
++  const float track_center_cost =
++    this->params_.track_center_coeff *
++    computeTrackCenterValue(x_pos, y_pos, yaw, NUM_TIMESTEPS - 1) *
++    this->params_.track_terminal_scale;
++  const float corner_buffer_cost = computeCornerBufferCost(x_pos, y_pos, yaw);
+   return track_cost + heading_cost + lateral_distance_cost + lateral_yaw_error_cost +
+-         drivable_area_cost;
++         drivable_area_cost + track_center_cost + corner_buffer_cost;
+ }
+
+ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+diff --git a/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh b/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh
+index 901d5a6c00..7cc1c7c478 100644
+--- a/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh
++++ b/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh
+@@ -53,6 +53,12 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
+   float road_border_collision_margin = 0.2F;
+   /** Per-timestep soft cost when the ego footprint crosses a drivable-area boundary. */
+   float drivable_area_crossing_coeff = 10000.0F;
++  /** Path tracking evaluated at the ego geometric box center. */
++  float track_center_coeff = 0.0F;
++  /** Deadband safe margin [m] for the four-corner drivable-area buffer cost. */
++  float corner_safe_margin = 0.4F;
++  /** Quadratic penalty coefficient for ego-corner encroachment into the deadband. */
++  float corner_buffer_coeff = 0.0F;
+ };
+
+ template <
+@@ -104,6 +110,10 @@ public:
+   /** Euclidean position error to the time-aligned reference sample ref[t]. */
+   __host__ __device__ float computeTrackValue(float x, float y, int timestep) const;
+
++  /** Euclidean error from the ego geometric box center to the time-aligned ref[t]. */
++  __host__ __device__ float computeTrackCenterValue(
++    float x, float y, float yaw, int timestep) const;
++
+   __host__ __device__ float computeHeadingValue(float yaw, int timestep) const;
+
+   /**
+@@ -135,6 +145,10 @@ public:
+   __host__ __device__ bool egoCrossesDrivableAreaBoundary(
+     const float x, const float y, const float yaw) const;
+
++  /** Quadratic deadband cost for ego corners near drivable-area boundary segments. */
++  __host__ __device__ float computeCornerBufferCost(
++    const float x, const float y, const float yaw) const;
++
+   __host__ __device__ bool isCrashLatched(const int * crash_status) const;
+
+   __host__ __device__ bool detectAndLatchCrash(
+diff --git a/planning/autoware_mppi_optimizer/src/first_order_dubins/first_order_dubins_mppi_interface.cu b/planning/autoware_mppi_optimizer/src/first_order_dubins/first_order_dubins_mppi_interface.cu
+index b14523904b..e30e193683 100644
+--- a/planning/autoware_mppi_optimizer/src/first_order_dubins/first_order_dubins_mppi_interface.cu
++++ b/planning/autoware_mppi_optimizer/src/first_order_dubins/first_order_dubins_mppi_interface.cu
+@@ -103,6 +103,9 @@ void applyUserCostParams(
+   cost_params.obstacle_collision_margin = user.obstacle_collision_margin;
+   cost_params.road_border_collision_margin = user.road_border_collision_margin;
+   cost_params.drivable_area_crossing_coeff = user.drivable_area_crossing_coeff;
++  cost_params.track_center_coeff = user.track_center_coeff;
++  cost_params.corner_safe_margin = user.corner_safe_margin;
++  cost_params.corner_buffer_coeff = user.corner_buffer_coeff;
+ }
+
+ FirstOrderDubinsMppiState toHostState(const DYN::state_array & x)
+@@ -504,14 +507,17 @@ struct FirstOrderDubinsMppiInterface::Impl
+       "wheel_base=%.2f, max_steer=%.2f, steer_std=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
+       "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
+       "desired_speed=%.2f, boundary_threshold=%.2f, obs_margin=%.2f, road_border_margin=%.2f, "
+-      "drivable_area_coeff=%.2f)",
++      "drivable_area_coeff=%.2f, track_center_coeff=%.2f, corner_margin=%.2f, "
++      "corner_buffer_coeff=%.2f)",
+       kMppiHorizon, kNumRollouts, kDt, user_cost_params_.lambda, vehicle_params.wheel_base,
+       vehicle_params.max_steer_angle, steer_std, vehicle_params.acc_time_constant,
+       vehicle_params.steer_time_constant, vehicle_params.steer_rate_lim,
+       vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,
+       vehicle_params.ego_axle_to_box_center, cost_params.desired_speed,
+       cost_params.boundary_threshold, cost_params.obstacle_collision_margin,
+-      cost_params.road_border_collision_margin, cost_params.drivable_area_crossing_coeff);
++      cost_params.road_border_collision_margin, cost_params.drivable_area_crossing_coeff,
++      cost_params.track_center_coeff, cost_params.corner_safe_margin,
++      cost_params.corner_buffer_coeff);
+   }
+
+   void resetTrackingState()
+diff --git a/planning/autoware_mppi_optimizer/src/first_order_dubins_mppi_cost_params_ros.cpp b/planning/autoware_mppi_optimizer/src/first_order_dubins_mppi_cost_params_ros.cpp
+index dcdd151fdf..89cbfcf431 100644
+--- a/planning/autoware_mppi_optimizer/src/first_order_dubins_mppi_cost_params_ros.cpp
++++ b/planning/autoware_mppi_optimizer/src/first_order_dubins_mppi_cost_params_ros.cpp
+@@ -61,6 +61,12 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
+     param_name(prefix, "road_border_collision_margin"), defaults.road_border_collision_margin);
+   node.declare_parameter(
+     param_name(prefix, "drivable_area_crossing_coeff"), defaults.drivable_area_crossing_coeff);
++  node.declare_parameter(
++    param_name(prefix, "track_center_coeff"), defaults.track_center_coeff);
++  node.declare_parameter(
++    param_name(prefix, "corner_safe_margin"), defaults.corner_safe_margin);
++  node.declare_parameter(
++    param_name(prefix, "corner_buffer_coeff"), defaults.corner_buffer_coeff);
+ }
+
+ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
+@@ -108,7 +114,56 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
+     node.get_parameter(param_name(prefix, "road_border_collision_margin")).as_double());
+   params.drivable_area_crossing_coeff = static_cast<float>(
+     node.get_parameter(param_name(prefix, "drivable_area_crossing_coeff")).as_double());
++  params.track_center_coeff = static_cast<float>(
++    node.get_parameter(param_name(prefix, "track_center_coeff")).as_double());
++  params.corner_safe_margin = static_cast<float>(
++    node.get_parameter(param_name(prefix, "corner_safe_margin")).as_double());
++  params.corner_buffer_coeff = static_cast<float>(
++    node.get_parameter(param_name(prefix, "corner_buffer_coeff")).as_double());
+   return params;
+ }
+
++bool update_first_order_dubins_mppi_cost_params(
++  const std::vector<rclcpp::Parameter> & parameters, FirstOrderDubinsMppiCostParams & params,
++  const std::string & prefix)
++{
++  bool updated = false;
++  const auto update = [&](const std::string & name, float & value) {
++    const auto full_name = param_name(prefix, name);
++    for (const auto & parameter : parameters) {
++      if (parameter.get_name() == full_name) {
++        value = static_cast<float>(parameter.as_double());
++        updated = true;
++        return;
++      }
++    }
++  };
++
++  update("lambda", params.lambda);
++  update("desired_speed", params.desired_speed);
++  update("speed_coeff", params.speed_coeff);
++  update("track_coeff", params.track_coeff);
++  update("track_terminal_scale", params.track_terminal_scale);
++  update("heading_coeff", params.heading_coeff);
++  update("lateral_distance_coeff", params.lateral_distance_coeff);
++  update("lateral_yaw_error_coeff", params.lateral_yaw_error_coeff);
++  update("crash_coeff", params.crash_coeff);
++  update("boundary_threshold", params.boundary_threshold);
++  update("boundary_threshold_left", params.boundary_threshold_left);
++  update("boundary_threshold_right", params.boundary_threshold_right);
++  update("accel_cmd_coeff", params.accel_cmd_coeff);
++  update("steer_cmd_coeff", params.steer_cmd_coeff);
++  update("steer_rate_coeff", params.steer_rate_coeff);
++  update("lateral_acceleration_coeff", params.lateral_acceleration_coeff);
++  update("lateral_jerk_coeff", params.lateral_jerk_coeff);
++  update("longitudinal_jerk_coeff", params.longitudinal_jerk_coeff);
++  update("obstacle_collision_margin", params.obstacle_collision_margin);
++  update("road_border_collision_margin", params.road_border_collision_margin);
++  update("drivable_area_crossing_coeff", params.drivable_area_crossing_coeff);
++  update("track_center_coeff", params.track_center_coeff);
++  update("corner_safe_margin", params.corner_safe_margin);
++  update("corner_buffer_coeff", params.corner_buffer_coeff);
++  return updated;
++}
++
+ }  // namespace autoware::mppi_optimizer
+diff --git a/planning/autoware_mppi_optimizer/src/mppi_optimizer.cpp b/planning/autoware_mppi_optimizer/src/mppi_optimizer.cpp
+index 1119818e3f..587c47d963 100644
+--- a/planning/autoware_mppi_optimizer/src/mppi_optimizer.cpp
++++ b/planning/autoware_mppi_optimizer/src/mppi_optimizer.cpp
+@@ -41,9 +41,27 @@ MppiOptimizer::MppiOptimizer(const rclcpp::NodeOptions & options) : Node("mppi_o
+   declare_first_order_dubins_mppi_cost_params(*this);
+   declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
+   declare_first_order_dubins_mppi_runtime_options(*this);
+-  mppi_interface_->setCostParams(get_first_order_dubins_mppi_cost_params(*this));
++  cost_params_ = get_first_order_dubins_mppi_cost_params(*this);
++  mppi_interface_->setCostParams(cost_params_);
+   mppi_interface_->setVehicleParams(get_first_order_dubins_mppi_vehicle_params(*this));
+   mppi_interface_->setRuntimeOptions(get_first_order_dubins_mppi_runtime_options(*this));
++  set_param_res_ = add_on_set_parameters_callback(
++    std::bind(&MppiOptimizer::on_parameter, this, std::placeholders::_1));
++}
++
++auto MppiOptimizer::on_parameter(const std::vector<rclcpp::Parameter> & parameters)
++  -> rcl_interfaces::msg::SetParametersResult
++{
++  auto updated_cost_params = cost_params_;
++  if (update_first_order_dubins_mppi_cost_params(parameters, updated_cost_params)) {
++    mppi_interface_->setCostParams(updated_cost_params);
++    cost_params_ = updated_cost_params;
++  }
++
++  rcl_interfaces::msg::SetParametersResult result;
++  result.successful = true;
++  result.reason = "success";
++  return result;
+ }
+
+ void MppiOptimizer::on_trajectory(const Trajectory::ConstSharedPtr msg)
+diff --git a/planning/autoware_mppi_optimizer/src/tools/mppi_offline_retune.cpp b/planning/autoware_mppi_optimizer/src/tools/mppi_offline_retune.cpp
+index 99e8168144..c63476feef 100644
+--- a/planning/autoware_mppi_optimizer/src/tools/mppi_offline_retune.cpp
++++ b/planning/autoware_mppi_optimizer/src/tools/mppi_offline_retune.cpp
+@@ -124,6 +124,8 @@ void applyCostParam(
+     params.speed_coeff = value;
+   } else if (key == "track_coeff") {
+     params.track_coeff = value;
++  } else if (key == "track_center_coeff") {
++    params.track_center_coeff = value;
+   } else if (key == "track_terminal_scale") {
+     params.track_terminal_scale = value;
+   } else if (key == "heading_coeff") {
+@@ -154,6 +156,14 @@ void applyCostParam(
+     params.longitudinal_jerk_coeff = value;
+   } else if (key == "obstacle_collision_margin") {
+     params.obstacle_collision_margin = value;
++  } else if (key == "road_border_collision_margin") {
++    params.road_border_collision_margin = value;
++  } else if (key == "drivable_area_crossing_coeff") {
++    params.drivable_area_crossing_coeff = value;
++  } else if (key == "corner_safe_margin") {
++    params.corner_safe_margin = value;
++  } else if (key == "corner_buffer_coeff") {
++    params.corner_buffer_coeff = value;
+   } else {
+     // Unknown keys must not abort retune: the visualizer may send a superset of
+     // slider names / logged fields that older or newer builds don't share.

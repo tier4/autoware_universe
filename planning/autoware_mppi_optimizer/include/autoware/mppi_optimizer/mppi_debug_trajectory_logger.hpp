@@ -146,6 +146,11 @@ public:
         out << "lateral_jerk_coeff," << cost.lateral_jerk_coeff << "\n";
         out << "longitudinal_jerk_coeff," << cost.longitudinal_jerk_coeff << "\n";
         out << "obstacle_collision_margin," << cost.obstacle_collision_margin << "\n";
+        out << "road_border_collision_margin," << cost.road_border_collision_margin << "\n";
+        out << "drivable_area_crossing_coeff," << cost.drivable_area_crossing_coeff << "\n";
+        out << "track_center_coeff," << cost.track_center_coeff << "\n";
+        out << "corner_safe_margin," << cost.corner_safe_margin << "\n";
+        out << "corner_buffer_coeff," << cost.corner_buffer_coeff << "\n";
       }
     }
     {

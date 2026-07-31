@@ -124,6 +124,8 @@ void applyCostParam(
     params.speed_coeff = value;
   } else if (key == "track_coeff") {
     params.track_coeff = value;
+  } else if (key == "track_center_coeff") {
+    params.track_center_coeff = value;
   } else if (key == "track_terminal_scale") {
     params.track_terminal_scale = value;
   } else if (key == "heading_coeff") {
@@ -154,6 +156,14 @@ void applyCostParam(
     params.longitudinal_jerk_coeff = value;
   } else if (key == "obstacle_collision_margin") {
     params.obstacle_collision_margin = value;
+  } else if (key == "road_border_collision_margin") {
+    params.road_border_collision_margin = value;
+  } else if (key == "drivable_area_crossing_coeff") {
+    params.drivable_area_crossing_coeff = value;
+  } else if (key == "corner_safe_margin") {
+    params.corner_safe_margin = value;
+  } else if (key == "corner_buffer_coeff") {
+    params.corner_buffer_coeff = value;
   } else {
     // Unknown keys must not abort retune: the visualizer may send a superset of
     // slider names / logged fields that older or newer builds don't share.

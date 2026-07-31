@@ -327,6 +327,22 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::computeTrackCenterValue(float x, float y, float yaw, int timestep) const
+{
+  const int t = timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
+#ifdef __CUDA_ARCH__
+  const float x_center = x + this->params_.ego_axle_to_box_center * cosf(yaw);
+  const float y_center = y + this->params_.ego_axle_to_box_center * sinf(yaw);
+#else
+  const float x_center = x + this->params_.ego_axle_to_box_center * std::cos(yaw);
+  const float y_center = y + this->params_.ego_axle_to_box_center * std::sin(yaw);
+#endif
+  return vectorLength(x_center - ref_x_[t], y_center - ref_y_[t]);
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ __device__ float FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
   DYN_PARAMS_T>::computeHeadingValue(const float yaw, const int timestep) const
 {
   int t = timestep;
@@ -537,6 +553,57 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ __device__ float FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::computeCornerBufferCost(const float x, const float y, const float yaw) const
+{
+  if (num_drivable_area_segments_ <= 0 || this->params_.corner_buffer_coeff <= 0.0F) {
+    return 0.0F;
+  }
+
+  const float half_length = this->params_.ego_length * 0.5F;
+  const float half_width = this->params_.ego_width * 0.5F;
+#ifdef __CUDA_ARCH__
+  const float cos_yaw = cosf(yaw);
+  const float sin_yaw = sinf(yaw);
+#else
+  const float cos_yaw = std::cos(yaw);
+  const float sin_yaw = std::sin(yaw);
+#endif
+  const float center_x = x + this->params_.ego_axle_to_box_center * cos_yaw;
+  const float center_y = y + this->params_.ego_axle_to_box_center * sin_yaw;
+
+  float corners_x[4];
+  float corners_y[4];
+  orientedBoxCorners(
+    center_x, center_y, cos_yaw, sin_yaw, half_length, half_width, corners_x, corners_y);
+
+  const float margin = this->params_.corner_safe_margin;
+  float total_cost = 0.0F;
+  for (int corner = 0; corner < 4; ++corner) {
+    float min_distance = 1.0E8F;
+    for (int segment = 0; segment < num_drivable_area_segments_; ++segment) {
+      const float distance = distancePointToSegment(
+        corners_x[corner], corners_y[corner], drivable_area_x0_[segment],
+        drivable_area_y0_[segment], drivable_area_x1_[segment], drivable_area_y1_[segment]);
+#ifdef __CUDA_ARCH__
+      min_distance = fminf(min_distance, distance);
+#else
+      min_distance = std::min(min_distance, distance);
+#endif
+    }
+    if (min_distance < margin) {
+      const float violation = margin - min_distance;
+      total_cost += violation * violation;
+    }
+  }
+
+  // distancePointToSegment is unsigned. Boundary crossings remain covered separately by
+  // drivable_area_crossing_coeff.
+  return this->params_.corner_buffer_coeff * total_cost;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ bool
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::isCrashLatched(
   const int * crash_status) const
@@ -598,13 +665,16 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
                                      ? this->params_.drivable_area_crossing_coeff
                                      : 0.0F;
+  const float track_center_cost =
+    this->params_.track_center_coeff * computeTrackCenterValue(x_pos, y_pos, yaw, timestep);
+  const float corner_buffer_cost = computeCornerBufferCost(x_pos, y_pos, yaw);
   const float crash_cost =
     isCrashLatched(crash_status) || detectAndLatchCrash(x_pos, y_pos, yaw, timestep, crash_status)
       ? latchedCrashCost(crash_status)
       : 0.0F;
 
   return speed_cost + track_cost + heading_cost + lateral_distance_cost + lateral_yaw_error_cost +
-         drivable_area_cost + crash_cost;
+         drivable_area_cost + track_center_cost + corner_buffer_cost + crash_cost;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -628,13 +698,16 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
                                      ? this->params_.drivable_area_crossing_coeff
                                      : 0.0F;
+  const float track_center_cost =
+    this->params_.track_center_coeff * computeTrackCenterValue(x_pos, y_pos, yaw, timestep);
+  const float corner_buffer_cost = computeCornerBufferCost(x_pos, y_pos, yaw);
   const float crash_cost =
     isCrashLatched(crash_status) || detectAndLatchCrash(x_pos, y_pos, yaw, timestep, crash_status)
       ? latchedCrashCost(crash_status)
       : 0.0F;
 
   return speed_cost + track_cost + heading_cost + lateral_distance_cost + lateral_yaw_error_cost +
-         drivable_area_cost + crash_cost;
+         drivable_area_cost + track_center_cost + corner_buffer_cost + crash_cost;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -676,16 +749,20 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float track_cost =
     this->params_.track_coeff * track_val * this->params_.track_terminal_scale;
   const float heading_cost =
-    this->params_.heading_coeff * computeHeadingValue(yaw, NUM_TIMESTEPS - 1) * 10.0F;
+    this->params_.heading_coeff * computeHeadingValue(yaw, NUM_TIMESTEPS - 1);
   const float lateral_distance_cost =
-    this->params_.lateral_distance_coeff * computeLateralDistanceValue(x_pos, y_pos) * 10.0F;
+    this->params_.lateral_distance_coeff * computeLateralDistanceValue(x_pos, y_pos);
   const float lateral_yaw_error_cost =
-    this->params_.lateral_yaw_error_coeff * computeLateralYawErrorValue(x_pos, y_pos, yaw) * 10.0F;
+    this->params_.lateral_yaw_error_coeff * computeLateralYawErrorValue(x_pos, y_pos, yaw);
   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
                                      ? this->params_.drivable_area_crossing_coeff
                                      : 0.0F;
+  const float track_center_cost = this->params_.track_center_coeff *
+                                  computeTrackCenterValue(x_pos, y_pos, yaw, NUM_TIMESTEPS - 1) *
+                                  this->params_.track_terminal_scale;
+  const float corner_buffer_cost = computeCornerBufferCost(x_pos, y_pos, yaw);
   return track_cost + heading_cost + lateral_distance_cost + lateral_yaw_error_cost +
-         drivable_area_cost;
+         drivable_area_cost + track_center_cost + corner_buffer_cost;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

@@ -41,9 +41,27 @@ MppiOptimizer::MppiOptimizer(const rclcpp::NodeOptions & options) : Node("mppi_o
   declare_first_order_dubins_mppi_cost_params(*this);
   declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
   declare_first_order_dubins_mppi_runtime_options(*this);
-  mppi_interface_->setCostParams(get_first_order_dubins_mppi_cost_params(*this));
+  cost_params_ = get_first_order_dubins_mppi_cost_params(*this);
+  mppi_interface_->setCostParams(cost_params_);
   mppi_interface_->setVehicleParams(get_first_order_dubins_mppi_vehicle_params(*this));
   mppi_interface_->setRuntimeOptions(get_first_order_dubins_mppi_runtime_options(*this));
+  set_param_res_ = add_on_set_parameters_callback(
+    std::bind(&MppiOptimizer::on_parameter, this, std::placeholders::_1));
+}
+
+auto MppiOptimizer::on_parameter(const std::vector<rclcpp::Parameter> & parameters)
+  -> rcl_interfaces::msg::SetParametersResult
+{
+  auto updated_cost_params = cost_params_;
+  if (update_first_order_dubins_mppi_cost_params(parameters, updated_cost_params)) {
+    mppi_interface_->setCostParams(updated_cost_params);
+    cost_params_ = updated_cost_params;
+  }
+
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  result.reason = "success";
+  return result;
 }
 
 void MppiOptimizer::on_trajectory(const Trajectory::ConstSharedPtr msg)

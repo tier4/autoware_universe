@@ -431,6 +431,15 @@ SetParametersResult DiffusionPlanner::on_parameter(
     debug_params_ = temp_debug_params;
   }
 
+  if (mppi_optimizer_) {
+    auto mppi_cost_params =
+      autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this);
+    if (autoware::mppi_optimizer::update_first_order_dubins_mppi_cost_params(
+          parameters, mppi_cost_params)) {
+      mppi_optimizer_->setCostParams(mppi_cost_params);
+    }
+  }
+
   SetParametersResult result;
   result.successful = true;
   result.reason = "success";

@@ -15,7 +15,10 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__MPPI_OPTIMIZER_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__MPPI_OPTIMIZER_HPP_
 
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
+
 #include <autoware_utils/ros/polling_subscriber.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -23,6 +26,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <memory>
+#include <vector>
 
 namespace autoware::mppi_optimizer
 {
@@ -40,6 +44,8 @@ public:
 
 private:
   void on_trajectory(const Trajectory::ConstSharedPtr msg);
+  rcl_interfaces::msg::SetParametersResult on_parameter(
+    const std::vector<rclcpp::Parameter> & parameters);
 
   rclcpp::Subscription<Trajectory>::SharedPtr trajectory_sub_;
   rclcpp::Publisher<Trajectory>::SharedPtr trajectory_pub_;
@@ -49,6 +55,8 @@ private:
     this, "~/input/steering_status"};
 
   std::unique_ptr<FirstOrderDubinsMppiInterface> mppi_interface_;
+  FirstOrderDubinsMppiCostParams cost_params_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 };
 
 }  // namespace autoware::mppi_optimizer

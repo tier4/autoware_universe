@@ -20,6 +20,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <string>
+#include <vector>
 
 namespace autoware::mppi_optimizer
 {
@@ -31,6 +32,14 @@ void declare_first_order_dubins_mppi_cost_params(
 /** Read declared MPPI cost parameters from a node. */
 FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
   const rclcpp::Node & node, const std::string & prefix = "");
+
+/**
+ * Apply matching live ROS parameter changes to params.
+ * Returns true when at least one cost parameter was updated.
+ */
+bool update_first_order_dubins_mppi_cost_params(
+  const std::vector<rclcpp::Parameter> & parameters, FirstOrderDubinsMppiCostParams & params,
+  const std::string & prefix = "");
 
 }  // namespace autoware::mppi_optimizer
 

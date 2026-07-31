@@ -53,6 +53,12 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float road_border_collision_margin = 0.2F;
   /** Per-timestep soft cost when the ego footprint crosses a drivable-area boundary. */
   float drivable_area_crossing_coeff = 10000.0F;
+  /** Path tracking evaluated at the ego geometric box center. */
+  float track_center_coeff = 0.0F;
+  /** Deadband safe margin [m] for the four-corner drivable-area buffer cost. */
+  float corner_safe_margin = 0.4F;
+  /** Quadratic penalty coefficient for ego-corner encroachment into the deadband. */
+  float corner_buffer_coeff = 0.0F;
 };
 
 template <
@@ -104,6 +110,10 @@ public:
   /** Euclidean position error to the time-aligned reference sample ref[t]. */
   __host__ __device__ float computeTrackValue(float x, float y, int timestep) const;
 
+  /** Euclidean error from the ego geometric box center to the time-aligned ref[t]. */
+  __host__ __device__ float computeTrackCenterValue(
+    float x, float y, float yaw, int timestep) const;
+
   __host__ __device__ float computeHeadingValue(float yaw, int timestep) const;
 
   /**
@@ -133,6 +143,10 @@ public:
 
   /** Placeholder for ego-footprint crossing of drivable-area boundary segments. */
   __host__ __device__ bool egoCrossesDrivableAreaBoundary(
+    const float x, const float y, const float yaw) const;
+
+  /** Quadratic deadband cost for ego corners near drivable-area boundary segments. */
+  __host__ __device__ float computeCornerBufferCost(
     const float x, const float y, const float yaw) const;
 
   __host__ __device__ bool isCrashLatched(const int * crash_status) const;
