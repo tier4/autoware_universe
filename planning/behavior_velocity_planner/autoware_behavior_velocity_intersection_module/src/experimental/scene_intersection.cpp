@@ -323,6 +323,14 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
   // attention area, so if this is null, ego has already passed the intersection, or the end of the
   // ego path has just entered the entry of this intersection
   // ==========================================================================================
+  if (!intersection_lanelets_) {
+    return InternalError{"intersection lanelets is empty"};
+  }
+  const auto & intersection_lanelets = intersection_lanelets_.value();
+  if (!intersection_lanelets.first_attention_area()) {
+    return InternalError{"attention area is empty"};
+  }
+
   const auto & default_stopline_s_opt = intersection_stoplines.default_stopline;
   if (!default_stopline_s_opt) {
     return InternalError{"default stop line is null"};
