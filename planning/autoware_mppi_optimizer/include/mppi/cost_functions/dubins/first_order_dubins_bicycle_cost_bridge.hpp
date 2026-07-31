@@ -39,6 +39,7 @@ inline void fillFirstOrderDubinsBicycleCostGeometry(
   cost_params.wheel_base = dyn.wheel_base;
   cost_params.accel_time_constant = dyn.accel_time_constant;
   cost_params.steer_time_constant = dyn.steer_time_constant;
+  cost_params.max_steer_rate = dyn.max_steer_rate;
 }
 
 template <int NUM_TIMESTEPS>

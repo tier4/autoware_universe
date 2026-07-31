@@ -7,7 +7,7 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 ## Features
 
 - **Centerline-based path planning**: Generates paths along lanelet centerline from the HD map, extending backward and forward from the ego vehicle's position
-- **Smooth goal connection**: Refines the path near the goal pose for smooth stopping
+- **Goal handling**: Selected by `path_planning.early_stop.enable`. When disabled (default), the path is refined near the goal pose so that ego reaches the goal itself (smooth goal connection). When enabled, the path is instead cut short before the goal so that ego stops in front of it without pulling over to the side of the road
 - **Path shifting**: Shifts the centerline path to start from the ego vehicle's current pose, using curvature-aware shift distance calculation based on ego velocity and lateral acceleration limits
 - **Trajectory smoothing**: Applies an Elastic Band smoother for geometric smoothing via a plugin interface
 - **Trajectory modification**: Applies modifier plugins (e.g., obstacle stop) for safety modifications

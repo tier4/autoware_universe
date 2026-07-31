@@ -3,28 +3,28 @@
     # Vehicle actuation dynamics are loaded from $(vehicle_model)_description/config/simulator_model.param.yaml
 
     # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
-    lambda: 100.0
+    lambda: 1500.0
     desired_speed: 2.5
-    speed_coeff: 0.0
-    track_coeff: 1000.0
-    track_terminal_scale: 10.0
-    heading_coeff: 100.0
+    speed_coeff: 300.0
+    track_coeff: 1200.0
+    track_terminal_scale: 200.0
+    heading_coeff: 600.0
     # Spatial (closest-segment) costs restored from pre time-indexed tracking; 0 = off.
     lateral_distance_coeff: 0.0
     lateral_yaw_error_coeff: 0.0
-    crash_coeff: 10000.0
+    crash_coeff: 100000.0
     boundary_threshold: 0.8
     boundary_threshold_left: -1.0
     boundary_threshold_right: -1.0
-    lateral_acceleration_coeff: 0.0
-    lateral_jerk_coeff: 150.0
-    longitudinal_jerk_coeff: 150.0
+    lateral_acceleration_coeff: 100.0
+    lateral_jerk_coeff: 200.0
+    longitudinal_jerk_coeff: 100.0
     accel_cmd_coeff: 50.0
-    steer_cmd_coeff: 0.0
-    steer_rate_coeff: 0.0
+    steer_cmd_coeff: 250.0
+    steer_rate_coeff: 300.0
     obstacle_collision_margin: 0.2
-    road_border_collision_margin: 0.2
-    drivable_area_crossing_coeff: 500.0
+    road_border_collision_margin: 0.3
+    drivable_area_crossing_coeff: 100.0
 
     # Optional offline debug logging for mppi_debug_visualizer.py --log-dir
     # Empty directory resolves to $XDG_CACHE_HOME/autoware/mppi_debug_log

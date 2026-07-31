@@ -54,7 +54,7 @@ __host__ __device__ void comfortTerms(
 
   longitudinal_jerk = (accel_cmd - accel) / accel_tau;
 
-  steer_rate = (steer_cmd - steer) / steer_tau;
+  steer_rate = clampSteerRate(params, (steer_cmd - steer) / steer_tau);
   const float curvature = tanf(steer) / wheel_base;
 #ifdef __CUDA_ARCH__
   const float sec_sq = 1.0F / fmaxf(cosf(steer) * cosf(steer), 1.0E-6F);
@@ -684,8 +684,13 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
                                      ? this->params_.drivable_area_crossing_coeff
                                      : 0.0F;
+  int terminal_crash_status = 0;
+  const float crash_cost =
+    detectAndLatchCrash(x_pos, y_pos, yaw, NUM_TIMESTEPS - 1, &terminal_crash_status)
+      ? latchedCrashCost(&terminal_crash_status)
+      : 0.0F;
   return track_cost + heading_cost + lateral_distance_cost + lateral_yaw_error_cost +
-         drivable_area_cost;
+         drivable_area_cost + crash_cost;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

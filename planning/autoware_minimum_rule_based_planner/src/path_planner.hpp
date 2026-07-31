@@ -253,6 +253,13 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
   const std::optional<double> & s_right_bound);
 
 /**
+ * @brief Recreate the path with a given goal pose
+ */
+PathPointTrajectory refine_path_for_goal(
+  const PathPointTrajectory & input, const geometry_msgs::msg::Pose & goal_pose,
+  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset);
+
+/**
  * @brief Extract lanelets from the trajectory
  */
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
@@ -268,6 +275,13 @@ bool is_in_lanelets(const geometry_msgs::msg::Pose & pose, const lanelet::ConstL
  */
 bool is_trajectory_inside_lanelets(
   const PathPointTrajectory & refined_path, const lanelet::ConstLanelets & lanelets);
+
+/**
+ * @brief Modify path for smooth goal connection
+ */
+std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
+  const PathPointTrajectory & trajectory, const RouteContext & planner_data,
+  const double search_radius_range, const double pre_goal_offset);
 
 }  // namespace utils
 }  // namespace autoware::minimum_rule_based_planner
