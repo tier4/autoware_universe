@@ -684,8 +684,13 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float drivable_area_cost = egoCrossesDrivableAreaBoundary(x_pos, y_pos, yaw)
                                      ? this->params_.drivable_area_crossing_coeff
                                      : 0.0F;
+  int terminal_crash_status = 0;
+  const float crash_cost =
+    detectAndLatchCrash(x_pos, y_pos, yaw, NUM_TIMESTEPS - 1, &terminal_crash_status)
+      ? latchedCrashCost(&terminal_crash_status)
+      : 0.0F;
   return track_cost + heading_cost + lateral_distance_cost + lateral_yaw_error_cost +
-         drivable_area_cost;
+         drivable_area_cost + crash_cost;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
