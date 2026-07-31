@@ -1083,6 +1083,41 @@ std::optional<double> cal_early_stop(
   }
   return *dist_offset;
 }
+
+bool route_deviation_stop(
+  const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & current_pose,
+  const RouteContext & planner_data)
+{
+  lanelet::ConstLanelets recoverable_lanelets;
+  const auto beside_lanelets = planner_data.routing_graph_ptr->besides(current_lanelet);
+  recoverable_lanelets.insert(
+    recoverable_lanelets.end(), beside_lanelets.begin(), beside_lanelets.end());
+
+  const auto left_lanelets =
+    planner_data.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.leftBound());
+
+  for (const auto & ll : left_lanelets) {
+    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(ll)) {
+      recoverable_lanelets.push_back(ll);
+    }
+  }
+
+  const auto right_lanelets =
+    planner_data.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.rightBound());
+
+  for (const auto & ll : right_lanelets) {
+    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(ll)) {
+      recoverable_lanelets.push_back(ll);
+    }
+  }
+
+  for (const auto & ll : recoverable_lanelets) {
+    if (lanelet::geometry::inside(ll, {current_pose.position.x, current_pose.position.y})) {
+      return false;
+    }
+  }
+  return true;
+}
 // ---------------------------------------------------------------------------
 // Lane-change interpolation helpers
 // ---------------------------------------------------------------------------
@@ -1272,8 +1307,10 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
 {
   if (!current_lanelet_ || std::exchange(route_updated_, false)) {
     lanelet::ConstLanelet closest;
-    if (lanelet::utils::query::getClosestLanelet(
-          route_context_.route_lanelets, current_pose, &closest)) {
+    if (lanelet::utils::query::getClosestLaneletWithConstrains(
+          route_context_.route_lanelets, current_pose, &closest,
+          params_.path_planning.ego_nearest_lanelet.dist_threshold,
+          params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
       current_lanelet_ = closest;
       return true;
     }
@@ -1297,7 +1334,15 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
   // Include adjacent route lanelets so that ego transitions to the correct lane
   // during lane changes (e.g., 2->4) instead of being picked up by a longitudinally
   // adjacent lanelet on the wrong lane (e.g., 3)
-  for (const auto & beside : route_context_.routing_graph_ptr->besides(*current_lanelet_)) {
+  const auto left_and_rights = route_context_.routing_graph_ptr->besides(*current_lanelet_);
+  const auto adjacent_lefts = route_context_.routing_graph_ptr->adjacentLefts(*current_lanelet_);
+  const auto adjacent_rights = route_context_.routing_graph_ptr->adjacentRights(*current_lanelet_);
+
+  lanelet::ConstLanelets adjacent_lanelets;
+  adjacent_lanelets.insert(adjacent_lanelets.end(), left_and_rights.begin(), left_and_rights.end());
+  adjacent_lanelets.insert(adjacent_lanelets.end(), adjacent_lefts.begin(), adjacent_lefts.end());
+  adjacent_lanelets.insert(adjacent_lanelets.end(), adjacent_rights.begin(), adjacent_rights.end());
+  for (const auto & beside : adjacent_lanelets) {
     if (
       beside.id() != current_lanelet_->id() &&
       std::any_of(
@@ -1314,11 +1359,14 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
     return true;
   }
 
-  if (lanelet::utils::query::getClosestLanelet(
-        route_context_.route_lanelets, current_pose, &*current_lanelet_)) {
+  if (lanelet::utils::query::getClosestLaneletWithConstrains(
+        route_context_.route_lanelets, current_pose, &*current_lanelet_,
+        /*dist_threshold=*/std::numeric_limits<double>::max(),
+        params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
     return true;
   }
 
+  current_lanelet_ = std::nullopt;
   return false;
 }
 
@@ -1359,13 +1407,20 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
 
   const lanelet::LaneletSequence lanelet_sequence(lanelets);
   const auto s = s_on_current_lanelet + lanelet::utils::getLaneletLength2d(backward_lanelets);
-  const auto [s_start, s_end] = utils::refine_path_range(
-    {s - path_length_backward, s + path_length_forward}, lanelet_sequence, route_context_,
-    vehicle_info_, stop_margin);
+  const auto [s_start, s_end] = [&]() {
+    Interval range = utils::refine_path_range(
+      {s - path_length_backward, s + path_length_forward}, lanelet_sequence, route_context_,
+      vehicle_info_, stop_margin);
 
-  if (s_end <= s_start) {
+    if (route_deviation_stop(*current_lanelet_, current_pose, route_context_)) {
+      range.end = std::min(range.end, s);
+    }
+    return range;
+  }();
+
+  if (s_end < s_start) {
     RCLCPP_WARN_THROTTLE(
-      logger_, *clock_, 5000, "s_end (%.2f) <= s_start (%.2f), cannot generate path", s_end,
+      logger_, *clock_, 5000, "s_end (%.2f) < s_start (%.2f), cannot generate path", s_end,
       s_start);
     return std::nullopt;
   }
