@@ -43,6 +43,8 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float wheel_base = 0.32F;
   float accel_time_constant = 0.15F;
   float steer_time_constant = 0.08F;
+  /** Must match the dynamics limit so comfort terms price the steering rate actually executed. */
+  float max_steer_rate = 3.0F;
   /** Ego OBB for parked-car collision (rear axle at pose; box center offset forward). */
   float ego_length = 0.55F * 1.5F;
   float ego_width = 0.28F * 1.5F;
