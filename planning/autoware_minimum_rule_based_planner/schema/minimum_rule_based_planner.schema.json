@@ -139,12 +139,6 @@
                   "default": 0.5,
                   "minimum": 0.0
                 },
-                "minimum_shift_yaw": {
-                  "type": "number",
-                  "description": "Yaw deviation threshold to trigger shift [rad]",
-                  "default": 0.349,
-                  "minimum": 0.0
-                },
                 "minimum_shift_distance": {
                   "type": "number",
                   "description": "Floor for shift distance [m]",

@@ -1831,13 +1831,6 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
   const double ego_yaw = tf2::getYaw(ego_pose.orientation);
   const double traj_yaw = tf2::getYaw(trajectory.points.at(nearest_idx).pose.orientation);
   const double signed_yaw_dev = autoware_utils::normalize_radian(ego_yaw - traj_yaw);
-  const double abs_yaw_dev = std::abs(signed_yaw_dev);
-
-  if (
-    std::abs(lateral_offset) < shift_params.minimum_shift_length &&
-    abs_yaw_dev < shift_params.minimum_shift_yaw) {
-    return trajectory;
-  }
 
   const double clamped_velocity =
     std::max(std::max(0.0, ego_velocity), shift_params.min_speed_for_curvature);

@@ -404,7 +404,6 @@ Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
 
   TrajectoryShiftParams shift_params;
   shift_params.minimum_shift_length = params_.path_planning.path_shift.minimum_shift_length;
-  shift_params.minimum_shift_yaw = params_.path_planning.path_shift.minimum_shift_yaw;
   shift_params.minimum_shift_distance = params_.path_planning.path_shift.minimum_shift_distance;
   shift_params.min_speed_for_curvature = params_.path_planning.path_shift.min_speed_for_curvature;
   shift_params.lateral_accel_limit = params_.path_planning.path_shift.lateral_accel_limit;

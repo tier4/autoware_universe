@@ -121,11 +121,6 @@ minimum_rule_based_planner:
         default_value: 0.1
         description: lateral offset threshold to trigger path shifting [m]
 
-      minimum_shift_yaw:
-        type: double
-        default_value: 0.1
-        description: yaw deviation threshold to trigger path shifting [rad]
-
       minimum_shift_distance:
         type: double
         default_value: 5.0
