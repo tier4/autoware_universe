@@ -77,10 +77,12 @@ void PathPlanner::set_planner_data(
       &route_context_.routing_graph_ptr);
   }
 
-  if (route_ptr && route_ptr->uuid != prev_route_uuid_) {
+  if (route_ptr) {
+    if (route_ptr->uuid != prev_route_uuid_) {
+      prev_route_uuid_ = route_ptr->uuid;
+      route_updated_ = true;
+    }
     set_route(route_ptr);
-    prev_route_uuid_ = route_ptr->uuid;
-    route_updated_ = true;
   }
 }
 
