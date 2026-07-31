@@ -15,7 +15,6 @@
 #include "point_cloud_collision_check_filter.hpp"
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-
 #include <rclcpp/time.hpp>
 
 #include <cmath>
@@ -141,8 +140,8 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
     debug_markers_, debug_data_, planner_data_, result.is_feasible,
     rclcpp::Time{context.odometry->header.stamp});
 
-  //result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
-  result.is_feasible = true; // Placeholder - replace with actual stop feasibility judgment
+  // result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
+  result.is_feasible = true;  // Placeholder - replace with actual stop feasibility judgment
 
   return result;
 }

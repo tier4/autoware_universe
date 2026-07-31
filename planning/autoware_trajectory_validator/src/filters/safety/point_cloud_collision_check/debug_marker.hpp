@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <string>
+#include <utility>
 
 namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
 {
@@ -83,8 +84,7 @@ inline int count_feasibility_markers(const MarkerArray & markers)
   const std::string s{suffix};
   return static_cast<int>(
     std::count_if(markers.markers.begin(), markers.markers.end(), [&s](const Marker & m) {
-      return m.ns.size() >= s.size() &&
-             m.ns.compare(m.ns.size() - s.size(), s.size(), s) == 0;
+      return m.ns.size() >= s.size() && m.ns.compare(m.ns.size() - s.size(), s.size(), s) == 0;
     }));
 }
 }  // namespace detail
@@ -105,8 +105,7 @@ inline void emit_debug_markers(
 
   const bool first_candidate = markers.markers.empty();
   const int k = detail::count_feasibility_markers(markers);
-  const auto color =
-    is_feasible ? detail::rgba(0.2f, 1.0f, 0.3f) : detail::rgba(1.0f, 0.1f, 0.1f);
+  const auto color = is_feasible ? detail::rgba(0.2f, 1.0f, 0.3f) : detail::rgba(1.0f, 0.1f, 0.1f);
 
   // Filtered (corridor) points in map frame.
   if (filtered_ptr && !filtered_ptr->empty()) {
@@ -140,9 +139,10 @@ inline void emit_debug_markers(
       buf, sizeof(buf), "cand%d: %s | no_ground frame:%s pts:%zu | filtered:%zu", k,
       is_feasible ? "SAFE" : "STOP REQUIRED", debug.no_ground_frame_id.c_str(),
       debug.no_ground_point_count, debug.filtered_point_count);
-    markers.markers.push_back(detail::make_text(
-      std::to_string(k) + "/feasibility", static_cast<int32_t>(markers.markers.size()), stamp,
-      debug.ego_position, 1.5 + 0.7 * static_cast<double>(k), 0.6, color, buf));
+    markers.markers.push_back(
+      detail::make_text(
+        std::to_string(k) + "/feasibility", static_cast<int32_t>(markers.markers.size()), stamp,
+        debug.ego_position, 1.5 + 0.7 * static_cast<double>(k), 0.6, color, buf));
   }
 
   // One status banner per cycle (first candidate only).
@@ -151,9 +151,10 @@ inline void emit_debug_markers(
                              " | no_ground frame:" + debug.no_ground_frame_id +
                              " pts:" + std::to_string(debug.no_ground_point_count) +
                              " | filtered_pts:" + std::to_string(debug.filtered_point_count);
-    markers.markers.push_back(detail::make_text(
-      "status", static_cast<int32_t>(markers.markers.size()), stamp, debug.ego_position, 3.0, 0.9,
-      color, text));
+    markers.markers.push_back(
+      detail::make_text(
+        "status", static_cast<int32_t>(markers.markers.size()), stamp, debug.ego_position, 3.0, 0.9,
+        color, text));
   }
 }
 
