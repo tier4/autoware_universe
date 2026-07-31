@@ -25,6 +25,11 @@ minimum_rule_based_planner:
         description: ratio to expand interval bound of group according to lateral distance
 
     early_stop:
+      enable:
+        type: bool
+        default_value: false
+        description: if true, stop in front of the goal instead of connecting the path to the goal pose
+
       expected_ego_speed_parking:
         type: double
         default_value: 2.8
@@ -52,6 +57,18 @@ minimum_rule_based_planner:
         validation:
           gt<>: [0.1]
         description: max longitudinal jerk used to compute the stopping distance during pull over [m/s^3]
+
+    # Used only when early_stop.enable is false
+    smooth_goal_connection:
+      search_radius_range:
+        type: double
+        default_value: 7.5
+        description: search radius range for smooth goal connection [m]
+
+      pre_goal_offset:
+        type: double
+        default_value: 1.0
+        description: offset before goal for smooth connection [m]
 
     # Parameters for lanelet matching (different from EB smoother's ego_nearest_* params)
     ego_nearest_lanelet:
