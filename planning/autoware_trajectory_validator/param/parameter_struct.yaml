@@ -560,3 +560,286 @@ validator:
       default_value: 0.1
       description: Ego velocity threshold (m/s) under which the latched emergency-stop state is released when recovery_policy is until_stopped. Evaluation use only.
       read_only: false
+
+  point_cloud_collision_check:
+    common:
+      max_accel:
+        type: double
+        default_value: 1.0
+        description: Max acceleration used for ego braking distance estimation (m/s^2). Keep in sync with common.param.yaml normal.max_acc.
+        read_only: false
+      min_accel:
+        type: double
+        default_value: -1.0
+        description: Min acceleration (deceleration) used for stopping distance (m/s^2, negative). Keep in sync with common.param.yaml normal.min_acc.
+        read_only: false
+      max_jerk:
+        type: double
+        default_value: 0.6
+        description: Max jerk used for ego braking distance estimation (m/s^3). Keep in sync with common.param.yaml normal.max_jerk.
+        read_only: false
+      min_jerk:
+        type: double
+        default_value: -0.6
+        description: Min jerk used for ego braking distance estimation (m/s^3, negative). Keep in sync with common.param.yaml normal.min_jerk.
+        read_only: false
+    stop_planning:
+      stop_margin:
+        type: double
+        default_value: 5.0
+        description: Longitudinal stop margin in front of the obstacle (m).
+        read_only: false
+      rss_params:
+        use_rss_stop:
+          type: bool
+          default_value: true
+          description: If true, use the obstacle braking distance for RSS-style stops.
+          read_only: false
+        two_wheel_objects_deceleration:
+          type: double
+          default_value: -3.0
+          description: Assumed deceleration for BICYCLE and MOTORCYCLE (m/s^2, negative). Unused while only pointcloud obstacles are handled; kept to match the porting source.
+          read_only: false
+        vehicle_objects_deceleration:
+          type: double
+          default_value: -1.2
+          description: Assumed deceleration for CAR, TRUCK and other vehicles (m/s^2, negative). Unused while only pointcloud obstacles are handled; kept to match the porting source.
+          read_only: false
+        no_wheel_objects_deceleration:
+          type: double
+          default_value: -10.0
+          description: Assumed deceleration for PEDESTRIAN and UNKNOWN (m/s^2, negative). Unused while only pointcloud obstacles are handled; kept to match the porting source.
+          read_only: false
+        pointcloud_deceleration:
+          type: double
+          default_value: -1.0
+          description: Assumed deceleration for a pointcloud obstacle (m/s^2, negative).
+          read_only: false
+        velocity_offset:
+          type: double
+          default_value: -1.0
+          description: Velocity offset applied when computing the braking distance (m/s).
+          read_only: false
+      obstacle_velocity_threshold_enter_fixed_stop:
+        type: double
+        default_value: 3.0
+        description: Velocity threshold below which a fixed stop is used (m/s).
+        read_only: false
+    obstacle_filtering:
+      check_inside:
+        type: bool
+        default_value: true
+        description: If true, detect obstacles inside the ego footprint corridor.
+        read_only: false
+      trim_trajectory:
+        enable_trimming:
+          type: bool
+          default_value: true
+          description: If true, trim the detection trajectory by ego braking distance.
+          read_only: false
+        min_trajectory_length:
+          type: double
+          default_value: 30.0
+          description: Minimum trimmed trajectory length (m).
+          read_only: false
+        braking_distance_scale_factor:
+          type: double
+          default_value: 1.5
+          description: Scale factor applied to braking distance for trimming.
+          read_only: false
+      lateral_margin:
+        nominal_margin:
+          type: double
+          default_value: 0.3
+          description: Nominal lateral margin added to the ego footprint (m).
+          read_only: false
+        additional_wheel_off_track_scale:
+          type: double
+          default_value: 0.0
+          description: Scale factor for additional margin against ego wheel off-track.
+          read_only: false
+        is_moving_threshold_velocity:
+          type: double
+          default_value: 0.5
+          description: Velocity threshold to regard an obstacle as moving (m/s).
+          read_only: false
+        additional_is_stop_margin:
+          type: double
+          default_value: 0.0
+          description: Additional lateral margin for a stopped obstacle (m).
+          read_only: false
+        additional_is_moving_margin:
+          type: double
+          default_value: 0.0
+          description: Additional lateral margin for a moving obstacle (m).
+          read_only: false
+      stop_obstacle_hold_time_threshold:
+        type: double
+        default_value: 1.0
+        description: Time (s) to hold a tracked pointcloud stop candidate before purging.
+        read_only: false
+      excluded_class_ids:
+        type: int_array
+        default_value: [0, 1, 2, 3, 4, 24, 25]
+        description: class_id values treated as ground/background and excluded (used only when the input pointcloud carries a class_id field). ptv3 indices - drivable_surface/other_flat_surface/sidewalk/manmade/vegetation/other_stuff/noise.
+        read_only: false
+    pointcloud_segmentation:
+      time_series_association:
+        max_time_diff:
+          type: double
+          default_value: 0.35
+          description: Max time difference for cross-frame obstacle association (s).
+          read_only: false
+        min_velocity:
+          type: double
+          default_value: -5.0
+          description: Lower velocity bound for the association gate (m/s, allows reversing).
+          read_only: false
+        max_velocity:
+          type: double
+          default_value: 30.0
+          description: Upper velocity bound for the association gate (m/s).
+          read_only: false
+        position_diff:
+          type: double
+          default_value: 1.0
+          description: Position difference tolerance for association (m).
+          read_only: false
+      velocity_estimation:
+        use_estimated_velocity:
+          type: bool
+          default_value: false
+          description: If true, use the estimated obstacle velocity in the stop decision.
+          read_only: false
+        min_clamp_velocity:
+          type: double
+          default_value: 0.0
+          description: Lower clamp on the projected longitudinal velocity (m/s).
+          read_only: false
+        max_clamp_velocity:
+          type: double
+          default_value: 20.0
+          description: Upper clamp on the projected longitudinal velocity (m/s).
+          read_only: false
+        required_velocity_count:
+          type: int
+          default_value: 5
+          description: Number of observations required before the velocity LPF settles.
+          read_only: false
+        lpf_gain:
+          type: double
+          default_value: 0.9
+          description: Low-pass filter gain for the velocity estimate.
+          read_only: false
+      height_margin:
+        margin_from_bottom:
+          type: double
+          default_value: 0.5
+          description: Height margin below the trajectory for collision detection (m).
+          read_only: false
+        margin_from_top:
+          type: double
+          default_value: 0.5
+          description: Height margin above the ego vehicle for collision detection (m).
+          read_only: false
+    trajectory_polygon:
+      decimate_trajectory_step_length:
+        type: double
+        default_value: 2.0
+        description: Step length used when decimating trajectory points (m).
+        read_only: false
+      goal_extended_trajectory_length:
+        type: double
+        default_value: 6.0
+        description: Length by which the trajectory end is extended when decimating (m).
+        read_only: false
+      enable_to_consider_current_pose:
+        type: bool
+        default_value: true
+        description: If true, consider the current ego pose when building one-step polygons.
+        read_only: false
+      time_to_convergence:
+        type: double
+        default_value: 1.5
+        description: Time (s) for the ego pose error to converge in polygon generation.
+        read_only: false
+      ego_nearest_dist_threshold:
+        type: double
+        default_value: 3.0
+        description: Distance threshold for nearest trajectory point search (m).
+        read_only: false
+      ego_nearest_yaw_threshold:
+        type: double
+        default_value: 1.046
+        description: Yaw threshold for nearest trajectory point search (rad).
+        read_only: false
+    pointcloud_preprocessing:
+      filter_by_trajectory_polygon:
+        min_trajectory_length:
+          type: double
+          default_value: 30.0
+          description: Minimum trajectory length used when cropping the pointcloud (m).
+          read_only: false
+        braking_distance_scale_factor:
+          type: double
+          default_value: 1.5
+          description: Scale factor for braking distance when cropping the pointcloud.
+          read_only: false
+        lateral_margin:
+          type: double
+          default_value: 2.0
+          description: Lateral margin used to mask the pointcloud (m).
+          read_only: false
+        height_margin:
+          type: double
+          default_value: 1.0
+          description: Height margin used to mask the pointcloud (m).
+          read_only: false
+      downsample_by_voxel_grid:
+        enable_downsample:
+          type: bool
+          default_value: true
+          description: If true, downsample the pointcloud by a voxel grid.
+          read_only: false
+        voxel_size_x:
+          type: double
+          default_value: 0.05
+          description: Voxel size along x (m).
+          read_only: false
+        voxel_size_y:
+          type: double
+          default_value: 0.05
+          description: Voxel size along y (m).
+          read_only: false
+        voxel_size_z:
+          type: double
+          default_value: 100000.0
+          description: Voxel size along z (m); large value keeps full height.
+          read_only: false
+      euclidean_clustering:
+        enable_clustering:
+          type: bool
+          default_value: true
+          description: If true, cluster the pointcloud by euclidean distance.
+          read_only: false
+        cluster_tolerance:
+          type: double
+          default_value: 1.0
+          description: Euclidean clustering tolerance (m).
+          read_only: false
+        min_cluster_size:
+          type: int
+          default_value: 1
+          description: Minimum cluster size.
+          read_only: false
+        max_cluster_size:
+          type: int
+          default_value: 100000
+          description: Maximum cluster size.
+          read_only: false
+    debug:
+      enable_markers:
+        type: bool
+        default_value: false
+        description: If true, publish debug markers for this plugin.
+        read_only: false
