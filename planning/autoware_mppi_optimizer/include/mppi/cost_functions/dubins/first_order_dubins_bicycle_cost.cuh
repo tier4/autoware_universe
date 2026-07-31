@@ -188,9 +188,6 @@ public:
   float drivable_area_y0_[kMaxDrivableAreaSegments] = {};
   float drivable_area_x1_[kMaxDrivableAreaSegments] = {};
   float drivable_area_y1_[kMaxDrivableAreaSegments] = {};
-  int num_drivable_vertices_ = 0;
-  float drivable_poly_x_[kMaxDrivablePolygonVertices] = {};
-  float drivable_poly_y_[kMaxDrivablePolygonVertices] = {};
 
 private:
   void dataToDevice();

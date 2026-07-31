@@ -148,15 +148,6 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       this->cost_d_->drivable_area_y1_, drivable_area_y1_, bytes, cudaMemcpyHostToDevice,
       this->stream_));
   }
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->num_drivable_vertices_, &num_drivable_vertices_, sizeof(num_drivable_vertices_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->drivable_poly_x_, drivable_poly_x_, sizeof(drivable_poly_x_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->drivable_poly_y_, drivable_poly_y_, sizeof(drivable_poly_y_),
-    cudaMemcpyHostToDevice, this->stream_));
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -291,27 +282,6 @@ void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearDrivableAreaSegments()
 {
   num_drivable_area_segments_ = 0;
-  dataToDevice();
-}
-
-template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  setDrivableAreaPolygon(const float * x, const float * y, const int count)
-{
-  const int n = std::max(0, std::min(count, kMaxDrivablePolygonVertices));
-  num_drivable_vertices_ = n;
-  for (int i = 0; i < n; ++i) {
-    drivable_poly_x_[i] = x[i];
-    drivable_poly_y_[i] = y[i];
-  }
-  dataToDevice();
-}
-
-template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-void FirstOrderDubinsBicycleCostImpl<
-  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearDrivableArea()
-{
-  num_drivable_vertices_ = 0;
   dataToDevice();
 }
 
