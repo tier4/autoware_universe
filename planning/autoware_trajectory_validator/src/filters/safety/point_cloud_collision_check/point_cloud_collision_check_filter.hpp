@@ -16,6 +16,7 @@
 #define FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
+#include "debug_marker.hpp"
 #include "planner_data_lite.hpp"
 #include "types.hpp"
 
@@ -23,6 +24,7 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+using point_cloud_collision_check::DebugData;
 using point_cloud_collision_check::PlannerData;
 
 /**
@@ -56,6 +58,7 @@ private:
     const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context);
 
   PlannerData planner_data_{};
+  DebugData debug_data_{};
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 

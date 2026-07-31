@@ -16,12 +16,15 @@
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 
+#include <rclcpp/time.hpp>
+
 #include <cmath>
 #include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+using point_cloud_collision_check::emit_debug_markers;
 using point_cloud_collision_check::filter_pointcloud_by_class_id;
 using point_cloud_collision_check::PointcloudPreprocessParams;
 using point_cloud_collision_check::transform_pointcloud_to_map_frame;
@@ -117,10 +120,16 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
 
   update_planner_data(candidate_trajectory.points, context);
 
- // const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points, planner_data_);
+  // const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points, planner_data_);
 
   ValidationResult result{};
-  result.is_feasible = true; // Placeholder - replace with actual stop feasibility judgment
+  result.is_feasible = true;  // Placeholder - replace with actual stop feasibility judgment
+
+  // On this branch, PCC debug markers are always enabled.
+  emit_debug_markers(
+    debug_markers_, debug_data_, planner_data_, result.is_feasible,
+    rclcpp::Time{context.odometry->header.stamp});
+
   return result;
 }
 
