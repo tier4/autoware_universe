@@ -228,7 +228,7 @@ PlannerData::Pointcloud::filter_and_cluster_point_clouds(
 
   const auto & filter_by_trajectory_param = preprocess_params_.filter_by_trajectory_polygon;
   const auto & traj_poly_param = trajectory_polygon_collision_check;
-  if (!raw_trajectory.empty() && !ret_pointcloud_ptr->empty()) {
+  if (!raw_trajectory.empty()) {
     const auto decimated_trajectory =
       autoware::motion_velocity_planner::utils::decimate_trajectory_points_from_ego(
         raw_trajectory, current_odometry.pose.pose, ego_nearest_dist_threshold,
@@ -251,10 +251,12 @@ PlannerData::Pointcloud::filter_and_cluster_point_clouds(
         filter_by_trajectory_param.lateral_margin, traj_poly_param.enable_to_consider_current_pose,
         traj_poly_param.time_to_convergence, traj_poly_param.decimate_trajectory_step_length);
 
-    const auto input_pointcloud_ptr = ret_pointcloud_ptr;
-    ret_pointcloud_ptr = crop_by_monolithic_trajectory_polygon(
-      input_pointcloud_ptr, filter_by_trajectory_param, traj_polygons, decimated_trajectory,
-      vehicle_info);
+    if (!ret_pointcloud_ptr->empty()) {
+      const auto input_pointcloud_ptr = ret_pointcloud_ptr;
+      ret_pointcloud_ptr = crop_by_monolithic_trajectory_polygon(
+        input_pointcloud_ptr, filter_by_trajectory_param, traj_polygons, decimated_trajectory,
+        vehicle_info);
+    }
   }
 
   const auto & downsample_params = preprocess_params_.downsample_by_voxel_grid;
