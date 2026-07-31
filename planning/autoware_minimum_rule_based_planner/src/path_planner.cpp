@@ -77,9 +77,9 @@ void PathPlanner::set_planner_data(
       &route_context_.routing_graph_ptr);
   }
 
-  if (route_ptr && route_ptr != prev_route_ptr_) {
+  if (route_ptr && route_ptr->uuid != prev_route_uuid_) {
     set_route(route_ptr);
-    prev_route_ptr_ = route_ptr;
+    prev_route_uuid_ = route_ptr->uuid;
     route_updated_ = true;
   }
 }
