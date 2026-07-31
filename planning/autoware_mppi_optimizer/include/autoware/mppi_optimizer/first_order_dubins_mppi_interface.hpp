@@ -73,6 +73,15 @@ struct FirstOrderDubinsMppiOptimizationResult
   FirstOrderDubinsMppiDebug debug;
 };
 
+/** Static 2D line segment supplied to the MPPI cost function in map coordinates. */
+struct Segment
+{
+  float x0{0.0F};
+  float y0{0.0F};
+  float x1{0.0F};
+  float y1{0.0F};
+};
+
 /**
  * @brief Host-side interface to the first-order Dubins MPPI controller used in the
  *        two-lane double-park path-tracking example.
@@ -112,10 +121,14 @@ public:
 
   /**
    * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
+   * @param use_last_control_as_nominal When true and a previous optimized control sequence
+   *        exists, seed u_nom by shifting that sequence (warm start) instead of reseeding
+   *        from the diffusion reference every cycle.
    */
   void setAblationOptions(
     const bool ignore_obstacles, const bool ignore_drivable_area,
-    const bool force_cold_start_each_step, const bool skip_if_invalid);
+    const bool force_cold_start_each_step, const bool skip_if_invalid,
+    bool use_last_control_as_nominal = false);
 
   /**
    * @brief Copy per-rollout raw costs and normalized importance weights from the last
@@ -126,19 +139,25 @@ public:
     std::vector<float> & raw_costs, std::vector<float> & normalized_weights, int stride = 1) const;
 
   /**
+   * @brief When true, optimizeTrajectory fills debug.rollouts with top-K weighted samples
+   *        (CPU replay; ~tens of ms). Enable only for offline retune — leave false for online
+   *        planning and debug trajectory logging.
+   */
+  void setRolloutVisualizationEnabled(bool enable);
+
+  /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.
    * @param state Current ego state (updated in place).
-   * @param arc_length Current arc length along the reference path (updated in place).
    * @param sim_time Current simulation time [s].
    */
-  FirstOrderDubinsMppiControl computeStep(
-    FirstOrderDubinsMppiState & state, float & arc_length, float sim_time);
+  FirstOrderDubinsMppiControl computeStep(FirstOrderDubinsMppiState & state, float sim_time);
 
   /**
    * @brief Track a diffusion-planner reference (poses + velocities) with one MPPI step.
    *
    * Uses the diffusion trajectory directly as the MPPI reference horizon (x, y, yaw, v),
-   * seeds u_nom from the reference trajectory controls each cycle, and returns the MPPI-predicted
+   * seeds u_nom from the previous optimized controls when use_last_control_as_nominal is set
+   * (otherwise from the reference trajectory), and returns the MPPI-predicted
    * feasible state rollout that best tracks that reference.
    *
    * @param input Reference trajectory from the diffusion planner (map frame).
@@ -147,12 +166,15 @@ public:
    * @param steering_status Optional ego tire steering angle [rad] from vehicle status.
    * @param tracked_objects Perception tracked objects used as dynamic obstacles
    * (constant-velocity).
+   * @param road_borders Static road-border segments used as hard obstacles.
+   * @param drivable_area Static drivable-area boundary segments used as a soft constraint.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects);
+    const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
+    const std::vector<Segment> & drivable_area);
 
 private:
   struct Impl;

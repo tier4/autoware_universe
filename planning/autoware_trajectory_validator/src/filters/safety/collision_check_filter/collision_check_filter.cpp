@@ -16,13 +16,14 @@
 
 #include "assessment.hpp"
 
+#include <rclcpp/logging.hpp>
+
 #include <fmt/core.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -30,6 +31,20 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+namespace
+{
+void log_target_shape_type_params(
+  const std::string_view assessment_name, const std::string_view class_name,
+  const TargetShapeTypeParams & target_shape_types)
+{
+  RCLCPP_INFO(
+    rclcpp::get_logger("CollisionCheckFilter"),
+    "%s collision target shape types: class=%s, bbox=%s, polygon=%s",
+    std::string(assessment_name).c_str(), std::string(class_name).c_str(),
+    target_shape_types.bbox ? "true" : "false", target_shape_types.polygon ? "true" : "false");
+}
+}  // namespace
+
 void CollisionCheckFilter::update_parameters(const validator::Params & node_params)
 {
   global_params_ = GlobalParams(node_params.collision_check.global_setting);
@@ -39,6 +54,13 @@ void CollisionCheckFilter::update_parameters(const validator::Params & node_para
 
   drac_param_map_ = create_param_map_per_object<DracParams>(node_params);
   rss_param_map_ = create_param_map_per_object<RssParams>(node_params);
+
+  for (const auto & [class_name, params] : drac_param_map_) {
+    log_target_shape_type_params("DRAC", class_name, params.target_shape_types);
+  }
+  for (const auto & [class_name, params] : rss_param_map_) {
+    log_target_shape_type_params("RSS", class_name, params.target_shape_types);
+  }
 }
 
 void CollisionCheckFilter::clear_detection_times()
@@ -119,9 +141,15 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     rclcpp::Time(context.odometry->header.stamp), global_params_.time_resolution,
     *vehicle_info_ptr_);
 
+  // Object trajectories are independent of the ego candidate trajectory, so they are memoized per
+  // object and reused across the multiple is_feasible() calls of one perception frame; the cache
+  // is discarded when the PredictedObjects timestamp changes.
+  object_trajectory_cache_.update(
+    rclcpp::Time(context.predicted_objects->header.stamp), global_params_.time_resolution);
+
   const auto drac_artifact = collision_timing_assessment::assess(
-    ego_trajectory_cache, candidate_trajectory.turn_indicators_command, *context.odometry,
-    *context.predicted_objects, stop_tracker_, drac_param_map_, global_params_);
+    ego_trajectory_cache, object_trajectory_cache_, candidate_trajectory.turn_indicators_command,
+    *context.odometry, *context.predicted_objects, stop_tracker_, drac_param_map_, global_params_);
   const auto rss_artifact = rss_deceleration::assess(ego_trajectory_cache, context, rss_param_map_);
 
   auto planning_factors = reporter::process_collision_artifacts(

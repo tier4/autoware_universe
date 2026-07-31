@@ -131,7 +131,10 @@ public:
         out << "desired_speed," << cost.desired_speed << "\n";
         out << "speed_coeff," << cost.speed_coeff << "\n";
         out << "track_coeff," << cost.track_coeff << "\n";
+        out << "track_terminal_scale," << cost.track_terminal_scale << "\n";
         out << "heading_coeff," << cost.heading_coeff << "\n";
+        out << "lateral_distance_coeff," << cost.lateral_distance_coeff << "\n";
+        out << "lateral_yaw_error_coeff," << cost.lateral_yaw_error_coeff << "\n";
         out << "crash_coeff," << cost.crash_coeff << "\n";
         out << "boundary_threshold," << cost.boundary_threshold << "\n";
         out << "boundary_threshold_left," << cost.boundary_threshold_left << "\n";
@@ -143,10 +146,6 @@ public:
         out << "lateral_jerk_coeff," << cost.lateral_jerk_coeff << "\n";
         out << "longitudinal_jerk_coeff," << cost.longitudinal_jerk_coeff << "\n";
         out << "obstacle_collision_margin," << cost.obstacle_collision_margin << "\n";
-        out << "goal_pos_coeff," << cost.goal_pos_coeff << "\n";
-        out << "goal_speed_coeff," << cost.goal_speed_coeff << "\n";
-        out << "goal_yaw_coeff," << cost.goal_yaw_coeff << "\n";
-        out << "goal_terminal_scale," << cost.goal_terminal_scale << "\n";
       }
     }
     {

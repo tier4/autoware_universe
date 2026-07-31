@@ -88,13 +88,17 @@ validator:
             read_only: false
       enable_assessment:
         base:
-          &drac_ea {
-            type: bool,
-            default_value: true,
-            description: DRAC enable_assessment per class,
+          &drac_ea_base {
+            type: string_array,
+            default_value: [bbox],
+            description: 'DRAC target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.',
             read_only: false,
           }
-        unknown: *drac_ea
+        unknown: &drac_ea
+          type: string_array
+          default_value: []
+          description: DRAC target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.
+          read_only: false
         car: *drac_ea
         truck: *drac_ea
         bus: *drac_ea
@@ -263,18 +267,36 @@ validator:
             read_only: false
         ego_prioritized_ego_earlier: *drac_assessment
         ego_prioritized_object_earlier: *drac_assessment
-        object_prioritized_ego_earlier: *drac_assessment
+        # Same as the shared DRAC assessment, plus the object deceleration tiers that are only
+        # meaningful when the object has priority and can resolve the conflict by braking itself.
+        object_prioritized_ego_earlier:
+          <<: *drac_assessment
+          object_drac_acceleration:
+            safe_limit:
+              type: double
+              default_value: -0.5
+              description: Required object deceleration at or milder than this is classified as safe
+              read_only: false
+            low_caution_limit:
+              type: double
+              default_value: -1.5
+              description: Required object deceleration down to this is classified as low caution
+              read_only: false
         object_prioritized_object_earlier: *drac_assessment
     rss:
       enable_assessment:
         base:
-          &rss_ea {
-            type: bool,
-            default_value: true,
-            description: RSS enable_assessment per class,
+          &rss_ea_base {
+            type: string_array,
+            default_value: [bbox, polygon],
+            description: 'RSS target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.',
             read_only: false,
           }
-        unknown: *rss_ea
+        unknown: &rss_ea
+          type: string_array
+          default_value: []
+          description: RSS target Shape types per class. Supported values are bbox and polygon. Use [""] to disable the class.
+          read_only: false
         car: *rss_ea
         truck: *rss_ea
         bus: *rss_ea

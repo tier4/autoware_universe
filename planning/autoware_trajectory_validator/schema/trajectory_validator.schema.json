@@ -23,22 +23,36 @@
       "required": [],
       "additionalProperties": false
     },
-    "enable_assessment_per_class": {
+    "target_shapes_per_class": {
       "type": "object",
       "properties": {
-        "base": { "type": "boolean", "default": true },
-        "unknown": { "type": "boolean", "default": true },
-        "car": { "type": "boolean", "default": true },
-        "truck": { "type": "boolean", "default": true },
-        "bus": { "type": "boolean", "default": true },
-        "trailer": { "type": "boolean", "default": true },
-        "motorcycle": { "type": "boolean", "default": true },
-        "bicycle": { "type": "boolean", "default": true },
-        "pedestrian": { "type": "boolean", "default": true },
-        "animal": { "type": "boolean", "default": true },
-        "hazard": { "type": "boolean", "default": true },
-        "over_drivable": { "type": "boolean", "default": true },
-        "under_drivable": { "type": "boolean", "default": true }
+        "base": {
+          "type": "array",
+          "oneOf": [
+            {
+              "minItems": 1,
+              "items": { "enum": ["bbox", "polygon"] }
+            },
+            {
+              "minItems": 1,
+              "maxItems": 1,
+              "items": { "const": "" }
+            }
+          ],
+          "default": ["bbox"]
+        },
+        "unknown": { "$ref": "#/definitions/target_shapes_override" },
+        "car": { "$ref": "#/definitions/target_shapes_override" },
+        "truck": { "$ref": "#/definitions/target_shapes_override" },
+        "bus": { "$ref": "#/definitions/target_shapes_override" },
+        "trailer": { "$ref": "#/definitions/target_shapes_override" },
+        "motorcycle": { "$ref": "#/definitions/target_shapes_override" },
+        "bicycle": { "$ref": "#/definitions/target_shapes_override" },
+        "pedestrian": { "$ref": "#/definitions/target_shapes_override" },
+        "animal": { "$ref": "#/definitions/target_shapes_override" },
+        "hazard": { "$ref": "#/definitions/target_shapes_override" },
+        "over_drivable": { "$ref": "#/definitions/target_shapes_override" },
+        "under_drivable": { "$ref": "#/definitions/target_shapes_override" }
       },
       "required": [],
       "additionalProperties": false
@@ -62,6 +76,44 @@
       },
       "required": [],
       "additionalProperties": false
+    },
+    "target_shapes_override": {
+      "type": "array",
+      "default": [],
+      "oneOf": [
+        {
+          "maxItems": 0
+        },
+        {
+          "minItems": 1,
+          "items": { "enum": ["bbox", "polygon"] }
+        },
+        {
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "const": "" }
+        }
+      ]
+    },
+    "rss_target_shapes_per_class": {
+      "allOf": [{ "$ref": "#/definitions/target_shapes_per_class" }],
+      "properties": {
+        "base": {
+          "type": "array",
+          "oneOf": [
+            {
+              "minItems": 1,
+              "items": { "enum": ["bbox", "polygon"] }
+            },
+            {
+              "minItems": 1,
+              "maxItems": 1,
+              "items": { "const": "" }
+            }
+          ],
+          "default": ["bbox", "polygon"]
+        }
+      }
     },
     "labeled_double": {
       "type": "object",
@@ -100,38 +152,66 @@
       "required": [],
       "additionalProperties": false
     },
+    "enable_drac_assessment": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable this DRAC assessment condition."
+    },
+    "ego_drac_acceleration": {
+      "type": "object",
+      "properties": {
+        "safe_limit": {
+          "type": "number",
+          "description": "Ego acceleration limit for a safe DRAC assessment [m/s²]."
+        },
+        "danger_limit": {
+          "type": "number",
+          "description": "Ego acceleration limit for a dangerous DRAC assessment [m/s²]."
+        },
+        "fatal_limit": {
+          "type": "number",
+          "description": "Ego acceleration limit for a fatal DRAC assessment [m/s²]."
+        },
+        "enable_abandon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Treat an unavoidable collision as high caution instead of fatal."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "object_drac_acceleration": {
+      "type": "object",
+      "properties": {
+        "safe_limit": {
+          "type": "number",
+          "description": "Required object deceleration at or milder than this is classified as safe [m/s²]."
+        },
+        "low_caution_limit": {
+          "type": "number",
+          "description": "Required object deceleration down to this is classified as low caution [m/s²]."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
     "drac_assessment": {
       "type": "object",
       "properties": {
-        "enable_assessment": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable this DRAC assessment condition."
-        },
-        "ego_drac_acceleration": {
-          "type": "object",
-          "properties": {
-            "safe_limit": {
-              "type": "number",
-              "description": "Ego acceleration limit for a safe DRAC assessment [m/s²]."
-            },
-            "danger_limit": {
-              "type": "number",
-              "description": "Ego acceleration limit for a dangerous DRAC assessment [m/s²]."
-            },
-            "fatal_limit": {
-              "type": "number",
-              "description": "Ego acceleration limit for a fatal DRAC assessment [m/s²]."
-            },
-            "enable_abandon": {
-              "type": "boolean",
-              "default": false,
-              "description": "Treat an unavoidable collision as high caution instead of fatal."
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        }
+        "enable_assessment": { "$ref": "#/definitions/enable_drac_assessment" },
+        "ego_drac_acceleration": { "$ref": "#/definitions/ego_drac_acceleration" }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "drac_assessment_with_object_braking": {
+      "type": "object",
+      "description": "DRAC assessment that also evaluates the object braking on its own.",
+      "properties": {
+        "enable_assessment": { "$ref": "#/definitions/enable_drac_assessment" },
+        "ego_drac_acceleration": { "$ref": "#/definitions/ego_drac_acceleration" },
+        "object_drac_acceleration": { "$ref": "#/definitions/object_drac_acceleration" }
       },
       "required": [],
       "additionalProperties": false
@@ -202,7 +282,7 @@
                   "required": [],
                   "additionalProperties": false
                 },
-                "enable_assessment": { "$ref": "#/definitions/enable_assessment_per_class" },
+                "enable_assessment": { "$ref": "#/definitions/target_shapes_per_class" },
                 "pet_margin": {
                   "type": "object",
                   "properties": {
@@ -294,7 +374,7 @@
                       "$ref": "#/definitions/drac_assessment"
                     },
                     "object_prioritized_ego_earlier": {
-                      "$ref": "#/definitions/drac_assessment"
+                      "$ref": "#/definitions/drac_assessment_with_object_braking"
                     },
                     "object_prioritized_object_earlier": {
                       "$ref": "#/definitions/drac_assessment"
@@ -311,7 +391,7 @@
               "type": "object",
               "description": "Responsibility-Sensitive Safety (RSS) assessment settings.",
               "properties": {
-                "enable_assessment": { "$ref": "#/definitions/enable_assessment_per_class" },
+                "enable_assessment": { "$ref": "#/definitions/rss_target_shapes_per_class" },
                 "stop_distance_margin": {
                   "type": "number",
                   "description": "Required remaining distance to the object when ego stops [m].",
