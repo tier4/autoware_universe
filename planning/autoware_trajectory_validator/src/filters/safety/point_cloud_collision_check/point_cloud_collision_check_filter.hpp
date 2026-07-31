@@ -19,6 +19,8 @@
 #include "planner_data_lite.hpp"
 #include "types.hpp"
 
+#include <geometry_msgs/msg/twist.hpp>
+
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -54,6 +56,15 @@ private:
   /// 移植元では node の update_planner_data が担う。
   void update_planner_data(
     const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context);
+
+  /// @brief 点群から停止対象を抽出する。移植元 ObstacleStopModule の plan() の点群経路。
+  std::vector<point_cloud_collision_check::StopObstacle> calc_obstacle_stop(
+    const std::vector<TrajectoryPoint> & raw_trajectory_points);
+
+  /// @brief 停止対象から停止可否を判定する。未実装のため現状は常に true を返す。
+  bool judge_stop_feasibility(
+    const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
+    const geometry_msgs::msg::Twist & twist) const;
 
   PlannerData planner_data_{};
 };
