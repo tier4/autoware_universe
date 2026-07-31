@@ -16,24 +16,14 @@
 #define FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
-#include "parameter.hpp"
 #include "planner_data_lite.hpp"
 #include "types.hpp"
 
-#include <geometry_msgs/msg/twist.hpp>
-
-#include <unordered_map>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-using point_cloud_collision_check::CommonParam;
-using point_cloud_collision_check::ObstacleFilteringParam;
 using point_cloud_collision_check::PlannerData;
-using point_cloud_collision_check::PointcloudSegmentationParam;
-using point_cloud_collision_check::StopObstacle;
-using point_cloud_collision_check::StopObstacleClassification;
-using point_cloud_collision_check::StopPlanningParam;
 
 /**
  * @brief PointCloudCollisionCheckFilter class - checks the trajectory against the semantic
@@ -64,21 +54,6 @@ private:
   /// 移植元では node の update_planner_data が担う。
   void update_planner_data(
     const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context);
-
-  /// @brief 点群から停止対象を抽出する。移植元 ObstacleStopModule の plan() の点群経路。
-  std::vector<StopObstacle> calc_obstacle_stop(
-    const std::vector<TrajectoryPoint> & raw_trajectory_points, const PlannerData & planner_data);
-
-  /// @brief 停止対象から停止可否を判定する。未実装のため現状は常に true を返す。
-  bool judge_stop_feasibility(
-    const std::vector<StopObstacle> & stop_obstacles,
-    const geometry_msgs::msg::Twist & twist) const;
-
-  CommonParam common_param_{};
-  StopPlanningParam stop_planning_param_{};
-  std::unordered_map<StopObstacleClassification::Type, ObstacleFilteringParam>
-    obstacle_filtering_params_{};
-  PointcloudSegmentationParam pointcloud_segmentation_param_{};
 
   PlannerData planner_data_{};
 };

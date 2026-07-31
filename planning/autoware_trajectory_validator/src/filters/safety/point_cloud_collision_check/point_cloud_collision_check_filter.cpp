@@ -105,23 +105,6 @@ void PointCloudCollisionCheckFilter::update_planner_data(
     planner_data_.ego_nearest_dist_threshold, planner_data_.ego_nearest_yaw_threshold);
 }
 
-std::vector<StopObstacle> PointCloudCollisionCheckFilter::calc_obstacle_stop(
-  [[maybe_unused]] const std::vector<TrajectoryPoint> & raw_trajectory_points,
-  [[maybe_unused]] const PlannerData & planner_data)
-{
-  // 中身は後続 PR で移植する。
-  return {};
-}
-
-bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
-  [[maybe_unused]] const std::vector<StopObstacle> & stop_obstacles,
-  [[maybe_unused]] const geometry_msgs::msg::Twist & twist) const
-{
-  // It is not currently implemented. always return true.
-  bool is_feasible = true;
-  return is_feasible;
-}
-
 PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feasible(
   const CandidateTrajectory & candidate_trajectory, const FilterContext & context)
 {
@@ -134,11 +117,10 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
 
   update_planner_data(candidate_trajectory.points, context);
 
-  const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points, planner_data_);
+ // const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points, planner_data_);
 
   ValidationResult result{};
-  result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
-
+  result.is_feasible = true; // Placeholder - replace with actual stop feasibility judgment
   return result;
 }
 
@@ -148,11 +130,11 @@ void PointCloudCollisionCheckFilter::update_parameters(const validator::Params &
 {
   const auto & p = params.point_cloud_collision_check;
 
-  common_param_ = CommonParam{p};
-  stop_planning_param_ = StopPlanningParam{p};
-  obstacle_filtering_params_ = {
-    {StopObstacleClassification::Type::POINTCLOUD, ObstacleFilteringParam{p}}};
-  pointcloud_segmentation_param_ = PointcloudSegmentationParam{p};
+  // common_param_ = CommonParam{p};
+  // stop_planning_param_ = StopPlanningParam{p};
+  // obstacle_filtering_params_ = {
+  //   {StopObstacleClassification::Type::POINTCLOUD, ObstacleFilteringParam{p}}};
+  // pointcloud_segmentation_param_ = PointcloudSegmentationParam{p};
   set_planner_data_param(p);
 }
 }  // namespace autoware::trajectory_validator::plugin::safety
