@@ -20,6 +20,9 @@
 namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
 {
 using autoware_planning_msgs::msg::TrajectoryPoint;
+
+/// @brief 停止対象。定義は後続 PR で追加する。
+struct StopObstacle;
 }  // namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
 
 #endif  // FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__TYPES_HPP_

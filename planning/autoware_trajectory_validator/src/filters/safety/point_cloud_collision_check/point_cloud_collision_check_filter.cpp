@@ -24,6 +24,9 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+
+namespace pcc = point_cloud_collision_check;
+
 using point_cloud_collision_check::emit_debug_markers;
 using point_cloud_collision_check::filter_pointcloud_by_class_id;
 using point_cloud_collision_check::PointcloudPreprocessParams;
@@ -108,6 +111,15 @@ void PointCloudCollisionCheckFilter::update_planner_data(
     planner_data_.ego_nearest_dist_threshold, planner_data_.ego_nearest_yaw_threshold);
 }
 
+bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
+  [[maybe_unused]] const std::vector<pcc::StopObstacle> & stop_obstacles,
+  [[maybe_unused]] const geometry_msgs::msg::Twist & twist) const
+{
+  // It is not currently implemented. always return true.
+  bool is_feasible = true;
+  return is_feasible;
+}
+
 PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feasible(
   const CandidateTrajectory & candidate_trajectory, const FilterContext & context)
 {
@@ -123,12 +135,14 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
   // const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points, planner_data_);
 
   ValidationResult result{};
-  result.is_feasible = true;  // Placeholder - replace with actual stop feasibility judgment
 
   // On this branch, PCC debug markers are always enabled.
   emit_debug_markers(
     debug_markers_, debug_data_, planner_data_, result.is_feasible,
     rclcpp::Time{context.odometry->header.stamp});
+
+  //result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
+  result.is_feasible = true; // Placeholder - replace with actual stop feasibility judgment
 
   return result;
 }
