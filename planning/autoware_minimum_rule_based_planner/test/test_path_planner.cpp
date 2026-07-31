@@ -117,6 +117,25 @@ TEST(PathPlannerTest, ConstructWithoutNode)
   EXPECT_NO_THROW(PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info));
 }
 
+TEST(PathPlannerTest, SetPlannerDataWaitsForMap)
+{
+  auto logger = rclcpp::get_logger("test_path_planner");
+  auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
+  auto params = make_default_params();
+  VehicleInfo vehicle_info{};
+  PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info);
+
+  auto route = std::make_shared<LaneletRoute>();
+  autoware_planning_msgs::msg::LaneletSegment segment;
+  segment.primitives.emplace_back().id = 1;
+  segment.preferred_primitive = segment.primitives.front();
+  route->segments.push_back(segment);
+
+  EXPECT_NO_THROW(planner.set_planner_data(nullptr, route));
+  EXPECT_EQ(planner.route_context().lanelet_map_ptr, nullptr);
+  EXPECT_TRUE(planner.route_context().route_lanelets.empty());
+}
+
 // ============================================================
 // shift_trajectory_to_ego tests
 // ============================================================
