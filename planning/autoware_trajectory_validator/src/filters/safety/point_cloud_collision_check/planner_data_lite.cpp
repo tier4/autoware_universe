@@ -145,10 +145,9 @@ pcl::PointCloud<pcl::PointXYZ> filter_pointcloud_by_class_id(
     return out;
   }
 
-  const bool has_class_id = std::any_of(
-    cloud.fields.begin(), cloud.fields.end(), [](const auto & field) {
-      return field.name == "class_id" &&
-             field.datatype == sensor_msgs::msg::PointField::UINT8;
+  const bool has_class_id =
+    std::any_of(cloud.fields.begin(), cloud.fields.end(), [](const auto & field) {
+      return field.name == "class_id" && field.datatype == sensor_msgs::msg::PointField::UINT8;
     });
   const std::unordered_set<std::int64_t> excluded(
     excluded_class_ids.begin(), excluded_class_ids.end());
