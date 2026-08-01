@@ -54,6 +54,7 @@ private:
   // Publishers and subscribers
   AUTOWARE_SUBSCRIPTION_PTR(sensor_msgs::msg::PointCloud2) pointcloud_sub_;
   AUTOWARE_PUBLISHER_PTR(autoware_perception_msgs::msg::DetectedObjects) objects_pub_;
+  AUTOWARE_PUBLISHER_PTR(sensor_msgs::msg::PointCloud2) segments_pub_;
 
   // Core clustering processor
   std::unique_ptr<LabelBasedEuclideanCluster> processor_;
