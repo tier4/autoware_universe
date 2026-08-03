@@ -146,6 +146,14 @@ public:
   void setRolloutVisualizationEnabled(bool enable);
 
   /**
+   * @brief Force the next optimizeTrajectory / seedNominalControl to use this horizon as u_nom
+   *        (offline retune replay of logged NNNNNN_nominal.csv). Cleared after one use.
+   *        Sequences are truncated/padded to the MPPI horizon; values are clamped to vehicle limits.
+   */
+  void setForcedNominalControl(
+    const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd);
+
+  /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.
    * @param state Current ego state (updated in place).
    * @param sim_time Current simulation time [s].

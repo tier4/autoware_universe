@@ -741,12 +741,17 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
                 t = (cost - min_c) / (max_c - min_c)
             else:
                 t = 0.5
-            # Match mppi_debug_markers.hpp costGradientColor: green (low) -> red (high).
-            ax_xy.plot(xs, ys, color=(t, 1.0 - t, 0.0, 0.35), linewidth=0.7, zorder=1)
+            # Purple (low cost) -> teal (high cost); α 0.95 -> 0.05 (95% -> 5% opaque).
+            # Match mppi_debug_markers.hpp costGradientColor.
+            r = 0.55 + t * (0.05 - 0.55)
+            g = 0.15 + t * (0.65 - 0.15)
+            b = 0.75 + t * (0.60 - 0.75)
+            a = 0.95 + t * (0.05 - 0.95)
+            ax_xy.plot(xs, ys, color=(r, g, b, a), linewidth=0.7, zorder=1)
         ax_xy.plot(
             [],
             [],
-            color=(0.5, 0.5, 0.0, 0.8),
+            color=(0.30, 0.40, 0.68, 0.8),
             linewidth=0.7,
             label=(
                 f"rollouts ({len(frame.rollouts)} of {MPPI_NUM_ROLLOUTS} "
@@ -827,10 +832,11 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ax_xy.plot(
             frame.retuned_xy[0],
             frame.retuned_xy[1],
-            color="tab:green",
-            linewidth=2.2,
+            color=(0.35, 0.0, 0.45, 1.0),
+            linewidth=2.4,
             label="MPPI retuned",
             zorder=5,
+            solid_capstyle="round",
         )
     overlay = frame.stamp_text
     if frame.metrics_text:

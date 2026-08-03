@@ -62,9 +62,11 @@ using autoware::mppi_optimizer::formatMppiDebugFrameId;
 using autoware::mppi_optimizer::listMppiDebugFrameIds;
 using autoware::mppi_optimizer::loadMppiDebugEgoCsv;
 using autoware::mppi_optimizer::loadMppiDebugKeyValueCsv;
+using autoware::mppi_optimizer::loadMppiDebugNominalCsv;
 using autoware::mppi_optimizer::loadMppiDebugTrajectoryCsv;
 using autoware::mppi_optimizer::MppiDebugEgoState;
 using autoware::mppi_optimizer::writeMppiDebugCostsCsv;
+using autoware::mppi_optimizer::writeMppiDebugRolloutsCsv;
 using autoware::mppi_optimizer::writeMppiDebugTrajectoryCsv;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
@@ -86,9 +88,10 @@ void printUsage(const char * argv0)
        "  --steer-tau S          Steer time constant [s] (default 0.27)\n"
        "  --copy-reference       Also copy reference CSVs into out-dir\n"
        "\n"
-       "Loads cost_params.csv / vehicle_params.csv / *_ego.csv from --log-dir when present.\n"
-       "CLI --set and vehicle flags override those. Without *_ego.csv, ego IC falls back to\n"
-       "reference[0] (will not match online MPPI).\n"
+       "Loads cost_params.csv / vehicle_params.csv / *_ego.csv / *_nominal.csv from --log-dir\n"
+       "when present. CLI --set and vehicle flags override those. Without *_ego.csv, ego IC\n"
+       "falls back to reference[0] (will not match online MPPI). Without *_nominal.csv, u_nom\n"
+       "is reseeded from the diffusion reference (legacy logs).\n"
        "  --help\n";
 }
 
@@ -526,6 +529,23 @@ int run(int argc, char ** argv)
     frame_mppi.setVehicleParams(vehicle_params);
     frame_mppi.setDebugTrajectoryLogging(false);
     frame_mppi.setRolloutVisualizationEnabled(true);
+
+    const std::string nominal_path = log_dir + "/" + tag + "_nominal.csv";
+    std::vector<float> nominal_accel;
+    std::vector<float> nominal_steer;
+    if (loadMppiDebugNominalCsv(nominal_path, nominal_accel, nominal_steer)) {
+      frame_mppi.setForcedNominalControl(nominal_accel, nominal_steer);
+    } else {
+      static bool warned_missing_nominal = false;
+      if (!warned_missing_nominal) {
+        std::cerr
+          << "WARNING: missing " << tag
+          << "_nominal.csv (and possibly others). Reseeding u_nom from the diffusion "
+             "reference. Re-log with a build that writes *_nominal.csv for faithful warm-start "
+             "replay.\n";
+        warned_missing_nominal = true;
+      }
+    }
 
     const auto result =
       frame_mppi.optimizeTrajectory(reference, odom, accel, steering, empty_objects, {}, {});

@@ -107,12 +107,23 @@ inline ColorRGBA makeColor(const float r, const float g, const float b, const fl
 
 inline ColorRGBA costGradientColor(const float cost, const float min_cost, const float max_cost)
 {
+  // Purple (low cost) -> teal (high cost); alpha 0.95 -> 0.05 (95% -> 5% opaque).
   float t = 0.5F;
   if (max_cost > min_cost) {
     t = (cost - min_cost) / (max_cost - min_cost);
   }
   t = std::clamp(t, 0.0F, 1.0F);
-  return makeColor(t, 1.0F - t, 0.0F, 0.35F);
+  constexpr float k_purple_r = 0.55F;
+  constexpr float k_purple_g = 0.15F;
+  constexpr float k_purple_b = 0.75F;
+  constexpr float k_teal_r = 0.05F;
+  constexpr float k_teal_g = 0.65F;
+  constexpr float k_teal_b = 0.60F;
+  const float r = k_purple_r + t * (k_teal_r - k_purple_r);
+  const float g = k_purple_g + t * (k_teal_g - k_purple_g);
+  const float b = k_purple_b + t * (k_teal_b - k_purple_b);
+  const float a = 0.95F + t * (0.05F - 0.95F);
+  return makeColor(r, g, b, a);
 }
 
 inline Marker makeDeleteAllMarker(const std::string & ns)

@@ -53,7 +53,7 @@ namespace
 constexpr int kMppiHorizon = 80;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = 0.1F;
-constexpr size_t kMaxIter = 1;
+constexpr size_t kMaxIter = 10;
 constexpr int kNumRollouts = 32 * 1024;
 constexpr int kMaxVizRollouts = 200;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
@@ -412,6 +412,13 @@ struct FirstOrderDubinsMppiInterface::Impl
   /** Fill debug.rollouts with top-K weighted samples (CPU replay). Offline retune only by default.
    */
   bool enable_rollout_visualization{false};
+  /** One-shot u_nom override from offline retune (NNNNNN_nominal.csv). */
+  bool forced_nominal_pending{false};
+  std::vector<float> forced_nominal_accel;
+  std::vector<float> forced_nominal_steer;
+  /** Snapshot of u_nom after seeding, written to NNNNNN_nominal.csv. */
+  std::vector<float> logged_nominal_accel;
+  std::vector<float> logged_nominal_steer;
 
   Impl() : feedback(&model, kDt), sampler(SAMPLER::SAMPLING_PARAMS_T{}) {}
 
@@ -585,14 +592,57 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
   }
 
+  void seedNominalControlFromForced()
+  {
+    const int accel_idx =
+      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+    const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+    const float min_accel = vehicle_params.min_accel();
+    const float max_accel = vehicle_params.max_accel();
+    const float max_steer = vehicle_params.max_steer_angle;
+
+    u_nom.setZero();
+    for (int t = 0; t < kMppiHorizon; ++t) {
+      const float accel = t < static_cast<int>(forced_nominal_accel.size())
+                            ? forced_nominal_accel[static_cast<size_t>(t)]
+                            : (forced_nominal_accel.empty() ? 0.0F : forced_nominal_accel.back());
+      const float steer = t < static_cast<int>(forced_nominal_steer.size())
+                            ? forced_nominal_steer[static_cast<size_t>(t)]
+                            : (forced_nominal_steer.empty() ? 0.0F : forced_nominal_steer.back());
+      u_nom(accel_idx, t) = std::clamp(accel, min_accel, max_accel);
+      u_nom(steer_idx, t) = std::clamp(steer, -max_steer, max_steer);
+    }
+  }
+
+  void snapshotNominalForLog()
+  {
+    const int accel_idx =
+      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+    const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+    logged_nominal_accel.resize(static_cast<size_t>(kMppiHorizon));
+    logged_nominal_steer.resize(static_cast<size_t>(kMppiHorizon));
+    for (int t = 0; t < kMppiHorizon; ++t) {
+      logged_nominal_accel[static_cast<size_t>(t)] = u_nom(accel_idx, t);
+      logged_nominal_steer[static_cast<size_t>(t)] = u_nom(steer_idx, t);
+    }
+  }
+
   void seedNominalControl(const Trajectory & reference, const size_t start_idx)
   {
+    if (forced_nominal_pending) {
+      seedNominalControlFromForced();
+      forced_nominal_pending = false;
+      snapshotNominalForLog();
+      return;
+    }
     // After a tracking reset, step_count is 0 and u_opt was cleared — fall back to DP seed.
     if (use_last_control_as_nominal && step_count > 0) {
       seedNominalControlFromLastOptimized();
+      snapshotNominalForLog();
       return;
     }
     seedNominalControlFromDiffusionReference(reference, start_idx);
+    snapshotNominalForLog();
   }
 
   void updateDiffusionReference(
@@ -853,6 +903,17 @@ void FirstOrderDubinsMppiInterface::setRolloutVisualizationEnabled(const bool en
   impl_->enable_rollout_visualization = enable;
 }
 
+void FirstOrderDubinsMppiInterface::setForcedNominalControl(
+  const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd)
+{
+  if (!impl_) {
+    throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
+  }
+  impl_->forced_nominal_accel = accel_cmd;
+  impl_->forced_nominal_steer = steer_cmd;
+  impl_->forced_nominal_pending = !accel_cmd.empty() || !steer_cmd.empty();
+}
+
 bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
   std::vector<float> & raw_costs, std::vector<float> & normalized_weights, const int stride) const
 {
@@ -1049,7 +1110,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   impl_->debug_trajectory_logger.writeParamsOnce(impl_->user_cost_params_, impl_->vehicle_params);
   impl_->debug_trajectory_logger.logFrame(
     result.debug.reference_trajectory, result.debug.optimized_trajectory, ego,
-    result.debug.baseline_cost);
+    result.debug.baseline_cost, impl_->logged_nominal_accel, impl_->logged_nominal_steer);
 
   RCLCPP_INFO(
     mppiLogger(),
