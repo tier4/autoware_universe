@@ -19,6 +19,7 @@
 #include "autoware/avoidance_target_detector/parameter.hpp"
 
 #include <autoware/trajectory/trajectory_point.hpp>
+#include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
@@ -29,10 +30,11 @@
 #include <geometry_msgs/msg/point.hpp>
 
 #include <array>
-#include <map>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -45,6 +47,21 @@ using autoware_perception_msgs::msg::TrackedObject;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
+
+namespace aw_trajectory = autoware::experimental::trajectory;
+
+/** Read-only data and geometry shared by all object evaluations in one frame. */
+template <typename ObjectT>
+struct FrameEvaluationContext
+{
+  const rclcpp::Time & current_time;
+  const Trajectory & raw_trajectory;
+  std::optional<aw_trajectory::Trajectory<TrajectoryPoint>> built_trajectory;
+  std::optional<autoware_utils_geometry::Polygon2d> near_segment_polygon;
+  const lanelet::LaneletMap * route_map{nullptr};
+  const lanelet::routing::RoutingGraph * routing_graph{nullptr};
+  std::vector<lanelet::ConstLanelet> ego_lanelets;
+};
 
 /** Maps an object element type to its container message type. */
 template <typename ObjectT>
@@ -84,21 +101,22 @@ public:
   }
   void observe_and_update(
     const rclcpp::Time & current_time, const ObjectT & object, const Trajectory & trajectory);
+  void observe_and_update(const FrameEvaluationContext<ObjectT> & context, const ObjectT & object);
 
 protected:
-  void apply_transition_to_prior(const ObjectT & object, const Trajectory & trajectory);
+  void apply_transition_to_prior(
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object);
   void apply_bayesian_update();
 
   virtual void calculate_likelihood(
-    const ObjectT & object, [[maybe_unused]] const Trajectory & trajectory) = 0;
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) = 0;
 
   double target_likelihood_{1.0};
   double non_target_likelihood_{1.0};
 
 private:
   [[nodiscard]] virtual Matrix2x2 transition_matrix(
-    [[maybe_unused]] const ObjectT & object,
-    [[maybe_unused]] const Trajectory & trajectory) const = 0;
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) const = 0;
 
   double prior_;
   double posterior_;
@@ -114,12 +132,11 @@ public:
   using TwoClassFilter<ObjectT>::TwoClassFilter;
 
   void calculate_likelihood(
-    const ObjectT & object, [[maybe_unused]] const Trajectory & trajectory) override;
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) override;
 
 private:
   [[nodiscard]] typename TwoClassFilter<ObjectT>::Matrix2x2 transition_matrix(
-    [[maybe_unused]] const ObjectT & object,
-    [[maybe_unused]] const Trajectory & trajectory) const override;
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) const override;
 };
 
 /** Filters objects by linear velocity (stationary vs moving). */
@@ -130,12 +147,11 @@ public:
   using TwoClassFilter<ObjectT>::TwoClassFilter;
 
   void calculate_likelihood(
-    const ObjectT & object, [[maybe_unused]] const Trajectory & trajectory) override;
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) override;
 
 private:
   [[nodiscard]] typename TwoClassFilter<ObjectT>::Matrix2x2 transition_matrix(
-    [[maybe_unused]] const ObjectT & object,
-    [[maybe_unused]] const Trajectory & trajectory) const override;
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) const override;
 };
 
 /** Filters objects by on-trajectory lateral deviation pattern. */
@@ -146,12 +162,11 @@ public:
   using TwoClassFilter<ObjectT>::TwoClassFilter;
 
   void calculate_likelihood(
-    const ObjectT & object, [[maybe_unused]] const Trajectory & trajectory) override;
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) override;
 
 private:
   [[nodiscard]] typename TwoClassFilter<ObjectT>::Matrix2x2 transition_matrix(
-    [[maybe_unused]] const ObjectT & object,
-    [[maybe_unused]] const Trajectory & trajectory) const override;
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) const override;
 };
 
 template <typename ObjectT>
@@ -171,6 +186,8 @@ public:
     const lanelet::routing::RoutingGraphConstPtr & routing_graph,
     const lanelet::BasicPolygon2d & near_segment_polygon,
     const std::vector<lanelet::ConstLanelet> & ego_lanelets);
+  void observe_and_update_all(
+    const FrameEvaluationContext<ObjectT> & context, const ObjectT & object);
   [[nodiscard]] double get_is_target_probability() const { return target_filter_->get_posterior(); }
   [[nodiscard]] double get_is_stationary_probability() const
   {
@@ -222,8 +239,23 @@ private:
   friend class ObjectSelectorBase<ObjectT>;
 };
 
+using ObjectId = std::array<uint8_t, 16>;
+
+struct ObjectIdHash
+{
+  [[nodiscard]] std::size_t operator()(const ObjectId & id) const noexcept
+  {
+    std::size_t seed = 0;
+    for (const auto byte : id) {
+      seed ^= static_cast<std::size_t>(byte) + 0x9e3779b9U + (seed << 6U) + (seed >> 2U);
+    }
+    return seed;
+  }
+};
+
 template <typename ObjectT>
-using AvoidanceTargetDetectorMap = std::map<std::string, AvoidanceTargetDetectorBase<ObjectT>>;
+using AvoidanceTargetDetectorMap =
+  std::unordered_map<ObjectId, AvoidanceTargetDetectorBase<ObjectT>, ObjectIdHash>;
 
 /** Selects avoidance targets from objects using per-object Bayesian filters. */
 template <typename ObjectT>

@@ -19,7 +19,6 @@
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_geometry/pose_deviation.hpp>
-#include <autoware_utils_uuid/uuid_helper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
@@ -44,7 +43,6 @@ namespace
 {
 
 using autoware_planning_msgs::msg::TrajectoryPoint;
-namespace aw_trajectory = autoware::experimental::trajectory;
 
 constexpr double k_s_position_epsilon_m = 1e-3;
 
@@ -89,12 +87,11 @@ bool is_object_of_interest(const ObjectT & object)
     });
 }
 
-template <typename ObjectT>
-bool overlaps_near_segment_polygon(
-  const ObjectT & object, const lanelet::BasicPolygon2d & near_segment_polygon)
+std::optional<autoware_utils_geometry::Polygon2d> build_near_segment_polygon(
+  const lanelet::BasicPolygon2d & near_segment_polygon)
 {
   if (near_segment_polygon.size() < 3) {
-    return false;
+    return std::nullopt;
   }
 
   autoware_utils_geometry::Polygon2d segment_polygon;
@@ -104,9 +101,15 @@ bool overlaps_near_segment_polygon(
     outer.emplace_back(point.x(), point.y());
   }
   boost::geometry::correct(segment_polygon);
+  return segment_polygon;
+}
 
+template <typename ObjectT>
+bool overlaps_near_segment_polygon(
+  const ObjectT & object, const autoware_utils_geometry::Polygon2d & near_segment_polygon)
+{
   const auto object_polygon = autoware_utils_geometry::to_polygon2d(object);
-  return boost::geometry::intersects(object_polygon, segment_polygon);
+  return boost::geometry::intersects(object_polygon, near_segment_polygon);
 }
 
 std::vector<lanelet::ConstLanelet> get_nearest_lanelets(
@@ -176,6 +179,14 @@ std::optional<aw_trajectory::Trajectory<TrajectoryPoint>> build_trajectory(
   return *trajectory;
 }
 
+template <typename ObjectT>
+FrameEvaluationContext<ObjectT> make_frame_evaluation_context(
+  const rclcpp::Time & current_time, const Trajectory & trajectory)
+{
+  return {current_time, trajectory, build_trajectory(trajectory), std::nullopt, nullptr,
+          nullptr,      {}};
+}
+
 /**
  * @brief Get the reference point used for d-coordinate validation.
  * @param object Object.
@@ -224,9 +235,8 @@ double closest_trajectory_s(
 template <typename ObjectT>
 void get_footprint_s_range(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object,
-  double & s_min, double & s_max)
+  const autoware_utils_geometry::Polygon2d & footprint, double & s_min, double & s_max)
 {
-  const auto footprint = autoware_utils_geometry::to_polygon2d(object);
   s_min = std::numeric_limits<double>::max();
   s_max = std::numeric_limits<double>::lowest();
 
@@ -255,11 +265,12 @@ void get_footprint_s_range(
  */
 template <typename ObjectT>
 bool is_beyond_trajectory_end(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object)
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object,
+  const autoware_utils_geometry::Polygon2d & footprint)
 {
   double s_min = 0.0;
   double s_max = 0.0;
-  get_footprint_s_range(trajectory, object, s_min, s_max);
+  get_footprint_s_range(trajectory, object, footprint, s_min, s_max);
   return s_min > trajectory.length() + k_s_position_epsilon_m;
 }
 
@@ -271,11 +282,12 @@ bool is_beyond_trajectory_end(
  */
 template <typename ObjectT>
 bool is_within_trajectory_s_range(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object)
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object,
+  const autoware_utils_geometry::Polygon2d & footprint)
 {
   double s_min = 0.0;
   double s_max = 0.0;
-  get_footprint_s_range(trajectory, object, s_min, s_max);
+  get_footprint_s_range(trajectory, object, footprint, s_min, s_max);
   return s_min >= -k_s_position_epsilon_m && s_max <= trajectory.length() + k_s_position_epsilon_m;
 }
 
@@ -305,11 +317,12 @@ std::vector<double> get_last_m_s_samples(
  */
 template <typename ObjectT>
 std::vector<double> get_s_samples_near_object(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object)
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object,
+  const autoware_utils_geometry::Polygon2d & footprint)
 {
   double s_min = 0.0;
   double s_max = 0.0;
-  get_footprint_s_range(trajectory, object, s_min, s_max);
+  get_footprint_s_range(trajectory, object, footprint, s_min, s_max);
 
   const double s_lo = std::max(0.0, s_min - OnTrajectoryDValidationParams::near_s_range_m);
   const double s_hi = std::min(
@@ -344,7 +357,7 @@ std::vector<double> get_s_samples_near_object(
  */
 template <typename ObjectT>
 std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> get_object_rear_edge_points(
-  const ObjectT & object)
+  const ObjectT & object, const autoware_utils_geometry::Polygon2d & footprint)
 {
   if (object.shape.type != autoware_perception_msgs::msg::Shape::POLYGON) {
     const auto reference_point = get_object_reference_point(object);
@@ -352,7 +365,6 @@ std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> get_object_rear_
   }
 
   const auto & object_pose = get_object_pose(object);
-  const auto footprint = autoware_utils_geometry::to_polygon2d(object);
 
   if (footprint.outer().empty()) {
     const auto reference_point = get_object_reference_point(object);
@@ -474,9 +486,9 @@ bool matches_small_d_pattern(
 }
 
 template <typename ObjectT>
-std::vector<geometry_msgs::msg::Point> get_object_footprint_points(const ObjectT & object)
+std::vector<geometry_msgs::msg::Point> get_object_footprint_points(
+  const ObjectT & object, const autoware_utils_geometry::Polygon2d & footprint)
 {
-  const auto footprint = autoware_utils_geometry::to_polygon2d(object);
   std::vector<geometry_msgs::msg::Point> footprint_points;
   footprint_points.reserve(footprint.outer().size());
 
@@ -572,39 +584,39 @@ std::vector<geometry_msgs::msg::Point> to_geometry_points(const lanelet::LineStr
   return points;
 }
 
-}  // namespace
-
 template <typename ObjectT>
-bool is_object_beyond_trajectory_end(const Trajectory & trajectory_msg, const ObjectT & object)
+bool is_object_beyond_trajectory_end(
+  const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
 {
-  const auto built_trajectory = build_trajectory(trajectory_msg);
-  if (!built_trajectory) {
+  if (!context.built_trajectory) {
     return false;
   }
 
-  return is_beyond_trajectory_end(*built_trajectory, object);
+  const auto footprint = autoware_utils_geometry::to_polygon2d(object);
+  return is_beyond_trajectory_end(*context.built_trajectory, object, footprint);
 }
 
 template <typename ObjectT>
 bool should_filter_out_on_trajectory_object(
-  const Trajectory & trajectory_msg, const ObjectT & object)
+  const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
 {
-  const auto built_trajectory = build_trajectory(trajectory_msg);
-  if (!built_trajectory) {
+  if (!context.built_trajectory) {
     return false;
   }
 
-  const auto [rear_left, rear_right] = get_object_rear_edge_points(object);
+  const auto & built_trajectory = *context.built_trajectory;
+  const auto footprint = autoware_utils_geometry::to_polygon2d(object);
+  const auto [rear_left, rear_right] = get_object_rear_edge_points(object, footprint);
 
-  if (is_beyond_trajectory_end(*built_trajectory, object)) {
+  if (is_beyond_trajectory_end(built_trajectory, object, footprint)) {
     return matches_small_d_pattern(
-      *built_trajectory, rear_left, rear_right, get_last_m_s_samples(*built_trajectory));
+      built_trajectory, rear_left, rear_right, get_last_m_s_samples(built_trajectory));
   }
 
-  if (is_within_trajectory_s_range(*built_trajectory, object)) {
+  if (is_within_trajectory_s_range(built_trajectory, object, footprint)) {
     return matches_small_d_pattern(
-      *built_trajectory, rear_left, rear_right,
-      get_s_samples_near_object(*built_trajectory, object));
+      built_trajectory, rear_left, rear_right,
+      get_s_samples_near_object(built_trajectory, object, footprint));
   }
 
   return false;
@@ -612,17 +624,18 @@ bool should_filter_out_on_trajectory_object(
 
 template <typename ObjectT>
 bool should_filter_out_by_longitudinal_distance(
-  const Trajectory & trajectory_msg, const ObjectT & object,
+  const FrameEvaluationContext<ObjectT> & context, const ObjectT & object,
+  const autoware_utils_geometry::Polygon2d & footprint,
   const LongitudinalDistanceFilterParams & params)
 {
-  const auto built_trajectory = build_trajectory(trajectory_msg);
-  if (!built_trajectory) {
+  if (!context.built_trajectory) {
     return false;
   }
 
-  const auto start_pose = built_trajectory->compute(0.0).pose;
-  const auto end_pose = built_trajectory->compute(max_interpolator_safe_s(*built_trajectory)).pose;
-  const auto footprint_points = get_object_footprint_points(object);
+  const auto & built_trajectory = *context.built_trajectory;
+  const auto start_pose = built_trajectory.compute(0.0).pose;
+  const auto end_pose = built_trajectory.compute(max_interpolator_safe_s(built_trajectory)).pose;
+  const auto footprint_points = get_object_footprint_points(object, footprint);
 
   const bool all_before_start = std::all_of(
     footprint_points.begin(), footprint_points.end(),
@@ -643,7 +656,8 @@ bool should_filter_out_by_longitudinal_distance(
 
 template <typename ObjectT>
 bool should_filter_out_by_lateral_distance(
-  const RouteBounds & route_bounds, const Trajectory & trajectory_msg, const ObjectT & object,
+  const RouteBounds & route_bounds, const FrameEvaluationContext<ObjectT> & context,
+  const ObjectT & object, const autoware_utils_geometry::Polygon2d & footprint,
   const LateralDistanceFilterParams & params)
 {
   const auto left_bound = to_geometry_points(route_bounds.first);
@@ -652,18 +666,58 @@ bool should_filter_out_by_lateral_distance(
     return false;
   }
 
-  const auto built_trajectory = build_trajectory(trajectory_msg);
-  if (!built_trajectory) {
+  if (!context.built_trajectory) {
     return false;
   }
 
-  const auto footprint_points = get_object_footprint_points(object);
+  const auto footprint_points = get_object_footprint_points(object, footprint);
   return std::all_of(
     footprint_points.begin(), footprint_points.end(),
     [&](const geometry_msgs::msg::Point & footprint_point) {
       return !is_footprint_point_inside_drivable_area(
-        *built_trajectory, footprint_point, left_bound, right_bound, params.tolerance_m);
+        *context.built_trajectory, footprint_point, left_bound, right_bound, params.tolerance_m);
     });
+}
+
+}  // namespace
+
+template <typename ObjectT>
+bool is_object_beyond_trajectory_end(const Trajectory & trajectory_msg, const ObjectT & object)
+{
+  const rclcpp::Time evaluation_time{0, 0, RCL_ROS_TIME};
+  const auto context = make_frame_evaluation_context<ObjectT>(evaluation_time, trajectory_msg);
+  return is_object_beyond_trajectory_end(context, object);
+}
+
+template <typename ObjectT>
+bool should_filter_out_on_trajectory_object(
+  const Trajectory & trajectory_msg, const ObjectT & object)
+{
+  const rclcpp::Time evaluation_time{0, 0, RCL_ROS_TIME};
+  const auto context = make_frame_evaluation_context<ObjectT>(evaluation_time, trajectory_msg);
+  return should_filter_out_on_trajectory_object(context, object);
+}
+
+template <typename ObjectT>
+bool should_filter_out_by_longitudinal_distance(
+  const Trajectory & trajectory_msg, const ObjectT & object,
+  const LongitudinalDistanceFilterParams & params)
+{
+  const rclcpp::Time evaluation_time{0, 0, RCL_ROS_TIME};
+  const auto context = make_frame_evaluation_context<ObjectT>(evaluation_time, trajectory_msg);
+  const auto footprint = autoware_utils_geometry::to_polygon2d(object);
+  return should_filter_out_by_longitudinal_distance(context, object, footprint, params);
+}
+
+template <typename ObjectT>
+bool should_filter_out_by_lateral_distance(
+  const RouteBounds & route_bounds, const Trajectory & trajectory_msg, const ObjectT & object,
+  const LateralDistanceFilterParams & params)
+{
+  const rclcpp::Time evaluation_time{0, 0, RCL_ROS_TIME};
+  const auto context = make_frame_evaluation_context<ObjectT>(evaluation_time, trajectory_msg);
+  const auto footprint = autoware_utils_geometry::to_polygon2d(object);
+  return should_filter_out_by_lateral_distance(route_bounds, context, object, footprint, params);
 }
 
 template <typename ObjectT>
@@ -680,7 +734,15 @@ template <typename ObjectT>
 void TwoClassFilter<ObjectT>::observe_and_update(
   const rclcpp::Time & current_time, const ObjectT & object, const Trajectory & trajectory)
 {
-  calculate_likelihood(object, trajectory);
+  const auto context = make_frame_evaluation_context<ObjectT>(current_time, trajectory);
+  observe_and_update(context, object);
+}
+
+template <typename ObjectT>
+void TwoClassFilter<ObjectT>::observe_and_update(
+  const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
+{
+  calculate_likelihood(context, object);
 
   if (!is_initialized_) {
     posterior_ = target_likelihood_;
@@ -688,13 +750,13 @@ void TwoClassFilter<ObjectT>::observe_and_update(
     target_likelihood_ = 1.0;
     non_target_likelihood_ = 1.0;
     is_initialized_ = true;
-    last_update_time_ = current_time;
+    last_update_time_ = context.current_time;
     return;
   }
 
-  apply_transition_to_prior(object, trajectory);
+  apply_transition_to_prior(context, object);
   apply_bayesian_update();
-  last_update_time_ = current_time;
+  last_update_time_ = context.current_time;
 
   target_likelihood_ = 1.0;
   non_target_likelihood_ = 1.0;
@@ -703,9 +765,9 @@ void TwoClassFilter<ObjectT>::observe_and_update(
 
 template <typename ObjectT>
 void TwoClassFilter<ObjectT>::apply_transition_to_prior(
-  const ObjectT & object, const Trajectory & trajectory)
+  const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
 {
-  const auto transition = transition_matrix(object, trajectory);
+  const auto transition = transition_matrix(context, object);
   const double non_target_prior = 1.0 - prior_;
   prior_ = transition[0][0] * prior_ + transition[1][0] * non_target_prior;
 }
@@ -722,7 +784,7 @@ void TwoClassFilter<ObjectT>::apply_bayesian_update()
 
 template <typename ObjectT>
 void TargetFilter<ObjectT>::calculate_likelihood(
-  const ObjectT & object, [[maybe_unused]] const Trajectory & trajectory)
+  [[maybe_unused]] const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
 {
   this->target_likelihood_ = is_object_of_interest(object) ? k_high_likelihood : k_low_likelihood;
   this->non_target_likelihood_ = 1.0 - this->target_likelihood_;
@@ -730,7 +792,8 @@ void TargetFilter<ObjectT>::calculate_likelihood(
 
 template <typename ObjectT>
 typename TwoClassFilter<ObjectT>::Matrix2x2 TargetFilter<ObjectT>::transition_matrix(
-  [[maybe_unused]] const ObjectT & object, [[maybe_unused]] const Trajectory & trajectory) const
+  [[maybe_unused]] const FrameEvaluationContext<ObjectT> & context,
+  [[maybe_unused]] const ObjectT & object) const
 {
   constexpr double state_persistence = 0.95;
   constexpr double switch_probability = 1.0 - state_persistence;
@@ -744,7 +807,7 @@ typename TwoClassFilter<ObjectT>::Matrix2x2 TargetFilter<ObjectT>::transition_ma
 
 template <typename ObjectT>
 void StationaryFilter<ObjectT>::calculate_likelihood(
-  const ObjectT & object, [[maybe_unused]] const Trajectory & trajectory)
+  [[maybe_unused]] const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
 {
   const double pre_clamp_probability =
     -(linear_velocity_norm(object) - MovingObjectFilterParams::max_linear_velocity_mps) /
@@ -756,7 +819,7 @@ void StationaryFilter<ObjectT>::calculate_likelihood(
 
 template <typename ObjectT>
 typename TwoClassFilter<ObjectT>::Matrix2x2 StationaryFilter<ObjectT>::transition_matrix(
-  const ObjectT & object, [[maybe_unused]] const Trajectory & trajectory) const
+  [[maybe_unused]] const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) const
 {
   const double velocity_norm = linear_velocity_norm(object);
 
@@ -777,19 +840,18 @@ typename TwoClassFilter<ObjectT>::Matrix2x2 StationaryFilter<ObjectT>::transitio
 
 template <typename ObjectT>
 void DeviationFilter<ObjectT>::calculate_likelihood(
-  const ObjectT & object, [[maybe_unused]] const Trajectory & trajectory)
+  const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
 {
-  this->target_likelihood_ = should_filter_out_on_trajectory_object(trajectory, object)
-                               ? k_low_likelihood
-                               : k_high_likelihood;
+  this->target_likelihood_ =
+    should_filter_out_on_trajectory_object(context, object) ? k_low_likelihood : k_high_likelihood;
   this->non_target_likelihood_ = 1.0 - this->target_likelihood_;
 }
 
 template <typename ObjectT>
 typename TwoClassFilter<ObjectT>::Matrix2x2 DeviationFilter<ObjectT>::transition_matrix(
-  const ObjectT & object, const Trajectory & trajectory) const
+  const FrameEvaluationContext<ObjectT> & context, const ObjectT & object) const
 {
-  if (is_object_beyond_trajectory_end(trajectory, object)) {
+  if (is_object_beyond_trajectory_end(context, object)) {
     return {{
       {0.8, 0.2},
       {0.4, 0.6},
@@ -822,11 +884,23 @@ void AvoidanceTargetDetectorBase<ObjectT>::observe_and_update_all(
   const lanelet::BasicPolygon2d & near_segment_polygon,
   const std::vector<lanelet::ConstLanelet> & ego_lanelets)
 {
-  stale_check_time_ = current_time;
+  auto context = make_frame_evaluation_context<ObjectT>(current_time, trajectory);
+  context.route_map = route_map.get();
+  context.routing_graph = routing_graph.get();
+  context.near_segment_polygon = build_near_segment_polygon(near_segment_polygon);
+  context.ego_lanelets = ego_lanelets;
+  observe_and_update_all(context, object);
+}
 
-  target_filter_->observe_and_update(current_time, object, trajectory);
-  stationary_filter_->observe_and_update(current_time, object, trajectory);
-  deviation_filter_->observe_and_update(current_time, object, trajectory);
+template <typename ObjectT>
+void AvoidanceTargetDetectorBase<ObjectT>::observe_and_update_all(
+  const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
+{
+  stale_check_time_ = context.current_time;
+
+  target_filter_->observe_and_update(context, object);
+  stationary_filter_->observe_and_update(context, object);
+  deviation_filter_->observe_and_update(context, object);
 
   is_driving_along_candidate_now_ = false;
   is_on_polygon_now_ = false;
@@ -834,32 +908,34 @@ void AvoidanceTargetDetectorBase<ObjectT>::observe_and_update_all(
     return;
   }
 
-  is_on_polygon_now_ =
-    near_segment_polygon.size() >= 3 && overlaps_near_segment_polygon(object, near_segment_polygon);
+  is_on_polygon_now_ = context.near_segment_polygon &&
+                       overlaps_near_segment_polygon(object, *context.near_segment_polygon);
   if (!is_on_polygon_now_) {
     return;
   }
 
-  if (!route_map) {
+  if (!context.route_map) {
     return;
   }
 
-  const auto object_lanelets = get_nearest_lanelets(*route_map, get_object_pose(object).position);
+  const auto object_lanelets =
+    get_nearest_lanelets(*context.route_map, get_object_pose(object).position);
   if (object_lanelets.empty()) {
     return;
   }
 
-  if (!routing_graph || ego_lanelets.empty()) {
+  if (!context.routing_graph || context.ego_lanelets.empty()) {
     return;
   }
 
   const bool is_routably_connected = std::any_of(
-    ego_lanelets.begin(), ego_lanelets.end(), [&](const lanelet::ConstLanelet & ego_lanelet) {
+    context.ego_lanelets.begin(), context.ego_lanelets.end(),
+    [&](const lanelet::ConstLanelet & ego_lanelet) {
       return std::any_of(
         object_lanelets.begin(), object_lanelets.end(),
         [&](const lanelet::ConstLanelet & object_lanelet) {
           return is_routably_connected_to_ego_without_lane_change(
-            *routing_graph, ego_lanelet, object_lanelet);
+            *context.routing_graph, ego_lanelet, object_lanelet);
         });
     });
   is_driving_along_candidate_now_ = !is_routably_connected;
@@ -961,14 +1037,17 @@ void ObjectSelectorBase<ObjectT>::update_objects(
 {
   const auto route_map = extended_route_handler.getRouteMap();
   const auto routing_graph = extended_route_handler.getRouteMapRoutingGraph();
+  auto context = make_frame_evaluation_context<ObjectT>(current_time, trajectory);
+  context.route_map = route_map.get();
+  context.routing_graph = routing_graph.get();
 
-  lanelet::BasicPolygon2d near_segment_polygon;
-  std::vector<lanelet::ConstLanelet> ego_lanelets;
   if (!trajectory.points.empty()) {
-    near_segment_polygon = extended_route_handler.get_near_segment_polygon(
-      trajectory.points.front().pose.position, trajectory.points.back().pose.position);
+    context.near_segment_polygon =
+      build_near_segment_polygon(extended_route_handler.get_near_segment_polygon(
+        trajectory.points.front().pose.position, trajectory.points.back().pose.position));
     if (route_map) {
-      ego_lanelets = get_nearest_lanelets(*route_map, trajectory.points.back().pose.position);
+      context.ego_lanelets =
+        get_nearest_lanelets(*route_map, trajectory.points.back().pose.position);
     }
   }
 
@@ -976,11 +1055,8 @@ void ObjectSelectorBase<ObjectT>::update_objects(
     if (!is_object_of_interest(object)) {
       continue;
     }
-    const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
-    const auto it = object_filters_.try_emplace(object_id_str, object, current_time).first;
-    it->second.observe_and_update_all(
-      current_time, object, trajectory, route_map, routing_graph, near_segment_polygon,
-      ego_lanelets);
+    const auto it = object_filters_.try_emplace(object.object_id.uuid, object, current_time).first;
+    it->second.observe_and_update_all(context, object);
   }
 
   for (auto it = object_filters_.begin(); it != object_filters_.end();) {
@@ -1003,21 +1079,28 @@ typename ObjectSelectorBase<ObjectT>::Objects ObjectSelectorBase<ObjectT>::get_a
     std::remove_if(
       avoidance_targets.objects.begin(), avoidance_targets.objects.end(),
       [&](const ObjectT & object) {
-        const auto it = object_filters_.find(autoware_utils_uuid::to_hex_string(object.object_id));
+        const auto it = object_filters_.find(object.object_id.uuid);
         return it == object_filters_.end() || !it->second.is_stationary_avoidance_target();
       }),
     avoidance_targets.objects.end());
 
+  if (avoidance_targets.objects.empty()) {
+    return avoidance_targets;
+  }
+
+  const rclcpp::Time evaluation_time{0, 0, RCL_ROS_TIME};
+  const auto context = make_frame_evaluation_context<ObjectT>(evaluation_time, trajectory);
   avoidance_targets.objects.erase(
     std::remove_if(
       avoidance_targets.objects.begin(), avoidance_targets.objects.end(),
       [&](const ObjectT & object) {
+        const auto footprint = autoware_utils_geometry::to_polygon2d(object);
         if (should_filter_out_by_longitudinal_distance(
-              trajectory, object, LongitudinalDistanceFilterParams{})) {
+              context, object, footprint, LongitudinalDistanceFilterParams{})) {
           return true;
         }
         if (should_filter_out_by_lateral_distance(
-              route_bounds, trajectory, object, LateralDistanceFilterParams{})) {
+              route_bounds, context, object, footprint, LateralDistanceFilterParams{})) {
           return true;
         }
         return false;
@@ -1038,7 +1121,7 @@ ObjectSelectorBase<ObjectT>::get_driving_along_vehicles(const Objects & objects)
     std::remove_if(
       driving_along_vehicles.objects.begin(), driving_along_vehicles.objects.end(),
       [&](const ObjectT & object) {
-        const auto it = object_filters_.find(autoware_utils_uuid::to_hex_string(object.object_id));
+        const auto it = object_filters_.find(object.object_id.uuid);
         return it == object_filters_.end() || !it->second.is_moving_vehicle() ||
                it->second.is_stationary_avoidance_target();
       }),
