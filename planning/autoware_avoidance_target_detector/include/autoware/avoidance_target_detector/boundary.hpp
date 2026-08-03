@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__BOUNDARY_HPP_
 #define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__BOUNDARY_HPP_
 
+#include "rtree_filtering.hpp"
+
 #include <autoware/route_handler/route_handler.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
@@ -33,7 +35,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace autoware::avoidance_target_detector
@@ -44,9 +45,6 @@ using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
-
-/** Left and right route boundary linestrings. */
-using RouteBounds = std::pair<lanelet::LineString2d, lanelet::LineString2d>;
 
 namespace traffic_rules
 {
@@ -143,6 +141,8 @@ public:
 
   [[nodiscard]] std::vector<lanelet::LineString2d> get_road_borders() const;
 
+  [[nodiscard]] SegmentRtree get_road_borders_rtree() const;
+
   [[nodiscard]] RouteBounds get_primitive_set_bounds(const std::vector<int64_t> & primitives) const;
 
   [[nodiscard]] const RouteBounds & get_original_route_bounds() const
@@ -186,6 +186,9 @@ private:
   std::shared_ptr<RouteHandler> original_route_handler_;
   RouteBounds original_route_bounds_;
   RouteBounds extended_route_bounds_;
+  SegmentRtree road_borders_rtree_;
+  SegmentRtree original_bounds_rtree_;
+  SegmentRtree extended_bounds_rtree_;
 };
 
 /**

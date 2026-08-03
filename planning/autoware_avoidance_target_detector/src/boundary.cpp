@@ -14,6 +14,8 @@
 
 #include "autoware/avoidance_target_detector/boundary.hpp"
 
+#include "autoware/avoidance_target_detector/rtree_filtering.hpp"
+
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
 
@@ -579,6 +581,8 @@ void ExtendedRouteHandler::create_map()
   }
   original_route_bounds_ = build_route_bounds(original_primitive_lists);
   extended_route_bounds_ = build_route_bounds(extended_primitive_lists);
+  original_bounds_rtree_ = prepare_drivable_area_rtree(original_route_bounds_);
+  extended_bounds_rtree_ = prepare_drivable_area_rtree(extended_route_bounds_);
 
   route_map_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*route_map_);
 }
@@ -619,6 +623,10 @@ std::vector<lanelet::LineString2d> ExtendedRouteHandler::get_road_borders() cons
     road_borders.push_back(lanelet::utils::to2D(ls));
   }
   return road_borders;
+}
+SegmentRtree ExtendedRouteHandler::get_road_borders_rtree() const
+{
+  return prepare_road_border_rtree(get_road_borders());
 }
 
 std::pair<lanelet::LineString2d, lanelet::LineString2d>

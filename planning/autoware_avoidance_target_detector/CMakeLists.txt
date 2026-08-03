@@ -10,4 +10,13 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/parameter.cpp
 )
 
+if(BUILD_TESTING)
+  ament_auto_add_gtest(test_update_objects_performance
+    test/test_update_objects_performance.cpp
+  )
+  target_link_libraries(test_update_objects_performance
+    ${PROJECT_NAME}
+  )
+endif()
+
 ament_auto_package()
