@@ -52,14 +52,14 @@ inline cv::Scalar lerpBgr(const cv::Scalar & a, const cv::Scalar & b, const floa
 
 inline cv::Scalar costGradientColor(const float cost, const float min_cost, const float max_cost)
 {
-  // BGR: purple (low cost) -> teal (high cost). OpenCV has no per-polyline alpha here.
-  const cv::Scalar k_purple(191, 38, 140);  // ~ (0.55, 0.15, 0.75) RGB
+  // BGR: teal (low cost) -> purple (high cost). OpenCV has no per-polyline alpha here.
   const cv::Scalar k_teal(153, 166, 13);    // ~ (0.05, 0.65, 0.60) RGB
+  const cv::Scalar k_purple(191, 38, 140);  // ~ (0.55, 0.15, 0.75) RGB
   if (max_cost <= min_cost) {
-    return k_purple;
+    return k_teal;
   }
   const float t = std::clamp((cost - min_cost) / (max_cost - min_cost), 0.0F, 1.0F);
-  return lerpBgr(k_purple, k_teal, t);
+  return lerpBgr(k_teal, k_purple, t);
 }
 
 inline void drawCenterline(cv::Mat & img, const path::Path2D & path, const float scale = 15.0F)

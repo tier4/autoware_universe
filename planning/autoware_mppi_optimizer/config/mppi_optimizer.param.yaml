@@ -3,7 +3,7 @@
     # Vehicle actuation dynamics are loaded from $(vehicle_model)_description/config/simulator_model.param.yaml
 
     # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
-    lambda: 500.0
+    lambda: 70.0
     desired_speed: 2.5
     speed_coeff: 300.0
     track_coeff: 1200.0
@@ -29,7 +29,7 @@
     # Optional offline debug logging for mppi_debug_visualizer.py --log-dir
     # Empty directory resolves to $XDG_CACHE_HOME/autoware/mppi_debug_log
     # (or $HOME/.cache/autoware/mppi_debug_log).
-    enable_debug_trajectory_log: true
+    enable_debug_trajectory_log: false
     debug_trajectory_log_directory: ""
 
     ignore_obstacles: false

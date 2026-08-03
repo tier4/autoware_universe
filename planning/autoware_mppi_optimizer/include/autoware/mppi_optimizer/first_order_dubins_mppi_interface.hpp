@@ -56,6 +56,8 @@ struct FirstOrderDubinsMppiRollout
 {
   std::vector<std::pair<float, float>> points;
   float cost{0.0F};
+  /** True when this sample was selected as a high-cost (worst) viz sample, not top-weighted. */
+  bool is_worst{false};
 };
 
 struct FirstOrderDubinsMppiDebug
@@ -65,6 +67,8 @@ struct FirstOrderDubinsMppiDebug
   std::vector<std::pair<float, float>> optimal_horizon;
   std::vector<FirstOrderDubinsMppiRollout> rollouts;
   float baseline_cost{0.0F};
+  /** Min rollout cost after each MPPI optimization iteration (length = kMaxIter). */
+  std::vector<float> iteration_baselines;
 };
 
 struct FirstOrderDubinsMppiOptimizationResult
@@ -140,8 +144,8 @@ public:
 
   /**
    * @brief When true, optimizeTrajectory fills debug.rollouts with top-K weighted samples
-   *        (CPU replay; ~tens of ms). Enable only for offline retune — leave false for online
-   *        planning and debug trajectory logging.
+   *        plus worst-K high-cost samples (CPU replay; ~tens of ms). Enable only for offline
+   *        retune — leave false for online planning and debug trajectory logging.
    */
   void setRolloutVisualizationEnabled(bool enable);
 
@@ -152,6 +156,14 @@ public:
    */
   void setForcedNominalControl(
     const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd);
+
+  /**
+   * @brief Copy the last optimized control sequence (after optimizeTrajectory / computeStep).
+   *        Used by offline retune to warm-start a subsequent MPPI pass (Re-seed).
+   * @return false if the controller has not produced a control sequence yet.
+   */
+  bool copyLastOptimizedControl(
+    std::vector<float> & accel_cmd, std::vector<float> & steer_cmd) const;
 
   /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.

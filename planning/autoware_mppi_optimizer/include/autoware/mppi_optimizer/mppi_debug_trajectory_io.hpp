@@ -98,13 +98,13 @@ inline bool writeMppiDebugRolloutsCsv(
   if (!out) {
     return false;
   }
-  out << "rollout_index,cost,step,x,y\n";
+  out << "rollout_index,cost,step,x,y,is_worst\n";
   out << std::setprecision(9) << std::fixed;
   for (size_t r = 0; r < rollouts.size(); ++r) {
     const auto & rollout = rollouts[r];
     for (size_t s = 0; s < rollout.points.size(); ++s) {
       out << r << "," << rollout.cost << "," << s << "," << rollout.points[s].first << ","
-          << rollout.points[s].second << "\n";
+          << rollout.points[s].second << "," << (rollout.is_worst ? 1 : 0) << "\n";
     }
   }
   return true;

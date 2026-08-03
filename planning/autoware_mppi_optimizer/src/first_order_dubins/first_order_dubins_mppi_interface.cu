@@ -54,8 +54,9 @@ constexpr int kMppiHorizon = 80;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = 0.1F;
 constexpr size_t kMaxIter = 10;
-constexpr int kNumRollouts = 32 * 1024;
-constexpr int kMaxVizRollouts = 200;
+constexpr int kNumRollouts = 4 * 1024;
+constexpr int kMaxVizRollouts = 256;
+constexpr int kMaxWorstVizRollouts = 128;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
 
 rclcpp::Logger mppiLogger()
@@ -282,6 +283,68 @@ void selectTopRolloutIndices(
     [&](const int rollout) { return raw_costs[static_cast<size_t>(rollout)]; });
 }
 
+/** Highest raw-cost samples, excluding any indices already chosen as top-weighted. */
+void selectWorstRolloutIndices(
+  const std::vector<float> & raw_costs, const std::vector<int> & exclude_indices, const int worst_n,
+  std::vector<int> & rollout_indices, std::vector<float> & selected_costs)
+{
+  rollout_indices.clear();
+  selected_costs.clear();
+  const int num_rollouts = static_cast<int>(raw_costs.size());
+  if (worst_n <= 0 || num_rollouts <= 0) {
+    return;
+  }
+
+  std::vector<char> excluded(static_cast<size_t>(num_rollouts), 0);
+  for (const int idx : exclude_indices) {
+    if (idx >= 0 && idx < num_rollouts) {
+      excluded[static_cast<size_t>(idx)] = 1;
+    }
+  }
+
+  std::vector<int> candidates;
+  candidates.reserve(static_cast<size_t>(num_rollouts));
+  for (int i = 0; i < num_rollouts; ++i) {
+    if (!excluded[static_cast<size_t>(i)]) {
+      candidates.push_back(i);
+    }
+  }
+  if (candidates.empty()) {
+    return;
+  }
+
+  const int keep = std::min(worst_n, static_cast<int>(candidates.size()));
+  std::partial_sort(
+    candidates.begin(), candidates.begin() + keep, candidates.end(),
+    [&](const int a, const int b) {
+      return raw_costs[static_cast<size_t>(a)] > raw_costs[static_cast<size_t>(b)];
+    });
+  candidates.resize(static_cast<size_t>(keep));
+  rollout_indices = std::move(candidates);
+  selected_costs.resize(rollout_indices.size());
+  std::transform(
+    rollout_indices.begin(), rollout_indices.end(), selected_costs.begin(),
+    [&](const int rollout) { return raw_costs[static_cast<size_t>(rollout)]; });
+}
+
+void appendReplayedRollouts(
+  DYN & model, const DYN::state_array & x0, const std::vector<float> & host_controls,
+  const std::vector<float> & selected_costs, const bool is_worst,
+  std::vector<FirstOrderDubinsMppiRollout> & rollouts)
+{
+  size_t out_idx = 0;
+  for (const float cost : selected_costs) {
+    FirstOrderDubinsMppiRollout rollout;
+    rollout.cost = cost;
+    rollout.is_worst = is_worst;
+    const float * controls = host_controls.data() + out_idx * static_cast<size_t>(kMppiHorizon) *
+                                                      static_cast<size_t>(DYN::CONTROL_DIM);
+    replayRolloutPoints(model, x0, controls, kMppiHorizon, kDt, rollout.points);
+    rollouts.push_back(std::move(rollout));
+    ++out_idx;
+  }
+}
+
 void buildRolloutVisualization(
   Mppi & controller, SAMPLER & sampler, DYN & model, const DYN::state_array & x_at_optimization,
   const float lambda, FirstOrderDubinsMppiDebug & debug)
@@ -289,6 +352,7 @@ void buildRolloutVisualization(
   const Mppi::state_trajectory state_trajectory = controller.getActualStateSeq();
   fillOptimalHorizonPoints(state_trajectory, debug.optimal_horizon);
   debug.baseline_cost = controller.getBaselineCost();
+  debug.iteration_baselines = controller.getIterationBaselines();
 
   // IMPORTANT: take by value — see copySampleCostDistribution for nvcc temporary lifetime note.
   const Mppi::sampled_cost_traj importance = controller.getSampledCostSeq();
@@ -304,25 +368,35 @@ void buildRolloutVisualization(
     raw_costs[i] = (w > 0.0F) ? (baseline - lambda * std::log(w)) : (baseline + 1.0e30F);
   }
 
-  std::vector<int> rollout_indices;
-  std::vector<float> selected_costs;
+  std::vector<int> top_indices;
+  std::vector<float> top_costs;
   selectTopRolloutIndices(
-    normalized_weights, raw_costs, kMaxVizRollouts, rollout_indices, selected_costs);
+    normalized_weights, raw_costs, kMaxVizRollouts, top_indices, top_costs);
+
+  std::vector<int> worst_indices;
+  std::vector<float> worst_costs;
+  selectWorstRolloutIndices(
+    raw_costs, top_indices, kMaxWorstVizRollouts, worst_indices, worst_costs);
+
+  std::vector<int> all_indices = top_indices;
+  all_indices.insert(all_indices.end(), worst_indices.begin(), worst_indices.end());
 
   std::vector<float> host_controls;
-  copySamplerControlsToHost(sampler, kMppiHorizon, rollout_indices, host_controls);
+  copySamplerControlsToHost(sampler, kMppiHorizon, all_indices, host_controls);
 
   debug.rollouts.clear();
-  debug.rollouts.reserve(rollout_indices.size());
-  size_t out_idx = 0;
-  for (const float cost : selected_costs) {
-    FirstOrderDubinsMppiRollout rollout;
-    rollout.cost = cost;
-    const float * controls = host_controls.data() + out_idx * static_cast<size_t>(kMppiHorizon) *
-                                                      static_cast<size_t>(DYN::CONTROL_DIM);
-    replayRolloutPoints(model, x_at_optimization, controls, kMppiHorizon, kDt, rollout.points);
-    debug.rollouts.push_back(std::move(rollout));
-    ++out_idx;
+  debug.rollouts.reserve(all_indices.size());
+  const size_t top_ctrl_floats =
+    top_indices.size() * static_cast<size_t>(kMppiHorizon) * static_cast<size_t>(DYN::CONTROL_DIM);
+  const std::vector<float> top_controls(
+    host_controls.begin(),
+    host_controls.begin() + static_cast<std::ptrdiff_t>(std::min(top_ctrl_floats, host_controls.size())));
+  appendReplayedRollouts(model, x_at_optimization, top_controls, top_costs, false, debug.rollouts);
+  if (!worst_indices.empty()) {
+    const std::vector<float> worst_controls(
+      host_controls.begin() + static_cast<std::ptrdiff_t>(top_ctrl_floats), host_controls.end());
+    appendReplayedRollouts(
+      model, x_at_optimization, worst_controls, worst_costs, true, debug.rollouts);
   }
 }
 
@@ -914,6 +988,31 @@ void FirstOrderDubinsMppiInterface::setForcedNominalControl(
   impl_->forced_nominal_pending = !accel_cmd.empty() || !steer_cmd.empty();
 }
 
+bool FirstOrderDubinsMppiInterface::copyLastOptimizedControl(
+  std::vector<float> & accel_cmd, std::vector<float> & steer_cmd) const
+{
+  accel_cmd.clear();
+  steer_cmd.clear();
+  if (!impl_ || !impl_->controller || !impl_->initialized) {
+    return false;
+  }
+  const Mppi::control_trajectory u_opt = impl_->controller->getControlSeq();
+  const int n = static_cast<int>(u_opt.cols());
+  if (n <= 0) {
+    return false;
+  }
+  const int accel_idx =
+    static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+  const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+  accel_cmd.resize(static_cast<size_t>(n));
+  steer_cmd.resize(static_cast<size_t>(n));
+  for (int t = 0; t < n; ++t) {
+    accel_cmd[static_cast<size_t>(t)] = u_opt(accel_idx, t);
+    steer_cmd[static_cast<size_t>(t)] = u_opt(steer_idx, t);
+  }
+  return true;
+}
+
 bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
   std::vector<float> & raw_costs, std::vector<float> & normalized_weights, const int stride) const
 {
@@ -1096,6 +1195,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   } else {
     fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
     result.debug.baseline_cost = impl_->controller->getBaselineCost();
+    result.debug.iteration_baselines = impl_->controller->getIterationBaselines();
     result.debug.rollouts.clear();
   }
 
@@ -1110,19 +1210,29 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   impl_->debug_trajectory_logger.writeParamsOnce(impl_->user_cost_params_, impl_->vehicle_params);
   impl_->debug_trajectory_logger.logFrame(
     result.debug.reference_trajectory, result.debug.optimized_trajectory, ego,
-    result.debug.baseline_cost, impl_->logged_nominal_accel, impl_->logged_nominal_steer);
+    result.debug.baseline_cost, impl_->logged_nominal_accel, impl_->logged_nominal_steer,
+    result.debug.iteration_baselines);
 
-  RCLCPP_INFO(
-    mppiLogger(),
-    "MPPI tracked diffusion ref in %.1f ms: start_idx=%zu steps=%d output points size=%zu "
-    "points=%zu rollouts=%zu "
-    "obstacles=%zu road_borders=%zu drivable_segments=%zu u_accel=%.3f u_steer=%.3f "
-    "baseline_cost=%.2f max_pos_err=%.3f m "
-    "max_vel_err=%.3f m/s",
-    elapsed_ms, impl_->tracking_start_idx, impl_->step_count, output.points.size(), num_points,
-    result.debug.rollouts.size(), tracked_objects.objects.size(), road_borders.size(),
-    drivable_area.size(), control.accel_cmd, control.steer_cmd, result.debug.baseline_cost,
-    max_pos_delta, max_vel_delta);
+  {
+    std::string iter_costs;
+    for (size_t i = 0; i < result.debug.iteration_baselines.size(); ++i) {
+      if (i > 0) {
+        iter_costs += ' ';
+      }
+      iter_costs += std::to_string(i) + ':' + std::to_string(result.debug.iteration_baselines[i]);
+    }
+    RCLCPP_INFO(
+      mppiLogger(),
+      "MPPI tracked diffusion ref in %.1f ms: start_idx=%zu steps=%d output points size=%zu "
+      "points=%zu rollouts=%zu "
+      "obstacles=%zu road_borders=%zu drivable_segments=%zu u_accel=%.3f u_steer=%.3f "
+      "baseline_cost=%.2f max_pos_err=%.3f m "
+      "max_vel_err=%.3f m/s iteration_baselines=[%s]",
+      elapsed_ms, impl_->tracking_start_idx, impl_->step_count, output.points.size(), num_points,
+      result.debug.rollouts.size(), tracked_objects.objects.size(), road_borders.size(),
+      drivable_area.size(), control.accel_cmd, control.steer_cmd, result.debug.baseline_cost,
+      max_pos_delta, max_vel_delta, iter_costs.c_str());
+  }
 
   if (impl_->skip_if_invalid && crash_status != 0) {
     result.trajectory = input;

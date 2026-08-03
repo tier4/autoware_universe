@@ -35,7 +35,13 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
   node.declare_parameter(param_name(prefix, "desired_speed"), defaults.desired_speed);
   node.declare_parameter(param_name(prefix, "speed_coeff"), defaults.speed_coeff);
   node.declare_parameter(param_name(prefix, "track_coeff"), defaults.track_coeff);
+  node.declare_parameter(
+    param_name(prefix, "track_terminal_scale"), defaults.track_terminal_scale);
   node.declare_parameter(param_name(prefix, "heading_coeff"), defaults.heading_coeff);
+  node.declare_parameter(
+    param_name(prefix, "lateral_distance_coeff"), defaults.lateral_distance_coeff);
+  node.declare_parameter(
+    param_name(prefix, "lateral_yaw_error_coeff"), defaults.lateral_yaw_error_coeff);
   node.declare_parameter(param_name(prefix, "crash_coeff"), defaults.crash_coeff);
   node.declare_parameter(param_name(prefix, "boundary_threshold"), defaults.boundary_threshold);
   node.declare_parameter(
@@ -52,6 +58,10 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
     param_name(prefix, "longitudinal_jerk_coeff"), defaults.longitudinal_jerk_coeff);
   node.declare_parameter(
     param_name(prefix, "obstacle_collision_margin"), defaults.obstacle_collision_margin);
+  node.declare_parameter(
+    param_name(prefix, "road_border_collision_margin"), defaults.road_border_collision_margin);
+  node.declare_parameter(
+    param_name(prefix, "drivable_area_crossing_coeff"), defaults.drivable_area_crossing_coeff);
   node.declare_parameter(param_name(prefix, "goal_pos_coeff"), defaults.goal_pos_coeff);
   node.declare_parameter(param_name(prefix, "goal_speed_coeff"), defaults.goal_speed_coeff);
   node.declare_parameter(param_name(prefix, "goal_yaw_coeff"), defaults.goal_yaw_coeff);
@@ -69,8 +79,14 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     static_cast<float>(node.get_parameter(param_name(prefix, "speed_coeff")).as_double());
   params.track_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "track_coeff")).as_double());
+  params.track_terminal_scale = static_cast<float>(
+    node.get_parameter(param_name(prefix, "track_terminal_scale")).as_double());
   params.heading_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "heading_coeff")).as_double());
+  params.lateral_distance_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "lateral_distance_coeff")).as_double());
+  params.lateral_yaw_error_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "lateral_yaw_error_coeff")).as_double());
   params.crash_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "crash_coeff")).as_double());
   params.boundary_threshold =
@@ -93,6 +109,10 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "longitudinal_jerk_coeff")).as_double());
   params.obstacle_collision_margin = static_cast<float>(
     node.get_parameter(param_name(prefix, "obstacle_collision_margin")).as_double());
+  params.road_border_collision_margin = static_cast<float>(
+    node.get_parameter(param_name(prefix, "road_border_collision_margin")).as_double());
+  params.drivable_area_crossing_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "drivable_area_crossing_coeff")).as_double());
   params.goal_pos_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "goal_pos_coeff")).as_double());
   params.goal_speed_coeff =
