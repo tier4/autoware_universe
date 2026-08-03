@@ -11,6 +11,13 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 )
 
 if(BUILD_TESTING)
+  ament_auto_add_gtest(test_boundary
+    test/test_boundary.cpp
+  )
+  target_link_libraries(test_boundary
+    ${PROJECT_NAME}
+  )
+
   ament_auto_add_gtest(test_update_objects
     test/test_update_objects.cpp
   )
