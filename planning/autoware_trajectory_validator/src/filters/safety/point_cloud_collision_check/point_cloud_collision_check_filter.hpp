@@ -47,16 +47,15 @@ public:
 private:
   /// @brief 評価に必要な入力が揃っているかを判定する。
   /// false のとき is_feasible は評価せず feasible（ValidationResult{}）を返す。
-  bool is_available_data(
-    const CandidateTrajectory & candidate_trajectory, const FilterContext & context) const;
+  bool is_available_data(const FilterContext & context) const;
 
   /// @brief planner_data_ のパラメータ由来フィールドを設定する。
   /// 移植元では PlannerData のコンストラクタと on_set_param が担う。
   void set_planner_data_param(const validator::Params::PointCloudCollisionCheck & p);
 
   /// @brief planner_data_ のトピック由来フィールドを更新し、点群の前処理まで行う。
-  /// 移植元では node の update_planner_data が担う。
-  void update_planner_data(
+  /// 移植元では node の update_planner_data が担う。TF が引けず点群を前処理できなければ false。
+  bool update_planner_data(
     const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context);
 
   /// @brief 点群から停止対象を抽出する。移植元 ObstacleStopModule の plan() の点群経路。

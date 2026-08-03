@@ -699,19 +699,6 @@
               "required": [],
               "additionalProperties": false
             },
-            "obstacle_filtering": {
-              "type": "object",
-              "properties": {
-                "excluded_class_ids": {
-                  "type": "array",
-                  "items": { "type": "integer" },
-                  "description": "class_id values treated as ground/background and excluded. Applied only when the input pointcloud carries a class_id field. ptv3 indices - drivable_surface/other_flat_surface/sidewalk/manmade/vegetation/other_stuff/noise.",
-                  "default": [0, 1, 2, 3, 4, 24, 25]
-                }
-              },
-              "required": [],
-              "additionalProperties": false
-            },
             "trajectory_polygon": {
               "type": "object",
               "properties": {

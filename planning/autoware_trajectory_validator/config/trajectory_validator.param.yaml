@@ -162,8 +162,6 @@
       common:
         min_accel: -1.0
         min_jerk: -0.6
-      obstacle_filtering:
-        excluded_class_ids: [0, 1, 2, 3, 4, 24, 25]
       trajectory_polygon:
         decimate_trajectory_step_length: 2.0
         goal_extended_trajectory_length: 6.0

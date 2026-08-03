@@ -20,9 +20,13 @@
 #include <autoware/motion_velocity_planner_common/polygon_utils.hpp>
 #include <autoware/motion_velocity_planner_common/utils.hpp>
 #include <autoware_utils_pcl/transforms.hpp>
+#include <rclcpp/duration.hpp>
+#include <rclcpp/logging.hpp>
+#include <rclcpp/time.hpp>
+#include <tf2/time.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
 
-#include <sensor_msgs/msg/point_field.hpp>
-#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 #include <pcl/filters/crop_box.h>
 #include <pcl/filters/voxel_grid.h>
@@ -35,7 +39,6 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -43,6 +46,11 @@ namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_
 {
 namespace
 {
+rclcpp::Logger get_logger()
+{
+  return rclcpp::get_logger("PointCloudCollisionCheckFilter");
+}
+
 // motion_velocity_planner_common/planner_data.cpp:88-132
 pcl::PointCloud<pcl::PointXYZ>::Ptr crop_by_monolithic_trajectory_polygon(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
@@ -133,70 +141,34 @@ std::vector<pcl::PointIndices> make_individual_cluster_indices(
 
 }  // namespace
 
-// [plugin 固有] class_id フィールド（UINT8、ptv3 出力）が在るときのみ
-// excluded_class_ids の点を除外する。無ければ全点を通す。
-pcl::PointCloud<pcl::PointXYZ> filter_pointcloud_by_class_id(
-  const sensor_msgs::msg::PointCloud2 & cloud, const std::vector<std::int64_t> & excluded_class_ids)
+// motion_velocity_planner/node.cpp:229-259
+std::optional<pcl::PointCloud<pcl::PointXYZ>> process_no_ground_pointcloud(
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg, const tf2_ros::Buffer & tf_buffer,
+  const rclcpp::Clock::SharedPtr & clock)
 {
-  pcl::PointCloud<pcl::PointXYZ> out;
-  out.header = pcl_conversions::toPCL(cloud.header);
-  const size_t num_points = static_cast<size_t>(cloud.width) * cloud.height;
-  if (num_points == 0) {
-    return out;
+  geometry_msgs::msg::TransformStamped transform;
+  const bool is_pcl_time_valid =
+    (clock->now() - rclcpp::Time(msg->header.stamp)) < rclcpp::Duration::from_seconds(1.0);
+
+  if (is_pcl_time_valid && tf_buffer.canTransform("map", msg->header.frame_id, msg->header.stamp)) {
+    transform = tf_buffer.lookupTransform(
+      "map", msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.05));
+  } else if (tf_buffer.canTransform("map", msg->header.frame_id, tf2::TimePointZero)) {
+    transform = tf_buffer.lookupTransform("map", msg->header.frame_id, tf2::TimePointZero);
+    RCLCPP_DEBUG(get_logger(), "pcl time is invalid, using tf2::TimePointZero");
+  } else {
+    RCLCPP_WARN(get_logger(), "no transform found for no_ground_pointcloud");
+    return std::nullopt;
   }
 
-  const bool has_class_id =
-    std::any_of(cloud.fields.begin(), cloud.fields.end(), [](const auto & field) {
-      return field.name == "class_id" && field.datatype == sensor_msgs::msg::PointField::UINT8;
-    });
-  const std::unordered_set<std::int64_t> excluded(
-    excluded_class_ids.begin(), excluded_class_ids.end());
+  pcl::PointCloud<pcl::PointXYZ> pc_input;
+  pcl::fromROSMsg(*msg, pc_input);
 
-  sensor_msgs::PointCloud2ConstIterator<float> it_x(cloud, "x");
-  sensor_msgs::PointCloud2ConstIterator<float> it_y(cloud, "y");
-  sensor_msgs::PointCloud2ConstIterator<float> it_z(cloud, "z");
-  std::optional<sensor_msgs::PointCloud2ConstIterator<std::uint8_t>> it_class;
-  if (has_class_id && !excluded.empty()) {
-    it_class.emplace(cloud, "class_id");
-  }
-
-  out.points.reserve(num_points);
-  for (size_t i = 0; i < num_points; ++i, ++it_x, ++it_y, ++it_z) {
-    if (it_class) {
-      const auto class_id = static_cast<std::int64_t>(**it_class);
-      ++(*it_class);
-      if (excluded.count(class_id) > 0) {
-        continue;
-      }
-    }
-    if (!std::isfinite(*it_x) || !std::isfinite(*it_y) || !std::isfinite(*it_z)) {
-      continue;
-    }
-    out.points.emplace_back(*it_x, *it_y, *it_z);
-  }
-  out.width = out.points.size();
-  out.height = 1;
-  out.is_dense = false;
-  return out;
-}
-
-// motion_velocity_planner/node.cpp:250-258（process_no_ground_pointcloud の変換部）
-// 差分: TF ではなく odometry.pose の affine を使う。入力は既に pcl::PointXYZ。
-pcl::PointCloud<pcl::PointXYZ> transform_pointcloud_to_map_frame(
-  const pcl::PointCloud<pcl::PointXYZ> & cloud, const geometry_msgs::msg::Pose & base_link_to_map)
-{
-  const auto & p = base_link_to_map.position;
-  const auto & q = base_link_to_map.orientation;
-  const Eigen::Affine3d base_link_to_map_affine =
-    Eigen::Translation3d(p.x, p.y, p.z) * Eigen::Quaterniond(q.w, q.x, q.y, q.z).normalized();
-  const Eigen::Affine3f affine = base_link_to_map_affine.cast<float>();
-
+  const Eigen::Affine3f affine = tf2::transformToEigen(transform.transform).cast<float>();
   pcl::PointCloud<pcl::PointXYZ> pc_transformed;
-  if (!cloud.empty()) {
-    autoware_utils_pcl::transform_pointcloud(cloud, pc_transformed, affine);
-  }
+  if (!pc_input.empty()) autoware_utils_pcl::transform_pointcloud(pc_input, pc_transformed, affine);
 
-  pc_transformed.header = cloud.header;
+  pc_transformed.header = pc_input.header;
   pc_transformed.header.frame_id = "map";
 
   return pc_transformed;

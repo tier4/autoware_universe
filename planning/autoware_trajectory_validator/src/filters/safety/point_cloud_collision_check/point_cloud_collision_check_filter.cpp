@@ -17,7 +17,6 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <rclcpp/time.hpp>
 
-#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -27,36 +26,13 @@ namespace autoware::trajectory_validator::plugin::safety
 namespace pcc = point_cloud_collision_check;
 
 using point_cloud_collision_check::emit_debug_markers;
-using point_cloud_collision_check::filter_pointcloud_by_class_id;
 using point_cloud_collision_check::PointcloudPreprocessParams;
-using point_cloud_collision_check::transform_pointcloud_to_map_frame;
+using point_cloud_collision_check::process_no_ground_pointcloud;
 
-bool PointCloudCollisionCheckFilter::is_available_data(
-  const CandidateTrajectory & candidate_trajectory, const FilterContext & context) const
+bool PointCloudCollisionCheckFilter::is_available_data(const FilterContext & context) const
 {
-  if (
-    !context.odometry || !context.acceleration || !vehicle_info_ptr_ ||
-    !context.segmented_pointcloud) {
-    return false;
-  }
-  // odometory pose can transform only map_to_baselink
-  if (context.segmented_pointcloud->header.frame_id != "base_link") {
-    return false;
-  }
-  // The decimation spline collapses duplicate points (dx, dy < 1e-6) and needs >= 2 unique points
-  // (autoware_interpolation/src/spline_interpolation_points_2d.cpp:49-67).
-  size_t unique_point_num = 0;
-  for (size_t i = 0; i < candidate_trajectory.points.size(); ++i) {
-    if (i > 0) {
-      const auto & prev = candidate_trajectory.points.at(i - 1).pose.position;
-      const auto & curr = candidate_trajectory.points.at(i).pose.position;
-      if (std::abs(curr.x - prev.x) < 1e-6 && std::abs(curr.y - prev.y) < 1e-6) {
-        continue;
-      }
-    }
-    ++unique_point_num;
-  }
-  return unique_point_num >= 2;
+  return context.odometry && context.acceleration && vehicle_info_ptr_ &&
+         context.segmented_pointcloud && context.tf_buffer && context.clock;
 }
 
 // motion_velocity_planner_common/planner_data.cpp:239-260
@@ -76,11 +52,9 @@ void PointCloudCollisionCheckFilter::set_planner_data_param(
   // motion_velocity_planner/node.cpp:262-266（set_velocity_smoother_params）の代替
   planner_data_.velocity_smoother_.min_decel = p.common.min_accel;
   planner_data_.velocity_smoother_.min_jerk = p.common.min_jerk;
-
-  planner_data_.excluded_class_ids = p.obstacle_filtering.excluded_class_ids;
 }
 
-void PointCloudCollisionCheckFilter::update_planner_data(
+bool PointCloudCollisionCheckFilter::update_planner_data(
   const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context)
 {
   // motion_velocity_planner_common/planner_data.cpp:240-241
@@ -97,17 +71,18 @@ void PointCloudCollisionCheckFilter::update_planner_data(
     planner_data_.is_driving_forward = is_driving_forward.value();
   }
 
-  const auto class_filtered_pointcloud =
-    filter_pointcloud_by_class_id(*context.segmented_pointcloud, planner_data_.excluded_class_ids);
-  auto no_ground_pointcloud =
-    transform_pointcloud_to_map_frame(class_filtered_pointcloud, context.odometry->pose.pose);
-
   // motion_velocity_planner/node.cpp:176-195
+  auto no_ground_pointcloud =
+    process_no_ground_pointcloud(context.segmented_pointcloud, *context.tf_buffer, context.clock);
+  if (!no_ground_pointcloud) {
+    return false;
+  }
   planner_data_.no_ground_pointcloud.preprocess_pointcloud(
-    std::move(no_ground_pointcloud), raw_trajectory_points, planner_data_.current_odometry,
+    std::move(*no_ground_pointcloud), raw_trajectory_points, planner_data_.current_odometry,
     planner_data_.calculate_min_deceleration_distance(0.0).value_or(0.0),
     planner_data_.vehicle_info_, planner_data_.trajectory_polygon_collision_check,
     planner_data_.ego_nearest_dist_threshold, planner_data_.ego_nearest_yaw_threshold);
+  return true;
 }
 
 bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
@@ -125,7 +100,7 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
   // memo: assume trajectory_selector subscribes "/perception/obstacle_segmentation/pointcloud" or
   // "/perception/segmented/pointcloud" that was published from ptv3 node
 
-  if (!is_available_data(candidate_trajectory, context)) {
+  if (!is_available_data(context)) {
     return ValidationResult{};
   }
 
