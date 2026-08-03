@@ -19,7 +19,7 @@
       filter:
         classes: ["drivable_flat", "non_drivable_flat", "noise"]
         output_format: ""
-        apply_to_segmentation: false
+        apply_to_segmentation: true
     detection3d:
       use_head: $(var use_det3d_head)
       onnx_path: "$(var model_path)/$(var model_variant)_det3d_head.onnx"
