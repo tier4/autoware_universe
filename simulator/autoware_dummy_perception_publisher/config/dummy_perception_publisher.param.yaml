@@ -9,6 +9,8 @@
     publish_ground_truth: false
     random_seed: 0
     use_fixed_random_seed: false
+    publish_object_pointcloud: false
+    point_type: "XYZCPE"
     object_centric_pointcloud: false
     angle_increment: 0.004363323  # 0.25 * PI / 180.0
 

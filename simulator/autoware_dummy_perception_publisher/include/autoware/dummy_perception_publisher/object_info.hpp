@@ -49,6 +49,10 @@ struct ObjectInfo
   // pose and twist
   TwistWithCovariance twist_covariance_;
   PoseWithCovariance pose_covariance_;
+
+  // static factory method to create ObjectInfo from DummyObject
+  static ObjectInfo fromDummyObject(const DummyObject & object);
+
   // convert to TrackedObject
   // (todo) currently need object input to get id and header information, but it should be removed
   [[nodiscard]] autoware_perception_msgs::msg::TrackedObject toTrackedObject(

@@ -14,10 +14,28 @@
 
 #include "autoware/dummy_perception_publisher/object_info.hpp"
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
 namespace autoware::dummy_perception_publisher
 {
 using autoware_perception_msgs::msg::TrackedObject;
 using tier4_simulation_msgs::msg::DummyObject;
+
+ObjectInfo ObjectInfo::fromDummyObject(const DummyObject & object)
+{
+  ObjectInfo object_info;
+  object_info.length = object.shape.dimensions.x;
+  object_info.width = object.shape.dimensions.y;
+  object_info.height = object.shape.dimensions.z;
+  object_info.std_dev_x = std::sqrt(object.initial_state.pose_covariance.covariance[0]);
+  object_info.std_dev_y = std::sqrt(object.initial_state.pose_covariance.covariance[7]);
+  object_info.std_dev_z = std::sqrt(object.initial_state.pose_covariance.covariance[14]);
+  object_info.std_dev_yaw = std::sqrt(object.initial_state.pose_covariance.covariance[35]);
+  object_info.pose_covariance_ = object.initial_state.pose_covariance;
+  object_info.twist_covariance_ = object.initial_state.twist_covariance;
+  tf2::fromMsg(object.initial_state.pose_covariance.pose, object_info.tf_map2moved_object);
+  return object_info;
+}
 
 // Implementation of toTrackedObject method
 TrackedObject ObjectInfo::toTrackedObject(const DummyObject & object) const

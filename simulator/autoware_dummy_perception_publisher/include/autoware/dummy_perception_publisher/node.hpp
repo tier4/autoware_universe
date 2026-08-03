@@ -25,6 +25,7 @@
 #include <tf2/transform_datatypes.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
+#include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -40,6 +41,7 @@
 
 #include <memory>
 #include <random>
+#include <string>
 #include <vector>
 
 namespace autoware::dummy_perception_publisher
@@ -47,6 +49,8 @@ namespace autoware::dummy_perception_publisher
 using geometry_msgs::msg::PoseWithCovariance;
 using geometry_msgs::msg::TwistWithCovariance;
 using tier4_simulation_msgs::msg::DummyObject;
+
+enum class PointType { XYZIRC, XYZCPE };
 
 class PointCloudCreator
 {
@@ -102,6 +106,7 @@ private:
   rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr
     ground_truth_objects_pub_;
   rclcpp::Subscription<DummyObject>::SharedPtr object_sub_;
+  rclcpp::Subscription<DummyObject>::SharedPtr static_area_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
@@ -112,17 +117,29 @@ private:
   bool use_object_recognition_;
   bool use_base_link_z_;
   bool publish_ground_truth_objects_;
+  bool publish_object_pointcloud_;
+  PointType point_type_;
   std::unique_ptr<PointCloudCreator> pointcloud_creator_;
   // dummy object movement plugins
   std::vector<std::shared_ptr<pluginlib::DummyObjectMovementBasePlugin>> movement_plugins_;
+  std::vector<DummyObject> static_areas_;
   double angle_increment_;
   std::mt19937 random_generator_;
 
   void timerCallback();
   void objectCallback(const DummyObject::ConstSharedPtr msg);
+  void staticAreaCallback(const DummyObject::ConstSharedPtr msg);
 
   pcl::PointCloud<autoware::point_types::PointXYZIRC> convertPointCloudXYZtoXYZIRC(
     const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_cloud) const;
+  pcl::PointCloud<autoware::point_types::PointXYZIRC> convertPointCloudXYZtoXYZIRC(
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_cloud, uint8_t class_id) const;
+  pcl::PointCloud<autoware::point_types::PointXYZCPE> convertPointCloudXYZtoXYZCPE(
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_cloud,
+    const autoware_perception_msgs::msg::ObjectClassification & classification) const;
+  pcl::PointCloud<autoware::point_types::PointXYZCPE> convertPointCloudXYZtoXYZCPE(
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_cloud, uint8_t class_id,
+    float probability) const;
 
 public:
   DummyPerceptionPublisherNode();
