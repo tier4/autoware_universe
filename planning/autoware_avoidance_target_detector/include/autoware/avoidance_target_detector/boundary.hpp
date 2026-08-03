@@ -161,6 +161,10 @@ public:
     return extended_route_bounds_;
   }
 
+  /**
+   * @brief Build a polygon from the route segments containing and between two points.
+   * @details Identical start and end points are supported and select their containing segment.
+   */
   [[nodiscard]] lanelet::BasicPolygon2d get_near_segment_polygon(
     const geometry_msgs::msg::Point & prev_end_point,
     const geometry_msgs::msg::Point & following_end_point) const;
