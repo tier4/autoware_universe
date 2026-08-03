@@ -143,12 +143,23 @@ bool has_shortest_path_without_lane_change(
     routing_graph.shortestPath(from, to, k_default_routing_cost_id, k_with_lane_changes));
 }
 
+/** Reuses bidirectional routing results for objects assigned to the same lanelet pair. */
+template <typename ObjectT>
 bool is_routably_connected_to_ego_without_lane_change(
-  const lanelet::routing::RoutingGraph & routing_graph, const lanelet::ConstLanelet & ego_lanelet,
+  const FrameEvaluationContext<ObjectT> & context, const lanelet::ConstLanelet & ego_lanelet,
   const lanelet::ConstLanelet & object_lanelet)
 {
-  return has_shortest_path_without_lane_change(routing_graph, object_lanelet, ego_lanelet) ||
-         has_shortest_path_without_lane_change(routing_graph, ego_lanelet, object_lanelet);
+  const LaneletPairKey key{ego_lanelet.id(), object_lanelet.id()};
+  if (const auto iter = context.routability_cache.find(key);
+      iter != context.routability_cache.end()) {
+    return iter->second;
+  }
+
+  const bool is_connected =
+    has_shortest_path_without_lane_change(*context.routing_graph, object_lanelet, ego_lanelet) ||
+    has_shortest_path_without_lane_change(*context.routing_graph, ego_lanelet, object_lanelet);
+  context.routability_cache.emplace(key, is_connected);
+  return is_connected;
 }
 
 template <typename ObjectT>
@@ -179,12 +190,22 @@ std::optional<aw_trajectory::Trajectory<TrajectoryPoint>> build_trajectory(
   return *trajectory;
 }
 
+/** Builds the trajectory and immutable lookup data shared by one frame's object evaluations. */
 template <typename ObjectT>
 FrameEvaluationContext<ObjectT> make_frame_evaluation_context(
   const rclcpp::Time & current_time, const Trajectory & trajectory)
 {
-  return {current_time, trajectory, build_trajectory(trajectory), std::nullopt, nullptr,
-          nullptr,      {}};
+  FrameEvaluationContext<ObjectT> context{
+    current_time, trajectory, build_trajectory(trajectory), {}, {}, std::nullopt, nullptr, nullptr,
+    {},           {}};
+  if (context.built_trajectory) {
+    context.trajectory_bases = context.built_trajectory->get_underlying_bases();
+    context.trajectory_base_points.reserve(context.trajectory_bases.size());
+    for (const double s : context.trajectory_bases) {
+      context.trajectory_base_points.push_back(context.built_trajectory->compute(s).pose.position);
+    }
+  }
+  return context;
 }
 
 /**
@@ -207,10 +228,27 @@ double max_interpolator_safe_s(const aw_trajectory::Trajectory<TrajectoryPoint> 
   return std::min(trajectory.length(), bases.back());
 }
 
+double max_interpolator_safe_s(
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+  const std::vector<double> & trajectory_bases)
+{
+  if (trajectory_bases.empty()) {
+    return trajectory.length();
+  }
+  return std::min(trajectory.length(), trajectory_bases.back());
+}
+
 double clamp_trajectory_s(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const double s)
 {
   return std::clamp(s, 0.0, max_interpolator_safe_s(trajectory));
+}
+
+double clamp_trajectory_s(
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+  const std::vector<double> & trajectory_bases, const double s)
+{
+  return std::clamp(s, 0.0, max_interpolator_safe_s(trajectory, trajectory_bases));
 }
 
 double closest_trajectory_s(
@@ -225,122 +263,265 @@ double closest_trajectory_s(
   return clamp_trajectory_s(trajectory, *s);
 }
 
+double closest_trajectory_s(
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+  const std::vector<double> & trajectory_bases, const geometry_msgs::msg::Point & point)
+{
+  const auto s =
+    aw_trajectory::closest_with_constraint(trajectory, point, [](const double &) { return true; });
+  if (!s.has_value()) {
+    return clamp_trajectory_s(trajectory, trajectory_bases, 0.0);
+  }
+  return clamp_trajectory_s(trajectory, trajectory_bases, *s);
+}
+
+/** Cached geometry and arc-length bounds for one trajectory segment. */
+struct TrajectorySegment
+{
+  double s_start;
+  double s_end;
+  geometry_msgs::msg::Point start;
+  geometry_msgs::msg::Point end;
+};
+
+/** Closest-point result for one trajectory segment. */
+struct SegmentProjection
+{
+  double s;
+  double distance;
+};
+
+/** Minimum and maximum trajectory arc lengths covered by an object footprint. */
+struct FootprintSRange
+{
+  double min;
+  double max;
+};
+
+/** Projects a point onto a segment using the same endpoint rules as the full trajectory lookup. */
+SegmentProjection project_onto_segment(
+  const TrajectorySegment & segment, const geometry_msgs::msg::Point & point)
+{
+  const double vx = segment.end.x - segment.start.x;
+  const double vy = segment.end.y - segment.start.y;
+  const double vz = segment.end.z - segment.start.z;
+  const double wx = point.x - segment.start.x;
+  const double wy = point.y - segment.start.y;
+  const double wz = point.z - segment.start.z;
+  const double c1 = wx * vx + wy * vy + wz * vz;
+  const double c2 = vx * vx + vy * vy + vz * vz;
+
+  double ratio = 0.0;
+  double s = segment.s_start;
+  if (c2 > std::numeric_limits<double>::epsilon()) {
+    if (c2 <= c1) {
+      ratio = 1.0;
+      s = segment.s_end;
+    } else if (c1 > 0.0) {
+      ratio = c1 / c2;
+      s = segment.s_start + ratio * (segment.s_end - segment.s_start);
+    }
+  }
+
+  const double dx = point.x - (segment.start.x + ratio * vx);
+  const double dy = point.y - (segment.start.y + ratio * vy);
+  const double dz = point.z - (segment.start.z + ratio * vz);
+  return {s, std::sqrt(dx * dx + dy * dy + dz * dz)};
+}
+
+/** Returns a lightweight segment view backed by frame-cached trajectory data. */
+TrajectorySegment get_trajectory_segment(
+  const std::vector<double> & bases,
+  const std::vector<geometry_msgs::msg::Point> & trajectory_base_points,
+  const std::size_t end_index)
+{
+  return {
+    bases[end_index - 1], bases[end_index], trajectory_base_points[end_index - 1],
+    trajectory_base_points[end_index]};
+}
+
+/** Finds the closest projection among segments intersecting the requested arc-length window. */
+std::optional<SegmentProjection> closest_projection_in_window(
+  const std::vector<double> & bases,
+  const std::vector<geometry_msgs::msg::Point> & trajectory_base_points,
+  const geometry_msgs::msg::Point & point, const double s_lo, const double s_hi)
+{
+  std::optional<SegmentProjection> closest;
+  if (bases.size() < 2 || trajectory_base_points.size() != bases.size()) {
+    return closest;
+  }
+
+  const auto first_end = std::lower_bound(std::next(bases.begin()), bases.end(), s_lo);
+  for (auto end = first_end; end != bases.end(); ++end) {
+    const std::size_t end_index = static_cast<std::size_t>(std::distance(bases.begin(), end));
+    const auto segment = get_trajectory_segment(bases, trajectory_base_points, end_index);
+    if (segment.s_start > s_hi) {
+      break;
+    }
+    const auto projection = project_onto_segment(segment, point);
+    if (!closest || projection.distance < closest->distance) {
+      closest = projection;
+    }
+  }
+  return closest;
+}
+
+/** Finds the center-point distance bound for every segment excluded from the local window. */
+double closest_distance_outside_window(
+  const std::vector<double> & bases,
+  const std::vector<geometry_msgs::msg::Point> & trajectory_base_points,
+  const geometry_msgs::msg::Point & point, const double s_lo, const double s_hi)
+{
+  double closest_distance = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 1; i < bases.size(); ++i) {
+    const auto segment = get_trajectory_segment(bases, trajectory_base_points, i);
+    if (segment.s_end >= s_lo && segment.s_start <= s_hi) {
+      continue;
+    }
+    closest_distance = std::min(closest_distance, project_onto_segment(segment, point).distance);
+  }
+  return closest_distance;
+}
+
+/** Computes the 3D Euclidean distance used by the local-search correctness bound. */
+double point_distance(const geometry_msgs::msg::Point & lhs, const geometry_msgs::msg::Point & rhs)
+{
+  const double dx = lhs.x - rhs.x;
+  const double dy = lhs.y - rhs.y;
+  const double dz = lhs.z - rhs.z;
+  return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 /**
  * @brief Compute the arc-length range of an object footprint along the trajectory.
  * @param trajectory Interpolated reference trajectory.
+ * @param trajectory_bases Cached trajectory arc-length bases.
+ * @param trajectory_base_points Cached positions at the trajectory bases.
  * @param object Object.
- * @param s_min Output minimum s [m].
- * @param s_max Output maximum s [m].
+ * @return Minimum and maximum footprint s [m].
  */
 template <typename ObjectT>
-void get_footprint_s_range(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object,
-  const autoware_utils_geometry::Polygon2d & footprint, double & s_min, double & s_max)
+FootprintSRange get_footprint_s_range(
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+  const std::vector<double> & trajectory_bases,
+  const std::vector<geometry_msgs::msg::Point> & trajectory_base_points, const ObjectT & object,
+  const autoware_utils_geometry::Polygon2d & footprint)
 {
-  s_min = std::numeric_limits<double>::max();
-  s_max = std::numeric_limits<double>::lowest();
+  FootprintSRange range{std::numeric_limits<double>::max(), std::numeric_limits<double>::lowest()};
+  const auto reference_point = get_object_reference_point(object);
+  const double s_reference = closest_trajectory_s(trajectory, trajectory_bases, reference_point);
+  constexpr double k_local_s_window_m = 15.0;
+  const double s_lo = std::max(0.0, s_reference - k_local_s_window_m);
+  const double s_hi = std::min(
+    max_interpolator_safe_s(trajectory, trajectory_bases), s_reference + k_local_s_window_m);
+  const double closest_outside_distance = closest_distance_outside_window(
+    trajectory_bases, trajectory_base_points, reference_point, s_lo, s_hi);
 
   const auto update_s_range = [&](const geometry_msgs::msg::Point & point) {
-    const double s = closest_trajectory_s(trajectory, point);
-    s_min = std::min(s_min, s);
-    s_max = std::max(s_max, s);
+    const auto local_projection =
+      closest_projection_in_window(trajectory_bases, trajectory_base_points, point, s_lo, s_hi);
+    const double reference_to_point_distance = point_distance(reference_point, point);
+
+    // The triangle inequality proves the local result is globally closest. On looping or
+    // self-near trajectories where that cannot be proven, preserve behavior with the full search.
+    const bool local_is_globally_closest =
+      local_projection &&
+      (std::isinf(closest_outside_distance) ||
+       local_projection->distance < closest_outside_distance - reference_to_point_distance);
+    const double s = local_is_globally_closest
+                       ? clamp_trajectory_s(trajectory, trajectory_bases, local_projection->s)
+                       : closest_trajectory_s(trajectory, trajectory_bases, point);
+    range.min = std::min(range.min, s);
+    range.max = std::max(range.max, s);
   };
 
   if (footprint.outer().empty()) {
-    update_s_range(get_object_reference_point(object));
-    return;
+    update_s_range(reference_point);
+    return range;
   }
 
   for (const auto & footprint_point : footprint.outer()) {
     update_s_range(
       autoware_utils_geometry::create_point(footprint_point.x(), footprint_point.y(), 0.0));
   }
+  return range;
 }
 
 /**
  * @brief Check whether the object footprint lies beyond the trajectory end in s.
  * @param trajectory Interpolated reference trajectory.
- * @param object Object.
+ * @param range Cached footprint s range.
  * @return True if the minimum footprint s exceeds trajectory.length().
  */
-template <typename ObjectT>
 bool is_beyond_trajectory_end(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object,
-  const autoware_utils_geometry::Polygon2d & footprint)
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const FootprintSRange & range)
 {
-  double s_min = 0.0;
-  double s_max = 0.0;
-  get_footprint_s_range(trajectory, object, footprint, s_min, s_max);
-  return s_min > trajectory.length() + k_s_position_epsilon_m;
+  return range.min > trajectory.length() + k_s_position_epsilon_m;
 }
 
 /**
  * @brief Check whether the object footprint lies within the trajectory s-range.
  * @param trajectory Interpolated reference trajectory.
- * @param object Object.
+ * @param range Cached footprint s range.
  * @return True if footprint s is within [0, trajectory.length()].
  */
-template <typename ObjectT>
 bool is_within_trajectory_s_range(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object,
-  const autoware_utils_geometry::Polygon2d & footprint)
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const FootprintSRange & range)
 {
-  double s_min = 0.0;
-  double s_max = 0.0;
-  get_footprint_s_range(trajectory, object, footprint, s_min, s_max);
-  return s_min >= -k_s_position_epsilon_m && s_max <= trajectory.length() + k_s_position_epsilon_m;
+  return range.min >= -k_s_position_epsilon_m &&
+         range.max <= trajectory.length() + k_s_position_epsilon_m;
 }
 
 /**
  * @brief Get the last M arc-length samples from the trajectory.
- * @param trajectory Interpolated reference trajectory.
+ * @param trajectory_bases Cached trajectory arc-length bases.
  * @return Vector of s values [m] (up to OnTrajectoryDValidationParams::sample_count_m).
  */
-std::vector<double> get_last_m_s_samples(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory)
+std::vector<double> get_last_m_s_samples(const std::vector<double> & trajectory_bases)
 {
-  const auto bases = trajectory.get_underlying_bases();
-  if (bases.empty()) {
+  if (trajectory_bases.empty()) {
     return {};
   }
 
   const std::size_t sample_count =
-    std::min(OnTrajectoryDValidationParams::sample_count_m, bases.size());
-  return {bases.end() - static_cast<std::ptrdiff_t>(sample_count), bases.end()};
+    std::min(OnTrajectoryDValidationParams::sample_count_m, trajectory_bases.size());
+  return {
+    trajectory_bases.end() - static_cast<std::ptrdiff_t>(sample_count), trajectory_bases.end()};
 }
 
 /**
  * @brief Get trajectory s samples near the object footprint within S meters.
  * @param trajectory Interpolated reference trajectory.
- * @param object Object.
+ * @param trajectory_bases Cached trajectory arc-length bases.
+ * @param range Cached footprint s range.
  * @return Vector of s values [m] in [s_min - S, s_max + S].
  */
-template <typename ObjectT>
 std::vector<double> get_s_samples_near_object(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const ObjectT & object,
-  const autoware_utils_geometry::Polygon2d & footprint)
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+  const std::vector<double> & trajectory_bases, const FootprintSRange & range)
 {
-  double s_min = 0.0;
-  double s_max = 0.0;
-  get_footprint_s_range(trajectory, object, footprint, s_min, s_max);
-
-  const double s_lo = std::max(0.0, s_min - OnTrajectoryDValidationParams::near_s_range_m);
+  const double s_lo = std::max(0.0, range.min - OnTrajectoryDValidationParams::near_s_range_m);
   const double s_hi = std::min(
-    max_interpolator_safe_s(trajectory), s_max + OnTrajectoryDValidationParams::near_s_range_m);
+    max_interpolator_safe_s(trajectory, trajectory_bases),
+    range.max + OnTrajectoryDValidationParams::near_s_range_m);
 
   if (s_hi < s_lo) {
     return {};
   }
 
+  const auto first = std::lower_bound(trajectory_bases.begin(), trajectory_bases.end(), s_lo);
+  const auto last = std::upper_bound(first, trajectory_bases.end(), s_hi);
   std::vector<double> samples;
-  for (const double s : trajectory.get_underlying_bases()) {
-    if (s >= s_lo && s <= s_hi) {
-      samples.push_back(s);
-    }
-  }
+  samples.reserve(static_cast<std::size_t>(std::distance(first, last)));
+  samples.insert(samples.end(), first, last);
 
   if (samples.size() < 2) {
     samples.clear();
+    const auto fallback_sample_count =
+      static_cast<std::size_t>(
+        std::floor((s_hi - s_lo) / OnTrajectoryDValidationParams::s_sample_interval_m + 0.5)) +
+      1U;
+    samples.reserve(fallback_sample_count);
     for (double s = s_lo; s <= s_hi + OnTrajectoryDValidationParams::s_sample_interval_m * 0.5;
          s += OnTrajectoryDValidationParams::s_sample_interval_m) {
       samples.push_back(std::min(s, s_hi));
@@ -423,10 +604,12 @@ std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> get_object_rear_
  *          |d| is 0. Otherwise |d| is taken from the rear corner closest to the trajectory.
  */
 double calc_rear_edge_d_magnitude_at_s(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const double s,
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+  const std::vector<double> & trajectory_bases, const double s,
   const geometry_msgs::msg::Point & rear_left, const geometry_msgs::msg::Point & rear_right)
 {
-  const auto trajectory_point = trajectory.compute(clamp_trajectory_s(trajectory, s));
+  const auto trajectory_point =
+    trajectory.compute(clamp_trajectory_s(trajectory, trajectory_bases, s));
   const double d_rear_left =
     autoware_utils_geometry::calc_lateral_deviation(trajectory_point.pose, rear_left);
   const double d_rear_right =
@@ -448,6 +631,7 @@ double calc_rear_edge_d_magnitude_at_s(
 /**
  * @brief Check whether |d(k)| and |d(k) - d(k-1)| are consistently small over s samples.
  * @param trajectory Interpolated reference trajectory.
+ * @param trajectory_bases Cached trajectory arc-length bases.
  * @param rear_left Rear-left corner of the object footprint.
  * @param rear_right Rear-right corner of the object footprint.
  * @param s_samples Arc-length samples to evaluate.
@@ -455,31 +639,26 @@ double calc_rear_edge_d_magnitude_at_s(
  */
 bool matches_small_d_pattern(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
-  const geometry_msgs::msg::Point & rear_left, const geometry_msgs::msg::Point & rear_right,
-  const std::vector<double> & s_samples)
+  const std::vector<double> & trajectory_bases, const geometry_msgs::msg::Point & rear_left,
+  const geometry_msgs::msg::Point & rear_right, const std::vector<double> & s_samples)
 {
   if (s_samples.size() < 2) {
     return false;
   }
 
-  std::vector<double> d_magnitudes;
-  d_magnitudes.reserve(s_samples.size());
+  std::optional<double> previous_d_magnitude;
   for (const double s : s_samples) {
-    d_magnitudes.push_back(calc_rear_edge_d_magnitude_at_s(trajectory, s, rear_left, rear_right));
-  }
-
-  for (const double d_magnitude : d_magnitudes) {
+    const double d_magnitude =
+      calc_rear_edge_d_magnitude_at_s(trajectory, trajectory_bases, s, rear_left, rear_right);
     if (d_magnitude >= OnTrajectoryDValidationParams::magnitude_threshold_m) {
       return false;
     }
-  }
-
-  for (std::size_t k = 1; k < d_magnitudes.size(); ++k) {
     if (
-      std::abs(d_magnitudes[k] - d_magnitudes[k - 1]) >=
-      OnTrajectoryDValidationParams::deviation_threshold_m) {
+      previous_d_magnitude && std::abs(d_magnitude - *previous_d_magnitude) >=
+                                OnTrajectoryDValidationParams::deviation_threshold_m) {
       return false;
     }
+    previous_d_magnitude = d_magnitude;
   }
 
   return true;
@@ -593,7 +772,10 @@ bool is_object_beyond_trajectory_end(
   }
 
   const auto footprint = autoware_utils_geometry::to_polygon2d(object);
-  return is_beyond_trajectory_end(*context.built_trajectory, object, footprint);
+  const auto range = get_footprint_s_range(
+    *context.built_trajectory, context.trajectory_bases, context.trajectory_base_points, object,
+    footprint);
+  return is_beyond_trajectory_end(*context.built_trajectory, range);
 }
 
 template <typename ObjectT>
@@ -607,16 +789,19 @@ bool should_filter_out_on_trajectory_object(
   const auto & built_trajectory = *context.built_trajectory;
   const auto footprint = autoware_utils_geometry::to_polygon2d(object);
   const auto [rear_left, rear_right] = get_object_rear_edge_points(object, footprint);
+  const auto range = get_footprint_s_range(
+    built_trajectory, context.trajectory_bases, context.trajectory_base_points, object, footprint);
 
-  if (is_beyond_trajectory_end(built_trajectory, object, footprint)) {
+  if (is_beyond_trajectory_end(built_trajectory, range)) {
     return matches_small_d_pattern(
-      built_trajectory, rear_left, rear_right, get_last_m_s_samples(built_trajectory));
+      built_trajectory, context.trajectory_bases, rear_left, rear_right,
+      get_last_m_s_samples(context.trajectory_bases));
   }
 
-  if (is_within_trajectory_s_range(built_trajectory, object, footprint)) {
+  if (is_within_trajectory_s_range(built_trajectory, range)) {
     return matches_small_d_pattern(
-      built_trajectory, rear_left, rear_right,
-      get_s_samples_near_object(built_trajectory, object, footprint));
+      built_trajectory, context.trajectory_bases, rear_left, rear_right,
+      get_s_samples_near_object(built_trajectory, context.trajectory_bases, range));
   }
 
   return false;
@@ -935,7 +1120,7 @@ void AvoidanceTargetDetectorBase<ObjectT>::observe_and_update_all(
         object_lanelets.begin(), object_lanelets.end(),
         [&](const lanelet::ConstLanelet & object_lanelet) {
           return is_routably_connected_to_ego_without_lane_change(
-            *context.routing_graph, ego_lanelet, object_lanelet);
+            context, ego_lanelet, object_lanelet);
         });
     });
   is_driving_along_candidate_now_ = !is_routably_connected;
@@ -1048,6 +1233,8 @@ void ObjectSelectorBase<ObjectT>::update_objects(
     if (route_map) {
       context.ego_lanelets =
         get_nearest_lanelets(*route_map, trajectory.points.back().pose.position);
+      constexpr std::size_t k_max_object_lanelets = 5;
+      context.routability_cache.reserve(context.ego_lanelets.size() * k_max_object_lanelets);
     }
   }
 

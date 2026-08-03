@@ -32,6 +32,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -50,6 +51,18 @@ using autoware_planning_msgs::msg::TrajectoryPoint;
 
 namespace aw_trajectory = autoware::experimental::trajectory;
 
+/** Ordered ego/object lanelet IDs used to memoize routing queries within a frame. */
+using LaneletPairKey = std::pair<lanelet::Id, lanelet::Id>;
+
+/** Hashes an ordered lanelet pair for the frame-local routability cache. */
+struct LaneletPairHash
+{
+  std::size_t operator()(const LaneletPairKey & pair) const noexcept
+  {
+    return std::hash<lanelet::Id>{}(pair.first) ^ (std::hash<lanelet::Id>{}(pair.second) << 1U);
+  }
+};
+
 /** Read-only data and geometry shared by all object evaluations in one frame. */
 template <typename ObjectT>
 struct FrameEvaluationContext
@@ -57,10 +70,15 @@ struct FrameEvaluationContext
   const rclcpp::Time & current_time;
   const Trajectory & raw_trajectory;
   std::optional<aw_trajectory::Trajectory<TrajectoryPoint>> built_trajectory;
+  /// Arc-length bases and their positions, computed once and shared by all object evaluations.
+  std::vector<double> trajectory_bases;
+  std::vector<geometry_msgs::msg::Point> trajectory_base_points;
   std::optional<autoware_utils_geometry::Polygon2d> near_segment_polygon;
   const lanelet::LaneletMap * route_map{nullptr};
   const lanelet::routing::RoutingGraph * routing_graph{nullptr};
   std::vector<lanelet::ConstLanelet> ego_lanelets;
+  /// Results of bidirectional, no-lane-change routing checks for this frame.
+  mutable std::unordered_map<LaneletPairKey, bool, LaneletPairHash> routability_cache;
 };
 
 /** Maps an object element type to its container message type. */
