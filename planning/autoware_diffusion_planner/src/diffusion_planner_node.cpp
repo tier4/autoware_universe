@@ -671,10 +671,11 @@ void DiffusionPlanner::on_timer()
       all_targets.objects.insert(
         all_targets.objects.end(), driving_along_targets.objects.begin(),
         driving_along_targets.objects.end());
-      const auto road_borders_subset =
-        extended_route_handler_->get_road_borders_around_trajectory(planner_output.trajectory);
+      const auto road_borders_subset = extended_route_handler_->get_road_borders_around_trajectory(
+        planner_output.trajectory, margin);
       const auto drivable_area_subset =
-        extended_route_handler_->get_drivable_area_around_trajectory(planner_output.trajectory);
+        extended_route_handler_->get_drivable_area_around_trajectory(
+          planner_output.trajectory, margin);
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
         ego_steering, avoidance_targets, to_mppi_segments(road_borders_subset),

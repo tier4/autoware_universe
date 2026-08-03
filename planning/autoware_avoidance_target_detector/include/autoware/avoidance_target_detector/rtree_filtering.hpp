@@ -102,13 +102,13 @@ inline SegmentRtree prepare_drivable_area_rtree(const RouteBounds & drivable_are
 }
 
 /**
- * @brief Retrieve road-border segments intersecting the trajectory bounding box plus a margin.
+ * @brief Retrieve segments intersecting the trajectory bounding box plus a margin.
  */
-inline std::vector<Segment> get_road_border_subset(
-  const SegmentRtree & road_border_rtree,
-  const autoware_planning_msgs::msg::Trajectory & trajectory, const double margin)
+inline std::vector<Segment> get_segments_around_trajectory(
+  const SegmentRtree & segment_rtree, const autoware_planning_msgs::msg::Trajectory & trajectory,
+  const double margin)
 {
-  if (trajectory.points.empty() || road_border_rtree.empty()) {
+  if (trajectory.points.empty() || segment_rtree.empty()) {
     return {};
   }
 
@@ -129,44 +129,10 @@ inline std::vector<Segment> get_road_border_subset(
     lanelet::BasicPoint2d(min_x - nonnegative_margin, min_y - nonnegative_margin),
     lanelet::BasicPoint2d(max_x + nonnegative_margin, max_y + nonnegative_margin));
 
-  std::vector<Segment> road_border_subset;
-  road_border_rtree.query(
-    boost::geometry::index::intersects(query_box), std::back_inserter(road_border_subset));
-  return road_border_subset;
-}
-
-/**
- * @brief Retrieve drivable-area segments intersecting the trajectory bounding box plus a margin.
- */
-inline std::vector<Segment> get_drivable_area_subset(
-  const SegmentRtree & drivable_area_rtree,
-  const autoware_planning_msgs::msg::Trajectory & trajectory, const double margin)
-{
-  if (trajectory.points.empty() || drivable_area_rtree.empty()) {
-    return {};
-  }
-
-  double min_x = std::numeric_limits<double>::max();
-  double min_y = std::numeric_limits<double>::max();
-  double max_x = std::numeric_limits<double>::lowest();
-  double max_y = std::numeric_limits<double>::lowest();
-  for (const auto & trajectory_point : trajectory.points) {
-    const auto & position = trajectory_point.pose.position;
-    min_x = std::min(min_x, position.x);
-    min_y = std::min(min_y, position.y);
-    max_x = std::max(max_x, position.x);
-    max_y = std::max(max_y, position.y);
-  }
-
-  const double nonnegative_margin = std::max(0.0, margin);
-  const lanelet::BoundingBox2d query_box(
-    lanelet::BasicPoint2d(min_x - nonnegative_margin, min_y - nonnegative_margin),
-    lanelet::BasicPoint2d(max_x + nonnegative_margin, max_y + nonnegative_margin));
-
-  std::vector<Segment> drivable_area_subset;
-  drivable_area_rtree.query(
-    boost::geometry::index::intersects(query_box), std::back_inserter(drivable_area_subset));
-  return drivable_area_subset;
+  std::vector<Segment> segments_around_trajectory;
+  segment_rtree.query(
+    boost::geometry::index::intersects(query_box), std::back_inserter(segments_around_trajectory));
+  return segments_around_trajectory;
 }
 
 }  // namespace autoware::avoidance_target_detector

@@ -143,6 +143,12 @@ public:
 
   [[nodiscard]] SegmentRtree get_road_borders_rtree() const;
 
+  [[nodiscard]] std::vector<Segment> get_road_borders_around_trajectory(
+    const Trajectory & trajectory, double margin) const;
+
+  [[nodiscard]] std::vector<Segment> get_drivable_area_around_trajectory(
+    const Trajectory & trajectory, double margin) const;
+
   [[nodiscard]] RouteBounds get_primitive_set_bounds(const std::vector<int64_t> & primitives) const;
 
   [[nodiscard]] const RouteBounds & get_original_route_bounds() const

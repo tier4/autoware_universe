@@ -581,6 +581,7 @@ void ExtendedRouteHandler::create_map()
   }
   original_route_bounds_ = build_route_bounds(original_primitive_lists);
   extended_route_bounds_ = build_route_bounds(extended_primitive_lists);
+  road_borders_rtree_ = prepare_road_border_rtree(get_road_borders());
   original_bounds_rtree_ = prepare_drivable_area_rtree(original_route_bounds_);
   extended_bounds_rtree_ = prepare_drivable_area_rtree(extended_route_bounds_);
 
@@ -626,7 +627,19 @@ std::vector<lanelet::LineString2d> ExtendedRouteHandler::get_road_borders() cons
 }
 SegmentRtree ExtendedRouteHandler::get_road_borders_rtree() const
 {
-  return prepare_road_border_rtree(get_road_borders());
+  return road_borders_rtree_;
+}
+
+std::vector<Segment> ExtendedRouteHandler::get_road_borders_around_trajectory(
+  const Trajectory & trajectory, const double margin) const
+{
+  return get_segments_around_trajectory(road_borders_rtree_, trajectory, margin);
+}
+
+std::vector<Segment> ExtendedRouteHandler::get_drivable_area_around_trajectory(
+  const Trajectory & trajectory, const double margin) const
+{
+  return get_segments_around_trajectory(extended_bounds_rtree_, trajectory, margin);
 }
 
 std::pair<lanelet::LineString2d, lanelet::LineString2d>
