@@ -25,7 +25,9 @@ namespace autoware::trajectory_selector
 {
 TrajectorySelectorNode::TrajectorySelectorNode(const rclcpp::NodeOptions & node_options)
 : Node{"trajectory_selector_node", node_options},
-  route_handler_ptr_{std::make_shared<route_handler::RouteHandler>()}
+  route_handler_ptr_{std::make_shared<route_handler::RouteHandler>()},
+  tf_buffer_ptr_{std::make_shared<tf2_ros::Buffer>(get_clock())},
+  tf_listener_ptr_{std::make_shared<tf2_ros::TransformListener>(*tf_buffer_ptr_)}
 {
   subscribers();
   publishers();
@@ -136,6 +138,9 @@ TrajectorySelectorNode::take_validator_data()
   context.route = route_ptr_;
 
   context.segmented_pointcloud = sub_segmented_pointcloud_.take_data();
+
+  context.tf_buffer = tf_buffer_ptr_;
+  context.clock = get_clock();
 
   context.lanelet_map = lanelet_map_ptr_;
   if (!context.lanelet_map) {

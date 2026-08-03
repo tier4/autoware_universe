@@ -25,6 +25,8 @@
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2_ros/buffer.hpp>
+#include <tf2_ros/transform_listener.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
@@ -130,6 +132,8 @@ private:
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   LaneletRoute::ConstSharedPtr route_ptr_;
   std::shared_ptr<route_handler::RouteHandler> route_handler_ptr_;
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_ptr_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_ptr_;
 
   // Polling Subscribers
   autoware_utils_rclcpp::InterProcessPollingSubscriber<Odometry> sub_odometry_{

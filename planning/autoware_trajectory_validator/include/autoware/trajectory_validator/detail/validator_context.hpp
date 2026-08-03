@@ -15,6 +15,9 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__VALIDATOR_CONTEXT_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__VALIDATOR_CONTEXT_HPP_
 
+#include <rclcpp/clock.hpp>
+#include <tf2_ros/buffer.hpp>
+
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
@@ -40,6 +43,8 @@ struct ValidatorContext
   autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr traffic_light_signals;
   autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr route;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr segmented_pointcloud;
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+  rclcpp::Clock::SharedPtr clock;
 };
 
 using FilterContext = ValidatorContext;
