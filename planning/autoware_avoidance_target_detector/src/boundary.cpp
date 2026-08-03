@@ -39,6 +39,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -241,7 +242,7 @@ std::vector<std::vector<int64_t>> find_lateral_connected_components(
 }
 
 std::optional<int64_t> find_left_neighbor_in_set(
-  const int64_t id, const std::set<int64_t> & id_set, const lanelet::LaneletMap & map,
+  const int64_t id, const std::unordered_set<int64_t> & id_set, const lanelet::LaneletMap & map,
   const lanelet::routing::RoutingGraph & routing_graph)
 {
   if (!exists_in_map(map, id)) {
@@ -258,7 +259,7 @@ std::optional<int64_t> find_left_neighbor_in_set(
 }
 
 std::optional<int64_t> find_right_neighbor_in_set(
-  const int64_t id, const std::set<int64_t> & id_set, const lanelet::LaneletMap & map,
+  const int64_t id, const std::unordered_set<int64_t> & id_set, const lanelet::LaneletMap & map,
   const lanelet::routing::RoutingGraph & routing_graph)
 {
   if (!exists_in_map(map, id)) {
@@ -282,7 +283,7 @@ std::vector<int64_t> sort_left_to_right(
     return {};
   }
 
-  const std::set<int64_t> id_set(primitive_ids.begin(), primitive_ids.end());
+  const std::unordered_set<int64_t> id_set(primitive_ids.begin(), primitive_ids.end());
 
   int64_t leftmost = primitive_ids.front();
   for (const auto id : primitive_ids) {
@@ -524,6 +525,20 @@ void ExtendedRouteHandler::create_map()
   extended_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*map);
   extended_lanelet_segments_.build(*map, *extended_routing_graph_);
 
+  lanelet_to_segment_index_.clear();
+  const auto & segments = extended_lanelet_segments_.segments();
+  std::size_t primitive_count = 0;
+  for (const auto & segment : segments) {
+    primitive_count += segment.siblings_included_primitives.size();
+  }
+  lanelet_to_segment_index_.reserve(primitive_count);
+  for (std::size_t i = 0; i < segments.size(); ++i) {
+    for (const auto id : segments[i].siblings_included_primitives) {
+      // Preserve the previous linear search behavior if an ID occurs in multiple segments.
+      lanelet_to_segment_index_.try_emplace(id, i);
+    }
+  }
+
   std::set<lanelet::Id> lanelet_ids;
   for (const auto & segment : extended_lanelet_segments_.segments()) {
     for (const auto id : segment.siblings_included_primitives) {
@@ -645,6 +660,10 @@ std::vector<Segment> ExtendedRouteHandler::get_drivable_area_around_trajectory(
 std::pair<lanelet::LineString2d, lanelet::LineString2d>
 ExtendedRouteHandler::get_primitive_set_bounds(const std::vector<int64_t> & primitives) const
 {
+  if (primitives.empty()) {
+    return std::make_pair(lanelet::LineString2d(), lanelet::LineString2d());
+  }
+
   if (
     !exists_in_map(*route_map_, primitives.front()) ||
     !exists_in_map(*route_map_, primitives.back())) {
@@ -692,12 +711,9 @@ std::pair<lanelet::LineString2d, lanelet::LineString2d> ExtendedRouteHandler::bu
 std::optional<std::size_t> ExtendedRouteHandler::find_segment_index_for_lanelet(
   const lanelet::Id lanelet_id) const
 {
-  const auto & segments = extended_lanelet_segments_.segments();
-  for (std::size_t i = 0; i < segments.size(); ++i) {
-    const auto & primitives = segments.at(i).siblings_included_primitives;
-    if (std::find(primitives.begin(), primitives.end(), lanelet_id) != primitives.end()) {
-      return i;
-    }
+  const auto iter = lanelet_to_segment_index_.find(lanelet_id);
+  if (iter != lanelet_to_segment_index_.end()) {
+    return iter->second;
   }
   return std::nullopt;
 }

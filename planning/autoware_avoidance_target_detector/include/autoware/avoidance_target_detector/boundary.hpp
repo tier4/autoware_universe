@@ -35,6 +35,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::avoidance_target_detector
@@ -196,6 +197,7 @@ private:
   std::shared_ptr<RouteHandler> original_route_handler_;
   RouteBounds original_route_bounds_;
   RouteBounds extended_route_bounds_;
+  std::unordered_map<lanelet::Id, std::size_t> lanelet_to_segment_index_;
   SegmentRtree road_borders_rtree_;
   SegmentRtree original_bounds_rtree_;
   SegmentRtree extended_bounds_rtree_;
