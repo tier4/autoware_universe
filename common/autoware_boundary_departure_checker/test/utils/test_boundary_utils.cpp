@@ -275,14 +275,96 @@ TEST(UncrossableBoundaryUtilsTest, TestIsSegmentWithinEgoHeight)
 TEST(UncrossableBoundaryUtilsTest, TestIsCritical)
 {
   // Arrange:
-  Side<std::optional<CriticalPointPair>> projections;
+  Side<std::optional<DeparturePointPair>> projections;
 
   // Act & Assert:
   EXPECT_FALSE(severity_evaluator::is_critical(projections));
 
-  CriticalPointPair pair_crit;
+  DeparturePointPair pair_crit;
   pair_crit.physical_departure_point.departure_type = DepartureType::CRITICAL;
   projections.left = pair_crit;
   EXPECT_TRUE(severity_evaluator::is_critical(projections));
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestIsNearBoundary)
+{
+  // Arrange:
+  Side<std::optional<DeparturePointPair>> projections;
+
+  // Act & Assert:
+  EXPECT_FALSE(severity_evaluator::is_near_boundary(projections));
+
+  DeparturePointPair pair_none;
+  pair_none.physical_departure_point.departure_type = DepartureType::NONE;
+  projections.left = pair_none;
+  EXPECT_FALSE(severity_evaluator::is_near_boundary(projections));
+
+  DeparturePointPair pair_near;
+  pair_near.physical_departure_point.departure_type = DepartureType::NEAR_BOUNDARY;
+  projections.right = pair_near;
+  EXPECT_TRUE(severity_evaluator::is_near_boundary(projections));
+
+  // A critical departure is not reported as near boundary.
+  projections.right->physical_departure_point.departure_type = DepartureType::CRITICAL;
+  EXPECT_FALSE(severity_evaluator::is_near_boundary(projections));
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestGetMinLateralDistanceToBound)
+{
+  // Arrange:
+  Side<std::optional<DeparturePointPair>> projections;
+
+  // Act & Assert: without any projection, the distance is unbounded.
+  EXPECT_DOUBLE_EQ(
+    severity_evaluator::get_min_lateral_distance_to_bound(projections),
+    std::numeric_limits<double>::max());
+
+  DeparturePointPair pair_left;
+  pair_left.physical_departure_point.lat_dist = 0.8;
+  projections.left = pair_left;
+  EXPECT_DOUBLE_EQ(severity_evaluator::get_min_lateral_distance_to_bound(projections), 0.8);
+
+  DeparturePointPair pair_right;
+  pair_right.physical_departure_point.lat_dist = 0.3;
+  projections.right = pair_right;
+  EXPECT_DOUBLE_EQ(severity_evaluator::get_min_lateral_distance_to_bound(projections), 0.3);
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestAssignDepartureType)
+{
+  // Arrange:
+  DepartureCheckThresholds thresholds;
+  thresholds.min_braking_distance = 10.0;
+  thresholds.cutoff_time = 2.0;
+  thresholds.th_lat_critical = 0.1;
+  thresholds.th_near_boundary = 0.5;
+
+  const auto make_metrics = [](double lat_dist, double lon_dist, double time) {
+    ProjectionEvaluationMetrics metrics;
+    metrics.lat_dist = lat_dist;
+    metrics.lon_dist_to_departure = lon_dist;
+    metrics.time_from_start = time;
+    return metrics;
+  };
+
+  // Act & Assert: within the critical margin and unable to stop in time.
+  EXPECT_EQ(
+    severity_evaluator::assign_departure_type(make_metrics(0.05, 5.0, 3.0), thresholds),
+    DepartureType::CRITICAL);
+
+  // Within the critical margin but far enough ahead to stop: still near the boundary.
+  EXPECT_EQ(
+    severity_evaluator::assign_departure_type(make_metrics(0.05, 20.0, 3.0), thresholds),
+    DepartureType::NEAR_BOUNDARY);
+
+  // Between the two lateral thresholds.
+  EXPECT_EQ(
+    severity_evaluator::assign_departure_type(make_metrics(0.3, 20.0, 3.0), thresholds),
+    DepartureType::NEAR_BOUNDARY);
+
+  // Beyond the near boundary threshold.
+  EXPECT_EQ(
+    severity_evaluator::assign_departure_type(make_metrics(0.6, 20.0, 3.0), thresholds),
+    DepartureType::NONE);
 }
 }  // namespace autoware::boundary_departure_checker

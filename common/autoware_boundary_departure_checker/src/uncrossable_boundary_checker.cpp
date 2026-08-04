@@ -16,6 +16,7 @@
 
 #include "autoware/boundary_departure_checker/detail/debug.hpp"
 #include "autoware/boundary_departure_checker/detail/footprints_generator.hpp"
+#include "autoware/boundary_departure_checker/detail/severity_evaluator.hpp"
 
 #include <autoware_utils_system/stop_watch.hpp>
 
@@ -60,7 +61,20 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
 
   state = hysteresis_result.updated_state;
 
+  // CRITICAL is hysteresis filtered, whereas NEAR_BOUNDARY is a non-latching advisory taken
+  // directly from the current evaluation.
+  const auto is_near_boundary =
+    evaluation_result && severity_evaluator::is_near_boundary(*evaluation_result);
   result.status = hysteresis_result.status;
+  if (result.status == DepartureType::NONE && is_near_boundary) {
+    result.status = DepartureType::NEAR_BOUNDARY;
+  }
+
+  if (evaluation_result) {
+    result.lat_dist_to_uncrossable_bound =
+      severity_evaluator::get_min_lateral_distance_to_bound(*evaluation_result);
+  }
+
   result.debug_markers =
     debug::create_debug_markers(state, footprints, ego_state, param_.enable_developer_marker);
   return result;

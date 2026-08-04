@@ -158,6 +158,7 @@
       enable_developer_marker: false
       lateral_margin_m: 0.01
       longitudinal_margin_m: 1.0
+      near_boundary_lateral_th_m: 0.2
       max_deceleration_mps2: -4.0
       max_jerk_mps3: -5.0
       off_time_buffer_s: 0.10
