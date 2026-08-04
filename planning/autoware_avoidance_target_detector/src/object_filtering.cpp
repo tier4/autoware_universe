@@ -196,8 +196,7 @@ FrameEvaluationContext<ObjectT> make_frame_evaluation_context(
   const rclcpp::Time & current_time, const Trajectory & trajectory)
 {
   FrameEvaluationContext<ObjectT> context{
-    current_time, trajectory, build_trajectory(trajectory), {}, {}, std::nullopt, nullptr, nullptr,
-    {},           {}};
+    current_time, build_trajectory(trajectory), {}, {}, std::nullopt, nullptr, nullptr, {}, {}};
   if (context.built_trajectory) {
     context.trajectory_bases = context.built_trajectory->get_underlying_bases();
     context.trajectory_base_points.reserve(context.trajectory_bases.size());

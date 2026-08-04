@@ -67,8 +67,7 @@ struct LaneletPairHash
 template <typename ObjectT>
 struct FrameEvaluationContext
 {
-  const rclcpp::Time & current_time;
-  const Trajectory & raw_trajectory;
+  const rclcpp::Time current_time;
   std::optional<aw_trajectory::Trajectory<TrajectoryPoint>> built_trajectory;
   /// Arc-length bases and their positions, computed once and shared by all object evaluations.
   std::vector<double> trajectory_bases;
