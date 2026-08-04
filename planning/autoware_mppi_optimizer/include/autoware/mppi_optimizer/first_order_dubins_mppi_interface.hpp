@@ -67,8 +67,6 @@ struct FirstOrderDubinsMppiDebug
   std::vector<std::pair<float, float>> optimal_horizon;
   std::vector<FirstOrderDubinsMppiRollout> rollouts;
   float baseline_cost{0.0F};
-  /** Min rollout cost after each MPPI optimization iteration (length = kMaxIter). */
-  std::vector<float> iteration_baselines;
 };
 
 struct FirstOrderDubinsMppiOptimizationResult

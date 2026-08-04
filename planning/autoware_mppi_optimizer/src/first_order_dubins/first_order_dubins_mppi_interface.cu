@@ -352,7 +352,6 @@ void buildRolloutVisualization(
   const Mppi::state_trajectory state_trajectory = controller.getActualStateSeq();
   fillOptimalHorizonPoints(state_trajectory, debug.optimal_horizon);
   debug.baseline_cost = controller.getBaselineCost();
-  debug.iteration_baselines = controller.getIterationBaselines();
 
   // IMPORTANT: take by value — see copySampleCostDistribution for nvcc temporary lifetime note.
   const Mppi::sampled_cost_traj importance = controller.getSampledCostSeq();
@@ -1195,7 +1194,6 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   } else {
     fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
     result.debug.baseline_cost = impl_->controller->getBaselineCost();
-    result.debug.iteration_baselines = impl_->controller->getIterationBaselines();
     result.debug.rollouts.clear();
   }
 
@@ -1210,29 +1208,19 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   impl_->debug_trajectory_logger.writeParamsOnce(impl_->user_cost_params_, impl_->vehicle_params);
   impl_->debug_trajectory_logger.logFrame(
     result.debug.reference_trajectory, result.debug.optimized_trajectory, ego,
-    result.debug.baseline_cost, impl_->logged_nominal_accel, impl_->logged_nominal_steer,
-    result.debug.iteration_baselines);
+    result.debug.baseline_cost, impl_->logged_nominal_accel, impl_->logged_nominal_steer);
 
-  {
-    std::string iter_costs;
-    for (size_t i = 0; i < result.debug.iteration_baselines.size(); ++i) {
-      if (i > 0) {
-        iter_costs += ' ';
-      }
-      iter_costs += std::to_string(i) + ':' + std::to_string(result.debug.iteration_baselines[i]);
-    }
-    RCLCPP_INFO(
-      mppiLogger(),
-      "MPPI tracked diffusion ref in %.1f ms: start_idx=%zu steps=%d output points size=%zu "
-      "points=%zu rollouts=%zu "
-      "obstacles=%zu road_borders=%zu drivable_segments=%zu u_accel=%.3f u_steer=%.3f "
-      "baseline_cost=%.2f max_pos_err=%.3f m "
-      "max_vel_err=%.3f m/s iteration_baselines=[%s]",
-      elapsed_ms, impl_->tracking_start_idx, impl_->step_count, output.points.size(), num_points,
-      result.debug.rollouts.size(), tracked_objects.objects.size(), road_borders.size(),
-      drivable_area.size(), control.accel_cmd, control.steer_cmd, result.debug.baseline_cost,
-      max_pos_delta, max_vel_delta, iter_costs.c_str());
-  }
+  RCLCPP_INFO(
+    mppiLogger(),
+    "MPPI tracked diffusion ref in %.1f ms: start_idx=%zu steps=%d output points size=%zu "
+    "points=%zu rollouts=%zu "
+    "obstacles=%zu road_borders=%zu drivable_segments=%zu u_accel=%.3f u_steer=%.3f "
+    "baseline_cost=%.2f max_pos_err=%.3f m "
+    "max_vel_err=%.3f m/s",
+    elapsed_ms, impl_->tracking_start_idx, impl_->step_count, output.points.size(), num_points,
+    result.debug.rollouts.size(), tracked_objects.objects.size(), road_borders.size(),
+    drivable_area.size(), control.accel_cmd, control.steer_cmd, result.debug.baseline_cost,
+    max_pos_delta, max_vel_delta);
 
   if (impl_->skip_if_invalid && crash_status != 0) {
     result.trajectory = input;

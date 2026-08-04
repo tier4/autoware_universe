@@ -72,7 +72,6 @@ struct MppiDebugEgoState
  *   <log_dir>/000000_optimized.csv
  *   <log_dir>/000000_ego.csv
  *   <log_dir>/000000_nominal.csv   (u_nom accel/steer cmds used this cycle)
- *   <log_dir>/000000_iteration_costs.csv  (per-iter min rollout cost)
  *   ...
  *
  * Trajectory CSV columns:
@@ -181,8 +180,7 @@ public:
     const autoware_planning_msgs::msg::Trajectory & reference,
     const autoware_planning_msgs::msg::Trajectory & optimized, const MppiDebugEgoState & ego,
     const double baseline_cost = 0.0, const std::vector<float> & nominal_accel_cmd = {},
-    const std::vector<float> & nominal_steer_cmd = {},
-    const std::vector<float> & iteration_baselines = {})
+    const std::vector<float> & nominal_steer_cmd = {})
   {
     if (!enabled_) {
       return;
@@ -194,7 +192,6 @@ public:
     const std::string opt_path = directory_ + "/" + frame_tag + "_optimized.csv";
     const std::string ego_path = directory_ + "/" + frame_tag + "_ego.csv";
     const std::string nominal_path = directory_ + "/" + frame_tag + "_nominal.csv";
-    const std::string iter_path = directory_ + "/" + frame_tag + "_iteration_costs.csv";
     if (
       !writeTrajectoryCsv(ref_path, reference) || !writeTrajectoryCsv(opt_path, optimized) ||
       !writeEgoCsv(ego_path, ego)) {
@@ -203,16 +200,6 @@ public:
     if (!nominal_accel_cmd.empty() || !nominal_steer_cmd.empty()) {
       if (!writeNominalCsv(nominal_path, nominal_accel_cmd, nominal_steer_cmd)) {
         return;
-      }
-    }
-    if (!iteration_baselines.empty()) {
-      std::ofstream iter_out(iter_path);
-      if (iter_out) {
-        iter_out << "iter,baseline_cost\n";
-        iter_out << std::setprecision(9) << std::fixed;
-        for (size_t i = 0; i < iteration_baselines.size(); ++i) {
-          iter_out << i << "," << iteration_baselines[i] << "\n";
-        }
       }
     }
 
