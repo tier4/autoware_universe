@@ -93,8 +93,6 @@ void applyUserCostParams(
   cost_params.lateral_yaw_error_coeff = user.lateral_yaw_error_coeff;
   cost_params.crash_coeff = user.crash_coeff;
   cost_params.boundary_threshold = user.boundary_threshold;
-  cost_params.boundary_threshold_left = user.boundary_threshold_left;
-  cost_params.boundary_threshold_right = user.boundary_threshold_right;
   cost_params.accel_cmd_coeff = user.accel_cmd_coeff;
   cost_params.steer_cmd_coeff = user.steer_cmd_coeff;
   cost_params.steer_rate_coeff = user.steer_rate_coeff;

@@ -143,10 +143,6 @@ void applyCostParam(
     params.crash_coeff = value;
   } else if (key == "boundary_threshold") {
     params.boundary_threshold = value;
-  } else if (key == "boundary_threshold_left") {
-    params.boundary_threshold_left = value;
-  } else if (key == "boundary_threshold_right") {
-    params.boundary_threshold_right = value;
   } else if (key == "accel_cmd_coeff") {
     params.accel_cmd_coeff = value;
   } else if (key == "steer_cmd_coeff") {
