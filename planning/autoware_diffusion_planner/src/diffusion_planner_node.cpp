@@ -678,7 +678,7 @@ void DiffusionPlanner::on_timer()
           planner_output.trajectory, margin);
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
-        ego_steering, avoidance_targets, to_mppi_segments(road_borders_subset),
+        ego_steering, all_targets, to_mppi_segments(road_borders_subset),
         to_mppi_segments(drivable_area_subset));
       pub_mppi_markers_->publish(
         autoware::mppi_optimizer::createMppiDebugMarkers(
