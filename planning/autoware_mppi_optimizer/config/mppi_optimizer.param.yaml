@@ -14,8 +14,6 @@
     lateral_yaw_error_coeff: 0.0
     crash_coeff: 100000.0
     boundary_threshold: 0.8
-    boundary_threshold_left: -1.0
-    boundary_threshold_right: -1.0
     lateral_acceleration_coeff: 100.0
     lateral_jerk_coeff: 200.0
     longitudinal_jerk_coeff: 100.0

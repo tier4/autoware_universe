@@ -401,24 +401,12 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
   DYN_PARAMS_T>::exceedsLateralBoundary(const float x, const float y, int timestep) const
 {
-  const bool asymmetric =
-    this->params_.boundary_threshold_left >= 0.0F || this->params_.boundary_threshold_right >= 0.0F;
   const float signed_lat = computeSignedLateralOffset(x, y, timestep);
-  if (!asymmetric) {
 #ifdef __CUDA_ARCH__
-    return fabsf(signed_lat) >= this->params_.boundary_threshold;
+  return fabsf(signed_lat) >= this->params_.boundary_threshold;
 #else
-    return std::fabs(signed_lat) >= this->params_.boundary_threshold;
+  return std::fabs(signed_lat) >= this->params_.boundary_threshold;
 #endif
-  }
-
-  const float left_limit = this->params_.boundary_threshold_left >= 0.0F
-                             ? this->params_.boundary_threshold_left
-                             : this->params_.boundary_threshold;
-  const float right_limit = this->params_.boundary_threshold_right >= 0.0F
-                              ? this->params_.boundary_threshold_right
-                              : this->params_.boundary_threshold;
-  return signed_lat > left_limit || signed_lat < -right_limit;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

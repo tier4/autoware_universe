@@ -110,8 +110,6 @@ DEFAULT_PARAMS: Dict[str, float] = {
     "lateral_yaw_error_coeff": 0.0,
     "crash_coeff": 100000.0,
     "boundary_threshold": 0.8,
-    "boundary_threshold_left": -1.0,
-    "boundary_threshold_right": -1.0,
     "lateral_acceleration_coeff": 500.0,
     "lateral_jerk_coeff": 1000.0,
     "longitudinal_jerk_coeff": 10.0,
@@ -138,8 +136,6 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("steer_cmd_coeff", 0.0, 5000.0),
     ("steer_rate_coeff", 0.0, 10000.0),
     ("boundary_threshold", 0.1, 5.0),
-    ("boundary_threshold_left", -1.0, 5.0),
-    ("boundary_threshold_right", -1.0, 5.0),
     ("obstacle_collision_margin", 0.0, 2.0),
     ("crash_coeff", 0.0, 500000.0),
 ]
