@@ -23,6 +23,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/autoware_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
+#include <autoware_utils/geometry/pose_deviation.hpp>
 #include <autoware_utils/math/normalization.hpp>
 #include <tf2/utils.hpp>
 
@@ -283,8 +284,7 @@ std::optional<PredictedObject> PathProcessor::predict(
 
     const auto trajectory_with_const_velocity = toTrajectoryPoints(predicted_path, abs_obj_speed);
 
-    if (isLateralAccelerationConstraintSatisfied(
-          trajectory_with_const_velocity, params_.prediction_sampling_time_interval)) {
+    if (isLateralAccelerationConstraintSatisfied(trajectory_with_const_velocity)) {
       predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
       continue;
@@ -767,43 +767,38 @@ TrajectoryPoints PathProcessor::toTrajectoryPoints(
 }
 
 bool PathProcessor::isLateralAccelerationConstraintSatisfied(
-  const TrajectoryPoints & trajectory, const double delta_time)
+  const TrajectoryPoints & trajectory) const
 {
   constexpr double epsilon = 1E-6;
-  if (delta_time < epsilon) throw std::invalid_argument("delta_time must be a positive value");
+  if (trajectory.size() < 2) return true;
 
-  if (trajectory.size() < 3) return true;
-  const double max_lateral_accel_abs = std::fabs(params_.max_lateral_accel);
+  const double max_lateral_accel = std::fabs(params_.max_lateral_accel);
+  const double deceleration = std::fabs(params_.min_acceleration_before_curve);
 
-  double arc_length = 0.0;
-  for (size_t i = 1; i < trajectory.size(); ++i) {
-    const auto current_pose = trajectory.at(i).pose;
-    const auto next_pose = trajectory.at(i - 1).pose;
-    const double delta_s = std::hypot(
-      next_pose.position.x - current_pose.position.x,
-      next_pose.position.y - current_pose.position.y);
-    arc_length += delta_s;
+  // The trajectory is generated with a constant speed. To check whether the object can follow it at
+  // all, we assume the most favorable case: the object brakes at `deceleration` from the beginning
+  // of the trajectory, and check the lateral acceleration at the entry of every segment.
+  const double initial_speed = std::abs(trajectory.front().longitudinal_velocity_mps);
 
-    tf2::Quaternion q_current, q_next;
-    tf2::convert(current_pose.orientation, q_current);
-    tf2::convert(next_pose.orientation, q_next);
-    double delta_theta = q_current.angleShortestPath(q_next);
-    if (delta_theta > M_PI) {
-      delta_theta -= 2.0 * M_PI;
-    } else if (delta_theta < -M_PI) {
-      delta_theta += 2.0 * M_PI;
+  double arc_length = 0.0;  // from the trajectory start to trajectory.at(i)
+  for (size_t i = 0; i + 1 < trajectory.size(); ++i) {
+    const auto & current_pose = trajectory.at(i).pose;
+    const auto & next_pose = trajectory.at(i + 1).pose;
+
+    const double delta_s = autoware_utils::calc_distance2d(current_pose, next_pose);
+    if (delta_s < epsilon) continue;  // skip duplicated points
+
+    const double delta_yaw = std::abs(autoware_utils::calc_yaw_deviation(current_pose, next_pose));
+    const double curvature = delta_yaw / delta_s;
+    // v^2 = v0^2 - 2 * a * s. This can be negative, which means the object is able to stop before
+    // the segment and therefore trivially satisfies the constraint.
+    const double decelerated_speed_squared =
+      initial_speed * initial_speed - 2.0 * deceleration * arc_length;
+    if (curvature * decelerated_speed_squared > max_lateral_accel) {
+      return false;
     }
 
-    const double yaw_rate = std::max(std::abs(delta_theta / delta_time), 1.0E-5);
-    const double current_speed = std::abs(trajectory.at(i).longitudinal_velocity_mps);
-    const double lateral_acceleration = std::abs(current_speed * yaw_rate);
-    if (lateral_acceleration < max_lateral_accel_abs) continue;
-
-    const double v_curvature_max = std::sqrt(max_lateral_accel_abs / yaw_rate);
-    const double t = (v_curvature_max - current_speed) / params_.min_acceleration_before_curve;
-    const double distance_to_slow_down =
-      current_speed * t + 0.5 * params_.min_acceleration_before_curve * std::pow(t, 2);
-    if (distance_to_slow_down > arc_length) return false;
+    arc_length += delta_s;
   }
   return true;
 }
