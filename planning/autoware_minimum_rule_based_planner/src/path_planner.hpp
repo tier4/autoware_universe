@@ -82,6 +82,7 @@ struct TrajectoryShiftParams
   double minimum_shift_distance{5.0};    // [m] floor for shift distance
   double min_speed_for_curvature{2.77};  // [m/s] lower bound on speed for kappa0 computation
   double lateral_accel_limit{0.5};       // [m/s^2] allowed lateral acceleration budget
+  double curvature_limit{0.1};           // [1/m] curvature budget of the shift polynomial
 };
 
 // ---------------------------------------------------------------------------
@@ -117,7 +118,7 @@ public:
     double ego_velocity, const builtin_interfaces::msg::Time & stamp);
 
   // Trajectory shifting
-  static Trajectory shift_trajectory_to_ego(
+  Trajectory shift_trajectory_to_ego(
     const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose, double ego_velocity,
     double ego_yaw_rate, const TrajectoryShiftParams & shift_params, double delta_arc_length);
 
