@@ -299,7 +299,10 @@ std::optional<PredictedObject> PathProcessor::predict(
     if (curvature_v.empty()) continue;
 
     const auto curvature_avg =
-      std::accumulate(curvature_v.begin(), curvature_v.end(), 0.0) / curvature_v.size();
+      std::accumulate(
+        curvature_v.begin(), curvature_v.end(), 0.0,
+        [](const double sum, const double curvature) { return sum + std::abs(curvature); }) /
+      curvature_v.size();
     if (curvature_avg < min_avg_curvature) {
       min_avg_curvature = curvature_avg;
       path_with_smallest_avg_curvature = predicted_path;
