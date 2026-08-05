@@ -396,7 +396,7 @@
                 "target_types": {
                   "type": "array",
                   "description": "Pointcloud types to consider for obstacle stop",
-                  "default": ["hazard", "structure", "vegetation"],
+                  "default": ["structure", "vegetation"],
                   "items": {
                     "type": "string"
                   }
