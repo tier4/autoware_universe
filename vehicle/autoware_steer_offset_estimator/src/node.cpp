@@ -68,8 +68,28 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
   pub_debug_info_ = this->create_publisher<StringStamped>("~/output/debug_info", 1);
   pub_steer_offset_update_ = this->create_publisher<Float32Stamped>(
     "~/output/steering_offset_update", rclcpp::QoS{1}.transient_local());
+  pub_initial_calibration_value_ =
+    this->create_publisher<Float32Stamped>("~/output/initial_calibration_value", 1);
+  pub_entire_steer_offset_ =
+    this->create_publisher<Float32Stamped>("~/output/entire_steering_offset", 1);
 
   set_calibration_parameters();
+
+  // The initial calibration offset is assumed to be constant, so the calibration file is read
+  // only once here and the value is cached in initial_calibration_offset_.
+  const auto initial_calibration_offset = read_from_yaml(
+    calibration_params_.calibration_file_path, calibration_params_.initial_calibration_param_name);
+  if (initial_calibration_offset) {
+    initial_calibration_offset_ = initial_calibration_offset.value();
+    RCLCPP_INFO(
+      this->get_logger(), "Loaded initial calibration offset %.4f from %s as '%s'",
+      initial_calibration_offset_.value(), calibration_params_.calibration_file_path.c_str(),
+      calibration_params_.initial_calibration_param_name.c_str());
+  } else {
+    RCLCPP_ERROR(
+      this->get_logger(), "Failed to read initial calibration offset: %s",
+      initial_calibration_offset.error().c_str());
+  }
 
   // Create timer
   auto update_hz = this->declare_parameter<double>("update_hz", 10.0);
@@ -128,6 +148,8 @@ void SteerOffsetEstimatorNode::set_calibration_parameters()
     this->declare_parameter<std::string>("calibration_file_path");
   calibration_params_.calibration_param_name =
     this->declare_parameter<std::string>("calibration_param_name");
+  calibration_params_.initial_calibration_param_name =
+    this->declare_parameter<std::string>("initial_calibration_param_name");
 }
 
 void SteerOffsetEstimatorNode::on_timer()
@@ -191,6 +213,12 @@ void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated &
 
   pub_float(pub_steer_offset_, result.offset);
   pub_float(pub_steer_offset_covariance_, result.covariance);
+
+  // Uses the value cached at start-up; the calibration file is never re-read.
+  if (initial_calibration_offset_) {
+    pub_float(pub_initial_calibration_value_, initial_calibration_offset_.value());
+    pub_float(pub_entire_steer_offset_, initial_calibration_offset_.value() + result.offset);
+  }
 
   if (is_publish_update()) {
     pub_float(pub_steer_offset_update_, latest_reliable_result_->offset);
@@ -312,6 +340,28 @@ tl::expected<double, std::string> SteerOffsetEstimatorNode::execute_calibration_
   const auto & param_name = calibration_params_.calibration_param_name;
 
   return write_to_yaml(param_path, param_name, steer_offset, true);
+}
+
+tl::expected<double, std::string> SteerOffsetEstimatorNode::read_from_yaml(
+  const std::string & file_path, const std::string & param_name)
+{
+  try {
+    YAML::Node config = YAML::LoadFile(file_path);
+    auto node = config["/**"]["ros__parameters"];
+
+    if (!node) {
+      return tl::make_unexpected(
+        fmt::format("Could not find 'ros__parameters' key in YAML: {}", file_path));
+    }
+    if (!node[param_name]) {
+      return tl::make_unexpected(
+        fmt::format("Could not find '{}' key in YAML: {}", param_name, file_path));
+    }
+
+    return node[param_name].as<double>();
+  } catch (const std::exception & e) {
+    return tl::make_unexpected(fmt::format("YAML read exception: {}", e.what()));
+  }
 }
 
 tl::expected<double, std::string> SteerOffsetEstimatorNode::write_to_yaml(

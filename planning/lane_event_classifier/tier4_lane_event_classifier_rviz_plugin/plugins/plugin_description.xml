@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<library path="tier4_lane_event_classifier_rviz_plugin">
+  <class name="rviz_plugins/DrivingFactorPanel"
+         type="rviz_plugins::DrivingFactorPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      A panel that displays the current DSSAD driving state published on /planning/driving_factor
+      (LANE_FOLLOWING, LANE_CHANGING, ABORTING_LANE_CHANGE, INTENTIONAL_LANE_CROSSING,
+      ABORTING_INTENTIONAL_LANE_CROSSING, UNKNOWN) with color coding.
+    </description>
+  </class>
+</library>

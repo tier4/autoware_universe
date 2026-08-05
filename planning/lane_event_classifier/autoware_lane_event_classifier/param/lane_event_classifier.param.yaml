@@ -1,0 +1,28 @@
+/**:
+  ros__parameters:
+    reposition_jump_margin_m: 0.5
+    lane_departure_reset_distance_m: 5.0
+    lane_following:
+      connected_sequence_length_m: 200.0
+      lateral_tolerance_m: 0.3
+      enable_road_shoulder_exemption: true
+      enable_turn_lane_exemption: true
+      enable_virtual_boundary_exemption: true
+    lane_change:
+      enable_classifier: true
+      crossing_persist_duration_s: 0.3
+      settle_confirm_duration_s: 0.7
+      crossing_look_ahead_m: 30.0
+      crossing_position_tolerance_m: 2.0
+      confidence_factor: 0.3
+    lane_crossing:
+      enable_classifier: true
+      crossing_look_ahead_m: 30.0
+      predictive_lateral_trigger_distance_m: 0.5
+      crossing_persist_duration_s: 0.3
+      crossing_position_tolerance_m: 2.0
+      footprint_boundary_overshoot_m: 0.3
+      settle_confirm_duration_s: 0.7
+      confidence_factor: 0.3
+      object_longitudinal_window_m: 100.0
+      object_qualifying_memory_s: 3.0

@@ -152,12 +152,14 @@ In addition to the Manual gates, Auto mode applies more restrictive temporal and
 
 #### Output
 
-| Name                                  | Type                                                | Description                   |
-| ------------------------------------- | --------------------------------------------------- | ----------------------------- |
-| `~/output/steering_offset`            | `autoware_internal_debug_msgs::msg::Float32Stamped` | steering offset               |
-| `~/output/steering_offset_covariance` | `autoware_internal_debug_msgs::msg::Float32Stamped` | covariance of steering offset |
-| `~/output/steering_offset_update`     | `autoware_internal_debug_msgs::msg::Float32Stamped` | updated steering offset value |
-| `~/output/debug_info`                 | `autoware_internal_debug_msgs::msg::StringStamped`  | debug info                    |
+| Name                                  | Type                                                | Description                                                        |
+| ------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------ |
+| `~/output/steering_offset`            | `autoware_internal_debug_msgs::msg::Float32Stamped` | steering offset                                                    |
+| `~/output/steering_offset_covariance` | `autoware_internal_debug_msgs::msg::Float32Stamped` | covariance of steering offset                                      |
+| `~/output/steering_offset_update`     | `autoware_internal_debug_msgs::msg::Float32Stamped` | updated steering offset value                                      |
+| `~/output/initial_calibration_value`  | `autoware_internal_debug_msgs::msg::Float32Stamped` | initial steering offset read from the calibration file at start-up |
+| `~/output/entire_steering_offset`     | `autoware_internal_debug_msgs::msg::Float32Stamped` | initial calibration offset plus the estimated steering offset      |
+| `~/output/debug_info`                 | `autoware_internal_debug_msgs::msg::StringStamped`  | debug info                                                         |
 
 ### Services
 
