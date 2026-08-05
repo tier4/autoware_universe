@@ -44,6 +44,8 @@ enum class StopLineType {
   PrivateArea,   //!< private-area entry/exit transition     -> possibility
 };
 
+const char * to_string(const StopLineType type);
+
 //! A map-defined stop line together with its classified type.
 struct StopLine
 {
@@ -52,6 +54,12 @@ struct StopLine
   //! true when the geometry is a crosswalk/walkway bound used because the map has no explicit
   //! stop line; such targets use the larger stop_distance_from_crosswalk margin.
   bool without_explicit_stop_line{false};
+};
+
+struct StopPoint
+{
+  double arc_length;
+  StopLineType type;
 };
 
 /**
@@ -107,9 +115,11 @@ public:
   {
     //! stops at mandatory targets only (equals the input trajectory when there is none)
     Trajectory go_trajectory;
+    std::optional<StopPoint> go_stop_point;
     //! additionally stops at possibility targets; set only when its stop point differs from the
     //! go trajectory's
     std::optional<Trajectory> stop_trajectory;
+    std::optional<StopPoint> stop_stop_point;
     visualization_msgs::msg::MarkerArray stop_line_markers;
   };
 
@@ -135,9 +145,8 @@ public:
    * inputs for the velocity optimization.
    */
   Result plan(
-    const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose,
-    const double ego_velocity, const double ego_acceleration,
-    const StopSelectionParams & params) const;
+    const Trajectory & trajectory, const double ego_arc_length, const double ego_velocity,
+    const double ego_acceleration, const StopSelectionParams & params) const;
 
   /**
    * @brief Collect stop targets along the given route, tagged by type.
@@ -181,12 +190,11 @@ public:
    * vehicle has passed or can no longer stop for is dropped in favor of a farther reachable one.
    * Returns nullopt when no reachable candidate exists.
    */
-  std::optional<double> select_stop_arc_length(
+  std::optional<StopPoint> select_stop_point(
     const std::vector<StopLine> & stop_lines,
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
-    const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
-    const double ego_acceleration, const StopSelectionParams & params,
-    const bool include_possibility) const;
+    const double ego_arc_length, const double ego_velocity, const double ego_acceleration,
+    const StopSelectionParams & params, const bool include_possibility) const;
 
   //! Build a MarkerArray (frame "map") of the stop lines with a per-type text label above each.
   visualization_msgs::msg::MarkerArray create_stop_line_marker_array(
@@ -196,14 +204,13 @@ private:
   //! One stop pass: the nearest reachable stop point among the allowed types, embedded on a copy.
   struct SingleStopResult
   {
-    double stop_point_arc_length;
+    StopPoint stop_point;
     Trajectory trajectory;
   };
   std::optional<SingleStopResult> plan_single_stop(
     const std::vector<StopLine> & stop_lines, const Trajectory & trajectory,
-    const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
-    const double ego_acceleration, const StopSelectionParams & params,
-    const bool include_possibility) const;
+    const double ego_arc_length, const double ego_velocity, const double ego_acceleration,
+    const StopSelectionParams & params, const bool include_possibility) const;
 
   rclcpp::Logger logger_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;

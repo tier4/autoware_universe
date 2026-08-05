@@ -203,6 +203,11 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_stop_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
+
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    go_planning_factor_interface_;
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    stop_planning_factor_interface_;
   /** @} */
 };
 

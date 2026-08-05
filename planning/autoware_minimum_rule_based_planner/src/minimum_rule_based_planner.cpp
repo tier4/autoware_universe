@@ -112,6 +112,12 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
       "~/debug/processing_time_ms", 1);
   time_keeper_ =
     std::make_shared<autoware_utils_debug::TimeKeeper>(debug_processing_time_detail_pub_);
+  go_planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      this, "backup_planner_go");
+  stop_planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      this, "backup_planner_stop");
 
   params_ = param_listener_->get_params();
 
@@ -323,8 +329,10 @@ void MinimumRuleBasedPlannerNode::on_timer()
   // 7. Plan the go/stop trajectories with map-defined stop points
   map_based_stop_planner_->set_planner_data(
     input_data.lanelet_map_bin_ptr, input_data.route_ptr, path_planner_->route_context());
+  const double ego_arc_length = autoware::motion_utils::calcSignedArcLength(
+    trajectory.points, 0UL, input_data.odometry_ptr->pose.pose.position);
   const auto stop_result = map_based_stop_planner_->plan(
-    trajectory, input_data.odometry_ptr->pose.pose, input_data.odometry_ptr->twist.twist.linear.x,
+    trajectory, ego_arc_length, input_data.odometry_ptr->twist.twist.linear.x,
     input_data.acceleration_ptr->accel.accel.linear.x, make_map_based_stop_params());
   pub_stop_lines_marker_->publish(stop_result.stop_line_markers);
 
@@ -341,6 +349,23 @@ void MinimumRuleBasedPlannerNode::on_timer()
 
   // 9. Create and publish CandidateTrajectories message
   publish_candidate_trajectories(go_trajectory, stop_trajectory);
+
+  if (stop_result.go_stop_point) {
+    go_planning_factor_interface_->add(
+      stop_result.go_stop_point->arc_length - ego_arc_length, go_trajectory.points.back().pose,
+      autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
+      autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true, 0.0, 0.0,
+      to_string(stop_result.go_stop_point->type));
+    go_planning_factor_interface_->publish();
+  }
+  if (stop_result.stop_stop_point) {
+    stop_planning_factor_interface_->add(
+      stop_result.stop_stop_point->arc_length - ego_arc_length, go_trajectory.points.back().pose,
+      autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
+      autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true, 0.0, 0.0,
+      to_string(stop_result.stop_stop_point->type));
+    stop_planning_factor_interface_->publish();
+  }
 
   // 10. Publish debug information
   publish_debug_outputs(*path, go_trajectory, stop_trajectory);
