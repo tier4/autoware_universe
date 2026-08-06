@@ -14,7 +14,7 @@
 
 #include "path_planner.hpp"
 
-#include "start_goal_planner.hpp"
+#include "start_goal_planner/clothoid_pull_generater.hpp"
 
 #include <autoware/lanelet2_utils/kind.hpp>
 #include <autoware/motion_utils/distance/distance.hpp>

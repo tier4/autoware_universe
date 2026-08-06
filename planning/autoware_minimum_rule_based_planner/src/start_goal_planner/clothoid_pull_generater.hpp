@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef START_GOAL_PLANNER_HPP_
-#define START_GOAL_PLANNER_HPP_
+#ifndef START_GOAL_PLANNER__CLOTHOID_PULL_GENERATER_HPP_
+#define START_GOAL_PLANNER__CLOTHOID_PULL_GENERATER_HPP_
 
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
@@ -39,4 +39,4 @@ std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid
 
 }  // namespace autoware::minimum_rule_based_planner
 
-#endif  // START_GOAL_PLANNER_HPP_
+#endif  // START_GOAL_PLANNER__CLOTHOID_PULL_GENERATER_HPP_
