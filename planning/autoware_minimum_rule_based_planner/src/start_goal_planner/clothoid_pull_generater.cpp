@@ -609,7 +609,7 @@ std::optional<CompositeArcPath> calc_circular_path(
 
   const double x_goal_rel = longitudinal_distance;
   const double y_goal_rel = lateral_distance;
-  const double goal_direction = (shift_direction) ? 1.0 : -1.0;  // left shift : right shift
+  const double C_r_direction = (shift_direction) ? 1.0 : -1.0;  // left shift : right shift
   const double yaw_goal_rel = angle_diff;
 
   RCLCPP_DEBUG(
@@ -619,7 +619,7 @@ std::optional<CompositeArcPath> calc_circular_path(
 
   // Calculate starting arc center (assuming clockwise rotation)
   double C_rx_rel = x_start_rel + first_radius * std::sin(yaw_start_rel);
-  double C_ry_rel = y_start_rel + goal_direction * first_radius * std::cos(yaw_start_rel);
+  double C_ry_rel = y_start_rel + C_r_direction * first_radius * std::cos(yaw_start_rel);
 
   // Distance from goal point to starting arc center
   double dx_goal_rel = x_goal_rel - C_rx_rel;
@@ -638,8 +638,8 @@ std::optional<CompositeArcPath> calc_circular_path(
   cos_term = std::max(-1.0, std::min(1.0, cos_term));
 
   // Adjust approach angle to goal (add π for reverse direction)
-  double alpha = (goal_direction > 0) ? yaw_goal_rel + std::acos(cos_term)
-                                      : yaw_goal_rel + PI + std::acos(cos_term);
+  double alpha = (C_r_direction > 0) ? yaw_goal_rel + std::acos(cos_term)
+                                     : yaw_goal_rel + PI + std::acos(cos_term);
 
   double denominator = 2 * first_radius + 2 * d_goal_Cr_rel * std::cos(alpha);
 
@@ -661,8 +661,8 @@ std::optional<CompositeArcPath> calc_circular_path(
   }
 
   // Calculate goal arc center (assuming counter-clockwise rotation)
-  double C_lx_rel = x_goal_rel + goal_direction * R_goal * std::sin(yaw_goal_rel);
-  double C_ly_rel = y_goal_rel - goal_direction * R_goal * std::cos(yaw_goal_rel);
+  double C_lx_rel = x_goal_rel + C_r_direction * R_goal * std::sin(yaw_goal_rel);
+  double C_ly_rel = y_goal_rel - C_r_direction * R_goal * std::cos(yaw_goal_rel);
 
   // Calculate tangent point
   double dx_centers = C_lx_rel - C_rx_rel;
@@ -700,7 +700,7 @@ std::optional<CompositeArcPath> calc_circular_path(
   // Create first arc segment
   ArcSegment arc1;
   arc1.radius = first_radius;
-  arc1.is_clockwise = (goal_direction > 0.0) ? false : true;
+  arc1.is_clockwise = (C_r_direction > 0.0) ? false : true;
 
   // Transform relative coordinate center to global coordinate system
   arc1.center.x = start_pose.position.x + C_rx_rel * cos_yaw - C_ry_rel * sin_yaw;
@@ -730,7 +730,7 @@ std::optional<CompositeArcPath> calc_circular_path(
   // Create second arc segment
   ArcSegment arc2;
   arc2.radius = R_goal;
-  arc2.is_clockwise = (goal_direction > 0.0) ? true : false;
+  arc2.is_clockwise = (C_r_direction > 0.0) ? true : false;
 
   // Transform relative coordinate center to global coordinate system
   arc2.center.x = start_pose.position.x + C_lx_rel * cos_yaw - C_ly_rel * sin_yaw;
