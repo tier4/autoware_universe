@@ -932,7 +932,9 @@ std::optional<std::vector<PathPointTrajectory>> refine_path_for_goal(
 
   std::vector<PathPointTrajectory> candidate_trajectories;
 
-  for (const auto max_steering_angle : clothoid_params.max_steer_angles_rad) {
+  const auto max_steer_angles_rad = generate_candidate_steer_angles_rad(
+    clothoid_params.max_steer_angle_rad, clothoid_params.steer_angle_trial_count);
+  for (const auto max_steering_angle : max_steer_angles_rad) {
     const auto clothoid_paths = plan_clothoid_pull(
       connector_start_pose, pre_goal.point.pose, clothoid_params.wheel_base_m, max_steering_angle,
       clothoid_params.max_steer_angle_rate_rad_per_sec, clothoid_params.reference_velocity_mps);
@@ -1737,14 +1739,13 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     if (distance_to_goal < params_.path_planning.smooth_goal_connection.search_radius_range) {
       utils::ClothoidGoalConnectionParams clothoid_params;
       clothoid_params.wheel_base_m = vehicle_info_.wheel_base_m;
+      clothoid_params.max_steer_angle_rad = vehicle_info_.max_steer_angle_rad;
+      clothoid_params.steer_angle_trial_count =
+        params_.path_planning.smooth_goal_connection.clothoid_steer_angle_trial_count;
       clothoid_params.reference_velocity_mps =
         params_.path_planning.smooth_goal_connection.clothoid_reference_velocity;
       clothoid_params.max_steer_angle_rate_rad_per_sec = autoware_utils::deg2rad(
         params_.path_planning.smooth_goal_connection.clothoid_max_steer_angle_rate_deg_per_sec);
-      for (const auto & deg :
-           params_.path_planning.smooth_goal_connection.clothoid_max_steer_angles_deg) {
-        clothoid_params.max_steer_angles_rad.push_back(autoware_utils::deg2rad(deg));
-      }
 
       auto refined_path = utils::modify_path_for_smooth_goal_connection(
         *trajectory, route_context_,

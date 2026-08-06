@@ -37,6 +37,17 @@ std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid
   double wheel_base_m, const double & max_steer_angle, double max_steer_angle_rate_rad_per_sec,
   double reference_velocity_mps);
 
+/**
+ * @brief Generate candidate max-steer-angles for the clothoid goal connector.
+ *
+ * Evenly spaces `trial_count` angles between the minimum steer angle at which the
+ * arc/clothoid construction does not degenerate (tan(angle) -> 0 as angle -> 0, which
+ * makes the turning radius diverge) and `max_steer_angle_rad`, in ascending order.
+ * If trial_count <= 1, only max_steer_angle_rad is returned.
+ */
+std::vector<double> generate_candidate_steer_angles_rad(
+  double max_steer_angle_rad, int trial_count);
+
 }  // namespace autoware::minimum_rule_based_planner
 
 #endif  // START_GOAL_PLANNER__CLOTHOID_PULL_GENERATER_HPP_

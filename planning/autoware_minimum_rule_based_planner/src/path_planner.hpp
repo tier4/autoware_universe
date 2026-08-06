@@ -257,7 +257,8 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
 struct ClothoidGoalConnectionParams
 {
   double wheel_base_m{0.0};
-  std::vector<double> max_steer_angles_rad{};
+  double max_steer_angle_rad{0.0};
+  int steer_angle_trial_count{1};
   double max_steer_angle_rate_rad_per_sec{0.0};
   double reference_velocity_mps{1.0};
 };
