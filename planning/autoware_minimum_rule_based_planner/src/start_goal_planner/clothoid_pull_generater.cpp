@@ -770,14 +770,6 @@ std::optional<CompositeArcPath> calc_circular_path(
   return composite_path;
 }
 
-namespace
-{
-// Minimum steer angle used when generating clothoid candidate angles.
-// Below this, tan(angle) approaches 0 and the resulting turning radius diverges,
-// which breaks the arc/clothoid construction in plan_clothoid_pull.
-constexpr double kMinClothoidSteerAngleRad = 1.0 * M_PI / 180.0;
-}  // namespace
-
 std::vector<double> generate_candidate_steer_angles_rad(double max_steer_angle_rad, int trial_count)
 {
   std::vector<double> angles_rad;
@@ -786,7 +778,7 @@ std::vector<double> generate_candidate_steer_angles_rad(double max_steer_angle_r
     return angles_rad;
   }
 
-  const double min_steer_angle_rad = kMinClothoidSteerAngleRad;
+  constexpr double min_steer_angle_rad = 1.0 * M_PI / 180.0;
   for (int i = 0; i < trial_count; ++i) {
     const double angle_rad = min_steer_angle_rad + (max_steer_angle_rad - min_steer_angle_rad) * i /
                                                      static_cast<double>(trial_count - 1);
