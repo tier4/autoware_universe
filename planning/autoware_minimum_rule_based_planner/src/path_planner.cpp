@@ -1008,8 +1008,8 @@ constexpr double quintic_kappa_coeff = 5.773502691896258;  // 10*sqrt(3)/3
 constexpr double yaw_diff_clamp_rad = M_PI / 4.0;
 constexpr double lane_end_match_tolerance_sq = 4.0;  // [m^2] 2m tolerance squared
 constexpr double yaw_step = 0.1;  // [m] finite-difference step for centerline yaw
-// [m] half-baseline of the reference curvature estimate at the shift start. Long enough that the
-// 3-point estimate is not dominated by the point-to-point noise of the resampled centerline.
+// [m] half-baseline of the 3-point reference curvature estimate. Shorter baselines are dominated by
+// the point-to-point noise of the resampled centerline.
 constexpr double curvature_baseline_length = 2.0;
 
 struct QuinticShiftCoeffs
@@ -1080,7 +1080,6 @@ double signed_curvature_3pt(
   return 2.0 * cross / denom;
 }
 
-// Curvature of the reference line at index idx, estimated from 3 points spaced baseline_step apart.
 double reference_curvature(
   const std::vector<TrajectoryPoint> & points, const size_t idx, const size_t baseline_step)
 {
@@ -1820,45 +1819,27 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
     }
   }
   if (merge_idx >= trajectory.points.size() - 1) {
-    // The trajectory ends before the desired merge point (goal approach, stop point, or ego at the
-    // very end): merge at the last point so the terminal conditions still land on it. The lateral
-    // correction is capped below to keep the curvature of the shortened section feasible.
+    // Ends before the desired merge point (goal approach); the cap below keeps the short L usable.
     L = accumulated_length;
     merge_idx = trajectory.points.size() - 1;
   }
   if (L < delta_arc_length) {
-    RCLCPP_WARN_THROTTLE(
-      logger_, *clock_, 5000, "Only %.2f m of trajectory ahead of ego; skipping the shift to ego.",
-      L);
     return trajectory;
   }
 
-  // The peak curvature of the shift is quintic_kappa_coeff*|d|/L^2, so the offset that can be
-  // corrected within L is bounded by the curvature budget. Correcting the rest would emit a path
-  // the vehicle cannot steer; it is left as a lateral error for the controller instead.
+  // Peak curvature of the shift is quintic_kappa_coeff*|d|/L^2, so a short L bounds the offset that
+  // can be corrected. The remainder is deliberately left as a lateral error for the controller.
   const double max_shift_length = shift_params.curvature_limit * L * L / quintic_kappa_coeff;
   const double shift_length = std::clamp(lateral_offset, -max_shift_length, max_shift_length);
-  if (std::abs(shift_length - lateral_offset) > 1e-3) {
-    RCLCPP_WARN_THROTTLE(
-      logger_, *clock_, 5000,
-      "Lateral offset %.2f m cannot be corrected within %.2f m at a curvature of %.2f 1/m; "
-      "shifting by %.2f m only.",
-      lateral_offset, L, shift_params.curvature_limit, shift_length);
-  }
 
-  // y(s) is a Frenet lateral offset from the reference line, so y''(0) must be the ego curvature
-  // *relative* to the reference: the generated curvature is roughly kappa_ref + y''. Passing the
-  // absolute ego curvature would start the section at ~2*kappa_ref and fall back to kappa_ref at
-  // s=L, i.e. a curvature bump right in front of ego on every cycle (on curves only).
+  // y is a Frenet offset, so y''(0) must be the ego curvature *relative* to the reference. Passing
+  // the absolute value starts the section at ~2*kappa_ref, i.e. a curvature bump on every cycle.
   const size_t curvature_baseline_step = std::max<size_t>(
     1, static_cast<size_t>(std::lround(curvature_baseline_length / delta_arc_length)));
   const double kappa_ref =
     reference_curvature(trajectory.points, nearest_idx, curvature_baseline_step);
-  // Below min_speed_for_curvature the measured curvature yaw_rate / v is unusable (the clamped
-  // speed underestimates it, and both terms vanish as the vehicle stops), so fade the whole
-  // relative term out: the connection then assumes ego is on the reference curvature, which keeps
-  // the curvature continuous at low speed. Fading the measured term alone would instead leave
-  // -kappa_ref, i.e. a section that starts straight in the middle of a curve.
+  // yaw_rate/v is unusable below min_speed_for_curvature, so fade the whole relative term out.
+  // Fading only the measured term would leave -kappa_ref: a straight start in the middle of a bend.
   const double curvature_confidence =
     std::clamp(ego_velocity / shift_params.min_speed_for_curvature, 0.0, 1.0);
   const double kappa0 = curvature_confidence * (ego_yaw_rate / clamped_velocity - kappa_ref);
@@ -1869,8 +1850,7 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
 
   TrajectoryPoint start_pt;
   start_pt.pose = ego_pose;
-  // Identical to the ego pose unless the correction was capped above; then the section starts at
-  // the capped offset and the rest stays a lateral error.
+  // Zero unless the cap dropped part of the correction, which then stays a lateral error.
   const double uncorrected_offset = shift_length - lateral_offset;
   start_pt.pose.position.x += uncorrected_offset * (-std::sin(traj_yaw));
   start_pt.pose.position.y += uncorrected_offset * std::cos(traj_yaw);

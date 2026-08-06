@@ -118,7 +118,7 @@ public:
     double ego_velocity, const builtin_interfaces::msg::Time & stamp);
 
   // Trajectory shifting
-  Trajectory shift_trajectory_to_ego(
+  static Trajectory shift_trajectory_to_ego(
     const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose, double ego_velocity,
     double ego_yaw_rate, const TrajectoryShiftParams & shift_params, double delta_arc_length);
 

@@ -143,7 +143,7 @@ minimum_rule_based_planner:
       curvature_limit:
         type: double
         default_value: 0.1
-        description: curvature budget of the shift polynomial. Caps the lateral offset corrected within the available length to curvature_limit * L^2 / (10*sqrt(3)/3) [1/m]
+        description: upper bound [1/m] on the peak curvature of the shift polynomial. Caps the corrected lateral offset at curvature_limit * L^2 / (10*sqrt(3)/3), where L is the available shift length
         validation:
           gt<>: [0.0]
 
