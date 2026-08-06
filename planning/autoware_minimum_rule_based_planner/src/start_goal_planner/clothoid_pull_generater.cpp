@@ -833,6 +833,31 @@ std::optional<std::vector<geometry_msgs::msg::Point>> biclothoid_approximation(
   return connected_points;
 }
 
+void interpolate_z_by_cumulative_distance(
+  std::vector<geometry_msgs::msg::Point> & points, double start_z, double goal_z)
+{
+  if (points.empty()) {
+    return;
+  }
+  if (points.size() == 1) {
+    points.front().z = start_z;
+    return;
+  }
+
+  std::vector<double> s(points.size(), 0.0);
+  for (size_t i = 1; i < points.size(); ++i) {
+    const double dx = points[i].x - points[i - 1].x;
+    const double dy = points[i].y - points[i - 1].y;
+    s[i] = s[i - 1] + std::hypot(dx, dy);
+  }
+
+  const double total_distance = s.back();
+  for (size_t i = 0; i < points.size(); ++i) {
+    const double ratio = (total_distance > 1e-9) ? s[i] / total_distance : 0.0;
+    points[i].z = start_z + (goal_z - start_z) * ratio;
+  }
+}
+
 std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid_pull(
   const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & target_pose,
   double wheel_base_m, const double & max_steer_angle, double max_steer_angle_rate_rad_per_sec,
@@ -863,6 +888,8 @@ std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid
       }
 
       if (!connected_points_opt->empty()) {
+        interpolate_z_by_cumulative_distance(
+          *connected_points_opt, start_pose.position.z, target_pose.position.z);
         candidate_paths.push_back(*connected_points_opt);
       }
     }
