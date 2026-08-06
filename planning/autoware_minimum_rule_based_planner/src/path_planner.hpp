@@ -252,11 +252,23 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
   const std::optional<double> & s_right_bound);
 
 /**
+ * @brief Parameters controlling the clothoid-smoothed connection to the goal pose.
+ */
+struct ClothoidGoalConnectionParams
+{
+  double wheel_base_m{0.0};
+  std::vector<double> max_steer_angles_rad{};
+  double max_steer_angle_rate_rad_per_sec{0.0};
+  double reference_velocity_mps{1.0};
+};
+
+/**
  * @brief Recreate the path with a given goal pose
  */
-PathPointTrajectory refine_path_for_goal(
+std::optional<std::vector<PathPointTrajectory>> refine_path_for_goal(
   const PathPointTrajectory & input, const geometry_msgs::msg::Pose & goal_pose,
-  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset);
+  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset,
+  const ClothoidGoalConnectionParams & clothoid_params);
 
 /**
  * @brief Extract lanelets from the trajectory
@@ -280,7 +292,8 @@ bool is_trajectory_inside_lanelets(
  */
 std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
   const PathPointTrajectory & trajectory, const RouteContext & planner_data,
-  const double search_radius_range, const double pre_goal_offset);
+  const double search_radius_range, const double pre_goal_offset,
+  const ClothoidGoalConnectionParams & clothoid_params);
 
 }  // namespace utils
 }  // namespace autoware::minimum_rule_based_planner

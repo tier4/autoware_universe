@@ -14,6 +14,8 @@
 
 #include "path_planner.hpp"
 
+#include "start_goal_planner.hpp"
+
 #include <autoware/lanelet2_utils/kind.hpp>
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/resample/resample.hpp>
@@ -30,6 +32,7 @@
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/normalization.hpp>
+#include <autoware_utils/math/unit_conversion.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <tf2/utils.h>
@@ -873,9 +876,10 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
     s_right_centerline ? s_right_centerline : s_right_bound};
 }
 
-PathPointTrajectory refine_path_for_goal(
+std::optional<std::vector<PathPointTrajectory>> refine_path_for_goal(
   const PathPointTrajectory & input, const geometry_msgs::msg::Pose & goal_pose,
-  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset)
+  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset,
+  const ClothoidGoalConnectionParams & clothoid_params)
 {
   auto contain_goal_lane_id = [&](const PathPointWithLaneId & point) {
     const auto & ids = point.lane_ids;
@@ -920,15 +924,51 @@ PathPointTrajectory refine_path_for_goal(
   auto pre_goal = input.compute(autoware::experimental::trajectory::closest(input, pre_goal_pose));
   pre_goal.point.pose = pre_goal_pose;
 
-  goal_connected_trajectory_points.push_back(pre_goal);
-  goal_connected_trajectory_points.push_back(goal);
+  // Bridge the gap between the end of the (possibly cropped) path and pre_goal with a
+  // clothoid-smoothed connector, so the transition isn't a sharp kink.
+  const auto connector_start_pose = goal_connected_trajectory_points.empty()
+                                      ? cropped_path.compute(0).point.pose
+                                      : goal_connected_trajectory_points.back().point.pose;
 
-  if (
-    const auto output =
-      autoware::experimental::trajectory::pretty_build(goal_connected_trajectory_points)) {
-    return *output;
+  std::vector<PathPointTrajectory> candidate_trajectories;
+
+  for (const auto max_steering_angle : clothoid_params.max_steer_angles_rad) {
+    const auto clothoid_paths = plan_clothoid_pull(
+      connector_start_pose, pre_goal.point.pose, clothoid_params.wheel_base_m, max_steering_angle,
+      clothoid_params.max_steer_angle_rate_rad_per_sec, clothoid_params.reference_velocity_mps);
+
+    if (!clothoid_paths.has_value()) {
+      continue;
+    }
+
+    for (int i = 0; i < static_cast<int>(clothoid_paths->size()); ++i) {
+      std::vector<PathPointWithLaneId> trajectory = goal_connected_trajectory_points;
+      std::vector<geometry_msgs::msg::Point> clothoid_points = (*clothoid_paths)[i];
+
+      if (clothoid_points.size() >= 2) {
+        for (size_t i = 1; i + 1 < clothoid_points.size(); ++i) {
+          const auto & prev = clothoid_points[i - 1];
+          const auto & curr = clothoid_points[i];
+          PathPointWithLaneId point = pre_goal;
+          point.point.pose.position = curr;
+          point.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(
+            std::atan2(curr.y - prev.y, curr.x - prev.x));
+          trajectory.push_back(point);
+        }
+
+        trajectory.push_back(pre_goal);
+        trajectory.push_back(goal);
+        if (const auto output = autoware::experimental::trajectory::pretty_build(trajectory)) {
+          candidate_trajectories.push_back(*output);
+        }
+      }
+    }
   }
-  return input;
+  if (candidate_trajectories.empty()) {
+    return std::nullopt;
+    ;
+  }
+  return candidate_trajectories;
 }
 
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
@@ -962,7 +1002,8 @@ bool is_trajectory_inside_lanelets(
 
 std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
   const PathPointTrajectory & trajectory, const RouteContext & planner_data,
-  const double search_radius_range, const double pre_goal_offset)
+  const double search_radius_range, const double pre_goal_offset,
+  const ClothoidGoalConnectionParams & clothoid_params)
 {
   if (planner_data.preferred_lanelets.empty()) {
     return std::nullopt;
@@ -981,7 +1022,7 @@ std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
   const auto goal_point_2d =
     lanelet::BasicPoint2d(planner_data.goal_pose.position.x, planner_data.goal_pose.position.y);
   const auto nearest_lanelets =
-    lanelet::geometry::findNearest(planner_data.lanelet_map_ptr->laneletLayer, goal_point_2d, 5);
+    lanelet::geometry::findNearest(planner_data.lanelet_map_ptr->laneletLayer, goal_point_2d, 20);
   for (const auto & [dist, ll] : nearest_lanelets) {
     if (
       lanelet::geometry::inside(ll, goal_point_2d) &&
@@ -994,11 +1035,16 @@ std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
   // refine_goal_search_radius_range, we can fit the trajectory inside lanelets even if the
   // trajectory has a high curvature.
   for (double s = search_radius_range; s > 0; s -= 0.1) {
-    const auto refined_trajectory = refine_path_for_goal(
+    const auto candidate_trajectories = refine_path_for_goal(
       trajectory, planner_data.goal_pose, planner_data.preferred_lanelets.back().id(), s,
-      pre_goal_offset);
-    if (is_trajectory_inside_lanelets(refined_trajectory, lanelets)) {
-      return refined_trajectory;
+      pre_goal_offset, clothoid_params);
+    if (!candidate_trajectories.has_value()) {
+      return std::nullopt;
+    }
+    for (const auto & refined_trajectory : *candidate_trajectories) {
+      if (is_trajectory_inside_lanelets(refined_trajectory, lanelets)) {
+        return refined_trajectory;
+      }
     }
   }
   return std::nullopt;
@@ -1689,10 +1735,21 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
 
     bool goal_connection_applied = false;
     if (distance_to_goal < params_.path_planning.smooth_goal_connection.search_radius_range) {
+      utils::ClothoidGoalConnectionParams clothoid_params;
+      clothoid_params.wheel_base_m = vehicle_info_.wheel_base_m;
+      clothoid_params.reference_velocity_mps =
+        params_.path_planning.smooth_goal_connection.clothoid_reference_velocity;
+      clothoid_params.max_steer_angle_rate_rad_per_sec = autoware_utils::deg2rad(
+        params_.path_planning.smooth_goal_connection.clothoid_max_steer_angle_rate_deg_per_sec);
+      for (const auto & deg :
+           params_.path_planning.smooth_goal_connection.clothoid_max_steer_angles_deg) {
+        clothoid_params.max_steer_angles_rad.push_back(autoware_utils::deg2rad(deg));
+      }
+
       auto refined_path = utils::modify_path_for_smooth_goal_connection(
         *trajectory, route_context_,
         params_.path_planning.smooth_goal_connection.search_radius_range,
-        params_.path_planning.smooth_goal_connection.pre_goal_offset);
+        params_.path_planning.smooth_goal_connection.pre_goal_offset, clothoid_params);
 
       if (refined_path) {
         refined_path->align_orientation_with_trajectory_direction();
