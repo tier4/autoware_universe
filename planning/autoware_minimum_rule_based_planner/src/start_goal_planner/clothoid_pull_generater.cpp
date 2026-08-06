@@ -842,10 +842,10 @@ std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid
     calculate_relative_pose_in_vehicle_coordinate(start_pose, target_pose);
 
   const double minimum_radius = wheel_base_m / std::tan(max_steer_angle);
-  double first_radius = minimum_radius;
   std::vector<std::vector<geometry_msgs::msg::Point>> candidate_paths;
-  for (int i = 0; i < 2; ++i) {
-    for (const bool is_leftShift : {true, false}) {
+  for (const bool is_leftShift : {true, false}) {
+    double first_radius = minimum_radius;
+    for (int i = 0; i < 2; ++i) {
       const auto circular_path_opt = calc_circular_path(
         start_pose, relative_pose_info.longitudinal_distance_vehicle,
         relative_pose_info.lateral_distance_vehicle, relative_pose_info.angle_diff, first_radius,
@@ -853,19 +853,17 @@ std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid
       if (!circular_path_opt || circular_path_opt->segments[1].radius < minimum_radius) {
         break;
       }
-      const auto & circular_path = *circular_path_opt;
-      first_radius = circular_path.segments[1].radius;
+      first_radius = circular_path_opt->segments[1].radius;
 
       auto connected_points_opt = biclothoid_approximation(
-        circular_path, start_pose, wheel_base_m, max_steer_angle_rate_rad_per_sec,
+        *circular_path_opt, start_pose, wheel_base_m, max_steer_angle_rate_rad_per_sec,
         reference_velocity_mps);
       if (!connected_points_opt) {
         continue;
       }
-      const auto & connected_points = *connected_points_opt;
 
-      if (!connected_points.empty()) {
-        candidate_paths.push_back(connected_points);
+      if (!connected_points_opt->empty()) {
+        candidate_paths.push_back(*connected_points_opt);
       }
     }
   }

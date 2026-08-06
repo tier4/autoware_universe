@@ -205,6 +205,100 @@ lanelet::BasicPoints3d to_lanelet_points(
     [](const auto & point) { return lanelet::utils::conversion::toLaneletPoint(point); });
   return lanelet_points;
 }
+
+struct AvailableArea
+{
+  lanelet::ConstLanelets lanelets;
+  lanelet::Areas areas;
+};
+
+AvailableArea get_available_area(
+  const lanelet::ConstLanelets & base_lanelets, const lanelet::LaneletMapPtr & lanelet_map_ptr,
+  const lanelet::routing::RoutingGraphPtr & routing_graph_ptr)
+{
+  AvailableArea available;
+  available.lanelets = base_lanelets;
+
+  auto try_add_lanelet = [&](const lanelet::ConstLanelet & candidate) {
+    if (
+      std::find(available.lanelets.begin(), available.lanelets.end(), candidate) ==
+      available.lanelets.end()) {
+      available.lanelets.push_back(candidate);
+    }
+  };
+  auto try_add_area = [&](const lanelet::Area & candidate) {
+    if (
+      std::find(available.areas.begin(), available.areas.end(), candidate) ==
+      available.areas.end()) {
+      available.areas.push_back(candidate);
+    }
+  };
+
+  // Lanelets reachable from base_lanelets by a lane change.
+  for (const auto & ll : base_lanelets) {
+    for (const auto & neighbor : routing_graph_ptr->besides(ll)) {
+      try_add_lanelet(neighbor);
+    }
+  }
+
+  // Road-shoulder lanelets sharing a boundary linestring with the lanelets collected so far
+  // (same logic as RouteHandler::getLeftShoulderLanelet / getRightShoulderLanelet).
+  const lanelet::ConstLanelets lanelets_after_lane_change = available.lanelets;
+  for (const auto & ll : lanelets_after_lane_change) {
+    for (const auto & other : lanelet_map_ptr->laneletLayer.findUsages(ll.leftBound())) {
+      if (
+        other.rightBound() == ll.leftBound() &&
+        autoware::experimental::lanelet2_utils::is_shoulder_lane(other)) {
+        try_add_lanelet(other);
+      }
+    }
+    for (const auto & other : lanelet_map_ptr->laneletLayer.findUsages(ll.rightBound())) {
+      if (
+        other.leftBound() == ll.rightBound() &&
+        autoware::experimental::lanelet2_utils::is_shoulder_lane(other)) {
+        try_add_lanelet(other);
+      }
+    }
+  }
+
+  // Freespace areas (lanelet::Area, subtype == "freespace") sharing a boundary linestring with
+  // the lanelets collected so far.
+  for (const auto & ll : available.lanelets) {
+    for (const auto & bound : {ll.leftBound(), ll.rightBound()}) {
+      for (const auto & area : lanelet_map_ptr->areaLayer.findUsages(bound)) {
+        const auto & outer = area.outerBound();
+        const bool shares_bound =
+          std::any_of(outer.begin(), outer.end(), [&](const auto & ls) { return ls == bound; });
+        if (
+          area.attributeOr(lanelet::AttributeName::Subtype, std::string()) == "freespace" &&
+          shares_bound) {
+          try_add_area(area);
+        }
+      }
+    }
+  }
+
+  return available;
+}
+
+bool is_in_areas(const geometry_msgs::msg::Pose & pose, const lanelet::Areas & areas)
+{
+  const lanelet::BasicPoint2d point(pose.position.x, pose.position.y);
+  return std::any_of(areas.begin(), areas.end(), [&](const auto & area) {
+    return lanelet::geometry::within(
+      point, lanelet::traits::to2D(area.outerBoundPolygon()).basicPolygon());
+  });
+}
+
+bool is_trajectory_inside_lanelets_or_areas(
+  const PathPointTrajectory & refined_path, const AvailableArea & available_area)
+{
+  const auto points = refined_path.restore();
+  return std::none_of(points.begin(), points.end(), [&](const auto & point) {
+    return !is_in_lanelets(point.point.pose, available_area.lanelets) &&
+           !is_in_areas(point.point.pose, available_area.areas);
+  });
+}
 }  // namespace
 
 lanelet::ConstLanelets get_lanelets_up_to(
@@ -968,7 +1062,6 @@ std::optional<std::vector<PathPointTrajectory>> refine_path_for_goal(
   }
   if (candidate_trajectories.empty()) {
     return std::nullopt;
-    ;
   }
   return candidate_trajectories;
 }
@@ -993,15 +1086,6 @@ bool is_in_lanelets(const geometry_msgs::msg::Pose & pose, const lanelet::ConstL
   });
 }
 
-bool is_trajectory_inside_lanelets(
-  const PathPointTrajectory & refined_path, const lanelet::ConstLanelets & lanelets)
-{
-  const auto points = refined_path.restore();
-  return std::none_of(points.begin(), points.end(), [&](const auto & point) {
-    return !is_in_lanelets(point.point.pose, lanelets);
-  });
-}
-
 std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
   const PathPointTrajectory & trajectory, const RouteContext & planner_data,
   const double search_radius_range, const double pre_goal_offset,
@@ -1010,28 +1094,10 @@ std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
   if (planner_data.preferred_lanelets.empty()) {
     return std::nullopt;
   }
-  // Build the set of lanelets valid for the refined path.
-  // Include goal lanelets so that a path connecting to an adjacent goal lane passes validation.
-  auto lanelets = extract_lanelets_from_trajectory(trajectory, planner_data);
-  for (const auto & goal_ll : planner_data.goal_lanelets) {
-    if (std::find(lanelets.begin(), lanelets.end(), goal_ll) == lanelets.end()) {
-      lanelets.push_back(goal_ll);
-    }
-  }
-
-  // Include lanelets that contain the goal pose (e.g., shoulder lanelets) so that
-  // the trajectory connecting to an off-lane goal passes the inside-lanelets check.
-  const auto goal_point_2d =
-    lanelet::BasicPoint2d(planner_data.goal_pose.position.x, planner_data.goal_pose.position.y);
-  const auto nearest_lanelets =
-    lanelet::geometry::findNearest(planner_data.lanelet_map_ptr->laneletLayer, goal_point_2d, 20);
-  for (const auto & [dist, ll] : nearest_lanelets) {
-    if (
-      lanelet::geometry::inside(ll, goal_point_2d) &&
-      std::find(lanelets.begin(), lanelets.end(), ll) == lanelets.end()) {
-      lanelets.push_back(ll);
-    }
-  }
+  // Build the set of lanelets/areas valid for the refined path.
+  const auto base_lanelets = extract_lanelets_from_trajectory(trajectory, planner_data);
+  const auto available_area =
+    get_available_area(base_lanelets, planner_data.lanelet_map_ptr, planner_data.routing_graph_ptr);
 
   // This process is to fit the trajectory inside the lanelets. By reducing
   // refine_goal_search_radius_range, we can fit the trajectory inside lanelets even if the
@@ -1041,10 +1107,10 @@ std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
       trajectory, planner_data.goal_pose, planner_data.preferred_lanelets.back().id(), s,
       pre_goal_offset, clothoid_params);
     if (!candidate_trajectories.has_value()) {
-      return std::nullopt;
+      continue;
     }
     for (const auto & refined_trajectory : *candidate_trajectories) {
-      if (is_trajectory_inside_lanelets(refined_trajectory, lanelets)) {
+      if (is_trajectory_inside_lanelets_or_areas(refined_trajectory, available_area)) {
         return refined_trajectory;
       }
     }
