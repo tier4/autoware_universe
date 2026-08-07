@@ -1437,6 +1437,11 @@ void splice_shift_points(
 
 bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & current_pose)
 {
+  const auto vehicle_center_pose = autoware_utils::calc_offset_pose(
+    current_pose,
+    (vehicle_info_.max_longitudinal_offset_m + vehicle_info_.min_longitudinal_offset_m) / 2.0, 0.0,
+    0.0);
+
   if (!current_lanelet_ || std::exchange(route_updated_, false)) {
     lanelet::ConstLanelet closest;
     if (lanelet::utils::query::getClosestLaneletWithConstrains(
@@ -1485,7 +1490,7 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
   }
 
   if (lanelet::utils::query::getClosestLaneletWithConstrains(
-        candidates, current_pose, &*current_lanelet_,
+        candidates, vehicle_center_pose, &*current_lanelet_,
         params_.path_planning.ego_nearest_lanelet.dist_threshold,
         params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
     return true;
@@ -1514,8 +1519,13 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
     return std::nullopt;
   }
 
+  const auto vehicle_center_offset =
+    (vehicle_info_.max_longitudinal_offset_m + vehicle_info_.min_longitudinal_offset_m) / 2.0;
+  const auto vehicle_center_pose =
+    autoware_utils::calc_offset_pose(current_pose, vehicle_center_offset, 0.0, 0.0);
   const auto s_on_current_lanelet =
-    lanelet::utils::getArcCoordinates({*current_lanelet_}, current_pose).length;
+    lanelet::utils::getArcCoordinates({*current_lanelet_}, vehicle_center_pose).length -
+    vehicle_center_offset;
 
   const auto backward_length = std::max(
     0., path_length_backward + vehicle_info_.max_longitudinal_offset_m - s_on_current_lanelet);
