@@ -18,6 +18,9 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <gtest/gtest.h>
+#include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_routing/RoutingGraph.h>
+#include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
 #include <cmath>
 #include <memory>
@@ -100,6 +103,26 @@ PathPointWithLaneId make_path_point(double x, double y, double vel = 1.0, int64_
   return pt;
 }
 
+lanelet::Lanelet make_road_lanelet(lanelet::Id id, double x_start, double x_end)
+{
+  const lanelet::Id base = id * 100;
+  lanelet::LineString3d left(
+    base + 1,
+    {lanelet::Point3d(base + 2, x_start, 2.0, 0.0),
+     lanelet::Point3d(base + 3, x_end, 2.0, 0.0)});
+  lanelet::LineString3d right(
+    base + 4,
+    {lanelet::Point3d(base + 5, x_start, -2.0, 0.0),
+     lanelet::Point3d(base + 6, x_end, -2.0, 0.0)});
+  lanelet::Lanelet lanelet(id, left, right);
+  lanelet.attributes()[lanelet::AttributeNamesString::Subtype] =
+    lanelet::AttributeValueString::Road;
+  lanelet.attributes()[lanelet::AttributeNamesString::Location] =
+    lanelet::AttributeValueString::Urban;
+  lanelet.attributes()["one_way"] = "yes";
+  return lanelet;
+}
+
 }  // namespace
 
 // ============================================================
@@ -117,6 +140,34 @@ TEST(PathPlannerTest, ConstructWithoutNode)
   vehicle_info.vehicle_length_m = 4.89;
 
   EXPECT_NO_THROW(PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info));
+}
+
+TEST(PathPlannerTest, CurrentLaneletAtVehicleFootprintCenter)
+{
+  auto logger = rclcpp::get_logger("test_path_planner");
+  auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
+  auto params = make_default_params();
+  VehicleInfo vehicle_info{};
+  vehicle_info.max_longitudinal_offset_m = 4.0;
+  vehicle_info.min_longitudinal_offset_m = -1.0;
+  PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info);
+
+  const auto lanelet = make_road_lanelet(1, 10.0, 20.0);
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  map->add(lanelet);
+  const auto traffic_rules = lanelet::traffic_rules::TrafficRulesFactory::create(
+    lanelet::Locations::Germany, lanelet::Participants::Vehicle);
+  RouteContext context;
+  context.lanelet_map_ptr = map;
+  context.routing_graph_ptr = lanelet::routing::RoutingGraph::build(*map, *traffic_rules);
+  context.route_lanelets = {lanelet};
+  context.start_lanelets = {lanelet};
+  planner.set_route_context(context);
+
+  // base_link is behind the lanelet, while the footprint center is at x = 10.5 inside it.
+  const auto base_link_pose = make_pose(9.0, 0.0);
+  EXPECT_TRUE(planner.update_current_lanelet(base_link_pose));
+  EXPECT_TRUE(planner.update_current_lanelet(base_link_pose));
 }
 
 // ============================================================

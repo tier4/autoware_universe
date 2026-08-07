@@ -1369,10 +1369,15 @@ void splice_shift_points(
 
 bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & current_pose)
 {
+  const auto vehicle_center_pose = autoware_utils::calc_offset_pose(
+    current_pose,
+    (vehicle_info_.max_longitudinal_offset_m + vehicle_info_.min_longitudinal_offset_m) / 2.0,
+    0.0, 0.0);
+
   if (!current_lanelet_) {
     lanelet::ConstLanelet closest;
     if (lanelet::utils::query::getClosestLanelet(
-          route_context_.route_lanelets, current_pose, &closest)) {
+          route_context_.route_lanelets, vehicle_center_pose, &closest)) {
       current_lanelet_ = closest;
       return true;
     }
@@ -1381,11 +1386,11 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
 
   lanelet::ConstLanelets current_lanelets;
   lanelet::utils::query::getCurrentLanelets(
-    route_context_.route_lanelets, current_pose, &current_lanelets);
+    route_context_.route_lanelets, vehicle_center_pose, &current_lanelets);
   if (current_lanelets.empty()) {
     // Ego is outside route (possibly due to lane change failure)
     if (lanelet::geometry::inside(
-          *current_lanelet_, {current_pose.position.x, current_pose.position.y})) {
+          *current_lanelet_, {vehicle_center_pose.position.x, vehicle_center_pose.position.y})) {
       return true;
     }
     const auto following_lanelets = route_context_.routing_graph_ptr->following(*current_lanelet_);
@@ -1423,14 +1428,14 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
   }
 
   if (lanelet::utils::query::getClosestLaneletWithConstrains(
-        candidates, current_pose, &*current_lanelet_,
+        candidates, vehicle_center_pose, &*current_lanelet_,
         params_.path_planning.ego_nearest_lanelet.dist_threshold,
         params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
     return true;
   }
 
   if (lanelet::utils::query::getClosestLanelet(
-        route_context_.route_lanelets, current_pose, &*current_lanelet_)) {
+        route_context_.route_lanelets, vehicle_center_pose, &*current_lanelet_)) {
     return true;
   }
 
