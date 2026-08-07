@@ -49,10 +49,6 @@ ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
 
 set_target_properties(autoware_trajectory_validator_plugins PROPERTIES CXX_VISIBILITY_PRESET default)
 
-target_compile_options(autoware_trajectory_validator_plugins PUBLIC
-  -Wno-error=deprecated-declarations
-)
-
 target_link_libraries(autoware_trajectory_validator_plugins
   ${trajectory_validator_lib_target}
   ${PCL_LIBRARIES}

@@ -94,7 +94,10 @@ inline void emit_debug_markers(
   const bool is_feasible, const rclcpp::Time & stamp)
 {
   const auto & no_ground = planner_data.no_ground_pointcloud.pointcloud;
-  const auto filtered_ptr = planner_data.no_ground_pointcloud.get_filtered_pointcloud_ptr();
+  pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_ptr{};
+  if (!no_ground.empty()) {
+    filtered_ptr = planner_data.no_ground_pointcloud.get_filtered_pointcloud_ptr();
+  }
 
   debug.is_feasible = is_feasible;
   debug.ego_position = planner_data.current_odometry.pose.pose.position;
