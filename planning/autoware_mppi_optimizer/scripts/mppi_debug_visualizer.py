@@ -102,26 +102,29 @@ MPPI_MAX_WORST_VIZ_ROLLOUTS = 128
 
 # Numerical cost params from mppi_optimizer.param.yaml / FirstOrderDubinsMppiCostParams.
 # (Excludes bool/string runtime flags: enable_debug_trajectory_log, ignore_*, etc.)
+# Keep in sync with config/mppi_optimizer.param.yaml (overridden by cost_params.csv when present).
 DEFAULT_PARAMS: Dict[str, float] = {
-    "lambda": 14000.0,
+    "lambda": 70.0,
     "desired_speed": 2.5,
-    "speed_coeff": 500.0,
-    "track_coeff": 3000.0,
+    "speed_coeff": 300.0,
+    "track_coeff": 1200.0,
     "track_terminal_scale": 10.0,
-    "heading_coeff": 1000.0,
+    "heading_coeff": 600.0,
     "lateral_distance_coeff": 0.0,
     "lateral_yaw_error_coeff": 0.0,
     "crash_coeff": 100000.0,
     "boundary_threshold": 0.8,
     "boundary_threshold_left": -1.0,
     "boundary_threshold_right": -1.0,
-    "lateral_acceleration_coeff": 500.0,
-    "lateral_jerk_coeff": 1000.0,
-    "longitudinal_jerk_coeff": 10.0,
-    "accel_cmd_coeff": 0.0,
-    "steer_cmd_coeff": 10.0,
-    "steer_rate_coeff": 0.0,  # cost param; not always present in yaml
+    "lateral_acceleration_coeff": 100.0,
+    "lateral_jerk_coeff": 200.0,
+    "longitudinal_jerk_coeff": 100.0,
+    "accel_cmd_coeff": 50.0,
+    "steer_cmd_coeff": 250.0,
+    "steer_rate_coeff": 300.0,
     "obstacle_collision_margin": 0.2,
+    "road_border_collision_margin": 0.3,
+    "drivable_area_crossing_coeff": 100.0,
 }
 
 # (name, vmin, vmax) — keep in sync with DEFAULT_PARAMS keys.
@@ -144,6 +147,8 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("boundary_threshold_left", -1.0, 5.0),
     ("boundary_threshold_right", -1.0, 5.0),
     ("obstacle_collision_margin", 0.0, 2.0),
+    ("road_border_collision_margin", 0.0, 2.0),
+    ("drivable_area_crossing_coeff", 0.0, 10000.0),
     ("crash_coeff", 0.0, 500000.0),
 ]
 
@@ -311,6 +316,32 @@ class LoadedCostDistribution:
     normalized_weights: List[float] = field(default_factory=list)
 
 
+CRASH_STATUS_LABELS = {
+    0: "ok",
+    1: "lateral_bound",
+    2: "obstacle",
+    3: "road_border",
+}
+
+
+def crash_status_label(code: int) -> str:
+    return CRASH_STATUS_LABELS.get(code, f"unknown({code})")
+
+
+def load_crash_status_csv(path: Path) -> Optional[int]:
+    """Return crash_status int from <tag>_crash_status.csv, or None if missing."""
+    if not path.is_file():
+        return None
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                return int(float(row["crash_status"]))
+            except (KeyError, ValueError, TypeError):
+                continue
+    return None
+
+
 def load_costs_csv(path: Path) -> LoadedCostDistribution:
     dist = LoadedCostDistribution()
     if not path.is_file():
@@ -377,14 +408,27 @@ def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float],
 
 
 def discover_log_frames(log_dir: Path) -> List[int]:
+    """List frame ids from index.csv, or by scanning *_reference.csv.
+
+    Tolerates a missing header row (online logger appends; if index.csv was
+    truncated mid-session the header can be gone).
+    """
     index_path = log_dir / "index.csv"
     frame_ids: List[int] = []
     if index_path.is_file():
-        with index_path.open(newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                frame_ids.append(int(row["frame_id"]))
-        return frame_ids
+        lines = index_path.read_text().splitlines()
+        start = 1 if lines and lines[0].strip().startswith("frame_id") else 0
+        for line in lines[start:]:
+            line = line.strip()
+            if not line:
+                continue
+            cell = line.split(",", 1)[0]
+            try:
+                frame_ids.append(int(cell))
+            except ValueError:
+                continue
+        if frame_ids:
+            return frame_ids
 
     for ref in sorted(log_dir.glob("*_reference.csv")):
         stem = ref.name[: -len("_reference.csv")]
@@ -542,6 +586,7 @@ def frame_from_loaded(
     rollouts: Optional[List[Tuple[float, List[float], List[float], bool]]] = None,
     steer_time_constant: float = VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT,
     wheel_base: float = VEHICLE_PARAMS_DEFAULT_WHEEL_BASE,
+    retune_crash_status: Optional[int] = None,
 ) -> MppiDebugFrame:
     frame = MppiDebugFrame(
         reference_xy=(reference.x, reference.y) if reference.x else None,
@@ -586,6 +631,10 @@ def frame_from_loaded(
             f"retune max‖Δp‖={ret_pos:.3f}m max|Δψ|={ret_dpsi:.3f}rad max|v|={ret_vel:.3f}m/s"
         )
         parts.append(f"logged↔retune max‖Δp‖={vs_logged:.3f}m")
+    if retune_crash_status is not None:
+        parts.append(
+            f"retune crash_status={retune_crash_status} ({crash_status_label(retune_crash_status)})"
+        )
     if frame.raw_costs:
         finite_costs = [c for c in frame.raw_costs if abs(c) < 1.0e20]
         if finite_costs:
@@ -2038,6 +2087,7 @@ class OfflineLogVisualizer:
         retuned = None
         costs = None
         rollouts = None
+        retune_crash_status = None
         if self._out_dir is not None:
             retuned = load_trajectory_csv(self._out_dir / f"{tag}_optimized.csv")
             if not retuned.x:
@@ -2048,6 +2098,7 @@ class OfflineLogVisualizer:
             rollouts = load_rollouts_csv(self._out_dir / f"{tag}_rollouts.csv")
             if not rollouts:
                 rollouts = None
+            retune_crash_status = load_crash_status_csv(self._out_dir / f"{tag}_crash_status.csv")
         stamp = f"frame: {frame_id} / {self._frame_ids[-1]}"
         if self._enable_retune:
             stamp = f"{stamp}   |   {self._status}"
@@ -2060,6 +2111,7 @@ class OfflineLogVisualizer:
             rollouts=rollouts,
             steer_time_constant=self._steer_time_constant,
             wheel_base=self._wheel_base,
+            retune_crash_status=retune_crash_status,
         )
         self._fill_offline_replan_ade(frame, up_to_index=self._index)
         return frame
@@ -2126,7 +2178,9 @@ class OfflineLogVisualizer:
                 self._show_current()
                 return
             if not (self._out_dir / f"{tag}_optimized.csv").is_file():
-                self._status = f"Re-seed needs a retuned path — run Retune on frame {frame_id} first"
+                self._status = (
+                    f"Re-seed needs a retuned path — run Retune on frame {frame_id} first"
+                )
                 self._show_current()
                 return
 
@@ -2174,9 +2228,7 @@ class OfflineLogVisualizer:
             self._status = f"{applied} | {tail}" if applied else tail
             if reseed:
                 self._reseed_counts[frame_id] = prev_count + 1
-                self._status = (
-                    f"reseed_pass={self._reseed_counts[frame_id]} | {self._status}"
-                )
+                self._status = f"reseed_pass={self._reseed_counts[frame_id]} | {self._status}"
             else:
                 # Fresh Retune resets the iterative re-seed counter for this frame.
                 self._reseed_counts[frame_id] = 0
@@ -2198,13 +2250,20 @@ class OfflineLogVisualizer:
                 self._status = f"{self._status} | min_cost={global_min:.1f}"
             if best_rollouts:
                 viz_min = min(r[0] for r in best_rollouts)
-                print(
-                    f"[retune] frame {frame_id}: min exported top-rollout cost = {viz_min:.6g}"
-                )
-            # Echo retune binary lines that mention cost.
+                print(f"[retune] frame {frame_id}: min exported top-rollout cost = {viz_min:.6g}")
+            # Echo retune binary lines that mention cost / crash.
             for ln in lines:
-                if "baseline_cost=" in ln or "min_exported_rollout_cost=" in ln:
+                if (
+                    "baseline_cost=" in ln
+                    or "min_exported_rollout_cost=" in ln
+                    or "crash_status=" in ln
+                ):
                     print(ln)
+            crash = load_crash_status_csv(self._out_dir / f"{tag}_crash_status.csv")
+            if crash is not None:
+                self._status = (
+                    f"{self._status} | crash_status={crash} ({crash_status_label(crash)})"
+                )
             if opt.x and logged.x:
                 vs = max_pos_err((logged.x, logged.y), (opt.x, opt.y))
                 self._status = f"{self._status} | logged↔retune Δpos={vs:.3f}m"

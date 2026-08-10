@@ -67,6 +67,12 @@ struct FirstOrderDubinsMppiDebug
   std::vector<std::pair<float, float>> optimal_horizon;
   std::vector<FirstOrderDubinsMppiRollout> rollouts;
   float baseline_cost{0.0F};
+  /**
+   * Host-side collision check of the optimized output trajectory.
+   * 0 = ok, 1 = lateral bound, 2 = obstacle, 3 = road border
+   * (first violation along the horizon; see detectAndLatchCrash).
+   */
+  int crash_status{0};
 };
 
 struct FirstOrderDubinsMppiOptimizationResult
@@ -124,8 +130,8 @@ public:
   /**
    * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
    * @param use_last_control_as_nominal When true and a previous optimized control sequence
-   *        exists, seed u_nom by shifting that sequence (warm start) instead of reseeding
-   *        from the diffusion reference every cycle.
+   *        exists and ego is not stopped (|v| >= 0.05 m/s), seed u_nom by shifting that
+   *        sequence (warm start). From a stop, always reseed from the diffusion reference.
    */
   void setAblationOptions(
     const bool ignore_obstacles, const bool ignore_drivable_area,
@@ -150,9 +156,24 @@ public:
   /**
    * @brief Force the next optimizeTrajectory / seedNominalControl to use this horizon as u_nom
    *        (offline retune replay of logged NNNNNN_nominal.csv). Cleared after one use.
-   *        Sequences are truncated/padded to the MPPI horizon; values are clamped to vehicle limits.
+   *        Sequences are truncated/padded to the MPPI horizon; values are clamped to vehicle
+   * limits.
    */
   void setForcedNominalControl(
+    const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd);
+
+  /**
+   * @brief Seed vendor Savitzky–Golay control_history_ (2 previous applied commands).
+   *        Required for offline retune to match online smoothing edge taps.
+   *        Order: (accel/steer) at t-2, then (accel/steer) at t-1.
+   */
+  void setControlHistory(float accel_tm2, float steer_tm2, float accel_tm1, float steer_tm1);
+
+  /**
+   * @brief Seed the input-delay FIFO with already-sent (accel, steer) commands (oldest first).
+   *        Length should equal the quantized delay steps; empty clears / disables seeding.
+   */
+  void setInputDelayBuffer(
     const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd);
 
   /**

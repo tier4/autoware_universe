@@ -16,10 +16,13 @@
 #define AUTOWARE__MPPI_OPTIMIZER__MPPI_DEBUG_TRAJECTORY_LOGGER_HPP_
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 
 #include <rclcpp/logging.hpp>
 
+#include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 
 #include <tf2/utils.h>
@@ -68,10 +71,17 @@ struct MppiDebugEgoState
  *   <log_dir>/index.csv
  *   <log_dir>/vehicle_params.csv   (once)
  *   <log_dir>/cost_params.csv      (once)
+ *   <log_dir>/runtime_options.csv  (once)
  *   <log_dir>/000000_reference.csv
  *   <log_dir>/000000_optimized.csv
  *   <log_dir>/000000_ego.csv
- *   <log_dir>/000000_nominal.csv   (u_nom accel/steer cmds used this cycle)
+ *   <log_dir>/000000_nominal.csv          (u_nom warm-start accel/steer cmds)
+ *   <log_dir>/000000_road_borders.csv
+ *   <log_dir>/000000_drivable.csv
+ *   <log_dir>/000000_objects.csv
+ *   <log_dir>/000000_control_history.csv  (SG taps at cycle start)
+ *   <log_dir>/000000_delay_buffer.csv     (FIFO before IC roll)
+ *   <log_dir>/000000_applied.csv          (u[0] applied this cycle)
  *   ...
  *
  * Trajectory CSV columns:
@@ -91,6 +101,7 @@ public:
     frame_id_ = 0;
     index_initialized_ = false;
     params_written_ = false;
+    runtime_written_ = false;
     if (!enabled_) {
       return;
     }
@@ -176,11 +187,35 @@ public:
     params_written_ = true;
   }
 
+  void writeRuntimeOptionsOnce(const FirstOrderDubinsMppiRuntimeOptions & options)
+  {
+    if (!enabled_ || runtime_written_) {
+      return;
+    }
+    std::ofstream out(directory_ + "/runtime_options.csv");
+    if (out) {
+      out << "key,value\n";
+      out << "ignore_obstacles," << (options.ignore_obstacles ? 1 : 0) << "\n";
+      out << "ignore_drivable_area," << (options.ignore_drivable_area ? 1 : 0) << "\n";
+      out << "force_cold_start_each_step," << (options.force_cold_start_each_step ? 1 : 0) << "\n";
+      out << "skip_if_invalid," << (options.skip_if_invalid ? 1 : 0) << "\n";
+      out << "use_last_control_as_nominal," << (options.use_last_control_as_nominal ? 1 : 0)
+          << "\n";
+    }
+    runtime_written_ = true;
+  }
+
   void logFrame(
     const autoware_planning_msgs::msg::Trajectory & reference,
     const autoware_planning_msgs::msg::Trajectory & optimized, const MppiDebugEgoState & ego,
-    const double baseline_cost = 0.0, const std::vector<float> & nominal_accel_cmd = {},
-    const std::vector<float> & nominal_steer_cmd = {})
+    const double baseline_cost, const std::vector<float> & nominal_accel_cmd,
+    const std::vector<float> & nominal_steer_cmd, const std::vector<Segment> & road_borders,
+    const std::vector<Segment> & drivable_area,
+    const autoware_perception_msgs::msg::TrackedObjects & tracked_objects,
+    const float hist_accel_tm2, const float hist_steer_tm2, const float hist_accel_tm1,
+    const float hist_steer_tm1, const std::vector<float> & delay_accel_cmd,
+    const std::vector<float> & delay_steer_cmd, const float applied_accel_cmd,
+    const float applied_steer_cmd)
   {
     if (!enabled_) {
       return;
@@ -202,6 +237,16 @@ public:
         return;
       }
     }
+    writeSegmentsCsv(directory_ + "/" + frame_tag + "_road_borders.csv", road_borders);
+    writeSegmentsCsv(directory_ + "/" + frame_tag + "_drivable.csv", drivable_area);
+    writeObjectsCsv(directory_ + "/" + frame_tag + "_objects.csv", tracked_objects);
+    writeControlHistoryCsv(
+      directory_ + "/" + frame_tag + "_control_history.csv", hist_accel_tm2, hist_steer_tm2,
+      hist_accel_tm1, hist_steer_tm1);
+    writeNominalCsv(
+      directory_ + "/" + frame_tag + "_delay_buffer.csv", delay_accel_cmd, delay_steer_cmd);
+    writeAppliedCsv(
+      directory_ + "/" + frame_tag + "_applied.csv", applied_accel_cmd, applied_steer_cmd);
 
     const auto & stamp = reference.header.stamp.sec != 0 || reference.header.stamp.nanosec != 0
                            ? reference.header.stamp
@@ -232,11 +277,25 @@ private:
       return;
     }
     const std::string index_path = directory_ + "/index.csv";
-    if (!std::filesystem::exists(index_path)) {
+    bool needs_header = true;
+    if (std::filesystem::exists(index_path) && std::filesystem::file_size(index_path) > 0) {
+      std::ifstream in(index_path);
+      std::string first;
+      if (std::getline(in, first) && first.rfind("frame_id", 0) == 0) {
+        needs_header = false;
+      }
+    }
+    if (needs_header && !std::filesystem::exists(index_path)) {
       std::ofstream index(index_path);
       if (index) {
         index << "frame_id,stamp_sec,stamp_nsec,baseline_cost,n_reference,n_optimized\n";
       }
+    } else if (needs_header && std::filesystem::exists(index_path)) {
+      // File exists but header is missing/corrupt (e.g. truncated mid-session). Leave
+      // existing rows; visualizer tolerates headerless index.csv.
+      RCLCPP_WARN(
+        rclcpp::get_logger("mppi_debug_trajectory_logger"),
+        "index.csv exists without a frame_id header; appending without rewriting");
     }
     index_initialized_ = true;
   }
@@ -298,9 +357,72 @@ private:
     return true;
   }
 
+  static void writeSegmentsCsv(const std::string & path, const std::vector<Segment> & segments)
+  {
+    std::ofstream out(path);
+    if (!out) {
+      return;
+    }
+    out << "x0,y0,x1,y1\n";
+    out << std::setprecision(9) << std::fixed;
+    for (const auto & seg : segments) {
+      out << seg.x0 << "," << seg.y0 << "," << seg.x1 << "," << seg.y1 << "\n";
+    }
+  }
+
+  static void writeObjectsCsv(
+    const std::string & path, const autoware_perception_msgs::msg::TrackedObjects & objects)
+  {
+    std::ofstream out(path);
+    if (!out) {
+      return;
+    }
+    out << "x,y,yaw,v,length,width\n";
+    out << std::setprecision(9) << std::fixed;
+    for (const auto & object : objects.objects) {
+      const auto & pose = object.kinematics.pose_with_covariance.pose;
+      const double yaw = tf2::getYaw(pose.orientation);
+      const double v = object.kinematics.twist_with_covariance.twist.linear.x;
+      double length = 4.5;
+      double width = 1.8;
+      if (object.shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
+        length = object.shape.dimensions.x;
+        width = object.shape.dimensions.y;
+      }
+      out << pose.position.x << "," << pose.position.y << "," << yaw << "," << v << "," << length
+          << "," << width << "\n";
+    }
+  }
+
+  static void writeControlHistoryCsv(
+    const std::string & path, const float accel_tm2, const float steer_tm2, const float accel_tm1,
+    const float steer_tm1)
+  {
+    std::ofstream out(path);
+    if (!out) {
+      return;
+    }
+    out << "accel_tm2,steer_tm2,accel_tm1,steer_tm1\n";
+    out << std::setprecision(9) << std::fixed;
+    out << accel_tm2 << "," << steer_tm2 << "," << accel_tm1 << "," << steer_tm1 << "\n";
+  }
+
+  static void writeAppliedCsv(
+    const std::string & path, const float accel_cmd, const float steer_cmd)
+  {
+    std::ofstream out(path);
+    if (!out) {
+      return;
+    }
+    out << "accel_cmd,steer_cmd\n";
+    out << std::setprecision(9) << std::fixed;
+    out << accel_cmd << "," << steer_cmd << "\n";
+  }
+
   bool enabled_{false};
   bool index_initialized_{false};
   bool params_written_{false};
+  bool runtime_written_{false};
   std::string directory_;
   uint64_t frame_id_{0};
 };

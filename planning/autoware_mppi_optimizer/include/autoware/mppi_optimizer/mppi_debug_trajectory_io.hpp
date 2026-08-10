@@ -16,8 +16,11 @@
 #define AUTOWARE__MPPI_OPTIMIZER__MPPI_DEBUG_TRAJECTORY_IO_HPP_
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_trajectory_logger.hpp"
 
+#include <autoware_perception_msgs/msg/shape.hpp>
+#include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -253,6 +256,161 @@ inline bool loadMppiDebugKeyValueCsv(
     out[line.substr(0, comma)] = std::stof(line.substr(comma + 1));
   }
   return !out.empty();
+}
+
+inline bool loadMppiDebugSegmentsCsv(const std::string & path, std::vector<Segment> & segments)
+{
+  std::ifstream in(path);
+  if (!in) {
+    return false;
+  }
+  segments.clear();
+  std::string line;
+  if (!std::getline(in, line)) {
+    return false;
+  }
+  while (std::getline(in, line)) {
+    if (line.empty()) {
+      continue;
+    }
+    std::stringstream ss(line);
+    std::string cell;
+    std::vector<double> vals;
+    while (std::getline(ss, cell, ',')) {
+      vals.push_back(std::stod(cell));
+    }
+    if (vals.size() < 4U) {
+      continue;
+    }
+    Segment seg;
+    seg.x0 = static_cast<float>(vals[0]);
+    seg.y0 = static_cast<float>(vals[1]);
+    seg.x1 = static_cast<float>(vals[2]);
+    seg.y1 = static_cast<float>(vals[3]);
+    segments.push_back(seg);
+  }
+  return true;
+}
+
+inline bool loadMppiDebugObjectsCsv(
+  const std::string & path, autoware_perception_msgs::msg::TrackedObjects & objects)
+{
+  std::ifstream in(path);
+  if (!in) {
+    return false;
+  }
+  objects.objects.clear();
+  std::string line;
+  if (!std::getline(in, line)) {
+    return false;
+  }
+  while (std::getline(in, line)) {
+    if (line.empty()) {
+      continue;
+    }
+    std::stringstream ss(line);
+    std::string cell;
+    std::vector<double> vals;
+    while (std::getline(ss, cell, ',')) {
+      vals.push_back(std::stod(cell));
+    }
+    if (vals.size() < 6U) {
+      continue;
+    }
+    autoware_perception_msgs::msg::TrackedObject object;
+    object.kinematics.pose_with_covariance.pose.position.x = vals[0];
+    object.kinematics.pose_with_covariance.pose.position.y = vals[1];
+    object.kinematics.pose_with_covariance.pose.orientation = quaternionFromYaw(vals[2]);
+    object.kinematics.twist_with_covariance.twist.linear.x = vals[3];
+    object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+    object.shape.dimensions.x = vals[4];
+    object.shape.dimensions.y = vals[5];
+    object.shape.dimensions.z = 1.5;
+    objects.objects.push_back(object);
+  }
+  return true;
+}
+
+inline bool loadMppiDebugControlHistoryCsv(
+  const std::string & path, float & accel_tm2, float & steer_tm2, float & accel_tm1,
+  float & steer_tm1)
+{
+  std::ifstream in(path);
+  if (!in) {
+    return false;
+  }
+  std::string line;
+  if (!std::getline(in, line)) {
+    return false;
+  }
+  if (!std::getline(in, line) || line.empty()) {
+    return false;
+  }
+  std::stringstream ss(line);
+  std::string cell;
+  std::vector<double> vals;
+  while (std::getline(ss, cell, ',')) {
+    vals.push_back(std::stod(cell));
+  }
+  if (vals.size() < 4U) {
+    return false;
+  }
+  accel_tm2 = static_cast<float>(vals[0]);
+  steer_tm2 = static_cast<float>(vals[1]);
+  accel_tm1 = static_cast<float>(vals[2]);
+  steer_tm1 = static_cast<float>(vals[3]);
+  return true;
+}
+
+inline bool loadMppiDebugAppliedCsv(const std::string & path, float & accel_cmd, float & steer_cmd)
+{
+  std::ifstream in(path);
+  if (!in) {
+    return false;
+  }
+  std::string line;
+  if (!std::getline(in, line)) {
+    return false;
+  }
+  if (!std::getline(in, line) || line.empty()) {
+    return false;
+  }
+  std::stringstream ss(line);
+  std::string cell;
+  std::vector<double> vals;
+  while (std::getline(ss, cell, ',')) {
+    vals.push_back(std::stod(cell));
+  }
+  if (vals.size() < 2U) {
+    return false;
+  }
+  accel_cmd = static_cast<float>(vals[0]);
+  steer_cmd = static_cast<float>(vals[1]);
+  return true;
+}
+
+inline bool loadMppiDebugRuntimeOptionsCsv(
+  const std::string & path, FirstOrderDubinsMppiRuntimeOptions & options)
+{
+  std::unordered_map<std::string, float> kv;
+  if (!loadMppiDebugKeyValueCsv(path, kv)) {
+    return false;
+  }
+  auto as_bool = [&kv](const char * key, const bool fallback) {
+    const auto it = kv.find(key);
+    if (it == kv.end()) {
+      return fallback;
+    }
+    return it->second != 0.0F;
+  };
+  options.ignore_obstacles = as_bool("ignore_obstacles", options.ignore_obstacles);
+  options.ignore_drivable_area = as_bool("ignore_drivable_area", options.ignore_drivable_area);
+  options.force_cold_start_each_step =
+    as_bool("force_cold_start_each_step", options.force_cold_start_each_step);
+  options.skip_if_invalid = as_bool("skip_if_invalid", options.skip_if_invalid);
+  options.use_last_control_as_nominal =
+    as_bool("use_last_control_as_nominal", options.use_last_control_as_nominal);
+  return true;
 }
 
 inline std::vector<uint64_t> listMppiDebugFrameIds(const std::string & log_dir)

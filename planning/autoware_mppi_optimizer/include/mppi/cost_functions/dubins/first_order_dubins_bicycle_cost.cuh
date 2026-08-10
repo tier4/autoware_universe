@@ -25,8 +25,7 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float lateral_distance_coeff = 0.0F;
   /** Spatial yaw error vs closest-segment tangent: coeff * Δψ^2; 0 disables. */
   float lateral_yaw_error_coeff = 0.0F;
-  /** Per-violation crash penalty; latched crash_status counts violations (1=lateral bound or hit,
-   * 2=both). */
+  /** Crash penalty scale; latched crash_status is 1=lateral, 2=obstacle, 3=road border. */
   float crash_coeff = 100000.0F;
   float boundary_threshold = 0.8F;
   /** Beyond bound if signed lateral offset exceeds these (path-left = +); <0 falls back to

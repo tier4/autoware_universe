@@ -520,18 +520,15 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   detectAndLatchCrash(
     const float x, const float y, const float yaw, const int timestep, int * crash_status) const
 {
+  // Priority encoding (first match wins): 1=lateral bound, 2=obstacle, 3=road border.
   const bool beyond_lateral_bound = exceedsLateralBoundary(x, y, timestep);
   const bool hit_car = egoIntersectsObstacleAtStep(x, y, yaw, timestep);
   const bool hit_road_border = egoIntersectsRoadBorder(x, y, yaw);
-  const int violations = static_cast<int>(beyond_lateral_bound) + static_cast<int>(hit_car) +
-                         static_cast<int>(hit_road_border);
-  if (violations > 0) {
-    if (crash_status != nullptr) {
-      crash_status[0] = violations;
-    }
-    return true;
+  const int code = beyond_lateral_bound ? 1 : hit_car ? 2 : hit_road_border ? 3 : 0;
+  if (crash_status != nullptr) {
+    crash_status[0] = code;
   }
-  return false;
+  return code > 0;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -676,10 +673,10 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   float steer_rate = 0.0F;
   comfortTerms(
     this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
-  return this->params_.lateral_acceleration_coeff * std::abs(lateral_accel) +
-         this->params_.lateral_jerk_coeff * std::abs(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * std::abs(longitudinal_jerk) +
-         this->params_.steer_rate_coeff * std::abs(steer_rate);
+  return this->params_.lateral_acceleration_coeff * lateral_accel * lateral_accel +
+         this->params_.lateral_jerk_coeff * lateral_jerk * lateral_jerk +
+         this->params_.longitudinal_jerk_coeff * longitudinal_jerk * longitudinal_jerk +
+         this->params_.steer_rate_coeff * steer_rate * steer_rate;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -693,10 +690,10 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   float longitudinal_jerk = 0.0F;
   float steer_rate = 0.0F;
   comfortTerms(this->params_, u, y, lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
-  return this->params_.lateral_acceleration_coeff * fabsf(lateral_accel) +
-         this->params_.lateral_jerk_coeff * fabsf(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * fabsf(longitudinal_jerk) +
-         this->params_.steer_rate_coeff * fabsf(steer_rate);
+  return this->params_.lateral_acceleration_coeff * lateral_accel * lateral_accel +
+         this->params_.lateral_jerk_coeff * lateral_jerk * lateral_jerk +
+         this->params_.longitudinal_jerk_coeff * longitudinal_jerk * longitudinal_jerk +
+         this->params_.steer_rate_coeff * steer_rate * steer_rate;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

@@ -28,6 +28,7 @@
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_trajectory_io.hpp"
 
@@ -57,46 +58,51 @@ namespace
 
 using autoware::mppi_optimizer::FirstOrderDubinsMppiCostParams;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
+using autoware::mppi_optimizer::FirstOrderDubinsMppiRuntimeOptions;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiVehicleParams;
 using autoware::mppi_optimizer::formatMppiDebugFrameId;
 using autoware::mppi_optimizer::listMppiDebugFrameIds;
+using autoware::mppi_optimizer::loadMppiDebugControlHistoryCsv;
 using autoware::mppi_optimizer::loadMppiDebugEgoCsv;
 using autoware::mppi_optimizer::loadMppiDebugKeyValueCsv;
 using autoware::mppi_optimizer::loadMppiDebugNominalCsv;
+using autoware::mppi_optimizer::loadMppiDebugObjectsCsv;
+using autoware::mppi_optimizer::loadMppiDebugRuntimeOptionsCsv;
+using autoware::mppi_optimizer::loadMppiDebugSegmentsCsv;
 using autoware::mppi_optimizer::loadMppiDebugTrajectoryCsv;
 using autoware::mppi_optimizer::MppiDebugEgoState;
+using autoware::mppi_optimizer::Segment;
 using autoware::mppi_optimizer::writeMppiDebugCostsCsv;
-using autoware::mppi_optimizer::writeMppiDebugRolloutsCsv;
 using autoware::mppi_optimizer::writeMppiDebugNominalCsv;
+using autoware::mppi_optimizer::writeMppiDebugRolloutsCsv;
 using autoware::mppi_optimizer::writeMppiDebugTrajectoryCsv;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
 
 void printUsage(const char * argv0)
 {
-  std::cerr
-    << "Usage: " << argv0
-    << " --log-dir DIR --out-dir DIR [options]\n"
-       "  --log-dir DIR          Input log directory (index.csv + *_reference.csv)\n"
-       "  --out-dir DIR          Output directory for retuned CSVs\n"
-       "  --frame N              Only retune frame N (default: all)\n"
-       "  --params-yaml FILE     Optional ROS-style yaml with cost params\n"
-       "  --set key=value        Override a cost param (repeatable)\n"
-       "  --wheel-base M         Vehicle wheel base [m] (default 4.76)\n"
-       "  --ego-length M         Ego length [m] (default 5.0)\n"
-       "  --ego-width M          Ego width [m] (default 1.9)\n"
-       "  --max-steer-angle RAD  Max steer [rad] (default 0.7)\n"
-       "  --steer-tau S          Steer time constant [s] (default 0.27)\n"
-       "  --copy-reference       Also copy reference CSVs into out-dir\n"
-       "  --nominal-csv FILE     Force u_nom from this CSV (overrides log *_nominal.csv)\n"
-       "\n"
-       "Loads cost_params.csv / vehicle_params.csv / *_ego.csv / *_nominal.csv from --log-dir\n"
-       "when present. CLI --set and vehicle flags override those. Without *_ego.csv, ego IC\n"
-       "falls back to reference[0] (will not match online MPPI). Without *_nominal.csv, u_nom\n"
-       "is reseeded from the diffusion reference (legacy logs).\n"
-       "After each frame, writes <out-dir>/<tag>_seed_nominal.csv from the optimized u_opt\n"
-       "so a subsequent run can --nominal-csv that file (iterative re-seed).\n"
-       "  --help\n";
+  std::cerr << "Usage: " << argv0
+            << " --log-dir DIR --out-dir DIR [options]\n"
+               "  --log-dir DIR          Input log directory (index.csv + *_reference.csv)\n"
+               "  --out-dir DIR          Output directory for retuned CSVs\n"
+               "  --frame N              Only retune frame N (default: all)\n"
+               "  --params-yaml FILE     Optional ROS-style yaml with cost params\n"
+               "  --set key=value        Override a cost param (repeatable)\n"
+               "  --wheel-base M         Vehicle wheel base [m] (default 4.76)\n"
+               "  --ego-length M         Ego length [m] (default 5.0)\n"
+               "  --ego-width M          Ego width [m] (default 1.9)\n"
+               "  --max-steer-angle RAD  Max steer [rad] (default 0.7)\n"
+               "  --steer-tau S          Steer time constant [s] (default 0.27)\n"
+               "  --copy-reference       Also copy reference CSVs into out-dir\n"
+               "  --nominal-csv FILE     Force u_nom from this CSV (overrides log *_nominal.csv)\n"
+               "\n"
+               "Exact online parity: loads cost/vehicle/runtime params plus per-frame\n"
+               "*_ego.csv, *_nominal.csv (REQUIRED warm-start u_nom), *_road_borders.csv,\n"
+               "*_drivable.csv, *_objects.csv, *_control_history.csv, *_delay_buffer.csv.\n"
+               "CLI --set and vehicle flags override logged values.\n"
+               "After each frame, writes <out-dir>/<tag>_seed_nominal.csv from optimized u_opt\n"
+               "for iterative re-seed via --nominal-csv.\n"
+               "  --help\n";
 }
 
 std::string trim(const std::string & s)
@@ -265,6 +271,28 @@ void loadVehicleParamsFromLog(
     }
   }
   std::cerr << "Loaded vehicle params from " << log_dir << "/vehicle_params.csv\n";
+}
+
+FirstOrderDubinsMppiRuntimeOptions loadRuntimeOptionsFromLog(const std::string & log_dir)
+{
+  // Defaults match config/mppi_optimizer.param.yaml online stack.
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.ignore_obstacles = false;
+  options.ignore_drivable_area = true;
+  options.force_cold_start_each_step = false;
+  options.skip_if_invalid = true;
+  options.use_last_control_as_nominal = true;
+  if (loadMppiDebugRuntimeOptionsCsv(log_dir + "/runtime_options.csv", options)) {
+    std::cerr << "Loaded runtime options from " << log_dir << "/runtime_options.csv\n";
+  } else {
+    std::cerr << "WARNING: missing " << log_dir
+              << "/runtime_options.csv; using online yaml defaults "
+                 "(ignore_drivable_area=true, skip_if_invalid=true, "
+                 "use_last_control_as_nominal=true).\n";
+  }
+  // Offline retune must not write into the input log directory.
+  options.enable_debug_trajectory_log = false;
+  return options;
 }
 
 Odometry odometryFromEgo(const MppiDebugEgoState & ego, const Trajectory & reference)
@@ -441,6 +469,7 @@ int run(int argc, char ** argv)
   // Prefer params captured at log time; then yaml; then CLI --set / vehicle flags.
   loadCostParamsFromLog(log_dir, cost_params);
   loadVehicleParamsFromLog(log_dir, vehicle_params);
+  const FirstOrderDubinsMppiRuntimeOptions runtime_options = loadRuntimeOptionsFromLog(log_dir);
 
   if (!params_yaml.empty()) {
     loadParamsYaml(params_yaml, cost_params);
@@ -492,8 +521,23 @@ int run(int argc, char ** argv)
     return 1;
   }
 
+  auto crashStatusLabel = [](const int code) -> const char * {
+    switch (code) {
+      case 0:
+        return "ok";
+      case 1:
+        return "lateral_bound";
+      case 2:
+        return "obstacle";
+      case 3:
+        return "road_border";
+      default:
+        return "unknown";
+    }
+  };
+
   std::ofstream index_out(out_dir + "/index.csv");
-  index_out << "frame_id,stamp_sec,stamp_nsec,baseline_cost,n_reference,n_optimized\n";
+  index_out << "frame_id,stamp_sec,stamp_nsec,baseline_cost,n_reference,n_optimized,crash_status\n";
 
   size_t processed = 0;
   for (const uint64_t frame_id : frame_ids) {
@@ -521,23 +565,21 @@ int run(int argc, char ** argv)
     } else {
       static bool warned_missing_ego = false;
       if (!warned_missing_ego) {
-        std::cerr
-          << "WARNING: missing " << tag
-          << "_ego.csv (and possibly others). Falling back to reference[0] as ego IC.\n"
-             "Re-log with a build that writes *_ego.csv / cost_params.csv / vehicle_params.csv "
-             "for faithful replay. Obstacles and road borders are still not logged.\n";
+        std::cerr << "WARNING: missing " << tag
+                  << "_ego.csv (and possibly others). Falling back to reference[0] as ego IC.\n"
+                     "Re-log with a build that writes *_ego.csv for faithful replay.\n";
         warned_missing_ego = true;
       }
       odom = odometryFromReference(reference);
       accel = accelFromReference(reference);
       steering = steeringFromReference(reference);
     }
-    const autoware_perception_msgs::msg::TrackedObjects empty_objects;
 
-    // Fresh controller each frame so warm-start from other frames does not leak.
+    // Fresh controller each frame; warm-start u_nom comes from *_nominal.csv (same as online).
     FirstOrderDubinsMppiInterface frame_mppi;
     frame_mppi.setCostParams(cost_params);
     frame_mppi.setVehicleParams(vehicle_params);
+    frame_mppi.setRuntimeOptions(runtime_options);
     frame_mppi.setDebugTrajectoryLogging(false);
     frame_mppi.setRolloutVisualizationEnabled(true);
 
@@ -545,25 +587,82 @@ int run(int argc, char ** argv)
       !nominal_csv_override.empty() ? nominal_csv_override : (log_dir + "/" + tag + "_nominal.csv");
     std::vector<float> nominal_accel;
     std::vector<float> nominal_steer;
-    if (loadMppiDebugNominalCsv(nominal_path, nominal_accel, nominal_steer)) {
-      frame_mppi.setForcedNominalControl(nominal_accel, nominal_steer);
-      if (!nominal_csv_override.empty()) {
-        std::cout << "frame " << frame_id << " seeding u_nom from " << nominal_path << "\n";
-      }
+    if (!loadMppiDebugNominalCsv(nominal_path, nominal_accel, nominal_steer)) {
+      std::cerr << "ERROR: missing warm-start nominal control " << nominal_path
+                << "\n*_nominal.csv is the online u_nom warm-start. Re-log with a build that "
+                   "writes it, or pass --nominal-csv from a prior retune *_seed_nominal.csv.\n";
+      return 1;
+    }
+    frame_mppi.setForcedNominalControl(nominal_accel, nominal_steer);
+    if (!nominal_csv_override.empty()) {
+      std::cout << "frame " << frame_id << " seeding u_nom from " << nominal_path << "\n";
+    }
+
+    float hist_a0 = 0.0F;
+    float hist_s0 = 0.0F;
+    float hist_a1 = 0.0F;
+    float hist_s1 = 0.0F;
+    if (loadMppiDebugControlHistoryCsv(
+          log_dir + "/" + tag + "_control_history.csv", hist_a0, hist_s0, hist_a1, hist_s1)) {
+      frame_mppi.setControlHistory(hist_a0, hist_s0, hist_a1, hist_s1);
     } else {
-      static bool warned_missing_nominal = false;
-      if (!warned_missing_nominal) {
-        std::cerr
-          << "WARNING: missing " << nominal_path
-          << ". Reseeding u_nom from the diffusion "
-             "reference. Re-log with a build that writes *_nominal.csv for faithful warm-start "
-             "replay, or pass --nominal-csv from a prior retune *_seed_nominal.csv.\n";
-        warned_missing_nominal = true;
+      static bool warned_missing_history = false;
+      if (!warned_missing_history) {
+        std::cerr << "WARNING: missing *_control_history.csv; Savitzky–Golay edge taps are zero "
+                     "(re-log for exact online match).\n";
+        warned_missing_history = true;
       }
     }
 
-    const auto result =
-      frame_mppi.optimizeTrajectory(reference, odom, accel, steering, empty_objects, {}, {});
+    {
+      const std::string delay_path = log_dir + "/" + tag + "_delay_buffer.csv";
+      std::vector<float> delay_accel;
+      std::vector<float> delay_steer;
+      if (std::filesystem::exists(delay_path)) {
+        if (loadMppiDebugNominalCsv(delay_path, delay_accel, delay_steer) && !delay_accel.empty()) {
+          frame_mppi.setInputDelayBuffer(delay_accel, delay_steer);
+        }
+      } else {
+        static bool warned_missing_delay = false;
+        if (!warned_missing_delay) {
+          std::cerr << "WARNING: missing *_delay_buffer.csv; delay FIFO seeds from measured "
+                       "accel/steer (re-log for exact online match).\n";
+          warned_missing_delay = true;
+        }
+      }
+    }
+
+    std::vector<Segment> road_borders;
+    std::vector<Segment> drivable_area;
+    if (!loadMppiDebugSegmentsCsv(log_dir + "/" + tag + "_road_borders.csv", road_borders)) {
+      static bool warned_missing_borders = false;
+      if (!warned_missing_borders) {
+        std::cerr << "WARNING: missing *_road_borders.csv; using empty borders "
+                     "(re-log for exact online match).\n";
+        warned_missing_borders = true;
+      }
+    }
+    if (!loadMppiDebugSegmentsCsv(log_dir + "/" + tag + "_drivable.csv", drivable_area)) {
+      static bool warned_missing_drivable = false;
+      if (!warned_missing_drivable) {
+        std::cerr << "WARNING: missing *_drivable.csv; using empty drivable segments "
+                     "(re-log for exact online match).\n";
+        warned_missing_drivable = true;
+      }
+    }
+
+    autoware_perception_msgs::msg::TrackedObjects tracked_objects;
+    if (!loadMppiDebugObjectsCsv(log_dir + "/" + tag + "_objects.csv", tracked_objects)) {
+      static bool warned_missing_objects = false;
+      if (!warned_missing_objects) {
+        std::cerr << "WARNING: missing *_objects.csv; using empty obstacles "
+                     "(re-log for exact online match).\n";
+        warned_missing_objects = true;
+      }
+    }
+
+    const auto result = frame_mppi.optimizeTrajectory(
+      reference, odom, accel, steering, tracked_objects, road_borders, drivable_area);
 
     const std::string opt_path = out_dir + "/" + tag + "_optimized.csv";
     if (!writeMppiDebugTrajectoryCsv(opt_path, result.debug.optimized_trajectory)) {
@@ -613,12 +712,24 @@ int run(int argc, char ** argv)
       }
     }
 
+    {
+      const std::string crash_path = out_dir + "/" + tag + "_crash_status.csv";
+      std::ofstream crash_out(crash_path);
+      if (crash_out) {
+        crash_out << "crash_status,label\n";
+        crash_out << result.debug.crash_status << "," << crashStatusLabel(result.debug.crash_status)
+                  << "\n";
+      }
+    }
+
     index_out << frame_id << "," << reference.header.stamp.sec << ","
               << reference.header.stamp.nanosec << "," << result.debug.baseline_cost << ","
               << reference.points.size() << "," << result.debug.optimized_trajectory.points.size()
-              << "\n";
+              << "," << result.debug.crash_status << "\n";
     ++processed;
     std::cout << "frame " << frame_id << " baseline_cost=" << result.debug.baseline_cost
+              << " crash_status=" << result.debug.crash_status << " ("
+              << crashStatusLabel(result.debug.crash_status) << ")"
               << " (min rollout cost among all samples)"
               << " points=" << result.debug.optimized_trajectory.points.size()
               << " rollouts=" << result.debug.rollouts.size() << "\n";
