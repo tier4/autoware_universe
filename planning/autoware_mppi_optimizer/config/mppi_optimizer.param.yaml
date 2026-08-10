@@ -19,7 +19,7 @@
     longitudinal_jerk_coeff: 100.0
     accel_cmd_coeff: 50.0
     steer_cmd_coeff: 250.0
-    steer_rate_coeff: 300.0
+    steer_rate_coeff: 100000.0
     obstacle_collision_margin: 0.2
     road_border_collision_margin: 0.3
     drivable_area_crossing_coeff: 100.0
