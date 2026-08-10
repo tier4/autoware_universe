@@ -169,19 +169,17 @@ void VelocityValidator::validate(
   const auto stopped_vel_th = 5e-2;
   const auto is_stopped = std::abs(v_vel) < stopped_vel_th;
 
-  const auto is_rolling_back = [&]() -> bool {
-    if (is_stopped || std::abs(v_vel) < params_.rolling_back_velocity) {
-      return false;
-    }
-
-    if (std::abs(t_vel) < stopped_vel_th) {
-      return std::signbit(v_vel);
-    }
-    return std::signbit(v_vel * t_vel);
-  }();
-
   if (!params_.hold_velocity_error_until_stop || !res.is_rolling_back || is_stopped) {
-    res.is_rolling_back = is_rolling_back;
+    res.is_rolling_back = [&]() -> bool {
+      if (is_stopped || std::abs(v_vel) < params_.rolling_back_velocity) {
+        return false;
+      }
+  
+      if (std::abs(t_vel) < stopped_vel_th) {
+        return std::signbit(v_vel);
+      }
+      return std::signbit(v_vel * t_vel);
+    }();
   }
 
   const double over_velocity_v_vel =
