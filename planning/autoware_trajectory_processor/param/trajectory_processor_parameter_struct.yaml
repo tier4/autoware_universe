@@ -7,6 +7,7 @@ trajectory_processor_params:
       - autoware::trajectory_modifier::plugin::ObstacleStop
       - autoware::trajectory_modifier::plugin::TrafficLightStop
       - autoware::trajectory_modifier::plugin::VelocityModifier
+      - autoware::trajectory_optimizer::plugin::TrajectoryTemporalMPTOptimizer
       - autoware::trajectory_optimizer::plugin::TrajectoryPointFixer
       - autoware::trajectory_optimizer::plugin::TrajectoryKinematicFeasibilityEnforcer
       - autoware::trajectory_optimizer::plugin::TrajectoryQPSmoother
@@ -35,7 +36,7 @@ trajectory_processor_params:
     read_only: false
   use_surround_obstacle_stop:
     type: bool
-    default_value: false
+    default_value: true
     description: Enable the use of surround obstacle stop
     read_only: false
   use_traffic_light_stop:
@@ -142,6 +143,13 @@ trajectory_processor_params:
       validation:
         bounds<>: [0.0, 100.0]
       read_only: false
+    minimum_stop_margin:
+      type: double
+      default_value: 3.0
+      description: Minimum distance to maintain from an obstacle when stopped [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
     lateral_margin:
       type: double
       default_value: 0.5
@@ -202,18 +210,18 @@ trajectory_processor_params:
         read_only: false
 
     objects:
-      object_types:
-        type: string_array
-        default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard]
-        description: Types of objects to consider for obstacle stop
-        read_only: false
-      max_velocity_th:
-        type: double
-        default_value: 5.0
-        description: Maximum velocity threshold for target object to be considered for obstacle stop [m/s]
-        validation:
-          bounds<>: [0.0, 100.0]
-        read_only: false
+      target_objects:
+        bbox:
+          type: string_array
+          default_value:
+            [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard, unknown]
+          description: Types of bounding box shaped objects to consider for obstacle stop
+          read_only: false
+        polygon:
+          type: string_array
+          default_value: [car, truck, bus, trailer, pedestrian, hazard, unknown]
+          description: Types of polygon shaped objects to consider for obstacle stop
+          read_only: false
       stopped_velocity_th:
         type: double
         default_value: 0.25
@@ -311,28 +319,28 @@ trajectory_processor_params:
       object_decel:
         car:
           type: double
-          default_value: 1.5
+          default_value: 1.6
           description: Deceleration for car type objects [m/s^2]
           validation:
             bounds<>: [0.0, 10.0]
           read_only: false
         truck:
           type: double
-          default_value: 1.5
+          default_value: 1.6
           description: Deceleration for truck type objects [m/s^2]
           validation:
             bounds<>: [0.0, 10.0]
           read_only: false
         bus:
           type: double
-          default_value: 1.5
+          default_value: 1.6
           description: Deceleration for bus type objects [m/s^2]
           validation:
             bounds<>: [0.0, 10.0]
           read_only: false
         trailer:
           type: double
-          default_value: 1.5
+          default_value: 1.6
           description: Deceleration for trailer type objects [m/s^2]
           validation:
             bounds<>: [0.0, 10.0]
@@ -367,21 +375,21 @@ trajectory_processor_params:
           read_only: false
       ego_decel:
         type: double
-        default_value: 4.0
+        default_value: 2.0
         description: Deceleration for ego vehicle [m/s^2]
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
       reaction_time:
         type: double
-        default_value: 0.2
+        default_value: 0.4
         description: Reaction time to consider for RSS calculation [s]
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
       safety_margin:
         type: double
-        default_value: 2.0
+        default_value: 3.0
         description: Safety margin to consider for RSS calculation [m]
         validation:
           bounds<>: [0.0, 10.0]
@@ -405,11 +413,18 @@ trajectory_processor_params:
       default_value: true
       description: Enable the use of pointcloud for surround obstacle stop
       read_only: false
-    object_types:
-      type: string_array
-      default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian]
-      description: Types of objects to consider for surround obstacle stop
-      read_only: false
+    target_objects:
+      bbox:
+        type: string_array
+        default_value:
+          [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard, animal, unknown]
+        description: Types of bounding box shaped objects to consider for surround obstacle stop
+        read_only: false
+      polygon:
+        type: string_array
+        default_value: [car, truck, bus, trailer, pedestrian, hazard, animal, unknown]
+        description: Types of polygon shaped objects to consider for surround obstacle stop
+        read_only: false
     base_distance_th:
       &distance_th_template {
         type: double,
@@ -497,6 +512,13 @@ trajectory_processor_params:
       validation:
         bounds<>: [0.0, 100.0]
       read_only: false
+    min_lookahead_distance:
+      type: double
+      default_value: 20.0
+      description: Minimum forward trajectory length to scan for traffic light stop lines even at low ego speed [m]
+      validation:
+        bounds<>: [0.0, 300.0]
+      read_only: false
     th_stable_duration_red:
       type: double
       default_value: 0.2
@@ -511,13 +533,6 @@ trajectory_processor_params:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
-    th_stable_duration_unknown:
-      type: double
-      default_value: 0.0
-      description: Threshold for stable duration of unknown light [s]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
     th_amber_rejection_hysteresis:
       type: double
       default_value: 0.5
@@ -529,20 +544,6 @@ trajectory_processor_params:
       type: double
       default_value: 2.75
       description: Crossing time limit [s]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
-    delay_response_time:
-      type: double
-      default_value: 0.5
-      description: Delay response time used to estimate the minimum ego stopping distance [s]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
-    ego_stopped_vel_th:
-      type: double
-      default_value: 0.01
-      description: Velocity below which ego is considered stopped when checking traffic lights [m/s]
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
@@ -619,14 +620,14 @@ trajectory_processor_params:
       default_value: 1.5
       description: Maximum jerk limit for velocity smoothing [m/s^3]
       validation:
-        bounds<>: [0.0, 10.0]
+        bounds<>: [0.0, 100.0]
       read_only: false
     min_jerk:
       type: double
       default_value: -1.5
       description: Minimum jerk limit for velocity smoothing [m/s^3]
       validation:
-        bounds<>: [-10.0, 0.0]
+        bounds<>: [-100.0, 0.0]
       read_only: false
 
   trajectory_point_fixer:

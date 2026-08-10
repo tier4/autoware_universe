@@ -534,7 +534,7 @@ class TemporalMptDebugVisualizer(Node):
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    default_prefix = "/planning/trajectory_generator/trajectory_optimizer_node/debug/temporal_mpt"
+    default_prefix = "/planning/trajectory_generator/trajectory_processor/debug/temporal_mpt"
     parser = argparse.ArgumentParser(
         description="Plot temporal MPT debug: path, state (v, δ), and MPC controls.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,

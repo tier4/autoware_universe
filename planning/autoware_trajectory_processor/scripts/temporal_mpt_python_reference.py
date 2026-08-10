@@ -124,7 +124,7 @@ class TemporalMptPythonReference(Node):
         self.declare_parameter(
             "topic_prefix",
             "/planning/trajectory_generator/neural_network_based_planner/"
-            "trajectory_optimizer_node/debug/temporal_mpt",
+            "trajectory_processor/debug/temporal_mpt",
         )
         self.declare_parameter("N", 50)
         self.declare_parameter("Tf", 5.0)

@@ -93,12 +93,12 @@ Horizon references are built directly in `TrajectoryTemporalMPTOptimizer` before
 
 Two steps are required:
 
-1. Add the plugin class to `plugin_names` in `config/trajectory_optimizer.param.yaml` (position sets when it runs relative to other plugins).
+1. Add the plugin class to `plugin_names` in `config/trajectory_processor.param.yaml` (position sets when it runs relative to other plugins).
 2. Set `use_temporal_mpt_optimizer: true` (runtime gate inside `process()`).
 
 To disable completely, remove the class from `plugin_names`. Setting only `use_temporal_mpt_optimizer: false` skips optimization but still loads and initializes acados if the plugin remains in the list.
 
-Plugin-specific parameters live in `config/plugins/trajectory_temporal_mpt_optimizer.param.yaml` (loaded from `launch/trajectory_optimizer.launch.xml`).
+Plugin-specific parameters live in `config/plugins/trajectory_temporal_mpt_optimizer.param.yaml` (loaded from `launch/trajectory_processor.launch.xml`).
 
 ## Build requirements
 

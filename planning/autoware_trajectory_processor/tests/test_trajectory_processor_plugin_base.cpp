@@ -164,6 +164,7 @@ TEST(TrajectoryProcessorParamsTest, PreservesDefaultCombinedPipelineOrder)
     "autoware::trajectory_modifier::plugin::ObstacleStop",
     "autoware::trajectory_modifier::plugin::TrafficLightStop",
     "autoware::trajectory_modifier::plugin::VelocityModifier",
+    "autoware::trajectory_optimizer::plugin::TrajectoryTemporalMPTOptimizer",
     "autoware::trajectory_optimizer::plugin::TrajectoryPointFixer",
     "autoware::trajectory_optimizer::plugin::TrajectoryKinematicFeasibilityEnforcer",
     "autoware::trajectory_optimizer::plugin::TrajectoryQPSmoother",

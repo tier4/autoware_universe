@@ -378,25 +378,25 @@
                     "car": {
                       "type": "number",
                       "description": "Deceleration for car type objects [m/s^2]",
-                      "default": 1.5,
+                      "default": 1.6,
                       "minimum": 0
                     },
                     "truck": {
                       "type": "number",
                       "description": "Deceleration for truck type objects [m/s^2]",
-                      "default": 1.5,
+                      "default": 1.6,
                       "minimum": 0
                     },
                     "bus": {
                       "type": "number",
                       "description": "Deceleration for bus type objects [m/s^2]",
-                      "default": 1.5,
+                      "default": 1.6,
                       "minimum": 0
                     },
                     "trailer": {
                       "type": "number",
                       "description": "Deceleration for trailer type objects [m/s^2]",
-                      "default": 1.5,
+                      "default": 1.6,
                       "minimum": 0
                     },
                     "motorcycle": {
@@ -430,19 +430,19 @@
                 "ego_decel": {
                   "type": "number",
                   "description": "Deceleration for ego vehicle [m/s^2]",
-                  "default": 4,
+                  "default": 2,
                   "minimum": 0
                 },
                 "reaction_time": {
                   "type": "number",
                   "description": "Reaction time to consider for RSS calculation [s]",
-                  "default": 0.2,
+                  "default": 0.4,
                   "minimum": 0
                 },
                 "safety_margin": {
                   "type": "number",
                   "description": "Safety margin to consider for RSS calculation [m]",
-                  "default": 2,
+                  "default": 3,
                   "minimum": 0
                 },
                 "lookahead_horizon": {
