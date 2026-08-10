@@ -254,43 +254,10 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
   const std::optional<double> & s_right_bound);
 
 /**
- * @brief Parameters controlling the clothoid-smoothed connection to the goal pose.
- */
-struct ClothoidGoalConnectionParams
-{
-  double wheel_base_m{0.0};
-  double max_steer_angle_rad{0.0};
-  int steer_angle_trial_count{1};
-  double max_steer_angle_rate_rad_per_sec{0.0};
-  double reference_velocity_mps{1.0};
-};
-
-/**
- * @brief Recreate the path with a given goal pose
- */
-std::optional<std::vector<PathPointTrajectory>> refine_path_for_goal(
-  const PathPointTrajectory & input, const geometry_msgs::msg::Pose & goal_pose,
-  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset,
-  const ClothoidGoalConnectionParams & clothoid_params);
-
-/**
  * @brief Extract lanelets from the trajectory
  */
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
   const PathPointTrajectory & trajectory, const lanelet::LaneletMapPtr & lanelet_map_ptr);
-
-/**
- * @brief Check if the pose is in the lanelets
- */
-bool is_in_lanelets(const geometry_msgs::msg::Pose & pose, const lanelet::ConstLanelets & lanes);
-
-/**
- * @brief Modify path for smooth goal connection
- */
-std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
-  const PathPointTrajectory & trajectory, const RouteContext & planner_data,
-  const double search_radius_range, const double pre_goal_offset,
-  const ClothoidGoalConnectionParams & clothoid_params);
 
 }  // namespace utils
 }  // namespace autoware::minimum_rule_based_planner
