@@ -62,9 +62,12 @@ using autoware::mppi_optimizer::formatMppiDebugFrameId;
 using autoware::mppi_optimizer::listMppiDebugFrameIds;
 using autoware::mppi_optimizer::loadMppiDebugEgoCsv;
 using autoware::mppi_optimizer::loadMppiDebugKeyValueCsv;
+using autoware::mppi_optimizer::loadMppiDebugNominalCsv;
 using autoware::mppi_optimizer::loadMppiDebugTrajectoryCsv;
 using autoware::mppi_optimizer::MppiDebugEgoState;
 using autoware::mppi_optimizer::writeMppiDebugCostsCsv;
+using autoware::mppi_optimizer::writeMppiDebugNominalCsv;
+using autoware::mppi_optimizer::writeMppiDebugRolloutsCsv;
 using autoware::mppi_optimizer::writeMppiDebugTrajectoryCsv;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
@@ -85,10 +88,14 @@ void printUsage(const char * argv0)
        "  --max-steer-angle RAD  Max steer [rad] (default 0.7)\n"
        "  --steer-tau S          Steer time constant [s] (default 0.27)\n"
        "  --copy-reference       Also copy reference CSVs into out-dir\n"
+       "  --nominal-csv FILE     Force u_nom from this CSV (overrides log *_nominal.csv)\n"
        "\n"
-       "Loads cost_params.csv / vehicle_params.csv / *_ego.csv from --log-dir when present.\n"
-       "CLI --set and vehicle flags override those. Without *_ego.csv, ego IC falls back to\n"
-       "reference[0] (will not match online MPPI).\n"
+       "Loads cost_params.csv / vehicle_params.csv / *_ego.csv / *_nominal.csv from --log-dir\n"
+       "when present. CLI --set and vehicle flags override those. Without *_ego.csv, ego IC\n"
+       "falls back to reference[0] (will not match online MPPI). Without *_nominal.csv, u_nom\n"
+       "is reseeded from the diffusion reference (legacy logs).\n"
+       "After each frame, writes <out-dir>/<tag>_seed_nominal.csv from the optimized u_opt\n"
+       "so a subsequent run can --nominal-csv that file (iterative re-seed).\n"
        "  --help\n";
 }
 
@@ -154,6 +161,10 @@ void applyCostParam(
     params.longitudinal_jerk_coeff = value;
   } else if (key == "obstacle_collision_margin") {
     params.obstacle_collision_margin = value;
+  } else if (key == "road_border_collision_margin") {
+    params.road_border_collision_margin = value;
+  } else if (key == "drivable_area_crossing_coeff") {
+    params.drivable_area_crossing_coeff = value;
   } else {
     // Unknown keys must not abort retune: the visualizer may send a superset of
     // slider names / logged fields that older or newer builds don't share.
@@ -358,6 +369,7 @@ int run(int argc, char ** argv)
   std::string log_dir;
   std::string out_dir;
   std::string params_yaml;
+  std::string nominal_csv_override;
   std::optional<uint64_t> frame_filter;
   bool copy_reference = false;
   FirstOrderDubinsMppiCostParams cost_params;
@@ -412,6 +424,8 @@ int run(int argc, char ** argv)
       vehicle_params.steer_time_constant = std::stof(need("--steer-tau"));
     } else if (arg == "--copy-reference") {
       copy_reference = true;
+    } else if (arg == "--nominal-csv") {
+      nominal_csv_override = need("--nominal-csv");
     } else {
       std::cerr << "Unknown argument: " << arg << "\n";
       printUsage(argv[0]);
@@ -527,6 +541,27 @@ int run(int argc, char ** argv)
     frame_mppi.setDebugTrajectoryLogging(false);
     frame_mppi.setRolloutVisualizationEnabled(true);
 
+    const std::string nominal_path =
+      !nominal_csv_override.empty() ? nominal_csv_override : (log_dir + "/" + tag + "_nominal.csv");
+    std::vector<float> nominal_accel;
+    std::vector<float> nominal_steer;
+    if (loadMppiDebugNominalCsv(nominal_path, nominal_accel, nominal_steer)) {
+      frame_mppi.setForcedNominalControl(nominal_accel, nominal_steer);
+      if (!nominal_csv_override.empty()) {
+        std::cout << "frame " << frame_id << " seeding u_nom from " << nominal_path << "\n";
+      }
+    } else {
+      static bool warned_missing_nominal = false;
+      if (!warned_missing_nominal) {
+        std::cerr
+          << "WARNING: missing " << nominal_path
+          << ". Reseeding u_nom from the diffusion "
+             "reference. Re-log with a build that writes *_nominal.csv for faithful warm-start "
+             "replay, or pass --nominal-csv from a prior retune *_seed_nominal.csv.\n";
+        warned_missing_nominal = true;
+      }
+    }
+
     const auto result =
       frame_mppi.optimizeTrajectory(reference, odom, accel, steering, empty_objects, {}, {});
 
@@ -534,6 +569,19 @@ int run(int argc, char ** argv)
     if (!writeMppiDebugTrajectoryCsv(opt_path, result.debug.optimized_trajectory)) {
       std::cerr << "Failed to write " << opt_path << "\n";
       return 1;
+    }
+
+    {
+      std::vector<float> seed_accel;
+      std::vector<float> seed_steer;
+      if (frame_mppi.copyLastOptimizedControl(seed_accel, seed_steer)) {
+        const std::string seed_path = out_dir + "/" + tag + "_seed_nominal.csv";
+        if (!writeMppiDebugNominalCsv(seed_path, seed_accel, seed_steer)) {
+          std::cerr << "WARNING: failed to write " << seed_path << "\n";
+        }
+      } else {
+        std::cerr << "WARNING: could not copy optimized controls for frame " << frame_id << "\n";
+      }
     }
 
     // Stride keeps the CSV / histogram manageable (~4k samples from 32k rollouts).
@@ -571,8 +619,25 @@ int run(int argc, char ** argv)
               << "\n";
     ++processed;
     std::cout << "frame " << frame_id << " baseline_cost=" << result.debug.baseline_cost
+              << " (min rollout cost among all samples)"
               << " points=" << result.debug.optimized_trajectory.points.size()
               << " rollouts=" << result.debug.rollouts.size() << "\n";
+    {
+      bool any_best = false;
+      float viz_min = 0.0F;
+      for (const auto & rollout : result.debug.rollouts) {
+        if (rollout.is_worst) {
+          continue;
+        }
+        if (!any_best || rollout.cost < viz_min) {
+          viz_min = rollout.cost;
+          any_best = true;
+        }
+      }
+      if (any_best) {
+        std::cout << "frame " << frame_id << " min_exported_rollout_cost=" << viz_min << "\n";
+      }
+    }
   }
 
   if (processed == 0U) {

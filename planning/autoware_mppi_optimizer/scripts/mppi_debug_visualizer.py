@@ -34,7 +34,8 @@ Retune also writes <out_dir>/NNNNNN_costs.csv:
 (used for cost / weight distribution histograms in --enable-retune mode).
 
 and <out_dir>/NNNNNN_rollouts.csv:
-  rollout_index,cost,step,x,y
+  rollout_index,cost,step,x,y[,is_worst]
+(top-weighted and high-cost samples for XY overlay).
 (top-K weighted sample trajectories overlaid on the XY plot).
 
 Offline retune mode (--enable-retune) overlays a third retuned trajectory and lets you
@@ -93,9 +94,11 @@ VEHICLE_PARAMS_DEFAULT_WHEEL_BASE = 4.76
 # Must match first_order_dubins_mppi_interface.cu kDt.
 MPPI_DT = 0.1
 
-# Must match first_order_dubins_mppi_interface.cu (kNumRollouts / kMaxVizRollouts).
+# Must match first_order_dubins_mppi_interface.cu (kNumRollouts / kMaxVizRollouts /
+# kMaxWorstVizRollouts).
 MPPI_NUM_ROLLOUTS = 32 * 1024
-MPPI_MAX_VIZ_ROLLOUTS = 200
+MPPI_MAX_VIZ_ROLLOUTS = 256
+MPPI_MAX_WORST_VIZ_ROLLOUTS = 128
 
 # Numerical cost params from mppi_optimizer.param.yaml / FirstOrderDubinsMppiCostParams.
 # (Excludes bool/string runtime flags: enable_debug_trajectory_log, ignore_*, etc.)
@@ -270,8 +273,8 @@ class MppiDebugFrame:
     wheel_base: float = VEHICLE_PARAMS_DEFAULT_WHEEL_BASE
     raw_costs: List[float] = field(default_factory=list)
     normalized_weights: List[float] = field(default_factory=list)
-    # Retune top-K rollouts: (cost, xs, ys) from NNNNNN_rollouts.csv.
-    rollouts: List[Tuple[float, List[float], List[float]]] = field(default_factory=list)
+    # Retune rollouts: (cost, xs, ys, is_worst) from NNNNNN_rollouts.csv.
+    rollouts: List[Tuple[float, List[float], List[float], bool]] = field(default_factory=list)
     stamp_text: str = ""
     metrics_text: str = ""
     # Live: whether diffusion_planner is applying MPPI to the published trajectory.
@@ -323,11 +326,11 @@ def load_costs_csv(path: Path) -> LoadedCostDistribution:
     return dist
 
 
-def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float]]]:
-    """Load top-K rollouts as (cost, xs, ys) ordered by rollout_index."""
+def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float], bool]]:
+    """Load rollouts as (cost, xs, ys, is_worst) ordered by rollout_index."""
     if not path.is_file():
         return []
-    by_idx: Dict[int, Tuple[float, List[float], List[float]]] = {}
+    by_idx: Dict[int, Tuple[float, List[float], List[float], bool]] = {}
     with path.open(newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -337,21 +340,29 @@ def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float]]
                 step = int(row["step"])
                 x = float(row["x"])
                 y = float(row["y"])
+                is_worst = False
+                if "is_worst" in row and row["is_worst"] not in (None, ""):
+                    is_worst = int(float(row["is_worst"])) != 0
             except (KeyError, ValueError, TypeError):
                 continue
             if idx not in by_idx:
-                by_idx[idx] = (cost, [], [])
-            cost0, xs, ys = by_idx[idx]
+                by_idx[idx] = (cost, [], [], is_worst)
+            cost0, xs, ys, worst0 = by_idx[idx]
             # Grow lists to cover step index (steps are written in order).
             while len(xs) <= step:
                 xs.append(float("nan"))
                 ys.append(float("nan"))
             xs[step] = x
             ys[step] = y
-            by_idx[idx] = (cost0 if abs(cost0) < 1.0e20 else cost, xs, ys)
-    rollouts: List[Tuple[float, List[float], List[float]]] = []
+            by_idx[idx] = (
+                cost0 if abs(cost0) < 1.0e20 else cost,
+                xs,
+                ys,
+                worst0 or is_worst,
+            )
+    rollouts: List[Tuple[float, List[float], List[float], bool]] = []
     for idx in sorted(by_idx):
-        cost, xs, ys = by_idx[idx]
+        cost, xs, ys, is_worst = by_idx[idx]
         # Drop incomplete leading NaNs if any; keep contiguous prefix of valid points.
         clean_xs: List[float] = []
         clean_ys: List[float] = []
@@ -361,7 +372,7 @@ def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float]]
             clean_xs.append(xv)
             clean_ys.append(yv)
         if len(clean_xs) >= 2:
-            rollouts.append((cost, clean_xs, clean_ys))
+            rollouts.append((cost, clean_xs, clean_ys, is_worst))
     return rollouts
 
 
@@ -528,7 +539,7 @@ def frame_from_loaded(
     stamp_text: str,
     retuned: Optional[LoadedTrajectory] = None,
     costs: Optional[LoadedCostDistribution] = None,
-    rollouts: Optional[List[Tuple[float, List[float], List[float]]]] = None,
+    rollouts: Optional[List[Tuple[float, List[float], List[float], bool]]] = None,
     steer_time_constant: float = VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT,
     wheel_base: float = VEHICLE_PARAMS_DEFAULT_WHEEL_BASE,
 ) -> MppiDebugFrame:
@@ -586,8 +597,9 @@ def frame_from_loaded(
         parts.append(f"w_max={max(frame.normalized_weights):.4f}")
     if frame.rollouts:
         parts.append(
-            f"showing {len(frame.rollouts)} of {MPPI_NUM_ROLLOUTS} "
-            f"top-weighted rollouts (export ≤{MPPI_MAX_VIZ_ROLLOUTS})"
+            f"showing {sum(1 for *_r, w in frame.rollouts if not w)} top-weighted + "
+            f"{sum(1 for *_r, w in frame.rollouts if w)} worst of {MPPI_NUM_ROLLOUTS} "
+            f"(export ≤{MPPI_MAX_VIZ_ROLLOUTS}+{MPPI_MAX_WORST_VIZ_ROLLOUTS})"
         )
     frame.metrics_text = "  |  ".join(parts)
     return frame
@@ -733,26 +745,57 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     ax_xy.set_ylabel("y [m]")
     ax_xy.grid(True)
     if frame.rollouts:
-        costs = [c for c, _xs, _ys in frame.rollouts]
-        min_c = min(costs)
-        max_c = max(costs)
-        for cost, xs, ys in frame.rollouts:
-            if max_c > min_c:
-                t = (cost - min_c) / (max_c - min_c)
-            else:
-                t = 0.5
-            # Match mppi_debug_markers.hpp costGradientColor: green (low) -> red (high).
-            ax_xy.plot(xs, ys, color=(t, 1.0 - t, 0.0, 0.35), linewidth=0.7, zorder=1)
-        ax_xy.plot(
-            [],
-            [],
-            color=(0.5, 0.5, 0.0, 0.8),
-            linewidth=0.7,
-            label=(
-                f"rollouts ({len(frame.rollouts)} of {MPPI_NUM_ROLLOUTS} "
-                f"top-weighted, ≤{MPPI_MAX_VIZ_ROLLOUTS} exported)"
-            ),
-        )
+        best = [(c, xs, ys) for c, xs, ys, is_worst in frame.rollouts if not is_worst]
+        worst = [(c, xs, ys) for c, xs, ys, is_worst in frame.rollouts if is_worst]
+        if best:
+            costs = [c for c, _xs, _ys in best]
+            min_c = min(costs)
+            max_c = max(costs)
+            min_traj = min(best, key=lambda item: item[0])
+            for cost, xs, ys in best:
+                if max_c > min_c:
+                    t = (cost - min_c) / (max_c - min_c)
+                else:
+                    t = 0.5
+                # Teal (low cost) -> purple (high cost); α 0.95 -> 0.05.
+                # Match mppi_debug_markers.hpp costGradientColor.
+                r = 0.05 + t * (0.55 - 0.05)
+                g = 0.65 + t * (0.15 - 0.65)
+                b = 0.60 + t * (0.75 - 0.60)
+                a = 0.95 + t * (0.05 - 0.95)
+                ax_xy.plot(xs, ys, color=(r, g, b, a), linewidth=0.7, zorder=1)
+            # Same colour as the cost-histogram min marker (tab:green).
+            ax_xy.plot(
+                min_traj[1],
+                min_traj[2],
+                color="tab:green",
+                linewidth=2.2,
+                zorder=3,
+                label=f"min-cost rollout ({min_traj[0]:.1f})",
+            )
+            ax_xy.plot(
+                [],
+                [],
+                color=(0.05, 0.65, 0.60, 0.9),
+                linewidth=0.7,
+                label=(
+                    f"top rollouts ({len(best)} of {MPPI_NUM_ROLLOUTS}, "
+                    f"≤{MPPI_MAX_VIZ_ROLLOUTS}; teal=low cost)"
+                ),
+            )
+        if worst:
+            for _cost, xs, ys in worst:
+                ax_xy.plot(xs, ys, color=(0.85, 0.15, 0.10, 0.18), linewidth=0.6, zorder=0)
+            ax_xy.plot(
+                [],
+                [],
+                color=(0.85, 0.15, 0.10, 0.6),
+                linewidth=0.7,
+                label=(
+                    f"worst rollouts ({len(worst)} of {MPPI_NUM_ROLLOUTS}, "
+                    f"≤{MPPI_MAX_WORST_VIZ_ROLLOUTS})"
+                ),
+            )
 
     def _plot_xy_path(ax, xs, ys, *, color, linestyle, linewidth, label, zorder):
         # Legend handle (single stroke); actual path is drawn segment-by-segment colored
@@ -827,10 +870,11 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ax_xy.plot(
             frame.retuned_xy[0],
             frame.retuned_xy[1],
-            color="tab:green",
-            linewidth=2.2,
+            color=(0.35, 0.0, 0.45, 1.0),
+            linewidth=2.4,
             label="MPPI retuned",
             zorder=5,
+            solid_capstyle="round",
         )
     overlay = frame.stamp_text
     if frame.metrics_text:
@@ -1933,6 +1977,7 @@ class OfflineLogVisualizer:
                 self._status = "WARNING: no *_ego.csv — retune uses ref[0] IC; re-log after rebuild"
         self._out_dir = Path(tempfile.mkdtemp(prefix="mppi_retune_")) if enable_retune else None
         self._retune_bin = retune_bin
+        self._reseed_counts: Dict[int, int] = {}
         self._fig, self._axes = create_figure(with_retune_panel=enable_retune)
         for fig in (self._fig, *getattr(self._fig, "_mppi_related_figures", ())):
             fig.canvas.mpl_connect("key_press_event", self._on_key)
@@ -1946,7 +1991,7 @@ class OfflineLogVisualizer:
         plt.show(block=False)
         keys = "left/right or n/p = step, home/end, a = autoplay, escape = re-fit axes, q = quit"
         if enable_retune:
-            keys += ", r = retune"
+            keys += ", r = retune, s = re-seed from last retune"
         print(f"Offline MPPI log: {log_dir} ({len(self._frame_ids)} frames). Keys: {keys}.")
         if enable_retune:
             print(
@@ -1956,6 +2001,10 @@ class OfflineLogVisualizer:
             )
             print(f"Retune binary: {self._retune_bin}")
             print("Move sliders, then click Retune (or press r). Sliders alone do nothing.")
+            print(
+                "Re-seed (or press s) warm-starts MPPI from the current retuned u_opt "
+                "(requires a prior Retune on this frame)."
+            )
 
     def _build_retune_controls(self) -> None:
         n = max(len(SLIDER_SPECS), 1)
@@ -1968,15 +2017,18 @@ class OfflineLogVisualizer:
             self._sliders[name] = Slider(
                 ax, name, vmin, vmax, valinit=self._params.get(name, DEFAULT_PARAMS[name])
             )
-        ax_prev = self._fig.add_axes([0.72, 0.06, 0.07, 0.035])
-        ax_next = self._fig.add_axes([0.80, 0.06, 0.07, 0.035])
-        ax_run = self._fig.add_axes([0.88, 0.06, 0.10, 0.035])
+        ax_prev = self._fig.add_axes([0.72, 0.06, 0.06, 0.035])
+        ax_next = self._fig.add_axes([0.785, 0.06, 0.06, 0.035])
+        ax_run = self._fig.add_axes([0.85, 0.06, 0.065, 0.035])
+        ax_reseed = self._fig.add_axes([0.92, 0.06, 0.06, 0.035])
         self._btn_prev = Button(ax_prev, "Prev")
         self._btn_next = Button(ax_next, "Next")
         self._btn_run = Button(ax_run, "Retune")
+        self._btn_reseed = Button(ax_reseed, "Re-seed")
         self._btn_prev.on_clicked(lambda _e: self._step(-1))
         self._btn_next.on_clicked(lambda _e: self._step(1))
-        self._btn_run.on_clicked(lambda _e: self._retune_current())
+        self._btn_run.on_clicked(lambda _e: self._retune_current(reseed=False))
+        self._btn_reseed.on_clicked(lambda _e: self._retune_current(reseed=True))
         self._fig.canvas.manager.set_window_title("MPPI Offline Compare + Retune")
 
     def _load_frame(self, frame_id: int) -> MppiDebugFrame:
@@ -2060,10 +2112,26 @@ class OfflineLogVisualizer:
             params[name] = float(slider.val)
         return params
 
-    def _retune_current(self) -> None:
+    def _retune_current(self, *, reseed: bool = False) -> None:
         if not self._enable_retune or self._retune_bin is None or self._out_dir is None:
             return
         frame_id = self._frame_ids[self._index]
+        tag = f"{frame_id:06d}"
+        seed_path = self._out_dir / f"{tag}_seed_nominal.csv"
+        if reseed:
+            if not seed_path.is_file():
+                self._status = (
+                    f"Re-seed needs {tag}_seed_nominal.csv — run Retune on this frame first"
+                )
+                self._show_current()
+                return
+            if not (self._out_dir / f"{tag}_optimized.csv").is_file():
+                self._status = (
+                    f"Re-seed needs a retuned path — run Retune on frame {frame_id} first"
+                )
+                self._show_current()
+                return
+
         params = self._current_params()
         cmd = [
             str(self._retune_bin),
@@ -2083,14 +2151,20 @@ class OfflineLogVisualizer:
         ]
         if self._params_yaml is not None:
             cmd.extend(["--params-yaml", str(self._params_yaml)])
+        if reseed:
+            cmd.extend(["--nominal-csv", str(seed_path)])
         for key, value in params.items():
             cmd.extend(["--set", f"{key}={value}"])
 
         lam = params.get("lambda", float("nan"))
         track = params.get("track_coeff", float("nan"))
+        mode = "Re-seeding" if reseed else "Retuning"
+        prev_count = self._reseed_counts.get(frame_id, 0)
         self._status = (
-            f"Retuning frame {frame_id} via {self._retune_bin.name} "
-            f"(lambda={lam:.0f}, track={track:.0f})..."
+            f"{mode} frame {frame_id} via {self._retune_bin.name} "
+            f"(lambda={lam:.0f}, track={track:.0f}"
+            + (f", pass={prev_count + 1}" if reseed else "")
+            + ")..."
         )
         self._show_current()
         try:
@@ -2100,12 +2174,35 @@ class OfflineLogVisualizer:
             applied = next((ln for ln in lines if ln.startswith("applied_params ")), "")
             tail = lines[-1] if lines else "OK"
             self._status = f"{applied} | {tail}" if applied else tail
+            if reseed:
+                self._reseed_counts[frame_id] = prev_count + 1
+                self._status = f"reseed_pass={self._reseed_counts[frame_id]} | {self._status}"
+            else:
+                # Fresh Retune resets the iterative re-seed counter for this frame.
+                self._reseed_counts[frame_id] = 0
             warn_lines = []
             if completed.stderr:
                 warn_lines = [ln for ln in completed.stderr.splitlines() if "WARNING:" in ln]
             # Highlight when retune barely moved vs logged (usually lambda still too high).
             opt = load_trajectory_csv(self._out_dir / f"{frame_id:06d}_optimized.csv")
             logged = load_trajectory_csv(self._log_dir / f"{frame_id:06d}_optimized.csv")
+            costs = load_costs_csv(self._out_dir / f"{frame_id:06d}_costs.csv")
+            rollouts = load_rollouts_csv(self._out_dir / f"{frame_id:06d}_rollouts.csv")
+            finite_costs = [c for c in costs.raw_costs if abs(c) < 1.0e20]
+            best_rollouts = [r for r in rollouts if not r[3]]
+            if finite_costs:
+                global_min = min(finite_costs)
+                print(
+                    f"[retune] frame {frame_id}: min rollout cost (sampled hist) = {global_min:.6g}"
+                )
+                self._status = f"{self._status} | min_cost={global_min:.1f}"
+            if best_rollouts:
+                viz_min = min(r[0] for r in best_rollouts)
+                print(f"[retune] frame {frame_id}: min exported top-rollout cost = {viz_min:.6g}")
+            # Echo retune binary lines that mention cost.
+            for ln in lines:
+                if "baseline_cost=" in ln or "min_exported_rollout_cost=" in ln:
+                    print(ln)
             if opt.x and logged.x:
                 vs = max_pos_err((logged.x, logged.y), (opt.x, opt.y))
                 self._status = f"{self._status} | logged↔retune Δpos={vs:.3f}m"
@@ -2117,9 +2214,9 @@ class OfflineLogVisualizer:
                 self._status = f"{self._status}  ||  {warn_lines[-1]}"
         except subprocess.CalledProcessError as exc:
             err = (exc.stderr or exc.stdout or str(exc)).strip()
-            self._status = f"Retune failed: {err[-240:]}"
+            self._status = f"{'Re-seed' if reseed else 'Retune'} failed: {err[-240:]}"
         except FileNotFoundError as exc:
-            self._status = f"Retune failed: {exc}"
+            self._status = f"{'Re-seed' if reseed else 'Retune'} failed: {exc}"
         self._show_current()
 
     def _on_key(self, event) -> None:
@@ -2139,7 +2236,9 @@ class OfflineLogVisualizer:
             reset_view_baselines(self._axes)
             self._show_current()
         elif event.key == "r" and self._enable_retune:
-            self._retune_current()
+            self._retune_current(reseed=False)
+        elif event.key == "s" and self._enable_retune:
+            self._retune_current(reseed=True)
         elif event.key == "q":
             for fig in (self._fig, *getattr(self._fig, "_mppi_related_figures", ())):
                 plt.close(fig)

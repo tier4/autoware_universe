@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -107,12 +108,24 @@ inline ColorRGBA makeColor(const float r, const float g, const float b, const fl
 
 inline ColorRGBA costGradientColor(const float cost, const float min_cost, const float max_cost)
 {
+  // Teal (low cost / high weight) -> purple (high cost); alpha 0.95 -> 0.05.
+  // Bright teal for good samples so they read clearly on a white background.
   float t = 0.5F;
   if (max_cost > min_cost) {
     t = (cost - min_cost) / (max_cost - min_cost);
   }
   t = std::clamp(t, 0.0F, 1.0F);
-  return makeColor(t, 1.0F - t, 0.0F, 0.35F);
+  constexpr float k_teal_r = 0.05F;
+  constexpr float k_teal_g = 0.65F;
+  constexpr float k_teal_b = 0.60F;
+  constexpr float k_purple_r = 0.55F;
+  constexpr float k_purple_g = 0.15F;
+  constexpr float k_purple_b = 0.75F;
+  const float r = k_teal_r + t * (k_purple_r - k_teal_r);
+  const float g = k_teal_g + t * (k_purple_g - k_teal_g);
+  const float b = k_teal_b + t * (k_purple_b - k_teal_b);
+  const float a = 0.95F + t * (0.05F - 0.95F);
+  return makeColor(r, g, b, a);
 }
 
 inline Marker makeDeleteAllMarker(const std::string & ns)
@@ -178,11 +191,16 @@ inline MarkerArray createMppiDebugMarkers(
   marker_array.markers.push_back(makeDeleteAllMarker("mppi_rollout"));
 
   if (!debug.rollouts.empty()) {
-    float min_cost = debug.rollouts.front().cost;
-    float max_cost = debug.rollouts.front().cost;
+    float min_best = std::numeric_limits<float>::max();
+    float max_best = std::numeric_limits<float>::lowest();
+    bool have_best = false;
     for (const auto & rollout : debug.rollouts) {
-      min_cost = std::min(min_cost, rollout.cost);
-      max_cost = std::max(max_cost, rollout.cost);
+      if (rollout.is_worst) {
+        continue;
+      }
+      have_best = true;
+      min_best = std::min(min_best, rollout.cost);
+      max_best = std::max(max_best, rollout.cost);
     }
 
     int rollout_id = 1;
@@ -190,9 +208,17 @@ inline MarkerArray createMppiDebugMarkers(
       if (rollout.points.size() < 2U) {
         continue;
       }
-      marker_array.markers.push_back(makeLineStripMarker(
-        "mppi_rollout", rollout_id, costGradientColor(rollout.cost, min_cost, max_cost), 0.04,
-        rollout.points, z));
+      std_msgs::msg::ColorRGBA color;
+      if (rollout.is_worst) {
+        // Warm red, low alpha — distinct from teal→purple top-weighted samples.
+        color = makeColor(0.85F, 0.15F, 0.10F, 0.25F);
+      } else if (have_best) {
+        color = costGradientColor(rollout.cost, min_best, max_best);
+      } else {
+        color = makeColor(0.55F, 0.15F, 0.75F, 0.5F);
+      }
+      marker_array.markers.push_back(
+        makeLineStripMarker("mppi_rollout", rollout_id, color, 0.04, rollout.points, z));
       ++rollout_id;
     }
   }

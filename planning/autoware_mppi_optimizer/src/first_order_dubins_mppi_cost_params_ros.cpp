@@ -61,6 +61,10 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
     param_name(prefix, "road_border_collision_margin"), defaults.road_border_collision_margin);
   node.declare_parameter(
     param_name(prefix, "drivable_area_crossing_coeff"), defaults.drivable_area_crossing_coeff);
+  node.declare_parameter(param_name(prefix, "goal_pos_coeff"), defaults.goal_pos_coeff);
+  node.declare_parameter(param_name(prefix, "goal_speed_coeff"), defaults.goal_speed_coeff);
+  node.declare_parameter(param_name(prefix, "goal_yaw_coeff"), defaults.goal_yaw_coeff);
+  node.declare_parameter(param_name(prefix, "goal_terminal_scale"), defaults.goal_terminal_scale);
 }
 
 FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
@@ -108,6 +112,14 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "road_border_collision_margin")).as_double());
   params.drivable_area_crossing_coeff = static_cast<float>(
     node.get_parameter(param_name(prefix, "drivable_area_crossing_coeff")).as_double());
+  params.goal_pos_coeff =
+    static_cast<float>(node.get_parameter(param_name(prefix, "goal_pos_coeff")).as_double());
+  params.goal_speed_coeff =
+    static_cast<float>(node.get_parameter(param_name(prefix, "goal_speed_coeff")).as_double());
+  params.goal_yaw_coeff =
+    static_cast<float>(node.get_parameter(param_name(prefix, "goal_yaw_coeff")).as_double());
+  params.goal_terminal_scale =
+    static_cast<float>(node.get_parameter(param_name(prefix, "goal_terminal_scale")).as_double());
   return params;
 }
 

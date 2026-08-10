@@ -24,12 +24,14 @@
 
 #include <tf2/utils.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace autoware::mppi_optimizer
 {
@@ -69,12 +71,15 @@ struct MppiDebugEgoState
  *   <log_dir>/000000_reference.csv
  *   <log_dir>/000000_optimized.csv
  *   <log_dir>/000000_ego.csv
+ *   <log_dir>/000000_nominal.csv   (u_nom accel/steer cmds used this cycle)
  *   ...
  *
  * Trajectory CSV columns:
  *   t_from_start_s,x,y,z,yaw,v,a,steer,steer_rate
  * Ego CSV columns:
  *   x,y,z,yaw,v,accel,steer
+ * Nominal CSV columns:
+ *   t_idx,accel_cmd,steer_cmd
  */
 class MppiDebugTrajectoryLogger
 {
@@ -146,6 +151,8 @@ public:
         out << "lateral_jerk_coeff," << cost.lateral_jerk_coeff << "\n";
         out << "longitudinal_jerk_coeff," << cost.longitudinal_jerk_coeff << "\n";
         out << "obstacle_collision_margin," << cost.obstacle_collision_margin << "\n";
+        out << "road_border_collision_margin," << cost.road_border_collision_margin << "\n";
+        out << "drivable_area_crossing_coeff," << cost.drivable_area_crossing_coeff << "\n";
       }
     }
     {
@@ -172,7 +179,8 @@ public:
   void logFrame(
     const autoware_planning_msgs::msg::Trajectory & reference,
     const autoware_planning_msgs::msg::Trajectory & optimized, const MppiDebugEgoState & ego,
-    const double baseline_cost = 0.0)
+    const double baseline_cost = 0.0, const std::vector<float> & nominal_accel_cmd = {},
+    const std::vector<float> & nominal_steer_cmd = {})
   {
     if (!enabled_) {
       return;
@@ -183,10 +191,16 @@ public:
     const std::string ref_path = directory_ + "/" + frame_tag + "_reference.csv";
     const std::string opt_path = directory_ + "/" + frame_tag + "_optimized.csv";
     const std::string ego_path = directory_ + "/" + frame_tag + "_ego.csv";
+    const std::string nominal_path = directory_ + "/" + frame_tag + "_nominal.csv";
     if (
       !writeTrajectoryCsv(ref_path, reference) || !writeTrajectoryCsv(opt_path, optimized) ||
       !writeEgoCsv(ego_path, ego)) {
       return;
+    }
+    if (!nominal_accel_cmd.empty() || !nominal_steer_cmd.empty()) {
+      if (!writeNominalCsv(nominal_path, nominal_accel_cmd, nominal_steer_cmd)) {
+        return;
+      }
     }
 
     const auto & stamp = reference.header.stamp.sec != 0 || reference.header.stamp.nanosec != 0
@@ -262,6 +276,25 @@ private:
     out << std::setprecision(9) << std::fixed;
     out << ego.x << "," << ego.y << "," << ego.z << "," << ego.yaw << "," << ego.v << ","
         << ego.accel << "," << ego.steer << "\n";
+    return true;
+  }
+
+  static bool writeNominalCsv(
+    const std::string & path, const std::vector<float> & accel_cmd,
+    const std::vector<float> & steer_cmd)
+  {
+    const size_t n = std::min(accel_cmd.size(), steer_cmd.size());
+    std::ofstream out(path);
+    if (!out) {
+      RCLCPP_ERROR(
+        rclcpp::get_logger("mppi_debug_trajectory_logger"), "Failed to write %s", path.c_str());
+      return false;
+    }
+    out << "t_idx,accel_cmd,steer_cmd\n";
+    out << std::setprecision(9) << std::fixed;
+    for (size_t i = 0; i < n; ++i) {
+      out << i << "," << accel_cmd[i] << "," << steer_cmd[i] << "\n";
+    }
     return true;
   }
 
