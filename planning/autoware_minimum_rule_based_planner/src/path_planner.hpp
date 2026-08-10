@@ -15,6 +15,7 @@
 #ifndef PATH_PLANNER_HPP_
 #define PATH_PLANNER_HPP_
 
+#include "start_goal_planner/start_goal_planner.hpp"
 #include "type_alias.hpp"
 
 #include <autoware_utils_debug/time_keeper.hpp>
@@ -136,6 +137,7 @@ public:
 private:
   void set_route(const LaneletRoute::ConstSharedPtr & route_ptr);
 
+  StartGoalPlanner start_goal_planner_;
   rclcpp::Logger logger_;
   rclcpp::Clock::SharedPtr clock_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
@@ -275,7 +277,7 @@ std::optional<std::vector<PathPointTrajectory>> refine_path_for_goal(
  * @brief Extract lanelets from the trajectory
  */
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
-  const PathPointTrajectory & trajectory, const RouteContext & planner_data);
+  const PathPointTrajectory & trajectory, const lanelet::LaneletMapPtr & lanelet_map_ptr);
 
 /**
  * @brief Check if the pose is in the lanelets

@@ -14,9 +14,15 @@
 
 #include "start_goal_planner.hpp"
 
+#include "../path_planner.hpp"
 #include "clothoid_pull_generater.hpp"
 
+#include <autoware/trajectory/utils/closest.hpp>
+#include <autoware/trajectory/utils/crop.hpp>
+#include <autoware/trajectory/utils/find_intervals.hpp>
+#include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <autoware_utils/math/unit_conversion.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
 
@@ -26,11 +32,10 @@
 #include <utility>
 #include <vector>
 
+namespace autoware::minimum_rule_based_planner
+{
 namespace
 {
-using autoware::minimum_rule_based_planner::Pose;
-using autoware::minimum_rule_based_planner::StartGoalPlannerParams;
-
 std::vector<PathPointWithLaneId> generate_trajectory_from_points(
   std::vector<geometry_msgs::msg::Point> points, PathPointWithLaneId goal)
 {
@@ -126,9 +131,6 @@ bool is_trajectory_inside_lanelets_or_areas(
 }
 }  // namespace
 
-namespace autoware::minimum_rule_based_planner
-{
-
 StartGoalPlanner::StartGoalPlanner(
   const rclcpp::Logger & logger, std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
   const StartGoalPlannerParams & params, const VehicleInfo & vehicle_info)
@@ -139,9 +141,9 @@ StartGoalPlanner::StartGoalPlanner(
 {
 }
 
-void StartGoalPlanner::set_route_context(const RouteContext & route_context)
+void StartGoalPlanner::set_route_data(const RouteData & route_data)
 {
-  route_context_ = route_context;
+  route_data_ = route_data;
 }
 
 void StartGoalPlanner::update_params(const StartGoalPlannerParams & params)
@@ -156,34 +158,34 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
   judge_start_planner_act();
 
   if (!start_planner_act && !goal_planner_act) {
-    return trajectory;
+    return std::nullopt;  // StartGoalPlanner is not applied. normal termination
   }
 
   const auto goal_pose_candidates = get_goal_pose(trajectory);
   const auto start_pose_candidates = get_start_pose(trajectory);
   if (!start_pose_candidates || !goal_pose_candidates) {
-    return trajectory;
+    return std::nullopt;
   }
 
   const auto available_area = get_available_area(trajectory);
   if (available_area.lanelets.empty() && available_area.areas.empty()) {
-    return trajectory;
+    return std::nullopt;
   }
 
   const auto candidate_trajectories =
     generate_pull_trajectories(*start_pose_candidates, *goal_pose_candidates);
   if (!candidate_trajectories) {
-    return trajectory;
+    return std::nullopt;
   }
 
   const auto pull_trajectory = evaluate_trajectory(*candidate_trajectories, available_area);
   if (!pull_trajectory) {
-    return trajectory;
+    return std::nullopt;
   }
 
   const auto refined_trajectory = connect_pull_trajectory(trajectory, *pull_trajectory);
   if (!refined_trajectory) {
-    return trajectory;
+    return std::nullopt;
   }
 
   return refined_trajectory;
@@ -198,8 +200,8 @@ void StartGoalPlanner::judge_goal_planner_act(
   const PathPointTrajectory & trajectory, const double & s_path_end)
 {
   const auto s_path_end_clamped = std::min(trajectory.length(), s_path_end);
-  const auto distance_to_goal = autoware_utils::calc_distance2d(
-    trajectory.compute(s_path_end_clamped), route_context_.goal_pose);
+  const auto distance_to_goal =
+    autoware_utils::calc_distance2d(trajectory.compute(s_path_end_clamped), route_data_.goal_pose);
 
   goal_planner_act = distance_to_goal < params_.search_radius_range;
 }
@@ -207,9 +209,10 @@ void StartGoalPlanner::judge_goal_planner_act(
 StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
   const PathPointTrajectory & trajectory)
 {
-  const auto base_lanelets = utils::extract_lanelets_from_trajectory(trajectory, route_context_);
-  const auto & lanelet_map_ptr = route_context_.lanelet_map_ptr;
-  const auto & routing_graph_ptr = route_context_.routing_graph_ptr;
+  const auto base_lanelets =
+    utils::extract_lanelets_from_trajectory(trajectory, route_data_.lanelet_map_ptr);
+  const auto & lanelet_map_ptr = route_data_.lanelet_map_ptr;
+  const auto & routing_graph_ptr = route_data_.routing_graph_ptr;
 
   AvailableArea available;
   available.lanelets = base_lanelets;
@@ -278,9 +281,9 @@ std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_start_pose
   const PathPointTrajectory & trajectory)
 {
   if (goal_planner_act) {
-    const auto goal_lane_id = route_context_.preferred_lanelets.back().id();
+    const auto goal_lane_id = route_data_.preferred_lanelets.back().id();
     auto candidates =
-      calc_goal_planner_start_poses(trajectory, route_context_.goal_pose, goal_lane_id, params_);
+      calc_goal_planner_start_poses(trajectory, route_data_.goal_pose, goal_lane_id, params_);
     if (candidates.empty()) {
       return std::nullopt;
     }
@@ -297,8 +300,8 @@ std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_goal_pose(
   const PathPointTrajectory & trajectory)
 {
   if (goal_planner_act) {
-    const auto pre_goal_pose = autoware_utils::calc_offset_pose(
-      route_context_.goal_pose, -params_.pre_goal_offset, 0.0, 0.0);
+    const auto pre_goal_pose =
+      autoware_utils::calc_offset_pose(route_data_.goal_pose, -params_.pre_goal_offset, 0.0, 0.0);
     auto pre_goal =
       trajectory.compute(autoware::experimental::trajectory::closest(trajectory, pre_goal_pose));
     pre_goal.point.pose = pre_goal_pose;
@@ -392,10 +395,11 @@ std::optional<PathPointTrajectory> StartGoalPlanner::connect_goal_planner_trajec
 {
   auto pull_points = pull_trajectory.restore();
 
-  auto true_goal_point = pull_points.back();
-  true_goal_point.point.pose = route_context_.goal_pose;
-  true_goal_point.point.longitudinal_velocity_mps = 0.0;
-  pull_points.push_back(true_goal_point);
+  auto goal = trajectory.compute(
+    autoware::experimental::trajectory::closest(trajectory, route_data_.goal_pose));
+  goal.point.pose = route_data_.goal_pose;
+  goal.point.longitudinal_velocity_mps = 0.0;
+  pull_points.push_back(goal);
 
   const auto pull_start_pose = pull_trajectory.compute(0.0).point.pose;
   const auto s_closest = autoware::experimental::trajectory::closest(trajectory, pull_start_pose);

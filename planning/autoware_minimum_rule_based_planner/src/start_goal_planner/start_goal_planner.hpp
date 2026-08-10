@@ -15,7 +15,6 @@
 #ifndef START_GOAL_PLANNER__START_GOAL_PLANNER_HPP_
 #define START_GOAL_PLANNER__START_GOAL_PLANNER_HPP_
 
-#include "../path_planner.hpp"
 #include "../type_alias.hpp"
 
 #include <autoware/lanelet2_utils/kind.hpp>
@@ -34,12 +33,6 @@
 #include <optional>
 #include <vector>
 
-namespace
-{
-std::vector<PathPointWithLaneId> generate_trajectory_from_points(
-  std::vector<geometry_msgs::msg::Point> points, PathPointWithLaneId goal);
-}
-
 namespace autoware::minimum_rule_based_planner
 {
 using StartGoalPlannerParams = Params::PathPlanning::StartGoalPlanner;
@@ -48,13 +41,21 @@ using Pose = geometry_msgs::msg::Pose;
 class StartGoalPlanner
 {
 public:
+  struct RouteData
+  {
+    geometry_msgs::msg::Pose goal_pose{};
+    lanelet::ConstLanelets preferred_lanelets{};
+    lanelet::LaneletMapPtr lanelet_map_ptr{nullptr};
+    lanelet::routing::RoutingGraphPtr routing_graph_ptr{nullptr};
+  };
+
   StartGoalPlanner(
     const rclcpp::Logger & logger, std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
     const StartGoalPlannerParams & params, const VehicleInfo & vehicle_info);
 
   std::optional<PathPointTrajectory> plan(
     const PathPointTrajectory & trajectory, const double & s_path_end);
-  void set_route_context(const RouteContext & route_context);
+  void set_route_data(const RouteData & route_data);
   void update_params(const StartGoalPlannerParams & params);
   bool start_planner_active() { return start_planner_act; }
   bool goal_planner_active() { return goal_planner_act; }
@@ -90,7 +91,7 @@ private:
   bool start_planner_act{false};
   bool goal_planner_act{false};
 
-  RouteContext route_context_;
+  RouteData route_data_;
   rclcpp::Logger logger_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   StartGoalPlannerParams params_;

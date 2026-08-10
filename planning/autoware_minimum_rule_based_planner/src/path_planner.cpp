@@ -59,7 +59,8 @@ PathPlanner::PathPlanner(
   const rclcpp::Logger & logger, rclcpp::Clock::SharedPtr clock,
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
   const VehicleInfo & vehicle_info)
-: logger_(logger),
+: start_goal_planner_(logger, time_keeper, params.path_planning.start_goal_planner, vehicle_info),
+  logger_(logger),
   clock_(std::move(clock)),
   time_keeper_(std::move(time_keeper)),
   params_(params),
@@ -129,11 +130,21 @@ void PathPlanner::set_route(const LaneletRoute::ConstSharedPtr & route_ptr)
     };
   set_lanelets_from_segment(route_ptr->segments.front(), route_context_.start_lanelets);
   set_lanelets_from_segment(route_ptr->segments.back(), route_context_.goal_lanelets);
+
+  const StartGoalPlanner::RouteData route_data{
+    route_context_.goal_pose, route_context_.preferred_lanelets, route_context_.lanelet_map_ptr,
+    route_context_.routing_graph_ptr};
+  start_goal_planner_.set_route_data(route_data);
 }
 
 void PathPlanner::set_route_context(const RouteContext & route_context)
 {
   route_context_ = route_context;
+
+  const StartGoalPlanner::RouteData route_data{
+    route_context_.goal_pose, route_context_.preferred_lanelets, route_context_.lanelet_map_ptr,
+    route_context_.routing_graph_ptr};
+  start_goal_planner_.set_route_data(route_data);
 }
 
 RouteContext & PathPlanner::route_context()
@@ -149,6 +160,7 @@ const RouteContext & PathPlanner::route_context() const
 void PathPlanner::update_params(const Params & params)
 {
   params_ = params;
+  start_goal_planner_.update_params(params_.path_planning.start_goal_planner);
 }
 
 Trajectory PathPlanner::convert_path_to_trajectory(
@@ -1067,13 +1079,13 @@ std::optional<std::vector<PathPointTrajectory>> refine_path_for_goal(
 }
 
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
-  const PathPointTrajectory & trajectory, const RouteContext & planner_data)
+  const PathPointTrajectory & trajectory, const lanelet::LaneletMapPtr & lanelet_map_ptr)
 {
   lanelet::ConstLanelets lanelets{};
   const auto lane_ids = trajectory.get_contained_lane_ids();
   const auto lane_ids_set = std::set(lane_ids.begin(), lane_ids.end());
   for (const auto & lane_id : lane_ids_set) {
-    const auto lanelet = planner_data.lanelet_map_ptr->laneletLayer.get(lane_id);
+    const auto lanelet = lanelet_map_ptr->laneletLayer.get(lane_id);
     lanelets.push_back(lanelet);
   }
   return lanelets;
@@ -1095,7 +1107,8 @@ std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
     return std::nullopt;
   }
   // Build the set of lanelets/areas valid for the refined path.
-  const auto base_lanelets = extract_lanelets_from_trajectory(trajectory, planner_data);
+  const auto base_lanelets =
+    extract_lanelets_from_trajectory(trajectory, planner_data.lanelet_map_ptr);
   const auto available_area =
     get_available_area(base_lanelets, planner_data.lanelet_map_ptr, planner_data.routing_graph_ptr);
 
@@ -1276,7 +1289,7 @@ std::optional<double> cal_early_stop(
 
   const auto trajectory_lanelets =
     autoware::minimum_rule_based_planner::utils::extract_lanelets_from_trajectory(
-      trajectory, planner_data);
+      trajectory, planner_data.lanelet_map_ptr);
 
   bool goal_reachable = false;
   for (const auto & lanelet_traj : trajectory_lanelets) {
@@ -1797,35 +1810,15 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     // Connect the path to the goal pose so that ego reaches the goal itself.
     // Check if the goal point is in the search range
     // Note: We only see if the goal is approaching the tail of the path.
-    const auto s_path_end_clamped = std::min(trajectory->length(), adjusted_s_path_end);
-    const auto distance_to_goal = autoware_utils::calc_distance2d(
-      trajectory->compute(s_path_end_clamped), route_context_.goal_pose);
-
-    bool goal_connection_applied = false;
-    if (distance_to_goal < params_.path_planning.start_goal_planner.search_radius_range) {
-      utils::ClothoidGoalConnectionParams clothoid_params;
-      clothoid_params.wheel_base_m = vehicle_info_.wheel_base_m;
-      clothoid_params.max_steer_angle_rad = vehicle_info_.max_steer_angle_rad;
-      clothoid_params.steer_angle_trial_count =
-        params_.path_planning.start_goal_planner.clothoid_steer_angle_trial_count;
-      clothoid_params.reference_velocity_mps =
-        params_.path_planning.start_goal_planner.clothoid_reference_velocity;
-      clothoid_params.max_steer_angle_rate_rad_per_sec = autoware_utils::deg2rad(
-        params_.path_planning.start_goal_planner.clothoid_max_steer_angle_rate_deg_per_sec);
-
-      auto refined_path = utils::modify_path_for_smooth_goal_connection(
-        *trajectory, route_context_, params_.path_planning.start_goal_planner.search_radius_range,
-        params_.path_planning.start_goal_planner.pre_goal_offset, clothoid_params);
-
-      if (refined_path) {
-        refined_path->align_orientation_with_trajectory_direction();
-        *trajectory = *refined_path;
-        goal_connection_applied = true;
-      }
+    auto refined_path = start_goal_planner_.plan(*trajectory, adjusted_s_path_end);
+    if (refined_path.has_value()) {
+      *trajectory = *refined_path;
     }
 
     // Crop end
-    if (!goal_connection_applied && trajectory->length() > adjusted_s_path_end) {
+    const bool goal_planner_applied =
+      start_goal_planner_.goal_planner_active() && refined_path.has_value();
+    if (!goal_planner_applied && trajectory->length() > adjusted_s_path_end) {
       trajectory->crop(0., adjusted_s_path_end);
     }
 
