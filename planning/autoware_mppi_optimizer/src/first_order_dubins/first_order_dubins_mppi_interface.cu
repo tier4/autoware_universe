@@ -315,8 +315,7 @@ void selectWorstRolloutIndices(
 
   const int keep = std::min(worst_n, static_cast<int>(candidates.size()));
   std::partial_sort(
-    candidates.begin(), candidates.begin() + keep, candidates.end(),
-    [&](const int a, const int b) {
+    candidates.begin(), candidates.begin() + keep, candidates.end(), [&](const int a, const int b) {
       return raw_costs[static_cast<size_t>(a)] > raw_costs[static_cast<size_t>(b)];
     });
   candidates.resize(static_cast<size_t>(keep));
@@ -369,8 +368,7 @@ void buildRolloutVisualization(
 
   std::vector<int> top_indices;
   std::vector<float> top_costs;
-  selectTopRolloutIndices(
-    normalized_weights, raw_costs, kMaxVizRollouts, top_indices, top_costs);
+  selectTopRolloutIndices(normalized_weights, raw_costs, kMaxVizRollouts, top_indices, top_costs);
 
   std::vector<int> worst_indices;
   std::vector<float> worst_costs;
@@ -388,8 +386,8 @@ void buildRolloutVisualization(
   const size_t top_ctrl_floats =
     top_indices.size() * static_cast<size_t>(kMppiHorizon) * static_cast<size_t>(DYN::CONTROL_DIM);
   const std::vector<float> top_controls(
-    host_controls.begin(),
-    host_controls.begin() + static_cast<std::ptrdiff_t>(std::min(top_ctrl_floats, host_controls.size())));
+    host_controls.begin(), host_controls.begin() + static_cast<std::ptrdiff_t>(std::min(
+                                                     top_ctrl_floats, host_controls.size())));
   appendReplayedRollouts(model, x_at_optimization, top_controls, top_costs, false, debug.rollouts);
   if (!worst_indices.empty()) {
     const std::vector<float> worst_controls(
@@ -524,6 +522,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     cost_params.ego_length = vehicle_params.ego_length;
     cost_params.ego_width = vehicle_params.ego_width;
     cost_params.ego_axle_to_box_center = vehicle_params.ego_axle_to_box_center;
+    // Comfort-cost steer-rate clamp must match vehicle config (simulator_model steer_rate_lim).
+    cost_params.max_steer_rate = vehicle_params.steer_rate_lim;
     cost.setParams(cost_params);
 
     const float kMaxSteer = dyn.max_steer_angle;
@@ -1104,8 +1104,6 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const int steer_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE);
   const int accel_cmd_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
-  const int steer_cmd_idx =
-    static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
 
   // Cost/plot alignment: MPPI costs post-step state at t against ref[t]=DP[t] (DP starts at
   // ≈dt). Map published points[i] <- state[i+1], control[i] so index 0 is state after first
