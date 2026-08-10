@@ -411,7 +411,7 @@ trajectory_modifier_params:
       default_value: true
       description: Treat unknown light as red light
       read_only: false
-    enable_arrow_aware_yellow_passing:
+    enable_arrow_aware_amber_passing:
       type: bool
       default_value: true
       description: Allow passing on amber after Green Circle when on a turn lane with a mapped static arrow
