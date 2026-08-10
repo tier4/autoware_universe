@@ -87,7 +87,7 @@
               "required": [],
               "additionalProperties": false
             },
-            "smooth_goal_connection": {
+            "start_goal_planner": {
               "type": "object",
               "properties": {
                 "search_radius_range": {

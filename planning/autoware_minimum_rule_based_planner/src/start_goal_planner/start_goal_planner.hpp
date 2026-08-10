@@ -42,17 +42,7 @@ std::vector<PathPointWithLaneId> generate_trajectory_from_points(
 
 namespace autoware::minimum_rule_based_planner
 {
-struct StartGoalPlannerParams
-{
-  struct SmoothGoalConnection
-  {
-    double search_radius_range = 20.0;
-    double pre_goal_offset = 1.0;
-    double clothoid_reference_velocity = 4.7;
-    int64_t clothoid_steer_angle_trial_count = 7;
-    double clothoid_max_steer_angle_rate_deg_per_sec = 30.0;
-  } smooth_goal_connection;
-};
+using StartGoalPlannerParams = Params::PathPlanning::StartGoalPlanner;
 
 using Pose = geometry_msgs::msg::Pose;
 class StartGoalPlanner
@@ -63,8 +53,9 @@ public:
     const StartGoalPlannerParams & params, const VehicleInfo & vehicle_info);
 
   std::optional<PathPointTrajectory> plan(
-    const PathPointTrajectory & trajectory, const double & s_path_end,
-    const RouteContext & planner_data);
+    const PathPointTrajectory & trajectory, const double & s_path_end);
+  void set_route_context(const RouteContext & route_context);
+  void update_params(const StartGoalPlannerParams & params);
   bool start_planner_active() { return start_planner_act; }
   bool goal_planner_active() { return goal_planner_act; }
 

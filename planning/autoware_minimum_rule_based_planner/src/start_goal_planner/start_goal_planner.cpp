@@ -60,8 +60,8 @@ std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
   };
 
   std::vector<PathPointWithLaneId> candidates;
-  const auto & search_radius_range = params.smooth_goal_connection.search_radius_range;
-  const auto & pre_goal_offset = params.smooth_goal_connection.pre_goal_offset;
+  const auto & search_radius_range = params.search_radius_range;
+  const auto & pre_goal_offset = params.pre_goal_offset;
 
   for (double s = search_radius_range; s > 0; s -= 0.1) {
     auto outside_circle = [&](const PathPointWithLaneId & point) {
@@ -139,12 +139,19 @@ StartGoalPlanner::StartGoalPlanner(
 {
 }
 
-std::optional<PathPointTrajectory> StartGoalPlanner::plan(
-  const PathPointTrajectory & trajectory, const double & s_path_end,
-  const RouteContext & planner_data)
+void StartGoalPlanner::set_route_context(const RouteContext & route_context)
 {
-  route_context_ = planner_data;
+  route_context_ = route_context;
+}
 
+void StartGoalPlanner::update_params(const StartGoalPlannerParams & params)
+{
+  params_ = params;
+}
+
+std::optional<PathPointTrajectory> StartGoalPlanner::plan(
+  const PathPointTrajectory & trajectory, const double & s_path_end)
+{
   judge_goal_planner_act(trajectory, s_path_end);
   judge_start_planner_act();
 
@@ -194,7 +201,7 @@ void StartGoalPlanner::judge_goal_planner_act(
   const auto distance_to_goal = autoware_utils::calc_distance2d(
     trajectory.compute(s_path_end_clamped), route_context_.goal_pose);
 
-  goal_planner_act = distance_to_goal < params_.smooth_goal_connection.search_radius_range;
+  goal_planner_act = distance_to_goal < params_.search_radius_range;
 }
 
 StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
@@ -291,7 +298,7 @@ std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_goal_pose(
 {
   if (goal_planner_act) {
     const auto pre_goal_pose = autoware_utils::calc_offset_pose(
-      route_context_.goal_pose, -params_.smooth_goal_connection.pre_goal_offset, 0.0, 0.0);
+      route_context_.goal_pose, -params_.pre_goal_offset, 0.0, 0.0);
     auto pre_goal =
       trajectory.compute(autoware::experimental::trajectory::closest(trajectory, pre_goal_pose));
     pre_goal.point.pose = pre_goal_pose;
@@ -308,11 +315,10 @@ std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_
   const std::vector<PathPointWithLaneId> & start_pose_candidates,
   const std::vector<PathPointWithLaneId> & goal_pose_candidates)
 {
-  const auto & smooth_goal_connection = params_.smooth_goal_connection;
   const auto max_steer_angles_rad = generate_candidate_steer_angles_rad(
-    vehicle_info_.max_steer_angle_rad, smooth_goal_connection.clothoid_steer_angle_trial_count);
+    vehicle_info_.max_steer_angle_rad, params_.clothoid_steer_angle_trial_count);
   const auto max_steer_angle_rate_rad_per_sec =
-    autoware_utils::deg2rad(smooth_goal_connection.clothoid_max_steer_angle_rate_deg_per_sec);
+    autoware_utils::deg2rad(params_.clothoid_max_steer_angle_rate_deg_per_sec);
 
   std::vector<PathPointTrajectory> candidate_trajectories;
 
@@ -322,7 +328,7 @@ std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_
         const auto clothoid_paths = plan_clothoid_pull(
           start_point.point.pose, goal_point.point.pose, vehicle_info_.wheel_base_m,
           max_steering_angle, max_steer_angle_rate_rad_per_sec,
-          smooth_goal_connection.clothoid_reference_velocity);
+          params_.clothoid_reference_velocity);
 
         if (!clothoid_paths.has_value()) {
           continue;

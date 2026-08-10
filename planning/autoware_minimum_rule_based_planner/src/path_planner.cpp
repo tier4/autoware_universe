@@ -1802,21 +1802,20 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
       trajectory->compute(s_path_end_clamped), route_context_.goal_pose);
 
     bool goal_connection_applied = false;
-    if (distance_to_goal < params_.path_planning.smooth_goal_connection.search_radius_range) {
+    if (distance_to_goal < params_.path_planning.start_goal_planner.search_radius_range) {
       utils::ClothoidGoalConnectionParams clothoid_params;
       clothoid_params.wheel_base_m = vehicle_info_.wheel_base_m;
       clothoid_params.max_steer_angle_rad = vehicle_info_.max_steer_angle_rad;
       clothoid_params.steer_angle_trial_count =
-        params_.path_planning.smooth_goal_connection.clothoid_steer_angle_trial_count;
+        params_.path_planning.start_goal_planner.clothoid_steer_angle_trial_count;
       clothoid_params.reference_velocity_mps =
-        params_.path_planning.smooth_goal_connection.clothoid_reference_velocity;
+        params_.path_planning.start_goal_planner.clothoid_reference_velocity;
       clothoid_params.max_steer_angle_rate_rad_per_sec = autoware_utils::deg2rad(
-        params_.path_planning.smooth_goal_connection.clothoid_max_steer_angle_rate_deg_per_sec);
+        params_.path_planning.start_goal_planner.clothoid_max_steer_angle_rate_deg_per_sec);
 
       auto refined_path = utils::modify_path_for_smooth_goal_connection(
-        *trajectory, route_context_,
-        params_.path_planning.smooth_goal_connection.search_radius_range,
-        params_.path_planning.smooth_goal_connection.pre_goal_offset, clothoid_params);
+        *trajectory, route_context_, params_.path_planning.start_goal_planner.search_radius_range,
+        params_.path_planning.start_goal_planner.pre_goal_offset, clothoid_params);
 
       if (refined_path) {
         refined_path->align_orientation_with_trajectory_direction();
