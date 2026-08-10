@@ -44,10 +44,6 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
     param_name(prefix, "lateral_yaw_error_coeff"), defaults.lateral_yaw_error_coeff);
   node.declare_parameter(param_name(prefix, "crash_coeff"), defaults.crash_coeff);
   node.declare_parameter(param_name(prefix, "boundary_threshold"), defaults.boundary_threshold);
-  node.declare_parameter(
-    param_name(prefix, "boundary_threshold_left"), defaults.boundary_threshold_left);
-  node.declare_parameter(
-    param_name(prefix, "boundary_threshold_right"), defaults.boundary_threshold_right);
   node.declare_parameter(param_name(prefix, "accel_cmd_coeff"), defaults.accel_cmd_coeff);
   node.declare_parameter(param_name(prefix, "steer_cmd_coeff"), defaults.steer_cmd_coeff);
   node.declare_parameter(param_name(prefix, "steer_rate_coeff"), defaults.steer_rate_coeff);
@@ -91,10 +87,6 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     static_cast<float>(node.get_parameter(param_name(prefix, "crash_coeff")).as_double());
   params.boundary_threshold =
     static_cast<float>(node.get_parameter(param_name(prefix, "boundary_threshold")).as_double());
-  params.boundary_threshold_left = static_cast<float>(
-    node.get_parameter(param_name(prefix, "boundary_threshold_left")).as_double());
-  params.boundary_threshold_right = static_cast<float>(
-    node.get_parameter(param_name(prefix, "boundary_threshold_right")).as_double());
   params.accel_cmd_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "accel_cmd_coeff")).as_double());
   params.steer_cmd_coeff =

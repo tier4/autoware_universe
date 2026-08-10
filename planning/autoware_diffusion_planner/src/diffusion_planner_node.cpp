@@ -16,6 +16,7 @@
 
 #include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
+#include "autoware/diffusion_planner/mppi_utils.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/utils/marker_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
@@ -646,10 +647,6 @@ void DiffusionPlanner::on_timer()
         std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
           lanelet_map_msg_, prev_route_);
       extended_route_handler_->create_map();
-      const auto road_borders = extended_route_handler_->get_road_borders();
-      road_border_rtree_ = prepare_road_border_rtree(road_borders);
-      drivable_area_rtree_ =
-        prepare_drivable_area_rtree(extended_route_handler_->get_extended_route_bounds());
     }
 
     try {
@@ -669,18 +666,19 @@ void DiffusionPlanner::on_timer()
       const auto driving_along_targets = object_selector_.get_driving_along_vehicles(*objects);
 
       const auto margin = vehicle_info_.max_longitudinal_offset_m + 1.0;
-      const auto road_borders_subset =
-        get_road_border_subset(road_border_rtree_, planner_output.trajectory, margin);
-      const auto drivable_area_subset =
-        get_drivable_area_subset(drivable_area_rtree_, planner_output.trajectory, margin);
 
       auto all_targets = avoidance_targets;
       all_targets.objects.insert(
         all_targets.objects.end(), driving_along_targets.objects.begin(),
         driving_along_targets.objects.end());
+      const auto road_borders_subset = extended_route_handler_->get_road_borders_around_trajectory(
+        planner_output.trajectory, margin);
+      const auto drivable_area_subset =
+        extended_route_handler_->get_drivable_area_around_trajectory(
+          planner_output.trajectory, margin);
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
-        ego_steering, avoidance_targets, to_mppi_segments(road_borders_subset),
+        ego_steering, all_targets, to_mppi_segments(road_borders_subset),
         to_mppi_segments(drivable_area_subset));
       pub_mppi_markers_->publish(
         autoware::mppi_optimizer::createMppiDebugMarkers(

@@ -30,8 +30,6 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float boundary_threshold = 0.8F;
   /** Beyond bound if signed lateral offset exceeds these (path-left = +); <0 falls back to
    * boundary_threshold. */
-  float boundary_threshold_left = -1.0F;
-  float boundary_threshold_right = -1.0F;
   float accel_cmd_coeff = 0.0F;
   float steer_cmd_coeff = 0.0F;
   /** Direct cost on steer rate [rad/s]: (steer_cmd - steer) / steer_time_constant. */

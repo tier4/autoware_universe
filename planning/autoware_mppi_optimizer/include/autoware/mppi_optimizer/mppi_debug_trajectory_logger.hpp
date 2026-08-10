@@ -153,8 +153,6 @@ public:
         out << "lateral_yaw_error_coeff," << cost.lateral_yaw_error_coeff << "\n";
         out << "crash_coeff," << cost.crash_coeff << "\n";
         out << "boundary_threshold," << cost.boundary_threshold << "\n";
-        out << "boundary_threshold_left," << cost.boundary_threshold_left << "\n";
-        out << "boundary_threshold_right," << cost.boundary_threshold_right << "\n";
         out << "accel_cmd_coeff," << cost.accel_cmd_coeff << "\n";
         out << "steer_cmd_coeff," << cost.steer_cmd_coeff << "\n";
         out << "steer_rate_coeff," << cost.steer_rate_coeff << "\n";

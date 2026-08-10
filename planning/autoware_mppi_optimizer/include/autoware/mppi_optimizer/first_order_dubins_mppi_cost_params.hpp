@@ -33,8 +33,6 @@ struct FirstOrderDubinsMppiCostParams
   float lateral_yaw_error_coeff{0.0F};
   float crash_coeff{100000.0F};
   float boundary_threshold{1.5F};
-  float boundary_threshold_left{-1.0F};
-  float boundary_threshold_right{-1.0F};
   float accel_cmd_coeff{0.0F};
   float steer_cmd_coeff{0.0F};
   float steer_rate_coeff{0.0F};

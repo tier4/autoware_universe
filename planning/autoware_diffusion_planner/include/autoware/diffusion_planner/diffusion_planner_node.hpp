@@ -18,7 +18,6 @@
 #include "autoware/avoidance_target_detector/boundary.hpp"
 #include "autoware/avoidance_target_detector/object_filtering.hpp"
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
-#include "autoware/diffusion_planner/mppi_utils.hpp"
 #include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
@@ -290,8 +289,6 @@ private:
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
-  RoadBorderRtree road_border_rtree_;
-  DrivableAreaRtree drivable_area_rtree_;
   HADMapBin lanelet_map_msg_;
   LaneletRoute prev_route_;
 };

@@ -144,8 +144,6 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("steer_cmd_coeff", 0.0, 5000.0),
     ("steer_rate_coeff", 0.0, 10000.0),
     ("boundary_threshold", 0.1, 5.0),
-    ("boundary_threshold_left", -1.0, 5.0),
-    ("boundary_threshold_right", -1.0, 5.0),
     ("obstacle_collision_margin", 0.0, 2.0),
     ("road_border_collision_margin", 0.0, 2.0),
     ("drivable_area_crossing_coeff", 0.0, 10000.0),
