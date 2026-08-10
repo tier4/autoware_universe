@@ -16,8 +16,7 @@
 #define AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_OPTIMIZER_PLUGINS__TRAJECTORY_TEMPORAL_MPT_OPTIMIZER_HPP_  // NOLINT
 
 #include "autoware/trajectory_processor/acados_interface.hpp"
-#include "autoware/trajectory_processor/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
-#include "autoware/trajectory_processor/trajectory_optimizer_structs.hpp"
+#include "autoware/trajectory_processor/trajectory_processor_plugin_base.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -33,6 +32,11 @@
 
 namespace autoware::trajectory_optimizer::plugin
 {
+using autoware::trajectory_processor::TrajectoryProcessorData;
+using autoware::trajectory_processor::TrajectoryProcessorParams;
+using autoware::trajectory_processor::plugin::ProcessingResult;
+using autoware::trajectory_processor::plugin::TrajectoryPoints;
+using autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase;
 
 struct TemporalMPTParams
 {
@@ -50,17 +54,17 @@ struct TemporalMPTParams
   bool reroute_output{false};
 };
 
-class TrajectoryTemporalMPTOptimizer : public TrajectoryOptimizerPluginBase
+class TrajectoryTemporalMPTOptimizer : public TrajectoryProcessorPluginBase
 {
 public:
   TrajectoryTemporalMPTOptimizer() = default;
 
-  void optimize_trajectory(TrajectoryPoints & traj_points, TrajectoryOptimizerData & data) override;
+  ProcessingResult process(TrajectoryPoints & traj_points, TrajectoryProcessorData & data) override;
 
-  void update_params(const TrajectoryOptimizerParams & params) override;
+  void update_params(const TrajectoryProcessorParams & params) override;
 
 protected:
-  void on_initialize(const TrajectoryOptimizerParams & params) override;
+  void on_initialize(const TrajectoryProcessorParams & params) override;
 
 private:
   std::unique_ptr<temporal_mpt::AcadosInterface> acados_interface_;
