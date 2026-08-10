@@ -407,6 +407,7 @@ Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
   shift_params.minimum_shift_distance = params_.path_planning.path_shift.minimum_shift_distance;
   shift_params.min_speed_for_curvature = params_.path_planning.path_shift.min_speed_for_curvature;
   shift_params.lateral_accel_limit = params_.path_planning.path_shift.lateral_accel_limit;
+  shift_params.curvature_limit = params_.path_planning.path_shift.curvature_limit;
 
   const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
   const double ego_yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
