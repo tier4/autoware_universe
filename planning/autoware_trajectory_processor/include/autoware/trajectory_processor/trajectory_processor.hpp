@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_HPP_
-#define AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_PROCESSOR_HPP_
+#define AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_PROCESSOR_HPP_
 
 #include "autoware/trajectory_processor/trajectory_processor_context.hpp"
 #include "autoware/trajectory_processor/trajectory_processor_data.hpp"
@@ -109,4 +109,4 @@ private:
 
 }  // namespace autoware::trajectory_modifier
 
-#endif  // AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_PROCESSOR_HPP_
