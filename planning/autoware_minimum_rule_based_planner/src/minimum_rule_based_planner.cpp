@@ -16,6 +16,7 @@
 
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
+#include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware/velocity_smoother/resample.hpp>
@@ -352,15 +353,19 @@ void MinimumRuleBasedPlannerNode::on_timer()
 
   if (stop_result.go_stop_point) {
     go_planning_factor_interface_->add(
-      stop_result.go_stop_point->arc_length - ego_arc_length, go_trajectory.points.back().pose,
+      stop_result.go_stop_point->arc_length - ego_arc_length,
+      autoware::motion_utils::calcInterpolatedPose(
+        trajectory.points, stop_result.go_stop_point->arc_length),
       autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
       autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true, 0.0, 0.0,
       to_string(stop_result.go_stop_point->type));
     go_planning_factor_interface_->publish();
   }
-  if (stop_result.stop_stop_point) {
+  if (stop_trajectory && stop_result.stop_stop_point) {
     stop_planning_factor_interface_->add(
-      stop_result.stop_stop_point->arc_length - ego_arc_length, go_trajectory.points.back().pose,
+      stop_result.stop_stop_point->arc_length - ego_arc_length,
+      autoware::motion_utils::calcInterpolatedPose(
+        stop_trajectory->points, stop_result.stop_stop_point->arc_length),
       autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
       autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true, 0.0, 0.0,
       to_string(stop_result.stop_stop_point->type));
