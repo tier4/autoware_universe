@@ -31,6 +31,8 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner
@@ -64,8 +66,10 @@ private:
   struct AvailableArea
   {
     lanelet::ConstLanelets lanelets;
-    lanelet::Areas areas;
+    lanelet::ConstPolygons3d areas;
   };
+
+  const std::unordered_set<std::string> available_area_type = {"parking_lot"};
 
   AvailableArea get_available_area(const PathPointTrajectory & trajectory);
 

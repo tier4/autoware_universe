@@ -25,8 +25,10 @@
 #include <autoware_utils/math/unit_conversion.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
+#include <lanelet2_core/primitives/Polygon.h>
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -109,18 +111,24 @@ std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
 
 bool is_trajectory_inside_lanelets_or_areas(
   const PathPointTrajectory & trajectory, const lanelet::ConstLanelets & lanelets,
-  const lanelet::Areas & areas)
+  const lanelet::ConstPolygons3d & areas)
 {
   auto is_in_lanelets = [&](const geometry_msgs::msg::Pose & pose) {
     return std::any_of(lanelets.begin(), lanelets.end(), [&](const auto & lane) {
       return lanelet::utils::isInLanelet(pose, lane);
     });
   };
+
+  std::vector<lanelet::BasicPolygon2d> areas_2d;
+  areas_2d.reserve(areas.size());
+  for (const auto & area : areas) {
+    areas_2d.push_back(lanelet::utils::to2D(area).basicPolygon());
+  }
+
   auto is_in_areas = [&](const geometry_msgs::msg::Pose & pose) {
     const lanelet::BasicPoint2d point(pose.position.x, pose.position.y);
-    return std::any_of(areas.begin(), areas.end(), [&](const auto & area) {
-      return lanelet::geometry::within(
-        point, lanelet::traits::to2D(area.outerBoundPolygon()).basicPolygon());
+    return std::any_of(areas_2d.begin(), areas_2d.end(), [&](const auto & area) {
+      return boost::geometry::covered_by(point, area);
     });
   };
 
@@ -129,6 +137,26 @@ bool is_trajectory_inside_lanelets_or_areas(
     return !is_in_lanelets(point.point.pose) && !is_in_areas(point.point.pose);
   });
 }
+
+lanelet::ConstPolygons3d find_polygons_intersecting_lanelet(
+  const lanelet::PolygonLayer & polygon_layer, const lanelet::ConstLanelet & lanelet)
+{
+  lanelet::ConstPolygons3d result;
+
+  const auto lane_2d = lanelet.polygon2d().basicPolygon();
+
+  const auto bbox = lanelet::geometry::boundingBox2d(lanelet);
+  const auto candidate_polygons = polygon_layer.search(bbox);
+
+  for (const auto & polygon : candidate_polygons) {
+    const auto poly_2d = lanelet::utils::to2D(polygon).basicPolygon();
+    if (boost::geometry::intersects(lane_2d, poly_2d)) {
+      result.push_back(polygon);
+    }
+  }
+  return result;
+}
+
 }  // namespace
 
 StartGoalPlanner::StartGoalPlanner(
@@ -224,7 +252,8 @@ StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
       available.lanelets.push_back(candidate);
     }
   };
-  auto try_add_area = [&](const lanelet::Area & candidate) {
+
+  auto try_add_area = [&](const lanelet::ConstPolygon3d & candidate) {
     if (
       std::find(available.areas.begin(), available.areas.end(), candidate) ==
       available.areas.end()) {
@@ -260,16 +289,13 @@ StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
 
   // Freespace areas sharing a boundary linestring with the lanelets collected so far.
   for (const auto & ll : available.lanelets) {
-    for (const auto & bound : {ll.leftBound(), ll.rightBound()}) {
-      for (const auto & area : lanelet_map_ptr->areaLayer.findUsages(bound)) {
-        const auto & outer = area.outerBound();
-        const bool shares_bound =
-          std::any_of(outer.begin(), outer.end(), [&](const auto & ls) { return ls == bound; });
-        if (
-          area.attributeOr(lanelet::AttributeName::Subtype, std::string()) == "freespace" &&
-          shares_bound) {
-          try_add_area(area);
-        }
+    for (const auto & area :
+         find_polygons_intersecting_lanelet(lanelet_map_ptr->polygonLayer, ll)) {
+      const std::string type = area.hasAttribute(lanelet::AttributeName::Type)
+                                 ? area.attribute(lanelet::AttributeName::Type).value()
+                                 : "";
+      if (available_area_type.count(type)) {
+        try_add_area(area);
       }
     }
   }
@@ -361,14 +387,73 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
   const std::vector<PathPointTrajectory> & candidate_trajectories,
   const AvailableArea & available_area)
 {
-  // TODO(TIER IV): evaluate candidates with a proper KPI instead of taking the first one that fits.
+  auto cal_max_curvature = [](const PathPointTrajectory & trajectory) {
+    const auto ss = trajectory.get_underlying_bases();
+    if (ss.size() < 3) {
+      return 0.0;
+    }
+    const auto curvature_vec = trajectory.curvature(ss);
+    double max_curvature = 0.0;
+    for (const double & curvature : curvature_vec) {
+      if (max_curvature < std::abs(curvature)) {
+        max_curvature = std::abs(curvature);
+      }
+    }
+    return max_curvature;
+  };
+
+  auto has_turn_point = [](const PathPointTrajectory & trajectory) {
+    const auto points = trajectory.restore();
+    std::optional<double> theta_prev = std::nullopt;
+
+    if (points.size() < 2) {
+      return false;
+    }
+
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+      const auto dx = points[i + 1].point.pose.position.x - points[i].point.pose.position.x;
+      const auto dy = points[i + 1].point.pose.position.y - points[i].point.pose.position.y;
+      const auto theta = std::atan2(dy, dx);
+      if (theta_prev.has_value()) {
+        const double d_theta = std::abs(theta - *theta_prev);
+        constexpr double turn_point_th = M_PI * 5 / 6;
+        if (d_theta > turn_point_th) {
+          return true;
+        }
+      }
+      theta_prev = theta;
+    }
+    return false;
+  };
+
+  const double max_curvature =
+    std::tan(vehicle_info_.max_steer_angle_rad) / vehicle_info_.wheel_base_m;
+
+  double best_score = std::numeric_limits<double>::max();
+  std::optional<PathPointTrajectory> best_trajectory = std::nullopt;
   for (const auto & candidate : candidate_trajectories) {
-    if (is_trajectory_inside_lanelets_or_areas(
+    if (!is_trajectory_inside_lanelets_or_areas(
           candidate, available_area.lanelets, available_area.areas)) {
-      return candidate;
+      continue;
+    }
+
+    const double max_curvature_in_trajectory = cal_max_curvature(candidate);
+    const double arc_length = candidate.length();
+    if (arc_length < 1e-9) {
+      continue;
+    }
+
+    if (has_turn_point(candidate)) {
+      continue;
+    }
+
+    const double score = max_curvature_in_trajectory / max_curvature * 0.7 + arc_length / 10 * 0.3;
+    if (score < best_score) {
+      best_score = score;
+      best_trajectory = candidate;
     }
   }
-  return std::nullopt;
+  return best_trajectory;
 }
 
 std::optional<PathPointTrajectory> StartGoalPlanner::connect_pull_trajectory(
