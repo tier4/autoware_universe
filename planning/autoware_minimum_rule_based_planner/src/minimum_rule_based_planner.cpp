@@ -359,7 +359,6 @@ void MinimumRuleBasedPlannerNode::on_timer()
       autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
       autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true, 0.0, 0.0,
       to_string(stop_result.go_stop_point->type));
-    go_planning_factor_interface_->publish();
   }
   if (stop_trajectory && stop_result.stop_stop_point) {
     stop_planning_factor_interface_->add(
@@ -369,8 +368,10 @@ void MinimumRuleBasedPlannerNode::on_timer()
       autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
       autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true, 0.0, 0.0,
       to_string(stop_result.stop_stop_point->type));
-    stop_planning_factor_interface_->publish();
   }
+
+  go_planning_factor_interface_->publish();
+  stop_planning_factor_interface_->publish();
 
   // 10. Publish debug information
   publish_debug_outputs(*path, go_trajectory, stop_trajectory);
