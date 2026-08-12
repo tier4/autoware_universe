@@ -83,15 +83,6 @@ StopSelectionParams make_params()
   return params;
 }
 
-// Ego pose on the straight trajectory (y = 0, facing +x).
-geometry_msgs::msg::Pose make_ego_pose(double x)
-{
-  geometry_msgs::msg::Pose pose;
-  pose.position.x = x;
-  pose.orientation.w = 1.0;
-  return pose;
-}
-
 }  // namespace
 
 // ============================================================
@@ -142,12 +133,12 @@ TEST(MapBasedStopPlannerTest, SelectAppliesFrontOffsetAndMargin)
   const std::vector<StopLine> stop_lines{make_crossing_stop_line(1, 20.0)};
 
   // Ego stopped: braking distance is 0, so the stop point is reachable.
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   ASSERT_TRUE(arc.has_value());
   // crossing (20) - front offset (4) - margin (1) = 15
-  EXPECT_NEAR(*arc, 15.0, 1e-6);
+  EXPECT_NEAR(arc->arc_length, 15.0, 1e-6);
 }
 
 TEST(MapBasedStopPlannerTest, SelectAppliesCrosswalkMarginWithoutExplicitStopLine)
@@ -161,12 +152,12 @@ TEST(MapBasedStopPlannerTest, SelectAppliesCrosswalkMarginWithoutExplicitStopLin
   stop_line.without_explicit_stop_line = true;
   const std::vector<StopLine> stop_lines{stop_line};
 
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   ASSERT_TRUE(arc.has_value());
   // crossing (20) - front offset (4) - (stop_margin (1) + stop_distance_from_crosswalk (3.5))
-  EXPECT_NEAR(*arc, 11.5, 1e-6);
+  EXPECT_NEAR(arc->arc_length, 11.5, 1e-6);
 }
 
 TEST(MapBasedStopPlannerTest, SelectAppliesIntersectionMargin)
@@ -179,12 +170,12 @@ TEST(MapBasedStopPlannerTest, SelectAppliesIntersectionMargin)
   const std::vector<StopLine> stop_lines{
     make_crossing_stop_line(1, 20.0, StopLineType::Intersection)};
 
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/true);
   ASSERT_TRUE(arc.has_value());
   // crossing (20) - front offset (4) - (stop_margin (1) + stop_distance_from_intersection (1))
-  EXPECT_NEAR(*arc, 14.0, 1e-6);
+  EXPECT_NEAR(arc->arc_length, 14.0, 1e-6);
 }
 
 TEST(MapBasedStopPlannerTest, SelectAppliesPrivateAreaMargin)
@@ -197,12 +188,12 @@ TEST(MapBasedStopPlannerTest, SelectAppliesPrivateAreaMargin)
   const std::vector<StopLine> stop_lines{
     make_crossing_stop_line(1, 20.0, StopLineType::PrivateArea)};
 
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/true);
   ASSERT_TRUE(arc.has_value());
   // crossing (20) - front offset (4) - (stop_margin (1) + stop_distance_from_private_area (3))
-  EXPECT_NEAR(*arc, 12.0, 1e-6);
+  EXPECT_NEAR(arc->arc_length, 12.0, 1e-6);
 }
 
 TEST(MapBasedStopPlannerTest, SelectPicksNearest)
@@ -212,12 +203,12 @@ TEST(MapBasedStopPlannerTest, SelectPicksNearest)
   const std::vector<StopLine> stop_lines{
     make_crossing_stop_line(1, 40.0), make_crossing_stop_line(2, 20.0)};
 
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(0.0), 0.0, 0.0, make_params(),
-    /*include_possibility=*/false);
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/false);
   ASSERT_TRUE(arc.has_value());
   // nearest crossing is 20 -> 20 - 4 - 1 = 15
-  EXPECT_NEAR(*arc, 15.0, 1e-6);
+  EXPECT_NEAR(arc->arc_length, 15.0, 1e-6);
 }
 
 TEST(MapBasedStopPlannerTest, SelectRejectsUnreachableStopPoint)
@@ -228,8 +219,8 @@ TEST(MapBasedStopPlannerTest, SelectRejectsUnreachableStopPoint)
 
   // Stop point arc = 15 m. The jerk-aware braking distance at 20 m/s (a = 4, j = 5) is about
   // 57.9 m > 15 m, so the vehicle cannot stop in time and no stop point should be selected.
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/20.0, /*ego_acceleration=*/0.0,
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/20.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   EXPECT_FALSE(arc.has_value());
 }
@@ -243,12 +234,12 @@ TEST(MapBasedStopPlannerTest, SelectSkipsUnreachableNearestForReachableFarther)
   const std::vector<StopLine> stop_lines{
     make_crossing_stop_line(1, 20.0), make_crossing_stop_line(2, 70.0)};
 
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/20.0, /*ego_acceleration=*/0.0,
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/20.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   ASSERT_TRUE(arc.has_value());
   // 70 - 4 - 1 = 65
-  EXPECT_NEAR(*arc, 65.0, 1e-6);
+  EXPECT_NEAR(arc->arc_length, 65.0, 1e-6);
 }
 
 TEST(MapBasedStopPlannerTest, SelectExcludesPossibilityTargetsForGoTrajectory)
@@ -261,15 +252,15 @@ TEST(MapBasedStopPlannerTest, SelectExcludesPossibilityTargetsForGoTrajectory)
 
   // Go trajectory: possibility targets are ignored -> no stop.
   EXPECT_FALSE(planner
-                 .select_stop_arc_length(
-                   stop_lines, trajectory, make_ego_pose(0.0), 0.0, 0.0, make_params(),
-                   /*include_possibility=*/false)
+                 .select_stop_point(
+                   stop_lines, trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/0.0,
+                   /*ego_acceleration=*/0.0, make_params(), /*include_possibility=*/false)
                  .has_value());
   // Stop trajectory: possibility targets are considered -> stop.
   EXPECT_TRUE(planner
-                .select_stop_arc_length(
-                  stop_lines, trajectory, make_ego_pose(0.0), 0.0, 0.0, make_params(),
-                  /*include_possibility=*/true)
+                .select_stop_point(
+                  stop_lines, trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/0.0,
+                  /*ego_acceleration=*/0.0, make_params(), /*include_possibility=*/true)
                 .has_value());
 }
 
@@ -285,17 +276,17 @@ TEST(MapBasedStopPlannerTest, SelectMeasuresBrakingDistanceFromEgo)
   // distance is only 5 m. The jerk-aware braking distance at 8 m/s (a = 4, j = 5) is ~11.1 m
   // > 5 m -> must be skipped. (Judged from the trajectory start, 15 m > 11.1 m would wrongly
   // keep it.)
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(10.0), /*ego_velocity=*/8.0, /*ego_acceleration=*/0.0,
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/10.0, /*ego_velocity=*/8.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   EXPECT_FALSE(arc.has_value());
 
   // With enough remaining distance (ego at x = 2 -> 13 m > 11.1 m) the stop point is kept.
-  const auto arc_reachable = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(2.0), /*ego_velocity=*/8.0, /*ego_acceleration=*/0.0,
+  const auto arc_reachable = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/2.0, /*ego_velocity=*/8.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   ASSERT_TRUE(arc_reachable.has_value());
-  EXPECT_NEAR(*arc_reachable, 15.0, 1e-6);
+  EXPECT_NEAR(arc_reachable->arc_length, 15.0, 1e-6);
 }
 
 TEST(MapBasedStopPlannerTest, SelectUsesJerkAwareBrakingDistance)
@@ -308,8 +299,8 @@ TEST(MapBasedStopPlannerTest, SelectUsesJerkAwareBrakingDistance)
   // braking distance 8^2/(2*4) = 8 m would keep the candidate, but the jerk-limited ramp-up to
   // the maximum deceleration (j = 5) stretches the real braking distance to ~11.1 m, so the
   // candidate must be skipped.
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(5.0), /*ego_velocity=*/8.0, /*ego_acceleration=*/0.0,
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/5.0, /*ego_velocity=*/8.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   EXPECT_FALSE(arc.has_value());
 }
@@ -322,8 +313,8 @@ TEST(MapBasedStopPlannerTest, SelectSkipsStopPointPassedByEgo)
 
   // Stop point arc = 15 m; ego (base_link) is already at x = 16, past the stop point. Even though
   // the arc length from the trajectory start is positive, the candidate must be dropped.
-  const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, make_ego_pose(16.0), /*ego_velocity=*/1.0, /*ego_acceleration=*/0.0,
+  const auto arc = planner.select_stop_point(
+    stop_lines, trajectory, /*ego_arc_length=*/16.0, /*ego_velocity=*/1.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   EXPECT_FALSE(arc.has_value());
 }
@@ -818,7 +809,8 @@ TEST(MapBasedStopPlannerTest, PlanEmbedsMandatoryStopInGoTrajectory)
 
   const auto trajectory = make_straight_trajectory_msg(30);
   const auto result = planner.plan(
-    trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0, make_params());
+    trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+    make_params());
 
   // The go trajectory ends with a zero-velocity point at the stop point (20 - 4 - 1 = 15).
   ASSERT_FALSE(result.go_trajectory.points.empty());
@@ -844,7 +836,8 @@ TEST(MapBasedStopPlannerTest, PlanReturnsStopTrajectoryOnlyForDistinctStopPoint)
 
   const auto trajectory = make_straight_trajectory_msg(30);
   const auto result = planner.plan(
-    trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0, make_params());
+    trajectory, /*ego_arc_length=*/0.0, /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+    make_params());
 
   // The go trajectory ignores possibility targets and stays unchanged.
   ASSERT_EQ(result.go_trajectory.points.size(), trajectory.points.size());

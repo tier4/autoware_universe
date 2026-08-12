@@ -56,6 +56,25 @@ std_msgs::msg::ColorRGBA make_color(float r, float g, float b, float a)
 }
 }  // namespace
 
+const char * to_string(const StopLineType type)
+{
+  switch (type) {
+    case StopLineType::StopLine:
+      return "stop_line";
+    case StopLineType::Walkway:
+      return "walkway";
+    case StopLineType::Crosswalk:
+      return "crosswalk";
+    case StopLineType::TrafficLight:
+      return "traffic_light";
+    case StopLineType::Intersection:
+      return "intersection";
+    case StopLineType::PrivateArea:
+      return "private_area";
+  }
+  return "unknown";
+}
+
 bool is_possibility_type(StopLineType type)
 {
   switch (type) {
@@ -176,25 +195,6 @@ std::optional<lanelet::ConstLineString3d> entry_side_bound(
   if (!left_arc && !right_arc) return std::nullopt;
   if (left_arc && (!right_arc || *left_arc <= *right_arc)) return lanelet.leftBound();
   return lanelet.rightBound();
-}
-
-const char * to_string(const StopLineType type)
-{
-  switch (type) {
-    case StopLineType::StopLine:
-      return "stop_line";
-    case StopLineType::Walkway:
-      return "walkway";
-    case StopLineType::Crosswalk:
-      return "crosswalk";
-    case StopLineType::TrafficLight:
-      return "traffic_light";
-    case StopLineType::Intersection:
-      return "intersection";
-    case StopLineType::PrivateArea:
-      return "private_area";
-  }
-  return "unknown";
 }
 
 bool is_crosswalk_or_walkway(const lanelet::ConstLanelet & lanelet, bool & is_walkway)
@@ -329,9 +329,8 @@ void MapBasedStopPlanner::set_planner_data(
 }
 
 MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
-  const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose,
-  const double ego_velocity, const double ego_acceleration,
-  const StopSelectionParams & params) const
+  const Trajectory & trajectory, const double ego_arc_length, const double ego_velocity,
+  const double ego_acceleration, const StopSelectionParams & params) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -378,48 +377,53 @@ MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
   // The go trajectory stops only at mandatory targets (e.g. stop lines); the stop trajectory
   // additionally stops at possibility targets (e.g. traffic lights).
   const auto go_stop = plan_single_stop(
-    stop_lines, trajectory, ego_pose, ego_velocity, ego_acceleration, params,
+    stop_lines, trajectory, ego_arc_length, ego_velocity, ego_acceleration, params,
     /*include_possibility=*/false);
   const auto stop_stop = plan_single_stop(
-    stop_lines, trajectory, ego_pose, ego_velocity, ego_acceleration, params,
+    stop_lines, trajectory, ego_arc_length, ego_velocity, ego_acceleration, params,
     /*include_possibility=*/true);
 
-  if (go_stop) result.go_trajectory = go_stop->trajectory;
+  if (go_stop) {
+    result.go_trajectory = go_stop->trajectory;
+    result.go_stop_point = go_stop->stop_point;
+  }
 
   const bool stop_differs_from_go =
     stop_stop &&
-    (!go_stop || std::abs(stop_stop->stop_point_arc_length - go_stop->stop_point_arc_length) >
+    (!go_stop || std::abs(stop_stop->stop_point.arc_length - go_stop->stop_point.arc_length) >
                    params.stop_point_diff_threshold);
-  if (stop_differs_from_go) result.stop_trajectory = stop_stop->trajectory;
+  if (stop_differs_from_go) {
+    result.stop_trajectory = stop_stop->trajectory;
+    result.stop_stop_point = stop_stop->stop_point;
+  }
 
   return result;
 }
 
 std::optional<MapBasedStopPlanner::SingleStopResult> MapBasedStopPlanner::plan_single_stop(
   const std::vector<StopLine> & stop_lines, const Trajectory & trajectory,
-  const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
-  const double ego_acceleration, const StopSelectionParams & params,
-  const bool include_possibility) const
+  const double ego_arc_length, const double ego_velocity, const double ego_acceleration,
+  const StopSelectionParams & params, const bool include_possibility) const
 {
   autoware_utils_debug::ScopedTimeTrack st(
     include_possibility ? "plan_single_stop(stop)" : "plan_single_stop(go)", *time_keeper_);
 
-  const auto stop_point_arc_length = select_stop_arc_length(
-    stop_lines, trajectory.points, ego_pose, ego_velocity, ego_acceleration, params,
+  const auto stop_point = select_stop_point(
+    stop_lines, trajectory.points, ego_arc_length, ego_velocity, ego_acceleration, params,
     include_possibility);
-  if (!stop_point_arc_length) return std::nullopt;
+  if (!stop_point) return std::nullopt;
 
   if (autoware::trajectory_modifier::utils::stop_point_exists(
-        trajectory.points, *stop_point_arc_length)) {
+        trajectory.points, stop_point->arc_length)) {
     return std::nullopt;
   }
 
   Trajectory stop_trajectory = trajectory;
   if (!autoware::trajectory_modifier::utils::insert_stop_point(
-        stop_trajectory.points, *stop_point_arc_length)) {
+        stop_trajectory.points, stop_point->arc_length)) {
     return std::nullopt;
   }
-  return SingleStopResult{*stop_point_arc_length, std::move(stop_trajectory)};
+  return SingleStopResult{*stop_point, std::move(stop_trajectory)};
 }
 
 std::vector<StopLine> MapBasedStopPlanner::collect_stop_lines(
@@ -732,12 +736,11 @@ std::vector<StopLine> MapBasedStopPlanner::filter_stop_lines_on_trajectory(
   return intersecting;
 }
 
-std::optional<double> MapBasedStopPlanner::select_stop_arc_length(
+std::optional<StopPoint> MapBasedStopPlanner::select_stop_point(
   const std::vector<StopLine> & stop_lines,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
-  const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
-  const double ego_acceleration, const StopSelectionParams & params,
-  const bool include_possibility) const
+  const double ego_arc_length, const double ego_velocity, const double ego_acceleration,
+  const StopSelectionParams & params, const bool include_possibility) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -758,10 +761,8 @@ std::optional<double> MapBasedStopPlanner::select_stop_arc_length(
     autoware::motion_utils::calculate_stop_distance(
       ego_velocity, ego_acceleration, params.max_deceleration, params.max_jerk)
       .value_or(ego_velocity * ego_velocity / (2.0 * params.max_deceleration));
-  const double ego_arc_length =
-    autoware::motion_utils::calcSignedArcLength(trajectory_points, 0UL, ego_pose.position);
 
-  std::optional<double> nearest_stop_point_arc_length;
+  std::optional<StopPoint> nearest_stop_point;
   for (const auto & stop_line : stop_lines) {
     if (!include_possibility && is_possibility_type(stop_line.type)) {
       continue;
@@ -795,14 +796,13 @@ std::optional<double> MapBasedStopPlanner::select_stop_arc_length(
       if (distance_to_stop_point <= 0.0 || distance_to_stop_point < braking_distance) {
         continue;
       }
-      if (
-        !nearest_stop_point_arc_length || stop_point_arc_length < *nearest_stop_point_arc_length) {
-        nearest_stop_point_arc_length = stop_point_arc_length;
+      if (!nearest_stop_point || stop_point_arc_length < nearest_stop_point->arc_length) {
+        nearest_stop_point = StopPoint{stop_point_arc_length, stop_line.type};
       }
     }
   }
 
-  return nearest_stop_point_arc_length;
+  return nearest_stop_point;
 }
 
 visualization_msgs::msg::MarkerArray MapBasedStopPlanner::create_stop_line_marker_array(
