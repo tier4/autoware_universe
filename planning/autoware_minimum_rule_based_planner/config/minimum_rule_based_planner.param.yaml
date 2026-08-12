@@ -23,15 +23,12 @@
         search_radius_range: 7.5
         pre_goal_offset: 1.0
 
-      lane_change_failure_stop_margin: 0.0
-
       ego_nearest_lanelet:
         dist_threshold: 3.0
         yaw_threshold: 1.046
 
       path_shift:
         enable: true
-        minimum_shift_length: 0.5
         minimum_shift_distance: 3.0
         min_speed_for_curvature: 1.39  # [m/s] 5 km/h
         lateral_accel_limit: 1.0      # [m/s^2]

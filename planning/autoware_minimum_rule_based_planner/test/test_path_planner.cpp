@@ -47,7 +47,6 @@ Params make_default_params()
   params.path_planning.smooth_goal_connection.search_radius_range = 15.0;
   params.path_planning.smooth_goal_connection.pre_goal_offset = 3.0;
   params.path_planning.path_shift.enable = false;
-  params.path_planning.path_shift.minimum_shift_length = 0.1;
   params.path_planning.path_shift.minimum_shift_distance = 5.0;
   params.path_planning.path_shift.min_speed_for_curvature = 2.77;
   params.path_planning.path_shift.lateral_accel_limit = 0.5;
@@ -172,7 +171,6 @@ TEST(PathPlannerTest, ShiftAlwaysStartsAtEgo)
   auto ego_pose = make_pose(0.0, 0.05, 0.0);
 
   TrajectoryShiftParams shift_params;
-  shift_params.minimum_shift_length = 0.1;
 
   const auto result = planner.shift_trajectory_to_ego(traj, ego_pose, 10.0, 0.0, shift_params, 1.0);
 
@@ -223,7 +221,6 @@ TEST(PathPlannerTest, ShiftNormal)
   auto ego_pose = make_pose(0.0, 2.0, 0.0);
 
   TrajectoryShiftParams shift_params;
-  shift_params.minimum_shift_length = 0.1;
   shift_params.minimum_shift_distance = 5.0;
   shift_params.min_speed_for_curvature = 2.77;
   shift_params.lateral_accel_limit = 0.5;
@@ -261,7 +258,6 @@ TEST(PathPlannerTest, ShiftOnCurveKeepsReferenceCurvature)
   const auto ego_pose = traj.points.front().pose;
 
   TrajectoryShiftParams shift_params;
-  shift_params.minimum_shift_length = 0.1;
   shift_params.minimum_shift_distance = 5.0;
   shift_params.min_speed_for_curvature = 2.77;
   shift_params.lateral_accel_limit = 0.5;
@@ -296,7 +292,6 @@ TEST(PathPlannerTest, ShiftOnCurveAtLowSpeedKeepsReferenceCurvature)
   const auto ego_pose = traj.points.front().pose;
 
   TrajectoryShiftParams shift_params;
-  shift_params.minimum_shift_length = 0.1;
   shift_params.minimum_shift_distance = 5.0;
   shift_params.min_speed_for_curvature = 2.77;
   shift_params.lateral_accel_limit = 0.5;
@@ -327,7 +322,6 @@ TEST(PathPlannerTest, ShiftStartsAtEgoWhenTrajectoryIsShort)
   auto ego_pose = make_pose(0.0, 0.5, 0.0);
 
   TrajectoryShiftParams shift_params;
-  shift_params.minimum_shift_length = 0.1;
   shift_params.minimum_shift_distance = 5.0;
   shift_params.min_speed_for_curvature = 2.77;
   shift_params.lateral_accel_limit = 0.5;
@@ -366,7 +360,6 @@ TEST(PathPlannerTest, ShiftSkippedWhenEgoIsAtTrajectoryEnd)
   auto ego_pose = make_pose(2.0, 0.1, 0.0);
 
   TrajectoryShiftParams shift_params;
-  shift_params.minimum_shift_length = 0.1;
   shift_params.minimum_shift_distance = 5.0;
   shift_params.min_speed_for_curvature = 2.77;
   shift_params.lateral_accel_limit = 0.5;
@@ -397,7 +390,6 @@ TEST(PathPlannerTest, ShiftStretchesSectionToRespectCurvatureLimit)
   auto ego_pose = make_pose(0.0, 1.0, 0.0);
 
   TrajectoryShiftParams shift_params;
-  shift_params.minimum_shift_length = 0.1;
   shift_params.minimum_shift_distance = 5.0;
   shift_params.min_speed_for_curvature = 2.77;
   shift_params.lateral_accel_limit = 0.5;
@@ -443,7 +435,6 @@ TEST(PathPlannerTest, ShiftStartsAtEgoWhenRemainingLengthIsBelowOneSample)
   auto ego_pose = make_pose(1.0, 0.3, 0.0);
 
   TrajectoryShiftParams shift_params;
-  shift_params.minimum_shift_length = 0.1;
   shift_params.minimum_shift_distance = 5.0;
   shift_params.min_speed_for_curvature = 2.77;
   shift_params.lateral_accel_limit = 0.5;

@@ -78,7 +78,6 @@ struct PathRange
 
 struct TrajectoryShiftParams
 {
-  double minimum_shift_length{0.1};      // [m] lateral offset threshold to trigger shift
   double minimum_shift_distance{5.0};    // [m] floor for shift distance
   double min_speed_for_curvature{2.77};  // [m/s] lower bound on speed for kappa0 computation
   double lateral_accel_limit{0.5};       // [m/s^2] allowed lateral acceleration budget
@@ -128,11 +127,6 @@ public:
 
   // Params update
   void update_params(const Params & params);
-
-  // Lane change interpolation
-  void interpolate_lane_change_sections(
-    std::vector<PathPointWithLaneId> & path_points,
-    const lanelet::LaneletSequence & lanelet_sequence, double ego_velocity);
 
 private:
   void set_route(const LaneletRoute::ConstSharedPtr & route_ptr);

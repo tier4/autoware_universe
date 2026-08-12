@@ -45,12 +45,6 @@
               "required": [],
               "additionalProperties": false
             },
-            "lane_change_failure_stop_margin": {
-              "type": "number",
-              "description": "Stop margin from the end of the final lane when lane change fails. [m]",
-              "default": 0.0,
-              "minimum": 0.0
-            },
             "early_stop": {
               "type": "object",
               "properties": {
@@ -132,12 +126,6 @@
                   "type": "boolean",
                   "description": "Enable path shifting to ego pose",
                   "default": true
-                },
-                "minimum_shift_length": {
-                  "type": "number",
-                  "description": "Lateral offset threshold to trigger shift [m]",
-                  "default": 0.5,
-                  "minimum": 0.0
                 },
                 "minimum_shift_distance": {
                   "type": "number",

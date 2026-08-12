@@ -1021,8 +1021,6 @@ namespace
 // Peak curvature multiplier of the symmetric quintic shift: kappa_max = quintic_kappa_coeff*|d|/L^2
 constexpr double quintic_kappa_coeff = 5.773502691896258;  // 10*sqrt(3)/3
 constexpr double yaw_diff_clamp_rad = M_PI / 4.0;
-constexpr double lane_end_match_tolerance_sq = 4.0;  // [m^2] 2m tolerance squared
-constexpr double yaw_step = 0.1;  // [m] finite-difference step for centerline yaw
 // [m] half-baseline of the 3-point reference curvature estimate. Shorter baselines are dominated by
 // the point-to-point noise of the resampled centerline.
 constexpr double curvature_baseline_length = 2.0;
@@ -1250,184 +1248,6 @@ bool route_deviation_stop(
   }
   return true;
 }
-// ---------------------------------------------------------------------------
-// Lane-change interpolation helpers
-// ---------------------------------------------------------------------------
-
-struct LaneChangeBoundaryInfo
-{
-  double lateral_offset;
-  double abs_lateral_offset;
-  double yaw_diff;
-  double start_curvature;
-  double s_projection;
-  double next_centerline_length;
-  geometry_msgs::msg::Point prev_end_geom;
-};
-
-std::optional<size_t> find_lane_change_boundary(
-  const lanelet::ConstLanelets & lanelets, const double min_shift_length)
-{
-  for (size_t li = 0; li + 1 < lanelets.size(); ++li) {
-    const auto & prev_centerline = lanelets[li].centerline();
-    const auto & next_centerline = lanelets[li + 1].centerline();
-    if (prev_centerline.size() < 2 || next_centerline.size() < 2) {
-      continue;
-    }
-    const double gap = lanelet::geometry::distance2d(
-      lanelet::utils::to2D(prev_centerline.back()), lanelet::utils::to2D(next_centerline.front()));
-    if (gap >= min_shift_length) {
-      return li;
-    }
-  }
-  return std::nullopt;
-}
-
-LaneChangeBoundaryInfo compute_lane_change_boundary_info(
-  const lanelet::ConstLanelet & lanelet_prev, const lanelet::ConstLanelet & lanelet_next)
-{
-  const auto & prev_centerline = lanelet_prev.centerline();
-  const auto & prev_end_pt = prev_centerline.back();
-
-  const auto arc_on_next = lanelet::geometry::toArcCoordinates(
-    lanelet_next.centerline2d(), lanelet::utils::to2D(prev_end_pt));
-
-  const auto & next_centerline = lanelet_next.centerline();
-  const double prev_yaw = std::atan2(
-    prev_end_pt.y() - (prev_centerline.end() - 2)->y(),
-    prev_end_pt.x() - (prev_centerline.end() - 2)->x());
-  const double next_yaw = std::atan2(
-    (next_centerline.begin() + 1)->y() - next_centerline.front().y(),
-    (next_centerline.begin() + 1)->x() - next_centerline.front().x());
-
-  const double kappa0 = [&]() {
-    if (prev_centerline.size() < 3) {
-      return 0.0;
-    }
-    const auto & p0 = *(prev_centerline.end() - 3);
-    const auto & p1 = *(prev_centerline.end() - 2);
-    const auto & p2 = *(prev_centerline.end() - 1);
-    return signed_curvature_3pt(
-      lanelet::utils::to2D(p0).basicPoint(), lanelet::utils::to2D(p1).basicPoint(),
-      lanelet::utils::to2D(p2).basicPoint());
-  }();
-
-  return {
-    arc_on_next.distance,
-    std::abs(arc_on_next.distance),
-    autoware_utils::normalize_radian(prev_yaw - next_yaw),
-    kappa0,
-    std::max(0.0, arc_on_next.length),
-    static_cast<double>(lanelet::geometry::length(lanelet_next.centerline2d())),
-    lanelet::utils::conversion::toGeomMsgPt(prev_end_pt),
-  };
-}
-
-std::optional<size_t> find_closest_path_index(
-  const std::vector<PathPointWithLaneId> & path_points, const lanelet::Id lanelet_id,
-  const geometry_msgs::msg::Point & target_point)
-{
-  std::optional<size_t> closest_idx;
-  double min_dist_sq = std::numeric_limits<double>::max();
-  for (size_t pi = 0; pi < path_points.size(); ++pi) {
-    const auto & ids = path_points[pi].lane_ids;
-    if (std::find(ids.begin(), ids.end(), lanelet_id) == ids.end()) {
-      continue;
-    }
-    const auto & pp = path_points[pi].point.pose.position;
-    const double dx = pp.x - target_point.x;
-    const double dy = pp.y - target_point.y;
-    const double d2 = dx * dx + dy * dy;
-    if (d2 < min_dist_sq) {
-      min_dist_sq = d2;
-      closest_idx = pi;
-    }
-  }
-  if (!closest_idx || min_dist_sq > lane_end_match_tolerance_sq) {
-    return std::nullopt;
-  }
-  return closest_idx;
-}
-
-std::vector<PathPointWithLaneId> generate_shift_points(
-  const LaneChangeBoundaryInfo & info, const QuinticShiftCoeffs & coeffs, const double L,
-  const double delta_arc_length, const double speed_limit,
-  const lanelet::ConstLanelet & lanelet_next, const lanelet::Id lanelet_prev_id)
-{
-  std::vector<PathPointWithLaneId> interp_points;
-  for (double s = 0.0; s <= L + 1e-6; s += delta_arc_length) {
-    const double sc = std::min(s, L);
-    const double y_s = evaluate_quintic(coeffs, sc);
-    const double yp_s = evaluate_quintic_derivative(coeffs, sc);
-
-    const double s_on_next = info.s_projection + sc;
-    if (s_on_next > info.next_centerline_length) {
-      break;
-    }
-
-    const auto base_2d =
-      lanelet::geometry::interpolatedPointAtDistance(lanelet_next.centerline2d(), s_on_next);
-    const auto base_3d =
-      lanelet::geometry::interpolatedPointAtDistance(lanelet_next.centerline(), s_on_next);
-
-    const double ds = std::min(yaw_step, info.next_centerline_length - s_on_next);
-    double base_yaw;
-    if (ds > 1e-6) {
-      const auto fwd =
-        lanelet::geometry::interpolatedPointAtDistance(lanelet_next.centerline2d(), s_on_next + ds);
-      base_yaw = std::atan2(fwd.y() - base_2d.y(), fwd.x() - base_2d.x());
-    } else {
-      const auto bwd = lanelet::geometry::interpolatedPointAtDistance(
-        lanelet_next.centerline2d(), std::max(0.0, s_on_next - yaw_step));
-      base_yaw = std::atan2(base_2d.y() - bwd.y(), base_2d.x() - bwd.x());
-    }
-
-    PathPointWithLaneId pp;
-    pp.point.pose.position.x = base_2d.x() + y_s * (-std::sin(base_yaw));
-    pp.point.pose.position.y = base_2d.y() + y_s * std::cos(base_yaw);
-    pp.point.pose.position.z = base_3d.z();
-    pp.point.pose.orientation =
-      autoware_utils::create_quaternion_from_yaw(base_yaw + std::atan2(yp_s, 1.0));
-    pp.point.longitudinal_velocity_mps = speed_limit;
-    pp.lane_ids = {lanelet_next.id()};
-    if (sc < L / 2.0) {
-      pp.lane_ids.push_back(lanelet_prev_id);
-    }
-    interp_points.push_back(pp);
-  }
-  return interp_points;
-}
-
-void splice_shift_points(
-  std::vector<PathPointWithLaneId> & path_points, const size_t prev_end_idx,
-  const std::vector<PathPointWithLaneId> & interp_points,
-  const lanelet::ConstLanelet & lanelet_next, const double merge_s_on_next)
-{
-  size_t merge_idx = path_points.size();
-  std::optional<size_t> last_next_idx;
-  for (size_t pi = prev_end_idx + 1; pi < path_points.size(); ++pi) {
-    const auto & ids = path_points[pi].lane_ids;
-    if (std::find(ids.begin(), ids.end(), lanelet_next.id()) == ids.end()) {
-      continue;
-    }
-    last_next_idx = pi;
-    const auto pp_2d = lanelet::BasicPoint2d(
-      path_points[pi].point.pose.position.x, path_points[pi].point.pose.position.y);
-    const auto pp_arc = lanelet::geometry::toArcCoordinates(lanelet_next.centerline2d(), pp_2d);
-    if (pp_arc.length >= merge_s_on_next) {
-      merge_idx = pi;
-      break;
-    }
-  }
-  if (merge_idx == path_points.size() && last_next_idx) {
-    merge_idx = *last_next_idx + 1;
-  }
-
-  const size_t erase_begin = prev_end_idx;
-  const size_t erase_end = std::min(merge_idx, path_points.size());
-  path_points.erase(path_points.begin() + erase_begin, path_points.begin() + erase_end);
-  path_points.insert(path_points.begin() + erase_begin, interp_points.begin(), interp_points.end());
-}
 
 }  // namespace
 
@@ -1533,16 +1353,12 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
   lanelets.push_back(*current_lanelet_);
   lanelets.insert(lanelets.end(), forward_lanelets.begin(), forward_lanelets.end());
 
-  const auto stop_margin = utils::exists(route_context_.route_lanelets, lanelets.back())
-                             ? 0.
-                             : params_.path_planning.lane_change_failure_stop_margin;
-
   const lanelet::LaneletSequence lanelet_sequence(lanelets);
   const auto s = s_on_current_lanelet + lanelet::utils::getLaneletLength2d(backward_lanelets);
   const auto [s_start, s_end] = [&]() {
     Interval range = utils::refine_path_range(
       {s - path_length_backward, s + path_length_forward}, lanelet_sequence, route_context_,
-      vehicle_info_, stop_margin);
+      vehicle_info_, 0.0);
 
     if (route_deviation_stop(*current_lanelet_, current_pose, route_context_)) {
       range.end = std::min(range.end, s);
@@ -1562,7 +1378,7 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
 
 std::optional<PathWithLaneId> PathPlanner::generate_path(
   const lanelet::LaneletSequence & lanelet_sequence, const double s_start, const double s_end,
-  const double ego_velocity, const builtin_interfaces::msg::Time & stamp)
+  const double /* ego_velocity */, const builtin_interfaces::msg::Time & stamp)
 {
   if (lanelet_sequence.empty()) {
     RCLCPP_ERROR(logger_, "Lanelet sequence is empty");
@@ -1660,9 +1476,6 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     return std::nullopt;
   }
 
-  interpolate_lane_change_sections(
-    path_points_with_lane_id, extended_lanelet_sequence, ego_velocity);
-
   auto trajectory = autoware::experimental::trajectory::pretty_build(path_points_with_lane_id);
   if (!trajectory) {
     RCLCPP_ERROR(logger_, "Failed to build trajectory from path points");
@@ -1757,82 +1570,6 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
   finalized_path_with_lane_id.right_bound = right_bound;
 
   return finalized_path_with_lane_id;
-}
-
-// ===========================================================================
-// Lane change interpolation
-// ===========================================================================
-
-void PathPlanner::interpolate_lane_change_sections(
-  std::vector<PathPointWithLaneId> & path_points, const lanelet::LaneletSequence & lanelet_sequence,
-  const double ego_velocity)
-{
-  if (lanelet_sequence.size() < 2 || path_points.size() < 2) {
-    return;
-  }
-
-  const auto & shift_params = params_.path_planning.path_shift;
-  const auto & lanelets = lanelet_sequence.lanelets();
-
-  const auto boundary_idx = find_lane_change_boundary(lanelets, shift_params.minimum_shift_length);
-  if (!boundary_idx) {
-    return;
-  }
-
-  const auto & lanelet_prev = lanelets[*boundary_idx];
-  const auto & lanelet_next = lanelets[*boundary_idx + 1];
-
-  // Project the previous lanelet's end onto the next centerline to obtain
-  // lateral offset, yaw diff, initial curvature, and arc-length projection.
-  const auto info = compute_lane_change_boundary_info(lanelet_prev, lanelet_next);
-  if (info.abs_lateral_offset < shift_params.minimum_shift_length) {
-    return;
-  }
-
-  const auto prev_end_idx =
-    find_closest_path_index(path_points, lanelet_prev.id(), info.prev_end_geom);
-  if (!prev_end_idx) {
-    return;
-  }
-
-  const double clamped_v =
-    std::max(std::max(0.0, ego_velocity), shift_params.min_speed_for_curvature);
-  double L = compute_shift_length_from_lateral_accel(
-    info.abs_lateral_offset, clamped_v, shift_params.lateral_accel_limit,
-    shift_params.minimum_shift_distance);
-
-  // Intentionally limit the shift length to lanelet_next only; extending the
-  // shift across subsequent lanelets would require multi-lanelet interpolation
-  // in generate_shift_points/splice_shift_points and is not supported.
-  // TODO(odashima): check required behavior
-  const double available_length = info.next_centerline_length - info.s_projection;
-  if (L > available_length) {
-    RCLCPP_WARN(
-      logger_, "Lane change interpolation: shift length %.2f m > available %.2f m, clamping.", L,
-      available_length);
-    L = available_length;
-  }
-  if (L < 1e-3) {
-    return;
-  }
-
-  const auto coeffs =
-    compute_quintic_shift_coeffs(info.lateral_offset, info.yaw_diff, info.start_curvature, L);
-
-  const double next_speed_limit =
-    route_context_.traffic_rules_ptr
-      ->speedLimit(route_context_.lanelet_map_ptr->laneletLayer.get(lanelet_next.id()))
-      .speedLimit.value();
-
-  const auto interp_points = generate_shift_points(
-    info, coeffs, L, params_.path_planning.output.delta_arc_length, next_speed_limit, lanelet_next,
-    lanelet_prev.id());
-  if (interp_points.empty()) {
-    return;
-  }
-
-  splice_shift_points(
-    path_points, *prev_end_idx, interp_points, lanelet_next, info.s_projection + L);
 }
 
 // ===========================================================================

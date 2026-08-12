@@ -103,23 +103,12 @@ minimum_rule_based_planner:
         validation:
           gt<>: [0.0]
 
-    lane_change_failure_stop_margin:
-      type: double
-      default_value: 0.0
-      validation:
-        gt_eq<>: [0.0]
-
     # Path Shift to Ego Parameters
     path_shift:
       enable:
         type: bool
         default_value: true
         description: enable path shifting from ego position to centerline
-
-      minimum_shift_length:
-        type: double
-        default_value: 0.1
-        description: lateral offset threshold to trigger path shifting [m]
 
       minimum_shift_distance:
         type: double
