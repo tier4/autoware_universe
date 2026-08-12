@@ -292,7 +292,7 @@ TEST(PathPlannerTest, ShiftOnCurveAtLowSpeedKeepsReferenceCurvature)
   }
 }
 
-TEST(PathPlannerTest, ShiftCapsCorrectionWhenTrajectoryIsShort)
+TEST(PathPlannerTest, ShiftStartsAtEgoWhenTrajectoryIsShort)
 {
   auto logger = rclcpp::get_logger("test_path_planner");
   auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
@@ -317,9 +317,11 @@ TEST(PathPlannerTest, ShiftCapsCorrectionWhenTrajectoryIsShort)
   const auto result =
     planner.shift_trajectory_to_ego(traj, ego_pose, 10.0, 0.0, shift_params, spacing);
 
-  // Only curvature_limit * L^2 / quintic_kappa_coeff = 0.1 * 3^2 / 5.7735 of the offset fits.
+  // The section is squeezed into the remaining 3 m and exceeds curvature_limit, but still starts
+  // at ego with the whole offset.
   ASSERT_GE(result.points.size(), 2u);
-  EXPECT_NEAR(result.points.front().pose.position.y, 0.156, 1e-3);
+  EXPECT_NEAR(result.points.front().pose.position.x, ego_pose.position.x, 1e-3);
+  EXPECT_NEAR(result.points.front().pose.position.y, ego_pose.position.y, 1e-3);
 
   // The merge point is the last trajectory point, so the arc length must stay monotonic.
   for (size_t i = 0; i + 1 < result.points.size(); ++i) {
@@ -359,6 +361,84 @@ TEST(PathPlannerTest, ShiftSkippedWhenEgoIsAtTrajectoryEnd)
     EXPECT_NEAR(result.points.at(i).pose.position.x, traj.points.at(i).pose.position.x, 1e-6);
     EXPECT_NEAR(result.points.at(i).pose.position.y, traj.points.at(i).pose.position.y, 1e-6);
   }
+}
+
+TEST(PathPlannerTest, ShiftStretchesSectionToRespectCurvatureLimit)
+{
+  auto logger = rclcpp::get_logger("test_path_planner");
+  auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
+  auto params = make_default_params();
+  VehicleInfo vehicle_info{};
+  vehicle_info.wheel_base_m = 2.79;
+
+  PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info);
+
+  constexpr double spacing = 0.5;
+  auto traj = make_straight_trajectory(80, spacing, 2.0f);
+  auto ego_pose = make_pose(0.0, 1.0, 0.0);
+
+  TrajectoryShiftParams shift_params;
+  shift_params.minimum_shift_length = 0.1;
+  shift_params.minimum_shift_distance = 5.0;
+  shift_params.min_speed_for_curvature = 2.77;
+  shift_params.lateral_accel_limit = 0.5;
+  // Tight enough that the curvature bound, not the lateral acceleration bound, sets the length.
+  shift_params.curvature_limit = 0.02;
+
+  const auto result =
+    planner.shift_trajectory_to_ego(traj, ego_pose, 0.0, 0.0, shift_params, spacing);
+
+  ASSERT_GE(result.points.size(), 3u);
+  EXPECT_NEAR(result.points.front().pose.position.y, ego_pose.position.y, 1e-3);
+
+  for (size_t i = 0; i + 2 < result.points.size(); ++i) {
+    const auto & p0 = result.points.at(i).pose.position;
+    const auto & p1 = result.points.at(i + 1).pose.position;
+    const auto & p2 = result.points.at(i + 2).pose.position;
+    const double cross = (p1.x - p0.x) * (p2.y - p1.y) - (p1.y - p0.y) * (p2.x - p1.x);
+    const double denom = std::hypot(p1.x - p0.x, p1.y - p0.y) *
+                         std::hypot(p2.x - p1.x, p2.y - p1.y) *
+                         std::hypot(p2.x - p0.x, p2.y - p0.y);
+    ASSERT_GT(denom, 1e-9);
+    EXPECT_LE(std::abs(2.0 * cross / denom), shift_params.curvature_limit * 1.05);
+  }
+}
+
+TEST(PathPlannerTest, ShiftStartsAtEgoWhenRemainingLengthIsBelowOneSample)
+{
+  auto logger = rclcpp::get_logger("test_path_planner");
+  auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
+  auto params = make_default_params();
+  VehicleInfo vehicle_info{};
+  vehicle_info.wheel_base_m = 2.79;
+
+  PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info);
+
+  // The last interval is a 0.2 m remainder, i.e. shorter than one output sample.
+  constexpr double spacing = 0.5;
+  Trajectory traj;
+  traj.header.frame_id = "map";
+  for (const double x : {0.0, 0.5, 1.0, 1.2}) {
+    traj.points.push_back(make_traj_point(x, 0.0, 10.0f));
+  }
+  auto ego_pose = make_pose(1.0, 0.3, 0.0);
+
+  TrajectoryShiftParams shift_params;
+  shift_params.minimum_shift_length = 0.1;
+  shift_params.minimum_shift_distance = 5.0;
+  shift_params.min_speed_for_curvature = 2.77;
+  shift_params.lateral_accel_limit = 0.5;
+  shift_params.curvature_limit = 0.1;
+
+  const auto result =
+    planner.shift_trajectory_to_ego(traj, ego_pose, 10.0, 0.0, shift_params, spacing);
+
+  // The shift section degenerates to the ego pose spliced onto the last point, offset and all.
+  ASSERT_EQ(result.points.size(), 2u);
+  EXPECT_NEAR(result.points.front().pose.position.x, ego_pose.position.x, 1e-3);
+  EXPECT_NEAR(result.points.front().pose.position.y, ego_pose.position.y, 1e-3);
+  EXPECT_NEAR(result.points.back().pose.position.x, traj.points.back().pose.position.x, 1e-3);
+  EXPECT_NEAR(result.points.back().pose.position.y, traj.points.back().pose.position.y, 1e-3);
 }
 
 // ============================================================

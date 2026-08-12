@@ -1802,11 +1802,22 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
   const double traj_yaw = tf2::getYaw(trajectory.points.at(nearest_idx).pose.orientation);
   const double signed_yaw_dev = autoware_utils::normalize_radian(ego_yaw - traj_yaw);
 
+  if (nearest_idx + 1 == trajectory.points.size()) {
+    // Goal overshoot: no reference ahead of ego to shape a shift section against, and splicing the
+    // ego pose onto the point behind it would emit a backwards segment.
+    return trajectory;
+  }
+
   const double clamped_velocity =
     std::max(std::max(0.0, ego_velocity), shift_params.min_speed_for_curvature);
   const double abs_d = std::abs(lateral_offset);
-  double L = compute_shift_length_from_lateral_accel(
-    abs_d, clamped_velocity, shift_params.lateral_accel_limit, shift_params.minimum_shift_distance);
+  // The section must start exactly at ego, so the offset is never capped: instead the section is
+  // stretched until its peak curvature quintic_kappa_coeff*|d|/L^2 fits within curvature_limit.
+  double L = std::max(
+    compute_shift_length_from_lateral_accel(
+      abs_d, clamped_velocity, shift_params.lateral_accel_limit,
+      shift_params.minimum_shift_distance),
+    std::sqrt(quintic_kappa_coeff * abs_d / shift_params.curvature_limit));
 
   double accumulated_length = 0.0;
   size_t merge_idx = nearest_idx;
@@ -1819,18 +1830,11 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
     }
   }
   if (merge_idx >= trajectory.points.size() - 1) {
-    // Ends before the desired merge point (goal approach); the cap below keeps the short L usable.
+    // Ends before the desired merge point (goal approach). The section is squeezed into what is
+    // left and exceeds curvature_limit; starting at ego wins over the curvature budget here.
     L = accumulated_length;
     merge_idx = trajectory.points.size() - 1;
   }
-  if (L < delta_arc_length) {
-    return trajectory;
-  }
-
-  // Peak curvature of the shift is quintic_kappa_coeff*|d|/L^2, so a short L bounds the offset that
-  // can be corrected. The remainder is deliberately left as a lateral error for the controller.
-  const double max_shift_length = shift_params.curvature_limit * L * L / quintic_kappa_coeff;
-  const double shift_length = std::clamp(lateral_offset, -max_shift_length, max_shift_length);
 
   // y is a Frenet offset, so y''(0) must be the ego curvature *relative* to the reference. Passing
   // the absolute value starts the section at ~2*kappa_ref, i.e. a curvature bump on every cycle.
@@ -1843,17 +1847,13 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
   const double curvature_confidence =
     std::clamp(ego_velocity / shift_params.min_speed_for_curvature, 0.0, 1.0);
   const double kappa0 = curvature_confidence * (ego_yaw_rate / clamped_velocity - kappa_ref);
-  const auto coeffs = compute_quintic_shift_coeffs(shift_length, signed_yaw_dev, kappa0, L);
+  const auto coeffs = compute_quintic_shift_coeffs(lateral_offset, signed_yaw_dev, kappa0, L);
 
   const double ref_velocity = trajectory.points.at(nearest_idx).longitudinal_velocity_mps;
   std::vector<TrajectoryPoint> shifted_points;
 
   TrajectoryPoint start_pt;
   start_pt.pose = ego_pose;
-  // Zero unless the cap dropped part of the correction, which then stays a lateral error.
-  const double uncorrected_offset = shift_length - lateral_offset;
-  start_pt.pose.position.x += uncorrected_offset * (-std::sin(traj_yaw));
-  start_pt.pose.position.y += uncorrected_offset * std::cos(traj_yaw);
   start_pt.longitudinal_velocity_mps = ref_velocity;
   shifted_points.push_back(start_pt);
 
