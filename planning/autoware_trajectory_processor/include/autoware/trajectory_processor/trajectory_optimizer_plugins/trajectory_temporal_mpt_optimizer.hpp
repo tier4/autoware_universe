@@ -71,7 +71,7 @@ private:
   TemporalMPTParams mpt_params_;
 
   void set_mpt_params(
-    const trajectory_optimizer_node_params::Params::TrajectoryTemporalMptOptimizer & params);
+    const trajectory_processor_params::Params::TrajectoryTemporalMptOptimizer & params);
   void create_or_reset_solver();
   void write_temporal_mpt_replay_fixture(
     const std::array<double, temporal_mpt::NX> & x0, const TrajectoryPoints & reference_trajectory,
@@ -92,6 +92,6 @@ private:
 };
 
 }  // namespace autoware::trajectory_optimizer::plugin
-// clang-format off
+   // clang-format off
 #endif  // AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_OPTIMIZER_PLUGINS__TRAJECTORY_TEMPORAL_MPT_OPTIMIZER_HPP_  // NOLINT
 // clang-format on

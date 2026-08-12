@@ -94,7 +94,7 @@ std::string expand_user_path_string(const std::string & p)
 }  // namespace
 
 void TrajectoryTemporalMPTOptimizer::set_mpt_params(
-  const trajectory_optimizer_node_params::Params::TrajectoryTemporalMptOptimizer & params)
+  const trajectory_processor_params::Params::TrajectoryTemporalMptOptimizer & params)
 {
   mpt_params_.min_points_for_optimization =
     static_cast<size_t>(std::max<int64_t>(2, params.min_points_for_optimization));
