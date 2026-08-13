@@ -387,19 +387,25 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
   const std::vector<PathPointTrajectory> & candidate_trajectories,
   const AvailableArea & available_area)
 {
-  auto cal_max_curvature = [](const PathPointTrajectory & trajectory) {
+  auto cal_curvature_integral =
+    [](const PathPointTrajectory & trajectory) -> std::optional<double> {
     const auto ss = trajectory.get_underlying_bases();
     if (ss.size() < 3) {
       return 0.0;
     }
     const auto curvature_vec = trajectory.curvature(ss);
-    double max_curvature = 0.0;
-    for (const double & curvature : curvature_vec) {
-      if (max_curvature < std::abs(curvature)) {
-        max_curvature = std::abs(curvature);
-      }
+    if (ss.size() != curvature_vec.size()) {
+      return std::nullopt;
     }
-    return max_curvature;
+    double curvature_integral = 0.0;
+    for (size_t i = 0; i < ss.size() - 1; ++i) {
+      const double ds = ss[i + 1] - ss[i];
+      const double curvature = (std::pow(std::abs(curvature_vec[i]), 2.0) +
+                                std::pow(std::abs(curvature_vec[i + 1]), 2.0)) *
+                               0.5;
+      curvature_integral += curvature * ds;
+    }
+    return curvature_integral;
   };
 
   auto has_turn_point = [](const PathPointTrajectory & trajectory) {
@@ -437,7 +443,10 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
       continue;
     }
 
-    const double max_curvature_in_trajectory = cal_max_curvature(candidate);
+    const auto curvature_integral = cal_curvature_integral(candidate);
+    if (!curvature_integral.has_value()) {
+      continue;
+    }
     const double arc_length = candidate.length();
     if (arc_length < 1e-9) {
       continue;
@@ -447,7 +456,8 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
       continue;
     }
 
-    const double score = max_curvature_in_trajectory / max_curvature * 0.7 + arc_length / 10 * 0.3;
+    const double score = *curvature_integral / std::pow(max_curvature, 2.0) * 0.7 +
+                         arc_length / params_.search_radius_range * 0.3;
     if (score < best_score) {
       best_score = score;
       best_trajectory = candidate;
