@@ -63,6 +63,12 @@ using TrajectoryPoints = std::vector<TrajectoryPoint>;
 class PathProcessor
 {
 public:
+  struct PredictionResult
+  {
+    PredictedObject object;
+    lanelet::ConstLanelets current_lanelets;
+  };
+
   struct Params
   {
     double lateral_control_time_horizon{5.0};
@@ -92,7 +98,7 @@ public:
   void setParams(const Params & params);
   void clearLRUCache();
 
-  std::optional<PredictedObject> predict(
+  std::optional<PredictionResult> predict(
     const std_msgs::msg::Header & header, const TrackedObject & object,
     double objects_detected_time, visualization_msgs::msg::MarkerArray * debug_markers);
 

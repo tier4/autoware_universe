@@ -64,7 +64,7 @@ public:
 
   void removeOldHistory(double current_time, double buffer_time);
 
-  std::optional<PredictedObject> predict(
+  std::optional<PathProcessor::PredictionResult> predict(
     const std_msgs::msg::Header & header, const TrackedObject & object,
     double objects_detected_time, visualization_msgs::msg::MarkerArray * debug_markers);
 

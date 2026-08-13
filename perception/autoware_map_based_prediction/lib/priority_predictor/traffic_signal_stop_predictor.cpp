@@ -24,7 +24,6 @@
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/utility/Utilities.h>
-#include <lanelet2_routing/LaneletPath.h>
 
 #include <algorithm>
 #include <cmath>
@@ -37,34 +36,6 @@
 
 namespace autoware::map_based_prediction::priority_predictor
 {
-namespace
-{
-
-using autoware::experimental::lanelet2_utils::LaneletRTree;
-
-bool isRoadLanelet(const lanelet::ConstLanelet & lanelet)
-{
-  if (!lanelet.hasAttribute(lanelet::AttributeName::Subtype)) {
-    return true;
-  }
-  const auto subtype = lanelet.attribute(lanelet::AttributeName::Subtype).value();
-  return subtype != lanelet::AttributeValueString::Crosswalk &&
-         subtype != lanelet::AttributeValueString::Walkway;
-}
-
-lanelet::ConstLanelets collectRoadLanelets(const lanelet::LaneletMap & lanelet_map)
-{
-  lanelet::ConstLanelets road_lanelets;
-  for (const auto & lanelet : lanelet_map.laneletLayer) {
-    if (isRoadLanelet(lanelet)) {
-      road_lanelets.push_back(lanelet);
-    }
-  }
-  return road_lanelets;
-}
-
-}  // namespace
-
 std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
   const lanelet::ConstLineString3d & stop_line)
 {
@@ -225,7 +196,7 @@ std::optional<TrafficLightGroup> getSignalForLanelet(
 }
 
 bool findTrafficLightLaneletOnPath(
-  const lanelet::routing::LaneletPath & lanelet_path, lanelet::ConstLanelet & signal_lanelet)
+  const lanelet::ConstLanelets & lanelet_path, lanelet::ConstLanelet & signal_lanelet)
 {
   for (const auto & way_lanelet : lanelet_path) {
     if (hasTrafficLight(way_lanelet)) {
@@ -234,58 +205,6 @@ bool findTrafficLightLaneletOnPath(
     }
   }
   return false;
-}
-
-lanelet::routing::LaneletPath buildLaneletPathFromPredictedPath(
-  const PredictedPath & predicted_path, const LaneletRTree & road_lanelet_rtree,
-  const double sample_interval_m)
-{
-  lanelet::ConstLanelets lanelets;
-  if (predicted_path.path.empty()) {
-    return lanelet::routing::LaneletPath(lanelets);
-  }
-
-  std::optional<lanelet::Id> prev_id;
-  const auto add_lanelet_at = [&](const geometry_msgs::msg::Pose & pose) {
-    const auto lanelet_opt = road_lanelet_rtree.get_closest_lanelet(pose);
-    if (!lanelet_opt) {
-      return;
-    }
-    if (prev_id && *prev_id == lanelet_opt->id()) {
-      return;
-    }
-    prev_id = lanelet_opt->id();
-    lanelets.push_back(*lanelet_opt);
-  };
-
-  add_lanelet_at(predicted_path.path.front());
-
-  double dist = 0.0;
-  double next_sample = sample_interval_m;
-  for (size_t i = 1; i < predicted_path.path.size(); ++i) {
-    dist +=
-      autoware_utils::calc_distance2d(predicted_path.path.at(i - 1), predicted_path.path.at(i));
-    if (dist >= next_sample) {
-      add_lanelet_at(predicted_path.path.at(i));
-      next_sample += sample_interval_m;
-    }
-  }
-
-  if (predicted_path.path.size() > 1) {
-    add_lanelet_at(predicted_path.path.back());
-  }
-
-  return lanelet::routing::LaneletPath(lanelets);
-}
-
-bool findTrafficLightLaneletOnPredictedPath(
-  const PredictedPath & predicted_path, const LaneletRTree & road_lanelet_rtree,
-  lanelet::ConstLanelet & signal_lanelet)
-{
-  constexpr double sample_interval_m = 3.0;
-  const auto lanelet_path =
-    buildLaneletPathFromPredictedPath(predicted_path, road_lanelet_rtree, sample_interval_m);
-  return findTrafficLightLaneletOnPath(lanelet_path, signal_lanelet);
 }
 
 bool evaluateSignalStopRequirement(
@@ -331,7 +250,7 @@ bool can_stop_before_stop_line(
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const LaneletRTree & road_lanelet_rtree, const path_cut::MaxDecelerationParams & max_decel_params)
+  const path_cut::MaxDecelerationParams & max_decel_params)
 {
   const TrackedObject & object = prediction.object;
   const std::vector<PredictedPath> & predicted_paths = prediction.predicted_paths;
@@ -339,6 +258,16 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   if (predicted_paths.empty()) {
     return predicted_paths;
   }
+
+  lanelet::ConstLanelet target_lanelet_signal_object;
+  if (!findTrafficLightLaneletOnPath(prediction.current_lanelets, target_lanelet_signal_object)) {
+    return predicted_paths;
+  }
+
+  const std::optional<TrafficLightGroup> signal_status =
+    getSignalForLanelet(traffic_signal_id_map, target_lanelet_signal_object);
+  const std::optional<lanelet::ConstLineString3d> related_stop_line =
+    getStopLineOrEntryEdge(target_lanelet_signal_object);
 
   std::vector<PredictedPath> result = predicted_paths;
 
@@ -348,16 +277,6 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     if (predicted_path.path.size() < 2) {
       continue;
     }
-
-    lanelet::ConstLanelet target_lanelet_signal_object;
-    if (!findTrafficLightLaneletOnPredictedPath(
-          predicted_path, road_lanelet_rtree, target_lanelet_signal_object)) {
-      continue;
-    }
-    const std::optional<TrafficLightGroup> signal_status =
-      getSignalForLanelet(traffic_signal_id_map, target_lanelet_signal_object);
-    const std::optional<lanelet::ConstLineString3d> related_stop_line =
-      getStopLineOrEntryEdge(target_lanelet_signal_object);
 
     const bool signal_requires_stop =
       evaluateSignalStopRequirement(target_lanelet_signal_object, signal_status);
@@ -393,12 +312,6 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
 void TrafficSignalStopPredictor::setLaneletMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
   lanelet_map_ptr_ = std::move(lanelet_map_ptr);
-  if (!lanelet_map_ptr_) {
-    road_lanelet_rtree_.reset();
-    return;
-  }
-  const auto road_lanelets = collectRoadLanelets(*lanelet_map_ptr_);
-  road_lanelet_rtree_.emplace(road_lanelets);
 }
 
 void TrafficSignalStopPredictor::setTrafficSignal(
@@ -418,7 +331,7 @@ void TrafficSignalStopPredictor::setTrafficSignal(
 std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
   const ObjectPrediction & prediction, const rclcpp::Time & now)
 {
-  if (!road_lanelet_rtree_) {
+  if (!lanelet_map_ptr_) {
     return prediction.predicted_paths;
   }
 
@@ -433,7 +346,7 @@ std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
   }
 
   return addTrafficSignalStopHypotheses(
-    prediction, stabilized_traffic_signal_id_map_, *road_lanelet_rtree_, max_decel_params_);
+    prediction, stabilized_traffic_signal_id_map_, max_decel_params_);
 }
 
 }  // namespace autoware::map_based_prediction::priority_predictor

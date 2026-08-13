@@ -52,6 +52,16 @@ using autoware_utils::ScopedTimeTrack;
 
 namespace
 {
+lanelet::ConstLanelets toLanelets(const LaneletsData & data)
+{
+  lanelet::ConstLanelets lanelets;
+  lanelets.reserve(data.size());
+  for (const auto & lanelet_data : data) {
+    lanelets.push_back(lanelet_data.lanelet);
+  }
+  return lanelets;
+}
+
 lanelet::ConstLanelets getRightLineSharingLanelets(
   const lanelet::ConstLanelet & current_lanelet, const lanelet::LaneletMapPtr & lanelet_map_ptr)
 {
@@ -196,7 +206,7 @@ void PathProcessor::clearLRUCache()
   lru_cache_of_convert_path_type_.clear();
 }
 
-std::optional<PredictedObject> PathProcessor::predict(
+std::optional<PathProcessor::PredictionResult> PathProcessor::predict(
   const std_msgs::msg::Header & header, const TrackedObject & transformed_object,
   const double objects_detected_time, visualization_msgs::msg::MarkerArray * debug_markers)
 {
@@ -216,7 +226,7 @@ std::optional<PredictedObject> PathProcessor::predict(
 
     auto predicted_object_vehicle = utils::convertToPredictedObject(object);
     predicted_object_vehicle.kinematics.predicted_paths.push_back(predicted_path);
-    return predicted_object_vehicle;
+    return PredictionResult{predicted_object_vehicle, toLanelets(current_lanelets)};
   }
 
   const double abs_obj_speed = std::hypot(
@@ -230,7 +240,7 @@ std::optional<PredictedObject> PathProcessor::predict(
 
     auto predicted_slow_object = utils::convertToPredictedObject(object);
     predicted_slow_object.kinematics.predicted_paths.push_back(predicted_path);
-    return predicted_slow_object;
+    return PredictionResult{predicted_slow_object, toLanelets(current_lanelets)};
   }
 
   const auto lanelet_ref_paths = getPredictedReferencePath(
@@ -245,7 +255,7 @@ std::optional<PredictedObject> PathProcessor::predict(
 
     auto predicted_object_out_of_lane = utils::convertToPredictedObject(object);
     predicted_object_out_of_lane.kinematics.predicted_paths.push_back(predicted_path);
-    return predicted_object_out_of_lane;
+    return PredictionResult{predicted_object_out_of_lane, toLanelets(current_lanelets)};
   }
 
   if (debug_markers) {
@@ -332,7 +342,7 @@ std::optional<PredictedObject> PathProcessor::predict(
     if (predicted_object.kinematics.predicted_paths.size() >= 100) break;
     predicted_object.kinematics.predicted_paths.push_back(predicted_path);
   }
-  return predicted_object;
+  return PredictionResult{predicted_object, toLanelets(current_lanelets)};
 }
 
 std::optional<size_t> PathProcessor::searchProperStartingRefPathIndex(

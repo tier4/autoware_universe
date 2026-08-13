@@ -192,21 +192,24 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
       case ObjectClassification::TRAILER:
       case ObjectClassification::MOTORCYCLE:
       case ObjectClassification::TRUCK: {
-        auto predicted_object_opt = state_.predictor_vehicle->predict(
+        auto prediction_result_opt = state_.predictor_vehicle->predict(
           output.header, transformed_object, objects_detected_time,
           pub_debug_markers_ ? &debug_markers : nullptr);
 
         if (
-          predicted_object_opt && state_.params.use_priority_prediction &&
+          prediction_result_opt && state_.params.use_priority_prediction &&
           state_.priority_predictor) {
-          predicted_object_opt->kinematics.predicted_paths =
+          prediction_result_opt->object.kinematics.predicted_paths =
             state_.priority_predictor->addStopHypotheses(
               priority_predictor::ObjectPrediction{
-                transformed_object, predicted_object_opt->kinematics.predicted_paths},
+                transformed_object, prediction_result_opt->object.kinematics.predicted_paths,
+                prediction_result_opt->current_lanelets},
               rclcpp::Time(output.header.stamp));
         }
 
-        if (predicted_object_opt) output.objects.push_back(predicted_object_opt.value());
+        if (prediction_result_opt) {
+          output.objects.push_back(prediction_result_opt->object);
+        }
         break;
       }
       default: {

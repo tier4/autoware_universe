@@ -58,7 +58,7 @@ void PredictorVehicle::removeOldHistory(double current_time, double buffer_time)
   object_tracker_.removeOldHistory(current_time, buffer_time);
 }
 
-std::optional<PredictedObject> PredictorVehicle::predict(
+std::optional<PathProcessor::PredictionResult> PredictorVehicle::predict(
   const std_msgs::msg::Header & header, const TrackedObject & object, double objects_detected_time,
   visualization_msgs::msg::MarkerArray * debug_markers)
 {
