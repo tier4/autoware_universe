@@ -14,8 +14,11 @@
 
 #include "autoware/trajectory_validator/filters/traffic_rule/traffic_light_filter.hpp"
 
+#include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 
+#include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -76,10 +79,10 @@ autoware::traffic_light_compliance_checker::Parameters to_checker_params(
   const validator::Params::TrafficLight & params)
 {
   autoware::traffic_light_compliance_checker::Parameters p{};
-  p.deceleration_limit = params.deceleration_limit;
-  p.jerk_limit = params.jerk_limit;
-  p.delay_response_time = params.delay_response_time;
-  p.crossing_time_limit = params.crossing_time_limit;
+  p.deceleration_limit = params.amber_rejection.can_stop_decel;
+  p.jerk_limit = params.amber_rejection.can_stop_jerk;
+  p.delay_response_time = params.stopping_params.delay_response_time;
+  p.crossing_time_limit = params.amber_rejection.crossing_time_limit;
   p.treat_amber_light_as_red_light = params.treat_amber_light_as_red_light;
   p.treat_unknown_light_as_red_light = params.treat_unknown_light_as_red_light;
   p.enable_arrow_aware_amber_passing = params.enable_arrow_aware_amber_passing;
@@ -92,9 +95,8 @@ autoware::traffic_light_compliance_checker::Parameters to_checker_params(
   p.status_tracker_parameters.stable_duration_threshold_unknown =
     params.stable_duration_threshold_unknown;
   p.ego_stopped_velocity_threshold = params.ego_stopped_velocity_threshold;
-  p.checked_trajectory_length.deceleration_limit =
-    params.checked_trajectory_length.deceleration_limit;
-  p.checked_trajectory_length.jerk_limit = params.checked_trajectory_length.jerk_limit;
+  p.checked_trajectory_length.deceleration_limit = params.stopping_params.nominal_decel;
+  p.checked_trajectory_length.jerk_limit = params.stopping_params.nominal_jerk;
   p.amber_rejection.hysteresis_duration = params.amber_rejection.hysteresis_duration;
   p.amber_rejection.reject_if_stop_detected = params.amber_rejection.reject_if_stop_detected;
   return p;
@@ -139,7 +141,22 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
 
   if (!last_frame_time_ || *last_frame_time_ != current_time) {
     aggregated_rejections_.clear();
+    stopping_distance_ = StoppingDistance{};
     last_frame_time_ = current_time;
+  }
+
+  if (!stopping_distance_.nominal) {
+    stopping_distance_.nominal = autoware::motion_utils::calculate_stop_distance(
+      context.odometry->twist.twist.linear.x, context.acceleration->accel.accel.linear.x,
+      params_.stopping_params.nominal_decel, params_.stopping_params.nominal_jerk,
+      params_.stopping_params.delay_response_time);
+  }
+
+  if (!stopping_distance_.minimum) {
+    stopping_distance_.minimum = autoware::motion_utils::calculate_stop_distance(
+      context.odometry->twist.twist.linear.x, context.acceleration->accel.accel.linear.x,
+      params_.stopping_params.decel_limit, params_.stopping_params.jerk_limit,
+      params_.stopping_params.delay_response_time);
   }
 
   const traffic_light_compliance_checker::Inputs inputs{
@@ -158,12 +175,18 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
 
   bool is_crossing_red = false;
   bool is_crossing_amber = false;
+  double red_arc_length_to_stop_line = std::numeric_limits<double>::max();
+  double amber_arc_length_to_stop_line = std::numeric_limits<double>::max();
 
   for (const auto & violation : result->violations) {
     if (violation.type == traffic_light_compliance_checker::ViolationType::RED_LIGHT) {
       is_crossing_red = true;
+      red_arc_length_to_stop_line =
+        std::min(red_arc_length_to_stop_line, violation.arc_length_to_cross_point);
     } else if (violation.type == traffic_light_compliance_checker::ViolationType::AMBER_LIGHT) {
       is_crossing_amber = true;
+      amber_arc_length_to_stop_line =
+        std::min(amber_arc_length_to_stop_line, violation.arc_length_to_cross_point);
     }
   }
 
@@ -173,9 +196,9 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
 
   std::vector<MetricReport> metrics;
 
-  auto get_risk_level = [](bool is_crossing) {
+  auto make_risk = [&](const bool is_crossing, const double arc_length_to_stop_line) {
     RiskLevel risk_level;
-    risk_level.level = is_crossing ? RiskLevel::DANGER : RiskLevel::SAFE;
+    risk_level.level = is_crossing ? get_risk_level(arc_length_to_stop_line) : RiskLevel::SAFE;
     return risk_level;
   };
 
@@ -185,7 +208,7 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       .validator_category(category())
       .metric_name("check_crossing_red_light")
       .metric_value(0.0)
-      .risk(get_risk_level(is_crossing_red)));
+      .risk(make_risk(is_crossing_red, red_arc_length_to_stop_line)));
 
   metrics.push_back(
     autoware_trajectory_validator::build<MetricReport>()
@@ -193,11 +216,39 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       .validator_category(category())
       .metric_name("check_crossing_amber_light")
       .metric_value(0.0)
-      .risk(get_risk_level(is_crossing_amber)));
+      .risk(make_risk(is_crossing_amber, amber_arc_length_to_stop_line)));
 
   const bool is_feasible = !is_crossing_red && !is_crossing_amber;
 
   return ValidationResult{is_feasible, std::move(metrics)};
+}
+
+RiskLevel::_level_type TrafficLightFilter::get_risk_level(
+  const double arc_length_to_stop_line) const
+{
+  const auto ego_front_to_stop_line =
+    arc_length_to_stop_line - vehicle_info_ptr_->max_longitudinal_offset_m;
+
+  static constexpr double near_stop_line_threshold = 5.0;
+
+  if (ego_front_to_stop_line <= near_stop_line_threshold) {
+    return RiskLevel::DANGER;
+  }
+
+  static constexpr double tolerance = 0.1;
+  if (
+    stopping_distance_.nominal &&
+    ego_front_to_stop_line > (*stopping_distance_.nominal - tolerance)) {
+    return RiskLevel::LOW_CAUTION;
+  }
+
+  if (
+    stopping_distance_.minimum &&
+    ego_front_to_stop_line > (*stopping_distance_.minimum - tolerance)) {
+    return RiskLevel::HIGH_CAUTION;
+  }
+
+  return RiskLevel::DANGER;
 }
 
 void TrafficLightFilter::update_debug_data(

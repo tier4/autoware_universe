@@ -404,26 +404,6 @@ validator:
       read_only: false
 
   traffic_light:
-    deceleration_limit:
-      type: double
-      default_value: 2.8
-      description: trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
-      read_only: false
-    jerk_limit:
-      type: double
-      default_value: 5.0
-      description: trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
-      read_only: false
-    delay_response_time:
-      type: double
-      default_value: 0.5
-      description: delay response time used to estimate the minimum ego stopping distance
-      read_only: false
-    crossing_time_limit:
-      type: double
-      default_value: 2.75
-      description: trajectories crossing an amber light are rejected if they cannot cross before this time
-      read_only: false
     treat_amber_light_as_red_light:
       type: bool
       default_value: true
@@ -478,8 +458,18 @@ validator:
       default_value: 0.01
       description: Velocity below which ego is considered fully stopped (m/s)
       read_only: false
-    checked_trajectory_length:
-      deceleration_limit:
+    stopping_params:
+      nominal_decel:
+        type: double
+        default_value: 1.0
+        description: nominal deceleration to calculate the stop distance used as trajectory length limit
+        read_only: false
+      nominal_jerk:
+        type: double
+        default_value: 1.0
+        description: nominal jerk to calculate the stop distance used as trajectory length limit
+        read_only: false
+      decel_limit:
         type: double
         default_value: 2.0
         description: deceleration limit to calculate the stop distance used as trajectory length limit
@@ -488,6 +478,11 @@ validator:
         type: double
         default_value: 2.0
         description: jerk limit to calculate the stop distance used as trajectory length limit
+        read_only: false
+      delay_response_time:
+        type: double
+        default_value: 0.5
+        description: delay response time used to estimate the minimum ego stopping distance
         read_only: false
     amber_rejection:
       hysteresis_duration:
@@ -499,6 +494,21 @@ validator:
         type: bool
         default_value: false
         description: Reject if we detect a previous stop attempt from input trajectory
+        read_only: false
+      can_stop_decel:
+        type: double
+        default_value: 2.8
+        description: trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
+        read_only: false
+      can_stop_jerk:
+        type: double
+        default_value: 5.0
+        description: trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
+        read_only: false
+      crossing_time_limit:
+        type: double
+        default_value: 2.75
+        description: trajectories crossing an amber light are rejected if they cannot cross before this time
         read_only: false
 
   boundary_departure:

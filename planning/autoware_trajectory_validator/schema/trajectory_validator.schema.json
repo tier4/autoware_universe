@@ -566,28 +566,6 @@
         "traffic_light": {
           "type": "object",
           "properties": {
-            "deceleration_limit": {
-              "type": "number",
-              "description": "Deceleration limit used to decide whether ego can safely stop before an amber stop line [m/s²]. A trajectory crossing an amber light is rejected if ego could stop within this deceleration.",
-              "default": 2.8
-            },
-            "jerk_limit": {
-              "type": "number",
-              "description": "Jerk limit used together with `deceleration_limit` to compute the minimum stopping distance [m/s³].",
-              "default": 5.0
-            },
-            "delay_response_time": {
-              "type": "number",
-              "description": "Driver/system response delay used to estimate the earliest possible start of braking [s].",
-              "default": 0.5,
-              "minimum": 0.0
-            },
-            "crossing_time_limit": {
-              "type": "number",
-              "description": "A trajectory crossing an amber light is rejected unless ego can fully clear the stop line within this time [s].",
-              "default": 2.75,
-              "minimum": 0.0
-            },
             "treat_amber_light_as_red_light": {
               "type": "boolean",
               "description": "When true, amber lights are treated identically to red lights (no dilemma-zone logic is applied).",
@@ -662,6 +640,38 @@
               "required": [],
               "additionalProperties": false
             },
+            "stopping_params": {
+              "type": "object",
+              "properties": {
+                "nominal_decel": {
+                  "type": "number",
+                  "description": "nominal deceleration to calculate the stop distance used as trajectory length limit",
+                  "default": 1.0
+                },
+                "nominal_jerk": {
+                  "type": "number",
+                  "description": "nominal jerk to calculate the stop distance used as trajectory length limit",
+                  "default": 1.0
+                },
+                "decel_limit": {
+                  "type": "number",
+                  "description": "deceleration limit to calculate the stop distance used as trajectory length limit",
+                  "default": 2.0
+                },
+                "jerk_limit": {
+                  "type": "number",
+                  "description": "jerk limit to calculate the stop distance used as trajectory length limit",
+                  "default": 2.0
+                },
+                "delay_response_time": {
+                  "type": "number",
+                  "description": "delay response time used to estimate the minimum ego stopping distance",
+                  "default": 0.5
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
             "amber_rejection": {
               "type": "object",
               "properties": {
@@ -675,6 +685,21 @@
                   "type": "boolean",
                   "description": "Reject if we detect a previous stop attempt from input trajectory.",
                   "default": false
+                },
+                "can_stop_decel": {
+                  "type": "number",
+                  "description": "trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit",
+                  "default": 2.8
+                },
+                "can_stop_jerk": {
+                  "type": "number",
+                  "description": "trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit",
+                  "default": 5.0
+                },
+                "crossing_time_limit": {
+                  "type": "number",
+                  "description": "trajectories crossing an amber light are rejected if they cannot cross before this time",
+                  "default": 2.75
                 }
               },
               "required": [],

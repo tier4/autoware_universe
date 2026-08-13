@@ -51,10 +51,6 @@ protected:
     vehicle_info.max_longitudinal_offset_m = 0.0;
     filter_->set_vehicle_info(vehicle_info);
 
-    params_.traffic_light.deceleration_limit = 2.8;
-    params_.traffic_light.jerk_limit = 5.0;
-    params_.traffic_light.delay_response_time = 0.5;
-    params_.traffic_light.crossing_time_limit = 2.75;
     params_.traffic_light.treat_amber_light_as_red_light = false;
     params_.traffic_light.treat_unknown_light_as_red_light = false;
     params_.traffic_light.enable_arrow_aware_amber_passing = true;
@@ -63,11 +59,17 @@ protected:
     params_.traffic_light.stable_duration_threshold_unknown = 0.0;
     params_.traffic_light.amber_rejection.hysteresis_duration = 0.0;
     params_.traffic_light.amber_rejection.reject_if_stop_detected = false;
+    params_.traffic_light.amber_rejection.can_stop_decel = 2.8;
+    params_.traffic_light.amber_rejection.can_stop_jerk = 5.0;
+    params_.traffic_light.amber_rejection.crossing_time_limit = 2.75;
     params_.traffic_light.ego_stopped_velocity_threshold = 0.01;
     params_.traffic_light.min_lookahead_distance = 20.0;
-    params_.traffic_light.checked_trajectory_length.deceleration_limit = 999.9;
-    params_.traffic_light.checked_trajectory_length.jerk_limit = 999.9;
     params_.traffic_light.stop_overshoot_margin = 0.5;
+    params_.traffic_light.stopping_params.nominal_decel = 1.0;
+    params_.traffic_light.stopping_params.nominal_jerk = 1.0;
+    params_.traffic_light.stopping_params.decel_limit = 2.0;
+    params_.traffic_light.stopping_params.jerk_limit = 2.0;
+    params_.traffic_light.stopping_params.delay_response_time = 0.5;
     filter_->update_parameters(params_);
 
     context_.traffic_light_signals = std::make_shared<TrafficLightGroupArray>();
@@ -332,8 +334,8 @@ TEST_F(TrafficLightFilterTest, AllowsCrossingIfEgoFrontIsTooCloseToStop)
 
   auto params = params_;
   params.traffic_light.allow_if_cannot_stop_distance = 4.0;
-  params.traffic_light.checked_trajectory_length.deceleration_limit = 2.0;
-  params.traffic_light.checked_trajectory_length.jerk_limit = 2.0;
+  params.traffic_light.stopping_params.nominal_decel = 2.0;
+  params.traffic_light.stopping_params.nominal_jerk = 2.0;
   filter_->update_parameters(params);
 
   const auto points = create_trajectory(0.0, 10.0, 10.0);
@@ -360,10 +362,10 @@ TEST_F(TrafficLightFilterTest, AllowsCrossingWhenEgoFrontHasPassedStopLine)
   filter_->set_vehicle_info(vehicle_info);
 
   auto params = params_;
-  params.traffic_light.delay_response_time = 1.0;
+  params.traffic_light.stopping_params.delay_response_time = 1.0;
   params.traffic_light.allow_if_cannot_stop_distance = 3.0;
-  params.traffic_light.checked_trajectory_length.deceleration_limit = 2.0;
-  params.traffic_light.checked_trajectory_length.jerk_limit = 2.0;
+  params.traffic_light.stopping_params.nominal_decel = 2.0;
+  params.traffic_light.stopping_params.nominal_jerk = 2.0;
   filter_->update_parameters(params);
 
   set_ego_motion(10.0, 0.0);
@@ -381,10 +383,10 @@ TEST_F(TrafficLightFilterTest, RejectsCrossingWhenEgoCanStopSafely)
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
 
   auto params = params_;
-  params.traffic_light.delay_response_time = 2.0;
+  params.traffic_light.stopping_params.delay_response_time = 2.0;
   params.traffic_light.allow_if_cannot_stop_distance = 10.0;
-  params.traffic_light.checked_trajectory_length.deceleration_limit = 5.0;
-  params.traffic_light.checked_trajectory_length.jerk_limit = 2.0;
+  params.traffic_light.stopping_params.nominal_decel = 5.0;
+  params.traffic_light.stopping_params.nominal_jerk = 2.0;
   filter_->update_parameters(params);
 
   // At 2 m/s and -2 m/s^2, ego stops naturally after 1 m during the response delay.
@@ -410,10 +412,10 @@ TEST_F(TrafficLightFilterTest, RejectsAtStoppingDistanceBoundary)
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
 
   auto params = params_;
-  params.traffic_light.delay_response_time = delay_response_time;
+  params.traffic_light.stopping_params.delay_response_time = delay_response_time;
   params.traffic_light.allow_if_cannot_stop_distance = 10.0;
-  params.traffic_light.checked_trajectory_length.deceleration_limit = deceleration_limit;
-  params.traffic_light.checked_trajectory_length.jerk_limit = jerk_limit;
+  params.traffic_light.stopping_params.nominal_decel = deceleration_limit;
+  params.traffic_light.stopping_params.nominal_jerk = jerk_limit;
   filter_->update_parameters(params);
 
   set_ego_motion(velocity, acceleration);
@@ -431,10 +433,10 @@ TEST_F(TrafficLightFilterTest, RejectsWhenStoppingDistanceIsUnavailable)
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
 
   auto params = params_;
-  params.traffic_light.delay_response_time = 0.0;
+  params.traffic_light.stopping_params.delay_response_time = 0.0;
   params.traffic_light.allow_if_cannot_stop_distance = 10.0;
-  params.traffic_light.checked_trajectory_length.deceleration_limit = 0.0;
-  params.traffic_light.checked_trajectory_length.jerk_limit = 2.0;
+  params.traffic_light.stopping_params.nominal_decel = 0.0;
+  params.traffic_light.stopping_params.nominal_jerk = 2.0;
   filter_->update_parameters(params);
 
   set_ego_motion(1.0, 0.0);
@@ -452,9 +454,9 @@ TEST_F(TrafficLightFilterTest, RejectsWithZeroCannotStopAllowance)
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
 
   auto params = params_;
-  params.traffic_light.delay_response_time = 1.0;
-  params.traffic_light.checked_trajectory_length.deceleration_limit = 2.0;
-  params.traffic_light.checked_trajectory_length.jerk_limit = 2.0;
+  params.traffic_light.stopping_params.delay_response_time = 1.0;
+  params.traffic_light.stopping_params.nominal_decel = 2.0;
+  params.traffic_light.stopping_params.nominal_jerk = 2.0;
   filter_->update_parameters(params);
 
   set_ego_motion(10.0, 0.0);
@@ -522,9 +524,9 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStopAndCannotPass)
 
   // Let's adjust params to create the desired scenario.
   auto params = params_;
-  params.traffic_light.deceleration_limit = -0.5;  // Very weak braking
-  params.traffic_light.delay_response_time = 1.0;
-  params.traffic_light.crossing_time_limit = 1.0;  // Short amber
+  params.traffic_light.amber_rejection.can_stop_decel = -0.5;  // Very weak braking
+  params.traffic_light.stopping_params.delay_response_time = 1.0;
+  params.traffic_light.amber_rejection.crossing_time_limit = 1.0;  // Short amber
   filter_->update_parameters(params);
 
   auto points = create_trajectory(0.0, 200.0, 10.0);
@@ -806,7 +808,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightWhenPreviousStopIsDetec
   params.traffic_light.amber_rejection.hysteresis_duration = 5.0;
   params.traffic_light.stop_overshoot_margin = 0.5;
   params.traffic_light.allow_if_cannot_stop_distance = 0.0;
-  params.traffic_light.crossing_time_limit = 100.0;
+  params.traffic_light.amber_rejection.crossing_time_limit = 100.0;
   filter_->update_parameters(params);
 
   auto stopping_points = create_trajectory_with_stop_at(0.0, stop_x, 5.0);
@@ -833,7 +835,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWhenRejectIfStopDetectedIsDisabled)
   params.traffic_light.amber_rejection.hysteresis_duration = 5.0;
   params.traffic_light.stop_overshoot_margin = 0.5;
   params.traffic_light.allow_if_cannot_stop_distance = 0.0;
-  params.traffic_light.crossing_time_limit = 100.0;
+  params.traffic_light.amber_rejection.crossing_time_limit = 100.0;
   filter_->update_parameters(params);
 
   auto stopping_points = create_trajectory_with_stop_at(0.0, stop_x, 5.0);
