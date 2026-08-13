@@ -187,7 +187,8 @@ struct DepartureResult
 {
   DepartureType status{DepartureType::NONE};  ///< current departure status
   double lat_dist_to_uncrossable_bound{
-    std::numeric_limits<double>::max()};  ///< smallest lateral distance to a boundary [m]
+    std::numeric_limits<double>::infinity()};  ///< smallest lateral distance to a boundary [m],
+                                               ///< infinity when no boundary was evaluated
   visualization_msgs::msg::MarkerArray debug_markers;  ///< debug markers for visualization
 };
 

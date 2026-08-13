@@ -62,11 +62,14 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
   state = hysteresis_result.updated_state;
 
   // CRITICAL is hysteresis filtered, whereas NEAR_BOUNDARY is a non-latching advisory taken
-  // directly from the current evaluation.
-  const auto is_near_boundary =
-    evaluation_result && severity_evaluator::is_near_boundary(*evaluation_result);
+  // directly from the current evaluation. A CRITICAL projection that the hysteresis buffer still
+  // suppresses is reported as NEAR_BOUNDARY, so the reported severity never dips back to NONE while
+  // ego closes on the boundary.
+  const auto footprint_is_close_to_bound =
+    evaluation_result && (severity_evaluator::is_near_boundary(*evaluation_result) ||
+                          severity_evaluator::is_critical(*evaluation_result));
   result.status = hysteresis_result.status;
-  if (result.status == DepartureType::NONE && is_near_boundary) {
+  if (result.status == DepartureType::NONE && footprint_is_close_to_bound) {
     result.status = DepartureType::NEAR_BOUNDARY;
   }
 

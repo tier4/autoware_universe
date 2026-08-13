@@ -20,6 +20,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -314,10 +315,13 @@ TEST(UncrossableBoundaryUtilsTest, TestGetMinLateralDistanceToBound)
   // Arrange:
   Side<std::optional<DeparturePointPair>> projections;
 
-  // Act & Assert: without any projection, the distance is unbounded.
-  EXPECT_DOUBLE_EQ(
-    severity_evaluator::get_min_lateral_distance_to_bound(projections),
-    std::numeric_limits<double>::max());
+  // Act & Assert: without any projection, the distance is infinity so consumers can filter it out.
+  EXPECT_TRUE(std::isinf(severity_evaluator::get_min_lateral_distance_to_bound(projections)));
+
+  // A projection whose segment lookup failed keeps the sentinel default and is ignored.
+  DeparturePointPair pair_without_segment;
+  projections.left = pair_without_segment;
+  EXPECT_TRUE(std::isinf(severity_evaluator::get_min_lateral_distance_to_bound(projections)));
 
   DeparturePointPair pair_left;
   pair_left.physical_departure_point.lat_dist = 0.8;
@@ -366,5 +370,30 @@ TEST(UncrossableBoundaryUtilsTest, TestAssignDepartureType)
   EXPECT_EQ(
     severity_evaluator::assign_departure_type(make_metrics(0.6, 20.0, 3.0), thresholds),
     DepartureType::NONE);
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestNearBoundaryThresholdBelowCriticalMargin)
+{
+  // Verifies that a near boundary threshold configured below the critical margin does not leave a
+  // projection inside the critical margin classified as NONE.
+
+  // Arrange:
+  UncrossableBoundaryDepartureParam param;
+  param.critical_departure_lateral_th_m = 0.5;
+  param.near_boundary_lateral_th_m = 0.1;
+  param.time_to_departure_cutoff_s = 2.0;
+
+  ProjectionToBound projection(0);
+  projection.lat_dist = 0.3;  // inside the critical margin, outside the near boundary threshold
+  projection.dist_along_trajectory_m = 20.0;
+  projection.ego_front_to_proj_offset_m = 0.0;
+  projection.time_from_start = 3.0;
+
+  // Act:
+  const auto out = severity_evaluator::filter_and_assign_departure_types({projection}, param, 10.0);
+
+  // Assert:
+  ASSERT_EQ(out.size(), 1U);
+  EXPECT_EQ(out.front().departure_type, DepartureType::NEAR_BOUNDARY);
 }
 }  // namespace autoware::boundary_departure_checker

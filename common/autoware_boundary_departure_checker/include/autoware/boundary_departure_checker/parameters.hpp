@@ -25,8 +25,9 @@ namespace autoware::boundary_departure_checker
  */
 struct UncrossableBoundaryDepartureParam
 {
-  int max_lateral_rtree_queries{5};        ///< maximum number of lateral R-tree queries
-  double lateral_margin_m{0.01};           ///< lateral margin [m]
+  int max_lateral_rtree_queries{5};  ///< maximum number of lateral R-tree queries
+  double critical_departure_lateral_th_m{
+    0.01};                                 ///< lateral distance to flag as critical departure [m]
   double longitudinal_margin_m{1.0};       ///< longitudinal margin [m]
   double near_boundary_lateral_th_m{0.2};  ///< lateral distance to flag as near boundary [m]
   double max_deceleration_mps2{-4.0};      ///< maximum deceleration [m/s^2]

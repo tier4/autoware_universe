@@ -41,7 +41,7 @@ ProjectionsToBound filter_and_assign_departure_types(
  * @param[in] param checker parameters
  * @return evaluated critical point pair if found
  */
-DeparturePointPair apply_backward_buffer_and_filter(
+std::optional<DeparturePointPair> apply_backward_buffer_and_filter(
   const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param);
 
 /**

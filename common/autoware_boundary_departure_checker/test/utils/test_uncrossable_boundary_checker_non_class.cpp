@@ -313,7 +313,7 @@ TEST(UncrossableBoundaryUtilsTest, TestEvaluateProjectionsSeverityBackwardBuffer
   // Arrange:
   Side<ProjectionsToBound> input;
   UncrossableBoundaryDepartureParam param;
-  param.lateral_margin_m = 0.5;
+  param.critical_departure_lateral_th_m = 0.5;
   param.time_to_departure_cutoff_s = 2.0;
   param.longitudinal_margin_m = 1.0;
   double min_braking_dist = 10.0;
@@ -342,8 +342,12 @@ TEST(UncrossableBoundaryUtilsTest, TestEvaluateProjectionsSeverityBackwardBuffer
   });
 
   // Assert:
-  EXPECT_DOUBLE_EQ(result.left.physical_departure_point.dist_along_trajectory_m, 15.0);
-  EXPECT_DOUBLE_EQ(result.left.safety_buffer_start.dist_along_trajectory_m, 14.0);
+  ASSERT_TRUE(result.left.has_value());
+  EXPECT_DOUBLE_EQ(result.left->physical_departure_point.dist_along_trajectory_m, 15.0);
+  EXPECT_DOUBLE_EQ(result.left->safety_buffer_start.dist_along_trajectory_m, 14.0);
+
+  // Without a critical projection there is no departure pair to buffer backwards from.
+  EXPECT_FALSE(severity_evaluator::apply_backward_buffer_and_filter({}, param).has_value());
 }
 
 TEST(UncrossableBoundaryUtilsTest, TestEvaluateProjectionsSeverityNearBoundary)
@@ -356,7 +360,7 @@ TEST(UncrossableBoundaryUtilsTest, TestEvaluateProjectionsSeverityNearBoundary)
     0.383, 0.235, 2.79, 1.64, 1.0, 1.1, 2.5, 0.128, 0.128, 0.70);
 
   UncrossableBoundaryDepartureParam param;
-  param.lateral_margin_m = 0.01;
+  param.critical_departure_lateral_th_m = 0.01;
   param.near_boundary_lateral_th_m = 0.5;
   param.time_to_departure_cutoff_s = 2.0;
   param.longitudinal_margin_m = 1.0;

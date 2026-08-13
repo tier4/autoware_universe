@@ -17,7 +17,9 @@
 #include <autoware/motion_utils/distance/distance.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
+#include <optional>
 
 namespace autoware::boundary_departure_checker::severity_evaluator
 {
@@ -31,8 +33,11 @@ ProjectionsToBound filter_and_assign_departure_types(
   DepartureCheckThresholds thresholds;
   thresholds.min_braking_distance = min_braking_dist;
   thresholds.cutoff_time = param.time_to_departure_cutoff_s;
-  thresholds.th_lat_critical = param.lateral_margin_m;
-  thresholds.th_near_boundary = param.near_boundary_lateral_th_m;
+  thresholds.th_lat_critical = param.critical_departure_lateral_th_m;
+  // A near boundary threshold below the critical margin would leave projections inside the critical
+  // margin unclassified, so the advisory band always covers at least the critical margin.
+  thresholds.th_near_boundary =
+    std::max(param.near_boundary_lateral_th_m, param.critical_departure_lateral_th_m);
 
   for (size_t idx = 0; idx < side_value.size(); ++idx) {
     const auto & original_candidate = side_value[idx];
@@ -55,12 +60,12 @@ ProjectionsToBound filter_and_assign_departure_types(
   return out;
 }
 
-DeparturePointPair apply_backward_buffer_and_filter(
+std::optional<DeparturePointPair> apply_backward_buffer_and_filter(
   const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param)
 {
-  DeparturePointPair result;
-  if (side_value.empty()) return result;
+  if (side_value.empty() || !side_value.back().is_critical()) return std::nullopt;
 
+  DeparturePointPair result;
   const auto & departure_point = side_value.back();
 
   result.physical_departure_point = departure_point;
@@ -146,10 +151,14 @@ bool is_near_boundary(const Side<std::optional<DeparturePointPair>> & evaluated_
 double get_min_lateral_distance_to_bound(
   const Side<std::optional<DeparturePointPair>> & evaluated_projections)
 {
-  auto min_lat_dist = std::numeric_limits<double>::max();
+  auto min_lat_dist = std::numeric_limits<double>::infinity();
   evaluated_projections.for_each_side([&min_lat_dist](const auto & departure_pair_opt) {
     if (!departure_pair_opt.has_value()) return;
-    min_lat_dist = std::min(min_lat_dist, departure_pair_opt->physical_departure_point.lat_dist);
+    // A projection that failed to find a segment keeps its sentinel default. Treat it as "no
+    // measurement" instead of letting the sentinel be published as a real distance.
+    const auto lat_dist = departure_pair_opt->physical_departure_point.lat_dist;
+    if (!std::isfinite(lat_dist) || lat_dist >= std::numeric_limits<double>::max()) return;
+    min_lat_dist = std::min(min_lat_dist, lat_dist);
   });
   return min_lat_dist;
 }
