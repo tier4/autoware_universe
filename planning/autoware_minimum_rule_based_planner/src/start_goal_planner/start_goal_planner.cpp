@@ -15,6 +15,7 @@
 #include "start_goal_planner.hpp"
 
 #include "../path_planner.hpp"
+#include "../type_alias.hpp"
 #include "clothoid_pull_generater.hpp"
 
 #include <autoware/trajectory/utils/closest.hpp>
@@ -111,11 +112,18 @@ std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
 
 bool is_trajectory_inside_lanelets_or_areas(
   const PathPointTrajectory & trajectory, const lanelet::ConstLanelets & lanelets,
-  const lanelet::ConstPolygons3d & areas)
+  const lanelet::ConstPolygons3d & areas,
+  const autoware_utils_geometry::LinearRing2d & base_footprint)
 {
-  auto is_in_lanelets = [&](const geometry_msgs::msg::Pose & pose) {
-    return std::any_of(lanelets.begin(), lanelets.end(), [&](const auto & lane) {
-      return lanelet::utils::isInLanelet(pose, lane);
+  std::vector<lanelet::BasicPolygon2d> lanelets_2d;
+  lanelets_2d.reserve(lanelets.size());
+  for (const auto & lane : lanelets) {
+    lanelets_2d.push_back(lane.polygon2d().basicPolygon());
+  }
+
+  auto is_in_lanelets = [&](const autoware_utils_geometry::Point2d & point) {
+    return std::any_of(lanelets_2d.begin(), lanelets_2d.end(), [&](const auto & lane) {
+      return boost::geometry::covered_by(point, lane);
     });
   };
 
@@ -125,16 +133,26 @@ bool is_trajectory_inside_lanelets_or_areas(
     areas_2d.push_back(lanelet::utils::to2D(area).basicPolygon());
   }
 
-  auto is_in_areas = [&](const geometry_msgs::msg::Pose & pose) {
-    const lanelet::BasicPoint2d point(pose.position.x, pose.position.y);
+  auto is_in_areas = [&](const autoware_utils_geometry::Point2d & point) {
     return std::any_of(areas_2d.begin(), areas_2d.end(), [&](const auto & area) {
       return boost::geometry::covered_by(point, area);
     });
   };
 
+  auto footprint_is_in_lanelet_or_areas = [&](const geometry_msgs::msg::Pose & pose) {
+    const auto footprint =
+      autoware_utils::transform_vector(base_footprint, autoware_utils::pose2transform(pose));
+    for (const auto & point : footprint) {
+      if (!is_in_areas(point) && !is_in_lanelets(point)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   const auto points = trajectory.restore();
   return std::none_of(points.begin(), points.end(), [&](const auto & point) {
-    return !is_in_lanelets(point.point.pose) && !is_in_areas(point.point.pose);
+    return !footprint_is_in_lanelet_or_areas(point.point.pose);
   });
 }
 
@@ -439,7 +457,8 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
   std::optional<PathPointTrajectory> best_trajectory = std::nullopt;
   for (const auto & candidate : candidate_trajectories) {
     if (!is_trajectory_inside_lanelets_or_areas(
-          candidate, available_area.lanelets, available_area.areas)) {
+          candidate, available_area.lanelets, available_area.areas,
+          vehicle_info_.createFootprint())) {
       continue;
     }
 
