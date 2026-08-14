@@ -115,7 +115,8 @@ public:
     const builtin_interfaces::msg::Time & stamp);
   std::optional<PathWithLaneId> generate_path(
     const lanelet::LaneletSequence & lanelet_sequence, double s_start, double s_end,
-    double ego_velocity, const builtin_interfaces::msg::Time & stamp);
+    double ego_velocity, const builtin_interfaces::msg::Time & stamp,
+    const geometry_msgs::msg::Pose & current_pose);
 
   // Trajectory shifting
   static Trajectory shift_trajectory_to_ego(

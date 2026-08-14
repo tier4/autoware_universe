@@ -60,7 +60,7 @@ std::vector<PathPointWithLaneId> generate_trajectory_from_points(
 
 std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
   const PathPointTrajectory & trajectory, const Pose & goal_pose, const lanelet::Id & goal_lane_id,
-  const StartGoalPlannerParams & params)
+  const StartGoalPlannerParams & params, const Pose & ego_pose)
 {
   auto contain_goal_lane_id = [&](const PathPointWithLaneId & point) {
     const auto & ids = point.lane_ids;
@@ -106,6 +106,11 @@ std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
       goal_connected_trajectory_points.empty() ? cropped_path.compute(0)
                                                : goal_connected_trajectory_points.back());
   }
+
+  auto ego_candidate =
+    trajectory.compute(autoware::experimental::trajectory::closest(trajectory, ego_pose));
+  ego_candidate.point.pose = ego_pose;
+  candidates.push_back(ego_candidate);
 
   return candidates;
 }
@@ -198,7 +203,8 @@ void StartGoalPlanner::update_params(const StartGoalPlannerParams & params)
 }
 
 std::optional<PathPointTrajectory> StartGoalPlanner::plan(
-  const PathPointTrajectory & trajectory, const double & s_path_end)
+  const PathPointTrajectory & trajectory, const double & s_path_end,
+  const geometry_msgs::msg::Pose & ego_pose)
 {
   judge_goal_planner_act(trajectory, s_path_end);
   judge_start_planner_act();
@@ -208,7 +214,7 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
   }
 
   const auto goal_pose_candidates = get_goal_pose(trajectory);
-  const auto start_pose_candidates = get_start_pose(trajectory);
+  const auto start_pose_candidates = get_start_pose(trajectory, ego_pose);
   if (!start_pose_candidates || !goal_pose_candidates) {
     return std::nullopt;
   }
@@ -322,12 +328,12 @@ StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
 }
 
 std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_start_pose(
-  const PathPointTrajectory & trajectory)
+  const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose)
 {
   if (goal_planner_act) {
     const auto goal_lane_id = route_data_.preferred_lanelets.back().id();
-    auto candidates =
-      calc_goal_planner_start_poses(trajectory, route_data_.goal_pose, goal_lane_id, params_);
+    auto candidates = calc_goal_planner_start_poses(
+      trajectory, route_data_.goal_pose, goal_lane_id, params_, ego_pose);
     if (candidates.empty()) {
       return std::nullopt;
     }

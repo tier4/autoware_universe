@@ -1431,12 +1431,13 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
     return std::nullopt;
   }
 
-  return generate_path(lanelet_sequence, s_start, s_end, ego_velocity, stamp);
+  return generate_path(lanelet_sequence, s_start, s_end, ego_velocity, stamp, current_pose);
 }
 
 std::optional<PathWithLaneId> PathPlanner::generate_path(
   const lanelet::LaneletSequence & lanelet_sequence, const double s_start, const double s_end,
-  const double ego_velocity, const builtin_interfaces::msg::Time & stamp)
+  const double ego_velocity, const builtin_interfaces::msg::Time & stamp,
+  const geometry_msgs::msg::Pose & current_pose)
 {
   if (lanelet_sequence.empty()) {
     RCLCPP_ERROR(logger_, "Lanelet sequence is empty");
@@ -1581,7 +1582,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     // Connect the path to the goal pose so that ego reaches the goal itself.
     // Check if the goal point is in the search range
     // Note: We only see if the goal is approaching the tail of the path.
-    auto refined_path = start_goal_planner_.plan(*trajectory, adjusted_s_path_end);
+    auto refined_path = start_goal_planner_.plan(*trajectory, adjusted_s_path_end, current_pose);
     if (refined_path.has_value()) {
       *trajectory = *refined_path;
     }

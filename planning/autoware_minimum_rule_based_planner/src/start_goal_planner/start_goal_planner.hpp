@@ -56,7 +56,8 @@ public:
     const StartGoalPlannerParams & params, const VehicleInfo & vehicle_info);
 
   std::optional<PathPointTrajectory> plan(
-    const PathPointTrajectory & trajectory, const double & s_path_end);
+    const PathPointTrajectory & trajectory, const double & s_path_end,
+    const geometry_msgs::msg::Pose & ego_pose);
   void set_route_data(const RouteData & route_data);
   void update_params(const StartGoalPlannerParams & params);
   bool start_planner_active() { return start_planner_act; }
@@ -76,7 +77,7 @@ private:
   void judge_start_planner_act();
   void judge_goal_planner_act(const PathPointTrajectory & trajectory, const double & s_path_end);
   std::optional<std::vector<PathPointWithLaneId>> get_start_pose(
-    const PathPointTrajectory & trajectory);
+    const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose);
   std::optional<std::vector<PathPointWithLaneId>> get_goal_pose(
     const PathPointTrajectory & trajectory);
   std::optional<std::vector<PathPointTrajectory>> generate_pull_trajectories(
