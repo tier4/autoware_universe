@@ -60,8 +60,8 @@ public:
     const geometry_msgs::msg::Pose & ego_pose);
   void set_route_data(const RouteData & route_data);
   void update_params(const StartGoalPlannerParams & params);
-  bool start_planner_active() { return start_planner_act; }
-  bool goal_planner_active() { return goal_planner_act; }
+  bool start_planner_active() { return start_planner_act_ && generated_trajectory_.has_value(); }
+  bool goal_planner_active() { return goal_planner_act_ && generated_trajectory_.has_value(); }
 
 private:
   struct AvailableArea
@@ -74,8 +74,8 @@ private:
 
   AvailableArea get_available_area(const PathPointTrajectory & trajectory);
 
-  void judge_start_planner_act();
-  void judge_goal_planner_act(const PathPointTrajectory & trajectory, const double & s_path_end);
+  void judge_start_planner_act_();
+  void judge_goal_planner_act_(const PathPointTrajectory & trajectory, const double & s_path_end);
   std::optional<std::vector<PathPointWithLaneId>> get_start_pose(
     const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose);
   std::optional<std::vector<PathPointWithLaneId>> get_goal_pose(
@@ -93,8 +93,10 @@ private:
   std::optional<PathPointTrajectory> connect_goal_planner_trajectory(
     const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
 
-  bool start_planner_act{false};
-  bool goal_planner_act{false};
+  bool start_planner_act_{false};
+  bool goal_planner_act_{false};
+  std::optional<PathPointTrajectory> generated_trajectory_{std::nullopt};
+  std::optional<Pose> goal_pose_prev_{std::nullopt};
 
   RouteData route_data_;
   rclcpp::Logger logger_;

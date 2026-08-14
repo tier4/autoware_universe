@@ -1588,9 +1588,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     }
 
     // Crop end
-    const bool goal_planner_applied =
-      start_goal_planner_.goal_planner_active() && refined_path.has_value();
-    if (!goal_planner_applied && trajectory->length() > adjusted_s_path_end) {
+    if (!start_goal_planner_.goal_planner_active() && trajectory->length() > adjusted_s_path_end) {
       trajectory->crop(0., adjusted_s_path_end);
     }
 
