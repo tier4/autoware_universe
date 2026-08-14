@@ -32,6 +32,7 @@
 #include <autoware_utils/math/normalization.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
+#include <lanelet2_core/geometry/LaneletMap.h>
 #include <tf2/utils.h>
 
 #include <algorithm>
@@ -1218,31 +1219,21 @@ bool route_deviation_stop(
   const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & current_pose,
   const RouteContext & planner_data)
 {
-  lanelet::ConstLanelets recoverable_lanelets;
-  const auto beside_lanelets = planner_data.routing_graph_ptr->besides(current_lanelet);
-  recoverable_lanelets.insert(
-    recoverable_lanelets.end(), beside_lanelets.begin(), beside_lanelets.end());
+  const lanelet::BasicPoint2d ego_point{current_pose.position.x, current_pose.position.y};
 
-  const auto left_lanelets =
-    planner_data.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.leftBound());
-
-  for (const auto & ll : left_lanelets) {
-    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(ll)) {
-      recoverable_lanelets.push_back(ll);
+  for (const auto & ll : planner_data.routing_graph_ptr->besides(current_lanelet)) {
+    if (lanelet::geometry::inside(ll, ego_point)) {
+      return false;
     }
   }
 
-  const auto right_lanelets =
-    planner_data.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.rightBound());
-
-  for (const auto & ll : right_lanelets) {
-    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(ll)) {
-      recoverable_lanelets.push_back(ll);
-    }
-  }
-
-  for (const auto & ll : recoverable_lanelets) {
-    if (lanelet::geometry::inside(ll, {current_pose.position.x, current_pose.position.y})) {
+  // NOTE(odashima): a shoulder lanelet is recognised by ego being inside it, not by it sharing a
+  // bound with the current route lanelet: a bus-stop bay has its own road-side linestring, so
+  // findUsages(bound) never reaches it and ego parked in the bay would be treated as off-route.
+  // The stop before re-entering the road lane is planned in MapBasedStopPlanner instead.
+  for (const auto & distance_and_lanelet : lanelet::geometry::findWithin2d(
+         planner_data.lanelet_map_ptr->laneletLayer, ego_point, 0.0)) {
+    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(distance_and_lanelet.second)) {
       return false;
     }
   }
@@ -1262,6 +1253,17 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
     if (lanelet::utils::query::getClosestLaneletWithConstrains(
           route_context_.route_lanelets, current_pose, &closest,
           params_.path_planning.ego_nearest_lanelet.dist_threshold,
+          params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
+      current_lanelet_ = closest;
+      return true;
+    }
+    // NOTE(odashima): the same distance-unconstrained retry as the steady-state branch below.
+    // Parked in a bus-stop bay the nearest route lanelet is several metres away, and without this
+    // the first call leaves current_lanelet_ unset, so every later call re-enters this branch and
+    // fails again — the planner never produces a path at all.
+    if (lanelet::utils::query::getClosestLaneletWithConstrains(
+          route_context_.route_lanelets, current_pose, &closest,
+          /*dist_threshold=*/std::numeric_limits<double>::max(),
           params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
       current_lanelet_ = closest;
       return true;

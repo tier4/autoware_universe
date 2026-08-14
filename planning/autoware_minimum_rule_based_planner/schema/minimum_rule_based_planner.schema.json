@@ -212,6 +212,12 @@
               "default": 1.0,
               "minimum": 0.0
             },
+            "stop_distance_from_road_shoulder": {
+              "type": "number",
+              "description": "Distance to keep between the vehicle footprint and the road lane when stopping before departing from a road shoulder (added to stop_margin_distance) [m]",
+              "default": 0.5,
+              "minimum": 0.0
+            },
             "max_deceleration": {
               "type": "number",
               "description": "Maximum deceleration used to judge whether a stop line is reachable (braking distance) [m/s^2]",

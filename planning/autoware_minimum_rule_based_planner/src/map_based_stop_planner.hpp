@@ -42,6 +42,7 @@ enum class StopLineType {
   TrafficLight,  //!< stop line referenced by traffic light  -> possibility
   Intersection,  //!< lanelet with turn_direction attribute  -> possibility
   PrivateArea,   //!< private-area entry/exit transition     -> possibility
+  RoadShoulder,  //!< departure from a road shoulder to a road lane -> possibility
 };
 
 //! A map-defined stop line together with its classified type.
@@ -59,7 +60,7 @@ struct StopLine
  *
  * Mandatory targets (the go trajectory also stops): StopLine, Walkway.
  * Possibility targets (only the stop trajectory additionally stops): Crosswalk, TrafficLight,
- * Intersection, PrivateArea.
+ * Intersection, PrivateArea, RoadShoulder.
  */
 bool is_possibility_type(StopLineType type);
 
@@ -75,7 +76,12 @@ struct StopSelectionParams
   double stop_distance_from_private_area;
   //! extra stop distance before the first conflicting priority lane in an intersection [m]
   double stop_distance_from_intersection;
+  //! extra stop distance before the vehicle footprint reaches a road lane from a road shoulder [m]
+  double stop_distance_from_road_shoulder;
   double base_link_to_front;  //!< vehicle front offset from base_link [m]
+  //! vehicle dimensions; used only by the road-shoulder departure stop, which sweeps the footprint
+  //! along the trajectory instead of offsetting a line crossing by base_link_to_front
+  VehicleInfo vehicle_info;
   //! min arc-length difference for the stop trajectory's stop point to be treated as different
   //! from the go trajectory's [m]
   double stop_point_diff_threshold;
@@ -188,6 +194,21 @@ public:
     const double ego_acceleration, const StopSelectionParams & params,
     const bool include_possibility) const;
 
+  /**
+   * @brief Arc length of the stop point that keeps ego inside the road shoulder it is parked in.
+   *
+   * Active only while the whole vehicle footprint is clear of every road lane and overlaps a
+   * shoulder lane; otherwise nullopt, so a trajectory that already straddles a road lane (e.g. a
+   * handover from another generator mid-avoidance) returns to the lane without stopping.
+   * The footprint is swept along the trajectory and the stop point is placed a margin before the
+   * first pose whose footprint reaches a road lane, so the stop position accounts for the corner
+   * that crosses first — a base_link line crossing would be several metres too late at the shallow
+   * angles the shift produces. Clamped to ego's own arc length so it is never behind ego.
+   */
+  std::optional<double> select_road_shoulder_stop_arc_length(
+    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
+    const geometry_msgs::msg::Pose & ego_pose, const StopSelectionParams & params) const;
+
   //! Build a MarkerArray (frame "map") of the stop lines with a per-type text label above each.
   visualization_msgs::msg::MarkerArray create_stop_line_marker_array(
     const std::vector<StopLine> & stop_lines) const;
@@ -199,11 +220,15 @@ private:
     double stop_point_arc_length;
     Trajectory trajectory;
   };
+  //! @param road_shoulder_stop_arc_length possibility stop from
+  //! select_road_shoulder_stop_arc_length, considered alongside the map stop lines only when
+  //! include_possibility is true
   std::optional<SingleStopResult> plan_single_stop(
     const std::vector<StopLine> & stop_lines, const Trajectory & trajectory,
     const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
     const double ego_acceleration, const StopSelectionParams & params,
-    const bool include_possibility) const;
+    const bool include_possibility,
+    const std::optional<double> & road_shoulder_stop_arc_length) const;
 
   rclcpp::Logger logger_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
@@ -214,6 +239,8 @@ private:
   IntersectionDebugLanelets intersection_debug_lanelets_;
   LaneletMapBin::ConstSharedPtr stop_lines_map_ptr_;
   LaneletRoute::ConstSharedPtr stop_lines_route_ptr_;
+  //! Map used by the road-shoulder departure stop, which is re-evaluated every cycle.
+  lanelet::LaneletMapPtr lanelet_map_ptr_;
 };
 
 }  // namespace autoware::minimum_rule_based_planner
