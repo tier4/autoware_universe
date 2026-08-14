@@ -22,6 +22,17 @@
     use_traffic_light_stop: true
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
+
+    use_akima_spline_interpolation: true
+    use_eb_smoother: false
+    use_qp_smoother: true
+    use_trajectory_point_fixer: true
+    use_velocity_optimizer: true
+    use_trajectory_extender: false
+    use_kinematic_feasibility_enforcer: true
+    use_mpt_optimizer: false
+    use_temporal_mpt_optimizer: true
+
     trajectory_time_step: 0.1 # [s]
 
     # Stop Point Fixer Plugin Parameters
@@ -156,13 +167,3 @@
       hysteresis_distance: 0.1
       hysteresis_time: 0.2
       ego_stopped_vel_th: 0.1 # [m/s]
-
-    use_akima_spline_interpolation: true
-    use_eb_smoother: false
-    use_qp_smoother: true
-    use_trajectory_point_fixer: true
-    use_velocity_optimizer: true
-    use_trajectory_extender: false
-    use_kinematic_feasibility_enforcer: true
-    use_mpt_optimizer: false
-    use_temporal_mpt_optimizer: true
