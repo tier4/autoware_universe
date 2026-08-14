@@ -18,9 +18,13 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <gtest/gtest.h>
+#include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_routing/RoutingGraph.h>
+#include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
 #include <cmath>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner
@@ -100,6 +104,48 @@ PathPointWithLaneId make_path_point(double x, double y, double vel = 1.0, int64_
   return pt;
 }
 
+std::vector<lanelet::Lanelet> make_straight_lanelets(size_t count, double length)
+{
+  std::vector<lanelet::Point3d> left_points;
+  std::vector<lanelet::Point3d> right_points;
+  for (size_t i = 0; i <= count; ++i) {
+    const auto x = static_cast<double>(i) * length;
+    left_points.emplace_back(10000 + i, x, 2.0, 0.0);
+    right_points.emplace_back(20000 + i, x, -2.0, 0.0);
+  }
+
+  std::vector<lanelet::Lanelet> lanelets;
+  for (size_t i = 0; i < count; ++i) {
+    lanelet::LineString3d left(30000 + i, {left_points[i], left_points[i + 1]});
+    lanelet::LineString3d right(40000 + i, {right_points[i], right_points[i + 1]});
+    lanelet::Lanelet lanelet(1 + i, left, right);
+    lanelet.attributes()[lanelet::AttributeNamesString::Subtype] =
+      lanelet::AttributeValueString::Road;
+    lanelet.attributes()[lanelet::AttributeNamesString::Location] =
+      lanelet::AttributeValueString::Urban;
+    lanelet.attributes()["one_way"] = "yes";
+    lanelets.push_back(lanelet);
+  }
+  return lanelets;
+}
+
+RouteContext make_route_context(const std::vector<lanelet::Lanelet> & lanelets)
+{
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  for (const auto & lanelet : lanelets) {
+    map->add(lanelet);
+  }
+  auto traffic_rules = lanelet::traffic_rules::TrafficRulesFactory::create(
+    lanelet::Locations::Germany, lanelet::Participants::Vehicle);
+  RouteContext context;
+  context.lanelet_map_ptr = map;
+  context.routing_graph_ptr = lanelet::routing::RoutingGraph::build(*map, *traffic_rules);
+  context.traffic_rules_ptr = std::move(traffic_rules);
+  context.route_lanelets.assign(lanelets.begin(), lanelets.end());
+  context.preferred_lanelets.assign(lanelets.begin(), lanelets.end());
+  return context;
+}
+
 }  // namespace
 
 // ============================================================
@@ -130,11 +176,9 @@ TEST(PathPlannerTest, CurrentLaneletAtVehicleFootprintCenter)
   PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info);
 
   lanelet::LineString3d left(
-    101,
-    {lanelet::Point3d(102, 10.0, 2.0, 0.0), lanelet::Point3d(103, 20.0, 2.0, 0.0)});
+    101, {lanelet::Point3d(102, 10.0, 2.0, 0.0), lanelet::Point3d(103, 20.0, 2.0, 0.0)});
   lanelet::LineString3d right(
-    104,
-    {lanelet::Point3d(105, 10.0, -2.0, 0.0), lanelet::Point3d(106, 20.0, -2.0, 0.0)});
+    104, {lanelet::Point3d(105, 10.0, -2.0, 0.0), lanelet::Point3d(106, 20.0, -2.0, 0.0)});
   const lanelet::Lanelet lanelet(1, left, right);
   RouteContext context;
   context.route_lanelets = {lanelet};
@@ -147,6 +191,82 @@ TEST(PathPlannerTest, CurrentLaneletAtVehicleFootprintCenter)
   // Force the containment fallback after the current lanelet has been initialized.
   planner.route_context().route_lanelets.clear();
   EXPECT_TRUE(planner.update_current_lanelet(base_link_pose));
+}
+
+TEST(PathPlannerTest, PathStartIsContinuousAtFootprintCenterLaneletTransition)
+{
+  auto params = make_default_params();
+  params.path_planning.path_length.backward = 5.0;
+  params.path_planning.path_length.forward = 10.0;
+  const auto lanelets = make_straight_lanelets(3, 10.0);
+  const builtin_interfaces::msg::Time stamp;
+
+  for (const auto & [max_offset, min_offset] :
+       std::vector<std::pair<double, double>>{{4.0, -1.0}, {1.0, -1.0}, {1.0, -2.0}}) {
+    VehicleInfo vehicle_info{};
+    vehicle_info.max_longitudinal_offset_m = max_offset;
+    vehicle_info.min_longitudinal_offset_m = min_offset;
+    vehicle_info.vehicle_length_m = max_offset - min_offset;
+    PathPlanner planner(
+      rclcpp::get_logger("test_path_planner"), std::make_shared<rclcpp::Clock>(RCL_ROS_TIME),
+      make_time_keeper(), params, vehicle_info);
+    planner.set_route_context(make_route_context(lanelets));
+
+    const auto center_offset = (max_offset + min_offset) / 2.0;
+    const auto base_at_transition = 10.0 - center_offset;
+    const auto before = planner.plan_path(make_pose(base_at_transition - 0.01, 0.0), 1.0, stamp);
+    const auto after = planner.plan_path(make_pose(base_at_transition + 0.01, 0.0), 1.0, stamp);
+
+    ASSERT_TRUE(before);
+    ASSERT_TRUE(after);
+    ASSERT_FALSE(before->points.empty());
+    ASSERT_FALSE(after->points.empty());
+    EXPECT_NEAR(
+      after->points.front().point.pose.position.x - before->points.front().point.pose.position.x,
+      0.02, 0.05);
+    EXPECT_LE(
+      std::abs(static_cast<long>(after->points.size()) - static_cast<long>(before->points.size())),
+      1);
+  }
+}
+
+TEST(PathPlannerTest, FootprintCenterHandlesShortLanelets)
+{
+  auto params = make_default_params();
+  params.path_planning.path_length.backward = 2.0;
+  params.path_planning.path_length.forward = 4.0;
+  VehicleInfo vehicle_info{};
+  vehicle_info.max_longitudinal_offset_m = 4.0;
+  vehicle_info.min_longitudinal_offset_m = -1.0;
+  vehicle_info.vehicle_length_m = 5.0;
+  PathPlanner planner(
+    rclcpp::get_logger("test_path_planner"), std::make_shared<rclcpp::Clock>(RCL_ROS_TIME),
+    make_time_keeper(), params, vehicle_info);
+  planner.set_route_context(make_route_context(make_straight_lanelets(8, 2.0)));
+
+  const builtin_interfaces::msg::Time stamp;
+  const auto route_start = planner.plan_path(make_pose(1.0, 0.0), 1.0, stamp);
+  for (double x = 1.5; x <= 6.0; x += 0.5) {
+    ASSERT_TRUE(planner.plan_path(make_pose(x, 0.0), 1.0, stamp));
+  }
+  const auto before = planner.plan_path(make_pose(6.49, 0.0), 1.0, stamp);
+  const auto exact = planner.plan_path(make_pose(6.5, 0.0), 1.0, stamp);
+  const auto after = planner.plan_path(make_pose(6.51, 0.0), 1.0, stamp);
+  for (double x = 7.0; x < 12.0; x += 0.5) {
+    ASSERT_TRUE(planner.plan_path(make_pose(x, 0.0), 1.0, stamp));
+  }
+  const auto route_end = planner.plan_path(make_pose(12.0, 0.0), 1.0, stamp);
+
+  ASSERT_TRUE(route_start);
+  ASSERT_TRUE(before);
+  ASSERT_TRUE(exact);
+  ASSERT_TRUE(after);
+  ASSERT_TRUE(route_end);
+  ASSERT_FALSE(before->points.empty());
+  ASSERT_FALSE(after->points.empty());
+  EXPECT_NEAR(
+    after->points.front().point.pose.position.x - before->points.front().point.pose.position.x,
+    0.02, 0.05);
 }
 
 // ============================================================
