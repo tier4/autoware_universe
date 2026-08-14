@@ -552,6 +552,11 @@ bool TrtCommon::initialize()
   return true;
 }
 
+bool TrtCommon::isStronglyTyped() const
+{
+  return trt_config_->precision == "strongly-typed";
+}
+
 bool TrtCommon::buildEngineFromOnnx()
 {
   // Build engine
