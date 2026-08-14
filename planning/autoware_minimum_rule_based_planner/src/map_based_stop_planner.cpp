@@ -409,13 +409,13 @@ std::optional<MapBasedStopPlanner::SingleStopResult> MapBasedStopPlanner::plan_s
     include_possibility);
   if (!stop_point_arc_length) return std::nullopt;
 
-  if (autoware::trajectory_modifier::utils::stop_point_exists(
+  if (autoware::trajectory_processor::utils::stop_point_exists(
         trajectory.points, *stop_point_arc_length)) {
     return std::nullopt;
   }
 
   Trajectory stop_trajectory = trajectory;
-  if (!autoware::trajectory_modifier::utils::insert_stop_point(
+  if (!autoware::trajectory_processor::utils::insert_stop_point(
         stop_trajectory.points, *stop_point_arc_length)) {
     return std::nullopt;
   }

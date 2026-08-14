@@ -21,7 +21,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace autoware::trajectory_modifier::plugin
+namespace autoware::trajectory_processor::plugin
 {
 
 using autoware::experimental::trajectory::interpolator::AkimaSpline;
@@ -173,9 +173,9 @@ size_t VelocityModifier::update_velocities(
   return vel_update_start_index;
 }
 
-}  // namespace autoware::trajectory_modifier::plugin
+}  // namespace autoware::trajectory_processor::plugin
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::trajectory_modifier::plugin::VelocityModifier,
+  autoware::trajectory_processor::plugin::VelocityModifier,
   autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase)

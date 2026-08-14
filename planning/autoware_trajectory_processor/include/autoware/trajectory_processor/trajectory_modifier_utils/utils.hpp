@@ -23,7 +23,7 @@
 
 #include <vector>
 
-namespace autoware::trajectory_modifier::utils
+namespace autoware::trajectory_processor::utils
 {
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
@@ -53,6 +53,6 @@ bool insert_stop_point(
 
 bool is_stop_trajectory(const TrajectoryPoints & trajectory, const double stopped_vel_th = 1e-3);
 
-}  // namespace autoware::trajectory_modifier::utils
+}  // namespace autoware::trajectory_processor::utils
 
 #endif  // AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_UTILS__UTILS_HPP_

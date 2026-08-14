@@ -19,7 +19,7 @@
 
 #include <cmath>
 
-namespace autoware::trajectory_modifier::utils
+namespace autoware::trajectory_processor::utils
 {
 
 bool validate_trajectory(const TrajectoryPoints & trajectory)
@@ -163,4 +163,4 @@ bool is_stop_trajectory(const TrajectoryPoints & traj_points, const double stopp
          }) == traj_points.end();
 }
 
-}  // namespace autoware::trajectory_modifier::utils
+}  // namespace autoware::trajectory_processor::utils
