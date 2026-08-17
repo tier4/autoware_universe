@@ -20,6 +20,7 @@
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "autoware_planning_msgs/msg/trajectory_point.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -65,6 +66,43 @@ autoware::motion::control::mpc_lateral_controller::MPCTrajectory makeStraightTra
   for (int i = 0; i < num_points; ++i) {
     const double s = static_cast<double>(i) / static_cast<double>(num_points - 1) * length;
     traj.push_back(s, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, static_cast<double>(i) * 0.1);
+  }
+  return traj;
+}
+
+// Temporal trajectories are spaced by velocity * time_step, so a low speed produces a very dense
+// trajectory. These helpers keep spacing, velocity and time step mutually consistent so that the
+// short-segment protection treats the points as normally spaced rather than bunched.
+autoware::motion::control::mpc_lateral_controller::MPCTrajectory makeDenseStraightTrajectory(
+  const int num_points, const double point_spacing, const double heading, const double velocity,
+  const double time_step)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+
+  MPCTrajectory traj;
+  for (int i = 0; i < num_points; ++i) {
+    const double distance = static_cast<double>(i) * point_spacing;
+    traj.push_back(
+      distance * std::cos(heading), distance * std::sin(heading), 0.0, 0.0, velocity, 0.0, 0.0,
+      static_cast<double>(i) * time_step);
+  }
+  return traj;
+}
+
+// Constant-curvature arc starting at the origin with zero heading. The heading at index i is
+// exactly i * point_spacing / radius, which gives an analytic reference for the computed yaw.
+autoware::motion::control::mpc_lateral_controller::MPCTrajectory makeDenseArcTrajectory(
+  const int num_points, const double point_spacing, const double radius, const double velocity,
+  const double time_step)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+
+  MPCTrajectory traj;
+  for (int i = 0; i < num_points; ++i) {
+    const double heading = static_cast<double>(i) * point_spacing / radius;
+    traj.push_back(
+      radius * std::sin(heading), radius * (1.0 - std::cos(heading)), 0.0, 0.0, velocity, 0.0, 0.0,
+      static_cast<double>(i) * time_step);
   }
   return traj;
 }
@@ -286,6 +324,92 @@ TEST(TestMPC, TemporalYawAndCurvatureStayStableForShortSegments)
   EXPECT_NEAR(traj.k.at(0), 0.0, 1e-6);
   EXPECT_NEAR(traj.k.at(1), 0.0, 1e-6);
   EXPECT_NEAR(traj.k.at(2), 0.0, 1e-6);
+}
+
+TEST(TestMPC, YawRejectsPositionNoiseOnDenselySpacedTrajectory)
+{
+  // 0.4 m/s with a 0.1 s time step gives 4 cm spacing, the condition under which the defect showed
+  // up on the vehicle. A sub-millimetre lateral offset between the immediate neighbours of a point
+  // used to be divided by an 8 cm baseline and became a ~1.3 deg yaw error.
+  constexpr int num_points = 25;
+  constexpr double point_spacing = 0.04;
+  constexpr double velocity = 0.4;
+  constexpr double time_step = 0.1;
+  constexpr size_t target_index = 10;
+  constexpr double position_noise = 0.9e-3;
+
+  auto traj = makeDenseStraightTrajectory(num_points, point_spacing, 0.0, velocity, time_step);
+  traj.y.at(target_index - 1) = -position_noise;
+  traj.y.at(target_index + 1) = +position_noise;
+
+  MPCUtils::calcTrajectoryYawFromXY(traj, true, true);
+
+  // an index-based baseline would return atan2(1.8e-3, 0.08) = 0.0225 rad here
+  EXPECT_NEAR(traj.yaw.at(target_index), 0.0, 1.0e-6);
+  for (size_t i = 0; i < traj.yaw.size(); ++i) {
+    EXPECT_NEAR(traj.yaw.at(i), 0.0, 5.0e-3) << "yaw at index " << i;
+  }
+}
+
+TEST(TestMPC, YawStaysUnbiasedOnConstantCurvature)
+{
+  // Widening the differentiation window must not cut the corner: a chord spanning a symmetric
+  // window of a circular arc points along the tangent at the middle of that window.
+  constexpr int num_points = 200;
+  constexpr double point_spacing = 0.04;
+  constexpr double radius = 20.0;
+  constexpr double velocity = 0.4;
+  constexpr double time_step = 0.1;
+
+  auto traj = makeDenseArcTrajectory(num_points, point_spacing, radius, velocity, time_step);
+
+  MPCUtils::calcTrajectoryYawFromXY(traj, true, true);
+
+  // the window is symmetric only away from the ends, where it can no longer expand on both sides
+  constexpr size_t window_half_width = 7;
+  for (size_t i = window_half_width; i + window_half_width < traj.yaw.size(); ++i) {
+    const double expected_yaw = static_cast<double>(i) * point_spacing / radius;
+    EXPECT_NEAR(traj.yaw.at(i), expected_yaw, 1.0e-6) << "yaw at index " << i;
+  }
+}
+
+TEST(TestMPC, YawIsUnchangedWhenSpacingAlreadyExceedsBaseline)
+{
+  // At road speed the natural spacing is longer than the minimum baseline, so the window stays at
+  // the immediate neighbours and the result is identical to the previous implementation.
+  constexpr int num_points = 10;
+  constexpr double point_spacing = 1.0;
+  constexpr double heading = M_PI_4;
+  constexpr double velocity = 10.0;
+  constexpr double time_step = 0.1;
+
+  auto traj = makeDenseStraightTrajectory(num_points, point_spacing, heading, velocity, time_step);
+
+  MPCUtils::calcTrajectoryYawFromXY(traj, true, true);
+
+  for (size_t i = 0; i < traj.yaw.size(); ++i) {
+    EXPECT_NEAR(traj.yaw.at(i), heading, 1.0e-9) << "yaw at index " << i;
+  }
+}
+
+TEST(TestMPC, YawFallsBackToInputWhenTrajectoryIsShorterThanBaseline)
+{
+  // The whole trajectory spans 0.2 m, so no window can reach the minimum baseline. Rather than
+  // differentiating over whatever is available, the planner's own yaw is kept.
+  constexpr int num_points = 5;
+  constexpr double point_spacing = 0.05;
+  constexpr double velocity = 0.5;
+  constexpr double time_step = 0.1;
+  constexpr double input_yaw = 0.7;
+
+  auto traj = makeDenseStraightTrajectory(num_points, point_spacing, 0.0, velocity, time_step);
+  std::fill(traj.yaw.begin(), traj.yaw.end(), input_yaw);
+
+  MPCUtils::calcTrajectoryYawFromXY(traj, true, true);
+
+  for (size_t i = 0; i < traj.yaw.size(); ++i) {
+    EXPECT_NEAR(traj.yaw.at(i), input_yaw, 1.0e-9) << "yaw at index " << i;
+  }
 }
 
 }  // namespace

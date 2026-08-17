@@ -289,9 +289,6 @@ void calcTrajectoryYawFromXY(
 
   const auto input_yaw = traj.yaw;
 
-  // The differentiation baseline must be a fixed metric length, not a fixed number of index
-  // steps. Point spacing depends on the resampling mode (v * dt for temporal trajectories), so
-  // an index-based baseline shrinks at low speed and amplifies the XY noise into the yaw.
   std::vector<double> arc_length;
   calcMPCTrajectoryArcLength(traj, arc_length);
 
