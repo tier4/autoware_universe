@@ -23,7 +23,7 @@
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/time.hpp>
-#include <tf2/time.hpp>
+#include <tf2/exceptions.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -143,21 +143,14 @@ std::vector<pcl::PointIndices> make_individual_cluster_indices(
 
 // motion_velocity_planner/node.cpp:229-259
 std::optional<pcl::PointCloud<pcl::PointXYZ>> process_no_ground_pointcloud(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg, const tf2_ros::Buffer & tf_buffer,
-  const rclcpp::Clock::SharedPtr & clock)
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg, const tf2_ros::Buffer & tf_buffer)
 {
   geometry_msgs::msg::TransformStamped transform;
-  const bool is_pcl_time_valid =
-    (clock->now() - rclcpp::Time(msg->header.stamp)) < rclcpp::Duration::from_seconds(1.0);
-
-  if (is_pcl_time_valid && tf_buffer.canTransform("map", msg->header.frame_id, msg->header.stamp)) {
+  try {
     transform = tf_buffer.lookupTransform(
-      "map", msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.05));
-  } else if (tf_buffer.canTransform("map", msg->header.frame_id, tf2::TimePointZero)) {
-    transform = tf_buffer.lookupTransform("map", msg->header.frame_id, tf2::TimePointZero);
-    RCLCPP_DEBUG(get_logger(), "pcl time is invalid, using tf2::TimePointZero");
-  } else {
-    RCLCPP_WARN(get_logger(), "no transform found for no_ground_pointcloud");
+      "map", msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
+  } catch (const tf2::TransformException & e) {
+    RCLCPP_WARN(get_logger(), "no transform found for no_ground_pointcloud: %s", e.what());
     return std::nullopt;
   }
 

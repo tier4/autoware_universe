@@ -15,8 +15,10 @@
 #include "point_cloud_collision_check_filter.hpp"
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/time.hpp>
 
+#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -29,10 +31,18 @@ using point_cloud_collision_check::emit_debug_markers;
 using point_cloud_collision_check::PointcloudPreprocessParams;
 using point_cloud_collision_check::process_no_ground_pointcloud;
 
+namespace
+{
+rclcpp::Logger get_logger()
+{
+  return rclcpp::get_logger("PointCloudCollisionCheckFilter");
+}
+}  // namespace
+
 bool PointCloudCollisionCheckFilter::is_available_data(const FilterContext & context) const
 {
   return context.odometry && context.acceleration && vehicle_info_ptr_ &&
-         context.segmented_pointcloud && context.tf_buffer && context.clock;
+         context.segmented_pointcloud && tf_buffer_ptr_;
 }
 
 // motion_velocity_planner_common/planner_data.cpp:239-260
@@ -57,6 +67,22 @@ void PointCloudCollisionCheckFilter::set_planner_data_param(
 bool PointCloudCollisionCheckFilter::update_planner_data(
   const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context)
 {
+  const auto delay = (rclcpp::Time(context.odometry->header.stamp) -
+                      rclcpp::Time(context.segmented_pointcloud->header.stamp))
+                       .seconds();
+  // old pointcloud
+  if (std::abs(delay) > 1.0) {
+    RCLCPP_WARN(get_logger(), "pointcloud is too old (%.3f s). skip collision check.", delay);
+    return false;
+  }
+
+  auto no_ground_pointcloud =
+    process_no_ground_pointcloud(context.segmented_pointcloud, *tf_buffer_ptr_);
+  // failed to get tf
+  if (!no_ground_pointcloud) {
+    return false;
+  }
+
   // motion_velocity_planner_common/planner_data.cpp:240-241
   planner_data_.vehicle_info_ = *vehicle_info_ptr_;
 
@@ -72,11 +98,6 @@ bool PointCloudCollisionCheckFilter::update_planner_data(
   }
 
   // motion_velocity_planner/node.cpp:176-195
-  auto no_ground_pointcloud =
-    process_no_ground_pointcloud(context.segmented_pointcloud, *context.tf_buffer, context.clock);
-  if (!no_ground_pointcloud) {
-    return false;
-  }
   planner_data_.no_ground_pointcloud.preprocess_pointcloud(
     std::move(*no_ground_pointcloud), raw_trajectory_points, planner_data_.current_odometry,
     planner_data_.calculate_min_deceleration_distance(0.0).value_or(0.0),
@@ -104,7 +125,9 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
     return ValidationResult{};
   }
 
-  update_planner_data(candidate_trajectory.points, context);
+  if (!update_planner_data(candidate_trajectory.points, context)) {
+    return ValidationResult{};
+  }
 
   // const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points, planner_data_);
 

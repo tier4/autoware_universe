@@ -54,7 +54,8 @@ private:
   void set_planner_data_param(const validator::Params::PointCloudCollisionCheck & p);
 
   /// @brief planner_data_ のトピック由来フィールドを更新し、点群の前処理まで行う。
-  /// 移植元では node の update_planner_data が担う。TF が引けず点群を前処理できなければ false。
+  /// 移植元では node の update_planner_data が担う。
+  /// 点群が古い、または TF が引けず点群を前処理できなければ false。
   bool update_planner_data(
     const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context);
 

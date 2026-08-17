@@ -19,7 +19,6 @@
 
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-#include <rclcpp/clock.hpp>
 #include <tf2_ros/buffer.hpp>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -111,8 +110,7 @@ struct PointcloudPreprocessParams
 
 /// @brief 点群を map 系へ変換する。TF が引けない場合は nullopt を返す。
 std::optional<pcl::PointCloud<pcl::PointXYZ>> process_no_ground_pointcloud(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg, const tf2_ros::Buffer & tf_buffer,
-  const rclcpp::Clock::SharedPtr & clock);
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg, const tf2_ros::Buffer & tf_buffer);
 
 struct PlannerData
 {
