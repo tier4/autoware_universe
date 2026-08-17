@@ -20,6 +20,7 @@
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_trajectory_validator/msg/metric_report.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <tf2_ros/buffer.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
@@ -92,6 +93,15 @@ public:
   }
 
   /**
+   * @brief Stores the TF buffer owned by the wrapper.
+   * @param tf_buffer TF buffer shared.
+   */
+  void set_tf_buffer(const std::shared_ptr<tf2_ros::Buffer> & tf_buffer)
+  {
+    tf_buffer_ptr_ = tf_buffer;
+  }
+
+  /**
    * @brief Sets whether this plugin runs in shadow mode (results logged but do not affect
    * trajectory selection).
    * @param is_shadow_mode True to enable shadow mode.
@@ -137,6 +147,7 @@ protected:
   bool is_shadow_mode_{false};
   std::string category_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_ptr_;
   visualization_msgs::msg::MarkerArray debug_markers_;
 };
 }  // namespace autoware::trajectory_validator::plugin

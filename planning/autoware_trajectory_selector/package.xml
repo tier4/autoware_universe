@@ -36,7 +36,6 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
-  <depend>tf2_ros</depend>
   <depend>tl_expected</depend>
 
   <test_depend>ament_cmake_ros</test_depend>

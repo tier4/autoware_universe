@@ -30,6 +30,8 @@
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2_ros/buffer.hpp>
+#include <tf2_ros/transform_listener.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
@@ -174,6 +176,8 @@ private:
   validator::ParamListener validator_params_listener_;
   validator::Params validator_params_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_ptr_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_ptr_;
   std::unique_ptr<TrajectoryValidator> validator_ptr_;
 
   // Plugin infrastructure
