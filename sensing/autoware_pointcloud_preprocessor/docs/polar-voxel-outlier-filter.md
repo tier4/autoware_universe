@@ -616,6 +616,7 @@ auto node = std::make_shared<autoware::pointcloud_preprocessor::PolarVoxelOutlie
 #### Mode Selection Guidelines
 
 - **Choose visibility-only mode when**:
+
   - Only diagnostic information is needed
   - Computational resources are limited
   - Running parallel monitoring alongside main processing
