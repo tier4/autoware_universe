@@ -132,8 +132,8 @@ void PathPlanner::set_route(const LaneletRoute::ConstSharedPtr & route_ptr)
   set_lanelets_from_segment(route_ptr->segments.back(), route_context_.goal_lanelets);
 
   const StartGoalPlanner::RouteData route_data{
-    route_context_.goal_pose, route_context_.preferred_lanelets, route_context_.lanelet_map_ptr,
-    route_context_.routing_graph_ptr};
+    route_context_.goal_pose, route_context_.preferred_lanelets, route_context_.start_lanelets,
+    route_context_.lanelet_map_ptr, route_context_.routing_graph_ptr};
   start_goal_planner_.set_route_data(route_data);
 }
 
@@ -142,8 +142,8 @@ void PathPlanner::set_route_context(const RouteContext & route_context)
   route_context_ = route_context;
 
   const StartGoalPlanner::RouteData route_data{
-    route_context_.goal_pose, route_context_.preferred_lanelets, route_context_.lanelet_map_ptr,
-    route_context_.routing_graph_ptr};
+    route_context_.goal_pose, route_context_.preferred_lanelets, route_context_.start_lanelets,
+    route_context_.lanelet_map_ptr, route_context_.routing_graph_ptr};
   start_goal_planner_.set_route_data(route_data);
 }
 
@@ -1582,13 +1582,16 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     // Connect the path to the goal pose so that ego reaches the goal itself.
     // Check if the goal point is in the search range
     // Note: We only see if the goal is approaching the tail of the path.
-    auto refined_path = start_goal_planner_.plan(*trajectory, adjusted_s_path_end, current_pose);
+    auto refined_path =
+      start_goal_planner_.plan(*trajectory, *current_lanelet_, adjusted_s_path_end, current_pose);
     if (refined_path.has_value()) {
       *trajectory = *refined_path;
     }
 
     // Crop end
-    if (!start_goal_planner_.goal_planner_active() && trajectory->length() > adjusted_s_path_end) {
+    const bool goal_planner_applied =
+      start_goal_planner_.goal_planner_active() && refined_path.has_value();
+    if (!goal_planner_applied && trajectory->length() > adjusted_s_path_end) {
       trajectory->crop(0., adjusted_s_path_end);
     }
 

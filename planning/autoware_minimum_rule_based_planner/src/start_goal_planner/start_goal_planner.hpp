@@ -47,6 +47,7 @@ public:
   {
     geometry_msgs::msg::Pose goal_pose{};
     lanelet::ConstLanelets preferred_lanelets{};
+    lanelet::ConstLanelets start_lanelets{};
     lanelet::LaneletMapPtr lanelet_map_ptr{nullptr};
     lanelet::routing::RoutingGraphPtr routing_graph_ptr{nullptr};
   };
@@ -56,8 +57,8 @@ public:
     const StartGoalPlannerParams & params, const VehicleInfo & vehicle_info);
 
   std::optional<PathPointTrajectory> plan(
-    const PathPointTrajectory & trajectory, const double & s_path_end,
-    const geometry_msgs::msg::Pose & ego_pose);
+    const PathPointTrajectory & trajectory, lanelet::ConstLanelet & current_lanelet,
+    const double & s_path_end, const geometry_msgs::msg::Pose & ego_pose);
   void set_route_data(const RouteData & route_data);
   void update_params(const StartGoalPlannerParams & params);
   bool start_planner_active() { return start_planner_act_ && generated_trajectory_.has_value(); }
@@ -74,12 +75,13 @@ private:
 
   AvailableArea get_available_area(const PathPointTrajectory & trajectory);
 
-  void judge_start_planner_act_();
-  void judge_goal_planner_act_(const PathPointTrajectory & trajectory, const double & s_path_end);
+  void judge_start_planner_act(
+    const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & ego_pose);
+  void judge_goal_planner_act(const PathPointTrajectory & trajectory, const double & s_path_end);
   std::optional<std::vector<PathPointWithLaneId>> get_start_pose(
     const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose);
   std::optional<std::vector<PathPointWithLaneId>> get_goal_pose(
-    const PathPointTrajectory & trajectory);
+    const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose);
   std::optional<std::vector<PathPointTrajectory>> generate_pull_trajectories(
     const std::vector<PathPointWithLaneId> & start_pose_candidates,
     const std::vector<PathPointWithLaneId> & goal_pose_candidates);

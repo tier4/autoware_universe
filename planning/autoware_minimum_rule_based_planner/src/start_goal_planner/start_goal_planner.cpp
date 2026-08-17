@@ -18,6 +18,7 @@
 #include "../type_alias.hpp"
 #include "clothoid_pull_generater.hpp"
 
+#include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/trajectory/utils/closest.hpp>
 #include <autoware/trajectory/utils/crop.hpp>
 #include <autoware/trajectory/utils/find_intervals.hpp>
@@ -71,7 +72,7 @@ std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
   const auto & search_radius_range = params.search_radius_range;
   const auto & pre_goal_offset = params.pre_goal_offset;
 
-  for (double s = search_radius_range; s > 0; s -= 0.1) {
+  for (double s = search_radius_range; s > 0; s -= 1) {
     auto outside_circle = [&](const PathPointWithLaneId & point) {
       return autoware_utils::calc_distance2d(point.point.pose, goal_pose) > s;
     };
@@ -258,17 +259,17 @@ void StartGoalPlanner::update_params(const StartGoalPlannerParams & params)
 }
 
 std::optional<PathPointTrajectory> StartGoalPlanner::plan(
-  const PathPointTrajectory & trajectory, const double & s_path_end,
-  const geometry_msgs::msg::Pose & ego_pose)
+  const PathPointTrajectory & trajectory, lanelet::ConstLanelet & current_lanelet,
+  const double & s_path_end, const geometry_msgs::msg::Pose & ego_pose)
 {
-  judge_goal_planner_act_(trajectory, s_path_end);
-  judge_start_planner_act_();
+  judge_goal_planner_act(trajectory, s_path_end);
+  judge_start_planner_act(current_lanelet, ego_pose);
 
   if (!start_planner_act_ && !goal_planner_act_) {
     return std::nullopt;  // StartGoalPlanner is not applied. normal termination
   }
 
-  const auto goal_pose_candidates = get_goal_pose(trajectory);
+  const auto goal_pose_candidates = get_goal_pose(trajectory, ego_pose);
   const auto start_pose_candidates = get_start_pose(trajectory, ego_pose);
   if (!start_pose_candidates || !goal_pose_candidates) {
     return generated_trajectory_;
@@ -298,12 +299,61 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
   return generated_trajectory_;
 }
 
-void StartGoalPlanner::judge_start_planner_act_()
+void StartGoalPlanner::judge_start_planner_act(
+  const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & ego_pose)
 {
-  start_planner_act_ = false;
+  const double lateral_offset =
+    autoware::experimental::lanelet2_utils::get_lateral_distance_to_centerline(
+      current_lanelet, ego_pose);
+  constexpr double start_planner_end_th_m = 1;
+
+  const bool reset_condition_1 = goal_planner_act_;
+  const bool reset_condition_2 = lateral_offset < start_planner_end_th_m;
+  const bool set_condition_1 = [&]() {
+    lanelet::ConstLanelets candidates = route_data_.start_lanelets;
+    for (const auto & ll : route_data_.start_lanelets) {
+      for (const auto & right :
+           route_data_.lanelet_map_ptr->laneletLayer.findUsages(ll.rightBound())) {
+        if (lanelet::geometry::inside(right, {ego_pose.position.x, ego_pose.position.y})) {
+          return true;
+        }
+      }
+      for (const auto & left :
+           route_data_.lanelet_map_ptr->laneletLayer.findUsages(ll.leftBound())) {
+        if (lanelet::geometry::inside(left, {ego_pose.position.x, ego_pose.position.y})) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }();
+  const bool set_condition_2 = [&]() {
+    for (const auto & right :
+         route_data_.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.rightBound())) {
+      if (lanelet::geometry::inside(right, {ego_pose.position.x, ego_pose.position.y})) {
+        return true;
+      }
+    }
+    for (const auto & left :
+         route_data_.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.leftBound())) {
+      if (lanelet::geometry::inside(left, {ego_pose.position.x, ego_pose.position.y})) {
+        return true;
+      }
+    }
+    return false;
+  }();
+
+  if (reset_condition_1 || reset_condition_2) {
+    if (start_planner_act_) {
+      generated_trajectory_ = std::nullopt;
+    }
+    start_planner_act_ = false;
+  } else if (set_condition_1 && set_condition_2) {
+    start_planner_act_ = true;
+  }
 }
 
-void StartGoalPlanner::judge_goal_planner_act_(
+void StartGoalPlanner::judge_goal_planner_act(
   const PathPointTrajectory & trajectory, const double & s_path_end)
 {
   const auto s_path_end_clamped = std::min(trajectory.length(), s_path_end);
@@ -405,14 +455,16 @@ std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_start_pose
     return candidates;
   }
   if (start_planner_act_) {
-    // TODO(TIER IV): determine pull-out start pose
-    return std::nullopt;
+    auto start_point =
+      trajectory.compute(autoware::experimental::trajectory::closest(trajectory, ego_pose));
+    start_point.point.pose = ego_pose;
+    return std::vector{start_point};
   }
   return std::nullopt;
 }
 
 std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_goal_pose(
-  const PathPointTrajectory & trajectory)
+  const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose)
 {
   if (goal_planner_act_) {
     const auto pre_goal_pose =
@@ -423,7 +475,15 @@ std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_goal_pose(
     return std::vector<PathPointWithLaneId>{pre_goal};
   }
   if (start_planner_act_) {
-    // TODO(TIER IV): determine pull-out goal pose
+    double start_s = autoware::experimental::trajectory::closest(trajectory, ego_pose);
+    std::vector<PathPointWithLaneId> goal_pose_candidates;
+    for (int num_points = 1; num_points < 30; ++num_points) {
+      goal_pose_candidates.push_back(trajectory.compute(start_s));
+      start_s += 1.0;
+    }
+    if (!goal_pose_candidates.empty()) {
+      return goal_pose_candidates;
+    }
     return std::nullopt;
   }
   return std::nullopt;
@@ -489,8 +549,8 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
       const auto dy = points[i + 1].point.pose.position.y - points[i].point.pose.position.y;
       const auto theta = std::atan2(dy, dx);
       if (theta_prev.has_value()) {
-        const double d_theta = std::abs(theta - *theta_prev);
-        constexpr double turn_point_th = M_PI * 5 / 6;
+        const double d_theta = std::abs(autoware_utils::normalize_radian(theta - *theta_prev));
+        constexpr double turn_point_th = M_PI / 2;
         if (d_theta > turn_point_th) {
           return true;
         }
@@ -506,6 +566,10 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
   double best_score = std::numeric_limits<double>::max();
   std::optional<PathPointTrajectory> best_trajectory = std::nullopt;
   for (const auto & candidate : candidate_trajectories) {
+    if (has_turn_point(candidate)) {
+      continue;
+    }
+
     if (!is_trajectory_inside_lanelets_or_areas(
           candidate, available_area.lanelets, available_area.areas,
           vehicle_info_.createFootprint())) {
@@ -521,15 +585,11 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
       continue;
     }
 
-    if (has_turn_point(candidate)) {
-      continue;
-    }
-
     const double trajectory_diff = generated_trajectory_.has_value()
                                      ? cal_trajectory_diff(*generated_trajectory_, candidate)
                                      : 0.0;
 
-    const double score = *curvature_integral / std::pow(max_curvature, 2.0) * 0.4 +
+    const double score = *curvature_integral / max_curvature * max_curvature * 0.4 +
                          arc_length / params_.search_radius_range * 0.3 + trajectory_diff * 0.3;
     if (score < best_score) {
       best_score = score;
@@ -552,10 +612,27 @@ std::optional<PathPointTrajectory> StartGoalPlanner::connect_pull_trajectory(
 }
 
 std::optional<PathPointTrajectory> StartGoalPlanner::connect_start_planner_trajectory(
-  const PathPointTrajectory & /*trajectory*/, const PathPointTrajectory & /*pull_trajectory*/)
+  const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory)
 {
-  // TODO(TIER IV): connect the pull-out trajectory back to the base path
-  return std::nullopt;
+  auto pull_points = pull_trajectory.restore();
+  const auto pull_end_pose = pull_points.back().point.pose;
+  const auto s_closest = autoware::experimental::trajectory::closest(trajectory, pull_end_pose);
+  auto base_points =
+    autoware::experimental::trajectory::crop(trajectory, s_closest, trajectory.length()).restore();
+  constexpr double kDuplicatePointEpsilon = 1e-3;
+  if (
+    !base_points.empty() &&
+    autoware_utils::calc_distance2d(base_points.front().point.pose, pull_end_pose) <
+      kDuplicatePointEpsilon) {
+    pull_points.pop_back();
+  }
+  pull_points.insert(pull_points.end(), base_points.begin(), base_points.end());
+  auto connected_trajectory = autoware::experimental::trajectory::pretty_build(pull_points);
+  if (!connected_trajectory) {
+    return std::nullopt;
+  }
+  connected_trajectory->align_orientation_with_trajectory_direction();
+  return connected_trajectory;
 }
 
 std::optional<PathPointTrajectory> StartGoalPlanner::connect_goal_planner_trajectory(
