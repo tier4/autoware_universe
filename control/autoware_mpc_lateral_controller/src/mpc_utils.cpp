@@ -792,7 +792,7 @@ MPCTrajectory clipTrajectoryByLength(const MPCTrajectory & trajectory, const dou
 std::optional<bool> infer_forward_driving(const MPCTrajectory & trajectory)
 {
   constexpr double min_velocity_for_direction = 0.1;           // [m/s]
-  constexpr double min_baseline_for_direction_squared = 0.25;  // [m]
+  constexpr double min_baseline_for_direction_squared = 0.25;  // [m^2]
 
   if (trajectory.size() < 2) {
     return std::nullopt;
