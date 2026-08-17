@@ -22,6 +22,9 @@
 #include "velocity_smoother.hpp"
 
 #include <autoware_trajectory_processor/trajectory_processor_param.hpp>
+#include <autoware/avoidance_target_detector/boundary.hpp>
+#include <autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp>
+#include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
@@ -73,6 +76,7 @@ private:
   std::optional<PathWithLaneId> plan_path(const InputData & input_data);
   Trajectory shift_trajectory_to_ego(
     const Trajectory & trajectory, const InputData & input_data) const;
+  Trajectory optimize_with_mppi(const Trajectory & trajectory, const InputData & input_data);
   Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
   void apply_modifiers(Trajectory & trajectory, const InputData & input_data) const;
 
@@ -123,6 +127,10 @@ private:
   std::unique_ptr<PathPlanner> path_planner_;
   //! MapBasedStopPlanner plans the go/stop trajectories with map-defined stop points embedded
   std::unique_ptr<MapBasedStopPlanner> map_based_stop_planner_;
+  std::unique_ptr<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface> mppi_optimizer_;
+  std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler> mppi_route_handler_;
+  LaneletMapBin::ConstSharedPtr mppi_map_ptr_;
+  LaneletRoute::ConstSharedPtr mppi_route_ptr_;
   /** @} */
 
 private:

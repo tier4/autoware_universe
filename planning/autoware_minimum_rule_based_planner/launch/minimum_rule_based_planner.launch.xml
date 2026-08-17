@@ -5,6 +5,9 @@
 
   <!-- Main parameter file -->
   <arg name="minimum_rule_base_planner_param_path" default="$(find-pkg-share autoware_minimum_rule_based_planner)/config/minimum_rule_based_planner.param.yaml"/>
+  <arg name="mppi_optimizer_param_path" default="$(find-pkg-share autoware_mppi_optimizer)/config/mppi_optimizer.param.yaml"/>
+  <arg name="vehicle_model" default="sample_vehicle"/>
+  <arg name="simulator_model_param_path" default="$(find-pkg-share $(var vehicle_model)_description)/config/simulator_model.param.yaml"/>
 
   <!-- Trajectory optimizer plugin parameter files -->
   <arg
@@ -29,6 +32,8 @@
     <env name="LD_LIBRARY_PATH" value="/opt/acados/lib:$(env LD_LIBRARY_PATH)"/>
     <param from="$(var common_param_path)"/>
     <param from="$(var minimum_rule_base_planner_param_path)" allow_substs="true"/>
+    <param from="$(var mppi_optimizer_param_path)"/>
+    <param from="$(var simulator_model_param_path)"/>
     <param from="$(var minimum_rule_base_planner_elastic_band_smoother_param_path)" allow_substs="true"/>
     <param from="$(var minimum_rule_base_planner_jerk_filtered_smoother_param_path)" allow_substs="true"/>
 
