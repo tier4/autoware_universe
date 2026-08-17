@@ -113,7 +113,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   target_include_directories(${PROJECT_NAME}_lib
     SYSTEM PUBLIC
     ${CUDA_INCLUDE_DIRS}
-    $(autoware_point_types_INCLUDE_DIRS)
+    ${autoware_point_types_INCLUDE_DIRS}
   )
 
   ament_auto_add_library(${PROJECT_NAME}_component SHARED
@@ -135,6 +135,12 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   )
 
   if(BUILD_TESTING)
+    ament_add_gtest(ptv3_config_test
+      test/ptv3_config_test.cpp
+    )
+    target_include_directories(ptv3_config_test PRIVATE include)
+    ament_target_dependencies(ptv3_config_test autoware_point_types)
+
     ament_add_gtest(serialized_pooling_metadata_test
       test/serialized_pooling_metadata_test.cpp
     )
@@ -172,16 +178,33 @@ if(TRT_AVAIL AND CUDA_AVAIL)
 
     ament_target_dependencies(postprocess_kernel_test autoware_point_types)
 
+    ament_add_gtest(detection3d_postprocess_test
+      test/detection3d_postprocess_test.cpp
+    )
+
+    target_link_libraries(detection3d_postprocess_test
+      CUDA::cudart
+      ${PROJECT_NAME}_cuda_lib
+    )
+
+    ament_add_gtest(ros_utils_test
+      test/ros_utils_test.cpp
+    )
+
+    target_link_libraries(ros_utils_test
+      ${PROJECT_NAME}_lib
+    )
+
   endif()
 
-  ament_auto_package(
+  autoware_ament_auto_package(
     INSTALL_TO_SHARE
       launch
       config
   )
 
 else()
-  ament_auto_package(
+  autoware_ament_auto_package(
     INSTALL_TO_SHARE
       launch
   )
