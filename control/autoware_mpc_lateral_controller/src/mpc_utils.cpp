@@ -68,6 +68,28 @@ bool isTemporalShortSegment(
   const double expected_distance = std::max(std::fabs(vx), min_velocity_floor) * bounded_dt;
   return ds < expected_distance_ratio * expected_distance;
 }
+
+std::pair<size_t, size_t> findYawDifferentiationWindow(
+  const std::vector<double> & arc_length, const size_t idx, const double min_baseline_m)
+{
+  if (arc_length.size() == 1) return {0, 0};
+
+  const size_t last = arc_length.size() - 1;
+  size_t front = (idx > 0) ? idx - 1 : 0;
+  size_t back = (idx < last) ? idx + 1 : last;
+  while (arc_length.at(back) - arc_length.at(front) < min_baseline_m) {
+    if (front == 0 && back == last) {
+      break;
+    }
+    if (front > 0) {
+      --front;
+    }
+    if (back < last) {
+      ++back;
+    }
+  }
+  return {front, back};
+}
 }  // namespace
 
 namespace MPCUtils
@@ -267,54 +289,44 @@ void calcTrajectoryYawFromXY(
 
   const auto input_yaw = traj.yaw;
 
-  // interpolate yaw
-  for (int i = 1; i < static_cast<int>(traj.yaw.size()) - 1; ++i) {
-    const double dx = traj.x.at(i + 1) - traj.x.at(i - 1);
-    const double dy = traj.y.at(i + 1) - traj.y.at(i - 1);
-    const auto curr_idx = static_cast<size_t>(i);
-    const double prev_dist = calcDistance2d(traj, curr_idx, curr_idx - 1);
-    const double next_dist = calcDistance2d(traj, curr_idx + 1, curr_idx);
-    const double prev_dt = traj.relative_time.at(curr_idx) - traj.relative_time.at(curr_idx - 1);
-    const double next_dt = traj.relative_time.at(curr_idx + 1) - traj.relative_time.at(curr_idx);
-    const double prev_vx = 0.5 * (traj.vx.at(curr_idx - 1) + traj.vx.at(curr_idx));
-    const double next_vx = 0.5 * (traj.vx.at(curr_idx) + traj.vx.at(curr_idx + 1));
+  // The differentiation baseline must be a fixed metric length, not a fixed number of index
+  // steps. Point spacing depends on the resampling mode (v * dt for temporal trajectories), so
+  // an index-based baseline shrinks at low speed and amplifies the XY noise into the yaw.
+  std::vector<double> arc_length;
+  calcMPCTrajectoryArcLength(traj, arc_length);
+
+  constexpr double min_yaw_baseline_m = 0.5;
+
+  const auto is_short_segment = [&](const size_t front, const size_t back) {
+    const double ds = calcDistance2d(traj, back, front);
+    const double dt = traj.relative_time.at(back) - traj.relative_time.at(front);
+    const double vx = 0.5 * (traj.vx.at(front) + traj.vx.at(back));
+    return isTemporalShortSegment(ds, dt, vx, use_input_yaw_for_short_segment);
+  };
+
+  for (size_t i = 0; i < traj.yaw.size(); ++i) {
+    // points bunched together (e.g. a stopped vehicle) carry no reliable direction of their own,
+    // regardless of how long a baseline the surrounding points could provide
     if (
-      std::hypot(dx, dy) < 1.0e-3 ||
-      isTemporalShortSegment(prev_dist, prev_dt, prev_vx, use_input_yaw_for_short_segment) ||
-      isTemporalShortSegment(next_dist, next_dt, next_vx, use_input_yaw_for_short_segment)) {
-      traj.yaw.at(i) = use_input_yaw_for_short_segment ? input_yaw.at(i) : traj.yaw.at(i - 1);
+      (i > 0 && is_short_segment(i - 1, i)) ||
+      (i + 1 < traj.yaw.size() && is_short_segment(i, i + 1))) {
+      traj.yaw.at(i) =
+        (use_input_yaw_for_short_segment || i == 0) ? input_yaw.at(i) : traj.yaw.at(i - 1);
+      continue;
+    }
+
+    const auto [front, back] = findYawDifferentiationWindow(arc_length, i, min_yaw_baseline_m);
+    const double dx = traj.x.at(back) - traj.x.at(front);
+    const double dy = traj.y.at(back) - traj.y.at(front);
+    if (
+      arc_length.at(back) - arc_length.at(front) < min_yaw_baseline_m ||
+      std::hypot(dx, dy) < 1.0e-3) {
+      // the trajectory is too short to differentiate reliably: keep the input yaw
+      traj.yaw.at(i) =
+        (use_input_yaw_for_short_segment || i == 0) ? input_yaw.at(i) : traj.yaw.at(i - 1);
       continue;
     }
     traj.yaw.at(i) = is_forward_shift ? std::atan2(dy, dx) : std::atan2(dy, dx) + M_PI;
-  }
-  if (traj.yaw.size() > 1) {
-    const double dx0 = traj.x.at(1) - traj.x.at(0);
-    const double dy0 = traj.y.at(1) - traj.y.at(0);
-    const double ds0 = calcDistance2d(traj, 1, 0);
-    const double dt0 = traj.relative_time.at(1) - traj.relative_time.at(0);
-    const double vx0 = 0.5 * (traj.vx.at(0) + traj.vx.at(1));
-    if (
-      std::hypot(dx0, dy0) >= 1.0e-3 &&
-      !isTemporalShortSegment(ds0, dt0, vx0, use_input_yaw_for_short_segment)) {
-      traj.yaw.at(0) = is_forward_shift ? std::atan2(dy0, dx0) : std::atan2(dy0, dx0) + M_PI;
-    } else {
-      traj.yaw.at(0) = use_input_yaw_for_short_segment ? input_yaw.at(0) : traj.yaw.at(1);
-    }
-
-    const size_t last = traj.yaw.size() - 1;
-    const double dxn = traj.x.at(last) - traj.x.at(last - 1);
-    const double dyn = traj.y.at(last) - traj.y.at(last - 1);
-    const double dsn = calcDistance2d(traj, last, last - 1);
-    const double dtn = traj.relative_time.at(last) - traj.relative_time.at(last - 1);
-    const double vxn = 0.5 * (traj.vx.at(last - 1) + traj.vx.at(last));
-    if (
-      std::hypot(dxn, dyn) >= 1.0e-3 &&
-      !isTemporalShortSegment(dsn, dtn, vxn, use_input_yaw_for_short_segment)) {
-      traj.yaw.back() = is_forward_shift ? std::atan2(dyn, dxn) : std::atan2(dyn, dxn) + M_PI;
-    } else {
-      traj.yaw.back() =
-        use_input_yaw_for_short_segment ? input_yaw.at(last) : traj.yaw.at(last - 1);
-    }
   }
 }
 
