@@ -786,5 +786,38 @@ MPCTrajectory clipTrajectoryByLength(const MPCTrajectory & trajectory, const dou
   return clipped_trajectory;
 }
 
+/**
+ * @brief Estimate whether the reference trajectory is driven forward or backward.
+ */
+std::optional<bool> infer_forward_driving(const MPCTrajectory & trajectory)
+{
+  constexpr double min_velocity_for_direction = 0.1;           // [m/s]
+  constexpr double min_baseline_for_direction_squared = 0.25;  // [m]
+
+  if (trajectory.size() < 2) {
+    return std::nullopt;
+  }
+
+  for (const auto velocity : trajectory.vx) {
+    if (std::abs(velocity) > min_velocity_for_direction) {
+      return velocity > 0.0;
+    }
+  }
+
+  // The trajectory is stop-like. Fall back to the geometry, but only over a baseline long enough to
+  // measure a direction from.
+  const double front_yaw = trajectory.yaw.front();
+  for (size_t i = 1; i < trajectory.size(); ++i) {
+    const double dx = trajectory.x.at(i) - trajectory.x.front();
+    const double dy = trajectory.y.at(i) - trajectory.y.front();
+    const double dist_squared = dx * dx + dy * dy;
+    if (dist_squared < min_baseline_for_direction_squared) {
+      continue;
+    }
+    return std::abs(normalize_radian(front_yaw - std::atan2(dy, dx))) < M_PI_2;
+  }
+
+  return std::nullopt;
+}
 }  // namespace MPCUtils
 }  // namespace autoware::motion::control::mpc_lateral_controller
