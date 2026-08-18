@@ -145,31 +145,28 @@ std::vector<PlannedSlowDown> SlowDownPlanner::plan_slow_down(
   std::vector<PlannedSlowDown> plans;
   for (const auto & obstacle : obstacles) {
     auto & state = tracking_states_.at(obstacle.uuid);  // filter 段で必ず作られている
-    const auto interval_and_output = plan_slow_down_for_obstacle(
-      input, trajectory, obstacle, state.prev_output, dist_to_ego, is_driving_forward);
-    if (interval_and_output) {
-      const auto & [interval, output] = *interval_and_output;
-      plans.push_back({interval, obstacle, output.start_point, *output.end_point});
+    const auto result = plan_slow_down_for_obstacle(
+      input, trajectory, obstacle, state.prev_slow_down, dist_to_ego, is_driving_forward);
+    // prev_slow_down は「前フレームで減速出力を出したか」を表すため、出さなければ消す
+    state.prev_slow_down = result ? std::make_optional(result->carry_over) : std::nullopt;
+    if (result) {
+      plans.push_back(result->plan);
     }
-    // prev_output は「前フレームで減速出力を出したか」を表すため、出さなければ消す
-    state.prev_output =
-      interval_and_output ? std::make_optional(interval_and_output->second) : std::nullopt;
   }
 
-  // plan 対象にならなかった(フィルタで落ちた)障害物の prev_output も同様に消す
+  // plan 対象にならなかった(フィルタで落ちた)障害物の prev_slow_down も同様に消す
   for (auto & [uuid, state] : tracking_states_) {
     if (!contains_uuid(obstacles, uuid)) {
-      state.prev_output.reset();
+      state.prev_slow_down.reset();
     }
   }
 
   return plans;
 }
 
-std::optional<std::pair<SlowdownInterval, SlowDownOutput>>
-SlowDownPlanner::plan_slow_down_for_obstacle(
+std::optional<PlannedSlowDownWithCarryOver> SlowDownPlanner::plan_slow_down_for_obstacle(
   const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownObstacle & obstacle,
-  const std::optional<SlowDownOutput> & prev_output, const double dist_to_ego,
+  const std::optional<SlowDownCarryOver> & prev_output, const double dist_to_ego,
   const bool is_driving_forward) const
 {
   // 障害物が移動中か静止かを速度ノルムのシュミットトリガーで判定
@@ -201,25 +198,28 @@ SlowDownPlanner::plan_slow_down_for_obstacle(
     std::clamp(slow_down_interval->from_s, 0.0, trajectory.length()),
     std::clamp(slow_down_interval->to_s, 0.0, trajectory.length()), *stable_slow_down_vel};
 
-  // 次フレームのヒステリシス・LPF の基準となる前回出力を組み立てる
-  SlowDownOutput output;
-  output.target_vel = *stable_slow_down_vel;
-  output.feasible_target_vel = slow_down_interval->velocity;
-  output.dist_from_obj_poly_to_traj_poly = stable_dist_to_traj_poly;
+  // 次フレームのヒステリシス・LPF の基準として持ち越す量を組み立てる。
+  // target_vel は plan.interval.velocity と同値だが、持ち越し側を自己完結させるため重複させる
+  SlowDownCarryOver carry_over;
+  carry_over.target_vel = *stable_slow_down_vel;
+  carry_over.feasible_target_vel = slow_down_interval->velocity;
+  carry_over.dist_from_obj_poly_to_traj_poly = stable_dist_to_traj_poly;
   // 減速開始位置が軌道範囲外なら planning factor を出さないため start_point は持たせない
   if (0.0 <= slow_down_interval->from_s && slow_down_interval->from_s <= trajectory.length()) {
-    output.start_point = trajectory.compute(slow_down_interval->from_s).pose;
+    carry_over.start_point = trajectory.compute(slow_down_interval->from_s).pose;
   }
-  output.end_point = trajectory.compute(slow_down_interval->to_s).pose;
-  output.obstacle_motion = obstacle_motion;
+  carry_over.end_point = trajectory.compute(slow_down_interval->to_s).pose;
+  carry_over.obstacle_motion = obstacle_motion;
 
-  return std::make_pair(slowdown_interval, output);
+  // start/end_point は結果側も持ち越し側も要るので、寿命を絡ませないよう値で重複して持つ
+  return PlannedSlowDownWithCarryOver{
+    {slowdown_interval, obstacle, carry_over.start_point, *carry_over.end_point}, carry_over};
 }
 
 // 減速区間の目標速度を前フレームと LPF して安定化し、減速が不要/区間が無効なら nullopt を返す
 std::optional<double> SlowDownPlanner::validate_slow_down_interval(
   const SlowDownObstacle & obstacle, const EgoTrajectory & trajectory,
-  const std::optional<SlowDownOutput> & prev_output,
+  const std::optional<SlowDownCarryOver> & prev_output,
   const SlowdownInterval & slow_down_interval) const
 {
   // 区間長が 0 以下、または区間終端が軌道範囲外なら棄却
@@ -265,7 +265,7 @@ std::optional<double> SlowDownPlanner::validate_slow_down_interval(
 
 // schmitt trigger on the object speed norm (threshold ± hysteresis_range)
 Motion SlowDownPlanner::determine_obstacle_motion(
-  const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output) const
+  const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output) const
 {
   const double object_vel_norm = std::hypot(obstacle.velocity, obstacle.lat_velocity);
   // 前フレームに減速出力がなければヒステリシスなしの素の閾値判定
@@ -283,7 +283,7 @@ Motion SlowDownPlanner::determine_obstacle_motion(
 
 std::optional<SlowdownInterval> SlowDownPlanner::calculate_distance_to_slow_down_with_constraints(
   const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownObstacle & obstacle,
-  const std::optional<SlowDownOutput> & prev_output, const double dist_to_ego,
+  const std::optional<SlowDownCarryOver> & prev_output, const double dist_to_ego,
   const bool is_driving_forward, const double slow_down_vel) const
 {
   const double abs_ego_offset = is_driving_forward
@@ -367,7 +367,7 @@ std::optional<SlowdownInterval> SlowDownPlanner::calculate_distance_to_slow_down
 
 // calculate the slow down velocity considering the deceleration constraints (min acc/jerk)
 double SlowDownPlanner::calculate_feasible_slow_down_velocity(
-  const EgoTrajectory & trajectory, const std::optional<SlowDownOutput> & prev_output,
+  const EgoTrajectory & trajectory, const std::optional<SlowDownCarryOver> & prev_output,
   const double ego_vel, const double ego_acc, const double slow_down_vel,
   const double deceleration_dist, const double dist_to_slow_down_start) const
 {
@@ -415,7 +415,7 @@ double SlowDownPlanner::calculate_feasible_slow_down_velocity(
 }
 
 std::pair<double, double> SlowDownPlanner::calculate_target_slow_down_velocity(
-  const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output,
+  const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output,
   const Motion obstacle_motion) const
 {
   const auto & p =

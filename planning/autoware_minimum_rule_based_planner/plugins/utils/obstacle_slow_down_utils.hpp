@@ -79,7 +79,8 @@ struct SlowdownInterval
   double velocity{};
 };
 
-struct SlowDownOutput
+// 次フレームのヒステリシス・LPF の基準として持ち越す量。今フレームの計画結果は PlannedSlowDown
+struct SlowDownCarryOver
 {
   double target_vel{};
   double feasible_target_vel{};
@@ -148,7 +149,7 @@ struct UuidLess
 // フィールドごとに更新される段が異なる:
 //  - condition_duration は filter 段(is_slow_down_required)で更新
 //  - was_slow_down は filter 段の最後に最終結果で確定
-//  - prev_output は plan 段で更新(減速出力を出したフレームだけ値を持つ)
+//  - prev_slow_down は plan 段で更新(減速出力を出したフレームだけ値を持つ)
 struct ObstacleTrackingState
 {
   // 減速条件の成立/不成立の累積時間 [s](正: entry 側, 負: exit 側)
@@ -158,7 +159,7 @@ struct ObstacleTrackingState
   // 前フレームのフィルタを最終的に通過して減速対象だったか(横距離ヒステリシスの状態)
   bool was_slow_down{false};
   // 前フレームで実際に減速出力を出した場合の内容(各種 LPF と motion 判定の基準)
-  std::optional<SlowDownOutput> prev_output{};
+  std::optional<SlowDownCarryOver> prev_slow_down{};
 };
 
 // estimate the lower bound of the lateral distance from the object to the trajectory polygon,
@@ -223,6 +224,13 @@ struct PlannedSlowDown
   geometry_msgs::msg::Pose end_pose;
 };
 
+// 障害物 1 件ぶんの plan 段の出力
+struct PlannedSlowDownWithCarryOver
+{
+  PlannedSlowDown plan;
+  SlowDownCarryOver carry_over;
+};
+
 struct SlowDownResult
 {
   std::vector<SlowDownObstacle> obstacles;  // フィルタを通過した減速対象障害物
@@ -277,37 +285,36 @@ private:
     const std::vector<SlowDownObstacle> & obstacles, const double dist_to_ego,
     const bool is_driving_forward);
 
-  // returns the slow down interval and the new prev_output entry, or nullopt if the obstacle
-  // should be ignored.
-  std::optional<std::pair<SlowdownInterval, SlowDownOutput>> plan_slow_down_for_obstacle(
+  // returns nullopt if the obstacle should be ignored.
+  std::optional<PlannedSlowDownWithCarryOver> plan_slow_down_for_obstacle(
     const SlowDownInput & input, const EgoTrajectory & trajectory,
-    const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output,
+    const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output,
     const double dist_to_ego, const bool is_driving_forward) const;
 
   // returns the stabilized slow down velocity, or nullopt if the obstacle should be ignored.
   std::optional<double> validate_slow_down_interval(
     const SlowDownObstacle & obstacle, const EgoTrajectory & trajectory,
-    const std::optional<SlowDownOutput> & prev_output,
+    const std::optional<SlowDownCarryOver> & prev_output,
     const SlowdownInterval & slow_down_interval) const;
 
   Motion determine_obstacle_motion(
-    const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output) const;
+    const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output) const;
 
   // returns the slow down interval whose velocity is the feasible slow down velocity (before the
   // stabilization LPF applied in plan_slow_down_for_obstacle)
   std::optional<SlowdownInterval> calculate_distance_to_slow_down_with_constraints(
     const SlowDownInput & input, const EgoTrajectory & trajectory,
-    const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output,
+    const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output,
     const double dist_to_ego, const bool is_driving_forward, const double slow_down_vel) const;
 
   double calculate_feasible_slow_down_velocity(
-    const EgoTrajectory & trajectory, const std::optional<SlowDownOutput> & prev_output,
+    const EgoTrajectory & trajectory, const std::optional<SlowDownCarryOver> & prev_output,
     const double ego_vel, const double ego_acc, const double slow_down_vel,
     const double deceleration_dist, const double dist_to_slow_down_start) const;
 
   // returns {slow down velocity, LPF-filtered lateral distance used for the calculation}
   std::pair<double, double> calculate_target_slow_down_velocity(
-    const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output,
+    const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output,
     const Motion obstacle_motion) const;
 
   ObstacleSlowDownParams params_;
