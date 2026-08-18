@@ -49,7 +49,6 @@ ament_auto_add_library(${PROJECT_NAME}_plugins SHARED
   plugins/obstacle_slow_down.cpp
   plugins/utils/trajectory_polygon_utils.cpp
   plugins/utils/obstacle_slow_down_utils.cpp
-  plugins/utils/obstacle_slow_down_plan.cpp
 )
 
 target_include_directories(${PROJECT_NAME}_plugins PRIVATE
