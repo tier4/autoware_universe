@@ -149,7 +149,7 @@ void ObstacleSlowDown::run(TrajectoryPoints & traj_points, const ModifierData & 
     // planning factor(減速理由の外部通知)。減速開始位置が軌道範囲外の場合は出力しない
     if (plan.start_pose) {
       add_planning_factor(
-        result.traj_points_with_boundaries, input.current_pose, *plan.start_pose, plan.end_pose,
+        result.traj_points, input.current_pose, *plan.start_pose, plan.end_pose,
         result.is_driving_forward, plan.interval.velocity, plan.obstacle);
     }
   }

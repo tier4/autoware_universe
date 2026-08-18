@@ -480,17 +480,14 @@ SlowDownResult SlowDownPlanner::plan(const EgoTrajectory & trajectory, const Slo
   result.obstacles = filter_slow_down_obstacle_for_predicted_object(
     slow_down_corridor_polys, ego_swept_polys, trajectory, input);
 
-  // insertTargetPoint によるゼロ次ホールド挿入は Trajectory に直訳できないため点列ベースを残す
-  result.traj_points_with_boundaries = trajectory.restore();
+  result.traj_points = trajectory.restore();
   const double dist_to_ego =
     autoware::experimental::trajectory::closest(trajectory, input.current_pose);
-  const auto is_driving_forward_opt =
-    autoware::motion_utils::isDrivingForward(result.traj_points_with_boundaries);
+  const auto is_driving_forward_opt = autoware::motion_utils::isDrivingForward(result.traj_points);
   result.is_driving_forward = is_driving_forward_opt ? *is_driving_forward_opt : true;
 
-  result.plans = plan_slow_down(
-    input, trajectory, result.obstacles, result.traj_points_with_boundaries, dist_to_ego,
-    result.is_driving_forward);
+  result.plans =
+    plan_slow_down(input, trajectory, result.obstacles, dist_to_ego, result.is_driving_forward);
   return result;
 }
 
