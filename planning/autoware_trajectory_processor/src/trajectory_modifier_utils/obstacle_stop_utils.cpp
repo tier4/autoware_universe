@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <utility>
@@ -227,7 +228,189 @@ TrajectoryShape get_trajectory_shape(
   autoware_utils_geometry::Box2d envelope;
   boost::geometry::envelope(trajectory_polygon, envelope);
 
-  return TrajectoryShape{trajectory_polygon, envelope, traj_length, forward_traj_length};
+  TrajectoryShape shape;
+  shape.polygon = std::move(trajectory_polygon);
+  shape.bounding_box = envelope;
+  shape.trajectory_length = traj_length;
+  shape.forward_traj_length = forward_traj_length;
+  return shape;
+}
+
+TrajectoryShape build_trajectory_footprint_index(
+  const TrajectoryPoints & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double ego_vel,
+  const double ego_accel, const double decel, const double jerk, const double stop_margin)
+{
+  TrajectoryShape shape;
+  shape.trajectory_length = 0.0;
+  shape.forward_traj_length = 0.0;
+  shape.ego_half_width = vehicle_info.vehicle_width_m / 2.0;
+  shape.ego_front_offset = vehicle_info.max_longitudinal_offset_m;
+  shape.ego_back_offset = -vehicle_info.min_longitudinal_offset_m;
+
+  if (trajectory_points.empty()) return shape;
+
+  const auto offset_pose =
+    autoware_utils::calc_offset_pose(ego_pose, vehicle_info.max_longitudinal_offset_m, 0, 0);
+  auto start_idx = motion_utils::findNearestSegmentIndex(trajectory_points, offset_pose.position);
+
+  const auto traj_length = motion_utils::calcArcLength(trajectory_points);
+  const auto ego_arc_length =
+    motion_utils::calcSignedArcLength(trajectory_points, 0, ego_pose.position);
+  const auto forward_traj_length = traj_length - ego_arc_length;
+  shape.trajectory_length = traj_length;
+  shape.forward_traj_length = forward_traj_length;
+
+  const auto detection_length =
+    get_detection_length(forward_traj_length, ego_vel, ego_accel, decel, jerk, stop_margin);
+
+  const auto detection_traj = std::invoke([&]() -> TrajectoryPoints {
+    if (detection_length < forward_traj_length) {
+      return motion_utils::cropForwardPoints(
+        trajectory_points, ego_pose.position, start_idx, detection_length);
+    }
+    return extend_trajectory(trajectory_points, stop_margin);
+  });
+
+  if (detection_traj.empty()) return shape;
+
+  constexpr double min_ds = 0.1;
+  constexpr double max_ds = 0.5;
+
+  auto add_sample =
+    [&](const geometry_msgs::msg::Pose & pose, const size_t traj_index, const double arc_length) {
+      shape.footprints.push_back(EgoFootprint{pose, traj_index, arc_length});
+    };
+
+  const auto to_original_index = [&](const size_t detection_idx) {
+    return std::min(detection_idx, trajectory_points.size() - 1);
+  };
+
+  auto prev_pose = detection_traj.front().pose;
+  double prev_s = 0.0;
+  size_t prev_idx = 0;
+  add_sample(prev_pose, prev_idx, prev_s);
+
+  for (size_t i = 1; i < detection_traj.size(); ++i) {
+    const auto & curr_pose = detection_traj[i].pose;
+    const auto dist = autoware_utils::calc_distance2d(prev_pose, curr_pose);
+    const bool is_last = (i + 1 == detection_traj.size());
+    if (!is_last && dist < min_ds) continue;
+
+    const auto traj_index = to_original_index(i);
+    if (dist > max_ds) {
+      const auto n_steps = static_cast<size_t>(std::ceil(dist / max_ds));
+      for (size_t k = 1; k < n_steps; ++k) {
+        const auto ratio = static_cast<double>(k) / static_cast<double>(n_steps);
+        const auto interp_pose =
+          autoware_utils_geometry::calc_interpolated_pose(prev_pose, curr_pose, ratio, false);
+        add_sample(interp_pose, prev_idx, prev_s + ratio * dist);
+      }
+    }
+
+    const auto curr_s = prev_s + dist;
+    add_sample(curr_pose, traj_index, curr_s);
+    prev_pose = curr_pose;
+    prev_s = curr_s;
+    prev_idx = traj_index;
+  }
+
+  std::vector<FootprintNode> nodes;
+  nodes.reserve(shape.footprints.size());
+  for (size_t i = 0; i < shape.footprints.size(); ++i) {
+    const auto poly = autoware_utils::to_footprint(
+      shape.footprints[i].pose, shape.ego_front_offset, shape.ego_back_offset,
+      2.0 * shape.ego_half_width);
+    const auto box = boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(poly);
+    nodes.emplace_back(box, i);
+    if (i == 0) {
+      shape.bounding_box = box;
+    } else {
+      boost::geometry::expand(shape.bounding_box, box);
+    }
+  }
+  shape.rtree = FootprintRtree(nodes.begin(), nodes.end());
+  return shape;
+}
+
+namespace
+{
+autoware_utils_geometry::Box2d inflate_box(
+  const autoware_utils_geometry::Box2d & box, const double margin)
+{
+  return {
+    {box.min_corner().x() - margin, box.min_corner().y() - margin},
+    {box.max_corner().x() + margin, box.max_corner().y() + margin}};
+}
+
+std::vector<FootprintNode> query_rtree_candidates(
+  const TrajectoryShape & shape, const autoware_utils_geometry::Box2d & query_box)
+{
+  std::vector<FootprintNode> candidates;
+  if (shape.rtree.empty()) return candidates;
+  shape.rtree.query(
+    boost::geometry::index::intersects(query_box), std::back_inserter(candidates));
+  return candidates;
+}
+
+std::vector<size_t> sort_hits_by_arc_length(
+  const TrajectoryShape & shape, std::vector<size_t> && hits)
+{
+  std::sort(hits.begin(), hits.end(), [&](const size_t a, const size_t b) {
+    return shape.footprints[a].arc_length < shape.footprints[b].arc_length;
+  });
+  return hits;
+}
+
+bool is_point_within_footprint(
+  const TrajectoryShape & shape, const EgoFootprint & footprint, const Point2d & point,
+  const double lat_margin)
+{
+  const auto rel = autoware_utils::inverse_transform_point(point.to_3d(), footprint.pose);
+  return rel.x() >= -shape.ego_back_offset && rel.x() <= shape.ego_front_offset &&
+         std::abs(rel.y()) <= shape.ego_half_width + lat_margin;
+}
+}  // namespace
+
+std::vector<size_t> query_overlapping_footprints(
+  const TrajectoryShape & shape, const Point2d & point, const double lat_margin)
+{
+  const autoware_utils_geometry::Box2d query_box{
+    {point.x() - lat_margin, point.y() - lat_margin},
+    {point.x() + lat_margin, point.y() + lat_margin}};
+  const auto candidates = query_rtree_candidates(shape, query_box);
+
+  std::vector<size_t> hits;
+  hits.reserve(candidates.size());
+  for (const auto & node : candidates) {
+    if (is_point_within_footprint(shape, shape.footprints[node.second], point, lat_margin)) {
+      hits.push_back(node.second);
+    }
+  }
+  return sort_hits_by_arc_length(shape, std::move(hits));
+}
+
+std::vector<size_t> query_overlapping_footprints(
+  const TrajectoryShape & shape, const Polygon2d & polygon, const double lat_margin)
+{
+  if (polygon.outer().empty()) return {};
+
+  const auto query_box =
+    inflate_box(boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(polygon), lat_margin);
+  const auto candidates = query_rtree_candidates(shape, query_box);
+
+  std::vector<size_t> hits;
+  hits.reserve(candidates.size());
+  for (const auto & node : candidates) {
+    const auto & footprint = shape.footprints[node.second];
+    const auto ego_polygon = autoware_utils::to_footprint(
+      footprint.pose, shape.ego_front_offset, shape.ego_back_offset,
+      2.0 * (shape.ego_half_width + lat_margin));
+    if (!boost::geometry::disjoint(polygon, ego_polygon)) {
+      hits.push_back(node.second);
+    }
+  }
+  return sort_hits_by_arc_length(shape, std::move(hits));
 }
 
 std::optional<CollisionPoint> get_nearest_pcd_collision(
