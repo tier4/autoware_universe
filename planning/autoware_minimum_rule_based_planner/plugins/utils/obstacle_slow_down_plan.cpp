@@ -17,7 +17,6 @@
 
 #include "obstacle_slow_down_utils.hpp"
 
-#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/signal_processing/lowpass_filter_1d.hpp>
 #include <autoware/trajectory/utils/closest.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -140,15 +139,14 @@ const ObjectTypeSpecificParams & SlowDownPlanner::get_object_param(
 // 元実装 plan_slow_down の移植(virtual wall・デバッグ配列の出力は未移植)
 std::vector<PlannedSlowDown> SlowDownPlanner::plan_slow_down(
   const SlowDownInput & input, const EgoTrajectory & trajectory,
-  const std::vector<SlowDownObstacle> & obstacles, TrajectoryPoints & slow_down_traj_points,
-  const double dist_to_ego, const bool is_driving_forward)
+  const std::vector<SlowDownObstacle> & obstacles, const double dist_to_ego,
+  const bool is_driving_forward)
 {
   std::vector<PlannedSlowDown> plans;
   for (const auto & obstacle : obstacles) {
     auto & state = tracking_states_.at(obstacle.uuid);  // filter 段で必ず作られている
     const auto interval_and_output = plan_slow_down_for_obstacle(
-      input, trajectory, obstacle, state.prev_output, slow_down_traj_points, dist_to_ego,
-      is_driving_forward);
+      input, trajectory, obstacle, state.prev_output, dist_to_ego, is_driving_forward);
     if (interval_and_output) {
       const auto & [interval, output] = *interval_and_output;
       plans.push_back({interval, obstacle, output.start_point, *output.end_point});
@@ -168,12 +166,11 @@ std::vector<PlannedSlowDown> SlowDownPlanner::plan_slow_down(
   return plans;
 }
 
-// TODO: リファクタリング
 std::optional<std::pair<SlowdownInterval, SlowDownOutput>>
 SlowDownPlanner::plan_slow_down_for_obstacle(
   const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownObstacle & obstacle,
-  const std::optional<SlowDownOutput> & prev_output, TrajectoryPoints & slow_down_traj_points,
-  const double dist_to_ego, const bool is_driving_forward)
+  const std::optional<SlowDownOutput> & prev_output, const double dist_to_ego,
+  const bool is_driving_forward) const
 {
   // 障害物が移動中か静止かを速度ノルムのシュミットトリガーで判定
   const auto obstacle_motion = determine_obstacle_motion(obstacle, prev_output);
@@ -193,62 +190,42 @@ SlowDownPlanner::plan_slow_down_for_obstacle(
     return std::nullopt;
   }
 
-  // ここで減速が埋め込まれるがSlowdownIntervalは上位呼び出しの方に返るので直感的ではない
-  const auto inserted = insert_slow_down_interval_points(
-    obstacle, prev_output, *slow_down_interval, slow_down_traj_points);
-  if (!inserted) {
+  const auto stable_slow_down_vel =
+    validate_slow_down_interval(obstacle, trajectory, prev_output, *slow_down_interval);
+  if (!stable_slow_down_vel) {
     return std::nullopt;
   }
 
   // 軌道に適用する減速区間(弧長は軌道範囲にクランプ)
   const SlowdownInterval slowdown_interval{
     std::clamp(slow_down_interval->from_s, 0.0, trajectory.length()),
-    std::clamp(slow_down_interval->to_s, 0.0, trajectory.length()), inserted->stable_slow_down_vel};
+    std::clamp(slow_down_interval->to_s, 0.0, trajectory.length()), *stable_slow_down_vel};
 
   // 次フレームのヒステリシス・LPF の基準となる前回出力を組み立てる
   SlowDownOutput output;
-  output.target_vel = inserted->stable_slow_down_vel;
+  output.target_vel = *stable_slow_down_vel;
   output.feasible_target_vel = slow_down_interval->velocity;
   output.dist_from_obj_poly_to_traj_poly = stable_dist_to_traj_poly;
-  if (inserted->start_idx) {
-    output.start_point = slow_down_traj_points.at(*inserted->start_idx).pose;
+  // 減速開始位置が軌道範囲外なら planning factor を出さないため start_point は持たせない
+  if (0.0 <= slow_down_interval->from_s && slow_down_interval->from_s <= trajectory.length()) {
+    output.start_point = trajectory.compute(slow_down_interval->from_s).pose;
   }
-  output.end_point = slow_down_traj_points.at(inserted->end_idx).pose;
+  output.end_point = trajectory.compute(slow_down_interval->to_s).pose;
   output.obstacle_motion = obstacle_motion;
 
   return std::make_pair(slowdown_interval, output);
 }
 
-// 減速区間の始点・終点を点列に挿入し、目標速度を安定化する。挿入できない/減速不要なら nullopt
-std::optional<SlowDownPlanner::InsertedSlowDownInterval>
-SlowDownPlanner::insert_slow_down_interval_points(
-  const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output,
-  const SlowdownInterval & slow_down_interval, TrajectoryPoints & slow_down_traj_points) const
+// 減速区間の目標速度を前フレームと LPF して安定化し、減速が不要/区間が無効なら nullopt を返す
+std::optional<double> SlowDownPlanner::validate_slow_down_interval(
+  const SlowDownObstacle & obstacle, const EgoTrajectory & trajectory,
+  const std::optional<SlowDownOutput> & prev_output,
+  const SlowdownInterval & slow_down_interval) const
 {
-  // 弧長 lon_dist の位置に点列へ点を挿入する(速度はゼロ次ホールド、planning factor と
-  // none_of 判定で使う挿入後 idx を返す)
-  const auto insert_point_in_trajectory = [&](const double lon_dist) -> std::optional<size_t> {
-    const auto inserted_idx =
-      autoware::motion_utils::insertTargetPoint(0, lon_dist, slow_down_traj_points);
-    if (inserted_idx) {
-      if (inserted_idx.value() + 1 <= slow_down_traj_points.size() - 1) {
-        // zero-order hold for velocity interpolation
-        slow_down_traj_points.at(inserted_idx.value()).longitudinal_velocity_mps =
-          slow_down_traj_points.at(inserted_idx.value() + 1).longitudinal_velocity_mps;
-      }
-      return inserted_idx.value();
-    }
-    return std::nullopt;
-  };
-
-  // 減速区間の始点・終点を点列に挿入する。区間長が 0 以下、または終点が軌道外なら棄却
-  // NOTE: slow_down_start_idx will not be wrong since inserted back point is after inserted
-  // front point.
-  const auto slow_down_start_idx = insert_point_in_trajectory(slow_down_interval.from_s);
-  const auto slow_down_end_idx = slow_down_interval.from_s < slow_down_interval.to_s
-                                   ? insert_point_in_trajectory(slow_down_interval.to_s)
-                                   : std::nullopt;
-  if (!slow_down_end_idx) {
+  // 区間長が 0 以下、または区間終端が軌道範囲外なら棄却
+  if (
+    slow_down_interval.to_s <= slow_down_interval.from_s || slow_down_interval.to_s < 0.0 ||
+    trajectory.length() < slow_down_interval.to_s) {
     return std::nullopt;
   }
 
@@ -261,11 +238,20 @@ SlowDownPlanner::insert_slow_down_interval_points(
     return slow_down_interval.velocity;
   }();
 
-  // 区間内の元の軌道速度が既に目標速度以下なら減速は不要なので棄却
-  if (std::none_of(
-        slow_down_traj_points.begin() + (slow_down_start_idx ? *slow_down_start_idx : 0),
-        slow_down_traj_points.begin() + *slow_down_end_idx,
-        [&](const auto & tp) { return stable_slow_down_vel < tp.longitudinal_velocity_mps; })) {
+  // 区間内の元の軌道速度が既に目標速度以下なら減速は不要なので棄却。
+  // NOTE: 速度は stairstep 補間なので base の値だけを見れば区間内の速度は尽くせる
+  const auto [bases, values] = trajectory.longitudinal_velocity_mps().get_data();
+  size_t begin_idx = 0;
+  while (begin_idx < bases.size() && bases.at(begin_idx) <= slow_down_interval.from_s) ++begin_idx;
+  size_t end_idx = begin_idx;
+  while (end_idx < bases.size() && bases.at(end_idx) < slow_down_interval.to_s) ++end_idx;
+  // 区間内に base が無い場合も from_s 直後の 1 点は評価する(点列に始点を挿入して
+  // その速度をゼロ次ホールドで埋めていた元実装と範囲を合わせるため)
+  end_idx = std::max(end_idx, std::min(begin_idx + 1, bases.size()));
+
+  if (std::none_of(values.begin() + begin_idx, values.begin() + end_idx, [&](const double vel) {
+        return stable_slow_down_vel < vel;
+      })) {
     RCLCPP_DEBUG(
       logger_,
       "[SlowDown] Ignore obstacle (%s) since slow down velocity (%f) is higher than trajectory "
@@ -274,7 +260,7 @@ SlowDownPlanner::insert_slow_down_interval_points(
     return std::nullopt;
   }
 
-  return InsertedSlowDownInterval{slow_down_start_idx, *slow_down_end_idx, stable_slow_down_vel};
+  return stable_slow_down_vel;
 }
 
 // schmitt trigger on the object speed norm (threshold ± hysteresis_range)

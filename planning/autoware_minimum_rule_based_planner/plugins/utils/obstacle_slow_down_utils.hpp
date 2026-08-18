@@ -225,8 +225,8 @@ struct SlowDownResult
 {
   std::vector<SlowDownObstacle> obstacles;  // フィルタを通過した減速対象障害物
   std::vector<PlannedSlowDown> plans;
-  // 減速区間の始終点を挿入した点列(planning factor の距離計算用)
-  TrajectoryPoints traj_points_with_boundaries;
+  // planning factor の距離計算用。pose を点列に射影して測るので減速区間の点は挿入しない
+  TrajectoryPoints traj_points;
   bool is_driving_forward{true};
 };
 
@@ -270,34 +270,23 @@ private:
     const rclcpp::Time & predicted_objects_stamp, const rclcpp::Time & current_time,
     const double dist_from_obj_poly_to_traj_poly);
 
-  // slow_down_traj_points is shared across obstacles and gets the interval boundary points
-  // inserted.
   std::vector<PlannedSlowDown> plan_slow_down(
     const SlowDownInput & input, const EgoTrajectory & trajectory,
-    const std::vector<SlowDownObstacle> & obstacles, TrajectoryPoints & slow_down_traj_points,
-    const double dist_to_ego, const bool is_driving_forward);
+    const std::vector<SlowDownObstacle> & obstacles, const double dist_to_ego,
+    const bool is_driving_forward);
 
   // returns the slow down interval and the new prev_output entry, or nullopt if the obstacle
   // should be ignored.
   std::optional<std::pair<SlowdownInterval, SlowDownOutput>> plan_slow_down_for_obstacle(
     const SlowDownInput & input, const EgoTrajectory & trajectory,
     const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output,
-    TrajectoryPoints & slow_down_traj_points, const double dist_to_ego,
-    const bool is_driving_forward);
+    const double dist_to_ego, const bool is_driving_forward) const;
 
-  // 減速区間の始終点を挿入した結果。start_idx は軌道範囲外で挿入できなかった場合 nullopt
-  struct InsertedSlowDownInterval
-  {
-    std::optional<size_t> start_idx;
-    size_t end_idx;
-    double stable_slow_down_vel;
-  };
-
-  // inserts the slow down interval boundary points into slow_down_traj_points, or returns nullopt
-  // if the obstacle should be ignored.
-  std::optional<InsertedSlowDownInterval> insert_slow_down_interval_points(
-    const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output,
-    const SlowdownInterval & slow_down_interval, TrajectoryPoints & slow_down_traj_points) const;
+  // returns the stabilized slow down velocity, or nullopt if the obstacle should be ignored.
+  std::optional<double> validate_slow_down_interval(
+    const SlowDownObstacle & obstacle, const EgoTrajectory & trajectory,
+    const std::optional<SlowDownOutput> & prev_output,
+    const SlowdownInterval & slow_down_interval) const;
 
   Motion determine_obstacle_motion(
     const SlowDownObstacle & obstacle, const std::optional<SlowDownOutput> & prev_output) const;
