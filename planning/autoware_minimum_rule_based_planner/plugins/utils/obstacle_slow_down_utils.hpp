@@ -101,21 +101,13 @@ struct SlowDownTarget
   double slow_down_vel{};
 };
 
-// シュミットトリガー(2値ヒステリシス)。
-// このモジュールの「前回状態」は単一量の判定結果ではなくフレーム全体の最終判定
-// (フィルタ通過可否・減速出力の有無)で決まるため、インスタンスに状態を持たせて
-// 持ち回るのではなく、毎回前回状態を seed して update する
-// TODO: これだとフリー関数と変わらない
-struct SchmittTrigger
+// 2値ヒステリシス。前回が low なら high_val を超えるまで low のまま、
+// 前回が high なら low_val を下回るまで high のまま
+inline bool schmitt_trigger(
+  const bool prev_is_low, const double current_val, const double high_val, const double low_val)
 {
-  bool is_low{false};
-
-  bool update(const double current_val, const double high_val, const double low_val)
-  {
-    is_low = is_low ? !(high_val < current_val) : current_val < low_val;
-    return is_low;
-  }
-};
+  return prev_is_low ? !(high_val < current_val) : current_val < low_val;
+}
 
 // parameters to calculate the slow down velocity by linear interpolation of the lateral distance
 struct VelocityInterpolationParam

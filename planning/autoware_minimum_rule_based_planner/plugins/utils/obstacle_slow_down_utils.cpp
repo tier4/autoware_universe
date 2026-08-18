@@ -308,8 +308,9 @@ bool SlowDownPlanner::is_slow_down_required(
   const auto & p = params_.obstacle_filtering;
 
   // check lateral distance considering hysteresis
-  const bool is_lat_dist_low = SchmittTrigger{state.was_slow_down}.update(
-    dist_from_obj_poly_to_traj_poly, p.max_lat_margin + p.lat_hysteresis_margin / 2.0,
+  const bool is_lat_dist_low = schmitt_trigger(
+    state.was_slow_down, dist_from_obj_poly_to_traj_poly,
+    p.max_lat_margin + p.lat_hysteresis_margin / 2.0,
     p.max_lat_margin - p.lat_hysteresis_margin / 2.0);
   const bool is_lat_vel_low = std::abs(lat_vel_relative_to_traj) < p.max_lat_velocity;
   const bool is_slow_down_condition_met = is_lat_dist_low && is_lat_vel_low;
