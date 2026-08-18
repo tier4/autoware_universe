@@ -305,27 +305,27 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
   const auto goal_pose_candidates = get_goal_pose(trajectory, ego_pose);
   const auto start_pose_candidates = get_start_pose(trajectory, ego_pose);
   if (!start_pose_candidates || !goal_pose_candidates) {
-    return generated_trajectory_;
+    return generate_fallback_trajectory(trajectory);
   }
 
   if (available_area.empty()) {
-    return generated_trajectory_;
+    return generate_fallback_trajectory(trajectory);
   }
 
   const auto candidate_trajectories =
     generate_pull_trajectories(*start_pose_candidates, *goal_pose_candidates);
   if (!candidate_trajectories) {
-    return generated_trajectory_;
+    return generate_fallback_trajectory(trajectory);
   }
 
   const auto pull_trajectory = evaluate_trajectory(*candidate_trajectories, available_area);
   if (!pull_trajectory) {
-    return generated_trajectory_;
+    return generate_fallback_trajectory(trajectory);
   }
 
   const auto refined_trajectory = connect_pull_trajectory(trajectory, *pull_trajectory);
   if (!refined_trajectory) {
-    return generated_trajectory_;
+    return generate_fallback_trajectory(trajectory);
   }
   generated_trajectory_ = refined_trajectory;
   return generated_trajectory_;
@@ -697,6 +697,29 @@ std::optional<PathPointTrajectory> StartGoalPlanner::connect_goal_planner_trajec
   }
   connected_trajectory->align_orientation_with_trajectory_direction();
   return connected_trajectory;
+}
+
+std::optional<PathPointTrajectory> StartGoalPlanner::generate_fallback_trajectory(
+  const PathPointTrajectory & trajectory)
+{
+  if (goal_planner_act_) {
+    return generated_trajectory_;
+  }
+
+  if (start_planner_act_) {
+    if (generated_trajectory_.has_value()) {
+      return generated_trajectory_;
+    }
+
+    auto points = trajectory.restore();
+    for (auto & point : points) {
+      point.point.longitudinal_velocity_mps = 0.0;
+      point.point.lateral_velocity_mps = 0.0;
+    }
+
+    return autoware::experimental::trajectory::pretty_build(points);
+  }
+  return std::nullopt;
 }
 
 }  // namespace autoware::minimum_rule_based_planner

@@ -91,6 +91,8 @@ private:
     const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
   std::optional<PathPointTrajectory> connect_goal_planner_trajectory(
     const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
+  std::optional<PathPointTrajectory> generate_fallback_trajectory(
+    const PathPointTrajectory & trajectory);
 
   bool start_planner_act_{false};
   bool goal_planner_act_{false};
