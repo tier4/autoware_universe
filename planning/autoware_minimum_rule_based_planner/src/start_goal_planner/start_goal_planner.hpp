@@ -26,6 +26,7 @@
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/geometry/Area.h>
+#include <lanelet2_core/primitives/Polygon.h>
 #include <lanelet2_routing/RoutingGraph.h>
 
 #include <algorithm>
@@ -65,15 +66,9 @@ public:
   bool goal_planner_active() { return goal_planner_act_ && generated_trajectory_.has_value(); }
 
 private:
-  struct AvailableArea
-  {
-    lanelet::ConstLanelets lanelets;
-    lanelet::ConstPolygons3d areas;
-  };
-
   const std::unordered_set<std::string> available_area_type = {"parking_lot"};
 
-  AvailableArea get_available_area(const PathPointTrajectory & trajectory);
+  std::vector<lanelet::BasicPolygon2d> get_available_area(const PathPointTrajectory & trajectory);
 
   void judge_start_planner_act(
     const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & ego_pose);
@@ -87,7 +82,7 @@ private:
     const std::vector<PathPointWithLaneId> & goal_pose_candidates);
   std::optional<PathPointTrajectory> evaluate_trajectory(
     const std::vector<PathPointTrajectory> & candidate_trajectories,
-    const AvailableArea & available_area);
+    const std::vector<lanelet::BasicPolygon2d> & available_area);
   std::optional<PathPointTrajectory> connect_pull_trajectory(
     const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
   std::optional<PathPointTrajectory> connect_start_planner_trajectory(

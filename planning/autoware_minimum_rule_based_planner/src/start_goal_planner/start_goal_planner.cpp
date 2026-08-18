@@ -25,6 +25,7 @@
 #include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/primitives/Polygon.h>
@@ -33,6 +34,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -72,21 +74,21 @@ std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
   const auto & search_radius_range = params.search_radius_range;
   const auto & pre_goal_offset = params.pre_goal_offset;
 
-  for (double s = search_radius_range; s > 0; s -= 1) {
+  auto closest_to_goal = autoware::experimental::trajectory::closest_with_constraint(
+    trajectory, goal_pose, contain_goal_lane_id);
+
+  // If no point with the goal lane ID exists in the trajectory (e.g. goal is on an adjacent
+  // lane), fall back to the geometrically closest point so the goal connection still applies.
+  if (!closest_to_goal) {
+    closest_to_goal = autoware::experimental::trajectory::closest(trajectory, goal_pose);
+  }
+
+  auto cropped_path = autoware::experimental::trajectory::crop(trajectory, 0, *closest_to_goal);
+
+  for (double s = search_radius_range; s > 0; s -= 2) {
     auto outside_circle = [&](const PathPointWithLaneId & point) {
       return autoware_utils::calc_distance2d(point.point.pose, goal_pose) > s;
     };
-
-    auto closest_to_goal = autoware::experimental::trajectory::closest_with_constraint(
-      trajectory, goal_pose, contain_goal_lane_id);
-
-    // If no point with the goal lane ID exists in the trajectory (e.g. goal is on an adjacent
-    // lane), fall back to the geometrically closest point so the goal connection still applies.
-    if (!closest_to_goal) {
-      closest_to_goal = autoware::experimental::trajectory::closest(trajectory, goal_pose);
-    }
-
-    auto cropped_path = autoware::experimental::trajectory::crop(trajectory, 0, *closest_to_goal);
 
     auto intervals =
       autoware::experimental::trajectory::find_intervals(cropped_path, outside_circle, 10);
@@ -116,47 +118,33 @@ std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
   return candidates;
 }
 
-bool is_trajectory_inside_lanelets_or_areas(
-  const PathPointTrajectory & trajectory, const lanelet::ConstLanelets & lanelets,
-  const lanelet::ConstPolygons3d & areas,
-  const autoware_utils_geometry::LinearRing2d & base_footprint)
+bool is_point_in_polygons(
+  const autoware_utils_geometry::Point2d & point,
+  const std::vector<lanelet::BasicPolygon2d> & polygons)
 {
-  std::vector<lanelet::BasicPolygon2d> lanelets_2d;
-  lanelets_2d.reserve(lanelets.size());
-  for (const auto & lane : lanelets) {
-    lanelets_2d.push_back(lane.polygon2d().basicPolygon());
-  }
+  return std::any_of(polygons.begin(), polygons.end(), [&](const auto & polygon) {
+    return boost::geometry::covered_by(point, polygon);
+  });
+}
 
-  auto is_in_lanelets = [&](const autoware_utils_geometry::Point2d & point) {
-    return std::any_of(lanelets_2d.begin(), lanelets_2d.end(), [&](const auto & lane) {
-      return boost::geometry::covered_by(point, lane);
-    });
-  };
-
-  std::vector<lanelet::BasicPolygon2d> areas_2d;
-  areas_2d.reserve(areas.size());
-  for (const auto & area : areas) {
-    areas_2d.push_back(lanelet::utils::to2D(area).basicPolygon());
-  }
-
-  auto is_in_areas = [&](const autoware_utils_geometry::Point2d & point) {
-    return std::any_of(areas_2d.begin(), areas_2d.end(), [&](const auto & area) {
-      return boost::geometry::covered_by(point, area);
-    });
-  };
-
+bool is_footprints_inside_polygons(
+  const std::vector<PathPointWithLaneId> & points,
+  const std::vector<lanelet::BasicPolygon2d> & polygons,
+  const autoware_utils_geometry::LinearRing2d & base_footprint,
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper);
   auto footprint_is_in_lanelet_or_areas = [&](const geometry_msgs::msg::Pose & pose) {
     const auto footprint =
       autoware_utils::transform_vector(base_footprint, autoware_utils::pose2transform(pose));
     for (const auto & point : footprint) {
-      if (!is_in_areas(point) && !is_in_lanelets(point)) {
+      if (!is_point_in_polygons(point, polygons)) {
         return false;
       }
     }
     return true;
   };
 
-  const auto points = trajectory.restore();
   return std::none_of(points.begin(), points.end(), [&](const auto & point) {
     return !footprint_is_in_lanelet_or_areas(point.point.pose);
   });
@@ -181,8 +169,11 @@ lanelet::ConstPolygons3d find_polygons_intersecting_lanelet(
   return result;
 }
 
-std::optional<double> cal_curvature_integral(const PathPointTrajectory & trajectory)
+std::optional<double> cal_curvature_integral(
+  const PathPointTrajectory & trajectory,
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper)
 {
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper);
   const auto ss = trajectory.get_underlying_bases();
   if (ss.size() < 3) {
     return 0.0;
@@ -201,35 +192,75 @@ std::optional<double> cal_curvature_integral(const PathPointTrajectory & traject
   return curvature_integral;
 }
 
-double cal_trajectory_diff(PathPointTrajectory traj_a, PathPointTrajectory traj_b)
+bool has_turn_point(const std::vector<PathPointWithLaneId> & points)
 {
-  if (traj_a.get_underlying_bases().empty() || traj_b.get_underlying_bases().empty()) {
+  std::optional<double> theta_prev = std::nullopt;
+
+  if (points.size() < 2) {
+    return false;
+  }
+
+  for (size_t i = 0; i < points.size() - 1; ++i) {
+    const auto dx = points[i + 1].point.pose.position.x - points[i].point.pose.position.x;
+    const auto dy = points[i + 1].point.pose.position.y - points[i].point.pose.position.y;
+    const auto theta = std::atan2(dy, dx);
+    if (theta_prev.has_value()) {
+      const double d_theta = std::abs(autoware_utils::normalize_radian(theta - *theta_prev));
+      constexpr double turn_point_th = M_PI / 2;
+      if (d_theta > turn_point_th) {
+        return true;
+      }
+    }
+    theta_prev = theta;
+  }
+  return false;
+}
+
+std::vector<PathPointWithLaneId> downsample_trajectory_points(
+  const PathPointTrajectory & trajectory, const size_t num_points)
+{
+  std::vector<PathPointWithLaneId> points;
+  points.reserve(num_points);
+  for (size_t i = 0; i < num_points; ++i) {
+    const double s =
+      trajectory.length() * static_cast<double>(i) / static_cast<double>(num_points - 1);
+    points.push_back(trajectory.compute(s));
+  }
+  return points;
+}
+
+double cal_trajectory_diff(
+  const std::vector<PathPointWithLaneId> & points_a, const double length_a,
+  const std::vector<PathPointWithLaneId> & points_b, const double length_b,
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper);
+  if (points_a.empty() || points_b.empty()) {
     return 0.0;
   }
 
-  const bool a_is_longer = traj_a.length() >= traj_b.length();
-  const auto & base_traj = a_is_longer ? traj_a : traj_b;
-  const auto & short_traj = a_is_longer ? traj_b : traj_a;
+  const bool a_is_longer = length_a >= length_b;
+  const auto & base_traj_points = a_is_longer ? points_a : points_b;
+  const auto & short_traj_points = a_is_longer ? points_b : points_a;
 
-  const auto ss = short_traj.get_underlying_bases();
-  if (ss.size() == 1) {
-    return autoware::motion_utils::calcLateralOffset(
-      base_traj.restore(), short_traj.compute(0).point.pose.position);
-  }
-  std::vector<double> dist_vec;
-  dist_vec.reserve(ss.size());
-
-  for (const auto & s : ss) {
-    const double offset = std::abs(
+  if (short_traj_points.size() == 1) {
+    return std::abs(
       autoware::motion_utils::calcLateralOffset(
-        base_traj.restore(), short_traj.compute(s).point.pose.position));
-    const double dist = std::isnan(offset) ? 0.0 : std::abs(offset);
-    dist_vec.push_back(dist);
+        base_traj_points, short_traj_points.front().point.pose.position));
+  }
+
+  std::vector<double> dist_vec;
+  dist_vec.reserve(short_traj_points.size());
+  for (const auto & point : short_traj_points) {
+    const double offset =
+      autoware::motion_utils::calcLateralOffset(base_traj_points, point.point.pose.position);
+    dist_vec.push_back(std::isnan(offset) ? 0.0 : std::abs(offset));
   }
 
   double dist_integral = 0.0;
-  for (size_t i = 0; i < ss.size() - 1; ++i) {
-    const double ds = ss[i + 1] - ss[i];
+  for (size_t i = 0; i < short_traj_points.size() - 1; ++i) {
+    const double ds = autoware_utils::calc_distance2d(
+      short_traj_points[i].point.pose.position, short_traj_points[i + 1].point.pose.position);
     const double dist = (dist_vec[i] * dist_vec[i] + dist_vec[i + 1] * dist_vec[i + 1]) * 0.5;
     dist_integral += dist * ds;
   }
@@ -274,9 +305,8 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
   if (!start_pose_candidates || !goal_pose_candidates) {
     return generated_trajectory_;
   }
-
   const auto available_area = get_available_area(trajectory);
-  if (available_area.lanelets.empty() && available_area.areas.empty()) {
+  if (available_area.empty()) {
     return generated_trajectory_;
   }
 
@@ -373,7 +403,7 @@ void StartGoalPlanner::judge_goal_planner_act(
   goal_pose_prev_ = route_data_.goal_pose;
 }
 
-StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
+std::vector<lanelet::BasicPolygon2d> StartGoalPlanner::get_available_area(
   const PathPointTrajectory & trajectory)
 {
   const auto base_lanelets =
@@ -381,22 +411,24 @@ StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
   const auto & lanelet_map_ptr = route_data_.lanelet_map_ptr;
   const auto & routing_graph_ptr = route_data_.routing_graph_ptr;
 
-  AvailableArea available;
-  available.lanelets = base_lanelets;
+  lanelet::ConstLanelets lanelets = base_lanelets;
+  std::unordered_set<lanelet::Id> added_area_ids;
+  std::vector<lanelet::BasicPolygon2d> polygons;
+
+  for (const auto & ll : base_lanelets) {
+    polygons.push_back(ll.polygon2d().basicPolygon());
+  }
 
   auto try_add_lanelet = [&](const lanelet::ConstLanelet & candidate) {
-    if (
-      std::find(available.lanelets.begin(), available.lanelets.end(), candidate) ==
-      available.lanelets.end()) {
-      available.lanelets.push_back(candidate);
+    if (std::find(lanelets.begin(), lanelets.end(), candidate) == lanelets.end()) {
+      lanelets.push_back(candidate);
+      polygons.push_back(candidate.polygon2d().basicPolygon());
     }
   };
 
   auto try_add_area = [&](const lanelet::ConstPolygon3d & candidate) {
-    if (
-      std::find(available.areas.begin(), available.areas.end(), candidate) ==
-      available.areas.end()) {
-      available.areas.push_back(candidate);
+    if (added_area_ids.insert(candidate.id()).second) {
+      polygons.push_back(lanelet::utils::to2D(candidate).basicPolygon());
     }
   };
 
@@ -408,7 +440,7 @@ StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
   }
 
   // Road-shoulder lanelets sharing a boundary linestring with the lanelets collected so far.
-  const lanelet::ConstLanelets lanelets_after_lane_change = available.lanelets;
+  const lanelet::ConstLanelets lanelets_after_lane_change = lanelets;
   for (const auto & ll : lanelets_after_lane_change) {
     for (const auto & other : lanelet_map_ptr->laneletLayer.findUsages(ll.leftBound())) {
       if (
@@ -427,7 +459,7 @@ StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
   }
 
   // Freespace areas sharing a boundary linestring with the lanelets collected so far.
-  for (const auto & ll : available.lanelets) {
+  for (const auto & ll : lanelets) {
     for (const auto & area :
          find_polygons_intersecting_lanelet(lanelet_map_ptr->polygonLayer, ll)) {
       const std::string type = area.hasAttribute(lanelet::AttributeName::Type)
@@ -439,7 +471,7 @@ StartGoalPlanner::AvailableArea StartGoalPlanner::get_available_area(
     }
   }
 
-  return available;
+  return polygons;
 }
 
 std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_start_pose(
@@ -477,9 +509,9 @@ std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_goal_pose(
   if (start_planner_act_) {
     double start_s = autoware::experimental::trajectory::closest(trajectory, ego_pose);
     std::vector<PathPointWithLaneId> goal_pose_candidates;
-    for (int num_points = 1; num_points < 30; ++num_points) {
+    for (int num_points = 1; num_points < 20; ++num_points) {
       goal_pose_candidates.push_back(trajectory.compute(start_s));
-      start_s += 1.0;
+      start_s += 1.5;
     }
     if (!goal_pose_candidates.empty()) {
       return goal_pose_candidates;
@@ -493,6 +525,7 @@ std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_
   const std::vector<PathPointWithLaneId> & start_pose_candidates,
   const std::vector<PathPointWithLaneId> & goal_pose_candidates)
 {
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   const auto max_steer_angles_rad = generate_candidate_steer_angles_rad(
     vehicle_info_.max_steer_angle_rad, params_.clothoid_steer_angle_trial_count);
   const auto max_steer_angle_rate_rad_per_sec =
@@ -518,6 +551,10 @@ std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_
           trajectory.insert(trajectory.end(), interior_points.begin(), interior_points.end());
           trajectory.push_back(goal_point);
 
+          if (has_turn_point(trajectory)) {
+            continue;
+          }
+
           if (const auto output = autoware::experimental::trajectory::pretty_build(trajectory)) {
             candidate_trajectories.push_back(*output);
           }
@@ -534,49 +571,30 @@ std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_
 
 std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
   const std::vector<PathPointTrajectory> & candidate_trajectories,
-  const AvailableArea & available_area)
+  const std::vector<lanelet::BasicPolygon2d> & available_area)
 {
-  auto has_turn_point = [](const PathPointTrajectory & trajectory) {
-    const auto points = trajectory.restore();
-    std::optional<double> theta_prev = std::nullopt;
-
-    if (points.size() < 2) {
-      return false;
-    }
-
-    for (size_t i = 0; i < points.size() - 1; ++i) {
-      const auto dx = points[i + 1].point.pose.position.x - points[i].point.pose.position.x;
-      const auto dy = points[i + 1].point.pose.position.y - points[i].point.pose.position.y;
-      const auto theta = std::atan2(dy, dx);
-      if (theta_prev.has_value()) {
-        const double d_theta = std::abs(autoware_utils::normalize_radian(theta - *theta_prev));
-        constexpr double turn_point_th = M_PI / 2;
-        if (d_theta > turn_point_th) {
-          return true;
-        }
-      }
-      theta_prev = theta;
-    }
-    return false;
-  };
-
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   const double max_curvature =
     std::tan(vehicle_info_.max_steer_angle_rad) / vehicle_info_.wheel_base_m;
+  const auto base_footprint = vehicle_info_.createFootprint();
+
+  constexpr size_t num_sample_trajectory_diff = 5;
+  constexpr size_t num_sample_footprint_check = 5;
+  const auto traj_points_prev =
+    generated_trajectory_.has_value()
+      ? downsample_trajectory_points(*generated_trajectory_, num_sample_trajectory_diff)
+      : std::vector<PathPointWithLaneId>{};
 
   double best_score = std::numeric_limits<double>::max();
   std::optional<PathPointTrajectory> best_trajectory = std::nullopt;
   for (const auto & candidate : candidate_trajectories) {
-    if (has_turn_point(candidate)) {
+    if (!is_footprints_inside_polygons(
+          downsample_trajectory_points(candidate, num_sample_footprint_check), available_area,
+          base_footprint, time_keeper_)) {
       continue;
     }
 
-    if (!is_trajectory_inside_lanelets_or_areas(
-          candidate, available_area.lanelets, available_area.areas,
-          vehicle_info_.createFootprint())) {
-      continue;
-    }
-
-    const auto curvature_integral = cal_curvature_integral(candidate);
+    const auto curvature_integral = cal_curvature_integral(candidate, time_keeper_);
     if (!curvature_integral.has_value()) {
       continue;
     }
@@ -585,9 +603,13 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
       continue;
     }
 
-    const double trajectory_diff = generated_trajectory_.has_value()
-                                     ? cal_trajectory_diff(*generated_trajectory_, candidate)
-                                     : 0.0;
+    const double trajectory_diff =
+      generated_trajectory_.has_value()
+        ? cal_trajectory_diff(
+            traj_points_prev, generated_trajectory_->length(),
+            downsample_trajectory_points(candidate, num_sample_trajectory_diff), candidate.length(),
+            time_keeper_)
+        : 0.0;
 
     const double score = *curvature_integral / max_curvature * max_curvature * 0.4 +
                          arc_length / params_.search_radius_range * 0.3 + trajectory_diff * 0.3;
