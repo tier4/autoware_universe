@@ -471,9 +471,9 @@ bool VirtualTrafficLightModule::isBeforeStartLine()
   }
 
   const double max_dist = std::numeric_limits<double>::max();
-  const auto signed_arc_length = tier4_autoware_utils::calcSignedArcLength(
+  const auto signed_arc_length = tier4_autoware_utils::calcFirstSignedArcLength(
     module_data_.path.points, module_data_.head_pose, collision->point, max_dist,
-    planner_param_.max_yaw_deviation_rad);
+    planner_param_.max_yaw_deviation_rad, planner_param_.distance_thresh);
 
   return *signed_arc_length > 0;
 }
@@ -489,9 +489,9 @@ bool VirtualTrafficLightModule::isBeforeStopLine()
   }
 
   const double max_dist = std::numeric_limits<double>::max();
-  const auto signed_arc_length = tier4_autoware_utils::calcSignedArcLength(
+  const auto signed_arc_length = tier4_autoware_utils::calcFirstSignedArcLength(
     module_data_.path.points, module_data_.head_pose, collision->point, max_dist,
-    planner_param_.max_yaw_deviation_rad);
+    planner_param_.max_yaw_deviation_rad, planner_param_.distance_thresh);
 
   return *signed_arc_length > -planner_param_.dead_line_margin;
 }
@@ -512,9 +512,9 @@ bool VirtualTrafficLightModule::isAfterAnyEndLine()
   }
 
   const double max_dist = std::numeric_limits<double>::max();
-  const auto signed_arc_length = tier4_autoware_utils::calcSignedArcLength(
+  const auto signed_arc_length = tier4_autoware_utils::calcFirstSignedArcLength(
     module_data_.path.points, module_data_.head_pose, collision->point, max_dist,
-    planner_param_.max_yaw_deviation_rad);
+    planner_param_.max_yaw_deviation_rad, planner_param_.distance_thresh);
 
   return *signed_arc_length < -planner_param_.dead_line_margin;
 }
@@ -528,9 +528,9 @@ bool VirtualTrafficLightModule::isNearAnyEndLine()
   }
 
   const double max_dist = std::numeric_limits<double>::max();
-  const auto signed_arc_length = tier4_autoware_utils::calcSignedArcLength(
+  const auto signed_arc_length = tier4_autoware_utils::calcFirstSignedArcLength(
     module_data_.path.points, module_data_.head_pose, collision->point, max_dist,
-    planner_param_.max_yaw_deviation_rad);
+    planner_param_.max_yaw_deviation_rad, planner_param_.distance_thresh);
 
   return std::abs(*signed_arc_length) < planner_param_.near_line_distance;
 }
