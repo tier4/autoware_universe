@@ -53,6 +53,7 @@ using EgoTrajectory = autoware::experimental::trajectory::Trajectory<TrajectoryP
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
 using ObstacleSlowDownParams = ::minimum_rule_based_planner::Params::ObstacleSlowDown;
 
+// Count使ってる？消して良い？
 enum class Side { Left = 0, Right, Count };
 enum class Motion { Moving = 0, Static, Count };
 
