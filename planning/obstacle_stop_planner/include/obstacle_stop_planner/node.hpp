@@ -104,6 +104,7 @@ public:
     double hunting_threshold;      // keep slow down or stop state if obstacle vanished [s]
     double max_yaw_deviation_rad;  // maximum ego yaw deviation from trajectory [rad] (measures
                                    // against overlapping lanes)
+    double distance_thresh;
   };
 
   struct StopParam
