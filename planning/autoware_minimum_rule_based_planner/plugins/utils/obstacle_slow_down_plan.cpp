@@ -238,6 +238,8 @@ std::optional<double> SlowDownPlanner::validate_slow_down_interval(
 
   // 区間内の元の軌道速度が既に目標速度以下なら減速は不要なので棄却。
   // NOTE: 速度は stairstep 補間なので base の値だけを見れば区間内の速度は尽くせる
+  // TODO(odashima): Trajectory 側に弧長区間の属性走査 utils を整備してから、この index 演算を
+  // vel.max_in(from_s, to_s) 相当に置き換える。詳細は my_docs/TASK_trajectory_range_utils.md
   const auto [bases, values] = trajectory.longitudinal_velocity_mps().get_data();
   // bases は昇順。from_s で有効な base(from_s 以下の最後の base)から、
   // to_s 以上の最初の base の手前まで
@@ -393,7 +395,9 @@ double SlowDownPlanner::calculate_feasible_slow_down_velocity(
       params_.slow_down_min_jerk, params_.slow_down_min_acc, ego_acc, ego_vel, deceleration_dist);
     return min_slow_down_vel;
   }();
-  if (prev_output) {
+
+  // start_point は減速開始位置が軌道範囲外だった前フレームでは空
+  if (prev_output && prev_output->start_point) {
     // NOTE: If longitudinal controllability is not good, one_shot_slow_down_vel may be getting
     // larger since we use actual ego's velocity and acceleration for its calculation.
     //       Suppress one_shot_slow_down_vel getting larger here.
