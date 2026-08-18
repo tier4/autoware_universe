@@ -97,6 +97,8 @@ struct SlowDownTarget
   const std::optional<SlowDownCarryOver> & prev;
   Motion obstacle_motion{};
   double stable_dist_to_traj_poly{};
+  // 横距離から線形補間で決めた、障害物の横を通過するときの目標速度 [m/s]
+  double slow_down_vel{};
 };
 
 // シュミットトリガー(2値ヒステリシス)。
@@ -316,14 +318,12 @@ private:
   // stabilization LPF applied in plan_slow_down_for_obstacle)
   std::optional<SlowdownInterval> calculate_distance_to_slow_down_with_constraints(
     const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownTarget & target,
-    const double dist_to_ego, const bool is_driving_forward, const double slow_down_vel) const;
+    const double dist_to_ego, const bool is_driving_forward) const;
 
   double calculate_feasible_slow_down_velocity(
     const EgoTrajectory & trajectory, const std::optional<SlowDownCarryOver> & prev_output,
     const double ego_vel, const double ego_acc, const double slow_down_vel,
     const double deceleration_dist, const double dist_to_slow_down_start) const;
-
-  double calculate_target_slow_down_velocity(const SlowDownTarget & target) const;
 
   ObstacleSlowDownParams params_;
   std::vector<uint8_t> target_object_labels_;

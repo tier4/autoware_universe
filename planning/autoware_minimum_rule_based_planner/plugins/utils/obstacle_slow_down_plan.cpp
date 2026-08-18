@@ -178,20 +178,26 @@ SlowDownTarget SlowDownPlanner::make_slow_down_target(
                        params_.lpf_gain_lateral_distance)
                    : obstacle.dist_to_traj_poly;
 
-  return {obstacle, prev_slow_down, obstacle_motion, stable_dist_to_traj_poly};
+  // 障害物との横距離から通過時の目標速度を線形補間で決める
+  const auto & p =
+    get_object_param(obstacle.classification).get_velocity_param(obstacle.side, obstacle_motion);
+  const double ratio = std::clamp(
+    (std::abs(stable_dist_to_traj_poly) - p.min_lat_margin) / (p.max_lat_margin - p.min_lat_margin),
+    0.0, 1.0);
+  const double slow_down_vel =
+    p.min_ego_velocity + ratio * (p.max_ego_velocity - p.min_ego_velocity);
+
+  return {obstacle, prev_slow_down, obstacle_motion, stable_dist_to_traj_poly, slow_down_vel};
 }
 
 std::optional<PlannedSlowDownWithCarryOver> SlowDownPlanner::plan_slow_down_for_obstacle(
   const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownTarget & target,
   const double dist_to_ego, const bool is_driving_forward) const
 {
-  // 障害物との横距離(LPF 済み)から通過時の目標速度を線形補間で決める
-  const double slow_down_vel = calculate_target_slow_down_velocity(target);
-
   // 減速制約(min acc/jerk)と障害物の縦速度を考慮して、減速区間 [from_s, to_s] と
   // そこで実現可能な速度を計算する(遠すぎる場合は nullopt)
   const auto slow_down_interval = calculate_distance_to_slow_down_with_constraints(
-    input, trajectory, target, dist_to_ego, is_driving_forward, slow_down_vel);
+    input, trajectory, target, dist_to_ego, is_driving_forward);
   if (!slow_down_interval) {
     RCLCPP_DEBUG(
       logger_, "[SlowDown] Ignore obstacle (%s) since distance to slow down is not valid",
@@ -295,10 +301,11 @@ Motion SlowDownPlanner::determine_obstacle_motion(
 
 std::optional<SlowdownInterval> SlowDownPlanner::calculate_distance_to_slow_down_with_constraints(
   const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownTarget & target,
-  const double dist_to_ego, const bool is_driving_forward, const double slow_down_vel) const
+  const double dist_to_ego, const bool is_driving_forward) const
 {
   const auto & obstacle = target.obstacle;
   const auto & prev_output = target.prev;
+  const double slow_down_vel = target.slow_down_vel;
   const double abs_ego_offset = is_driving_forward
                                   ? std::abs(vehicle_info_.max_longitudinal_offset_m)
                                   : std::abs(vehicle_info_.min_longitudinal_offset_m);
@@ -425,18 +432,6 @@ double SlowDownPlanner::calculate_feasible_slow_down_velocity(
     return std::max(slow_down_vel, feasible_slow_down_vel);
   }
   return std::max(slow_down_vel, one_shot_slow_down_vel);
-}
-
-double SlowDownPlanner::calculate_target_slow_down_velocity(const SlowDownTarget & target) const
-{
-  const auto & p = get_object_param(target.obstacle.classification)
-                     .get_velocity_param(target.obstacle.side, target.obstacle_motion);
-
-  const double ratio = std::clamp(
-    (std::abs(target.stable_dist_to_traj_poly) - p.min_lat_margin) /
-      (p.max_lat_margin - p.min_lat_margin),
-    0.0, 1.0);
-  return p.min_ego_velocity + ratio * (p.max_ego_velocity - p.min_ego_velocity);
 }
 
 }  // namespace autoware::minimum_rule_based_planner::plugin::obstacle_slow_down_utils
