@@ -120,6 +120,7 @@ private:
     double extract_behind_dist;           // backward waypoints distance from current position [m]
     double stop_dist_to_prohibit_engage;  // prevent to move toward close stop point
     double delta_yaw_threshold;           // for closest index calculation
+    double distance_thresh;
     resampling::ResampleParam post_resample_param;
     AlgorithmType algorithm_type;  // Option : JerkFiltered, Linf, L2
   } node_param_{};

@@ -147,6 +147,7 @@ rcl_interfaces::msg::SetParametersResult MotionVelocitySmootherNode::onParameter
     update_param("extract_behind_dist", p.extract_behind_dist);
     update_param("stop_dist_to_prohibit_engage", p.stop_dist_to_prohibit_engage);
     update_param("delta_yaw_threshold", p.delta_yaw_threshold);
+    update_param("distance_thresh", p.distance_thresh);
   }
 
   {
@@ -244,6 +245,7 @@ void MotionVelocitySmootherNode::initCommonParam()
   p.extract_behind_dist = declare_parameter("extract_behind_dist", 3.0);
   p.stop_dist_to_prohibit_engage = declare_parameter("stop_dist_to_prohibit_engage", 1.5);
   p.delta_yaw_threshold = declare_parameter("delta_yaw_threshold", M_PI / 3.0);
+  p.distance_thresh = declare_parameter("distance_thresh", 9.0);
   p.post_resample_param.max_trajectory_length =
     declare_parameter("post_max_trajectory_length", 300.0);
   p.post_resample_param.min_trajectory_length =
@@ -720,9 +722,9 @@ void MotionVelocitySmootherNode::overwriteStopPoint(
   }
 
   // Get Closest Point from Output
-  const auto nearest_output_point_idx = tier4_autoware_utils::findNearestIndex(
+  const auto nearest_output_point_idx = tier4_autoware_utils::findFirstNearestIndex(
     output, input.at(*stop_idx).pose, std::numeric_limits<double>::max(),
-    node_param_.delta_yaw_threshold);
+    node_param_.delta_yaw_threshold, node_param_.distance_thresh);
 
   // check over velocity
   bool is_stop_velocity_exceeded{false};
