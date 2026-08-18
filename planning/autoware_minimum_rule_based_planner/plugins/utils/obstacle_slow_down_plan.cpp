@@ -145,8 +145,9 @@ std::vector<PlannedSlowDown> SlowDownPlanner::plan_slow_down(
   std::vector<PlannedSlowDown> plans;
   for (const auto & obstacle : obstacles) {
     auto & state = tracking_states_.at(obstacle.uuid);  // filter 段で必ず作られている
-    const auto result = plan_slow_down_for_obstacle(
-      input, trajectory, obstacle, state.prev_slow_down, dist_to_ego, is_driving_forward);
+    const auto target = make_slow_down_target(obstacle, state.prev_slow_down);
+    const auto result =
+      plan_slow_down_for_obstacle(input, trajectory, target, dist_to_ego, is_driving_forward);
     // prev_slow_down は「前フレームで減速出力を出したか」を表すため、出さなければ消す
     state.prev_slow_down = result ? std::make_optional(result->carry_over) : std::nullopt;
     if (result) {
@@ -164,31 +165,42 @@ std::vector<PlannedSlowDown> SlowDownPlanner::plan_slow_down(
   return plans;
 }
 
-std::optional<PlannedSlowDownWithCarryOver> SlowDownPlanner::plan_slow_down_for_obstacle(
-  const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownObstacle & obstacle,
-  const std::optional<SlowDownCarryOver> & prev_output, const double dist_to_ego,
-  const bool is_driving_forward) const
+// 前フレームからの持ち越しに依存する量(motion 判定・横距離 LPF)をここで一度だけ確定させる
+SlowDownTarget SlowDownPlanner::make_slow_down_target(
+  const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_slow_down) const
 {
   // 障害物が移動中か静止かを速度ノルムのシュミットトリガーで判定
-  const auto obstacle_motion = determine_obstacle_motion(obstacle, prev_output);
+  const auto obstacle_motion = determine_obstacle_motion(obstacle, prev_slow_down);
 
+  const double stable_dist_to_traj_poly =
+    prev_slow_down ? autoware::signal_processing::lowpassFilter(
+                       obstacle.dist_to_traj_poly, prev_slow_down->dist_from_obj_poly_to_traj_poly,
+                       params_.lpf_gain_lateral_distance)
+                   : obstacle.dist_to_traj_poly;
+
+  return {obstacle, prev_slow_down, obstacle_motion, stable_dist_to_traj_poly};
+}
+
+std::optional<PlannedSlowDownWithCarryOver> SlowDownPlanner::plan_slow_down_for_obstacle(
+  const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownTarget & target,
+  const double dist_to_ego, const bool is_driving_forward) const
+{
   // 障害物との横距離(LPF 済み)から通過時の目標速度を線形補間で決める
-  const auto [slow_down_vel, stable_dist_to_traj_poly] =
-    calculate_target_slow_down_velocity(obstacle, prev_output, obstacle_motion);
+  const double slow_down_vel = calculate_target_slow_down_velocity(target);
 
   // 減速制約(min acc/jerk)と障害物の縦速度を考慮して、減速区間 [from_s, to_s] と
   // そこで実現可能な速度を計算する(遠すぎる場合は nullopt)
   const auto slow_down_interval = calculate_distance_to_slow_down_with_constraints(
-    input, trajectory, obstacle, prev_output, dist_to_ego, is_driving_forward, slow_down_vel);
+    input, trajectory, target, dist_to_ego, is_driving_forward, slow_down_vel);
   if (!slow_down_interval) {
     RCLCPP_DEBUG(
       logger_, "[SlowDown] Ignore obstacle (%s) since distance to slow down is not valid",
-      autoware_utils_uuid::to_hex_string(obstacle.uuid).c_str());
+      autoware_utils_uuid::to_hex_string(target.obstacle.uuid).c_str());
     return std::nullopt;
   }
 
   const auto stable_slow_down_vel =
-    validate_slow_down_interval(obstacle, trajectory, prev_output, *slow_down_interval);
+    validate_slow_down_interval(target, trajectory, *slow_down_interval);
   if (!stable_slow_down_vel) {
     return std::nullopt;
   }
@@ -203,23 +215,23 @@ std::optional<PlannedSlowDownWithCarryOver> SlowDownPlanner::plan_slow_down_for_
   SlowDownCarryOver carry_over;
   carry_over.target_vel = *stable_slow_down_vel;
   carry_over.feasible_target_vel = slow_down_interval->velocity;
-  carry_over.dist_from_obj_poly_to_traj_poly = stable_dist_to_traj_poly;
+  carry_over.dist_from_obj_poly_to_traj_poly = target.stable_dist_to_traj_poly;
   // 減速開始位置が軌道範囲外なら planning factor を出さないため start_point は持たせない
   if (0.0 <= slow_down_interval->from_s && slow_down_interval->from_s <= trajectory.length()) {
     carry_over.start_point = trajectory.compute(slow_down_interval->from_s).pose;
   }
   carry_over.end_point = trajectory.compute(slow_down_interval->to_s).pose;
-  carry_over.obstacle_motion = obstacle_motion;
+  carry_over.obstacle_motion = target.obstacle_motion;
 
   // start/end_point は結果側も持ち越し側も要るので、寿命を絡ませないよう値で重複して持つ
   return PlannedSlowDownWithCarryOver{
-    {slowdown_interval, obstacle, carry_over.start_point, *carry_over.end_point}, carry_over};
+    {slowdown_interval, target.obstacle, carry_over.start_point, *carry_over.end_point},
+    carry_over};
 }
 
 // 減速区間の目標速度を前フレームと LPF して安定化し、減速が不要/区間が無効なら nullopt を返す
 std::optional<double> SlowDownPlanner::validate_slow_down_interval(
-  const SlowDownObstacle & obstacle, const EgoTrajectory & trajectory,
-  const std::optional<SlowDownCarryOver> & prev_output,
+  const SlowDownTarget & target, const EgoTrajectory & trajectory,
   const SlowdownInterval & slow_down_interval) const
 {
   // 区間長が 0 以下、または区間終端が軌道範囲外なら棄却
@@ -231,9 +243,9 @@ std::optional<double> SlowDownPlanner::validate_slow_down_interval(
 
   // 前フレームの目標速度と LPF して目標速度のチャタリングを抑える
   const double stable_slow_down_vel =
-    prev_output
+    target.prev
       ? autoware::signal_processing::lowpassFilter(
-          slow_down_interval.velocity, prev_output->target_vel, params_.lpf_gain_slow_down_vel)
+          slow_down_interval.velocity, target.prev->target_vel, params_.lpf_gain_slow_down_vel)
       : slow_down_interval.velocity;
 
   // 区間内の元の軌道速度が既に目標速度以下なら減速は不要なので棄却。
@@ -256,7 +268,7 @@ std::optional<double> SlowDownPlanner::validate_slow_down_interval(
       logger_,
       "[SlowDown] Ignore obstacle (%s) since slow down velocity (%f) is higher than trajectory "
       "velocity.",
-      autoware_utils_uuid::to_hex_string(obstacle.uuid).c_str(), stable_slow_down_vel);
+      autoware_utils_uuid::to_hex_string(target.obstacle.uuid).c_str(), stable_slow_down_vel);
     return std::nullopt;
   }
 
@@ -282,10 +294,11 @@ Motion SlowDownPlanner::determine_obstacle_motion(
 }
 
 std::optional<SlowdownInterval> SlowDownPlanner::calculate_distance_to_slow_down_with_constraints(
-  const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownObstacle & obstacle,
-  const std::optional<SlowDownCarryOver> & prev_output, const double dist_to_ego,
-  const bool is_driving_forward, const double slow_down_vel) const
+  const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownTarget & target,
+  const double dist_to_ego, const bool is_driving_forward, const double slow_down_vel) const
 {
+  const auto & obstacle = target.obstacle;
+  const auto & prev_output = target.prev;
   const double abs_ego_offset = is_driving_forward
                                   ? std::abs(vehicle_info_.max_longitudinal_offset_m)
                                   : std::abs(vehicle_info_.min_longitudinal_offset_m);
@@ -414,29 +427,16 @@ double SlowDownPlanner::calculate_feasible_slow_down_velocity(
   return std::max(slow_down_vel, one_shot_slow_down_vel);
 }
 
-std::pair<double, double> SlowDownPlanner::calculate_target_slow_down_velocity(
-  const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output,
-  const Motion obstacle_motion) const
+double SlowDownPlanner::calculate_target_slow_down_velocity(const SlowDownTarget & target) const
 {
-  const auto & p =
-    get_object_param(obstacle.classification).get_velocity_param(obstacle.side, obstacle_motion);
-  const double stable_dist_from_obj_poly_to_traj_poly = [&]() {
-    if (prev_output) {
-      return autoware::signal_processing::lowpassFilter(
-        obstacle.dist_to_traj_poly, prev_output->dist_from_obj_poly_to_traj_poly,
-        params_.lpf_gain_lateral_distance);
-    }
-    return obstacle.dist_to_traj_poly;
-  }();
+  const auto & p = get_object_param(target.obstacle.classification)
+                     .get_velocity_param(target.obstacle.side, target.obstacle_motion);
 
   const double ratio = std::clamp(
-    (std::abs(stable_dist_from_obj_poly_to_traj_poly) - p.min_lat_margin) /
+    (std::abs(target.stable_dist_to_traj_poly) - p.min_lat_margin) /
       (p.max_lat_margin - p.min_lat_margin),
     0.0, 1.0);
-  const double slow_down_vel =
-    p.min_ego_velocity + ratio * (p.max_ego_velocity - p.min_ego_velocity);
-
-  return {slow_down_vel, stable_dist_from_obj_poly_to_traj_poly};
+  return p.min_ego_velocity + ratio * (p.max_ego_velocity - p.min_ego_velocity);
 }
 
 }  // namespace autoware::minimum_rule_based_planner::plugin::obstacle_slow_down_utils

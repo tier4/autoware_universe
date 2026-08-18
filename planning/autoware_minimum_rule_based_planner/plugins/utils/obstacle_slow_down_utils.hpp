@@ -90,6 +90,15 @@ struct SlowDownCarryOver
   Motion obstacle_motion{};
 };
 
+// plan 段で 1 障害物ぶんの入力をまとめた束。ループ内だけで生きる一時オブジェクト
+struct SlowDownTarget
+{
+  const SlowDownObstacle & obstacle;
+  const std::optional<SlowDownCarryOver> & prev;
+  Motion obstacle_motion{};
+  double stable_dist_to_traj_poly{};
+};
+
 // シュミットトリガー(2値ヒステリシス)。
 // このモジュールの「前回状態」は単一量の判定結果ではなくフレーム全体の最終判定
 // (フィルタ通過可否・減速出力の有無)で決まるため、インスタンスに状態を持たせて
@@ -285,16 +294,19 @@ private:
     const std::vector<SlowDownObstacle> & obstacles, const double dist_to_ego,
     const bool is_driving_forward);
 
+  // 前フレームからの持ち越しに依存する量(motion 判定・横距離 LPF)をここで一度だけ確定させる
+  SlowDownTarget make_slow_down_target(
+    const SlowDownObstacle & obstacle,
+    const std::optional<SlowDownCarryOver> & prev_slow_down) const;
+
   // returns nullopt if the obstacle should be ignored.
   std::optional<PlannedSlowDownWithCarryOver> plan_slow_down_for_obstacle(
-    const SlowDownInput & input, const EgoTrajectory & trajectory,
-    const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output,
+    const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownTarget & target,
     const double dist_to_ego, const bool is_driving_forward) const;
 
   // returns the stabilized slow down velocity, or nullopt if the obstacle should be ignored.
   std::optional<double> validate_slow_down_interval(
-    const SlowDownObstacle & obstacle, const EgoTrajectory & trajectory,
-    const std::optional<SlowDownCarryOver> & prev_output,
+    const SlowDownTarget & target, const EgoTrajectory & trajectory,
     const SlowdownInterval & slow_down_interval) const;
 
   Motion determine_obstacle_motion(
@@ -303,8 +315,7 @@ private:
   // returns the slow down interval whose velocity is the feasible slow down velocity (before the
   // stabilization LPF applied in plan_slow_down_for_obstacle)
   std::optional<SlowdownInterval> calculate_distance_to_slow_down_with_constraints(
-    const SlowDownInput & input, const EgoTrajectory & trajectory,
-    const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output,
+    const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownTarget & target,
     const double dist_to_ego, const bool is_driving_forward, const double slow_down_vel) const;
 
   double calculate_feasible_slow_down_velocity(
@@ -312,10 +323,7 @@ private:
     const double ego_vel, const double ego_acc, const double slow_down_vel,
     const double deceleration_dist, const double dist_to_slow_down_start) const;
 
-  // returns {slow down velocity, LPF-filtered lateral distance used for the calculation}
-  std::pair<double, double> calculate_target_slow_down_velocity(
-    const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output,
-    const Motion obstacle_motion) const;
+  double calculate_target_slow_down_velocity(const SlowDownTarget & target) const;
 
   ObstacleSlowDownParams params_;
   std::vector<uint8_t> target_object_labels_;
