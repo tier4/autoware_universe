@@ -29,6 +29,7 @@
 
 namespace autoware::trajectory_validator
 {
+using autoware_internal_planning_msgs::msg::CandidateTrajectory;
 using autoware_trajectory_validator::msg::MetricReport;
 using autoware_trajectory_validator::msg::RiskLevel;
 using autoware_trajectory_validator::msg::ValidationReport;
@@ -205,9 +206,15 @@ std::vector<GeneratorInfo> TrajectoryValidator::get_valid_trajectories_generator
   const GeneratorInfoMap & uuid_to_generator_info) const
 {
   std::vector<GeneratorInfo> generator_info;
+  std::unordered_set<std::array<uint8_t, 16>, UuidHash> seen_generator_ids;
 
   for (const auto & traj : valid_trajectories.candidate_trajectories) {
-    const auto it = uuid_to_generator_info.find(traj.generator_id.uuid);
+    const auto & uuid = traj.generator_id.uuid;
+    if (!seen_generator_ids.insert(uuid).second) {
+      continue;
+    }
+
+    const auto it = uuid_to_generator_info.find(uuid);
     if (it != uuid_to_generator_info.end()) {
       generator_info.push_back(it->second.info);
     }

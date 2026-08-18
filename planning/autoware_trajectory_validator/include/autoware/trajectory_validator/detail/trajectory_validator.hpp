@@ -152,7 +152,8 @@ private:
     std::vector<MetricReport> combined_metrics) const;
 
   /**
-   * @brief Backfills generator_info for each trajectory that survived filtering.
+   * @brief Backfills generator_info for each trajectory that survived filtering, with at most one
+   * entry per generator.
    * @param valid_trajectories Trajectories that passed validation.
    * @param uuid_to_generator_info Lookup built by build_uuid_to_generator_info.
    */
