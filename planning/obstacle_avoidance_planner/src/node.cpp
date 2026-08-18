@@ -40,12 +40,13 @@ namespace
 {
 template <typename T1, typename T2>
 size_t searchExtendedZeroVelocityIndex(
-  const std::vector<T1> & fine_points, const std::vector<T2> & vel_points)
+  const std::vector<T1> & fine_points, const std::vector<T2> & vel_points,
+  const double distance_thresh)
 {
   const auto opt_zero_vel_idx = tier4_autoware_utils::searchZeroVelocityIndex(vel_points);
   const size_t zero_vel_idx = opt_zero_vel_idx ? opt_zero_vel_idx.get() : vel_points.size() - 1;
-  return tier4_autoware_utils::findNearestIndex(
-    fine_points, vel_points.at(zero_vel_idx).pose.position);
+  return tier4_autoware_utils::findFirstNearestIndex(
+    fine_points, vel_points.at(zero_vel_idx).pose.position, distance_thresh);
 }
 
 bool isPathShapeChanged(
@@ -319,6 +320,7 @@ ObstacleAvoidancePlanner::ObstacleAvoidancePlanner(const rclcpp::NodeOptions & n
       declare_parameter<double>("common.delta_dist_threshold_for_closest_point");
     traj_param_.delta_yaw_threshold_for_closest_point =
       declare_parameter<double>("common.delta_yaw_threshold_for_closest_point");
+    traj_param_.distance_thresh = declare_parameter<double>("common.distance_thresh", 9.0);
     traj_param_.delta_yaw_threshold_for_straight =
       declare_parameter<double>("common.delta_yaw_threshold_for_straight");
 
@@ -581,6 +583,7 @@ rcl_interfaces::msg::SetParametersResult ObstacleAvoidancePlanner::paramCallback
     updateParam<double>(
       parameters, "common.delta_yaw_threshold_for_closest_point",
       traj_param_.delta_yaw_threshold_for_closest_point);
+    updateParam<double>(parameters, "common.distance_thresh", traj_param_.distance_thresh);
     updateParam<double>(
       parameters, "common.delta_yaw_threshold_for_straight",
       traj_param_.delta_yaw_threshold_for_straight);
@@ -1417,9 +1420,9 @@ ObstacleAvoidancePlanner::alignVelocity(
     const auto opt_path_zero_vel_idx = tier4_autoware_utils::searchZeroVelocityIndex(path_points);
     if (opt_path_zero_vel_idx && 1 < fine_traj_points.size()) {
       const auto & zero_vel_path_point = path_points.at(opt_path_zero_vel_idx.get());
-      const auto opt_traj_seg_idx = tier4_autoware_utils::findNearestSegmentIndex(
+      const auto opt_traj_seg_idx = tier4_autoware_utils::findFirstNearestSegmentIndex(
         fine_traj_points, zero_vel_path_point.pose, std::numeric_limits<double>::max(),
-        traj_param_.delta_yaw_threshold_for_closest_point);
+        traj_param_.delta_yaw_threshold_for_closest_point, traj_param_.distance_thresh);
       if (opt_traj_seg_idx) {
         const auto interpolated_pose =
           lerpPose(fine_traj_points, zero_vel_path_point.pose.position, opt_traj_seg_idx.get());
@@ -1458,7 +1461,8 @@ ObstacleAvoidancePlanner::alignVelocity(
   const size_t zero_vel_fine_traj_idx = [&]() {
     // zero velocity for being outside drivable area
     const size_t zero_vel_traj_idx =
-      searchExtendedZeroVelocityIndex(fine_traj_points_with_path_zero_vel, traj_points);
+      searchExtendedZeroVelocityIndex(
+        fine_traj_points_with_path_zero_vel, traj_points, traj_param_.distance_thresh);
 
     // zero velocity in path points
     if (opt_zero_vel_path_idx) {

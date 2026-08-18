@@ -193,6 +193,7 @@ struct TrajectoryParam
   double delta_arc_length_for_trajectory;
   double delta_dist_threshold_for_closest_point;
   double delta_yaw_threshold_for_closest_point;
+  double distance_thresh;
   double delta_yaw_threshold_for_straight;
   double trajectory_length;
   double forward_fixing_min_distance;

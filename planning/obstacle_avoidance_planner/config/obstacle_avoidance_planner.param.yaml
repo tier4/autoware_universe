@@ -34,6 +34,7 @@
 
       delta_dist_threshold_for_closest_point: 3.0 # delta dist thres for closest point [m]
       delta_yaw_threshold_for_closest_point: 1.046 #M_PI/3.0, delta yaw thres for closest point
+      distance_thresh: 9.0
       delta_yaw_threshold_for_straight: 0.02 # delta dist thres for straight point
 
       num_fix_points_for_extending: 50 # number of fixing points when extending
