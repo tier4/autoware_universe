@@ -72,7 +72,9 @@ private:
 
   void judge_start_planner_act(
     const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & ego_pose);
-  void judge_goal_planner_act(const PathPointTrajectory & trajectory, const double & s_path_end);
+  void judge_goal_planner_act(
+    const PathPointTrajectory & trajectory, const double & s_path_end,
+    const std::vector<lanelet::BasicPolygon2d> & available_area);
   std::optional<std::vector<PathPointWithLaneId>> get_start_pose(
     const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose);
   std::optional<std::vector<PathPointWithLaneId>> get_goal_pose(

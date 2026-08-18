@@ -293,7 +293,9 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
   const PathPointTrajectory & trajectory, lanelet::ConstLanelet & current_lanelet,
   const double & s_path_end, const geometry_msgs::msg::Pose & ego_pose)
 {
-  judge_goal_planner_act(trajectory, s_path_end);
+  const auto available_area = get_available_area(trajectory);
+
+  judge_goal_planner_act(trajectory, s_path_end, available_area);
   judge_start_planner_act(current_lanelet, ego_pose);
 
   if (!start_planner_act_ && !goal_planner_act_) {
@@ -305,7 +307,7 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
   if (!start_pose_candidates || !goal_pose_candidates) {
     return generated_trajectory_;
   }
-  const auto available_area = get_available_area(trajectory);
+
   if (available_area.empty()) {
     return generated_trajectory_;
   }
@@ -384,11 +386,16 @@ void StartGoalPlanner::judge_start_planner_act(
 }
 
 void StartGoalPlanner::judge_goal_planner_act(
-  const PathPointTrajectory & trajectory, const double & s_path_end)
+  const PathPointTrajectory & trajectory, const double & s_path_end,
+  const std::vector<lanelet::BasicPolygon2d> & available_area)
 {
   const auto s_path_end_clamped = std::min(trajectory.length(), s_path_end);
   const auto distance_to_goal =
     autoware_utils::calc_distance2d(trajectory.compute(s_path_end_clamped), route_data_.goal_pose);
+  const bool goal_pose_in_available_area = is_point_in_polygons(
+    autoware_utils_geometry::Point2d{
+      route_data_.goal_pose.position.x, route_data_.goal_pose.position.y},
+    available_area);
 
   if (!goal_pose_prev_.has_value()) {
     goal_pose_prev_ = route_data_.goal_pose;
@@ -398,7 +405,8 @@ void StartGoalPlanner::judge_goal_planner_act(
     goal_planner_act_ = false;
     generated_trajectory_ = std::nullopt;
   } else if (!goal_planner_act_ || !generated_trajectory_.has_value()) {
-    goal_planner_act_ = distance_to_goal < params_.search_radius_range;
+    goal_planner_act_ =
+      distance_to_goal < params_.search_radius_range && goal_pose_in_available_area;
   }
   goal_pose_prev_ = route_data_.goal_pose;
 }
