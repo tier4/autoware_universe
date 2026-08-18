@@ -20,6 +20,7 @@
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/trajectory_point.hpp>
+#include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/transform/transforms.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -35,9 +36,9 @@
 
 namespace autoware::trajectory_processor::plugin
 {
+using utils::obstacle_stop::build_trajectory_footprint_index;
 using utils::obstacle_stop::get_nearest_object_collision;
 using utils::obstacle_stop::get_nearest_pcd_collision;
-using utils::obstacle_stop::get_trajectory_shape;
 using utils::obstacle_stop::PointCloud;
 using utils::obstacle_stop::PointCloud2;
 
@@ -157,13 +158,13 @@ bool ObstacleStop::is_trajectory_modification_required(
 
   {
     autoware_utils_debug::ScopedTimeTrack st(
-      "ObstacleStop::get_trajectory_shape", *get_time_keeper());
+      "ObstacleStop::build_trajectory_footprint_index", *get_time_keeper());
 
-    debug_data_.trajectory_shape = get_trajectory_shape(
+    debug_data_.trajectory_shape = build_trajectory_footprint_index(
       traj_points, input.current_odometry->pose.pose, context_->vehicle_info,
       input.current_odometry->twist.twist.linear.x,
       input.current_acceleration->accel.accel.linear.x, stopping_params_.nominal_deceleration,
-      stopping_params_.jerk_limit, params_.stop_margin, params_.lateral_margin);
+      stopping_params_.jerk_limit, params_.stop_margin);
   }
 
   check_obstacles(traj_points, input);
@@ -321,8 +322,8 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
     debug_data_.filtered_objects, active_objects, get_clock()->now());
 
   object_filter_->filter_by_target_area(
-    active_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape.polygon,
-    debug_data_.target_polygons);
+    active_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
+    params_.lateral_margin, debug_data_.target_polygons);
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = get_nearest_object_collision(
@@ -337,7 +338,7 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
 }
 
 std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
-  const TrajectoryPoints & traj_points, const TrajectoryProcessorData & input)
+  [[maybe_unused]] const TrajectoryPoints & traj_points, const InputData & input)
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::check_pointcloud", *get_time_keeper());
   if (!params_.use_pointcloud || !input.obstacle_pointcloud) return std::nullopt;
@@ -403,7 +404,8 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
     autoware_utils_debug::ScopedTimeTrack stt(
       "ObstacleStop::get_nearest_pcd_collision", *get_time_keeper());
     collision_point = get_nearest_pcd_collision(
-      traj_points, debug_data_.trajectory_shape, active_points, debug_data_.target_pcd_points);
+      debug_data_.trajectory_shape, active_points, params_.lateral_margin,
+      debug_data_.target_pcd_points);
   }
 
   return collision_point;
@@ -480,9 +482,15 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
   };
 
   int id = 0;
-  for (const auto & traj_polygon : debug_data_.trajectory_shape.polygon) {
-    add_polygon_marker(traj_polygon, ns + "/traj_polygon", id, yellow);
-    id++;
+  {
+    const auto & shape = debug_data_.trajectory_shape;
+    for (const auto & footprint : shape.footprints) {
+      const auto ego_polygon = autoware_utils::to_footprint(
+        footprint.pose, shape.ego_front_offset, shape.ego_back_offset,
+        2.0 * (shape.ego_half_width + params_.lateral_margin));
+      add_polygon_marker(ego_polygon, ns + "/traj_polygon", id, yellow);
+      id++;
+    }
   }
 
   {

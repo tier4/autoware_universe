@@ -348,8 +348,7 @@ std::vector<FootprintNode> query_rtree_candidates(
 {
   std::vector<FootprintNode> candidates;
   if (shape.rtree.empty()) return candidates;
-  shape.rtree.query(
-    boost::geometry::index::intersects(query_box), std::back_inserter(candidates));
+  shape.rtree.query(boost::geometry::index::intersects(query_box), std::back_inserter(candidates));
   return candidates;
 }
 
@@ -395,8 +394,8 @@ std::vector<size_t> query_overlapping_footprints(
 {
   if (polygon.outer().empty()) return {};
 
-  const auto query_box =
-    inflate_box(boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(polygon), lat_margin);
+  const auto query_box = inflate_box(
+    boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(polygon), lat_margin);
   const auto candidates = query_rtree_candidates(shape, query_box);
 
   std::vector<size_t> hits;
@@ -414,34 +413,36 @@ std::vector<size_t> query_overlapping_footprints(
 }
 
 std::optional<CollisionPoint> get_nearest_pcd_collision(
-  const TrajectoryPoints & trajectory_points, const TrajectoryShape & trajectory_shape,
-  const PointCloud::Ptr & pointcloud, std::vector<geometry_msgs::msg::Point> & target_pcd_points)
+  const TrajectoryShape & trajectory_shape, const PointCloud::Ptr & pointcloud,
+  const double lat_margin, std::vector<geometry_msgs::msg::Point> & target_pcd_points)
 {
-  if (pointcloud->empty() || trajectory_points.size() < 2) return std::nullopt;
-
-  PointCloud::Ptr pointcloud_in_polygon(new PointCloud);
-  for (const auto & point : *pointcloud) {
-    if (boost::geometry::within(
-          autoware_utils::Point2d{point.x, point.y}, trajectory_shape.polygon)) {
-      pointcloud_in_polygon->push_back(point);
-    }
-  }
-
-  if (pointcloud_in_polygon->empty()) return std::nullopt;
+  if (pointcloud->empty() || trajectory_shape.footprints.empty()) return std::nullopt;
 
   auto min_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_collision_point;
-  for (const auto & point : *pointcloud_in_polygon) {
+  bool found_collision = false;
+
+  for (const auto & point : *pointcloud) {
+    const Point2d query_point{point.x, point.y};
+    const auto hits = query_overlapping_footprints(trajectory_shape, query_point, lat_margin);
+    if (hits.empty()) continue;
+
+    const auto & footprint = trajectory_shape.footprints[hits.front()];
+    const auto rel = autoware_utils::inverse_transform_point(query_point.to_3d(), footprint.pose);
+    const auto arc_length = footprint.arc_length + rel.x();
+
     geometry_msgs::msg::Point p =
       geometry_msgs::msg::Point().set__x(point.x).set__y(point.y).set__z(point.z);
-    auto arc_length = motion_utils::calcSignedArcLength(trajectory_points, 0, p);
+    target_pcd_points.emplace_back(p);
+
     if (arc_length < min_arc_length) {
       min_arc_length = arc_length;
       nearest_collision_point = p;
+      found_collision = true;
     }
-    target_pcd_points.emplace_back(p);
   }
 
+  if (!found_collision) return std::nullopt;
   return CollisionPoint(nearest_collision_point, min_arc_length, 0.0);
 }
 
@@ -711,7 +712,8 @@ void PointCloudFilter::filter_pointcloud_by_object(
 void ObjectFilter::filter_by_target_area(
   PredictedObjects & objects, const TrajectoryPoints & trajectory_points,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const MultiPolygon2d & target_area, MultiPolygon2d & target_polygons)
+  const TrajectoryShape & trajectory_shape, const double lat_margin,
+  MultiPolygon2d & target_polygons)
 {
   const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
   constexpr double time_buffer = 0.5;
@@ -739,6 +741,10 @@ void ObjectFilter::filter_by_target_area(
     return autoware_utils::expand_polygon(polygon, safety_buffer_);
   };
 
+  auto overlaps_ego_footprints = [&](const Polygon2d & polygon) {
+    return !query_overlapping_footprints(trajectory_shape, polygon, lat_margin).empty();
+  };
+
   auto is_exiting = [&](const auto & object) -> bool {
     const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
     const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
@@ -757,7 +763,7 @@ void ObjectFilter::filter_by_target_area(
     const auto t_to_obj_current_pos = time_to_obj_current_pos(object_pose, nearest_seg);
     const auto obj_pred_pose = get_predicted_obj_pose_at_time(object, t_to_obj_current_pos);
     const auto obj_pred_polygon = get_object_polygon(obj_pred_pose, object.shape);
-    return boost::geometry::disjoint(obj_pred_polygon, target_area);
+    return !overlaps_ego_footprints(obj_pred_polygon);
   };
 
   objects.objects.erase(
@@ -766,7 +772,7 @@ void ObjectFilter::filter_by_target_area(
       [&](const auto & object) {
         const auto object_pose = object.kinematics.initial_pose_with_covariance.pose;
         const auto object_polygon = get_object_polygon(object_pose, object.shape);
-        if (boost::geometry::disjoint(object_polygon, target_area)) return true;
+        if (!overlaps_ego_footprints(object_polygon)) return true;
         if (is_exiting(object)) return true;
         target_polygons.emplace_back(object_polygon);
         return false;

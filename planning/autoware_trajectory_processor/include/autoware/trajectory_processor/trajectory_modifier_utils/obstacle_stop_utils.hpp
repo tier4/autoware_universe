@@ -280,19 +280,19 @@ std::vector<size_t> query_overlapping_footprints(
   const TrajectoryShape & shape, const Polygon2d & polygon, const double lat_margin);
 
 /**
- * @brief Find the closest point-cloud obstacle inside the trajectory swept area.
- * @details Points inside `trajectory_shape.polygon` are considered; the collision is the one with
- * minimum arc length along `trajectory_points`. All inlier points are appended to
- * `target_pcd_points` for visualization or debugging.
- * @param trajectory_points Reference path for arc-length queries.
- * @param trajectory_shape Swept ego region from get_trajectory_shape().
+ * @brief Find the closest point-cloud obstacle that overlaps an ego footprint.
+ * @details Each point is queried against `trajectory_shape.rtree` with `lat_margin`. The collision
+ * is the inlier with minimum arc length (footprint arc length plus longitudinal offset in the
+ * vehicle frame). All inlier points are appended to `target_pcd_points`.
+ * @param trajectory_shape Ego footprint index from build_trajectory_footprint_index().
  * @param pointcloud Input points in the same frame as the trajectory.
- * @param[out] target_pcd_points Points that fell inside the trajectory polygon.
+ * @param lat_margin Lateral expansion of the ego footprint [m].
+ * @param[out] target_pcd_points Points that overlapped at least one footprint.
  * @return Nearest collision by arc length, or nullopt if the cloud is empty or none intersect.
  */
 std::optional<CollisionPoint> get_nearest_pcd_collision(
-  const TrajectoryPoints & trajectory_points, const TrajectoryShape & trajectory_shape,
-  const PointCloud::Ptr & pointcloud, std::vector<geometry_msgs::msg::Point> & target_pcd_points);
+  const TrajectoryShape & trajectory_shape, const PointCloud::Ptr & pointcloud,
+  const double lat_margin, std::vector<geometry_msgs::msg::Point> & target_pcd_points);
 
 using ObjectDecelMap = std::unordered_map<ObjectType, double>;
 using LateralMarginMap = std::unordered_map<ObjectType, double>;
@@ -383,19 +383,21 @@ struct ObjectFilter
   }
 
   /**
-   * @brief Keep only objects that intersect the target region, dropping those leaving laterally.
-   * @details Objects disjoint from `target_area` are removed. Moving objects that are judged to be
-   * exiting the corridor (using lateral velocity and a short prediction horizon) are also removed.
-   * Polygons of retained objects are accumulated in `target_polygons`.
+   * @brief Keep only objects that intersect ego footprints, dropping those leaving laterally.
+   * @details Objects with no overlapping footprint (expanded by `lat_margin`) are removed. Moving
+   * objects judged to be exiting the corridor (using lateral velocity and a short prediction
+   * horizon) are also removed. Polygons of retained objects are accumulated in `target_polygons`.
    * @param[in,out] objects Predicted objects to filter in place.
    * @param trajectory_points Reference path for time and geometry queries.
-   * @param target_area Multi-polygon region of interest (e.g. expanded path).
+   * @param trajectory_shape Ego footprint index used for overlap queries.
+   * @param lat_margin Lateral expansion of the ego footprint [m].
    * @param[out] target_polygons Footprints of objects that remain after filtering.
    */
   void filter_by_target_area(
     PredictedObjects & objects, const TrajectoryPoints & trajectory_points,
     const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-    const MultiPolygon2d & target_area, MultiPolygon2d & target_polygons);
+    const TrajectoryShape & trajectory_shape, const double lat_margin,
+    MultiPolygon2d & target_polygons);
 
   /**
    * @brief Update allow-listed types and velocity thresholds without reconstructing the filter.

@@ -17,6 +17,7 @@
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware/trajectory_processor/trajectory_modifier_utils/obstacle_stop_utils.hpp>
 #include <autoware/trajectory_processor/trajectory_modifier_utils/utils.hpp>
+#include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/transform/transforms.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -35,9 +36,9 @@ namespace autoware::minimum_rule_based_planner::plugin
 using autoware::trajectory_processor::utils::clamp_stop_point_arc_length;
 using autoware::trajectory_processor::utils::insert_stop_point;
 using autoware::trajectory_processor::utils::replace_trajectory_with_stop_point;
+using autoware::trajectory_processor::utils::obstacle_stop::build_trajectory_footprint_index;
 using autoware::trajectory_processor::utils::obstacle_stop::get_nearest_object_collision;
 using autoware::trajectory_processor::utils::obstacle_stop::get_nearest_pcd_collision;
-using autoware::trajectory_processor::utils::obstacle_stop::get_trajectory_shape;
 using autoware::trajectory_processor::utils::obstacle_stop::PointCloud;
 
 void ObstacleStop::on_initialize(const MinimumRuleBasedPlannerParams & params)
@@ -85,11 +86,10 @@ bool ObstacleStop::is_obstacle_detected(
 {
   debug_data_ = DebugData();
   safety_factors_ = SafetyFactorArray{};
-  debug_data_.trajectory_shape = get_trajectory_shape(
+  debug_data_.trajectory_shape = build_trajectory_footprint_index(
     traj_points, data.odometry_ptr->pose.pose, context_->vehicle_info,
     data.odometry_ptr->twist.twist.linear.x, data.acceleration_ptr->accel.accel.linear.x,
-    params_.nominal_stopping_decel, params_.stopping_jerk, params_.stop_margin,
-    params_.lateral_margin);
+    params_.nominal_stopping_decel, params_.stopping_jerk, params_.stop_margin);
   const auto collision_point_pcd = check_pointcloud(traj_points, data);
   update_collision_points_buffer(collision_points_buffer_.pcd, traj_points, collision_point_pcd);
   const auto collision_point_objects = check_predicted_objects(traj_points, data);
@@ -188,8 +188,8 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
 
   object_filter_->filter_objects(predicted_objects);
   object_filter_->filter_by_target_area(
-    predicted_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape.polygon,
-    debug_data_.target_polygons);
+    predicted_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
+    params_.lateral_margin, debug_data_.target_polygons);
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = get_nearest_object_collision(
@@ -203,7 +203,7 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
 }
 
 std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
-  const TrajectoryPoints & traj_points, const ModifierData & data)
+  [[maybe_unused]] const TrajectoryPoints & traj_points, const ModifierData & data)
 {
   if (!params_.use_pointcloud) return std::nullopt;
 
@@ -264,7 +264,8 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
   }
 
   return get_nearest_pcd_collision(
-    traj_points, debug_data_.trajectory_shape, filtered_pointcloud, debug_data_.target_pcd_points);
+    debug_data_.trajectory_shape, filtered_pointcloud, params_.lateral_margin,
+    debug_data_.target_pcd_points);
 }
 
 void ObstacleStop::update_collision_points_buffer(
@@ -399,9 +400,15 @@ void ObstacleStop::publish_debug_data(const std::string & ns, const ModifierData
   };
 
   int id = 0;
-  for (const auto & traj_polygon : debug_data_.trajectory_shape.polygon) {
-    add_polygon_marker(traj_polygon, ns + "/traj_polygon", id, yellow);
-    id++;
+  {
+    const auto & shape = debug_data_.trajectory_shape;
+    for (const auto & footprint : shape.footprints) {
+      const auto ego_polygon = autoware_utils::to_footprint(
+        footprint.pose, shape.ego_front_offset, shape.ego_back_offset,
+        2.0 * (shape.ego_half_width + params_.lateral_margin));
+      add_polygon_marker(ego_polygon, ns + "/traj_polygon", id, yellow);
+      id++;
+    }
   }
 
   {
