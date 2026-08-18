@@ -239,14 +239,13 @@ std::optional<double> SlowDownPlanner::validate_slow_down_interval(
   // 区間内の元の軌道速度が既に目標速度以下なら減速は不要なので棄却。
   // NOTE: 速度は stairstep 補間なので base の値だけを見れば区間内の速度は尽くせる
   const auto [bases, values] = trajectory.longitudinal_velocity_mps().get_data();
-  // bases は昇順。from_s 超の最初の base から、to_s 以上の最初の base の手前まで
-  const size_t begin_idx = std::distance(
-    bases.begin(), std::upper_bound(bases.begin(), bases.end(), slow_down_interval.from_s));
-  size_t end_idx = std::distance(
+  // bases は昇順。from_s で有効な base(from_s 以下の最後の base)から、
+  // to_s 以上の最初の base の手前まで
+  const auto upper = std::upper_bound(bases.begin(), bases.end(), slow_down_interval.from_s);
+  const size_t begin_idx =
+    upper == bases.begin() ? 0 : static_cast<size_t>(std::distance(bases.begin(), upper) - 1);
+  const size_t end_idx = std::distance(
     bases.begin(), std::lower_bound(bases.begin(), bases.end(), slow_down_interval.to_s));
-  // 区間内に base が無い場合も from_s 直後の 1 点は評価する(点列に始点を挿入して
-  // その速度をゼロ次ホールドで埋めていた元実装と範囲を合わせるため)
-  end_idx = std::max(end_idx, std::min(begin_idx + 1, bases.size()));
 
   if (std::none_of(values.begin() + begin_idx, values.begin() + end_idx, [&](const double vel) {
         return stable_slow_down_vel < vel;
