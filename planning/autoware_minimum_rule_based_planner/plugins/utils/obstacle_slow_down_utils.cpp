@@ -91,8 +91,25 @@ double find_reach_time(
   }
   return t;
 }
-}  // namespace
 
+template <class T>
+bool contains_uuid(const std::vector<T> & obstacles, const UUID & target_uuid)
+{
+  return std::any_of(obstacles.begin(), obstacles.end(), [&](const auto & obstacle) {
+    return obstacle.uuid.uuid == target_uuid.uuid;
+  });
+}
+
+// 2値ヒステリシス。前回が low なら high_val を超えるまで low のまま、
+// 前回が high なら low_val を下回るまで high のまま
+bool schmitt_trigger(
+  const bool prev_is_low, const double current_val, const double high_val, const double low_val)
+{
+  return prev_is_low ? !(high_val < current_val) : current_val < low_val;
+}
+
+// estimate the lower bound of the lateral distance from the object to the trajectory polygon,
+// assuming the worst case for both the object shape and the ego footprint
 double calc_possible_min_dist_from_obj_to_traj_poly(
   const PredictedObject & object, const EgoTrajectory & trajectory, const double obj_s,
   const VehicleInfo & vehicle_info)
@@ -141,6 +158,8 @@ double calc_dist_to_traj_poly(
   return dist_to_traj_poly;
 }
 
+// returns {longitudinal, lateral} velocity relative to the trajectory. the lateral velocity is
+// positive if the object is approaching the trajectory.
 std::pair<double, double> calc_vel_relative_to_traj(
   const PredictedObject & object, const EgoTrajectory & trajectory, const double obj_s)
 {
@@ -205,6 +224,9 @@ geometry_msgs::msg::Pose get_predicted_current_pose(
   return *predicted_pose_opt;
 }
 
+// calculate the front/back collision points (the collision vertices with the minimum/maximum arc
+// length along the trajectory) between the obstacle polygon and the trajectory polygons.
+// returns nullopt if there is no collision.
 std::optional<std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point>>
 calc_front_back_collision_points(
   const EgoTrajectory & trajectory, const std::vector<Polygon2d> & slow_down_corridor_polys,
@@ -301,6 +323,7 @@ double calc_deceleration_velocity_from_distance_to_target(
   }
   return current_velocity;
 }
+}  // namespace
 
 void insert_slowdown(EgoTrajectory & trajectory, const SlowdownInterval & slowdown_interval)
 {

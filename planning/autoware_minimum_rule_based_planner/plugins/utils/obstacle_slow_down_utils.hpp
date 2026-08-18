@@ -102,14 +102,6 @@ struct SlowDownTarget
   double slow_down_vel{};
 };
 
-// 2値ヒステリシス。前回が low なら high_val を超えるまで low のまま、
-// 前回が high なら low_val を下回るまで high のまま
-inline bool schmitt_trigger(
-  const bool prev_is_low, const double current_val, const double high_val, const double low_val)
-{
-  return prev_is_low ? !(high_val < current_val) : current_val < low_val;
-}
-
 // parameters to calculate the slow down velocity by linear interpolation of the lateral distance
 struct VelocityInterpolationParam
 {
@@ -166,47 +158,9 @@ struct ObstacleTrackingState
   std::optional<SlowDownCarryOver> prev_slow_down{};
 };
 
-// estimate the lower bound of the lateral distance from the object to the trajectory polygon,
-// assuming the worst case for both the object shape and the ego footprint
-double calc_possible_min_dist_from_obj_to_traj_poly(
-  const PredictedObject & object, const EgoTrajectory & trajectory, const double obj_s,
-  const VehicleInfo & vehicle_info);
-
-double calc_dist_to_traj_poly(
-  const Polygon2d & obj_poly, const std::vector<Polygon2d> & ego_swept_polys);
-
-// returns {longitudinal, lateral} velocity relative to the trajectory. the lateral velocity is
-// positive if the object is approaching the trajectory.
-std::pair<double, double> calc_vel_relative_to_traj(
-  const PredictedObject & object, const EgoTrajectory & trajectory, const double obj_s);
-
-geometry_msgs::msg::Pose get_predicted_current_pose(
-  const PredictedObject & object, const rclcpp::Time & current_stamp,
-  const rclcpp::Time & predicted_objects_stamp, const rclcpp::Logger & logger);
-
-// calculate the front/back collision points (the collision vertices with the minimum/maximum arc
-// length along the trajectory) between the obstacle polygon and the trajectory polygons.
-// returns nullopt if there is no collision.
-std::optional<std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point>>
-calc_front_back_collision_points(
-  const EgoTrajectory & trajectory, const std::vector<Polygon2d> & slow_down_corridor_polys,
-  const Polygon2d & obstacle_poly);
-
-double calc_deceleration_velocity_from_distance_to_target(
-  const double max_slowdown_jerk, const double max_slowdown_accel, const double current_accel,
-  const double current_velocity, const double distance_to_target);
-
 // apply the slowdown velocity to [from_s, to_s] of the velocity profile. the existing velocity is
 // only lowered, never raised (e.g. a stop point inside the interval is kept).
 void insert_slowdown(EgoTrajectory & trajectory, const SlowdownInterval & slowdown_interval);
-
-template <class T>
-bool contains_uuid(const std::vector<T> & obstacles, const UUID & target_uuid)
-{
-  return std::any_of(obstacles.begin(), obstacles.end(), [&](const auto & obstacle) {
-    return obstacle.uuid.uuid == target_uuid.uuid;
-  });
-}
 
 // ノード境界で受け取る 1 フレームぶんの入力(ModifierData のノード非依存版)
 struct SlowDownInput
