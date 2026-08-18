@@ -22,6 +22,16 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTABLE ${PROJECT_NAME}_node
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_get_first_closest_index
+    test/src/test_get_first_closest_index.cpp
+  )
+  target_link_libraries(test_get_first_closest_index
+    ${PROJECT_NAME}
+  )
+endif()
+
 ament_auto_package(
   INSTALL_TO_SHARE
   config

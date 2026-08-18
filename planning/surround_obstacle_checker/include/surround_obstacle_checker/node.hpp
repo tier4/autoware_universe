@@ -54,8 +54,12 @@ using TrajectoryPoints = std::vector<TrajectoryPoint>;
 
 enum class State { PASS, STOP };
 
+class SurroundObstacleCheckerNodeTest;
+
 class SurroundObstacleCheckerNode : public rclcpp::Node
 {
+  friend class SurroundObstacleCheckerNodeTest;
+
 public:
   explicit SurroundObstacleCheckerNode(const rclcpp::NodeOptions & node_options);
 
@@ -79,6 +83,9 @@ private:
   bool isObstacleFound(const double min_dist_to_obj);
   bool isStopRequired(const bool is_obstacle_found, const bool is_stopped);
   size_t getClosestIdx(const TrajectoryPoints & traj, const geometry_msgs::msg::Pose current_pose);
+  size_t getFirstClosestIndex(
+    const TrajectoryPoints & traj, const geometry_msgs::msg::Pose current_pose,
+    const double distance_thresh = 9.0);
   bool checkStop(const TrajectoryPoint & closest_point);
   Polygon2d createSelfPolygon();
   Polygon2d createObjPolygon(
@@ -118,6 +125,7 @@ private:
   double surround_check_recover_distance_;
   double state_clear_time_;
   double stop_state_ego_speed_;
+  double distance_thresh_;
   bool is_surround_obstacle_;
 
   // State Machine
