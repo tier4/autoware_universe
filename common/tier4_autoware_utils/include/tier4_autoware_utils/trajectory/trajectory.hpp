@@ -112,6 +112,47 @@ size_t findNearestIndex(const T & points, const geometry_msgs::msg::Point & poin
 }
 
 template <class T>
+size_t findFirstNearestIndex(
+  const T & points, const geometry_msgs::msg::Point & point, const double distance_thresh = 9.0)
+{
+  validateNonEmpty(points);
+
+  const double squared_distance_thresh = distance_thresh * distance_thresh;
+
+  bool min_idx_found = false;
+  bool max_idx_found = false;
+  size_t range_min_idx = 0;
+  size_t range_max_idx = points.size() - 1;
+
+  for (size_t i = 0; i < points.size(); ++i) {
+    const auto dist = calcSquaredDistance2d(points.at(i), point);
+    if (dist < squared_distance_thresh) {
+      if (!min_idx_found) {
+        range_min_idx = i;
+        min_idx_found = true;
+      }
+      if (!max_idx_found) {
+        range_max_idx = i;
+      }
+    } else if (min_idx_found) {
+      max_idx_found = true;
+    }
+  }
+
+  double min_dist = std::numeric_limits<double>::max();
+  size_t min_idx = 0;
+
+  for (size_t i = range_min_idx; i <= range_max_idx; ++i) {
+    const auto dist = calcSquaredDistance2d(points.at(i), point);
+    if (dist < min_dist) {
+      min_dist = dist;
+      min_idx = i;
+    }
+  }
+  return min_idx;
+}
+
+template <class T>
 boost::optional<size_t> findNearestIndex(
   const T & points, const geometry_msgs::msg::Pose & pose,
   const double max_dist = std::numeric_limits<double>::max(),
@@ -131,6 +172,70 @@ boost::optional<size_t> findNearestIndex(
   size_t min_idx = 0;
 
   for (size_t i = 0; i < points.size(); ++i) {
+    const auto squared_dist = calcSquaredDistance2d(points.at(i), pose);
+    if (squared_dist > max_squared_dist) {
+      continue;
+    }
+
+    const auto yaw = calcYawDeviation(getPose(points.at(i)), pose);
+    if (std::fabs(yaw) > max_yaw) {
+      continue;
+    }
+
+    if (squared_dist >= min_squared_dist) {
+      continue;
+    }
+
+    min_squared_dist = squared_dist;
+    min_idx = i;
+    is_nearest_found = true;
+  }
+  return is_nearest_found ? boost::optional<size_t>(min_idx) : boost::none;
+}
+
+template <class T>
+boost::optional<size_t> findFirstNearestIndex(
+  const T & points, const geometry_msgs::msg::Pose & pose,
+  const double max_dist = std::numeric_limits<double>::max(),
+  const double max_yaw = std::numeric_limits<double>::max(),
+  const double distance_thresh = 9.0)
+{
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  const double squared_distance_thresh = distance_thresh * distance_thresh;
+
+  bool min_idx_found = false;
+  bool max_idx_found = false;
+  size_t range_min_idx = 0;
+  size_t range_max_idx = points.size() - 1;
+
+  for (size_t i = 0; i < points.size(); ++i) {
+    const auto squared_dist = calcSquaredDistance2d(points.at(i), pose);
+    if (squared_dist < squared_distance_thresh) {
+      if (!min_idx_found) {
+        range_min_idx = i;
+        min_idx_found = true;
+      }
+      if (!max_idx_found) {
+        range_max_idx = i;
+      }
+    } else if (min_idx_found) {
+      max_idx_found = true;
+    }
+  }
+
+  const double max_squared_dist = max_dist * max_dist;
+
+  double min_squared_dist = std::numeric_limits<double>::max();
+  bool is_nearest_found = false;
+  size_t min_idx = 0;
+
+  for (size_t i = range_min_idx; i <= range_max_idx; ++i) {
     const auto squared_dist = calcSquaredDistance2d(points.at(i), pose);
     if (squared_dist > max_squared_dist) {
       continue;
@@ -235,6 +340,37 @@ size_t findNearestSegmentIndex(const T & points, const geometry_msgs::msg::Point
 }
 
 /**
+ * @brief find first nearest segment index to point
+ *        segment is straight path between two continuous points of trajectory
+ *        When point is on a trajectory point whose index is nearest_idx, return nearest_idx - 1
+ * @param points points of trajectory
+ * @param point point to which to find nearest segment index
+ * @param distance_thresh distance threshold for the first-near range
+ * @return nearest index
+ */
+template <class T>
+size_t findFirstNearestSegmentIndex(
+  const T & points, const geometry_msgs::msg::Point & point, const double distance_thresh = 9.0)
+{
+  const size_t nearest_idx = findFirstNearestIndex(points, point, distance_thresh);
+
+  if (nearest_idx == 0) {
+    return 0;
+  }
+  if (nearest_idx == points.size() - 1) {
+    return points.size() - 2;
+  }
+
+  const double signed_length = calcLongitudinalOffsetToSegment(points, nearest_idx, point);
+
+  if (signed_length <= 0) {
+    return nearest_idx - 1;
+  }
+
+  return nearest_idx;
+}
+
+/**
  * @brief find nearest segment index to pose
  *        segment is straight path between two continuous points of trajectory
  *        When pose is on a trajectory point whose index is nearest_idx, return nearest_idx - 1
@@ -251,6 +387,46 @@ boost::optional<size_t> findNearestSegmentIndex(
   const double max_yaw = std::numeric_limits<double>::max())
 {
   const auto nearest_idx = findNearestIndex(points, pose, max_dist, max_yaw);
+
+  if (!nearest_idx) {
+    return boost::none;
+  }
+
+  if (*nearest_idx == 0) {
+    return 0;
+  }
+  if (*nearest_idx == points.size() - 1) {
+    return points.size() - 2;
+  }
+
+  const double signed_length = calcLongitudinalOffsetToSegment(points, *nearest_idx, pose.position);
+
+  if (signed_length <= 0) {
+    return *nearest_idx - 1;
+  }
+
+  return *nearest_idx;
+}
+
+/**
+ * @brief find first nearest segment index to pose
+ *        segment is straight path between two continuous points of trajectory
+ *        When pose is on a trajectory point whose index is nearest_idx, return nearest_idx - 1
+ * @param points points of trajectory
+ * @param pose pose to which to find nearest segment index
+ * @param max_dist max distance to search
+ * @param max_yaw max yaw to search
+ * @param distance_thresh distance threshold for the first-near range
+ * @return nearest index
+ */
+template <class T>
+boost::optional<size_t> findFirstNearestSegmentIndex(
+  const T & points, const geometry_msgs::msg::Pose & pose,
+  const double max_dist = std::numeric_limits<double>::max(),
+  const double max_yaw = std::numeric_limits<double>::max(),
+  const double distance_thresh = 9.0)
+{
+  const auto nearest_idx = findFirstNearestIndex(points, pose, max_dist, max_yaw, distance_thresh);
 
   if (!nearest_idx) {
     return boost::none;
@@ -431,6 +607,41 @@ boost::optional<double> calcSignedArcLength(
   }
 
   const size_t dst_seg_idx = findNearestSegmentIndex(points, dst_point);
+
+  const double signed_length_on_traj = calcSignedArcLength(points, *src_seg_idx, dst_seg_idx);
+  const double signed_length_src_offset =
+    calcLongitudinalOffsetToSegment(points, *src_seg_idx, src_pose.position);
+  const double signed_length_dst_offset =
+    calcLongitudinalOffsetToSegment(points, dst_seg_idx, dst_point);
+
+  return signed_length_on_traj - signed_length_src_offset + signed_length_dst_offset;
+}
+
+/**
+ * @brief calcFirstSignedArcLength from pose to point
+ */
+template <class T>
+boost::optional<double> calcFirstSignedArcLength(
+  const T & points, const geometry_msgs::msg::Pose & src_pose,
+  const geometry_msgs::msg::Point & dst_point,
+  const double max_dist = std::numeric_limits<double>::max(),
+  const double max_yaw = std::numeric_limits<double>::max(),
+  const double distance_thresh = 9.0)
+{
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  const auto src_seg_idx =
+    findFirstNearestSegmentIndex(points, src_pose, max_dist, max_yaw, distance_thresh);
+  if (!src_seg_idx) {
+    return boost::none;
+  }
+
+  const size_t dst_seg_idx = findFirstNearestSegmentIndex(points, dst_point, distance_thresh);
 
   const double signed_length_on_traj = calcSignedArcLength(points, *src_seg_idx, dst_seg_idx);
   const double signed_length_src_offset =
