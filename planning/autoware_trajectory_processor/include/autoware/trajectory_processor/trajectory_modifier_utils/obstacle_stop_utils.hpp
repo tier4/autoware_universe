@@ -123,6 +123,32 @@ inline static const std::unordered_map<PointCloudClassification, ObjectType>
     {PointCloudClassification::NOISE, ObjectType::NOISE},
     {PointCloudClassification::INVALID, ObjectType::UNKNOWN}};
 
+using ObjectDecelMap = std::unordered_map<ObjectType, double>;
+using LateralMarginMap = std::unordered_map<ObjectType, double>;
+
+inline ObjectType to_object_type(const PredictedObject & object)
+{
+  const auto label =
+    object.classification.empty()
+      ? ObjectClassification::UNKNOWN
+      : autoware::object_recognition_utils::getHighestProbLabel(object.classification);
+  const auto it = classification_to_object_type.find(label);
+  return it != classification_to_object_type.end() ? it->second : ObjectType::UNKNOWN;
+}
+
+inline ObjectType to_object_type(const PointCloudClassification classification)
+{
+  const auto it = pcd_class_to_object_type.find(classification);
+  return it != pcd_class_to_object_type.end() ? it->second : ObjectType::UNKNOWN;
+}
+
+inline double get_lateral_margin(const LateralMarginMap & map, const ObjectType type)
+{
+  if (const auto it = map.find(type); it != map.end()) return it->second;
+  if (const auto it = map.find(ObjectType::UNKNOWN); it != map.end()) return it->second;
+  return 0.0;
+}
+
 struct CollisionPoint
 {
   geometry_msgs::msg::Point point;
@@ -281,21 +307,19 @@ std::vector<size_t> query_overlapping_footprints(
 
 /**
  * @brief Find the closest point-cloud obstacle that overlaps an ego footprint.
- * @details Each point is queried against `trajectory_shape.rtree` with `lat_margin`. The collision
- * is the inlier with minimum arc length (footprint arc length plus longitudinal offset in the
- * vehicle frame). All inlier points are appended to `target_pcd_points`.
+ * @details Each point is queried against `trajectory_shape.rtree` with the lateral margin for its
+ * class. The collision is the inlier with minimum arc length (footprint arc length plus
+ * longitudinal offset in the vehicle frame). All inlier points are appended to `target_pcd_points`.
  * @param trajectory_shape Ego footprint index from build_trajectory_footprint_index().
  * @param pointcloud Input points in the same frame as the trajectory.
- * @param lat_margin Lateral expansion of the ego footprint [m].
+ * @param lateral_margin_map Per-class lateral expansion of the ego footprint [m].
  * @param[out] target_pcd_points Points that overlapped at least one footprint.
  * @return Nearest collision by arc length, or nullopt if the cloud is empty or none intersect.
  */
 std::optional<CollisionPoint> get_nearest_pcd_collision(
   const TrajectoryShape & trajectory_shape, const PointCloud::Ptr & pointcloud,
-  const double lat_margin, std::vector<geometry_msgs::msg::Point> & target_pcd_points);
-
-using ObjectDecelMap = std::unordered_map<ObjectType, double>;
-using LateralMarginMap = std::unordered_map<ObjectType, double>;
+  const LateralMarginMap & lateral_margin_map,
+  std::vector<geometry_msgs::msg::Point> & target_pcd_points);
 
 /**
  * @brief Find the nearest predicted object that is not longitudinally safe relative to the ego
@@ -390,13 +414,13 @@ struct ObjectFilter
    * @param[in,out] objects Predicted objects to filter in place.
    * @param trajectory_points Reference path for time and geometry queries.
    * @param trajectory_shape Ego footprint index used for overlap queries.
-   * @param lat_margin Lateral expansion of the ego footprint [m].
+   * @param lateral_margin_map Per-class lateral expansion of the ego footprint [m].
    * @param[out] target_polygons Footprints of objects that remain after filtering.
    */
   void filter_by_target_area(
     PredictedObjects & objects, const TrajectoryPoints & trajectory_points,
     const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-    const TrajectoryShape & trajectory_shape, const double lat_margin,
+    const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map,
     MultiPolygon2d & target_polygons);
 
   /**

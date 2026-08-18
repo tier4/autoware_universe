@@ -67,15 +67,26 @@ void ObstacleStop::on_initialize(const TrajectoryProcessorParams & params)
   }
 
   {
-    const auto & p = params_.pointcloud;
-    pointcloud_filter_ = std::make_unique<utils::obstacle_stop::PointCloudFilter>(p.target_types);
-  }
-
-  {
     const auto & p = params_.objects;
     object_filter_ = std::make_unique<utils::obstacle_stop::ObjectFilter>(
       p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
       p.max_lateral_velocity_th, p.safety_buffer);
+    pointcloud_filter_ =
+      std::make_unique<utils::obstacle_stop::PointCloudFilter>(p.target_objects.pointcloud);
+
+    lateral_margin_map_ = {
+      {utils::obstacle_stop::ObjectType::CAR, p.lateral_margin.car},
+      {utils::obstacle_stop::ObjectType::TRUCK, p.lateral_margin.truck},
+      {utils::obstacle_stop::ObjectType::BUS, p.lateral_margin.bus},
+      {utils::obstacle_stop::ObjectType::TRAILER, p.lateral_margin.trailer},
+      {utils::obstacle_stop::ObjectType::MOTORCYCLE, p.lateral_margin.motorcycle},
+      {utils::obstacle_stop::ObjectType::BICYCLE, p.lateral_margin.bicycle},
+      {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.lateral_margin.pedestrian},
+      {utils::obstacle_stop::ObjectType::HAZARD, p.lateral_margin.hazard},
+      {utils::obstacle_stop::ObjectType::STRUCTURE, p.lateral_margin.structure},
+      {utils::obstacle_stop::ObjectType::VEGETATION, p.lateral_margin.vegetation},
+      {utils::obstacle_stop::ObjectType::UNKNOWN, p.lateral_margin.unknown},
+    };
   }
 
   {
@@ -113,15 +124,25 @@ void ObstacleStop::update_params(const TrajectoryProcessorParams & params)
   }
 
   {
-    const auto & p = params_.pointcloud;
-    pointcloud_filter_->set_params(p.target_types);
-  }
-
-  {
     const auto & p = params_.objects;
     object_filter_->set_params(
       p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
       p.max_lateral_velocity_th, p.safety_buffer);
+    pointcloud_filter_->set_params(p.target_objects.pointcloud);
+
+    lateral_margin_map_ = {
+      {utils::obstacle_stop::ObjectType::CAR, p.lateral_margin.car},
+      {utils::obstacle_stop::ObjectType::TRUCK, p.lateral_margin.truck},
+      {utils::obstacle_stop::ObjectType::BUS, p.lateral_margin.bus},
+      {utils::obstacle_stop::ObjectType::TRAILER, p.lateral_margin.trailer},
+      {utils::obstacle_stop::ObjectType::MOTORCYCLE, p.lateral_margin.motorcycle},
+      {utils::obstacle_stop::ObjectType::BICYCLE, p.lateral_margin.bicycle},
+      {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.lateral_margin.pedestrian},
+      {utils::obstacle_stop::ObjectType::HAZARD, p.lateral_margin.hazard},
+      {utils::obstacle_stop::ObjectType::STRUCTURE, p.lateral_margin.structure},
+      {utils::obstacle_stop::ObjectType::VEGETATION, p.lateral_margin.vegetation},
+      {utils::obstacle_stop::ObjectType::UNKNOWN, p.lateral_margin.unknown},
+    };
   }
 
   {
@@ -323,7 +344,7 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
 
   object_filter_->filter_by_target_area(
     active_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
-    params_.lateral_margin, debug_data_.target_polygons);
+    lateral_margin_map_, debug_data_.target_polygons);
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = get_nearest_object_collision(
@@ -356,8 +377,9 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
     constexpr double buffer = 1.0;
     const auto [min_x, max_x] = std::minmax(rel_min_corner.x(), rel_max_corner.x());
     const auto [min_y, max_y] = std::minmax(rel_min_corner.y(), rel_max_corner.y());
-    const auto min_z = params_.pointcloud.min_height;
-    const auto max_z = context_->vehicle_info.vehicle_height_m + params_.pointcloud.height_buffer;
+    const auto min_z = params_.objects.pointcloud_min_height;
+    const auto max_z =
+      context_->vehicle_info.vehicle_height_m + params_.objects.pointcloud_height_buffer;
     pointcloud_filter_->filter_pointcloud(
       filtered_pointcloud, min_x - buffer, max_x + buffer, min_y - buffer, max_y + buffer, min_z,
       max_z);
@@ -404,7 +426,7 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
     autoware_utils_debug::ScopedTimeTrack stt(
       "ObstacleStop::get_nearest_pcd_collision", *get_time_keeper());
     collision_point = get_nearest_pcd_collision(
-      debug_data_.trajectory_shape, active_points, params_.lateral_margin,
+      debug_data_.trajectory_shape, active_points, lateral_margin_map_,
       debug_data_.target_pcd_points);
   }
 
@@ -443,6 +465,7 @@ void ObstacleStop::publish_debug_string(bool is_safe) const
 
 void ObstacleStop::publish_debug_data(const std::string & ns) const
 {
+  autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::publish_debug_data", *get_time_keeper());
   if (debug_data_.filtered_points) pub_filtered_pointcloud_->publish(*debug_data_.filtered_points);
 
   MarkerArray marker_array;
@@ -483,11 +506,16 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
 
   int id = 0;
   {
+    double debug_lat_margin = 0.0;
+    for (const auto & [_, lat_margin] : lateral_margin_map_) {
+      debug_lat_margin = std::max(debug_lat_margin, lat_margin);
+    }
+
     const auto & shape = debug_data_.trajectory_shape;
     for (const auto & footprint : shape.footprints) {
       const auto ego_polygon = autoware_utils::to_footprint(
         footprint.pose, shape.ego_front_offset, shape.ego_back_offset,
-        2.0 * (shape.ego_half_width + params_.lateral_margin));
+        2.0 * (shape.ego_half_width + debug_lat_margin));
       add_polygon_marker(ego_polygon, ns + "/traj_polygon", id, yellow);
       id++;
     }

@@ -86,6 +86,7 @@ private:
   SafetyFactorArray safety_factors_;
 
   std::unordered_map<utils::obstacle_stop::ObjectType, double> object_decel_map_;
+  utils::obstacle_stop::LateralMarginMap lateral_margin_map_;
 
   MarkerArray marker_array_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;

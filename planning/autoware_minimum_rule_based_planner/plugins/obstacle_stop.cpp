@@ -39,6 +39,8 @@ using autoware::trajectory_processor::utils::replace_trajectory_with_stop_point;
 using autoware::trajectory_processor::utils::obstacle_stop::build_trajectory_footprint_index;
 using autoware::trajectory_processor::utils::obstacle_stop::get_nearest_object_collision;
 using autoware::trajectory_processor::utils::obstacle_stop::get_nearest_pcd_collision;
+using autoware::trajectory_processor::utils::obstacle_stop::LateralMarginMap;
+using autoware::trajectory_processor::utils::obstacle_stop::ObjectType;
 using autoware::trajectory_processor::utils::obstacle_stop::PointCloud;
 
 void ObstacleStop::on_initialize(const MinimumRuleBasedPlannerParams & params)
@@ -187,9 +189,10 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   auto predicted_objects = *data.predicted_objects_ptr;
 
   object_filter_->filter_objects(predicted_objects);
+  const LateralMarginMap lateral_margin_map{{ObjectType::UNKNOWN, params_.lateral_margin}};
   object_filter_->filter_by_target_area(
     predicted_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
-    params_.lateral_margin, debug_data_.target_polygons);
+    lateral_margin_map, debug_data_.target_polygons);
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = get_nearest_object_collision(
@@ -263,8 +266,9 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
       filtered_pointcloud, *data.predicted_objects_ptr);
   }
 
+  const LateralMarginMap lateral_margin_map{{ObjectType::UNKNOWN, params_.lateral_margin}};
   return get_nearest_pcd_collision(
-    debug_data_.trajectory_shape, filtered_pointcloud, params_.lateral_margin,
+    debug_data_.trajectory_shape, filtered_pointcloud, lateral_margin_map,
     debug_data_.target_pcd_points);
 }
 
