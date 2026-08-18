@@ -42,6 +42,15 @@ namespace autoware::minimum_rule_based_planner
 {
 namespace
 {
+void interpolate_lane_ids(
+  const PathPointTrajectory & trajectory, std::vector<PathPointWithLaneId> & points)
+{
+  for (auto & p : points) {
+    const auto s = autoware::experimental::trajectory::closest(trajectory, p.point.pose);
+    p.lane_ids = trajectory.compute(s).lane_ids;
+  }
+}
+
 std::vector<PathPointWithLaneId> generate_trajectory_from_points(
   std::vector<geometry_msgs::msg::Point> points, PathPointWithLaneId goal)
 {
@@ -645,6 +654,7 @@ std::optional<PathPointTrajectory> StartGoalPlanner::connect_start_planner_traje
   const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory)
 {
   auto pull_points = pull_trajectory.restore();
+  interpolate_lane_ids(trajectory, pull_points);
   const auto pull_end_pose = pull_points.back().point.pose;
   const auto s_closest = autoware::experimental::trajectory::closest(trajectory, pull_end_pose);
   auto base_points =
@@ -669,6 +679,7 @@ std::optional<PathPointTrajectory> StartGoalPlanner::connect_goal_planner_trajec
   const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory)
 {
   auto pull_points = pull_trajectory.restore();
+  interpolate_lane_ids(trajectory, pull_points);
 
   auto goal = trajectory.compute(
     autoware::experimental::trajectory::closest(trajectory, route_data_.goal_pose));
