@@ -230,21 +230,20 @@ std::optional<double> SlowDownPlanner::validate_slow_down_interval(
   }
 
   // 前フレームの目標速度と LPF して目標速度のチャタリングを抑える
-  const double stable_slow_down_vel = [&]() {
-    if (prev_output) {
-      return autoware::signal_processing::lowpassFilter(
-        slow_down_interval.velocity, prev_output->target_vel, params_.lpf_gain_slow_down_vel);
-    }
-    return slow_down_interval.velocity;
-  }();
+  const double stable_slow_down_vel =
+    prev_output
+      ? autoware::signal_processing::lowpassFilter(
+          slow_down_interval.velocity, prev_output->target_vel, params_.lpf_gain_slow_down_vel)
+      : slow_down_interval.velocity;
 
   // 区間内の元の軌道速度が既に目標速度以下なら減速は不要なので棄却。
   // NOTE: 速度は stairstep 補間なので base の値だけを見れば区間内の速度は尽くせる
   const auto [bases, values] = trajectory.longitudinal_velocity_mps().get_data();
-  size_t begin_idx = 0;
-  while (begin_idx < bases.size() && bases.at(begin_idx) <= slow_down_interval.from_s) ++begin_idx;
-  size_t end_idx = begin_idx;
-  while (end_idx < bases.size() && bases.at(end_idx) < slow_down_interval.to_s) ++end_idx;
+  // bases は昇順。from_s 超の最初の base から、to_s 以上の最初の base の手前まで
+  const size_t begin_idx = std::distance(
+    bases.begin(), std::upper_bound(bases.begin(), bases.end(), slow_down_interval.from_s));
+  size_t end_idx = std::distance(
+    bases.begin(), std::lower_bound(bases.begin(), bases.end(), slow_down_interval.to_s));
   // 区間内に base が無い場合も from_s 直後の 1 点は評価する(点列に始点を挿入して
   // その速度をゼロ次ホールドで埋めていた元実装と範囲を合わせるため)
   end_idx = std::max(end_idx, std::min(begin_idx + 1, bases.size()));
