@@ -213,9 +213,12 @@ public:
 
   SlowDownResult plan(const EgoTrajectory & trajectory, const SlowDownInput & input);
 
+  // 共通
 private:
   const ObjectTypeSpecificParams & get_object_param(const ObjectClassification & label) const;
 
+  // filter 段: 減速対象の障害物を選ぶ
+private:
   bool is_slow_down_obstacle(const uint8_t label) const;
 
   bool is_slow_down_candidate(
@@ -238,6 +241,8 @@ private:
     const rclcpp::Time & predicted_objects_stamp, const rclcpp::Time & current_time,
     const double dist_from_obj_poly_to_traj_poly);
 
+  // plan 段: 障害物ごとに減速区間を計画する
+private:
   std::vector<PlannedSlowDown> plan_slow_down(
     const SlowDownInput & input, const EgoTrajectory & trajectory,
     const std::vector<SlowDownObstacle> & obstacles, const double dist_to_ego,
@@ -272,6 +277,7 @@ private:
     const double ego_vel, const double ego_acc, const double slow_down_vel,
     const double deceleration_dist, const double dist_to_slow_down_start) const;
 
+private:
   ObstacleSlowDownParams params_;
   std::vector<uint8_t> target_object_labels_;
 
