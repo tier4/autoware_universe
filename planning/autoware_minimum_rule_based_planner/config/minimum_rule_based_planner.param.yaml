@@ -167,8 +167,8 @@
         max_lat_margin: 1.1    # lateral margin between obstacle and trajectory band with ego's width [m]
         lat_hysteresis_margin: 0.2
         max_lat_velocity: 3.0  # [m/s] max lateral velocity of obstacle to be considered
-        successive_num_to_entry_slow_down_condition: 5
-        successive_num_to_exit_slow_down_condition: 5
+        time_to_entry_slow_down_condition: 0.5
+        time_to_exit_slow_down_condition: 0.5
       trajectory_polygon:
         decimate_trajectory_step_length: 2.0 # [m]
         goal_extended_trajectory_length: 6.0 # [m]

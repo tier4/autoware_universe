@@ -555,15 +555,19 @@ minimum_rule_based_planner:
         default_value: 3.0
         description: max lateral velocity of obstacle to be considered [m/s]
         read_only: false
-      successive_num_to_entry_slow_down_condition:
-        type: int
-        default_value: 5
-        description: successive number of frames to enter the slow down condition
+      time_to_entry_slow_down_condition:
+        type: double
+        default_value: 0.5
+        description: duration for which the slow down condition must be met to enter the slow down state [s]
+        validation:
+          gt_eq<>: [0.0]
         read_only: false
-      successive_num_to_exit_slow_down_condition:
-        type: int
-        default_value: 5
-        description: successive number of frames to exit the slow down condition
+      time_to_exit_slow_down_condition:
+        type: double
+        default_value: 0.5
+        description: duration for which the slow down condition must fail to exit the slow down state [s]
+        validation:
+          gt_eq<>: [0.0]
         read_only: false
     trajectory_polygon:
       decimate_trajectory_step_length:

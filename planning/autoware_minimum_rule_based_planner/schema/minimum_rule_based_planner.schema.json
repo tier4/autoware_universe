@@ -1003,15 +1003,15 @@
                   "description": "Max lateral velocity of obstacle to be considered [m/s]",
                   "default": 3.0
                 },
-                "successive_num_to_entry_slow_down_condition": {
-                  "type": "integer",
-                  "description": "Successive number of frames to enter the slow down condition",
-                  "default": 5
+                "time_to_entry_slow_down_condition": {
+                  "type": "number",
+                  "description": "Duration for which the slow down condition must be met to enter the slow down state [s]",
+                  "default": 0.5
                 },
-                "successive_num_to_exit_slow_down_condition": {
-                  "type": "integer",
-                  "description": "Successive number of frames to exit the slow down condition",
-                  "default": 5
+                "time_to_exit_slow_down_condition": {
+                  "type": "number",
+                  "description": "Duration for which the slow down condition must fail to exit the slow down state [s]",
+                  "default": 0.5
                 }
               },
               "required": [],

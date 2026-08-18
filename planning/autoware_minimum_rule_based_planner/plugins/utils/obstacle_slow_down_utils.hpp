@@ -146,13 +146,15 @@ struct UuidLess
 // 障害物 uuid ごとにフレームを跨いで保持する状態。エントリはフィルタの粗ふるいを
 // 通過した uuid に対して作られ、追跡対象から外れた uuid は毎フレーム GC される。
 // フィールドごとに更新される段が異なる:
-//  - condition_counter は filter 段(is_slow_down_required)で更新
+//  - condition_duration は filter 段(is_slow_down_required)で更新
 //  - was_slow_down は filter 段の最後に最終結果で確定
 //  - prev_output は plan 段で更新(減速出力を出したフレームだけ値を持つ)
 struct ObstacleTrackingState
 {
-  // 減速条件の連続成立/不成立フレーム数(正: entry 側, 負: exit 側)
-  int condition_counter{0};
+  // 減速条件の成立/不成立の累積時間 [s](正: entry 側, 負: exit 側)
+  double condition_duration{0.0};
+  // 前フレームでこの障害物の状態を更新した時刻(dt 算出用)
+  std::optional<rclcpp::Time> last_update_time{};
   // 前フレームのフィルタを最終的に通過して減速対象だったか(横距離ヒステリシスの状態)
   bool was_slow_down{false};
   // 前フレームで実際に減速出力を出した場合の内容(各種 LPF と motion 判定の基準)
@@ -255,8 +257,8 @@ private:
     const EgoTrajectory & trajectory, const double dist_from_obj_poly_to_traj_poly) const;
 
   bool is_slow_down_required(
-    ObstacleTrackingState & state, const double dist_from_obj_poly_to_traj_poly,
-    const double lat_vel_relative_to_traj) const;
+    ObstacleTrackingState & state, const rclcpp::Time & current_time,
+    const double dist_from_obj_poly_to_traj_poly, const double lat_vel_relative_to_traj) const;
 
   std::vector<SlowDownObstacle> filter_slow_down_obstacle_for_predicted_object(
     const std::vector<Polygon2d> & slow_down_corridor_polys,

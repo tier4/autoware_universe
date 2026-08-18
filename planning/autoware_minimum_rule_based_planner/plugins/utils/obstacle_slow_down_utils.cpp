@@ -299,11 +299,11 @@ bool SlowDownPlanner::is_slow_down_candidate(
   return true;
 }
 
-// temporal hysteresis check: lateral distance and velocity condition must hold (or fail) for
-// successive frames to enter (or exit) the slow down state
+// temporal hysteresis check: lateral distance and velocity condition must hold (or fail) for a
+// given duration to enter (or exit) the slow down state
 bool SlowDownPlanner::is_slow_down_required(
-  ObstacleTrackingState & state, const double dist_from_obj_poly_to_traj_poly,
-  const double lat_vel_relative_to_traj) const
+  ObstacleTrackingState & state, const rclcpp::Time & current_time,
+  const double dist_from_obj_poly_to_traj_poly, const double lat_vel_relative_to_traj) const
 {
   const auto & p = params_.obstacle_filtering;
 
@@ -314,14 +314,17 @@ bool SlowDownPlanner::is_slow_down_required(
   const bool is_lat_vel_low = std::abs(lat_vel_relative_to_traj) < p.max_lat_velocity;
   const bool is_slow_down_condition_met = is_lat_dist_low && is_lat_vel_low;
 
-  // NOTE: 出入り方向が切り替わると最初の increment/decrement で ±1 に丸められるため、
-  // しきい値到達時にカウンタを 0 に戻さなくても挙動は変わらないが、状態としては戻しておく
+  const double dt =
+    state.last_update_time ? (current_time - *state.last_update_time).seconds() : 0.0;
+
+  // NOTE: 出入り方向が切り替わると最初の増減で ±dt に丸められるため、
+  // しきい値到達時に累積時間を 0 に戻さなくても挙動は変わらないが、状態としては戻しておく
   if (state.was_slow_down) {
     // check if exiting slow down
     if (!is_slow_down_condition_met) {
-      state.condition_counter = std::min(-1, state.condition_counter - 1);
-      if (state.condition_counter <= -p.successive_num_to_exit_slow_down_condition) {
-        state.condition_counter = 0;
+      state.condition_duration = std::min(-dt, state.condition_duration - dt);
+      if (state.condition_duration <= -p.time_to_exit_slow_down_condition) {
+        state.condition_duration = 0.0;
         return false;
       }
     }
@@ -329,9 +332,9 @@ bool SlowDownPlanner::is_slow_down_required(
   }
   // check if entering slow down
   if (is_slow_down_condition_met) {
-    state.condition_counter = std::max(1, state.condition_counter + 1);
-    if (p.successive_num_to_entry_slow_down_condition <= state.condition_counter) {
-      state.condition_counter = 0;
+    state.condition_duration = std::max(dt, state.condition_duration + dt);
+    if (p.time_to_entry_slow_down_condition <= state.condition_duration) {
+      state.condition_duration = 0.0;
       return true;
     }
   }
@@ -373,7 +376,6 @@ std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_pre
   const rclcpp::Time predicted_objects_stamp(input.predicted_objects->header.stamp);
 
   // slow down
-  // TODO: condition_counterを廃止し、時間方向のヒステリシスを回数ではなく時間に揃える
   std::vector<UUID> current_uuids;  // 今フレームで追跡対象になった uuid(状態の GC 用)
   std::vector<SlowDownObstacle> slow_down_obstacles;
   const double ego_s = autoware::experimental::trajectory::closest(trajectory, input.current_pose);
@@ -414,7 +416,8 @@ std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_pre
     const auto [lon_vel_relative_to_traj, lat_vel_relative_to_traj] =
       calc_vel_relative_to_traj(object, trajectory, obj_s);
 
-    if (!is_slow_down_required(state, dist_from_obj_poly_to_traj_poly, lat_vel_relative_to_traj)) {
+    if (!is_slow_down_required(
+          state, input.current_time, dist_from_obj_poly_to_traj_poly, lat_vel_relative_to_traj)) {
       RCLCPP_DEBUG(
         logger_, "[SlowDown] Ignore obstacle (%s) since it's far from trajectory. (%f [m])",
         autoware_utils_uuid::to_hex_string(object.object_id).substr(0, 4).c_str(),
@@ -448,6 +451,12 @@ std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_pre
   // 横距離ヒステリシスの状態は、横距離単体の判定ではなくフィルタ全体の最終結果で確定する
   for (auto & [uuid, state] : tracking_states_) {
     state.was_slow_down = contains_uuid(slow_down_obstacles, uuid);
+    // NOTE: is_slow_down_required の中では更新しない。候補判定で落ちたフレームは同関数が
+    // 呼ばれないため、そこで更新すると次の評価時に dt が数フレーム分まとまって入り、
+    // フレーム数カウント時代には加算されなかった時間まで累積してしまう。ここで生存する全
+    // state を毎フレーム更新すれば dt は常に 1 フレーム分になる。state 新規作成の初回だけ
+    // dt=0 となりカウント方式(初回 +1)と 1 フレーム分ずれるが、これは許容する。
+    state.last_update_time = input.current_time;
   }
 
   RCLCPP_DEBUG(
