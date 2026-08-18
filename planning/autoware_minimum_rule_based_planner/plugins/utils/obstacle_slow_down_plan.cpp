@@ -292,9 +292,9 @@ Motion SlowDownPlanner::determine_obstacle_motion(
                                                                    : Motion::Static;
   }
 
-  // TODO: SchmittTriggerクラスの意味がないので戻す？
-  const bool is_static = SchmittTrigger{prev_output->obstacle_motion == Motion::Static}.update(
-    object_vel_norm, params_.moving_object_speed_threshold + params_.moving_object_hysteresis_range,
+  const bool is_static = schmitt_trigger(
+    prev_output->obstacle_motion == Motion::Static, object_vel_norm,
+    params_.moving_object_speed_threshold + params_.moving_object_hysteresis_range,
     params_.moving_object_speed_threshold - params_.moving_object_hysteresis_range);
   return is_static ? Motion::Static : Motion::Moving;
 }
