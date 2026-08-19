@@ -84,7 +84,8 @@ private:
     const std::vector<PathPointWithLaneId> & goal_pose_candidates);
   std::optional<PathPointTrajectory> evaluate_trajectory(
     const std::vector<PathPointTrajectory> & candidate_trajectories,
-    const std::vector<lanelet::BasicPolygon2d> & available_area);
+    const std::vector<lanelet::BasicPolygon2d> & available_area,
+    const geometry_msgs::msg::Pose & ego_pose);
   std::optional<PathPointTrajectory> connect_pull_trajectory(
     const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
   std::optional<PathPointTrajectory> connect_start_planner_trajectory(

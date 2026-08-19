@@ -178,27 +178,28 @@ lanelet::ConstPolygons3d find_polygons_intersecting_lanelet(
   return result;
 }
 
-std::optional<double> cal_curvature_integral(
+std::pair<double, double> cal_curvature(
   const PathPointTrajectory & trajectory,
   const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper);
   const auto ss = trajectory.get_underlying_bases();
   if (ss.size() < 3) {
-    return 0.0;
+    return {0.0, 0.0};
   }
   const auto curvature_vec = trajectory.curvature(ss);
-  if (ss.size() != curvature_vec.size()) {
-    return std::nullopt;
-  }
+  double max_curvature = 0.0;
   double curvature_integral = 0.0;
   for (size_t i = 0; i < ss.size() - 1; ++i) {
     const double ds = ss[i + 1] - ss[i];
     const double curvature =
       (curvature_vec[i] * curvature_vec[i] + curvature_vec[i + 1] * curvature_vec[i + 1]) * 0.5;
+    if (max_curvature < curvature) {
+      max_curvature = curvature;
+    }
     curvature_integral += curvature * ds;
   }
-  return curvature_integral;
+  return {curvature_integral, max_curvature};
 }
 
 bool has_turn_point(const std::vector<PathPointWithLaneId> & points)
@@ -327,7 +328,8 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
     return generate_fallback_trajectory(trajectory);
   }
 
-  const auto pull_trajectory = evaluate_trajectory(*candidate_trajectories, available_area);
+  const auto pull_trajectory =
+    evaluate_trajectory(*candidate_trajectories, available_area, ego_pose);
   if (!pull_trajectory) {
     return generate_fallback_trajectory(trajectory);
   }
@@ -588,10 +590,11 @@ std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_
 
 std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
   const std::vector<PathPointTrajectory> & candidate_trajectories,
-  const std::vector<lanelet::BasicPolygon2d> & available_area)
+  const std::vector<lanelet::BasicPolygon2d> & available_area,
+  const geometry_msgs::msg::Pose & ego_pose)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  const double max_curvature =
+  const double feasible_curvature =
     std::tan(vehicle_info_.max_steer_angle_rad) / vehicle_info_.wheel_base_m;
   const auto base_footprint = vehicle_info_.createFootprint();
 
@@ -605,16 +608,23 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
   double best_score = std::numeric_limits<double>::max();
   std::optional<PathPointTrajectory> best_trajectory = std::nullopt;
   for (const auto & candidate : candidate_trajectories) {
+    const double start_angle = tf2::getYaw(candidate.compute(0.0).point.pose.orientation);
+    const double ego_yaw = tf2::getYaw(ego_pose.orientation);
+    if (std::abs(autoware_utils::normalize_radian(start_angle - ego_yaw)) > M_PI / 2) {
+      continue;
+    }
+
+    const auto [curvature_integral, max_curvature] = cal_curvature(candidate, time_keeper_);
+    if (max_curvature > feasible_curvature) {
+      continue;
+    }
+
     if (!is_footprints_inside_polygons(
           downsample_trajectory_points(candidate, num_sample_footprint_check), available_area,
           base_footprint, time_keeper_)) {
       continue;
     }
 
-    const auto curvature_integral = cal_curvature_integral(candidate, time_keeper_);
-    if (!curvature_integral.has_value()) {
-      continue;
-    }
     const double arc_length = candidate.length();
     if (arc_length < 1e-9) {
       continue;
@@ -628,7 +638,7 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
             time_keeper_)
         : 0.0;
 
-    const double score = *curvature_integral / max_curvature * max_curvature * 0.4 +
+    const double score = curvature_integral / feasible_curvature * feasible_curvature * 0.4 +
                          arc_length / params_.search_radius_range * 0.3 + trajectory_diff * 0.3;
     if (score < best_score) {
       best_score = score;
