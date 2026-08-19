@@ -26,6 +26,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner::plugin
@@ -38,6 +39,7 @@ using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
 using trajectory_processor::utils::obstacle_stop::CollisionPoint;
 using trajectory_processor::utils::obstacle_stop::DebugData;
+using trajectory_processor::utils::obstacle_stop::LateralMarginMap;
 using trajectory_processor::utils::obstacle_stop::ObjectDecelMap;
 using trajectory_processor::utils::obstacle_stop::ObjectType;
 using visualization_msgs::msg::Marker;
@@ -61,14 +63,11 @@ public:
       object_filter_->set_params(
         p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
         p.max_lateral_velocity_th, p.safety_buffer);
-    }
-
-    {
-      const auto & p = params_.pointcloud;
-      pointcloud_filter_->set_params(p.target_types);
+      pointcloud_filter_->set_params(p.target_objects.pointcloud);
     }
 
     update_object_decel_map();
+    update_lateral_margin_map();
   }
   const MinimumRuleBasedPlannerParams::ObstacleStop & get_params() const { return params_; }
 
@@ -97,6 +96,7 @@ private:
   std::unique_ptr<trajectory_processor::utils::obstacle_stop::ObjectFilter> object_filter_;
 
   ObjectDecelMap object_decel_map_;
+  LateralMarginMap lateral_margin_map_;
 
   rclcpp::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_filtered_pointcloud_;
@@ -113,6 +113,23 @@ private:
       {ObjectType::MOTORCYCLE, p.object_decel.motorcycle},
       {ObjectType::BICYCLE, p.object_decel.bicycle},
       {ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
+  }
+
+  void update_lateral_margin_map()
+  {
+    const auto & p = params_.objects.lateral_margin;
+    lateral_margin_map_ = {
+      {ObjectType::CAR, p.car},
+      {ObjectType::TRUCK, p.truck},
+      {ObjectType::BUS, p.bus},
+      {ObjectType::TRAILER, p.trailer},
+      {ObjectType::MOTORCYCLE, p.motorcycle},
+      {ObjectType::BICYCLE, p.bicycle},
+      {ObjectType::PEDESTRIAN, p.pedestrian},
+      {ObjectType::HAZARD, p.hazard},
+      {ObjectType::STRUCTURE, p.structure},
+      {ObjectType::VEGETATION, p.vegetation},
+      {ObjectType::UNKNOWN, p.unknown}};
   }
 
   bool is_obstacle_detected(const TrajectoryPoints & traj_points, const ModifierData & data);
@@ -132,7 +149,7 @@ private:
   void set_stop_point(TrajectoryPoints & traj_points, const ModifierData & data);
 
   void publish_debug_string(bool is_safe) const;
-  void publish_debug_data(const std::string & ns, const ModifierData & data) const;
+  void publish_debug_data(const std::string & ns) const;
 };
 
 }  // namespace autoware::minimum_rule_based_planner::plugin
