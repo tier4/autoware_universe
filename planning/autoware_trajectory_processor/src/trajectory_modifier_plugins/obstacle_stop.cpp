@@ -474,17 +474,46 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
   const auto yellow = autoware_utils::create_marker_color(1.0, 1.0, 0.0, 1.0);
   const auto magenta = autoware_utils::create_marker_color(1.0, 0.0, 1.0, 1.0);
 
-  auto add_point_marker = [&](
-                            const geometry_msgs::msg::Point & point, const std::string & ns,
-                            const int id, const std_msgs::msg::ColorRGBA & color,
-                            const double scale = 0.1) {
+  auto add_line_list_marker = [&](
+                                const std::vector<geometry_msgs::msg::Point> & segments,
+                                const std::string & ns, const int id,
+                                const std_msgs::msg::ColorRGBA & color) {
     Marker marker = autoware_utils::create_default_marker(
-      "map", get_clock()->now(), ns, id, Marker::SPHERE,
-      autoware_utils::create_marker_scale(scale, scale, scale), color);
+      "map", get_clock()->now(), ns, id, Marker::LINE_LIST,
+      autoware_utils::create_marker_scale(0.1, 0.1, 0.1), color);
     marker.lifetime = rclcpp::Duration::from_seconds(0.2);
-    marker.pose.position = point;
+    marker.points = segments;
     marker_array.markers.push_back(marker);
   };
+
+  int id = 0;
+  {
+    using autoware_utils_geometry::calc_offset_pose;
+    const auto & shape = debug_data_.trajectory_shape;
+    const auto half_width = shape.ego_half_width;
+    const auto front_offset = std::abs(shape.ego_front_offset);
+    const auto back_offset = std::abs(shape.ego_back_offset);
+    std::vector<geometry_msgs::msg::Point> segments;
+    auto dist = 0.0;
+    for (const auto & footprint : shape.footprints) {
+      if (footprint.arc_length - dist < 1.0) continue;
+      dist = footprint.arc_length;
+      auto front_left = calc_offset_pose(footprint.pose, front_offset, -half_width, 0.0).position;
+      auto front_right = calc_offset_pose(footprint.pose, front_offset, half_width, 0.0).position;
+      auto rear_right = calc_offset_pose(footprint.pose, -back_offset, half_width, 0.0).position;
+      auto rear_left = calc_offset_pose(footprint.pose, -back_offset, -half_width, 0.0).position;
+      segments.emplace_back(rear_left);
+      segments.emplace_back(front_left);
+      segments.emplace_back(front_left);
+      segments.emplace_back(front_right);
+      segments.emplace_back(front_right);
+      segments.emplace_back(rear_right);
+      segments.emplace_back(rear_right);
+      segments.emplace_back(rear_left);
+    }
+    add_line_list_marker(segments, ns + "/traj_polygon", id, yellow);
+    id++;
+  }
 
   auto add_polygon_marker = [&](
                               const autoware_utils_geometry::Polygon2d & polygon,
@@ -504,23 +533,6 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
     marker_array.markers.push_back(marker);
   };
 
-  int id = 0;
-  {
-    double debug_lat_margin = 0.0;
-    for (const auto & [_, lat_margin] : lateral_margin_map_) {
-      debug_lat_margin = std::max(debug_lat_margin, lat_margin);
-    }
-
-    const auto & shape = debug_data_.trajectory_shape;
-    for (const auto & footprint : shape.footprints) {
-      const auto ego_polygon = autoware_utils::to_footprint(
-        footprint.pose, shape.ego_front_offset, shape.ego_back_offset,
-        2.0 * (shape.ego_half_width + debug_lat_margin));
-      add_polygon_marker(ego_polygon, ns + "/traj_polygon", id, yellow);
-      id++;
-    }
-  }
-
   {
     const auto & bounding_box = debug_data_.trajectory_shape.bounding_box;
     Polygon2d polygon;
@@ -536,6 +548,18 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
     add_polygon_marker(target_polygon, ns + "/target_objects", id, magenta);
     id++;
   }
+
+  auto add_point_marker = [&](
+                            const geometry_msgs::msg::Point & point, const std::string & ns,
+                            const int id, const std_msgs::msg::ColorRGBA & color,
+                            const double scale = 0.1) {
+    Marker marker = autoware_utils::create_default_marker(
+      "map", get_clock()->now(), ns, id, Marker::SPHERE,
+      autoware_utils::create_marker_scale(scale, scale, scale), color);
+    marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+    marker.pose.position = point;
+    marker_array.markers.push_back(marker);
+  };
 
   for (const auto & target_pcd_point : debug_data_.target_pcd_points) {
     add_point_marker(target_pcd_point, ns + "/target_pcd", id, magenta, 0.25);
