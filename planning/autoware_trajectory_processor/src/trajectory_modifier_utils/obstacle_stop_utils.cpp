@@ -19,6 +19,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/object_recognition_utils/predicted_path_utils.hpp>
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware_utils/geometry/sat_2d.hpp>
 #include <autoware_utils/transform/transforms.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <range/v3/view.hpp>
@@ -369,7 +370,53 @@ bool is_point_within_footprint(
   return rel.x() >= -shape.ego_back_offset && rel.x() <= shape.ego_front_offset &&
          std::abs(rel.y()) <= shape.ego_half_width + lat_margin;
 }
+
+Polygon2d make_local_ego_polygon(const TrajectoryShape & shape, const double lat_margin)
+{
+  const double half_width = shape.ego_half_width + lat_margin;
+  Polygon2d ego;
+  ego.outer() = {
+    {shape.ego_front_offset, half_width},  {shape.ego_front_offset, -half_width},
+    {-shape.ego_back_offset, -half_width}, {-shape.ego_back_offset, half_width},
+    {shape.ego_front_offset, half_width},
+  };
+  return ego;
+}
+
+Polygon2d transform_polygon_to_pose_frame(
+  const Polygon2d & polygon, const geometry_msgs::msg::Pose & pose)
+{
+  Polygon2d local;
+  local.outer().reserve(polygon.outer().size());
+  for (const auto & p : polygon.outer()) {
+    const auto rel = autoware_utils::inverse_transform_point(p.to_3d(), pose);
+    local.outer().emplace_back(rel.x(), rel.y());
+  }
+  return local;
+}
 }  // namespace
+
+std::vector<size_t> query_overlapping_footprints(
+  const TrajectoryShape & shape, const Polygon2d & polygon, const double lat_margin)
+{
+  if (polygon.outer().empty()) return {};
+
+  const auto query_box = inflate_box(
+    boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(polygon), lat_margin);
+  const auto candidates = query_rtree_candidates(shape, query_box);
+  const auto ego_local = make_local_ego_polygon(shape, lat_margin);
+
+  std::vector<size_t> hits;
+  hits.reserve(candidates.size());
+  for (const auto & node : candidates) {
+    const auto object_local =
+      transform_polygon_to_pose_frame(polygon, shape.footprints[node.second].pose);
+    if (autoware_utils_geometry::sat::intersects(ego_local, object_local)) {
+      hits.push_back(node.second);
+    }
+  }
+  return sort_hits_by_arc_length(shape, std::move(hits));
+}
 
 std::vector<size_t> query_overlapping_footprints(
   const TrajectoryShape & shape, const Point2d & point, const double lat_margin)
@@ -383,29 +430,6 @@ std::vector<size_t> query_overlapping_footprints(
   hits.reserve(candidates.size());
   for (const auto & node : candidates) {
     if (is_point_within_footprint(shape, shape.footprints[node.second], point, lat_margin)) {
-      hits.push_back(node.second);
-    }
-  }
-  return sort_hits_by_arc_length(shape, std::move(hits));
-}
-
-std::vector<size_t> query_overlapping_footprints(
-  const TrajectoryShape & shape, const Polygon2d & polygon, const double lat_margin)
-{
-  if (polygon.outer().empty()) return {};
-
-  const auto query_box = inflate_box(
-    boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(polygon), lat_margin);
-  const auto candidates = query_rtree_candidates(shape, query_box);
-
-  std::vector<size_t> hits;
-  hits.reserve(candidates.size());
-  for (const auto & node : candidates) {
-    const auto & footprint = shape.footprints[node.second];
-    const auto ego_polygon = autoware_utils::to_footprint(
-      footprint.pose, shape.ego_front_offset, shape.ego_back_offset,
-      2.0 * (shape.ego_half_width + lat_margin));
-    if (!boost::geometry::disjoint(polygon, ego_polygon)) {
       hits.push_back(node.second);
     }
   }

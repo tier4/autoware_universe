@@ -298,8 +298,9 @@ std::vector<size_t> query_overlapping_footprints(
 
 /**
  * @brief Find ego footprints that intersect the given object polygon.
- * @details Coarse R-tree AABB query (inflated by `lat_margin`), then a precise intersection
- * against the ego footprint expanded laterally by `lat_margin`.
+ * @details Coarse R-tree AABB query (inflated by `lat_margin`), then
+ * `autoware_utils_geometry::sat::intersects` in the footprint frame. The ego OBB (including
+ * `lat_margin`) is built once per query; each candidate only inverse-transforms the object.
  * @return Footprint indices sorted by increasing arc_length.
  */
 std::vector<size_t> query_overlapping_footprints(
