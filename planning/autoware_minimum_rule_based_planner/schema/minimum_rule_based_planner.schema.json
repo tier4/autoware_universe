@@ -112,13 +112,13 @@
                 "dist_threshold": {
                   "type": "number",
                   "description": "Distance threshold for ego nearest lanelet [m]",
-                  "default": 3.0,
+                  "default": 10.0,
                   "minimum": 0.0
                 },
                 "yaw_threshold": {
                   "type": "number",
                   "description": "Yaw threshold for ego nearest lanelet [rad]",
-                  "default": 0.174533,
+                  "default": 1.57,
                   "minimum": 0.0
                 }
               },

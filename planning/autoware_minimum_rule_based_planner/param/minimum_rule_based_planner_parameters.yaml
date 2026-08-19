@@ -95,12 +95,12 @@ minimum_rule_based_planner:
     ego_nearest_lanelet:
       dist_threshold:
         type: double
-        default_value: 3.0
+        default_value: 10.0
         description: distance threshold for ego nearest lanelet search [m]
 
       yaw_threshold:
         type: double
-        default_value: 1.046
+        default_value: 1.57
         description: yaw threshold for ego nearest lanelet search [rad]
 
     path_length:

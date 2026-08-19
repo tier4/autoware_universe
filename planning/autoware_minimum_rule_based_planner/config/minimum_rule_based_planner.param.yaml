@@ -26,8 +26,8 @@
       lane_change_failure_stop_margin: 0.0
 
       ego_nearest_lanelet:
-        dist_threshold: 3.0
-        yaw_threshold: 1.046
+        dist_threshold: 10.0
+        yaw_threshold: 1.57
 
       path_shift:
         enable: true
