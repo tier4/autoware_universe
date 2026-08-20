@@ -60,36 +60,53 @@ minimum_rule_based_planner:
 
     # Used only when early_stop.enable is false
     start_goal_planner:
-      search_radius_range:
-        type: double
-        default_value: 20
-        description: search radius range for smooth goal connection [m]
-
-      pre_goal_offset:
-        type: double
-        default_value: 1.0
-        description: offset before goal for smooth connection [m]
-
-      clothoid_reference_velocity:
+      reference_velocity:
         type: double
         default_value: 4.7
         validation:
           gt<>: [0.0]
         description: reference velocity used to size the clothoid transition length [m/s]
 
-      clothoid_steer_angle_trial_count:
+      steer_angle_trial_count:
         type: int
-        default_value: 7
+        default_value: 10
         validation:
           gt_eq<>: [1]
-        description: number of candidate steer angles to try for the clothoid goal connector, evenly spaced between the minimum feasible angle and the vehicle's max steer angle
+        description: number of candidate steer angles to try for generate pull trajectory
 
-      clothoid_max_steer_angle_rate_deg_per_sec:
+      max_steer_angle_rate:
         type: double
         default_value: 30.0
         validation:
           gt<>: [0.0]
         description: maximum steer angle rate used to size the clothoid transition length [deg/s]
+
+      goal_planner:
+        search_radius_range:
+          type: double
+          default_value: 20
+          description: search radius range to activate goal planner [m]
+
+        pre_goal_offset:
+          type: double
+          default_value: 1.0
+          description: offset before goal [m]
+
+        num_start_poses:
+          type: int
+          default_value: 10
+          description: number of start pose candidates
+
+      start_planner:
+        max_path_range:
+          type: double
+          default_value: 30
+          description: maximum range to set the goal point [m]
+
+        num_goal_poses:
+          type: int
+          default_value: 20
+          description: number of start pose candidates
 
     # Parameters for lanelet matching (different from EB smoother's ego_nearest_* params)
     ego_nearest_lanelet:
