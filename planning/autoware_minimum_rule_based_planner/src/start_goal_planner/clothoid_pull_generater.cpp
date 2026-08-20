@@ -858,6 +858,30 @@ void interpolate_z_by_cumulative_distance(
   }
 }
 
+bool has_turn_point(const std::vector<geometry_msgs::msg::Point> & points)
+{
+  std::optional<double> theta_prev = std::nullopt;
+
+  if (points.size() < 2) {
+    return false;
+  }
+
+  for (size_t i = 0; i < points.size() - 1; ++i) {
+    const auto dx = points[i + 1].x - points[i].x;
+    const auto dy = points[i + 1].y - points[i].y;
+    const auto theta = std::atan2(dy, dx);
+    if (theta_prev.has_value()) {
+      const double d_theta = std::abs(normalizeRadian(theta - *theta_prev));
+      constexpr double turn_point_th = M_PI / 2;
+      if (d_theta > turn_point_th) {
+        return true;
+      }
+    }
+    theta_prev = theta;
+  }
+  return false;
+}
+
 std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid_pull(
   const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & target_pose,
   double wheel_base_m, const double & max_steer_angle, double max_steer_angle_rate_rad_per_sec,
@@ -888,6 +912,9 @@ std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid
       }
 
       if (!connected_points_opt->empty()) {
+        if (has_turn_point(*connected_points_opt)) {
+          continue;
+        }
         interpolate_z_by_cumulative_distance(
           *connected_points_opt, start_pose.position.z, target_pose.position.z);
         candidate_paths.push_back(*connected_points_opt);
