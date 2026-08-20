@@ -86,6 +86,29 @@ Parameters can be set via YAML (see `config/diffusion_planner.param.yaml`).
 | `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information          |
 | `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information |
 
+### Neighbor agent inputs
+
+The model encodes each neighbor agent with a three-class one-hot vector, so Autoware object
+classifications are mapped as follows before being fed to the network:
+
+| Autoware `ObjectClassification`                | Model class  |
+| ---------------------------------------------- | ------------ |
+| `CAR`, `TRUCK`, `BUS`, `TRAILER`, `MOTORCYCLE` | `VEHICLE`    |
+| `BICYCLE`                                      | `BICYCLE`    |
+| `PEDESTRIAN`                                   | `PEDESTRIAN` |
+| `UNKNOWN`, `HAZARD`                            | `PEDESTRIAN` |
+| `ANIMAL`, `OVER_DRIVABLE`, `UNDER_DRIVABLE`    | ignored      |
+
+`UNKNOWN` and `HAZARD` have no dedicated model class, but they can still obstruct driving, so they
+are remapped to `PEDESTRIAN` — the most conservative supported class — instead of being dropped.
+Objects with a non-`BOUNDING_BOX` shape are normally skipped; for these two remapped classes the
+shape is instead replaced with a 0.5 m bounding box (with a throttled warning), because perception
+typically reports unknown obstacles as polygons. Objects with an empty `classification` field are
+still ignored.
+
+Note that the remapped classification is also what appears on `~/output/predicted_objects`, so such
+objects are republished as `PEDESTRIAN`.
+
 ## Outputs
 
 | Topic                           | Message Type                                              | Description                                                |

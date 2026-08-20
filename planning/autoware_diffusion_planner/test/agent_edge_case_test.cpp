@@ -131,4 +131,106 @@ TEST_F(AgentEdgeCaseTest, NonHazardPolygonObjectIsStillSkipped)
   EXPECT_TRUE(histories.empty());
 }
 
+TEST_F(AgentEdgeCaseTest, UnknownObjectIsRemappedToPedestrian)
+{
+  tracked_object_.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  ASSERT_EQ(histories.size(), 1U);
+  const auto & state = histories.front().get_latest_state();
+  EXPECT_EQ(state.label, AgentLabel::PEDESTRIAN);
+  EXPECT_EQ(
+    state.original_info.classification.front().label,
+    autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN);
+  // BOX shape is kept as is
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.x, 5.0);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.y, 2.0);
+}
+
+// This mirrors the PSim "2D Dummy Unknown" object, which is published as a POLYGON.
+TEST_F(AgentEdgeCaseTest, UnknownPolygonObjectGetsDefaultBox)
+{
+  tracked_object_.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+  tracked_object_.shape.type = autoware_perception_msgs::msg::Shape::POLYGON;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  ASSERT_EQ(histories.size(), 1U);
+  const auto & state = histories.front().get_latest_state();
+  EXPECT_EQ(state.label, AgentLabel::PEDESTRIAN);
+  EXPECT_EQ(state.original_info.shape.type, autoware_perception_msgs::msg::Shape::BOUNDING_BOX);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.x, 0.5);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.y, 0.5);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.z, 0.5);
+}
+
+// getHighestProbLabel() reports UNKNOWN for an empty classification vector, but such an object
+// carries no label to remap and must keep being ignored.
+TEST_F(AgentEdgeCaseTest, EmptyClassificationObjectIsStillSkipped)
+{
+  tracked_object_.classification.clear();
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  EXPECT_TRUE(histories.empty());
+}
+
+TEST_F(AgentEdgeCaseTest, AnimalObjectIsStillSkipped)
+{
+  tracked_object_.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::ANIMAL;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  EXPECT_TRUE(histories.empty());
+}
+
+TEST_F(AgentEdgeCaseTest, OverDrivableObjectIsStillSkipped)
+{
+  tracked_object_.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::OVER_DRIVABLE;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  EXPECT_TRUE(histories.empty());
+}
+
 }  // namespace autoware::diffusion_planner::test
