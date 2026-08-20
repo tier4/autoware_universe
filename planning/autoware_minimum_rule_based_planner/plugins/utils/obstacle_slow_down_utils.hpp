@@ -230,9 +230,14 @@ private:
     const double dist_from_obj_poly_to_traj_poly, const double lat_vel_relative_to_traj) const;
 
   std::vector<SlowDownObstacle> filter_slow_down_obstacle_for_predicted_object(
-    const std::vector<Polygon2d> & slow_down_corridor_polys,
-    const std::vector<Polygon2d> & ego_swept_polys, const EgoTrajectory & trajectory,
+    const std::vector<Polygon2d> & slow_down_corridor_polys, const EgoTrajectory & trajectory,
     const SlowDownInput & input);
+
+  // 横の隙間の測定に使う ego フットプリントの掃引。off track の上乗せ量が物体種別ごとに
+  // 異なるため、同一フレーム内で scale 値ごとにキャッシュする(plan() の先頭でクリアする)
+  const std::vector<Polygon2d> & get_ego_swept_polys(
+    const EgoTrajectory & trajectory, const geometry_msgs::msg::Pose & current_pose,
+    const double wheel_off_track_scale);
 
   SlowDownObstacle create_slow_down_obstacle_for_predicted_object(
     const EgoTrajectory & trajectory, const PredictedObject & object,
@@ -282,6 +287,8 @@ private:
   std::vector<uint8_t> target_object_labels_;
 
   std::map<UUID, ObstacleTrackingState, UuidLess> tracking_states_;
+
+  std::unordered_map<double, std::vector<Polygon2d>> ego_swept_polys_per_off_track_scale_;
 
   std::unordered_map<std::string, ObjectTypeSpecificParams>
     object_type_specific_param_per_object_type_;

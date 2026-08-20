@@ -33,17 +33,19 @@ using autoware_utils_geometry::Polygon2d;
 /// @brief sample the trajectory from the ego position to the goal with
 /// `decimate_trajectory_step_length` (extending it behind the goal by
 /// `goal_extended_trajectory_length`), then create the convex footprint polygon swept between each
-/// pair of successive sampled points, expanded laterally by `lat_margin`
-// object_type_specified_params(wheel_off_track_scale)は未移植のため、
-// 元実装の additional_front_outer_wheel_off_track_scale = 0 相当に固定している
-// TODO: additional_front_outer_wheel_off_track_scaleの実装
+/// pair of successive sampled points, expanded laterally by `lat_margin`.
+/// `additional_front_outer_wheel_off_track_scale` additionally widens the outer side of each
+/// footprint by that ratio of the front outer wheel off-tracking on curves.
 std::vector<Polygon2d> create_one_step_polygons(
   const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & trajectory,
   const VehicleInfo & vehicle_info, const geometry_msgs::msg::Pose & current_ego_pose,
   const double lat_margin, const bool enable_to_consider_current_pose,
   const double time_to_convergence, const double decimate_trajectory_step_length,
-  const double goal_extended_trajectory_length);
+  const double goal_extended_trajectory_length,
+  const double additional_front_outer_wheel_off_track_scale = 0.0);
 
 }  // namespace autoware::minimum_rule_based_planner::plugin::trajectory_polygon_utils
 
-#endif  // PLANNING__AUTOWARE_MINIMUM_RULE_BASED_PLANNER__PLUGINS__UTILS__TRAJECTORY_POLYGON_UTILS_HPP_
+// clang-format off
+#endif  // PLANNING__AUTOWARE_MINIMUM_RULE_BASED_PLANNER__PLUGINS__UTILS__TRAJECTORY_POLYGON_UTILS_HPP_  // NOLINT
+// clang-format on

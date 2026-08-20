@@ -34,7 +34,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <iostream>
 #include <limits>
 #include <string>
 #include <unordered_map>
@@ -49,12 +48,11 @@ using autoware_utils_geometry::Point2d;
 
 namespace
 {
-// TODO: std::cerrではなくloggerに直す
-// TODO(murooka) following two functions are copied from behavior_velocity_planner.
-// These should be refactored. (元実装のコメントを踏襲)
+// TODO(odashima) following two functions are copied from behavior_velocity_planner.
+// These should be refactored.
 double find_reach_time(
   const double jerk, const double accel, const double velocity, const double distance,
-  const double t_min, const double t_max)
+  const double t_min, const double t_max, const rclcpp::Logger & logger)
 {
   const double j = jerk;
   const double a = accel;
@@ -85,9 +83,9 @@ double find_reach_time(
       lower = t;
     }
     iter++;
-    if (iter > warn_iter)
-      std::cerr << "[obstacle_slow_down](find_reach_time): current iter is over warning"
-                << std::endl;
+    if (iter > warn_iter) {
+      RCLCPP_WARN(logger, "[SlowDown] find_reach_time: current iter is over warning");
+    }
   }
   return t;
 }
@@ -100,8 +98,6 @@ bool contains_uuid(const std::vector<T> & obstacles, const UUID & target_uuid)
   });
 }
 
-// 2値ヒステリシス。前回が low なら high_val を超えるまで low のまま、
-// 前回が high なら low_val を下回るまで high のまま
 bool schmitt_trigger(
   const bool prev_is_low, const double current_val, const double high_val, const double low_val)
 {
@@ -281,7 +277,7 @@ calc_front_back_collision_points(
 
 double calc_deceleration_velocity_from_distance_to_target(
   const double max_slowdown_jerk, const double max_slowdown_accel, const double current_accel,
-  const double current_velocity, const double distance_to_target)
+  const double current_velocity, const double distance_to_target, const rclcpp::Logger & logger)
 {
   if (max_slowdown_jerk > 0 || max_slowdown_accel > 0) {
     throw std::logic_error("max_slowdown_jerk and max_slowdown_accel should be negative");
@@ -306,7 +302,7 @@ double calc_deceleration_velocity_from_distance_to_target(
   if (d_const_acc_stop < 0) {
     // case0: distance to target is within constant jerk deceleration
     // use binary search instead of solving cubic equation
-    const double t_jerk = find_reach_time(j_max, a0, v0, l, 0, t_const_jerk);
+    const double t_jerk = find_reach_time(j_max, a0, v0, l, 0, t_const_jerk, logger);
     const double velocity = vt(t_jerk, j_max, a0, v0);
     return velocity;
   } else {
@@ -380,21 +376,16 @@ SlowDownResult SlowDownPlanner::plan(const EgoTrajectory & trajectory, const Slo
   // 減速をかける縦区間の検出用コリドー(max_lat_margin + hysteresis で拡幅)。
   // exit ヒステリシス帯域(max + hys/2)内の障害物からも衝突点を取るため、
   // hysteresis は半分にせず全量を足す(元実装の NOTE を踏襲)。
-  // TODO: wheel_off_track_scaleの意味の確認と実装
   const auto slow_down_corridor_polys = trajectory_polygon_utils::create_one_step_polygons(
     trajectory, vehicle_info_, input.current_pose, p.max_lat_margin + p.lat_hysteresis_margin,
     tp.enable_to_consider_current_pose, tp.time_to_convergence, tp.decimate_trajectory_step_length,
     0.0);
 
-  // 横の隙間の測定用: ego フットプリントの掃引そのもの(マージン 0)。
-  // ゴール付近で隙間がポリゴン末端の角までの距離として過大評価されないよう、ゴール後方に延長する
-  const auto ego_swept_polys = trajectory_polygon_utils::create_one_step_polygons(
-    trajectory, vehicle_info_, input.current_pose, 0.0, tp.enable_to_consider_current_pose,
-    tp.time_to_convergence, tp.decimate_trajectory_step_length, tp.goal_extended_trajectory_length);
+  ego_swept_polys_per_off_track_scale_.clear();
 
   SlowDownResult result;
-  result.obstacles = filter_slow_down_obstacle_for_predicted_object(
-    slow_down_corridor_polys, ego_swept_polys, trajectory, input);
+  result.obstacles =
+    filter_slow_down_obstacle_for_predicted_object(slow_down_corridor_polys, trajectory, input);
 
   result.traj_points = trajectory.restore();
   const double dist_to_ego =
@@ -506,9 +497,25 @@ bool SlowDownPlanner::is_slow_down_required(
   return false;
 }
 
+const std::vector<Polygon2d> & SlowDownPlanner::get_ego_swept_polys(
+  const EgoTrajectory & trajectory, const geometry_msgs::msg::Pose & current_pose,
+  const double wheel_off_track_scale)
+{
+  const auto [it, inserted] =
+    ego_swept_polys_per_off_track_scale_.try_emplace(wheel_off_track_scale);
+  if (inserted) {
+    const auto & tp = params_.trajectory_polygon;
+    // ゴール付近で隙間がポリゴン末端の角までの距離として過大評価されないよう、ゴール後方に延長する
+    it->second = trajectory_polygon_utils::create_one_step_polygons(
+      trajectory, vehicle_info_, current_pose, 0.0, tp.enable_to_consider_current_pose,
+      tp.time_to_convergence, tp.decimate_trajectory_step_length,
+      tp.goal_extended_trajectory_length, wheel_off_track_scale);
+  }
+  return it->second;
+}
+
 std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_predicted_object(
-  const std::vector<Polygon2d> & slow_down_corridor_polys,
-  const std::vector<Polygon2d> & ego_swept_polys, const EgoTrajectory & trajectory,
+  const std::vector<Polygon2d> & slow_down_corridor_polys, const EgoTrajectory & trajectory,
   const SlowDownInput & input)
 {
   const rclcpp::Time predicted_objects_stamp(input.predicted_objects->header.stamp);
@@ -537,8 +544,12 @@ std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_pre
     // 2. calc lateral distance to trajectory polygon
     const auto obstacle_poly = autoware_utils_geometry::to_polygon2d(
       object.kinematics.initial_pose_with_covariance.pose, object.shape);
-    const double dist_from_obj_poly_to_traj_poly =
-      calc_dist_to_traj_poly(obstacle_poly, ego_swept_polys);
+    // 横の隙間は「マージン 0 の ego 掃引ポリゴン」との距離。旋回時の前外輪のはみ出しを
+    // どれだけ見込むかは物体種別ごとに異なる
+    const double dist_from_obj_poly_to_traj_poly = calc_dist_to_traj_poly(
+      obstacle_poly, get_ego_swept_polys(
+                       trajectory, input.current_pose,
+                       get_object_param(object.classification.at(0)).wheel_off_track_scale));
 
     // 3. check the slow down conditions
     // NOTE: 候補判定で落ちるフレームでも状態は GC しない(ヒステリシスを保持する)ため、
@@ -906,7 +917,8 @@ double SlowDownPlanner::calculate_feasible_slow_down_velocity(
     }
     // TODO(murooka) Calculate more precisely. Final acceleration should be zero.
     const double min_slow_down_vel = calc_deceleration_velocity_from_distance_to_target(
-      params_.slow_down_min_jerk, params_.slow_down_min_acc, ego_acc, ego_vel, deceleration_dist);
+      params_.slow_down_min_jerk, params_.slow_down_min_acc, ego_acc, ego_vel, deceleration_dist,
+      logger_);
     return min_slow_down_vel;
   }();
 
