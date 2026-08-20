@@ -284,14 +284,9 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
     return generate_fallback_trajectory(trajectory);
   }
 
-  const auto candidate_trajectories =
-    generate_pull_trajectories(*start_pose_candidates, *goal_pose_candidates);
-  if (!candidate_trajectories) {
-    return generate_fallback_trajectory(trajectory);
-  }
+  const auto pull_trajectory = generate_and_evaluate_trajectory(
+    available_area, ego_pose, *start_pose_candidates, *goal_pose_candidates);
 
-  const auto pull_trajectory =
-    evaluate_trajectory(*candidate_trajectories, available_area, ego_pose);
   if (!pull_trajectory) {
     return generate_fallback_trajectory(trajectory);
   }
@@ -507,50 +502,41 @@ std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_goal_pose(
 }
 
 std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_trajectories(
-  const std::vector<PathPointWithLaneId> & start_pose_candidates,
-  const std::vector<PathPointWithLaneId> & goal_pose_candidates)
+  const PathPointWithLaneId & start_point, const PathPointWithLaneId & goal_point,
+  const double & max_steering_angle)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  const auto max_steer_angles_rad = generate_candidate_steer_angles_rad(
-    vehicle_info_.max_steer_angle_rad, params_.steer_angle_trial_count);
   const auto max_steer_angle_rate_rad_per_sec =
     autoware_utils::deg2rad(params_.max_steer_angle_rate);
 
   std::vector<PathPointTrajectory> candidate_trajectories;
 
-  for (const auto & start_point : start_pose_candidates) {
-    for (const auto & goal_point : goal_pose_candidates) {
-      for (const auto max_steering_angle : max_steer_angles_rad) {
-        const auto clothoid_paths = plan_clothoid_pull(
-          start_point.point.pose, goal_point.point.pose, vehicle_info_.wheel_base_m,
-          max_steering_angle, max_steer_angle_rate_rad_per_sec, params_.reference_velocity);
+  const auto clothoid_paths = plan_clothoid_pull(
+    start_point.point.pose, goal_point.point.pose, vehicle_info_.wheel_base_m, max_steering_angle,
+    max_steer_angle_rate_rad_per_sec, params_.reference_velocity);
 
-        if (!clothoid_paths.has_value()) {
-          continue;
-        }
-
-        for (const auto & clothoid_points : *clothoid_paths) {
-          std::vector<PathPointWithLaneId> trajectory = {start_point};
-          const auto interior_points = generate_trajectory_from_points(clothoid_points, goal_point);
-          trajectory.insert(trajectory.end(), interior_points.begin(), interior_points.end());
-          trajectory.push_back(goal_point);
-
-          if (const auto output = autoware::experimental::trajectory::pretty_build(trajectory)) {
-            candidate_trajectories.push_back(*output);
-          }
-        }
-      }
-    }
+  if (!clothoid_paths.has_value()) {
+    return std::nullopt;
   }
 
+  for (const auto & clothoid_points : *clothoid_paths) {
+    std::vector<PathPointWithLaneId> trajectory = {start_point};
+    const auto interior_points = generate_trajectory_from_points(clothoid_points, goal_point);
+    trajectory.insert(trajectory.end(), interior_points.begin(), interior_points.end());
+    trajectory.push_back(goal_point);
+
+    if (const auto output = autoware::experimental::trajectory::pretty_build(trajectory)) {
+      candidate_trajectories.push_back(*output);
+    }
+  }
   if (candidate_trajectories.empty()) {
     return std::nullopt;
   }
   return candidate_trajectories;
 }
 
-std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
-  const std::vector<PathPointTrajectory> & candidate_trajectories,
+std::optional<double> StartGoalPlanner::evaluate_trajectory(
+  const PathPointTrajectory & candidate,
   const std::vector<lanelet::BasicPolygon2d> & available_area,
   const geometry_msgs::msg::Pose & ego_pose)
 {
@@ -566,46 +552,79 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
       ? downsample_trajectory_points(*generated_trajectory_, num_sample_trajectory_diff)
       : std::vector<PathPointWithLaneId>{};
 
+  const double start_angle = tf2::getYaw(candidate.compute(0.0).point.pose.orientation);
+  const double ego_yaw = tf2::getYaw(ego_pose.orientation);
+  if (std::abs(autoware_utils::normalize_radian(start_angle - ego_yaw)) > M_PI / 2) {
+    return std::nullopt;
+  }
+
+  const auto [curvature_integral, max_curvature] = cal_curvature(candidate, time_keeper_);
+  if (max_curvature > feasible_curvature) {
+    return std::nullopt;
+  }
+
+  if (!is_footprints_inside_polygons(
+        downsample_trajectory_points(candidate, num_sample_footprint_check), available_area,
+        base_footprint, time_keeper_)) {
+    return std::nullopt;
+  }
+
+  const double arc_length = candidate.length();
+  if (arc_length < 1e-9) {
+    return std::nullopt;
+  }
+
+  const double trajectory_diff =
+    generated_trajectory_.has_value()
+      ? cal_trajectory_diff(
+          traj_points_prev, generated_trajectory_->length(),
+          downsample_trajectory_points(candidate, num_sample_trajectory_diff), candidate.length(),
+          time_keeper_)
+      : 0.0;
+
+  const double score =
+    curvature_integral / feasible_curvature * feasible_curvature * params_.eval_weight_curvature +
+    arc_length / params_.goal_planner.search_radius_range * params_.eval_weight_length +
+    trajectory_diff * params_.eval_weight_diff;
+  return score;
+}
+
+std::optional<PathPointTrajectory> StartGoalPlanner::generate_and_evaluate_trajectory(
+  const std::vector<lanelet::BasicPolygon2d> & available_area,
+  const geometry_msgs::msg::Pose & ego_pose, std::vector<PathPointWithLaneId> start_pose_candidates,
+  std::vector<PathPointWithLaneId> goal_pose_candidates)
+{
+  const auto max_steer_angles_rad = generate_candidate_steer_angles_rad(
+    vehicle_info_.max_steer_angle_rad, params_.steer_angle_trial_count);
+
   double best_score = std::numeric_limits<double>::max();
   std::optional<PathPointTrajectory> best_trajectory = std::nullopt;
-  for (const auto & candidate : candidate_trajectories) {
-    const double start_angle = tf2::getYaw(candidate.compute(0.0).point.pose.orientation);
-    const double ego_yaw = tf2::getYaw(ego_pose.orientation);
-    if (std::abs(autoware_utils::normalize_radian(start_angle - ego_yaw)) > M_PI / 2) {
-      continue;
-    }
+  int16_t feasible_trajectory_count = 0;
 
-    const auto [curvature_integral, max_curvature] = cal_curvature(candidate, time_keeper_);
-    if (max_curvature > feasible_curvature) {
-      continue;
-    }
+  for (const auto max_steering_angle : max_steer_angles_rad) {
+    for (const auto & start_point : start_pose_candidates) {
+      for (const auto & goal_point : goal_pose_candidates) {
+        const auto candidate_trajectories =
+          generate_pull_trajectories(start_point, goal_point, max_steering_angle);
+        if (!candidate_trajectories) {
+          continue;
+        }
 
-    if (!is_footprints_inside_polygons(
-          downsample_trajectory_points(candidate, num_sample_footprint_check), available_area,
-          base_footprint, time_keeper_)) {
-      continue;
-    }
-
-    const double arc_length = candidate.length();
-    if (arc_length < 1e-9) {
-      continue;
-    }
-
-    const double trajectory_diff =
-      generated_trajectory_.has_value()
-        ? cal_trajectory_diff(
-            traj_points_prev, generated_trajectory_->length(),
-            downsample_trajectory_points(candidate, num_sample_trajectory_diff), candidate.length(),
-            time_keeper_)
-        : 0.0;
-
-    const double score =
-      curvature_integral / feasible_curvature * feasible_curvature * params_.eval_weight_curvature +
-      arc_length / params_.goal_planner.search_radius_range * params_.eval_weight_length +
-      trajectory_diff * params_.eval_weight_diff;
-    if (score < best_score) {
-      best_score = score;
-      best_trajectory = candidate;
+        for (const auto & candidate_trajectory : *candidate_trajectories) {
+          const auto score = evaluate_trajectory(candidate_trajectory, available_area, ego_pose);
+          if (!score) {
+            continue;
+          }
+          if (*score < best_score) {
+            best_score = *score;
+            best_trajectory = candidate_trajectory;
+          }
+          feasible_trajectory_count++;
+          if (feasible_trajectory_count >= params_.traj_generation_exit_count) {
+            return best_trajectory;  // exit when enough number of trajectory is verified
+          }
+        }
+      }
     }
   }
   return best_trajectory;

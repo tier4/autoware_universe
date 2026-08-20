@@ -80,12 +80,17 @@ private:
   std::optional<std::vector<PathPointWithLaneId>> get_goal_pose(
     const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose);
   std::optional<std::vector<PathPointTrajectory>> generate_pull_trajectories(
-    const std::vector<PathPointWithLaneId> & start_pose_candidates,
-    const std::vector<PathPointWithLaneId> & goal_pose_candidates);
-  std::optional<PathPointTrajectory> evaluate_trajectory(
-    const std::vector<PathPointTrajectory> & candidate_trajectories,
+    const PathPointWithLaneId & start_point, const PathPointWithLaneId & goal_point,
+    const double & max_steering_angle);
+  std::optional<double> evaluate_trajectory(
+    const PathPointTrajectory & candidate,
     const std::vector<lanelet::BasicPolygon2d> & available_area,
     const geometry_msgs::msg::Pose & ego_pose);
+  std::optional<PathPointTrajectory> generate_and_evaluate_trajectory(
+    const std::vector<lanelet::BasicPolygon2d> & available_area,
+    const geometry_msgs::msg::Pose & ego_pose,
+    std::vector<PathPointWithLaneId> start_pose_candidates,
+    std::vector<PathPointWithLaneId> goal_pose_candidates);
   std::optional<PathPointTrajectory> connect_pull_trajectory(
     const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
   std::optional<PathPointTrajectory> connect_start_planner_trajectory(

@@ -69,7 +69,7 @@ minimum_rule_based_planner:
 
       steer_angle_trial_count:
         type: int
-        default_value: 10
+        default_value: 5
         validation:
           gt_eq<>: [1]
         description: number of candidate steer angles to try for generate pull trajectory
@@ -102,6 +102,13 @@ minimum_rule_based_planner:
           gt<>: [0.0]
         description: evaluation weight for difference from previous trajectory
 
+      traj_generation_exit_count:
+        type: int
+        default_value: 5
+        validation:
+          gt_eq<>: [0]
+        description: exit generating trajectory candidates when enough feasible trajectories are generated
+
       goal_planner:
         search_radius_range:
           type: double
@@ -127,14 +134,14 @@ minimum_rule_based_planner:
       start_planner:
         max_path_range:
           type: double
-          default_value: 30
+          default_value: 25
           validation:
             gt<>: [0.0]
           description: maximum range to set the goal point [m]
 
         num_goal_poses:
           type: int
-          default_value: 20
+          default_value: 10
           validation:
             gt<>: [1]
           description: number of start pose candidates
