@@ -642,9 +642,10 @@ std::optional<PathPointTrajectory> StartGoalPlanner::evaluate_trajectory(
             time_keeper_)
         : 0.0;
 
-    const double score = curvature_integral / feasible_curvature * feasible_curvature * 0.4 +
-                         arc_length / params_.goal_planner.search_radius_range * 0.3 +
-                         trajectory_diff * 0.3;
+    const double score =
+      curvature_integral / feasible_curvature * feasible_curvature * params_.eval_weight_curvature +
+      arc_length / params_.goal_planner.search_radius_range * params_.eval_weight_length +
+      trajectory_diff * params_.eval_weight_diff;
     if (score < best_score) {
       best_score = score;
       best_trajectory = candidate;

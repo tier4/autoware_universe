@@ -81,31 +81,62 @@ minimum_rule_based_planner:
           gt<>: [0.0]
         description: maximum steer angle rate used to size the clothoid transition length [deg/s]
 
+      eval_weight_curvature:
+        type: double
+        default_value: 0.4
+        validation:
+          gt<>: [0.0]
+        description: evaluation weight for curvature integral
+
+      eval_weight_length:
+        type: double
+        default_value: 0.3
+        validation:
+          gt<>: [0.0]
+        description: evaluation weight for trajectory length
+
+      eval_weight_diff:
+        type: double
+        default_value: 0.3
+        validation:
+          gt<>: [0.0]
+        description: evaluation weight for difference from previous trajectory
+
       goal_planner:
         search_radius_range:
           type: double
           default_value: 20
+          validation:
+            gt<>: [1.0]
           description: search radius range to activate goal planner [m]
 
         pre_goal_offset:
           type: double
           default_value: 1.0
+          validation:
+            gt<>: [0.0]
           description: offset before goal [m]
 
         num_start_poses:
           type: int
           default_value: 10
+          validation:
+            gt<>: [1]
           description: number of start pose candidates
 
       start_planner:
         max_path_range:
           type: double
           default_value: 30
+          validation:
+            gt<>: [0.0]
           description: maximum range to set the goal point [m]
 
         num_goal_poses:
           type: int
           default_value: 20
+          validation:
+            gt<>: [1]
           description: number of start pose candidates
 
     # Parameters for lanelet matching (different from EB smoother's ego_nearest_* params)
