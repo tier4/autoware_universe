@@ -42,7 +42,6 @@ protected:
 private:
   MinimumRuleBasedPlannerParams::ObstacleSlowDown params_;
 
-  // フィルタ・減速計画のノード非依存ロジックとフレーム間状態(SlowDownPlanner に集約)
   std::unique_ptr<SlowDownPlanner> planner_;
 
   void add_planning_factor(
