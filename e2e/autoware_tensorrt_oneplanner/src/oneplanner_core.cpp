@@ -300,22 +300,11 @@ OnePlannerOutput OnePlannerCore::create_planner_output(
 
   output.trajectory = trajectory;
 
-  // TurnIndicatorsCommand
-  const std::vector<float> first_turn_indicator_logit(
-    turn_indicator_logit.begin(), turn_indicator_logit.begin() + TURN_INDICATOR_OUTPUT_DIM);
-  const int64_t prev_report = turn_indicators_history_.empty()
-                                ? TurnIndicatorsReport::DISABLE
-                                : turn_indicators_history_.back().report;
-  output.turn_indicator_command =
-    turn_indicator_manager_.evaluate(first_turn_indicator_logit, timestamp, prev_report);
-
-  const auto candidate_trajectory =
-    autoware_internal_planning_msgs::build<
-      autoware_internal_planning_msgs::msg::CandidateTrajectory>()
-      .header(trajectory.header)
-      .generator_id(generator_uuid)
-      .points(trajectory.points)
-      .turn_indicators_command(output.turn_indicator_command);
+  const auto candidate_trajectory = autoware_internal_planning_msgs::build<
+                                      autoware_internal_planning_msgs::msg::CandidateTrajectory>()
+                                      .header(trajectory.header)
+                                      .generator_id(generator_uuid)
+                                      .points(trajectory.points);
 
   std_msgs::msg::String generator_name_msg;
   generator_name_msg.data = "OnePlanner";
@@ -327,6 +316,15 @@ OnePlannerOutput OnePlannerCore::create_planner_output(
 
   output.candidate_trajectories.candidate_trajectories.push_back(candidate_trajectory);
   output.candidate_trajectories.generator_info.push_back(generator_info);
+
+  // TurnIndicatorsCommand
+  const std::vector<float> first_turn_indicator_logit(
+    turn_indicator_logit.begin(), turn_indicator_logit.begin() + TURN_INDICATOR_OUTPUT_DIM);
+  const int64_t prev_report = turn_indicators_history_.empty()
+                                ? TurnIndicatorsReport::DISABLE
+                                : turn_indicators_history_.back().report;
+  output.turn_indicator_command =
+    turn_indicator_manager_.evaluate(first_turn_indicator_logit, timestamp, prev_report);
 
   return output;
 }
