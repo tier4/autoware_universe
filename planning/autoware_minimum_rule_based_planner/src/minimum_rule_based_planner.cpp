@@ -16,9 +16,11 @@
 
 #include "autoware/trajectory_processor/trajectory_processor_parameters.hpp"
 
+#include <autoware/avoidance_target_detector/object_filtering.hpp>
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware/mppi_optimizer/detail/trajectory_utils.hpp>
 #include <autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp>
 #include <autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options_ros.hpp>
 #include <autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp>
@@ -26,7 +28,10 @@
 #include <autoware/velocity_smoother/resample.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
+#include <autoware_perception_msgs/msg/tracked_object.hpp>
+
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -78,11 +83,83 @@ void assign_time_from_start(
     times.push_back(times.back() + std::max(ds / v, k_min_dt));
   }
 
+  const size_t ego_segment =
+    autoware::motion_utils::findNearestSegmentIndex(traj_points, ego_point);
+  const auto & segment_start = traj_points.at(ego_segment).pose.position;
+  const auto & segment_end = traj_points.at(ego_segment + 1U).pose.position;
+  const double segment_x = segment_end.x - segment_start.x;
+  const double segment_y = segment_end.y - segment_start.y;
+  const double squared_segment_length = segment_x * segment_x + segment_y * segment_y;
+  const double projection = squared_segment_length > std::numeric_limits<double>::epsilon()
+                              ? std::clamp(
+                                  ((ego_point.x - segment_start.x) * segment_x +
+                                   (ego_point.y - segment_start.y) * segment_y) /
+                                    squared_segment_length,
+                                  0.0, 1.0)
+                              : 0.0;
   const double ego_time =
-    times.at(autoware::motion_utils::findNearestSegmentIndex(traj_points, ego_point));
+    times.at(ego_segment) + projection * (times.at(ego_segment + 1U) - times.at(ego_segment));
   for (size_t i = 0; i < traj_points.size(); ++i) {
     traj_points.at(i).time_from_start = rclcpp::Duration::from_seconds(times.at(i) - ego_time);
   }
+}
+
+std::optional<Trajectory> resample_for_mppi(const Trajectory & trajectory)
+{
+  const auto temporal_trajectory =
+    autoware::experimental::trajectory::pretty_build_temporal(trajectory.points);
+  if (!temporal_trajectory) {
+    return std::nullopt;
+  }
+
+  Trajectory result;
+  result.header = trajectory.header;
+  result.points.reserve(
+    trajectory.points.size() + static_cast<size_t>(autoware::mppi_optimizer::detail::kMppiHorizon));
+  for (int i = 1; i <= autoware::mppi_optimizer::detail::kMppiHorizon; ++i) {
+    const double time = i * autoware::mppi_optimizer::detail::kMppiDt;
+    if (time > temporal_trajectory->end_time()) {
+      break;
+    }
+    auto point = temporal_trajectory->compute_from_time(time);
+    point.time_from_start = rclcpp::Duration::from_seconds(time);
+    result.points.push_back(std::move(point));
+  }
+  if (result.points.size() < 2U) {
+    return std::nullopt;
+  }
+
+  const double sampled_end_time = rclcpp::Duration(result.points.back().time_from_start).seconds();
+  for (const auto & point : trajectory.points) {
+    if (rclcpp::Duration(point.time_from_start).seconds() > sampled_end_time) {
+      result.points.push_back(point);
+    }
+  }
+  return result;
+}
+
+autoware::mppi_optimizer::TrackedObjects to_tracked_objects(const PredictedObjects & objects)
+{
+  autoware::mppi_optimizer::TrackedObjects result;
+  result.header = objects.header;
+  result.objects.reserve(objects.objects.size());
+  for (const auto & predicted : objects.objects) {
+    autoware_perception_msgs::msg::TrackedObject tracked;
+    tracked.object_id = predicted.object_id;
+    tracked.existence_probability = predicted.existence_probability;
+    tracked.classification = predicted.classification;
+    tracked.shape = predicted.shape;
+    tracked.kinematics.pose_with_covariance = predicted.kinematics.initial_pose_with_covariance;
+    tracked.kinematics.twist_with_covariance = predicted.kinematics.initial_twist_with_covariance;
+    tracked.kinematics.acceleration_with_covariance =
+      predicted.kinematics.initial_acceleration_with_covariance;
+    tracked.kinematics.orientation_availability =
+      autoware_perception_msgs::msg::TrackedObjectKinematics::AVAILABLE;
+    tracked.kinematics.is_stationary =
+      std::abs(tracked.kinematics.twist_with_covariance.twist.linear.x) < 0.1;
+    result.objects.push_back(std::move(tracked));
+  }
+  return result;
 }
 
 template <class Segment>
@@ -130,6 +207,12 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   pub_debug_stop_trajectory_ = this->create_publisher<Trajectory>("~/debug/stop_trajectory", 1);
   pub_debug_shifted_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/shifted_trajectory", 1);
+  pub_debug_mppi_nominal_trajectory_ =
+    this->create_publisher<Trajectory>("~/debug/mppi/nominal_trajectory", 1);
+  pub_debug_mppi_input_trajectory_ =
+    this->create_publisher<Trajectory>("~/debug/mppi/input_trajectory", 1);
+  pub_debug_mppi_output_trajectory_ =
+    this->create_publisher<Trajectory>("~/debug/mppi/output_trajectory", 1);
   debug_processing_time_detail_pub_ =
     this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
       "~/debug/processing_time_detail_ms", 1);
@@ -348,8 +431,6 @@ void MinimumRuleBasedPlannerNode::on_timer()
     path_planner_->convert_path_to_trajectory(*path, params_.path_planning.output.delta_arc_length);
   trajectory.header = path->header;
 
-  trajectory = optimize_with_mppi(trajectory, input_data);
-
   // 4. Shift trajectory to ego position
   trajectory = shift_trajectory_to_ego(trajectory, input_data);
 
@@ -358,6 +439,12 @@ void MinimumRuleBasedPlannerNode::on_timer()
 
   // 6. Apply trajectory modifiers
   apply_modifiers(trajectory, input_data);
+
+  // Create timing for MPPI without updating the velocity smoother's cross-cycle state. MPPI is
+  // used as a lateral optimizer; the authoritative go/stop velocity profiles are generated below.
+  const auto provisional_trajectory =
+    optimize_velocity(trajectory, input_data, /*update_smoother_state=*/false);
+  trajectory = optimize_with_mppi(provisional_trajectory, input_data);
 
   // 7. Plan the go/stop trajectories with map-defined stop points
   map_based_stop_planner_->set_planner_data(
@@ -370,8 +457,9 @@ void MinimumRuleBasedPlannerNode::on_timer()
   // 8. Velocity optimization
   // NOTE(odashima): the stop trajectory must not update the smoother's prev-output state: it
   // would drag the go trajectory's initial speed down to the stop profile on the next cycle.
-  const auto go_trajectory =
+  const auto velocity_optimized_go_trajectory =
     optimize_velocity(stop_result.go_trajectory, input_data, /*update_smoother_state=*/true);
+  const auto & go_trajectory = velocity_optimized_go_trajectory;
   const auto stop_trajectory =
     stop_result.stop_trajectory
       ? std::make_optional(optimize_velocity(
@@ -439,7 +527,37 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_with_mppi(
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
+  if (!input_data.route_ptr) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "MPPI skipped: no route is available");
+    return trajectory;
+  }
+  if (!input_data.steering_status_ptr) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000, "MPPI skipped: no steering status is available");
+    return trajectory;
+  }
+
+  const auto mppi_input = resample_for_mppi(trajectory);
+  if (!mppi_input) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "MPPI skipped: failed to create a future trajectory sampled at the MPPI time step");
+    return trajectory;
+  }
+
   try {
+    const bool route_or_map_changed =
+      mppi_route_handler_ &&
+      (mppi_map_ptr_ != input_data.lanelet_map_bin_ptr || mppi_route_ptr_ != input_data.route_ptr);
+    if (route_or_map_changed) {
+      mppi_optimizer_ = std::make_unique<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface>();
+      mppi_optimizer_->setCostParams(
+        autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
+      mppi_optimizer_->setVehicleParams(
+        autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
+      mppi_optimizer_->setRuntimeOptions(
+        autoware::mppi_optimizer::get_first_order_dubins_mppi_runtime_options(*this));
+    }
     if (
       !mppi_route_handler_ || mppi_map_ptr_ != input_data.lanelet_map_bin_ptr ||
       mppi_route_ptr_ != input_data.route_ptr) {
@@ -457,11 +575,33 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_with_mppi(
     const auto drivable_area =
       mppi_route_handler_->get_drivable_area_around_trajectory(trajectory, margin);
     const std::optional<AccelWithCovarianceStamped> acceleration{*input_data.acceleration_ptr};
+    const std::optional<SteeringReport> steering_status{*input_data.steering_status_ptr};
+    const auto tracked_objects = input_data.predicted_objects_ptr
+                                   ? to_tracked_objects(
+                                       autoware::avoidance_target_detector::filter_objects_in_range(
+                                         *input_data.predicted_objects_ptr, trajectory, margin))
+                                   : autoware::mppi_optimizer::TrackedObjects{};
     const auto result = mppi_optimizer_->optimizeTrajectory(
-      trajectory, *input_data.odometry_ptr, acceleration, std::nullopt,
-      autoware::mppi_optimizer::TrackedObjects{}, to_mppi_segments(road_borders),
-      to_mppi_segments(drivable_area));
-    return result.trajectory;
+      *mppi_input, *input_data.odometry_ptr, acceleration, steering_status, tracked_objects,
+      to_mppi_segments(road_borders), to_mppi_segments(drivable_area));
+    pub_debug_mppi_nominal_trajectory_->publish(result.debug.nominal_trajectory);
+    pub_debug_mppi_input_trajectory_->publish(result.debug.reference_trajectory);
+    pub_debug_mppi_output_trajectory_->publish(result.debug.optimized_trajectory);
+    if (result.debug.was_rejected) {
+      return trajectory;
+    }
+    auto optimized_trajectory = result.trajectory;
+    const size_t common_size =
+      std::min(optimized_trajectory.points.size(), mppi_input->points.size());
+    for (size_t i = 0; i < common_size; ++i) {
+      auto & optimized = optimized_trajectory.points.at(i);
+      const auto & reference = mppi_input->points.at(i);
+      optimized.longitudinal_velocity_mps = reference.longitudinal_velocity_mps;
+      optimized.lateral_velocity_mps = reference.lateral_velocity_mps;
+      optimized.acceleration_mps2 = reference.acceleration_mps2;
+      optimized.heading_rate_rps = reference.heading_rate_rps;
+    }
+    return optimized_trajectory;
   } catch (const std::runtime_error & error) {
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 5000, "MPPI optimization failed: %s", error.what());
@@ -579,9 +719,19 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
     }
   }
 
-  // NOTE(odashima): replaces calculate_time_from_start(), whose time base is not strictly
-  // increasing. This function will be removed once MPPI is implemented.
+  // Use a strictly increasing time base for MPPI sampling and downstream consumers.
   assign_time_from_start(trajectory_points, input_data.odometry_ptr->pose.pose.position);
+
+  constexpr float k_curvature_min_chord_length = 1.0F;
+  for (size_t i = 0; i < trajectory_points.size(); ++i) {
+    auto & point = trajectory_points.at(i);
+    const double curvature = autoware::mppi_optimizer::detail::computeMengerCurvatureWithMinChord(
+      trajectory_points, i, k_curvature_min_chord_length);
+    point.lateral_velocity_mps = 0.0F;
+    point.heading_rate_rps = static_cast<float>(point.longitudinal_velocity_mps * curvature);
+    point.front_wheel_angle_rad =
+      static_cast<float>(std::atan(vehicle_info_.wheel_base_m * curvature));
+  }
 
   Trajectory traj;
   traj.header = trajectory.header;
@@ -660,6 +810,11 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
     acceleration_ptr_ = msg;
   }
   input_data.acceleration_ptr = acceleration_ptr_;
+
+  if (const auto msg = steering_status_subscriber_.take_data()) {
+    steering_status_ptr_ = msg;
+  }
+  input_data.steering_status_ptr = steering_status_ptr_;
 
   if (const auto msg = objects_subscriber_.take_data()) {
     predicted_objects_ptr_ = msg;

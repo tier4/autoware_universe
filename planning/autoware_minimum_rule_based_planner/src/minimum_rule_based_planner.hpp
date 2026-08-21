@@ -21,10 +21,9 @@
 #include "path_planner.hpp"
 #include "velocity_smoother.hpp"
 
-#include <autoware_trajectory_processor/trajectory_processor_param.hpp>
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp>
-#include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
+#include <autoware_trajectory_processor/trajectory_processor_param.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
@@ -56,6 +55,7 @@ public:
     LaneletMapBin::ConstSharedPtr lanelet_map_bin_ptr;
     Odometry::ConstSharedPtr odometry_ptr;
     AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr;
+    SteeringReport::ConstSharedPtr steering_status_ptr;
     PredictedObjects::ConstSharedPtr predicted_objects_ptr;
     PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr;
     PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
@@ -193,6 +193,10 @@ private:
     acceleration_subscriber_{this, "~/input/acceleration"};
   AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr_;
 
+  autoware_utils::InterProcessPollingSubscriber<SteeringReport> steering_status_subscriber_{
+    this, "~/input/steering_status"};
+  SteeringReport::ConstSharedPtr steering_status_ptr_;
+
   autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_subscriber_{
     this, "~/input/objects"};
   PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
@@ -213,6 +217,9 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_stop_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_mppi_nominal_trajectory_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_mppi_input_trajectory_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_mppi_output_trajectory_;
   /** @} */
 };
 

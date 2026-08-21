@@ -6,6 +6,7 @@
   <!-- Main parameter file -->
   <arg name="minimum_rule_base_planner_param_path" default="$(find-pkg-share autoware_minimum_rule_based_planner)/config/minimum_rule_based_planner.param.yaml"/>
   <arg name="mppi_optimizer_param_path" default="$(find-pkg-share autoware_mppi_optimizer)/config/mppi_optimizer.param.yaml"/>
+  <arg name="minimum_rule_base_planner_mppi_param_path" default="$(find-pkg-share autoware_minimum_rule_based_planner)/config/mppi_optimizer.param.yaml"/>
   <arg name="vehicle_model" default="sample_vehicle"/>
   <arg name="simulator_model_param_path" default="$(find-pkg-share $(var vehicle_model)_description)/config/simulator_model.param.yaml"/>
 
@@ -23,6 +24,7 @@
   <arg name="input_vector_map" default="~/input/vector_map"/>
   <arg name="input_odometry" default="~/input/odometry"/>
   <arg name="input_acceleration" default="~/input/acceleration"/>
+  <arg name="input_steering_status" default="/vehicle/status/steering_status"/>
   <arg name="input_objects" default="~/input/objects"/>
   <arg name="input_pointcloud" default="~/input/pointcloud"/>
   <arg name="output_candidate_trajectories" default="~/output/candidate_trajectories"/>
@@ -33,6 +35,7 @@
     <param from="$(var common_param_path)"/>
     <param from="$(var minimum_rule_base_planner_param_path)" allow_substs="true"/>
     <param from="$(var mppi_optimizer_param_path)"/>
+    <param from="$(var minimum_rule_base_planner_mppi_param_path)"/>
     <param from="$(var simulator_model_param_path)"/>
     <param from="$(var minimum_rule_base_planner_elastic_band_smoother_param_path)" allow_substs="true"/>
     <param from="$(var minimum_rule_base_planner_jerk_filtered_smoother_param_path)" allow_substs="true"/>
@@ -42,6 +45,7 @@
     <remap from="~/input/vector_map" to="$(var input_vector_map)"/>
     <remap from="~/input/odometry" to="$(var input_odometry)"/>
     <remap from="~/input/acceleration" to="$(var input_acceleration)"/>
+    <remap from="~/input/steering_status" to="$(var input_steering_status)"/>
     <remap from="~/input/objects" to="$(var input_objects)"/>
     <remap from="~/input/pointcloud" to="$(var input_pointcloud)"/>
     <remap from="~/output/candidate_trajectories" to="$(var output_candidate_trajectories)"/>
