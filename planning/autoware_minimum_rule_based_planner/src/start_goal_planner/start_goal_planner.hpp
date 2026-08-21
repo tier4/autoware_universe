@@ -1,4 +1,4 @@
-// Copyright 2022 TIER IV, Inc.
+// Copyright 2026 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,26 +57,42 @@ public:
     const rclcpp::Logger & logger, std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
     const StartGoalPlannerParams & params, const VehicleInfo & vehicle_info);
 
+  // entry point to generate start goal trajectory
   std::optional<PathPointTrajectory> plan(
     const PathPointTrajectory & trajectory, lanelet::ConstLanelet & current_lanelet,
     const double & s_path_end, const geometry_msgs::msg::Pose & ego_pose);
+
+  // Route / map initialisation
   void set_route_data(const RouteData & route_data);
   void update_params(const StartGoalPlannerParams & params);
+
+  // Confirm the start planner has generated the trajectory
   bool start_planner_active() { return start_planner_act_ && generated_trajectory_.has_value(); }
+
+  // Confirm the goal planner has generated the trajectory
   bool goal_planner_active() { return goal_planner_act_ && generated_trajectory_.has_value(); }
 
 private:
+  // polygon type which can be used to pull-out and pull-over
   const std::unordered_set<std::string> available_area_type = {"parking_lot"};
 
+  // get polygon of available lanelet and area
   std::vector<lanelet::BasicPolygon2d> get_available_area(const PathPointTrajectory & trajectory);
 
+  // judge condition to activate start planner
   void judge_start_planner_act(
     const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & ego_pose);
+
+  // judge condition to activate goal planner
   void judge_goal_planner_act(
     const PathPointTrajectory & trajectory, const double & s_path_end,
     const std::vector<lanelet::BasicPolygon2d> & available_area);
+
+  // get candidates for initial pose pull-trajectory starts from
   std::optional<std::vector<PathPointWithLaneId>> get_start_pose(
     const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose);
+
+  // get candidates for end pose pull-trajectory try to reach
   std::optional<std::vector<PathPointWithLaneId>> get_goal_pose(
     const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose);
   std::optional<std::vector<PathPointTrajectory>> generate_pull_trajectories(
@@ -91,17 +107,23 @@ private:
     const geometry_msgs::msg::Pose & ego_pose,
     std::vector<PathPointWithLaneId> start_pose_candidates,
     std::vector<PathPointWithLaneId> goal_pose_candidates);
+
+  // connect input trajectory and generated pull-trajectory
   std::optional<PathPointTrajectory> connect_pull_trajectory(
     const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
   std::optional<PathPointTrajectory> connect_start_planner_trajectory(
     const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
   std::optional<PathPointTrajectory> connect_goal_planner_trajectory(
     const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
+
+  // return fallback_trajectory when trajectory generation is failed
   std::optional<PathPointTrajectory> generate_fallback_trajectory(
     const PathPointTrajectory & trajectory);
 
   bool start_planner_act_{false};
   bool goal_planner_act_{false};
+
+  // lached trajectory generated at previous time step
   std::optional<PathPointTrajectory> generated_trajectory_{std::nullopt};
   std::optional<Pose> goal_pose_prev_{std::nullopt};
 

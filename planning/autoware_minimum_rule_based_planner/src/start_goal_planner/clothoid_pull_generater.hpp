@@ -1,4 +1,4 @@
-// Copyright 2022 TIER IV, Inc.
+// Copyright 2026 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,10 +27,10 @@ namespace autoware::minimum_rule_based_planner
 /**
  * @brief Generate a clothoid-smoothed connector between two poses.
  *
- * Pure-geometry helper: tries each candidate steering angle (largest first is not assumed;
- * callers should order them by preference) and returns the point sequence of the first
- * feasible entry-clothoid -> circular-arc -> exit-clothoid connection from start_pose to
- * target_pose. Returns std::nullopt if no candidate steering angle yields a feasible path.
+ * Pure-geometry helper: try to generate 4 types of arc (starts from bigger/smaller circle and
+ * left/right pull) and returns the point sequence of the first feasible entry-clothoid ->
+ * circular-arc -> exit-clothoid connection from start_pose to target_pose. Returns std::nullopt if
+ * no candidate steering angle yields a feasible path.
  */
 std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid_pull(
   const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & target_pose,
@@ -40,10 +40,8 @@ std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid
 /**
  * @brief Generate candidate max-steer-angles for the clothoid goal connector.
  *
- * Evenly spaces `trial_count` angles between the minimum steer angle at which the
- * arc/clothoid construction does not degenerate (tan(angle) -> 0 as angle -> 0, which
- * makes the turning radius diverge) and `max_steer_angle_rad`, in ascending order.
- * If trial_count <= 1, only max_steer_angle_rad is returned.
+ * Evenly spaces `trial_count` angles between the minimum steer angle and `max_steer_angle_rad`, in
+ * ascending order. If trial_count <= 1, only max_steer_angle_rad is returned.
  */
 std::vector<double> generate_candidate_steer_angles_rad(
   double max_steer_angle_rad, int trial_count);
