@@ -20,8 +20,20 @@
 
       # Used only when early_stop.enable is false
       start_goal_planner:
-        search_radius_range: 7.5
-        pre_goal_offset: 1.0
+        reference_velocity: 4.7
+        steer_angle_trial_count: 5
+        max_steer_angle_rate: 30.0
+        eval_weight_curvature: 0.4
+        eval_weight_length: 0.3
+        eval_weight_diff: 0.3
+        traj_generation_exit_count: 5
+        goal_planner:
+          search_radius_range: 20.0
+          pre_goal_offset: 1.0
+          num_start_poses: 10
+        start_planner:
+          max_path_range: 25.0
+          num_goal_poses: 10
 
       lane_change_failure_stop_margin: 0.0
 
