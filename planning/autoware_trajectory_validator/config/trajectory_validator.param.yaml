@@ -30,6 +30,10 @@
         pet_margin:
           ego_earlier: 0.6
           object_earlier: 1.0
+          object_earlier_judgement_bias:
+            base: 0.0
+            pedestrian: 0.0
+            bicycle: 0.0
         ego_footprint_margin:
           lateral:
             base: 0.3
