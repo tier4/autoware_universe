@@ -23,6 +23,7 @@
 #include "autoware/diffusion_planner/inference/multi_step_inference.hpp"
 #include "autoware/diffusion_planner/inference/single_step_inference.hpp"
 #include "autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp"
+#include "autoware/diffusion_planner/preprocessing/bev_image.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
@@ -106,6 +107,7 @@ void DiffusionPlannerCore::load_model()
   last_ego_to_map_transform_.reset();
   diffusion_planner_inference_.reset();
   utils::check_weight_version(params_.args_path);
+  model_input_type_ = utils::load_model_input_type(params_.args_path);
   observation_normalization_ = utils::load_observation_normalization(params_.args_path);
   state_normalization_ = utils::load_state_normalization(params_.args_path);
 
@@ -146,22 +148,22 @@ void DiffusionPlannerCore::load_model()
   if (params_.backend == "tensorrt" && params_.model_type == "single_step") {
     diffusion_planner_inference_ = std::make_unique<SingleStepInference>(
       params_.single_step_model_path, params_.plugins_path, params_.batch_size,
-      params_.trt_precision, params_.use_cuda_graph);
+      params_.trt_precision, params_.use_cuda_graph, model_input_type_);
   } else if (params_.backend == "tensorrt" && params_.model_type == "multi_step") {
     diffusion_planner_inference_ = std::make_unique<MultiStepInference>(
       params_.encoder_model_path, params_.decoder_model_path, params_.turn_indicator_model_path,
       params_.plugins_path, params_.batch_size, params_.trt_precision, params_.use_cuda_graph,
-      params_.dpm_solver_steps, std::move(guidances));
+      params_.dpm_solver_steps, std::move(guidances), model_input_type_);
 #ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ONNXRUNTIME
   } else if (is_onnxruntime_backend(params_.backend) && params_.model_type == "single_step") {
     diffusion_planner_inference_ = std::make_unique<OnnxruntimeSingleStepInference>(
       params_.single_step_model_path, onnxruntime_execution_provider_from_backend(params_.backend),
-      params_.plugins_path, params_.batch_size);
+      params_.plugins_path, params_.batch_size, model_input_type_);
   } else if (is_onnxruntime_backend(params_.backend) && params_.model_type == "multi_step") {
     diffusion_planner_inference_ = std::make_unique<OnnxruntimeMultiStepInference>(
       params_.encoder_model_path, params_.decoder_model_path, params_.turn_indicator_model_path,
       onnxruntime_execution_provider_from_backend(params_.backend), params_.plugins_path,
-      params_.batch_size, params_.dpm_solver_steps, std::move(guidances));
+      params_.batch_size, params_.dpm_solver_steps, std::move(guidances), model_input_type_);
 #endif
   } else {
     if (params_.backend != "tensorrt") {
@@ -591,12 +593,23 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
   return input_data_map;
 }
 
-InferenceResult DiffusionPlannerCore::run_inference(const InputDataMap & input_data_map)
+std::vector<uint8_t> DiffusionPlannerCore::create_bev_image(
+  const InputDataMap & input_data_map) const
+{
+  if (model_input_type_ == ModelInputType::VECTOR) {
+    // The vector encoder reads the polylines and agent states directly; no raster is needed.
+    return {};
+  }
+  return preprocess::create_bev_image(input_data_map, params_.batch_size);
+}
+
+InferenceResult DiffusionPlannerCore::run_inference(
+  const InputDataMap & input_data_map, const std::vector<uint8_t> & bev_image)
 {
   if (!diffusion_planner_inference_) {
     return tl::unexpected(std::string{"Model not loaded"});
   }
-  return diffusion_planner_inference_->infer(input_data_map);
+  return diffusion_planner_inference_->infer(input_data_map, bev_image);
 }
 
 PlannerOutput DiffusionPlannerCore::create_planner_output(

@@ -16,6 +16,7 @@
 
 #include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
+#include "autoware/diffusion_planner/preprocessing/bev_image.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/utils/marker_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
@@ -26,6 +27,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -99,6 +101,11 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<std_msgs::msg::Float64>("~/debug/inference_time_ms", 1);
   pub_denoising_steps_ =
     this->create_publisher<std_msgs::msg::Float32MultiArray>("~/debug/denoising_steps", 1);
+  for (int64_t scale = 0; scale < BEV_NUM_SCALES; ++scale) {
+    const auto extent_m = static_cast<int64_t>(BEV_VIEW_EXTENTS_M[scale]);
+    pub_bev_images_.push_back(this->create_publisher<sensor_msgs::msg::Image>(
+      "~/debug/bev_image_" + std::to_string(extent_m) + "m", 1));
+  }
   pub_guidance_status_ = this->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
     "~/debug/guidance_status", 1);
 
@@ -252,6 +259,8 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<bool>("debug_params.publish_debug_route", true);
   debug_params_.publish_debug_linestrings =
     this->declare_parameter<bool>("debug_params.publish_debug_linestrings", true);
+  debug_params_.publish_debug_bev_image =
+    this->declare_parameter<bool>("debug_params.publish_debug_bev_image", false);
 }
 
 void DiffusionPlanner::load_model()
@@ -441,6 +450,9 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<bool>(
       parameters, "debug_params.publish_debug_linestrings",
       temp_debug_params.publish_debug_linestrings);
+    update_param<bool>(
+      parameters, "debug_params.publish_debug_bev_image",
+      temp_debug_params.publish_debug_bev_image);
     debug_params_ = temp_debug_params;
   }
 
@@ -510,6 +522,27 @@ void DiffusionPlanner::publish_snapped_pose(
   interpolation_time_msg.stamp = timestamp;
   interpolation_time_msg.data = frame_context.snapped_interpolation_time_s.value();
   pub_snap_interpolation_time_->publish(interpolation_time_msg);
+}
+
+void DiffusionPlanner::publish_debug_bev_image(
+  const std::vector<uint8_t> & bev_image, const rclcpp::Time & timestamp)
+{
+  if (!debug_params_.publish_debug_bev_image || bev_image.empty()) {
+    return;
+  }
+
+  for (int64_t scale = 0; scale < BEV_NUM_SCALES; ++scale) {
+    sensor_msgs::msg::Image msg;
+    msg.header.stamp = timestamp;
+    msg.header.frame_id = "base_link";
+    msg.height = static_cast<uint32_t>(BEV_IMAGE_SIZE);
+    msg.width = static_cast<uint32_t>(BEV_IMAGE_SIZE);
+    msg.encoding = "bgr8";
+    msg.is_bigendian = 0U;
+    msg.step = static_cast<uint32_t>(BEV_IMAGE_SIZE * 3);
+    msg.data = preprocess::colorize_bev_image(bev_image, scale);
+    pub_bev_images_[static_cast<size_t>(scale)]->publish(msg);
+  }
 }
 
 void DiffusionPlanner::publish_debug_markers(
@@ -609,8 +642,11 @@ void DiffusionPlanner::on_timer()
 
   const rclcpp::Time frame_time(frame_context->frame_time);
   InputDataMap input_data_map = core_->create_input_data(*frame_context);
+  // The rasterizer reads meters, so it has to run before the normalization below.
+  const std::vector<uint8_t> bev_image = core_->create_bev_image(input_data_map);
 
   publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
+  publish_debug_bev_image(bev_image, frame_time);
 
   publish_first_traffic_light_on_route(*frame_context);
 
@@ -641,7 +677,7 @@ void DiffusionPlanner::on_timer()
   }
 
   // Run inference using core
-  auto inference_result = core_->run_inference(input_data_map);
+  auto inference_result = core_->run_inference(input_data_map, bev_image);
 
   if (!inference_result) {
     RCLCPP_WARN_STREAM_THROTTLE(

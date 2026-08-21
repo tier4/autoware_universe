@@ -54,3 +54,4 @@
       publish_debug_route: true
       publish_debug_map: false
       publish_debug_linestrings: true
+      publish_debug_bev_image: false   # colorized preview of the BEV rasters; image-input models only
