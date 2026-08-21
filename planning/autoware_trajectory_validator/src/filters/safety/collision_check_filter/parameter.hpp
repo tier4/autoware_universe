@@ -209,6 +209,7 @@ struct DracParams
   {
     double ego_earlier{1.0};
     double object_earlier{1.0};
+    double object_earlier_judgement_bias{0.0};
   };
 
   struct EgoReactionBrakingDelay
@@ -292,6 +293,8 @@ struct DracParams
       extract_labeled_param<std::vector<std::string>>(drac.enable_assessment, key));
     pet_margin.ego_earlier = extract_labeled_param<double>(drac.pet_margin.ego_earlier, key);
     pet_margin.object_earlier = extract_labeled_param<double>(drac.pet_margin.object_earlier, key);
+    pet_margin.object_earlier_judgement_bias =
+      extract_labeled_param<double>(drac.pet_margin.object_earlier_judgement_bias, key);
     ego_footprint_margin.lateral =
       extract_labeled_param<double>(drac.ego_footprint_margin.lateral, key);
     ego_footprint_margin.front =

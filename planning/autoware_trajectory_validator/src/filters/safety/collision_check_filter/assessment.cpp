@@ -295,7 +295,9 @@ DracArtifact assess_constant_curvature(
     return drac_artifact;
   }
 
-  if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
+  if (
+    nominal_collision_result.value().first_collision_timing.pet >
+    drac_params.pet_margin.object_earlier_judgement_bias) {
     if (drac_params.constant_curvature.ego_earlier.enable_assessment) {
       throw std::invalid_argument("constant_curvature.ego_earlier is not implemented.");
     }
@@ -407,7 +409,9 @@ DracArtifact assess_map_based(
     }
 
     if (ego_turn_indicator.command == autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE) {
-      if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
+      if (
+        nominal_collision_result.value().first_collision_timing.pet >
+        drac_params.pet_margin.object_earlier_judgement_bias) {
         if (!drac_params.map_based.ego_prioritized_ego_earlier.enable_assessment) {
           continue;
         }
@@ -420,7 +424,9 @@ DracArtifact assess_map_based(
         throw std::invalid_argument("map_based.ego_prioritized_object_earlier is not implemented.");
       }
     } else {
-      if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
+      if (
+        nominal_collision_result.value().first_collision_timing.pet >
+        drac_params.pet_margin.object_earlier_judgement_bias) {
         if (!drac_params.map_based.object_prioritized_ego_earlier.enable_assessment) {
           continue;
         }

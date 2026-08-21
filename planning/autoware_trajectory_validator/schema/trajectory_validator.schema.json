@@ -293,6 +293,9 @@
                     "object_earlier": {
                       "type": "number",
                       "description": "PET margin when the object reaches the collision point earlier than ego [s]."
+                    },
+                    "object_earlier_judgement_bias": {
+                      "$ref": "#/definitions/labeled_double"
                     }
                   },
                   "required": [],
