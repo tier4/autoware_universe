@@ -148,8 +148,6 @@ bool ObstacleStop::is_obstacle_detected(
              : nearest_objects_collision_point.value();
   });
 
-  debug_data_.active_collision_point =
-    nearest_collision_point_ ? nearest_collision_point_->point : geometry_msgs::msg::Point();
   debug_data_.ego_z = data.odometry_ptr->pose.pose.position.z;
 
   return nearest_collision_point_ != std::nullopt;

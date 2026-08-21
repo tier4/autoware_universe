@@ -17,12 +17,8 @@
 #include "autoware/trajectory_processor/trajectory_modifier_utils/obstacle_stop_utils.hpp"
 #include "autoware/trajectory_processor/trajectory_modifier_utils/utils.hpp"
 
-#include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware/trajectory/trajectory_point.hpp>
-#include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
-#include <autoware_utils/transform/transforms.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/logging.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -190,8 +186,6 @@ bool ObstacleStop::is_trajectory_modification_required(
 
   check_obstacles(traj_points, input);
 
-  debug_data_.active_collision_point =
-    nearest_collision_point_ ? nearest_collision_point_->point : geometry_msgs::msg::Point();
   debug_data_.ego_z = input.current_odometry->pose.pose.position.z;
 
   const bool is_safe = nearest_collision_point_ == std::nullopt;

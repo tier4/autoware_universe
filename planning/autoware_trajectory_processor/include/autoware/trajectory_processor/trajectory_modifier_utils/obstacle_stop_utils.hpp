@@ -144,8 +144,12 @@ inline ObjectType to_object_type(const PointCloudClassification classification)
 
 inline double get_lateral_margin(const LateralMarginMap & map, const ObjectType type)
 {
-  if (const auto it = map.find(type); it != map.end()) return it->second;
-  if (const auto it = map.find(ObjectType::UNKNOWN); it != map.end()) return it->second;
+  if (const auto it = map.find(type); it != map.end()) {
+    return it->second;
+  }
+  if (const auto it = map.find(ObjectType::UNKNOWN); it != map.end()) {
+    return it->second;
+  }
   return 0.0;
 }
 
@@ -215,7 +219,6 @@ using FootprintRtree =
 
 struct TrajectoryShape
 {
-  MultiPolygon2d polygon;
   autoware_utils_geometry::Box2d bounding_box;
   double trajectory_length{0.0};
   double forward_traj_length{0.0};
@@ -235,7 +238,6 @@ struct DebugData
   MultiPolygon2d target_polygons;
   TrajectoryShape trajectory_shape;
   std::vector<geometry_msgs::msg::Point> target_pcd_points;
-  geometry_msgs::msg::Point active_collision_point;
   std::optional<PredictedObject> colliding_object;
   double ego_z = 0.0;  // cached for marker placement during publish_debug_data
 };
@@ -248,39 +250,13 @@ struct DebugData
 void trim_trajectory_and_remove_duplicates(TrajectoryPoints & trajectory_points);
 
 /**
- * @brief Build a 2D swept footprint of the ego vehicle along the portion of the path used for
- * obstacle detection.
- * @details The detection length combines stopping-distance logic (speed, deceleration, jerk,
- * margins) with the path ahead of the ego. The polygon is the union of vehicle footprints
- * sampled along that segment; the returned bounding box encloses that multi-polygon.
- * @param trajectory_points Full reference trajectory.
- * @param ego_pose Current ego pose on the trajectory.
- * @param vehicle_info Vehicle geometry for the footprint polygon.
- * @param ego_vel Current longitudinal speed [m/s].
- * @param ego_accel Current longitudinal acceleration [m/s^2].
- * @param decel Magnitude of comfortable deceleration used for stopping distance [m/s^2].
- * @param jerk Longitudinal jerk limit used for stopping distance [m/s^3].
- * @param stop_margin Extra longitudinal margin added to the detection range [m].
- * @param lateral_margin Lateral expansion of the footprint [m].
- * @param longitudinal_margin Longitudinal expansion of the footprint [m].
- * @return Swept shape, its axis-aligned bounding box, total trajectory length, and forward arc
- * length from the ego.
- */
-TrajectoryShape get_trajectory_shape(
-  const TrajectoryPoints & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double ego_vel,
-  const double ego_accel, const double decel, const double jerk, const double stop_margin,
-  const double lateral_margin = 0.0, const double longitudinal_margin = 0.0);
-
-/**
  * @brief Build an R-tree of ego footprints along the obstacle-detection portion of the trajectory.
- * @details Uses the same detection-length crop/extend as get_trajectory_shape(). Footprints are
- * sampled with a minimum spacing of 0.1 m and interpolated to a maximum spacing of 0.5 m. Each
- * entry stores the pose, nearest original trajectory index, and arc length from the trajectory
- * start. Vehicle extents are stored without extra lateral margin; class-specific expansion is
- * applied at query time.
+ * @details Detection length combines stopping-distance logic with the path ahead of the ego.
+ * Footprints are sampled with a minimum spacing of 0.1 m and interpolated to a maximum spacing of
+ * 1.0 m. Each entry stores the pose, nearest original trajectory index, and arc length from the
+ * trajectory start. Vehicle extents are stored without extra lateral margin; class-specific
+ * expansion is applied at query time.
  * @return TrajectoryShape with footprints, rtree, bounding box, lengths, and ego extents populated.
- *         The union polygon is left empty.
  */
 TrajectoryShape build_trajectory_footprint_index(
   const TrajectoryPoints & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,

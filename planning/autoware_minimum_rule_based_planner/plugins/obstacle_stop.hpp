@@ -18,7 +18,6 @@
 #include "autoware/trajectory_processor/trajectory_modifier_utils/obstacle_stop_utils.hpp"
 #include "plugin_interface.hpp"
 
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
@@ -35,7 +34,6 @@ using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_internal_planning_msgs::msg::SafetyFactor;
 using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_planning_msgs::msg::TrajectoryPoint;
-using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
 using trajectory_processor::utils::obstacle_stop::CollisionPoint;
 using trajectory_processor::utils::obstacle_stop::DebugData;

@@ -22,7 +22,6 @@
 #include <autoware_utils/geometry/sat_2d.hpp>
 #include <autoware_utils/transform/transforms.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
-#include <range/v3/view.hpp>
 
 #include <boost/geometry.hpp>
 
@@ -30,7 +29,6 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -138,103 +136,6 @@ TrajectoryPoints extend_trajectory(const TrajectoryPoints & trajectory_points, c
   extended_trajectory.insert(
     extended_trajectory.end(), extension_points.begin(), extension_points.end());
   return extended_trajectory;
-}
-
-TrajectoryShape get_trajectory_shape(
-  const TrajectoryPoints & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double ego_vel,
-  const double ego_accel, const double decel, const double jerk, const double stop_margin,
-  const double lateral_margin, const double longitudinal_margin)
-{
-  const auto offset_pose =
-    autoware_utils::calc_offset_pose(ego_pose, vehicle_info.max_longitudinal_offset_m, 0, 0);
-  auto start_idx = motion_utils::findNearestSegmentIndex(trajectory_points, offset_pose.position);
-
-  const auto traj_length = motion_utils::calcArcLength(trajectory_points);
-  const auto ego_arc_length =
-    motion_utils::calcSignedArcLength(trajectory_points, 0, ego_pose.position);
-  const auto forward_traj_length = traj_length - ego_arc_length;
-
-  const auto detection_length =
-    get_detection_length(forward_traj_length, ego_vel, ego_accel, decel, jerk, stop_margin);
-
-  const auto detection_traj = std::invoke([&]() -> TrajectoryPoints {
-    if (detection_length < forward_traj_length) {
-      return motion_utils::cropForwardPoints(
-        trajectory_points, ego_pose.position, start_idx, detection_length);
-    }
-    return extend_trajectory(trajectory_points, stop_margin);
-  });
-
-  autoware_utils_geometry::LineString2d ls_front_right;
-  autoware_utils_geometry::LineString2d ls_front_left;
-  autoware_utils_geometry::LineString2d ls_rear_right;
-  autoware_utils_geometry::LineString2d ls_rear_left;
-  ls_front_right.reserve(detection_traj.size());
-  ls_front_left.reserve(detection_traj.size());
-  ls_rear_right.reserve(detection_traj.size());
-  ls_rear_left.reserve(detection_traj.size());
-
-  autoware_utils_geometry::Polygon2d polygon_front;
-  autoware_utils_geometry::Polygon2d polygon_rear;
-
-  constexpr double min_resolution = 0.1;
-
-  const auto base_footprint = vehicle_info.createFootprint(lateral_margin, longitudinal_margin);
-  for (const auto & [idx, p] : detection_traj | ranges::views::enumerate) {
-    if (idx > 0) {
-      const auto & prev_p = detection_traj[idx - 1];
-      const auto dist = autoware_utils::calc_distance2d(prev_p, p);
-      if (dist < min_resolution) continue;
-    }
-    const autoware_utils_geometry::Point2d base_link(p.pose.position.x, p.pose.position.y);
-    const auto angle = tf2::getYaw(p.pose.orientation);
-    const Eigen::Rotation2Dd rotation(angle);
-    const auto front_left_offset =
-      rotation * base_footprint[vehicle_info_utils::VehicleInfo::FrontLeftIndex];
-    const auto front_right_offset =
-      rotation * base_footprint[vehicle_info_utils::VehicleInfo::FrontRightIndex];
-    const auto rear_right_offset =
-      rotation * base_footprint[vehicle_info_utils::VehicleInfo::RearRightIndex];
-    const auto rear_left_offset =
-      rotation * base_footprint[vehicle_info_utils::VehicleInfo::RearLeftIndex];
-    ls_front_left.emplace_back(
-      base_link.x() + front_left_offset.x(), base_link.y() + front_left_offset.y());
-    ls_front_right.emplace_back(
-      base_link.x() + front_right_offset.x(), base_link.y() + front_right_offset.y());
-    ls_rear_right.emplace_back(
-      base_link.x() + rear_right_offset.x(), base_link.y() + rear_right_offset.y());
-    ls_rear_left.emplace_back(
-      base_link.x() + rear_left_offset.x(), base_link.y() + rear_left_offset.y());
-  }
-  ls_rear_left.emplace_back(ls_front_left.back());
-  ls_rear_right.emplace_back(ls_front_right.back());
-  ls_front_left.insert(ls_front_left.begin(), ls_rear_left.front());
-  ls_front_right.insert(ls_front_right.begin(), ls_rear_right.front());
-
-  boost::geometry::reverse(ls_front_right);
-  boost::geometry::reverse(ls_rear_right);
-
-  boost::geometry::append(polygon_front, ls_front_left);
-  boost::geometry::append(polygon_front, ls_front_right);
-  boost::geometry::append(polygon_rear, ls_rear_left);
-  boost::geometry::append(polygon_rear, ls_rear_right);
-
-  boost::geometry::correct(polygon_front);
-  boost::geometry::correct(polygon_rear);
-
-  autoware_utils_geometry::MultiPolygon2d trajectory_polygon;
-  boost::geometry::union_(polygon_front, polygon_rear, trajectory_polygon);
-
-  autoware_utils_geometry::Box2d envelope;
-  boost::geometry::envelope(trajectory_polygon, envelope);
-
-  TrajectoryShape shape;
-  shape.polygon = std::move(trajectory_polygon);
-  shape.bounding_box = envelope;
-  shape.trajectory_length = traj_length;
-  shape.forward_traj_length = forward_traj_length;
-  return shape;
 }
 
 TrajectoryShape build_trajectory_footprint_index(
