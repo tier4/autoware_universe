@@ -149,6 +149,12 @@ class carla_ros2_interface(object):
             "vehicle_type": (rclpy.Parameter.Type.STRING, None),
             "use_traffic_manager": (rclpy.Parameter.Type.BOOL, None),
             "max_real_delta_seconds": (rclpy.Parameter.Type.DOUBLE, None),
+            # Minimum throttle applied while accelerating from (near) standstill.
+            # Heavy CARLA vehicles (e.g. vehicle.taxi.ford) do not creep and
+            # never start moving on the small throttle the actuation map yields
+            # at low target accelerations.
+            "min_positive_throttle": (rclpy.Parameter.Type.DOUBLE, 0.0),
+            "min_positive_throttle_speed_threshold": (rclpy.Parameter.Type.DOUBLE, 0.8),
             "force_load_world": (rclpy.Parameter.Type.BOOL, False),
             "no_rendering_mode": (rclpy.Parameter.Type.BOOL, False),
             "spawn_point_ground_snap": (rclpy.Parameter.Type.BOOL, False),
@@ -866,11 +872,37 @@ class carla_ros2_interface(object):
         """
         out_cmd = carla.VehicleControl()
         out_cmd.throttle = in_cmd.actuation.accel_cmd
+        # Keep the vehicle in first gear with manual shifting so heavy vehicles
+        # respond to throttle immediately instead of idling in neutral.
+        out_cmd.gear = 1
+        out_cmd.manual_gear_shift = True
+        min_positive_throttle = self.param_values.get("min_positive_throttle", 0.0)
+        min_positive_throttle_speed_threshold = self.param_values.get(
+            "min_positive_throttle_speed_threshold", 0.8
+        )
 
         with self._state_lock:
             # convert base on steer curve of the vehicle
             if not self.physics_control or not self.ego_actor:
                 return  # Skip if vehicle not initialized yet
+
+            current_vel_vec = self.ego_actor.get_velocity()
+            speed_mps = math.sqrt(
+                current_vel_vec.x * current_vel_vec.x
+                + current_vel_vec.y * current_vel_vec.y
+                + current_vel_vec.z * current_vel_vec.z
+            )
+            should_apply_min_throttle = (
+                out_cmd.throttle > 0.0
+                and min_positive_throttle > 0.0
+                and in_cmd.actuation.brake_cmd <= 0.0
+                and (
+                    min_positive_throttle_speed_threshold < 0.0
+                    or speed_mps <= min_positive_throttle_speed_threshold
+                )
+            )
+            if should_apply_min_throttle:
+                out_cmd.throttle = max(out_cmd.throttle, min_positive_throttle)
 
             steer_curve = self.physics_control.steering_curve
             # numpy.interp requires the sample x-coordinates to be increasing.
