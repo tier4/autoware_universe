@@ -121,12 +121,11 @@ validator:
           default_value: .NAN
           description: PET margin when the object reaches the collision point earlier than ego
           read_only: false
-      ego_footprint_margin:
-        lateral:
+        object_earlier_judgement_bias:
           base:
             type: double
             default_value: .NAN
-            description: default lateral margin added to both sides of the ego footprint for DRAC assessment
+            description: default bias for judging that the object reaches the collision point earlier than ego
             read_only: false
           unknown:
             &drac_labeled_double_override {
@@ -135,6 +134,25 @@ validator:
               description: Per-class override. NaN uses the base value.,
               read_only: false,
             }
+          car: *drac_labeled_double_override
+          truck: *drac_labeled_double_override
+          bus: *drac_labeled_double_override
+          trailer: *drac_labeled_double_override
+          motorcycle: *drac_labeled_double_override
+          bicycle: *drac_labeled_double_override
+          pedestrian: *drac_labeled_double_override
+          animal: *drac_labeled_double_override
+          hazard: *drac_labeled_double_override
+          over_drivable: *drac_labeled_double_override
+          under_drivable: *drac_labeled_double_override
+      ego_footprint_margin:
+        lateral:
+          base:
+            type: double
+            default_value: .NAN
+            description: default lateral margin added to both sides of the ego footprint for DRAC assessment
+            read_only: false
+          unknown: *drac_labeled_double_override
           car: *drac_labeled_double_override
           truck: *drac_labeled_double_override
           bus: *drac_labeled_double_override
