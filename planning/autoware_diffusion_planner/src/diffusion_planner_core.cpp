@@ -338,6 +338,18 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
 
   PlannerOutput output;
 
+  // TurnIndicatorsCommand
+  // Use the first batch's logit as the main turn indicator command.
+  constexpr int64_t turn_indicator_batch_idx = 0;
+  const std::vector<float> first_turn_indicator_logit(
+    turn_indicator_logit.begin() + TURN_INDICATOR_OUTPUT_DIM * turn_indicator_batch_idx,
+    turn_indicator_logit.begin() + TURN_INDICATOR_OUTPUT_DIM * (turn_indicator_batch_idx + 1));
+  const int64_t prev_report = turn_indicators_history_.empty()
+                                ? TurnIndicatorsReport::DISABLE
+                                : turn_indicators_history_.back().report;
+  output.turn_indicator_command =
+    turn_indicator_manager_.evaluate(first_turn_indicator_logit, timestamp, prev_report);
+
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
@@ -359,7 +371,8 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
                                         autoware_internal_planning_msgs::msg::CandidateTrajectory>()
                                         .header(trajectory.header)
                                         .generator_id(generator_uuid)
-                                        .points(trajectory.points);
+                                        .points(trajectory.points)
+                                        .turn_indicators_command(output.turn_indicator_command);
 
     std_msgs::msg::String generator_name_msg;
     generator_name_msg.data = std::string("DiffusionPlanner_batch_") + std::to_string(i);
@@ -378,18 +391,6 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
   constexpr int64_t batch_idx = 0;
   output.predicted_objects = postprocess::create_predicted_objects(
     agent_poses, frame_context.ego_centric_neighbor_histories, timestamp, batch_idx);
-
-  // TurnIndicatorsCommand
-  // Use the first batch's logit as the main turn indicator command.
-  constexpr int64_t turn_indicator_batch_idx = 0;
-  const std::vector<float> first_turn_indicator_logit(
-    turn_indicator_logit.begin() + TURN_INDICATOR_OUTPUT_DIM * turn_indicator_batch_idx,
-    turn_indicator_logit.begin() + TURN_INDICATOR_OUTPUT_DIM * (turn_indicator_batch_idx + 1));
-  const int64_t prev_report = turn_indicators_history_.empty()
-                                ? TurnIndicatorsReport::DISABLE
-                                : turn_indicators_history_.back().report;
-  output.turn_indicator_command =
-    turn_indicator_manager_.evaluate(first_turn_indicator_logit, timestamp, prev_report);
 
   return output;
 }
