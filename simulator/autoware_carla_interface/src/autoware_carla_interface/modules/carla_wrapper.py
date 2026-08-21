@@ -255,8 +255,8 @@ class SensorWrapper(object):
         self._set_attribute_if_supported(bp, "lower_fov", str(spec["lower_fov"]))
         self._set_attribute_if_supported(bp, "points_per_second", str(spec["points_per_second"]))
 
-    def _configure_gnss_attributes(self, bp):
-        """Configure GNSS with zero noise for clean simulation."""
+    def _configure_gnss_attributes(self, bp, spec):
+        """Configure GNSS noise, clean unless the sensor mapping asks otherwise."""
         for param in ["alt", "lat", "lon"]:
             for quantity in ["stddev", "bias"]:
                 self._set_noise_attribute(bp, spec, f"noise_{param}_{quantity}")
