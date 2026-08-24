@@ -646,12 +646,16 @@ void ObjectFilter::filter_by_target_area(
   const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
   constexpr double time_buffer = 0.5;
   auto time_to_obj_current_pos =
-    [&](const auto & object_pose, const size_t nearest_seg_idx) -> double {
+    [&](const auto & object_pose, const size_t nearest_seg_idx) -> std::optional<double> {
     const auto t_to_nearest_seg =
       rclcpp::Duration(trajectory_points.at(nearest_seg_idx).time_from_start).seconds();
     const auto lon_offset_dist =
       motion_utils::calcSignedArcLength(trajectory_points, nearest_seg_idx, object_pose.position);
     const auto nearest_seg_vel = trajectory_points.at(nearest_seg_idx).longitudinal_velocity_mps;
+    if (nearest_seg_vel < 1e-3) {
+      if (lon_offset_dist > ego_front_offset) return std::nullopt;
+      return std::max(0.0, t_to_nearest_seg - time_buffer);
+    }
     const auto ego_front_time_offset = ego_front_offset / nearest_seg_vel;
     const auto t_to_obj =
       t_to_nearest_seg + (lon_offset_dist / nearest_seg_vel) - ego_front_time_offset - time_buffer;
@@ -689,7 +693,8 @@ void ObjectFilter::filter_by_target_area(
     const auto obj_lat_vel = std::abs(obj_vel_vector.dot(traj_lat_dir));
     if (obj_lat_vel < max_lateral_velocity_th_ && obj_lat_vel < obj_lon_vel) return false;
     const auto t_to_obj_current_pos = time_to_obj_current_pos(object_pose, nearest_seg);
-    const auto obj_pred_pose = get_predicted_obj_pose_at_time(object, t_to_obj_current_pos);
+    if (!t_to_obj_current_pos) return true;
+    const auto obj_pred_pose = get_predicted_obj_pose_at_time(object, t_to_obj_current_pos.value());
     const auto obj_pred_polygon = get_object_polygon(obj_pred_pose, object.shape);
     return !overlaps_ego_footprints(obj_pred_polygon, lat_margin);
   };
