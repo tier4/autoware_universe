@@ -186,16 +186,16 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
 
   if (!data.predicted_objects_ptr || data.predicted_objects_ptr->objects.empty())
     return std::nullopt;
-  auto predicted_objects = *data.predicted_objects_ptr;
+  debug_data_.filtered_objects = *data.predicted_objects_ptr;
 
-  object_filter_->filter_objects(predicted_objects);
+  object_filter_->filter_objects(debug_data_.filtered_objects);
   object_filter_->filter_by_target_area(
-    predicted_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
+    debug_data_.filtered_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
     lateral_margin_map_, debug_data_.target_polygons);
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = get_nearest_object_collision(
-    traj_points, context_->vehicle_info, predicted_objects, object_decel_map_,
+    traj_points, context_->vehicle_info, debug_data_.filtered_objects, object_decel_map_,
     params_.rss_params.ego_decel, params_.rss_params.reaction_time,
     params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
     params_.rss_params.lookahead_horizon, colliding_object, params_.rss_params.enable);
@@ -218,23 +218,6 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
   pcl::fromROSMsg(*pointcloud, *filtered_pointcloud);
 
   {
-    const auto & bounding_box = debug_data_.trajectory_shape.bounding_box;
-    const auto rel_min_corner = autoware_utils_geometry::inverse_transform_point(
-      bounding_box.min_corner().to_3d(), data.odometry_ptr->pose.pose);
-    const auto rel_max_corner = autoware_utils_geometry::inverse_transform_point(
-      bounding_box.max_corner().to_3d(), data.odometry_ptr->pose.pose);
-    constexpr double buffer = 1.0;
-    const auto [min_x, max_x] = std::minmax(rel_min_corner.x(), rel_max_corner.x());
-    const auto [min_y, max_y] = std::minmax(rel_min_corner.y(), rel_max_corner.y());
-    const auto min_z = params_.objects.pointcloud_min_height;
-    const auto max_z =
-      context_->vehicle_info.vehicle_height_m + params_.objects.pointcloud_height_buffer;
-    pointcloud_filter_->filter_pointcloud(
-      filtered_pointcloud, min_x - buffer, max_x + buffer, min_y - buffer, max_y + buffer, min_z,
-      max_z);
-  }
-
-  {
     geometry_msgs::msg::TransformStamped transform_stamped;
     try {
       transform_stamped = context_->tf_buffer.lookupTransform(
@@ -242,6 +225,7 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
         rclcpp::Duration::from_seconds(0.1));
     } catch (tf2::TransformException & e) {
       RCLCPP_WARN(get_node_ptr()->get_logger(), "no transform found for pointcloud: %s", e.what());
+      return std::nullopt;
     }
 
     Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.transform).cast<float>();
@@ -251,6 +235,20 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
       p.y = q.y();
       p.z = q.z();
     }
+  }
+
+  {
+    const auto & bbox = debug_data_.trajectory_shape.bounding_box;
+    constexpr double buffer = 1.0;
+    const auto [min_x, max_x] = std::minmax(bbox.min_corner().x(), bbox.max_corner().x());
+    const auto [min_y, max_y] = std::minmax(bbox.min_corner().y(), bbox.max_corner().y());
+    const auto ego_z = data.odometry_ptr->pose.pose.position.z;
+    const auto min_z = ego_z + params_.objects.pointcloud_min_height;
+    const auto max_z =
+      ego_z + context_->vehicle_info.vehicle_height_m + params_.objects.pointcloud_height_buffer;
+    pointcloud_filter_->filter_pointcloud(
+      filtered_pointcloud, min_x - buffer, max_x + buffer, min_y - buffer, max_y + buffer, min_z,
+      max_z);
   }
 
   {
@@ -332,7 +330,7 @@ std::optional<CollisionPoint> ObstacleStop::get_nearest_collision_point(
 
   auto minimum_arc_length = std::numeric_limits<double>::max();
   for (const auto & cp : collision_points_buffer) {
-    if (cp.arc_length > minimum_arc_length || !cp.is_active) continue;
+    if (cp.arc_length >= minimum_arc_length || !cp.is_active) continue;
     nearest_collision_point = cp;
     minimum_arc_length = cp.arc_length;
   }

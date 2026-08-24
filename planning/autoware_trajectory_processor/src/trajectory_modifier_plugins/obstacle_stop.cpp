@@ -362,26 +362,8 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
 
   PointCloud::Ptr filtered_pointcloud(new PointCloud);
   pcl::fromROSMsg(*input.obstacle_pointcloud, *filtered_pointcloud);
-  {
-    autoware_utils_debug::ScopedTimeTrack stt(
-      "ObstacleStop::filter_pointcloud", *get_time_keeper());
-    const auto & bounding_box = debug_data_.trajectory_shape.bounding_box;
-    const auto rel_min_corner = autoware_utils_geometry::inverse_transform_point(
-      bounding_box.min_corner().to_3d(), input.current_odometry->pose.pose);
-    const auto rel_max_corner = autoware_utils_geometry::inverse_transform_point(
-      bounding_box.max_corner().to_3d(), input.current_odometry->pose.pose);
-    constexpr double buffer = 1.0;
-    const auto [min_x, max_x] = std::minmax(rel_min_corner.x(), rel_max_corner.x());
-    const auto [min_y, max_y] = std::minmax(rel_min_corner.y(), rel_max_corner.y());
-    const auto min_z = params_.objects.pointcloud_min_height;
-    const auto max_z =
-      context_->vehicle_info.vehicle_height_m + params_.objects.pointcloud_height_buffer;
-    pointcloud_filter_->filter_pointcloud(
-      filtered_pointcloud, min_x - buffer, max_x + buffer, min_y - buffer, max_y + buffer, min_z,
-      max_z);
-  }
 
-  if (!filtered_pointcloud->empty()) {
+  {
     geometry_msgs::msg::TransformStamped transform_stamped;
     try {
       transform_stamped = context_->tf_buffer.lookupTransform(
@@ -398,6 +380,22 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
       p.y = q.y();
       p.z = q.z();
     }
+  }
+
+  {
+    autoware_utils_debug::ScopedTimeTrack stt(
+      "ObstacleStop::filter_pointcloud", *get_time_keeper());
+    const auto & bbox = debug_data_.trajectory_shape.bounding_box;
+    constexpr double buffer = 1.0;
+    const auto [min_x, max_x] = std::minmax(bbox.min_corner().x(), bbox.max_corner().x());
+    const auto [min_y, max_y] = std::minmax(bbox.min_corner().y(), bbox.max_corner().y());
+    const auto ego_z = input.current_odometry->pose.pose.position.z;
+    const auto min_z = ego_z + params_.objects.pointcloud_min_height;
+    const auto max_z =
+      ego_z + context_->vehicle_info.vehicle_height_m + params_.objects.pointcloud_height_buffer;
+    pointcloud_filter_->filter_pointcloud(
+      filtered_pointcloud, min_x - buffer, max_x + buffer, min_y - buffer, max_y + buffer, min_z,
+      max_z);
   }
 
   {
