@@ -26,49 +26,13 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <cstdint>
-#include <optional>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety::reporter
 {
 using autoware_utils_geometry::Polygon2d;
 using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
-
-class ContinuousDetectionTimes
-{
-public:
-  void clear();
-
-  template <typename Detections, typename KeyFunc>
-  void update(const rclcpp::Time & current_time, const Detections & detections, KeyFunc key_func)
-  {
-    current_time_ = current_time;
-
-    std::unordered_set<std::string> active_keys{};
-    for (const auto & detection : detections) {
-      const auto key = key_func(detection);
-      active_keys.insert(key);
-      detection_start_times_.try_emplace(key, current_time);
-    }
-
-    for (auto it = detection_start_times_.begin(); it != detection_start_times_.end();) {
-      if (!active_keys.count(it->first)) {
-        it = detection_start_times_.erase(it);
-      } else {
-        ++it;
-      }
-    }
-  }
-
-  double get_time(const std::string & key) const;
-
-private:
-  std::optional<rclcpp::Time> current_time_;
-  std::unordered_map<std::string, rclcpp::Time> detection_start_times_;
-};
 
 void add_debug_markers(
   visualization_msgs::msg::MarkerArray & debug_markers, const rclcpp::Time & stamp,
@@ -82,13 +46,13 @@ void add_error_text_marker(
 
 void append_text_marker_message(std::string & text, const std::string & message);
 
-void log_collision_messages(const RiskLevel::_level_type level, const std::string & messages);
+void log_collision_messages(
+  const RiskLevel::_level_type level, const std::string & summary, const std::string & findings);
 
 autoware_internal_planning_msgs::msg::PlanningFactorArray process_collision_artifacts(
   const nav_msgs::msg::Odometry & odometry, const DracArtifact & drac_artifact,
-  ContinuousDetectionTimes & drac_continuous_times, const RssArtifact & rss_artifact,
-  ContinuousDetectionTimes & rss_continuous_times,
-  visualization_msgs::msg::MarkerArray & debug_markers, double time_resolution);
+  const RssArtifact & rss_artifact, visualization_msgs::msg::MarkerArray & debug_markers,
+  double time_resolution);
 }  // namespace autoware::trajectory_validator::plugin::safety::reporter
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_
