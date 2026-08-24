@@ -223,8 +223,10 @@ bool ObstacleStop::set_stop_point(
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::set_stop_point", *get_time_keeper());
 
+  const auto stop_margin =
+    nearest_collision_point_->is_dynamic ? params_.minimum_stop_margin : params_.stop_margin;
   const auto ego_longitudinal_offset = context_->vehicle_info.max_longitudinal_offset_m;
-  const auto target_stop_margin = params_.stop_margin + ego_longitudinal_offset;
+  const auto target_stop_margin = stop_margin + ego_longitudinal_offset;
   const auto target_stop_point_arc_length = utils::clamp_stop_point_arc_length(
     nearest_collision_point_->arc_length - target_stop_margin,
     debug_data_.trajectory_shape.trajectory_length, input.current_odometry->twist.twist.linear.x,
@@ -232,10 +234,10 @@ bool ObstacleStop::set_stop_point(
     stopping_params_.jerk_limit);
 
   // actual stop margin from ego front to collision point
-  const auto stop_margin =
+  const auto actual_stop_margin =
     nearest_collision_point_->arc_length - (target_stop_point_arc_length + ego_longitudinal_offset);
   const auto overlap_th =
-    stop_margin > params_.minimum_stop_margin ? params_.duplicate_check_threshold : 0.0;
+    actual_stop_margin > params_.minimum_stop_margin ? params_.duplicate_check_threshold : 0.0;
   if (utils::stop_point_exists(traj_points, target_stop_point_arc_length, overlap_th)) {
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,

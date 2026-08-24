@@ -722,6 +722,15 @@ void ObstacleTracker::update_objects(
       it++;
   }
 
+  auto estimate_pose = [&](const PersistentObject & object) -> geometry_msgs::msg::Pose {
+    const auto & pose = object.object.kinematics.initial_pose_with_covariance.pose;
+    const auto & twist = object.object.kinematics.initial_twist_with_covariance.twist.linear;
+    const auto dt = (now - object.last_seen_time).seconds();
+    const auto dx = twist.x * dt;
+    const auto dy = twist.y * dt;
+    return autoware_utils::calc_offset_pose(pose, dx, dy, 0.0);
+  };
+
   auto get_closest_object_uuid =
     [&](const PredictedObject & object) -> std::optional<boost::uuids::uuid> {
     std::optional<boost::uuids::uuid> closest_uuid = std::nullopt;
@@ -739,9 +748,9 @@ void ObstacleTracker::update_objects(
       if (existing_obj_label != obj_label) continue;
       const auto distance = autoware_utils::calc_distance2d(
         object.kinematics.initial_pose_with_covariance.pose.position,
-        existing_object.object.kinematics.initial_pose_with_covariance.pose.position);
+        estimate_pose(existing_object).position);
       if (distance > min_distance) continue;
-      // ignore orientation difference for cylinder objects
+      // ignore orientation difference for symmetric objects
       const bool is_symmetric =
         std::abs(object.shape.dimensions.x - object.shape.dimensions.y) < 0.1;
       const auto yaw_diff =
