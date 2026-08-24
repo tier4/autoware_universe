@@ -727,16 +727,20 @@ std::optional<PlannedSlowDownWithCarryOver> SlowDownPlanner::plan_slow_down_for_
   carry_over.target_vel = *stable_slow_down_vel;
   carry_over.feasible_target_vel = slow_down_interval->velocity;
   carry_over.dist_from_obj_poly_to_traj_poly = target.stable_dist_to_traj_poly;
-  // 減速開始位置が軌道範囲外なら planning factor を出さないため start_point は持たせない
+  // 減速開始位置が軌道範囲外なら、次フレームの距離 LPF の基準にできないので持たせない
   if (0.0 <= slow_down_interval->from_s && slow_down_interval->from_s <= trajectory.length()) {
     carry_over.start_point = trajectory.compute(slow_down_interval->from_s).pose;
   }
   carry_over.end_point = trajectory.compute(slow_down_interval->to_s).pose;
   carry_over.obstacle_motion = target.obstacle_motion;
 
-  // start/end_point は結果側も持ち越し側も要るので、寿命を絡ませないよう値で重複して持つ
+  // planning factor の start は幾何的な減速開始位置ではなく、元実装の virtual wall と同じく
+  // ego 位置を減速区間 [from_s, to_s] にクランプした点(通過中は ego に追従して end まで残す)
+  const double wall_s = std::clamp(dist_to_ego, slowdown_interval.from_s, slowdown_interval.to_s);
+
+  // end_point は結果側も持ち越し側も要るので、寿命を絡ませないよう値で重複して持つ
   return PlannedSlowDownWithCarryOver{
-    {slowdown_interval, target.obstacle, carry_over.start_point, *carry_over.end_point},
+    {slowdown_interval, target.obstacle, trajectory.compute(wall_s).pose, *carry_over.end_point},
     carry_over};
 }
 

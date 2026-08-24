@@ -177,8 +177,9 @@ struct PlannedSlowDown
 {
   SlowdownInterval interval;
   SlowDownObstacle obstacle;
-  // 減速開始位置が軌道範囲外で点を挿入できなかった場合は nullopt(planning factor は出さない)
-  std::optional<geometry_msgs::msg::Pose> start_pose;
+  // 元実装の virtual wall と同様に、ego が減速区間内にいる間は ego 位置に追従する
+  // (区間手前では減速開始位置、区間通過後は減速終了位置)
+  geometry_msgs::msg::Pose start_pose;
   geometry_msgs::msg::Pose end_pose;
 };
 
