@@ -67,7 +67,7 @@ public:
   void update_params(const StartGoalPlannerParams & params);
 
   // Confirm the start planner has generated the trajectory
-  bool start_planner_active() { return start_planner_act_ && generated_trajectory_.has_value(); }
+  bool start_planner_active() { return start_planner_act_; }
 
   // Confirm the goal planner has generated the trajectory
   bool goal_planner_active() { return goal_planner_act_ && generated_trajectory_.has_value(); }

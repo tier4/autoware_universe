@@ -166,7 +166,8 @@ lanelet::ConstPolygons3d find_polygons_intersecting_lanelet(
 
 std::pair<double, double> cal_curvature(
   const PathPointTrajectory & trajectory,
-  const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper)
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper,
+  const int & smoothing_window_size)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper);
   const auto ss = trajectory.get_underlying_bases();
@@ -174,16 +175,30 @@ std::pair<double, double> cal_curvature(
     return {0.0, 0.0};
   }
   const auto curvature_vec = trajectory.curvature(ss);
-  double max_curvature = 0.0;
+
+  const int half_window = smoothing_window_size / 2;
+  const int vec_size = static_cast<int>(curvature_vec.size());
+  auto smoothing_curvature = [&](int idx) {
+    const int start_idx = std::max(0, idx - half_window);
+    const int end_idx = std::min(vec_size - 1, idx + half_window);
+    double sum = 0.0;
+    for (int j = start_idx; j <= end_idx; ++j) {
+      sum += curvature_vec[j];
+    }
+    return sum / (end_idx - start_idx + 1);
+  };
+
+  double max_curvature = std::abs(smoothing_curvature(0));
   double curvature_integral = 0.0;
   for (size_t i = 0; i < ss.size() - 1; ++i) {
     const double ds = ss[i + 1] - ss[i];
-    const double curvature =
+    const double curvature_sq =
       (curvature_vec[i] * curvature_vec[i] + curvature_vec[i + 1] * curvature_vec[i + 1]) * 0.5;
-    if (max_curvature < curvature) {
-      max_curvature = curvature;
+    const double curvature_abs = std::abs(smoothing_curvature(i + 1));
+    if (max_curvature < curvature_abs) {
+      max_curvature = curvature_abs;
     }
-    curvature_integral += curvature * ds;
+    curvature_integral += curvature_sq * ds;
   }
   return {curvature_integral, max_curvature};
 }
@@ -308,7 +323,7 @@ void StartGoalPlanner::judge_start_planner_act(
   constexpr double start_planner_end_th_m = 1;
 
   const bool reset_condition_1 = goal_planner_act_;
-  const bool reset_condition_2 = lateral_offset < start_planner_end_th_m;
+  const bool reset_condition_2 = std::abs(lateral_offset) < start_planner_end_th_m;
   const bool set_condition_1 = [&]() {
     lanelet::ConstLanelets candidates = route_data_.start_lanelets;
     for (const auto & ll : route_data_.start_lanelets) {
@@ -519,10 +534,23 @@ std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_
     return std::nullopt;
   }
 
+  constexpr double min_point_distance = autoware::experimental::trajectory::k_epsilon_distance;
   for (const auto & clothoid_points : *clothoid_paths) {
     std::vector<PathPointWithLaneId> trajectory = {start_point};
-    const auto interior_points = generate_trajectory_from_points(clothoid_points, goal_point);
-    trajectory.insert(trajectory.end(), interior_points.begin(), interior_points.end());
+    for (const auto & point : generate_trajectory_from_points(clothoid_points, goal_point)) {
+      if (
+        autoware_utils::calc_distance2d(trajectory.back().point.pose, point.point.pose) <
+        min_point_distance) {
+        continue;
+      }
+      trajectory.push_back(point);
+    }
+    if (
+      trajectory.size() > 1 &&
+      autoware_utils::calc_distance2d(trajectory.back().point.pose, goal_point.point.pose) <
+        min_point_distance) {
+      trajectory.pop_back();
+    }
     trajectory.push_back(goal_point);
 
     if (const auto output = autoware::experimental::trajectory::pretty_build(trajectory)) {
@@ -558,7 +586,8 @@ std::optional<double> StartGoalPlanner::evaluate_trajectory(
     return std::nullopt;
   }
 
-  const auto [curvature_integral, max_curvature] = cal_curvature(candidate, time_keeper_);
+  const auto [curvature_integral, max_curvature] =
+    cal_curvature(candidate, time_keeper_, /*smoothing_window_size=*/7);
   if (max_curvature > feasible_curvature) {
     return std::nullopt;
   }
@@ -583,7 +612,8 @@ std::optional<double> StartGoalPlanner::evaluate_trajectory(
       : 0.0;
 
   const double score =
-    curvature_integral / feasible_curvature * feasible_curvature * params_.eval_weight_curvature +
+    curvature_integral / (feasible_curvature * feasible_curvature * arc_length) *
+      params_.eval_weight_curvature +
     arc_length / params_.goal_planner.search_radius_range * params_.eval_weight_length +
     trajectory_diff * params_.eval_weight_diff;
   return score;
