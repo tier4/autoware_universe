@@ -265,7 +265,7 @@ minimum_rule_based_planner:
     stop_distance_from_road_shoulder:
       type: double
       default_value: 0.5
-      description: distance to keep between the vehicle footprint and the road lane when stopping before departing from a road shoulder (added to stop_margin_distance) [m]
+      description: distance to keep between the vehicle footprint and the road-shoulder boundary when stopping before crossing it in either direction (added to stop_margin_distance) [m]
       validation:
         gt_eq<>: [0.0]
     max_deceleration:

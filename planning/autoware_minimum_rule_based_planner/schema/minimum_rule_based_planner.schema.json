@@ -306,7 +306,7 @@
             },
             "stop_distance_from_road_shoulder": {
               "type": "number",
-              "description": "Distance to keep between the vehicle footprint and the road lane when stopping before departing from a road shoulder (added to stop_margin_distance) [m]",
+              "description": "Distance to keep between the vehicle footprint and the road-shoulder boundary when stopping before crossing it in either direction (added to stop_margin_distance) [m]",
               "default": 0.5,
               "minimum": 0.0
             },

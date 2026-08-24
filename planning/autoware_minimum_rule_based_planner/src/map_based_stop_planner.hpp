@@ -42,7 +42,7 @@ enum class StopLineType {
   TrafficLight,  //!< stop line referenced by traffic light  -> possibility
   Intersection,  //!< lanelet with turn_direction attribute  -> possibility
   PrivateArea,   //!< private-area entry/exit transition     -> possibility
-  RoadShoulder,  //!< departure from a road shoulder to a road lane -> possibility
+  RoadShoulder,  //!< crossing a road-shoulder boundary either way  -> possibility
 };
 
 //! A map-defined stop line together with its classified type.
@@ -195,15 +195,21 @@ public:
     const bool include_possibility) const;
 
   /**
-   * @brief Arc length of the stop point that keeps ego inside the road shoulder it is parked in.
+   * @brief Arc length of the stop point placed before ego crosses a road-shoulder boundary.
    *
-   * Active only while the whole vehicle footprint is clear of every road lane and overlaps a
-   * shoulder lane; otherwise nullopt, so a trajectory that already straddles a road lane (e.g. a
-   * handover from another generator mid-avoidance) returns to the lane without stopping.
-   * The footprint is swept along the trajectory and the stop point is placed a margin before the
-   * first pose whose footprint reaches a road lane, so the stop position accounts for the corner
-   * that crosses first — a base_link line crossing would be several metres too late at the shallow
-   * angles the shift produces. Clamped to ego's own arc length so it is never behind ego.
+   * Two symmetric cases, selected from where the ego footprint currently is:
+   * - Departing: the footprint is clear of every road lane and overlaps a shoulder lane. The stop
+   *   is placed a margin before the first pose whose footprint reaches a road lane.
+   * - Entering: the footprint overlaps a road lane and no shoulder lane. The stop is placed a
+   *   margin before the first pose whose footprint touches a shoulder lane, but only when a later
+   *   pose is wholly inside the shoulder — clipping a shoulder while staying in the road lane is
+   *   normal driving and must not stop the vehicle.
+   *
+   * A footprint that already straddles both kinds returns nullopt, so a handover from another
+   * generator mid-crossing completes the crossing without stopping. The footprint is swept along
+   * the trajectory rather than intersecting a base_link line, which would be several metres late
+   * at the shallow angles the shift produces. Clamped to ego's own arc length so the stop is never
+   * behind ego.
    */
   std::optional<double> select_road_shoulder_stop_arc_length(
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,

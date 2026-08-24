@@ -894,31 +894,59 @@ std::optional<double> MapBasedStopPlanner::select_road_shoulder_stop_arc_length(
   };
 
   const auto ego_footprint = make_vehicle_footprint(ego_pose, params.vehicle_info);
-  if (
-    overlaps(ego_footprint, /*road_lane=*/true) || !overlaps(ego_footprint, /*road_lane=*/false)) {
+  const bool ego_in_road_lane = overlaps(ego_footprint, /*road_lane=*/true);
+  const bool ego_in_shoulder_lane = overlaps(ego_footprint, /*road_lane=*/false);
+  const bool departing = !ego_in_road_lane && ego_in_shoulder_lane;
+  const bool entering = ego_in_road_lane && !ego_in_shoulder_lane;
+  if (!departing && !entering) {
     return std::nullopt;
   }
 
   const double ego_arc_length =
     autoware::motion_utils::calcSignedArcLength(trajectory_points, 0UL, ego_pose.position);
 
+  // NOTE(odashima): the braking-distance reachability check applied to map stop lines is
+  // deliberately skipped, and the stop point is clamped to ego instead: crossing the shoulder
+  // boundary is what the vehicle must not do, and around a shoulder it travels slowly enough that
+  // the clamp holds it in place rather than demanding an infeasible deceleration.
+  const auto stop_arc_length = [&](const double crossing_arc_length) {
+    return std::max(
+      crossing_arc_length - params.stop_margin_distance - params.stop_distance_from_road_shoulder,
+      ego_arc_length);
+  };
+
   double arc_length = 0.0;
+  double shoulder_touch_arc_length = 0.0;
+  bool shoulder_touched = false;
   for (size_t i = 0; i < trajectory_points.size(); ++i) {
     if (i > 0) {
       arc_length += autoware_utils::calc_distance2d(trajectory_points[i - 1], trajectory_points[i]);
     }
     if (arc_length < ego_arc_length) continue;
     const auto footprint = make_vehicle_footprint(trajectory_points[i].pose, params.vehicle_info);
-    if (!overlaps(footprint, /*road_lane=*/true)) {
+    const bool in_road_lane = overlaps(footprint, /*road_lane=*/true);
+    const bool in_shoulder_lane = overlaps(footprint, /*road_lane=*/false);
+
+    if (departing) {
+      if (in_road_lane) return stop_arc_length(arc_length);
       continue;
     }
-    // NOTE(odashima): the braking-distance reachability check applied to map stop lines is
-    // deliberately skipped, and the stop point is clamped to ego instead: entering the road lane
-    // is what the vehicle must not do, and inside a shoulder it travels slowly enough that the
-    // clamp holds it in place rather than demanding an infeasible deceleration.
-    return std::max(
-      arc_length - params.stop_margin_distance - params.stop_distance_from_road_shoulder,
-      ego_arc_length);
+
+    // Entering: stop where the footprint starts to straddle the boundary, but only once the
+    // trajectory is known to end up wholly inside the shoulder — merely clipping a shoulder while
+    // staying in the road lane is normal driving and must not stop the vehicle.
+    if (!in_shoulder_lane) {
+      // The straddle that led here did not complete, so a later one anchors the stop instead.
+      shoulder_touched = false;
+      continue;
+    }
+    if (!shoulder_touched) {
+      shoulder_touch_arc_length = arc_length;
+      shoulder_touched = true;
+    }
+    if (!in_road_lane) {
+      return stop_arc_length(shoulder_touch_arc_length);
+    }
   }
   return std::nullopt;
 }
