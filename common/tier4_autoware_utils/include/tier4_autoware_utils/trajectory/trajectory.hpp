@@ -113,7 +113,7 @@ size_t findNearestIndex(const T & points, const geometry_msgs::msg::Point & poin
 
 template <class T>
 size_t findFirstNearestIndex(
-  const T & points, const geometry_msgs::msg::Point & point, const double distance_thresh = 9.0)
+  const T & points, const geometry_msgs::msg::Point & point, const double distance_thresh = 5.0)
 {
   validateNonEmpty(points);
 
@@ -198,7 +198,7 @@ boost::optional<size_t> findFirstNearestIndex(
   const T & points, const geometry_msgs::msg::Pose & pose,
   const double max_dist = std::numeric_limits<double>::max(),
   const double max_yaw = std::numeric_limits<double>::max(),
-  const double distance_thresh = 9.0)
+  const double distance_thresh = 5.0)
 {
   try {
     validateNonEmpty(points);
@@ -350,7 +350,7 @@ size_t findNearestSegmentIndex(const T & points, const geometry_msgs::msg::Point
  */
 template <class T>
 size_t findFirstNearestSegmentIndex(
-  const T & points, const geometry_msgs::msg::Point & point, const double distance_thresh = 9.0)
+  const T & points, const geometry_msgs::msg::Point & point, const double distance_thresh = 5.0)
 {
   const size_t nearest_idx = findFirstNearestIndex(points, point, distance_thresh);
 
@@ -424,7 +424,7 @@ boost::optional<size_t> findFirstNearestSegmentIndex(
   const T & points, const geometry_msgs::msg::Pose & pose,
   const double max_dist = std::numeric_limits<double>::max(),
   const double max_yaw = std::numeric_limits<double>::max(),
-  const double distance_thresh = 9.0)
+  const double distance_thresh = 5.0)
 {
   const auto nearest_idx = findFirstNearestIndex(points, pose, max_dist, max_yaw, distance_thresh);
 
@@ -626,7 +626,7 @@ boost::optional<double> calcFirstSignedArcLength(
   const geometry_msgs::msg::Point & dst_point,
   const double max_dist = std::numeric_limits<double>::max(),
   const double max_yaw = std::numeric_limits<double>::max(),
-  const double distance_thresh = 9.0)
+  const double distance_thresh = 5.0)
 {
   try {
     validateNonEmpty(points);

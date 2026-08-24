@@ -75,7 +75,7 @@ SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptio
     this->declare_parameter("surround_check_recover_distance", 2.5);
   state_clear_time_ = this->declare_parameter("state_clear_time", 2.0);
   stop_state_ego_speed_ = this->declare_parameter("stop_state_ego_speed", 0.1);
-  distance_thresh_ = this->declare_parameter("distance_thresh", 9.0);
+  distance_thresh_ = this->declare_parameter("distance_thresh", 5.0);
   debug_ptr_ = std::make_shared<SurroundObstacleCheckerDebugNode>(
     vehicle_info_.max_longitudinal_offset_m, this->get_clock(), *this);
   self_poly_ = createSelfPolygon();

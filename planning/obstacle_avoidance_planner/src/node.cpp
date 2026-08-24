@@ -320,7 +320,7 @@ ObstacleAvoidancePlanner::ObstacleAvoidancePlanner(const rclcpp::NodeOptions & n
       declare_parameter<double>("common.delta_dist_threshold_for_closest_point");
     traj_param_.delta_yaw_threshold_for_closest_point =
       declare_parameter<double>("common.delta_yaw_threshold_for_closest_point");
-    traj_param_.distance_thresh = declare_parameter<double>("common.distance_thresh", 9.0);
+    traj_param_.distance_thresh = declare_parameter<double>("common.distance_thresh", 5.0);
     traj_param_.delta_yaw_threshold_for_straight =
       declare_parameter<double>("common.delta_yaw_threshold_for_straight");
 

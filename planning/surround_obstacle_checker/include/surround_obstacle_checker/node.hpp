@@ -85,7 +85,7 @@ private:
   size_t getClosestIdx(const TrajectoryPoints & traj, const geometry_msgs::msg::Pose current_pose);
   size_t getFirstClosestIndex(
     const TrajectoryPoints & traj, const geometry_msgs::msg::Pose current_pose,
-    const double distance_thresh = 9.0);
+    const double distance_thresh = 5.0);
   bool checkStop(const TrajectoryPoint & closest_point);
   Polygon2d createSelfPolygon();
   Polygon2d createObjPolygon(

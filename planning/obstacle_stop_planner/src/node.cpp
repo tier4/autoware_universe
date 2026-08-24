@@ -447,7 +447,7 @@ ObstacleStopPlannerNode::ObstacleStopPlannerNode(const rclcpp::NodeOptions & nod
     lpf_acc_ = std::make_shared<LowpassFilter1d>(0.0, p.lowpass_gain);
     const double max_yaw_deviation_deg = declare_parameter("max_yaw_deviation_deg", 90.0);
     p.max_yaw_deviation_rad = tier4_autoware_utils::deg2rad(max_yaw_deviation_deg);
-    p.distance_thresh = declare_parameter("distance_thresh", 9.0);
+    p.distance_thresh = declare_parameter("distance_thresh", 5.0);
   }
 
   {

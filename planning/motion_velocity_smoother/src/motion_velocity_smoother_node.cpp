@@ -245,7 +245,7 @@ void MotionVelocitySmootherNode::initCommonParam()
   p.extract_behind_dist = declare_parameter("extract_behind_dist", 3.0);
   p.stop_dist_to_prohibit_engage = declare_parameter("stop_dist_to_prohibit_engage", 1.5);
   p.delta_yaw_threshold = declare_parameter("delta_yaw_threshold", M_PI / 3.0);
-  p.distance_thresh = declare_parameter("distance_thresh", 9.0);
+  p.distance_thresh = declare_parameter("distance_thresh", 5.0);
   p.post_resample_param.max_trajectory_length =
     declare_parameter("post_max_trajectory_length", 300.0);
   p.post_resample_param.min_trajectory_length =
