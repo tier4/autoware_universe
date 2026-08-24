@@ -138,11 +138,9 @@ void ObstacleSlowDown::run(TrajectoryPoints & traj_points, const ModifierData & 
 
   for (const auto & plan : result.plans) {
     insert_slowdown(trajectory, plan.interval);
-    if (plan.start_pose) {
-      add_planning_factor(
-        result.traj_points, input.current_pose, *plan.start_pose, plan.end_pose,
-        result.is_driving_forward, plan.interval.velocity, plan.obstacle);
-    }
+    add_planning_factor(
+      result.traj_points, input.current_pose, plan.start_pose, plan.end_pose,
+      result.is_driving_forward, plan.interval.velocity, plan.obstacle);
   }
   traj_points = trajectory.restore();
 }
