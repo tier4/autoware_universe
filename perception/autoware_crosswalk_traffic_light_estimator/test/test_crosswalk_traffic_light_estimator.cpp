@@ -51,14 +51,7 @@ CrosswalkTrafficLightEstimatorConfig make_default_config()
   return config;
 }
 
-rclcpp::Time make_time(double seconds)
-{
-  return rclcpp::Time(static_cast<int64_t>(seconds * 1e9));
-}
-
-TrafficSignal make_signal(
-  lanelet::Id tl_id, uint8_t color, float confidence = 1.0,
-  uint8_t shape = TrafficSignalElement::CIRCLE)
+TrafficSignal make_signal(lanelet::Id tl_id, uint8_t color, float confidence = 1.0)
 {
   TrafficSignal signal;
   signal.traffic_light_group_id = tl_id;
@@ -306,7 +299,7 @@ TEST(CrosswalkTrafficLightEstimatorTest, Estimate_FirstCallWithGreenVehicle_Cros
     make_signal_array({make_signal(VEHICLE_TL_REG_ELEM_ID, TrafficSignalElement::GREEN)});
 
   // Act: GREEN vehicle signal is sufficient to estimate crosswalk as RED, even on first call
-  const auto result = estimator.estimate(green_msg, make_time(0.0));
+  const auto result = estimator.estimate(green_msg);
 
   // Assert
   assert_estimated_linked_signal_color(result, TrafficSignalElement::RED);
@@ -320,7 +313,7 @@ TEST(CrosswalkTrafficLightEstimatorTest, Estimate_UnknownVehicleNoHistory_Crossw
     make_signal_array({make_signal(VEHICLE_TL_REG_ELEM_ID, TrafficSignalElement::UNKNOWN)});
 
   // Act: UNKNOWN vehicle signal with no prior history → crosswalk cannot be estimated
-  const auto result = estimator.estimate(unknown_msg, make_time(0.0));
+  const auto result = estimator.estimate(unknown_msg);
 
   // Assert
   assert_estimated_linked_signal_color(result, TrafficSignalElement::UNKNOWN);
@@ -334,7 +327,7 @@ TEST(CrosswalkTrafficLightEstimatorTest, Estimate_StraightGreenVehicle_Crosswalk
     make_signal_array({make_signal(VEHICLE_TL_REG_ELEM_ID, TrafficSignalElement::GREEN)});
 
   // Act
-  const auto result = estimator.estimate(green_msg, make_time(0.0));
+  const auto result = estimator.estimate(green_msg);
 
   // Assert: straight green vehicle signal → crosswalk should be RED
   assert_estimated_linked_signal_color(result, TrafficSignalElement::RED);
@@ -348,7 +341,7 @@ TEST(CrosswalkTrafficLightEstimatorTest, Estimate_RedVehicle_CrosswalkUnknown)
     make_signal_array({make_signal(VEHICLE_TL_REG_ELEM_ID, TrafficSignalElement::RED)});
 
   // Act
-  const auto result = estimator.estimate(red_msg, make_time(0.0));
+  const auto result = estimator.estimate(red_msg);
 
   // Assert: vehicle is RED → crosswalk signal is UNKNOWN (cannot determine)
   assert_estimated_linked_signal_color(result, TrafficSignalElement::UNKNOWN);
@@ -361,7 +354,7 @@ TEST(CrosswalkTrafficLightEstimatorTest, Estimate_EmptyInput_ReturnsEmpty)
   TrafficSignalArray empty_msg;
 
   // Act
-  const auto result = estimator.estimate(empty_msg, make_time(0.0));
+  const auto result = estimator.estimate(empty_msg);
 
   // Assert
   EXPECT_TRUE(result.traffic_light_groups.empty());
@@ -379,7 +372,7 @@ TEST(
     make_signal_array({make_signal(VEHICLE_TL_REG_ELEM_ID, TrafficSignalElement::GREEN)});
 
   // Act
-  const auto result = estimator.estimate(input, make_time(0.0));
+  const auto result = estimator.estimate(input);
 
   // Assert: override (GREEN) wins over normal estimation (RED)
   assert_estimated_linked_signal_color(result, TrafficSignalElement::GREEN);
@@ -471,7 +464,7 @@ TEST(
     make_signal_array({make_signal(VEHICLE_TL_RIGHT_ID, TrafficSignalElement::GREEN)});
 
   // Act
-  const auto result = estimator.estimate(input, make_time(0.0));
+  const auto result = estimator.estimate(input);
 
   // Assert: crosswalk must be UNKNOWN, not RED
   assert_estimated_linked_signal_color(result, TrafficSignalElement::UNKNOWN);
