@@ -109,6 +109,13 @@ minimum_rule_based_planner:
           gt_eq<>: [0]
         description: exit generating trajectory candidates when enough feasible trajectories are generated
 
+      use_prev_traj_th:
+        type: double
+        default_value: 3.0
+        validation:
+          gt<>: [0.0]
+        description: threshold for lateral offset from ego pose to judge previous trajectory is valid
+
       goal_planner:
         search_radius_range:
           type: double

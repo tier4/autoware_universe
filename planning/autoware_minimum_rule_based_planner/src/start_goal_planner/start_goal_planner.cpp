@@ -289,6 +289,10 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
     return std::nullopt;  // StartGoalPlanner is not applied. normal termination
   }
 
+  if (is_prev_traj_valid(ego_pose)) {
+    return *generated_trajectory_;
+  }
+
   const auto goal_pose_candidates = get_goal_pose(trajectory, ego_pose);
   const auto start_pose_candidates = get_start_pose(trajectory, ego_pose);
   if (!start_pose_candidates || !goal_pose_candidates) {
@@ -464,6 +468,19 @@ std::vector<lanelet::BasicPolygon2d> StartGoalPlanner::get_available_area(
   }
 
   return polygons;
+}
+
+bool StartGoalPlanner::is_prev_traj_valid(const geometry_msgs::msg::Pose & ego_pose)
+{
+  if (!generated_trajectory_.has_value()) {
+    return false;
+  }
+  const auto lateral_offset =
+    autoware::motion_utils::calcLateralOffset(generated_trajectory_->restore(), ego_pose.position);
+  if (lateral_offset < params_.use_prev_traj_th) {
+    return true;
+  }
+  return false;
 }
 
 std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_start_pose(
