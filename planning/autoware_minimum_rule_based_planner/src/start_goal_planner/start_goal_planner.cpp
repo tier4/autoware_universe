@@ -574,7 +574,7 @@ std::optional<double> StartGoalPlanner::evaluate_trajectory(
   const auto base_footprint = vehicle_info_.createFootprint();
 
   constexpr size_t num_sample_trajectory_diff = 5;
-  constexpr size_t num_sample_footprint_check = 5;
+  constexpr size_t num_sample_footprint_check = 8;
   const auto traj_points_prev =
     generated_trajectory_.has_value()
       ? downsample_trajectory_points(*generated_trajectory_, num_sample_trajectory_diff)
@@ -587,7 +587,7 @@ std::optional<double> StartGoalPlanner::evaluate_trajectory(
   }
 
   const auto [curvature_integral, max_curvature] =
-    cal_curvature(candidate, time_keeper_, /*smoothing_window_size=*/7);
+    cal_curvature(candidate, time_keeper_, /*smoothing_window_size=*/9);
   if (max_curvature > feasible_curvature) {
     return std::nullopt;
   }
