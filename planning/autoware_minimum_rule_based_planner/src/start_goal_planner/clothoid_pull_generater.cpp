@@ -45,12 +45,12 @@ namespace
 struct ArcSegment
 {
   geometry_msgs::msg::Point center;
-  double radius;
+  double radius{0.0};
   geometry_msgs::msg::Pose start_pose;
   geometry_msgs::msg::Pose end_pose;
-  bool is_clockwise;
+  bool is_clockwise{true};
 
-  ArcSegment() : radius(0.0), is_clockwise(true) { center.x = center.y = center.z = 0.0; }
+  ArcSegment() { center.x = center.y = center.z = 0.0; }
 
   double calculateStartAngle() const
   {
@@ -92,7 +92,7 @@ struct CompositeArcPath
 /// Clothoid segment used while assembling entry/circular/exit sub-paths.
 struct ClothoidSegment
 {
-  enum Type { CLOTHOID_ENTRY, CIRCULAR_ARC, CLOTHOID_EXIT };
+  enum class Type { CLOTHOID_ENTRY, CIRCULAR_ARC, CLOTHOID_EXIT };
 
   Type type;
   double A{0.0};       // Clothoid parameter
@@ -379,10 +379,10 @@ std::vector<geometry_msgs::msg::Point> generate_clothoid_path(
   std::vector<double> theoretical_lengths;
   for (const auto & segment : segments) {
     if (
-      segment.type == ClothoidSegment::CLOTHOID_ENTRY ||
-      segment.type == ClothoidSegment::CLOTHOID_EXIT) {
+      segment.type == ClothoidSegment::Type::CLOTHOID_ENTRY ||
+      segment.type == ClothoidSegment::Type::CLOTHOID_EXIT) {
       theoretical_lengths.push_back(segment.L);
-    } else if (segment.type == ClothoidSegment::CIRCULAR_ARC) {
+    } else if (segment.type == ClothoidSegment::Type::CIRCULAR_ARC) {
       theoretical_lengths.push_back(segment.radius * segment.angle);
     }
   }
@@ -405,15 +405,15 @@ std::vector<geometry_msgs::msg::Point> generate_clothoid_path(
 
     int num_points = segment_points[i];
 
-    if (segments[i].type == ClothoidSegment::CLOTHOID_ENTRY) {
+    if (segments[i].type == ClothoidSegment::Type::CLOTHOID_ENTRY) {
       auto result = generate_clothoid_entry_with_yaw(segments[i], current_pose, num_points);
       segment_poses_vec = result.first;
       end_pose = result.second;
-    } else if (segments[i].type == ClothoidSegment::CIRCULAR_ARC) {
+    } else if (segments[i].type == ClothoidSegment::Type::CIRCULAR_ARC) {
       auto result = generate_circular_segment_with_yaw(segments[i], current_pose, num_points);
       segment_poses_vec = result.first;
       end_pose = result.second;
-    } else if (segments[i].type == ClothoidSegment::CLOTHOID_EXIT) {
+    } else if (segments[i].type == ClothoidSegment::Type::CLOTHOID_EXIT) {
       auto result = generate_clothoid_exit_with_yaw(segments[i], current_pose, num_points);
       segment_poses_vec = result.first;
       end_pose = result.second;
@@ -467,14 +467,14 @@ std::optional<std::vector<geometry_msgs::msg::Point>> convert_arc_to_clothoid(
     double theta_arc = total_angle - 2.0 * alpha_clothoid;
 
     // Entry clothoid
-    ClothoidSegment entry(ClothoidSegment::CLOTHOID_ENTRY, A, L);
+    ClothoidSegment entry(ClothoidSegment::Type::CLOTHOID_ENTRY, A, L);
     entry.radius = radius;
     entry.is_clockwise = is_clockwise;
     entry.description = "Entry clothoid (κ: 0 → 1/R)";
     segments.push_back(entry);
 
     // Circular arc segment
-    ClothoidSegment circular(ClothoidSegment::CIRCULAR_ARC);
+    ClothoidSegment circular(ClothoidSegment::Type::CIRCULAR_ARC);
     circular.radius = radius;
     circular.angle = theta_arc;
     circular.is_clockwise = is_clockwise;
@@ -482,7 +482,7 @@ std::optional<std::vector<geometry_msgs::msg::Point>> convert_arc_to_clothoid(
     segments.push_back(circular);
 
     // Exit clothoid
-    ClothoidSegment exit(ClothoidSegment::CLOTHOID_EXIT, A, L);
+    ClothoidSegment exit(ClothoidSegment::Type::CLOTHOID_EXIT, A, L);
     exit.radius = radius;
     exit.is_clockwise = is_clockwise;
     exit.description = "Exit clothoid (κ: 1/R → 0)";
@@ -538,7 +538,7 @@ std::vector<geometry_msgs::msg::Pose> create_straight_path_to_end_pose(
 
   // 1. Generate backward path (generate from farthest backward point in order)
   if (backward_distance > 0.0) {
-    const int backward_num_points = static_cast<int>(backward_distance / point_interval);
+    const auto backward_num_points = static_cast<int>(backward_distance / point_interval);
 
     for (int i = backward_num_points; i >= 1; --i) {
       geometry_msgs::msg::Pose pose;
@@ -609,7 +609,7 @@ std::optional<CompositeArcPath> calc_circular_path(
 
   const double x_goal_rel = longitudinal_distance;
   const double y_goal_rel = lateral_distance;
-  const double C_r_direction = (shift_direction) ? 1.0 : -1.0;  // left shift : right shift
+  const double C_r_direction = shift_direction ? 1.0 : -1.0;  // left shift : right shift
   const double yaw_goal_rel = angle_diff;
 
   RCLCPP_DEBUG(
@@ -669,7 +669,8 @@ std::optional<CompositeArcPath> calc_circular_path(
   double dy_centers = C_ly_rel - C_ry_rel;
   double distance_centers = std::sqrt(dx_centers * dx_centers + dy_centers * dy_centers);
 
-  double tangent_x_rel, tangent_y_rel;
+  double tangent_x_rel{0.0};
+  double tangent_y_rel{0.0};
   if (distance_centers < 1e-6) {
     tangent_x_rel = (C_rx_rel + C_lx_rel) / 2.0;
     tangent_y_rel = (C_ry_rel + C_ly_rel) / 2.0;
@@ -791,6 +792,10 @@ std::optional<std::vector<geometry_msgs::msg::Point>> biclothoid_approximation(
   const CompositeArcPath & circular_path, const geometry_msgs::msg::Pose & start_pose,
   double wheel_base_m, double max_steer_angle_rate_rad_per_sec, double reference_velocity_mps)
 {
+  if (circular_path.segments.empty()) {
+    return std::nullopt;
+  }
+
   geometry_msgs::msg::Pose segment_start_pose = start_pose;
 
   std::vector<std::vector<geometry_msgs::msg::Point>> segment_points;
@@ -911,14 +916,12 @@ std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid
         continue;
       }
 
-      if (!connected_points_opt->empty()) {
-        if (has_turn_point(*connected_points_opt)) {
-          continue;
-        }
-        interpolate_z_by_cumulative_distance(
-          *connected_points_opt, start_pose.position.z, target_pose.position.z);
-        candidate_paths.push_back(*connected_points_opt);
+      if (has_turn_point(*connected_points_opt)) {
+        continue;
       }
+      interpolate_z_by_cumulative_distance(
+        *connected_points_opt, start_pose.position.z, target_pose.position.z);
+      candidate_paths.push_back(*connected_points_opt);
     }
   }
 

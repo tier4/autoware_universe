@@ -177,7 +177,7 @@ std::pair<double, double> cal_curvature(
   const auto curvature_vec = trajectory.curvature(ss);
 
   const int half_window = smoothing_window_size / 2;
-  const int vec_size = static_cast<int>(curvature_vec.size());
+  const auto vec_size = static_cast<int>(curvature_vec.size());
   auto smoothing_curvature = [&](int idx) {
     const int start_idx = std::max(0, idx - half_window);
     const int end_idx = std::min(vec_size - 1, idx + half_window);
@@ -694,7 +694,7 @@ std::optional<PathPointTrajectory> StartGoalPlanner::connect_start_planner_traje
   const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory)
 {
   auto pull_points = pull_trajectory.restore();
-  // interpolate_lane_ids(trajectory, pull_points);
+  interpolate_lane_ids(trajectory, pull_points);
   const auto pull_end_pose = pull_points.back().point.pose;
   const auto s_closest = autoware::experimental::trajectory::closest(trajectory, pull_end_pose);
   auto base_points =

@@ -99,12 +99,15 @@ PathPointTrajectory make_straight_trajectory(
   double x_start, double x_end, double spacing, int64_t lane_id, double vel = 3.0)
 {
   std::vector<PathPointWithLaneId> points;
-  for (double x = x_start; x <= x_end + 1e-6; x += spacing) {
+  const auto num_steps = static_cast<size_t>(std::floor((x_end - x_start) / spacing)) + 1;
+  for (size_t i = 0; i < num_steps; ++i) {
+    const double x = x_start + static_cast<double>(i) * spacing;
     points.push_back(make_path_point(x, 0.0, vel, lane_id));
   }
   const auto trajectory = autoware::experimental::trajectory::pretty_build(points);
   if (!trajectory) {
-    throw std::runtime_error("failed to build test trajectory");
+    ADD_FAILURE() << "failed to build test trajectory";
+    return {};
   }
   return *trajectory;
 }
@@ -306,7 +309,7 @@ TEST(StartGoalPlannerTest, GoalPlannerActivatesAndGeneratesTrajectoryIntoParking
     rclcpp::get_logger("test_start_goal_planner"), make_time_keeper(), make_default_params(),
     make_vehicle_info());
   // Goal is inside the parking lot, close to the trajectory end, within the search radius.
-  const auto goal_pose = make_pose(38.0, -4.0, 0.0);
+  const auto goal_pose = make_pose(30.0, -4.0, 0.0);
   planner.set_route_data(make_route_data(fixture, goal_pose));
 
   auto current_lanelet = lanelet::ConstLanelet(fixture.road_lanelet);
@@ -333,7 +336,7 @@ TEST(StartGoalPlannerTest, GoalPlannerResetsWhenGoalPoseMoves)
   StartGoalPlanner planner(
     rclcpp::get_logger("test_start_goal_planner"), make_time_keeper(), make_default_params(),
     make_vehicle_info());
-  const auto goal_pose = make_pose(38.0, -4.0, 0.0);
+  const auto goal_pose = make_pose(30.0, -4.0, 0.0);
   planner.set_route_data(make_route_data(fixture, goal_pose));
 
   auto current_lanelet = lanelet::ConstLanelet(fixture.road_lanelet);
