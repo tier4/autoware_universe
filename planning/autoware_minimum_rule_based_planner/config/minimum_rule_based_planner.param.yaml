@@ -20,7 +20,7 @@
 
       # Used only when early_stop.enable is false
       start_goal_planner:
-        reference_velocity: 2.3
+        reference_velocity: 2.78
         steer_angle_trial_count: 20
         max_steer_angle_rate: 30.0
         eval_weight_curvature: 0.1
