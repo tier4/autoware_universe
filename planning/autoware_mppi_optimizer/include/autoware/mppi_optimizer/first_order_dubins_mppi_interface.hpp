@@ -111,6 +111,8 @@ struct FirstOrderDubinsMppiCostBreakdown
   float running_total{0.0F};
   float terminal_total{0.0F};
   float total{0.0F};
+  /** Signed cross-track at the first post-step state [m]; + = left of path tangent. */
+  float signed_lateral_error_m{0.0F};
   std::size_t evaluated_timesteps{0U};
 
   [[nodiscard]] float componentTotal() const
@@ -190,6 +192,14 @@ struct FirstOrderDubinsMppiValidationResult
   }
 };
 
+struct FirstOrderDubinsMppiTiming
+{
+  /** Wall time for seedNominalControl (t-MPT / last-u / diffusion). */
+  double seed_nominal_ms{0.0};
+  /** Total optimizeTrajectory wall time. */
+  double total_ms{0.0};
+};
+
 struct FirstOrderDubinsMppiDebug
 {
   Trajectory reference_trajectory;
@@ -203,6 +213,7 @@ struct FirstOrderDubinsMppiDebug
   FirstOrderDubinsMppiCostBreakdown nominal_cost_breakdown;
   /** Cost of the final selected control rollout. */
   FirstOrderDubinsMppiCostBreakdown cost_breakdown;
+  FirstOrderDubinsMppiTiming timing;
   FirstOrderDubinsMppiKinematicLimits active_kinematic_limits;
   float baseline_cost{0.0F};
   /** Hard-constraint validation of the generated post-step states. */

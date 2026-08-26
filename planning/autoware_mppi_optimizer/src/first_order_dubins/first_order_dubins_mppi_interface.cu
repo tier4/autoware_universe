@@ -202,6 +202,15 @@ CostBreakdown reconstructControlTrajectoryCost(
     model.enforceConstraints(state, control);
     model.step(
       state, next_state, state_derivative, control, output, static_cast<float>(timestep), kDt);
+    if (timestep == 0) {
+      using OutputIndex = FirstOrderDubinsBicycleParams::OutputIndex;
+      result.signed_lateral_error_m = cost
+                                        .computeLateralPathMetrics(
+                                          output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)),
+                                          output(static_cast<int>(OutputIndex::BASELINK_POS_I_Y)),
+                                          output(static_cast<int>(OutputIndex::YAW)))
+                                        .lateral_distance;
+    }
     accumulateCostBreakdown(
       result, cost.computeRunningCostBreakdown(output, control, timestep, &crash_status));
     state = next_state;
@@ -746,6 +755,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   /** Snapshot of u_nom after seeding, written to NNNNNN_nominal.csv. */
   std::vector<float> logged_nominal_accel;
   std::vector<float> logged_nominal_steer;
+  /** Wall time of the most recent seedNominalControl call [ms]. */
+  double last_seed_nominal_ms{0.0};
 
   /**
    * Per-channel discrete ZOH input delay (in dynamics taps, not host IC pre-roll):
@@ -1349,6 +1360,9 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     const auto initial_state =
       detail::makeInitialState(odometry, acceleration, steering_status, vehicle_params);
+    const auto seed_t0 = std::chrono::steady_clock::now();
+    last_seed_nominal_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - seed_t0).count();
     const std::vector<FirstOrderDubinsMppiControl> profile_seed(
       std::max(static_cast<std::size_t>(kMppiHorizon), diffusion_reference.points.size()));
     std::vector<float> profile_reference_velocities(profile_seed.size(), 0.0F);
@@ -1979,10 +1993,6 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     max_vel_delta = std::max(max_vel_delta, std::abs(state.velocity - ref_v));
   }
 
-  const auto elapsed_ms =
-    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_time)
-      .count();
-
   const auto initial_effective_maximum =
     !impl_->effective_max_velocity_by_reference_point.empty()
       ? impl_->effective_max_velocity_by_reference_point.front()
@@ -1999,6 +2009,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   result.debug.nominal_trajectory = buildNominalTrajectory(
     impl_->model, x_at_optimization, input, impl_->logged_nominal_accel,
     impl_->logged_nominal_steer);
+  result.debug.timing.seed_nominal_ms = impl_->last_seed_nominal_ms;
   result.debug.nominal_control_profile.time_step_s = kDt;
   result.debug.nominal_control_profile.acceleration_commands_mps2 = impl_->logged_nominal_accel;
   result.debug.nominal_control_profile.steering_commands_rad = impl_->logged_nominal_steer;
@@ -2057,17 +2068,21 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
 
   const auto validation_reasons = to_string(result.debug.validation.reasons);
   const auto cost_breakdown = formatCostBreakdown(result.debug.cost_breakdown);
+  result.debug.timing.total_ms =
+    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_time)
+      .count();
   RCLCPP_INFO(
     mppiLogger(),
-    "MPPI tracked diffusion ref in %.1f ms: start_idx=%zu steps=%d output points size=%zu "
-    "points=%zu rollouts=%zu "
+    "MPPI tracked diffusion ref in %.1f ms (seed_nominal=%.1f): start_idx=%zu steps=%d "
+    "output points size=%zu points=%zu rollouts=%zu "
     "obstacles=%zu road_borders=%zu drivable_segments=%zu u_accel=%.3f u_steer=%.3f "
     "best_sample_cost=%.2f selected_cost=%s validity=%s max_pos_err=%.3f m "
     "max_vel_err=%.3f m/s",
-    elapsed_ms, impl_->tracking_start_idx, impl_->step_count, output.points.size(), num_points,
-    result.debug.rollouts.size(), tracked_objects.objects.size(), road_borders.size(),
-    drivable_area.size(), control.accel_cmd, control.steer_cmd, result.debug.baseline_cost,
-    cost_breakdown.c_str(), validation_reasons.c_str(), max_pos_delta, max_vel_delta);
+    result.debug.timing.total_ms, result.debug.timing.seed_nominal_ms, impl_->tracking_start_idx,
+    impl_->step_count, output.points.size(), num_points, result.debug.rollouts.size(),
+    tracked_objects.objects.size(), road_borders.size(), drivable_area.size(), control.accel_cmd,
+    control.steer_cmd, result.debug.baseline_cost, cost_breakdown.c_str(),
+    validation_reasons.c_str(), max_pos_delta, max_vel_delta);
 
   if (impl_->skip_if_invalid && !validation.isValid()) {
     result.trajectory = input;
