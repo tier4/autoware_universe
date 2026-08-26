@@ -72,7 +72,7 @@ bool isTemporalShortSegment(
 std::pair<size_t, size_t> findYawDifferentiationWindow(
   const std::vector<double> & arc_length, const size_t idx, const double min_baseline_m)
 {
-  if (arc_length.size() == 1) return {0, 0};
+  if (arc_length.size() <= 1) return {0, 0};
 
   const size_t last = arc_length.size() - 1;
   size_t front = (idx > 0) ? idx - 1 : 0;
