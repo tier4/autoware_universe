@@ -37,7 +37,6 @@
 
 namespace autoware::traffic_light_compliance_checker
 {
-
 /// @brief class to check if a trajectory complies with traffic lights
 class TrafficLightComplianceChecker
 {
@@ -58,7 +57,8 @@ public:
    * @return result of compliance check, or error message if check fails
    */
   [[nodiscard]] tl::expected<ComplianceResult, std::string> check(
-    const Inputs & input, const bool check_red_lights = true, const bool check_amber_lights = true);
+    const Inputs & input, const bool check_red_lights = true, const bool check_amber_lights = true,
+    const bool use_v2i_remaining_time = false);
 
   /**
    * @brief update parameters
@@ -75,6 +75,7 @@ private:
   [[nodiscard]] ComplianceResult check_with_filtered_signals(
     const Inputs & input,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
+    const RouteTrafficLightIndex & route_traffic_light_index,
     const std::vector<int64_t> & force_reject_amber_ids, const bool check_red_lights,
     const bool check_amber_lights) const;
 
@@ -94,7 +95,7 @@ private:
   /// @brief return the red and amber stop lines related to the given traffic light groups
   [[nodiscard]] std::pair<std::vector<StopLineInfo>, std::vector<StopLineInfo>> get_stop_lines(
     const lanelet::LaneletMap & lanelet_map,
-    const autoware_planning_msgs::msg::LaneletRoute & route,
+    const RouteTrafficLightIndex & route_traffic_light_index,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & traffic_lights) const;
 
   /// @brief return true if there is a stop point and it is within margin distance of the stop line
@@ -109,6 +110,14 @@ private:
     const double time_to_cross_stop_line) const;
 
   bool is_allow_if_cannot_stop(const double distance_to_cross_point) const;
+
+  /// @brief return the stop lines that will turn red before ego can pass them, based on the V2I
+  /// signal predictions
+  [[nodiscard]] ComplianceResult handle_v2i(
+    const Inputs & input,
+    const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
+    const RouteTrafficLightIndex & route_traffic_light_index,
+    const bool use_v2i_remaining_time) const;
 
   Parameters params_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
