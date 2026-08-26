@@ -124,8 +124,12 @@ class PathTrackingMPCTemporal:
         ocp.solver_options.integrator_type = "ERK"  # Forward Euler when num_stages=1
         ocp.solver_options.sim_method_num_stages = 1
         ocp.solver_options.num_steps = 1
-        ocp.solver_options.nlp_solver_max_iter = 100
-        ocp.solver_options.tol = 1e-4
+        # Online-friendly early exit: prefer a short SQP budget over grinding to 1e-4.
+        # Runtime can still override via AcadosInterface::setNlpSolverLimits.
+        ocp.solver_options.nlp_solver_max_iter = 10
+        ocp.solver_options.tol = 1e-3
+        ocp.solver_options.nlp_solver_ext_qp_res = 0
+        ocp.solver_options.print_level = 0
 
         if not build:
             AcadosOcpSolver.generate(ocp, json_file="acados_ocp.json")

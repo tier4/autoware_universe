@@ -15,6 +15,7 @@
   <depend>MPPI-Generic</depend>
   <depend>autoware_avoidance_target_detector</depend>
   <depend>autoware_cuda_dependency_meta</depend>
+  <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_internal_planning_msgs</depend>
   <depend>autoware_map_msgs</depend>
   <depend>autoware_perception_msgs</depend>
