@@ -200,6 +200,22 @@ struct FirstOrderDubinsMppiTiming
   double total_ms{0.0};
 };
 
+/** Post-step delay-bicycle state after u₀ (internal MPPI plant; for closed-loop sim feedback). */
+struct FirstOrderDubinsMppiAppliedPlantState
+{
+  float x{0.0F};
+  float y{0.0F};
+  float yaw{0.0F};
+  float velocity{0.0F};
+  float acceleration{0.0F};
+  float steering{0.0F};
+  float sim_time{0.0F};
+  std::vector<float> accel_cmd_delay_buffer;
+  std::vector<float> steer_cmd_delay_buffer;
+  FirstOrderDubinsMppiControl applied_control;
+  bool valid{false};
+};
+
 struct FirstOrderDubinsMppiDebug
 {
   Trajectory reference_trajectory;
@@ -228,6 +244,8 @@ struct FirstOrderDubinsMppiDebug
   std::vector<std::optional<float>> effective_max_velocity_by_reference_point;
   /** True when skip_if_invalid replaced the optimized trajectory with the input trajectory. */
   bool was_rejected{false};
+  /** Internal plant after runStep(); use for sim feedback to avoid duplicate integration. */
+  FirstOrderDubinsMppiAppliedPlantState applied_plant;
 };
 
 struct FirstOrderDubinsMppiOptimizationResult

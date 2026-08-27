@@ -739,5 +739,20 @@ TEST(EngageVelocity, ChangesAllLeadingStoppedPointsWhenMovementIsRequested)
   EXPECT_FLOAT_EQ(externally_limited.points[2].longitudinal_velocity_mps, 0.1F);
 }
 
+TEST(ShiftNominalControlForInputDelay, ShiftsPerChannelAndHoldsTail)
+{
+  const std::vector<FirstOrderDubinsMppiControl> nominal = {
+    {0.0F, 0.0F}, {1.0F, 10.0F}, {2.0F, 20.0F}, {3.0F, 30.0F}};
+  const auto shifted = shiftNominalControlForInputDelay(nominal, 1, 2);
+  ASSERT_EQ(shifted.size(), nominal.size());
+  EXPECT_FLOAT_EQ(shifted[0].accel_cmd, 1.0F);
+  EXPECT_FLOAT_EQ(shifted[0].steer_cmd, 20.0F);
+  EXPECT_FLOAT_EQ(shifted[1].accel_cmd, 2.0F);
+  EXPECT_FLOAT_EQ(shifted[1].steer_cmd, 30.0F);
+  EXPECT_FLOAT_EQ(shifted[2].accel_cmd, 3.0F);
+  EXPECT_FLOAT_EQ(shifted[2].steer_cmd, 30.0F);
+  EXPECT_FLOAT_EQ(shiftNominalControlForInputDelay(nominal, 0, 0)[1].accel_cmd, 1.0F);
+}
+
 }  // namespace
 }  // namespace autoware::mppi_optimizer::detail

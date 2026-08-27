@@ -16,7 +16,6 @@
 
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_kinematic_limits_conversion.hpp"
-#include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_conversion.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
@@ -114,22 +113,6 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.use_temporal_mpt_as_nominal = params.use_temporal_mpt_as_nominal;
   output.prevent_reverse_velocity = params.prevent_reverse_velocity;
   output.enable_input_delay_compensation = params.enable_input_delay_compensation;
-  return output;
-}
-
-/** @brief Reads standard actuator dynamics and combines them with vehicle geometry. */
-FirstOrderDubinsMppiVehicleParams make_vehicle_params(
-  rclcpp::Node & node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
-{
-  auto output = makeVehicleParams(vehicle_info);
-  output.acc_time_constant =
-    static_cast<float>(node.get_parameter("acc_time_constant").as_double());
-  output.steer_time_constant =
-    static_cast<float>(node.get_parameter("steer_time_constant").as_double());
-  output.steer_rate_lim = static_cast<float>(node.get_parameter("steer_rate_lim").as_double());
-  output.vel_rate_lim = static_cast<float>(node.get_parameter("vel_rate_lim").as_double());
-  output.acc_time_delay = static_cast<float>(node.get_parameter("acc_time_delay").as_double());
-  output.steer_time_delay = static_cast<float>(node.get_parameter("steer_time_delay").as_double());
   return output;
 }
 
@@ -446,7 +429,7 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
   }
 
   auto cost_params = make_cost_params(params_);
-  auto vehicle_params = make_vehicle_params(*get_node_ptr(), context_->vehicle_info);
+  auto vehicle_params = get_first_order_dubins_mppi_vehicle_params(*get_node_ptr());
   optimizer_ = std::make_unique<FirstOrderDubinsMppiInterface>();
   optimizer_->setCostParams(cost_params);
   optimizer_->setVehicleParams(vehicle_params);

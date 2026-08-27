@@ -53,7 +53,9 @@
 
       nominal_curvature_min_chord_length_m: 1.5
 
-      # Delays still come from simulator_model when this is true.
+      # Actuator taus/delays come from simulator_model.param.yaml on the trajectory processor
+      # node. For DELAY_STEER_ACC_GEARED_FOR_DIFFUSION_PLANNER, nested v{version}.* fields
+      # (vehicle-identified model); otherwise flat top-level fields.
       enable_input_delay_compensation: true
       prevent_reverse_velocity: true
 

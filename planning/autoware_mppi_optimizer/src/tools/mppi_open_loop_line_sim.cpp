@@ -15,12 +15,18 @@
 /**
  * Receding-horizon straight-line tracking using the MPPI delay-bicycle as the plant.
  *
- * Each cycle: build a reference polyline from the ego projection onto y=0 through the
- * goal, resampled to kMppiHorizon points; optimizeTrajectory; advance plant from output.
+ * Each cycle: build an MPPI horizon from the ego's continuous arc length on a fixed
+ * straight reference (point 0 at the ego projection); optimizeTrajectory; feedback from
+ * MPPI internal applied_plant.
  *
  * Example:
  *   ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim -- \
- *     --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml \
+ *     --params-yaml $(ros2 pkg prefix
+ * autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml \
+ *     --simulator-yaml $(ros2 pkg prefix
+ * j6_gen2_description)/share/j6_gen2_description/config/simulator_model.param.yaml \
+ *     --vehicle-info-yaml $(ros2 pkg prefix
+ * j6_gen2_description)/share/j6_gen2_description/config/vehicle_info.param.yaml \
  *     --out-dir "$HOME/.cache/autoware/mppi_open_loop_line_sim" --plot
  */
 
@@ -29,11 +35,12 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_trajectory_io.hpp"
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -41,9 +48,9 @@
 
 #include <tf2/utils.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
-#include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -72,6 +79,8 @@ using nav_msgs::msg::Odometry;
 constexpr float kDt = autoware::mppi_optimizer::detail::kMppiDt;
 constexpr int kHorizon = autoware::mppi_optimizer::detail::kMppiHorizon;
 
+float wrapPi(const float yaw);
+
 struct SimPlantState
 {
   float x{0.0F};
@@ -80,23 +89,29 @@ struct SimPlantState
   float velocity{0.0F};
   float acceleration{0.0F};
   float steering{0.0F};
+  float sim_time{0.0F};
+  std::vector<float> accel_cmd_buffer;
+  std::vector<float> steer_cmd_buffer;
 };
 
 void printUsage(const char * argv0)
 {
-  std::cerr << "Usage: " << argv0
-            << " [options]\n"
-               "  --params-yaml FILE   Cost/runtime yaml (default: package share config)\n"
-               "  --out-dir DIR        CSV/PNG output directory\n"
-               "  --duration S         Closed-loop duration [s] (default 8)\n"
-               "  --speed MPS          Reference speed [m/s] (default 8)\n"
-               "  --goal-x M           Goal x on the line [m] (default speed * duration)\n"
-               "  --y-offset M         Initial lateral offset [m] (default 0.5)\n"
-               "  --yaw-offset-deg DEG Initial heading error [deg] (default 0)\n"
-               "  --no-temporal-mpt    Seed u_nom from the geometric reference, not t-MPT\n"
-               "  --no-delay           Zero acc/steer dead time in the MPPI plant\n"
-               "  --plot               Run the matplotlib plotter after the sim\n"
-               "  --help\n";
+  std::cerr
+    << "Usage: " << argv0
+    << " [options]\n"
+       "  --params-yaml FILE   Cost/runtime yaml (default: package share config)\n"
+       "  --simulator-yaml FILE  simulator_model.param.yaml (default: j6_gen2 if installed)\n"
+       "  --vehicle-info-yaml FILE  vehicle_info.param.yaml (default: j6_gen2 if installed)\n"
+       "  --out-dir DIR        CSV/PNG output directory\n"
+       "  --duration S         Closed-loop duration [s] (default 8)\n"
+       "  --speed MPS          Reference speed [m/s] (default 8)\n"
+       "  --goal-x M           Goal x on the line [m] (default speed * duration)\n"
+       "  --y-offset M         Initial lateral offset [m] (default 0.5)\n"
+       "  --yaw-offset-deg DEG Initial heading error [deg] (default 0)\n"
+       "  --no-temporal-mpt    Seed u_nom from the geometric reference, not t-MPT\n"
+       "  --no-delay           Zero acc/steer dead time in the MPPI plant\n"
+       "  --plot               Run the matplotlib plotter after the sim\n"
+       "  --help\n";
 }
 
 std::string trim(const std::string & s)
@@ -227,6 +242,53 @@ std::string defaultParamsYaml()
   return "";
 }
 
+std::string defaultVehicleDescriptionYaml(const char * filename)
+{
+  try {
+    const auto share = ament_index_cpp::get_package_share_directory("j6_gen2_description");
+    const auto path = std::filesystem::path(share) / "config" / filename;
+    if (std::filesystem::is_regular_file(path)) {
+      return path.string();
+    }
+  } catch (const std::exception &) {
+  }
+  return "";
+}
+
+FirstOrderDubinsMppiVehicleParams loadVehicleParamsFromYaml(
+  const std::string & vehicle_info_yaml, const std::string & simulator_yaml)
+{
+  if (vehicle_info_yaml.empty() || simulator_yaml.empty()) {
+    throw std::runtime_error(
+      "Both --vehicle-info-yaml and --simulator-yaml are required to load actuator params");
+  }
+  if (!std::filesystem::is_regular_file(vehicle_info_yaml)) {
+    throw std::runtime_error("vehicle info yaml not found: " + vehicle_info_yaml);
+  }
+  if (!std::filesystem::is_regular_file(simulator_yaml)) {
+    throw std::runtime_error("simulator yaml not found: " + simulator_yaml);
+  }
+
+  rclcpp::NodeOptions options;
+  options.automatically_declare_parameters_from_overrides(true);
+  options.arguments(
+    {"--ros-args", "--params-file", vehicle_info_yaml, "--params-file", simulator_yaml});
+  auto node = rclcpp::Node::make_shared("mppi_open_loop_line_sim_params", options);
+  autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*node);
+  return autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*node);
+}
+
+void logVehicleParams(const FirstOrderDubinsMppiVehicleParams & vehicle)
+{
+  std::cerr << "Vehicle params: wheel_base=" << vehicle.wheel_base
+            << " acc_tau=" << vehicle.acc_time_constant
+            << " steer_tau=" << vehicle.steer_time_constant
+            << " acc_delay=" << vehicle.acc_time_delay
+            << " steer_delay=" << vehicle.steer_time_delay
+            << " steer_rate_lim=" << vehicle.steer_rate_lim
+            << " vel_rate_lim=" << vehicle.vel_rate_lim << "\n";
+}
+
 std::string defaultOutDir()
 {
   const char * cache = std::getenv("XDG_CACHE_HOME");
@@ -241,48 +303,116 @@ std::string defaultOutDir()
   return (root / "autoware" / "mppi_open_loop_line_sim").string();
 }
 
-/** Projection of ego onto the straight reference line y=0 (tangent +x). */
-float projectedArcLengthOnLine(const SimPlantState & plant)
+/** Fixed Δs along y=0; matches one MPPI stage at the reference speed. */
+float referenceSpacingMeters(const float speed)
 {
-  return plant.x;
+  return speed * kDt;
 }
 
 /**
- * Resample the straight segment [s_start, s_end] on y=0 to point_count points for MPPI.
- * points[0] is the projection; points.back() is the goal (or held if s_end <= s_start).
+ * Build a world-fixed straight reference from x=0 through goal_x plus horizon margin.
+ * Point i is at arc length i·ds on y=0; overlapping MPC windows share the same coordinates.
  */
-Trajectory makeReferenceFromProjectionToGoal(
-  const SimPlantState & plant, const float goal_x, const float speed,
-  const std::size_t point_count)
+Trajectory makeFixedStraightLinePath(
+  const float goal_x, const float speed, const float ds, const int sim_steps)
 {
-  if (point_count < 2U) {
-    throw std::runtime_error("MPPI reference requires at least 2 points");
+  if (ds <= 0.0F) {
+    throw std::runtime_error("reference spacing must be positive");
   }
-
-  const float s_start = projectedArcLengthOnLine(plant);
-  const float s_end = std::max(goal_x, s_start + speed * kDt);
+  const float margin = static_cast<float>(kHorizon + sim_steps) * ds;
+  const float path_length = std::max(goal_x, ds) + margin;
+  const std::size_t point_count = static_cast<std::size_t>(std::ceil(
+                                    static_cast<double>(path_length) / static_cast<double>(ds))) +
+                                  1U;
 
   Trajectory trajectory;
   trajectory.header.frame_id = "map";
   trajectory.points.reserve(point_count);
-
-  const float length = std::max(s_end - s_start, 1.0e-3F);
   for (std::size_t i = 0; i < point_count; ++i) {
-    const float alpha =
-      static_cast<float>(i) / static_cast<float>(point_count - 1U);
-    const float s = s_start + alpha * length;
+    const float s = static_cast<float>(i) * ds;
     TrajectoryPoint point;
     point.pose.position.x = static_cast<double>(s);
     point.pose.position.y = 0.0;
     point.pose.orientation = quaternionFromYaw(0.0);
     point.longitudinal_velocity_mps = speed;
-    const float t = (s - s_start) / std::max(speed, 1.0e-3F);
-    const int nanos = static_cast<int>(std::lround(static_cast<double>(t) * 1.0e9));
+    const int nanos = static_cast<int>(std::lround(static_cast<double>(s / speed) * 1.0e9));
     point.time_from_start.sec = nanos / 1000000000;
     point.time_from_start.nanosec = static_cast<std::uint32_t>(nanos % 1000000000);
     trajectory.points.push_back(point);
   }
   return trajectory;
+}
+
+float maxPathArcLengthMeters(const Trajectory & fixed_path)
+{
+  if (fixed_path.points.empty()) {
+    return 0.0F;
+  }
+  return static_cast<float>(fixed_path.points.back().pose.position.x);
+}
+
+/** Ego arc length on the y=0 straight path (x is the path coordinate in this sim). */
+float egoArcLengthOnPath(const SimPlantState & plant)
+{
+  return plant.x;
+}
+
+TrajectoryPoint makeStraightPathPointAtArcLength(
+  const float s, const float speed, const float s_max)
+{
+  const float s_clamped = std::clamp(s, 0.0F, s_max);
+  TrajectoryPoint point;
+  point.pose.position.x = static_cast<double>(s_clamped);
+  point.pose.position.y = 0.0;
+  point.pose.orientation = quaternionFromYaw(0.0);
+  point.longitudinal_velocity_mps = speed;
+  const int nanos = static_cast<int>(std::lround(static_cast<double>(s_clamped / speed) * 1.0e9));
+  point.time_from_start.sec = nanos / 1000000000;
+  point.time_from_start.nanosec = static_cast<std::uint32_t>(nanos % 1000000000);
+  return point;
+}
+
+/**
+ * MPPI horizon from continuous ego arc length s_ego (not a rounded grid index).
+ * Point k is at s_ego + k·ds so reference[0] stays at the ego projection each step.
+ */
+Trajectory sliceReferenceHorizonFromArcLength(
+  const Trajectory & fixed_path, const float s_ego, const float ds, const std::size_t count,
+  const float speed)
+{
+  Trajectory trajectory;
+  trajectory.header = fixed_path.header;
+  if (fixed_path.points.empty() || count == 0U || ds <= 0.0F) {
+    return trajectory;
+  }
+  const float s_max = maxPathArcLengthMeters(fixed_path);
+  trajectory.points.reserve(count);
+  for (std::size_t k = 0; k < count; ++k) {
+    const float s = std::max(0.0F, s_ego + static_cast<float>(k) * ds);
+    trajectory.points.push_back(makeStraightPathPointAtArcLength(s, speed, s_max));
+  }
+  return trajectory;
+}
+
+void updatePlantFromResult(
+  SimPlantState & plant, FirstOrderDubinsMppiControl & command,
+  const FirstOrderDubinsMppiOptimizationResult & result)
+{
+  if (!result.debug.applied_plant.valid) {
+    throw std::runtime_error("MPPI did not publish applied_plant snapshot");
+  }
+  const auto & snap = result.debug.applied_plant;
+  // Single source of truth: host plant after runStep (matches delay FIFOs and lag states).
+  plant.x = snap.x;
+  plant.y = snap.y;
+  plant.yaw = snap.yaw;
+  plant.velocity = snap.velocity;
+  plant.acceleration = snap.acceleration;
+  plant.steering = snap.steering;
+  plant.sim_time = snap.sim_time;
+  plant.accel_cmd_buffer = snap.accel_cmd_delay_buffer;
+  plant.steer_cmd_buffer = snap.steer_cmd_delay_buffer;
+  command = snap.applied_control;
 }
 
 Odometry makeOdometry(const SimPlantState & plant)
@@ -312,8 +442,7 @@ autoware_vehicle_msgs::msg::SteeringReport makeSteering(const SimPlantState & pl
   return steering;
 }
 
-bool writePlantCsv(
-  const std::string & path, const std::vector<std::string> & rows)
+bool writePlantCsv(const std::string & path, const std::vector<std::string> & rows)
 {
   std::ofstream out(path);
   if (!out) {
@@ -353,29 +482,6 @@ std::filesystem::path findPlotScript(const char * argv0)
   return {};
 }
 
-void updatePlantFromResult(
-  SimPlantState & plant, FirstOrderDubinsMppiControl & command,
-  const FirstOrderDubinsMppiOptimizationResult & result,
-  const FirstOrderDubinsMppiVehicleParams & vehicle)
-{
-  if (result.trajectory.points.empty()) {
-    throw std::runtime_error("MPPI returned an empty optimized trajectory");
-  }
-  const auto & point = result.trajectory.points.front();
-  const float prev_accel = plant.acceleration;
-  const float prev_steer = plant.steering;
-  plant.x = static_cast<float>(point.pose.position.x);
-  plant.y = static_cast<float>(point.pose.position.y);
-  plant.yaw = static_cast<float>(tf2::getYaw(point.pose.orientation));
-  plant.velocity = point.longitudinal_velocity_mps;
-  command.accel_cmd = point.acceleration_mps2;
-  command.steer_cmd = point.front_wheel_angle_rad;
-  const float alpha_a = kDt / std::max(vehicle.acc_time_constant, 1.0e-6F);
-  const float alpha_s = kDt / std::max(vehicle.steer_time_constant, 1.0e-6F);
-  plant.acceleration = prev_accel + alpha_a * (command.accel_cmd - prev_accel);
-  plant.steering = prev_steer + alpha_s * (command.steer_cmd - prev_steer);
-}
-
 }  // namespace
 
 int run(int argc, char ** argv);
@@ -412,6 +518,8 @@ int run(int argc, char ** argv)
   } rclcpp_guard(argc, argv);
 
   std::string params_yaml = defaultParamsYaml();
+  std::string simulator_yaml = defaultVehicleDescriptionYaml("simulator_model.param.yaml");
+  std::string vehicle_info_yaml = defaultVehicleDescriptionYaml("vehicle_info.param.yaml");
   std::string out_dir = defaultOutDir();
   float duration_s = 8.0F;
   float speed = 8.0F;
@@ -433,6 +541,10 @@ int run(int argc, char ** argv)
     };
     if (arg == "--params-yaml") {
       params_yaml = require_value("--params-yaml");
+    } else if (arg == "--simulator-yaml") {
+      simulator_yaml = require_value("--simulator-yaml");
+    } else if (arg == "--vehicle-info-yaml") {
+      vehicle_info_yaml = require_value("--vehicle-info-yaml");
     } else if (arg == "--out-dir") {
       out_dir = require_value("--out-dir");
     } else if (arg == "--duration") {
@@ -445,8 +557,8 @@ int run(int argc, char ** argv)
     } else if (arg == "--y-offset") {
       y_offset = std::stof(require_value("--y-offset"));
     } else if (arg == "--yaw-offset-deg") {
-      yaw_offset_rad = std::stof(require_value("--yaw-offset-deg")) * static_cast<float>(M_PI) /
-                       180.0F;
+      yaw_offset_rad =
+        std::stof(require_value("--yaw-offset-deg")) * static_cast<float>(M_PI) / 180.0F;
     } else if (arg == "--no-temporal-mpt") {
       no_temporal_mpt = true;
     } else if (arg == "--no-delay") {
@@ -465,7 +577,8 @@ int run(int argc, char ** argv)
     throw std::runtime_error("duration and speed must be positive");
   }
   if (!goal_x_set) {
-    goal_x = speed * duration_s;
+    // Keep the goal beyond the sim window so remaining_distance cost does not spike at t=T.
+    goal_x = speed * duration_s + static_cast<float>(kHorizon) * speed * kDt;
   }
 
   FirstOrderDubinsMppiCostParams cost_params;
@@ -479,7 +592,7 @@ int run(int argc, char ** argv)
   runtime.use_temporal_mpt_as_nominal = true;
   runtime.use_last_control_as_nominal = true;
   runtime.prevent_reverse_velocity = true;
-  runtime.enable_input_delay_compensation = true;
+  runtime.enable_input_delay_compensation = false;
   runtime.enable_debug_trajectory_log = false;
 
   if (!params_yaml.empty()) {
@@ -501,17 +614,26 @@ int run(int argc, char ** argv)
   }
 
   FirstOrderDubinsMppiVehicleParams vehicle;
-  vehicle.wheel_base = 4.76F;
-  vehicle.ego_length = 5.0F;
-  vehicle.ego_width = 1.9F;
-  vehicle.ego_axle_to_box_center = 1.5F;
-  vehicle.max_steer_angle = 0.7F;
-  vehicle.acc_time_constant = 0.1F;
-  vehicle.steer_time_constant = 0.27F;
-  vehicle.steer_rate_lim = 5.0F;
-  vehicle.vel_rate_lim = 7.0F;
-  vehicle.acc_time_delay = 0.1F;
-  vehicle.steer_time_delay = 0.24F;
+  if (!simulator_yaml.empty() && !vehicle_info_yaml.empty()) {
+    vehicle = loadVehicleParamsFromYaml(vehicle_info_yaml, simulator_yaml);
+    std::cerr << "Loaded actuator params via get_first_order_dubins_mppi_vehicle_params\n"
+              << "  vehicle_info: " << vehicle_info_yaml << "\n"
+              << "  simulator: " << simulator_yaml << "\n";
+    logVehicleParams(vehicle);
+  } else {
+    std::cerr << "WARNING: no vehicle/simulator yaml found; using compiled actuator defaults\n";
+    vehicle.wheel_base = 4.76F;
+    vehicle.ego_length = 5.0F;
+    vehicle.ego_width = 1.9F;
+    vehicle.ego_axle_to_box_center = 1.5F;
+    vehicle.max_steer_angle = 0.7F;
+    vehicle.acc_time_constant = 0.1F;
+    vehicle.steer_time_constant = 0.27F;
+    vehicle.steer_rate_lim = 5.0F;
+    vehicle.vel_rate_lim = 7.0F;
+    vehicle.acc_time_delay = 0.1F;
+    vehicle.steer_time_delay = 0.24F;
+  }
   if (no_delay) {
     vehicle.acc_time_delay = 0.0F;
     vehicle.steer_time_delay = 0.0F;
@@ -539,26 +661,36 @@ int run(int argc, char ** argv)
   const auto horizon_csv = (std::filesystem::path(out_dir) / "horizon0.csv").string();
 
   const int steps = static_cast<int>(std::lround(duration_s / kDt));
-  std::cerr << "Straight-line plant sim: steps=" << steps << " dt=" << kDt
-            << " v=" << speed << " goal_x=" << goal_x << " y0=" << y_offset
+  const float ref_ds = referenceSpacingMeters(speed);
+  const Trajectory fixed_reference = makeFixedStraightLinePath(goal_x, speed, ref_ds, steps);
+  std::cerr << "Straight-line plant sim: steps=" << steps << " dt=" << kDt << " v=" << speed
+            << " goal_x=" << goal_x << " y0=" << y_offset
             << " t-MPT=" << (runtime.use_temporal_mpt_as_nominal ? "on" : "off")
             << " delay=" << (runtime.enable_input_delay_compensation ? "on" : "off") << "\n";
+  if (runtime.use_temporal_mpt_as_nominal && runtime.enable_input_delay_compensation) {
+    std::cerr << "NOTE: t-MPT OCP has no delay FIFOs; MPPI shifts its nominal by acc/steer delay "
+                 "steps before seeding u_nom.\n";
+  }
 
   autoware_perception_msgs::msg::TrackedObjects objects;
   autoware::mppi_optimizer::FirstOrderDubinsMppiKinematicLimits limits;
   const std::size_t reference_points = static_cast<std::size_t>(kHorizon);
-  std::cerr << "  reference points=" << reference_points
-            << " (projection→goal resample, rebuilt each step)\n";
+  std::cerr << "  fixed reference: " << fixed_reference.points.size() << " points, ds=" << ref_ds
+            << " m; horizon anchored at ego arc length each step\n";
   for (int step = 0; step < steps; ++step) {
+    const float s_ego = egoArcLengthOnPath(plant);
     const auto reference =
-      makeReferenceFromProjectionToGoal(plant, goal_x, speed, reference_points);
+      sliceReferenceHorizonFromArcLength(fixed_reference, s_ego, ref_ds, reference_points, speed);
     const auto result = mppi.optimizeTrajectory(
       reference, makeOdometry(plant), makeAccel(plant), makeSteering(plant), objects, {}, {},
       limits);
     if (step == 0) {
-      autoware::mppi_optimizer::writeMppiDebugTrajectoryCsv(horizon_csv, result.trajectory);
+      if (!autoware::mppi_optimizer::writeMppiDebugOptimalHorizonCsv(
+            horizon_csv, result.debug.optimal_horizon, kDt)) {
+        throw std::runtime_error("Failed to write first optimal horizon " + horizon_csv);
+      }
     }
-    updatePlantFromResult(plant, command, result, vehicle);
+    updatePlantFromResult(plant, command, result);
     const float t = static_cast<float>(step + 1) * kDt;
     rows.push_back(formatRow(t, plant, command));
     if ((step + 1) % 10 == 0 || step + 1 == steps) {
@@ -572,7 +704,7 @@ int run(int argc, char ** argv)
     throw std::runtime_error("Failed to write " + plant_csv);
   }
   std::cerr << "Wrote " << plant_csv << "\n";
-  std::cerr << "Wrote first-horizon rollout " << horizon_csv << "\n";
+  std::cerr << "Wrote first optimal-horizon rollout " << horizon_csv << "\n";
 
   if (plot) {
     const auto script = findPlotScript(argv[0]);
@@ -590,9 +722,10 @@ int run(int argc, char ** argv)
       }
     }
   } else {
-    std::cerr << "Plot with:\n  ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- "
-                 "--csv "
-              << plant_csv << "\n";
+    std::cerr
+      << "Plot with:\n  ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- "
+         "--csv "
+      << plant_csv << "\n";
   }
   return 0;
 }

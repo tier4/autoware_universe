@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import argparse
 import csv
-import sys
 from pathlib import Path
+import sys
 from typing import Dict
 from typing import List
 
@@ -49,16 +49,24 @@ def load_csv(path: Path) -> Dict[str, np.ndarray]:
     return {name: np.asarray(values, dtype=float) for name, values in columns.items()}
 
 
-def load_horizon_xy(path: Path) -> tuple[np.ndarray, np.ndarray] | tuple[None, None]:
+def load_horizon_xy(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     if not path.is_file():
-        return None, None
+        return None, None, None
     data = load_csv(path)
     if "x" not in data or "y" not in data:
-        return None, None
-    return data["x"], data["y"]
+        return None, None, None
+    t = data["t"] if "t" in data else None
+    return data["x"], data["y"], t
 
 
-def plot(plant: Dict[str, np.ndarray], horizon_x, horizon_y, out_path: Path, show: bool) -> None:
+def plot(
+    plant: Dict[str, np.ndarray],
+    horizon_x,
+    horizon_y,
+    horizon_t,
+    out_path: Path,
+    show: bool,
+) -> None:
     t = plant["t"]
     fig = plt.figure(figsize=(12.0, 10.5), layout="constrained")
     grid = fig.add_gridspec(4, 2, height_ratios=[1.2, 1.0, 1.0, 1.0])
@@ -67,8 +75,26 @@ def plot(plant: Dict[str, np.ndarray], horizon_x, horizon_y, out_path: Path, sho
     x_line = np.linspace(min(float(plant["x"].min()), 0.0), float(plant["x"].max()) + 5.0, 50)
     ax_xy.plot(x_line, np.zeros_like(x_line), color="0.65", linestyle="--", label="reference")
     if horizon_x is not None and horizon_y is not None:
-        ax_xy.plot(horizon_x, horizon_y, color="tab:cyan", linewidth=1.5, label="first horizon")
-    ax_xy.plot(plant["x"], plant["y"], color="tab:red", linewidth=2.0, label="plant")
+        ax_xy.plot(
+            horizon_x,
+            horizon_y,
+            color="tab:cyan",
+            linewidth=1.5,
+            label="open-loop optimal @ t=0",
+        )
+        if horizon_t is not None and len(horizon_t) > 0:
+            horizon_end_t = float(horizon_t[-1])
+            plant_mask = t <= horizon_end_t + 1.0e-6
+            ax_xy.plot(
+                plant["x"][plant_mask],
+                plant["y"][plant_mask],
+                color="tab:red",
+                linewidth=1.2,
+                linestyle="--",
+                alpha=0.75,
+                label=f"plant (first {horizon_end_t:.1f}s)",
+            )
+    ax_xy.plot(plant["x"], plant["y"], color="tab:red", linewidth=2.0, label="plant (closed-loop)")
     ax_xy.scatter(plant["x"][0], plant["y"][0], color="tab:red", zorder=3)
     ax_xy.set_aspect("equal", adjustable="datalim")
     ax_xy.set_xlabel("x [m]")
@@ -167,12 +193,12 @@ def main() -> int:
     if horizon_csv is None:
         candidate = csv_path.with_name("horizon0.csv")
         horizon_csv = candidate if candidate.is_file() else None
-    horizon_x = horizon_y = None
+    horizon_x = horizon_y = horizon_t = None
     if horizon_csv is not None:
-        horizon_x, horizon_y = load_horizon_xy(horizon_csv.expanduser().resolve())
+        horizon_x, horizon_y, horizon_t = load_horizon_xy(horizon_csv.expanduser().resolve())
 
     out_path = args.out.expanduser().resolve() if args.out else csv_path.with_suffix(".png")
-    plot(plant, horizon_x, horizon_y, out_path, args.show)
+    plot(plant, horizon_x, horizon_y, horizon_t, out_path, args.show)
     return 0
 
 

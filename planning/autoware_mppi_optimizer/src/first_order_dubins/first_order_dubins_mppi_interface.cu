@@ -1164,11 +1164,15 @@ struct FirstOrderDubinsMppiInterface::Impl
   void seedNominalControlFromTemporalMpt(
     const Trajectory & reference, const detail::InitialState & ego)
   {
-    const auto nominal =
-      temporal_mpt_nominal_seeder.solve(reference, ego, vehicle_params, kMppiHorizon);
+    auto nominal = temporal_mpt_nominal_seeder.solve(reference, ego, vehicle_params, kMppiHorizon);
     if (!nominal) {
+      temporal_mpt_nominal_seeder.resetWarmStart();
       seedNominalControlFromDiffusionReference(reference, tracking_start_idx);
       return;
+    }
+    if (enable_input_delay_compensation && (acc_delay_steps > 0 || steer_delay_steps > 0)) {
+      nominal =
+        detail::shiftNominalControlForInputDelay(*nominal, acc_delay_steps, steer_delay_steps);
     }
     const int accel_idx =
       static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
@@ -1859,6 +1863,22 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   // Capture IC before runStep advances the ego state with the applied control.
   const DYN::state_array x_at_optimization = impl_->x;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
+
+  FirstOrderDubinsMppiAppliedPlantState & applied_plant = result.debug.applied_plant;
+  applied_plant.valid = true;
+  applied_plant.x = impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X));
+  applied_plant.y = impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y));
+  applied_plant.yaw = impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW));
+  applied_plant.velocity =
+    impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X));
+  applied_plant.acceleration =
+    impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACCELERATION));
+  applied_plant.steering =
+    impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE));
+  applied_plant.sim_time = impl_->sim_time;
+  applied_plant.accel_cmd_delay_buffer = impl_->accel_delay_buffer;
+  applied_plant.steer_cmd_delay_buffer = impl_->steer_delay_buffer;
+  applied_plant.applied_control = control;
 
   const auto state_trajectory = impl_->controller->getActualStateSeq();
   const Mppi::control_trajectory u_opt_traj = impl_->controller->getControlSeq();
