@@ -135,10 +135,16 @@
                 "goal_planner": {
                   "type": "object",
                   "properties": {
-                    "search_radius_range": {
+                    "activate_distance_traj": {
                       "type": "number",
                       "description": "search radius range to activate goal planner [m]",
                       "default": 20.0,
+                      "minimum": 1.0
+                    },
+                    "activate_distance_ego": {
+                      "type": "number",
+                      "description": "max distance along trajectory between ego and goal to activate goal planner [m]",
+                      "default": 80.0,
                       "minimum": 1.0
                     },
                     "pre_goal_offset": {

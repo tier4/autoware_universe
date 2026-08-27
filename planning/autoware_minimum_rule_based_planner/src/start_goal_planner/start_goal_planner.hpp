@@ -86,7 +86,8 @@ private:
   // judge condition to activate goal planner
   void judge_goal_planner_act(
     const PathPointTrajectory & trajectory, const double & s_path_end,
-    const std::vector<lanelet::BasicPolygon2d> & available_area);
+    const std::vector<lanelet::BasicPolygon2d> & available_area,
+    const geometry_msgs::msg::Pose & ego_pose);
 
   // judge if previous trajectory is valid
   bool is_prev_traj_valid(const geometry_msgs::msg::Pose & ego_pose);

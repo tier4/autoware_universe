@@ -28,7 +28,8 @@
         eval_weight_diff: 0.5
         traj_generation_exit_count: 7
         goal_planner:
-          search_radius_range: 40.0
+          activate_distance_traj: 40.0
+          activate_distance_ego: 80.0
           pre_goal_offset: 3.0
           num_start_poses: 80
         start_planner:

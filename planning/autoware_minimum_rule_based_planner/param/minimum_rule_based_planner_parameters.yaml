@@ -117,12 +117,19 @@ minimum_rule_based_planner:
         description: threshold for lateral offset from ego pose to judge previous trajectory is valid
 
       goal_planner:
-        search_radius_range:
+        activate_distance_traj:
           type: double
           default_value: 20
           validation:
             gt<>: [1.0]
           description: search radius range to activate goal planner [m]
+
+        activate_distance_ego:
+          type: double
+          default_value: 80
+          validation:
+            gt<>: [1.0]
+          description: max distance along trajectory between ego and goal to activate goal planner [m]
 
         pre_goal_offset:
           type: double

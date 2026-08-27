@@ -53,7 +53,8 @@ StartGoalPlannerParams make_default_params()
   params.eval_weight_length = 0.3;
   params.eval_weight_diff = 0.3;
   params.traj_generation_exit_count = 5;
-  params.goal_planner.search_radius_range = 20.0;
+  params.goal_planner.activate_distance_traj = 20.0;
+  params.goal_planner.activate_distance_ego = 80.0;
   params.goal_planner.pre_goal_offset = 1.0;
   params.goal_planner.num_start_poses = 10;
   params.start_planner.max_path_range = 25.0;
@@ -372,7 +373,7 @@ TEST(StartGoalPlannerTest, UpdateParamsShrinksGoalSearchRadius)
 
   // Shrink the search radius so the same goal pose is no longer within range.
   auto params = make_default_params();
-  params.goal_planner.search_radius_range = 1.0;
+  params.goal_planner.activate_distance_traj = 1.0;
   planner.update_params(params);
 
   auto current_lanelet = lanelet::ConstLanelet(fixture.road_lanelet);

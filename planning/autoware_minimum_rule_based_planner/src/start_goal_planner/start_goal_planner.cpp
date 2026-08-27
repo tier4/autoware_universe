@@ -80,7 +80,7 @@ std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
   };
 
   std::vector<PathPointWithLaneId> candidates;
-  const auto & search_radius_range = params.goal_planner.search_radius_range;
+  const auto & activate_distance_traj = params.goal_planner.activate_distance_traj;
   const auto & pre_goal_offset = params.goal_planner.pre_goal_offset;
   const auto & num_start_poses = params.goal_planner.num_start_poses;
 
@@ -96,7 +96,7 @@ std::vector<PathPointWithLaneId> calc_goal_planner_start_poses(
     closest_to_goal = autoware::experimental::trajectory::closest(trajectory, pre_goal_pose);
   }
 
-  const double step_width = search_radius_range / (num_start_poses + 1);
+  const double step_width = activate_distance_traj / (num_start_poses + 1);
   for (auto [i, s] = std::pair<int, double>{0, step_width}; i < num_start_poses;
        ++i, s += step_width) {
     if (s >= *closest_to_goal) {
@@ -282,7 +282,7 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
 {
   const auto available_area = get_available_area(trajectory);
 
-  judge_goal_planner_act(trajectory, s_path_end, available_area);
+  judge_goal_planner_act(trajectory, s_path_end, available_area, ego_pose);
   judge_start_planner_act(current_lanelet, ego_pose);
 
   if (!start_planner_act_ && !goal_planner_act_) {
@@ -374,16 +374,9 @@ void StartGoalPlanner::judge_start_planner_act(
 
 void StartGoalPlanner::judge_goal_planner_act(
   const PathPointTrajectory & trajectory, const double & s_path_end,
-  const std::vector<lanelet::BasicPolygon2d> & available_area)
+  const std::vector<lanelet::BasicPolygon2d> & available_area,
+  const geometry_msgs::msg::Pose & ego_pose)
 {
-  const auto s_path_end_clamped = std::min(trajectory.length(), s_path_end);
-  const auto distance_to_goal =
-    autoware_utils::calc_distance2d(trajectory.compute(s_path_end_clamped), route_data_.goal_pose);
-  const bool goal_pose_in_available_area = is_point_in_polygons(
-    autoware_utils_geometry::Point2d{
-      route_data_.goal_pose.position.x, route_data_.goal_pose.position.y},
-    available_area);
-
   if (!goal_pose_prev_.has_value()) {
     goal_pose_prev_ = route_data_.goal_pose;
   }
@@ -392,8 +385,23 @@ void StartGoalPlanner::judge_goal_planner_act(
     goal_planner_act_ = false;
     generated_trajectory_ = std::nullopt;
   } else if (!goal_planner_act_ || !generated_trajectory_.has_value()) {
-    goal_planner_act_ =
-      distance_to_goal < params_.goal_planner.search_radius_range && goal_pose_in_available_area;
+    const auto s_path_end_clamped = std::min(trajectory.length(), s_path_end);
+    const auto distance_to_goal_traj = autoware_utils::calc_distance2d(
+      trajectory.compute(s_path_end_clamped), route_data_.goal_pose);
+
+    const auto s_ego = autoware::experimental::trajectory::closest(trajectory, ego_pose);
+    const auto s_goal =
+      autoware::experimental::trajectory::closest(trajectory, route_data_.goal_pose);
+    const double distance_to_goal_ego = std::abs(s_goal - s_ego);
+
+    const bool goal_pose_in_available_area = is_point_in_polygons(
+      autoware_utils_geometry::Point2d{
+        route_data_.goal_pose.position.x, route_data_.goal_pose.position.y},
+      available_area);
+
+    goal_planner_act_ = distance_to_goal_traj < params_.goal_planner.activate_distance_traj &&
+                        distance_to_goal_ego < params_.goal_planner.activate_distance_ego &&
+                        goal_pose_in_available_area;
   }
   goal_pose_prev_ = route_data_.goal_pose;
 }
@@ -631,7 +639,7 @@ std::optional<double> StartGoalPlanner::evaluate_trajectory(
   const double score =
     curvature_integral / (feasible_curvature * feasible_curvature * arc_length) *
       params_.eval_weight_curvature +
-    arc_length / params_.goal_planner.search_radius_range * params_.eval_weight_length +
+    arc_length / params_.goal_planner.activate_distance_traj * params_.eval_weight_length +
     trajectory_diff * params_.eval_weight_diff;
   return score;
 }
