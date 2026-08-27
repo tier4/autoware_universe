@@ -373,6 +373,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     publish_enabled(apply_result);
     publish_cost_diagnostics(result.debug, apply_result, rclcpp::Time{input.header.stamp});
     publish_processing_time(result.debug.timing);
+    publish_prediction_accuracy(result.debug.prediction_accuracy);
     publish_ego_to_dp_first_point_distance(*data.current_odometry, input);
     publish_ego_signed_lateral_error_on_dp(*data.current_odometry, input);
     if (result.debug.was_rejected) {
@@ -551,6 +552,16 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value(
     "velocity_limit_profile_active", debug.velocity_limit_profile_active);
   cost_diagnostics_->add_key_value("was_applied", was_applied);
+  if (debug.prediction_accuracy.valid) {
+    const auto & pred = debug.prediction_accuracy;
+    cost_diagnostics_->add_key_value("prediction/elapsed_s", pred.elapsed_s);
+    cost_diagnostics_->add_key_value("prediction/full_steps", pred.full_steps);
+    cost_diagnostics_->add_key_value("prediction/remainder_s", pred.remainder_s);
+    cost_diagnostics_->add_key_value("prediction/integration_steps", pred.integration_steps);
+    cost_diagnostics_->add_key_value("prediction/pos_error_m", pred.pos_error_m);
+    cost_diagnostics_->add_key_value("prediction/yaw_error_rad", pred.yaw_error_rad);
+    cost_diagnostics_->add_key_value("prediction/vel_error_mps", pred.vel_error_mps);
+  }
 
   if (cost.evaluated_timesteps == 0U) {
     cost_diagnostics_->update_level_and_message(
@@ -585,6 +596,26 @@ void TrajectoryMppiOptimizer::publish_processing_time(const FirstOrderDubinsMppi
     "processing_time_ms/nominal", timing.seed_nominal_ms);
   debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "processing_time_ms/mppi", timing.total_ms);
+}
+
+void TrajectoryMppiOptimizer::publish_prediction_accuracy(
+  const FirstOrderDubinsMppiPredictionAccuracy & accuracy) const
+{
+  if (!debug_publisher_ || !accuracy.valid) {
+    return;
+  }
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/elapsed_s", accuracy.elapsed_s);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/pos_error_m", accuracy.pos_error_m);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/yaw_error_rad", accuracy.yaw_error_rad);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/vel_error_mps", accuracy.vel_error_mps);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/full_steps", static_cast<double>(accuracy.full_steps));
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/remainder_s", accuracy.remainder_s);
 }
 
 void TrajectoryMppiOptimizer::publish_ego_to_dp_first_point_distance(

@@ -415,11 +415,14 @@ void updatePlantFromResult(
   command = snap.applied_control;
 }
 
-Odometry makeOdometry(const SimPlantState & plant)
+Odometry makeOdometry(const SimPlantState & plant, const float sim_time_s)
 {
   Odometry odometry;
   odometry.header.frame_id = "map";
   odometry.child_frame_id = "base_link";
+  odometry.header.stamp.sec = static_cast<int32_t>(sim_time_s);
+  odometry.header.stamp.nanosec = static_cast<uint32_t>(
+    (sim_time_s - static_cast<float>(odometry.header.stamp.sec)) * 1.0E9F);
   odometry.pose.pose.position.x = plant.x;
   odometry.pose.pose.position.y = plant.y;
   odometry.pose.pose.orientation = quaternionFromYaw(plant.yaw);
@@ -678,11 +681,12 @@ int run(int argc, char ** argv)
   std::cerr << "  fixed reference: " << fixed_reference.points.size() << " points, ds=" << ref_ds
             << " m; horizon anchored at ego arc length each step\n";
   for (int step = 0; step < steps; ++step) {
+    const float sim_t = static_cast<float>(step) * kDt;
     const float s_ego = egoArcLengthOnPath(plant);
     const auto reference =
       sliceReferenceHorizonFromArcLength(fixed_reference, s_ego, ref_ds, reference_points, speed);
     const auto result = mppi.optimizeTrajectory(
-      reference, makeOdometry(plant), makeAccel(plant), makeSteering(plant), objects, {}, {},
+      reference, makeOdometry(plant, sim_t), makeAccel(plant), makeSteering(plant), objects, {}, {},
       limits);
     if (step == 0) {
       if (!autoware::mppi_optimizer::writeMppiDebugOptimalHorizonCsv(
@@ -694,9 +698,16 @@ int run(int argc, char ** argv)
     const float t = static_cast<float>(step + 1) * kDt;
     rows.push_back(formatRow(t, plant, command));
     if ((step + 1) % 10 == 0 || step + 1 == steps) {
+      const auto & pred = result.debug.prediction_accuracy;
       std::cerr << "  t=" << std::fixed << std::setprecision(2) << t << " x=" << plant.x
                 << " y=" << plant.y << " yaw=" << plant.yaw << " v=" << plant.velocity
-                << " u_a=" << command.accel_cmd << " u_d=" << command.steer_cmd << "\n";
+                << " u_a=" << command.accel_cmd << " u_d=" << command.steer_cmd;
+      if (pred.valid) {
+        std::cerr << " pred_pos_err=" << pred.pos_error_m << "m pred_yaw_err=" << pred.yaw_error_rad
+                  << "rad elapsed=" << pred.elapsed_s << "s steps=" << pred.full_steps << "+"
+                  << pred.remainder_s;
+      }
+      std::cerr << "\n";
     }
   }
 

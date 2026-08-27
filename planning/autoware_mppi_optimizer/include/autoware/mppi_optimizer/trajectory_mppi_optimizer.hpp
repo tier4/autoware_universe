@@ -107,6 +107,9 @@ private:
   void publish_ego_signed_lateral_error_on_dp(
     const nav_msgs::msg::Odometry & odometry, const Trajectory & reference) const;
 
+  /** @brief Publishes open-loop plant replay error vs measured ego since the previous cycle. */
+  void publish_prediction_accuracy(const FirstOrderDubinsMppiPredictionAccuracy & accuracy) const;
+
   /** @brief Deletes stale MPPI markers. */
   void clear_markers(const std_msgs::msg::Header & header) const;
 

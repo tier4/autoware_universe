@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/mppi_optimizer/detail/plant_prediction_utils.hpp"
 #include "autoware/mppi_optimizer/detail/temporal_mpt_nominal.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_validator.hpp"
@@ -788,6 +789,10 @@ struct FirstOrderDubinsMppiInterface::Impl
   float logged_applied_accel{0.0F};
   float logged_applied_steer{0.0F};
 
+  /** Anchor plant IC + stamp captured before each runStep (for next-cycle prediction metric). */
+  detail::FirstOrderDubinsMppiPlantSnapshot prediction_anchor_{};
+  std::vector<detail::FirstOrderDubinsMppiControlHistoryEntry> prediction_control_history_{};
+
   Impl() : feedback(&model, kDt), sampler(SAMPLER::SAMPLING_PARAMS_T{}) {}
 
   void setup()
@@ -910,6 +915,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     steer_delay_buffer.clear();
     delay_buffer_seeded = false;
     temporal_mpt_nominal_seeder.resetWarmStart();
+    prediction_anchor_.valid = false;
+    prediction_control_history_.clear();
   }
 
   void syncDelayStepsToModel()
@@ -1398,6 +1405,61 @@ struct FirstOrderDubinsMppiInterface::Impl
     snapshotDelayBufferForLog();
   }
 
+  void capturePredictionAnchor(const Odometry & odometry)
+  {
+    prediction_anchor_.valid = true;
+    prediction_anchor_.stamp = odometry.header.stamp;
+    prediction_anchor_.sim_time = sim_time;
+    auto & plant = prediction_anchor_.plant;
+    plant.valid = true;
+    plant.x = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X));
+    plant.y = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y));
+    plant.yaw = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW));
+    plant.velocity = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X));
+    plant.acceleration =
+      x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACCELERATION));
+    plant.steering = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE));
+    plant.sim_time = sim_time;
+    plant.accel_cmd_delay_buffer = accel_delay_buffer;
+    plant.steer_cmd_delay_buffer = steer_delay_buffer;
+  }
+
+  FirstOrderDubinsMppiPredictionAccuracy evaluatePredictionAccuracy(
+    const Odometry & odometry) const
+  {
+    if (!prediction_anchor_.valid) {
+      return {};
+    }
+    detail::PlantPredictionReplayInput input;
+    input.vehicle = vehicle_params;
+    input.enable_input_delay_compensation = enable_input_delay_compensation;
+    input.integration_dt = kDt;
+    input.anchor = prediction_anchor_;
+    input.control_history = prediction_control_history_;
+    input.measurement_stamp = odometry.header.stamp;
+    input.measured_x = static_cast<float>(odometry.pose.pose.position.x);
+    input.measured_y = static_cast<float>(odometry.pose.pose.position.y);
+    input.measured_yaw = yawFromOdometry(odometry);
+    input.measured_vel = static_cast<float>(odometry.twist.twist.linear.x);
+    return detail::evaluatePlantPredictionAccuracy(input);
+  }
+
+  void recordAppliedControl(
+    const Odometry & odometry, const FirstOrderDubinsMppiControl & control)
+  {
+    detail::FirstOrderDubinsMppiControlHistoryEntry entry;
+    entry.stamp = odometry.header.stamp;
+    entry.control = control;
+    prediction_control_history_.push_back(entry);
+    constexpr std::size_t kMaxHistoryEntries = 256U;
+    if (prediction_control_history_.size() > kMaxHistoryEntries) {
+      prediction_control_history_.erase(
+        prediction_control_history_.begin(),
+        prediction_control_history_.end() -
+          static_cast<std::ptrdiff_t>(kMaxHistoryEntries));
+    }
+  }
+
   void uploadBoundarySegments()
   {
     if (road_borders.empty()) {
@@ -1860,9 +1922,12 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   impl_->updateDiffusionReference(
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
     kinematic_limits);
+  result.debug.prediction_accuracy = impl_->evaluatePredictionAccuracy(odometry);
+  impl_->capturePredictionAnchor(odometry);
   // Capture IC before runStep advances the ego state with the applied control.
   const DYN::state_array x_at_optimization = impl_->x;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
+  impl_->recordAppliedControl(odometry, control);
 
   FirstOrderDubinsMppiAppliedPlantState & applied_plant = result.debug.applied_plant;
   applied_plant.valid = true;
@@ -2103,5 +2168,263 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
 
   return result;
 }
+
+namespace detail
+{
+namespace
+{
+
+constexpr float kPlantPredictionTimeEpsilonS = 1.0E-6F;
+
+int clampInputDelayStepsForPrediction(const int steps)
+{
+  return std::clamp(steps, 0, FirstOrderDubinsBicycleParams::kMaxInputDelaySteps);
+}
+
+int sampledDelayStepsForPrediction(const float t, const float delay_s, const float dt)
+{
+  if (delay_s <= 0.0F || dt <= 0.0F) {
+    return 0;
+  }
+  const double steps = static_cast<double>(t) / static_cast<double>(dt) -
+                       std::floor(static_cast<double>(t - delay_s) / static_cast<double>(dt));
+  return clampInputDelayStepsForPrediction(std::max(0, static_cast<int>(std::lround(steps))));
+}
+
+float wrapPiForPrediction(const float yaw)
+{
+  float wrapped = yaw;
+  while (wrapped > static_cast<float>(M_PI)) {
+    wrapped -= 2.0F * static_cast<float>(M_PI);
+  }
+  while (wrapped < -static_cast<float>(M_PI)) {
+    wrapped += 2.0F * static_cast<float>(M_PI);
+  }
+  return wrapped;
+}
+
+void loadPlantIntoStateForPrediction(
+  const FirstOrderDubinsMppiAppliedPlantState & plant, FirstOrderDubinsBicycle::state_array & x)
+{
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+  x = FirstOrderDubinsBicycle::state_array::Zero();
+  x(static_cast<int>(S::POS_X)) = plant.x;
+  x(static_cast<int>(S::POS_Y)) = plant.y;
+  x(static_cast<int>(S::YAW)) = plant.yaw;
+  x(static_cast<int>(S::VEL_X)) = plant.velocity;
+  x(static_cast<int>(S::ACCELERATION)) = plant.acceleration;
+  x(static_cast<int>(S::STEER_ANGLE)) = plant.steering;
+}
+
+void loadDelayPipesIntoStateForPrediction(
+  FirstOrderDubinsBicycle::state_array & x, const int acc_delay_steps, const int steer_delay_steps,
+  const std::vector<float> & accel_delay_buffer, const std::vector<float> & steer_delay_buffer)
+{
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+  for (int i = 0; i < FirstOrderDubinsBicycleParams::kMaxInputDelaySteps; ++i) {
+    x(static_cast<int>(S::ACCEL_CMD_D0) + i) = 0.0F;
+    x(static_cast<int>(S::STEER_CMD_D0) + i) = 0.0F;
+  }
+  for (int i = 0; i < acc_delay_steps; ++i) {
+    if (static_cast<size_t>(i) < accel_delay_buffer.size()) {
+      x(static_cast<int>(S::ACCEL_CMD_D0) + i) = accel_delay_buffer[static_cast<size_t>(i)];
+    }
+  }
+  for (int i = 0; i < steer_delay_steps; ++i) {
+    if (static_cast<size_t>(i) < steer_delay_buffer.size()) {
+      x(static_cast<int>(S::STEER_CMD_D0) + i) = steer_delay_buffer[static_cast<size_t>(i)];
+    }
+  }
+}
+
+void pushDelayedInputForPrediction(
+  const FirstOrderDubinsBicycle::control_array & u, const int acc_delay_steps,
+  const int steer_delay_steps, FirstOrderDubinsBicycle::state_array & x,
+  std::vector<float> & accel_delay_buffer, std::vector<float> & steer_delay_buffer)
+{
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+  using C = FirstOrderDubinsBicycleParams::ControlIndex;
+  if (acc_delay_steps > 0) {
+    if (accel_delay_buffer.size() != static_cast<size_t>(acc_delay_steps)) {
+      accel_delay_buffer.assign(
+        static_cast<size_t>(acc_delay_steps), x(static_cast<int>(S::ACCELERATION)));
+    }
+    for (int i = 0; i < acc_delay_steps - 1; ++i) {
+      accel_delay_buffer[static_cast<size_t>(i)] = accel_delay_buffer[static_cast<size_t>(i + 1)];
+    }
+    accel_delay_buffer[static_cast<size_t>(acc_delay_steps - 1)] =
+      u(static_cast<int>(C::ACCELERATION_CMD));
+  } else {
+    accel_delay_buffer.clear();
+  }
+
+  if (steer_delay_steps > 0) {
+    if (steer_delay_buffer.size() != static_cast<size_t>(steer_delay_steps)) {
+      steer_delay_buffer.assign(
+        static_cast<size_t>(steer_delay_steps), x(static_cast<int>(S::STEER_ANGLE)));
+    }
+    for (int i = 0; i < steer_delay_steps - 1; ++i) {
+      steer_delay_buffer[static_cast<size_t>(i)] = steer_delay_buffer[static_cast<size_t>(i + 1)];
+    }
+    steer_delay_buffer[static_cast<size_t>(steer_delay_steps - 1)] =
+      u(static_cast<int>(C::STEER_CMD));
+  } else {
+    steer_delay_buffer.clear();
+  }
+}
+
+FirstOrderDubinsBicycleParams makePlantPredictionDynamicsParams(
+  const FirstOrderDubinsMppiVehicleParams & vehicle, const int acc_delay_steps,
+  const int steer_delay_steps, const bool prevent_reverse_velocity)
+{
+  FirstOrderDubinsBicycleParams dyn{};
+  dyn.wheel_base = vehicle.wheel_base;
+  dyn.max_steer_angle = vehicle.max_steer_angle;
+  dyn.accel_time_constant = vehicle.acc_time_constant;
+  dyn.steer_time_constant = vehicle.steer_time_constant;
+  dyn.max_steer_rate = vehicle.steer_rate_lim;
+  dyn.min_accel = vehicle.min_accel();
+  dyn.max_accel = vehicle.max_accel();
+  dyn.acc_delay_steps = acc_delay_steps;
+  dyn.steer_delay_steps = steer_delay_steps;
+  dyn.prevent_reverse_velocity = prevent_reverse_velocity;
+  return dyn;
+}
+
+FirstOrderDubinsMppiControl controlAtTimeForPrediction(
+  const std::vector<FirstOrderDubinsMppiControlHistoryEntry> & history,
+  const builtin_interfaces::msg::Time & query_time, const FirstOrderDubinsMppiControl & fallback)
+{
+  FirstOrderDubinsMppiControl selected = fallback;
+  const double query_s = stampToSeconds(query_time);
+  double best_s = -std::numeric_limits<double>::infinity();
+  for (const auto & entry : history) {
+    const double entry_s = stampToSeconds(entry.stamp);
+    if (entry_s <= query_s + kPlantPredictionTimeEpsilonS && entry_s >= best_s) {
+      best_s = entry_s;
+      selected = entry.control;
+    }
+  }
+  return selected;
+}
+
+}  // namespace
+
+double stampToSeconds(const builtin_interfaces::msg::Time & stamp)
+{
+  return static_cast<double>(stamp.sec) + static_cast<double>(stamp.nanosec) * 1.0E-9;
+}
+
+double elapsedSeconds(
+  const builtin_interfaces::msg::Time & from, const builtin_interfaces::msg::Time & to)
+{
+  return stampToSeconds(to) - stampToSeconds(from);
+}
+
+FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
+  const PlantPredictionReplayInput & input)
+{
+  using C = FirstOrderDubinsBicycleParams::ControlIndex;
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+
+  FirstOrderDubinsMppiPredictionAccuracy result;
+  if (!input.anchor.valid || input.integration_dt <= kPlantPredictionTimeEpsilonS) {
+    return result;
+  }
+
+  const double elapsed = elapsedSeconds(input.anchor.stamp, input.measurement_stamp);
+  result.elapsed_s = elapsed;
+  if (elapsed <= kPlantPredictionTimeEpsilonS) {
+    return result;
+  }
+
+  const auto dts = buildChunkedIntegrationDts(static_cast<float>(elapsed), input.integration_dt);
+  if (dts.empty()) {
+    return result;
+  }
+
+  result.full_steps =
+    static_cast<int>(std::floor((elapsed + kPlantPredictionTimeEpsilonS) / input.integration_dt));
+  result.remainder_s =
+    static_cast<float>(elapsed) - static_cast<float>(result.full_steps) * input.integration_dt;
+  if (result.remainder_s < kPlantPredictionTimeEpsilonS) {
+    result.remainder_s = 0.0F;
+  }
+  result.integration_steps = static_cast<int>(dts.size());
+
+  FirstOrderDubinsBicycle model;
+  float sim_time = input.anchor.sim_time;
+  int acc_delay_steps = 0;
+  int steer_delay_steps = 0;
+  if (input.enable_input_delay_compensation) {
+    acc_delay_steps =
+      sampledDelayStepsForPrediction(sim_time, input.vehicle.acc_time_delay, input.integration_dt);
+    steer_delay_steps = sampledDelayStepsForPrediction(
+      sim_time, input.vehicle.steer_time_delay, input.integration_dt);
+  }
+  model.setParams(makePlantPredictionDynamicsParams(
+    input.vehicle, acc_delay_steps, steer_delay_steps, /*prevent_reverse_velocity=*/true));
+
+  FirstOrderDubinsBicycle::state_array x = FirstOrderDubinsBicycle::state_array::Zero();
+  loadPlantIntoStateForPrediction(input.anchor.plant, x);
+  std::vector<float> accel_delay_buffer = input.anchor.plant.accel_cmd_delay_buffer;
+  std::vector<float> steer_delay_buffer = input.anchor.plant.steer_cmd_delay_buffer;
+  loadDelayPipesIntoStateForPrediction(
+    x, acc_delay_steps, steer_delay_steps, accel_delay_buffer, steer_delay_buffer);
+
+  const FirstOrderDubinsMppiControl fallback_control = input.control_history.empty()
+                                                         ? FirstOrderDubinsMppiControl{}
+                                                         : input.control_history.back().control;
+
+  builtin_interfaces::msg::Time query_time = input.anchor.stamp;
+  float integration_time = 0.0F;
+  for (const float step_dt : dts) {
+    const auto control = controlAtTimeForPrediction(input.control_history, query_time, fallback_control);
+    FirstOrderDubinsBicycle::control_array u = FirstOrderDubinsBicycle::control_array::Zero();
+    u(static_cast<int>(C::ACCELERATION_CMD)) = control.accel_cmd;
+    u(static_cast<int>(C::STEER_CMD)) = control.steer_cmd;
+
+    pushDelayedInputForPrediction(
+      u, acc_delay_steps, steer_delay_steps, x, accel_delay_buffer, steer_delay_buffer);
+    loadDelayPipesIntoStateForPrediction(
+      x, acc_delay_steps, steer_delay_steps, accel_delay_buffer, steer_delay_buffer);
+
+    if (input.enable_input_delay_compensation) {
+      acc_delay_steps = sampledDelayStepsForPrediction(
+        sim_time, input.vehicle.acc_time_delay, input.integration_dt);
+      steer_delay_steps = sampledDelayStepsForPrediction(
+        sim_time, input.vehicle.steer_time_delay, input.integration_dt);
+      model.setParams(makePlantPredictionDynamicsParams(
+        input.vehicle, acc_delay_steps, steer_delay_steps, /*prevent_reverse_velocity=*/true));
+    }
+
+    FirstOrderDubinsBicycle::state_array x_next = model.getZeroState();
+    FirstOrderDubinsBicycle::state_array xdot = model.getZeroState();
+    FirstOrderDubinsBicycle::output_array y = FirstOrderDubinsBicycle::output_array::Zero();
+    model.enforceConstraints(x, u);
+    model.step(x, x_next, xdot, u, y, sim_time, step_dt);
+    x = x_next;
+    sim_time += step_dt;
+    integration_time += step_dt;
+
+    const double anchor_s = stampToSeconds(input.anchor.stamp);
+    query_time.sec = static_cast<int32_t>(std::floor(anchor_s + integration_time));
+    query_time.nanosec = static_cast<uint32_t>(
+      (anchor_s + integration_time - static_cast<double>(query_time.sec)) * 1.0E9);
+  }
+
+  result.valid = true;
+  result.predicted_x = x(static_cast<int>(S::POS_X));
+  result.predicted_y = x(static_cast<int>(S::POS_Y));
+  result.predicted_yaw = x(static_cast<int>(S::YAW));
+  result.predicted_vel = x(static_cast<int>(S::VEL_X));
+  result.pos_error_m = std::hypot(
+    result.predicted_x - input.measured_x, result.predicted_y - input.measured_y);
+  result.yaw_error_rad = wrapPiForPrediction(result.predicted_yaw - input.measured_yaw);
+  result.vel_error_mps = result.predicted_vel - input.measured_vel;
+  return result;
+}
+
+}  // namespace detail
 
 }  // namespace autoware::mppi_optimizer

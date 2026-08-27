@@ -40,6 +40,23 @@ using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
 
+/** Open-loop plant replay vs measured ego over elapsed wall time since the previous MPPI cycle. */
+struct FirstOrderDubinsMppiPredictionAccuracy
+{
+  bool valid{false};
+  double elapsed_s{0.0};
+  int full_steps{0};
+  float remainder_s{0.0F};
+  int integration_steps{0};
+  float pos_error_m{0.0F};
+  float yaw_error_rad{0.0F};
+  float vel_error_mps{0.0F};
+  float predicted_x{0.0F};
+  float predicted_y{0.0F};
+  float predicted_yaw{0.0F};
+  float predicted_vel{0.0F};
+};
+
 struct FirstOrderDubinsMppiState
 {
   float x{0.0F};
@@ -246,6 +263,8 @@ struct FirstOrderDubinsMppiDebug
   bool was_rejected{false};
   /** Internal plant after runStep(); use for sim feedback to avoid duplicate integration. */
   FirstOrderDubinsMppiAppliedPlantState applied_plant;
+  /** Open-loop delay-bicycle replay vs measured ego since the previous MPPI cycle. */
+  FirstOrderDubinsMppiPredictionAccuracy prediction_accuracy;
 };
 
 struct FirstOrderDubinsMppiOptimizationResult

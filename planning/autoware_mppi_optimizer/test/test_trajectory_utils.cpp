@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/mppi_optimizer/detail/plant_prediction_utils.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -752,6 +753,30 @@ TEST(ShiftNominalControlForInputDelay, ShiftsPerChannelAndHoldsTail)
   EXPECT_FLOAT_EQ(shifted[2].accel_cmd, 3.0F);
   EXPECT_FLOAT_EQ(shifted[2].steer_cmd, 30.0F);
   EXPECT_FLOAT_EQ(shiftNominalControlForInputDelay(nominal, 0, 0)[1].accel_cmd, 1.0F);
+}
+
+TEST(PlantPredictionUtils, BuildChunkedIntegrationDtsSplitsFullStepsAndRemainder)
+{
+  const auto dts = buildChunkedIntegrationDts(0.54F, 0.1F);
+  ASSERT_EQ(dts.size(), 6U);
+  for (std::size_t i = 0; i < 5U; ++i) {
+    EXPECT_FLOAT_EQ(dts[i], 0.1F);
+  }
+  EXPECT_NEAR(dts[5], 0.04F, 1.0E-5F);
+}
+
+TEST(PlantPredictionUtils, BuildChunkedIntegrationDtsReturnsEmptyForZeroElapsed)
+{
+  EXPECT_TRUE(buildChunkedIntegrationDts(0.0F, 0.1F).empty());
+}
+
+TEST(PlantPredictionUtils, BuildChunkedIntegrationDtsUsesOnlyFullStepsWhenExact)
+{
+  const auto dts = buildChunkedIntegrationDts(0.5F, 0.1F);
+  ASSERT_EQ(dts.size(), 5U);
+  for (const float step : dts) {
+    EXPECT_FLOAT_EQ(step, 0.1F);
+  }
 }
 
 }  // namespace
