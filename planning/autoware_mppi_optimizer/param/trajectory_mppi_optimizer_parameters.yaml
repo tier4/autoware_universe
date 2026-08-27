@@ -265,7 +265,7 @@ trajectory_mppi_optimizer:
   use_last_control_as_nominal:
     type: bool
     default_value: true
-    description: Warm start with the previous optimized control
+    description: Warm-start MPPI u_nom from the previous optimized control (ignored when t-MPT seeds u_nom)
     read_only: false
   enable_debug_trajectory_log:
     type: bool

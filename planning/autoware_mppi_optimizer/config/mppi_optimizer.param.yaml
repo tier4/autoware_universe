@@ -64,7 +64,7 @@
       skip_if_invalid: true
       min_optimization_length: 0.0
 
-      # Cold-seed u_nom from acados temporal MPT.
+      # Seed u_nom from acados temporal MPT (self warm-start; ignores last MPPI u_opt).
       use_temporal_mpt_as_nominal: true
       use_last_control_as_nominal: true
 

@@ -1244,20 +1244,10 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (forced_nominal_pending) {
       seedNominalControlFromForced();
       forced_nominal_pending = false;
-    } else {
-      // After a tracking reset, step_count is 0 and u_opt was cleared — fall back to DP / MPT
-      // seed. Also reseed when departing from a stop: shifted last u_opt is usually near-zero /
-      // braking.
-      constexpr float kStoppedVelocityMps = 0.05F;
-      const bool started_from_stop = std::abs(ego.velocity) < kStoppedVelocityMps;
-      if (use_last_control_as_nominal && step_count > 0 && !started_from_stop) {
-        seedNominalControlFromLastOptimized();
-      } else if (use_temporal_mpt_as_nominal) {
-        // seedNominalControlFromTemporalMpt(reference, ego);
-      } else {
-        seedNominalControlFromDiffusionReference(reference, start_idx);
-      }
+      snapshotNominalForLog();
+      return;
     }
+
     // After a tracking reset, step_count is 0 and u_opt was cleared — fall back to DP / MPT seed.
     // Also reseed when departing from a stop: shifted last u_opt is usually near-zero / braking.
     constexpr float kStoppedVelocityMps = 0.05F;
@@ -1265,23 +1255,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     const bool have_last_u = use_last_control_as_nominal && step_count > 0 && !started_from_stop;
 
     if (use_temporal_mpt_as_nominal) {
-      // t-MPT always runs when enabled. Optionally seed its NLP from shifted last MPPI u_opt;
-      // otherwise PathTrackingSolver warm-starts from its own previous solution.
-      if (have_last_u) {
-        const int accel_idx =
-          static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
-        const int steer_idx =
-          static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
-        std::vector<float> accel(static_cast<size_t>(kMppiHorizon));
-        std::vector<float> steer(static_cast<size_t>(kMppiHorizon));
-        for (int t = 0; t < kMppiHorizon - 1; ++t) {
-          accel[static_cast<size_t>(t)] = u_opt(accel_idx, t + 1);
-          steer[static_cast<size_t>(t)] = u_opt(steer_idx, t + 1);
-        }
-        accel[static_cast<size_t>(kMppiHorizon - 1)] = u_opt(accel_idx, kMppiHorizon - 1);
-        steer[static_cast<size_t>(kMppiHorizon - 1)] = u_opt(steer_idx, kMppiHorizon - 1);
-        temporal_mpt_nominal_seeder.setWarmStartControls(accel, steer);
-      } else if (started_from_stop || step_count == 0) {
+      // t-MPT warm-starts from its own previous x/u, shifted one stage. Do not inject MPPI u_opt.
+      if (started_from_stop || step_count == 0) {
         temporal_mpt_nominal_seeder.resetWarmStart();
       }
       seedNominalControlFromTemporalMpt(reference, ego);
@@ -1360,9 +1335,6 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     const auto initial_state =
       detail::makeInitialState(odometry, acceleration, steering_status, vehicle_params);
-    const auto seed_t0 = std::chrono::steady_clock::now();
-    last_seed_nominal_ms =
-      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - seed_t0).count();
     const std::vector<FirstOrderDubinsMppiControl> profile_seed(
       std::max(static_cast<std::size_t>(kMppiHorizon), diffusion_reference.points.size()));
     std::vector<float> profile_reference_velocities(profile_seed.size(), 0.0F);
@@ -1399,7 +1371,10 @@ struct FirstOrderDubinsMppiInterface::Impl
       profile_seed, initial_state, active_kinematic_limits, vehicle_params, acc_delay_steps,
       accel_delay_buffer, kDt, keep_velocity_limit_active, profile_reference_velocities);
     detail::applyActiveVelocityLimitProfile(diffusion_reference, active_velocity_limit_profile);
+    const auto seed_t0 = std::chrono::steady_clock::now();
     seedNominalControl(diffusion_reference, tracking_start_idx, initial_state);
+    last_seed_nominal_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - seed_t0).count();
     applyActiveVelocityLimitToNominal();
     if (active_velocity_limit_profile.active) {
       snapshotNominalForLog();

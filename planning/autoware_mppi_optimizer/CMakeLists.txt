@@ -63,6 +63,7 @@ endif()
 
 if(CUDA_AVAIL AND TRT_AVAIL)
   find_package(MPPI-Generic REQUIRED)
+  find_package(ament_index_cpp REQUIRED)
   pluginlib_export_plugin_description_file(
     autoware_trajectory_processor trajectory_processor_plugins.xml)
   add_library(mppi_extensions INTERFACE)
@@ -147,6 +148,9 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   add_executable(mppi_offline_retune
     src/tools/mppi_offline_retune.cpp
   )
+  add_executable(mppi_open_loop_line_sim
+    src/tools/mppi_open_loop_line_sim.cpp
+  )
   target_include_directories(mppi_offline_retune PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
@@ -162,6 +166,26 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     nav_msgs::nav_msgs__rosidl_generator_cpp
   )
   set_target_properties(mppi_offline_retune PROPERTIES
+    CXX_STANDARD 17
+    POSITION_INDEPENDENT_CODE ON
+  )
+
+  target_include_directories(mppi_open_loop_line_sim PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  )
+  target_link_libraries(mppi_open_loop_line_sim
+    first_order_dubins_mppi
+    rclcpp::rclcpp
+    ament_index_cpp::ament_index_cpp
+    tf2_geometry_msgs::tf2_geometry_msgs
+    autoware_perception_msgs::autoware_perception_msgs__rosidl_generator_cpp
+    autoware_planning_msgs::autoware_planning_msgs__rosidl_generator_cpp
+    autoware_vehicle_msgs::autoware_vehicle_msgs__rosidl_generator_cpp
+    geometry_msgs::geometry_msgs__rosidl_generator_cpp
+    nav_msgs::nav_msgs__rosidl_generator_cpp
+  )
+  set_target_properties(mppi_open_loop_line_sim PROPERTIES
     CXX_STANDARD 17
     POSITION_INDEPENDENT_CODE ON
   )
@@ -214,7 +238,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     )
   endif()
 
-  install(TARGETS first_order_dubins_mppi mppi_offline_retune
+  install(TARGETS first_order_dubins_mppi mppi_offline_retune mppi_open_loop_line_sim
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -222,6 +246,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   install(PROGRAMS
     scripts/mppi_offline_tuner.py
     scripts/mppi_debug_visualizer.py
+    scripts/mppi_open_loop_line_sim_plot.py
     DESTINATION lib/${PROJECT_NAME}
   )
 endif()

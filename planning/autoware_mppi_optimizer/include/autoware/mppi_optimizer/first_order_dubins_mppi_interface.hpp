@@ -350,10 +350,10 @@ public:
   /**
    * @brief Track a diffusion-planner reference (poses + velocities) with one MPPI step.
    *
-   * Uses the diffusion trajectory directly as the MPPI reference horizon (x, y, yaw, v),
-   * seeds u_nom from the previous optimized controls when use_last_control_as_nominal is set
-   * (otherwise from the reference trajectory), and returns the MPPI-predicted
-   * feasible state rollout that best tracks that reference.
+   * Uses the diffusion trajectory directly as the MPPI reference horizon (x, y, yaw, v).
+   * When use_temporal_mpt_as_nominal is set, seeds u_nom from acados t-MPT (self warm-start).
+   * Otherwise seeds from the previous optimized controls when use_last_control_as_nominal is set
+   * (else from the reference trajectory). Returns the MPPI-predicted feasible state rollout.
    *
    * @param input Reference trajectory from the diffusion planner (map frame).
    * @param odometry Current ego odometry in the same frame as the trajectory.
