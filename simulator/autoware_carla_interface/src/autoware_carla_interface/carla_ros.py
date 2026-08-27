@@ -177,6 +177,12 @@ class carla_ros2_interface(object):
             # identity curve (workaround for the corrupt curve data CARLA 0.10
             # returns, which attenuates steering at driving speeds).
             "flatten_steering_curve": (rclpy.Parameter.Type.BOOL, False),
+            # Override the wheel max steer angle [deg] used to convert between
+            # tire angles and the normalized VehicleControl.steer. 0 uses the
+            # value reported by the vehicle physics. CARLA 0.10 (Chaos) reports
+            # 70 deg but only achieves roughly a third of it, so calibrating
+            # this to the measured full-steer angle restores a unity gain.
+            "max_wheel_steer_angle_deg": (rclpy.Parameter.Type.DOUBLE, 0.0),
             "splatsim_render_camera": (rclpy.Parameter.Type.BOOL, True),
             "splatsim_render_lidar": (rclpy.Parameter.Type.BOOL, False),
             "splatsim_tileset_path": (rclpy.Parameter.Type.STRING, ""),
@@ -942,9 +948,11 @@ class carla_ros2_interface(object):
         Must be called with ``physics_control`` already available.
         """
         if self._max_steer_angle_rad is None:
-            max_deg = max(
-                (w.max_steer_angle for w in self.physics_control.wheels), default=0.0
-            )
+            max_deg = float(self.param_values.get("max_wheel_steer_angle_deg", 0.0))
+            if max_deg <= 0.0:
+                max_deg = max(
+                    (w.max_steer_angle for w in self.physics_control.wheels), default=0.0
+                )
             if max_deg <= 0.0:
                 max_deg = 70.0  # CARLA's usual front-wheel default
             self._max_steer_angle_rad = math.radians(max_deg)

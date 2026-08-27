@@ -58,6 +58,7 @@
     <!-- SplatSim integration (optional) -->
     <arg name="render_with_splatsim" default="false" description="Enable splatsim rendering via Docker + gRPC"/>
     <arg name="flatten_steering_curve" default="false" description="Replace the ego vehicle's speed-based steering curve with an identity curve (CARLA 0.10 corrupt-curve workaround)"/>
+    <arg name="max_wheel_steer_angle_deg" default="0.0" description="Override the wheel max steer angle [deg] used for steer normalization; 0 uses the physics value"/>
     <arg name="splatsim_render_camera" default="false" description="Render cameras via splatsim (false = cameras fully off in splatsim mode)"/>
     <!-- The splatsim geographic origin is derived from the scene's own
          world.ecef_anchor (stored in the .usdz), so no lanelet2 map is needed. -->
@@ -106,6 +107,7 @@
       <param name="render_with_splatsim" value="$(var render_with_splatsim)"/>
       <param name="publish_ground_truth_localization" value="$(var use_e2e_planning)"/>
       <param name="flatten_steering_curve" value="$(var flatten_steering_curve)"/>
+      <param name="max_wheel_steer_angle_deg" value="$(var max_wheel_steer_angle_deg)"/>
       <param name="splatsim_tileset_path" value="$(var splatsim_tileset_path)"/>
       <param name="splatsim_image" value="$(var splatsim_image)"/>
       <param name="splatsim_grpc_port" value="$(var splatsim_grpc_port)"/>
