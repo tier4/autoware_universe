@@ -173,6 +173,10 @@ class carla_ros2_interface(object):
             # E2E planning setup instead of the former carla_state_publisher
             # GNSS round-trip, which duplicated these topics.
             "publish_ground_truth_localization": (rclpy.Parameter.Type.BOOL, False),
+            # Replace the ego vehicle's speed-based steering curve with an
+            # identity curve (workaround for the corrupt curve data CARLA 0.10
+            # returns, which attenuates steering at driving speeds).
+            "flatten_steering_curve": (rclpy.Parameter.Type.BOOL, False),
             "splatsim_render_camera": (rclpy.Parameter.Type.BOOL, True),
             "splatsim_render_lidar": (rclpy.Parameter.Type.BOOL, False),
             "splatsim_tileset_path": (rclpy.Parameter.Type.STRING, ""),
