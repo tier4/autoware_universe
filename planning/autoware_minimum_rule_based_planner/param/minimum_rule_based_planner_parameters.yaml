@@ -140,6 +140,13 @@ minimum_rule_based_planner:
         validation:
           gt<>: [0.0]
 
+      curvature_limit:
+        type: double
+        default_value: 0.1
+        description: upper bound [1/m] on the peak curvature of the shift polynomial. The shift length is stretched to at least sqrt((10*sqrt(3)/3) * |lateral offset| / curvature_limit) so that the whole offset is corrected within this bound
+        validation:
+          gt<>: [0.0]
+
   map_based_stop:
     stop_margin_distance:
       type: double
