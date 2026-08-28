@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/diffusion_planner/conversion/agent.hpp"
+#include "autoware/diffusion_planner/dimensions.hpp"
 
 #include <Eigen/Dense>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -85,6 +86,12 @@ TEST_F(AgentEdgeCaseTest, HazardObjectIsRemappedToPedestrian)
   EXPECT_EQ(
     state.original_info.classification.front().label,
     autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN);
+  // The remap lands in the PEDESTRIAN slot, not the UNKNOWN one.
+  const auto array = state.as_array();
+  EXPECT_FLOAT_EQ(array[8], 0.0F);
+  EXPECT_FLOAT_EQ(array[9], 1.0F);
+  EXPECT_FLOAT_EQ(array[10], 0.0F);
+  EXPECT_FLOAT_EQ(array[11], 0.0F);
   // BOX shape is kept as is
   EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.x, 5.0);
   EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.y, 2.0);
@@ -129,6 +136,107 @@ TEST_F(AgentEdgeCaseTest, NonHazardPolygonObjectIsStillSkipped)
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
 
   EXPECT_TRUE(histories.empty());
+}
+
+TEST_F(AgentEdgeCaseTest, UnknownObjectGetsDedicatedOnehot)
+{
+  tracked_object_.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  // The UNKNOWN object is included, not dropped.
+  ASSERT_EQ(histories.size(), 1U);
+  const auto & state = histories.front().get_latest_state();
+  EXPECT_EQ(state.label, AgentLabel::UNKNOWN);
+  // Unlike HAZARD, its classification is left untouched.
+  EXPECT_EQ(
+    state.original_info.classification.front().label,
+    autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
+  // Only the fourth one-hot entry is set.
+  const auto array = state.as_array();
+  EXPECT_FLOAT_EQ(array[8], 0.0F);
+  EXPECT_FLOAT_EQ(array[9], 0.0F);
+  EXPECT_FLOAT_EQ(array[10], 0.0F);
+  EXPECT_FLOAT_EQ(array[11], 1.0F);
+  // BOX shape is kept as is.
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.x, 5.0);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.y, 2.0);
+}
+
+TEST_F(AgentEdgeCaseTest, UnknownObjectWithNonBoxShapeGetsDefaultBox)
+{
+  tracked_object_.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+  tracked_object_.shape.type = autoware_perception_msgs::msg::Shape::POLYGON;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  // The polygon unknown object is not skipped because its shape is replaced with a bounding box
+  ASSERT_EQ(histories.size(), 1U);
+  const auto & state = histories.front().get_latest_state();
+  EXPECT_EQ(state.label, AgentLabel::UNKNOWN);
+  EXPECT_EQ(
+    state.original_info.classification.front().label,
+    autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
+  EXPECT_EQ(state.original_info.shape.type, autoware_perception_msgs::msg::Shape::BOUNDING_BOX);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.x, 0.5);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.y, 0.5);
+  EXPECT_DOUBLE_EQ(state.original_info.shape.dimensions.z, 0.5);
+}
+
+TEST_F(AgentEdgeCaseTest, EmptyClassificationObjectIsStillIgnored)
+{
+  tracked_object_.classification.clear();
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  EXPECT_TRUE(histories.empty());
+}
+
+// Guards the silent failure mode of widening AGENT_STATE_DIM: leaving as_array()'s initializer list
+// short is legal aggregate initialization, so the extra feature would just read back as zero.
+TEST_F(AgentEdgeCaseTest, AgentStateArrayWidthMatchesNeighborTensor)
+{
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  ASSERT_EQ(histories.size(), 1U);
+  const auto array = histories.front().get_latest_state().as_array();
+  EXPECT_EQ(array.size(), AGENT_STATE_DIM);
+  EXPECT_EQ(array.size(), static_cast<size_t>(NEIGHBOR_SHAPE[3]));
+  // A CAR sets exactly one one-hot entry, so the class block is fully accounted for.
+  EXPECT_FLOAT_EQ(array[8], 1.0F);
+  EXPECT_FLOAT_EQ(array[9], 0.0F);
+  EXPECT_FLOAT_EQ(array[10], 0.0F);
+  EXPECT_FLOAT_EQ(array[11], 0.0F);
 }
 
 }  // namespace autoware::diffusion_planner::test

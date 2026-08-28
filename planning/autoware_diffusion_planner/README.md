@@ -189,6 +189,39 @@ Parameters can be set via YAML (see `config/diffusion_planner.param.yaml`).
 | `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information          |
 | `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information |
 
+### Neighbor agent inputs
+
+The model encodes each neighbor agent with a four-class one-hot vector (VEHICLE / PEDESTRIAN /
+BICYCLE / UNKNOWN), so `~/input/tracked_objects` classifications are handled as follows before being
+fed to the network:
+
+| Autoware `ObjectClassification`                    | Model class                          |
+| -------------------------------------------------- | ------------------------------------ |
+| `CAR`, `TRUCK`, `BUS`, `TRAILER`, `MOTORCYCLE`     | `VEHICLE`                            |
+| `BICYCLE`                                          | `BICYCLE`                            |
+| `PEDESTRIAN`                                       | `PEDESTRIAN`                         |
+| `UNKNOWN`                                          | `UNKNOWN`                            |
+| `HAZARD`                                           | `PEDESTRIAN` (remapped)              |
+| `ANIMAL`, `OVER_DRIVABLE`, `UNDER_DRIVABLE`, empty | ignored (dropped from agent history) |
+
+`UNKNOWN` has its own one-hot slot, so the object is fed to the model as an unknown obstacle rather
+than being dropped or disguised as another class. Its classification is not rewritten: it is
+republished on `~/output/predicted_objects` still classified as `UNKNOWN`.
+
+`HAZARD` has no dedicated model class but can still obstruct driving, so it is remapped to
+`PEDESTRIAN` -- the most conservative supported class -- instead of being dropped; its shape and the
+republished classification on `~/output/predicted_objects` reflect this remap.
+
+Objects with a non-`BOUNDING_BOX` shape are normally skipped; for `HAZARD` and `UNKNOWN` the shape is
+instead replaced with a 0.5 m bounding box (with a throttled warning), since perception typically
+reports these as polygons. Objects with an empty `classification` field are always ignored.
+
+> **Weights requirement.** The four-class one-hot makes the per-agent feature vector 12 wide
+> (`neighbor_agents_past` is `[batch, 320, 31, 12]`), so this branch requires weights trained with
+> `agent_state_dim = 12`. The public v5.0 artifacts referenced by
+> `config/diffusion_planner.param.yaml` are 11-wide; launching against them fails fast at startup
+> with an `observation_normalizer.neighbor_agents_past ... expects 12` error.
+
 ## Outputs
 
 | Topic                           | Message Type                                              | Description                                                |
