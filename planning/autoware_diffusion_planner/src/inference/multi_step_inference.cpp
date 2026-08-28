@@ -314,7 +314,7 @@ std::vector<float> MultiStepInference::create_current_states(
       for (int64_t d = 0; d < POSE_DIM; ++d) {
         const size_t neighbor_idx =
           (((static_cast<size_t>(b) * MAX_NUM_NEIGHBORS + (agent - 1)) * (INPUT_T + 1) + INPUT_T) *
-           11) +
+           NEIGHBOR_SHAPE[3]) +
           d;
         const size_t current_idx = (static_cast<size_t>(b) * MAX_NUM_AGENTS + agent) * POSE_DIM + d;
         current_states[current_idx] = neighbor_agents_past[neighbor_idx];
