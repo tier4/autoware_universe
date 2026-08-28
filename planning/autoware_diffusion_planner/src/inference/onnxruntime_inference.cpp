@@ -238,8 +238,9 @@ std::unordered_map<std::string, std::vector<float>> OrtModel::run(
     } else if (name == "neighbor_agents_past") {
       add_float_tensor(
         name, data,
-        {static_cast<int64_t>(data.size() / (MAX_NUM_NEIGHBORS * (INPUT_T + 1) * 11)),
-         MAX_NUM_NEIGHBORS, INPUT_T + 1, 11});
+        {static_cast<int64_t>(
+           data.size() / (MAX_NUM_NEIGHBORS * (INPUT_T + 1) * NEIGHBOR_SHAPE[3])),
+         MAX_NUM_NEIGHBORS, INPUT_T + 1, NEIGHBOR_SHAPE[3]});
     } else if (name == "static_objects") {
       add_float_tensor(
         name, data,
@@ -404,7 +405,7 @@ std::vector<float> OnnxruntimeMultiStepInference::create_current_states(
       for (int64_t d = 0; d < POSE_DIM; ++d) {
         const size_t neighbor_idx =
           (((static_cast<size_t>(b) * MAX_NUM_NEIGHBORS + (agent - 1)) * (INPUT_T + 1) + INPUT_T) *
-           11) +
+           NEIGHBOR_SHAPE[3]) +
           d;
         const size_t current_idx = (static_cast<size_t>(b) * MAX_NUM_AGENTS + agent) * POSE_DIM + d;
         current_states[current_idx] = neighbor_agents_past[neighbor_idx];
