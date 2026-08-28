@@ -6,11 +6,11 @@
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
       - "autoware::trajectory_modifier::plugin::TrafficLightStop"
       - "autoware::trajectory_modifier::plugin::VelocityModifier"
-    use_stop_point_fixer: true
-    use_obstacle_stop: true
-    use_traffic_light_stop: true
-    use_velocity_modifier: true
-    use_surround_obstacle_stop: true
+    use_stop_point_fixer: false
+    use_obstacle_stop: false
+    use_traffic_light_stop: false
+    use_velocity_modifier: false
+    use_surround_obstacle_stop: false
     trajectory_time_step: 0.1 # [s]
 
     # Stop Point Fixer Plugin Parameters
