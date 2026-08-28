@@ -121,6 +121,8 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     autoware_vehicle_msgs::autoware_vehicle_msgs__rosidl_generator_cpp
     geometry_msgs::geometry_msgs__rosidl_generator_cpp
     nav_msgs::nav_msgs__rosidl_generator_cpp
+    OpenGL::GL
+    glfw
     ${CUDA_cufft_LIBRARY}
   )
   set_target_properties(first_order_dubins_mppi PROPERTIES
@@ -255,6 +257,6 @@ endif()
 ament_export_include_directories(include)
 if(CUDA_AVAIL AND TRT_AVAIL)
   ament_export_libraries(first_order_dubins_mppi)
-  ament_export_dependencies(MPPI-Generic)
+  ament_export_dependencies(MPPI-Generic OpenGL glfw3)
 endif()
 ament_auto_package(INSTALL_TO_SHARE config)
