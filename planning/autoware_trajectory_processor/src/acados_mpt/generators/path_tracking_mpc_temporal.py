@@ -60,8 +60,8 @@ class PathTrackingMPCTemporal:
         ocp.solver_options.N_horizon = self.N
 
         # Q: path-frame lon/lat, psi, v, a, delta (qa=qdelta=0 by default)
-        Q = np.diag([2.0e-1, 5.0e0, 5.0e-2, 5.0e-2, 0.0, 0.0])
-        R = np.diag([2.5e-2, 2.0e0])  # a_cmd, delta_cmd
+        Q = np.diag([0.0, 3.0e-1, 2.0e-2, 1.40e-1, 0.0, 0.0])
+        R = np.diag([2.5e-2, 1.4e-1])  # a_cmd, delta_cmd
         Qe = 2.5 * Q
 
         ocp.cost.cost_type = "LINEAR_LS"
@@ -127,7 +127,7 @@ class PathTrackingMPCTemporal:
         # Online-friendly early exit: prefer a short SQP budget over grinding to 1e-4.
         # Runtime can still override via AcadosInterface::setNlpSolverLimits.
         ocp.solver_options.nlp_solver_max_iter = 10
-        ocp.solver_options.tol = 1e-3
+        ocp.solver_options.tol = 1e-6
         ocp.solver_options.nlp_solver_ext_qp_res = 0
         ocp.solver_options.print_level = 0
 

@@ -285,6 +285,7 @@ def tracking_metrics(
     psi_r: Any,
     v_r: Any,
     start_idx: int,
+    x0: Any | None = None,
 ) -> dict[str, float]:
     import numpy as np
 
@@ -293,12 +294,20 @@ def tracking_metrics(
     e_psi: list[float] = []
     e_v: list[float] = []
     for i in range(n):
-        j = min(start_idx + i, len(x_r) - 1)
-        e_xy.append(
-            float(np.hypot(float(sol_x[i, 0]) - float(x_r[j]), float(sol_x[i, 1]) - float(y_r[j])))
-        )
-        e_psi.append(abs(wrap_pi(float(sol_x[i, 2]) - float(psi_r[j]))))
-        e_v.append(abs(float(sol_x[i, 3]) - float(v_r[j])))
+        if i == 0 and x0 is not None:
+            rx = float(x0[0])
+            ry = float(x0[1])
+            rpsi = float(x0[2])
+            rv = float(x0[3])
+        else:
+            j = min(start_idx + i, len(x_r) - 1)
+            rx = float(x_r[j])
+            ry = float(y_r[j])
+            rpsi = float(psi_r[j])
+            rv = float(v_r[j])
+        e_xy.append(float(np.hypot(float(sol_x[i, 0]) - rx, float(sol_x[i, 1]) - ry)))
+        e_psi.append(abs(wrap_pi(float(sol_x[i, 2]) - rpsi)))
+        e_v.append(abs(float(sol_x[i, 3]) - rv))
     return {
         "mean_e_xy": float(np.mean(e_xy)),
         "max_e_xy": float(np.max(e_xy)),
@@ -306,6 +315,108 @@ def tracking_metrics(
         "max_abs_psi_err": float(np.max(e_psi)),
         "mean_abs_v_err": float(np.mean(e_v)),
         "max_abs_v_err": float(np.max(e_v)),
+    }
+
+
+def horizon_tracking_series(
+    sol_x: Any,
+    sol_u: Any,
+    x_pts: Any,
+    y_pts: Any,
+    psi_pts: Any,
+    v_pts: Any,
+    start_idx: int,
+    x0: Any,
+    *,
+    dt: float,
+) -> dict[str, Any]:
+    """Per-stage state vs the **same yref the MPC cost uses** (path-frame errors).
+
+    Stage 0: reference = ego ``x0`` (matches ``path_tracking_solver`` / ``setStageReference``).
+    Stage k>=1: reference = ``ref[min(start_idx + k, n-1)]`` with ``psi_bias`` on yaw.
+    """
+    import numpy as np
+
+    x0 = np.asarray(x0, dtype=float)
+    n = int(sol_x.shape[0])
+    t = np.arange(n, dtype=float) * float(dt)
+    psi_bias = round((float(x0[2]) - float(psi_pts[start_idx])) / (2.0 * math.pi)) * (2.0 * math.pi)
+
+    ref_x = np.zeros(n, dtype=float)
+    ref_y = np.zeros(n, dtype=float)
+    ref_yaw = np.zeros(n, dtype=float)
+    ref_v = np.zeros(n, dtype=float)
+    e_lon = np.zeros(n, dtype=float)
+    e_lat = np.zeros(n, dtype=float)
+    e_psi = np.zeros(n, dtype=float)
+    e_v = np.zeros(n, dtype=float)
+    # Offset vs closest polyline index (diagnostic only; stage 0 differs from MPC cost).
+    e_lat_poly = np.zeros(n, dtype=float)
+    e_lon_poly = np.zeros(n, dtype=float)
+
+    for i in range(n):
+        if i == 0:
+            rx = float(x0[0])
+            ry = float(x0[1])
+            rpsi = float(x0[2])
+            rv = max(0.0, float(x0[3]))
+        else:
+            j = min(start_idx + i, len(x_pts) - 1)
+            rx = float(x_pts[j])
+            ry = float(y_pts[j])
+            rpsi = float(psi_pts[j]) + psi_bias
+            rv = max(0.0, float(v_pts[j]))
+        ref_x[i] = rx
+        ref_y[i] = ry
+        ref_yaw[i] = rpsi
+        ref_v[i] = rv
+        dx = float(sol_x[i, 0]) - rx
+        dy = float(sol_x[i, 1]) - ry
+        c = math.cos(rpsi)
+        s = math.sin(rpsi)
+        e_lon[i] = dx * c + dy * s
+        e_lat[i] = -dx * s + dy * c
+        e_psi[i] = wrap_pi(float(sol_x[i, 2]) - rpsi)
+        e_v[i] = float(sol_x[i, 3]) - rv
+
+        j_poly = min(start_idx + i, len(x_pts) - 1)
+        rx_p = float(x_pts[j_poly])
+        ry_p = float(y_pts[j_poly])
+        rpsi_p = float(psi_pts[j_poly])
+        dx_p = float(sol_x[i, 0]) - rx_p
+        dy_p = float(sol_x[i, 1]) - ry_p
+        c_p = math.cos(rpsi_p)
+        s_p = math.sin(rpsi_p)
+        e_lon_poly[i] = dx_p * c_p + dy_p * s_p
+        e_lat_poly[i] = -dx_p * s_p + dy_p * c_p
+
+    n_u = int(sol_u.shape[0])
+    a_cmd = np.zeros(n, dtype=float)
+    d_cmd = np.zeros(n, dtype=float)
+    a_cmd[:n_u] = sol_u[:, 0]
+    d_cmd[:n_u] = sol_u[:, 1]
+    if n_u > 0:
+        a_cmd[n_u:] = sol_u[-1, 0]
+        d_cmd[n_u:] = sol_u[-1, 1]
+
+    return {
+        "t": t,
+        "start_idx": int(start_idx),
+        "psi_bias": float(psi_bias),
+        "ref_x": ref_x,
+        "ref_y": ref_y,
+        "ref_yaw": ref_yaw,
+        "ref_v": ref_v,
+        "e_lon": e_lon,
+        "e_lat": e_lat,
+        "e_psi": e_psi,
+        "e_v": e_v,
+        "e_lon_poly": e_lon_poly,
+        "e_lat_poly": e_lat_poly,
+        "a_state": np.asarray(sol_x[:, 4], dtype=float),
+        "delta_state": np.asarray(sol_x[:, 5], dtype=float),
+        "a_cmd": a_cmd,
+        "delta_cmd": d_cmd,
     }
 
 
@@ -587,7 +698,18 @@ class TemporalMptRetuneSession:
         if n_out > 1:
             a_out[-1] = a_out[-2]
             d_out[-1] = d_out[-2]
-        metrics = tracking_metrics(sol_x, x_pts, y_pts, psi_pts, v_pts, start_idx)
+        metrics = tracking_metrics(sol_x, x_pts, y_pts, psi_pts, v_pts, start_idx, x0=x0)
+        horizon = horizon_tracking_series(
+            sol_x,
+            sol_u,
+            x_pts,
+            y_pts,
+            psi_pts,
+            v_pts,
+            start_idx,
+            x0,
+            dt=self.dt,
+        )
         return {
             "frame_id": frame_id,
             "tag": tag,
@@ -602,7 +724,11 @@ class TemporalMptRetuneSession:
             "v": sol_x[:, 3].copy(),
             "a": a_out,
             "steer": d_out,
+            "a_state": sol_x[:, 4].copy(),
+            "delta_state": sol_x[:, 5].copy(),
             "sol_u": sol_u,
+            "sol_x": sol_x.copy(),
+            "horizon": horizon,
             "ref_t": None,
             "ref_x": np.asarray(x_r, dtype=float),
             "ref_y": np.asarray(y_r, dtype=float),
