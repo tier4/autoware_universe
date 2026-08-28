@@ -173,6 +173,8 @@ struct EgoFootprintMargin
 
 struct GlobalParams
 {
+  // todo(takagi): For this variable and related parts, use int instead of double, as floating-point
+  // equality errors are not negligible.
   double time_resolution{0.1};
 
   GlobalParams() = default;
