@@ -1,6 +1,4 @@
-/**
- * Analytic path-tracking cost for FirstOrderDubinsBicycle (reference polyline + parked-car OBBs).
- */
+/** Path-tracking and texture-accelerated environment cost for FirstOrderDubinsBicycle. */
 #pragma once
 
 #ifndef MPPI_COST_FUNCTIONS_FIRST_ORDER_DUBINS_BICYCLE_COST_CUH_
@@ -13,6 +11,17 @@
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 
 #include <cstdint>
+#include <vector>
+
+struct DistanceMapTextureGrid
+{
+  float origin_x = 0.0F;
+  float origin_y = 0.0F;
+  float resolution = 0.15F;
+  int width = 0;
+  int height = 0;
+  int time_steps = 0;
+};
 
 __host__ __device__ inline float computeSmoothBarrierCost(
   const float distance, const float safe_margin, const float precomputed_weight)
@@ -125,7 +134,12 @@ public:
   using output_array = typename PARENT_CLASS::output_array;
   using control_array = typename PARENT_CLASS::control_array;
 
-  FirstOrderDubinsBicycleCostImpl(cudaStream_t stream = 0);
+  __host__ FirstOrderDubinsBicycleCostImpl(cudaStream_t stream = 0);
+
+  __host__ ~FirstOrderDubinsBicycleCostImpl() override;
+
+  FirstOrderDubinsBicycleCostImpl(const FirstOrderDubinsBicycleCostImpl &) = delete;
+  FirstOrderDubinsBicycleCostImpl & operator=(const FirstOrderDubinsBicycleCostImpl &) = delete;
 
   /** Stage corridor + time-aligned ref into block shared memory (theta_c). */
   __device__ void initializeCosts(
@@ -230,7 +244,10 @@ public:
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep) const;
 
-  /** Signed distance between the physical ego OBB and the closest static obstacle OBB. */
+  /**
+   * Signed clearance to the closest static obstacle. Host replay uses exact OBB separation; GPU
+   * rollout uses the trilinearly interpolated point ESDF minus the ego circumscribed radius.
+   */
   __host__ __device__ float distanceToClosestObstacle(
     float x, float y, float yaw, int timestep) const;
 
@@ -238,10 +255,16 @@ public:
   __host__ __device__ bool egoIntersectsRoadBorder(
     const float x, const float y, const float yaw) const;
 
-  /** Euclidean ego-contour clearance to the closest road-border segment. */
+  /**
+   * Ego clearance to the closest road border. The GPU texture query conservatively models the ego
+   * footprint by subtracting its circumscribed radius from the point ESDF.
+   */
   __host__ __device__ float distanceToRoadBorder(float x, float y, float yaw) const;
 
-  /** Signed clearance to drivable-area segments; negative while a boundary penetrates the OBB. */
+  /**
+   * Signed clearance to drivable-area segments. GPU rollout uses the point ESDF minus the ego
+   * circumscribed radius; host replay retains the exact oriented-box calculation.
+   */
   __host__ __device__ float distanceToDrivableArea(float x, float y, float yaw) const;
 
   __host__ __device__ void computeGradualCrashCosts(
@@ -319,8 +342,36 @@ public:
   float drivable_area_x1_[kMaxDrivableAreaSegments] = {};
   float drivable_area_y1_[kMaxDrivableAreaSegments] = {};
 
+  /**
+   * GPU ESDF texture state. The 2D float2 texture stores road-border distance in x and
+   * drivable-boundary distance in y. The 3D texture stores obstacle distance over the horizon.
+   * cudaArray and scratch pointers are host-owned resources; only the texture handles, grid, and
+   * validity flags are consumed by rollout kernels after being copied into cost_d_.
+   */
+  DistanceMapTextureGrid distance_map_grid_{};
+  cudaTextureObject_t static_distance_texture_ = 0;
+  cudaTextureObject_t obstacle_distance_texture_ = 0;
+  bool road_border_texture_valid_ = false;
+  bool drivable_area_texture_valid_ = false;
+  bool obstacle_texture_valid_ = false;
+  bool obstacle_texture_has_static_obstacles_ = false;
+
 private:
   void dataToDevice();
+  __host__ bool updateDistanceMapGrid();
+  __host__ void ensureDistanceMapResources();
+  __host__ void rebuildStaticDistanceTexture(bool update_road_border, bool update_drivable_area);
+  __host__ void rebuildObstacleDistanceTexture();
+  __host__ void distanceMapStateToDevice();
+  __host__ void releaseDistanceMapResources();
+
+  static constexpr int kDistanceMapWidth = 256;
+  static constexpr int kDistanceMapHeight = 256;
+  static constexpr float kDistanceMapResolution = 0.15F;
+  float2 * static_distance_grid_d_ = nullptr;
+  float * obstacle_distance_grid_d_ = nullptr;
+  cudaArray_t static_distance_array_ = nullptr;
+  cudaArray_t obstacle_distance_array_ = nullptr;
 };
 
 template <int NUM_TIMESTEPS>

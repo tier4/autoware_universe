@@ -24,6 +24,155 @@ using mppi::cost::detail::projectPointToPolyline;
 using mppi::cost::detail::signedDistanceBetweenOrientedBoxes;
 using mppi::cost::detail::vectorLength;
 
+constexpr float kDistanceMapEmptyDistance = 1.0E8F;
+
+__device__ inline float signedDistancePointToOrientedBox(
+  const float x, const float y, const float cx, const float cy, const float cos_yaw,
+  const float sin_yaw, const float half_length, const float half_width)
+{
+  const float dx = x - cx;
+  const float dy = y - cy;
+  const float local_x = fabsf(cos_yaw * dx + sin_yaw * dy) - half_length;
+  const float local_y = fabsf(-sin_yaw * dx + cos_yaw * dy) - half_width;
+  const float outside_x = fmaxf(local_x, 0.0F);
+  const float outside_y = fmaxf(local_y, 0.0F);
+  const float outside_distance = vectorLength(outside_x, outside_y);
+  const float inside_distance = fminf(fmaxf(local_x, local_y), 0.0F);
+  return outside_distance + inside_distance;
+}
+
+template <class COST_T>
+__global__ void generateStaticDistanceMapKernel(
+  const COST_T * cost, float2 * output, const DistanceMapTextureGrid grid,
+  const bool update_road_border, const bool update_drivable_area)
+{
+  constexpr int kMaxRoadSegments = COST_T::kMaxRoadBorderSegments;
+  constexpr int kMaxDrivableSegments = COST_T::kMaxDrivableAreaSegments;
+  __shared__ float road_x0[kMaxRoadSegments];
+  __shared__ float road_y0[kMaxRoadSegments];
+  __shared__ float road_x1[kMaxRoadSegments];
+  __shared__ float road_y1[kMaxRoadSegments];
+  __shared__ float drivable_x0[kMaxDrivableSegments];
+  __shared__ float drivable_y0[kMaxDrivableSegments];
+  __shared__ float drivable_x1[kMaxDrivableSegments];
+  __shared__ float drivable_y1[kMaxDrivableSegments];
+  const int local_thread = static_cast<int>(threadIdx.y * blockDim.x + threadIdx.x);
+  const int local_thread_count = static_cast<int>(blockDim.x * blockDim.y);
+  if (update_road_border) {
+    for (int segment = local_thread; segment < cost->num_road_border_segments_;
+         segment += local_thread_count) {
+      road_x0[segment] = cost->road_border_x0_[segment];
+      road_y0[segment] = cost->road_border_y0_[segment];
+      road_x1[segment] = cost->road_border_x1_[segment];
+      road_y1[segment] = cost->road_border_y1_[segment];
+    }
+  }
+  if (update_drivable_area) {
+    for (int segment = local_thread; segment < cost->num_drivable_area_segments_;
+         segment += local_thread_count) {
+      drivable_x0[segment] = cost->drivable_area_x0_[segment];
+      drivable_y0[segment] = cost->drivable_area_y0_[segment];
+      drivable_x1[segment] = cost->drivable_area_x1_[segment];
+      drivable_y1[segment] = cost->drivable_area_y1_[segment];
+    }
+  }
+  __syncthreads();
+
+  for (int gy = static_cast<int>(blockIdx.y * blockDim.y + threadIdx.y); gy < grid.height;
+       gy += static_cast<int>(blockDim.y * gridDim.y)) {
+    for (int gx = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x); gx < grid.width;
+         gx += static_cast<int>(blockDim.x * gridDim.x)) {
+      const float world_x = grid.origin_x + (static_cast<float>(gx) + 0.5F) * grid.resolution;
+      const float world_y = grid.origin_y + (static_cast<float>(gy) + 0.5F) * grid.resolution;
+      const int output_index = gy * grid.width + gx;
+      float2 distances = make_float2(kDistanceMapEmptyDistance, kDistanceMapEmptyDistance);
+      if (!update_road_border || !update_drivable_area) {
+        distances = output[output_index];
+      }
+
+      if (update_road_border) {
+        float minimum = kDistanceMapEmptyDistance;
+        for (int segment = 0; segment < cost->num_road_border_segments_; ++segment) {
+          minimum = fminf(
+            minimum, distancePointToSegment(
+                       world_x, world_y, road_x0[segment], road_y0[segment], road_x1[segment],
+                       road_y1[segment]));
+        }
+        distances.x = minimum;
+      }
+
+      if (update_drivable_area) {
+        float minimum = kDistanceMapEmptyDistance;
+        for (int segment = 0; segment < cost->num_drivable_area_segments_; ++segment) {
+          minimum = fminf(
+            minimum, distancePointToSegment(
+                       world_x, world_y, drivable_x0[segment], drivable_y0[segment],
+                       drivable_x1[segment], drivable_y1[segment]));
+        }
+        distances.y = minimum;
+      }
+
+      output[output_index] = distances;
+    }
+  }
+}
+
+template <class COST_T>
+__global__ void generateObstacleDistanceMapKernel(
+  const COST_T * cost, float * output, const DistanceMapTextureGrid grid)
+{
+  constexpr int kMaxObstacles = COST_T::kMaxObstacles;
+  __shared__ float obstacle_x[kMaxObstacles];
+  __shared__ float obstacle_y[kMaxObstacles];
+  __shared__ float obstacle_cos[kMaxObstacles];
+  __shared__ float obstacle_sin[kMaxObstacles];
+  __shared__ float obstacle_half_length[kMaxObstacles];
+  __shared__ float obstacle_half_width[kMaxObstacles];
+  __shared__ bool obstacle_is_static[kMaxObstacles];
+  const int local_thread = static_cast<int>(threadIdx.y * blockDim.x + threadIdx.x);
+  const int local_thread_count = static_cast<int>(blockDim.x * blockDim.y);
+  for (int obstacle = local_thread; obstacle < cost->num_obstacles_;
+       obstacle += local_thread_count) {
+    obstacle_x[obstacle] = cost->obs_x_[obstacle][0];
+    obstacle_y[obstacle] = cost->obs_y_[obstacle][0];
+    __sincosf(cost->obs_yaw_[obstacle][0], &obstacle_sin[obstacle], &obstacle_cos[obstacle]);
+    obstacle_half_length[obstacle] = cost->obs_half_length_[obstacle];
+    obstacle_half_width[obstacle] = cost->obs_half_width_[obstacle];
+    obstacle_is_static[obstacle] = cost->obs_is_static_[obstacle];
+  }
+  __syncthreads();
+  for (int gy = static_cast<int>(blockIdx.y * blockDim.y + threadIdx.y); gy < grid.height;
+       gy += static_cast<int>(blockDim.y * gridDim.y)) {
+    for (int gx = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x); gx < grid.width;
+         gx += static_cast<int>(blockDim.x * gridDim.x)) {
+      const float world_x = grid.origin_x + (static_cast<float>(gx) + 0.5F) * grid.resolution;
+      const float world_y = grid.origin_y + (static_cast<float>(gy) + 0.5F) * grid.resolution;
+      float minimum = kDistanceMapEmptyDistance;
+
+      for (int obstacle = 0; obstacle < cost->num_obstacles_; ++obstacle) {
+        // Preserve the existing gradual-cost policy: moving objects are handled by the hard
+        // trajectory validator, while only pose-invariant objects enter this barrier ESDF.
+        if (!obstacle_is_static[obstacle]) {
+          continue;
+        }
+        minimum = fminf(
+          minimum,
+          signedDistancePointToOrientedBox(
+            world_x, world_y, obstacle_x[obstacle], obstacle_y[obstacle], obstacle_cos[obstacle],
+            obstacle_sin[obstacle], obstacle_half_length[obstacle], obstacle_half_width[obstacle]));
+      }
+
+      // Static obstacle poses are invariant by construction. Repeating the computed 2D ESDF into
+      // every Z slice avoids repeating all box-distance arithmetic for each horizon step while
+      // retaining a tex3D layout and trilinear sampler for the rollout API.
+      for (int timestep = 0; timestep < grid.time_steps; ++timestep) {
+        const int output_index = (timestep * grid.height + gy) * grid.width + gx;
+        output[output_index] = minimum;
+      }
+    }
+  }
+}
+
 struct CostPathBuffers
 {
   float total_path_length_s = 0.0F;
@@ -233,12 +382,249 @@ __host__ __device__ void comfortTerms(
 }  // namespace
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+__host__ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   FirstOrderDubinsBicycleCostImpl(cudaStream_t stream)
 {
   this->bindToStream(stream);
   this->SHARED_MEM_REQUEST_GRD_BYTES = static_cast<int>(kSharedNumFloats * sizeof(float));
   this->SHARED_MEM_REQUEST_BLK_BYTES = static_cast<int>(kSharedBlkHintFloats * sizeof(float));
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::~FirstOrderDubinsBicycleCostImpl()
+{
+  releaseDistanceMapResources();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ bool FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::updateDistanceMapGrid()
+{
+  float minimum_x = ref_x_[0];
+  float maximum_x = ref_x_[0];
+  float minimum_y = ref_y_[0];
+  float maximum_y = ref_y_[0];
+  for (int timestep = 1; timestep < NUM_TIMESTEPS; ++timestep) {
+    minimum_x = std::min(minimum_x, ref_x_[timestep]);
+    maximum_x = std::max(maximum_x, ref_x_[timestep]);
+    minimum_y = std::min(minimum_y, ref_y_[timestep]);
+    maximum_y = std::max(maximum_y, ref_y_[timestep]);
+  }
+
+  // Snapping the ego-centric window to texels avoids regenerating unchanged maps for sub-cell
+  // vehicle motion while keeping the entire time-aligned reference centered in the window.
+  const float center_x = 0.5F * (minimum_x + maximum_x);
+  const float center_y = 0.5F * (minimum_y + maximum_y);
+  const float snapped_center_x =
+    std::floor(center_x / kDistanceMapResolution + 0.5F) * kDistanceMapResolution;
+  const float snapped_center_y =
+    std::floor(center_y / kDistanceMapResolution + 0.5F) * kDistanceMapResolution;
+  const float next_origin_x =
+    snapped_center_x - 0.5F * static_cast<float>(kDistanceMapWidth) * kDistanceMapResolution;
+  const float next_origin_y =
+    snapped_center_y - 0.5F * static_cast<float>(kDistanceMapHeight) * kDistanceMapResolution;
+
+  const bool changed = distance_map_grid_.width != kDistanceMapWidth ||
+                       distance_map_grid_.height != kDistanceMapHeight ||
+                       distance_map_grid_.time_steps != NUM_TIMESTEPS ||
+                       distance_map_grid_.origin_x != next_origin_x ||
+                       distance_map_grid_.origin_y != next_origin_y;
+  distance_map_grid_.origin_x = next_origin_x;
+  distance_map_grid_.origin_y = next_origin_y;
+  distance_map_grid_.resolution = kDistanceMapResolution;
+  distance_map_grid_.width = kDistanceMapWidth;
+  distance_map_grid_.height = kDistanceMapHeight;
+  distance_map_grid_.time_steps = NUM_TIMESTEPS;
+  return changed;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::ensureDistanceMapResources()
+{
+  if (static_distance_array_ != nullptr) {
+    return;
+  }
+
+  const size_t static_cell_count =
+    static_cast<size_t>(kDistanceMapWidth) * static_cast<size_t>(kDistanceMapHeight);
+  const size_t obstacle_cell_count = static_cell_count * static_cast<size_t>(NUM_TIMESTEPS);
+  HANDLE_ERROR(cudaMalloc(
+    reinterpret_cast<void **>(&static_distance_grid_d_), static_cell_count * sizeof(float2)));
+  HANDLE_ERROR(cudaMalloc(
+    reinterpret_cast<void **>(&obstacle_distance_grid_d_), obstacle_cell_count * sizeof(float)));
+
+  const cudaChannelFormatDesc static_channel = cudaCreateChannelDesc<float2>();
+  HANDLE_ERROR(cudaMallocArray(
+    &static_distance_array_, &static_channel, kDistanceMapWidth, kDistanceMapHeight));
+  const cudaChannelFormatDesc obstacle_channel = cudaCreateChannelDesc<float>();
+  const cudaExtent obstacle_extent =
+    make_cudaExtent(kDistanceMapWidth, kDistanceMapHeight, NUM_TIMESTEPS);
+  HANDLE_ERROR(cudaMalloc3DArray(&obstacle_distance_array_, &obstacle_channel, obstacle_extent));
+
+  cudaResourceDesc static_resource{};
+  static_resource.resType = cudaResourceTypeArray;
+  static_resource.res.array.array = static_distance_array_;
+  cudaTextureDesc static_texture{};
+  static_texture.addressMode[0] = cudaAddressModeClamp;
+  static_texture.addressMode[1] = cudaAddressModeClamp;
+  static_texture.filterMode = cudaFilterModeLinear;
+  static_texture.readMode = cudaReadModeElementType;
+  static_texture.normalizedCoords = 0;
+  HANDLE_ERROR(
+    cudaCreateTextureObject(&static_distance_texture_, &static_resource, &static_texture, nullptr));
+
+  cudaResourceDesc obstacle_resource{};
+  obstacle_resource.resType = cudaResourceTypeArray;
+  obstacle_resource.res.array.array = obstacle_distance_array_;
+  cudaTextureDesc obstacle_texture{};
+  obstacle_texture.addressMode[0] = cudaAddressModeClamp;
+  obstacle_texture.addressMode[1] = cudaAddressModeClamp;
+  obstacle_texture.addressMode[2] = cudaAddressModeClamp;
+  obstacle_texture.filterMode = cudaFilterModeLinear;
+  obstacle_texture.readMode = cudaReadModeElementType;
+  obstacle_texture.normalizedCoords = 0;
+  HANDLE_ERROR(cudaCreateTextureObject(
+    &obstacle_distance_texture_, &obstacle_resource, &obstacle_texture, nullptr));
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::distanceMapStateToDevice()
+{
+  if (!this->GPUMemStatus_) {
+    return;
+  }
+  HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->distance_map_grid_, &distance_map_grid_, sizeof(distance_map_grid_),
+    cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->static_distance_texture_, &static_distance_texture_,
+    sizeof(static_distance_texture_), cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->obstacle_distance_texture_, &obstacle_distance_texture_,
+    sizeof(obstacle_distance_texture_), cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->road_border_texture_valid_, &road_border_texture_valid_,
+    sizeof(road_border_texture_valid_), cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->drivable_area_texture_valid_, &drivable_area_texture_valid_,
+    sizeof(drivable_area_texture_valid_), cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->obstacle_texture_valid_, &obstacle_texture_valid_,
+    sizeof(obstacle_texture_valid_), cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->obstacle_texture_has_static_obstacles_, &obstacle_texture_has_static_obstacles_,
+    sizeof(obstacle_texture_has_static_obstacles_), cudaMemcpyHostToDevice, this->stream_));
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  rebuildStaticDistanceTexture(const bool update_road_border, const bool update_drivable_area)
+{
+  if (!this->GPUMemStatus_ || (!update_road_border && !update_drivable_area)) {
+    return;
+  }
+  ensureDistanceMapResources();
+  const dim3 block(16, 16, 1);
+  const dim3 grid(
+    (distance_map_grid_.width + static_cast<int>(block.x) - 1) / static_cast<int>(block.x),
+    (distance_map_grid_.height + static_cast<int>(block.y) - 1) / static_cast<int>(block.y), 1);
+  generateStaticDistanceMapKernel<<<grid, block, 0, this->stream_>>>(
+    this->cost_d_, static_distance_grid_d_, distance_map_grid_, update_road_border,
+    update_drivable_area);
+  HANDLE_ERROR(cudaGetLastError());
+  HANDLE_ERROR(cudaMemcpy2DToArrayAsync(
+    static_distance_array_, 0, 0, static_distance_grid_d_,
+    static_cast<size_t>(distance_map_grid_.width) * sizeof(float2),
+    static_cast<size_t>(distance_map_grid_.width) * sizeof(float2), distance_map_grid_.height,
+    cudaMemcpyDeviceToDevice, this->stream_));
+  road_border_texture_valid_ = road_border_texture_valid_ || update_road_border;
+  drivable_area_texture_valid_ = drivable_area_texture_valid_ || update_drivable_area;
+  distanceMapStateToDevice();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::rebuildObstacleDistanceTexture()
+{
+  if (!this->GPUMemStatus_) {
+    return;
+  }
+  obstacle_texture_has_static_obstacles_ = false;
+  for (int obstacle = 0; obstacle < num_obstacles_; ++obstacle) {
+    obstacle_texture_has_static_obstacles_ =
+      obstacle_texture_has_static_obstacles_ || obs_is_static_[obstacle];
+  }
+  if (!obstacle_texture_has_static_obstacles_) {
+    obstacle_texture_valid_ = true;
+    distanceMapStateToDevice();
+    return;
+  }
+  ensureDistanceMapResources();
+  const dim3 block(16, 16, 1);
+  const dim3 grid(
+    (distance_map_grid_.width + static_cast<int>(block.x) - 1) / static_cast<int>(block.x),
+    (distance_map_grid_.height + static_cast<int>(block.y) - 1) / static_cast<int>(block.y), 1);
+  generateObstacleDistanceMapKernel<<<grid, block, 0, this->stream_>>>(
+    this->cost_d_, obstacle_distance_grid_d_, distance_map_grid_);
+  HANDLE_ERROR(cudaGetLastError());
+
+  cudaMemcpy3DParms copy{};
+  copy.srcPtr = make_cudaPitchedPtr(
+    obstacle_distance_grid_d_, static_cast<size_t>(distance_map_grid_.width) * sizeof(float),
+    distance_map_grid_.width, distance_map_grid_.height);
+  copy.dstArray = obstacle_distance_array_;
+  // A CUDA array participates in this copy, so cudaExtent::width is expressed in array elements.
+  copy.extent = make_cudaExtent(
+    distance_map_grid_.width, distance_map_grid_.height, distance_map_grid_.time_steps);
+  copy.kind = cudaMemcpyDeviceToDevice;
+  HANDLE_ERROR(cudaMemcpy3DAsync(&copy, this->stream_));
+  obstacle_texture_valid_ = true;
+  distanceMapStateToDevice();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::releaseDistanceMapResources()
+{
+  if (
+    static_distance_texture_ == 0 && obstacle_distance_texture_ == 0 &&
+    static_distance_array_ == nullptr && obstacle_distance_array_ == nullptr &&
+    static_distance_grid_d_ == nullptr && obstacle_distance_grid_d_ == nullptr) {
+    return;
+  }
+
+  HANDLE_ERROR(cudaStreamSynchronize(this->stream_));
+  if (static_distance_texture_ != 0) {
+    HANDLE_ERROR(cudaDestroyTextureObject(static_distance_texture_));
+    static_distance_texture_ = 0;
+  }
+  if (obstacle_distance_texture_ != 0) {
+    HANDLE_ERROR(cudaDestroyTextureObject(obstacle_distance_texture_));
+    obstacle_distance_texture_ = 0;
+  }
+  if (static_distance_array_ != nullptr) {
+    HANDLE_ERROR(cudaFreeArray(static_distance_array_));
+    static_distance_array_ = nullptr;
+  }
+  if (obstacle_distance_array_ != nullptr) {
+    HANDLE_ERROR(cudaFreeArray(obstacle_distance_array_));
+    obstacle_distance_array_ = nullptr;
+  }
+  if (static_distance_grid_d_ != nullptr) {
+    HANDLE_ERROR(cudaFree(static_distance_grid_d_));
+    static_distance_grid_d_ = nullptr;
+  }
+  if (obstacle_distance_grid_d_ != nullptr) {
+    HANDLE_ERROR(cudaFree(obstacle_distance_grid_d_));
+    obstacle_distance_grid_d_ = nullptr;
+  }
+  road_border_texture_valid_ = false;
+  drivable_area_texture_valid_ = false;
+  obstacle_texture_valid_ = false;
+  obstacle_texture_has_static_obstacles_ = false;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -504,6 +890,12 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     const float * half_width, const int count)
 {
   const int n = std::max(0, std::min(count, kMaxObstacles));
+  bool geometry_changed = n != num_obstacles_;
+  for (int i = 0; i < n && !geometry_changed; ++i) {
+    geometry_changed = !obs_is_static_[i] || obs_x_[i][0] != x[i] || obs_y_[i][0] != y[i] ||
+                       obs_yaw_[i][0] != yaw[i] || obs_half_length_[i] != half_length[i] ||
+                       obs_half_width_[i] != half_width[i];
+  }
   num_obstacles_ = n;
   for (int i = 0; i < n; ++i) {
     obs_half_length_[i] = half_length[i];
@@ -516,6 +908,18 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     }
   }
   dataToDevice();
+  if (this->GPUMemStatus_) {
+    const bool grid_changed = updateDistanceMapGrid();
+    if (grid_changed) {
+      road_border_texture_valid_ = false;
+      drivable_area_texture_valid_ = false;
+      obstacle_texture_valid_ = false;
+      rebuildStaticDistanceTexture(true, true);
+    }
+    if (grid_changed || geometry_changed) {
+      rebuildObstacleDistanceTexture();
+    }
+  }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -526,14 +930,24 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 {
   const int n = std::max(0, std::min(obstacle_count, kMaxObstacles));
   const int nt = std::max(0, std::min(num_timesteps, NUM_TIMESTEPS));
+  const int previous_obstacle_count = num_obstacles_;
+  bool geometry_changed = false;
+  for (int i = n; i < previous_obstacle_count; ++i) {
+    geometry_changed = geometry_changed || obs_is_static_[i];
+  }
   num_obstacles_ = nt > 0 ? n : 0;
   constexpr float kStaticPoseTolerance = 1.0E-4F;
   for (int i = 0; i < n; ++i) {
+    const bool was_static = obs_is_static_[i];
+    bool obstacle_geometry_changed =
+      obs_half_length_[i] != half_length[i] || obs_half_width_[i] != half_width[i];
     obs_half_length_[i] = half_length[i];
     obs_half_width_[i] = half_width[i];
     obs_is_static_[i] = true;
     for (int t = 0; t < nt; ++t) {
       const int idx = i * nt + t;
+      obstacle_geometry_changed = obstacle_geometry_changed || obs_x_[i][t] != x[idx] ||
+                                  obs_y_[i][t] != y[idx] || obs_yaw_[i][t] != yaw[idx];
       obs_x_[i][t] = x[idx];
       obs_y_[i][t] = y[idx];
       obs_yaw_[i][t] = yaw[idx];
@@ -544,23 +958,54 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
         obs_is_static_[i] = false;
       }
     }
+    obstacle_geometry_changed = obstacle_geometry_changed || was_static != obs_is_static_[i];
     if (nt > 0) {
       for (int t = nt; t < NUM_TIMESTEPS; ++t) {
+        obstacle_geometry_changed =
+          obstacle_geometry_changed || obs_x_[i][t] != obs_x_[i][nt - 1] ||
+          obs_y_[i][t] != obs_y_[i][nt - 1] || obs_yaw_[i][t] != obs_yaw_[i][nt - 1];
         obs_x_[i][t] = obs_x_[i][nt - 1];
         obs_y_[i][t] = obs_y_[i][nt - 1];
         obs_yaw_[i][t] = obs_yaw_[i][nt - 1];
       }
     }
+    geometry_changed =
+      geometry_changed || ((was_static || obs_is_static_[i]) && obstacle_geometry_changed);
   }
   dataToDevice();
+  if (this->GPUMemStatus_) {
+    const bool grid_changed = updateDistanceMapGrid();
+    if (grid_changed) {
+      road_border_texture_valid_ = false;
+      drivable_area_texture_valid_ = false;
+      obstacle_texture_valid_ = false;
+      rebuildStaticDistanceTexture(true, true);
+    }
+    if (grid_changed || geometry_changed) {
+      rebuildObstacleDistanceTexture();
+    }
+  }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearObstacles()
 {
+  const bool geometry_changed = num_obstacles_ != 0;
   num_obstacles_ = 0;
   dataToDevice();
+  if (this->GPUMemStatus_) {
+    const bool grid_changed = updateDistanceMapGrid();
+    if (grid_changed) {
+      road_border_texture_valid_ = false;
+      drivable_area_texture_valid_ = false;
+      obstacle_texture_valid_ = false;
+      rebuildStaticDistanceTexture(true, true);
+    }
+    if (grid_changed || geometry_changed) {
+      rebuildObstacleDistanceTexture();
+    }
+  }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -568,6 +1013,12 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   setRoadBorderSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxRoadBorderSegments);
+  bool geometry_changed = n != num_road_border_segments_;
+  for (int i = 0; i < n && !geometry_changed; ++i) {
+    geometry_changed = road_border_x0_[i] != segments[i].x0 ||
+                       road_border_y0_[i] != segments[i].y0 ||
+                       road_border_x1_[i] != segments[i].x1 || road_border_y1_[i] != segments[i].y1;
+  }
   num_road_border_segments_ = n;
   for (int i = 0; i < n; ++i) {
     road_border_x0_[i] = segments[i].x0;
@@ -576,14 +1027,39 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     road_border_y1_[i] = segments[i].y1;
   }
   dataToDevice();
+  if (this->GPUMemStatus_) {
+    const bool grid_changed = updateDistanceMapGrid();
+    if (grid_changed) {
+      road_border_texture_valid_ = false;
+      drivable_area_texture_valid_ = false;
+      obstacle_texture_valid_ = false;
+      rebuildStaticDistanceTexture(true, true);
+      rebuildObstacleDistanceTexture();
+    } else if (geometry_changed) {
+      rebuildStaticDistanceTexture(true, false);
+    }
+  }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearRoadBorders()
 {
+  const bool geometry_changed = num_road_border_segments_ != 0;
   num_road_border_segments_ = 0;
   dataToDevice();
+  if (this->GPUMemStatus_) {
+    const bool grid_changed = updateDistanceMapGrid();
+    if (grid_changed) {
+      road_border_texture_valid_ = false;
+      drivable_area_texture_valid_ = false;
+      obstacle_texture_valid_ = false;
+      rebuildStaticDistanceTexture(true, true);
+      rebuildObstacleDistanceTexture();
+    } else if (geometry_changed) {
+      rebuildStaticDistanceTexture(true, false);
+    }
+  }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -591,6 +1067,12 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   setDrivableAreaSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxDrivableAreaSegments);
+  bool geometry_changed = n != num_drivable_area_segments_;
+  for (int i = 0; i < n && !geometry_changed; ++i) {
+    geometry_changed =
+      drivable_area_x0_[i] != segments[i].x0 || drivable_area_y0_[i] != segments[i].y0 ||
+      drivable_area_x1_[i] != segments[i].x1 || drivable_area_y1_[i] != segments[i].y1;
+  }
   num_drivable_area_segments_ = n;
   for (int i = 0; i < n; ++i) {
     drivable_area_x0_[i] = segments[i].x0;
@@ -599,14 +1081,39 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     drivable_area_y1_[i] = segments[i].y1;
   }
   dataToDevice();
+  if (this->GPUMemStatus_) {
+    const bool grid_changed = updateDistanceMapGrid();
+    if (grid_changed) {
+      road_border_texture_valid_ = false;
+      drivable_area_texture_valid_ = false;
+      obstacle_texture_valid_ = false;
+      rebuildStaticDistanceTexture(true, true);
+      rebuildObstacleDistanceTexture();
+    } else if (geometry_changed) {
+      rebuildStaticDistanceTexture(false, true);
+    }
+  }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearDrivableAreaSegments()
 {
+  const bool geometry_changed = num_drivable_area_segments_ != 0;
   num_drivable_area_segments_ = 0;
   dataToDevice();
+  if (this->GPUMemStatus_) {
+    const bool grid_changed = updateDistanceMapGrid();
+    if (grid_changed) {
+      road_border_texture_valid_ = false;
+      drivable_area_texture_valid_ = false;
+      obstacle_texture_valid_ = false;
+      rebuildStaticDistanceTexture(true, true);
+      rebuildObstacleDistanceTexture();
+    } else if (geometry_changed) {
+      rebuildStaticDistanceTexture(false, true);
+    }
+  }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -776,6 +1283,11 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   distanceToClosestObstacle(const float x, const float y, const float yaw, const int timestep) const
 {
   const int t = timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
+#ifdef __CUDA_ARCH__
+  if (obstacle_texture_valid_ && !obstacle_texture_has_static_obstacles_) {
+    return kDistanceMapEmptyDistance;
+  }
+#endif
   float ego_cos;
   float ego_sin;
 #ifdef __CUDA_ARCH__
@@ -789,23 +1301,24 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float ego_half_length = this->params_.ego_length * 0.5F;
   const float ego_half_width = this->params_.ego_width * 0.5F;
   const float ego_radius = vectorLength(ego_half_length, ego_half_width);
-  float min_distance = 1.0E8F;
-
 #ifdef __CUDA_ARCH__
-#pragma unroll
-#endif
+  if (obstacle_texture_valid_ && obstacle_distance_texture_ != 0) {
+    const float texture_x = (ego_cx - distance_map_grid_.origin_x) / distance_map_grid_.resolution;
+    const float texture_y = (ego_cy - distance_map_grid_.origin_y) / distance_map_grid_.resolution;
+    const float texture_t = static_cast<float>(t) + 0.5F;
+    return tex3D<float>(obstacle_distance_texture_, texture_x, texture_y, texture_t) - ego_radius;
+  }
+  return kDistanceMapEmptyDistance;
+#else
+  float min_distance = kDistanceMapEmptyDistance;
   for (int i = 0; i < num_obstacles_; ++i) {
     if (!obs_is_static_[i]) {
       continue;
     }
     float obs_cos;
     float obs_sin;
-#ifdef __CUDA_ARCH__
-    __sincosf(obs_yaw_[i][t], &obs_sin, &obs_cos);
-#else
     obs_cos = std::cos(obs_yaw_[i][t]);
     obs_sin = std::sin(obs_yaw_[i][t]);
-#endif
     const float obstacle_radius = vectorLength(obs_half_length_[i], obs_half_width_[i]);
     const float lower_bound =
       vectorLength(obs_x_[i][t] - ego_cx, obs_y_[i][t] - ego_cy) - ego_radius - obstacle_radius;
@@ -819,6 +1332,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
         obs_y_[i][t], obs_cos, obs_sin, obs_half_length_[i], obs_half_width_[i]));
   }
   return min_distance;
+#endif
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -871,20 +1385,31 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   const float margin = this->params_.corner_safe_margin;
   float total_cost = 0.0F;
 
+#ifdef __CUDA_ARCH__
+  if (drivable_area_texture_valid_ && static_distance_texture_ != 0) {
 #pragma unroll
+    for (int corner = 0; corner < 4; ++corner) {
+      const float texture_x =
+        (corners_x[corner] - distance_map_grid_.origin_x) / distance_map_grid_.resolution;
+      const float texture_y =
+        (corners_y[corner] - distance_map_grid_.origin_y) / distance_map_grid_.resolution;
+      const float distance = tex2D<float2>(static_distance_texture_, texture_x, texture_y).y;
+      const float violation = fmaxf(0.0F, margin - distance);
+      total_cost += violation * violation;
+    }
+    return this->params_.corner_buffer_coeff * total_cost;
+  }
+  return 0.0F;
+#else
   for (int corner = 0; corner < 4; ++corner) {
-    float min_distance = 1.0E8F;
+    float min_distance = kDistanceMapEmptyDistance;
 
     for (int segment = 0; segment < num_drivable_area_segments_; ++segment) {
       const float distance = distancePointToSegment(
         corners_x[corner], corners_y[corner], drivable_area_x0_[segment],
         drivable_area_y0_[segment], drivable_area_x1_[segment], drivable_area_y1_[segment]);
 
-#ifdef __CUDA_ARCH__
-      min_distance = fminf(min_distance, distance);
-#else
       min_distance = std::min(min_distance, distance);
-#endif
     }
 
     const float violation = fmaxf(0.0F, margin - min_distance);
@@ -892,6 +1417,7 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   }
 
   return this->params_.corner_buffer_coeff * total_cost;
+#endif
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -928,10 +1454,24 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 #endif
   const float center_x = x + this->params_.ego_axle_to_box_center * cos_yaw;
   const float center_y = y + this->params_.ego_axle_to_box_center * sin_yaw;
+#ifdef __CUDA_ARCH__
+  if (road_border_texture_valid_ && static_distance_texture_ != 0) {
+    const float texture_x =
+      (center_x - distance_map_grid_.origin_x) / distance_map_grid_.resolution;
+    const float texture_y =
+      (center_y - distance_map_grid_.origin_y) / distance_map_grid_.resolution;
+    const float point_distance = tex2D<float2>(static_distance_texture_, texture_x, texture_y).x;
+    const float ego_radius =
+      vectorLength(this->params_.ego_length * 0.5F, this->params_.ego_width * 0.5F);
+    return fmaxf(0.0F, point_distance - ego_radius);
+  }
+  return kDistanceMapEmptyDistance;
+#else
   return distanceOrientedBoxToSegments(
     center_x, center_y, cos_yaw, sin_yaw, this->params_.ego_length * 0.5F,
     this->params_.ego_width * 0.5F, road_border_x0_, road_border_y0_, road_border_x1_,
     road_border_y1_, num_road_border_segments_, false);
+#endif
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -949,10 +1489,24 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 #endif
   const float center_x = x + this->params_.ego_axle_to_box_center * cos_yaw;
   const float center_y = y + this->params_.ego_axle_to_box_center * sin_yaw;
+#ifdef __CUDA_ARCH__
+  if (drivable_area_texture_valid_ && static_distance_texture_ != 0) {
+    const float texture_x =
+      (center_x - distance_map_grid_.origin_x) / distance_map_grid_.resolution;
+    const float texture_y =
+      (center_y - distance_map_grid_.origin_y) / distance_map_grid_.resolution;
+    const float point_distance = tex2D<float2>(static_distance_texture_, texture_x, texture_y).y;
+    const float ego_radius =
+      vectorLength(this->params_.ego_length * 0.5F, this->params_.ego_width * 0.5F);
+    return point_distance - ego_radius;
+  }
+  return kDistanceMapEmptyDistance;
+#else
   return distanceOrientedBoxToSegments(
     center_x, center_y, cos_yaw, sin_yaw, this->params_.ego_length * 0.5F,
     this->params_.ego_width * 0.5F, drivable_area_x0_, drivable_area_y0_, drivable_area_x1_,
     drivable_area_y1_, num_drivable_area_segments_, true);
+#endif
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -963,19 +1517,25 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     float & obstacle_cost, float & road_border_cost) const
 {
   drivable_area_cost =
-    this->params_.drivable_area_barrier_weight == 0.0
-      ? 0.0
+    this->params_.drivable_area_barrier_weight == 0.0F
+      ? 0.0F
       : computeSmoothBarrierCost(
           distanceToDrivableArea(x, y, yaw), this->params_.drivable_area_safe_margin,
           this->params_.drivable_area_barrier_weight);
-  obstacle_cost = computeSmoothBarrierCost(
-    distanceToClosestObstacle(x, y, yaw, timestep),
-    this->params_.obstacle_collision_margin + this->params_.obstacle_safe_margin,
-    this->params_.obstacle_barrier_weight);
-  road_border_cost = computeSmoothBarrierCost(
-    distanceToRoadBorder(x, y, yaw),
-    this->params_.road_border_collision_margin + this->params_.road_border_safe_margin,
-    this->params_.road_border_barrier_weight);
+  obstacle_cost =
+    this->params_.obstacle_barrier_weight == 0.0F
+      ? 0.0F
+      : computeSmoothBarrierCost(
+          distanceToClosestObstacle(x, y, yaw, timestep),
+          this->params_.obstacle_collision_margin + this->params_.obstacle_safe_margin,
+          this->params_.obstacle_barrier_weight);
+  road_border_cost =
+    this->params_.road_border_barrier_weight == 0.0F
+      ? 0.0F
+      : computeSmoothBarrierCost(
+          distanceToRoadBorder(x, y, yaw),
+          this->params_.road_border_collision_margin + this->params_.road_border_safe_margin,
+          this->params_.road_border_barrier_weight);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1356,3 +1916,12 @@ constexpr int FirstOrderDubinsBicycleCostImpl<
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 constexpr int FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::kMaxLateralCorridorPoints;
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+constexpr int FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::kDistanceMapWidth;
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+constexpr int FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::kDistanceMapHeight;
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+constexpr float FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::kDistanceMapResolution;
