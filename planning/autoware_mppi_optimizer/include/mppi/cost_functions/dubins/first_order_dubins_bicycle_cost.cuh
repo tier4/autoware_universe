@@ -173,8 +173,8 @@ public:
     const float * half_width, int count);
 
   /**
-   * Time-varying obstacle poses. All trajectories participate in hard output validation; only
-   * pose-invariant trajectories participate in the gradual static-obstacle barrier.
+   * Time-varying obstacle poses. All trajectories participate in hard output validation and the
+   * gradual obstacle barrier's 3D ESDF.
    */
   void setOrientedBoxObstacleTrajectories(
     const float * x, const float * y, const float * yaw, const float * half_length,
@@ -245,7 +245,7 @@ public:
     const float x, const float y, const float yaw, int timestep) const;
 
   /**
-   * Signed clearance to the closest static obstacle. Host replay uses exact OBB separation; GPU
+   * Signed clearance to the closest obstacle. Host replay uses exact OBB separation; GPU
    * rollout uses the trilinearly interpolated point ESDF minus the ego circumscribed radius.
    */
   __host__ __device__ float distanceToClosestObstacle(
@@ -345,33 +345,38 @@ public:
   /**
    * GPU ESDF texture state. The 2D float2 texture stores road-border distance in x and
    * drivable-boundary distance in y. The 3D texture stores obstacle distance over the horizon.
-   * cudaArray and scratch pointers are host-owned resources; only the texture handles, grid, and
-   * validity flags are consumed by rollout kernels after being copied into cost_d_.
+   * The host-owned CUDA arrays are surface-written by generation kernels and sampled through
+   * texture handles copied into cost_d_.
    */
-  DistanceMapTextureGrid distance_map_grid_{};
+  DistanceMapTextureGrid static_distance_map_grid_{};
+  DistanceMapTextureGrid obstacle_distance_map_grid_{};
   cudaTextureObject_t static_distance_texture_ = 0;
   cudaTextureObject_t obstacle_distance_texture_ = 0;
   bool road_border_texture_valid_ = false;
   bool drivable_area_texture_valid_ = false;
   bool obstacle_texture_valid_ = false;
-  bool obstacle_texture_has_static_obstacles_ = false;
+  bool obstacle_texture_has_obstacles_ = false;
 
 private:
   void dataToDevice();
-  __host__ bool updateDistanceMapGrid();
+  __host__ bool updateDistanceMapGrid(
+    DistanceMapTextureGrid & grid, int width, int height, float resolution);
   __host__ void ensureDistanceMapResources();
   __host__ void rebuildStaticDistanceTexture(bool update_road_border, bool update_drivable_area);
   __host__ void rebuildObstacleDistanceTexture();
   __host__ void distanceMapStateToDevice();
   __host__ void releaseDistanceMapResources();
 
-  static constexpr int kDistanceMapWidth = 256;
-  static constexpr int kDistanceMapHeight = 256;
-  static constexpr float kDistanceMapResolution = 0.15F;
-  float2 * static_distance_grid_d_ = nullptr;
-  float * obstacle_distance_grid_d_ = nullptr;
+  static constexpr int kStaticDistanceMapWidth = 1024;
+  static constexpr int kStaticDistanceMapHeight = 1024;
+  static constexpr float kStaticDistanceMapResolution = 0.15F;
+  static constexpr int kObstacleDistanceMapWidth = 512;
+  static constexpr int kObstacleDistanceMapHeight = 512;
+  static constexpr float kObstacleDistanceMapResolution = 0.30F;
   cudaArray_t static_distance_array_ = nullptr;
   cudaArray_t obstacle_distance_array_ = nullptr;
+  cudaSurfaceObject_t static_distance_surface_ = 0;
+  cudaSurfaceObject_t obstacle_distance_surface_ = 0;
 };
 
 template <int NUM_TIMESTEPS>
