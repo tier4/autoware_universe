@@ -30,6 +30,15 @@ The plugin uses odometry, acceleration, steering, tracked objects, route, and ra
 
 Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory processor node.
 
+## Live distance-texture visualization
+
+Set `enable_distance_map_texture_debug: true` under `mppi_optimizer` to open the CUDA-OpenGL
+distance-map viewer. It displays road-border, drivable-boundary, and dynamic-obstacle ESDF panels.
+Drag the slider below the obstacle panel, or use the arrow/Home/End keys, to select its horizon
+timestep. Red is at or inside the boundary, green is at or beyond the configured safe margin, and
+gray means that texture channel is not valid yet. The viewer requires a graphical display; it is
+disabled by default and closing its window stops its updates.
+
 ## Offline debug logging + retune
 
 Enable CSV logging from the MPPI plugin parameters:
