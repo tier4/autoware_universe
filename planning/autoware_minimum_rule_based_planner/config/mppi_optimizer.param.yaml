@@ -69,5 +69,5 @@
       use_last_control_as_nominal: true
 
       # Optional offline debug log output.
-      enable_debug_trajectory_log: true
+      enable_debug_trajectory_log: false
       debug_trajectory_log_directory: ""

@@ -21,8 +21,6 @@
 #include "path_planner.hpp"
 #include "velocity_smoother.hpp"
 
-#include <autoware/avoidance_target_detector/boundary.hpp>
-#include <autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp>
 #include <autoware_trajectory_processor/trajectory_processor_param.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
@@ -57,6 +55,7 @@ public:
     AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr;
     SteeringReport::ConstSharedPtr steering_status_ptr;
     PredictedObjects::ConstSharedPtr predicted_objects_ptr;
+    TrackedObjects::ConstSharedPtr tracked_objects_ptr;
     PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr;
     PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
   };
@@ -127,10 +126,6 @@ private:
   std::unique_ptr<PathPlanner> path_planner_;
   //! MapBasedStopPlanner plans the go/stop trajectories with map-defined stop points embedded
   std::unique_ptr<MapBasedStopPlanner> map_based_stop_planner_;
-  std::unique_ptr<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface> mppi_optimizer_;
-  std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler> mppi_route_handler_;
-  LaneletMapBin::ConstSharedPtr mppi_map_ptr_;
-  LaneletRoute::ConstSharedPtr mppi_route_ptr_;
   /** @} */
 
 private:
@@ -143,6 +138,7 @@ private:
 
   std::unique_ptr<OptimizerPluginLoader> plugin_loader_;
   std::shared_ptr<OptimizerPluginInterface> path_smoother_;
+  std::shared_ptr<OptimizerPluginInterface> mppi_optimizer_;
   std::shared_ptr<autoware::trajectory_processor::TrajectoryProcessorContext> optimizer_context_;
   std::unique_ptr<VelocitySmoother> velocity_smoother_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
@@ -201,6 +197,10 @@ private:
     this, "~/input/objects"};
   PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
 
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<TrackedObjects> tracked_objects_subscriber_{
+    this, "~/input/tracked_objects"};
+  TrackedObjects::ConstSharedPtr tracked_objects_ptr_;
+
   autoware_utils_rclcpp::InterProcessPollingSubscriber<PointCloud2> pointcloud_subscriber_{
     this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
   PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr_;
@@ -217,9 +217,6 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_stop_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_mppi_nominal_trajectory_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_mppi_input_trajectory_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_mppi_output_trajectory_;
   /** @} */
 };
 

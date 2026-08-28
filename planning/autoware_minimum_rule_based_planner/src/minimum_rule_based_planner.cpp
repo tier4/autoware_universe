@@ -16,14 +16,10 @@
 
 #include "autoware/trajectory_processor/trajectory_processor_parameters.hpp"
 
-#include <autoware/avoidance_target_detector/object_filtering.hpp>
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/mppi_optimizer/detail/trajectory_utils.hpp>
-#include <autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp>
-#include <autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options_ros.hpp>
-#include <autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp>
 #include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware/velocity_smoother/resample.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -32,9 +28,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -50,6 +46,12 @@ trajectory_processor::TrajectoryProcessorData make_optimizer_data(
   trajectory_processor::TrajectoryProcessorData data;
   data.current_odometry = input_data.odometry_ptr;
   data.current_acceleration = input_data.acceleration_ptr;
+  data.current_steering = input_data.steering_status_ptr;
+  data.predicted_objects = input_data.predicted_objects_ptr;
+  data.tracked_objects = input_data.tracked_objects_ptr;
+  data.obstacle_pointcloud = input_data.obstacle_pointcloud_ptr;
+  data.lanelet_map_bin = input_data.lanelet_map_bin_ptr;
+  data.route = input_data.route_ptr;
   return data;
 }
 
@@ -67,8 +69,11 @@ minimum_rule_based_planner::plugin::ModifierData make_modifier_data(
 void assign_time_from_start(
   TrajectoryPoints & traj_points, const geometry_msgs::msg::Point & ego_point)
 {
-  constexpr double k_min_velocity = 1.0;  // [m/s] velocity floor for dt = ds / v
-  constexpr double k_min_dt = 1.0e-3;     // [s] keeps the time base strictly increasing
+  // Keep progressing along the spatial reference through zero-velocity sections. This lets the
+  // MPPI reference contain a stop plateau followed by the later positive target velocity instead
+  // of treating the first stop point as the end of the usable trajectory.
+  constexpr double k_min_reference_progress_velocity = 1.0;  // [m/s]
+  constexpr double k_min_dt = 1.0e-3;                        // [s]
 
   if (traj_points.size() < 2) {
     return;
@@ -78,8 +83,8 @@ void assign_time_from_start(
   times.reserve(traj_points.size());
   for (size_t i = 1; i < traj_points.size(); ++i) {
     const double ds = autoware_utils::calc_distance2d(traj_points.at(i - 1), traj_points.at(i));
-    const double v =
-      std::max<double>(std::abs(traj_points.at(i - 1).longitudinal_velocity_mps), k_min_velocity);
+    const double v = std::max<double>(
+      std::abs(traj_points.at(i - 1).longitudinal_velocity_mps), k_min_reference_progress_velocity);
     times.push_back(times.back() + std::max(ds / v, k_min_dt));
   }
 
@@ -114,33 +119,35 @@ std::optional<Trajectory> resample_for_mppi(const Trajectory & trajectory)
 
   Trajectory result;
   result.header = trajectory.header;
-  result.points.reserve(
-    trajectory.points.size() + static_cast<size_t>(autoware::mppi_optimizer::detail::kMppiHorizon));
+  result.points.reserve(static_cast<size_t>(autoware::mppi_optimizer::detail::kMppiHorizon));
+  const double end_time = temporal_trajectory->end_time();
   for (int i = 1; i <= autoware::mppi_optimizer::detail::kMppiHorizon; ++i) {
     const double time = i * autoware::mppi_optimizer::detail::kMppiDt;
-    if (time > temporal_trajectory->end_time()) {
-      break;
+    TrajectoryPoint point;
+    if (time <= end_time) {
+      point = temporal_trajectory->compute_from_time(time);
+    } else {
+      // The known spatial reference is exhausted. Keep the MPPI tensor at its fixed horizon
+      // without inventing geometry outside the route by holding the terminal pose at rest.
+      point = trajectory.points.back();
+      point.longitudinal_velocity_mps = 0.0F;
+      point.lateral_velocity_mps = 0.0F;
+      point.acceleration_mps2 = 0.0F;
+      point.heading_rate_rps = 0.0F;
     }
-    auto point = temporal_trajectory->compute_from_time(time);
     point.time_from_start = rclcpp::Duration::from_seconds(time);
     result.points.push_back(std::move(point));
   }
-  if (result.points.size() < 2U) {
+  if (result.points.size() != static_cast<size_t>(autoware::mppi_optimizer::detail::kMppiHorizon)) {
     return std::nullopt;
   }
 
-  const double sampled_end_time = rclcpp::Duration(result.points.back().time_from_start).seconds();
-  for (const auto & point : trajectory.points) {
-    if (rclcpp::Duration(point.time_from_start).seconds() > sampled_end_time) {
-      result.points.push_back(point);
-    }
-  }
   return result;
 }
 
-autoware::mppi_optimizer::TrackedObjects to_tracked_objects(const PredictedObjects & objects)
+TrackedObjects to_tracked_objects(const PredictedObjects & objects)
 {
-  autoware::mppi_optimizer::TrackedObjects result;
+  TrackedObjects result;
   result.header = objects.header;
   result.objects.reserve(objects.objects.size());
   for (const auto & predicted : objects.objects) {
@@ -155,25 +162,9 @@ autoware::mppi_optimizer::TrackedObjects to_tracked_objects(const PredictedObjec
       predicted.kinematics.initial_acceleration_with_covariance;
     tracked.kinematics.orientation_availability =
       autoware_perception_msgs::msg::TrackedObjectKinematics::AVAILABLE;
-    tracked.kinematics.is_stationary =
-      std::abs(tracked.kinematics.twist_with_covariance.twist.linear.x) < 0.1;
+    const auto & linear_velocity = tracked.kinematics.twist_with_covariance.twist.linear;
+    tracked.kinematics.is_stationary = std::hypot(linear_velocity.x, linear_velocity.y) < 0.1;
     result.objects.push_back(std::move(tracked));
-  }
-  return result;
-}
-
-template <class Segment>
-std::vector<autoware::mppi_optimizer::Segment> to_mppi_segments(
-  const std::vector<Segment> & segments)
-{
-  std::vector<autoware::mppi_optimizer::Segment> result;
-  result.reserve(segments.size());
-  for (const auto & segment : segments) {
-    result.push_back(
-      {static_cast<float>(boost::geometry::get<0, 0>(segment)),
-       static_cast<float>(boost::geometry::get<0, 1>(segment)),
-       static_cast<float>(boost::geometry::get<1, 0>(segment)),
-       static_cast<float>(boost::geometry::get<1, 1>(segment))});
   }
   return result;
 }
@@ -191,10 +182,6 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
     "autoware::minimum_rule_based_planner::plugin::PluginInterface"),
   modifier_context_(std::make_shared<plugin::ModifierContext>(this))
 {
-  autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
-  autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
-  autoware::mppi_optimizer::declare_first_order_dubins_mppi_runtime_options(*this);
-
   param_listener_ =
     std::make_shared<::minimum_rule_based_planner::ParamListener>(get_node_parameters_interface());
 
@@ -207,12 +194,6 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   pub_debug_stop_trajectory_ = this->create_publisher<Trajectory>("~/debug/stop_trajectory", 1);
   pub_debug_shifted_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/shifted_trajectory", 1);
-  pub_debug_mppi_nominal_trajectory_ =
-    this->create_publisher<Trajectory>("~/debug/mppi/nominal_trajectory", 1);
-  pub_debug_mppi_input_trajectory_ =
-    this->create_publisher<Trajectory>("~/debug/mppi/input_trajectory", 1);
-  pub_debug_mppi_output_trajectory_ =
-    this->create_publisher<Trajectory>("~/debug/mppi/output_trajectory", 1);
   debug_processing_time_detail_pub_ =
     this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
       "~/debug/processing_time_detail_ms", 1);
@@ -223,14 +204,6 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
     std::make_shared<autoware_utils_debug::TimeKeeper>(debug_processing_time_detail_pub_);
 
   params_ = param_listener_->get_params();
-
-  mppi_optimizer_ = std::make_unique<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface>();
-  mppi_optimizer_->setCostParams(
-    autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
-  mppi_optimizer_->setVehicleParams(
-    autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
-  mppi_optimizer_->setRuntimeOptions(
-    autoware::mppi_optimizer::get_first_order_dubins_mppi_runtime_options(*this));
 
   load_optimizer_plugins();
   load_modifier_plugins();
@@ -252,28 +225,36 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
     "autoware_trajectory_processor",
     "autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase");
 
-  auto try_load_optimizer_plugin = [&](const std::string & plugin_path, const std::string & name)
-    -> std::shared_ptr<OptimizerPluginInterface> {
+  auto try_load_optimizer_plugin = [&](
+                                     const std::string & plugin_path, const std::string & name,
+                                     const bool create_generic_debug_publisher =
+                                       true) -> std::shared_ptr<OptimizerPluginInterface> {
     trajectory_processor::TrajectoryProcessorParams processor_params;
     processor_params.use_eb_smoother = true;
     try {
       auto plugin = plugin_loader_->createSharedInstance(plugin_path);
       plugin->initialize(
         plugin_path, name, this, time_keeper_, optimizer_context_, processor_params);
-      pub_debug_optimizer_module_trajectories_[plugin->get_name()] =
-        this->create_publisher<Trajectory>(
-          "~/debug/optimizer/" + plugin->get_name() + "/trajectory", 1);
+      if (create_generic_debug_publisher) {
+        pub_debug_optimizer_module_trajectories_[plugin->get_name()] =
+          this->create_publisher<Trajectory>(
+            "~/debug/optimizer/" + plugin->get_name() + "/trajectory", 1);
+      }
       RCLCPP_INFO(get_logger(), "Loaded trajectory %s plugin", name.c_str());
       return plugin;
-    } catch (const pluginlib::PluginlibException & ex) {
+    } catch (const std::exception & ex) {
       RCLCPP_ERROR(
-        get_logger(), "Failed to load trajectory %s plugin: %s", name.c_str(), ex.what());
+        get_logger(), "Failed to load or initialize trajectory %s plugin: %s", name.c_str(),
+        ex.what());
       return nullptr;
     }
   };
 
   path_smoother_ = try_load_optimizer_plugin(
     "autoware::trajectory_processor::plugin::TrajectoryEBSmootherOptimizer", "eb_smoother");
+  mppi_optimizer_ = try_load_optimizer_plugin(
+    "autoware::mppi_optimizer::plugin::TrajectoryMppiOptimizer", "mppi_optimizer",
+    /*create_generic_debug_publisher=*/false);
 
   // Set up velocity optimizer
   // NOTE(odashima):
@@ -437,16 +418,15 @@ void MinimumRuleBasedPlannerNode::on_timer()
   // 5. Smooth path
   trajectory = smooth_trajectory(trajectory, input_data);
 
-  // 6. Apply trajectory modifiers
+  // 6. Refine geometry and timing before evaluating collision and stop rules. MPPI returns the
+  // deterministic warm start whenever it is disabled, unavailable, or rejects its result.
+  trajectory = optimize_with_mppi(trajectory, input_data);
+
+  // 7. Apply modifiers to the final geometry so MPPI cannot invalidate collision arc lengths or
+  // inserted stop points.
   apply_modifiers(trajectory, input_data);
 
-  // Create timing for MPPI without updating the velocity smoother's cross-cycle state. MPPI is
-  // used as a lateral optimizer; the authoritative go/stop velocity profiles are generated below.
-  const auto provisional_trajectory =
-    optimize_velocity(trajectory, input_data, /*update_smoother_state=*/false);
-  trajectory = optimize_with_mppi(provisional_trajectory, input_data);
-
-  // 7. Plan the go/stop trajectories with map-defined stop points
+  // 8. Plan the go/stop trajectories with map-defined stop points
   map_based_stop_planner_->set_planner_data(
     input_data.lanelet_map_bin_ptr, input_data.route_ptr, path_planner_->route_context());
   const auto stop_result = map_based_stop_planner_->plan(
@@ -454,7 +434,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
     input_data.acceleration_ptr->accel.accel.linear.x, make_map_based_stop_params());
   pub_stop_lines_marker_->publish(stop_result.stop_line_markers);
 
-  // 8. Velocity optimization
+  // 9. Velocity optimization
   // NOTE(odashima): the stop trajectory must not update the smoother's prev-output state: it
   // would drag the go trajectory's initial speed down to the stop profile on the next cycle.
   const auto velocity_optimized_go_trajectory =
@@ -466,10 +446,10 @@ void MinimumRuleBasedPlannerNode::on_timer()
           *stop_result.stop_trajectory, input_data, /*update_smoother_state=*/false))
       : std::nullopt;
 
-  // 9. Create and publish CandidateTrajectories message
+  // 10. Create and publish CandidateTrajectories message
   publish_candidate_trajectories(go_trajectory, stop_trajectory);
 
-  // 10. Publish debug information
+  // 11. Publish debug information
   publish_debug_outputs(*path, go_trajectory, stop_trajectory);
   publish_processing_time();
 }
@@ -527,82 +507,47 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_with_mppi(
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  if (!input_data.route_ptr) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "MPPI skipped: no route is available");
-    return trajectory;
-  }
-  if (!input_data.steering_status_ptr) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000, "MPPI skipped: no steering status is available");
-    return trajectory;
-  }
-
-  const auto mppi_input = resample_for_mppi(trajectory);
-  if (!mppi_input) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "MPPI skipped: failed to create a future trajectory sampled at the MPPI time step");
+  if (!mppi_optimizer_) {
     return trajectory;
   }
 
   try {
-    const bool route_or_map_changed =
-      mppi_route_handler_ &&
-      (mppi_map_ptr_ != input_data.lanelet_map_bin_ptr || mppi_route_ptr_ != input_data.route_ptr);
-    if (route_or_map_changed) {
-      mppi_optimizer_ = std::make_unique<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface>();
-      mppi_optimizer_->setCostParams(
-        autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
-      mppi_optimizer_->setVehicleParams(
-        autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
-      mppi_optimizer_->setRuntimeOptions(
-        autoware::mppi_optimizer::get_first_order_dubins_mppi_runtime_options(*this));
-    }
-    if (
-      !mppi_route_handler_ || mppi_map_ptr_ != input_data.lanelet_map_bin_ptr ||
-      mppi_route_ptr_ != input_data.route_ptr) {
-      mppi_route_handler_ =
-        std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
-          *input_data.lanelet_map_bin_ptr, *input_data.route_ptr);
-      mppi_route_handler_->create_map();
-      mppi_map_ptr_ = input_data.lanelet_map_bin_ptr;
-      mppi_route_ptr_ = input_data.route_ptr;
-    }
-
-    const double margin = vehicle_info_.max_longitudinal_offset_m + 1.0;
-    const auto road_borders =
-      mppi_route_handler_->get_road_borders_around_trajectory(trajectory, margin);
-    const auto drivable_area =
-      mppi_route_handler_->get_drivable_area_around_trajectory(trajectory, margin);
-    const std::optional<AccelWithCovarianceStamped> acceleration{*input_data.acceleration_ptr};
-    const std::optional<SteeringReport> steering_status{*input_data.steering_status_ptr};
-    const auto tracked_objects = input_data.predicted_objects_ptr
-                                   ? to_tracked_objects(
-                                       autoware::avoidance_target_detector::filter_objects_in_range(
-                                         *input_data.predicted_objects_ptr, trajectory, margin))
-                                   : autoware::mppi_optimizer::TrackedObjects{};
-    const auto result = mppi_optimizer_->optimizeTrajectory(
-      *mppi_input, *input_data.odometry_ptr, acceleration, steering_status, tracked_objects,
-      to_mppi_segments(road_borders), to_mppi_segments(drivable_area));
-    pub_debug_mppi_nominal_trajectory_->publish(result.debug.nominal_trajectory);
-    pub_debug_mppi_input_trajectory_->publish(result.debug.reference_trajectory);
-    pub_debug_mppi_output_trajectory_->publish(result.debug.optimized_trajectory);
-    if (result.debug.was_rejected) {
+    auto timed_trajectory = trajectory;
+    assign_time_from_start(timed_trajectory.points, input_data.odometry_ptr->pose.pose.position);
+    const auto mppi_input = resample_for_mppi(timed_trajectory);
+    if (!mppi_input) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "MPPI skipped: failed to create a future trajectory sampled at the MPPI time step");
       return trajectory;
     }
-    auto optimized_trajectory = result.trajectory;
-    const size_t common_size =
-      std::min(optimized_trajectory.points.size(), mppi_input->points.size());
-    for (size_t i = 0; i < common_size; ++i) {
-      auto & optimized = optimized_trajectory.points.at(i);
-      const auto & reference = mppi_input->points.at(i);
-      optimized.longitudinal_velocity_mps = reference.longitudinal_velocity_mps;
-      optimized.lateral_velocity_mps = reference.lateral_velocity_mps;
-      optimized.acceleration_mps2 = reference.acceleration_mps2;
-      optimized.heading_rate_rps = reference.heading_rate_rps;
+
+    auto optimizer_data = make_optimizer_data(input_data);
+    if (!optimizer_data.tracked_objects) {
+      auto tracked_objects = std::make_shared<TrackedObjects>();
+      if (input_data.predicted_objects_ptr) {
+        *tracked_objects = to_tracked_objects(*input_data.predicted_objects_ptr);
+      } else {
+        tracked_objects->header = trajectory.header;
+      }
+      optimizer_data.tracked_objects = std::move(tracked_objects);
     }
+    optimizer_data.candidate_header = trajectory.header;
+    optimizer_data.candidate_index = 0U;
+    optimizer_data.candidate_count = 1U;
+
+    auto optimized_points = mppi_input->points;
+    const auto result = mppi_optimizer_->process(optimized_points, optimizer_data);
+    mppi_optimizer_->publish_debug_data("minimum_rule_based_planner");
+    if (result != trajectory_processor::plugin::ProcessingResult::Modified) {
+      return trajectory;
+    }
+
+    Trajectory optimized_trajectory;
+    optimized_trajectory.header = trajectory.header;
+    optimized_trajectory.points = std::move(optimized_points);
     return optimized_trajectory;
-  } catch (const std::runtime_error & error) {
+  } catch (const std::exception & error) {
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 5000, "MPPI optimization failed: %s", error.what());
     return trajectory;
@@ -809,6 +754,11 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
     predicted_objects_ptr_ = msg;
   }
   input_data.predicted_objects_ptr = predicted_objects_ptr_;
+
+  if (const auto msg = tracked_objects_subscriber_.take_data()) {
+    tracked_objects_ptr_ = msg;
+  }
+  input_data.tracked_objects_ptr = tracked_objects_ptr_;
 
   if (const auto msg = pointcloud_subscriber_.take_data()) {
     obstacle_pointcloud_ptr_ = msg;
