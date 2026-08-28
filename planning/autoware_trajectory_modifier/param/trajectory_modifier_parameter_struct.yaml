@@ -408,7 +408,7 @@ trajectory_modifier_params:
       read_only: false
     treat_unknown_light_as_red:
       type: bool
-      default_value: false
+      default_value: true
       description: Treat unknown light as red light
       read_only: false
     overshoot_tolerance:
@@ -417,6 +417,20 @@ trajectory_modifier_params:
       description: Tolerance for overshoot [m]
       validation:
         bounds<>: [0.0, 10.0]
+      read_only: false
+    allow_if_cannot_stop_distance:
+      type: double
+      default_value: 1.0
+      description: allow crossing a stop line within this distance if ego cannot stop before the line plus its margin [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    min_lookahead_distance:
+      type: double
+      default_value: 20.0
+      description: Minimum forward trajectory length to scan for traffic light stop lines even at low ego speed [m]
+      validation:
+        bounds<>: [0.0, 300.0]
       read_only: false
     th_stable_duration_red:
       type: double
@@ -432,10 +446,10 @@ trajectory_modifier_params:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
-    th_amber_rejection_hysteresis:
+    th_stable_duration_unknown:
       type: double
       default_value: 0.5
-      description: Threshold for amber rejection hysteresis [s]
+      description: Threshold for stable duration of unknown light [s]
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
@@ -446,6 +460,19 @@ trajectory_modifier_params:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
+    amber_rejection:
+      th_hysteresis:
+        type: double
+        default_value: 0.5
+        description: Threshold for amber rejection hysteresis [s]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reject_if_stop_detected:
+        type: bool
+        default_value: true
+        description: Reject if we detect a previous stop attempt from input trajectory
+        read_only: false
 
   surround_obstacle_stop:
     use_objects:

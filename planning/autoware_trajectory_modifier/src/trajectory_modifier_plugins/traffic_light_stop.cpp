@@ -28,16 +28,23 @@ autoware::traffic_light_compliance_checker::Parameters to_checker_params(
 {
   const auto tl_stop_p = params.traffic_light_stop;
   const auto stopping_params = params.stopping_constraints;
-  autoware::traffic_light_compliance_checker::Parameters p;
+  autoware::traffic_light_compliance_checker::Parameters p{};
   p.deceleration_limit = stopping_params.maximum_deceleration;
   p.jerk_limit = stopping_params.jerk_limit;
+  p.delay_response_time = 0.0;
   p.crossing_time_limit = tl_stop_p.crossing_time_limit;
   p.treat_amber_light_as_red_light = tl_stop_p.treat_amber_light_as_red;
   p.treat_unknown_light_as_red_light = tl_stop_p.treat_unknown_light_as_red;
   p.stop_overshoot_margin = tl_stop_p.overshoot_tolerance;
-  p.stable_duration_threshold_red = tl_stop_p.th_stable_duration_red;
-  p.stable_duration_threshold_amber = tl_stop_p.th_stable_duration_amber;
-  p.amber_rejection_hysteresis_duration = tl_stop_p.th_amber_rejection_hysteresis;
+  p.allow_if_cannot_stop_distance = tl_stop_p.allow_if_cannot_stop_distance;
+  p.min_lookahead_distance = tl_stop_p.min_lookahead_distance;
+  p.ego_stopped_velocity_threshold = 0.01;
+  p.status_tracker_parameters.stable_duration_threshold_red = tl_stop_p.th_stable_duration_red;
+  p.status_tracker_parameters.stable_duration_threshold_amber = tl_stop_p.th_stable_duration_amber;
+  p.status_tracker_parameters.stable_duration_threshold_unknown =
+    tl_stop_p.th_stable_duration_unknown;
+  p.amber_rejection.hysteresis_duration = tl_stop_p.amber_rejection.th_hysteresis;
+  p.amber_rejection.reject_if_stop_detected = tl_stop_p.amber_rejection.reject_if_stop_detected;
   p.checked_trajectory_length.deceleration_limit = stopping_params.nominal_deceleration;
   p.checked_trajectory_length.jerk_limit = stopping_params.jerk_limit;
   return p;
@@ -59,6 +66,7 @@ void TrafficLightStop::on_initialize([[maybe_unused]] const TrajectoryModifierPa
   enabled_ = params.use_traffic_light_stop;
   params_ = params.traffic_light_stop;
   stopping_params_ = params.stopping_constraints;
+  trajectory_time_step_ = params.trajectory_time_step;
 
   checker_ =
     std::make_unique<autoware::traffic_light_compliance_checker::TrafficLightComplianceChecker>(
@@ -70,6 +78,7 @@ void TrafficLightStop::update_params([[maybe_unused]] const TrajectoryModifierPa
   enabled_ = params.use_traffic_light_stop;
   params_ = params.traffic_light_stop;
   stopping_params_ = params.stopping_constraints;
+  trajectory_time_step_ = params.trajectory_time_step;
   checker_->update_parameters(to_checker_params(params));
 }
 
@@ -111,7 +120,11 @@ bool TrafficLightStop::check_traffic_lights(
 
   const auto result =
     checker_->check(inputs, params_.stop_for_red_light, params_.stop_for_amber_light);
-  if (!result) return false;
+  if (!result) {
+    RCLCPP_ERROR(
+      get_node_ptr()->get_logger(), "Failed to check traffic lights: %s", result.error().c_str());
+    return false;
+  }
 
   if (result->violations.empty()) return false;
 
