@@ -435,6 +435,26 @@ std::optional<std::vector<geometry_msgs::msg::Point>> convert_arc_to_clothoid(
   const ArcSegment & arc_segment, const geometry_msgs::msg::Pose & start_pose, double A_min,
   double L_min, double point_interval)
 {
+  constexpr double low_curvature_threshold = 1e-3;
+  if (1.0 / arc_segment.radius < low_curvature_threshold) {
+    const double dx = arc_segment.end_pose.position.x - start_pose.position.x;
+    const double dy = arc_segment.end_pose.position.y - start_pose.position.y;
+    const double length = std::hypot(dx, dy);
+    const int num_points = std::max(2, static_cast<int>(std::ceil(length / point_interval)) + 1);
+
+    std::vector<geometry_msgs::msg::Point> points;
+    points.reserve(num_points);
+    for (int i = 0; i < num_points; ++i) {
+      const double ratio = static_cast<double>(i) / static_cast<double>(num_points - 1);
+      geometry_msgs::msg::Point point;
+      point.x = start_pose.position.x + dx * ratio;
+      point.y = start_pose.position.y + dy * ratio;
+      point.z = 0.0;
+      points.push_back(point);
+    }
+    return points;
+  }
+
   // Extract arc information
   double start_angle = arc_segment.calculateStartAngle();
   double end_angle = arc_segment.calculateEndAngle();
@@ -889,40 +909,42 @@ bool has_turn_point(const std::vector<geometry_msgs::msg::Point> & points)
 
 std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid_pull(
   const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & target_pose,
-  double wheel_base_m, const double & max_steer_angle, double max_steer_angle_rate_rad_per_sec,
-  double reference_velocity_mps)
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double & first_steer_angle,
+  double max_steer_angle_rate_rad_per_sec, double reference_velocity_mps)
 {
   const auto relative_pose_info =
     calculate_relative_pose_in_vehicle_coordinate(start_pose, target_pose);
 
-  const double minimum_radius = wheel_base_m / std::tan(max_steer_angle);
+  const double first_radius = vehicle_info.wheel_base_m / std::tan(first_steer_angle);
+  const double minimum_radius =
+    vehicle_info.wheel_base_m / std::tan(vehicle_info.max_steer_angle_rad);
+  if (first_radius < minimum_radius) {
+    return std::nullopt;
+  }
+
   std::vector<std::vector<geometry_msgs::msg::Point>> candidate_paths;
   for (const bool is_leftShift : {true, false}) {
-    double first_radius = minimum_radius;
-    for (int i = 0; i < 2; ++i) {
-      const auto circular_path_opt = calc_circular_path(
-        start_pose, relative_pose_info.longitudinal_distance_vehicle,
-        relative_pose_info.lateral_distance_vehicle, relative_pose_info.angle_diff, first_radius,
-        is_leftShift);
-      if (!circular_path_opt || circular_path_opt->segments[1].radius < minimum_radius) {
-        break;
-      }
-      first_radius = circular_path_opt->segments[1].radius;
-
-      auto connected_points_opt = biclothoid_approximation(
-        *circular_path_opt, start_pose, wheel_base_m, max_steer_angle_rate_rad_per_sec,
-        reference_velocity_mps);
-      if (!connected_points_opt) {
-        continue;
-      }
-
-      if (has_turn_point(*connected_points_opt)) {
-        continue;
-      }
-      interpolate_z_by_cumulative_distance(
-        *connected_points_opt, start_pose.position.z, target_pose.position.z);
-      candidate_paths.push_back(*connected_points_opt);
+    const auto circular_path_opt = calc_circular_path(
+      start_pose, relative_pose_info.longitudinal_distance_vehicle,
+      relative_pose_info.lateral_distance_vehicle, relative_pose_info.angle_diff, first_radius,
+      is_leftShift);
+    if (!circular_path_opt || circular_path_opt->segments[1].radius < minimum_radius) {
+      continue;
     }
+
+    auto connected_points_opt = biclothoid_approximation(
+      *circular_path_opt, start_pose, vehicle_info.wheel_base_m, max_steer_angle_rate_rad_per_sec,
+      reference_velocity_mps);
+    if (!connected_points_opt) {
+      continue;
+    }
+
+    if (has_turn_point(*connected_points_opt)) {
+      continue;
+    }
+    interpolate_z_by_cumulative_distance(
+      *connected_points_opt, start_pose.position.z, target_pose.position.z);
+    candidate_paths.push_back(*connected_points_opt);
   }
 
   if (!candidate_paths.empty()) {

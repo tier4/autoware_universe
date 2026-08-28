@@ -101,7 +101,7 @@ private:
     const PathPointTrajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose);
   std::optional<std::vector<PathPointTrajectory>> generate_pull_trajectories(
     const PathPointWithLaneId & start_point, const PathPointWithLaneId & goal_point,
-    const double & max_steering_angle);
+    const double & first_steer_angle);
   std::optional<double> evaluate_trajectory(
     const PathPointTrajectory & candidate,
     const std::vector<lanelet::BasicPolygon2d> & available_area,

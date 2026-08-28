@@ -543,7 +543,7 @@ std::optional<std::vector<PathPointWithLaneId>> StartGoalPlanner::get_goal_pose(
 
 std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_trajectories(
   const PathPointWithLaneId & start_point, const PathPointWithLaneId & goal_point,
-  const double & max_steering_angle)
+  const double & first_steer_angle)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   const auto max_steer_angle_rate_rad_per_sec =
@@ -552,7 +552,7 @@ std::optional<std::vector<PathPointTrajectory>> StartGoalPlanner::generate_pull_
   std::vector<PathPointTrajectory> candidate_trajectories;
 
   const auto clothoid_paths = plan_clothoid_pull(
-    start_point.point.pose, goal_point.point.pose, vehicle_info_.wheel_base_m, max_steering_angle,
+    start_point.point.pose, goal_point.point.pose, vehicle_info_, first_steer_angle,
     max_steer_angle_rate_rad_per_sec, params_.reference_velocity);
 
   if (!clothoid_paths.has_value()) {
@@ -612,7 +612,7 @@ std::optional<double> StartGoalPlanner::evaluate_trajectory(
   }
 
   const auto [curvature_integral, max_curvature] =
-    cal_curvature(candidate, time_keeper_, /*smoothing_window_size=*/9);
+    cal_curvature(candidate, time_keeper_, /*smoothing_window_size=*/5);
   if (max_curvature > feasible_curvature) {
     return std::nullopt;
   }
@@ -649,18 +649,18 @@ std::optional<PathPointTrajectory> StartGoalPlanner::generate_and_evaluate_traje
   const geometry_msgs::msg::Pose & ego_pose, std::vector<PathPointWithLaneId> start_pose_candidates,
   std::vector<PathPointWithLaneId> goal_pose_candidates)
 {
-  const auto max_steer_angles_rad = generate_candidate_steer_angles_rad(
+  const auto first_steer_angles_rad = generate_candidate_steer_angles_rad(
     vehicle_info_.max_steer_angle_rad, params_.steer_angle_trial_count);
 
   double best_score = std::numeric_limits<double>::max();
   std::optional<PathPointTrajectory> best_trajectory = std::nullopt;
   int16_t feasible_trajectory_count = 0;
 
-  for (const auto max_steering_angle : max_steer_angles_rad) {
+  for (const auto first_steer_angle : first_steer_angles_rad) {
     for (const auto & start_point : start_pose_candidates) {
       for (const auto & goal_point : goal_pose_candidates) {
         const auto candidate_trajectories =
-          generate_pull_trajectories(start_point, goal_point, max_steering_angle);
+          generate_pull_trajectories(start_point, goal_point, first_steer_angle);
         if (!candidate_trajectories) {
           continue;
         }

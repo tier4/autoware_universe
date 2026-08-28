@@ -15,6 +15,8 @@
 #ifndef START_GOAL_PLANNER__CLOTHOID_PULL_GENERATER_HPP_
 #define START_GOAL_PLANNER__CLOTHOID_PULL_GENERATER_HPP_
 
+#include <autoware/vehicle_info_utils/vehicle_info.hpp>
+
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
@@ -34,8 +36,8 @@ namespace autoware::minimum_rule_based_planner
  */
 std::optional<std::vector<std::vector<geometry_msgs::msg::Point>>> plan_clothoid_pull(
   const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & target_pose,
-  double wheel_base_m, const double & max_steer_angle, double max_steer_angle_rate_rad_per_sec,
-  double reference_velocity_mps);
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double & first_steer_angle,
+  double max_steer_angle_rate_rad_per_sec, double reference_velocity_mps);
 
 /**
  * @brief Generate candidate max-steer-angles for the clothoid goal connector.
