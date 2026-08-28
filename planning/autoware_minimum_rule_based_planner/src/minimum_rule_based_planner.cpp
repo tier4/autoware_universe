@@ -722,17 +722,6 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
   // Use a strictly increasing time base for MPPI sampling and downstream consumers.
   assign_time_from_start(trajectory_points, input_data.odometry_ptr->pose.pose.position);
 
-  constexpr float k_curvature_min_chord_length = 1.0F;
-  for (size_t i = 0; i < trajectory_points.size(); ++i) {
-    auto & point = trajectory_points.at(i);
-    const double curvature = autoware::mppi_optimizer::detail::computeMengerCurvatureWithMinChord(
-      trajectory_points, i, k_curvature_min_chord_length);
-    point.lateral_velocity_mps = 0.0F;
-    point.heading_rate_rps = static_cast<float>(point.longitudinal_velocity_mps * curvature);
-    point.front_wheel_angle_rad =
-      static_cast<float>(std::atan(vehicle_info_.wheel_base_m * curvature));
-  }
-
   Trajectory traj;
   traj.header = trajectory.header;
   traj.points = trajectory_points;
