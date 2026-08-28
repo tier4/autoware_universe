@@ -306,6 +306,41 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, InactiveVelocityLimitProducesIdenti
   }
 }
 
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, UnfilteredControlDoesNotDependOnPostFilterHistory)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle_params;
+  vehicle_params.acc_time_delay = 0.0F;
+  vehicle_params.steer_time_delay = 0.0F;
+  const auto input = makeStraightTrajectory(85U);
+  FirstOrderDubinsMppiOptimizationResult negative_history_result;
+  FirstOrderDubinsMppiOptimizationResult positive_history_result;
+  std::vector<float> negative_history_acceleration;
+  std::vector<float> negative_history_steering;
+  std::vector<float> positive_history_acceleration;
+  std::vector<float> positive_history_steering;
+
+  {
+    FirstOrderDubinsMppiInterface interface;
+    interface.setVehicleParams(vehicle_params);
+    interface.setControlHistory(-6.0F, -0.45F, -6.0F, -0.45F);
+    negative_history_result = optimize(interface, input);
+    ASSERT_TRUE(
+      interface.copyLastOptimizedControl(negative_history_acceleration, negative_history_steering));
+  }
+  {
+    FirstOrderDubinsMppiInterface interface;
+    interface.setVehicleParams(vehicle_params);
+    interface.setControlHistory(4.0F, 0.45F, 4.0F, 0.45F);
+    positive_history_result = optimize(interface, input);
+    ASSERT_TRUE(
+      interface.copyLastOptimizedControl(positive_history_acceleration, positive_history_steering));
+  }
+
+  EXPECT_EQ(negative_history_acceleration, positive_history_acceleration);
+  EXPECT_EQ(negative_history_steering, positive_history_steering);
+  EXPECT_TRUE(negative_history_result.trajectory == positive_history_result.trajectory);
+}
+
 TEST_F(
   FirstOrderDubinsMppiInterfaceGpuTest,
   PointwiseLimitsAboveExternalLimitPreserveExternalOutputExactly)

@@ -307,8 +307,8 @@ public:
     const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd);
 
   /**
-   * @brief Seed vendor Savitzky–Golay control_history_ (2 previous applied commands).
-   *        Required for offline retune to match online smoothing edge taps.
+   * @brief Seed the legacy vendor control_history_ for debug-log/replay compatibility.
+   *        The restored unfiltered MPPI control sequence does not depend on these values.
    *        Order: (accel/steer) at t-2, then (accel/steer) at t-1.
    */
   void setControlHistory(float accel_tm2, float steer_tm2, float accel_tm1, float steer_tm1);

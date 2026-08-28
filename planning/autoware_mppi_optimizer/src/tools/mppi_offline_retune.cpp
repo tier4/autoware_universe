@@ -635,13 +635,6 @@ int run(int argc, char ** argv)
     if (loadMppiDebugControlHistoryCsv(
           log_dir + "/" + tag + "_control_history.csv", hist_a0, hist_s0, hist_a1, hist_s1)) {
       frame_mppi.setControlHistory(hist_a0, hist_s0, hist_a1, hist_s1);
-    } else {
-      static bool warned_missing_history = false;
-      if (!warned_missing_history) {
-        std::cerr << "WARNING: missing *_control_history.csv; Savitzky–Golay edge taps are zero "
-                     "(re-log for exact online match).\n";
-        warned_missing_history = true;
-      }
     }
     const bool force_nominal = !nominal_csv_override.empty() || !reseed_nominal_from_reference;
     if (force_nominal) {

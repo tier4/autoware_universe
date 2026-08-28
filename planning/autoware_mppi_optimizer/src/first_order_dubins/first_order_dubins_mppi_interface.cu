@@ -258,13 +258,42 @@ std::string formatCostBreakdown(const CostBreakdown & cost)
   return stream.str();
 }
 
-/** Expose vendor Savitzky–Golay control_history_ for offline retune parity. */
-class MppiWithHistoryAccess : public Mppi
+/**
+ * Restore the reduced MPPI mean after the vendor controller applies its unconditional
+ * Savitzky–Golay post-filter. The sampler retains the unfiltered mean on the device, so this
+ * avoids copying the vendor computeControl implementation while ensuring that returned controls
+ * and the reconstructed state trajectory use the sequence produced by MPPI reduction.
+ */
+class UnfilteredMppiController : public Mppi
 {
 public:
   using Mppi::Mppi;
 
-  /** Replace the vendor-smoothed sequence and keep its host state rollout consistent. */
+  void computeControl(
+    const Eigen::Ref<const Mppi::state_array> & state, const int optimization_stride = 1) override
+  {
+    Mppi::computeControl(state, optimization_stride);
+
+    // The base call may still be copying its filtered host rollout on the visualization stream.
+    // Finish that read before replacing control_ and output_ below.
+    HANDLE_ERROR(cudaStreamSynchronize(this->vis_stream_));
+
+    // smoothControlTrajectory() only overwrites the controller's host control_. The sampling
+    // distribution still owns the final reduced mean on the device.
+    this->sampler_->setHostOptimalControlSequence(this->control_.data(), 0, true);
+
+    // First reconstruct the predicted state at each command. Constraints such as reverse
+    // prevention depend on velocity, so applying them against the vendor's zero_state would erase
+    // every braking command. Then constrain the stored controls against their corresponding
+    // predicted states and replay once more to keep control_, state_, and output_ consistent.
+    this->computeStateTrajectory(state);
+    for (int timestep = 0; timestep < this->getNumTimesteps(); ++timestep) {
+      this->model_->enforceConstraints(this->state_.col(timestep), this->control_.col(timestep));
+    }
+    this->computeStateTrajectory(state);
+  }
+
+  /** Replace the optimized sequence and keep its host state rollout consistent. */
   void setControlSequenceAndRecomputeState(
     const Mppi::control_trajectory & controls, const Mppi::state_array & initial_state)
   {
@@ -696,7 +725,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   FirstOrderDubinsBicycleCostParams<kRefHorizon> cost_params{};
   SAMPLER sampler;
   FB feedback;
-  std::unique_ptr<MppiWithHistoryAccess> controller;
+  std::unique_ptr<UnfilteredMppiController> controller;
   Mppi::control_trajectory u_nom = Mppi::control_trajectory::Zero();
   Mppi::control_trajectory u_opt = Mppi::control_trajectory::Zero();
   DYN::state_array x = DYN::state_array::Zero();
@@ -848,7 +877,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     sampler = SAMPLER(sp);
 
     const float lambda = user_cost_params_.lambda;
-    controller = std::make_unique<MppiWithHistoryAccess>(
+    controller = std::make_unique<UnfilteredMppiController>(
       &model, &cost, &feedback, &sampler, kDt, kMaxIter, lambda, 0.0F, kMppiHorizon, u_nom);
     auto cp = controller->getParams();
     cp.lambda_ = lambda;
@@ -1421,7 +1450,8 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   FirstOrderDubinsMppiControl runStep()
   {
-    // History taps used by this cycle's Savitzky–Golay (before slideControlSequence).
+    // Retain the legacy vendor-history snapshot for debug-log format compatibility. The restored
+    // unfiltered MPPI result is independent of these Savitzky–Golay edge taps.
     snapshotControlHistoryForLog();
 
     // Measured ego IC; per-channel delay lives in dynamics taps (no host pre-roll / ref shift).
@@ -1525,8 +1555,8 @@ struct FirstOrderDubinsMppiInterface::Impl
         u_opt_traj(accel_idx, timestep) =
           active_velocity_limit_profile.controls[static_cast<std::size_t>(timestep)].accel_cmd;
       }
-      // The vendor Savitzky-Golay filter remains unchanged and executes first. Project its
-      // longitudinal result onto the active profile and reconstruct the host state rollout.
+      // Project the restored unfiltered result onto the active longitudinal profile and
+      // reconstruct the host state rollout.
       controller->setControlSequenceAndRecomputeState(u_opt_traj, x);
     }
     u_opt = u_opt_traj;
@@ -1829,8 +1859,8 @@ FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
   impl_->sim_time = sim_time;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
   state = toHostState(impl_->x);
-  // Advance the vendor control history after the applied command is consumed so the
-  // next cycle's Savitzky-Golay left-edge taps are the previously applied controls.
+  // Advance the sequence after consuming its first command. Vendor history is retained only for
+  // API/debug compatibility; it does not affect the restored unfiltered result.
   impl_->controller->slideControlSequence(1);
   return control;
 }
@@ -2087,8 +2117,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
         : "unknown");
   }
 
-  // Advance the vendor control history after all getControlSeq / getActualStateSeq reads
-  // so the next cycle's Savitzky-Golay left-edge taps are the previously applied controls.
+  // Advance the sequence after all getControlSeq / getActualStateSeq reads. Vendor history is
+  // retained only for API/debug compatibility.
   impl_->controller->slideControlSequence(1);
 
   return result;
