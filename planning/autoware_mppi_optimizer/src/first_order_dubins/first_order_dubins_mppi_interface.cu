@@ -1563,6 +1563,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       obstacle_count > 0 ? obs_half_length.data() : nullptr,
       obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
     uploadBoundarySegments();
+    cost.renderDistanceMapTextureDebug();
 
     controller->updateImportanceSampler(u_nom);
     controller->computeControl(x, 1);
@@ -1696,6 +1697,7 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   impl_->prevent_reverse_velocity = options.prevent_reverse_velocity;
   setDebugTrajectoryLogging(
     options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
+  impl_->cost.setDistanceMapTextureDebugEnabled(options.enable_distance_map_texture_debug);
   setAblationOptions(
     options.ignore_obstacles, options.ignore_road_borders, options.ignore_drivable_area,
     options.force_cold_start_each_step, options.skip_if_invalid,
