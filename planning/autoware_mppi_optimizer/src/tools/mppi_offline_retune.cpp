@@ -133,12 +133,30 @@ void applyCostParam(
 {
   if (key == "lambda") {
     params.lambda = value;
-  } else if (key == "speed_coeff") {
-    params.speed_coeff = value;
+  } else if (key == "lambda_min") {
+    params.lambda_min = value;
+  } else if (key == "lambda_max") {
+    params.lambda_max = value;
+  } else if (key == "target_ess_ratio") {
+    params.target_ess_ratio = value;
+  } else if (key == "lambda_adaptation_gain") {
+    params.lambda_adaptation_gain = value;
+  } else if (key == "unsafe_rollout_fraction_threshold") {
+    params.unsafe_rollout_fraction_threshold = value;
+  } else if (key == "cost_normalization_percentile") {
+    params.cost_normalization_percentile = value;
+  } else if (key == "max_iter") {
+    params.max_iter = static_cast<int>(value);
+  } else if (key == "spatial_overspeed_coeff") {
+    params.spatial_overspeed_coeff = value;
   } else if (key == "track_coeff") {
     params.track_coeff = value;
   } else if (key == "track_terminal_scale") {
     params.track_terminal_scale = value;
+  } else if (key == "terminal_error_coeff") {
+    params.terminal_error_coeff = value;
+  } else if (key == "terminal_heading_coeff") {
+    params.terminal_heading_coeff = value;
   } else if (key == "heading_coeff") {
     params.heading_coeff = value;
   } else if (key == "lateral_distance_coeff") {
@@ -165,12 +183,16 @@ void applyCostParam(
     params.steer_cmd_coeff = value;
   } else if (key == "steer_rate_coeff") {
     params.steer_rate_coeff = value;
+  } else if (key == "initial_steer_rate_coeff") {
+    params.initial_steer_rate_coeff = value;
   } else if (key == "overlimit_coeff") {
     params.overlimit_coeff = value;
   } else if (key == "accel_cmd_std_dev") {
     params.accel_cmd_std_dev = value;
   } else if (key == "steer_cmd_std_dev") {
     params.steer_cmd_std_dev = value;
+  } else if (key == "std_dev_decay") {
+    params.std_dev_decay = value;
   } else if (key == "accel_cmd_noise_exponent") {
     params.accel_cmd_noise_exponent = value;
   } else if (key == "steer_cmd_noise_exponent") {
@@ -558,18 +580,18 @@ int run(int argc, char ** argv)
   }
 
   std::cout << "applied_params lambda=" << cost_params.lambda
+            << " lambda_min=" << cost_params.lambda_min << " lambda_max=" << cost_params.lambda_max
+            << " target_ess_ratio=" << cost_params.target_ess_ratio
+            << " lambda_adaptation_gain=" << cost_params.lambda_adaptation_gain
+            << " unsafe_rollout_fraction_threshold="
+            << cost_params.unsafe_rollout_fraction_threshold
+            << " cost_normalization_percentile=" << cost_params.cost_normalization_percentile
             << " track_coeff=" << cost_params.track_coeff
-            << " speed_coeff=" << cost_params.speed_coeff
+            << " spatial_overspeed_coeff=" << cost_params.spatial_overspeed_coeff
             << " overlimit_coeff=" << cost_params.overlimit_coeff
             << " heading_coeff=" << cost_params.heading_coeff
-            << " steer_rate_coeff=" << cost_params.steer_rate_coeff << "\n";
-  if (cost_params.lambda >= 5000.0F) {
-    std::cerr
-      << "WARNING: lambda=" << cost_params.lambda
-      << " is very high — softmax weights stay near-uniform and cost-weight edits "
-         "will barely move the trajectory. Try lambda around 100–1500 to see retune effects.\n";
-  }
-
+            << " steer_rate_coeff=" << cost_params.steer_rate_coeff
+            << " initial_steer_rate_coeff=" << cost_params.initial_steer_rate_coeff << "\n";
   const auto frame_ids = listMppiDebugFrameIds(log_dir);
   if (frame_ids.empty()) {
     std::cerr << "No frames found in " << log_dir << "\n";
@@ -798,9 +820,11 @@ int run(int argc, char ** argv)
       breakdown_out << "running_total," << breakdown.running_total << "\n";
       breakdown_out << "terminal_total," << breakdown.terminal_total << "\n";
       breakdown_out << "evaluated_timesteps," << breakdown.evaluated_timesteps << "\n";
-      breakdown_out << "state/speed," << breakdown.speed << "\n";
+      breakdown_out << "state/spatial_overspeed," << breakdown.spatial_overspeed << "\n";
       breakdown_out << "state/track," << breakdown.track << "\n";
       breakdown_out << "state/heading," << breakdown.heading << "\n";
+      breakdown_out << "terminal/error," << breakdown.terminal_error << "\n";
+      breakdown_out << "terminal/heading," << breakdown.terminal_heading << "\n";
       breakdown_out << "state/lateral_distance," << breakdown.lateral_distance << "\n";
       breakdown_out << "state/lateral_boundary," << breakdown.lateral_boundary << "\n";
       breakdown_out << "state/lateral_yaw_error," << breakdown.lateral_yaw_error << "\n";
@@ -817,6 +841,7 @@ int run(int argc, char ** argv)
       breakdown_out << "comfort/lateral_jerk," << breakdown.lateral_jerk << "\n";
       breakdown_out << "comfort/longitudinal_jerk," << breakdown.longitudinal_jerk << "\n";
       breakdown_out << "comfort/steering_rate," << breakdown.steering_rate << "\n";
+      breakdown_out << "mppi/initial_steering_rate," << breakdown.initial_steering_rate << "\n";
       breakdown_out << "kinematic/velocity_overlimit," << breakdown.kinematic_velocity_overlimit
                     << "\n";
       breakdown_out << "kinematic/acceleration_overlimit,"

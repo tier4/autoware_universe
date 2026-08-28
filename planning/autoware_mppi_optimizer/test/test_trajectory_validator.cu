@@ -78,7 +78,7 @@ protected:
     return params;
   }
 
-  void setStraightReference()
+  void setStraightReference(const float * terminal_reference = nullptr)
   {
     std::array<float, kTestHorizon> x{};
     std::array<float, kTestHorizon> y{};
@@ -91,7 +91,9 @@ protected:
       velocity[static_cast<size_t>(i)] = 2.0F;
       yaw[static_cast<size_t>(i)] = 0.0F;
     }
-    cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon, yaw.data());
+    cost_->setReferenceTrajectory(
+      x.data(), y.data(), velocity.data(), kTestHorizon, yaw.data(), nullptr, nullptr,
+      terminal_reference);
   }
 
   detail::OptimizedState makeFirstPostStepState(const float y = 0.0F) const
@@ -110,7 +112,7 @@ protected:
 TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheirSum)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 2.0F;
   params.track_terminal_scale = 0.0F;
   params.heading_coeff = 0.0F;
@@ -152,10 +154,138 @@ TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheir
   EXPECT_EQ(direct_crash_status, 0);
 }
 
+TEST_F(TrajectoryValidatorTest, PenalizesOnlyTheInitialSteeringCommandTransient)
+{
+  auto params = makeParams();
+  params.initial_steer_rate_coeff = 2.0F;
+  cost_->setParams(params);
+  cost_->setInitialSteeringAngle(0.1F);
+  setStraightReference();
+
+  TestCost::output_array output = TestCost::output_array::Zero();
+  // The initial transient must use the measured pre-rollout state, not this post-step output.
+  output(static_cast<int>(OutputIndex::STEER_ANGLE)) = -0.4F;
+  TestCost::control_array control = TestCost::control_array::Zero();
+  control(static_cast<int>(ControlIndex::STEER_CMD)) = 0.3F;
+  int crash_status = 0;
+
+  const auto step_zero = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  const auto step_one = cost_->computeRunningCostBreakdown(output, control, 1, &crash_status);
+  int direct_crash_status = 0;
+  const float direct_step_zero =
+    cost_->computeRunningCost(output, control, 0, &direct_crash_status);
+
+  const float initial_rate = (0.3F - 0.1F) / FirstOrderDubinsBicycleParams::kControlDt;
+  const float expected = params.initial_steer_rate_coeff * initial_rate * initial_rate *
+                         static_cast<float>(kTestHorizon);
+  EXPECT_NEAR(step_zero.initial_steering_rate, expected, 1.0E-4F);
+  EXPECT_FLOAT_EQ(step_one.initial_steering_rate, 0.0F);
+  EXPECT_NEAR(step_zero.componentTotal(), step_zero.total, 1.0E-4F);
+  EXPECT_NEAR(step_zero.total, direct_step_zero, 1.0E-4F);
+}
+
+TEST_F(TrajectoryValidatorTest, EvaluatesIndependentTerminalPositionAndHeadingErrors)
+{
+  auto params = makeParams();
+  params.spatial_overspeed_coeff = 0.0F;
+  params.track_coeff = 0.0F;
+  params.track_terminal_scale = 0.0F;
+  params.heading_coeff = 0.0F;
+  params.terminal_error_coeff = 2.0F;
+  params.terminal_heading_coeff = 3.0F;
+  params.lateral_distance_coeff = 0.0F;
+  params.lateral_yaw_error_coeff = 0.0F;
+  params.remaining_distance_coeff = 0.0F;
+  params.path_overshoot_coeff = 0.0F;
+  params.track_center_coeff = 0.0F;
+  params.corner_buffer_coeff = 0.0F;
+  params.drivable_area_barrier_weight = 0.0F;
+  params.obstacle_barrier_weight = 0.0F;
+  params.road_border_barrier_weight = 0.0F;
+  params.lateral_boundary_barrier_weight = 0.0F;
+  cost_->setParams(params);
+  const float terminal_reference[3] = {20.0F, 1.0F, 0.0F};
+  setStraightReference(terminal_reference);
+
+  constexpr float two_pi = 6.2831853071795864769F;
+  TestCost::output_array output = TestCost::output_array::Zero();
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)) = terminal_reference[0] - 1.0F;
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_Y)) = terminal_reference[1] + 2.0F;
+  output(static_cast<int>(OutputIndex::YAW)) = two_pi - 0.5F;
+
+  const auto breakdown = cost_->computeTerminalCostBreakdown(output);
+
+  EXPECT_FLOAT_EQ(breakdown.terminal_error, 10.0F);
+  EXPECT_NEAR(breakdown.terminal_heading, 0.75F, 1.0E-5F);
+  EXPECT_NEAR(breakdown.terminal_total, 10.75F, 1.0E-5F);
+  EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-5F);
+}
+
+TEST_F(TrajectoryValidatorTest, PenalizesSpatialOverspeedUsingInterpolatedVelocityAndProgress)
+{
+  auto params = makeParams();
+  params.spatial_overspeed_coeff = 10.0F;
+  params.track_coeff = 0.0F;
+  params.heading_coeff = 0.0F;
+  params.lateral_distance_coeff = 0.0F;
+  params.lateral_yaw_error_coeff = 0.0F;
+  params.remaining_distance_coeff = 0.0F;
+  params.path_overshoot_coeff = 0.0F;
+  params.track_center_coeff = 0.0F;
+  params.corner_buffer_coeff = 0.0F;
+  params.lateral_boundary_barrier_weight = 0.0F;
+  params.lateral_acceleration_coeff = 0.0F;
+  params.lateral_jerk_coeff = 0.0F;
+  params.longitudinal_jerk_coeff = 0.0F;
+  params.drivable_area_barrier_weight = 0.0F;
+  params.obstacle_barrier_weight = 0.0F;
+  params.road_border_barrier_weight = 0.0F;
+  cost_->setParams(params);
+  setStraightReference();
+
+  const std::array<float, 2> corridor_x{0.0F, 10.0F};
+  const std::array<float, 2> corridor_y{0.0F, 0.0F};
+  const std::array<float, 2> corridor_s{0.0F, 10.0F};
+  const std::array<float, 2> corridor_ref_velocity{2.0F, 4.0F};
+  cost_->setLateralCorridor(
+    corridor_x.data(), corridor_y.data(), static_cast<int>(corridor_x.size()), corridor_s.data(),
+    corridor_ref_velocity.data());
+
+  TestCost::output_array output = TestCost::output_array::Zero();
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)) = 5.0F;
+  output(static_cast<int>(OutputIndex::TOTAL_VELOCITY)) = 5.0F;
+  TestCost::control_array control = TestCost::control_array::Zero();
+  int crash_status = 0;
+
+  const auto spatial_metrics = cost_->computeLateralPathMetrics(5.0F, 0.0F, 0.0F);
+  EXPECT_FLOAT_EQ(spatial_metrics.spatial_s, 5.0F);
+  EXPECT_FLOAT_EQ(spatial_metrics.spatial_ref_velocity, 3.0F);
+
+  const auto at_half_progress =
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  int direct_crash_status = 0;
+  const float direct_total = cost_->computeRunningCost(output, control, 0, &direct_crash_status);
+  // v_ref(5 m) = 3 m/s, progress = 0.5: 10 * 0.5 * (5 - 3)^2 = 20.
+  EXPECT_FLOAT_EQ(at_half_progress.spatial_overspeed, 20.0F);
+  EXPECT_FLOAT_EQ(at_half_progress.total, 20.0F);
+  EXPECT_FLOAT_EQ(direct_total, 20.0F);
+  EXPECT_EQ(direct_crash_status, 0);
+
+  output(static_cast<int>(OutputIndex::TOTAL_VELOCITY)) = 2.5F;
+  const auto below_reference =
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  EXPECT_FLOAT_EQ(below_reference.spatial_overspeed, 0.0F);
+
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)) = 0.0F;
+  output(static_cast<int>(OutputIndex::TOTAL_VELOCITY)) = 5.0F;
+  const auto at_start = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  EXPECT_FLOAT_EQ(at_start.spatial_overspeed, 0.0F);
+}
+
 TEST_F(TrajectoryValidatorTest, UsesPointwiseMaximumVelocityForEachRunningCostStep)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.lateral_distance_coeff = 0.0F;
@@ -242,7 +372,7 @@ TEST_F(TrajectoryValidatorTest, SmoothBarrierCostRampsUpQuadratically)
 TEST_F(TrajectoryValidatorTest, LateralBoundaryBarrierActivatesInsideThreshold)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.lateral_distance_coeff = 0.0F;
@@ -286,6 +416,7 @@ TEST_F(TrajectoryValidatorTest, LateralBoundaryBarrierActivatesInsideThreshold)
   EXPECT_NEAR(
     cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).lateral_boundary,
     params.crash_contact_penalty, 1.0F);
+  EXPECT_EQ(crash_status, 1);
 }
 
 TEST_F(TrajectoryValidatorTest, SmoothBarrierCostGrowsBeyondContactPenaltyForPenetration)
@@ -323,6 +454,7 @@ TEST_F(TrajectoryValidatorTest, SmoothBarrierCostGrowsBeyondContactPenaltyForPen
   const auto breakdown = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
   EXPECT_GT(breakdown.obstacle, nominal_contact_penalty);
   EXPECT_TRUE(std::isfinite(breakdown.total));
+  EXPECT_EQ(crash_status, 1);
 }
 
 TEST_F(TrajectoryValidatorTest, ExcludesMovingObjectsFromGradualObstacleCost)
@@ -358,7 +490,7 @@ TEST_F(TrajectoryValidatorTest, ExcludesMovingObjectsFromGradualObstacleCost)
 TEST_F(TrajectoryValidatorTest, GradualConstraintCostsAreIncludedInBreakdownTotal)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.track_center_coeff = 0.0F;
@@ -403,7 +535,7 @@ TEST_F(TrajectoryValidatorTest, GradualConstraintCostsAreIncludedInBreakdownTota
   EXPECT_GT(breakdown.road_border, 0.0F);
   EXPECT_NEAR(breakdown.total, gradual_cost_sum, 1.0E-4F);
   EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-4F);
-  EXPECT_EQ(crash_status, 0);
+  EXPECT_EQ(crash_status, 1);
 }
 
 TEST_F(TrajectoryValidatorTest, AppliesBoundaryThresholdSymmetricallyAndInclusively)
