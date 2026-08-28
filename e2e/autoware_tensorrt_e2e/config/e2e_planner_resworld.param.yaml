@@ -40,11 +40,15 @@
         precision: "fp16"
         feature_tensor: "bev_feature"
         cloud_capacity: 2000000
-        max_points_per_voxel: 10
+        # Matches the frozen BEVFusion-L training voxelizer (AWML gen2: max_num_points=32);
+        # the exported ONNX bakes this as the voxels tensor's second dimension.
+        max_points_per_voxel: 32
         voxels_num: [1, 128000, 256000]  # [min, opt, max]
         point_cloud_range: [-122.4, -122.4, -3.0, 122.4, 122.4, 5.0]
         voxel_size: [0.17, 0.17, 0.2]
-        use_intensity: false
+        # The frozen BEVFusion-L consumes 5 point features [x, y, z, intensity, time];
+        # the training loader zeroes the time column and the VFE normalizes intensity 0-255.
+        use_intensity: true
 
     context:
       traffic_light_group_msg_timeout_seconds: 0.2

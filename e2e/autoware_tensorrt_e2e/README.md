@@ -24,6 +24,14 @@ The `data_path` directory holds `resworld_planner.simplified.onnx`,
 frozen BEVFusion-L feature extractor ONNX (`bevfusion_lidar_feature.onnx`: the production
 BEVFusion lidar branch exported with `bev_feature` `[1, 512, 180, 180]` as an output).
 
+The extractor ONNX carries `autoware::GetIndicePairsImplicitGemm` / `autoware::ImplicitGemm`
+custom nodes (sparse convolutions), so building and running its engine requires
+`autoware_tensorrt_plugins` (`bev_feature.extractor.plugins_path`) and an `spconv_cpp`
+build that includes this GPU's architecture. The extractor consumes 5 point features
+per voxel (`use_intensity: true`) with 32 points per voxel, matching the frozen
+BEVFusion-L training voxelizer; both values are baked into the exported graph, so the
+ROS parameters must not drift from the artifact.
+
 ## Sensor prototypes
 
 | Prototype | Launch file | Sensing input |
