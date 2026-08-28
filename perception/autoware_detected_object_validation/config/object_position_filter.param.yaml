@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     filter_target_label:
-      UNKNOWN : true
+      UNKNOWN : false
       CAR : false
       TRUCK : false
       BUS : false
