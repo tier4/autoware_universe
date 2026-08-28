@@ -277,3 +277,8 @@ trajectory_mppi_optimizer:
     default_value: ""
     description: Directory for offline trajectory logs (empty = current working directory)
     read_only: false
+  enable_distance_map_texture_debug:
+    type: bool
+    default_value: false
+    description: Open a CUDA-OpenGL window visualizing the static and dynamic distance textures
+    read_only: false
