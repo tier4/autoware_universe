@@ -34,6 +34,10 @@
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
+std::optional<CollisionDetail> find_collision_timing(
+  const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
+  DracParams::PetMargin pet_find_range, double time_resolution);
+
 DracArtifact assess(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
   const trajectory::ObjectTrajectoryCache & object_trajectory_cache,
