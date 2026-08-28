@@ -15,10 +15,9 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__TRAJECTORY_VALIDATOR_REPORT_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__TRAJECTORY_VALIDATOR_REPORT_HPP_
 
-#include <autoware_trajectory_validator/msg/validation_report.hpp>
-
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
+#include <autoware_internal_planning_msgs/msg/validation_report.hpp>
 
 #include <algorithm>
 #include <string>
@@ -63,7 +62,7 @@ struct TrajectoryValidatorReport
 {
   autoware_internal_planning_msgs::msg::CandidateTrajectories valid_trajectories;
   std::vector<EvaluationTable> evaluation_tables;
-  std::vector<autoware_trajectory_validator::msg::ValidationReport> validation_reports;
+  std::vector<autoware_internal_planning_msgs::msg::ValidationReport> validation_reports;
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
   size_t num_feasible_trajectories{0};
 

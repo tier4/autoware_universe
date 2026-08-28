@@ -15,8 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_ACTION_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_ACTION_HPP_
 
-#include <autoware_trajectory_validator/msg/risk_level.hpp>
-
+#include <autoware_internal_planning_msgs/msg/risk_level.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
 #include <string>
@@ -34,7 +33,7 @@ enum class Action : uint8_t { NONE = 0, COMFORTABLE = 1, MODERATE = 2, EMERGENCY
  */
 inline Action convert_risk_level_to_action(uint8_t risk_level)
 {
-  using autoware_trajectory_validator::msg::RiskLevel;
+  using autoware_internal_planning_msgs::msg::RiskLevel;
 
   switch (risk_level) {
     case RiskLevel::HIGH_CAUTION:

@@ -17,12 +17,12 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 #include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
-#include <autoware_trajectory_validator/msg/risk_level.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
+#include <autoware_internal_planning_msgs/msg/risk_level.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <gtest/gtest.h>
@@ -36,8 +36,8 @@ namespace autoware::trajectory_ranker
 namespace
 {
 using autoware_internal_planning_msgs::msg::CandidateTrajectory;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using autoware_planning_msgs::msg::TrajectoryPoint;
-using autoware_trajectory_validator::msg::RiskLevel;
 
 CandidateTrajectory make_candidate_trajectory()
 {

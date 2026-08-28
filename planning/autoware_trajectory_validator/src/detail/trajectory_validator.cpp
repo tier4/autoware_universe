@@ -28,8 +28,8 @@
 
 namespace autoware::trajectory_validator
 {
-using autoware_trajectory_validator::msg::RiskLevel;
-using autoware_trajectory_validator::msg::ValidationReport;
+using autoware_internal_planning_msgs::msg::RiskLevel;
+using autoware_internal_planning_msgs::msg::ValidationReport;
 
 TrajectoryValidatorReport TrajectoryValidator::process(
   const autoware_internal_planning_msgs::msg::CandidateTrajectories & input_trajectories,
@@ -53,7 +53,7 @@ TrajectoryValidatorReport TrajectoryValidator::process(
       autoware_utils_uuid::to_hex_string(candidate_trajectory.generator_id);
     table.generator_id = hex_generator_id;
 
-    std::vector<autoware_trajectory_validator::msg::MetricReport> combined_metrics;
+    std::vector<autoware_internal_planning_msgs::msg::MetricReport> combined_metrics;
 
     for (const auto & plugin : plugins_) {
       PluginEvaluation evaluation;
@@ -83,7 +83,7 @@ TrajectoryValidatorReport TrajectoryValidator::process(
       }
 
       combined_metrics.push_back(
-        autoware_trajectory_validator::build<autoware_trajectory_validator::msg::MetricReport>()
+        autoware_internal_planning_msgs::build<autoware_internal_planning_msgs::msg::MetricReport>()
           .validator_name(plugin->get_name())
           .validator_category(plugin->category())
           .metric_name("trajectory_feasibility")
@@ -105,7 +105,7 @@ TrajectoryValidatorReport TrajectoryValidator::process(
     }
 
     // only consider metrics from active filters for final trajectory risk level
-    std::vector<autoware_trajectory_validator::msg::MetricReport> active_metrics;
+    std::vector<autoware_internal_planning_msgs::msg::MetricReport> active_metrics;
     std::copy_if(
       combined_metrics.begin(), combined_metrics.end(), std::back_inserter(active_metrics),
       [&](const auto & metric) { return active_filter_names.count(metric.validator_name) > 0; });
@@ -113,7 +113,7 @@ TrajectoryValidatorReport TrajectoryValidator::process(
     RiskLevel risk_level;
     risk_level.level = worst_risk_level(active_metrics);
     report.validation_reports.push_back(
-      autoware_trajectory_validator::build<ValidationReport>()
+      autoware_internal_planning_msgs::build<ValidationReport>()
         .trajectory_stamp(candidate_trajectory.header.stamp)
         .generator_id(candidate_trajectory.generator_id)
         .generator_name(uuid_to_name.at(hex_generator_id))

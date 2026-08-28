@@ -56,7 +56,7 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
 
   RiskLevel risk_level;
   risk_level.level = is_feasible ? RiskLevel::SAFE : RiskLevel::DANGER;
-  std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+  std::vector<MetricReport> metrics{autoware_internal_planning_msgs::build<MetricReport>()
                                       .validator_name(get_name())
                                       .validator_category(category())
                                       .metric_name("check_critical_departure")

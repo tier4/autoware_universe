@@ -18,7 +18,6 @@
 #include "autoware/trajectory_ranker/trajectory_ranker.hpp"
 
 #include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
-#include <autoware_trajectory_validator/msg/validation_report.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
@@ -28,6 +27,7 @@
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/scored_candidate_trajectories.hpp>
+#include <autoware_internal_planning_msgs/msg/validation_report.hpp>
 
 #include <memory>
 #include <string>
@@ -37,7 +37,7 @@ namespace autoware::trajectory_ranker
 {
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectories;
-using autoware_trajectory_validator::msg::ValidationReport;
+using autoware_internal_planning_msgs::msg::ValidationReport;
 
 class TrajectoryRankerWrapper
 {

@@ -48,7 +48,7 @@ using autoware_planning_msgs::msg::LaneletRoute;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 
-using autoware_trajectory_validator::msg::RiskLevel;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using trajectory_ranker::RankerInputTrajectories;
 using trajectory_ranker::RankerInputTrajectory;
 using trajectory_ranker::TrajectorySource;

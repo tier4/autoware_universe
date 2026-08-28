@@ -14,10 +14,10 @@
 
 #include "reporter.hpp"
 
-#include <autoware_trajectory_validator/msg/metric_report.hpp>
 #include <rclcpp/logging.hpp>
 
 #include <autoware_internal_planning_msgs/msg/control_point.hpp>
+#include <autoware_internal_planning_msgs/msg/metric_report.hpp>
 #include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
 #include <autoware_internal_planning_msgs/msg/safety_factor.hpp>
 #include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
@@ -34,7 +34,7 @@ namespace autoware::trajectory_validator::plugin::safety::reporter
 {
 namespace
 {
-using autoware_trajectory_validator::msg::MetricReport;
+using autoware_internal_planning_msgs::msg::MetricReport;
 
 struct VisualizationData
 {
