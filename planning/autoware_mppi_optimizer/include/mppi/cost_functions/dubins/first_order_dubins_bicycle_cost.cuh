@@ -23,6 +23,8 @@ struct DistanceMapTextureGrid
   int time_steps = 0;
 };
 
+class DistanceMapTextureVisualizer;
+
 __host__ __device__ inline float computeSmoothBarrierCost(
   const float distance, const float safe_margin, const float precomputed_weight)
 {
@@ -193,6 +195,12 @@ public:
   void setDrivableAreaPolygon(const float * x, const float * y, int count);
 
   void clearDrivableArea();
+
+  /** Enable or disable the CUDA-OpenGL distance-map debug window. */
+  __host__ void setDistanceMapTextureDebugEnabled(bool enable);
+
+  /** Refresh the debug window after all distance maps for the current control cycle are ready. */
+  __host__ void renderDistanceMapTextureDebug();
 
   /** Euclidean position error squared: ||p - ref[t]||^2. */
   __host__ __device__ float computeTrackValue(
@@ -377,6 +385,8 @@ private:
   cudaArray_t obstacle_distance_array_ = nullptr;
   cudaSurfaceObject_t static_distance_surface_ = 0;
   cudaSurfaceObject_t obstacle_distance_surface_ = 0;
+  DistanceMapTextureVisualizer * distance_map_visualizer_ = nullptr;
+  bool static_distance_visualization_dirty_ = true;
 };
 
 template <int NUM_TIMESTEPS>

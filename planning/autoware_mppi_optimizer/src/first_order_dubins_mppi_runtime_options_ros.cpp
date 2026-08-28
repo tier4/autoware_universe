@@ -36,6 +36,9 @@ void declare_first_order_dubins_mppi_runtime_options(
     param_name(prefix, "enable_debug_trajectory_log"), defaults.enable_debug_trajectory_log);
   node.declare_parameter(
     param_name(prefix, "debug_trajectory_log_directory"), defaults.debug_trajectory_log_directory);
+  node.declare_parameter(
+    param_name(prefix, "enable_distance_map_texture_debug"),
+    defaults.enable_distance_map_texture_debug);
   node.declare_parameter(param_name(prefix, "ignore_obstacles"), defaults.ignore_obstacles);
   node.declare_parameter(param_name(prefix, "ignore_road_borders"), defaults.ignore_road_borders);
   node.declare_parameter(param_name(prefix, "ignore_drivable_area"), defaults.ignore_drivable_area);
@@ -63,6 +66,8 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
     node.get_parameter(param_name(prefix, "enable_debug_trajectory_log")).as_bool();
   options.debug_trajectory_log_directory =
     node.get_parameter(param_name(prefix, "debug_trajectory_log_directory")).as_string();
+  options.enable_distance_map_texture_debug =
+    node.get_parameter(param_name(prefix, "enable_distance_map_texture_debug")).as_bool();
   options.ignore_obstacles = node.get_parameter(param_name(prefix, "ignore_obstacles")).as_bool();
   options.ignore_road_borders =
     node.get_parameter(param_name(prefix, "ignore_road_borders")).as_bool();
