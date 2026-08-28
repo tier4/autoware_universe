@@ -165,6 +165,22 @@ TrajectoryData create_trajectory_data(const TimeTrajectory & times)
     std::move(footprints)};
 }
 
+TrajectoryData create_trajectory_data(
+  const std::string & classification, const TimeTrajectory & times, const PoseTrajectory & poses,
+  const autoware_perception_msgs::msg::Shape & shape)
+{
+  TravelDistanceTrajectory distances;
+  distances.reserve(times.size());
+  for (size_t i = 0; i < times.size(); ++i) {
+    distances.push_back(static_cast<double>(i));
+  }
+
+  auto footprints = trajectory::footprint::compute_footprint_trajectory(poses, shape);
+  return TrajectoryData{
+    TrajectoryIdentification{classification}, times, std::move(distances), poses,
+    std::move(footprints)};
+}
+
 DracArtifact assess_stationary_collision(
   const DracParams & drac_params, const uint8_t turn_indicator_command)
 {
@@ -284,6 +300,47 @@ TEST(CollisionTimingAssessmentTest, ObjectPrioritizedMapBasedUsesObjectEarlierJu
     "map_based, object prioritized, object earlier");
   EXPECT_DOUBLE_EQ(
     object_earlier_artifact.evaluations.front().detail.first_collision_timing.pet, 0.0);
+}
+
+TEST(CollisionTimingAssessmentTest, PrefersObjectEarlierForMultipleCollisionEvents)
+{
+  // The ego reaches the first crossing at t=1 and the second at t=5. The same object reaches them
+  // at t=2 and t=4, respectively, so the two events have opposite arrival orders.
+  TimeTrajectory times;
+  PoseTrajectory ego_poses;
+  PoseTrajectory object_poses;
+  for (size_t tick = 0U; tick <= 60U; ++tick) {
+    const double time = static_cast<double>(tick) * kDefaultTimeResolution;
+    times.push_back(time);
+
+    const double ego_x = time <= 1.0 ? time - 1.0 : 2.0 * (time - 1.0);
+    ego_poses.push_back(create_pose(ego_x, 0.0));
+
+    if (time <= 2.0) {
+      object_poses.push_back(create_pose(0.0, time - 2.0, M_PI_2));
+    } else if (time <= 3.0) {
+      object_poses.push_back(create_pose(4.0 * (time - 2.0), 4.0 * (time - 2.0)));
+    } else if (time <= 4.0) {
+      object_poses.push_back(create_pose(4.0 + 4.0 * (time - 3.0), 4.0 - 4.0 * (time - 3.0)));
+    } else {
+      object_poses.push_back(create_pose(8.0, 4.0 - time, -M_PI_2));
+    }
+  }
+
+  const auto small_shape = create_bounding_box_shape(0.02, 0.02);
+  const auto ego_trajectory = create_trajectory_data("EGO", times, ego_poses, small_shape);
+  const auto object_trajectory =
+    create_trajectory_data("unknown", times, object_poses, small_shape);
+  DracParams::PetMargin pet_find_range;
+  pet_find_range.ego_earlier = 1.5;
+  pet_find_range.object_earlier = 1.5;
+
+  const auto collision = collision_timing_assessment::find_collision_timing(
+    ego_trajectory, object_trajectory, pet_find_range, kDefaultTimeResolution);
+
+  ASSERT_TRUE(collision.has_value());
+  EXPECT_NEAR(collision->first_collision_timing.pet, -1.0, kDefaultTimeResolution);
+  EXPECT_GT(collision->worst_pet_timing.pet, 0.0);
 }
 
 TEST(TrajectoryUtilitiesTest, ResolveCoveringIndexRangeHandlesAvailableTimeRange)
