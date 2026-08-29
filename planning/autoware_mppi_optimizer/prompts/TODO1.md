@@ -1,13 +1,3 @@
-The texture coordinate math, surface writes, stream ordering, and out-of-bounds fallback look correct. I found these remaining issues.
-
-1. High — drivable-area distance is not actually signed
-
-The static kernel stores unsigned distance to boundary segments ([generation](/home/maximeclement/autoware/diffusion/pilot-auto.x2/src/autoware/universe/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cu:228)). Subtracting the ego radius only makes it negative while crossing the boundary ([sampling](/home/maximeclement/autoware/diffusion/pilot-auto.x2/src/autoware/universe/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cu:2027)).
-
-Once the ego is completely outside, the distance becomes positive again and the barrier disappears. The trajectory validator also does not check the drivable-area polygon, and the checked-in configuration sets its barrier weight to zero.
-
-Fix: generate a signed field from a closed polygon—positive inside, negative outside—and restore a hard polygon/footprint validation check.
-
 1. High — 3D generation has excessive computational complexity
 
 The obstacle kernel evaluates every obstacle for every voxel ([kernel](/home/maximeclement/autoware/diffusion/pilot-auto.x2/src/autoware/universe/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cu:244)):
@@ -20,7 +10,7 @@ This is unlikely to meet a 100 Hz control budget. Static obstacles are also reco
 
 Fix: rasterize primitives and run a GPU EDT/JFA, split static and dynamic obstacles, or compute only a bounded distance band. This needs profiling before relying on the estimated 1 ms generation time.
 
-1. High — debug visualization still has a lifetime race
+1. DONE — debug visualization still has a lifetime race
 
 The visualizer is a raw pointer ([member](/home/maximeclement/autoware/diffusion/pilot-auto.x2/src/autoware/universe/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh:388)). Enable/disable can delete it while the control thread is inside `render()` ([lifecycle](/home/maximeclement/autoware/diffusion/pilot-auto.x2/src/autoware/universe/planning/autoware_mppi_optimizer/include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cu:867)).
 
