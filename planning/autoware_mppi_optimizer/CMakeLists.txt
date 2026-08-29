@@ -239,6 +239,35 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       LABELS "gpu"
       TIMEOUT 60
     )
+
+    # Keep the descriptive .cpp filename while compiling the texture-sampling test kernels with
+    # NVCC. FindCUDA treats a non-.cu source as CUDA when this property is set.
+    set_source_files_properties(test/test_distance_map.cpp PROPERTIES
+      CUDA_SOURCE_PROPERTY_FORMAT OBJ
+    )
+    cuda_add_executable(test_distance_map
+      test/test_distance_map.cpp
+    )
+    target_link_libraries(test_distance_map
+      first_order_dubins_mppi
+      ${GTEST_LIBRARIES}
+      ${GTEST_MAIN_LIBRARIES}
+    )
+    target_include_directories(test_distance_map SYSTEM PRIVATE
+      ${GTEST_INCLUDE_DIRS}
+    )
+    set_target_properties(test_distance_map PROPERTIES
+      CXX_STANDARD 17
+      CUDA_STANDARD 17
+    )
+    target_compile_options(test_distance_map PRIVATE
+      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
+    )
+    ament_add_gtest_test(test_distance_map)
+    set_tests_properties(test_distance_map PROPERTIES
+      LABELS "gpu"
+      TIMEOUT 180
+    )
   endif()
 
   install(TARGETS first_order_dubins_mppi mppi_offline_retune mppi_open_loop_line_sim
