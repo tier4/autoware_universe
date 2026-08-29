@@ -36,6 +36,12 @@ constexpr float kDistanceMapEmptyDistance = 1.0E8F;
 constexpr float kDistanceMapDebugRange = 10.0F;
 constexpr int kEgoSpineCircleCount = 4;
 
+std::mutex & visualizerInstanceMutex()
+{
+  static std::mutex mutex;
+  return mutex;
+}
+
 __host__ __device__ inline void computeEgoSpineCircles(
   const float center_x, const float center_y, const float cos_yaw, const float sin_yaw,
   const float half_length, const float half_width, float circle_x[kEgoSpineCircleCount],
@@ -857,6 +863,7 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setDistanceMapTextureDebugEnabled(const bool enable)
 {
+  const std::lock_guard<std::mutex> lock(visualizerInstanceMutex());
   if (!enable) {
     delete distance_map_visualizer_;
     distance_map_visualizer_ = nullptr;
@@ -879,6 +886,7 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::renderDistanceMapTextureDebug()
 {
+  const std::lock_guard<std::mutex> lock(visualizerInstanceMutex());
   if (distance_map_visualizer_ == nullptr) {
     return;
   }
