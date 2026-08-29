@@ -41,7 +41,7 @@
       longitudinal_jerk_coeff: 1.0
       accel_cmd_coeff: 0.0
       steer_cmd_coeff: 100.0
-      steer_rate_coeff: 10000.0
+      steer_rate_coeff: 1000.0
       # Shared deadband-quadratic cost for optional VelocityLimit bounds.
       overlimit_coeff: 100.0
       # MPPI control-sample noise std-devs around the nominal (u_nom).
@@ -55,10 +55,10 @@
       # Crash costs
       boundary_threshold: 1.2
       lateral_boundary_soft_margin: 0.5
-      obstacle_collision_margin: 1.0
-      road_border_collision_margin: 5.0
-      obstacle_safe_margin: 5.0
-      road_border_safe_margin: 10.0
+      obstacle_collision_margin: 0.2
+      road_border_collision_margin: 0.2
+      obstacle_safe_margin: 1.0
+      road_border_safe_margin: 1.0
       crash_contact_penalty: 1000.0
 
       nominal_curvature_min_chord_length_m: 1.5

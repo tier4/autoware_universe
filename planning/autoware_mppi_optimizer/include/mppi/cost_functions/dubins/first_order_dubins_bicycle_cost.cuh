@@ -253,8 +253,9 @@ public:
     const float x, const float y, const float yaw, int timestep) const;
 
   /**
-   * Signed clearance to the closest obstacle. Host replay uses exact OBB separation; GPU
-   * rollout uses the trilinearly interpolated point ESDF minus the ego circumscribed radius.
+   * Signed clearance from the ego's four-circle spine approximation to the closest obstacle.
+   * GPU rollout samples the point ESDF at each circle center; host replay evaluates the same
+   * circle-to-box geometry analytically.
    */
   __host__ __device__ float distanceToClosestObstacle(
     float x, float y, float yaw, int timestep) const;
@@ -264,14 +265,14 @@ public:
     const float x, const float y, const float yaw) const;
 
   /**
-   * Ego clearance to the closest road border. The GPU texture query conservatively models the ego
-   * footprint by subtracting its circumscribed radius from the point ESDF.
+   * Clearance from the ego's four-circle spine approximation to the closest road border. GPU and
+   * host paths use the same circle geometry.
    */
   __host__ __device__ float distanceToRoadBorder(float x, float y, float yaw) const;
 
   /**
-   * Signed clearance to drivable-area segments. GPU rollout uses the point ESDF minus the ego
-   * circumscribed radius; host replay retains the exact oriented-box calculation.
+   * Signed clearance from the ego's four-circle spine approximation to drivable-area segments.
+   * GPU and host paths use the same circle geometry.
    */
   __host__ __device__ float distanceToDrivableArea(float x, float y, float yaw) const;
 
