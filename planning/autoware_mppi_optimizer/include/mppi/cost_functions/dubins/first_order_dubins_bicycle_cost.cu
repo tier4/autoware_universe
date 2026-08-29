@@ -621,8 +621,12 @@ private:
     }
     constexpr unsigned int flags =
       cudaGraphicsRegisterFlagsWriteDiscard | cudaGraphicsRegisterFlagsSurfaceLoadStore;
-    HANDLE_ERROR(cudaGraphicsGLRegisterImage(
-      &cuda_resources_[index], gl_textures_[index], GL_TEXTURE_2D, flags));
+    const cudaError_t err = cudaGraphicsGLRegisterImage(
+      &cuda_resources_[index], gl_textures_[index], GL_TEXTURE_2D, flags);
+    if (err != cudaSuccess) {
+      throw std::runtime_error(
+        std::string("cudaGraphicsGLRegisterImage failed: ") + cudaGetErrorString(err));
+    }
   }
 
   cudaSurfaceObject_t mappedSurface(cudaGraphicsResource_t resource) const
