@@ -25,17 +25,34 @@ using O = FirstOrderDubinsBicycleParams::OutputIndex;
 using C = FirstOrderDubinsBicycleParams::ControlIndex;
 using mppi::cost::detail::crossTrackDistanceToPolyline;
 using mppi::cost::detail::distancePointToSegment;
-using mppi::cost::detail::distanceSegmentToSegment;
 using mppi::cost::detail::orientedBoxCorners;
 using mppi::cost::detail::orientedBoxesOverlap;
 using mppi::cost::detail::pathLengthAtProjection;
 using mppi::cost::detail::pointInPolygon;
 using mppi::cost::detail::projectPointToPolyline;
-using mppi::cost::detail::signedDistanceBetweenOrientedBoxes;
 using mppi::cost::detail::vectorLength;
 
 constexpr float kDistanceMapEmptyDistance = 1.0E8F;
 constexpr float kDistanceMapDebugRange = 10.0F;
+constexpr int kEgoSpineCircleCount = 4;
+
+__host__ __device__ inline void computeEgoSpineCircles(
+  const float center_x, const float center_y, const float cos_yaw, const float sin_yaw,
+  const float half_length, const float half_width, float circle_x[kEgoSpineCircleCount],
+  float circle_y[kEgoSpineCircleCount], float & circle_radius)
+{
+  const float clamped_half_length = fmaxf(half_length, 0.0F);
+  const float slice_half_length = clamped_half_length / static_cast<float>(kEgoSpineCircleCount);
+  circle_radius = vectorLength(slice_half_length, fmaxf(half_width, 0.0F));
+#pragma unroll
+  for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+    // Each circle circumscribes one equal-length slice of the ego rectangle.
+    const float longitudinal_offset =
+      -clamped_half_length + static_cast<float>(2 * circle + 1) * slice_half_length;
+    circle_x[circle] = center_x + longitudinal_offset * cos_yaw;
+    circle_y[circle] = center_y + longitudinal_offset * sin_yaw;
+  }
+}
 
 __device__ inline bool textureCoordinateInBounds(
   const float texture_x, const float texture_y, const DistanceMapTextureGrid & grid)
@@ -44,7 +61,7 @@ __device__ inline bool textureCoordinateInBounds(
          texture_y < static_cast<float>(grid.height);
 }
 
-__device__ inline float signedDistancePointToOrientedBox(
+__host__ __device__ inline float signedDistancePointToOrientedBox(
   const float x, const float y, const float cx, const float cy, const float cos_yaw,
   const float sin_yaw, const float half_length, const float half_width)
 {
@@ -57,6 +74,30 @@ __device__ inline float signedDistancePointToOrientedBox(
   const float outside_distance = vectorLength(outside_x, outside_y);
   const float inside_distance = fminf(fmaxf(local_x, local_y), 0.0F);
   return outside_distance + inside_distance;
+}
+
+__host__ __device__ inline float distanceEgoSpineToSegments(
+  const float circle_x[kEgoSpineCircleCount], const float circle_y[kEgoSpineCircleCount],
+  const float circle_radius, const float * segment_x0, const float * segment_y0,
+  const float * segment_x1, const float * segment_y1, const int segment_count,
+  const bool signed_penetration)
+{
+  if (segment_count <= 0) {
+    return kDistanceMapEmptyDistance;
+  }
+
+  float minimum = kDistanceMapEmptyDistance;
+#pragma unroll
+  for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+    for (int segment = 0; segment < segment_count; ++segment) {
+      minimum = fminf(
+        minimum, distancePointToSegment(
+                   circle_x[circle], circle_y[circle], segment_x0[segment], segment_y0[segment],
+                   segment_x1[segment], segment_y1[segment]) -
+                   circle_radius);
+    }
+  }
+  return signed_penetration ? minimum : fmaxf(minimum, 0.0F);
 }
 
 __device__ inline uchar4 distanceMapDebugColor(
@@ -350,72 +391,6 @@ __host__ __device__ inline CostPathBuffers resolvePathBuffers(
     b.ref_yaw = cost.ref_yaw_;
   }
   return b;
-}
-
-__host__ __device__ float distanceOrientedBoxToSegments(
-  const float cx, const float cy, const float cos_yaw, const float sin_yaw, const float half_length,
-  const float half_width, const float * segment_x0, const float * segment_y0,
-  const float * segment_x1, const float * segment_y1, const int segment_count,
-  const bool signed_penetration)
-{
-  if (segment_count <= 0) {
-    return 1.0E8F;
-  }
-
-  float corners_x[4];
-  float corners_y[4];
-  orientedBoxCorners(cx, cy, cos_yaw, sin_yaw, half_length, half_width, corners_x, corners_y);
-
-  float min_distance = 1.0E8F;
-  float max_penetration_depth = 0.0F;
-  bool intersects = false;
-  const float bounding_radius = vectorLength(half_length, half_width);
-  for (int segment = 0; segment < segment_count; ++segment) {
-    const float lower_bound = distancePointToSegment(
-                                cx, cy, segment_x0[segment], segment_y0[segment],
-                                segment_x1[segment], segment_y1[segment]) -
-                              bounding_radius;
-    if (
-      (!signed_penetration && lower_bound >= min_distance) ||
-      (signed_penetration && intersects && lower_bound > 0.0F)) {
-      continue;
-    }
-
-    bool segment_intersects = false;
-#pragma unroll
-    for (int edge = 0; edge < 4; ++edge) {
-      const int next = (edge + 1) & 3;
-      const float edge_distance = distanceSegmentToSegment(
-        corners_x[edge], corners_y[edge], corners_x[next], corners_y[next], segment_x0[segment],
-        segment_y0[segment], segment_x1[segment], segment_y1[segment]);
-      min_distance = fminf(min_distance, edge_distance);
-      segment_intersects = segment_intersects || edge_distance <= 1.0E-6F;
-    }
-    const float endpoint_dx = segment_x0[segment] - cx;
-    const float endpoint_dy = segment_y0[segment] - cy;
-    const float endpoint_local_x = cos_yaw * endpoint_dx + sin_yaw * endpoint_dy;
-    const float endpoint_local_y = -sin_yaw * endpoint_dx + cos_yaw * endpoint_dy;
-    segment_intersects = segment_intersects || (fabsf(endpoint_local_x) <= half_length &&
-                                                fabsf(endpoint_local_y) <= half_width);
-    if (segment_intersects) {
-      min_distance = 0.0F;
-    }
-    intersects = intersects || segment_intersects;
-    if (signed_penetration && segment_intersects) {
-      float segment_penetration_depth = 1.0E8F;
-#pragma unroll
-      for (int corner = 0; corner < 4; ++corner) {
-        segment_penetration_depth = fminf(
-          segment_penetration_depth,
-          distancePointToSegment(
-            corners_x[corner], corners_y[corner], segment_x0[segment], segment_y0[segment],
-            segment_x1[segment], segment_y1[segment]));
-      }
-      max_penetration_depth = fmaxf(max_penetration_depth, segment_penetration_depth);
-    }
-  }
-
-  return signed_penetration && intersects ? -max_penetration_depth : min_distance;
 }
 
 template <int NUM_TIMESTEPS>
@@ -1841,16 +1816,38 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float ego_cy = y + this->params_.ego_axle_to_box_center * ego_sin;
   const float ego_half_length = this->params_.ego_length * 0.5F;
   const float ego_half_width = this->params_.ego_width * 0.5F;
-  const float ego_radius = vectorLength(ego_half_length, ego_half_width);
+  float circle_x[kEgoSpineCircleCount];
+  float circle_y[kEgoSpineCircleCount];
+  float circle_radius = 0.0F;
+  computeEgoSpineCircles(
+    ego_cx, ego_cy, ego_cos, ego_sin, ego_half_length, ego_half_width, circle_x, circle_y,
+    circle_radius);
 #ifdef __CUDA_ARCH__
   if (obstacle_texture_valid_ && obstacle_distance_texture_ != 0) {
-    const float texture_x =
-      (ego_cx - obstacle_distance_map_grid_.origin_x) / obstacle_distance_map_grid_.resolution;
-    const float texture_y =
-      (ego_cy - obstacle_distance_map_grid_.origin_y) / obstacle_distance_map_grid_.resolution;
-    if (textureCoordinateInBounds(texture_x, texture_y, obstacle_distance_map_grid_)) {
+    float texture_x[kEgoSpineCircleCount];
+    float texture_y[kEgoSpineCircleCount];
+    bool all_circles_in_bounds = true;
+#pragma unroll
+    for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+      texture_x[circle] = (circle_x[circle] - obstacle_distance_map_grid_.origin_x) /
+                          obstacle_distance_map_grid_.resolution;
+      texture_y[circle] = (circle_y[circle] - obstacle_distance_map_grid_.origin_y) /
+                          obstacle_distance_map_grid_.resolution;
+      all_circles_in_bounds = all_circles_in_bounds &&
+                              textureCoordinateInBounds(
+                                texture_x[circle], texture_y[circle], obstacle_distance_map_grid_);
+    }
+    if (all_circles_in_bounds) {
       const float texture_t = static_cast<float>(t) + 0.5F;
-      return tex3D<float>(obstacle_distance_texture_, texture_x, texture_y, texture_t) - ego_radius;
+      float minimum = kDistanceMapEmptyDistance;
+#pragma unroll
+      for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+        minimum = fminf(
+          minimum, tex3D<float>(
+                     obstacle_distance_texture_, texture_x[circle], texture_y[circle], texture_t) -
+                     circle_radius);
+      }
+      return minimum;
     }
   }
 #endif
@@ -1867,17 +1864,14 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     obs_cos = std::cos(obs_yaw_[i][t]);
     obs_sin = std::sin(obs_yaw_[i][t]);
 #endif
-    const float obstacle_radius = vectorLength(obs_half_length_[i], obs_half_width_[i]);
-    const float lower_bound =
-      vectorLength(obs_x_[i][t] - ego_cx, obs_y_[i][t] - ego_cy) - ego_radius - obstacle_radius;
-    if (lower_bound >= min_distance) {
-      continue;
+#pragma unroll
+    for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+      min_distance = fminf(
+        min_distance, signedDistancePointToOrientedBox(
+                        circle_x[circle], circle_y[circle], obs_x_[i][t], obs_y_[i][t], obs_cos,
+                        obs_sin, obs_half_length_[i], obs_half_width_[i]) -
+                        circle_radius);
     }
-    min_distance = fminf(
-      min_distance,
-      signedDistanceBetweenOrientedBoxes(
-        ego_cx, ego_cy, ego_cos, ego_sin, ego_half_length, ego_half_width, obs_x_[i][t],
-        obs_y_[i][t], obs_cos, obs_sin, obs_half_length_[i], obs_half_width_[i]));
   }
   return min_distance;
 }
@@ -2016,23 +2010,41 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 #endif
   const float center_x = x + this->params_.ego_axle_to_box_center * cos_yaw;
   const float center_y = y + this->params_.ego_axle_to_box_center * sin_yaw;
+  float circle_x[kEgoSpineCircleCount];
+  float circle_y[kEgoSpineCircleCount];
+  float circle_radius = 0.0F;
+  computeEgoSpineCircles(
+    center_x, center_y, cos_yaw, sin_yaw, this->params_.ego_length * 0.5F,
+    this->params_.ego_width * 0.5F, circle_x, circle_y, circle_radius);
 #ifdef __CUDA_ARCH__
   if (road_border_texture_valid_ && static_distance_texture_ != 0) {
-    const float texture_x =
-      (center_x - static_distance_map_grid_.origin_x) / static_distance_map_grid_.resolution;
-    const float texture_y =
-      (center_y - static_distance_map_grid_.origin_y) / static_distance_map_grid_.resolution;
-    if (textureCoordinateInBounds(texture_x, texture_y, static_distance_map_grid_)) {
-      const float point_distance = tex2D<float2>(static_distance_texture_, texture_x, texture_y).x;
-      const float ego_radius =
-        vectorLength(this->params_.ego_length * 0.5F, this->params_.ego_width * 0.5F);
-      return fmaxf(0.0F, point_distance - ego_radius);
+    float texture_x[kEgoSpineCircleCount];
+    float texture_y[kEgoSpineCircleCount];
+    bool all_circles_in_bounds = true;
+#pragma unroll
+    for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+      texture_x[circle] = (circle_x[circle] - static_distance_map_grid_.origin_x) /
+                          static_distance_map_grid_.resolution;
+      texture_y[circle] = (circle_y[circle] - static_distance_map_grid_.origin_y) /
+                          static_distance_map_grid_.resolution;
+      all_circles_in_bounds =
+        all_circles_in_bounds &&
+        textureCoordinateInBounds(texture_x[circle], texture_y[circle], static_distance_map_grid_);
+    }
+    if (all_circles_in_bounds) {
+      float minimum = kDistanceMapEmptyDistance;
+#pragma unroll
+      for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+        minimum = fminf(
+          minimum, tex2D<float2>(static_distance_texture_, texture_x[circle], texture_y[circle]).x -
+                     circle_radius);
+      }
+      return fmaxf(minimum, 0.0F);
     }
   }
 #endif
-  return distanceOrientedBoxToSegments(
-    center_x, center_y, cos_yaw, sin_yaw, this->params_.ego_length * 0.5F,
-    this->params_.ego_width * 0.5F, road_border_x0_, road_border_y0_, road_border_x1_,
+  return distanceEgoSpineToSegments(
+    circle_x, circle_y, circle_radius, road_border_x0_, road_border_y0_, road_border_x1_,
     road_border_y1_, num_road_border_segments_, false);
 }
 
@@ -2051,23 +2063,41 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 #endif
   const float center_x = x + this->params_.ego_axle_to_box_center * cos_yaw;
   const float center_y = y + this->params_.ego_axle_to_box_center * sin_yaw;
+  float circle_x[kEgoSpineCircleCount];
+  float circle_y[kEgoSpineCircleCount];
+  float circle_radius = 0.0F;
+  computeEgoSpineCircles(
+    center_x, center_y, cos_yaw, sin_yaw, this->params_.ego_length * 0.5F,
+    this->params_.ego_width * 0.5F, circle_x, circle_y, circle_radius);
 #ifdef __CUDA_ARCH__
   if (drivable_area_texture_valid_ && static_distance_texture_ != 0) {
-    const float texture_x =
-      (center_x - static_distance_map_grid_.origin_x) / static_distance_map_grid_.resolution;
-    const float texture_y =
-      (center_y - static_distance_map_grid_.origin_y) / static_distance_map_grid_.resolution;
-    if (textureCoordinateInBounds(texture_x, texture_y, static_distance_map_grid_)) {
-      const float point_distance = tex2D<float2>(static_distance_texture_, texture_x, texture_y).y;
-      const float ego_radius =
-        vectorLength(this->params_.ego_length * 0.5F, this->params_.ego_width * 0.5F);
-      return point_distance - ego_radius;
+    float texture_x[kEgoSpineCircleCount];
+    float texture_y[kEgoSpineCircleCount];
+    bool all_circles_in_bounds = true;
+#pragma unroll
+    for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+      texture_x[circle] = (circle_x[circle] - static_distance_map_grid_.origin_x) /
+                          static_distance_map_grid_.resolution;
+      texture_y[circle] = (circle_y[circle] - static_distance_map_grid_.origin_y) /
+                          static_distance_map_grid_.resolution;
+      all_circles_in_bounds =
+        all_circles_in_bounds &&
+        textureCoordinateInBounds(texture_x[circle], texture_y[circle], static_distance_map_grid_);
+    }
+    if (all_circles_in_bounds) {
+      float minimum = kDistanceMapEmptyDistance;
+#pragma unroll
+      for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+        minimum = fminf(
+          minimum, tex2D<float2>(static_distance_texture_, texture_x[circle], texture_y[circle]).y -
+                     circle_radius);
+      }
+      return minimum;
     }
   }
 #endif
-  return distanceOrientedBoxToSegments(
-    center_x, center_y, cos_yaw, sin_yaw, this->params_.ego_length * 0.5F,
-    this->params_.ego_width * 0.5F, drivable_area_x0_, drivable_area_y0_, drivable_area_x1_,
+  return distanceEgoSpineToSegments(
+    circle_x, circle_y, circle_radius, drivable_area_x0_, drivable_area_y0_, drivable_area_x1_,
     drivable_area_y1_, num_drivable_area_segments_, true);
 }
 
