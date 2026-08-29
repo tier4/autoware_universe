@@ -24,6 +24,7 @@ struct DistanceMapTextureGrid
 };
 
 class DistanceMapTextureVisualizer;
+struct DistanceMapTextureTestAccess;
 
 __host__ __device__ inline float computeSmoothBarrierCost(
   const float distance, const float safe_margin, const float precomputed_weight)
@@ -367,6 +368,8 @@ public:
   bool obstacle_texture_has_obstacles_ = false;
 
 private:
+  friend struct DistanceMapTextureTestAccess;
+
   void dataToDevice();
   __host__ bool updateDistanceMapGrid(
     DistanceMapTextureGrid & grid, int width, int height, float resolution);
