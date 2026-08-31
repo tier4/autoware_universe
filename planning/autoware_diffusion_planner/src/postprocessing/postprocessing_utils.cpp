@@ -322,6 +322,44 @@ Trajectory create_ego_trajectory(
     stopping_threshold);
 }
 
+Trajectory create_ego_pose_trajectory(
+  const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
+  const rclcpp::Time & stamp, const int64_t batch_index)
+{
+  const int64_t ego_index = 0;
+
+  if (batch_index < 0 || batch_index >= static_cast<int64_t>(agent_poses.size())) {
+    throw std::out_of_range(
+      "Invalid batch_index: " + std::to_string(batch_index) +
+      ", batch_size=" + std::to_string(agent_poses.size()));
+  }
+
+  const auto & poses = agent_poses[batch_index][ego_index];
+  Trajectory trajectory;
+  trajectory.header.stamp = stamp;
+  trajectory.header.frame_id = "map";
+  constexpr double dt = 0.1;
+
+  for (size_t i = 0; i < poses.size(); ++i) {
+    const double curr_time = dt * static_cast<double>(i + 1);
+    TrajectoryPoint p;
+    p.time_from_start.sec = static_cast<int>(curr_time);
+    p.time_from_start.nanosec = static_cast<uint32_t>((curr_time - p.time_from_start.sec) * 1e9);
+    p.pose.position.x = poses[i](0, 3);
+    p.pose.position.y = poses[i](1, 3);
+    p.pose.position.z = poses[i](2, 3);
+    const Eigen::Matrix3d rotation_matrix = poses[i].block<3, 3>(0, 0);
+    const Eigen::Quaterniond quaternion(rotation_matrix);
+    p.pose.orientation.x = quaternion.x();
+    p.pose.orientation.y = quaternion.y();
+    p.pose.orientation.z = quaternion.z();
+    p.pose.orientation.w = quaternion.w();
+    trajectory.points.push_back(p);
+  }
+
+  return trajectory;
+}
+
 int64_t count_valid_elements(
   const std::vector<float> & data, int64_t len, int64_t dim2, int64_t dim3, int64_t batch_idx)
 {

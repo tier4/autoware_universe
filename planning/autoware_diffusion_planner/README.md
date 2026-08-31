@@ -18,6 +18,24 @@ The node publishes raw diffusion trajectories. The downstream `autoware_trajecto
 
 ---
 
+## Trajectory optimization
+
+The raw model output is a noisy, pose-only 80-point sequence (x, y, cos(yaw), sin(yaw) at t = 0.1 .. 8.0 s) that does not necessarily start at base_link. Finite-difference velocity smoothing is used only when `trajectory_optimization.enable` is false or the solver fails. When enable is true, an [acados](https://docs.acados.org/)-based OCP refines the ego trajectory before publishing:
+
+- **Model**: kinematic bicycle with steering-angle state — states (x, y, yaw, v, delta), inputs (acceleration, steering rate)
+- **Horizon**: N = 80, dt = 0.1 s (aligned 1:1 with the model output)
+- **Cost**: tracks the raw positions (and weakly heading), with longitudinal/lateral weights split along the reference heading. Acceleration and steering rate are regularized. Velocity and steering have no tracking reference.
+- **Constraints**: initial state fixed to the current ego state (base_link pose, odometry velocity, measured steering angle), velocity/steering/input box bounds, soft lateral acceleration bound
+- **Fallback**: if acados is missing at build time, or a solve fails, the previous finite-difference velocity smoothing (`velocity_smoothing_window`, `stopping_threshold`) is used
+
+The OCP is defined in `scripts/generate_solver.py` (vehicle model in `scripts/vehicle_model.py`); C code is generated at build time. Cost weights and constraint bounds are injected at node startup from ROS parameters. Building requires acados at `ACADOS_SOURCE_DIR` (default `/opt/acados`) with its Python venv; without it the package builds with optimization disabled.
+
+acados is a kinematic projector. Finite-difference velocity smoothing is used only when optimization is disabled or the solver fails.
+
+Debug topics: `~/debug/optimization/raw_trajectory`, `~/debug/optimization/solver_status`, `~/debug/optimization/solve_time_ms`.
+
+---
+
 ## How to use
 
 ### (1) Prerequisites
@@ -187,7 +205,8 @@ Parameters can be set via YAML (see `config/diffusion_planner.param.yaml`).
 | `~/input/traffic_signals` | autoware_perception_msgs/msg/TrafficLightGroupArray | Traffic light states       |
 | `~/input/vector_map`      | autoware_map_msgs/msg/LaneletMapBin                 | Lanelet2 map               |
 | `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information          |
-| `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information |
+| `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                    |
+| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (used by trajectory optimization) |
 
 ## Outputs
 
@@ -200,6 +219,9 @@ Parameters can be set via YAML (see `config/diffusion_planner.param.yaml`).
 | `~/output/debug/traffic_signal` | autoware_perception_msgs/msg/TrafficLightGroup            | First traffic light on route (ego forward) for RViz/ad_api |
 | `~/debug/lane_marker`           | visualization_msgs/msg/MarkerArray                        | Lane debug markers                                         |
 | `~/debug/route_marker`          | visualization_msgs/msg/MarkerArray                        | Route debug markers                                        |
+| `~/debug/optimization/raw_trajectory` | autoware_planning_msgs/msg/Trajectory               | Pose-only model output before acados optimization          |
+| `~/debug/optimization/solver_status` | std_msgs/msg/Int32                                  | acados solver status (0 = success)                         |
+| `~/debug/optimization/solve_time_ms` | std_msgs/msg/Float64                                | acados solve time                                          |
 
 ---
 

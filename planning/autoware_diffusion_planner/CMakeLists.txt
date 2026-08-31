@@ -8,6 +8,8 @@ find_package(onnxruntime QUIET)
 
 # Options
 option(CUDA_VERBOSE "Verbose output of CUDA modules" OFF)
+option(ENABLE_ACADOS "Enable acados trajectory optimization when available" ON)
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddAcadosSolver.cmake")
 
 # Find CUDA
 option(CUDA_AVAIL "CUDA available" OFF)
@@ -100,6 +102,15 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     )
   endif()
 
+  set(DIFFUSION_PLANNER_HAS_ACADOS FALSE)
+  if(ENABLE_ACADOS)
+    diffusion_planner_add_acados_solver(DIFFUSION_PLANNER_ACADOS_TARGET)
+    if(DIFFUSION_PLANNER_ACADOS_TARGET)
+      set(DIFFUSION_PLANNER_HAS_ACADOS TRUE)
+      list(APPEND DIFFUSION_PLANNER_SOURCES src/optimization/trajectory_optimizer.cpp)
+    endif()
+  endif()
+
   # Add your component library
   ament_auto_add_library(autoware_diffusion_planner_component SHARED
     ${DIFFUSION_PLANNER_SOURCES}
@@ -124,6 +135,15 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${CUDA_LIBRARIES}
     ${CUBLAS_LIBRARIES}
   )
+
+  if(DIFFUSION_PLANNER_HAS_ACADOS)
+    target_link_libraries(autoware_diffusion_planner_component
+      ${DIFFUSION_PLANNER_ACADOS_TARGET}
+    )
+    target_compile_definitions(autoware_diffusion_planner_component PUBLIC
+      AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
+    )
+  endif()
 
   if(onnxruntime_FOUND)
     if(TARGET onnxruntime::onnxruntime)
@@ -153,7 +173,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   )
 
   if(BUILD_TESTING)
-    ament_add_ros_isolated_gtest(test_diffusion_planner
+    set(DIFFUSION_PLANNER_TEST_SOURCES
       test/agent_test.cpp
       test/agent_history_resampler_test.cpp
       test/agent_lifecycle_test.cpp
@@ -171,6 +191,12 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       test/diffusion_planner_integration_test.cpp
       test/rtc_prefix_test.cpp
       test/planning_factor_utils_test.cpp)
+    if(DIFFUSION_PLANNER_HAS_ACADOS)
+      list(APPEND DIFFUSION_PLANNER_TEST_SOURCES test/trajectory_optimizer_test.cpp)
+    endif()
+
+    ament_add_ros_isolated_gtest(test_diffusion_planner
+      ${DIFFUSION_PLANNER_TEST_SOURCES})
 
     target_link_libraries(test_diffusion_planner autoware_diffusion_planner_component)
     ament_target_dependencies(test_diffusion_planner

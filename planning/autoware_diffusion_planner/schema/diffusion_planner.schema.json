@@ -233,6 +233,83 @@
             "max_search_segment_count"
           ]
         },
+        "trajectory_optimization": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable acados-based trajectory optimization of the raw model output. Falls back to finite-difference velocity smoothing when disabled or when the solver fails."
+            },
+            "weight_longitudinal": {
+              "type": "number",
+              "default": 0.5,
+              "description": "Position tracking weight along the reference heading (schedule/velocity-profile freedom)"
+            },
+            "weight_lateral": {
+              "type": "number",
+              "default": 0.5,
+              "description": "Position tracking weight perpendicular to the reference heading (path deviation)"
+            },
+            "weight_yaw": {
+              "type": "number",
+              "default": 0.05,
+              "description": "Tracking weight for heading"
+            },
+            "weight_acceleration": {
+              "type": "number",
+              "default": 0.1,
+              "description": "Regularization weight on the acceleration input"
+            },
+            "weight_steering_rate": {
+              "type": "number",
+              "default": 10.0,
+              "description": "Regularization weight on the steering rate input"
+            },
+            "terminal_weight_scale": {
+              "type": "number",
+              "default": 2.5,
+              "description": "Terminal state weight = scale * stage weight"
+            },
+            "min_velocity_mps": {
+              "type": "number",
+              "default": 0.0,
+              "description": "Lower velocity bound [m/s]; 0 prevents backward motion"
+            },
+            "max_velocity_mps": {
+              "type": "number",
+              "default": 30.0,
+              "description": "Upper velocity bound [m/s]"
+            },
+            "min_acceleration_mps2": {
+              "type": "number",
+              "default": -4.0,
+              "description": "Lower acceleration bound [m/s^2]"
+            },
+            "max_acceleration_mps2": {
+              "type": "number",
+              "default": 3.0,
+              "description": "Upper acceleration bound [m/s^2]"
+            },
+            "max_steering_rate_rps": {
+              "type": "number",
+              "default": 1.0,
+              "description": "Steering rate bound [rad/s]"
+            },
+            "max_lateral_acceleration_mps2": {
+              "type": "number",
+              "default": 3.0,
+              "description": "Soft lateral acceleration constraint bound [m/s^2]"
+            },
+            "max_sqp_iterations": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "description": "Maximum SQP iterations per solve"
+            }
+          },
+          "required": ["enable"]
+        },
         "guidance": {
           "type": "object",
           "properties": {
@@ -352,7 +429,10 @@
         "turn_indicator_hold_duration",
         "planning_factor",
         "debug_params",
-        "guidance"
+        "guidance",
+        "trajectory_optimization",
+        "object_motion_resampling",
+        "ego_snap_to_prev_trajectory"
       ]
     }
   },

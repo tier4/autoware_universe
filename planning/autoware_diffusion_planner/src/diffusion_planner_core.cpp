@@ -78,6 +78,12 @@ DiffusionPlannerCore::DiffusionPlannerCore(
 : params_(params), vehicle_spec_(vehicle_info)
 {
   sync_turn_indicator_managers();
+#ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
+  if (params_.trajectory_optimization.enable) {
+    trajectory_optimizer_ = std::make_unique<optimization::TrajectoryOptimizer>(
+      params_.trajectory_optimization, vehicle_info, static_cast<size_t>(params_.batch_size));
+  }
+#endif
 }
 
 void DiffusionPlannerCore::sync_turn_indicator_managers()
@@ -601,7 +607,8 @@ InferenceResult DiffusionPlannerCore::run_inference(const InputDataMap & input_d
 
 PlannerOutput DiffusionPlannerCore::create_planner_output(
   const InferenceOutput & inference_output, const FrameContext & frame_context,
-  const rclcpp::Time & timestamp, const UUID & generator_uuid)
+  const rclcpp::Time & timestamp, const UUID & generator_uuid,
+  const std::optional<double> & current_steering_angle_rad)
 {
   const auto & [raw_predictions, turn_indicator_logit] = inference_output.outputs;
   const std::vector<float> denormalized_predictions =
@@ -622,6 +629,10 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
   last_agent_poses_map_ = agent_poses;
   last_ego_to_map_transform_ = frame_context.ego_to_map_transform;
 
+#ifndef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
+  (void)current_steering_angle_rad;
+#endif
+
   const bool enable_force_stop =
     frame_context.ego_kinematic_state.twist.twist.linear.x > std::numeric_limits<double>::epsilon();
 
@@ -635,13 +646,49 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
 
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
-    auto trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
-      params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
-
-    if (params_.shift_x) {
-      for (auto & point : trajectory.points) {
-        point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
+    Trajectory trajectory;
+#ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
+    if (trajectory_optimizer_) {
+      trajectory = postprocess::create_ego_pose_trajectory(agent_poses, timestamp, i);
+      if (params_.shift_x) {
+        for (auto & point : trajectory.points) {
+          point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
+        }
+      }
+      if (i == 0) {
+        output.raw_trajectory = trajectory;
+      }
+      auto optimization_result = trajectory_optimizer_->optimize(
+        trajectory, frame_context.ego_kinematic_state, current_steering_angle_rad,
+        static_cast<size_t>(i));
+      if (i == 0) {
+        output.optimization_debug.attempted = true;
+        output.optimization_debug.optimized = optimization_result.optimized;
+        output.optimization_debug.solver_status = optimization_result.solver_status;
+        output.optimization_debug.solve_time_ms = optimization_result.solve_time_ms;
+      }
+      if (optimization_result.optimized) {
+        trajectory = std::move(optimization_result.trajectory);
+      } else {
+        trajectory = postprocess::create_ego_trajectory(
+          agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
+          params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
+        if (params_.shift_x) {
+          for (auto & point : trajectory.points) {
+            point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
+          }
+        }
+      }
+    } else
+#endif
+    {
+      trajectory = postprocess::create_ego_trajectory(
+        agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
+        params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
+      if (params_.shift_x) {
+        for (auto & point : trajectory.points) {
+          point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
+        }
       }
     }
 
