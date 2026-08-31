@@ -275,5 +275,5 @@ trajectory_mppi_optimizer:
   debug_trajectory_log_directory:
     type: string
     default_value: ""
-    description: Directory for offline trajectory logs
+    description: Directory for offline trajectory logs (empty = current working directory)
     read_only: false
