@@ -114,6 +114,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   endif()
 
   cuda_add_library(first_order_dubins_mppi SHARED
+    src/first_order_dubins/distance_map_texture_visualizer.cu
     src/first_order_dubins/first_order_dubins_mppi_interface.cu
   )
   find_package(autoware_trajectory_modifier REQUIRED)
