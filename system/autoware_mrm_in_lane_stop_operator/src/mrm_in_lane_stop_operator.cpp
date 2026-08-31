@@ -14,6 +14,8 @@
 
 #include "mrm_in_lane_stop_operator.hpp"
 
+#include <autoware/qos_utils/qos_compatibility.hpp>
+
 #include <cmath>
 #include <chrono>
 
@@ -42,7 +44,7 @@ MrmInLaneStopOperator::MrmInLaneStopOperator(const rclcpp::NodeOptions & node_op
   relay_service_name_ = "~/input/relay_service";
   relay_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   relay_client_ = create_client<ChangeTopicRelayControl>(
-    relay_service_name_, rmw_qos_profile_services_default, relay_group_);
+    relay_service_name_, AUTOWARE_DEFAULT_SERVICES_QOS_PROFILE(), relay_group_);
 
   // publisher
   pub_trigger_ =
