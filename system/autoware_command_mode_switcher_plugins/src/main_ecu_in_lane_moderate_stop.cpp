@@ -14,6 +14,8 @@
 
 #include "main_ecu_in_lane_moderate_stop.hpp"
 
+#include <autoware/qos_utils/qos_compatibility.hpp>
+
 namespace autoware::command_mode_switcher
 {
 
@@ -27,14 +29,14 @@ void MainEcuInLaneModerateStopSwitcher::initialize()
   client_relay_trajectory_group_ =
     node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   client_relay_trajectory_ = node_->create_client<tier4_system_msgs::srv::ChangeTopicRelayControl>(
-    "/system/topic_relay_controller_trajectory/operate", rmw_qos_profile_services_default,
+    "/system/topic_relay_controller_trajectory/operate", AUTOWARE_DEFAULT_SERVICES_QOS_PROFILE(),
     client_relay_trajectory_group_);
   client_relay_pose_with_covariance_group_ =
     node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   client_relay_pose_with_covariance_ =
     node_->create_client<tier4_system_msgs::srv::ChangeTopicRelayControl>(
       "/system/topic_relay_controller_pose_with_covariance/operate",
-      rmw_qos_profile_services_default, client_relay_pose_with_covariance_group_);
+      AUTOWARE_DEFAULT_SERVICES_QOS_PROFILE(), client_relay_pose_with_covariance_group_);
 
   params_.target_acceleration =
     node_->declare_parameter<double>(expand_param("target_acceleration"));
