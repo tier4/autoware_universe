@@ -270,7 +270,7 @@ void ObstacleStop::update_collision_points_buffer(
   std::vector<CollisionPoint> & collision_points_buffer, const TrajectoryPoints & traj_points,
   const std::optional<CollisionPoint> & collision_point)
 {
-  constexpr double close_distance_threshold = 1.0;
+  constexpr double close_distance_threshold = 0.5;
 
   const auto now = get_clock()->now();
 
@@ -279,25 +279,27 @@ void ObstacleStop::update_collision_points_buffer(
     std::remove_if(
       collision_points_buffer.begin(), collision_points_buffer.end(),
       [&](CollisionPoint & cp) {
-        if (cp.is_active && (now - cp.start_time).seconds() > params_.off_time_buffer) return true;
+        if (cp.is_active && (now - cp.last_seen).seconds() > params_.off_time_buffer) return true;
 
         if (!collision_point && !cp.is_active) return true;
+
+        const auto distance_th =
+          cp.obstacle_speed * (now - cp.last_seen).seconds() + close_distance_threshold;
 
         cp.arc_length = motion_utils::calcSignedArcLength(traj_points, 0LU, cp.point);
         const auto distance_diff = collision_point ? collision_point->arc_length - cp.arc_length
                                                    : std::numeric_limits<double>::max();
-        const bool is_close = abs(distance_diff) < close_distance_threshold;
+        const bool is_close = std::abs(distance_diff) < distance_th;
 
         if (!cp.is_active && !is_close) return true;
 
-        if (!cp.is_active && (now - cp.start_time).seconds() > params_.on_time_buffer) {
+        if (!cp.is_active && (now - cp.first_seen).seconds() > params_.on_time_buffer) {
           cp.is_active = true;
-          cp.start_time = now;
         }
 
         if (
           is_close &&
-          (!closest_distance_diff || abs(distance_diff) < abs(*closest_distance_diff))) {
+          (!closest_distance_diff || std::abs(distance_diff) < std::abs(*closest_distance_diff))) {
           closest_distance_diff = distance_diff;
         }
 
@@ -309,24 +311,24 @@ void ObstacleStop::update_collision_points_buffer(
 
   constexpr double eps = 1e-3;
   if (collision_points_buffer.empty() || !closest_distance_diff) {
-    collision_points_buffer.emplace_back(*collision_point, now, params_.on_time_buffer < eps);
+    collision_points_buffer.emplace_back(*collision_point, now, now, params_.on_time_buffer < eps);
     return;
   }
 
   auto nearest_collision_point_it = std::find_if(
     collision_points_buffer.begin(), collision_points_buffer.end(), [&](const CollisionPoint & cp) {
-      return abs(cp.arc_length - collision_point->arc_length) < abs(*closest_distance_diff) + eps;
+      return std::abs(cp.arc_length - collision_point->arc_length) <
+             std::abs(*closest_distance_diff) + eps;
     });
 
   if (nearest_collision_point_it == collision_points_buffer.end()) return;
 
-  if (*closest_distance_diff < 0.0) {
+  nearest_collision_point_it->last_seen = now;
+  nearest_collision_point_it->obstacle_speed = collision_point->obstacle_speed;
+  nearest_collision_point_it->is_dynamic = collision_point->is_dynamic;
+  if (*closest_distance_diff < 0.0 || collision_point->is_dynamic) {
     nearest_collision_point_it->point = collision_point->point;
     nearest_collision_point_it->arc_length = collision_point->arc_length;
-  }
-
-  if (nearest_collision_point_it->is_active) {
-    nearest_collision_point_it->start_time = now;
   }
 }
 
@@ -338,7 +340,7 @@ std::optional<CollisionPoint> ObstacleStop::get_nearest_collision_point(
 
   auto minimum_arc_length = std::numeric_limits<double>::max();
   for (const auto & cp : collision_points_buffer) {
-    if (cp.is_active > minimum_arc_length || !cp.is_active) continue;
+    if (cp.arc_length > minimum_arc_length || !cp.is_active) continue;
     nearest_collision_point = cp;
     minimum_arc_length = cp.arc_length;
   }
