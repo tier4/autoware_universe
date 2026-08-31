@@ -32,6 +32,7 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
 {
   const FirstOrderDubinsMppiCostParams defaults;
   node.declare_parameter(param_name(prefix, "lambda"), defaults.lambda);
+  node.declare_parameter(param_name(prefix, "max_iter"), defaults.max_iter);
   node.declare_parameter(param_name(prefix, "speed_coeff"), defaults.speed_coeff);
   node.declare_parameter(param_name(prefix, "track_coeff"), defaults.track_coeff);
   node.declare_parameter(param_name(prefix, "track_terminal_scale"), defaults.track_terminal_scale);
@@ -55,6 +56,7 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
   node.declare_parameter(param_name(prefix, "overlimit_coeff"), defaults.overlimit_coeff);
   node.declare_parameter(param_name(prefix, "accel_cmd_std_dev"), defaults.accel_cmd_std_dev);
   node.declare_parameter(param_name(prefix, "steer_cmd_std_dev"), defaults.steer_cmd_std_dev);
+  node.declare_parameter(param_name(prefix, "std_dev_decay"), defaults.std_dev_decay);
   node.declare_parameter(
     param_name(prefix, "accel_cmd_noise_exponent"), defaults.accel_cmd_noise_exponent);
   node.declare_parameter(
@@ -87,6 +89,7 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
 {
   FirstOrderDubinsMppiCostParams params;
   params.lambda = static_cast<float>(node.get_parameter(param_name(prefix, "lambda")).as_double());
+  params.max_iter = static_cast<int>(node.get_parameter(param_name(prefix, "max_iter")).as_int());
   params.speed_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "speed_coeff")).as_double());
   params.track_coeff =
@@ -125,6 +128,8 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     static_cast<float>(node.get_parameter(param_name(prefix, "accel_cmd_std_dev")).as_double());
   params.steer_cmd_std_dev =
     static_cast<float>(node.get_parameter(param_name(prefix, "steer_cmd_std_dev")).as_double());
+  params.std_dev_decay =
+    static_cast<float>(node.get_parameter(param_name(prefix, "std_dev_decay")).as_double());
   params.accel_cmd_noise_exponent = static_cast<float>(
     node.get_parameter(param_name(prefix, "accel_cmd_noise_exponent")).as_double());
   params.steer_cmd_noise_exponent = static_cast<float>(
