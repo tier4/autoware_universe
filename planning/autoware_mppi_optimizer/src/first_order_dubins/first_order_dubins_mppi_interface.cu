@@ -60,8 +60,7 @@ namespace
 constexpr int kMppiHorizon = detail::kMppiHorizon;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = detail::kMppiDt;
-constexpr size_t kMaxIter = 5;
-constexpr int kNumRollouts = 8 * 1024;
+constexpr int kNumRollouts = 16 * 1024;
 constexpr int kMaxVizRollouts = 256;
 constexpr int kMaxWorstVizRollouts = 128;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
@@ -851,6 +850,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       user_cost_params_.accel_cmd_std_dev;
     sp.std_dev[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] =
       user_cost_params_.steer_cmd_std_dev;
+    sp.std_dev_decay = user_cost_params_.std_dev_decay;
     sp.sum_strides = std::max(32, (kNumRollouts + 1023) / 1024);
 #ifdef USE_COLOURED_NOISE
     sp.exponents[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD)] =
@@ -865,7 +865,7 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     const float lambda = user_cost_params_.lambda;
     controller = std::make_unique<MppiWithHistoryAccess>(
-      &model, &cost, &feedback, &sampler, kDt, kMaxIter, lambda, 0.0F, kMppiHorizon, u_nom);
+      &model, &cost, &feedback, &sampler, kDt, user_cost_params_.max_iter, lambda, 0.0F, kMppiHorizon, u_nom);
     auto cp = controller->getParams();
     cp.lambda_ = lambda;
     cp.dynamics_rollout_dim_ = dim3(32, 2, 1);
@@ -883,17 +883,18 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     RCLCPP_INFO(
       mppiLogger(),
-      "MPPI GPU initialized (horizon=%d, rollouts=%d, dt=%.2f, lambda=%.1f, "
-      "wheel_base=%.2f, max_steer=%.2f, accel_std=%.3f, steer_std=%.3f, acc_tau=%.2f, "
-      "steer_tau=%.2f, "
+      "MPPI GPU initialized (horizon=%d, rollouts=%d, iterations=%d, dt=%.2f, lambda=%.1f, "
+      "wheel_base=%.2f, max_steer=%.2f, accel_std=%.3f, steer_std=%.3f, "
+      "std_decay=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "acc_delay=%.3f (%d steps), steer_delay=%.3f (%d steps), "
       "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
       "boundary_threshold=%.2f, obs_margin=%.2f, road_border_margin=%.2f, "
       "lateral_barrier=%.2f@%.2f, obs_barrier=%.2f@%.2f, road_barrier=%.2f@%.2f, "
       "drive_barrier=%.2f@%.2f, crash_contact_penalty=%.2f)",
-      kMppiHorizon, kNumRollouts, kDt, user_cost_params_.lambda, vehicle_params.wheel_base,
-      vehicle_params.max_steer_angle, user_cost_params_.accel_cmd_std_dev,
-      user_cost_params_.steer_cmd_std_dev, vehicle_params.acc_time_constant,
+      kMppiHorizon, kNumRollouts, user_cost_params_.max_iter, kDt, user_cost_params_.lambda,
+      vehicle_params.wheel_base, vehicle_params.max_steer_angle,
+      user_cost_params_.accel_cmd_std_dev, user_cost_params_.steer_cmd_std_dev,
+      user_cost_params_.std_dev_decay, vehicle_params.acc_time_constant,
       vehicle_params.steer_time_constant, vehicle_params.acc_time_delay, acc_delay_steps,
       vehicle_params.steer_time_delay, steer_delay_steps, vehicle_params.steer_rate_lim,
       vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,
@@ -1678,9 +1679,12 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
   }
   if (
     !std::isfinite(params.overlimit_coeff) || params.overlimit_coeff < 0.0F ||
-    !std::isfinite(params.crash_contact_penalty) || params.crash_contact_penalty < 0.0F) {
+    !std::isfinite(params.crash_contact_penalty) || params.crash_contact_penalty < 0.0F ||
+    !std::isfinite(params.std_dev_decay) || params.std_dev_decay < 0.0F ||
+    params.std_dev_decay > 1.0F || params.max_iter <= 0) {
     throw std::invalid_argument(
-      "MPPI overlimit_coeff and crash_contact_penalty must be finite and non-negative");
+      "MPPI cost parameters must have finite non-negative penalties, std_dev_decay in [0, 1], "
+      "and max_iter greater than zero");
   }
   if (impl_->initialized) {
     impl_->teardown();

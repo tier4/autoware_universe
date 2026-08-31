@@ -23,6 +23,8 @@ struct FirstOrderDubinsMppiCostParams
 {
   /** Softmax temperature for trajectory weighting (higher = softer weighting). */
   float lambda{1500.0F};
+  /** Number of optimization iterations performed for each MPPI update. */
+  int max_iter{20};
   float speed_coeff{500.0F};
   float track_coeff{1000.0F};
   float track_terminal_scale{10.0F};
@@ -49,6 +51,8 @@ struct FirstOrderDubinsMppiCostParams
   float accel_cmd_std_dev{0.35F};
   /** Gaussian sampling std-dev on steer command [rad] around u_nom. */
   float steer_cmd_std_dev{0.024F};
+  /** Per-iteration multiplier applied to the sampling standard deviation. */
+  float std_dev_decay{0.84F};
   /** Power-law PSD exponent for acceleration-command sampling noise. */
   float accel_cmd_noise_exponent{1.0F};
   /** Power-law PSD exponent for steering-command sampling noise. */
