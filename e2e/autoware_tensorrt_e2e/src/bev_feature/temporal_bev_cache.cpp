@@ -20,9 +20,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace autoware::tensorrt_e2e
 {
@@ -55,10 +57,39 @@ TemporalBevCache::TemporalBevCache(
     autoware::cuda_utils::make_unique<float[]>(static_cast<size_t>(config_.frames) * frame_elements_);
 }
 
-bool TemporalBevCache::is_consecutive(
-  const double delta_seconds, const double interval_seconds, const double tolerance_seconds)
+std::vector<int64_t> TemporalBevCache::select_history_slots(
+  const std::vector<double> & stamps_newest_first, const int64_t frames,
+  const double interval_seconds, const double tolerance_seconds)
 {
-  return std::abs(delta_seconds - interval_seconds) <= tolerance_seconds;
+  std::vector<int64_t> selection(static_cast<size_t>(frames), -1);
+  if (stamps_newest_first.empty()) {
+    return selection;
+  }
+  const double newest = stamps_newest_first.front();
+  for (int64_t step = 0; step < frames; ++step) {
+    const double target = newest - static_cast<double>(step) * interval_seconds;
+    double best_error = std::numeric_limits<double>::infinity();
+    for (size_t index = 0; index < stamps_newest_first.size(); ++index) {
+      const double error = std::abs(stamps_newest_first[index] - target);
+      if (error <= tolerance_seconds && error < best_error) {
+        best_error = error;
+        selection[static_cast<size_t>(step)] = static_cast<int64_t>(index);
+      }
+    }
+  }
+  return selection;
+}
+
+std::vector<int64_t> TemporalBevCache::current_selection() const
+{
+  std::vector<double> stamps;
+  stamps.reserve(slots_.size());
+  const rclcpp::Time * newest = slots_.empty() ? nullptr : &slots_.front().stamp;
+  for (const Slot & slot : slots_) {
+    stamps.push_back((slot.stamp - *newest).seconds());
+  }
+  return select_history_slots(
+    stamps, config_.frames, config_.interval_seconds, config_.interval_tolerance_seconds);
 }
 
 TemporalBevCache::InsertResult TemporalBevCache::insert(
@@ -68,20 +99,17 @@ TemporalBevCache::InsertResult TemporalBevCache::insert(
   InsertResult result = InsertResult::kConsecutive;
   if (slots_.empty()) {
     result = InsertResult::kFirst;
-  } else {
-    const double delta_seconds = (stamp - slots_.front().stamp).seconds();
-    if (!is_consecutive(
-          delta_seconds, config_.interval_seconds, config_.interval_tolerance_seconds)) {
-      reset();
-      result = InsertResult::kGapReset;
-    }
+  } else if ((stamp - slots_.front().stamp).seconds() <= 0.0) {
+    // A time jump (bag loop, clock reset) invalidates every cached map's age.
+    reset();
+    result = InsertResult::kGapReset;
   }
 
   Slot slot;
-  if (static_cast<int64_t>(slots_.size()) >= config_.frames) {
-    // Recycle the oldest device buffer instead of reallocating ~66 MB per frame.
-    slot = std::move(slots_.back());
-    slots_.pop_back();
+  if (!free_slots_.empty()) {
+    // Recycle an evicted device buffer instead of reallocating ~66 MB per frame.
+    slot = std::move(free_slots_.back());
+    free_slots_.pop_back();
   } else {
     slot.feature = autoware::cuda_utils::make_unique<float[]>(frame_elements_);
   }
@@ -92,15 +120,29 @@ TemporalBevCache::InsertResult TemporalBevCache::insert(
     stream));
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
   slots_.push_front(std::move(slot));
+
+  // Everything older than the deepest history target (plus tolerance) can never be selected.
+  const double window_seconds =
+    static_cast<double>(config_.frames - 1) * config_.interval_seconds +
+    config_.interval_tolerance_seconds;
+  while ((slots_.front().stamp - slots_.back().stamp).seconds() > window_seconds) {
+    free_slots_.push_back(std::move(slots_.back()));
+    slots_.pop_back();
+  }
   return result;
 }
 
 bool TemporalBevCache::ready() const
 {
-  if (config_.duplicate_current_on_warmup) {
-    return !slots_.empty();
+  if (slots_.empty()) {
+    return false;
   }
-  return static_cast<int64_t>(slots_.size()) >= config_.frames;
+  if (config_.duplicate_current_on_warmup) {
+    return true;
+  }
+  const auto selection = current_selection();
+  return std::none_of(
+    selection.begin(), selection.end(), [](const int64_t index) { return index < 0; });
 }
 
 const float * TemporalBevCache::build_history(cudaStream_t stream)
@@ -109,11 +151,15 @@ const float * TemporalBevCache::build_history(cudaStream_t stream)
     throw std::runtime_error("TemporalBevCache::build_history called before the cache is ready");
   }
 
+  const auto selection = current_selection();
   const Slot & newest = slots_.front();
   for (int64_t frame = 0; frame < config_.frames; ++frame) {
     // During duplicate-current warmup, missing history falls back to the oldest cached map.
-    const int64_t slot_index = std::min(frame, static_cast<int64_t>(slots_.size()) - 1);
-    const Slot & slot = slots_[slot_index];
+    int64_t slot_index = selection[static_cast<size_t>(frame)];
+    if (slot_index < 0) {
+      slot_index = static_cast<int64_t>(slots_.size()) - 1;
+    }
+    const Slot & slot = slots_[static_cast<size_t>(slot_index)];
     float * destination = history_.get() + static_cast<size_t>(frame) * frame_elements_;
 
     if (frame == 0 || slot.pose == newest.pose) {
@@ -139,7 +185,10 @@ const float * TemporalBevCache::build_history(cudaStream_t stream)
 
 void TemporalBevCache::reset()
 {
-  slots_.clear();
+  while (!slots_.empty()) {
+    free_slots_.push_back(std::move(slots_.back()));
+    slots_.pop_back();
+  }
 }
 
 }  // namespace autoware::tensorrt_e2e

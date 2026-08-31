@@ -16,24 +16,63 @@
 
 #include <gtest/gtest.h>
 
+#include <vector>
+
 namespace autoware::tensorrt_e2e
 {
 
-// The interval contract check is pure logic (no CUDA); the GPU paths are covered by the
-// on-vehicle integration, not by unit tests.
-TEST(TemporalBevCacheTest, IntervalContract)
+// The history selection is pure logic (no CUDA); the GPU paths are covered by the on-vehicle
+// integration, not by unit tests. Stamps are newest-first, relative seconds.
+
+TEST(TemporalBevCacheTest, SelectsSensorRateHistoryWhenIntervalMatchesSensorPeriod)
 {
-  constexpr double interval = 0.1;
-  constexpr double tolerance = 0.02;
+  // The original ResWorld contract: 0.1 s history on a 10 Hz LiDAR.
+  const std::vector<double> stamps{0.0, -0.1, -0.2};
+  const auto selection = TemporalBevCache::select_history_slots(stamps, 3, 0.1, 0.02);
+  EXPECT_EQ(selection, (std::vector<int64_t>{0, 1, 2}));
+}
 
-  EXPECT_TRUE(TemporalBevCache::is_consecutive(0.1, interval, tolerance));
-  EXPECT_TRUE(TemporalBevCache::is_consecutive(0.081, interval, tolerance));
-  EXPECT_TRUE(TemporalBevCache::is_consecutive(0.119, interval, tolerance));
+TEST(TemporalBevCacheTest, SelectsStridedHistoryWhenIntervalExceedsSensorPeriod)
+{
+  // A 0.2 s contract on a 10 Hz LiDAR must pick every second map — the sensor keeps its own
+  // cadence, so intermediate maps sit in the window and must be skipped, not rejected.
+  const std::vector<double> stamps{0.0, -0.1, -0.2, -0.3, -0.4};
+  const auto selection = TemporalBevCache::select_history_slots(stamps, 3, 0.2, 0.02);
+  EXPECT_EQ(selection, (std::vector<int64_t>{0, 2, 4}));
+}
 
-  // A dropped frame (0.2 s gap) or a burst (0.05 s) violates the ResWorld temporal contract.
-  EXPECT_FALSE(TemporalBevCache::is_consecutive(0.2, interval, tolerance));
-  EXPECT_FALSE(TemporalBevCache::is_consecutive(0.05, interval, tolerance));
-  EXPECT_FALSE(TemporalBevCache::is_consecutive(0.0, interval, tolerance));
+TEST(TemporalBevCacheTest, PicksTheClosestStampWithinTolerance)
+{
+  const std::vector<double> stamps{0.0, -0.115, -0.19};
+  const auto selection = TemporalBevCache::select_history_slots(stamps, 3, 0.1, 0.02);
+  // -0.115 is 0.015 off the -0.1 target (inside 0.02); -0.19 is 0.01 off the -0.2 target.
+  EXPECT_EQ(selection, (std::vector<int64_t>{0, 1, 2}));
+}
+
+TEST(TemporalBevCacheTest, ReportsHolesInsteadOfMisassigningNeighbours)
+{
+  // The t-0.2 map was dropped: both neighbours are 0.1 s off target, far outside tolerance.
+  // The step must come back unfilled (-1) so ready() waits for the window to refill.
+  const std::vector<double> stamps{0.0, -0.1, -0.3, -0.4};
+  const auto selection = TemporalBevCache::select_history_slots(stamps, 3, 0.2, 0.02);
+  EXPECT_EQ(selection[0], 0);
+  EXPECT_EQ(selection[1], -1);
+  EXPECT_EQ(selection[2], 3);
+}
+
+TEST(TemporalBevCacheTest, StepZeroAlwaysSelectsTheNewestMap)
+{
+  const std::vector<double> stamps{0.0};
+  const auto selection = TemporalBevCache::select_history_slots(stamps, 3, 0.1, 0.02);
+  EXPECT_EQ(selection[0], 0);
+  EXPECT_EQ(selection[1], -1);
+  EXPECT_EQ(selection[2], -1);
+}
+
+TEST(TemporalBevCacheTest, EmptyStampsSelectNothing)
+{
+  const auto selection = TemporalBevCache::select_history_slots({}, 3, 0.1, 0.02);
+  EXPECT_EQ(selection, (std::vector<int64_t>{-1, -1, -1}));
 }
 
 }  // namespace autoware::tensorrt_e2e

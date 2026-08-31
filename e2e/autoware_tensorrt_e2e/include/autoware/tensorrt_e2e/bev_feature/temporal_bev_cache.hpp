@@ -23,6 +23,7 @@
 #include <array>
 #include <cstdint>
 #include <deque>
+#include <vector>
 
 namespace autoware::tensorrt_e2e
 {
@@ -35,13 +36,20 @@ namespace autoware::tensorrt_e2e
  * (`temporal_cache` in the deployment contract JSON; reference:
  * `deployment/temporal.py::TemporalBEVFeatureCache`):
  *
- * - Holds the last `frames` feature maps with their source ego poses.
- * - `build_history()` assembles `[frames, C, H, W]` ordered current-to-past: slot 0 is the raw
- *   newest map (already in its own ego frame), older slots are SE(2)-warped from their source
- *   ego frame into the newest map's ego frame.
- * - Consecutive frames must be `interval_seconds` apart (within tolerance); a violated gap
- *   resets the cache (re-warmup), which `insert()` reports to the caller.
- * - Warmup either waits for `frames` real maps or duplicates the newest one
+ * - Accepts one feature map per sensor frame at the sensor's own cadence and keeps every map
+ *   inside the history window `(frames - 1) * interval_seconds + tolerance`. The contract
+ *   interval is a property of the *history*, not of the sensor: a 0.2 s contract on a 10 Hz
+ *   LiDAR stores five maps and selects every second one.
+ * - `build_history()` assembles `[frames, C, H, W]` ordered current-to-past by selecting, for
+ *   each step k, the cached map closest to `newest - k * interval_seconds` (within tolerance).
+ *   Slot 0 is the raw newest map (already in its own ego frame); older slots are SE(2)-warped
+ *   from their source ego frame into the newest map's ego frame. This matches training, which
+ *   anchors at every sensor frame while sampling history at the contract interval
+ *   (`center_stride: 1` with `lidar_history_interval_seconds` >= the sensor period).
+ * - A dropped sensor frame leaves a hole: `ready()` turns false until the window refills
+ *   (self-healing), instead of discarding the whole cache. Only a non-monotonic timestamp
+ *   (time jump, bag loop) resets the cache, which `insert()` reports to the caller.
+ * - Warmup either waits for a complete history or duplicates the newest map
  *   (`duplicate_current_on_warmup`, the contract's `duplicate_current_until_ready`).
  */
 class TemporalBevCache
@@ -67,10 +75,10 @@ public:
   /**
    * @brief Insert the newest feature map (device `[C, H, W]`) with its source ego pose.
    *
-   * The pose is `[x, y, cos(yaw), sin(yaw)]` in the map frame. When the stamp gap to the
-   * previous frame violates the interval contract, the cache resets first and reports
-   * `kGapReset`. Synchronizes `stream` before returning (the source buffer may be reused by
-   * the caller afterwards).
+   * The pose is `[x, y, cos(yaw), sin(yaw)]` in the map frame. A stamp at or before the newest
+   * cached stamp resets the cache first and reports `kGapReset`. Maps that fall out of the
+   * history window are evicted (their device buffers are recycled). Synchronizes `stream`
+   * before returning (the source buffer may be reused by the caller afterwards).
    */
   InsertResult insert(
     const float * d_feature, const std::array<float, 4> & pose, const rclcpp::Time & stamp,
@@ -90,9 +98,16 @@ public:
 
   void reset();
 
-  /// Whether a stamp gap satisfies the interval contract. Exposed for unit testing.
-  static bool is_consecutive(
-    const double delta_seconds, const double interval_seconds, const double tolerance_seconds);
+  /**
+   * @brief For each history step k, the index of the stamp closest to
+   * `stamps[0] - k * interval_seconds` within tolerance, or -1 when no stamp qualifies.
+   *
+   * `stamps_newest_first` is ordered newest first; step 0 always selects index 0. Pure logic,
+   * exposed for unit testing.
+   */
+  static std::vector<int64_t> select_history_slots(
+    const std::vector<double> & stamps_newest_first, int64_t frames, double interval_seconds,
+    double tolerance_seconds);
 
 private:
   struct Slot
@@ -102,13 +117,16 @@ private:
     rclcpp::Time stamp;
   };
 
+  std::vector<int64_t> current_selection() const;
+
   Config config_;
   int64_t channels_;
   int64_t height_;
   int64_t width_;
   size_t frame_elements_;
 
-  std::deque<Slot> slots_;  //!< Front = newest.
+  std::deque<Slot> slots_;        //!< Front = newest.
+  std::vector<Slot> free_slots_;  //!< Evicted slots kept for device-buffer reuse.
   autoware::cuda_utils::CudaUniquePtr<float[]> history_;
 };
 

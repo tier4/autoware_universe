@@ -23,7 +23,10 @@
     bev_feature:
       history_tensor: "bev_feature_history"
       # Single source of truth for the temporal contract (frames, interval, half extent,
-      # feature tensor name); ROS parameters below are the fallback.
+      # feature tensor name); ROS parameters below are the fallback. The interval is a
+      # property of the assembled history, independent of the LiDAR rate: the cache stores
+      # maps at the sensor cadence and selects [t, t-interval, t-2*interval] by timestamp
+      # (e.g. a 0.2 s contract on a 10 Hz LiDAR keeps 5 maps and picks every second one).
       contract_path: $(var data_path)/resworld_deployment_contract.json
       frames: 3
       interval_seconds: 0.1

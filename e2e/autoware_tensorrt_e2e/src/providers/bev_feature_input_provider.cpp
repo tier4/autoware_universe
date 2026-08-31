@@ -230,16 +230,16 @@ bool BevFeatureInputProvider::collect(
     if (insert_result == TemporalBevCache::InsertResult::kGapReset) {
       RCLCPP_WARN_THROTTLE(
         node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS,
-        "LiDAR frame gap violated the %.3fs temporal contract; BEV feature cache reset",
-        cache_config_.interval_seconds);
+        "LiDAR timestamps went backwards (time jump or bag loop); BEV feature cache reset");
     }
     last_extracted_stamp_ = cloud_stamp;
     history_ptr_ = nullptr;
   }
 
   if (!cache_->ready()) {
-    error = "BEV feature cache warming up (" + std::to_string(cache_->cached_frames()) + "/" +
-            std::to_string(cache_->frames()) + " frames)";
+    error = "BEV feature history incomplete (" + std::to_string(cache_->cached_frames()) +
+            " maps cached, need " + std::to_string(cache_->frames()) +
+            " at the contract interval)";
     return false;
   }
 
