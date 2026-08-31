@@ -7,24 +7,12 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
 #include <mppi/cost_functions/cost.cuh>
+#include <mppi/cost_functions/dubins/distance_map_texture.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_kinematic_limits.cuh>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 
 #include <cstdint>
 #include <vector>
-
-struct DistanceMapTextureGrid
-{
-  float origin_x = 0.0F;
-  float origin_y = 0.0F;
-  float resolution = 0.15F;
-  int width = 0;
-  int height = 0;
-  int time_steps = 0;
-};
-
-class DistanceMapTextureVisualizer;
-struct DistanceMapTextureTestAccess;
 
 __host__ __device__ inline float computeSmoothBarrierCost(
   const float distance, const float safe_margin, const float precomputed_weight)
@@ -100,7 +88,8 @@ template <
   class CLASS_T, int NUM_TIMESTEPS,
   class PARAMS_T = FirstOrderDubinsBicycleCostParams<NUM_TIMESTEPS>,
   class DYN_PARAMS_T = FirstOrderDubinsBicycleParams>
-class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>
+class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>,
+                                        public DistanceMapTextureState
 {
 public:
   static constexpr int kMaxObstacles = 64;
@@ -352,21 +341,6 @@ public:
   float drivable_area_x1_[kMaxDrivableAreaSegments] = {};
   float drivable_area_y1_[kMaxDrivableAreaSegments] = {};
 
-  /**
-   * GPU ESDF texture state. The 2D float2 texture stores road-border distance in x and
-   * drivable-boundary distance in y. The 3D texture stores obstacle distance over the horizon.
-   * The host-owned CUDA arrays are surface-written by generation kernels and sampled through
-   * texture handles copied into cost_d_.
-   */
-  DistanceMapTextureGrid static_distance_map_grid_{};
-  DistanceMapTextureGrid obstacle_distance_map_grid_{};
-  cudaTextureObject_t static_distance_texture_ = 0;
-  cudaTextureObject_t obstacle_distance_texture_ = 0;
-  bool road_border_texture_valid_ = false;
-  bool drivable_area_texture_valid_ = false;
-  bool obstacle_texture_valid_ = false;
-  bool obstacle_texture_has_obstacles_ = false;
-
 private:
   friend struct DistanceMapTextureTestAccess;
 
@@ -376,21 +350,11 @@ private:
   __host__ void ensureDistanceMapResources();
   __host__ void rebuildStaticDistanceTexture(bool update_road_border, bool update_drivable_area);
   __host__ void rebuildObstacleDistanceTexture();
+  __host__ void refreshDistanceMapTextures(
+    bool obstacle_geometry_changed, bool road_border_geometry_changed,
+    bool drivable_area_geometry_changed);
   __host__ void distanceMapStateToDevice();
   __host__ void releaseDistanceMapResources();
-
-  static constexpr int kStaticDistanceMapWidth = 1024;
-  static constexpr int kStaticDistanceMapHeight = 1024;
-  static constexpr float kStaticDistanceMapResolution = 0.15F;
-  static constexpr int kObstacleDistanceMapWidth = 512;
-  static constexpr int kObstacleDistanceMapHeight = 512;
-  static constexpr float kObstacleDistanceMapResolution = 0.30F;
-  cudaArray_t static_distance_array_ = nullptr;
-  cudaArray_t obstacle_distance_array_ = nullptr;
-  cudaSurfaceObject_t static_distance_surface_ = 0;
-  cudaSurfaceObject_t obstacle_distance_surface_ = 0;
-  DistanceMapTextureVisualizer * distance_map_visualizer_ = nullptr;
-  bool static_distance_visualization_dirty_ = true;
 };
 
 template <int NUM_TIMESTEPS>
@@ -407,6 +371,7 @@ public:
 
 #if __CUDACC__
 #include "first_order_dubins_bicycle_cost.cu"
+#include "first_order_dubins_distance_map.cu"
 #endif
 
 #endif  // MPPI_COST_FUNCTIONS_FIRST_ORDER_DUBINS_BICYCLE_COST_CUH_
