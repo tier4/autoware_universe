@@ -61,6 +61,7 @@ constexpr int kMppiHorizon = detail::kMppiHorizon;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = detail::kMppiDt;
 constexpr int kNumRollouts = 16 * 1024;
+constexpr int kSampledDebugRollouts = 128;
 constexpr int kMaxVizRollouts = 256;
 constexpr int kMaxWorstVizRollouts = 128;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
@@ -679,6 +680,72 @@ void buildRolloutVisualization(
   }
 }
 
+void buildSampledDebugRollouts(
+  Mppi & controller, const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug)
+{
+  // computeControl() stages the selected visualization controls and outputs on vis_stream_. The
+  // vendor visualization kernel consumes those buffers on stream_, so make the cross-stream
+  // dependency explicit before launching it.
+  HANDLE_ERROR(cudaStreamSynchronize(controller.vis_stream_));
+  controller.launchSampledVisTrajectories();
+
+  const auto device_view = controller.sampledVisDeviceView();
+  if (
+    device_view.outputs_d == nullptr || device_view.costs_d == nullptr ||
+    device_view.num_rollouts <= 0 || device_view.num_timesteps <= 1 ||
+    device_view.output_dim <= 0) {
+    debug.rollouts.clear();
+    return;
+  }
+
+  const size_t rollout_count = static_cast<size_t>(device_view.num_rollouts);
+  const size_t output_stride =
+    static_cast<size_t>(device_view.num_timesteps) * static_cast<size_t>(device_view.output_dim);
+  // The vendor visualization kernel stores its initialized running-cost span with a
+  // num_timesteps stride. Its separately indexed terminal slots are sparse, so use the dense
+  // running costs for stable relative coloring of the sampled rollouts.
+  const size_t running_cost_stride = static_cast<size_t>(device_view.num_timesteps);
+  std::vector<float> sampled_outputs(rollout_count * output_stride);
+  std::vector<float> sampled_costs(rollout_count * running_cost_stride);
+  HANDLE_ERROR(cudaMemcpyAsync(
+    sampled_outputs.data(), device_view.outputs_d, sampled_outputs.size() * sizeof(float),
+    cudaMemcpyDeviceToHost, device_view.stream));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    sampled_costs.data(), device_view.costs_d, sampled_costs.size() * sizeof(float),
+    cudaMemcpyDeviceToHost, device_view.stream));
+  HANDLE_ERROR(cudaStreamSynchronize(device_view.stream));
+
+  // Match getActualStateSeq(): initial state plus num_timesteps - 1 post-step outputs.
+  const int sampled_output_timesteps = device_view.num_timesteps - 1;
+  const int x_index =
+    static_cast<int>(FirstOrderDubinsBicycleParams::OutputIndex::BASELINK_POS_I_X);
+  const int y_index =
+    static_cast<int>(FirstOrderDubinsBicycleParams::OutputIndex::BASELINK_POS_I_Y);
+  const int state_x_index = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X);
+  const int state_y_index = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y);
+
+  debug.rollouts.clear();
+  debug.rollouts.reserve(rollout_count);
+  for (size_t rollout_index = 0; rollout_index < rollout_count; ++rollout_index) {
+    FirstOrderDubinsMppiRollout rollout;
+    rollout.points.reserve(static_cast<size_t>(sampled_output_timesteps + 1));
+    rollout.points.emplace_back(x_at_optimization(state_x_index), x_at_optimization(state_y_index));
+    for (int timestep = 0; timestep < sampled_output_timesteps; ++timestep) {
+      const size_t output_offset =
+        rollout_index * output_stride + static_cast<size_t>(timestep * device_view.output_dim);
+      rollout.points.emplace_back(
+        sampled_outputs[output_offset + static_cast<size_t>(x_index)],
+        sampled_outputs[output_offset + static_cast<size_t>(y_index)]);
+    }
+    const size_t cost_offset = rollout_index * running_cost_stride;
+    for (size_t timestep = 0; timestep < running_cost_stride; ++timestep) {
+      rollout.cost += sampled_costs[cost_offset + timestep];
+    }
+    rollout.is_worst = false;
+    debug.rollouts.push_back(std::move(rollout));
+  }
+}
+
 }  // namespace
 
 struct FirstOrderDubinsMppiInterface::Impl
@@ -872,9 +939,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     cp.cost_rollout_dim_ = dim3(32, 2, 1);
     cp.seed_ = 1U;
     controller->setParams(cp);
-    // controller->setPercentageSampledControlTrajectories(128.0F /
-    // static_cast<float>(kNumRollouts));
-    controller->setPercentageSampledControlTrajectories(0.0);
+    controller->setPercentageSampledControlTrajectories(
+      static_cast<float>(kSampledDebugRollouts) / static_cast<float>(kNumRollouts));
 
     model.GPUSetup();
 
@@ -2092,7 +2158,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   } else {
     fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
     result.debug.baseline_cost = impl_->controller->getBaselineCost();
-    result.debug.rollouts.clear();
+    buildSampledDebugRollouts(*impl_->controller, x_at_optimization, result.debug);
   }
   if (impl_->debug_trajectory_logger.enabled() && n_state > 0 && n_ctrl > 0) {
     result.debug.cost_breakdown =

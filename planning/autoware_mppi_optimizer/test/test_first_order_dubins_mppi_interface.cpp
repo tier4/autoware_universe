@@ -186,7 +186,11 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, ProducesFinitePostStepTrajectoryAnd
   EXPECT_EQ(result.trajectory.header, input.header);
   EXPECT_TRUE(result.debug.reference_trajectory == input);
   EXPECT_TRUE(result.debug.optimized_trajectory == result.trajectory);
-  EXPECT_TRUE(result.debug.rollouts.empty());
+  ASSERT_EQ(result.debug.rollouts.size(), 128U);
+  for (const auto & rollout : result.debug.rollouts) {
+    EXPECT_EQ(rollout.points.size(), static_cast<std::size_t>(detail::kMppiHorizon));
+    EXPECT_TRUE(std::isfinite(rollout.cost));
+  }
   EXPECT_TRUE(std::isfinite(result.debug.baseline_cost));
   // Full host cost reconstruction is intentionally skipped unless debug logging is enabled.
   EXPECT_EQ(result.debug.cost_breakdown.evaluated_timesteps, 0U);
