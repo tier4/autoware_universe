@@ -15,9 +15,12 @@
 
 """Plot MPPI delay-bicycle straight-line plant logs from mppi_open_loop_line_sim.
 
+Opens an interactive matplotlib window by default (left-click drag to pan, scroll to zoom).
+Use --no-show for headless PNG export only.
+
 Example:
   ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- \
-    --csv "$HOME/.cache/autoware/mppi_open_loop_line_sim/plant.csv"
+    --csv /tmp/mppi_open_loop/plant.csv
 """
 
 from __future__ import annotations
@@ -31,10 +34,90 @@ from typing import List
 
 import matplotlib
 
-if "--show" not in sys.argv:
+if "--no-show" in sys.argv:
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+def hide_navigation_toolbar(fig: plt.Figure) -> None:
+    """Remove the default matplotlib toolbar (conflicts with custom pan/zoom)."""
+    manager = fig.canvas.manager
+    if manager is None:
+        return
+    toolbar = getattr(manager, "toolbar", None)
+    if toolbar is None:
+        return
+    if hasattr(toolbar, "pack_forget"):
+        toolbar.pack_forget()
+    if hasattr(toolbar, "hide"):
+        toolbar.hide()
+    if hasattr(toolbar, "setVisible"):
+        toolbar.setVisible(False)
+
+
+def enable_mouse_navigation(fig: plt.Figure) -> None:
+    """Left-click drag pans; mouse wheel zooms toward the cursor."""
+
+    class _PanState:
+        active = False
+        ax: plt.Axes | None = None
+        start_x = 0.0
+        start_y = 0.0
+        xlim: tuple[float, float] = (0.0, 1.0)
+        ylim: tuple[float, float] = (0.0, 1.0)
+
+    pan = _PanState()
+
+    def on_press(event) -> None:
+        if event.button != 1 or event.inaxes is None:
+            return
+        pan.active = True
+        pan.ax = event.inaxes
+        pan.start_x = event.x
+        pan.start_y = event.y
+        pan.xlim = pan.ax.get_xlim()
+        pan.ylim = pan.ax.get_ylim()
+
+    def on_release(event) -> None:
+        if event.button == 1:
+            pan.active = False
+
+    def on_motion(event) -> None:
+        if not pan.active or pan.ax is None:
+            return
+        dx_px = event.x - pan.start_x
+        dy_px = event.y - pan.start_y
+        bbox = pan.ax.get_window_extent()
+        if bbox.width <= 0.0 or bbox.height <= 0.0:
+            return
+        x_width = pan.xlim[1] - pan.xlim[0]
+        y_height = pan.ylim[1] - pan.ylim[0]
+        dx_data = -dx_px * x_width / bbox.width
+        dy_data = -dy_px * y_height / bbox.height
+        pan.ax.set_xlim(pan.xlim[0] + dx_data, pan.xlim[1] + dx_data)
+        pan.ax.set_ylim(pan.ylim[0] + dy_data, pan.ylim[1] + dy_data)
+        fig.canvas.draw_idle()
+
+    def on_scroll(event) -> None:
+        if event.inaxes is None or event.xdata is None or event.ydata is None:
+            return
+        ax = event.inaxes
+        scale = 1.0 / 1.2 if event.button == "up" else 1.2
+        x_left, x_right = ax.get_xlim()
+        y_bottom, y_top = ax.get_ylim()
+        x_width = (x_right - x_left) * scale
+        y_height = (y_top - y_bottom) * scale
+        rel_x = (x_right - event.xdata) / (x_right - x_left)
+        rel_y = (y_top - event.ydata) / (y_top - y_bottom)
+        ax.set_xlim(event.xdata - x_width * (1.0 - rel_x), event.xdata + x_width * rel_x)
+        ax.set_ylim(event.ydata - y_height * (1.0 - rel_y), event.ydata + y_height * rel_y)
+        fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect("button_press_event", on_press)
+    fig.canvas.mpl_connect("button_release_event", on_release)
+    fig.canvas.mpl_connect("motion_notify_event", on_motion)
+    fig.canvas.mpl_connect("scroll_event", on_scroll)
 
 
 def load_csv(path: Path) -> Dict[str, np.ndarray]:
@@ -68,7 +151,9 @@ def plot(
     show: bool,
 ) -> None:
     t = plant["t"]
-    fig = plt.figure(figsize=(12.0, 10.5), layout="constrained")
+    fig_kwargs = {"figsize": (12.0, 10.5), "layout": "constrained"}
+    with matplotlib.rc_context({"toolbar": "none" if show else matplotlib.rcParams["toolbar"]}):
+        fig = plt.figure(**fig_kwargs)
     grid = fig.add_gridspec(4, 2, height_ratios=[1.2, 1.0, 1.0, 1.0])
 
     ax_xy = fig.add_subplot(grid[0, 0])
@@ -154,7 +239,12 @@ def plot(
     fig.savefig(out_path, dpi=140)
     print(f"Wrote {out_path}")
     if show:
-        plt.show()
+        enable_mouse_navigation(fig)
+        hide_navigation_toolbar(fig)
+        if fig.canvas.manager is not None:
+            fig.canvas.manager.set_window_title("MPPI open-loop line sim")
+        print("Interactive window: left-click drag to pan, mouse wheel to zoom.")
+        plt.show(block=True)
     plt.close(fig)
 
 
@@ -168,7 +258,11 @@ def main() -> int:
         help="optional first-horizon trajectory CSV (debug columns)",
     )
     parser.add_argument("--out", type=Path, default=None, help="output PNG (default: next to csv)")
-    parser.add_argument("--show", action="store_true", help="open an interactive window")
+    parser.add_argument(
+        "--no-show",
+        action="store_true",
+        help="save PNG only (no interactive window; for headless/CI)",
+    )
     args = parser.parse_args()
 
     csv_path = args.csv.expanduser().resolve()
@@ -198,7 +292,7 @@ def main() -> int:
         horizon_x, horizon_y, horizon_t = load_horizon_xy(horizon_csv.expanduser().resolve())
 
     out_path = args.out.expanduser().resolve() if args.out else csv_path.with_suffix(".png")
-    plot(plant, horizon_x, horizon_y, horizon_t, out_path, args.show)
+    plot(plant, horizon_x, horizon_y, horizon_t, out_path, show=not args.no_show)
     return 0
 
 

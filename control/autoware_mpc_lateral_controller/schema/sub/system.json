@@ -25,6 +25,11 @@
           "type": "boolean",
           "description": "in temporal mode, use trajectory steering for feed-forward when at least one input steering value is nonzero; otherwise use geometric curvature",
           "default": true
+        },
+        "steering_direct_passthrough": {
+          "type": "boolean",
+          "description": "when true, publish trajectory front_wheel_angle_rad directly and skip MPC QP (MPPI passthrough)",
+          "default": false
         }
       },
       "required": [

@@ -80,7 +80,7 @@ struct MppiDebugEgoState
  *   <log_dir>/000000_road_borders.csv
  *   <log_dir>/000000_drivable.csv
  *   <log_dir>/000000_objects.csv
- *   <log_dir>/000000_control_history.csv  (SG taps at cycle start)
+ *   <log_dir>/000000_control_history.csv  (last two applied commands at cycle start)
  *   <log_dir>/000000_delay_buffer.csv     (per-channel FIFOs before optimize)
  *   <log_dir>/000000_applied.csv          (u[0] applied this cycle)
  *   ...

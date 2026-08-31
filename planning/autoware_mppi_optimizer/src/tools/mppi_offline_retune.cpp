@@ -638,8 +638,8 @@ int run(int argc, char ** argv)
     } else {
       static bool warned_missing_history = false;
       if (!warned_missing_history) {
-        std::cerr << "WARNING: missing *_control_history.csv; Savitzky–Golay edge taps are zero "
-                     "(re-log for exact online match).\n";
+        std::cerr << "WARNING: missing *_control_history.csv; applied-command history defaults "
+                     "to zero (re-log for exact offline replay metadata).\n";
         warned_missing_history = true;
       }
     }
