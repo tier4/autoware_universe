@@ -36,6 +36,16 @@ Debug topics: `~/debug/optimization/raw_trajectory`, `~/debug/optimization/solve
 
 ---
 
+## Road border avoidance
+
+When `road_border_avoidance.enable` is true, the raw model output is checked against lanelet `type=road_border` line strings **before** acados tracking. For every trajectory point the ego footprint, inflated by `footprint_margin_m`, is placed at the point's pose and tested for overlap (boost::geometry). Overlapping points are shifted perpendicular to their heading, away from the nearest border, in `shift_step_m` increments until the footprint clears all borders (the total offset is capped at `max_lateral_shift_m`; if the cap is reached the shift is kept as best effort and a warning is logged). With `propagate_shift` enabled (default) the offset is carried over to all subsequent points along each point's own lateral direction, so the path stays shifted after passing the border instead of snapping back to the raw output. Yaw and all other fields stay untouched. The shifted poses become the OCP reference when trajectory optimization is enabled.
+
+The parameter is off by default. Changing it requires a node restart.
+
+Debug topics: `~/debug/road_border_avoidance/adjusted_trajectory`, `~/debug/road_border_avoidance/shifted_point_count`.
+
+---
+
 ## How to use
 
 ### (1) Prerequisites

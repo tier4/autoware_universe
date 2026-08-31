@@ -59,6 +59,13 @@
       max_steering_rate_rps: 1.0     # [rad/s]
       max_lateral_acceleration_mps2: 3.0  # soft constraint bound [m/s^2]
       max_sqp_iterations: 50
+    road_border_avoidance:
+      enable: false
+      footprint_margin_m: 0.2     # ego footprint inflation for the overlap check [m]
+      search_radius_m: 120.0      # road borders farther than this from ego are ignored [m]
+      shift_step_m: 0.1           # lateral shift resolution [m]
+      max_lateral_shift_m: 1.5    # cap on the total lateral offset from the raw position [m]
+      propagate_shift: true       # carry the offset over to all subsequent points
     planning_factor:
       enable_stop: true
       enable_slowdown: false

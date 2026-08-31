@@ -25,6 +25,7 @@
 #ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
 #include "autoware/diffusion_planner/optimization/trajectory_optimizer.hpp"
 #endif
+#include "autoware/diffusion_planner/postprocessing/road_border_avoidance.hpp"
 #include "autoware/diffusion_planner/postprocessing/turn_indicator_manager.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
@@ -102,6 +103,13 @@ struct TrajectoryOptimizationDebug
   double solve_time_ms{0.0};
 };
 
+struct RoadBorderAvoidanceDebug
+{
+  bool active{false};
+  int shifted_points{0};
+  int unresolved_points{0};
+};
+
 struct PlannerOutput
 {
   Trajectory trajectory;
@@ -112,6 +120,8 @@ struct PlannerOutput
   std::unordered_map<std::string, std::vector<bool>> guidance_triggered;
   std::optional<Trajectory> raw_trajectory;
   TrajectoryOptimizationDebug optimization_debug;
+  std::optional<Trajectory> avoidance_adjusted_trajectory;
+  RoadBorderAvoidanceDebug avoidance_debug;
 };
 
 struct FrameContext
@@ -193,6 +203,7 @@ struct DiffusionPlannerParams
   double stop_guidance_stop_acceleration_mps2;
   double centerline_guidance_start_time_s;
   optimization::TrajectoryOptimizationParams trajectory_optimization;
+  postprocess::RoadBorderAvoidanceParams road_border_avoidance;
 };
 
 /**
@@ -382,6 +393,7 @@ private:
 #ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
   std::unique_ptr<optimization::TrajectoryOptimizer> trajectory_optimizer_{nullptr};
 #endif
+  std::unique_ptr<postprocess::RoadBorderAvoidance> road_border_avoidance_{nullptr};
   std::shared_ptr<StartGuidance> start_guidance_{nullptr};
   std::shared_ptr<StopGuidance> stop_guidance_{nullptr};
   std::shared_ptr<CenterlineGuidance> centerline_guidance_{nullptr};

@@ -79,6 +79,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     src/conversion/agent.cpp
     src/conversion/agent_history_resampler.cpp
     src/postprocessing/postprocessing_utils.cpp
+    src/postprocessing/road_border_avoidance.cpp
     src/preprocessing/lane_segments.cpp
     src/preprocessing/preprocessing_utils.cpp
     src/preprocessing/traffic_signals.cpp
@@ -190,7 +191,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       test/lanelet_edge_case_test.cpp
       test/diffusion_planner_integration_test.cpp
       test/rtc_prefix_test.cpp
-      test/planning_factor_utils_test.cpp)
+      test/planning_factor_utils_test.cpp
+      test/road_border_avoidance_test.cpp)
     if(DIFFUSION_PLANNER_HAS_ACADOS)
       list(APPEND DIFFUSION_PLANNER_TEST_SOURCES test/trajectory_optimizer_test.cpp)
     endif()

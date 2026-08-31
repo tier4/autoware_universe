@@ -107,6 +107,10 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<std_msgs::msg::Int32>("~/debug/optimization/solver_status", 1);
   pub_optimization_time_ =
     this->create_publisher<std_msgs::msg::Float64>("~/debug/optimization/solve_time_ms", 1);
+  pub_avoidance_trajectory_ =
+    this->create_publisher<Trajectory>("~/debug/road_border_avoidance/adjusted_trajectory", 1);
+  pub_avoidance_shifted_count_ = this->create_publisher<std_msgs::msg::Int32>(
+    "~/debug/road_border_avoidance/shifted_point_count", 1);
   pub_guidance_status_ = this->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
     "~/debug/guidance_status", 1);
 
@@ -268,6 +272,20 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.max_lateral_acceleration_mps2", 3.0);
   opt.max_sqp_iterations =
     this->declare_parameter<int>("trajectory_optimization.max_sqp_iterations", 50);
+
+  // Road border avoidance params (static; changing them requires a restart).
+  auto & avoidance = params_.road_border_avoidance;
+  avoidance.enable = this->declare_parameter<bool>("road_border_avoidance.enable", false);
+  avoidance.footprint_margin_m =
+    this->declare_parameter<double>("road_border_avoidance.footprint_margin_m", 0.2);
+  avoidance.search_radius_m =
+    this->declare_parameter<double>("road_border_avoidance.search_radius_m", 120.0);
+  avoidance.shift_step_m =
+    this->declare_parameter<double>("road_border_avoidance.shift_step_m", 0.1);
+  avoidance.max_lateral_shift_m =
+    this->declare_parameter<double>("road_border_avoidance.max_lateral_shift_m", 1.5);
+  avoidance.propagate_shift =
+    this->declare_parameter<bool>("road_border_avoidance.propagate_shift", true);
 #ifndef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
   if (opt.enable) {
     RCLCPP_WARN(
@@ -336,6 +354,9 @@ void DiffusionPlanner::load_model()
   }
   if (params_.trajectory_optimization.enable) {
     RCLCPP_INFO(get_logger(), "acados trajectory optimization is enabled");
+  }
+  if (params_.road_border_avoidance.enable) {
+    RCLCPP_INFO(get_logger(), "road border avoidance is enabled");
   }
 }
 
@@ -726,8 +747,25 @@ void DiffusionPlanner::on_timer()
     pub_denoising_steps_->publish(planner_output.denoising_steps);
   }
 
+  const auto & avoidance_debug = planner_output.avoidance_debug;
+  if (avoidance_debug.active) {
+    if (planner_output.avoidance_adjusted_trajectory) {
+      pub_avoidance_trajectory_->publish(*planner_output.avoidance_adjusted_trajectory);
+    }
+    std_msgs::msg::Int32 shifted_count_msg;
+    shifted_count_msg.data = avoidance_debug.shifted_points + avoidance_debug.unresolved_points;
+    pub_avoidance_shifted_count_->publish(shifted_count_msg);
+    if (avoidance_debug.unresolved_points > 0) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+        "Road border avoidance could not clear %d trajectory points within the maximum "
+        "lateral shift.",
+        avoidance_debug.unresolved_points);
+    }
+  }
+
   const auto & optimization_debug = planner_output.optimization_debug;
-  if (optimization_debug.attempted && planner_output.raw_trajectory) {
+  if ((optimization_debug.attempted || avoidance_debug.active) && planner_output.raw_trajectory) {
     pub_raw_trajectory_->publish(*planner_output.raw_trajectory);
   }
   if (optimization_debug.attempted) {

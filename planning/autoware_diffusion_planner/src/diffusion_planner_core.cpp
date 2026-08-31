@@ -84,6 +84,10 @@ DiffusionPlannerCore::DiffusionPlannerCore(
       params_.trajectory_optimization, vehicle_info, static_cast<size_t>(params_.batch_size));
   }
 #endif
+  if (params_.road_border_avoidance.enable) {
+    road_border_avoidance_ = std::make_unique<postprocess::RoadBorderAvoidance>(
+      params_.road_border_avoidance, vehicle_info);
+  }
 }
 
 void DiffusionPlannerCore::sync_turn_indicator_managers()
@@ -260,6 +264,9 @@ void DiffusionPlannerCore::set_map(
 {
   lane_segment_context_ = std::make_unique<preprocess::LaneSegmentContext>(
     lanelet_map_ptr, params_.line_string_max_step_m);
+  if (road_border_avoidance_ && lanelet_map_ptr) {
+    road_border_avoidance_->set_map(*lanelet_map_ptr);
+  }
 }
 
 std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
@@ -645,19 +652,65 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
                                 : turn_indicators_history_.back().report;
 
   // Trajectory and CandidateTrajectories
-  for (int i = 0; i < params_.batch_size; i++) {
-    Trajectory trajectory;
 #ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
-    if (trajectory_optimizer_) {
-      trajectory = postprocess::create_ego_pose_trajectory(agent_poses, timestamp, i);
-      if (params_.shift_x) {
-        for (auto & point : trajectory.points) {
-          point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
-        }
+  const bool use_optimizer = static_cast<bool>(trajectory_optimizer_);
+#else
+  const bool use_optimizer = false;
+#endif
+
+  for (int i = 0; i < params_.batch_size; i++) {
+    auto apply_shift_x = [this](Trajectory & trajectory) {
+      if (!params_.shift_x) {
+        return;
       }
+      for (auto & point : trajectory.points) {
+        point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
+      }
+    };
+
+    auto make_fd_trajectory = [&]() {
+      auto trajectory = postprocess::create_ego_trajectory(
+        agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
+        params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
+      apply_shift_x(trajectory);
+      return trajectory;
+    };
+
+    auto apply_avoidance = [&](Trajectory trajectory) {
+      if (!road_border_avoidance_) {
+        return trajectory;
+      }
+      auto avoidance_result = road_border_avoidance_->adjust(
+        trajectory, frame_context.ego_kinematic_state.pose.pose);
       if (i == 0) {
-        output.raw_trajectory = trajectory;
+        output.avoidance_debug.active = true;
+        output.avoidance_debug.shifted_points =
+          static_cast<int>(avoidance_result.num_shifted_points);
+        output.avoidance_debug.unresolved_points =
+          static_cast<int>(avoidance_result.num_unresolved_points);
+        output.avoidance_adjusted_trajectory = avoidance_result.trajectory;
       }
+      return std::move(avoidance_result.trajectory);
+    };
+
+    Trajectory trajectory;
+    if (use_optimizer) {
+#ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
+      trajectory = postprocess::create_ego_pose_trajectory(agent_poses, timestamp, i);
+      apply_shift_x(trajectory);
+#endif
+    } else {
+      trajectory = make_fd_trajectory();
+    }
+
+    if (i == 0 && (use_optimizer || road_border_avoidance_)) {
+      output.raw_trajectory = trajectory;
+    }
+
+    trajectory = apply_avoidance(std::move(trajectory));
+
+#ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
+    if (use_optimizer) {
       auto optimization_result = trajectory_optimizer_->optimize(
         trajectory, frame_context.ego_kinematic_state, current_steering_angle_rad,
         static_cast<size_t>(i));
@@ -670,27 +723,10 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
       if (optimization_result.optimized) {
         trajectory = std::move(optimization_result.trajectory);
       } else {
-        trajectory = postprocess::create_ego_trajectory(
-          agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
-          params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
-        if (params_.shift_x) {
-          for (auto & point : trajectory.points) {
-            point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
-          }
-        }
-      }
-    } else
-#endif
-    {
-      trajectory = postprocess::create_ego_trajectory(
-        agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
-        params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
-      if (params_.shift_x) {
-        for (auto & point : trajectory.points) {
-          point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
-        }
+        trajectory = apply_avoidance(make_fd_trajectory());
       }
     }
+#endif
 
     if (i == 0) {
       // Use the first trajectory as the main output trajectory

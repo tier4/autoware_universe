@@ -248,6 +248,8 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_raw_trajectory_{nullptr};
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_optimization_status_{nullptr};
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_optimization_time_{nullptr};
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_avoidance_trajectory_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_avoidance_shifted_count_{nullptr};
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
     pub_guidance_status_{nullptr};
   rclcpp::Service<SetBool>::SharedPtr set_start_guidance_enabled_service_{nullptr};
