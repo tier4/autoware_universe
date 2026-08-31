@@ -132,8 +132,9 @@ void PathPlanner::set_route(const LaneletRoute::ConstSharedPtr & route_ptr)
   set_lanelets_from_segment(route_ptr->segments.back(), route_context_.goal_lanelets);
 
   const StartGoalPlanner::RouteData route_data{
-    route_context_.goal_pose, route_context_.preferred_lanelets, route_context_.start_lanelets,
-    route_context_.lanelet_map_ptr, route_context_.routing_graph_ptr};
+    route_context_.goal_pose,         route_context_.preferred_lanelets,
+    route_context_.start_lanelets,    route_context_.lanelet_map_ptr,
+    route_context_.routing_graph_ptr, route_context_.traffic_rules_ptr};
   start_goal_planner_.set_route_data(route_data);
 }
 
@@ -142,8 +143,9 @@ void PathPlanner::set_route_context(const RouteContext & route_context)
   route_context_ = route_context;
 
   const StartGoalPlanner::RouteData route_data{
-    route_context_.goal_pose, route_context_.preferred_lanelets, route_context_.start_lanelets,
-    route_context_.lanelet_map_ptr, route_context_.routing_graph_ptr};
+    route_context_.goal_pose,         route_context_.preferred_lanelets,
+    route_context_.start_lanelets,    route_context_.lanelet_map_ptr,
+    route_context_.routing_graph_ptr, route_context_.traffic_rules_ptr};
   start_goal_planner_.set_route_data(route_data);
 }
 

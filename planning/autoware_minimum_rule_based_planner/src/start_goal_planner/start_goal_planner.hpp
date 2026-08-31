@@ -28,6 +28,7 @@
 #include <lanelet2_core/geometry/Area.h>
 #include <lanelet2_core/primitives/Polygon.h>
 #include <lanelet2_routing/RoutingGraph.h>
+#include <lanelet2_traffic_rules/TrafficRules.h>
 
 #include <algorithm>
 #include <memory>
@@ -51,6 +52,14 @@ public:
     lanelet::ConstLanelets start_lanelets{};
     lanelet::LaneletMapPtr lanelet_map_ptr{nullptr};
     lanelet::routing::RoutingGraphPtr routing_graph_ptr{nullptr};
+    lanelet::traffic_rules::TrafficRulesPtr traffic_rules_ptr{nullptr};
+  };
+
+  // polygon which can be used to pull-out and pull-over, with its source lanelet
+  struct AvailableArea
+  {
+    lanelet::BasicPolygon2d polygon{};
+    std::optional<lanelet::ConstLanelet> lanelet{std::nullopt};
   };
 
   StartGoalPlanner(
@@ -77,7 +86,7 @@ private:
   const std::unordered_set<std::string> available_area_type = {"parking_lot"};
 
   // get polygon of available lanelet and area
-  std::vector<lanelet::BasicPolygon2d> get_available_area(const PathPointTrajectory & trajectory);
+  std::vector<AvailableArea> get_available_area(const PathPointTrajectory & trajectory);
 
   // judge condition to activate start planner
   void judge_start_planner_act(
@@ -86,8 +95,7 @@ private:
   // judge condition to activate goal planner
   void judge_goal_planner_act(
     const PathPointTrajectory & trajectory, const double & s_path_end,
-    const std::vector<lanelet::BasicPolygon2d> & available_area,
-    const geometry_msgs::msg::Pose & ego_pose);
+    const std::vector<AvailableArea> & available_area, const geometry_msgs::msg::Pose & ego_pose);
 
   // judge if previous trajectory is valid
   bool is_prev_traj_valid(const geometry_msgs::msg::Pose & ego_pose);
@@ -103,22 +111,21 @@ private:
     const PathPointWithLaneId & start_point, const PathPointWithLaneId & goal_point,
     const double & first_steer_angle);
   std::optional<double> evaluate_trajectory(
-    const PathPointTrajectory & candidate,
-    const std::vector<lanelet::BasicPolygon2d> & available_area,
+    const PathPointTrajectory & candidate, const std::vector<AvailableArea> & available_area,
     const geometry_msgs::msg::Pose & ego_pose);
   std::optional<PathPointTrajectory> generate_and_evaluate_trajectory(
-    const std::vector<lanelet::BasicPolygon2d> & available_area,
-    const geometry_msgs::msg::Pose & ego_pose,
+    const std::vector<AvailableArea> & available_area, const geometry_msgs::msg::Pose & ego_pose,
     std::vector<PathPointWithLaneId> start_pose_candidates,
     std::vector<PathPointWithLaneId> goal_pose_candidates);
 
   // connect input trajectory and generated pull-trajectory
   std::optional<PathPointTrajectory> connect_pull_trajectory(
-    const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
+    const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory,
+    const std::vector<AvailableArea> & available_area);
   std::optional<PathPointTrajectory> connect_start_planner_trajectory(
-    const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
+    const PathPointTrajectory & trajectory, std::vector<PathPointWithLaneId> pull_points);
   std::optional<PathPointTrajectory> connect_goal_planner_trajectory(
-    const PathPointTrajectory & trajectory, const PathPointTrajectory & pull_trajectory);
+    const PathPointTrajectory & trajectory, std::vector<PathPointWithLaneId> pull_points);
 
   // return fallback_trajectory when trajectory generation is failed
   std::optional<PathPointTrajectory> generate_fallback_trajectory(
