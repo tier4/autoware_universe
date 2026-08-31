@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     mppi_optimizer:
-      enabled: true
+      enabled: false
       shadow_mode: false
       limit_velocity_from_map: false
       # Aligned debug override arrays: lanelet ID -> maximum velocity [m/s].
@@ -9,20 +9,11 @@
       limit_velocity_from_map_debug_max_velocities: [0.0]
 
       # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
-      lambda: 100.0
+      lambda: 1000.0
       speed_coeff: 0.0
       track_coeff: 0.0
       track_terminal_scale: 0.0
       heading_coeff: 0.0
-<<<<<<< HEAD
-      # Spatial (closest-segment) cross-track: coeff * e_lat^2; 0 = off.
-      lateral_distance_coeff: 2000.0
-      lateral_yaw_error_coeff: 200.0
-      # Soft cost on remaining corridor chord length: coeff * s^2; 0 = off.
-      remaining_distance_coeff: 1.0
-      # Soft cost on along-track past corridor tip: coeff * s^2; 0 = off.
-      path_overshoot_coeff: 1000.0
-=======
       # Spatial (closest-segment) costs restored from pre time-indexed tracking; 0 = off.
       lateral_distance_coeff: 0.0
       lateral_yaw_error_coeff: 0.0
@@ -30,7 +21,6 @@
       remaining_distance_coeff: 0.1
       # Soft cost on along-track distance past the corridor tip [m]; 0 = off.
       path_overshoot_coeff: 1.0
->>>>>>> 544cc425a0 (initial attempt at distance map texture)
       # Track the center of the ego footprint against the time-indexed reference; 0 = off.
       track_center_coeff: 0.0
       # Soft clearance cost for ego corners near drivable-area boundaries; 0 = off.
@@ -48,17 +38,17 @@
       accel_cmd_std_dev: 0.1
       steer_cmd_std_dev: 0.02
       # Power-law PSD exponents (0 = white, 1 = pink, 2 = brown) for colored noise.
-      accel_cmd_noise_exponent: 2.0
-      steer_cmd_noise_exponent: 2.0
+      accel_cmd_noise_exponent: 0.0
+      steer_cmd_noise_exponent: 0.0
       drivable_area_safe_margin: 0.0
       drivable_area_barrier_weight: 0.0
       # Crash costs
       boundary_threshold: 1.2
-      lateral_boundary_soft_margin: 0.5
+      lateral_boundary_soft_margin: 0.7
       obstacle_collision_margin: 0.2
       road_border_collision_margin: 0.2
-      obstacle_safe_margin: 1.0
-      road_border_safe_margin: 1.0
+      obstacle_safe_margin: 0.5
+      road_border_safe_margin: 0.5
       crash_contact_penalty: 1000.0
 
       nominal_curvature_min_chord_length_m: 1.5
