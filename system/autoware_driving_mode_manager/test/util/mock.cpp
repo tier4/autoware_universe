@@ -87,9 +87,9 @@ void MockInterface::publish_debug_flags(const DebugFlags & flags)
   (void)flags;
 }
 
-void MockInterface::publish_debug_request(const RequestModes & request)
+void MockInterface::publish_debug_request(const DebugStatus & status)
 {
-  (void)request;
+  (void)status;
 }
 
 void MockInterface::log_info(const std::string & message)

@@ -40,7 +40,7 @@ public:
   void publish_diagnostics(bool ok, const std::string & message) override;
 
   void publish_debug_flags(const DebugFlags & flags) override;
-  void publish_debug_request(const RequestModes & request) override;
+  void publish_debug_request(const DebugStatus & status) override;
 
   void log_info(const std::string & message) override;
   void log_warn(const std::string & message) override;

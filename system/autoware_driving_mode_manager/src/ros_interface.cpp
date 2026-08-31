@@ -19,6 +19,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace autoware::driving_mode_manager
 {
@@ -228,8 +229,14 @@ void RosInterface::publish_debug_flags(const DebugFlags & flags)
   pub_debug_mode_flag_->publish(msg);
 }
 
-void RosInterface::publish_debug_request(const RequestModes & request)
+void RosInterface::publish_debug_request(const DebugStatus & status)
 {
+  const auto vectorize = [](const auto & modes) {
+    std::vector<uint32_t> result;
+    for (const auto & mode : modes) result.push_back(mode.id);
+    return result;
+  };
+  const auto & request = status.request;
   DebugModeRequestMsg msg;
   msg.stamp = now();
   msg.operation_mode = request.operation_mode.id;
@@ -237,6 +244,9 @@ void RosInterface::publish_debug_request(const RequestModes & request)
   msg.mrm_strategy = static_cast<std::underlying_type_t<MrmStrategy>>(request.mrm_strategy);
   msg.mrm_behavior = request.mrm_behavior.id;
   msg.autoware_mode = request.autoware_mode.id;
+  msg.initializing = status.initializing;
+  msg.transitioning = status.transitioning;
+  msg.unavailable_modes = vectorize(status.unavailable_modes);
   pub_debug_mode_request_->publish(msg);
 }
 
