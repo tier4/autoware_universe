@@ -229,8 +229,10 @@ inline MarkerArray createMppiDebugMarkers(
       } else {
         color = makeColor(0.55F, 0.15F, 0.75F, 0.5F);
       }
+      const std::string rollout_namespace =
+        rollout.iteration > 0 ? "iter" + std::to_string(rollout.iteration) : "mppi_rollout";
       marker_array.markers.push_back(
-        makeLineStripMarker("mppi_rollout", rollout_id, color, 0.04, rollout.points, z));
+        makeLineStripMarker(rollout_namespace, rollout_id, color, 0.04, rollout.points, z));
       ++rollout_id;
     }
   }
