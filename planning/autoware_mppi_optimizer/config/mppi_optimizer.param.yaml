@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     mppi_optimizer:
-      enabled: true
+      enabled: false
       shadow_mode: false
       limit_velocity_from_map: false
       # Aligned debug override arrays: lanelet ID -> maximum velocity [m/s].
