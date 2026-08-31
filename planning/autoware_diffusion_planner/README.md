@@ -91,16 +91,18 @@ Parameters can be set via YAML (see `config/diffusion_planner.param.yaml`).
 The model encodes each neighbor agent with a three-class one-hot vector, so Autoware object
 classifications are mapped as follows before being fed to the network:
 
-| Autoware `ObjectClassification`                | Model class  |
-| ---------------------------------------------- | ------------ |
-| `CAR`, `TRUCK`, `BUS`, `TRAILER`, `MOTORCYCLE` | `VEHICLE`    |
-| `BICYCLE`                                      | `BICYCLE`    |
-| `PEDESTRIAN`                                   | `PEDESTRIAN` |
-| `UNKNOWN`, `HAZARD`                            | `PEDESTRIAN` |
-| `ANIMAL`, `OVER_DRIVABLE`, `UNDER_DRIVABLE`    | ignored      |
+| Autoware `ObjectClassification`                | Model class                                  |
+| ---------------------------------------------- | -------------------------------------------- |
+| `CAR`, `TRUCK`, `BUS`, `TRAILER`, `MOTORCYCLE` | `VEHICLE`                                    |
+| `BICYCLE`                                      | `BICYCLE`                                    |
+| `PEDESTRIAN`                                   | `PEDESTRIAN`                                 |
+| `UNKNOWN`, `HAZARD`                            | `PEDESTRIAN` when enabled, otherwise ignored |
+| `ANIMAL`, `OVER_DRIVABLE`, `UNDER_DRIVABLE`    | ignored                                      |
 
-`UNKNOWN` and `HAZARD` have no dedicated model class, but they can still obstruct driving, so they
-are remapped to `PEDESTRIAN` — the most conservative supported class — instead of being dropped.
+`UNKNOWN` and `HAZARD` have no dedicated model class, but they can still obstruct driving, so the
+`remap_unsupported_objects_to_pedestrian` parameter can remap them to `PEDESTRIAN` — the most
+conservative supported class — instead of dropping them. It defaults to `false`, in which case both
+classes are ignored like any other unsupported class.
 Objects with a non-`BOUNDING_BOX` shape are normally skipped; for these two remapped classes the
 shape is instead replaced with a 0.5 m bounding box (with a throttled warning), because perception
 typically reports unknown obstacles as polygons. Objects with an empty `classification` field are

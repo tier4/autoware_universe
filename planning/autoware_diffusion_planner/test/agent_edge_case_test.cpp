@@ -75,7 +75,7 @@ TEST_F(AgentEdgeCaseTest, HazardObjectIsRemappedToPedestrian)
   objects.objects.push_back(tracked_object_);
 
   AgentData agent_data;
-  agent_data.update_histories(objects);
+  agent_data.update_histories(objects, true);
   const auto histories =
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
 
@@ -101,7 +101,7 @@ TEST_F(AgentEdgeCaseTest, HazardObjectWithNonBoxShapeGetsDefaultBox)
   objects.objects.push_back(tracked_object_);
 
   AgentData agent_data;
-  agent_data.update_histories(objects);
+  agent_data.update_histories(objects, true);
   const auto histories =
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
 
@@ -124,7 +124,7 @@ TEST_F(AgentEdgeCaseTest, NonHazardPolygonObjectIsStillSkipped)
   objects.objects.push_back(tracked_object_);
 
   AgentData agent_data;
-  agent_data.update_histories(objects);
+  agent_data.update_histories(objects, true);
   const auto histories =
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
 
@@ -141,7 +141,7 @@ TEST_F(AgentEdgeCaseTest, UnknownObjectIsRemappedToPedestrian)
   objects.objects.push_back(tracked_object_);
 
   AgentData agent_data;
-  agent_data.update_histories(objects);
+  agent_data.update_histories(objects, true);
   const auto histories =
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
 
@@ -168,7 +168,7 @@ TEST_F(AgentEdgeCaseTest, UnknownPolygonObjectGetsDefaultBox)
   objects.objects.push_back(tracked_object_);
 
   AgentData agent_data;
-  agent_data.update_histories(objects);
+  agent_data.update_histories(objects, true);
   const auto histories =
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
 
@@ -192,7 +192,7 @@ TEST_F(AgentEdgeCaseTest, EmptyClassificationObjectIsStillSkipped)
   objects.objects.push_back(tracked_object_);
 
   AgentData agent_data;
-  agent_data.update_histories(objects);
+  agent_data.update_histories(objects, true);
   const auto histories =
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
 
@@ -209,7 +209,7 @@ TEST_F(AgentEdgeCaseTest, AnimalObjectIsStillSkipped)
   objects.objects.push_back(tracked_object_);
 
   AgentData agent_data;
-  agent_data.update_histories(objects);
+  agent_data.update_histories(objects, true);
   const auto histories =
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
 
@@ -226,7 +226,32 @@ TEST_F(AgentEdgeCaseTest, OverDrivableObjectIsStillSkipped)
   objects.objects.push_back(tracked_object_);
 
   AgentData agent_data;
-  agent_data.update_histories(objects);
+  agent_data.update_histories(objects, true);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  EXPECT_TRUE(histories.empty());
+}
+
+// With the remap disabled, UNKNOWN and HAZARD objects stay unsupported and are ignored.
+TEST_F(AgentEdgeCaseTest, UnsupportedObjectsAreSkippedWhenRemapDisabled)
+{
+  TrackedObject unknown_object = tracked_object_;
+  unknown_object.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+
+  TrackedObject hazard_object = tracked_object_;
+  hazard_object.object_id = autoware_utils_uuid::generate_uuid();
+  hazard_object.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::HAZARD;
+
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(unknown_object);
+  objects.objects.push_back(hazard_object);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects, false);
   const auto histories =
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
 

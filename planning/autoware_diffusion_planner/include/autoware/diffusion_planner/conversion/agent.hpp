@@ -136,7 +136,8 @@ private:
  */
 struct AgentData
 {
-  void update_histories(const TrackedObjects & objects);
+  void update_histories(
+    const TrackedObjects & objects, bool remap_unsupported_objects_to_pedestrian);
 
   // Transform histories, trim to max_num_agent, and return the processed vector.
   std::vector<AgentHistory> transformed_and_trimmed_histories(

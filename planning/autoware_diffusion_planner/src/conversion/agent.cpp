@@ -135,12 +135,15 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
   };
 }
 
-void AgentData::update_histories(const TrackedObjects & objects)
+void AgentData::update_histories(
+  const TrackedObjects & objects, const bool remap_unsupported_objects_to_pedestrian)
 {
   const rclcpp::Time objects_timestamp(objects.header.stamp);
   std::vector<std::string> found_ids;
   for (const TrackedObject & input_object : objects.objects) {
-    const TrackedObject object = remap_unsupported_to_pedestrian(input_object);
+    const TrackedObject object = remap_unsupported_objects_to_pedestrian
+                                   ? remap_unsupported_to_pedestrian(input_object)
+                                   : input_object;
     if (get_model_label(object) == AgentLabel::IGNORE) {
       continue;
     }
