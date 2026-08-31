@@ -339,9 +339,9 @@ public:
     std::vector<float> & raw_costs, std::vector<float> & normalized_weights, int stride = 1) const;
 
   /**
-   * @brief When true, optimizeTrajectory fills debug.rollouts with top-K weighted samples
-   *        plus worst-K high-cost samples (CPU replay; ~tens of ms). Enable only for offline
-   *        retune — leave false for online planning and debug trajectory logging.
+   * @brief Replace the default GPU-sampled debug rollouts with top-K weighted samples plus
+   *        worst-K high-cost samples (CPU replay; ~tens of ms). Enable only for offline retune;
+   *        leave false for online planning and debug trajectory logging.
    */
   void setRolloutVisualizationEnabled(bool enable);
 
