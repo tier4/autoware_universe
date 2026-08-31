@@ -872,7 +872,9 @@ struct FirstOrderDubinsMppiInterface::Impl
     cp.cost_rollout_dim_ = dim3(32, 2, 1);
     cp.seed_ = 1U;
     controller->setParams(cp);
-    controller->setPercentageSampledControlTrajectories(128.0F / static_cast<float>(kNumRollouts));
+    // controller->setPercentageSampledControlTrajectories(128.0F /
+    // static_cast<float>(kNumRollouts));
+    controller->setPercentageSampledControlTrajectories(0.0);
 
     model.GPUSetup();
 
