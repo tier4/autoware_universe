@@ -294,3 +294,8 @@ trajectory_mppi_optimizer:
     default_value: false
     description: Open a CUDA-OpenGL window visualizing the static and dynamic distance textures
     read_only: false
+  enable_iteration_rollout_debug:
+    type: bool
+    default_value: false
+    description: Capture sampled rollouts at every MPPI iteration and publish them as debug markers
+    read_only: false

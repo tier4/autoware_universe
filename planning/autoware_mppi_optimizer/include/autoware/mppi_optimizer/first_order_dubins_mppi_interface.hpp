@@ -83,6 +83,8 @@ struct FirstOrderDubinsMppiRollout
 {
   std::vector<std::pair<float, float>> points;
   float cost{0.0F};
+  /** One-based MPPI optimization iteration; zero denotes a legacy/offline aggregate sample. */
+  int iteration{0};
   /** True when this sample was selected as a high-cost (worst) viz sample, not top-weighted. */
   bool is_worst{false};
 };
@@ -339,9 +341,9 @@ public:
     std::vector<float> & raw_costs, std::vector<float> & normalized_weights, int stride = 1) const;
 
   /**
-   * @brief Replace the default GPU-sampled debug rollouts with top-K weighted samples plus
-   *        worst-K high-cost samples (CPU replay; ~tens of ms). Enable only for offline retune;
-   *        leave false for online planning and debug trajectory logging.
+   * @brief Replace the per-iteration sampled debug rollouts with top-K weighted samples plus
+   *        worst-K high-cost samples from the final iteration (CPU replay; ~tens of ms). Enable
+   *        only for offline retune; leave false for online planning and debug trajectory logging.
    */
   void setRolloutVisualizationEnabled(bool enable);
 

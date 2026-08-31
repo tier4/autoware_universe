@@ -106,6 +106,7 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.enable_debug_trajectory_log = params.enable_debug_trajectory_log;
   output.debug_trajectory_log_directory = params.debug_trajectory_log_directory;
   output.enable_distance_map_texture_debug = params.enable_distance_map_texture_debug;
+  output.enable_iteration_rollout_debug = params.enable_iteration_rollout_debug;
   output.ignore_obstacles = params.ignore_obstacles;
   output.ignore_road_borders = params.ignore_road_borders;
   output.ignore_drivable_area = params.ignore_drivable_area;
