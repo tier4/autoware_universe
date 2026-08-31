@@ -93,7 +93,7 @@ std::vector<int64_t> TemporalBevCache::current_selection() const
 }
 
 TemporalBevCache::InsertResult TemporalBevCache::insert(
-  const float * d_feature, const std::array<float, 4> & pose, const rclcpp::Time & stamp,
+  const float * d_feature, const std::array<double, 4> & pose, const rclcpp::Time & stamp,
   cudaStream_t stream)
 {
   InsertResult result = InsertResult::kConsecutive;
@@ -170,12 +170,9 @@ const float * TemporalBevCache::build_history(cudaStream_t stream)
       continue;
     }
 
-    Se2WarpParams params;
-    std::copy(newest.pose.begin(), newest.pose.end(), params.current_pose);
-    std::copy(slot.pose.begin(), slot.pose.end(), params.source_pose);
-    params.half_extent_m = static_cast<float>(config_.bev_half_extent_m);
-    params.height = static_cast<int32_t>(height_);
-    params.width = static_cast<int32_t>(width_);
+    const Se2WarpParams params = make_se2_warp_params(
+      newest.pose, slot.pose, config_.bev_half_extent_m, static_cast<int32_t>(height_),
+      static_cast<int32_t>(width_));
     CHECK_CUDA_ERROR(launch_se2_warp_kernel(
       slot.feature.get(), destination, params, static_cast<int32_t>(channels_), stream));
   }

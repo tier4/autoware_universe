@@ -75,13 +75,16 @@ public:
   /**
    * @brief Insert the newest feature map (device `[C, H, W]`) with its source ego pose.
    *
-   * The pose is `[x, y, cos(yaw), sin(yaw)]` in the map frame. A stamp at or before the newest
-   * cached stamp resets the cache first and reports `kGapReset`. Maps that fall out of the
-   * history window are evicted (their device buffers are recycled). Synchronizes `stream`
-   * before returning (the source buffer may be reused by the caller afterwards).
+   * The pose is `[x, y, cos(yaw), sin(yaw)]` in the map frame, kept in double: map coordinates
+   * are ~1e5 m on T4-style maps, and the SE(2) warp composes pose differences — float storage
+   * would quantize a slow-speed inter-frame displacement to centimetres before the warp ever
+   * sees it. A stamp at or before the newest cached stamp resets the cache first and reports
+   * `kGapReset`. Maps that fall out of the history window are evicted (their device buffers
+   * are recycled). Synchronizes `stream` before returning (the source buffer may be reused by
+   * the caller afterwards).
    */
   InsertResult insert(
-    const float * d_feature, const std::array<float, 4> & pose, const rclcpp::Time & stamp,
+    const float * d_feature, const std::array<double, 4> & pose, const rclcpp::Time & stamp,
     cudaStream_t stream);
 
   bool ready() const;
@@ -113,7 +116,7 @@ private:
   struct Slot
   {
     autoware::cuda_utils::CudaUniquePtr<float[]> feature;
-    std::array<float, 4> pose{};
+    std::array<double, 4> pose{};
     rclcpp::Time stamp;
   };
 

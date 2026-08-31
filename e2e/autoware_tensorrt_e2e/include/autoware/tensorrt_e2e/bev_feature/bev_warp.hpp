@@ -17,6 +17,8 @@
 
 #include <cuda_runtime.h>
 
+#include <array>
+#include <cmath>
 #include <cstdint>
 
 #ifdef __CUDACC__
@@ -37,23 +39,64 @@ namespace autoware::tensorrt_e2e
  * `torch.nn.functional.grid_sample(mode="bilinear", padding_mode="zeros",
  * align_corners=False)` with pixel-centre coordinates.
  *
- * Poses are `[x, y, cos(yaw), sin(yaw)]` with unit headings.
+ * The parameters carry the RELATIVE transform `T_source^{-1} . T_current`, composed on the
+ * host in double precision by `make_se2_warp_params`. Map-frame poses are ~1e5 m on T4-style
+ * maps: composing per cell in float32 loses metre-scale information to cancellation (the
+ * reference implementation documents the same failure for reduced precision), while the
+ * relative rotation and metre-scale shift are exactly representable working values for the
+ * kernel's float32 arithmetic.
  */
 struct Se2WarpParams
 {
-  float current_pose[4];  //!< Pose whose ego frame is the output frame.
-  float source_pose[4];   //!< Pose of the frame that produced the source feature.
+  float cos_rel;   //!< Rotation of `T_source^{-1} . T_current`.
+  float sin_rel;
+  float shift_x;   //!< Translation of `T_source^{-1} . T_current` (metres, source frame).
+  float shift_y;
   float half_extent_m;
   int32_t height;
   int32_t width;
 };
 
 /**
+ * @brief Compose the warp parameters from map-frame poses in double precision.
+ *
+ * Poses are `[x, y, cos(yaw), sin(yaw)]`. Headings are re-normalized (odometry provides unit
+ * headings up to rounding; normalizing keeps the warp rigid), matching the reference.
+ */
+inline Se2WarpParams make_se2_warp_params(
+  const std::array<double, 4> & current_pose, const std::array<double, 4> & source_pose,
+  const double half_extent_m, const int32_t height, const int32_t width)
+{
+  auto normalized = [](const std::array<double, 4> & pose) {
+    const double norm = std::hypot(pose[2], pose[3]);
+    return std::array<double, 2>{pose[2] / norm, pose[3] / norm};
+  };
+  const auto current_heading = normalized(current_pose);
+  const auto source_heading = normalized(source_pose);
+
+  const double delta_x = current_pose[0] - source_pose[0];
+  const double delta_y = current_pose[1] - source_pose[1];
+
+  Se2WarpParams params;
+  // R_source^T . R_current, and R_source^T . (t_current - t_source).
+  params.cos_rel = static_cast<float>(
+    source_heading[0] * current_heading[0] + source_heading[1] * current_heading[1]);
+  params.sin_rel = static_cast<float>(
+    source_heading[0] * current_heading[1] - source_heading[1] * current_heading[0]);
+  params.shift_x = static_cast<float>(source_heading[0] * delta_x + source_heading[1] * delta_y);
+  params.shift_y = static_cast<float>(-source_heading[1] * delta_x + source_heading[0] * delta_y);
+  params.half_extent_m = static_cast<float>(half_extent_m);
+  params.height = height;
+  params.width = width;
+  return params;
+}
+
+/**
  * @brief Source pixel coordinates sampled for one output cell.
  *
- * For output cell (`row`, `col`) this computes
- * `p_source = T_source^{-1}(T_current(p_current))` in pixel-centre coordinates.
- * Callable from host code for unit testing and from the CUDA kernel.
+ * For output cell (`row`, `col`) this computes `p_source = T_rel(p_current)` in pixel-centre
+ * coordinates, entirely at metre scale. Callable from host code for unit testing and from the
+ * CUDA kernel.
  */
 TENSORRT_E2E_HOST_DEVICE inline void se2_warp_source_pixel(
   const Se2WarpParams & params, const int32_t row, const int32_t col, float & source_row,
@@ -65,17 +108,9 @@ TENSORRT_E2E_HOST_DEVICE inline void se2_warp_source_pixel(
   const float current_y = ((static_cast<float>(col) + 0.5f) / static_cast<float>(params.width) *
                            2.0f - 1.0f) * params.half_extent_m;
 
-  // Current ego frame -> world.
-  const float world_x = params.current_pose[0] + params.current_pose[2] * current_x -
-                        params.current_pose[3] * current_y;
-  const float world_y = params.current_pose[1] + params.current_pose[3] * current_x +
-                        params.current_pose[2] * current_y;
-
-  // World -> source ego frame.
-  const float delta_x = world_x - params.source_pose[0];
-  const float delta_y = world_y - params.source_pose[1];
-  const float source_x = params.source_pose[2] * delta_x + params.source_pose[3] * delta_y;
-  const float source_y = -params.source_pose[3] * delta_x + params.source_pose[2] * delta_y;
+  // Current-frame cell -> source-frame cell.
+  const float source_x = params.cos_rel * current_x - params.sin_rel * current_y + params.shift_x;
+  const float source_y = params.sin_rel * current_x + params.cos_rel * current_y + params.shift_y;
 
   // Physical -> pixel-centre coordinates (grid_sample align_corners=False unnormalization).
   source_row = (source_x / params.half_extent_m + 1.0f) * static_cast<float>(params.height) *

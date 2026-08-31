@@ -1,0 +1,89 @@
+{
+  "channels": 8,
+  "height": 32,
+  "width": 32,
+  "half_extent_m": 122.4,
+  "feature": "feature.bin",
+  "cases": [
+    {
+      "name": "translation_origin",
+      "source_pose": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "current_pose": [
+        7.65,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "golden": "golden_translation_origin.bin"
+    },
+    {
+      "name": "utm_rot_trans",
+      "source_pose": [
+        3700.0,
+        73670.0,
+        0.8660254037844387,
+        0.49999999999999994
+      ],
+      "current_pose": [
+        3701.8,
+        73671.1,
+        0.8191520442889918,
+        0.573576436351046
+      ],
+      "golden": "golden_utm_rot_trans.bin"
+    },
+    {
+      "name": "utm_tiny_shift",
+      "source_pose": [
+        3700.0,
+        73670.0,
+        0.8660254037844387,
+        0.49999999999999994
+      ],
+      "current_pose": [
+        3700.002,
+        73670.0,
+        0.8660254037844387,
+        0.49999999999999994
+      ],
+      "golden": "golden_utm_tiny_shift.bin"
+    },
+    {
+      "name": "quarter_turn",
+      "source_pose": [
+        10.0,
+        -5.0,
+        1.0,
+        0.0
+      ],
+      "current_pose": [
+        10.0,
+        -5.0,
+        6.123233995736766e-17,
+        1.0
+      ],
+      "golden": "golden_quarter_turn.bin"
+    },
+    {
+      "name": "large_motion",
+      "source_pose": [
+        3700.0,
+        73670.0,
+        1.0,
+        0.0
+      ],
+      "current_pose": [
+        3760.0,
+        73670.0,
+        0.984807753012208,
+        0.17364817766693033
+      ],
+      "golden": "golden_large_motion.bin"
+    }
+  ]
+}

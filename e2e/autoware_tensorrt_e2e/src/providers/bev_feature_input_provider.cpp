@@ -34,14 +34,16 @@ namespace
 {
 constexpr int64_t LOG_THROTTLE_INTERVAL_MS = 5000;
 
-std::array<float, 4> pose_from_odometry(const nav_msgs::msg::Odometry & odometry)
+std::array<double, 4> pose_from_odometry(const nav_msgs::msg::Odometry & odometry)
 {
   const Eigen::Matrix4d pose_matrix = dp::utils::pose_to_matrix4d(odometry.pose.pose);
   const auto [cos_yaw, sin_yaw] =
     dp::utils::rotation_matrix_to_cos_sin(pose_matrix.block<3, 3>(0, 0));
+  // Double throughout: map coordinates are ~1e5 m, and the warp needs the metre-scale pose
+  // DIFFERENCE — a float cast here quantizes slow-speed inter-frame displacements away.
   return {
-    static_cast<float>(odometry.pose.pose.position.x),
-    static_cast<float>(odometry.pose.pose.position.y), cos_yaw, sin_yaw};
+    odometry.pose.pose.position.x, odometry.pose.pose.position.y,
+    static_cast<double>(cos_yaw), static_cast<double>(sin_yaw)};
 }
 
 }  // namespace

@@ -31,15 +31,9 @@ constexpr float kHalfExtent = 122.4f;
 constexpr float kCellSize = 2.0f * kHalfExtent / kHeight;  // Both axes share the extent/size.
 
 Se2WarpParams make_params(
-  const std::array<float, 4> & current_pose, const std::array<float, 4> & source_pose)
+  const std::array<double, 4> & current_pose, const std::array<double, 4> & source_pose)
 {
-  Se2WarpParams params;
-  std::copy(current_pose.begin(), current_pose.end(), params.current_pose);
-  std::copy(source_pose.begin(), source_pose.end(), params.source_pose);
-  params.half_extent_m = kHalfExtent;
-  params.height = kHeight;
-  params.width = kWidth;
-  return params;
+  return make_se2_warp_params(current_pose, source_pose, kHalfExtent, kHeight, kWidth);
 }
 
 }  // namespace
