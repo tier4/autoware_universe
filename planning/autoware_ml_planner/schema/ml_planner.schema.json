@@ -1,0 +1,303 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for ML Planner Node",
+  "type": "object",
+  "definitions": {
+    "ml_planner_node": {
+      "type": "object",
+      "properties": {
+        "plugins_path": {
+          "type": "string",
+          "default": "$(find-pkg-share autoware_tensorrt_plugins)/plugins/libautoware_tensorrt_plugins.so",
+          "description": "Path to libautoware_tensorrt_plugins.so file for native TensorRT and ONNX Runtime TensorRT EP"
+        },
+        "model": {
+          "type": "object",
+          "properties": {
+            "backend": {
+              "type": "string",
+              "default": "tensorrt",
+              "enum": ["tensorrt", "ort_cpu", "ort_cuda", "ort_tensorrt"],
+              "description": "Inference backend. tensorrt uses the native TensorRT implementation; ort_cpu/ort_cuda/ort_tensorrt use ONNX Runtime with the corresponding execution provider."
+            },
+            "precision": {
+              "type": "string",
+              "default": "fp32",
+              "enum": ["fp32", "fp16"],
+              "description": "TensorRT engine precision"
+            },
+            "use_cuda_graph": {
+              "type": "boolean",
+              "default": true,
+              "description": "Use CUDA Graph replay for TensorRT enqueue calls"
+            },
+            "onnx_model_path": {
+              "type": "string",
+              "default": "$(var data_path)/ml_planner/ml_planner_sampler.onnx",
+              "description": "Path to the 20-step sampler ONNX model"
+            }
+          },
+          "required": ["backend", "precision", "use_cuda_graph", "onnx_model_path"]
+        },
+        "planning_frequency_hz": {
+          "type": "number",
+          "default": 10.0,
+          "exclusiveMinimum": 0,
+          "description": "Planning frequency in Hz"
+        },
+        "traffic_light_group_msg_timeout_seconds": {
+          "type": "number",
+          "default": 0.2,
+          "exclusiveMinimum": 0,
+          "description": "Timeout for traffic light group messages (seconds)"
+        },
+        "build_only": {
+          "type": "boolean",
+          "default": false,
+          "description": "On build only, do not run the planner"
+        },
+        "batch_size": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 2,
+          "description": "Batch size for multi-batch inference"
+        },
+        "noise_scale": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          },
+          "default": [1.0],
+          "description": "Initial Gaussian noise scale for each batch item. Its length must equal batch_size."
+        },
+        "line_string_max_step_m": {
+          "type": "number",
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "description": "Maximum arc-length step per model point when resampling line strings [m]. Smaller values produce more fixed-size sub-segments per line string."
+        },
+        "trajectory_optimization": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable acados-based trajectory optimization of the raw model output"
+            },
+            "weight_longitudinal": {
+              "type": "number",
+              "default": 0.5,
+              "description": "Position tracking weight along the reference heading (schedule/velocity-profile freedom)"
+            },
+            "weight_lateral": {
+              "type": "number",
+              "default": 0.5,
+              "description": "Position tracking weight perpendicular to the reference heading (path deviation)"
+            },
+            "weight_yaw": {
+              "type": "number",
+              "default": 0.05,
+              "description": "Tracking weight for heading"
+            },
+            "weight_acceleration": {
+              "type": "number",
+              "default": 0.1,
+              "description": "Regularization weight on the acceleration input"
+            },
+            "weight_steering_rate": {
+              "type": "number",
+              "default": 10.0,
+              "description": "Regularization weight on the steering rate input"
+            },
+            "terminal_weight_scale": {
+              "type": "number",
+              "default": 2.5,
+              "description": "Terminal state weight = scale * stage weight"
+            },
+            "min_velocity_mps": {
+              "type": "number",
+              "default": 0.0,
+              "description": "Lower velocity bound [m/s]; 0 prevents backward motion"
+            },
+            "max_velocity_mps": {
+              "type": "number",
+              "default": 30.0,
+              "description": "Upper velocity bound [m/s]"
+            },
+            "min_acceleration_mps2": {
+              "type": "number",
+              "default": -4.0,
+              "description": "Lower acceleration bound [m/s^2]"
+            },
+            "max_acceleration_mps2": {
+              "type": "number",
+              "default": 3.0,
+              "description": "Upper acceleration bound [m/s^2]"
+            },
+            "max_steering_rate_rps": {
+              "type": "number",
+              "default": 1.0,
+              "description": "Steering rate bound [rad/s]"
+            },
+            "max_lateral_acceleration_mps2": {
+              "type": "number",
+              "default": 3.0,
+              "description": "Soft lateral acceleration constraint bound [m/s^2]"
+            },
+            "max_sqp_iterations": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "description": "Maximum SQP iterations per solve"
+            }
+          },
+          "required": ["enable"]
+        },
+        "road_border_avoidance": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": false,
+              "description": "Shift raw model-output trajectory points laterally away from road borders before the trajectory optimization"
+            },
+            "footprint_margin_m": {
+              "type": "number",
+              "default": 0.2,
+              "minimum": 0.0,
+              "description": "Ego footprint inflation used for the border overlap check [m]"
+            },
+            "search_radius_m": {
+              "type": "number",
+              "default": 120.0,
+              "exclusiveMinimum": 0.0,
+              "description": "Road borders farther than this from the current ego position are ignored [m]"
+            },
+            "shift_step_m": {
+              "type": "number",
+              "default": 0.1,
+              "exclusiveMinimum": 0.0,
+              "description": "Lateral shift resolution [m]"
+            },
+            "max_lateral_shift_m": {
+              "type": "number",
+              "default": 1.5,
+              "exclusiveMinimum": 0.0,
+              "description": "Cap on the total lateral offset from the raw position [m]"
+            },
+            "propagate_shift": {
+              "type": "boolean",
+              "default": true,
+              "description": "Carry the lateral offset of an overlapping point over to all subsequent points instead of shifting only the overlapping points"
+            }
+          },
+          "required": ["enable"]
+        },
+        "stop_point_fixing": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": false,
+              "description": "Freeze the optimized trajectory tail as stop points from the first decelerating point at or below the velocity threshold"
+            },
+            "velocity_threshold_mps": {
+              "type": "number",
+              "default": 0.3,
+              "minimum": 0.0,
+              "description": "Stop detection velocity threshold [m/s]"
+            },
+            "min_deceleration_duration_sec": {
+              "type": "number",
+              "default": 1.0,
+              "minimum": 0.0,
+              "description": "Minimum continuous deceleration duration required before fixing the stop point [s]"
+            }
+          },
+          "required": ["enable"]
+        },
+        "planning_factor": {
+          "type": "object",
+          "properties": {
+            "enable_stop": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable stop planning factor"
+            },
+            "enable_slowdown": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable slowdown planning factor"
+            },
+            "stop_velocity_threshold": {
+              "type": "number",
+              "default": 0.1,
+              "description": "Velocity threshold to detect a stop [m/s]"
+            },
+            "stop_keep_duration_threshold": {
+              "type": "number",
+              "default": 1.0,
+              "description": "Duration threshold to validate a stop [s]"
+            },
+            "slowdown_accel_threshold": {
+              "type": "number",
+              "default": -0.3,
+              "description": "Acceleration threshold to detect a slowdown [m/s^2]"
+            }
+          },
+          "required": [
+            "enable_stop",
+            "enable_slowdown",
+            "stop_velocity_threshold",
+            "stop_keep_duration_threshold",
+            "slowdown_accel_threshold"
+          ]
+        },
+        "debug_params": {
+          "type": "object",
+          "properties": {
+            "publish_debug_map": {
+              "type": "boolean",
+              "default": false,
+              "description": "Publish debug map markers"
+            },
+            "publish_debug_route": {
+              "type": "boolean",
+              "default": true,
+              "description": "Publish debug route markers"
+            },
+            "publish_debug_linestrings": {
+              "type": "boolean",
+              "default": true,
+              "description": "Publish debug linestring markers"
+            }
+          },
+          "required": ["publish_debug_map", "publish_debug_route", "publish_debug_linestrings"]
+        }
+      },
+      "required": [
+        "model",
+        "planning_frequency_hz",
+        "traffic_light_group_msg_timeout_seconds",
+        "batch_size",
+        "noise_scale",
+        "planning_factor",
+        "debug_params"
+      ]
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "$ref": "#/definitions/ml_planner_node"
+        }
+      },
+      "required": ["ros__parameters"]
+    }
+  },
+  "required": ["/**"]
+}
