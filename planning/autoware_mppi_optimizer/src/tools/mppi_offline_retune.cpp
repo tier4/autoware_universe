@@ -133,6 +133,8 @@ void applyCostParam(
 {
   if (key == "lambda") {
     params.lambda = value;
+  } else if (key == "max_iter") {
+    params.max_iter = static_cast<int>(value);
   } else if (key == "speed_coeff") {
     params.speed_coeff = value;
   } else if (key == "track_coeff") {
@@ -171,6 +173,8 @@ void applyCostParam(
     params.accel_cmd_std_dev = value;
   } else if (key == "steer_cmd_std_dev") {
     params.steer_cmd_std_dev = value;
+  } else if (key == "std_dev_decay") {
+    params.std_dev_decay = value;
   } else if (key == "accel_cmd_noise_exponent") {
     params.accel_cmd_noise_exponent = value;
   } else if (key == "steer_cmd_noise_exponent") {
