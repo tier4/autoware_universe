@@ -143,7 +143,8 @@ struct CollisionPoint
   /**
    * @brief Copy a collision point and attach timing / activation state (e.g. for hysteresis).
    * @param collision_point Source geometry and arc length.
-   * @param start_time Time associated with this collision state.
+   * @param first_seen Time associated with first detection of this collision state.
+   * @param last_seen Time associated with last detection of this collision state.
    * @param active Whether this collision is currently considered active.
    */
   CollisionPoint(
