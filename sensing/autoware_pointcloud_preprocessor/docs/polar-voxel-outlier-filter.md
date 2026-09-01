@@ -145,7 +145,7 @@ The filter uses different algorithms based on the `use_return_type_classificatio
 4. **Filtering Logic**: Same as normal mode (for accurate diagnostics)
 5. **Output Generation**: **SKIPPED** - creates empty output for interface compatibility
 6. **Diagnostics**: **ALWAYS PUBLISHED** - full visibility and filter ratio metrics
-7. **Noise Cloud**: **SKIPPED** - no noise cloud generation regardless of `publish_noise_cloud` setting
+7. **Debug Point Clouds**: Controlled by `publish_noise_cloud` and `publish_low_visibility_voxels`; disabled flags skip publisher creation, message generation, and publication
 
 **Use Cases for Visibility Estimation Only Mode:**
 
@@ -174,9 +174,9 @@ The filter uses different algorithms based on the `use_return_type_classificatio
 4. **Return Type Classification**: Points are classified as primary or secondary returns
 5. **Two-Criteria Filtering**:
    - **Criterion 1**: Primary returns ≥ `voxel_points_threshold`
-   - **Criterion 2**: Secondary returns ≤ `secondary_noise_threshold`
+   - **Criterion 2**: Secondary returns with intensity ≤ `filter_ratio_intensity_threshold` do not exceed `filter_ratio_secondary_returns_threshold`
    - **Both criteria must be satisfied** for a voxel to be kept
-6. **Range-Aware Visibility**: Visibility calculation limited to voxels within `visibility_estimation_max_range_m`, `visibility_estimation_(min|max)_azimuth_rad`, and `visibility_estimation_(min|max)_elevation_rad`, and secondary voxel count limited by `visibility_estimation_max_secondary_voxel_count`
+6. **Range-Aware Visibility**: Visibility calculation limited to voxels within `visibility_estimation_max_range_m`, `visibility_estimation_(min|max)_azimuth_rad`, and `visibility_estimation_(min|max)_elevation_rad`, with low-visibility candidates constrained by entropy, anisotropy, average intensity, secondary-return ratio, and `visibility_estimation_max_secondary_voxel_count`
 7. **Secondary Return Filtering**: Optional exclusion of secondary returns from output
 8. **Output**: Filtered point cloud with enhanced noise removal (unless visibility-only mode)
 
@@ -185,7 +185,7 @@ The filter uses different algorithms based on the `use_return_type_classificatio
 When enabled, for each voxel both criteria must be satisfied:
 
 - **Primary Return Threshold**: `primary_count >= voxel_points_threshold`
-- **Secondary Return Threshold**: `secondary_count <= secondary_noise_threshold`
+- **Secondary Return Threshold**: `filter_ratio_secondary_count <= filter_ratio_secondary_returns_threshold`
 - **Final Decision**: `valid_voxel = (primary_threshold_met AND secondary_threshold_met)`
 
 ### Key Features
@@ -197,6 +197,10 @@ When enabled, for each voxel both criteria must be satisfied:
 - **Visibility-Only Mode**: Diagnostic operation without point cloud output
 - **Comprehensive Diagnostics**: Mode-specific filter ratio and visibility metrics
 - **Debug Support**: Optional noise cloud publishing for analysis and tuning
+
+### Geometric Entropy-Based Visibility Estimation (Advanced Mode Only)
+
+The filter uses geometric entropy and anisotropy analysis to detect low-visibility conditions caused by adverse weather. Entropy and anisotropy are calculated from the spatial distribution of points within voxels to identify irregular point clusters (rain, fog, smoke) while avoiding false positives on planar surfaces like windows. High entropy value combined with anisotropy value under certain threshold, indicates weather-induced noise, whereas planar surfaces exhibit different entropy and anisotropy values, avoiding that structural surfaces could be misclassified as noise when using secondary return type.
 
 ### Return Type Management (Advanced Mode Only)
 
@@ -217,11 +221,18 @@ This implementation inherits `autoware::pointcloud_preprocessor::Filter` class, 
 
 ### Additional Debug Topics
 
-| Name                                                  | Type                                                | Description                                                                                 |
-| ----------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `~/polar_voxel_outlier_filter/debug/filter_ratio`     | `autoware_internal_debug_msgs::msg::Float32Stamped` | Ratio of output to input points (always published)                                          |
-| `~/polar_voxel_outlier_filter/debug/visibility`       | `autoware_internal_debug_msgs::msg::Float32Stamped` | Ratio of voxels passing secondary return threshold test (advanced mode only, range-limited) |
-| `~/polar_voxel_outlier_filter/debug/pointcloud_noise` | `sensor_msgs::msg::PointCloud2`                     | Filtered-out points for debugging (when enabled and not in visibility-only mode)            |
+| Name                                                       | Type                                                | Description                                                                                                                                 |
+| ---------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `~/polar_voxel_outlier_filter/debug/filter_ratio`          | `autoware_internal_debug_msgs::msg::Float32Stamped` | Ratio of output to input points (always published)                                                                                          |
+| `~/polar_voxel_outlier_filter/debug/visibility`            | `autoware_internal_debug_msgs::msg::Float32Stamped` | Ratio of voxels passing secondary return threshold test (advanced mode only, range-limited)                                                 |
+| `~/polar_voxel_outlier_filter/debug/pointcloud_noise`      | `sensor_msgs::msg::PointCloud2`                     | Filtered-out points with appended per-voxel information fields for debugging when `publish_noise_cloud=true`                                |
+| `~/polar_voxel_outlier_filter/debug/low_visibility_voxels` | `sensor_msgs::msg::PointCloud2`                     | Points in selected low-visibility voxels with appended per-voxel information fields for debugging when `publish_low_visibility_voxels=true` |
+
+The noise cloud and low-visibility voxel debug cloud include the input point fields and append these `FLOAT32` fields per point: `voxel_radius_idx`, `voxel_azimuth_idx`, `voxel_elevation_idx`, `voxel_entropy`, `voxel_anisotropy`, `voxel_point_count`, `voxel_average_intensity`, `voxel_secondary_return_count`, and `voxel_secondary_return_ratio`.
+
+`voxel_entropy` and `voxel_anisotropy` are calculated only for voxels inside the configured visibility estimation range.
+
+`publish_noise_cloud` and `publish_low_visibility_voxels` can be changed at runtime if needed.
 
 ## Parameters
 
@@ -235,12 +246,20 @@ This implementation inherits `autoware::pointcloud_preprocessor::Filter` class, 
 
 - **use_return_type_classification**: Must be `true` to enable advanced two-criteria filtering
 - **filter_secondary_returns**: When `true`, only primary returns appear in output (advanced mode only)
-- **secondary_noise_threshold**: Only used when `use_return_type_classification=true`
+- **low_visibility_intensity_threshold**: Maximum point intensity counted toward low-visibility secondary returns
+- **low_visibility_secondary_returns_threshold**: Maximum low-intensity secondary-return count before a voxel becomes a low-visibility candidate
+- **filter_ratio_intensity_threshold**: Maximum point intensity counted toward filter-ratio secondary returns
+- **filter_ratio_secondary_returns_threshold**: Maximum low-intensity secondary-return count for a filter-ratio-valid voxel
+- **low_visibility_entropy_threshold**: Minimum normalized geometric entropy for low-visibility candidate selection when `use_return_type_classification=true` (default: 0.3)
+- **low_visibility_anisotropy_threshold**: Maximum geometric anisotropy for low-visibility candidate selection when `use_return_type_classification=true` (default: 0.95)
+- **low_visibility_average_intensity_threshold**: Maximum voxel average intensity for visibility candidate selection when `use_return_type_classification=true`
+- **low-visibility voxels**: In-range secondary-return candidate voxels are constrained by entropy, anisotropy, and average intensity thresholds. Sparse in-range voxels with fewer than `low_visibility_sparse_voxel_point_count_threshold` points, `voxel_secondary_return_ratio > low_visibility_sparse_voxel_secondary_return_ratio_threshold`, and average intensity below `low_visibility_average_intensity_threshold` are also selected as low-visibility voxels
 - **visibility_estimation_max_secondary_voxel_count**: Only used when `use_return_type_classification=true`, limits secondary voxel counting in visibility calculations
 - **primary_return_types**: Only used when `use_return_type_classification=true`
 - **visibility_estimation_max_range_m**: Limits visibility calculation to reliable sensor range (advanced mode only)
+- **publish_low_visibility_voxels**: When `true`, publishes points in low-visibility voxels for monitoring entropy-based detection (advanced mode only)
 - **visibility_estimation_only**: When `true`, skips point cloud output generation but still calculates and publishes diagnostics
-- **publish_noise_cloud**: When `false`, improves performance by skipping noise cloud generation (ignored when `visibility_estimation_only=true`)
+- **publish_noise_cloud**: When `false`, improves performance by skipping noise cloud publisher creation, message generation, and publication
 - **Diagnostics**: Visibility is only published when return type classification is enabled
 
 ## Configuration Examples
@@ -252,14 +271,23 @@ This implementation inherits `autoware::pointcloud_preprocessor::Filter` class, 
 visibility_estimation_only: true
 use_return_type_classification: true
 voxel_points_threshold: 2
-secondary_noise_threshold: 4
+low_visibility_intensity_threshold: 2
+low_visibility_secondary_returns_threshold: 4
+filter_ratio_intensity_threshold: 2
+filter_ratio_secondary_returns_threshold: 4
+low_visibility_entropy_threshold: 0.3
+low_visibility_anisotropy_threshold: 0.95
+low_visibility_average_intensity_threshold: 2.0
+low_visibility_sparse_voxel_point_count_threshold: 10
+low_visibility_sparse_voxel_secondary_return_ratio_threshold: 0.2
 visibility_estimation_max_secondary_voxel_count: 500
 visibility_estimation_max_range_m: 20.0
 primary_return_types: [1, 6, 8, 10]
 radial_resolution_m: 0.5
 azimuth_resolution_rad: 0.0175
 elevation_resolution_rad: 0.0175
-# publish_noise_cloud is ignored in visibility-only mode
+publish_noise_cloud: false
+publish_low_visibility_voxels: false
 ```
 
 ### Simple Mode Configuration
@@ -281,7 +309,15 @@ publish_noise_cloud: true # Enable for debugging
 # Two-criteria filtering with return type classification
 use_return_type_classification: true
 voxel_points_threshold: 2 # Primary return threshold
-secondary_noise_threshold: 4 # Secondary return threshold
+low_visibility_intensity_threshold: 2 # Intensity threshold for visibility secondary returns
+low_visibility_secondary_returns_threshold: 4 # Secondary-return threshold for visibility
+filter_ratio_intensity_threshold: 2 # Intensity threshold for filter-ratio secondary returns
+filter_ratio_secondary_returns_threshold: 4 # Secondary-return threshold for filter ratio
+low_visibility_entropy_threshold: 0.3 # Min normalized geometric entropy for visibility candidates
+low_visibility_anisotropy_threshold: 0.95 # Max geometric anisotropy for visibility candidates
+low_visibility_average_intensity_threshold: 255.0 # Max voxel average intensity for visibility candidates
+low_visibility_sparse_voxel_point_count_threshold: 10 # Sparse voxel point count threshold
+low_visibility_sparse_voxel_secondary_return_ratio_threshold: 0.2 # Sparse voxel secondary return ratio threshold
 visibility_estimation_max_secondary_voxel_count: 500 # Max secondary voxels for visibility
 primary_return_types: [1, 6, 8, 10] # Primary return types
 filter_secondary_returns: false # Include secondary returns in output
@@ -308,6 +344,12 @@ visibility_estimation_max_azimuth_rad: 2.35
 visibility_estimation_min_elevation_rad: -0.26
 visibility_estimation_max_elevation_rad: 1.04
 visibility_estimation_max_secondary_voxel_count: 500 # Allow secondary voxels in visibility calculation
+low_visibility_entropy_threshold: 0.3 # Entropy threshold for low-visibility detection
+low_visibility_anisotropy_threshold: 0.95 # Anisotropy threshold for low-visibility detection
+low_visibility_average_intensity_threshold: 255.0 # Average intensity threshold for low-visibility detection
+low_visibility_sparse_voxel_point_count_threshold: 10 # Sparse voxel point count threshold
+low_visibility_sparse_voxel_secondary_return_ratio_threshold: 0.2 # Sparse voxel secondary return ratio threshold
+publish_low_visibility_voxels: true # Monitor voxels used for visibility estimation
 visibility_estimation_only: false # Normal filtering with debug output
 publish_noise_cloud: true # Enable noise cloud for analysis
 filter_ratio_error_threshold: 0.5
@@ -393,7 +435,10 @@ The filter includes robust error handling:
 #   <param name="radial_resolution_m" value="0.5"/>
 #   <param name="azimuth_resolution_rad" value="0.0175"/>
 #   <param name="voxel_points_threshold" value="2"/>
-#   <param name="secondary_noise_threshold" value="4"/>
+#   <param name="low_visibility_intensity_threshold" value="2"/>
+#   <param name="low_visibility_secondary_returns_threshold" value="4"/>
+#   <param name="filter_ratio_intensity_threshold" value="2"/>
+#   <param name="filter_ratio_secondary_returns_threshold" value="4"/>
 #   <param name="visibility_estimation_max_secondary_voxel_count" value="500"/>
 #   <param name="primary_return_types" value="[1,6,8,10]"/>
 #   <param name="visibility_estimation_max_range_m" value="20.0"/>
@@ -428,7 +473,8 @@ The filter includes robust error handling:
 
 - **Filter Ratio**: `~/polar_voxel_outlier_filter/debug/filter_ratio` (autoware_internal_debug_msgs/Float32Stamped) - Always published
 - **Visibility**: `~/polar_voxel_outlier_filter/debug/visibility` (autoware_internal_debug_msgs/Float32Stamped) - Advanced mode only, range-limited
-- **Noise Cloud**: `~/polar_voxel_outlier_filter/debug/pointcloud_noise` (sensor_msgs/PointCloud2) - Not published in visibility-only mode
+- **Noise Cloud**: `~/polar_voxel_outlier_filter/debug/pointcloud_noise` (sensor_msgs/PointCloud2) - Published only when `publish_noise_cloud=true`
+- **Low Visibility Voxels**: `~/polar_voxel_outlier_filter/debug/low_visibility_voxels` (sensor_msgs/PointCloud2) - Published only when `publish_low_visibility_voxels=true`
 
 ### Programmatic Usage
 
@@ -582,6 +628,7 @@ auto node = std::make_shared<autoware::pointcloud_preprocessor::PolarVoxelOutlie
 #### Mode Selection Guidelines
 
 - **Choose visibility-only mode when**:
+
   - Only diagnostic information is needed
   - Computational resources are limited
   - Running parallel monitoring alongside main processing
@@ -648,7 +695,7 @@ To enable advanced filtering on existing systems:
 3. **Configure return types**: Set `primary_return_types` for your sensor
 4. **Set visibility range**: Configure `visibility_estimation_max_range_m`, `visibility_estimation_(min|max)_azimuth_rad`, and `visibility_estimation_(min|max)_elevation_rad` for your application
 5. **Configure secondary voxel limiting**: Set `visibility_estimation_max_secondary_voxel_count` based on requirements
-6. **Tune thresholds**: Adjust `secondary_noise_threshold` based on requirements
+6. **Tune thresholds**: Adjust the `low_visibility_*` and `filter_ratio_*` intensity and secondary-return thresholds independently
 7. **Monitor diagnostics**: Use range-aware visibility metrics for performance assessment
 
 ### Disabling Advanced Mode
