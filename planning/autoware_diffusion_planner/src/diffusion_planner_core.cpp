@@ -109,24 +109,6 @@ void DiffusionPlannerCore::load_model()
   observation_normalization_ = utils::load_observation_normalization(params_.args_path);
   state_normalization_ = utils::load_state_normalization(params_.args_path);
 
-  // normalize_input_data() derives its column count from these vectors rather than from
-  // AGENT_STATE_DIM, and its divisibility guard is an assert that -DNDEBUG compiles out. Weights
-  // whose agent_state_dim disagrees with this build would therefore normalize every neighbor
-  // feature against the wrong mean/std, silently -- so reject them here instead.
-  const auto neighbor_normalization = observation_normalization_.find("neighbor_agents_past");
-  if (neighbor_normalization == observation_normalization_.end()) {
-    throw std::runtime_error(
-      "Missing observation_normalizer.neighbor_agents_past in " + params_.args_path);
-  }
-  const auto & [neighbor_mean, neighbor_std] = neighbor_normalization->second;
-  if (neighbor_mean.size() != AGENT_STATE_DIM || neighbor_std.size() != AGENT_STATE_DIM) {
-    throw std::runtime_error(
-      "observation_normalizer.neighbor_agents_past in " + params_.args_path + " has " +
-      std::to_string(neighbor_std.size()) + " entries, but this build expects " +
-      std::to_string(AGENT_STATE_DIM) +
-      ". Use weights trained with agent_state_dim=" + std::to_string(AGENT_STATE_DIM) + ".");
-  }
-
   // Initialize guidance modules
   StartGuidanceConfig start_guidance_config;
   start_guidance_config.reference_distance_m =

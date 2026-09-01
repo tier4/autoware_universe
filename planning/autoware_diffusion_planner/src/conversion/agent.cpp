@@ -21,11 +21,7 @@
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
-#include <rclcpp/clock.hpp>
-#include <rclcpp/logging.hpp>
-
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
-#include <autoware_perception_msgs/msg/shape.hpp>
 #include <autoware_utils_math/normalization.hpp>
 
 #include <algorithm>
@@ -55,12 +51,6 @@ double get_yaw(const Eigen::Matrix4d & pose)
 
 AgentLabel get_model_label(const TrackedObject & object)
 {
-  // An empty classification also yields UNKNOWN (label 0) from getHighestProbLabel(), but such an
-  // object carries no label to act on, so keep ignoring it rather than treating it as UNKNOWN.
-  if (object.classification.empty()) {
-    return AgentLabel::IGNORE;
-  }
-
   const uint8_t autoware_label =
     autoware::object_recognition_utils::getHighestProbLabel(object.classification);
 
@@ -75,8 +65,6 @@ AgentLabel get_model_label(const TrackedObject & object)
       return AgentLabel::BICYCLE;
     case autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN:
       return AgentLabel::PEDESTRIAN;
-    case autoware_perception_msgs::msg::ObjectClassification::UNKNOWN:
-      return AgentLabel::UNKNOWN;
     default:
       return AgentLabel::IGNORE;
   }
@@ -104,62 +92,6 @@ std::vector<AgentHistory> transform_sort_trim(
       histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent), histories.end());
   }
   return histories;
-}
-
-// Replace a non-BOX shape with a conservative 0.5 m bounding box so the object isn't dropped by the
-// POLYGON filter in update_histories(), logging a throttled warning identifying why.
-void replace_with_default_box_shape(TrackedObject & object, const char * reason)
-{
-  static rclcpp::Clock clock{RCL_ROS_TIME};
-  RCLCPP_WARN_THROTTLE(
-    rclcpp::get_logger("diffusion_planner"), clock, constants::LOG_THROTTLE_INTERVAL_MS,
-    "%s object %s has a non-BOX shape (type=%u). Replacing it with a 0.5 m bounding box.", reason,
-    autoware_utils_uuid::to_hex_string(object.object_id).c_str(), object.shape.type);
-  object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
-  object.shape.footprint.points.clear();
-  object.shape.dimensions.x = 0.5;
-  object.shape.dimensions.y = 0.5;
-  object.shape.dimensions.z = 0.5;
-}
-
-// HAZARD objects are not supported by the model, so remap them to PEDESTRIAN
-// to make the planner consider them.
-TrackedObject remap_hazard_to_pedestrian(const TrackedObject & object)
-{
-  const bool is_hazard = autoware::object_recognition_utils::getHighestProbLabel(
-                           object.classification) == ObjectClassification::HAZARD;
-  if (!is_hazard) {
-    return object;
-  }
-
-  TrackedObject remapped = object;
-  for (auto & classification : remapped.classification) {
-    if (classification.label == ObjectClassification::HAZARD) {
-      classification.label = ObjectClassification::PEDESTRIAN;
-    }
-  }
-
-  if (remapped.shape.type != autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
-    replace_with_default_box_shape(remapped, "HAZARD");
-  }
-  return remapped;
-}
-
-// UNKNOWN objects have a dedicated one-hot slot in the model, so unlike HAZARD they are not
-// remapped to another class -- their classification is left untouched so downstream consumers (e.g.
-// ~/output/predicted_objects) still see them as UNKNOWN. A non-BOX shape must still be replaced the
-// same way HAZARD's is, or the object would be dropped by the POLYGON filter regardless.
-TrackedObject apply_unknown_shape_fallback(const TrackedObject & object)
-{
-  if (
-    get_model_label(object) != AgentLabel::UNKNOWN ||
-    object.shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
-    return object;
-  }
-
-  TrackedObject fixed = object;
-  replace_with_default_box_shape(fixed, "UNKNOWN");
-  return fixed;
 }
 
 }  // namespace
@@ -219,6 +151,7 @@ static_assert(
     static_cast<float>(label == AgentLabel::VEHICLE),
     static_cast<float>(label == AgentLabel::PEDESTRIAN),
     static_cast<float>(label == AgentLabel::BICYCLE),
+    // Nothing maps to AgentLabel::UNKNOWN today (see get_model_label), so this slot is always 0;
     static_cast<float>(label == AgentLabel::UNKNOWN),
   };
 }
@@ -249,9 +182,7 @@ void AgentData::update_histories(const TrackedObjects & objects)
 {
   const rclcpp::Time objects_timestamp(objects.header.stamp);
   std::vector<std::string> found_ids;
-  for (const TrackedObject & input_object : objects.objects) {
-    TrackedObject object = remap_hazard_to_pedestrian(input_object);
-    object = apply_unknown_shape_fallback(object);
+  for (const TrackedObject & object : objects.objects) {
     if (get_model_label(object) == AgentLabel::IGNORE) {
       continue;
     }
@@ -316,9 +247,7 @@ void AgentData::update_histories(
   last_processed_stamp_ = objects_timestamp;
 
   latest_ids_.clear();
-  for (const TrackedObject & input_object : objects.objects) {
-    TrackedObject object = remap_hazard_to_pedestrian(input_object);
-    object = apply_unknown_shape_fallback(object);
+  for (const TrackedObject & object : objects.objects) {
     if (get_model_label(object) == AgentLabel::IGNORE) {
       continue;
     }
