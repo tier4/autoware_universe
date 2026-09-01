@@ -113,7 +113,7 @@ MPPI_MAX_WORST_VIZ_ROLLOUTS = 128
 # Keep in sync with config/mppi_optimizer.param.yaml (overridden by cost_params.csv when present).
 DEFAULT_PARAMS: Dict[str, float] = {
     "lambda": 100.0,
-    "speed_coeff": 300.0,
+    "spatial_overspeed_coeff": 0.0,
     "track_coeff": 1200.0,
     "track_terminal_scale": 10.0,
     "terminal_error_coeff": 0.0,
@@ -157,7 +157,7 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("track_terminal_scale", 0.0, 50.0),
     ("terminal_error_coeff", 0.0, 10000.0),
     ("terminal_heading_coeff", 0.0, 5000.0),
-    ("speed_coeff", 0.0, 5000.0),
+    ("spatial_overspeed_coeff", 0.0, 10000.0),
     ("heading_coeff", 0.0, 5000.0),
     ("lateral_distance_coeff", 0.0, 10000.0),
     ("lateral_yaw_error_coeff", 0.0, 5000.0),
@@ -1725,7 +1725,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ax_cost_breakdown.set_xlabel("horizon-average cost")
         ax_cost_breakdown.grid(True, axis="x", alpha=0.3)
         component_labels = (
-            ("state/speed", "speed"),
+            ("state/spatial_overspeed", "spatial overspeed"),
             ("state/track", "track"),
             ("state/heading", "heading"),
             ("state/lateral_distance", "lat distance"),
