@@ -31,6 +31,10 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float track_coeff = 1000.0F;
   /** Multiplier on track_coeff * track_val in terminalCost (running state cost uses scale 1). */
   float track_terminal_scale = 10.0F;
+  /** Terminal-only squared XY error to the final reference point. */
+  float terminal_error_coeff = 0.0F;
+  /** Terminal-only squared shortest-angle error to the final reference heading. */
+  float terminal_heading_coeff = 0.0F;
   /** Pull toward ref heading at each horizon step: coeff * (yaw - ref_yaw[t])^2; 0 disables. */
   float heading_coeff = 500.0F;
   /** Spatial (closest-segment) cross-track error: coeff * e_lat^2; 0 disables. */
@@ -144,7 +148,8 @@ public:
 
   void setReferenceTrajectory(
     const float * x, const float * y, const float * v, int count, const float * yaw = nullptr,
-    const float * max_velocity = nullptr, const std::uint8_t * velocity_limit_active = nullptr);
+    const float * max_velocity = nullptr, const std::uint8_t * velocity_limit_active = nullptr,
+    const float * terminal_reference = nullptr);
 
   void setKinematicLimits(const FirstOrderDubinsBicycleKinematicLimitData & limits);
 
@@ -310,6 +315,8 @@ public:
   float ref_y_[NUM_TIMESTEPS] = {};
   float ref_v_[NUM_TIMESTEPS] = {};
   float ref_yaw_[NUM_TIMESTEPS] = {};
+  /** Full reference-trajectory terminal pose: x, y, yaw. */
+  float terminal_reference_[3] = {};
   float ref_max_velocity_[NUM_TIMESTEPS] = {};
   std::uint8_t ref_velocity_limit_active_[NUM_TIMESTEPS] = {};
   bool has_pointwise_velocity_limits_{false};

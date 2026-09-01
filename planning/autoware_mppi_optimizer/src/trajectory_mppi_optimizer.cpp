@@ -65,6 +65,8 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   output.speed_coeff = static_cast<float>(params.speed_coeff);
   output.track_coeff = static_cast<float>(params.track_coeff);
   output.track_terminal_scale = static_cast<float>(params.track_terminal_scale);
+  output.terminal_error_coeff = static_cast<float>(params.terminal_error_coeff);
+  output.terminal_heading_coeff = static_cast<float>(params.terminal_heading_coeff);
   output.heading_coeff = static_cast<float>(params.heading_coeff);
   output.lateral_distance_coeff = static_cast<float>(params.lateral_distance_coeff);
   output.lateral_yaw_error_coeff = static_cast<float>(params.lateral_yaw_error_coeff);
@@ -533,6 +535,8 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("state/speed", cost.speed);
   cost_diagnostics_->add_key_value("state/track", cost.track);
   cost_diagnostics_->add_key_value("state/heading", cost.heading);
+  cost_diagnostics_->add_key_value("terminal/error", cost.terminal_error);
+  cost_diagnostics_->add_key_value("terminal/heading", cost.terminal_heading);
   cost_diagnostics_->add_key_value("state/lateral_distance", cost.lateral_distance);
   cost_diagnostics_->add_key_value("state/signed_lateral_error_m", cost.signed_lateral_error_m);
   cost_diagnostics_->add_key_value("state/lateral_yaw_error", cost.lateral_yaw_error);
