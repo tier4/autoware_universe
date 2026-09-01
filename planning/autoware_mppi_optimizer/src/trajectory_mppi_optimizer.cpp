@@ -116,6 +116,11 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.use_last_control_as_nominal = params.use_last_control_as_nominal;
   output.use_temporal_mpt_as_nominal = params.use_temporal_mpt_as_nominal;
   output.prevent_reverse_velocity = params.prevent_reverse_velocity;
+  output.enable_curvature_adaptive_steering_filter =
+    params.enable_curvature_adaptive_steering_filter;
+  output.steering_filter_alpha_straight = static_cast<float>(params.steering_filter_alpha_straight);
+  output.steering_filter_alpha_turn = static_cast<float>(params.steering_filter_alpha_turn);
+  output.steering_filter_turn_angle_rad = static_cast<float>(params.steering_filter_turn_angle_rad);
   output.enable_input_delay_compensation = params.enable_input_delay_compensation;
   return output;
 }
