@@ -282,7 +282,7 @@ public:
 
   __host__ __device__ void computeGradualCrashCosts(
     float x, float y, float yaw, int timestep, float & drivable_area_cost, float & obstacle_cost,
-    float & road_border_cost) const;
+    float & road_border_cost, bool * safety_violation = nullptr) const;
 
   float computeStateCost(
     const Eigen::Ref<const output_array> & y, int timestep, int * crash_status);
