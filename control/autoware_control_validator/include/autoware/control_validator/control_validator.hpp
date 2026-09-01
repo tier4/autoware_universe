@@ -262,7 +262,8 @@ public:
   void update_parameters(const ::control_validator::Params & params)
   {
     enable_ = params.uncrossable_bound_departure_validator.enable;
-    params_.lateral_margin_m = params.uncrossable_bound_departure_validator.lateral_margin_m;
+    params_.critical_departure_lateral_th_m =
+      params.uncrossable_bound_departure_validator.lateral_margin_m;
     params_.longitudinal_margin_m =
       params.uncrossable_bound_departure_validator.longitudinal_margin_m;
     params_.max_deceleration_mps2 =
