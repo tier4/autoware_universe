@@ -219,6 +219,11 @@ public:
       out << "use_temporal_mpt_as_nominal," << (options.use_temporal_mpt_as_nominal ? 1 : 0)
           << "\n";
       out << "prevent_reverse_velocity," << (options.prevent_reverse_velocity ? 1 : 0) << "\n";
+      out << "enable_curvature_adaptive_steering_filter,"
+          << (options.enable_curvature_adaptive_steering_filter ? 1 : 0) << "\n";
+      out << "steering_filter_alpha_straight," << options.steering_filter_alpha_straight << "\n";
+      out << "steering_filter_alpha_turn," << options.steering_filter_alpha_turn << "\n";
+      out << "steering_filter_turn_angle_rad," << options.steering_filter_turn_angle_rad << "\n";
       out << "enable_input_delay_compensation," << (options.enable_input_delay_compensation ? 1 : 0)
           << "\n";
       out << "enable_iteration_rollout_debug," << (options.enable_iteration_rollout_debug ? 1 : 0)
