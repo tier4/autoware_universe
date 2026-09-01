@@ -632,13 +632,57 @@ class carla_ros2_interface(object):
             carla_pose_transform.location.y,
         )
 
+    def _resolve_map_origin(self):
+        """Return the CARLA→map offset from a single source of truth.
+
+        The ground-truth localization path already derives this offset from the
+        CARLA OpenDRIVE geoReference (``_init_geo_transform``).  The hand-set
+        ``map_origin_x/y`` parameters can silently disagree with it (observed:
+        92008.441357 vs the geoReference-derived 92008.000), shifting GNSS/
+        initialpose against the TF by that remainder.  So: an explicit non-zero
+        parameter wins (with a one-time warning when it disagrees), otherwise
+        the geoReference-derived offset is used whenever an MGRS-style
+        configuration (GT localization or splatsim) is active.  Stock CARLA
+        towns (no MGRS) keep the plain 0/0 behavior.
+        """
+        px = float(self.param_values["map_origin_x"])
+        py = float(self.param_values["map_origin_y"])
+        mgrs_mode = bool(self.param_values.get("publish_ground_truth_localization")) or bool(
+            self.param_values.get("render_with_splatsim")
+        )
+        if px != 0.0 or py != 0.0:
+            if (
+                mgrs_mode
+                and self._geo_transform_ready
+                and not getattr(self, "_map_origin_mismatch_warned", False)
+                and (abs(px - self._mgrs_offset_x) > 1e-3 or abs(py - self._mgrs_offset_y) > 1e-3)
+            ):
+                self._map_origin_mismatch_warned = True
+                self.logger.warning(
+                    f"map_origin param ({px:.6f}, {py:.6f}) disagrees with the "
+                    f"geoReference-derived offset ({self._mgrs_offset_x:.6f}, "
+                    f"{self._mgrs_offset_y:.6f}); GNSS/initialpose will be offset "
+                    "against the ground-truth TF by the difference."
+                )
+            return px, py
+        if not mgrs_mode:
+            return px, py
+        if not self._geo_transform_ready:
+            try:
+                self._init_geo_transform()
+            except Exception as exc:  # noqa: BLE001 - keep legacy 0/0 behavior
+                self.logger.warning(f"Could not derive map origin from geoReference: {exc}")
+                return px, py
+        return self._mgrs_offset_x, self._mgrs_offset_y
+
     def initialpose_callback(self, data):
         """Transform RVIZ initial pose to CARLA (thread-safe)."""
         pose = data.pose.pose
+        origin_x, origin_y = self._resolve_map_origin()
         carla_pose_transform = ros_pose_to_carla_transform(
             pose,
-            origin_x=self.param_values["map_origin_x"],
-            origin_y=self.param_values["map_origin_y"],
+            origin_x=origin_x,
+            origin_y=origin_y,
         )
 
         # RViz's 2D Pose Estimate only carries x/y/yaw (z is always 0), so the
@@ -693,10 +737,11 @@ class carla_ros2_interface(object):
                 return
             ego_transform = self.ego_actor.get_transform()
 
+        origin_x, origin_y = self._resolve_map_origin()
         pose_carla.position = carla_location_to_ros_point(
             ego_transform.location,
-            origin_x=self.param_values["map_origin_x"],
-            origin_y=self.param_values["map_origin_y"],
+            origin_x=origin_x,
+            origin_y=origin_y,
         )
         pose_carla.orientation = carla_rotation_to_ros_quaternion(ego_transform.rotation)
         out_pose_with_cov.header = header
