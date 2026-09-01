@@ -137,6 +137,8 @@ public:
         out << "speed_coeff," << cost.speed_coeff << "\n";
         out << "track_coeff," << cost.track_coeff << "\n";
         out << "track_terminal_scale," << cost.track_terminal_scale << "\n";
+        out << "terminal_error_coeff," << cost.terminal_error_coeff << "\n";
+        out << "terminal_heading_coeff," << cost.terminal_heading_coeff << "\n";
         out << "heading_coeff," << cost.heading_coeff << "\n";
         out << "lateral_distance_coeff," << cost.lateral_distance_coeff << "\n";
         out << "lateral_yaw_error_coeff," << cost.lateral_yaw_error_coeff << "\n";
