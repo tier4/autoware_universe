@@ -141,7 +141,7 @@ using Mppi = VanillaMPPIController<DYN, COST, FB, kMppiHorizon, kNumRollouts, SA
 using CostBreakdown = FirstOrderDubinsMppiCostBreakdown;
 
 constexpr std::array<float CostBreakdown::*, 27> kCostBreakdownFields = {
-  &CostBreakdown::speed,
+  &CostBreakdown::spatial_overspeed,
   &CostBreakdown::track,
   &CostBreakdown::heading,
   &CostBreakdown::terminal_error,
@@ -251,7 +251,7 @@ std::string formatCostBreakdown(const CostBreakdown & cost)
   std::ostringstream stream;
   stream << std::fixed << std::setprecision(2) << "{timesteps=" << cost.evaluated_timesteps
          << ", total=" << cost.total << ", running=" << cost.running_total
-         << ", terminal=" << cost.terminal_total << ", speed=" << cost.speed
+         << ", terminal=" << cost.terminal_total << ", spatial_overspeed=" << cost.spatial_overspeed
          << ", track=" << cost.track << ", heading=" << cost.heading
          << ", terminal_error=" << cost.terminal_error
          << ", terminal_heading=" << cost.terminal_heading
@@ -397,7 +397,7 @@ void applyUserCostParams(
   FirstOrderDubinsBicycleCostParams<kRefHorizon> & cost_params,
   const FirstOrderDubinsMppiCostParams & user)
 {
-  cost_params.speed_coeff = user.speed_coeff;
+  cost_params.spatial_overspeed_coeff = user.spatial_overspeed_coeff;
   cost_params.track_coeff = user.track_coeff;
   cost_params.track_terminal_scale = user.track_terminal_scale;
   cost_params.terminal_error_coeff = user.terminal_error_coeff;
@@ -1662,6 +1662,7 @@ struct FirstOrderDubinsMppiInterface::Impl
         std::vector<float> corridor_x(static_cast<size_t>(n));
         std::vector<float> corridor_y(static_cast<size_t>(n));
         std::vector<float> corridor_s(static_cast<size_t>(n));
+        std::vector<float> corridor_ref_velocity(static_cast<size_t>(n));
         for (int i = 0; i < n; ++i) {
           const int src =
             (n_src <= max_n) ? i : ((i == n - 1) ? (n_src - 1) : (i * (n_src - 1) / (n - 1)));
@@ -1673,8 +1674,11 @@ struct FirstOrderDubinsMppiInterface::Impl
             (static_cast<size_t>(src) < diffusion_reference_chord_length_s.size())
               ? diffusion_reference_chord_length_s[static_cast<size_t>(src)]
               : 0.0F;
+          corridor_ref_velocity[static_cast<size_t>(i)] =
+            pts[static_cast<size_t>(src)].longitudinal_velocity_mps;
         }
-        cost.setLateralCorridor(corridor_x.data(), corridor_y.data(), n, corridor_s.data());
+        cost.setLateralCorridor(
+          corridor_x.data(), corridor_y.data(), n, corridor_s.data(), corridor_ref_velocity.data());
       } else {
         cost.clearLateralCorridor();
       }

@@ -112,7 +112,7 @@ protected:
 TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheirSum)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 2.0F;
   params.track_terminal_scale = 0.0F;
   params.heading_coeff = 0.0F;
@@ -157,7 +157,7 @@ TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheir
 TEST_F(TrajectoryValidatorTest, EvaluatesIndependentTerminalPositionAndHeadingErrors)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.track_terminal_scale = 0.0F;
   params.heading_coeff = 0.0F;
@@ -191,10 +191,71 @@ TEST_F(TrajectoryValidatorTest, EvaluatesIndependentTerminalPositionAndHeadingEr
   EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-5F);
 }
 
+TEST_F(TrajectoryValidatorTest, PenalizesSpatialOverspeedUsingInterpolatedVelocityAndProgress)
+{
+  auto params = makeParams();
+  params.spatial_overspeed_coeff = 10.0F;
+  params.track_coeff = 0.0F;
+  params.heading_coeff = 0.0F;
+  params.lateral_distance_coeff = 0.0F;
+  params.lateral_yaw_error_coeff = 0.0F;
+  params.remaining_distance_coeff = 0.0F;
+  params.path_overshoot_coeff = 0.0F;
+  params.track_center_coeff = 0.0F;
+  params.corner_buffer_coeff = 0.0F;
+  params.lateral_boundary_barrier_weight = 0.0F;
+  params.lateral_acceleration_coeff = 0.0F;
+  params.lateral_jerk_coeff = 0.0F;
+  params.longitudinal_jerk_coeff = 0.0F;
+  params.drivable_area_barrier_weight = 0.0F;
+  params.obstacle_barrier_weight = 0.0F;
+  params.road_border_barrier_weight = 0.0F;
+  cost_->setParams(params);
+  setStraightReference();
+
+  const std::array<float, 2> corridor_x{0.0F, 10.0F};
+  const std::array<float, 2> corridor_y{0.0F, 0.0F};
+  const std::array<float, 2> corridor_s{0.0F, 10.0F};
+  const std::array<float, 2> corridor_ref_velocity{2.0F, 4.0F};
+  cost_->setLateralCorridor(
+    corridor_x.data(), corridor_y.data(), static_cast<int>(corridor_x.size()), corridor_s.data(),
+    corridor_ref_velocity.data());
+
+  TestCost::output_array output = TestCost::output_array::Zero();
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)) = 5.0F;
+  output(static_cast<int>(OutputIndex::TOTAL_VELOCITY)) = 5.0F;
+  TestCost::control_array control = TestCost::control_array::Zero();
+  int crash_status = 0;
+
+  const auto spatial_metrics = cost_->computeLateralPathMetrics(5.0F, 0.0F, 0.0F);
+  EXPECT_FLOAT_EQ(spatial_metrics.spatial_s, 5.0F);
+  EXPECT_FLOAT_EQ(spatial_metrics.spatial_ref_velocity, 3.0F);
+
+  const auto at_half_progress =
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  int direct_crash_status = 0;
+  const float direct_total = cost_->computeRunningCost(output, control, 0, &direct_crash_status);
+  // v_ref(5 m) = 3 m/s, progress = 0.5: 10 * 0.5 * (5 - 3)^2 = 20.
+  EXPECT_FLOAT_EQ(at_half_progress.spatial_overspeed, 20.0F);
+  EXPECT_FLOAT_EQ(at_half_progress.total, 20.0F);
+  EXPECT_FLOAT_EQ(direct_total, 20.0F);
+  EXPECT_EQ(direct_crash_status, 0);
+
+  output(static_cast<int>(OutputIndex::TOTAL_VELOCITY)) = 2.5F;
+  const auto below_reference =
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  EXPECT_FLOAT_EQ(below_reference.spatial_overspeed, 0.0F);
+
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)) = 0.0F;
+  output(static_cast<int>(OutputIndex::TOTAL_VELOCITY)) = 5.0F;
+  const auto at_start = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  EXPECT_FLOAT_EQ(at_start.spatial_overspeed, 0.0F);
+}
+
 TEST_F(TrajectoryValidatorTest, UsesPointwiseMaximumVelocityForEachRunningCostStep)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.lateral_distance_coeff = 0.0F;
@@ -281,7 +342,7 @@ TEST_F(TrajectoryValidatorTest, SmoothBarrierCostRampsUpQuadratically)
 TEST_F(TrajectoryValidatorTest, LateralBoundaryBarrierActivatesInsideThreshold)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.lateral_distance_coeff = 0.0F;
@@ -397,7 +458,7 @@ TEST_F(TrajectoryValidatorTest, ExcludesMovingObjectsFromGradualObstacleCost)
 TEST_F(TrajectoryValidatorTest, GradualConstraintCostsAreIncludedInBreakdownTotal)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.track_center_coeff = 0.0F;
