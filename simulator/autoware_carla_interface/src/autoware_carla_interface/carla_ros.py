@@ -15,6 +15,9 @@
 import math
 import threading
 
+from autoware_adapi_v1_msgs.msg import LocalizationInitializationState
+from autoware_perception_msgs.msg import PredictedObjects
+from autoware_perception_msgs.msg import TrafficLightGroupArray
 from autoware_vehicle_msgs.msg import ControlModeReport
 from autoware_vehicle_msgs.msg import GearReport
 from autoware_vehicle_msgs.msg import HazardLightsCommand
@@ -26,15 +29,26 @@ from autoware_vehicle_msgs.msg import VelocityReport
 from builtin_interfaces.msg import Time
 import carla
 from cv_bridge import CvBridge
+from geometry_msgs.msg import AccelWithCovarianceStamped
 from geometry_msgs.msg import Pose
+from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import Quaternion
+from geometry_msgs.msg import TransformStamped
+from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import Odometry
 import numpy
 import rclpy
+from rclpy.qos import DurabilityPolicy
+from rclpy.qos import QoSProfile
+from rclpy.qos import ReliabilityPolicy
 from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import CameraInfo
 from sensor_msgs.msg import Imu
+from sensor_msgs.msg import PointCloud2
 from sensor_msgs.msg import PointField
 from std_msgs.msg import Header
+from tf2_msgs.msg import TFMessage
 from tier4_vehicle_msgs.msg import ActuationCommandStamped
 from tier4_vehicle_msgs.msg import ActuationStatusStamped
 from transforms3d.euler import euler2quat
@@ -43,12 +57,78 @@ from transforms3d.euler import euler2quat
 from .modules import ROSPublisherManager
 from .modules import SensorKitLoader
 from .modules import SensorRegistry
+from .modules.carla_data_provider import CarlaDataProvider
 from .modules.carla_data_provider import GameTime
 from .modules.carla_utils import carla_location_to_ros_point
 from .modules.carla_utils import carla_rotation_to_ros_quaternion
 from .modules.carla_utils import create_cloud
+from .modules.carla_utils import project_point_to_ground
 from .modules.carla_utils import ros_pose_to_carla_transform
 from .modules.carla_wrapper import SensorInterface
+
+
+def _origin_from_usdz(usdz_path: str):
+    """Derive ``(lat_0, lon_0)`` from a splatsim ``.usdz`` scene bundle.
+
+    ``scene.json`` stores ``world.ecef_anchor``: the 4x4 ENU->ECEF transform
+    whose translation column is the ECEF position of the ENU/world origin the
+    3DGS scene is aligned to.  Converting that point to WGS84 yields exactly the
+    geographic origin splatsim needs, so no external lanelet2 map or OpenDRIVE
+    GeoReference is required.
+    """
+    import json
+    import zipfile
+
+    from pyproj import Transformer
+
+    try:
+        with zipfile.ZipFile(usdz_path) as zf:
+            with zf.open("scene.json") as f:
+                scene = json.load(f)
+        anchor = scene["world"]["ecef_anchor"]
+    except (KeyError, OSError, zipfile.BadZipFile, ValueError) as exc:
+        raise RuntimeError(
+            f"Could not read 'scene.json' -> world.ecef_anchor from splatsim scene "
+            f"'{usdz_path}'.  A splatsim .usdz bundle is required to derive the "
+            f"geographic origin."
+        ) from exc
+    x, y, z = anchor[0][3], anchor[1][3], anchor[2][3]
+    ecef_to_lla = Transformer.from_crs("EPSG:4978", "EPSG:4326", always_xy=True)
+    lon, lat, _ = ecef_to_lla.transform(x, y, z)
+    return float(lat), float(lon)
+
+
+def _parse_geo_reference(xodr_xml: str):
+    """Extract ``(lat_0, lon_0)`` from the OpenDRIVE ``<geoReference>`` PROJ string.
+
+    This is the geographic origin of the CARLA world / ROS-map ENU frame that the
+    streamed splatsim poses are expressed in.  It is distinct from the usdz scene
+    ecef_anchor (which places the 3DGS gaussians and is handled by the tileset
+    transform); conflating the two is what misaligns the LiDAR to zero points.
+    """
+    import re
+    import xml.etree.ElementTree as ET
+
+    match = re.search(
+        r"<geoReference>\s*<!\[CDATA\[(.*?)\]\]>\s*</geoReference>",
+        xodr_xml,
+        re.DOTALL,
+    )
+    if match:
+        proj_string = match.group(1).strip()
+    else:
+        root = ET.fromstring(xodr_xml)
+        geo_ref = root.find(".//geoReference")
+        if geo_ref is not None and geo_ref.text:
+            proj_string = geo_ref.text.strip()
+        else:
+            raise ValueError("No <geoReference> found in OpenDRIVE XML")
+
+    lat_match = re.search(r"\+lat_0=([0-9eE.+-]+)", proj_string)
+    lon_match = re.search(r"\+lon_0=([0-9eE.+-]+)", proj_string)
+    if lat_match is None or lon_match is None:
+        raise ValueError(f"Cannot extract +lat_0/+lon_0 from GeoReference: {proj_string}")
+    return float(lat_match.group(1)), float(lon_match.group(1))
 
 
 class carla_ros2_interface(object):
@@ -69,9 +149,51 @@ class carla_ros2_interface(object):
             "vehicle_type": (rclpy.Parameter.Type.STRING, None),
             "use_traffic_manager": (rclpy.Parameter.Type.BOOL, None),
             "max_real_delta_seconds": (rclpy.Parameter.Type.DOUBLE, None),
+            # Minimum throttle applied while accelerating from (near) standstill.
+            # Heavy CARLA vehicles (e.g. vehicle.taxi.ford) do not creep and
+            # never start moving on the small throttle the actuation map yields
+            # at low target accelerations.
+            "min_positive_throttle": (rclpy.Parameter.Type.DOUBLE, 0.0),
+            "min_positive_throttle_speed_threshold": (rclpy.Parameter.Type.DOUBLE, 0.8),
+            "force_load_world": (rclpy.Parameter.Type.BOOL, False),
+            "no_rendering_mode": (rclpy.Parameter.Type.BOOL, False),
+            "spawn_point_ground_snap": (rclpy.Parameter.Type.BOOL, False),
+            "spawn_point_ground_offset_z": (rclpy.Parameter.Type.DOUBLE, 0.5),
+            "initial_pose_ground_offset_z": (rclpy.Parameter.Type.DOUBLE, 1.0),
+            "map_origin_x": (rclpy.Parameter.Type.DOUBLE, 0.0),
+            "map_origin_y": (rclpy.Parameter.Type.DOUBLE, 0.0),
             # Sensor configuration parameters
             "sensor_kit_name": (rclpy.Parameter.Type.STRING, ""),  # Empty = use YAML default
             "sensor_mapping_file": (rclpy.Parameter.Type.STRING, ""),
+            # SplatSim parameters (global only; per-sensor rendering settings are
+            # read from the sensor mapping's per-sensor `parameters:` block).
+            "render_with_splatsim": (rclpy.Parameter.Type.BOOL, False),
+            # Publish CARLA ground-truth localization (kinematic_state, TF,
+            # pose, acceleration) even without splatsim rendering. Used by the
+            # E2E planning setup instead of the former carla_state_publisher
+            # GNSS round-trip, which duplicated these topics.
+            "publish_ground_truth_localization": (rclpy.Parameter.Type.BOOL, False),
+            # Replace the ego vehicle's speed-based steering curve with an
+            # identity curve (workaround for the corrupt curve data CARLA 0.10
+            # returns, which attenuates steering at driving speeds).
+            "flatten_steering_curve": (rclpy.Parameter.Type.BOOL, False),
+            # Override the wheel max steer angle [deg] used to convert between
+            # tire angles and the normalized VehicleControl.steer. 0 uses the
+            # value reported by the vehicle physics. CARLA 0.10 (Chaos) reports
+            # 70 deg but only achieves roughly a third of it, so calibrating
+            # this to the measured full-steer angle restores a unity gain.
+            "max_wheel_steer_angle_deg": (rclpy.Parameter.Type.DOUBLE, 0.0),
+            "splatsim_render_camera": (rclpy.Parameter.Type.BOOL, True),
+            "splatsim_render_lidar": (rclpy.Parameter.Type.BOOL, False),
+            "splatsim_tileset_path": (rclpy.Parameter.Type.STRING, ""),
+            "splatsim_image": (rclpy.Parameter.Type.STRING, "splatsim:latest"),
+            "splatsim_grpc_port": (rclpy.Parameter.Type.INTEGER, 50051),
+            "splatsim_lidar_grpc_port": (rclpy.Parameter.Type.INTEGER, 50061),
+            "splatsim_use_sh": (rclpy.Parameter.Type.BOOL, True),
+            "splatsim_enable_lod": (rclpy.Parameter.Type.BOOL, True),
+            "splatsim_device": (rclpy.Parameter.Type.STRING, "cuda:0"),
+            "splatsim_restart_container": (rclpy.Parameter.Type.BOOL, False),
+            "splatsim_compress_format": (rclpy.Parameter.Type.STRING, "jpeg"),
         }
 
         self.param_values = {}
@@ -175,11 +297,50 @@ class carla_ros2_interface(object):
                 "Check enabled_sensors list and calibration files."
             )
 
+        # SplatSim: separate camera/LiDAR configs and filter them out of CARLA
+        # sensors.  Camera and LiDAR rendering are independently gated so the
+        # scene can be driven by LiDAR alone (splatsim_render_camera=false)
+        # without spinning up a Docker container per camera.
+        if self.render_with_splatsim:
+            self.sensor_configs = self._partition_splatsim_configs()
+
         self._register_sensor_configs(self.sensor_configs)
         self._create_sensor_publishers_from_registry()
         self.sensors = {"sensors": self._build_sensor_specs(self.sensor_configs)}
 
         self.logger.info(f"Configured {len(self.sensor_configs)} sensors from mapping")
+
+    def _partition_splatsim_configs(self) -> list:
+        """Route camera/LiDAR configs to the splatsim lists; return the CARLA-only rest."""
+        render_camera = bool(self.param_values.get("splatsim_render_camera", True))
+        render_lidar = bool(self.param_values.get("splatsim_render_lidar"))
+        carla_configs = []
+        for cfg in self.sensor_configs:
+            if cfg.carla_type.startswith("sensor.camera"):
+                self._assign_splatsim_camera(cfg, render_camera)
+            elif cfg.carla_type.startswith("sensor.lidar"):
+                self._assign_splatsim_lidar(cfg, render_lidar)
+            else:
+                carla_configs.append(cfg)
+        return carla_configs
+
+    def _assign_splatsim_camera(self, cfg, render_camera) -> None:
+        """Register a camera config for splatsim rendering, or log that it is disabled."""
+        if render_camera:
+            self._splatsim_camera_configs.append(cfg)
+            self.logger.info(f"Rendering camera '{cfg.sensor_id}' via splatsim")
+        else:
+            self.logger.info(
+                f"Skipping camera '{cfg.sensor_id}' (splatsim mode, camera rendering disabled)"
+            )
+
+    def _assign_splatsim_lidar(self, cfg, render_lidar) -> None:
+        """Register a LiDAR config for splatsim rendering, or log that it is disabled."""
+        if render_lidar:
+            self._splatsim_lidar_configs.append(cfg)
+            self.logger.info(f"Rendering LiDAR '{cfg.sensor_id}' via splatsim")
+        else:
+            self.logger.info(f"Skipping LiDAR '{cfg.sensor_id}' (splatsim mode)")
 
     def _resolve_sensor_kit_name(self) -> str:
         """Resolve the effective sensor kit name based on parameters and mapping."""
@@ -255,6 +416,13 @@ class carla_ros2_interface(object):
 
         # Setup all components
         self._initialize_parameters()
+        self.render_with_splatsim = bool(self.param_values.get("render_with_splatsim", False))
+        # Ground-truth localization is implied by splatsim rendering (no other
+        # localization source exists in that mode) and can be requested
+        # standalone for the E2E planning setup.
+        self.publish_gt_localization = self.render_with_splatsim or bool(
+            self.param_values.get("publish_ground_truth_localization", False)
+        )
         self._setup_tf_listener()
         self._initialize_clock_publisher()
 
@@ -263,6 +431,12 @@ class carla_ros2_interface(object):
         # Initialize publishers and subscriptions
         self._initialize_subscriptions()
         self._initialize_status_publishers()
+
+        # SplatSim: create dummy perception publishers
+        if self.render_with_splatsim:
+            self._initialize_splatsim_publishers()
+        if self.publish_gt_localization:
+            self._initialize_localization_publishers()
 
         # Start ROS 2 spin thread (Thread Safety: Shared state protected by self._state_lock)
         self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.ros2_node,))
@@ -290,6 +464,7 @@ class carla_ros2_interface(object):
         self.prev_timestamp = None
         self.prev_steer_output = 0.0
         self.tau = 0.2
+        self._max_steer_angle_rad = None
         self.timestamp = None
         self.ego_actor = None
         self.physics_control = None
@@ -306,6 +481,32 @@ class carla_ros2_interface(object):
         self.clock_publisher = None
         self.spin_thread = None
         self.cv_bridge = CvBridge()
+
+        # SplatSim state
+        self.render_with_splatsim = False
+        self._splatsim_cameras = []
+        self._splatsim_camera_configs = []
+        self._splatsim_lidars = []
+        self._splatsim_lidar_configs = []
+        self._geo_transform_ready = False
+        self._mgrs_offset_x = 0.0
+        self._mgrs_offset_y = 0.0
+        self._proj_origin = (0.0, 0.0)
+        self._latest_imu_accel = None
+
+    def _ros_context_ok(self):
+        return not self._shutting_down and rclpy.ok()
+
+    def _safe_publish(self, publisher, msg):
+        if not self._ros_context_ok() or publisher is None:
+            return False
+        try:
+            publisher.publish(msg)
+            return True
+        except Exception as exc:
+            if self._shutting_down or not rclpy.ok():
+                return False
+            raise exc
 
     def __call__(self):
         input_data = self.sensor_interface.get_data()
@@ -415,11 +616,93 @@ class carla_ros2_interface(object):
         publisher.publish(point_cloud_msg)
         self.sensor_registry.update_sensor_timestamp(id_, self.timestamp)
 
+    def _project_initialpose_to_ground(self, carla_pose_transform):
+        """Return the CARLA ground height under the pose, or None to skip snapping.
+
+        Returns None when spawn_point_ground_snap is disabled, or when no ground
+        height can be found (older CARLA APIs without ``ground_projection``, or
+        no ground hit), so callers fall back to the fixed z-offset.
+        """
+        if not self.param_values["spawn_point_ground_snap"]:
+            return None
+
+        return project_point_to_ground(
+            CarlaDataProvider.get_world(),
+            carla_pose_transform.location.x,
+            carla_pose_transform.location.y,
+        )
+
+    def _resolve_map_origin(self):
+        """Return the CARLA→map offset from a single source of truth.
+
+        The ground-truth localization path already derives this offset from the
+        CARLA OpenDRIVE geoReference (``_init_geo_transform``).  The hand-set
+        ``map_origin_x/y`` parameters can silently disagree with it (observed:
+        92008.441357 vs the geoReference-derived 92008.000), shifting GNSS/
+        initialpose against the TF by that remainder.  So: an explicit non-zero
+        parameter wins (with a one-time warning when it disagrees), otherwise
+        the geoReference-derived offset is used whenever an MGRS-style
+        configuration (GT localization or splatsim) is active.  Stock CARLA
+        towns (no MGRS) keep the plain 0/0 behavior.
+        """
+        px = float(self.param_values["map_origin_x"])
+        py = float(self.param_values["map_origin_y"])
+        mgrs_mode = bool(self.param_values.get("publish_ground_truth_localization")) or bool(
+            self.param_values.get("render_with_splatsim")
+        )
+        if px != 0.0 or py != 0.0:
+            if (
+                mgrs_mode
+                and self._geo_transform_ready
+                and not getattr(self, "_map_origin_mismatch_warned", False)
+                and (abs(px - self._mgrs_offset_x) > 1e-3 or abs(py - self._mgrs_offset_y) > 1e-3)
+            ):
+                self._map_origin_mismatch_warned = True
+                self.logger.warning(
+                    f"map_origin param ({px:.6f}, {py:.6f}) disagrees with the "
+                    f"geoReference-derived offset ({self._mgrs_offset_x:.6f}, "
+                    f"{self._mgrs_offset_y:.6f}); GNSS/initialpose will be offset "
+                    "against the ground-truth TF by the difference."
+                )
+            return px, py
+        if not mgrs_mode:
+            return px, py
+        if not self._geo_transform_ready:
+            try:
+                self._init_geo_transform()
+            except Exception as exc:  # noqa: BLE001 - keep legacy 0/0 behavior
+                self.logger.warning(f"Could not derive map origin from geoReference: {exc}")
+                return px, py
+        return self._mgrs_offset_x, self._mgrs_offset_y
+
     def initialpose_callback(self, data):
         """Transform RVIZ initial pose to CARLA (thread-safe)."""
         pose = data.pose.pose
-        pose.position.z += 2.0
-        carla_pose_transform = ros_pose_to_carla_transform(pose)
+        origin_x, origin_y = self._resolve_map_origin()
+        carla_pose_transform = ros_pose_to_carla_transform(
+            pose,
+            origin_x=origin_x,
+            origin_y=origin_y,
+        )
+
+        # RViz's 2D Pose Estimate only carries x/y/yaw (z is always 0), so the
+        # map-frame z is meaningless here. When spawn_point_ground_snap is
+        # enabled and CARLA exposes ground_projection, snap onto the map
+        # geometry; otherwise fall back to the fixed +2.0 z-offset that has
+        # always been applied.
+        ground_z = self._project_initialpose_to_ground(carla_pose_transform)
+        if ground_z is not None:
+            carla_pose_transform.location.z = (
+                ground_z + self.param_values["initial_pose_ground_offset_z"]
+            )
+            self.logger.info(
+                "Ground-snapped initial pose: "
+                f"ground_z={ground_z:.3f}, "
+                f"offset_z={self.param_values['initial_pose_ground_offset_z']:.3f}, "
+                f"pose_z={carla_pose_transform.location.z:.3f}"
+            )
+        else:
+            carla_pose_transform.location.z += 2.0
 
         with self._state_lock:
             if self.ego_actor is not None:
@@ -454,7 +737,12 @@ class carla_ros2_interface(object):
                 return
             ego_transform = self.ego_actor.get_transform()
 
-        pose_carla.position = carla_location_to_ros_point(ego_transform.location)
+        origin_x, origin_y = self._resolve_map_origin()
+        pose_carla.position = carla_location_to_ros_point(
+            ego_transform.location,
+            origin_x=origin_x,
+            origin_y=origin_y,
+        )
         pose_carla.orientation = carla_rotation_to_ros_quaternion(ego_transform.rotation)
         out_pose_with_cov.header = header
         out_pose_with_cov.pose.pose = pose_carla
@@ -602,6 +890,14 @@ class carla_ros2_interface(object):
         else:
             self.logger.warning("IMU publisher not initialized")
 
+        # Cache acceleration for splatsim localization publishing
+        if self.render_with_splatsim:
+            self._latest_imu_accel = (
+                imu_msg.linear_acceleration.x,
+                imu_msg.linear_acceleration.y,
+                imu_msg.linear_acceleration.z,
+            )
+
     def first_order_steering(self, steer_input):
         """
         First order steering model.
@@ -645,20 +941,67 @@ class carla_ros2_interface(object):
         """
         out_cmd = carla.VehicleControl()
         out_cmd.throttle = in_cmd.actuation.accel_cmd
+        # Keep the vehicle in first gear with manual shifting so heavy vehicles
+        # respond to throttle immediately instead of idling in neutral.
+        out_cmd.gear = 1
+        out_cmd.manual_gear_shift = True
+        min_positive_throttle = self.param_values.get("min_positive_throttle", 0.0)
+        min_positive_throttle_speed_threshold = self.param_values.get(
+            "min_positive_throttle_speed_threshold", 0.8
+        )
 
         with self._state_lock:
             # convert base on steer curve of the vehicle
             if not self.physics_control or not self.ego_actor:
                 return  # Skip if vehicle not initialized yet
 
-            steer_curve = self.physics_control.steering_curve
-            current_vel = self.ego_actor.get_velocity()
-            max_steer_ratio = numpy.interp(
-                abs(current_vel.x), [v.x for v in steer_curve], [v.y for v in steer_curve]
+            current_vel_vec = self.ego_actor.get_velocity()
+            speed_mps = math.sqrt(
+                current_vel_vec.x * current_vel_vec.x
+                + current_vel_vec.y * current_vel_vec.y
+                + current_vel_vec.z * current_vel_vec.z
             )
-            out_cmd.steer = self.first_order_steering(-in_cmd.actuation.steer_cmd) * max_steer_ratio
+            should_apply_min_throttle = (
+                out_cmd.throttle > 0.0
+                and min_positive_throttle > 0.0
+                and in_cmd.actuation.brake_cmd <= 0.0
+                and (
+                    min_positive_throttle_speed_threshold < 0.0
+                    or speed_mps <= min_positive_throttle_speed_threshold
+                )
+            )
+            if should_apply_min_throttle:
+                out_cmd.throttle = max(out_cmd.throttle, min_positive_throttle)
+
+            # steer_cmd is a tire angle in radians (raw_vehicle_cmd_converter
+            # passes control_cmd.steering_tire_angle through), while
+            # VehicleControl.steer expects a fraction of the wheel's max steer
+            # angle in [-1, 1]. Normalize by the max wheel angle; the sign flips
+            # because Autoware is CCW-positive and CARLA CW-positive.
+            # NOTE: no steering_curve multiplication here — the simulator applies
+            # its speed-based steering limit internally, and CARLA 0.10 returns
+            # corrupt curve data (duplicated/unsorted points) anyway.
+            steer_norm = -in_cmd.actuation.steer_cmd / self._max_wheel_steer_angle_rad()
+            steer_norm = max(-1.0, min(1.0, steer_norm))
+            out_cmd.steer = self.first_order_steering(steer_norm)
             out_cmd.brake = in_cmd.actuation.brake_cmd
             self.current_control = out_cmd
+
+    def _max_wheel_steer_angle_rad(self):
+        """Max steerable wheel angle [rad], cached from the vehicle physics.
+
+        Must be called with ``physics_control`` already available.
+        """
+        if self._max_steer_angle_rad is None:
+            max_deg = float(self.param_values.get("max_wheel_steer_angle_deg", 0.0))
+            if max_deg <= 0.0:
+                max_deg = max(
+                    (w.max_steer_angle for w in self.physics_control.wheels), default=0.0
+                )
+            if max_deg <= 0.0:
+                max_deg = 70.0  # CARLA's usual front-wheel default
+            self._max_steer_angle_rad = math.radians(max_deg)
+        return self._max_steer_angle_rad
 
     def turn_indicators_callback(self, in_cmd):
         """Store turn indicator command (thread-safe)."""
@@ -739,10 +1082,22 @@ class carla_ros2_interface(object):
         out_vel_state.header = self.get_msg_header(frame_id="base_link")
         out_vel_state.longitudinal_velocity = ego_velocity[0]
         out_vel_state.lateral_velocity = ego_velocity[1]
-        out_vel_state.heading_rate = ego_transform.transform_vector(ego_angular_velocity).z
+        # CARLA angular velocity is in deg/s with a left-handed (CW-positive)
+        # convention; ROS expects rad/s CCW-positive.
+        out_vel_state.heading_rate = -math.radians(ego_angular_velocity.z)
 
         out_steering_state.stamp = out_vel_state.header.stamp
-        out_steering_state.steering_tire_angle = -math.radians(steer_angle)
+        # CARLA 0.10 (Chaos) always reports 0 from get_wheel_steer_angle();
+        # synthesize the steering state from the applied control in that case
+        # so controllers keep receiving a consistent steering feedback.
+        if abs(steer_angle) > 1e-6:
+            out_steering_state.steering_tire_angle = -math.radians(steer_angle)
+        elif self.physics_control is not None:
+            out_steering_state.steering_tire_angle = (
+                -control.steer * self._max_wheel_steer_angle_rad()
+            )
+        else:
+            out_steering_state.steering_tire_angle = 0.0
 
         out_gear_state.stamp = out_vel_state.header.stamp
         out_gear_state.report = GearReport.DRIVE
@@ -820,25 +1175,18 @@ class carla_ros2_interface(object):
 
         # publish data of all sensors
         for key, data in input_data.items():
-            # Safely get sensor type with fallback
-            sensor_type = self.id_to_sensor_type_map.get(key)
-            if not sensor_type:
-                self.logger.warning(
-                    f"Unknown sensor ID '{key}' received from CARLA - skipping. "
-                    f"This may indicate a sensor configuration mismatch."
-                )
-                continue
+            self._dispatch_sensor(key, data)
 
-            if sensor_type == "sensor.camera.rgb":
-                self.camera(data[1], key)  # Pass sensor ID for multi-camera support
-            elif sensor_type == "sensor.other.gnss":
-                self.pose()
-            elif sensor_type == "sensor.lidar.ray_cast":
-                self.lidar(data[1], key)
-            elif sensor_type == "sensor.other.imu":
-                self.imu(data[1])
-            else:
-                self.logger.debug(f"No publisher for sensor '{key}' (type={sensor_type})")
+        # SplatSim: send ego pose to splatsim cameras and publish dummy data
+        if self.render_with_splatsim:
+            self._splatsim_tick(seconds, nanoseconds)
+
+        # Ground-truth localization (kinematic_state / TF / pose / accel)
+        if self.publish_gt_localization:
+            with self._state_lock:
+                has_ego = self.ego_actor is not None
+            if has_ego:
+                self._publish_localization()
 
         # Push turn indicator / hazard lights to CARLA before reading status back.
         self.apply_light_state()
@@ -850,6 +1198,457 @@ class carla_ros2_interface(object):
         with self._state_lock:
             return self.current_control
 
+    def _dispatch_sensor(self, key, data) -> None:
+        """Publish one CARLA sensor sample according to its registered type.
+
+        Camera and lidar conversion/publishing run on per-sensor worker threads:
+        publishing multi-megabyte messages inline (reliable-QoS camera images in
+        particular block on DDS flow control) would stall run_step and slow
+        simulation time itself. Frequency gating and registry bookkeeping stay on
+        the caller's thread so the registry is never accessed concurrently.
+        """
+        sensor_type = self.id_to_sensor_type_map.get(key)
+        if not sensor_type:
+            self.logger.warning(
+                f"Unknown sensor ID '{key}' received from CARLA - skipping. "
+                f"This may indicate a sensor configuration mismatch."
+            )
+            return
+
+        if sensor_type == "sensor.camera.rgb":
+            self._submit_worker_sensor(key, self.camera, data)
+        elif sensor_type == "sensor.lidar.ray_cast":
+            self._submit_worker_sensor(key, self.lidar, data)
+        elif sensor_type == "sensor.other.gnss":
+            # Publish the GT GNSS pose in splatsim mode too: the E2E planning
+            # infrastructure (carla_state_publisher) synthesizes
+            # /localization/kinematic_state and the map->base_link TF from it,
+            # and without this pose there is no ego localization at all when
+            # the Autoware localization stack is disabled.
+            self.pose()
+        elif sensor_type == "sensor.other.imu":
+            self.imu(data[1])
+        else:
+            self.logger.debug(f"No publisher for sensor '{key}' (type={sensor_type})")
+
+    def _submit_worker_sensor(self, key, converter, data) -> None:
+        """Frequency-gate a camera/lidar sample and hand it to its publish worker.
+
+        Shared by the camera and lidar branches of :meth:`_dispatch_sensor`:
+        both update the registry timestamp and submit the raw CARLA data to the
+        per-sensor worker via the same converter interface.
+        """
+        if not self.checkFrequency(key):
+            self.sensor_registry.update_sensor_timestamp(key, self.timestamp)
+            self._submit_to_publish_worker(key, converter, data[1], key, self.timestamp)
+
+    # ── SplatSim integration methods ──────────────────────────────────────
+
+    def _initialize_splatsim_publishers(self):
+        """Create publishers for dummy perception (splatsim mode)."""
+        self.pub_empty_objects = self.ros2_node.create_publisher(
+            PredictedObjects, "/perception/object_recognition/objects", 1
+        )
+        self.pub_empty_pointcloud = self.ros2_node.create_publisher(
+            PointCloud2, "/perception/obstacle_segmentation/pointcloud", 1
+        )
+        self.pub_empty_traffic_signals = self.ros2_node.create_publisher(
+            TrafficLightGroupArray,
+            "/perception/traffic_light_recognition/traffic_signals",
+            1,
+        )
+        self.pub_empty_occupancy_grid = self.ros2_node.create_publisher(
+            OccupancyGrid, "/perception/occupancy_grid_map/map", 1
+        )
+
+    def _initialize_localization_publishers(self):
+        """Create publishers for CARLA ground-truth localization."""
+        self.pub_tf = self.ros2_node.create_publisher(TFMessage, "/tf", 10)
+        self.pub_localization_odom = self.ros2_node.create_publisher(
+            Odometry, "/localization/kinematic_state", 10
+        )
+        self.pub_localization_pose = self.ros2_node.create_publisher(
+            PoseWithCovarianceStamped,
+            "/localization/pose_estimator/pose_with_covariance",
+            10,
+        )
+        self.pub_localization_accel = self.ros2_node.create_publisher(
+            AccelWithCovarianceStamped, "/localization/acceleration", 10
+        )
+        loc_init_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.pub_localization_init_state = self.ros2_node.create_publisher(
+            LocalizationInitializationState,
+            "/localization/initialization_state",
+            loc_init_qos,
+        )
+        self.pub_fusion_pose = self.ros2_node.create_publisher(
+            PoseStamped, "/localization/pose_twist_fusion_filter/pose", 10
+        )
+        self.pub_initialpose3d = self.ros2_node.create_publisher(
+            PoseWithCovarianceStamped, "/initialpose3d", 10
+        )
+
+    def _init_geo_transform(self):
+        """Resolve the splatsim geographic origin and its MGRS offset.
+
+        The origin (lat/lon of the CARLA world origin) is parsed from the CARLA
+        map's OpenDRIVE ``<geoReference>`` (+lat_0/+lon_0): this is the true
+        geographic origin of the CARLA / ROS-map ENU frame the streamed poses are
+        expressed in, which is what ``CoordinateTransformer.proj_origin`` expects.
+        The splatsim scene's own placement is handled separately via the tileset
+        ECEF transform, so the usdz ``ecef_anchor`` must NOT be used as the origin
+        here (doing so misaligns the sensor to zero points whenever the scene
+        anchor differs from the CARLA world origin).  Falls back to the usdz
+        anchor only when the OpenDRIVE has no parsable geoReference.
+        """
+        if self._geo_transform_ready:
+            return
+        from autoware_lanelet2_extension_python.projection import MGRSProjector
+        import lanelet2.core
+        import lanelet2.io
+
+        from .modules.carla_data_provider import CarlaDataProvider
+
+        # Narrow the catch to the "no parsable geoReference" cases (e.g. CARLA
+        # 0.10 Odaiba) so an unexpected error surfaces instead of silently
+        # reverting to the usdz anchor -- the wrong origin this fix exists to
+        # avoid. On that expected failure, fall back to the usdz ecef_anchor.
+        try:
+            xodr_xml = CarlaDataProvider.get_world().get_map().to_opendrive()
+            self._proj_origin = _parse_geo_reference(xodr_xml)
+            source = "CARLA OpenDRIVE geoReference"
+        except (RuntimeError, ValueError) as exc:
+            self.logger.warning(
+                f"Could not parse CARLA OpenDRIVE geoReference ({exc}); "
+                "falling back to splatsim usdz ecef_anchor."
+            )
+            tileset_path = str(self.param_values.get("splatsim_tileset_path", "") or "").strip()
+            if not tileset_path:
+                raise RuntimeError(
+                    "No CARLA OpenDRIVE geoReference and no splatsim_tileset_path; "
+                    "cannot derive the geographic origin."
+                )
+            self._proj_origin = _origin_from_usdz(tileset_path)
+            source = f"splatsim scene '{tileset_path}'"
+        self.logger.info(
+            f"GeoTransform origin from {source}: "
+            f"origin=({self._proj_origin[0]:.8f}, {self._proj_origin[1]:.8f})"
+        )
+        lat_0, lon_0 = self._proj_origin
+
+        projector = MGRSProjector(lanelet2.io.Origin(lat_0, lon_0))
+        origin_gps = lanelet2.core.GPSPoint(lat_0, lon_0, 0.0)
+        origin_local = projector.forward(origin_gps)
+        self._mgrs_offset_x = origin_local.x
+        self._mgrs_offset_y = origin_local.y
+
+        self._geo_transform_ready = True
+        self.logger.info(
+            f"GeoTransform initialized: lat_0={lat_0:.8f}, lon_0={lon_0:.8f}, "
+            f"mgrs_offset=({self._mgrs_offset_x:.1f}, {self._mgrs_offset_y:.1f})"
+        )
+
+    def init_splatsim_cameras(self):
+        """Create SplatSimRGBCamera instances for each camera sensor.
+
+        Must be called after the CARLA world is loaded (ego_actor is set).
+        """
+        if not self.render_with_splatsim or not self._splatsim_camera_configs:
+            return
+        if not self.param_values.get("splatsim_tileset_path"):
+            self.logger.warning(
+                "render_with_splatsim is true but splatsim_tileset_path is empty; "
+                "skipping splatsim camera initialization"
+            )
+            return
+
+        self._init_geo_transform()
+
+        from .splatsim.splatsim_camera import SplatSimRGBCamera
+
+        base_grpc_port = self.param_values["splatsim_grpc_port"]
+        for cam_idx, cfg in enumerate(self._splatsim_camera_configs):
+            cam = SplatSimRGBCamera(
+                self._make_camera_spec(cfg),
+                proj_origin=self._proj_origin,
+                config=self._make_camera_config(cfg, base_grpc_port + cam_idx),
+            )
+            self._splatsim_cameras.append(cam)
+            self.logger.info(f"SplatSimRGBCamera created for sensor '{cfg.sensor_id}'")
+
+    @staticmethod
+    def _make_camera_spec(cfg) -> dict:
+        """Build the sensor-spec dict that SplatSimRGBCamera expects."""
+        return {
+            "id": cfg.sensor_id,
+            "image_size_x": cfg.parameters.get("image_size_x", 1600),
+            "image_size_y": cfg.parameters.get("image_size_y", 900),
+            "fov": cfg.parameters.get("fov", 70.0),
+            "spawn_point": cfg.transform
+            or {"x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
+        }
+
+    def _make_camera_config(self, cfg, grpc_port):
+        """Build the SplatSimCameraConfig for one camera sensor.
+
+        Global settings come from node params; per-sensor topics/optics/rate come
+        from the sensor mapping (``cfg`` / ``cfg.parameters``), falling back to the
+        SplatSimCameraConfig dataclass defaults when unset.
+        """
+        from .splatsim.splatsim_camera import SplatSimCameraConfig
+
+        p = self.param_values
+        params = cfg.parameters or {}
+        kwargs = {
+            "tileset_path": p["splatsim_tileset_path"],
+            "splatsim_image": p["splatsim_image"],
+            "grpc_port": grpc_port,
+            "use_sh": p["splatsim_use_sh"],
+            "enable_lod": p["splatsim_enable_lod"],
+            "device": p["splatsim_device"],
+            "restart_container": p["splatsim_restart_container"],
+            "compress_format": p.get("splatsim_compress_format", ""),
+            "frame_rate": params.get("frame_rate", cfg.frequency_hz),
+        }
+        if cfg.topic_image:
+            kwargs["image_topic"] = cfg.topic_image
+        if cfg.topic_info:
+            kwargs["camera_info_topic"] = cfg.topic_info
+        if cfg.frame_id:
+            kwargs["frame_id"] = cfg.frame_id
+        for key in ("near_plane", "far_plane"):
+            if key in params:
+                kwargs[key] = params[key]
+        return SplatSimCameraConfig(**kwargs)
+
+    def init_splatsim_lidars(self):
+        """Create SplatSimLidar instances for each LiDAR sensor.
+
+        Must be called after the CARLA world is loaded (ego_actor is set).
+        The rendered PointCloud2 is published on the sensor's sensing topic so
+        the existing preprocessing pipeline (and OnePlanner) runs unchanged.
+        """
+        if not self.render_with_splatsim or not self._splatsim_lidar_configs:
+            return
+        if not self.param_values.get("splatsim_tileset_path"):
+            self.logger.warning(
+                "render_with_splatsim is true but splatsim_tileset_path is empty; "
+                "skipping splatsim lidar initialization"
+            )
+            return
+
+        self._init_geo_transform()
+
+        from .splatsim.splatsim_lidar import SplatSimLidar
+
+        base_grpc_port = self.param_values["splatsim_lidar_grpc_port"]
+        for lidar_idx, cfg in enumerate(self._splatsim_lidar_configs):
+            lidar = SplatSimLidar(
+                self._make_lidar_spec(cfg),
+                proj_origin=self._proj_origin,
+                config=self._make_lidar_config(cfg, base_grpc_port + lidar_idx),
+            )
+            self._splatsim_lidars.append(lidar)
+            self.logger.info(f"SplatSimLidar created for sensor '{cfg.sensor_id}'")
+
+    @staticmethod
+    def _make_lidar_spec(cfg) -> dict:
+        """Build the sensor-spec dict that SplatSimLidar expects."""
+        return {
+            "id": cfg.sensor_id,
+            "spawn_point": cfg.transform
+            or {"x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
+        }
+
+    def _make_lidar_config(self, cfg, grpc_port):
+        """Build the SplatSimLidarConfig for one LiDAR sensor.
+
+        Global settings come from node params; per-sensor rendering settings come
+        from the sensor mapping (``cfg`` / ``cfg.parameters``), falling back to the
+        SplatSimLidarConfig dataclass defaults when unset.
+        """
+        from .splatsim.splatsim_lidar import SplatSimLidarConfig
+
+        p = self.param_values
+        params = cfg.parameters or {}
+        kwargs = {
+            "tileset_path": p["splatsim_tileset_path"],
+            "splatsim_image": p["splatsim_image"],
+            "grpc_port": grpc_port,
+            "use_sh": p["splatsim_use_sh"],
+            "enable_lod": p["splatsim_enable_lod"],
+            "device": p["splatsim_device"],
+            "restart_container": p["splatsim_restart_container"],
+            "fps": params.get("fps", cfg.frequency_hz),
+        }
+        if cfg.topic:
+            kwargs["pointcloud_topic"] = cfg.topic
+        if cfg.frame_id:
+            kwargs["frame_id"] = cfg.frame_id
+        for key in (
+            "sensor_type",
+            "n_rows",
+            "n_columns",
+            "min_range_m",
+            "drop_threshold",
+            "alpha_threshold",
+        ):
+            if key in params:
+                kwargs[key] = params[key]
+        # max range: explicit splatsim key wins, else the CARLA sensor mapping range.
+        if "max_range_m" in params:
+            kwargs["max_range_m"] = params["max_range_m"]
+        elif "range" in params:
+            kwargs["max_range_m"] = float(params["range"])
+        if "elevation_deg" in params:
+            kwargs["elevation_deg"] = tuple(params["elevation_deg"])
+        return SplatSimLidarConfig(**kwargs)
+
+    def _splatsim_tick(self, seconds, nanoseconds):
+        """Per-tick splatsim work: send poses, publish dummy perception."""
+        with self._state_lock:
+            actor_matrix = (
+                self.ego_actor.get_transform().get_matrix() if self.ego_actor is not None else None
+            )
+        if actor_matrix is not None:
+            self._send_splatsim_poses(actor_matrix, seconds, nanoseconds)
+
+        self._publish_dummy_perception()
+
+    def _send_splatsim_poses(self, actor_matrix, seconds, nanoseconds) -> None:
+        """Forward the ego pose to every splatsim camera and LiDAR container."""
+        for sensor in (*self._splatsim_cameras, *self._splatsim_lidars):
+            sensor.update(
+                actor_matrix_4x4=actor_matrix,
+                stamp_sec=seconds,
+                stamp_nanosec=nanoseconds,
+            )
+
+    def _publish_dummy_perception(self) -> None:
+        """Publish empty perception outputs so downstream nodes keep ticking."""
+        header = self.get_msg_header(frame_id="map")
+
+        empty_objects = PredictedObjects()
+        empty_objects.header = header
+        self.pub_empty_objects.publish(empty_objects)
+
+        empty_pc = PointCloud2()
+        empty_pc.header = self.get_msg_header(frame_id="base_link")
+        empty_pc.fields = [
+            PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+            PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+            PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+            PointField(name="intensity", offset=12, datatype=PointField.UINT8, count=1),
+            PointField(name="return_type", offset=13, datatype=PointField.UINT8, count=1),
+            PointField(name="channel", offset=14, datatype=PointField.UINT16, count=1),
+        ]
+        empty_pc.point_step = 16
+        empty_pc.height = 1
+        empty_pc.width = 0
+        empty_pc.row_step = 0
+        empty_pc.is_dense = True
+        self.pub_empty_pointcloud.publish(empty_pc)
+
+        # NOTE: traffic_signals is intentionally NOT published here. An empty
+        # TrafficLightGroupArray means "no signal information", which makes
+        # OnePlanner hold at every signalized stop line. A separate helper
+        # (autoware_data/publish_green_traffic_lights.py) publishes GREEN for
+        # all map traffic-light groups instead.
+
+        empty_og = OccupancyGrid()
+        empty_og.header = self.get_msg_header(frame_id="map")
+        empty_og.info.resolution = 0.5
+        empty_og.info.width = 0
+        empty_og.info.height = 0
+        self.pub_empty_occupancy_grid.publish(empty_og)
+
+    def _publish_localization(self):
+        """Publish localization data from CARLA ground truth (splatsim mode).
+
+        Position: CARLA → xodr (flip y) → MGRS absolute (add offset)
+        Orientation: 2D yaw only (CARLA CW+ → ROS CCW+)
+        """
+        header = self.get_msg_header(frame_id="map")
+
+        with self._state_lock:
+            carla_tf = self.ego_actor.get_transform()
+            ego_vel = self.ego_actor.get_velocity()
+            ego_ang_vel = self.ego_actor.get_angular_velocity()
+            trans_mat = numpy.array(carla_tf.get_matrix()).reshape(4, 4)
+
+        # Position
+        pose = Pose()
+        pose.position.x = carla_tf.location.x + self._mgrs_offset_x
+        pose.position.y = -carla_tf.location.y + self._mgrs_offset_y
+        pose.position.z = carla_tf.location.z
+
+        # Orientation (2D yaw only)
+        yaw = -math.radians(carla_tf.rotation.yaw)
+        qw = math.cos(yaw / 2.0)
+        qz = math.sin(yaw / 2.0)
+        pose.orientation = Quaternion(x=0.0, y=0.0, z=qz, w=qw)
+
+        # /tf (map → base_link)
+        tf_stamped = TransformStamped()
+        tf_stamped.header = header
+        tf_stamped.child_frame_id = "base_link"
+        tf_stamped.transform.translation.x = pose.position.x
+        tf_stamped.transform.translation.y = pose.position.y
+        tf_stamped.transform.translation.z = pose.position.z
+        tf_stamped.transform.rotation = pose.orientation
+        self.pub_tf.publish(TFMessage(transforms=[tf_stamped]))
+
+        # /localization/kinematic_state (Odometry)
+        odom = Odometry()
+        odom.header = header
+        odom.child_frame_id = "base_link"
+        odom.pose.pose = pose
+        rot_mat = trans_mat[0:3, 0:3]
+        inv_rot_mat = rot_mat.T
+        vel_vec = numpy.array([ego_vel.x, ego_vel.y, ego_vel.z]).reshape(3, 1)
+        ego_velocity = (inv_rot_mat @ vel_vec).T[0]
+        odom.twist.twist.linear.x = float(ego_velocity[0])
+        odom.twist.twist.linear.y = float(-ego_velocity[1])
+        odom.twist.twist.linear.z = float(ego_velocity[2])
+        odom.twist.twist.angular.z = -math.radians(ego_ang_vel.z)
+        self.pub_localization_odom.publish(odom)
+
+        # Pose with covariance
+        pose_cov = PoseWithCovarianceStamped()
+        pose_cov.header = header
+        pose_cov.pose.pose = pose
+        pcov = pose_cov.pose.covariance
+        pcov[0] = pcov[7] = pcov[14] = pcov[21] = pcov[28] = pcov[35] = 0.0001
+        self.pub_localization_pose.publish(pose_cov)
+
+        # Acceleration
+        accel_msg = AccelWithCovarianceStamped()
+        accel_msg.header = self.get_msg_header(frame_id="base_link")
+        if self._latest_imu_accel is not None:
+            accel_msg.accel.accel.linear.x = self._latest_imu_accel[0]
+            accel_msg.accel.accel.linear.y = self._latest_imu_accel[1]
+            accel_msg.accel.accel.linear.z = self._latest_imu_accel[2]
+        self.pub_localization_accel.publish(accel_msg)
+
+        # Localization initialization state
+        init_state = LocalizationInitializationState()
+        init_state.stamp = header.stamp
+        init_state.state = LocalizationInitializationState.INITIALIZED
+        self.pub_localization_init_state.publish(init_state)
+
+        # Satisfy topic_state_monitors
+        pose_stamped = PoseStamped()
+        pose_stamped.header = header
+        pose_stamped.pose = pose
+        self.pub_fusion_pose.publish(pose_stamped)
+        self.pub_initialpose3d.publish(pose_cov)
+
+    # ── Shutdown ──────────────────────────────────────────────────────────
+
     def shutdown(self):
         """
         Clean shutdown of ROS node and spin thread.
@@ -858,7 +1657,30 @@ class carla_ros2_interface(object):
         process hanging and publisher leaks.
 
         """
-        # Destroy publishers first
+        self._stop_publish_workers()
+        self._shutdown_splatsim_sensors()
+        self._shutdown_ros()
+
+    def _stop_publish_workers(self) -> None:
+        """Signal and stop per-sensor publish worker threads before destroying publishers."""
+        # Worker loops poll self._shutting_down; stop them before destroying the
+        # publishers they use, avoiding hangs and leaks.
+        self._shutting_down = True
+        for worker in self._publish_workers.values():
+            worker.stop()
+        self._publish_workers.clear()
+
+    def _shutdown_splatsim_sensors(self) -> None:
+        """Shut down and clear all splatsim camera and LiDAR containers."""
+        for cam in self._splatsim_cameras:
+            cam.shutdown()
+        self._splatsim_cameras.clear()
+        for lidar in self._splatsim_lidars:
+            lidar.shutdown()
+        self._splatsim_lidars.clear()
+
+    def _shutdown_ros(self) -> None:
+        """Destroy publishers/node, join the spin thread, and shut down rclpy."""
         if self.ros_publisher_manager:
             self.ros_publisher_manager.destroy_all_publishers()
 
