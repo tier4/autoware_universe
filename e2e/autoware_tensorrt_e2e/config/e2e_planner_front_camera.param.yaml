@@ -1,0 +1,51 @@
+# Deployment configuration: single front-wide-camera E2E model (prototype 1).
+# The Autoware camera id -> node camera index mapping lives in the launch file remaps.
+/**:
+  ros__parameters:
+    model_path: $(var data_path)/e2e_front_camera.onnx
+    plugins_path: ""
+    precision: "fp16"
+    args_path: ""  # Optional normalization JSON (diffusion planner observation_normalizer format)
+    build_only: false
+    planning_frequency_hz: 10.0
+    shift_x: false
+
+    # Enabled input providers. Context inputs are claimed on demand from the engine manifest.
+    sensor_inputs: ["camera"]
+    enable_context_inputs: true
+
+    camera:
+      num_cameras: 1
+      # Sensor resolution (must match the actual camera stream; the model input resolution is
+      # taken from the engine)
+      input_width: 1920
+      input_height: 1280
+      image_transport: "compressed"  # "raw" or "compressed"
+      ego_frame: "base_link"
+      # Tensor names in the engine manifest
+      images_tensor: "camera_images"
+      intrinsics_tensor: "camera_intrinsics"
+      extrinsics_tensor: "camera2ego"
+      # ImageNet statistics (RGB, 0-255 scale); must match the training pipeline
+      normalization_mean: [123.675, 116.28, 103.53]
+      normalization_std: [58.395, 57.12, 57.375]
+      # Synchronization (single camera: only the staleness check applies)
+      sync_tolerance_ms: 100.0
+      max_delay_ms: 200.0
+      allow_dropped_cameras: false
+      anchor_camera_index: 0
+
+    context:
+      traffic_light_group_msg_timeout_seconds: 0.2
+      ignore_neighbors: false
+      ignore_unknown_neighbors: true
+      line_string_max_step_m: 5.0
+      use_time_interpolation: false
+
+    postprocess:
+      prediction_tensor: "prediction"
+      horizon_seconds: 4.0  # 40 points at 0.1 s
+      time_step: 0.1
+      velocity_smoothing_window: 8
+      stopping_threshold: 0.3
+      generator_name: "TensorrtE2eFrontCamera"

@@ -1,0 +1,36 @@
+# Deployment configuration: concatenated-LiDAR E2E model.
+# Any model-specific point-cloud feature extraction remains inside the model or a downstream
+# input provider.
+/**:
+  ros__parameters:
+    model_path: $(var data_path)/e2e_lidar.onnx
+    plugins_path: $(find-pkg-share autoware_tensorrt_plugins)/plugins/libautoware_tensorrt_plugins.so
+    precision: "fp16"
+    args_path: ""
+    build_only: false
+    planning_frequency_hz: 10.0
+    shift_x: false
+
+    sensor_inputs: ["lidar"]
+    enable_context_inputs: true
+
+    lidar:
+      points_tensor: "points"
+      num_points_tensor: "num_points"
+      max_delay_ms: 200.0
+      intensity_scale: 1.0
+
+    context:
+      traffic_light_group_msg_timeout_seconds: 0.2
+      ignore_neighbors: false
+      ignore_unknown_neighbors: true
+      line_string_max_step_m: 5.0
+      use_time_interpolation: false
+
+    postprocess:
+      prediction_tensor: "prediction"
+      horizon_seconds: 4.0
+      time_step: 0.1
+      velocity_smoothing_window: 8
+      stopping_threshold: 0.3
+      generator_name: "TensorrtE2eLidar"

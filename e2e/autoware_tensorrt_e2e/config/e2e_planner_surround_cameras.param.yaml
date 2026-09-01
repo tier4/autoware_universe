@@ -1,0 +1,49 @@
+# Deployment configuration: 5-camera surround E2E model (prototype 2).
+# Node camera index -> vehicle camera mapping (see the launch file remaps):
+#   0: CAM_FRONT_WIDE, 1: CAM_FRONT_LEFT_WIDE, 2: CAM_FRONT_RIGHT_WIDE,
+#   3: CAM_BACK_LEFT_WIDE, 4: CAM_BACK_RIGHT_WIDE
+/**:
+  ros__parameters:
+    model_path: $(var data_path)/e2e_surround_cameras.onnx
+    plugins_path: ""
+    precision: "fp16"
+    args_path: ""
+    build_only: false
+    planning_frequency_hz: 10.0
+    shift_x: false
+
+    sensor_inputs: ["camera"]
+    enable_context_inputs: true
+
+    camera:
+      num_cameras: 5
+      input_width: 1920
+      input_height: 1280
+      image_transport: "compressed"
+      ego_frame: "base_link"
+      images_tensor: "camera_images"
+      intrinsics_tensor: "camera_intrinsics"
+      extrinsics_tensor: "camera2ego"
+      normalization_mean: [123.675, 116.28, 103.53]
+      normalization_std: [58.395, 57.12, 57.375]
+      sync_tolerance_ms: 100.0
+      max_delay_ms: 200.0
+      # The front camera (anchor, index 0) is critical; other cameras may be zero-filled when
+      # dropped so that a single failed corner camera does not stall planning.
+      allow_dropped_cameras: true
+      anchor_camera_index: 0
+
+    context:
+      traffic_light_group_msg_timeout_seconds: 0.2
+      ignore_neighbors: false
+      ignore_unknown_neighbors: true
+      line_string_max_step_m: 5.0
+      use_time_interpolation: false
+
+    postprocess:
+      prediction_tensor: "prediction"
+      horizon_seconds: 4.0
+      time_step: 0.1
+      velocity_smoothing_window: 8
+      stopping_threshold: 0.3
+      generator_name: "TensorrtE2eSurroundCameras"
