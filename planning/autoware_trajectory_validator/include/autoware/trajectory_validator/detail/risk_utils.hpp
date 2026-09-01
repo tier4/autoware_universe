@@ -54,5 +54,11 @@ inline RiskLevelType worst_risk_level(const std::vector<MetricReport> & metrics)
   }
   return worst;
 }
+
+inline bool is_feasible_based_on_risk(const RiskLevelType risk_level)
+{
+  return risk_level == RiskLevel::SAFE || risk_level == RiskLevel::LOW_CAUTION ||
+         risk_level == RiskLevel::HIGH_CAUTION;
+}
 }  // namespace autoware::trajectory_validator
 #endif  // AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_

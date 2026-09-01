@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/trajectory_validator/detail/risk_utils.hpp"
 #include "autoware/trajectory_validator/filters/traffic_rule/traffic_light_filter.hpp"
 
 #include <autoware/motion_utils/distance/distance.hpp>
@@ -34,6 +35,8 @@
 #include <vector>
 
 using autoware::trajectory_validator::FilterContext;
+using autoware::trajectory_validator::is_feasible_based_on_risk;
+using autoware::trajectory_validator::worst_risk_level;
 using autoware::trajectory_validator::plugin::traffic_rule::TrafficLightFilter;
 using autoware_perception_msgs::msg::TrafficLightElement;
 using autoware_perception_msgs::msg::TrafficLightGroup;
@@ -230,7 +233,25 @@ protected:
     candidate_trajectory.points = points;
     const auto res = filter_->is_feasible(candidate_trajectory, context_);
     ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error";
-    EXPECT_EQ(res->is_feasible, expected_feasible) << message;
+    EXPECT_EQ(is_feasible_based_on_risk(worst_risk_level(res->metrics)), expected_feasible)
+      << message;
+  }
+
+  void expect_violation_reported_without_rejection(
+    const std::vector<TrajectoryPoint> & points, const std::string & metric_name,
+    const std::string & message = "")
+  {
+    autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_trajectory;
+    candidate_trajectory.points = points;
+    const auto res = filter_->is_feasible(candidate_trajectory, context_);
+    ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error";
+
+    const auto it = std::find_if(
+      res->metrics.begin(), res->metrics.end(),
+      [&metric_name](const auto & metric) { return metric.metric_name == metric_name; });
+    ASSERT_NE(it, res->metrics.end()) << "expected metric " << metric_name << ". " << message;
+    EXPECT_NE(it->risk.level, RiskLevel::SAFE) << message;
+    EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(res->metrics))) << message;
   }
 
   void set_risk_grading_params()
@@ -273,7 +294,8 @@ protected:
     const auto res = filter_->is_feasible(candidate_trajectory, context_);
     ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error: "
                                  << (res.has_value() ? "" : res.error()) << " " << message;
-    EXPECT_EQ(res->is_feasible, expected_feasible) << message;
+    EXPECT_EQ(is_feasible_based_on_risk(worst_risk_level(res->metrics)), expected_feasible)
+      << message;
 
     const auto it = std::find_if(
       res->metrics.begin(), res->metrics.end(),
@@ -548,7 +570,7 @@ TEST_F(TrafficLightFilterTest, RejectsWithZeroCannotStopAllowance)
     points, false, "Should preserve the old rejection behavior when allowance is disabled");
 }
 
-TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStop)
+TEST_F(TrafficLightFilterTest, ReportsRiskWithAmberLightCanStop)
 {
   const lanelet::Id light_id = 200;
   const double stop_x = 20.0;  // Stop line at 20m
@@ -564,7 +586,9 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStop)
 
   auto points = create_trajectory(0.0, 30.0, 5.0);
 
-  expect_feasibility(points, false, "Should return false if amber light can be stopped");
+  expect_violation_reported_without_rejection(
+    points, "check_crossing_amber_light",
+    "A stoppable amber light should be reported as a risk but should not reject the trajectory");
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberLightCannotStop)
@@ -590,7 +614,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberLightCannotStop)
     points, true, "Should return true if amber light cannot be stopped but is reachable");
 }
 
-TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStopAndCannotPass)
+TEST_F(TrafficLightFilterTest, ReportsRiskWithAmberLightCanStopAndCannotPass)
 {
   const lanelet::Id light_id = 202;
   const double stop_x = 150.0;  // Stop line at 150m
@@ -614,7 +638,9 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStopAndCannotPass)
 
   auto points = create_trajectory(0.0, 200.0, 10.0);
 
-  expect_feasibility(points, false, "Should return false if ego can stop but cannot pass");
+  expect_violation_reported_without_rejection(
+    points, "check_crossing_amber_light",
+    "Ego can stop but cannot pass: report the risk, but do not reject the trajectory");
 }
 
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
@@ -857,8 +883,8 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberHysteresis)
   set_traffic_light_signal(light_id, TrafficLightElement::AMBER);
   auto points = create_trajectory(0.0, 30.0, 5.0);
 
-  // First check: should be infeasible (can stop for amber)
-  expect_feasibility(points, false);
+  // First check: the amber light is reported, but ego can stop, so the trajectory stays usable.
+  expect_violation_reported_without_rejection(points, "check_crossing_amber_light");
 
   // Advance time by 1s (less than 2s hysteresis)
   nav_msgs::msg::Odometry odometry = *context_.odometry;
@@ -1082,8 +1108,9 @@ TEST_F(TrafficLightFilterTest, RiskLevelHighCautionWhenDistanceLessThanNominalSt
   set_odometry(ego_velocity, node_->now());
 
   expect_risk_level(
-    create_trajectory(0.0, 80.0), "check_crossing_amber_light", RiskLevel::HIGH_CAUTION, false,
-    "violation beyond minimum but within nominal stop distance should report HIGH_CAUTION");
+    create_trajectory(0.0, 80.0), "check_crossing_amber_light", RiskLevel::HIGH_CAUTION, true,
+    "violation beyond minimum but within nominal stop distance should report HIGH_CAUTION and "
+    "stay usable");
 }
 
 TEST_F(TrafficLightFilterTest, RiskLevelLowCautionWhenDistanceGreaterThanNominalStopDistance)
@@ -1100,8 +1127,8 @@ TEST_F(TrafficLightFilterTest, RiskLevelLowCautionWhenDistanceGreaterThanNominal
   set_odometry(ego_velocity, node_->now());
 
   expect_risk_level(
-    create_trajectory(0.0, 80.0), "check_crossing_red_light", RiskLevel::LOW_CAUTION, false,
-    "violation beyond nominal stop distance should report LOW_CAUTION");
+    create_trajectory(0.0, 80.0), "check_crossing_red_light", RiskLevel::LOW_CAUTION, true,
+    "violation beyond nominal stop distance should report LOW_CAUTION and stay usable");
 }
 
 TEST_F(TrafficLightFilterTest, RiskLevelAccountsForVehicleFrontOffset)
@@ -1125,6 +1152,6 @@ TEST_F(TrafficLightFilterTest, RiskLevelAccountsForVehicleFrontOffset)
   set_odometry(ego_velocity, node_->now());
 
   expect_risk_level(
-    create_trajectory(0.0, 80.0), "check_crossing_amber_light", RiskLevel::HIGH_CAUTION, false,
+    create_trajectory(0.0, 80.0), "check_crossing_amber_light", RiskLevel::HIGH_CAUTION, true,
     "risk should use ego-front-to-stop-line distance, not raw arc length");
 }

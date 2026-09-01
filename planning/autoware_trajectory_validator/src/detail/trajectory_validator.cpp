@@ -169,12 +169,13 @@ std::pair<PluginEvaluation, RiskLevel> TrajectoryValidator::summarize_feasibilit
   }
 
   const auto & val = res.value();
-  evaluation.is_feasible = val.is_feasible;
+  risk_level.level = worst_risk_level(val.metrics);
+  evaluation.is_feasible = is_feasible_based_on_risk(risk_level.level);
+
   if (!evaluation.is_feasible) {
     evaluation.reason = "Found failed metrics";
   }
 
-  risk_level.level = worst_risk_level(val.metrics);
   return {evaluation, risk_level};
 }
 
