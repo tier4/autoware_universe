@@ -28,6 +28,10 @@ struct FirstOrderDubinsMppiCostParams
   float speed_coeff{500.0F};
   float track_coeff{1000.0F};
   float track_terminal_scale{10.0F};
+  /** Terminal-only squared XY error to the final reference point. */
+  float terminal_error_coeff{0.0F};
+  /** Terminal-only squared shortest-angle error to the final reference heading. */
+  float terminal_heading_coeff{0.0F};
   float heading_coeff{500.0F};
   float lateral_distance_coeff{0.0F};
   float lateral_yaw_error_coeff{0.0F};
