@@ -70,7 +70,13 @@ void PathPlanner::set_planner_data(
   const LaneletRoute::ConstSharedPtr & route_ptr)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  if (lanelet_map_bin_ptr && !route_context_.lanelet_map_ptr) {
+  if (!lanelet_map_bin_ptr) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 5000, "Lanelet map has not been received. Skipping planner data update.");
+    return;
+  }
+
+  if (!route_context_.lanelet_map_ptr) {
     route_context_.lanelet_map_ptr = std::make_shared<lanelet::LaneletMap>();
     lanelet::utils::conversion::fromBinMsg(
       *lanelet_map_bin_ptr, route_context_.lanelet_map_ptr, &route_context_.traffic_rules_ptr,
