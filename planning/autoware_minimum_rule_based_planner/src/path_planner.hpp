@@ -143,6 +143,8 @@ private:
   VehicleInfo vehicle_info_;
   RouteContext route_context_;
   std::optional<lanelet::ConstLanelet> current_lanelet_;
+  std::optional<UUID> prev_route_uuid_;
+  bool route_updated_;
 };
 
 // ---------------------------------------------------------------------------
