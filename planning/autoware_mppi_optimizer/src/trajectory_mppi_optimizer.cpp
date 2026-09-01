@@ -62,7 +62,7 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   FirstOrderDubinsMppiCostParams output;
   output.lambda = static_cast<float>(params.lambda);
   output.max_iter = static_cast<int>(params.max_iter);
-  output.speed_coeff = static_cast<float>(params.speed_coeff);
+  output.spatial_overspeed_coeff = static_cast<float>(params.spatial_overspeed_coeff);
   output.track_coeff = static_cast<float>(params.track_coeff);
   output.track_terminal_scale = static_cast<float>(params.track_terminal_scale);
   output.terminal_error_coeff = static_cast<float>(params.terminal_error_coeff);
@@ -532,7 +532,7 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("running_total", cost.running_total);
   cost_diagnostics_->add_key_value("terminal_total", cost.terminal_total);
   cost_diagnostics_->add_key_value("evaluated_timesteps", cost.evaluated_timesteps);
-  cost_diagnostics_->add_key_value("state/speed", cost.speed);
+  cost_diagnostics_->add_key_value("state/spatial_overspeed", cost.spatial_overspeed);
   cost_diagnostics_->add_key_value("state/track", cost.track);
   cost_diagnostics_->add_key_value("state/heading", cost.heading);
   cost_diagnostics_->add_key_value("terminal/error", cost.terminal_error);
