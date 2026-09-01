@@ -105,7 +105,7 @@ struct FirstOrderDubinsMppiKinematicLimits
 /** Host reconstruction of the cost assigned to the selected MPPI trajectory. */
 struct FirstOrderDubinsMppiCostBreakdown
 {
-  float speed{0.0F};
+  float spatial_overspeed{0.0F};
   float track{0.0F};
   float heading{0.0F};
   float terminal_error{0.0F};
@@ -138,11 +138,11 @@ struct FirstOrderDubinsMppiCostBreakdown
 
   [[nodiscard]] float componentTotal() const
   {
-    return speed + track + heading + terminal_error + terminal_heading + lateral_distance +
-           lateral_boundary + lateral_yaw_error + remaining_distance + path_overshoot +
-           track_center + corner_buffer + drivable_area + acceleration_command + steering_command +
-           lateral_acceleration + lateral_jerk + longitudinal_jerk + steering_rate +
-           kinematic_velocity_overlimit + kinematic_acceleration_overlimit +
+    return spatial_overspeed + track + heading + terminal_error + terminal_heading +
+           lateral_distance + lateral_boundary + lateral_yaw_error + remaining_distance +
+           path_overshoot + track_center + corner_buffer + drivable_area + acceleration_command +
+           steering_command + lateral_acceleration + lateral_jerk + longitudinal_jerk +
+           steering_rate + kinematic_velocity_overlimit + kinematic_acceleration_overlimit +
            kinematic_jerk_overlimit + obstacle + road_border;
   }
 };

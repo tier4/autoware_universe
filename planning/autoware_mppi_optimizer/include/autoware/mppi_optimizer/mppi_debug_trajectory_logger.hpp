@@ -134,7 +134,7 @@ public:
         out << std::setprecision(9) << std::fixed;
         out << "lambda," << cost.lambda << "\n";
         out << "max_iter," << cost.max_iter << "\n";
-        out << "speed_coeff," << cost.speed_coeff << "\n";
+        out << "spatial_overspeed_coeff," << cost.spatial_overspeed_coeff << "\n";
         out << "track_coeff," << cost.track_coeff << "\n";
         out << "track_terminal_scale," << cost.track_terminal_scale << "\n";
         out << "terminal_error_coeff," << cost.terminal_error_coeff << "\n";

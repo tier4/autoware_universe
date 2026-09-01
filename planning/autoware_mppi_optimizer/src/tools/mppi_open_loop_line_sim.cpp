@@ -158,7 +158,7 @@ void loadParamsYaml(
 
   std::unordered_map<std::string, float *> cost_fields = {
     {"lambda", &cost.lambda},
-    {"speed_coeff", &cost.speed_coeff},
+    {"spatial_overspeed_coeff", &cost.spatial_overspeed_coeff},
     {"track_coeff", &cost.track_coeff},
     {"track_terminal_scale", &cost.track_terminal_scale},
     {"terminal_error_coeff", &cost.terminal_error_coeff},

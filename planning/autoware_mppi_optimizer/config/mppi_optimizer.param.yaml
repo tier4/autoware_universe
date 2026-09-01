@@ -11,11 +11,11 @@
       # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
       lambda: 1.0
       max_iter: 10
-      speed_coeff: 10000.0
+      spatial_overspeed_coeff: 1.0
       track_coeff: 0.0
       track_terminal_scale: 0.0
-      terminal_error_coeff: 1.0
-      terminal_heading_coeff: 10.0
+      terminal_error_coeff: 1000.0
+      terminal_heading_coeff: 1000.0
       heading_coeff: 0.0
       # Spatial (closest-segment) costs restored from pre time-indexed tracking; 0 = off.
       lateral_distance_coeff: 0.0
@@ -38,17 +38,17 @@
       # Shared deadband-quadratic cost for optional VelocityLimit bounds.
       overlimit_coeff: 1000.0
       # MPPI control-sample noise std-devs around the nominal (u_nom).
-      accel_cmd_std_dev: 0.2
+      accel_cmd_std_dev: 0.1
       steer_cmd_std_dev: 0.02
-      std_dev_decay: 0.75
+      std_dev_decay: 0.9
       # Power-law PSD exponents (0 = white, 1 = pink, 2 = brown) for colored noise.
-      accel_cmd_noise_exponent: 0.0
-      steer_cmd_noise_exponent: 0.0
+      accel_cmd_noise_exponent: 1.0
+      steer_cmd_noise_exponent: 1.0
       drivable_area_safe_margin: 0.0
       drivable_area_barrier_weight: 0.0
       # Crash costs
-      boundary_threshold: 1.5
-      lateral_boundary_soft_margin: 1.0
+      boundary_threshold: 1.2
+      lateral_boundary_soft_margin: 0.7
       obstacle_collision_margin: 0.2
       road_border_collision_margin: 0.2
       obstacle_safe_margin: 0.5
