@@ -36,10 +36,10 @@ trajectory_mppi_optimizer:
     description: Number of optimization iterations per MPPI update
     validation: { gt<>: [0] }
     read_only: false
-  speed_coeff:
+  spatial_overspeed_coeff:
     type: double
-    default_value: 300.0
-    description: Speed tracking cost coefficient
+    default_value: 0.0
+    description: Spatial reference-velocity overspeed cost weighted by corridor progress
     validation: { gt_eq<>: [0.0] }
     read_only: false
   track_coeff:
