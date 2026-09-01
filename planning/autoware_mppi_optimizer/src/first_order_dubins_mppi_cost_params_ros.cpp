@@ -32,6 +32,16 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
 {
   const FirstOrderDubinsMppiCostParams defaults;
   node.declare_parameter(param_name(prefix, "lambda"), defaults.lambda);
+  node.declare_parameter(param_name(prefix, "lambda_min"), defaults.lambda_min);
+  node.declare_parameter(param_name(prefix, "lambda_max"), defaults.lambda_max);
+  node.declare_parameter(param_name(prefix, "target_ess_ratio"), defaults.target_ess_ratio);
+  node.declare_parameter(
+    param_name(prefix, "lambda_adaptation_gain"), defaults.lambda_adaptation_gain);
+  node.declare_parameter(
+    param_name(prefix, "unsafe_rollout_fraction_threshold"),
+    defaults.unsafe_rollout_fraction_threshold);
+  node.declare_parameter(
+    param_name(prefix, "cost_normalization_percentile"), defaults.cost_normalization_percentile);
   node.declare_parameter(param_name(prefix, "max_iter"), defaults.max_iter);
   node.declare_parameter(
     param_name(prefix, "spatial_overspeed_coeff"), defaults.spatial_overspeed_coeff);
@@ -93,6 +103,18 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
 {
   FirstOrderDubinsMppiCostParams params;
   params.lambda = static_cast<float>(node.get_parameter(param_name(prefix, "lambda")).as_double());
+  params.lambda_min =
+    static_cast<float>(node.get_parameter(param_name(prefix, "lambda_min")).as_double());
+  params.lambda_max =
+    static_cast<float>(node.get_parameter(param_name(prefix, "lambda_max")).as_double());
+  params.target_ess_ratio =
+    static_cast<float>(node.get_parameter(param_name(prefix, "target_ess_ratio")).as_double());
+  params.lambda_adaptation_gain = static_cast<float>(
+    node.get_parameter(param_name(prefix, "lambda_adaptation_gain")).as_double());
+  params.unsafe_rollout_fraction_threshold = static_cast<float>(
+    node.get_parameter(param_name(prefix, "unsafe_rollout_fraction_threshold")).as_double());
+  params.cost_normalization_percentile = static_cast<float>(
+    node.get_parameter(param_name(prefix, "cost_normalization_percentile")).as_double());
   params.max_iter = static_cast<int>(node.get_parameter(param_name(prefix, "max_iter")).as_int());
   params.spatial_overspeed_coeff = static_cast<float>(
     node.get_parameter(param_name(prefix, "spatial_overspeed_coeff")).as_double());

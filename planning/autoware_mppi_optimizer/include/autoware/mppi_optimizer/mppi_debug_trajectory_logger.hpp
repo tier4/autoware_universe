@@ -133,6 +133,13 @@ public:
         out << "key,value\n";
         out << std::setprecision(9) << std::fixed;
         out << "lambda," << cost.lambda << "\n";
+        out << "lambda_min," << cost.lambda_min << "\n";
+        out << "lambda_max," << cost.lambda_max << "\n";
+        out << "target_ess_ratio," << cost.target_ess_ratio << "\n";
+        out << "lambda_adaptation_gain," << cost.lambda_adaptation_gain << "\n";
+        out << "unsafe_rollout_fraction_threshold," << cost.unsafe_rollout_fraction_threshold
+            << "\n";
+        out << "cost_normalization_percentile," << cost.cost_normalization_percentile << "\n";
         out << "max_iter," << cost.max_iter << "\n";
         out << "spatial_overspeed_coeff," << cost.spatial_overspeed_coeff << "\n";
         out << "track_coeff," << cost.track_coeff << "\n";

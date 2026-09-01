@@ -254,6 +254,17 @@ struct FirstOrderDubinsMppiDebug
   FirstOrderDubinsMppiTiming timing;
   FirstOrderDubinsMppiKinematicLimits active_kinematic_limits;
   float baseline_cost{0.0F};
+  /** ESS for every MPPI optimization iteration in the most recent control step. */
+  std::vector<float> iteration_effective_sample_sizes;
+  /** Lambda used for those weights and the adapted value prepared for the next control step. */
+  float lambda_used{0.0F};
+  float lambda_next{0.0F};
+  /** Maximum finite raw cost in the final rollout population. */
+  float max_rollout_cost{0.0F};
+  /** Robust upper raw cost used to normalize the final rollout population. */
+  float normalization_upper_cost{0.0F};
+  /** Fraction of final-iteration rollouts that encountered a collision/safety violation. */
+  float unsafe_rollout_fraction{0.0F};
   /** Hard-constraint validation of the generated post-step states. */
   FirstOrderDubinsMppiValidationResult validation;
   /** True while the deterministic external-only maximum-velocity profile is applied. */
