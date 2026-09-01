@@ -25,7 +25,8 @@ struct FirstOrderDubinsMppiCostParams
   float lambda{1500.0F};
   /** Number of optimization iterations performed for each MPPI update. */
   int max_iter{20};
-  float speed_coeff{500.0F};
+  /** Penalizes velocity above the spatially interpolated reference velocity. */
+  float spatial_overspeed_coeff{0.0F};
   float track_coeff{1000.0F};
   float track_terminal_scale{10.0F};
   /** Terminal-only squared XY error to the final reference point. */

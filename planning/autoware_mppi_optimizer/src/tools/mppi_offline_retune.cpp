@@ -135,8 +135,8 @@ void applyCostParam(
     params.lambda = value;
   } else if (key == "max_iter") {
     params.max_iter = static_cast<int>(value);
-  } else if (key == "speed_coeff") {
-    params.speed_coeff = value;
+  } else if (key == "spatial_overspeed_coeff") {
+    params.spatial_overspeed_coeff = value;
   } else if (key == "track_coeff") {
     params.track_coeff = value;
   } else if (key == "track_terminal_scale") {
@@ -567,7 +567,7 @@ int run(int argc, char ** argv)
 
   std::cout << "applied_params lambda=" << cost_params.lambda
             << " track_coeff=" << cost_params.track_coeff
-            << " speed_coeff=" << cost_params.speed_coeff
+            << " spatial_overspeed_coeff=" << cost_params.spatial_overspeed_coeff
             << " overlimit_coeff=" << cost_params.overlimit_coeff
             << " heading_coeff=" << cost_params.heading_coeff
             << " steer_rate_coeff=" << cost_params.steer_rate_coeff << "\n";
@@ -806,7 +806,7 @@ int run(int argc, char ** argv)
       breakdown_out << "running_total," << breakdown.running_total << "\n";
       breakdown_out << "terminal_total," << breakdown.terminal_total << "\n";
       breakdown_out << "evaluated_timesteps," << breakdown.evaluated_timesteps << "\n";
-      breakdown_out << "state/speed," << breakdown.speed << "\n";
+      breakdown_out << "state/spatial_overspeed," << breakdown.spatial_overspeed << "\n";
       breakdown_out << "state/track," << breakdown.track << "\n";
       breakdown_out << "state/heading," << breakdown.heading << "\n";
       breakdown_out << "terminal/error," << breakdown.terminal_error << "\n";
