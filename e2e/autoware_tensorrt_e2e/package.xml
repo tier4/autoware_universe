@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
   <buildtool_depend>autoware_cmake</buildtool_depend>
 
+  <depend>autoware_bevfusion</depend>
   <depend>autoware_cuda_utils</depend>
   <depend>autoware_diffusion_planner</depend>
   <depend>autoware_internal_debug_msgs</depend>
@@ -30,6 +31,7 @@
   <depend>geometry_msgs</depend>
   <depend>image_transport</depend>
   <depend>nav_msgs</depend>
+  <depend>nlohmann-json-dev</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>

@@ -73,16 +73,27 @@ if(TRT_AVAIL AND CUDA_AVAIL)
 
   cuda_add_library(${PROJECT_NAME}_cuda_lib SHARED
     src/preprocess/camera_preprocess_kernel.cu
+    src/bev_feature/bev_warp_kernel.cu
   )
 
   ament_auto_add_library(${PROJECT_NAME}_component SHARED
     src/types.cpp
     src/inference_engine.cpp
+    src/bev_feature/temporal_bev_cache.cpp
+    src/bev_feature/trt_bev_feature_extractor.cpp
     src/providers/camera_input_provider.cpp
     src/providers/lidar_input_provider.cpp
     src/providers/context_input_provider.cpp
+    src/providers/bev_feature_input_provider.cpp
     src/postprocess/trajectory_postprocessor.cpp
     src/tensorrt_e2e_node.cpp
+  )
+
+  # The BEVFusion voxelization kernels live in a separately installed CUDA library that
+  # autoware_bevfusion does not export as an ament target.
+  find_library(AUTOWARE_BEVFUSION_CUDA_LIB autoware_bevfusion_cuda_lib
+    HINTS ${autoware_bevfusion_DIR}/../../../lib
+    REQUIRED
   )
 
   target_link_libraries(${PROJECT_NAME}_component
@@ -92,6 +103,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${CUBLAS_LIBRARIES}
     ${OpenCV_LIBS}
     ${PROJECT_NAME}_cuda_lib
+    ${AUTOWARE_BEVFUSION_CUDA_LIB}
   )
 
   rclcpp_components_register_node(${PROJECT_NAME}_component
@@ -108,6 +120,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
       test/types_test.cpp
       test/trajectory_postprocessor_test.cpp
+      test/bev_warp_test.cpp
+      test/temporal_bev_cache_test.cpp
     )
     target_link_libraries(test_${PROJECT_NAME} ${PROJECT_NAME}_component)
   endif()

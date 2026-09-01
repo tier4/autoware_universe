@@ -43,7 +43,7 @@ namespace autoware::tensorrt_e2e
 struct PostprocessParams
 {
   std::string prediction_tensor{"prediction"};
-  //! Additional ego-only trajectory outputs (`[B, T, 4]`, for example a model's prior),
+  //! Additional ego-only trajectory outputs (`[B, T, 4]`, e.g. ResWorld's `prior_trajectory`),
   //! published as extra candidate trajectories.
   std::vector<std::string> extra_trajectory_tensors{};
   double horizon_seconds{4.0};

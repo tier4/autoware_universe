@@ -14,6 +14,7 @@
 
 #include "autoware/tensorrt_e2e/tensorrt_e2e_node.hpp"
 
+#include "autoware/tensorrt_e2e/providers/bev_feature_input_provider.hpp"
 #include "autoware/tensorrt_e2e/providers/camera_input_provider.hpp"
 #include "autoware/tensorrt_e2e/providers/lidar_input_provider.hpp"
 
@@ -119,10 +120,12 @@ void TensorrtE2eNode::create_providers()
       providers_.push_back(std::make_unique<CameraInputProvider>(*this, tf_buffer_));
     } else if (sensor == "lidar") {
       providers_.push_back(std::make_unique<LidarInputProvider>(*this));
+    } else if (sensor == "bev_feature") {
+      providers_.push_back(std::make_unique<BevFeatureInputProvider>(*this));
     } else {
       throw std::runtime_error(
         "Unknown sensor input '" + sensor +
-        "' (supported: \"camera\", \"lidar\")");
+        "' (supported: \"camera\", \"lidar\", \"bev_feature\")");
     }
   }
   if (params_.enable_context_inputs) {

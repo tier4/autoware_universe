@@ -44,7 +44,7 @@
         },
         "sensor_inputs": {
           "type": "array",
-          "items": { "type": "string", "enum": ["camera", "lidar"] },
+          "items": { "type": "string", "enum": ["camera", "lidar", "bev_feature"] },
           "description": "Enabled sensor input providers.",
           "default": []
         },
@@ -99,6 +99,40 @@
             "intensity_scale": { "type": "number", "default": 1.0 }
           }
         },
+        "bev_feature": {
+          "type": "object",
+          "description": "Temporal LiDAR BEV feature provider (ResWorld-style models).",
+          "properties": {
+            "history_tensor": { "type": "string", "default": "bev_feature_history" },
+            "contract_path": {
+              "type": "string",
+              "description": "Deployment contract JSON shipped with the model; overrides frames/interval/half extent/feature tensor when set.",
+              "default": ""
+            },
+            "frames": { "type": "integer", "minimum": 2, "default": 3 },
+            "interval_seconds": { "type": "number", "default": 0.1 },
+            "interval_tolerance_seconds": { "type": "number", "default": 0.02 },
+            "bev_half_extent_m": { "type": "number", "default": 122.4 },
+            "warmup": { "type": "string", "enum": ["wait", "duplicate_current"], "default": "wait" },
+            "max_delay_ms": { "type": "number", "default": 200.0 },
+            "extractor": {
+              "type": "object",
+              "description": "Frozen BEVFusion-L feature extractor (voxelization parameters must match the BEVFusion ml package it was exported from).",
+              "properties": {
+                "onnx_path": { "type": "string" },
+                "plugins_path": { "type": "string" },
+                "precision": { "type": "string", "enum": ["fp32", "fp16"], "default": "fp16" },
+                "feature_tensor": { "type": "string", "default": "bev_feature" },
+                "cloud_capacity": { "type": "integer", "default": 2000000 },
+                "max_points_per_voxel": { "type": "integer", "default": 10 },
+                "voxels_num": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3, "default": [1, 128000, 256000] },
+                "point_cloud_range": { "type": "array", "items": { "type": "number" }, "minItems": 6, "maxItems": 6, "default": [-122.4, -122.4, -3.0, 122.4, 122.4, 5.0] },
+                "voxel_size": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3, "default": [0.17, 0.17, 0.2] },
+                "use_intensity": { "type": "boolean", "default": false }
+              }
+            }
+          }
+        },
         "context": {
           "type": "object",
           "properties": {
@@ -116,7 +150,7 @@
             "extra_trajectory_tensors": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Additional ego-only [B, T, 4] trajectory outputs published as extra candidates.",
+              "description": "Additional ego-only [B, T, 4] trajectory outputs published as extra candidates (e.g. ResWorld's prior_trajectory).",
               "default": []
             },
             "horizon_seconds": { "type": "number", "default": 4.0, "exclusiveMinimum": 0.0 },

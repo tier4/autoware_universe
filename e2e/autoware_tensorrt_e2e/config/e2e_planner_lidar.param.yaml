@@ -1,6 +1,5 @@
-# Deployment configuration: concatenated-LiDAR E2E model.
-# Any model-specific point-cloud feature extraction remains inside the model or a downstream
-# input provider.
+# Deployment configuration: concatenated-LiDAR E2E model (prototype 3, BEVFusion-style input).
+# Voxelization is expected to be embedded in the engine (see docs/design.md).
 /**:
   ros__parameters:
     model_path: $(var data_path)/e2e_lidar.onnx
