@@ -61,6 +61,13 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
 
   FirstOrderDubinsMppiCostParams output;
   output.lambda = static_cast<float>(params.lambda);
+  output.lambda_min = static_cast<float>(params.lambda_min);
+  output.lambda_max = static_cast<float>(params.lambda_max);
+  output.target_ess_ratio = static_cast<float>(params.target_ess_ratio);
+  output.lambda_adaptation_gain = static_cast<float>(params.lambda_adaptation_gain);
+  output.unsafe_rollout_fraction_threshold =
+    static_cast<float>(params.unsafe_rollout_fraction_threshold);
+  output.cost_normalization_percentile = static_cast<float>(params.cost_normalization_percentile);
   output.max_iter = static_cast<int>(params.max_iter);
   output.spatial_overspeed_coeff = static_cast<float>(params.spatial_overspeed_coeff);
   output.track_coeff = static_cast<float>(params.track_coeff);
@@ -527,6 +534,17 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->clear();
   const auto & cost = debug.cost_breakdown;
   cost_diagnostics_->add_key_value("controller_baseline_cost", debug.baseline_cost);
+  cost_diagnostics_->add_key_value("mppi/lambda_used", debug.lambda_used);
+  cost_diagnostics_->add_key_value("mppi/lambda_next", debug.lambda_next);
+  cost_diagnostics_->add_key_value("mppi/max_rollout_cost", debug.max_rollout_cost);
+  cost_diagnostics_->add_key_value("mppi/normalization_upper_cost", debug.normalization_upper_cost);
+  cost_diagnostics_->add_key_value("mppi/unsafe_rollout_fraction", debug.unsafe_rollout_fraction);
+  for (std::size_t iteration = 0; iteration < debug.iteration_effective_sample_sizes.size();
+       ++iteration) {
+    cost_diagnostics_->add_key_value(
+      "mppi/iteration_" + std::to_string(iteration + 1U) + "/ess",
+      debug.iteration_effective_sample_sizes[iteration]);
+  }
   cost_diagnostics_->add_key_value("output_total_cost", cost.total);
   cost_diagnostics_->add_key_value("output_minus_baseline_cost", cost.total - debug.baseline_cost);
   cost_diagnostics_->add_key_value("running_total", cost.running_total);
