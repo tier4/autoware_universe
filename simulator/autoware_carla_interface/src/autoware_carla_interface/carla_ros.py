@@ -1508,9 +1508,11 @@ class carla_ros2_interface(object):
         empty_pc.is_dense = True
         self.pub_empty_pointcloud.publish(empty_pc)
 
-        empty_tl = TrafficLightGroupArray()
-        empty_tl.stamp = header.stamp
-        self.pub_empty_traffic_signals.publish(empty_tl)
+        # NOTE: traffic_signals is intentionally NOT published here. An empty
+        # TrafficLightGroupArray means "no signal information", which makes
+        # OnePlanner hold at every signalized stop line. A separate helper
+        # (autoware_data/publish_green_traffic_lights.py) publishes GREEN for
+        # all map traffic-light groups instead.
 
         empty_og = OccupancyGrid()
         empty_og.header = self.get_msg_header(frame_id="map")
