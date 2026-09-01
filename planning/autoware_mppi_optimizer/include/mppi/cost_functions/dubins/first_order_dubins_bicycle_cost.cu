@@ -257,6 +257,9 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   HANDLE_ERROR(cudaMemcpyAsync(
     this->cost_d_->ref_yaw_, ref_yaw_, sizeof(ref_yaw_), cudaMemcpyHostToDevice, this->stream_));
   HANDLE_ERROR(cudaMemcpyAsync(
+    this->cost_d_->terminal_reference_, terminal_reference_, sizeof(terminal_reference_),
+    cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
     this->cost_d_->ref_max_velocity_, ref_max_velocity_, sizeof(ref_max_velocity_),
     cudaMemcpyHostToDevice, this->stream_));
   HANDLE_ERROR(cudaMemcpyAsync(
@@ -357,7 +360,8 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setReferenceTrajectory(
     const float * x, const float * y, const float * v, const int count, const float * yaw,
-    const float * max_velocity, const std::uint8_t * velocity_limit_active)
+    const float * max_velocity, const std::uint8_t * velocity_limit_active,
+    const float * terminal_reference)
 {
   const int n = std::max(0, std::min(count, NUM_TIMESTEPS));
   has_pointwise_velocity_limits_ = max_velocity != nullptr && velocity_limit_active != nullptr;
@@ -398,6 +402,15 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       ref_max_velocity_[i] = 0.0F;
       ref_velocity_limit_active_[i] = 0U;
     }
+  }
+  if (terminal_reference != nullptr) {
+    terminal_reference_[0] = terminal_reference[0];
+    terminal_reference_[1] = terminal_reference[1];
+    terminal_reference_[2] = terminal_reference[2];
+  } else {
+    terminal_reference_[0] = ref_x_[NUM_TIMESTEPS - 1];
+    terminal_reference_[1] = ref_y_[NUM_TIMESTEPS - 1];
+    terminal_reference_[2] = ref_yaw_[NUM_TIMESTEPS - 1];
   }
   dataToDevice();
 }
@@ -1169,6 +1182,14 @@ autoware::mppi_optimizer::FirstOrderDubinsMppiCostBreakdown FirstOrderDubinsBicy
                  this->params_.track_terminal_scale;
   result.heading = this->params_.heading_coeff * computeHeadingValue(yaw, timestep) *
                    this->params_.track_terminal_scale;
+  const float terminal_dx = x_pos - terminal_reference_[0];
+  const float terminal_dy = y_pos - terminal_reference_[1];
+  const float terminal_yaw_error =
+    angle_utils::shortestAngularDistance(yaw, terminal_reference_[2]);
+  result.terminal_error =
+    this->params_.terminal_error_coeff * (terminal_dx * terminal_dx + terminal_dy * terminal_dy);
+  result.terminal_heading =
+    this->params_.terminal_heading_coeff * terminal_yaw_error * terminal_yaw_error;
   if (needsLateralPathMetrics(this->params_)) {
     const LateralPathMetrics lateral = computeLateralPathMetrics(x_pos, y_pos, yaw);
     result.lateral_distance = this->params_.lateral_distance_coeff * lateral.lateral_distance *
@@ -1332,6 +1353,14 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     const float heading_cost = this->params_.heading_coeff *
                                computeHeadingValue(yaw, timestep, theta_c) *
                                this->params_.track_terminal_scale;
+    const float terminal_dx = x_pos - terminal_reference_[0];
+    const float terminal_dy = y_pos - terminal_reference_[1];
+    const float terminal_yaw_error =
+      angle_utils::shortestAngularDistance(yaw, terminal_reference_[2]);
+    const float terminal_error_cost =
+      this->params_.terminal_error_coeff * (terminal_dx * terminal_dx + terminal_dy * terminal_dy);
+    const float terminal_heading_cost =
+      this->params_.terminal_heading_coeff * terminal_yaw_error * terminal_yaw_error;
     float lateral_distance_cost = 0.0F;
     float lateral_boundary_cost = 0.0F;
     float lateral_yaw_error_cost = 0.0F;
@@ -1359,10 +1388,10 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     float road_border_cost = 0.0F;
     computeGradualCrashCosts(
       x_pos, y_pos, yaw, NUM_TIMESTEPS - 1, drivable_area_cost, obstacle_cost, road_border_cost);
-    return track_cost + heading_cost + lateral_distance_cost + lateral_boundary_cost +
-           lateral_yaw_error_cost + remaining_distance_cost + path_overshoot_cost +
-           drivable_area_cost + track_center_cost + corner_buffer_cost + obstacle_cost +
-           road_border_cost;
+    return track_cost + heading_cost + terminal_error_cost + terminal_heading_cost +
+           lateral_distance_cost + lateral_boundary_cost + lateral_yaw_error_cost +
+           remaining_distance_cost + path_overshoot_cost + drivable_area_cost + track_center_cost +
+           corner_buffer_cost + obstacle_cost + road_border_cost;
   }
   return 0.0F;
 }

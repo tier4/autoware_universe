@@ -161,6 +161,8 @@ void loadParamsYaml(
     {"speed_coeff", &cost.speed_coeff},
     {"track_coeff", &cost.track_coeff},
     {"track_terminal_scale", &cost.track_terminal_scale},
+    {"terminal_error_coeff", &cost.terminal_error_coeff},
+    {"terminal_heading_coeff", &cost.terminal_heading_coeff},
     {"heading_coeff", &cost.heading_coeff},
     {"lateral_distance_coeff", &cost.lateral_distance_coeff},
     {"lateral_yaw_error_coeff", &cost.lateral_yaw_error_coeff},
