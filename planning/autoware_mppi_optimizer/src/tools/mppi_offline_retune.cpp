@@ -133,6 +133,18 @@ void applyCostParam(
 {
   if (key == "lambda") {
     params.lambda = value;
+  } else if (key == "lambda_min") {
+    params.lambda_min = value;
+  } else if (key == "lambda_max") {
+    params.lambda_max = value;
+  } else if (key == "target_ess_ratio") {
+    params.target_ess_ratio = value;
+  } else if (key == "lambda_adaptation_gain") {
+    params.lambda_adaptation_gain = value;
+  } else if (key == "unsafe_rollout_fraction_threshold") {
+    params.unsafe_rollout_fraction_threshold = value;
+  } else if (key == "cost_normalization_percentile") {
+    params.cost_normalization_percentile = value;
   } else if (key == "max_iter") {
     params.max_iter = static_cast<int>(value);
   } else if (key == "spatial_overspeed_coeff") {
@@ -566,18 +578,17 @@ int run(int argc, char ** argv)
   }
 
   std::cout << "applied_params lambda=" << cost_params.lambda
+            << " lambda_min=" << cost_params.lambda_min << " lambda_max=" << cost_params.lambda_max
+            << " target_ess_ratio=" << cost_params.target_ess_ratio
+            << " lambda_adaptation_gain=" << cost_params.lambda_adaptation_gain
+            << " unsafe_rollout_fraction_threshold="
+            << cost_params.unsafe_rollout_fraction_threshold
+            << " cost_normalization_percentile=" << cost_params.cost_normalization_percentile
             << " track_coeff=" << cost_params.track_coeff
             << " spatial_overspeed_coeff=" << cost_params.spatial_overspeed_coeff
             << " overlimit_coeff=" << cost_params.overlimit_coeff
             << " heading_coeff=" << cost_params.heading_coeff
             << " steer_rate_coeff=" << cost_params.steer_rate_coeff << "\n";
-  if (cost_params.lambda >= 5000.0F) {
-    std::cerr
-      << "WARNING: lambda=" << cost_params.lambda
-      << " is very high — softmax weights stay near-uniform and cost-weight edits "
-         "will barely move the trajectory. Try lambda around 100–1500 to see retune effects.\n";
-  }
-
   const auto frame_ids = listMppiDebugFrameIds(log_dir);
   if (frame_ids.empty()) {
     std::cerr << "No frames found in " << log_dir << "\n";

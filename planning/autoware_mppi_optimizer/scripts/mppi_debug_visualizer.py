@@ -112,7 +112,13 @@ MPPI_MAX_WORST_VIZ_ROLLOUTS = 128
 # (Excludes bool/string runtime flags: enable_debug_trajectory_log, ignore_*, etc.)
 # Keep in sync with config/mppi_optimizer.param.yaml (overridden by cost_params.csv when present).
 DEFAULT_PARAMS: Dict[str, float] = {
-    "lambda": 100.0,
+    "lambda": 0.1,
+    "lambda_min": 0.01,
+    "lambda_max": 2.0,
+    "target_ess_ratio": 0.2,
+    "lambda_adaptation_gain": 0.1,
+    "unsafe_rollout_fraction_threshold": 0.95,
+    "cost_normalization_percentile": 0.95,
     "spatial_overspeed_coeff": 0.0,
     "track_coeff": 1200.0,
     "track_terminal_scale": 10.0,
@@ -152,7 +158,13 @@ DEFAULT_PARAMS: Dict[str, float] = {
 # (name, vmin, vmax) — keep in sync with DEFAULT_PARAMS keys.
 # vmax must cover yaml / logged values; create_sliders also expands to fit valinit.
 SLIDER_SPECS: List[Tuple[str, float, float]] = [
-    ("lambda", 1.0, 20000.0),
+    ("lambda", 0.01, 2.0),
+    ("lambda_min", 0.001, 1.0),
+    ("lambda_max", 0.01, 10.0),
+    ("target_ess_ratio", 0.01, 1.0),
+    ("lambda_adaptation_gain", 0.0, 2.0),
+    ("unsafe_rollout_fraction_threshold", 0.0, 1.0),
+    ("cost_normalization_percentile", 0.0, 1.0),
     ("track_coeff", 0.0, 10000.0),
     ("track_terminal_scale", 0.0, 50.0),
     ("terminal_error_coeff", 0.0, 10000.0),
@@ -2699,7 +2711,7 @@ class OfflineLogVisualizer:
             (self._out_dir / f"{tag}_{suffix}").unlink(missing_ok=True)
         self._status = (
             f"{mode} frame {frame_id} via {self._retune_bin.name} "
-            f"(lambda={lam:.0f}, track={track:.0f}"
+            f"(lambda={lam:.3f}, track={track:.0f}"
             + (f", pass={prev_count + 1}" if reseed else "")
             + ")..."
         )
@@ -2732,7 +2744,7 @@ class OfflineLogVisualizer:
             warn_lines = []
             if completed.stderr:
                 warn_lines = [ln for ln in completed.stderr.splitlines() if "WARNING:" in ln]
-            # Highlight when retune barely moved vs logged (usually lambda still too high).
+            # Highlight when retune barely moved vs logged (often lambda is still too high).
             opt = load_trajectory_csv(self._out_dir / f"{frame_id:06d}_optimized.csv")
             logged = load_trajectory_csv(self._log_dir / f"{frame_id:06d}_optimized.csv")
             costs = load_costs_csv(self._out_dir / f"{frame_id:06d}_costs.csv")
@@ -2768,9 +2780,9 @@ class OfflineLogVisualizer:
             if opt.x and logged.x:
                 vs = max_pos_err((logged.x, logged.y), (opt.x, opt.y))
                 self._status = f"{self._status} | logged↔retune Δpos={vs:.3f}m"
-                if vs < 0.5 and lam >= 2000.0:
+                if vs < 0.5 and lam >= 1.0:
                     self._status = (
-                        f"{self._status} || tiny Δ — lower lambda to ~100–500 then Retune again"
+                        f"{self._status} || tiny Δ — lower normalized-cost lambda then Retune again"
                     )
             if warn_lines:
                 self._status = f"{self._status}  ||  {warn_lines[-1]}"
