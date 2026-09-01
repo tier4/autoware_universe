@@ -362,6 +362,11 @@ public:
   }
 
 protected:
+  bool requiresRawRolloutCostsForIteration() const override
+  {
+    return iteration_rollout_capture_enabled_;
+  }
+
   void optimizationIterationComplete(const int iteration) override
   {
     if (
@@ -715,17 +720,35 @@ void appendReplayedRollouts(
   }
 }
 
+float rawCostFromMinMaxWeight(
+  const float weight, const float min_cost, const float max_cost, const float lambda)
+{
+  const float cost_range = max_cost - min_cost;
+  if (!std::isfinite(cost_range) || cost_range < 1.0E-6F) {
+    return min_cost;
+  }
+  if (!(weight > 0.0F) || !std::isfinite(weight)) {
+    return max_cost;
+  }
+  const float normalized_cost = std::clamp(-lambda * std::log(weight), 0.0F, 1.0F);
+  return min_cost + normalized_cost * cost_range;
+}
+
 void buildRolloutVisualization(
-  Mppi & controller, SAMPLER & sampler, DYN & model, const DYN::state_array & x_at_optimization,
-  const float lambda, FirstOrderDubinsMppiDebug & debug)
+  UnfilteredMppiController & controller, SAMPLER & sampler, DYN & model,
+  const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug)
 {
   const Mppi::state_trajectory state_trajectory = controller.getActualStateSeq();
   fillOptimalHorizonPoints(state_trajectory, debug.optimal_horizon);
   debug.baseline_cost = controller.getBaselineCost();
 
+  controller.downloadImportanceWeightsToHost();
   // IMPORTANT: take by value — see copySampleCostDistribution for nvcc temporary lifetime note.
   const Mppi::sampled_cost_traj importance = controller.getSampledCostSeq();
-  const float baseline = controller.getBaselineCost();
+  const float min_cost = controller.getLastMinRolloutCost();
+  const float max_cost = controller.getLastMaxRolloutCost();
+  const float unnormalized_weight_sum = controller.getLastUnnormalizedWeightSum();
+  const float lambda = controller.getLastWeightLambda();
   const int num_rollouts = static_cast<int>(importance.size());
 
   std::vector<float> raw_costs(static_cast<size_t>(num_rollouts));
@@ -734,7 +757,7 @@ void buildRolloutVisualization(
   for (size_t i = 0; i < normalized_weights.size(); ++i) {
     const float w = static_cast<float>(importance(static_cast<int>(i)));
     normalized_weights[i] = (normalizer > 0.0F) ? w / normalizer : 0.0F;
-    raw_costs[i] = (w > 0.0F) ? (baseline - lambda * std::log(w)) : (baseline + 1.0e30F);
+    raw_costs[i] = rawCostFromMinMaxWeight(w * unnormalized_weight_sum, min_cost, max_cost, lambda);
   }
 
   std::vector<int> top_indices;
@@ -998,6 +1021,11 @@ struct FirstOrderDubinsMppiInterface::Impl
     cp.cost_rollout_dim_ = dim3(32, 2, 1);
     cp.seed_ = 1U;
     controller->setParams(cp);
+    controller->configureEssLambdaAdaptation(
+      user_cost_params_.target_ess_ratio, user_cost_params_.lambda_adaptation_gain,
+      user_cost_params_.lambda_min, user_cost_params_.lambda_max,
+      user_cost_params_.unsafe_rollout_fraction_threshold,
+      user_cost_params_.cost_normalization_percentile);
     controller->setIterationRolloutCaptureEnabled(
       enable_iteration_rollout_debug && !enable_rollout_visualization);
     // Per-iteration debug controls are captured as one contiguous block by
@@ -1015,7 +1043,7 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     RCLCPP_INFO(
       mppiLogger(),
-      "MPPI GPU initialized (horizon=%d, rollouts=%d, iterations=%d, dt=%.2f, lambda=%.1f, "
+      "MPPI GPU initialized (horizon=%d, rollouts=%d, iterations=%d, dt=%.2f, lambda=%.3f, "
       "wheel_base=%.2f, max_steer=%.2f, accel_std=%.3f, steer_std=%.3f, "
       "std_decay=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "acc_delay=%.3f (%d steps), steer_delay=%.3f (%d steps), "
@@ -1850,10 +1878,23 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
     !std::isfinite(params.overlimit_coeff) || params.overlimit_coeff < 0.0F ||
     !std::isfinite(params.crash_contact_penalty) || params.crash_contact_penalty < 0.0F ||
     !std::isfinite(params.std_dev_decay) || params.std_dev_decay < 0.0F ||
-    params.std_dev_decay > 1.0F || params.max_iter <= 0) {
+    params.std_dev_decay > 1.0F || !std::isfinite(params.lambda) ||
+    !std::isfinite(params.lambda_min) || !std::isfinite(params.lambda_max) ||
+    !std::isfinite(params.target_ess_ratio) || !std::isfinite(params.lambda_adaptation_gain) ||
+    !std::isfinite(params.unsafe_rollout_fraction_threshold) ||
+    !std::isfinite(params.cost_normalization_percentile) || params.lambda_min <= 0.0F ||
+    params.lambda_max < params.lambda_min || params.lambda < params.lambda_min ||
+    params.lambda > params.lambda_max || params.target_ess_ratio < 0.0F ||
+    params.target_ess_ratio > 1.0F || params.lambda_adaptation_gain < 0.0F ||
+    params.unsafe_rollout_fraction_threshold < 0.0F ||
+    params.unsafe_rollout_fraction_threshold > 1.0F ||
+    params.cost_normalization_percentile < 0.0F || params.cost_normalization_percentile > 1.0F ||
+    params.max_iter <= 0) {
     throw std::invalid_argument(
       "MPPI cost parameters must have finite non-negative penalties, std_dev_decay in [0, 1], "
-      "and max_iter greater than zero");
+      "lambda within positive [lambda_min, lambda_max], target_ess_ratio in [0, 1], a "
+      "non-negative lambda_adaptation_gain, unsafe_rollout_fraction_threshold and "
+      "cost_normalization_percentile in [0, 1], and max_iter greater than zero");
   }
   if (impl_->initialized) {
     impl_->teardown();
@@ -2065,13 +2106,16 @@ bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
     return false;
   }
 
+  impl_->controller->downloadImportanceWeightsToHost();
   // IMPORTANT: take by value (not const-ref-to-temporary). nvcc has historically broken
   // lifetime extension for large Eigen return temporaries, which caused heap corruption
   // (munmap_chunk: invalid pointer) when reading getSampledCostSeq() via const auto&.
   const Mppi::sampled_cost_traj importance = impl_->controller->getSampledCostSeq();
-  const float baseline = impl_->controller->getBaselineCost();
+  const float min_cost = impl_->controller->getLastMinRolloutCost();
+  const float max_cost = impl_->controller->getLastMaxRolloutCost();
+  const float unnormalized_weight_sum = impl_->controller->getLastUnnormalizedWeightSum();
   const float normalizer = impl_->controller->getNormalizerCost();
-  const float lambda = std::max(impl_->user_cost_params_.lambda, 1.0e-6F);
+  const float lambda = impl_->controller->getLastWeightLambda();
   const int stride_n = std::max(1, stride);
   const int num_rollouts = static_cast<int>(importance.size());
   const int kept = (num_rollouts + stride_n - 1) / stride_n;
@@ -2081,7 +2125,8 @@ bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
   for (int i = 0; i < num_rollouts; i += stride_n) {
     const float w = importance(i);
     normalized_weights.push_back((normalizer > 0.0F) ? (w / normalizer) : 0.0F);
-    raw_costs.push_back((w > 0.0F) ? (baseline - lambda * std::log(w)) : (baseline + 1.0e6F));
+    raw_costs.push_back(
+      rawCostFromMinMaxWeight(w * unnormalized_weight_sum, min_cost, max_cost, lambda));
   }
   return !raw_costs.empty();
 }
@@ -2287,14 +2332,20 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   result.debug.nominal_control_profile.time_step_s = kDt;
   result.debug.nominal_control_profile.acceleration_commands_mps2 = impl_->logged_nominal_accel;
   result.debug.nominal_control_profile.steering_commands_rad = impl_->logged_nominal_steer;
+  result.debug.iteration_effective_sample_sizes =
+    impl_->controller->getIterationEffectiveSampleSizes();
+  result.debug.lambda_used = impl_->controller->getLastWeightLambda();
+  result.debug.lambda_next = impl_->controller->getNextWeightLambda();
+  result.debug.max_rollout_cost = impl_->controller->getLastMaxRolloutCost();
+  result.debug.normalization_upper_cost = impl_->controller->getLastNormalizationUpperCost();
+  result.debug.unsafe_rollout_fraction = impl_->controller->getLastUnsafeRolloutFraction();
   result.debug.validation = validation;
   result.debug.velocity_limit_profile_active = impl_->active_velocity_limit_profile.active;
   result.debug.external_velocity_limit_active =
     impl_->active_velocity_limit_profile.active && impl_->active_kinematic_limits.max_velocity;
   if (impl_->enable_rollout_visualization) {
     buildRolloutVisualization(
-      *impl_->controller, impl_->sampler, impl_->model, x_at_optimization,
-      std::max(impl_->user_cost_params_.lambda, 1.0e-6F), result.debug);
+      *impl_->controller, impl_->sampler, impl_->model, x_at_optimization, result.debug);
   } else {
     fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
     result.debug.baseline_cost = impl_->controller->getBaselineCost();
