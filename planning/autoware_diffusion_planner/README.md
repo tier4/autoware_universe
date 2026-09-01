@@ -189,6 +189,13 @@ Parameters can be set via YAML (see `config/diffusion_planner.param.yaml`).
 | `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information          |
 | `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information |
 
+> **Weights requirement.** This branch widens the neighbor class one-hot to four entries
+> (VEHICLE / PEDESTRIAN / BICYCLE / UNKNOWN), so `neighbor_agents_past` is `[batch, 320, 31, 12]` and
+> the weights must be trained with `agent_state_dim = 12`. The public v5.0 artifacts referenced by
+> `config/diffusion_planner.param.yaml` are 11-wide and will be rejected at inference. Nothing is
+> classified as `UNKNOWN` today, so the fourth slot is always zero -- unknown objects are still
+> dropped from the agent history exactly as before.
+
 ## Outputs
 
 | Topic                           | Message Type                                              | Description                                                |

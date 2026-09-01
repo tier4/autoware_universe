@@ -43,13 +43,15 @@ using autoware_perception_msgs::msg::TrackedObjects;
 // Defined in agent_history_resampler.hpp; referenced here only by const-ref.
 struct HistoryResamplingParams;
 
-constexpr size_t AGENT_STATE_DIM = 11;
+constexpr size_t AGENT_STATE_DIM = 12;
 
 // Raw-observation buffer depth for aligned neighbor histories. Larger than the 31-sample model
 // window so the ~3s history is spanned even with message jitter at ~10Hz.
 constexpr size_t NEIGHBOR_HISTORY_BUFFER_SIZE = 40;
 
-enum AgentLabel { VEHICLE = 0, PEDESTRIAN = 1, BICYCLE = 2, IGNORE = 3 };
+// The first four values double as the offset of the class one-hot entry inside the agent
+// feature vector (see AgentState::as_array()); IGNORE is a sentinel with no slot.
+enum AgentLabel { VEHICLE = 0, PEDESTRIAN = 1, BICYCLE = 2, UNKNOWN = 3, IGNORE = 4 };
 
 /**
  * @brief A class to represent a single state of an agent.

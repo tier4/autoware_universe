@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/diffusion_planner/conversion/agent.hpp"
+#include "autoware/diffusion_planner/dimensions.hpp"
 
 #include <Eigen/Dense>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -64,5 +65,30 @@ protected:
 
   TrackedObject tracked_object_;
 };
+
+// Guards the silent failure mode of widening AGENT_STATE_DIM: leaving as_array()'s initializer list
+// short is legal aggregate initialization, so the extra feature would just read back as zero.
+TEST_F(AgentEdgeCaseTest, AgentStateArrayWidthMatchesNeighborTensor)
+{
+  TrackedObjects objects;
+  objects.header.stamp.sec = 100;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+  const auto histories =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 10);
+
+  ASSERT_EQ(histories.size(), 1U);
+  const auto array = histories.front().get_latest_state().as_array();
+  EXPECT_EQ(array.size(), AGENT_STATE_DIM);
+  EXPECT_EQ(array.size(), static_cast<size_t>(NEIGHBOR_SHAPE[3]));
+  // A CAR sets exactly one one-hot entry, and the UNKNOWN slot stays zero: no classification is
+  // mapped to AgentLabel::UNKNOWN, so the model never sees an unknown neighbor on this branch.
+  EXPECT_FLOAT_EQ(array[8], 1.0F);
+  EXPECT_FLOAT_EQ(array[9], 0.0F);
+  EXPECT_FLOAT_EQ(array[10], 0.0F);
+  EXPECT_FLOAT_EQ(array[11], 0.0F);
+}
 
 }  // namespace autoware::diffusion_planner::test

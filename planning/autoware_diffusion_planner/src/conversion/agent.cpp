@@ -123,6 +123,12 @@ void AgentState::flip_heading_convention()
   linear.y = -linear.y;
 }
 
+// A mismatch here would silently mis-stride the flat neighbor buffer rather than fail to build:
+// widening AGENT_STATE_DIM without adding an initializer below is legal aggregate initialization.
+static_assert(
+  NEIGHBOR_SHAPE[3] == static_cast<int64_t>(AGENT_STATE_DIM),
+  "neighbor_agents_past feature width must match AGENT_STATE_DIM");
+
 // Return the state attribute as an array.
 [[nodiscard]] std::array<float, AGENT_STATE_DIM> AgentState::as_array() const noexcept
 {
@@ -145,6 +151,8 @@ void AgentState::flip_heading_convention()
     static_cast<float>(label == AgentLabel::VEHICLE),
     static_cast<float>(label == AgentLabel::PEDESTRIAN),
     static_cast<float>(label == AgentLabel::BICYCLE),
+    // Nothing maps to AgentLabel::UNKNOWN today (see get_model_label), so this slot is always 0;
+    static_cast<float>(label == AgentLabel::UNKNOWN),
   };
 }
 
