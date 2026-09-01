@@ -11,7 +11,10 @@
   ros__parameters:
     model_path: $(var data_path)/resworld_planner.simplified.onnx
     plugins_path: ""  # The planner graph itself needs no custom plugins
-    precision: "fp16"
+    # fp32: the planner graph embeds normalization statistics whose values exceed the fp16
+    # range (TRT clips them, and the fp16 builder path SIGILLs on this graph with TRT
+    # 10.16); fp32 builds cleanly and the planner fits the tick budget comfortably.
+    precision: "fp32"
     args_path: ""  # Normalization is embedded in the planner graph
     build_only: false
     planning_frequency_hz: 10.0
@@ -29,7 +32,7 @@
       # (e.g. a 0.2 s contract on a 10 Hz LiDAR keeps 5 maps and picks every second one).
       contract_path: $(var data_path)/resworld_deployment_contract.json
       frames: 3
-      interval_seconds: 0.1
+      interval_seconds: 0.2
       interval_tolerance_seconds: 0.02
       bev_half_extent_m: 122.4
       warmup: "wait"  # "wait" or "duplicate_current"
