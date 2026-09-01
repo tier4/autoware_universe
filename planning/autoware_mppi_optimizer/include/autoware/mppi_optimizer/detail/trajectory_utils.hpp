@@ -143,6 +143,15 @@ void applyActiveVelocityLimitProfile(
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, int acceleration_delay_steps = 0,
   const std::vector<float> & acceleration_delay_buffer = {}, float dt = kMppiDt);
 
+/**
+ * Low-pass steering commands with alpha increasing linearly from straight_alpha at zero steering
+ * to turn_alpha at turn_angle_rad. The larger of the previous and target steering magnitudes sets
+ * alpha, preserving fast response both into and out of turns. Acceleration is preserved exactly.
+ */
+void filterSteeringCommandsWithCurvatureAdaptiveEma(
+  std::vector<FirstOrderDubinsMppiControl> & controls, float initial_steering, float straight_alpha,
+  float turn_alpha, float turn_angle_rad);
+
 [[nodiscard]] std::vector<FirstOrderDubinsMppiControl> shiftNominalControl(
   const std::vector<FirstOrderDubinsMppiControl> & previous, int horizon = kMppiHorizon);
 
