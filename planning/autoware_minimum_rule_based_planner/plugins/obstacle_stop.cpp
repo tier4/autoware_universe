@@ -157,7 +157,7 @@ void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points, const Modifier
   const auto target_stop_point_arc_length = clamp_stop_point_arc_length(
     nearest_collision_point_->arc_length - stop_margin,
     debug_data_.trajectory_shape.trajectory_length, data.odometry_ptr->twist.twist.linear.x,
-    data.acceleration_ptr->accel.accel.linear.x, params_.nominal_stopping_decel,
+    data.acceleration_ptr->accel.accel.linear.x, params_.maximum_stopping_decel,
     params_.stopping_jerk);
 
   if (
@@ -271,7 +271,7 @@ void ObstacleStop::update_collision_points_buffer(
   std::vector<CollisionPoint> & collision_points_buffer, const TrajectoryPoints & traj_points,
   const std::optional<CollisionPoint> & collision_point)
 {
-  constexpr double close_distance_threshold = 0.5;
+  constexpr double close_distance_threshold = 1.0;
 
   const auto now = get_clock()->now();
 
@@ -291,10 +291,10 @@ void ObstacleStop::update_collision_points_buffer(
   auto nearest_collision_point_it = collision_points_buffer.end();
   auto nearest_distance_diff = std::numeric_limits<double>::max();
   for (auto it = collision_points_buffer.begin(); it != collision_points_buffer.end(); ++it) {
-    const auto estimated_shift = it->obstacle_speed * (now - it->last_seen).seconds();
+    const auto estimated_shift = std::abs(it->obstacle_lon_vel) * (now - it->last_seen).seconds();
     it->arc_length = motion_utils::calcSignedArcLength(traj_points, 0LU, it->point);
-    const auto raw_distance_diff = collision_point->arc_length - it->arc_length;
-    const auto distance_diff = raw_distance_diff - estimated_shift;
+    const auto expected_arc_length = it->arc_length + estimated_shift;
+    const auto distance_diff = collision_point->arc_length - expected_arc_length;
     if (
       std::abs(distance_diff) > close_distance_threshold ||
       std::abs(distance_diff) > std::abs(nearest_distance_diff))
@@ -314,12 +314,10 @@ void ObstacleStop::update_collision_points_buffer(
   }
 
   nearest_collision_point_it->last_seen = now;
-  nearest_collision_point_it->obstacle_speed = collision_point->obstacle_speed;
+  nearest_collision_point_it->obstacle_lon_vel = collision_point->obstacle_lon_vel;
   nearest_collision_point_it->is_dynamic = collision_point->is_dynamic;
-  if (nearest_distance_diff < 0.0 || collision_point->is_dynamic) {
-    nearest_collision_point_it->point = collision_point->point;
-    nearest_collision_point_it->arc_length = collision_point->arc_length;
-  }
+  nearest_collision_point_it->point = collision_point->point;
+  nearest_collision_point_it->arc_length = collision_point->arc_length;
 }
 
 std::optional<CollisionPoint> ObstacleStop::get_nearest_collision_point(

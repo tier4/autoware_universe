@@ -323,7 +323,7 @@ ObjectState get_object_state_at_time(
     const Eigen::Rotation2Dd obj_rot(tf2::getYaw(predicted_obj_pose.orientation));
     const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
     const auto obj_vel_vector = obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y);
-    return std::max(0.0, obj_vel_vector.dot(traj_dir));
+    return obj_vel_vector.dot(traj_dir);
   }();
 
   const auto obj_polygon = autoware_utils::to_polygon2d(predicted_obj_pose, object.shape);
@@ -364,8 +364,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   auto min_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_collision_point;
   bool found_collision = false;
-  double obstacle_speed = 0.0;
-  bool is_dynamic_collision = false;
+  double obstacle_lon_vel = 0.0;
   for (const auto & object : target_objects.objects) {
     const auto obj_state = get_object_state_at_time(trajectory_points, object, 0.0);
     found_collision = true;
@@ -373,14 +372,14 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       min_arc_length = obj_state.arc_length;
       nearest_collision_point = obj_state.nearest_point;
       colliding_object = object;
-      obstacle_speed = std::abs(obj_state.lon_vel);
-      is_dynamic_collision = obj_state.lon_vel > stopped_vel_th;
+      obstacle_lon_vel = obj_state.lon_vel;
     }
   }
 
   if (!found_collision) return std::nullopt;
   return CollisionPoint(
-    nearest_collision_point, min_arc_length, obstacle_speed, is_dynamic_collision);
+    nearest_collision_point, min_arc_length, obstacle_lon_vel,
+    std::abs(obstacle_lon_vel) > stopped_vel_th);
 }
 
 std::optional<CollisionPoint> get_nearest_object_collision(
@@ -430,8 +429,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   auto min_collision_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_collision_point;
   bool found_collision = false;
-  bool is_dynamic_collision = false;
-  double obstacle_speed = 0.0;
+  double obstacle_lon_vel = 0.0;
 
   for (const auto & object : target_objects.objects) {
     auto last_p = trajectory_points.front().pose.position;
@@ -456,8 +454,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
           trajectory_points, obj_state.nearest_point, obj_stopping_distance);
         nearest_collision_point =
           collision_point.has_value() ? collision_point.value().position : obj_state.nearest_point;
-        is_dynamic_collision = obj_state.lon_vel > stopped_vel_th;
-        obstacle_speed = std::abs(obj_state.lon_vel);
+        obstacle_lon_vel = obj_state.lon_vel;
       }
       break;
     }
@@ -465,7 +462,8 @@ std::optional<CollisionPoint> get_nearest_object_collision(
 
   if (!found_collision) return std::nullopt;
   return CollisionPoint(
-    nearest_collision_point, min_collision_arc_length, obstacle_speed, is_dynamic_collision);
+    nearest_collision_point, min_collision_arc_length, obstacle_lon_vel,
+    std::abs(obstacle_lon_vel) > stopped_vel_th);
 }
 
 void PointCloudFilter::filter_pointcloud(

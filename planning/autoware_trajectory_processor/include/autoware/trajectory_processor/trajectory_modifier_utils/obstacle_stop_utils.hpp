@@ -121,7 +121,7 @@ struct CollisionPoint
 {
   geometry_msgs::msg::Point point;
   double arc_length;
-  double obstacle_speed;
+  double obstacle_lon_vel;
   bool is_active{false};
   bool is_dynamic{false};
   rclcpp::Time first_seen;
@@ -134,9 +134,9 @@ struct CollisionPoint
    * @param is_dynamic Whether this collision is dynamic.
    */
   CollisionPoint(
-    const geometry_msgs::msg::Point & point, const double arc_length, const double obstacle_speed,
+    const geometry_msgs::msg::Point & point, const double arc_length, const double obstacle_lon_vel,
     const bool is_dynamic = false)
-  : point(point), arc_length(arc_length), obstacle_speed(obstacle_speed), is_dynamic(is_dynamic)
+  : point(point), arc_length(arc_length), obstacle_lon_vel(obstacle_lon_vel), is_dynamic(is_dynamic)
   {
   }
 
@@ -152,7 +152,7 @@ struct CollisionPoint
     const rclcpp::Time & last_seen, const bool active)
   : point(collision_point.point),
     arc_length(collision_point.arc_length),
-    obstacle_speed(collision_point.obstacle_speed),
+    obstacle_lon_vel(collision_point.obstacle_lon_vel),
     is_active(active),
     is_dynamic(collision_point.is_dynamic),
     first_seen(first_seen),
