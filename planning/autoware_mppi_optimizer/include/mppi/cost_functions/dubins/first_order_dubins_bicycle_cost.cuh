@@ -26,7 +26,8 @@ __host__ __device__ inline float computeSmoothBarrierCost(
 template <int NUM_TIMESTEPS>
 struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
 {
-  float speed_coeff = 500.0F;
+  /** Spatial reference-velocity overspeed cost, weighted by progress along the corridor. */
+  float spatial_overspeed_coeff = 0.0F;
   /** Pull toward ref position at each step: coeff * ||p - ref[t]||^2; 0 disables. */
   float track_coeff = 1000.0F;
   /** Multiplier on track_coeff * track_val in terminalCost (running state cost uses scale 1). */
@@ -159,8 +160,12 @@ public:
    * to the time-aligned ref_ polyline.
    * @param s optional cumulative chord length [m] per vertex (same length as x/y); nullptr
    *          falls back to segment lengths from xy.
+   * @param reference_velocity optional longitudinal velocity [m/s] per vertex. This profile stays
+   *          in global device memory to preserve the existing shared-memory footprint.
    */
-  void setLateralCorridor(const float * x, const float * y, int count, const float * s = nullptr);
+  void setLateralCorridor(
+    const float * x, const float * y, int count, const float * s = nullptr,
+    const float * reference_velocity = nullptr);
 
   void clearLateralCorridor();
 
@@ -223,6 +228,10 @@ public:
     float lateral_distance = 0.0F;
     float lateral_yaw_error_sq = 0.0F;
     float path_length_s = 0.0F;
+    /** Clamped arc length [m] of the closest spatial projection. */
+    float spatial_s = 0.0F;
+    /** Reference velocity [m/s] interpolated at spatial_s. */
+    float spatial_ref_velocity = 0.0F;
     float remaining_distance_s = 0.0F;
     /** Along-track extension past the corridor tip (0 if not past the end). */
     float overshoot_distance_s = 0.0F;
@@ -326,6 +335,8 @@ public:
   float lateral_corridor_y_[kMaxLateralCorridorPoints] = {};
   /** Cumulative chord length [m] along lateral_corridor_* (s[0]=0); valid when count >= 1. */
   float lateral_corridor_s_[kMaxLateralCorridorPoints] = {};
+  /** Reference longitudinal velocity [m/s] at each corridor vertex; kept in global memory. */
+  float lateral_corridor_ref_velocity_[kMaxLateralCorridorPoints] = {};
   /** Final path length = s[n-1]; staged into shared memory with corridor/ref on GPU. */
   float lateral_corridor_total_length_s_ = 0.0F;
   bool lateral_corridor_has_s_ = false;

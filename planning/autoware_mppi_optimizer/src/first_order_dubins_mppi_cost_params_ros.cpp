@@ -33,7 +33,8 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
   const FirstOrderDubinsMppiCostParams defaults;
   node.declare_parameter(param_name(prefix, "lambda"), defaults.lambda);
   node.declare_parameter(param_name(prefix, "max_iter"), defaults.max_iter);
-  node.declare_parameter(param_name(prefix, "speed_coeff"), defaults.speed_coeff);
+  node.declare_parameter(
+    param_name(prefix, "spatial_overspeed_coeff"), defaults.spatial_overspeed_coeff);
   node.declare_parameter(param_name(prefix, "track_coeff"), defaults.track_coeff);
   node.declare_parameter(param_name(prefix, "track_terminal_scale"), defaults.track_terminal_scale);
   node.declare_parameter(param_name(prefix, "terminal_error_coeff"), defaults.terminal_error_coeff);
@@ -93,8 +94,8 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
   FirstOrderDubinsMppiCostParams params;
   params.lambda = static_cast<float>(node.get_parameter(param_name(prefix, "lambda")).as_double());
   params.max_iter = static_cast<int>(node.get_parameter(param_name(prefix, "max_iter")).as_int());
-  params.speed_coeff =
-    static_cast<float>(node.get_parameter(param_name(prefix, "speed_coeff")).as_double());
+  params.spatial_overspeed_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "spatial_overspeed_coeff")).as_double());
   params.track_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "track_coeff")).as_double());
   params.track_terminal_scale =

@@ -295,7 +295,7 @@ void fillReference(TestCost & cost, const float offset_x = 0.0F, const float off
 TestParams distanceOnlyParams()
 {
   TestParams params;
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.lateral_distance_coeff = 0.0F;
