@@ -681,6 +681,31 @@ std::vector<FirstOrderDubinsMppiControl> filterNominalControlWithKinematicLimits
   return filtered;
 }
 
+void filterSteeringCommandsWithCurvatureAdaptiveEma(
+  std::vector<FirstOrderDubinsMppiControl> & controls, const float initial_steering,
+  const float straight_alpha, const float turn_alpha, const float turn_angle_rad)
+{
+  if (controls.empty()) {
+    return;
+  }
+
+  const float alpha_straight = std::clamp(straight_alpha, 0.0F, 1.0F);
+  const float alpha_turn = std::clamp(turn_alpha, alpha_straight, 1.0F);
+  const float angle_scale =
+    std::isfinite(turn_angle_rad) ? std::max(turn_angle_rad, 1.0E-6F) : 1.0E-6F;
+  float previous = std::isfinite(initial_steering) ? initial_steering : 0.0F;
+
+  for (auto & control : controls) {
+    const float target = std::isfinite(control.steer_cmd) ? control.steer_cmd : previous;
+    // Use both sides of the transition so entering and leaving a turn receive the fast response.
+    const float steering_magnitude = std::max(std::abs(target), std::abs(previous));
+    const float turn_ratio = std::clamp(steering_magnitude / angle_scale, 0.0F, 1.0F);
+    const float alpha = alpha_straight + turn_ratio * (alpha_turn - alpha_straight);
+    previous += alpha * (target - previous);
+    control.steer_cmd = previous;
+  }
+}
+
 std::vector<FirstOrderDubinsMppiControl> shiftNominalControlForInputDelay(
   const std::vector<FirstOrderDubinsMppiControl> & nominal, const int acceleration_delay_steps,
   const int steer_delay_steps)
