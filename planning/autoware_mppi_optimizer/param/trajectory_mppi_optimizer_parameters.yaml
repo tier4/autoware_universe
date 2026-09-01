@@ -279,6 +279,29 @@ trajectory_mppi_optimizer:
     default_value: true
     description: Warm-start MPPI u_nom from the previous optimized control (ignored when t-MPT seeds u_nom)
     read_only: false
+  enable_curvature_adaptive_steering_filter:
+    type: bool
+    default_value: true
+    description: Apply a steering EMA that filters straight-line noise and responds faster in turns
+    read_only: false
+  steering_filter_alpha_straight:
+    type: double
+    default_value: 0.1
+    description: Steering EMA alpha at zero steering; lower values suppress more straight-line noise
+    validation: { bounds<>: [0.0, 1.0] }
+    read_only: false
+  steering_filter_alpha_turn:
+    type: double
+    default_value: 1.0
+    description: Steering EMA alpha at and above the turn-angle threshold
+    validation: { bounds<>: [0.0, 1.0] }
+    read_only: false
+  steering_filter_turn_angle_rad:
+    type: double
+    default_value: 0.1
+    description: Absolute steering command in radians at which the EMA reaches its turn alpha
+    validation: { gt<>: [0.0] }
+    read_only: false
   enable_debug_trajectory_log:
     type: bool
     default_value: false
