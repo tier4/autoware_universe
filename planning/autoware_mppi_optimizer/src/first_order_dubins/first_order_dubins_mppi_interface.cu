@@ -140,10 +140,12 @@ using SAMPLER = mppi::sampling_distributions::GaussianDistribution<DYN::DYN_PARA
 using Mppi = VanillaMPPIController<DYN, COST, FB, kMppiHorizon, kNumRollouts, SAMPLER>;
 using CostBreakdown = FirstOrderDubinsMppiCostBreakdown;
 
-constexpr std::array<float CostBreakdown::*, 25> kCostBreakdownFields = {
+constexpr std::array<float CostBreakdown::*, 27> kCostBreakdownFields = {
   &CostBreakdown::speed,
   &CostBreakdown::track,
   &CostBreakdown::heading,
+  &CostBreakdown::terminal_error,
+  &CostBreakdown::terminal_heading,
   &CostBreakdown::lateral_distance,
   &CostBreakdown::lateral_boundary,
   &CostBreakdown::lateral_yaw_error,
@@ -251,6 +253,8 @@ std::string formatCostBreakdown(const CostBreakdown & cost)
          << ", total=" << cost.total << ", running=" << cost.running_total
          << ", terminal=" << cost.terminal_total << ", speed=" << cost.speed
          << ", track=" << cost.track << ", heading=" << cost.heading
+         << ", terminal_error=" << cost.terminal_error
+         << ", terminal_heading=" << cost.terminal_heading
          << ", lateral_distance=" << cost.lateral_distance
          << ", lateral_boundary=" << cost.lateral_boundary
          << ", lateral_yaw=" << cost.lateral_yaw_error << ", remaining=" << cost.remaining_distance
@@ -396,6 +400,8 @@ void applyUserCostParams(
   cost_params.speed_coeff = user.speed_coeff;
   cost_params.track_coeff = user.track_coeff;
   cost_params.track_terminal_scale = user.track_terminal_scale;
+  cost_params.terminal_error_coeff = user.terminal_error_coeff;
+  cost_params.terminal_heading_coeff = user.terminal_heading_coeff;
   cost_params.heading_coeff = user.heading_coeff;
   cost_params.lateral_distance_coeff = user.lateral_distance_coeff;
   cost_params.lateral_yaw_error_coeff = user.lateral_yaw_error_coeff;
@@ -1636,7 +1642,15 @@ struct FirstOrderDubinsMppiInterface::Impl
         ref[i].velocity_limit_active = 1U;
       }
     }
-    mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(cost, ref);
+    mppi::path::PathReferenceSample terminal_reference = ref.back();
+    if (!diffusion_reference.points.empty()) {
+      const auto & terminal_point = diffusion_reference.points.back();
+      terminal_reference.x = static_cast<float>(terminal_point.pose.position.x);
+      terminal_reference.y = static_cast<float>(terminal_point.pose.position.y);
+      terminal_reference.yaw = static_cast<float>(tf2::getYaw(terminal_point.pose.orientation));
+    }
+    mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(
+      cost, ref, &terminal_reference);
 
     // Lateral crash / soft lateral distance use the full DP polyline + chord lengths.
     {

@@ -141,6 +141,10 @@ void applyCostParam(
     params.track_coeff = value;
   } else if (key == "track_terminal_scale") {
     params.track_terminal_scale = value;
+  } else if (key == "terminal_error_coeff") {
+    params.terminal_error_coeff = value;
+  } else if (key == "terminal_heading_coeff") {
+    params.terminal_heading_coeff = value;
   } else if (key == "heading_coeff") {
     params.heading_coeff = value;
   } else if (key == "lateral_distance_coeff") {
@@ -805,6 +809,8 @@ int run(int argc, char ** argv)
       breakdown_out << "state/speed," << breakdown.speed << "\n";
       breakdown_out << "state/track," << breakdown.track << "\n";
       breakdown_out << "state/heading," << breakdown.heading << "\n";
+      breakdown_out << "terminal/error," << breakdown.terminal_error << "\n";
+      breakdown_out << "terminal/heading," << breakdown.terminal_heading << "\n";
       breakdown_out << "state/lateral_distance," << breakdown.lateral_distance << "\n";
       breakdown_out << "state/lateral_boundary," << breakdown.lateral_boundary << "\n";
       breakdown_out << "state/lateral_yaw_error," << breakdown.lateral_yaw_error << "\n";

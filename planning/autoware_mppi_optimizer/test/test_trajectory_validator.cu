@@ -78,7 +78,7 @@ protected:
     return params;
   }
 
-  void setStraightReference()
+  void setStraightReference(const float * terminal_reference = nullptr)
   {
     std::array<float, kTestHorizon> x{};
     std::array<float, kTestHorizon> y{};
@@ -91,7 +91,9 @@ protected:
       velocity[static_cast<size_t>(i)] = 2.0F;
       yaw[static_cast<size_t>(i)] = 0.0F;
     }
-    cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon, yaw.data());
+    cost_->setReferenceTrajectory(
+      x.data(), y.data(), velocity.data(), kTestHorizon, yaw.data(), nullptr, nullptr,
+      terminal_reference);
   }
 
   detail::OptimizedState makeFirstPostStepState(const float y = 0.0F) const
@@ -150,6 +152,43 @@ TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheir
   EXPECT_NEAR(breakdown.total, direct_total, 1.0E-5F);
   EXPECT_EQ(crash_status, 0);
   EXPECT_EQ(direct_crash_status, 0);
+}
+
+TEST_F(TrajectoryValidatorTest, EvaluatesIndependentTerminalPositionAndHeadingErrors)
+{
+  auto params = makeParams();
+  params.speed_coeff = 0.0F;
+  params.track_coeff = 0.0F;
+  params.track_terminal_scale = 0.0F;
+  params.heading_coeff = 0.0F;
+  params.terminal_error_coeff = 2.0F;
+  params.terminal_heading_coeff = 3.0F;
+  params.lateral_distance_coeff = 0.0F;
+  params.lateral_yaw_error_coeff = 0.0F;
+  params.remaining_distance_coeff = 0.0F;
+  params.path_overshoot_coeff = 0.0F;
+  params.track_center_coeff = 0.0F;
+  params.corner_buffer_coeff = 0.0F;
+  params.drivable_area_barrier_weight = 0.0F;
+  params.obstacle_barrier_weight = 0.0F;
+  params.road_border_barrier_weight = 0.0F;
+  params.lateral_boundary_barrier_weight = 0.0F;
+  cost_->setParams(params);
+  const float terminal_reference[3] = {20.0F, 1.0F, 0.0F};
+  setStraightReference(terminal_reference);
+
+  constexpr float two_pi = 6.2831853071795864769F;
+  TestCost::output_array output = TestCost::output_array::Zero();
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)) = terminal_reference[0] - 1.0F;
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_Y)) = terminal_reference[1] + 2.0F;
+  output(static_cast<int>(OutputIndex::YAW)) = two_pi - 0.5F;
+
+  const auto breakdown = cost_->computeTerminalCostBreakdown(output);
+
+  EXPECT_FLOAT_EQ(breakdown.terminal_error, 10.0F);
+  EXPECT_NEAR(breakdown.terminal_heading, 0.75F, 1.0E-5F);
+  EXPECT_NEAR(breakdown.terminal_total, 10.75F, 1.0E-5F);
+  EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-5F);
 }
 
 TEST_F(TrajectoryValidatorTest, UsesPointwiseMaximumVelocityForEachRunningCostStep)
