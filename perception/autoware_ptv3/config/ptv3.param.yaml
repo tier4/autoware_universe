@@ -17,20 +17,15 @@
       workspace_size: 8589934592  # 8 GiB
       source_reconstruction: "partial"
       # Mapping from segmentation3d.class_names to autoware::point_types::PointCloudClassification.
-      class_remap:
+      class_mapping:
         car: CAR
         truck: TRUCK
         bus: BUS
-        motorcycle: MOTORCYCLE
         bicycle: BICYCLE
         pedestrian: PEDESTRIAN
         traffic_cone: HAZARD
         debris: HAZARD
         vertical_thin: HAZARD
-        bicycle_rack: HAZARD
-        vehicle_extension: HAZARD # TODO
-        train: HAZARD # TODO
-        animal: ANIMAL
         barrier: STRUCTURE
         building: STRUCTURE
         static_clutter: STRUCTURE
