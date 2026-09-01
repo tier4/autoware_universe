@@ -55,12 +55,19 @@ __global__ void se2_warp_kernel(
   const float w10 = (row1_valid && col0_valid) ? weight_row1 * weight_col0 : 0.0f;
   const float w11 = (row1_valid && col1_valid) ? weight_row1 * weight_col1 : 0.0f;
 
+  // The reads below execute regardless of their (possibly zero) weight, so every tap index
+  // must be clamped into the map on BOTH sides: a sample point falling two or more cells
+  // outside makes row1/col1 negative (or row0/col0 >= dim), and a one-sided clamp turns that
+  // into a huge size_t offset — an out-of-bounds read that faults depending on the VA layout.
+  const int32_t row0c = min(max(row0, 0), params.height - 1);
+  const int32_t row1c = min(max(row1, 0), params.height - 1);
+  const int32_t col0c = min(max(col0, 0), params.width - 1);
+  const int32_t col1c = min(max(col1, 0), params.width - 1);
   const size_t plane = static_cast<size_t>(params.height) * params.width;
-  const size_t idx00 = static_cast<size_t>(max(row0, 0)) * params.width + max(col0, 0);
-  const size_t idx01 = static_cast<size_t>(max(row0, 0)) * params.width + min(col1, params.width - 1);
-  const size_t idx10 = static_cast<size_t>(min(row1, params.height - 1)) * params.width + max(col0, 0);
-  const size_t idx11 =
-    static_cast<size_t>(min(row1, params.height - 1)) * params.width + min(col1, params.width - 1);
+  const size_t idx00 = static_cast<size_t>(row0c) * params.width + col0c;
+  const size_t idx01 = static_cast<size_t>(row0c) * params.width + col1c;
+  const size_t idx10 = static_cast<size_t>(row1c) * params.width + col0c;
+  const size_t idx11 = static_cast<size_t>(row1c) * params.width + col1c;
   const size_t out_idx = static_cast<size_t>(row) * params.width + col;
 
   for (int32_t channel = 0; channel < channels; ++channel) {

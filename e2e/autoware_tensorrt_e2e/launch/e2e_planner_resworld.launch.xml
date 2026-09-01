@@ -4,6 +4,8 @@
   <arg name="data_path" default="$(env HOME)/autoware_data/ml_models/tensorrt_e2e/resworld" description="ResWorld artifacts (planner onnx, deployment contract, BEVFusion-L feature onnx)"/>
   <arg name="vehicle_info_param_path" default="$(find-pkg-share autoware_vehicle_info_utils)/config/vehicle_info.param.yaml"/>
   <arg name="build_only" default="false" description="shutdown node after the TensorRT engine files are built"/>
+  <arg name="use_sim_time" default="false" description="use /clock (rosbag replay); the input staleness checks need it"/>
+  <arg name="launch_prefix" default="" description="wrap the node process (e.g. compute-sanitizer, gdb -ex run --args)"/>
 
   <!-- Sensing input: concatenated point cloud (same source as BEVFusion) -->
   <arg name="input_pointcloud" default="/sensing/lidar/concatenated/pointcloud"/>
@@ -21,10 +23,11 @@
   <arg name="output_trajectories" default="~/output/trajectories"/>
   <arg name="output_predicted_objects" default="~/output/predicted_objects"/>
 
-  <node pkg="autoware_tensorrt_e2e" exec="autoware_tensorrt_e2e_node" name="tensorrt_e2e" output="both">
+  <node pkg="autoware_tensorrt_e2e" exec="autoware_tensorrt_e2e_node" name="tensorrt_e2e" output="both" launch-prefix="$(var launch_prefix)">
     <param from="$(var param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
     <param name="build_only" value="$(var build_only)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
     <remap from="~/input/pointcloud" to="$(var input_pointcloud)"/>
     <remap from="~/input/odometry" to="$(var input_odometry)"/>
     <remap from="~/input/acceleration" to="$(var input_acceleration)"/>
