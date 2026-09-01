@@ -54,6 +54,18 @@ trajectory_mppi_optimizer:
     description: Terminal position cost scale
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  terminal_error_coeff:
+    type: double
+    default_value: 0.0
+    description: Terminal-only squared XY error cost to the final reference point
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  terminal_heading_coeff:
+    type: double
+    default_value: 0.0
+    description: Terminal-only squared shortest-angle error cost to the final reference heading
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   heading_coeff:
     type: double
     default_value: 0.0
