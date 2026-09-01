@@ -184,6 +184,35 @@ minimum_rule_based_planner:
       validation:
         gt<>: [0.0]
 
+  turn_signal:
+    search_distance:
+      type: double
+      default_value: 30.0
+      description: lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this) [m]
+      validation:
+        gt_eq<>: [0.0]
+
+    min_blink_duration:
+      type: double
+      default_value: 3.0
+      description: minimum time a turn signal is held on once lit, to suppress chatter [s]
+      validation:
+        gt_eq<>: [0.0]
+
+    stopped_velocity_threshold:
+      type: double
+      default_value: 0.1
+      description: speed at/below which ego counts as stopped, for latching a pull-out and detecting arrival at the goal [m/s]
+      validation:
+        gt_eq<>: [0.0]
+
+    heading_align_threshold:
+      type: double
+      default_value: 0.15
+      description: yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared; also the gap below which a private-area merge counts as straight and raises no signal [rad]
+      validation:
+        gt<>: [0.0]
+
   obstacle_stop:
     enable:
       type: bool

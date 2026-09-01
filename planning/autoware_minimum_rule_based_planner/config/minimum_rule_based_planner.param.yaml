@@ -52,6 +52,12 @@
       max_jerk: 5.0 # [m/s^3]
       stop_point_diff_threshold: 0.5 # [m]
 
+    turn_signal:
+      search_distance: 30.0 # [m]
+      min_blink_duration: 3.0 # [s]
+      stopped_velocity_threshold: 0.1 # [m/s]
+      heading_align_threshold: 0.15 # [rad]
+
     obstacle_stop:
       enable: true
       use_objects: true
