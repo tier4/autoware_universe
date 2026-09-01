@@ -9,41 +9,61 @@
       limit_velocity_from_map_debug_max_velocities: [0.0]
 
       # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
-      lambda: 1.0
+      # Rollout costs are robust-percentile normalized to [0, 1]; ESS feedback adapts this initial
+      # dimensionless temperature to the observed distribution.
+      lambda: 0.1
+      lambda_min: 0.0001
+      lambda_max: 10.0
+      target_ess_ratio: 0.01
+      # Lambda is adapted once per control cycle; keep this slow enough to avoid cycle-to-cycle
+      # temperature oscillation while still recovering from weight collapse.
+      lambda_adaptation_gain: 1.0
+      # Panic exploration is driven only by rollout collision/safety flags, not total cost.
+      unsafe_rollout_fraction_threshold: 0.95
+      # Clamp the upper 5% cost tail before weighting so rare barrier outliers do not compress the
+      # useful rollout population near normalized cost zero.
+      cost_normalization_percentile: 0.95
       max_iter: 10
-      spatial_overspeed_coeff: 1.0
+      spatial_overspeed_coeff: 50.0
+      # Index-aligned tracking is disabled because the input points are not interpolated by time.
       track_coeff: 0.0
-      track_terminal_scale: 0.0
-      terminal_error_coeff: 1000.0
-      terminal_heading_coeff: 1000.0
+      # Retain a modest terminal copy of the spatial corridor costs.
+      track_terminal_scale: 1.0
+      terminal_error_coeff: 2500.0
+      terminal_heading_coeff: 2000.0
       heading_coeff: 0.0
       # Spatial (closest-segment) costs restored from pre time-indexed tracking; 0 = off.
-      lateral_distance_coeff: 0.0
+      lateral_distance_coeff: 200.0
       lateral_yaw_error_coeff: 0.0
-      # Soft cost on remaining corridor chord length to path end [m]; 0 = off.
-      remaining_distance_coeff: 0.0
+      # This is accumulated at every stage and squares a potentially long corridor distance;
+      # keep its coefficient much smaller than the local tracking terms.
+      remaining_distance_coeff: 0.02
       # Soft cost on along-track distance past the corridor tip [m]; 0 = off.
-      path_overshoot_coeff: 1.0
+      path_overshoot_coeff: 50.0
       # Track the center of the ego footprint against the time-indexed reference; 0 = off.
       track_center_coeff: 0.0
-      # Soft clearance cost for ego corners near drivable-area boundaries; 0 = off.
+      # The drivable-area field is not a true inside/outside SDF. Use its well-defined exact-corner
+      # clearance term only as a moderate boundary buffer, not as the primary containment cost.
       corner_buffer_coeff: 0.0
       corner_safe_margin: 0.3
-      lateral_acceleration_coeff: 1.0
-      lateral_jerk_coeff: 1.0
-      longitudinal_jerk_coeff: 1.0
-      accel_cmd_coeff: 0.0
-      steer_cmd_coeff: 0.0
-      steer_rate_coeff: 1.0
-      # Shared deadband-quadratic cost for optional VelocityLimit bounds.
-      overlimit_coeff: 1000.0
+      lateral_acceleration_coeff: 10.0
+      # Jerk and steer-rate estimates currently compare new commands with delayed post-step
+      # actuator states. Keep them regularizing rather than dominant until that model is aligned.
+      lateral_jerk_coeff: 100.0
+      longitudinal_jerk_coeff: 200.0
+      accel_cmd_coeff: 1.0
+      steer_cmd_coeff: 1.0
+      steer_rate_coeff: 2000.0
+      # Shared deadband-quadratic cost for optional VelocityLimit bounds. This currently falls back
+      # to the same C++ default because the generated plugin parameter mapping is not yet wired.
+      overlimit_coeff: 10000.0
       # MPPI control-sample noise std-devs around the nominal (u_nom).
-      accel_cmd_std_dev: 0.1
-      steer_cmd_std_dev: 0.02
+      accel_cmd_std_dev: 0.3
+      steer_cmd_std_dev: 0.03
       std_dev_decay: 0.9
       # Power-law PSD exponents (0 = white, 1 = pink, 2 = brown) for colored noise.
-      accel_cmd_noise_exponent: 1.0
-      steer_cmd_noise_exponent: 1.0
+      accel_cmd_noise_exponent: 2.0
+      steer_cmd_noise_exponent: 2.0
       drivable_area_safe_margin: 0.0
       drivable_area_barrier_weight: 0.0
       # Crash costs
@@ -53,7 +73,9 @@
       road_border_collision_margin: 0.2
       obstacle_safe_margin: 0.5
       road_border_safe_margin: 0.5
-      crash_contact_penalty: 1000.0
+      # Hard output validation remains the final collision gate. A 50k soft target strongly
+      # separates unsafe rollouts without compressing all normal costs against a 100k outlier.
+      crash_contact_penalty: 100000.0
 
       nominal_curvature_min_chord_length_m: 1.5
 
@@ -65,10 +87,10 @@
 
       ignore_obstacles: false
       ignore_road_borders: false
-      ignore_drivable_area: false
+      ignore_drivable_area: true
       force_cold_start_each_step: false
       skip_if_invalid: true
-      min_optimization_length: 0.0
+      min_optimization_length: 1.0
 
       # Cold-seed u_nom from acados temporal MPT.
       use_temporal_mpt_as_nominal: false
@@ -78,7 +100,7 @@
       enable_curvature_adaptive_steering_filter: true
       steering_filter_alpha_straight: 0.1
       steering_filter_alpha_turn: 1.0
-      steering_filter_turn_angle_rad: 0.1
+      steering_filter_turn_angle_rad: 0.05
 
       # Expensive per-iteration sampled rollout markers.
       enable_iteration_rollout_debug: false
