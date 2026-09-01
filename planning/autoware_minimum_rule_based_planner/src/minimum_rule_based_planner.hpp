@@ -15,11 +15,14 @@
 #ifndef MINIMUM_RULE_BASED_PLANNER_HPP_
 #define MINIMUM_RULE_BASED_PLANNER_HPP_
 
-#include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
+#include "autoware/trajectory_processor/trajectory_processor_context.hpp"
+#include "autoware/trajectory_processor/trajectory_processor_data.hpp"
+#include "map_based_stop_planner.hpp"
 #include "path_planner.hpp"
+#include "turn_indicator_decider.hpp"
 #include "velocity_smoother.hpp"
 
-#include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
+#include <autoware_trajectory_processor/trajectory_processor_param.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
@@ -68,9 +71,38 @@ private:
   bool is_data_ready(const InputData & input_data);
   void update_params();
 
+  std::optional<PathWithLaneId> plan_path(const InputData & input_data);
+  Trajectory shift_trajectory_to_ego(
+    const Trajectory & trajectory, const InputData & input_data) const;
+  Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
+  void apply_modifiers(Trajectory & trajectory, const InputData & input_data) const;
+
+  //! Build the MapBasedStopPlanner parameters from the node parameters and the vehicle info.
+  StopSelectionParams make_map_based_stop_params() const;
+  //! @param update_smoother_state whether this call may update the velocity smoother's
+  //! prev-output state (true only for the go trajectory; see VelocitySmoother::optimize)
+  Trajectory optimize_velocity(
+    const Trajectory & trajectory, const InputData & input_data,
+    const bool update_smoother_state) const;
+
+  void publish_candidate_trajectories(
+    const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory,
+    const TurnIndicatorsCommand & turn_indicators_command) const;
+
+  void publish_debug_outputs(
+    const PathWithLaneId & path, const Trajectory & go_trajectory,
+    const std::optional<Trajectory> & stop_trajectory) const;
+  void publish_processing_time();
+
+  void publish_debug_trajectory(
+    const std::string & plugin_name, const TrajectoryPoints & traj_points) const;
+
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<::minimum_rule_based_planner::ParamListener> param_listener_;
-  const UUID generator_uuid_;
+  //! generator id for the always-published "Go" trajectory
+  const UUID go_generator_uuid_;
+  //! generator id for the optional "Stop" trajectory (map-defined stop lines)
+  const UUID stop_generator_uuid_;
   const VehicleInfo vehicle_info_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
@@ -91,6 +123,19 @@ private:
    */
   //! PathPlanner encapsulates path planning, trajectory shifting, and conversion
   std::unique_ptr<PathPlanner> path_planner_;
+  //! MapBasedStopPlanner plans the go/stop trajectories with map-defined stop points embedded
+  std::unique_ptr<MapBasedStopPlanner> map_based_stop_planner_;
+  /** @} */
+
+private:
+  /**
+   ***********************************************************
+   * @defgroup turn-indicator turn signal output
+   * Decides the turn-signal command written into every
+   * candidate trajectory's turn_indicators_command field.
+   * @{
+   */
+  std::unique_ptr<TurnIndicatorDecider> turn_indicator_decider_;
   /** @} */
 
 private:
@@ -103,6 +148,7 @@ private:
 
   std::unique_ptr<OptimizerPluginLoader> plugin_loader_;
   std::shared_ptr<OptimizerPluginInterface> path_smoother_;
+  std::shared_ptr<autoware::trajectory_processor::TrajectoryProcessorContext> optimizer_context_;
   std::unique_ptr<VelocitySmoother> velocity_smoother_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
     pub_debug_optimizer_module_trajectories_;
@@ -119,15 +165,13 @@ private:
   void load_plugin(const std::string & name);
   void unload_plugin(const std::string & name);
 
-  void set_modifier_data(const MinimumRuleBasedPlannerNode::InputData & input_data);
-
   bool initialized_modifiers_{false};
   ModifierPluginLoader modifier_plugin_loader_;
   std::vector<std::shared_ptr<plugin::PluginInterface>> modifier_plugins_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
     pub_debug_modifier_module_trajectories_;
 
-  std::shared_ptr<plugin::ModifierData> modifier_data_;
+  std::shared_ptr<plugin::ModifierContext> modifier_context_;
   /** @} */
 
 private:
@@ -169,8 +213,10 @@ private:
   PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
 
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_stop_lines_marker_;
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_stop_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
   /** @} */
 };

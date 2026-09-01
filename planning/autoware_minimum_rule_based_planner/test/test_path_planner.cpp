@@ -43,11 +43,11 @@ Params make_default_params()
   params.path_planning.output.delta_arc_length = 1.0;
   params.path_planning.waypoint_group.separation_threshold = 1.0;
   params.path_planning.waypoint_group.interval_margin_ratio = 0.5;
+  params.path_planning.early_stop.enable = false;
   params.path_planning.smooth_goal_connection.search_radius_range = 15.0;
   params.path_planning.smooth_goal_connection.pre_goal_offset = 3.0;
   params.path_planning.path_shift.enable = false;
   params.path_planning.path_shift.minimum_shift_length = 0.1;
-  params.path_planning.path_shift.minimum_shift_yaw = 0.1;
   params.path_planning.path_shift.minimum_shift_distance = 5.0;
   params.path_planning.path_shift.min_speed_for_curvature = 2.77;
   params.path_planning.path_shift.lateral_accel_limit = 0.5;
@@ -119,11 +119,30 @@ TEST(PathPlannerTest, ConstructWithoutNode)
   EXPECT_NO_THROW(PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info));
 }
 
+TEST(PathPlannerTest, SetPlannerDataWaitsForMap)
+{
+  auto logger = rclcpp::get_logger("test_path_planner");
+  auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
+  auto params = make_default_params();
+  VehicleInfo vehicle_info{};
+  PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info);
+
+  auto route = std::make_shared<LaneletRoute>();
+  autoware_planning_msgs::msg::LaneletSegment segment;
+  segment.primitives.emplace_back().id = 1;
+  segment.preferred_primitive = segment.primitives.front();
+  route->segments.push_back(segment);
+
+  EXPECT_NO_THROW(planner.set_planner_data(nullptr, route));
+  EXPECT_EQ(planner.route_context().lanelet_map_ptr, nullptr);
+  EXPECT_TRUE(planner.route_context().route_lanelets.empty());
+}
+
 // ============================================================
 // shift_trajectory_to_ego tests
 // ============================================================
 
-TEST(PathPlannerTest, ShiftNotNeeded)
+TEST(PathPlannerTest, ShiftAlwaysStartsAtEgo)
 {
   auto logger = rclcpp::get_logger("test_path_planner");
   auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
@@ -134,21 +153,19 @@ TEST(PathPlannerTest, ShiftNotNeeded)
   PathPlanner planner(logger, clock, make_time_keeper(), params, vehicle_info);
 
   auto traj = make_straight_trajectory(20, 1.0, 10.0f);
-  // Ego is exactly on the trajectory → no shift needed
-  auto ego_pose = make_pose(0.0, 0.0, 0.0);
+  // Keep the offset below the former shift threshold.
+  auto ego_pose = make_pose(0.0, 0.05, 0.0);
 
   TrajectoryShiftParams shift_params;
   shift_params.minimum_shift_length = 0.1;
-  shift_params.minimum_shift_yaw = 0.1;
 
   const auto result = planner.shift_trajectory_to_ego(traj, ego_pose, 10.0, 0.0, shift_params, 1.0);
 
-  // Should return the trajectory unchanged since offset and yaw are below threshold
-  ASSERT_EQ(result.points.size(), traj.points.size());
-  for (size_t i = 0; i < result.points.size(); ++i) {
-    EXPECT_NEAR(result.points[i].pose.position.x, traj.points[i].pose.position.x, 1e-3);
-    EXPECT_NEAR(result.points[i].pose.position.y, traj.points[i].pose.position.y, 1e-3);
-  }
+  ASSERT_FALSE(result.points.empty());
+  EXPECT_NEAR(result.points.front().pose.position.x, ego_pose.position.x, 1e-3);
+  EXPECT_NEAR(result.points.front().pose.position.y, ego_pose.position.y, 1e-3);
+  EXPECT_NEAR(result.points.front().pose.orientation.z, ego_pose.orientation.z, 1e-3);
+  EXPECT_NEAR(result.points.front().pose.orientation.w, ego_pose.orientation.w, 1e-3);
 }
 
 TEST(PathPlannerTest, ShiftShortTrajectory)
@@ -192,7 +209,6 @@ TEST(PathPlannerTest, ShiftNormal)
 
   TrajectoryShiftParams shift_params;
   shift_params.minimum_shift_length = 0.1;
-  shift_params.minimum_shift_yaw = 0.1;
   shift_params.minimum_shift_distance = 5.0;
   shift_params.min_speed_for_curvature = 2.77;
   shift_params.lateral_accel_limit = 0.5;

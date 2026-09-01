@@ -31,6 +31,7 @@
 
 namespace planning_diagnostics
 {
+using autoware_trajectory_validator::msg::RiskLevel;
 using autoware_trajectory_validator::msg::ValidationReportArray;
 using autoware_utils::Accumulator;
 using MetricMsg = tier4_metric_msgs::msg::Metric;
@@ -42,14 +43,15 @@ using json = nlohmann::json;
  * @brief Accumulates trajectory validation error statistics from ValidationReportArray.
  *
  * Two scopes (published under metric_to_str(Metric::trajectory_validation) + "/" + <scope> + "/…"):
- * 1) Whole trajectory (per candidate / generator), from ValidationReport.level —
+ * 1) Whole trajectory (per candidate / generator), from ValidationReport.risk.level —
  *    <scope> = <generator_name>
  * 2) Each MetricReport row —
  *    <scope> = <generator_name>/<validator_name>/<metric_name>
  *    Per generator, metric scopes already present in stats (keys `gen/validator/metric` in
  *    stats_by_scope_) are updated every report; missing rows are treated as OK for that step.
  *
- * `count_warn_as_error`: if false, only ERROR(2); if true, WARN(1) also counts as error.
+ * `count_other_than_safe_as_error`: if false, HIGH_CAUTION and above count as error; if true,
+ * LOW_CAUTION also counts as error (anything other than SAFE).
  *
  * Metric rows whose `metric_name` matches `check_*_<32-hex UUID>` (optional `_<suffix>`) are
  * skipped (object-id-specific checks); see `shouldCollectMetricRow` in
@@ -60,7 +62,7 @@ class TrajectoryValidationAccumulator
 public:
   struct Parameters
   {
-    bool count_warn_as_error = false;
+    bool count_other_than_safe_as_error = false;
     double initial_span_duration_s =
       0.1;  // [s] default duration on the first frame of an error span
   } parameters;
@@ -77,6 +79,11 @@ public:
    * @brief Append live metrics for publishing (names follow the scheme in the class comment).
    */
   bool addMetricMsg(const Metric & metric, MetricArrayMsg & metrics_msg);
+
+  /**
+   * @brief Append instantaneous MetricReport.metric_value for publishing (/{scope}/value).
+   */
+  void addInstantMetricMsgs(const ValidationReportArray & msg, MetricArrayMsg & metrics_msg);
 
   /**
    * @brief Final statistics for output.json (min/max/mean/total error_duration, error_count, etc.).
@@ -110,6 +117,7 @@ private:
   };
 
   std::unordered_map<std::string, ErrorSpanStats> stats_by_scope_;
+  std::unordered_map<std::string, Accumulator<double>> value_stats_by_scope_;
 };
 
 }  // namespace planning_diagnostics

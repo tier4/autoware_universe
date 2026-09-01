@@ -14,6 +14,7 @@
 
 #include "autoware/mpc_lateral_controller/mpc_utils.hpp"
 
+#include "autoware/interpolation/interpolation_utils.hpp"
 #include "autoware/interpolation/linear_interpolation.hpp"
 #include "autoware/interpolation/spline_interpolation.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
@@ -24,8 +25,10 @@
 #include <Eigen/Dense>
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -64,6 +67,28 @@ bool isTemporalShortSegment(
   const double bounded_dt = std::max(dt, min_time_step);
   const double expected_distance = std::max(std::fabs(vx), min_velocity_floor) * bounded_dt;
   return ds < expected_distance_ratio * expected_distance;
+}
+
+std::pair<size_t, size_t> findYawDifferentiationWindow(
+  const std::vector<double> & arc_length, const size_t idx, const double min_baseline_m)
+{
+  if (arc_length.size() == 1) return {0, 0};
+
+  const size_t last = arc_length.size() - 1;
+  size_t front = (idx > 0) ? idx - 1 : 0;
+  size_t back = (idx < last) ? idx + 1 : last;
+  while (arc_length.at(back) - arc_length.at(front) < min_baseline_m) {
+    if (front == 0 && back == last) {
+      break;
+    }
+    if (front > 0) {
+      --front;
+    }
+    if (back < last) {
+      ++back;
+    }
+  }
+  return {front, back};
 }
 }  // namespace
 
@@ -125,6 +150,19 @@ double calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory)
   return length;
 }
 
+double calcMPCTrajectoryRemainingArcLength(const MPCTrajectory & trajectory, const size_t start_idx)
+{
+  if (trajectory.size() < 2 || start_idx >= trajectory.size() - 1) {
+    return 0.0;
+  }
+
+  double length = 0.0;
+  for (size_t i = start_idx + 1; i < trajectory.size(); ++i) {
+    length += calcDistance2d(trajectory, i, i - 1);
+  }
+  return length;
+}
+
 std::pair<bool, MPCTrajectory> resampleMPCTrajectoryByDistance(
   const MPCTrajectory & input, const double resample_interval_dist, const size_t nearest_seg_idx,
   const double ego_offset_to_segment)
@@ -137,7 +175,11 @@ std::pair<bool, MPCTrajectory> resampleMPCTrajectoryByDistance(
   std::vector<double> input_arclength;
   calcMPCTrajectoryArcLength(input, input_arclength);
 
-  if (input_arclength.empty()) {
+  if (input_arclength.size() < 2) {
+    return {false, output};
+  }
+
+  if (!autoware::interpolation::isIncreasing(input_arclength)) {
     return {false, output};
   }
 
@@ -167,14 +209,31 @@ std::pair<bool, MPCTrajectory> resampleMPCTrajectoryByDistance(
     return autoware::interpolation::spline(input_arclength, input_value, output_arclength);
   };
 
-  output.x = spline_arc_length(input.x);
-  output.y = spline_arc_length(input.y);
-  output.z = spline_arc_length(input.z);
-  output.yaw = spline_arc_length(input_yaw);
-  output.vx = lerp_arc_length(input.vx);  // must be linear
-  output.k = spline_arc_length(input.k);
-  output.smooth_k = spline_arc_length(input.smooth_k);
-  output.relative_time = lerp_arc_length(input.relative_time);  // must be linear
+  if (output_arclength.empty()) {
+    return {false, output};
+  }
+
+  try {
+    output.x = spline_arc_length(input.x);
+    output.y = spline_arc_length(input.y);
+    output.z = spline_arc_length(input.z);
+    output.yaw = spline_arc_length(input_yaw);
+    output.vx = lerp_arc_length(input.vx);  // must be linear
+    output.k = spline_arc_length(input.k);
+    output.smooth_k = spline_arc_length(input.smooth_k);
+    output.steer = lerp_arc_length(input.steer);
+    output.relative_time = lerp_arc_length(input.relative_time);  // must be linear
+  } catch (const std::exception & e) {
+    const auto logger = rclcpp::get_logger("mpc_util");
+    static rclcpp::Clock clock{RCL_ROS_TIME};
+    RCLCPP_ERROR_THROTTLE(
+      logger, clock, 5000,
+      "[resampleMPCTrajectoryByDistance] interpolation failed: %s (input_points=%zu, "
+      "path_length=%.3f m, output_samples=%zu, nearest_seg_idx=%zu, resample_interval=%.3f m)",
+      e.what(), input.size(), input_arclength.back(), output_arclength.size(), nearest_seg_idx,
+      resample_interval_dist);
+    return {false, output};
+  }
 
   return {true, output};
 }
@@ -203,6 +262,7 @@ bool linearInterpMPCTrajectory(
     out_traj.vx = lerp_arc_length(in_traj.vx);
     out_traj.k = lerp_arc_length(in_traj.k);
     out_traj.smooth_k = lerp_arc_length(in_traj.smooth_k);
+    out_traj.steer = lerp_arc_length(in_traj.steer);
     out_traj.relative_time = lerp_arc_length(in_traj.relative_time);
   } catch (const std::exception & e) {
     std::cerr << "linearInterpMPCTrajectory error!: " << e.what() << std::endl;
@@ -229,54 +289,41 @@ void calcTrajectoryYawFromXY(
 
   const auto input_yaw = traj.yaw;
 
-  // interpolate yaw
-  for (int i = 1; i < static_cast<int>(traj.yaw.size()) - 1; ++i) {
-    const double dx = traj.x.at(i + 1) - traj.x.at(i - 1);
-    const double dy = traj.y.at(i + 1) - traj.y.at(i - 1);
-    const auto curr_idx = static_cast<size_t>(i);
-    const double prev_dist = calcDistance2d(traj, curr_idx, curr_idx - 1);
-    const double next_dist = calcDistance2d(traj, curr_idx + 1, curr_idx);
-    const double prev_dt = traj.relative_time.at(curr_idx) - traj.relative_time.at(curr_idx - 1);
-    const double next_dt = traj.relative_time.at(curr_idx + 1) - traj.relative_time.at(curr_idx);
-    const double prev_vx = 0.5 * (traj.vx.at(curr_idx - 1) + traj.vx.at(curr_idx));
-    const double next_vx = 0.5 * (traj.vx.at(curr_idx) + traj.vx.at(curr_idx + 1));
+  std::vector<double> arc_length;
+  calcMPCTrajectoryArcLength(traj, arc_length);
+
+  constexpr double min_yaw_baseline_m = 0.5;
+
+  const auto is_short_segment = [&](const size_t front, const size_t back) {
+    const double ds = calcDistance2d(traj, back, front);
+    const double dt = traj.relative_time.at(back) - traj.relative_time.at(front);
+    const double vx = 0.5 * (traj.vx.at(front) + traj.vx.at(back));
+    return isTemporalShortSegment(ds, dt, vx, use_input_yaw_for_short_segment);
+  };
+
+  for (size_t i = 0; i < traj.yaw.size(); ++i) {
+    // points bunched together (e.g. a stopped vehicle) carry no reliable direction of their own,
+    // regardless of how long a baseline the surrounding points could provide
     if (
-      std::hypot(dx, dy) < 1.0e-3 ||
-      isTemporalShortSegment(prev_dist, prev_dt, prev_vx, use_input_yaw_for_short_segment) ||
-      isTemporalShortSegment(next_dist, next_dt, next_vx, use_input_yaw_for_short_segment)) {
-      traj.yaw.at(i) = use_input_yaw_for_short_segment ? input_yaw.at(i) : traj.yaw.at(i - 1);
+      (i > 0 && is_short_segment(i - 1, i)) ||
+      (i + 1 < traj.yaw.size() && is_short_segment(i, i + 1))) {
+      traj.yaw.at(i) =
+        (use_input_yaw_for_short_segment || i == 0) ? input_yaw.at(i) : traj.yaw.at(i - 1);
+      continue;
+    }
+
+    const auto [front, back] = findYawDifferentiationWindow(arc_length, i, min_yaw_baseline_m);
+    const double dx = traj.x.at(back) - traj.x.at(front);
+    const double dy = traj.y.at(back) - traj.y.at(front);
+    if (
+      arc_length.at(back) - arc_length.at(front) < min_yaw_baseline_m ||
+      std::hypot(dx, dy) < 1.0e-3) {
+      // the trajectory is too short to differentiate reliably: keep the input yaw
+      traj.yaw.at(i) =
+        (use_input_yaw_for_short_segment || i == 0) ? input_yaw.at(i) : traj.yaw.at(i - 1);
       continue;
     }
     traj.yaw.at(i) = is_forward_shift ? std::atan2(dy, dx) : std::atan2(dy, dx) + M_PI;
-  }
-  if (traj.yaw.size() > 1) {
-    const double dx0 = traj.x.at(1) - traj.x.at(0);
-    const double dy0 = traj.y.at(1) - traj.y.at(0);
-    const double ds0 = calcDistance2d(traj, 1, 0);
-    const double dt0 = traj.relative_time.at(1) - traj.relative_time.at(0);
-    const double vx0 = 0.5 * (traj.vx.at(0) + traj.vx.at(1));
-    if (
-      std::hypot(dx0, dy0) >= 1.0e-3 &&
-      !isTemporalShortSegment(ds0, dt0, vx0, use_input_yaw_for_short_segment)) {
-      traj.yaw.at(0) = is_forward_shift ? std::atan2(dy0, dx0) : std::atan2(dy0, dx0) + M_PI;
-    } else {
-      traj.yaw.at(0) = use_input_yaw_for_short_segment ? input_yaw.at(0) : traj.yaw.at(1);
-    }
-
-    const size_t last = traj.yaw.size() - 1;
-    const double dxn = traj.x.at(last) - traj.x.at(last - 1);
-    const double dyn = traj.y.at(last) - traj.y.at(last - 1);
-    const double dsn = calcDistance2d(traj, last, last - 1);
-    const double dtn = traj.relative_time.at(last) - traj.relative_time.at(last - 1);
-    const double vxn = 0.5 * (traj.vx.at(last - 1) + traj.vx.at(last));
-    if (
-      std::hypot(dxn, dyn) >= 1.0e-3 &&
-      !isTemporalShortSegment(dsn, dtn, vxn, use_input_yaw_for_short_segment)) {
-      traj.yaw.back() = is_forward_shift ? std::atan2(dyn, dxn) : std::atan2(dyn, dxn) + M_PI;
-    } else {
-      traj.yaw.back() =
-        use_input_yaw_for_short_segment ? input_yaw.at(last) : traj.yaw.at(last - 1);
-    }
   }
 }
 
@@ -347,6 +394,7 @@ void calcTrajectoryCurvatureBySpatialResample(
   spatial_traj.vx.resize(n, 0.0);
   spatial_traj.k.resize(n, 0.0);
   spatial_traj.smooth_k.resize(n, 0.0);
+  spatial_traj.steer.resize(n, 0.0);
   spatial_traj.relative_time.resize(n, 0.0);
 
   // 5. Calculate curvature on the spatially uniform trajectory
@@ -459,13 +507,14 @@ MPCTrajectory convertToMPCTrajectory(const Trajectory & input, const bool use_te
     const double z = p.pose.position.z;
     const double yaw = tf2::getYaw(p.pose.orientation);
     const double vx = p.longitudinal_velocity_mps;
+    const double steer = p.front_wheel_angle_rad;
     const double k = 0.0;
 
     // Time handling: temporal (use timestamps) vs spatial (calculate from distance/velocity)
     const double t = use_temporal_trajectory
                        ? rclcpp::Duration(p.time_from_start).seconds()
                        : 0.0;  // Will be recalculated by calcMPCTrajectoryTime()
-    output.push_back(x, y, z, yaw, vx, k, k, t);
+    output.push_back(x, y, z, yaw, vx, k, k, steer, t);
   }
 
   if (!use_temporal_trajectory) {
@@ -490,6 +539,8 @@ Trajectory convertToAutowareTrajectory(const MPCTrajectory & input, const double
       rclcpp::Duration::from_seconds(input.relative_time.at(i) - input.relative_time.front());
     if (wheelbase != 0.0) {
       p.front_wheel_angle_rad = static_cast<float>(std::atan(input.smooth_k.at(i) * wheelbase));
+    } else if (std::isfinite(input.steer.at(i))) {
+      p.front_wheel_angle_rad = static_cast<float>(input.steer.at(i));
     }
     output.points.push_back(p);
     if (output.points.size() == output.points.max_size()) {
@@ -722,7 +773,8 @@ void extendTrajectoryInYawDirection(
     extended_pose = autoware_utils::calc_offset_pose(extended_pose, x_offset, 0.0, 0.0);
     traj.push_back(
       extended_pose.position.x, extended_pose.position.y, extended_pose.position.z, traj.yaw.back(),
-      extend_vel, traj.k.back(), traj.smooth_k.back(), traj.relative_time.back() + dt);
+      extend_vel, traj.k.back(), traj.smooth_k.back(), traj.steer.back(),
+      traj.relative_time.back() + dt);
   }
 }
 
@@ -743,5 +795,38 @@ MPCTrajectory clipTrajectoryByLength(const MPCTrajectory & trajectory, const dou
   return clipped_trajectory;
 }
 
+/**
+ * @brief Estimate whether the reference trajectory is driven forward or backward.
+ */
+std::optional<bool> infer_forward_driving(const MPCTrajectory & trajectory)
+{
+  constexpr double min_velocity_for_direction = 0.1;           // [m/s]
+  constexpr double min_baseline_for_direction_squared = 0.25;  // [m^2]
+
+  if (trajectory.size() < 2) {
+    return std::nullopt;
+  }
+
+  for (const auto velocity : trajectory.vx) {
+    if (std::abs(velocity) > min_velocity_for_direction) {
+      return velocity > 0.0;
+    }
+  }
+
+  // The trajectory is stop-like. Fall back to the geometry, but only over a baseline long enough to
+  // measure a direction from.
+  const double front_yaw = trajectory.yaw.front();
+  for (size_t i = 1; i < trajectory.size(); ++i) {
+    const double dx = trajectory.x.at(i) - trajectory.x.front();
+    const double dy = trajectory.y.at(i) - trajectory.y.front();
+    const double dist_squared = dx * dx + dy * dy;
+    if (dist_squared < min_baseline_for_direction_squared) {
+      continue;
+    }
+    return std::abs(normalize_radian(front_yaw - std::atan2(dy, dx))) < M_PI_2;
+  }
+
+  return std::nullopt;
+}
 }  // namespace MPCUtils
 }  // namespace autoware::motion::control::mpc_lateral_controller

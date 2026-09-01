@@ -148,13 +148,13 @@ private:
   double m_delay_compensation_time;
   bool m_use_temporal_trajectory{false};
   std::optional<double> m_prev_nearest_time{std::nullopt};
-  std::optional<rclcpp::Time> m_prev_trajectory_stamp{std::nullopt};
 
   // enable flags
   bool m_enable_smooth_stop;
   bool m_enable_overshoot_emergency;
   bool m_enable_slope_compensation;
   bool m_enable_large_tracking_error_emergency;
+  bool m_enable_emergency_exit_without_stop;
   bool m_enable_keep_stopped_until_steer_convergence;
 
   // smooth stop transition
@@ -293,11 +293,8 @@ private:
   /**
    * @brief set reference trajectory with received message
    * @param [in] msg trajectory message
-   * @param [in] current_kinematics current ego odometry used to reset temporal phase on replan
    */
-  void setTrajectory(
-    const autoware_planning_msgs::msg::Trajectory & msg,
-    const nav_msgs::msg::Odometry & current_kinematics);
+  void setTrajectory(const autoware_planning_msgs::msg::Trajectory & msg);
 
   bool isReady(const trajectory_follower::InputData & input_data) override;
 

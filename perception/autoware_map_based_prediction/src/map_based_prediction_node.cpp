@@ -15,6 +15,7 @@
 #include "map_based_prediction_node.hpp"
 
 #include "autoware/map_based_prediction/params.hpp"
+#include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
 
 #include <autoware_utils/ros/update_param.hpp>
 
@@ -95,6 +96,28 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   state_.predictor_vehicle = std::make_shared<PredictorVehicle>(*this);
   state_.predictor_vehicle->setParams(vehicle_params);
 
+  // --- Priority prediction (traffic-signal stop hypotheses) ---
+  state_.params.use_priority_prediction = declare_parameter<bool>("priority_prediction.enable");
+  priority_predictor::PriorityPredictionParams priority_params;
+  priority_params.stop_time_hysteresis =
+    declare_parameter<double>("priority_prediction.stop_time_hysteresis");
+  priority_params.go_time_hysteresis =
+    declare_parameter<double>("priority_prediction.go_time_hysteresis");
+  priority_params.signal_retention_timeout =
+    declare_parameter<double>("priority_prediction.signal_retention_timeout");
+  const double signal_observation_timeout =
+    declare_parameter<double>("priority_prediction.signal_observation_timeout");
+  state_.priority_predictor = std::make_shared<priority_predictor::TrafficSignalStopPredictor>();
+  state_.priority_predictor->setParameters(priority_params, signal_observation_timeout);
+
+  // --- Deceleration-aware path cut (per class max deceleration) ---
+  path_cut::MaxDecelerationParams max_decel_params;
+  max_decel_params.vehicle = declare_parameter<double>("path_cut.max_deceleration.vehicle");
+  max_decel_params.pedestrian = declare_parameter<double>("path_cut.max_deceleration.pedestrian");
+  max_decel_params.bicycle = declare_parameter<double>("path_cut.max_deceleration.bicycle");
+  max_decel_params.motorcycle = declare_parameter<double>("path_cut.max_deceleration.motorcycle");
+  state_.priority_predictor->set_max_deceleration(max_decel_params);
+
   // --- VRU predictor ---
   state_.predictor_vru = std::make_shared<PredictorVru>(*this);
   {
@@ -109,6 +132,7 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
       declare_parameter<double>("max_crosswalk_user_on_road_distance");
     vru_params.use_crosswalk_signal =
       declare_parameter<bool>("crosswalk_with_signal.use_crosswalk_signal");
+    vru_params.max_deceleration = max_decel_params;
     vru_params.traffic_signal.threshold_velocity_assumed_as_stopping =
       declare_parameter<double>("crosswalk_with_signal.threshold_velocity_assumed_as_stopping");
     vru_params.traffic_signal.distance_set_for_no_intention_to_walk =
@@ -134,6 +158,8 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   state_.params.remember_lost_crosswalk_users =
     declare_parameter<bool>("use_crosswalk_user_history.remember_lost_users");
   state_.params.prediction_time_horizon_unknown = time_horizon.unknown;
+  state_.params.remap_unsupported_labels_to_unknown =
+    declare_parameter<bool>("remap_unsupported_labels_to_unknown");
 
   // --- Callbacks ---
   map_callback_ = std::make_unique<MapCallback>(this, state_);

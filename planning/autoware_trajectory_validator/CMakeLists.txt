@@ -9,6 +9,10 @@ generate_parameter_library(${PROJECT_NAME}_param
   param/parameter_struct.yaml
 )
 
+generate_parameter_library(${PROJECT_NAME}_diagnostic_param
+  param/diagnostic_parameter_struct.yaml
+)
+
 set(trajectory_validator_lib_target ${PROJECT_NAME}_lib)
 
 
@@ -16,10 +20,12 @@ ament_auto_add_library(${trajectory_validator_lib_target} SHARED
   src/pseudo_emergency_stop_handler.cpp
   src/trajectory_validator_wrapper.cpp
   src/detail/trajectory_validator.cpp
+  src/detail/diagnostic.cpp
 )
 
 target_link_libraries(${trajectory_validator_lib_target}
   ${PROJECT_NAME}_param
+  ${PROJECT_NAME}_diagnostic_param
 )
 
 target_compile_options(${trajectory_validator_lib_target} PUBLIC
@@ -28,12 +34,14 @@ target_compile_options(${trajectory_validator_lib_target} PUBLIC
 
 ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
   src/filters/safety/uncrossable_boundary_departure.cpp
-  src/filters/safety/vehicle_constraint_filter.cpp
-    src/filters/safety/collision_check_filter/collision_check_filter.cpp
+  src/filters/safety/trajectory_feasibility_filter.cpp
+  src/filters/safety/collision_check_filter/collision_check_filter.cpp
   src/filters/safety/collision_check_filter/reporter.cpp
   src/filters/safety/collision_check_filter/assessment.cpp
+  src/filters/safety/collision_check_filter/stop_tracker.cpp
   src/filters/safety/collision_check_filter/trajectory_utils.cpp
   src/filters/traffic_rule/traffic_light_filter.cpp
+  src/filters/traffic_rule/crosswalk_filter.cpp
 )
 
 set_target_properties(autoware_trajectory_validator_plugins PROPERTIES CXX_VISIBILITY_PRESET default)
@@ -48,6 +56,7 @@ unset(PYTHON_EXECUTABLE)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MetricReport.msg"
+  "msg/RiskLevel.msg"
   "msg/ValidationReport.msg"
   "msg/ValidationReportArray.msg"
   DEPENDENCIES
@@ -67,16 +76,17 @@ endif()
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_ros REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   ament_auto_find_test_dependencies()
 
   # ==========================================
   # 1. Plugin Unit Tests
   # ==========================================
-  ament_add_gtest(test_vehicle_constraint_filter
-    test/plugins/test_vehicle_constraint_filter.cpp
+  ament_add_gtest(test_trajectory_feasibility_filter
+    test/plugins/test_trajectory_feasibility_filter.cpp
   )
-  target_link_libraries(test_vehicle_constraint_filter
+  target_link_libraries(test_trajectory_feasibility_filter
     autoware_trajectory_validator_plugins
   )
 
@@ -98,6 +108,13 @@ if(BUILD_TESTING)
     test/plugins/collision_check_filter/test_geometry.cpp
   )
   target_link_libraries(test_geometry
+    autoware_trajectory_validator_plugins
+  )
+
+  ament_add_gtest(test_stop_tracker
+    test/plugins/collision_check_filter/test_stop_tracker.cpp
+  )
+  target_link_libraries(test_stop_tracker
     autoware_trajectory_validator_plugins
   )
 
@@ -129,6 +146,42 @@ if(BUILD_TESTING)
     autoware_trajectory_validator_plugins
   )
 
+  ament_add_gtest(test_crosswalk_filter
+    test/plugins/test_crosswalk_filter.cpp
+  )
+  target_link_libraries(test_crosswalk_filter
+    autoware_trajectory_validator_plugins
+  )
+
+  ament_add_gtest(test_risk_utils
+    test/detail/test_risk_utils.cpp
+  )
+  target_link_libraries(test_risk_utils
+    ${trajectory_validator_lib_target}
+  )
+
+  ament_add_gtest(test_trajectory_validator
+    test/detail/test_trajectory_validator.cpp
+  )
+  target_link_libraries(test_trajectory_validator
+    ${trajectory_validator_lib_target}
+  )
+
+  ament_add_ros_isolated_gtest(test_diagnostic_core_behavior
+    test/diagnostic/diagnostic_core_behavior.cpp
+  )
+  target_link_libraries(test_diagnostic_core_behavior
+    ${trajectory_validator_lib_target}
+    rclcpp::rclcpp
+  )
+
+  ament_add_ros_isolated_gtest(test_diagnostic_shadow_mode
+    test/diagnostic/diagnostic_shadow_mode.cpp
+  )
+  target_link_libraries(test_diagnostic_shadow_mode
+    ${trajectory_validator_lib_target}
+    rclcpp::rclcpp
+  )
 
 endif()
 

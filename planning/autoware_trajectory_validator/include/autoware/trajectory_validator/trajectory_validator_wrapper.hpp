@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__TRAJECTORY_VALIDATOR_WRAPPER_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__TRAJECTORY_VALIDATOR_WRAPPER_HPP_
 
+#include "autoware/trajectory_validator/detail/diagnostic.hpp"
 #include "autoware/trajectory_validator/detail/trajectory_validator.hpp"
 #include "autoware/trajectory_validator/detail/trajectory_validator_report.hpp"
 #include "autoware/trajectory_validator/detail/validator_context.hpp"
@@ -26,7 +27,6 @@
 #include <autoware_trajectory_validator/msg/validation_report_array.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
-#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -44,6 +44,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace autoware::trajectory_validator
@@ -57,9 +58,10 @@ using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_trajectory_validator::msg::MetricReport;
 using autoware_trajectory_validator::msg::ValidationReport;
 using autoware_trajectory_validator::msg::ValidationReportArray;
-using autoware_utils_diagnostics::DiagnosticsInterface;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
+
+using ValidationReports = std::vector<ValidationReport>;
 
 /**
  * @brief Adapter for TrajectoryValidator: manages plugin loading, parameter updates,
@@ -86,7 +88,7 @@ public:
    * @param input_trajectories Candidate trajectories to validate.
    * @param context Current world state snapshot.
    */
-  CandidateTrajectories validate_trajectories(
+  TrajectoryValidatorReport validate_trajectories(
     const CandidateTrajectories & input_trajectories, const ValidatorContext & context);
 
 private:
@@ -97,19 +99,27 @@ private:
   void update_parameters();
 
   /**
-   * @brief Loads a single plugin by class name and configures it.
-   * @param name Plugin class name to load.
-   * @param is_shadow_mode If true, plugin results are logged but not enforced.
+   * @brief Constructs the diagnostic handler from configured_actions parameters and active plugin
+   * names.
+   * @param node_parameters_interface Parameter interface used to read the configured_actions
+   * parameter.
    */
-  void load_metric(const std::string & name, const bool is_shadow_mode = false);
+  std::unique_ptr<TrajectoryValidatorDiagnostic> init_diagnostic(
+    rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_parameters_interface) const;
 
   /**
-   * @brief Updates the diagnostics status based on the number of feasible trajectories.
-   * @param input_trajectories Original input trajectories (used for total count).
-   * @param num_feasible_trajectories Number of trajectories that passed all plugins.
+   * @brief Aggregates validation reports into diagnostic statuses and publishes them.
+   * @param reports Per-trajectory validation reports produced this cycle.
    */
-  void update_diagnostic(
-    const CandidateTrajectories & input_trajectories, const size_t num_feasible_trajectories);
+  void publish_diagnostic(const std::vector<ValidationReport> & reports);
+
+  /**
+   * @brief Loads a single plugin by class name and configures it.
+   * @param name Plugin class name to load.
+   * @param is_shadow_mode If true, plugin results are logged but do not affect trajectory
+   * selection.
+   */
+  void load_metric(const std::string & name, const bool is_shadow_mode = false);
 
   /**
    * @brief Publishes the validation report array.
@@ -169,6 +179,7 @@ private:
   // Plugin infrastructure
   pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
   std::vector<std::shared_ptr<plugin::ValidatorInterface>> plugins_;
+  std::unordered_set<std::string> active_filter_names_;
 
   // Publishers
   std::shared_ptr<autoware_utils_debug::DebugPublisher> pub_debug_;
@@ -178,7 +189,7 @@ private:
   std::unique_ptr<PseudoEmergencyStopHandler> pseudo_emergency_stop_handler_;
 
   // Internal state
-  std::unique_ptr<DiagnosticsInterface> diagnostics_interface_ptr_;
+  std::unique_ptr<TrajectoryValidatorDiagnostic> validator_diagnostic_ptr_;
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
 };
 

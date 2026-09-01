@@ -15,7 +15,7 @@
 #ifndef PLANNING__AUTOWARE_MINIMUM_RULE_BASED_PLANNER__PLUGINS__OBSTACLE_STOP_HPP_
 #define PLANNING__AUTOWARE_MINIMUM_RULE_BASED_PLANNER__PLUGINS__OBSTACLE_STOP_HPP_
 
-#include "autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp"
+#include "autoware/trajectory_processor/trajectory_modifier_utils/obstacle_stop_utils.hpp"
 #include "plugin_interface.hpp"
 
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
@@ -36,21 +36,21 @@ using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
-using trajectory_modifier::utils::obstacle_stop::CollisionPoint;
-using trajectory_modifier::utils::obstacle_stop::DebugData;
-using trajectory_modifier::utils::obstacle_stop::ObjectDecelMap;
-using trajectory_modifier::utils::obstacle_stop::ObjectType;
+using trajectory_processor::utils::obstacle_stop::CollisionPoint;
+using trajectory_processor::utils::obstacle_stop::DebugData;
+using trajectory_processor::utils::obstacle_stop::ObjectDecelMap;
+using trajectory_processor::utils::obstacle_stop::ObjectType;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
-using trajectory_modifier::utils::obstacle_stop::PointCloud2;
+using trajectory_processor::utils::obstacle_stop::PointCloud2;
 
 class ObstacleStop : public PluginInterface
 {
 public:
   ObstacleStop() = default;
 
-  void run(TrajectoryPoints & traj_points) override;
+  void run(TrajectoryPoints & traj_points, const ModifierData & data) override;
 
   void update_params(const MinimumRuleBasedPlannerParams & params) override
   {
@@ -59,16 +59,13 @@ public:
     {
       const auto & p = params_.objects;
       object_filter_->set_params(
-        p.object_types, p.max_velocity_th, p.stopped_velocity_th, p.max_lateral_velocity_th,
-        p.safety_buffer);
+        p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
+        p.max_lateral_velocity_th, p.safety_buffer);
     }
 
     {
       const auto & p = params_.pointcloud;
-      pointcloud_filter_->set_params(
-        p.voxel_grid_filter.x, p.voxel_grid_filter.y, p.voxel_grid_filter.z,
-        p.voxel_grid_filter.min_size, p.clustering.tolerance, p.clustering.min_size,
-        p.clustering.max_size);
+      pointcloud_filter_->set_params(p.target_types);
     }
 
     update_object_decel_map();
@@ -95,14 +92,14 @@ private:
 
   DebugData debug_data_;
 
-  std::unique_ptr<trajectory_modifier::utils::obstacle_stop::PointCloudFilter> pointcloud_filter_;
+  std::unique_ptr<trajectory_processor::utils::obstacle_stop::PointCloudFilter> pointcloud_filter_;
 
-  std::unique_ptr<trajectory_modifier::utils::obstacle_stop::ObjectFilter> object_filter_;
+  std::unique_ptr<trajectory_processor::utils::obstacle_stop::ObjectFilter> object_filter_;
 
   ObjectDecelMap object_decel_map_;
 
   rclcpp::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_clustered_pointcloud_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_filtered_pointcloud_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
   void update_object_decel_map()
@@ -118,10 +115,12 @@ private:
       {ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
   }
 
-  bool is_obstacle_detected(const TrajectoryPoints & traj_points);
+  bool is_obstacle_detected(const TrajectoryPoints & traj_points, const ModifierData & data);
 
-  std::optional<CollisionPoint> check_predicted_objects(const TrajectoryPoints & traj_points);
-  std::optional<CollisionPoint> check_pointcloud(const TrajectoryPoints & traj_points);
+  std::optional<CollisionPoint> check_predicted_objects(
+    const TrajectoryPoints & traj_points, const ModifierData & data);
+  std::optional<CollisionPoint> check_pointcloud(
+    const TrajectoryPoints & traj_points, const ModifierData & data);
 
   void update_collision_points_buffer(
     std::vector<CollisionPoint> & collision_points_buffer, const TrajectoryPoints & traj_points,
@@ -130,10 +129,10 @@ private:
   std::optional<CollisionPoint> get_nearest_collision_point(
     const std::vector<CollisionPoint> & collision_points_buffer) const;
 
-  void set_stop_point(TrajectoryPoints & traj_points);
+  void set_stop_point(TrajectoryPoints & traj_points, const ModifierData & data);
 
   void publish_debug_string(bool is_safe) const;
-  void publish_debug_data(const std::string & ns) const;
+  void publish_debug_data(const std::string & ns, const ModifierData & data) const;
 };
 
 }  // namespace autoware::minimum_rule_based_planner::plugin

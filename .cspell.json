@@ -6,6 +6,7 @@
   ],
   "ignoreRegExpList": [],
   "words": [
+    "autoplay",
     "dltype",
     "tvmgen",
     "fromarray",
@@ -13,6 +14,21 @@
     "brkay54",
     "libtensorrt",
     "TRTBEV",
-    "CUDA_HOSTDEV"
+    "CUDA_HOSTDEV",
+    "datalim",
+    "dpsi",
+    "dubins",
+    "execv",
+    "expt",
+    "fignum",
+    "gridspec",
+    "labelcolor",
+    "polyline",
+    "pythonsecurity",
+    "relim",
+    "retuned",
+    "runpy",
+    "timesteps",
+    "valinit"
   ]
 }

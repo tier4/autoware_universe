@@ -1,0 +1,112 @@
+control_validator:
+  diag_error_count_threshold:
+    type: int
+    description: If the number of consecutive invalid predicted_path exceeds this threshold, the Diag will be set to ERROR.
+
+  display_on_terminal:
+    type: bool
+    description: Show error message on terminal.
+
+  vel_lpf_gain:
+    type: double
+    description: Low-pass filter gain for filtering vehicle and target velocity.
+
+  acceleration_validator:
+    acc_error_offset:
+      type: double
+      description: Offset threshold to validate the vehicle acceleration.
+    acc_error_scale:
+      type: double
+      description: Scale threshold to validate the vehicle acceleration.
+    acc_lpf_gain:
+      type: double
+      description: Low-pass filter gain for the acceleration validator.
+
+  uncrossable_bound_departure_validator:
+    enable:
+      type: bool
+      description: If true, validate that the control predicted trajectory does not depart an uncrossable boundary.
+    boundary_types:
+      type: string_array
+      description: Lanelet linestring types treated as uncrossable boundaries.
+    lateral_margin_m:
+      type: double
+      description: Lateral margin from the boundary [m].
+    longitudinal_margin_m:
+      type: double
+      description: Longitudinal margin from the boundary [m].
+    max_deceleration_mps2:
+      type: double
+      description: Maximum deceleration used for the braking-distance estimation [m/s^2].
+    max_jerk_mps3:
+      type: double
+      description: Maximum jerk used for the braking-distance estimation [m/s^3].
+    brake_delay_s:
+      type: double
+      description: Assumed brake delay [s].
+    time_to_departure_cutoff_s:
+      type: double
+      description: Time-to-departure cutoff beyond which a departure is not treated as critical [s].
+    on_time_buffer_s:
+      type: double
+      description: Continuous-violation time required to activate a critical departure [s].
+    off_time_buffer_s:
+      type: double
+      description: Continuous-safety time required to deactivate a critical departure [s].
+    enable_developer_marker:
+      type: bool
+      description: If true, publish developer debug markers from the boundary departure checker.
+
+  latency_validator:
+    nominal_latency:
+      type: double
+      description: Threshold of the control latency [s].
+
+  lateral_jerk_validator:
+    lateral_jerk:
+      type: double
+      description: Invalid threshold of the lateral jerk for steering rate validation [m/s^3].
+
+  overrun_validator:
+    assumed_delay_time:
+      type: double
+      description: Assumed delay for over run estimation [s].
+    assumed_limit_acc:
+      type: double
+      description: Assumed acceleration for over run estimation [m/s^2].
+    overrun_stop_point_dist:
+      type: double
+      description: Threshold distance to overrun stop point [m].
+    will_overrun_stop_point_dist:
+      type: double
+      description: Threshold distance to predict overrun of the stop point [m].
+
+  trajectory_validator:
+    max_distance_deviation:
+      type: double
+      description: Invalid threshold of the max distance deviation between the predicted path and the reference trajectory [m].
+
+  velocity_validator: # previously over_velocity
+    hold_velocity_error_until_stop:
+      type: bool
+      description: If true, a velocity error is held until the vehicle stops.
+    over_velocity_offset:
+      type: double
+      description: Threshold velocity offset to validate the vehicle velocity [m/s].
+    over_velocity_ratio:
+      type: double
+      description: Threshold ratio to validate the vehicle velocity.
+    rolling_back_velocity:
+      type: double
+      description: Threshold velocity to validate the vehicle velocity [m/s].
+    vel_lpf_gain:
+      type: double
+      description: Low-pass filter gain for filtering vehicle and target velocity in the over velocity check.
+
+  yaw_validator:
+    yaw_deviation_error:
+      type: double
+      description: Threshold angle to validate the vehicle yaw relative to the nearest trajectory yaw [rad].
+    yaw_deviation_warn:
+      type: double
+      description: Threshold angle to trigger a WARN diagnostic for the vehicle yaw [rad].

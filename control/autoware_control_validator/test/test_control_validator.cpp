@@ -15,14 +15,19 @@
 #include "autoware/control_validator/control_validator.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/node_options.hpp>
 #include <tf2/LinearMath/Quaternion.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <gtest/gtest-param-test.h>
 #include <gtest/gtest.h>
+#include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/primitives/LineString.h>
 
 #include <cmath>
 #include <memory>
@@ -30,6 +35,7 @@
 
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
+using nav_msgs::msg::Odometry;
 
 Trajectory make_linear_trajectory(
   const TrajectoryPoint & start, const TrajectoryPoint & end, size_t num_points, double velocity)
@@ -73,6 +79,14 @@ TrajectoryPoint make_trajectory_point(double x, double y)
   return point;
 }
 
+Odometry make_odometry(double longitudinal_velocity)
+{
+  Odometry odometry;
+  odometry.pose.pose.orientation.w = 1.0;
+  odometry.twist.twist.linear.x = longitudinal_velocity;
+  return odometry;
+}
+
 namespace autoware::control_validator
 {
 class TrajectoryValidatorTest
@@ -100,7 +114,8 @@ protected:
          "/config/test_vehicle_info.param.yaml"});
 
     node_ = std::make_shared<ControlValidator>(options);
-    trajectory_validator_ = std::make_shared<TrajectoryValidator>(*node_);
+    ::control_validator::ParamListener param_listener(node_->get_node_parameters_interface());
+    trajectory_validator_ = std::make_shared<TrajectoryValidator>(param_listener.get_params());
   }
   void TearDown() override { rclcpp::shutdown(); }
 
@@ -203,7 +218,8 @@ protected:
          "/config/test_vehicle_info.param.yaml"});
 
     node_ = std::make_shared<ControlValidator>(options);
-    acceleration_validator_ = std::make_shared<AccelerationValidator>(*node_);
+    ::control_validator::ParamListener param_listener(node_->get_node_parameters_interface());
+    acceleration_validator_ = std::make_shared<AccelerationValidator>(param_listener.get_params());
   }
   void TearDown() override { rclcpp::shutdown(); }
 
@@ -228,5 +244,220 @@ INSTANTIATE_TEST_SUITE_P(
     std::make_tuple(false, 1.0, 5.0), std::make_tuple(false, 1.0, -5.0),
     std::make_tuple(true, -1.0, -1.0), std::make_tuple(false, -1.0, -5.0),
     std::make_tuple(false, -1.0, 5.0)));
+
+class UncrossableBoundDepartureValidatorTest : public ::testing::Test
+{
+protected:
+  void SetUp() override
+  {
+    rclcpp::init(0, nullptr);
+    rclcpp::NodeOptions options;
+    options.arguments(
+      {"--ros-args", "--params-file",
+       ament_index_cpp::get_package_share_directory("autoware_control_validator") +
+         "/config/control_validator.param.yaml",
+       "--params-file",
+       ament_index_cpp::get_package_share_directory("autoware_test_utils") +
+         "/config/test_vehicle_info.param.yaml"});
+
+    node_ = std::make_shared<ControlValidator>(options);
+    ::control_validator::ParamListener param_listener(node_->get_node_parameters_interface());
+    params_ = param_listener.get_params();
+
+    // Vehicle with a large left overhang so the left edge sits well left of the vehicle center,
+    // matching the boundary departure checker's own test scenario.
+    // Arguments: wheel_radius, wheel_width, wheel_base, wheel_tread, front_overhang, rear_overhang,
+    //            left_overhang, right_overhang, vehicle_height, max_steer_angle.
+    vehicle_info_ = autoware::vehicle_info_utils::createVehicleInfo(
+      0.383, 0.235, 2.79, 1.64, 1.0, 1.1, 2.5, 0.128, 0.128, 0.70);
+  }
+  void TearDown() override { rclcpp::shutdown(); }
+
+  // A straight road border along y = 2.0.
+  static lanelet::LaneletMapPtr make_road_border_map()
+  {
+    auto map = std::make_shared<lanelet::LaneletMap>();
+    lanelet::Point3d p1(lanelet::utils::getId(), -100.0, 2.0, 0.0);
+    lanelet::Point3d p2(lanelet::utils::getId(), 100.0, 2.0, 0.0);
+    lanelet::LineString3d boundary(lanelet::utils::getId(), {p1, p2});
+    boundary.attributes()[lanelet::AttributeName::Type] = "road_border";
+    map->add(boundary);
+    return map;
+  }
+
+  static Trajectory make_trajectory(double start_x, double start_y, double velocity, double yaw)
+  {
+    tf2::Quaternion quaternion;
+    quaternion.setRPY(0.0, 0.0, yaw);
+
+    Trajectory trajectory;
+    for (int i = 0; i < 5; ++i) {
+      TrajectoryPoint point;
+      point.pose.position.x = start_x + i * 5.0 * std::cos(yaw);
+      point.pose.position.y = start_y + i * 5.0 * std::sin(yaw);
+      point.pose.orientation = tf2::toMsg(quaternion);
+      point.longitudinal_velocity_mps = static_cast<float>(velocity);
+      trajectory.points.emplace_back(point);
+    }
+    return trajectory;
+  }
+
+  static nav_msgs::msg::Odometry make_odometry(
+    const Trajectory & trajectory, double velocity, double time_s)
+  {
+    nav_msgs::msg::Odometry odometry;
+    odometry.header.stamp = rclcpp::Time(static_cast<int64_t>(time_s * 1e9));
+    if (!trajectory.points.empty()) {
+      odometry.pose.pose = trajectory.points.front().pose;
+    }
+    odometry.twist.twist.linear.x = velocity;
+    return odometry;
+  }
+
+  std::shared_ptr<ControlValidator> node_;
+  ::control_validator::Params params_;
+  autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
+};
+
+TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenMapIsUnavailable)
+{
+  UncrossableBoundDepartureValidator validator(node_->get_logger(), params_);
+  const auto trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
+  const auto odometry = make_odometry(trajectory, 10.0, 0.0);
+  geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
+  visualization_msgs::msg::MarkerArray markers;
+
+  ControlValidatorStatus res;
+  validator.validate(res, trajectory, odometry, acceleration, nullptr, vehicle_info_, markers);
+
+  EXPECT_TRUE(res.will_cross_uncrossable_bound);
+}
+
+TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryTooShort)
+{
+  UncrossableBoundDepartureValidator validator(node_->get_logger(), params_);
+  Trajectory trajectory;
+  trajectory.points.emplace_back(TrajectoryPoint{});
+  const auto odometry = make_odometry(trajectory, 10.0, 0.0);
+  geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
+  visualization_msgs::msg::MarkerArray markers;
+
+  ControlValidatorStatus res;
+  validator.validate(
+    res, trajectory, odometry, acceleration, make_road_border_map(), vehicle_info_, markers);
+
+  EXPECT_TRUE(res.will_cross_uncrossable_bound);
+}
+
+TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryParallelToBoundary)
+{
+  UncrossableBoundDepartureValidator validator(node_->get_logger(), params_);
+  const auto map = make_road_border_map();
+  const auto trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
+  geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
+  visualization_msgs::msg::MarkerArray markers;
+
+  ControlValidatorStatus res;
+  validator.validate(
+    res, trajectory, make_odometry(trajectory, 10.0, 0.0), acceleration, map, vehicle_info_,
+    markers);
+
+  EXPECT_TRUE(res.will_cross_uncrossable_bound);
+}
+
+TEST_F(UncrossableBoundDepartureValidatorTest, InvalidWhenTrajectoryDepartsBoundary)
+{
+  UncrossableBoundDepartureValidator validator(node_->get_logger(), params_);
+  const auto map = make_road_border_map();
+  geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
+  visualization_msgs::msg::MarkerArray markers;
+  ControlValidatorStatus res;
+
+  // Start safe, then steer toward the boundary and keep violating past the ON-time buffer so the
+  // hysteresis promotes the departure to CRITICAL.
+  const auto safe_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
+  validator.validate(
+    res, safe_trajectory, make_odometry(safe_trajectory, 10.0, 0.0), acceleration, map,
+    vehicle_info_, markers);
+  EXPECT_TRUE(res.will_cross_uncrossable_bound);
+
+  const auto danger_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.2);
+  for (double time_s = 0.1; time_s <= 0.6; time_s += 0.1) {
+    validator.validate(
+      res, danger_trajectory, make_odometry(danger_trajectory, 10.0, time_s), acceleration, map,
+      vehicle_info_, markers);
+  }
+
+  EXPECT_FALSE(res.will_cross_uncrossable_bound);
+  EXPECT_FALSE(markers.markers.empty());
+}
+
+class VelocityValidatorTest
+: public ::testing::TestWithParam<std::tuple<double, double, bool, bool>>
+{
+public:
+  void validate(
+    ControlValidatorStatus & res, const Trajectory & reference_trajectory,
+    const Odometry & kinematics)
+  {
+    velocity_validator_->validate(res, reference_trajectory, kinematics);
+  }
+
+protected:
+  void SetUp() override
+  {
+    rclcpp::init(0, nullptr);
+    rclcpp::NodeOptions options;
+    options.arguments(
+      {"--ros-args", "--params-file",
+       ament_index_cpp::get_package_share_directory("autoware_control_validator") +
+         "/config/control_validator.param.yaml",
+       "--params-file",
+       ament_index_cpp::get_package_share_directory("autoware_test_utils") +
+         "/config/test_vehicle_info.param.yaml"});
+
+    node_ = std::make_shared<ControlValidator>(options);
+    ::control_validator::ParamListener param_listener(node_->get_node_parameters_interface());
+    velocity_validator_ = std::make_shared<VelocityValidator>(param_listener.get_params());
+  }
+  void TearDown() override { rclcpp::shutdown(); }
+
+  std::shared_ptr<rclcpp::Node> node_;
+  std::shared_ptr<VelocityValidator> velocity_validator_;
+};
+
+TEST_P(VelocityValidatorTest, test_velocity_validation)
+{
+  const auto [target_vel, vehicle_vel, expected_is_rolling_back, expected_is_over_velocity] =
+    GetParam();
+
+  const auto reference_trajectory = make_linear_trajectory(
+    make_trajectory_point(0, 0), make_trajectory_point(10, 0), 11, target_vel);
+  const auto kinematics = make_odometry(vehicle_vel);
+
+  ControlValidatorStatus res;
+  res.is_rolling_back = false;
+  res.is_over_velocity = false;
+  validate(res, reference_trajectory, kinematics);
+
+  EXPECT_EQ(res.is_rolling_back, expected_is_rolling_back);
+  EXPECT_EQ(res.is_over_velocity, expected_is_over_velocity);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+  VelocityValidatorTests, VelocityValidatorTest,
+  ::testing::Values(
+    // 1. non-zero target velocity with no rollback (same sign)
+    std::make_tuple(1.0, 1.0, false, false),
+    // 2. zero target velocity with no rollback (forward motion while stopped target)
+    std::make_tuple(0.0, 1.0, false, false),
+    // 3. non-zero target velocity with rollback (opposite signs)
+    std::make_tuple(1.0, -1.0, true, false),
+    // 4. zero target velocity with rollback (backward motion while stopped target)
+    std::make_tuple(0.0, -1.0, true, false),
+    // over velocity: vehicle much faster than target
+    std::make_tuple(1.0, 5.0, false, true),
+    // reverse driving with matching signs is not rollback
+    std::make_tuple(-1.0, -1.0, false, false)));
 
 }  // namespace autoware::control_validator

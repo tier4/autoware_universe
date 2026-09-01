@@ -15,6 +15,7 @@
 #include "autoware/map_based_prediction/map_based_prediction_node/callbacks.hpp"
 
 #include "autoware/map_based_prediction/map_based_prediction_node/diagnostics.hpp"
+#include "autoware/map_based_prediction/priority_predictor/debug_priority_pred.hpp"
 #include "autoware/map_based_prediction/utils.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
@@ -60,6 +61,9 @@ void MapCallback::mapCallback(const LaneletMapBin::ConstSharedPtr msg)
   state_.predictor_vehicle->setLaneletMap(
     state_.lanelet_map_ptr, routing_graph_ptr, traffic_rules_ptr);
   state_.predictor_vru->setLaneletMap(state_.lanelet_map_ptr);
+  if (state_.priority_predictor) {
+    state_.priority_predictor->setLaneletMap(state_.lanelet_map_ptr);
+  }
 
   RCLCPP_DEBUG(node_->get_logger(), "[Map Based Prediction]: Map is loaded");
 }
@@ -96,6 +100,9 @@ void ObjectsCallback::setDiagnostics(Diagnostics * diagnostics)
 void ObjectsCallback::trafficSignalsCallback(const TrafficLightGroupArray::ConstSharedPtr msg)
 {
   state_.predictor_vru->setTrafficSignal(*msg);
+  if (state_.priority_predictor) {
+    state_.priority_predictor->setTrafficSignal(*msg, rclcpp::Time(msg->stamp));
+  }
 }
 
 void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_objects)
@@ -136,6 +143,10 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
 
   state_.predictor_vru->loadCurrentCrosswalkUsers(*in_objects);
 
+  if (state_.params.use_priority_prediction && state_.priority_predictor) {
+    state_.priority_predictor->clearFrameDebug();
+  }
+
   for (const auto & object : in_objects->objects) {
     TrackedObject transformed_object = object;
 
@@ -147,15 +158,39 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
       transformed_object.kinematics.pose_with_covariance.pose = pose_in_map.pose;
     }
 
-    const auto & label_ =
+    // TODO(badai-nguyen): This is adhoc change to adapt with current planning specifications of old
+    // perception objects classes revert this change after new ANIMAL and HAZARD handling is
+    // implemented in planning side
+    auto label_ =
       autoware::object_recognition_utils::getHighestProbLabel(transformed_object.classification);
+
+    // Optionally remap any label outside the known set (CAR, BUS, TRUCK, TRAILER, PEDESTRIAN,
+    // BICYCLE, MOTORCYCLE, UNKNOWN) to UNKNOWN to keep the legacy label set expected by
+    // downstream planning. Overwrite the classification so the published PredictedObject also
+    // reports UNKNOWN. Controlled by the `remap_unsupported_labels_to_unknown` parameter.
+    const bool is_known_label =
+      label_ == ObjectClassification::CAR || label_ == ObjectClassification::BUS ||
+      label_ == ObjectClassification::TRUCK || label_ == ObjectClassification::TRAILER ||
+      label_ == ObjectClassification::PEDESTRIAN || label_ == ObjectClassification::BICYCLE ||
+      label_ == ObjectClassification::MOTORCYCLE || label_ == ObjectClassification::UNKNOWN;
+    if (state_.params.remap_unsupported_labels_to_unknown && !is_known_label) {
+      ObjectClassification unknown_classification;
+      unknown_classification.label = ObjectClassification::UNKNOWN;
+      unknown_classification.probability =
+        autoware::object_recognition_utils::getHighestProbClassification(
+          transformed_object.classification)
+          .probability;
+      transformed_object.classification = {unknown_classification};
+      label_ = ObjectClassification::UNKNOWN;
+    }
+
     const auto label = utils::changeVRULabelForPrediction(label_, object, state_.lanelet_map_ptr);
 
     switch (label) {
       case ObjectClassification::PEDESTRIAN:
       case ObjectClassification::BICYCLE: {
-        output.objects.emplace_back(
-          state_.predictor_vru->predict(output.header, transformed_object));
+        output.objects.emplace_back(state_.predictor_vru->predict(
+          output.header, transformed_object, pub_debug_markers_ ? &debug_markers : nullptr));
         break;
       }
       case ObjectClassification::CAR:
@@ -163,9 +198,20 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
       case ObjectClassification::TRAILER:
       case ObjectClassification::MOTORCYCLE:
       case ObjectClassification::TRUCK: {
-        const auto predicted_object_opt = state_.predictor_vehicle->predict(
+        auto predicted_object_opt = state_.predictor_vehicle->predict(
           output.header, transformed_object, objects_detected_time,
           pub_debug_markers_ ? &debug_markers : nullptr);
+
+        if (
+          predicted_object_opt && state_.params.use_priority_prediction &&
+          state_.priority_predictor) {
+          predicted_object_opt->kinematics.predicted_paths =
+            state_.priority_predictor->addStopHypotheses(
+              priority_predictor::ObjectPrediction{
+                transformed_object, predicted_object_opt->kinematics.predicted_paths},
+              rclcpp::Time(output.header.stamp));
+        }
+
         if (predicted_object_opt) output.objects.push_back(predicted_object_opt.value());
         break;
       }
@@ -182,12 +228,22 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
   }
 
   if (state_.params.remember_lost_crosswalk_users) {
-    PredictedObjects retrieved_objects = state_.predictor_vru->retrieveUndetectedObjects();
+    PredictedObjects retrieved_objects = state_.predictor_vru->retrieveUndetectedObjects(
+      rclcpp::Time(in_objects->header.stamp), pub_debug_markers_ ? &debug_markers : nullptr);
     output.objects.insert(
       output.objects.end(), retrieved_objects.objects.begin(), retrieved_objects.objects.end());
   }
 
   publish(output, debug_markers);
+
+  if (pub_debug_markers_ && state_.priority_predictor) {
+    const auto & debug = state_.priority_predictor->getDebugInfo();
+
+    const auto stamp = rclcpp::Time(in_objects->header.stamp);
+    priority_predictor::debug::publishPriorityObjectMarkers(
+      *pub_debug_markers_, transform_listener_, output, stamp, debug.stop_hypothesis_path_indices,
+      debug.stop_lines, debug.used_signal_colors, stamp);
+  }
 
   const auto processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
   const auto cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);

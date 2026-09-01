@@ -87,6 +87,11 @@
           "default": 1.0,
           "description": "Time span of object information used for prediction"
         },
+        "remap_unsupported_labels_to_unknown": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, remap ANIMAL and HAZARD classifications to UNKNOWN before prediction to keep compatibility with downstream planning that only supports the legacy label set."
+        },
         "check_lateral_acceleration_constraints": {
           "type": "boolean",
           "default": false,
@@ -276,6 +281,38 @@
         "processing_time_consecutive_excess_tolerance": {
           "type": "number",
           "default": 1.0
+        },
+        "path_cut": {
+          "type": "object",
+          "properties": {
+            "max_deceleration": {
+              "type": "object",
+              "properties": {
+                "vehicle": {
+                  "type": "number",
+                  "default": 3.0,
+                  "description": "max deceleration [m/s^2] for car/bus/truck/trailer"
+                },
+                "pedestrian": {
+                  "type": "number",
+                  "default": 0.5,
+                  "description": "max deceleration [m/s^2] for pedestrian (reserved, not consumed yet)"
+                },
+                "bicycle": {
+                  "type": "number",
+                  "default": 1.0,
+                  "description": "max deceleration [m/s^2] for bicycle (reserved, not consumed yet)"
+                },
+                "motorcycle": {
+                  "type": "number",
+                  "default": 2.0,
+                  "description": "max deceleration [m/s^2] for motorcycle"
+                }
+              },
+              "required": ["vehicle", "pedestrian", "bicycle", "motorcycle"]
+            }
+          },
+          "required": ["max_deceleration"]
         }
       },
       "required": [
@@ -292,6 +329,7 @@
         "sigma_yaw_angle_deg",
         "object_buffer_time_length",
         "history_time_length",
+        "remap_unsupported_labels_to_unknown",
         "check_lateral_acceleration_constraints",
         "max_lateral_accel",
         "min_acceleration_before_curve",
@@ -309,7 +347,8 @@
         "publish_processing_time_detail",
         "publish_debug_markers",
         "processing_time_tolerance",
-        "processing_time_consecutive_excess_tolerance"
+        "processing_time_consecutive_excess_tolerance",
+        "path_cut"
       ]
     }
   },

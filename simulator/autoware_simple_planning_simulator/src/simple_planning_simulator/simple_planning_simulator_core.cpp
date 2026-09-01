@@ -289,6 +289,25 @@ void SimplePlanningSimulator::initialize_vehicle_model(const std::string & vehic
       vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, wheelbase, timer_sampling_time_ms_ / 1000.0,
       acc_time_delay, acc_time_constant, steer_time_delay, steer_time_constant, steer_dead_band,
       steer_bias, debug_acc_scaling_factor, debug_steer_scaling_factor, k_us);
+  } else if (vehicle_model_type_str == "DELAY_STEER_ACC_GEARED_FOR_DIFFUSION_PLANNER") {
+    vehicle_model_type_ = VehicleModelType::DELAY_STEER_ACC_GEARED_FOR_DIFFUSION_PLANNER;
+    // load parameters from delay_steer_acc_geared_for_diffusion_planner.v{N}.*
+    const int delay_steer_acc_geared_for_diffusion_planner_version =
+      declare_parameter<int>("delay_steer_acc_geared_for_diffusion_planner.version", 1);
+    const std::string ns = "delay_steer_acc_geared_for_diffusion_planner.v" +
+                           std::to_string(delay_steer_acc_geared_for_diffusion_planner_version) +
+                           ".";
+    vehicle_model_ptr_ = std::make_shared<SimModelDelaySteerAccGearedForDiffusionPlanner>(
+      vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, wheelbase, timer_sampling_time_ms_ / 1000.0,
+      declare_parameter<double>(ns + "acc_time_delay", 0.1),
+      declare_parameter<double>(ns + "acc_time_constant", 0.1),
+      declare_parameter<double>(ns + "steer_time_delay", 0.24),
+      declare_parameter<double>(ns + "steer_time_constant", 0.27),
+      declare_parameter<double>(ns + "steer_dead_band", 0.0),
+      declare_parameter<double>(ns + "steer_bias", 0.0),
+      declare_parameter<double>(ns + "debug_acc_scaling_factor", 1.0),
+      declare_parameter<double>(ns + "debug_steer_scaling_factor", 1.0),
+      declare_parameter<double>(ns + "k_us", 0.0));
   } else if (vehicle_model_type_str == "DELAY_STEER_MAP_ACC_GEARED") {
     vehicle_model_type_ = VehicleModelType::DELAY_STEER_MAP_ACC_GEARED;
     const std::string acceleration_map_path =
@@ -552,6 +571,7 @@ void SimplePlanningSimulator::on_initialpose(const PoseWithCovarianceStamped::Co
   initial_pose.header = msg->header;
   initial_pose.pose = msg->pose.pose;
   set_initial_state_with_transform(initial_pose, initial_twist);
+  latch_initial_pose_z(initial_pose);
 
   initial_pose_ = msg;
   current_odometry_.pose = msg->pose;
@@ -578,6 +598,7 @@ void SimplePlanningSimulator::on_set_pose(
   initial_pose.header = request->pose.header;
   initial_pose.pose = request->pose.pose.pose;
   set_initial_state_with_transform(initial_pose, initial_twist);
+  latch_initial_pose_z(initial_pose);
   response->status = tier4_api_utils::response_success();
 }
 
@@ -647,7 +668,8 @@ void SimplePlanningSimulator::set_input(const Control & cmd, const double acc_by
     vehicle_model_type_ == VehicleModelType::DELAY_STEER_MAP_ACC_GEARED) {
     input << combined_acc, steer;
   } else if (  // NOLINT
-    vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC_GEARED_WO_FALL_GUARD) {
+    vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC_GEARED_WO_FALL_GUARD ||
+    vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC_GEARED_FOR_DIFFUSION_PLANNER) {
     input << acc_by_cmd, gear, acc_by_slope, steer;
   }
   vehicle_model_ptr_->setInput(input);
@@ -666,6 +688,14 @@ void SimplePlanningSimulator::on_hazard_lights_cmd(const HazardLightsCommand::Co
 
 void SimplePlanningSimulator::on_trajectory(const Trajectory::ConstSharedPtr msg)
 {
+  // After re-init, keep map-fitted Z from /initialpose3d until planning publishes a newer
+  // trajectory. Older trajectory messages still carry the previous route's Z profile.
+  if (
+    use_latched_initial_pose_z_ && latched_initial_pose_time_.has_value() &&
+    rclcpp::Time(msg->header.stamp) > latched_initial_pose_time_.value()) {
+    use_latched_initial_pose_z_ = false;
+    latched_initial_pose_time_.reset();
+  }
   current_trajectory_ptr_ = msg;
 }
 
@@ -721,6 +751,14 @@ void SimplePlanningSimulator::set_initial_state_with_transform(
   set_initial_state(pose, twist);
 }
 
+void SimplePlanningSimulator::latch_initial_pose_z(const PoseStamped & pose_stamped)
+{
+  const auto transform = get_transform_msg(origin_frame_id_, pose_stamped.header.frame_id);
+  latched_initial_pose_z_ = pose_stamped.pose.position.z + transform.transform.translation.z;
+  latched_initial_pose_time_.emplace(pose_stamped.header.stamp);
+  use_latched_initial_pose_z_ = true;
+}
+
 void SimplePlanningSimulator::set_initial_state(const Pose & pose, const Twist & twist)
 {
   const double x = pose.position.x;
@@ -746,7 +784,9 @@ void SimplePlanningSimulator::set_initial_state(const Pose & pose, const Twist &
     state << x, y, yaw, vx, steer;
   } else if (vehicle_model_type_ == VehicleModelType::LEARNED_STEER_VEL) {
     state << x, y, yaw, yaw_rate, vx, vy, steer;
-  } else if (vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC_GEARED_WO_FALL_GUARD) {
+  } else if (
+    vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC_GEARED_WO_FALL_GUARD ||
+    vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC_GEARED_FOR_DIFFUSION_PLANNER) {
     state << x, y, yaw, vx, steer, accx, pedal_accx;
   } else if (  // NOLINT
     vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC ||
@@ -766,6 +806,10 @@ void SimplePlanningSimulator::set_initial_state(const Pose & pose, const Twist &
 double SimplePlanningSimulator::get_z_pose_from_trajectory(
   const double x, const double y, const Odometry & prev_odometry)
 {
+  if (use_latched_initial_pose_z_) {
+    return latched_initial_pose_z_;
+  }
+
   // calculate closest point on trajectory
   if (!current_trajectory_ptr_) {
     return prev_odometry.pose.pose.position.z;

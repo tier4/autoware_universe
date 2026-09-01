@@ -18,6 +18,7 @@
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <stdexcept>
@@ -42,8 +43,11 @@ inline constexpr std::pair<uint8_t, std::string_view> kObjectClassifications[] =
   {ObjectClassification::MOTORCYCLE, "motorcycle"},
   {ObjectClassification::BICYCLE, "bicycle"},
   {ObjectClassification::PEDESTRIAN, "pedestrian"},
-  {ObjectClassification::UNKNOWN, "unknown"}};
-// DO NOT accept "animal", "hazard", "over_drivable", "under_drivable" class
+  {ObjectClassification::UNKNOWN, "unknown"},
+  {ObjectClassification::ANIMAL, "animal"},
+  {ObjectClassification::HAZARD, "hazard"},
+  {ObjectClassification::OVER_DRIVABLE, "over_drivable"},
+  {ObjectClassification::UNDER_DRIVABLE, "under_drivable"}};
 
 constexpr std::string_view to_type_string(const uint8_t label)
 {
@@ -65,6 +69,55 @@ inline std::string_view to_type_string(
 {
   return to_type_string(autoware::object_recognition_utils::getHighestProbLabel(obj));
 }
+
+inline bool is_disabled_target_shape_config(const std::vector<std::string> & shape_names)
+{
+  return shape_names.size() == 1U && shape_names.front().empty();
+}
+
+struct TargetShapeTypeParams
+{
+  bool bbox{true};
+  bool polygon{false};
+
+  TargetShapeTypeParams() = default;
+  explicit TargetShapeTypeParams(const std::vector<std::string> & shape_names)
+  : bbox{false}, polygon{false}
+  {
+    if (is_disabled_target_shape_config(shape_names)) {
+      return;
+    }
+
+    for (const auto & shape_name : shape_names) {
+      if (shape_name == "bbox") {
+        bbox = true;
+      } else if (shape_name == "polygon") {
+        polygon = true;
+      } else if (shape_name.empty()) {
+        throw std::invalid_argument(
+          "Invalid collision check target shape configuration. Use [\"\"] alone to disable the "
+          "class.");
+      } else {
+        throw std::invalid_argument(
+          "Unsupported collision check target shape: " + shape_name +
+          ". Supported values are bbox and polygon. Use [\"\"] to disable the class.");
+      }
+    }
+  }
+
+  bool contains(const uint8_t shape_type) const
+  {
+    using autoware_perception_msgs::msg::Shape;
+
+    if (shape_type == Shape::BOUNDING_BOX) {
+      return bbox;
+    }
+    if (shape_type == Shape::POLYGON) {
+      return polygon;
+    }
+    return false;
+  }
+};
 
 template <typename OutT, typename ParamStruct>
 OutT extract_labeled_param(const ParamStruct & params_struct, const std::string_view key)
@@ -100,6 +153,8 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string_
       return static_cast<OutT>(std::isnan(label_value) ? params_struct.base : label_value);
     } else if constexpr (std::is_same_v<OutT, std::string>) {
       return static_cast<OutT>(label_value.empty() ? params_struct.base : label_value);
+    } else if constexpr (std::is_same_v<OutT, std::vector<std::string>>) {
+      return static_cast<OutT>(label_value.empty() ? params_struct.base : label_value);
     } else {
       return static_cast<OutT>(label_value);
     }
@@ -127,95 +182,165 @@ struct GlobalParams
   }
 };
 
-struct PetThreshold
+struct StopTrackingParams
 {
-  double ego_first_passing_time_gap{1.0};
-  double object_first_passing_time_gap{1.0};
-};
+  double stopped_velocity_threshold{0.3};
+  double history_timeout{0.5};
 
-struct AssessmentTrajectories
-{
-  bool map_based{true};
-  bool constant_curvature{true};
-  bool diffusion_based{true};
+  StopTrackingParams() = default;
+  explicit StopTrackingParams(
+    const validator::Params::CollisionCheck::Drac::StopTracking::Ego & params)
+  : stopped_velocity_threshold(params.stopped_velocity_threshold),
+    history_timeout(params.history_timeout)
+  {
+  }
+
+  explicit StopTrackingParams(
+    const validator::Params::CollisionCheck::Drac::StopTracking::Object & params)
+  : stopped_velocity_threshold(params.stopped_velocity_threshold),
+    history_timeout(params.history_timeout)
+  {
+  }
 };
 
 struct DracParams
 {
-  struct Threshold
+  struct PetMargin
   {
-    double ego_acceleration{-4.0};
+    double ego_earlier{1.0};
+    double object_earlier{1.0};
+  };
+
+  struct EgoReactionBrakingDelay
+  {
+    double nominal{0.4};
+    double departure{1.0};
+  };
+
+  struct EgoDracAcceleration
+  {
+    double safe_limit{-1.5};
+    double danger_limit{-3.0};
+    double fatal_limit{-6.0};
+    bool enable_abandon{false};
+  };
+
+  struct ObjectDracAcceleration
+  {
+    double safe_limit{-0.5};
+    double low_caution_limit{-1.5};
+  };
+
+  struct DracAssessment
+  {
+    bool enable_assessment{true};
+    EgoDracAcceleration ego_drac_assessment{};
+  };
+
+  // DracAssessment that, on top of the ego braking, also evaluates whether the object braking on
+  // its own resolves the collision.
+  struct DracAssessmentWithObjectBraking : DracAssessment
+  {
+    ObjectDracAcceleration object_drac_acceleration{};
+  };
+
+  struct ConstantCurvature
+  {
+    bool enable_assessment{true};
+    double object_time_horizon{1.0};
+    DracAssessment ego_earlier{};
+    DracAssessment object_earlier{};
+  };
+
+  struct MapBased
+  {
+    struct MutualYieldArbitration
+    {
+      bool enabled{false};
+      double min_wait_time{1.0};
+    };
+
+    bool enable_assessment{};
+    MutualYieldArbitration mutual_yield_timeout_arbitration{};
+    DracAssessment ego_prioritized_ego_earlier{};
+    DracAssessment ego_prioritized_object_earlier{};
+    DracAssessmentWithObjectBraking object_prioritized_ego_earlier{};
+    DracAssessment object_prioritized_object_earlier{};
   };
 
   DracParams() = default;
   DracParams(const validator::Params & node_params, const std::string_view key)
   {
     const auto & drac = node_params.collision_check.drac;
-    enable_assessment = extract_labeled_param<bool>(drac.enable_assessment, key);
-    assessment_trajectories.map_based =
-      enable_assessment && extract_labeled_param<bool>(drac.assessment_trajectories.map_based, key);
-    assessment_trajectories.constant_curvature =
-      enable_assessment &&
-      extract_labeled_param<bool>(drac.assessment_trajectories.constant_curvature, key);
-    assessment_trajectories.diffusion_based =
-      enable_assessment &&
-      extract_labeled_param<bool>(drac.assessment_trajectories.diffusion_based, key);
-    ego_total_braking_delay = extract_labeled_param<double>(drac.ego_total_braking_delay, key);
-    ego_footprint_margin.lateral = drac.ego_footprint_margin.lateral;
-    ego_footprint_margin.front = drac.ego_footprint_margin.front;
-    ego_footprint_margin.rear = drac.ego_footprint_margin.rear;
-    warn_threshold.ego_acceleration =
-      extract_labeled_param<double>(drac.warn_threshold.ego_acceleration, key);
-    error_threshold.ego_acceleration =
-      extract_labeled_param<double>(drac.error_threshold.ego_acceleration, key);
+
+    const auto parse_assessment = [&key](const auto & input, DracAssessment & output) {
+      output.enable_assessment = extract_labeled_param<bool>(input.enable_assessment, key);
+
+      const auto & input_acceleration = input.ego_drac_acceleration;
+      auto & output_acceleration = output.ego_drac_assessment;
+      output_acceleration.safe_limit =
+        extract_labeled_param<double>(input_acceleration.safe_limit, key);
+      output_acceleration.danger_limit =
+        extract_labeled_param<double>(input_acceleration.danger_limit, key);
+      output_acceleration.fatal_limit =
+        extract_labeled_param<double>(input_acceleration.fatal_limit, key);
+      output_acceleration.enable_abandon =
+        extract_labeled_param<bool>(input_acceleration.enable_abandon, key);
+    };
+
+    target_shape_types = TargetShapeTypeParams(
+      extract_labeled_param<std::vector<std::string>>(drac.enable_assessment, key));
+    pet_margin.ego_earlier = extract_labeled_param<double>(drac.pet_margin.ego_earlier, key);
+    pet_margin.object_earlier = extract_labeled_param<double>(drac.pet_margin.object_earlier, key);
+    ego_footprint_margin.lateral =
+      extract_labeled_param<double>(drac.ego_footprint_margin.lateral, key);
+    ego_footprint_margin.front =
+      extract_labeled_param<double>(drac.ego_footprint_margin.front, key);
+    ego_footprint_margin.rear = extract_labeled_param<double>(drac.ego_footprint_margin.rear, key);
+    ego_reaction_braking_delay.nominal =
+      extract_labeled_param<double>(drac.ego_reaction_braking_delay.nominal, key);
+    ego_reaction_braking_delay.departure =
+      extract_labeled_param<double>(drac.ego_reaction_braking_delay.departure, key);
+
+    constant_curvature.enable_assessment =
+      extract_labeled_param<bool>(drac.constant_curvature.enable_assessment, key);
+    constant_curvature.object_time_horizon =
+      extract_labeled_param<double>(drac.constant_curvature.object_time_horizon, key);
+    parse_assessment(drac.constant_curvature.ego_earlier, constant_curvature.ego_earlier);
+    parse_assessment(drac.constant_curvature.object_earlier, constant_curvature.object_earlier);
+
+    map_based.enable_assessment =
+      extract_labeled_param<bool>(drac.map_based.enable_assessment, key);
+    const auto & mutual_yield_timeout_arbitration = drac.map_based.mutual_yield_timeout_arbitration;
+    map_based.mutual_yield_timeout_arbitration.enabled =
+      extract_labeled_param<bool>(mutual_yield_timeout_arbitration.enabled, key);
+    map_based.mutual_yield_timeout_arbitration.min_wait_time =
+      extract_labeled_param<double>(mutual_yield_timeout_arbitration.min_wait_time, key);
+    parse_assessment(
+      drac.map_based.ego_prioritized_ego_earlier, map_based.ego_prioritized_ego_earlier);
+    parse_assessment(
+      drac.map_based.ego_prioritized_object_earlier, map_based.ego_prioritized_object_earlier);
+    parse_assessment(
+      drac.map_based.object_prioritized_ego_earlier, map_based.object_prioritized_ego_earlier);
+    const auto & object_drac_acceleration =
+      drac.map_based.object_prioritized_ego_earlier.object_drac_acceleration;
+    auto & output_object_drac_acceleration =
+      map_based.object_prioritized_ego_earlier.object_drac_acceleration;
+    output_object_drac_acceleration.safe_limit =
+      extract_labeled_param<double>(object_drac_acceleration.safe_limit, key);
+    output_object_drac_acceleration.low_caution_limit =
+      extract_labeled_param<double>(object_drac_acceleration.low_caution_limit, key);
+    parse_assessment(
+      drac.map_based.object_prioritized_object_earlier,
+      map_based.object_prioritized_object_earlier);
   }
 
-  bool enable_assessment{false};
-  AssessmentTrajectories assessment_trajectories{};
-  double ego_total_braking_delay{0.4};
+  TargetShapeTypeParams target_shape_types{};
+  PetMargin pet_margin{};
   EgoFootprintMargin ego_footprint_margin{};
-  Threshold warn_threshold{-2.0};
-  Threshold error_threshold{};
-};
-
-struct PetParams
-{
-  bool enable_assessment{true};
-  AssessmentTrajectories assessment_trajectories{};
-  double ego_total_braking_delay{0.4};
-  EgoFootprintMargin ego_footprint_margin{};
-  double ego_assumed_acceleration{-5.0};
-  PetThreshold warn_threshold{};
-  PetThreshold error_threshold{0.6, 0.3};
-
-  PetParams() = default;
-  PetParams(const validator::Params & node_params, const std::string_view key)
-  {
-    const auto & pet = node_params.collision_check.pet_collision;
-    enable_assessment = extract_labeled_param<bool>(pet.enable_assessment, key);
-    assessment_trajectories.map_based =
-      enable_assessment && extract_labeled_param<bool>(pet.assessment_trajectories.map_based, key);
-    assessment_trajectories.constant_curvature =
-      enable_assessment &&
-      extract_labeled_param<bool>(pet.assessment_trajectories.constant_curvature, key);
-    assessment_trajectories.diffusion_based =
-      enable_assessment &&
-      extract_labeled_param<bool>(pet.assessment_trajectories.diffusion_based, key);
-    ego_total_braking_delay = extract_labeled_param<double>(pet.ego_total_braking_delay, key);
-    ego_footprint_margin.lateral = pet.ego_footprint_margin.lateral;
-    ego_footprint_margin.front = pet.ego_footprint_margin.front;
-    ego_footprint_margin.rear = pet.ego_footprint_margin.rear;
-    ego_assumed_acceleration = extract_labeled_param<double>(pet.ego_assumed_acceleration, key);
-
-    warn_threshold.ego_first_passing_time_gap =
-      extract_labeled_param<double>(pet.warn_threshold.ego_first_passing_time_gap, key);
-    warn_threshold.object_first_passing_time_gap =
-      extract_labeled_param<double>(pet.warn_threshold.object_first_passing_time_gap, key);
-    error_threshold.ego_first_passing_time_gap =
-      extract_labeled_param<double>(pet.error_threshold.ego_first_passing_time_gap, key);
-    error_threshold.object_first_passing_time_gap =
-      extract_labeled_param<double>(pet.error_threshold.object_first_passing_time_gap, key);
-  }
+  EgoReactionBrakingDelay ego_reaction_braking_delay{};
+  ConstantCurvature constant_curvature{};
+  MapBased map_based{};
 };
 
 struct RssParams
@@ -229,7 +354,8 @@ struct RssParams
   RssParams(const validator::Params & node_params, const std::string_view key)
   {
     const auto & rss = node_params.collision_check.rss;
-    enable_assessment = extract_labeled_param<bool>(rss.enable_assessment, key);
+    target_shape_types = TargetShapeTypeParams(
+      extract_labeled_param<std::vector<std::string>>(rss.enable_assessment, key));
     stop_distance_margin = extract_labeled_param<double>(rss.stop_distance_margin, key);
     ego_total_braking_delay = extract_labeled_param<double>(rss.ego_total_braking_delay, key);
     ego_footprint_margin.lateral = rss.ego_footprint_margin.lateral;
@@ -241,7 +367,7 @@ struct RssParams
       extract_labeled_param<double>(rss.error_threshold.ego_acceleration, key);
   }
 
-  bool enable_assessment{true};
+  TargetShapeTypeParams target_shape_types{};
   double stop_distance_margin{2.0};
   double ego_total_braking_delay{0.4};
   EgoFootprintMargin ego_footprint_margin{};
@@ -264,7 +390,6 @@ std::map<std::string_view, PluginParam> create_param_map_per_object(
 }
 
 using DracParamMap = std::map<std::string_view, DracParams>;
-using PetParamMap = std::map<std::string_view, PetParams>;
 using RssParamMap = std::map<std::string_view, RssParams>;
 
 }  // namespace autoware::trajectory_validator::plugin::safety

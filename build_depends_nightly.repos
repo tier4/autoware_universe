@@ -13,7 +13,7 @@ repositories:
   core/autoware_cmake:
     type: git
     url: https://github.com/autowarefoundation/autoware_cmake.git
-    version: main
+    version: 1.3.0
   core/autoware_adapi_msgs:
     type: git
     url: https://github.com/autowarefoundation/autoware_adapi_msgs.git
@@ -30,4 +30,8 @@ repositories:
   universe/external/managed_transform_buffer:
     type: git
     url: https://github.com/autowarefoundation/managed_transform_buffer.git
+    version: main
+  vendor/mppi_generic_vendor:
+    type: git
+    url: https://github.com/tier4/mppi_generic_vendor.git
     version: main

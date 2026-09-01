@@ -17,6 +17,7 @@
 #include "autoware/trajectory_validator/detail/trajectory_validator.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
@@ -31,6 +32,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -45,6 +47,7 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
 : node_ptr_(&node),
   logger_(node.get_logger().get_child(interface_name_)),
   validator_params_listener_{node_parameters_interface},
+  validator_params_{validator_params_listener_.get_params()},
   vehicle_info_(vehicle_info),
   plugin_loader_(
     "autoware_trajectory_validator", "autoware::trajectory_validator::plugin::ValidatorInterface"),
@@ -54,7 +57,6 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
     throw std::runtime_error("TimeKeeper is required for TrajectoryValidatorWrapper");
   }
 
-  validator_params_ = validator_params_listener_.get_params();
   const auto filters = validator_params_.filter_names;
   for (const auto & filter : filters) {
     load_metric(filter);
@@ -65,13 +67,22 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
     load_metric(filter, shadow_mode);
   }
 
+  for (const auto & plugin : plugins_) {
+    if (!plugin->is_shadow_mode()) {
+      active_filter_names_.insert(plugin->get_name());
+    }
+  }
+
   std::sort(plugins_.begin(), plugins_.end(), [](const auto & plugin1, const auto & plugin2) {
     return plugin1->get_name() < plugin2->get_name();
   });
   publishers();
 
+  planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      &node, "trajectory_validator");
   validator_ptr_ = std::make_unique<TrajectoryValidator>(plugins_);
-  diagnostics_interface_ptr_ = std::make_unique<DiagnosticsInterface>(node_ptr_, interface_name_);
+  validator_diagnostic_ptr_ = init_diagnostic(node_parameters_interface);
 }
 
 void TrajectoryValidatorWrapper::load_metric(const std::string & name, const bool is_shadow_mode)
@@ -130,7 +141,7 @@ void TrajectoryValidatorWrapper::publishers()
     std::make_shared<autoware_utils_debug::DebugPublisher>(node_ptr_, "~/debug/validator");
 }
 
-CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
+TrajectoryValidatorReport TrajectoryValidatorWrapper::validate_trajectories(
   const autoware_internal_planning_msgs::msg::CandidateTrajectories & input_trajectories,
   const ValidatorContext & context)
 {
@@ -138,9 +149,7 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
 
   update_parameters();
 
-  const auto report = validator_ptr_->process(input_trajectories, context);
-
-  diagnostics_interface_ptr_->clear();
+  const auto report = validator_ptr_->process(input_trajectories, active_filter_names_, context);
 
   for (const auto & table : report.evaluation_tables) {
     for (const auto & eval : table.plugin_evaluations) {
@@ -149,40 +158,16 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
           logger_, *node_ptr_->get_clock(), 1000, "[%s] %s", eval.plugin_name.c_str(),
           eval.reason.c_str());
       }
-      // Exact original behavior: last trajectory's result overwrites previous ones
-      diagnostics_interface_ptr_->add_key_value(
-        eval.plugin_name, std::string(eval.is_feasible ? "OK" : "NG"));
     }
   }
 
-  update_diagnostic(input_trajectories, report.num_feasible_trajectories);
-
   publish_validation_reports(report.validation_reports);
+  publish_planning_factor(report.planning_factors);
+  publish_diagnostic(report.validation_reports);
 
-  // Wire up the debug publishers using the opaque report data
   publish_debug(report.evaluation_tables, report.processing_time_ms, context.odometry->pose.pose);
 
-  return report.valid_trajectories;
-}
-
-void TrajectoryValidatorWrapper::update_diagnostic(
-  const CandidateTrajectories & input_trajectories, const size_t num_feasible_trajectories)
-{
-  if (input_trajectories.candidate_trajectories.size() == num_feasible_trajectories) {
-    // All trajectories are feasible
-    diagnostics_interface_ptr_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::OK, "");
-  } else if (num_feasible_trajectories == 0) {
-    // No feasible trajectories found
-    diagnostics_interface_ptr_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No feasible trajectories found");
-  } else {
-    // At least one trajectory is infeasible
-    diagnostics_interface_ptr_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN, "At least one trajectory is infeasible");
-  }
-
-  diagnostics_interface_ptr_->publish(node_ptr_->get_clock()->now());
+  return report;
 }
 
 void TrajectoryValidatorWrapper::publish_validation_reports(
@@ -317,6 +302,26 @@ void TrajectoryValidatorWrapper::publish_processing_time_text(
     "processing_time_text", fmt::to_string(out));
 }
 
+std::unique_ptr<TrajectoryValidatorDiagnostic> TrajectoryValidatorWrapper::init_diagnostic(
+  rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_parameters_interface) const
+{
+  trajectory_validator_diagnostic::ParamListener diag_param_listener(node_parameters_interface);
+  const auto diag_params = diag_param_listener.get_params();
+  const auto filter_configured_actions_map =
+    make_filter_configured_actions_map(diag_params.configured_actions);
+  auto diag_by_name = build_diagnostic_interface_map(
+    *node_ptr_, filter_configured_actions_map, diag_params.no_candidates_diag_status_name);
+
+  return std::make_unique<TrajectoryValidatorDiagnostic>(
+    filter_configured_actions_map, diag_params, active_filter_names_, std::move(diag_by_name));
+}
+
+void TrajectoryValidatorWrapper::publish_diagnostic(const std::vector<ValidationReport> & reports)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  validator_diagnostic_ptr_->update_and_publish(reports, node_ptr_->get_clock()->now());
+}
+
 void TrajectoryValidatorWrapper::add_planning_factors(
   const autoware_internal_planning_msgs::msg::PlanningFactorArray & planning_factors)
 {
@@ -349,4 +354,5 @@ void TrajectoryValidatorWrapper::publish_planning_factor(
   add_planning_factors(planning_factors);
   planning_factor_interface_->publish();
 }
+
 }  // namespace autoware::trajectory_validator

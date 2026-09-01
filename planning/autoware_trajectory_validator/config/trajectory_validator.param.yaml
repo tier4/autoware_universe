@@ -6,54 +6,91 @@
     shadow_mode_filter_names:
       [
         "safety::UncrossableBoundaryDepartureFilter",
-        "safety::VehicleConstraintFilter",
+        "safety::TrajectoryFeasibilityFilter",
         "traffic_rule::TrafficLightFilter",
+        "traffic_rule::CrosswalkFilter",
       ]
 
     collision_check:
       global_setting:
         time_resolution: 0.1
       drac:
+        stop_tracking:
+          ego:
+            stopped_velocity_threshold: 0.01
+            history_timeout: 0.3
+          object:
+            stopped_velocity_threshold: 0.3
+            history_timeout: 0.3
         enable_assessment:
-          # default value is true.
-          unknown: false
-        assessment_trajectories:
-          map_based: true
-          constant_curvature: true
-          diffusion_based: true
-        ego_total_braking_delay: 0.4
+          base: [bbox]
+          unknown: [""]
+          over_drivable: [""]
+          under_drivable: [""]
+        pet_margin:
+          ego_earlier: 0.6
+          object_earlier: 1.0
         ego_footprint_margin:
-          lateral: 0.0
-          front: 0.0
+          lateral:
+            base: 0.3
+            pedestrian: 0.5
+            bicycle: 0.5
+          front: 1.0
           rear: 0.0
-        warn_threshold:
-          ego_acceleration: -2.0
-        error_threshold:
-          ego_acceleration: -4.0
-      pet_collision:
-        enable_assessment:
-          # default value is true.
-          unknown: false
-        assessment_trajectories:
-          map_based: true
-          constant_curvature: true
-          diffusion_based: true
-        ego_total_braking_delay: 0.4
-        ego_footprint_margin:
-          lateral: 0.0
-          front: 0.0
-          rear: 0.0
-        ego_assumed_acceleration: -4.0
-        warn_threshold:
-          ego_first_passing_time_gap: 1.0
-          object_first_passing_time_gap: 1.0
-        error_threshold:
-          ego_first_passing_time_gap: 0.6
-          object_first_passing_time_gap: 0.3
+        ego_reaction_braking_delay:
+          nominal: 0.5
+          departure: 1.0
+        constant_curvature:
+          enable_assessment: true
+          object_time_horizon:
+            base: 1.0
+            pedestrian: 1.5
+            bicycle: 1.5
+          ego_earlier:
+            enable_assessment: false # Not evaluated. Must be false
+          object_earlier:
+            enable_assessment: true
+            ego_drac_acceleration:
+              safe_limit: -1.5
+              danger_limit: -3.0
+              fatal_limit: -6.0
+              enable_abandon: false
+        map_based:
+          enable_assessment: true
+          mutual_yield_timeout_arbitration:
+            enabled:
+              base: false
+              pedestrian: true
+              bicycle: true
+            min_wait_time: 3.0
+          ego_prioritized_ego_earlier:
+            enable_assessment: false # Not evaluated. Must be false
+          ego_prioritized_object_earlier:
+            enable_assessment: false # Not evaluated. Must be false
+          object_prioritized_ego_earlier:
+            enable_assessment: true
+            ego_drac_acceleration:
+              safe_limit: -1.5
+              danger_limit: -3.0
+              fatal_limit: -6.0
+              enable_abandon: true
+            object_drac_acceleration:
+              safe_limit: -0.5
+              low_caution_limit: -1.5
+          object_prioritized_object_earlier:
+            enable_assessment: true
+            ego_drac_acceleration:
+              safe_limit: -1.5
+              danger_limit: -3.0
+              fatal_limit: -6.0
+              enable_abandon: false
       rss:
         enable_assessment:
-          # default value is true.
-          unknown: false
+          base: [bbox, polygon]
+          motorcycle: [bbox]
+          bicycle: [bbox]
+          over_drivable: [""]
+          under_drivable: [""]
         stop_distance_margin: 2.0
         ego_total_braking_delay: 0.4
         ego_footprint_margin:
@@ -64,22 +101,56 @@
         error_threshold:
           ego_acceleration: -4.0
 
-    vehicle_constraint:
+    trajectory_feasibility:
       max_speed: 16.7 # m/s
       max_acceleration: 5.0 # m/s^2
       max_deceleration: 5.0 # m/s^2 (positive but represents deceleration)
+      max_yaw_deviation: 0.35 # rad
+      max_velocity_deviation: 100.0 # m/s
+      max_lateral_acceleration: 9.8 # m/s^2
+      max_distance_deviation: 100.0 # m
       max_steering_angle: 0.8 # rad
       max_steering_rate: 0.3 # rad/s
 
+    crosswalk:
+      object_types: ["pedestrian", "bicycle"]
+      lon_detection_margin: 2.0 # [m] longitudinal extrusion length from crosswalk edge
+      lat_detection_margin: 1.0 # [m] lateral extrusion length from crosswalk edge
+      object_clear_time_th: 0.3 # [s] duration threshold to clear target object when no longer seen
+      overshoot_tolerance: 0.1  # [m] maximum overshoot distance allowed to consider the trajectory feasible
+      stop_duration: 3.0 # [s] minimum duration of the stop to consider the trajectory feasible
+      arrived_distance_threshold: 5.0 # [m] threshold to check if the ego vehicle has arrived at crosswalk stop line
+      use_trajectory_time: false # [bool] whether to use the embedded trajectory time to evaluate the stop duration
+      stopping_params:
+        nominal_decel: 1.0 # [m/s^2] nominal deceleration to calculate the stop distance used as trajectory length limit
+        nominal_jerk: 1.0 # [m/s^3] nominal jerk to calculate the stop distance used as trajectory length limit
+        decel_limit: 2.0 # [m/s^2] deceleration limit to calculate the stop distance used as trajectory length limit
+        jerk_limit: 2.0 # [m/s^3] jerk limit to calculate the stop distance used as trajectory length limit
+        delay_response_time: 0.5 # [s] delay response time used to estimate the minimum ego stopping distance
+
     traffic_light:
-      deceleration_limit: 2.8  # [m/s^2] trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
-      jerk_limit: 5.0  # [m/s^3] trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
-      delay_response_time: 0.5 # [s] delay response time used to estimate the minimum ego stopping distance
-      crossing_time_limit: 2.75 # [s] trajectories crossing an amber light are rejected if they cannot cross before this time
       treat_amber_light_as_red_light: true # [-] when true, amber lights are handled like red lights
-      checked_trajectory_length:  # maximum length of the planned trajectory that is scanned for traffic light stop lines.
-        deceleration_limit: 2.0  # [m/s^2] deceleration limit to calculate the stop distance used as trajectory length limit
-        jerk_limit: 2.0  # [m/s^3] jerk limit to calculate the stop distance used as trajectory length limit
+      treat_unknown_light_as_red_light: false # [-] when true, unknown lights are handled like red lights
+      enable_arrow_aware_amber_passing: true # [-] allow Green->Amber on turn lanes with mapped static arrow
+      stop_overshoot_margin: 0.5 # [m] maximum distance between the stop line and the trajectory stop point to consider the trajectory feasible
+      allow_if_cannot_stop_distance: 0.0 # [m] allow crossing a stop line within this distance if ego cannot stop before the line plus its margin
+      min_lookahead_distance: 20.0 # [m] minimum forward length to scan for stop lines even at low ego speed
+      stable_duration_threshold_red: 0.0 # [s] minimum duration a red light must be seen before it is considered active
+      stable_duration_threshold_amber: 0.0 # [s] minimum duration an amber light must be seen before it is considered active
+      stable_duration_threshold_unknown: 0.0 # [s] minimum duration an unknown light must be seen before it is considered active
+      ego_stopped_velocity_threshold: 0.01 # [m/s] velocity below which ego is considered fully stopped
+      stopping_params:
+        nominal_decel: 1.0 # [m/s^2] nominal deceleration to calculate the stop distance used as trajectory length limit
+        nominal_jerk: 1.0 # [m/s^3] nominal jerk to calculate the stop distance used as trajectory length limit
+        decel_limit: 2.0 # [m/s^2] deceleration limit to calculate the stop distance used as trajectory length limit
+        jerk_limit: 2.0 # [m/s^3] jerk limit to calculate the stop distance used as trajectory length limit
+        delay_response_time: 0.5 # [s] delay response time used to estimate the minimum ego stopping distance
+      amber_rejection:
+        hysteresis_duration: 0.0 # [s] hysteresis duration to persist an AMBER rejection
+        reject_if_stop_detected: false # reject if we detect a previous stop attempt from input trajectory
+        can_stop_decel: 2.8
+        can_stop_jerk: 5.0
+        crossing_time_limit: 2.75 # [s] trajectories crossing an amber light are rejected if they cannot cross before this time
 
     boundary_departure:
       boundary_types: ["road_border"]
@@ -87,6 +158,7 @@
       enable_developer_marker: false
       lateral_margin_m: 0.01
       longitudinal_margin_m: 1.0
+      near_boundary_lateral_th_m: 0.2
       max_deceleration_mps2: -4.0
       max_jerk_mps3: -5.0
       off_time_buffer_s: 0.10

@@ -13,7 +13,9 @@ generate_parameter_library(minimum_rule_based_planner_parameters
 
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/minimum_rule_based_planner.cpp
+  src/map_based_stop_planner.cpp
   src/path_planner.cpp
+  src/turn_indicator_decider.cpp
   src/velocity_smoother.cpp
 )
 
@@ -33,15 +35,18 @@ target_link_libraries(${PROJECT_NAME}_lib
 # Suppress deprecated-declarations warning from parameter_traits library
 target_compile_options(${PROJECT_NAME}_lib PRIVATE -Wno-deprecated-declarations)
 
-rclcpp_components_register_node(${PROJECT_NAME}_lib
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}_lib
   PLUGIN "autoware::minimum_rule_based_planner::MinimumRuleBasedPlannerNode"
   EXECUTABLE ${PROJECT_NAME}_node
+  ROS2_EXECUTOR SingleThreadedExecutor
+  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 pluginlib_export_plugin_description_file(${PROJECT_NAME} plugins.xml)
 
 ament_auto_add_library(${PROJECT_NAME}_plugins SHARED
   plugins/obstacle_stop.cpp
+  plugins/surround_obstacle_stop.cpp
 )
 
 target_include_directories(${PROJECT_NAME}_plugins PRIVATE
@@ -51,6 +56,8 @@ target_include_directories(${PROJECT_NAME}_plugins PRIVATE
 target_link_libraries(${PROJECT_NAME}_plugins
   ${PROJECT_NAME}_lib
 )
+
+target_compile_options(${PROJECT_NAME}_plugins PRIVATE -Wno-deprecated-declarations)
 
 if(BUILD_TESTING)
   file(GLOB_RECURSE TEST_SOURCES test/*.cpp)
@@ -63,6 +70,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_${PROJECT_NAME}
     ${PROJECT_NAME}_lib
   )
+
+  target_compile_options(test_${PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
 endif()
 
 ament_auto_package(

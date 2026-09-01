@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 #include "parameter.hpp"
+#include "stop_tracker.hpp"
 #include "trajectory_utils.hpp"
 #include "types.hpp"
 
@@ -31,14 +32,14 @@
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
-std::vector<TrajectoryData> generate_object_trajectories(
-  const FilterContext & context, double required_time_horizon, double object_assumed_acceleration,
-  double time_resolution, const DracParamMap & drac_param_map, const PetParamMap & pet_param_map);
-
-std::pair<PetArtifact, DracArtifact> assess(
-  const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetParamMap & pet_param_map, const DracParamMap & drac_param_map,
-  const GlobalParams & global_params, const VehicleInfo & vehicle_info);
+DracArtifact assess(
+  const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
+  const trajectory::ObjectTrajectoryCache & object_trajectory_cache,
+  const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
+  const nav_msgs::msg::Odometry & odometry,
+  const autoware_perception_msgs::msg::PredictedObjects & predicted_objects,
+  StopTrackers & stop_trackers, const DracParamMap & drac_param_map,
+  const GlobalParams & global_params);
 }  // namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 
 namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
@@ -75,9 +76,8 @@ std::optional<double> compute_distance_to_collision(
   const autoware_perception_msgs::msg::PredictedObject & object);
 
 RssArtifact assess(
-  const TrajectoryPoints & traj_points, const FilterContext & context,
-  const RssParamMap & rss_param_map, const GlobalParams & global_params,
-  const VehicleInfo & vehicle_info);
+  const trajectory::EgoTrajectoryCache & ego_trajectory_cache, const FilterContext & context,
+  const RssParamMap & rss_param_map);
 }  // namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_

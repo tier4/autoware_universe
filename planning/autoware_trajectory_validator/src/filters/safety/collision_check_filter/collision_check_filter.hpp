@@ -18,6 +18,8 @@
 #include "autoware/trajectory_validator/validator_interface.hpp"
 #include "parameter.hpp"
 #include "reporter.hpp"
+#include "stop_tracker.hpp"
+#include "trajectory_utils.hpp"
 #include "types.hpp"
 
 #include <vector>
@@ -30,25 +32,27 @@ public:
   CollisionCheckFilter() : ValidatorInterface("collision_check_filter") {}
 
   result_t is_feasible(
-    const TrajectoryPoints & traj_points, const FilterContext & context) override;
+    const CandidateTrajectory & candidate_trajectory, const FilterContext & context) override;
 
   void update_parameters(const validator::Params & node_params) final;
 
 private:
   GlobalParams global_params_;
   DracParamMap drac_param_map_;
-  PetParamMap pet_param_map_;
   RssParamMap rss_param_map_;
+  StopTrackers stop_tracker_;
 
-  reporter::ContinuousDetectionTimes pet_continuous_times_;
   reporter::ContinuousDetectionTimes rss_continuous_times_;
   reporter::ContinuousDetectionTimes drac_continuous_times_;
+
+  // Retained across is_feasible() calls so object trajectories are reused within one perception
+  // frame; invalidated via update() when the PredictedObjects timestamp changes.
+  trajectory::ObjectTrajectoryCache object_trajectory_cache_;
 
   void clear_detection_times();
 
   std::vector<MetricReport> generate_metric_reports(
-    const DracArtifact & drac_artifact, const PetArtifact & pet_artifact,
-    const RssArtifact & rss_artifact) const;
+    const DracArtifact & drac_artifact, const RssArtifact & rss_artifact) const;
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety

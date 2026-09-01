@@ -34,7 +34,8 @@ class TrafficLightFilter : public ValidatorInterface
 public:
   TrafficLightFilter();
 
-  result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
+  result_t is_feasible(
+    const CandidateTrajectory & candidate_trajectory, const FilterContext & context) final;
 
   void update_parameters(const validator::Params & params) final;
 
@@ -48,11 +49,19 @@ private:
     size_t rejection_count{0};
   };
 
+  struct StoppingDistance
+  {
+    std::optional<double> nominal;
+    std::optional<double> minimum;
+  } stopping_distance_;
+
   std::unique_ptr<traffic_light_compliance_checker::TrafficLightComplianceChecker> checker_;
   validator::Params::TrafficLight params_;
 
   std::unordered_map<int64_t, RejectionInfo> aggregated_rejections_;
   std::optional<rclcpp::Time> last_frame_time_;
+
+  [[nodiscard]] RiskLevel::_level_type get_risk_level(const double arc_length_to_stop_line) const;
 
   void update_debug_data(
     const std::vector<traffic_light_compliance_checker::Violation> & violations,

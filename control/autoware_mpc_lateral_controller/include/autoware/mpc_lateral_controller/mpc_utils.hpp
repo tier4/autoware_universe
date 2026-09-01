@@ -29,6 +29,7 @@
 
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -97,6 +98,15 @@ void calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory, std::vector<do
  * @return total arc length
  */
 double calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory);
+
+/**
+ * @brief calculate spatial arc length from a start index to the trajectory end
+ * @param [in] trajectory trajectory to measure
+ * @param [in] start_idx index from which to start accumulating distance
+ * @return accumulated 2D distance from start_idx to the last point
+ */
+double calcMPCTrajectoryRemainingArcLength(
+  const MPCTrajectory & trajectory, const size_t start_idx);
 
 /**
  * @brief resample the given trajectory with the given fixed interval
@@ -232,6 +242,13 @@ void extendTrajectoryInYawDirection(
  * @return clipped trajectory
  */
 MPCTrajectory clipTrajectoryByLength(const MPCTrajectory & trajectory, const double length);
+
+/**
+ * @brief Estimate whether the reference trajectory is driven forward or backward.
+ * @param [in] reference trajectory
+ * @return driving direction, otherwise std::nullopt
+ */
+std::optional<bool> infer_forward_driving(const MPCTrajectory & trajectory);
 
 /**
  * @brief Updates the value of a parameter with the given name.

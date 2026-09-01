@@ -20,6 +20,7 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
@@ -38,6 +39,7 @@ struct ValidatorContext
   autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr neural_network_predicted_objects;
   autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr traffic_light_signals;
   autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr route;
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr segmented_pointcloud;
 };
 
 using FilterContext = ValidatorContext;

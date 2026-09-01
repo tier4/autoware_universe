@@ -18,6 +18,7 @@
 #include "type_alias.hpp"
 
 #include <autoware_utils_debug/time_keeper.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/clock.hpp>
 #include <rclcpp/logger.hpp>
 
@@ -50,18 +51,18 @@ struct RouteContext
   std::optional<lanelet::ConstLanelet> closest_preferred_lanelet;
 };
 
+struct Interval
+{
+  double start;
+  double end;
+};
+
 struct WaypointGroup
 {
   struct Waypoint
   {
     lanelet::ConstPoint3d point;
     lanelet::Id lane_id;
-  };
-
-  struct Interval
-  {
-    double start;
-    double end;
   };
 
   std::vector<Waypoint> waypoints;
@@ -78,7 +79,6 @@ struct PathRange
 struct TrajectoryShiftParams
 {
   double minimum_shift_length{0.1};      // [m] lateral offset threshold to trigger shift
-  double minimum_shift_yaw{0.1};         // [rad] yaw deviation threshold to trigger shift
   double minimum_shift_distance{5.0};    // [m] floor for shift distance
   double min_speed_for_curvature{2.77};  // [m/s] lower bound on speed for kappa0 computation
   double lateral_accel_limit{0.5};       // [m/s^2] allowed lateral acceleration budget
@@ -110,18 +110,20 @@ public:
 
   // Path planning
   std::optional<PathWithLaneId> plan_path(
-    const geometry_msgs::msg::Pose & current_pose, double ego_velocity);
+    const geometry_msgs::msg::Pose & current_pose, double ego_velocity,
+    const builtin_interfaces::msg::Time & stamp);
   std::optional<PathWithLaneId> generate_path(
     const lanelet::LaneletSequence & lanelet_sequence, double s_start, double s_end,
-    double ego_velocity);
+    double ego_velocity, const builtin_interfaces::msg::Time & stamp);
 
   // Trajectory shifting
-  Trajectory shift_trajectory_to_ego(
+  static Trajectory shift_trajectory_to_ego(
     const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose, double ego_velocity,
     double ego_yaw_rate, const TrajectoryShiftParams & shift_params, double delta_arc_length);
 
   // Path to trajectory conversion
-  Trajectory convert_path_to_trajectory(const PathWithLaneId & path, double resample_interval);
+  static Trajectory convert_path_to_trajectory(
+    const PathWithLaneId & path, double resample_interval);
 
   // Params update
   void update_params(const Params & params);
@@ -141,6 +143,8 @@ private:
   VehicleInfo vehicle_info_;
   RouteContext route_context_;
   std::optional<lanelet::ConstLanelet> current_lanelet_;
+  std::optional<UUID> prev_route_uuid_;
+  bool route_updated_;
 };
 
 // ---------------------------------------------------------------------------
@@ -148,6 +152,20 @@ private:
 // ---------------------------------------------------------------------------
 namespace utils
 {
+
+/**
+ * @brief get lanelets that are in specified distance backward from target lanelet
+ */
+lanelet::ConstLanelets get_lanelets_up_to(
+  const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data, const double distance,
+  const double offset_distance);
+
+/**
+ * @brief get lanelets that are in specified distance forward from target lanelet
+ */
+lanelet::ConstLanelets get_lanelets_after(
+  const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data, const double distance,
+  const double offset_distance);
 
 /**
  * @brief get lanelets within route that are in specified distance backward from target lanelet
@@ -172,6 +190,13 @@ std::optional<lanelet::ConstLanelet> get_previous_lanelet_within_route(
  */
 std::optional<lanelet::ConstLanelet> get_next_lanelet_within_route(
   const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data);
+
+/**
+ * @brief refine path range considering goal pose and intersection
+ */
+Interval refine_path_range(
+  const Interval & range, const lanelet::LaneletSequence & lanelet_sequence,
+  const RouteContext & planner_data, const VehicleInfo & vehicle_info, const double stop_margin);
 
 /**
  * @brief get waypoints in lanelet sequence and group them

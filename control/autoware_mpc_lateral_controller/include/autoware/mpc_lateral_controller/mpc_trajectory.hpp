@@ -16,6 +16,7 @@
 #define AUTOWARE__MPC_LATERAL_CONTROLLER__MPC_TRAJECTORY_HPP_
 
 #include "autoware_utils/geometry/geometry.hpp"
+#include "builtin_interfaces/msg/time.hpp"
 
 #include "geometry_msgs/msg/point.hpp"
 
@@ -40,6 +41,7 @@ public:
   double vx;
   double k;
   double smooth_k;
+  double steer;
   double relative_time;
 };
 
@@ -48,6 +50,8 @@ public:
 class MPCTrajectory
 {
 public:
+  //!< @brief absolute time origin
+  builtin_interfaces::msg::Time stamp{};
   std::vector<double> x;              //!< @brief x position x vector
   std::vector<double> y;              //!< @brief y position y vector
   std::vector<double> z;              //!< @brief z position z vector
@@ -55,6 +59,7 @@ public:
   std::vector<double> vx;             //!< @brief vx velocity vx vector
   std::vector<double> k;              //!< @brief k curvature k vector
   std::vector<double> smooth_k;       //!< @brief k smoothed-curvature k vector
+  std::vector<double> steer;          //!< @brief trajectory steering state vector
   std::vector<double> relative_time;  //!< @brief relative_time duration time from start point
 
   /**
@@ -63,6 +68,14 @@ public:
   void push_back(
     const double & xp, const double & yp, const double & zp, const double & yawp,
     const double & vxp, const double & kp, const double & smooth_kp, const double & tp);
+
+  /**
+   * @brief push_back for all values, including the trajectory steering state
+   */
+  void push_back(
+    const double & xp, const double & yp, const double & zp, const double & yawp,
+    const double & vxp, const double & kp, const double & smooth_kp, const double & steerp,
+    const double & tp);
 
   /**
    * @brief push_back for all values
@@ -119,6 +132,7 @@ public:
       point.pose.position.z = z.at(i);
       point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw.at(i));
       point.longitudinal_velocity_mps = vx.at(i);
+      point.front_wheel_angle_rad = steer.at(i);
       points.push_back(point);
     }
     return points;
