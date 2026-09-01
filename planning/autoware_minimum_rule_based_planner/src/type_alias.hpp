@@ -27,9 +27,11 @@
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -45,9 +47,11 @@ using autoware_internal_planning_msgs::msg::PathPointWithLaneId;
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
+using autoware_vehicle_msgs::msg::SteeringReport;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 using sensor_msgs::msg::PointCloud2;

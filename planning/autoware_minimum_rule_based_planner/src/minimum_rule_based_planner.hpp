@@ -53,7 +53,9 @@ public:
     LaneletMapBin::ConstSharedPtr lanelet_map_bin_ptr;
     Odometry::ConstSharedPtr odometry_ptr;
     AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr;
+    SteeringReport::ConstSharedPtr steering_status_ptr;
     PredictedObjects::ConstSharedPtr predicted_objects_ptr;
+    TrackedObjects::ConstSharedPtr tracked_objects_ptr;
     PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr;
     PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
   };
@@ -73,6 +75,7 @@ private:
   std::optional<PathWithLaneId> plan_path(const InputData & input_data);
   Trajectory shift_trajectory_to_ego(
     const Trajectory & trajectory, const InputData & input_data) const;
+  Trajectory optimize_with_mppi(const Trajectory & trajectory, const InputData & input_data);
   Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
   void apply_modifiers(Trajectory & trajectory, const InputData & input_data) const;
 
@@ -135,6 +138,7 @@ private:
 
   std::unique_ptr<OptimizerPluginLoader> plugin_loader_;
   std::shared_ptr<OptimizerPluginInterface> path_smoother_;
+  std::shared_ptr<OptimizerPluginInterface> mppi_optimizer_;
   std::shared_ptr<autoware::trajectory_processor::TrajectoryProcessorContext> optimizer_context_;
   std::unique_ptr<VelocitySmoother> velocity_smoother_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
@@ -185,9 +189,17 @@ private:
     acceleration_subscriber_{this, "~/input/acceleration"};
   AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr_;
 
+  autoware_utils::InterProcessPollingSubscriber<SteeringReport> steering_status_subscriber_{
+    this, "~/input/steering_status"};
+  SteeringReport::ConstSharedPtr steering_status_ptr_;
+
   autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_subscriber_{
     this, "~/input/objects"};
   PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
+
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<TrackedObjects> tracked_objects_subscriber_{
+    this, "~/input/tracked_objects"};
+  TrackedObjects::ConstSharedPtr tracked_objects_ptr_;
 
   autoware_utils_rclcpp::InterProcessPollingSubscriber<PointCloud2> pointcloud_subscriber_{
     this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
