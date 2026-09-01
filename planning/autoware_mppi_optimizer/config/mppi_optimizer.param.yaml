@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     mppi_optimizer:
-      enabled: false
+      enabled: true
       shadow_mode: false
       limit_velocity_from_map: false
       # Aligned debug override arrays: lanelet ID -> maximum velocity [m/s].
@@ -10,8 +10,8 @@
 
       # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
       lambda: 100.0
-      max_iter: 20
-      speed_coeff: 100.0
+      max_iter: 10
+      speed_coeff: 10000.0
       track_coeff: 0.0
       track_terminal_scale: 0.0
       heading_coeff: 0.0
@@ -19,28 +19,29 @@
       lateral_distance_coeff: 0.0
       lateral_yaw_error_coeff: 0.0
       # Soft cost on remaining corridor chord length to path end [m]; 0 = off.
-      remaining_distance_coeff: 100.0
+      remaining_distance_coeff: 0.0
       # Soft cost on along-track distance past the corridor tip [m]; 0 = off.
-      path_overshoot_coeff: 100.0
+      path_overshoot_coeff: 1.0
       # Track the center of the ego footprint against the time-indexed reference; 0 = off.
       track_center_coeff: 0.0
       # Soft clearance cost for ego corners near drivable-area boundaries; 0 = off.
       corner_buffer_coeff: 0.0
       corner_safe_margin: 0.3
-      lateral_acceleration_coeff: 100.0
-      lateral_jerk_coeff: 100.0
-      longitudinal_jerk_coeff: 100.0
-      accel_cmd_coeff: 1.0
-      steer_cmd_coeff: 1.0
-      steer_rate_coeff: 10000.0
+      lateral_acceleration_coeff: 1.0
+      lateral_jerk_coeff: 1.0
+      longitudinal_jerk_coeff: 1.0
+      accel_cmd_coeff: 0.0
+      steer_cmd_coeff: 0.0
+      steer_rate_coeff: 1.0
       # Shared deadband-quadratic cost for optional VelocityLimit bounds.
-      overlimit_coeff: 10000.0
+      overlimit_coeff: 1000.0
       # MPPI control-sample noise std-devs around the nominal (u_nom).
       accel_cmd_std_dev: 0.2
-      steer_cmd_std_dev: 0.05
+      steer_cmd_std_dev: 0.02
+      std_dev_decay: 0.75
       # Power-law PSD exponents (0 = white, 1 = pink, 2 = brown) for colored noise.
-      accel_cmd_noise_exponent: 1.0
-      steer_cmd_noise_exponent: 1.0
+      accel_cmd_noise_exponent: 0.0
+      steer_cmd_noise_exponent: 0.0
       drivable_area_safe_margin: 0.0
       drivable_area_barrier_weight: 0.0
       # Crash costs
@@ -50,7 +51,7 @@
       road_border_collision_margin: 0.2
       obstacle_safe_margin: 0.5
       road_border_safe_margin: 0.5
-      crash_contact_penalty: 10000.0
+      crash_contact_penalty: 1000.0
 
       nominal_curvature_min_chord_length_m: 1.5
 
@@ -69,10 +70,16 @@
 
       # Cold-seed u_nom from acados temporal MPT.
       use_temporal_mpt_as_nominal: false
-      use_last_control_as_nominal: false
+      use_last_control_as_nominal: true
+
+      # Curvature-adaptive EMA: strong smoothing around zero steer, no filtering in turns.
+      enable_curvature_adaptive_steering_filter: true
+      steering_filter_alpha_straight: 0.1
+      steering_filter_alpha_turn: 1.0
+      steering_filter_turn_angle_rad: 0.1
 
       # Expensive per-iteration sampled rollout markers.
       enable_iteration_rollout_debug: false
       # Optional offline debug log output.
-      enable_debug_trajectory_log: false
+      enable_debug_trajectory_log: true
       debug_trajectory_log_directory: ""

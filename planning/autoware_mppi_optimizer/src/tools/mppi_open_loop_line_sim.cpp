@@ -214,7 +214,22 @@ void loadParamsYaml(
         runtime.enable_input_delay_compensation = *flag;
       } else if (key == "prevent_reverse_velocity") {
         runtime.prevent_reverse_velocity = *flag;
+      } else if (key == "enable_curvature_adaptive_steering_filter") {
+        runtime.enable_curvature_adaptive_steering_filter = *flag;
       }
+      continue;
+    }
+
+    if (key == "steering_filter_alpha_straight") {
+      runtime.steering_filter_alpha_straight = std::stof(value);
+      continue;
+    }
+    if (key == "steering_filter_alpha_turn") {
+      runtime.steering_filter_alpha_turn = std::stof(value);
+      continue;
+    }
+    if (key == "steering_filter_turn_angle_rad") {
+      runtime.steering_filter_turn_angle_rad = std::stof(value);
       continue;
     }
 
@@ -421,8 +436,8 @@ Odometry makeOdometry(const SimPlantState & plant, const float sim_time_s)
   odometry.header.frame_id = "map";
   odometry.child_frame_id = "base_link";
   odometry.header.stamp.sec = static_cast<int32_t>(sim_time_s);
-  odometry.header.stamp.nanosec = static_cast<uint32_t>(
-    (sim_time_s - static_cast<float>(odometry.header.stamp.sec)) * 1.0E9F);
+  odometry.header.stamp.nanosec =
+    static_cast<uint32_t>((sim_time_s - static_cast<float>(odometry.header.stamp.sec)) * 1.0E9F);
   odometry.pose.pose.position.x = plant.x;
   odometry.pose.pose.position.y = plant.y;
   odometry.pose.pose.orientation = quaternionFromYaw(plant.yaw);
