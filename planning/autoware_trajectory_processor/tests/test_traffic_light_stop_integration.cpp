@@ -521,8 +521,9 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryModifiedWithAmberLightWhenPrev
   auto crossing_trajectory = create_straight_trajectory(0.0, 10.0, 10.0);
   auto input = make_default_input(10.0);
   const auto result = plugin_->process(crossing_trajectory, input);
-  EXPECT_TRUE(result == autoware::trajectory_processor::plugin::ProcessingResult::Modified) << "Should modify trajectory when a prior stop attempt is detected and "
-                           "reject_if_stop_detected is true";
+  EXPECT_TRUE(result == autoware::trajectory_processor::plugin::ProcessingResult::Modified)
+    << "Should modify trajectory when a prior stop attempt is detected and "
+       "reject_if_stop_detected is true";
   EXPECT_FLOAT_EQ(crossing_trajectory.back().longitudinal_velocity_mps, 0.0F);
 }
 

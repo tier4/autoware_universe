@@ -14,6 +14,8 @@
 
 #include "path_planner.hpp"
 
+#include "start_goal_planner/clothoid_pull_generater.hpp"
+
 #include <autoware/lanelet2_utils/kind.hpp>
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/resample/resample.hpp>
@@ -30,6 +32,7 @@
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/normalization.hpp>
+#include <autoware_utils/math/unit_conversion.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <tf2/utils.h>
@@ -56,11 +59,13 @@ PathPlanner::PathPlanner(
   const rclcpp::Logger & logger, rclcpp::Clock::SharedPtr clock,
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
   const VehicleInfo & vehicle_info)
-: logger_(logger),
+: start_goal_planner_(logger, time_keeper, params.path_planning.start_goal_planner, vehicle_info),
+  logger_(logger),
   clock_(std::move(clock)),
   time_keeper_(std::move(time_keeper)),
   params_(params),
-  vehicle_info_(vehicle_info)
+  vehicle_info_(vehicle_info),
+  route_updated_(false)
 {
 }
 
@@ -69,7 +74,13 @@ void PathPlanner::set_planner_data(
   const LaneletRoute::ConstSharedPtr & route_ptr)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  if (lanelet_map_bin_ptr && !route_context_.lanelet_map_ptr) {
+  if (!lanelet_map_bin_ptr) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 5000, "Lanelet map has not been received. Skipping planner data update.");
+    return;
+  }
+
+  if (!route_context_.lanelet_map_ptr) {
     route_context_.lanelet_map_ptr = std::make_shared<lanelet::LaneletMap>();
     lanelet::utils::conversion::fromBinMsg(
       *lanelet_map_bin_ptr, route_context_.lanelet_map_ptr, &route_context_.traffic_rules_ptr,
@@ -77,6 +88,10 @@ void PathPlanner::set_planner_data(
   }
 
   if (route_ptr) {
+    if (route_ptr->uuid != prev_route_uuid_) {
+      prev_route_uuid_ = route_ptr->uuid;
+      route_updated_ = true;
+    }
     set_route(route_ptr);
   }
 }
@@ -121,11 +136,23 @@ void PathPlanner::set_route(const LaneletRoute::ConstSharedPtr & route_ptr)
     };
   set_lanelets_from_segment(route_ptr->segments.front(), route_context_.start_lanelets);
   set_lanelets_from_segment(route_ptr->segments.back(), route_context_.goal_lanelets);
+
+  const StartGoalPlanner::RouteData route_data{
+    route_context_.goal_pose,         route_context_.preferred_lanelets,
+    route_context_.start_lanelets,    route_context_.lanelet_map_ptr,
+    route_context_.routing_graph_ptr, route_context_.traffic_rules_ptr};
+  start_goal_planner_.set_route_data(route_data);
 }
 
 void PathPlanner::set_route_context(const RouteContext & route_context)
 {
   route_context_ = route_context;
+
+  const StartGoalPlanner::RouteData route_data{
+    route_context_.goal_pose,         route_context_.preferred_lanelets,
+    route_context_.start_lanelets,    route_context_.lanelet_map_ptr,
+    route_context_.routing_graph_ptr, route_context_.traffic_rules_ptr};
+  start_goal_planner_.set_route_data(route_data);
 }
 
 RouteContext & PathPlanner::route_context()
@@ -141,6 +168,7 @@ const RouteContext & PathPlanner::route_context() const
 void PathPlanner::update_params(const Params & params)
 {
   params_ = params;
+  start_goal_planner_.update_params(params_.path_planning.start_goal_planner);
 }
 
 Trajectory PathPlanner::convert_path_to_trajectory(
@@ -197,6 +225,7 @@ lanelet::BasicPoints3d to_lanelet_points(
     [](const auto & point) { return lanelet::utils::conversion::toLaneletPoint(point); });
   return lanelet_points;
 }
+
 }  // namespace
 
 lanelet::ConstLanelets get_lanelets_up_to(
@@ -233,7 +262,11 @@ lanelet::ConstLanelets get_lanelets_after(
     return {};
   }
 
-  if (!lanelets->empty() && !exists(planner_data.goal_lanelets, lanelets->back())) {
+  const bool in_goal_lanelet = exists(planner_data.goal_lanelets, lanelet);
+  const bool last_lanelet_is_goal =
+    !lanelets->empty() && exists(planner_data.goal_lanelets, lanelets->back());
+  const bool reaching_goal = in_goal_lanelet || last_lanelet_is_goal;
+  if (!reaching_goal) {
     return *lanelets;
   }
 
@@ -864,135 +897,17 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
     s_right_centerline ? s_right_centerline : s_right_bound};
 }
 
-PathPointTrajectory refine_path_for_goal(
-  const PathPointTrajectory & input, const geometry_msgs::msg::Pose & goal_pose,
-  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset)
-{
-  auto contain_goal_lane_id = [&](const PathPointWithLaneId & point) {
-    const auto & ids = point.lane_ids;
-    return std::find(ids.begin(), ids.end(), goal_lane_id) != ids.end();
-  };
-
-  auto outside_circle = [&](const PathPointWithLaneId & point) {
-    return autoware_utils::calc_distance2d(point.point.pose, goal_pose) > search_radius_range;
-  };
-
-  auto closest_to_goal = autoware::experimental::trajectory::closest_with_constraint(
-    input, goal_pose, contain_goal_lane_id);
-
-  // If no point with the goal lane ID exists in the trajectory (e.g. goal is on an adjacent lane),
-  // fall back to the geometrically closest point so the goal connection still applies.
-  if (!closest_to_goal) {
-    closest_to_goal = autoware::experimental::trajectory::closest(input, goal_pose);
-  }
-
-  auto cropped_path = autoware::experimental::trajectory::crop(input, 0, *closest_to_goal);
-
-  auto intervals =
-    autoware::experimental::trajectory::find_intervals(cropped_path, outside_circle, 10);
-
-  std::vector<PathPointWithLaneId> goal_connected_trajectory_points;
-
-  if (!intervals.empty()) {
-    auto cropped = autoware::experimental::trajectory::crop(cropped_path, 0, intervals.back().end);
-    goal_connected_trajectory_points = cropped.restore();
-  } else if (cropped_path.length() > pre_goal_offset) {
-    // If distance from start to goal is smaller than refine_goal_search_radius_range and start is
-    // farther from goal than pre_goal, we just connect start, pre_goal, and goal.
-    goal_connected_trajectory_points = {cropped_path.compute(0)};
-  }
-
-  auto goal = input.compute(autoware::experimental::trajectory::closest(input, goal_pose));
-  goal.point.pose = goal_pose;
-  goal.point.longitudinal_velocity_mps = 0.0;
-
-  const auto pre_goal_pose =
-    autoware_utils::calc_offset_pose(goal_pose, -pre_goal_offset, 0.0, 0.0);
-  auto pre_goal = input.compute(autoware::experimental::trajectory::closest(input, pre_goal_pose));
-  pre_goal.point.pose = pre_goal_pose;
-
-  goal_connected_trajectory_points.push_back(pre_goal);
-  goal_connected_trajectory_points.push_back(goal);
-
-  if (
-    const auto output =
-      autoware::experimental::trajectory::pretty_build(goal_connected_trajectory_points)) {
-    return *output;
-  }
-  return input;
-}
-
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
-  const PathPointTrajectory & trajectory, const RouteContext & planner_data)
+  const PathPointTrajectory & trajectory, const lanelet::LaneletMapPtr & lanelet_map_ptr)
 {
   lanelet::ConstLanelets lanelets{};
   const auto lane_ids = trajectory.get_contained_lane_ids();
   const auto lane_ids_set = std::set(lane_ids.begin(), lane_ids.end());
   for (const auto & lane_id : lane_ids_set) {
-    const auto lanelet = planner_data.lanelet_map_ptr->laneletLayer.get(lane_id);
+    const auto lanelet = lanelet_map_ptr->laneletLayer.get(lane_id);
     lanelets.push_back(lanelet);
   }
   return lanelets;
-}
-
-bool is_in_lanelets(const geometry_msgs::msg::Pose & pose, const lanelet::ConstLanelets & lanes)
-{
-  return std::any_of(lanes.begin(), lanes.end(), [&](const auto & lane) {
-    return lanelet::utils::isInLanelet(pose, lane);
-  });
-}
-
-bool is_trajectory_inside_lanelets(
-  const PathPointTrajectory & refined_path, const lanelet::ConstLanelets & lanelets)
-{
-  const auto points = refined_path.restore();
-  return std::none_of(points.begin(), points.end(), [&](const auto & point) {
-    return !is_in_lanelets(point.point.pose, lanelets);
-  });
-}
-
-std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
-  const PathPointTrajectory & trajectory, const RouteContext & planner_data,
-  const double search_radius_range, const double pre_goal_offset)
-{
-  if (planner_data.preferred_lanelets.empty()) {
-    return std::nullopt;
-  }
-  // Build the set of lanelets valid for the refined path.
-  // Include goal lanelets so that a path connecting to an adjacent goal lane passes validation.
-  auto lanelets = extract_lanelets_from_trajectory(trajectory, planner_data);
-  for (const auto & goal_ll : planner_data.goal_lanelets) {
-    if (std::find(lanelets.begin(), lanelets.end(), goal_ll) == lanelets.end()) {
-      lanelets.push_back(goal_ll);
-    }
-  }
-
-  // Include lanelets that contain the goal pose (e.g., shoulder lanelets) so that
-  // the trajectory connecting to an off-lane goal passes the inside-lanelets check.
-  const auto goal_point_2d =
-    lanelet::BasicPoint2d(planner_data.goal_pose.position.x, planner_data.goal_pose.position.y);
-  const auto nearest_lanelets =
-    lanelet::geometry::findNearest(planner_data.lanelet_map_ptr->laneletLayer, goal_point_2d, 5);
-  for (const auto & [dist, ll] : nearest_lanelets) {
-    if (
-      lanelet::geometry::inside(ll, goal_point_2d) &&
-      std::find(lanelets.begin(), lanelets.end(), ll) == lanelets.end()) {
-      lanelets.push_back(ll);
-    }
-  }
-
-  // This process is to fit the trajectory inside the lanelets. By reducing
-  // refine_goal_search_radius_range, we can fit the trajectory inside lanelets even if the
-  // trajectory has a high curvature.
-  for (double s = search_radius_range; s > 0; s -= 0.1) {
-    const auto refined_trajectory = refine_path_for_goal(
-      trajectory, planner_data.goal_pose, planner_data.preferred_lanelets.back().id(), s,
-      pre_goal_offset);
-    if (is_trajectory_inside_lanelets(refined_trajectory, lanelets)) {
-      return refined_trajectory;
-    }
-  }
-  return std::nullopt;
 }
 
 }  // namespace utils
@@ -1008,6 +923,9 @@ constexpr double quintic_kappa_coeff = 5.773502691896258;  // 10*sqrt(3)/3
 constexpr double yaw_diff_clamp_rad = M_PI / 4.0;
 constexpr double lane_end_match_tolerance_sq = 4.0;  // [m^2] 2m tolerance squared
 constexpr double yaw_step = 0.1;  // [m] finite-difference step for centerline yaw
+// [m] half-baseline of the 3-point reference curvature estimate. Shorter baselines are dominated by
+// the point-to-point noise of the resampled centerline.
+constexpr double curvature_baseline_length = 2.0;
 
 struct QuinticShiftCoeffs
 {
@@ -1075,6 +993,21 @@ double signed_curvature_3pt(
     return 0.0;
   }
   return 2.0 * cross / denom;
+}
+
+double reference_curvature(
+  const std::vector<TrajectoryPoint> & points, const size_t idx, const size_t baseline_step)
+{
+  const size_t i0 = idx > baseline_step ? idx - baseline_step : 0;
+  const size_t i2 = std::min(idx + baseline_step, points.size() - 1);
+  const size_t i1 = (i0 + i2) / 2;
+  if (i1 == i0 || i1 == i2) {
+    return 0.0;
+  }
+  const auto to_2d = [&](const size_t i) {
+    return lanelet::BasicPoint2d(points.at(i).pose.position.x, points.at(i).pose.position.y);
+  };
+  return signed_curvature_3pt(to_2d(i0), to_2d(i1), to_2d(i2));
 }
 
 std::optional<double> cal_margin2goal(
@@ -1153,7 +1086,7 @@ std::optional<double> cal_early_stop(
 
   const auto trajectory_lanelets =
     autoware::minimum_rule_based_planner::utils::extract_lanelets_from_trajectory(
-      trajectory, planner_data);
+      trajectory, planner_data.lanelet_map_ptr);
 
   bool goal_reachable = false;
   for (const auto & lanelet_traj : trajectory_lanelets) {
@@ -1181,6 +1114,41 @@ std::optional<double> cal_early_stop(
     return std::nullopt;
   }
   return *dist_offset;
+}
+
+bool route_deviation_stop(
+  const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & current_pose,
+  const RouteContext & planner_data)
+{
+  lanelet::ConstLanelets recoverable_lanelets;
+  const auto beside_lanelets = planner_data.routing_graph_ptr->besides(current_lanelet);
+  recoverable_lanelets.insert(
+    recoverable_lanelets.end(), beside_lanelets.begin(), beside_lanelets.end());
+
+  const auto left_lanelets =
+    planner_data.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.leftBound());
+
+  for (const auto & ll : left_lanelets) {
+    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(ll)) {
+      recoverable_lanelets.push_back(ll);
+    }
+  }
+
+  const auto right_lanelets =
+    planner_data.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.rightBound());
+
+  for (const auto & ll : right_lanelets) {
+    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(ll)) {
+      recoverable_lanelets.push_back(ll);
+    }
+  }
+
+  for (const auto & ll : recoverable_lanelets) {
+    if (lanelet::geometry::inside(ll, {current_pose.position.x, current_pose.position.y})) {
+      return false;
+    }
+  }
+  return true;
 }
 // ---------------------------------------------------------------------------
 // Lane-change interpolation helpers
@@ -1369,31 +1337,17 @@ void splice_shift_points(
 
 bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & current_pose)
 {
-  if (!current_lanelet_) {
+  if (!current_lanelet_ || std::exchange(route_updated_, false)) {
     lanelet::ConstLanelet closest;
-    if (lanelet::utils::query::getClosestLanelet(
-          route_context_.route_lanelets, current_pose, &closest)) {
+    if (lanelet::utils::query::getClosestLaneletWithConstrains(
+          route_context_.route_lanelets, current_pose, &closest,
+          params_.path_planning.ego_nearest_lanelet.dist_threshold,
+          params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
       current_lanelet_ = closest;
       return true;
     }
+    current_lanelet_ = std::nullopt;
     return false;
-  }
-
-  lanelet::ConstLanelets current_lanelets;
-  lanelet::utils::query::getCurrentLanelets(
-    route_context_.route_lanelets, current_pose, &current_lanelets);
-  if (current_lanelets.empty()) {
-    // Ego is outside route (possibly due to lane change failure)
-    if (lanelet::geometry::inside(
-          *current_lanelet_, {current_pose.position.x, current_pose.position.y})) {
-      return true;
-    }
-    const auto following_lanelets = route_context_.routing_graph_ptr->following(*current_lanelet_);
-    if (following_lanelets.empty()) {
-      return false;
-    }
-    current_lanelet_ = following_lanelets.front();
-    return true;
   }
 
   lanelet::ConstLanelets candidates;
@@ -1412,7 +1366,15 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
   // Include adjacent route lanelets so that ego transitions to the correct lane
   // during lane changes (e.g., 2->4) instead of being picked up by a longitudinally
   // adjacent lanelet on the wrong lane (e.g., 3)
-  for (const auto & beside : route_context_.routing_graph_ptr->besides(*current_lanelet_)) {
+  const auto left_and_rights = route_context_.routing_graph_ptr->besides(*current_lanelet_);
+  const auto adjacent_lefts = route_context_.routing_graph_ptr->adjacentLefts(*current_lanelet_);
+  const auto adjacent_rights = route_context_.routing_graph_ptr->adjacentRights(*current_lanelet_);
+
+  lanelet::ConstLanelets adjacent_lanelets;
+  adjacent_lanelets.insert(adjacent_lanelets.end(), left_and_rights.begin(), left_and_rights.end());
+  adjacent_lanelets.insert(adjacent_lanelets.end(), adjacent_lefts.begin(), adjacent_lefts.end());
+  adjacent_lanelets.insert(adjacent_lanelets.end(), adjacent_rights.begin(), adjacent_rights.end());
+  for (const auto & beside : adjacent_lanelets) {
     if (
       beside.id() != current_lanelet_->id() &&
       std::any_of(
@@ -1429,11 +1391,14 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
     return true;
   }
 
-  if (lanelet::utils::query::getClosestLanelet(
-        route_context_.route_lanelets, current_pose, &*current_lanelet_)) {
+  if (lanelet::utils::query::getClosestLaneletWithConstrains(
+        route_context_.route_lanelets, current_pose, &*current_lanelet_,
+        /*dist_threshold=*/std::numeric_limits<double>::max(),
+        params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
     return true;
   }
 
+  current_lanelet_ = std::nullopt;
   return false;
 }
 
@@ -1474,23 +1439,31 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
 
   const lanelet::LaneletSequence lanelet_sequence(lanelets);
   const auto s = s_on_current_lanelet + lanelet::utils::getLaneletLength2d(backward_lanelets);
-  const auto [s_start, s_end] = utils::refine_path_range(
-    {s - path_length_backward, s + path_length_forward}, lanelet_sequence, route_context_,
-    vehicle_info_, stop_margin);
+  const auto [s_start, s_end] = [&]() {
+    Interval range = utils::refine_path_range(
+      {s - path_length_backward, s + path_length_forward}, lanelet_sequence, route_context_,
+      vehicle_info_, stop_margin);
 
-  if (s_end <= s_start) {
+    if (route_deviation_stop(*current_lanelet_, current_pose, route_context_)) {
+      range.end = std::min(range.end, s);
+    }
+    return range;
+  }();
+
+  if (s_end < s_start) {
     RCLCPP_WARN_THROTTLE(
-      logger_, *clock_, 5000, "s_end (%.2f) <= s_start (%.2f), cannot generate path", s_end,
+      logger_, *clock_, 5000, "s_end (%.2f) < s_start (%.2f), cannot generate path", s_end,
       s_start);
     return std::nullopt;
   }
 
-  return generate_path(lanelet_sequence, s_start, s_end, ego_velocity, stamp);
+  return generate_path(lanelet_sequence, s_start, s_end, ego_velocity, stamp, current_pose);
 }
 
 std::optional<PathWithLaneId> PathPlanner::generate_path(
   const lanelet::LaneletSequence & lanelet_sequence, const double s_start, const double s_end,
-  const double ego_velocity, const builtin_interfaces::msg::Time & stamp)
+  const double ego_velocity, const builtin_interfaces::msg::Time & stamp,
+  const geometry_msgs::msg::Pose & current_pose)
 {
   if (lanelet_sequence.empty()) {
     RCLCPP_ERROR(logger_, "Lanelet sequence is empty");
@@ -1635,26 +1608,16 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     // Connect the path to the goal pose so that ego reaches the goal itself.
     // Check if the goal point is in the search range
     // Note: We only see if the goal is approaching the tail of the path.
-    const auto s_path_end_clamped = std::min(trajectory->length(), adjusted_s_path_end);
-    const auto distance_to_goal = autoware_utils::calc_distance2d(
-      trajectory->compute(s_path_end_clamped), route_context_.goal_pose);
-
-    bool goal_connection_applied = false;
-    if (distance_to_goal < params_.path_planning.smooth_goal_connection.search_radius_range) {
-      auto refined_path = utils::modify_path_for_smooth_goal_connection(
-        *trajectory, route_context_,
-        params_.path_planning.smooth_goal_connection.search_radius_range,
-        params_.path_planning.smooth_goal_connection.pre_goal_offset);
-
-      if (refined_path) {
-        refined_path->align_orientation_with_trajectory_direction();
-        *trajectory = *refined_path;
-        goal_connection_applied = true;
-      }
+    auto refined_path =
+      start_goal_planner_.plan(*trajectory, *current_lanelet_, adjusted_s_path_end, current_pose);
+    if (refined_path.has_value()) {
+      *trajectory = *refined_path;
     }
 
     // Crop end
-    if (!goal_connection_applied && trajectory->length() > adjusted_s_path_end) {
+    const bool goal_planner_applied =
+      start_goal_planner_.goal_planner_active() && refined_path.has_value();
+    if (!goal_planner_applied && trajectory->length() > adjusted_s_path_end) {
       trajectory->crop(0., adjusted_s_path_end);
     }
 
@@ -1784,11 +1747,22 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
   const double traj_yaw = tf2::getYaw(trajectory.points.at(nearest_idx).pose.orientation);
   const double signed_yaw_dev = autoware_utils::normalize_radian(ego_yaw - traj_yaw);
 
+  if (nearest_idx + 1 == trajectory.points.size()) {
+    // Goal overshoot: no reference ahead of ego to shape a shift section against, and splicing the
+    // ego pose onto the point behind it would emit a backwards segment.
+    return trajectory;
+  }
+
   const double clamped_velocity =
     std::max(std::max(0.0, ego_velocity), shift_params.min_speed_for_curvature);
   const double abs_d = std::abs(lateral_offset);
-  double L = compute_shift_length_from_lateral_accel(
-    abs_d, clamped_velocity, shift_params.lateral_accel_limit, shift_params.minimum_shift_distance);
+  // The section must start exactly at ego, so the offset is never capped: instead the section is
+  // stretched until its peak curvature quintic_kappa_coeff*|d|/L^2 fits within curvature_limit.
+  double L = std::max(
+    compute_shift_length_from_lateral_accel(
+      abs_d, clamped_velocity, shift_params.lateral_accel_limit,
+      shift_params.minimum_shift_distance),
+    std::sqrt(quintic_kappa_coeff * abs_d / shift_params.curvature_limit));
 
   double accumulated_length = 0.0;
   size_t merge_idx = nearest_idx;
@@ -1801,26 +1775,32 @@ Trajectory PathPlanner::shift_trajectory_to_ego(
     }
   }
   if (merge_idx >= trajectory.points.size() - 1) {
-    RCLCPP_WARN(
-      rclcpp::get_logger("minimum_rule_based_planner").get_child("path_shift_to_ego"),
-      "Trajectory is shorter than the target shift length (%.2f m < %.2f m). "
-      "Terminal boundary conditions (y=0, y'=0, y''=0) cannot be satisfied; "
-      "the shift polynomial will not converge smoothly at the merge point.",
-      accumulated_length, L);
+    // Ends before the desired merge point (goal approach). The section is squeezed into what is
+    // left and exceeds curvature_limit; starting at ego wins over the curvature budget here.
     L = accumulated_length;
-    merge_idx = trajectory.points.size() - 2;
+    merge_idx = trajectory.points.size() - 1;
   }
 
-  const double kappa0 = ego_yaw_rate / clamped_velocity;
+  // y is a Frenet offset, so y''(0) must be the ego curvature *relative* to the reference. Passing
+  // the absolute value starts the section at ~2*kappa_ref, i.e. a curvature bump on every cycle.
+  const size_t curvature_baseline_step = std::max<size_t>(
+    1, static_cast<size_t>(std::lround(curvature_baseline_length / delta_arc_length)));
+  const double kappa_ref =
+    reference_curvature(trajectory.points, nearest_idx, curvature_baseline_step);
+  // yaw_rate/v is unusable below min_speed_for_curvature, so fade the whole relative term out.
+  // Fading only the measured term would leave -kappa_ref: a straight start in the middle of a bend.
+  const double curvature_confidence =
+    std::clamp(ego_velocity / shift_params.min_speed_for_curvature, 0.0, 1.0);
+  const double kappa0 = curvature_confidence * (ego_yaw_rate / clamped_velocity - kappa_ref);
   const auto coeffs = compute_quintic_shift_coeffs(lateral_offset, signed_yaw_dev, kappa0, L);
 
   const double ref_velocity = trajectory.points.at(nearest_idx).longitudinal_velocity_mps;
   std::vector<TrajectoryPoint> shifted_points;
 
-  TrajectoryPoint ego_pt;
-  ego_pt.pose = ego_pose;
-  ego_pt.longitudinal_velocity_mps = ref_velocity;
-  shifted_points.push_back(ego_pt);
+  TrajectoryPoint start_pt;
+  start_pt.pose = ego_pose;
+  start_pt.longitudinal_velocity_mps = ref_velocity;
+  shifted_points.push_back(start_pt);
 
   for (double s = delta_arc_length; s < L; s += delta_arc_length) {
     const double y_s = evaluate_quintic(coeffs, s);

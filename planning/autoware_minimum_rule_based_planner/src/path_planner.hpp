@@ -15,6 +15,7 @@
 #ifndef PATH_PLANNER_HPP_
 #define PATH_PLANNER_HPP_
 
+#include "start_goal_planner/start_goal_planner.hpp"
 #include "type_alias.hpp"
 
 #include <autoware_utils_debug/time_keeper.hpp>
@@ -82,6 +83,7 @@ struct TrajectoryShiftParams
   double minimum_shift_distance{5.0};    // [m] floor for shift distance
   double min_speed_for_curvature{2.77};  // [m/s] lower bound on speed for kappa0 computation
   double lateral_accel_limit{0.5};       // [m/s^2] allowed lateral acceleration budget
+  double curvature_limit{0.1};           // [1/m] curvature budget of the shift polynomial
 };
 
 // ---------------------------------------------------------------------------
@@ -114,7 +116,8 @@ public:
     const builtin_interfaces::msg::Time & stamp);
   std::optional<PathWithLaneId> generate_path(
     const lanelet::LaneletSequence & lanelet_sequence, double s_start, double s_end,
-    double ego_velocity, const builtin_interfaces::msg::Time & stamp);
+    double ego_velocity, const builtin_interfaces::msg::Time & stamp,
+    const geometry_msgs::msg::Pose & current_pose);
 
   // Trajectory shifting
   static Trajectory shift_trajectory_to_ego(
@@ -136,6 +139,7 @@ public:
 private:
   void set_route(const LaneletRoute::ConstSharedPtr & route_ptr);
 
+  StartGoalPlanner start_goal_planner_;
   rclcpp::Logger logger_;
   rclcpp::Clock::SharedPtr clock_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
@@ -143,6 +147,8 @@ private:
   VehicleInfo vehicle_info_;
   RouteContext route_context_;
   std::optional<lanelet::ConstLanelet> current_lanelet_;
+  std::optional<UUID> prev_route_uuid_;
+  bool route_updated_;
 };
 
 // ---------------------------------------------------------------------------
@@ -250,35 +256,10 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
   const std::optional<double> & s_right_bound);
 
 /**
- * @brief Recreate the path with a given goal pose
- */
-PathPointTrajectory refine_path_for_goal(
-  const PathPointTrajectory & input, const geometry_msgs::msg::Pose & goal_pose,
-  const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset);
-
-/**
  * @brief Extract lanelets from the trajectory
  */
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
-  const PathPointTrajectory & trajectory, const RouteContext & planner_data);
-
-/**
- * @brief Check if the pose is in the lanelets
- */
-bool is_in_lanelets(const geometry_msgs::msg::Pose & pose, const lanelet::ConstLanelets & lanes);
-
-/**
- * @brief Check if the trajectory is inside the lanelets
- */
-bool is_trajectory_inside_lanelets(
-  const PathPointTrajectory & refined_path, const lanelet::ConstLanelets & lanelets);
-
-/**
- * @brief Modify path for smooth goal connection
- */
-std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
-  const PathPointTrajectory & trajectory, const RouteContext & planner_data,
-  const double search_radius_range, const double pre_goal_offset);
+  const PathPointTrajectory & trajectory, const lanelet::LaneletMapPtr & lanelet_map_ptr);
 
 }  // namespace utils
 }  // namespace autoware::minimum_rule_based_planner

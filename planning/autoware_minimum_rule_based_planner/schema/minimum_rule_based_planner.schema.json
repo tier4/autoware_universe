@@ -87,20 +87,100 @@
               "required": [],
               "additionalProperties": false
             },
-            "smooth_goal_connection": {
+            "start_goal_planner": {
               "type": "object",
               "properties": {
-                "search_radius_range": {
+                "reference_velocity": {
                   "type": "number",
-                  "description": "Search radius for goal connection, used only when early_stop.enable is false [m]",
-                  "default": 7.5,
+                  "description": "reference velocity used to size the clothoid transition length [m/s]",
+                  "default": 4.7,
                   "minimum": 0.0
                 },
-                "pre_goal_offset": {
+                "steer_angle_trial_count": {
+                  "type": "integer",
+                  "description": "number of candidate steer angles to try for generate pull trajectory",
+                  "default": 5,
+                  "minimum": 1
+                },
+                "max_steer_angle_rate": {
                   "type": "number",
-                  "description": "Offset before goal for smooth connection, used only when early_stop.enable is false [m]",
-                  "default": 1.0,
+                  "description": "maximum steer angle rate used to size the clothoid transition length [deg/s]",
+                  "default": 30.0,
                   "minimum": 0.0
+                },
+                "eval_weight_curvature": {
+                  "type": "number",
+                  "description": "evaluation weight for curvature integral",
+                  "default": 0.4,
+                  "minimum": 0.0
+                },
+                "eval_weight_length": {
+                  "type": "number",
+                  "description": "evaluation weight for trajectory length",
+                  "default": 0.3,
+                  "minimum": 0.0
+                },
+                "eval_weight_diff": {
+                  "type": "number",
+                  "description": "evaluation weight for difference from previous trajectory",
+                  "default": 0.3,
+                  "minimum": 0.0
+                },
+                "traj_generation_exit_count": {
+                  "type": "integer",
+                  "description": "exit generating trajectory candidates when enough feasible trajectories are generated",
+                  "default": 5,
+                  "minimum": 0
+                },
+                "goal_planner": {
+                  "type": "object",
+                  "properties": {
+                    "activate_distance_traj": {
+                      "type": "number",
+                      "description": "search radius range to activate goal planner [m]",
+                      "default": 20.0,
+                      "minimum": 1.0
+                    },
+                    "activate_distance_ego": {
+                      "type": "number",
+                      "description": "max distance along trajectory between ego and goal to activate goal planner [m]",
+                      "default": 80.0,
+                      "minimum": 1.0
+                    },
+                    "pre_goal_offset": {
+                      "type": "number",
+                      "description": "offset before goal [m]",
+                      "default": 1.0,
+                      "minimum": 0.0
+                    },
+                    "num_start_poses": {
+                      "type": "integer",
+                      "description": "number of start pose candidates",
+                      "default": 10,
+                      "minimum": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                },
+                "start_planner": {
+                  "type": "object",
+                  "properties": {
+                    "max_path_range": {
+                      "type": "number",
+                      "description": "maximum range to set the goal point [m]",
+                      "default": 25.0,
+                      "minimum": 0.0
+                    },
+                    "num_goal_poses": {
+                      "type": "integer",
+                      "description": "number of start pose candidates",
+                      "default": 10,
+                      "minimum": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
                 }
               },
               "required": [],
@@ -112,13 +192,13 @@
                 "dist_threshold": {
                   "type": "number",
                   "description": "Distance threshold for ego nearest lanelet [m]",
-                  "default": 3.0,
+                  "default": 10.0,
                   "minimum": 0.0
                 },
                 "yaw_threshold": {
                   "type": "number",
                   "description": "Yaw threshold for ego nearest lanelet [rad]",
-                  "default": 0.174533,
+                  "default": 1.57,
                   "minimum": 0.0
                 }
               },
@@ -241,6 +321,37 @@
               "description": "Minimum arc-length difference for the stop trajectory's stop point to be treated as different from the go trajectory's [m]",
               "default": 0.5,
               "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "turn_signal": {
+          "type": "object",
+          "properties": {
+            "search_distance": {
+              "type": "number",
+              "description": "Lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this) [m]",
+              "default": 30.0,
+              "minimum": 0.0
+            },
+            "min_blink_duration": {
+              "type": "number",
+              "description": "Minimum time a turn signal is held on once lit, to suppress chatter [s]",
+              "default": 3.0,
+              "minimum": 0.0
+            },
+            "stopped_velocity_threshold": {
+              "type": "number",
+              "description": "Speed at/below which ego counts as stopped, for latching a pull-out and detecting arrival at the goal [m/s]",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "heading_align_threshold": {
+              "type": "number",
+              "description": "Yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared; also the gap below which a private-area merge counts as straight and raises no signal [rad]",
+              "default": 0.15,
+              "exclusiveMinimum": 0.0
             }
           },
           "required": [],
@@ -393,85 +504,25 @@
             "pointcloud": {
               "type": "object",
               "properties": {
+                "target_types": {
+                  "type": "array",
+                  "description": "Pointcloud types to consider for obstacle stop",
+                  "default": ["structure", "vegetation"],
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "height_buffer": {
                   "type": "number",
-                  "description": "Height buffer [m]",
+                  "description": "Height buffer to add above ego height [m]",
                   "default": 0.5,
                   "minimum": 0.0
                 },
                 "min_height": {
                   "type": "number",
-                  "description": "Min height [m]",
+                  "description": "Minimum height of pointcloud [m]",
                   "default": 0.2,
                   "minimum": 0.0
-                },
-                "detection_range": {
-                  "type": "number",
-                  "description": "Detection range [m]",
-                  "default": 100.0,
-                  "minimum": 0.0
-                },
-                "voxel_grid_filter": {
-                  "type": "object",
-                  "properties": {
-                    "x": {
-                      "type": "number",
-                      "description": "X [m]",
-                      "default": 0.2,
-                      "minimum": 0.0
-                    },
-                    "y": {
-                      "type": "number",
-                      "description": "Y [m]",
-                      "default": 0.2,
-                      "minimum": 0.0
-                    },
-                    "z": {
-                      "type": "number",
-                      "description": "Z [m]",
-                      "default": 0.2,
-                      "minimum": 0.0
-                    },
-                    "min_size": {
-                      "type": "number",
-                      "description": "Min size",
-                      "default": 3,
-                      "minimum": 0.0
-                    }
-                  },
-                  "required": [],
-                  "additionalProperties": false
-                },
-                "clustering": {
-                  "type": "object",
-                  "properties": {
-                    "tolerance": {
-                      "type": "number",
-                      "description": "Tolerance [m]",
-                      "default": 0.5,
-                      "minimum": 0.0
-                    },
-                    "min_height": {
-                      "type": "number",
-                      "description": "Min height [m]",
-                      "default": 0.5,
-                      "minimum": 0.0
-                    },
-                    "min_size": {
-                      "type": "number",
-                      "description": "Min size",
-                      "default": 10,
-                      "minimum": 0.0
-                    },
-                    "max_size": {
-                      "type": "number",
-                      "description": "Max size",
-                      "default": 10000,
-                      "minimum": 0.0
-                    }
-                  },
-                  "required": [],
-                  "additionalProperties": false
                 }
               },
               "required": [],
@@ -619,6 +670,14 @@
                     "animal",
                     "unknown"
                   ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "pointcloud": {
+                  "type": "array",
+                  "description": "Pointcloud types to consider for surround obstacle stop",
+                  "default": ["structure", "vegetation"],
                   "items": {
                     "type": "string"
                   }

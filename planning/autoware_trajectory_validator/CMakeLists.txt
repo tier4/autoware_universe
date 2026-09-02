@@ -160,6 +160,13 @@ if(BUILD_TESTING)
     ${trajectory_validator_lib_target}
   )
 
+  ament_add_gtest(test_trajectory_validator
+    test/detail/test_trajectory_validator.cpp
+  )
+  target_link_libraries(test_trajectory_validator
+    ${trajectory_validator_lib_target}
+  )
+
   ament_add_ros_isolated_gtest(test_diagnostic_core_behavior
     test/diagnostic/diagnostic_core_behavior.cpp
   )
