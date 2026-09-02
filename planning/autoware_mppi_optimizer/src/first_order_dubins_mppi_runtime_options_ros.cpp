@@ -56,15 +56,6 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "prevent_reverse_velocity"), defaults.prevent_reverse_velocity);
   node.declare_parameter(
-    param_name(prefix, "enable_curvature_adaptive_steering_filter"),
-    defaults.enable_curvature_adaptive_steering_filter);
-  node.declare_parameter(
-    param_name(prefix, "steering_filter_alpha_straight"), defaults.steering_filter_alpha_straight);
-  node.declare_parameter(
-    param_name(prefix, "steering_filter_alpha_turn"), defaults.steering_filter_alpha_turn);
-  node.declare_parameter(
-    param_name(prefix, "steering_filter_turn_angle_rad"), defaults.steering_filter_turn_angle_rad);
-  node.declare_parameter(
     param_name(prefix, "enable_input_delay_compensation"),
     defaults.enable_input_delay_compensation);
 }
@@ -97,14 +88,6 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
     node.get_parameter(param_name(prefix, "use_temporal_mpt_as_nominal")).as_bool();
   options.prevent_reverse_velocity =
     node.get_parameter(param_name(prefix, "prevent_reverse_velocity")).as_bool();
-  options.enable_curvature_adaptive_steering_filter =
-    node.get_parameter(param_name(prefix, "enable_curvature_adaptive_steering_filter")).as_bool();
-  options.steering_filter_alpha_straight = static_cast<float>(
-    node.get_parameter(param_name(prefix, "steering_filter_alpha_straight")).as_double());
-  options.steering_filter_alpha_turn = static_cast<float>(
-    node.get_parameter(param_name(prefix, "steering_filter_alpha_turn")).as_double());
-  options.steering_filter_turn_angle_rad = static_cast<float>(
-    node.get_parameter(param_name(prefix, "steering_filter_turn_angle_rad")).as_double());
   options.enable_input_delay_compensation =
     node.get_parameter(param_name(prefix, "enable_input_delay_compensation")).as_bool();
   return options;
