@@ -9,7 +9,7 @@ This package provides a pluginlib-based C++ library for evaluating candidate tra
 For each input `CandidateTrajectories` message the library runs every loaded plugin against every trajectory:
 
 1. **Plugin evaluation**: each plugin's `is_feasible()` is called with the trajectory points and the current `ValidatorContext` (odometry, predicted objects, acceleration, HD map, traffic light states).
-2. **Feasibility decision**: a trajectory survives if every plugin listed in `filter_names` returns `is_feasible = true`. Plugins listed in `shadow_mode_filter_names` are evaluated and reported but never remove a trajectory.
+2. **Feasibility decision**: each plugin reports metrics with a risk level. A plugin accepts the trajectory when the worst risk level of its metrics is `SAFE`, `LOW_CAUTION`, or `HIGH_CAUTION`, and rejects it on `DANGER` or `FATAL`. A trajectory survives if every plugin listed in `filter_names` accepts it. Plugins listed in `shadow_mode_filter_names` are evaluated and reported but never remove a trajectory.
 3. **Diagnostics**: `TrajectoryValidatorDiagnostic` selects the best candidate (the one with the least severe action across all active filters), resolves the `(filter_name, action)` pair to a named `DiagnosticStatus` via the `configured_actions` parameter, and publishes every tracked status every cycle (active ones at their level, inactive ones at `OK` to prevent staleness). Shadow-mode filters never contribute to the action aggregation. See [docs/TrajectoryValidatorDiagnostic.md](docs/TrajectoryValidatorDiagnostic.md) for details.
 
 ## Built-in Plugins
