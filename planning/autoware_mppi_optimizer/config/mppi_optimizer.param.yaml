@@ -11,13 +11,13 @@
       # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
       # Rollout costs are robust-percentile normalized to [0, 1]; ESS feedback adapts this initial
       # dimensionless temperature to the observed distribution.
-      lambda: 0.1
-      lambda_min: 0.0001
+      lambda: 0.01
+      lambda_min: 0.00001
       lambda_max: 10.0
       target_ess_ratio: 0.01
       # Lambda is adapted once per control cycle; keep this slow enough to avoid cycle-to-cycle
       # temperature oscillation while still recovering from weight collapse.
-      lambda_adaptation_gain: 1.0
+      lambda_adaptation_gain: 2.0
       # Panic exploration is driven only by rollout collision/safety flags, not total cost.
       unsafe_rollout_fraction_threshold: 0.95
       # Clamp the upper 5% cost tail before weighting so rare barrier outliers do not compress the
@@ -54,6 +54,7 @@
       accel_cmd_coeff: 1.0
       steer_cmd_coeff: 1.0
       steer_rate_coeff: 2000.0
+      initial_steer_rate_coeff: 80000.0 # only applied in 1st step but still divided by horizon (80 steps)
       # Shared deadband-quadratic cost for optional VelocityLimit bounds. This currently falls back
       # to the same C++ default because the generated plugin parameter mapping is not yet wired.
       overlimit_coeff: 10000.0
@@ -71,8 +72,8 @@
       lateral_boundary_soft_margin: 0.7
       obstacle_collision_margin: 0.2
       road_border_collision_margin: 0.2
-      obstacle_safe_margin: 0.5
-      road_border_safe_margin: 0.5
+      obstacle_safe_margin: 0.3
+      road_border_safe_margin: 0.3
       # Hard output validation remains the final collision gate. A 50k soft target strongly
       # separates unsafe rollouts without compressing all normal costs against a 100k outlier.
       crash_contact_penalty: 100000.0
@@ -100,7 +101,7 @@
       enable_curvature_adaptive_steering_filter: true
       steering_filter_alpha_straight: 0.1
       steering_filter_alpha_turn: 1.0
-      steering_filter_turn_angle_rad: 0.05
+      steering_filter_turn_angle_rad: 0.02
 
       # Expensive per-iteration sampled rollout markers.
       enable_iteration_rollout_debug: false
