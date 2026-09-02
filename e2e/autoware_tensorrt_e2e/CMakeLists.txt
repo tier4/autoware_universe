@@ -113,8 +113,19 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   endif()
 endif()
 
+# Visualization helpers: an RViz layout for this node's outputs, and the map
+# marker relay RViz needs before it will draw a lanelet2 map at all (see its
+# docstring). Also the ml_package generator, so it is runnable from an install.
+install(
+  PROGRAMS
+    scripts/vector_map_marker_relay.py
+    scripts/make_ml_package_param.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_auto_package(
   INSTALL_TO_SHARE
   config
   launch
+  rviz
 )
