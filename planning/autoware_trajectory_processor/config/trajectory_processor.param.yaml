@@ -2,6 +2,7 @@
   ros__parameters:
     # Complete plugin execution order: modifiers followed by optimizers.
     plugin_names:
+      - "autoware::trajectory_processor::plugin::TrajectoryTimeSequenceRawOptimizer"
       - "autoware::trajectory_processor::plugin::StopPointFixer"
       - "autoware::trajectory_processor::plugin::SurroundObstacleStop"
       - "autoware::trajectory_processor::plugin::ObstacleStop"
@@ -32,6 +33,7 @@
     use_kinematic_feasibility_enforcer: true
     use_mpt_optimizer: false
     use_temporal_mpt_optimizer: true
+    use_time_sequence_raw_optimizer: false
 
     trajectory_time_step: 0.1 # [s]
 
