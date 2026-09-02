@@ -55,7 +55,7 @@ inline RiskLevelType worst_risk_level(const std::vector<MetricReport> & metrics)
   return worst;
 }
 
-inline bool is_feasible_based_on_risk(const RiskLevelType risk_level)
+inline bool is_feasible(const RiskLevelType risk_level)
 {
   return risk_level <= RiskLevel::HIGH_CAUTION;
 }

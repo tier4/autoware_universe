@@ -35,7 +35,7 @@
 #include <vector>
 
 using autoware::trajectory_validator::FilterContext;
-using autoware::trajectory_validator::is_feasible_based_on_risk;
+using autoware::trajectory_validator::is_feasible;
 using autoware::trajectory_validator::worst_risk_level;
 using autoware::trajectory_validator::plugin::traffic_rule::TrafficLightFilter;
 using autoware_perception_msgs::msg::TrafficLightElement;
@@ -233,8 +233,7 @@ protected:
     candidate_trajectory.points = points;
     const auto res = filter_->is_feasible(candidate_trajectory, context_);
     ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error";
-    EXPECT_EQ(is_feasible_based_on_risk(worst_risk_level(res->metrics)), expected_feasible)
-      << message;
+    EXPECT_EQ(is_feasible(worst_risk_level(res->metrics)), expected_feasible) << message;
   }
 
   void expect_violation_reported_without_rejection(
@@ -251,7 +250,7 @@ protected:
       [&metric_name](const auto & metric) { return metric.metric_name == metric_name; });
     ASSERT_NE(it, res->metrics.end()) << "expected metric " << metric_name << ". " << message;
     EXPECT_NE(it->risk.level, RiskLevel::SAFE) << message;
-    EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(res->metrics))) << message;
+    EXPECT_TRUE(is_feasible(worst_risk_level(res->metrics))) << message;
   }
 
   void set_risk_grading_params()
@@ -294,8 +293,7 @@ protected:
     const auto res = filter_->is_feasible(candidate_trajectory, context_);
     ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error: "
                                  << (res.has_value() ? "" : res.error()) << " " << message;
-    EXPECT_EQ(is_feasible_based_on_risk(worst_risk_level(res->metrics)), expected_feasible)
-      << message;
+    EXPECT_EQ(is_feasible(worst_risk_level(res->metrics)), expected_feasible) << message;
 
     const auto it = std::find_if(
       res->metrics.begin(), res->metrics.end(),

@@ -43,7 +43,7 @@
 #include <vector>
 
 using autoware::trajectory_validator::FilterContext;
-using autoware::trajectory_validator::is_feasible_based_on_risk;
+using autoware::trajectory_validator::is_feasible;
 using autoware::trajectory_validator::worst_risk_level;
 using autoware::trajectory_validator::plugin::traffic_rule::CrosswalkFilter;
 using autoware_perception_msgs::msg::ObjectClassification;
@@ -300,8 +300,7 @@ protected:
     const auto res = filter_->is_feasible(candidate_trajectory, context_);
     ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error: "
                                  << (res.has_value() ? "" : res.error()) << " " << message;
-    EXPECT_EQ(is_feasible_based_on_risk(worst_risk_level(res->metrics)), expected_feasible)
-      << message;
+    EXPECT_EQ(is_feasible(worst_risk_level(res->metrics)), expected_feasible) << message;
   }
 
   void set_vehicle_front_offset(const double front_offset_m)
@@ -320,8 +319,7 @@ protected:
     const auto res = filter_->is_feasible(candidate_trajectory, context_);
     ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error: "
                                  << (res.has_value() ? "" : res.error()) << " " << message;
-    EXPECT_EQ(is_feasible_based_on_risk(worst_risk_level(res->metrics)), expected_feasible)
-      << message;
+    EXPECT_EQ(is_feasible(worst_risk_level(res->metrics)), expected_feasible) << message;
 
     const auto it = std::find_if(res->metrics.begin(), res->metrics.end(), [](const auto & metric) {
       return metric.metric_name == "check_crosswalk_obstruction";

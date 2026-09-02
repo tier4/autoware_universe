@@ -124,7 +124,7 @@ TEST(TrajectoryFeasibilityFilterTest, FeasibleWhenAllConstraintsSatisfied)
   auto result = filter.is_feasible(candidate_trajectory, context);
 
   ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenSpeedExceedsMax)
@@ -152,7 +152,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenSpeedExceedsMax)
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(VehicleConstraintFilterTest, HighCautionWhenNearestTrajectoryPointExceedsLaneletSpeedLimit)
@@ -186,7 +186,7 @@ TEST(VehicleConstraintFilterTest, HighCautionWhenNearestTrajectoryPointExceedsLa
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenAccelerationExceedsMax)
@@ -214,7 +214,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenAccelerationExceedsMax)
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenDecelerationExceedsMax)
@@ -243,7 +243,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenDecelerationExceedsMax)
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenYawDeviationExceedsMax)
@@ -270,7 +270,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenYawDeviationExceedsMax)
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenVelocityDeviationExceedsMax)
@@ -297,7 +297,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenVelocityDeviationExceedsMax
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenLateralAccelerationExceedsMax)
@@ -326,7 +326,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenLateralAccelerationExceedsM
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenDistanceDeviationExceedsMax)
@@ -354,7 +354,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenDistanceDeviationExceedsMax
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenSteeringAngleExceedsMax)
@@ -386,7 +386,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenSteeringAngleExceedsMax)
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenSteeringRateExceedsMax)
@@ -420,7 +420,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenSteeringRateExceedsMax)
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(worst_risk_level(result.value().metrics), RiskLevel::HIGH_CAUTION);
-  EXPECT_TRUE(is_feasible_based_on_risk(worst_risk_level(result.value().metrics)));
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 // --- is_speed_ok(...) tests ---
