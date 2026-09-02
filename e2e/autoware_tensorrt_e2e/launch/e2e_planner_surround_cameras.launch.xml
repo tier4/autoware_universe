@@ -4,6 +4,13 @@
   <arg name="data_path" default="$(env HOME)/autoware_data/ml_models/tensorrt_e2e" description="E2E model artifacts (onnx, args json) directory"/>
   <arg name="vehicle_info_param_path" default="$(find-pkg-share autoware_vehicle_info_utils)/config/vehicle_info.param.yaml"/>
   <arg name="build_only" default="false" description="shutdown node after the TensorRT engine file is built"/>
+  <arg name="rviz" default="false" description="open RViz with this node's layout"/>
+  <arg name="rviz_config" default="$(find-pkg-share autoware_tensorrt_e2e)/rviz/e2e_planner.rviz"/>
+  <!-- RViz refuses a MarkerArray carrying duplicate ids, which is what the
+       lanelet2 visualizer emits, and it drops everything it holds whenever a
+       looping bag moves time backwards. The relay fixes both; see its
+       docstring. -->
+  <arg name="map_marker_relay" default="$(var rviz)" description="renumber and re-latch the lanelet2 markers for RViz"/>
 
   <!-- Sensing inputs: 5-camera surround set (front wide + 4 corner wides) -->
   <arg name="input_camera0_image" default="/sensing/camera/camera1/image_raw" description="CAM_FRONT_WIDE (synchronization anchor)"/>
@@ -55,4 +62,9 @@
     <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
     <remap from="~/output/predicted_objects" to="$(var output_predicted_objects)"/>
   </node>
+  <node pkg="autoware_tensorrt_e2e" exec="vector_map_marker_relay.py" name="vector_map_marker_relay"
+        output="log" if="$(var map_marker_relay)"/>
+
+  <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen" args="-d $(var rviz_config)"
+        if="$(var rviz)"/>
 </launch>

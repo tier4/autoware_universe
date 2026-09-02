@@ -121,6 +121,29 @@ latch messages. Each tick's processing time is published, and exceeding the plan
 raises a `WARN` diagnostic (`Processing time exceeded the planning period`), making rate
 violations observable. Model + preprocessing must fit the 100 ms budget on target hardware.
 
+## Visualization
+
+Every launch file takes `rviz:=true`, which opens `rviz/e2e_planner.rviz` — grid, vehicle
+model, lanelet2 map, the published trajectory, and the input pointcloud (off by default: it
+is the expensive display).
+
+```bash
+ros2 launch autoware_tensorrt_e2e <launch file> rviz:=true use_sim_time:=true
+```
+
+That also starts `vector_map_marker_relay.py`, which is not optional if you want to see the
+map. Two things stop RViz from drawing it, neither of which reports an error:
+
+- `autoware_lanelet2_map_visualizer` emits duplicate `(ns, id)` marker keys — thousands of
+  them on a city map — and RViz rejects the whole array on its duplicate check;
+- a looping `ros2 bag play --clock` moves simulated time backwards once per cycle, RViz
+  resets and discards everything it holds, and a latched message is delivered once per
+  subscription and never again.
+
+The relay renumbers the ids and re-latches on a slow heartbeat, so the view heals itself at
+every loop point. `use_sim_time:=true` is required whenever inputs come from a bag: without
+it the node measures input staleness against wall time and drops every message.
+
 ## Configuration layout
 
 Parameters are split the way `autoware_bevfusion` splits them, so that switching
