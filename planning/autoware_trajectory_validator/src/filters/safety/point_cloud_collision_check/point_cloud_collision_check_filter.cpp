@@ -14,37 +14,100 @@
 
 #include "point_cloud_collision_check_filter.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <rclcpp/time.hpp>
+
+#include <cmath>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-namespace pcc = autoware::trajectory_validator::plugin::safety::point_cloud_collision_check;
+
+namespace pcc = point_cloud_collision_check;
+
+using point_cloud_collision_check::emit_debug_markers;
+using point_cloud_collision_check::filter_pointcloud_by_class_id;
+using point_cloud_collision_check::PointcloudPreprocessParams;
+using point_cloud_collision_check::transform_pointcloud_to_map_frame;
 
 bool PointCloudCollisionCheckFilter::is_available_data(
-  [[maybe_unused]] const CandidateTrajectory & candidate_trajectory,
-  [[maybe_unused]] const FilterContext & context) const
+  const CandidateTrajectory & candidate_trajectory, const FilterContext & context) const
 {
-  // 中身は後続 PR で移植する。未検証の入力を参照しないよう、現状は常に false を返す。
-  return false;
+  if (
+    !context.odometry || !context.acceleration || !vehicle_info_ptr_ ||
+    !context.segmented_pointcloud) {
+    return false;
+  }
+  // odometory pose can transform only map_to_baselink
+  if (context.segmented_pointcloud->header.frame_id != "base_link") {
+    return false;
+  }
+  // The decimation spline collapses duplicate points (dx, dy < 1e-6) and needs >= 2 unique points
+  // (autoware_interpolation/src/spline_interpolation_points_2d.cpp:49-67).
+  size_t unique_point_num = 0;
+  for (size_t i = 0; i < candidate_trajectory.points.size(); ++i) {
+    if (i > 0) {
+      const auto & prev = candidate_trajectory.points.at(i - 1).pose.position;
+      const auto & curr = candidate_trajectory.points.at(i).pose.position;
+      if (std::abs(curr.x - prev.x) < 1e-6 && std::abs(curr.y - prev.y) < 1e-6) {
+        continue;
+      }
+    }
+    ++unique_point_num;
+  }
+  return unique_point_num >= 2;
 }
 
-void PointCloudCollisionCheckFilter::set_planner_data_param()
+// motion_velocity_planner_common/planner_data.cpp:239-260
+// および motion_velocity_planner/node.cpp:262-266（set_velocity_smoother_params）
+void PointCloudCollisionCheckFilter::set_planner_data_param(
+  const validator::Params::PointCloudCollisionCheck & p)
 {
-  // 中身は後続 PR で移植する。
+  planner_data_.ego_nearest_dist_threshold = p.trajectory_polygon.ego_nearest_dist_threshold;
+  planner_data_.ego_nearest_yaw_threshold = p.trajectory_polygon.ego_nearest_yaw_threshold;
+  planner_data_.trajectory_polygon_collision_check = {
+    p.trajectory_polygon.decimate_trajectory_step_length,
+    p.trajectory_polygon.goal_extended_trajectory_length,
+    p.trajectory_polygon.enable_to_consider_current_pose, p.trajectory_polygon.time_to_convergence};
+
+  planner_data_.no_ground_pointcloud.preprocess_params_ = PointcloudPreprocessParams{p};
+
+  // motion_velocity_planner/node.cpp:262-266（set_velocity_smoother_params）の代替
+  planner_data_.velocity_smoother_.min_decel = p.common.min_accel;
+  planner_data_.velocity_smoother_.min_jerk = p.common.min_jerk;
+
+  planner_data_.excluded_class_ids = p.obstacle_filtering.excluded_class_ids;
 }
 
 void PointCloudCollisionCheckFilter::update_planner_data(
-  [[maybe_unused]] const std::vector<TrajectoryPoint> & raw_trajectory_points,
-  [[maybe_unused]] const FilterContext & context)
+  const std::vector<TrajectoryPoint> & raw_trajectory_points, const FilterContext & context)
 {
-  // 中身は後続 PR で移植する。
-}
+  // motion_velocity_planner_common/planner_data.cpp:240-241
+  planner_data_.vehicle_info_ = *vehicle_info_ptr_;
 
-std::vector<pcc::StopObstacle> PointCloudCollisionCheckFilter::calc_obstacle_stop(
-  [[maybe_unused]] const std::vector<TrajectoryPoint> & raw_trajectory_points)
-{
-  // 中身は後続 PR で移植する。
-  return {};
+  // motion_velocity_planner/node.cpp:160-167
+  planner_data_.current_odometry = *context.odometry;
+  planner_data_.current_acceleration = *context.acceleration;
+
+  // motion_velocity_planner/node.cpp:211-215
+  const auto is_driving_forward =
+    autoware::motion_utils::isDrivingForwardWithTwist(raw_trajectory_points);
+  if (is_driving_forward) {
+    planner_data_.is_driving_forward = is_driving_forward.value();
+  }
+
+  const auto class_filtered_pointcloud =
+    filter_pointcloud_by_class_id(*context.segmented_pointcloud, planner_data_.excluded_class_ids);
+  auto no_ground_pointcloud =
+    transform_pointcloud_to_map_frame(class_filtered_pointcloud, context.odometry->pose.pose);
+
+  // motion_velocity_planner/node.cpp:176-195
+  planner_data_.no_ground_pointcloud.preprocess_pointcloud(
+    std::move(no_ground_pointcloud), raw_trajectory_points, planner_data_.current_odometry,
+    planner_data_.calculate_min_deceleration_distance(0.0).value_or(0.0),
+    planner_data_.vehicle_info_, planner_data_.trajectory_polygon_collision_check,
+    planner_data_.ego_nearest_dist_threshold, planner_data_.ego_nearest_yaw_threshold);
 }
 
 bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
@@ -68,18 +131,33 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
 
   update_planner_data(candidate_trajectory.points, context);
 
-  const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points);
+  // const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points, planner_data_);
 
   ValidationResult result{};
-  result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
+
+  // On this branch, PCC debug markers are always enabled.
+  emit_debug_markers(
+    debug_markers_, debug_data_, planner_data_, result.is_feasible,
+    rclcpp::Time{context.odometry->header.stamp});
+
+  // result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
+  result.is_feasible = true;  // Placeholder - replace with actual stop feasibility judgment
 
   return result;
 }
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:222-228
+// （init のうちパラメータ構築部）
 void PointCloudCollisionCheckFilter::update_parameters(const validator::Params & params)
 {
-  params_ = pcc::Params{params};
-  set_planner_data_param();
+  const auto & p = params.point_cloud_collision_check;
+
+  // common_param_ = CommonParam{p};
+  // stop_planning_param_ = StopPlanningParam{p};
+  // obstacle_filtering_params_ = {
+  //   {StopObstacleClassification::Type::POINTCLOUD, ObstacleFilteringParam{p}}};
+  // pointcloud_segmentation_param_ = PointcloudSegmentationParam{p};
+  set_planner_data_param(p);
 }
 }  // namespace autoware::trajectory_validator::plugin::safety
 

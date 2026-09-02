@@ -16,7 +16,7 @@
 #define FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__POINT_CLOUD_COLLISION_CHECK_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
-#include "parameter.hpp"
+#include "debug_marker.hpp"
 #include "planner_data_lite.hpp"
 #include "types.hpp"
 
@@ -26,6 +26,9 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+using point_cloud_collision_check::DebugData;
+using point_cloud_collision_check::PlannerData;
+
 /**
  * @brief PointCloudCollisionCheckFilter class - checks the trajectory against the semantic
  * segmentation point cloud produced by the perception pipeline.
@@ -49,7 +52,7 @@ private:
 
   /// @brief planner_data_ のパラメータ由来フィールドを設定する。
   /// 移植元では PlannerData のコンストラクタと on_set_param が担う。
-  void set_planner_data_param();
+  void set_planner_data_param(const validator::Params::PointCloudCollisionCheck & p);
 
   /// @brief planner_data_ のトピック由来フィールドを更新し、点群の前処理まで行う。
   /// 移植元では node の update_planner_data が担う。
@@ -65,8 +68,8 @@ private:
     const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
     const geometry_msgs::msg::Twist & twist) const;
 
-  point_cloud_collision_check::Params params_{};
-  point_cloud_collision_check::PlannerData planner_data_{};
+  PlannerData planner_data_{};
+  DebugData debug_data_{};
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 

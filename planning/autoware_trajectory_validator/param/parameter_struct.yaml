@@ -610,3 +610,117 @@ validator:
       default_value: 0.1
       description: Ego velocity threshold (m/s) under which the latched emergency-stop state is released when recovery_policy is until_stopped. Evaluation use only.
       read_only: false
+
+  point_cloud_collision_check:
+    common:
+      min_accel:
+        type: double
+        default_value: -1.0
+        description: Min acceleration (deceleration) used for stopping distance (m/s^2, negative). Keep in sync with common.param.yaml normal.min_acc.
+        read_only: false
+      min_jerk:
+        type: double
+        default_value: -0.6
+        description: Min jerk used for ego braking distance estimation (m/s^3, negative). Keep in sync with common.param.yaml normal.min_jerk.
+        read_only: false
+    obstacle_filtering:
+      excluded_class_ids:
+        type: int_array
+        default_value: [0, 1, 2, 3, 4, 24, 25]
+        description: class_id values treated as ground/background and excluded (used only when the input pointcloud carries a class_id field). ptv3 indices - drivable_surface/other_flat_surface/sidewalk/manmade/vegetation/other_stuff/noise.
+        read_only: false
+    trajectory_polygon:
+      decimate_trajectory_step_length:
+        type: double
+        default_value: 2.0
+        description: Step length used when decimating trajectory points (m).
+        read_only: false
+      goal_extended_trajectory_length:
+        type: double
+        default_value: 6.0
+        description: Length by which the trajectory end is extended when decimating (m).
+        read_only: false
+      enable_to_consider_current_pose:
+        type: bool
+        default_value: true
+        description: If true, consider the current ego pose when building one-step polygons.
+        read_only: false
+      time_to_convergence:
+        type: double
+        default_value: 1.5
+        description: Time (s) for the ego pose error to converge in polygon generation.
+        read_only: false
+      ego_nearest_dist_threshold:
+        type: double
+        default_value: 3.0
+        description: Distance threshold for nearest trajectory point search (m).
+        read_only: false
+      ego_nearest_yaw_threshold:
+        type: double
+        default_value: 1.046
+        description: Yaw threshold for nearest trajectory point search (rad).
+        read_only: false
+    pointcloud_preprocessing:
+      filter_by_trajectory_polygon:
+        min_trajectory_length:
+          type: double
+          default_value: 20.0
+          description: Minimum trajectory length used when cropping the pointcloud (m).
+          read_only: false
+        braking_distance_scale_factor:
+          type: double
+          default_value: 1.0
+          description: Scale factor for braking distance when cropping the pointcloud.
+          read_only: false
+        lateral_margin:
+          type: double
+          default_value: 1.0
+          description: Lateral margin used to mask the pointcloud (m).
+          read_only: false
+        height_margin:
+          type: double
+          default_value: 1.0
+          description: Height margin used to mask the pointcloud (m).
+          read_only: false
+      downsample_by_voxel_grid:
+        enable_downsample:
+          type: bool
+          default_value: true
+          description: If true, downsample the pointcloud by a voxel grid.
+          read_only: false
+        voxel_size_x:
+          type: double
+          default_value: 0.2
+          description: Voxel size along x (m).
+          read_only: false
+        voxel_size_y:
+          type: double
+          default_value: 0.2
+          description: Voxel size along y (m).
+          read_only: false
+        voxel_size_z:
+          type: double
+          default_value: 0.2
+          description: Voxel size along z (m).
+          read_only: false
+      euclidean_clustering:
+        enable_clustering:
+          type: bool
+          default_value: true
+          description: If true, cluster the pointcloud by euclidean distance.
+          read_only: false
+        cluster_tolerance:
+          type: double
+          default_value: 0.7
+          description: Euclidean clustering tolerance (m).
+          read_only: false
+        min_cluster_size:
+          type: int
+          default_value: 3
+          description: Minimum cluster size.
+          read_only: false
+        max_cluster_size:
+          type: int
+          default_value: 100000
+          description: Maximum cluster size.
+          read_only: false
