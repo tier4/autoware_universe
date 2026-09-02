@@ -15,12 +15,8 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__DIFFUSION_PLANNER_NODE_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__DIFFUSION_PLANNER_NODE_HPP_
 
-#include "autoware/avoidance_target_detector/boundary.hpp"
-#include "autoware/avoidance_target_detector/object_filtering.hpp"
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
-#include "autoware/diffusion_planner/mppi_utils.hpp"
 #include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
-#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
@@ -42,9 +38,8 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
-#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
-#include <std_msgs/msg/bool.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_srvs/srv/set_bool.hpp>
@@ -61,7 +56,6 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
-using autoware_vehicle_msgs::msg::SteeringReport;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
 using autoware::vehicle_info_utils::VehicleInfo;
@@ -172,17 +166,19 @@ private:
   void publish_first_traffic_light_on_route(const FrameContext & frame_context) const;
 
   /**
+   * @brief Publish the ego pose snapped onto the previous trajectory and the interpolation time
+   *        used to compute it. Does nothing when the frame did not snap the ego pose.
+   * @param frame_context Context of the current frame.
+   * @param timestamp Timestamp of the current frame.
+   */
+  void publish_snapped_pose(
+    const FrameContext & frame_context, const rclcpp::Time & timestamp) const;
+
+  /**
    * @brief Publish planning factors (stop/slowdown) derived from the trajectory.
    * @param trajectory The planned trajectory.
    */
   void publish_planning_factor(const Trajectory & trajectory);
-
-  void publish_mppi_debug(
-    const autoware::mppi_optimizer::FirstOrderDubinsMppiDebug & debug, const std::string & frame_id,
-    const rclcpp::Time & stamp);
-
-  /** Publish whether MPPI is currently applied to the output trajectory. */
-  void publish_mppi_enabled(bool enabled);
 
   /**
    * @brief Publish guidance triggered status as a debug message.
@@ -233,10 +229,6 @@ private:
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     debug_processing_time_pub_{nullptr};
   rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_{nullptr};
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_mppi_reference_trajectory_{nullptr};
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_mppi_optimized_trajectory_{nullptr};
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_mppi_markers_{nullptr};
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_mppi_enabled_{nullptr};
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_lane_marker_{nullptr};
@@ -245,6 +237,9 @@ private:
   rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_{nullptr};
   rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr
     pub_traffic_signal_{nullptr};
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_snapped_pose_{nullptr};
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    pub_snap_interpolation_time_{nullptr};
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_inference_time_{nullptr};
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pub_denoising_steps_{nullptr};
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
@@ -255,8 +250,6 @@ private:
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
   autoware_utils::InterProcessPollingSubscriber<Odometry> sub_current_odometry_{
     this, "~/input/odometry"};
-  autoware_utils::InterProcessPollingSubscriber<SteeringReport> sub_steering_status_{
-    this, "~/input/steering_status"};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_current_acceleration_{this, "~/input/acceleration"};
   autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
@@ -284,16 +277,6 @@ private:
   std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface_;
   DiffusionPlannerPlanningFactorParams planning_factor_params_;
-
-  /* MPPI : will be moved to another package */
-  std::unique_ptr<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface> mppi_optimizer_;
-  std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
-    extended_route_handler_;
-  autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
-  RoadBorderRtree road_border_rtree_;
-  DrivableAreaRtree drivable_area_rtree_;
-  HADMapBin lanelet_map_msg_;
-  LaneletRoute prev_route_;
 };
 
 }  // namespace autoware::diffusion_planner

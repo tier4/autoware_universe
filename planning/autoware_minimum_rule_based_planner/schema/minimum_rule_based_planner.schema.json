@@ -326,6 +326,37 @@
           "required": [],
           "additionalProperties": false
         },
+        "turn_signal": {
+          "type": "object",
+          "properties": {
+            "search_distance": {
+              "type": "number",
+              "description": "Lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this) [m]",
+              "default": 30.0,
+              "minimum": 0.0
+            },
+            "min_blink_duration": {
+              "type": "number",
+              "description": "Minimum time a turn signal is held on once lit, to suppress chatter [s]",
+              "default": 3.0,
+              "minimum": 0.0
+            },
+            "stopped_velocity_threshold": {
+              "type": "number",
+              "description": "Speed at/below which ego counts as stopped, for latching a pull-out and detecting arrival at the goal [m/s]",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "heading_align_threshold": {
+              "type": "number",
+              "description": "Yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared; also the gap below which a private-area merge counts as straight and raises no signal [rad]",
+              "default": 0.15,
+              "exclusiveMinimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
         "obstacle_stop": {
           "type": "object",
           "properties": {
@@ -473,85 +504,25 @@
             "pointcloud": {
               "type": "object",
               "properties": {
+                "target_types": {
+                  "type": "array",
+                  "description": "Pointcloud types to consider for obstacle stop",
+                  "default": ["structure", "vegetation"],
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "height_buffer": {
                   "type": "number",
-                  "description": "Height buffer [m]",
+                  "description": "Height buffer to add above ego height [m]",
                   "default": 0.5,
                   "minimum": 0.0
                 },
                 "min_height": {
                   "type": "number",
-                  "description": "Min height [m]",
+                  "description": "Minimum height of pointcloud [m]",
                   "default": 0.2,
                   "minimum": 0.0
-                },
-                "detection_range": {
-                  "type": "number",
-                  "description": "Detection range [m]",
-                  "default": 100.0,
-                  "minimum": 0.0
-                },
-                "voxel_grid_filter": {
-                  "type": "object",
-                  "properties": {
-                    "x": {
-                      "type": "number",
-                      "description": "X [m]",
-                      "default": 0.2,
-                      "minimum": 0.0
-                    },
-                    "y": {
-                      "type": "number",
-                      "description": "Y [m]",
-                      "default": 0.2,
-                      "minimum": 0.0
-                    },
-                    "z": {
-                      "type": "number",
-                      "description": "Z [m]",
-                      "default": 0.2,
-                      "minimum": 0.0
-                    },
-                    "min_size": {
-                      "type": "number",
-                      "description": "Min size",
-                      "default": 3,
-                      "minimum": 0.0
-                    }
-                  },
-                  "required": [],
-                  "additionalProperties": false
-                },
-                "clustering": {
-                  "type": "object",
-                  "properties": {
-                    "tolerance": {
-                      "type": "number",
-                      "description": "Tolerance [m]",
-                      "default": 0.5,
-                      "minimum": 0.0
-                    },
-                    "min_height": {
-                      "type": "number",
-                      "description": "Min height [m]",
-                      "default": 0.5,
-                      "minimum": 0.0
-                    },
-                    "min_size": {
-                      "type": "number",
-                      "description": "Min size",
-                      "default": 10,
-                      "minimum": 0.0
-                    },
-                    "max_size": {
-                      "type": "number",
-                      "description": "Max size",
-                      "default": 10000,
-                      "minimum": 0.0
-                    }
-                  },
-                  "required": [],
-                  "additionalProperties": false
                 }
               },
               "required": [],
@@ -699,6 +670,14 @@
                     "animal",
                     "unknown"
                   ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "pointcloud": {
+                  "type": "array",
+                  "description": "Pointcloud types to consider for surround obstacle stop",
+                  "default": ["structure", "vegetation"],
                   "items": {
                     "type": "string"
                   }

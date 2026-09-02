@@ -40,7 +40,7 @@ using autoware_perception_msgs::msg::TrackedObjects;
 inline void buildObstacleTrajectoryBuffersFromTrackedObjects(
   const TrackedObjects & objects, const float dt, const int num_timesteps, std::vector<float> & x,
   std::vector<float> & y, std::vector<float> & yaw, std::vector<float> & half_length,
-  std::vector<float> & half_width)
+  std::vector<float> & half_width, const float time_offset = 0.0F)
 {
   const size_t obstacle_count =
     std::min(objects.objects.size(), static_cast<size_t>(kMaxMppiObstacles));
@@ -72,7 +72,7 @@ inline void buildObstacleTrajectoryBuffersFromTrackedObjects(
     for (int timestep = 0; timestep < nt; ++timestep) {
       const size_t buffer_idx =
         obstacle_idx * static_cast<size_t>(nt) + static_cast<size_t>(timestep);
-      const float relative_time = static_cast<float>(timestep) * dt;
+      const float relative_time = time_offset + static_cast<float>(timestep) * dt;
       x[buffer_idx] = x0 + vx * relative_time;
       y[buffer_idx] = y0 + vy * relative_time;
       yaw[buffer_idx] = object_yaw;

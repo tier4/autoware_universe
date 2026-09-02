@@ -274,6 +274,35 @@ minimum_rule_based_planner:
       validation:
         gt<>: [0.0]
 
+  turn_signal:
+    search_distance:
+      type: double
+      default_value: 30.0
+      description: lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this) [m]
+      validation:
+        gt_eq<>: [0.0]
+
+    min_blink_duration:
+      type: double
+      default_value: 3.0
+      description: minimum time a turn signal is held on once lit, to suppress chatter [s]
+      validation:
+        gt_eq<>: [0.0]
+
+    stopped_velocity_threshold:
+      type: double
+      default_value: 0.1
+      description: speed at/below which ego counts as stopped, for latching a pull-out and detecting arrival at the goal [m/s]
+      validation:
+        gt_eq<>: [0.0]
+
+    heading_align_threshold:
+      type: double
+      default_value: 0.15
+      description: yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared; also the gap below which a private-area merge counts as straight and raises no signal [rad]
+      validation:
+        gt<>: [0.0]
+
   obstacle_stop:
     enable:
       type: bool
@@ -359,6 +388,11 @@ minimum_rule_based_planner:
         validation:
           bounds<>: [0.0, 10.0]
     pointcloud:
+      target_types:
+        type: string_array
+        default_value: [structure, vegetation]
+        description: pointcloud types to consider for obstacle stop
+        read_only: false
       height_buffer:
         type: double
         default_value: 0.5
@@ -371,56 +405,6 @@ minimum_rule_based_planner:
         description: minimum height of pointcloud [m]
         validation:
           bounds<>: [0.0, 10.0]
-      voxel_grid_filter:
-        x:
-          type: double
-          default_value: 0.2
-          description: x size of voxel grid filter [m]
-          validation:
-            bounds<>: [0.0, 1.0]
-        y:
-          type: double
-          default_value: 0.2
-          description: y size of voxel grid filter [m]
-          validation:
-            bounds<>: [0.0, 1.0]
-        z:
-          type: double
-          default_value: 0.2
-          description: z size of voxel grid filter [m]
-          validation:
-            bounds<>: [0.0, 1.0]
-        min_size:
-          type: int
-          default_value: 3
-          description: minimum size of voxel grid filter
-          validation:
-            bounds<>: [1, 100]
-      clustering:
-        tolerance:
-          type: double
-          default_value: 0.5
-          description: tolerance for clustering [m]
-          validation:
-            bounds<>: [0.0, 1.0]
-        min_height:
-          type: double
-          default_value: 0.5
-          description: minimum height for clustering [m]
-          validation:
-            bounds<>: [0.0, 1.0]
-        min_size:
-          type: int
-          default_value: 10
-          description: minimum size for clustering
-          validation:
-            bounds<>: [1, 100]
-        max_size:
-          type: int
-          default_value: 10000
-          description: maximum size for clustering
-          validation:
-            bounds<>: [1, 10000]
     rss_params:
       enable:
         type: bool
@@ -521,6 +505,11 @@ minimum_rule_based_planner:
         type: string_array
         default_value: [car, truck, bus, trailer, pedestrian, hazard, animal, unknown]
         description: types of polygon shaped objects to consider for surround obstacle stop
+        read_only: false
+      pointcloud:
+        type: string_array
+        default_value: [structure, vegetation]
+        description: pointcloud types to consider for surround obstacle stop
         read_only: false
     base_distance_th:
       &distance_th_template {

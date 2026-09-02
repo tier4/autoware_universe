@@ -25,6 +25,8 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -52,19 +54,169 @@ struct FirstOrderDubinsMppiControl
   float steer_cmd{0.0F};
 };
 
+/** Nominal control sequence supplied to MPPI before sampling and optimization. */
+struct FirstOrderDubinsMppiNominalControlProfile
+{
+  float time_step_s{0.0F};
+  std::vector<float> acceleration_commands_mps2;
+  std::vector<float> steering_commands_rad;
+};
+
 struct FirstOrderDubinsMppiRollout
 {
   std::vector<std::pair<float, float>> points;
   float cost{0.0F};
+  /** True when this sample was selected as a high-cost (worst) viz sample, not top-weighted. */
+  bool is_worst{false};
+};
+
+/** Optional kinematic bounds supplied by external and map velocity-limit sources. */
+struct FirstOrderDubinsMppiKinematicLimits
+{
+  /** Global maximum supplied by the external VelocityLimit message. */
+  std::optional<float> max_velocity;
+  /** Optional map maximum aligned with each point of the input reference trajectory. */
+  std::vector<std::optional<float>> max_velocity_by_reference_point;
+  std::optional<float> min_longitudinal_acceleration;
+  std::optional<float> max_longitudinal_acceleration;
+  std::optional<float> min_longitudinal_jerk;
+  std::optional<float> max_longitudinal_jerk;
+};
+
+/** Host reconstruction of the cost assigned to the selected MPPI trajectory. */
+struct FirstOrderDubinsMppiCostBreakdown
+{
+  float speed{0.0F};
+  float track{0.0F};
+  float heading{0.0F};
+  float lateral_distance{0.0F};
+  float lateral_boundary{0.0F};
+  float lateral_yaw_error{0.0F};
+  float remaining_distance{0.0F};
+  float path_overshoot{0.0F};
+  float track_center{0.0F};
+  float corner_buffer{0.0F};
+  float drivable_area{0.0F};
+  float obstacle{0.0F};
+  float road_border{0.0F};
+  float acceleration_command{0.0F};
+  float steering_command{0.0F};
+  float lateral_acceleration{0.0F};
+  float lateral_jerk{0.0F};
+  float longitudinal_jerk{0.0F};
+  float steering_rate{0.0F};
+  float kinematic_velocity_overlimit{0.0F};
+  float kinematic_acceleration_overlimit{0.0F};
+  float kinematic_jerk_overlimit{0.0F};
+  float running_total{0.0F};
+  float terminal_total{0.0F};
+  float total{0.0F};
+  std::size_t evaluated_timesteps{0U};
+
+  [[nodiscard]] float componentTotal() const
+  {
+    return speed + track + heading + lateral_distance + lateral_boundary + lateral_yaw_error +
+           remaining_distance + path_overshoot + track_center + corner_buffer + drivable_area +
+           acceleration_command + steering_command + lateral_acceleration + lateral_jerk +
+           longitudinal_jerk + steering_rate + kinematic_velocity_overlimit +
+           kinematic_acceleration_overlimit + kinematic_jerk_overlimit + obstacle + road_border;
+  }
+};
+
+enum class FirstOrderDubinsMppiInvalidityReason : std::uint8_t {
+  none = 0U,
+  lateral_boundary = 1U << 0U,
+  obstacle = 1U << 1U,
+  road_border = 1U << 2U,
+  reverse = 1U << 3U,
+};
+
+inline std::string to_string(FirstOrderDubinsMppiInvalidityReason reason)
+{
+  if (reason == FirstOrderDubinsMppiInvalidityReason::none) {
+    return "none";
+  }
+
+  std::string result;
+  const auto val = static_cast<std::uint8_t>(reason);
+
+  if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::lateral_boundary)) {
+    result += "lateral_boundary | ";
+  }
+  if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::obstacle)) {
+    result += "obstacle | ";
+  }
+  if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::road_border)) {
+    result += "road_border | ";
+  }
+  if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::reverse)) {
+    result += "reverse | ";
+  }
+
+  // Remove the trailing " | " if the string is not empty
+  if (!result.empty()) {
+    result.resize(result.size() - 3);
+  } else {
+    // Fallback for an unknown bit pattern
+    result = "unknown(" + std::to_string(val) + ")";
+  }
+
+  return result;
+}
+
+constexpr FirstOrderDubinsMppiInvalidityReason operator|(
+  const FirstOrderDubinsMppiInvalidityReason lhs, const FirstOrderDubinsMppiInvalidityReason rhs)
+{
+  return static_cast<FirstOrderDubinsMppiInvalidityReason>(
+    static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
+}
+
+constexpr bool hasInvalidityReason(
+  const FirstOrderDubinsMppiInvalidityReason reasons,
+  const FirstOrderDubinsMppiInvalidityReason reason)
+{
+  return (static_cast<std::uint8_t>(reasons) & static_cast<std::uint8_t>(reason)) != 0U;
+}
+
+struct FirstOrderDubinsMppiValidationResult
+{
+  /** Reasons detected at the first invalid trajectory point. */
+  FirstOrderDubinsMppiInvalidityReason reasons{FirstOrderDubinsMppiInvalidityReason::none};
+  std::optional<std::size_t> first_invalid_index;
+
+  [[nodiscard]] bool isValid() const
+  {
+    return reasons == FirstOrderDubinsMppiInvalidityReason::none;
+  }
 };
 
 struct FirstOrderDubinsMppiDebug
 {
   Trajectory reference_trajectory;
   Trajectory optimized_trajectory;
+  /** Open-loop rollout of the seeded u_nom warm-start (accel/steer cmds in a / front_wheel). */
+  Trajectory nominal_trajectory;
   std::vector<std::pair<float, float>> optimal_horizon;
   std::vector<FirstOrderDubinsMppiRollout> rollouts;
+  FirstOrderDubinsMppiNominalControlProfile nominal_control_profile;
+  /** Cost of the pre-optimization nominal control rollout. */
+  FirstOrderDubinsMppiCostBreakdown nominal_cost_breakdown;
+  /** Cost of the final selected control rollout. */
+  FirstOrderDubinsMppiCostBreakdown cost_breakdown;
+  FirstOrderDubinsMppiKinematicLimits active_kinematic_limits;
   float baseline_cost{0.0F};
+  /** Hard-constraint validation of the generated post-step states. */
+  FirstOrderDubinsMppiValidationResult validation;
+  /** True while the deterministic external-only maximum-velocity profile is applied. */
+  bool external_velocity_limit_active{false};
+  /** True while any deterministic external/map maximum-velocity profile is applied. */
+  bool velocity_limit_profile_active{false};
+  /** True when at least one valid map-derived pointwise maximum was supplied. */
+  bool map_velocity_limit_active{false};
+  /** Effective external/map minimum aligned with reference_trajectory.points. */
+  std::vector<std::optional<float>> effective_max_velocity_by_reference_point;
+  /** True when skip_if_invalid replaced the optimized trajectory with the input trajectory. */
+  bool was_rejected{false};
 };
 
 struct FirstOrderDubinsMppiOptimizationResult
@@ -122,11 +274,11 @@ public:
   /**
    * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
    * @param use_last_control_as_nominal When true and a previous optimized control sequence
-   *        exists, seed u_nom by shifting that sequence (warm start) instead of reseeding
-   *        from the diffusion reference every cycle.
+   *        exists and ego is not stopped (|v| >= 0.05 m/s), seed u_nom by shifting that
+   *        sequence (warm start). From a stop, always reseed from the diffusion reference.
    */
   void setAblationOptions(
-    const bool ignore_obstacles, const bool ignore_drivable_area,
+    const bool ignore_obstacles, const bool ignore_road_borders, const bool ignore_drivable_area,
     const bool force_cold_start_each_step, const bool skip_if_invalid,
     bool use_last_control_as_nominal = false);
 
@@ -140,10 +292,42 @@ public:
 
   /**
    * @brief When true, optimizeTrajectory fills debug.rollouts with top-K weighted samples
-   *        (CPU replay; ~tens of ms). Enable only for offline retune — leave false for online
-   *        planning and debug trajectory logging.
+   *        plus worst-K high-cost samples (CPU replay; ~tens of ms). Enable only for offline
+   *        retune — leave false for online planning and debug trajectory logging.
    */
   void setRolloutVisualizationEnabled(bool enable);
+
+  /**
+   * @brief Force the next optimizeTrajectory / seedNominalControl to use this horizon as u_nom
+   *        (offline retune replay of logged NNNNNN_nominal.csv). Cleared after one use.
+   *        Sequences are truncated/padded to the MPPI horizon; values are clamped to vehicle
+   * limits.
+   */
+  void setForcedNominalControl(
+    const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd);
+
+  /**
+   * @brief Seed vendor Savitzky–Golay control_history_ (2 previous applied commands).
+   *        Required for offline retune to match online smoothing edge taps.
+   *        Order: (accel/steer) at t-2, then (accel/steer) at t-1.
+   */
+  void setControlHistory(float accel_tm2, float steer_tm2, float accel_tm1, float steer_tm1);
+
+  /**
+   * @brief Seed per-channel input-delay FIFOs with already-sent commands (oldest first).
+   *        Accel uses the first N_acc samples; steer uses the first N_steer samples.
+   *        Empty clears / disables forced seeding (falls back to measured hold).
+   */
+  void setInputDelayBuffer(
+    const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd);
+
+  /**
+   * @brief Copy the last optimized control sequence (after optimizeTrajectory / computeStep).
+   *        Used by offline retune to warm-start a subsequent MPPI pass (Re-seed).
+   * @return false if the controller has not produced a control sequence yet.
+   */
+  bool copyLastOptimizedControl(
+    std::vector<float> & accel_cmd, std::vector<float> & steer_cmd) const;
 
   /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.
@@ -166,15 +350,19 @@ public:
    * @param steering_status Optional ego tire steering angle [rad] from vehicle status.
    * @param tracked_objects Perception tracked objects used as dynamic obstacles
    * (constant-velocity).
-   * @param road_borders Static road-border segments used as hard obstacles.
-   * @param drivable_area Static drivable-area boundary segments used as a soft constraint.
+   * @param road_borders Static road-border segments used by the gradual optimizer cost and hard
+   *        output validator.
+   * @param drivable_area Static drivable-area boundary segments used as a gradual constraint.
+   * @param kinematic_limits Optional external scalar and map pointwise velocity bounds, plus
+   *        external acceleration and jerk bounds.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
-    const std::vector<Segment> & drivable_area);
+    const std::vector<Segment> & drivable_area,
+    const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {});
 
 private:
   struct Impl;

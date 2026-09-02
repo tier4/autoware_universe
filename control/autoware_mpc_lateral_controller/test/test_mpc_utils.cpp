@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace
@@ -69,7 +70,96 @@ autoware::motion::control::mpc_lateral_controller::MPCTrajectory makeStraightTra
   return traj;
 }
 
+// Builds a trajectory whose points all sit on the heading direction, spaced by point_interval, with
+// a constant velocity. A zero point_interval reproduces a temporal trajectory at standstill, where
+// every point collapses onto the same position.
+autoware::motion::control::mpc_lateral_controller::MPCTrajectory makeDirectionalTrajectory(
+  const int num_points, const double heading_yaw, const double point_interval,
+  const double velocity)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+
+  MPCTrajectory traj;
+  for (int i = 0; i < num_points; ++i) {
+    const double distance_from_start = static_cast<double>(i) * point_interval;
+    traj.push_back(
+      distance_from_start * std::cos(heading_yaw), distance_from_start * std::sin(heading_yaw), 0.0,
+      heading_yaw, velocity, 0.0, 0.0, static_cast<double>(i) * 0.1);
+  }
+  return traj;
+}
+
 /* cppcheck-suppress syntaxError */
+TEST(TestMPCUtils, InferForwardDrivingFromVelocitySign)
+{
+  // Moving trajectories are decided by the velocity sign, independently of point spacing.
+  const auto forward_traj = makeDirectionalTrajectory(10, M_PI, 0.5, 3.0);
+  const auto backward_traj = makeDirectionalTrajectory(10, M_PI, 0.5, -3.0);
+
+  EXPECT_EQ(MPCUtils::infer_forward_driving(forward_traj), std::optional<bool>(true));
+  EXPECT_EQ(MPCUtils::infer_forward_driving(backward_traj), std::optional<bool>(false));
+}
+
+TEST(TestMPCUtils, InferForwardDrivingIgnoresLeadingStopPoints)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+
+  // A trajectory that starts from standstill and accelerates: the first non-negligible velocity
+  // decides the direction.
+  MPCTrajectory traj;
+  traj.push_back(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  traj.push_back(0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.1);
+  traj.push_back(0.1, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.2);
+  traj.push_back(0.5, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.3);
+
+  EXPECT_EQ(MPCUtils::infer_forward_driving(traj), std::optional<bool>(true));
+}
+
+TEST(TestMPCUtils, InferForwardDrivingOnCollapsedStopTrajectory)
+{
+  // Regression: a stopped temporal trajectory has zero point spacing, so the azimuth between the
+  // first two points is meaningless. The direction must be reported as unknown instead of being
+  // derived from atan2(0, 0), which used to flip the direction for headings away from +x and
+  // rotate every reference yaw by pi.
+  for (const double heading_yaw : {0.0, M_PI_2, M_PI, -M_PI_2, 2.5, -2.5}) {
+    const auto stopped_traj = makeDirectionalTrajectory(50, heading_yaw, 0.0, 0.0);
+    EXPECT_EQ(MPCUtils::infer_forward_driving(stopped_traj), std::nullopt)
+      << "heading_yaw = " << heading_yaw;
+  }
+}
+
+TEST(TestMPCUtils, InferForwardDrivingOnCreepingTrajectory)
+{
+  // Below the velocity threshold the point spacing is still too short to measure a direction from,
+  // so the direction stays unknown and the caller keeps its previous value.
+  const auto creeping_traj = makeDirectionalTrajectory(10, M_PI, 0.005, 0.05);
+  EXPECT_EQ(MPCUtils::infer_forward_driving(creeping_traj), std::nullopt);
+}
+
+TEST(TestMPCUtils, InferForwardDrivingFromGeometryWhenStopped)
+{
+  // Zero velocity but a long enough geometric baseline: the direction comes from the trajectory
+  // shape relative to the trajectory heading.
+  const auto forward_traj = makeDirectionalTrajectory(20, M_PI, 0.1, 0.0);
+  EXPECT_EQ(MPCUtils::infer_forward_driving(forward_traj), std::optional<bool>(true));
+
+  // Same points, but the stored heading is reversed, i.e. the trajectory runs behind the vehicle.
+  auto backward_traj = forward_traj;
+  for (auto & yaw : backward_traj.yaw) {
+    yaw = 0.0;
+  }
+  EXPECT_EQ(MPCUtils::infer_forward_driving(backward_traj), std::optional<bool>(false));
+}
+
+TEST(TestMPCUtils, InferForwardDrivingWithTooFewPoints)
+{
+  const auto empty_traj = makeDirectionalTrajectory(0, 0.0, 0.5, 3.0);
+  const auto single_point_traj = makeDirectionalTrajectory(1, 0.0, 0.5, 3.0);
+
+  EXPECT_EQ(MPCUtils::infer_forward_driving(empty_traj), std::nullopt);
+  EXPECT_EQ(MPCUtils::infer_forward_driving(single_point_traj), std::nullopt);
+}
+
 TEST(TestMPC, CalcStopDistance)
 {
   constexpr float MOVE = 1.0f;

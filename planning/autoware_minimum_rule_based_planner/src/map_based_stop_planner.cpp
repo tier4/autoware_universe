@@ -16,7 +16,7 @@
 
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp>
+#include <autoware/trajectory_processor/trajectory_modifier_utils/utils.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>
@@ -409,13 +409,13 @@ std::optional<MapBasedStopPlanner::SingleStopResult> MapBasedStopPlanner::plan_s
     include_possibility);
   if (!stop_point_arc_length) return std::nullopt;
 
-  if (autoware::trajectory_modifier::utils::stop_point_exists(
+  if (autoware::trajectory_processor::utils::stop_point_exists(
         trajectory.points, *stop_point_arc_length)) {
     return std::nullopt;
   }
 
   Trajectory stop_trajectory = trajectory;
-  if (!autoware::trajectory_modifier::utils::insert_stop_point(
+  if (!autoware::trajectory_processor::utils::insert_stop_point(
         stop_trajectory.points, *stop_point_arc_length)) {
     return std::nullopt;
   }

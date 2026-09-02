@@ -377,16 +377,6 @@ validator:
       default_value: 0.1
       description: maximum overshoot distance allowed to consider the trajectory feasible (m)
       read_only: false
-    nominal_deceleration:
-      type: double
-      default_value: 1.0
-      description: nominal deceleration to calculate the stop distance used as trajectory length limit (m/s^2)
-      read_only: false
-    nominal_jerk:
-      type: double
-      default_value: 1.0
-      description: nominal jerk to calculate the stop distance used as trajectory length limit (m/s^3)
-      read_only: false
     stop_duration:
       type: double
       default_value: 3.0
@@ -402,28 +392,34 @@ validator:
       default_value: false
       description: whether to use the embedded trajectory time to evaluate the stop duration
       read_only: false
+    stopping_params:
+      nominal_decel:
+        type: double
+        default_value: 1.0
+        description: nominal deceleration to calculate the stop distance used as trajectory length limit (m/s^2)
+        read_only: false
+      nominal_jerk:
+        type: double
+        default_value: 1.0
+        description: nominal jerk to calculate the stop distance used as trajectory length limit (m/s^3)
+        read_only: false
+      decel_limit:
+        type: double
+        default_value: 2.0
+        description: deceleration limit to calculate the stop distance used as trajectory length limit (m/s^2)
+        read_only: false
+      jerk_limit:
+        type: double
+        default_value: 2.0
+        description: jerk limit to calculate the stop distance used as trajectory length limit (m/s^3)
+        read_only: false
+      delay_response_time:
+        type: double
+        default_value: 0.5
+        description: delay response time used to estimate the minimum ego stopping distance (s)
+        read_only: false
 
   traffic_light:
-    deceleration_limit:
-      type: double
-      default_value: 2.8
-      description: trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
-      read_only: false
-    jerk_limit:
-      type: double
-      default_value: 5.0
-      description: trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
-      read_only: false
-    delay_response_time:
-      type: double
-      default_value: 0.5
-      description: delay response time used to estimate the minimum ego stopping distance
-      read_only: false
-    crossing_time_limit:
-      type: double
-      default_value: 2.75
-      description: trajectories crossing an amber light are rejected if they cannot cross before this time
-      read_only: false
     treat_amber_light_as_red_light:
       type: bool
       default_value: true
@@ -433,6 +429,11 @@ validator:
       type: bool
       default_value: false
       description: when true, unknown lights are handled like red lights
+      read_only: false
+    enable_arrow_aware_amber_passing:
+      type: bool
+      default_value: true
+      description: Allow passing on amber after Green Circle when on a turn lane with a mapped static arrow
       read_only: false
     stop_overshoot_margin:
       type: double
@@ -468,18 +469,23 @@ validator:
       default_value: 0.0
       description: Minimum duration an UNKNOWN signal must be seen before it is considered active (seconds)
       read_only: false
-    amber_rejection_hysteresis_duration:
-      type: double
-      default_value: 0.0
-      description: Hysteresis duration to persist an AMBER rejection (seconds)
-      read_only: false
     ego_stopped_velocity_threshold:
       type: double
       default_value: 0.01
       description: Velocity below which ego is considered fully stopped (m/s)
       read_only: false
-    checked_trajectory_length:
-      deceleration_limit:
+    stopping_params:
+      nominal_decel:
+        type: double
+        default_value: 1.0
+        description: nominal deceleration to calculate the stop distance used as trajectory length limit
+        read_only: false
+      nominal_jerk:
+        type: double
+        default_value: 1.0
+        description: nominal jerk to calculate the stop distance used as trajectory length limit
+        read_only: false
+      decel_limit:
         type: double
         default_value: 2.0
         description: deceleration limit to calculate the stop distance used as trajectory length limit
@@ -489,12 +495,48 @@ validator:
         default_value: 2.0
         description: jerk limit to calculate the stop distance used as trajectory length limit
         read_only: false
+      delay_response_time:
+        type: double
+        default_value: 0.5
+        description: delay response time used to estimate the minimum ego stopping distance
+        read_only: false
+    amber_rejection:
+      hysteresis_duration:
+        type: double
+        default_value: 0.0
+        description: Hysteresis duration to persist an AMBER rejection (seconds)
+        read_only: false
+      reject_if_stop_detected:
+        type: bool
+        default_value: false
+        description: Reject if we detect a previous stop attempt from input trajectory
+        read_only: false
+      can_stop_decel:
+        type: double
+        default_value: 2.8
+        description: trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
+        read_only: false
+      can_stop_jerk:
+        type: double
+        default_value: 5.0
+        description: trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit
+        read_only: false
+      crossing_time_limit:
+        type: double
+        default_value: 2.75
+        description: trajectories crossing an amber light are rejected if they cannot cross before this time
+        read_only: false
 
   boundary_departure:
     lateral_margin_m:
       type: double
       default_value: 0.01
       description: lateral margin [m]
+      read_only: false
+    near_boundary_lateral_th_m:
+      type: double
+      default_value: 0.2
+      description: lateral distance below which the trajectory is flagged as near an uncrossable boundary [m]
       read_only: false
     longitudinal_margin_m:
       type: double
