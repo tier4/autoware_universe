@@ -88,6 +88,7 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   output.accel_cmd_coeff = static_cast<float>(params.accel_cmd_coeff);
   output.steer_cmd_coeff = static_cast<float>(params.steer_cmd_coeff);
   output.steer_rate_coeff = static_cast<float>(params.steer_rate_coeff);
+  output.initial_steer_rate_coeff = static_cast<float>(params.initial_steer_rate_coeff);
   output.accel_cmd_std_dev = static_cast<float>(params.accel_cmd_std_dev);
   output.steer_cmd_std_dev = static_cast<float>(params.steer_cmd_std_dev);
   output.std_dev_decay = static_cast<float>(params.std_dev_decay);
@@ -623,6 +624,7 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("comfort/lateral_jerk", cost.lateral_jerk);
   cost_diagnostics_->add_key_value("comfort/longitudinal_jerk", cost.longitudinal_jerk);
   cost_diagnostics_->add_key_value("comfort/steering_rate", cost.steering_rate);
+  cost_diagnostics_->add_key_value("mppi/initial_steering_rate", cost.initial_steering_rate);
   cost_diagnostics_->add_key_value("validation_reason", to_string(debug.validation.reasons));
   cost_diagnostics_->add_key_value(
     "first_invalid_index", debug.validation.first_invalid_index

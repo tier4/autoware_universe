@@ -186,6 +186,12 @@ trajectory_mppi_optimizer:
     description: Steering rate cost coefficient
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  initial_steer_rate_coeff:
+    type: double
+    default_value: 0.0
+    description: Horizon-compensated cost on the first steering command relative to measured steering
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   accel_cmd_std_dev:
     type: double
     default_value: 0.1
