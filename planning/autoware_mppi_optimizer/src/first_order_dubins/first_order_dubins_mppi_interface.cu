@@ -738,7 +738,7 @@ float rawCostFromMinMaxWeight(
 }
 
 void buildRolloutVisualization(
-  UnfilteredMppiController & controller, SAMPLER & sampler, DYN & model,
+  MppiWithHistoryAccess & controller, SAMPLER & sampler, DYN & model,
   const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug)
 {
   const Mppi::state_trajectory state_trajectory = controller.getActualStateSeq();
@@ -1025,7 +1025,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     controller->setIterationRolloutCaptureEnabled(
       enable_iteration_rollout_debug && !enable_rollout_visualization);
     // Per-iteration debug controls are captured as one contiguous block by
-    // UnfilteredMppiController. Disable the vendor visualization staging buffers, whose
+    // MppiWithHistoryAccess. Disable the vendor visualization staging buffers, whose
     // per-rollout copies only preserve the final optimization iteration.
     controller->setPercentageSampledControlTrajectories(0.0F);
 
@@ -1771,6 +1771,7 @@ struct FirstOrderDubinsMppiInterface::Impl
         u_opt_traj(accel_idx, timestep) =
           active_velocity_limit_profile.controls[static_cast<std::size_t>(timestep)].accel_cmd;
       }
+    }
     if (control_sequence_modified) {
       controller->setControlSequenceAndRecomputeState(u_opt_traj, x);
     }
