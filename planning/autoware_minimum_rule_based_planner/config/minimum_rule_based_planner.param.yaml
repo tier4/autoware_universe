@@ -19,15 +19,28 @@
         max_jerk_parking: 1.0
 
       # Used only when early_stop.enable is false
-      smooth_goal_connection:
-        search_radius_range: 7.5
-        pre_goal_offset: 1.0
+      start_goal_planner:
+        reference_velocity: 2.78
+        steer_angle_trial_count: 20
+        max_steer_angle_rate: 30.0
+        eval_weight_curvature: 0.1
+        eval_weight_length: 0.4
+        eval_weight_diff: 0.5
+        traj_generation_exit_count: 7
+        goal_planner:
+          activate_distance_traj: 40.0
+          activate_distance_ego: 80.0
+          pre_goal_offset: 3.0
+          num_start_poses: 80
+        start_planner:
+          max_path_range: 30.0
+          num_goal_poses: 15
 
       lane_change_failure_stop_margin: 0.0
 
       ego_nearest_lanelet:
-        dist_threshold: 3.0
-        yaw_threshold: 1.046
+        dist_threshold: 10.0
+        yaw_threshold: 1.57
 
       path_shift:
         enable: true

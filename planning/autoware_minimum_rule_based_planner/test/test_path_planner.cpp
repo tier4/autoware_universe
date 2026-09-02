@@ -48,8 +48,8 @@ Params make_default_params()
   params.path_planning.waypoint_group.separation_threshold = 1.0;
   params.path_planning.waypoint_group.interval_margin_ratio = 0.5;
   params.path_planning.early_stop.enable = false;
-  params.path_planning.smooth_goal_connection.search_radius_range = 15.0;
-  params.path_planning.smooth_goal_connection.pre_goal_offset = 3.0;
+  params.path_planning.start_goal_planner.goal_planner.activate_distance_traj = 15.0;
+  params.path_planning.start_goal_planner.goal_planner.pre_goal_offset = 3.0;
   params.path_planning.path_shift.enable = false;
   params.path_planning.path_shift.minimum_shift_length = 0.1;
   params.path_planning.path_shift.minimum_shift_distance = 5.0;
