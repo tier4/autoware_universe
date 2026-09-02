@@ -1,0 +1,520 @@
+safety_planner:
+  planning_frequency_hz:
+    type: double
+    default_value: 10.0
+    read_only: true
+    description: planning frequency [Hz]
+    validation:
+      bounds<>: [0.0001, 50.0]
+
+  ego_nearest_lanelet:
+    dist_threshold_m:
+      type: double
+      default_value: 3.0
+      read_only: true
+      description: route lanelet 追従の距離ソフト閾値 [m]
+      validation:
+        gt<>: [0.0]
+    yaw_threshold_rad:
+      type: double
+      default_value: 1.046
+      read_only: true
+      description: route lanelet 追従の方位ソフト閾値 [rad]
+      validation:
+        gt<>: [0.0]
+
+  reference_path:
+    forward_length_m:
+      type: double
+      default_value: 200.0
+      read_only: true
+      description: reference path forward length from ego [m]
+      validation:
+        gt<>: [0.0]
+    backward_length_m:
+      type: double
+      default_value: 5.0
+      read_only: true
+      description: reference path backward length from ego [m]
+      validation:
+        gt_eq<>: [0.0]
+
+  engage_velocity:
+    enable:
+      type: bool
+      default_value: true
+      read_only: true
+    velocity_hard_mps:
+      type: double
+      default_value: 0.3
+      read_only: true
+      description: 発進区間に敷く速度の下限 [m/s]。停止状態からの発進周期に縦制御が STOPPED から抜けない問題への対処 (velocity_smoother の engage_velocity と同じ考え方)。0 で無効
+
+  constraint_generator_plugins:
+    type: string_array
+    default_value:
+      - autoware::safety_planner::VehicleKinematicsConstraintGenerator
+      - autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator
+      - autoware::safety_planner::ObstacleStopConstraintGenerator
+    read_only: true
+    description: ロードする制約ジェネレータープラグインの完全修飾クラス名のリスト
+
+  trajectory_planner:
+    plugin:
+      type: string
+      default_value: autoware::safety_planner::RoughOptimizerTrajectoryPlanner
+      read_only: true
+      description: ロードする軌道プランナープラグインの完全修飾クラス名。2 つの制約セット (normal / cautious) から 2 本の軌道を作る
+
+  trajectory_optimizer:
+    plugin:
+      type: string
+      default_value: autoware::safety_planner::NlpTrajectoryOptimizer
+      read_only: true
+      description: ロードする軌道最適化プラグインの完全修飾クラス名 (NlpTrajectoryOptimizer = 非凸 NLP / SscQpTrajectoryOptimizer = 凸 QP)
+    nlp:
+      cube_duration_s:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: コリドー彫り込みの 1 cube の時間長 α [s] (SSC と同じ彫り込みを共用する)
+        validation:
+          gt<>: [0.0]
+      margin_m:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: cube を彫るときの安全マージン [m] (幾何行の面オフセットに織り込まれる)
+        validation:
+          gt_eq<>: [0.0]
+      inflation_step_m:
+        type: double
+        default_value: 0.2
+        read_only: true
+        description: cube 膨張の 1 ステップ [m]
+        validation:
+          gt<>: [0.0]
+      max_lateral_inflation_m:
+        type: double
+        default_value: 4.0
+        read_only: true
+        description: seed から横へ膨らませる上限 [m]
+        validation:
+          gt<>: [0.0]
+      max_longitudinal_inflation_m:
+        type: double
+        default_value: 20.0
+        read_only: true
+        description: seed から縦へ膨らませる上限 [m]
+        validation:
+          gt<>: [0.0]
+      curvature_rate_max:
+        type: double
+        default_value: 0.6
+        read_only: true
+        description: "|w| = |dκ/dt| の VEHICLE 上限 [1/(m·s)] (S5 §3.1)。κ の変化率を出す制約プラグインが無いのでここで持つ"
+        validation:
+          gt<>: [0.0]
+      goal_capture_distance_m:
+        type: double
+        default_value: 5.0
+        read_only: true
+        description: 追従参照の終点を goal そのものに差し替える距離 [m] (S5 §4.3)。rough_plan の終端が goal の手前この距離以内に来たら、末尾の停止区間の参照を goal に差し替える。0 にすると差し替えない
+        validation:
+          gt_eq<>: [0.0]
+      comfort_clearance_m:
+        type: double
+        default_value: 0.5
+        read_only: true
+        description: コリドー面に対して追加で確保したい余裕 [m] (C 幾何行)。Level 2 以降は 0 になる
+        validation:
+          gt_eq<>: [0.0]
+      weight_pos:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: rough_plan の位置追従の重み (S5 §4.1)
+        validation:
+          gt_eq<>: [0.0]
+      weight_yaw:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: rough_plan の姿勢追従の重み
+        validation:
+          gt_eq<>: [0.0]
+      weight_v:
+        type: double
+        default_value: 0.5
+        read_only: true
+        description: 参照速度追従の重み (前進の誘因)
+        validation:
+          gt_eq<>: [0.0]
+      weight_kappa:
+        type: double
+        default_value: 200.0
+        read_only: true
+        description: κ² の重み (経路の平滑化)
+        validation:
+          gt_eq<>: [0.0]
+      weight_w:
+        type: double
+        default_value: 100.0
+        read_only: true
+        description: w² = (dκ/dt)² の重み
+        validation:
+          gt_eq<>: [0.0]
+      weight_a:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: a² の重み
+        validation:
+          gt_eq<>: [0.0]
+      weight_j:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: j² の重み
+        validation:
+          gt_eq<>: [0.0]
+      weight_terminal_v:
+        type: double
+        default_value: 10.0
+        read_only: true
+        description: 終端速度 v_N² の重み (Solve 3 では 10 倍される。S5 §4.2)
+        validation:
+          gt_eq<>: [0.0]
+      weight_terminal_a:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: 終端加速度 a_N² の重み (停止保持への誘導)
+        validation:
+          gt_eq<>: [0.0]
+      slack_safety:
+        type: double
+        default_value: 1.0e+6
+        read_only: true
+        description: SAFETY 行のスラックの二次ペナルティ ρ_B (S5 §3.4)。L1 は使わない
+        validation:
+          gt<>: [0.0]
+      slack_comfort:
+        type: double
+        default_value: 1.0e+4
+        read_only: true
+        description: COMFORT 行のスラックの二次ペナルティ ρ_C (S5 §3.4)
+        validation:
+          gt<>: [0.0]
+      max_iter_level1:
+        type: int
+        default_value: 20
+        read_only: true
+        description: Solve 1 の SQP 反復上限 (S5 §8.3)
+        validation:
+          gt<>: [0]
+      max_iter_level2:
+        type: int
+        default_value: 8
+        read_only: true
+        description: Solve 2 (COMFORT 無効) の SQP 反復上限
+        validation:
+          gt<>: [0]
+      max_iter_level3:
+        type: int
+        default_value: 6
+        read_only: true
+        description: Solve 3 (SAFETY も無効・停止目的) の SQP 反復上限
+        validation:
+          gt<>: [0]
+    ssc_qp:
+      cube_duration_s:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: 1 cube = 区分 Bezier 1 区間の時間長 α [s]。短いほどコリドーが締まるが変数が増える
+        validation:
+          gt<>: [0.0]
+      margin_m:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: cube を彫るとき障害物・境界へ足す安全マージン [m]
+        validation:
+          gt_eq<>: [0.0]
+      inflation_step_m:
+        type: double
+        default_value: 0.2
+        read_only: true
+        description: cube 膨張の 1 ステップ [m]
+        validation:
+          gt<>: [0.0]
+      max_lateral_inflation_m:
+        type: double
+        default_value: 4.0
+        read_only: true
+        description: seed から横へ膨らませる上限 [m]
+        validation:
+          gt<>: [0.0]
+      max_longitudinal_inflation_m:
+        type: double
+        default_value: 20.0
+        read_only: true
+        description: seed から縦へ膨らませる上限 [m]
+        validation:
+          gt<>: [0.0]
+      lateral_rate_max_mps:
+        type: double
+        default_value: 2.0
+        read_only: true
+        description: Frenet 横速度 |dl/dt| の上限 [m/s] (P2 を k=1 に適用)
+        validation:
+          gt<>: [0.0]
+      lateral_accel_max_mps2:
+        type: double
+        default_value: 2.0
+        read_only: true
+        description: Frenet 横加速度 |d2l/dt2| の上限 [m/s^2] (P2 を k=2 に適用。車両の横加速度 v^2*kappa とは別物)
+        validation:
+          gt<>: [0.0]
+      weight_jerk_s:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: 縦 jerk 二乗積分の重み
+        validation:
+          gt_eq<>: [0.0]
+      weight_jerk_l:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: 横 jerk 二乗積分の重み
+        validation:
+          gt_eq<>: [0.0]
+      regularization:
+        type: double
+        default_value: 1.0e-8
+        read_only: true
+        description: P の対角に足す正則化 (jerk Hessian は 2 次以下が零空間)
+        validation:
+          gt_eq<>: [0.0]
+      osqp_eps_abs:
+        type: double
+        default_value: 1.0e-5
+        read_only: true
+        description: OSQP の絶対収束許容
+        validation:
+          gt<>: [0.0]
+
+  vehicle_kinematics:
+    velocity_hard_mps:
+      type: double
+      default_value: 16.67
+      read_only: true
+      description: 縦速度ハード上限 [m/s] (60 km/h)
+      validation:
+        gt_eq<>: [0.0]
+    lon_accel_hard_min_mps2:
+      type: double
+      default_value: -6.0
+      read_only: true
+      description: 縦加速度ハード下限 (減速側) [m/s²]
+    lon_accel_hard_max_mps2:
+      type: double
+      default_value: 6.0
+      read_only: true
+      description: 縦加速度ハード上限 (加速側) [m/s²]
+    lon_jerk_hard_mps3:
+      type: double
+      default_value: 5.0
+      read_only: true
+      description: 縦躍度ハード上限 |j| [m/s³]
+      validation:
+        gt<>: [0.0]
+    lat_accel_hard_mps2:
+      type: double
+      default_value: 6.0
+      read_only: true
+      description: 横加速度ハード上限 v²|κ| [m/s²] (グリップ限界相当)
+      validation:
+        gt<>: [0.0]
+    steer_rate_hard_radps:
+      type: double
+      default_value: 3.0
+      read_only: true
+      description: ステアレートハード上限 |δ̇| [rad/s] (アクチュエータ上限)
+      validation:
+        gt<>: [0.0]
+
+  lane_following_drivable_area:
+    margin_m:
+      type: double
+      default_value: 0.0
+      read_only: true
+      description: Boundary の margin [m] (禁止側をこの分だけ膨張して評価する)
+      validation:
+        gt_eq<>: [0.0]
+
+  obstacle_stop:
+    margin_m:
+      type: double
+      default_value: 0.5
+      read_only: true
+      description: KeepOut の定数マージン [m] (footprint をこの分膨張して評価する)
+      validation:
+        gt_eq<>: [0.0]
+
+  simple_drivable_area:
+    half_width_m:
+      type: double
+      default_value: 2.0
+      read_only: true
+      description: reference_path 中心線から左右へ取る走行可能領域の半幅 [m] (簡易版の定数幅)
+      validation:
+        gt<>: [0.0]
+    forward_extension_m:
+      type: double
+      default_value: 5.0
+      read_only: true
+      description: reference_path 終端から前方へ領域を伸ばす長さ [m]
+      validation:
+        gt_eq<>: [0.0]
+    backward_extension_m:
+      type: double
+      default_value: 5.0
+      read_only: true
+      description: reference_path 始端から後方へ領域を伸ばす長さ [m]
+      validation:
+        gt_eq<>: [0.0]
+    margin_m:
+      type: double
+      default_value: 0.0
+      read_only: true
+      description: Boundary の margin [m] (禁止側をこの分だけ膨張して評価する)
+      validation:
+        gt_eq<>: [0.0]
+    sample_interval_m:
+      type: double
+      default_value: 1.0
+      read_only: true
+      description: 中心線をサンプルする弧長間隔 [m]
+      validation:
+        gt<>: [0.0]
+
+  rough_planner:
+    time_step_s:
+      type: double
+      default_value: 0.1
+      read_only: true
+      description: 出力時間グリッド刻み [s] (下流 optimizer のステージと同一。S3 §1 原則 1)
+      validation:
+        gt<>: [0.0]
+    num_points:
+      type: int
+      default_value: 101
+      read_only: true
+      description: 出力点数 N + 1
+      validation:
+        gt<>: [1]
+    max_candidates:
+      type: int
+      default_value: 1
+      read_only: true
+      description: 出力候補数の上限 (当面 1。top-K 比較は将来拡張)
+      validation:
+        gt<>: [0]
+    dp:
+      s_max_m:
+        type: double
+        default_value: 150.0
+        read_only: true
+        description: DP 格子の前方範囲 [m] (S3 §3.1)
+        validation:
+          gt<>: [0.0]
+      s_step_m:
+        type: double
+        default_value: 2.0
+        read_only: true
+        description: DP 格子の s 刻み [m]
+        validation:
+          gt<>: [0.0]
+      l_range_m:
+        type: double
+        default_value: 3.0
+        read_only: true
+        description: DP 格子の横オフセット範囲 ± [m]
+        validation:
+          gt<>: [0.0]
+      l_step_m:
+        type: double
+        default_value: 0.5
+        read_only: true
+        description: DP 格子の l 刻み [m]
+        validation:
+          gt<>: [0.0]
+      t_step_s:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: DP 時間層の間隔 [s]
+        validation:
+          gt<>: [0.0]
+      horizon_s:
+        type: double
+        default_value: 10.0
+        read_only: true
+        description: DP ホライゾン [s] (下流 optimizer の T と一致させる)
+        validation:
+          gt<>: [0.0]
+      v_step_mps:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: DP 格子の v 刻み [m/s] (4D 格子)
+        validation:
+          gt<>: [0.0]
+      lateral_slope_max:
+        type: double
+        default_value: 0.3
+        read_only: true
+        description: 参照からの許容ヘディング偏差 dl/ds [-] (S3 §3.3)
+        validation:
+          gt<>: [0.0]
+      lateral_rate_max_mps:
+        type: double
+        default_value: 1.5
+        read_only: true
+        description: 横速度上限 [m/s] (S3 §3.3)
+        validation:
+          gt<>: [0.0]
+      weights:
+        progress:
+          type: double
+          default_value: 1.0
+          read_only: true
+          description: 進行報酬 [1/m] (基準単位。S3 §3.4)
+        lateral:
+          type: double
+          default_value: 0.5
+          read_only: true
+          description: 横オフセット維持 [1/(m²·s)]
+        lateral_rate:
+          type: double
+          default_value: 1.0
+          read_only: true
+          description: 横速度 (格子ジグザグ抑制) [s/m²]
+        velocity:
+          type: double
+          default_value: 0.2
+          read_only: true
+          description: 目標速度からの乖離 [s³/m²]
+        accel:
+          type: double
+          default_value: 0.1
+          read_only: true
+          description: 加速度平滑化 [s⁵/m²]
+        accel_nominal:
+          type: double
+          default_value: 2.0
+          read_only: true
+          description: 快適域超過の抑制 [s⁵/m²]
