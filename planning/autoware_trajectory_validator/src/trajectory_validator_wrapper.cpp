@@ -49,6 +49,8 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
   validator_params_listener_{node_parameters_interface},
   validator_params_{validator_params_listener_.get_params()},
   vehicle_info_(vehicle_info),
+  tf_buffer_ptr_(std::make_shared<tf2_ros::Buffer>(node.get_clock())),
+  tf_listener_ptr_(std::make_shared<tf2_ros::TransformListener>(*tf_buffer_ptr_)),
   plugin_loader_(
     "autoware_trajectory_validator", "autoware::trajectory_validator::plugin::ValidatorInterface"),
   time_keeper_(std::move(time_keeper))
@@ -105,6 +107,7 @@ void TrajectoryValidatorWrapper::load_metric(const std::string & name, const boo
     }
 
     plugin->set_vehicle_info(vehicle_info_);
+    plugin->set_tf_buffer(tf_buffer_ptr_);
     plugin->set_shadow_mode(is_shadow_mode);
     plugin->update_parameters(validator_params_);
 
