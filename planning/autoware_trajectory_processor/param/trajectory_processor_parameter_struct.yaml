@@ -897,6 +897,37 @@ trajectory_processor_params:
       default_value: true
       description: Publish raw/adjusted trajectories and solver debug topics
       read_only: false
+    stopped_velocity_threshold_mps:
+      type: double
+      default_value: 0.15
+      description: Ego/reference speeds at or below this are treated as stopped [m/s]
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    stopped_trajectory_max_length_m:
+      type: double
+      default_value: 1.5
+      description: Maximum path length from the first point to the last for stopped detection [m]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    goal_steer_zero_enable:
+      type: bool
+      default_value: true
+      description: Command zero steering on the published trajectory when stopped near the route goal
+      read_only: false
+    goal_steer_zero_distance_m:
+      type: double
+      default_value: 5.0
+      description: Ego-to-route-goal distance below which zero steering is requested [m]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    goal_steer_zero_requires_stopped:
+      type: bool
+      default_value: true
+      description: Require a stopped reference trajectory before zero steering near goal
+      read_only: false
 
   road_border_avoidance:
     enable:

@@ -155,4 +155,11 @@ OptimizationResult TrajectoryOptimizer::optimize(
   return result;
 }
 
+void TrajectoryOptimizer::clear_warm_start(const size_t batch_index)
+{
+  if (batch_index < previous_solutions_.size()) {
+    previous_solutions_[batch_index].reset();
+  }
+}
+
 }  // namespace autoware::trajectory_processor::time_sequence_raw

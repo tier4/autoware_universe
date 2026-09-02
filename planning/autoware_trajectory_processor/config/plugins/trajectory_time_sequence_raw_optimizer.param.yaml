@@ -15,6 +15,11 @@
       max_lateral_acceleration_mps2: 3.0
       max_sqp_iterations: 50
       publish_debug_topics: true
+      stopped_velocity_threshold_mps: 0.15
+      stopped_trajectory_max_length_m: 1.5
+      goal_steer_zero_enable: true
+      goal_steer_zero_distance_m: 5.0
+      goal_steer_zero_requires_stopped: true
 
     road_border_avoidance:
       enable: false

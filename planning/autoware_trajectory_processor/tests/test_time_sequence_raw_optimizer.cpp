@@ -142,4 +142,18 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, WarmStartAcrossCycles)
   ASSERT_TRUE(second.optimized);
 }
 
+TEST_F(TimeSequenceTrajectoryOptimizerTest, ClearWarmStartResetsPreviousSolution)
+{
+  TrajectoryOptimizationParams params;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  const auto raw = make_noisy_trajectory(8.0, 0.15);
+  const auto first = optimizer.optimize(raw, odometry_, 0.0, 0);
+  ASSERT_TRUE(first.optimized);
+
+  optimizer.clear_warm_start(0);
+  const auto second = optimizer.optimize(raw, odometry_, 0.0, 0);
+  ASSERT_TRUE(second.optimized);
+}
+
 }  // namespace autoware::trajectory_processor::test

@@ -48,10 +48,27 @@ private:
   void maybe_update_map(const TrajectoryProcessorData & data);
   void ensure_debug_publishers();
 
+  enum class SteerStopMode { Track, Hold, Zero };
+
+  SteerStopMode resolve_steer_stop_mode(
+    const autoware_planning_msgs::msg::Trajectory & reference,
+    const TrajectoryProcessorData & data);
+  void apply_stopped_reference(
+    TrajectoryPoints & traj_points, const autoware_planning_msgs::msg::Trajectory & reference,
+    const double steer_rad) const;
+
   time_sequence_raw::TrajectoryOptimizationParams opt_params_;
   time_sequence_raw::RoadBorderAvoidanceParams border_params_;
   bool road_border_enable_{false};
   bool publish_debug_topics_{true};
+  double stopped_velocity_threshold_mps_{0.15};
+  double stopped_trajectory_max_length_m_{1.5};
+  bool goal_steer_zero_enable_{true};
+  double goal_steer_zero_distance_m_{5.0};
+  bool goal_steer_zero_requires_stopped_{true};
+  bool in_stopped_regime_{false};
+  bool in_goal_zero_regime_{false};
+  double latched_steering_rad_{0.0};
 
   std::unique_ptr<time_sequence_raw::TrajectoryOptimizer> optimizer_;
   std::unique_ptr<time_sequence_raw::RoadBorderAvoidance> road_border_avoidance_;

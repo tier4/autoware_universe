@@ -54,6 +54,8 @@ public:
     const Trajectory & raw_trajectory, const Odometry & ego_odometry,
     const std::optional<double> & current_steering_angle_rad, size_t batch_index);
 
+  void clear_warm_start(size_t batch_index);
+
 private:
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;
