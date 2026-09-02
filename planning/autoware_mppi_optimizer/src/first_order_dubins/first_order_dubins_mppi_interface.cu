@@ -311,7 +311,8 @@ public:
     this->computeStateTrajectory(state);
   }
 
-  const std::vector<IterationRolloutSnapshot> & iterationRolloutSnapshots() const
+  const std::vector<MppiWithHistoryAccess::IterationRolloutSnapshot> & iterationRolloutSnapshots()
+    const
   {
     return iteration_rollout_snapshots_;
   }
@@ -762,7 +763,7 @@ void buildRolloutVisualization(
 }
 
 void buildIterationDebugRollouts(
-  const std::vector<UnfilteredMppiController::IterationRolloutSnapshot> & snapshots, DYN & model,
+  const std::vector<MppiWithHistoryAccess::IterationRolloutSnapshot> & snapshots, DYN & model,
   const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug)
 {
   debug.rollouts.clear();
@@ -976,7 +977,8 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     const float lambda = user_cost_params_.lambda;
     controller = std::make_unique<MppiWithHistoryAccess>(
-      &model, &cost, &feedback, &sampler, kDt, user_cost_params_.max_iter, lambda, 0.0F, kMppiHorizon, u_nom);
+      &model, &cost, &feedback, &sampler, kDt, user_cost_params_.max_iter, lambda, 0.0F,
+      kMppiHorizon, u_nom);
     auto cp = controller->getParams();
     cp.lambda_ = lambda;
     cp.dynamics_rollout_dim_ = dim3(32, 2, 1);
