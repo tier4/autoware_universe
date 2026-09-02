@@ -37,14 +37,14 @@ Enable CSV logging from the MPPI plugin parameters:
 ```yaml
 mppi_optimizer:
   enable_debug_trajectory_log: true
-  # Empty -> $XDG_CACHE_HOME/autoware/mppi_debug_log or $HOME/.cache/autoware/mppi_debug_log
+  # Empty -> current working directory of the trajectory processor node
   debug_trajectory_log_directory: ""
 ```
 
 Each cycle writes:
 
 ```text
-$HOME/.cache/autoware/mppi_debug_log/
+<debug_trajectory_log_directory>/
   index.csv
   cost_params.csv
   vehicle_params.csv
@@ -88,14 +88,14 @@ Notes:
 
 ```bash
 ros2 run autoware_mppi_optimizer mppi_debug_visualizer.py -- \
-  --log-dir "$HOME/.cache/autoware/mppi_debug_log"
+  --log-dir /path/to/debug_trajectory_log_directory
 ```
 
 ### Batch retune (CLI)
 
 ```bash
 ros2 run autoware_mppi_optimizer mppi_offline_retune -- \
-  --log-dir "$HOME/.cache/autoware/mppi_debug_log" \
+  --log-dir /path/to/debug_trajectory_log_directory \
   --out-dir "$HOME/.cache/autoware/mppi_retune" \
   --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml \
   --set track_coeff=2000 --set steer_rate_coeff=5000 \
@@ -111,13 +111,13 @@ diffusion reference (cyan), logged MPPI (red), and retuned MPPI (green):
 ```bash
 # Option A — visualizer with retune panel
 ros2 run autoware_mppi_optimizer mppi_debug_visualizer.py -- \
-  --log-dir "$HOME/.cache/autoware/mppi_debug_log" \
+  --log-dir /path/to/debug_trajectory_log_directory \
   --enable-retune \
   --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml
 
 # Option B — wrapper alias
 ros2 run autoware_mppi_optimizer mppi_offline_tuner.py -- \
-  --log-dir "$HOME/.cache/autoware/mppi_debug_log" \
+  --log-dir /path/to/debug_trajectory_log_directory \
   --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml
 ```
 

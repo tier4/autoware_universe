@@ -24,7 +24,12 @@ namespace autoware::mppi_optimizer
 
 /**
  * Declare vehicle actuation parameters using the same names as simulator_model.param.yaml so a
- * vehicle description simulator config can be loaded on the same node.
+ * vehicle description config can be loaded on the same node.
+ *
+ * On-vehicle and in simulation: when vehicle_model_type is
+ * DELAY_STEER_ACC_GEARED_FOR_DIFFUSION_PLANNER, read
+ * delay_steer_acc_geared_for_diffusion_planner.v{version}.* (same source as
+ * simple_planning_simulator). Other vehicle_model_type values use flat top-level fields.
  */
 void declare_first_order_dubins_mppi_vehicle_dynamics_params(rclcpp::Node & node);
 

@@ -40,6 +40,23 @@ using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
 
+/** Open-loop plant replay vs measured ego over elapsed wall time since the previous MPPI cycle. */
+struct FirstOrderDubinsMppiPredictionAccuracy
+{
+  bool valid{false};
+  double elapsed_s{0.0};
+  int full_steps{0};
+  float remainder_s{0.0F};
+  int integration_steps{0};
+  float pos_error_m{0.0F};
+  float yaw_error_rad{0.0F};
+  float vel_error_mps{0.0F};
+  float predicted_x{0.0F};
+  float predicted_y{0.0F};
+  float predicted_yaw{0.0F};
+  float predicted_vel{0.0F};
+};
+
 struct FirstOrderDubinsMppiState
 {
   float x{0.0F};
@@ -111,6 +128,8 @@ struct FirstOrderDubinsMppiCostBreakdown
   float running_total{0.0F};
   float terminal_total{0.0F};
   float total{0.0F};
+  /** Signed cross-track at the first post-step state [m]; + = left of path tangent. */
+  float signed_lateral_error_m{0.0F};
   std::size_t evaluated_timesteps{0U};
 
   [[nodiscard]] float componentTotal() const
@@ -190,6 +209,30 @@ struct FirstOrderDubinsMppiValidationResult
   }
 };
 
+struct FirstOrderDubinsMppiTiming
+{
+  /** Wall time for seedNominalControl (t-MPT / last-u / diffusion). */
+  double seed_nominal_ms{0.0};
+  /** Total optimizeTrajectory wall time. */
+  double total_ms{0.0};
+};
+
+/** Post-step delay-bicycle state after u₀ (internal MPPI plant; for closed-loop sim feedback). */
+struct FirstOrderDubinsMppiAppliedPlantState
+{
+  float x{0.0F};
+  float y{0.0F};
+  float yaw{0.0F};
+  float velocity{0.0F};
+  float acceleration{0.0F};
+  float steering{0.0F};
+  float sim_time{0.0F};
+  std::vector<float> accel_cmd_delay_buffer;
+  std::vector<float> steer_cmd_delay_buffer;
+  FirstOrderDubinsMppiControl applied_control;
+  bool valid{false};
+};
+
 struct FirstOrderDubinsMppiDebug
 {
   Trajectory reference_trajectory;
@@ -203,6 +246,7 @@ struct FirstOrderDubinsMppiDebug
   FirstOrderDubinsMppiCostBreakdown nominal_cost_breakdown;
   /** Cost of the final selected control rollout. */
   FirstOrderDubinsMppiCostBreakdown cost_breakdown;
+  FirstOrderDubinsMppiTiming timing;
   FirstOrderDubinsMppiKinematicLimits active_kinematic_limits;
   float baseline_cost{0.0F};
   /** Hard-constraint validation of the generated post-step states. */
@@ -217,6 +261,10 @@ struct FirstOrderDubinsMppiDebug
   std::vector<std::optional<float>> effective_max_velocity_by_reference_point;
   /** True when skip_if_invalid replaced the optimized trajectory with the input trajectory. */
   bool was_rejected{false};
+  /** Internal plant after runStep(); use for sim feedback to avoid duplicate integration. */
+  FirstOrderDubinsMppiAppliedPlantState applied_plant;
+  /** Open-loop delay-bicycle replay vs measured ego since the previous MPPI cycle. */
+  FirstOrderDubinsMppiPredictionAccuracy prediction_accuracy;
 };
 
 struct FirstOrderDubinsMppiOptimizationResult
@@ -307,8 +355,8 @@ public:
     const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd);
 
   /**
-   * @brief Seed vendor Savitzky–Golay control_history_ (2 previous applied commands).
-   *        Required for offline retune to match online smoothing edge taps.
+   * @brief Seed the last two applied commands tracked for debug CSV export.
+   *        Offline retune only; vendor Savitzky–Golay no longer reads cross-cycle history.
    *        Order: (accel/steer) at t-2, then (accel/steer) at t-1.
    */
   void setControlHistory(float accel_tm2, float steer_tm2, float accel_tm1, float steer_tm1);
@@ -339,10 +387,10 @@ public:
   /**
    * @brief Track a diffusion-planner reference (poses + velocities) with one MPPI step.
    *
-   * Uses the diffusion trajectory directly as the MPPI reference horizon (x, y, yaw, v),
-   * seeds u_nom from the previous optimized controls when use_last_control_as_nominal is set
-   * (otherwise from the reference trajectory), and returns the MPPI-predicted
-   * feasible state rollout that best tracks that reference.
+   * Uses the diffusion trajectory directly as the MPPI reference horizon (x, y, yaw, v).
+   * When use_temporal_mpt_as_nominal is set, seeds u_nom from acados t-MPT (self warm-start).
+   * Otherwise seeds from the previous optimized controls when use_last_control_as_nominal is set
+   * (else from the reference trajectory). Returns the MPPI-predicted feasible state rollout.
    *
    * @param input Reference trajectory from the diffusion planner (map frame).
    * @param odometry Current ego odometry in the same frame as the trajectory.
