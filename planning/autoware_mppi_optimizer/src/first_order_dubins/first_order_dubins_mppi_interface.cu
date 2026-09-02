@@ -140,7 +140,7 @@ using SAMPLER = mppi::sampling_distributions::GaussianDistribution<DYN::DYN_PARA
 using Mppi = VanillaMPPIController<DYN, COST, FB, kMppiHorizon, kNumRollouts, SAMPLER>;
 using CostBreakdown = FirstOrderDubinsMppiCostBreakdown;
 
-constexpr std::array<float CostBreakdown::*, 27> kCostBreakdownFields = {
+constexpr std::array<float CostBreakdown::*, 28> kCostBreakdownFields = {
   &CostBreakdown::spatial_overspeed,
   &CostBreakdown::track,
   &CostBreakdown::heading,
@@ -162,6 +162,7 @@ constexpr std::array<float CostBreakdown::*, 27> kCostBreakdownFields = {
   &CostBreakdown::lateral_jerk,
   &CostBreakdown::longitudinal_jerk,
   &CostBreakdown::steering_rate,
+  &CostBreakdown::initial_steering_rate,
   &CostBreakdown::kinematic_velocity_overlimit,
   &CostBreakdown::kinematic_acceleration_overlimit,
   &CostBreakdown::kinematic_jerk_overlimit,
@@ -266,6 +267,7 @@ std::string formatCostBreakdown(const CostBreakdown & cost)
          << ", lateral_jerk=" << cost.lateral_jerk
          << ", longitudinal_jerk=" << cost.longitudinal_jerk
          << ", steer_rate=" << cost.steering_rate
+         << ", initial_steer_rate=" << cost.initial_steering_rate
          << ", velocity_overlimit=" << cost.kinematic_velocity_overlimit
          << ", acceleration_overlimit=" << cost.kinematic_acceleration_overlimit
          << ", jerk_overlimit=" << cost.kinematic_jerk_overlimit << '}';
@@ -428,6 +430,7 @@ void applyUserCostParams(
   cost_params.accel_cmd_coeff = user.accel_cmd_coeff;
   cost_params.steer_cmd_coeff = user.steer_cmd_coeff;
   cost_params.steer_rate_coeff = user.steer_rate_coeff;
+  cost_params.initial_steer_rate_coeff = user.initial_steer_rate_coeff;
   cost_params.overlimit_coeff = user.overlimit_coeff;
   cost_params.lateral_acceleration_coeff = user.lateral_acceleration_coeff;
   cost_params.lateral_jerk_coeff = user.lateral_jerk_coeff;
@@ -735,7 +738,7 @@ float rawCostFromMinMaxWeight(
 }
 
 void buildRolloutVisualization(
-  UnfilteredMppiController & controller, SAMPLER & sampler, DYN & model,
+  MppiWithHistoryAccess & controller, SAMPLER & sampler, DYN & model,
   const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug)
 {
   const Mppi::state_trajectory state_trajectory = controller.getActualStateSeq();
@@ -1022,7 +1025,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     controller->setIterationRolloutCaptureEnabled(
       enable_iteration_rollout_debug && !enable_rollout_visualization);
     // Per-iteration debug controls are captured as one contiguous block by
-    // UnfilteredMppiController. Disable the vendor visualization staging buffers, whose
+    // MppiWithHistoryAccess. Disable the vendor visualization staging buffers, whose
     // per-rollout copies only preserve the final optimization iteration.
     controller->setPercentageSampledControlTrajectories(0.0F);
 
@@ -1498,6 +1501,7 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     const auto initial_state =
       detail::makeInitialState(odometry, acceleration, steering_status, vehicle_params);
+    cost.setInitialSteeringAngle(initial_state.steering);
     const std::vector<FirstOrderDubinsMppiControl> profile_seed(
       std::max(static_cast<std::size_t>(kMppiHorizon), diffusion_reference.points.size()));
     std::vector<float> profile_reference_velocities(profile_seed.size(), 0.0F);
@@ -1767,6 +1771,7 @@ struct FirstOrderDubinsMppiInterface::Impl
         u_opt_traj(accel_idx, timestep) =
           active_velocity_limit_profile.controls[static_cast<std::size_t>(timestep)].accel_cmd;
       }
+    }
     if (control_sequence_modified) {
       controller->setControlSequenceAndRecomputeState(u_opt_traj, x);
     }
@@ -1863,6 +1868,7 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
   }
   if (
     !std::isfinite(params.overlimit_coeff) || params.overlimit_coeff < 0.0F ||
+    !std::isfinite(params.initial_steer_rate_coeff) || params.initial_steer_rate_coeff < 0.0F ||
     !std::isfinite(params.crash_contact_penalty) || params.crash_contact_penalty < 0.0F ||
     !std::isfinite(params.std_dev_decay) || params.std_dev_decay < 0.0F ||
     params.std_dev_decay > 1.0F || !std::isfinite(params.lambda) ||
