@@ -330,7 +330,7 @@ trajectory_mppi_optimizer:
   enable_curvature_adaptive_steering_filter:
     type: bool
     default_value: true
-    description: Apply a steering EMA that filters straight-line noise and responds faster in turns
+    description: Apply the plugin output steering EMA that filters straight-line noise and responds faster in turns
     read_only: false
   steering_filter_alpha_straight:
     type: double

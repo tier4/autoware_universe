@@ -12,6 +12,10 @@ ament_auto_add_library(mppi_trajectory_utils SHARED
   src/first_order_dubins/trajectory_utils.cpp
 )
 
+ament_auto_add_library(mppi_curvature_adaptive_steering_filter SHARED
+  src/curvature_adaptive_steering_filter.cpp
+)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
@@ -22,6 +26,13 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_mppi_trajectory_utils
     mppi_trajectory_utils
+  )
+
+  ament_add_gtest(test_curvature_adaptive_steering_filter
+    test/test_curvature_adaptive_steering_filter.cpp
+  )
+  target_link_libraries(test_curvature_adaptive_steering_filter
+    mppi_curvature_adaptive_steering_filter
   )
 endif()
 
@@ -144,6 +155,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(autoware_mppi_trajectory_processor_plugin
     first_order_dubins_mppi
+    mppi_curvature_adaptive_steering_filter
     trajectory_mppi_optimizer_parameters
     ${PROJECT_NAME}
   )
@@ -179,6 +191,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(mppi_open_loop_line_sim
     first_order_dubins_mppi
+    mppi_curvature_adaptive_steering_filter
     ${PROJECT_NAME}
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp

@@ -27,6 +27,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -70,6 +71,10 @@ struct FirstOrderDubinsMppiControl
   float accel_cmd{0.0F};
   float steer_cmd{0.0F};
 };
+
+/** Optional host-side output conditioning supplied by the interface caller. */
+using FirstOrderDubinsMppiControlSequencePostprocessor =
+  std::function<void(std::vector<FirstOrderDubinsMppiControl> &)>;
 
 /** Nominal control sequence supplied to MPPI before sampling and optimization. */
 struct FirstOrderDubinsMppiNominalControlProfile
@@ -287,6 +292,8 @@ struct FirstOrderDubinsMppiOptimizationResult
 {
   Trajectory trajectory;
   FirstOrderDubinsMppiDebug debug;
+  /** Number of leading points generated from the MPPI control horizon. */
+  std::size_t optimized_point_count{0U};
 };
 
 /** Static 2D line segment supplied to the MPPI cost function in map coordinates. */
@@ -419,6 +426,8 @@ public:
    * @param drivable_area Static drivable-area boundary segments used as a gradual constraint.
    * @param kinematic_limits Optional external scalar and map pointwise velocity bounds, plus
    *        external acceleration and jerk bounds.
+   * @param control_postprocessor Optional caller-owned conditioning applied to the optimized
+   *        control horizon before state recomputation and applied-control bookkeeping.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
@@ -426,7 +435,8 @@ public:
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
     const std::vector<Segment> & drivable_area,
-    const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {});
+    const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {},
+    const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor = {});
 
 private:
   struct Impl;
