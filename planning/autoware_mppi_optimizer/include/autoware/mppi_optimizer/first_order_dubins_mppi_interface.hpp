@@ -131,6 +131,7 @@ struct FirstOrderDubinsMppiCostBreakdown
   float lateral_jerk{0.0F};
   float longitudinal_jerk{0.0F};
   float steering_rate{0.0F};
+  float initial_steering_rate{0.0F};
   float kinematic_velocity_overlimit{0.0F};
   float kinematic_acceleration_overlimit{0.0F};
   float kinematic_jerk_overlimit{0.0F};
@@ -147,8 +148,8 @@ struct FirstOrderDubinsMppiCostBreakdown
            lateral_distance + lateral_boundary + lateral_yaw_error + remaining_distance +
            path_overshoot + track_center + corner_buffer + drivable_area + acceleration_command +
            steering_command + lateral_acceleration + lateral_jerk + longitudinal_jerk +
-           steering_rate + kinematic_velocity_overlimit + kinematic_acceleration_overlimit +
-           kinematic_jerk_overlimit + obstacle + road_border;
+           steering_rate + initial_steering_rate + kinematic_velocity_overlimit +
+           kinematic_acceleration_overlimit + kinematic_jerk_overlimit + obstacle + road_border;
   }
 };
 

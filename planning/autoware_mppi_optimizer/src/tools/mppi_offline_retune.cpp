@@ -183,6 +183,8 @@ void applyCostParam(
     params.steer_cmd_coeff = value;
   } else if (key == "steer_rate_coeff") {
     params.steer_rate_coeff = value;
+  } else if (key == "initial_steer_rate_coeff") {
+    params.initial_steer_rate_coeff = value;
   } else if (key == "overlimit_coeff") {
     params.overlimit_coeff = value;
   } else if (key == "accel_cmd_std_dev") {
@@ -588,7 +590,8 @@ int run(int argc, char ** argv)
             << " spatial_overspeed_coeff=" << cost_params.spatial_overspeed_coeff
             << " overlimit_coeff=" << cost_params.overlimit_coeff
             << " heading_coeff=" << cost_params.heading_coeff
-            << " steer_rate_coeff=" << cost_params.steer_rate_coeff << "\n";
+            << " steer_rate_coeff=" << cost_params.steer_rate_coeff
+            << " initial_steer_rate_coeff=" << cost_params.initial_steer_rate_coeff << "\n";
   const auto frame_ids = listMppiDebugFrameIds(log_dir);
   if (frame_ids.empty()) {
     std::cerr << "No frames found in " << log_dir << "\n";
@@ -838,6 +841,7 @@ int run(int argc, char ** argv)
       breakdown_out << "comfort/lateral_jerk," << breakdown.lateral_jerk << "\n";
       breakdown_out << "comfort/longitudinal_jerk," << breakdown.longitudinal_jerk << "\n";
       breakdown_out << "comfort/steering_rate," << breakdown.steering_rate << "\n";
+      breakdown_out << "mppi/initial_steering_rate," << breakdown.initial_steering_rate << "\n";
       breakdown_out << "kinematic/velocity_overlimit," << breakdown.kinematic_velocity_overlimit
                     << "\n";
       breakdown_out << "kinematic/acceleration_overlimit,"
