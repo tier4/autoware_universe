@@ -218,9 +218,7 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       .metric_value(0.0)
       .risk(make_risk(is_crossing_amber, amber_arc_length_to_stop_line)));
 
-  const bool is_feasible = !is_crossing_red && !is_crossing_amber;
-
-  return ValidationResult{is_feasible, std::move(metrics)};
+  return ValidationResult{std::move(metrics)};
 }
 
 RiskLevel::_level_type TrafficLightFilter::get_risk_level(
