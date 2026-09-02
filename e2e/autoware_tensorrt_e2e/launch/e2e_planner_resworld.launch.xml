@@ -17,6 +17,12 @@
   <arg name="build_only" default="false" description="shutdown node after the TensorRT engine files are built"/>
   <arg name="use_sim_time" default="false" description="use /clock (rosbag replay); the input staleness checks need it"/>
   <arg name="launch_prefix" default="" description="wrap the node process (e.g. compute-sanitizer, gdb -ex run --args)"/>
+  <arg name="rviz" default="false" description="open RViz with this node's layout"/>
+  <arg name="rviz_config" default="$(find-pkg-share autoware_tensorrt_e2e)/rviz/e2e_planner.rviz"/>
+  <!-- RViz refuses a MarkerArray with duplicate ids, which is what the lanelet2
+       visualizer emits, and it drops everything it holds whenever a looping bag
+       moves time backwards. The relay fixes both; see its docstring. -->
+  <arg name="map_marker_relay" default="$(var rviz)" description="renumber and re-latch the lanelet2 markers for RViz"/>
 
   <!-- Sensing input: concatenated point cloud (same source as BEVFusion) -->
   <arg name="input_pointcloud" default="/sensing/lidar/concatenated/pointcloud"/>
@@ -51,5 +57,15 @@
     <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
     <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
     <remap from="~/output/predicted_objects" to="$(var output_predicted_objects)"/>
+  </node>
+
+  <node pkg="autoware_tensorrt_e2e" exec="vector_map_marker_relay.py" name="vector_map_marker_relay"
+        output="log" if="$(var map_marker_relay)">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+
+  <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen" args="-d $(var rviz_config)"
+        if="$(var rviz)">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
   </node>
 </launch>
