@@ -14,6 +14,7 @@
 
 #include "autoware/mppi_optimizer/trajectory_mppi_optimizer.hpp"
 
+#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_kinematic_limits_conversion.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
@@ -125,13 +126,17 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.use_last_control_as_nominal = params.use_last_control_as_nominal;
   output.use_temporal_mpt_as_nominal = params.use_temporal_mpt_as_nominal;
   output.prevent_reverse_velocity = params.prevent_reverse_velocity;
-  output.enable_curvature_adaptive_steering_filter =
-    params.enable_curvature_adaptive_steering_filter;
-  output.steering_filter_alpha_straight = static_cast<float>(params.steering_filter_alpha_straight);
-  output.steering_filter_alpha_turn = static_cast<float>(params.steering_filter_alpha_turn);
-  output.steering_filter_turn_angle_rad = static_cast<float>(params.steering_filter_turn_angle_rad);
   output.enable_input_delay_compensation = params.enable_input_delay_compensation;
   return output;
+}
+
+CurvatureAdaptiveSteeringFilterParams make_steering_filter_params(
+  const trajectory_mppi_optimizer::Params & params)
+{
+  return {
+    static_cast<float>(params.steering_filter_alpha_straight),
+    static_cast<float>(params.steering_filter_alpha_turn),
+    static_cast<float>(params.steering_filter_turn_angle_rad)};
 }
 
 autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
@@ -250,6 +255,7 @@ void TrajectoryMppiOptimizer::on_initialize(
     std::make_unique<trajectory_mppi_optimizer::ParamListener>(node, "mppi_optimizer");
   params_ = param_listener_->get_params();
   map_velocity_limit_overrides_ = make_velocity_limit_overrides(params_);
+  steering_filter_.setParams(make_steering_filter_params(params_));
   declare_first_order_dubins_mppi_vehicle_dynamics_params(*node);
 
   velocity_limit_sub_ =
@@ -289,6 +295,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   if (param_listener_->try_update_params(updated_params)) {
     try {
       map_velocity_limit_overrides_ = make_velocity_limit_overrides(updated_params);
+      steering_filter_.setParams(make_steering_filter_params(updated_params));
     } catch (const std::exception & error) {
       constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       publish_enabled(false);
@@ -373,9 +380,57 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       }
     }
 
-    const auto result = optimizer_->optimizeTrajectory(
+    CurvatureAdaptiveSteeringFilter candidate_steering_filter = steering_filter_;
+    FirstOrderDubinsMppiControlSequencePostprocessor control_postprocessor;
+    const bool filter_candidate =
+      params_.enable_curvature_adaptive_steering_filter && !params_.shadow_mode;
+    if (filter_candidate) {
+      const float measured_steering = steering ? steering->steering_tire_angle : 0.0F;
+      control_postprocessor = [&candidate_steering_filter, measured_steering](
+                                std::vector<FirstOrderDubinsMppiControl> & controls) {
+        std::vector<float> steering_commands;
+        steering_commands.reserve(controls.size());
+        for (const auto & control : controls) {
+          steering_commands.push_back(control.steer_cmd);
+        }
+        candidate_steering_filter.filter(steering_commands, measured_steering);
+        for (std::size_t index = 0; index < controls.size(); ++index) {
+          controls[index].steer_cmd = steering_commands[index];
+        }
+      };
+    }
+
+    auto result = optimizer_->optimizeTrajectory(
       input, *data.current_odometry, acceleration, steering, all_targets,
-      to_mppi_segments(road_borders), to_mppi_segments(drivable_area), kinematic_limits);
+      to_mppi_segments(road_borders), to_mppi_segments(drivable_area), kinematic_limits,
+      control_postprocessor);
+
+    const bool apply_limited_fallback =
+      result.debug.was_rejected && result.debug.velocity_limit_profile_active;
+    const bool apply_result =
+      !params_.shadow_mode && (!result.debug.was_rejected || apply_limited_fallback);
+    if (filter_candidate && apply_result) {
+      if (apply_limited_fallback) {
+        // The interface replaced the optimized result with its longitudinally limited reference.
+        // Filter the fallback that is actually published from the pre-cycle filter state.
+        candidate_steering_filter = steering_filter_;
+        const std::size_t optimized_count =
+          std::min(result.trajectory.points.size(), result.optimized_point_count);
+        std::vector<float> steering_commands;
+        steering_commands.reserve(optimized_count);
+        for (std::size_t index = 0; index < optimized_count; ++index) {
+          steering_commands.push_back(result.trajectory.points[index].front_wheel_angle_rad);
+        }
+        candidate_steering_filter.filter(
+          steering_commands, steering ? steering->steering_tire_angle : 0.0F);
+        for (std::size_t index = 0; index < optimized_count; ++index) {
+          result.trajectory.points[index].front_wheel_angle_rad = steering_commands[index];
+          result.debug.optimized_trajectory.points[index].front_wheel_angle_rad =
+            steering_commands[index];
+        }
+      }
+      steering_filter_ = std::move(candidate_steering_filter);
+    }
 
     pending_debug_ = result.debug;
     pending_debug_header_ = input.header;
@@ -384,10 +439,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       data.current_odometry->pose.pose.position.z);
     debug_pending_ = true;
 
-    const bool apply_limited_fallback =
-      result.debug.was_rejected && result.debug.velocity_limit_profile_active;
-    const bool apply_result =
-      !params_.shadow_mode && (!result.debug.was_rejected || apply_limited_fallback);
     publish_enabled(apply_result);
     publish_cost_diagnostics(result.debug, apply_result, rclcpp::Time{input.header.stamp});
     publish_processing_time(result.debug.timing);
@@ -419,6 +470,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
 void TrajectoryMppiOptimizer::reset_optimizer()
 {
   optimizer_.reset();
+  steering_filter_.reset();
   object_selector_ = autoware::avoidance_target_detector::TrackedObjectSelector{};
 }
 
