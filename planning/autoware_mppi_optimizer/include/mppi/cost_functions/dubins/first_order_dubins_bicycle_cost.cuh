@@ -62,6 +62,8 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float steer_cmd_coeff = 0.0F;
   /** Direct cost on steer rate [rad/s]: (steer_cmd - steer) / steer_time_constant. */
   float steer_rate_coeff = 0.0F;
+  /** Horizon-compensated cost on (first steer command - initial steering) / control dt. */
+  float initial_steer_rate_coeff = 0.0F;
   /** Shared cost weight for optional velocity, acceleration, and jerk interval violations. */
   float overlimit_coeff = 10000.0F;
   float lateral_acceleration_coeff = 300.0F;
@@ -151,6 +153,9 @@ public:
     const float * x, const float * y, const float * v, int count, const float * yaw = nullptr,
     const float * max_velocity = nullptr, const std::uint8_t * velocity_limit_active = nullptr,
     const float * terminal_reference = nullptr);
+
+  /** Set the measured pre-rollout steering angle used by the timestep-zero transient cost. */
+  void setInitialSteeringAngle(float steering_angle);
 
   void setKinematicLimits(const FirstOrderDubinsBicycleKinematicLimitData & limits);
 
@@ -340,6 +345,8 @@ public:
   /** Final path length = s[n-1]; staged into shared memory with corridor/ref on GPU. */
   float lateral_corridor_total_length_s_ = 0.0F;
   bool lateral_corridor_has_s_ = false;
+  /** Measured steering state at the start of the current rollout. */
+  float initial_steering_angle_ = 0.0F;
   int num_obstacles_ = 0;
   float obs_x_[kMaxObstacles][NUM_TIMESTEPS] = {};
   float obs_y_[kMaxObstacles][NUM_TIMESTEPS] = {};
@@ -361,6 +368,9 @@ public:
 
 private:
   friend struct DistanceMapTextureTestAccess;
+
+  __host__ __device__ float computeInitialSteeringRateCost(
+    const float * control, int timestep) const;
 
   void dataToDevice();
   __host__ bool updateDistanceMapGrid(

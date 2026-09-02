@@ -86,6 +86,7 @@ the previous stage's closest segment; the first projection performs a full scan.
 | `lateral_jerk`                     |   yes   |    no    | `lateral_jerk_coeff`                 | modeled lateral jerk squared                      |
 | `longitudinal_jerk`                |   yes   |    no    | `longitudinal_jerk_coeff`            | modeled longitudinal jerk squared                 |
 | `steering_rate`                    |   yes   |    no    | `steer_rate_coeff`                   | modeled, clamped steering rate squared            |
+| `initial_steering_rate`            |   yes   |    no    | `initial_steer_rate_coeff`           | horizon-compensated first-command steering jump   |
 | `kinematic_velocity_overlimit`     |   yes   |    no    | `overlimit_coeff`                    | velocity interval violation squared               |
 | `kinematic_acceleration_overlimit` |   yes   |    no    | `overlimit_coeff`                    | scaled acceleration interval violation squared    |
 | `kinematic_jerk_overlimit`         |   yes   |    no    | `overlimit_coeff`                    | scaled jerk interval violation squared            |
@@ -251,6 +252,18 @@ L_steering_rate     = steer_rate_coeff * delta_rate^2
 
 Here `a` and `delta` come from the post-step output. See the actuator-delay caveat in the review
 findings.
+
+At the first rollout stage only, a separate transient cost compares the issued steering command
+with the measured pre-rollout steering state:
+
+```text
+initial_delta_rate = (u_delta[0] - delta_initial) / control_dt
+L_initial_steering_rate[0] =
+  initial_steer_rate_coeff * initial_delta_rate^2 * horizon_length
+```
+
+The rollout-wide horizon average cancels `horizon_length`, so this one-shot coefficient has a
+tuning scale comparable to a running steering-rate coefficient.
 
 ### 7.3 Lateral acceleration and jerk
 

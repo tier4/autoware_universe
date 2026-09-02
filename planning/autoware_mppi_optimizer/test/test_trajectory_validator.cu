@@ -154,6 +154,36 @@ TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheir
   EXPECT_EQ(direct_crash_status, 0);
 }
 
+TEST_F(TrajectoryValidatorTest, PenalizesOnlyTheInitialSteeringCommandTransient)
+{
+  auto params = makeParams();
+  params.initial_steer_rate_coeff = 2.0F;
+  cost_->setParams(params);
+  cost_->setInitialSteeringAngle(0.1F);
+  setStraightReference();
+
+  TestCost::output_array output = TestCost::output_array::Zero();
+  // The initial transient must use the measured pre-rollout state, not this post-step output.
+  output(static_cast<int>(OutputIndex::STEER_ANGLE)) = -0.4F;
+  TestCost::control_array control = TestCost::control_array::Zero();
+  control(static_cast<int>(ControlIndex::STEER_CMD)) = 0.3F;
+  int crash_status = 0;
+
+  const auto step_zero = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  const auto step_one = cost_->computeRunningCostBreakdown(output, control, 1, &crash_status);
+  int direct_crash_status = 0;
+  const float direct_step_zero =
+    cost_->computeRunningCost(output, control, 0, &direct_crash_status);
+
+  const float initial_rate = (0.3F - 0.1F) / FirstOrderDubinsBicycleParams::kControlDt;
+  const float expected = params.initial_steer_rate_coeff * initial_rate * initial_rate *
+                         static_cast<float>(kTestHorizon);
+  EXPECT_NEAR(step_zero.initial_steering_rate, expected, 1.0E-4F);
+  EXPECT_FLOAT_EQ(step_one.initial_steering_rate, 0.0F);
+  EXPECT_NEAR(step_zero.componentTotal(), step_zero.total, 1.0E-4F);
+  EXPECT_NEAR(step_zero.total, direct_step_zero, 1.0E-4F);
+}
+
 TEST_F(TrajectoryValidatorTest, EvaluatesIndependentTerminalPositionAndHeadingErrors)
 {
   auto params = makeParams();
