@@ -1346,17 +1346,6 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
       current_lanelet_ = closest;
       return true;
     }
-    // NOTE(odashima): the same distance-unconstrained retry as the steady-state branch below.
-    // Parked in a bus-stop bay the nearest route lanelet is several metres away, and without this
-    // the first call leaves current_lanelet_ unset, so every later call re-enters this branch and
-    // fails again — the planner never produces a path at all.
-    if (lanelet::utils::query::getClosestLaneletWithConstrains(
-          route_context_.route_lanelets, current_pose, &closest,
-          /*dist_threshold=*/std::numeric_limits<double>::max(),
-          params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
-      current_lanelet_ = closest;
-      return true;
-    }
     current_lanelet_ = std::nullopt;
     return false;
   }
