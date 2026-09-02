@@ -35,7 +35,6 @@
 #include <autoware_utils/math/unit_conversion.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
-#include <lanelet2_core/geometry/LaneletMap.h>
 #include <tf2/utils.h>
 
 #include <algorithm>
@@ -1121,21 +1120,31 @@ bool route_deviation_stop(
   const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & current_pose,
   const RouteContext & planner_data)
 {
-  const lanelet::BasicPoint2d ego_point{current_pose.position.x, current_pose.position.y};
+  lanelet::ConstLanelets recoverable_lanelets;
+  const auto beside_lanelets = planner_data.routing_graph_ptr->besides(current_lanelet);
+  recoverable_lanelets.insert(
+    recoverable_lanelets.end(), beside_lanelets.begin(), beside_lanelets.end());
 
-  for (const auto & ll : planner_data.routing_graph_ptr->besides(current_lanelet)) {
-    if (lanelet::geometry::inside(ll, ego_point)) {
-      return false;
+  const auto left_lanelets =
+    planner_data.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.leftBound());
+
+  for (const auto & ll : left_lanelets) {
+    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(ll)) {
+      recoverable_lanelets.push_back(ll);
     }
   }
 
-  // NOTE(odashima): a shoulder lanelet is recognised by ego being inside it, not by it sharing a
-  // bound with the current route lanelet: a bus-stop bay has its own road-side linestring, so
-  // findUsages(bound) never reaches it and ego parked in the bay would be treated as off-route.
-  // The stop before re-entering the road lane is planned in MapBasedStopPlanner instead.
-  for (const auto & distance_and_lanelet : lanelet::geometry::findWithin2d(
-         planner_data.lanelet_map_ptr->laneletLayer, ego_point, 0.0)) {
-    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(distance_and_lanelet.second)) {
+  const auto right_lanelets =
+    planner_data.lanelet_map_ptr->laneletLayer.findUsages(current_lanelet.rightBound());
+
+  for (const auto & ll : right_lanelets) {
+    if (autoware::experimental::lanelet2_utils::is_shoulder_lane(ll)) {
+      recoverable_lanelets.push_back(ll);
+    }
+  }
+
+  for (const auto & ll : recoverable_lanelets) {
+    if (lanelet::geometry::inside(ll, {current_pose.position.x, current_pose.position.y})) {
       return false;
     }
   }
