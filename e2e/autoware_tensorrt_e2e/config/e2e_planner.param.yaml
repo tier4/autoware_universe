@@ -1,0 +1,57 @@
+# Deployment defaults for the E2E planner node — MODEL-AGNOSTIC.
+#
+# Nothing here may be specific to one network. Everything a particular model
+# dictates — tensor names, voxelization geometry, temporal contract, horizon,
+# and the precision its graph tolerates — lives in
+# `ml_package_<model>.param.yaml` NEXT TO THE ARTIFACTS (the autoware_bevfusion
+# convention). The launch file loads this file first and the ml_package second,
+# so a model's values override these defaults without editing the package.
+#
+# Deploying another model or a re-trained variant is therefore a `model_name` /
+# `model_path` change, with no edit here and no rebuild.
+/**:
+  ros__parameters:
+    # -- artifacts: the location is the deployment's business, the file names
+    #    come from the launch arguments --
+    model_path: $(var model_path)/$(var planner_onnx)
+    plugins_path: ""  # planner graphs so far need no custom plugins
+    args_path: ""  # set when a model needs external normalization statistics
+    build_only: false
+
+    # fp32 by default: a planner graph that embeds normalization statistics can
+    # exceed the fp16 range, and TensorRT clips silently rather than failing.
+    # A model whose graph is validated in fp16 says so in its ml_package file.
+    precision: "fp32"
+
+    # TensorRT builder workspace. Below a graph's requirement the builder does
+    # not degrade gracefully — it segfaults (1 GiB killed the ResWorld planner
+    # build; 4 GiB is comfortable). This is a property of the deployment host.
+    trt_workspace_mib: 4096
+
+    # -- runtime --
+    planning_frequency_hz: 10.0
+    shift_x: false
+
+    bev_feature:
+      # The deployment contract shipped with the artifacts is the source of
+      # truth for cache semantics; the ml_package values are the fallback.
+      contract_path: $(var model_path)/$(var contract_file)
+      interval_tolerance_seconds: 0.02
+      warmup: "wait"  # "wait" or "duplicate_current"
+      max_delay_ms: 200.0
+      extractor:
+        onnx_path: $(var model_path)/$(var extractor_onnx)
+        plugins_path: $(find-pkg-share autoware_tensorrt_plugins)/plugins/libautoware_tensorrt_plugins.so
+        precision: "fp16"  # sparse-conv feature extractors are validated in fp16
+        cloud_capacity: 2000000
+
+    context:
+      traffic_light_group_msg_timeout_seconds: 0.2
+      ignore_neighbors: false
+      ignore_unknown_neighbors: true
+      line_string_max_step_m: 5.0
+      use_time_interpolation: false
+
+    postprocess:
+      velocity_smoothing_window: 8
+      stopping_threshold: 0.3
