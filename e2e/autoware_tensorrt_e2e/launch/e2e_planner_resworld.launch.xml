@@ -1,7 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
-  <arg name="param_path" default="$(find-pkg-share autoware_tensorrt_e2e)/config/e2e_planner_resworld.param.yaml"/>
-  <arg name="data_path" default="$(env HOME)/autoware_data/ml_models/tensorrt_e2e/resworld" description="ResWorld artifacts (planner onnx, deployment contract, BEVFusion-L feature onnx)"/>
+  <!-- Artifact location and the file names inside it. The network's own
+       description travels with the artifacts as ml_package_<model>.param.yaml
+       (autoware_bevfusion convention), so switching models or re-trained
+       variants never edits this package. -->
+  <arg name="data_path" default="$(env HOME)/autoware_data/ml_models/tensorrt_e2e" description="ml model artifacts root"/>
+  <arg name="model_name" default="resworld"/>
+  <arg name="model_path" default="$(var data_path)/$(var model_name)"/>
+  <arg name="planner_onnx" default="$(var model_name)_planner.simplified.onnx"/>
+  <arg name="extractor_onnx" default="bevfusion_lidar_feature.onnx"/>
+  <arg name="contract_file" default="$(var model_name)_deployment_contract.json"/>
+
+  <arg name="model_param_path" default="$(find-pkg-share autoware_tensorrt_e2e)/config/e2e_planner.param.yaml" description="deployment behaviour (model-agnostic)"/>
+  <arg name="ml_package_param_path" default="$(var model_path)/ml_package_$(var model_name).param.yaml" description="network description, shipped with the artifacts"/>
   <arg name="vehicle_info_param_path" default="$(find-pkg-share autoware_vehicle_info_utils)/config/vehicle_info.param.yaml"/>
   <arg name="build_only" default="false" description="shutdown node after the TensorRT engine files are built"/>
   <arg name="use_sim_time" default="false" description="use /clock (rosbag replay); the input staleness checks need it"/>
@@ -24,7 +35,8 @@
   <arg name="output_predicted_objects" default="~/output/predicted_objects"/>
 
   <node pkg="autoware_tensorrt_e2e" exec="autoware_tensorrt_e2e_node" name="tensorrt_e2e" output="both" launch-prefix="$(var launch_prefix)">
-    <param from="$(var param_path)" allow_substs="true"/>
+    <param from="$(var model_param_path)" allow_substs="true"/>
+    <param from="$(var ml_package_param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
     <param name="build_only" value="$(var build_only)"/>
     <param name="use_sim_time" value="$(var use_sim_time)"/>

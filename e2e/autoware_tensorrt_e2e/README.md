@@ -15,22 +15,29 @@ See [docs/design.md](docs/design.md) for the architecture and design rationale.
 | **ResWorld** (OnePlanner) | `e2e_planner_resworld.launch.xml` | Concatenated point cloud → frozen BEVFusion-L features, 3-frame temporal history |
 
 ```bash
-ros2 launch autoware_tensorrt_e2e e2e_planner_resworld.launch.xml \
-  data_path:=$HOME/autoware_data/ml_models/tensorrt_e2e/resworld
+ros2 launch autoware_tensorrt_e2e e2e_planner_resworld.launch.xml
 ```
 
-The `data_path` directory holds `resworld_planner.simplified.onnx`,
-`resworld_deployment_contract.json` (the cache/tensor contract, read by the node), and the
-frozen BEVFusion-L feature extractor ONNX (`bevfusion_lidar_feature.onnx`: the production
-BEVFusion lidar branch exported with `bev_feature` `[1, 512, 180, 180]` as an output).
+`$(data_path)/$(model_name)` — by default
+`$HOME/autoware_data/ml_models/tensorrt_e2e/resworld` — holds
+`resworld_planner.simplified.onnx`, `resworld_deployment_contract.json` (the cache/tensor
+contract, read by the node), the frozen BEVFusion-L feature extractor ONNX
+(`bevfusion_lidar_feature.onnx`: the production BEVFusion lidar branch exported with
+`bev_feature` `[1, 512, 180, 180]` as an output), and `ml_package_resworld.param.yaml`
+describing all of it (see [Configuration layout](#configuration-layout); the copy under
+`config/` is a reference, the node reads the one beside the artifacts).
 
 The extractor ONNX carries `autoware::GetIndicePairsImplicitGemm` / `autoware::ImplicitGemm`
 custom nodes (sparse convolutions), so building and running its engine requires
 `autoware_tensorrt_plugins` (`bev_feature.extractor.plugins_path`) and an `spconv_cpp`
-build that includes this GPU's architecture. The extractor consumes 5 point features
-per voxel (`use_intensity: true`) with 32 points per voxel, matching the frozen
-BEVFusion-L training voxelizer; both values are baked into the exported graph, so the
-ROS parameters must not drift from the artifact.
+build that includes this GPU's architecture. Its 32 points per voxel and 5 point features
+(`use_intensity: true`) match the frozen BEVFusion-L training voxelizer and are baked into
+the graph — which is why the ml_package generator reads them back out of the graph instead
+of trusting a hand-written value.
+
+The planner runs in **fp32**: its graph embeds normalization statistics that overflow fp16
+(TensorRT clips them silently), and TensorRT 10.16's fp16 builder path aborts on this graph
+outright. `ml_package_resworld.param.yaml` records that, overriding the package default.
 
 ## Sensor prototypes
 
@@ -114,9 +121,47 @@ latch messages. Each tick's processing time is published, and exceeding the plan
 raises a `WARN` diagnostic (`Processing time exceeded the planning period`), making rate
 violations observable. Model + preprocessing must fit the 100 ms budget on target hardware.
 
+## Configuration layout
+
+Parameters are split the way `autoware_bevfusion` splits them, so that switching
+models never edits this package:
+
+| File | Lives in | Holds |
+| ---- | -------- | ----- |
+| `config/e2e_planner.param.yaml` | the package | deployment defaults, **model-agnostic**: artifact paths (from launch arguments), TensorRT workspace, planning rate, staleness tolerances, context and postprocess behaviour |
+| `ml_package_<model>.param.yaml` | **the model directory, beside the ONNX files** | the network itself: tensor names, voxelization geometry, temporal contract, horizon, and the precision the graph is validated in |
+
+The launch file loads the package defaults first and the ml_package second, so a
+model's values override the defaults. Deploying another model or a re-trained
+variant is a launch argument, not an edit:
+
+```bash
+ros2 launch autoware_tensorrt_e2e e2e_planner_resworld.launch.xml \
+  data_path:=$HOME/autoware_data/ml_models/tensorrt_e2e model_name:=resworld
+```
+
+`ml_package_<model>.param.yaml` is **generated from the artifacts**, never
+hand-written, so a new checkpoint cannot silently disagree with a stale config:
+
+```bash
+python3 scripts/make_ml_package_param.py <model_dir> --model-name <model>
+```
+
+It reads points-per-voxel and the point-feature count out of the extractor's
+`voxels` input shape, the cache semantics out of the deployment contract JSON,
+and the tensor names and horizon out of the planner graph. Re-run it whenever
+the artifacts in that directory change.
+
+### TensorRT workspace
+
+`trt_workspace_mib` (default 4096) is a property of the deployment host, not of
+the model. Sizing it below what a graph needs does not merely cost performance:
+the builder segfaults (1 GiB is not enough for the ResWorld planner).
+
 ## Extending
 
-- **New model variant (same modality)**: edit the config; no code change.
+- **New model variant (same modality)**: point `model_name`/`model_path` at the
+  new artifacts and regenerate their ml_package file; no code change.
 - **New sensing modality**: implement `InputProviderInterface` (`claim_inputs` + `collect`),
   register it in `TensorrtE2eNode::create_providers()`, and add its name to `sensor_inputs`.
 - **New context feature**: extend `ContextInputProvider` with the new tensor claim.
