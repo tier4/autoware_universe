@@ -14,17 +14,17 @@
       lambda: 0.01
       lambda_min: 0.00001
       lambda_max: 10.0
-      target_ess_ratio: 0.01
+      target_ess_ratio: 0.03
       # Lambda is adapted once per control cycle; keep this slow enough to avoid cycle-to-cycle
       # temperature oscillation while still recovering from weight collapse.
-      lambda_adaptation_gain: 2.0
+      lambda_adaptation_gain: 1.0
       # Panic exploration is driven only by rollout collision/safety flags, not total cost.
       unsafe_rollout_fraction_threshold: 0.95
       # Clamp the upper 5% cost tail before weighting so rare barrier outliers do not compress the
       # useful rollout population near normalized cost zero.
       cost_normalization_percentile: 0.95
       max_iter: 10
-      spatial_overspeed_coeff: 50.0
+      spatial_overspeed_coeff: 5000.0
       # Index-aligned tracking is disabled because the input points are not interpolated by time.
       track_coeff: 0.0
       # Retain a modest terminal copy of the spatial corridor costs.
@@ -46,22 +46,22 @@
       # clearance term only as a moderate boundary buffer, not as the primary containment cost.
       corner_buffer_coeff: 0.0
       corner_safe_margin: 0.3
-      lateral_acceleration_coeff: 10.0
+      lateral_acceleration_coeff: 1000.0
       # Jerk and steer-rate estimates currently compare new commands with delayed post-step
       # actuator states. Keep them regularizing rather than dominant until that model is aligned.
-      lateral_jerk_coeff: 100.0
-      longitudinal_jerk_coeff: 200.0
+      lateral_jerk_coeff: 1000.0
+      longitudinal_jerk_coeff: 2000.0
       accel_cmd_coeff: 1.0
       steer_cmd_coeff: 1.0
-      steer_rate_coeff: 2000.0
-      initial_steer_rate_coeff: 80000.0 # only applied in 1st step but still divided by horizon (80 steps)
+      steer_rate_coeff: 10000.0
+      initial_steer_rate_coeff: 800000.0 # only applied in 1st step but still divided by horizon (80 steps)
       # Shared deadband-quadratic cost for optional VelocityLimit bounds. This currently falls back
       # to the same C++ default because the generated plugin parameter mapping is not yet wired.
       overlimit_coeff: 10000.0
       # MPPI control-sample noise std-devs around the nominal (u_nom).
       accel_cmd_std_dev: 0.3
-      steer_cmd_std_dev: 0.03
-      std_dev_decay: 0.9
+      steer_cmd_std_dev: 0.04
+      std_dev_decay: 0.84
       # Power-law PSD exponents (0 = white, 1 = pink, 2 = brown) for colored noise.
       accel_cmd_noise_exponent: 2.0
       steer_cmd_noise_exponent: 2.0
@@ -91,7 +91,7 @@
       ignore_drivable_area: true
       force_cold_start_each_step: false
       skip_if_invalid: true
-      min_optimization_length: 1.0
+      min_optimization_length: 0.0
 
       # Cold-seed u_nom from acados temporal MPT.
       use_temporal_mpt_as_nominal: false
@@ -99,7 +99,7 @@
 
       # Curvature-adaptive EMA: strong smoothing around zero steer, no filtering in turns.
       enable_curvature_adaptive_steering_filter: true
-      steering_filter_alpha_straight: 0.1
+      steering_filter_alpha_straight: 0.3
       steering_filter_alpha_turn: 1.0
       steering_filter_turn_angle_rad: 0.02
 
