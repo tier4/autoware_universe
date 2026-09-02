@@ -19,6 +19,12 @@
       Filters trajectories based on collision checks with predicted objects
     </description>
   </class>
+  <class type="safety::PointCloudCollisionCheckFilter"
+         base_class_type="autoware::trajectory_validator::plugin::ValidatorInterface">
+    <description>
+      Filters trajectories based on collision checks with the semantic segmentation point cloud
+    </description>
+  </class>
   <class type="traffic_rule::TrafficLightFilter"
          base_class_type="autoware::trajectory_validator::plugin::ValidatorInterface">
     <description>
