@@ -111,6 +111,7 @@ std::optional<std::vector<FirstOrderDubinsMppiControl>> TemporalMptNominalSeeder
 
   const temporal_mpt::PathTrackingResult mpt = impl_->solver.solve(x0, mpt_ref);
   if (!mpt.ok || mpt.accel_cmd.empty() || mpt.steer_cmd.size() != mpt.accel_cmd.size()) {
+    impl_->solver.resetWarmStart();
     RCLCPP_WARN(
       mptNominalLogger(),
       "Temporal MPT nominal solve failed (status=%d); falling back to diffusion seed", mpt.status);
