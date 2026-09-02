@@ -372,6 +372,18 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  setInitialSteeringAngle(const float steering_angle)
+{
+  initial_steering_angle_ = std::isfinite(steering_angle) ? steering_angle : 0.0F;
+  if (this->cost_d_ != nullptr && this->params_.initial_steer_rate_coeff > 0.0F) {
+    HANDLE_ERROR(cudaMemcpyAsync(
+      &this->cost_d_->initial_steering_angle_, &initial_steering_angle_,
+      sizeof(initial_steering_angle_), cudaMemcpyHostToDevice, this->stream_));
+  }
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setKinematicLimits(const FirstOrderDubinsBicycleKinematicLimitData & limits)
 {
   kinematic_limits_ = limits;
@@ -1226,6 +1238,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   result.longitudinal_jerk =
     this->params_.longitudinal_jerk_coeff * longitudinal_jerk * longitudinal_jerk;
   result.steering_rate = this->params_.steer_rate_coeff * steer_rate * steer_rate;
+  result.initial_steering_rate = computeInitialSteeringRateCost(u.data(), timestep);
   const auto kinematic_cost = computeKinematicLimitCost(
     y[static_cast<int>(O::BASELINK_VEL_B_X)], y[static_cast<int>(O::ACCELERATION)],
     longitudinal_jerk, timestep);
@@ -1514,6 +1527,21 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ __device__ float FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::computeInitialSteeringRateCost(const float * control, const int timestep) const
+{
+  if (timestep != 0 || this->params_.initial_steer_rate_coeff <= 0.0F) {
+    return 0.0F;
+  }
+  const float control_dt = fmaxf(DYN_PARAMS_T::kControlDt, 1.0E-6F);
+  const float steer_cmd = control[static_cast<int>(C::STEER_CMD)];
+  const float initial_steer_rate = (steer_cmd - initial_steering_angle_) / control_dt;
+  return this->params_.initial_steer_rate_coeff * initial_steer_rate * initial_steer_rate *
+         static_cast<float>(NUM_TIMESTEPS);
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   computeComfortCost(
     const Eigen::Ref<const control_array> & u, const Eigen::Ref<const output_array> & y,
@@ -1531,7 +1559,8 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   return this->params_.lateral_acceleration_coeff * lateral_accel * lateral_accel +
          this->params_.lateral_jerk_coeff * lateral_jerk * lateral_jerk +
          this->params_.longitudinal_jerk_coeff * longitudinal_jerk * longitudinal_jerk +
-         this->params_.steer_rate_coeff * steer_rate * steer_rate + kinematic_cost.total;
+         this->params_.steer_rate_coeff * steer_rate * steer_rate +
+         computeInitialSteeringRateCost(u.data(), timestep) + kinematic_cost.total;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1550,7 +1579,8 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   return this->params_.lateral_acceleration_coeff * lateral_accel * lateral_accel +
          this->params_.lateral_jerk_coeff * lateral_jerk * lateral_jerk +
          this->params_.longitudinal_jerk_coeff * longitudinal_jerk * longitudinal_jerk +
-         this->params_.steer_rate_coeff * steer_rate * steer_rate + kinematic_cost.total;
+         this->params_.steer_rate_coeff * steer_rate * steer_rate +
+         computeInitialSteeringRateCost(u, timestep) + kinematic_cost.total;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

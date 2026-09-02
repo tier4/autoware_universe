@@ -192,6 +192,7 @@ void loadParamsYaml(
     {"accel_cmd_coeff", &cost.accel_cmd_coeff},
     {"steer_cmd_coeff", &cost.steer_cmd_coeff},
     {"steer_rate_coeff", &cost.steer_rate_coeff},
+    {"initial_steer_rate_coeff", &cost.initial_steer_rate_coeff},
     {"overlimit_coeff", &cost.overlimit_coeff},
     {"accel_cmd_std_dev", &cost.accel_cmd_std_dev},
     {"steer_cmd_std_dev", &cost.steer_cmd_std_dev},
