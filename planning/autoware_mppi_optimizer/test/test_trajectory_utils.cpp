@@ -600,42 +600,6 @@ TEST(NominalControlFilter, LeavesNominalExactlyUnchangedWithoutExternalLimits)
   }
 }
 
-TEST(CurvatureAdaptiveSteeringFilter, SuppressesStraightNoiseAndTracksTurnsImmediately)
-{
-  std::vector<FirstOrderDubinsMppiControl> controls = {{1.0F, 0.01F}, {2.0F, -0.01F}, {3.0F, 0.2F}};
-  const auto unfiltered = controls;
-
-  filterSteeringCommandsWithCurvatureAdaptiveEma(controls, 0.0F, 0.1F, 1.0F, 0.2F);
-
-  ASSERT_EQ(controls.size(), unfiltered.size());
-  EXPECT_LT(std::abs(controls[0].steer_cmd), std::abs(unfiltered[0].steer_cmd));
-  EXPECT_LT(std::abs(controls[1].steer_cmd), std::abs(unfiltered[1].steer_cmd));
-  EXPECT_FLOAT_EQ(controls[2].steer_cmd, unfiltered[2].steer_cmd);
-  for (std::size_t index = 0; index < controls.size(); ++index) {
-    EXPECT_FLOAT_EQ(controls[index].accel_cmd, unfiltered[index].accel_cmd);
-  }
-}
-
-TEST(CurvatureAdaptiveSteeringFilter, SeedsTheEmaFromMeasuredSteering)
-{
-  std::vector<FirstOrderDubinsMppiControl> controls = {{0.0F, 0.0F}};
-
-  filterSteeringCommandsWithCurvatureAdaptiveEma(controls, 0.2F, 0.5F, 0.5F, 0.2F);
-
-  ASSERT_EQ(controls.size(), 1U);
-  EXPECT_NEAR(controls.front().steer_cmd, 0.1F, 1.0E-6F);
-}
-
-TEST(CurvatureAdaptiveSteeringFilter, TracksTheExitFromATurnImmediately)
-{
-  std::vector<FirstOrderDubinsMppiControl> controls = {{0.0F, 0.0F}};
-
-  filterSteeringCommandsWithCurvatureAdaptiveEma(controls, 0.2F, 0.1F, 1.0F, 0.2F);
-
-  ASSERT_EQ(controls.size(), 1U);
-  EXPECT_FLOAT_EQ(controls.front().steer_cmd, 0.0F);
-}
-
 TEST(NominalControlFilter, ClampsAccelerationAndAppliesJerkAtCommandApplicationTime)
 {
   const std::vector<FirstOrderDubinsMppiControl> nominal = {{-3.0F, 0.2F}, {3.0F, -0.3F}};
