@@ -386,7 +386,7 @@ MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
     select_road_shoulder_stop_arc_length(trajectory.points, ego_pose, params);
 
   {
-    // NOTE(odashima): the shoulder departure target is not a map line, so it is synthesized for
+    // NOTE(odashima): the shoulder stop target is not a map line, so it is synthesized for
     // visualization only; it is fed to plan_single_stop as an arc length instead, because its
     // margin is measured from the footprint rather than from base_link_to_front.
     constexpr double stop_line_half_width_m = 3.0;
@@ -458,8 +458,7 @@ MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
 std::optional<MapBasedStopPlanner::SingleStopResult> MapBasedStopPlanner::plan_single_stop(
   const std::vector<StopLine> & stop_lines, const Trajectory & trajectory,
   const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
-  const double ego_acceleration, const StopSelectionParams & params,
-  const bool include_possibility,
+  const double ego_acceleration, const StopSelectionParams & params, const bool include_possibility,
   const std::optional<double> & road_shoulder_stop_arc_length) const
 {
   autoware_utils_debug::ScopedTimeTrack st(

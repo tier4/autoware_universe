@@ -76,10 +76,11 @@ struct StopSelectionParams
   double stop_distance_from_private_area;
   //! extra stop distance before the first conflicting priority lane in an intersection [m]
   double stop_distance_from_intersection;
-  //! extra stop distance before the vehicle footprint reaches a road lane from a road shoulder [m]
+  //! extra stop distance before the vehicle footprint crosses a road-shoulder boundary, in either
+  //! direction [m]
   double stop_distance_from_road_shoulder;
   double base_link_to_front;  //!< vehicle front offset from base_link [m]
-  //! vehicle dimensions; used only by the road-shoulder departure stop, which sweeps the footprint
+  //! vehicle dimensions; used only by the road-shoulder stop, which sweeps the footprint
   //! along the trajectory instead of offsetting a line crossing by base_link_to_front
   VehicleInfo vehicle_info;
   //! min arc-length difference for the stop trajectory's stop point to be treated as different
@@ -245,7 +246,7 @@ private:
   IntersectionDebugLanelets intersection_debug_lanelets_;
   LaneletMapBin::ConstSharedPtr stop_lines_map_ptr_;
   LaneletRoute::ConstSharedPtr stop_lines_route_ptr_;
-  //! Map used by the road-shoulder departure stop, which is re-evaluated every cycle.
+  //! Map used by the road-shoulder stop, which is re-evaluated every cycle.
   lanelet::LaneletMapPtr lanelet_map_ptr_;
 };
 
