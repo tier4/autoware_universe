@@ -48,7 +48,12 @@ public:
     std::string model_path;    //!< ONNX model path; the built engine is cached alongside it.
     std::string plugins_path;  //!< Optional TensorRT plugin library path ("" to disable).
     std::string precision{"fp16"};
-    size_t max_workspace_size{1ULL << 30U};
+    //! TensorRT builder workspace. Too small a pool does not merely cost
+    //! performance on these graphs: building the ResWorld planner with 1 GiB
+    //! segfaults inside the builder, while 4 GiB builds cleanly. Configurable
+    //! (`trt_workspace_mib`) because it is a property of the deployment host,
+    //! not of the model.
+    size_t max_workspace_size{4ULL << 30U};
   };
 
   struct Result

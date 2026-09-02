@@ -57,6 +57,7 @@ struct TensorrtE2eParams
   std::string model_path;
   std::string plugins_path;
   std::string precision;
+  int64_t trt_workspace_mib{4096};
   std::string args_path;  //!< Optional normalization JSON ("" to disable normalization).
   bool build_only{false};
   double planning_frequency_hz{10.0};

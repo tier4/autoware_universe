@@ -80,6 +80,40 @@ Tensor names used by camera and LiDAR providers are parameters, so retraining wi
 names does not require a code change. A new modality or feature pipeline should implement
 `InputProviderInterface` in a downstream branch and register it in the node's provider factory.
 
+## Configuration layout
+
+Parameters are split the way `autoware_bevfusion` splits them, so that deploying a model
+never edits this package:
+
+| File | Lives in | Holds |
+| ---- | -------- | ----- |
+| `config/e2e_planner.param.yaml` | the package | deployment defaults, **model-agnostic**: artifact paths (from launch arguments), TensorRT workspace, planning rate, staleness tolerances, context and postprocess behaviour |
+| `ml_package_<model>.param.yaml` | **the model directory, beside the ONNX files** | the network itself: tensor names, input geometry, horizon, and the precision the graph is validated in |
+
+A launch file loads the package defaults first and the ml_package second, so a model's values
+override the defaults and switching models is a launch argument:
+
+```bash
+ros2 launch autoware_tensorrt_e2e <launch file> \
+  data_path:=$HOME/autoware_data/ml_models/tensorrt_e2e model_name:=<model>
+```
+
+`ml_package_<model>.param.yaml` is **generated from the artifacts**, never hand-written, so a
+new checkpoint cannot silently disagree with a stale config:
+
+```bash
+python3 scripts/make_ml_package_param.py <model_dir> --model-name <model>
+```
+
+It reads the tensor names and horizon out of the planner graph, and — for models that ship a
+feature extractor and a deployment contract — the input geometry out of the extractor graph and
+the cache semantics out of the contract JSON. Re-run it whenever those artifacts change.
+
+### TensorRT workspace
+
+`trt_workspace_mib` (default 4096) is a property of the deployment host, not of the model.
+Sizing it below what a graph needs does not merely cost performance: the builder segfaults.
+
 ## Runtime behavior
 
 The node is timer-driven at `planning_frequency_hz` (10 Hz by default). Sensor callbacks only

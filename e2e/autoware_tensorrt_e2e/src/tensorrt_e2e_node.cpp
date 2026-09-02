@@ -14,6 +14,7 @@
 
 #include "autoware/tensorrt_e2e/tensorrt_e2e_node.hpp"
 
+#include "autoware/tensorrt_e2e/providers/bev_feature_input_provider.hpp"
 #include "autoware/tensorrt_e2e/providers/camera_input_provider.hpp"
 #include "autoware/tensorrt_e2e/providers/lidar_input_provider.hpp"
 
@@ -89,6 +90,7 @@ void TensorrtE2eNode::set_up_params()
   params_.model_path = declare_parameter<std::string>("model_path", "");
   params_.plugins_path = declare_parameter<std::string>("plugins_path", "");
   params_.precision = declare_parameter<std::string>("precision", "fp16");
+  params_.trt_workspace_mib = declare_parameter<int64_t>("trt_workspace_mib", 4096);
   params_.args_path = declare_parameter<std::string>("args_path", "");
   params_.build_only = declare_parameter<bool>("build_only", false);
   params_.planning_frequency_hz = declare_parameter<double>("planning_frequency_hz", 10.0);
@@ -119,10 +121,12 @@ void TensorrtE2eNode::create_providers()
       providers_.push_back(std::make_unique<CameraInputProvider>(*this, tf_buffer_));
     } else if (sensor == "lidar") {
       providers_.push_back(std::make_unique<LidarInputProvider>(*this));
+    } else if (sensor == "bev_feature") {
+      providers_.push_back(std::make_unique<BevFeatureInputProvider>(*this));
     } else {
       throw std::runtime_error(
         "Unknown sensor input '" + sensor +
-        "' (supported: \"camera\", \"lidar\")");
+        "' (supported: \"camera\", \"lidar\", \"bev_feature\")");
     }
   }
   if (params_.enable_context_inputs) {
@@ -145,6 +149,8 @@ void TensorrtE2eNode::initialize_pipeline()
   engine_config.model_path = params_.model_path;
   engine_config.plugins_path = params_.plugins_path;
   engine_config.precision = params_.precision;
+  engine_config.max_workspace_size =
+    static_cast<size_t>(params_.trt_workspace_mib) * 1024ULL * 1024ULL;
   engine_ = std::make_unique<InferenceEngine>(engine_config);
 
   {
