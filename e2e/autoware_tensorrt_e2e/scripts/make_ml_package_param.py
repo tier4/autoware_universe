@@ -53,7 +53,12 @@ def main() -> int:
     parser.add_argument("--model-name", default="resworld")
     parser.add_argument("--planner-onnx", default=None)
     parser.add_argument("--extractor-onnx", default=None)
-    parser.add_argument("--contract", default=None)
+    parser.add_argument(
+        "--contract", default=None,
+        help="deployment contract JSON written by the exporter, holding the history cadence "
+        "that no graph carries. An export-time input: the deployed model directory keeps "
+        "only the generated param file. Defaults to <model_dir>/<model>_deployment_contract.json",
+    )
     parser.add_argument(
         "--planner-precision", default="fp32",
         help="TensorRT precision this graph is validated in (fp32 is the safe default: "
@@ -70,7 +75,11 @@ def main() -> int:
     model_dir: Path = args.model_dir.expanduser().resolve()
     planner_path = model_dir / (args.planner_onnx or f"{args.model_name}_planner.simplified.onnx")
     extractor_path = model_dir / (args.extractor_onnx or "bevfusion_lidar_feature.onnx")
-    contract_path = model_dir / (args.contract or f"{args.model_name}_deployment_contract.json")
+    contract_path = (
+        Path(args.contract).expanduser().resolve()
+        if args.contract
+        else model_dir / f"{args.model_name}_deployment_contract.json"
+    )
     for path in (planner_path, extractor_path, contract_path):
         if not path.is_file():
             raise SystemExit(f"missing artifact: {path}")
