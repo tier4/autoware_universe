@@ -23,6 +23,8 @@
 #include <autoware/velocity_smoother/resample.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
+#include <tf2/utils.h>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -422,6 +424,63 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
     input_data.odometry_ptr->header.stamp);
 }
 
+geometry_msgs::msg::Pose predict_ego_pose(
+  const geometry_msgs::msg::Pose & pose, const double longitudinal_velocity, const double yaw_rate,
+  const double dt)
+{
+  if (dt < 1e-3) return pose;
+
+  // Treat near-zero yaw rate as straight-line motion to avoid v/ω blow-up.
+  if (std::abs(yaw_rate) < 1e-6) {
+    return autoware_utils_geometry::calc_offset_pose(pose, longitudinal_velocity * dt, 0.0, 0.0);
+  }
+
+  const double yaw = tf2::getYaw(pose.orientation);
+  geometry_msgs::msg::Pose predicted = pose;
+  const double r = longitudinal_velocity / yaw_rate;
+  const double yaw_next = yaw + yaw_rate * dt;
+  predicted.position.x += r * (std::sin(yaw_next) - std::sin(yaw));
+  predicted.position.y += r * (-std::cos(yaw_next) + std::cos(yaw));
+  predicted.orientation = autoware_utils::create_quaternion_from_yaw(yaw_next);
+  return predicted;
+}
+
+void prepend_predicted_connection(
+  Trajectory & trajectory, const geometry_msgs::msg::Pose & current_pose, const double current_vel,
+  const double accel, const double yaw_rate, const double time_offset)
+{
+  if (trajectory.points.empty()) return;
+
+  constexpr double min_interval = 0.1;
+  const auto & first_pose = trajectory.points.front().pose;
+  if (autoware_utils::calc_distance2d(current_pose, first_pose) < min_interval) {
+    return;
+  }
+
+  std::vector<TrajectoryPoint> prefix;
+  TrajectoryPoint pt;
+  pt.pose = current_pose;
+  pt.longitudinal_velocity_mps = static_cast<float>(current_vel);
+  pt.acceleration_mps2 = static_cast<float>(accel);
+  prefix.push_back(pt);
+
+  auto t = min_interval / std::max(std::abs(current_vel), 1.0e-3);
+  for (; t < time_offset;) {
+    // Average speed over [0, t] for constant-accel arc integration.
+    pt.pose = predict_ego_pose(current_pose, current_vel + 0.5 * accel * t, yaw_rate, t);
+    const double v_t = current_vel + accel * t;
+    pt.longitudinal_velocity_mps = static_cast<float>(v_t);
+    if (autoware_utils::calc_distance2d(pt.pose, first_pose) < min_interval) {
+      break;
+    }
+    prefix.push_back(pt);
+    if (std::abs(v_t) < 1.0e-3) break;
+    t += min_interval / std::abs(v_t);
+  }
+
+  trajectory.points.insert(trajectory.points.begin(), prefix.begin(), prefix.end());
+}
+
 Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
   const Trajectory & trajectory, const InputData & input_data) const
 {
@@ -436,11 +495,22 @@ Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
   shift_params.lateral_accel_limit = params_.path_planning.path_shift.lateral_accel_limit;
   shift_params.curvature_limit = params_.path_planning.path_shift.curvature_limit;
 
-  const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
-  const double ego_yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
-  const auto shifted_trajectory = path_planner_->shift_trajectory_to_ego(
-    trajectory, input_data.odometry_ptr->pose.pose, ego_velocity, ego_yaw_rate, shift_params,
+  const double time_offset = params_.path_planning.path_shift.start_time_offset;
+  const auto & current_pose = input_data.odometry_ptr->pose.pose;
+  const double current_vel = input_data.odometry_ptr->twist.twist.linear.x;
+  const double accel = input_data.acceleration_ptr->accel.accel.linear.x;
+  const double yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
+
+  const double pred_ego_vel = current_vel + accel * time_offset;
+  const auto pred_ego_pose =
+    predict_ego_pose(current_pose, 0.5 * (current_vel + pred_ego_vel), yaw_rate, time_offset);
+
+  auto shifted_trajectory = path_planner_->shift_trajectory_to_ego(
+    trajectory, pred_ego_pose, pred_ego_vel, yaw_rate, shift_params,
     params_.path_planning.output.delta_arc_length);
+
+  prepend_predicted_connection(
+    shifted_trajectory, current_pose, current_vel, accel, yaw_rate, time_offset);
 
   if (params_.debug.enable_shifted_trajectory) {
     Trajectory shifted_traj;
