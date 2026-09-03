@@ -137,6 +137,7 @@ install(
   PROGRAMS
     scripts/vector_map_marker_relay.py
     scripts/make_ml_package_param.py
+    scripts/freeze_onnx_batch.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
