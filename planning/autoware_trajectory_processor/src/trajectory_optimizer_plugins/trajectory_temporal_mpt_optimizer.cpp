@@ -229,8 +229,9 @@ ProcessingResult TrajectoryTemporalMPTOptimizer::process(
   const size_t max_k = temporal_mpt::N;
   for (size_t k = 0; k < max_k; ++k) {
     if (k == 0) {
+      // Anchor pose/velocity on ego; actuator refs match k>=1 (see path_tracking_solver.cpp).
       const std::array<double, temporal_mpt::NY> yref = {x0[0] - x_off, x0[1] - y_off, x0[2], x0[3],
-                                                         x0[4],         x0[5],         0.0,   0.0};
+                                                         0.0,           0.0,           0.0,   0.0};
       acados_interface_->setStageReference(static_cast<int>(k), yref);
       continue;
     }

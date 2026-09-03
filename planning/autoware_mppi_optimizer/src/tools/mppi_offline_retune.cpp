@@ -305,7 +305,7 @@ FirstOrderDubinsMppiRuntimeOptions loadRuntimeOptionsFromLog(const std::string &
   FirstOrderDubinsMppiRuntimeOptions options;
   options.ignore_obstacles = false;
   options.ignore_road_borders = false;
-  options.ignore_drivable_area = true;
+  options.ignore_drivable_area = false;
   options.force_cold_start_each_step = false;
   options.skip_if_invalid = true;
   options.use_last_control_as_nominal = true;
@@ -316,7 +316,7 @@ FirstOrderDubinsMppiRuntimeOptions loadRuntimeOptionsFromLog(const std::string &
   } else {
     std::cerr << "WARNING: missing " << log_dir
               << "/runtime_options.csv; using online yaml defaults "
-                 "(ignore_drivable_area=true, skip_if_invalid=true, "
+                 "(ignore_drivable_area=false, skip_if_invalid=true, "
                  "use_last_control_as_nominal=true).\n";
   }
   // Offline retune must not write into the input log directory.
@@ -638,8 +638,8 @@ int run(int argc, char ** argv)
     } else {
       static bool warned_missing_history = false;
       if (!warned_missing_history) {
-        std::cerr << "WARNING: missing *_control_history.csv; Savitzky–Golay edge taps are zero "
-                     "(re-log for exact online match).\n";
+        std::cerr << "WARNING: missing *_control_history.csv; applied-command history defaults "
+                     "to zero (re-log for exact offline replay metadata).\n";
         warned_missing_history = true;
       }
     }

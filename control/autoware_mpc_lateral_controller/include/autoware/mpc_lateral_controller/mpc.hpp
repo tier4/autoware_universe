@@ -491,6 +491,14 @@ public:
     LateralHorizon & ctrl_cmd_horizon);
 
   /**
+   * @brief Publish trajectory front_wheel_angle_rad as the lateral command (MPPI passthrough).
+   * Uses the same delay-compensated resampling origin as calculateMPC, but skips the QP solve.
+   */
+  ResultWithReason calculateTrajectorySteeringPassthrough(
+    const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
+    Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon);
+
+  /**
    * @brief Set the reference trajectory to be followed.
    * @param trajectory_msg The reference trajectory message.
    * @param param Trajectory filtering parameters.

@@ -33,6 +33,9 @@
 
   <node pkg="autoware_trajectory_processor" exec="autoware_trajectory_processor_node" name="trajectory_processor" output="screen">
     <env name="LD_LIBRARY_PATH" value="/opt/acados/lib:$(env LD_LIBRARY_PATH)"/>
+    <!-- Small acados/HPIPM QPs jitter badly with a BLAS thread pool. -->
+    <env name="OPENBLAS_NUM_THREADS" value="1"/>
+    <env name="MKL_NUM_THREADS" value="1"/>
     <param from="$(var trajectory_processor_param_path)" allow_substs="true"/>
     <param from="$(var common_param_path)" allow_substs="true"/>
     <param from="$(var elastic_band_param_path)" allow_substs="true"/>
