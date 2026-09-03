@@ -25,14 +25,14 @@ ros2 launch autoware_tensorrt_e2e e2e_planner_resworld.launch.xml
 ```
 
 The model directory, `$(var data_path)/$(var model_name)` (by default
-`$HOME/autoware_data/ml_models/tensorrt_e2e/resworld`), holds:
+`$HOME/autoware_data/ml_models/tensorrt_e2e/resworld`), holds two graphs and one
+configuration file:
 
 | File | Role |
 | --- | --- |
 | `resworld_planner.simplified.onnx` | The planner graph. Batch is frozen to 1 after simplification (`scripts/freeze_onnx_batch.py`): onnxsim miscompiles this graph when simplified with a static batch, and TensorRT will not build a dynamic one without a profile. |
-| `resworld_deployment_contract.json` | The temporal-cache contract (frames, interval, warp geometry) and the tensor names. The node reads it; it is the source of truth over the yaml. |
 | `bevfusion_lidar_feature.onnx` | The production BEVFusion lidar branch exported with its `bev_feature` map `[1, 512, 180, 180]` as the output. Carries the sparse-convolution custom nodes, so its engine needs `autoware_tensorrt_plugins` and an `spconv` build for this GPU. |
-| `ml_package_resworld.param.yaml` | The network description, generated from the three files above (see [Configuration layout](#configuration-layout)). The copy under `config/` is a reference; the node reads the one beside the artifacts. |
+| `ml_package_resworld.param.yaml` | The whole network description, generated from those graphs and the exporter's contract (see [Configuration layout](#configuration-layout)). The copy under `config/` is a reference; the node reads the one beside the artifacts. |
 
 The planner runs in fp32: its graph embeds normalization statistics that overflow fp16, and
 TensorRT clips silently rather than failing. The extractor runs in fp16. The ResWorld graph

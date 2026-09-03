@@ -182,11 +182,6 @@
               "type": "string",
               "default": "bev_feature_history"
             },
-            "contract_path": {
-              "type": "string",
-              "description": "Deployment contract JSON shipped with the model; overrides frames/interval/half extent/feature tensor when set.",
-              "default": ""
-            },
             "frames": {
               "type": "integer",
               "minimum": 2,
@@ -194,7 +189,8 @@
             },
             "interval_seconds": {
               "type": "number",
-              "default": 0.1
+              "default": 0.2,
+              "description": "Gap between history frames. The shipped models train on 0.2 s; a model with another cadence says so in its ml_package file."
             },
             "interval_tolerance_seconds": {
               "type": "number",

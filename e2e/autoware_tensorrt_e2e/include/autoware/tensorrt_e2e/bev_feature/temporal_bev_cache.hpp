@@ -32,19 +32,19 @@ namespace autoware::tensorrt_e2e
  * @class TemporalBevCache
  * @brief Current-to-past cache of BEV feature maps for temporal E2E planners.
  *
- * C++/CUDA implementation of the ResWorld deployment contract
- * (`temporal_cache` in the deployment contract JSON; reference:
+ * C++/CUDA implementation of the temporal-history semantics the model was trained with
+ * (`temporal_cache` in the exporter's deployment contract; reference:
  * `deployment/temporal.py::TemporalBEVFeatureCache`):
  *
  * - Accepts one feature map per sensor frame at the sensor's own cadence and keeps every map
- *   inside the history window `(frames - 1) * interval_seconds + tolerance`. The contract
- *   interval is a property of the *history*, not of the sensor: a 0.2 s contract on a 10 Hz
+ *   inside the history window `(frames - 1) * interval_seconds + tolerance`. The history
+ *   interval is a property of the *history*, not of the sensor: a 0.2 s history on a 10 Hz
  *   LiDAR stores five maps and selects every second one.
  * - `build_history()` assembles `[frames, C, H, W]` ordered current-to-past by selecting, for
  *   each step k, the cached map closest to `newest - k * interval_seconds` (within tolerance).
  *   Slot 0 is the raw newest map (already in its own ego frame); older slots are SE(2)-warped
  *   from their source ego frame into the newest map's ego frame. This matches training, which
- *   anchors at every sensor frame while sampling history at the contract interval
+ *   anchors at every sensor frame while sampling history at the configured interval
  *   (`center_stride: 1` with `lidar_history_interval_seconds` >= the sensor period).
  * - A dropped sensor frame leaves a hole: `ready()` turns false until the window refills
  *   (self-healing), instead of discarding the whole cache. Only a non-monotonic timestamp
@@ -58,7 +58,9 @@ public:
   struct Config
   {
     int64_t frames{3};
-    double interval_seconds{0.1};
+    //! Gap between history frames. 0.2 s is what the shipped models train on; a model
+    //! with another cadence says so in its ml_package file.
+    double interval_seconds{0.2};
     double interval_tolerance_seconds{0.02};
     double bev_half_extent_m{122.4};
     bool duplicate_current_on_warmup{false};

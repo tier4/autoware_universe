@@ -18,11 +18,9 @@
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 #include <autoware/diffusion_planner/utils/utils.hpp>
 
-#include <nlohmann/json.hpp>
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
 
 #include <array>
-#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -66,7 +64,7 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
 
   cache_config_.frames = node_.declare_parameter<int64_t>("bev_feature.frames", 3);
   cache_config_.interval_seconds =
-    node_.declare_parameter<double>("bev_feature.interval_seconds", 0.1);
+    node_.declare_parameter<double>("bev_feature.interval_seconds", 0.2);
   cache_config_.interval_tolerance_seconds =
     node_.declare_parameter<double>("bev_feature.interval_tolerance_seconds", 0.02);
   cache_config_.bev_half_extent_m =
@@ -111,12 +109,6 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
   extractor_config_.voxel_size.assign(voxel_size.begin(), voxel_size.end());
   extractor_config_.use_intensity =
     node_.declare_parameter<bool>("bev_feature.extractor.use_intensity", network_field());
-
-  const auto contract_path =
-    node_.declare_parameter<std::string>("bev_feature.contract_path", "");
-  if (!contract_path.empty()) {
-    load_contract(contract_path);
-  }
 }
 
 BevFeatureInputProvider::~BevFeatureInputProvider()
@@ -124,41 +116,6 @@ BevFeatureInputProvider::~BevFeatureInputProvider()
   if (stream_) {
     cudaStreamDestroy(stream_);
   }
-}
-
-void BevFeatureInputProvider::load_contract(const std::string & contract_path)
-{
-  std::ifstream file(contract_path);
-  if (!file) {
-    throw std::runtime_error("Could not open the deployment contract: " + contract_path);
-  }
-  nlohmann::json contract;
-  file >> contract;
-
-  // The contract JSON shipped with the model is the source of truth for the temporal-cache
-  // semantics; ROS parameters remain the fallback for fields it does not carry.
-  if (contract.contains("temporal_cache")) {
-    const auto & cache = contract.at("temporal_cache");
-    if (cache.contains("frames")) {
-      cache_config_.frames = cache.at("frames").get<int64_t>();
-    }
-    if (cache.contains("interval_seconds")) {
-      cache_config_.interval_seconds = cache.at("interval_seconds").get<double>();
-    }
-    if (cache.contains("alignment") && cache.at("alignment").contains("bev_half_extent_m")) {
-      cache_config_.bev_half_extent_m =
-        cache.at("alignment").at("bev_half_extent_m").get<double>();
-    }
-  }
-  if (contract.contains("bevfusion") && contract.at("bevfusion").contains("output_tensor")) {
-    extractor_config_.feature_tensor =
-      contract.at("bevfusion").at("output_tensor").get<std::string>();
-  }
-  RCLCPP_INFO(
-    node_.get_logger(),
-    "Loaded deployment contract %s (frames=%ld, interval=%.3fs, half_extent=%.1fm)",
-    contract_path.c_str(), cache_config_.frames, cache_config_.interval_seconds,
-    cache_config_.bev_half_extent_m);
 }
 
 std::vector<std::string> BevFeatureInputProvider::claim_inputs(
@@ -262,7 +219,7 @@ bool BevFeatureInputProvider::collect(
   if (!cache_->ready()) {
     error = "BEV feature history incomplete (" + std::to_string(cache_->cached_frames()) +
             " maps cached, need " + std::to_string(cache_->frames()) +
-            " at the contract interval)";
+            " at the configured interval)";
     return false;
   }
 

@@ -9,7 +9,6 @@
   <arg name="model_path" default="$(var data_path)/$(var model_name)"/>
   <arg name="planner_onnx" default="$(var model_name)_planner.simplified.onnx"/>
   <arg name="extractor_onnx" default="bevfusion_lidar_feature.onnx"/>
-  <arg name="contract_file" default="$(var model_name)_deployment_contract.json"/>
 
   <arg name="model_param_path" default="$(find-pkg-share autoware_tensorrt_e2e)/config/e2e_planner.param.yaml" description="deployment behaviour (model-agnostic)"/>
   <arg name="ml_package_param_path" default="$(var model_path)/ml_package_$(var model_name).param.yaml" description="network description, shipped with the artifacts"/>

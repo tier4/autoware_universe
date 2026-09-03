@@ -42,11 +42,11 @@ namespace autoware::tensorrt_e2e
  * publisher is accepted as the fallback. Per new LiDAR frame it runs the
  * frozen BEVFusion-L feature extractor once, caches the feature with its ego pose, and
  * assembles the `[1, K, C, H, W]` current-to-past history (older maps SE(2)-warped into the
- * newest frame's ego frame), exactly as specified by the ResWorld deployment contract.
+ * newest frame's ego frame).
  *
- * When `bev_feature.contract_path` points at the model's deployment contract JSON, the
- * temporal-cache parameters (frames, interval, BEV half extent, feature tensor name) are read
- * from it, keeping the model artifact the single source of truth.
+ * Every value that describes the network -- history length and cadence, BEV extent, tensor
+ * names, voxelization -- comes from the model's ml_package file, the one configuration the
+ * model directory ships.
  *
  * Claimable tensors:
  * - `bev_feature_history` (name configurable) `[1, K, C, H, W]`: device-resident.
@@ -76,11 +76,9 @@ public:
   std::optional<rclcpp::Time> latest_input_stamp() const override { return last_extracted_stamp_; }
 
 private:
-  void load_contract(const std::string & contract_path);
-
   rclcpp::Node & node_;
 
-  // Deployment parameters (contract JSON values take precedence when provided)
+  // Deployment parameters, from the package defaults and the model's ml_package file
   std::string history_tensor_name_;
   double max_delay_ms_{200.0};
   TemporalBevCache::Config cache_config_;
