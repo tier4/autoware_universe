@@ -24,9 +24,15 @@
     precision: "fp32"
 
     # TensorRT builder workspace. Below a graph's requirement the builder does
-    # not degrade gracefully — it segfaults (1 GiB killed the ResWorld planner
-    # build; 4 GiB is comfortable). This is a property of the deployment host.
-    trt_workspace_mib: 4096
+    # not degrade gracefully — it segfaults. Measured on the ResWorld planner
+    # graph with TensorRT 10.16 (2026-09-03): 4 GiB and 8 GiB both dump core,
+    # 16 GiB builds. 4 GiB did build the same graph family a day earlier, so
+    # the threshold moves with what else holds GPU memory and with the tactics
+    # the builder then picks — leave real headroom rather than the minimum that
+    # happened to work. The limit caps the builder's scratch; it is not an
+    # allocation, so a host with less memory is not harmed by a high value.
+    # This is a property of the deployment host.
+    trt_workspace_mib: 16384
 
     # -- runtime --
     planning_frequency_hz: 10.0

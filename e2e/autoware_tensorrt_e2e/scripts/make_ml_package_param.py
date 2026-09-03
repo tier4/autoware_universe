@@ -99,7 +99,7 @@ def main() -> int:
         "/**:",
         "  ros__parameters:",
         "    # Which input providers this model needs, matched by tensor name.",
-        f"    sensor_inputs: [\"{'\", \"'.join(['bev_feature'])}\"]",
+        '    sensor_inputs: ["bev_feature"]',
         "    enable_context_inputs: true",
         "",
         "    # Precision this graph is validated in; overrides the package default.",
