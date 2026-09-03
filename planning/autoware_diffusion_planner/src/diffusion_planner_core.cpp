@@ -447,9 +447,19 @@ DiffusionPlannerCore::snap_ego_to_previous_trajectory(const Odometry & kinematic
     }
   }
 
+  // Rotate the real orientation about the map z axis by the yaw change, rather than rebuilding the
+  // orientation from the yaw alone: the trajectory carries no roll or pitch, so building a yaw-only
+  // rotation would silently flatten the vehicle's real attitude (measured at ~1 deg of pitch on a
+  // sloped route) in the frame the model and every transformed input see.
+  const auto & real_orientation = kinematic_state.pose.pose.orientation;
+  const Eigen::Quaterniond real_q(
+    real_orientation.w, real_orientation.x, real_orientation.y, real_orientation.z);
+  const double yaw_change = autoware_utils_math::normalize_radian(virtual_pose.yaw - current_yaw);
+  const Eigen::Quaterniond virtual_q =
+    Eigen::Quaterniond(Eigen::AngleAxisd(yaw_change, Eigen::Vector3d::UnitZ())) * real_q;
+
   Eigen::Matrix4d snapped_pose = Eigen::Matrix4d::Identity();
-  snapped_pose.block<3, 3>(0, 0) =
-    Eigen::AngleAxisd(virtual_pose.yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+  snapped_pose.block<3, 3>(0, 0) = virtual_q.normalized().toRotationMatrix();
   snapped_pose(0, 3) = virtual_pose.position.x();
   snapped_pose(1, 3) = virtual_pose.position.y();
   snapped_pose(2, 3) = kinematic_state.pose.pose.position.z;
