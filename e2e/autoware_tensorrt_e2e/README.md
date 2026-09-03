@@ -191,19 +191,26 @@ ros2 launch autoware_tensorrt_e2e <launch file> \
   data_path:=$HOME/autoware_data/ml_models/tensorrt_e2e model_name:=<model>
 ```
 
-`ml_package_<model>.param.yaml` is generated from the artifacts, never hand-written, so a
-new checkpoint cannot disagree with a stale configuration:
+One file describes the network, and the node reads no other. Everything the runtime needs
+about a model is in its ml_package file: which providers it needs, its tensor names, its
+voxelization geometry, its history length and cadence, its horizon and its validated
+precision.
+
+That file is generated from the artifacts, never hand-written, so a new checkpoint cannot
+disagree with a stale configuration:
 
 ```bash
 ros2 run autoware_tensorrt_e2e make_ml_package_param.py <model_dir> --model-name <model> \
-  [--turn-indicators-optional]
+  --contract <export_dir>/<model>_deployment_contract.json [--turn-indicators-optional]
 ```
 
 It reads points-per-voxel and the point-feature count out of the extractor's `voxels`
-input, the cache semantics out of the deployment contract, and the tensor names and
-horizon out of the planner graph. `--turn-indicators-optional` records that the network
-never reads its `turn_indicators` input; verify that by perturbing the input before
-setting it. Re-run the generator whenever the artifacts change.
+input, and the tensor names and horizon out of the planner graph. The exporter's deployment
+contract supplies the one value no graph carries, the history cadence the model was trained
+on; it is an input to the generator at deploy time, not an artifact the node reads, so the
+deployed model directory keeps only the generated file. `--turn-indicators-optional`
+records that the network never reads its `turn_indicators` input; verify that by perturbing
+the input before setting it. Re-run the generator whenever the artifacts change.
 
 Every parameter is described in `schema/tensorrt_e2e.schema.json`.
 

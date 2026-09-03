@@ -39,9 +39,9 @@
     shift_x: false
 
     bev_feature:
-      # The deployment contract shipped with the artifacts is the source of
-      # truth for cache semantics; the ml_package values are the fallback.
-      contract_path: $(var model_path)/$(var contract_file)
+      # Cache semantics (frames, interval, extent, tensor names) describe the
+      # network and come from the model's ml_package file; what is left here is
+      # host behaviour.
       interval_tolerance_seconds: 0.02
       warmup: "wait"  # "wait" or "duplicate_current"
       max_delay_ms: 200.0
