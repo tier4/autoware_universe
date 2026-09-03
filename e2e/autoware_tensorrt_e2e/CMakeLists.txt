@@ -114,14 +114,6 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   endif()
 endif()
 
-# Deployment tooling, runnable from an install.
-install(
-  PROGRAMS
-    scripts/make_ml_package_param.py
-    scripts/freeze_onnx_batch.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 ament_auto_package(
   INSTALL_TO_SHARE
   config
