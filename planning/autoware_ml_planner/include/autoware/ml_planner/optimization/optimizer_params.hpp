@@ -33,11 +33,12 @@ struct TrajectoryOptimizationParams
   // The position error is split along the reference heading: longitudinal errors
   // (ahead/behind the time schedule, i.e. velocity-profile freedom) and lateral errors
   // (path deviation) are weighted separately via a per-stage rotated 2x2 weight block.
-  // Velocity and steering angle carry no tracking weight: the model outputs positions
-  // and headings only, so no reference exists for them.
   double weight_longitudinal{0.5};
   double weight_lateral{0.5};
   double weight_yaw{0.05};
+  // Penalize velocity and steering-angle magnitude relative to zero.
+  double weight_velocity{0.01};
+  double weight_steering_angle{1.0};
   double weight_acceleration{0.1};
   double weight_steering_rate{10.0};
   // Terminal state weight = terminal_weight_scale * stage state weight.

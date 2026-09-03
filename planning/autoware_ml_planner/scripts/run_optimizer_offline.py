@@ -33,7 +33,9 @@ from pathlib import Path
 
 from generate_solver import DEFAULT_TERMINAL_WEIGHT_SCALE
 from generate_solver import DEFAULT_WEIGHT_ACCELERATION
+from generate_solver import DEFAULT_WEIGHT_STEERING
 from generate_solver import DEFAULT_WEIGHT_STEERING_RATE
+from generate_solver import DEFAULT_WEIGHT_VELOCITY
 from generate_solver import DEFAULT_WEIGHT_YAW
 from generate_solver import HORIZON_N
 from generate_solver import HORIZON_TF_S
@@ -61,8 +63,8 @@ def set_weights(solver, x0, refs, w_lon, w_lat):
             0.0,
             0.0,
             DEFAULT_WEIGHT_YAW,
-            0.0,
-            0.0,
+            DEFAULT_WEIGHT_VELOCITY,
+            DEFAULT_WEIGHT_STEERING,
             DEFAULT_WEIGHT_ACCELERATION,
             DEFAULT_WEIGHT_STEERING_RATE,
         ]
@@ -71,7 +73,7 @@ def set_weights(solver, x0, refs, w_lon, w_lat):
         yaw = x0[2] if k == 0 else refs[k - 1, 2]
         W[:2, :2] = rotated_position_block(yaw, w_lon, w_lat)
         solver.cost_set(k, "W", unscale * W)
-    W_e = np.diag([0.0, 0.0, DEFAULT_WEIGHT_YAW, 0.0, 0.0])
+    W_e = np.diag([0.0, 0.0, DEFAULT_WEIGHT_YAW, DEFAULT_WEIGHT_VELOCITY, DEFAULT_WEIGHT_STEERING])
     W_e[:2, :2] = rotated_position_block(refs[-1, 2], w_lon, w_lat)
     solver.cost_set(HORIZON_N, "W", (DEFAULT_TERMINAL_WEIGHT_SCALE / unscale) * W_e)
 
