@@ -20,7 +20,7 @@
 #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
 #include <autoware/tensorrt_common/tensorrt_common.hpp>
 
-#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <cuda_blackboard/cuda_pointcloud2.hpp>
 
 #include <cuda_runtime_api.h>
 
@@ -52,13 +52,21 @@ public:
   {
     std::string onnx_path;
     std::string plugins_path;
+    //! Engine cache path; empty derives it from onnx_path, as TrtCommon does.
+    std::string engine_path;
     std::string precision{"fp16"};
+    //! TensorRT builder workspace. Shared with the planner engine (`trt_workspace_mib`):
+    //! the builder segfaults below a graph's need rather than failing, so both engines
+    //! get the same deliberately generous pool.
+    size_t max_workspace_size{4ULL << 30U};
     std::string feature_tensor{"bev_feature"};
     int64_t cloud_capacity{2000000};
-    int64_t max_points_per_voxel{10};
-    std::vector<int64_t> voxels_num{1, 128000, 256000};  //!< [min, opt, max]
-    std::vector<float> point_cloud_range;                //!< [x/y/z min, x/y/z max]
-    std::vector<float> voxel_size;                       //!< [x, y, z]
+    // Network description, read from the model's ml_package file with no fallback: a
+    // default here would silently voxelize for a different network.
+    int64_t max_points_per_voxel{0};
+    std::vector<int64_t> voxels_num;       //!< [min, opt, max]
+    std::vector<float> point_cloud_range;  //!< [x/y/z min, x/y/z max]
+    std::vector<float> voxel_size;         //!< [x, y, z]
     bool use_intensity{false};
   };
 
@@ -74,11 +82,17 @@ public:
   /**
    * @brief Extract the BEV feature map for one point cloud.
    *
-   * The point cloud must use the Autoware `PointXYZIRC` layout (the concatenated cloud format).
+   * The cloud is read straight from its device buffer, as `autoware_bevfusion` reads its
+   * input; it must use the Autoware `PointXYZIRC` layout (the concatenated cloud format).
    * @return Device pointer to the `[C, H, W]` feature map (owned by the extractor, valid until
    *         the next call), or nullptr with `error` set.
    */
-  const float * extract(const sensor_msgs::msg::PointCloud2 & cloud, std::string & error);
+  const float * extract(const cuda_blackboard::CudaPointCloud2 & cloud, std::string & error);
+
+  /// Voxel count of the last extract(), before clamping to the profile maximum.
+  int64_t last_num_voxels() const { return last_num_voxels_; }
+  /// False when the last cloud produced more voxels than the profile maximum and was clipped.
+  bool last_voxels_within_range() const { return last_voxels_within_range_; }
 
 private:
   void init_engine(const Config & config);
@@ -93,7 +107,6 @@ private:
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_;
 
   // Device buffers (allocated once at maximum size)
-  autoware::cuda_utils::CudaUniquePtr<uint8_t[]> input_cloud_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> identity_transform_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> points_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> voxel_features_d_;
@@ -104,6 +117,8 @@ private:
   int64_t channels_{0};
   int64_t height_{0};
   int64_t width_{0};
+  int64_t last_num_voxels_{0};
+  bool last_voxels_within_range_{true};
 };
 
 }  // namespace autoware::tensorrt_e2e

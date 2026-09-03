@@ -19,9 +19,9 @@
 #include "autoware/tensorrt_e2e/bev_feature/trt_bev_feature_extractor.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
 
+#include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
+#include <cuda_blackboard/cuda_pointcloud2.hpp>
 #include <rclcpp/rclcpp.hpp>
-
-#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -37,7 +37,9 @@ namespace autoware::tensorrt_e2e
  * @class BevFeatureInputProvider
  * @brief Produces a temporal LiDAR BEV feature history tensor (ResWorld-style models).
  *
- * Subscribes to `~/input/pointcloud` (the concatenated cloud). Per new LiDAR frame it runs the
+ * Subscribes to `~/input/pointcloud` through `cuda_blackboard`, as `autoware_bevfusion` does:
+ * a GPU-resident cloud is negotiated on `~/input/pointcloud/cuda` and a plain PointCloud2
+ * publisher is accepted as the fallback. Per new LiDAR frame it runs the
  * frozen BEVFusion-L feature extractor once, caches the feature with its ego pose, and
  * assembles the `[1, K, C, H, W]` current-to-past history (older maps SE(2)-warped into the
  * newest frame's ego frame), exactly as specified by the ResWorld deployment contract.
@@ -64,6 +66,15 @@ public:
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs,
     std::string & error) override;
 
+  /// autoware_bevfusion's `is_num_voxels_within_range`.
+  void add_diagnostics(autoware_utils_diagnostics::DiagnosticsInterface & diagnostics) override
+  {
+    diagnostics.add_key_value(
+      "is_num_voxels_within_range", extractor_ ? extractor_->last_voxels_within_range() : true);
+  }
+  /// The cloud behind the current history.
+  std::optional<rclcpp::Time> latest_input_stamp() const override { return last_extracted_stamp_; }
+
 private:
   void load_contract(const std::string & contract_path);
 
@@ -85,8 +96,9 @@ private:
   std::optional<rclcpp::Time> last_extracted_stamp_;
   const float * history_ptr_{nullptr};
 
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr latest_pointcloud_;
+  std::unique_ptr<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>
+    pointcloud_sub_;
+  std::shared_ptr<const cuda_blackboard::CudaPointCloud2> latest_pointcloud_;
   mutable std::mutex mutex_;
 };
 

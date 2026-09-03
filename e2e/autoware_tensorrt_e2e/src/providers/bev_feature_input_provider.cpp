@@ -13,11 +13,13 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_e2e/providers/bev_feature_input_provider.hpp"
+#include "autoware/tensorrt_e2e/input_provider_registry.hpp"
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 #include <autoware/diffusion_planner/utils/utils.hpp>
 
 #include <nlohmann/json.hpp>
+#include <rcl_interfaces/msg/parameter_descriptor.hpp>
 
 #include <array>
 #include <fstream>
@@ -46,6 +48,14 @@ std::array<double, 4> pose_from_odometry(const nav_msgs::msg::Odometry & odometr
     static_cast<double>(cos_yaw), static_cast<double>(sin_yaw)};
 }
 
+// Fields of the network description are declared the way autoware_bevfusion declares
+// its ml_package fields: read-only and without a default, so a model directory that
+// lacks one fails at startup instead of voxelizing for some other network.
+rcl_interfaces::msg::ParameterDescriptor network_field()
+{
+  return rcl_interfaces::msg::ParameterDescriptor{}.set__read_only(true);
+}
+
 }  // namespace
 
 BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(node)
@@ -68,8 +78,11 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
   }
   cache_config_.duplicate_current_on_warmup = warmup == "duplicate_current";
 
+  // Host-side settings keep defaults; they describe the deployment, not the network.
   extractor_config_.onnx_path =
     node_.declare_parameter<std::string>("bev_feature.extractor.onnx_path", "");
+  extractor_config_.engine_path =
+    node_.declare_parameter<std::string>("bev_feature.extractor.engine_path", "");
   extractor_config_.plugins_path =
     node_.declare_parameter<std::string>("bev_feature.extractor.plugins_path", "");
   extractor_config_.precision =
@@ -78,19 +91,26 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
     node_.declare_parameter<std::string>("bev_feature.extractor.feature_tensor", "bev_feature");
   extractor_config_.cloud_capacity =
     node_.declare_parameter<int64_t>("bev_feature.extractor.cloud_capacity", 2000000);
-  extractor_config_.max_points_per_voxel =
-    node_.declare_parameter<int64_t>("bev_feature.extractor.max_points_per_voxel", 10);
+  // One workspace setting for both engines; declared by the node before any provider.
+  if (node_.has_parameter("trt_workspace_mib")) {
+    extractor_config_.max_workspace_size =
+      static_cast<size_t>(node_.get_parameter("trt_workspace_mib").as_int()) * 1024ULL *
+      1024ULL;
+  }
+
+  // Network description: no defaults (see network_field()).
+  extractor_config_.max_points_per_voxel = node_.declare_parameter<int64_t>(
+    "bev_feature.extractor.max_points_per_voxel", network_field());
   extractor_config_.voxels_num = node_.declare_parameter<std::vector<int64_t>>(
-    "bev_feature.extractor.voxels_num", std::vector<int64_t>{1, 128000, 256000});
+    "bev_feature.extractor.voxels_num", network_field());
   const auto point_cloud_range = node_.declare_parameter<std::vector<double>>(
-    "bev_feature.extractor.point_cloud_range",
-    std::vector<double>{-122.4, -122.4, -3.0, 122.4, 122.4, 5.0});
-  const auto voxel_size = node_.declare_parameter<std::vector<double>>(
-    "bev_feature.extractor.voxel_size", std::vector<double>{0.17, 0.17, 0.2});
+    "bev_feature.extractor.point_cloud_range", network_field());
+  const auto voxel_size =
+    node_.declare_parameter<std::vector<double>>("bev_feature.extractor.voxel_size", network_field());
   extractor_config_.point_cloud_range.assign(point_cloud_range.begin(), point_cloud_range.end());
   extractor_config_.voxel_size.assign(voxel_size.begin(), voxel_size.end());
   extractor_config_.use_intensity =
-    node_.declare_parameter<bool>("bev_feature.extractor.use_intensity", false);
+    node_.declare_parameter<bool>("bev_feature.extractor.use_intensity", network_field());
 
   const auto contract_path =
     node_.declare_parameter<std::string>("bev_feature.contract_path", "");
@@ -187,11 +207,12 @@ std::vector<std::string> BevFeatureInputProvider::claim_inputs(
   cache_ = std::make_unique<TemporalBevCache>(
     cache_config_, extractor_->channels(), extractor_->height(), extractor_->width());
 
-  pointcloud_sub_ = node_.create_subscription<sensor_msgs::msg::PointCloud2>(
-    "~/input/pointcloud", rclcpp::SensorDataQoS{},
-    [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
+  pointcloud_sub_ = std::make_unique<
+    cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
+    node_, "~/input/pointcloud",
+    [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
       std::lock_guard<std::mutex> lock(mutex_);
-      latest_pointcloud_ = msg;
+      latest_pointcloud_ = std::move(msg);
     });
 
   return {history_tensor_name_};
@@ -200,7 +221,7 @@ std::vector<std::string> BevFeatureInputProvider::claim_inputs(
 bool BevFeatureInputProvider::collect(
   const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs, std::string & error)
 {
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud;
+  std::shared_ptr<const cuda_blackboard::CudaPointCloud2> cloud;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     cloud = latest_pointcloud_;
@@ -251,5 +272,10 @@ bool BevFeatureInputProvider::collect(
   inputs[history_tensor_name_] = Tensor::from_device(history_shape_, history_ptr_);
   return true;
 }
+
+TENSORRT_E2E_REGISTER_INPUT_PROVIDER(
+  "bev_feature", [](rclcpp::Node & node, tf2_ros::Buffer &) {
+    return std::make_unique<BevFeatureInputProvider>(node);
+  });
 
 }  // namespace autoware::tensorrt_e2e

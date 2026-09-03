@@ -79,8 +79,6 @@ TrtBevFeatureExtractor::TrtBevFeatureExtractor(const Config & config, cudaStream
   preprocess_ =
     std::make_unique<autoware::bevfusion::PreprocessCuda>(bevfusion_config_, stream_, true);
 
-  input_cloud_d_ = autoware::cuda_utils::make_unique<uint8_t[]>(
-    static_cast<size_t>(bevfusion_config_.cloud_capacity_) * sizeof(InputPointType));
   points_d_ = autoware::cuda_utils::make_unique<float[]>(
     static_cast<size_t>(bevfusion_config_.cloud_capacity_) *
     bevfusion_config_.num_point_feature_size_);
@@ -105,7 +103,8 @@ TrtBevFeatureExtractor::TrtBevFeatureExtractor(const Config & config, cudaStream
 
 void TrtBevFeatureExtractor::init_engine(const Config & config)
 {
-  const auto trt_config = TrtCommonConfig(config.onnx_path, config.precision);
+  const auto trt_config = TrtCommonConfig(
+    config.onnx_path, config.precision, config.engine_path, config.max_workspace_size);
 
   // Same lidar-branch IO contract as autoware_bevfusion: dynamic voxel count with a
   // min/opt/max optimization profile.
@@ -187,7 +186,7 @@ bool TrtBevFeatureExtractor::validate_cloud_layout(
 }
 
 const float * TrtBevFeatureExtractor::extract(
-  const sensor_msgs::msg::PointCloud2 & cloud, std::string & error)
+  const cuda_blackboard::CudaPointCloud2 & cloud, std::string & error)
 {
   if (!validate_cloud_layout(cloud, error)) {
     return nullptr;
@@ -201,11 +200,9 @@ const float * TrtBevFeatureExtractor::extract(
   num_points =
     std::min(num_points, static_cast<size_t>(bevfusion_config_.cloud_capacity_));
 
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    input_cloud_d_.get(), cloud.data.data(), num_points * sizeof(InputPointType),
-    cudaMemcpyHostToDevice, stream_));
+  // The cloud already lives on the device (cuda_blackboard); no staging copy.
   CHECK_CUDA_ERROR(preprocess_->generateSweepPoints_launch(
-    reinterpret_cast<const InputPointType *>(input_cloud_d_.get()), num_points,
+    reinterpret_cast<const InputPointType *>(cloud.data.get()), num_points,
     /*time_lag=*/0.0f, identity_transform_d_.get(), points_d_.get()));
 
   const auto num_voxels = static_cast<int64_t>(preprocess_->generateVoxels(
@@ -213,6 +210,10 @@ const float * TrtBevFeatureExtractor::extract(
     voxel_coords_d_.get(), num_points_per_voxel_d_.get()));
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
+  last_num_voxels_ = num_voxels;
+  // Same policy as autoware_bevfusion: below the profile minimum the frame cannot run;
+  // above the maximum it runs on a clipped voxel set and diagnostics say so.
+  last_voxels_within_range_ = num_voxels < static_cast<int64_t>(bevfusion_config_.max_num_voxels_);
   if (num_voxels < bevfusion_config_.min_num_voxels_) {
     error = "Too few voxels (" + std::to_string(num_voxels) +
             ") for the optimization profile minimum (" +
