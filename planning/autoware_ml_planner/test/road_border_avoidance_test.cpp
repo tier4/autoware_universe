@@ -143,6 +143,28 @@ TEST_F(RoadBorderAvoidanceTest, CapsShiftAndReportsUnresolved)
   }
 }
 
+TEST_F(RoadBorderAvoidanceTest, IgnoresPointsBeforeStartTime)
+{
+  params_.start_time_s = 1.0;
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  avoidance.set_road_borders({make_parallel_border(1.0)});
+
+  auto raw = make_straight_trajectory(0.0);
+  for (size_t i = 0; i < raw.points.size(); ++i) {
+    raw.points[i].time_from_start = rclcpp::Duration::from_seconds(0.1 * (i + 1));
+  }
+  const auto result = avoidance.adjust(raw, ego_pose_);
+
+  for (size_t i = 0; i < raw.points.size(); ++i) {
+    const double time_s = rclcpp::Duration(raw.points[i].time_from_start).seconds();
+    if (time_s < params_.start_time_s) {
+      EXPECT_DOUBLE_EQ(result.trajectory.points[i].pose.position.y, 0.0);
+    } else {
+      EXPECT_LT(result.trajectory.points[i].pose.position.y, 0.0);
+    }
+  }
+}
+
 TEST_F(RoadBorderAvoidanceTest, PropagatesShiftToSubsequentPoints)
 {
   // Border alongside only the first part of the trajectory (ends at x = 5).

@@ -33,6 +33,8 @@ using autoware_planning_msgs::msg::Trajectory;
 struct RoadBorderAvoidanceParams
 {
   bool enable{false};
+  // Ignore trajectory points before this time from the trajectory start.
+  double start_time_s{0.0};
   // Longitudinal and lateral inflation of the ego footprint used for the overlap check.
   double footprint_margin_m{0.2};
   // Road borders farther than this from the current ego position are ignored.

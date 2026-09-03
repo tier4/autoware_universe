@@ -16,6 +16,8 @@
       weight_longitudinal: 0.5       # tracking weight along the reference heading [1/m^2]
       weight_lateral: 0.5            # tracking weight perpendicular to the reference heading [1/m^2]
       weight_yaw: 0.05               # tracking weight for heading [1/rad^2]
+      weight_velocity: 0.01          # penalizes squared velocity magnitude
+      weight_steering_angle: 1.0     # penalizes squared steering-angle magnitude
       weight_acceleration: 0.1       # regularization weight on acceleration input
       weight_steering_rate: 10.0     # regularization weight on steering rate input
       terminal_weight_scale: 2.5     # terminal state weight = scale * stage weight
@@ -28,6 +30,7 @@
       max_sqp_iterations: 50
     road_border_avoidance:
       enable: false
+      start_time_s: 0.0          # ignore trajectory points before this time [s]
       footprint_margin_m: 0.2     # ego footprint inflation for the overlap check [m]
       search_radius_m: 120.0      # road borders farther than this from ego are ignored [m]
       shift_step_m: 0.1           # lateral shift resolution [m]

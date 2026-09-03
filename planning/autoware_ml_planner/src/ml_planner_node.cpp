@@ -200,6 +200,10 @@ void MLPlanner::set_up_params()
   opt.weight_lateral =
     this->declare_parameter<double>("trajectory_optimization.weight_lateral", 0.5);
   opt.weight_yaw = this->declare_parameter<double>("trajectory_optimization.weight_yaw", 0.05);
+  opt.weight_velocity =
+    this->declare_parameter<double>("trajectory_optimization.weight_velocity", 0.01);
+  opt.weight_steering_angle =
+    this->declare_parameter<double>("trajectory_optimization.weight_steering_angle", 1.0);
   opt.weight_acceleration =
     this->declare_parameter<double>("trajectory_optimization.weight_acceleration", 0.1);
   opt.weight_steering_rate =
@@ -233,6 +237,8 @@ void MLPlanner::set_up_params()
   // road border avoidance params (static; changing them requires a restart)
   auto & avoidance = params_.road_border_avoidance;
   avoidance.enable = this->declare_parameter<bool>("road_border_avoidance.enable", false);
+  avoidance.start_time_s =
+    this->declare_parameter<double>("road_border_avoidance.start_time_s", 0.0);
   avoidance.footprint_margin_m =
     this->declare_parameter<double>("road_border_avoidance.footprint_margin_m", 0.2);
   avoidance.search_radius_m =
