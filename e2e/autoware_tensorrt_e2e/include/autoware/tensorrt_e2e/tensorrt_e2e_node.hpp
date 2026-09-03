@@ -89,6 +89,8 @@ private:
    */
   void initialize_pipeline();
   void create_providers();
+  /// The postprocessor for the configured model; a model branch adds its own here.
+  std::unique_ptr<TrajectoryPostprocessor> create_postprocessor();
 
   void on_timer();
 

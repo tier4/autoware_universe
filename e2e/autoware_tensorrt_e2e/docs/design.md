@@ -187,8 +187,11 @@ CUDA preprocessing, feature extractor, and model-specific deployment parameters.
 
 ### New output representation
 
-Keep the common node orchestration and add a postprocessor/adapter in the downstream branch when
-the model does not emit `(x, y, cos(yaw), sin(yaw))` or `(x, y, yaw)` trajectories.
+Keep the common node orchestration and add a postprocessor in the downstream branch when the
+model does not emit `(x, y, cos(yaw), sin(yaw))` or `(x, y, yaw)` trajectories, or needs its own
+output handling: derive from `TrajectoryPostprocessor`, override `process()` (transform the
+outputs, then delegate to the base), and return it from the node's `create_postprocessor()`,
+the output-side counterpart of the provider factory.
 
 This separation keeps the foundation small and lets each model branch carry only the code and
 runtime dependencies that its artifact actually needs.

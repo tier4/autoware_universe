@@ -219,7 +219,7 @@ autoware_planning_msgs::msg::Trajectory TrajectoryPostprocessor::create_trajecto
 TrajectoryPostprocessor::Output TrajectoryPostprocessor::process(
   const TensorMap & outputs, const EgoFrame & ego,
   const std::vector<autoware::diffusion_planner::AgentHistory> * neighbor_histories,
-  const rclcpp::Time & stamp, const unique_identifier_msgs::msg::UUID & generator_uuid) const
+  const rclcpp::Time & stamp, const unique_identifier_msgs::msg::UUID & generator_uuid)
 {
   const auto it = outputs.find(params_.prediction_tensor);
   if (it == outputs.end()) {

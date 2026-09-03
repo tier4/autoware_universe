@@ -136,6 +136,11 @@ void TensorrtE2eNode::create_providers()
   }
 }
 
+std::unique_ptr<TrajectoryPostprocessor> TensorrtE2eNode::create_postprocessor()
+{
+  return std::make_unique<TrajectoryPostprocessor>(postprocess_params_);
+}
+
 void TensorrtE2eNode::initialize_pipeline()
 {
   diagnostics_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
@@ -191,7 +196,7 @@ void TensorrtE2eNode::initialize_pipeline()
     throw std::runtime_error(oss.str());
   }
 
-  postprocessor_ = std::make_unique<TrajectoryPostprocessor>(postprocess_params_);
+  postprocessor_ = create_postprocessor();
   postprocessor_->validate_output_specs(engine_->output_specs());
 
   if (!params_.args_path.empty()) {

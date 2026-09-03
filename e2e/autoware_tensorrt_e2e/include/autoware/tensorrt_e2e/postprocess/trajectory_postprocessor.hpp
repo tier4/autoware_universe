@@ -61,6 +61,12 @@ struct PostprocessParams
  * @class TrajectoryPostprocessor
  * @brief Converts the prediction tensor into trajectory (and optional object) messages.
  *
+ * A model branch that needs its own output handling derives from this class and overrides
+ * `process()` (typically transforming the outputs and then delegating to the base), and the
+ * node's `create_postprocessor()` instantiates it; see docs/design.md, "New output
+ * representation". `process()` is not const so that such a derived class may keep state
+ * across ticks (a temporal filter, for instance).
+ *
  * Accepted prediction shapes: `[B, A, T, P]` (agent 0 = ego) or `[B, T, P]` (ego only), one pose
  * per step in the ego frame at `time_step` intervals. The pose layout follows from P:
  * `(x, y, cos(yaw), sin(yaw))` when P is 4, `(x, y, yaw)` when P is 3.
@@ -76,13 +82,14 @@ public:
   };
 
   explicit TrajectoryPostprocessor(const PostprocessParams & params);
+  virtual ~TrajectoryPostprocessor() = default;
 
   /**
    * @brief Resolve and validate the prediction tensor against the engine output manifest.
    * @throws std::runtime_error when the tensor is missing, has an unexpected shape, or its
    *         horizon disagrees with `horizon_seconds` / `time_step`.
    */
-  void validate_output_specs(const std::vector<TensorSpec> & output_specs);
+  virtual void validate_output_specs(const std::vector<TensorSpec> & output_specs);
 
   /**
    * @brief Create output messages from the inference outputs.
@@ -95,14 +102,15 @@ public:
    * @param generator_uuid Candidate trajectory generator id.
    * @throws std::runtime_error on malformed outputs.
    */
-  Output process(
+  virtual Output process(
     const TensorMap & outputs, const EgoFrame & ego,
     const std::vector<autoware::diffusion_planner::AgentHistory> * neighbor_histories,
-    const rclcpp::Time & stamp, const unique_identifier_msgs::msg::UUID & generator_uuid) const;
+    const rclcpp::Time & stamp, const unique_identifier_msgs::msg::UUID & generator_uuid);
 
   int64_t num_timesteps() const { return num_timesteps_; }
   int64_t num_agents() const { return num_agents_; }
   int64_t pose_dim() const { return pose_dim_; }
+  const PostprocessParams & params() const { return params_; }
 
 private:
   /**
