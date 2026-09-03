@@ -261,113 +261,71 @@ void FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::dataToDevice()
+__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  beginDataUpdate()
+{
+  data_update_active_ = true;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  commitDataUpdate()
+{
+  if (!data_update_active_) {
+    return;
+  }
+  data_update_active_ = false;
+
+  // Distance-map generation kernels consume the runtime cost data, so preserve this ordering on
+  // the cost stream: snapshot upload, map rebuilds, then rollout kernels.
+  if (runtime_data_dirty_) {
+    uploadDataToDevice();
+  }
+  if (distance_map_refresh_pending_) {
+    const bool obstacle_geometry_changed = obstacle_geometry_dirty_;
+    const bool road_border_geometry_changed = road_border_geometry_dirty_;
+    const bool drivable_area_geometry_changed = drivable_area_geometry_dirty_;
+    distance_map_refresh_pending_ = false;
+    obstacle_geometry_dirty_ = false;
+    road_border_geometry_dirty_ = false;
+    drivable_area_geometry_dirty_ = false;
+    refreshDistanceMapTexturesNow(
+      obstacle_geometry_changed, road_border_geometry_changed,
+      drivable_area_geometry_changed);
+  }
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  dataToDevice()
+{
+  runtime_data_dirty_ = true;
+  if (!data_update_active_) {
+    uploadDataToDevice();
+  }
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  uploadDataToDevice()
 {
   if (!this->GPUMemStatus_) {
+    runtime_data_dirty_ = false;
     return;
   }
 
+  // These runtime fields are deliberately declared as one contiguous block in the class. Copying
+  // their object representation replaces the former per-field cudaMemcpyAsync chain with one
+  // stream-ordered transaction. Transaction bookkeeping is declared after the block and is not
+  // copied to the device.
+  const auto data_begin_address = reinterpret_cast<std::uintptr_t>(&ref_x_[0]);
+  const auto data_end_address = reinterpret_cast<std::uintptr_t>(
+                                  &drivable_area_y1_[kMaxDrivableAreaSegments - 1]) +
+                                sizeof(drivable_area_y1_[0]);
+  const std::size_t data_size = static_cast<std::size_t>(data_end_address - data_begin_address);
   HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->ref_x_, ref_x_, sizeof(ref_x_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->ref_y_, ref_y_, sizeof(ref_y_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->ref_v_, ref_v_, sizeof(ref_v_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->ref_yaw_, ref_yaw_, sizeof(ref_yaw_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->terminal_reference_, terminal_reference_, sizeof(terminal_reference_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->ref_max_velocity_, ref_max_velocity_, sizeof(ref_max_velocity_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->ref_velocity_limit_active_, ref_velocity_limit_active_,
-    sizeof(ref_velocity_limit_active_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->has_pointwise_velocity_limits_, &has_pointwise_velocity_limits_,
-    sizeof(has_pointwise_velocity_limits_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->kinematic_limits_, &kinematic_limits_, sizeof(kinematic_limits_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->num_lateral_corridor_points_, &num_lateral_corridor_points_,
-    sizeof(num_lateral_corridor_points_), cudaMemcpyHostToDevice, this->stream_));
-  if (num_lateral_corridor_points_ > 0) {
-    const size_t bytes = static_cast<size_t>(num_lateral_corridor_points_) * sizeof(float);
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->lateral_corridor_x_, lateral_corridor_x_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->lateral_corridor_y_, lateral_corridor_y_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->lateral_corridor_s_, lateral_corridor_s_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->lateral_corridor_ref_velocity_, lateral_corridor_ref_velocity_, bytes,
-      cudaMemcpyHostToDevice, this->stream_));
-  }
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->lateral_corridor_has_s_, &lateral_corridor_has_s_,
-    sizeof(lateral_corridor_has_s_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->lateral_corridor_total_length_s_, &lateral_corridor_total_length_s_,
-    sizeof(lateral_corridor_total_length_s_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->num_obstacles_, &num_obstacles_, sizeof(num_obstacles_), cudaMemcpyHostToDevice,
-    this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_x_, obs_x_, sizeof(obs_x_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_y_, obs_y_, sizeof(obs_y_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_yaw_, obs_yaw_, sizeof(obs_yaw_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_half_length_, obs_half_length_, sizeof(obs_half_length_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_half_width_, obs_half_width_, sizeof(obs_half_width_),
-    cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->obs_is_static_, obs_is_static_, sizeof(obs_is_static_), cudaMemcpyHostToDevice,
-    this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->num_road_border_segments_, &num_road_border_segments_,
-    sizeof(num_road_border_segments_), cudaMemcpyHostToDevice, this->stream_));
-  if (num_road_border_segments_ > 0) {
-    const size_t bytes = num_road_border_segments_ * sizeof(float);
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->road_border_x0_, road_border_x0_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->road_border_y0_, road_border_y0_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->road_border_x1_, road_border_x1_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->road_border_y1_, road_border_y1_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-  }
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->num_drivable_area_segments_, &num_drivable_area_segments_,
-    sizeof(num_drivable_area_segments_), cudaMemcpyHostToDevice, this->stream_));
-  if (num_drivable_area_segments_ > 0) {
-    const size_t bytes = num_drivable_area_segments_ * sizeof(float);
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->drivable_area_x0_, drivable_area_x0_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->drivable_area_y0_, drivable_area_y0_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->drivable_area_x1_, drivable_area_x1_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-    HANDLE_ERROR(cudaMemcpyAsync(
-      this->cost_d_->drivable_area_y1_, drivable_area_y1_, bytes, cudaMemcpyHostToDevice,
-      this->stream_));
-  }
+    this->cost_d_->ref_x_, &ref_x_[0], data_size, cudaMemcpyHostToDevice, this->stream_));
+  runtime_data_dirty_ = false;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -375,6 +333,10 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   setInitialSteeringAngle(const float steering_angle)
 {
   initial_steering_angle_ = std::isfinite(steering_angle) ? steering_angle : 0.0F;
+  if (data_update_active_) {
+    runtime_data_dirty_ = true;
+    return;
+  }
   if (this->cost_d_ != nullptr && this->params_.initial_steer_rate_coeff > 0.0F) {
     HANDLE_ERROR(cudaMemcpyAsync(
       &this->cost_d_->initial_steering_angle_, &initial_steering_angle_,

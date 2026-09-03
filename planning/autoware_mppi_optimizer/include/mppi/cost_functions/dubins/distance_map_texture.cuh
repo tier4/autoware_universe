@@ -34,6 +34,7 @@ inline constexpr int kEgoSpineCircleCount = 4;
 class DistanceMapTextureState
 {
 public:
+  // BEGIN contiguous device-state block. distanceMapStateToDevice() uploads this range once.
   DistanceMapTextureGrid static_distance_map_grid_{};
   DistanceMapTextureGrid obstacle_distance_map_grid_{};
   cudaTextureObject_t static_distance_texture_ = 0;
@@ -42,6 +43,7 @@ public:
   bool drivable_area_texture_valid_ = false;
   bool obstacle_texture_valid_ = false;
   bool obstacle_texture_has_obstacles_ = false;
+  // END contiguous device-state block.
 
 protected:
   friend struct DistanceMapTextureTestAccess;
