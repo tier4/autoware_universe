@@ -72,8 +72,11 @@
     <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
     <remap from="~/output/predicted_objects" to="$(var output_predicted_objects)"/>
   </node>
+  <!-- respawn: the relay deserializes a ~16k-marker map in Python, and rclpy has
+       segfaulted on that receive once in four starts. The map is latched, so a
+       restarted relay simply picks it up again. -->
   <node pkg="autoware_tensorrt_e2e" exec="vector_map_marker_relay.py" name="vector_map_marker_relay"
-        output="log" if="$(var map_marker_relay)"/>
+        output="log" if="$(var map_marker_relay)" respawn="true" respawn_delay="2.0"/>
 
   <node pkg="robot_state_publisher" exec="robot_state_publisher" name="robot_state_publisher"
         output="log" if="$(var vehicle_model_publisher)">
