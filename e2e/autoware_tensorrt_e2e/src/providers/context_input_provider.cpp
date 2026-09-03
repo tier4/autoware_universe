@@ -60,6 +60,8 @@ ContextInputProvider::ContextInputProvider(
   traffic_light_msg_timeout_s_ =
     node_.declare_parameter<double>("context.traffic_light_group_msg_timeout_seconds", 0.2);
   ignore_neighbors_ = node_.declare_parameter<bool>("context.ignore_neighbors", false);
+  turn_indicators_required_ =
+    node_.declare_parameter<bool>("context.turn_indicators_required", true);
   ignore_unknown_neighbors_ =
     node_.declare_parameter<bool>("context.ignore_unknown_neighbors", true);
   line_string_max_step_m_ =
@@ -422,10 +424,24 @@ bool ContextInputProvider::collect_turn_indicator_tensor(TensorMap & inputs, std
     return true;
   }
 
-  const auto report = sub_turn_indicators_->take_data();
+  auto report = sub_turn_indicators_->take_data();
   if (!report) {
-    error = "No turn indicator report received yet";
-    return false;
+    if (turn_indicators_required_) {
+      error = "No turn indicator report received yet";
+      return false;
+    }
+    // The model declares the tensor but this deployment says it does not read
+    // it; a recording without the topic must not stall planning on it.
+    if (!warned_turn_indicators_absent_) {
+      RCLCPP_WARN(
+        node_.get_logger(),
+        "No turn indicator report received; filling 'turn_indicators' with DISABLE "
+        "(context.turn_indicators_required is false)");
+      warned_turn_indicators_absent_ = true;
+    }
+    auto placeholder = std::make_shared<TurnIndicatorsReport>();
+    placeholder->report = TurnIndicatorsReport::DISABLE;
+    report = placeholder;
   }
 
   const auto history_length = static_cast<size_t>(turn_indicators_shape_[1]);

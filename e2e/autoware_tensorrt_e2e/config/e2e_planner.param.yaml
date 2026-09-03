@@ -54,6 +54,11 @@
     context:
       traffic_light_group_msg_timeout_seconds: 0.2
       ignore_neighbors: false
+      # Refuse to plan until a turn-indicator report arrives. A model whose graph
+      # carries the tensor but never reads it (ResWorld: perturbing it changes
+      # nothing) sets this false in its ml_package file, so a recording without
+      # the topic does not stall on an input the network ignores.
+      turn_indicators_required: true
       ignore_unknown_neighbors: true
       line_string_max_step_m: 5.0
       use_time_interpolation: false
