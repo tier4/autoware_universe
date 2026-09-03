@@ -1,6 +1,4 @@
-/**
- * Analytic path-tracking cost for FirstOrderDubinsBicycle (reference polyline + parked-car OBBs).
- */
+/** Path-tracking and texture-accelerated environment cost for FirstOrderDubinsBicycle. */
 #pragma once
 
 #ifndef MPPI_COST_FUNCTIONS_FIRST_ORDER_DUBINS_BICYCLE_COST_CUH_
@@ -9,10 +7,12 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
 #include <mppi/cost_functions/cost.cuh>
+#include <mppi/cost_functions/dubins/distance_map_texture.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_kinematic_limits.cuh>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 
 #include <cstdint>
+#include <vector>
 
 __host__ __device__ inline float computeSmoothBarrierCost(
   const float distance, const float safe_margin, const float precomputed_weight)
@@ -26,21 +26,27 @@ __host__ __device__ inline float computeSmoothBarrierCost(
 template <int NUM_TIMESTEPS>
 struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
 {
-  float speed_coeff = 500.0F;
+  /** Spatial reference-velocity overspeed cost, weighted by progress along the corridor. */
+  float spatial_overspeed_coeff = 0.0F;
+  /** Pull toward ref position at each step: coeff * ||p - ref[t]||^2; 0 disables. */
   float track_coeff = 1000.0F;
   /** Multiplier on track_coeff * track_val in terminalCost (running state cost uses scale 1). */
   float track_terminal_scale = 10.0F;
+  /** Terminal-only squared XY error to the final reference point. */
+  float terminal_error_coeff = 0.0F;
+  /** Terminal-only squared shortest-angle error to the final reference heading. */
+  float terminal_heading_coeff = 0.0F;
   /** Pull toward ref heading at each horizon step: coeff * (yaw - ref_yaw[t])^2; 0 disables. */
   float heading_coeff = 500.0F;
-  /** Spatial (closest-segment) distance to the reference polyline; 0 disables. */
+  /** Spatial (closest-segment) cross-track error: coeff * e_lat^2; 0 disables. */
   float lateral_distance_coeff = 0.0F;
   /** Spatial yaw error vs closest-segment tangent: coeff * Δψ^2; 0 disables. */
   float lateral_yaw_error_coeff = 0.0F;
-  /** Progress along corridor: coeff * remaining chord length to path end [m]; 0 disables. */
+  /** Progress along corridor: coeff * (remaining chord length [m])^2; 0 disables. */
   float remaining_distance_coeff = 0.0F;
-  /** Along-track distance past the corridor tip [m]; 0 disables. */
+  /** Along-track distance past the corridor tip: coeff * (overshoot [m])^2; 0 disables. */
   float path_overshoot_coeff = 0.0F;
-  /** Track the ego footprint center, rather than its rear-axle state, against ref[t]. */
+  /** Track ego footprint center vs ref[t]: coeff * ||center - ref[t]||^2; 0 disables. */
   float track_center_coeff = 0.0F;
   /** Quadratic soft cost for ego corners closer than corner_safe_margin to a boundary. */
   float corner_buffer_coeff = 0.0F;
@@ -56,6 +62,8 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float steer_cmd_coeff = 0.0F;
   /** Direct cost on steer rate [rad/s]: (steer_cmd - steer) / steer_time_constant. */
   float steer_rate_coeff = 0.0F;
+  /** Horizon-compensated cost on (first steer command - initial steering) / control dt. */
+  float initial_steer_rate_coeff = 0.0F;
   /** Shared cost weight for optional velocity, acceleration, and jerk interval violations. */
   float overlimit_coeff = 10000.0F;
   float lateral_acceleration_coeff = 300.0F;
@@ -87,7 +95,8 @@ template <
   class CLASS_T, int NUM_TIMESTEPS,
   class PARAMS_T = FirstOrderDubinsBicycleCostParams<NUM_TIMESTEPS>,
   class DYN_PARAMS_T = FirstOrderDubinsBicycleParams>
-class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>
+class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>,
+                                        public DistanceMapTextureState
 {
 public:
   static constexpr int kMaxObstacles = 64;
@@ -124,7 +133,12 @@ public:
   using output_array = typename PARENT_CLASS::output_array;
   using control_array = typename PARENT_CLASS::control_array;
 
-  FirstOrderDubinsBicycleCostImpl(cudaStream_t stream = 0);
+  __host__ FirstOrderDubinsBicycleCostImpl(cudaStream_t stream = 0);
+
+  __host__ ~FirstOrderDubinsBicycleCostImpl() override;
+
+  FirstOrderDubinsBicycleCostImpl(const FirstOrderDubinsBicycleCostImpl &) = delete;
+  FirstOrderDubinsBicycleCostImpl & operator=(const FirstOrderDubinsBicycleCostImpl &) = delete;
 
   /** Stage corridor + time-aligned ref into block shared memory (theta_c). */
   __device__ void initializeCosts(
@@ -135,9 +149,22 @@ public:
 
   void paramsToDevice();
 
+  /**
+   * Defer runtime-cost uploads and distance-map rebuilds until commitDataUpdate().
+   * Calls are idempotent so a control cycle can begin staging before all inputs are available.
+   */
+  __host__ void beginDataUpdate();
+
+  /** Upload the staged runtime data once, then refresh each affected distance map once. */
+  __host__ void commitDataUpdate();
+
   void setReferenceTrajectory(
     const float * x, const float * y, const float * v, int count, const float * yaw = nullptr,
-    const float * max_velocity = nullptr, const std::uint8_t * velocity_limit_active = nullptr);
+    const float * max_velocity = nullptr, const std::uint8_t * velocity_limit_active = nullptr,
+    const float * terminal_reference = nullptr);
+
+  /** Set the measured pre-rollout steering angle used by the timestep-zero transient cost. */
+  void setInitialSteeringAngle(float steering_angle);
 
   void setKinematicLimits(const FirstOrderDubinsBicycleKinematicLimitData & limits);
 
@@ -147,8 +174,12 @@ public:
    * to the time-aligned ref_ polyline.
    * @param s optional cumulative chord length [m] per vertex (same length as x/y); nullptr
    *          falls back to segment lengths from xy.
+   * @param reference_velocity optional longitudinal velocity [m/s] per vertex. This profile stays
+   *          in global device memory to preserve the existing shared-memory footprint.
    */
-  void setLateralCorridor(const float * x, const float * y, int count, const float * s = nullptr);
+  void setLateralCorridor(
+    const float * x, const float * y, int count, const float * s = nullptr,
+    const float * reference_velocity = nullptr);
 
   void clearLateralCorridor();
 
@@ -158,8 +189,8 @@ public:
     const float * half_width, int count);
 
   /**
-   * Time-varying obstacle poses. All trajectories participate in hard output validation; only
-   * pose-invariant trajectories participate in the gradual static-obstacle barrier.
+   * Time-varying obstacle poses. All trajectories participate in hard output validation and the
+   * gradual obstacle barrier's 3D ESDF.
    */
   void setOrientedBoxObstacleTrajectories(
     const float * x, const float * y, const float * yaw, const float * half_length,
@@ -179,7 +210,13 @@ public:
 
   void clearDrivableArea();
 
-  /** Euclidean position error to the time-aligned reference sample ref[t]. */
+  /** Enable or disable the CUDA-OpenGL distance-map debug window. */
+  __host__ void setDistanceMapTextureDebugEnabled(bool enable);
+
+  /** Refresh the debug window after all distance maps for the current control cycle are ready. */
+  __host__ void renderDistanceMapTextureDebug();
+
+  /** Euclidean position error squared: ||p - ref[t]||^2. */
   __host__ __device__ float computeTrackValue(
     float x, float y, int timestep, const float * theta_c = nullptr) const;
 
@@ -187,10 +224,8 @@ public:
     float yaw, int timestep, const float * theta_c = nullptr) const;
 
   /**
-   * Cross-track distance to the lateral corridor (or ref_ polyline). Projections past the
-   * polyline ends use perpendicular distance to the extended tip segment so horizon
-   * overshoot is not treated as lateral departure. Used by lateral_distance_coeff and
-   * exceedsLateralBoundary.
+   * Cross-track distance to the lateral corridor (or ref_ polyline). Returns signed
+   * lateral offset (+ = left of segment tangent); use fabs for magnitude-based checks.
    */
   __host__ __device__ float computeLateralDistanceValue(
     float x, float y, float * theta_c = nullptr) const;
@@ -203,9 +238,14 @@ public:
    */
   struct LateralPathMetrics
   {
+    /** Signed cross-track error [m]; + = left of closest-segment tangent. */
     float lateral_distance = 0.0F;
     float lateral_yaw_error_sq = 0.0F;
     float path_length_s = 0.0F;
+    /** Clamped arc length [m] of the closest spatial projection. */
+    float spatial_s = 0.0F;
+    /** Reference velocity [m/s] interpolated at spatial_s. */
+    float spatial_ref_velocity = 0.0F;
     float remaining_distance_s = 0.0F;
     /** Along-track extension past the corridor tip (0 if not past the end). */
     float overshoot_distance_s = 0.0F;
@@ -216,7 +256,7 @@ public:
   __host__ __device__ LateralPathMetrics
   computeLateralPathMetrics(float x, float y, float yaw, float * theta_c = nullptr) const;
 
-  /** Distance from the ego footprint center to the time-aligned reference sample. */
+  /** Squared distance from the ego footprint center to the time-aligned reference sample. */
   __host__ __device__ float computeTrackCenterValue(
     float x, float y, float yaw, int timestep, const float * theta_c = nullptr) const;
 
@@ -230,7 +270,11 @@ public:
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep) const;
 
-  /** Signed distance between the physical ego OBB and the closest static obstacle OBB. */
+  /**
+   * Signed clearance from the ego's four-circle spine approximation to the closest obstacle.
+   * GPU rollout samples the point ESDF at each circle center; host replay evaluates the same
+   * circle-to-box geometry analytically.
+   */
   __host__ __device__ float distanceToClosestObstacle(
     float x, float y, float yaw, int timestep) const;
 
@@ -238,15 +282,21 @@ public:
   __host__ __device__ bool egoIntersectsRoadBorder(
     const float x, const float y, const float yaw) const;
 
-  /** Euclidean ego-contour clearance to the closest road-border segment. */
+  /**
+   * Clearance from the ego's four-circle spine approximation to the closest road border. GPU and
+   * host paths use the same circle geometry.
+   */
   __host__ __device__ float distanceToRoadBorder(float x, float y, float yaw) const;
 
-  /** Signed clearance to drivable-area segments; negative while a boundary penetrates the OBB. */
+  /**
+   * Signed clearance from the ego's four-circle spine approximation to drivable-area segments.
+   * GPU and host paths use the same circle geometry.
+   */
   __host__ __device__ float distanceToDrivableArea(float x, float y, float yaw) const;
 
   __host__ __device__ void computeGradualCrashCosts(
     float x, float y, float yaw, int timestep, float & drivable_area_cost, float & obstacle_cost,
-    float & road_border_cost) const;
+    float & road_border_cost, bool * safety_violation = nullptr) const;
 
   float computeStateCost(
     const Eigen::Ref<const output_array> & y, int timestep, int * crash_status);
@@ -284,10 +334,14 @@ public:
   __device__ float computeRunningCost(
     float * y, float * u, int timestep, float * theta_c, int * crash);
 
+  // BEGIN contiguous runtime-data block. Keep all device-consumed cycle data between these
+  // markers; uploadDataToDevice() transfers this range with one cudaMemcpyAsync.
   float ref_x_[NUM_TIMESTEPS] = {};
   float ref_y_[NUM_TIMESTEPS] = {};
   float ref_v_[NUM_TIMESTEPS] = {};
   float ref_yaw_[NUM_TIMESTEPS] = {};
+  /** Full reference-trajectory terminal pose: x, y, yaw. */
+  float terminal_reference_[3] = {};
   float ref_max_velocity_[NUM_TIMESTEPS] = {};
   std::uint8_t ref_velocity_limit_active_[NUM_TIMESTEPS] = {};
   bool has_pointwise_velocity_limits_{false};
@@ -297,9 +351,13 @@ public:
   float lateral_corridor_y_[kMaxLateralCorridorPoints] = {};
   /** Cumulative chord length [m] along lateral_corridor_* (s[0]=0); valid when count >= 1. */
   float lateral_corridor_s_[kMaxLateralCorridorPoints] = {};
+  /** Reference longitudinal velocity [m/s] at each corridor vertex; kept in global memory. */
+  float lateral_corridor_ref_velocity_[kMaxLateralCorridorPoints] = {};
   /** Final path length = s[n-1]; staged into shared memory with corridor/ref on GPU. */
   float lateral_corridor_total_length_s_ = 0.0F;
   bool lateral_corridor_has_s_ = false;
+  /** Measured steering state at the start of the current rollout. */
+  float initial_steering_angle_ = 0.0F;
   int num_obstacles_ = 0;
   float obs_x_[kMaxObstacles][NUM_TIMESTEPS] = {};
   float obs_y_[kMaxObstacles][NUM_TIMESTEPS] = {};
@@ -318,9 +376,36 @@ public:
   float drivable_area_y0_[kMaxDrivableAreaSegments] = {};
   float drivable_area_x1_[kMaxDrivableAreaSegments] = {};
   float drivable_area_y1_[kMaxDrivableAreaSegments] = {};
+  // END contiguous runtime-data block.
 
 private:
-  void dataToDevice();
+  friend struct DistanceMapTextureTestAccess;
+
+  __host__ __device__ float computeInitialSteeringRateCost(
+    const float * control, int timestep) const;
+
+  __host__ void dataToDevice();
+  __host__ void uploadDataToDevice();
+  __host__ bool updateDistanceMapGrid(
+    DistanceMapTextureGrid & grid, int width, int height, float resolution);
+  __host__ void ensureDistanceMapResources();
+  __host__ void rebuildStaticDistanceTexture(bool update_road_border, bool update_drivable_area);
+  __host__ void rebuildObstacleDistanceTexture();
+  __host__ void refreshDistanceMapTextures(
+    bool obstacle_geometry_changed, bool road_border_geometry_changed,
+    bool drivable_area_geometry_changed);
+  __host__ void refreshDistanceMapTexturesNow(
+    bool obstacle_geometry_changed, bool road_border_geometry_changed,
+    bool drivable_area_geometry_changed);
+  __host__ void distanceMapStateToDevice();
+  __host__ void releaseDistanceMapResources();
+
+  bool data_update_active_ = false;
+  bool runtime_data_dirty_ = false;
+  bool distance_map_refresh_pending_ = false;
+  bool obstacle_geometry_dirty_ = false;
+  bool road_border_geometry_dirty_ = false;
+  bool drivable_area_geometry_dirty_ = false;
 };
 
 template <int NUM_TIMESTEPS>
@@ -337,6 +422,7 @@ public:
 
 #if __CUDACC__
 #include "first_order_dubins_bicycle_cost.cu"
+#include "first_order_dubins_distance_map.cu"
 #endif
 
 #endif  // MPPI_COST_FUNCTIONS_FIRST_ORDER_DUBINS_BICYCLE_COST_CUH_

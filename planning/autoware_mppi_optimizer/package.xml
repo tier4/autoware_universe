@@ -13,8 +13,10 @@
   <build_depend>eigen3_cmake_module</build_depend>
 
   <depend>MPPI-Generic</depend>
+  <depend>ament_index_cpp</depend>
   <depend>autoware_avoidance_target_detector</depend>
   <depend>autoware_cuda_dependency_meta</depend>
+  <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_internal_planning_msgs</depend>
   <depend>autoware_map_msgs</depend>
   <depend>autoware_perception_msgs</depend>
@@ -31,7 +33,9 @@
   <depend>eigen</depend>
   <depend>generate_parameter_library</depend>
   <depend>geometry_msgs</depend>
+  <depend>libglfw3-dev</depend>
   <depend>nav_msgs</depend>
+  <depend>opengl</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>

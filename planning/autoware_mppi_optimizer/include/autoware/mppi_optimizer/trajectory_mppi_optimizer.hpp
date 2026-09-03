@@ -15,18 +15,21 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 
+#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware/avoidance_target_detector/object_filtering.hpp>
 #include <autoware/trajectory_processor/trajectory_processor_plugin_base.hpp>
 #include <autoware_mppi_optimizer/trajectory_mppi_optimizer_parameters.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -94,12 +97,27 @@ private:
   void publish_status_diagnostic(
     std::uint8_t level, const std::string & message, const rclcpp::Time & stamp);
 
+  /** @brief Publishes MPPI wall-time subdivisions under ~/debug/processing_time_ms/. */
+  void publish_processing_time(const FirstOrderDubinsMppiTiming & timing);
+
+  /** @brief Publishes planar distance from ego to the first DP reference point [m]. */
+  void publish_ego_to_dp_first_point_distance(
+    const nav_msgs::msg::Odometry & odometry, const Trajectory & reference) const;
+
+  /** @brief Signed cross-track from ego to the raw DP polyline (+ = left); matches MPPI cost. */
+  void publish_ego_signed_lateral_error_on_dp(
+    const nav_msgs::msg::Odometry & odometry, const Trajectory & reference) const;
+
+  /** @brief Publishes open-loop plant replay error vs measured ego since the previous cycle. */
+  void publish_prediction_accuracy(const FirstOrderDubinsMppiPredictionAccuracy & accuracy) const;
+
   /** @brief Deletes stale MPPI markers. */
   void clear_markers(const std_msgs::msg::Header & header) const;
 
   std::unique_ptr<trajectory_mppi_optimizer::ParamListener> param_listener_;
   MppiParams params_;
   std::unique_ptr<FirstOrderDubinsMppiInterface> optimizer_;
+  CurvatureAdaptiveSteeringFilter steering_filter_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
@@ -120,6 +138,7 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr velocity_limit_trajectory_pub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr enabled_pub_;
+  std::unique_ptr<autoware_utils_debug::DebugPublisher> debug_publisher_;
   std::unique_ptr<DiagnosticsInterface> cost_diagnostics_;
 
   std::optional<FirstOrderDubinsMppiDebug> pending_debug_;

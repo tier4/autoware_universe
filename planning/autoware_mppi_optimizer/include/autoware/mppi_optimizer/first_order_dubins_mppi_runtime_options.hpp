@@ -24,8 +24,12 @@ namespace autoware::mppi_optimizer
 struct FirstOrderDubinsMppiRuntimeOptions
 {
   bool enable_debug_trajectory_log{false};
-  /** Empty -> $XDG_CACHE_HOME/autoware/mppi_debug_log or $HOME/.cache/autoware/mppi_debug_log. */
+  /** Empty -> process current working directory. */
   std::string debug_trajectory_log_directory;
+  /** Open the zero-copy CUDA-OpenGL distance-map texture debug window. */
+  bool enable_distance_map_texture_debug{false};
+  /** Capture sampled rollouts after every MPPI iteration and publish them as debug markers. */
+  bool enable_iteration_rollout_debug{false};
   bool ignore_obstacles{false};
   bool ignore_road_borders{false};
   bool ignore_drivable_area{false};
@@ -34,12 +38,12 @@ struct FirstOrderDubinsMppiRuntimeOptions
   /** Skip optimization for stopping trajectories shorter than this arc length in meters. */
   float min_optimization_length{0.0F};
   /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle).
-   *  With use_temporal_mpt_as_nominal, seeds the t-MPT NLP instead of replacing u_nom. */
+   *  Ignored when use_temporal_mpt_as_nominal is true (t-MPT uses its own shifted solution). */
   bool use_last_control_as_nominal{false};
   /**
    * When true (and not forced nominal), seed u_nom from acados temporal MPT
    * instead of the geometric diffusion seed. Falls back to diffusion seed on solve failure.
-   * Combines with use_last_control_as_nominal (shifted u_opt → t-MPT warm-start).
+   * t-MPT warm-starts from its own previous x/u shifted one stage, not from MPPI u_opt.
    */
   bool use_temporal_mpt_as_nominal{false};
   /** Prevent MPPI rollouts from integrating longitudinal velocity below zero. */

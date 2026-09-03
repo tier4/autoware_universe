@@ -12,6 +12,10 @@ ament_auto_add_library(mppi_trajectory_utils SHARED
   src/first_order_dubins/trajectory_utils.cpp
 )
 
+ament_auto_add_library(mppi_curvature_adaptive_steering_filter SHARED
+  src/curvature_adaptive_steering_filter.cpp
+)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
@@ -22,6 +26,13 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_mppi_trajectory_utils
     mppi_trajectory_utils
+  )
+
+  ament_add_gtest(test_curvature_adaptive_steering_filter
+    test/test_curvature_adaptive_steering_filter.cpp
+  )
+  target_link_libraries(test_curvature_adaptive_steering_filter
+    mppi_curvature_adaptive_steering_filter
   )
 endif()
 
@@ -63,6 +74,7 @@ endif()
 
 if(CUDA_AVAIL AND TRT_AVAIL)
   find_package(MPPI-Generic REQUIRED)
+  find_package(ament_index_cpp REQUIRED)
   pluginlib_export_plugin_description_file(
     autoware_trajectory_processor trajectory_processor_plugins.xml)
   add_library(mppi_extensions INTERFACE)
@@ -90,6 +102,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   message(STATUS "MPPI CUDA architecture(s): ${MPPI_CUDA_ARCH_FLAGS}")
 
   cuda_add_library(first_order_dubins_mppi SHARED
+    src/first_order_dubins/distance_map_texture_visualizer.cu
     src/first_order_dubins/first_order_dubins_mppi_interface.cu
   )
   find_package(autoware_trajectory_processor REQUIRED)
@@ -120,6 +133,8 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     autoware_vehicle_msgs::autoware_vehicle_msgs__rosidl_generator_cpp
     geometry_msgs::geometry_msgs__rosidl_generator_cpp
     nav_msgs::nav_msgs__rosidl_generator_cpp
+    OpenGL::GL
+    glfw
     ${CUDA_cufft_LIBRARY}
   )
   set_target_properties(first_order_dubins_mppi PROPERTIES
@@ -140,12 +155,16 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(autoware_mppi_trajectory_processor_plugin
     first_order_dubins_mppi
+    mppi_curvature_adaptive_steering_filter
     trajectory_mppi_optimizer_parameters
     ${PROJECT_NAME}
   )
 
   add_executable(mppi_offline_retune
     src/tools/mppi_offline_retune.cpp
+  )
+  add_executable(mppi_open_loop_line_sim
+    src/tools/mppi_open_loop_line_sim.cpp
   )
   target_include_directories(mppi_offline_retune PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -162,6 +181,28 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     nav_msgs::nav_msgs__rosidl_generator_cpp
   )
   set_target_properties(mppi_offline_retune PROPERTIES
+    CXX_STANDARD 17
+    POSITION_INDEPENDENT_CODE ON
+  )
+
+  target_include_directories(mppi_open_loop_line_sim PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  )
+  target_link_libraries(mppi_open_loop_line_sim
+    first_order_dubins_mppi
+    mppi_curvature_adaptive_steering_filter
+    ${PROJECT_NAME}
+    rclcpp::rclcpp
+    ament_index_cpp::ament_index_cpp
+    tf2_geometry_msgs::tf2_geometry_msgs
+    autoware_perception_msgs::autoware_perception_msgs__rosidl_generator_cpp
+    autoware_planning_msgs::autoware_planning_msgs__rosidl_generator_cpp
+    autoware_vehicle_msgs::autoware_vehicle_msgs__rosidl_generator_cpp
+    geometry_msgs::geometry_msgs__rosidl_generator_cpp
+    nav_msgs::nav_msgs__rosidl_generator_cpp
+  )
+  set_target_properties(mppi_open_loop_line_sim PROPERTIES
     CXX_STANDARD 17
     POSITION_INDEPENDENT_CODE ON
   )
@@ -212,9 +253,38 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       LABELS "gpu"
       TIMEOUT 60
     )
+
+    # Keep the descriptive .cpp filename while compiling the texture-sampling test kernels with
+    # NVCC. FindCUDA treats a non-.cu source as CUDA when this property is set.
+    set_source_files_properties(test/test_distance_map.cpp PROPERTIES
+      CUDA_SOURCE_PROPERTY_FORMAT OBJ
+    )
+    cuda_add_executable(test_distance_map
+      test/test_distance_map.cpp
+    )
+    target_link_libraries(test_distance_map
+      first_order_dubins_mppi
+      ${GTEST_LIBRARIES}
+      ${GTEST_MAIN_LIBRARIES}
+    )
+    target_include_directories(test_distance_map SYSTEM PRIVATE
+      ${GTEST_INCLUDE_DIRS}
+    )
+    set_target_properties(test_distance_map PROPERTIES
+      CXX_STANDARD 17
+      CUDA_STANDARD 17
+    )
+    target_compile_options(test_distance_map PRIVATE
+      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
+    )
+    ament_add_gtest_test(test_distance_map)
+    set_tests_properties(test_distance_map PROPERTIES
+      LABELS "gpu"
+      TIMEOUT 180
+    )
   endif()
 
-  install(TARGETS first_order_dubins_mppi mppi_offline_retune
+  install(TARGETS first_order_dubins_mppi mppi_offline_retune mppi_open_loop_line_sim
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -222,6 +292,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   install(PROGRAMS
     scripts/mppi_offline_tuner.py
     scripts/mppi_debug_visualizer.py
+    scripts/mppi_open_loop_line_sim_plot.py
     DESTINATION lib/${PROJECT_NAME}
   )
 endif()
@@ -229,6 +300,6 @@ endif()
 ament_export_include_directories(include)
 if(CUDA_AVAIL AND TRT_AVAIL)
   ament_export_libraries(first_order_dubins_mppi)
-  ament_export_dependencies(MPPI-Generic)
+  ament_export_dependencies(MPPI-Generic OpenGL glfw3)
 endif()
 ament_auto_package(INSTALL_TO_SHARE config)

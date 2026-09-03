@@ -54,8 +54,8 @@ public:
   void resetWarmStart();
 
   /**
-   * Seed the next t-MPT NLP from a prior control sequence (e.g. shifted last MPPI u_opt).
-   * Consumed on the next ``solve``.
+   * Optional external NLP guess from a prior control sequence. Consumed on the next ``solve``.
+   * Unused by online MPPI: the seeder warm-starts from its own previous solution.
    */
   void setWarmStartControls(
     const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd);

@@ -42,7 +42,7 @@ and <out_dir>/NNNNNN_cost_breakdown.csv:
 (selected output trajectory cost components used for the stacked bar).
 
 and <out_dir>/NNNNNN_rollouts.csv:
-  rollout_index,cost,step,x,y[,is_worst]
+  rollout_index,iteration,cost,step,x,y[,is_worst]
 (top-weighted and high-cost samples for XY overlay).
 (top-K weighted sample trajectories overlaid on the XY plot).
 
@@ -112,10 +112,18 @@ MPPI_MAX_WORST_VIZ_ROLLOUTS = 128
 # (Excludes bool/string runtime flags: enable_debug_trajectory_log, ignore_*, etc.)
 # Keep in sync with config/mppi_optimizer.param.yaml (overridden by cost_params.csv when present).
 DEFAULT_PARAMS: Dict[str, float] = {
-    "lambda": 100.0,
-    "speed_coeff": 300.0,
+    "lambda": 0.1,
+    "lambda_min": 0.01,
+    "lambda_max": 2.0,
+    "target_ess_ratio": 0.2,
+    "lambda_adaptation_gain": 0.1,
+    "unsafe_rollout_fraction_threshold": 0.95,
+    "cost_normalization_percentile": 0.95,
+    "spatial_overspeed_coeff": 0.0,
     "track_coeff": 1200.0,
     "track_terminal_scale": 10.0,
+    "terminal_error_coeff": 0.0,
+    "terminal_heading_coeff": 0.0,
     "heading_coeff": 600.0,
     "lateral_distance_coeff": 0.0,
     "lateral_yaw_error_coeff": 0.0,
@@ -134,6 +142,7 @@ DEFAULT_PARAMS: Dict[str, float] = {
     "accel_cmd_coeff": 50.0,
     "steer_cmd_coeff": 250.0,
     "steer_rate_coeff": 100000.0,
+    "initial_steer_rate_coeff": 0.0,
     "overlimit_coeff": 10000.0,
     "accel_cmd_std_dev": 0.35,
     "steer_cmd_std_dev": 0.024,
@@ -150,10 +159,18 @@ DEFAULT_PARAMS: Dict[str, float] = {
 # (name, vmin, vmax) — keep in sync with DEFAULT_PARAMS keys.
 # vmax must cover yaml / logged values; create_sliders also expands to fit valinit.
 SLIDER_SPECS: List[Tuple[str, float, float]] = [
-    ("lambda", 1.0, 20000.0),
+    ("lambda", 0.01, 2.0),
+    ("lambda_min", 0.001, 1.0),
+    ("lambda_max", 0.01, 10.0),
+    ("target_ess_ratio", 0.01, 1.0),
+    ("lambda_adaptation_gain", 0.0, 2.0),
+    ("unsafe_rollout_fraction_threshold", 0.0, 1.0),
+    ("cost_normalization_percentile", 0.0, 1.0),
     ("track_coeff", 0.0, 10000.0),
     ("track_terminal_scale", 0.0, 50.0),
-    ("speed_coeff", 0.0, 5000.0),
+    ("terminal_error_coeff", 0.0, 10000.0),
+    ("terminal_heading_coeff", 0.0, 5000.0),
+    ("spatial_overspeed_coeff", 0.0, 10000.0),
     ("heading_coeff", 0.0, 5000.0),
     ("lateral_distance_coeff", 0.0, 10000.0),
     ("lateral_yaw_error_coeff", 0.0, 5000.0),
@@ -168,6 +185,7 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("accel_cmd_coeff", 0.0, 2000.0),
     ("steer_cmd_coeff", 0.0, 5000.0),
     ("steer_rate_coeff", 0.0, 500000.0),
+    ("initial_steer_rate_coeff", 0.0, 500000.0),
     ("overlimit_coeff", 0.0, 100000.0),
     ("accel_cmd_std_dev", 0.0, 2.0),
     ("steer_cmd_std_dev", 0.0, 0.2),
@@ -1721,7 +1739,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ax_cost_breakdown.set_xlabel("horizon-average cost")
         ax_cost_breakdown.grid(True, axis="x", alpha=0.3)
         component_labels = (
-            ("state/speed", "speed"),
+            ("state/spatial_overspeed", "spatial overspeed"),
             ("state/track", "track"),
             ("state/heading", "heading"),
             ("state/lateral_distance", "lat distance"),
@@ -1740,6 +1758,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ("comfort/lateral_jerk", "lat jerk"),
             ("comfort/longitudinal_jerk", "long jerk"),
             ("comfort/steering_rate", "steer rate"),
+            ("mppi/initial_steering_rate", "initial steer rate"),
             ("kinematic/velocity_overlimit", "velocity limit"),
             ("kinematic/acceleration_overlimit", "accel limit"),
             ("kinematic/jerk_overlimit", "jerk limit"),
@@ -1979,22 +1998,28 @@ def load_key_value_csv(path: Path) -> Dict[str, float]:
 
 
 def load_params_from_log(log_dir: Path, params_yaml: Optional[Path]) -> Dict[str, float]:
-    """Load slider defaults: defaults ← logged cost_params.csv ← explicit --params-yaml.
+    """Load slider defaults for offline compare/retune.
 
-    When --params-yaml is passed, it wins over the online log so you can retune from a
-    local yaml without deleting cost_params.csv.
+    Priority: DEFAULT_PARAMS ← yaml (fill baseline) ← cost_params.csv (online wins).
+    Logged ``cost_params.csv`` always beats yaml so replay matches the run that produced
+    the log. Pass ``--params-yaml`` only to seed sliders when ``cost_params.csv`` is missing.
     """
     params = dict(DEFAULT_PARAMS)
-    logged = load_key_value_csv(log_dir / "cost_params.csv")
-    for key, value in logged.items():
-        if key in params:
-            params[key] = value
     if params_yaml is not None:
         yaml_params = load_params_yaml(params_yaml)
         for key, value in yaml_params.items():
             if key in params:
                 params[key] = value
+    logged = load_key_value_csv(log_dir / "cost_params.csv")
+    for key, value in logged.items():
+        if key in params:
+            params[key] = value
     return params
+
+
+def load_logged_cost_params(log_dir: Path) -> Dict[str, float]:
+    """All numeric keys from cost_params.csv (includes fields without sliders)."""
+    return load_key_value_csv(log_dir / "cost_params.csv")
 
 
 def load_vehicle_from_log(
@@ -2431,6 +2456,7 @@ class OfflineLogVisualizer:
         self._enable_retune = enable_retune
         self._params_yaml = params_yaml
         self._params = load_params_from_log(log_dir, params_yaml)
+        self._logged_cost_params = load_logged_cost_params(log_dir)
         (
             self._wheel_base,
             self._ego_width,
@@ -2474,6 +2500,20 @@ class OfflineLogVisualizer:
                 f"ego_length={self._ego_length}, ego_width={self._ego_width}, "
                 f"steer_time_constant={self._steer_time_constant}"
             )
+            if self._logged_cost_params:
+                print(
+                    "Retune cost baseline: cost_params.csv from log "
+                    f"(lambda={self._logged_cost_params.get('lambda', '?')}, "
+                    f"track_coeff={self._logged_cost_params.get('track_coeff', '?')}, "
+                    f"lateral_distance_coeff="
+                    f"{self._logged_cost_params.get('lateral_distance_coeff', '?')})"
+                )
+            elif self._params_yaml is not None:
+                print(
+                    f"Retune cost baseline: --params-yaml {self._params_yaml} (no cost_params.csv)"
+                )
+            else:
+                print("WARNING: no cost_params.csv — sliders use script DEFAULT_PARAMS, not online")
             print(f"Retune binary: {self._retune_bin}")
             print(f"Retune output directory: {self._out_dir}")
             print("Move sliders, then click Retune (or press r). Sliders alone do nothing.")
@@ -2602,8 +2642,9 @@ class OfflineLogVisualizer:
         self._show_current()
 
     def _current_params(self) -> Dict[str, float]:
-        """All known cost params: log/yaml/defaults, overridden by slider values."""
-        params = dict(self._params)
+        """Cost params sent to mppi_offline_retune: log extras + slider overrides."""
+        params = dict(self._logged_cost_params)
+        params.update(self._params)
         for name, slider in self._sliders.items():
             params[name] = float(slider.val)
         return params
@@ -2645,8 +2686,8 @@ class OfflineLogVisualizer:
             "--ego-length",
             str(self._ego_length),
         ]
-        if self._params_yaml is not None:
-            cmd.extend(["--params-yaml", str(self._params_yaml)])
+        # Do not pass --params-yaml into retune: it would overwrite cost_params.csv for
+        # keys without sliders (noise exponents, etc.). Sliders + --set carry user edits.
         if reseed:
             cmd.extend(["--nominal-csv", str(seed_path)])
         elif not math.isclose(
@@ -2673,7 +2714,7 @@ class OfflineLogVisualizer:
             (self._out_dir / f"{tag}_{suffix}").unlink(missing_ok=True)
         self._status = (
             f"{mode} frame {frame_id} via {self._retune_bin.name} "
-            f"(lambda={lam:.0f}, track={track:.0f}"
+            f"(lambda={lam:.3f}, track={track:.0f}"
             + (f", pass={prev_count + 1}" if reseed else "")
             + ")..."
         )
@@ -2706,7 +2747,7 @@ class OfflineLogVisualizer:
             warn_lines = []
             if completed.stderr:
                 warn_lines = [ln for ln in completed.stderr.splitlines() if "WARNING:" in ln]
-            # Highlight when retune barely moved vs logged (usually lambda still too high).
+            # Highlight when retune barely moved vs logged (often lambda is still too high).
             opt = load_trajectory_csv(self._out_dir / f"{frame_id:06d}_optimized.csv")
             logged = load_trajectory_csv(self._log_dir / f"{frame_id:06d}_optimized.csv")
             costs = load_costs_csv(self._out_dir / f"{frame_id:06d}_costs.csv")
@@ -2742,9 +2783,9 @@ class OfflineLogVisualizer:
             if opt.x and logged.x:
                 vs = max_pos_err((logged.x, logged.y), (opt.x, opt.y))
                 self._status = f"{self._status} | logged↔retune Δpos={vs:.3f}m"
-                if vs < 0.5 and lam >= 2000.0:
+                if vs < 0.5 and lam >= 1.0:
                     self._status = (
-                        f"{self._status} || tiny Δ — lower lambda to ~100–500 then Retune again"
+                        f"{self._status} || tiny Δ — lower normalized-cost lambda then Retune again"
                     )
             if warn_lines:
                 self._status = f"{self._status}  ||  {warn_lines[-1]}"
