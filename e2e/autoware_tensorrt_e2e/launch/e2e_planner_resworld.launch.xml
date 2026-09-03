@@ -17,22 +17,19 @@
   <arg name="build_only" default="false" description="shutdown node after the TensorRT engine files are built"/>
   <arg name="use_sim_time" default="false" description="use /clock (rosbag replay); the input staleness checks need it"/>
   <arg name="launch_prefix" default="" description="wrap the node process (e.g. compute-sanitizer, gdb -ex run --args)"/>
-  <arg name="rviz" default="false" description="open RViz with this node's layout"/>
-  <arg name="rviz_config" default="$(find-pkg-share autoware_tensorrt_e2e)/rviz/e2e_planner.rviz"/>
-  <!-- RViz refuses a MarkerArray with duplicate ids, which is what the lanelet2
-       visualizer emits, and it drops everything it holds whenever a looping bag
-       moves time backwards. The relay fixes both; see its docstring. -->
-  <arg name="map_marker_relay" default="$(var rviz)" description="renumber and re-latch the lanelet2 markers for RViz"/>
-  <!-- The VehicleModel display draws /robot_description, and nothing else in
-       this launch publishes it: with rviz:=true and no publisher the ego is
-       simply missing from the scene it is meant to be the centre of.
-       Deliberately the vehicle body alone, not Autoware's full vehicle.xacro:
-       that one composes the sensor kit and so needs a sensors_calibration.yaml
-       that a description package does not always carry, and the sensor frames
-       are not ours to invent — they come from the bag's own /tf_static. The
-       package is resolved only when this is enabled. -->
-  <arg name="vehicle_model" default="jpntaxi" description="vehicle description package prefix, for the RViz ego model"/>
-  <arg name="vehicle_model_publisher" default="$(var rviz)" description="publish /robot_description so RViz can draw the ego"/>
+  <arg name="rviz" default="false" description="open RViz (the standard Autoware layout)"/>
+  <!-- The standard layout draws /planning/trajectory; pass
+       output_trajectory:=/planning/trajectory to see this node's output in it. -->
+  <arg name="rviz_config" default="$(find-pkg-share autoware_launch)/rviz/autoware.rviz"/>
+  <!-- A full Autoware stack already publishes /robot_description from its vehicle
+       launch, so this is off by default. Enable it for a standalone replay, where
+       nothing else draws the ego: vehicle_model_publisher:=true vehicle_model:=NAME
+       publishes the body from NAME_description. The body only, deliberately:
+       Autoware's full vehicle.xacro composes the sensor kit and needs a
+       sensors_calibration.yaml, and a replay takes its sensor frames from the
+       recording's own /tf_static. -->
+  <arg name="vehicle_model" default="" description="vehicle description package prefix, e.g. jpntaxi for jpntaxi_description; draws the ego"/>
+  <arg name="vehicle_model_publisher" default="false" description="publish /robot_description for a standalone replay"/>
 
   <!-- Sensing input: concatenated point cloud (same source as BEVFusion) -->
   <arg name="input_pointcloud" default="/sensing/lidar/concatenated/pointcloud"/>
@@ -67,14 +64,6 @@
     <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
     <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
     <remap from="~/output/predicted_objects" to="$(var output_predicted_objects)"/>
-  </node>
-
-  <!-- respawn: the relay deserializes a ~16k-marker map in Python, and rclpy has
-       segfaulted on that receive once in four starts. The map is latched, so a
-       restarted relay simply picks it up again. -->
-  <node pkg="autoware_tensorrt_e2e" exec="vector_map_marker_relay.py" name="vector_map_marker_relay"
-        output="log" if="$(var map_marker_relay)" respawn="true" respawn_delay="2.0">
-    <param name="use_sim_time" value="$(var use_sim_time)"/>
   </node>
 
   <node pkg="robot_state_publisher" exec="robot_state_publisher" name="robot_state_publisher"
