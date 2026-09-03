@@ -16,6 +16,11 @@
     # Precision this graph is validated in; overrides the package default.
     precision: "fp32"
 
+    context:
+      # The graph carries this input for a stable signature only;
+      # perturbing it changes no output. Do not stall on it.
+      turn_indicators_required: false
+
     bev_feature:
       history_tensor: "bev_feature_history"
       frames: 3
