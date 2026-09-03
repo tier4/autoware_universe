@@ -1448,6 +1448,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (!initialized) {
       setup();
     }
+    cost.beginDataUpdate();
 
     if (force_cold_start_each_step) {
       resetTrackingState();
@@ -1726,6 +1727,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       obstacle_count > 0 ? obs_half_length.data() : nullptr,
       obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
     uploadBoundarySegments();
+    cost.commitDataUpdate();
     cost.renderDistanceMapTextureDebug();
 
     controller->updateImportanceSampler(u_nom);
@@ -2101,6 +2103,7 @@ FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
 
   fromHostState(impl_->x, state);
   impl_->sim_time = sim_time;
+  impl_->cost.beginDataUpdate();
   const FirstOrderDubinsMppiControl control = impl_->runStep({});
   state = toHostState(impl_->x);
   // Advance the vendor control history after the applied command is consumed so the
