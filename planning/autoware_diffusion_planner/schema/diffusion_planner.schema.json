@@ -17,7 +17,10 @@
             "type": {
               "type": "string",
               "default": "single_step",
-              "enum": ["single_step", "multi_step"],
+              "enum": [
+                "single_step",
+                "multi_step"
+              ],
               "description": "Inference model type"
             },
             "base_model_directory": {
@@ -33,13 +36,21 @@
             "backend": {
               "type": "string",
               "default": "tensorrt",
-              "enum": ["tensorrt", "ort_cpu", "ort_cuda", "ort_tensorrt"],
+              "enum": [
+                "tensorrt",
+                "ort_cpu",
+                "ort_cuda",
+                "ort_tensorrt"
+              ],
               "description": "Inference backend. tensorrt uses the native TensorRT implementation; ort_cpu/ort_cuda/ort_tensorrt use ONNX Runtime with the corresponding execution provider."
             },
             "precision": {
               "type": "string",
               "default": "fp32",
-              "enum": ["fp32", "fp16"],
+              "enum": [
+                "fp32",
+                "fp16"
+              ],
               "description": "TensorRT engine precision"
             },
             "use_cuda_graph": {
@@ -56,7 +67,9 @@
                   "description": "Single-step ONNX model filename relative to base_model_directory"
                 }
               },
-              "required": ["onnx_model_filename"]
+              "required": [
+                "onnx_model_filename"
+              ]
             },
             "multi_step_model": {
               "type": "object",
@@ -136,7 +149,9 @@
             "type": "number",
             "minimum": 0
           },
-          "default": [0.0],
+          "default": [
+            0.0
+          ],
           "description": "List of temperature for sampling trajectories. Its length must be the same as `batch_size`. Each value means the coefficient of the standard normal distribution which is used for each initial noise of corresponding batch index. val = N(0,1) * temperature"
         },
         "velocity_smoothing_window": {
@@ -197,7 +212,10 @@
               "description": "Maximum extrapolation horizon [s], both forward from the newest and backward from the oldest observation"
             }
           },
-          "required": ["enable", "max_extrapolation_time"]
+          "required": [
+            "enable",
+            "max_extrapolation_time"
+          ]
         },
         "ego_snap_to_prev_trajectory": {
           "type": "object",
@@ -252,7 +270,10 @@
                   "description": "Maximum scale applied to the ego trajectory by start guidance"
                 }
               },
-              "required": ["reference_distance_m", "max_scale"]
+              "required": [
+                "reference_distance_m",
+                "max_scale"
+              ]
             },
             "stop_guidance": {
               "type": "object",
@@ -264,7 +285,9 @@
                   "description": "Deceleration magnitude used to calculate stop guidance reference distance [m/s^2]"
                 }
               },
-              "required": ["stop_acceleration_mps2"]
+              "required": [
+                "stop_acceleration_mps2"
+              ]
             },
             "centerline_guidance": {
               "type": "object",
@@ -276,10 +299,16 @@
                   "description": "Trajectory points at and after this prediction time are snapped to the nearest route centerline point [s]"
                 }
               },
-              "required": ["start_time_s"]
+              "required": [
+                "start_time_s"
+              ]
             }
           },
-          "required": ["start_guidance", "stop_guidance", "centerline_guidance"]
+          "required": [
+            "start_guidance",
+            "stop_guidance",
+            "centerline_guidance"
+          ]
         },
         "planning_factor": {
           "type": "object",
@@ -337,7 +366,16 @@
               "description": "Publish debug linestring markers"
             }
           },
-          "required": ["publish_debug_map", "publish_debug_route", "publish_debug_linestrings"]
+          "required": [
+            "publish_debug_map",
+            "publish_debug_route",
+            "publish_debug_linestrings"
+          ]
+        },
+        "remap_unsupported_objects_to_pedestrian": {
+          "type": "boolean",
+          "default": false,
+          "description": "Treat UNKNOWN and HAZARD tracked objects as PEDESTRIAN, the most conservative supported class, so the planner reacts to them. Non-BOX shapes are replaced with a 0.5 m bounding box. ANIMAL, OVER_DRIVABLE and UNDER_DRIVABLE remain ignored."
         }
       },
       "required": [
@@ -364,8 +402,12 @@
           "$ref": "#/definitions/diffusion_planner_node"
         }
       },
-      "required": ["ros__parameters"]
+      "required": [
+        "ros__parameters"
+      ]
     }
   },
-  "required": ["/**"]
+  "required": [
+    "/**"
+  ]
 }
