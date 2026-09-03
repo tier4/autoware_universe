@@ -34,6 +34,7 @@ struct CostPathBuffers
   const float * corridor_ref_velocity = nullptr;
   const float * ref_x = nullptr;
   const float * ref_y = nullptr;
+  const float * ref_s = nullptr;
   const float * ref_v = nullptr;
   const float * ref_yaw = nullptr;
 };
@@ -58,7 +59,7 @@ __host__ __device__ inline CostPathBuffers resolvePathBuffers(
   CostPathBuffers b;
   // Keep the additional corridor velocity profile in global memory. Staging another
   // kMaxLateralCorridorPoints floats would increase block shared-memory pressure.
-  b.corridor_ref_velocity = cost.lateral_corridor_ref_velocity_;
+  b.corridor_ref_velocity = cost.runtime_data_.lateral_corridor_ref_velocity_;
   if (theta_c != nullptr) {
     b.total_path_length_s = theta_c[Cost::kSharedTotalOffset];
     const float n_raw = theta_c[Cost::kSharedNumCorridorOffset];
@@ -73,19 +74,21 @@ __host__ __device__ inline CostPathBuffers resolvePathBuffers(
     b.corridor_s = theta_c + Cost::kSharedCorridorSOffset;
     b.ref_x = theta_c + Cost::kSharedRefXOffset;
     b.ref_y = theta_c + Cost::kSharedRefYOffset;
+    b.ref_s = theta_c + Cost::kSharedRefSOffset;
     b.ref_v = theta_c + Cost::kSharedRefVOffset;
     b.ref_yaw = theta_c + Cost::kSharedRefYawOffset;
   } else {
-    b.total_path_length_s = cost.lateral_corridor_total_length_s_;
-    b.num_corridor = cost.num_lateral_corridor_points_;
-    b.has_corridor_s = cost.lateral_corridor_has_s_;
-    b.corridor_x = cost.lateral_corridor_x_;
-    b.corridor_y = cost.lateral_corridor_y_;
-    b.corridor_s = cost.lateral_corridor_s_;
-    b.ref_x = cost.ref_x_;
-    b.ref_y = cost.ref_y_;
-    b.ref_v = cost.ref_v_;
-    b.ref_yaw = cost.ref_yaw_;
+    b.total_path_length_s = cost.runtime_data_.lateral_corridor_total_length_s_;
+    b.num_corridor = cost.runtime_data_.num_lateral_corridor_points_;
+    b.has_corridor_s = cost.runtime_data_.lateral_corridor_has_s_;
+    b.corridor_x = cost.runtime_data_.lateral_corridor_x_;
+    b.corridor_y = cost.runtime_data_.lateral_corridor_y_;
+    b.corridor_s = cost.runtime_data_.lateral_corridor_s_;
+    b.ref_x = cost.runtime_data_.ref_x_;
+    b.ref_y = cost.runtime_data_.ref_y_;
+    b.ref_s = cost.runtime_data_.ref_s_;
+    b.ref_v = cost.runtime_data_.ref_v_;
+    b.ref_yaw = cost.runtime_data_.ref_yaw_;
   }
   return b;
 }
@@ -227,28 +230,30 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const int nthreads = static_cast<int>(blockDim.x * blockDim.y * blockDim.z);
 
   if (tid == 0) {
-    theta_c[kSharedTotalOffset] = lateral_corridor_total_length_s_;
+    theta_c[kSharedTotalOffset] = runtime_data_.lateral_corridor_total_length_s_;
     // Sign encodes has_s: positive = s valid, negative = recompute from xy, 0 = empty.
-    theta_c[kSharedNumCorridorOffset] = lateral_corridor_has_s_
-                                          ? static_cast<float>(num_lateral_corridor_points_)
-                                          : -static_cast<float>(num_lateral_corridor_points_);
+    theta_c[kSharedNumCorridorOffset] =
+      runtime_data_.lateral_corridor_has_s_
+        ? static_cast<float>(runtime_data_.num_lateral_corridor_points_)
+        : -static_cast<float>(runtime_data_.num_lateral_corridor_points_);
   }
 
   for (int i = tid; i < kMaxLateralCorridorPoints; i += nthreads) {
-    theta_c[kSharedCorridorXOffset + i] = lateral_corridor_x_[i];
-    theta_c[kSharedCorridorYOffset + i] = lateral_corridor_y_[i];
-    theta_c[kSharedCorridorSOffset + i] = lateral_corridor_s_[i];
+    theta_c[kSharedCorridorXOffset + i] = runtime_data_.lateral_corridor_x_[i];
+    theta_c[kSharedCorridorYOffset + i] = runtime_data_.lateral_corridor_y_[i];
+    theta_c[kSharedCorridorSOffset + i] = runtime_data_.lateral_corridor_s_[i];
   }
   for (int i = tid; i < NUM_TIMESTEPS; i += nthreads) {
-    theta_c[kSharedRefXOffset + i] = ref_x_[i];
-    theta_c[kSharedRefYOffset + i] = ref_y_[i];
-    theta_c[kSharedRefVOffset + i] = ref_v_[i];
-    theta_c[kSharedRefYawOffset + i] = ref_yaw_[i];
+    theta_c[kSharedRefXOffset + i] = runtime_data_.ref_x_[i];
+    theta_c[kSharedRefYOffset + i] = runtime_data_.ref_y_[i];
+    theta_c[kSharedRefSOffset + i] = runtime_data_.ref_s_[i];
+    theta_c[kSharedRefVOffset + i] = runtime_data_.ref_v_[i];
+    theta_c[kSharedRefYawOffset + i] = runtime_data_.ref_yaw_[i];
   }
 
   // One warm-start slot per sample; -1 forces a full scan on the first projection.
   if (threadIdx.y == 0) {
-    *projectionHintSlot(theta_c) = -1.0F;
+    *projectionHintSlot(theta_c) = 0.0F;
   }
   __syncthreads();
 }
@@ -261,15 +266,15 @@ void FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  beginDataUpdate()
+__host__ void
+FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::beginDataUpdate()
 {
   data_update_active_ = true;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  commitDataUpdate()
+__host__ void
+FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::commitDataUpdate()
 {
   if (!data_update_active_) {
     return;
@@ -290,14 +295,21 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
     road_border_geometry_dirty_ = false;
     drivable_area_geometry_dirty_ = false;
     refreshDistanceMapTexturesNow(
-      obstacle_geometry_changed, road_border_geometry_changed,
-      drivable_area_geometry_changed);
+      obstacle_geometry_changed, road_border_geometry_changed, drivable_area_geometry_changed);
+  }
+  if (nearest_segment_refresh_pending_) {
+    const bool geometry_changed = nearest_segment_geometry_dirty_;
+    nearest_segment_refresh_pending_ = false;
+    nearest_segment_geometry_dirty_ = false;
+    if (geometry_changed) {
+      refreshNearestSegmentTextureNow();
+    }
   }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  dataToDevice()
+__host__ void
+FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::dataToDevice()
 {
   runtime_data_dirty_ = true;
   if (!data_update_active_) {
@@ -306,25 +318,17 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  uploadDataToDevice()
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::uploadDataToDevice()
 {
   if (!this->GPUMemStatus_) {
     runtime_data_dirty_ = false;
     return;
   }
 
-  // These runtime fields are deliberately declared as one contiguous block in the class. Copying
-  // their object representation replaces the former per-field cudaMemcpyAsync chain with one
-  // stream-ordered transaction. Transaction bookkeeping is declared after the block and is not
-  // copied to the device.
-  const auto data_begin_address = reinterpret_cast<std::uintptr_t>(&ref_x_[0]);
-  const auto data_end_address = reinterpret_cast<std::uintptr_t>(
-                                  &drivable_area_y1_[kMaxDrivableAreaSegments - 1]) +
-                                sizeof(drivable_area_y1_[0]);
-  const std::size_t data_size = static_cast<std::size_t>(data_end_address - data_begin_address);
   HANDLE_ERROR(cudaMemcpyAsync(
-    this->cost_d_->ref_x_, &ref_x_[0], data_size, cudaMemcpyHostToDevice, this->stream_));
+    &this->cost_d_->runtime_data_, &this->runtime_data_, sizeof(RuntimeData),
+    cudaMemcpyHostToDevice, this->stream_));
   runtime_data_dirty_ = false;
 }
 
@@ -332,15 +336,15 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setInitialSteeringAngle(const float steering_angle)
 {
-  initial_steering_angle_ = std::isfinite(steering_angle) ? steering_angle : 0.0F;
+  runtime_data_.initial_steering_angle_ = std::isfinite(steering_angle) ? steering_angle : 0.0F;
   if (data_update_active_) {
     runtime_data_dirty_ = true;
     return;
   }
   if (this->cost_d_ != nullptr && this->params_.initial_steer_rate_coeff > 0.0F) {
     HANDLE_ERROR(cudaMemcpyAsync(
-      &this->cost_d_->initial_steering_angle_, &initial_steering_angle_,
-      sizeof(initial_steering_angle_), cudaMemcpyHostToDevice, this->stream_));
+      &this->cost_d_->runtime_data_.initial_steering_angle_, &runtime_data_.initial_steering_angle_,
+      sizeof(runtime_data_.initial_steering_angle_), cudaMemcpyHostToDevice, this->stream_));
   }
 }
 
@@ -348,7 +352,7 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setKinematicLimits(const FirstOrderDubinsBicycleKinematicLimitData & limits)
 {
-  kinematic_limits_ = limits;
+  runtime_data_.kinematic_limits_ = limits;
   dataToDevice();
 }
 
@@ -360,55 +364,76 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     const float * terminal_reference)
 {
   const int n = std::max(0, std::min(count, NUM_TIMESTEPS));
-  has_pointwise_velocity_limits_ = max_velocity != nullptr && velocity_limit_active != nullptr;
+  bool projection_geometry_changed = runtime_data_.num_lateral_corridor_points_ < 2 &&
+                                     !texture_state_.nearest_segment_texture_valid_;
+  runtime_data_.has_pointwise_velocity_limits_ =
+    max_velocity != nullptr && velocity_limit_active != nullptr;
   const float end_yaw = referenceEndYaw<NUM_TIMESTEPS>(x, y, yaw, n);
   for (int i = 0; i < n; ++i) {
-    ref_x_[i] = x[i];
-    ref_y_[i] = y[i];
-    ref_v_[i] = v[i];
-    ref_max_velocity_[i] = has_pointwise_velocity_limits_ ? max_velocity[i] : 0.0F;
-    ref_velocity_limit_active_[i] = has_pointwise_velocity_limits_ ? velocity_limit_active[i] : 0U;
+    if (runtime_data_.num_lateral_corridor_points_ < 2) {
+      projection_geometry_changed = projection_geometry_changed ||
+                                    runtime_data_.ref_x_[i] != x[i] ||
+                                    runtime_data_.ref_y_[i] != y[i];
+    }
+    runtime_data_.ref_x_[i] = x[i];
+    runtime_data_.ref_y_[i] = y[i];
+    runtime_data_.ref_s_[i] =
+      i == 0 ? 0.0F : runtime_data_.ref_s_[i - 1] + vectorLength(x[i] - x[i - 1], y[i] - y[i - 1]);
+    runtime_data_.ref_v_[i] = v[i];
+    runtime_data_.ref_max_velocity_[i] =
+      runtime_data_.has_pointwise_velocity_limits_ ? max_velocity[i] : 0.0F;
+    runtime_data_.ref_velocity_limit_active_[i] =
+      runtime_data_.has_pointwise_velocity_limits_ ? velocity_limit_active[i] : 0U;
     if (yaw != nullptr) {
-      ref_yaw_[i] = yaw[i];
+      runtime_data_.ref_yaw_[i] = yaw[i];
     } else if (i >= 1) {
-#ifdef __CUDA_ARCH__
-      ref_yaw_[i] = atan2f(y[i] - y[i - 1], x[i] - x[i - 1]);
-#else
-      ref_yaw_[i] = std::atan2(y[i] - y[i - 1], x[i] - x[i - 1]);
-#endif
-    } else {
-      ref_yaw_[i] = end_yaw;
+      runtime_data_.ref_yaw_[i] = atan2f(y[i] - y[i - 1], x[i] - x[i - 1]);
+    } else {  // i == 0
+      runtime_data_.ref_yaw_[i] = (n >= 2) ? atan2f(y[1] - y[0], x[1] - x[0]) : end_yaw;
     }
   }
   if (n > 0) {
     for (int i = n; i < NUM_TIMESTEPS; ++i) {
-      ref_x_[i] = x[n - 1];
-      ref_y_[i] = y[n - 1];
-      ref_v_[i] = v[n - 1];
-      ref_yaw_[i] = end_yaw;
-      ref_max_velocity_[i] = ref_max_velocity_[n - 1];
-      ref_velocity_limit_active_[i] = ref_velocity_limit_active_[n - 1];
+      if (runtime_data_.num_lateral_corridor_points_ < 2) {
+        projection_geometry_changed = projection_geometry_changed ||
+                                      runtime_data_.ref_x_[i] != x[n - 1] ||
+                                      runtime_data_.ref_y_[i] != y[n - 1];
+      }
+      runtime_data_.ref_x_[i] = x[n - 1];
+      runtime_data_.ref_y_[i] = y[n - 1];
+      runtime_data_.ref_s_[i] = runtime_data_.ref_s_[n - 1];
+      runtime_data_.ref_v_[i] = v[n - 1];
+      runtime_data_.ref_yaw_[i] = end_yaw;
+      runtime_data_.ref_max_velocity_[i] = runtime_data_.ref_max_velocity_[n - 1];
+      runtime_data_.ref_velocity_limit_active_[i] = runtime_data_.ref_velocity_limit_active_[n - 1];
     }
   } else {
     for (int i = 0; i < NUM_TIMESTEPS; ++i) {
-      ref_x_[i] = 0.0F;
-      ref_y_[i] = 0.0F;
-      ref_v_[i] = 0.0F;
-      ref_yaw_[i] = 0.0F;
-      ref_max_velocity_[i] = 0.0F;
-      ref_velocity_limit_active_[i] = 0U;
+      if (runtime_data_.num_lateral_corridor_points_ < 2) {
+        projection_geometry_changed = projection_geometry_changed ||
+                                      runtime_data_.ref_x_[i] != 0.0F ||
+                                      runtime_data_.ref_y_[i] != 0.0F;
+      }
+      runtime_data_.ref_x_[i] = 0.0F;
+      runtime_data_.ref_y_[i] = 0.0F;
+      runtime_data_.ref_s_[i] = 0.0F;
+      runtime_data_.ref_v_[i] = 0.0F;
+      runtime_data_.ref_yaw_[i] = 0.0F;
+      runtime_data_.ref_max_velocity_[i] = 0.0F;
+      runtime_data_.ref_velocity_limit_active_[i] = 0U;
     }
   }
   if (terminal_reference != nullptr) {
-    terminal_reference_[0] = terminal_reference[0];
-    terminal_reference_[1] = terminal_reference[1];
-    terminal_reference_[2] = terminal_reference[2];
+    runtime_data_.terminal_reference_[0] = terminal_reference[0];
+    runtime_data_.terminal_reference_[1] = terminal_reference[1];
+    runtime_data_.terminal_reference_[2] = terminal_reference[2];
   } else {
-    terminal_reference_[0] = ref_x_[NUM_TIMESTEPS - 1];
-    terminal_reference_[1] = ref_y_[NUM_TIMESTEPS - 1];
-    terminal_reference_[2] = ref_yaw_[NUM_TIMESTEPS - 1];
+    runtime_data_.terminal_reference_[0] = runtime_data_.ref_x_[NUM_TIMESTEPS - 1];
+    runtime_data_.terminal_reference_[1] = runtime_data_.ref_y_[NUM_TIMESTEPS - 1];
+    runtime_data_.terminal_reference_[2] = runtime_data_.ref_yaw_[NUM_TIMESTEPS - 1];
   }
   dataToDevice();
+  refreshNearestSegmentTexture(projection_geometry_changed);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -418,37 +443,55 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     const float * reference_velocity)
 {
   const int n = std::max(0, std::min(count, kMaxLateralCorridorPoints));
-  num_lateral_corridor_points_ = n;
-  lateral_corridor_has_s_ = (s != nullptr && n > 0);
+  const bool had_corridor = runtime_data_.num_lateral_corridor_points_ >= 2;
+  bool projection_geometry_changed = !texture_state_.nearest_segment_texture_valid_;
+  if (n >= 2) {
+    projection_geometry_changed = projection_geometry_changed || !had_corridor ||
+                                  runtime_data_.num_lateral_corridor_points_ != n;
+    for (int i = 0; i < n && !projection_geometry_changed; ++i) {
+      projection_geometry_changed = runtime_data_.lateral_corridor_x_[i] != x[i] ||
+                                    runtime_data_.lateral_corridor_y_[i] != y[i];
+    }
+  } else {
+    projection_geometry_changed = projection_geometry_changed || had_corridor;
+  }
+  runtime_data_.num_lateral_corridor_points_ = n;
+  runtime_data_.lateral_corridor_has_s_ = (s != nullptr && n > 0);
   for (int i = 0; i < n; ++i) {
-    lateral_corridor_x_[i] = x[i];
-    lateral_corridor_y_[i] = y[i];
-    lateral_corridor_s_[i] = lateral_corridor_has_s_ ? s[i] : 0.0F;
-    lateral_corridor_ref_velocity_[i] =
+    runtime_data_.lateral_corridor_x_[i] = x[i];
+    runtime_data_.lateral_corridor_y_[i] = y[i];
+    runtime_data_.lateral_corridor_s_[i] = runtime_data_.lateral_corridor_has_s_ ? s[i] : 0.0F;
+    runtime_data_.lateral_corridor_ref_velocity_[i] =
       reference_velocity != nullptr ? reference_velocity[i] : 0.0F;
   }
-  if (!lateral_corridor_has_s_ && n > 0) {
-    lateral_corridor_s_[0] = 0.0F;
+  if (!runtime_data_.lateral_corridor_has_s_ && n > 0) {
+    runtime_data_.lateral_corridor_s_[0] = 0.0F;
     for (int i = 1; i < n; ++i) {
-      lateral_corridor_s_[i] =
-        lateral_corridor_s_[i - 1] + vectorLength(
-                                       lateral_corridor_x_[i] - lateral_corridor_x_[i - 1],
-                                       lateral_corridor_y_[i] - lateral_corridor_y_[i - 1]);
+      runtime_data_.lateral_corridor_s_[i] =
+        runtime_data_.lateral_corridor_s_[i - 1] +
+        vectorLength(
+          runtime_data_.lateral_corridor_x_[i] - runtime_data_.lateral_corridor_x_[i - 1],
+          runtime_data_.lateral_corridor_y_[i] - runtime_data_.lateral_corridor_y_[i - 1]);
     }
-    lateral_corridor_has_s_ = true;
+    runtime_data_.lateral_corridor_has_s_ = true;
   }
-  lateral_corridor_total_length_s_ = (n > 0) ? lateral_corridor_s_[n - 1] : 0.0F;
+  runtime_data_.lateral_corridor_total_length_s_ =
+    (n > 0) ? runtime_data_.lateral_corridor_s_[n - 1] : 0.0F;
   dataToDevice();
+  refreshNearestSegmentTexture(projection_geometry_changed);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearLateralCorridor()
 {
-  num_lateral_corridor_points_ = 0;
-  lateral_corridor_has_s_ = false;
-  lateral_corridor_total_length_s_ = 0.0F;
+  const bool projection_geometry_changed = runtime_data_.num_lateral_corridor_points_ >= 2 ||
+                                           !texture_state_.nearest_segment_texture_valid_;
+  runtime_data_.num_lateral_corridor_points_ = 0;
+  runtime_data_.lateral_corridor_has_s_ = false;
+  runtime_data_.lateral_corridor_total_length_s_ = 0.0F;
   dataToDevice();
+  refreshNearestSegmentTexture(projection_geometry_changed);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -458,21 +501,23 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     const float * half_width, const int count)
 {
   const int n = std::max(0, std::min(count, kMaxObstacles));
-  bool geometry_changed = n != num_obstacles_;
+  bool geometry_changed = n != runtime_data_.num_obstacles_;
   for (int i = 0; i < n && !geometry_changed; ++i) {
-    geometry_changed = !obs_is_static_[i] || obs_x_[i][0] != x[i] || obs_y_[i][0] != y[i] ||
-                       obs_yaw_[i][0] != yaw[i] || obs_half_length_[i] != half_length[i] ||
-                       obs_half_width_[i] != half_width[i];
+    geometry_changed = !runtime_data_.obs_is_static_[i] || runtime_data_.obs_x_[i][0] != x[i] ||
+                       runtime_data_.obs_y_[i][0] != y[i] ||
+                       runtime_data_.obs_yaw_[i][0] != yaw[i] ||
+                       runtime_data_.obs_half_length_[i] != half_length[i] ||
+                       runtime_data_.obs_half_width_[i] != half_width[i];
   }
-  num_obstacles_ = n;
+  runtime_data_.num_obstacles_ = n;
   for (int i = 0; i < n; ++i) {
-    obs_half_length_[i] = half_length[i];
-    obs_half_width_[i] = half_width[i];
-    obs_is_static_[i] = true;
+    runtime_data_.obs_half_length_[i] = half_length[i];
+    runtime_data_.obs_half_width_[i] = half_width[i];
+    runtime_data_.obs_is_static_[i] = true;
     for (int t = 0; t < NUM_TIMESTEPS; ++t) {
-      obs_x_[i][t] = x[i];
-      obs_y_[i][t] = y[i];
-      obs_yaw_[i][t] = yaw[i];
+      runtime_data_.obs_x_[i][t] = x[i];
+      runtime_data_.obs_y_[i][t] = y[i];
+      runtime_data_.obs_yaw_[i][t] = yaw[i];
     }
   }
   dataToDevice();
@@ -487,39 +532,43 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 {
   const int n = std::max(0, std::min(obstacle_count, kMaxObstacles));
   const int nt = std::max(0, std::min(num_timesteps, NUM_TIMESTEPS));
-  bool geometry_changed = num_obstacles_ != (nt > 0 ? n : 0);
-  num_obstacles_ = nt > 0 ? n : 0;
+  bool geometry_changed = runtime_data_.num_obstacles_ != (nt > 0 ? n : 0);
+  runtime_data_.num_obstacles_ = nt > 0 ? n : 0;
   constexpr float kStaticPoseTolerance = 1.0E-4F;
   for (int i = 0; i < n; ++i) {
-    const bool was_static = obs_is_static_[i];
-    bool obstacle_geometry_changed =
-      obs_half_length_[i] != half_length[i] || obs_half_width_[i] != half_width[i];
-    obs_half_length_[i] = half_length[i];
-    obs_half_width_[i] = half_width[i];
-    obs_is_static_[i] = true;
+    const bool was_static = runtime_data_.obs_is_static_[i];
+    bool obstacle_geometry_changed = runtime_data_.obs_half_length_[i] != half_length[i] ||
+                                     runtime_data_.obs_half_width_[i] != half_width[i];
+    runtime_data_.obs_half_length_[i] = half_length[i];
+    runtime_data_.obs_half_width_[i] = half_width[i];
+    runtime_data_.obs_is_static_[i] = true;
     for (int t = 0; t < nt; ++t) {
       const int idx = i * nt + t;
-      obstacle_geometry_changed = obstacle_geometry_changed || obs_x_[i][t] != x[idx] ||
-                                  obs_y_[i][t] != y[idx] || obs_yaw_[i][t] != yaw[idx];
-      obs_x_[i][t] = x[idx];
-      obs_y_[i][t] = y[idx];
-      obs_yaw_[i][t] = yaw[idx];
+      obstacle_geometry_changed =
+        obstacle_geometry_changed || runtime_data_.obs_x_[i][t] != x[idx] ||
+        runtime_data_.obs_y_[i][t] != y[idx] || runtime_data_.obs_yaw_[i][t] != yaw[idx];
+      runtime_data_.obs_x_[i][t] = x[idx];
+      runtime_data_.obs_y_[i][t] = y[idx];
+      runtime_data_.obs_yaw_[i][t] = yaw[idx];
       if (
         std::fabs(x[idx] - x[i * nt]) > kStaticPoseTolerance ||
         std::fabs(y[idx] - y[i * nt]) > kStaticPoseTolerance ||
         std::fabs(yaw[idx] - yaw[i * nt]) > kStaticPoseTolerance) {
-        obs_is_static_[i] = false;
+        runtime_data_.obs_is_static_[i] = false;
       }
     }
-    obstacle_geometry_changed = obstacle_geometry_changed || was_static != obs_is_static_[i];
+    obstacle_geometry_changed =
+      obstacle_geometry_changed || was_static != runtime_data_.obs_is_static_[i];
     if (nt > 0) {
       for (int t = nt; t < NUM_TIMESTEPS; ++t) {
         obstacle_geometry_changed =
-          obstacle_geometry_changed || obs_x_[i][t] != obs_x_[i][nt - 1] ||
-          obs_y_[i][t] != obs_y_[i][nt - 1] || obs_yaw_[i][t] != obs_yaw_[i][nt - 1];
-        obs_x_[i][t] = obs_x_[i][nt - 1];
-        obs_y_[i][t] = obs_y_[i][nt - 1];
-        obs_yaw_[i][t] = obs_yaw_[i][nt - 1];
+          obstacle_geometry_changed ||
+          runtime_data_.obs_x_[i][t] != runtime_data_.obs_x_[i][nt - 1] ||
+          runtime_data_.obs_y_[i][t] != runtime_data_.obs_y_[i][nt - 1] ||
+          runtime_data_.obs_yaw_[i][t] != runtime_data_.obs_yaw_[i][nt - 1];
+        runtime_data_.obs_x_[i][t] = runtime_data_.obs_x_[i][nt - 1];
+        runtime_data_.obs_y_[i][t] = runtime_data_.obs_y_[i][nt - 1];
+        runtime_data_.obs_yaw_[i][t] = runtime_data_.obs_yaw_[i][nt - 1];
       }
     }
     geometry_changed = geometry_changed || obstacle_geometry_changed;
@@ -532,8 +581,8 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearObstacles()
 {
-  const bool geometry_changed = num_obstacles_ != 0;
-  num_obstacles_ = 0;
+  const bool geometry_changed = runtime_data_.num_obstacles_ != 0;
+  runtime_data_.num_obstacles_ = 0;
   dataToDevice();
   refreshDistanceMapTextures(geometry_changed, false, false);
 }
@@ -543,18 +592,19 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   setRoadBorderSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxRoadBorderSegments);
-  bool geometry_changed = n != num_road_border_segments_;
+  bool geometry_changed = n != runtime_data_.num_road_border_segments_;
   for (int i = 0; i < n && !geometry_changed; ++i) {
-    geometry_changed = road_border_x0_[i] != segments[i].x0 ||
-                       road_border_y0_[i] != segments[i].y0 ||
-                       road_border_x1_[i] != segments[i].x1 || road_border_y1_[i] != segments[i].y1;
+    geometry_changed = runtime_data_.road_border_x0_[i] != segments[i].x0 ||
+                       runtime_data_.road_border_y0_[i] != segments[i].y0 ||
+                       runtime_data_.road_border_x1_[i] != segments[i].x1 ||
+                       runtime_data_.road_border_y1_[i] != segments[i].y1;
   }
-  num_road_border_segments_ = n;
+  runtime_data_.num_road_border_segments_ = n;
   for (int i = 0; i < n; ++i) {
-    road_border_x0_[i] = segments[i].x0;
-    road_border_y0_[i] = segments[i].y0;
-    road_border_x1_[i] = segments[i].x1;
-    road_border_y1_[i] = segments[i].y1;
+    runtime_data_.road_border_x0_[i] = segments[i].x0;
+    runtime_data_.road_border_y0_[i] = segments[i].y0;
+    runtime_data_.road_border_x1_[i] = segments[i].x1;
+    runtime_data_.road_border_y1_[i] = segments[i].y1;
   }
   dataToDevice();
   refreshDistanceMapTextures(false, geometry_changed, false);
@@ -564,8 +614,8 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearRoadBorders()
 {
-  const bool geometry_changed = num_road_border_segments_ != 0;
-  num_road_border_segments_ = 0;
+  const bool geometry_changed = runtime_data_.num_road_border_segments_ != 0;
+  runtime_data_.num_road_border_segments_ = 0;
   dataToDevice();
   refreshDistanceMapTextures(false, geometry_changed, false);
 }
@@ -575,18 +625,19 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   setDrivableAreaSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxDrivableAreaSegments);
-  bool geometry_changed = n != num_drivable_area_segments_;
+  bool geometry_changed = n != runtime_data_.num_drivable_area_segments_;
   for (int i = 0; i < n && !geometry_changed; ++i) {
-    geometry_changed =
-      drivable_area_x0_[i] != segments[i].x0 || drivable_area_y0_[i] != segments[i].y0 ||
-      drivable_area_x1_[i] != segments[i].x1 || drivable_area_y1_[i] != segments[i].y1;
+    geometry_changed = runtime_data_.drivable_area_x0_[i] != segments[i].x0 ||
+                       runtime_data_.drivable_area_y0_[i] != segments[i].y0 ||
+                       runtime_data_.drivable_area_x1_[i] != segments[i].x1 ||
+                       runtime_data_.drivable_area_y1_[i] != segments[i].y1;
   }
-  num_drivable_area_segments_ = n;
+  runtime_data_.num_drivable_area_segments_ = n;
   for (int i = 0; i < n; ++i) {
-    drivable_area_x0_[i] = segments[i].x0;
-    drivable_area_y0_[i] = segments[i].y0;
-    drivable_area_x1_[i] = segments[i].x1;
-    drivable_area_y1_[i] = segments[i].y1;
+    runtime_data_.drivable_area_x0_[i] = segments[i].x0;
+    runtime_data_.drivable_area_y0_[i] = segments[i].y0;
+    runtime_data_.drivable_area_x1_[i] = segments[i].x1;
+    runtime_data_.drivable_area_y1_[i] = segments[i].y1;
   }
   dataToDevice();
   refreshDistanceMapTextures(false, false, geometry_changed);
@@ -596,8 +647,8 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearDrivableAreaSegments()
 {
-  const bool geometry_changed = num_drivable_area_segments_ != 0;
-  num_drivable_area_segments_ = 0;
+  const bool geometry_changed = runtime_data_.num_drivable_area_segments_ != 0;
+  runtime_data_.num_drivable_area_segments_ = 0;
   dataToDevice();
   refreshDistanceMapTextures(false, false, geometry_changed);
 }
@@ -635,33 +686,46 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const auto buf = resolvePathBuffers(*this, theta_c);
   const float * poly_x = buf.ref_x;
   const float * poly_y = buf.ref_y;
-  const float * poly_s = nullptr;
+  const float * poly_s = buf.ref_s;
   const float * poly_ref_velocity = buf.ref_v;
   int n_pts = NUM_TIMESTEPS;
-  float total_s = buf.total_path_length_s;
+  float total_s = buf.ref_s[NUM_TIMESTEPS - 1];
   if (buf.num_corridor >= 2) {
     poly_x = buf.corridor_x;
     poly_y = buf.corridor_y;
     n_pts = buf.num_corridor;
     poly_s = buf.has_corridor_s ? buf.corridor_s : nullptr;
     poly_ref_velocity = buf.corridor_ref_velocity;
-  } else {
-    // No corridor: total from xy unless already staged (usually 0 on host fallback).
-    total_s = 0.0F;
-    for (int i = 0; i < n_pts - 1; ++i) {
-      total_s += vectorLength(poly_x[i + 1] - poly_x[i], poly_y[i + 1] - poly_y[i]);
-    }
+    total_s = buf.total_path_length_s;
   }
 
   int hint_i = -1;
+  bool texture_seeded = false;
 #ifdef __CUDA_ARCH__
   float * hint_slot = nullptr;
+  const cudaTextureObject_t nearest_segment_texture =
+    texture_state_.nearest_segment_texture_valid_ ? texture_state_.nearest_segment_texture_ : 0;
+  if (nearest_segment_texture != 0) {
+    const float texture_x = (x - texture_state_.nearest_segment_map_grid_.origin_x) /
+                            texture_state_.nearest_segment_map_grid_.resolution;
+    const float texture_y = (y - texture_state_.nearest_segment_map_grid_.origin_y) /
+                            texture_state_.nearest_segment_map_grid_.resolution;
+    if (textureCoordinateInBounds(texture_x, texture_y, texture_state_.nearest_segment_map_grid_)) {
+      hint_i =
+        static_cast<int>(tex2D<NearestSegmentIndex>(nearest_segment_texture, texture_x, texture_y));
+      texture_seeded = true;
+    }
+  }
   if (theta_c != nullptr) {
     hint_slot = projectionHintSlot(theta_c);
-    hint_i = static_cast<int>(*hint_slot);
+    if (hint_i < 0) {
+      hint_i = static_cast<int>(*hint_slot);
+    }
   }
 #endif
-  const auto proj = projectPointToPolyline(x, y, poly_x, poly_y, n_pts, hint_i);
+  constexpr int kTextureSeedCorrectionSteps = 2;
+  const auto proj = projectPointToPolyline(
+    x, y, poly_x, poly_y, n_pts, hint_i, texture_seeded ? kTextureSeedCorrectionSteps : -1);
 #ifdef __CUDA_ARCH__
   if (hint_slot != nullptr) {
     *hint_slot = static_cast<float>(proj.best_i);
@@ -714,6 +778,8 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 #else
       tangent_yaw = std::atan2(dy, dx);
 #endif
+    } else {
+      tangent_yaw = buf.ref_yaw[i];
     }
   } else if (buf.num_corridor < 2) {
     tangent_yaw = buf.ref_yaw[0];
@@ -770,17 +836,18 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 #ifdef __CUDA_ARCH__
 #pragma unroll
 #endif
-  for (int i = 0; i < num_obstacles_; ++i) {
+  for (int i = 0; i < runtime_data_.num_obstacles_; ++i) {
 #ifdef __CUDA_ARCH__
-    const float obs_cos = cosf(obs_yaw_[i][t]);
-    const float obs_sin = sinf(obs_yaw_[i][t]);
+    const float obs_cos = cosf(runtime_data_.obs_yaw_[i][t]);
+    const float obs_sin = sinf(runtime_data_.obs_yaw_[i][t]);
 #else
-    const float obs_cos = std::cos(obs_yaw_[i][t]);
-    const float obs_sin = std::sin(obs_yaw_[i][t]);
+    const float obs_cos = std::cos(runtime_data_.obs_yaw_[i][t]);
+    const float obs_sin = std::sin(runtime_data_.obs_yaw_[i][t]);
 #endif
     if (orientedBoxesOverlap(
-          ego_cx, ego_cy, ego_cos, ego_sin, ego_hl, ego_hw, obs_x_[i][t], obs_y_[i][t], obs_cos,
-          obs_sin, obs_half_length_[i], obs_half_width_[i])) {
+          ego_cx, ego_cy, ego_cos, ego_sin, ego_hl, ego_hw, runtime_data_.obs_x_[i][t],
+          runtime_data_.obs_y_[i][t], obs_cos, obs_sin, runtime_data_.obs_half_length_[i],
+          runtime_data_.obs_half_width_[i])) {
       return true;
     }
   }
@@ -794,7 +861,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 {
   const int t = timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
 #ifdef __CUDA_ARCH__
-  if (obstacle_texture_valid_ && !obstacle_texture_has_obstacles_) {
+  if (texture_state_.obstacle_texture_valid_ && !texture_state_.obstacle_texture_has_obstacles_) {
     return kDistanceMapEmptyDistance;
   }
 #endif
@@ -817,19 +884,22 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     ego_cx, ego_cy, ego_cos, ego_sin, ego_half_length, ego_half_width, circle_x, circle_y,
     circle_radius);
 #ifdef __CUDA_ARCH__
-  if (obstacle_texture_valid_ && obstacle_distance_texture_ != 0) {
+  const cudaTextureObject_t obstacle_distance_texture =
+    texture_state_.obstacle_texture_valid_ ? texture_state_.obstacle_distance_texture_ : 0;
+  if (obstacle_distance_texture != 0) {
     float texture_x[kEgoSpineCircleCount];
     float texture_y[kEgoSpineCircleCount];
     bool all_circles_in_bounds = true;
 #pragma unroll
     for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
-      texture_x[circle] = (circle_x[circle] - obstacle_distance_map_grid_.origin_x) /
-                          obstacle_distance_map_grid_.resolution;
-      texture_y[circle] = (circle_y[circle] - obstacle_distance_map_grid_.origin_y) /
-                          obstacle_distance_map_grid_.resolution;
-      all_circles_in_bounds = all_circles_in_bounds &&
-                              textureCoordinateInBounds(
-                                texture_x[circle], texture_y[circle], obstacle_distance_map_grid_);
+      texture_x[circle] = (circle_x[circle] - texture_state_.obstacle_distance_map_grid_.origin_x) /
+                          texture_state_.obstacle_distance_map_grid_.resolution;
+      texture_y[circle] = (circle_y[circle] - texture_state_.obstacle_distance_map_grid_.origin_y) /
+                          texture_state_.obstacle_distance_map_grid_.resolution;
+      all_circles_in_bounds =
+        all_circles_in_bounds &&
+        textureCoordinateInBounds(
+          texture_x[circle], texture_y[circle], texture_state_.obstacle_distance_map_grid_);
     }
     if (all_circles_in_bounds) {
       const float texture_t = static_cast<float>(t) + 0.5F;
@@ -837,9 +907,9 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 #pragma unroll
       for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
         minimum = fminf(
-          minimum, tex3D<float>(
-                     obstacle_distance_texture_, texture_x[circle], texture_y[circle], texture_t) -
-                     circle_radius);
+          minimum,
+          tex3D<float>(obstacle_distance_texture, texture_x[circle], texture_y[circle], texture_t) -
+            circle_radius);
       }
       return minimum;
     }
@@ -849,21 +919,22 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 #ifdef __CUDA_ARCH__
 #pragma unroll
 #endif
-  for (int i = 0; i < num_obstacles_; ++i) {
+  for (int i = 0; i < runtime_data_.num_obstacles_; ++i) {
     float obs_cos;
     float obs_sin;
 #ifdef __CUDA_ARCH__
-    __sincosf(obs_yaw_[i][t], &obs_sin, &obs_cos);
+    __sincosf(runtime_data_.obs_yaw_[i][t], &obs_sin, &obs_cos);
 #else
-    obs_cos = std::cos(obs_yaw_[i][t]);
-    obs_sin = std::sin(obs_yaw_[i][t]);
+    obs_cos = std::cos(runtime_data_.obs_yaw_[i][t]);
+    obs_sin = std::sin(runtime_data_.obs_yaw_[i][t]);
 #endif
 #pragma unroll
     for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
       min_distance = fminf(
         min_distance, signedDistancePointToOrientedBox(
-                        circle_x[circle], circle_y[circle], obs_x_[i][t], obs_y_[i][t], obs_cos,
-                        obs_sin, obs_half_length_[i], obs_half_width_[i]) -
+                        circle_x[circle], circle_y[circle], runtime_data_.obs_x_[i][t],
+                        runtime_data_.obs_y_[i][t], obs_cos, obs_sin,
+                        runtime_data_.obs_half_length_[i], runtime_data_.obs_half_width_[i]) -
                         circle_radius);
     }
   }
@@ -894,7 +965,7 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
   DYN_PARAMS_T>::computeCornerBufferCost(const float x, const float y, const float yaw) const
 {
-  if (num_drivable_area_segments_ <= 0 || this->params_.corner_buffer_coeff <= 0.0F) {
+  if (runtime_data_.num_drivable_area_segments_ <= 0 || this->params_.corner_buffer_coeff <= 0.0F) {
     return 0.0F;
   }
 
@@ -921,26 +992,32 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   float total_cost = 0.0F;
 
 #ifdef __CUDA_ARCH__
-  if (drivable_area_texture_valid_ && static_distance_texture_ != 0) {
+  const cudaTextureObject_t static_distance_texture =
+    texture_state_.drivable_area_texture_valid_ ? texture_state_.static_distance_texture_ : 0;
+  if (static_distance_texture != 0) {
     bool all_corners_in_bounds = true;
 #pragma unroll
     for (int corner = 0; corner < 4; ++corner) {
-      const float texture_x = (corners_x[corner] - static_distance_map_grid_.origin_x) /
-                              static_distance_map_grid_.resolution;
-      const float texture_y = (corners_y[corner] - static_distance_map_grid_.origin_y) /
-                              static_distance_map_grid_.resolution;
+      const float texture_x =
+        (corners_x[corner] - texture_state_.static_distance_map_grid_.origin_x) /
+        texture_state_.static_distance_map_grid_.resolution;
+      const float texture_y =
+        (corners_y[corner] - texture_state_.static_distance_map_grid_.origin_y) /
+        texture_state_.static_distance_map_grid_.resolution;
       all_corners_in_bounds =
         all_corners_in_bounds &&
-        textureCoordinateInBounds(texture_x, texture_y, static_distance_map_grid_);
+        textureCoordinateInBounds(texture_x, texture_y, texture_state_.static_distance_map_grid_);
     }
     if (all_corners_in_bounds) {
 #pragma unroll
       for (int corner = 0; corner < 4; ++corner) {
-        const float texture_x = (corners_x[corner] - static_distance_map_grid_.origin_x) /
-                                static_distance_map_grid_.resolution;
-        const float texture_y = (corners_y[corner] - static_distance_map_grid_.origin_y) /
-                                static_distance_map_grid_.resolution;
-        const float distance = tex2D<float2>(static_distance_texture_, texture_x, texture_y).y;
+        const float texture_x =
+          (corners_x[corner] - texture_state_.static_distance_map_grid_.origin_x) /
+          texture_state_.static_distance_map_grid_.resolution;
+        const float texture_y =
+          (corners_y[corner] - texture_state_.static_distance_map_grid_.origin_y) /
+          texture_state_.static_distance_map_grid_.resolution;
+        const float distance = tex2D<float2>(static_distance_texture, texture_x, texture_y).y;
         const float violation = fmaxf(0.0F, margin - distance);
         total_cost += violation * violation;
       }
@@ -951,10 +1028,11 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   for (int corner = 0; corner < 4; ++corner) {
     float min_distance = kDistanceMapEmptyDistance;
 
-    for (int segment = 0; segment < num_drivable_area_segments_; ++segment) {
+    for (int segment = 0; segment < runtime_data_.num_drivable_area_segments_; ++segment) {
       const float distance = distancePointToSegment(
-        corners_x[corner], corners_y[corner], drivable_area_x0_[segment],
-        drivable_area_y0_[segment], drivable_area_x1_[segment], drivable_area_y1_[segment]);
+        corners_x[corner], corners_y[corner], runtime_data_.drivable_area_x0_[segment],
+        runtime_data_.drivable_area_y0_[segment], runtime_data_.drivable_area_x1_[segment],
+        runtime_data_.drivable_area_y1_[segment]);
 
 #ifdef __CUDA_ARCH__
       min_distance = fminf(min_distance, distance);
@@ -985,8 +1063,9 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   const float margin = this->params_.road_border_collision_margin;
 
   return checkRectSegmentIntersections(
-    x, y, yaw, front_ext, back_ext, left_ext, right_ext, margin, road_border_x0_, road_border_y0_,
-    road_border_x1_, road_border_y1_, num_road_border_segments_);
+    x, y, yaw, front_ext, back_ext, left_ext, right_ext, margin, runtime_data_.road_border_x0_,
+    runtime_data_.road_border_y0_, runtime_data_.road_border_x1_, runtime_data_.road_border_y1_,
+    runtime_data_.num_road_border_segments_);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1011,26 +1090,28 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
     center_x, center_y, cos_yaw, sin_yaw, this->params_.ego_length * 0.5F,
     this->params_.ego_width * 0.5F, circle_x, circle_y, circle_radius);
 #ifdef __CUDA_ARCH__
-  if (road_border_texture_valid_ && static_distance_texture_ != 0) {
+  const cudaTextureObject_t static_distance_texture =
+    texture_state_.road_border_texture_valid_ ? texture_state_.static_distance_texture_ : 0;
+  if (static_distance_texture != 0) {
     float texture_x[kEgoSpineCircleCount];
     float texture_y[kEgoSpineCircleCount];
     bool all_circles_in_bounds = true;
 #pragma unroll
     for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
-      texture_x[circle] = (circle_x[circle] - static_distance_map_grid_.origin_x) /
-                          static_distance_map_grid_.resolution;
-      texture_y[circle] = (circle_y[circle] - static_distance_map_grid_.origin_y) /
-                          static_distance_map_grid_.resolution;
-      all_circles_in_bounds =
-        all_circles_in_bounds &&
-        textureCoordinateInBounds(texture_x[circle], texture_y[circle], static_distance_map_grid_);
+      texture_x[circle] = (circle_x[circle] - texture_state_.static_distance_map_grid_.origin_x) /
+                          texture_state_.static_distance_map_grid_.resolution;
+      texture_y[circle] = (circle_y[circle] - texture_state_.static_distance_map_grid_.origin_y) /
+                          texture_state_.static_distance_map_grid_.resolution;
+      all_circles_in_bounds = all_circles_in_bounds && textureCoordinateInBounds(
+                                                         texture_x[circle], texture_y[circle],
+                                                         texture_state_.static_distance_map_grid_);
     }
     if (all_circles_in_bounds) {
       float minimum = kDistanceMapEmptyDistance;
 #pragma unroll
       for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
         minimum = fminf(
-          minimum, tex2D<float2>(static_distance_texture_, texture_x[circle], texture_y[circle]).x -
+          minimum, tex2D<float2>(static_distance_texture, texture_x[circle], texture_y[circle]).x -
                      circle_radius);
       }
       return fmaxf(minimum, 0.0F);
@@ -1038,8 +1119,9 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   }
 #endif
   return distanceEgoSpineToSegments(
-    circle_x, circle_y, circle_radius, road_border_x0_, road_border_y0_, road_border_x1_,
-    road_border_y1_, num_road_border_segments_, false);
+    circle_x, circle_y, circle_radius, runtime_data_.road_border_x0_, runtime_data_.road_border_y0_,
+    runtime_data_.road_border_x1_, runtime_data_.road_border_y1_,
+    runtime_data_.num_road_border_segments_, false);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1064,26 +1146,28 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
     center_x, center_y, cos_yaw, sin_yaw, this->params_.ego_length * 0.5F,
     this->params_.ego_width * 0.5F, circle_x, circle_y, circle_radius);
 #ifdef __CUDA_ARCH__
-  if (drivable_area_texture_valid_ && static_distance_texture_ != 0) {
+  const cudaTextureObject_t static_distance_texture =
+    texture_state_.drivable_area_texture_valid_ ? texture_state_.static_distance_texture_ : 0;
+  if (static_distance_texture != 0) {
     float texture_x[kEgoSpineCircleCount];
     float texture_y[kEgoSpineCircleCount];
     bool all_circles_in_bounds = true;
 #pragma unroll
     for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
-      texture_x[circle] = (circle_x[circle] - static_distance_map_grid_.origin_x) /
-                          static_distance_map_grid_.resolution;
-      texture_y[circle] = (circle_y[circle] - static_distance_map_grid_.origin_y) /
-                          static_distance_map_grid_.resolution;
-      all_circles_in_bounds =
-        all_circles_in_bounds &&
-        textureCoordinateInBounds(texture_x[circle], texture_y[circle], static_distance_map_grid_);
+      texture_x[circle] = (circle_x[circle] - texture_state_.static_distance_map_grid_.origin_x) /
+                          texture_state_.static_distance_map_grid_.resolution;
+      texture_y[circle] = (circle_y[circle] - texture_state_.static_distance_map_grid_.origin_y) /
+                          texture_state_.static_distance_map_grid_.resolution;
+      all_circles_in_bounds = all_circles_in_bounds && textureCoordinateInBounds(
+                                                         texture_x[circle], texture_y[circle],
+                                                         texture_state_.static_distance_map_grid_);
     }
     if (all_circles_in_bounds) {
       float minimum = kDistanceMapEmptyDistance;
 #pragma unroll
       for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
         minimum = fminf(
-          minimum, tex2D<float2>(static_distance_texture_, texture_x[circle], texture_y[circle]).y -
+          minimum, tex2D<float2>(static_distance_texture, texture_x[circle], texture_y[circle]).y -
                      circle_radius);
       }
       return minimum;
@@ -1091,8 +1175,9 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   }
 #endif
   return distanceEgoSpineToSegments(
-    circle_x, circle_y, circle_radius, drivable_area_x0_, drivable_area_y0_, drivable_area_x1_,
-    drivable_area_y1_, num_drivable_area_segments_, true);
+    circle_x, circle_y, circle_radius, runtime_data_.drivable_area_x0_,
+    runtime_data_.drivable_area_y0_, runtime_data_.drivable_area_x1_,
+    runtime_data_.drivable_area_y1_, runtime_data_.num_drivable_area_segments_, true);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1154,9 +1239,10 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   if (needsLateralPathMetrics(this->params_)) {
     const LateralPathMetrics lateral = computeLateralPathMetrics(x_pos, y_pos, yaw);
     if (
-      this->params_.spatial_overspeed_coeff > 0.0F && lateral_corridor_total_length_s_ > 1.0E-6F) {
+      this->params_.spatial_overspeed_coeff > 0.0F &&
+      runtime_data_.lateral_corridor_total_length_s_ > 1.0E-6F) {
       const float progress =
-        std::clamp(lateral.spatial_s / lateral_corridor_total_length_s_, 0.0F, 1.0F);
+        std::clamp(lateral.spatial_s / runtime_data_.lateral_corridor_total_length_s_, 0.0F, 1.0F);
       const float overspeed = vel - lateral.spatial_ref_velocity;
       if (overspeed > 0.0F) {
         result.spatial_overspeed =
@@ -1228,10 +1314,10 @@ autoware::mppi_optimizer::FirstOrderDubinsMppiCostBreakdown FirstOrderDubinsBicy
                  this->params_.track_terminal_scale;
   result.heading = this->params_.heading_coeff * computeHeadingValue(yaw, timestep) *
                    this->params_.track_terminal_scale;
-  const float terminal_dx = x_pos - terminal_reference_[0];
-  const float terminal_dy = y_pos - terminal_reference_[1];
+  const float terminal_dx = x_pos - runtime_data_.terminal_reference_[0];
+  const float terminal_dy = y_pos - runtime_data_.terminal_reference_[1];
   const float terminal_yaw_error =
-    angle_utils::shortestAngularDistance(yaw, terminal_reference_[2]);
+    angle_utils::shortestAngularDistance(yaw, runtime_data_.terminal_reference_[2]);
   result.terminal_error =
     this->params_.terminal_error_coeff * (terminal_dx * terminal_dx + terminal_dy * terminal_dy);
   result.terminal_heading =
@@ -1285,9 +1371,10 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   if (needsLateralPathMetrics(this->params_)) {
     const LateralPathMetrics lateral = computeLateralPathMetrics(x_pos, y_pos, yaw, theta_c);
     if (
-      this->params_.spatial_overspeed_coeff > 0.0F && lateral_corridor_total_length_s_ > 1.0E-6F) {
-      const float progress =
-        fmaxf(0.0F, fminf(1.0F, lateral.spatial_s / lateral_corridor_total_length_s_));
+      this->params_.spatial_overspeed_coeff > 0.0F &&
+      runtime_data_.lateral_corridor_total_length_s_ > 1.0E-6F) {
+      const float progress = fmaxf(
+        0.0F, fminf(1.0F, lateral.spatial_s / runtime_data_.lateral_corridor_total_length_s_));
       const float overspeed = vel - lateral.spatial_ref_velocity;
       if (overspeed > 0.0F) {
         spatial_overspeed_cost =
@@ -1345,9 +1432,10 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   if (needsLateralPathMetrics(this->params_)) {
     const LateralPathMetrics lateral = computeLateralPathMetrics(x_pos, y_pos, yaw);
     if (
-      this->params_.spatial_overspeed_coeff > 0.0F && lateral_corridor_total_length_s_ > 1.0E-6F) {
+      this->params_.spatial_overspeed_coeff > 0.0F &&
+      runtime_data_.lateral_corridor_total_length_s_ > 1.0E-6F) {
       const float progress =
-        std::clamp(lateral.spatial_s / lateral_corridor_total_length_s_, 0.0F, 1.0F);
+        std::clamp(lateral.spatial_s / runtime_data_.lateral_corridor_total_length_s_, 0.0F, 1.0F);
       const float overspeed = vel - lateral.spatial_ref_velocity;
       if (overspeed > 0.0F) {
         spatial_overspeed_cost =
@@ -1425,10 +1513,10 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     const float heading_cost = this->params_.heading_coeff *
                                computeHeadingValue(yaw, timestep, theta_c) *
                                this->params_.track_terminal_scale;
-    const float terminal_dx = x_pos - terminal_reference_[0];
-    const float terminal_dy = y_pos - terminal_reference_[1];
+    const float terminal_dx = x_pos - runtime_data_.terminal_reference_[0];
+    const float terminal_dy = y_pos - runtime_data_.terminal_reference_[1];
     const float terminal_yaw_error =
-      angle_utils::shortestAngularDistance(yaw, terminal_reference_[2]);
+      angle_utils::shortestAngularDistance(yaw, runtime_data_.terminal_reference_[2]);
     const float terminal_error_cost =
       this->params_.terminal_error_coeff * (terminal_dx * terminal_dx + terminal_dy * terminal_dy);
     const float terminal_heading_cost =
@@ -1475,13 +1563,15 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     const float velocity, const float longitudinal_acceleration, const float longitudinal_jerk,
     const int timestep) const
 {
-  auto limits = kinematic_limits_;
+  auto limits = runtime_data_.kinematic_limits_;
   const int bounded_timestep =
     timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
-  if (has_pointwise_velocity_limits_ && ref_velocity_limit_active_[bounded_timestep] != 0U) {
+  if (
+    runtime_data_.has_pointwise_velocity_limits_ &&
+    runtime_data_.ref_velocity_limit_active_[bounded_timestep] != 0U) {
     limits.active_mask |= kVelocityLimitActive;
     limits.min_velocity = 0.0F;
-    limits.max_velocity = ref_max_velocity_[bounded_timestep];
+    limits.max_velocity = runtime_data_.ref_max_velocity_[bounded_timestep];
   }
   return computeCappedKinematicIntervalCost(
     limits, this->params_.overlimit_coeff, this->params_.crash_contact_penalty, velocity,
@@ -1498,7 +1588,7 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   }
   const float control_dt = fmaxf(DYN_PARAMS_T::kControlDt, 1.0E-6F);
   const float steer_cmd = control[static_cast<int>(C::STEER_CMD)];
-  const float initial_steer_rate = (steer_cmd - initial_steering_angle_) / control_dt;
+  const float initial_steer_rate = (steer_cmd - runtime_data_.initial_steering_angle_) / control_dt;
   return this->params_.initial_steer_rate_coeff * initial_steer_rate * initial_steer_rate *
          static_cast<float>(NUM_TIMESTEPS);
 }

@@ -109,6 +109,27 @@ protected:
   std::unique_ptr<TestCost> cost_;
 };
 
+TEST_F(TrajectoryValidatorTest, PrecomputesReferenceArcLengthForConstantTimeProjectionMetrics)
+{
+  const std::array<float, 4> x{0.0F, 3.0F, 3.0F, 6.0F};
+  const std::array<float, 4> y{0.0F, 4.0F, 8.0F, 8.0F};
+  const std::array<float, 4> velocity{};
+  const std::array<float, 4> yaw{};
+  cost_->setReferenceTrajectory(
+    x.data(), y.data(), velocity.data(), static_cast<int>(x.size()), yaw.data());
+
+  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[0], 0.0F);
+  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[1], 5.0F);
+  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[2], 9.0F);
+  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[3], 12.0F);
+  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[kTestHorizon - 1], 12.0F);
+
+  const auto metrics = cost_->computeLateralPathMetrics(3.0F, 6.0F, 0.0F);
+  EXPECT_FLOAT_EQ(metrics.path_length_s, 7.0F);
+  EXPECT_FLOAT_EQ(metrics.remaining_distance_s, 5.0F);
+  EXPECT_FLOAT_EQ(metrics.spatial_s, 7.0F);
+}
+
 TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheirSum)
 {
   auto params = makeParams();

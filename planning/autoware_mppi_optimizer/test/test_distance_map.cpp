@@ -41,19 +41,25 @@ struct DistanceMapTextureTestAccess
   template <class CostT>
   static cudaArray_t staticArray(const CostT & cost)
   {
-    return cost.static_distance_array_;
+    return cost.texture_state_.static_distance_array_;
   }
 
   template <class CostT>
   static cudaArray_t obstacleArray(const CostT & cost)
   {
-    return cost.obstacle_distance_array_;
+    return cost.texture_state_.obstacle_distance_array_;
+  }
+
+  template <class CostT>
+  static cudaArray_t nearestSegmentArray(const CostT & cost)
+  {
+    return cost.texture_state_.nearest_segment_array_;
   }
 
   template <class CostT>
   static const DistanceMapTextureVisualizer * visualizer(const CostT & cost)
   {
-    return cost.distance_map_visualizer_;
+    return cost.texture_state_.distance_map_visualizer_;
   }
 };
 
@@ -192,6 +198,28 @@ __global__ void sampleObstacleTextureKernel(
   }
 }
 
+__global__ void sampleNearestSegmentTextureKernel(
+  const cudaTextureObject_t texture, const DistanceMapTextureGrid grid, const float world_x,
+  const float world_y, NearestSegmentIndex * output)
+{
+  const int index = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (index == 0) {
+    const float texture_x = (world_x - grid.origin_x) / grid.resolution;
+    const float texture_y = (world_y - grid.origin_y) / grid.resolution;
+    output[0] = tex2D<NearestSegmentIndex>(texture, texture_x, texture_y);
+  }
+}
+
+template <class CostT>
+__global__ void sampleProjectionSegmentKernel(
+  const CostT * cost, const float x, const float y, int * output)
+{
+  const int index = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (index == 0) {
+    output[0] = cost->computeLateralPathMetrics(x, y, 0.0F).best_segment_i;
+  }
+}
+
 enum class DistanceQuery : int { Obstacle, RoadBorder, DrivableArea };
 
 template <class CostT>
@@ -228,7 +256,8 @@ float2 sampleStaticTexture(
 {
   DeviceBuffer<float2> output(1);
   sampleStaticTextureKernel<<<1, 32, 0, stream>>>(
-    cost.static_distance_texture_, cost.static_distance_map_grid_, world_x, world_y, output.get());
+    cost.texture_state_.static_distance_texture_, cost.texture_state_.static_distance_map_grid_,
+    world_x, world_y, output.get());
   CUDA_CHECK(cudaGetLastError());
   float2 result{};
   output.copyToHost(&result, stream);
@@ -242,10 +271,36 @@ float sampleObstacleTexture(
 {
   DeviceBuffer<float> output(1);
   sampleObstacleTextureKernel<<<1, 32, 0, stream>>>(
-    cost.obstacle_distance_texture_, cost.obstacle_distance_map_grid_, world_x, world_y, timestep,
-    output.get());
+    cost.texture_state_.obstacle_distance_texture_, cost.texture_state_.obstacle_distance_map_grid_,
+    world_x, world_y, timestep, output.get());
   CUDA_CHECK(cudaGetLastError());
   float result = 0.0F;
+  output.copyToHost(&result, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  return result;
+}
+
+NearestSegmentIndex sampleNearestSegmentTexture(
+  const TestCost & cost, const float world_x, const float world_y, const cudaStream_t stream)
+{
+  DeviceBuffer<NearestSegmentIndex> output(1);
+  sampleNearestSegmentTextureKernel<<<1, 32, 0, stream>>>(
+    cost.texture_state_.nearest_segment_texture_, cost.texture_state_.nearest_segment_map_grid_,
+    world_x, world_y, output.get());
+  CUDA_CHECK(cudaGetLastError());
+  NearestSegmentIndex result = 0;
+  output.copyToHost(&result, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  return result;
+}
+
+int sampleProjectionSegment(
+  const TestCost & cost, const float x, const float y, const cudaStream_t stream)
+{
+  DeviceBuffer<int> output(1);
+  sampleProjectionSegmentKernel<<<1, 32, 0, stream>>>(cost.cost_d_, x, y, output.get());
+  CUDA_CHECK(cudaGetLastError());
+  int result = -1;
   output.copyToHost(&result, stream);
   CUDA_CHECK(cudaStreamSynchronize(stream));
   return result;
@@ -267,7 +322,7 @@ float sampleCostDistance(
 
 std::vector<float2> copyStaticMap(const TestCost & cost, const cudaStream_t stream)
 {
-  const DistanceMapTextureGrid & grid = cost.static_distance_map_grid_;
+  const DistanceMapTextureGrid & grid = cost.texture_state_.static_distance_map_grid_;
   const std::size_t count = static_cast<std::size_t>(grid.width) * grid.height;
   PinnedBuffer<float2> host(count);
   CUDA_CHECK(cudaMemcpy2DFromArrayAsync(
@@ -323,8 +378,8 @@ protected:
   {
     for (int timestep = 0; timestep < kTestHorizon; ++timestep) {
       const float fraction = static_cast<float>(timestep) / static_cast<float>(kTestHorizon - 1);
-      cost_.ref_x_[timestep] = start_x + fraction * (end_x - start_x);
-      cost_.ref_y_[timestep] = y;
+      cost_.runtime_data_.ref_x_[timestep] = start_x + fraction * (end_x - start_x);
+      cost_.runtime_data_.ref_y_[timestep] = y;
     }
   }
 
@@ -372,10 +427,10 @@ TEST_F(DistanceMapGridTest, GridEnclosesReferenceTrajectory)
   const float maximum_x = grid.origin_x + static_cast<float>(grid.width) * grid.resolution;
   const float maximum_y = grid.origin_y + static_cast<float>(grid.height) * grid.resolution;
   for (int timestep = 0; timestep < kTestHorizon; ++timestep) {
-    EXPECT_GE(cost_.ref_x_[timestep], grid.origin_x);
-    EXPECT_LT(cost_.ref_x_[timestep], maximum_x);
-    EXPECT_GE(cost_.ref_y_[timestep], grid.origin_y);
-    EXPECT_LT(cost_.ref_y_[timestep], maximum_y);
+    EXPECT_GE(cost_.runtime_data_.ref_x_[timestep], grid.origin_x);
+    EXPECT_LT(cost_.runtime_data_.ref_x_[timestep], maximum_x);
+    EXPECT_GE(cost_.runtime_data_.ref_y_[timestep], grid.origin_y);
+    EXPECT_LT(cost_.runtime_data_.ref_y_[timestep], maximum_y);
   }
 }
 
@@ -505,7 +560,7 @@ TEST_F(DistanceMapGpuTest, OutOfBoundsRolloutQueryUsesAnalyticalFallback)
 TEST_F(DistanceMapGpuTest, HardwareBilinearSamplingAveragesFourTexelsAtTheirMidpoint)
 {
   cost_->setRoadBorderSegments({Segment{-2.0F, -20.0F, -2.0F, 20.0F}});
-  const DistanceMapTextureGrid & grid = cost_->static_distance_map_grid_;
+  const DistanceMapTextureGrid & grid = cost_->texture_state_.static_distance_map_grid_;
   constexpr int gx = 600;
   constexpr int gy = 600;
   const float x0 = grid.origin_x + (static_cast<float>(gx) + 0.5F) * grid.resolution;
@@ -518,6 +573,46 @@ TEST_F(DistanceMapGpuTest, HardwareBilinearSamplingAveragesFourTexelsAtTheirMidp
                                   sampleStaticTexture(*cost_, x1, y1, stream()).x);
   const float actual = sampleStaticTexture(*cost_, 0.5F * (x0 + x1), 0.5F * (y0 + y1), stream()).x;
   EXPECT_NEAR(actual, expected, 1.0E-5F);
+}
+
+TEST_F(DistanceMapGpuTest, NearestSegmentTextureSelectsAndSeedsTheExpectedSegment)
+{
+  TestParams params = distanceOnlyParams();
+  params.lateral_distance_coeff = 1.0F;
+  cost_->setParams(params);
+  const std::array<float, 3> corridor_x{0.0F, 10.0F, 10.0F};
+  const std::array<float, 3> corridor_y{0.0F, 0.0F, 10.0F};
+  cost_->setLateralCorridor(
+    corridor_x.data(), corridor_y.data(), static_cast<int>(corridor_x.size()));
+
+  ASSERT_TRUE(cost_->texture_state_.nearest_segment_texture_valid_);
+  ASSERT_NE(cost_->texture_state_.nearest_segment_texture_, 0U);
+  EXPECT_EQ(sampleNearestSegmentTexture(*cost_, 5.0F, 1.0F, stream()), 0U);
+  EXPECT_EQ(sampleNearestSegmentTexture(*cost_, 9.0F, 5.0F, stream()), 1U);
+  EXPECT_EQ(sampleProjectionSegment(*cost_, 5.0F, 1.0F, stream()), 0);
+  EXPECT_EQ(sampleProjectionSegment(*cost_, 9.0F, 5.0F, stream()), 1);
+
+  const cudaArray_t original_array = DistanceMapTextureTestAccess::nearestSegmentArray(*cost_);
+  const std::array<float, 3> shifted_y{1.0F, 1.0F, 11.0F};
+  cost_->setLateralCorridor(
+    corridor_x.data(), shifted_y.data(), static_cast<int>(corridor_x.size()));
+  EXPECT_EQ(DistanceMapTextureTestAccess::nearestSegmentArray(*cost_), original_array);
+}
+
+TEST_F(DistanceMapGpuTest, OutOfBoundsProjectionRetainsAnalyticalFallback)
+{
+  TestParams params = distanceOnlyParams();
+  params.lateral_distance_coeff = 1.0F;
+  cost_->setParams(params);
+  const std::array<float, 3> corridor_x{0.0F, 10.0F, 10.0F};
+  const std::array<float, 3> corridor_y{0.0F, 0.0F, 10.0F};
+  cost_->setLateralCorridor(
+    corridor_x.data(), corridor_y.data(), static_cast<int>(corridor_x.size()));
+
+  constexpr float query_x = 1000.0F;
+  constexpr float query_y = 1000.0F;
+  const int host_segment = cost_->computeLateralPathMetrics(query_x, query_y, 0.0F).best_segment_i;
+  EXPECT_EQ(sampleProjectionSegment(*cost_, query_x, query_y, stream()), host_segment);
 }
 
 TEST_F(DistanceMapGpuTest, EgoSpineSubtractsTheConservativeSliceRadius)
@@ -540,9 +635,9 @@ TEST_F(DistanceMapGpuTest, EmptyObstacleSetBypassesGenerationSafely)
 {
   cost_->setOrientedBoxObstacles(nullptr, nullptr, nullptr, nullptr, nullptr, 0);
   CUDA_CHECK(cudaStreamSynchronize(stream()));
-  EXPECT_EQ(cost_->num_obstacles_, 0);
-  EXPECT_TRUE(cost_->obstacle_texture_valid_);
-  EXPECT_FALSE(cost_->obstacle_texture_has_obstacles_);
+  EXPECT_EQ(cost_->runtime_data_.num_obstacles_, 0);
+  EXPECT_TRUE(cost_->texture_state_.obstacle_texture_valid_);
+  EXPECT_FALSE(cost_->texture_state_.obstacle_texture_has_obstacles_);
   EXPECT_FLOAT_EQ(
     sampleCostDistance(*cost_, 0.0F, 0.0F, 0.0F, 0, DistanceQuery::Obstacle, stream()),
     kEmptyDistance);
@@ -554,8 +649,10 @@ TEST_F(DistanceMapGpuTest, GridUpdatesReuseAllocatedTextureResources)
   cost_->setRoadBorderSegments({wall});
   const cudaArray_t original_static_array = DistanceMapTextureTestAccess::staticArray(*cost_);
   const cudaArray_t original_obstacle_array = DistanceMapTextureTestAccess::obstacleArray(*cost_);
-  const cudaTextureObject_t original_static_texture = cost_->static_distance_texture_;
-  const cudaTextureObject_t original_obstacle_texture = cost_->obstacle_distance_texture_;
+  const cudaTextureObject_t original_static_texture =
+    cost_->texture_state_.static_distance_texture_;
+  const cudaTextureObject_t original_obstacle_texture =
+    cost_->texture_state_.obstacle_distance_texture_;
 
   for (int iteration = 1; iteration <= 100; ++iteration) {
     fillReference(*cost_, 0.5F * static_cast<float>(iteration));
@@ -564,8 +661,8 @@ TEST_F(DistanceMapGpuTest, GridUpdatesReuseAllocatedTextureResources)
   CUDA_CHECK(cudaStreamSynchronize(stream()));
   EXPECT_EQ(DistanceMapTextureTestAccess::staticArray(*cost_), original_static_array);
   EXPECT_EQ(DistanceMapTextureTestAccess::obstacleArray(*cost_), original_obstacle_array);
-  EXPECT_EQ(cost_->static_distance_texture_, original_static_texture);
-  EXPECT_EQ(cost_->obstacle_distance_texture_, original_obstacle_texture);
+  EXPECT_EQ(cost_->texture_state_.static_distance_texture_, original_static_texture);
+  EXPECT_EQ(cost_->texture_state_.obstacle_distance_texture_, original_obstacle_texture);
 }
 
 TEST_F(DistanceMapGpuTest, HostAndGpuStateCostsUseTheSameFootprintModel)
@@ -639,6 +736,9 @@ TEST(DistanceMapResourceTest, DestructorReleasesDistanceMapAllocations)
   const auto allocate_and_release = [&stream]() {
     TestCost cost(stream.get());
     cost.GPUSetup();
+    TestParams params = distanceOnlyParams();
+    params.lateral_distance_coeff = 1.0F;
+    cost.setParams(params);
     fillReference(cost);
     cost.setRoadBorderSegments({Segment{-5.0F, 3.0F, 5.0F, 3.0F}});
     constexpr float obstacle_x = 2.0F;
