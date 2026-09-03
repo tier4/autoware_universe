@@ -252,30 +252,16 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   if (!this->GPUMemStatus_) {
     return;
   }
+  const auto state_begin_address =
+    reinterpret_cast<std::uintptr_t>(&this->static_distance_map_grid_);
+  const auto state_end_address =
+    reinterpret_cast<std::uintptr_t>(&this->obstacle_texture_has_obstacles_) +
+    sizeof(this->obstacle_texture_has_obstacles_);
+  const std::size_t state_size =
+    static_cast<std::size_t>(state_end_address - state_begin_address);
   HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->static_distance_map_grid_, &this->static_distance_map_grid_,
-    sizeof(this->static_distance_map_grid_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->obstacle_distance_map_grid_, &this->obstacle_distance_map_grid_,
-    sizeof(this->obstacle_distance_map_grid_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->static_distance_texture_, &this->static_distance_texture_,
-    sizeof(this->static_distance_texture_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->obstacle_distance_texture_, &this->obstacle_distance_texture_,
-    sizeof(this->obstacle_distance_texture_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->road_border_texture_valid_, &this->road_border_texture_valid_,
-    sizeof(this->road_border_texture_valid_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->drivable_area_texture_valid_, &this->drivable_area_texture_valid_,
-    sizeof(this->drivable_area_texture_valid_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->obstacle_texture_valid_, &this->obstacle_texture_valid_,
-    sizeof(this->obstacle_texture_valid_), cudaMemcpyHostToDevice, this->stream_));
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->obstacle_texture_has_obstacles_, &this->obstacle_texture_has_obstacles_,
-    sizeof(this->obstacle_texture_has_obstacles_), cudaMemcpyHostToDevice, this->stream_));
+    &this->cost_d_->static_distance_map_grid_, &this->static_distance_map_grid_, state_size,
+    cudaMemcpyHostToDevice, this->stream_));
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -300,7 +286,6 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
   this->static_distance_visualization_dirty_ = true;
   this->road_border_texture_valid_ = this->road_border_texture_valid_ || update_road_border;
   this->drivable_area_texture_valid_ = this->drivable_area_texture_valid_ || update_drivable_area;
-  distanceMapStateToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -313,7 +298,6 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   this->obstacle_texture_has_obstacles_ = this->num_obstacles_ > 0;
   if (!this->obstacle_texture_has_obstacles_) {
     this->obstacle_texture_valid_ = true;
-    distanceMapStateToDevice();
     return;
   }
   ensureDistanceMapResources();
@@ -328,12 +312,38 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     this->cost_d_, this->obstacle_distance_surface_, this->obstacle_distance_map_grid_);
   HANDLE_ERROR(cudaGetLastError());
   this->obstacle_texture_valid_ = true;
-  distanceMapStateToDevice();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   refreshDistanceMapTextures(
+    const bool obstacle_geometry_changed, const bool road_border_geometry_changed,
+    const bool drivable_area_geometry_changed)
+{
+  distance_map_refresh_pending_ = true;
+  obstacle_geometry_dirty_ = obstacle_geometry_dirty_ || obstacle_geometry_changed;
+  road_border_geometry_dirty_ = road_border_geometry_dirty_ || road_border_geometry_changed;
+  drivable_area_geometry_dirty_ =
+    drivable_area_geometry_dirty_ || drivable_area_geometry_changed;
+  if (data_update_active_) {
+    return;
+  }
+
+  const bool pending_obstacle_geometry_changed = obstacle_geometry_dirty_;
+  const bool pending_road_border_geometry_changed = road_border_geometry_dirty_;
+  const bool pending_drivable_area_geometry_changed = drivable_area_geometry_dirty_;
+  distance_map_refresh_pending_ = false;
+  obstacle_geometry_dirty_ = false;
+  road_border_geometry_dirty_ = false;
+  drivable_area_geometry_dirty_ = false;
+  refreshDistanceMapTexturesNow(
+    pending_obstacle_geometry_changed, pending_road_border_geometry_changed,
+    pending_drivable_area_geometry_changed);
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  refreshDistanceMapTexturesNow(
     const bool obstacle_geometry_changed, const bool road_border_geometry_changed,
     const bool drivable_area_geometry_changed)
 {
@@ -361,6 +371,11 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
   }
   if (obstacle_grid_changed || obstacle_geometry_changed) {
     rebuildObstacleDistanceTexture();
+  }
+  if (
+    static_grid_changed || obstacle_grid_changed || road_border_geometry_changed ||
+    drivable_area_geometry_changed || obstacle_geometry_changed) {
+    distanceMapStateToDevice();
   }
 }
 
