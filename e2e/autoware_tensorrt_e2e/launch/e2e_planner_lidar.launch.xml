@@ -4,6 +4,7 @@
   <arg name="data_path" default="$(env HOME)/autoware_data/ml_models/tensorrt_e2e" description="E2E model artifacts (onnx, args json) directory"/>
   <arg name="vehicle_info_param_path" default="$(find-pkg-share autoware_vehicle_info_utils)/config/vehicle_info.param.yaml"/>
   <arg name="build_only" default="false" description="shutdown node after the TensorRT engine file is built"/>
+  <arg name="use_sim_time" default="false" description="clock every node here from /clock, as a bag replay needs"/>
   <arg name="rviz" default="false" description="open RViz (the standard Autoware layout)"/>
   <!-- The standard layout draws /planning/trajectory; pass
        output_trajectory:=/planning/trajectory to see this node's output in it. -->
@@ -33,6 +34,10 @@
   <arg name="output_trajectory" default="~/output/trajectory"/>
   <arg name="output_trajectories" default="~/output/trajectories"/>
   <arg name="output_predicted_objects" default="~/output/predicted_objects"/>
+
+  <!-- Applies to every node below: the planner measures input staleness against its clock,
+       and RViz and the ego publisher follow the same time base. -->
+  <set_parameter name="use_sim_time" value="$(var use_sim_time)"/>
 
   <node pkg="autoware_tensorrt_e2e" exec="autoware_tensorrt_e2e_node" name="tensorrt_e2e" output="both">
     <param from="$(var param_path)" allow_substs="true"/>
