@@ -146,4 +146,5 @@ ament_auto_package(
   config
   launch
   rviz
+  urdf
 )

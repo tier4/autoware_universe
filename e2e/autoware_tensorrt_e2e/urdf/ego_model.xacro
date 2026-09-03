@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!-- Names the robot, and nothing else.
+
+     A vehicle description package ships its body as a <robot> element with no
+     name attribute, because it is written to be included by Autoware's own
+     vehicle.xacro. robot_state_publisher rejects that outright ("No name given
+     for the robot"), so RViz needs this one wrapper to draw an ego at all.
+
+     Deliberately the body only: composing the sensor kit as well would require
+     a sensors_calibration.yaml the description packages do not all carry, and
+     the sensor frames belong to the recording's own /tf_static, not to us. -->
+<robot name="ego_vehicle" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="vehicle_urdf" default=""/>
+  <xacro:include filename="$(arg vehicle_urdf)"/>
+</robot>

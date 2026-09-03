@@ -11,6 +11,16 @@
        looping bag moves time backwards. The relay fixes both; see its
        docstring. -->
   <arg name="map_marker_relay" default="$(var rviz)" description="renumber and re-latch the lanelet2 markers for RViz"/>
+  <!-- The VehicleModel display draws /robot_description, and nothing else in
+       this launch publishes it: with rviz:=true and no publisher the ego is
+       simply missing from the scene it is meant to be the centre of.
+       Deliberately the vehicle body alone, not Autoware's full vehicle.xacro:
+       that one composes the sensor kit and so needs a sensors_calibration.yaml
+       that a description package does not always carry, and the sensor frames
+       are not ours to invent — they come from the bag's own /tf_static. The
+       package is resolved only when this is enabled. -->
+  <arg name="vehicle_model" default="jpntaxi" description="vehicle description package prefix, for the RViz ego model"/>
+  <arg name="vehicle_model_publisher" default="$(var rviz)" description="publish /robot_description so RViz can draw the ego"/>
 
   <!-- Sensing input: CAM_FRONT_WIDE -->
   <arg name="input_camera0_image" default="/sensing/camera/camera1/image_raw"/>
@@ -48,6 +58,13 @@
   </node>
   <node pkg="autoware_tensorrt_e2e" exec="vector_map_marker_relay.py" name="vector_map_marker_relay"
         output="log" if="$(var map_marker_relay)"/>
+
+  <node pkg="robot_state_publisher" exec="robot_state_publisher" name="robot_state_publisher"
+        output="log" if="$(var vehicle_model_publisher)">
+    <!-- type="str" because launch infers a parameter's type by YAML-parsing
+         its value, and a URDF is not YAML: one colon in it fails the load. -->
+    <param name="robot_description" type="str" value="$(command 'xacro $(find-pkg-share autoware_tensorrt_e2e)/urdf/ego_model.xacro vehicle_urdf:=$(find-pkg-share $(var vehicle_model)_description)/urdf/vehicle.xacro' 'warn')"/>
+  </node>
 
   <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen" args="-d $(var rviz_config)"
         if="$(var rviz)"/>
