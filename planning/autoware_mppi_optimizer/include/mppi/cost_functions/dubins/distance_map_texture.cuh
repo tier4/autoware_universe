@@ -1,4 +1,4 @@
-/** CUDA distance-map texture state and geometry helpers. */
+/** CUDA texture state for distance fields and nearest path-segment lookup. */
 #pragma once
 
 #ifndef MPPI_COST_FUNCTIONS_DUBINS_DISTANCE_MAP_TEXTURE_CUH_
@@ -8,9 +8,12 @@
 
 #include <cuda_runtime.h>
 
+#include <cstdint>
 #include <type_traits>
 
-struct DistanceMapTextureGrid
+using NearestSegmentIndex = std::uint8_t;
+
+struct alignas(8) DistanceMapTextureGrid
 {
   float origin_x = 0.0F;
   float origin_y = 0.0F;
@@ -31,21 +34,19 @@ inline constexpr int kEgoSpineCircleCount = 4;
  * Device code reads the grids, texture handles, and validity flags. CUDA arrays, surfaces, and
  * the raw visualizer pointer are host-owned but remain POD so copying the cost object is safe.
  */
-class DistanceMapTextureState
+struct alignas(16) DistanceMapTextureState
 {
-public:
-  // BEGIN contiguous device-state block. distanceMapStateToDevice() uploads this range once.
   DistanceMapTextureGrid static_distance_map_grid_{};
   DistanceMapTextureGrid obstacle_distance_map_grid_{};
+  DistanceMapTextureGrid nearest_segment_map_grid_{};
   cudaTextureObject_t static_distance_texture_ = 0;
   cudaTextureObject_t obstacle_distance_texture_ = 0;
+  cudaTextureObject_t nearest_segment_texture_ = 0;
   bool road_border_texture_valid_ = false;
   bool drivable_area_texture_valid_ = false;
   bool obstacle_texture_valid_ = false;
   bool obstacle_texture_has_obstacles_ = false;
-  // END contiguous device-state block.
-
-protected:
+  bool nearest_segment_texture_valid_ = false;
   friend struct DistanceMapTextureTestAccess;
 
   static constexpr int kStaticDistanceMapWidth = 1024;
@@ -54,11 +55,17 @@ protected:
   static constexpr int kObstacleDistanceMapWidth = 512;
   static constexpr int kObstacleDistanceMapHeight = 512;
   static constexpr float kObstacleDistanceMapResolution = 0.30F;
+  static constexpr int kNearestSegmentMapWidth = 256;
+  static constexpr int kNearestSegmentMapHeight = 256;
+  static constexpr float kNearestSegmentMapMinimumResolution = 0.15F;
+  static constexpr float kNearestSegmentMapPadding = 10.0F;
 
   cudaArray_t static_distance_array_ = nullptr;
   cudaArray_t obstacle_distance_array_ = nullptr;
+  cudaArray_t nearest_segment_array_ = nullptr;
   cudaSurfaceObject_t static_distance_surface_ = 0;
   cudaSurfaceObject_t obstacle_distance_surface_ = 0;
+  cudaSurfaceObject_t nearest_segment_surface_ = 0;
   DistanceMapTextureVisualizer * distance_map_visualizer_ = nullptr;
   bool static_distance_visualization_dirty_ = true;
 };
@@ -66,6 +73,11 @@ protected:
 static_assert(
   std::is_trivially_copyable<DistanceMapTextureState>::value,
   "DistanceMapTextureState is copied into device memory with the cost object");
+static_assert(
+  std::is_standard_layout<DistanceMapTextureState>::value,
+  "DistanceMapTextureState must have the same standard layout in host and device code");
+static_assert(
+  alignof(DistanceMapTextureState) >= 16, "DistanceMapTextureState must remain 16-byte aligned");
 
 __host__ void configureDistanceMapTextureVisualizer(
   DistanceMapTextureVisualizer *& visualizer, bool enable, int static_width, int static_height,
