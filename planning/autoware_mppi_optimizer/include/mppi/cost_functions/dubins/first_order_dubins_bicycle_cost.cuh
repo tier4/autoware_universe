@@ -12,6 +12,7 @@
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 
 __host__ __device__ inline float computeSmoothBarrierCost(
@@ -91,20 +92,86 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float crash_contact_penalty = 100000.0F;
 };
 
+template <int NUM_TIMESTEPS>
+struct alignas(16) FirstOrderDubinsRuntimeData
+{
+  static constexpr int kMaxObstacles = 64;
+  static constexpr int kMaxRoadBorderSegments = 256;
+  static constexpr int kMaxDrivableAreaSegments = 256;
+  static constexpr int kMaxLateralCorridorPoints = 256;
+
+  float ref_x_[NUM_TIMESTEPS] = {};
+  float ref_y_[NUM_TIMESTEPS] = {};
+  /** Cumulative reference chord length [m], allowing O(1) projected path-length lookup. */
+  float ref_s_[NUM_TIMESTEPS] = {};
+  float ref_v_[NUM_TIMESTEPS] = {};
+  float ref_yaw_[NUM_TIMESTEPS] = {};
+  /** Full reference-trajectory terminal pose: x, y, yaw. */
+  float terminal_reference_[3] = {};
+  float ref_max_velocity_[NUM_TIMESTEPS] = {};
+  std::uint8_t ref_velocity_limit_active_[NUM_TIMESTEPS] = {};
+  bool has_pointwise_velocity_limits_ = false;
+  FirstOrderDubinsBicycleKinematicLimitData kinematic_limits_{};
+  int num_lateral_corridor_points_ = 0;
+  float lateral_corridor_x_[kMaxLateralCorridorPoints] = {};
+  float lateral_corridor_y_[kMaxLateralCorridorPoints] = {};
+  /** Cumulative chord length [m] along lateral_corridor_* (s[0]=0); valid when count >= 1. */
+  float lateral_corridor_s_[kMaxLateralCorridorPoints] = {};
+  /** Reference longitudinal velocity [m/s] at each corridor vertex. */
+  float lateral_corridor_ref_velocity_[kMaxLateralCorridorPoints] = {};
+  /** Final path length = s[n-1]; staged into shared memory with corridor/ref on GPU. */
+  float lateral_corridor_total_length_s_ = 0.0F;
+  bool lateral_corridor_has_s_ = false;
+  /** Measured steering state at the start of the current rollout. */
+  float initial_steering_angle_ = 0.0F;
+  int num_obstacles_ = 0;
+  float obs_x_[kMaxObstacles][NUM_TIMESTEPS] = {};
+  float obs_y_[kMaxObstacles][NUM_TIMESTEPS] = {};
+  float obs_yaw_[kMaxObstacles][NUM_TIMESTEPS] = {};
+  float obs_half_length_[kMaxObstacles] = {};
+  float obs_half_width_[kMaxObstacles] = {};
+  /** True when the obstacle pose is invariant across the supplied horizon. */
+  bool obs_is_static_[kMaxObstacles] = {};
+  int num_road_border_segments_ = 0;
+  float road_border_x0_[kMaxRoadBorderSegments] = {};
+  float road_border_y0_[kMaxRoadBorderSegments] = {};
+  float road_border_x1_[kMaxRoadBorderSegments] = {};
+  float road_border_y1_[kMaxRoadBorderSegments] = {};
+  int num_drivable_area_segments_ = 0;
+  float drivable_area_x0_[kMaxDrivableAreaSegments] = {};
+  float drivable_area_y0_[kMaxDrivableAreaSegments] = {};
+  float drivable_area_x1_[kMaxDrivableAreaSegments] = {};
+  float drivable_area_y1_[kMaxDrivableAreaSegments] = {};
+};
+
+static_assert(
+  std::is_trivially_copyable<FirstOrderDubinsRuntimeData<1>>::value,
+  "FirstOrderDubinsRuntimeData is copied directly into device memory");
+static_assert(
+  std::is_standard_layout<FirstOrderDubinsRuntimeData<1>>::value,
+  "FirstOrderDubinsRuntimeData must have the same standard layout in host and device code");
+static_assert(
+  alignof(FirstOrderDubinsRuntimeData<1>) >= 16,
+  "FirstOrderDubinsRuntimeData must remain 16-byte aligned");
+
 template <
   class CLASS_T, int NUM_TIMESTEPS,
   class PARAMS_T = FirstOrderDubinsBicycleCostParams<NUM_TIMESTEPS>,
   class DYN_PARAMS_T = FirstOrderDubinsBicycleParams>
-class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>,
-                                        public DistanceMapTextureState
+class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>
 {
 public:
-  static constexpr int kMaxObstacles = 64;
+  using RuntimeData = FirstOrderDubinsRuntimeData<NUM_TIMESTEPS>;
+  static constexpr int kNumTimesteps = NUM_TIMESTEPS;
+  static constexpr int kMaxObstacles = RuntimeData::kMaxObstacles;
   static constexpr int kMaxDrivablePolygonVertices = 1024;
-  static constexpr int kMaxRoadBorderSegments = 256;
-  static constexpr int kMaxDrivableAreaSegments = 256;
+  static constexpr int kMaxRoadBorderSegments = RuntimeData::kMaxRoadBorderSegments;
+  static constexpr int kMaxDrivableAreaSegments = RuntimeData::kMaxDrivableAreaSegments;
   /** Full diffusion-path polyline for spatial lateral / crash. */
-  static constexpr int kMaxLateralCorridorPoints = 256;
+  static constexpr int kMaxLateralCorridorPoints = RuntimeData::kMaxLateralCorridorPoints;
+
+  RuntimeData runtime_data_{};
+  DistanceMapTextureState texture_state_{};
 
   /**
    * Block shared-memory layout in theta_c (floats):
@@ -112,7 +179,7 @@ public:
    *     [0] total corridor path length
    *     [1] num corridor points (sign encodes has_s)
    *     [2, 2+kMax) corridor_x, then corridor_y, corridor_s
-   *     then ref_x/y/v/yaw [NUM_TIMESTEPS each]
+   *     then ref_x/y/s/v/yaw [NUM_TIMESTEPS each]
    *   BLK (per sample, after float4-aligned GRD):
    *     [0] warm-start segment index for polyline projection (-1 = full scan)
    */
@@ -123,7 +190,8 @@ public:
   static constexpr int kSharedCorridorSOffset = kSharedCorridorYOffset + kMaxLateralCorridorPoints;
   static constexpr int kSharedRefXOffset = kSharedCorridorSOffset + kMaxLateralCorridorPoints;
   static constexpr int kSharedRefYOffset = kSharedRefXOffset + NUM_TIMESTEPS;
-  static constexpr int kSharedRefVOffset = kSharedRefYOffset + NUM_TIMESTEPS;
+  static constexpr int kSharedRefSOffset = kSharedRefYOffset + NUM_TIMESTEPS;
+  static constexpr int kSharedRefVOffset = kSharedRefSOffset + NUM_TIMESTEPS;
   static constexpr int kSharedRefYawOffset = kSharedRefVOffset + NUM_TIMESTEPS;
   static constexpr int kSharedNumFloats = kSharedRefYawOffset + NUM_TIMESTEPS;
   /** Per-sample BLK: previous closest-segment index for warm-started projection. */
@@ -234,7 +302,8 @@ public:
    * Unified closest-segment projection used when either lateral weight is active.
    * Also stores path length along the corridor chord-length array and remaining distance
    * to the polyline end (used by remaining_distance_coeff).
-   * On device, warm-starts from / writes to the per-sample projection hint in theta_c BLK.
+   * On device, an in-bounds nearest-segment texture fetch provides an O(1) seed with a bounded
+   * local correction. Out-of-bounds queries fall back to the per-sample theta_c warm start.
    */
   struct LateralPathMetrics
   {
@@ -334,50 +403,6 @@ public:
   __device__ float computeRunningCost(
     float * y, float * u, int timestep, float * theta_c, int * crash);
 
-  // BEGIN contiguous runtime-data block. Keep all device-consumed cycle data between these
-  // markers; uploadDataToDevice() transfers this range with one cudaMemcpyAsync.
-  float ref_x_[NUM_TIMESTEPS] = {};
-  float ref_y_[NUM_TIMESTEPS] = {};
-  float ref_v_[NUM_TIMESTEPS] = {};
-  float ref_yaw_[NUM_TIMESTEPS] = {};
-  /** Full reference-trajectory terminal pose: x, y, yaw. */
-  float terminal_reference_[3] = {};
-  float ref_max_velocity_[NUM_TIMESTEPS] = {};
-  std::uint8_t ref_velocity_limit_active_[NUM_TIMESTEPS] = {};
-  bool has_pointwise_velocity_limits_{false};
-  FirstOrderDubinsBicycleKinematicLimitData kinematic_limits_{};
-  int num_lateral_corridor_points_ = 0;
-  float lateral_corridor_x_[kMaxLateralCorridorPoints] = {};
-  float lateral_corridor_y_[kMaxLateralCorridorPoints] = {};
-  /** Cumulative chord length [m] along lateral_corridor_* (s[0]=0); valid when count >= 1. */
-  float lateral_corridor_s_[kMaxLateralCorridorPoints] = {};
-  /** Reference longitudinal velocity [m/s] at each corridor vertex; kept in global memory. */
-  float lateral_corridor_ref_velocity_[kMaxLateralCorridorPoints] = {};
-  /** Final path length = s[n-1]; staged into shared memory with corridor/ref on GPU. */
-  float lateral_corridor_total_length_s_ = 0.0F;
-  bool lateral_corridor_has_s_ = false;
-  /** Measured steering state at the start of the current rollout. */
-  float initial_steering_angle_ = 0.0F;
-  int num_obstacles_ = 0;
-  float obs_x_[kMaxObstacles][NUM_TIMESTEPS] = {};
-  float obs_y_[kMaxObstacles][NUM_TIMESTEPS] = {};
-  float obs_yaw_[kMaxObstacles][NUM_TIMESTEPS] = {};
-  float obs_half_length_[kMaxObstacles] = {};
-  float obs_half_width_[kMaxObstacles] = {};
-  /** True when the obstacle pose is invariant across the supplied horizon. */
-  bool obs_is_static_[kMaxObstacles] = {};
-  int num_road_border_segments_ = 0;
-  float road_border_x0_[kMaxRoadBorderSegments] = {};
-  float road_border_y0_[kMaxRoadBorderSegments] = {};
-  float road_border_x1_[kMaxRoadBorderSegments] = {};
-  float road_border_y1_[kMaxRoadBorderSegments] = {};
-  int num_drivable_area_segments_ = 0;
-  float drivable_area_x0_[kMaxDrivableAreaSegments] = {};
-  float drivable_area_y0_[kMaxDrivableAreaSegments] = {};
-  float drivable_area_x1_[kMaxDrivableAreaSegments] = {};
-  float drivable_area_y1_[kMaxDrivableAreaSegments] = {};
-  // END contiguous runtime-data block.
-
 private:
   friend struct DistanceMapTextureTestAccess;
 
@@ -388,9 +413,14 @@ private:
   __host__ void uploadDataToDevice();
   __host__ bool updateDistanceMapGrid(
     DistanceMapTextureGrid & grid, int width, int height, float resolution);
+  __host__ bool updateNearestSegmentMapGrid();
   __host__ void ensureDistanceMapResources();
+  __host__ void ensureNearestSegmentMapResources();
   __host__ void rebuildStaticDistanceTexture(bool update_road_border, bool update_drivable_area);
   __host__ void rebuildObstacleDistanceTexture();
+  __host__ void rebuildNearestSegmentTexture();
+  __host__ void refreshNearestSegmentTexture(bool geometry_changed);
+  __host__ void refreshNearestSegmentTextureNow();
   __host__ void refreshDistanceMapTextures(
     bool obstacle_geometry_changed, bool road_border_geometry_changed,
     bool drivable_area_geometry_changed);
@@ -406,6 +436,8 @@ private:
   bool obstacle_geometry_dirty_ = false;
   bool road_border_geometry_dirty_ = false;
   bool drivable_area_geometry_dirty_ = false;
+  bool nearest_segment_refresh_pending_ = false;
+  bool nearest_segment_geometry_dirty_ = false;
 };
 
 template <int NUM_TIMESTEPS>

@@ -194,10 +194,12 @@ __host__ __device__ inline void finalizePolylineProjection(
  *               timestep). When >= 0, performs a local hill-climb from that
  *               segment (amortized O(1) along a trajectory). When < 0, full
  *               O(n) scan — use for the first query or when no prior exists.
+ * @param max_local_search_steps maximum hill-climb steps when non-negative. Texture-seeded
+ *               callers use a small fixed value to retain strict O(1) query work.
  */
 __host__ __device__ inline PolylineProjection projectPointToPolyline(
   const float px, const float py, const float * poly_x, const float * poly_y, const int n_pts,
-  const int hint_i = -1)
+  const int hint_i = -1, const int max_local_search_steps = -1)
 {
   PolylineProjection result;
   if (n_pts <= 0) {
@@ -233,7 +235,10 @@ __host__ __device__ inline PolylineProjection projectPointToPolyline(
       best_i = n_seg - 1;
     }
     distanceToPolylineSegment(px, py, poly_x, poly_y, best_i, best_dist, best_t_raw);
-    for (int iter = 0; iter < n_seg; ++iter) {
+    const int search_steps = max_local_search_steps >= 0 && max_local_search_steps < n_seg
+                               ? max_local_search_steps
+                               : n_seg;
+    for (int iter = 0; iter < search_steps; ++iter) {
       float left_dist = best_dist;
       float left_t = best_t_raw;
       float right_dist = best_dist;
