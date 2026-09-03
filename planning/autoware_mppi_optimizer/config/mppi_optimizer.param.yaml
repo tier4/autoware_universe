@@ -91,7 +91,7 @@
       ignore_drivable_area: true
       force_cold_start_each_step: false
       skip_if_invalid: true
-      min_optimization_length: 0.0
+      min_optimization_length: 10.0
 
       # Cold-seed u_nom from acados temporal MPT.
       use_temporal_mpt_as_nominal: false

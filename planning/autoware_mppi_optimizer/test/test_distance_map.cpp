@@ -425,6 +425,19 @@ TEST_F(DistanceMapGpuTest, SingleSegmentProducesExpectedDistances)
   EXPECT_NEAR(sampleStaticTexture(*cost_, 5.0F, -5.0F, stream()).x, std::sqrt(50.0F), 0.03F);
 }
 
+TEST_F(DistanceMapGpuTest, DataUpdatePublishesGeometryOnlyAtCommit)
+{
+  cost_->setRoadBorderSegments({Segment{0.0F, -20.0F, 0.0F, 20.0F}});
+  EXPECT_NEAR(sampleStaticTexture(*cost_, 2.0F, 0.0F, stream()).x, 2.0F, 1.0E-3F);
+
+  cost_->beginDataUpdate();
+  cost_->setRoadBorderSegments({Segment{10.0F, -20.0F, 10.0F, 20.0F}});
+  EXPECT_NEAR(sampleStaticTexture(*cost_, 2.0F, 0.0F, stream()).x, 2.0F, 1.0E-3F);
+
+  cost_->commitDataUpdate();
+  EXPECT_NEAR(sampleStaticTexture(*cost_, 2.0F, 0.0F, stream()).x, 8.0F, 1.0E-3F);
+}
+
 TEST_F(DistanceMapGpuTest, StaticTextureChannelsAreIndependent)
 {
   cost_->setRoadBorderSegments({Segment{5.0F, -20.0F, 5.0F, 20.0F}});

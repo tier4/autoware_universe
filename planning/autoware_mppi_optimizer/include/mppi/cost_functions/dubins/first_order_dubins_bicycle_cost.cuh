@@ -149,6 +149,15 @@ public:
 
   void paramsToDevice();
 
+  /**
+   * Defer runtime-cost uploads and distance-map rebuilds until commitDataUpdate().
+   * Calls are idempotent so a control cycle can begin staging before all inputs are available.
+   */
+  __host__ void beginDataUpdate();
+
+  /** Upload the staged runtime data once, then refresh each affected distance map once. */
+  __host__ void commitDataUpdate();
+
   void setReferenceTrajectory(
     const float * x, const float * y, const float * v, int count, const float * yaw = nullptr,
     const float * max_velocity = nullptr, const std::uint8_t * velocity_limit_active = nullptr,
@@ -325,6 +334,8 @@ public:
   __device__ float computeRunningCost(
     float * y, float * u, int timestep, float * theta_c, int * crash);
 
+  // BEGIN contiguous runtime-data block. Keep all device-consumed cycle data between these
+  // markers; uploadDataToDevice() transfers this range with one cudaMemcpyAsync.
   float ref_x_[NUM_TIMESTEPS] = {};
   float ref_y_[NUM_TIMESTEPS] = {};
   float ref_v_[NUM_TIMESTEPS] = {};
@@ -365,6 +376,7 @@ public:
   float drivable_area_y0_[kMaxDrivableAreaSegments] = {};
   float drivable_area_x1_[kMaxDrivableAreaSegments] = {};
   float drivable_area_y1_[kMaxDrivableAreaSegments] = {};
+  // END contiguous runtime-data block.
 
 private:
   friend struct DistanceMapTextureTestAccess;
@@ -372,7 +384,8 @@ private:
   __host__ __device__ float computeInitialSteeringRateCost(
     const float * control, int timestep) const;
 
-  void dataToDevice();
+  __host__ void dataToDevice();
+  __host__ void uploadDataToDevice();
   __host__ bool updateDistanceMapGrid(
     DistanceMapTextureGrid & grid, int width, int height, float resolution);
   __host__ void ensureDistanceMapResources();
@@ -381,8 +394,18 @@ private:
   __host__ void refreshDistanceMapTextures(
     bool obstacle_geometry_changed, bool road_border_geometry_changed,
     bool drivable_area_geometry_changed);
+  __host__ void refreshDistanceMapTexturesNow(
+    bool obstacle_geometry_changed, bool road_border_geometry_changed,
+    bool drivable_area_geometry_changed);
   __host__ void distanceMapStateToDevice();
   __host__ void releaseDistanceMapResources();
+
+  bool data_update_active_ = false;
+  bool runtime_data_dirty_ = false;
+  bool distance_map_refresh_pending_ = false;
+  bool obstacle_geometry_dirty_ = false;
+  bool road_border_geometry_dirty_ = false;
+  bool drivable_area_geometry_dirty_ = false;
 };
 
 template <int NUM_TIMESTEPS>
