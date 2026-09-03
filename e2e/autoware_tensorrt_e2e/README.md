@@ -196,21 +196,13 @@ about a model is in its ml_package file: which providers it needs, its tensor na
 voxelization geometry, its history length and cadence, its horizon and its validated
 precision.
 
-That file is generated from the artifacts, never hand-written, so a new checkpoint cannot
-disagree with a stale configuration:
-
-```bash
-ros2 run autoware_tensorrt_e2e make_ml_package_param.py <model_dir> --model-name <model> \
-  --contract <export_dir>/<model>_deployment_contract.json [--turn-indicators-optional]
-```
-
-It reads points-per-voxel and the point-feature count out of the extractor's `voxels`
-input, and the tensor names and horizon out of the planner graph. The exporter's deployment
-contract supplies the one value no graph carries, the history cadence the model was trained
-on; it is an input to the generator at deploy time, not an artifact the node reads, so the
-deployed model directory keeps only the generated file. `--turn-indicators-optional`
-records that the network never reads its `turn_indicators` input; verify that by perturbing
-the input before setting it. Re-run the generator whenever the artifacts change.
+This package does not produce that file, or the graphs beside it. It receives artifacts
+that are already prepared and runs them; exporting a checkpoint, freezing the graph's batch
+dimension and generating the ml_package file are steps of the model's own repository, which
+is the only place that knows the checkpoint, the training cadence and the tensor semantics.
+For ResWorld that is [OnePlanner](https://github.com/tier4/OnePlanner)
+(`projects/resworld/scripts/`). The file is generated from the artifacts, never
+hand-written, so a new checkpoint cannot disagree with a stale configuration.
 
 Every parameter is described in `schema/tensorrt_e2e.schema.json`.
 
