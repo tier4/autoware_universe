@@ -298,13 +298,10 @@ public:
     }
     Mppi::computeControl(state, optimization_stride);
 
-    // The base call may still be copying its filtered host rollout on the visualization stream.
-    // Finish that read before replacing control_ and output_ below.
-    HANDLE_ERROR(cudaStreamSynchronize(this->vis_stream_));
-
-    // smoothControlTrajectory() only overwrites the controller's host control_. The sampling
-    // distribution still owns the final reduced mean on the device.
-    this->sampler_->setHostOptimalControlSequence(this->control_.data(), 0, true);
+    // Preserve this interface's existing unsmoothed-control behavior without downloading the
+    // device mean a second time. Vanilla MPPI snapshots the final mean before its generic host
+    // smoothing and zero-state constraint pass.
+    this->control_ = this->getDeviceOptimalControlSequence();
 
     // First reconstruct the predicted state at each command. Constraints such as reverse
     // prevention depend on velocity, so applying them against the vendor's zero_state would erase
@@ -1733,7 +1730,6 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     controller->updateImportanceSampler(u_nom);
     controller->computeControl(x, 1);
-    cudaStreamSynchronize(controller->stream_);
     checkCuda("computeControl");
 
     Mppi::control_trajectory u_opt_traj = controller->getControlSeq();
