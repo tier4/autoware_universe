@@ -46,6 +46,11 @@ def main() -> int:
              "graphs with embedded normalization statistics overflow fp16 and TensorRT "
              "clips them silently)")
     parser.add_argument("--extractor-precision", default="fp16")
+    parser.add_argument(
+        "--turn-indicators-optional", action="store_true",
+        help="the network declares turn_indicators but never reads it (verify by "
+        "perturbing the input); let the node run without the report",
+    )
     args = parser.parse_args()
 
     model_dir: Path = args.model_dir.expanduser().resolve()
@@ -105,6 +110,17 @@ def main() -> int:
         "    # Precision this graph is validated in; overrides the package default.",
         f"    precision: \"{args.planner_precision}\"",
         "",
+        *(
+            [
+                "    context:",
+                "      # The graph carries this input for a stable signature only;",
+                "      # perturbing it changes no output. Do not stall on it.",
+                "      turn_indicators_required: false",
+                "",
+            ]
+            if args.turn_indicators_optional
+            else []
+        ),
         "    bev_feature:",
         f"      history_tensor: \"{history_tensor}\"",
         f"      frames: {int(cache['frames'])}",
