@@ -30,7 +30,7 @@ configuration file:
 
 | File | Role |
 | --- | --- |
-| `resworld_planner.simplified.onnx` | The planner graph. Batch is frozen to 1 after simplification (`scripts/freeze_onnx_batch.py`): onnxsim miscompiles this graph when simplified with a static batch, and TensorRT will not build a dynamic one without a profile. |
+| `resworld_planner.simplified.onnx` | The planner graph, batch frozen to 1. |
 | `bevfusion_lidar_feature.onnx` | The production BEVFusion lidar branch exported with its `bev_feature` map `[1, 512, 180, 180]` as the output. Carries the sparse-convolution custom nodes, so its engine needs `autoware_tensorrt_plugins` and an `spconv` build for this GPU. |
 | `ml_package_resworld.param.yaml` | The whole network description, generated from those graphs and the exporter's contract (see [Configuration layout](#configuration-layout)). The copy under `config/` is a reference; the node reads the one beside the artifacts. |
 
