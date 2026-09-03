@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include <string>
 #include <vector>
 
@@ -95,9 +97,11 @@ TEST(TrajectoryPostprocessorTest, ValidatesOutputSpecs)
   EXPECT_THROW(
     postprocessor.validate_output_specs({TensorSpec{"other", {1, 40, 4}, {}}}),
     std::runtime_error);
-  // Wrong pose dimension
+  // Wrong pose dimension (neither (x, y, cos, sin) nor (x, y, yaw))
   EXPECT_THROW(
-    postprocessor.validate_output_specs(make_output_specs({1, 40, 3})), std::runtime_error);
+    postprocessor.validate_output_specs(make_output_specs({1, 40, 5})), std::runtime_error);
+  EXPECT_THROW(
+    postprocessor.validate_output_specs(make_output_specs({1, 40, 2})), std::runtime_error);
   // Horizon mismatch (80 steps = 8 s, config expects 4 s)
   EXPECT_THROW(
     postprocessor.validate_output_specs(make_output_specs({1, 80, 4})), std::runtime_error);
@@ -109,6 +113,11 @@ TEST(TrajectoryPostprocessorTest, ValidatesOutputSpecs)
   postprocessor.validate_output_specs(make_output_specs({1, 40, 4}));
   EXPECT_EQ(postprocessor.num_timesteps(), kTimesteps);
   EXPECT_EQ(postprocessor.num_agents(), 1);
+  EXPECT_EQ(postprocessor.pose_dim(), 4);
+
+  // Ego-only (x, y, yaw) poses
+  postprocessor.validate_output_specs(make_output_specs({1, 40, 3}));
+  EXPECT_EQ(postprocessor.pose_dim(), 3);
 
   // Multi-agent rank-4 shape
   postprocessor.validate_output_specs(make_output_specs({1, 33, 40, 4}));
@@ -165,6 +174,56 @@ TEST(TrajectoryPostprocessorTest, ProducesTrajectoryInMapFrame)
 
   // Ego-only model: no predicted objects.
   EXPECT_FALSE(result.predicted_objects.has_value());
+}
+
+TEST(TrajectoryPostprocessorTest, ReadsYawPosesLikeCosSinPoses)
+{
+  // The same left turn, once as (x, y, cos(yaw), sin(yaw)) and once as (x, y, yaw), must
+  // decode to the same trajectory.
+  constexpr double kYawStep = 0.02;
+  std::vector<float> cos_sin_data;
+  std::vector<float> yaw_data;
+  for (int64_t t = 0; t < kTimesteps; ++t) {
+    const double yaw = kYawStep * static_cast<double>(t + 1);
+    const double x = static_cast<double>(t + 1);
+    const double y = 0.1 * static_cast<double>(t + 1);
+    cos_sin_data.insert(
+      cos_sin_data.end(), {static_cast<float>(x), static_cast<float>(y),
+                           static_cast<float>(std::cos(yaw)), static_cast<float>(std::sin(yaw))});
+    yaw_data.insert(
+      yaw_data.end(), {static_cast<float>(x), static_cast<float>(y), static_cast<float>(yaw)});
+  }
+  TensorMap cos_sin_outputs;
+  cos_sin_outputs.emplace(
+    "prediction", Tensor::from_host({1, kTimesteps, 4}, std::move(cos_sin_data)));
+  TensorMap yaw_outputs;
+  yaw_outputs.emplace("prediction", Tensor::from_host({1, kTimesteps, 3}, std::move(yaw_data)));
+
+  const auto ego = make_ego_frame(10.0, 20.0, 10.0);
+  unique_identifier_msgs::msg::UUID uuid;
+
+  TrajectoryPostprocessor cos_sin_postprocessor(make_params());
+  cos_sin_postprocessor.validate_output_specs(make_output_specs({1, kTimesteps, 4}));
+  const auto expected =
+    cos_sin_postprocessor.process(cos_sin_outputs, ego, nullptr, rclcpp::Time(0), uuid);
+
+  TrajectoryPostprocessor yaw_postprocessor(make_params());
+  yaw_postprocessor.validate_output_specs(make_output_specs({1, kTimesteps, 3}));
+  const auto actual =
+    yaw_postprocessor.process(yaw_outputs, ego, nullptr, rclcpp::Time(0), uuid);
+
+  ASSERT_EQ(actual.trajectory.points.size(), expected.trajectory.points.size());
+  for (size_t i = 0; i < actual.trajectory.points.size(); ++i) {
+    const auto & a = actual.trajectory.points[i].pose;
+    const auto & e = expected.trajectory.points[i].pose;
+    EXPECT_NEAR(a.position.x, e.position.x, 1e-5);
+    EXPECT_NEAR(a.position.y, e.position.y, 1e-5);
+    EXPECT_NEAR(a.orientation.z, e.orientation.z, 1e-5);
+    EXPECT_NEAR(a.orientation.w, e.orientation.w, 1e-5);
+    EXPECT_NEAR(
+      actual.trajectory.points[i].longitudinal_velocity_mps,
+      expected.trajectory.points[i].longitudinal_velocity_mps, 1e-4f);
+  }
 }
 
 TEST(TrajectoryPostprocessorTest, AppliesBaseLinkOffsetInReverse)

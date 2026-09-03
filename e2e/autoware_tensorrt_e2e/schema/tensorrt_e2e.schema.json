@@ -116,7 +116,7 @@
             "extra_trajectory_tensors": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Additional ego-only [B, T, 4] trajectory outputs published as extra candidates.",
+              "description": "Additional ego-only [B, T, P] trajectory outputs (same pose layout as the prediction tensor) published as extra candidates.",
               "default": []
             },
             "horizon_seconds": { "type": "number", "default": 4.0, "exclusiveMinimum": 0.0 },

@@ -43,8 +43,8 @@ namespace autoware::tensorrt_e2e
 struct PostprocessParams
 {
   std::string prediction_tensor{"prediction"};
-  //! Additional ego-only trajectory outputs (`[B, T, 4]`, for example a model's prior),
-  //! published as extra candidate trajectories.
+  //! Additional ego-only trajectory outputs (`[B, T, P]` with the same pose layout as the
+  //! prediction tensor, for example a model's prior), published as extra candidate trajectories.
   std::vector<std::string> extra_trajectory_tensors{};
   double horizon_seconds{4.0};
   //! Must be 0.1 s: the reused diffusion planner postprocessing bakes in this step.
@@ -61,8 +61,9 @@ struct PostprocessParams
  * @class TrajectoryPostprocessor
  * @brief Converts the prediction tensor into trajectory (and optional object) messages.
  *
- * Accepted prediction shapes: `[B, A, T, 4]` (agent 0 = ego) or `[B, T, 4]` (ego only), with
- * `(x, y, cos(yaw), sin(yaw))` per step in the ego frame at `time_step` intervals.
+ * Accepted prediction shapes: `[B, A, T, P]` (agent 0 = ego) or `[B, T, P]` (ego only), one pose
+ * per step in the ego frame at `time_step` intervals. The pose layout follows from P:
+ * `(x, y, cos(yaw), sin(yaw))` when P is 4, `(x, y, yaw)` when P is 3.
  */
 class TrajectoryPostprocessor
 {
@@ -101,13 +102,15 @@ public:
 
   int64_t num_timesteps() const { return num_timesteps_; }
   int64_t num_agents() const { return num_agents_; }
+  int64_t pose_dim() const { return pose_dim_; }
 
 private:
   /**
    * @brief Parse a raw prediction into per-agent pose matrices in map coordinates.
    *
    * Dimension-parameterized version of the diffusion planner's `parse_predictions` (which
-   * hard-codes its output shape); the math is identical.
+   * hard-codes its output shape); the math is identical for the 4-element pose, and a
+   * 3-element pose is read as `(x, y, yaw)`.
    */
   std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
     const std::vector<float> & prediction, const Eigen::Matrix4d & ego_to_map,
@@ -122,6 +125,7 @@ private:
   int64_t batch_size_{1};
   int64_t num_agents_{1};
   int64_t num_timesteps_{0};
+  int64_t pose_dim_{0};
 };
 
 }  // namespace autoware::tensorrt_e2e

@@ -37,6 +37,9 @@ namespace dp = autoware::diffusion_planner;
 namespace
 {
 
+/// Pose layout `(x, y, yaw)`; the 4-element `(x, y, cos(yaw), sin(yaw))` layout is dp::POSE_DIM.
+constexpr int64_t YAW_POSE_DIM = 3;
+
 /// Append one candidate trajectory with its generator info.
 void append_candidate(
   autoware_internal_planning_msgs::msg::CandidateTrajectories & candidates,
@@ -101,13 +104,14 @@ void TrajectoryPostprocessor::validate_output_specs(const std::vector<TensorSpec
   } else {
     throw std::runtime_error(
       "Model output '" + spec->name + "' has shape " + shape_to_string(shape) +
-      "; expected [B, A, T, 4] or [B, T, 4]");
+      "; expected [B, A, T, P] or [B, T, P]");
   }
-  if (shape.back() != dp::POSE_DIM) {
+  pose_dim_ = shape.back();
+  if (pose_dim_ != dp::POSE_DIM && pose_dim_ != YAW_POSE_DIM) {
     throw std::runtime_error(
       "Model output '" + spec->name + "' has shape " + shape_to_string(shape) +
       "; the last dimension must be " + std::to_string(dp::POSE_DIM) +
-      " (x, y, cos(yaw), sin(yaw))");
+      " (x, y, cos(yaw), sin(yaw)) or " + std::to_string(YAW_POSE_DIM) + " (x, y, yaw)");
   }
 
   const auto expected_timesteps =
@@ -133,7 +137,7 @@ void TrajectoryPostprocessor::validate_output_specs(const std::vector<TensorSpec
         "The model has no output tensor named '" + extra_name +
         "' (listed in postprocess.extra_trajectory_tensors)");
     }
-    const std::vector<int64_t> expected_shape = {batch_size_, num_timesteps_, dp::POSE_DIM};
+    const std::vector<int64_t> expected_shape = {batch_size_, num_timesteps_, pose_dim_};
     if (extra_spec->shape != expected_shape) {
       throw std::runtime_error(
         "Model output '" + extra_name + "' has shape " + shape_to_string(extra_spec->shape) +
@@ -147,7 +151,7 @@ std::vector<std::vector<std::vector<Eigen::Matrix4d>>> TrajectoryPostprocessor::
   const std::vector<float> & prediction, const Eigen::Matrix4d & ego_to_map,
   const int64_t num_agents) const
 {
-  const size_t required_size = batch_size_ * num_agents * num_timesteps_ * dp::POSE_DIM;
+  const size_t required_size = batch_size_ * num_agents * num_timesteps_ * pose_dim_;
   if (prediction.size() < required_size) {
     throw std::runtime_error(
       "Prediction vector size (" + std::to_string(prediction.size()) +
@@ -163,12 +167,20 @@ std::vector<std::vector<std::vector<Eigen::Matrix4d>>> TrajectoryPostprocessor::
     for (int64_t agent_idx = 0; agent_idx < num_agents; ++agent_idx) {
       for (int64_t time_idx = 0; time_idx < num_timesteps_; ++time_idx) {
         const int64_t base_idx =
-          ((batch_idx * num_agents + agent_idx) * num_timesteps_ + time_idx) * dp::POSE_DIM;
+          ((batch_idx * num_agents + agent_idx) * num_timesteps_ + time_idx) * pose_dim_;
 
         const auto x = static_cast<double>(prediction[base_idx + 0]);
         const auto y = static_cast<double>(prediction[base_idx + 1]);
-        const auto cos_yaw = static_cast<double>(prediction[base_idx + 2]);
-        const auto sin_yaw = static_cast<double>(prediction[base_idx + 3]);
+        double cos_yaw = 1.0;
+        double sin_yaw = 0.0;
+        if (pose_dim_ == YAW_POSE_DIM) {
+          const auto yaw = static_cast<double>(prediction[base_idx + 2]);
+          cos_yaw = std::cos(yaw);
+          sin_yaw = std::sin(yaw);
+        } else {
+          cos_yaw = static_cast<double>(prediction[base_idx + 2]);
+          sin_yaw = static_cast<double>(prediction[base_idx + 3]);
+        }
 
         Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
         pose(0, 0) = cos_yaw;

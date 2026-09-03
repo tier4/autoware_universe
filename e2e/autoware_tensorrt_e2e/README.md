@@ -36,7 +36,8 @@ The included providers are:
 | context | diffusion-planner-style tensor names | Optional ego, object, map, route, and turn-indicator features |
 
 The standard output contract is an ego trajectory tensor named `prediction` by default:
-`[B, T, 4]` or `[B, A, T, 4]`, with `(x, y, cos(yaw), sin(yaw))` in the model reference frame.
+`[B, T, P]` or `[B, A, T, P]` in the model reference frame, where a pose is
+`(x, y, cos(yaw), sin(yaw))` when `P` is 4 and `(x, y, yaw)` when `P` is 3.
 The output tensor name, horizon, smoothing, and optional additional trajectory tensors are
 configuration parameters. Outputs are published as `Trajectory`, `CandidateTrajectories`, and,
 when neighbor predictions are present, `PredictedObjects`.

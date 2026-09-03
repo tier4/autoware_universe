@@ -142,10 +142,11 @@ branch, rather than adding model-specific conditionals to the engine.
 The primary output tensor is `prediction` by default and may be renamed with
 `postprocess.prediction_tensor`. It has one of these shapes:
 
-- `[B, T, 4]` for ego-only models;
-- `[B, A, T, 4]` for models that also predict neighbors.
+- `[B, T, P]` for ego-only models;
+- `[B, A, T, P]` for models that also predict neighbors.
 
-Each pose is `(x, y, cos(yaw), sin(yaw))` in the model reference frame. The point interval is
+Each pose is in the model reference frame, and its layout follows from `P`:
+`(x, y, cos(yaw), sin(yaw))` when `P` is 4, `(x, y, yaw)` when `P` is 3. The point interval is
 currently fixed at 0.1 seconds to match the shared postprocessing implementation. The horizon,
 velocity smoothing window, stopping threshold, and generator name are deployment parameters.
 
@@ -187,7 +188,7 @@ CUDA preprocessing, feature extractor, and model-specific deployment parameters.
 ### New output representation
 
 Keep the common node orchestration and add a postprocessor/adapter in the downstream branch when
-the model does not emit `(x, y, cos(yaw), sin(yaw))` trajectories.
+the model does not emit `(x, y, cos(yaw), sin(yaw))` or `(x, y, yaw)` trajectories.
 
 This separation keeps the foundation small and lets each model branch carry only the code and
 runtime dependencies that its artifact actually needs.
