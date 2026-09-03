@@ -13,6 +13,15 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_e2e/providers/lidar_input_provider.hpp"
+#include "autoware/tensorrt_e2e/input_provider_registry.hpp"
+
+#include <autoware/cuda_utils/cuda_check_error.hpp>
+
+#include <cuda_runtime_api.h>
+
+#include <autoware/cuda_utils/cuda_check_error.hpp>
+
+#include <cuda_runtime_api.h>
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -121,11 +130,13 @@ std::vector<std::string> LidarInputProvider::claim_inputs(
     claimed.push_back(num_points_tensor_name_);
   }
 
-  pointcloud_sub_ = node_.create_subscription<sensor_msgs::msg::PointCloud2>(
-    "~/input/pointcloud", rclcpp::SensorDataQoS{},
-    [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
+  // Same subscriber as autoware_bevfusion, so one publisher setup serves both providers.
+  pointcloud_sub_ = std::make_unique<
+    cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
+    node_, "~/input/pointcloud",
+    [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
       std::lock_guard<std::mutex> lock(mutex_);
-      latest_pointcloud_ = msg;
+      latest_pointcloud_ = std::move(msg);
     });
 
   return claimed;
@@ -135,7 +146,7 @@ bool LidarInputProvider::collect(
   [[maybe_unused]] const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs,
   std::string & error)
 {
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud;
+  std::shared_ptr<const cuda_blackboard::CudaPointCloud2> cloud;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     cloud = latest_pointcloud_;
@@ -176,9 +187,14 @@ bool LidarInputProvider::collect(
       max_points_);
   }
 
-  std::vector<float> data(static_cast<size_t>(max_points_) * point_dim_, 0.0f);
-  const uint8_t * cloud_data = cloud->data.data();
+  // This path feeds a model that embeds its own voxelization and takes a host tensor, so
+  // the device cloud comes back to the host here; the BEV provider never does this.
   const size_t point_step = cloud->point_step;
+  std::vector<uint8_t> host_cloud(static_cast<size_t>(used_points) * point_step);
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    host_cloud.data(), cloud->data.get(), host_cloud.size(), cudaMemcpyDeviceToHost));
+  std::vector<float> data(static_cast<size_t>(max_points_) * point_dim_, 0.0f);
+  const uint8_t * cloud_data = host_cloud.data();
   for (int64_t i = 0; i < used_points; ++i) {
     const uint8_t * point = cloud_data + static_cast<size_t>(i) * point_step;
     float * dst = data.data() + static_cast<size_t>(i) * point_dim_;
@@ -199,5 +215,8 @@ bool LidarInputProvider::collect(
   }
   return true;
 }
+
+TENSORRT_E2E_REGISTER_INPUT_PROVIDER(
+  "lidar", [](rclcpp::Node & node, tf2_ros::Buffer &) { return std::make_unique<LidarInputProvider>(node); });
 
 }  // namespace autoware::tensorrt_e2e

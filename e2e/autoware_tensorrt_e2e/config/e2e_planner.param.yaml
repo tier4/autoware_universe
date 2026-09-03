@@ -46,6 +46,7 @@
       warmup: "wait"  # "wait" or "duplicate_current"
       max_delay_ms: 200.0
       extractor:
+        engine_path: ""  # empty: cached beside the ONNX, as TrtCommon does
         onnx_path: $(var model_path)/$(var extractor_onnx)
         plugins_path: $(find-pkg-share autoware_tensorrt_plugins)/plugins/libautoware_tensorrt_plugins.so
         precision: "fp16"  # sparse-conv feature extractors are validated in fp16
@@ -54,11 +55,12 @@
     context:
       traffic_light_group_msg_timeout_seconds: 0.2
       ignore_neighbors: false
-      # Refuse to plan until a turn-indicator report arrives. A model whose graph
-      # carries the tensor but never reads it (ResWorld: perturbing it changes
-      # nothing) sets this false in its ml_package file, so a recording without
-      # the topic does not stall on an input the network ignores.
-      turn_indicators_required: true
+      # Subscribe to the turn-indicator report for a model that declares the
+      # tensor. A model whose graph carries it but never reads it (ResWorld:
+      # perturbing the input changes nothing) sets this false in its ml_package
+      # file; the node then binds a constant and subscribes to nothing.
+      turn_indicators:
+        enabled: true
       ignore_unknown_neighbors: true
       line_string_max_step_m: 5.0
       use_time_interpolation: false
@@ -66,3 +68,13 @@
     postprocess:
       velocity_smoothing_window: 8
       stopping_threshold: 0.3
+
+    # Stop and slow-down factors derived from the published trajectory, the way
+    # autoware_diffusion_planner derives them, for the consumers of a trajectory
+    # generator. Same defaults as that node's shipped configuration.
+    planning_factor:
+      enable_stop: true
+      enable_slowdown: false
+      stop_velocity_threshold: 0.1
+      stop_keep_duration_threshold: 1.0
+      slowdown_accel_threshold: -0.3

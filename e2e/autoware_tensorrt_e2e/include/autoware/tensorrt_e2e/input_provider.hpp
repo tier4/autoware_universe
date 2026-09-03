@@ -17,8 +17,10 @@
 
 #include "autoware/tensorrt_e2e/types.hpp"
 
+#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <rclcpp/time.hpp>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -61,6 +63,23 @@ public:
    */
   virtual bool collect(
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs, std::string & error) = 0;
+
+  /**
+   * @brief Add this provider's key-values to the tick's diagnostics, after a successful collect().
+   *
+   * The node knows nothing about what a provider measures; a sensor provider reports what its
+   * reference node reports (e.g. bevfusion's `is_num_voxels_within_range`).
+   */
+  virtual void add_diagnostics(autoware_utils_diagnostics::DiagnosticsInterface & diagnostics)
+  {
+    (void)diagnostics;
+  }
+
+  /**
+   * @brief Stamp of the freshest sensor input behind the last collect(), for latency reporting.
+   * @return std::nullopt for providers without a sensor stamp (context tensors).
+   */
+  virtual std::optional<rclcpp::Time> latest_input_stamp() const { return std::nullopt; }
 };
 
 }  // namespace autoware::tensorrt_e2e

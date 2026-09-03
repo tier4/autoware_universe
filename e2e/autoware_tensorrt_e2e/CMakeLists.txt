@@ -78,6 +78,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
 
   ament_auto_add_library(${PROJECT_NAME}_component SHARED
     src/types.cpp
+    src/input_provider_registry.cpp
     src/inference_engine.cpp
     src/bev_feature/temporal_bev_cache.cpp
     src/bev_feature/trt_bev_feature_extractor.cpp
