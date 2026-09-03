@@ -17,9 +17,9 @@
 
 #include "autoware/tensorrt_e2e/input_provider.hpp"
 
+#include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
+#include <cuda_blackboard/cuda_pointcloud2.hpp>
 #include <rclcpp/rclcpp.hpp>
-
-#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <cstdint>
 #include <mutex>
@@ -68,8 +68,9 @@ private:
   int64_t point_dim_{0};
   bool num_points_claimed_{false};
 
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr latest_pointcloud_;
+  std::unique_ptr<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>
+    pointcloud_sub_;
+  std::shared_ptr<const cuda_blackboard::CudaPointCloud2> latest_pointcloud_;
   mutable std::mutex mutex_;
 };
 

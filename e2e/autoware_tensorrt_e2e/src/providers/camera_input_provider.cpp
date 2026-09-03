@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_e2e/providers/camera_input_provider.hpp"
+#include "autoware/tensorrt_e2e/input_provider_registry.hpp"
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 
@@ -380,5 +381,10 @@ bool CameraInputProvider::collect(
   }
   return true;
 }
+
+TENSORRT_E2E_REGISTER_INPUT_PROVIDER(
+  "camera", [](rclcpp::Node & node, tf2_ros::Buffer & tf_buffer) {
+    return std::make_unique<CameraInputProvider>(node, tf_buffer);
+  });
 
 }  // namespace autoware::tensorrt_e2e

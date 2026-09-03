@@ -77,6 +77,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
 
   ament_auto_add_library(${PROJECT_NAME}_component SHARED
     src/types.cpp
+    src/input_provider_registry.cpp
     src/inference_engine.cpp
     src/providers/camera_input_provider.cpp
     src/providers/lidar_input_provider.cpp

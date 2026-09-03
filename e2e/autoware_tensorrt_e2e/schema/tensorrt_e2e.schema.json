@@ -18,7 +18,10 @@
         "precision": {
           "type": "string",
           "description": "TensorRT engine precision.",
-          "enum": ["fp32", "fp16"],
+          "enum": [
+            "fp32",
+            "fp16"
+          ],
           "default": "fp16"
         },
         "args_path": {
@@ -44,7 +47,13 @@
         },
         "sensor_inputs": {
           "type": "array",
-          "items": { "type": "string", "enum": ["camera", "lidar"] },
+          "items": {
+            "type": "string",
+            "enum": [
+              "camera",
+              "lidar"
+            ]
+          },
           "description": "Enabled sensor input providers.",
           "default": []
         },
@@ -56,93 +65,243 @@
         "camera": {
           "type": "object",
           "properties": {
-            "num_cameras": { "type": "integer", "minimum": 1, "default": 1 },
-            "input_width": { "type": "integer", "description": "Camera sensor image width.", "default": 1920 },
-            "input_height": { "type": "integer", "description": "Camera sensor image height.", "default": 1280 },
-            "image_transport": { "type": "string", "enum": ["raw", "compressed"], "default": "compressed" },
-            "ego_frame": { "type": "string", "default": "base_link" },
-            "images_tensor": { "type": "string", "default": "camera_images" },
-            "intrinsics_tensor": { "type": "string", "default": "camera_intrinsics" },
-            "extrinsics_tensor": { "type": "string", "default": "camera2ego" },
+            "num_cameras": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "input_width": {
+              "type": "integer",
+              "description": "Camera sensor image width.",
+              "default": 1920
+            },
+            "input_height": {
+              "type": "integer",
+              "description": "Camera sensor image height.",
+              "default": 1280
+            },
+            "image_transport": {
+              "type": "string",
+              "enum": [
+                "raw",
+                "compressed"
+              ],
+              "default": "compressed"
+            },
+            "ego_frame": {
+              "type": "string",
+              "default": "base_link"
+            },
+            "images_tensor": {
+              "type": "string",
+              "default": "camera_images"
+            },
+            "intrinsics_tensor": {
+              "type": "string",
+              "default": "camera_intrinsics"
+            },
+            "extrinsics_tensor": {
+              "type": "string",
+              "default": "camera2ego"
+            },
             "normalization_mean": {
               "type": "array",
-              "items": { "type": "number" },
+              "items": {
+                "type": "number"
+              },
               "minItems": 3,
               "maxItems": 3,
               "description": "Per-channel mean (RGB, 0-255 scale).",
-              "default": [123.675, 116.28, 103.53]
+              "default": [
+                123.675,
+                116.28,
+                103.53
+              ]
             },
             "normalization_std": {
               "type": "array",
-              "items": { "type": "number" },
+              "items": {
+                "type": "number"
+              },
               "minItems": 3,
               "maxItems": 3,
               "description": "Per-channel standard deviation (RGB, 0-255 scale).",
-              "default": [58.395, 57.12, 57.375]
+              "default": [
+                58.395,
+                57.12,
+                57.375
+              ]
             },
-            "sync_tolerance_ms": { "type": "number", "default": 100.0 },
-            "max_delay_ms": { "type": "number", "default": 200.0 },
+            "sync_tolerance_ms": {
+              "type": "number",
+              "default": 100.0
+            },
+            "max_delay_ms": {
+              "type": "number",
+              "default": 200.0
+            },
             "allow_dropped_cameras": {
               "type": "boolean",
               "description": "Zero-fill dropped non-anchor cameras instead of skipping the tick.",
               "default": false
             },
-            "anchor_camera_index": { "type": "integer", "minimum": 0, "default": 0 }
+            "anchor_camera_index": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
           }
         },
         "lidar": {
           "type": "object",
           "properties": {
-            "points_tensor": { "type": "string", "default": "points" },
-            "num_points_tensor": { "type": "string", "default": "num_points" },
-            "max_delay_ms": { "type": "number", "default": 200.0 },
-            "intensity_scale": { "type": "number", "default": 1.0 }
+            "points_tensor": {
+              "type": "string",
+              "default": "points"
+            },
+            "num_points_tensor": {
+              "type": "string",
+              "default": "num_points"
+            },
+            "max_delay_ms": {
+              "type": "number",
+              "default": 200.0
+            },
+            "intensity_scale": {
+              "type": "number",
+              "default": 1.0
+            }
           }
         },
         "context": {
           "type": "object",
           "properties": {
-            "traffic_light_group_msg_timeout_seconds": { "type": "number", "default": 0.2 },
-            "ignore_neighbors": { "type": "boolean", "default": false },
-            "ignore_unknown_neighbors": { "type": "boolean", "default": true },
-            "line_string_max_step_m": { "type": "number", "default": 5.0 },
-            "use_time_interpolation": { "type": "boolean", "default": false }
+            "traffic_light_group_msg_timeout_seconds": {
+              "type": "number",
+              "default": 0.2
+            },
+            "ignore_neighbors": {
+              "type": "boolean",
+              "default": false
+            },
+            "ignore_unknown_neighbors": {
+              "type": "boolean",
+              "default": true
+            },
+            "line_string_max_step_m": {
+              "type": "number",
+              "default": 5.0
+            },
+            "use_time_interpolation": {
+              "type": "boolean",
+              "default": false
+            },
+            "turn_indicators": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Subscribe to the turn-indicator report for a model that declares the tensor. False for a network whose graph carries the input but never reads it: the node binds a constant and subscribes to nothing."
+                }
+              }
+            }
           }
         },
         "postprocess": {
           "type": "object",
           "properties": {
-            "prediction_tensor": { "type": "string", "default": "prediction" },
+            "prediction_tensor": {
+              "type": "string",
+              "default": "prediction"
+            },
             "extra_trajectory_tensors": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Additional ego-only [B, T, 4] trajectory outputs published as extra candidates.",
               "default": []
             },
-            "horizon_seconds": { "type": "number", "default": 4.0, "exclusiveMinimum": 0.0 },
+            "horizon_seconds": {
+              "type": "number",
+              "default": 4.0,
+              "exclusiveMinimum": 0.0
+            },
             "time_step": {
               "type": "number",
               "description": "Trajectory point interval. Must be 0.1 s (fixed by the reused diffusion planner postprocessing).",
               "const": 0.1,
               "default": 0.1
             },
-            "velocity_smoothing_window": { "type": "integer", "minimum": 1, "default": 8 },
-            "stopping_threshold": { "type": "number", "default": 0.3 },
-            "generator_name": { "type": "string", "default": "TensorrtE2e" }
+            "velocity_smoothing_window": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 8
+            },
+            "stopping_threshold": {
+              "type": "number",
+              "default": 0.3
+            },
+            "generator_name": {
+              "type": "string",
+              "default": "TensorrtE2e"
+            }
+          }
+        },
+        "trt_workspace_mib": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 16384,
+          "description": "TensorRT builder workspace for every engine the node builds, in MiB. Below a graph's need the builder segfaults rather than failing; a property of the deployment host."
+        },
+        "planning_factor": {
+          "type": "object",
+          "description": "Stop / slow-down planning factors detected on the published trajectory, as autoware_diffusion_planner reports them.",
+          "properties": {
+            "enable_stop": {
+              "type": "boolean",
+              "default": false
+            },
+            "enable_slowdown": {
+              "type": "boolean",
+              "default": false
+            },
+            "stop_velocity_threshold": {
+              "type": "number",
+              "default": 0.1
+            },
+            "stop_keep_duration_threshold": {
+              "type": "number",
+              "default": 1.0
+            },
+            "slowdown_accel_threshold": {
+              "type": "number",
+              "default": -0.3
+            }
           }
         }
       },
-      "required": ["model_path", "sensor_inputs"]
+      "required": [
+        "model_path",
+        "sensor_inputs"
+      ]
     }
   },
   "properties": {
     "/**": {
       "type": "object",
       "properties": {
-        "ros__parameters": { "$ref": "#/definitions/tensorrt_e2e" }
+        "ros__parameters": {
+          "$ref": "#/definitions/tensorrt_e2e"
+        }
       },
-      "required": ["ros__parameters"]
+      "required": [
+        "ros__parameters"
+      ]
     }
   },
-  "required": ["/**"]
+  "required": [
+    "/**"
+  ]
 }

@@ -1,84 +1,182 @@
 # autoware_tensorrt_e2e
 
-`autoware_tensorrt_e2e` is the model-agnostic foundation for running a single TensorRT
-end-to-end planning model in Autoware. The model is selected by configuration; the node
-introspects its TensorRT IO manifest and connects the requested tensors to enabled input
-providers.
+One node that runs end-to-end trajectory planners with TensorRT. The model decides what
+the node does: at startup the node reads the engine's input and output manifest, asks the
+configured input providers to claim the tensors they can produce, validates every claimed
+shape, and refuses to start if any model input is left unclaimed. Deploying another model,
+or a re-trained variant of the same one, is a launch argument and a generated
+configuration file, never an edit to this package.
 
-The foundation deliberately contains no model-vendor feature extractor or deployment contract.
-Those belong in a downstream model branch/provider that depends on this package.
+The node does not reimplement what Autoware already has. Point clouds are taken and
+voxelized the way `autoware_bevfusion` takes and voxelizes them; the map, route, ego and
+traffic-light tensors are built by `autoware_diffusion_planner`'s own functions; the
+output trajectory, its candidate list and its planning factors are produced by
+`autoware_diffusion_planner`'s postprocessing. Where the two reference nodes report
+something, this node reports the same thing under the same name.
 
 ## Architecture
 
-The runtime pipeline is:
-
-```text
-ROS topics -> InputProviderInterface implementations -> TensorMap
-           -> InferenceEngine (named TensorRT IO) -> TensorMap
-           -> TrajectoryPostprocessor -> Autoware planning topics
+```
+timer (planning_frequency_hz)
+  └─ ego frame            odometry, acceleration, ego→map transform
+  └─ input providers      each claims tensors by name, fills them per tick
+  │    camera             images + intrinsics + extrinsics (from TF)
+  │    lidar              raw points, for a model that voxelizes internally
+  │    context            the diffusion planner's ego / map / route / traffic-light tensors
+  └─ inference            one TensorRT engine, built in-node with TrtCommon
+  └─ postprocess          diffusion planner's trajectory conversion, 4 s at 0.1 s
+  └─ publish              Trajectory, CandidateTrajectories, planning factors, diagnostics
 ```
 
-`InferenceEngine` is independent of tensor names. It loads or builds one TensorRT engine,
-resolves a dynamic batch dimension to one, rejects unsupported dynamic dimensions, validates
-input element counts, and returns host output tensors.
+Sensor providers are looked up in a registry by the names in `sensor_inputs`; each provider
+registers itself from its own source file, so a model line adds a provider by adding a file,
+and the node is identical on every branch that carries it.
 
-`InputProviderInterface` is the extension point for model inputs. Providers claim tensors from
-the engine manifest in `claim_inputs()` and produce them on every planning tick in `collect()`.
-The node rejects missing or multiply-claimed inputs at startup, so a model/deployment mismatch
-is reported before inference starts.
+## Sensor prototypes
 
-The included providers are:
-
-| Provider | Typical model input | Description |
+| Prototype | Launch file | Sensing input |
 | --- | --- | --- |
-| `camera` | `camera_images`, `camera_intrinsics`, `camera2ego` | One or more synchronized cameras with GPU preprocessing |
-| `lidar` | `points`, `num_points` | Padded/truncated point-cloud tensors |
-| context | diffusion-planner-style tensor names | Optional ego, object, map, route, and turn-indicator features |
+| Front camera | `e2e_planner_front_camera.launch.xml` | `CAM_FRONT_WIDE` |
+| Surround cameras | `e2e_planner_surround_cameras.launch.xml` | Front wide plus four corner wide cameras |
+| LiDAR, raw points | `e2e_planner_lidar.launch.xml` | `/sensing/lidar/concatenated/pointcloud`, for a model that voxelizes in-graph |
 
-The standard output contract is an ego trajectory tensor named `prediction` by default:
-`[B, T, 4]` or `[B, A, T, 4]`, with `(x, y, cos(yaw), sin(yaw))` in the model reference frame.
-The output tensor name, horizon, smoothing, and optional additional trajectory tensors are
-configuration parameters. Outputs are published as `Trajectory`, `CandidateTrajectories`, and,
-when neighbor predictions are present, `PredictedObjects`.
-
-## Example deployments
-
-The checked-in launch/config pairs exercise the foundation with different sensor layouts:
-
-| Deployment | Launch file | Sensing input |
-| --- | --- | --- |
-| Front camera | `e2e_planner_front_camera.launch.xml` | One camera |
-| Surround camera | `e2e_planner_surround_cameras.launch.xml` | Five cameras |
-| Raw LiDAR | `e2e_planner_lidar.launch.xml` | Concatenated point cloud |
-
-For example:
-
-```bash
-ros2 launch autoware_tensorrt_e2e e2e_planner_front_camera.launch.xml \
-  data_path:=$HOME/autoware_data/ml_models/tensorrt_e2e
-```
-
-Use `build_only:=true` to build the TensorRT engine and exit.
+Add `build_only:=true` to any launch to build the TensorRT engines and exit.
 
 ## Model contract
 
-At startup, all engine input tensors must be produced by an enabled provider. Names and shapes
-are validated against the provider contract. A model can add or remove optional context tensors
-without changing the node, provided those tensors are part of the context provider contract.
+The node accepts any single ONNX graph whose inputs are covered by the enabled providers,
+matched by tensor name and validated by shape at startup, and whose primary output is an
+ego trajectory tensor.
 
-The foundation supports the following common tensor shapes:
+**Output.** `[B, A, T, 4]` (agent 0 is the ego, the rest are neighbour predictions) or
+`[B, T, 4]` (ego only): `(x, y, cos yaw, sin yaw)` per 0.1 s step, in the ego frame. `T`
+is validated against `postprocess.horizon_seconds` (40 steps, 4 s, for the current models).
+The tensor name is `postprocess.prediction_tensor`; further ego-only trajectory outputs
+listed in `postprocess.extra_trajectory_tensors` are published as extra candidates.
 
-| Provider | Tensor | Shape |
+**Claimable inputs.**
+
+| Provider | Tensor (default name) | Shape | Built by |
+| --- | --- | --- | --- |
+| camera | `camera_images` | `[1, N, 3, H, W]` | this package, normalized RGB, `H` and `W` from the engine |
+| camera | `camera_intrinsics` | `[1, N, 3, 3]` | rescaled to the model resolution |
+| camera | `camera2ego` | `[1, N, 4, 4]` | TF, camera frame to `base_link` |
+| lidar | `points` | `[1, P, D]` | `D` in 3 to 5, padded or truncated to `P` |
+| lidar | `num_points` | `[1, 1]` | valid point count |
+| context | `ego_current_state` | `[1, 10]` | `autoware_diffusion_planner` |
+| context | `ego_agent_past` | `[1, T, 4]` | `autoware_diffusion_planner` |
+| context | `neighbor_agents_past` | `[1, N, 31, 11]` | `autoware_diffusion_planner` |
+| context | `lanes`, `lanes_speed_limit`, `lanes_has_speed_limit` | `[1, S, 20, 33]`, `[1, S, 1]` | `autoware_diffusion_planner`; traffic-light state in channels 8 to 12 |
+| context | `route_lanes` and its two speed-limit tensors | as above | `autoware_diffusion_planner` |
+| context | `polygons`, `line_strings` | `[1, 10, 40, 3]`, `[1, 60, 20, 4]` | `autoware_diffusion_planner` |
+| context | `goal_pose`, `ego_shape` | `[1, 4]`, `[1, 3]` | route goal in the ego frame; vehicle info |
+| context | `turn_indicators` | `[1, T]` | report history, or a constant when disabled |
+| context | `static_objects` | any | zero-filled, as in `autoware_diffusion_planner` |
+
+Only the context tensors named in the engine manifest are produced, and only the
+subscriptions they need are created. A model input that no provider can produce is a
+startup error naming the tensor.
+
+## Interface
+
+### Inputs
+
+| Topic | Type | Used by |
 | --- | --- | --- |
-| camera | `camera_images` | `[1, N, 3, H, W]` |
-| camera | `camera_intrinsics` | `[1, N, 3, 3]` |
-| camera | `camera2ego` | `[1, N, 4, 4]` |
-| lidar | `points` | `[1, P, D]`, `D` in 3–5 |
-| lidar | `num_points` | `[1, 1]` |
+| `~/input/odometry` | `nav_msgs/msg/Odometry` | always |
+| `~/input/acceleration` | `geometry_msgs/msg/AccelWithCovarianceStamped` | `ego_current_state` |
+| `~/input/camera{i}/image` | `sensor_msgs/msg/Image`, raw or compressed | camera provider |
+| `~/input/camera{i}/camera_info` | `sensor_msgs/msg/CameraInfo` | `camera_intrinsics` |
+| `~/input/pointcloud` | `sensor_msgs/msg/PointCloud2` through `cuda_blackboard`: a GPU-resident cloud is negotiated on `~/input/pointcloud/cuda`, a plain publisher is accepted as the fallback | lidar providers, as `autoware_bevfusion` |
+| `~/input/tracked_objects` | `autoware_perception_msgs/msg/TrackedObjects` | `neighbor_agents_past` |
+| `~/input/traffic_signals` | `autoware_perception_msgs/msg/TrafficLightGroupArray` | `lanes`, `route_lanes` |
+| `~/input/route` | `autoware_planning_msgs/msg/LaneletRoute` | `route_lanes`, `goal_pose` |
+| `~/input/vector_map` | `autoware_map_msgs/msg/LaneletMapBin` | map tensors |
+| `~/input/turn_indicators` | `autoware_vehicle_msgs/msg/TurnIndicatorsReport` | `turn_indicators`; not subscribed when `context.turn_indicators.enabled` is false |
 
-Tensor names used by camera and LiDAR providers are parameters, so retraining with different
-names does not require a code change. A new modality or feature pipeline should implement
-`InputProviderInterface` in a downstream branch and register it in the node's provider factory.
+A missing input stops planning for that tick with a throttled warning and a `WARN`
+diagnostic naming the input. The one exception mirrors `autoware_diffusion_planner`: a
+missing traffic-signal message leaves lanes marked as having no signal.
+
+### Outputs
+
+| Topic | Type | Content |
+| --- | --- | --- |
+| `~/output/trajectory` | `autoware_planning_msgs/msg/Trajectory` | Ego trajectory in `map`, 40 points at 0.1 s, stamped with the odometry it was planned from |
+| `~/output/trajectories` | `autoware_internal_planning_msgs/msg/CandidateTrajectories` | One candidate per batch and per extra trajectory tensor, with `GeneratorInfo` |
+| `~/output/predicted_objects` | `autoware_perception_msgs/msg/PredictedObjects` | Multi-agent models only |
+| `/planning/planning_factors/tensorrt_e2e` | `autoware_internal_planning_msgs/msg/PlanningFactorArray` | Stop and slow-down factors read off the trajectory, as `autoware_diffusion_planner` reports them |
+| `~/debug/processing_time_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | Per-tick processing time |
+| `~/debug/cyclic_time_ms`, `~/debug/pipeline_latency_ms`, `~/debug/processing_time/{total,collect,inference,postprocess}_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | The `autoware_bevfusion` debug set |
+| `/diagnostics` | | `inference_status` |
+
+The `inference_status` diagnostic carries the readiness state, the reason a tick was skipped,
+a `WARN` when processing exceeded the planning period, and the keys the reference nodes
+publish: `is_num_voxels_within_range` from `autoware_bevfusion`, and `valid_lane_count`,
+`valid_route_count`, `valid_polygon_count`, `valid_line_string_count`,
+`valid_neighbor_count` from `autoware_diffusion_planner`, each counted the same way.
+
+### Trajectory semantics
+
+Every field of the output is derived by `autoware_diffusion_planner`'s
+`create_ego_trajectory`, so a consumer sees the same message shape from either planner:
+velocity is the chord length between consecutive points over 0.1 s, seeded from the
+current ego position; it is smoothed with a trailing window of `velocity_smoothing_window`
+points; a drop below `stopping_threshold` while the ego is moving latches a stop, after
+which velocity is zero and the pose is held; acceleration is the forward difference of the
+smoothed velocity; the first point is at 0.1 s and the current pose is not prepended; `z`
+is the ego's current `z`; lateral velocity and heading rate are left at zero. The only
+difference from `autoware_diffusion_planner` is the horizon, 4 s instead of 8 s.
+
+## Operation
+
+The node is timer-driven at `planning_frequency_hz` (default 10 Hz); subscriptions only
+latch messages. Each sensor input has a staleness bound (`*.max_delay_ms`), measured
+against the node clock, so replaying a bag needs `use_sim_time:=true`. Processing time is
+published per stage, and exceeding the planning period raises a `WARN` diagnostic
+(`Processing time exceeded the planning period`). Model and preprocessing must fit the
+100 ms budget on the target hardware.
+
+TensorRT engines are built in-node by `TrtCommon` and cached beside the ONNX files. Both
+engines are built with the `trt_workspace_mib` workspace (default 16 GiB): below a graph's
+need the builder segfaults rather than failing, and the threshold moves with whatever else
+holds GPU memory.
+
+## Configuration layout
+
+Parameters are split the way `autoware_bevfusion` splits them, so that deploying a model
+never edits this package:
+
+| File | Lives in | Holds |
+| --- | --- | --- |
+| `config/e2e_planner.param.yaml` | the package | Deployment defaults, model-agnostic: artifact paths (from launch arguments), TensorRT workspace, planning rate, staleness bounds, context, postprocess and planning-factor behaviour |
+| `ml_package_<model>.param.yaml` | the model directory, beside the ONNX files | The network: which providers it needs, tensor names, voxelization geometry, temporal contract, horizon, validated precision, and which declared inputs it actually reads |
+
+The launch loads the package defaults first and the ml_package second, so the model's
+values win. Fields that describe the network are declared without defaults, as
+`autoware_bevfusion` declares its ml_package fields: a model directory that lacks one fails
+at startup instead of running with another network's geometry.
+
+```bash
+ros2 launch autoware_tensorrt_e2e <launch file> \
+  data_path:=$HOME/autoware_data/ml_models/tensorrt_e2e model_name:=<model>
+```
+
+`ml_package_<model>.param.yaml` is generated from the artifacts, never hand-written, so a
+new checkpoint cannot disagree with a stale configuration:
+
+```bash
+ros2 run autoware_tensorrt_e2e make_ml_package_param.py <model_dir> --model-name <model> \
+  [--turn-indicators-optional]
+```
+
+It reads points-per-voxel and the point-feature count out of the extractor's `voxels`
+input, the cache semantics out of the deployment contract, and the tensor names and
+horizon out of the planner graph. `--turn-indicators-optional` records that the network
+never reads its `turn_indicators` input; verify that by perturbing the input before
+setting it. Re-run the generator whenever the artifacts change.
+
+Every parameter is described in `schema/tensorrt_e2e.schema.json`.
 
 ## Visualization
 
@@ -91,57 +189,25 @@ ros2 launch autoware_tensorrt_e2e <launch file> rviz:=true use_sim_time:=true \
   output_trajectory:=/planning/trajectory
 ```
 
-`use_sim_time:=true` is required whenever inputs come from a bag: without it the node
-measures input staleness against wall time and drops every message.
+In a full Autoware stack the vehicle launch publishes `/robot_description`. A standalone
+replay has nothing drawing the ego; add `vehicle_model_publisher:=true
+vehicle_model:=<name>` to publish the body from `<name>_description`.
 
-In a full Autoware stack the vehicle launch publishes `/robot_description`. For a standalone
-replay nothing does, and the ego is absent from the scene; add
-`vehicle_model_publisher:=true vehicle_model:=<name>` to publish the body from
-`<name>_description`.
+## Extending
 
-## Configuration layout
+- **Another checkpoint of a supported model.** Point `model_name` or `model_path` at the new
+  artifacts and regenerate their ml_package file. No code change.
+- **Another sensing modality.** Implement `InputProviderInterface` (`claim_inputs`,
+  `collect`, and optionally `add_diagnostics` and `latest_input_stamp`) in its own source
+  file, register it with `TENSORRT_E2E_REGISTER_INPUT_PROVIDER("<name>", factory)`, and name
+  it in `sensor_inputs`. The node is not edited.
+- **Another context feature.** Extend `ContextInputProvider` with the new claim; keep it
+  optional, driven by the engine manifest.
 
-Parameters are split the way `autoware_bevfusion` splits them, so that deploying a model
-never edits this package:
+## Reference nodes
 
-| File | Lives in | Holds |
-| ---- | -------- | ----- |
-| `config/e2e_planner.param.yaml` | the package | deployment defaults, **model-agnostic**: artifact paths (from launch arguments), TensorRT workspace, planning rate, staleness tolerances, context and postprocess behaviour |
-| `ml_package_<model>.param.yaml` | **the model directory, beside the ONNX files** | the network itself: tensor names, input geometry, horizon, and the precision the graph is validated in |
-
-A launch file loads the package defaults first and the ml_package second, so a model's values
-override the defaults and switching models is a launch argument:
-
-```bash
-ros2 launch autoware_tensorrt_e2e <launch file> \
-  data_path:=$HOME/autoware_data/ml_models/tensorrt_e2e model_name:=<model>
-```
-
-`ml_package_<model>.param.yaml` is **generated from the artifacts**, never hand-written, so a
-new checkpoint cannot silently disagree with a stale config:
-
-```bash
-python3 scripts/make_ml_package_param.py <model_dir> --model-name <model>
-```
-
-It reads the tensor names and horizon out of the planner graph, and — for models that ship a
-feature extractor and a deployment contract — the input geometry out of the extractor graph and
-the cache semantics out of the contract JSON. Re-run it whenever those artifacts change.
-
-### TensorRT workspace
-
-`trt_workspace_mib` (default 4096) is a property of the deployment host, not of the model.
-Sizing it below what a graph needs does not merely cost performance: the builder segfaults.
-
-## Runtime behavior
-
-The node is timer-driven at `planning_frequency_hz` (10 Hz by default). Sensor callbacks only
-cache messages; expensive preprocessing and inference happen in the timer callback. Processing
-time is published on `~/debug/processing_time_ms` and budget overruns are reported through
-diagnostics.
-
-## Dependencies
-
-The foundation links only the generic TensorRT/CUDA, camera, LiDAR, context, and postprocessing
-dependencies. Model-specific feature extractors and their vendor libraries should be added by
-the downstream model branch that implements the corresponding provider.
+| Package | What this node takes from it |
+| --- | --- |
+| [`autoware_bevfusion`](../../perception/autoware_bevfusion/README.md) | `cuda_blackboard` point cloud input, `PreprocessCuda` voxelization, the engine build through `TrtCommon`, the ml_package convention, the debug topic set and the voxel-range diagnostic |
+| [`autoware_diffusion_planner`](../../planning/autoware_diffusion_planner/README.md) | Every context tensor, the trajectory conversion, candidate trajectories, planning factors and the valid-count diagnostics |
+| [`autoware_tensorrt_vad`](../autoware_tensorrt_vad/README.md) | Camera synchronization and the separation of ROS and CUDA domains |

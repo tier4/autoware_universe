@@ -105,11 +105,11 @@ private:
   // Deployment parameters
   double traffic_light_msg_timeout_s_{0.2};
   bool ignore_neighbors_{false};
-  //! When false, a missing turn-indicator report is filled as DISABLE instead of
-  //! refusing to plan. Set per model, for networks whose graph carries the
-  //! input only to keep a stable signature and never reads it.
-  bool turn_indicators_required_{true};
-  bool warned_turn_indicators_absent_{false};
+  //! `context.turn_indicators.enabled`. Off for a network whose graph carries the
+  //! input only to keep a stable signature and never reads it: nothing is
+  //! subscribed and the tensor is a constant built once at claim time.
+  bool turn_indicators_enabled_{true};
+  std::vector<float> turn_indicators_constant_;
   bool ignore_unknown_neighbors_{true};
   double line_string_max_step_m_{5.0};
   bool use_time_interpolation_{false};

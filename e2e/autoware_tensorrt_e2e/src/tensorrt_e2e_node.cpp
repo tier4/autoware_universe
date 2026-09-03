@@ -14,10 +14,9 @@
 
 #include "autoware/tensorrt_e2e/tensorrt_e2e_node.hpp"
 
-#include "autoware/tensorrt_e2e/providers/bev_feature_input_provider.hpp"
-#include "autoware/tensorrt_e2e/providers/camera_input_provider.hpp"
-#include "autoware/tensorrt_e2e/providers/lidar_input_provider.hpp"
+#include "autoware/tensorrt_e2e/input_provider_registry.hpp"
 
+#include <autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp>
 #include <autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp>
 #include <autoware/diffusion_planner/utils/utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -37,6 +36,7 @@
 namespace autoware::tensorrt_e2e
 {
 namespace dp = autoware::diffusion_planner;
+using autoware_internal_planning_msgs::msg::PlanningFactor;
 using diagnostic_msgs::msg::DiagnosticStatus;
 
 namespace
@@ -62,6 +62,11 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
   pub_processing_time_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
   diagnostics_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
+  debug_publisher_ = std::make_unique<autoware_utils_debug::DebugPublisher>(this, get_name());
+  planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      this, "tensorrt_e2e");
+  stop_watch_.tic("cyclic");
 
   try {
     initialize_pipeline();
@@ -112,22 +117,24 @@ void TensorrtE2eNode::set_up_params()
     declare_parameter<double>("postprocess.stopping_threshold", 0.3);
   postprocess_params_.generator_name =
     declare_parameter<std::string>("postprocess.generator_name", "TensorrtE2e");
+
+  planning_factor_params_.enable_stop = declare_parameter<bool>("planning_factor.enable_stop", false);
+  planning_factor_params_.enable_slowdown =
+    declare_parameter<bool>("planning_factor.enable_slowdown", false);
+  planning_factor_params_.detection_config.stop_velocity_threshold =
+    declare_parameter<double>("planning_factor.stop_velocity_threshold", 0.1);
+  planning_factor_params_.detection_config.stop_keep_duration_threshold =
+    declare_parameter<double>("planning_factor.stop_keep_duration_threshold", 1.0);
+  planning_factor_params_.detection_config.slowdown_accel_threshold =
+    declare_parameter<double>("planning_factor.slowdown_accel_threshold", -0.3);
 }
 
 void TensorrtE2eNode::create_providers()
 {
+  // Providers come from the registry, each registered by its own source file, so this
+  // node is the same on every model line regardless of which providers a line ships.
   for (const auto & sensor : params_.sensor_inputs) {
-    if (sensor == "camera") {
-      providers_.push_back(std::make_unique<CameraInputProvider>(*this, tf_buffer_));
-    } else if (sensor == "lidar") {
-      providers_.push_back(std::make_unique<LidarInputProvider>(*this));
-    } else if (sensor == "bev_feature") {
-      providers_.push_back(std::make_unique<BevFeatureInputProvider>(*this));
-    } else {
-      throw std::runtime_error(
-        "Unknown sensor input '" + sensor +
-        "' (supported: \"camera\", \"lidar\", \"bev_feature\")");
-    }
+    providers_.push_back(make_input_provider(sensor, *this, tf_buffer_));
   }
   if (params_.enable_context_inputs) {
     auto context_provider = std::make_unique<ContextInputProvider>(*this, vehicle_info_);
@@ -299,6 +306,8 @@ void TensorrtE2eNode::on_timer()
   }
 
   // Collect all model inputs.
+  TickTiming timing;
+  stop_watch_.tic("collect");
   TensorMap inputs;
   for (const auto & provider : providers_) {
     std::string error;
@@ -312,6 +321,7 @@ void TensorrtE2eNode::on_timer()
   }
 
   apply_normalization(inputs);
+  add_input_diagnostics(inputs);
   if (const auto invalid_tensor = find_invalid_tensor(inputs)) {
     RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
@@ -321,7 +331,10 @@ void TensorrtE2eNode::on_timer()
   }
 
   // Inference.
+  timing.collect_ms = stop_watch_.toc("collect");
+  stop_watch_.tic("inference");
   const auto result = engine_->infer(inputs);
+  timing.inference_ms = stop_watch_.toc("inference");
   if (!result.outputs) {
     RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
@@ -331,6 +344,7 @@ void TensorrtE2eNode::on_timer()
   }
 
   // Postprocess and publish.
+  stop_watch_.tic("postprocess");
   TrajectoryPostprocessor::Output output;
   try {
     const auto * neighbor_histories =
@@ -343,14 +357,19 @@ void TensorrtE2eNode::on_timer()
     return;
   }
 
+  timing.postprocess_ms = stop_watch_.toc("postprocess");
+
   pub_trajectory_->publish(output.trajectory);
   pub_trajectories_->publish(output.candidate_trajectories);
   if (output.predicted_objects) {
     pub_objects_->publish(*output.predicted_objects);
   }
+  publish_planning_factor(output.trajectory);
 
   // Timing: the whole tick must fit in the planning period to sustain the output rate.
   const double processing_time_ms = stop_watch_.toc("processing_time");
+  timing.total_ms = processing_time_ms;
+  publish_debug_timing(now, *ego, timing);
   const double period_ms = 1e3 / params_.planning_frequency_hz;
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = now;
@@ -367,6 +386,78 @@ void TensorrtE2eNode::on_timer()
       DiagnosticStatus::WARN, "Processing time exceeded the planning period");
   }
   diagnostics_->publish(now);
+}
+
+void TensorrtE2eNode::add_input_diagnostics(const TensorMap & inputs)
+{
+  for (const auto & provider : providers_) {
+    provider->add_diagnostics(*diagnostics_);
+  }
+  // Same keys and the same counting as autoware_diffusion_planner: a [1, N, P, D] tensor's
+  // valid elements are its non-zero rows in batch 0.
+  static const std::vector<std::pair<const char *, const char *>> kCounted = {
+    {"lanes", "valid_lane_count"},
+    {"route_lanes", "valid_route_count"},
+    {"polygons", "valid_polygon_count"},
+    {"line_strings", "valid_line_string_count"},
+    {"neighbor_agents_past", "valid_neighbor_count"},
+  };
+  for (const auto & [tensor_name, key] : kCounted) {
+    const auto it = inputs.find(tensor_name);
+    if (it == inputs.end() || it->second.is_device() || it->second.shape.size() != 4) {
+      continue;
+    }
+    const auto & shape = it->second.shape;
+    diagnostics_->add_key_value(
+      key, dp::postprocess::count_valid_elements(
+             it->second.host_data, shape[1], shape[2], shape[3], /*batch_idx=*/0));
+  }
+}
+
+void TensorrtE2eNode::publish_planning_factor(const Trajectory & trajectory)
+{
+  const auto & points = trajectory.points;
+  const auto detected =
+    dp::detect_planning_factors(points, planning_factor_params_.detection_config);
+
+  if (planning_factor_params_.enable_stop && detected.stop) {
+    const auto & stop = *detected.stop;
+    planning_factor_interface_->add(
+      points, stop.ego_pose, stop.stop_pose, PlanningFactor::STOP,
+      autoware_internal_planning_msgs::msg::SafetyFactorArray{});
+  }
+  if (planning_factor_params_.enable_slowdown && detected.slowdown) {
+    const auto & slowdown = *detected.slowdown;
+    planning_factor_interface_->add(
+      points, slowdown.ego_pose, slowdown.start_pose, slowdown.end_pose, PlanningFactor::SLOW_DOWN,
+      autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true, slowdown.start_velocity,
+      slowdown.end_velocity);
+  }
+  planning_factor_interface_->publish();
+}
+
+void TensorrtE2eNode::publish_debug_timing(
+  const rclcpp::Time & now, const EgoFrame & ego, const TickTiming & timing)
+{
+  using autoware_internal_debug_msgs::msg::Float64Stamped;
+  // Latency is measured from the freshest sensor frame behind this output, as bevfusion
+  // measures it from its cloud stamp; without a sensor provider, from the ego frame.
+  rclcpp::Time input_stamp = ego.stamp;
+  for (const auto & provider : providers_) {
+    if (const auto stamp = provider->latest_input_stamp()) {
+      input_stamp = *stamp;
+      break;
+    }
+  }
+  debug_publisher_->publish<Float64Stamped>("debug/cyclic_time_ms", stop_watch_.toc("cyclic", true));
+  debug_publisher_->publish<Float64Stamped>(
+    "debug/pipeline_latency_ms", (now - input_stamp).seconds() * 1e3);
+  debug_publisher_->publish<Float64Stamped>("debug/processing_time/total_ms", timing.total_ms);
+  debug_publisher_->publish<Float64Stamped>("debug/processing_time/collect_ms", timing.collect_ms);
+  debug_publisher_->publish<Float64Stamped>(
+    "debug/processing_time/inference_ms", timing.inference_ms);
+  debug_publisher_->publish<Float64Stamped>(
+    "debug/processing_time/postprocess_ms", timing.postprocess_ms);
 }
 
 }  // namespace autoware::tensorrt_e2e

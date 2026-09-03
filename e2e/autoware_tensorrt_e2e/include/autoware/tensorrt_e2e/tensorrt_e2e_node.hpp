@@ -21,8 +21,11 @@
 #include "autoware/tensorrt_e2e/providers/context_input_provider.hpp"
 
 #include <autoware/diffusion_planner/utils/arg_reader.hpp>
+#include <autoware/diffusion_planner/utils/planning_factor_utils.hpp>
+#include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -66,6 +69,15 @@ struct TensorrtE2eParams
   bool enable_context_inputs{true};
 };
 
+//! Stop / slow-down factors read off the published trajectory, as
+//! autoware_diffusion_planner reports them, for the consumers of a trajectory generator.
+struct PlanningFactorParams
+{
+  bool enable_stop{false};
+  bool enable_slowdown{false};
+  autoware::diffusion_planner::PlanningFactorDetectionConfig detection_config;
+};
+
 /**
  * @class TensorrtE2eNode
  * @brief Abstract E2E trajectory planner node.
@@ -104,9 +116,25 @@ private:
   /// @return The name of the first host tensor containing NaN/Inf, or std::nullopt.
   static std::optional<std::string> find_invalid_tensor(const TensorMap & inputs);
 
+  /// The diffusion planner's `valid_*_count` diagnostics, for the context tensors present.
+  void add_input_diagnostics(const TensorMap & inputs);
+  void publish_planning_factor(const Trajectory & trajectory);
+  //! Stage durations of one tick, captured at each stage boundary.
+  struct TickTiming
+  {
+    double collect_ms{0.0};
+    double inference_ms{0.0};
+    double postprocess_ms{0.0};
+    double total_ms{0.0};
+  };
+  /// The bevfusion debug topic set: cyclic time, pipeline latency, per-stage processing time.
+  void publish_debug_timing(
+    const rclcpp::Time & now, const EgoFrame & ego, const TickTiming & timing);
+
   // Parameters
   TensorrtE2eParams params_;
   PostprocessParams postprocess_params_;
+  PlanningFactorParams planning_factor_params_;
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
   double base_link_to_center_{0.0};
 
@@ -131,6 +159,9 @@ private:
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> sub_acceleration_{
     this, "~/input/acceleration"};
   std::unique_ptr<DiagnosticsInterface> diagnostics_;
+  std::unique_ptr<autoware_utils_debug::DebugPublisher> debug_publisher_;
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface_;
   unique_identifier_msgs::msg::UUID generator_uuid_;
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch_;
 };
