@@ -82,26 +82,22 @@ names does not require a code change. A new modality or feature pipeline should 
 
 ## Visualization
 
-Every launch file takes `rviz:=true`, which opens `rviz/e2e_planner.rviz` — grid, vehicle
-model, lanelet2 map, the published trajectory, and the input pointcloud (off by default: it
-is the expensive display).
+Every launch file takes `rviz:=true`, which opens the standard Autoware layout
+(`autoware_launch/rviz/autoware.rviz`). That layout draws `/planning/trajectory`, so remap
+the output there to see it:
 
 ```bash
-ros2 launch autoware_tensorrt_e2e <launch file> rviz:=true use_sim_time:=true
+ros2 launch autoware_tensorrt_e2e <launch file> rviz:=true use_sim_time:=true \
+  output_trajectory:=/planning/trajectory
 ```
 
-That also starts `vector_map_marker_relay.py`, which is not optional if you want to see the
-map. Two things stop RViz from drawing it, neither of which reports an error:
+`use_sim_time:=true` is required whenever inputs come from a bag: without it the node
+measures input staleness against wall time and drops every message.
 
-- `autoware_lanelet2_map_visualizer` emits duplicate `(ns, id)` marker keys — thousands of
-  them on a city map — and RViz rejects the whole array on its duplicate check;
-- a looping `ros2 bag play --clock` moves simulated time backwards once per cycle, RViz
-  resets and discards everything it holds, and a latched message is delivered once per
-  subscription and never again.
-
-The relay renumbers the ids and re-latches on a slow heartbeat, so the view heals itself at
-every loop point. `use_sim_time:=true` is required whenever inputs come from a bag: without
-it the node measures input staleness against wall time and drops every message.
+In a full Autoware stack the vehicle launch publishes `/robot_description`. For a standalone
+replay nothing does, and the ego is absent from the scene; add
+`vehicle_model_publisher:=true vehicle_model:=<name>` to publish the body from
+`<name>_description`.
 
 ## Configuration layout
 
