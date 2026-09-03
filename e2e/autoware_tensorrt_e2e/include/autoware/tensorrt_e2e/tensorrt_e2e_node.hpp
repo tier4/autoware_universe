@@ -62,7 +62,8 @@ struct TensorrtE2eParams
   bool build_only{false};
   double planning_frequency_hz{10.0};
   bool shift_x{false};
-  std::vector<std::string> sensor_inputs;  //!< Enabled sensor providers: "camera", "lidar".
+  //! Enabled sensor providers: "camera", "lidar", "latentdrive".
+  std::vector<std::string> sensor_inputs;
   bool enable_context_inputs{true};
 };
 

@@ -79,9 +79,11 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     src/types.cpp
     src/inference_engine.cpp
     src/providers/camera_input_provider.cpp
+    src/providers/latentdrive_input_provider.cpp
     src/providers/lidar_input_provider.cpp
     src/providers/context_input_provider.cpp
     src/postprocess/trajectory_postprocessor.cpp
+    src/postprocess/latentdrive_postprocessor.cpp
     src/tensorrt_e2e_node.cpp
   )
 
@@ -108,6 +110,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
       test/types_test.cpp
       test/trajectory_postprocessor_test.cpp
+      test/latentdrive_input_provider_test.cpp
+      test/latentdrive_postprocessor_test.cpp
     )
     target_link_libraries(test_${PROJECT_NAME} ${PROJECT_NAME}_component)
   endif()
@@ -117,6 +121,7 @@ endif()
 install(
   PROGRAMS
     scripts/make_ml_package_param.py
+    scripts/make_latentdrive_ml_package_param.py
     scripts/freeze_onnx_batch.py
   DESTINATION lib/${PROJECT_NAME}
 )

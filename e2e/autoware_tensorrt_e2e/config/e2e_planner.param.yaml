@@ -51,6 +51,25 @@
         precision: "fp16"  # sparse-conv feature extractors are validated in fp16
         cloud_capacity: 2000000
 
+    latentdrive:
+      # Newest-frame staleness at the planning tick. The front-camera JPEG stream
+      # itself arrives 40-60 ms behind the clock, but decode, preprocessing and
+      # inference share one executor thread, so a busy tick can see a frame that
+      # is one period older than that. 200 ms dropped such ticks on the replay
+      # host; 300 ms keeps the 10 Hz output without accepting a two-frame lag.
+      max_delay_ms: 300.0
+      frame_interval_tolerance_seconds: 0.15
+      # Temporal smoothing of the plan, ported from LatentDrive-TRT's display filter and
+      # re-anchored on measured ego motion. Off by default: it trades roughly
+      # (1 - alpha) / alpha ticks of lag for a steadier reference, which is a deployment
+      # decision, and open-loop accuracy is measured on the raw output (published as the
+      # `_raw` candidate when this is on).
+      smoothing:
+        enable: false
+        alpha: 0.35  # weight of the fresh plan; 1.0 disables the blend
+        reset_jump_m: 8.0  # a larger end-point jump is a new decision, passed through
+        max_gap_seconds: 1.0  # a longer gap (or a step back in time) drops the state
+
     context:
       traffic_light_group_msg_timeout_seconds: 0.2
       ignore_neighbors: false

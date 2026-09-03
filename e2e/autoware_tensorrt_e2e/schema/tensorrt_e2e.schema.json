@@ -44,7 +44,7 @@
         },
         "sensor_inputs": {
           "type": "array",
-          "items": { "type": "string", "enum": ["camera", "lidar"] },
+          "items": { "type": "string", "enum": ["camera", "lidar", "latentdrive"] },
           "description": "Enabled sensor input providers.",
           "default": []
         },
@@ -97,6 +97,86 @@
             "num_points_tensor": { "type": "string", "default": "num_points" },
             "max_delay_ms": { "type": "number", "default": 200.0 },
             "intensity_scale": { "type": "number", "default": 1.0 }
+          }
+        },
+        "latentdrive": {
+          "type": "object",
+          "description": "LatentDrive planner inputs: a front-camera clip and an ego status vector.",
+          "properties": {
+            "video_tensor": { "type": "string", "default": "video" },
+            "status_tensor": { "type": "string", "default": "status" },
+            "image_transport": { "type": "string", "enum": ["raw", "compressed"], "default": "compressed" },
+            "frame_interval_seconds": {
+              "type": "number",
+              "description": "Spacing of the clip's frames; the frame count comes from the engine.",
+              "default": 0.5,
+              "exclusiveMinimum": 0.0
+            },
+            "frame_interval_tolerance_seconds": {
+              "type": "number",
+              "description": "How far a stored frame may be from its slot before the clip is not ready.",
+              "default": 0.15,
+              "minimum": 0.0
+            },
+            "max_delay_ms": { "type": "number", "default": 200.0 },
+            "normalization_mean": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Per-channel mean (RGB, 0-1 scale).",
+              "default": [0.485, 0.456, 0.406]
+            },
+            "normalization_std": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Per-channel standard deviation (RGB, 0-1 scale).",
+              "default": [0.229, 0.224, 0.225]
+            },
+            "subgoal_ahead_m": {
+              "type": "number",
+              "description": "Arc length ahead on the reference trajectory at which the subgoal is taken.",
+              "default": 50.0
+            },
+            "status_subgoal_divisor": {
+              "type": "number",
+              "description": "The subgoal coordinates are divided by this before entering the status tensor.",
+              "default": 10.0,
+              "exclusiveMinimum": 0.0
+            },
+            "tick_log": {
+              "type": "boolean",
+              "description": "Log one [LatentDrive-debug] INFO line per planning tick (frame ages and status, or the skip reason).",
+              "default": false
+            },
+            "smoothing": {
+              "type": "object",
+              "description": "Temporal smoothing of the (x, y, yaw) plan before it becomes a trajectory; the raw plan is kept as a `_raw` candidate.",
+              "properties": {
+                "enable": { "type": "boolean", "default": false },
+                "alpha": {
+                  "type": "number",
+                  "description": "Weight of the fresh plan in the blend; 1.0 passes it through.",
+                  "default": 0.35,
+                  "exclusiveMinimum": 0.0,
+                  "maximum": 1.0
+                },
+                "reset_jump_m": {
+                  "type": "number",
+                  "description": "An end-point jump beyond this replaces the filter state instead of being blended.",
+                  "default": 8.0,
+                  "exclusiveMinimum": 0.0
+                },
+                "max_gap_seconds": {
+                  "type": "number",
+                  "description": "A gap between ticks beyond this, or a step back in time, drops the filter state.",
+                  "default": 1.0,
+                  "exclusiveMinimum": 0.0
+                }
+              }
+            }
           }
         },
         "context": {

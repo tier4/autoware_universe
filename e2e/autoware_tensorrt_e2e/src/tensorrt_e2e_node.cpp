@@ -14,7 +14,9 @@
 
 #include "autoware/tensorrt_e2e/tensorrt_e2e_node.hpp"
 
+#include "autoware/tensorrt_e2e/postprocess/latentdrive_postprocessor.hpp"
 #include "autoware/tensorrt_e2e/providers/camera_input_provider.hpp"
+#include "autoware/tensorrt_e2e/providers/latentdrive_input_provider.hpp"
 #include "autoware/tensorrt_e2e/providers/lidar_input_provider.hpp"
 
 #include <autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp>
@@ -120,9 +122,12 @@ void TensorrtE2eNode::create_providers()
       providers_.push_back(std::make_unique<CameraInputProvider>(*this, tf_buffer_));
     } else if (sensor == "lidar") {
       providers_.push_back(std::make_unique<LidarInputProvider>(*this));
+    } else if (sensor == "latentdrive") {
+      providers_.push_back(std::make_unique<LatentDriveInputProvider>(*this));
     } else {
       throw std::runtime_error(
-        "Unknown sensor input '" + sensor + "' (supported: \"camera\", \"lidar\")");
+        "Unknown sensor input '" + sensor +
+        "' (supported: \"camera\", \"lidar\", \"latentdrive\")");
     }
   }
   if (params_.enable_context_inputs) {
@@ -138,6 +143,10 @@ void TensorrtE2eNode::create_providers()
 
 std::unique_ptr<TrajectoryPostprocessor> TensorrtE2eNode::create_postprocessor()
 {
+  const auto & sensors = params_.sensor_inputs;
+  if (std::find(sensors.begin(), sensors.end(), "latentdrive") != sensors.end()) {
+    return std::make_unique<LatentDrivePostprocessor>(*this, postprocess_params_);
+  }
   return std::make_unique<TrajectoryPostprocessor>(postprocess_params_);
 }
 

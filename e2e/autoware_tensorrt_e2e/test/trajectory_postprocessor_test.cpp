@@ -209,8 +209,7 @@ TEST(TrajectoryPostprocessorTest, ReadsYawPosesLikeCosSinPoses)
 
   TrajectoryPostprocessor yaw_postprocessor(make_params());
   yaw_postprocessor.validate_output_specs(make_output_specs({1, kTimesteps, 3}));
-  const auto actual =
-    yaw_postprocessor.process(yaw_outputs, ego, nullptr, rclcpp::Time(0), uuid);
+  const auto actual = yaw_postprocessor.process(yaw_outputs, ego, nullptr, rclcpp::Time(0), uuid);
 
   ASSERT_EQ(actual.trajectory.points.size(), expected.trajectory.points.size());
   for (size_t i = 0; i < actual.trajectory.points.size(); ++i) {

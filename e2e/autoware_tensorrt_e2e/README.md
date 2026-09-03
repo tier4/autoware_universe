@@ -33,6 +33,7 @@ The included providers are:
 | --- | --- | --- |
 | `camera` | `camera_images`, `camera_intrinsics`, `camera2ego` | One or more synchronized cameras with GPU preprocessing |
 | `lidar` | `points`, `num_points` | Padded/truncated point-cloud tensors |
+| `latentdrive` | `video`, `status` | A front-camera clip and an ego status vector (see [LatentDrive](#latentdrive)) |
 | context | diffusion-planner-style tensor names | Optional ego, object, map, route, and turn-indicator features |
 
 The standard output contract is an ego trajectory tensor named `prediction` by default:
@@ -51,6 +52,7 @@ The checked-in launch/config pairs exercise the foundation with different sensor
 | Front camera | `e2e_planner_front_camera.launch.xml` | One camera |
 | Surround camera | `e2e_planner_surround_cameras.launch.xml` | Five cameras |
 | Raw LiDAR | `e2e_planner_lidar.launch.xml` | Concatenated point cloud |
+| LatentDrive | `e2e_planner_latentdrive.launch.xml` | Front-camera clip + ego status |
 
 For example:
 
@@ -76,10 +78,66 @@ The foundation supports the following common tensor shapes:
 | camera | `camera2ego` | `[1, N, 4, 4]` |
 | lidar | `points` | `[1, P, D]`, `D` in 3–5 |
 | lidar | `num_points` | `[1, 1]` |
+| latentdrive | `video` | `[1, 3, T, H, W]` |
+| latentdrive | `status` | `[1, 6]` |
 
-Tensor names used by camera and LiDAR providers are parameters, so retraining with different
-names does not require a code change. A new modality or feature pipeline should implement
-`InputProviderInterface` in a downstream branch and register it in the node's provider factory.
+Tensor names used by the camera, LiDAR and LatentDrive providers are parameters, so retraining
+with different names does not require a code change. A new modality or feature pipeline should
+implement `InputProviderInterface` in a downstream branch and register it in the node's provider
+factory.
+
+### LatentDrive
+
+LatentDrive is a V-JEPA2 ViT-L encoder over a short front-camera clip feeding a planner
+transformer. Its inference framework lives in the `LatentDrive-TRT` repository; this package
+carries only the input contract, in `LatentDriveInputProvider`, and runs the graph through the
+common `InferenceEngine`.
+
+- `video` `[1, 3, T, H, W]`: `T` frames `latentdrive.frame_interval_seconds` apart (0.5 s),
+  oldest first, channel-major. Each frame is preprocessed once on arrival exactly as in the
+  training pipeline: RGB, centre-crop the height to width / 2, bilinear resize to `W x H`,
+  scale to [0, 1], ImageNet-normalize. Frames are chosen by stamp, so a dropped camera frame
+  shifts one slot to its neighbour rather than compressing the clip.
+- `status` `[1, 6]`: `(subgoal_x / 10, subgoal_y / 10, v_x, v_y, a_x, a_y)` in the ego frame.
+  The subgoal is the point `latentdrive.subgoal_ahead_m` (50 m) of arc length ahead on the
+  reference trajectory subscribed at `~/input/reference_trajectory`. In an open-loop replay the
+  recorded planner trajectory plays that role; a closed-loop deployment needs a route-based
+  source. The subgoal actually used is published on `~/debug/latentdrive/subgoal`.
+- `traj` `[1, 40, 3]`: `(x, y, yaw)` at 0.1 s over 4 s, decoded by the common postprocessor
+  through `LatentDrivePostprocessor`, which adds an optional temporal smoothing
+  (`latentdrive.smoothing.*`, off by default). Consecutive plans disagree by about a metre on
+  how far they reach, which reads as jitter in RViz and as a restless reference for a
+  controller. The filter, ported from LatentDrive-TRT's display smoother, carries the previous
+  plan forward by the ego's measured motion and blends the fresh plan into it; a large end-point
+  jump or a time gap resets it. With it on, the unfiltered plan is still published as the
+  candidate trajectory whose generator name ends in `_raw`, so open-loop accuracy is measured
+  on the model's output and the filter is declared as part of the system rather than hidden.
+  `smoothing:=true` on the launch file turns it on for one run.
+
+The offline validation builds the engine fp16 with the planner stage pinned to fp32, a layer
+precision recipe `autoware_tensorrt_common` cannot express; `precision` here is therefore the
+pure fp16 or fp32 build. To run the validated engine instead, place it beside the ONNX under the
+same stem (`<planner>.engine`): `autoware_tensorrt_common` loads an existing engine file before
+it builds one, provided it was serialized by the same TensorRT version. Its `ml_package` file
+comes from
+`scripts/make_latentdrive_ml_package_param.py`, which reads the frame count, input resolution
+and horizon out of the planner graph and refuses the 8-waypoint (2 Hz) export, whose 0.5 s
+step the postprocessor does not support.
+
+```bash
+python3 scripts/make_latentdrive_ml_package_param.py <model_dir> --planner-onnx <planner>.onnx
+ros2 launch autoware_tensorrt_e2e e2e_planner_latentdrive.launch.xml \
+  model_path:=<model_dir> planner_onnx:=<planner>.onnx use_sim_time:=true \
+  rviz:=true output_trajectory:=/planning/trajectory \
+  vehicle_model_publisher:=true vehicle_model:=sample_vehicle
+ros2 bag play <bag> --clock --topics /sensing/camera/camera1/image_raw/compressed \
+  /localization/kinematic_state /localization/acceleration \
+  /planning/scenario_planning/lane_driving/trajectory /tf /tf_static
+```
+
+Checked on a 60 s recording of a decelerate-to-red-light scene: the 4 s plan reaches
+43 m at 11.5 m/s and shrinks to nothing as the ego stops, heading within a degree of the
+ego's, at 10 Hz with about 28 ms per tick on a laptop RTX 4060.
 
 ## Visualization
 
