@@ -1,0 +1,469 @@
+// Copyright 2026 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "autoware/target_lanelet_estimator/impl.hpp"
+
+#include <tf2/utils.hpp>
+
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include <boost/geometry/algorithms/area.hpp>
+#include <boost/geometry/algorithms/correct.hpp>
+#include <boost/geometry/algorithms/covered_by.hpp>
+#include <boost/geometry/algorithms/disjoint.hpp>
+#include <boost/geometry/algorithms/envelope.hpp>
+#include <boost/geometry/algorithms/intersection.hpp>
+
+#include <lanelet2_core/geometry/Lanelet.h>
+#include <lanelet2_core/primitives/BoundingBox.h>
+#include <lanelet2_routing/RoutingGraph.h>
+
+#include <algorithm>
+#include <cmath>
+#include <optional>
+#include <utility>
+#include <vector>
+
+namespace autoware::target_lanelet_estimator
+{
+namespace
+{
+constexpr double epsilon = 1.0e-9;
+
+struct RouteLanelet
+{
+  lanelet::ConstLanelet lanelet;
+  bool preferred{false};
+};
+
+struct RouteSegmentLanelets
+{
+  size_t index{0};
+  std::vector<RouteLanelet> lanelets;
+};
+
+struct UpdateScope
+{
+  std::optional<size_t> current_segment_index;
+  std::optional<size_t> next_segment_index;
+};
+
+std::vector<RouteSegmentLanelets> extract_route_segments(
+  const LaneletRoute & route, const lanelet::LaneletMapConstPtr & lanelet_map)
+{
+  std::vector<RouteSegmentLanelets> route_segments;
+  route_segments.reserve(route.segments.size());
+  for (size_t segment_index = 0; segment_index < route.segments.size(); ++segment_index) {
+    const auto & segment = route.segments.at(segment_index);
+    RouteSegmentLanelets route_segment;
+    route_segment.index = segment_index;
+    route_segment.lanelets.reserve(segment.primitives.size());
+    for (const auto & primitive : segment.primitives) {
+      if (!lanelet_map->laneletLayer.exists(primitive.id)) {
+        continue;
+      }
+      route_segment.lanelets.push_back(
+        {lanelet_map->laneletLayer.get(primitive.id),
+         primitive.id == segment.preferred_primitive.id});
+    }
+    route_segments.push_back(std::move(route_segment));
+  }
+  return route_segments;
+}
+
+double initial_probability(const RouteLanelet & lanelet, const Parameters & params)
+{
+  return lanelet.preferred ? params.preferred_lanelet_initial_probability
+                           : params.other_lanelet_initial_probability;
+}
+
+double previous_probability(
+  const RouteLanelet & lanelet, const LaneletProbabilityMap & previous_posteriors,
+  const Parameters & params)
+{
+  const auto it = previous_posteriors.find(lanelet.lanelet.id());
+  if (it == previous_posteriors.end() || !std::isfinite(it->second)) {
+    return initial_probability(lanelet, params);
+  }
+  return std::clamp(it->second, 0.0, 1.0);
+}
+
+double previous_probability_sum(
+  const RouteSegmentLanelets & segment, const LaneletProbabilityMap & previous_posteriors,
+  const Parameters & params)
+{
+  double sum = 0.0;
+  for (const auto & lanelet : segment.lanelets) {
+    sum += previous_probability(lanelet, previous_posteriors, params);
+  }
+  return sum;
+}
+
+double initial_probability_sum(const RouteSegmentLanelets & segment, const Parameters & params)
+{
+  double sum = 0.0;
+  for (const auto & lanelet : segment.lanelets) {
+    sum += initial_probability(lanelet, params);
+  }
+  return sum;
+}
+
+double normalized_previous_probability(
+  const RouteLanelet & lanelet, const RouteSegmentLanelets & segment,
+  const LaneletProbabilityMap & previous_posteriors, const Parameters & params)
+{
+  const double sum = previous_probability_sum(segment, previous_posteriors, params);
+  if (sum > epsilon) {
+    return previous_probability(lanelet, previous_posteriors, params) / sum;
+  }
+
+  const double initial_sum = initial_probability_sum(segment, params);
+  if (initial_sum > epsilon) {
+    return initial_probability(lanelet, params) / initial_sum;
+  }
+  return segment.lanelets.empty() ? 0.0 : 1.0 / static_cast<double>(segment.lanelets.size());
+}
+
+std::vector<lanelet::BasicPolygon2d> create_footprints(
+  const std::vector<geometry_msgs::msg::Pose> & poses,
+  const autoware_utils_geometry::LinearRing2d & base_footprint)
+{
+  std::vector<lanelet::BasicPolygon2d> footprints;
+  footprints.reserve(poses.size());
+  for (const auto & pose : poses) {
+    const double yaw = tf2::getYaw(pose.orientation);
+    const double cos_yaw = std::cos(yaw);
+    const double sin_yaw = std::sin(yaw);
+
+    lanelet::BasicPolygon2d footprint;
+    footprint.reserve(base_footprint.size());
+    for (const auto & p : base_footprint) {
+      footprint.emplace_back(
+        pose.position.x + cos_yaw * p.x() - sin_yaw * p.y(),
+        pose.position.y + sin_yaw * p.x() + cos_yaw * p.y());
+    }
+    boost::geometry::correct(footprint);  // close/orient so area and intersection are valid
+    footprints.push_back(std::move(footprint));
+  }
+  return footprints;
+}
+
+// Likelihood that the ego intends to drive on a lanelet: the maximum over trajectory points of
+// (overlap area between the footprint and the lanelet) / (footprint area), in [0, 1].
+double calc_lanelet_likelihood(
+  const lanelet::ConstLanelet & lanelet, const std::vector<lanelet::BasicPolygon2d> & footprints,
+  double footprint_area)
+{
+  if (footprint_area <= 0.0) {
+    return 0.0;
+  }
+  lanelet::BasicPolygon2d lanelet_polygon = lanelet.polygon2d().basicPolygon();
+  boost::geometry::correct(lanelet_polygon);
+
+  double likelihood = 0.0;
+  for (const auto & footprint : footprints) {
+    std::vector<lanelet::BasicPolygon2d> overlap;
+    boost::geometry::intersection(footprint, lanelet_polygon, overlap);
+    double overlap_area = 0.0;
+    for (const auto & polygon : overlap) {
+      overlap_area += std::abs(boost::geometry::area(polygon));
+    }
+    likelihood = std::max(likelihood, std::clamp(overlap_area / footprint_area, 0.0, 1.0));
+    if (likelihood >= 1.0) {
+      return 1.0;
+    }
+  }
+  return likelihood;
+}
+
+bool overlaps_any_lanelet(
+  const lanelet::BasicPolygon2d & footprint, const lanelet::LaneletMapConstPtr & lanelet_map,
+  double search_margin_m)
+{
+  lanelet::BoundingBox2d bbox;
+  boost::geometry::envelope(footprint, bbox);
+  // Pad the search box so axis-aligned lanelets are not missed by the R-tree query. This only
+  // widens the candidate set; the disjoint test below still uses the original footprint.
+  const lanelet::BasicPoint2d margin(search_margin_m, search_margin_m);
+  const lanelet::BoundingBox2d search_box(bbox.min() - margin, bbox.max() + margin);
+
+  for (const auto & lanelet : lanelet_map->laneletLayer.search(search_box)) {
+    auto lanelet_polygon = lanelet.polygon2d().basicPolygon();
+    boost::geometry::correct(lanelet_polygon);
+    if (!boost::geometry::disjoint(footprint, lanelet_polygon)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool is_point_inside_lanelet(
+  const geometry_msgs::msg::Point & point, const lanelet::ConstLanelet & lanelet)
+{
+  lanelet::BasicPolygon2d lanelet_polygon = lanelet.polygon2d().basicPolygon();
+  boost::geometry::correct(lanelet_polygon);
+  return boost::geometry::covered_by(lanelet::BasicPoint2d{point.x, point.y}, lanelet_polygon);
+}
+
+std::optional<size_t> find_segment_index_containing_point(
+  const std::vector<RouteSegmentLanelets> & route_segments, const geometry_msgs::msg::Point & point)
+{
+  for (const auto & segment : route_segments) {
+    for (const auto & lanelet : segment.lanelets) {
+      if (is_point_inside_lanelet(point, lanelet.lanelet)) {
+        return segment.index;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+bool does_path_reach_segment(
+  const std::vector<geometry_msgs::msg::Pose> & poses, const RouteSegmentLanelets & segment)
+{
+  for (const auto & pose : poses) {
+    for (const auto & lanelet : segment.lanelets) {
+      if (is_point_inside_lanelet(pose.position, lanelet.lanelet)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+UpdateScope determine_update_scope(
+  const std::vector<geometry_msgs::msg::Pose> & poses,
+  const std::vector<RouteSegmentLanelets> & route_segments)
+{
+  UpdateScope scope;
+  if (poses.empty()) {
+    return scope;
+  }
+
+  scope.current_segment_index =
+    find_segment_index_containing_point(route_segments, poses.front().position);
+  if (!scope.current_segment_index) {
+    return scope;
+  }
+
+  const size_t next_segment_index = *scope.current_segment_index + 1;
+  if (
+    next_segment_index < route_segments.size() &&
+    does_path_reach_segment(poses, route_segments.at(next_segment_index))) {
+    scope.next_segment_index = next_segment_index;
+  }
+  return scope;
+}
+
+bool has_successor_relation(
+  const RouteLanelet & from, const RouteLanelet & to,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph)
+{
+  if (!routing_graph) {
+    return false;
+  }
+
+  const auto relation = routing_graph->routingRelation(from.lanelet, to.lanelet, false);
+  return relation && *relation == lanelet::routing::RelationType::Successor;
+}
+
+size_t count_predecessor_lanelets_connected_to_target(
+  const RouteLanelet & target, const RouteSegmentLanelets & from_segment,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph)
+{
+  return static_cast<size_t>(std::count_if(
+    from_segment.lanelets.begin(), from_segment.lanelets.end(),
+    [&](const auto & from) { return has_successor_relation(from, target, routing_graph); }));
+}
+
+double calc_same_segment_transition_probability(
+  const RouteLanelet & from, const RouteLanelet & to, const RouteSegmentLanelets & segment,
+  const Parameters & params)
+{
+  if (from.lanelet.id() != to.lanelet.id()) {
+    return params.same_segment_lane_change_probability;
+  }
+
+  const size_t non_self_lanelets = segment.lanelets.empty() ? 0 : segment.lanelets.size() - 1;
+  return std::clamp(
+    1.0 - params.same_segment_lane_change_probability * static_cast<double>(non_self_lanelets), 0.0,
+    1.0);
+}
+
+double calc_previous_segment_transition_probability(
+  const RouteLanelet & from, const RouteLanelet & target, const RouteSegmentLanelets & from_segment,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params)
+{
+  const size_t num_connected_predecessors =
+    count_predecessor_lanelets_connected_to_target(target, from_segment, routing_graph);
+  const size_t num_unconnected_predecessors =
+    from_segment.lanelets.size() - num_connected_predecessors;
+  const double denominator =
+    params.following_transition_weight * static_cast<double>(num_connected_predecessors) +
+    params.non_following_transition_weight * static_cast<double>(num_unconnected_predecessors);
+  if (denominator <= epsilon) {
+    return 0.0;
+  }
+
+  return (has_successor_relation(from, target, routing_graph)
+            ? params.following_transition_weight
+            : params.non_following_transition_weight) /
+         denominator;
+}
+
+double calc_same_segment_prior(
+  const RouteLanelet & target, const RouteSegmentLanelets & segment,
+  const LaneletProbabilityMap & previous_posteriors, const Parameters & params)
+{
+  double prior = 0.0;
+  for (const auto & from : segment.lanelets) {
+    prior += calc_same_segment_transition_probability(from, target, segment, params) *
+             normalized_previous_probability(from, segment, previous_posteriors, params);
+  }
+  return std::clamp(prior, 0.0, 1.0);
+}
+
+double calc_previous_segment_prior(
+  const RouteLanelet & target, const RouteSegmentLanelets & previous_segment,
+  const LaneletProbabilityMap & previous_posteriors,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params)
+{
+  double prior = 0.0;
+  for (const auto & from : previous_segment.lanelets) {
+    prior += calc_previous_segment_transition_probability(
+               from, target, previous_segment, routing_graph, params) *
+             normalized_previous_probability(from, previous_segment, previous_posteriors, params);
+  }
+  return std::clamp(prior, 0.0, 1.0);
+}
+
+double calc_posterior_probability(double prior, double likelihood)
+{
+  const double clamped_prior = std::clamp(prior, 0.0, 1.0);
+  const double clamped_likelihood = std::clamp(likelihood, 0.0, 1.0);
+  const double numerator = clamped_prior * clamped_likelihood;
+  const double denominator = numerator + (1.0 - clamped_prior) * (1.0 - clamped_likelihood);
+  if (denominator <= epsilon) {
+    return 0.0;
+  }
+  return std::clamp(numerator / denominator, 0.0, 1.0);
+}
+}  // namespace
+
+LaneletProbabilityMap initialize_lanelet_probabilities(
+  const LaneletRoute & route, const Parameters & params)
+{
+  LaneletProbabilityMap probabilities;
+  for (const auto & segment : route.segments) {
+    for (const auto & primitive : segment.primitives) {
+      const double probability = primitive.id == segment.preferred_primitive.id
+                                   ? params.preferred_lanelet_initial_probability
+                                   : params.other_lanelet_initial_probability;
+      const auto [it, inserted] = probabilities.emplace(primitive.id, probability);
+      if (!inserted) {
+        it->second = std::max(it->second, probability);
+      }
+    }
+  }
+  return probabilities;
+}
+
+TargetLaneletsResult get_target_lanelets(
+  const LaneletRoute & route, const std::vector<geometry_msgs::msg::Pose> & poses,
+  const autoware_utils_geometry::LinearRing2d & base_footprint,
+  const lanelet::LaneletMapConstPtr & lanelet_map,
+  const LaneletProbabilityMap & previous_posteriors,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params)
+{
+  const auto route_segments = extract_route_segments(route, lanelet_map);
+  const auto update_scope = determine_update_scope(poses, route_segments);
+  const auto footprints = create_footprints(poses, base_footprint);
+  const double footprint_area =
+    footprints.empty() ? 0.0 : std::abs(boost::geometry::area(footprints.front()));
+
+  TargetLaneletsResult result;
+  for (const auto & segment : route_segments) {
+    for (const auto & route_lanelet : segment.lanelets) {
+      const double likelihood =
+        calc_lanelet_likelihood(route_lanelet.lanelet, footprints, footprint_area);
+
+      double prior = previous_probability(route_lanelet, previous_posteriors, params);
+      double posterior = prior;
+      bool updated = false;
+      if (update_scope.current_segment_index == segment.index) {
+        prior = calc_same_segment_prior(route_lanelet, segment, previous_posteriors, params);
+        posterior = calc_posterior_probability(prior, likelihood);
+        updated = true;
+      } else if (
+        update_scope.next_segment_index == segment.index && update_scope.current_segment_index) {
+        const auto & previous_segment = route_segments.at(*update_scope.current_segment_index);
+        prior = calc_previous_segment_prior(
+          route_lanelet, previous_segment, previous_posteriors, routing_graph, params);
+        posterior = calc_posterior_probability(prior, likelihood);
+        updated = true;
+      }
+
+      result.lanelet_probabilities.push_back(
+        {route_lanelet.lanelet.id(), posterior, prior, likelihood, updated});
+      if (likelihood > params.selection_likelihood_threshold) {
+        result.target_lanelet_ids.push_back(route_lanelet.lanelet.id());
+      }
+    }
+  }
+
+  // out_of_lanelet: the trajectory footprint never overlaps any lanelet in the map.
+  bool has_lanelet_overlap = false;
+  for (const auto & footprint : footprints) {
+    if (overlaps_any_lanelet(footprint, lanelet_map, params.out_of_lanelet_search_margin)) {
+      has_lanelet_overlap = true;
+      break;
+    }
+  }
+  result.out_of_lanelet = !footprints.empty() && !has_lanelet_overlap;
+  if (result.out_of_lanelet) {
+    result.target_lanelet_ids.clear();
+    for (auto & lanelet : result.lanelet_probabilities) {
+      lanelet.posterior = 0.0;
+    }
+  }
+  return result;
+}
+
+TargetLaneletsResult get_target_lanelets(
+  const LaneletRoute & route, const Trajectory & trajectory,
+  const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,
+  const LaneletProbabilityMap & previous_posteriors,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params)
+{
+  std::vector<geometry_msgs::msg::Pose> poses;
+  poses.reserve(trajectory.points.size());
+  for (const auto & point : trajectory.points) {
+    poses.push_back(point.pose);
+  }
+  return get_target_lanelets(
+    route, poses, vehicle_info.createFootprint(), lanelet_map, previous_posteriors, routing_graph,
+    params);
+}
+
+TargetLaneletsResult get_target_lanelets(
+  const LaneletRoute & route, const Trajectory & trajectory,
+  const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,
+  const Parameters & params)
+{
+  return get_target_lanelets(
+    route, trajectory, lanelet_map, vehicle_info, initialize_lanelet_probabilities(route, params),
+    nullptr, params);
+}
+
+}  // namespace autoware::target_lanelet_estimator
