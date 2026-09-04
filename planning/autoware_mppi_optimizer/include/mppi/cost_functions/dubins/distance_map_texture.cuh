@@ -1,6 +1,8 @@
 /** CUDA texture state for distance fields and nearest path-segment lookup. */
 #pragma once
 
+#include <mppi/utils/read_only_load.cuh>
+
 #ifndef MPPI_COST_FUNCTIONS_DUBINS_DISTANCE_MAP_TEXTURE_CUH_
 #define MPPI_COST_FUNCTIONS_DUBINS_DISTANCE_MAP_TEXTURE_CUH_
 
@@ -145,10 +147,13 @@ __host__ __device__ inline float distanceEgoSpineToSegments(
   for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
     for (int segment = 0; segment < segment_count; ++segment) {
       minimum = fminf(
-        minimum, mppi::cost::detail::distancePointToSegment(
-                   circle_x[circle], circle_y[circle], segment_x0[segment], segment_y0[segment],
-                   segment_x1[segment], segment_y1[segment]) -
-                   circle_radius);
+        minimum,
+        mppi::cost::detail::distancePointToSegment(
+          circle_x[circle], circle_y[circle], mppi::memory::loadReadOnly(&segment_x0[segment]),
+          mppi::memory::loadReadOnly(&segment_y0[segment]),
+          mppi::memory::loadReadOnly(&segment_x1[segment]),
+          mppi::memory::loadReadOnly(&segment_y1[segment])) -
+          circle_radius);
     }
   }
   return signed_penetration ? minimum : fmaxf(minimum, 0.0F);
