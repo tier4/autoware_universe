@@ -17,7 +17,6 @@
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
-#include <autoware_utils/ros/uuid_helper.hpp>
 #include <rclcpp/logging.hpp>
 #include <tf2/utils.hpp>
 
@@ -332,8 +331,7 @@ bool can_stop_before_stop_line(
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const LaneletRTree & road_lanelet_rtree, const path_cut::MaxDecelerationParams & max_decel_params,
-  StopHypothesisDebug & debug)
+  const LaneletRTree & road_lanelet_rtree, const path_cut::MaxDecelerationParams & max_decel_params)
 {
   const TrackedObject & object = prediction.object;
   const std::vector<PredictedPath> & predicted_paths = prediction.predicted_paths;
@@ -341,8 +339,6 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   if (predicted_paths.empty()) {
     return predicted_paths;
   }
-
-  debug.counter.vehicles++;
 
   std::vector<PredictedPath> result = predicted_paths;
 
@@ -369,8 +365,6 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       related_stop_line && hasStopLineAhead(
                              object.kinematics.pose_with_covariance.pose.position,
                              predicted_path.path, *related_stop_line);
-    debug.counter.signal_stop += signal_requires_stop ? 1 : 0;
-    debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
 
     if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead)) {
       continue;
@@ -389,10 +383,6 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     }
 
     result.at(i) = predicted_path;
-
-    debug.stop_hypothesis_path_indices[autoware_utils::to_hex_string(object.object_id)].insert(i);
-    debug.stop_lines.push_back(*related_stop_line);
-    debug.counter.stop_hypothesis_added++;
   }
 
   return result;
@@ -425,13 +415,6 @@ void TrafficSignalStopPredictor::setTrafficSignal(
   latest_traffic_signal_time_ = now;
 }
 
-void TrafficSignalStopPredictor::clearFrameDebug()
-{
-  debug_.stop_lines.clear();
-  debug_.stop_hypothesis_path_indices.clear();
-  debug_.used_signal_colors.clear();
-}
-
 std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
   const ObjectPrediction & prediction, const rclcpp::Time & now)
 {
@@ -446,14 +429,11 @@ std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
   if (signal_observation_stale) {
     signal_stabilize_state_.clear();
     stabilized_traffic_signal_id_map_.clear();
-    debug_.used_signal_colors.clear();
     return prediction.predicted_paths;
   }
 
-  debug::populateUsedSignalColors(stabilized_traffic_signal_id_map_, debug_.used_signal_colors);
-
   return addTrafficSignalStopHypotheses(
-    prediction, stabilized_traffic_signal_id_map_, *road_lanelet_rtree_, max_decel_params_, debug_);
+    prediction, stabilized_traffic_signal_id_map_, *road_lanelet_rtree_, max_decel_params_);
 }
 
 }  // namespace autoware::map_based_prediction::priority_predictor
