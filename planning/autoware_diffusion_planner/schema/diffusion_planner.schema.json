@@ -338,6 +338,11 @@
             }
           },
           "required": ["publish_debug_map", "publish_debug_route", "publish_debug_linestrings"]
+        },
+        "remap_unsupported_objects_to_pedestrian": {
+          "type": "boolean",
+          "default": false,
+          "description": "Treat UNKNOWN and HAZARD tracked objects as PEDESTRIAN, the most conservative supported class, so the planner reacts to them. Non-BOX shapes are replaced with a 0.5 m bounding box. ANIMAL, OVER_DRIVABLE and UNDER_DRIVABLE remain ignored."
         }
       },
       "required": [

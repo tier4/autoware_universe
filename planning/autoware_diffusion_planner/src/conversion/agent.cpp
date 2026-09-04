@@ -98,29 +98,44 @@ std::vector<AgentHistory> transform_sort_trim(
   return histories;
 }
 
-// HAZARD objects are not supported by the model, so remap them to PEDESTRIAN
-// to make the planner consider them.
-TrackedObject remap_hazard_to_pedestrian(const TrackedObject & object)
+// UNKNOWN and HAZARD objects are not supported by the model, but they can still obstruct driving,
+// so remap them to PEDESTRIAN (the most conservative supported class) to make the planner consider
+// them. ANIMAL, OVER_DRIVABLE and UNDER_DRIVABLE remain ignored.
+bool is_unsupported_obstacle_label(const uint8_t label)
 {
-  const bool is_hazard = autoware::object_recognition_utils::getHighestProbLabel(
-                           object.classification) == ObjectClassification::HAZARD;
-  if (!is_hazard) {
+  return label == ObjectClassification::UNKNOWN || label == ObjectClassification::HAZARD;
+}
+
+TrackedObject remap_unsupported_to_pedestrian(const TrackedObject & object)
+{
+  // An empty classification also yields UNKNOWN from getHighestProbLabel(), but such an object
+  // carries no label to rewrite, so keep ignoring it.
+  if (object.classification.empty()) {
+    return object;
+  }
+
+  const uint8_t highest_prob_label =
+    autoware::object_recognition_utils::getHighestProbLabel(object.classification);
+  if (!is_unsupported_obstacle_label(highest_prob_label)) {
     return object;
   }
 
   TrackedObject remapped = object;
   for (auto & classification : remapped.classification) {
-    if (classification.label == ObjectClassification::HAZARD) {
+    if (is_unsupported_obstacle_label(classification.label)) {
       classification.label = ObjectClassification::PEDESTRIAN;
     }
   }
 
+  // The POLYGON skip below would otherwise drop the object we just decided to keep.
   if (remapped.shape.type != autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
     static rclcpp::Clock clock{RCL_ROS_TIME};
     RCLCPP_WARN_THROTTLE(
       rclcpp::get_logger("diffusion_planner"), clock, constants::LOG_THROTTLE_INTERVAL_MS,
-      "HAZARD object %s has a non-BOX shape (type=%u). Replacing it with a 0.5 m bounding box.",
-      autoware_utils_uuid::to_hex_string(remapped.object_id).c_str(), remapped.shape.type);
+      "Unsupported-class object %s (label=%u) has a non-BOX shape (type=%u). Replacing it with a "
+      "0.5 m bounding box.",
+      autoware_utils_uuid::to_hex_string(remapped.object_id).c_str(), highest_prob_label,
+      remapped.shape.type);
     remapped.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
     remapped.shape.footprint.points.clear();
     remapped.shape.dimensions.x = 0.5;
@@ -129,7 +144,6 @@ TrackedObject remap_hazard_to_pedestrian(const TrackedObject & object)
   }
   return remapped;
 }
-
 }  // namespace
 
 AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timestamp)
@@ -206,12 +220,15 @@ void AgentHistory::update(const TrackedObject & object, const rclcpp::Time & tim
   push_back(state);
 }
 
-void AgentData::update_histories(const TrackedObjects & objects)
+void AgentData::update_histories(
+  const TrackedObjects & objects, const bool remap_unsupported_objects_to_pedestrian)
 {
   const rclcpp::Time objects_timestamp(objects.header.stamp);
   std::vector<std::string> found_ids;
   for (const TrackedObject & input_object : objects.objects) {
-    const TrackedObject object = remap_hazard_to_pedestrian(input_object);
+    const TrackedObject object = remap_unsupported_objects_to_pedestrian
+                                   ? remap_unsupported_to_pedestrian(input_object)
+                                   : input_object;
     if (get_model_label(object) == AgentLabel::IGNORE) {
       continue;
     }
@@ -250,7 +267,8 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
 }
 
 void AgentData::update_histories(
-  const TrackedObjects & objects, [[maybe_unused]] const HistoryResamplingParams & params)
+  const TrackedObjects & objects, [[maybe_unused]] const HistoryResamplingParams & params,
+  const bool remap_unsupported_objects_to_pedestrian)
 {
   const rclcpp::Time objects_timestamp(objects.header.stamp);
 
@@ -277,7 +295,9 @@ void AgentData::update_histories(
 
   latest_ids_.clear();
   for (const TrackedObject & input_object : objects.objects) {
-    const TrackedObject object = remap_hazard_to_pedestrian(input_object);
+    const TrackedObject object = remap_unsupported_objects_to_pedestrian
+                                   ? remap_unsupported_to_pedestrian(input_object)
+                                   : input_object;
     if (get_model_label(object) == AgentLabel::IGNORE) {
       continue;
     }
