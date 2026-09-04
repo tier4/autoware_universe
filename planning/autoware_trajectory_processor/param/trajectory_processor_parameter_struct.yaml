@@ -569,6 +569,11 @@ trajectory_processor_params:
     default_value: false
     description: Enable Temporal MPT optimizer plugin (acados-based kinematic bicycle MPC for combined geometry and velocity optimization)
     read_only: false
+  use_time_sequence_raw_optimizer:
+    type: bool
+    default_value: false
+    description: Enable pose-only time-sequence raw optimizer (road-border shift then acados kinematic bicycle)
+    read_only: false
   max_vel:
     type: double
     default_value: 11.1
@@ -799,6 +804,169 @@ trajectory_processor_params:
       type: bool
       default_value: false
       description: Apply temporal MPT output to debug topics only, leaving the pipeline trajectory unchanged.
+      read_only: false
+
+  time_sequence_raw_optimizer:
+    weight_longitudinal:
+      type: double
+      default_value: 0.5
+      description: Tracking weight along the reference heading [1/m^2]
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    weight_lateral:
+      type: double
+      default_value: 0.5
+      description: Tracking weight perpendicular to the reference heading [1/m^2]
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    weight_yaw:
+      type: double
+      default_value: 0.05
+      description: Tracking weight for heading [1/rad^2]
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    weight_acceleration:
+      type: double
+      default_value: 0.1
+      description: Regularization weight on acceleration input
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    weight_steering_rate:
+      type: double
+      default_value: 10.0
+      description: Regularization weight on steering rate input
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    terminal_weight_scale:
+      type: double
+      default_value: 2.5
+      description: Terminal state weight = scale * stage weight
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    min_velocity_mps:
+      type: double
+      default_value: 0.0
+      description: Lower velocity bound; 0 prevents backward motion [m/s]
+      read_only: false
+    max_velocity_mps:
+      type: double
+      default_value: 30.0
+      description: Upper velocity bound [m/s]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    min_acceleration_mps2:
+      type: double
+      default_value: -4.0
+      description: Minimum longitudinal acceleration [m/s^2]
+      read_only: false
+    max_acceleration_mps2:
+      type: double
+      default_value: 3.0
+      description: Maximum longitudinal acceleration [m/s^2]
+      read_only: false
+    max_steering_rate_rps:
+      type: double
+      default_value: 1.0
+      description: Maximum absolute steering rate [rad/s]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    max_lateral_acceleration_mps2:
+      type: double
+      default_value: 3.0
+      description: Soft lateral acceleration constraint bound [m/s^2]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    max_sqp_iterations:
+      type: int
+      default_value: 50
+      description: Maximum SQP iterations for the acados solver
+      validation:
+        gt<>: [0]
+      read_only: false
+    publish_debug_topics:
+      type: bool
+      default_value: true
+      description: Publish raw/adjusted trajectories and solver debug topics
+      read_only: false
+    stopped_velocity_threshold_mps:
+      type: double
+      default_value: 0.15
+      description: Ego/reference speeds at or below this are treated as stopped [m/s]
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    stopped_trajectory_max_length_m:
+      type: double
+      default_value: 1.5
+      description: Maximum path length from the first point to the last for stopped detection [m]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    goal_steer_zero_enable:
+      type: bool
+      default_value: true
+      description: Command zero steering on the published trajectory when stopped near the route goal
+      read_only: false
+    goal_steer_zero_distance_m:
+      type: double
+      default_value: 5.0
+      description: Ego-to-route-goal distance below which zero steering is requested [m]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    goal_steer_zero_requires_stopped:
+      type: bool
+      default_value: true
+      description: Require a stopped reference trajectory before zero steering near goal
+      read_only: false
+
+  road_border_avoidance:
+    enable:
+      type: bool
+      default_value: false
+      description: Shift overlapping poses off lanelet type=road_border before acados
+      read_only: false
+    footprint_margin_m:
+      type: double
+      default_value: 0.2
+      description: Ego footprint inflation for the overlap check [m]
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    search_radius_m:
+      type: double
+      default_value: 120.0
+      description: Road borders farther than this from ego are ignored [m]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    shift_step_m:
+      type: double
+      default_value: 0.1
+      description: Lateral shift resolution [m]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    max_lateral_shift_m:
+      type: double
+      default_value: 1.5
+      description: Cap on the total lateral offset from the raw position [m]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    propagate_shift:
+      type: bool
+      default_value: true
+      description: Carry the offset over to all subsequent points
       read_only: false
 
   trajectory_extender:
