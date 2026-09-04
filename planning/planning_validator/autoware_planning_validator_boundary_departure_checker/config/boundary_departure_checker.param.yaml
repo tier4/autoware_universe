@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    boundary_departure_checker:
+      enable: true
+      # 0: publish as-is, 1: last valid, 2: last valid with soft stop
+      handling_type: 2
+      boundary_types: ["road_border"]
+      lateral_margin_m: 0.1
+      longitudinal_margin_m: 1.0
+      max_deceleration_mps2: -4.0
+      max_jerk_mps3: -5.0
+      brake_delay_s: 1.0
+      time_to_departure_cutoff_s: 2.0
+      on_time_buffer_s: 0.20
+      off_time_buffer_s: 0.10
