@@ -1,5 +1,6 @@
 #include <mppi/cost_functions/dubins/distance_map_texture.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh>
+#include <mppi/utils/nvtx.cuh>
 
 #include <algorithm>
 #include <cfloat>
@@ -445,6 +446,8 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
   if (!this->GPUMemStatus_ || (!update_road_border && !update_drivable_area)) {
     return;
   }
+  mppi::instrumentation::ScopedNvtxRange range(
+    "MPPI/distance_map_static", mppi::instrumentation::NvtxColor::MAP_GENERATION);
   ensureDistanceMapResources();
   const dim3 block(16, 16, 1);
   const dim3 grid(
@@ -476,6 +479,8 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     this->texture_state_.obstacle_texture_valid_ = true;
     return;
   }
+  mppi::instrumentation::ScopedNvtxRange range(
+    "MPPI/distance_map_obstacle", mppi::instrumentation::NvtxColor::MAP_GENERATION);
   ensureDistanceMapResources();
   const dim3 block(16, 16, 1);
   const dim3 grid(

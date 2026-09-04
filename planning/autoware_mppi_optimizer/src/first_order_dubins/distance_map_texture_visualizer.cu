@@ -14,6 +14,7 @@
 
 #include <mppi/cost_functions/dubins/distance_map_texture.cuh>
 #include <mppi/utils/gpu_err_chk.cuh>
+#include <mppi/utils/nvtx.cuh>
 
 #define GLFW_INCLUDE_NONE
 #include <GL/gl.h>
@@ -536,6 +537,8 @@ __host__ bool renderDistanceMapTextureVisualizer(
   if (visualizer == nullptr) {
     return false;
   }
+  mppi::instrumentation::ScopedNvtxRange range(
+    "MPPI/render_opengl_debug", mppi::instrumentation::NvtxColor::DEBUG);
   const bool keep_open = visualizer->render(
     static_texture, obstacle_texture, road_border_valid, drivable_area_valid, obstacle_valid,
     obstacle_has_obstacles, road_border_margin, drivable_area_margin, obstacle_margin,
