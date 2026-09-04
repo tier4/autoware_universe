@@ -163,6 +163,7 @@ class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAM
 {
 public:
   using RuntimeData = FirstOrderDubinsRuntimeData<NUM_TIMESTEPS>;
+  static constexpr bool COST_OBJECT_READ_ONLY = true;
   static constexpr int kNumTimesteps = NUM_TIMESTEPS;
   static constexpr int kMaxObstacles = RuntimeData::kMaxObstacles;
   static constexpr int kMaxDrivablePolygonVertices = 1024;
@@ -172,7 +173,7 @@ public:
   static constexpr int kMaxLateralCorridorPoints = RuntimeData::kMaxLateralCorridorPoints;
 
   /** Page-locked authoritative host copy used as the source of asynchronous cycle-data uploads. */
-  mppi::memory::PinnedHostBuffer<RuntimeData> runtime_data_{1};
+  mppi::memory::PinnedHostBuffer<RuntimeData> runtime_data_{};
   /** POD storage embedded in the device-side cost object; never used as host state. */
   RuntimeData runtime_data_device_{};
   DistanceMapTextureState texture_state_{};
@@ -232,7 +233,7 @@ public:
 
   /** Stage corridor + time-aligned ref into block shared memory (theta_c). */
   __device__ void initializeCosts(
-    float * output, float * control, float * theta_c, float t_0, float dt);
+    float * output, float * control, float * theta_c, float t_0, float dt) const;
 
   /** Per-sample BLK slot: previous closest-segment index (-1 = full scan). */
   __device__ float * projectionHintSlot(float * theta_c) const;
@@ -392,11 +393,12 @@ public:
   float computeStateCost(
     const Eigen::Ref<const output_array> & y, int timestep, int * crash_status);
 
-  __device__ float computeStateCost(float * y, int timestep, float * theta_c, int * crash_status);
+  __device__ float computeStateCost(
+    float * y, int timestep, float * theta_c, int * crash_status) const;
 
   float computeControlCost(const Eigen::Ref<const control_array> & u, int timestep, int * crash);
 
-  __device__ float computeControlCost(float * u, int timestep, float * theta_c, int * crash);
+  __device__ float computeControlCost(float * u, int timestep, float * theta_c, int * crash) const;
 
   float computeComfortCost(
     const Eigen::Ref<const control_array> & u, const Eigen::Ref<const output_array> & y,
@@ -411,19 +413,19 @@ public:
   autoware::mppi_optimizer::FirstOrderDubinsMppiCostBreakdown computeTerminalCostBreakdown(
     const Eigen::Ref<const output_array> & y) const;
 
-  __device__ float computeComfortCost(float * u, float * y, int timestep);
+  __device__ float computeComfortCost(float * u, float * y, int timestep) const;
 
   __host__ __device__ FirstOrderDubinsBicycleKinematicCost computeKinematicLimitCost(
     float velocity, float longitudinal_acceleration, float longitudinal_jerk, int timestep) const;
 
-  __device__ float terminalCost(float * y, float * theta_c);
+  __device__ float terminalCost(float * y, float * theta_c) const;
 
   float computeRunningCost(
     const Eigen::Ref<const output_array> & y, const Eigen::Ref<const control_array> & u,
     int timestep, int * crash);
 
   __device__ float computeRunningCost(
-    float * y, float * u, int timestep, float * theta_c, int * crash);
+    float * y, float * u, int timestep, float * theta_c, int * crash) const;
 
 private:
   friend struct DistanceMapTextureTestAccess;

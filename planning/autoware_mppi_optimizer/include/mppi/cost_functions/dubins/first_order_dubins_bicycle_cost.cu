@@ -3,6 +3,7 @@
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh>
 #include <mppi/cost_functions/path_tracking_geometry.cuh>
 #include <mppi/utils/angle_utils.cuh>
+#include <mppi/utils/read_only_load.cuh>
 
 #include <mppi/utils/math_utils.h>
 
@@ -191,6 +192,7 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   FirstOrderDubinsBicycleCostImpl(cudaStream_t stream)
 {
+  runtime_data_.resize(1);
   this->bindToStream(stream);
   this->SHARED_MEM_REQUEST_GRD_BYTES = static_cast<int>(kSharedNumFloats * sizeof(float));
   this->SHARED_MEM_REQUEST_BLK_BYTES = static_cast<int>(kSharedBlkHintFloats * sizeof(float));
@@ -228,32 +230,35 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __device__ void
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::initializeCosts(
-  float * /*output*/, float * /*control*/, float * theta_c, float /*t_0*/, float /*dt*/)
+  float * /*output*/, float * /*control*/, float * theta_c, float /*t_0*/, float /*dt*/) const
 {
   const int tid =
     static_cast<int>(threadIdx.x + blockDim.x * (threadIdx.y + blockDim.y * threadIdx.z));
   const int nthreads = static_cast<int>(blockDim.x * blockDim.y * blockDim.z);
 
   if (tid == 0) {
-    theta_c[kSharedTotalOffset] = runtimeData().lateral_corridor_total_length_s_;
+    const auto & data = runtimeData();
+    theta_c[kSharedTotalOffset] =
+      mppi::memory::loadReadOnly(&data.lateral_corridor_total_length_s_);
     // Sign encodes has_s: positive = s valid, negative = recompute from xy, 0 = empty.
     theta_c[kSharedNumCorridorOffset] =
-      runtimeData().lateral_corridor_has_s_
-        ? static_cast<float>(runtimeData().num_lateral_corridor_points_)
-        : -static_cast<float>(runtimeData().num_lateral_corridor_points_);
+      data.lateral_corridor_has_s_
+        ? static_cast<float>(mppi::memory::loadReadOnly(&data.num_lateral_corridor_points_))
+        : -static_cast<float>(mppi::memory::loadReadOnly(&data.num_lateral_corridor_points_));
   }
 
+  const auto & data = runtimeData();
   for (int i = tid; i < kMaxLateralCorridorPoints; i += nthreads) {
-    theta_c[kSharedCorridorXOffset + i] = runtimeData().lateral_corridor_x_[i];
-    theta_c[kSharedCorridorYOffset + i] = runtimeData().lateral_corridor_y_[i];
-    theta_c[kSharedCorridorSOffset + i] = runtimeData().lateral_corridor_s_[i];
+    theta_c[kSharedCorridorXOffset + i] = mppi::memory::loadReadOnly(&data.lateral_corridor_x_[i]);
+    theta_c[kSharedCorridorYOffset + i] = mppi::memory::loadReadOnly(&data.lateral_corridor_y_[i]);
+    theta_c[kSharedCorridorSOffset + i] = mppi::memory::loadReadOnly(&data.lateral_corridor_s_[i]);
   }
   for (int i = tid; i < NUM_TIMESTEPS; i += nthreads) {
-    theta_c[kSharedRefXOffset + i] = runtimeData().ref_x_[i];
-    theta_c[kSharedRefYOffset + i] = runtimeData().ref_y_[i];
-    theta_c[kSharedRefSOffset + i] = runtimeData().ref_s_[i];
-    theta_c[kSharedRefVOffset + i] = runtimeData().ref_v_[i];
-    theta_c[kSharedRefYawOffset + i] = runtimeData().ref_yaw_[i];
+    theta_c[kSharedRefXOffset + i] = mppi::memory::loadReadOnly(&data.ref_x_[i]);
+    theta_c[kSharedRefYOffset + i] = mppi::memory::loadReadOnly(&data.ref_y_[i]);
+    theta_c[kSharedRefSOffset + i] = mppi::memory::loadReadOnly(&data.ref_s_[i]);
+    theta_c[kSharedRefVOffset + i] = mppi::memory::loadReadOnly(&data.ref_v_[i]);
+    theta_c[kSharedRefYawOffset + i] = mppi::memory::loadReadOnly(&data.ref_yaw_[i]);
   }
 
   // One warm-start slot per sample; -1 forces a full scan on the first projection.
@@ -696,12 +701,14 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float * poly_ref_velocity = buf.ref_v;
   int n_pts = NUM_TIMESTEPS;
   float total_s = buf.ref_s[NUM_TIMESTEPS - 1];
+  bool velocity_profile_is_global = false;
   if (buf.num_corridor >= 2) {
     poly_x = buf.corridor_x;
     poly_y = buf.corridor_y;
     n_pts = buf.num_corridor;
     poly_s = buf.has_corridor_s ? buf.corridor_s : nullptr;
     poly_ref_velocity = buf.corridor_ref_velocity;
+    velocity_profile_is_global = true;
     total_s = buf.total_path_length_s;
   }
 
@@ -764,12 +771,18 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
       metrics.spatial_s = s0 + segment_t * (s1 - s0);
     }
     if (poly_ref_velocity != nullptr) {
-      const float v0 = poly_ref_velocity[i];
-      const float v1 = poly_ref_velocity[i + 1];
+      const float v0 = velocity_profile_is_global
+                         ? mppi::memory::loadReadOnly(&poly_ref_velocity[i])
+                         : poly_ref_velocity[i];
+      const float v1 = velocity_profile_is_global
+                         ? mppi::memory::loadReadOnly(&poly_ref_velocity[i + 1])
+                         : poly_ref_velocity[i + 1];
       metrics.spatial_ref_velocity = v0 + segment_t * (v1 - v0);
     }
   } else if (n_pts == 1 && poly_ref_velocity != nullptr) {
-    metrics.spatial_ref_velocity = poly_ref_velocity[0];
+    metrics.spatial_ref_velocity = velocity_profile_is_global
+                                     ? mppi::memory::loadReadOnly(&poly_ref_velocity[0])
+                                     : poly_ref_velocity[0];
   }
 
   float tangent_yaw = 0.0F;
@@ -838,22 +851,27 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float margin = this->params_.obstacle_collision_margin;
   const float ego_hl = this->params_.ego_length * 0.5F + margin;
   const float ego_hw = this->params_.ego_width * 0.5F + margin;
+  const auto & data = runtimeData();
+  const int num_obstacles = mppi::memory::loadReadOnly(&data.num_obstacles_);
 
 #ifdef __CUDA_ARCH__
 #pragma unroll
 #endif
-  for (int i = 0; i < runtimeData().num_obstacles_; ++i) {
+  for (int i = 0; i < num_obstacles; ++i) {
+    const float obs_yaw = mppi::memory::loadReadOnly(&data.obs_yaw_[i][t]);
 #ifdef __CUDA_ARCH__
-    const float obs_cos = cosf(runtimeData().obs_yaw_[i][t]);
-    const float obs_sin = sinf(runtimeData().obs_yaw_[i][t]);
+    const float obs_cos = cosf(obs_yaw);
+    const float obs_sin = sinf(obs_yaw);
 #else
-    const float obs_cos = std::cos(runtimeData().obs_yaw_[i][t]);
-    const float obs_sin = std::sin(runtimeData().obs_yaw_[i][t]);
+    const float obs_cos = std::cos(obs_yaw);
+    const float obs_sin = std::sin(obs_yaw);
 #endif
     if (orientedBoxesOverlap(
-          ego_cx, ego_cy, ego_cos, ego_sin, ego_hl, ego_hw, runtimeData().obs_x_[i][t],
-          runtimeData().obs_y_[i][t], obs_cos, obs_sin, runtimeData().obs_half_length_[i],
-          runtimeData().obs_half_width_[i])) {
+          ego_cx, ego_cy, ego_cos, ego_sin, ego_hl, ego_hw,
+          mppi::memory::loadReadOnly(&data.obs_x_[i][t]),
+          mppi::memory::loadReadOnly(&data.obs_y_[i][t]), obs_cos, obs_sin,
+          mppi::memory::loadReadOnly(&data.obs_half_length_[i]),
+          mppi::memory::loadReadOnly(&data.obs_half_width_[i]))) {
       return true;
     }
   }
@@ -922,25 +940,31 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   }
 #endif
   float min_distance = kDistanceMapEmptyDistance;
+  const auto & data = runtimeData();
+  const int num_obstacles = mppi::memory::loadReadOnly(&data.num_obstacles_);
 #ifdef __CUDA_ARCH__
 #pragma unroll
 #endif
-  for (int i = 0; i < runtimeData().num_obstacles_; ++i) {
+  for (int i = 0; i < num_obstacles; ++i) {
     float obs_cos;
     float obs_sin;
+    const float obs_yaw = mppi::memory::loadReadOnly(&data.obs_yaw_[i][t]);
 #ifdef __CUDA_ARCH__
-    __sincosf(runtimeData().obs_yaw_[i][t], &obs_sin, &obs_cos);
+    __sincosf(obs_yaw, &obs_sin, &obs_cos);
 #else
-    obs_cos = std::cos(runtimeData().obs_yaw_[i][t]);
-    obs_sin = std::sin(runtimeData().obs_yaw_[i][t]);
+    obs_cos = std::cos(obs_yaw);
+    obs_sin = std::sin(obs_yaw);
 #endif
+    const float obs_x = mppi::memory::loadReadOnly(&data.obs_x_[i][t]);
+    const float obs_y = mppi::memory::loadReadOnly(&data.obs_y_[i][t]);
+    const float obs_half_length = mppi::memory::loadReadOnly(&data.obs_half_length_[i]);
+    const float obs_half_width = mppi::memory::loadReadOnly(&data.obs_half_width_[i]);
 #pragma unroll
     for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
       min_distance = fminf(
         min_distance, signedDistancePointToOrientedBox(
-                        circle_x[circle], circle_y[circle], runtimeData().obs_x_[i][t],
-                        runtimeData().obs_y_[i][t], obs_cos, obs_sin,
-                        runtimeData().obs_half_length_[i], runtimeData().obs_half_width_[i]) -
+                        circle_x[circle], circle_y[circle], obs_x, obs_y, obs_cos, obs_sin,
+                        obs_half_length, obs_half_width) -
                         circle_radius);
     }
   }
@@ -971,7 +995,9 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
   DYN_PARAMS_T>::computeCornerBufferCost(const float x, const float y, const float yaw) const
 {
-  if (runtimeData().num_drivable_area_segments_ <= 0 || this->params_.corner_buffer_coeff <= 0.0F) {
+  if (
+    mppi::memory::loadReadOnly(&runtimeData().num_drivable_area_segments_) <= 0 ||
+    this->params_.corner_buffer_coeff <= 0.0F) {
     return 0.0F;
   }
 
@@ -1034,11 +1060,15 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   for (int corner = 0; corner < 4; ++corner) {
     float min_distance = kDistanceMapEmptyDistance;
 
-    for (int segment = 0; segment < runtimeData().num_drivable_area_segments_; ++segment) {
+    const auto & data = runtimeData();
+    const int segment_count = mppi::memory::loadReadOnly(&data.num_drivable_area_segments_);
+    for (int segment = 0; segment < segment_count; ++segment) {
       const float distance = distancePointToSegment(
-        corners_x[corner], corners_y[corner], runtimeData().drivable_area_x0_[segment],
-        runtimeData().drivable_area_y0_[segment], runtimeData().drivable_area_x1_[segment],
-        runtimeData().drivable_area_y1_[segment]);
+        corners_x[corner], corners_y[corner],
+        mppi::memory::loadReadOnly(&data.drivable_area_x0_[segment]),
+        mppi::memory::loadReadOnly(&data.drivable_area_y0_[segment]),
+        mppi::memory::loadReadOnly(&data.drivable_area_x1_[segment]),
+        mppi::memory::loadReadOnly(&data.drivable_area_y1_[segment]));
 
 #ifdef __CUDA_ARCH__
       min_distance = fminf(min_distance, distance);
@@ -1071,7 +1101,7 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   return checkRectSegmentIntersections(
     x, y, yaw, front_ext, back_ext, left_ext, right_ext, margin, runtimeData().road_border_x0_,
     runtimeData().road_border_y0_, runtimeData().road_border_x1_, runtimeData().road_border_y1_,
-    runtimeData().num_road_border_segments_);
+    mppi::memory::loadReadOnly(&runtimeData().num_road_border_segments_));
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1127,7 +1157,7 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   return distanceEgoSpineToSegments(
     circle_x, circle_y, circle_radius, runtimeData().road_border_x0_, runtimeData().road_border_y0_,
     runtimeData().road_border_x1_, runtimeData().road_border_y1_,
-    runtimeData().num_road_border_segments_, false);
+    mppi::memory::loadReadOnly(&runtimeData().num_road_border_segments_), false);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1183,7 +1213,8 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   return distanceEgoSpineToSegments(
     circle_x, circle_y, circle_radius, runtimeData().drivable_area_x0_,
     runtimeData().drivable_area_y0_, runtimeData().drivable_area_x1_,
-    runtimeData().drivable_area_y1_, runtimeData().num_drivable_area_segments_, true);
+    runtimeData().drivable_area_y1_,
+    mppi::memory::loadReadOnly(&runtimeData().num_drivable_area_segments_), true);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1356,7 +1387,7 @@ autoware::mppi_optimizer::FirstOrderDubinsMppiCostBreakdown FirstOrderDubinsBicy
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __device__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::computeStateCost(
-  float * y, int timestep, float * theta_c, int * crash_status)
+  float * y, int timestep, float * theta_c, int * crash_status) const
 {
   const float x_pos = y[static_cast<int>(O::BASELINK_POS_I_X)];
   const float y_pos = y[static_cast<int>(O::BASELINK_POS_I_Y)];
@@ -1376,11 +1407,10 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   bool safety_violation = false;
   if (needsLateralPathMetrics(this->params_)) {
     const LateralPathMetrics lateral = computeLateralPathMetrics(x_pos, y_pos, yaw, theta_c);
-    if (
-      this->params_.spatial_overspeed_coeff > 0.0F &&
-      runtimeData().lateral_corridor_total_length_s_ > 1.0E-6F) {
-      const float progress = fmaxf(
-        0.0F, fminf(1.0F, lateral.spatial_s / runtimeData().lateral_corridor_total_length_s_));
+    const float corridor_length =
+      mppi::memory::loadReadOnly(&runtimeData().lateral_corridor_total_length_s_);
+    if (this->params_.spatial_overspeed_coeff > 0.0F && corridor_length > 1.0E-6F) {
+      const float progress = fmaxf(0.0F, fminf(1.0F, lateral.spatial_s / corridor_length));
       const float overspeed = vel - lateral.spatial_ref_velocity;
       if (overspeed > 0.0F) {
         spatial_overspeed_cost =
@@ -1480,7 +1510,7 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __device__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::computeControlCost(
-  float * u, int timestep, float * theta_c, int * crash)
+  float * u, int timestep, float * theta_c, int * crash) const
 {
   (void)timestep;
   (void)theta_c;
@@ -1506,7 +1536,7 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __device__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::terminalCost(
-  float * y, float * theta_c)
+  float * y, float * theta_c) const
 {
   if (threadIdx.y == 0) {
     const float x_pos = y[static_cast<int>(O::BASELINK_POS_I_X)];
@@ -1519,10 +1549,11 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     const float heading_cost = this->params_.heading_coeff *
                                computeHeadingValue(yaw, timestep, theta_c) *
                                this->params_.track_terminal_scale;
-    const float terminal_dx = x_pos - runtimeData().terminal_reference_[0];
-    const float terminal_dy = y_pos - runtimeData().terminal_reference_[1];
-    const float terminal_yaw_error =
-      angle_utils::shortestAngularDistance(yaw, runtimeData().terminal_reference_[2]);
+    const auto & data = runtimeData();
+    const float terminal_dx = x_pos - mppi::memory::loadReadOnly(&data.terminal_reference_[0]);
+    const float terminal_dy = y_pos - mppi::memory::loadReadOnly(&data.terminal_reference_[1]);
+    const float terminal_yaw_error = angle_utils::shortestAngularDistance(
+      yaw, mppi::memory::loadReadOnly(&data.terminal_reference_[2]));
     const float terminal_error_cost =
       this->params_.terminal_error_coeff * (terminal_dx * terminal_dx + terminal_dy * terminal_dy);
     const float terminal_heading_cost =
@@ -1569,15 +1600,26 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     const float velocity, const float longitudinal_acceleration, const float longitudinal_jerk,
     const int timestep) const
 {
-  auto limits = runtimeData().kinematic_limits_;
+  const auto & stored_limits = runtimeData().kinematic_limits_;
+  FirstOrderDubinsBicycleKinematicLimitData limits;
+  limits.active_mask = mppi::memory::loadReadOnly(&stored_limits.active_mask);
+  limits.min_velocity = mppi::memory::loadReadOnly(&stored_limits.min_velocity);
+  limits.max_velocity = mppi::memory::loadReadOnly(&stored_limits.max_velocity);
+  limits.min_longitudinal_acceleration =
+    mppi::memory::loadReadOnly(&stored_limits.min_longitudinal_acceleration);
+  limits.max_longitudinal_acceleration =
+    mppi::memory::loadReadOnly(&stored_limits.max_longitudinal_acceleration);
+  limits.min_longitudinal_jerk = mppi::memory::loadReadOnly(&stored_limits.min_longitudinal_jerk);
+  limits.max_longitudinal_jerk = mppi::memory::loadReadOnly(&stored_limits.max_longitudinal_jerk);
   const int bounded_timestep =
     timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
   if (
     runtimeData().has_pointwise_velocity_limits_ &&
-    runtimeData().ref_velocity_limit_active_[bounded_timestep] != 0U) {
+    mppi::memory::loadReadOnly(&runtimeData().ref_velocity_limit_active_[bounded_timestep]) != 0U) {
     limits.active_mask |= kVelocityLimitActive;
     limits.min_velocity = 0.0F;
-    limits.max_velocity = runtimeData().ref_max_velocity_[bounded_timestep];
+    limits.max_velocity =
+      mppi::memory::loadReadOnly(&runtimeData().ref_max_velocity_[bounded_timestep]);
   }
   return computeCappedKinematicIntervalCost(
     limits, this->params_.overlimit_coeff, this->params_.crash_contact_penalty, velocity,
@@ -1594,7 +1636,8 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   }
   const float control_dt = fmaxf(DYN_PARAMS_T::kControlDt, 1.0E-6F);
   const float steer_cmd = control[static_cast<int>(C::STEER_CMD)];
-  const float initial_steer_rate = (steer_cmd - runtimeData().initial_steering_angle_) / control_dt;
+  const float initial_steer_rate =
+    (steer_cmd - mppi::memory::loadReadOnly(&runtimeData().initial_steering_angle_)) / control_dt;
   return this->params_.initial_steer_rate_coeff * initial_steer_rate * initial_steer_rate *
          static_cast<float>(NUM_TIMESTEPS);
 }
@@ -1624,7 +1667,7 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __device__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::computeComfortCost(
-  float * u, float * y, int timestep)
+  float * u, float * y, int timestep) const
 {
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
@@ -1654,7 +1697,7 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __device__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::computeRunningCost(
-  float * y, float * u, int timestep, float * theta_c, int * crash)
+  float * y, float * u, int timestep, float * theta_c, int * crash) const
 {
   if (threadIdx.y == 0) {
     const float state_cost = computeStateCost(y, timestep, theta_c, crash);
