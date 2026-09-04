@@ -213,6 +213,12 @@
                   "description": "Enable path shifting to ego pose",
                   "default": true
                 },
+                "start_time_offset": {
+                  "type": "number",
+                  "description": "Time offset from current ego state to start path shifting [s]",
+                  "default": 0.1,
+                  "minimum": 0.0
+                },
                 "minimum_shift_length": {
                   "type": "number",
                   "description": "Lateral offset threshold to trigger shift [m]",
@@ -234,7 +240,7 @@
                 "lateral_accel_limit": {
                   "type": "number",
                   "description": "Lateral acceleration limit for shift [m/s^2]",
-                  "default": 1.0,
+                  "default": 0.8,
                   "minimum": 0.0
                 }
               },

@@ -206,6 +206,13 @@ minimum_rule_based_planner:
         default_value: true
         description: enable path shifting from ego position to centerline
 
+      start_time_offset:
+        type: double
+        default_value: 0.1
+        description: time offset from current ego state to start path shifting [s]
+        validation:
+          gt<>: [0.0]
+
       minimum_shift_length:
         type: double
         default_value: 0.1
@@ -225,7 +232,7 @@ minimum_rule_based_planner:
 
       lateral_accel_limit:
         type: double
-        default_value: 0.5
+        default_value: 0.8
         description: allowed lateral acceleration budget for the shift polynomial (comfort/safety limit) [m/s^2]
         validation:
           gt<>: [0.0]
