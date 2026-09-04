@@ -21,21 +21,21 @@ __global__ void generateNearestSegmentMapKernel(
     std::max(COST_T::kMaxLateralCorridorPoints, COST_T::kNumTimesteps) - 1;
   __shared__ float4 segments[kMaxSegments];
   __shared__ float inverse_length_squared[kMaxSegments];
-  const bool use_corridor = cost->runtime_data_.num_lateral_corridor_points_ >= 2;
+  const bool use_corridor = cost->runtimeData().num_lateral_corridor_points_ >= 2;
   const int path_points =
-    use_corridor ? cost->runtime_data_.num_lateral_corridor_points_ : COST_T::kNumTimesteps;
+    use_corridor ? cost->runtimeData().num_lateral_corridor_points_ : COST_T::kNumTimesteps;
   const int segment_count = path_points - 1;
   const int local_thread = static_cast<int>(threadIdx.y * blockDim.x + threadIdx.x);
   const int local_thread_count = static_cast<int>(blockDim.x * blockDim.y);
   for (int segment = local_thread; segment < segment_count; segment += local_thread_count) {
-    const float x0 = use_corridor ? cost->runtime_data_.lateral_corridor_x_[segment]
-                                  : cost->runtime_data_.ref_x_[segment];
-    const float y0 = use_corridor ? cost->runtime_data_.lateral_corridor_y_[segment]
-                                  : cost->runtime_data_.ref_y_[segment];
-    const float x1 = use_corridor ? cost->runtime_data_.lateral_corridor_x_[segment + 1]
-                                  : cost->runtime_data_.ref_x_[segment + 1];
-    const float y1 = use_corridor ? cost->runtime_data_.lateral_corridor_y_[segment + 1]
-                                  : cost->runtime_data_.ref_y_[segment + 1];
+    const float x0 = use_corridor ? cost->runtimeData().lateral_corridor_x_[segment]
+                                  : cost->runtimeData().ref_x_[segment];
+    const float y0 = use_corridor ? cost->runtimeData().lateral_corridor_y_[segment]
+                                  : cost->runtimeData().ref_y_[segment];
+    const float x1 = use_corridor ? cost->runtimeData().lateral_corridor_x_[segment + 1]
+                                  : cost->runtimeData().ref_x_[segment + 1];
+    const float y1 = use_corridor ? cost->runtimeData().lateral_corridor_y_[segment + 1]
+                                  : cost->runtimeData().ref_y_[segment + 1];
     const float dx = x1 - x0;
     const float dy = y1 - y0;
     const float length_squared = dx * dx + dy * dy;
@@ -89,21 +89,21 @@ __global__ void generateStaticDistanceMapKernel(
   const int local_thread = static_cast<int>(threadIdx.y * blockDim.x + threadIdx.x);
   const int local_thread_count = static_cast<int>(blockDim.x * blockDim.y);
   if (update_road_border) {
-    for (int segment = local_thread; segment < cost->runtime_data_.num_road_border_segments_;
+    for (int segment = local_thread; segment < cost->runtimeData().num_road_border_segments_;
          segment += local_thread_count) {
-      road_x0[segment] = cost->runtime_data_.road_border_x0_[segment];
-      road_y0[segment] = cost->runtime_data_.road_border_y0_[segment];
-      road_x1[segment] = cost->runtime_data_.road_border_x1_[segment];
-      road_y1[segment] = cost->runtime_data_.road_border_y1_[segment];
+      road_x0[segment] = cost->runtimeData().road_border_x0_[segment];
+      road_y0[segment] = cost->runtimeData().road_border_y0_[segment];
+      road_x1[segment] = cost->runtimeData().road_border_x1_[segment];
+      road_y1[segment] = cost->runtimeData().road_border_y1_[segment];
     }
   }
   if (update_drivable_area) {
-    for (int segment = local_thread; segment < cost->runtime_data_.num_drivable_area_segments_;
+    for (int segment = local_thread; segment < cost->runtimeData().num_drivable_area_segments_;
          segment += local_thread_count) {
-      drivable_x0[segment] = cost->runtime_data_.drivable_area_x0_[segment];
-      drivable_y0[segment] = cost->runtime_data_.drivable_area_y0_[segment];
-      drivable_x1[segment] = cost->runtime_data_.drivable_area_x1_[segment];
-      drivable_y1[segment] = cost->runtime_data_.drivable_area_y1_[segment];
+      drivable_x0[segment] = cost->runtimeData().drivable_area_x0_[segment];
+      drivable_y0[segment] = cost->runtimeData().drivable_area_y0_[segment];
+      drivable_x1[segment] = cost->runtimeData().drivable_area_x1_[segment];
+      drivable_y1[segment] = cost->runtimeData().drivable_area_y1_[segment];
     }
   }
   __syncthreads();
@@ -121,7 +121,7 @@ __global__ void generateStaticDistanceMapKernel(
 
       if (update_road_border) {
         float minimum = kDistanceMapEmptyDistance;
-        for (int segment = 0; segment < cost->runtime_data_.num_road_border_segments_; ++segment) {
+        for (int segment = 0; segment < cost->runtimeData().num_road_border_segments_; ++segment) {
           minimum = fminf(
             minimum, distancePointToSegment(
                        world_x, world_y, road_x0[segment], road_y0[segment], road_x1[segment],
@@ -132,7 +132,7 @@ __global__ void generateStaticDistanceMapKernel(
 
       if (update_drivable_area) {
         float minimum = kDistanceMapEmptyDistance;
-        for (int segment = 0; segment < cost->runtime_data_.num_drivable_area_segments_;
+        for (int segment = 0; segment < cost->runtimeData().num_drivable_area_segments_;
              ++segment) {
           minimum = fminf(
             minimum, distancePointToSegment(
@@ -162,15 +162,15 @@ __global__ void generateObstacleDistanceMapKernel(
   const int local_thread_count = static_cast<int>(blockDim.x * blockDim.y);
   for (int timestep = static_cast<int>(blockIdx.z * blockDim.z + threadIdx.z);
        timestep < grid.time_steps; timestep += static_cast<int>(blockDim.z * gridDim.z)) {
-    for (int obstacle = local_thread; obstacle < cost->runtime_data_.num_obstacles_;
+    for (int obstacle = local_thread; obstacle < cost->runtimeData().num_obstacles_;
          obstacle += local_thread_count) {
-      obstacle_x[obstacle] = cost->runtime_data_.obs_x_[obstacle][timestep];
-      obstacle_y[obstacle] = cost->runtime_data_.obs_y_[obstacle][timestep];
+      obstacle_x[obstacle] = cost->runtimeData().obs_x_[obstacle][timestep];
+      obstacle_y[obstacle] = cost->runtimeData().obs_y_[obstacle][timestep];
       __sincosf(
-        cost->runtime_data_.obs_yaw_[obstacle][timestep], &obstacle_sin[obstacle],
+        cost->runtimeData().obs_yaw_[obstacle][timestep], &obstacle_sin[obstacle],
         &obstacle_cos[obstacle]);
-      obstacle_half_length[obstacle] = cost->runtime_data_.obs_half_length_[obstacle];
-      obstacle_half_width[obstacle] = cost->runtime_data_.obs_half_width_[obstacle];
+      obstacle_half_length[obstacle] = cost->runtimeData().obs_half_length_[obstacle];
+      obstacle_half_width[obstacle] = cost->runtimeData().obs_half_width_[obstacle];
     }
     __syncthreads();
     for (int gy = static_cast<int>(blockIdx.y * blockDim.y + threadIdx.y); gy < grid.height;
@@ -181,7 +181,7 @@ __global__ void generateObstacleDistanceMapKernel(
         const float world_y = grid.origin_y + (static_cast<float>(gy) + 0.5F) * grid.resolution;
         float minimum = kDistanceMapEmptyDistance;
 
-        for (int obstacle = 0; obstacle < cost->runtime_data_.num_obstacles_; ++obstacle) {
+        for (int obstacle = 0; obstacle < cost->runtimeData().num_obstacles_; ++obstacle) {
           minimum = fminf(
             minimum, signedDistancePointToOrientedBox(
                        world_x, world_y, obstacle_x[obstacle], obstacle_y[obstacle],
@@ -237,15 +237,15 @@ __host__ bool FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
   updateDistanceMapGrid(
     DistanceMapTextureGrid & grid, const int width, const int height, const float resolution)
 {
-  float minimum_x = this->runtime_data_.ref_x_[0];
-  float maximum_x = this->runtime_data_.ref_x_[0];
-  float minimum_y = this->runtime_data_.ref_y_[0];
-  float maximum_y = this->runtime_data_.ref_y_[0];
+  float minimum_x = this->runtimeData().ref_x_[0];
+  float maximum_x = this->runtimeData().ref_x_[0];
+  float minimum_y = this->runtimeData().ref_y_[0];
+  float maximum_y = this->runtimeData().ref_y_[0];
   for (int timestep = 1; timestep < NUM_TIMESTEPS; ++timestep) {
-    minimum_x = std::min(minimum_x, this->runtime_data_.ref_x_[timestep]);
-    maximum_x = std::max(maximum_x, this->runtime_data_.ref_x_[timestep]);
-    minimum_y = std::min(minimum_y, this->runtime_data_.ref_y_[timestep]);
-    maximum_y = std::max(maximum_y, this->runtime_data_.ref_y_[timestep]);
+    minimum_x = std::min(minimum_x, this->runtimeData().ref_x_[timestep]);
+    maximum_x = std::max(maximum_x, this->runtimeData().ref_x_[timestep]);
+    minimum_y = std::min(minimum_y, this->runtimeData().ref_y_[timestep]);
+    maximum_y = std::max(maximum_y, this->runtimeData().ref_y_[timestep]);
   }
 
   const float center_x = 0.5F * (minimum_x + maximum_x);
@@ -271,10 +271,10 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ bool FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::updateNearestSegmentMapGrid()
 {
-  const bool use_corridor = runtime_data_.num_lateral_corridor_points_ >= 2;
-  const float * path_x = use_corridor ? runtime_data_.lateral_corridor_x_ : runtime_data_.ref_x_;
-  const float * path_y = use_corridor ? runtime_data_.lateral_corridor_y_ : runtime_data_.ref_y_;
-  const int path_points = use_corridor ? runtime_data_.num_lateral_corridor_points_ : NUM_TIMESTEPS;
+  const bool use_corridor = runtimeData().num_lateral_corridor_points_ >= 2;
+  const float * path_x = use_corridor ? runtimeData().lateral_corridor_x_ : runtimeData().ref_x_;
+  const float * path_y = use_corridor ? runtimeData().lateral_corridor_y_ : runtimeData().ref_y_;
+  const int path_points = use_corridor ? runtimeData().num_lateral_corridor_points_ : NUM_TIMESTEPS;
   auto & grid = this->texture_state_.nearest_segment_map_grid_;
   if (path_points < 2) {
     grid.width = 0;
@@ -474,7 +474,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   if (!this->GPUMemStatus_) {
     return;
   }
-  this->texture_state_.obstacle_texture_has_obstacles_ = this->runtime_data_.num_obstacles_ > 0;
+  this->texture_state_.obstacle_texture_has_obstacles_ = this->runtimeData().num_obstacles_ > 0;
   if (!this->texture_state_.obstacle_texture_has_obstacles_) {
     this->texture_state_.obstacle_texture_valid_ = true;
     return;

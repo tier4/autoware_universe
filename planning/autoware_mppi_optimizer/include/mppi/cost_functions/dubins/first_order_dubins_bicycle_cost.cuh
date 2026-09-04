@@ -10,6 +10,7 @@
 #include <mppi/cost_functions/dubins/distance_map_texture.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_kinematic_limits.cuh>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
+#include <mppi/utils/pinned_host_buffer.cuh>
 
 #include <cstdint>
 #include <type_traits>
@@ -170,8 +171,29 @@ public:
   /** Full diffusion-path polyline for spatial lateral / crash. */
   static constexpr int kMaxLateralCorridorPoints = RuntimeData::kMaxLateralCorridorPoints;
 
-  RuntimeData runtime_data_{};
+  /** Page-locked authoritative host copy used as the source of asynchronous cycle-data uploads. */
+  mppi::memory::PinnedHostBuffer<RuntimeData> runtime_data_{1};
+  /** POD storage embedded in the device-side cost object; never used as host state. */
+  RuntimeData runtime_data_device_{};
   DistanceMapTextureState texture_state_{};
+
+  __host__ __device__ __forceinline__ RuntimeData & runtimeData()
+  {
+#ifdef __CUDA_ARCH__
+    return runtime_data_device_;
+#else
+    return runtime_data_.data()[0];
+#endif
+  }
+
+  __host__ __device__ __forceinline__ const RuntimeData & runtimeData() const
+  {
+#ifdef __CUDA_ARCH__
+    return runtime_data_device_;
+#else
+    return runtime_data_.data()[0];
+#endif
+  }
 
   /**
    * Block shared-memory layout in theta_c (floats):

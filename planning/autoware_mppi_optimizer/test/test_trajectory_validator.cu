@@ -118,11 +118,11 @@ TEST_F(TrajectoryValidatorTest, PrecomputesReferenceArcLengthForConstantTimeProj
   cost_->setReferenceTrajectory(
     x.data(), y.data(), velocity.data(), static_cast<int>(x.size()), yaw.data());
 
-  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[0], 0.0F);
-  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[1], 5.0F);
-  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[2], 9.0F);
-  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[3], 12.0F);
-  EXPECT_FLOAT_EQ(cost_->runtime_data_.ref_s_[kTestHorizon - 1], 12.0F);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[0], 0.0F);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[1], 5.0F);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[2], 9.0F);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[3], 12.0F);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[kTestHorizon - 1], 12.0F);
 
   const auto metrics = cost_->computeLateralPathMetrics(3.0F, 6.0F, 0.0F);
   EXPECT_FLOAT_EQ(metrics.path_length_s, 7.0F);
