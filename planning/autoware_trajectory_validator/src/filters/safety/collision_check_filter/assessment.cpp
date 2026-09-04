@@ -16,13 +16,113 @@
 
 #include <boost/geometry.hpp>
 
+#include <lanelet2_core/LaneletMap.h>
+
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
+
+namespace autoware::trajectory_validator::plugin::safety
+{
+namespace
+{
+bool is_pedestrian_or_bicycle(
+  const autoware_perception_msgs::msg::PredictedObject & predicted_object)
+{
+  using autoware_perception_msgs::msg::ObjectClassification;
+
+  const auto label =
+    autoware::object_recognition_utils::getHighestProbLabel(predicted_object.classification);
+  return label == ObjectClassification::PEDESTRIAN || label == ObjectClassification::BICYCLE;
+}
+
+std::vector<Polygon2d> collect_nearby_intersection_area_polygons(
+  const lanelet::LaneletMap & lanelet_map, const Polygon2d & object_hull)
+{
+  std::vector<Polygon2d> polygons;
+  std::set<lanelet::Id> intersection_area_ids;
+  lanelet::BoundingBox2d search_bbox;
+  for (const auto & point : object_hull.outer()) {
+    search_bbox.extend(lanelet::BasicPoint2d(point.x(), point.y()));
+  }
+
+  for (const auto & lanelet : lanelet_map.laneletLayer.search(search_bbox)) {
+    const lanelet::Id area_id =
+      std::atoi(std::string(lanelet.attributeOr("intersection_area", std::string{"0"})).c_str());
+    if (area_id == 0 || !intersection_area_ids.insert(area_id).second) {
+      continue;
+    }
+
+    const auto polygon_it = lanelet_map.polygonLayer.find(area_id);
+    if (polygon_it == lanelet_map.polygonLayer.end()) {
+      continue;
+    }
+
+    Polygon2d polygon;
+    for (const auto & point : polygon_it->basicPolygon()) {
+      polygon.outer().emplace_back(point.x(), point.y());
+    }
+    polygons.push_back(std::move(polygon));
+  }
+
+  return polygons;
+}
+
+std::vector<Polygon2d> collect_nearby_crosswalk_or_walkway_polygons(
+  const lanelet::LaneletMap & lanelet_map, const Polygon2d & object_hull)
+{
+  std::vector<Polygon2d> polygons;
+  lanelet::BoundingBox2d search_bbox;
+  for (const auto & point : object_hull.outer()) {
+    search_bbox.extend(lanelet::BasicPoint2d(point.x(), point.y()));
+  }
+
+  for (const auto & lanelet : lanelet_map.laneletLayer.search(search_bbox)) {
+    const auto subtype = lanelet.attributeOr(lanelet::AttributeName::Subtype, std::string{});
+    if (
+      subtype != lanelet::AttributeValueString::Crosswalk &&
+      subtype != lanelet::AttributeValueString::Walkway) {
+      continue;
+    }
+
+    Polygon2d polygon;
+    for (const auto & point : lanelet.polygon2d().basicPolygon()) {
+      polygon.outer().emplace_back(point.x(), point.y());
+    }
+    polygons.push_back(std::move(polygon));
+  }
+
+  return polygons;
+}
+
+bool intersects_any(const Polygon2d & object_polygon, const std::vector<Polygon2d> & polygons)
+{
+  return std::any_of(polygons.begin(), polygons.end(), [&](const auto & polygon) {
+    return boost::geometry::intersects(object_polygon, polygon);
+  });
+}
+
+bool is_vru_prioritized_at_collision(
+  const CollisionDetail & nominal_collision_result, const lanelet::LaneletMap & lanelet_map)
+{
+  const auto intersection_area_polygons =
+    collect_nearby_intersection_area_polygons(lanelet_map, nominal_collision_result.object_hull);
+  if (!intersects_any(nominal_collision_result.object_hull, intersection_area_polygons)) {
+    return true;
+  }
+
+  const auto crosswalk_or_walkway_polygons =
+    collect_nearby_crosswalk_or_walkway_polygons(lanelet_map, nominal_collision_result.object_hull);
+  return intersects_any(nominal_collision_result.object_hull, crosswalk_or_walkway_polygons);
+}
+}  // namespace
+}  // namespace autoware::trajectory_validator::plugin::safety
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
@@ -382,7 +482,8 @@ DracArtifact assess_map_based(
   const trajectory::ObjectTrajectoryCache & object_trajectory_cache,
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const autoware_perception_msgs::msg::PredictedObject & object, const StopTrackers & stop_trackers,
-  const DracParams & drac_params, const GlobalParams & global_params)
+  const DracParams & drac_params, const GlobalParams & global_params,
+  const lanelet::LaneletMap & lanelet_map)
 {
   DracArtifact drac_artifact{};
 
@@ -405,8 +506,18 @@ DracArtifact assess_map_based(
     if (!nominal_collision_result.has_value()) {
       continue;
     }
+    const bool use_object_prioritized_assessment = [&]() {
+      if (
+        ego_turn_indicator.command != autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE) {
+        return true;
+      }
+      if (!is_pedestrian_or_bicycle(object)) {
+        return false;
+      }
+      return is_vru_prioritized_at_collision(nominal_collision_result.value(), lanelet_map);
+    }();
 
-    if (ego_turn_indicator.command == autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE) {
+    if (!use_object_prioritized_assessment) {
       if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
         if (!drac_params.map_based.ego_prioritized_ego_earlier.enable_assessment) {
           continue;
@@ -461,8 +572,8 @@ DracArtifact assess(
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const nav_msgs::msg::Odometry & odometry,
   const autoware_perception_msgs::msg::PredictedObjects & predicted_objects,
-  StopTrackers & stop_trackers, const DracParamMap & drac_param_map,
-  const GlobalParams & global_params)
+  const lanelet::LaneletMap & lanelet_map, StopTrackers & stop_trackers,
+  const DracParamMap & drac_param_map, const GlobalParams & global_params)
 {
   DracArtifact drac_artifact{};
 
@@ -484,7 +595,7 @@ DracArtifact assess(
     if (drac_params.map_based.enable_assessment) {
       drac_artifact.merge(assess_map_based(
         ego_trajectory_cache, object_trajectory_cache, ego_turn_indicator, predicted_object,
-        stop_trackers, drac_params, global_params));
+        stop_trackers, drac_params, global_params, lanelet_map));
     }
   }
   return drac_artifact;
