@@ -61,6 +61,10 @@ DeleteAllObjectsTool::DeleteAllObjectsTool()
     "Pose Topic", "/simulation/dummy_perception_publisher/object_info",
     "The topic on which to publish dummy object info.", getPropertyContainer(), SLOT(updateTopic()),
     this);
+  static_area_topic_property_ = new rviz_common::properties::StringProperty(
+    "Static Area Topic", "/simulation/dummy_perception_publisher/static_area",
+    "The topic on which to publish dummy static area info.", getPropertyContainer(),
+    SLOT(updateTopic()), this);
 }
 
 void DeleteAllObjectsTool::onInitialize()
@@ -75,6 +79,8 @@ void DeleteAllObjectsTool::updateTopic()
   rclcpp::Node::SharedPtr raw_node = context_->getRosNodeAbstraction().lock()->get_raw_node();
   dummy_object_info_pub_ = raw_node->create_publisher<tier4_simulation_msgs::msg::DummyObject>(
     topic_property_->getStdString(), 1);
+  dummy_static_area_pub_ = raw_node->create_publisher<tier4_simulation_msgs::msg::DummyObject>(
+    static_area_topic_property_->getStdString(), 1);
   clock_ = raw_node->get_clock();
 }
 
@@ -93,6 +99,7 @@ void DeleteAllObjectsTool::onPoseSet(
   output_msg.action = tier4_simulation_msgs::msg::DummyObject::DELETEALL;
 
   dummy_object_info_pub_->publish(output_msg);
+  dummy_static_area_pub_->publish(output_msg);
 }
 
 }  // end namespace rviz_plugins

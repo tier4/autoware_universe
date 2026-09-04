@@ -10,6 +10,7 @@ find_package(autoware_point_types REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common filters)
 
 set(${PROJECT_NAME}_DEPENDENCIES
+  autoware_object_recognition_utils
   autoware_perception_msgs
   autoware_point_types
   tier4_perception_msgs
