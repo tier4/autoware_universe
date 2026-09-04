@@ -26,14 +26,56 @@ trajectory_mppi_optimizer:
     read_only: false
   lambda:
     type: double
-    default_value: 100.0
-    description: Softmax temperature for rollout weights
+    default_value: 0.1
+    description: Initial dimensionless softmax temperature for robust-percentile normalized costs
     validation: { gt<>: [0.0] }
     read_only: false
-  speed_coeff:
+  lambda_min:
     type: double
-    default_value: 300.0
-    description: Speed tracking cost coefficient
+    default_value: 0.01
+    description: Strict lower bound for ESS-adaptive lambda
+    validation: { gt<>: [0.0] }
+    read_only: false
+  lambda_max:
+    type: double
+    default_value: 2.0
+    description: Strict upper bound for ESS-adaptive lambda
+    validation: { gt<>: [0.0] }
+    read_only: false
+  target_ess_ratio:
+    type: double
+    default_value: 0.2
+    description: Target effective sample size divided by the number of rollouts
+    validation: { bounds<>: [0.0, 1.0] }
+    read_only: false
+  lambda_adaptation_gain:
+    type: double
+    default_value: 0.1
+    description: Proportional gain for lambda feedback; zero disables adaptation
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  unsafe_rollout_fraction_threshold:
+    type: double
+    default_value: 0.95
+    description: Fraction of collision/safety-violating rollouts that forces lambda_max next cycle
+    validation: { bounds<>: [0.0, 1.0] }
+    read_only: false
+  cost_normalization_percentile:
+    type: double
+    default_value: 0.95
+    description: Upper finite rollout-cost percentile used for robust normalization
+    validation: { bounds<>: [0.0, 1.0] }
+    read_only: false
+  max_iter:
+    type: int
+    default_value: 20
+    description: Number of optimization iterations per MPPI update
+    validation: { gt<>: [0] }
+    read_only: false
+  spatial_overspeed_coeff:
+    type: double
+    default_value: 0.0
+    description: Spatial reference-velocity overspeed cost weighted by corridor progress
     validation: { gt_eq<>: [0.0] }
     read_only: false
   track_coeff:
@@ -46,6 +88,18 @@ trajectory_mppi_optimizer:
     type: double
     default_value: 10.0
     description: Terminal position cost scale
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  terminal_error_coeff:
+    type: double
+    default_value: 0.0
+    description: Terminal-only squared XY error cost to the final reference point
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  terminal_heading_coeff:
+    type: double
+    default_value: 0.0
+    description: Terminal-only squared shortest-angle error cost to the final reference heading
     validation: { gt_eq<>: [0.0] }
     read_only: false
   heading_coeff:
@@ -132,6 +186,12 @@ trajectory_mppi_optimizer:
     description: Steering rate cost coefficient
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  initial_steer_rate_coeff:
+    type: double
+    default_value: 0.0
+    description: Horizon-compensated cost on the first steering command relative to measured steering
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   accel_cmd_std_dev:
     type: double
     default_value: 0.1
@@ -143,6 +203,12 @@ trajectory_mppi_optimizer:
     default_value: 0.02
     description: Steering command noise standard deviation
     validation: { gt<>: [0.0] }
+    read_only: false
+  std_dev_decay:
+    type: double
+    default_value: 0.84
+    description: Per-iteration multiplier for the sampling noise standard deviation
+    validation: { bounds<>: [0.0, 1.0] }
     read_only: false
   accel_cmd_noise_exponent:
     type: double
@@ -267,6 +333,29 @@ trajectory_mppi_optimizer:
     default_value: true
     description: Warm-start MPPI u_nom from the previous optimized control (ignored when t-MPT seeds u_nom)
     read_only: false
+  enable_curvature_adaptive_steering_filter:
+    type: bool
+    default_value: true
+    description: Apply the plugin output steering EMA that filters straight-line noise and responds faster in turns
+    read_only: false
+  steering_filter_alpha_straight:
+    type: double
+    default_value: 0.1
+    description: Steering EMA alpha at zero steering; lower values suppress more straight-line noise
+    validation: { bounds<>: [0.0, 1.0] }
+    read_only: false
+  steering_filter_alpha_turn:
+    type: double
+    default_value: 1.0
+    description: Steering EMA alpha at and above the turn-angle threshold
+    validation: { bounds<>: [0.0, 1.0] }
+    read_only: false
+  steering_filter_turn_angle_rad:
+    type: double
+    default_value: 0.1
+    description: Absolute steering command in radians at which the EMA reaches its turn alpha
+    validation: { gt<>: [0.0] }
+    read_only: false
   enable_debug_trajectory_log:
     type: bool
     default_value: false
@@ -276,4 +365,14 @@ trajectory_mppi_optimizer:
     type: string
     default_value: ""
     description: Directory for offline trajectory logs (empty = current working directory)
+    read_only: false
+  enable_distance_map_texture_debug:
+    type: bool
+    default_value: false
+    description: Open a CUDA-OpenGL window visualizing the static and dynamic distance textures
+    read_only: false
+  enable_iteration_rollout_debug:
+    type: bool
+    default_value: false
+    description: Capture sampled rollouts at every MPPI iteration and publish them as debug markers
     read_only: false

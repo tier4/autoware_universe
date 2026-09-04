@@ -32,9 +32,24 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
 {
   const FirstOrderDubinsMppiCostParams defaults;
   node.declare_parameter(param_name(prefix, "lambda"), defaults.lambda);
-  node.declare_parameter(param_name(prefix, "speed_coeff"), defaults.speed_coeff);
+  node.declare_parameter(param_name(prefix, "lambda_min"), defaults.lambda_min);
+  node.declare_parameter(param_name(prefix, "lambda_max"), defaults.lambda_max);
+  node.declare_parameter(param_name(prefix, "target_ess_ratio"), defaults.target_ess_ratio);
+  node.declare_parameter(
+    param_name(prefix, "lambda_adaptation_gain"), defaults.lambda_adaptation_gain);
+  node.declare_parameter(
+    param_name(prefix, "unsafe_rollout_fraction_threshold"),
+    defaults.unsafe_rollout_fraction_threshold);
+  node.declare_parameter(
+    param_name(prefix, "cost_normalization_percentile"), defaults.cost_normalization_percentile);
+  node.declare_parameter(param_name(prefix, "max_iter"), defaults.max_iter);
+  node.declare_parameter(
+    param_name(prefix, "spatial_overspeed_coeff"), defaults.spatial_overspeed_coeff);
   node.declare_parameter(param_name(prefix, "track_coeff"), defaults.track_coeff);
   node.declare_parameter(param_name(prefix, "track_terminal_scale"), defaults.track_terminal_scale);
+  node.declare_parameter(param_name(prefix, "terminal_error_coeff"), defaults.terminal_error_coeff);
+  node.declare_parameter(
+    param_name(prefix, "terminal_heading_coeff"), defaults.terminal_heading_coeff);
   node.declare_parameter(param_name(prefix, "heading_coeff"), defaults.heading_coeff);
   node.declare_parameter(
     param_name(prefix, "lateral_distance_coeff"), defaults.lateral_distance_coeff);
@@ -52,9 +67,12 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
   node.declare_parameter(param_name(prefix, "accel_cmd_coeff"), defaults.accel_cmd_coeff);
   node.declare_parameter(param_name(prefix, "steer_cmd_coeff"), defaults.steer_cmd_coeff);
   node.declare_parameter(param_name(prefix, "steer_rate_coeff"), defaults.steer_rate_coeff);
+  node.declare_parameter(
+    param_name(prefix, "initial_steer_rate_coeff"), defaults.initial_steer_rate_coeff);
   node.declare_parameter(param_name(prefix, "overlimit_coeff"), defaults.overlimit_coeff);
   node.declare_parameter(param_name(prefix, "accel_cmd_std_dev"), defaults.accel_cmd_std_dev);
   node.declare_parameter(param_name(prefix, "steer_cmd_std_dev"), defaults.steer_cmd_std_dev);
+  node.declare_parameter(param_name(prefix, "std_dev_decay"), defaults.std_dev_decay);
   node.declare_parameter(
     param_name(prefix, "accel_cmd_noise_exponent"), defaults.accel_cmd_noise_exponent);
   node.declare_parameter(
@@ -87,12 +105,29 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
 {
   FirstOrderDubinsMppiCostParams params;
   params.lambda = static_cast<float>(node.get_parameter(param_name(prefix, "lambda")).as_double());
-  params.speed_coeff =
-    static_cast<float>(node.get_parameter(param_name(prefix, "speed_coeff")).as_double());
+  params.lambda_min =
+    static_cast<float>(node.get_parameter(param_name(prefix, "lambda_min")).as_double());
+  params.lambda_max =
+    static_cast<float>(node.get_parameter(param_name(prefix, "lambda_max")).as_double());
+  params.target_ess_ratio =
+    static_cast<float>(node.get_parameter(param_name(prefix, "target_ess_ratio")).as_double());
+  params.lambda_adaptation_gain = static_cast<float>(
+    node.get_parameter(param_name(prefix, "lambda_adaptation_gain")).as_double());
+  params.unsafe_rollout_fraction_threshold = static_cast<float>(
+    node.get_parameter(param_name(prefix, "unsafe_rollout_fraction_threshold")).as_double());
+  params.cost_normalization_percentile = static_cast<float>(
+    node.get_parameter(param_name(prefix, "cost_normalization_percentile")).as_double());
+  params.max_iter = static_cast<int>(node.get_parameter(param_name(prefix, "max_iter")).as_int());
+  params.spatial_overspeed_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "spatial_overspeed_coeff")).as_double());
   params.track_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "track_coeff")).as_double());
   params.track_terminal_scale =
     static_cast<float>(node.get_parameter(param_name(prefix, "track_terminal_scale")).as_double());
+  params.terminal_error_coeff =
+    static_cast<float>(node.get_parameter(param_name(prefix, "terminal_error_coeff")).as_double());
+  params.terminal_heading_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "terminal_heading_coeff")).as_double());
   params.heading_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "heading_coeff")).as_double());
   params.lateral_distance_coeff = static_cast<float>(
@@ -119,12 +154,16 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     static_cast<float>(node.get_parameter(param_name(prefix, "steer_cmd_coeff")).as_double());
   params.steer_rate_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "steer_rate_coeff")).as_double());
+  params.initial_steer_rate_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "initial_steer_rate_coeff")).as_double());
   params.overlimit_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "overlimit_coeff")).as_double());
   params.accel_cmd_std_dev =
     static_cast<float>(node.get_parameter(param_name(prefix, "accel_cmd_std_dev")).as_double());
   params.steer_cmd_std_dev =
     static_cast<float>(node.get_parameter(param_name(prefix, "steer_cmd_std_dev")).as_double());
+  params.std_dev_decay =
+    static_cast<float>(node.get_parameter(param_name(prefix, "std_dev_decay")).as_double());
   params.accel_cmd_noise_exponent = static_cast<float>(
     node.get_parameter(param_name(prefix, "accel_cmd_noise_exponent")).as_double());
   params.steer_cmd_noise_exponent = static_cast<float>(

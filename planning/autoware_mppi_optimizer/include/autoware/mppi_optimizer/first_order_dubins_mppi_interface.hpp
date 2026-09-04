@@ -27,6 +27,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -71,6 +72,10 @@ struct FirstOrderDubinsMppiControl
   float steer_cmd{0.0F};
 };
 
+/** Optional host-side output conditioning supplied by the interface caller. */
+using FirstOrderDubinsMppiControlSequencePostprocessor =
+  std::function<void(std::vector<FirstOrderDubinsMppiControl> &)>;
+
 /** Nominal control sequence supplied to MPPI before sampling and optimization. */
 struct FirstOrderDubinsMppiNominalControlProfile
 {
@@ -83,6 +88,8 @@ struct FirstOrderDubinsMppiRollout
 {
   std::vector<std::pair<float, float>> points;
   float cost{0.0F};
+  /** One-based MPPI optimization iteration; zero denotes a legacy/offline aggregate sample. */
+  int iteration{0};
   /** True when this sample was selected as a high-cost (worst) viz sample, not top-weighted. */
   bool is_worst{false};
 };
@@ -103,9 +110,11 @@ struct FirstOrderDubinsMppiKinematicLimits
 /** Host reconstruction of the cost assigned to the selected MPPI trajectory. */
 struct FirstOrderDubinsMppiCostBreakdown
 {
-  float speed{0.0F};
+  float spatial_overspeed{0.0F};
   float track{0.0F};
   float heading{0.0F};
+  float terminal_error{0.0F};
+  float terminal_heading{0.0F};
   float lateral_distance{0.0F};
   float lateral_boundary{0.0F};
   float lateral_yaw_error{0.0F};
@@ -122,6 +131,7 @@ struct FirstOrderDubinsMppiCostBreakdown
   float lateral_jerk{0.0F};
   float longitudinal_jerk{0.0F};
   float steering_rate{0.0F};
+  float initial_steering_rate{0.0F};
   float kinematic_velocity_overlimit{0.0F};
   float kinematic_acceleration_overlimit{0.0F};
   float kinematic_jerk_overlimit{0.0F};
@@ -134,10 +144,11 @@ struct FirstOrderDubinsMppiCostBreakdown
 
   [[nodiscard]] float componentTotal() const
   {
-    return speed + track + heading + lateral_distance + lateral_boundary + lateral_yaw_error +
-           remaining_distance + path_overshoot + track_center + corner_buffer + drivable_area +
-           acceleration_command + steering_command + lateral_acceleration + lateral_jerk +
-           longitudinal_jerk + steering_rate + kinematic_velocity_overlimit +
+    return spatial_overspeed + track + heading + terminal_error + terminal_heading +
+           lateral_distance + lateral_boundary + lateral_yaw_error + remaining_distance +
+           path_overshoot + track_center + corner_buffer + drivable_area + acceleration_command +
+           steering_command + lateral_acceleration + lateral_jerk + longitudinal_jerk +
+           steering_rate + initial_steering_rate + kinematic_velocity_overlimit +
            kinematic_acceleration_overlimit + kinematic_jerk_overlimit + obstacle + road_border;
   }
 };
@@ -249,6 +260,17 @@ struct FirstOrderDubinsMppiDebug
   FirstOrderDubinsMppiTiming timing;
   FirstOrderDubinsMppiKinematicLimits active_kinematic_limits;
   float baseline_cost{0.0F};
+  /** ESS for every MPPI optimization iteration in the most recent control step. */
+  std::vector<float> iteration_effective_sample_sizes;
+  /** Lambda used for those weights and the adapted value prepared for the next control step. */
+  float lambda_used{0.0F};
+  float lambda_next{0.0F};
+  /** Maximum finite raw cost in the final rollout population. */
+  float max_rollout_cost{0.0F};
+  /** Robust upper raw cost used to normalize the final rollout population. */
+  float normalization_upper_cost{0.0F};
+  /** Fraction of final-iteration rollouts that encountered a collision/safety violation. */
+  float unsafe_rollout_fraction{0.0F};
   /** Hard-constraint validation of the generated post-step states. */
   FirstOrderDubinsMppiValidationResult validation;
   /** True while the deterministic external-only maximum-velocity profile is applied. */
@@ -271,6 +293,8 @@ struct FirstOrderDubinsMppiOptimizationResult
 {
   Trajectory trajectory;
   FirstOrderDubinsMppiDebug debug;
+  /** Number of leading points generated from the MPPI control horizon. */
+  std::size_t optimized_point_count{0U};
 };
 
 /** Static 2D line segment supplied to the MPPI cost function in map coordinates. */
@@ -339,9 +363,9 @@ public:
     std::vector<float> & raw_costs, std::vector<float> & normalized_weights, int stride = 1) const;
 
   /**
-   * @brief When true, optimizeTrajectory fills debug.rollouts with top-K weighted samples
-   *        plus worst-K high-cost samples (CPU replay; ~tens of ms). Enable only for offline
-   *        retune — leave false for online planning and debug trajectory logging.
+   * @brief Replace the per-iteration sampled debug rollouts with top-K weighted samples plus
+   *        worst-K high-cost samples from the final iteration (CPU replay; ~tens of ms). Enable
+   *        only for offline retune; leave false for online planning and debug trajectory logging.
    */
   void setRolloutVisualizationEnabled(bool enable);
 
@@ -403,6 +427,8 @@ public:
    * @param drivable_area Static drivable-area boundary segments used as a gradual constraint.
    * @param kinematic_limits Optional external scalar and map pointwise velocity bounds, plus
    *        external acceleration and jerk bounds.
+   * @param control_postprocessor Optional caller-owned conditioning applied to the optimized
+   *        control horizon before state recomputation and applied-control bookkeeping.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
@@ -410,7 +436,8 @@ public:
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
     const std::vector<Segment> & drivable_area,
-    const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {});
+    const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {},
+    const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor = {});
 
 private:
   struct Impl;

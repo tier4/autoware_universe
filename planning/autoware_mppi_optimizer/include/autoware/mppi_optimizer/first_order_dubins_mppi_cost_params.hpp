@@ -22,10 +22,26 @@ namespace autoware::mppi_optimizer
 struct FirstOrderDubinsMppiCostParams
 {
   /** Softmax temperature for trajectory weighting (higher = softer weighting). */
-  float lambda{1500.0F};
-  float speed_coeff{500.0F};
+  float lambda{0.1F};
+  /** Strict bounds and P-controller target for the adaptive dimensionless temperature. */
+  float lambda_min{0.01F};
+  float lambda_max{2.0F};
+  float target_ess_ratio{0.2F};
+  float lambda_adaptation_gain{0.1F};
+  /** Unsafe-rollout fraction above which the next cycle uses maximum exploration temperature. */
+  float unsafe_rollout_fraction_threshold{0.95F};
+  /** Upper raw-cost percentile used for robust normalization before exponential weighting. */
+  float cost_normalization_percentile{0.95F};
+  /** Number of optimization iterations performed for each MPPI update. */
+  int max_iter{20};
+  /** Penalizes velocity above the spatially interpolated reference velocity. */
+  float spatial_overspeed_coeff{0.0F};
   float track_coeff{1000.0F};
   float track_terminal_scale{10.0F};
+  /** Terminal-only squared XY error to the final reference point. */
+  float terminal_error_coeff{0.0F};
+  /** Terminal-only squared shortest-angle error to the final reference heading. */
+  float terminal_heading_coeff{0.0F};
   float heading_coeff{500.0F};
   float lateral_distance_coeff{0.0F};
   float lateral_yaw_error_coeff{0.0F};
@@ -43,12 +59,16 @@ struct FirstOrderDubinsMppiCostParams
   float accel_cmd_coeff{0.0F};
   float steer_cmd_coeff{0.0F};
   float steer_rate_coeff{0.0F};
+  /** One-shot cost on the first steering command relative to the measured steering state. */
+  float initial_steer_rate_coeff{0.0F};
   /** Shared weight for optional VelocityLimit interval violations. */
   float overlimit_coeff{10000.0F};
   /** Gaussian sampling std-dev on acceleration command [m/s^2] around u_nom. */
   float accel_cmd_std_dev{0.35F};
   /** Gaussian sampling std-dev on steer command [rad] around u_nom. */
   float steer_cmd_std_dev{0.024F};
+  /** Per-iteration multiplier applied to the sampling standard deviation. */
+  float std_dev_decay{0.84F};
   /** Power-law PSD exponent for acceleration-command sampling noise. */
   float accel_cmd_noise_exponent{1.0F};
   /** Power-law PSD exponent for steering-command sampling noise. */
