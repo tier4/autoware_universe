@@ -42,6 +42,7 @@ using autoware::trajectory_processor::utils::obstacle_stop::get_nearest_pcd_coll
 using autoware::trajectory_processor::utils::obstacle_stop::LateralMarginMap;
 using autoware::trajectory_processor::utils::obstacle_stop::ObjectType;
 using autoware::trajectory_processor::utils::obstacle_stop::PointCloud;
+using autoware::trajectory_processor::utils::obstacle_stop::TargetObject;
 
 void ObstacleStop::on_initialize(const MinimumRuleBasedPlannerParams & params)
 {
@@ -189,18 +190,32 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   debug_data_.filtered_objects = *data.predicted_objects_ptr;
 
   object_filter_->filter_objects(debug_data_.filtered_objects);
-  object_filter_->filter_by_target_area(
-    debug_data_.filtered_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
-    lateral_margin_map_, debug_data_.target_polygons);
 
-  autoware_perception_msgs::msg::PredictedObject colliding_object;
+  debug_data_.target_objects.clear();
+  debug_data_.target_objects.reserve(debug_data_.filtered_objects.objects.size());
+  for (const auto & object : debug_data_.filtered_objects.objects) {
+    debug_data_.target_objects.emplace_back(object);
+  }
+
+  object_filter_->filter_by_target_area(
+    debug_data_.target_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
+    lateral_margin_map_);
+
   auto collision_point = get_nearest_object_collision(
-    traj_points, context_->vehicle_info, debug_data_.filtered_objects, object_decel_map_,
+    debug_data_.target_objects, traj_points, context_->vehicle_info, object_decel_map_,
     params_.rss_params.ego_decel, params_.rss_params.reaction_time,
     params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
-    params_.rss_params.lookahead_horizon, colliding_object, params_.rss_params.enable);
+    params_.rss_params.lookahead_horizon, params_.rss_params.enable);
 
-  if (collision_point) debug_data_.colliding_object = colliding_object;
+  if (collision_point) {
+    auto it = std::find_if(
+      debug_data_.target_objects.begin(), debug_data_.target_objects.end(),
+      [&](const TargetObject & object) { return !object.is_safe; });
+    if (it != debug_data_.target_objects.end()) {
+      debug_data_.colliding_object = it->object;
+    }
+  }
+
   return collision_point;
 }
 
@@ -347,7 +362,7 @@ void ObstacleStop::publish_debug_string(bool is_safe) const
   ss << "OBSTACLE STOP (Backup Planner):" << "\n";
   ss << "\t\t" << "SAFE: " << is_safe << "\n";
   ss << "\t\t" << "OBJECTS: " << debug_data_.filtered_objects.objects.size() << " --> "
-     << debug_data_.target_polygons.size() << "\n";
+     << debug_data_.target_objects.size() << "\n";
   ss << "\t\t" << "POINTCLOUD: " << filtered_pcd_size << " --> "
      << debug_data_.target_pcd_points.size() << "\n";
   if (nearest_collision_point_) {
@@ -429,6 +444,20 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
     marker_array.markers.push_back(marker);
   };
 
+  auto add_text_marker = [&](
+                           const std::string & text, const geometry_msgs::msg::Pose & pose,
+                           const std::string & ns, const int id,
+                           const std_msgs::msg::ColorRGBA & color, const double scale = 0.4) {
+    Marker marker = autoware_utils::create_default_marker(
+      "map", get_clock()->now(), ns, id, Marker::TEXT_VIEW_FACING,
+      autoware_utils::create_marker_scale(scale, scale, scale), color);
+    marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+    marker.pose = pose;
+    marker.pose.position.z += 1.0;
+    marker.text = text;
+    marker_array.markers.push_back(marker);
+  };
+
   {
     const auto & bounding_box = debug_data_.trajectory_shape.bounding_box;
     Polygon2d polygon;
@@ -440,8 +469,17 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
     id++;
   }
 
-  for (const auto & target_polygon : debug_data_.target_polygons) {
+  for (const auto & obj : debug_data_.target_objects) {
+    const auto & target_polygon = obj.polygon;
     add_polygon_marker(target_polygon, ns + "/target_objects", id, magenta);
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2);
+    ss << "safe: " << (obj.is_safe ? "true" : "false") << "\n";
+    ss << "rss_safe_dist: " << obj.safe_distance << " m" << "\n";
+    ss << "dist_from_ego: " << obj.distance_from_ego << " m";
+    add_text_marker(
+      ss.str(), obj.object.kinematics.initial_pose_with_covariance.pose,
+      ns + "/target_objects_text", id, white);
     id++;
   }
 

@@ -37,6 +37,8 @@ using utils::obstacle_stop::get_nearest_object_collision;
 using utils::obstacle_stop::get_nearest_pcd_collision;
 using utils::obstacle_stop::PointCloud;
 using utils::obstacle_stop::PointCloud2;
+using utils::obstacle_stop::TargetObject;
+using utils::obstacle_stop::TargetObjects;
 
 void ObstacleStop::on_initialize(const TrajectoryProcessorParams & params)
 {
@@ -334,28 +336,33 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
 
   object_filter_->filter_objects(debug_data_.filtered_objects);
 
-  PredictedObjects active_objects;
   obstacle_tracker_->update_objects(
-    debug_data_.filtered_objects, active_objects, get_clock()->now());
+    debug_data_.filtered_objects, debug_data_.target_objects, get_clock()->now());
 
   object_filter_->filter_by_target_area(
-    active_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
-    lateral_margin_map_, debug_data_.target_polygons);
+    debug_data_.target_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
+    lateral_margin_map_);
 
-  autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = get_nearest_object_collision(
-    traj_points, context_->vehicle_info, active_objects, object_decel_map_,
+    debug_data_.target_objects, traj_points, context_->vehicle_info, object_decel_map_,
     params_.rss_params.ego_decel, params_.rss_params.reaction_time,
     params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
-    params_.rss_params.lookahead_horizon, colliding_object, params_.rss_params.enable);
+    params_.rss_params.lookahead_horizon, params_.rss_params.enable);
 
-  if (collision_point) debug_data_.colliding_object = colliding_object;
+  if (collision_point) {
+    auto it = std::find_if(
+      debug_data_.target_objects.begin(), debug_data_.target_objects.end(),
+      [&](const TargetObject & object) { return !object.is_safe; });
+    if (it != debug_data_.target_objects.end()) {
+      debug_data_.colliding_object = it->object;
+    }
+  }
 
   return collision_point;
 }
 
 std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
-  [[maybe_unused]] const TrajectoryPoints & traj_points, const InputData & input)
+  [[maybe_unused]] const TrajectoryPoints & traj_points, const TrajectoryProcessorData & input)
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::check_pointcloud", *get_time_keeper());
   if (!params_.use_pointcloud || !input.obstacle_pointcloud) return std::nullopt;
@@ -527,6 +534,20 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
     marker_array.markers.push_back(marker);
   };
 
+  auto add_text_marker = [&](
+                           const std::string & text, const geometry_msgs::msg::Pose & pose,
+                           const std::string & ns, const int id,
+                           const std_msgs::msg::ColorRGBA & color, const double scale = 0.4) {
+    Marker marker = autoware_utils::create_default_marker(
+      "map", get_clock()->now(), ns, id, Marker::TEXT_VIEW_FACING,
+      autoware_utils::create_marker_scale(scale, scale, scale), color);
+    marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+    marker.pose = pose;
+    marker.pose.position.z += 1.0;
+    marker.text = text;
+    marker_array.markers.push_back(marker);
+  };
+
   {
     const auto & bounding_box = debug_data_.trajectory_shape.bounding_box;
     Polygon2d polygon;
@@ -538,8 +559,17 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
     id++;
   }
 
-  for (const auto & target_polygon : debug_data_.target_polygons) {
+  for (const auto & obj : debug_data_.target_objects) {
+    const auto & target_polygon = obj.polygon;
     add_polygon_marker(target_polygon, ns + "/target_objects", id, magenta);
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2);
+    ss << "safe: " << (obj.is_safe ? "true" : "false") << "\n";
+    ss << "rss_safe_dist: " << obj.safe_distance << " m" << "\n";
+    ss << "dist_from_ego: " << obj.distance_from_ego << " m";
+    add_text_marker(
+      ss.str(), obj.object.kinematics.initial_pose_with_covariance.pose,
+      ns + "/target_objects_text", id, white);
     id++;
   }
 

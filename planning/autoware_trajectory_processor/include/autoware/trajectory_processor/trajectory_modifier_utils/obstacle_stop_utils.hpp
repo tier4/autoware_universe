@@ -231,10 +231,23 @@ struct TrajectoryShape
   [[nodiscard]] double ego_arc_length() const { return trajectory_length - forward_traj_length; }
 };
 
+struct TargetObject
+{
+  PredictedObject object;
+  Polygon2d polygon;
+  bool is_safe{false};
+  double distance_from_ego{0.0};
+  double safe_distance{0.0};
+
+  explicit TargetObject(const PredictedObject & object) : object(object) {}
+};
+using TargetObjects = std::vector<TargetObject>;
+
 struct DebugData
 {
   PointCloud2::SharedPtr filtered_points;
   PredictedObjects filtered_objects;
+  TargetObjects target_objects;
   MultiPolygon2d target_polygons;
   TrajectoryShape trajectory_shape;
   std::vector<geometry_msgs::msg::Point> target_pcd_points;
@@ -324,11 +337,10 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
  * @return Collision geometry and arc length, or nullopt if inputs are invalid or objects are safe
  */
 std::optional<CollisionPoint> get_nearest_object_collision(
-  const TrajectoryPoints & trajectory_points,
+  TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const PredictedObjects & target_objects, const ObjectDecelMap & object_decel_map,
-  const double ego_decel, const double reaction_time, const double safety_margin,
-  const double stopped_vel_th, const double lookahead_horizon, PredictedObject & colliding_object,
+  const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
+  const double safety_margin, const double stopped_vel_th, const double lookahead_horizon,
   const bool use_rss_check = true);
 
 /// Filters predicted objects by semantic type, speed, and spatial relationship to the trajectory.
@@ -395,10 +407,9 @@ struct ObjectFilter
    * @param[out] target_polygons Footprints of objects that remain after filtering.
    */
   void filter_by_target_area(
-    PredictedObjects & objects, const TrajectoryPoints & trajectory_points,
+    TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
     const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-    const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map,
-    MultiPolygon2d & target_polygons);
+    const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map);
 
   /**
    * @brief Update allow-listed types and velocity thresholds without reconstructing the filter.
@@ -525,8 +536,7 @@ struct ObstacleTracker
    * @param now Current stamp used for track aging and activation timing
    */
   void update_objects(
-    const PredictedObjects & objects, PredictedObjects & persistent_objects,
-    const rclcpp::Time & now);
+    const PredictedObjects & objects, TargetObjects & persistent_objects, const rclcpp::Time & now);
 
   /**
    * @brief Update tracked points

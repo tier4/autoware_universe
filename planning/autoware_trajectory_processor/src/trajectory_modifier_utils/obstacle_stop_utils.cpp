@@ -29,6 +29,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -468,22 +469,24 @@ double get_safe_distance(
 }
 
 std::optional<CollisionPoint> get_nearest_object_collision(
-  const TrajectoryPoints & trajectory_points, const PredictedObjects & target_objects,
-  PredictedObject & colliding_object, const double stopped_vel_th)
+  TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
+  const double stopped_vel_th)
 {
-  if (target_objects.objects.empty() || trajectory_points.size() < 2) return std::nullopt;
+  if (target_objects.empty() || trajectory_points.size() < 2) return std::nullopt;
 
   auto min_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_collision_point;
   bool found_collision = false;
   double obstacle_lon_vel = 0.0;
-  for (const auto & object : target_objects.objects) {
-    const auto obj_state = get_object_state_at_time(trajectory_points, object, 0.0);
+  for (auto & object : target_objects) {
+    const auto obj_state = get_object_state_at_time(trajectory_points, object.object, 0.0);
+    object.is_safe = false;
+    object.safe_distance = obj_state.arc_length;
+    object.distance_from_ego = obj_state.arc_length;
     found_collision = true;
     if (obj_state.arc_length < min_arc_length) {
       min_arc_length = obj_state.arc_length;
       nearest_collision_point = obj_state.nearest_point;
-      colliding_object = object;
       obstacle_lon_vel = obj_state.lon_vel;
     }
   }
@@ -495,19 +498,17 @@ std::optional<CollisionPoint> get_nearest_object_collision(
 }
 
 std::optional<CollisionPoint> get_nearest_object_collision(
-  const TrajectoryPoints & trajectory_points,
+  TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const PredictedObjects & target_objects, const ObjectDecelMap & object_decel_map,
-  const double ego_decel, const double reaction_time, const double safety_margin,
-  const double stopped_vel_th, const double lookahead_horizon, PredictedObject & colliding_object,
+  const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
+  const double safety_margin, const double stopped_vel_th, const double lookahead_horizon,
   const bool use_rss_check)
 {
-  if (target_objects.objects.empty() || trajectory_points.size() < 2) return std::nullopt;
+  if (target_objects.empty() || trajectory_points.size() < 2) return std::nullopt;
 
   // If RSS check is disabled, get the nearest object collision by pure geometric overlap.
   if (!use_rss_check) {
-    return get_nearest_object_collision(
-      trajectory_points, target_objects, colliding_object, stopped_vel_th);
+    return get_nearest_object_collision(target_objects, trajectory_points, stopped_vel_th);
   }
 
   const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
@@ -529,13 +530,15 @@ std::optional<CollisionPoint> get_nearest_object_collision(
 
   auto is_safe = [&](
                    const double obj_arc_length, const double obj_stopping_distance,
-                   const double ego_arc_length, const double ego_vel) -> bool {
-    if (obj_stopping_distance <= eps) return false;
-    const auto safe_dist =
-      get_safe_distance(ego_vel, ego_decel, obj_stopping_distance, reaction_time, safety_margin);
+                   const double ego_arc_length,
+                   const double ego_vel) -> std::tuple<bool, double, double> {
     const auto ego_front_arc_length = ego_arc_length + ego_front_offset;
     const auto relative_arc_length = std::max(0.0, obj_arc_length - ego_front_arc_length);
-    return relative_arc_length - safe_dist > 1e-3;
+    if (obj_stopping_distance <= eps)
+      return std::make_tuple(false, relative_arc_length, relative_arc_length);
+    const auto safe_dist =
+      get_safe_distance(ego_vel, ego_decel, obj_stopping_distance, reaction_time, safety_margin);
+    return std::make_tuple(relative_arc_length - safe_dist > 1e-3, safe_dist, relative_arc_length);
   };
 
   auto min_collision_arc_length = std::numeric_limits<double>::max();
@@ -543,25 +546,32 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   bool found_collision = false;
   double obstacle_lon_vel = 0.0;
 
-  for (const auto & object : target_objects.objects) {
+  for (auto & object : target_objects) {
     auto last_p = trajectory_points.front().pose.position;
     auto curr_arc_length = 0.0;
+    bool is_first = true;
     for (const auto & traj_p : trajectory_points) {
       const auto t = rclcpp::Duration(traj_p.time_from_start).seconds();
       if (t > lookahead_horizon) break;
       curr_arc_length += autoware_utils::calc_distance2d(last_p, traj_p.pose.position);
       last_p = traj_p.pose.position;
       const auto target_ego_vel = traj_p.longitudinal_velocity_mps;
-      const auto obj_state = get_object_state_at_time(trajectory_points, object, t);
-      const auto obj_stopping_distance = get_object_stopping_distance(object, obj_state.lon_vel);
-      const auto safe =
+      const auto obj_state = get_object_state_at_time(trajectory_points, object.object, t);
+      const auto obj_stopping_distance =
+        get_object_stopping_distance(object.object, obj_state.lon_vel);
+      const auto [safe, safe_distance, distance_from_ego] =
         is_safe(obj_state.arc_length, obj_stopping_distance, curr_arc_length, target_ego_vel);
-      if (safe) continue;
+      object.is_safe = safe;
+      if (is_first) {
+        is_first = false;
+        object.safe_distance = safe_distance;
+        object.distance_from_ego = distance_from_ego;
+      }
+      if (object.is_safe) continue;
       found_collision = true;
       auto collision_arc_length = obj_state.arc_length + obj_stopping_distance;
       if (collision_arc_length < min_collision_arc_length) {
         min_collision_arc_length = collision_arc_length;
-        colliding_object = object;
         const auto collision_point = motion_utils::calcLongitudinalOffsetPose(
           trajectory_points, obj_state.nearest_point, obj_stopping_distance);
         nearest_collision_point =
@@ -638,10 +648,9 @@ void PointCloudFilter::filter_pointcloud_by_object(
 }
 
 void ObjectFilter::filter_by_target_area(
-  PredictedObjects & objects, const TrajectoryPoints & trajectory_points,
+  TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map,
-  MultiPolygon2d & target_polygons)
+  const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map)
 {
   const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
   constexpr double time_buffer = 0.5;
@@ -699,23 +708,24 @@ void ObjectFilter::filter_by_target_area(
     return !overlaps_ego_footprints(obj_pred_polygon, lat_margin);
   };
 
-  objects.objects.erase(
+  target_objects.erase(
     std::remove_if(
-      objects.objects.begin(), objects.objects.end(),
-      [&](const auto & object) {
+      target_objects.begin(), target_objects.end(),
+      [&](auto & obj) {
+        const auto & object = obj.object;
         const auto lat_margin = get_lateral_margin(lateral_margin_map, to_object_type(object));
         const auto object_pose = object.kinematics.initial_pose_with_covariance.pose;
         const auto object_polygon = get_object_polygon(object_pose, object.shape);
         if (!overlaps_ego_footprints(object_polygon, lat_margin)) return true;
         if (is_exiting(object, lat_margin)) return true;
-        target_polygons.emplace_back(object_polygon);
+        obj.polygon = object_polygon;
         return false;
       }),
-    objects.objects.end());
+    target_objects.end());
 }
 
 void ObstacleTracker::update_objects(
-  const PredictedObjects & objects, PredictedObjects & persistent_objects, const rclcpp::Time & now)
+  const PredictedObjects & objects, TargetObjects & persistent_objects, const rclcpp::Time & now)
 {
   for (auto it = persistent_objects_map_.begin(); it != persistent_objects_map_.end();) {
     const auto idle_time = (now - it->second.last_seen_time).seconds();
@@ -786,7 +796,7 @@ void ObstacleTracker::update_objects(
 
   for (const auto & [uuid, entry] : persistent_objects_map_) {
     if (entry.is_active) {
-      persistent_objects.objects.push_back(entry.object);
+      persistent_objects.emplace_back(entry.object);
     }
   }
 }
