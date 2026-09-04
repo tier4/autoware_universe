@@ -51,7 +51,8 @@
             "type": "string",
             "enum": [
               "camera",
-              "lidar"
+              "lidar",
+              "bev_feature"
             ]
           },
           "description": "Enabled sensor input providers.",
@@ -173,6 +174,210 @@
             }
           }
         },
+        "bev_feature": {
+          "type": "object",
+          "description": "Temporal LiDAR BEV feature provider (ResWorld-style models).",
+          "properties": {
+            "history_tensor": {
+              "type": "string",
+              "default": "bev_feature_history"
+            },
+            "frames": {
+              "type": "integer",
+              "minimum": 2,
+              "default": 3
+            },
+            "interval_seconds": {
+              "type": "number",
+              "default": 0.2,
+              "description": "Gap between history frames. The shipped models train on 0.2 s; a model with another cadence says so in its ml_package file."
+            },
+            "interval_tolerance_seconds": {
+              "type": "number",
+              "default": 0.02
+            },
+            "bev_half_extent_m": {
+              "type": "number",
+              "default": 122.4
+            },
+            "warmup": {
+              "type": "string",
+              "enum": [
+                "wait",
+                "duplicate_current"
+              ],
+              "default": "wait"
+            },
+            "max_delay_ms": {
+              "type": "number",
+              "default": 200.0
+            },
+            "extractor": {
+              "type": "object",
+              "description": "Frozen BEVFusion-L feature extractor. The voxelization fields describe the network and are read from the model's ml_package file without defaults, as autoware_bevfusion reads its own.",
+              "properties": {
+                "onnx_path": {
+                  "type": "string"
+                },
+                "plugins_path": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string",
+                  "enum": [
+                    "fp32",
+                    "fp16"
+                  ],
+                  "default": "fp16"
+                },
+                "feature_tensor": {
+                  "type": "string",
+                  "default": "bev_feature"
+                },
+                "cloud_capacity": {
+                  "type": "integer",
+                  "default": 2000000
+                },
+                "max_points_per_voxel": {
+                  "type": "integer",
+                  "description": "Points kept per voxel, from the model's ml_package file. No default: it describes the network."
+                },
+                "voxels_num": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "point_cloud_range": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 6,
+                  "maxItems": 6
+                },
+                "voxel_size": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "use_intensity": {
+                  "type": "boolean",
+                  "description": "Whether the point features carry intensity (5 features) or not (4), from the ml_package file. No default."
+                },
+                "engine_path": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Engine cache path for the extractor. Empty derives it from onnx_path, as TrtCommon does."
+                }
+              },
+              "required": [
+                "onnx_path",
+                "max_points_per_voxel",
+                "voxels_num",
+                "point_cloud_range",
+                "voxel_size",
+                "use_intensity"
+              ]
+            },
+            "detection": {
+              "type": "object",
+              "description": "The frozen BEVFusion detection head the extractor graph carries. The graph emits undecoded proposals, as AWML's released bevfusion_lidar.onnx does; the node decodes and suppresses them with autoware_bevfusion's own postprocessing and publishes ~/output/detected_objects. Nothing in the planner path reads them. The fields that describe the head come from the model's ml_package file without defaults; the NMS and yaw-norm knobs are host behaviour and keep autoware_bevfusion's values.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Decode and publish the head's boxes. False for a graph exported before the head existed; the provider then behaves exactly as before."
+                },
+                "class_names": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "One Autoware class name per head class, in the head's label order, from the ml_package file. A head class with no ObjectClassification counterpart (the gen2 head's traffic_cone and barrier) is written as UNKNOWN. No default."
+                },
+                "score_thresholds": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "description": "One score threshold per class, from the head's own bbox coder. The device filter runs at the lowest of them and the per-class cut is applied on the host, so together they are exactly the head's thresholds. No default."
+                },
+                "num_proposals": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Proposals the head emits; validated against the engine's own output shapes. No default: it describes the network."
+                },
+                "out_size_factor": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "BEV stride the TransFusion coder decodes centres with. No default."
+                },
+                "circle_nms_dist_threshold": {
+                  "type": "number",
+                  "default": 0.5,
+                  "description": "Device-side circle NMS distance, as autoware_bevfusion sets it."
+                },
+                "iou_nms_search_distance_2d": {
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 10.0,
+                  "description": "Host-side BEV-IoU NMS neighbour search radius."
+                },
+                "iou_nms_threshold": {
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "default": 0.1,
+                  "description": "Host-side BEV-IoU NMS suppression threshold."
+                },
+                "yaw_norm_thresholds": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "default": [
+                    0.3,
+                    0.3,
+                    0.3,
+                    0.3,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "description": "Per class, in class_names order: a proposal whose (sin, cos) norm falls below its class's floor is scored zero. Must have one entry per class; empty gates nothing."
+                },
+                "allow_remapping_by_area_matrix": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "description": "Area-based class remapping, as autoware_bevfusion's detection_class_remapper.param.yaml states it: a square table indexed by ObjectClassification label. Unset by default, which disables the step; set it together with min_area_matrix and max_area_matrix."
+                },
+                "min_area_matrix": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "description": "Lower area bound per remapping cell. See allow_remapping_by_area_matrix."
+                },
+                "max_area_matrix": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "description": "Upper area bound per remapping cell. See allow_remapping_by_area_matrix."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
         "context": {
           "type": "object",
           "properties": {
@@ -220,7 +425,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Additional ego-only [B, T, 4] trajectory outputs published as extra candidates.",
+              "description": "Additional ego-only [B, T, 4] trajectory outputs published as extra candidates (e.g. ResWorld's prior_trajectory).",
               "default": []
             },
             "horizon_seconds": {
@@ -253,7 +458,7 @@
           "type": "integer",
           "minimum": 1,
           "default": 16384,
-          "description": "TensorRT builder workspace for every engine the node builds, in MiB. Below a graph's need the builder segfaults rather than failing; a property of the deployment host."
+          "description": "TensorRT builder workspace for both engines (planner and BEV extractor), in MiB. Below a graph's need the builder segfaults rather than failing; a property of the deployment host."
         },
         "planning_factor": {
           "type": "object",

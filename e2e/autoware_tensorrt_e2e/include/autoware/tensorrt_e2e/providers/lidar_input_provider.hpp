@@ -31,7 +31,7 @@ namespace autoware::tensorrt_e2e
 
 /**
  * @class LidarInputProvider
- * @brief Produces a padded point tensor from the concatenated point cloud.
+ * @brief Produces a padded point tensor from the concatenated point cloud (BEVFusion-style).
  *
  * Subscribes to `~/input/pointcloud`. Claimable tensors (names configurable):
  * - `points` `[1, P, D]` (required), D in [3, 5]: x, y, z, intensity, time-lag placeholder (0).

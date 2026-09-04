@@ -14,6 +14,32 @@ output trajectory, its candidate list and its planning factors are produced by
 `autoware_diffusion_planner`'s postprocessing. Where the two reference nodes report
 something, this node reports the same thing under the same name.
 
+## Supported models
+
+| Model | Launch file | Sensing input |
+| --- | --- | --- |
+| **ResWorld** (OnePlanner) | `e2e_planner_resworld.launch.xml` | Concatenated point cloud, frozen BEVFusion-L features, 3-frame temporal history |
+
+```bash
+ros2 launch autoware_tensorrt_e2e e2e_planner_resworld.launch.xml
+```
+
+The model directory, `$(var data_path)/$(var model_name)` (by default
+`$HOME/autoware_data/ml_models/tensorrt_e2e/resworld`), holds two graphs and one
+configuration file:
+
+| File | Role |
+| --- | --- |
+| `resworld_planner.simplified.onnx` | The planner graph, batch frozen to 1. |
+| `bevfusion_lidar_feature.onnx` | The production BEVFusion lidar branch exported with its `bev_feature` map `[1, 512, 180, 180]` as the output, and the frozen BEVFusion detection head beside it (`bbox_pred`, `score`, `label_pred`; see [Detection head](#detection-head)). Carries the sparse-convolution custom nodes, so its engine needs `autoware_tensorrt_plugins` and an `spconv` build for this GPU. |
+| `ml_package_resworld.param.yaml` | The whole network description, generated from those graphs and the exporter's contract (see [Configuration layout](#configuration-layout)). The copy under `config/` is a reference; the node reads the one beside the artifacts. |
+
+The planner runs in fp32: its graph embeds normalization statistics that overflow fp16, and
+TensorRT clips silently rather than failing. The extractor runs in fp16. The ResWorld graph
+declares a `turn_indicators` input it never reads (perturbing it changes no output), so its
+ml_package file sets `context.turn_indicators.enabled: false` and the node subscribes to
+nothing for it.
+
 ## Architecture
 
 ```
@@ -22,6 +48,7 @@ timer (planning_frequency_hz)
   └─ input providers      each claims tensors by name, fills them per tick
   │    camera             images + intrinsics + extrinsics (from TF)
   │    lidar              raw points, for a model that voxelizes internally
+  │    bev_feature        frozen BEVFusion-L features, temporal history, SE(2)-warped
   │    context            the diffusion planner's ego / map / route / traffic-light tensors
   └─ inference            one TensorRT engine, built in-node with TrtCommon
   └─ postprocess          diffusion planner's trajectory conversion, 4 s at 0.1 s
@@ -39,6 +66,7 @@ and the node is identical on every branch that carries it.
 | Front camera | `e2e_planner_front_camera.launch.xml` | `CAM_FRONT_WIDE` |
 | Surround cameras | `e2e_planner_surround_cameras.launch.xml` | Front wide plus four corner wide cameras |
 | LiDAR, raw points | `e2e_planner_lidar.launch.xml` | `/sensing/lidar/concatenated/pointcloud`, for a model that voxelizes in-graph |
+| LiDAR, BEV features | `e2e_planner_resworld.launch.xml` | Concatenated point cloud, temporal BEV feature history |
 
 Add `build_only:=true` to any launch to build the TensorRT engines and exit.
 
@@ -63,6 +91,7 @@ listed in `postprocess.extra_trajectory_tensors` are published as extra candidat
 | camera | `camera2ego` | `[1, N, 4, 4]` | TF, camera frame to `base_link` |
 | lidar | `points` | `[1, P, D]` | `D` in 3 to 5, padded or truncated to `P` |
 | lidar | `num_points` | `[1, 1]` | valid point count |
+| bev_feature | `bev_feature_history` | `[1, K, C, H, W]` | `autoware_bevfusion` voxelizer, the frozen extractor engine, this package's temporal cache and SE(2) warp |
 | context | `ego_current_state` | `[1, 10]` | `autoware_diffusion_planner` |
 | context | `ego_agent_past` | `[1, T, 4]` | `autoware_diffusion_planner` |
 | context | `neighbor_agents_past` | `[1, N, 31, 11]` | `autoware_diffusion_planner` |
@@ -105,6 +134,7 @@ missing traffic-signal message leaves lanes marked as having no signal.
 | `~/output/trajectory` | `autoware_planning_msgs/msg/Trajectory` | Ego trajectory in `map`, 40 points at 0.1 s, stamped with the odometry it was planned from |
 | `~/output/trajectories` | `autoware_internal_planning_msgs/msg/CandidateTrajectories` | One candidate per batch and per extra trajectory tensor, with `GeneratorInfo` |
 | `~/output/predicted_objects` | `autoware_perception_msgs/msg/PredictedObjects` | Multi-agent models only |
+| `~/output/detected_objects` | `autoware_perception_msgs/msg/DetectedObjects` | The extractor graph's detection head, when the model carries one; one message per LiDAR frame, in that cloud's frame |
 | `/planning/planning_factors/tensorrt_e2e` | `autoware_internal_planning_msgs/msg/PlanningFactorArray` | Stop and slow-down factors read off the trajectory, as `autoware_diffusion_planner` reports them |
 | `~/debug/processing_time_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | Per-tick processing time |
 | `~/debug/cyclic_time_ms`, `~/debug/pipeline_latency_ms`, `~/debug/processing_time/{total,collect,inference,postprocess}_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | The `autoware_bevfusion` debug set |
@@ -141,6 +171,52 @@ TensorRT engines are built in-node by `TrtCommon` and cached beside the ONNX fil
 engines are built with the `trt_workspace_mib` workspace (default 16 GiB): below a graph's
 need the builder segfaults rather than failing, and the threshold moves with whatever else
 holds GPU memory.
+
+## Detection head
+
+The ResWorld extractor graph is the production BEVFusion-L lidar branch, and it is exported
+with that model's detection head attached: the same engine pass that produces the BEV
+feature map the planner consumes also produces the boxes BEVFusion itself would publish.
+The graph stops where AWML's released `bevfusion_lidar.onnx` stops — undecoded proposals
+(`bbox_pred [10, P]`, `score [P]`, `label_pred [P]`) — because `autoware_bevfusion` decodes
+and suppresses on the C++ side. This node does the same, with that node's own code:
+`PostprocessCuda` on the device (TransFusion bbox coder, per-class yaw-norm gate, score cut,
+circle NMS), then `box3DToDetectedObject`, BEV-IoU NMS and the optional area-based class
+remapper on the host.
+
+The result is published on `~/output/detected_objects` once per LiDAR frame, in that
+cloud's frame. **Nothing in the planner path reads it** — the planner's own view of other
+agents comes from `~/input/tracked_objects` as before, so the head is an auxiliary output
+that costs one decode and changes no trajectory.
+
+Two things differ from a plain `autoware_bevfusion` deployment, both because the head's
+config says so:
+
+- **Per-class score thresholds.** The head's bbox coder states one threshold per class and
+  `PostprocessCuda` holds a single float, so the device filter runs at the lowest of them
+  and the per-class cut is applied on the host. Together they are exactly the head's own
+  thresholds.
+- **Classes Autoware has no label for.** The gen2 head predicts seven classes; the last two
+  (`traffic_cone`, `barrier`) have no `ObjectClassification` counterpart, so the generated
+  ml_package file writes those slots as `UNKNOWN`:
+
+  ```yaml
+  class_names: ["CAR", "TRUCK", "BUS", "BICYCLE", "PEDESTRIAN", "UNKNOWN", "UNKNOWN"]
+  ```
+
+  `getSemanticType` would fold an unrecognised name to `UNKNOWN` anyway; naming it in the
+  deployed file makes the configuration state what is actually published.
+
+The head's `nms_clusters` (per-cluster IoU thresholds and `post_max_size` caps) are **not**
+applied cluster-wise: `autoware_bevfusion` does not implement cluster NMS for its own
+released model either, and this node follows that node rather than inventing a second
+behaviour. The single `circle_nms_dist_threshold` / `iou_nms_threshold` pair is used
+instead, with `autoware_bevfusion`'s values.
+
+A model whose extractor graph predates the head needs no configuration:
+`bev_feature.detection.enabled` defaults to false, and the provider behaves exactly as
+before. Enabled against a graph that has no head, the node warns at startup and publishes
+nothing rather than looking like a dead detector.
 
 ## Configuration layout
 

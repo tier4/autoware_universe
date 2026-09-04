@@ -52,6 +52,34 @@
         precision: "fp16"  # sparse-conv feature extractors are validated in fp16
         cloud_capacity: 2000000
 
+      # Detection head postprocessing. Whether the head exists at all, its classes,
+      # proposal count and per-class score thresholds are the network's and come from
+      # the model's ml_package file (`enabled` defaults to false, so a graph without
+      # the head needs no configuration anywhere). What is left here is the same set of
+      # knobs autoware_bevfusion keeps in its own deployment file, with its values.
+      detection:
+        # Device-side circle NMS, applied to the decoded proposals.
+        circle_nms_dist_threshold: 0.5
+        # Host-side BEV-IoU NMS over the resulting objects.
+        iou_nms_search_distance_2d: 10.0
+        iou_nms_threshold: 0.1
+        # Per class, in the ml_package file's class_names order. A proposal whose
+        # (sin, cos) norm falls below its class's floor is scored zero -- an orientation
+        # the head is not confident about. autoware_bevfusion gates the rigid vehicle
+        # classes only; pedestrians and the classes with no Autoware label are left
+        # ungated. Empty means "gate nothing".
+        # CAR   TRUCK BUS   BICYCLE PEDESTRIAN and any further head class
+        yaw_norm_thresholds: [0.3, 0.3, 0.3, 0.3, 0.0, 0.0, 0.0]
+        # Area-based class remapping (autoware_bevfusion's detection_class_remapper) is
+        # deliberately NOT configured here, so the step stays off: it is a
+        # perception-tuning table indexed by ObjectClassification label, and this node
+        # publishes the head's boxes as an auxiliary output rather than as the
+        # perception pipeline's detection source. To enable it, set all three of
+        # `allow_remapping_by_area_matrix`, `min_area_matrix` and `max_area_matrix`
+        # under this key, as autoware_bevfusion's detection_class_remapper.param.yaml
+        # does. They cannot be listed here as empty defaults -- a params file has no way
+        # to state the type of an empty sequence, and rclcpp rejects the whole file.
+
     context:
       traffic_light_group_msg_timeout_seconds: 0.2
       ignore_neighbors: false
