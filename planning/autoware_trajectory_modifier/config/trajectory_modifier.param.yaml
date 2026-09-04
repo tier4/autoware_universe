@@ -2,9 +2,11 @@
   ros__parameters:
     plugin_names:
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
+      - "autoware::trajectory_modifier::plugin::TrafficLightStop"
       - "autoware::trajectory_modifier::plugin::StopPointFixer"
     use_stop_point_fixer: true
     use_obstacle_stop: true
+    use_traffic_light_stop: true
     trajectory_time_step: 0.1 # [s]
 
     # Stop Point Fixer Plugin Parameters
@@ -14,6 +16,12 @@
       velocity_threshold: 0.25 # [m/s]
       min_distance_threshold: 1.0 # [m]
       min_stop_duration: 0.5 # [s]
+
+    stopping_constraints:
+      nominal_deceleration: 1.0 # [m/s^2]
+      maximum_deceleration: 4.0 # [m/s^2]
+      jerk_limit: 3.0 # [m/s^3]
+      arrived_distance_threshold: 0.5 # [m]
 
     # Obstacle Stop Plugin Parameters
     obstacle_stop:
@@ -67,3 +75,22 @@
         reaction_time: 0.2 # [s]
         safety_margin: 2.0 # [m]
         min_vel_th: 0.5 # [m/s] minimum object velocity to consider for rss check
+
+    # Traffic Light Stop Plugin Parameters
+    traffic_light_stop:
+      stop_margin: 0.75 # [m]
+      stop_for_red_light: true
+      stop_for_amber_light: true
+      treat_amber_light_as_red: false
+      treat_unknown_light_as_red: true
+      enable_arrow_aware_amber_passing: true
+      overshoot_tolerance: 0.5 # [m]
+      allow_if_cannot_stop_distance: 1.0 # [m]
+      min_lookahead_distance: 20.0 # [m]
+      th_stable_duration_red: 0.2 # [s]
+      th_stable_duration_amber: 0.2 # [s]
+      th_stable_duration_unknown: 0.5 # [s]
+      crossing_time_limit: 2.75 # [s]
+      amber_rejection:
+        th_hysteresis: 0.5 # [s]
+        reject_if_stop_detected: true
