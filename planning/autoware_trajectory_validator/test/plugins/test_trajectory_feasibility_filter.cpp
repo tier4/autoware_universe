@@ -51,18 +51,36 @@ autoware_planning_msgs::msg::TrajectoryPoint create_trajectory_point(
   return point;
 }
 
-lanelet::Lanelet create_straight_lanelet()
+lanelet::Lanelet create_straight_lanelet(
+  const double left_bound_y = -2.0, const double right_bound_y = 2.0)
 {
-  lanelet::Point3d left_start(lanelet::utils::getId(), 0.0, -2.0, 0.0);
-  lanelet::Point3d left_end(lanelet::utils::getId(), 20.0, -2.0, 0.0);
-  lanelet::Point3d right_start(lanelet::utils::getId(), 0.0, 2.0, 0.0);
-  lanelet::Point3d right_end(lanelet::utils::getId(), 20.0, 2.0, 0.0);
+  lanelet::Point3d left_start(lanelet::utils::getId(), 0.0, left_bound_y, 0.0);
+  lanelet::Point3d left_end(lanelet::utils::getId(), 20.0, left_bound_y, 0.0);
+  lanelet::Point3d right_start(lanelet::utils::getId(), 0.0, right_bound_y, 0.0);
+  lanelet::Point3d right_end(lanelet::utils::getId(), 20.0, right_bound_y, 0.0);
 
   lanelet::LineString3d left_bound(lanelet::utils::getId(), {left_start, left_end});
   lanelet::LineString3d right_bound(lanelet::utils::getId(), {right_start, right_end});
 
   lanelet::Lanelet lanelet(lanelet::utils::getId(), left_bound, right_bound);
   lanelet.setAttribute("subtype", "road");
+
+  return lanelet;
+}
+
+// A crosswalk crossing `create_straight_lanelet()` perpendicularly, centered at `center_x`.
+lanelet::Lanelet create_crosswalk_lanelet(const double center_x)
+{
+  lanelet::Point3d left_start(lanelet::utils::getId(), center_x - 1.0, -4.0, 0.0);
+  lanelet::Point3d left_end(lanelet::utils::getId(), center_x - 1.0, 4.0, 0.0);
+  lanelet::Point3d right_start(lanelet::utils::getId(), center_x + 1.0, -4.0, 0.0);
+  lanelet::Point3d right_end(lanelet::utils::getId(), center_x + 1.0, 4.0, 0.0);
+
+  lanelet::LineString3d left_bound(lanelet::utils::getId(), {left_start, left_end});
+  lanelet::LineString3d right_bound(lanelet::utils::getId(), {right_start, right_end});
+
+  lanelet::Lanelet lanelet(lanelet::utils::getId(), left_bound, right_bound);
+  lanelet.setAttribute("subtype", "crosswalk");
 
   return lanelet;
 }
@@ -76,9 +94,45 @@ std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_speed_limit(
   return lanelet::utils::createMap({lanelet});
 }
 
+std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_overlapping_roads(
+  const double nearer_speed_limit_kmph, const double farther_speed_limit_kmph)
+{
+  auto nearer_road = create_straight_lanelet();
+  nearer_road.setAttribute("speed_limit", std::to_string(nearer_speed_limit_kmph));
+
+  // This road overlaps the nearer road in y=[1.6, 2.0].
+  auto farther_road = create_straight_lanelet(1.6, 5.6);
+  farther_road.setAttribute("speed_limit", std::to_string(farther_speed_limit_kmph));
+
+  return lanelet::utils::createMap({nearer_road, farther_road});
+}
+
 std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_without_speed_limit()
 {
   return lanelet::utils::createMap({create_straight_lanelet()});
+}
+
+// The crosswalk is the only lanelet on the map, so no road speed limit is available at all.
+std::shared_ptr<lanelet::LaneletMap> create_crosswalk_only_lanelet_map(
+  const double speed_limit_kmph)
+{
+  auto crosswalk = create_crosswalk_lanelet(5.0);
+  crosswalk.setAttribute("speed_limit", std::to_string(speed_limit_kmph));
+
+  return lanelet::utils::createMap({crosswalk});
+}
+
+// The crosswalk overlaps the road lanelet and declares a lower speed limit than the road.
+std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_road_and_crosswalk(
+  const double road_speed_limit_kmph, const double crosswalk_speed_limit_kmph)
+{
+  auto road = create_straight_lanelet();
+  road.setAttribute("speed_limit", std::to_string(road_speed_limit_kmph));
+
+  auto crosswalk = create_crosswalk_lanelet(5.0);
+  crosswalk.setAttribute("speed_limit", std::to_string(crosswalk_speed_limit_kmph));
+
+  return lanelet::utils::createMap({crosswalk, road});
 }
 
 nav_msgs::msg::Odometry::SharedPtr create_odometry(
@@ -495,6 +549,30 @@ TEST(IsLaneletSpeedLimitOkTest, FalseWhenNearestSpeedAboveLimit)
   EXPECT_FALSE(is_ok);
 }
 
+TEST(IsLaneletSpeedLimitOkTest, MaximumSpeedLimitIsUsedForOverlappingRoadLanelets)
+{
+  constexpr double lower_speed_limit_kmph = 30.0;
+  constexpr double higher_speed_limit_kmph = 50.0;
+  constexpr double longitudinal_velocity_mps = 10.0;
+  constexpr double lateral_offset = 1.2;
+
+  // The trajectory speed exceeds the nearer road's limit but is below the farther road's limit.
+  const TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, lateral_offset, 0.0, longitudinal_velocity_mps, 0.0, 0.0),
+    create_trajectory_point(5.0, lateral_offset, 0.0, longitudinal_velocity_mps, 0.0, 1.0),
+    create_trajectory_point(10.0, lateral_offset, 0.0, longitudinal_velocity_mps, 0.0, 2.0)};
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, lateral_offset, 0.0);
+  context.lanelet_map =
+    create_lanelet_map_with_overlapping_roads(lower_speed_limit_kmph, higher_speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, longitudinal_velocity_mps);
+  EXPECT_TRUE(is_ok);
+}
+
 TEST(IsLaneletSpeedLimitOkTest, ObservedSpeedIsTakenFromTheNearestPoint)
 {
   // Only the point nearest to the ego pose is evaluated, so a faster point elsewhere is ignored.
@@ -583,6 +661,72 @@ TEST(IsLaneletSpeedLimitOkTest, TrueWhenTrajectoryIsEmpty)
 
   EXPECT_DOUBLE_EQ(observed_speed, 0.0);
   EXPECT_TRUE(is_ok);
+}
+
+namespace
+{
+// The crosswalk under test declares 10 km/h, i.e. 2.777... m/s.
+constexpr double crosswalk_speed_limit_kmph = 10.0;
+
+// A trajectory offset laterally so that its points lie inside the crosswalk but outside the road
+// lanelet, which makes the crosswalk the strictly nearest lanelet.
+TrajectoryPoints create_laterally_offset_trajectory(const double longitudinal_velocity)
+{
+  constexpr double lateral_offset = 2.4;  // within 0.5 m of the road, but inside the crosswalk
+  return {
+    create_trajectory_point(0.0, lateral_offset, 0.0, longitudinal_velocity, 0.0, 0.0),
+    create_trajectory_point(5.0, lateral_offset, 0.0, longitudinal_velocity, 0.0, 1.0),
+    create_trajectory_point(10.0, lateral_offset, 0.0, longitudinal_velocity, 0.0, 2.0)};
+}
+}  // namespace
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenOnlyCrosswalkLaneletIsNearby)
+{
+  // A crosswalk never constrains ego's speed, so no speed limit applies even though the only
+  // nearby lanelet declares one well below the trajectory speed.
+  const auto traj_points = create_straight_trajectory(15.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_crosswalk_only_lanelet_map(crosswalk_speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 15.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, RoadSpeedLimitIsUsedEvenWhenACrosswalkIsNearer)
+{
+  // 8.0 m/s is below the road limit (30 km/h) but above the crosswalk's (10 km/h): the crosswalk
+  // must be skipped in favour of the farther road lanelet.
+  const auto traj_points = create_laterally_offset_trajectory(8.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 2.4, 0.0);
+  context.lanelet_map =
+    create_lanelet_map_with_road_and_crosswalk(speed_limit_kmph, crosswalk_speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 8.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, FalseWhenSpeedAboveRoadLimitAndACrosswalkIsNearer)
+{
+  // Skipping the crosswalk must not disable the check: the road limit still applies.
+  const auto traj_points = create_laterally_offset_trajectory(15.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 2.4, 0.0);
+  context.lanelet_map =
+    create_lanelet_map_with_road_and_crosswalk(speed_limit_kmph, crosswalk_speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 15.0);
+  EXPECT_FALSE(is_ok);
 }
 
 // --- is_acceleration_ok(...) tests ---
