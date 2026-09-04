@@ -17,6 +17,7 @@
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <rclcpp/duration.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -41,7 +42,7 @@ double calculate_distance_to_last_point(
 }
 
 void replace_trajectory_with_stop_point(
-  TrajectoryPoints & traj_points, const geometry_msgs::msg::Pose & ego_pose)
+  TrajectoryPoints & traj_points, const geometry_msgs::msg::Pose & ego_pose, const double time_step)
 {
   TrajectoryPoint stop_point;
 
@@ -52,11 +53,17 @@ void replace_trajectory_with_stop_point(
   stop_point.heading_rate_rps = 0.0;
   stop_point.front_wheel_angle_rad = 0.0;
   stop_point.rear_wheel_angle_rad = 0.0;
+  stop_point.time_from_start = rclcpp::Duration::from_seconds(0.0);
 
   traj_points.clear();
 
-  // Two points are added since that is the minimum handled by Control.
+  // Three points are added since that is the minimum handled by Control.
   traj_points.push_back(stop_point);
+  stop_point.time_from_start = rclcpp::Duration::from_seconds(time_step);
+  stop_point.pose = autoware_utils_geometry::calc_offset_pose(stop_point.pose, 1e-3, 0.0, 0.0);
+  traj_points.push_back(stop_point);
+  stop_point.time_from_start = rclcpp::Duration::from_seconds(2.0 * time_step);
+  stop_point.pose = autoware_utils_geometry::calc_offset_pose(stop_point.pose, 1e-3, 0.0, 0.0);
   traj_points.push_back(stop_point);
 }
 
@@ -98,12 +105,13 @@ bool stop_point_exists(
   return false;
 }
 
-bool insert_stop_point(TrajectoryPoints & trajectory, const double stop_point_arc_length)
+bool insert_stop_point(
+  TrajectoryPoints & trajectory, const double stop_point_arc_length, const double time_step)
 {
   if (trajectory.empty()) return false;
 
   if (stop_point_arc_length < 1e-3) {
-    replace_trajectory_with_stop_point(trajectory, trajectory.front().pose);
+    replace_trajectory_with_stop_point(trajectory, trajectory.front().pose, time_step);
     return true;
   }
 
