@@ -17,11 +17,13 @@
 
 #include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/conversion/agent_history_resampler.hpp"
+#include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/inference/guidance/centerline_guidance.hpp"
 #include "autoware/diffusion_planner/inference/guidance/start_guidance.hpp"
 #include "autoware/diffusion_planner/inference/guidance/stop_guidance.hpp"
 #include "autoware/diffusion_planner/inference/inference.hpp"
 #include "autoware/diffusion_planner/postprocessing/turn_indicator_manager.hpp"
+#include "autoware/diffusion_planner/preprocessing/bev_image.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
 #include "autoware/diffusion_planner/utils/arg_reader.hpp"
@@ -44,6 +46,7 @@
 
 #include <lanelet2_core/LaneletMap.h>
 
+#include <cstdint>
 #include <deque>
 #include <map>
 #include <memory>
@@ -250,6 +253,21 @@ public:
   InputDataMap create_input_data(const FrameContext & frame_context);
 
   /**
+   * @brief Rasterize the BEV stack the loaded model's encoder needs.
+   *
+   * @param input_data_map Un-normalized output of create_input_data. The rasterizer reads
+   *                       meters, so this must be called before normalize_input_data.
+   * @return The rendered stack, or an empty vector when the loaded model takes vector input and
+   *         therefore reads the polylines directly.
+   */
+  std::vector<uint8_t> create_bev_image(const InputDataMap & input_data_map) const;
+
+  /**
+   * @brief Scene representation the loaded model's encoder takes.
+   */
+  ModelInputType get_model_input_type() const { return model_input_type_; }
+
+  /**
    * @brief Set the lanelet map context.
    *
    * @param lanelet_map_ptr Shared pointer to lanelet map
@@ -304,10 +322,12 @@ public:
   /**
    * @brief Run inference on the input data.
    *
-   * @param input_data_map Input data for inference
+   * @param input_data_map Normalized input data for inference
+   * @param bev_image Rendered BEV stack from create_bev_image
    * @return Inference result with predictions, turn indicator logits, and denoising steps
    */
-  InferenceResult run_inference(const InputDataMap & input_data_map);
+  InferenceResult run_inference(
+    const InputDataMap & input_data_map, const std::vector<uint8_t> & bev_image);
 
   /**
    * @brief Create all planner output messages from raw inference outputs.
@@ -358,6 +378,8 @@ private:
 
   ObservationNormalization observation_normalization_;
   StateNormalization state_normalization_;
+  // Declared by the loaded weights, so it is only meaningful once load_model has run.
+  ModelInputType model_input_type_{ModelInputType::VECTOR};
 
   // Inference engine
   std::unique_ptr<Inference> diffusion_planner_inference_{nullptr};
