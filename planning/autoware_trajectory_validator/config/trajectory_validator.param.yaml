@@ -118,7 +118,7 @@
 
     crosswalk:
       object_types: ["pedestrian", "bicycle"]
-      lon_detection_margin: 2.0 # [m] longitudinal extrusion length from crosswalk edge
+      lon_detection_margin: 2.5 # [m] longitudinal extrusion length from crosswalk edge
       lat_detection_margin: 1.0 # [m] lateral extrusion length from crosswalk edge
       object_clear_time_th: 0.3 # [s] duration threshold to clear target object when no longer seen
       overshoot_tolerance: 0.1  # [m] maximum overshoot distance allowed to consider the trajectory feasible
