@@ -28,6 +28,7 @@
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 #include <cmath>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,9 +69,12 @@ double calcLateralError(const Pose & ego_pose, const Pose & ref_pose);
 /**
  * @brief convert the given Trajectory msg to a MPCTrajectory object
  * @param [in] input trajectory to convert
+ * @param [in] use_temporal_trajectory if true, use time_from_start directly; if false, calculate
+ * from distance/velocity
  * @return resulting MPCTrajectory
  */
-MPCTrajectory convertToMPCTrajectory(const Trajectory & input);
+MPCTrajectory convertToMPCTrajectory(
+  const Trajectory & input, const bool use_temporal_trajectory = false);
 
 /**
  * @brief convert the given MPCTrajectory to a Trajectory msg
@@ -130,17 +134,22 @@ bool calcMPCTrajectoryTime(MPCTrajectory & traj);
  * @param [in] acc_lim limit on the acceleration
  * @param [in] tau constant to control the smoothing (high-value = very smooth)
  * @param [inout] traj MPCTrajectory for which to calculate the smoothed velocity
+ * @param [in] use_temporal_trajectory if true, preserve timestamps; if false, recalculate time from
+ * velocity
  */
 void dynamicSmoothingVelocity(
   const size_t start_seg_idx, const double start_vel, const double acc_lim, const double tau,
-  MPCTrajectory & traj);
+  MPCTrajectory & traj, const bool use_temporal_trajectory = false);
 
 /**
  * @brief calculate yaw angle in MPCTrajectory from xy vector
  * @param [inout] traj object trajectory
  * @param [in] shift is forward or not
+ * @param [in] use_input_yaw_for_short_segment if true, preserve input yaw for very short segments
  */
-void calcTrajectoryYawFromXY(MPCTrajectory & traj, const bool is_forward_shift);
+void calcTrajectoryYawFromXY(
+  MPCTrajectory & traj, const bool is_forward_shift,
+  const bool use_input_yaw_for_short_segment = false);
 
 /**
  * @brief Calculate path curvature by 3-points circle fitting with smoothing num (use nearest 3
@@ -163,6 +172,21 @@ void calcTrajectoryCurvature(
  */
 std::vector<double> calcTrajectoryCurvature(
   const int curvature_smoothing_num, const MPCTrajectory & traj);
+
+/**
+ * @brief Calculate curvature for temporal trajectories by spatially resampling.
+ * Temporal trajectories have non-uniform spatial point distribution, which makes index-based
+ * curvature calculation unreliable. This function resamples the trajectory at equal spatial
+ * intervals, calculates curvature on the resampled points, then maps the result back to the
+ * original temporal trajectory points via arc-length interpolation.
+ * @param [in] curvature_smoothing_num_traj index distance for 3 points for curvature calculation
+ * @param [in] curvature_smoothing_num_ref_steer index distance for 3 points for smoothed curvature
+ * @param [in] resample_interval_dist spatial resampling interval [m]
+ * @param [inout] traj temporal trajectory whose k and smooth_k will be updated
+ */
+void calcTrajectoryCurvatureBySpatialResample(
+  const int curvature_smoothing_num_traj, const int curvature_smoothing_num_ref_steer,
+  const double resample_interval_dist, MPCTrajectory & traj);
 
 /**
  * @brief calculate nearest pose on MPCTrajectory with linear interpolation
