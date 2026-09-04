@@ -78,8 +78,14 @@ StopSelectionParams make_params()
   params.stop_distance_from_crosswalk = 3.5;
   params.stop_distance_from_private_area = 3.0;
   params.stop_distance_from_intersection = 1.0;
+  params.stop_distance_from_road_shoulder = 0.5;
   params.base_link_to_front = 4.0;
   params.stop_point_diff_threshold = 0.5;
+  // 5 m long, 2 m wide box with base_link 1 m behind the rear bumper.
+  params.vehicle_info.max_longitudinal_offset_m = 4.0;
+  params.vehicle_info.min_longitudinal_offset_m = -1.0;
+  params.vehicle_info.max_lateral_offset_m = 1.0;
+  params.vehicle_info.min_lateral_offset_m = -1.0;
   return params;
 }
 
@@ -853,6 +859,106 @@ TEST(MapBasedStopPlannerTest, PlanReturnsStopTrajectoryOnlyForDistinctStopPoint)
   ASSERT_TRUE(result.stop_trajectory.has_value());
   EXPECT_NEAR(result.stop_trajectory->points.back().pose.position.x, 4.0, 1e-3);
   EXPECT_FLOAT_EQ(result.stop_trajectory->points.back().longitudinal_velocity_mps, 0.0f);
+}
+
+namespace
+{
+// A shoulder lanelet on x in [0, 20] followed by a road lanelet on x in [20, 50], both spanning
+// y in [-2, 2], registered in a map so the layer search finds them.
+lanelet::LaneletMapPtr make_shoulder_to_road_map()
+{
+  auto shoulder = make_road_lanelet(10, 0.0, 20.0);
+  shoulder.attributes()[lanelet::AttributeNamesString::Subtype] = "road_shoulder";
+  auto road = make_road_lanelet(20, 20.0, 30.0);
+  road.attributes()[lanelet::AttributeNamesString::Subtype] = lanelet::AttributeValueString::Road;
+  return lanelet::utils::createMap({shoulder, road});
+}
+
+// A road lanelet on x in [0, 25] followed by a shoulder lanelet on x in [25, 55], both spanning
+// y in [-2, 2].
+lanelet::LaneletMapPtr make_road_to_shoulder_map()
+{
+  auto road = make_road_lanelet(30, 0.0, 25.0);
+  road.attributes()[lanelet::AttributeNamesString::Subtype] = lanelet::AttributeValueString::Road;
+  auto shoulder = make_road_lanelet(40, 25.0, 30.0);
+  shoulder.attributes()[lanelet::AttributeNamesString::Subtype] = "road_shoulder";
+  return lanelet::utils::createMap({road, shoulder});
+}
+
+// A road lanelet on x in [0, 50] with a shoulder lanelet laid over x in [20, 25]: the footprint
+// touches the shoulder but never leaves the road lane.
+lanelet::LaneletMapPtr make_road_with_clipped_shoulder_map()
+{
+  auto road = make_road_lanelet(50, 0.0, 50.0);
+  road.attributes()[lanelet::AttributeNamesString::Subtype] = lanelet::AttributeValueString::Road;
+  auto shoulder = make_road_lanelet(60, 20.0, 5.0);
+  shoulder.attributes()[lanelet::AttributeNamesString::Subtype] = "road_shoulder";
+  return lanelet::utils::createMap({road, shoulder});
+}
+}  // namespace
+
+TEST(MapBasedStopPlannerTest, RoadShoulderStopBeforeEnteringShoulder)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = make_road_to_shoulder_map();
+  planner.set_planner_data(nullptr, nullptr, ctx);
+
+  // The footprint first touches the shoulder (x = 25) at base_link x = 21, and is wholly inside it
+  // from base_link x = 27, so the stop keeps the margins ahead of the first touch: 21 - 1.0 - 0.5.
+  const auto arc_length = planner.select_road_shoulder_stop_arc_length(
+    make_straight_trajectory(30), make_ego_pose(0.0), make_params());
+
+  ASSERT_TRUE(arc_length.has_value());
+  EXPECT_NEAR(*arc_length, 19.5, 1e-3);
+}
+
+TEST(MapBasedStopPlannerTest, RoadShoulderStopInactiveWhenShoulderIsOnlyClipped)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = make_road_with_clipped_shoulder_map();
+  planner.set_planner_data(nullptr, nullptr, ctx);
+
+  // The footprint never leaves the road lane, so passing the shoulder must not insert a stop.
+  EXPECT_FALSE(planner
+                 .select_road_shoulder_stop_arc_length(
+                   make_straight_trajectory(40), make_ego_pose(0.0), make_params())
+                 .has_value());
+}
+
+TEST(MapBasedStopPlannerTest, RoadShoulderStopKeepsFootprintOutOfRoadLane)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = make_shoulder_to_road_map();
+  planner.set_planner_data(nullptr, nullptr, ctx);
+
+  // The footprint reaches the road lanelet (x = 20) at base_link x = 16, so the stop point keeps
+  // the configured margins ahead of it: 16 - 1.0 - 0.5.
+  const auto arc_length = planner.select_road_shoulder_stop_arc_length(
+    make_straight_trajectory(30), make_ego_pose(0.0), make_params());
+
+  ASSERT_TRUE(arc_length.has_value());
+  EXPECT_NEAR(*arc_length, 14.5, 1e-3);
+}
+
+TEST(MapBasedStopPlannerTest, RoadShoulderStopInactiveOnceFootprintReachesRoadLane)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = make_shoulder_to_road_map();
+  planner.set_planner_data(nullptr, nullptr, ctx);
+
+  // Ego already straddles the road lanelet: the trajectory must return to the lane without a stop.
+  EXPECT_FALSE(planner
+                 .select_road_shoulder_stop_arc_length(
+                   make_straight_trajectory(30), make_ego_pose(18.0), make_params())
+                 .has_value());
 }
 
 }  // namespace autoware::minimum_rule_based_planner
