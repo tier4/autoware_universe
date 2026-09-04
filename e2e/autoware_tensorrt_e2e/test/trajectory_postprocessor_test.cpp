@@ -186,7 +186,7 @@ TEST(TrajectoryPostprocessorTest, AppliesBaseLinkOffsetInReverse)
 
 TEST(TrajectoryPostprocessorTest, ExtraTrajectoryTensorsBecomeCandidates)
 {
-  // ResWorld-style contract: main output "trajectory" plus an ego-only "prior_trajectory".
+  // A model may expose a main trajectory plus an ego-only prior trajectory.
   auto params = make_params();
   params.prediction_tensor = "trajectory";
   params.extra_trajectory_tensors = {"prior_trajectory"};

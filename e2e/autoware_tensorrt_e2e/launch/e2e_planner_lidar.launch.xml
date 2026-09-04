@@ -14,7 +14,7 @@
   <arg name="vehicle_model" default="" description="vehicle description package prefix, e.g. jpntaxi for jpntaxi_description; draws the ego"/>
   <arg name="vehicle_model_publisher" default="false" description="publish /robot_description for a standalone replay"/>
 
-  <!-- Sensing input: concatenated point cloud (same source as BEVFusion) -->
+  <!-- Sensing input: concatenated point cloud -->
   <arg name="input_pointcloud" default="/sensing/lidar/concatenated/pointcloud"/>
 
   <!-- Context inputs (diffusion-planner-style; subscribed only when the model needs them) -->
