@@ -1006,15 +1006,20 @@ struct FirstOrderDubinsMppiInterface::Impl
     sampler = SAMPLER(sp);
 
     const float lambda = user_cost_params_.lambda;
-    controller = std::make_unique<MppiWithHistoryAccess>(
-      &model, &cost, &feedback, &sampler, kDt, user_cost_params_.max_iter, lambda, 0.0F,
-      kMppiHorizon, u_nom);
-    auto cp = controller->getParams();
+    Mppi::TEMPLATED_PARAMS cp{};
+    cp.dt_ = kDt;
+    cp.num_iters_ = user_cost_params_.max_iter;
     cp.lambda_ = lambda;
+    cp.alpha_ = 0.0F;
+    cp.num_timesteps_ = kMppiHorizon;
+    cp.init_control_traj_ = u_nom;
     cp.dynamics_rollout_dim_ = dim3(32, 2, 1);
     cp.cost_rollout_dim_ = dim3(32, 2, 1);
     cp.seed_ = 1U;
-    controller->setParams(cp);
+    // Pass the finalized launch configuration into the constructor because it benchmarks the
+    // rollout kernels before returning. Setting these dimensions afterward would benchmark the
+    // default dim3(1, 1, 1) configuration during initialization.
+    controller = std::make_unique<MppiWithHistoryAccess>(&model, &cost, &feedback, &sampler, cp);
     controller->configureEssLambdaAdaptation(
       user_cost_params_.target_ess_ratio, user_cost_params_.lambda_adaptation_gain,
       user_cost_params_.lambda_min, user_cost_params_.lambda_max,
