@@ -266,6 +266,7 @@ struct PlanningValidatorContext
     s->is_valid_trajectory_shift = true;
     s->is_valid_intersection_collision_check = true;
     s->is_valid_rear_collision_check = true;
+    s->is_valid_boundary_departure = true;
   }
 
   void set_handling(const InvalidTrajectoryHandlingType handling_type)
