@@ -99,6 +99,15 @@ void calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory, std::vector<do
 double calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory);
 
 /**
+ * @brief calculate spatial arc length from a start index to the trajectory end
+ * @param [in] trajectory trajectory to measure
+ * @param [in] start_idx index from which to start accumulating distance
+ * @return accumulated 2D distance from start_idx to the last point
+ */
+double calcMPCTrajectoryRemainingArcLength(
+  const MPCTrajectory & trajectory, const size_t start_idx);
+
+/**
  * @brief resample the given trajectory with the given fixed interval
  * @param [in] input trajectory to resample
  * @param [in] resample_interval_dist the desired distance between two successive trajectory points
@@ -161,7 +170,7 @@ void calcTrajectoryYawFromXY(
  */
 void calcTrajectoryCurvature(
   const int curvature_smoothing_num_traj, const int curvature_smoothing_num_ref_steer,
-  MPCTrajectory & traj);
+  MPCTrajectory & traj, const bool use_short_segment_protection = false);
 
 /**
  * @brief Calculate path curvature by 3-points circle fitting with smoothing num (use nearest 3
@@ -171,7 +180,8 @@ void calcTrajectoryCurvature(
  * @return vector of curvatures at each point of the given trajectory
  */
 std::vector<double> calcTrajectoryCurvature(
-  const int curvature_smoothing_num, const MPCTrajectory & traj);
+  const int curvature_smoothing_num, const MPCTrajectory & traj,
+  const bool use_short_segment_protection = false);
 
 /**
  * @brief Calculate curvature for temporal trajectories by spatially resampling.

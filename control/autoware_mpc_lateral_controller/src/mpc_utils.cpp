@@ -18,6 +18,7 @@
 #include "autoware/interpolation/linear_interpolation.hpp"
 #include "autoware/interpolation/spline_interpolation.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
+#include "autoware/mpc_lateral_controller/taubin_curvature.hpp"
 #include "autoware_utils/geometry/geometry.hpp"
 #include "autoware_utils/math/normalization.hpp"
 
@@ -149,6 +150,19 @@ double calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory)
   return length;
 }
 
+double calcMPCTrajectoryRemainingArcLength(const MPCTrajectory & trajectory, const size_t start_idx)
+{
+  if (trajectory.size() < 2 || start_idx >= trajectory.size() - 1) {
+    return 0.0;
+  }
+
+  double length = 0.0;
+  for (size_t i = start_idx + 1; i < trajectory.size(); ++i) {
+    length += calcDistance2d(trajectory, i, i - 1);
+  }
+  return length;
+}
+
 std::pair<bool, MPCTrajectory> resampleMPCTrajectoryByDistance(
   const MPCTrajectory & input, const double resample_interval_dist, const size_t nearest_seg_idx,
   const double ego_offset_to_segment)
@@ -207,6 +221,7 @@ std::pair<bool, MPCTrajectory> resampleMPCTrajectoryByDistance(
     output.vx = lerp_arc_length(input.vx);  // must be linear
     output.k = spline_arc_length(input.k);
     output.smooth_k = spline_arc_length(input.smooth_k);
+    output.steer = lerp_arc_length(input.steer);
     output.relative_time = lerp_arc_length(input.relative_time);  // must be linear
   } catch (const std::exception & e) {
     const auto logger = rclcpp::get_logger("mpc_util");
@@ -247,6 +262,7 @@ bool linearInterpMPCTrajectory(
     out_traj.vx = lerp_arc_length(in_traj.vx);
     out_traj.k = lerp_arc_length(in_traj.k);
     out_traj.smooth_k = lerp_arc_length(in_traj.smooth_k);
+    out_traj.steer = lerp_arc_length(in_traj.steer);
     out_traj.relative_time = lerp_arc_length(in_traj.relative_time);
   } catch (const std::exception & e) {
     std::cerr << "linearInterpMPCTrajectory error!: " << e.what() << std::endl;
@@ -321,26 +337,61 @@ void calcTrajectoryYawFromXY(
 
 void calcTrajectoryCurvature(
   const int curvature_smoothing_num_traj, const int curvature_smoothing_num_ref_steer,
-  MPCTrajectory & traj)
+  MPCTrajectory & traj, const bool use_short_segment_protection)
 {
-  traj.k = calcTrajectoryCurvature(curvature_smoothing_num_traj, traj);
-  traj.smooth_k = calcTrajectoryCurvature(curvature_smoothing_num_ref_steer, traj);
+  traj.k =
+    calcTrajectoryCurvature(curvature_smoothing_num_traj, traj, use_short_segment_protection);
+  traj.smooth_k =
+    calcTrajectoryCurvature(curvature_smoothing_num_ref_steer, traj, use_short_segment_protection);
 }
 
 std::vector<double> calcTrajectoryCurvature(
-  const int curvature_smoothing_num, const MPCTrajectory & traj)
+  const int curvature_smoothing_num, const MPCTrajectory & traj,
+  const bool use_short_segment_protection)
 {
-  std::vector<double> curvature_vec(traj.x.size());
+  const size_t n = traj.x.size();
+  std::vector<double> curvature_vec(n);
+  if (n < 3) {
+    return curvature_vec;
+  }
+
+  const int max_smoothing_num = static_cast<int>(std::floor(0.5 * (static_cast<double>(n - 1))));
+
+  Eigen::MatrixX2d pts(static_cast<Eigen::Index>(n), 2);
+  if (max_smoothing_num < curvature_smoothing_num) {
+    for (size_t i = 0; i < n; ++i) {
+      pts(static_cast<Eigen::Index>(i), 0) = traj.x.at(i);
+      pts(static_cast<Eigen::Index>(i), 1) = traj.y.at(i);
+    }
+    // Get a constant curvature and assign to all indices
+    const double kappa = taubin_curvature(pts).kappa;
+    curvature_vec.assign(n, kappa);
+    return curvature_vec;
+  }
 
   /* calculate curvature by circle fitting from three points */
   geometry_msgs::msg::Point p1, p2, p3;
-  const int max_smoothing_num =
-    static_cast<int>(std::floor(0.5 * (static_cast<double>(traj.x.size() - 1))));
   const size_t L = static_cast<size_t>(std::min(curvature_smoothing_num, max_smoothing_num));
   for (size_t i = L; i < traj.x.size() - L; ++i) {
     const size_t curr_idx = i;
     const size_t prev_idx = curr_idx - L;
     const size_t next_idx = curr_idx + L;
+    const double dist_prev = calcDistance2d(traj, curr_idx, prev_idx);
+    const double dist_next = calcDistance2d(traj, next_idx, curr_idx);
+    const double dist_span = calcDistance2d(traj, next_idx, prev_idx);
+    const double dt_prev = traj.relative_time.at(curr_idx) - traj.relative_time.at(prev_idx);
+    const double dt_next = traj.relative_time.at(next_idx) - traj.relative_time.at(curr_idx);
+    const double dt_span = traj.relative_time.at(next_idx) - traj.relative_time.at(prev_idx);
+    const double vx_prev = 0.5 * (traj.vx.at(prev_idx) + traj.vx.at(curr_idx));
+    const double vx_next = 0.5 * (traj.vx.at(curr_idx) + traj.vx.at(next_idx));
+    const double vx_span = 0.5 * (traj.vx.at(prev_idx) + traj.vx.at(next_idx));
+    if (
+      isTemporalShortSegment(dist_prev, dt_prev, vx_prev, use_short_segment_protection) ||
+      isTemporalShortSegment(dist_next, dt_next, vx_next, use_short_segment_protection) ||
+      isTemporalShortSegment(dist_span, dt_span, vx_span, use_short_segment_protection)) {
+      curvature_vec.at(curr_idx) = curr_idx > 0 ? curvature_vec.at(curr_idx - 1) : 0.0;
+      continue;
+    }
     p1.x = traj.x.at(prev_idx);
     p2.x = traj.x.at(curr_idx);
     p3.x = traj.x.at(next_idx);
@@ -351,7 +402,7 @@ std::vector<double> calcTrajectoryCurvature(
       curvature_vec.at(curr_idx) = autoware_utils::calc_curvature(p1, p2, p3);
     } catch (...) {
       std::cerr << "[MPC] 2 points are too close to calculate curvature." << std::endl;
-      curvature_vec.at(curr_idx) = 0.0;
+      curvature_vec.at(curr_idx) = curr_idx > 0 ? curvature_vec.at(curr_idx - 1) : 0.0;
     }
   }
 
@@ -417,6 +468,7 @@ void calcTrajectoryCurvatureBySpatialResample(
   spatial_traj.vx.resize(n, 0.0);
   spatial_traj.k.resize(n, 0.0);
   spatial_traj.smooth_k.resize(n, 0.0);
+  spatial_traj.steer.resize(n, 0.0);
   spatial_traj.relative_time.resize(n, 0.0);
 
   const auto k_spatial = calcTrajectoryCurvature(curvature_smoothing_num_traj, spatial_traj);
@@ -453,9 +505,10 @@ MPCTrajectory convertToMPCTrajectory(const Trajectory & input, const bool use_te
     const double z = p.pose.position.z;
     const double yaw = tf2::getYaw(p.pose.orientation);
     const double vx = p.longitudinal_velocity_mps;
+    const double steer = p.front_wheel_angle_rad;
     const double k = 0.0;
     const double t = use_temporal_trajectory ? rclcpp::Duration(p.time_from_start).seconds() : 0.0;
-    output.push_back(x, y, z, yaw, vx, k, k, t);
+    output.push_back(x, y, z, yaw, vx, k, k, steer, t);
   }
   if (!use_temporal_trajectory) {
     calcMPCTrajectoryTime(output);
@@ -478,6 +531,8 @@ Trajectory convertToAutowareTrajectory(const MPCTrajectory & input, const double
       rclcpp::Duration::from_seconds(input.relative_time.at(i) - input.relative_time.front());
     if (wheelbase != 0.0) {
       p.front_wheel_angle_rad = static_cast<float>(std::atan(input.smooth_k.at(i) * wheelbase));
+    } else if (std::isfinite(input.steer.at(i))) {
+      p.front_wheel_angle_rad = static_cast<float>(input.steer.at(i));
     }
     output.points.push_back(p);
     if (output.points.size() == output.points.max_size()) {
@@ -671,7 +726,8 @@ void extendTrajectoryInYawDirection(
     extended_pose = autoware_utils::calc_offset_pose(extended_pose, x_offset, 0.0, 0.0);
     traj.push_back(
       extended_pose.position.x, extended_pose.position.y, extended_pose.position.z, traj.yaw.back(),
-      extend_vel, traj.k.back(), traj.smooth_k.back(), traj.relative_time.back() + dt);
+      extend_vel, traj.k.back(), traj.smooth_k.back(), traj.steer.back(),
+      traj.relative_time.back() + dt);
   }
 }
 

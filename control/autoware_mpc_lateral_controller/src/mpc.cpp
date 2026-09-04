@@ -24,6 +24,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -349,6 +350,13 @@ void MPC::setReferenceTrajectory(
 
   mpc_traj_smoothed.stamp = trajectory_msg.header.stamp;
   m_reference_trajectory = mpc_traj_smoothed;
+  constexpr double steering_availability_threshold = 1.0e-6;
+  m_reference_trajectory_has_steering = std::any_of(
+    trajectory_msg.points.begin(), trajectory_msg.points.end(),
+    [steering_availability_threshold](const auto & point) {
+      return std::abs(static_cast<double>(point.front_wheel_angle_rad)) >
+             steering_availability_threshold;
+    });
 }
 
 void MPC::resetPrevResult(const SteeringReport & current_steer)
@@ -358,6 +366,16 @@ void MPC::resetPrevResult(const SteeringReport & current_steer)
   const float steer_lim_f = static_cast<float>(m_steer_lim);
   m_raw_steer_cmd_prev = std::clamp(current_steer.steering_tire_angle, -steer_lim_f, steer_lim_f);
   m_raw_steer_cmd_pprev = std::clamp(current_steer.steering_tire_angle, -steer_lim_f, steer_lim_f);
+}
+
+void MPC::resetSteeringCmdFilter(const double steering_tire_angle)
+{
+  m_lpf_steering_cmd.resetState(steering_tire_angle);
+  m_raw_steer_cmd_prev = steering_tire_angle;
+  m_raw_steer_cmd_pprev = steering_tire_angle;
+  for (auto & value : m_input_buffer) {
+    value = steering_tire_angle;
+  }
 }
 
 std::pair<ResultWithReason, MPCData> MPC::getData(
@@ -617,9 +635,19 @@ MPCMatrix MPC::generateMPCMatrix(
     m.Qex.block(idx_y_i, idx_y_i, DIM_Y, DIM_Y) = Q_adaptive;
     m.R1ex.block(idx_u_i, idx_u_i, DIM_U, DIM_U) = R_adaptive;
 
-    // get reference input (feed-forward)
-    m_vehicle_model_ptr->setCurvature(ref_smooth_k);
-    m_vehicle_model_ptr->calculateReferenceInput(Uref);
+    // Get reference input (feed-forward). Temporal trajectories may provide a steering state
+    // directly, avoiding numerical spatial derivatives of a time-sampled path. Geometric
+    // curvature remains in use for model linearization, weights, and the default fallback.
+    const double trajectory_steer = reference_trajectory.steer.at(i);
+    if (
+      m_use_temporal_trajectory && m_use_trajectory_steering_for_feedforward &&
+      m_reference_trajectory_has_steering && std::isfinite(trajectory_steer)) {
+      Uref.setZero();
+      Uref(0, 0) = std::clamp(trajectory_steer, -m_steer_lim, m_steer_lim);
+    } else {
+      m_vehicle_model_ptr->setCurvature(ref_smooth_k);
+      m_vehicle_model_ptr->calculateReferenceInput(Uref);
+    }
     if (std::fabs(Uref(0, 0)) < autoware_utils::deg2rad(m_param.zero_ff_steer_deg)) {
       Uref(0, 0) = 0.0;  // ignore curvature noise
     }
