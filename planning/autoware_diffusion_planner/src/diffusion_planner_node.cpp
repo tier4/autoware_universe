@@ -23,6 +23,8 @@
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 
+#include <std_msgs/msg/int32.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -99,6 +101,16 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<std_msgs::msg::Float64>("~/debug/inference_time_ms", 1);
   pub_denoising_steps_ =
     this->create_publisher<std_msgs::msg::Float32MultiArray>("~/debug/denoising_steps", 1);
+  pub_raw_trajectory_ =
+    this->create_publisher<Trajectory>("~/debug/optimization/raw_trajectory", 1);
+  pub_optimization_status_ =
+    this->create_publisher<std_msgs::msg::Int32>("~/debug/optimization/solver_status", 1);
+  pub_optimization_time_ =
+    this->create_publisher<std_msgs::msg::Float64>("~/debug/optimization/solve_time_ms", 1);
+  pub_avoidance_trajectory_ =
+    this->create_publisher<Trajectory>("~/debug/road_border_avoidance/adjusted_trajectory", 1);
+  pub_avoidance_shifted_count_ = this->create_publisher<std_msgs::msg::Int32>(
+    "~/debug/road_border_avoidance/shifted_point_count", 1);
   pub_guidance_status_ = this->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
     "~/debug/guidance_status", 1);
 
@@ -233,6 +245,57 @@ void DiffusionPlanner::set_up_params()
   params_.centerline_guidance_start_time_s =
     this->declare_parameter<double>("guidance.centerline_guidance.start_time_s", 2.0);
 
+  auto & opt = params_.trajectory_optimization;
+  opt.enable = this->declare_parameter<bool>("trajectory_optimization.enable", true);
+  opt.weight_longitudinal =
+    this->declare_parameter<double>("trajectory_optimization.weight_longitudinal", 0.5);
+  opt.weight_lateral =
+    this->declare_parameter<double>("trajectory_optimization.weight_lateral", 0.5);
+  opt.weight_yaw = this->declare_parameter<double>("trajectory_optimization.weight_yaw", 0.05);
+  opt.weight_acceleration =
+    this->declare_parameter<double>("trajectory_optimization.weight_acceleration", 0.1);
+  opt.weight_steering_rate =
+    this->declare_parameter<double>("trajectory_optimization.weight_steering_rate", 10.0);
+  opt.terminal_weight_scale =
+    this->declare_parameter<double>("trajectory_optimization.terminal_weight_scale", 2.5);
+  opt.min_velocity_mps =
+    this->declare_parameter<double>("trajectory_optimization.min_velocity_mps", 0.0);
+  opt.max_velocity_mps =
+    this->declare_parameter<double>("trajectory_optimization.max_velocity_mps", 30.0);
+  opt.min_acceleration_mps2 =
+    this->declare_parameter<double>("trajectory_optimization.min_acceleration_mps2", -4.0);
+  opt.max_acceleration_mps2 =
+    this->declare_parameter<double>("trajectory_optimization.max_acceleration_mps2", 3.0);
+  opt.max_steering_rate_rps =
+    this->declare_parameter<double>("trajectory_optimization.max_steering_rate_rps", 1.0);
+  opt.max_lateral_acceleration_mps2 =
+    this->declare_parameter<double>("trajectory_optimization.max_lateral_acceleration_mps2", 3.0);
+  opt.max_sqp_iterations =
+    this->declare_parameter<int>("trajectory_optimization.max_sqp_iterations", 50);
+
+  // Road border avoidance params (static; changing them requires a restart).
+  auto & avoidance = params_.road_border_avoidance;
+  avoidance.enable = this->declare_parameter<bool>("road_border_avoidance.enable", false);
+  avoidance.footprint_margin_m =
+    this->declare_parameter<double>("road_border_avoidance.footprint_margin_m", 0.2);
+  avoidance.search_radius_m =
+    this->declare_parameter<double>("road_border_avoidance.search_radius_m", 120.0);
+  avoidance.shift_step_m =
+    this->declare_parameter<double>("road_border_avoidance.shift_step_m", 0.1);
+  avoidance.max_lateral_shift_m =
+    this->declare_parameter<double>("road_border_avoidance.max_lateral_shift_m", 1.5);
+  avoidance.propagate_shift =
+    this->declare_parameter<bool>("road_border_avoidance.propagate_shift", true);
+#ifndef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
+  if (opt.enable) {
+    RCLCPP_WARN(
+      get_logger(),
+      "trajectory_optimization.enable is true but this build has no acados support; "
+      "trajectory optimization is disabled.");
+    opt.enable = false;
+  }
+#endif
+
   // planning factor params
   planning_factor_params_.enable_stop =
     this->declare_parameter<bool>("planning_factor.enable_stop", false);
@@ -288,6 +351,12 @@ void DiffusionPlanner::load_model()
   if (params_.ignore_neighbors) {
     RCLCPP_INFO(
       get_logger(), "Neighbor agents disabled for diffusion inference (ignore_neighbors)");
+  }
+  if (params_.trajectory_optimization.enable) {
+    RCLCPP_INFO(get_logger(), "acados trajectory optimization is enabled");
+  }
+  if (params_.road_border_avoidance.enable) {
+    RCLCPP_INFO(get_logger(), "road border avoidance is enabled");
   }
 }
 
@@ -657,10 +726,16 @@ void DiffusionPlanner::on_timer()
   inference_time_msg.data = inference_result->inference_time_ms;
   pub_inference_time_->publish(inference_time_msg);
 
+  const auto steering_status = sub_steering_status_.take_data();
+  std::optional<double> current_steering_angle_rad;
+  if (steering_status) {
+    current_steering_angle_rad = static_cast<double>(steering_status->steering_tire_angle);
+  }
+
   PlannerOutput planner_output;
   try {
-    planner_output =
-      core_->create_planner_output(*inference_result, *frame_context, frame_time, generator_uuid_);
+    planner_output = core_->create_planner_output(
+      *inference_result, *frame_context, frame_time, generator_uuid_, current_steering_angle_rad);
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), "Postprocessing failed: " << e.what());
     diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, e.what());
@@ -670,6 +745,45 @@ void DiffusionPlanner::on_timer()
 
   if (!planner_output.denoising_steps.data.empty()) {
     pub_denoising_steps_->publish(planner_output.denoising_steps);
+  }
+
+  const auto & avoidance_debug = planner_output.avoidance_debug;
+  if (avoidance_debug.active) {
+    if (planner_output.avoidance_adjusted_trajectory) {
+      pub_avoidance_trajectory_->publish(*planner_output.avoidance_adjusted_trajectory);
+    }
+    std_msgs::msg::Int32 shifted_count_msg;
+    shifted_count_msg.data = avoidance_debug.shifted_points + avoidance_debug.unresolved_points;
+    pub_avoidance_shifted_count_->publish(shifted_count_msg);
+    if (avoidance_debug.unresolved_points > 0) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+        "Road border avoidance could not clear %d trajectory points within the maximum "
+        "lateral shift.",
+        avoidance_debug.unresolved_points);
+    }
+  }
+
+  const auto & optimization_debug = planner_output.optimization_debug;
+  if ((optimization_debug.attempted || avoidance_debug.active) && planner_output.raw_trajectory) {
+    pub_raw_trajectory_->publish(*planner_output.raw_trajectory);
+  }
+  if (optimization_debug.attempted) {
+    std_msgs::msg::Int32 status_msg;
+    status_msg.data = optimization_debug.solver_status;
+    pub_optimization_status_->publish(status_msg);
+    std_msgs::msg::Float64 solve_time_msg;
+    solve_time_msg.data = optimization_debug.solve_time_ms;
+    pub_optimization_time_->publish(solve_time_msg);
+    if (!optimization_debug.optimized) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+        "Trajectory optimization failed (acados status %d); publishing the finite-difference "
+        "trajectory.",
+        optimization_debug.solver_status);
+      diagnostics_inference_->update_level_and_message(
+        DiagnosticStatus::WARN, "Trajectory optimization failed");
+    }
   }
 
   publish_guidance_status(planner_output.guidance_triggered, frame_time);
