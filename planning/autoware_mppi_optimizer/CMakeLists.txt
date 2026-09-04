@@ -89,6 +89,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=-std=c++17")
   # Parallelize NVCC device-code passes (CUDA 11.5+); 0 = use all host cores.
   list(APPEND CUDA_NVCC_FLAGS "--threads" "0")
+  list(APPEND CUDA_NVCC_FLAGS "-lineinfo")
 
   # Compile only for the GPU(s) on this machine (FindCUDA Auto = nvidia-smi detect).
   # Avoids the multi-SM fat-binary compile that dominated MPPI build time.
