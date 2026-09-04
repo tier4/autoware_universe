@@ -32,13 +32,52 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 
 | Topic                                 | Type                    | Description                                   |
 | ------------------------------------- | ----------------------- | --------------------------------------------- |
-| `~/output/candidate_trajectories`     | `CandidateTrajectories` | Planned trajectory                            |
+| `~/output/candidate_trajectories`     | `CandidateTrajectories` | Planned trajectory (with turn signal)         |
 | `~/debug/path_with_lane_id`           | `PathWithLaneId`        | Debug: planned path                           |
 | `~/debug/trajectory`                  | `Trajectory`            | Debug: final output trajectory                |
 | `~/debug/shifted_trajectory`          | `Trajectory`            | Debug: trajectory after path shifting         |
 | `~/debug/optimizer/{name}/trajectory` | `Trajectory`            | Debug: trajectory after each optimizer plugin |
 | `~/debug/modifier/{name}/trajectory`  | `Trajectory`            | Debug: trajectory after each modifier plugin  |
 | `~/debug/processing_time_detail_ms`   | `ProcessingTimeDetail`  | Debug: processing time breakdown              |
+
+## Turn signal
+
+The `turn_indicators_command` field of every published candidate trajectory is filled in by
+`TurnIndicatorDecider`. Both candidates get the same command: they share the path shape and differ
+only in stop position.
+
+Four maneuvers raise a signal. All distances below are arc lengths along the path, and the
+activation distance is `max(v * 3.0 s, search_distance)`.
+
+| Maneuver          | Lit when                                                                          | Cleared when                                        |
+| ----------------- | --------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Intersection turn | a `turn_direction=left/right` lanelet starts within the activation distance       | ego's heading matches the heading the turn exits on |
+| Private-area exit | the boundary where a `location=private` lanelet rejoins a public one is within it | as above                                            |
+| Pull-out          | ego is STOPPED more than 1.5 m off the lane centerline (bus stop, shoulder)       | ego is back within 0.5 m of the centerline          |
+| Pull-over         | an off-centerline goal (> 0.5 m) is within `search_distance`                      | ego has stopped within 1.0 m of the goal            |
+
+The exit heading is the path heading 15 m past the maneuver, so the end condition is decided by
+ego's pose rather than by where the lanelet happens to end. A private lanelet that carries a
+`turn_direction` tag is handled by the intersection rule; the private case exists because such a
+lanelet may be tagged `straight` or not tagged at all, and it then takes its side from the yaw
+change across the merge (a merge that is geometrically straight raises no signal).
+
+The first two rows differ only in how they are detected and where they start from; once found they
+are signalled by the same rule and neither outranks the other - the one ego reaches first along the
+path wins, so an exit ego is still completing keeps the light while the turn beyond it is already
+in range. Pull-out and pull-over are only consulted when no such maneuver is lit, in that order.
+
+Out of scope: lane changes and avoidance. While the upstream planner runs one, ego is laterally
+offset from its lane and this module plans a path back to the centre - but the pull-out latch only
+arms for a **stopped** vehicle, so no signal is raised. The 1.5 m departure threshold must therefore
+stay above the lateral deviation a lane change or avoidance can produce. Pull-out is additionally
+suppressed inside the pull-over range, so the two cannot fight over the direction at an
+off-centerline goal.
+
+Everything lives in `src/turn_indicator_decider.{hpp,cpp}`. The decision rules sit in the
+`turn_indicator` namespace as pure functions (unit-tested on plain numbers); `TurnIndicatorDecider`
+feeds them the path and lanelet geometry. The thresholds that are not exposed as parameters are
+`constexpr` in the header.
 
 ## Parameters
 

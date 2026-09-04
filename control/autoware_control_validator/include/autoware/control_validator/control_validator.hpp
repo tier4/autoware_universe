@@ -20,6 +20,7 @@
 #include "autoware_vehicle_info_utils/vehicle_info.hpp"
 #include "diagnostic_updater/diagnostic_updater.hpp"
 
+#include <autoware/boundary_departure_checker/uncrossable_boundary_checker.hpp>
 #include <autoware/signal_processing/lowpass_filter_1d.hpp>
 #include <autoware_control_validator/control_validator_parameters.hpp>
 #include <autoware_control_validator/msg/control_validator_status.hpp>
@@ -29,6 +30,7 @@
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -43,9 +45,12 @@
 
 namespace autoware::control_validator
 {
+namespace boundary_departure_checker = autoware::boundary_departure_checker;
+
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_control_msgs::msg::Control;
 using autoware_control_validator::msg::ControlValidatorStatus;
+using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using diagnostic_updater::DiagnosticStatusWrapper;
@@ -240,6 +245,59 @@ private:
 };
 
 /**
+ * @class UncrossableBoundDepartureValidator
+ * @brief Validates that the control predicted trajectory does not critically depart an uncrossable
+ * map boundary (e.g. road_border), reusing the shared boundary departure checker library.
+ */
+class UncrossableBoundDepartureValidator
+{
+public:
+  UncrossableBoundDepartureValidator(
+    const rclcpp::Logger & logger, const ::control_validator::Params & params)
+  : logger_{logger}
+  {
+    update_parameters(params);
+  }
+
+  void update_parameters(const ::control_validator::Params & params)
+  {
+    enable_ = params.uncrossable_bound_departure_validator.enable;
+    params_.critical_departure_lateral_th_m =
+      params.uncrossable_bound_departure_validator.lateral_margin_m;
+    params_.longitudinal_margin_m =
+      params.uncrossable_bound_departure_validator.longitudinal_margin_m;
+    params_.max_deceleration_mps2 =
+      params.uncrossable_bound_departure_validator.max_deceleration_mps2;
+    params_.max_jerk_mps3 = params.uncrossable_bound_departure_validator.max_jerk_mps3;
+    params_.brake_delay_s = params.uncrossable_bound_departure_validator.brake_delay_s;
+    params_.time_to_departure_cutoff_s =
+      params.uncrossable_bound_departure_validator.time_to_departure_cutoff_s;
+    params_.on_time_buffer_s = params.uncrossable_bound_departure_validator.on_time_buffer_s;
+    params_.off_time_buffer_s = params.uncrossable_bound_departure_validator.off_time_buffer_s;
+    params_.enable_developer_marker =
+      params.uncrossable_bound_departure_validator.enable_developer_marker;
+    params_.boundary_types_to_detect = params.uncrossable_bound_departure_validator.boundary_types;
+    if (checker_) {
+      checker_->update_parameters(params_);
+    }
+  }
+
+  void validate(
+    ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
+    const Odometry & kinematics, const AccelWithCovarianceStamped & acceleration,
+    const lanelet::LaneletMapPtr & lanelet_map,
+    const vehicle_info_utils::VehicleInfo & vehicle_info,
+    visualization_msgs::msg::MarkerArray & debug_markers);
+
+private:
+  bool enable_{true};
+  rclcpp::Logger logger_;
+  boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
+  std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> checker_;
+  boundary_departure_checker::HysteresisState hysteresis_state_;
+};
+
+/**
  * @class ControlValidator
  * @brief Validates control commands by comparing predicted trajectories against reference
  * trajectories.
@@ -259,6 +317,12 @@ public:
    */
   void on_control_cmd(const Control::ConstSharedPtr msg);
 
+  /**
+   * @brief Callback storing the lanelet map used by the boundary departure check.
+   * @param msg Lanelet map binary message
+   */
+  void on_lanelet_map(const LaneletMapBin::ConstSharedPtr msg);
+
 private:
   /**
    * @brief Setup diagnostic updater
@@ -274,6 +338,12 @@ private:
    * @brief Publish debug information
    */
   void publish_debug_info(const geometry_msgs::msg::Pose & ego_pose);
+
+  /**
+   * @brief Publish the boundary departure debug markers, clearing stale markers first.
+   * @param markers Markers produced by the boundary departure validator this cycle
+   */
+  void publish_boundary_departure_markers(visualization_msgs::msg::MarkerArray markers);
 
   /**
    * @brief Generate error message based on validation status
@@ -313,6 +383,7 @@ private:
   autoware_utils::InterProcessPollingSubscriber<Trajectory>::SharedPtr sub_predicted_traj_;
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>::SharedPtr
     sub_measured_acc_;
+  rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_lanelet_map_;
   rclcpp::Publisher<ControlValidatorStatus>::SharedPtr pub_status_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
@@ -328,6 +399,7 @@ private:
   Updater diag_updater_{this};
   ControlValidatorStatus validation_status_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
+  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   bool flag_autonomous_control_enabled_ = false;
   /**
    * @brief Check if all validation criteria are met
@@ -348,6 +420,7 @@ private:
   VelocityValidator velocity_validator;
   OverrunValidator overrun_validator;
   YawValidator yaw_validator;
+  UncrossableBoundDepartureValidator uncrossable_bound_departure_validator;
 };
 }  // namespace autoware::control_validator
 

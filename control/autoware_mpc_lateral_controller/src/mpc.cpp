@@ -39,7 +39,6 @@ using autoware_utils::rad2deg;
 
 namespace
 {
-
 bool interpolateReferenceStateAtTime(
   const MPCTrajectory & traj, const double target_time, Pose * pose, double * nearest_time,
   size_t * nearest_index)
@@ -209,6 +208,110 @@ ResultWithReason MPC::calculateMPC(
   return ResultWithReason{true};
 }
 
+Float32MultiArrayStamped generatePassthroughDiagData(
+  const MPCTrajectory & reference_trajectory, const MPCData & mpc_data, const Lateral & ctrl_cmd,
+  const double trajectory_steer_cmd, const double wheelbase, const Odometry & current_kinematics)
+{
+  Float32MultiArrayStamped diagnostic;
+  const double current_velocity = current_kinematics.twist.twist.linear.x;
+  const double wz_command = current_velocity * std::tan(ctrl_cmd.steering_tire_angle) / wheelbase;
+  const double wz_measured = current_velocity * std::tan(mpc_data.steer) / wheelbase;
+
+  typedef decltype(diagnostic.data)::value_type DiagnosticValueType;
+  const auto append_diag = [&](const auto & val) -> void {
+    diagnostic.data.push_back(static_cast<DiagnosticValueType>(val));
+  };
+  append_diag(ctrl_cmd.steering_tire_angle);  // [0] final steering command
+  append_diag(trajectory_steer_cmd);          // [1] trajectory steering
+  append_diag(trajectory_steer_cmd);          // [2] feed-forward (= trajectory)
+  append_diag(trajectory_steer_cmd);          // [3] raw feed-forward
+  append_diag(mpc_data.steer);                // [4] current steering angle
+  append_diag(mpc_data.lateral_err);          // [5] lateral error
+  append_diag(tf2::getYaw(current_kinematics.pose.pose.orientation));  // [6] current_pose yaw
+  append_diag(tf2::getYaw(mpc_data.nearest_pose.orientation));         // [7] nearest_pose yaw
+  append_diag(mpc_data.yaw_err);                                       // [8] yaw error
+  append_diag(reference_trajectory.vx.at(mpc_data.nearest_idx));       // [9] reference velocity
+  append_diag(current_velocity);                                       // [10] measured velocity
+  append_diag(wz_command);                                             // [11] wz from command
+  append_diag(wz_measured);  // [12] wz from measured steer
+  append_diag(current_velocity * reference_trajectory.smooth_k.at(mpc_data.nearest_idx));  // [13]
+  append_diag(reference_trajectory.smooth_k.at(mpc_data.nearest_idx));  // [14] nearest smooth k
+  append_diag(reference_trajectory.k.at(mpc_data.nearest_idx));         // [15] nearest k
+  return diagnostic;
+}
+
+ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
+  const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
+  Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon)
+{
+  if (!m_reference_trajectory_has_steering) {
+    return ResultWithReason{false, "trajectory has no steering for passthrough."};
+  }
+
+  const auto reference_trajectory =
+    applyVelocityDynamicsFilter(m_reference_trajectory, current_kinematics);
+
+  const auto [get_data_result, mpc_data_raw] =
+    getData(reference_trajectory, current_steer, current_kinematics);
+  if (!get_data_result.result) {
+    return ResultWithReason{false, fmt::format("getting MPC Data ({}).", get_data_result.reason)};
+  }
+
+  MPCTrajectory mpc_reference_trajectory = reference_trajectory;
+  MPCData mpc_data = mpc_data_raw;
+  if (m_use_temporal_trajectory) {
+    const double nearest_time_offset = mpc_data_raw.nearest_time;
+    for (auto & t : mpc_reference_trajectory.relative_time) {
+      t -= nearest_time_offset;
+    }
+    mpc_data.nearest_time = 0.0;
+  }
+
+  const double mpc_start_time = mpc_data.nearest_time + m_param.input_delay;
+  const double prediction_dt =
+    getPredictionDeltaTime(mpc_start_time, mpc_reference_trajectory, current_kinematics);
+
+  const auto [resample_result, mpc_resampled_ref_trajectory] =
+    resampleMPCTrajectoryByTime(mpc_start_time, prediction_dt, mpc_reference_trajectory);
+  if (!resample_result.result) {
+    return ResultWithReason{
+      false, fmt::format("trajectory resampling ({}).", resample_result.reason)};
+  }
+  if (mpc_resampled_ref_trajectory.steer.empty()) {
+    return ResultWithReason{false, "empty resampled steering reference."};
+  }
+
+  const double u_raw = mpc_resampled_ref_trajectory.steer.at(0);
+  const double u_saturated = std::clamp(u_raw, -m_steer_lim, m_steer_lim);
+  const double steer_rate =
+    (u_saturated - static_cast<double>(current_steer.steering_tire_angle)) / m_ctrl_period;
+
+  ctrl_cmd.steering_tire_angle = static_cast<float>(u_saturated);
+  ctrl_cmd.steering_tire_rotation_rate = static_cast<float>(steer_rate);
+
+  ctrl_cmd_horizon.time_step_ms = prediction_dt * 1000.0;
+  ctrl_cmd_horizon.controls.clear();
+  ctrl_cmd_horizon.controls.push_back(ctrl_cmd);
+  for (size_t i = 1; i < mpc_resampled_ref_trajectory.steer.size(); ++i) {
+    Lateral horizon_cmd;
+    horizon_cmd.steering_tire_angle = static_cast<float>(
+      std::clamp(mpc_resampled_ref_trajectory.steer.at(i), -m_steer_lim, m_steer_lim));
+    horizon_cmd.steering_tire_rotation_rate =
+      (horizon_cmd.steering_tire_angle - ctrl_cmd_horizon.controls.back().steering_tire_angle) /
+      static_cast<float>(prediction_dt);
+    ctrl_cmd_horizon.controls.push_back(horizon_cmd);
+  }
+
+  m_raw_steer_cmd_prev = u_saturated;
+  m_raw_steer_cmd_pprev = u_saturated;
+
+  diagnostic = generatePassthroughDiagData(
+    mpc_reference_trajectory, mpc_data, ctrl_cmd, u_raw, m_vehicle_model_ptr->getWheelbase(),
+    current_kinematics);
+
+  return ResultWithReason{true};
+}
+
 Float32MultiArrayStamped MPC::generateDiagData(
   const MPCTrajectory & reference_trajectory, const MPCData & mpc_data,
   const MPCMatrix & mpc_matrix, const Lateral & ctrl_cmd, const VectorXd & Uex,
@@ -293,11 +396,10 @@ void MPC::setReferenceTrajectory(
     mpc_traj_resampled = resampled;
   }
 
-  const auto is_forward_shift =
-    autoware::motion_utils::isDrivingForward(mpc_traj_resampled.toTrajectoryPoints());
-
-  // if driving direction is unknown, use previous value
-  m_is_forward_shift = is_forward_shift ? is_forward_shift.value() : m_is_forward_shift;
+  if (const auto is_forward_shift_opt = MPCUtils::infer_forward_driving(mpc_traj_resampled)) {
+    // if driving direction is unknown, use previous value
+    m_is_forward_shift = is_forward_shift_opt.value();
+  }
 
   // path smoothing
   MPCTrajectory mpc_traj_smoothed = mpc_traj_resampled;  // smooth filtered trajectory

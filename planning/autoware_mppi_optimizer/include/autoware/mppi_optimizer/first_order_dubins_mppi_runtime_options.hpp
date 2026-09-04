@@ -24,14 +24,31 @@ namespace autoware::mppi_optimizer
 struct FirstOrderDubinsMppiRuntimeOptions
 {
   bool enable_debug_trajectory_log{false};
-  /** Empty -> $XDG_CACHE_HOME/autoware/mppi_debug_log or $HOME/.cache/autoware/mppi_debug_log. */
+  /** Empty -> process current working directory. */
   std::string debug_trajectory_log_directory;
   bool ignore_obstacles{false};
+  bool ignore_road_borders{false};
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
-  /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle). */
+  /** Skip optimization for stopping trajectories shorter than this arc length in meters. */
+  float min_optimization_length{0.0F};
+  /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle).
+   *  Ignored when use_temporal_mpt_as_nominal is true (t-MPT uses its own shifted solution). */
   bool use_last_control_as_nominal{false};
+  /**
+   * When true (and not forced nominal), seed u_nom from acados temporal MPT
+   * instead of the geometric diffusion seed. Falls back to diffusion seed on solve failure.
+   * t-MPT warm-starts from its own previous x/u shifted one stage, not from MPPI u_opt.
+   */
+  bool use_temporal_mpt_as_nominal{false};
+  /** Prevent MPPI rollouts from integrating longitudinal velocity below zero. */
+  bool prevent_reverse_velocity{true};
+  /**
+   * When false, ignore vehicle acc/steer time delays in the MPPI plant (N_acc = N_steer = 0).
+   * Vehicle τ (first-order lag) is unchanged. Default true preserves delay compensation.
+   */
+  bool enable_input_delay_compensation{true};
 };
 
 }  // namespace autoware::mppi_optimizer

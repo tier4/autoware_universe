@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
 namespace mppi
@@ -44,6 +45,8 @@ struct PathReferenceSample
   float y = 0.0F;
   float yaw = 0.0F;
   float v = 0.0F;
+  float max_velocity = 0.0F;
+  std::uint8_t velocity_limit_active = 0U;
 };
 
 class PathReferenceGenerator

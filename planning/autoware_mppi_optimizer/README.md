@@ -1,6 +1,6 @@
 # Autoware MPPI Optimizer
 
-The `autoware_mppi_optimizer` package optimizes trajectories using Model Predictive Path Integral (MPPI) control.
+The `autoware_mppi_optimizer` package optimizes trajectories with Model Predictive Path Integral (MPPI) control. Its trajectory processor plugin applies MPPI to the first candidate in an ordered processing pipeline.
 
 ## Overview
 
@@ -22,34 +22,29 @@ autoware_mppi_optimizer/
 - CUDA Toolkit (curand, cufft)
 - Eigen3
 
-## Inputs / Outputs
+## Trajectory processor plugin
 
-| Topic                 | Type                                    | Description          |
-| --------------------- | --------------------------------------- | -------------------- |
-| `~/input/trajectory`  | `autoware_planning_msgs/msg/Trajectory` | Reference trajectory |
-| `~/input/odometry`    | `nav_msgs/msg/Odometry`                 | Current ego state    |
-| `~/output/trajectory` | `autoware_planning_msgs/msg/Trajectory` | Optimized trajectory |
+Configure `autoware::mppi_optimizer::plugin::TrajectoryMppiOptimizer` in the `plugin_names` list of `autoware_trajectory_processor`. Place it first to optimize the primary candidate before other modifiers and optimizers.
 
-## Launch
+The plugin uses odometry, acceleration, steering, tracked objects, route, and raw lanelet map data from the processor. It returns the input points when MPPI is disabled, runs in shadow mode, rejects a result, or reports an error.
 
-```bash
-ros2 launch autoware_mppi_optimizer mppi_optimizer.launch.xml
-```
+Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory processor node.
 
 ## Offline debug logging + retune
 
-Enable CSV logging from the diffusion planner / MPPI params:
+Enable CSV logging from the MPPI plugin parameters:
 
 ```yaml
-enable_debug_trajectory_log: true
-# Empty -> $XDG_CACHE_HOME/autoware/mppi_debug_log or $HOME/.cache/autoware/mppi_debug_log
-debug_trajectory_log_directory: ""
+mppi_optimizer:
+  enable_debug_trajectory_log: true
+  # Empty -> current working directory of the trajectory processor node
+  debug_trajectory_log_directory: ""
 ```
 
 Each cycle writes:
 
 ```text
-$HOME/.cache/autoware/mppi_debug_log/
+<debug_trajectory_log_directory>/
   index.csv
   cost_params.csv
   vehicle_params.csv
@@ -67,20 +62,25 @@ Various features can be disabled by changing the following parameters set in `mp
 
 ```yaml
 ignore_obstacles: true
+ignore_road_borders: true
 ignore_drivable_area: true
 force_cold_start_each_step: true
+min_optimization_length: 0.0
 use_last_control_as_nominal: true
 ```
 
-Then rebuild / restart the diffusion planner and compare live MPPI to offline retune.
+Then restart the trajectory processor and compare live MPPI to offline retune.
 
 Notes:
 
 - `ignore_obstacles` drops tracked objects before MPPI (matches offline's empty objects).
+- `ignore_road_borders` drops static road-border segments before MPPI.
 - `ignore_drivable_area` is retained as an ablation flag; on this stack boundary crash is already
   disabled in the cost (`isEgoOutsideDrivableArea` always false).
 - `force_cold_start_each_step` only resets tracking counters / arc-length (control is already
   re-seeded via `updateImportanceSampler(u_nom)` each cycle).
+- `min_optimization_length` skips MPPI for a stopping reference shorter than the configured arc
+  length in meters; `0.0` disables the length-based skip.
 - `use_last_control_as_nominal` warm-starts `u_nom` from the shifted previous optimized control
   sequence when available; otherwise (and on cold start) reseeds from the diffusion reference.
 
@@ -88,14 +88,14 @@ Notes:
 
 ```bash
 ros2 run autoware_mppi_optimizer mppi_debug_visualizer.py -- \
-  --log-dir "$HOME/.cache/autoware/mppi_debug_log"
+  --log-dir /path/to/debug_trajectory_log_directory
 ```
 
 ### Batch retune (CLI)
 
 ```bash
 ros2 run autoware_mppi_optimizer mppi_offline_retune -- \
-  --log-dir "$HOME/.cache/autoware/mppi_debug_log" \
+  --log-dir /path/to/debug_trajectory_log_directory \
   --out-dir "$HOME/.cache/autoware/mppi_retune" \
   --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml \
   --set track_coeff=2000 --set steer_rate_coeff=5000 \
@@ -104,19 +104,20 @@ ros2 run autoware_mppi_optimizer mppi_offline_retune -- \
 
 ### Interactive compare + retune
 
-Same plots as `mppi_debug_visualizer.py` (XY, heading, velocity, accel, steer, steer-rate),
-with diffusion reference (cyan), logged MPPI (red), and retuned MPPI (green):
+Same plots as `mppi_debug_visualizer.py` (XY, heading, velocity, accel, steer, steer-rate,
+rollout cost/weight distributions, and a stacked selected-output cost breakdown), with
+diffusion reference (cyan), logged MPPI (red), and retuned MPPI (green):
 
 ```bash
 # Option A — visualizer with retune panel
 ros2 run autoware_mppi_optimizer mppi_debug_visualizer.py -- \
-  --log-dir "$HOME/.cache/autoware/mppi_debug_log" \
+  --log-dir /path/to/debug_trajectory_log_directory \
   --enable-retune \
   --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml
 
 # Option B — wrapper alias
 ros2 run autoware_mppi_optimizer mppi_offline_tuner.py -- \
-  --log-dir "$HOME/.cache/autoware/mppi_debug_log" \
+  --log-dir /path/to/debug_trajectory_log_directory \
   --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml
 ```
 

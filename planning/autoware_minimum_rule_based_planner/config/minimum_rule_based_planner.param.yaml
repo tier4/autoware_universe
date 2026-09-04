@@ -19,22 +19,36 @@
         max_jerk_parking: 1.0
 
       # Used only when early_stop.enable is false
-      smooth_goal_connection:
-        search_radius_range: 7.5
-        pre_goal_offset: 1.0
+      start_goal_planner:
+        reference_velocity: 2.78
+        steer_angle_trial_count: 20
+        max_steer_angle_rate: 30.0
+        eval_weight_curvature: 0.1
+        eval_weight_length: 0.4
+        eval_weight_diff: 0.5
+        traj_generation_exit_count: 7
+        goal_planner:
+          activate_distance_traj: 40.0
+          activate_distance_ego: 80.0
+          pre_goal_offset: 3.0
+          num_start_poses: 80
+        start_planner:
+          max_path_range: 30.0
+          num_goal_poses: 15
 
       lane_change_failure_stop_margin: 0.0
 
       ego_nearest_lanelet:
-        dist_threshold: 3.0
-        yaw_threshold: 1.046
+        dist_threshold: 10.0
+        yaw_threshold: 1.57
 
       path_shift:
         enable: true
         minimum_shift_length: 0.5
-        minimum_shift_distance: 5.0
-        min_speed_for_curvature: 2.77  # [m/s] 10 km/h
+        minimum_shift_distance: 3.0
+        min_speed_for_curvature: 1.39  # [m/s] 5 km/h
         lateral_accel_limit: 1.0      # [m/s^2]
+        curvature_limit: 0.156          # [1/m] R = 10 m
 
       waypoint_group:
         separation_threshold: 1.0
@@ -48,9 +62,16 @@
       stop_distance_from_crosswalk: 3.5 # [m]
       stop_distance_from_private_area: 3.0 # [m]
       stop_distance_from_intersection: 1.0 # [m]
+      stop_distance_from_road_shoulder: 0.5 # [m]
       max_deceleration: 4.0 # [m/s^2]
       max_jerk: 5.0 # [m/s^3]
       stop_point_diff_threshold: 0.5 # [m]
+
+    turn_signal:
+      search_distance: 30.0 # [m]
+      min_blink_duration: 3.0 # [s]
+      stopped_velocity_threshold: 0.1 # [m/s]
+      heading_align_threshold: 0.15 # [rad]
 
     obstacle_stop:
       enable: true
@@ -76,18 +97,9 @@
         safety_buffer: 0.1       # safety buffer to expand object shape [m]
 
       pointcloud:
+        target_types: ["structure", "vegetation"]
         height_buffer: 0.5  # height buffer to add above ego height [m]
         min_height: 0.2  # minimum height of pointcloud [m]
-        voxel_grid_filter:
-          x: 0.2
-          y: 0.2
-          z: 0.2
-          min_size: 3
-        clustering:
-          tolerance: 0.5  #[m]
-          min_height: 0.5
-          min_size: 10
-          max_size: 10000
 
       rss_params:
         enable: true
@@ -111,6 +123,7 @@
       target_objects:
         bbox: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "animal", "unknown"]
         polygon: ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "animal", "unknown"]
+        pointcloud: ["structure", "vegetation"]
       front_distance_th:
         car: 0.5
         truck: 0.5

@@ -19,6 +19,7 @@ The listed features below does not always correspond to the latest implementatio
 - **Deviation check between reference trajectory and predicted trajectory** : invalid when the largest deviation between the predicted trajectory and reference trajectory is greater than the given threshold.
 - **Yaw deviation**: invalid when the difference between the yaw of the ego vehicle and the nearest (interpolated) trajectory yaw is greater than the given threshold.
   - 2 thresholds are implemented, one to trigger a warning diagnostic, and one to trigger an error diagnostic.
+- **Boundary departure**: invalid when the control predicted trajectory would drive the ego footprint across an uncrossable map boundary (e.g. `road_border`). The check reuses the shared `autoware_boundary_departure_checker` library and applies braking-distance / time-to-departure logic with ON/OFF hysteresis before reporting a critical departure. Requires the lanelet2 map (`~/input/lanelet2_map`); it is skipped until the map is received. Can be disabled via `boundary_departure.enable`.
 
 ![trajectory_deviation](./image/trajectory_deviation.drawio.svg)
 
@@ -33,6 +34,7 @@ The `control_validator` takes in the following inputs:
 | `~/input/kinematics`           | nav_msgs/Odometry                 | ego pose and twist                                                             |
 | `~/input/reference_trajectory` | autoware_planning_msgs/Trajectory | reference trajectory which is outputted from planning module to to be followed |
 | `~/input/predicted_trajectory` | autoware_planning_msgs/Trajectory | predicted trajectory which is outputted from control module                    |
+| `~/input/lanelet2_map`         | autoware_map_msgs/LaneletMapBin   | vector map, used by the boundary departure check                               |
 
 ### Outputs
 
@@ -77,3 +79,19 @@ The input trajectory is detected as invalid if the index exceeds the following t
 | `thresholds.yaw_deviation_error`          | double | threshold angle to validate the vehicle yaw related to the nearest trajectory yaw [rad]                           | 1.0           |
 | `thresholds.yaw_deviation_warn`           | double | threshold angle to trigger a WARN diagnostic [rad]                                                                | 0.5           |
 | `over_velocity.vel_lpf_gain`              | double | low-pass filter gain for filtering vehicle and target velocity [*] (time constant 2.0s at 30msec sampling period) | 0.985         |
+
+#### Boundary departure
+
+| Name                                            | Type         | Description                                                                       | Default value   |
+| :---------------------------------------------- | :----------- | :-------------------------------------------------------------------------------- | :-------------- |
+| `boundary_departure.enable`                     | bool         | if true, run the uncrossable boundary departure check on the predicted trajectory | true            |
+| `boundary_departure.boundary_types`             | string array | lanelet linestring types treated as uncrossable boundaries                        | ["road_border"] |
+| `boundary_departure.lateral_margin_m`           | double       | lateral margin from the boundary [m]                                              | 0.01            |
+| `boundary_departure.longitudinal_margin_m`      | double       | longitudinal margin from the boundary [m]                                         | 1.0             |
+| `boundary_departure.max_deceleration_mps2`      | double       | maximum deceleration used for the braking-distance estimation [m/s^2]             | -4.0            |
+| `boundary_departure.max_jerk_mps3`              | double       | maximum jerk used for the braking-distance estimation [m/s^3]                     | -5.0            |
+| `boundary_departure.brake_delay_s`              | double       | assumed brake delay [s]                                                           | 1.0             |
+| `boundary_departure.time_to_departure_cutoff_s` | double       | time-to-departure cutoff beyond which a departure is not treated as critical [s]  | 2.0             |
+| `boundary_departure.on_time_buffer_s`           | double       | continuous-violation time required to activate a critical departure [s]           | 0.20            |
+| `boundary_departure.off_time_buffer_s`          | double       | continuous-safety time required to deactivate a critical departure [s]            | 0.10            |
+| `boundary_departure.enable_developer_marker`    | bool         | if true, publish developer debug markers from the boundary departure checker      | false           |
