@@ -16,6 +16,8 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/map_based_stop_planner.cpp
   src/path_planner.cpp
   src/turn_indicator_decider.cpp
+  src/start_goal_planner/clothoid_pull_generater.cpp
+  src/start_goal_planner/start_goal_planner.cpp
   src/velocity_smoother.cpp
 )
 
