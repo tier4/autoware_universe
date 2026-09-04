@@ -31,6 +31,7 @@
 #include <mppi/sampling_distributions/gaussian/gaussian.cuh>
 #include <mppi/sampling_distributions/smooth-MPPI/smooth-MPPI.cuh>
 #include <mppi/utils/gpu_err_chk.cuh>
+#include <mppi/utils/nvtx.cuh>
 #include <rclcpp/logging.hpp>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -1637,97 +1638,103 @@ struct FirstOrderDubinsMppiInterface::Impl
     ego.y = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y));
     ego.yaw = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW));
     ego.velocity = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X));
-    auto prepared_reference = detail::buildReferenceHorizon(
-      diffusion_reference, ego, kRefHorizon, kDt, tracking_start_idx,
-      &diffusion_reference_chord_length_s,
-      uniform_effective_max_velocity ? nullptr : &effective_max_velocity_by_reference_point);
-    if (uniform_effective_max_velocity && !active_velocity_limit_profile.active) {
-      for (auto & sample : prepared_reference) {
-        sample.velocity = std::clamp(sample.velocity, 0.0F, *uniform_effective_max_velocity);
-      }
-    }
-    std::vector<mppi::path::PathReferenceSample> ref(prepared_reference.size());
-    for (size_t i = 0; i < prepared_reference.size(); ++i) {
-      ref[i].t = prepared_reference[i].time;
-      ref[i].x = prepared_reference[i].x;
-      ref[i].y = prepared_reference[i].y;
-      ref[i].yaw = prepared_reference[i].yaw;
-      ref[i].v = prepared_reference[i].velocity;
-      ref[i].arc_length_s = prepared_reference[i].arc_length_s;
-      if (prepared_reference[i].max_velocity) {
-        ref[i].max_velocity = *prepared_reference[i].max_velocity;
-        ref[i].velocity_limit_active = 1U;
-      }
-    }
-    mppi::path::PathReferenceSample terminal_reference = ref.back();
-    if (!diffusion_reference.points.empty()) {
-      const auto & terminal_point = diffusion_reference.points.back();
-      terminal_reference.x = static_cast<float>(terminal_point.pose.position.x);
-      terminal_reference.y = static_cast<float>(terminal_point.pose.position.y);
-      terminal_reference.yaw = static_cast<float>(tf2::getYaw(terminal_point.pose.orientation));
-    }
-    mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(
-      cost, ref, &terminal_reference);
-
-    // Lateral crash / soft lateral distance use the full DP polyline + chord lengths.
+    std::vector<mppi::path::PathReferenceSample> ref;
     {
-      const auto & pts = diffusion_reference.points;
-      const int n_src = static_cast<int>(pts.size());
-      if (n_src >= 2) {
-        const int max_n = COST::kMaxLateralCorridorPoints;
-        const int n = std::min(n_src, max_n);
-        std::vector<float> corridor_x(static_cast<size_t>(n));
-        std::vector<float> corridor_y(static_cast<size_t>(n));
-        std::vector<float> corridor_s(static_cast<size_t>(n));
-        std::vector<float> corridor_ref_velocity(static_cast<size_t>(n));
-        for (int i = 0; i < n; ++i) {
-          const int src =
-            (n_src <= max_n) ? i : ((i == n - 1) ? (n_src - 1) : (i * (n_src - 1) / (n - 1)));
-          corridor_x[static_cast<size_t>(i)] =
-            static_cast<float>(pts[static_cast<size_t>(src)].pose.position.x);
-          corridor_y[static_cast<size_t>(i)] =
-            static_cast<float>(pts[static_cast<size_t>(src)].pose.position.y);
-          corridor_s[static_cast<size_t>(i)] =
-            (static_cast<size_t>(src) < diffusion_reference_chord_length_s.size())
-              ? diffusion_reference_chord_length_s[static_cast<size_t>(src)]
-              : 0.0F;
-          corridor_ref_velocity[static_cast<size_t>(i)] =
-            pts[static_cast<size_t>(src)].longitudinal_velocity_mps;
+      mppi::instrumentation::ScopedNvtxRange cycle_data_range(
+        "MPPI/cycle_data_pack_upload", mppi::instrumentation::NvtxColor::DATA_TRANSFER);
+      auto prepared_reference = detail::buildReferenceHorizon(
+        diffusion_reference, ego, kRefHorizon, kDt, tracking_start_idx,
+        &diffusion_reference_chord_length_s,
+        uniform_effective_max_velocity ? nullptr : &effective_max_velocity_by_reference_point);
+      if (uniform_effective_max_velocity && !active_velocity_limit_profile.active) {
+        for (auto & sample : prepared_reference) {
+          sample.velocity = std::clamp(sample.velocity, 0.0F, *uniform_effective_max_velocity);
         }
-        cost.setLateralCorridor(
-          corridor_x.data(), corridor_y.data(), n, corridor_s.data(), corridor_ref_velocity.data());
-      } else {
-        cost.clearLateralCorridor();
       }
-    }
+      ref.resize(prepared_reference.size());
+      for (size_t i = 0; i < prepared_reference.size(); ++i) {
+        ref[i].t = prepared_reference[i].time;
+        ref[i].x = prepared_reference[i].x;
+        ref[i].y = prepared_reference[i].y;
+        ref[i].yaw = prepared_reference[i].yaw;
+        ref[i].v = prepared_reference[i].velocity;
+        ref[i].arc_length_s = prepared_reference[i].arc_length_s;
+        if (prepared_reference[i].max_velocity) {
+          ref[i].max_velocity = *prepared_reference[i].max_velocity;
+          ref[i].velocity_limit_active = 1U;
+        }
+      }
+      mppi::path::PathReferenceSample terminal_reference = ref.back();
+      if (!diffusion_reference.points.empty()) {
+        const auto & terminal_point = diffusion_reference.points.back();
+        terminal_reference.x = static_cast<float>(terminal_point.pose.position.x);
+        terminal_reference.y = static_cast<float>(terminal_point.pose.position.y);
+        terminal_reference.yaw = static_cast<float>(tf2::getYaw(terminal_point.pose.orientation));
+      }
+      mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(
+        cost, ref, &terminal_reference);
 
-    int obstacle_count = 0;
-    if (!tracked_objects.objects.empty()) {
-      buildObstacleTrajectoryBuffersFromTrackedObjects(
-        tracked_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw, obs_half_length,
-        obs_half_width, 0.0F);
-      obstacle_count = trackedObjectObstacleCount(tracked_objects);
-    } else if (!obstacles.empty()) {
-      mppi::cost::buildObstacleTrajectoryBuffers(
-        obstacles, sim_time, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw,
-        obs_half_length, obs_half_width);
-      obstacle_count =
-        static_cast<int>(std::min(obstacles.size(), static_cast<size_t>(kMaxMppiObstacles)));
-    } else {
-      obs_traj_x.clear();
-      obs_traj_y.clear();
-      obs_traj_yaw.clear();
-      obs_half_length.clear();
-      obs_half_width.clear();
+      // Lateral crash / soft lateral distance use the full DP polyline + chord lengths.
+      {
+        const auto & pts = diffusion_reference.points;
+        const int n_src = static_cast<int>(pts.size());
+        if (n_src >= 2) {
+          const int max_n = COST::kMaxLateralCorridorPoints;
+          const int n = std::min(n_src, max_n);
+          std::vector<float> corridor_x(static_cast<size_t>(n));
+          std::vector<float> corridor_y(static_cast<size_t>(n));
+          std::vector<float> corridor_s(static_cast<size_t>(n));
+          std::vector<float> corridor_ref_velocity(static_cast<size_t>(n));
+          for (int i = 0; i < n; ++i) {
+            const int src =
+              (n_src <= max_n) ? i : ((i == n - 1) ? (n_src - 1) : (i * (n_src - 1) / (n - 1)));
+            corridor_x[static_cast<size_t>(i)] =
+              static_cast<float>(pts[static_cast<size_t>(src)].pose.position.x);
+            corridor_y[static_cast<size_t>(i)] =
+              static_cast<float>(pts[static_cast<size_t>(src)].pose.position.y);
+            corridor_s[static_cast<size_t>(i)] =
+              (static_cast<size_t>(src) < diffusion_reference_chord_length_s.size())
+                ? diffusion_reference_chord_length_s[static_cast<size_t>(src)]
+                : 0.0F;
+            corridor_ref_velocity[static_cast<size_t>(i)] =
+              pts[static_cast<size_t>(src)].longitudinal_velocity_mps;
+          }
+          cost.setLateralCorridor(
+            corridor_x.data(), corridor_y.data(), n, corridor_s.data(),
+            corridor_ref_velocity.data());
+        } else {
+          cost.clearLateralCorridor();
+        }
+      }
+
+      int obstacle_count = 0;
+      if (!tracked_objects.objects.empty()) {
+        buildObstacleTrajectoryBuffersFromTrackedObjects(
+          tracked_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw, obs_half_length,
+          obs_half_width, 0.0F);
+        obstacle_count = trackedObjectObstacleCount(tracked_objects);
+      } else if (!obstacles.empty()) {
+        mppi::cost::buildObstacleTrajectoryBuffers(
+          obstacles, sim_time, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw,
+          obs_half_length, obs_half_width);
+        obstacle_count =
+          static_cast<int>(std::min(obstacles.size(), static_cast<size_t>(kMaxMppiObstacles)));
+      } else {
+        obs_traj_x.clear();
+        obs_traj_y.clear();
+        obs_traj_yaw.clear();
+        obs_half_length.clear();
+        obs_half_width.clear();
+      }
+      mppi::cost::fillFirstOrderDubinsBicycleCostObstacleTrajectories<kRefHorizon>(
+        cost, obstacle_count > 0 ? obs_traj_x.data() : nullptr,
+        obstacle_count > 0 ? obs_traj_y.data() : nullptr,
+        obstacle_count > 0 ? obs_traj_yaw.data() : nullptr,
+        obstacle_count > 0 ? obs_half_length.data() : nullptr,
+        obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
+      uploadBoundarySegments();
+      cost.commitDataUpdate();
     }
-    mppi::cost::fillFirstOrderDubinsBicycleCostObstacleTrajectories<kRefHorizon>(
-      cost, obstacle_count > 0 ? obs_traj_x.data() : nullptr,
-      obstacle_count > 0 ? obs_traj_y.data() : nullptr,
-      obstacle_count > 0 ? obs_traj_yaw.data() : nullptr,
-      obstacle_count > 0 ? obs_half_length.data() : nullptr,
-      obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
-    uploadBoundarySegments();
-    cost.commitDataUpdate();
     cost.renderDistanceMapTextureDebug();
 
     controller->updateImportanceSampler(u_nom);
@@ -2308,58 +2315,63 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   result.debug.velocity_limit_profile_active = impl_->active_velocity_limit_profile.active;
   result.debug.external_velocity_limit_active =
     impl_->active_velocity_limit_profile.active && impl_->active_kinematic_limits.max_velocity;
-  if (impl_->enable_rollout_visualization) {
-    buildRolloutVisualization(
-      *impl_->controller, impl_->sampler, impl_->model, x_at_optimization, result.debug);
-  } else {
-    fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
-    result.debug.baseline_cost = impl_->controller->getBaselineCost();
-    if (impl_->enable_iteration_rollout_debug) {
-      buildIterationDebugRollouts(
-        impl_->controller->iterationRolloutSnapshots(), impl_->model, x_at_optimization,
-        result.debug);
-    }
-  }
-  if (impl_->debug_trajectory_logger.enabled() && n_state > 0 && n_ctrl > 0) {
-    result.debug.cost_breakdown =
-      reconstructControlTrajectoryCost(impl_->cost, impl_->model, x_at_optimization, u_opt_traj);
-    const auto nominal_controls =
-      makeNominalControlTrajectory(impl_->logged_nominal_accel, impl_->logged_nominal_steer);
-    result.debug.nominal_cost_breakdown = reconstructControlTrajectoryCost(
-      impl_->cost, impl_->model, x_at_optimization, nominal_controls);
-  }
-
-  MppiDebugEgoState ego;
-  ego.x = odometry.pose.pose.position.x;
-  ego.y = odometry.pose.pose.position.y;
-  ego.z = odometry.pose.pose.position.z;
-  ego.yaw = yawFromOdometry(odometry);
-  ego.v = odometry.twist.twist.linear.x;
-  ego.accel = longitudinalAccelerationMps2(acceleration);
-  ego.steer = steeringTireAngleRad(steering_status);
-  impl_->debug_trajectory_logger.writeParamsOnce(impl_->user_cost_params_, impl_->vehicle_params);
   {
-    FirstOrderDubinsMppiRuntimeOptions runtime{};
-    runtime.ignore_obstacles = impl_->ignore_obstacles;
-    runtime.ignore_road_borders = impl_->ignore_road_borders;
-    runtime.ignore_drivable_area = impl_->ignore_drivable_area;
-    runtime.force_cold_start_each_step = impl_->force_cold_start_each_step;
-    runtime.skip_if_invalid = impl_->skip_if_invalid;
-    runtime.min_optimization_length = impl_->min_optimization_length;
-    runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
-    runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
-    runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
-    runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
-    runtime.enable_iteration_rollout_debug = impl_->enable_iteration_rollout_debug;
-    impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
+    mppi::instrumentation::ScopedNvtxRange visualization_debug_range(
+      "MPPI/build_ros_visualization", mppi::instrumentation::NvtxColor::DEBUG);
+    if (impl_->enable_rollout_visualization) {
+      buildRolloutVisualization(
+        *impl_->controller, impl_->sampler, impl_->model, x_at_optimization, result.debug);
+    } else {
+      fillOptimalHorizonPoints(
+        impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
+      result.debug.baseline_cost = impl_->controller->getBaselineCost();
+      if (impl_->enable_iteration_rollout_debug) {
+        buildIterationDebugRollouts(
+          impl_->controller->iterationRolloutSnapshots(), impl_->model, x_at_optimization,
+          result.debug);
+      }
+    }
+    if (impl_->debug_trajectory_logger.enabled() && n_state > 0 && n_ctrl > 0) {
+      result.debug.cost_breakdown =
+        reconstructControlTrajectoryCost(impl_->cost, impl_->model, x_at_optimization, u_opt_traj);
+      const auto nominal_controls =
+        makeNominalControlTrajectory(impl_->logged_nominal_accel, impl_->logged_nominal_steer);
+      result.debug.nominal_cost_breakdown = reconstructControlTrajectoryCost(
+        impl_->cost, impl_->model, x_at_optimization, nominal_controls);
+    }
+
+    MppiDebugEgoState ego;
+    ego.x = odometry.pose.pose.position.x;
+    ego.y = odometry.pose.pose.position.y;
+    ego.z = odometry.pose.pose.position.z;
+    ego.yaw = yawFromOdometry(odometry);
+    ego.v = odometry.twist.twist.linear.x;
+    ego.accel = longitudinalAccelerationMps2(acceleration);
+    ego.steer = steeringTireAngleRad(steering_status);
+    impl_->debug_trajectory_logger.writeParamsOnce(impl_->user_cost_params_, impl_->vehicle_params);
+    {
+      FirstOrderDubinsMppiRuntimeOptions runtime{};
+      runtime.ignore_obstacles = impl_->ignore_obstacles;
+      runtime.ignore_road_borders = impl_->ignore_road_borders;
+      runtime.ignore_drivable_area = impl_->ignore_drivable_area;
+      runtime.force_cold_start_each_step = impl_->force_cold_start_each_step;
+      runtime.skip_if_invalid = impl_->skip_if_invalid;
+      runtime.min_optimization_length = impl_->min_optimization_length;
+      runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
+      runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
+      runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
+      runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
+      runtime.enable_iteration_rollout_debug = impl_->enable_iteration_rollout_debug;
+      impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
+    }
+    impl_->debug_trajectory_logger.logFrame(
+      result.debug.reference_trajectory, result.debug.optimized_trajectory,
+      result.debug.nominal_trajectory, ego, result.debug.baseline_cost, impl_->logged_nominal_accel,
+      impl_->logged_nominal_steer, road_borders, drivable_area, tracked_objects,
+      impl_->logged_hist_accel_tm2, impl_->logged_hist_steer_tm2, impl_->logged_hist_accel_tm1,
+      impl_->logged_hist_steer_tm1, impl_->logged_delay_accel, impl_->logged_delay_steer,
+      impl_->logged_applied_accel, impl_->logged_applied_steer, impl_->active_kinematic_limits);
   }
-  impl_->debug_trajectory_logger.logFrame(
-    result.debug.reference_trajectory, result.debug.optimized_trajectory,
-    result.debug.nominal_trajectory, ego, result.debug.baseline_cost, impl_->logged_nominal_accel,
-    impl_->logged_nominal_steer, road_borders, drivable_area, tracked_objects,
-    impl_->logged_hist_accel_tm2, impl_->logged_hist_steer_tm2, impl_->logged_hist_accel_tm1,
-    impl_->logged_hist_steer_tm1, impl_->logged_delay_accel, impl_->logged_delay_steer,
-    impl_->logged_applied_accel, impl_->logged_applied_steer, impl_->active_kinematic_limits);
 
   const auto validation_reasons = to_string(result.debug.validation.reasons);
   const auto cost_breakdown = formatCostBreakdown(result.debug.cost_breakdown);
