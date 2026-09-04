@@ -156,6 +156,21 @@
           "description": "maximum clamp value for feedforward scaling",
           "default": "2.0"
         },
+        "enable_velocity_lookahead_feedback": {
+          "type": "boolean",
+          "description": "when true, blend current-point acceleration with a look-ahead velocity-error term",
+          "default": "true"
+        },
+        "velocity_lookahead_time": {
+          "type": "number",
+          "description": "look-ahead horizon used to sample a future trajectory point for velocity feedback [s]",
+          "default": "1.0"
+        },
+        "velocity_lookahead_blend_weight": {
+          "type": "number",
+          "description": "blend weight between look-ahead velocity-error acceleration and target acceleration",
+          "default": "0.5"
+        },
         "enable_brake_keeping_before_stop": {
           "type": "boolean",
           "description": "flag to keep a certain acceleration during DRIVE state before the ego stops. See [Brake keeping]",

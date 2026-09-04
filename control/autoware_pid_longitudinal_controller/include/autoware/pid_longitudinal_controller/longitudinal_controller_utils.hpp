@@ -27,10 +27,12 @@
 
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "geometry_msgs/msg/pose.hpp"
+#include "rclcpp/duration.hpp"
 
 #include <cmath>
 #include <limits>
 #include <utility>
+#include <vector>
 
 namespace autoware::motion::control::pid_longitudinal_controller
 {
@@ -46,7 +48,7 @@ using geometry_msgs::msg::Quaternion;
 /**
  * @brief check if trajectory is invalid or not
  */
-bool isValidTrajectory(const Trajectory & traj);
+bool isValidTrajectory(const Trajectory & traj, const bool use_temporal_trajectory = false);
 
 /**
  * @brief calculate distance to stopline from current vehicle position where velocity is 0
@@ -125,6 +127,15 @@ std::pair<TrajectoryPoint, size_t> lerpTrajectoryPoint(
 
   return std::make_pair(interpolated_point, seg_idx);
 }
+
+/**
+ * @brief apply linear interpolation to trajectory point at specified trajectory time
+ * @param [in] points trajectory points (time_from_start must be strictly increasing)
+ * @param [in] target_time target time_from_start [s]
+ * @return interpolated trajectory point and source segment index
+ */
+std::pair<TrajectoryPoint, size_t> lerpTrajectoryPointByTime(
+  const std::vector<TrajectoryPoint> & points, const double target_time);
 
 /**
  * @brief limit variable whose differential is within a certain value
