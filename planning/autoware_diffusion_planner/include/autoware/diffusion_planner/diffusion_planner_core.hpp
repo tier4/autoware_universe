@@ -172,6 +172,7 @@ struct DiffusionPlannerParams
   double line_string_max_step_m;
   bool use_time_interpolation;
   HistoryResamplingParams object_motion_resampling;
+  bool remap_unsupported_objects_to_pedestrian;
   EgoSnapParams ego_snap_to_prev_trajectory;
   int dpm_solver_steps;
   double start_guidance_reference_distance_m;
