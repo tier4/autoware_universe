@@ -21,21 +21,22 @@ __global__ void generateNearestSegmentMapKernel(
     std::max(COST_T::kMaxLateralCorridorPoints, COST_T::kNumTimesteps) - 1;
   __shared__ float4 segments[kMaxSegments];
   __shared__ float inverse_length_squared[kMaxSegments];
-  const bool use_corridor = cost->runtimeData().num_lateral_corridor_points_ >= 2;
-  const int path_points =
-    use_corridor ? cost->runtimeData().num_lateral_corridor_points_ : COST_T::kNumTimesteps;
+  const auto & data = cost->runtimeData();
+  const int corridor_points = mppi::memory::loadReadOnly(&data.num_lateral_corridor_points_);
+  const bool use_corridor = corridor_points >= 2;
+  const int path_points = use_corridor ? corridor_points : COST_T::kNumTimesteps;
   const int segment_count = path_points - 1;
   const int local_thread = static_cast<int>(threadIdx.y * blockDim.x + threadIdx.x);
   const int local_thread_count = static_cast<int>(blockDim.x * blockDim.y);
   for (int segment = local_thread; segment < segment_count; segment += local_thread_count) {
-    const float x0 = use_corridor ? cost->runtimeData().lateral_corridor_x_[segment]
-                                  : cost->runtimeData().ref_x_[segment];
-    const float y0 = use_corridor ? cost->runtimeData().lateral_corridor_y_[segment]
-                                  : cost->runtimeData().ref_y_[segment];
-    const float x1 = use_corridor ? cost->runtimeData().lateral_corridor_x_[segment + 1]
-                                  : cost->runtimeData().ref_x_[segment + 1];
-    const float y1 = use_corridor ? cost->runtimeData().lateral_corridor_y_[segment + 1]
-                                  : cost->runtimeData().ref_y_[segment + 1];
+    const float x0 = mppi::memory::loadReadOnly(
+      use_corridor ? &data.lateral_corridor_x_[segment] : &data.ref_x_[segment]);
+    const float y0 = mppi::memory::loadReadOnly(
+      use_corridor ? &data.lateral_corridor_y_[segment] : &data.ref_y_[segment]);
+    const float x1 = mppi::memory::loadReadOnly(
+      use_corridor ? &data.lateral_corridor_x_[segment + 1] : &data.ref_x_[segment + 1]);
+    const float y1 = mppi::memory::loadReadOnly(
+      use_corridor ? &data.lateral_corridor_y_[segment + 1] : &data.ref_y_[segment + 1]);
     const float dx = x1 - x0;
     const float dy = y1 - y0;
     const float length_squared = dx * dx + dy * dy;
@@ -88,22 +89,24 @@ __global__ void generateStaticDistanceMapKernel(
   __shared__ float drivable_y1[kMaxDrivableSegments];
   const int local_thread = static_cast<int>(threadIdx.y * blockDim.x + threadIdx.x);
   const int local_thread_count = static_cast<int>(blockDim.x * blockDim.y);
+  const auto & data = cost->runtimeData();
+  const int road_segment_count = mppi::memory::loadReadOnly(&data.num_road_border_segments_);
+  const int drivable_segment_count = mppi::memory::loadReadOnly(&data.num_drivable_area_segments_);
   if (update_road_border) {
-    for (int segment = local_thread; segment < cost->runtimeData().num_road_border_segments_;
-         segment += local_thread_count) {
-      road_x0[segment] = cost->runtimeData().road_border_x0_[segment];
-      road_y0[segment] = cost->runtimeData().road_border_y0_[segment];
-      road_x1[segment] = cost->runtimeData().road_border_x1_[segment];
-      road_y1[segment] = cost->runtimeData().road_border_y1_[segment];
+    for (int segment = local_thread; segment < road_segment_count; segment += local_thread_count) {
+      road_x0[segment] = mppi::memory::loadReadOnly(&data.road_border_x0_[segment]);
+      road_y0[segment] = mppi::memory::loadReadOnly(&data.road_border_y0_[segment]);
+      road_x1[segment] = mppi::memory::loadReadOnly(&data.road_border_x1_[segment]);
+      road_y1[segment] = mppi::memory::loadReadOnly(&data.road_border_y1_[segment]);
     }
   }
   if (update_drivable_area) {
-    for (int segment = local_thread; segment < cost->runtimeData().num_drivable_area_segments_;
+    for (int segment = local_thread; segment < drivable_segment_count;
          segment += local_thread_count) {
-      drivable_x0[segment] = cost->runtimeData().drivable_area_x0_[segment];
-      drivable_y0[segment] = cost->runtimeData().drivable_area_y0_[segment];
-      drivable_x1[segment] = cost->runtimeData().drivable_area_x1_[segment];
-      drivable_y1[segment] = cost->runtimeData().drivable_area_y1_[segment];
+      drivable_x0[segment] = mppi::memory::loadReadOnly(&data.drivable_area_x0_[segment]);
+      drivable_y0[segment] = mppi::memory::loadReadOnly(&data.drivable_area_y0_[segment]);
+      drivable_x1[segment] = mppi::memory::loadReadOnly(&data.drivable_area_x1_[segment]);
+      drivable_y1[segment] = mppi::memory::loadReadOnly(&data.drivable_area_y1_[segment]);
     }
   }
   __syncthreads();
@@ -121,7 +124,7 @@ __global__ void generateStaticDistanceMapKernel(
 
       if (update_road_border) {
         float minimum = kDistanceMapEmptyDistance;
-        for (int segment = 0; segment < cost->runtimeData().num_road_border_segments_; ++segment) {
+        for (int segment = 0; segment < road_segment_count; ++segment) {
           minimum = fminf(
             minimum, distancePointToSegment(
                        world_x, world_y, road_x0[segment], road_y0[segment], road_x1[segment],
@@ -132,8 +135,7 @@ __global__ void generateStaticDistanceMapKernel(
 
       if (update_drivable_area) {
         float minimum = kDistanceMapEmptyDistance;
-        for (int segment = 0; segment < cost->runtimeData().num_drivable_area_segments_;
-             ++segment) {
+        for (int segment = 0; segment < drivable_segment_count; ++segment) {
           minimum = fminf(
             minimum, distancePointToSegment(
                        world_x, world_y, drivable_x0[segment], drivable_y0[segment],
@@ -160,17 +162,18 @@ __global__ void generateObstacleDistanceMapKernel(
   __shared__ float obstacle_half_width[kMaxObstacles];
   const int local_thread = static_cast<int>(threadIdx.y * blockDim.x + threadIdx.x);
   const int local_thread_count = static_cast<int>(blockDim.x * blockDim.y);
+  const auto & data = cost->runtimeData();
+  const int obstacle_count = mppi::memory::loadReadOnly(&data.num_obstacles_);
   for (int timestep = static_cast<int>(blockIdx.z * blockDim.z + threadIdx.z);
        timestep < grid.time_steps; timestep += static_cast<int>(blockDim.z * gridDim.z)) {
-    for (int obstacle = local_thread; obstacle < cost->runtimeData().num_obstacles_;
-         obstacle += local_thread_count) {
-      obstacle_x[obstacle] = cost->runtimeData().obs_x_[obstacle][timestep];
-      obstacle_y[obstacle] = cost->runtimeData().obs_y_[obstacle][timestep];
+    for (int obstacle = local_thread; obstacle < obstacle_count; obstacle += local_thread_count) {
+      obstacle_x[obstacle] = mppi::memory::loadReadOnly(&data.obs_x_[obstacle][timestep]);
+      obstacle_y[obstacle] = mppi::memory::loadReadOnly(&data.obs_y_[obstacle][timestep]);
       __sincosf(
-        cost->runtimeData().obs_yaw_[obstacle][timestep], &obstacle_sin[obstacle],
+        mppi::memory::loadReadOnly(&data.obs_yaw_[obstacle][timestep]), &obstacle_sin[obstacle],
         &obstacle_cos[obstacle]);
-      obstacle_half_length[obstacle] = cost->runtimeData().obs_half_length_[obstacle];
-      obstacle_half_width[obstacle] = cost->runtimeData().obs_half_width_[obstacle];
+      obstacle_half_length[obstacle] = mppi::memory::loadReadOnly(&data.obs_half_length_[obstacle]);
+      obstacle_half_width[obstacle] = mppi::memory::loadReadOnly(&data.obs_half_width_[obstacle]);
     }
     __syncthreads();
     for (int gy = static_cast<int>(blockIdx.y * blockDim.y + threadIdx.y); gy < grid.height;
@@ -181,7 +184,7 @@ __global__ void generateObstacleDistanceMapKernel(
         const float world_y = grid.origin_y + (static_cast<float>(gy) + 0.5F) * grid.resolution;
         float minimum = kDistanceMapEmptyDistance;
 
-        for (int obstacle = 0; obstacle < cost->runtimeData().num_obstacles_; ++obstacle) {
+        for (int obstacle = 0; obstacle < obstacle_count; ++obstacle) {
           minimum = fminf(
             minimum, signedDistancePointToOrientedBox(
                        world_x, world_y, obstacle_x[obstacle], obstacle_y[obstacle],

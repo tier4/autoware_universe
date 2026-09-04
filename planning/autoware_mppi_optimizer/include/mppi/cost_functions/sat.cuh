@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #pragma once
+#include <mppi/utils/read_only_load.cuh>
+
 #include <cmath>
 
 /// @brief rectangle to segment intersection check
@@ -51,10 +53,10 @@ __host__ __device__ __forceinline__ bool checkRectSegmentIntersections(
 #pragma unroll 4
   for (int i = 0; i < num_segments; ++i) {
     // Shift global coordinates to ego-relative origin
-    const float dx0 = seg_x0[i] - ego_x;
-    const float dy0 = seg_y0[i] - ego_y;
-    const float dx1 = seg_x1[i] - ego_x;
-    const float dy1 = seg_y1[i] - ego_y;
+    const float dx0 = mppi::memory::loadReadOnly(&seg_x0[i]) - ego_x;
+    const float dy0 = mppi::memory::loadReadOnly(&seg_y0[i]) - ego_y;
+    const float dx1 = mppi::memory::loadReadOnly(&seg_x1[i]) - ego_x;
+    const float dy1 = mppi::memory::loadReadOnly(&seg_y1[i]) - ego_y;
 
     // Rotate to align with AABB
     float lx0 = c * dx0 + s * dy0;
