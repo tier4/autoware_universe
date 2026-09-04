@@ -5,6 +5,7 @@
     plugin_names:
       - "autoware::minimum_rule_based_planner::plugin::ObstacleStop"
       - "autoware::minimum_rule_based_planner::plugin::SurroundObstacleStop"
+      - "autoware::minimum_rule_based_planner::plugin::ObstacleSlowDown"
 
     path_planning:
       path_length:
@@ -163,6 +164,105 @@
       hysteresis_distance: 0.1 # [m]
       hysteresis_time: 0.2     # [s]
       ego_stopped_vel_th: 0.1  # [m/s]
+
+    obstacle_slow_down:
+      enable: true
+      slow_down_min_acc: -1.0         # slow down min deceleration [m/ss]
+      slow_down_min_jerk: -1.0        # slow down min jerk [m/sss]
+      lpf_gain_slow_down_vel: 0.9     # low-pass filter gain for slow down velocity
+      lpf_gain_lateral_distance: 0.7  # low-pass filter gain for lateral distance from obstacle to ego's path
+      lpf_gain_dist_to_slow_down: 0.7 # low-pass filter gain for distance to slow down start
+      time_margin_on_target_velocity: 1.5 # [s]
+      target_objects: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "animal"] # TODO: perceptionの仕様を確認する
+      obstacle_filtering:
+        min_lat_margin: -10.0  # lateral margin between obstacle and trajectory band with ego's width to avoid the conflict with the obstacle_stop [m]
+        max_lat_margin: 1.1    # lateral margin between obstacle and trajectory band with ego's width [m]
+        lat_hysteresis_margin: 0.2
+        max_lat_velocity: 3.0  # [m/s] max lateral velocity of obstacle to be considered
+        time_to_entry_slow_down_condition: 0.5
+        time_to_exit_slow_down_condition: 0.5
+      trajectory_polygon:
+        decimate_trajectory_step_length: 2.0 # [m]
+        goal_extended_trajectory_length: 6.0 # [m]
+        enable_to_consider_current_pose: true
+        time_to_convergence: 1.5 # [s]
+      moving_object_speed_threshold: 0.5 # [m/s] how fast the object needs to move to be considered as "moving"
+      moving_object_hysteresis_range: 0.1 # [m/s] hysteresis range used to prevent chattering when obstacle moves close to moving_object_speed_threshold
+      object_type_specified_params:
+        default:  # values used if not specified for some object type
+          left:
+            moving:
+              min_lat_margin: 0.2
+              max_lat_margin: 1.5
+              min_ego_velocity: 2.0
+              max_ego_velocity: 12.0
+            static:
+              min_lat_margin: 0.2
+              max_lat_margin: 1.8
+              min_ego_velocity: 4.0
+              max_ego_velocity: 12.0
+          right:
+            moving:
+              min_lat_margin: 0.2
+              max_lat_margin: 1.5
+              min_ego_velocity: 2.0
+              max_ego_velocity: 12.0
+            static:
+              min_lat_margin: 0.2
+              max_lat_margin: 1.8
+              min_ego_velocity: 4.0
+              max_ego_velocity: 12.0
+          wheel_off_track_scale: 0.0 # scale factor for additional stop margin against ego's wheel off-track. Even if this value is set to 0.0, the planner considers the nominal wheel off-track.
+        pedestrian:
+          right:
+            moving:
+              min_lat_margin: 0.5
+              max_lat_margin: 2.8
+              min_ego_velocity: 0.925
+              max_ego_velocity: 9.72
+            static:
+              min_lat_margin: 0.3
+              max_lat_margin: 2.5
+              min_ego_velocity: 0.925
+              max_ego_velocity: 9.72
+          left:
+            moving:
+              min_lat_margin: 0.5
+              max_lat_margin: 2.8
+              min_ego_velocity: 0.925
+              max_ego_velocity: 9.72
+            static:
+              min_lat_margin: 0.3
+              max_lat_margin: 2.5
+              min_ego_velocity: 0.925
+              max_ego_velocity: 9.72
+          wheel_off_track_scale: 0.6
+        bicycle:
+          right:
+            moving:
+              min_lat_margin: 0.5
+              max_lat_margin: 2.8
+              min_ego_velocity: 0.925
+              max_ego_velocity: 9.72
+            static:
+              min_lat_margin: 0.3
+              max_lat_margin: 2.5
+              min_ego_velocity: 0.925
+              max_ego_velocity: 9.72
+          left:
+            moving:
+              min_lat_margin: 0.5
+              max_lat_margin: 2.8
+              min_ego_velocity: 0.925
+              max_ego_velocity: 9.72
+            static:
+              min_lat_margin: 0.3
+              max_lat_margin: 2.5
+              min_ego_velocity: 0.925
+              max_ego_velocity: 9.72
+          wheel_off_track_scale: 0.6
+        motorcycle:
+          wheel_off_track_scale: 0.6
 
     velocity_smoother:
       nearest_dist_threshold_m: 1.5

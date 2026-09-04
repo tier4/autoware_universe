@@ -969,6 +969,146 @@
           "required": [],
           "additionalProperties": false
         },
+        "obstacle_slow_down": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "description": "Enable obstacle slow down",
+              "default": true
+            },
+            "target_objects": {
+              "type": "array",
+              "description": "Types of objects to consider for obstacle slow down",
+              "default": [
+                "car",
+                "truck",
+                "bus",
+                "trailer",
+                "motorcycle",
+                "bicycle",
+                "pedestrian",
+                "hazard",
+                "animal"
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "slow_down_min_acc": {
+              "type": "number",
+              "description": "Slow down min deceleration [m/ss]",
+              "default": -1.0
+            },
+            "slow_down_min_jerk": {
+              "type": "number",
+              "description": "Slow down min jerk [m/sss]",
+              "default": -1.0
+            },
+            "lpf_gain_slow_down_vel": {
+              "type": "number",
+              "description": "Low-pass filter gain for slow down velocity",
+              "default": 0.9
+            },
+            "lpf_gain_lateral_distance": {
+              "type": "number",
+              "description": "Low-pass filter gain for lateral distance from obstacle to ego's path",
+              "default": 0.7
+            },
+            "lpf_gain_dist_to_slow_down": {
+              "type": "number",
+              "description": "Low-pass filter gain for distance to slow down start",
+              "default": 0.7
+            },
+            "time_margin_on_target_velocity": {
+              "type": "number",
+              "description": "Time margin on target velocity [s]",
+              "default": 1.5
+            },
+            "moving_object_speed_threshold": {
+              "type": "number",
+              "description": "How fast the object needs to move to be considered as moving [m/s]",
+              "default": 0.5
+            },
+            "moving_object_hysteresis_range": {
+              "type": "number",
+              "description": "Hysteresis range for the moving object speed threshold [m/s]",
+              "default": 0.1
+            },
+            "object_type_specified_params": {
+              "type": "object",
+              "description": "Per-object-type velocity interpolation parameters (free-form, read via node parameters with fallback to 'default')"
+            },
+            "obstacle_filtering": {
+              "type": "object",
+              "properties": {
+                "min_lat_margin": {
+                  "type": "number",
+                  "description": "Lateral margin between obstacle and trajectory band with ego's width to avoid the conflict with the obstacle_stop [m]",
+                  "default": -10.0
+                },
+                "max_lat_margin": {
+                  "type": "number",
+                  "description": "Lateral margin between obstacle and trajectory band with ego's width [m]",
+                  "default": 1.1
+                },
+                "lat_hysteresis_margin": {
+                  "type": "number",
+                  "description": "Lateral hysteresis margin to prevent chattering [m]",
+                  "default": 0.2
+                },
+                "max_lat_velocity": {
+                  "type": "number",
+                  "description": "Max lateral velocity of obstacle to be considered [m/s]",
+                  "default": 3.0
+                },
+                "time_to_entry_slow_down_condition": {
+                  "type": "number",
+                  "description": "Duration for which the slow down condition must be met to enter the slow down state [s]",
+                  "default": 0.5
+                },
+                "time_to_exit_slow_down_condition": {
+                  "type": "number",
+                  "description": "Duration for which the slow down condition must fail to exit the slow down state [s]",
+                  "default": 0.5
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "trajectory_polygon": {
+              "type": "object",
+              "properties": {
+                "decimate_trajectory_step_length": {
+                  "type": "number",
+                  "description": "Longitudinal step length to calculate trajectory polygon for collision checking [m]",
+                  "default": 2.0,
+                  "exclusiveMinimum": 0.0
+                },
+                "goal_extended_trajectory_length": {
+                  "type": "number",
+                  "description": "Trajectory extension length behind the goal for the lateral distance calculation [m]",
+                  "default": 6.0
+                },
+                "enable_to_consider_current_pose": {
+                  "type": "boolean",
+                  "description": "Consider the current ego pose in the trajectory polygon",
+                  "default": true
+                },
+                "time_to_convergence": {
+                  "type": "number",
+                  "description": "Time duration for the ego pose error to converge to zero [s]",
+                  "default": 1.5,
+                  "exclusiveMinimum": 0.0
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
         "velocity_smoother": {
           "type": "object",
           "properties": {

@@ -570,6 +570,118 @@ minimum_rule_based_planner:
         bounds<>: [0.0, 10.0]
       read_only: false
 
+  obstacle_slow_down:
+    enable:
+      type: bool
+      default_value: true
+      description: enable obstacle slow down
+      read_only: false
+    target_objects:
+      type: string_array
+      default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard, animal]
+      description: types of objects to consider for obstacle slow down
+      read_only: false
+    slow_down_min_acc:
+      type: double
+      default_value: -1.0
+      description: slow down min deceleration [m/ss]
+      read_only: false
+    slow_down_min_jerk:
+      type: double
+      default_value: -1.0
+      description: slow down min jerk [m/sss]
+      read_only: false
+    lpf_gain_slow_down_vel:
+      type: double
+      default_value: 0.9
+      description: low-pass filter gain for slow down velocity
+      read_only: false
+    lpf_gain_lateral_distance:
+      type: double
+      default_value: 0.7
+      description: low-pass filter gain for lateral distance from obstacle to ego's path
+      read_only: false
+    lpf_gain_dist_to_slow_down:
+      type: double
+      default_value: 0.7
+      description: low-pass filter gain for distance to slow down start
+      read_only: false
+    time_margin_on_target_velocity:
+      type: double
+      default_value: 1.5
+      description: time margin on target velocity [s]
+      read_only: false
+    moving_object_speed_threshold:
+      type: double
+      default_value: 0.5
+      description: how fast the object needs to move to be considered as moving [m/s]
+      read_only: false
+    moving_object_hysteresis_range:
+      type: double
+      default_value: 0.1
+      description: hysteresis range for the moving object speed threshold [m/s]
+      read_only: false
+    obstacle_filtering:
+      min_lat_margin:
+        type: double
+        default_value: -10.0
+        description: lateral margin between obstacle and trajectory band with ego's width to avoid the conflict with the obstacle_stop [m]
+        read_only: false
+      max_lat_margin:
+        type: double
+        default_value: 1.1
+        description: lateral margin between obstacle and trajectory band with ego's width [m]
+        read_only: false
+      lat_hysteresis_margin:
+        type: double
+        default_value: 0.2
+        description: lateral hysteresis margin to prevent chattering [m]
+        read_only: false
+      max_lat_velocity:
+        type: double
+        default_value: 3.0
+        description: max lateral velocity of obstacle to be considered [m/s]
+        read_only: false
+      time_to_entry_slow_down_condition:
+        type: double
+        default_value: 0.5
+        description: duration for which the slow down condition must be met to enter the slow down state [s]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      time_to_exit_slow_down_condition:
+        type: double
+        default_value: 0.5
+        description: duration for which the slow down condition must fail to exit the slow down state [s]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+    trajectory_polygon:
+      decimate_trajectory_step_length:
+        type: double
+        default_value: 2.0
+        description: longitudinal step length to calculate trajectory polygon for collision checking [m]
+        validation:
+          gt<>: [0.0]
+        read_only: false
+      goal_extended_trajectory_length:
+        type: double
+        default_value: 6.0
+        description: trajectory extension length behind the goal for the lateral distance calculation [m]
+        read_only: false
+      enable_to_consider_current_pose:
+        type: bool
+        default_value: true
+        description: consider the current ego pose in the trajectory polygon
+        read_only: false
+      time_to_convergence:
+        type: double
+        default_value: 1.5
+        description: time duration for the ego pose error to converge to zero [s]
+        validation:
+          gt<>: [0.0]
+        read_only: false
+
   debug:
     enable_path:
       type: bool
