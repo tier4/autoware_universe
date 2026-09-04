@@ -1,6 +1,4 @@
-/**
- * Analytic path-tracking cost for FirstOrderDubinsBicycle (reference polyline + parked-car OBBs).
- */
+/** Path-tracking and texture-accelerated environment cost for FirstOrderDubinsBicycle. */
 #pragma once
 
 #ifndef MPPI_COST_FUNCTIONS_FIRST_ORDER_DUBINS_BICYCLE_COST_CUH_
@@ -9,10 +7,12 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
 #include <mppi/cost_functions/cost.cuh>
+#include <mppi/cost_functions/dubins/distance_map_texture.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_kinematic_limits.cuh>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 
 #include <cstdint>
+#include <vector>
 
 __host__ __device__ inline float computeSmoothBarrierCost(
   const float distance, const float safe_margin, const float precomputed_weight)
@@ -88,7 +88,8 @@ template <
   class CLASS_T, int NUM_TIMESTEPS,
   class PARAMS_T = FirstOrderDubinsBicycleCostParams<NUM_TIMESTEPS>,
   class DYN_PARAMS_T = FirstOrderDubinsBicycleParams>
-class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>
+class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>,
+                                        public DistanceMapTextureState
 {
 public:
   static constexpr int kMaxObstacles = 64;
@@ -125,7 +126,12 @@ public:
   using output_array = typename PARENT_CLASS::output_array;
   using control_array = typename PARENT_CLASS::control_array;
 
-  FirstOrderDubinsBicycleCostImpl(cudaStream_t stream = 0);
+  __host__ FirstOrderDubinsBicycleCostImpl(cudaStream_t stream = 0);
+
+  __host__ ~FirstOrderDubinsBicycleCostImpl() override;
+
+  FirstOrderDubinsBicycleCostImpl(const FirstOrderDubinsBicycleCostImpl &) = delete;
+  FirstOrderDubinsBicycleCostImpl & operator=(const FirstOrderDubinsBicycleCostImpl &) = delete;
 
   /** Stage corridor + time-aligned ref into block shared memory (theta_c). */
   __device__ void initializeCosts(
@@ -159,8 +165,8 @@ public:
     const float * half_width, int count);
 
   /**
-   * Time-varying obstacle poses. All trajectories participate in hard output validation; only
-   * pose-invariant trajectories participate in the gradual static-obstacle barrier.
+   * Time-varying obstacle poses. All trajectories participate in hard output validation and the
+   * gradual obstacle barrier's 3D ESDF.
    */
   void setOrientedBoxObstacleTrajectories(
     const float * x, const float * y, const float * yaw, const float * half_length,
@@ -179,6 +185,12 @@ public:
   void setDrivableAreaPolygon(const float * x, const float * y, int count);
 
   void clearDrivableArea();
+
+  /** Enable or disable the CUDA-OpenGL distance-map debug window. */
+  __host__ void setDistanceMapTextureDebugEnabled(bool enable);
+
+  /** Refresh the debug window after all distance maps for the current control cycle are ready. */
+  __host__ void renderDistanceMapTextureDebug();
 
   /** Euclidean position error squared: ||p - ref[t]||^2. */
   __host__ __device__ float computeTrackValue(
@@ -230,7 +242,11 @@ public:
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep) const;
 
-  /** Signed distance between the physical ego OBB and the closest static obstacle OBB. */
+  /**
+   * Signed clearance from the ego's four-circle spine approximation to the closest obstacle.
+   * GPU rollout samples the point ESDF at each circle center; host replay evaluates the same
+   * circle-to-box geometry analytically.
+   */
   __host__ __device__ float distanceToClosestObstacle(
     float x, float y, float yaw, int timestep) const;
 
@@ -238,10 +254,16 @@ public:
   __host__ __device__ bool egoIntersectsRoadBorder(
     const float x, const float y, const float yaw) const;
 
-  /** Euclidean ego-contour clearance to the closest road-border segment. */
+  /**
+   * Clearance from the ego's four-circle spine approximation to the closest road border. GPU and
+   * host paths use the same circle geometry.
+   */
   __host__ __device__ float distanceToRoadBorder(float x, float y, float yaw) const;
 
-  /** Signed clearance to drivable-area segments; negative while a boundary penetrates the OBB. */
+  /**
+   * Signed clearance from the ego's four-circle spine approximation to drivable-area segments.
+   * GPU and host paths use the same circle geometry.
+   */
   __host__ __device__ float distanceToDrivableArea(float x, float y, float yaw) const;
 
   __host__ __device__ void computeGradualCrashCosts(
@@ -320,7 +342,19 @@ public:
   float drivable_area_y1_[kMaxDrivableAreaSegments] = {};
 
 private:
+  friend struct DistanceMapTextureTestAccess;
+
   void dataToDevice();
+  __host__ bool updateDistanceMapGrid(
+    DistanceMapTextureGrid & grid, int width, int height, float resolution);
+  __host__ void ensureDistanceMapResources();
+  __host__ void rebuildStaticDistanceTexture(bool update_road_border, bool update_drivable_area);
+  __host__ void rebuildObstacleDistanceTexture();
+  __host__ void refreshDistanceMapTextures(
+    bool obstacle_geometry_changed, bool road_border_geometry_changed,
+    bool drivable_area_geometry_changed);
+  __host__ void distanceMapStateToDevice();
+  __host__ void releaseDistanceMapResources();
 };
 
 template <int NUM_TIMESTEPS>
@@ -337,6 +371,7 @@ public:
 
 #if __CUDACC__
 #include "first_order_dubins_bicycle_cost.cu"
+#include "first_order_dubins_distance_map.cu"
 #endif
 
 #endif  // MPPI_COST_FUNCTIONS_FIRST_ORDER_DUBINS_BICYCLE_COST_CUH_

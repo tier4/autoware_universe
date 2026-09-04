@@ -42,7 +42,7 @@ and <out_dir>/NNNNNN_cost_breakdown.csv:
 (selected output trajectory cost components used for the stacked bar).
 
 and <out_dir>/NNNNNN_rollouts.csv:
-  rollout_index,cost,step,x,y[,is_worst]
+  rollout_index,iteration,cost,step,x,y[,is_worst]
 (top-weighted and high-cost samples for XY overlay).
 (top-K weighted sample trajectories overlaid on the XY plot).
 
