@@ -378,8 +378,8 @@ protected:
   {
     for (int timestep = 0; timestep < kTestHorizon; ++timestep) {
       const float fraction = static_cast<float>(timestep) / static_cast<float>(kTestHorizon - 1);
-      cost_.runtime_data_.ref_x_[timestep] = start_x + fraction * (end_x - start_x);
-      cost_.runtime_data_.ref_y_[timestep] = y;
+      cost_.runtimeData().ref_x_[timestep] = start_x + fraction * (end_x - start_x);
+      cost_.runtimeData().ref_y_[timestep] = y;
     }
   }
 
@@ -427,10 +427,10 @@ TEST_F(DistanceMapGridTest, GridEnclosesReferenceTrajectory)
   const float maximum_x = grid.origin_x + static_cast<float>(grid.width) * grid.resolution;
   const float maximum_y = grid.origin_y + static_cast<float>(grid.height) * grid.resolution;
   for (int timestep = 0; timestep < kTestHorizon; ++timestep) {
-    EXPECT_GE(cost_.runtime_data_.ref_x_[timestep], grid.origin_x);
-    EXPECT_LT(cost_.runtime_data_.ref_x_[timestep], maximum_x);
-    EXPECT_GE(cost_.runtime_data_.ref_y_[timestep], grid.origin_y);
-    EXPECT_LT(cost_.runtime_data_.ref_y_[timestep], maximum_y);
+    EXPECT_GE(cost_.runtimeData().ref_x_[timestep], grid.origin_x);
+    EXPECT_LT(cost_.runtimeData().ref_x_[timestep], maximum_x);
+    EXPECT_GE(cost_.runtimeData().ref_y_[timestep], grid.origin_y);
+    EXPECT_LT(cost_.runtimeData().ref_y_[timestep], maximum_y);
   }
 }
 
@@ -635,7 +635,7 @@ TEST_F(DistanceMapGpuTest, EmptyObstacleSetBypassesGenerationSafely)
 {
   cost_->setOrientedBoxObstacles(nullptr, nullptr, nullptr, nullptr, nullptr, 0);
   CUDA_CHECK(cudaStreamSynchronize(stream()));
-  EXPECT_EQ(cost_->runtime_data_.num_obstacles_, 0);
+  EXPECT_EQ(cost_->runtimeData().num_obstacles_, 0);
   EXPECT_TRUE(cost_->texture_state_.obstacle_texture_valid_);
   EXPECT_FALSE(cost_->texture_state_.obstacle_texture_has_obstacles_);
   EXPECT_FLOAT_EQ(
