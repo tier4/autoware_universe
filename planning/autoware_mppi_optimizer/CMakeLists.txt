@@ -90,6 +90,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   # Parallelize NVCC device-code passes (CUDA 11.5+); 0 = use all host cores.
   list(APPEND CUDA_NVCC_FLAGS "--threads" "0")
   list(APPEND CUDA_NVCC_FLAGS "-lineinfo")
+  list(APPEND CUDA_NVCC_FLAGS "--maxrregcount=64")
 
   # MPPI-Generic includes <cuda/barrier>, which #errors below sm_70.
   # Do not use CUDA_SELECT_NVCC_ARCH_FLAGS(Auto): container/CI configure (no
