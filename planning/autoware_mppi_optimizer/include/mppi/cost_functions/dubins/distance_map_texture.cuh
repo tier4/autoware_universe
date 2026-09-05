@@ -132,7 +132,7 @@ __host__ __device__ inline float signedDistancePointToOrientedBox(
   return outside_distance + inside_distance;
 }
 
-__host__ __device__ inline float distanceEgoSpineToSegments(
+static __host__ __device__ __noinline__ float distanceEgoSpineToSegments(
   const float circle_x[kEgoSpineCircleCount], const float circle_y[kEgoSpineCircleCount],
   const float circle_radius, const float * segment_x0, const float * segment_y0,
   const float * segment_x1, const float * segment_y1, const int segment_count,

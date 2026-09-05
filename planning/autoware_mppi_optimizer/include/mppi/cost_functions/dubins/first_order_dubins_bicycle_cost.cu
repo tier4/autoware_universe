@@ -186,6 +186,69 @@ __host__ __device__ void comfortTerms(
   lateral_accel = v * v * curvature;
   lateral_jerk = v * v * curvature_dot + 3.0F * v * accel * curvature;
 }
+
+template <int NUM_TIMESTEPS>
+__host__ __device__ __noinline__ float distanceToClosestObstacleAnalyticalFallback(
+  const float circle_x[kEgoSpineCircleCount], const float circle_y[kEgoSpineCircleCount],
+  const float circle_radius, const int t, const FirstOrderDubinsRuntimeData<NUM_TIMESTEPS> & data)
+{
+  float min_distance = kDistanceMapEmptyDistance;
+  const int num_obstacles = mppi::memory::loadReadOnly(&data.num_obstacles_);
+  for (int i = 0; i < num_obstacles; ++i) {
+    float obs_cos;
+    float obs_sin;
+    const float obs_yaw = mppi::memory::loadReadOnly(&data.obs_yaw_[i][t]);
+#ifdef __CUDA_ARCH__
+    __sincosf(obs_yaw, &obs_sin, &obs_cos);
+#else
+    obs_cos = std::cos(obs_yaw);
+    obs_sin = std::sin(obs_yaw);
+#endif
+    const float obs_x = mppi::memory::loadReadOnly(&data.obs_x_[i][t]);
+    const float obs_y = mppi::memory::loadReadOnly(&data.obs_y_[i][t]);
+    const float obs_half_length = mppi::memory::loadReadOnly(&data.obs_half_length_[i]);
+    const float obs_half_width = mppi::memory::loadReadOnly(&data.obs_half_width_[i]);
+#pragma unroll
+    for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
+      min_distance = fminf(
+        min_distance, signedDistancePointToOrientedBox(
+                        circle_x[circle], circle_y[circle], obs_x, obs_y, obs_cos, obs_sin,
+                        obs_half_length, obs_half_width) -
+                        circle_radius);
+    }
+  }
+  return min_distance;
+}
+
+template <int NUM_TIMESTEPS>
+__host__ __device__ __noinline__ float cornerBufferCostAnalyticalFallback(
+  const float corners_x[4], const float corners_y[4], const float margin,
+  const FirstOrderDubinsRuntimeData<NUM_TIMESTEPS> & data)
+{
+  float total_cost = 0.0F;
+  const int segment_count = mppi::memory::loadReadOnly(&data.num_drivable_area_segments_);
+  for (int corner = 0; corner < 4; ++corner) {
+    float min_distance = kDistanceMapEmptyDistance;
+    for (int segment = 0; segment < segment_count; ++segment) {
+      const float distance = distancePointToSegment(
+        corners_x[corner], corners_y[corner],
+        mppi::memory::loadReadOnly(&data.drivable_area_x0_[segment]),
+        mppi::memory::loadReadOnly(&data.drivable_area_y0_[segment]),
+        mppi::memory::loadReadOnly(&data.drivable_area_x1_[segment]),
+        mppi::memory::loadReadOnly(&data.drivable_area_y1_[segment]));
+
+#ifdef __CUDA_ARCH__
+      min_distance = fminf(min_distance, distance);
+#else
+      min_distance = std::min(min_distance, distance);
+#endif
+    }
+
+    const float violation = fmaxf(0.0F, margin - min_distance);
+    total_cost += violation * violation;
+  }
+  return total_cost;
+}
 }  // namespace
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -939,36 +1002,8 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     }
   }
 #endif
-  float min_distance = kDistanceMapEmptyDistance;
-  const auto & data = runtimeData();
-  const int num_obstacles = mppi::memory::loadReadOnly(&data.num_obstacles_);
-#ifdef __CUDA_ARCH__
-#pragma unroll
-#endif
-  for (int i = 0; i < num_obstacles; ++i) {
-    float obs_cos;
-    float obs_sin;
-    const float obs_yaw = mppi::memory::loadReadOnly(&data.obs_yaw_[i][t]);
-#ifdef __CUDA_ARCH__
-    __sincosf(obs_yaw, &obs_sin, &obs_cos);
-#else
-    obs_cos = std::cos(obs_yaw);
-    obs_sin = std::sin(obs_yaw);
-#endif
-    const float obs_x = mppi::memory::loadReadOnly(&data.obs_x_[i][t]);
-    const float obs_y = mppi::memory::loadReadOnly(&data.obs_y_[i][t]);
-    const float obs_half_length = mppi::memory::loadReadOnly(&data.obs_half_length_[i]);
-    const float obs_half_width = mppi::memory::loadReadOnly(&data.obs_half_width_[i]);
-#pragma unroll
-    for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
-      min_distance = fminf(
-        min_distance, signedDistancePointToOrientedBox(
-                        circle_x[circle], circle_y[circle], obs_x, obs_y, obs_cos, obs_sin,
-                        obs_half_length, obs_half_width) -
-                        circle_radius);
-    }
-  }
-  return min_distance;
+  return distanceToClosestObstacleAnalyticalFallback(
+    circle_x, circle_y, circle_radius, t, runtimeData());
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1057,30 +1092,7 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
     }
   }
 #endif
-  for (int corner = 0; corner < 4; ++corner) {
-    float min_distance = kDistanceMapEmptyDistance;
-
-    const auto & data = runtimeData();
-    const int segment_count = mppi::memory::loadReadOnly(&data.num_drivable_area_segments_);
-    for (int segment = 0; segment < segment_count; ++segment) {
-      const float distance = distancePointToSegment(
-        corners_x[corner], corners_y[corner],
-        mppi::memory::loadReadOnly(&data.drivable_area_x0_[segment]),
-        mppi::memory::loadReadOnly(&data.drivable_area_y0_[segment]),
-        mppi::memory::loadReadOnly(&data.drivable_area_x1_[segment]),
-        mppi::memory::loadReadOnly(&data.drivable_area_y1_[segment]));
-
-#ifdef __CUDA_ARCH__
-      min_distance = fminf(min_distance, distance);
-#else
-      min_distance = std::min(min_distance, distance);
-#endif
-    }
-
-    const float violation = fmaxf(0.0F, margin - min_distance);
-    total_cost += violation * violation;
-  }
-
+  total_cost = cornerBufferCostAnalyticalFallback(corners_x, corners_y, margin, runtimeData());
   return this->params_.corner_buffer_coeff * total_cost;
 }
 
@@ -1534,7 +1546,7 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__device__ float
+__device__ __noinline__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::terminalCost(
   float * y, float * theta_c) const
 {
