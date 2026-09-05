@@ -418,7 +418,7 @@ public:
   __host__ __device__ FirstOrderDubinsBicycleKinematicCost computeKinematicLimitCost(
     float velocity, float longitudinal_acceleration, float longitudinal_jerk, int timestep) const;
 
-  __device__ float terminalCost(float * y, float * theta_c) const;
+  __device__ __noinline__ float terminalCost(float * y, float * theta_c) const;
 
   float computeRunningCost(
     const Eigen::Ref<const output_array> & y, const Eigen::Ref<const control_array> & u,
