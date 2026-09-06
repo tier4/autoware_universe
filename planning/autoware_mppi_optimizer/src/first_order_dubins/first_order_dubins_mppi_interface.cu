@@ -1003,7 +1003,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     // Smooth-MPPI samples action derivatives and integrates with dt.
     sp.dt = kDt;
 #endif
-    sampler = SAMPLER(sp);
+    sampler.setParams(sp);
 
     const float lambda = user_cost_params_.lambda;
     Mppi::TEMPLATED_PARAMS cp{};
