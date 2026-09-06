@@ -225,7 +225,13 @@ template <class CLASS_T, class PARAMS_T>
 __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::computeDynamics(
   float * state, float * control, float * state_der, float *)
 {
-  firstOrderDubinsBicycleDeriv(this->params_, state, control, state_der);
+  // Compute derivative locally to avoid read-after-write races without barriers,
+  // then partition the write to shared memory to avoid write-write races.
+  float local_der[PARENT_CLASS::STATE_DIM];
+  firstOrderDubinsBicycleDeriv(this->params_, state, control, local_der);
+  for (int i = threadIdx.y; i < PARENT_CLASS::STATE_DIM; i += blockDim.y) {
+    state_der[i] = local_der[i];
+  }
 }
 
 template <class CLASS_T, class PARAMS_T>
@@ -275,6 +281,13 @@ template <class CLASS_T, class PARAMS_T>
 __host__ __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::stateToOutput(
   const float * state, float * output)
 {
+#ifdef __CUDA_ARCH__
+  // Output is shared by the Y workers of one rollout. This function contains no barriers;
+  // non-writers return to the collective step/initialization call and its synchronization.
+  if (threadIdx.y != 0) {
+    return;
+  }
+#endif
   using O = FirstOrderDubinsBicycleParams::OutputIndex;
   const float v = state[static_cast<int>(S::VEL_X)];
 
