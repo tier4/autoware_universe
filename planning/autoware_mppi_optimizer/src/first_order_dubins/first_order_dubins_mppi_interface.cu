@@ -938,6 +938,10 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   void setup()
   {
+    // Release the old controller before reconfiguring its shared model/cost/sampler resources.
+    initialized = false;
+    controller.reset();
+
     dyn = FirstOrderDubinsBicycleParams{};
     dyn.wheel_base = vehicle_params.wheel_base;
     dyn.max_steer_angle = vehicle_params.max_steer_angle;
