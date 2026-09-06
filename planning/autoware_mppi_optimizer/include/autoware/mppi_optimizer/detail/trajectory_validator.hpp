@@ -18,6 +18,7 @@
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <vector>
 
@@ -28,8 +29,17 @@ template <class Cost>
 [[nodiscard]] FirstOrderDubinsMppiValidationResult validateOptimizedTrajectory(
   const Cost & cost, const std::vector<OptimizedState> & states)
 {
+  // states contains post-step samples x[1] through x[H], including the reconstructed terminal
+  // state when the full horizon is published. Keep every sample and its obstacle time index.
   for (std::size_t i = 0; i < states.size(); ++i) {
     const auto & state = states[i];
+    if (
+      !std::isfinite(state.x) || !std::isfinite(state.y) || !std::isfinite(state.yaw) ||
+      !std::isfinite(state.velocity) || !std::isfinite(state.acceleration) ||
+      !std::isfinite(state.steering)) {
+      // Reject before calling geometry routines that may index buffers using these values.
+      return {FirstOrderDubinsMppiInvalidityReason::nonfinite_state, i};
+    }
     const int timestep = static_cast<int>(i);
     auto reasons = FirstOrderDubinsMppiInvalidityReason::none;
     if (cost.exceedsLateralBoundary(state.x, state.y)) {
