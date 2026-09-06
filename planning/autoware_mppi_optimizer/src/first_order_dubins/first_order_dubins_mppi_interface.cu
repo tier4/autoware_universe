@@ -1793,6 +1793,8 @@ struct FirstOrderDubinsMppiInterface::Impl
         u_opt_traj(accel_idx, timestep) =
           active_velocity_limit_profile.controls[static_cast<std::size_t>(timestep)].accel_cmd;
       }
+      // Publication reads the controller's state sequence, so replay profile overrides too.
+      control_sequence_modified = control_sequence_modified || count > 0;
     }
     if (control_sequence_modified) {
       controller->setControlSequenceAndRecomputeState(u_opt_traj, x);
