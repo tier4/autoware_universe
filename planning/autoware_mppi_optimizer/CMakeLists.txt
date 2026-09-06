@@ -232,6 +232,25 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       TIMEOUT 180
     )
 
+    find_package(rcutils REQUIRED)
+    ament_add_gtest(test_performance_benchmarks
+      test/test_performance_benchmarks.cpp
+      TIMEOUT 1800
+    )
+    target_link_libraries(test_performance_benchmarks
+      first_order_dubins_mppi
+      rcutils::rcutils
+      ${CUDA_LIBRARIES}
+    )
+    set_target_properties(test_performance_benchmarks PROPERTIES
+      CXX_STANDARD 17
+    )
+    # Prevent other tests in this CTest invocation from contending for the benchmark GPU.
+    set_tests_properties(test_performance_benchmarks PROPERTIES
+      LABELS "gpu;performance"
+      RUN_SERIAL TRUE
+    )
+
     cuda_add_executable(test_mppi_trajectory_validator
       test/test_trajectory_validator.cu
     )
