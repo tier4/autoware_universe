@@ -159,6 +159,7 @@ enum class FirstOrderDubinsMppiInvalidityReason : std::uint8_t {
   obstacle = 1U << 1U,
   road_border = 1U << 2U,
   reverse = 1U << 3U,
+  nonfinite_state = 1U << 4U,
 };
 
 inline std::string to_string(FirstOrderDubinsMppiInvalidityReason reason)
@@ -181,6 +182,9 @@ inline std::string to_string(FirstOrderDubinsMppiInvalidityReason reason)
   }
   if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::reverse)) {
     result += "reverse | ";
+  }
+  if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::nonfinite_state)) {
+    result += "nonfinite_state | ";
   }
 
   // Remove the trailing " | " if the string is not empty
