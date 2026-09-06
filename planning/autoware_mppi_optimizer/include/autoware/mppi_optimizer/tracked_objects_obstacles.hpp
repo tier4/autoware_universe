@@ -35,6 +35,7 @@ using autoware_perception_msgs::msg::TrackedObjects;
  * @brief Extrapolate perception tracked objects with constant longitudinal velocity.
  *
  * Twist is treated as object-frame longitudinal speed (linear.x), matching common Autoware usage.
+ * Buffer slot t is evaluated at time_offset + (t + 1) * dt, matching ego state x[t + 1].
  * Up to kMaxMppiObstacles objects are used.
  */
 inline void buildObstacleTrajectoryBuffersFromTrackedObjects(
@@ -72,7 +73,7 @@ inline void buildObstacleTrajectoryBuffersFromTrackedObjects(
     for (int timestep = 0; timestep < nt; ++timestep) {
       const size_t buffer_idx =
         obstacle_idx * static_cast<size_t>(nt) + static_cast<size_t>(timestep);
-      const float relative_time = time_offset + static_cast<float>(timestep) * dt;
+      const float relative_time = time_offset + static_cast<float>(timestep + 1) * dt;
       x[buffer_idx] = x0 + vx * relative_time;
       y[buffer_idx] = y0 + vy * relative_time;
       yaw[buffer_idx] = object_yaw;
