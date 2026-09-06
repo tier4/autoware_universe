@@ -289,7 +289,7 @@ public:
   };
 
   void computeControl(
-    const Eigen::Ref<const Mppi::state_array> & state, const int optimization_stride = 1) override
+    const Eigen::Ref<const Mppi::state_array> & state, const int optimization_stride = 0) override
   {
     if (iteration_rollout_capture_enabled_) {
       // Retain each snapshot's vector capacity across planning cycles.
@@ -298,6 +298,12 @@ public:
       iteration_rollout_snapshots_.clear();
     }
     Mppi::computeControl(state, optimization_stride);
+    if (this->getNumIters() > 0) {
+      const float weight_sum = this->getLastUnnormalizedWeightSum();
+      if (!std::isfinite(weight_sum) || weight_sum <= 0.0F) {
+        throw std::runtime_error("MPPI optimization produced no valid rollout weights");
+      }
+    }
 
     // Preserve this interface's existing unsmoothed-control behavior without downloading the
     // device mean a second time. Vanilla MPPI snapshots the final mean before its generic host
@@ -1747,7 +1753,9 @@ struct FirstOrderDubinsMppiInterface::Impl
     cost.renderDistanceMapTextureDebug();
 
     controller->updateImportanceSampler(u_nom);
-    controller->computeControl(x, 1);
+    // u[0] is newly issuable. Already committed inputs are represented by the plant delay
+    // queues, so no prefix of the new control sequence is excluded from sampling.
+    controller->computeControl(x, 0);
     checkCuda("computeControl");
 
     Mppi::control_trajectory u_opt_traj = controller->getControlSeq();
@@ -2265,22 +2273,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     }
   }
 
-  // Validate only states that come from getActualStateSeq. The host-extrapolated x_final
-  // (vendor GPU/host horizon mismatch) is appended so the published path matches the DP
-  // length, but it is not an MPPI-scored state and often sits >boundary_threshold off the
-  // corridor even when the optimized prefix is fine — that was causing false rejects.
-  std::vector<detail::OptimizedState> states_to_validate;
-  states_to_validate.reserve(optimized_states.size());
-  for (size_t i = 0; i < optimized_states.size(); ++i) {
-    const bool use_final = (static_cast<int>(i) + 1 >= n_state) && have_final_state;
-    if (!use_final) {
-      states_to_validate.push_back(optimized_states[i]);
-    }
-  }
-  if (states_to_validate.empty()) {
-    states_to_validate = optimized_states;
-  }
-  const auto validation = detail::validateOptimizedTrajectory(impl_->cost, states_to_validate);
+  // Validate every published optimized state, including reconstructed x[H]. Obstacle slot i
+  // represents the same post-step time (i + 1) * dt as optimized_states[i].
+  const auto validation = detail::validateOptimizedTrajectory(impl_->cost, optimized_states);
   float max_pos_delta = 0.0F;
   float max_vel_delta = 0.0F;
   for (size_t i = 0; i < optimized_states.size(); ++i) {
