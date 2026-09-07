@@ -28,7 +28,6 @@
 #include <tf2/utils.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -38,18 +37,6 @@
 
 namespace autoware::mppi_optimizer
 {
-
-/** Prefer $XDG_CACHE_HOME, else $HOME/.cache (user-private, not world-writable). */
-inline std::string default_mppi_debug_log_directory()
-{
-  if (const char * xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] != '\0') {
-    return std::string(xdg) + "/autoware/mppi_debug_log";
-  }
-  if (const char * home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-    return std::string(home) + "/.cache/autoware/mppi_debug_log";
-  }
-  return {};
-}
 
 /** Ego state used by MPPI at the start of a cycle (for offline replay). */
 struct MppiDebugEgoState
@@ -80,7 +67,7 @@ struct MppiDebugEgoState
  *   <log_dir>/000000_road_borders.csv
  *   <log_dir>/000000_drivable.csv
  *   <log_dir>/000000_objects.csv
- *   <log_dir>/000000_control_history.csv  (SG taps at cycle start)
+ *   <log_dir>/000000_control_history.csv  (last two applied commands at cycle start)
  *   <log_dir>/000000_delay_buffer.csv     (per-channel FIFOs before optimize)
  *   <log_dir>/000000_applied.csv          (u[0] applied this cycle)
  *   ...
@@ -107,15 +94,16 @@ public:
       return;
     }
     if (directory_.empty()) {
-      directory_ = default_mppi_debug_log_directory();
-    }
-    if (directory_.empty()) {
-      RCLCPP_WARN(
-        rclcpp::get_logger("mppi_debug_trajectory_logger"),
-        "Debug trajectory logging enabled but no writable cache dir "
-        "(set debug_trajectory_log_directory or HOME/XDG_CACHE_HOME); disabling.");
-      enabled_ = false;
-      return;
+      std::error_code cwd_ec;
+      directory_ = std::filesystem::current_path(cwd_ec).string();
+      if (cwd_ec || directory_.empty()) {
+        RCLCPP_WARN(
+          rclcpp::get_logger("mppi_debug_trajectory_logger"),
+          "Debug trajectory logging enabled but current working directory is unavailable "
+          "(set debug_trajectory_log_directory); disabling.");
+        enabled_ = false;
+        return;
+      }
     }
     std::error_code ec;
     std::filesystem::create_directories(directory_, ec);

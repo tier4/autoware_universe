@@ -681,6 +681,32 @@ std::vector<FirstOrderDubinsMppiControl> filterNominalControlWithKinematicLimits
   return filtered;
 }
 
+std::vector<FirstOrderDubinsMppiControl> shiftNominalControlForInputDelay(
+  const std::vector<FirstOrderDubinsMppiControl> & nominal, const int acceleration_delay_steps,
+  const int steer_delay_steps)
+{
+  if (nominal.empty()) {
+    return nominal;
+  }
+  const int acc_delay = std::max(0, acceleration_delay_steps);
+  const int steer_delay = std::max(0, steer_delay_steps);
+  if (acc_delay == 0 && steer_delay == 0) {
+    return nominal;
+  }
+
+  const int horizon = static_cast<int>(nominal.size());
+  std::vector<FirstOrderDubinsMppiControl> shifted(nominal.size());
+  for (int k = 0; k < horizon; ++k) {
+    const int acc_src = std::min(k + acc_delay, horizon - 1);
+    const int steer_src = std::min(k + steer_delay, horizon - 1);
+    shifted[static_cast<std::size_t>(k)].accel_cmd =
+      nominal[static_cast<std::size_t>(acc_src)].accel_cmd;
+    shifted[static_cast<std::size_t>(k)].steer_cmd =
+      nominal[static_cast<std::size_t>(steer_src)].steer_cmd;
+  }
+  return shifted;
+}
+
 std::vector<FirstOrderDubinsMppiControl> shiftNominalControl(
   const std::vector<FirstOrderDubinsMppiControl> & previous, const int horizon)
 {

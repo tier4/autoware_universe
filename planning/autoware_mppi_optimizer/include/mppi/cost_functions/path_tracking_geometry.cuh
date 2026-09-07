@@ -103,13 +103,14 @@ __host__ __device__ inline float perpendicularDistanceToLine(
 }
 
 /**
- * Cross-track distance to a polyline. Interior projections use point-to-segment
- * distance; projections past the first/last vertex use perpendicular distance to
+ * Signed cross-track error to a polyline (+ = left of segment tangent). Interior
+ * projections use the closest segment; projections past the first/last vertex use
  * the extended terminal segment (so overshooting the horizon is not treated as
  * lateral departure).
  */
 struct PolylineProjection
 {
+  /** Signed lateral offset [m]; + = left of forward segment tangent. */
   float lateral_distance = 0.0F;
   int best_i = 0;
   /** Unclamped segment parameter from the closest-segment search. */
@@ -138,25 +139,53 @@ __host__ __device__ inline void distanceToPolylineSegment(
   dist = vectorLength(px - (x0 + t * dx), py - (y0 + t * dy));
 }
 
+/** Signed lateral offset from segment; positive = left of forward tangent. */
+__host__ __device__ inline float signedLateralOffsetPointToSegment(
+  const float px, const float py, const float x0, const float y0, const float x1, const float y1)
+{
+  const float dx = x1 - x0;
+  const float dy = y1 - y0;
+  const float len_sq = dx * dx + dy * dy;
+  if (len_sq < 1.0E-8F) {
+    return px - x0;
+  }
+
+  const float t = clampUnitInterval(((px - x0) * dx + (py - y0) * dy) / len_sq);
+  const float cx = x0 + t * dx;
+  const float cy = y0 + t * dy;
+  const float len = vectorLength(dx, dy);
+  return ((px - cx) * (-dy) + (py - cy) * dx) / len;
+}
+
 __host__ __device__ inline void finalizePolylineProjection(
   PolylineProjection & result, const float px, const float py, const float * poly_x,
   const float * poly_y, const int n_pts, const int best_i, const float best_t_raw,
-  const float best_dist)
+  const float /*best_dist*/)
 {
   result.best_i = best_i;
   result.best_t_raw = best_t_raw;
-  // Past the start/end of the finite polyline: use true cross-track to the extended tip.
-  if (best_i == 0 && best_t_raw < 0.0F) {
-    result.lateral_distance =
-      perpendicularDistanceToLine(px, py, poly_x[0], poly_y[0], poly_x[1], poly_y[1]);
+  if (n_pts < 2) {
+    result.lateral_distance = (n_pts == 1) ? (px - poly_x[0]) : 0.0F;
     return;
   }
-  if (best_i == n_pts - 2 && best_t_raw > 1.0F) {
-    result.lateral_distance = perpendicularDistanceToLine(
-      px, py, poly_x[n_pts - 2], poly_y[n_pts - 2], poly_x[n_pts - 1], poly_y[n_pts - 1]);
+
+  const float x0 = poly_x[best_i];
+  const float y0 = poly_y[best_i];
+  const float x1 = poly_x[best_i + 1];
+  const float y1 = poly_y[best_i + 1];
+  // Past the start/end of the finite polyline: signed cross-track to the extended tip.
+  if ((best_i == 0 && best_t_raw < 0.0F) || (best_i == n_pts - 2 && best_t_raw > 1.0F)) {
+    const float dx = x1 - x0;
+    const float dy = y1 - y0;
+    const float len = vectorLength(dx, dy);
+    if (len < 1.0E-8F) {
+      result.lateral_distance = px - x0;
+    } else {
+      result.lateral_distance = ((px - x0) * (-dy) + (py - y0) * dx) / len;
+    }
     return;
   }
-  result.lateral_distance = best_dist;
+  result.lateral_distance = signedLateralOffsetPointToSegment(px, py, x0, y0, x1, y1);
 }
 
 /**
@@ -175,7 +204,7 @@ __host__ __device__ inline PolylineProjection projectPointToPolyline(
     return result;
   }
   if (n_pts == 1) {
-    result.lateral_distance = vectorLength(px - poly_x[0], py - poly_y[0]);
+    result.lateral_distance = px - poly_x[0];
     result.best_i = 0;
     result.best_t_raw = 0.0F;
     return result;
@@ -294,24 +323,6 @@ __host__ __device__ inline void pathLengthAtProjection(
                               poly_y[proj.best_i + 1] - poly_y[proj.best_i]);
   }
   remaining_distance_s = total_s - path_length_s;
-}
-
-/** Signed lateral offset from segment; positive = left of forward tangent. */
-__host__ __device__ inline float signedLateralOffsetPointToSegment(
-  const float px, const float py, const float x0, const float y0, const float x1, const float y1)
-{
-  const float dx = x1 - x0;
-  const float dy = y1 - y0;
-  const float len_sq = dx * dx + dy * dy;
-  if (len_sq < 1.0E-8F) {
-    return px - x0;
-  }
-
-  const float t = clampUnitInterval(((px - x0) * dx + (py - y0) * dy) / len_sq);
-  const float cx = x0 + t * dx;
-  const float cy = y0 + t * dy;
-  const float len = vectorLength(dx, dy);
-  return ((px - cx) * (-dy) + (py - cy) * dx) / len;
 }
 
 __host__ __device__ inline float dot2(

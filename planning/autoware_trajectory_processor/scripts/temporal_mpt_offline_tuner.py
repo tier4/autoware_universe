@@ -24,6 +24,7 @@ This tool:
     ``mppi_nominal`` marker); falls back to ``*_optimized.csv`` on older logs
   * regenerates t-MPT with the same IC / ``lf,lr`` and optional weight overrides
   * overlays **retuned** acados ``x*`` for weight comparison
+  * opens a second window with **horizon tracking errors** and **actuator state vs command**
 
 Example::
 
@@ -62,6 +63,15 @@ from temporal_mpt_offline_retune import discover_log_frames  # noqa: E402
 from temporal_mpt_offline_retune import load_ego_csv  # noqa: E402
 from temporal_mpt_offline_retune import load_key_value_csv  # noqa: E402
 from temporal_mpt_offline_retune import load_weights_yaml  # noqa: E402
+
+HORIZON_ROW_LABELS = (
+    "e_lon (MPC cost)",
+    "e_lat (MPC cost)",
+    "heading / speed error",
+    "speed state",
+    "accel (state vs cmd)",
+    "steer (state vs cmd)",
+)
 
 # Path-frame LINEAR_LS: qlong=along-track, qlat=cross-track (see apply_path_frame_stage).
 DEFAULT_WEIGHTS: Dict[str, float] = {
@@ -261,22 +271,23 @@ class TemporalMptOfflineTuner:
         )
         self.dt = dt
 
-        self.fig = plt.figure(figsize=(14.5, 8.5), constrained_layout=False)
+        self.fig = plt.figure(figsize=(14.5, 9.5), constrained_layout=False)
         self.fig.canvas.manager.set_window_title("Temporal MPT Offline Retune (MPPI u_nom)")
         gs = self.fig.add_gridspec(
-            4,
+            5,
             1,
             left=0.06,
             right=0.68,
             top=0.92,
             bottom=0.08,
-            hspace=0.28,
-            height_ratios=[2.4, 1.0, 1.0, 1.0],
+            hspace=0.30,
+            height_ratios=[2.4, 1.0, 1.0, 1.0, 1.0],
         )
         self.ax_xy = self.fig.add_subplot(gs[0])
         self.ax_yaw = self.fig.add_subplot(gs[1])
         self.ax_v = self.fig.add_subplot(gs[2])
-        self.ax_u = self.fig.add_subplot(gs[3])
+        self.ax_accel = self.fig.add_subplot(gs[3])
+        self.ax_steer = self.fig.add_subplot(gs[4])
         self.status_artist = self.fig.text(0.06, 0.965, self.status, fontsize=9, va="top")
 
         self.sliders: Dict[str, Slider] = {}
@@ -304,6 +315,9 @@ class TemporalMptOfflineTuner:
         self.btn_run.on_clicked(lambda _e: self._retune())
         self.fig.canvas.mpl_connect("key_press_event", self._on_key)
 
+        self.show_horizon = True
+        self._init_horizon_figure()
+
         flag = "ON" if self.logged_used_tmpt else "OFF (log flag)"
         print(
             f"Temporal MPT tuner: {self.log_dir} ({len(self.frame_ids)} frames).\n"
@@ -311,11 +325,21 @@ class TemporalMptOfflineTuner:
             f"(lr=ego_axle_to_box_center; use_temporal_mpt_as_nominal logged={flag}).\n"
             "Plots: reference (black) | logged RViz orange (*_nominal_traj / *_optimized) (cyan) | "
             "retuned acados x* (orange).\n"
+            "Second window: horizon tracking errors + actuator state transitions.\n"
             "Cyan reads the logged state trajectory from disk (same path as RViz orange "
             "mppi_nominal when *_nominal_traj.csv exists).\n"
-            "Keys: ←/→ step, r retune, d reset defaults, q quit."
+            "Keys: ←/→ step, r retune, d reset defaults, h toggle horizon window, q quit."
         )
         self._load_frame(solve_retune=True)
+
+    def _init_horizon_figure(self) -> None:
+        self.fig_horizon = plt.figure(figsize=(11.0, 9.0), num="Temporal MPT Horizon States")
+        self.fig_horizon.canvas.manager.set_window_title("Temporal MPT Horizon States")
+        gs = self.fig_horizon.add_gridspec(6, 1, hspace=0.38)
+        self.h_ax = [self.fig_horizon.add_subplot(gs[i]) for i in range(6)]
+        self.horizon_title = self.fig_horizon.suptitle("", fontsize=10, y=0.995)
+        if not self.show_horizon:
+            plt.close(self.fig_horizon)
 
     def _current_weights(self) -> Dict[str, float]:
         return {name: float(slider.val) for name, slider in self.sliders.items()}
@@ -387,6 +411,16 @@ class TemporalMptOfflineTuner:
         if self.retuned_solve is not None:
             parts.append(f"status={self.retuned_solve['status']}")
             sol = self.retuned_solve
+            if "horizon" in sol:
+                h = sol["horizon"]
+                parts.append(f"max|e_lat|={float(np.max(np.abs(h['e_lat']))):.3f}m")
+                parts.append(f"max|e_lon|={float(np.max(np.abs(h['e_lon']))):.3f}m")
+            if self.weights.get("qlong", 0.0) < 1.0e-6:
+                parts.append("WARN: qlong≈0 (along-track free → e_lon drift)")
+            if self.weights.get("qlat", 0.0) > 0 and self.weights.get("rdelta", 0.0) > 10.0 * max(
+                self.weights.get("qlat", 0.0), 1.0e-9
+            ):
+                parts.append("WARN: rdelta >> qlat (steer costly)")
             if "x" in sol and "ref_x" in sol:
                 nxy = min(len(sol["x"]), len(sol["ref_x"]))
                 if nxy > 0:
@@ -483,7 +517,7 @@ class TemporalMptOfflineTuner:
         sol = self.retuned_solve
         roll = self.retuned_rollout
 
-        for ax in (self.ax_xy, self.ax_yaw, self.ax_v, self.ax_u):
+        for ax in (self.ax_xy, self.ax_yaw, self.ax_v, self.ax_accel, self.ax_steer):
             ax.clear()
 
         if ref is not None:
@@ -505,8 +539,8 @@ class TemporalMptOfflineTuner:
             )
             self.ax_yaw.plot(logged["t"], logged["yaw"], "C0-", lw=1.6, label="logged ψ")
             self.ax_v.plot(logged["t"], logged["v"], "C0-", lw=1.6, label="logged v")
-            self.ax_u.plot(logged["t"], logged["a"], "C0-", lw=1.5, label="logged a")
-            self.ax_u.plot(logged["t"], logged["steer"], "C0--", lw=1.5, label="logged δ")
+            self.ax_accel.plot(logged["t"], logged["a"], "C0-", lw=1.5, label="logged a")
+            self.ax_steer.plot(logged["t"], logged["steer"], "C0-", lw=1.5, label="logged δ")
             ego = logged.get("ego")
             if ego is not None:
                 self.ax_xy.plot(ego["x"], ego["y"], "C0o", ms=7, zorder=6, label="ego")
@@ -516,8 +550,21 @@ class TemporalMptOfflineTuner:
             self.ax_xy.plot(sol["x"], sol["y"], "C1-", lw=2.4, label="retuned acados x*", zorder=5)
             self.ax_yaw.plot(sol["t"], sol["yaw"], "C1-", lw=1.8, label="acados ψ*")
             self.ax_v.plot(sol["t"], sol["v"], "C1-", lw=1.8, label="acados v*")
-            self.ax_u.plot(sol["t"], sol["a"], "C1-", lw=1.5, label="acados a*")
-            self.ax_u.plot(sol["t"], sol["steer"], "C3-", lw=1.5, label="acados δ*")
+            self.ax_accel.plot(sol["t"], sol["a"], "C1-", lw=1.5, label="acados a_cmd*")
+            self.ax_steer.plot(sol["t"], sol["steer"], "C1-", lw=1.5, label="acados δ_cmd*")
+            if "a_state" in sol:
+                self.ax_accel.plot(
+                    sol["t"], sol["a_state"], "C1--", lw=1.2, alpha=0.85, label="acados a state*"
+                )
+            if "delta_state" in sol:
+                self.ax_steer.plot(
+                    sol["t"],
+                    sol["delta_state"],
+                    "C1--",
+                    lw=1.2,
+                    alpha=0.85,
+                    label="acados δ state*",
+                )
 
         if roll is not None:
             self.ax_xy.plot(
@@ -541,13 +588,130 @@ class TemporalMptOfflineTuner:
         self.ax_v.grid(True, alpha=0.3)
         self.ax_v.legend(loc="best", fontsize=8)
 
-        self.ax_u.set_ylabel("a / δ")
-        self.ax_u.set_xlabel("t [s]")
-        self.ax_u.grid(True, alpha=0.3)
-        self.ax_u.legend(loc="best", fontsize=8)
+        self.ax_accel.set_ylabel("a [m/s²]")
+        self.ax_accel.grid(True, alpha=0.3)
+        self.ax_accel.legend(loc="best", fontsize=8)
+
+        self.ax_steer.set_ylabel("δ [rad]")
+        self.ax_steer.set_xlabel("t [s]")
+        self.ax_steer.grid(True, alpha=0.3)
+        self.ax_steer.legend(loc="best", fontsize=8)
 
         self.status_artist.set_text(self.status + (" …" if busy else ""))
+        self._redraw_horizon(sol=sol, frame_id=frame_id, busy=busy)
         self.fig.canvas.draw_idle()
+
+    def _redraw_horizon(self, *, sol: Optional[Dict[str, Any]], frame_id: int, busy: bool) -> None:
+        if not self.show_horizon:
+            return
+        for ax in self.h_ax:
+            ax.clear()
+
+        if sol is None or "horizon" not in sol:
+            self.horizon_title.set_text(
+                f"Frame {frame_id}: no retuned solve" + (" …" if busy else "")
+            )
+            self.h_ax[0].text(
+                0.5,
+                0.5,
+                "Run Retune to view horizon states",
+                transform=self.h_ax[0].transAxes,
+                ha="center",
+                va="center",
+            )
+            self.fig_horizon.canvas.draw_idle()
+            return
+
+        h = sol["horizon"]
+        t = h["t"]
+        metrics = sol.get("metrics", {})
+        title = (
+            f"Frame {frame_id}  start_idx={h['start_idx']}  status={sol.get('status', '?')}  "
+            f"max|e_xy|={metrics.get('max_e_xy', float('nan')):.3f}m  "
+            f"max|e_ψ|={metrics.get('max_abs_psi_err', float('nan')):.3f}rad  "
+            f"max|e_v|={metrics.get('max_abs_v_err', float('nan')):.3f}m/s"
+        )
+        if busy:
+            title += " …"
+        self.horizon_title.set_text(title)
+
+        ax = self.h_ax[0]
+        ax.plot(t, h["e_lon"], "C0-", lw=1.5, label="e_lon (cost)")
+        if "e_lon_poly" in h:
+            ax.plot(
+                t,
+                h["e_lon_poly"],
+                "C2--",
+                lw=1.0,
+                alpha=0.65,
+                label="vs ref[start_idx+k]",
+            )
+        ax.axhline(0.0, color="0.5", lw=0.8, ls=":")
+        ax.set_ylabel("m")
+        ax.set_title(HORIZON_ROW_LABELS[0])
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="best", fontsize=8)
+
+        ax = self.h_ax[1]
+        ax.plot(t, h["e_lat"], "C1-", lw=1.5, label="e_lat (cost)")
+        if "e_lat_poly" in h:
+            ax.plot(
+                t,
+                h["e_lat_poly"],
+                "C2--",
+                lw=1.0,
+                alpha=0.65,
+                label="vs ref[start_idx+k]",
+            )
+        ax.axhline(0.0, color="0.5", lw=0.8, ls=":")
+        ax.set_ylabel("m")
+        ax.set_title(HORIZON_ROW_LABELS[1])
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="best", fontsize=8)
+
+        ax = self.h_ax[2]
+        ax.plot(t, h["e_psi"], "C0-", lw=1.5, label="e_ψ")
+        ax.plot(t, h["e_v"], "C1-", lw=1.5, label="e_v")
+        ax.axhline(0.0, color="0.5", lw=0.8, ls=":")
+        ax.set_ylabel("rad / m/s")
+        ax.set_title(HORIZON_ROW_LABELS[2])
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="best", fontsize=8)
+
+        ax = self.h_ax[3]
+        ax.plot(t, sol["v"], "C1-", lw=1.6, label="v state")
+        ax.plot(t, h["ref_v"], "k--", lw=1.2, alpha=0.85, label="v ref")
+        ax.set_ylabel("m/s")
+        ax.set_title(HORIZON_ROW_LABELS[3])
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="best", fontsize=8)
+
+        ax = self.h_ax[4]
+        ax.plot(t, h["a_state"], "C1-", lw=1.6, label="a state")
+        ax.plot(t, h["a_cmd"], "C3--", lw=1.4, label="a_cmd")
+        ax.set_ylabel("m/s²")
+        ax.set_title(HORIZON_ROW_LABELS[4])
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="best", fontsize=8)
+
+        ax = self.h_ax[5]
+        ax.plot(t, h["delta_state"], "C1-", lw=1.6, label="δ state")
+        ax.plot(t, h["delta_cmd"], "C3--", lw=1.4, label="δ_cmd")
+        ax.set_ylabel("rad")
+        ax.set_xlabel("t [s]  (stage k over MPC horizon)")
+        ax.set_title(HORIZON_ROW_LABELS[5])
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="best", fontsize=8)
+
+        self.fig_horizon.canvas.draw_idle()
+
+    def _toggle_horizon_window(self) -> None:
+        self.show_horizon = not self.show_horizon
+        if self.show_horizon:
+            self._init_horizon_figure()
+            self._redraw_horizon(sol=self.retuned_solve, frame_id=self._frame_id(), busy=False)
+        else:
+            plt.close(self.fig_horizon)
 
     def _on_key(self, event) -> None:
         if event.key in ("right", "n"):
@@ -564,7 +728,11 @@ class TemporalMptOfflineTuner:
             self._retune()
         elif event.key == "d":
             self._reset_defaults()
+        elif event.key == "h":
+            self._toggle_horizon_window()
         elif event.key == "q":
+            if self.show_horizon:
+                plt.close(self.fig_horizon)
             plt.close(self.fig)
 
     def spin(self) -> None:

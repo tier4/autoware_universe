@@ -16,15 +16,40 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <vector>
 
 namespace temporal_mpt
 {
+namespace
+{
+bool acados_mpt_verbose()
+{
+  static const bool verbose = [] {
+    const char * env = std::getenv("ACADOS_MPT_VERBOSE");
+    return env != nullptr && env[0] != '\0' && env[0] != '0';
+  }();
+  return verbose;
+}
+
+void limit_blas_threads_once()
+{
+  // Tiny HPIPM QPs lose more to thread-pool wakeup than they gain from extra cores.
+  // Do not override a value the user already set.
+  static const bool once = [] {
+    ::setenv("OPENBLAS_NUM_THREADS", "1", 0);
+    ::setenv("MKL_NUM_THREADS", "1", 0);
+    return true;
+  }();
+  (void)once;
+}
+}  // namespace
 
 AcadosInterface::AcadosInterface()
 {
+  limit_blas_threads_once();
   capsule_ = kinematic_bicycle_temporal_acados_create_capsule();
   kinematic_bicycle_temporal_acados_create(capsule_);
 
@@ -283,16 +308,6 @@ AcadosSolution AcadosInterface::getControl(std::array<double, NX> x0)
   ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, 0, "kkt_norm_inf", &kkt_norm_inf);
   ocp_nlp_get(nlp_solver_, "sqp_iter", &sqp_iter);
 
-  kinematic_bicycle_temporal_acados_print_stats(capsule_);
-
-  std::stringstream ss;
-  ss << "\nSolver info:\n";
-  ss << " status " << status << "\n SQP iterations " << sqp_iter << "\n time "
-     << elapsed_time * 1000 << " [ms]\n KKT " << kkt_norm_inf << "\n";
-  appendInequalityLambdaReport(ss);
-
-  std::cerr << ss.str() << std::flush;
-
   AcadosSolution solution;
   solution.xtraj = getStateTrajectory();
   solution.utraj = getControlTrajectory();
@@ -300,7 +315,20 @@ AcadosSolution AcadosInterface::getControl(std::array<double, NX> x0)
   solution.kkt_norm_inf = kkt_norm_inf;
   solution.elapsed_time = elapsed_time;
   solution.status = status;
-  solution.info = ss.str();
+
+  const bool dump = acados_mpt_verbose() || status != 0;
+  if (dump) {
+    if (acados_mpt_verbose()) {
+      kinematic_bicycle_temporal_acados_print_stats(capsule_);
+    }
+    std::stringstream ss;
+    ss << "\nSolver info:\n";
+    ss << " status " << status << "\n SQP iterations " << sqp_iter << "\n time "
+       << elapsed_time * 1000 << " [ms]\n KKT " << kkt_norm_inf << "\n";
+    appendInequalityLambdaReport(ss);
+    std::cerr << ss.str() << std::flush;
+    solution.info = ss.str();
+  }
   return solution;
 }
 

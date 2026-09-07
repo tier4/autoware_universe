@@ -146,6 +146,15 @@ void applyActiveVelocityLimitProfile(
 [[nodiscard]] std::vector<FirstOrderDubinsMppiControl> shiftNominalControl(
   const std::vector<FirstOrderDubinsMppiControl> & previous, int horizon = kMppiHorizon);
 
+/**
+ * Time-align a no-delay nominal (e.g. t-MPT) to MPPI issued commands with per-channel dead time.
+ * Issued u_nom[k] enters the delay FIFO; the plant sees it acc_delay / steer_delay steps later.
+ * Maps u_nom[k] <- u_no_delay[k + delay] so MPPI stage k uses the t-MPT intent for stage k.
+ */
+[[nodiscard]] std::vector<FirstOrderDubinsMppiControl> shiftNominalControlForInputDelay(
+  const std::vector<FirstOrderDubinsMppiControl> & nominal, int acceleration_delay_steps,
+  int steer_delay_steps);
+
 [[nodiscard]] Trajectory buildOptimizedTrajectory(
   const Trajectory & input, const std::vector<OptimizedState> & post_step_states,
   const std::vector<FirstOrderDubinsMppiControl> & controls);
