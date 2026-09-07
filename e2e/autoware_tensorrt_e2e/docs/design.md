@@ -173,16 +173,16 @@ wait for K real frames, or optionally duplicate the current one
 
 Produces any subset of the `autoware_diffusion_planner` input tensors:
 
-`ego_current_state`, `ego_agent_past`, `neighbor_agents_past`, `static_objects`,
+`ego_current_state`, `ego_agent_past`, `static_objects`,
 `lanes(_speed_limit)(_has_speed_limit)`, `route_lanes(_speed_limit)(_has_speed_limit)`,
 `polygons`, `line_strings`, `goal_pose`, `ego_shape`, `turn_indicators`.
 
 Every tensor is **optional**: only the ones present in the engine manifest are produced, and
 only the subscriptions they need are created (a camera-only model with `ego_current_state`
 subscribes to nothing but odometry/acceleration; a model that also takes `route_lanes` adds
-map/route subscriptions). Free dimensions (history length, neighbor count, lane segment count)
-are taken from the engine spec, so a model trained with e.g. 21 history steps instead of 31
-needs no code change.
+map/route subscriptions). Free dimensions (history length, lane segment count) are taken from
+the engine spec, so a model trained with e.g. 21 history steps instead of 31 needs no code
+change.
 
 The implementation **reuses the exported `autoware_diffusion_planner` library** —
 `AgentData`, `LaneSegmentContext`, `process_traffic_signals`, `create_ego_current_state`,
@@ -217,21 +217,20 @@ tensor identity is known at compile time.
 
 The prediction tensor (default name `prediction`) is interpreted exactly like the diffusion
 planner output: `[batch, num_agents, T, 4]` with `(x, y, cos(yaw), sin(yaw))` per step in the
-ego frame at 0.1 s intervals; agent 0 is ego. `[batch, T, 4]` is accepted as the ego-only
-degenerate case. `T` comes from the engine and is validated against
+ego frame at 0.1 s intervals; agent 0 is ego, and is the only agent read. `[batch, T, 4]` is
+accepted as the ego-only degenerate case. `T` comes from the engine and is validated against
 `postprocess.horizon_seconds / postprocess.time_step` (40 for the current models; the
 diffusion planner's 80 would work equally).
 
 Pose parsing is a dimension-parameterized re-implementation of `parse_predictions`
-(the original hard-codes `OUTPUT_T = 80`); everything downstream —
+(the original hard-codes `OUTPUT_T = 80`); what follows it —
 `postprocess::create_ego_trajectory` (velocity from consecutive poses, smoothing window,
-force-stop) and `postprocess::create_predicted_objects` — is **called directly from the
-diffusion planner library**, so the postprocessing cannot drift apart. Neighbor predictions
-are published only when the model outputs more than one agent *and* the neighbor history
-context input is active.
+force-stop) — is **called directly from the diffusion planner library**, so the
+postprocessing cannot drift apart. This node plans; it does not republish other agents'
+futures, so the extra agents in a `[batch, num_agents, T, 4]` output are dropped.
 
-`Trajectory`, `CandidateTrajectories` (one candidate per batch, with generator UUID/name), and
-optional `PredictedObjects` are published, mirroring the diffusion planner topics.
+`Trajectory` and `CandidateTrajectories` (one candidate per batch, with generator UUID/name)
+are published, mirroring the diffusion planner topics.
 
 ### Output pacing and stability
 
