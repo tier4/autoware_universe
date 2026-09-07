@@ -20,6 +20,7 @@
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <rclcpp/time.hpp>
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -80,6 +81,25 @@ public:
    * @return std::nullopt for providers without a sensor stamp (context tensors).
    */
   virtual std::optional<rclcpp::Time> latest_input_stamp() const { return std::nullopt; }
+
+  /**
+   * @brief Offer to pace the node: call `on_data` when this provider's own sensor
+   *        delivers, and return true.
+   *
+   * A provider reading the input the model is actually waiting on -- the LiDAR
+   * sweep -- accepts, and the node then runs the moment that input lands rather
+   * than on the next tick of a timer. A timer makes each frame wait up to a full
+   * period before it is used, and that wait is latency the controller pays for an
+   * input that had already arrived. autoware_bevfusion, which reads the same
+   * cloud, is driven this way and has no timer at all. Providers reading slower
+   * context -- a map, a route -- decline, and the node falls back to its timer if
+   * none accepts.
+   */
+  virtual bool pace(std::function<void()> on_data)
+  {
+    (void)on_data;
+    return false;
+  }
 };
 
 }  // namespace autoware::tensorrt_e2e

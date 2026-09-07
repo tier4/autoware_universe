@@ -48,6 +48,8 @@ public:
 
   std::string name() const override { return "lidar"; }
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
+  bool pace(std::function<void()> on_data) override;
+
   bool collect(
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs,
     std::string & error) override;
@@ -71,6 +73,8 @@ private:
   std::unique_ptr<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>
     pointcloud_sub_;
   std::shared_ptr<const cuda_blackboard::CudaPointCloud2> latest_pointcloud_;
+  //! Set when this provider paces the node; called on every new cloud.
+  std::function<void()> on_data_;
   mutable std::mutex mutex_;
 };
 

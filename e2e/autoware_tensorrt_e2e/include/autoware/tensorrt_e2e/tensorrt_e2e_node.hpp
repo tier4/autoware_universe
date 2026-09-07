@@ -100,7 +100,9 @@ private:
   void initialize_pipeline();
   void create_providers();
 
-  void on_timer();
+  //! One pass: collect, infer, publish. Driven by the pacing provider's
+//! input when there is one, by timer_ when there is not.
+  void run_once();
 
   /**
    * @brief Build the per-tick ego frame from the latest odometry/acceleration.

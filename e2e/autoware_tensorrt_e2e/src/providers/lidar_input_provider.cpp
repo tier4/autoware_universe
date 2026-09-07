@@ -135,8 +135,14 @@ std::vector<std::string> LidarInputProvider::claim_inputs(
     cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
     node_, "~/input/pointcloud",
     [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
-      std::lock_guard<std::mutex> lock(mutex_);
-      latest_pointcloud_ = std::move(msg);
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        latest_pointcloud_ = std::move(msg);
+      }
+      // Outside the lock: what this starts collects from this provider.
+      if (on_data_) {
+        on_data_();
+      }
     });
 
   return claimed;
@@ -218,5 +224,11 @@ bool LidarInputProvider::collect(
 
 TENSORRT_E2E_REGISTER_INPUT_PROVIDER(
   "lidar", [](rclcpp::Node & node, tf2_ros::Buffer &) { return std::make_unique<LidarInputProvider>(node); });
+
+bool LidarInputProvider::pace(std::function<void()> on_data)
+{
+  on_data_ = std::move(on_data);
+  return true;
+}
 
 }  // namespace autoware::tensorrt_e2e
