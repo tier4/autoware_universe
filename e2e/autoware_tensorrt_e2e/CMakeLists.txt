@@ -114,6 +114,16 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   endif()
 endif()
 
+# Outside the TensorRT guard on purpose. These read the launch XML and nothing
+# else -- no ROS graph, no CUDA, no engine -- so they cost nothing and they are
+# most valuable exactly where the rest of this package cannot build: a machine
+# without TensorRT is where a launch-file mistake would otherwise go unseen
+# until it reached one that has it.
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_launch_files test/test_launch_files.py)
+endif()
+
 ament_auto_package(
   INSTALL_TO_SHARE
   config
