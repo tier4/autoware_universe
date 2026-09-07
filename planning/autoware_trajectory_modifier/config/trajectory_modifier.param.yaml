@@ -3,10 +3,12 @@
     plugin_names:
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
       - "autoware::trajectory_modifier::plugin::TrafficLightStop"
+      - "autoware::trajectory_modifier::plugin::VelocityModifier"
       - "autoware::trajectory_modifier::plugin::StopPointFixer"
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
+    use_velocity_modifier: true
     trajectory_time_step: 0.1 # [s]
 
     # Stop Point Fixer Plugin Parameters
@@ -30,9 +32,6 @@
       enable_stop_for_objects: true
       enable_stop_for_pointcloud: false
       stop_margin: 6.0 # [m]
-      nominal_stopping_decel: 1.0 # [m/s^2]
-      maximum_stopping_decel: 4.0 # [m/s^2]
-      stopping_jerk: 3.0 # [m/s^3]
       lateral_margin: 0.0     # lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
       arrived_distance_threshold: 0.5 # threshold to check if the ego vehicle has arrived at the stop point [m]
 
