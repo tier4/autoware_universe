@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <stdexcept>
 
 namespace
 {
@@ -255,7 +256,6 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   FirstOrderDubinsBicycleCostImpl(cudaStream_t stream)
 {
-  runtime_data_.resize(1);
   this->bindToStream(stream);
   this->SHARED_MEM_REQUEST_GRD_BYTES = static_cast<int>(kSharedNumFloats * sizeof(float));
   this->SHARED_MEM_REQUEST_BLK_BYTES = static_cast<int>(kSharedBlkHintFloats * sizeof(float));
@@ -265,13 +265,37 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::~FirstOrderDubinsBicycleCostImpl()
 {
-  // A pinned async-copy source must remain alive until all transfers using it have completed.
-  if (this->GPUMemStatus_) {
-    HANDLE_ERROR(cudaStreamSynchronize(this->stream_));
+  freeCudaMem();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void
+FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::GPUSetup()
+{
+  if (runtime_data_.size() == 0) {
+    runtime_data_.resize(1);
+    runtime_data_.data()[0] = runtime_data_device_;
   }
-  setDistanceMapTextureDebugEnabled(false);
+  // Managed copies the embedded device snapshot, including values set before GPU setup.
+  runtime_data_device_ = runtime_data_.data()[0];
+  PARENT_CLASS::GPUSetup();
+  setDistanceMapTextureDebugEnabled(distance_map_texture_debug_enabled_);
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::freeCudaMem() noexcept
+{
+  if (this->GPUMemStatus_)
+    gpuAssert(cudaStreamSynchronize(this->stream_), __FILE__, __LINE__, false);
+  const bool debug_enabled = distance_map_texture_debug_enabled_;
+  cleanupNoThrow([&] { setDistanceMapTextureDebugEnabled(false); });
+  distance_map_texture_debug_enabled_ = debug_enabled;
   releaseDistanceMapResources();
-  runtime_data_.reset();
+  PARENT_CLASS::freeCudaMem();
+  if (runtime_data_.size() != 0) runtime_data_device_ = runtime_data_.data()[0];
+  runtime_data_.resetNoThrow();
+  data_update_active_ = false;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -399,6 +423,10 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     return;
   }
 
+  if (runtime_data_.size() == 0) {
+    runtime_data_.resize(1);
+    runtime_data_.data()[0] = runtime_data_device_;
+  }
   HANDLE_ERROR(cudaMemcpyAsync(
     &this->cost_d_->runtime_data_device_, this->runtime_data_.data(), sizeof(RuntimeData),
     cudaMemcpyHostToDevice, this->stream_));
@@ -604,7 +632,10 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     const float * x, const float * y, const float * yaw, const float * half_length,
     const float * half_width, const int obstacle_count, const int num_timesteps)
 {
-  const int n = std::max(0, std::min(obstacle_count, kMaxObstacles));
+  if (obstacle_count > kMaxObstacles) {
+    throw std::length_error("MPPI obstacle count exceeds complete GPU/validator coverage");
+  }
+  const int n = std::max(0, obstacle_count);
   const int nt = std::max(0, std::min(num_timesteps, NUM_TIMESTEPS));
   bool geometry_changed = runtimeData().num_obstacles_ != (nt > 0 ? n : 0);
   runtimeData().num_obstacles_ = nt > 0 ? n : 0;
@@ -665,7 +696,10 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setRoadBorderSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
-  const int n = std::min(static_cast<int>(segments.size()), kMaxRoadBorderSegments);
+  if (segments.size() > static_cast<std::size_t>(kMaxRoadBorderSegments)) {
+    throw std::length_error("MPPI boundary count exceeds complete GPU/validator coverage");
+  }
+  const int n = static_cast<int>(segments.size());
   bool geometry_changed = n != runtimeData().num_road_border_segments_;
   for (int i = 0; i < n && !geometry_changed; ++i) {
     geometry_changed = runtimeData().road_border_x0_[i] != segments[i].x0 ||
@@ -698,7 +732,10 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setDrivableAreaSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
-  const int n = std::min(static_cast<int>(segments.size()), kMaxDrivableAreaSegments);
+  if (segments.size() > static_cast<std::size_t>(kMaxDrivableAreaSegments)) {
+    throw std::length_error("MPPI boundary count exceeds complete GPU/validator coverage");
+  }
+  const int n = static_cast<int>(segments.size());
   bool geometry_changed = n != runtimeData().num_drivable_area_segments_;
   for (int i = 0; i < n && !geometry_changed; ++i) {
     geometry_changed = runtimeData().drivable_area_x0_[i] != segments[i].x0 ||

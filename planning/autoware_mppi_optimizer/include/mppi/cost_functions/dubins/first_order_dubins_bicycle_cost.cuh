@@ -174,16 +174,17 @@ public:
 
   /** Page-locked authoritative host copy used as the source of asynchronous cycle-data uploads. */
   mppi::memory::PinnedHostBuffer<RuntimeData> runtime_data_{};
-  /** POD storage embedded in the device-side cost object; never used as host state. */
+  /** Value-initialized CPU storage before GPU setup; copied into the device-side cost object. */
   RuntimeData runtime_data_device_{};
   DistanceMapTextureState texture_state_{};
+  bool distance_map_texture_debug_enabled_{false};
 
   __host__ __device__ __forceinline__ RuntimeData & runtimeData()
   {
 #ifdef __CUDA_ARCH__
     return runtime_data_device_;
 #else
-    return runtime_data_.data()[0];
+    return runtime_data_.size() == 0 ? runtime_data_device_ : runtime_data_.data()[0];
 #endif
   }
 
@@ -192,7 +193,7 @@ public:
 #ifdef __CUDA_ARCH__
     return runtime_data_device_;
 #else
-    return runtime_data_.data()[0];
+    return runtime_data_.size() == 0 ? runtime_data_device_ : runtime_data_.data()[0];
 #endif
   }
 
@@ -227,6 +228,8 @@ public:
   __host__ FirstOrderDubinsBicycleCostImpl(cudaStream_t stream = 0);
 
   __host__ ~FirstOrderDubinsBicycleCostImpl() override;
+  __host__ void GPUSetup();
+  __host__ void freeCudaMem() noexcept;
 
   FirstOrderDubinsBicycleCostImpl(const FirstOrderDubinsBicycleCostImpl &) = delete;
   FirstOrderDubinsBicycleCostImpl & operator=(const FirstOrderDubinsBicycleCostImpl &) = delete;

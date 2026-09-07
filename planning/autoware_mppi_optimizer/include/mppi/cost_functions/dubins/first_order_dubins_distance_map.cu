@@ -204,9 +204,11 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setDistanceMapTextureDebugEnabled(const bool enable)
 {
+  // Store the preference without creating a CUDA/GL context during CPU configuration.
+  distance_map_texture_debug_enabled_ = enable;
   const bool visualizer_was_enabled = this->texture_state_.distance_map_visualizer_ != nullptr;
   configureDistanceMapTextureVisualizer(
-    this->texture_state_.distance_map_visualizer_, enable,
+    this->texture_state_.distance_map_visualizer_, enable && this->GPUMemStatus_,
     this->texture_state_.kStaticDistanceMapWidth, this->texture_state_.kStaticDistanceMapHeight,
     this->texture_state_.kObstacleDistanceMapWidth, this->texture_state_.kObstacleDistanceMapHeight,
     NUM_TIMESTEPS);
@@ -632,41 +634,56 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     return;
   }
 
-  HANDLE_ERROR(cudaStreamSynchronize(this->stream_));
+  gpuAssert(cudaStreamSynchronize(this->stream_), __FILE__, __LINE__, false);
   if (this->texture_state_.static_distance_surface_ != 0) {
-    HANDLE_ERROR(cudaDestroySurfaceObject(this->texture_state_.static_distance_surface_));
+    gpuAssert(
+      cudaDestroySurfaceObject(this->texture_state_.static_distance_surface_), __FILE__, __LINE__,
+      false);
     this->texture_state_.static_distance_surface_ = 0;
   }
   if (this->texture_state_.obstacle_distance_surface_ != 0) {
-    HANDLE_ERROR(cudaDestroySurfaceObject(this->texture_state_.obstacle_distance_surface_));
+    gpuAssert(
+      cudaDestroySurfaceObject(this->texture_state_.obstacle_distance_surface_), __FILE__, __LINE__,
+      false);
     this->texture_state_.obstacle_distance_surface_ = 0;
   }
   if (this->texture_state_.nearest_segment_surface_ != 0) {
-    HANDLE_ERROR(cudaDestroySurfaceObject(this->texture_state_.nearest_segment_surface_));
+    gpuAssert(
+      cudaDestroySurfaceObject(this->texture_state_.nearest_segment_surface_), __FILE__, __LINE__,
+      false);
     this->texture_state_.nearest_segment_surface_ = 0;
   }
   if (this->texture_state_.static_distance_texture_ != 0) {
-    HANDLE_ERROR(cudaDestroyTextureObject(this->texture_state_.static_distance_texture_));
+    gpuAssert(
+      cudaDestroyTextureObject(this->texture_state_.static_distance_texture_), __FILE__, __LINE__,
+      false);
     this->texture_state_.static_distance_texture_ = 0;
   }
   if (this->texture_state_.obstacle_distance_texture_ != 0) {
-    HANDLE_ERROR(cudaDestroyTextureObject(this->texture_state_.obstacle_distance_texture_));
+    gpuAssert(
+      cudaDestroyTextureObject(this->texture_state_.obstacle_distance_texture_), __FILE__, __LINE__,
+      false);
     this->texture_state_.obstacle_distance_texture_ = 0;
   }
   if (this->texture_state_.nearest_segment_texture_ != 0) {
-    HANDLE_ERROR(cudaDestroyTextureObject(this->texture_state_.nearest_segment_texture_));
+    gpuAssert(
+      cudaDestroyTextureObject(this->texture_state_.nearest_segment_texture_), __FILE__, __LINE__,
+      false);
     this->texture_state_.nearest_segment_texture_ = 0;
   }
   if (this->texture_state_.static_distance_array_ != nullptr) {
-    HANDLE_ERROR(cudaFreeArray(this->texture_state_.static_distance_array_));
+    gpuAssert(
+      cudaFreeArray(this->texture_state_.static_distance_array_), __FILE__, __LINE__, false);
     this->texture_state_.static_distance_array_ = nullptr;
   }
   if (this->texture_state_.obstacle_distance_array_ != nullptr) {
-    HANDLE_ERROR(cudaFreeArray(this->texture_state_.obstacle_distance_array_));
+    gpuAssert(
+      cudaFreeArray(this->texture_state_.obstacle_distance_array_), __FILE__, __LINE__, false);
     this->texture_state_.obstacle_distance_array_ = nullptr;
   }
   if (this->texture_state_.nearest_segment_array_ != nullptr) {
-    HANDLE_ERROR(cudaFreeArray(this->texture_state_.nearest_segment_array_));
+    gpuAssert(
+      cudaFreeArray(this->texture_state_.nearest_segment_array_), __FILE__, __LINE__, false);
     this->texture_state_.nearest_segment_array_ = nullptr;
   }
   this->texture_state_.road_border_texture_valid_ = false;

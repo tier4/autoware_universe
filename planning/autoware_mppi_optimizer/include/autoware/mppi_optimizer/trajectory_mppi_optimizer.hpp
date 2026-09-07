@@ -137,12 +137,14 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr nominal_trajectory_pub_;
   rclcpp::Publisher<Trajectory>::SharedPtr velocity_limit_trajectory_pub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr markers_pub_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr rollouts_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr enabled_pub_;
   std::unique_ptr<autoware_utils_debug::DebugPublisher> debug_publisher_;
   std::unique_ptr<DiagnosticsInterface> cost_diagnostics_;
 
   std::optional<FirstOrderDubinsMppiDebug> pending_debug_;
   MarkerArray pending_markers_;
+  MarkerArray pending_rollouts_;
   std_msgs::msg::Header pending_debug_header_;
   mutable bool debug_pending_{false};
 };

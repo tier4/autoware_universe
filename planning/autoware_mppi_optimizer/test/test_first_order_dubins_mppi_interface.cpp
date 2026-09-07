@@ -16,17 +16,21 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_kinematic_limits.cuh>
+#include <mppi/utils/gpu_err_chk.cuh>
 
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace autoware::mppi_optimizer
@@ -154,6 +158,61 @@ TEST(FirstOrderDubinsMppiInterface, SkippedInputsDoNotInitializeCuda)
   EXPECT_FALSE(interface.isInitialized());
 }
 
+// These cases deliberately have no CUDA availability skip. They must run in a process with
+// CUDA_VISIBLE_DEVICES=-1 as well as on a GPU machine.
+TEST(FirstOrderDubinsMppiInterface, RejectsGeometryOverflowBeforeCudaSetup)
+{
+  FirstOrderDubinsMppiInterface interface;
+  const auto input = makeStraightTrajectory(80U);
+  TrackedObjects objects;
+  objects.objects.resize(65U);
+  objects.objects.back().kinematics.pose_with_covariance.pose.position.x = 0.2;
+  EXPECT_THROW(optimize(interface, input, makeOdometry(), objects), std::length_error);
+  std::reverse(objects.objects.begin(), objects.objects.end());
+  EXPECT_THROW(optimize(interface, input, makeOdometry(), objects), std::length_error);
+  EXPECT_FALSE(interface.isInitialized());
+
+  std::vector<Segment> borders(257U, Segment{100.0F, 100.0F, 101.0F, 100.0F});
+  borders.back() = Segment{0.2F, -1.0F, 0.2F, 1.0F};
+  EXPECT_THROW(
+    optimize(interface, input, makeOdometry(), TrackedObjects{}, borders), std::length_error);
+  std::reverse(borders.begin(), borders.end());
+  EXPECT_THROW(
+    optimize(interface, input, makeOdometry(), TrackedObjects{}, borders), std::length_error);
+  EXPECT_THROW(
+    interface.optimizeTrajectory(
+      input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, borders),
+    std::length_error);
+  EXPECT_FALSE(interface.isInitialized());
+}
+
+TEST(FirstOrderDubinsMppiInterface, CpuConfigurationAndMoveDoNotRequireCuda)
+{
+  FirstOrderDubinsMppiInterface first;
+  first.setVehicleParams(FirstOrderDubinsMppiVehicleParams{});
+  first.setCostParams(FirstOrderDubinsMppiCostParams{});
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.enable_distance_map_texture_debug = true;
+  first.setRuntimeOptions(options);
+  FirstOrderDubinsMppiInterface second;
+  second = std::move(first);
+  EXPECT_FALSE(second.isInitialized());
+  EXPECT_NO_THROW(optimize(second, Trajectory{}));
+  EXPECT_NO_THROW(second.discardPendingTrajectory());
+  EXPECT_THROW(second.commitPendingTrajectory(), std::logic_error);
+}
+
+TEST(CudaReliability, ExceptionsPreserveRecoveryClassification)
+{
+  const CudaError allocation_error(cudaErrorMemoryAllocation, __FILE__, __LINE__);
+  EXPECT_FALSE(allocation_error.requiresProcessRestart());
+  EXPECT_EQ(allocation_error.code(), cudaErrorMemoryAllocation);
+  const CudaError execution_error(cudaErrorIllegalAddress, __FILE__, __LINE__);
+  EXPECT_TRUE(execution_error.requiresProcessRestart());
+  EXPECT_THROW(gpuAssert(cudaErrorInvalidValue, __FILE__, __LINE__), std::runtime_error);
+  EXPECT_NO_THROW(gpuAssert(cudaErrorInvalidValue, __FILE__, __LINE__, false));
+}
+
 class FirstOrderDubinsMppiInterfaceGpuTest : public ::testing::Test
 {
 protected:
@@ -175,6 +234,122 @@ protected:
 
   std::unique_ptr<FirstOrderDubinsMppiInterface> interface_;
 };
+
+FirstOrderDubinsMppiControlSequencePostprocessor fixedAcceleration(const float acceleration)
+{
+  return [acceleration](std::vector<FirstOrderDubinsMppiControl> & controls) {
+    for (auto & control : controls) control = {acceleration, 0.0F};
+  };
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, DeferredCandidatesCommitHistoryOnlyOnAcceptance)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  interface_->setCostParams(costs);
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.acc_time_delay = 0.2F;
+  vehicle.steer_time_delay = 0.0F;
+  interface_->setVehicleParams(vehicle);
+  const auto input = makeStraightTrajectory(80U);
+  const auto preview = [&](const float acceleration) {
+    return interface_->optimizeTrajectory(
+      input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+      fixedAcceleration(acceleration), true);
+  };
+
+  const auto shadow = preview(1.0F);
+  EXPECT_FALSE(shadow.debug.applied_plant.valid);
+  EXPECT_FLOAT_EQ(shadow.debug.applied_plant.sim_time, 0.1F);
+  interface_->discardPendingTrajectory();
+  EXPECT_THROW(interface_->commitPendingTrajectory(), std::logic_error);
+
+  const auto candidate = preview(2.0F);
+  EXPECT_FLOAT_EQ(candidate.debug.applied_plant.sim_time, 0.1F);
+  ASSERT_EQ(candidate.debug.applied_plant.accel_cmd_delay_buffer.size(), 2U);
+  EXPECT_FLOAT_EQ(candidate.debug.applied_plant.accel_cmd_delay_buffer.front(), 0.0F);
+  EXPECT_FLOAT_EQ(candidate.debug.applied_plant.accel_cmd_delay_buffer.back(), 2.0F);
+  EXPECT_NO_THROW(interface_->commitPendingTrajectory());
+  EXPECT_THROW(interface_->commitPendingTrajectory(), std::logic_error);
+
+  const auto following = preview(3.0F);
+  EXPECT_FLOAT_EQ(following.debug.applied_plant.sim_time, 0.2F);
+  ASSERT_EQ(following.debug.applied_plant.accel_cmd_delay_buffer.size(), 2U);
+  EXPECT_FLOAT_EQ(following.debug.applied_plant.accel_cmd_delay_buffer.front(), 2.0F);
+  EXPECT_FLOAT_EQ(following.debug.applied_plant.accel_cmd_delay_buffer.back(), 3.0F);
+  interface_->discardPendingTrajectory();
+}
+
+TEST_F(
+  FirstOrderDubinsMppiInterfaceGpuTest, RejectionAndPostprocessorFailurePreserveAcceptedHistory)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  costs.boundary_threshold = 0.5F;
+  interface_->setCostParams(costs);
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.acc_time_delay = 0.2F;
+  vehicle.steer_time_delay = 0.0F;
+  interface_->setVehicleParams(vehicle);
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.skip_if_invalid = true;
+  interface_->setRuntimeOptions(options);
+  // Keep the accelerated candidate within the reference polyline; only lateral rejection is under
+  // test.
+  const auto input = makeStraightTrajectory(400U);
+  const auto accepted = interface_->optimizeTrajectory(
+    input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+    fixedAcceleration(1.0F));
+  ASSERT_FALSE(accepted.debug.was_rejected);
+
+  auto outside = makeOdometry();
+  outside.pose.pose.position.y = 3.0;
+  const auto rejected = interface_->optimizeTrajectory(
+    input, outside, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+    fixedAcceleration(2.0F));
+  ASSERT_TRUE(rejected.debug.was_rejected);
+  EXPECT_FALSE(rejected.debug.applied_plant.valid);
+  EXPECT_THROW(interface_->commitPendingTrajectory(), std::logic_error);
+  EXPECT_THROW(
+    interface_->optimizeTrajectory(
+      input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+      [](auto &) { throw std::runtime_error("injected postprocessor failure"); }),
+    std::runtime_error);
+
+  const auto following = interface_->optimizeTrajectory(
+    input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+    fixedAcceleration(3.0F), true);
+  EXPECT_FLOAT_EQ(following.debug.applied_plant.sim_time, 0.2F);
+  ASSERT_EQ(following.debug.applied_plant.accel_cmd_delay_buffer.size(), 2U);
+  EXPECT_FLOAT_EQ(following.debug.applied_plant.accel_cmd_delay_buffer.front(), 1.0F);
+  interface_->discardPendingTrajectory();
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, CudaFailureDisablesFurtherWorkUntilExplicitRecovery)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  interface_->setCostParams(costs);
+  const auto input = makeStraightTrajectory(80U);
+  // Inject the boundary exception without actually corrupting the process's CUDA context.
+  EXPECT_THROW(
+    interface_->optimizeTrajectory(
+      input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+      [](auto &) { throw CudaError(cudaErrorMemoryAllocation, __FILE__, __LINE__); }),
+    CudaError);
+  EXPECT_FALSE(interface_->isInitialized());
+  EXPECT_THROW(optimize(*interface_, input), std::runtime_error);
+  EXPECT_NO_THROW(interface_->initialize());
+  EXPECT_TRUE(interface_->isInitialized());
+  EXPECT_THROW(
+    interface_->optimizeTrajectory(
+      input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+      [](auto &) { throw CudaError(cudaErrorIllegalAddress, __FILE__, __LINE__); }),
+    CudaError);
+  EXPECT_FALSE(interface_->isInitialized());
+  EXPECT_THROW(interface_->initialize(), std::runtime_error);
+  EXPECT_THROW(optimize(*interface_, input), std::runtime_error);
+}
 
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, ProducesFinitePostStepTrajectoryAndPreservesSuffix)
 {
