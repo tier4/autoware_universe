@@ -64,7 +64,7 @@ safety_planner:
       type: string
       default_value: autoware::safety_planner::RoughOptimizerTrajectoryPlanner
       read_only: true
-      description: ロードする軌道プランナープラグインの完全修飾クラス名。2 つの制約セット (normal / cautious) から 2 本の軌道を作る
+      description: ロードする軌道プランナープラグインの完全修飾クラス名 (RoughOptimizerTrajectoryPlanner = DP + 最適化 / FrenetSamplingBasedPlanner = Frenet サンプリング)。2 つの制約セット (normal / cautious) から 2 本の軌道を作る
 
   trajectory_optimizer:
     plugin:
@@ -347,6 +347,13 @@ safety_planner:
       description: Boundary の margin [m] (禁止側をこの分だけ膨張して評価する)
       validation:
         gt_eq<>: [0.0]
+    bound_slack_weight:
+      type: double
+      default_value: 100.0
+      read_only: true
+      description: 並走車線ありの自レーン bound (SOFT) のスラック重み [-]。road_border は HARD
+      validation:
+        gt_eq<>: [0.0]
 
   obstacle_stop:
     margin_m:
@@ -393,6 +400,70 @@ safety_planner:
       description: 中心線をサンプルする弧長間隔 [m]
       validation:
         gt<>: [0.0]
+
+  frenet_sampler:
+    time_step_s:
+      type: double
+      default_value: 0.1
+      read_only: true
+      description: 出力時間グリッド刻み [s]
+      validation:
+        gt<>: [0.0]
+    horizon_s:
+      type: double
+      default_value: 10.0
+      read_only: true
+      description: 出力軌道の時間長 [s]。終端時間 T がこれより短い候補は終端状態を保って延長する
+      validation:
+        gt<>: [0.0]
+    path_resolution_m:
+      type: double
+      default_value: 0.5
+      read_only: true
+      description: 経路 l(s) の空間サンプル間隔 [m] (heading・曲率はこの間隔の位置差分から求める)
+      validation:
+        gt<>: [0.0]
+    target_lengths_m:
+      type: double_array
+      default_value: [10.0, 20.0, 40.0]
+      read_only: true
+      description: 経路 l(s) が終端横位置に到達する弧長 L [m] のリスト
+    target_durations_s:
+      type: double_array
+      default_value: [2.0, 4.0, 6.0, 8.0]
+      read_only: true
+      description: 速度プロファイル s(t) の終端時間 T [s] のリスト
+    target_lateral_positions_m:
+      type: double_array
+      default_value: [-2.0, -1.0, 0.0, 1.0, 2.0]
+      read_only: true
+      description: サンプルする終端横位置 l_T [m] のリスト (reference_path 中心線基準、左が正)
+    target_velocity_ratios:
+      type: double_array
+      default_value: [0.0, 0.25, 0.5, 0.75, 1.0]
+      read_only: true
+      description: サンプルする終端速度を ego 位置の速度上限に対する比で指定するリスト [-]
+    weights:
+      lateral:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: 横オフセット l² の重み [1/(m²·s)]
+      velocity:
+        type: double
+        default_value: 0.5
+        read_only: true
+        description: 速度上限からの乖離 (v_max - v)² の重み [s/m²]
+      lon_jerk:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: 縦躍度² の重み [s⁵/m²]
+      curvature:
+        type: double
+        default_value: 10.0
+        read_only: true
+        description: 曲率 κ² の重み [m²/s]
 
   rough_planner:
     time_step_s:

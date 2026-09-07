@@ -124,10 +124,13 @@ bool has_parallel_road_lanelet_at(
 //! Boundary 制約を 1 本組み立てる。polyline は進行方向順であること (forbidden_side の前提)
 Constraint make_boundary_constraint(
   const std::vector<Point2d> & polyline, const Side side, const double margin_m,
-  const std::string & plugin_name, const std::string & target_id, const std::string & detail)
+  const Hardness hardness, const double slack_weight, const std::string & plugin_name,
+  const std::string & target_id, const std::string & detail)
 {
   Constraint constraint;
   constraint.certainty = Certainty::DEFINITE;  // 地図は前提が確定している
+  constraint.hardness = hardness;
+  constraint.slack_weight = hardness == Hardness::SOFT ? slack_weight : 0.0;
   Boundary boundary;
   boundary.polyline.assign(polyline.begin(), polyline.end());
   boundary.forbidden_side = side;
@@ -160,6 +163,7 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
       .as_lanelets();
   const auto & lanelet_map = route_manager.lanelet_map_ptr();
   const double margin_m = params_.lane_following_drivable_area.margin_m;
+  const double bound_slack_weight = params_.lane_following_drivable_area.bound_slack_weight;
 
   //! 同じ road_border が複数 lanelet から採用されたときの重複発行を防ぐ
   std::set<std::pair<bool, lanelet::Id>> adopted_borders;
@@ -220,15 +224,15 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         ADJACENT_FRACTION;
 
       if (adjacent) {
-        // 並走車線あり: 自レーンの bound を hard にして車線変更を禁止する
+        // 並走車線あり: 自レーンの bound を soft にする (この側に road_border は出さない)
         std::vector<Point2d> polyline;
         polyline.reserve(bound.size());
         for (const auto & point : bound) {
           polyline.emplace_back(point.x(), point.y());
         }
         output.constraints.push_back(make_boundary_constraint(
-          polyline, side, margin_m, get_name(), std::to_string(lanelet.id()),
-          side_left ? "left_bound" : "right_bound"));
+          polyline, side, margin_m, Hardness::SOFT, bound_slack_weight, get_name(),
+          std::to_string(lanelet.id()), side_left ? "left_bound" : "right_bound"));
         continue;
       }
 
@@ -254,13 +258,13 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
           std::reverse(polyline.begin(), polyline.end());
         }
         output.constraints.push_back(make_boundary_constraint(
-          polyline, side, margin_m, get_name(), std::to_string(border_id),
+          polyline, side, margin_m, Hardness::HARD, 0.0, get_name(), std::to_string(border_id),
           side_left ? "left_road_border" : "right_road_border"));
       }
     }
   }
 
-  // --- debug marker: 採用した hard 境界の折れ線 ---
+  // --- debug marker: 採用した境界の折れ線 ---
   {
     using autoware_utils_visualization::create_default_marker;
     using autoware_utils_visualization::create_marker_color;

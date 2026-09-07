@@ -18,6 +18,10 @@
     </class>
   </library>
   <library path="autoware_safety_planner_trajectory_planner_plugins">
+    <class type="autoware::safety_planner::FrenetSamplingBasedPlanner"
+           base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
+      <description>Frenet 座標で終端状態 (T, l_T, v_T) をサンプルし quintic 多項式で結ぶ。制約 IR の射影ビューで候補をふるいコスト最小を採用する</description>
+    </class>
     <class type="autoware::safety_planner::RoughOptimizerTrajectoryPlanner"
            base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
       <description>制約セットごとに rough_planner (時空間 DP) → trajectory optimizer を回して 2 本の軌道を作る既定プランナー</description>
