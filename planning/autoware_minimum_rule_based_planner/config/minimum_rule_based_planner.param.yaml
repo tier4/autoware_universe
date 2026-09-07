@@ -183,7 +183,7 @@
       lpf_gain_lateral_distance: 0.7  # low-pass filter gain for lateral distance from obstacle to ego's path
       lpf_gain_dist_to_slow_down: 0.7 # low-pass filter gain for distance to slow down start
       time_margin_on_target_velocity: 1.5 # [s]
-      target_objects: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "animal"] # TODO: perceptionの仕様を確認する
+      target_objects: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "animal"]
       obstacle_filtering:
         min_lat_margin: -10.0  # lateral margin between obstacle and trajectory band with ego's width to avoid the conflict with the obstacle_stop [m]
         max_lat_margin: 1.1    # lateral margin between obstacle and trajectory band with ego's width [m]
