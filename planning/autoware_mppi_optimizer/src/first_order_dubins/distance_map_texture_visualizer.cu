@@ -220,6 +220,29 @@ public:
       cudaGraphicsMapResources(mapped_count, mapped_resources.data(), visualization_stream_));
 
     std::array<cudaSurfaceObject_t, 3> output_surfaces{};
+    struct MappedCleanup
+    {
+      cudaStream_t stream;
+      std::array<cudaSurfaceObject_t, 3> & surfaces;
+      std::array<cudaGraphicsResource_t, 3> & resources;
+      int count;
+      bool mapped{true};
+      ~MappedCleanup() noexcept
+      {
+        if (!mapped) return;
+        gpuAssert(cudaStreamSynchronize(stream), __FILE__, __LINE__, false);
+        for (auto & surface : surfaces) {
+          if (surface != 0) {
+            gpuAssert(cudaDestroySurfaceObject(surface), __FILE__, __LINE__, false);
+            surface = 0;
+          }
+        }
+        gpuAssert(
+          cudaGraphicsUnmapResources(count, resources.data(), stream), __FILE__, __LINE__, false);
+        gpuAssert(cudaStreamSynchronize(stream), __FILE__, __LINE__, false);
+        glfwMakeContextCurrent(nullptr);
+      }
+    } cleanup{visualization_stream_, output_surfaces, mapped_resources, mapped_count};
     if (update_static) {
       output_surfaces[0] = mappedSurface(cuda_resources_[0]);
       output_surfaces[1] = mappedSurface(cuda_resources_[1]);
@@ -258,6 +281,7 @@ public:
     }
     HANDLE_ERROR(
       cudaGraphicsUnmapResources(mapped_count, mapped_resources.data(), visualization_stream_));
+    cleanup.mapped = false;
     HANDLE_ERROR(cudaStreamSynchronize(visualization_stream_));
 
     drawWindow();
@@ -291,6 +315,8 @@ private:
     const cudaError_t err = cudaGraphicsGLRegisterImage(
       &cuda_resources_[index], gl_textures_[index], GL_TEXTURE_2D, flags);
     if (err != cudaSuccess) {
+      const CudaError failure(err, __FILE__, __LINE__);
+      if (failure.requiresProcessRestart()) throw failure;
       throw std::runtime_error(
         std::string("cudaGraphicsGLRegisterImage failed: ") + cudaGetErrorString(err));
     }
@@ -456,16 +482,16 @@ private:
     }
   }
 
-  void release()
+  void release() noexcept
   {
     if (window_ != nullptr) {
       glfwMakeContextCurrent(window_);
       if (visualization_stream_ != nullptr) {
-        HANDLE_ERROR(cudaStreamSynchronize(visualization_stream_));
+        gpuAssert(cudaStreamSynchronize(visualization_stream_), __FILE__, __LINE__, false);
       }
       for (cudaGraphicsResource_t & resource : cuda_resources_) {
         if (resource != nullptr) {
-          HANDLE_ERROR(cudaGraphicsUnregisterResource(resource));
+          gpuAssert(cudaGraphicsUnregisterResource(resource), __FILE__, __LINE__, false);
           resource = nullptr;
         }
       }
@@ -475,11 +501,11 @@ private:
       window_ = nullptr;
     }
     if (distance_maps_ready_event_ != nullptr) {
-      HANDLE_ERROR(cudaEventDestroy(distance_maps_ready_event_));
+      gpuAssert(cudaEventDestroy(distance_maps_ready_event_), __FILE__, __LINE__, false);
       distance_maps_ready_event_ = nullptr;
     }
     if (visualization_stream_ != nullptr) {
-      HANDLE_ERROR(cudaStreamDestroy(visualization_stream_));
+      gpuAssert(cudaStreamDestroy(visualization_stream_), __FILE__, __LINE__, false);
       visualization_stream_ = nullptr;
     }
     if (glfw_acquired_) {
@@ -520,6 +546,8 @@ __host__ void configureDistanceMapTextureVisualizer(
   try {
     visualizer = new DistanceMapTextureVisualizer(
       static_width, static_height, obstacle_width, obstacle_height, time_steps);
+  } catch (const GpuError &) {
+    throw;
   } catch (const std::exception & error) {
     std::cerr << "MPPI distance-map texture visualization disabled: " << error.what() << '\n';
   }

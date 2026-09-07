@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <stdexcept>
 #include <vector>
 
 namespace autoware::mppi_optimizer
@@ -36,15 +37,17 @@ using autoware_perception_msgs::msg::TrackedObjects;
  *
  * Twist is treated as object-frame longitudinal speed (linear.x), matching common Autoware usage.
  * Buffer slot t is evaluated at time_offset + (t + 1) * dt, matching ego state x[t + 1].
- * Up to kMaxMppiObstacles objects are used.
+ * Overflow is rejected: omitted geometry must never escape the final validator.
  */
 inline void buildObstacleTrajectoryBuffersFromTrackedObjects(
   const TrackedObjects & objects, const float dt, const int num_timesteps, std::vector<float> & x,
   std::vector<float> & y, std::vector<float> & yaw, std::vector<float> & half_length,
   std::vector<float> & half_width, const float time_offset = 0.0F)
 {
-  const size_t obstacle_count =
-    std::min(objects.objects.size(), static_cast<size_t>(kMaxMppiObstacles));
+  if (objects.objects.size() > kMaxMppiObstacles) {
+    throw std::length_error("Tracked objects exceed MPPI obstacle capacity");
+  }
+  const size_t obstacle_count = objects.objects.size();
   const int nt = std::max(1, num_timesteps);
 
   x.assign(obstacle_count * static_cast<size_t>(nt), -1.0E4F);
@@ -83,7 +86,10 @@ inline void buildObstacleTrajectoryBuffersFromTrackedObjects(
 
 inline int trackedObjectObstacleCount(const TrackedObjects & objects)
 {
-  return static_cast<int>(std::min(objects.objects.size(), static_cast<size_t>(kMaxMppiObstacles)));
+  if (objects.objects.size() > kMaxMppiObstacles) {
+    throw std::length_error("Tracked objects exceed MPPI obstacle capacity");
+  }
+  return static_cast<int>(objects.objects.size());
 }
 
 }  // namespace autoware::mppi_optimizer

@@ -514,8 +514,7 @@ void checkCuda(const char * where)
 {
   const cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
-    throw std::runtime_error(
-      std::string("MPPI CUDA error at ") + where + ": " + cudaGetErrorString(err));
+    throw CudaError(err, where, 0);
   }
 }
 
@@ -940,10 +939,89 @@ struct FirstOrderDubinsMppiInterface::Impl
   detail::FirstOrderDubinsMppiPlantSnapshot prediction_anchor_{};
   std::vector<detail::FirstOrderDubinsMppiControlHistoryEntry> prediction_control_history_{};
 
+  // Execution history is committed only when the candidate is accepted. Sampler statistics
+  // and the optional temporal seed may evolve during candidate computation; they are proposals.
+  struct TrackingState
+  {
+    Mppi::control_trajectory controls;
+    DYN::state_array state;
+    int steps;
+    float time;
+    std::vector<float> accel_delay;
+    std::vector<float> steer_delay;
+    bool delay_seeded;
+    detail::FirstOrderDubinsMppiPlantSnapshot anchor;
+    std::vector<detail::FirstOrderDubinsMppiControlHistoryEntry> history;
+    float applied_accel;
+    float applied_steer;
+  };
+
+  TrackingState snapshotTrackingState() const
+  {
+    return {
+      u_opt,
+      x,
+      step_count,
+      sim_time,
+      accel_delay_buffer,
+      steer_delay_buffer,
+      delay_buffer_seeded,
+      prediction_anchor_,
+      prediction_control_history_,
+      logged_applied_accel,
+      logged_applied_steer};
+  }
+
+  void restoreTrackingState(TrackingState && state) noexcept
+  {
+    u_opt = state.controls;
+    x = state.state;
+    step_count = state.steps;
+    sim_time = state.time;
+    accel_delay_buffer = std::move(state.accel_delay);
+    steer_delay_buffer = std::move(state.steer_delay);
+    delay_buffer_seeded = state.delay_seeded;
+    prediction_anchor_ = std::move(state.anchor);
+    prediction_control_history_ = std::move(state.history);
+    logged_applied_accel = state.applied_accel;
+    logged_applied_steer = state.applied_steer;
+  }
+
+  struct TrackingTransaction
+  {
+    Impl & owner;
+    TrackingState previous;
+    bool accepted{false};
+    explicit TrackingTransaction(Impl & impl) : owner(impl), previous(impl.snapshotTrackingState())
+    {
+    }
+    ~TrackingTransaction() noexcept
+    {
+      if (!accepted) owner.restoreTrackingState(std::move(previous));
+    }
+  };
+
+  std::optional<TrackingState> pending_trajectory_;
+  std::string gpu_failure_;
+  bool restart_required_{false};
+
+  void recordGpuFailure(const GpuError & error)
+  {
+    restart_required_ = restart_required_ || error.requiresProcessRestart();
+    gpu_failure_ = std::string(error.what()) +
+                   (restart_required_ ? "; CUDA context unusable: restart the hosting process"
+                                      : "; optimizer unavailable until explicit initialize()");
+    teardown();
+  }
+
   Impl() : feedback(&model, kDt), sampler(SAMPLER::SAMPLING_PARAMS_T{}) {}
+  ~Impl() noexcept { teardown(); }
 
   void setup()
-  {
+  try {
+    if (restart_required_) throw std::runtime_error(gpu_failure_);
+    gpu_failure_.clear();
+    pending_trajectory_.reset();
     // Release the old controller before reconfiguring its shared model/cost/sampler resources.
     initialized = false;
     controller.reset();
@@ -1072,6 +1150,14 @@ struct FirstOrderDubinsMppiInterface::Impl
       cost_params.road_border_barrier_weight, cost_params.road_border_safe_margin,
       cost_params.drivable_area_barrier_weight, cost_params.drivable_area_safe_margin,
       cost_params.crash_contact_penalty);
+  }
+
+  catch (const GpuError & error) {
+    recordGpuFailure(error);
+    throw;
+  } catch (...) {
+    teardown();
+    throw;
   }
 
   void resetTrackingState()
@@ -1461,6 +1547,21 @@ struct FirstOrderDubinsMppiInterface::Impl
     const std::vector<Segment> & drivable_area_in,
     const FirstOrderDubinsMppiKinematicLimits & kinematic_limits)
   {
+    const auto check_capacity = [](std::size_t count, std::size_t capacity, const char * kind) {
+      if (count > capacity) {
+        throw std::length_error(
+          std::string("MPPI cannot cover all ") + kind + ": " + std::to_string(count) +
+          " exceeds capacity " + std::to_string(capacity));
+      }
+    };
+    if (!ignore_obstacles)
+      check_capacity(tracked_objects_in.objects.size(), COST::kMaxObstacles, "tracked objects");
+    if (!ignore_road_borders)
+      check_capacity(road_borders_in.size(), COST::kMaxRoadBorderSegments, "road borders");
+    if (!ignore_drivable_area)
+      check_capacity(
+        drivable_area_in.size(), COST::kMaxDrivableAreaSegments, "drivable-area segments");
+    if (!gpu_failure_.empty()) throw std::runtime_error(gpu_failure_);
     if (!initialized) {
       setup();
     }
@@ -1488,16 +1589,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     tracked_objects = ignore_obstacles ? TrackedObjects{} : tracked_objects_in;
     road_borders = ignore_road_borders ? std::vector<Segment>() : road_borders_in;
     drivable_area = ignore_drivable_area ? std::vector<Segment>() : drivable_area_in;
-    if (road_borders.size() > static_cast<size_t>(COST::kMaxRoadBorderSegments)) {
-      RCLCPP_WARN(
-        mppiLogger(), "Road-border segment count %zu exceeds GPU capacity %d; truncating",
-        road_borders.size(), COST::kMaxRoadBorderSegments);
-    }
-    if (drivable_area.size() > static_cast<size_t>(COST::kMaxDrivableAreaSegments)) {
-      RCLCPP_WARN(
-        mppiLogger(), "Drivable-area segment count %zu exceeds GPU capacity %d; truncating",
-        drivable_area.size(), COST::kMaxDrivableAreaSegments);
-    }
     obstacles.clear();
     // Boundary crash is disabled on this stack (isEgoOutsideDrivableArea always false).
     // ignore_drivable_area remains an ablation API flag; it does not reintroduce road borders.
@@ -1833,12 +1924,14 @@ struct FirstOrderDubinsMppiInterface::Impl
     return control;
   }
 
-  void teardown()
+  void teardown() noexcept
   {
+    pending_trajectory_.reset();
     controller.reset();
-    cost.freeCudaMem();
-    model.freeCudaMem();
-    sampler.freeCudaMem();
+    cleanupNoThrow([&] { cost.freeCudaMem(); });
+    cleanupNoThrow([&] { model.freeCudaMem(); });
+    cleanupNoThrow([&] { sampler.freeCudaMem(); });
+    cleanupNoThrow([&] { feedback.freeCudaMem(); });
     initialized = false;
   }
 };
@@ -1847,12 +1940,7 @@ FirstOrderDubinsMppiInterface::FirstOrderDubinsMppiInterface() : impl_(std::make
 {
 }
 
-FirstOrderDubinsMppiInterface::~FirstOrderDubinsMppiInterface()
-{
-  if (impl_) {
-    impl_->teardown();
-  }
-}
+FirstOrderDubinsMppiInterface::~FirstOrderDubinsMppiInterface() = default;
 
 FirstOrderDubinsMppiInterface::FirstOrderDubinsMppiInterface(
   FirstOrderDubinsMppiInterface && other) noexcept = default;
@@ -1876,6 +1964,7 @@ bool FirstOrderDubinsMppiInterface::isInitialized() const
 void FirstOrderDubinsMppiInterface::setVehicleParams(
   const FirstOrderDubinsMppiVehicleParams & params)
 {
+  if (impl_) impl_->pending_trajectory_.reset();
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
@@ -1887,6 +1976,7 @@ void FirstOrderDubinsMppiInterface::setVehicleParams(
 
 void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCostParams & params)
 {
+  if (impl_) impl_->pending_trajectory_.reset();
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
@@ -1922,45 +2012,51 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
 void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   const FirstOrderDubinsMppiRuntimeOptions & options)
 {
-  if (!impl_) {
-    throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
-  }
-  impl_->prevent_reverse_velocity = options.prevent_reverse_velocity;
-  setDebugTrajectoryLogging(
-    options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
-  impl_->cost.setDistanceMapTextureDebugEnabled(options.enable_distance_map_texture_debug);
-  impl_->enable_iteration_rollout_debug = options.enable_iteration_rollout_debug;
-  if (impl_->controller) {
-    impl_->controller->setIterationRolloutCaptureEnabled(
-      options.enable_iteration_rollout_debug && !impl_->enable_rollout_visualization);
-  }
-  setAblationOptions(
-    options.ignore_obstacles, options.ignore_road_borders, options.ignore_drivable_area,
-    options.force_cold_start_each_step, options.skip_if_invalid,
-    options.use_last_control_as_nominal);
-  if (!impl_) {
-    throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
-  }
-  impl_->use_temporal_mpt_as_nominal = options.use_temporal_mpt_as_nominal;
-  impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
-  impl_->min_optimization_length = options.min_optimization_length;
-  impl_->dyn.prevent_reverse_velocity = options.prevent_reverse_velocity;
-  if (impl_->initialized) {
-    impl_->syncDelayStepsToModel();
-    if (!impl_->enable_input_delay_compensation) {
-      impl_->accel_delay_buffer.clear();
-      impl_->steer_delay_buffer.clear();
-      impl_->delay_buffer_seeded = false;
-      impl_->loadDelayPipesIntoState();
+  if (impl_) impl_->pending_trajectory_.reset();
+  try {
+    if (!impl_) {
+      throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
     }
+    impl_->prevent_reverse_velocity = options.prevent_reverse_velocity;
+    setDebugTrajectoryLogging(
+      options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
+    impl_->cost.setDistanceMapTextureDebugEnabled(options.enable_distance_map_texture_debug);
+    impl_->enable_iteration_rollout_debug = options.enable_iteration_rollout_debug;
+    if (impl_->controller) {
+      impl_->controller->setIterationRolloutCaptureEnabled(
+        options.enable_iteration_rollout_debug && !impl_->enable_rollout_visualization);
+    }
+    setAblationOptions(
+      options.ignore_obstacles, options.ignore_road_borders, options.ignore_drivable_area,
+      options.force_cold_start_each_step, options.skip_if_invalid,
+      options.use_last_control_as_nominal);
+    if (!impl_) {
+      throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
+    }
+    impl_->use_temporal_mpt_as_nominal = options.use_temporal_mpt_as_nominal;
+    impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
+    impl_->min_optimization_length = options.min_optimization_length;
+    impl_->dyn.prevent_reverse_velocity = options.prevent_reverse_velocity;
+    if (impl_->initialized) {
+      impl_->syncDelayStepsToModel();
+      if (!impl_->enable_input_delay_compensation) {
+        impl_->accel_delay_buffer.clear();
+        impl_->steer_delay_buffer.clear();
+        impl_->delay_buffer_seeded = false;
+        impl_->loadDelayPipesIntoState();
+      }
+    }
+    RCLCPP_INFO(
+      mppiLogger(),
+      "MPPI nominal seed: use_temporal_mpt_as_nominal=%s enable_input_delay_compensation=%s "
+      "prevent_reverse_velocity=%s",
+      options.use_temporal_mpt_as_nominal ? "true" : "false",
+      options.enable_input_delay_compensation ? "true" : "false",
+      options.prevent_reverse_velocity ? "true" : "false");
+  } catch (const GpuError & error) {
+    if (impl_) impl_->recordGpuFailure(error);
+    throw;
   }
-  RCLCPP_INFO(
-    mppiLogger(),
-    "MPPI nominal seed: use_temporal_mpt_as_nominal=%s enable_input_delay_compensation=%s "
-    "prevent_reverse_velocity=%s",
-    options.use_temporal_mpt_as_nominal ? "true" : "false",
-    options.enable_input_delay_compensation ? "true" : "false",
-    options.prevent_reverse_velocity ? "true" : "false");
 }
 void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
   const bool enable, const std::string & directory)
@@ -1977,6 +2073,7 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   const bool force_cold_start_each_step, const bool skip_if_invalid,
   const bool use_last_control_as_nominal)
 {
+  discardPendingTrajectory();
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
@@ -2023,6 +2120,7 @@ void FirstOrderDubinsMppiInterface::setRolloutVisualizationEnabled(const bool en
 void FirstOrderDubinsMppiInterface::setForcedNominalControl(
   const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd)
 {
+  discardPendingTrajectory();
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
@@ -2034,6 +2132,7 @@ void FirstOrderDubinsMppiInterface::setForcedNominalControl(
 void FirstOrderDubinsMppiInterface::setControlHistory(
   const float accel_tm2, const float steer_tm2, const float accel_tm1, const float steer_tm1)
 {
+  discardPendingTrajectory();
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
@@ -2050,6 +2149,7 @@ void FirstOrderDubinsMppiInterface::setControlHistory(
 void FirstOrderDubinsMppiInterface::setInputDelayBuffer(
   const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd)
 {
+  discardPendingTrajectory();
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
@@ -2122,20 +2222,26 @@ bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
 FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
   FirstOrderDubinsMppiState & state, float sim_time)
 {
-  if (!impl_ || !impl_->initialized) {
-    throw std::runtime_error(
-      "FirstOrderDubinsMppiInterface must be initialized before computeStep");
-  }
+  if (impl_) impl_->pending_trajectory_.reset();
+  try {
+    if (!impl_ || !impl_->initialized) {
+      throw std::runtime_error(
+        "FirstOrderDubinsMppiInterface must be initialized before computeStep");
+    }
 
-  fromHostState(impl_->x, state);
-  impl_->sim_time = sim_time;
-  impl_->cost.beginDataUpdate();
-  const FirstOrderDubinsMppiControl control = impl_->runStep({});
-  state = toHostState(impl_->x);
-  // Advance the vendor control history after the applied command is consumed so the
-  // next cycle's Savitzky-Golay left-edge taps are the previously applied controls.
-  impl_->controller->slideControlSequence(1);
-  return control;
+    fromHostState(impl_->x, state);
+    impl_->sim_time = sim_time;
+    impl_->cost.beginDataUpdate();
+    const FirstOrderDubinsMppiControl control = impl_->runStep({});
+    state = toHostState(impl_->x);
+    // Advance the vendor control history after the applied command is consumed so the
+    // next cycle's Savitzky-Golay left-edge taps are the previously applied controls.
+    impl_->controller->slideControlSequence(1);
+    return control;
+  } catch (const GpuError & error) {
+    if (impl_) impl_->recordGpuFailure(error);
+    throw;
+  }
 }
 
 FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTrajectory(
@@ -2145,11 +2251,13 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
   const std::vector<Segment> & drivable_area,
   const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
-  const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor)
-{
+  const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor,
+  const bool defer_commit)
+try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
+  impl_->pending_trajectory_.reset();
   FirstOrderDubinsMppiOptimizationResult result;
   const auto not_enough_input_points = input.points.size() < 2U;
   const auto optimization_required =
@@ -2171,6 +2279,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   impl_->updateDiffusionReference(
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
     kinematic_limits);
+  Impl::TrackingTransaction transaction(*impl_);
   result.debug.prediction_accuracy = impl_->evaluatePredictionAccuracy(odometry);
   impl_->capturePredictionAnchor(odometry);
   // Capture IC before runStep advances the ego state with the applied control.
@@ -2415,11 +2524,35 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
         : "unknown");
   }
 
-  // Advance the vendor control history after all getControlSeq / getActualStateSeq reads
-  // so the next cycle's Savitzky-Golay left-edge taps are the previously applied controls.
-  impl_->controller->slideControlSequence(1);
-
+  if (result.debug.was_rejected) {
+    // The fallback's actual actuator command is unknown here; do not commit the candidate.
+    result.debug.applied_plant.valid = false;
+  } else if (defer_commit) {
+    impl_->pending_trajectory_ = impl_->snapshotTrackingState();
+    result.debug.applied_plant.valid = false;
+  } else {
+    impl_->controller->slideControlSequence(1);
+    transaction.accepted = true;
+  }
   return result;
+} catch (const GpuError & error) {
+  if (impl_) impl_->recordGpuFailure(error);
+  throw;
+}
+
+void FirstOrderDubinsMppiInterface::commitPendingTrajectory()
+{
+  if (!impl_ || !impl_->pending_trajectory_ || !impl_->initialized) {
+    throw std::logic_error("MPPI has no accepted candidate pending commitment");
+  }
+  impl_->controller->slideControlSequence(1);
+  impl_->restoreTrackingState(std::move(*impl_->pending_trajectory_));
+  impl_->pending_trajectory_.reset();
+}
+
+void FirstOrderDubinsMppiInterface::discardPendingTrajectory() noexcept
+{
+  if (impl_) impl_->pending_trajectory_.reset();
 }
 
 namespace detail
