@@ -58,7 +58,6 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
 
   pub_trajectory_ = create_publisher<Trajectory>("~/output/trajectory", 1);
   pub_trajectories_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
-  pub_objects_ = create_publisher<PredictedObjects>("~/output/predicted_objects", rclcpp::QoS(1));
   pub_processing_time_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
   diagnostics_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
@@ -347,10 +346,9 @@ void TensorrtE2eNode::on_timer()
   stop_watch_.tic("postprocess");
   TrajectoryPostprocessor::Output output;
   try {
-    const auto * neighbor_histories =
-      context_provider_ ? &context_provider_->last_neighbor_histories() : nullptr;
+
     output = postprocessor_->process(
-      *result.outputs, *ego, neighbor_histories, ego->stamp, generator_uuid_);
+      *result.outputs, *ego, ego->stamp, generator_uuid_);
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), "Postprocessing failed: " << e.what());
     finish(DiagnosticStatus::ERROR, e.what());
@@ -361,9 +359,6 @@ void TensorrtE2eNode::on_timer()
 
   pub_trajectory_->publish(output.trajectory);
   pub_trajectories_->publish(output.candidate_trajectories);
-  if (output.predicted_objects) {
-    pub_objects_->publish(*output.predicted_objects);
-  }
   publish_planning_factor(output.trajectory);
 
   // Timing: the whole tick must fit in the planning period to sustain the output rate.
@@ -400,7 +395,6 @@ void TensorrtE2eNode::add_input_diagnostics(const TensorMap & inputs)
     {"route_lanes", "valid_route_count"},
     {"polygons", "valid_polygon_count"},
     {"line_strings", "valid_line_string_count"},
-    {"neighbor_agents_past", "valid_neighbor_count"},
   };
   for (const auto & [tensor_name, key] : kCounted) {
     const auto it = inputs.find(tensor_name);

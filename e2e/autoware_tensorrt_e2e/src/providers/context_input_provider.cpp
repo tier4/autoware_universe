@@ -59,11 +59,8 @@ ContextInputProvider::ContextInputProvider(
 {
   traffic_light_msg_timeout_s_ =
     node_.declare_parameter<double>("context.traffic_light_group_msg_timeout_seconds", 0.2);
-  ignore_neighbors_ = node_.declare_parameter<bool>("context.ignore_neighbors", false);
   turn_indicators_enabled_ =
     node_.declare_parameter<bool>("context.turn_indicators.enabled", true);
-  ignore_unknown_neighbors_ =
-    node_.declare_parameter<bool>("context.ignore_unknown_neighbors", true);
   line_string_max_step_m_ =
     node_.declare_parameter<double>("context.line_string_max_step_m", 5.0);
   use_time_interpolation_ =
@@ -92,19 +89,6 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
       throw std::runtime_error(
         "Model input 'ego_agent_past' has shape " + shape_to_string(spec->shape) +
         "; expected [1, T, " + std::to_string(dp::POSE_DIM) + "]");
-    }
-  }
-  if (const auto * spec = claim("neighbor_agents_past", neighbor_shape_)) {
-    // The history length is fixed by the reused diffusion planner AgentData implementation.
-    if (
-      spec->shape.size() != 4 || spec->shape[0] != 1 ||
-      spec->shape[2] != dp::INPUT_T_WITH_CURRENT ||
-      spec->shape[3] != static_cast<int64_t>(dp::AGENT_STATE_DIM)) {
-      throw std::runtime_error(
-        "Model input 'neighbor_agents_past' has shape " + shape_to_string(spec->shape) +
-        "; expected [1, N, " + std::to_string(dp::INPUT_T_WITH_CURRENT) + ", " +
-        std::to_string(dp::AGENT_STATE_DIM) +
-        "] (the history length is fixed by the diffusion planner feature pipeline)");
     }
   }
   claim("static_objects", static_objects_shape_);  // Always zero-filled; any shape is accepted.
@@ -203,11 +187,6 @@ void ContextInputProvider::create_subscriptions()
   const bool needs_route = !route_lanes_shape_.empty() || !goal_pose_shape_.empty();
   const bool needs_traffic = !lanes_shape_.empty() || !route_lanes_shape_.empty();
 
-  if (!neighbor_shape_.empty() && !ignore_neighbors_) {
-    sub_tracked_objects_ =
-      std::make_unique<autoware_utils::InterProcessPollingSubscriber<TrackedObjects>>(
-        &node_, "~/input/tracked_objects");
-  }
   if (needs_traffic) {
     sub_traffic_signals_ = std::make_unique<autoware_utils::InterProcessPollingSubscriber<
       TrafficLightGroupArray, autoware_utils::polling_policy::All>>(
@@ -254,7 +233,6 @@ bool ContextInputProvider::collect(
   }
 
   return collect_ego_tensors(ego, inputs, error) &&
-         collect_neighbor_tensors(ego, inputs, error) &&
          collect_map_tensors(ego, inputs, error) && collect_route_tensors(ego, inputs, error) &&
          collect_turn_indicator_tensor(inputs, error);
 }
@@ -299,34 +277,6 @@ bool ContextInputProvider::collect_ego_tensors(
       std::vector<float>(static_cast<size_t>(shape_num_elements(static_objects_shape_)), 0.0f));
   }
 
-  return true;
-}
-
-bool ContextInputProvider::collect_neighbor_tensors(
-  const EgoFrame & ego, TensorMap & inputs, std::string & error)
-{
-  if (neighbor_shape_.empty()) {
-    return true;
-  }
-
-  TrackedObjects::ConstSharedPtr objects;
-  if (!ignore_neighbors_) {
-    objects = sub_tracked_objects_->take_data();
-    if (!objects) {
-      error = "No tracked objects received yet (required by 'neighbor_agents_past')";
-      return false;
-    }
-  } else {
-    objects = std::make_shared<TrackedObjects>();
-  }
-
-  const auto max_num_neighbors = static_cast<size_t>(neighbor_shape_[1]);
-  agent_data_.update_histories(*objects, ignore_unknown_neighbors_);
-  last_neighbor_histories_ =
-    agent_data_.transformed_and_trimmed_histories(ego.map_to_ego, max_num_neighbors);
-  inputs["neighbor_agents_past"] = Tensor::from_host(
-    neighbor_shape_, dp::flatten_histories_to_vector(
-                       last_neighbor_histories_, max_num_neighbors, dp::INPUT_T_WITH_CURRENT));
   return true;
 }
 

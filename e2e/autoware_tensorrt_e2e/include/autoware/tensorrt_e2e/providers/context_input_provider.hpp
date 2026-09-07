@@ -25,7 +25,6 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
-#include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
@@ -48,12 +47,12 @@ namespace autoware::tensorrt_e2e
  *
  * Claimable tensors (fixed names — they are the contract of the diffusion planner feature
  * pipeline, which this provider reuses):
- * `ego_current_state`, `ego_agent_past`, `neighbor_agents_past`, `static_objects`,
+ * `ego_current_state`, `ego_agent_past`, `static_objects`,
  * `lanes`, `lanes_speed_limit`, `lanes_has_speed_limit`,
  * `route_lanes`, `route_lanes_speed_limit`, `route_lanes_has_speed_limit`,
  * `polygons`, `line_strings`, `goal_pose`, `ego_shape`, `turn_indicators`.
  *
- * Free dimensions (history length, neighbor count, lane/route segment count) are taken from
+ * Free dimensions (history length, lane/route segment count) are taken from
  * the engine manifest. Subscriptions are created only for the data the claimed tensors need.
  */
 class ContextInputProvider : public InputProviderInterface
@@ -68,19 +67,7 @@ public:
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs,
     std::string & error) override;
 
-  /**
-   * @brief Neighbor histories of the latest collect(), ego-centric and distance-ordered.
-   *
-   * Used by the postprocessor to attach model-predicted paths to tracked objects. Empty when
-   * `neighbor_agents_past` is not claimed.
-   */
-  const std::vector<autoware::diffusion_planner::AgentHistory> & last_neighbor_histories() const
-  {
-    return last_neighbor_histories_;
-  }
-
 private:
-  using TrackedObjects = autoware_perception_msgs::msg::TrackedObjects;
   using TrafficLightGroupArray = autoware_perception_msgs::msg::TrafficLightGroupArray;
   using TurnIndicatorsReport = autoware_vehicle_msgs::msg::TurnIndicatorsReport;
   using LaneletRoute = autoware_planning_msgs::msg::LaneletRoute;
@@ -90,7 +77,6 @@ private:
   void on_map(const LaneletMapBin::ConstSharedPtr map_msg);
 
   bool collect_ego_tensors(const EgoFrame & ego, TensorMap & inputs, std::string & error);
-  bool collect_neighbor_tensors(const EgoFrame & ego, TensorMap & inputs, std::string & error);
   bool collect_map_tensors(const EgoFrame & ego, TensorMap & inputs, std::string & error);
   bool collect_route_tensors(const EgoFrame & ego, TensorMap & inputs, std::string & error);
   bool collect_turn_indicator_tensor(TensorMap & inputs, std::string & error);
@@ -104,20 +90,16 @@ private:
 
   // Deployment parameters
   double traffic_light_msg_timeout_s_{0.2};
-  bool ignore_neighbors_{false};
   //! `context.turn_indicators.enabled`. Off for a network whose graph carries the
   //! input only to keep a stable signature and never reads it: nothing is
   //! subscribed and the tensor is a constant built once at claim time.
   bool turn_indicators_enabled_{true};
-  std::vector<float> turn_indicators_constant_;
-  bool ignore_unknown_neighbors_{true};
   double line_string_max_step_m_{5.0};
   bool use_time_interpolation_{false};
 
   // Claims and engine-derived dimensions. A claim is active when its shape is non-empty.
   std::vector<int64_t> ego_current_state_shape_;
   std::vector<int64_t> ego_agent_past_shape_;
-  std::vector<int64_t> neighbor_shape_;
   std::vector<int64_t> static_objects_shape_;
   std::vector<int64_t> lanes_shape_;
   std::vector<int64_t> lanes_speed_limit_shape_;
@@ -130,10 +112,9 @@ private:
   std::vector<int64_t> goal_pose_shape_;
   std::vector<int64_t> ego_shape_shape_;
   std::vector<int64_t> turn_indicators_shape_;
+  std::vector<float> turn_indicators_constant_;
 
   // Subscriptions (created on demand in claim_inputs)
-  std::unique_ptr<autoware_utils::InterProcessPollingSubscriber<TrackedObjects>>
-    sub_tracked_objects_;
   std::unique_ptr<autoware_utils::InterProcessPollingSubscriber<
     TrafficLightGroupArray, autoware_utils::polling_policy::All>>
     sub_traffic_signals_;
@@ -147,8 +128,6 @@ private:
   // State (mirrors DiffusionPlannerCore)
   std::deque<nav_msgs::msg::Odometry> ego_history_;
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
-  autoware::diffusion_planner::AgentData agent_data_;
-  std::vector<autoware::diffusion_planner::AgentHistory> last_neighbor_histories_;
   std::map<lanelet::Id, autoware::diffusion_planner::preprocess::TrafficSignalStamped>
     traffic_light_id_map_;
   std::unique_ptr<autoware::diffusion_planner::preprocess::LaneSegmentContext>

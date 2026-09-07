@@ -37,8 +37,6 @@
 
     context:
       traffic_light_group_msg_timeout_seconds: 0.2
-      ignore_neighbors: false
-      ignore_unknown_neighbors: true
       line_string_max_step_m: 5.0
       use_time_interpolation: false
 

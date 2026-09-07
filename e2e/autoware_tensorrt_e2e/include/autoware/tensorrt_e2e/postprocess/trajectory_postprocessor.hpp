@@ -21,7 +21,6 @@
 #include <rclcpp/time.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
-#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
@@ -71,7 +70,6 @@ public:
   {
     autoware_planning_msgs::msg::Trajectory trajectory;
     autoware_internal_planning_msgs::msg::CandidateTrajectories candidate_trajectories;
-    std::optional<autoware_perception_msgs::msg::PredictedObjects> predicted_objects;
   };
 
   explicit TrajectoryPostprocessor(const PostprocessParams & params);
@@ -88,7 +86,6 @@ public:
    *
    * @param outputs Inference output tensors.
    * @param ego Ego frame the prediction is relative to.
-   * @param neighbor_histories Ego-centric neighbor histories for predicted objects
    *        (nullptr or empty to skip publishing them).
    * @param stamp Message timestamp.
    * @param generator_uuid Candidate trajectory generator id.
@@ -96,7 +93,6 @@ public:
    */
   Output process(
     const TensorMap & outputs, const EgoFrame & ego,
-    const std::vector<autoware::diffusion_planner::AgentHistory> * neighbor_histories,
     const rclcpp::Time & stamp, const unique_identifier_msgs::msg::UUID & generator_uuid) const;
 
   int64_t num_timesteps() const { return num_timesteps_; }

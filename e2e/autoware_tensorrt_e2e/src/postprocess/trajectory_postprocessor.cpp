@@ -205,9 +205,8 @@ autoware_planning_msgs::msg::Trajectory TrajectoryPostprocessor::create_trajecto
 }
 
 TrajectoryPostprocessor::Output TrajectoryPostprocessor::process(
-  const TensorMap & outputs, const EgoFrame & ego,
-  const std::vector<autoware::diffusion_planner::AgentHistory> * neighbor_histories,
-  const rclcpp::Time & stamp, const unique_identifier_msgs::msg::UUID & generator_uuid) const
+  const TensorMap & outputs, const EgoFrame & ego, const rclcpp::Time & stamp,
+  const unique_identifier_msgs::msg::UUID & generator_uuid) const
 {
   const auto it = outputs.find(params_.prediction_tensor);
   if (it == outputs.end()) {
@@ -243,18 +242,6 @@ TrajectoryPostprocessor::Output TrajectoryPostprocessor::process(
     }
   }
 
-  if (num_agents_ > 1 && neighbor_histories && !neighbor_histories->empty()) {
-    // The reused function indexes agent_poses[batch][i + 1] for every history entry, so the
-    // histories must not outnumber the model's predicted neighbors.
-    const auto max_paths = static_cast<size_t>(num_agents_ - 1);
-    const std::vector<autoware::diffusion_planner::AgentHistory> truncated_histories(
-      neighbor_histories->begin(),
-      neighbor_histories->begin() +
-        std::min(neighbor_histories->size(), max_paths));
-    constexpr int64_t batch_idx = 0;
-    output.predicted_objects = dp::postprocess::create_predicted_objects(
-      agent_poses, truncated_histories, stamp, batch_idx);
-  }
 
   return output;
 }

@@ -136,7 +136,7 @@ TEST(TrajectoryPostprocessorTest, ProducesTrajectoryInMapFrame)
   const auto outputs = make_straight_prediction(1, step_m);
 
   unique_identifier_msgs::msg::UUID uuid;
-  const auto result = postprocessor.process(outputs, ego, nullptr, rclcpp::Time(0), uuid);
+  const auto result = postprocessor.process(outputs, ego, rclcpp::Time(0), uuid);
 
   ASSERT_EQ(result.trajectory.points.size(), static_cast<size_t>(kTimesteps));
   EXPECT_EQ(result.trajectory.header.frame_id, "map");
@@ -162,9 +162,6 @@ TEST(TrajectoryPostprocessorTest, ProducesTrajectoryInMapFrame)
   EXPECT_EQ(
     result.candidate_trajectories.generator_info.front().generator_name.data,
     "TestGenerator_batch_0");
-
-  // Ego-only model: no predicted objects.
-  EXPECT_FALSE(result.predicted_objects.has_value());
 }
 
 TEST(TrajectoryPostprocessorTest, AppliesBaseLinkOffsetInReverse)
@@ -178,7 +175,7 @@ TEST(TrajectoryPostprocessorTest, AppliesBaseLinkOffsetInReverse)
   const auto outputs = make_straight_prediction(1, 1.0);
 
   unique_identifier_msgs::msg::UUID uuid;
-  const auto result = postprocessor.process(outputs, ego, nullptr, rclcpp::Time(0), uuid);
+  const auto result = postprocessor.process(outputs, ego, rclcpp::Time(0), uuid);
 
   // The vehicle-center pose is shifted back to base_link along the heading (x axis here).
   EXPECT_DOUBLE_EQ(result.trajectory.points.front().pose.position.x, 1.0 - 1.5);
@@ -205,7 +202,7 @@ TEST(TrajectoryPostprocessorTest, ExtraTrajectoryTensorsBecomeCandidates)
 
   const auto ego = make_ego_frame(0.0, 0.0, 10.0);
   unique_identifier_msgs::msg::UUID uuid;
-  const auto result = postprocessor.process(outputs, ego, nullptr, rclcpp::Time(0), uuid);
+  const auto result = postprocessor.process(outputs, ego, rclcpp::Time(0), uuid);
 
   // One candidate from the main output plus one from the prior.
   ASSERT_EQ(result.candidate_trajectories.candidate_trajectories.size(), 2U);
@@ -233,14 +230,14 @@ TEST(TrajectoryPostprocessorTest, ThrowsOnMissingOrShortOutput)
 
   TensorMap empty_outputs;
   EXPECT_THROW(
-    postprocessor.process(empty_outputs, ego, nullptr, rclcpp::Time(0), uuid),
+    postprocessor.process(empty_outputs, ego, rclcpp::Time(0), uuid),
     std::runtime_error);
 
   TensorMap short_outputs;
   short_outputs.emplace(
     "prediction", Tensor::from_host({1, 1, kTimesteps, 4}, std::vector<float>(10, 0.0f)));
   EXPECT_THROW(
-    postprocessor.process(short_outputs, ego, nullptr, rclcpp::Time(0), uuid),
+    postprocessor.process(short_outputs, ego, rclcpp::Time(0), uuid),
     std::runtime_error);
 }
 
