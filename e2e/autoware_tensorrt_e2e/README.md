@@ -65,7 +65,6 @@ listed in `postprocess.extra_trajectory_tensors` are published as extra candidat
 | lidar | `num_points` | `[1, 1]` | valid point count |
 | context | `ego_current_state` | `[1, 10]` | `autoware_diffusion_planner` |
 | context | `ego_agent_past` | `[1, T, 4]` | `autoware_diffusion_planner` |
-| context | `neighbor_agents_past` | `[1, N, 31, 11]` | `autoware_diffusion_planner` |
 | context | `lanes`, `lanes_speed_limit`, `lanes_has_speed_limit` | `[1, S, 20, 33]`, `[1, S, 1]` | `autoware_diffusion_planner`; traffic-light state in channels 8 to 12 |
 | context | `route_lanes` and its two speed-limit tensors | as above | `autoware_diffusion_planner` |
 | context | `polygons`, `line_strings` | `[1, 10, 40, 3]`, `[1, 60, 20, 4]` | `autoware_diffusion_planner` |
@@ -88,7 +87,6 @@ startup error naming the tensor.
 | `~/input/camera{i}/image` | `sensor_msgs/msg/Image`, raw or compressed | camera provider |
 | `~/input/camera{i}/camera_info` | `sensor_msgs/msg/CameraInfo` | `camera_intrinsics` |
 | `~/input/pointcloud` | `sensor_msgs/msg/PointCloud2` through `cuda_blackboard`: a GPU-resident cloud is negotiated on `~/input/pointcloud/cuda`, a plain publisher is accepted as the fallback | lidar providers, as `autoware_bevfusion` |
-| `~/input/tracked_objects` | `autoware_perception_msgs/msg/TrackedObjects` | `neighbor_agents_past` |
 | `~/input/traffic_signals` | `autoware_perception_msgs/msg/TrafficLightGroupArray` | `lanes`, `route_lanes` |
 | `~/input/route` | `autoware_planning_msgs/msg/LaneletRoute` | `route_lanes`, `goal_pose` |
 | `~/input/vector_map` | `autoware_map_msgs/msg/LaneletMapBin` | map tensors |
@@ -104,7 +102,6 @@ missing traffic-signal message leaves lanes marked as having no signal.
 | --- | --- | --- |
 | `~/output/trajectory` | `autoware_planning_msgs/msg/Trajectory` | Ego trajectory in `map`, 40 points at 0.1 s, stamped with the odometry it was planned from |
 | `~/output/trajectories` | `autoware_internal_planning_msgs/msg/CandidateTrajectories` | One candidate per batch and per extra trajectory tensor, with `GeneratorInfo` |
-| `~/output/predicted_objects` | `autoware_perception_msgs/msg/PredictedObjects` | Multi-agent models only |
 | `/planning/planning_factors/tensorrt_e2e` | `autoware_internal_planning_msgs/msg/PlanningFactorArray` | Stop and slow-down factors read off the trajectory, as `autoware_diffusion_planner` reports them |
 | `~/debug/processing_time_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | Per-tick processing time |
 | `~/debug/cyclic_time_ms`, `~/debug/pipeline_latency_ms`, `~/debug/processing_time/{total,collect,inference,postprocess}_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | The `autoware_bevfusion` debug set |

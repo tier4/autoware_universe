@@ -143,7 +143,7 @@ The primary output tensor is `prediction` by default and may be renamed with
 `postprocess.prediction_tensor`. It has one of these shapes:
 
 - `[B, T, 4]` for ego-only models;
-- `[B, A, T, 4]` for models that also predict neighbors.
+- `[B, A, T, 4]` for models that predict other agents too; only agent 0, the ego, is read.
 
 Each pose is `(x, y, cos(yaw), sin(yaw))` in the model reference frame. The point interval is
 currently fixed at 0.1 seconds to match the shared postprocessing implementation. The horizon,
@@ -152,8 +152,9 @@ velocity smoothing window, stopping threshold, and generator name are deployment
 Additional ego-only trajectory tensors can be listed in
 `postprocess.extra_trajectory_tensors`; each becomes another candidate trajectory.
 
-The postprocessor converts poses to `Trajectory` and `CandidateTrajectories`. When the prediction
-contains neighbors and neighbor history is available, it also produces `PredictedObjects`.
+The postprocessor converts poses to `Trajectory` and `CandidateTrajectories`. This node plans;
+it does not republish other agents' futures, so the extra agents in a `[B, A, T, 4]` output are
+dropped.
 
 ## Scheduling and failure behavior
 
