@@ -308,9 +308,19 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     m_is_ctrl_cmd_prev_initialized = true;
   }
 
+  constexpr double steering_availability_threshold = 1.0e-6;
+  const auto trajectory_has_steering = std::any_of(
+    input_data.current_trajectory.points.begin(), input_data.current_trajectory.points.end(),
+    [steering_availability_threshold](const auto & point) {
+      return std::abs(static_cast<double>(point.front_wheel_angle_rad)) >
+             steering_availability_threshold;
+    });
+  const auto use_steering_direct_passthrough =
+    m_steering_direct_passthrough && trajectory_has_steering;
+
   trajectory_follower::LateralHorizon ctrl_cmd_horizon{};
   const auto mpc_solved_status =
-    m_steering_direct_passthrough
+    use_steering_direct_passthrough
       ? m_mpc->calculateTrajectorySteeringPassthrough(
           m_current_steering, m_current_kinematic_state, ctrl_cmd, debug_values, ctrl_cmd_horizon)
       : m_mpc->calculateMPC(
@@ -371,7 +381,7 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     ctrl_cmd = getStopControlCommand();
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
   } else if (
-    !m_steering_direct_passthrough && m_enable_confidence_steer_slew_limit &&
+    !use_steering_direct_passthrough && m_enable_confidence_steer_slew_limit &&
     applyConfidenceSteerSlewLimit(ctrl_cmd)) {
     // Low-confidence / flicker: soft-slew (not stop). Sync LPF to published output.
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
