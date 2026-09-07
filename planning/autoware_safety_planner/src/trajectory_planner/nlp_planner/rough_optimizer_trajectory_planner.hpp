@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
-#define TRAJECTORY_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
+#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
+#define TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
 
 // 既定の軌道プランナープラグイン。制約セットごとに
 // rough_planner (時空間 DP によるホモトピー解決) → trajectory optimizer (精緻化) を回し、
 // normal / cautious の 2 本の軌道を作る。optimizer は pluginlib で差し替え可能
 // (`trajectory_optimizer.plugin`)
 
+#include "../trajectory_planner_interface.hpp"
 #include "rough_planner.hpp"
 #include "trajectory_optimizer_interface.hpp"
-#include "trajectory_planner_interface.hpp"
 
 #include <memory>
 #include <optional>
@@ -75,4 +75,4 @@ private:
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
+#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_

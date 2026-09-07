@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__TRAJECTORY_OPTIMIZER_INTERFACE_HPP_
-#define TRAJECTORY_PLANNER__TRAJECTORY_OPTIMIZER_INTERFACE_HPP_
+#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__TRAJECTORY_OPTIMIZER_INTERFACE_HPP_
+#define TRAJECTORY_PLANNER__NLP_PLANNER__TRAJECTORY_OPTIMIZER_INTERFACE_HPP_
 
 // trajectory_optimizer: rough_planner が決めたホモトピー (どちら側を抜けるか / 譲るか /
 // 止まるか) の中で、制約を満たす精緻な軌道を 1 本作る層。**非凸探索はしない**。
@@ -36,9 +36,9 @@
 // - 制約の正は compiled_constraints.raw_constraints。射影ビューは粗い評価用で、
 //   精密評価 (コリドー彫り込み・検証) は raw を読む (constraints_compiler.hpp)
 
-#include "../constraint.hpp"
-#include "../context.hpp"
-#include "../type_alias.hpp"
+#include "../../constraint.hpp"
+#include "../../context.hpp"
+#include "../../type_alias.hpp"
 #include "constraints_compiler.hpp"
 #include "rough_planner.hpp"
 
@@ -145,4 +145,4 @@ protected:
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__TRAJECTORY_OPTIMIZER_INTERFACE_HPP_
+#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__TRAJECTORY_OPTIMIZER_INTERFACE_HPP_

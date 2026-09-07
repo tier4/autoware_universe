@@ -85,9 +85,9 @@ private:
    * @{
    */
 
-  bool update_context(const InputData & input_data);
+  bool update_input(const InputData & input_data);
   bool update_route_manager(const InputData & input_data);
-  PlannerContext context_;
+  SafetyPlannerInput input_;
 
   std::optional<UUID> route_uuid_of_route_manager_;
   LaneletMapBin::ConstSharedPtr map_ptr_of_route_manager_;
@@ -139,11 +139,9 @@ private:
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_candidate_trajectories_;
 
   void publish_trajectory(const Trajectory & trajectory) const;
-  void publish_rough_plan_trajectory(
-    const PlannerContext & context, const RoughPlanResult & rough_plan_result);
+  void publish_rough_plan_trajectory(const RoughPlanResult & rough_plan_result);
   void publish_rough_plan_markers(const RoughPlanResult & rough_plan_result) const;
-  void publish_debug_markers(
-    const PlannerContext & context, const CompiledConstraints & compiled_constraints) const;
+  void publish_debug_markers(const SafetyPlannerResult::Debug & debug) const;
   void publish_constraints_debug_markers(
     const std::map<std::string, ConstraintGeneratorOutput> & constraints) const;
   std::map<std::string, rclcpp::Publisher<MarkerArray>::SharedPtr>

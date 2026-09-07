@@ -23,9 +23,9 @@
 #include "../constraint.hpp"
 #include "../context.hpp"
 #include "../type_alias.hpp"
-#include "constraints_compiler.hpp"
-#include "rough_planner.hpp"
-#include "trajectory_optimizer_interface.hpp"
+#include "nlp_planner/constraints_compiler.hpp"
+#include "nlp_planner/rough_planner.hpp"
+#include "nlp_planner/trajectory_optimizer_interface.hpp"
 
 #include <memory>
 #include <optional>

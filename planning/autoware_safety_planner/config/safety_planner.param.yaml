@@ -35,7 +35,6 @@
         max_lateral_inflation_m: 4.0 # [m]
         max_longitudinal_inflation_m: 20.0 # [m]
         curvature_rate_max: 0.6 # [1/(m*s)] |w| の上限
-        comfort_clearance_m: 0.5 # [m] C 幾何行の追加マージン
         goal_capture_distance_m: 5.0 # [m] この距離まで近づいたら追従参照の終点を goal そのものにする
         weight_pos: 1.0
         weight_yaw: 1.0
@@ -91,10 +90,10 @@
       max_candidates: 1
       dp:
         s_max_m: 150.0 # [m]
-        s_step_m: 1.0 # [m]
+        s_step_m: 0.5 # [m]
         l_range_m: 6.0 # [m]
-        l_step_m: 0.5 # [m]
-        t_step_s: 1.0 # [s]
+        l_step_m: 1.0 # [m]
+        t_step_s: 0.5 # [s]
         horizon_s: 10.0 # [s]
         v_step_mps: 1.0 # [m/s]
         lateral_slope_max: 0.3 # [-]

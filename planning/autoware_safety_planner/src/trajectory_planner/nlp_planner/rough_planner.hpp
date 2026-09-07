@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__ROUGH_PLANNER_HPP_
-#define TRAJECTORY_PLANNER__ROUGH_PLANNER_HPP_
+#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_PLANNER_HPP_
+#define TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_PLANNER_HPP_
 
 // rough_planner: ホモトピー選択 (どちら側を抜けるか / 譲るか先に行くか / 止まるか通るか) の
 // 全責任を持つ層。下流の optimizer は非凸探索をしない。
@@ -30,8 +30,8 @@
 //   (homotopy_resolution.md 論点 2) なので、IF は top-K を許す形にしておく。
 //   当面の運用は K = 1 (consumer は先頭のみ消費)
 
-#include "../constraint.hpp"
-#include "../context.hpp"
+#include "../../constraint.hpp"
+#include "../../context.hpp"
 #include "constraints_compiler.hpp"
 
 #include <map>
@@ -184,4 +184,4 @@ Decisions derive_decisions(
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__ROUGH_PLANNER_HPP_
+#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_PLANNER_HPP_

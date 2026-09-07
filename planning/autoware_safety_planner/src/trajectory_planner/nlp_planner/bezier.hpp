@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__BEZIER_HPP_
-#define TRAJECTORY_PLANNER__BEZIER_HPP_
+#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__BEZIER_HPP_
+#define TRAJECTORY_PLANNER__NLP_PLANNER__BEZIER_HPP_
 
 // 区分 Bézier の基底まわりの純粋な数学。ROS にも制約 IR にも依存しない
 // (docs/safety_planner_arch_design/formulation_ssc_vs_poc.md §2.2)。
@@ -63,4 +63,4 @@ double evaluate_derivative(const std::vector<double> & p, int k, double u);
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__BEZIER_HPP_
+#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__BEZIER_HPP_

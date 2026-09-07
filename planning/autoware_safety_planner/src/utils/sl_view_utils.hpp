@@ -21,7 +21,7 @@
 // (constraints_compiler.hpp の規約)。
 
 #include "../context.hpp"
-#include "../trajectory_planner/constraints_compiler.hpp"
+#include "../trajectory_planner/nlp_planner/constraints_compiler.hpp"
 #include "../type_alias.hpp"
 
 #include <vector>

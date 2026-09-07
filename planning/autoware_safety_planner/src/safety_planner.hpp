@@ -16,7 +16,7 @@
 #define SAFETY_PLANNER_HPP_
 
 // パイプライン本体 (ロジック層)。ROS インターフェース (購読・配信・タイマ) は
-// SafetyPlannerNode が持ち、このクラスは PlannerContext を受け取って結果を返すだけ。
+// SafetyPlannerNode が持ち、このクラスは SafetyPlannerInput を受け取って結果を返すだけ。
 // publisher・clock を持たない (msg 型と TimeKeeper・pluginlib は許容)。
 // 制約の生成と certainty ごとの振り分けまでがこのクラスの仕事で、制約のコンパイルと
 // rough_planner / optimizer の呼び出しは trajectory_planner プラグインが行う
@@ -25,6 +25,8 @@
 #include "context.hpp"
 #include "trajectory_planner/trajectory_planner_interface.hpp"
 #include "type_alias.hpp"
+
+#include <tl/expected.hpp>
 
 #include <map>
 #include <memory>
@@ -44,6 +46,7 @@ struct SafetyPlannerResult
   {
     //! プラグイン名 (get_name()) → 出力。debug_markers の publish は Node の仕事
     std::map<std::string, ConstraintGeneratorOutput> constraint_generator_outputs;
+    PathPointTrajectory reference_path;
     CompiledConstraints compiled_constraints;  //!< normal 側 (cautious 側の可視化は未整備)
     RoughPlanResult rough_plan_result;
     TrajectoryOptimizerResult trajectory_optimizer_result;
@@ -55,7 +58,9 @@ class SafetyPlanner
 public:
   SafetyPlanner(const Params & params, std::shared_ptr<TimeKeeper> time_keeper);
 
-  SafetyPlannerResult plan(const PlannerContext & context);
+  //! reference_path の構築に失敗した (route 上に経路が引けない / goal が ego 後方) 周期は
+  //! 理由の文字列を返す
+  tl::expected<SafetyPlannerResult, std::string> plan(const SafetyPlannerInput & input);
 
   //! ロード済みプラグインの名前 (get_name()) のリスト。Node が debug marker publisher
   //! を作るのに使う
@@ -67,6 +72,9 @@ public:
 private:
   Params params_;
   std::shared_ptr<TimeKeeper> time_keeper_;
+
+  tl::expected<PathPointTrajectory, std::string> build_reference_path(
+    const SafetyPlannerInput & input) const;
 
   /**
    ***********************************************************

@@ -18,11 +18,13 @@
 #include "type_alias.hpp"
 
 #include <optional>
+#include <utility>
 
 namespace autoware::safety_planner
 {
 
-struct PlannerContext
+//! Node が周期ごとに集める入力。reference_path の構築は SafetyPlanner 側の仕事
+struct SafetyPlannerInput
 {
   VehicleInfo vehicle_info;
   std::optional<RouteManager> route_manager;  // TODO(odashima): check API
@@ -31,8 +33,32 @@ struct PlannerContext
   SteeringReport steering;
   Pose goal_pose;
   PredictedObjects::ConstSharedPtr predicted_objects;
+};
 
-  // Reference path is setted via safety_planner first step
+//! SafetyPlannerInput に reference_path を足したもの。プラグインへ渡す。
+//! RouteManager が move-only で入力をコピーできないので、入力側は参照で持つ
+//! (寿命は SafetyPlanner::plan の 1 周期内)
+struct PlannerContext
+{
+  explicit PlannerContext(const SafetyPlannerInput & input, PathPointTrajectory reference_path)
+  : vehicle_info(input.vehicle_info),
+    route_manager(input.route_manager),
+    odometry(input.odometry),
+    acceleration(input.acceleration),
+    steering(input.steering),
+    goal_pose(input.goal_pose),
+    predicted_objects(input.predicted_objects),
+    reference_path(std::move(reference_path))
+  {
+  }
+
+  const VehicleInfo & vehicle_info;
+  const std::optional<RouteManager> & route_manager;
+  const Odometry & odometry;
+  const AccelWithCovarianceStamped & acceleration;
+  const SteeringReport & steering;
+  const Pose & goal_pose;
+  const PredictedObjects::ConstSharedPtr & predicted_objects;
   PathPointTrajectory reference_path;
 
   //! goal_pose の reference_path 上の弧長 [m]。接続していない周期 (前方打ち切りで

@@ -14,7 +14,7 @@
 
 #include "nlp_trajectory_optimizer.hpp"
 
-#include "../utils/sl_view_utils.hpp"
+#include "../../utils/sl_view_utils.hpp"
 
 #include <autoware/trajectory/utils/closest.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -30,6 +30,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // 生成コードのマクロが acados / システム側の名前と衝突する
@@ -64,19 +65,17 @@ constexpr int ROW_VELOCITY_SECTION = 5;
 constexpr int ROW_VELOCITY_NOMINAL = 6;
 constexpr int NUM_CORRIDOR_ROWS = 2 * static_cast<int>(NUM_PLANES);
 constexpr int FIRST_CORRIDOR_ROW_SAFETY = 7;
-constexpr int FIRST_CORRIDOR_ROW_COMFORT = FIRST_CORRIDOR_ROW_SAFETY + NUM_CORRIDOR_ROWS;
 
 constexpr int ROW_E_LATERAL_ACCEL = 0;
 constexpr int ROW_E_ACCEL_COMFORT = 1;
 constexpr int ROW_E_VELOCITY_SECTION = 2;
 constexpr int ROW_E_VELOCITY_NOMINAL = 3;
 constexpr int FIRST_CORRIDOR_ROW_E_SAFETY = 4;
-constexpr int FIRST_CORRIDOR_ROW_E_COMFORT = FIRST_CORRIDOR_ROW_E_SAFETY + NUM_CORRIDOR_ROWS;
 
 static_assert(
-  FIRST_CORRIDOR_ROW_COMFORT + NUM_CORRIDOR_ROWS == RBP_NLP_TIME_NH, "h row layout mismatch");
+  FIRST_CORRIDOR_ROW_SAFETY + NUM_CORRIDOR_ROWS == RBP_NLP_TIME_NH, "h row layout mismatch");
 static_assert(
-  FIRST_CORRIDOR_ROW_E_COMFORT + NUM_CORRIDOR_ROWS == RBP_NLP_TIME_NHN,
+  FIRST_CORRIDOR_ROW_E_SAFETY + NUM_CORRIDOR_ROWS == RBP_NLP_TIME_NHN,
   "terminal h row layout mismatch");
 // 行 0 (ステアレートの hard) 以外がスラック付き (S5 §3.4: A はスラックなし)
 static_assert(RBP_NLP_TIME_NSH == RBP_NLP_TIME_NH - 1, "every row but the hard one is slacked");
@@ -663,8 +662,9 @@ OptimizedTrajectory make_certificate(
 // =============================================================================================
 
 std::vector<StagePlanes> make_stage_planes(
-  const PlannerContext & context, const std::vector<SemanticCube> & cubes,
-  const std::vector<CorridorSeedPoint> & seed)
+  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
+  const std::vector<SemanticCube> & cubes, const std::vector<CorridorSeedPoint> & seed,
+  const SscCorridorParams & corridor)
 {
   std::vector<StagePlanes> stage_planes;
   stage_planes.reserve(seed.size());
@@ -673,6 +673,47 @@ std::vector<StagePlanes> make_stage_planes(
   }
   const auto & path = context.reference_path;
   const double length = path.length();
+  const auto & vehicle = context.vehicle_info;
+
+  // 前方カット (footprint 前端が越えてはいけない弧長) は cube の s1 を使わず、時刻 t_k に
+  // 前方で効く占有・停止線から直接引く。cube の s1 は 1 s 窓の最悪値なので窓ごとに階段状に
+  // 跳び、横境界の狭まりでも止まる (横は横 2 面が持つので前方面に載せない)。
+  // 対象は、そのステージで車両が居られる横バンド (cube の l 範囲 + footprint) に掛かり、
+  // seed の footprint 前端より先にあるもの。seed と重なる物体は彫り込みの seed 棄却で
+  // 既に除かれているか、横面が受け持つ。何も無ければ cube 膨張の上限と同じ距離だけ先に置く
+  // (面を 1e6 に飛ばすと行の値が lh = −1e6 を割ることがある)
+  const auto forward_limit = [&](const CorridorSeedPoint & point, const SemanticCube & cube) {
+    const SlBox band = footprint_sl_box(vehicle, SlBox{point.s, point.s, cube.l0, cube.l1});
+    const double margin_m = corridor.margin_m;
+    double limit = band.s_max + corridor.max_longitudinal_inflation_m;
+    for (const auto & occupancy : compiled_constraints.occupancies) {
+      const auto * keep_out =
+        std::get_if<KeepOut>(&compiled_constraints.raw_constraints[occupancy.raw_index].payload);
+      const double margin = (keep_out ? keep_out->margin_m : 0.0) + margin_m;
+      for (const auto & slab : occupancy.slabs) {
+        if (point.t < slab.t0 || point.t > slab.t1) {
+          continue;
+        }
+        if (slab.l1 + margin < band.l_min || slab.l0 - margin > band.l_max) {
+          continue;
+        }
+        const double front_limit = slab.s0 - margin;
+        if (front_limit >= band.s_max - EPS) {
+          limit = std::min(limit, front_limit);
+        }
+      }
+    }
+    for (const auto & stop_bar : compiled_constraints.stop_bars) {
+      if (point.t < stop_bar.time.t0 || point.t > stop_bar.time.t1) {
+        continue;
+      }
+      const double front_limit = stop_bar.s_stop - stop_bar.margin - margin_m;
+      if (front_limit >= band.s_max - EPS) {
+        limit = std::min(limit, front_limit);
+      }
+    }
+    return limit;
+  };
 
   for (const auto & point : seed) {
     // 時間分割は隙間なく連続 (ssc_corridor.hpp) なので、t を含む cube は一意に決まる。
@@ -704,19 +745,18 @@ std::vector<StagePlanes> make_stage_planes(
     // C の追加マージンが構造的に破れた)。そこで cube を footprint の張り出し分だけ**広げて**
     // 「点の自由空間」に戻し、姿勢依存の張り出しは支持関数行に任せる。姿勢が参照に一致する
     // 場合はちょうど元の cube と同じ制約になり、ヘディング偏差があるぶんだけ厳しくなる
-    const auto & vehicle = context.vehicle_info;
     const double l_upper = cube.l1 + vehicle.max_lateral_offset_m;
     const double l_lower = cube.l0 + vehicle.min_lateral_offset_m;
-    const double s_upper = cube.s1 + vehicle.max_longitudinal_offset_m;
 
     StagePlanes planes;
     // 横 (左): l ≤ l1
     planes[0] = HalfPlane{left_x, left_y, left_x * px + left_y * py + l_upper};
     // 横 (右): l ≥ l0
     planes[1] = HalfPlane{-left_x, -left_y, -(left_x * px + left_y * py) - l_lower};
-    // 縦 (前): s ≤ s1。後方カットは課さない (NUM_PLANES の注記)
-    planes[2] =
-      HalfPlane{tangent_x, tangent_y, tangent_x * px + tangent_y * py + (s_upper - s_anchor)};
+    // 縦 (前): footprint 前端 ≤ t_k の前方限界。後方カットは課さない (NUM_PLANES の注記)
+    planes[2] = HalfPlane{
+      tangent_x, tangent_y,
+      tangent_x * px + tangent_y * py + (forward_limit(point, cube) - s_anchor)};
     stage_planes.push_back(planes);
   }
   return stage_planes;
@@ -871,8 +911,6 @@ NlpVerification verify_trajectory(
     }
 
     // ---- 4. C tier (快適スカラー)。落とせる行なので判定は 5 % 許容 ----
-    // ⚠ 幾何の C 行 (追加マージン) は判定しない。免除窓 (S5 §9.4) を実装していないので、
-    // ego が既にマージンを削っている周期で恒常的に which_level = 2 になってしまう
     const double comfort_tol = COMFORT_RELATIVE_TOL;
     const double v_nom = limits.base.v_nom;
     const auto comfort_row = [&]() -> const char * {
@@ -924,7 +962,6 @@ NlpParams NlpTrajectoryOptimizer::read_params() const
   params.corridor.max_lateral_inflation_m = p.max_lateral_inflation_m;
   params.corridor.max_longitudinal_inflation_m = p.max_longitudinal_inflation_m;
   params.curvature_rate_max = p.curvature_rate_max;
-  params.comfort_clearance_m = p.comfort_clearance_m;
   params.goal_capture_distance_m = p.goal_capture_distance_m;
   params.weight_pos = p.weight_pos;
   params.weight_yaw = p.weight_yaw;
@@ -989,7 +1026,8 @@ TrajectoryOptimizerResult NlpTrajectoryOptimizer::optimize(const TrajectoryOptim
   const auto seed = make_corridor_seed(input.context, plan);
   const auto cubes =
     generate_semantic_corridor(input.context, input.compiled_constraints, seed, params.corridor);
-  const auto stage_planes = make_stage_planes(input.context, cubes, seed);
+  const auto stage_planes =
+    make_stage_planes(input.context, input.compiled_constraints, cubes, seed, params.corridor);
   const double z_base = input.context.odometry.pose.pose.position.z;
   result.debug.debug_markers = make_corridor_markers(input.context, cubes, z_base);
 
@@ -1032,12 +1070,12 @@ TrajectoryOptimizerResult NlpTrajectoryOptimizer::optimize(const TrajectoryOptim
         values[7 + 3 * plane] = stage_planes[index][plane].d;
       }
     } else {
-      // コリドーが無い周期は「常に満たされる面」を書く (行は残す。S6 §4.1 原則 2)。
-      // 幾何行そのものは下の境界値で無効化するので、この値は使われない
+      // コリドーが無い周期は幾何行を下の境界値 (±FREE_BOUND) で無効化するので、面は
+      // 値が小さく留まるものなら何でもよい (d を 1e6 にすると行の値が lh を割りうる)
       for (std::size_t plane = 0; plane < NUM_PLANES; ++plane) {
         values[5 + 3 * plane] = 1.0;
         values[6 + 3 * plane] = 0.0;
-        values[7 + 3 * plane] = FREE_BOUND;
+        values[7 + 3 * plane] = 0.0;
       }
     }
     solver_->set_parameters(stage, values);
@@ -1128,23 +1166,20 @@ TrajectoryOptimizerResult NlpTrajectoryOptimizer::optimize(const TrajectoryOptim
     // スラック係数 (スラック添字 i = 行 i+1)
     std::array<double, Solver::NSH> slack{};
     for (int row = 1; row < Solver::NH; ++row) {
-      const bool is_safety = row == ROW_VELOCITY_SECTION ||
-                             (row >= FIRST_CORRIDOR_ROW_SAFETY && row < FIRST_CORRIDOR_ROW_COMFORT);
+      const bool is_safety = row == ROW_VELOCITY_SECTION || row >= FIRST_CORRIDOR_ROW_SAFETY;
       slack[static_cast<std::size_t>(row - 1)] =
         is_safety ? params.slack_safety : params.slack_comfort;
     }
     solver_->set_slack_weights(slack);
     std::array<double, Solver::NSHN> terminal_slack{};
     for (int row = 0; row < Solver::NHN; ++row) {
-      const bool is_safety = row == ROW_E_VELOCITY_SECTION || (row >= FIRST_CORRIDOR_ROW_E_SAFETY &&
-                                                               row < FIRST_CORRIDOR_ROW_E_COMFORT);
+      const bool is_safety = row == ROW_E_VELOCITY_SECTION || row >= FIRST_CORRIDOR_ROW_E_SAFETY;
       terminal_slack[static_cast<std::size_t>(row)] =
         is_safety ? params.slack_safety : params.slack_comfort;
     }
     solver_->set_terminal_slack_weights(terminal_slack);
 
     // 行の上下限。段を落とす操作は**行の削除ではなく ±FREE_BOUND への開き**で表す
-    const double comfort_clearance = comfort_active ? params.comfort_clearance_m : 0.0;
     for (int stage = 1; stage < Solver::N; ++stage) {
       const auto index = static_cast<std::size_t>(stage);
       std::array<double, Solver::NH> lower{};
@@ -1183,9 +1218,6 @@ TrajectoryOptimizerResult NlpTrajectoryOptimizer::optimize(const TrajectoryOptim
         if (index >= exempt_v) {
           upper[ROW_VELOCITY_NOMINAL] = limits.base.v_nom;
         }
-        for (int row = 0; row < NUM_CORRIDOR_ROWS; ++row) {
-          upper[static_cast<std::size_t>(FIRST_CORRIDOR_ROW_COMFORT + row)] = -comfort_clearance;
-        }
       }
       solver_->set_h_bounds(stage, lower, upper);
     }
@@ -1208,9 +1240,6 @@ TrajectoryOptimizerResult NlpTrajectoryOptimizer::optimize(const TrajectoryOptim
         lower[ROW_E_ACCEL_COMFORT] = limits.base.a_nom_min;
         upper[ROW_E_ACCEL_COMFORT] = limits.base.a_nom_max;
         upper[ROW_E_VELOCITY_NOMINAL] = limits.base.v_nom;
-        for (int row = 0; row < NUM_CORRIDOR_ROWS; ++row) {
-          upper[static_cast<std::size_t>(FIRST_CORRIDOR_ROW_E_COMFORT + row)] = -comfort_clearance;
-        }
       }
       solver_->set_terminal_h_bounds(lower, upper);
     }

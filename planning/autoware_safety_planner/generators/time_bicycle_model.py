@@ -40,8 +40,8 @@ from casadi import vertcat
 MODEL_NAME = "rbp_nlp_time"
 
 # 1 ステージあたりのコリドー半空間の数: 横 (左右) + 前方カット = 3。
-# ステージが属する semantic cube の面を載せる。codegen 時に固定で、C++ 側の NUM_PLANES と
-# 一致していること。
+# 横 2 面はステージが属する semantic cube の面、前方カットはそのステージの時刻に前方へ効く
+# 占有・停止線から直接引く。codegen 時に固定で、C++ 側の NUM_PLANES と一致していること。
 #
 # **後方カット (s >= s0) は載せない**。v >= 0 の box があるので後退はせず、後方に守る対象も
 # 無い (停止線・先行車は前方カットが持つ)。加えて先頭 cube の s0 は経路始端で切れるため、
@@ -61,14 +61,11 @@ ROW_ACCEL_COMFORT = 3
 ROW_JERK_COMFORT = 4
 ROW_VELOCITY_SECTION = 5
 ROW_VELOCITY_NOMINAL = 6
-# コリドー行は**同じ式を 2 ブロック**並べる。B (侵入禁止, uh = 0, rho_B) と
-# C (追加マージン, uh = -comfort_clearance, rho_C) は式が同じで上限とスラック係数だけが違うので、
-# 1 ブロックに統合するとスラック係数を 1 つしか持てず「C だけ落とす」ができない (S6 §4.2 の
-# B コリドー 8 行 + C コリドー 8 行に対応)。
+# コリドー行は B (侵入禁止, uh = 0, rho_B) の 1 ブロックだけ。C の追加マージン行は持たない
+# (面からの余裕は cube の margin_m が既に持っており、二重に取ると車線幅に対して構造的に破れる)。
 NUM_CORRIDOR_ROWS = 2 * NUM_PLANES
 FIRST_CORRIDOR_ROW_SAFETY = 7
-FIRST_CORRIDOR_ROW_COMFORT = FIRST_CORRIDOR_ROW_SAFETY + NUM_CORRIDOR_ROWS
-NUM_ROWS = FIRST_CORRIDOR_ROW_COMFORT + NUM_CORRIDOR_ROWS
+NUM_ROWS = FIRST_CORRIDOR_ROW_SAFETY + NUM_CORRIDOR_ROWS
 
 # 終端ステージには入力が無いので、w / j を読む行は構造的に不在 (S5 §3.1)。残るのは状態だけの行。
 ROW_E_LATERAL_ACCEL = 0
@@ -76,8 +73,7 @@ ROW_E_ACCEL_COMFORT = 1
 ROW_E_VELOCITY_SECTION = 2
 ROW_E_VELOCITY_NOMINAL = 3
 FIRST_CORRIDOR_ROW_E_SAFETY = 4
-FIRST_CORRIDOR_ROW_E_COMFORT = FIRST_CORRIDOR_ROW_E_SAFETY + NUM_CORRIDOR_ROWS
-NUM_ROWS_E = FIRST_CORRIDOR_ROW_E_COMFORT + NUM_CORRIDOR_ROWS
+NUM_ROWS_E = FIRST_CORRIDOR_ROW_E_SAFETY + NUM_CORRIDOR_ROWS
 
 
 def _corridor_rows(
@@ -187,7 +183,6 @@ def time_bicycle_model():
         velocity,  # B: スラック、<= 区間速度上限
         velocity,  # C: スラック、<= ノミナル速度
         *corridor,  # B: スラック (rho_B)、uh = 0
-        *corridor,  # C: スラック (rho_C)、uh = -comfort_clearance
     )
     # 終端は状態だけの部分集合。S5 §3.2 が終端にも B 行を課すのは、この定式化の終端が
     # 参照点に pin されず自由で、課さないとホライゾン末尾がコリドー外へ逃げるため。
@@ -196,7 +191,6 @@ def time_bicycle_model():
         accel,
         velocity,
         velocity,
-        *corridor,
         *corridor,
     )
 

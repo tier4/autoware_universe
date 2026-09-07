@@ -19,8 +19,8 @@
 // 出力軌道への後処理。node (デバッグ配信) と trajectory_planner プラグインの
 // どちらの .so からも呼ぶので common に置く
 
-#include "../trajectory_planner/rough_planner.hpp"
-#include "../trajectory_planner/trajectory_optimizer_interface.hpp"
+#include "../trajectory_planner/nlp_planner/rough_planner.hpp"
+#include "../trajectory_planner/nlp_planner/trajectory_optimizer_interface.hpp"
 #include "../type_alias.hpp"
 
 namespace autoware::safety_planner

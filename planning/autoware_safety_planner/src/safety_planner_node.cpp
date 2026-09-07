@@ -16,10 +16,6 @@
 
 #include "utils/trajectory_conversion.hpp"
 
-#include <autoware/trajectory/threshold.hpp>
-#include <autoware/trajectory/utils/closest.hpp>
-#include <autoware/trajectory/utils/crop.hpp>
-#include <autoware/trajectory/utils/reference_path.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
@@ -170,23 +166,30 @@ void SafetyPlannerNode::on_timer()
     return;
   }
 
-  if (!update_context(input_data)) {
+  if (!update_input(input_data)) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000,
-      "Failed to update context. Skipping planning cycle.");
+      "Failed to update input. Skipping planning cycle.");
     return;
   }
 
-  const auto result = planner_->plan(context_);
+  const auto planned = planner_->plan(input_);
+  if (!planned) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000, "%s. Skipping this cycle.",
+      planned.error().c_str());
+    return;
+  }
+  const auto & result = planned.value();
 
   // publish (normal 側のみ。cautial 側の consumer は未実装)
   if (result.normal_trajectory) {
     publish_trajectory(*result.normal_trajectory);
   }
   publish_constraints_debug_markers(result.debug.constraint_generator_outputs);
-  publish_rough_plan_trajectory(context_, result.debug.rough_plan_result);
+  publish_rough_plan_trajectory(result.debug.rough_plan_result);
   publish_rough_plan_markers(result.debug.rough_plan_result);
-  publish_debug_markers(context_, result.debug.compiled_constraints);
+  publish_debug_markers(result.debug);
 
   // どの制約が経路に影響を与えたかの情報をpublishする(どうやって検出する？)
   // publish_planning_factors();
@@ -199,22 +202,22 @@ bool SafetyPlannerNode::update_route_manager(const InputData & input_data)
   const auto & current_pose = input_data.odometry_ptr->pose.pose;
 
   // route / map が差し替わったら追従は意味を持たないので作り直す
-  const bool needs_create = !context_.route_manager ||
+  const bool needs_create = !input_.route_manager ||
                             route_uuid_of_route_manager_ != input_data.route_ptr->uuid ||
                             map_ptr_of_route_manager_ != input_data.lanelet_map_bin_ptr;
 
   if (!needs_create) {
     try {
-      context_.route_manager = std::move(*context_.route_manager)
-                                 .update_current_pose(
-                                   current_pose, params_.ego_nearest_lanelet.dist_threshold_m,
-                                   params_.ego_nearest_lanelet.yaw_threshold_rad);
+      input_.route_manager = std::move(*input_.route_manager)
+                               .update_current_pose(
+                                 current_pose, params_.ego_nearest_lanelet.dist_threshold_m,
+                                 params_.ego_nearest_lanelet.yaw_threshold_rad);
     } catch (const std::exception & e) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000, "update_current_pose threw: %s", e.what());
-      context_.route_manager = std::nullopt;
+      input_.route_manager = std::nullopt;
     }
-    if (context_.route_manager) {
+    if (input_.route_manager) {
       return true;
     }
     RCLCPP_WARN_THROTTLE(
@@ -222,10 +225,10 @@ bool SafetyPlannerNode::update_route_manager(const InputData & input_data)
       "Failed to track current pose on the route. Re-creating RouteManager.");
   }
 
-  context_.route_manager =
+  input_.route_manager =
     RouteManager::create(*input_data.lanelet_map_bin_ptr, *input_data.route_ptr, current_pose);
 
-  if (!context_.route_manager) {
+  if (!input_.route_manager) {
     route_uuid_of_route_manager_.reset();
     map_ptr_of_route_manager_.reset();
     return false;
@@ -236,11 +239,11 @@ bool SafetyPlannerNode::update_route_manager(const InputData & input_data)
   return true;
 }
 
-bool SafetyPlannerNode::update_context(const InputData & input_data)
+bool SafetyPlannerNode::update_input(const InputData & input_data)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  context_.vehicle_info = vehicle_info_;
+  input_.vehicle_info = vehicle_info_;
 
   if (!update_route_manager(input_data)) {
     RCLCPP_WARN_THROTTLE(
@@ -248,53 +251,11 @@ bool SafetyPlannerNode::update_context(const InputData & input_data)
     return false;
   }
 
-  context_.odometry = *input_data.odometry_ptr;
-  context_.acceleration = *input_data.acceleration_ptr;
-  context_.steering = *input_data.steering_ptr;
-  context_.goal_pose = input_data.route_ptr->goal_pose;
-  context_.predicted_objects = input_data.predicted_objects_ptr;
-
-  // reference_path の更新
-  const auto & route_manager = *context_.route_manager;
-  const double forward_length = params_.reference_path.forward_length_m;
-  const double backward_length = params_.reference_path.backward_length_m;
-
-  const auto lane_sequence =
-    route_manager.get_lanelet_sequence_on_route(forward_length, backward_length);
-
-  auto reference_path = experimental::trajectory::build_reference_path(
-    lane_sequence.as_lanelets(), route_manager.current_lanelet(), context_.odometry.pose.pose,
-    route_manager.lanelet_map_ptr(), route_manager.routing_graph_ptr(),
-    route_manager.traffic_rules_ptr(), forward_length, backward_length);
-
-  // current_poseからgoal_poseでcropする
-
-  if (!reference_path) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), 5000, "Failed to build reference path: %s",
-      reference_path.error().c_str());
-    return false;
-  }
-
-  // goal_pose より先だけを crop する。後方 (backward_length_m 分) は残す —
-  // 制約の射影が ego 後方の footprint・後方から来る物体を扱うため。
-  // goal がまだ前方 (reference_path の終端より先) にある間は終端が最近傍になるので、
-  // 実質「後方端から前方終端まで」になる。
-  const double s_ego =
-    experimental::trajectory::closest(*reference_path, context_.odometry.pose.pose.position);
-  const double s_goal =
-    experimental::trajectory::closest(*reference_path, context_.goal_pose.position);
-
-  if (s_goal - s_ego < experimental::trajectory::k_epsilon_distance) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), 5000,
-      "goal_pose is behind ego on the reference path (length = %f). Skipping this cycle.",
-      s_goal - s_ego);
-    return false;
-  }
-
-  reference_path->crop(0.0, s_goal);
-  context_.reference_path = std::move(reference_path.value());
+  input_.odometry = *input_data.odometry_ptr;
+  input_.acceleration = *input_data.acceleration_ptr;
+  input_.steering = *input_data.steering_ptr;
+  input_.goal_pose = input_data.route_ptr->goal_pose;
+  input_.predicted_objects = input_data.predicted_objects_ptr;
 
   return true;
 }
@@ -316,8 +277,7 @@ void SafetyPlannerNode::publish_trajectory(const Trajectory & trajectory) const
   pub_debug_trajectory_->publish(trajectory);
 }
 
-void SafetyPlannerNode::publish_rough_plan_trajectory(
-  const PlannerContext & context, const RoughPlanResult & rough_plan_result)
+void SafetyPlannerNode::publish_rough_plan_trajectory(const RoughPlanResult & rough_plan_result)
 {
   if (rough_plan_result.plans.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -338,8 +298,8 @@ void SafetyPlannerNode::publish_rough_plan_trajectory(
   trajectory.header.frame_id = "map";
   trajectory.header.stamp = this->now();
   trajectory.points.reserve(plan.points.size());
-  const double z = context.odometry.pose.pose.position.z;
-  const double wheel_base_m = context.vehicle_info.wheel_base_m;
+  const double z = input_.odometry.pose.pose.position.z;
+  const double wheel_base_m = input_.vehicle_info.wheel_base_m;
   for (const auto & rough_point : plan.points) {
     trajectory.points.push_back(to_trajectory_point(rough_point, z, wheel_base_m));
   }
@@ -361,8 +321,7 @@ void SafetyPlannerNode::publish_rough_plan_markers(const RoughPlanResult & rough
   pub_debug_rough_planner_marker_->publish(marker_array);
 }
 
-void SafetyPlannerNode::publish_debug_markers(
-  const PlannerContext & context, const CompiledConstraints & compiled_constraints) const
+void SafetyPlannerNode::publish_debug_markers(const SafetyPlannerResult::Debug & debug) const
 {
   using autoware_utils_visualization::create_default_marker;
   using autoware_utils_visualization::create_marker_color;
@@ -377,7 +336,7 @@ void SafetyPlannerNode::publish_debug_markers(
     auto marker = create_default_marker(
       "map", now, "current_pose", 0, Marker::ARROW, create_marker_scale(2.0, 0.5, 0.5),
       create_marker_color(0.0, 1.0, 0.0, 0.999));
-    marker.pose = context.odometry.pose.pose;
+    marker.pose = input_.odometry.pose.pose;
     marker_array.markers.push_back(marker);
   }
 
@@ -386,7 +345,7 @@ void SafetyPlannerNode::publish_debug_markers(
     auto marker = create_default_marker(
       "map", now, "goal_pose", 0, Marker::ARROW, create_marker_scale(2.0, 0.5, 0.5),
       create_marker_color(1.0, 0.0, 0.0, 0.999));
-    marker.pose = context.goal_pose;
+    marker.pose = input_.goal_pose;
     marker_array.markers.push_back(marker);
   }
 
@@ -395,7 +354,7 @@ void SafetyPlannerNode::publish_debug_markers(
     auto marker = create_default_marker(
       "map", now, "reference_path", 0, Marker::LINE_STRIP, create_marker_scale(0.2, 0.0, 0.0),
       create_marker_color(0.0, 0.5, 1.0, 0.999));
-    for (const auto & point : context.reference_path.restore()) {
+    for (const auto & point : debug.reference_path.restore()) {
       marker.points.push_back(point.point.pose.position);
     }
     if (marker.points.size() >= 2) {
@@ -404,7 +363,7 @@ void SafetyPlannerNode::publish_debug_markers(
   }
 
   // -------------------- IRの可視化 --------------------
-  (void)compiled_constraints;
+  (void)debug.compiled_constraints;
 
   pub_debug_marker_->publish(marker_array);
 }

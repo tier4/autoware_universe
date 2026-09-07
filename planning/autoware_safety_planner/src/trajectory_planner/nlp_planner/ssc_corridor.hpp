@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__SSC_CORRIDOR_HPP_
-#define TRAJECTORY_PLANNER__SSC_CORRIDOR_HPP_
+#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__SSC_CORRIDOR_HPP_
+#define TRAJECTORY_PLANNER__NLP_PLANNER__SSC_CORRIDOR_HPP_
 
 // Spatio-temporal Semantic Corridor の彫り込み (SSC 論文 Algorithm 1)。
 //   seed 生成 → cube inflation → 制約の紐付け
@@ -28,8 +28,8 @@
 // 時間分割は固定 (区間長を最適化変数にすると非凸になる) なので、
 // **現 cube の t 上限 = 次 cube の t 下限**。重なりは持たせない。
 
-#include "../context.hpp"
-#include "../utils/sl_view_utils.hpp"
+#include "../../context.hpp"
+#include "../../utils/sl_view_utils.hpp"
 #include "constraints_compiler.hpp"
 #include "rough_planner.hpp"
 
@@ -96,4 +96,4 @@ MarkerArray make_corridor_markers(
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__SSC_CORRIDOR_HPP_
+#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__SSC_CORRIDOR_HPP_

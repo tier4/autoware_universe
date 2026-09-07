@@ -14,7 +14,7 @@
 
 #include "rough_optimizer_trajectory_planner.hpp"
 
-#include "../utils/trajectory_conversion.hpp"
+#include "../../utils/trajectory_conversion.hpp"
 
 #include <pluginlib/class_list_macros.hpp>
 

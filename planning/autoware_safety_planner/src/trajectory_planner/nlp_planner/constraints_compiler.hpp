@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__CONSTRAINTS_COMPILER_HPP_
-#define TRAJECTORY_PLANNER__CONSTRAINTS_COMPILER_HPP_
+#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__CONSTRAINTS_COMPILER_HPP_
+#define TRAJECTORY_PLANNER__NLP_PLANNER__CONSTRAINTS_COMPILER_HPP_
 
 // 制約のコンパイル: プラグイン出力 (世界座標の Constraint 列) を、消費側が読める
 // IR = CompiledConstraints に変換する。
@@ -40,8 +40,8 @@
 //   無くなる = fail-open になる (docs/issues/85)
 // - IR は毎周期使い捨て。s に周期間の意味を持たせない (周期間の照合は Source の ID で行う)
 
-#include "../constraint.hpp"
-#include "../context.hpp"
+#include "../../constraint.hpp"
+#include "../../context.hpp"
 
 #include <cstddef>
 #include <vector>
@@ -129,4 +129,4 @@ CompiledConstraints compile_constraint_list(
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__CONSTRAINTS_COMPILER_HPP_
+#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__CONSTRAINTS_COMPILER_HPP_

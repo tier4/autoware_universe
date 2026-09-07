@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
-#define TRAJECTORY_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
+#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
+#define TRAJECTORY_PLANNER__NLP_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
 
 #include "ssc_corridor.hpp"
 #include "trajectory_optimizer_interface.hpp"
@@ -116,4 +116,4 @@ OptimizedTrajectory sample_ssc_solution(
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
+#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_

@@ -83,13 +83,13 @@ add_custom_target(generate_acados_code_nlp_time DEPENDS ${NLP_GENERATED_FILES})
 
 # 軌道プランナープラグイン (制約コンパイル・rough_planner・optimizer はこの .so の実装詳細)
 ament_auto_add_library(${PROJECT_NAME}_trajectory_planner_plugins SHARED
-  src/trajectory_planner/constraints_compiler.cpp
-  src/trajectory_planner/rough_planner.cpp
-  src/trajectory_planner/rough_optimizer_trajectory_planner.cpp
-  src/trajectory_planner/bezier.cpp
-  src/trajectory_planner/nlp_trajectory_optimizer.cpp
-  src/trajectory_planner/ssc_corridor.cpp
-  src/trajectory_planner/ssc_qp_trajectory_optimizer.cpp
+  src/trajectory_planner/nlp_planner/constraints_compiler.cpp
+  src/trajectory_planner/nlp_planner/rough_planner.cpp
+  src/trajectory_planner/nlp_planner/rough_optimizer_trajectory_planner.cpp
+  src/trajectory_planner/nlp_planner/bezier.cpp
+  src/trajectory_planner/nlp_planner/nlp_trajectory_optimizer.cpp
+  src/trajectory_planner/nlp_planner/ssc_corridor.cpp
+  src/trajectory_planner/nlp_planner/ssc_qp_trajectory_optimizer.cpp
   ${NLP_GENERATED_FILES}
 )
 add_dependencies(${PROJECT_NAME}_trajectory_planner_plugins generate_acados_code_nlp_time)

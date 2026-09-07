@@ -122,13 +122,6 @@ safety_planner:
         description: 追従参照の終点を goal そのものに差し替える距離 [m] (S5 §4.3)。rough_plan の終端が goal の手前この距離以内に来たら、末尾の停止区間の参照を goal に差し替える。0 にすると差し替えない
         validation:
           gt_eq<>: [0.0]
-      comfort_clearance_m:
-        type: double
-        default_value: 0.5
-        read_only: true
-        description: コリドー面に対して追加で確保したい余裕 [m] (C 幾何行)。Level 2 以降は 0 になる
-        validation:
-          gt_eq<>: [0.0]
       weight_pos:
         type: double
         default_value: 1.0

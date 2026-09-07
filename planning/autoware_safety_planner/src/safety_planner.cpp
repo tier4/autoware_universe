@@ -14,6 +14,11 @@
 
 #include "safety_planner.hpp"
 
+#include <autoware/trajectory/threshold.hpp>
+#include <autoware/trajectory/utils/closest.hpp>
+#include <autoware/trajectory/utils/crop.hpp>
+#include <autoware/trajectory/utils/reference_path.hpp>
+
 #include <map>
 #include <memory>
 #include <string>
@@ -86,9 +91,55 @@ std::string SafetyPlanner::get_trajectory_planner_plugin_name() const
   return trajectory_planner_ ? trajectory_planner_->get_name() : std::string{};
 }
 
-SafetyPlannerResult SafetyPlanner::plan(const PlannerContext & context)
+tl::expected<PathPointTrajectory, std::string> SafetyPlanner::build_reference_path(
+  const SafetyPlannerInput & input) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  const auto & route_manager = *input.route_manager;
+  const double forward_length = params_.reference_path.forward_length_m;
+  const double backward_length = params_.reference_path.backward_length_m;
+
+  const auto lane_sequence =
+    route_manager.get_lanelet_sequence_on_route(forward_length, backward_length);
+
+  auto reference_path = experimental::trajectory::build_reference_path(
+    lane_sequence.as_lanelets(), route_manager.current_lanelet(), input.odometry.pose.pose,
+    route_manager.lanelet_map_ptr(), route_manager.routing_graph_ptr(),
+    route_manager.traffic_rules_ptr(), forward_length, backward_length);
+
+  if (!reference_path) {
+    return tl::unexpected("Failed to build reference path: " + reference_path.error());
+  }
+
+  // goal_pose より先だけを crop する。後方 (backward_length_m 分) は残す —
+  // 制約の射影が ego 後方の footprint・後方から来る物体を扱うため。
+  // goal がまだ前方 (reference_path の終端より先) にある間は終端が最近傍になるので、
+  // 実質「後方端から前方終端まで」になる。
+  const double s_ego =
+    experimental::trajectory::closest(*reference_path, input.odometry.pose.pose.position);
+  const double s_goal =
+    experimental::trajectory::closest(*reference_path, input.goal_pose.position);
+
+  if (s_goal - s_ego < experimental::trajectory::k_epsilon_distance) {
+    return tl::unexpected(
+      "goal_pose is behind ego on the reference path (length = " + std::to_string(s_goal - s_ego) +
+      ")");
+  }
+
+  reference_path->crop(0.0, s_goal);
+  return std::move(reference_path.value());
+}
+
+tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyPlannerInput & input)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  auto reference_path = build_reference_path(input);
+  if (!reference_path) {
+    return tl::unexpected(reference_path.error());
+  }
+  const PlannerContext context(input, std::move(reference_path.value()));
 
   // 制約ジェネレータープラグインを呼び出して制約のリストを生成する
   auto constraints = calculate_constraints(context);
@@ -121,6 +172,7 @@ SafetyPlannerResult SafetyPlanner::plan(const PlannerContext & context)
   }
 
   result.debug.constraint_generator_outputs = std::move(constraints);
+  result.debug.reference_path = context.reference_path;
   return result;
 }
 
