@@ -34,12 +34,6 @@
           "description": "Shutdown the node after the TensorRT engine file is built.",
           "default": false
         },
-        "planning_frequency_hz": {
-          "type": "number",
-          "description": "Output rate of the planner.",
-          "default": 10.0,
-          "exclusiveMinimum": 0.0
-        },
         "shift_x": {
           "type": "boolean",
           "description": "Use the vehicle center (instead of base_link) as the model reference frame, mirroring the diffusion planner option.",

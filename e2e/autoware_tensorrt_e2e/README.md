@@ -17,7 +17,7 @@ something, this node reports the same thing under the same name.
 ## Architecture
 
 ```
-timer (planning_frequency_hz)
+the pacing sensor delivers
   └─ ego frame            odometry, acceleration, ego→map transform
   └─ input providers      each claims tensors by name, fills them per tick
   │    camera             images + intrinsics + extrinsics (from TF)
@@ -130,11 +130,16 @@ difference from `autoware_diffusion_planner` is the horizon, 4 s instead of 8 s.
 
 ## Operation
 
-The node is timer-driven at `planning_frequency_hz` (default 10 Hz); subscriptions only
-latch messages. Each sensor input has a staleness bound (`*.max_delay_ms`), measured
+The node runs when the sensor the model waits on delivers -- the provider reading it says
+so and drives the pass, as `autoware_bevfusion` does with the same cloud. There is no timer
+and no second way to run: a tick that fired between sweeps would plan on the previous one
+and publish a trajectory indistinguishable from a fresh one. A model that consumes no
+sensor is rejected at startup rather than started and left idle.
+
+Each sensor input has a staleness bound (`*.max_delay_ms`), measured
 against the node clock, so replaying a bag needs `use_sim_time:=true`. Processing time is
-published per stage, and exceeding the planning period raises a `WARN` diagnostic
-(`Processing time exceeded the planning period`). Model and preprocessing must fit the
+published per stage, and a pass taking longer than the interval the sensor actually
+delivered raises a `WARN` diagnostic (`Processing time exceeded the planning period`). Model and preprocessing must fit the
 100 ms budget on the target hardware.
 
 TensorRT engines are built in-node by `TrtCommon` and cached beside the ONNX files. Both

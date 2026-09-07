@@ -17,7 +17,7 @@ coupling the common node to that model.
 - Load one ONNX/TensorRT planner and inspect its named IO tensors at runtime.
 - Connect model inputs to reusable providers with explicit shape validation.
 - Keep sensor subscriptions and preprocessing out of the TensorRT wrapper.
-- Publish a common trajectory interface at a stable, timer-driven rate.
+- Publish a common trajectory interface, paced by the sensor the model consumes.
 - Fail early with a readable error when the model and deployment configuration do not match.
 
 ## Non-goals
@@ -57,7 +57,7 @@ graph TD
 
 | Layer | Main type | Responsibility |
 | --- | --- | --- |
-| Node | `TensorrtE2eNode` | Parameters, timer, ego state, orchestration, diagnostics, publishers |
+| Node | `TensorrtE2eNode` | Parameters, ego state, orchestration, diagnostics, publishers |
 | Providers | `InputProviderInterface` | ROS subscriptions, synchronization, conversion, and model input ownership |
 | Inference | `InferenceEngine` | Generic named TensorRT IO, device buffers, copies, and execution |
 | Postprocess | `TrajectoryPostprocessor` | Common trajectory decoding, velocity calculation, smoothing, and publication messages |
@@ -157,8 +157,9 @@ contains neighbors and neighbor history is available, it also produces `Predicte
 
 ## Scheduling and failure behavior
 
-The node is timer-driven at `planning_frequency_hz` (10 Hz by default). Sensor callbacks only
-cache messages. Each timer tick:
+The node is paced by its sensor: the provider reading the input the model waits on drives
+the pass from its own subscription, the way `autoware_bevfusion` is driven by the same
+cloud. There is no timer. A pass:
 
 1. takes the latest ego state;
 2. collects all provider tensors;
@@ -167,9 +168,14 @@ cache messages. Each timer tick:
 5. decodes and publishes the trajectory;
 6. publishes processing time and diagnostics.
 
-Missing sensor data is reported as a warning and skips that tick. Initialization errors disable
-inference and publish an error diagnostic. Processing that exceeds the timer period raises a
-warning so an output-rate regression is visible.
+Missing sensor data is reported as a warning and skips that pass. Initialization errors
+disable inference and publish an error diagnostic. A pass taking longer than the interval
+the sensor actually delivered raises a warning, so an output-rate regression is visible
+against the rate the sensor is really running at rather than against a configured one.
+
+A model no provider paces is rejected at construction. A timer in that position would plan
+on whatever sample happened to be latest, at a rate unrelated to it, and publish a
+trajectory that looks exactly like a fresh one.
 
 ## Extending the foundation
 

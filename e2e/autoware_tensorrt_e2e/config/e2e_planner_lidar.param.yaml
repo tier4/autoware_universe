@@ -8,7 +8,6 @@
     precision: "fp16"
     args_path: ""
     build_only: false
-    planning_frequency_hz: 10.0
     shift_x: false
 
     sensor_inputs: ["lidar"]

@@ -7,7 +7,6 @@
     precision: "fp16"
     args_path: ""  # Optional normalization JSON (diffusion planner observation_normalizer format)
     build_only: false
-    planning_frequency_hz: 10.0
     shift_x: false
 
     # Enabled input providers. Context inputs are claimed on demand from the engine manifest.
