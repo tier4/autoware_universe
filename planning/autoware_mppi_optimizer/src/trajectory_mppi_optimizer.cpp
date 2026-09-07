@@ -20,6 +20,7 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
+#include <autoware/trajectory_processor/trajectory_processor_plugin_base.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <pluginlib/class_list_macros.hpp>
 
@@ -274,6 +275,7 @@ void TrajectoryMppiOptimizer::on_initialize(
   velocity_limit_trajectory_pub_ =
     node->create_publisher<Trajectory>("~/debug/mppi/velocity_limit_trajectory", 1);
   markers_pub_ = node->create_publisher<MarkerArray>("~/debug/mppi/markers", 1);
+  rollouts_pub_ = node->create_publisher<MarkerArray>("~/debug/mppi/rollouts", 1);
   enabled_pub_ = node->create_publisher<std_msgs::msg::Bool>(
     "~/debug/mppi/enabled", rclcpp::QoS{1}.transient_local());
   debug_publisher_ = std::make_unique<autoware_utils_debug::DebugPublisher>(node, "~/debug");
@@ -404,7 +406,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     auto result = optimizer_->optimizeTrajectory(
       input, *data.current_odometry, acceleration, steering, all_targets,
       to_mppi_segments(road_borders), to_mppi_segments(drivable_area), kinematic_limits,
-      control_postprocessor);
+      control_postprocessor, /*defer_commit=*/true);
 
     const bool apply_limited_fallback =
       result.debug.was_rejected && result.debug.velocity_limit_profile_active;
@@ -430,7 +432,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
             steering_commands[index];
         }
       }
-      steering_filter_ = std::move(candidate_steering_filter);
     }
 
     pending_debug_ = result.debug;
@@ -438,6 +439,8 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     pending_markers_ = createMppiDebugMarkers(
       result.debug, road_borders, drivable_area, avoidance_targets, driving_along_targets,
       data.current_odometry->pose.pose.position.z);
+    pending_rollouts_ =
+      create_mppi_rollout_markers(result.debug, data.current_odometry->pose.pose.position.z);
     debug_pending_ = true;
 
     publish_enabled(apply_result);
@@ -446,17 +449,21 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     publish_prediction_accuracy(result.debug.prediction_accuracy);
     publish_ego_to_dp_first_point_distance(*data.current_odometry, input);
     publish_ego_signed_lateral_error_on_dp(*data.current_odometry, input);
-    if (result.debug.was_rejected) {
-      pending_markers_.markers.clear();
-      clear_markers(input.header);
-    }
     if (!apply_result) {
-      return ProcessingResult::Unchanged;
+      optimizer_->discardPendingTrajectory();
     }
 
     trajectory_points = result.trajectory.points;
-    return ProcessingResult::Modified;
+    if (!result.debug.was_rejected && result.optimized_point_count > 0U) {
+      optimizer_->commitPendingTrajectory();
+      pending_debug_->applied_plant.valid = true;
+    } else {
+      optimizer_->discardPendingTrajectory();
+    }
+    if (filter_candidate) steering_filter_ = std::move(candidate_steering_filter);
+    return !result.debug.was_rejected ? ProcessingResult::Unchanged : ProcessingResult::Modified;
   } catch (const std::exception & error) {
+    if (optimizer_) optimizer_->discardPendingTrajectory();
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     publish_enabled(false);
     clear_markers(data.candidate_header);
@@ -577,6 +584,7 @@ void TrajectoryMppiOptimizer::publish_debug_data(const std::string &) const
   nominal_trajectory_pub_->publish(nominal);
   velocity_limit_trajectory_pub_->publish(velocity_limits);
   markers_pub_->publish(pending_markers_);
+  rollouts_pub_->publish(pending_rollouts_);
   debug_pending_ = false;
 }
 
@@ -733,6 +741,7 @@ void TrajectoryMppiOptimizer::clear_markers(const std_msgs::msg::Header & header
   MarkerArray markers;
   markers.markers.push_back(marker);
   markers_pub_->publish(markers);
+  rollouts_pub_->publish(markers);
 }
 
 }  // namespace autoware::mppi_optimizer::plugin
