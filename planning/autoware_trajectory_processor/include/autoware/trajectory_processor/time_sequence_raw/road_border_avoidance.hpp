@@ -35,7 +35,7 @@ struct RoadBorderAvoidanceParams
   bool enable{false};
   double footprint_margin_m{0.2};
   double search_radius_m{120.0};
-  double shift_step_m{0.1};
+  double shift_step_m{0.1};  // first 3 probes; remaining clearance via bisection
   double max_lateral_shift_m{1.5};
   bool propagate_shift{true};
 };

@@ -90,6 +90,58 @@ const LineString2d * find_nearest_overlapping_border(
   }
   return nearest_border;
 }
+
+constexpr int k_linear_shift_steps = 3;
+constexpr double k_bisection_eps_m = 1e-3;
+
+/// Clear a colliding pose: up to 3 `step` probes, then bisection to `max_shift`.
+/// If the cap is still colliding, finish with linear steps so a clear window
+/// between the last probe and an opposite curb is not skipped.
+template <typename CollidingFn>
+bool find_clear_offset(
+  double & offset, const double step, const double max_shift, const CollidingFn & colliding)
+{
+  const auto within_max = [max_shift](const double candidate) {
+    return std::abs(candidate) <= max_shift + 1e-9;
+  };
+
+  int linear_steps = 0;
+  while (linear_steps < k_linear_shift_steps && within_max(offset + step)) {
+    offset += step;
+    ++linear_steps;
+    if (!colliding(offset)) {
+      return true;
+    }
+  }
+
+  const double hi = std::copysign(max_shift, step);
+  if (!within_max(hi) || std::abs(hi - offset) <= k_bisection_eps_m) {
+    return false;
+  }
+
+  if (colliding(hi)) {
+    while (within_max(offset + step)) {
+      offset += step;
+      if (!colliding(offset)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  double lo = offset;
+  double clear = hi;
+  while (std::abs(clear - lo) > k_bisection_eps_m) {
+    const double mid = 0.5 * (lo + clear);
+    if (colliding(mid)) {
+      lo = mid;
+    } else {
+      clear = mid;
+    }
+  }
+  offset = clear;
+  return true;
+}
 }  // namespace
 
 RoadBorderAvoidance::RoadBorderAvoidance(
@@ -184,15 +236,9 @@ RoadBorderAvoidanceResult RoadBorderAvoidance::adjust(
     const Eigen::Vector2d to_border = border_point - position;
     const double cross = heading.x() * to_border.y() - heading.y() * to_border.x();
     const double step = (cross > 0.0) ? -params_.shift_step_m : params_.shift_step_m;
-
-    bool resolved = false;
-    while (std::abs(offset + step) <= params_.max_lateral_shift_m + 1e-9) {
-      offset += step;
-      if (!intersects_any(footprint_at(offset))) {
-        resolved = true;
-        break;
-      }
-    }
+    const bool resolved = find_clear_offset(
+      offset, step, params_.max_lateral_shift_m,
+      [&](const double off) { return intersects_any(footprint_at(off)); });
 
     apply_offset(offset);
     carried_offset_m = offset;

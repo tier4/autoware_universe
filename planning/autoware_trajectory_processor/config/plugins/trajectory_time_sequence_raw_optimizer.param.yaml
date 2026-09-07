@@ -27,6 +27,6 @@
       enable: false
       footprint_margin_m: 0.2
       search_radius_m: 120.0
-      shift_step_m: 0.1
+      shift_step_m: 0.1  # first 3 probes [m]; remaining clearance via bisection
       max_lateral_shift_m: 1.5
       propagate_shift: true

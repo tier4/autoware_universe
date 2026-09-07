@@ -159,6 +159,23 @@ TEST_F(RoadBorderAvoidanceTest, PropagatesShiftToSubsequentPoints)
   }
 }
 
+TEST_F(RoadBorderAvoidanceTest, BisectsAfterThreeLinearSteps)
+{
+  // Half-width + margin = 1.1 m. Border at y=0.73 needs ~0.37 m of shift, so the first
+  // three 0.1 m probes still collide and bisection must land between 0.3 m and 0.4 m.
+  params_.shift_step_m = 0.1;
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  avoidance.set_road_borders({make_parallel_border(0.73)});
+
+  const auto result = avoidance.adjust(make_straight_trajectory(0.0), ego_pose_);
+  ASSERT_GT(result.num_shifted_points, 0U);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+  for (const auto & point : result.trajectory.points) {
+    EXPECT_LT(point.pose.position.y, -0.3);
+    EXPECT_GT(point.pose.position.y, -0.4);
+  }
+}
+
 TEST_F(RoadBorderAvoidanceTest, IgnoresBordersOutsideSearchRadius)
 {
   params_.search_radius_m = 10.0;

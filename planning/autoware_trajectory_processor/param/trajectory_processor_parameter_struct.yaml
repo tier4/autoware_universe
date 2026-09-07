@@ -962,7 +962,7 @@ trajectory_processor_params:
     shift_step_m:
       type: double
       default_value: 0.1
-      description: Lateral shift resolution [m]
+      description: Increment for the first three lateral probes; remaining clearance uses bisection [m]
       validation:
         gt<>: [0.0]
       read_only: false
