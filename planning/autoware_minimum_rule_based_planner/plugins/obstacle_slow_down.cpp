@@ -104,7 +104,6 @@ void ObstacleSlowDown::update_params(const MinimumRuleBasedPlannerParams & param
 {
   params_ = params.obstacle_slow_down;
   planner_->update_params(params_);
-  // TODO(odashima): 型別ネストの object_type_specified_params の読み込み
 }
 
 void ObstacleSlowDown::run(TrajectoryPoints & traj_points, const ModifierData & modifier_data)

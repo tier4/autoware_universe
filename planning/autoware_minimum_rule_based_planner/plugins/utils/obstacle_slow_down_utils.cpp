@@ -135,7 +135,6 @@ double calc_possible_min_dist_from_obj_to_traj_poly(
   const double ego_possible_max_dist =
     std::hypot(vehicle_info.max_longitudinal_offset_m, vehicle_info.vehicle_width_m / 2.0);
   const auto & obj_pos = object.kinematics.initial_pose_with_covariance.pose.position;
-  // lateral_metrics は Trajectory<Pose> 専用のため基底クラス側で呼ぶ
   const double possible_min_dist_to_traj_poly =
     autoware::experimental::trajectory::compute_lateral_distance<geometry_msgs::msg::Pose>(
       trajectory, obj_pos, obj_s) -
@@ -325,8 +324,6 @@ void insert_slowdown(EgoTrajectory & trajectory, const SlowdownInterval & slowdo
 {
   auto & vel = trajectory.longitudinal_velocity_mps();
 
-  // 境界 base を「現在の補間値の自己代入」で挿入する(プロファイルは変えず base だけ増やす)。
-  // at().set は base が無ければ挿入するので、補間器(stairstep/linear)によらず恒等操作になる
   vel.at(slowdown_interval.from_s).set(vel.compute(slowdown_interval.from_s));
   vel.at(slowdown_interval.to_s).set(vel.compute(slowdown_interval.to_s));
 
@@ -373,9 +370,6 @@ SlowDownResult SlowDownPlanner::plan(const EgoTrajectory & trajectory, const Slo
   const auto & p = params_.obstacle_filtering;
   const auto & tp = params_.trajectory_polygon;
 
-  // 減速をかける縦区間の検出用コリドー(max_lat_margin + hysteresis で拡幅)。
-  // exit ヒステリシス帯域(max + hys/2)内の障害物からも衝突点を取るため、
-  // hysteresis は半分にせず全量を足す(元実装の NOTE を踏襲)。
   const auto slow_down_corridor_polys = trajectory_polygon_utils::create_one_step_polygons(
     trajectory, vehicle_info_, input.current_pose, p.max_lat_margin + p.lat_hysteresis_margin,
     tp.enable_to_consider_current_pose, tp.time_to_convergence, tp.decimate_trajectory_step_length,
@@ -440,8 +434,6 @@ bool SlowDownPlanner::is_slow_down_candidate(
   // NOTE: crossed() detects boundary crossings, so unlike the original bg::intersects it misses
   // the case where the whole trajectory is inside the obstacle polygon, which cannot happen for
   // realistic object sizes.
-  // TODO(odashima): crossed() は spline の基準点間隔(元実装は 2m リサンプル)で評価するため
-  // 評価セグメント数が増えている。処理時間を計測して必要に応じて点数を間引く処理を入れる。
   if (!autoware::experimental::trajectory::crossed(trajectory, obstacle_poly.outer()).empty()) {
     RCLCPP_DEBUG(
       logger_,
@@ -473,8 +465,6 @@ bool SlowDownPlanner::is_slow_down_required(
   const double dt =
     state.last_update_time ? (current_time - *state.last_update_time).seconds() : 0.0;
 
-  // NOTE: 出入り方向が切り替わると最初の増減で ±dt に丸められるため、
-  // しきい値到達時に累積時間を 0 に戻さなくても挙動は変わらないが、状態としては戻しておく
   if (state.was_slow_down) {
     // check if exiting slow down
     if (!is_slow_down_condition_met) {
@@ -505,7 +495,6 @@ const std::vector<Polygon2d> & SlowDownPlanner::get_ego_swept_polys(
     ego_swept_polys_per_off_track_scale_.try_emplace(wheel_off_track_scale);
   if (inserted) {
     const auto & tp = params_.trajectory_polygon;
-    // ゴール付近で隙間がポリゴン末端の角までの距離として過大評価されないよう、ゴール後方に延長する
     it->second = trajectory_polygon_utils::create_one_step_polygons(
       trajectory, vehicle_info_, current_pose, 0.0, tp.enable_to_consider_current_pose,
       tp.time_to_convergence, tp.decimate_trajectory_step_length,
@@ -521,7 +510,7 @@ std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_pre
   const rclcpp::Time predicted_objects_stamp(input.predicted_objects->header.stamp);
 
   // slow down
-  std::vector<UUID> current_uuids;  // 今フレームで追跡対象になった uuid(状態の GC 用)
+  std::vector<UUID> current_uuids;
   std::vector<SlowDownObstacle> slow_down_obstacles;
   const double ego_s = autoware::experimental::trajectory::closest(trajectory, input.current_pose);
   for (const auto & object : input.predicted_objects->objects) {
@@ -544,16 +533,12 @@ std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_pre
     // 2. calc lateral distance to trajectory polygon
     const auto obstacle_poly = autoware_utils_geometry::to_polygon2d(
       object.kinematics.initial_pose_with_covariance.pose, object.shape);
-    // 横の隙間は「マージン 0 の ego 掃引ポリゴン」との距離。旋回時の前外輪のはみ出しを
-    // どれだけ見込むかは物体種別ごとに異なる
     const double dist_from_obj_poly_to_traj_poly = calc_dist_to_traj_poly(
       obstacle_poly, get_ego_swept_polys(
                        trajectory, input.current_pose,
                        get_object_param(object.classification.at(0)).wheel_off_track_scale));
 
     // 3. check the slow down conditions
-    // NOTE: 候補判定で落ちるフレームでも状態は GC しない(ヒステリシスを保持する)ため、
-    // 追跡対象への登録は判定より前に行う
     auto & state = tracking_states_[object.object_id];
     current_uuids.push_back(object.object_id);
 
@@ -589,7 +574,6 @@ std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_pre
       trajectory, object, *collision_points, lon_vel_relative_to_traj, lat_vel_relative_to_traj,
       predicted_objects_stamp, input.current_time, dist_from_obj_poly_to_traj_poly));
   }
-  // 今フレームで追跡対象から外れた障害物の状態を破棄する
   for (auto it = tracking_states_.begin(); it != tracking_states_.end();) {
     const bool is_current = std::any_of(
       current_uuids.begin(), current_uuids.end(),
@@ -597,14 +581,8 @@ std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_pre
     it = is_current ? std::next(it) : tracking_states_.erase(it);
   }
 
-  // 横距離ヒステリシスの状態は、横距離単体の判定ではなくフィルタ全体の最終結果で確定する
   for (auto & [uuid, state] : tracking_states_) {
     state.was_slow_down = contains_uuid(slow_down_obstacles, uuid);
-    // NOTE: is_slow_down_required の中では更新しない。候補判定で落ちたフレームは同関数が
-    // 呼ばれないため、そこで更新すると次の評価時に dt が数フレーム分まとまって入り、
-    // フレーム数カウント時代には加算されなかった時間まで累積してしまう。ここで生存する全
-    // state を毎フレーム更新すれば dt は常に 1 フレーム分になる。state 新規作成の初回だけ
-    // dt=0 となりカウント方式(初回 +1)と 1 フレーム分ずれるが、これは許容する。
     state.last_update_time = input.current_time;
   }
 
@@ -641,7 +619,6 @@ SlowDownObstacle SlowDownPlanner::create_slow_down_obstacle_for_predicted_object
   return obstacle;
 }
 
-// 元実装 plan_slow_down の移植(virtual wall・デバッグ配列の出力は未移植)
 std::vector<PlannedSlowDown> SlowDownPlanner::plan_slow_down(
   const SlowDownInput & input, const EgoTrajectory & trajectory,
   const std::vector<SlowDownObstacle> & obstacles, const double dist_to_ego,
@@ -649,18 +626,16 @@ std::vector<PlannedSlowDown> SlowDownPlanner::plan_slow_down(
 {
   std::vector<PlannedSlowDown> plans;
   for (const auto & obstacle : obstacles) {
-    auto & state = tracking_states_.at(obstacle.uuid);  // filter 段で必ず作られている
+    auto & state = tracking_states_.at(obstacle.uuid);
     const auto target = make_slow_down_target(obstacle, state.prev_slow_down);
     const auto result =
       plan_slow_down_for_obstacle(input, trajectory, target, dist_to_ego, is_driving_forward);
-    // prev_slow_down は「前フレームで減速出力を出したか」を表すため、出さなければ消す
     state.prev_slow_down = result ? std::make_optional(result->carry_over) : std::nullopt;
     if (result) {
       plans.push_back(result->plan);
     }
   }
 
-  // plan 対象にならなかった(フィルタで落ちた)障害物の prev_slow_down も同様に消す
   for (auto & [uuid, state] : tracking_states_) {
     if (!contains_uuid(obstacles, uuid)) {
       state.prev_slow_down.reset();
@@ -670,11 +645,9 @@ std::vector<PlannedSlowDown> SlowDownPlanner::plan_slow_down(
   return plans;
 }
 
-// 前フレームからの持ち越しに依存する量(motion 判定・横距離 LPF)をここで一度だけ確定させる
 SlowDownTarget SlowDownPlanner::make_slow_down_target(
   const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_slow_down) const
 {
-  // 障害物が移動中か静止かを速度ノルムのシュミットトリガーで判定
   const auto obstacle_motion = determine_obstacle_motion(obstacle, prev_slow_down);
 
   const double stable_dist_to_traj_poly =
@@ -683,7 +656,6 @@ SlowDownTarget SlowDownPlanner::make_slow_down_target(
                        params_.lpf_gain_lateral_distance)
                    : obstacle.dist_to_traj_poly;
 
-  // 障害物との横距離から通過時の目標速度を線形補間で決める
   const auto & p =
     get_object_param(obstacle.classification).get_velocity_param(obstacle.side, obstacle_motion);
   const double ratio = std::clamp(
@@ -699,8 +671,6 @@ std::optional<PlannedSlowDownWithCarryOver> SlowDownPlanner::plan_slow_down_for_
   const SlowDownInput & input, const EgoTrajectory & trajectory, const SlowDownTarget & target,
   const double dist_to_ego, const bool is_driving_forward) const
 {
-  // 減速制約(min acc/jerk)と障害物の縦速度を考慮して、減速区間 [from_s, to_s] と
-  // そこで実現可能な速度を計算する(遠すぎる場合は nullopt)
   const auto slow_down_interval = calculate_distance_to_slow_down_with_constraints(
     input, trajectory, target, dist_to_ego, is_driving_forward);
   if (!slow_down_interval) {
@@ -716,60 +686,44 @@ std::optional<PlannedSlowDownWithCarryOver> SlowDownPlanner::plan_slow_down_for_
     return std::nullopt;
   }
 
-  // 軌道に適用する減速区間(弧長は軌道範囲にクランプ)
   const SlowdownInterval slowdown_interval{
     std::clamp(slow_down_interval->from_s, 0.0, trajectory.length()),
     std::clamp(slow_down_interval->to_s, 0.0, trajectory.length()), *stable_slow_down_vel};
 
-  // 次フレームのヒステリシス・LPF の基準として持ち越す量を組み立てる。
-  // target_vel は plan.interval.velocity と同値だが、持ち越し側を自己完結させるため重複させる
   SlowDownCarryOver carry_over;
   carry_over.target_vel = *stable_slow_down_vel;
   carry_over.feasible_target_vel = slow_down_interval->velocity;
   carry_over.dist_from_obj_poly_to_traj_poly = target.stable_dist_to_traj_poly;
-  // 減速開始位置が軌道範囲外なら、次フレームの距離 LPF の基準にできないので持たせない
   if (0.0 <= slow_down_interval->from_s && slow_down_interval->from_s <= trajectory.length()) {
     carry_over.start_point = trajectory.compute(slow_down_interval->from_s).pose;
   }
   carry_over.end_point = trajectory.compute(slow_down_interval->to_s).pose;
   carry_over.obstacle_motion = target.obstacle_motion;
 
-  // planning factor の start は幾何的な減速開始位置ではなく、元実装の virtual wall と同じく
-  // ego 位置を減速区間 [from_s, to_s] にクランプした点(通過中は ego に追従して end まで残す)
   const double wall_s = std::clamp(dist_to_ego, slowdown_interval.from_s, slowdown_interval.to_s);
 
-  // end_point は結果側も持ち越し側も要るので、寿命を絡ませないよう値で重複して持つ
   return PlannedSlowDownWithCarryOver{
     {slowdown_interval, target.obstacle, trajectory.compute(wall_s).pose, *carry_over.end_point},
     carry_over};
 }
 
-// 減速区間の目標速度を前フレームと LPF して安定化し、減速が不要/区間が無効なら nullopt を返す
 std::optional<double> SlowDownPlanner::validate_slow_down_interval(
   const SlowDownTarget & target, const EgoTrajectory & trajectory,
   const SlowdownInterval & slow_down_interval) const
 {
-  // 区間長が 0 以下、または区間終端が軌道範囲外なら棄却
   if (
     slow_down_interval.to_s <= slow_down_interval.from_s || slow_down_interval.to_s < 0.0 ||
     trajectory.length() < slow_down_interval.to_s) {
     return std::nullopt;
   }
 
-  // 前フレームの目標速度と LPF して目標速度のチャタリングを抑える
   const double stable_slow_down_vel =
     target.prev
       ? autoware::signal_processing::lowpassFilter(
           slow_down_interval.velocity, target.prev->target_vel, params_.lpf_gain_slow_down_vel)
       : slow_down_interval.velocity;
 
-  // 区間内の元の軌道速度が既に目標速度以下なら減速は不要なので棄却。
-  // NOTE: 速度は stairstep 補間なので base の値だけを見れば区間内の速度は尽くせる
-  // TODO(odashima): Trajectory 側に弧長区間の属性走査 utils を整備してから、この index 演算を
-  // vel.max_in(from_s, to_s) 相当に置き換える。詳細は my_docs/TASK_trajectory_range_utils.md
   const auto [bases, values] = trajectory.longitudinal_velocity_mps().get_data();
-  // bases は昇順。from_s で有効な base(from_s 以下の最後の base)から、
-  // to_s 以上の最初の base の手前まで
   const auto upper = std::upper_bound(bases.begin(), bases.end(), slow_down_interval.from_s);
   const size_t begin_idx =
     upper == bases.begin() ? 0 : static_cast<size_t>(std::distance(bases.begin(), upper) - 1);
@@ -795,7 +749,6 @@ Motion SlowDownPlanner::determine_obstacle_motion(
   const SlowDownObstacle & obstacle, const std::optional<SlowDownCarryOver> & prev_output) const
 {
   const double object_vel_norm = std::hypot(obstacle.velocity, obstacle.lat_velocity);
-  // 前フレームに減速出力がなければヒステリシスなしの素の閾値判定
   if (!prev_output) {
     return object_vel_norm > params_.moving_object_speed_threshold ? Motion::Moving
                                                                    : Motion::Static;
@@ -926,7 +879,6 @@ double SlowDownPlanner::calculate_feasible_slow_down_velocity(
     return min_slow_down_vel;
   }();
 
-  // start_point は減速開始位置が軌道範囲外だった前フレームでは空
   if (prev_output && prev_output->start_point) {
     // NOTE: If longitudinal controllability is not good, one_shot_slow_down_vel may be getting
     // larger since we use actual ego's velocity and acceleration for its calculation.

@@ -145,8 +145,6 @@ Polygon2d create_pose_footprint(
   return polygon;
 }
 
-// 前外輪のオフトラッキング量(前外輪と後外輪の旋回半径の差)。
-// 左旋回で負、右旋回で正の符号を持つ(= 外側の符号)
 std::vector<double> calc_front_outer_wheel_off_tracking(
   const std::vector<TrajectoryPoint> & traj_points, const VehicleInfo & vehicle_info)
 {
@@ -162,12 +160,9 @@ std::vector<double> calc_front_outer_wheel_off_tracking(
   std::transform(
     curvature_vec.begin(), curvature_vec.end(), front_outer_wheel_off_track.begin(),
     [&vehicle_info](const double base_link_curvature) {
-      // 後軸中心の曲率から後外輪の軌跡の曲率を求める
       const double base_link_outer_wheel_curvature =
         base_link_curvature /
         (1.0 + std::abs(base_link_curvature) * vehicle_info.vehicle_width_m / 2.0);
-      // 前外輪のオフトラッキング量。絶対値は
-      // std::hypot(radius_front_outer_wheel, wheel_base) - radius_front_outer_wheel と等価
       return -1.0 * vehicle_info.wheel_base_m *
              std::tan(0.5 * std::atan(base_link_outer_wheel_curvature * vehicle_info.wheel_base_m));
     });
@@ -180,8 +175,6 @@ std::vector<TrajectoryPoint> decimate_trajectory_points_from_ego(
   const geometry_msgs::msg::Pose & current_pose, const double decimate_trajectory_step_length,
   const double goal_extended_trajectory_length)
 {
-  // planner の出力軌道は ego 近傍から始まり自己交差しないため、
-  // 元実装の soft constraint 付き近傍探索(dist/yaw 閾値)は使わず幾何的な closest で足りる
   const double ego_s = autoware::experimental::trajectory::closest(trajectory, current_pose);
 
   // sample the trajectory from ego to the goal with the given step length

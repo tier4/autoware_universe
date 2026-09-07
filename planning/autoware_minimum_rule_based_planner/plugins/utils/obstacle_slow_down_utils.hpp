@@ -53,7 +53,6 @@ using EgoTrajectory = autoware::experimental::trajectory::Trajectory<TrajectoryP
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
 using ObstacleSlowDownParams = ::minimum_rule_based_planner::Params::ObstacleSlowDown;
 
-// Count使ってる？消して良い？
 enum class Side { Left = 0, Right, Count };
 enum class Motion { Moving = 0, Static, Count };
 
@@ -72,7 +71,6 @@ struct SlowDownObstacle
   Side side{};  // side of the obstacle relative to the ego trajectory
 };
 
-// 減速区間(軌道始点からの弧長 [m] で表す)
 struct SlowdownInterval
 {
   double from_s{};
@@ -80,7 +78,6 @@ struct SlowdownInterval
   double velocity{};
 };
 
-// 次フレームのヒステリシス・LPF の基準として持ち越す量。今フレームの計画結果は PlannedSlowDown
 struct SlowDownCarryOver
 {
   double target_vel{};
@@ -91,14 +88,12 @@ struct SlowDownCarryOver
   Motion obstacle_motion{};
 };
 
-// plan 段で 1 障害物ぶんの入力をまとめた束。ループ内だけで生きる一時オブジェクト
 struct SlowDownTarget
 {
   const SlowDownObstacle & obstacle;
   const std::optional<SlowDownCarryOver> & prev;
   Motion obstacle_motion{};
   double stable_dist_to_traj_poly{};
-  // 横距離から線形補間で決めた、障害物の横を通過するときの目標速度 [m/s]
   double slow_down_vel{};
 };
 
@@ -140,21 +135,11 @@ struct UuidLess
   }
 };
 
-// 障害物 uuid ごとにフレームを跨いで保持する状態。エントリはフィルタの粗ふるいを
-// 通過した uuid に対して作られ、追跡対象から外れた uuid は毎フレーム GC される。
-// フィールドごとに更新される段が異なる:
-//  - condition_duration は filter 段(is_slow_down_required)で更新
-//  - was_slow_down は filter 段の最後に最終結果で確定
-//  - prev_slow_down は plan 段で更新(減速出力を出したフレームだけ値を持つ)
 struct ObstacleTrackingState
 {
-  // 減速条件の成立/不成立の累積時間 [s](正: entry 側, 負: exit 側)
   double condition_duration{0.0};
-  // 前フレームでこの障害物の状態を更新した時刻(dt 算出用)
   std::optional<rclcpp::Time> last_update_time{};
-  // 前フレームのフィルタを最終的に通過して減速対象だったか(横距離ヒステリシスの状態)
   bool was_slow_down{false};
-  // 前フレームで実際に減速出力を出した場合の内容(各種 LPF と motion 判定の基準)
   std::optional<SlowDownCarryOver> prev_slow_down{};
 };
 
@@ -162,7 +147,6 @@ struct ObstacleTrackingState
 // only lowered, never raised (e.g. a stop point inside the interval is kept).
 void insert_slowdown(EgoTrajectory & trajectory, const SlowdownInterval & slowdown_interval);
 
-// ノード境界で受け取る 1 フレームぶんの入力(ModifierData のノード非依存版)
 struct SlowDownInput
 {
   PredictedObjects::ConstSharedPtr predicted_objects;
@@ -172,18 +156,14 @@ struct SlowDownInput
   rclcpp::Time current_time;
 };
 
-// 障害物 1 件ぶんの減速計画。start/end_pose は planning factor 出力用
 struct PlannedSlowDown
 {
   SlowdownInterval interval;
   SlowDownObstacle obstacle;
-  // 元実装の virtual wall と同様に、ego が減速区間内にいる間は ego 位置に追従する
-  // (区間手前では減速開始位置、区間通過後は減速終了位置)
   geometry_msgs::msg::Pose start_pose;
   geometry_msgs::msg::Pose end_pose;
 };
 
-// 障害物 1 件ぶんの plan 段の出力
 struct PlannedSlowDownWithCarryOver
 {
   PlannedSlowDown plan;
@@ -192,16 +172,12 @@ struct PlannedSlowDownWithCarryOver
 
 struct SlowDownResult
 {
-  std::vector<SlowDownObstacle> obstacles;  // フィルタを通過した減速対象障害物
+  std::vector<SlowDownObstacle> obstacles;
   std::vector<PlannedSlowDown> plans;
-  // planning factor の距離計算用。pose を点列に射影して測るので減速区間の点は挿入しない
   TrajectoryPoints traj_points;
   bool is_driving_forward{true};
 };
 
-/// @brief obstacle_slow_down のノード非依存部分。障害物のフィルタリングと減速区間の計画、
-/// およびそれらに使うフレーム間状態(ヒステリシス・LPF)を保持する。
-/// パラメータ読み込み・planning factor 出力・軌道への適用はプラグイン側が行う
 class SlowDownPlanner
 {
 public:
@@ -214,11 +190,11 @@ public:
 
   SlowDownResult plan(const EgoTrajectory & trajectory, const SlowDownInput & input);
 
-  // 共通
+  // Common
 private:
   const ObjectTypeSpecificParams & get_object_param(const ObjectClassification & label) const;
 
-  // filter 段: 減速対象の障害物を選ぶ
+  // Filter
 private:
   bool is_slow_down_obstacle(const uint8_t label) const;
 
@@ -234,8 +210,6 @@ private:
     const std::vector<Polygon2d> & slow_down_corridor_polys, const EgoTrajectory & trajectory,
     const SlowDownInput & input);
 
-  // 横の隙間の測定に使う ego フットプリントの掃引。off track の上乗せ量が物体種別ごとに
-  // 異なるため、同一フレーム内で scale 値ごとにキャッシュする(plan() の先頭でクリアする)
   const std::vector<Polygon2d> & get_ego_swept_polys(
     const EgoTrajectory & trajectory, const geometry_msgs::msg::Pose & current_pose,
     const double wheel_off_track_scale);
@@ -247,14 +221,13 @@ private:
     const rclcpp::Time & predicted_objects_stamp, const rclcpp::Time & current_time,
     const double dist_from_obj_poly_to_traj_poly);
 
-  // plan 段: 障害物ごとに減速区間を計画する
+  // Plan
 private:
   std::vector<PlannedSlowDown> plan_slow_down(
     const SlowDownInput & input, const EgoTrajectory & trajectory,
     const std::vector<SlowDownObstacle> & obstacles, const double dist_to_ego,
     const bool is_driving_forward);
 
-  // 前フレームからの持ち越しに依存する量(motion 判定・横距離 LPF)をここで一度だけ確定させる
   SlowDownTarget make_slow_down_target(
     const SlowDownObstacle & obstacle,
     const std::optional<SlowDownCarryOver> & prev_slow_down) const;
