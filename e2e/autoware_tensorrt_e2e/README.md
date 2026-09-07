@@ -191,9 +191,9 @@ ros2 launch autoware_tensorrt_e2e <launch file> use_sim_time:=true \
   output_trajectory:=/planning/trajectory
 ```
 
-In a full Autoware stack the vehicle launch publishes `/robot_description`. A standalone
-replay has nothing drawing the ego; add `vehicle_model_publisher:=true
-vehicle_model:=<name>` to publish the body from `<name>_description`.
+Nothing here draws the ego either. `/robot_description` comes from the vehicle launch in a
+full stack, and from whatever assembles the run otherwise, the same way the window itself
+does.
 
 ## Extending
 
