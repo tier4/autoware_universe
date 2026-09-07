@@ -54,14 +54,12 @@
 
     context:
       traffic_light_group_msg_timeout_seconds: 0.2
-      ignore_neighbors: false
       # Subscribe to the turn-indicator report for a model that declares the
       # tensor. A model whose graph carries it but never reads it (ResWorld:
       # perturbing the input changes nothing) sets this false in its ml_package
       # file; the node then binds a constant and subscribes to nothing.
       turn_indicators:
         enabled: true
-      ignore_unknown_neighbors: true
       line_string_max_step_m: 5.0
       use_time_interpolation: false
 
