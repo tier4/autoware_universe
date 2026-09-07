@@ -162,7 +162,11 @@ difference from `autoware_diffusion_planner` is the horizon, 4 s instead of 8 s.
 
 The node is timer-driven at `planning_frequency_hz` (default 10 Hz); subscriptions only
 latch messages. Each sensor input has a staleness bound (`*.max_delay_ms`), measured
-against the node clock, so replaying a bag needs `use_sim_time:=true`. Processing time is
+against the node clock, so a run on recorded data has to put the node on the same clock as
+the recording -- `use_sim_time` is not declared here, the way it is not declared by any
+other planning node; whatever assembles the run sets it. Left unset against a bag, every
+input is measured against wall time, every frame is rejected as stale, and the node
+publishes nothing while looking healthy. Processing time is
 published per stage, and exceeding the planning period raises a `WARN` diagnostic
 (`Processing time exceeded the planning period`). Model and preprocessing must fit the
 100 ms budget on the target hardware.
@@ -263,7 +267,7 @@ Autoware's standard layout draws `/planning/trajectory`, so a run that wants to 
 node's output there remaps it:
 
 ```bash
-ros2 launch autoware_tensorrt_e2e <launch file> use_sim_time:=true \
+ros2 launch autoware_tensorrt_e2e <launch file> \
   output_trajectory:=/planning/trajectory
 ```
 
