@@ -433,6 +433,9 @@ public:
    *        external acceleration and jerk bounds.
    * @param control_postprocessor Optional caller-owned conditioning applied to the optimized
    *        control horizon before state recomputation and applied-control bookkeeping.
+   * @param defer_commit Require commitPendingTrajectory() before recording candidate commands
+   *        in the accepted execution history; use this when the caller can reject or shadow output.
+   * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
@@ -441,7 +444,17 @@ public:
     const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
     const std::vector<Segment> & drivable_area,
     const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {},
-    const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor = {});
+    const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor = {},
+    bool defer_commit = false);
+
+  /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
+   * This records an assumed first actuator command, not feedback from the downstream controller.
+   * Callers with actual command history should supply that history through the existing seed APIs.
+   * A subsequent optimizeTrajectory call discards an uncommitted candidate automatically.
+   * Changes to parameters, ablations, or control/delay seeds also discard it.
+   */
+  void commitPendingTrajectory();
+  void discardPendingTrajectory() noexcept;
 
 private:
   struct Impl;
