@@ -275,6 +275,30 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       TIMEOUT 60
     )
 
+    cuda_add_executable(test_costs
+      test/test_costs.cu
+    )
+    target_link_libraries(test_costs
+      first_order_dubins_mppi
+      ${GTEST_LIBRARIES}
+      ${GTEST_MAIN_LIBRARIES}
+    )
+    target_include_directories(test_costs SYSTEM PRIVATE
+      ${GTEST_INCLUDE_DIRS}
+    )
+    set_target_properties(test_costs PROPERTIES
+      CXX_STANDARD 17
+      CUDA_STANDARD 17
+    )
+    target_compile_options(test_costs PRIVATE
+      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
+    )
+    ament_add_gtest_test(test_costs)
+    set_tests_properties(test_costs PROPERTIES
+      LABELS "gpu"
+      TIMEOUT 60
+    )
+
     # Keep the descriptive .cpp filename while compiling the texture-sampling test kernels with
     # NVCC. FindCUDA treats a non-.cu source as CUDA when this property is set.
     set_source_files_properties(test/test_distance_map.cpp PROPERTIES
