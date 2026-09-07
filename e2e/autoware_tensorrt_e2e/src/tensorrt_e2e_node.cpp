@@ -84,9 +84,34 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
     }
   }
 
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
-    std::bind(&TensorrtE2eNode::on_timer, this));
+  // Run when the sensor the model waits on delivers, rather than on a tick that
+  // may land just before it: a timer makes each frame wait up to a full period
+  // to be used, and the controller pays that as latency for an input that had
+  // already arrived. autoware_bevfusion, reading the same cloud, is driven this
+  // way and carries no timer at all.
+  //
+  // The callback is serialised with itself by its callback group, so a run
+  // cannot re-enter; a frame arriving during one is simply the next run's, which
+  // is what planning on the newest sample means.
+  bool paced = false;
+  for (const auto & provider : providers_) {
+    if (provider->pace([this]() { run_once(); })) {
+      RCLCPP_INFO(
+        get_logger(), "Paced by '%s': planning runs when its input arrives",
+        provider->name().c_str());
+      paced = true;
+    }
+  }
+  if (!paced) {
+    // No provider reads a pacing sensor -- a model built only from map and route
+    // context, say. Then a timer is the only thing that can drive it.
+    RCLCPP_INFO(
+      get_logger(), "No provider paces this model; planning on a %.1f Hz timer",
+      params_.planning_frequency_hz);
+    timer_ = rclcpp::create_timer(
+      this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
+      std::bind(&TensorrtE2eNode::run_once, this));
+  }
 }
 
 void TensorrtE2eNode::set_up_params()
@@ -274,7 +299,7 @@ std::optional<std::string> TensorrtE2eNode::find_invalid_tensor(const TensorMap 
   return std::nullopt;
 }
 
-void TensorrtE2eNode::on_timer()
+void TensorrtE2eNode::run_once()
 {
   stop_watch_.tic("processing_time");
   diagnostics_->clear();
