@@ -35,7 +35,6 @@
     trt_workspace_mib: 16384
 
     # -- runtime --
-    planning_frequency_hz: 10.0
     shift_x: false
 
     bev_feature:

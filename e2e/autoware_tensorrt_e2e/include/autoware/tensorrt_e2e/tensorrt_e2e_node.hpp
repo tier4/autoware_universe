@@ -61,7 +61,6 @@ struct TensorrtE2eParams
   int64_t trt_workspace_mib{4096};
   std::string args_path;  //!< Optional normalization JSON ("" to disable normalization).
   bool build_only{false};
-  double planning_frequency_hz{10.0};
   bool shift_x{false};
   std::vector<std::string> sensor_inputs;  //!< Enabled sensor providers: "camera", "lidar".
   bool enable_context_inputs{true};
@@ -100,8 +99,7 @@ private:
   void initialize_pipeline();
   void create_providers();
 
-  //! One pass: collect, infer, publish. Driven by the pacing provider's
-//! input when there is one, by timer_ when there is not.
+  //! One pass: collect, infer, publish, driven by the pacing provider's input.
   void run_once();
 
   /**
@@ -149,7 +147,9 @@ private:
   // ROS interfaces
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_{tf_buffer_};
-  rclcpp::TimerBase::SharedPtr timer_;
+  //! When the previous pass ran, to judge this one's processing time
+  //! against the interval the sensor actually delivered.
+  std::optional<rclcpp::Time> previous_run_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_;
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr

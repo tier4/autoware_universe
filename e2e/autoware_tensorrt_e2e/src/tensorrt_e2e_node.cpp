@@ -103,14 +103,13 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
     }
   }
   if (!paced) {
-    // No provider reads a pacing sensor -- a model built only from map and route
-    // context, say. Then a timer is the only thing that can drive it.
-    RCLCPP_INFO(
-      get_logger(), "No provider paces this model; planning on a %.1f Hz timer",
-      params_.planning_frequency_hz);
-    timer_ = rclcpp::create_timer(
-      this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
-      std::bind(&TensorrtE2eNode::run_once, this));
+    // There is no second way to run. A timer here would plan on whatever the
+    // last sensor sample happened to be, at a rate unrelated to it, and publish
+    // a trajectory that looks exactly like a fresh one -- which is worse than
+    // not running, because nothing downstream can tell the difference.
+    throw std::runtime_error(
+      "No input provider paces this model: nothing would ever trigger planning. "
+      "A model this node can run has to consume a sensor.");
   }
 }
 
@@ -122,7 +121,6 @@ void TensorrtE2eNode::set_up_params()
   params_.trt_workspace_mib = declare_parameter<int64_t>("trt_workspace_mib", 4096);
   params_.args_path = declare_parameter<std::string>("args_path", "");
   params_.build_only = declare_parameter<bool>("build_only", false);
-  params_.planning_frequency_hz = declare_parameter<double>("planning_frequency_hz", 10.0);
   params_.shift_x = declare_parameter<bool>("shift_x", false);
   params_.sensor_inputs = declare_parameter<std::vector<std::string>>(
     "sensor_inputs", std::vector<std::string>{});
@@ -390,7 +388,12 @@ void TensorrtE2eNode::run_once()
   const double processing_time_ms = stop_watch_.toc("processing_time");
   timing.total_ms = processing_time_ms;
   publish_debug_timing(now, *ego, timing);
-  const double period_ms = 1e3 / params_.planning_frequency_hz;
+  // Against the interval this run actually had, not a configured one: the pace
+  // is the sensor's, and it is the pace the node has to keep up with.
+  const double period_ms = previous_run_.has_value()
+                             ? (now - previous_run_.value()).seconds() * 1e3
+                             : std::numeric_limits<double>::infinity();
+  previous_run_ = now;
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = now;
   processing_time_msg.data = processing_time_ms;

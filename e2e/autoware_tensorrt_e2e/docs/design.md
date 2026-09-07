@@ -43,8 +43,10 @@ instead provides **one abstract node** that adapts itself to the model.
 
 The design combines the two proven patterns in this repository:
 
-- From `autoware_diffusion_planner`: timer-driven 10 Hz processing with polling subscribers,
-  diagnostics, and the trajectory postprocessing pipeline.
+- From `autoware_diffusion_planner`: polling subscribers, diagnostics, and the trajectory
+  postprocessing pipeline. Its timer is deliberately *not* taken -- see below.
+- From `autoware_bevfusion`, which consumes the same concatenated cloud: the pass is driven
+  by the cloud's own callback, with no timer anywhere.
 - From `autoware_tensorrt_vad`: strict separation between the ROS domain and the CUDA domain,
   and deployment/model parameter separation.
 
@@ -79,7 +81,7 @@ graph TD
     Camera["CameraInputProvider<br/>(1..N cameras)"]
     Lidar["LidarInputProvider<br/>(concatenated point cloud)"]
     Context["ContextInputProvider<br/>(diffusion-planner-style inputs)"]
-    Node["TensorrtE2eNode<br/>(10 Hz timer)"]
+    Node["TensorrtE2eNode<br/>(paced by the cloud)"]
     Post["TrajectoryPostprocessor<br/>(same math as diffusion planner)"]
 
     Node -->|"input specs"| Camera
@@ -116,7 +118,7 @@ in parameters (`camera.num_cameras`, topic remaps).
 
 - Subscribes to `~/input/camera{i}/image` via `image_transport`
   (`raw` or `compressed`, per parameter) and stores the latest message per camera
-  (callbacks are trivially cheap; all work happens in the timer tick).
+  (callbacks are trivially cheap; all work happens in the pass the pacing sensor starts).
 - Synchronization follows the `autoware_tensorrt_vad` front-critical strategy: camera 0 in the
   configured list is the anchor. At collection time the anchor image must be fresher than
   `camera.max_delay_ms`, and every other camera must be within `camera.sync_tolerance_ms` of
@@ -231,21 +233,28 @@ context input is active.
 `Trajectory`, `CandidateTrajectories` (one candidate per batch, with generator UUID/name), and
 optional `PredictedObjects` are published, mirroring the diffusion planner topics.
 
-### 10 Hz output stability
+### Output pacing and stability
 
-- The node is **timer-driven** at `planning_frequency_hz` (default 10 Hz) — the same proven
-  pattern as `autoware_diffusion_planner`, which runs this rate in production. Sensor
-  callbacks only store shared pointers; every expensive operation happens once per tick.
+- The node is **paced by its sensor**: the provider reading the input the model waits on
+  drives the pass from its own subscription, the way `autoware_bevfusion` is driven by the
+  same cloud. There is no timer, and no fallback to one. A tick firing between sweeps would
+  plan on the previous sample at a rate unrelated to it, and publish a trajectory
+  indistinguishable from one computed on fresh data — the controller could not tell which it
+  had. A model no provider paces is rejected at construction rather than started and left
+  idle. `autoware_diffusion_planner` uses a timer here; this deliberately does not, because
+  the wait a timer imposes is latency the controller pays for an input that had already
+  arrived.
 - All context inputs use polling subscribers (no callback storms); camera/lidar data is
   latched under a mutex.
-- Per-tick processing time is published (`~/debug/processing_time_ms`) and checked against the
-  planning period: exceeding it raises a `WARN` diagnostic
+- Per-pass processing time is published (`~/debug/processing_time_ms`) and checked against
+  the interval the sensor actually delivered — the rate the node has to keep up with, rather
+  than a configured one: exceeding it raises a `WARN` diagnostic
   (`processing time exceeded the planning period`), so rate violations are visible in the
   field instead of silent.
 - GPU work is submitted on dedicated CUDA streams; image preprocessing writes directly into
   device memory consumed by the engine (no host round-trip of image tensors).
 - If a future model cannot fit the 100 ms budget, the intended extension is a double-buffered
-  worker thread (collect on the timer, infer+publish on the worker). The provider/engine
+  worker thread (collect in the sensor callback, infer+publish on the worker). The provider/engine
   interfaces already keep all state exchange in `TensorMap` values, so this changes only the
   node orchestration.
 
