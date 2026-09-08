@@ -159,6 +159,9 @@ public:
         out << "accel_cmd_coeff," << cost.accel_cmd_coeff << "\n";
         out << "steer_cmd_coeff," << cost.steer_cmd_coeff << "\n";
         out << "steer_rate_coeff," << cost.steer_rate_coeff << "\n";
+        out << "accel_cmd_rate_coeff," << cost.accel_cmd_rate_coeff << "\n";
+        out << "steer_cmd_rate_coeff," << cost.steer_cmd_rate_coeff << "\n";
+
         out << "initial_steer_rate_coeff," << cost.initial_steer_rate_coeff << "\n";
         out << "overlimit_coeff," << cost.overlimit_coeff << "\n";
         out << "accel_cmd_std_dev," << cost.accel_cmd_std_dev << "\n";

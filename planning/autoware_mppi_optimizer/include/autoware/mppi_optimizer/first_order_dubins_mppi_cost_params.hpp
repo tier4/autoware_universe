@@ -58,9 +58,13 @@ struct FirstOrderDubinsMppiCostParams
   float lateral_boundary_barrier_weight{};
   float accel_cmd_coeff{0.0F};
   float steer_cmd_coeff{0.0F};
+  /** Weight on squared physical steering-angle increments / dt, after lag and saturation. */
   float steer_rate_coeff{0.0F};
   /** One-shot cost on the first steering command relative to the measured steering state. */
   float initial_steer_rate_coeff{0.0F};
+  /** Independent weights on squared command increments / dt, for horizon t >= 1. */
+  float accel_cmd_rate_coeff{0.0F};
+  float steer_cmd_rate_coeff{0.0F};
   /** Shared weight for optional VelocityLimit interval violations. */
   float overlimit_coeff{10000.0F};
   /** Gaussian sampling std-dev on acceleration command [m/s^2] around u_nom. */
