@@ -109,6 +109,178 @@ protected:
   std::unique_ptr<TestCost> cost_;
 };
 
+// These transition/cost checks are host-only and intentionally require no CUDA context.
+TEST(PhysicalComfortTest, DelayedCommandDoesNotCreatePhysicalJerk)
+{
+  FirstOrderDubinsBicycleParams model_params;
+  model_params.acc_delay_steps = 1;
+  model_params.steer_delay_steps = 1;
+  model_params.accel_time_constant = 0.2F;
+  model_params.steer_time_constant = 0.2F;
+  FirstOrderDubinsBicycle model(model_params);
+  auto cost = std::make_unique<TestCost>();
+  TestCostParams params;
+  params.lateral_acceleration_coeff = 0.0F;
+  params.lateral_jerk_coeff = 0.0F;
+  params.longitudinal_jerk_coeff = 3.0F;
+  params.steer_rate_coeff = 7.0F;
+  params.accel_cmd_rate_coeff = 2.0F;
+  params.steer_cmd_rate_coeff = 4.0F;
+  cost->setParams(params);
+  auto state = model.getZeroState();
+  auto next = model.getZeroState();
+  auto derivative = model.getZeroState();
+  FirstOrderDubinsBicycle::output_array output = FirstOrderDubinsBicycle::output_array::Zero();
+  FirstOrderDubinsBicycle::control_array command;
+  command << 1.0F, 0.1F;
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::LONGITUDINAL_JERK)), 0.0F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.0F);
+  EXPECT_FLOAT_EQ(
+    next(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACCEL_CMD_D0)), 1.0F);
+  int crash = 0;
+  // Evaluate an interior stage to exercise command-change regularization separately.
+  const auto breakdown = cost->computeRunningCostBreakdown(output, command, 1, &crash);
+  EXPECT_FLOAT_EQ(breakdown.longitudinal_jerk, 0.0F);
+  EXPECT_FLOAT_EQ(breakdown.steering_rate, 0.0F);
+  EXPECT_FLOAT_EQ(breakdown.acceleration_command_rate, 200.0F);
+  EXPECT_NEAR(breakdown.steering_command_rate, 4.0F, 1.0E-5F);
+  EXPECT_FLOAT_EQ(cost->computeComfortCost(command, output, 1), 0.0F);
+  EXPECT_NEAR(cost->computeCommandChangeCost(command.data(), output.data(), 1), 204.0F, 1.0E-5F);
+  // At t=0 only the explicit initial-steering anchor applies, not an invented prior command.
+  EXPECT_FLOAT_EQ(cost->computeCommandChangeCost(command.data(), output.data(), 0), 0.0F);
+
+  state = next;
+  model.step(state, next, derivative, command, output, 0.1F, 0.1F);
+  // The queued command now reaches the actuators: da/dt=5 and d(delta)/dt=0.5.
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::LONGITUDINAL_JERK)), 5.0F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.5F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::ACCEL_COMMAND_RATE)), 0.0F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEER_COMMAND_RATE)), 0.0F);
+  EXPECT_NEAR(cost->computeComfortCost(command, output, 1), 76.75F, 1.0E-5F);
+}
+
+TEST(PhysicalComfortTest, RealizedRatesIncludeStateSaturation)
+{
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+  FirstOrderDubinsBicycleParams params;
+  params.accel_time_constant = 0.05F;
+  params.steer_time_constant = 0.05F;
+  params.max_accel = 1.0F;
+  params.max_steer_angle = 0.45F;
+  FirstOrderDubinsBicycle model(params);
+  auto state = model.getZeroState();
+  state(static_cast<int>(S::ACCELERATION)) = 0.9F;
+  state(static_cast<int>(S::STEER_ANGLE)) = 0.44F;
+  auto next = model.getZeroState();
+  auto derivative = model.getZeroState();
+  FirstOrderDubinsBicycle::control_array command;
+  command << 1.0F, 0.45F;
+  FirstOrderDubinsBicycle::output_array output;
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+  EXPECT_NEAR(output(static_cast<int>(OutputIndex::LONGITUDINAL_JERK)), 1.0F, 1.0E-5F);
+  EXPECT_NEAR(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.1F, 1.0E-5F);
+}
+
+TEST(PhysicalComfortTest, SteeringRateLimitAndConstantTurnConvention)
+{
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+  FirstOrderDubinsBicycleParams params;
+  params.max_steer_rate = 0.25F;
+  params.wheel_base = 2.0F;
+  FirstOrderDubinsBicycle model(params);
+  auto state = model.getZeroState();
+  auto next = model.getZeroState();
+  auto derivative = model.getZeroState();
+  FirstOrderDubinsBicycle::control_array command;
+  command << 0.0F, 0.3F;
+  FirstOrderDubinsBicycle::output_array output;
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+  EXPECT_NEAR(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.25F, 1.0E-6F);
+
+  state = model.getZeroState();
+  state(static_cast<int>(S::VEL_X)) = 2.0F;
+  state(static_cast<int>(S::ACCELERATION)) = 1.0F;
+  state(static_cast<int>(S::STEER_ANGLE)) = std::atan(0.2F);  // curvature = 0.1 / m
+  command << 1.0F, std::atan(0.2F);
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+  // Lateral inertial jerk is 0.6, while the derivative of scalar lateral acceleration is 0.4.
+  EXPECT_NEAR(output(static_cast<int>(OutputIndex::LATERAL_JERK)), 0.6F, 1.0E-5F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::LONGITUDINAL_JERK)), 0.0F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.0F);
+}
+
+__global__ void delayedComfortParityKernel(
+  FirstOrderDubinsBicycle * model, TestCost * cost, float * results)
+{
+  __shared__ float state[FirstOrderDubinsBicycle::STATE_DIM];
+  __shared__ float next[FirstOrderDubinsBicycle::STATE_DIM];
+  __shared__ float derivative[FirstOrderDubinsBicycle::STATE_DIM];
+  __shared__ float command[FirstOrderDubinsBicycle::CONTROL_DIM];
+  __shared__ float output[FirstOrderDubinsBicycle::OUTPUT_DIM];
+  for (int i = threadIdx.y; i < FirstOrderDubinsBicycle::STATE_DIM; i += blockDim.y)
+    state[i] = 0.0F;
+  if (threadIdx.y == 0) {
+    command[0] = 1.0F;
+    command[1] = 0.1F;
+  }
+  __syncthreads();
+  for (int step = 0; step < 2; ++step) {
+    model->step(state, next, derivative, command, output, nullptr, step * 0.1F, 0.1F);
+    __syncthreads();
+    if (threadIdx.y == 0) {
+      results[step * 4] = output[static_cast<int>(OutputIndex::LONGITUDINAL_JERK)];
+      results[step * 4 + 1] = output[static_cast<int>(OutputIndex::STEERING_RATE)];
+      results[step * 4 + 2] = cost->computeComfortCost(command, output, 1);
+      results[step * 4 + 3] = cost->computeCommandChangeCost(command, output, 1);
+    }
+    __syncthreads();
+    for (int i = threadIdx.y; i < FirstOrderDubinsBicycle::STATE_DIM; i += blockDim.y)
+      state[i] = next[i];
+    __syncthreads();
+  }
+}
+
+TEST_F(TrajectoryValidatorTest, DeviceDelayedComfortMatchesPhysicalAndCommandCosts)
+{
+  FirstOrderDubinsBicycleParams model_params;
+  model_params.acc_delay_steps = 1;
+  model_params.steer_delay_steps = 1;
+  model_params.accel_time_constant = 0.2F;
+  model_params.steer_time_constant = 0.2F;
+  FirstOrderDubinsBicycle model(model_params);
+  model.GPUSetup();
+  auto params = makeParams();
+  params.lateral_acceleration_coeff = 0.0F;
+  params.lateral_jerk_coeff = 0.0F;
+  params.longitudinal_jerk_coeff = 3.0F;
+  params.steer_rate_coeff = 7.0F;
+  params.accel_cmd_rate_coeff = 2.0F;
+  params.steer_cmd_rate_coeff = 4.0F;
+  cost_->setParams(params);
+  struct ResultsBuffer
+  {
+    float * data{nullptr};
+    ~ResultsBuffer() { cudaFreeNoThrow(data); }
+  } device;
+  ASSERT_EQ(cudaMalloc(reinterpret_cast<void **>(&device.data), 8 * sizeof(float)), cudaSuccess);
+  delayedComfortParityKernel<<<1, dim3(1, 2, 1)>>>(model.model_d_, cost_->cost_d_, device.data);
+  ASSERT_EQ(cudaGetLastError(), cudaSuccess);
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  std::array<float, 8> results{};
+  ASSERT_EQ(
+    cudaMemcpy(results.data(), device.data, sizeof(results), cudaMemcpyDeviceToHost), cudaSuccess);
+  EXPECT_FLOAT_EQ(results[0], 0.0F);
+  EXPECT_FLOAT_EQ(results[1], 0.0F);
+  EXPECT_FLOAT_EQ(results[2], 0.0F);
+  EXPECT_NEAR(results[3], 204.0F, 1.0E-5F);
+  EXPECT_FLOAT_EQ(results[4], 5.0F);
+  EXPECT_FLOAT_EQ(results[5], 0.5F);
+  EXPECT_NEAR(results[6], 76.75F, 1.0E-5F);
+  EXPECT_FLOAT_EQ(results[7], 0.0F);
+}
+
 TEST_F(TrajectoryValidatorTest, PrecomputesReferenceArcLengthForConstantTimeProjectionMetrics)
 {
   const std::array<float, 4> x{0.0F, 3.0F, 3.0F, 6.0F};
@@ -158,6 +330,8 @@ TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheir
   TestCost::control_array control = TestCost::control_array::Zero();
   control(static_cast<int>(ControlIndex::ACCELERATION_CMD)) = 2.0F;
   control(static_cast<int>(ControlIndex::STEER_CMD)) = 0.2F;
+  // Physical rate comes from the transition output, independently of the raw command.
+  output(static_cast<int>(OutputIndex::STEERING_RATE)) = 2.0F;
   int crash_status = 0;
 
   const auto breakdown = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);

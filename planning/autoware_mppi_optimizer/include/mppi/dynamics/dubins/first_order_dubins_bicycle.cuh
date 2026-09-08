@@ -52,6 +52,9 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     STEER_CMD_D5,
     STEER_CMD_D6,
     STEER_CMD_D7,
+    /** Previous issued commands, independent of physical actuator delay taps. */
+    PREVIOUS_ACCEL_CMD,
+    PREVIOUS_STEER_CMD,
     NUM_STATES
   };
 
@@ -66,8 +69,13 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     STEER_ANGLE,
     ACCELERATION,
     TOTAL_VELOCITY,
+    /** Inertial lateral jerk in vehicle coordinates at the transition's pre-step state. */
     LATERAL_JERK,
+    /** Realized acceleration increment / dt; step() supplies all transition rates below. */
     LONGITUDINAL_JERK,
+    STEERING_RATE,
+    ACCEL_COMMAND_RATE,
+    STEER_COMMAND_RATE,
     NUM_OUTPUTS
   };
 
@@ -151,7 +159,7 @@ public:
 
   __device__ void updateState(float * state, float * next_state, float * state_der, const float dt);
 
-  /** Host step: continuous plant with discrete per-channel command delay taps. */
+  /** Host step (dt > 0): post-step state outputs plus physical and command transition rates. */
   void step(
     Eigen::Ref<state_array> state, Eigen::Ref<state_array> next_state,
     Eigen::Ref<state_array> state_der, const Eigen::Ref<const control_array> & control,

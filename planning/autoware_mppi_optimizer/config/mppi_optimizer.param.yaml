@@ -47,13 +47,16 @@
       corner_buffer_coeff: 0.0
       corner_safe_margin: 0.3
       lateral_acceleration_coeff: 1000.0
-      # Jerk and steer-rate estimates currently compare new commands with delayed post-step
-      # actuator states. Keep them regularizing rather than dominant until that model is aligned.
+      # Physical jerk and steering rate use realized state increments, including delay/lag.
+      # Lateral jerk retains the inertial-jerk component expressed in the vehicle frame.
       lateral_jerk_coeff: 1000.0
       longitudinal_jerk_coeff: 2000.0
       accel_cmd_coeff: 1.0
       steer_cmd_coeff: 1.0
       steer_rate_coeff: 10000.0
+      # Independent command-change regularization for t >= 1; not physical jerk.
+      accel_cmd_rate_coeff: 0.0
+      steer_cmd_rate_coeff: 0.0
       initial_steer_rate_coeff: 800000.0 # only applied in 1st step but still divided by horizon (80 steps)
       # Shared deadband-quadratic cost for optional VelocityLimit bounds. This currently falls back
       # to the same C++ default because the generated plugin parameter mapping is not yet wired.
