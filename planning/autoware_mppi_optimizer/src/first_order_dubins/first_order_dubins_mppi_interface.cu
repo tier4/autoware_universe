@@ -733,20 +733,6 @@ void appendReplayedRollouts(
   }
 }
 
-float rawCostFromMinMaxWeight(
-  const float weight, const float min_cost, const float max_cost, const float lambda)
-{
-  const float cost_range = max_cost - min_cost;
-  if (!std::isfinite(cost_range) || cost_range < 1.0E-6F) {
-    return min_cost;
-  }
-  if (!(weight > 0.0F) || !std::isfinite(weight)) {
-    return max_cost;
-  }
-  const float normalized_cost = std::clamp(-lambda * std::log(weight), 0.0F, 1.0F);
-  return min_cost + normalized_cost * cost_range;
-}
-
 void buildRolloutVisualization(
   MppiWithHistoryAccess & controller, SAMPLER & sampler, DYN & model,
   const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug)
@@ -758,19 +744,17 @@ void buildRolloutVisualization(
   controller.downloadImportanceWeightsToHost();
   // IMPORTANT: take by value — see copySampleCostDistribution for nvcc temporary lifetime note.
   const Mppi::sampled_cost_traj importance = controller.getSampledCostSeq();
-  const float min_cost = controller.getLastMinRolloutCost();
-  const float max_cost = controller.getLastMaxRolloutCost();
-  const float unnormalized_weight_sum = controller.getLastUnnormalizedWeightSum();
-  const float lambda = controller.getLastWeightLambda();
+  const auto raw_costs = controller.downloadRawRolloutCostsToHost();
   const int num_rollouts = static_cast<int>(importance.size());
+  if (raw_costs.size() != static_cast<std::size_t>(num_rollouts)) {
+    throw std::logic_error("MPPI raw rollout costs are unavailable for visualization");
+  }
 
-  std::vector<float> raw_costs(static_cast<size_t>(num_rollouts));
   std::vector<float> normalized_weights(static_cast<size_t>(num_rollouts));
   const float normalizer = controller.getNormalizerCost();
   for (size_t i = 0; i < normalized_weights.size(); ++i) {
     const float w = static_cast<float>(importance(static_cast<int>(i)));
     normalized_weights[i] = (normalizer > 0.0F) ? w / normalizer : 0.0F;
-    raw_costs[i] = rawCostFromMinMaxWeight(w * unnormalized_weight_sum, min_cost, max_cost, lambda);
   }
 
   std::vector<int> top_indices;
@@ -2002,7 +1986,7 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
     !std::isfinite(params.lambda_min) || !std::isfinite(params.lambda_max) ||
     !std::isfinite(params.target_ess_ratio) || !std::isfinite(params.lambda_adaptation_gain) ||
     !std::isfinite(params.unsafe_rollout_fraction_threshold) ||
-    !std::isfinite(params.cost_normalization_percentile) || params.lambda_min <= 0.0F ||
+    !std::isfinite(params.cost_normalization_percentile) || params.lambda_min < 1.0E-6F ||
     params.lambda_max < params.lambda_min || params.lambda < params.lambda_min ||
     params.lambda > params.lambda_max || params.target_ess_ratio < 0.0F ||
     params.target_ess_ratio > 1.0F || params.lambda_adaptation_gain < 0.0F ||
@@ -2012,7 +1996,8 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
     params.max_iter <= 0) {
     throw std::invalid_argument(
       "MPPI cost parameters must have finite non-negative penalties, std_dev_decay in [0, 1], "
-      "lambda within positive [lambda_min, lambda_max], target_ess_ratio in [0, 1], a "
+      "lambda within [lambda_min, lambda_max] with lambda_min >= 1e-6, target_ess_ratio in [0, 1], "
+      "a "
       "non-negative lambda_adaptation_gain, unsafe_rollout_fraction_threshold and "
       "cost_normalization_percentile in [0, 1], and max_iter greater than zero");
   }
@@ -2212,11 +2197,9 @@ bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
   // lifetime extension for large Eigen return temporaries, which caused heap corruption
   // (munmap_chunk: invalid pointer) when reading getSampledCostSeq() via const auto&.
   const Mppi::sampled_cost_traj importance = impl_->controller->getSampledCostSeq();
-  const float min_cost = impl_->controller->getLastMinRolloutCost();
-  const float max_cost = impl_->controller->getLastMaxRolloutCost();
-  const float unnormalized_weight_sum = impl_->controller->getLastUnnormalizedWeightSum();
+  const auto retained_costs = impl_->controller->downloadRawRolloutCostsToHost();
+  if (retained_costs.size() != static_cast<std::size_t>(importance.size())) return false;
   const float normalizer = impl_->controller->getNormalizerCost();
-  const float lambda = impl_->controller->getLastWeightLambda();
   const int stride_n = std::max(1, stride);
   const int num_rollouts = static_cast<int>(importance.size());
   const int kept = (num_rollouts + stride_n - 1) / stride_n;
@@ -2226,8 +2209,7 @@ bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
   for (int i = 0; i < num_rollouts; i += stride_n) {
     const float w = importance(i);
     normalized_weights.push_back((normalizer > 0.0F) ? (w / normalizer) : 0.0F);
-    raw_costs.push_back(
-      rawCostFromMinMaxWeight(w * unnormalized_weight_sum, min_cost, max_cost, lambda));
+    raw_costs.push_back(retained_costs[static_cast<std::size_t>(i)]);
   }
   return !raw_costs.empty();
 }
@@ -2297,8 +2279,17 @@ try {
   impl_->capturePredictionAnchor(odometry);
   // Capture IC before runStep advances the ego state with the applied control.
   const DYN::state_array x_at_optimization = impl_->x;
-  const FirstOrderDubinsMppiControl control = impl_->runStep(control_postprocessor);
-  impl_->recordAppliedControl(odometry, control);
+  FirstOrderDubinsMppiControl control;
+  bool no_eligible_rollouts = false;
+  try {
+    control = impl_->runStep(control_postprocessor);
+    impl_->recordAppliedControl(odometry, control);
+  } catch (const NoEligibleRollouts & error) {
+    // The controller replayed its preserved seed for diagnostics. It is not an optimized result:
+    // always return the existing limited-reference fallback and leave execution history untouched.
+    no_eligible_rollouts = true;
+    RCLCPP_WARN(mppiLogger(), "%s", error.what());
+  }
 
   FirstOrderDubinsMppiAppliedPlantState & applied_plant = result.debug.applied_plant;
   applied_plant.valid = true;
@@ -2399,7 +2390,11 @@ try {
 
   // Validate every published optimized state, including reconstructed x[H]. Obstacle slot i
   // represents the same post-step time (i + 1) * dt as optimized_states[i].
-  const auto validation = detail::validateOptimizedTrajectory(impl_->cost, optimized_states);
+  auto validation = detail::validateOptimizedTrajectory(impl_->cost, optimized_states);
+  if (no_eligible_rollouts) {
+    validation.reasons =
+      validation.reasons | FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts;
+  }
   float max_pos_delta = 0.0F;
   float max_vel_delta = 0.0F;
   for (size_t i = 0; i < optimized_states.size(); ++i) {
@@ -2440,6 +2435,9 @@ try {
   result.debug.max_rollout_cost = impl_->controller->getLastMaxRolloutCost();
   result.debug.normalization_upper_cost = impl_->controller->getLastNormalizationUpperCost();
   result.debug.unsafe_rollout_fraction = impl_->controller->getLastUnsafeRolloutFraction();
+  result.debug.eligible_rollout_count = impl_->controller->getLastEligibleRolloutCount();
+  result.debug.minimum_cost_rollout_count = impl_->controller->getLastMinimumCostCount();
+  result.debug.unsafe_rollout_population = impl_->controller->hasUnsafeRolloutPopulation();
   result.debug.validation = validation;
   result.debug.velocity_limit_profile_active = impl_->active_velocity_limit_profile.active;
   result.debug.external_velocity_limit_active =
@@ -2520,7 +2518,7 @@ try {
     control.steer_cmd, result.debug.baseline_cost, cost_breakdown.c_str(),
     validation_reasons.c_str(), max_pos_delta, max_vel_delta);
 
-  if (impl_->skip_if_invalid && !validation.isValid()) {
+  if (no_eligible_rollouts || (impl_->skip_if_invalid && !validation.isValid())) {
     result.trajectory = input;
     detail::applyActiveVelocityLimitProfile(
       result.trajectory, impl_->active_velocity_limit_profile);

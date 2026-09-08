@@ -23,14 +23,14 @@ struct FirstOrderDubinsMppiCostParams
 {
   /** Softmax temperature for trajectory weighting (higher = softer weighting). */
   float lambda{0.1F};
-  /** Strict bounds and P-controller target for the adaptive dimensionless temperature. */
+  /** Bounds and eligible-population ESS target for bounded log-ratio temperature feedback. */
   float lambda_min{0.01F};
   float lambda_max{2.0F};
   float target_ess_ratio{0.2F};
   float lambda_adaptation_gain{0.1F};
-  /** Unsafe-rollout fraction above which the next cycle uses maximum exploration temperature. */
+  /** Diagnostic unsafe-population threshold; never overrides the weighting temperature. */
   float unsafe_rollout_fraction_threshold{0.95F};
-  /** Upper raw-cost percentile used for robust normalization before exponential weighting. */
+  /** Exact upper percentile of finite, safe costs used for normalization before weighting. */
   float cost_normalization_percentile{0.95F};
   /** Number of optimization iterations performed for each MPPI update. */
   int max_iter{20};

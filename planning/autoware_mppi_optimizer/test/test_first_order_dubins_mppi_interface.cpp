@@ -28,6 +28,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -818,7 +819,8 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, RejectsObjectInsideConfiguredMargin
   EXPECT_EQ(result.debug.validation.first_invalid_index.value(), 0U);
 }
 
-TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, DoesNotRejectInvalidOutputWhenOptionIsDisabled)
+TEST_F(
+  FirstOrderDubinsMppiInterfaceGpuTest, NoEligibleRolloutsRejectEvenWhenValidationBypassIsEnabled)
 {
   FirstOrderDubinsMppiCostParams cost_params;
   cost_params.boundary_threshold = 0.5F;
@@ -835,9 +837,35 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, DoesNotRejectInvalidOutputWhenOptio
   EXPECT_FALSE(result.debug.validation.isValid());
   EXPECT_TRUE(hasInvalidityReason(
     result.debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::lateral_boundary));
-  EXPECT_FALSE(result.debug.was_rejected);
-  EXPECT_FALSE(result.trajectory == input);
+  EXPECT_TRUE(result.debug.was_rejected);
+  EXPECT_TRUE(hasInvalidityReason(
+    result.debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts));
+  EXPECT_TRUE(result.trajectory == input);
   EXPECT_TRUE(result.debug.optimized_trajectory == result.trajectory);
+}
+
+TEST_F(
+  FirstOrderDubinsMppiInterfaceGpuTest, NonFinitePopulationFallsBackWithoutCommittingOrFiltering)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  // Fault injection: a state-cost term contaminates every rollout, even at zero tracking error.
+  costs.track_coeff = std::numeric_limits<float>::quiet_NaN();
+  interface_->setCostParams(costs);
+  const auto input = makeStraightTrajectory(80U);
+  bool postprocessed = false;
+  const auto result = interface_->optimizeTrajectory(
+    input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+    [&](auto &, const auto &) { postprocessed = true; }, true);
+
+  EXPECT_FALSE(postprocessed);
+  EXPECT_TRUE(result.debug.was_rejected);
+  EXPECT_TRUE(result.trajectory == input);
+  EXPECT_FALSE(result.debug.applied_plant.valid);
+  EXPECT_TRUE(hasInvalidityReason(
+    result.debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts));
+  EXPECT_FLOAT_EQ(result.debug.lambda_used, result.debug.lambda_next);
+  EXPECT_THROW(interface_->commitPendingTrajectory(), std::logic_error);
 }
 
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, HandlesInitialOffsetsAcrossThresholdRange)
