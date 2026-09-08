@@ -45,7 +45,6 @@ using autoware_internal_planning_msgs::msg::RiskLevel;
 /** @brief Result of a single plugin's feasibility check. */
 struct ValidationResult
 {
-  bool is_feasible{true};
   std::vector<MetricReport> metrics;
   PlanningFactorArray planning_factors{};
 };

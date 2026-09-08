@@ -14,6 +14,8 @@
 
 // #include "../../../src/filters/safety/collision_check_filter/collision_check_filter.cpp"
 
+#include "autoware/trajectory_validator/detail/risk_utils.hpp"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -189,7 +191,7 @@ TEST_F(CollisionCheckFilterTest, EmptyObjects)
   const auto result = filter_->is_feasible(ego_path, context);
 
   ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
@@ -213,7 +215,7 @@ TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
   const auto result = filter_->is_feasible(ego_path, context);
 
   ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_FALSE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
@@ -237,7 +239,7 @@ TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
   const auto result = filter_->is_feasible(ego_path, context);
 
   ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_TRUE(is_feasible(worst_risk_level(result.value().metrics)));
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

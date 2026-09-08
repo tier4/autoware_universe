@@ -54,5 +54,15 @@ inline RiskLevelType worst_risk_level(const std::vector<MetricReport> & metrics)
   }
   return worst;
 }
+
+/**
+ * @brief Returns a boolean indicating the trajectory is feasible based on risk level.
+ * @param metrics Worst risk level.
+ * @return True if risk level is less or equal to HIGH_CAUTION.
+ */
+inline bool is_feasible(const RiskLevelType risk_level)
+{
+  return risk_level <= RiskLevel::HIGH_CAUTION;
+}
 }  // namespace autoware::trajectory_validator
 #endif  // AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_

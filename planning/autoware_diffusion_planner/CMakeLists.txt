@@ -2,13 +2,6 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_diffusion_planner)
 
 find_package(autoware_cmake REQUIRED)
-find_package(autoware_mppi_optimizer REQUIRED)
-if(EXISTS "${autoware_mppi_optimizer_DIR}/ament_cmake_export_libraries-extras.cmake")
-  include("${autoware_mppi_optimizer_DIR}/ament_cmake_export_libraries-extras.cmake")
-endif()
-if(EXISTS "${autoware_mppi_optimizer_DIR}/ament_cmake_export_dependencies-extras.cmake")
-  include("${autoware_mppi_optimizer_DIR}/ament_cmake_export_dependencies-extras.cmake")
-endif()
 autoware_package()
 find_package(Boost REQUIRED)
 find_package(onnxruntime QUIET)
@@ -82,6 +75,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     src/diffusion_planner_node.cpp
     src/conversion/lanelet.cpp
     src/conversion/agent.cpp
+    src/conversion/agent_history_resampler.cpp
     src/postprocessing/postprocessing_utils.cpp
     src/preprocessing/lane_segments.cpp
     src/preprocessing/preprocessing_utils.cpp
@@ -129,9 +123,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${NVONNXPARSER}
     ${CUDA_LIBRARIES}
     ${CUBLAS_LIBRARIES}
-    ${autoware_mppi_optimizer_LIBRARIES}
   )
-  ament_target_dependencies(autoware_diffusion_planner_component autoware_mppi_optimizer)
 
   if(onnxruntime_FOUND)
     if(TARGET onnxruntime::onnxruntime)
@@ -163,6 +155,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   if(BUILD_TESTING)
     ament_add_ros_isolated_gtest(test_diffusion_planner
       test/agent_test.cpp
+      test/agent_history_resampler_test.cpp
+      test/agent_lifecycle_test.cpp
       test/lanelet_test.cpp
       test/lane_segments_test.cpp
       test/pre_processing_utils_test.cpp

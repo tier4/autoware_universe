@@ -177,17 +177,16 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
     return tl::make_unexpected("Vehicle info not set");
   }
 
-  // NOTE: Feasibility decision logic might be more complex in the future, but for now we just
-  // check all constraints and return false if any are violated
-  bool is_feasible = true;
+  // Each checker reports its own risk level. The core derives feasibility from the worst risk
+  // level of these metrics, so a violated constraint reports HIGH_CAUTION and does not reject the
+  // trajectory on its own.
   std::vector<MetricReport> metrics;
   for (const auto & checker : checkers_) {
     auto report = (this->*checker)(traj_points, context);
-    is_feasible &= report.risk.level == RiskLevel::SAFE;
     metrics.push_back(report);
   }
 
-  return ValidationResult{is_feasible, std::move(metrics)};
+  return ValidationResult{std::move(metrics)};
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_speed(

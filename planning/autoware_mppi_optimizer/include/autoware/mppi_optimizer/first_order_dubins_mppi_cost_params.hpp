@@ -18,33 +18,55 @@
 namespace autoware::mppi_optimizer
 {
 
-/** Host-side cost weights; defaults match first_order_dubins_bicycle_cost.cuh and
- * mppi_optimizer.param.yaml */
+/** Host-side MPPI tunables; defaults match mppi_optimizer.param.yaml. */
 struct FirstOrderDubinsMppiCostParams
 {
   /** Softmax temperature for trajectory weighting (higher = softer weighting). */
   float lambda{1500.0F};
-  float desired_speed{3.0F};
   float speed_coeff{500.0F};
   float track_coeff{1000.0F};
   float track_terminal_scale{10.0F};
   float heading_coeff{500.0F};
   float lateral_distance_coeff{0.0F};
   float lateral_yaw_error_coeff{0.0F};
-  float crash_coeff{100000.0F};
+  /** Soft cost on remaining corridor chord length [m]; 0 disables. */
+  float remaining_distance_coeff{0.0F};
+  /** Soft cost on along-track overshoot past the corridor tip [m]; 0 disables. */
+  float path_overshoot_coeff{0.0F};
+  float track_center_coeff{0.0F};
+  float corner_buffer_coeff{0.0F};
+  float corner_safe_margin{0.3F};
   float boundary_threshold{1.5F};
-  float boundary_threshold_left{-1.0F};
-  float boundary_threshold_right{-1.0F};
+  /** Distance inside boundary_threshold at which the gradual lateral barrier activates. */
+  float lateral_boundary_soft_margin{0.2F};
+  float lateral_boundary_barrier_weight{};
   float accel_cmd_coeff{0.0F};
   float steer_cmd_coeff{0.0F};
-
   float steer_rate_coeff{0.0F};
+  /** Shared weight for optional VelocityLimit interval violations. */
+  float overlimit_coeff{10000.0F};
+  /** Gaussian sampling std-dev on acceleration command [m/s^2] around u_nom. */
+  float accel_cmd_std_dev{0.35F};
+  /** Gaussian sampling std-dev on steer command [rad] around u_nom. */
+  float steer_cmd_std_dev{0.024F};
+  /** Power-law PSD exponent for acceleration-command sampling noise. */
+  float accel_cmd_noise_exponent{1.0F};
+  /** Power-law PSD exponent for steering-command sampling noise. */
+  float steer_cmd_noise_exponent{1.0F};
+  /** Spatial window used only when deriving a cold-start nominal steer from the reference. */
+  float nominal_curvature_min_chord_length_m{1.5F};
   float lateral_acceleration_coeff{300.0F};
   float lateral_jerk_coeff{300.0F};
   float longitudinal_jerk_coeff{10.0F};
   float obstacle_collision_margin{0.5F};
-  float road_border_collision_margin{0.2F};
-  float drivable_area_crossing_coeff{10000.0F};
+  float road_border_collision_margin{0.3F};
+  float obstacle_safe_margin{0.5F};
+  float obstacle_barrier_weight{};
+  float road_border_safe_margin{0.3F};
+  float road_border_barrier_weight{};
+  float drivable_area_safe_margin{0.0F};
+  float drivable_area_barrier_weight{2000.0F};
+  float crash_contact_penalty{100000.0F};
 };
 
 }  // namespace autoware::mppi_optimizer

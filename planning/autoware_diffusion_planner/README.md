@@ -14,6 +14,8 @@ This planner generates smooth, feasible, and safe trajectories by considering:
 
 It is implemented as a ROS 2 component node, making it easy to integrate into Autoware-based stacks. The node is aimed at working within the proposed [Autoware new planning framework](https://github.com/tier4/new_planning_framework).
 
+The node publishes raw diffusion trajectories. The downstream `autoware_trajectory_processor` pipeline applies optional optimizers, including MPPI, and safety modifiers.
+
 ---
 
 ## How to use
@@ -102,7 +104,7 @@ diff --git a/tier4_universe_launch/tier4_planning_launch/launch/planning.launch.
 +        <arg name="output_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
 +        <arg name="output_turn_indicators" value="/planning/turn_indicators_cmd"/>
 +      </include>
-+      <include file="$(find-pkg-share autoware_trajectory_optimizer)/launch/trajectory_optimizer.launch.xml">
++      <include file="$(find-pkg-share autoware_trajectory_processor)/launch/trajectory_optimizer.launch.xml">
 +        <arg name="input_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
 +        <arg name="output_traj" value="/planning/trajectory"/>
 +        <arg name="output_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>

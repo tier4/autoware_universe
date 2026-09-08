@@ -77,6 +77,7 @@ MpcLateralController::MpcLateralController(
 
   /* reference-confidence steer soft hold */
   m_enable_confidence_steer_slew_limit = dp_bool("enable_confidence_steer_slew_limit");
+  m_steering_direct_passthrough = dp_bool("steering_direct_passthrough");
   m_reference_confidence_L_ahead_min = dp_double("reference_confidence_L_ahead_min");
   m_reference_confidence_L_ahead_ref = dp_double("reference_confidence_L_ahead_ref");
   m_steer_slew_rate_min_rad_s = dp_double("steer_slew_rate_min_rad_s");
@@ -170,6 +171,8 @@ MpcLateralController::MpcLateralController(
     throw std::invalid_argument(
       "Invalid trajectory_reference_mode. Expected \"spatial\" or \"temporal\".");
   }
+  m_mpc->m_use_trajectory_steering_for_feedforward =
+    dp_bool("use_trajectory_steering_for_feedforward");
 
   m_mpc->m_publish_debug_trajectories = dp_bool("publish_debug_trajectories");
 
@@ -306,9 +309,13 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   }
 
   trajectory_follower::LateralHorizon ctrl_cmd_horizon{};
-  const auto mpc_solved_status = m_mpc->calculateMPC(
-    m_current_steering, m_current_kinematic_state, ctrl_cmd, predicted_traj, debug_values,
-    ctrl_cmd_horizon);
+  const auto mpc_solved_status =
+    m_steering_direct_passthrough
+      ? m_mpc->calculateTrajectorySteeringPassthrough(
+          m_current_steering, m_current_kinematic_state, ctrl_cmd, debug_values, ctrl_cmd_horizon)
+      : m_mpc->calculateMPC(
+          m_current_steering, m_current_kinematic_state, ctrl_cmd, predicted_traj, debug_values,
+          ctrl_cmd_horizon);
 
   if (
     (m_mpc_solved_status.result == true && mpc_solved_status.result == false) ||
@@ -363,7 +370,9 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     debug_throttle("MPC is not solved, use stop control command");
     ctrl_cmd = getStopControlCommand();
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
-  } else if (m_enable_confidence_steer_slew_limit && applyConfidenceSteerSlewLimit(ctrl_cmd)) {
+  } else if (
+    !m_steering_direct_passthrough && m_enable_confidence_steer_slew_limit &&
+    applyConfidenceSteerSlewLimit(ctrl_cmd)) {
     // Low-confidence / flicker: soft-slew (not stop). Sync LPF to published output.
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
   }
@@ -714,6 +723,8 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
     update_param(parameters, "mpc_acceleration_limit", param.acceleration_limit);
     update_param(parameters, "mpc_velocity_time_constant", param.velocity_time_constant);
     update_param(parameters, "mpc_min_prediction_length", param.min_prediction_length);
+
+    update_param(parameters, "steering_direct_passthrough", m_steering_direct_passthrough);
 
     // initialize input buffer
     update_param(parameters, "input_delay", param.input_delay);

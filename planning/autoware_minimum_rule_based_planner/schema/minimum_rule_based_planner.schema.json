@@ -54,6 +54,11 @@
             "early_stop": {
               "type": "object",
               "properties": {
+                "enable": {
+                  "type": "boolean",
+                  "description": "If true, stop in front of the goal instead of connecting the path to the goal pose",
+                  "default": false
+                },
                 "expected_ego_speed_parking": {
                   "type": "number",
                   "description": "expected ego speed during pull over to the side of the road [m/s]",
@@ -82,19 +87,118 @@
               "required": [],
               "additionalProperties": false
             },
+            "start_goal_planner": {
+              "type": "object",
+              "properties": {
+                "reference_velocity": {
+                  "type": "number",
+                  "description": "reference velocity used to size the clothoid transition length [m/s]",
+                  "default": 4.7,
+                  "minimum": 0.0
+                },
+                "steer_angle_trial_count": {
+                  "type": "integer",
+                  "description": "number of candidate steer angles to try for generate pull trajectory",
+                  "default": 5,
+                  "minimum": 1
+                },
+                "max_steer_angle_rate": {
+                  "type": "number",
+                  "description": "maximum steer angle rate used to size the clothoid transition length [deg/s]",
+                  "default": 30.0,
+                  "minimum": 0.0
+                },
+                "eval_weight_curvature": {
+                  "type": "number",
+                  "description": "evaluation weight for curvature integral",
+                  "default": 0.4,
+                  "minimum": 0.0
+                },
+                "eval_weight_length": {
+                  "type": "number",
+                  "description": "evaluation weight for trajectory length",
+                  "default": 0.3,
+                  "minimum": 0.0
+                },
+                "eval_weight_diff": {
+                  "type": "number",
+                  "description": "evaluation weight for difference from previous trajectory",
+                  "default": 0.3,
+                  "minimum": 0.0
+                },
+                "traj_generation_exit_count": {
+                  "type": "integer",
+                  "description": "exit generating trajectory candidates when enough feasible trajectories are generated",
+                  "default": 5,
+                  "minimum": 0
+                },
+                "goal_planner": {
+                  "type": "object",
+                  "properties": {
+                    "activate_distance_traj": {
+                      "type": "number",
+                      "description": "search radius range to activate goal planner [m]",
+                      "default": 20.0,
+                      "minimum": 1.0
+                    },
+                    "activate_distance_ego": {
+                      "type": "number",
+                      "description": "max distance along trajectory between ego and goal to activate goal planner [m]",
+                      "default": 80.0,
+                      "minimum": 1.0
+                    },
+                    "pre_goal_offset": {
+                      "type": "number",
+                      "description": "offset before goal [m]",
+                      "default": 1.0,
+                      "minimum": 0.0
+                    },
+                    "num_start_poses": {
+                      "type": "integer",
+                      "description": "number of start pose candidates",
+                      "default": 10,
+                      "minimum": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                },
+                "start_planner": {
+                  "type": "object",
+                  "properties": {
+                    "max_path_range": {
+                      "type": "number",
+                      "description": "maximum range to set the goal point [m]",
+                      "default": 25.0,
+                      "minimum": 0.0
+                    },
+                    "num_goal_poses": {
+                      "type": "integer",
+                      "description": "number of start pose candidates",
+                      "default": 10,
+                      "minimum": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
             "ego_nearest_lanelet": {
               "type": "object",
               "properties": {
                 "dist_threshold": {
                   "type": "number",
                   "description": "Distance threshold for ego nearest lanelet [m]",
-                  "default": 3.0,
+                  "default": 10.0,
                   "minimum": 0.0
                 },
                 "yaw_threshold": {
                   "type": "number",
                   "description": "Yaw threshold for ego nearest lanelet [rad]",
-                  "default": 0.174533,
+                  "default": 1.57,
                   "minimum": 0.0
                 }
               },
@@ -109,16 +213,16 @@
                   "description": "Enable path shifting to ego pose",
                   "default": true
                 },
+                "start_time_offset": {
+                  "type": "number",
+                  "description": "Time offset from current ego state to start path shifting [s]",
+                  "default": 0.1,
+                  "minimum": 0.0
+                },
                 "minimum_shift_length": {
                   "type": "number",
                   "description": "Lateral offset threshold to trigger shift [m]",
                   "default": 0.5,
-                  "minimum": 0.0
-                },
-                "minimum_shift_yaw": {
-                  "type": "number",
-                  "description": "Yaw deviation threshold to trigger shift [rad]",
-                  "default": 0.349,
                   "minimum": 0.0
                 },
                 "minimum_shift_distance": {
@@ -136,7 +240,7 @@
                 "lateral_accel_limit": {
                   "type": "number",
                   "description": "Lateral acceleration limit for shift [m/s^2]",
-                  "default": 1.0,
+                  "default": 0.8,
                   "minimum": 0.0
                 }
               },
@@ -206,6 +310,12 @@
               "default": 1.0,
               "minimum": 0.0
             },
+            "stop_distance_from_road_shoulder": {
+              "type": "number",
+              "description": "Distance to keep between the vehicle footprint and the road-shoulder boundary when stopping before crossing it in either direction (added to stop_margin_distance) [m]",
+              "default": 0.5,
+              "minimum": 0.0
+            },
             "max_deceleration": {
               "type": "number",
               "description": "Maximum deceleration used to judge whether a stop line is reachable (braking distance) [m/s^2]",
@@ -223,6 +333,37 @@
               "description": "Minimum arc-length difference for the stop trajectory's stop point to be treated as different from the go trajectory's [m]",
               "default": 0.5,
               "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "turn_signal": {
+          "type": "object",
+          "properties": {
+            "search_distance": {
+              "type": "number",
+              "description": "Lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this) [m]",
+              "default": 30.0,
+              "minimum": 0.0
+            },
+            "min_blink_duration": {
+              "type": "number",
+              "description": "Minimum time a turn signal is held on once lit, to suppress chatter [s]",
+              "default": 3.0,
+              "minimum": 0.0
+            },
+            "stopped_velocity_threshold": {
+              "type": "number",
+              "description": "Speed at/below which ego counts as stopped, for latching a pull-out and detecting arrival at the goal [m/s]",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "heading_align_threshold": {
+              "type": "number",
+              "description": "Yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared; also the gap below which a private-area merge counts as straight and raises no signal [rad]",
+              "default": 0.15,
+              "exclusiveMinimum": 0.0
             }
           },
           "required": [],
@@ -292,12 +433,6 @@
               "default": 1.0,
               "minimum": 0.0
             },
-            "lateral_margin": {
-              "type": "number",
-              "description": "Lateral margin [m]",
-              "default": 0.5,
-              "minimum": 0.0
-            },
             "arrived_distance_threshold": {
               "type": "number",
               "description": "Threshold to check if the ego vehicle has arrived at the stop point [m]",
@@ -307,22 +442,54 @@
             "objects": {
               "type": "object",
               "properties": {
-                "object_types": {
-                  "type": "array",
-                  "description": "Object types",
-                  "default": [
-                    "car",
-                    "truck",
-                    "bus",
-                    "trailer",
-                    "motorcycle",
-                    "bicycle",
-                    "pedestrian",
-                    "hazard"
-                  ],
-                  "items": {
-                    "type": "string"
-                  }
+                "target_objects": {
+                  "type": "object",
+                  "properties": {
+                    "bbox": {
+                      "type": "array",
+                      "description": "Types of bounding box shaped objects to consider for obstacle stop",
+                      "default": [
+                        "car",
+                        "truck",
+                        "bus",
+                        "trailer",
+                        "motorcycle",
+                        "bicycle",
+                        "pedestrian",
+                        "hazard",
+                        "unknown"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "polygon": {
+                      "type": "array",
+                      "description": "Types of polygon shaped objects to consider for obstacle stop",
+                      "default": [
+                        "car",
+                        "truck",
+                        "bus",
+                        "trailer",
+                        "pedestrian",
+                        "hazard",
+                        "unknown"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "pointcloud": {
+                      "type": "array",
+                      "description": "Types of pointcloud to consider for obstacle stop",
+                      "default": ["structure", "vegetation"],
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
                 },
                 "stopped_velocity_th": {
                   "type": "number",
@@ -343,88 +510,87 @@
                   "default": 0.0,
                   "minimum": 0.0,
                   "maximum": 10.0
-                }
-              },
-              "required": [],
-              "additionalProperties": false
-            },
-            "pointcloud": {
-              "type": "object",
-              "properties": {
-                "height_buffer": {
+                },
+                "pointcloud_height_buffer": {
                   "type": "number",
-                  "description": "Height buffer [m]",
+                  "description": "Height buffer to add above ego height for pointcloud [m]",
                   "default": 0.5,
                   "minimum": 0.0
                 },
-                "min_height": {
+                "pointcloud_min_height": {
                   "type": "number",
-                  "description": "Min height [m]",
+                  "description": "Minimum height of pointcloud [m]",
                   "default": 0.2,
                   "minimum": 0.0
                 },
-                "detection_range": {
-                  "type": "number",
-                  "description": "Detection range [m]",
-                  "default": 100.0,
-                  "minimum": 0.0
-                },
-                "voxel_grid_filter": {
+                "lateral_margin": {
                   "type": "object",
+                  "description": "Lateral margin on top of ego width from trajectory, per object or pointcloud class [m]",
                   "properties": {
-                    "x": {
+                    "car": {
                       "type": "number",
-                      "description": "X [m]",
+                      "description": "Lateral margin on top of ego width for car objects [m]",
                       "default": 0.2,
                       "minimum": 0.0
                     },
-                    "y": {
+                    "truck": {
                       "type": "number",
-                      "description": "Y [m]",
+                      "description": "Lateral margin on top of ego width for truck objects [m]",
                       "default": 0.2,
                       "minimum": 0.0
                     },
-                    "z": {
+                    "bus": {
                       "type": "number",
-                      "description": "Z [m]",
+                      "description": "Lateral margin on top of ego width for bus objects [m]",
                       "default": 0.2,
                       "minimum": 0.0
                     },
-                    "min_size": {
+                    "trailer": {
                       "type": "number",
-                      "description": "Min size",
-                      "default": 3,
-                      "minimum": 0.0
-                    }
-                  },
-                  "required": [],
-                  "additionalProperties": false
-                },
-                "clustering": {
-                  "type": "object",
-                  "properties": {
-                    "tolerance": {
-                      "type": "number",
-                      "description": "Tolerance [m]",
-                      "default": 0.5,
+                      "description": "Lateral margin on top of ego width for trailer objects [m]",
+                      "default": 0.2,
                       "minimum": 0.0
                     },
-                    "min_height": {
+                    "motorcycle": {
                       "type": "number",
-                      "description": "Min height [m]",
-                      "default": 0.5,
+                      "description": "Lateral margin on top of ego width for motorcycle objects [m]",
+                      "default": 0.2,
                       "minimum": 0.0
                     },
-                    "min_size": {
+                    "bicycle": {
                       "type": "number",
-                      "description": "Min size",
-                      "default": 10,
+                      "description": "Lateral margin on top of ego width for bicycle objects [m]",
+                      "default": 0.2,
                       "minimum": 0.0
                     },
-                    "max_size": {
+                    "pedestrian": {
                       "type": "number",
-                      "description": "Max size",
-                      "default": 10000,
+                      "description": "Lateral margin on top of ego width for pedestrian objects [m]",
+                      "default": 0.2,
+                      "minimum": 0.0
+                    },
+                    "hazard": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for hazard objects [m]",
+                      "default": 0.2,
+                      "minimum": 0.0
+                    },
+                    "structure": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for structure pointcloud [m]",
+                      "default": 0.2,
+                      "minimum": 0.0
+                    },
+                    "vegetation": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for vegetation pointcloud [m]",
+                      "default": 0.2,
+                      "minimum": 0.0
+                    },
+                    "unknown": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for unknown objects and unclassified pointcloud [m]",
+                      "default": 0.2,
                       "minimum": 0.0
                     }
                   },
@@ -542,24 +708,56 @@
               "description": "Enable the use of pointcloud for surround obstacle stop",
               "default": false
             },
-            "object_types": {
-              "type": "array",
-              "description": "Types of objects to consider for surround obstacle stop",
-              "default": [
-                "car",
-                "truck",
-                "bus",
-                "trailer",
-                "motorcycle",
-                "bicycle",
-                "pedestrian",
-                "hazard",
-                "animal",
-                "unknown"
-              ],
-              "items": {
-                "type": "string"
-              }
+            "target_objects": {
+              "type": "object",
+              "properties": {
+                "bbox": {
+                  "type": "array",
+                  "description": "Types of bounding box shaped objects to consider for surround obstacle stop",
+                  "default": [
+                    "car",
+                    "truck",
+                    "bus",
+                    "trailer",
+                    "motorcycle",
+                    "bicycle",
+                    "pedestrian",
+                    "hazard",
+                    "animal",
+                    "unknown"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "polygon": {
+                  "type": "array",
+                  "description": "Types of polygon shaped objects to consider for surround obstacle stop",
+                  "default": [
+                    "car",
+                    "truck",
+                    "bus",
+                    "trailer",
+                    "pedestrian",
+                    "hazard",
+                    "animal",
+                    "unknown"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "pointcloud": {
+                  "type": "array",
+                  "description": "Pointcloud types to consider for surround obstacle stop",
+                  "default": ["structure", "vegetation"],
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [],
+              "additionalProperties": false
             },
             "front_distance_th": {
               "type": "object",

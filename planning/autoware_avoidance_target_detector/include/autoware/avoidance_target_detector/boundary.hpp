@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__BOUNDARY_HPP_
 #define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__BOUNDARY_HPP_
 
+#include "rtree_filtering.hpp"
+
 #include <autoware/route_handler/route_handler.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
@@ -33,7 +35,7 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::avoidance_target_detector
@@ -44,9 +46,6 @@ using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
-
-/** Left and right route boundary linestrings. */
-using RouteBounds = std::pair<lanelet::LineString2d, lanelet::LineString2d>;
 
 namespace traffic_rules
 {
@@ -115,14 +114,12 @@ private:
 class ExtendedRouteHandler
 {
 public:
+  using VelocityLimitOverrides = std::unordered_map<lanelet::Id, double>;
+
   ExtendedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route);
 
   /** Build the extended route map and routing graph from the original map and route. */
   void create_map();
-
-  /** Write the route map to the debug OSM file. Temporary debug code. Must be removed before
-   * release. */
-  void export_debug_map() const;
 
   [[nodiscard]] const std::shared_ptr<RouteHandler> & getOriginalRouteHandler() const
   {
@@ -143,6 +140,14 @@ public:
 
   [[nodiscard]] std::vector<lanelet::LineString2d> get_road_borders() const;
 
+  [[nodiscard]] SegmentRtree get_road_borders_rtree() const;
+
+  [[nodiscard]] std::vector<Segment> get_road_borders_around_trajectory(
+    const Trajectory & trajectory, double margin) const;
+
+  [[nodiscard]] std::vector<Segment> get_drivable_area_around_trajectory(
+    const Trajectory & trajectory, double margin) const;
+
   [[nodiscard]] RouteBounds get_primitive_set_bounds(const std::vector<int64_t> & primitives) const;
 
   [[nodiscard]] const RouteBounds & get_original_route_bounds() const
@@ -155,14 +160,24 @@ public:
     return extended_route_bounds_;
   }
 
+  /**
+   * @brief Build a polygon from the route segments containing and between two points.
+   * @details Identical start and end points are supported and select their containing segment.
+   */
   [[nodiscard]] lanelet::BasicPolygon2d get_near_segment_polygon(
     const geometry_msgs::msg::Point & prev_end_point,
     const geometry_msgs::msg::Point & following_end_point) const;
 
   [[nodiscard]] std::optional<double> get_velocity_limit(const lanelet::BasicPoint2d & point) const;
+  [[nodiscard]] std::optional<double> get_velocity_limit(
+    const lanelet::BasicPoint2d & point, const VelocityLimitOverrides & overrides) const;
   [[nodiscard]] std::optional<double> get_velocity_limit(const lanelet::Point2d & point) const;
   [[nodiscard]] std::optional<double> get_velocity_limit(
+    const lanelet::Point2d & point, const VelocityLimitOverrides & overrides) const;
+  [[nodiscard]] std::optional<double> get_velocity_limit(
     const geometry_msgs::msg::Point & point) const;
+  [[nodiscard]] std::optional<double> get_velocity_limit(
+    const geometry_msgs::msg::Point & point, const VelocityLimitOverrides & overrides) const;
 
 private:
   [[nodiscard]] std::optional<std::size_t> find_segment_index_for_point(
@@ -186,6 +201,10 @@ private:
   std::shared_ptr<RouteHandler> original_route_handler_;
   RouteBounds original_route_bounds_;
   RouteBounds extended_route_bounds_;
+  std::unordered_map<lanelet::Id, std::size_t> lanelet_to_segment_index_;
+  SegmentRtree road_borders_rtree_;
+  SegmentRtree original_bounds_rtree_;
+  SegmentRtree extended_bounds_rtree_;
 };
 
 /**
