@@ -72,9 +72,15 @@ struct FirstOrderDubinsMppiControl
   float steer_cmd{0.0F};
 };
 
+struct FirstOrderDubinsMppiPostprocessingContext
+{
+  /** u[0] was shifted from the previous accepted horizon and locked during GPU optimization. */
+  bool first_command_is_shifted{false};
+};
+
 /** Optional host-side output conditioning supplied by the interface caller. */
-using FirstOrderDubinsMppiControlSequencePostprocessor =
-  std::function<void(std::vector<FirstOrderDubinsMppiControl> &)>;
+using FirstOrderDubinsMppiControlSequencePostprocessor = std::function<void(
+  std::vector<FirstOrderDubinsMppiControl> &, const FirstOrderDubinsMppiPostprocessingContext &)>;
 
 /** Nominal control sequence supplied to MPPI before sampling and optimization. */
 struct FirstOrderDubinsMppiNominalControlProfile
@@ -435,7 +441,9 @@ public:
    * @param kinematic_limits Optional external scalar and map pointwise velocity bounds, plus
    *        external acceleration and jerk bounds.
    * @param control_postprocessor Optional caller-owned conditioning applied to the optimized
-   *        control horizon before state recomputation and applied-control bookkeeping.
+   *        control horizon before state recomputation and applied-control bookkeeping. The second
+   *        callback argument identifies a first command shifted from the accepted horizon, so an
+   *        output filter can avoid filtering that command twice. It is false for fresh seeds.
    * @param defer_commit Require commitPendingTrajectory() before recording candidate commands
    *        in the accepted execution history; use this when the caller can reject or shadow output.
    * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
