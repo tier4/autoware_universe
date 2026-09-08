@@ -52,6 +52,11 @@
         cloud_capacity: 2000000
 
     latentdrive:
+      # Where the subgoal's reference polyline comes from: "route" follows the lanelet
+      # centerlines of /planning/mission_planning/route (the deployment form, needs the
+      # vector map); "trajectory" follows a Trajectory topic, for a replay whose bags
+      # carry no route.
+      subgoal_source: "route"
       # Newest-frame staleness at the planning tick. The front-camera JPEG stream
       # itself arrives 40-60 ms behind the clock, but decode, preprocessing and
       # inference share one executor thread, so a busy tick can see a frame that

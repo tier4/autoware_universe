@@ -20,6 +20,7 @@
 #include <cv_bridge/cv_bridge.h>  // for ROS 2 Humble or older
 #endif
 
+#include <autoware/lanelet2_utils/conversion.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
@@ -128,12 +129,61 @@ Eigen::Vector2d subgoal_along(
       nearest = i;
     }
   }
+  // Walk the polyline and stop exactly `ahead_m` along it, interpolating inside the segment
+  // that crosses the distance; a sparse reference (lanelet centerlines are sampled every few
+  // metres) would otherwise snap the subgoal to a vertex.
   double travelled = 0.0;
-  size_t j = nearest;
-  for (; j + 1 < reference.size() && travelled < ahead_m; ++j) {
-    travelled += (reference[j + 1] - reference[j]).norm();
+  for (size_t j = nearest; j + 1 < reference.size(); ++j) {
+    const double segment = (reference[j + 1] - reference[j]).norm();
+    if (travelled + segment >= ahead_m) {
+      const double t = segment > 0.0 ? (ahead_m - travelled) / segment : 0.0;
+      return reference[j] + t * (reference[j + 1] - reference[j]);
+    }
+    travelled += segment;
   }
-  return reference[j];
+  return reference.back();
+}
+
+std::vector<Eigen::Vector2d> route_centerline(
+  const lanelet::LaneletMap & map, const autoware_planning_msgs::msg::LaneletRoute & route,
+  std::vector<lanelet::Id> & missing)
+{
+  std::vector<Eigen::Vector2d> polyline;
+  missing.clear();
+  for (const auto & segment : route.segments) {
+    const lanelet::Id id = segment.preferred_primitive.id;
+    const auto it = map.laneletLayer.find(id);
+    if (it == map.laneletLayer.end()) {
+      missing.push_back(id);
+      continue;
+    }
+    for (const auto & point : it->centerline2d()) {
+      const Eigen::Vector2d p(point.x(), point.y());
+      if (polyline.empty() || (polyline.back() - p).norm() > 1e-3) {
+        polyline.push_back(p);
+      }
+    }
+  }
+  if (polyline.empty()) {
+    throw std::runtime_error(
+      "None of the route's " + std::to_string(route.segments.size()) +
+      " lanelets is in the map (route and map disagree)");
+  }
+  // The last lanelet runs past the goal; end the reference where the goal is.
+  if (polyline.size() > 1) {
+    const Eigen::Vector2d goal(route.goal_pose.position.x, route.goal_pose.position.y);
+    size_t nearest = 0;
+    double best = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < polyline.size(); ++i) {
+      const double d = (polyline[i] - goal).norm();
+      if (d < best) {
+        best = d;
+        nearest = i;
+      }
+    }
+    polyline.resize(nearest + 1);
+  }
+  return polyline;
 }
 
 }  // namespace latentdrive
@@ -160,6 +210,12 @@ LatentDriveInputProvider::LatentDriveInputProvider(rclcpp::Node & node) : node_(
   subgoal_ahead_m_ = node_.declare_parameter<double>("latentdrive.subgoal_ahead_m", 50.0);
   subgoal_divisor_ = node_.declare_parameter<double>("latentdrive.status_subgoal_divisor", 10.0);
   tick_log_ = node_.declare_parameter<bool>("latentdrive.tick_log", false);
+  subgoal_source_ = node_.declare_parameter<std::string>("latentdrive.subgoal_source", "route");
+  if (subgoal_source_ != "route" && subgoal_source_ != "trajectory") {
+    throw std::runtime_error(
+      "latentdrive.subgoal_source must be \"route\" or \"trajectory\", got \"" + subgoal_source_ +
+      "\"");
+  }
 
   // ImageNet statistics on the [0, 1] scale, as the training pipeline applies them after /255.
   const auto mean = node_.declare_parameter<std::vector<double>>(
@@ -235,11 +291,29 @@ std::vector<std::string> LatentDriveInputProvider::claim_inputs(
     &node_, node_.get_node_topics_interface()->resolve_topic_name(image_topic),
     [this](const sensor_msgs::msg::Image::ConstSharedPtr & msg) { on_image(msg); }, transport_,
     rmw_qos_profile_sensor_data);
-  trajectory_sub_ = node_.create_subscription<Trajectory>(
-    "~/input/reference_trajectory", rclcpp::QoS(1), [this](const Trajectory::ConstSharedPtr msg) {
-      std::lock_guard<std::mutex> lock(mutex_);
-      latest_trajectory_ = msg;
-    });
+  if (subgoal_source_ == "trajectory") {
+    trajectory_sub_ = node_.create_subscription<Trajectory>(
+      "~/input/reference_trajectory", rclcpp::QoS(1), [this](const Trajectory::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        latest_trajectory_ = msg;
+      });
+  } else {
+    // Both are latched by their publishers; a late subscriber still gets them.
+    route_sub_ = node_.create_subscription<LaneletRoute>(
+      "~/input/route", rclcpp::QoS(1).transient_local(),
+      [this](const LaneletRoute::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        route_ = msg;
+        update_route_polyline();
+      });
+    map_sub_ = node_.create_subscription<LaneletMapBin>(
+      "~/input/vector_map", rclcpp::QoS(1).transient_local(),
+      [this](const LaneletMapBin::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        lanelet_map_ = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg);
+        update_route_polyline();
+      });
+  }
   pub_subgoal_ =
     node_.create_publisher<geometry_msgs::msg::PointStamped>("~/debug/latentdrive/subgoal", 1);
   pub_frame_age_ = node_.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
@@ -353,27 +427,76 @@ bool LatentDriveInputProvider::build_video_tensor(
   return true;
 }
 
-bool LatentDriveInputProvider::build_status_tensor(
-  const EgoFrame & ego, TensorMap & inputs, std::string & error)
+void LatentDriveInputProvider::update_route_polyline()
 {
-  Trajectory::ConstSharedPtr trajectory;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    trajectory = latest_trajectory_;
+  // Called with mutex_ held.
+  route_polyline_.clear();
+  route_error_.clear();
+  if (!route_ || !lanelet_map_) {
+    return;
   }
-  if (!trajectory) {
+  try {
+    std::vector<lanelet::Id> missing;
+    route_polyline_ = latentdrive::route_centerline(*lanelet_map_, *route_, missing);
+    RCLCPP_INFO(
+      node_.get_logger(), "Route reference: %zu lanelets -> %zu centerline points",
+      route_->segments.size(), route_polyline_.size());
+    if (!missing.empty()) {
+      RCLCPP_ERROR(
+        node_.get_logger(),
+        "%zu of the route's %zu lanelets are not in the map (first: %ld); the route was made "
+        "against another map revision. Those stretches are bridged with straight lines -- the "
+        "subgoal is unreliable there. Load the map the route was planned on.",
+        missing.size(), route_->segments.size(), static_cast<long>(missing.front()));
+    }
+  } catch (const std::exception & e) {
+    route_error_ = e.what();
+    RCLCPP_ERROR(node_.get_logger(), "Route reference unusable: %s", e.what());
+  }
+}
+
+bool LatentDriveInputProvider::reference_polyline(
+  std::vector<Eigen::Vector2d> & polyline, std::string & error)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (subgoal_source_ == "route") {
+    if (!route_) {
+      error = "No route received yet";
+      return false;
+    }
+    if (!lanelet_map_) {
+      error = "No vector map received yet (needed to place the route)";
+      return false;
+    }
+    if (route_polyline_.empty()) {
+      error = route_error_.empty() ? "Route has no centerline points" : route_error_;
+      return false;
+    }
+    polyline = route_polyline_;
+    return true;
+  }
+  if (!latest_trajectory_) {
     error = "No reference trajectory received yet";
     return false;
   }
-  if (trajectory->points.empty()) {
+  if (latest_trajectory_->points.empty()) {
     error = "Reference trajectory has no points";
     return false;
   }
+  polyline.clear();
+  polyline.reserve(latest_trajectory_->points.size());
+  for (const auto & point : latest_trajectory_->points) {
+    polyline.emplace_back(point.pose.position.x, point.pose.position.y);
+  }
+  return true;
+}
 
+bool LatentDriveInputProvider::build_status_tensor(
+  const EgoFrame & ego, TensorMap & inputs, std::string & error)
+{
   std::vector<Eigen::Vector2d> reference;
-  reference.reserve(trajectory->points.size());
-  for (const auto & point : trajectory->points) {
-    reference.emplace_back(point.pose.position.x, point.pose.position.y);
+  if (!reference_polyline(reference, error)) {
+    return false;
   }
   const auto & ego_position = ego.reference_odometry.pose.pose.position;
   const Eigen::Vector2d subgoal_map = latentdrive::subgoal_along(

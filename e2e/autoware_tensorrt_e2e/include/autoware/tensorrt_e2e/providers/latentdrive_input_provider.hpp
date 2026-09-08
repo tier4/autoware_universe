@@ -23,10 +23,14 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <sensor_msgs/msg/image.hpp>
+
+#include <lanelet2_core/LaneletMap.h>
 
 #include <array>
 #include <cstdint>
@@ -75,11 +79,26 @@ std::optional<std::vector<size_t>> select_frame_slots(
  * @brief The point `ahead_m` of arc length beyond the reference point nearest to `position`.
  *
  * Follows the LatentDrive replay node: nearest point by Euclidean distance, then walk the
- * polyline forward. When the reference ends first, its last point is returned.
+ * polyline forward, interpolating inside the segment where the distance is reached (the replay
+ * node stopped at a vertex, which is the same on its 0.1 s route samples but not on lanelet
+ * centerlines sampled metres apart). When the reference ends first, its last point is returned.
  * @param reference At least one point, in the frame the result is wanted in.
  */
 Eigen::Vector2d subgoal_along(
   const std::vector<Eigen::Vector2d> & reference, const Eigen::Vector2d & position, double ahead_m);
+
+/**
+ * @brief The route as one polyline: the centerlines of the route's preferred lanelets, in
+ * order, consecutive duplicate points removed, cut at the point nearest the goal pose.
+ *
+ * A lanelet the map does not contain (the route was made against another map revision) is
+ * skipped and reported in `missing`; the polyline then runs straight from the last point
+ * before the gap to the first point after it.
+ * @throws std::runtime_error when none of the route's lanelets is in the map.
+ */
+std::vector<Eigen::Vector2d> route_centerline(
+  const lanelet::LaneletMap & map, const autoware_planning_msgs::msg::LaneletRoute & route,
+  std::vector<lanelet::Id> & missing);
 
 }  // namespace latentdrive
 
@@ -95,13 +114,18 @@ Eigen::Vector2d subgoal_along(
  *   camera frame shifts the pick to its neighbour rather than compressing the clip.
  * - `status` `[1, 6]`: `(subgoal_x / d, subgoal_y / d, v_x, v_y, a_x, a_y)` in the ego frame,
  *   with `d = status_subgoal_divisor`. The subgoal is the point `subgoal_ahead_m` of arc length
- *   ahead on the reference trajectory; velocity comes from the odometry, acceleration from the
+ *   ahead on a reference polyline; velocity comes from the odometry, acceleration from the
  *   acceleration topic.
  *
- * Subscribes to `~/input/camera0/image` (via image_transport) and `~/input/reference_trajectory`
- * (`autoware_planning_msgs/Trajectory`). The reference is what the model was trained to follow,
- * a route sampled 50 m ahead; in an open-loop replay the recorded planner trajectory plays that
- * role. The subgoal actually fed to the model is published on `~/debug/latentdrive/subgoal`, the
+ * The reference is what the model was trained to follow, the route sampled 50 m ahead.
+ * `subgoal_source` selects where it comes from:
+ * - `route`: `~/input/route` (`LaneletRoute`) plus `~/input/vector_map`; the preferred lanelets'
+ *   centerlines form the polyline. This is the deployment form.
+ * - `trajectory`: `~/input/reference_trajectory` (`Trajectory`); for a replay in which the
+ *   recorded planner output stands in for the route.
+ *
+ * Subscribes to `~/input/camera0/image` (via image_transport) and the reference topics above.
+ * The subgoal actually fed to the model is published on `~/debug/latentdrive/subgoal`, the
  * ego pose the plan is anchored on (odometry at the tick) on `~/debug/latentdrive/ego_pose`,
  * and every frame the provider receives is echoed on `~/debug/latentdrive/frame_age_ms`
  * (stamped with the frame's sensor stamp, value = age at arrival), so frames lost between
@@ -120,6 +144,8 @@ public:
 
 private:
   using Trajectory = autoware_planning_msgs::msg::Trajectory;
+  using LaneletRoute = autoware_planning_msgs::msg::LaneletRoute;
+  using LaneletMapBin = autoware_map_msgs::msg::LaneletMapBin;
 
   struct Frame
   {
@@ -128,6 +154,10 @@ private:
   };
 
   void on_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg);
+  /// Rebuild the route polyline once both the map and the route are known.
+  void update_route_polyline();
+  /// The current reference polyline in the map frame, or an explanation of why there is none.
+  bool reference_polyline(std::vector<Eigen::Vector2d> & polyline, std::string & error);
   bool build_video_tensor(const rclcpp::Time & now, TensorMap & inputs, std::string & error);
   bool build_status_tensor(const EgoFrame & ego, TensorMap & inputs, std::string & error);
 
@@ -144,6 +174,7 @@ private:
   std::array<float, 3> inverse_std_{};
   double subgoal_ahead_m_{50.0};
   double subgoal_divisor_{10.0};
+  std::string subgoal_source_{"route"};  //!< "route" or "trajectory".
   //! One INFO line per tick, "[LatentDrive-debug] ...": whether the tick ran, the age of each
   //! selected frame relative to the tick, and the status fed to the model; or why it was skipped.
   bool tick_log_{false};
@@ -158,6 +189,8 @@ private:
   // ROS interfaces
   image_transport::Subscriber image_sub_;
   rclcpp::Subscription<Trajectory>::SharedPtr trajectory_sub_;
+  rclcpp::Subscription<LaneletRoute>::SharedPtr route_sub_;
+  rclcpp::Subscription<LaneletMapBin>::SharedPtr map_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr pub_subgoal_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_ego_pose_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr pub_frame_age_;
@@ -165,6 +198,10 @@ private:
   // State
   std::deque<Frame> frames_;  //!< Ascending by stamp; pruned to the clip span on push.
   Trajectory::ConstSharedPtr latest_trajectory_;
+  LaneletRoute::ConstSharedPtr route_;
+  lanelet::LaneletMapConstPtr lanelet_map_;
+  std::vector<Eigen::Vector2d> route_polyline_;  //!< Empty until map and route have arrived.
+  std::string route_error_;                      //!< Why the polyline could not be built.
   mutable std::mutex mutex_;
   std::vector<float> video_buffer_;
   bool warned_no_acceleration_{false};

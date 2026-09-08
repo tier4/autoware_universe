@@ -99,10 +99,13 @@ common `InferenceEngine`.
   scale to [0, 1], ImageNet-normalize. Frames are chosen by stamp, so a dropped camera frame
   shifts one slot to its neighbour rather than compressing the clip.
 - `status` `[1, 6]`: `(subgoal_x / 10, subgoal_y / 10, v_x, v_y, a_x, a_y)` in the ego frame.
-  The subgoal is the point `latentdrive.subgoal_ahead_m` (50 m) of arc length ahead on the
-  reference trajectory subscribed at `~/input/reference_trajectory`. In an open-loop replay the
-  recorded planner trajectory plays that role; a closed-loop deployment needs a route-based
-  source. The subgoal actually used is published on `~/debug/latentdrive/subgoal`.
+  The subgoal is the point `latentdrive.subgoal_ahead_m` (50 m) of arc length ahead on a
+  reference polyline chosen by `latentdrive.subgoal_source`: `route` (default) follows the
+  centerlines of the preferred lanelets of `~/input/route` (`LaneletRoute`) on `~/input/vector_map`,
+  as the model was trained; `trajectory` follows `~/input/reference_trajectory`
+  (`autoware_planning_msgs/Trajectory`), for a replay whose bags carry no route. A route lanelet
+  the map does not contain is skipped, reported, and bridged in a straight line. The subgoal
+  actually used is published on `~/debug/latentdrive/subgoal`.
 - `traj` `[1, 40, 3]`: `(x, y, yaw)` at 0.1 s over 4 s, decoded by the common postprocessor
   through `LatentDrivePostprocessor`, which adds an optional temporal smoothing
   (`latentdrive.smoothing.*`, off by default). Consecutive plans disagree by about a metre on

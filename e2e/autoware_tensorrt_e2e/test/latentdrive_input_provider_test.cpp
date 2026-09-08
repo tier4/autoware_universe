@@ -15,6 +15,9 @@
 #include "autoware/tensorrt_e2e/providers/latentdrive_input_provider.hpp"
 
 #include <gtest/gtest.h>
+#include <lanelet2_core/primitives/Lanelet.h>
+#include <lanelet2_core/primitives/LineString.h>
+#include <lanelet2_core/primitives/Point.h>
 
 #include <array>
 #include <cmath>
@@ -131,9 +134,16 @@ TEST(LatentDriveSubgoalTest, WalksArcLengthFromTheNearestPoint)
   for (int i = 0; i <= 100; ++i) {
     reference.emplace_back(static_cast<double>(i), 0.0);
   }
+  // Nearest vertex is x = 20; exactly 50 m further along the line.
   const Eigen::Vector2d subgoal = subgoal_along(reference, Eigen::Vector2d(20.3, 0.4), 50.0);
   EXPECT_DOUBLE_EQ(subgoal.x(), 70.0);
   EXPECT_DOUBLE_EQ(subgoal.y(), 0.0);
+
+  // A sparse reference (vertices 20 m apart) interpolates instead of snapping to a vertex.
+  const std::vector<Eigen::Vector2d> sparse = {
+    {0.0, 0.0}, {20.0, 0.0}, {40.0, 0.0}, {60.0, 0.0}, {80.0, 0.0}};
+  const Eigen::Vector2d interpolated = subgoal_along(sparse, Eigen::Vector2d(0.0, 0.0), 50.0);
+  EXPECT_DOUBLE_EQ(interpolated.x(), 50.0);
 }
 
 TEST(LatentDriveSubgoalTest, StopsAtTheEndOfTheReference)
@@ -145,6 +155,78 @@ TEST(LatentDriveSubgoalTest, StopsAtTheEndOfTheReference)
   const Eigen::Vector2d subgoal = subgoal_along(reference, Eigen::Vector2d(0.0, 0.0), 50.0);
   EXPECT_DOUBLE_EQ(subgoal.x(), 30.0);
   EXPECT_THROW(subgoal_along({}, Eigen::Vector2d(0.0, 0.0), 50.0), std::invalid_argument);
+}
+
+namespace
+{
+/// A straight lanelet 3 m wide from x0 to x1 along +x, bounds two points each.
+lanelet::Lanelet straight_lanelet(const lanelet::Id id, const double x0, const double x1)
+{
+  lanelet::LineString3d left(
+    lanelet::utils::getId(), {lanelet::Point3d(lanelet::utils::getId(), x0, 1.5, 0.0),
+                              lanelet::Point3d(lanelet::utils::getId(), x1, 1.5, 0.0)});
+  lanelet::LineString3d right(
+    lanelet::utils::getId(), {lanelet::Point3d(lanelet::utils::getId(), x0, -1.5, 0.0),
+                              lanelet::Point3d(lanelet::utils::getId(), x1, -1.5, 0.0)});
+  return lanelet::Lanelet(id, left, right);
+}
+
+autoware_planning_msgs::msg::LaneletRoute route_of(
+  const std::vector<lanelet::Id> & ids, const double goal_x)
+{
+  autoware_planning_msgs::msg::LaneletRoute route;
+  for (const auto id : ids) {
+    autoware_planning_msgs::msg::LaneletSegment segment;
+    segment.preferred_primitive.id = id;
+    route.segments.push_back(segment);
+  }
+  route.goal_pose.position.x = goal_x;
+  return route;
+}
+}  // namespace
+
+TEST(LatentDriveRouteTest, ConcatenatesPreferredCenterlinesAndCutsAtTheGoal)
+{
+  // Two consecutive lanelets 0..50 and 50..100 m; the goal sits at 80 m.
+  const auto map =
+    lanelet::utils::createMap({straight_lanelet(1, 0.0, 50.0), straight_lanelet(2, 50.0, 100.0)});
+  std::vector<lanelet::Id> missing;
+  const auto polyline = route_centerline(*map, route_of({1, 2}, 80.0), missing);
+  EXPECT_TRUE(missing.empty());
+
+  ASSERT_GE(polyline.size(), 2U);
+  EXPECT_DOUBLE_EQ(polyline.front().x(), 0.0);
+  // Centerline points lie on y = 0, the shared point at x = 50 appears once, and the
+  // polyline ends at the centerline point nearest the goal.
+  for (size_t i = 1; i < polyline.size(); ++i) {
+    EXPECT_NEAR(polyline[i].y(), 0.0, 1e-9);
+    EXPECT_GT(polyline[i].x(), polyline[i - 1].x());
+  }
+  EXPECT_LE(std::abs(polyline.back().x() - 80.0), 25.0);
+  EXPECT_LT(polyline.back().x(), 100.0);
+
+  // The subgoal 50 m ahead of a car at x = 10 lands on that polyline.
+  const Eigen::Vector2d subgoal = subgoal_along(polyline, Eigen::Vector2d(10.0, 0.2), 50.0);
+  EXPECT_GE(subgoal.x(), 50.0);
+}
+
+TEST(LatentDriveRouteTest, SkipsAndReportsLaneletsMissingFromTheMap)
+{
+  // Lanelet 99 exists only in the map revision the route was planned on: it is reported and
+  // the polyline bridges from lanelet 1 to lanelet 3 in a straight line.
+  const auto map =
+    lanelet::utils::createMap({straight_lanelet(1, 0.0, 50.0), straight_lanelet(3, 100.0, 150.0)});
+  std::vector<lanelet::Id> missing;
+  const auto polyline = route_centerline(*map, route_of({1, 99, 3}, 150.0), missing);
+  EXPECT_EQ(missing, (std::vector<lanelet::Id>{99}));
+  ASSERT_GE(polyline.size(), 2U);
+  EXPECT_DOUBLE_EQ(polyline.front().x(), 0.0);
+  EXPECT_GE(polyline.back().x(), 100.0);
+  // Walking 60 m from x = 45 crosses the bridged gap and lands on lanelet 3.
+  EXPECT_GE(subgoal_along(polyline, Eigen::Vector2d(45.0, 0.0), 60.0).x(), 100.0);
+
+  // Nothing in common at all is an error, not an empty reference.
+  EXPECT_THROW(route_centerline(*map, route_of({98, 99}, 50.0), missing), std::runtime_error);
 }
 
 }  // namespace autoware::tensorrt_e2e::latentdrive

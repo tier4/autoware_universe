@@ -135,6 +135,12 @@
               "description": "Per-channel standard deviation (RGB, 0-1 scale).",
               "default": [0.229, 0.224, 0.225]
             },
+            "subgoal_source": {
+              "type": "string",
+              "enum": ["route", "trajectory"],
+              "description": "Reference the subgoal is taken along: the route's lanelet centerlines (needs the vector map) or a Trajectory topic.",
+              "default": "route"
+            },
             "subgoal_ahead_m": {
               "type": "number",
               "description": "Arc length ahead on the reference trajectory at which the subgoal is taken.",
