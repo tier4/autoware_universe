@@ -248,7 +248,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     scripts/mppi_offline_tuner.py
     scripts/mppi_debug_visualizer.py
     scripts/mppi_open_loop_line_sim_plot.py
-    scripts/mppi_prediction_error_bag_analyzer.py
     DESTINATION lib/${PROJECT_NAME}
   )
 endif()
