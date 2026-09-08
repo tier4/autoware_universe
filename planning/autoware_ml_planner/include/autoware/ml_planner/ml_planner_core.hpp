@@ -245,6 +245,7 @@ public:
 private:
   // Parameters
   MLPlannerParams params_;
+  VehicleInfo vehicle_info_;
   VehicleSpec vehicle_spec_;
 
   // Inference engine
@@ -276,6 +277,7 @@ private:
       }};
 
   // Lanelet map
+  std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_;
   LaneletRoute::ConstSharedPtr route_ptr_;
   std::unique_ptr<preprocess::LaneSegmentContext> lane_segment_context_;
 };

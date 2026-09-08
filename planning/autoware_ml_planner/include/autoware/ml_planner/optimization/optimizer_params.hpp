@@ -21,8 +21,8 @@ namespace autoware::ml_planner::optimization
 /**
  * @brief Runtime parameters for the acados-based trajectory optimization.
  *
- * Cost weights and constraint bounds are injected into the generated solver at startup,
- * so tuning them does not require regenerating the acados code
+ * Cost weights and constraint bounds are injected when the solver is constructed or
+ * reconfigured, so tuning them does not require regenerating the acados code
  * (see scripts/generate_solver.py for the baked-in defaults and the OCP definition).
  */
 struct TrajectoryOptimizationParams
