@@ -321,12 +321,14 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   debug_pending_ = false;
 
   if (!params_.enabled) {
+    steering_filter_.reset();
     publish_enabled(false);
     clear_markers(data.candidate_header);
     return ProcessingResult::Unchanged;
   }
 
   if (!data.current_odometry || !data.tracked_objects || !data.route || !data.lanelet_map_bin) {
+    steering_filter_.reset();
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
     publish_enabled(false);
     clear_markers(data.candidate_header);
@@ -393,13 +395,15 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     if (filter_candidate) {
       const float measured_steering = steering ? steering->steering_tire_angle : 0.0F;
       control_postprocessor = [&candidate_steering_filter, measured_steering](
-                                std::vector<FirstOrderDubinsMppiControl> & controls) {
+                                std::vector<FirstOrderDubinsMppiControl> & controls,
+                                const FirstOrderDubinsMppiPostprocessingContext & context) {
         std::vector<float> steering_commands;
         steering_commands.reserve(controls.size());
         for (const auto & control : controls) {
           steering_commands.push_back(control.steer_cmd);
         }
-        candidate_steering_filter.filter(steering_commands, measured_steering);
+        candidate_steering_filter.filter(
+          steering_commands, measured_steering, context.first_command_is_shifted);
         for (std::size_t index = 0; index < controls.size(); ++index) {
           controls[index].steer_cmd = steering_commands[index];
         }
@@ -456,17 +460,24 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       optimizer_->discardPendingTrajectory();
     }
 
-    trajectory_points = result.trajectory.points;
-    if (!result.debug.was_rejected && result.optimized_point_count > 0U) {
+    if (apply_result) trajectory_points = result.trajectory.points;
+    if (apply_result && !result.debug.was_rejected && result.optimized_point_count > 0U) {
       optimizer_->commitPendingTrajectory();
       pending_debug_->applied_plant.valid = true;
     } else {
       optimizer_->discardPendingTrajectory();
     }
-    if (filter_candidate) steering_filter_ = std::move(candidate_steering_filter);
+    if (filter_candidate && apply_result && result.optimized_point_count > 0U) {
+      steering_filter_ = std::move(candidate_steering_filter);
+    } else {
+      // Rejected/unfiltered fallbacks and skipped optimization do not execute the candidate's
+      // first command. Re-seed from measured steering when filtered output resumes.
+      steering_filter_.reset();
+    }
     return !result.debug.was_rejected ? ProcessingResult::Unchanged : ProcessingResult::Modified;
   } catch (const std::exception & error) {
     if (optimizer_) optimizer_->discardPendingTrajectory();
+    steering_filter_.reset();
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     publish_enabled(false);
     clear_markers(data.candidate_header);

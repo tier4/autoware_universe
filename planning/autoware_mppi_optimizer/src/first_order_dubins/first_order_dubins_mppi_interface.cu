@@ -860,6 +860,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::unique_ptr<MppiWithHistoryAccess> controller;
   Mppi::control_trajectory u_nom = Mppi::control_trajectory::Zero();
   Mppi::control_trajectory u_opt = Mppi::control_trajectory::Zero();
+  // Recomputed on every nominal seed; this describes the current candidate, not committed state.
+  bool first_command_is_shifted{false};
   DYN::state_array x = DYN::state_array::Zero();
 
   std::vector<float> obs_traj_x;
@@ -1513,6 +1515,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   void seedNominalControl(
     const Trajectory & reference, const size_t start_idx, const detail::InitialState & ego)
   {
+    first_command_is_shifted = false;
     if (forced_nominal_pending) {
       seedNominalControlFromForced();
       forced_nominal_pending = false;
@@ -1535,6 +1538,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
     if (have_last_u) {
       seedNominalControlFromLastOptimized();
+      first_command_is_shifted = true;
       snapshotNominalForLog();
       return;
     }
@@ -1867,7 +1871,8 @@ struct FirstOrderDubinsMppiInterface::Impl
         optimized_controls[static_cast<std::size_t>(timestep)] = {
           u_opt_traj(accel_idx, timestep), u_opt_traj(steer_idx, timestep)};
       }
-      control_postprocessor(optimized_controls);
+      control_postprocessor(
+        optimized_controls, FirstOrderDubinsMppiPostprocessingContext{first_command_is_shifted});
       if (optimized_controls.size() != static_cast<std::size_t>(u_opt_traj.cols())) {
         throw std::invalid_argument("MPPI control postprocessor must preserve the horizon size");
       }

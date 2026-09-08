@@ -30,6 +30,25 @@ The plugin uses odometry, acceleration, steering, tracked objects, route, and ra
 
 Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory processor node.
 
+### Steering output filtering
+
+The curvature-adaptive EMA uses the magnitude of the preceding **filtered** steering as its turn
+estimate. A new target cannot increase its own smoothing factor. `steering_filter_alpha_turn`
+defaults to `0.5`, retaining smoothing through turns, turn exits, and reversals; setting it to `1`
+explicitly allows unfiltered transitions once the preceding steering reaches the turn threshold.
+The filter is not a hard steering-rate limiter.
+
+When the nominal sequence is shifted from the previous accepted MPPI output, its first command
+has already been filtered. With valid filter history, the host preserves that command exactly and
+filters the remaining horizon starting from it. Fresh seeds filter the entire horizon. The MPPI
+interface passes this distinction through `FirstOrderDubinsMppiPostprocessingContext` as the second
+argument to the control postprocessor, then recomputes the predicted states from the final controls.
+
+Filter history is committed only for filtered output selected for publication. A limited fallback
+is filtered from the pre-candidate history; an unfiltered fallback, skipped optimization, or error
+invalidates history so resumed filtering starts from measured steering. Turn smoothing introduces
+response lag, so assess tracking and clearance together with steering continuity when tuning alpha.
+
 ## Live distance-texture visualization
 
 Set `enable_distance_map_texture_debug: true` under `mppi_optimizer` to open the CUDA-OpenGL
