@@ -23,11 +23,11 @@ namespace autoware::mppi_optimizer
 /** Parameters for the curvature-adaptive exponential moving average. */
 struct CurvatureAdaptiveSteeringFilterParams
 {
-  /** EMA smoothing factor for a zero steering command. */
+  /** EMA smoothing factor when the preceding filtered steering is zero. */
   float alpha_straight{0.1F};
   /** EMA smoothing factor at and above turn_angle_rad. */
-  float alpha_turn{1.0F};
-  /** Absolute steering command [rad] at which alpha reaches alpha_turn. */
+  float alpha_turn{0.5F};
+  /** Absolute preceding filtered steering [rad] at which alpha reaches alpha_turn. */
   float turn_angle_rad{0.1F};
 };
 
@@ -55,8 +55,14 @@ public:
    *
    * On the first call after reset, measured_steering seeds the EMA. Non-finite measurements use
    * zero and non-finite commands hold the previous filtered command.
+   * When preserve_first_command is true and filter history is initialized, retain the first
+   * command exactly: it was already filtered in the previous accepted horizon. The remaining
+   * commands are filtered starting from that command. Cold starts always filter the full horizon.
+   * Alpha depends on the preceding filtered steering, so a new target cannot raise its own alpha.
    */
-  void filter(std::vector<float> & steering_commands, float measured_steering);
+  void filter(
+    std::vector<float> & steering_commands, float measured_steering,
+    bool preserve_first_command = false);
 
 private:
   CurvatureAdaptiveSteeringFilterParams params_{};

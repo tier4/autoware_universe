@@ -26,16 +26,17 @@ namespace autoware::mppi_optimizer
 namespace
 {
 
-TEST(CurvatureAdaptiveSteeringFilter, SuppressesStraightNoiseAndTracksTurnsImmediately)
+TEST(CurvatureAdaptiveSteeringFilter, SuppressesStraightNoiseAndSmoothsTurnEntry)
 {
-  CurvatureAdaptiveSteeringFilter filter({0.1F, 1.0F, 0.2F});
+  CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
   std::vector<float> commands{0.01F, -0.01F, 0.2F};
 
   filter.filter(commands, 0.0F);
 
   EXPECT_LT(std::abs(commands[0]), 0.01F);
   EXPECT_LT(std::abs(commands[1]), 0.01F);
-  EXPECT_FLOAT_EQ(commands[2], 0.2F);
+  EXPECT_GT(commands[2], 0.0F);
+  EXPECT_LT(commands[2], 0.2F);
 }
 
 TEST(CurvatureAdaptiveSteeringFilter, SeedsFromMeasuredSteering)
@@ -49,14 +50,101 @@ TEST(CurvatureAdaptiveSteeringFilter, SeedsFromMeasuredSteering)
   EXPECT_NEAR(commands.front(), 0.1F, 1.0E-6F);
 }
 
-TEST(CurvatureAdaptiveSteeringFilter, TracksTheExitFromATurnImmediately)
+TEST(CurvatureAdaptiveSteeringFilter, SmoothsTheExitFromATurn)
 {
-  CurvatureAdaptiveSteeringFilter filter({0.1F, 1.0F, 0.2F});
+  CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
   std::vector<float> commands{0.0F};
 
   filter.filter(commands, 0.2F);
 
-  EXPECT_FLOAT_EQ(commands.front(), 0.0F);
+  EXPECT_FLOAT_EQ(commands.front(), 0.1F);
+}
+
+TEST(CurvatureAdaptiveSteeringFilter, TargetSpikeCannotIncreaseItsOwnAlpha)
+{
+  CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
+  std::vector<float> commands{0.3F};
+
+  filter.filter(commands, 0.0F);
+
+  EXPECT_NEAR(commands.front(), 0.03F, 1.0E-6F);
+}
+
+TEST(CurvatureAdaptiveSteeringFilter, SmoothsSignReversalsAboveTurnThreshold)
+{
+  CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
+  std::vector<float> commands{-0.03F};
+
+  filter.filter(commands, 0.03F);
+
+  EXPECT_NEAR(commands.front(), 0.0F, 1.0E-6F);
+}
+
+TEST(CurvatureAdaptiveSteeringFilter, PreservesShiftedCommandAndFiltersTailFromIt)
+{
+  CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
+  std::vector<float> commands{0.0F, 0.01F};
+  filter.filter(commands, 0.0F);
+  const float already_filtered = commands[1];
+  ASSERT_NEAR(already_filtered, 0.001F, 1.0E-7F);
+
+  commands = {already_filtered, 0.01F};
+  filter.filter(commands, 0.0F, true);
+
+  EXPECT_FLOAT_EQ(commands.front(), already_filtered);
+  EXPECT_GT(commands[1], already_filtered);
+  EXPECT_LT(commands[1], 0.01F);
+
+  // Persist the issued first command, not the filtered tail.
+  commands = {already_filtered};
+  filter.filter(commands, 0.0F);
+  EXPECT_FLOAT_EQ(commands.front(), already_filtered);
+}
+
+TEST(CurvatureAdaptiveSteeringFilter, ColdStartDoesNotBypassFilteringOfShiftedCommand)
+{
+  CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
+  std::vector<float> commands{0.03F};
+
+  filter.filter(commands, 0.0F, true);
+
+  EXPECT_NEAR(commands.front(), 0.003F, 1.0E-7F);
+}
+
+TEST(CurvatureAdaptiveSteeringFilter, DiscardedCandidateDoesNotAffectFallbackOrResumedFiltering)
+{
+  CurvatureAdaptiveSteeringFilter filter({0.5F, 0.5F, 0.02F});
+  std::vector<float> commands{0.02F};
+  filter.filter(commands, 0.0F);
+
+  auto candidate = filter;
+  commands = {0.3F};
+  candidate.filter(commands, 0.0F);
+
+  // A limited fallback is filtered from the pre-candidate state.
+  auto fallback = filter;
+  commands = {0.0F};
+  fallback.filter(commands, 0.0F);
+  EXPECT_NEAR(commands.front(), 0.005F, 1.0E-7F);
+
+  // An unfiltered fallback invalidates history. Even a shifted nominal must then be re-seeded
+  // from measurement, rather than trusting the discarded candidate or the old accepted command.
+  filter.reset();
+  commands = {0.0F};
+  filter.filter(commands, -0.02F, true);
+  EXPECT_NEAR(commands.front(), -0.01F, 1.0E-7F);
+}
+
+TEST(CurvatureAdaptiveSteeringFilter, NonFiniteShiftedCommandCannotBypassSanitization)
+{
+  CurvatureAdaptiveSteeringFilter filter({0.5F, 0.5F, 0.02F});
+  std::vector<float> commands{0.02F};
+  filter.filter(commands, 0.0F);
+  commands = {std::numeric_limits<float>::infinity()};
+
+  filter.filter(commands, 0.0F, true);
+
+  EXPECT_NEAR(commands.front(), 0.01F, 1.0E-7F);
 }
 
 TEST(CurvatureAdaptiveSteeringFilter, PersistsOnlyTheAppliedFirstCommand)
