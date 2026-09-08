@@ -108,14 +108,14 @@ common `InferenceEngine`.
   actually used is published on `~/debug/latentdrive/subgoal`.
 - `traj` `[1, 40, 3]`: `(x, y, yaw)` at 0.1 s over 4 s, decoded by the common postprocessor
   through `LatentDrivePostprocessor`, which adds an optional temporal smoothing
-  (`latentdrive.smoothing.*`, off by default). Consecutive plans disagree by about a metre on
+  (`latentdrive.smoothing.*`, on by default). Consecutive plans disagree by about a metre on
   how far they reach, which reads as jitter in RViz and as a restless reference for a
   controller. The filter, ported from LatentDrive-TRT's display smoother, carries the previous
   plan forward by the ego's measured motion and blends the fresh plan into it; a large end-point
   jump or a time gap resets it. With it on, the unfiltered plan is still published as the
   candidate trajectory whose generator name ends in `_raw`, so open-loop accuracy is measured
   on the model's output and the filter is declared as part of the system rather than hidden.
-  `smoothing:=true` on the launch file turns it on for one run.
+  `smoothing:=false` on the launch file turns it off for one run.
 
 The offline validation builds the engine fp16 with the planner stage pinned to fp32, a layer
 precision recipe `autoware_tensorrt_common` cannot express; `precision` here is therefore the

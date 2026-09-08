@@ -161,7 +161,7 @@
               "type": "object",
               "description": "Temporal smoothing of the (x, y, yaw) plan before it becomes a trajectory; the raw plan is kept as a `_raw` candidate.",
               "properties": {
-                "enable": { "type": "boolean", "default": false },
+                "enable": { "type": "boolean", "default": true },
                 "alpha": {
                   "type": "number",
                   "description": "Weight of the fresh plan in the blend; 1.0 passes it through.",

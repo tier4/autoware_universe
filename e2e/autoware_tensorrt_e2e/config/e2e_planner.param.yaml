@@ -65,12 +65,12 @@
       max_delay_ms: 300.0
       frame_interval_tolerance_seconds: 0.15
       # Temporal smoothing of the plan, ported from LatentDrive-TRT's display filter and
-      # re-anchored on measured ego motion. Off by default: it trades roughly
-      # (1 - alpha) / alpha ticks of lag for a steadier reference, which is a deployment
-      # decision, and open-loop accuracy is measured on the raw output (published as the
-      # `_raw` candidate when this is on).
+      # re-anchored on measured ego motion. On by default: the raw plan jitters by about
+      # a metre in reach from tick to tick, and the filter trades roughly
+      # (1 - alpha) / alpha ticks of lag for a steady reference. The raw output is still
+      # published as the `_raw` candidate, which is what open-loop accuracy is measured on.
       smoothing:
-        enable: false
+        enable: true
         alpha: 0.35  # weight of the fresh plan; 1.0 disables the blend
         reset_jump_m: 8.0  # a larger end-point jump is a new decision, passed through
         max_gap_seconds: 1.0  # a longer gap (or a step back in time) drops the state

@@ -120,9 +120,9 @@ private:
  * When `latentdrive.smoothing.enable` is set, the `(x, y, yaw)` plan is filtered in the ego
  * frame before the base class turns it into messages, and the unfiltered plan is published as
  * an extra candidate trajectory whose generator name ends in `_raw`, so evaluations can read
- * either. Off by default: the filter trades about `(1 - alpha) / alpha` ticks of lag for a
- * steadier reference, which is a deployment decision, and open-loop accuracy figures belong
- * to the raw output.
+ * either. On by default in the deployment configuration: the filter trades about
+ * `(1 - alpha) / alpha` ticks of lag for a steady reference, and open-loop accuracy figures
+ * belong to the raw output.
  *
  * The plan that goes into the trajectory is also published as a `nav_msgs/Path` in `base_link`
  * on `~/debug/latentdrive/plan`, the way the LatentDrive-TRT replay node published it. RViz

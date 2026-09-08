@@ -126,7 +126,7 @@ LatentDrivePostprocessor::LatentDrivePostprocessor(
   rclcpp::Node & node, const PostprocessParams & params)
 : TrajectoryPostprocessor(params), node_(node), smoother_(latentdrive::SmoothingParams{})
 {
-  smoothing_.enable = node_.declare_parameter<bool>("latentdrive.smoothing.enable", false);
+  smoothing_.enable = node_.declare_parameter<bool>("latentdrive.smoothing.enable", true);
   smoothing_.alpha = node_.declare_parameter<double>("latentdrive.smoothing.alpha", 0.35);
   smoothing_.reset_jump_m =
     node_.declare_parameter<double>("latentdrive.smoothing.reset_jump_m", 8.0);

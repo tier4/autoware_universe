@@ -15,7 +15,7 @@
   <arg name="build_only" default="false" description="shutdown node after the TensorRT engine file is built"/>
   <arg name="use_sim_time" default="false" description="clock every node here from /clock, as a bag replay needs"/>
   <arg name="tick_log" default="false" description="one [LatentDrive-debug] INFO line per planning tick: frame ages and status, or why the tick was skipped"/>
-  <arg name="smoothing" default="false" description="temporal smoothing of the plan (latentdrive.smoothing.enable); the raw plan stays published as the _raw candidate"/>
+  <arg name="smoothing" default="true" description="temporal smoothing of the plan (latentdrive.smoothing.enable); the raw plan stays published as the _raw candidate"/>
   <arg name="rviz" default="false" description="open RViz (the standard Autoware layout)"/>
   <!-- The standard layout draws /planning/trajectory; pass
        output_trajectory:=/planning/trajectory to see this node's output in it. -->
