@@ -62,10 +62,13 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
    * boundary_threshold. */
   float accel_cmd_coeff = 0.0F;
   float steer_cmd_coeff = 0.0F;
-  /** Direct cost on steer rate [rad/s]: (steer_cmd - steer) / steer_time_constant. */
+  /** Direct cost on steer rate [rad/s]: (post_steer - pre_steer) / dt. */
   float steer_rate_coeff = 0.0F;
   /** Horizon-compensated cost on (first steer command - initial steering) / control dt. */
   float initial_steer_rate_coeff = 0.0F;
+  /** Independent weights on squared command increments / dt, for horizon t >= 1. */
+  float accel_cmd_rate_coeff = 0.0F;
+  float steer_cmd_rate_coeff = 0.0F;
   /** Shared cost weight for optional velocity, acceleration, and jerk interval violations. */
   float overlimit_coeff = 10000.0F;
   float lateral_acceleration_coeff = 300.0F;
@@ -403,6 +406,7 @@ public:
 
   __device__ float computeControlCost(float * u, int timestep, float * theta_c, int * crash) const;
 
+  /** Physical transition costs and kinematic limits; excludes command-change penalties. */
   float computeComfortCost(
     const Eigen::Ref<const control_array> & u, const Eigen::Ref<const output_array> & y,
     int timestep);
@@ -417,6 +421,9 @@ public:
     const Eigen::Ref<const output_array> & y) const;
 
   __device__ float computeComfortCost(float * u, float * y, int timestep) const;
+
+  __host__ __device__ float computeCommandChangeCost(
+    const float * u, const float * y, int timestep) const;
 
   __host__ __device__ FirstOrderDubinsBicycleKinematicCost computeKinematicLimitCost(
     float velocity, float longitudinal_acceleration, float longitudinal_jerk, int timestep) const;

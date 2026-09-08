@@ -39,6 +39,9 @@ __host__ __device__ void advanceInputDelayPipes(
   const FirstOrderDubinsBicycleParams & p, const float * state, float * next_state,
   const float * control)
 {
+  next_state[static_cast<int>(S::PREVIOUS_ACCEL_CMD)] =
+    control[static_cast<int>(C::ACCELERATION_CMD)];
+  next_state[static_cast<int>(S::PREVIOUS_STEER_CMD)] = control[static_cast<int>(C::STEER_CMD)];
   constexpr int kMax = FirstOrderDubinsBicycleParams::kMaxInputDelaySteps;
   const int n_acc = clampInputDelaySteps(p.acc_delay_steps);
   const int n_steer = clampInputDelaySteps(p.steer_delay_steps);
@@ -96,6 +99,9 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
   const float steer_dot = clampSteerRate(p, (steer_cmd - steer) / steer_tau);
   state_der[static_cast<int>(S::STEER_ANGLE)] = steer_dot;
 
+  state_der[static_cast<int>(S::PREVIOUS_ACCEL_CMD)] = 0.0F;
+  state_der[static_cast<int>(S::PREVIOUS_STEER_CMD)] = 0.0F;
+
   // Delay taps are discrete; keep continuous ders at zero then overwrite in step().
 #ifdef __CUDA_ARCH__
 #pragma unroll
@@ -104,6 +110,46 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
     state_der[accelDelayTapIndex(i)] = 0.0F;
     state_der[steerDelayTapIndex(i)] = 0.0F;
   }
+}
+// Transition outputs must be computed before the caller advances/swaps the state buffers.
+// Rate costs use realized increments, including actuator lag, queue delay and saturation.
+__host__ __device__ void transitionRates(
+  const FirstOrderDubinsBicycleParams & p, const float * state, const float * next_state,
+  const float * control, float * output, const float dt)
+{
+#ifdef __CUDA_ARCH__
+  // All Y workers reach the caller's barriers; only one writes each rollout's outputs.
+  if (threadIdx.y != 0) return;
+#endif
+  using O = FirstOrderDubinsBicycleParams::OutputIndex;
+  const float inv_dt = 1.0F / dt;
+  const float acceleration_rate =
+    (next_state[static_cast<int>(S::ACCELERATION)] - state[static_cast<int>(S::ACCELERATION)]) *
+    inv_dt;
+  const float steering_rate =
+    (next_state[static_cast<int>(S::STEER_ANGLE)] - state[static_cast<int>(S::STEER_ANGLE)]) *
+    inv_dt;
+  const float v = state[static_cast<int>(S::VEL_X)];
+  const float acceleration = (next_state[static_cast<int>(S::VEL_X)] - v) * inv_dt;
+  const float steering = state[static_cast<int>(S::STEER_ANGLE)];
+  const float wheel_base = fmaxf(p.wheel_base, 1.0E-4F);
+  const float cosine = cosf(steering);
+  const float curvature = tanf(steering) / wheel_base;
+  const float curvature_rate = steering_rate / (wheel_base * fmaxf(cosine * cosine, 1.0E-6F));
+  output[static_cast<int>(O::LONGITUDINAL_JERK)] = acceleration_rate;
+  output[static_cast<int>(O::STEERING_RATE)] = steering_rate;
+  // Preserve the lateral component of inertial jerk expressed in the vehicle frame:
+  // d(v^2*kappa)/dt + yaw_rate*a = v^2*kappa_dot + 3*v*a*kappa.
+  // Evaluate the stage derivative at the pre-step state with realized rates.
+  output[static_cast<int>(O::LATERAL_JERK)] =
+    v * v * curvature_rate + 3.0F * v * acceleration * curvature;
+  output[static_cast<int>(O::ACCEL_COMMAND_RATE)] =
+    (control[static_cast<int>(C::ACCELERATION_CMD)] -
+     state[static_cast<int>(S::PREVIOUS_ACCEL_CMD)]) *
+    inv_dt;
+  output[static_cast<int>(O::STEER_COMMAND_RATE)] =
+    (control[static_cast<int>(C::STEER_CMD)] - state[static_cast<int>(S::PREVIOUS_STEER_CMD)]) *
+    inv_dt;
 }
 }  // namespace
 
@@ -166,6 +212,8 @@ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::step(
   this->updateState(state, next_state, state_der, dt);
   advanceInputDelayPipes(this->params_, state.data(), next_state.data(), control.data());
   this->stateToOutput(next_state, output);
+  transitionRates(
+    this->params_, state.data(), next_state.data(), control.data(), output.data(), dt);
 }
 
 template <class CLASS_T, class PARAMS_T>
@@ -219,6 +267,7 @@ __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::step(
   }
   __syncthreads();
   this->stateToOutput(next_state, output);
+  transitionRates(this->params_, state, next_state, control, output, dt);
 }
 
 template <class CLASS_T, class PARAMS_T>
@@ -299,6 +348,10 @@ __host__ __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::stateTo
   output[static_cast<int>(O::STEER_ANGLE)] = state[static_cast<int>(S::STEER_ANGLE)];
   output[static_cast<int>(O::ACCELERATION)] = state[static_cast<int>(S::ACCELERATION)];
   output[static_cast<int>(O::TOTAL_VELOCITY)] = fabsf(v);
+  // State-only conversion has no transition; step() replaces these rate placeholders.
+  output[static_cast<int>(O::STEERING_RATE)] = 0.0F;
+  output[static_cast<int>(O::ACCEL_COMMAND_RATE)] = 0.0F;
+  output[static_cast<int>(O::STEER_COMMAND_RATE)] = 0.0F;
   output[static_cast<int>(O::LONGITUDINAL_JERK)] = 0.0F;
   output[static_cast<int>(O::LATERAL_JERK)] = 0.0F;
 }
