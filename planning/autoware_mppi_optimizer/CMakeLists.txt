@@ -21,6 +21,12 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME test_cost_report_parser
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_generate_cost_report.py"
+  )
+  set_tests_properties(test_cost_report_parser PROPERTIES LABELS "cost;unit" TIMEOUT 30)
+
   ament_add_gtest(test_mppi_trajectory_utils
     test/test_trajectory_utils.cpp
   )
@@ -293,11 +299,21 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     target_compile_options(test_costs PRIVATE
       $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
     )
-    ament_add_gtest_test(test_costs)
+    # Analytical checks remain runnable without a CUDA device; parity has its own GPU label.
+    ament_add_gtest_test(test_costs ENV "GTEST_FILTER=-GpuCostEvaluation.*")
     set_tests_properties(test_costs PROPERTIES
-      LABELS "gpu"
-      TIMEOUT 60
+      LABELS "cost;gtest"
+      TIMEOUT 120
     )
+    set(cost_gpu_result "${AMENT_TEST_RESULTS_DIR}/${PROJECT_NAME}/test_costs_gpu.gtest.xml")
+    ament_add_test(test_costs_gpu
+      COMMAND "$<TARGET_FILE:test_costs>"
+        "--gtest_filter=GpuCostEvaluation.*" "--gtest_output=xml:${cost_gpu_result}"
+      OUTPUT_FILE "${CMAKE_BINARY_DIR}/ament_cmake_gtest/test_costs_gpu.txt"
+      RESULT_FILE "${cost_gpu_result}"
+      TIMEOUT 120
+    )
+    set_tests_properties(test_costs_gpu PROPERTIES LABELS "cost;gpu;gtest")
 
     # Keep the descriptive .cpp filename while compiling the texture-sampling test kernels with
     # NVCC. FindCUDA treats a non-.cu source as CUDA when this property is set.
