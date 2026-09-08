@@ -224,6 +224,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     target_link_libraries(test_first_order_dubins_mppi_interface
       first_order_dubins_mppi
       mppi_trajectory_utils
+      mppi_curvature_adaptive_steering_filter
       ${CUDA_LIBRARIES}
     )
     set_target_properties(test_first_order_dubins_mppi_interface PROPERTIES
