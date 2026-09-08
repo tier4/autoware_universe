@@ -1,0 +1,8 @@
+scenarios:
+  - behavior_normal_route.yaml
+  - simple_straight_route.yaml
+  - road_shoulder_start_route.yaml
+  - road_shoulder_goal_route.yaml
+  - rotary_goal_route.yaml
+  - road_shoulder_rotary_goal_route.yaml
+  - behavior_normal_route_static_obstacle.yaml

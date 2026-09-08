@@ -24,6 +24,32 @@ safety_planner:
         gt<>: [0.0]
 
   reference_path:
+    policy:
+      type: string
+      default_value: simple
+      read_only: true
+      description: >
+        reference_path の生成方法。simple = 地図の centerline (goal で打ち切り)。
+        goal_connection_and_smooth = centerline の goal 周辺を切って goal へスプラインで接続し、
+        elastic band 型 QP で全体をなめらかにする
+      validation:
+        one_of<>: [[simple, goal_connection_and_smooth]]
+    goal_connection:
+      search_radius_m:
+        type: double
+        default_value: 12.0
+        read_only: true
+        description: goal からこの距離以内の centerline 点を捨てて goal へ接続する [m]。接続後の経路がレーン外に出る場合は 1 m ずつ縮めて再試行する
+        validation:
+          gt_eq<>: [0.0]
+    smoother:
+      clearance_m:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: 平滑化で各点が元位置から動ける範囲 [m] (ego 周辺と goal 側 2 点は固定)
+        validation:
+          gt_eq<>: [0.0]
     forward_length_m:
       type: double
       default_value: 200.0
@@ -361,6 +387,20 @@ safety_planner:
       default_value: 0.5
       read_only: true
       description: KeepOut の定数マージン [m] (footprint をこの分膨張して評価する)
+      validation:
+        gt_eq<>: [0.0]
+    stop_distance_m:
+      type: double
+      default_value: 6.0
+      read_only: true
+      description: distance [m] between the stop line (Gate) and the nearest point of an object on the reference path corridor. 0 disables the stop line
+      validation:
+        gt_eq<>: [0.0]
+    stop_line_max_object_speed_mps:
+      type: double
+      default_value: 1.0
+      read_only: true
+      description: stop lines are issued only for objects slower than this [m/s] (a moving lead vehicle is handled by the KeepOut, not by a stop line)
       validation:
         gt_eq<>: [0.0]
 

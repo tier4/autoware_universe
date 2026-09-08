@@ -19,8 +19,9 @@
 // の Frenet 経路サンプリングを踏襲)。
 // 経路と速度を分離してサンプルする:
 // - 経路 l(s): reference_path 上の Frenet 座標で、終端 (弧長 L・横位置 l_T) を格子状にサンプル
-//   し quintic 多項式 l(s) で結ぶ。初期勾配 l'(0) は ego の heading から取るので開始 heading が
-//   ego と一致し、曲率は空間サンプル (path_resolution_m 間隔) から幾何的に求まる
+//   し quintic 多項式 l(s) で結ぶ。初期勾配 l'(0) は ego の heading、初期曲率 l''(0) は ego の
+//   ステア角から取るので開始 heading・曲率が ego と一致する。各点の heading は Frenet の解析式、
+//   曲率はその差分 (path_resolution_m 間隔) で求まる
 // - 速度 s(t): 終端 (時間長 T・縦速度 v_T) をサンプルし quintic 多項式 s(t) で結ぶ
 // 候補 = 経路 × 速度。制約 IR の射影ビュー (sl_view_utils) で hard 制約を評価し、通った
 // もののうちコスト最小を採用する。座標基準は constraints_compiler.hpp の規約どおり、その
@@ -52,9 +53,11 @@ private:
   {
     double s{0.0};
     double l{0.0};
-    double dl_ds{0.0};  //!< [-] 横位置の弧長勾配 tan(ego heading − 中心線接線)
-    double v{0.0};      //!< [m/s] 縦速度 ds/dt
-    double a{0.0};      //!< [m/s²]
+    double dl_ds{0.0};    //!< [-] 横位置の弧長勾配 tan(ego heading − 中心線接線)
+    double d2l_ds2{0.0};  //!< [1/m] 横位置の弧長 2 階微分 (ego のステア角による曲率 − 中心線曲率)
+    double v{0.0};        //!< [m/s] 縦速度 ds/dt
+    double a{0.0};        //!< [m/s²]
+    double l_goal{0.0};   //!< [m] goal_pose の横位置 (経路終端 = goal なので終端で評価)
   };
 
   //! 空間サンプルされた経路 (s 昇順・等間隔 path_resolution_m、s0 から reference_path 終端まで)
@@ -94,6 +97,11 @@ private:
 
   InitialState compute_initial_state(const PlannerContext & context) const;
 
+  //! 終端 (弧長 length・横位置 l_target) を 1 組決めて quintic l(s) を空間サンプルする
+  PathCandidate sample_path(
+    const PlannerContext & context, const InitialState & initial_state, const double length,
+    const double l_target) const;
+
   std::vector<PathCandidate> generate_paths(
     const PlannerContext & context, const InitialState & initial_state) const;
 
@@ -113,7 +121,7 @@ private:
   //! hard 制約の評価と soft コストの計算。valid / cost を書き込む
   void evaluate(
     const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-    Candidate & candidate) const;
+    const double l_goal, Candidate & candidate) const;
 
   Trajectory to_trajectory_msg(const PlannerContext & context, const Candidate & candidate) const;
 

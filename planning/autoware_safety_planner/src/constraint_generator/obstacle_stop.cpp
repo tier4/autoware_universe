@@ -14,14 +14,20 @@
 
 #include "obstacle_stop.hpp"
 
+#include "../utils/sl_view_utils.hpp"
+
+#include <autoware/trajectory/utils/closest.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <exception>
+#include <iterator>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -124,6 +130,80 @@ std::vector<Constraint> make_obstacle_keep_out_constraints(
   return constraints;
 }
 
+std::vector<Constraint> make_obstacle_stop_line_constraints(
+  const PredictedObjects & objects, const PathPointTrajectory & reference_path, const double s_ego,
+  const double corridor_half_width_m, const double stop_distance_m,
+  const double max_object_speed_mps)
+{
+  std::vector<Constraint> constraints;
+  for (const auto & object : objects.objects) {
+    if (
+      std::abs(object.kinematics.initial_twist_with_covariance.twist.linear.x) >
+      max_object_speed_mps) {
+      continue;
+    }
+    // World-frame footprint at the current pose (the same conversion the KeepOut uses)
+    Polygon2d footprint;
+    try {
+      footprint = autoware_utils_geometry::to_polygon2d(
+        object.kinematics.initial_pose_with_covariance.pose, object.shape);
+    } catch (const std::exception &) {
+      continue;
+    }
+    if (footprint.outer().size() < 4) {
+      continue;
+    }
+
+    // (s, l) extent of the footprint on the reference path. The chord approximation of
+    // closest() is enough here: the stop line is placed stop_distance_m away anyway
+    double s_min = std::numeric_limits<double>::infinity();
+    double s_max = -std::numeric_limits<double>::infinity();
+    double l_min = std::numeric_limits<double>::infinity();
+    double l_max = -std::numeric_limits<double>::infinity();
+    bool finite = true;
+    for (const auto & vertex : footprint.outer()) {
+      if (!std::isfinite(vertex.x()) || !std::isfinite(vertex.y())) {
+        finite = false;
+        break;
+      }
+      geometry_msgs::msg::Point q;
+      q.x = vertex.x();
+      q.y = vertex.y();
+      const double s = experimental::trajectory::closest(reference_path, q);
+      s_min = std::min(s_min, s);
+      s_max = std::max(s_max, s);
+      const double l = lateral_offset_at(reference_path, s, vertex);
+      l_min = std::min(l_min, l);
+      l_max = std::max(l_max, l);
+    }
+    if (!finite || s_max <= s_ego) {
+      continue;  // behind the ego
+    }
+    if (l_max < -corridor_half_width_m || l_min > corridor_half_width_m) {
+      continue;  // beside the path, not on it
+    }
+    // If the object is already closer than stop_distance_m, the line is placed at the ego so that
+    // every forward candidate is rejected and the planner falls back to the stop trajectory
+    const double s_stop = std::clamp(s_min - stop_distance_m, s_ego, reference_path.length());
+
+    // Only the crossing with the centerline matters for the projection (StopBarEntry); the width
+    // just has to cover the corridor
+    const auto left = to_world_pose(reference_path, s_stop, corridor_half_width_m).position;
+    const auto right = to_world_pose(reference_path, s_stop, -corridor_half_width_m).position;
+
+    Constraint constraint;
+    constraint.certainty = Certainty::DEFINITE;
+    // Gate: left of first -> second is forbidden, so first = left end, second = right end makes
+    // the far side (along the path) forbidden
+    constraint.payload = Gate{Segment2d{left, right}, 0.0};
+    constraint.source = Source{
+      "obstacle_stop", Category::SAFETY, autoware_utils_uuid::to_hex_string(object.object_id),
+      "stop_line"};
+    constraints.push_back(std::move(constraint));
+  }
+  return constraints;
+}
+
 ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
   const PlannerContext & context)
 {
@@ -137,6 +217,15 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
   output.constraints = make_obstacle_keep_out_constraints(
     *context.predicted_objects, rclcpp::Time(context.odometry.header.stamp),
     params_.obstacle_stop.margin_m);
+  if (params_.obstacle_stop.stop_distance_m > 0.0) {
+    auto stop_lines = make_obstacle_stop_line_constraints(
+      *context.predicted_objects, context.reference_path, compute_ego_frenet_state(context).s,
+      context.vehicle_info.vehicle_width_m / 2.0 + params_.obstacle_stop.margin_m,
+      params_.obstacle_stop.stop_distance_m, params_.obstacle_stop.stop_line_max_object_speed_mps);
+    output.constraints.insert(
+      output.constraints.end(), std::make_move_iterator(stop_lines.begin()),
+      std::make_move_iterator(stop_lines.end()));
+  }
 
   // --- debug marker: 現在位置の footprint と予測経路 ---
   {
@@ -153,6 +242,22 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
 
     std::int32_t id = 0;
     for (const auto & constraint : output.constraints) {
+      if (const auto * gate = std::get_if<Gate>(&constraint.payload)) {
+        auto stop_line_marker = create_default_marker(
+          "map", rclcpp::Time(0, 0, RCL_ROS_TIME), "obstacle_stop_stop_line", id,
+          Marker::LINE_STRIP, create_marker_scale(0.2, 0.0, 0.0),
+          create_marker_color(1.0, 0.0, 0.0, 0.9));
+        for (const auto & end : {gate->line.first, gate->line.second}) {
+          geometry_msgs::msg::Point q;
+          q.x = end.x();
+          q.y = end.y();
+          q.z = z;
+          stop_line_marker.points.push_back(q);
+        }
+        marker_array.markers.push_back(stop_line_marker);
+        ++id;
+        continue;
+      }
       const auto & rigid_body =
         std::get<RigidBody>(std::get<KeepOut>(constraint.payload).occupancy);
       const auto & anchor = rigid_body.waypoints.front().pose;

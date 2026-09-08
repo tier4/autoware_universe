@@ -7,6 +7,11 @@
       yaw_threshold_rad: 1.046 # [rad]
 
     reference_path:
+      policy: "goal_connection_and_smooth" # simple / goal_connection_and_smooth
+      goal_connection:
+        search_radius_m: 12.0 # [m]
+      smoother:
+        clearance_m: 1.0 # [m]
       forward_length_m: 200.0 # [m]
       backward_length_m: 5.0 # [m]
 
@@ -93,6 +98,8 @@
 
     obstacle_stop:
       margin_m: 0.5 # [m] KeepOut の定数マージン
+      stop_distance_m: 6.0 # [m] stop line this far before an object on the path (0 disables)
+      stop_line_max_object_speed_mps: 1.0 # [m/s] stop lines only for objects slower than this
 
     simple_drivable_area:
       half_width_m: 3.0 # [m] 中心線からの片側幅 (簡易版の定数幅)

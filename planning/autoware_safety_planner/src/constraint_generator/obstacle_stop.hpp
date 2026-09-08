@@ -43,6 +43,16 @@ public:
 std::vector<Constraint> make_obstacle_keep_out_constraints(
   const PredictedObjects & objects, const rclcpp::Time & t_plan, const double margin_m);
 
+//! One Gate (stop line) per slow object whose footprint overlaps the reference-path corridor
+//! ahead of the ego, placed stop_distance_m before the object's nearest point along the path.
+//! Objects faster than max_object_speed_mps get no stop line (the KeepOut handles them).
+//! Why not a stop line for every object: stopping 6 m behind a moving lead vehicle is wrong;
+//! following is the KeepOut's job.
+std::vector<Constraint> make_obstacle_stop_line_constraints(
+  const PredictedObjects & objects, const PathPointTrajectory & reference_path, const double s_ego,
+  const double corridor_half_width_m, const double stop_distance_m,
+  const double max_object_speed_mps);
+
 }  // namespace autoware::safety_planner
 
 #endif  // CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_

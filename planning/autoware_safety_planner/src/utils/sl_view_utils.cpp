@@ -66,6 +66,25 @@ EgoFrenetState compute_ego_frenet_state(const PlannerContext & context)
   const auto & position = context.odometry.pose.pose.position;
   EgoFrenetState state;
   state.s = experimental::trajectory::closest(path, position);
+  // closest() は基底点間を弦で近似するので、曲線区間では足点が s・l ともに数十 cm ずれる
+  // (基底間隔 4 m・R 10 m で約 20 cm)。接線方向の残差 f(s) = (q − p(s))·t(s) が消えるまで
+  // Newton 法 (f' = −(1 − κ l)) で s を補正する。残差をそのまま足す不動点反復は収縮率が |κ l| で、
+  // 急カーブの外側 (κ l → 1) では収束しない
+  for (int i = 0; i < 10; ++i) {
+    const auto ref_position = path.compute(state.s).point.pose.position;
+    const double ref_yaw = path.azimuth(state.s);
+    const double dx = position.x - ref_position.x;
+    const double dy = position.y - ref_position.y;
+    const double residual = std::cos(ref_yaw) * dx + std::sin(ref_yaw) * dy;
+    const double l = -std::sin(ref_yaw) * dx + std::cos(ref_yaw) * dy;
+    // 曲率中心付近 (1 − κ l ≈ 0) では足点が定まらないので刻みを抑える
+    const double denom = std::max(1.0 - path.curvature(state.s) * l, 0.2);
+    const double ds = residual / denom;
+    state.s = std::clamp(state.s + ds, 0.0, path.length());
+    if (std::abs(ds) < 1e-3) {
+      break;
+    }
+  }
   state.l = lateral_offset_at(path, state.s, Point2d{position.x, position.y});
   return state;
 }

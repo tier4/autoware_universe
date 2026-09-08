@@ -1,0 +1,235 @@
+# behavior_normal_route with a parked vehicle on the lane 25 m ahead of the start.
+# The ego is expected to stop before it (obstacle_stop: KeepOut + stop line).
+format_version: 1
+map_path_uri: package://autoware_test_utils/test_map/lanelet2_map.osm
+vehicle_info_param_uri: package://autoware_test_utils/config/test_vehicle_info.param.yaml
+expectation: stop
+predicted_objects:
+  header:
+    stamp:
+      sec: 0
+      nanosec: 0
+    frame_id: map
+  objects:
+    - object_id:
+        uuid: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+      existence_probability: 1.0
+      classification:
+        - label: 1
+          probability: 1.0
+      kinematics:
+        initial_pose_with_covariance:
+          pose:
+            position:
+              x: 3744.4430829569924
+              y: 73734.85013766578
+              z: 0.0
+            orientation:
+              x: 0.0
+              y: 0.0
+              z: 0.233112560494183
+              w: 0.9724497591854532
+          covariance:
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+            ]
+        initial_twist_with_covariance:
+          twist:
+            linear:
+              x: 0.0
+              y: 0.0
+              z: 0.0
+            angular:
+              x: 0.0
+              y: 0.0
+              z: 0.0
+          covariance:
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+            ]
+        initial_acceleration_with_covariance:
+          accel:
+            linear:
+              x: 0.0
+              y: 0.0
+              z: 0.0
+            angular:
+              x: 0.0
+              y: 0.0
+              z: 0.0
+          covariance:
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+            ]
+        predicted_paths: []
+      shape:
+        type: 0
+        footprint:
+          points: []
+        dimensions:
+          x: 4.5
+          y: 1.8
+          z: 1.5
+route:
+  start_pose:
+    position:
+      x: 3722.16015625
+      y: 73723.515625
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.233112560494183
+      w: 0.9724497591854532
+  goal_pose:
+    position:
+      x: 3778.362060546875
+      y: 73721.2734375
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.5107480274693206
+      w: 0.8597304533609347
+  segments:
+    - preferred_primitive:
+        id: 9102
+        primitive_type: ""
+      primitives:
+        - id: 9102
+          primitive_type: lane
+    - preferred_primitive:
+        id: 9540
+        primitive_type: ""
+      primitives:
+        - id: 9540
+          primitive_type: lane
+    - preferred_primitive:
+        id: 9546
+        primitive_type: ""
+      primitives:
+        - id: 9546
+          primitive_type: lane
+    - preferred_primitive:
+        id: 9178
+        primitive_type: ""
+      primitives:
+        - id: 9178
+          primitive_type: lane
+    - preferred_primitive:
+        id: 54
+        primitive_type: ""
+      primitives:
+        - id: 54
+          primitive_type: lane
+    - preferred_primitive:
+        id: 112
+        primitive_type: ""
+      primitives:
+        - id: 112
+          primitive_type: lane

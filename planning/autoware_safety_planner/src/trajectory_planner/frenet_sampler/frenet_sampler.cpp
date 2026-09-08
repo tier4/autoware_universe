@@ -155,7 +155,7 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   for (const auto & path : paths) {
     for (const auto & profile : profiles) {
       candidates.push_back(combine(context, path, profile));
-      evaluate(context, compiled_constraints, candidates.back());
+      evaluate(context, compiled_constraints, initial_state.l_goal, candidates.back());
     }
   }
   append_debug_markers(context, candidates, debug_markers);
@@ -182,9 +182,9 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
       rclcpp::get_logger("safety_planner"), steady_clock, 5000,
       "[frenet_sampler] no valid candidate (%zu sampled:%s). Falling back to the stop trajectory.",
       candidates.size(), ss.str().c_str());
-    // 停止経路 = 現在の横位置を保つ直進 (経路候補の先頭の s 列を借りて l を l0 に固定する)
-    PathCandidate straight = paths.front();
-    std::fill(straight.l.begin(), straight.l.end(), initial_state.l);
+    // 停止経路 = 現在の横位置を保つ (ego heading から l0 へ戻る経路に最大減速を載せる)
+    const auto straight =
+      sample_path(context, initial_state, context.reference_path.length(), initial_state.l);
     const auto stop =
       make_stop_profile(initial_state, collect_kinematic_limits(compiled_constraints));
     return to_trajectory_msg(context, combine(context, straight, stop));
@@ -204,68 +204,86 @@ FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_ini
   InitialState state;
   state.s = ego.s;
   state.l = ego.l;
-  // 中心線に対して ±90° 近くの向きは tan が発散するので、勾配は ±60° 相当で打ち切る
-  state.dl_ds = std::tan(std::clamp(frenet_yaw, -M_PI / 3.0, M_PI / 3.0));
+  // 中心線に対して ±90° 近くの向きは tan が発散するので、勾配は ±60° 相当で打ち切る。
+  // (1 − κ_ref l) は sample_path の heading 式の逆で、これが無いと yaw[0] が ego と一致しない
+  state.dl_ds = (1.0 - path.curvature(ego.s) * ego.l) *
+                std::tan(std::clamp(frenet_yaw, -M_PI / 3.0, M_PI / 3.0));
+  // l''(0) を 0 に固定すると、毎周期の再計画で横方向の動き出しが平らに戻り、40 m 先の横位置目標に
+  // ほとんど寄れない (receding horizon の再スタート問題)。ego の実ステア角から初期曲率を与える。
+  // 小角近似 (l' が小さい前提) で Frenet の厳密式は使わない
+  const double kappa_ego =
+    std::tan(context.steering.steering_tire_angle) / context.vehicle_info.wheel_base_m;
+  state.d2l_ds2 = kappa_ego - path.curvature(ego.s);
   state.v = std::max(0.0, v * std::cos(frenet_yaw));
   state.a = context.acceleration.accel.accel.linear.x;
+  state.l_goal = lateral_offset_at(
+    path, path.length(), Point2d{context.goal_pose.position.x, context.goal_pose.position.y});
   return state;
+}
+
+FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_path(
+  const PlannerContext & context, const InitialState & initial_state, const double length,
+  const double l_target) const
+{
+  using autoware::frenet_planner::Polynomial;
+
+  const auto & ref = context.reference_path;
+  const double res = params_.frenet_sampler.path_resolution_m;
+  const double s0 = initial_state.s;
+  const double s_max = ref.length();
+
+  // l(s): 初期 (l0, l'0, l''0) → 終端 (l_T, 0, 0) を弧長 L で結ぶ。L 以降は l_T を保つ。
+  // 終端が経路終端より先なら経路終端で切る
+  const double L = std::max(res, std::min(length, s_max - s0));
+  const Polynomial lat(
+    initial_state.l, initial_state.dl_ds, initial_state.d2l_ds2, l_target, 0.0, 0.0, L);
+
+  PathCandidate path;
+  for (double s = s0; s <= s_max + 1e-9; s += res) {
+    const double u = s - s0;
+    const double l = u <= L ? lat.position(u) : l_target;
+    const double dl_ds = u <= L ? lat.velocity(u) : 0.0;
+    const double s_ref = std::clamp(s, 0.0, s_max);
+    path.s.push_back(s);
+    path.l.push_back(l);
+    // heading は Frenet の解析式 ψ = ψ_ref + atan(l' / (1 − κ_ref l)) で取る。世界座標の位置差分
+    // (弦) から取ると先頭の heading が ego と κ·res/2 ずれ、閉ループで ego の向きが周期ごとに
+    // 流されて数十周期で steer_rate に掛かる
+    path.yaw.push_back(
+      autoware_utils_math::normalize_radian(
+        ref.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - ref.curvature(s_ref) * l)));
+  }
+  // 曲率は heading 差 / 弧長 (中央差分、端は片側)。先頭は l'(0) を ego heading から取っているので
+  // ego と向きの違う出発は yaw[0] の時点で ego と一致し、ここで別途弾く必要は無い
+  const auto n = path.s.size();
+  for (std::size_t i = 0; i < n; ++i) {
+    const auto i0 = i == 0 ? i : i - 1;
+    const auto i1 = i + 1 < n ? i + 1 : i;
+    const double dyaw = autoware_utils_math::normalize_radian(path.yaw[i1] - path.yaw[i0]);
+    path.kappa.push_back(i1 > i0 ? dyaw / (static_cast<double>(i1 - i0) * res) : 0.0);
+  }
+  std::stringstream ss;
+  ss << "L=" << L << " l=" << l_target;
+  path.tag = ss.str();
+  return path;
 }
 
 std::vector<FrenetSamplingBasedPlanner::PathCandidate> FrenetSamplingBasedPlanner::generate_paths(
   const PlannerContext & context, const InitialState & initial_state) const
 {
-  using autoware::frenet_planner::Polynomial;
-
   const auto & p = params_.frenet_sampler;
-  const auto & ref = context.reference_path;
-  const double res = p.path_resolution_m;
-  const double s0 = initial_state.s;
-  const double s_max = ref.length();
-  const double ego_yaw = autoware_utils_geometry::get_rpy(context.odometry.pose.pose).z;
-
+  // 路肩の goal など格子に無い横位置へ寄せられるように、goal の横位置も終端候補に加える
+  auto lateral_targets = p.target_lateral_positions_m;
+  const bool on_grid = std::any_of(
+    lateral_targets.begin(), lateral_targets.end(),
+    [&](const double l) { return std::abs(l - initial_state.l_goal) < 0.05; });
+  if (!on_grid) {
+    lateral_targets.push_back(initial_state.l_goal);
+  }
   std::vector<PathCandidate> paths;
   for (const double length : p.target_lengths_m) {
-    for (const double l_target : p.target_lateral_positions_m) {
-      // l(s): 初期 (l0, l'0, 0) → 終端 (l_T, 0, 0) を弧長 L で結ぶ。L 以降は l_T を保つ。
-      // 終端が経路終端より先なら経路終端で切る
-      const double L = std::max(res, std::min(length, s_max - s0));
-      const Polynomial lat(initial_state.l, initial_state.dl_ds, 0.0, l_target, 0.0, 0.0, L);
-
-      PathCandidate path;
-      for (double s = s0; s <= s_max + 1e-9; s += res) {
-        path.s.push_back(s);
-        path.l.push_back(s - s0 <= L ? lat.position(s - s0) : l_target);
-      }
-      if (path.s.size() < 2) {
-        // ego が経路終端に居る (goal 到達)。1 点だけの経路は接線 heading・曲率 0 で埋める
-        path.yaw.push_back(ref.azimuth(std::clamp(s0, 0.0, s_max)));
-        path.kappa.push_back(0.0);
-      } else {
-        // heading は隣接点の位置差分、曲率は heading 差 / 距離 (等間隔なので低速ノイズが無い)。
-        // 先頭の曲率は ego の実 heading からの変化で取り、ego と向きの違う出発を弾く
-        std::vector<Point2d> xy;
-        xy.reserve(path.s.size());
-        for (std::size_t i = 0; i < path.s.size(); ++i) {
-          xy.push_back(to_world_pose(ref, std::clamp(path.s[i], 0.0, s_max), path.l[i]).position);
-        }
-        for (std::size_t i = 0; i + 1 < xy.size(); ++i) {
-          path.yaw.push_back(std::atan2(xy[i + 1].y() - xy[i].y(), xy[i + 1].x() - xy[i].x()));
-        }
-        path.yaw.push_back(path.yaw.back());
-        double prev_yaw = ego_yaw;
-        for (std::size_t i = 0; i < xy.size(); ++i) {
-          const double dist = i + 1 < xy.size()
-                                ? std::hypot(xy[i + 1].x() - xy[i].x(), xy[i + 1].y() - xy[i].y())
-                                : res;
-          path.kappa.push_back(
-            autoware_utils_math::normalize_radian(path.yaw[i] - prev_yaw) / std::max(dist, 1e-3));
-          prev_yaw = path.yaw[i];
-        }
-      }
-      std::stringstream ss;
-      ss << "L=" << L << " l=" << l_target;
-      path.tag = ss.str();
-      paths.push_back(std::move(path));
+    for (const double l_target : lateral_targets) {
+      paths.push_back(sample_path(context, initial_state, length, l_target));
     }
   }
   return paths;
@@ -283,7 +301,38 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
   const double horizon = p.horizon_s;
   const double s_max = context.reference_path.length();
   const auto limits = collect_kinematic_limits(compiled_constraints);
-  const double v_limit = velocity_limit_at(compiled_constraints, limits, initial_state.s);
+  double v_limit = velocity_limit_at(compiled_constraints, limits, initial_state.s);
+  {
+    // ホライゾン内に届く範囲の経路曲率から、横加速度・ステアレートで通過できる速度の上限を取り、
+    // 終端速度サンプルの基準にする。全域上限 (数十 km/h) の比だけだと、カーブ手前で通過可能な
+    // 中間速度の候補が 1 本も無く、停止プロファイルだけが生き残って漸近的に止まってしまう
+    // 先の地点の上限は、そこまで減速して届く速度に換算して現在地の上限にする。先の曲率をそのまま
+    // 現在地の上限にすると、経路終端 (goal 接続部) の曲率スパイクでホライゾン全域が徐行になる。
+    // 減速度はサンプル基準を決めるだけなので固定値でよい (実際の可否は evaluate 側でふるう)
+    constexpr double SAMPLING_DECEL_MPS2 = 1.0;
+    const auto bounds = collect_global_bounds(compiled_constraints);
+    const double wheel_base_m = context.vehicle_info.wheel_base_m;
+    const double res = p.path_resolution_m;
+    const double s_end = std::min(s_max, initial_state.s + v_limit * horizon);
+    double prev_steer = std::atan(context.reference_path.curvature(initial_state.s) * wheel_base_m);
+    for (double s = initial_state.s + res; s <= s_end; s += res) {
+      const double kappa = context.reference_path.curvature(s);
+      const double steer = std::atan(kappa * wheel_base_m);
+      double v_cap = INF;
+      if (std::abs(kappa) > 1e-6) {
+        v_cap = std::min(v_cap, std::sqrt(bounds.lat_accel / std::abs(kappa)));
+      }
+      const double steer_grad = std::abs(steer - prev_steer) / res;  // [rad/m]
+      if (steer_grad > 1e-6) {
+        v_cap = std::min(v_cap, bounds.steer_rate / steer_grad);
+      }
+      prev_steer = steer;
+      if (std::isfinite(v_cap)) {
+        v_limit = std::min(
+          v_limit, std::sqrt(v_cap * v_cap + 2.0 * SAMPLING_DECEL_MPS2 * (s - initial_state.s)));
+      }
+    }
+  }
 
   std::vector<VelocityProfile> profiles;
   const auto sample = [&](const double duration, const double v_target, const double s_target) {
@@ -323,10 +372,24 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
   // だけだと goal 手前で「T 内に残距離を進み切れない (逆走)」か「行き過ぎる」候補しか残らず、
   // 数 m 手前で全滅する
   {
-    const double remaining = s_max - initial_state.s;
+    // Stop at the goal, or at the nearest stop bar (Gate) ahead if that comes first. Without this
+    // the only candidate that respects a stop bar is standstill (every profile that moves reaches
+    // the bar within the horizon), so the ego would never approach it. The target is the
+    // base_link position whose footprint front just touches the bar (violates_stop_bar)
+    double s_stop_target = s_max;
+    for (const auto & stop_bar : compiled_constraints.stop_bars) {
+      if (stop_bar.time.t1 < 0.0 || stop_bar.time.t0 > horizon) {
+        continue;
+      }
+      s_stop_target = std::min(
+        s_stop_target,
+        stop_bar.s_stop - stop_bar.margin - context.vehicle_info.max_longitudinal_offset_m);
+    }
+    s_stop_target = std::max(s_stop_target, initial_state.s);
+    const double remaining = s_stop_target - initial_state.s;
     const double duration = std::clamp(
       2.0 * remaining / std::max(initial_state.v, 0.1), p.target_durations_s.front(), horizon);
-    sample(duration, 0.0, s_max);
+    sample(duration, 0.0, s_stop_target);
   }
   return profiles;
 }
@@ -386,10 +449,12 @@ FrenetSamplingBasedPlanner::Candidate FrenetSamplingBasedPlanner::combine(
 
 void FrenetSamplingBasedPlanner::evaluate(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-  Candidate & candidate) const
+  const double l_goal, Candidate & candidate) const
 {
   const auto & p = params_.frenet_sampler;
   const double s_max = context.reference_path.length();
+  const double blend_length =
+    *std::max_element(p.target_lengths_m.begin(), p.target_lengths_m.end());
   const double wheel_base_m = context.vehicle_info.wheel_base_m;
   const auto limits = collect_kinematic_limits(compiled_constraints);
   const auto bounds = collect_global_bounds(compiled_constraints);
@@ -445,13 +510,25 @@ void FrenetSamplingBasedPlanner::evaluate(
     const auto box = footprint_sl_box(context.vehicle_info, s, l);
     const double t0 = point.t;
     const double t1 = (k + 1 < candidate.points.size()) ? candidate.points[k + 1].t : t0;
+    double soft_bound_cost = 0.0;
     for (const auto & bound : compiled_constraints.lateral_bounds) {
-      // SOFT 境界 (自レーン bound) は当面見ない。HARD (road_border) だけでふるう
-      if (compiled_constraints.raw_constraints[bound.raw_index].hardness != Hardness::HARD) {
+      const auto & raw = compiled_constraints.raw_constraints[bound.raw_index];
+      if (raw.hardness == Hardness::HARD) {
+        if (violates_lateral_bound(bound, box)) {
+          return reject("lateral_bound");
+        }
         continue;
       }
-      if (violates_lateral_bound(bound, box)) {
-        return reject("lateral_bound");
+      // SOFT 境界 (並走車線側の自レーン bound) は slack_weight × はみ出し量² のコスト
+      double extreme_l = 0.0;
+      if (!lateral_bound_extreme_l(bound, box.s_min, box.s_max, extreme_l)) {
+        continue;
+      }
+      const double violation = bound.forbidden_side == Side::LEFT
+                                 ? box.l_max - (extreme_l - bound.margin)
+                                 : (extreme_l + bound.margin) - box.l_min;
+      if (violation > 0.0) {
+        soft_bound_cost += raw.slack_weight * violation * violation;
       }
     }
     for (const auto & occupancy : compiled_constraints.occupancies) {
@@ -465,9 +542,15 @@ void FrenetSamplingBasedPlanner::evaluate(
       }
     }
 
-    // soft コスト (時間積分)
+    // soft コスト (時間積分)。横位置の参照は中心線 (0) だが、goal 手前 2B〜B (B = 最長の横移動長)
+    // で goal の横位置へ線形にブレンドし、残り B は goal の横位置に置く。B
+    // 手前で初めて寄せ始めると、 残距離が縮むほど必要な曲率が増えて steer_rate
+    // で候補が落ち、中心線寄りで止まってしまう
+    const double l_ref =
+      l_goal * std::clamp((2.0 * blend_length - (s_max - s)) / blend_length, 0.0, 1.0);
     const double dv = v_max - point.v;
-    cost += p.weights.lateral * l * l * dt;
+    cost += p.weights.lateral * (l - l_ref) * (l - l_ref) * dt;
+    cost += soft_bound_cost * dt;
     cost += p.weights.velocity * dv * dv * dt;
     cost += p.weights.curvature * point.kappa * point.kappa * dt;
     if (k + 1 < candidate.points.size()) {

@@ -71,17 +71,26 @@ double point_segment_distance(
   return (p - (a + ab * t)).norm();
 }
 
-double point_polyline_distance(
+//! line 上で p に最も近い点
+lanelet::BasicPoint2d closest_point_on_polyline(
   const lanelet::BasicPoint2d & p, const lanelet::ConstLineString3d & line)
 {
   double best = std::numeric_limits<double>::max();
+  lanelet::BasicPoint2d best_point{line[0].x(), line[0].y()};
   for (std::size_t i = 0; i + 1 < line.size(); ++i) {
-    best = std::min(
-      best, point_segment_distance(
-              p, lanelet::BasicPoint2d{line[i].x(), line[i].y()},
-              lanelet::BasicPoint2d{line[i + 1].x(), line[i + 1].y()}));
+    const lanelet::BasicPoint2d a{line[i].x(), line[i].y()};
+    const lanelet::BasicPoint2d b{line[i + 1].x(), line[i + 1].y()};
+    const auto ab = b - a;
+    const double len2 = ab.squaredNorm();
+    const double t = len2 > 0.0 ? std::clamp((p - a).dot(ab) / len2, 0.0, 1.0) : 0.0;
+    const lanelet::BasicPoint2d q = a + ab * t;
+    const double dist = (p - q).norm();
+    if (dist < best) {
+      best = dist;
+      best_point = q;
+    }
   }
-  return best;
+  return best_point;
 }
 
 //! line のうち point に最も近いセグメントの方位
@@ -208,7 +217,16 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
           if (type != "road_border" || linestring.size() < 2) {
             continue;
           }
-          const double dist = point_polyline_distance(p_out, linestring);
+          // 反対側の border を拾わない (右側に border が無い道路で左側の border を RIGHT 禁止として
+          // 出すと走行可能領域が消える)。bound の外向き法線に対して負側にある border は候補外
+          const auto q = closest_point_on_polyline(p_out, linestring);
+          const double outward =
+            (-std::sin(yaw) * (q.x() - point.x()) + std::cos(yaw) * (q.y() - point.y())) *
+            side_sign;
+          if (outward <= 0.0) {
+            continue;
+          }
+          const double dist = (p_out - q).norm();
           if (dist < best_dist) {
             best_dist = dist;
             best_id = linestring.id();
@@ -223,15 +241,19 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         static_cast<double>(adjacent_hits) / static_cast<double>(samples.size()) >=
         ADJACENT_FRACTION;
 
-      if (adjacent) {
-        // 並走車線あり: 自レーンの bound を soft にする (この側に road_border は出さない)
+      if (adjacent || border_ids.empty()) {
+        // 並走車線あり: 自レーンの bound を soft にする (この側に road_border は出さない)。
+        // 並走車線も road_border も無い側 (地図の外縁が線種だけで描かれている等) は、自レーンの
+        // bound を hard にする。何も出さないとこの側が無制限になり、goal の横位置へ寄せる候補が
+        // レーン外へ出る
         std::vector<Point2d> polyline;
         polyline.reserve(bound.size());
         for (const auto & point : bound) {
           polyline.emplace_back(point.x(), point.y());
         }
+        const auto hardness = adjacent ? Hardness::SOFT : Hardness::HARD;
         output.constraints.push_back(make_boundary_constraint(
-          polyline, side, margin_m, Hardness::SOFT, bound_slack_weight, get_name(),
+          polyline, side, margin_m, hardness, bound_slack_weight, get_name(),
           std::to_string(lanelet.id()), side_left ? "left_bound" : "right_bound"));
         continue;
       }
