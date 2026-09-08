@@ -21,6 +21,7 @@
 #include "autoware_planning_msgs/msg/trajectory_point.hpp"
 
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -30,6 +31,86 @@ namespace
 namespace MPCUtils = autoware::motion::control::mpc_lateral_controller::MPCUtils;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
+
+Trajectory makePassthroughTrajectory()
+{
+  Trajectory trajectory;
+  for (int i = 0; i < 5; ++i) {
+    TrajectoryPoint point;
+    point.pose.orientation.w = 1.0;
+    point.time_from_start = rclcpp::Duration::from_seconds(0.1 * (i + 1));
+    point.front_wheel_angle_rad = 0.1F + static_cast<float>(i) * 0.01F;
+    trajectory.points.push_back(point);
+  }
+  return trajectory;
+}
+
+TEST(SteeringPassthrough, CalibrationAndCommandRatesUsePublishedFrame)
+{
+  auto trajectory = makePassthroughTrajectory();
+  autoware::motion::control::trajectory_follower::LateralHorizon horizon{};
+  std::string reason;
+  ASSERT_TRUE(MPCUtils::makeSteeringPassthroughHorizon(trajectory, 0.0, 0.5, horizon, reason));
+  MPCUtils::finalizeSteeringPassthroughHorizon(horizon, 0.09F, 0.01, 0.64, 0.6, 0.03);
+  EXPECT_FLOAT_EQ(horizon.controls.front().steering_tire_angle, 0.09F);
+  EXPECT_FLOAT_EQ(horizon.controls.front().steering_tire_rotation_rate, 0.0F);
+  EXPECT_NEAR(horizon.controls[1].steering_tire_angle, 0.10, 1.0e-6);
+  EXPECT_NEAR(horizon.controls[1].steering_tire_rotation_rate, 0.1, 1.0e-6);
+
+  const auto previously_published = horizon.controls.front();
+  ASSERT_TRUE(MPCUtils::makeSteeringPassthroughHorizon(trajectory, 0.1, 0.5, horizon, reason));
+  MPCUtils::finalizeSteeringPassthroughHorizon(
+    horizon, previously_published.steering_tire_angle, 0.01, 0.64, 0.6, 0.03);
+  EXPECT_FLOAT_EQ(horizon.controls.front().steering_tire_rotation_rate, 0.0F);
+}
+
+TEST(SteeringPassthrough, RateFieldIsBoundedWithoutSlewFilteringU0)
+{
+  auto trajectory = makePassthroughTrajectory();
+  trajectory.points[0].front_wheel_angle_rad = 0.3F;
+  trajectory.points[1].front_wheel_angle_rad = -0.3F;
+  autoware::motion::control::trajectory_follower::LateralHorizon horizon{};
+  std::string reason;
+  ASSERT_TRUE(MPCUtils::makeSteeringPassthroughHorizon(trajectory, 0.0, 0.5, horizon, reason));
+  MPCUtils::finalizeSteeringPassthroughHorizon(horizon, 0.0, 0.0, 0.64, 0.6, 0.03);
+  EXPECT_FLOAT_EQ(horizon.controls.front().steering_tire_angle, 0.3F);
+  EXPECT_FLOAT_EQ(horizon.controls.front().steering_tire_rotation_rate, 0.6F);
+  EXPECT_FLOAT_EQ(horizon.controls[1].steering_tire_rotation_rate, -0.6F);
+}
+
+TEST(SteeringPassthrough, SaturationIncludesCalibrationOffset)
+{
+  auto trajectory = makePassthroughTrajectory();
+  trajectory.points[0].front_wheel_angle_rad = 1.0F;
+  autoware::motion::control::trajectory_follower::LateralHorizon horizon{};
+  std::string reason;
+  ASSERT_TRUE(MPCUtils::makeSteeringPassthroughHorizon(trajectory, 0.0, 0.5, horizon, reason));
+  MPCUtils::finalizeSteeringPassthroughHorizon(horizon, 0.0, -0.1, 0.64, 0.6, 0.03);
+  EXPECT_FLOAT_EQ(horizon.controls.front().steering_tire_angle, 0.64F);
+}
+
+TEST(SteeringPassthrough, InvalidOrExpiredCommandsClearPreviousHorizon)
+{
+  const auto trajectory = makePassthroughTrajectory();
+  autoware::motion::control::trajectory_follower::LateralHorizon horizon{};
+  std::string reason;
+  ASSERT_TRUE(MPCUtils::makeSteeringPassthroughHorizon(trajectory, 0.0, 0.5, horizon, reason));
+  EXPECT_FALSE(MPCUtils::makeSteeringPassthroughHorizon(trajectory, 0.6, 0.5, horizon, reason));
+  EXPECT_TRUE(horizon.controls.empty());
+  EXPECT_FALSE(MPCUtils::makeSteeringPassthroughHorizon(trajectory, -0.1, 0.5, horizon, reason));
+  // The real command horizon expires even if the configured timeout is longer.
+  EXPECT_FALSE(MPCUtils::makeSteeringPassthroughHorizon(trajectory, 0.6, 2.0, horizon, reason));
+  auto invalid = trajectory;
+  invalid.points[2].time_from_start = invalid.points[1].time_from_start;
+  EXPECT_FALSE(MPCUtils::makeSteeringPassthroughHorizon(invalid, 0.0, 0.5, horizon, reason));
+  invalid = trajectory;
+  invalid.points[2].time_from_start = rclcpp::Duration::from_seconds(0.35);
+  EXPECT_FALSE(MPCUtils::makeSteeringPassthroughHorizon(invalid, 0.0, 0.5, horizon, reason));
+  invalid = trajectory;
+  invalid.points[0].front_wheel_angle_rad = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_FALSE(MPCUtils::makeSteeringPassthroughHorizon(invalid, 0.0, 0.5, horizon, reason));
+  EXPECT_TRUE(horizon.controls.empty());
+}
 
 TrajectoryPoint makePoint(const double x, const double y, const float vx)
 {

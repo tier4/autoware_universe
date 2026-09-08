@@ -30,6 +30,18 @@
           "type": "boolean",
           "description": "when true, publish trajectory front_wheel_angle_rad directly and skip MPC QP (MPPI passthrough)",
           "default": false
+        },
+        "steering_passthrough_timeout": {
+          "type": "number",
+          "description": "maximum trajectory stamp age for executing the first MPPI command [s]; expired input holds the last published steering",
+          "exclusiveMinimum": 0.0,
+          "default": 0.5
+        },
+        "steering_passthrough_rate_limit_rad_s": {
+          "type": "number",
+          "description": "absolute bound on published steering command-rate feedforward [rad/s]; does not slew-limit the requested angle",
+          "exclusiveMinimum": 0.0,
+          "default": 0.6
         }
       },
       "required": [

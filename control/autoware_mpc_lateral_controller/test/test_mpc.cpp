@@ -182,6 +182,82 @@ protected:
   void TearDown() override { rclcpp::shutdown(); }
 };  // class MPCTest
 
+TEST_F(MPCTest, SteeringPassthroughUsesRawFirstCommandWithoutMpcPrediction)
+{
+  auto node = rclcpp::Node("passthrough_test");
+  MPC mpc(node);
+  // No vehicle model, QP, or resampled MPC reference is needed to select the command.
+  mpc.m_use_temporal_trajectory = true;
+  mpc.m_param.input_delay = 0.17;
+  Trajectory trajectory;
+  trajectory.header.stamp = node.now() - rclcpp::Duration::from_seconds(0.15);
+  for (int i = 0; i < 5; ++i) {
+    auto point = makePoint(0.0, 0.0, 0.0F);
+    point.pose.orientation.w = 1.0;
+    point.time_from_start = rclcpp::Duration::from_seconds(0.1 * (i + 1));
+    point.front_wheel_angle_rad = 0.02F + static_cast<float>(i) * 0.1F;
+    trajectory.points.push_back(point);
+  }
+  Lateral command;
+  LateralHorizon horizon{};
+  Float32MultiArrayStamped diagnostic;
+  auto odometry = makeOdometry(pose_zero, 0.0);
+  ASSERT_TRUE(mpc
+                .calculateTrajectorySteeringPassthrough(
+                  trajectory, neutral_steer, odometry, command, diagnostic, horizon, 0.5)
+                .result);
+  EXPECT_FLOAT_EQ(command.steering_tire_angle, 0.02F);
+  ASSERT_EQ(horizon.controls.size(), trajectory.points.size());
+  EXPECT_NEAR(horizon.time_step_ms, 100.0, 1.0e-6);
+  EXPECT_FLOAT_EQ(horizon.controls[1].steering_tire_angle, 0.12F);
+
+  // A changed measurement must not advance u[0] or turn tracking error into a rate request.
+  SteeringReport lagging_steer;
+  lagging_steer.steering_tire_angle = -0.3F;
+  mpc.m_param.input_delay = 1.0;
+  ASSERT_TRUE(mpc
+                .calculateTrajectorySteeringPassthrough(
+                  trajectory, lagging_steer, odometry, command, diagnostic, horizon, 0.5)
+                .result);
+  EXPECT_FLOAT_EQ(command.steering_tire_angle, 0.02F);
+  EXPECT_FLOAT_EQ(command.steering_tire_rotation_rate, 0.0F);  // finalized by publication wrapper
+}
+
+TEST_F(MPCTest, SteeringPassthroughKeepsZeroAvailabilityRuleAndRejectsStaleInput)
+{
+  auto node = rclcpp::Node("passthrough_validity_test");
+  MPC mpc(node);
+  mpc.m_use_temporal_trajectory = true;
+  Trajectory trajectory;
+  trajectory.header.stamp = node.now();
+  for (int i = 0; i < 3; ++i) {
+    auto point = makePoint(0.0, 0.0, 0.0F);
+    point.time_from_start = rclcpp::Duration::from_seconds(0.1 * (i + 1));
+    trajectory.points.push_back(point);
+  }
+  Lateral command;
+  LateralHorizon horizon{};
+  Float32MultiArrayStamped diagnostic;
+  const auto odometry = makeOdometry(pose_zero, 0.0);
+  EXPECT_FALSE(mpc
+                 .calculateTrajectorySteeringPassthrough(
+                   trajectory, neutral_steer, odometry, command, diagnostic, horizon, 0.5)
+                 .result);
+  // A zero u[0] is still passed through if another steering value is nonzero.
+  trajectory.points[1].front_wheel_angle_rad = 0.1F;
+  ASSERT_TRUE(mpc
+                .calculateTrajectorySteeringPassthrough(
+                  trajectory, neutral_steer, odometry, command, diagnostic, horizon, 0.5)
+                .result);
+  EXPECT_FLOAT_EQ(command.steering_tire_angle, 0.0F);
+  trajectory.header.stamp = node.now() - rclcpp::Duration::from_seconds(1.0);
+  EXPECT_FALSE(mpc
+                 .calculateTrajectorySteeringPassthrough(
+                   trajectory, neutral_steer, odometry, command, diagnostic, horizon, 0.5)
+                 .result);
+  EXPECT_TRUE(horizon.controls.empty());
+}
+
 /* cppcheck-suppress syntaxError */
 TEST_F(MPCTest, InitializeAndCalculate)
 {
