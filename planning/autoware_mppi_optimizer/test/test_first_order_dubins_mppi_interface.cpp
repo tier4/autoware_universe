@@ -915,45 +915,5 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, HandlesInitialOffsetsAcrossThreshol
   }
 }
 
-TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, OptimizationStrideLocksFirstControl)
-{
-  FirstOrderDubinsMppiRuntimeOptions options;
-  // Pure cold-start to prevent temporal warm-starting
-  options.use_last_control_as_nominal = false;
-  options.use_temporal_mpt_as_nominal = false;
-  interface_->setRuntimeOptions(options);
-
-  // 1. STRAIGHT trajectory -> geometric feedforward seed will be exactly 0.0.
-  auto trajectory = makeStraightTrajectory(85U);
-
-  // Shift the trajectory 1.0 meter to the left.
-  // The curvature is still 0, so the feedforward steering seed remains exactly 0.0.
-  for (auto & p : trajectory.points) {
-    p.pose.position.y = 1.0;
-  }
-
-  auto odometry = makeOdometry();
-  odometry.twist.twist.linear.x = 2.0;
-  // Odometry starts at y=0.0. The planner must steer left to reach the reference line.
-
-  const auto result = optimize(*interface_, trajectory, odometry);
-
-  std::vector<float> accel;
-  std::vector<float> steer;
-  ASSERT_TRUE(interface_->copyLastOptimizedControl(accel, steer));
-  ASSERT_GE(steer.size(), 2U);
-
-  // ASSERTION 1: The applied control (the original u[0] before shifting) must be exactly 0.0.
-  // This proves the optimization_stride=1 lock worked flawlessly.
-  EXPECT_FLOAT_EQ(result.debug.applied_plant.applied_control.steer_cmd, 0.0F)
-    << "Steering u[0] was not locked to the zero seed!";
-  EXPECT_FLOAT_EQ(result.debug.applied_plant.applied_control.accel_cmd, 0.0F)
-    << "Acceleration u[0] was not locked to the zero seed!";
-
-  // ASSERTION 2: steer[0] (which is the shifted u[1]) should just be non-zero,
-  // proving the optimizer is actively solving the lateral offset.
-  EXPECT_NE(steer[0], 0.0F) << "Steering u[1] failed to optimize!";
-}
-
 }  // namespace
 }  // namespace autoware::mppi_optimizer

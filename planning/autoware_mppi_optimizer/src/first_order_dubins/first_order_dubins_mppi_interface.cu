@@ -293,7 +293,7 @@ public:
   };
 
   void computeControl(
-    const Eigen::Ref<const Mppi::state_array> & state, const int optimization_stride = 1) override
+    const Eigen::Ref<const Mppi::state_array> & state, const int optimization_stride = 0) override
   {
     if (iteration_rollout_capture_enabled_) {
       // Retain each snapshot's vector capacity across planning cycles.
@@ -1839,10 +1839,9 @@ struct FirstOrderDubinsMppiInterface::Impl
     cost.renderDistanceMapTextureDebug();
 
     controller->updateImportanceSampler(u_nom);
-    // Lock u[0] to the smoothed nominal seed (Zero-Order Hold strategy).
-    // This acts as an implicit low-pass filter at the actuator boundary,
-    // preventing high-frequency noise from causing aggressive steering jerk.
-    controller->computeControl(x, 1);
+    // u[0] is newly issuable. Already committed inputs are represented by the plant delay
+    // queues, so no prefix of the new control sequence is excluded from sampling.
+    controller->computeControl(x, 0);
     checkCuda("computeControl");
 
     Mppi::control_trajectory u_opt_traj = controller->getControlSeq();
