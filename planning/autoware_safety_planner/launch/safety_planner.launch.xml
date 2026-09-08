@@ -2,9 +2,21 @@
 <!--
   minimum_rule_based_planner.launch.xml と同型 (外部契約を踏襲する)。
   shadow モードは output_candidate_trajectories の remap 先を差し替えるだけで実現する。
+  パラメータは本体 (safety_planner.param.yaml) とプラグインごとのファイルに分かれている。
 -->
 <launch>
-  <arg name="safety_planner_param_path" default="$(find-pkg-share autoware_safety_planner)/config/safety_planner.param.yaml"/>
+  <arg name="safety_planner_config_dir" default="$(find-pkg-share autoware_safety_planner)/config"/>
+  <arg name="safety_planner_param_path" default="$(var safety_planner_config_dir)/safety_planner.param.yaml"/>
+  <!-- constraint generator plugins -->
+  <arg name="safety_planner_vehicle_kinematics_param_path" default="$(var safety_planner_config_dir)/constraint_generator/vehicle_kinematics.param.yaml"/>
+  <arg name="safety_planner_lane_following_drivable_area_param_path" default="$(var safety_planner_config_dir)/constraint_generator/lane_following_drivable_area.param.yaml"/>
+  <arg name="safety_planner_obstacle_stop_param_path" default="$(var safety_planner_config_dir)/constraint_generator/obstacle_stop.param.yaml"/>
+  <arg name="safety_planner_simple_drivable_area_param_path" default="$(var safety_planner_config_dir)/constraint_generator/simple_drivable_area.param.yaml"/>
+  <!-- trajectory planner / optimizer plugins -->
+  <arg name="safety_planner_frenet_sampler_param_path" default="$(var safety_planner_config_dir)/trajectory_planner/frenet_sampler.param.yaml"/>
+  <arg name="safety_planner_rough_optimizer_param_path" default="$(var safety_planner_config_dir)/trajectory_planner/rough_optimizer.param.yaml"/>
+  <arg name="safety_planner_nlp_trajectory_optimizer_param_path" default="$(var safety_planner_config_dir)/trajectory_planner/nlp_trajectory_optimizer.param.yaml"/>
+  <arg name="safety_planner_ssc_qp_trajectory_optimizer_param_path" default="$(var safety_planner_config_dir)/trajectory_planner/ssc_qp_trajectory_optimizer.param.yaml"/>
 
   <!-- Topic remappings -->
   <arg name="input_vector_map" default="~/input/vector_map"/>
@@ -18,6 +30,14 @@
 
   <node pkg="autoware_safety_planner" exec="autoware_safety_planner_node" name="safety_planner_node" output="both">
     <param from="$(var safety_planner_param_path)" allow_substs="true"/>
+    <param from="$(var safety_planner_vehicle_kinematics_param_path)" allow_substs="true"/>
+    <param from="$(var safety_planner_lane_following_drivable_area_param_path)" allow_substs="true"/>
+    <param from="$(var safety_planner_obstacle_stop_param_path)" allow_substs="true"/>
+    <param from="$(var safety_planner_simple_drivable_area_param_path)" allow_substs="true"/>
+    <param from="$(var safety_planner_frenet_sampler_param_path)" allow_substs="true"/>
+    <param from="$(var safety_planner_rough_optimizer_param_path)" allow_substs="true"/>
+    <param from="$(var safety_planner_nlp_trajectory_optimizer_param_path)" allow_substs="true"/>
+    <param from="$(var safety_planner_ssc_qp_trajectory_optimizer_param_path)" allow_substs="true"/>
 
     <remap from="~/input/vector_map" to="$(var input_vector_map)"/>
     <remap from="~/input/route" to="$(var input_route)"/>

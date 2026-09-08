@@ -183,7 +183,7 @@ void SafetyPlanner::load_trajectory_planner_plugin()
   trajectory_planner_loader_ = std::make_unique<TrajectoryPlannerLoader>(
     "autoware_safety_planner", "autoware::safety_planner::TrajectoryPlannerInterface");
 
-  const auto & class_name = params_.trajectory_planner.plugin;
+  const auto & class_name = params_.trajectory_planner_plugin;
   try {
     trajectory_planner_ = trajectory_planner_loader_->createSharedInstance(class_name);
     trajectory_planner_->on_initialize(time_keeper_, params_);
@@ -222,13 +222,16 @@ tl::expected<PathPointTrajectory, std::string> SafetyPlanner::build_reference_pa
     return tl::unexpected("Failed to build reference path: " + reference_path.error());
   }
 
-  if (params_.reference_path.policy == "goal_connection_and_smooth") {
+  const auto & policy = params_.reference_path.policy;
+  if (policy == "goal_connection" || policy == "goal_connection_and_smooth") {
     if (
       auto connected = connect_reference_path_to_goal(
         *reference_path, input.goal_pose, lane_sequence.as_lanelets(),
         route_manager.lanelet_map_ptr(), params_.reference_path.goal_connection.search_radius_m)) {
       reference_path = std::move(*connected);
     }
+  }
+  if (policy == "goal_connection_and_smooth") {
     // ego 側は固定しない (ego 足元の経路は sampler が ego 姿勢から作り直すので、生の centerline に
     // 固定すると ego から離れた経路になる)。固定は goal 側だけ
     if (

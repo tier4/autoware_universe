@@ -3,129 +3,25 @@
     planning_frequency_hz: 10.0
 
     ego_nearest_lanelet:
-      dist_threshold_m: 3.0 # [m]
-      yaw_threshold_rad: 1.046 # [rad]
+      dist_threshold_m: 6.0 # [m]
+      yaw_threshold_rad: 1.57 # [rad]
 
     reference_path:
-      policy: "goal_connection_and_smooth" # simple / goal_connection_and_smooth
+      policy: "goal_connection_and_smooth" # simple / goal_connection / goal_connection_and_smooth
       goal_connection:
-        search_radius_m: 12.0 # [m]
+        search_radius_m: 15.0 # [m]
       smoother:
         clearance_m: 1.0 # [m]
       forward_length_m: 200.0 # [m]
-      backward_length_m: 5.0 # [m]
+      backward_length_m: 15.0 # [m]
 
     engage_velocity:
       enable: true
-      velocity_hard_mps: 0.3 # [m/s] 発進区間に敷く速度の下限 (0 で無効)
+      velocity_hard_mps: 0.3 # [m/s]
 
     constraint_generator_plugins:
       - "autoware::safety_planner::VehicleKinematicsConstraintGenerator"
       - "autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator"
       - "autoware::safety_planner::ObstacleStopConstraintGenerator"
 
-    trajectory_planner:
-      # 2 つの制約セット (normal / cautious) から 2 本の軌道を作るプランナー
-      #   RoughOptimizerTrajectoryPlanner … rough_planner (時空間 DP) → trajectory_optimizer
-      #   FrenetSamplingBasedPlanner … Frenet 座標で終端状態をサンプルし quintic で結ぶ (制約はふるい)
-      plugin: "autoware::safety_planner::FrenetSamplingBasedPlanner"
-
-    frenet_sampler:
-      time_step_s: 0.1 # [s]
-      horizon_s: 10.0 # [s]
-      path_resolution_m: 0.5 # [m] 経路 l(s) の空間サンプル間隔
-      target_lengths_m: [10.0, 20.0, 40.0] # [m] 横移動を終える弧長 L
-      target_durations_s: [2.0, 4.0, 6.0, 8.0] # [s] 速度プロファイルの終端時間 T
-      target_lateral_positions_m: [-2.0, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 2.0] # [m] 左が正
-      target_velocity_ratios: [0.0, 0.25, 0.5, 0.75, 1.0] # [-] ego 位置の速度上限に対する比
-      weights:
-        lateral: 1.0
-        velocity: 0.5
-        lon_jerk: 0.1
-        curvature: 10.0
-
-    trajectory_optimizer:
-      # 軌道最適化の定式化をここで切り替える (RoughOptimizerTrajectoryPlanner が使う)
-      #   NlpTrajectoryOptimizer … 時間パラメタライズ非凸 NLP (状態に κ を持ち、ステア角/レートを hard に書ける)
-      #   SscQpTrajectoryOptimizer … (s,l,t) cube 上の区分 Bezier を凸 QP で解く (SSC)
-      plugin: "autoware::safety_planner::NlpTrajectoryOptimizer"
-      nlp:
-        cube_duration_s: 1.0 # [s] コリドー彫り込みの 1 cube の時間長 α
-        margin_m: 0.1 # [m] cube を彫るときの安全マージン
-        inflation_step_m: 0.2 # [m]
-        max_lateral_inflation_m: 4.0 # [m]
-        max_longitudinal_inflation_m: 20.0 # [m]
-        curvature_rate_max: 0.6 # [1/(m*s)] |w| の上限
-        goal_capture_distance_m: 5.0 # [m] この距離まで近づいたら追従参照の終点を goal そのものにする
-        weight_pos: 1.0
-        weight_yaw: 1.0
-        weight_v: 0.5
-        weight_kappa: 200.0
-        weight_w: 100.0
-        weight_a: 0.1
-        weight_j: 0.1
-        weight_terminal_v: 10.0
-        weight_terminal_a: 1.0
-        slack_safety: 1.0e+6 # rho_B
-        slack_comfort: 1.0e+4 # rho_C
-        max_iter_level1: 20
-        max_iter_level2: 8
-        max_iter_level3: 6
-      ssc_qp:
-        cube_duration_s: 1.0 # [s] 1 cube = 区分 Bezier 1 区間の時間長 α
-        margin_m: 0.1 # [m] cube を彫るときの安全マージン
-        inflation_step_m: 0.2 # [m] 膨張の 1 ステップ
-        max_lateral_inflation_m: 4.0 # [m]
-        max_longitudinal_inflation_m: 20.0 # [m]
-        lateral_rate_max_mps: 2.0 # [m/s] Frenet 横速度 |dl/dt|
-        lateral_accel_max_mps2: 2.0 # [m/s^2] Frenet 横加速度 |d2l/dt2|
-        weight_jerk_s: 1.0
-        weight_jerk_l: 1.0
-        regularization: 1.0e-8
-        osqp_eps_abs: 1.0e-5
-
-    vehicle_kinematics:
-      velocity_hard_mps: 12.5 # [m/s] (45 km/h)
-      lon_accel_hard_min_mps2: -6.0 # [m/s^2] (減速側)
-      lon_accel_hard_max_mps2: 6.0 # [m/s^2] (加速側)
-      lon_jerk_hard_mps3: 5.0 # [m/s^3]
-      lat_accel_hard_mps2: 1.5 # [m/s^2] (グリップ限界相当)
-      steer_rate_hard_radps: 0.256 # [rad/s]
-
-    lane_following_drivable_area:
-      margin_m: 0.0 # [m] Boundary の膨張マージン
-      bound_slack_weight: 100.0 # [-] 自レーン bound (SOFT) のスラック重み。road_border は HARD
-
-    obstacle_stop:
-      margin_m: 0.5 # [m] KeepOut の定数マージン
-      stop_distance_m: 6.0 # [m] stop line this far before an object on the path (0 disables)
-      stop_line_max_object_speed_mps: 1.0 # [m/s] stop lines only for objects slower than this
-
-    simple_drivable_area:
-      half_width_m: 3.0 # [m] 中心線からの片側幅 (簡易版の定数幅)
-      forward_extension_m: 5.0 # [m] 経路終端から前方への延長
-      backward_extension_m: 5.0 # [m] 経路始端から後方への延長
-      margin_m: 0.0 # [m] Boundary の膨張マージン
-      sample_interval_m: 1.0 # [m] 中心線のサンプル間隔
-
-    rough_planner:
-      time_step_s: 0.1 # [s] 出力時間グリッド (下流 optimizer のステージと同一)
-      num_points: 101 # N + 1
-      max_candidates: 1
-      dp:
-        s_max_m: 150.0 # [m]
-        s_step_m: 0.5 # [m]
-        l_range_m: 6.0 # [m]
-        l_step_m: 1.0 # [m]
-        t_step_s: 0.5 # [s]
-        horizon_s: 10.0 # [s]
-        v_step_mps: 1.0 # [m/s]
-        lateral_slope_max: 0.3 # [-]
-        lateral_rate_max_mps: 1.5 # [m/s]
-        weights:
-          progress: 1.0
-          lateral: 0.5
-          lateral_rate: 1.0
-          velocity: 0.2
-          accel: 0.1
-          accel_nominal: 2.0
+    trajectory_planner_plugin: "autoware::safety_planner::FrenetSamplingBasedPlanner"

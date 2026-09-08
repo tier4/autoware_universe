@@ -174,9 +174,6 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
   const double margin_m = params_.lane_following_drivable_area.margin_m;
   const double bound_slack_weight = params_.lane_following_drivable_area.bound_slack_weight;
 
-  //! 同じ road_border が複数 lanelet から採用されたときの重複発行を防ぐ
-  std::set<std::pair<bool, lanelet::Id>> adopted_borders;
-
   for (const auto & lanelet : lanelets) {
     for (const auto side_left : {true, false}) {
       const auto & bound = side_left ? lanelet.leftBound() : lanelet.rightBound();
@@ -226,7 +223,13 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
           if (outward <= 0.0) {
             continue;
           }
+          // bbox 検索は線分の外接矩形で当たるので、長い border は数百 m 先の点しか無くても返る。
+          // 半径内に実際に近づく border だけを採用する (遠方の border を採ると、射影後に反対側の
+          // 巨大な l の境界になって全候補が落ちる)
           const double dist = (p_out - q).norm();
+          if (dist > BORDER_SEARCH_RADIUS_M) {
+            continue;
+          }
           if (dist < best_dist) {
             best_dist = dist;
             best_id = linestring.id();
@@ -258,11 +261,11 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         continue;
       }
 
-      // 並走車線なし: road_border を hard にする (路肩等の上は走行可能領域に含まれる)
+      // 並走車線なし: road_border を hard にする (路肩等の上は走行可能領域に含まれる)。
+      // border は 1 本の linestring が道路を数百 m 取り巻くことがあるので、自レーン bound から
+      // BORDER_SEARCH_RADIUS_M 以内にある頂点の連続区間だけを切り出す (遠方の区間まで出すと、
+      // 射影後に反対側・巨大な l の境界になって全候補が落ちる)
       for (const auto border_id : border_ids) {
-        if (!adopted_borders.insert({side_left, border_id}).second) {
-          continue;  // 別の lanelet が同じ border を既に発行している
-        }
         const auto border = lanelet_map->lineStringLayer.get(border_id);
         // forbidden_side は折れ線の進行向き基準。地図の road_border は向きが不定なので、
         // 逆向き (進行方向と反平行) なら反転してから発行する
@@ -279,9 +282,31 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         if (reversed) {
           std::reverse(polyline.begin(), polyline.end());
         }
-        output.constraints.push_back(make_boundary_constraint(
-          polyline, side, margin_m, Hardness::HARD, 0.0, get_name(), std::to_string(border_id),
-          side_left ? "left_road_border" : "right_road_border"));
+        std::vector<Point2d> run;
+        const auto flush = [&]() {
+          if (run.size() >= 2) {
+            output.constraints.push_back(make_boundary_constraint(
+              run, side, margin_m, Hardness::HARD, 0.0, get_name(), std::to_string(border_id),
+              side_left ? "left_road_border" : "right_road_border"));
+          }
+          run.clear();
+        };
+        for (const auto & vertex : polyline) {
+          const lanelet::BasicPoint2d q{vertex.x(), vertex.y()};
+          // 同じ border がロータリーのように道路を取り巻いて反対側にも来ることがあるので、bound の
+          // 外向き側 (この side 側) にある頂点だけを残す
+          const auto foot = closest_point_on_polyline(q, bound);
+          const double bound_yaw = nearest_segment_yaw(bound, q);
+          const double outward =
+            (-std::sin(bound_yaw) * (q.x() - foot.x()) + std::cos(bound_yaw) * (q.y() - foot.y())) *
+            side_sign;
+          if ((q - foot).norm() <= BORDER_SEARCH_RADIUS_M && outward > 0.0) {
+            run.push_back(vertex);
+          } else {
+            flush();
+          }
+        }
+        flush();
       }
     }
   }

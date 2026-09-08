@@ -30,10 +30,10 @@ safety_planner:
       read_only: true
       description: >
         reference_path の生成方法。simple = 地図の centerline (goal で打ち切り)。
-        goal_connection_and_smooth = centerline の goal 周辺を切って goal へスプラインで接続し、
-        elastic band 型 QP で全体をなめらかにする
+        goal_connection = centerline の goal 周辺を切って goal へスプライン (cubic) で接続する。
+        goal_connection_and_smooth = goal_connection の後に elastic band 型 QP で全体をなめらかにする
       validation:
-        one_of<>: [[simple, goal_connection_and_smooth]]
+        one_of<>: [[simple, goal_connection, goal_connection_and_smooth]]
     goal_connection:
       search_radius_m:
         type: double
@@ -85,12 +85,11 @@ safety_planner:
     read_only: true
     description: ロードする制約ジェネレータープラグインの完全修飾クラス名のリスト
 
-  trajectory_planner:
-    plugin:
-      type: string
-      default_value: autoware::safety_planner::RoughOptimizerTrajectoryPlanner
-      read_only: true
-      description: ロードする軌道プランナープラグインの完全修飾クラス名 (RoughOptimizerTrajectoryPlanner = DP + 最適化 / FrenetSamplingBasedPlanner = Frenet サンプリング)。2 つの制約セット (normal / cautious) から 2 本の軌道を作る
+  trajectory_planner_plugin:
+    type: string
+    default_value: autoware::safety_planner::RoughOptimizerTrajectoryPlanner
+    read_only: true
+    description: ロードする軌道プランナープラグインの完全修飾クラス名 (RoughOptimizerTrajectoryPlanner = DP + 最適化 / FrenetSamplingBasedPlanner = Frenet サンプリング)。2 つの制約セット (normal / cautious) から 2 本の軌道を作る
 
   trajectory_optimizer:
     plugin:

@@ -14,6 +14,7 @@
 
 #include "safety_planner_node.hpp"
 
+#include "utils/sl_view_utils.hpp"
 #include "utils/trajectory_conversion.hpp"
 
 #include <autoware_utils/geometry/geometry.hpp>
@@ -354,11 +355,59 @@ void SafetyPlannerNode::publish_debug_markers(const SafetyPlannerResult::Debug &
     auto marker = create_default_marker(
       "map", now, "reference_path", 0, Marker::LINE_STRIP, create_marker_scale(0.2, 0.0, 0.0),
       create_marker_color(0.0, 0.5, 1.0, 0.999));
-    for (const auto & point : debug.reference_path.restore()) {
-      marker.points.push_back(point.point.pose.position);
+    // 基底点 (waypoint、数 m 間隔) だけだと折れ線に見えるので、補間形状が分かるように 1 m 以下で
+    // サンプルする (終端も含める)
+    constexpr double MARKER_INTERVAL_M = 1.0;
+    const auto & reference_path = debug.reference_path;
+    for (double s = 0.0; s < reference_path.length(); s += MARKER_INTERVAL_M) {
+      marker.points.push_back(reference_path.compute(s).point.pose.position);
+    }
+    if (reference_path.length() > 0.0) {
+      marker.points.push_back(reference_path.compute(reference_path.length()).point.pose.position);
     }
     if (marker.points.size() >= 2) {
       marker_array.markers.push_back(marker);
+    }
+  }
+
+  // 横境界 (射影ビュー) の可視化: reference_path 上の一定間隔ごとに、中心線から各境界までを
+  // 法線方向の細線で結ぶ。どの s にどちら側の境界が効いているかを見るためのもの
+  {
+    constexpr double INTERVAL_M = 2.0;
+    auto hard_marker = create_default_marker(
+      "map", now, "lateral_bounds_hard", 0, Marker::LINE_LIST, create_marker_scale(0.05, 0.0, 0.0),
+      create_marker_color(1.0, 0.2, 0.0, 0.8));
+    auto soft_marker = create_default_marker(
+      "map", now, "lateral_bounds_soft", 0, Marker::LINE_LIST, create_marker_scale(0.05, 0.0, 0.0),
+      create_marker_color(1.0, 0.8, 0.0, 0.5));
+    const auto & reference_path = debug.reference_path;
+    const auto & compiled = debug.compiled_constraints;
+    const double z = input_.odometry.pose.pose.position.z;
+    for (double s = 0.0; s <= reference_path.length(); s += INTERVAL_M) {
+      for (const auto & bound : compiled.lateral_bounds) {
+        if (
+          bound.polyline.size() < 2 || s < bound.polyline.front().s ||
+          s > bound.polyline.back().s) {
+          continue;
+        }
+        const double l_bound = interpolate_boundary_l(bound.polyline, s);
+        auto & marker = compiled.raw_constraints[bound.raw_index].hardness == Hardness::HARD
+                          ? hard_marker
+                          : soft_marker;
+        for (const double l : {0.0, l_bound}) {
+          const auto pose = to_world_pose(reference_path, s, l);
+          geometry_msgs::msg::Point q;
+          q.x = pose.position.x();
+          q.y = pose.position.y();
+          q.z = z;
+          marker.points.push_back(q);
+        }
+      }
+    }
+    for (auto & marker : {hard_marker, soft_marker}) {
+      if (!marker.points.empty()) {
+        marker_array.markers.push_back(marker);
+      }
     }
   }
 

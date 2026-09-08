@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    trajectory_optimizer:
+      ssc_qp:
+        cube_duration_s: 1.0 # [s] 1 cube = 区分 Bezier 1 区間の時間長 α
+        margin_m: 0.1 # [m] cube を彫るときの安全マージン
+        inflation_step_m: 0.2 # [m] 膨張の 1 ステップ
+        max_lateral_inflation_m: 4.0 # [m]
+        max_longitudinal_inflation_m: 20.0 # [m]
+        lateral_rate_max_mps: 2.0 # [m/s] Frenet 横速度 |dl/dt|
+        lateral_accel_max_mps2: 2.0 # [m/s^2] Frenet 横加速度 |d2l/dt2|
+        weight_jerk_s: 1.0
+        weight_jerk_l: 1.0
+        regularization: 1.0e-8
+        osqp_eps_abs: 1.0e-5

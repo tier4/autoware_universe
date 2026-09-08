@@ -27,7 +27,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -62,19 +64,36 @@ Scenario load_scenario(const std::string & yaml_filename)
                          "/test_data/" + yaml_filename;
   const auto config = YAML::LoadFile(yaml_path);
 
-  const auto map_path =
-    autoware::test_utils::resolve_pkg_share_uri(config["map_path_uri"].as<std::string>());
-  const auto vehicle_info_param_path =
-    autoware::test_utils::resolve_pkg_share_uri(config["vehicle_info_param_uri"].as<std::string>());
+  // package://<pkg>/<path> or a plain filesystem path (for local maps that are not installed)
+  const auto resolve = [](const std::string & uri) -> std::optional<std::string> {
+    if (const auto resolved = autoware::test_utils::resolve_pkg_share_uri(uri)) {
+      return resolved;
+    }
+    return std::filesystem::exists(uri) ? std::make_optional(uri) : std::nullopt;
+  };
+  const auto map_path = resolve(config["map_path_uri"].as<std::string>());
+  const auto vehicle_info_param_path = resolve(config["vehicle_info_param_uri"].as<std::string>());
   if (!map_path || !vehicle_info_param_path) {
-    throw std::runtime_error("failed to resolve package:// uri in " + yaml_path);
+    throw std::runtime_error("failed to resolve map/vehicle uri in " + yaml_path);
   }
 
+  // The production config: the core file plus one file per plugin
+  // (config/<group>/<plugin>.param.yaml)
+  std::vector<std::string> param_files{*vehicle_info_param_path};
+  for (const auto & relative_path :
+       {"safety_planner.param.yaml", "constraint_generator/vehicle_kinematics.param.yaml",
+        "constraint_generator/lane_following_drivable_area.param.yaml",
+        "constraint_generator/obstacle_stop.param.yaml",
+        "constraint_generator/simple_drivable_area.param.yaml",
+        "trajectory_planner/frenet_sampler.param.yaml",
+        "trajectory_planner/rough_optimizer.param.yaml",
+        "trajectory_planner/nlp_trajectory_optimizer.param.yaml",
+        "trajectory_planner/ssc_qp_trajectory_optimizer.param.yaml"}) {
+    param_files.push_back(
+      autoware::test_utils::get_absolute_path_to_config("autoware_safety_planner", relative_path));
+  }
   rclcpp::NodeOptions node_options;
-  autoware::test_utils::updateNodeOptions(
-    node_options, {autoware::test_utils::get_absolute_path_to_config(
-                     "autoware_safety_planner", "safety_planner.param.yaml"),
-                   *vehicle_info_param_path});
+  autoware::test_utils::updateNodeOptions(node_options, param_files);
   auto node = std::make_shared<rclcpp::Node>("safety_planner_closed_loop_test", node_options);
 
   Scenario scenario;

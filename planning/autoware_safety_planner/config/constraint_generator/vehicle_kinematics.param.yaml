@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    vehicle_kinematics:
+      velocity_hard_mps: 12.5 # [m/s] (45 km/h)
+      lon_accel_hard_min_mps2: -6.0 # [m/s^2] (減速側)
+      lon_accel_hard_max_mps2: 6.0 # [m/s^2] (加速側)
+      lon_jerk_hard_mps3: 5.0 # [m/s^3]
+      lat_accel_hard_mps2: 1.5 # [m/s^2] (グリップ限界相当)
+      steer_rate_hard_radps: 0.256 # [rad/s]

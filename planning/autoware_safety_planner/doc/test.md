@@ -14,7 +14,7 @@ Scenarios live in `test_data/<name>.yaml`, one scenario per file. Besides the ma
 `expectation` (`goal_reached`, the default, or `stop`: the ego must stall with |v| < 0.1 m/s before the goal, e.g. behind an obstacle). The list of scenarios to run is
 `test_data/scenarios.yaml`; it is read when the test executable starts, so adding or disabling a case
 needs no C++ change (only a `colcon build` to re-install `test_data/`, unless `--symlink-install` is used).
-The planner parameters come from `config/safety_planner.param.yaml` (the production config).
+The planner parameters come from the production config: `config/safety_planner.param.yaml` plus the per-plugin files under `config/constraint_generator/` and `config/trajectory_planner/`.
 
 ## Build
 

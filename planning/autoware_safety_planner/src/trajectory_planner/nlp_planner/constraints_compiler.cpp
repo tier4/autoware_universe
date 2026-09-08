@@ -285,9 +285,17 @@ bool project_boundary(
   for (const auto & v : densify(vertices, false)) {
     // 射影できない頂点 (中心線の外・多価) は落とす。折れ線の一部でも s 上に載れば
     // 横方向の包絡としては使える
-    if (const auto sl = centerline.project(v)) {
-      entry.polyline.push_back(*sl);
+    const auto sl = centerline.project(v);
+    if (!sl) {
+      continue;
     }
+    // 禁止側と反対側に射影される頂点も落とす。中心線が goal で打ち切られていて lanelet が先で
+    // 折り返す (ヘアピン・ロータリー) と、復路側の左境界が中心線の右に射影され、「左禁止」
+    // なのに l<0 の境界になって全域が走行不能になる
+    if ((boundary.forbidden_side == Side::LEFT) != (sl->l > 0.0)) {
+      continue;
+    }
+    entry.polyline.push_back(*sl);
   }
   if (entry.polyline.size() < 2) {
     return false;

@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    lane_following_drivable_area:
+      margin_m: 0.0 # [m] Boundary の膨張マージン
+      bound_slack_weight: 100.0 # [-] 自レーン bound (SOFT) のスラック重み。road_border は HARD

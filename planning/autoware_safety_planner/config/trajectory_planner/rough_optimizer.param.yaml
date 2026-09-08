@@ -1,0 +1,31 @@
+# RoughOptimizerTrajectoryPlanner: rough_planner (時空間 DP) → trajectory_optimizer プラグイン
+/**:
+  ros__parameters:
+    trajectory_optimizer:
+      # 軌道最適化の定式化をここで切り替える
+      #   NlpTrajectoryOptimizer … 時間パラメタライズ非凸 NLP (状態に κ を持ち、ステア角/レートを hard に書ける)
+      #   SscQpTrajectoryOptimizer … (s,l,t) cube 上の区分 Bezier を凸 QP で解く (SSC)
+      # 各 optimizer のパラメータは同じディレクトリの <optimizer>.param.yaml
+      plugin: "autoware::safety_planner::NlpTrajectoryOptimizer"
+
+    rough_planner:
+      time_step_s: 0.1 # [s] 出力時間グリッド (下流 optimizer のステージと同一)
+      num_points: 101 # N + 1
+      max_candidates: 1
+      dp:
+        s_max_m: 150.0 # [m]
+        s_step_m: 0.5 # [m]
+        l_range_m: 6.0 # [m]
+        l_step_m: 1.0 # [m]
+        t_step_s: 0.5 # [s]
+        horizon_s: 10.0 # [s]
+        v_step_mps: 1.0 # [m/s]
+        lateral_slope_max: 0.3 # [-]
+        lateral_rate_max_mps: 1.5 # [m/s]
+        weights:
+          progress: 1.0
+          lateral: 0.5
+          lateral_rate: 1.0
+          velocity: 0.2
+          accel: 0.1
+          accel_nominal: 2.0
