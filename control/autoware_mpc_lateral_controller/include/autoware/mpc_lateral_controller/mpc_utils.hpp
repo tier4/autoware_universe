@@ -19,7 +19,6 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include <Eigen/Core>
-#include <autoware/trajectory_follower_base/control_horizon.hpp>
 #include <tf2/utils.hpp>
 
 #include "autoware_planning_msgs/msg/trajectory.hpp"
@@ -43,20 +42,6 @@ namespace MPCUtils
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using geometry_msgs::msg::Pose;
-
-/** Build an unshifted command horizon from a fresh, uniformly timed MPPI trajectory. */
-bool makeSteeringPassthroughHorizon(
-  const Trajectory & trajectory, const double age_s, const double timeout_s,
-  trajectory_follower::LateralHorizon & horizon, std::string & reason);
-
-/**
- * Convert model steering to the published calibration frame and populate bounded command rates.
- * The first rate uses the previous published command; it is not actuator tracking error.
- * This bounds the rate field, not the change of the requested angle (u[0] remains the target).
- */
-void finalizeSteeringPassthroughHorizon(
-  trajectory_follower::LateralHorizon & horizon, const double previous_angle, const double offset,
-  const double angle_limit, const double rate_limit, const double command_dt);
 
 /**
  * @brief calculate 2d distance from trajectory[idx1] to trajectory[idx2]
