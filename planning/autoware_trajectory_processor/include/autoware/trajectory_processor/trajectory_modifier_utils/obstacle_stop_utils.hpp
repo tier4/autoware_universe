@@ -235,6 +235,7 @@ struct TargetObject
 {
   PredictedObject object;
   Polygon2d polygon;
+  Polygon2d ego_footprint;
   bool is_safe{false};
   double distance_from_ego{0.0};
   double safe_distance{0.0};
@@ -248,7 +249,6 @@ struct DebugData
   PointCloud2::SharedPtr filtered_points;
   PredictedObjects filtered_objects;
   TargetObjects target_objects;
-  MultiPolygon2d target_polygons;
   TrajectoryShape trajectory_shape;
   std::vector<geometry_msgs::msg::Point> target_pcd_points;
   std::optional<PredictedObject> colliding_object;
@@ -276,23 +276,27 @@ TrajectoryShape build_trajectory_footprint_index(
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double ego_vel,
   const double ego_accel, const double decel, const double jerk, const double stop_margin);
 
+using QueryResult = std::pair<size_t, Polygon2d>;
+
 /**
- * @brief Find ego footprints whose expanded OBB contains the given point.
+ * @brief Find the nearest ego footprint whose expanded OBB contains the given point.
  * @details Coarse R-tree AABB query (inflated by `lat_margin`), then a precise vehicle-frame
  * OBB test: x in [-ego_back_offset, ego_front_offset], |y| <= ego_half_width + lat_margin.
- * @return Footprint indices sorted by increasing arc_length.
+ * @return Overlapping footprint index and Ego OBB (including `lat_margin`) transformed into the
+ * nearest hit pose frame, or nullopt if none contain the point.
  */
-std::vector<size_t> query_overlapping_footprints(
+std::optional<QueryResult> query_overlapping_footprint(
   const TrajectoryShape & shape, const Point2d & point, const double lat_margin);
 
 /**
- * @brief Find ego footprints that intersect the given object polygon.
+ * @brief Find the nearest ego footprint that intersects the given object polygon.
  * @details Coarse R-tree AABB query (inflated by `lat_margin`), then
  * `autoware_utils_geometry::sat::intersects` in the footprint frame. The ego OBB (including
  * `lat_margin`) is built once per query; each candidate only inverse-transforms the object.
- * @return Footprint indices sorted by increasing arc_length.
+ * @return Overlapping footprint index and Ego OBB (including `lat_margin`) transformed into the
+ * nearest hit pose frame, or nullopt if none intersect.
  */
-std::vector<size_t> query_overlapping_footprints(
+std::optional<QueryResult> query_overlapping_footprint(
   const TrajectoryShape & shape, const Polygon2d & polygon, const double lat_margin);
 
 /**
@@ -333,7 +337,6 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
  * considered static.
  * @param lookahead_horizon Maximum `time_from_start` along the trajectory [s] to propagate objects
  * and ego states.
- * @param[out] colliding_object Object with the smallest arc-length collision among unsafe cases.
  * @return Collision geometry and arc length, or nullopt if inputs are invalid or objects are safe
  */
 std::optional<CollisionPoint> get_nearest_object_collision(
@@ -399,7 +402,7 @@ struct ObjectFilter
    * @brief Keep only objects that intersect ego footprints, dropping those leaving laterally.
    * @details Objects with no overlapping footprint (expanded by `lat_margin`) are removed. Moving
    * objects judged to be exiting the corridor (using lateral velocity and a short prediction
-   * horizon) are also removed. Polygons of retained objects are accumulated in `target_polygons`.
+   * horizon) are also removed.
    * @param[in,out] objects Predicted objects to filter in place.
    * @param trajectory_points Reference path for time and geometry queries.
    * @param trajectory_shape Ego footprint index used for overlap queries.

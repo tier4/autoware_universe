@@ -29,6 +29,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -255,13 +256,11 @@ std::vector<FootprintNode> query_rtree_candidates(
   return candidates;
 }
 
-std::vector<size_t> sort_hits_by_arc_length(
-  const TrajectoryShape & shape, std::vector<size_t> && hits)
+void sort_hits_by_arc_length(const TrajectoryShape & shape, std::vector<size_t> & hits)
 {
   std::sort(hits.begin(), hits.end(), [&](const size_t a, const size_t b) {
     return shape.footprints[a].arc_length < shape.footprints[b].arc_length;
   });
-  return hits;
 }
 
 bool is_point_within_footprint(
@@ -285,23 +284,26 @@ Polygon2d make_local_ego_polygon(const TrajectoryShape & shape, const double lat
   return ego;
 }
 
-Polygon2d transform_polygon_to_pose_frame(
-  const Polygon2d & polygon, const geometry_msgs::msg::Pose & pose)
+Polygon2d transform_polygon(
+  const Polygon2d & polygon, const geometry_msgs::msg::Pose & pose, bool inverse = false)
 {
+  auto pose_2d = pose;
+  pose_2d.orientation = autoware_utils::create_quaternion_from_yaw(tf2::getYaw(pose.orientation));
   Polygon2d local;
   local.outer().reserve(polygon.outer().size());
   for (const auto & p : polygon.outer()) {
-    const auto rel = autoware_utils::inverse_transform_point(p.to_3d(), pose);
+    const auto rel = inverse ? autoware_utils::inverse_transform_point(p.to_3d(), pose_2d)
+                             : autoware_utils::transform_point(p.to_3d(), pose_2d);
     local.outer().emplace_back(rel.x(), rel.y());
   }
   return local;
 }
 }  // namespace
 
-std::vector<size_t> query_overlapping_footprints(
+std::optional<QueryResult> query_overlapping_footprint(
   const TrajectoryShape & shape, const Polygon2d & polygon, const double lat_margin)
 {
-  if (polygon.outer().empty()) return {};
+  if (polygon.outer().empty()) return std::nullopt;
 
   const auto query_box = inflate_box(
     boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(polygon), lat_margin);
@@ -311,16 +313,19 @@ std::vector<size_t> query_overlapping_footprints(
   std::vector<size_t> hits;
   hits.reserve(candidates.size());
   for (const auto & node : candidates) {
-    const auto object_local =
-      transform_polygon_to_pose_frame(polygon, shape.footprints[node.second].pose);
+    const auto object_local = transform_polygon(polygon, shape.footprints[node.second].pose, true);
     if (autoware_utils_geometry::sat::intersects(ego_local, object_local)) {
       hits.push_back(node.second);
     }
   }
-  return sort_hits_by_arc_length(shape, std::move(hits));
+
+  if (hits.empty()) return std::nullopt;
+  sort_hits_by_arc_length(shape, hits);
+  const auto overlap_polygon = transform_polygon(ego_local, shape.footprints[hits.front()].pose);
+  return QueryResult(hits.front(), overlap_polygon);
 }
 
-std::vector<size_t> query_overlapping_footprints(
+std::optional<QueryResult> query_overlapping_footprint(
   const TrajectoryShape & shape, const Point2d & point, const double lat_margin)
 {
   const autoware_utils_geometry::Box2d query_box{
@@ -335,7 +340,12 @@ std::vector<size_t> query_overlapping_footprints(
       hits.push_back(node.second);
     }
   }
-  return sort_hits_by_arc_length(shape, std::move(hits));
+
+  if (hits.empty()) return std::nullopt;
+  sort_hits_by_arc_length(shape, hits);
+  const auto overlap_polygon = transform_polygon(
+    make_local_ego_polygon(shape, lat_margin), shape.footprints[hits.front()].pose);
+  return QueryResult(hits.front(), overlap_polygon);
 }
 
 std::optional<CollisionPoint> get_nearest_pcd_collision(
@@ -353,10 +363,11 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
     const auto classification = static_cast<PointCloudClassification>(point.class_id);
     const auto lat_margin = get_lateral_margin(lateral_margin_map, to_object_type(classification));
     const Point2d query_point{point.x, point.y};
-    const auto hits = query_overlapping_footprints(trajectory_shape, query_point, lat_margin);
-    if (hits.empty()) continue;
+    const auto result = query_overlapping_footprint(trajectory_shape, query_point, lat_margin);
+    if (!result) continue;
 
-    const auto & footprint = trajectory_shape.footprints[hits.front()];
+    const auto & [index, overlap_polygon] = result.value();
+    const auto & footprint = trajectory_shape.footprints[index];
     const auto rel = autoware_utils::inverse_transform_point(query_point.to_3d(), footprint.pose);
     const auto arc_length = footprint.arc_length + rel.x();
 
@@ -549,7 +560,6 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   for (auto & object : target_objects) {
     auto last_p = trajectory_points.front().pose.position;
     auto curr_arc_length = 0.0;
-    bool is_first = true;
     for (const auto & traj_p : trajectory_points) {
       const auto t = rclcpp::Duration(traj_p.time_from_start).seconds();
       if (t > lookahead_horizon) break;
@@ -559,14 +569,8 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       const auto obj_state = get_object_state_at_time(trajectory_points, object.object, t);
       const auto obj_stopping_distance =
         get_object_stopping_distance(object.object, obj_state.lon_vel);
-      const auto [safe, safe_distance, distance_from_ego] =
+      std::tie(object.is_safe, object.safe_distance, object.distance_from_ego) =
         is_safe(obj_state.arc_length, obj_stopping_distance, curr_arc_length, target_ego_vel);
-      object.is_safe = safe;
-      if (is_first) {
-        is_first = false;
-        object.safe_distance = safe_distance;
-        object.distance_from_ego = distance_from_ego;
-      }
       if (object.is_safe) continue;
       found_collision = true;
       auto collision_arc_length = obj_state.arc_length + obj_stopping_distance;
@@ -682,10 +686,6 @@ void ObjectFilter::filter_by_target_area(
     return autoware_utils::expand_polygon(polygon, safety_buffer_);
   };
 
-  auto overlaps_ego_footprints = [&](const Polygon2d & polygon, const double lat_margin) {
-    return !query_overlapping_footprints(trajectory_shape, polygon, lat_margin).empty();
-  };
-
   auto is_exiting = [&](const auto & object, const double lat_margin) -> bool {
     const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
     const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
@@ -705,7 +705,8 @@ void ObjectFilter::filter_by_target_area(
     if (!t_to_obj_current_pos) return true;
     const auto obj_pred_pose = get_predicted_obj_pose_at_time(object, t_to_obj_current_pos.value());
     const auto obj_pred_polygon = get_object_polygon(obj_pred_pose, object.shape);
-    return !overlaps_ego_footprints(obj_pred_polygon, lat_margin);
+    return query_overlapping_footprint(trajectory_shape, obj_pred_polygon, lat_margin) ==
+           std::nullopt;
   };
 
   target_objects.erase(
@@ -716,9 +717,12 @@ void ObjectFilter::filter_by_target_area(
         const auto lat_margin = get_lateral_margin(lateral_margin_map, to_object_type(object));
         const auto object_pose = object.kinematics.initial_pose_with_covariance.pose;
         const auto object_polygon = get_object_polygon(object_pose, object.shape);
-        if (!overlaps_ego_footprints(object_polygon, lat_margin)) return true;
+        const auto query_result =
+          query_overlapping_footprint(trajectory_shape, object_polygon, lat_margin);
+        if (!query_result) return true;
         if (is_exiting(object, lat_margin)) return true;
         obj.polygon = object_polygon;
+        obj.ego_footprint = query_result.value().second;
         return false;
       }),
     target_objects.end());
