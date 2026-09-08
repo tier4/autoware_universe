@@ -14,6 +14,8 @@
 
 #include "autoware/ml_planner/postprocessing/road_border_avoidance.hpp"
 
+#include <rclcpp/duration.hpp>
+
 #include <boost/geometry.hpp>
 
 #include <algorithm>
@@ -153,6 +155,10 @@ RoadBorderAvoidanceResult RoadBorderAvoidance::adjust(
   double carried_offset_m = 0.0;
 
   for (auto & point : result.trajectory.points) {
+    if (rclcpp::Duration(point.time_from_start).seconds() < params_.start_time_s) {
+      continue;
+    }
+
     const double raw_x = point.pose.position.x;
     const double raw_y = point.pose.position.y;
     const double yaw = yaw_from_quaternion(point.pose.orientation);

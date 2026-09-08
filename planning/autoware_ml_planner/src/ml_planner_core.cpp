@@ -41,6 +41,42 @@
 
 namespace autoware::ml_planner
 {
+namespace
+{
+#ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
+bool optimization_params_changed(
+  const optimization::TrajectoryOptimizationParams & lhs,
+  const optimization::TrajectoryOptimizationParams & rhs)
+{
+  return lhs.enable != rhs.enable || lhs.weight_longitudinal != rhs.weight_longitudinal ||
+         lhs.weight_lateral != rhs.weight_lateral || lhs.weight_yaw != rhs.weight_yaw ||
+         lhs.weight_velocity != rhs.weight_velocity ||
+         lhs.weight_steering_angle != rhs.weight_steering_angle ||
+         lhs.weight_acceleration != rhs.weight_acceleration ||
+         lhs.weight_steering_rate != rhs.weight_steering_rate ||
+         lhs.terminal_weight_scale != rhs.terminal_weight_scale ||
+         lhs.min_velocity_mps != rhs.min_velocity_mps ||
+         lhs.max_velocity_mps != rhs.max_velocity_mps ||
+         lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
+         lhs.max_acceleration_mps2 != rhs.max_acceleration_mps2 ||
+         lhs.max_steering_rate_rps != rhs.max_steering_rate_rps ||
+         lhs.max_lateral_acceleration_mps2 != rhs.max_lateral_acceleration_mps2 ||
+         lhs.max_sqp_iterations != rhs.max_sqp_iterations;
+}
+#endif
+
+bool road_border_avoidance_params_changed(
+  const postprocess::RoadBorderAvoidanceParams & lhs,
+  const postprocess::RoadBorderAvoidanceParams & rhs)
+{
+  return lhs.enable != rhs.enable || lhs.start_time_s != rhs.start_time_s ||
+         lhs.footprint_margin_m != rhs.footprint_margin_m ||
+         lhs.search_radius_m != rhs.search_radius_m || lhs.shift_step_m != rhs.shift_step_m ||
+         lhs.max_lateral_shift_m != rhs.max_lateral_shift_m ||
+         lhs.propagate_shift != rhs.propagate_shift;
+}
+}  // namespace
+
 #ifdef AUTOWARE_ML_PLANNER_USE_ONNXRUNTIME
 namespace
 {
@@ -68,7 +104,7 @@ std::string onnxruntime_execution_provider_from_backend(const std::string & back
 #endif
 
 MLPlannerCore::MLPlannerCore(const MLPlannerParams & params, const VehicleInfo & vehicle_info)
-: params_(params), vehicle_spec_(vehicle_info)
+: params_(params), vehicle_info_(vehicle_info), vehicle_spec_(vehicle_info)
 {
   if (
     params_.batch_size < 1 || params_.batch_size > 2 ||
@@ -119,11 +155,41 @@ void MLPlannerCore::update_params(const MLPlannerParams & params)
     throw std::invalid_argument(
       "batch_size must be 1 or 2 and noise_scale must contain exactly batch_size values");
   }
+#ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
+  const bool rebuild_optimizer =
+    params.batch_size != params_.batch_size ||
+    optimization_params_changed(params.trajectory_optimization, params_.trajectory_optimization);
+#endif
+  const bool rebuild_avoidance = road_border_avoidance_params_changed(
+    params.road_border_avoidance, params_.road_border_avoidance);
+
   params_ = params;
+
+#ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
+  if (rebuild_optimizer) {
+    trajectory_optimizer_.reset();
+    if (params_.trajectory_optimization.enable) {
+      trajectory_optimizer_ = std::make_unique<optimization::TrajectoryOptimizer>(
+        params_.trajectory_optimization, vehicle_info_, static_cast<size_t>(params_.batch_size));
+    }
+  }
+#endif
+
+  if (rebuild_avoidance) {
+    road_border_avoidance_.reset();
+    if (params_.road_border_avoidance.enable) {
+      road_border_avoidance_ = std::make_unique<postprocess::RoadBorderAvoidance>(
+        params_.road_border_avoidance, vehicle_info_);
+      if (lanelet_map_ptr_) {
+        road_border_avoidance_->set_map(*lanelet_map_ptr_);
+      }
+    }
+  }
 }
 
 void MLPlannerCore::set_map(const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
 {
+  lanelet_map_ptr_ = lanelet_map_ptr;
   lane_segment_context_ = std::make_unique<preprocess::LaneSegmentContext>(
     lanelet_map_ptr, params_.line_string_max_step_m);
   if (road_border_avoidance_ && lanelet_map_ptr) {
