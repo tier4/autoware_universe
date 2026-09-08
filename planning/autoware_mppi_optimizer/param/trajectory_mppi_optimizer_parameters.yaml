@@ -34,7 +34,7 @@ trajectory_mppi_optimizer:
     type: double
     default_value: 0.01
     description: Strict lower bound for ESS-adaptive lambda
-    validation: { gt<>: [0.0] }
+    validation: { gt_eq<>: [0.000001] }
     read_only: false
   lambda_max:
     type: double
@@ -45,25 +45,25 @@ trajectory_mppi_optimizer:
   target_ess_ratio:
     type: double
     default_value: 0.2
-    description: Target effective sample size divided by the number of rollouts
+    description: Target effective sample size divided by the number of finite collision-free rollouts
     validation: { bounds<>: [0.0, 1.0] }
     read_only: false
   lambda_adaptation_gain:
     type: double
     default_value: 0.1
-    description: Proportional gain for lambda feedback; zero disables adaptation
+    description: Gain for log ESS-ratio feedback with a factor-of-two change limit per cycle; zero holds lambda
     validation: { gt_eq<>: [0.0] }
     read_only: false
   unsafe_rollout_fraction_threshold:
     type: double
     default_value: 0.95
-    description: Fraction of collision/safety-violating rollouts that forces lambda_max next cycle
+    description: Diagnostic unsafe-population threshold; does not change lambda or sampling noise
     validation: { bounds<>: [0.0, 1.0] }
     read_only: false
   cost_normalization_percentile:
     type: double
     default_value: 0.95
-    description: Upper finite rollout-cost percentile used for robust normalization
+    description: Exact upper finite collision-free rollout-cost percentile used for normalization
     validation: { bounds<>: [0.0, 1.0] }
     read_only: false
   max_iter:
