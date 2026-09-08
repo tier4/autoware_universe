@@ -73,6 +73,7 @@ using autoware::mppi_optimizer::FirstOrderDubinsMppiControlSequencePostprocessor
 using autoware::mppi_optimizer::FirstOrderDubinsMppiCostParams;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiOptimizationResult;
+using autoware::mppi_optimizer::FirstOrderDubinsMppiPostprocessingContext;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiRuntimeOptions;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiVehicleParams;
 using autoware::mppi_optimizer::quaternionFromYaw;
@@ -725,16 +726,19 @@ int run(int argc, char ** argv)
     const float s_ego = egoArcLengthOnPath(plant);
     const auto reference =
       sliceReferenceHorizonFromArcLength(fixed_reference, s_ego, ref_ds, reference_points, speed);
+    auto candidate_steering_filter = steering_filter;
     FirstOrderDubinsMppiControlSequencePostprocessor control_postprocessor;
     if (steering_filter_config.enabled) {
-      control_postprocessor = [&steering_filter, measured_steering = plant.steering](
-                                std::vector<FirstOrderDubinsMppiControl> & controls) {
+      control_postprocessor = [&candidate_steering_filter, measured_steering = plant.steering](
+                                std::vector<FirstOrderDubinsMppiControl> & controls,
+                                const FirstOrderDubinsMppiPostprocessingContext & context) {
         std::vector<float> steering_commands;
         steering_commands.reserve(controls.size());
         for (const auto & control : controls) {
           steering_commands.push_back(control.steer_cmd);
         }
-        steering_filter.filter(steering_commands, measured_steering);
+        candidate_steering_filter.filter(
+          steering_commands, measured_steering, context.first_command_is_shifted);
         for (std::size_t index = 0; index < controls.size(); ++index) {
           controls[index].steer_cmd = steering_commands[index];
         }
@@ -743,6 +747,11 @@ int run(int argc, char ** argv)
     const auto result = mppi.optimizeTrajectory(
       reference, makeOdometry(plant, sim_t), makeAccel(plant), makeSteering(plant), objects, {}, {},
       limits, control_postprocessor);
+    if (!result.debug.was_rejected && result.optimized_point_count > 0U) {
+      steering_filter = candidate_steering_filter;
+    } else {
+      steering_filter.reset();
+    }
     if (step == 0) {
       if (!autoware::mppi_optimizer::writeMppiDebugOptimalHorizonCsv(
             horizon_csv, result.debug.optimal_horizon, kDt)) {
