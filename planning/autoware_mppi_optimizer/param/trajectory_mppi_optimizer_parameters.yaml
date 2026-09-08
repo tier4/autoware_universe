@@ -159,13 +159,13 @@ trajectory_mppi_optimizer:
   lateral_jerk_coeff:
     type: double
     default_value: 10.0
-    description: Lateral jerk cost coefficient
+    description: Physical inertial lateral jerk cost coefficient (vehicle frame)
     validation: { gt_eq<>: [0.0] }
     read_only: false
   longitudinal_jerk_coeff:
     type: double
     default_value: 100.0
-    description: Longitudinal jerk cost coefficient
+    description: Physical acceleration-change rate cost coefficient
     validation: { gt_eq<>: [0.0] }
     read_only: false
   accel_cmd_coeff:
@@ -183,7 +183,19 @@ trajectory_mppi_optimizer:
   steer_rate_coeff:
     type: double
     default_value: 20000.0
-    description: Steering rate cost coefficient
+    description: Physical steering-angle change rate cost coefficient
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  accel_cmd_rate_coeff:
+    type: double
+    default_value: 0.0
+    description: Squared acceleration command-change rate weight within the horizon (t >= 1), separate from physical jerk
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  steer_cmd_rate_coeff:
+    type: double
+    default_value: 0.0
+    description: Squared steering command-change rate weight within the horizon (t >= 1), separate from physical jerk
     validation: { gt_eq<>: [0.0] }
     read_only: false
   initial_steer_rate_coeff:
