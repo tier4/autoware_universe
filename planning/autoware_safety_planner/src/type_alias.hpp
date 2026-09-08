@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TYPE_ALIAS_HPP_
-#define TYPE_ALIAS_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TYPE_ALIAS_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TYPE_ALIAS_HPP_
 
 #include <autoware/lanelet2_utils/route_manager.hpp>
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
@@ -82,4 +82,4 @@ using OptimizerPluginLoader = pluginlib::ClassLoader<OptimizerPluginInterface>;
 
 }  // namespace autoware::safety_planner
 
-#endif  // TYPE_ALIAS_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TYPE_ALIAS_HPP_

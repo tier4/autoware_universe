@@ -12,21 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""時間パラメタライズ運動学モデル (docs/spec/nlp_and_fallback.md S5 §2).
+"""The time-parameterized kinematic model.
 
-    状態   x = [px, py, theta, kappa, v, a]
-    入力   u = [w, j]                        w = dkappa/dt, j = da/dt
-    力学   px' = v cos(theta), py' = v sin(theta), theta' = v kappa,
-           kappa' = w, v' = a, a' = j
+    state   x = [px, py, theta, kappa, v, a]
+    input   u = [w, j]                        w = dkappa/dt, j = da/dt
+    f       px' = v cos(theta), py' = v sin(theta), theta' = v kappa,
+            kappa' = w, v' = a, a' = j
 
-kappa を状態に持つのがこの定式化の要。ステア角 delta = atan(L kappa) とステアレート
-ddelta/dt = L w / (1 + (L kappa)^2) が状態と入力の関数になるので、事後チェックではなく
-**制約として書ける** (SSC 側が構造的に書けないもの)。1/v はどこにも現れず v = 0 は特異点でない。
+Carrying kappa in the state is what this formulation is about: the steer angle
+delta = atan(L kappa) and the steer rate ddelta/dt = L w / (1 + (L kappa)^2) become functions of
+the state and the input, so they can be written **as constraints** rather than checked afterwards,
+which the SSC formulation structurally cannot. Nothing divides by v, so v = 0 is not a singularity.
 
-時間刻み dt は**モデルパラメータ**でありソルバーの時間刻みではない: 積分器は 1 ステージで
-正規化 1 単位だけ進み (tf == N)、C++ 側が毎周期 rough_plan の刻みを dt に書く。
-これが「生成物を作り直さずに計画格子を変えられる」ための仕掛け
-(空間版 acados_mpt_optimizer が踏んだ「codegen 時と違う dt が解けない」痛点の回避)。
+The step dt is a **model parameter**, not the step of the solver: the integrator advances one
+normalized unit per stage (tf == N) and the C++ side writes the step of the rough plan into dt
+every cycle. That is what lets the planning grid change without regenerating the solver, which the
+space-parameterized acados_mpt_optimizer could not do.
 """
 
 import types
@@ -39,21 +40,23 @@ from casadi import vertcat
 
 MODEL_NAME = "rbp_nlp_time"
 
-# 1 ステージあたりのコリドー半空間の数: 横 (左右) + 前方カット = 3。
-# 横 2 面はステージが属する semantic cube の面、前方カットはそのステージの時刻に前方へ効く
-# 占有・停止線から直接引く。codegen 時に固定で、C++ 側の NUM_PLANES と一致していること。
+# Corridor half spaces per stage: the two lateral ones plus the forward cut. The lateral ones are
+# faces of the semantic cube the stage belongs to, and the forward cut comes straight from the
+# occupancies and stop lines in effect ahead at that time. It is fixed at generation time and must
+# match NUM_PLANES on the C++ side.
 #
-# **後方カット (s >= s0) は載せない**。v >= 0 の box があるので後退はせず、後方に守る対象も
-# 無い (停止線・先行車は前方カットが持つ)。加えて先頭 cube の s0 は経路始端で切れるため、
-# footprint 後端が構造的に外へ出て rho_B のスラックが解を前方へ押してしまう。
+# There is **no rear cut**: v >= 0 keeps the ego from reversing and there is nothing behind to
+# protect, stop lines and lead vehicles being held by the forward cut. Besides, the s0 of the first
+# cube is clipped at the start of the path, so a rear cut would structurally push the rear of the
+# footprint outside and let its slack drive the solution forward.
 NUM_PLANES = 3
-# 支持関数の |n . w| の平滑化 (S6 §4.2 の注記)。sqrt(y^2 + eps) >= |y| なので必ず**厳しい側**へ
-# ずれ、平滑化した行で実行可能な点は素の絶対値でも実行可能。
+# Smoothing of the |n . w| in the support function. sqrt(y^2 + eps) >= |y|, so it always errs on
+# the **strict** side and a point feasible for the smoothed row is feasible for the exact one.
 LATERAL_SUPPORT_EPSILON = 1.0e-6
 
-# --- con_h_expr の行レイアウト (C++ 側と同じ順序を保つこと) ------------------------------------
-# 行 1 以降はすべてスラック付き。行 0 だけがハードな非線形行で、w = 0 が常に満たすので
-# 実行可能集合を空にできない (S5 §3.1: A tier は構成的に実行可能でなければならない)。
+# --- row layout of con_h_expr; keep it in the same order as the C++ side ---
+# Every row from 1 on carries a slack. Row 0 is the only hard nonlinear row, and w = 0 always
+# satisfies it, so it cannot empty the feasible set.
 ROW_STEER_RATE_HARD = 0
 ROW_STEER_RATE_NOMINAL = 1
 ROW_LATERAL_ACCEL = 2
@@ -61,13 +64,15 @@ ROW_ACCEL_COMFORT = 3
 ROW_JERK_COMFORT = 4
 ROW_VELOCITY_SECTION = 5
 ROW_VELOCITY_NOMINAL = 6
-# コリドー行は B (侵入禁止, uh = 0, rho_B) の 1 ブロックだけ。C の追加マージン行は持たない
-# (面からの余裕は cube の margin_m が既に持っており、二重に取ると車線幅に対して構造的に破れる)。
+# The corridor contributes one block of safety rows (no intrusion, uh = 0) and no comfort margin
+# row: the clearance from a face is already in the margin_m of the cube, and taking it twice is
+# structurally violated at the width of a lane.
 NUM_CORRIDOR_ROWS = 2 * NUM_PLANES
 FIRST_CORRIDOR_ROW_SAFETY = 7
 NUM_ROWS = FIRST_CORRIDOR_ROW_SAFETY + NUM_CORRIDOR_ROWS
 
-# 終端ステージには入力が無いので、w / j を読む行は構造的に不在 (S5 §3.1)。残るのは状態だけの行。
+# The last stage has no input, so every row reading w or j is structurally absent there; what
+# remains are the rows over the states alone.
 ROW_E_LATERAL_ACCEL = 0
 ROW_E_ACCEL_COMFORT = 1
 ROW_E_VELOCITY_SECTION = 2
@@ -79,14 +84,14 @@ NUM_ROWS_E = FIRST_CORRIDOR_ROW_E_SAFETY + NUM_CORRIDOR_ROWS
 def _corridor_rows(
     x_pos, y_pos, theta, plane_nx, plane_ny, plane_d, foot_min, foot_max, half_width
 ):
-    """支持関数の行: footprint 長方形が半空間 n . p <= d に収まること.
+    """Support function rows: the footprint rectangle stays inside the half space n . p <= d.
 
-    後軸を基準点とした長方形の方向 n への支持関数は
+    The support function of the rectangle, anchored at the rear axle, in the direction n is
 
         n . p_base + alpha (n . forward) + (W/2) |n . left|
 
-    で、縦方向の max は**縦端ごとに 1 行出す**ことで消してある (各行が状態について滑らかになり、
-    2 行の組は長方形について厳密)。
+    The maximum over the longitudinal extent is removed by emitting **one row per longitudinal
+    end**, which keeps each row smooth in the state while the pair is exact for the rectangle.
     """
     forward_x = cos(theta)
     forward_y = sin(theta)
@@ -109,11 +114,11 @@ def _corridor_rows(
 
 
 def time_bicycle_model():
-    """モデル本体・ステージ行・終端行を作る.
+    """Builds the model, the stage rows and the terminal rows.
 
-    パラメータ p = [dt, wheel_base,
-                    footprint_longitudinal_min, footprint_longitudinal_max, footprint_half_width,
-                    (nx, ny, d) x NUM_PLANES]
+    The parameters are p = [dt, wheel_base,
+                            footprint_longitudinal_min, footprint_longitudinal_max,
+                            footprint_half_width, (nx, ny, d) x NUM_PLANES]
     """
     model = types.SimpleNamespace()
 
@@ -155,7 +160,7 @@ def time_bicycle_model():
         SX.sym("adot"),
     )
 
-    # 1 ステージ = 正規化 1 単位なので d/dtau = dt * d/dt。
+    # One stage is one normalized unit, hence d/dtau = dt * d/dt.
     f_expl = time_step * vertcat(
         velocity * cos(theta),
         velocity * sin(theta),
@@ -165,8 +170,8 @@ def time_bicycle_model():
         jerk,
     )
 
-    # ステアレート ddelta/dt = L w / (1 + (L kappa)^2)。分母が常に正で行が滑らかなので、
-    # ± 2 行に割らず**両側 1 行**として書く。
+    # The steer rate ddelta/dt = L w / (1 + (L kappa)^2). Its denominator is always positive and
+    # the row is smooth, so it is written as a single two-sided row rather than split in two.
     steer_rate = wheel_base * curvature_rate / (1.0 + (kappa * wheel_base) ** 2)
     lateral_accel = velocity * velocity * kappa
 
@@ -175,17 +180,18 @@ def time_bicycle_model():
     )
 
     model.con_h_expr = vertcat(
-        steer_rate,  # A: ハード、±steer_rate_hard
-        steer_rate,  # C: スラック、±steer_rate_nominal
-        lateral_accel,  # C: スラック、±lateral_accel_nominal
-        accel,  # C: スラック、[a_nom_min, a_nom_max]
-        jerk,  # C: スラック、±jerk_nominal
-        velocity,  # B: スラック、<= 区間速度上限
-        velocity,  # C: スラック、<= ノミナル速度
-        *corridor,  # B: スラック (rho_B)、uh = 0
+        steer_rate,  # hard, +-steer_rate_hard
+        steer_rate,  # comfort, slacked, +-steer_rate_nominal
+        lateral_accel,  # comfort, slacked, +-lateral_accel_nominal
+        accel,  # comfort, slacked, [a_nom_min, a_nom_max]
+        jerk,  # comfort, slacked, +-jerk_nominal
+        velocity,  # safety, slacked, <= the interval speed limit
+        velocity,  # comfort, slacked, <= the nominal speed
+        *corridor,  # safety, slacked, uh = 0
     )
-    # 終端は状態だけの部分集合。S5 §3.2 が終端にも B 行を課すのは、この定式化の終端が
-    # 参照点に pin されず自由で、課さないとホライゾン末尾がコリドー外へ逃げるため。
+    # The terminal rows are the subset over the states alone. The safety rows are imposed there
+    # too because the last stage is free rather than pinned to a reference point, and without them
+    # the end of the horizon escapes the corridor.
     model.con_h_expr_e = vertcat(
         lateral_accel,
         accel,

@@ -1,8 +1,8 @@
 /**:
   ros__parameters:
     simple_drivable_area:
-      half_width_m: 3.0 # [m] 中心線からの片側幅 (簡易版の定数幅)
-      forward_extension_m: 5.0 # [m] 経路終端から前方への延長
-      backward_extension_m: 5.0 # [m] 経路始端から後方への延長
-      margin_m: 0.0 # [m] Boundary の膨張マージン
-      sample_interval_m: 1.0 # [m] 中心線のサンプル間隔
+      half_width_m: 3.0 # [m] half width of the area to each side of the centerline
+      forward_extension_m: 5.0 # [m] extension beyond the end of the path
+      backward_extension_m: 5.0 # [m] extension behind the start of the path
+      margin_m: 0.0 # [m] margin by which the forbidden side of a Boundary is inflated
+      sample_interval_m: 1.0 # [m] spacing of the centerline samples

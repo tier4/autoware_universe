@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
-#define TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
 
-// 軌道プランナープラグインの共通 IF。SafetyPlanner は制約の生成と certainty ごとの
-// 振り分けまでを行い、制約のコンパイル・rough_planner / optimizer の呼び出し方は
-// プラグインの実装詳細とする。
-// 入力 = 2 つの制約セット (normal / cautious、生の Constraint 列)、出力 = 2 本の軌道
+// Interface of the trajectory planner plugins. SafetyPlanner generates the constraints and splits
+// them by certainty; compiling them and driving the rough planner and the optimizer is left to the
+// plugin. Input: the two constraint sets (normal / cautious); output: the two trajectories.
 
 #include "../constraint.hpp"
 #include "../context.hpp"
@@ -39,7 +38,7 @@ namespace autoware::safety_planner
 struct TrajectoryPlannerInput
 {
   const PlannerContext & context;
-  const std::vector<Constraint> & normal_constraints;    //!< certainty = DEFINITE のみ
+  const std::vector<Constraint> & normal_constraints;    //!< certainty = DEFINITE only
   const std::vector<Constraint> & cautious_constraints;  //!< DEFINITE + POSSIBLE
 };
 
@@ -48,10 +47,10 @@ struct TrajectoryPlannerResult
   std::optional<Trajectory> normal_trajectory;
   std::optional<Trajectory> cautious_trajectory;
 
-  //! デバッグは当面 normal 側のパイプラインのみ (cautious 側の可視化は未整備)
+  //! Debug output covers the normal pipeline only; the cautious side is not visualized yet
   struct Debug
   {
-    CompiledConstraints compiled_constraints;  //!< normal 側のコンパイル結果
+    CompiledConstraints compiled_constraints;  //!< of the normal side
     RoughPlanResult rough_plan_result;
     TrajectoryOptimizerResult trajectory_optimizer_result;
   } debug;
@@ -63,7 +62,8 @@ public:
   TrajectoryPlannerInterface() = default;
   virtual ~TrajectoryPlannerInterface() = default;
 
-  //! ロード直後に 1 回呼ばれる。内部プラグイン (optimizer 等) のロードは派生側の override で行う
+  //! Called once right after the plugin is loaded. A derived class loads its own inner plugins
+  //! (the optimizer, ...) by overriding this.
   virtual void on_initialize(
     const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params)
   {
@@ -81,4 +81,4 @@ protected:
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_

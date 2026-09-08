@@ -28,15 +28,16 @@ namespace autoware::safety_planner
 namespace
 {
 
-//! 中心線の折れ線化・region 走査の刻み [m]。射影ビューの誤差はこの程度まで許す
-//! (ヘッダ冒頭の規約: DP の格子解像度と同程度の丸めは許容)
+//! [m] Step at which the centerline is turned into a polyline and a region is scanned. It sets the
+//! error the projected views may carry, which the header allows up to the grid of the DP.
 constexpr double CENTERLINE_SAMPLE_INTERVAL_M = 0.5;
 
-//! 折れ線化した中心線への射影で失う分の保守側パディング [m]。
-//! 弧長 box を持つビュー (occupancies / region 付き ScalarBound) にだけ足す
+//! [m] Conservative padding for what the polyline approximation of the centerline loses. Added
+//! only to the views carrying an arc length box: the occupancies and the ScalarBound with a
+//! region.
 constexpr double PROJECTION_PAD_M = 0.5 * CENTERLINE_SAMPLE_INTERVAL_M;
 
-//! 弧長が同一とみなせる幅 [m]
+//! [m] arc lengths within this are the same
 constexpr double S_EPS = 1e-6;
 
 double cross2d(const double ax, const double ay, const double bx, const double by)
@@ -44,7 +45,8 @@ double cross2d(const double ax, const double ay, const double bx, const double b
   return ax * by - ay * bx;
 }
 
-//! 折れ線化した中心線。射影はこの折れ線に対して行う (Trajectory::compute の呼び出し回数を抑える)
+//! The centerline as a polyline. Projecting onto it keeps the number of Trajectory::compute calls
+//! down.
 class Centerline
 {
 public:
@@ -75,9 +77,9 @@ public:
   const std::vector<Point2d> & points() const { return points_; }
   const std::vector<double> & arc_lengths() const { return s_; }
 
-  //! 世界座標の点を (s, l) へ射影する。
-  //! - 中心線の縦方向レンジ外に落ちる点 (端点でしか受け止められない点) は nullopt
-  //! - 曲率半径の外側 (|l·κ| ≥ 1) は射影が多価なので nullopt (ヘッダ冒頭の規約)
+  //! Projects a world point to (s, l), returning nullopt for a point that falls outside the
+  //! longitudinal range of the centerline, and for one outside the radius of curvature
+  //! (|l*k| >= 1), where the projection is ambiguous.
   std::optional<SlPoint> project(const Point2d & q) const
   {
     if (!valid()) {
@@ -96,12 +98,13 @@ public:
       const double qx = q.x() - points_[i].x();
       const double qy = q.y() - points_[i].y();
       double t = (qx * dx + qy * dy) / seg_len2;
-      // 端の区間だけは外挿を許す (中心線の始端・終端をわずかに超えた点を落とさないため)。
-      // 中間区間は [0, 1] へ**クランプする**。落としてはいけない: 折れ点では隣り合う区間の
-      // 垂線帯が一致せず、曲がりの外側に幅 |l·Δθ| の楔形の隙間が開く。そこに落ちた点を
-      // 「どの区間も受け持たない」として捨てると、境界の頂点が中心線のサンプル位置に
-      // 揃っている生成器 (simple_drivable_area) では**外側の頂点が丸ごと消え**、
-      // その s 範囲の横制約が丸ごと無くなる (fail-open になる)
+      // Only the first and the last segment may extrapolate, so that a point just beyond an end
+      // of the centerline is not lost. Inside, the parameter is clamped to [0, 1] rather than
+      // rejected: at a kink the perpendicular bands of the neighboring segments do not meet and
+      // leave a wedge of width |l*dtheta| on the outside of the turn. Treating a point in that
+      // wedge as belonging to no segment would, for a generator whose boundary vertices sit at the
+      // centerline samples (simple_drivable_area), drop the outer vertices entirely and remove the
+      // lateral constraint over that s range, i.e. fail open
       const bool first = (i == 0);
       const bool last = (i + 2 == points_.size());
       if (!first) {
@@ -128,13 +131,13 @@ public:
     if (!best) {
       return std::nullopt;
     }
-    // 縦方向レンジ外 (端点の外側) は s に意味が無いので落とす
+    // Beyond the ends there is no meaningful s
     if (best->s < -S_EPS || best->s > length_ + S_EPS) {
       return std::nullopt;
     }
     best->s = std::clamp(best->s, 0.0, length_);
     if (std::abs(best->l) * std::abs(curvature_at(best->s)) >= 1.0) {
-      return std::nullopt;  // 曲率中心より外側 = 射影が多価
+      return std::nullopt;  // beyond the center of curvature the projection is ambiguous
     }
     return best;
   }
@@ -156,8 +159,8 @@ private:
   std::vector<double> curvature_;
 };
 
-//! 折れ線を CENTERLINE_SAMPLE_INTERVAL_M 以下の刻みへ細分する。
-//! 長い辺をそのまま頂点だけ射影するとカーブで (s, l) の範囲を取りこぼすため
+//! Subdivides a polyline to steps of at most CENTERLINE_SAMPLE_INTERVAL_M. Projecting only the
+//! vertices of a long edge would miss part of its (s, l) range on a curve.
 std::vector<Point2d> densify(const std::vector<Point2d> & points, const bool closed)
 {
   std::vector<Point2d> out;
@@ -192,7 +195,7 @@ std::vector<Point2d> ring_points(const Polygon2d & polygon)
   for (const auto & p : ring) {
     points.push_back(p);
   }
-  // Polygon2d は閉じている (始点 == 終点)。重複頂点は落として開多角形として扱う
+  // A Polygon2d is closed; drop the duplicated vertex and treat it as an open polygon
   if (points.size() >= 2) {
     const auto & f = points.front();
     const auto & b = points.back();
@@ -204,10 +207,10 @@ std::vector<Point2d> ring_points(const Polygon2d & polygon)
 }
 
 // -----------------------------------------------------------------------------------------------
-// payload ごとの射影
+// projection, per payload
 // -----------------------------------------------------------------------------------------------
 
-//! region × 中心線の交差弧長区間。region が中心線と複数回交わるなら区間ごとに 1 つ
+//! The arc length intervals where the region meets the centerline, one per interval
 std::vector<std::pair<double, double>> intersect_region(
   const Centerline & centerline, const Polygon2d & region)
 {
@@ -229,7 +232,7 @@ std::vector<std::pair<double, double>> intersect_region(
   if (inside) {
     intervals.emplace_back(s_begin, s.back());
   }
-  // 走査の刻みで削れる分を保守側 (区間を広げる側) へ戻す
+  // Give back what the scanning step cut off, by widening the intervals
   for (auto & interval : intervals) {
     interval.first = std::max(0.0, interval.first - PROJECTION_PAD_M);
     interval.second = std::min(centerline.length(), interval.second + PROJECTION_PAD_M);
@@ -248,13 +251,13 @@ bool project_scalar_bound(
   entry.raw_index = raw_index;
 
   if (!bound.region) {
-    out.push_back(entry);  // 全域 (s0 = -INF, s1 = +INF のまま)
+    out.push_back(entry);  // everywhere; s0 and s1 stay infinite
     return true;
   }
 
   const auto intervals = intersect_region(centerline, *bound.region);
   if (intervals.empty()) {
-    return false;  // 中心線と交わらない region は粗い consumer には効かない
+    return false;  // a region that misses the centerline does not reach the coarse consumers
   }
   for (const auto & [s0, s1] : intervals) {
     entry.s0 = s0;
@@ -277,25 +280,35 @@ bool project_boundary(
     return false;
   }
 
+  // Vertices that cannot be projected (outside the centerline, or ambiguous) are dropped; the
+  // boundary is still usable as a lateral envelope as long as part of it lands on s
+  std::vector<SlPoint> projected;
+  for (const auto & v : densify(vertices, false)) {
+    if (const auto sl = centerline.project(v)) {
+      projected.push_back(*sl);
+    }
+  }
+
+  // Boundary carries no left/right tag, so the forbidden side is the side of the reference path the
+  // polyline lies on. The sign is taken by majority: when the centerline is cut at the goal and the
+  // lanelet folds back (hairpin, rotary), a few vertices of the return leg project to the other
+  // side, and letting those flip the side would make the whole corridor undrivable
+  std::size_t left_count = 0;
+  for (const auto & sl : projected) {
+    left_count += static_cast<std::size_t>(sl.l > 0.0);
+  }
+  const bool forbids_left = 2 * left_count >= projected.size();
+
   LateralBoundEntry entry;
-  entry.forbidden_side = boundary.forbidden_side;
+  entry.forbidden_side = forbids_left ? Side::LEFT : Side::RIGHT;
   entry.margin = boundary.margin;
   entry.raw_index = raw_index;
-
-  for (const auto & v : densify(vertices, false)) {
-    // 射影できない頂点 (中心線の外・多価) は落とす。折れ線の一部でも s 上に載れば
-    // 横方向の包絡としては使える
-    const auto sl = centerline.project(v);
-    if (!sl) {
-      continue;
+  for (const auto & sl : projected) {
+    // Vertices on the other side belong to the folded-back part of the polyline, not to the
+    // boundary of the corridor around the reference path
+    if (forbids_left == (sl.l > 0.0)) {
+      entry.polyline.push_back(sl);
     }
-    // 禁止側と反対側に射影される頂点も落とす。中心線が goal で打ち切られていて lanelet が先で
-    // 折り返す (ヘアピン・ロータリー) と、復路側の左境界が中心線の右に射影され、「左禁止」
-    // なのに l<0 の境界になって全域が走行不能になる
-    if ((boundary.forbidden_side == Side::LEFT) != (sl->l > 0.0)) {
-      continue;
-    }
-    entry.polyline.push_back(*sl);
   }
   if (entry.polyline.size() < 2) {
     return false;
@@ -324,35 +337,35 @@ bool project_gate(
     const double cy = p[i + 1].y() - p[i].y();
     const double denom = cross2d(cx, cy, gx, gy);
     if (std::abs(denom) < 1e-12) {
-      continue;  // 平行
+      continue;  // parallel
     }
     const double ox = g0.x() - p[i].x();
     const double oy = g0.y() - p[i].y();
-    const double t = cross2d(ox, oy, gx, gy) / denom;  // 中心線側の内分比
-    const double u = cross2d(ox, oy, cx, cy) / denom;  // ゲート側の内分比
+    const double t = cross2d(ox, oy, gx, gy) / denom;  // along the centerline segment
+    const double u = cross2d(ox, oy, cx, cy) / denom;  // along the gate
     if (t < 0.0 || t > 1.0 || u < 0.0 || u > 1.0) {
       continue;
     }
     const double s_cross = s[i] + t * (s[i + 1] - s[i]);
-    // 複数回交わるゲートは最初の交点 (最も手前) が効く
+    // A gate crossing more than once takes effect at the first, nearest intersection
     if (!s_stop || s_cross < *s_stop) {
       s_stop = s_cross;
     }
   }
   if (!s_stop) {
-    return false;  // 中心線と交わらない Gate はビューに現れない
+    return false;  // a gate that misses the centerline is absent from the view
   }
 
   StopBarEntry entry;
   entry.s_stop = *s_stop;
   entry.time = constraint.domain.time;
-  entry.margin = gate.margin;  // margin は焼き込まず写すだけ (consumer が footprint 前端で使う)
+  entry.margin = gate.margin;  // copied, not baked in; the consumer applies it to the front
   entry.raw_index = raw_index;
   out.push_back(entry);
   return true;
 }
 
-//! KeepOut の occupancy を「時刻とその時刻の占有形状」の列へ均す
+//! Flattens the occupancy of a KeepOut into a sequence of (time, occupied shape)
 std::vector<std::pair<double, std::vector<Point2d>>> sample_occupancy(const KeepOut & keep_out)
 {
   std::vector<std::pair<double, std::vector<Point2d>>> samples;
@@ -389,8 +402,9 @@ bool project_keep_out(
     return false;
   }
 
-  // スラブ = 隣接 2 サンプルの区間。占有はその両端形状の和で保守側に外接する
-  // (ヘッダの OccupancySlab の規約)。サンプルが 1 点だけの静的物体は有効時間帯まるごと 1 枚
+  // A slab spans two neighboring samples, and its occupancy conservatively bounds the union of the
+  // shapes at both ends. A static object, with a single sample, becomes one slab covering the whole
+  // time window
   OccupancyEntry entry;
   entry.raw_index = raw_index;
 
@@ -402,7 +416,7 @@ bool project_keep_out(
     const double t0 = std::max(t_begin, constraint.domain.time.t0);
     const double t1 = std::min(t_end, constraint.domain.time.t1);
     if (t1 < t0) {
-      continue;  // 有効時間帯の外
+      continue;  // outside the time window
     }
 
     double s0 = +INF;
@@ -414,8 +428,8 @@ bool project_keep_out(
       for (const auto & v : densify(samples[k].second, true)) {
         const auto sl = centerline.project(v);
         if (!sl) {
-          // 一部でも射影できない形状は box が実際の占有より小さくなる。
-          // 過小な (= 危険側の) box は載せない
+          // A shape that is only partly projectable would yield a box smaller than the real
+          // occupancy, which is the unsafe direction, so it is left out
           projectable = false;
           break;
         }
@@ -459,7 +473,8 @@ CompiledConstraints compile_constraint_list(
 
   const Centerline centerline(context.reference_path);
   if (!centerline.valid()) {
-    // 中心線が無い周期は射影ビューを作れない。raw は残るので精密評価は従来どおり効く
+    // Without a centerline there are no projected views; raw is unaffected and still applies in
+    // the exact evaluation
     compiled.unprojected.resize(constraints.size());
     for (std::size_t i = 0; i < constraints.size(); ++i) {
       compiled.unprojected[i] = i;

@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef SAFETY_PLANNER_HPP_
-#define SAFETY_PLANNER_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_HPP_
+#define AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_HPP_
 
-// パイプライン本体 (ロジック層)。ROS インターフェース (購読・配信・タイマ) は
-// SafetyPlannerNode が持ち、このクラスは SafetyPlannerInput を受け取って結果を返すだけ。
-// publisher・clock を持たない (msg 型と TimeKeeper・pluginlib は許容)。
-// 制約の生成と certainty ごとの振り分けまでがこのクラスの仕事で、制約のコンパイルと
-// rough_planner / optimizer の呼び出しは trajectory_planner プラグインが行う
+// The pipeline itself. The ROS interface (subscriptions, publications, timer) belongs to
+// SafetyPlannerNode; this class only takes a SafetyPlannerInput and returns the result, and holds
+// neither a publisher nor a clock (message types, the TimeKeeper and pluginlib are fine). It
+// generates the constraints and splits them by certainty; compiling them and driving the rough
+// planner and the optimizer is the trajectory_planner plugin's job.
 
 #include "constraint_generator/constraint_generator_interface.hpp"
 #include "context.hpp"
@@ -44,10 +44,10 @@ struct SafetyPlannerResult
 
   struct Debug
   {
-    //! プラグイン名 (get_name()) → 出力。debug_markers の publish は Node の仕事
+    //! plugin name (get_name()) -> output; publishing debug_markers is the node's job
     std::map<std::string, ConstraintGeneratorOutput> constraint_generator_outputs;
     PathPointTrajectory reference_path;
-    CompiledConstraints compiled_constraints;  //!< normal 側 (cautious 側の可視化は未整備)
+    CompiledConstraints compiled_constraints;  //!< of the normal side; cautious is not visualized
     RoughPlanResult rough_plan_result;
     TrajectoryOptimizerResult trajectory_optimizer_result;
   } debug;
@@ -58,15 +58,14 @@ class SafetyPlanner
 public:
   SafetyPlanner(const Params & params, std::shared_ptr<TimeKeeper> time_keeper);
 
-  //! reference_path の構築に失敗した (route 上に経路が引けない / goal が ego 後方) 周期は
-  //! 理由の文字列を返す
+  //! Returns the reason as a string in a cycle where the reference_path could not be built (no
+  //! path along the route, the goal behind the ego)
   tl::expected<SafetyPlannerResult, std::string> plan(const SafetyPlannerInput & input);
 
-  //! ロード済みプラグインの名前 (get_name()) のリスト。Node が debug marker publisher
-  //! を作るのに使う
+  //! Names (get_name()) of the loaded plugins, which the node turns into debug marker publishers
   std::vector<std::string> get_constraint_generator_plugin_names() const;
 
-  //! ロード済みの軌道プランナープラグインの名前 (get_name())。未ロードなら空文字
+  //! Name (get_name()) of the loaded trajectory planner plugin, empty when none is loaded
   std::string get_trajectory_planner_plugin_name() const;
 
 private:
@@ -88,7 +87,7 @@ private:
     const PlannerContext & context);
 
   using ConstraintGeneratorLoader = pluginlib::ClassLoader<ConstraintGeneratorInterface>;
-  //! ロード済みインスタンスより長生きさせること (unload はローダの破棄で起こる)
+  //! Must outlive the loaded instances: destroying the loader unloads them
   std::unique_ptr<ConstraintGeneratorLoader> constraint_generator_loader_;
   std::vector<std::shared_ptr<ConstraintGeneratorInterface>> constraint_generator_plugins_;
 
@@ -112,4 +111,4 @@ private:
 
 }  // namespace autoware::safety_planner
 
-#endif  // SAFETY_PLANNER_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_HPP_

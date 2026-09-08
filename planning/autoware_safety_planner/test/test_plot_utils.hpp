@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TEST_PLOT_UTILS_HPP_
-#define TEST_PLOT_UTILS_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TEST_PLOT_UTILS_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TEST_PLOT_UTILS_HPP_
 
 // Plotting helpers for tests (autoware_pyplot). Without EXPORT_TEST_PLOT_FIGURE the body of
 // SP_PLOT_RESULT is not compiled, so only the assertions remain.
@@ -42,4 +42,4 @@ void save_figure(autoware::pyplot::PyPlot & plt, const std::string & sub_dir = "
 #endif
 }  // namespace autoware::safety_planner
 
-#endif  // TEST_PLOT_UTILS_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TEST_PLOT_UTILS_HPP_

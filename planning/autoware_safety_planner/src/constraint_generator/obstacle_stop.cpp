@@ -50,7 +50,8 @@ bool is_finite(const Pose2d & pose)
          std::isfinite(pose.yaw);
 }
 
-//! 確率最大の予測経路 (同率は msg 順の先勝ち = 決定的)。無ければ nullptr
+//! The most likely predicted path, ties broken by the order in the message so that the choice is
+//! deterministic. nullptr when the object has none.
 const autoware_perception_msgs::msg::PredictedPath * select_most_confident_path(
   const autoware_perception_msgs::msg::PredictedObject & object)
 {
@@ -71,26 +72,25 @@ const autoware_perception_msgs::msg::PredictedPath * select_most_confident_path(
 std::vector<Constraint> make_obstacle_keep_out_constraints(
   const PredictedObjects & objects, const rclcpp::Time & t_plan, const double margin_m)
 {
-  // S1 §2-1: 時刻は t_plan 基準の相対秒。perception のスタンプは odometry のスタンプと
-  // 一致しないので、その差をオフセットとして waypoints の t に入れる
-  // (負のスタンプは rclcpp::Time が throw するのでオフセット無しに倒す)
+  // Times are seconds relative to t_plan. The perception stamp does not match the odometry stamp,
+  // so their difference goes into the t of the waypoints as an offset. A negative stamp would make
+  // rclcpp::Time throw, and falls back to no offset
   const double base_offset_s =
     objects.header.stamp.sec < 0 ? 0.0 : (rclcpp::Time(objects.header.stamp) - t_plan).seconds();
 
   std::vector<Constraint> constraints;
   constraints.reserve(objects.objects.size());
   for (const auto & object : objects.objects) {
-    // 物体ローカル形状: 恒等 pose で to_polygon2d を呼ぶと shape 種別
-    // (BOUNDING_BOX / CYLINDER / POLYGON) を吸収してローカル多角形が得られる。
-    // CW・閉で返るので S1 の契約 (constraint.hpp) をそのまま満たす。
-    // 退化した shape (頂点 0 の POLYGON 等) は送出しうるので、その物体を落として続行する
+    // Calling to_polygon2d with the identity pose absorbs the shape type (BOUNDING_BOX /
+    // CYLINDER / POLYGON) and yields the body-local polygon, clockwise and closed as the IR
+    // requires. A degenerate shape (an empty POLYGON, ...) can be published, and drops the object
     Polygon2d shape;
     try {
       shape = autoware_utils_geometry::to_polygon2d(geometry_msgs::msg::Pose{}, object.shape);
     } catch (const std::exception &) {
       continue;
     }
-    if (shape.outer().size() < 4) {  // 閉リングで 4 未満 = 面を持たない
+    if (shape.outer().size() < 4) {  // a closed ring of fewer than 4 points has no area
       continue;
     }
 
@@ -108,19 +108,21 @@ std::vector<Constraint> make_obstacle_keep_out_constraints(
         waypoint.t = base_offset_s + static_cast<double>(i) * time_step_s;
         waypoint.pose = to_pose2d(path->path[i]);
         if (!std::isfinite(waypoint.t) || !is_finite(waypoint.pose)) {
-          continue;  // 退化した点は落として続行
+          continue;  // drop the degenerate waypoint and keep the rest
         }
         waypoints.push_back(waypoint);
       }
     }
     if (waypoints.empty()) {
-      // 予測経路が無い = 静的物体。waypoint 1 点で無期限に現在位置を占有する (constraint.hpp)
+      // No predicted path means a static object: a single waypoint occupies the current position
+      // for all times
       waypoints.push_back(TimedPose{0.0, initial_pose});
     }
 
     Constraint constraint;
     constraint.certainty = Certainty::DEFINITE;
-    // time は既定 (常時)。waypoints の時刻範囲外は RigidBody 自体が無効になるので窓では切らない
+    // The time window is left at default: outside the times of the waypoints the RigidBody is
+    // undefined anyway
     constraint.payload = KeepOut{RigidBody{std::move(shape), std::move(waypoints)}, margin_m};
     constraint.source = Source{
       "obstacle_stop", Category::SAFETY, autoware_utils_uuid::to_hex_string(object.object_id),
@@ -211,7 +213,7 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
 
   ConstraintGeneratorOutput output;
   if (!context.predicted_objects) {
-    return output;  // 未受信の周期は空の制約列でパイプラインを継続させる (S7 §2)
+    return output;  // nothing received yet; an empty output keeps the pipeline running
   }
 
   output.constraints = make_obstacle_keep_out_constraints(
@@ -227,7 +229,7 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
       std::make_move_iterator(stop_lines.end()));
   }
 
-  // --- debug marker: 現在位置の footprint と予測経路 ---
+  // --- debug marker: the footprint at the current pose and the predicted path ---
   {
     using autoware_utils_visualization::create_default_marker;
     using autoware_utils_visualization::create_marker_color;
@@ -235,7 +237,7 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
 
     const double z = context.odometry.pose.pose.position.z;
     MarkerArray marker_array;
-    // 物体数が周期で変わると前周期のマーカーが残るので DELETEALL を先頭に挟む
+    // The number of objects changes between cycles, so clear the markers of the previous one
     Marker delete_all;
     delete_all.action = Marker::DELETEALL;
     marker_array.markers.push_back(delete_all);

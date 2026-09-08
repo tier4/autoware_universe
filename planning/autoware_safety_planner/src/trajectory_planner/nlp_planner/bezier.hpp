@@ -12,28 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__BEZIER_HPP_
-#define TRAJECTORY_PLANNER__NLP_PLANNER__BEZIER_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__BEZIER_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__BEZIER_HPP_
 
-// 区分 Bézier の基底まわりの純粋な数学。ROS にも制約 IR にも依存しない
-// (docs/safety_planner_arch_design/formulation_ssc_vs_poc.md §2.2)。
+// The mathematics of the piecewise Bezier basis, depending on neither ROS nor the constraint IR.
 //
-// 1 区間は次数 m = BEZIER_DEGREE の Bézier で、区間長 α でスケールして書く:
+// One piece is a Bezier of degree m = BEZIER_DEGREE, scaled by the length alpha of the piece:
 //
-//     f(t) = α · Σ_i p_i · b_i^m(u),        u = (t − t_start) / α ∈ [0, 1]
-//     b_i^m(u) = C(m,i) u^i (1−u)^{m−i}     (Bernstein 基底)
+//     f(t) = alpha * sum_i p_i * b_i^m(u),   u = (t - t_start) / alpha in [0, 1]
+//     b_i^m(u) = C(m,i) u^i (1-u)^(m-i)      (Bernstein basis)
 //
-// この α 倍は SSC 論文の流儀。制御点が「位置 / 時間」の次元になり、区間長が変わっても
-// 係数のオーダーが揃う。使う性質は 2 つ:
+// Scaling by alpha follows the SSC paper: it gives the control points the dimension of position per
+// time, so their magnitudes stay comparable as the length of a piece changes. Two properties are
+// used:
 //
-//   (P1) 凸包性       Σ b_i = 1, b_i ≥ 0 なので f は制御点の凸結合 → 制御点を箱に入れれば
-//                     曲線**全体**が箱に入る (十分条件。逆は成り立たない)
-//   (P2) hodograph 性 k 階微分もまた Bézier で、その制御点 q^{(k)} は p の**線形写像**:
-//                     q^{(0)} = p,  q_i^{(k)} = (m−k+1) · (q_{i+1}^{(k-1)} − q_i^{(k-1)})
-//                     端点値は d^k f/dt^k(t_start) = α^{1-k} q_0^{(k)}、
-//                                d^k f/dt^k(t_end)   = α^{1-k} q_{m-k}^{(k)}
+//   (P1) convex hull   sum b_i = 1 and b_i >= 0, so f is a convex combination of the control
+//                      points: putting them in a box puts the **whole** curve in that box. This is
+//                      sufficient, not necessary
+//   (P2) hodograph     the k-th derivative is a Bezier as well, whose control points q^(k) are a
+//                      **linear map** of p:
+//                        q^(0) = p,  q_i^(k) = (m-k+1) * (q_(i+1)^(k-1) - q_i^(k-1))
+//                      with the end values d^k f/dt^k(t_start) = alpha^(1-k) q_0^(k) and
+//                                          d^k f/dt^k(t_end)   = alpha^(1-k) q_(m-k)^(k)
 //
-// (P1) を (P2) の各階に適用すると、微分プロファイル全体を箱に閉じ込める線形不等式になる。
+// Applying (P1) at every order of (P2) turns "the whole derivative profile stays in a box" into
+// linear inequalities.
 
 #include <cstddef>
 #include <vector>
@@ -41,26 +44,28 @@
 namespace autoware::safety_planner
 {
 
-//! Bézier の次数 (SSC 論文と同じ 5 次。jerk = 3 階微分が 2 次 Bézier として残る最小次数)
+//! Degree of the Bezier, 5 as in the SSC paper: the lowest degree that leaves the jerk, the third
+//! derivative, as a quadratic Bezier
 inline constexpr int BEZIER_DEGREE = 5;
-//! 1 区間あたりの制御点数
+//! number of control points per piece
 inline constexpr int BEZIER_CONTROL_POINTS = BEZIER_DEGREE + 1;
 
-//! Bernstein 基底 b_i^m(u)
+//! Bernstein basis b_i^m(u)
 double bernstein(int m, int i, double u);
 
-//! k 階微分の制御点 q^{(k)} を p から作る線形写像 (行数 = m − k + 1、列数 = m + 1)。
-//! q^{(k)} = D_k · p。scale は掛けない (呼び出し側が α^{1-k} を掛ける)
+//! The linear map from p to the control points q^(k) of the k-th derivative, of size
+//! (m - k + 1) x (m + 1): q^(k) = D_k p. The scale is left out; the caller multiplies by
+//! alpha^(1-k).
 std::vector<std::vector<double>> hodograph_matrix(int m, int k);
 
-//! 正規化区間 [0, 1] 上の jerk 二乗積分 ∫ (y'''(u))² du を与える Hessian Q (6×6)。
-//! 実区間の寄与は (1/α³) · pᵀ Q p (formulation_ssc_vs_poc.md §2.3)
+//! The 6x6 Hessian Q of the squared jerk integral over the normalized interval [0, 1],
+//! int (y'''(u))^2 du. The contribution of a real piece is (1/alpha^3) p' Q p.
 std::vector<std::vector<double>> jerk_hessian(int m);
 
-//! 制御点列 p (長さ m+1) の k 階微分を u で評価する。戻り値は α のスケールを含まない
-//! 「正規化区間上の値」で、実時間の値は α^{1-k} を掛けたもの
+//! Evaluates the k-th derivative of the control points p (of length m + 1) at u. The value is the
+//! one on the normalized interval, without the scale; in real time it is alpha^(1-k) times that.
 double evaluate_derivative(const std::vector<double> & p, int k, double u);
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__BEZIER_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__BEZIER_HPP_

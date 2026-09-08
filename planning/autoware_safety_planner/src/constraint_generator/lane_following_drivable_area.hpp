@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONSTRAINT_GENERATOR__LANE_FOLLOWING_DRIVABLE_AREA_HPP_
-#define CONSTRAINT_GENERATOR__LANE_FOLLOWING_DRIVABLE_AREA_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__LANE_FOLLOWING_DRIVABLE_AREA_HPP_
+#define AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__LANE_FOLLOWING_DRIVABLE_AREA_HPP_
 
 #include "constraint_generator_interface.hpp"
 
@@ -22,16 +22,17 @@
 namespace autoware::safety_planner
 {
 
-//! 地図から走行可能領域の制約 (Boundary) を生成する。
-//! route 上のレーン列の各 lanelet について、左右それぞれ:
-//! - 側方に並走車線 (対向含む。road subtype・方位 ±45°) があれば **自レーンの bound** を
-//!   hard 境界にする (車線変更を禁止する)
-//! - 無ければ最寄りの **road_border** (物理的な道路外縁) を hard 境界にする
-//!   (路肩・ゼブラ等の上は走行可能領域に含まれる)
+//! Builds the drivable area constraints (Boundary) from the map. For every lanelet of the lane
+//! sequence on the route, on each side:
+//! - if there is a parallel lane next to it (oncoming included; road subtype, heading within
+//!   +-45 deg), the **bound of the own lane** becomes the boundary, forbidding a lane change
+//! - otherwise the nearest **road_border** (the physical edge of the road) becomes the boundary, so
+//!   that shoulders and zebras stay inside the drivable area
 //!
-//! Why not 路肩 lanelet (left/right_shoulder_lanelet) ベースの拡張: 隣接判定が線分オブジェクトの
-//! 共有を前提としており、線分を lanelet ごとに複製する作りの地図では一度も発火しない。
-//! 並走車線の有無も同じ理由で routing graph の隣接には頼らず、幾何 (点サンプル) で判定する。
+//! Why not extend over the shoulder lanelets (left/right_shoulder_lanelet): the adjacency lookup
+//! assumes the linestring objects are shared, and never fires on a map that duplicates the
+//! linestring per lanelet. For the same reason the presence of a parallel lane is decided
+//! geometrically, from sampled points, rather than through the routing graph.
 class LaneFollowingDrivableAreaConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:
@@ -41,4 +42,4 @@ public:
 
 }  // namespace autoware::safety_planner
 
-#endif  // CONSTRAINT_GENERATOR__LANE_FOLLOWING_DRIVABLE_AREA_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__LANE_FOLLOWING_DRIVABLE_AREA_HPP_

@@ -30,7 +30,7 @@ namespace autoware::safety_planner
 namespace
 {
 
-//! 折れ線を marker の点列へ (z は ego 高さを流用する)
+//! Appends a polyline to the points of a marker, at the height of the ego
 void append_points(Marker & marker, const std::vector<Point2d> & points, const double z)
 {
   for (const auto & p : points) {
@@ -53,7 +53,8 @@ DrivableAreaShape make_drivable_area_shape(
     return shape;
   }
 
-  // 前後の延長は端点の接線方向へまっすぐ伸ばす (中心線を延長してから左右へ振る)
+  // The area is extended straight along the tangents at the ends: extend the centerline first,
+  // then offset it sideways
   std::vector<Pose2d> extended;
   extended.reserve(centerline.size() + 2);
   if (backward_extension_m > 0.0) {
@@ -79,7 +80,7 @@ DrivableAreaShape make_drivable_area_shape(
   shape.left.reserve(extended.size());
   shape.right.reserve(extended.size());
   for (const auto & pose : extended) {
-    const double nx = -std::sin(pose.yaw);  // 左向き法線
+    const double nx = -std::sin(pose.yaw);  // left normal
     const double ny = std::cos(pose.yaw);
     shape.left.emplace_back(
       pose.position.x() + half_width_m * nx, pose.position.y() + half_width_m * ny);
@@ -87,7 +88,8 @@ DrivableAreaShape make_drivable_area_shape(
       pose.position.x() - half_width_m * nx, pose.position.y() - half_width_m * ny);
   }
 
-  // 閉ポリゴン: 左辺を進行方向へ → 右辺を逆向きへ。bg::correct が CW・閉へ正規化する
+  // The closed polygon runs along the left side and back along the right one; bg::correct
+  // normalizes it to clockwise and closed
   auto & ring = shape.polygon.outer();
   ring.reserve(2 * extended.size() + 1);
   ring.insert(ring.end(), shape.left.begin(), shape.left.end());
@@ -111,7 +113,7 @@ ConstraintGeneratorOutput SimpleDrivableAreaConstraintGenerator::generate_constr
     return output;
   }
 
-  // 中心線を定間隔でサンプルする (端点は必ず含める)
+  // Sample the centerline at a constant spacing, both end points included
   const auto num_division =
     static_cast<std::size_t>(std::ceil(length / std::max(p.sample_interval_m, 1e-3)));
   std::vector<Pose2d> centerline;
@@ -128,28 +130,26 @@ ConstraintGeneratorOutput SimpleDrivableAreaConstraintGenerator::generate_constr
     return output;
   }
 
-  // 制約 IR にポリゴン内包の payload は無いので、左辺・右辺を Boundary 2 本へ分解する。
-  // 禁止側は「ポリゴンの外側」= 左辺の左 / 右辺の右
-  const auto add_boundary =
-    [&](const std::vector<Point2d> & points, const Side side, const std::string & detail) {
-      Constraint constraint;
-      // time は既定 (常時。周期内静的)
-      Boundary boundary;
-      boundary.polyline.reserve(points.size());
-      for (const auto & point : points) {
-        boundary.polyline.push_back(point);
-      }
-      boundary.forbidden_side = side;
-      boundary.margin = p.margin_m;
-      constraint.payload = std::move(boundary);
-      // 簡易版は reference_path から幾何を作るので、対象の lanelet id を持たない (target_id は空)
-      constraint.source = Source{get_name(), Category::SAFETY, "", detail};
-      output.constraints.push_back(std::move(constraint));
-    };
-  add_boundary(shape.left, Side::LEFT, "left_bound");
-  add_boundary(shape.right, Side::RIGHT, "right_bound");
+  // The constraint IR has no "inside a polygon" payload, so the area is emitted as two Boundary
+  // constraints, one per side. Which side each one forbids follows from its geometry and is decided
+  // by the consumer
+  const auto add_boundary = [&](const std::vector<Point2d> & points, const std::string & detail) {
+    Constraint constraint;
+    Boundary boundary;
+    boundary.polyline.reserve(points.size());
+    for (const auto & point : points) {
+      boundary.polyline.push_back(point);
+    }
+    boundary.margin = p.margin_m;
+    constraint.payload = std::move(boundary);
+    // The geometry is built from reference_path, so there is no lanelet to point at
+    constraint.source = Source{get_name(), Category::SAFETY, "", detail};
+    output.constraints.push_back(std::move(constraint));
+  };
+  add_boundary(shape.left, "left_bound");
+  add_boundary(shape.right, "right_bound");
 
-  // --- debug marker: 走行可能領域のポリゴンと左右境界 ---
+  // --- debug marker: the drivable area polygon and its two sides ---
   {
     using autoware_utils_visualization::create_default_marker;
     using autoware_utils_visualization::create_marker_color;
@@ -165,7 +165,7 @@ ConstraintGeneratorOutput SimpleDrivableAreaConstraintGenerator::generate_constr
     std::vector<Point2d> ring_points(shape.polygon.outer().begin(), shape.polygon.outer().end());
     append_points(polygon_marker, ring_points, z);
     if (polygon_marker.points.size() >= 2) {
-      // bg::correct 済みなので始点 == 終点 (閉じている)
+      // bg::correct has closed the ring, so the first and the last point coincide
       marker_array.markers.push_back(polygon_marker);
     }
 

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef SAFETY_PLANNER_NODE_HPP_
-#define SAFETY_PLANNER_NODE_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_NODE_HPP_
+#define AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_NODE_HPP_
 
 #include "constraint_generator/constraint_generator_interface.hpp"
 #include "context.hpp"
@@ -152,4 +152,4 @@ private:
 
 }  // namespace autoware::safety_planner
 
-#endif  // SAFETY_PLANNER_NODE_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_NODE_HPP_

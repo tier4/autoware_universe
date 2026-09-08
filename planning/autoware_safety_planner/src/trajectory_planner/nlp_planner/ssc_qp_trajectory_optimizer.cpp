@@ -35,23 +35,25 @@ namespace
 {
 
 constexpr double EPS = 1e-9;
-//! 1 − κ_ref·l の下限。参照の曲率中心に近づくと Frenet の縮尺が潰れるので保守側に切る
+//! Lower bound on (1 - k_ref l): the Frenet scale collapses near the center of curvature of the
+//! reference, so it is cut conservatively
 constexpr double MIN_FRENET_SCALE = 0.1;
-//! 曲率を差分で求めるときの進行距離の下限 [m] (停止中の 0 割り回避)
+//! [m] shortest travel over which the curvature is differenced, which avoids dividing by 0 at a
+//! standstill
 constexpr double MIN_ARC_FOR_CURVATURE_M = 1e-3;
 
-//! 1 cube あたりの変数: s 制御点 6 + l 制御点 6
+//! variables per cube: six control points for s and six for l
 constexpr int VARS_PER_CUBE = 2 * BEZIER_CONTROL_POINTS;
 constexpr int DIM_S = 0;
 constexpr int DIM_L = 1;
 
-//! 次元 (s / l) の cube j の制御点 i が並ぶ列番号
+//! Column of control point i of cube j, in dimension s or l
 int column_of(const int cube, const int dim, const int i)
 {
   return cube * VARS_PER_CUBE + dim * BEZIER_CONTROL_POINTS + i;
 }
 
-//! 線形制約 1 行
+//! One row of the linear constraints
 struct Row
 {
   std::vector<std::pair<int, double>> coefficients;
@@ -61,9 +63,9 @@ struct Row
   void add(const int column, const double value) { coefficients.emplace_back(column, value); }
 };
 
-//! d^k f/dt^k を制御点の線形結合として 1 行に積む。
-//! at_end = 区間終端 (制御点 i = m − k) の値、false なら区間始端 (i = 0) の値。
-//! 実時間の値は α^{1-k} 倍なので、それを scale に含めて渡す
+//! Adds d^k f/dt^k to a row, as a linear combination of the control points. at_end selects the
+//! value at the end of the piece (control point i = m - k) rather than at its start (i = 0). In
+//! real time the value is alpha^(1-k) times that, which the caller folds into scale.
 void add_boundary_derivative(
   Row & row, const int cube, const int dim, const int k, const bool at_end, const double scale)
 {
@@ -80,7 +82,7 @@ void add_boundary_derivative(
 }  // namespace
 
 // =============================================================================================
-// 境界条件
+// boundary conditions
 // =============================================================================================
 
 SscBoundaryState to_frenet_boundary_state(
@@ -98,8 +100,8 @@ SscBoundaryState to_frenet_boundary_state(
   state.l = l;
   state.s_dot = point.v * std::cos(delta_yaw) / scale;
   state.l_dot = point.v * std::sin(delta_yaw);
-  // 加速度は「向きが変わらない」小偏差近似 (遠心項を無視する)。SSC は姿勢を変数に
-  // 持たないので、ここで厳密にしても QP 側で保てない
+  // The acceleration uses the small-deviation approximation of a constant heading and drops the
+  // centripetal term. SSC carries no heading, so being exact here would not survive the QP
   state.s_ddot = point.a * std::cos(delta_yaw) / scale;
   state.l_ddot = point.a * std::sin(delta_yaw);
   return state;
@@ -115,12 +117,12 @@ double cube_velocity_upper(
       continue;
     }
     if (bound.s1 < cube.s0 || bound.s0 > cube.s1) {
-      continue;  // cube の s 区間に掛からない
+      continue;  // outside the s range of the cube
     }
     upper = std::min(upper, bound.max);
   }
 
-  // cube の s 範囲で最も曲率の大きいところに合わせる (保守側)
+  // Take the largest curvature over the s range of the cube, which is the conservative choice
   const auto & path = context.reference_path;
   const double length = path.length();
   double max_curvature = 0.0;
@@ -155,10 +157,11 @@ std::optional<SscQpSolution> solve_ssc_qp(
   }
   const int num_vars = n * VARS_PER_CUBE;
 
-  // ---- 目的関数: jerk の二乗積分 (formulation_ssc_vs_poc.md §2.3) ----
-  // J_j^σ = (1/α³)·(p_j^σ)ᵀ Q p_j^σ。OSQP は 0.5 xᵀPx + qᵀx を最小化するので P = 2·係数·Q。
-  // **意味要素の組み合わせに依らず目的関数が不変**なのが SSC の要で、増えた要素は
-  // すべて cube の境界値 (下の不等式) にしか現れない
+  // ---- objective: the squared jerk integral ----
+  // (1/alpha^3) p' Q p per piece and dimension. OSQP minimizes 0.5 x'Px + q'x, hence P = 2 w Q.
+  // The objective staying the same whatever semantic elements are present is the point of SSC:
+  // everything that is added shows up only in the bounds of the cubes, i.e. in the inequalities
+  // below
   const auto jerk_q = jerk_hessian(BEZIER_DEGREE);
   Eigen::MatrixXd p_matrix = Eigen::MatrixXd::Zero(num_vars, num_vars);
   const double jerk_weight[2] = {params.weight_jerk_s, params.weight_jerk_l};
@@ -173,14 +176,15 @@ std::optional<SscQpSolution> solve_ssc_qp(
       }
     }
   }
-  // jerk Hessian の零空間 (2 次以下の多項式) を潰す正則化
+  // Regularization against the null space of the jerk Hessian, the polynomials of degree two and
+  // below
   for (int i = 0; i < num_vars; ++i) {
     p_matrix(i, i) += params.regularization;
   }
 
   std::vector<Row> rows;
 
-  // ---- (1) 始終端状態の等式 (k = 0, 1, 2) ----
+  // ---- (1) the initial and terminal state, as equalities on k = 0, 1, 2 ----
   const auto add_boundary_rows =
     [&](const int cube, const bool at_end, const SscBoundaryState & state) {
       const double value[2][3] = {
@@ -198,9 +202,9 @@ std::optional<SscQpSolution> solve_ssc_qp(
   add_boundary_rows(0, false, initial);
   add_boundary_rows(n - 1, true, terminal);
 
-  // ---- (2) 区間接続 (k = 0..3) ----
-  // 全 cube で α は共通なのでスケールは両辺で打ち消すが、α を可変にしたときに壊れないよう
-  // α^{1-k} を明示して書く
+  // ---- (2) continuity between the pieces, for k = 0..3 ----
+  // alpha is the same for every cube, so the scales cancel; they are written out anyway, so that
+  // this keeps holding if alpha ever varies per piece
   for (int j = 0; j + 1 < n; ++j) {
     for (int dim = 0; dim < 2; ++dim) {
       for (int k = 0; k <= 3; ++k) {
@@ -212,12 +216,12 @@ std::optional<SscQpSolution> solve_ssc_qp(
     }
   }
 
-  // ---- (3) 自由空間 (P1 を k = 0 に適用): α·p_i を cube の箱へ ----
+  // ---- (3) free space, (P1) at k = 0: alpha p_i inside the box of the cube ----
   for (int j = 0; j < n; ++j) {
     const double box[2][2] = {{cubes[j].s0, cubes[j].s1}, {cubes[j].l0, cubes[j].l1}};
     for (int dim = 0; dim < 2; ++dim) {
       if (box[dim][0] > box[dim][1]) {
-        return std::nullopt;  // cube が潰れている = 彫り込みの時点で実行不能
+        return std::nullopt;  // a collapsed cube means the carving already failed
       }
       for (int i = 0; i <= BEZIER_DEGREE; ++i) {
         Row row;
@@ -229,12 +233,12 @@ std::optional<SscQpSolution> solve_ssc_qp(
     }
   }
 
-  // ---- (4) 動力学 (P1 を k = 1, 2 に適用): 微分の制御点を箱へ ----
-  // これで速度・加速度プロファイル**全体**が箱に入る (十分条件)
+  // ---- (4) dynamics, (P1) at k = 1 and 2: the control points of the derivatives in a box ----
+  // This is sufficient for the **whole** speed and acceleration profile to stay in that box
   for (int j = 0; j < n; ++j) {
     const double bound[2][2][2] = {
-      // {k=1 の [lower, upper], k=2 の [lower, upper]}
-      {{0.0, velocity_upper[static_cast<std::size_t>(j)]},  // ṡ ≥ 0 (後退しない)
+      // {[lower, upper] at k = 1, [lower, upper] at k = 2}
+      {{0.0, velocity_upper[static_cast<std::size_t>(j)]},  // s' >= 0, i.e. no reversing
        {limits.a_hard_min, limits.a_hard_max}},
       {{-params.lateral_rate_max_mps, params.lateral_rate_max_mps},
        {-params.lateral_accel_max_mps2, params.lateral_accel_max_mps2}},
@@ -259,7 +263,7 @@ std::optional<SscQpSolution> solve_ssc_qp(
     }
   }
 
-  // ---- OSQP へ ----
+  // ---- hand it to OSQP ----
   const int num_rows = static_cast<int>(rows.size());
   Eigen::MatrixXd a_matrix = Eigen::MatrixXd::Zero(num_rows, num_vars);
   std::vector<double> lower(static_cast<std::size_t>(num_rows));
@@ -276,8 +280,8 @@ std::optional<SscQpSolution> solve_ssc_qp(
   const std::vector<double> q_vector(static_cast<std::size_t>(num_vars), 0.0);
   osqp_interface::OSQPInterface solver(params.osqp_eps_abs, true);
   const auto result = solver.optimize(p_matrix, a_matrix, q_vector, lower, upper);
-  // OSQP_SOLVED 以外 (primal/dual infeasible・max_iter) は捨てる。
-  // 「解けたが制約を破っている」解を下流へ流さないため、inaccurate も受け付けない
+  // Anything but OSQP_SOLVED is discarded, the inaccurate statuses included, so that a solution
+  // that solved but violates the constraints never reaches the consumers
   if (result.solution_status != OSQP_SOLVED) {
     return std::nullopt;
   }
@@ -297,7 +301,7 @@ std::optional<SscQpSolution> solve_ssc_qp(
 }
 
 // =============================================================================================
-// 解のサンプル (Frenet → 世界座標)
+// sampling the solution, from Frenet back to world coordinates
 // =============================================================================================
 
 OptimizedTrajectory sample_ssc_solution(
@@ -317,8 +321,8 @@ OptimizedTrajectory sample_ssc_solution(
 
   trajectory.points.reserve(sample_times.size());
   for (const double t : sample_times) {
-    // 区間の割り当て。cube 境界は「現 cube の t 上限 = 次 cube の t 下限」で連続なので
-    // どちらに割り当てても値は一致する (接続の等式制約がそれを保証する)
+    // Which piece the time belongs to. The pieces meet exactly at their common time and the
+    // continuity equalities make the values agree, so either choice gives the same result
     const int j = std::clamp(static_cast<int>(std::floor((t - t_origin) / alpha)), 0, n - 1);
     const double u = std::clamp((t - cubes[static_cast<std::size_t>(j)].t0) / alpha, 0.0, 1.0);
 
@@ -343,17 +347,18 @@ OptimizedTrajectory sample_ssc_solution(
     OptimizedTrajectoryPoint point;
     point.t = t;
     point.pose = to_world_pose(path, s_clamped, l);
-    // 姿勢は Frenet の傾きから。停止中 (ṡ = l̇ = 0) は atan2(0, 0) = 0 で中心線接線に落ちる
+    // The heading comes from the Frenet slope. At a standstill atan2(0, 0) is 0 and it falls back
+    // to the centerline tangent
     point.pose.yaw = autoware_utils_math::normalize_radian(
       point.pose.yaw + std::atan2(l_dot, frenet_scale * s_dot));
-    // 世界座標の速さ。ṡ ≥ 0 を課してあるので常に前進向き
+    // Speed in world coordinates; s' >= 0 was imposed, so it always points forward
     point.v = std::hypot(frenet_scale * s_dot, l_dot);
     trajectory.points.push_back(point);
   }
 
-  // κ・a・w・j は時間グリッド上の差分で埋める。SSC の変数に姿勢も曲率も無いため、
-  // 出力契約 (OptimizedTrajectoryPoint) を満たすにはここで作るしかない
-  // (formulation_ssc_vs_poc.md §2.6: 曲率は制御点の線形制約に書けない)
+  // The curvature, the acceleration and the inputs are differenced on the time grid. Neither the
+  // heading nor the curvature is a variable of SSC, so this is the only place the output contract
+  // of OptimizedTrajectoryPoint can be met
   auto & points = trajectory.points;
   const std::size_t count = points.size();
   for (std::size_t k = 0; k + 1 < count; ++k) {
@@ -383,13 +388,13 @@ OptimizedTrajectory sample_ssc_solution(
     points[k].w = (points[k + 1].kappa - points[k].kappa) / dt;
     points[k].j = (points[k + 1].a - points[k].a) / dt;
   }
-  // 終端に入力は無い (w = j = 0 のまま)
+  // The last point has no input, so w and j stay 0
 
   return trajectory;
 }
 
 // =============================================================================================
-// プラグイン
+// the plugin
 // =============================================================================================
 
 SscQpParams SscQpTrajectoryOptimizer::read_params() const
@@ -418,7 +423,7 @@ TrajectoryOptimizerResult SscQpTrajectoryOptimizer::optimize(const TrajectoryOpt
   const auto params = read_params();
   const auto limits = collect_kinematic_limits(input.compiled_constraints);
 
-  // 1. seed = rough_plan の (s(t), l(t))。ホモトピーはここで確定している
+  // 1. the seed is (s(t), l(t)) of the rough plan, which has settled the homotopy
   const auto seed = make_corridor_seed(input.context, input.rough_plan);
   if (seed.size() < 2) {
     result.status = TrajectoryOptimizerStatus::INFEASIBLE;
@@ -426,7 +431,7 @@ TrajectoryOptimizerResult SscQpTrajectoryOptimizer::optimize(const TrajectoryOpt
     return result;
   }
 
-  // 2. seed を包む (s, l, t) cube 列を彫る (SSC Algorithm 1)
+  // 2. carve the (s, l, t) cubes around the seed
   const auto cubes =
     generate_semantic_corridor(input.context, input.compiled_constraints, seed, params.corridor);
   if (cubes.empty()) {
@@ -435,7 +440,7 @@ TrajectoryOptimizerResult SscQpTrajectoryOptimizer::optimize(const TrajectoryOpt
     return result;
   }
 
-  // 3. cube ごとの ṡ 上限 (速度制限・曲率由来の意味境界)
+  // 3. the longitudinal speed bound of each cube, from the speed limits and the curvature
   std::vector<double> velocity_upper;
   velocity_upper.reserve(cubes.size());
   for (const auto & cube : cubes) {
@@ -443,13 +448,13 @@ TrajectoryOptimizerResult SscQpTrajectoryOptimizer::optimize(const TrajectoryOpt
       cube_velocity_upper(input.context, input.compiled_constraints, cube, limits));
   }
 
-  // 4. 始終端状態 (rough_plan の両端を Frenet へ落とす)
+  // 4. the initial and terminal state, the ends of the rough plan in Frenet coordinates
   const auto initial = to_frenet_boundary_state(
     input.context, input.rough_plan.points.front(), seed.front().s, seed.front().l);
   const auto terminal = to_frenet_boundary_state(
     input.context, input.rough_plan.points.back(), seed.back().s, seed.back().l);
 
-  // 5. 区分 Bézier の凸 QP
+  // 5. the convex QP over the piecewise Bezier
   const auto solution = solve_ssc_qp(cubes, velocity_upper, initial, terminal, limits, params);
   const double z_base = input.context.odometry.pose.pose.position.z;
   if (!solution) {
@@ -459,7 +464,7 @@ TrajectoryOptimizerResult SscQpTrajectoryOptimizer::optimize(const TrajectoryOpt
     return result;
   }
 
-  // 6. 時間グリッド (rough_plan と同一) 上でサンプルし、世界座標へ戻す
+  // 6. sample it on the time grid of the rough plan and convert back to world coordinates
   std::vector<double> sample_times;
   sample_times.reserve(seed.size());
   for (const auto & point : seed) {

@@ -9,7 +9,7 @@ invalid trajectory / step limit.
 Every output trajectory is validated (number of points, non-finite values, monotonic `time_from_start`, point interval,
 yaw jump, negative velocity, max steer angle, distance between the first point and ego).
 
-Scenarios live in `test_data/<name>.yaml`, one scenario per file. Besides the map / vehicle / route, a scenario may carry
+Scenarios live in `test_data/scenarios/<name>.yaml`, one scenario per file. Besides the map / vehicle / route, a scenario may carry
 `predicted_objects` (a `PredictedObjects` message in the `topic_snapshot_saver` yaml format, held fixed over the run) and
 `expectation` (`goal_reached`, the default, or `stop`: the ego must stall with |v| < 0.1 m/s before the goal, e.g. behind an obstacle). The list of scenarios to run is
 `test_data/scenarios.yaml`; it is read when the test executable starts, so adding or disabling a case
@@ -104,7 +104,7 @@ ros2 run autoware_safety_planner generate_test_data.py \
   --out-dir /tmp
 ```
 
-`--out-dir` defaults to `test_data/` in the source tree (the script is symlink-installed, so `__file__`
+`--out-dir` defaults to `test_data/scenarios/` in the source tree (the script is symlink-installed, so `__file__`
 points at the source); with a copying install, pass `--out-dir` explicitly.
 
 1. Hover over a lanelet to see its id. Lanelets are colored by subtype and the arrow on the centerline
@@ -113,7 +113,7 @@ points at the source); with a copying install, pass `--out-dir` explicitly.
    becomes the yaw. The button disarms itself after one drag.
 3. Do the same with `Set goal`.
 4. Type the scenario name in the text box (default `new_route`) and press `Generate`. The file is written
-   to `test_data/<name>.yaml` (or `--out-dir`) and the resulting lanelet ids are shown next to the buttons.
+   to `test_data/scenarios/<name>.yaml` (or `--out-dir`) and the resulting lanelet ids are shown next to the buttons.
 
 The route is the shortest path of `lanelet2::routing::RoutingGraph` between the lanelet under the start
 pose and the one under the goal pose, taking only lanelets whose direction is within 45 deg of the given

@@ -30,11 +30,11 @@ KinematicLimits collect_kinematic_limits(const CompiledConstraints & compiled_co
   for (const auto & bound : compiled_constraints.scalar_bounds) {
     const bool is_global = bound.s0 == -INF && bound.s1 == INF;
     if (!is_global) {
-      continue;  // 区間限定 (地図の上限速度等) は消費側が s ごとに読む
+      continue;  // a bound limited to an interval (a map speed limit, ...) is read per s
     }
-    // Tier 削除に伴い、IR の全域 bound は全てハード上限として集約する。
-    // nominal 系は KinematicLimits の既定値のまま (LAT_ACCEL のハード値を
-    // a_lat_nom に流し込むとコーナー減速が緩むので、ここでは読まない)
+    // Every global bound of the IR is a hard limit; the nominal values keep their defaults. In
+    // particular the hard LAT_ACCEL is not fed into a_lat_nom, which would loosen the corner
+    // deceleration
     switch (bound.quantity) {
       case BoundedQuantity::VELOCITY:
         limits.v_hard = std::min(limits.v_hard, bound.max);
@@ -44,7 +44,7 @@ KinematicLimits collect_kinematic_limits(const CompiledConstraints & compiled_co
         limits.a_hard_max = std::min(limits.a_hard_max, bound.max);
         break;
       default:
-        // LAT_ACCEL / LON_JERK / CURVATURE / STEER_* は射影ビューの消費側では使わない (NLP の仕事)
+        // LAT_ACCEL / LON_JERK / CURVATURE / STEER_* are the NLP's job, not the views'
         break;
     }
   }
@@ -66,10 +66,11 @@ EgoFrenetState compute_ego_frenet_state(const PlannerContext & context)
   const auto & position = context.odometry.pose.pose.position;
   EgoFrenetState state;
   state.s = experimental::trajectory::closest(path, position);
-  // closest() は基底点間を弦で近似するので、曲線区間では足点が s・l ともに数十 cm ずれる
-  // (基底間隔 4 m・R 10 m で約 20 cm)。接線方向の残差 f(s) = (q − p(s))·t(s) が消えるまで
-  // Newton 法 (f' = −(1 − κ l)) で s を補正する。残差をそのまま足す不動点反復は収縮率が |κ l| で、
-  // 急カーブの外側 (κ l → 1) では収束しない
+  // closest() approximates the path between its bases by a chord, which puts the foot off by tens
+  // of centimeters in both s and l on a curve (about 20 cm at a base spacing of 4 m and R = 10 m).
+  // s is corrected with Newton's method (f' = -(1 - k*l)) until the tangential residual
+  // f(s) = (q - p(s)).t(s) vanishes. Adding the residual directly instead is a fixed point
+  // iteration with contraction |k*l|, which does not converge outside a tight curve (k*l -> 1)
   for (int i = 0; i < 10; ++i) {
     const auto ref_position = path.compute(state.s).point.pose.position;
     const double ref_yaw = path.azimuth(state.s);
@@ -77,7 +78,7 @@ EgoFrenetState compute_ego_frenet_state(const PlannerContext & context)
     const double dy = position.y - ref_position.y;
     const double residual = std::cos(ref_yaw) * dx + std::sin(ref_yaw) * dy;
     const double l = -std::sin(ref_yaw) * dx + std::cos(ref_yaw) * dy;
-    // 曲率中心付近 (1 − κ l ≈ 0) では足点が定まらないので刻みを抑える
+    // Near the center of curvature (1 - k*l = 0) the foot is undetermined, so limit the step
     const double denom = std::max(1.0 - path.curvature(state.s) * l, 0.2);
     const double ds = residual / denom;
     state.s = std::clamp(state.s + ds, 0.0, path.length());
@@ -94,7 +95,7 @@ Pose2d to_world_pose(const PathPointTrajectory & path, const double s, const dou
   const auto ref_position = path.compute(s).point.pose.position;
   const double ref_yaw = path.azimuth(s);
   Pose2d pose;
-  // 中心線の左法線 (l の正方向)
+  // Left normal of the centerline, the positive direction of l
   pose.position =
     Point2d{ref_position.x - std::sin(ref_yaw) * l, ref_position.y + std::cos(ref_yaw) * l};
   pose.yaw = ref_yaw;
@@ -104,10 +105,10 @@ Pose2d to_world_pose(const PathPointTrajectory & path, const double s, const dou
 SlBox footprint_sl_box(const VehicleInfo & vehicle_info, const double s, const double l)
 {
   SlBox box;
-  box.s_min = s + vehicle_info.min_longitudinal_offset_m;  // 後端 (負のオフセット)
-  box.s_max = s + vehicle_info.max_longitudinal_offset_m;  // 前端
-  box.l_min = l + vehicle_info.min_lateral_offset_m;       // 右端 (負のオフセット)
-  box.l_max = l + vehicle_info.max_lateral_offset_m;       // 左端
+  box.s_min = s + vehicle_info.min_longitudinal_offset_m;  // rear
+  box.s_max = s + vehicle_info.max_longitudinal_offset_m;  // front
+  box.l_min = l + vehicle_info.min_lateral_offset_m;       // right
+  box.l_max = l + vehicle_info.max_lateral_offset_m;       // left
   return box;
 }
 
@@ -148,11 +149,11 @@ bool lateral_bound_extreme_l(
     return false;
   }
   if (s_hi_in < polyline.front().s || s_lo_in > polyline.back().s) {
-    return false;  // s 範囲が重ならなければ制約は効かない
+    return false;  // the constraint does not apply where the s ranges do not overlap
   }
 
-  // 重なり区間 [s_lo, s_hi] における境界 l の極値
-  // (LEFT 禁止 = 境界より左 (l 大) が禁止 → 最も許容が狭い min(l_b)。RIGHT は逆)
+  // Extremum of the boundary l over the overlap [s_lo, s_hi]. LEFT forbids everything left of the
+  // boundary (larger l), so the tightest value is min(l_b); RIGHT is the other way round
   const double s_lo = std::max(s_lo_in, polyline.front().s);
   const double s_hi = std::min(s_hi_in, polyline.back().s);
   double value = interpolate_boundary_l(polyline, s_lo);

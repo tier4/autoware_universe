@@ -63,8 +63,8 @@ TrajectoryPoint to_trajectory_point(
 
 Trajectory set_engage_speed(const Trajectory & trajectory, const double engage_velocity_mps)
 {
-  //! [m] この距離より短い軌道は「発進する周期ではない」とみなして触らない。
-  //! goal 目前の減速区間と停止 plan (全点が同じ位置) を発進させないための足切り
+  //! [m] A trajectory shorter than this is not a launch, and is left alone. It keeps the
+  //! deceleration in front of the goal and a stop plan (all points at the same place) from engaging
   constexpr double MIN_ENGAGE_DIST_M = 0.5;
 
   Trajectory result = trajectory;
@@ -72,8 +72,8 @@ Trajectory set_engage_speed(const Trajectory & trajectory, const double engage_v
     return result;
   }
 
-  // 進行距離は軌道の点列そのものから測る。時間パラメタライズの出力は停止区間の点が
-  // ほぼ同じ位置に重なるので、停止 plan はここで 0 近くになって足切りされる
+  // The travelled distance is measured on the points themselves. After the time parameterization
+  // the points of a stopped section sit on top of each other, so a stop plan lands near 0 here
   double length = 0.0;
   for (std::size_t k = 0; k + 1 < result.points.size(); ++k) {
     length += autoware_utils_geometry::calc_distance2d(
@@ -85,7 +85,7 @@ Trajectory set_engage_speed(const Trajectory & trajectory, const double engage_v
 
   for (auto & point : result.points) {
     if (point.longitudinal_velocity_mps >= static_cast<float>(engage_velocity_mps)) {
-      break;  // 巡航速度まで乗った点から先はそのまま (終端の減速・停止に触れない)
+      break;  // from here on the trajectory is left as is, deceleration at the end included
     }
     point.longitudinal_velocity_mps = static_cast<float>(engage_velocity_mps);
   }

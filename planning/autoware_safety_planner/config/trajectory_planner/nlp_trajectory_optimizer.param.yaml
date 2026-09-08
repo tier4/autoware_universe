@@ -2,13 +2,13 @@
   ros__parameters:
     trajectory_optimizer:
       nlp:
-        cube_duration_s: 1.0 # [s] コリドー彫り込みの 1 cube の時間長 α
-        margin_m: 0.1 # [m] cube を彫るときの安全マージン
+        cube_duration_s: 1.0 # [s] duration of one cube of the corridor
+        margin_m: 0.1 # [m] safety margin used while carving the cubes
         inflation_step_m: 0.2 # [m]
         max_lateral_inflation_m: 4.0 # [m]
         max_longitudinal_inflation_m: 20.0 # [m]
-        curvature_rate_max: 0.6 # [1/(m*s)] |w| の上限
-        goal_capture_distance_m: 5.0 # [m] この距離まで近づいたら追従参照の終点を goal そのものにする
+        curvature_rate_max: 0.6 # [1/(m*s)] bound on the rate of curvature |w|
+        goal_capture_distance_m: 5.0 # [m] once the goal is this close, the end of the tracking reference becomes the goal itself
         weight_pos: 1.0
         weight_yaw: 1.0
         weight_v: 0.5

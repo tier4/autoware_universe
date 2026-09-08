@@ -12,21 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__SSC_CORRIDOR_HPP_
-#define TRAJECTORY_PLANNER__NLP_PLANNER__SSC_CORRIDOR_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__SSC_CORRIDOR_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__SSC_CORRIDOR_HPP_
 
-// Spatio-temporal Semantic Corridor の彫り込み (SSC 論文 Algorithm 1)。
-//   seed 生成 → cube inflation → 制約の紐付け
+// Carving of the spatio-temporal semantic corridor (Algorithm 1 of the SSC paper): generate the
+// seed, inflate the cubes, attach the constraints.
 //
-// seed は rough_plan の (s(t), l(t))。**ホモトピー (どちら側を抜けるか) は seed が決めており、
-// cube はそれを保存したまま自由空間を最大限モデル化する**のが役割で、彫り込み自身は
-// 非凸探索をしない。
+// The seed is (s(t), l(t)) of the rough plan. The homotopy, i.e. which side to pass on, is already
+// decided by the seed; the cubes model as much of the free space around it as they can while
+// preserving it, and the carving performs no non-convex search of its own.
 //
-// 座標は reference_path 基準の Frenet (s, l) + 時間 t。cube が縛るのは**後軸基準点**で、
-// 車両形状は障害物側を footprint 分だけ膨らませて吸収する (SSC は ego を点として扱う)。
+// Coordinates are Frenet (s, l) on the reference_path plus the time t. A cube bounds the **rear
+// axle**, and the shape of the vehicle is absorbed by inflating the obstacles by the footprint, SSC
+// treating the ego as a point.
 //
-// 時間分割は固定 (区間長を最適化変数にすると非凸になる) なので、
-// **現 cube の t 上限 = 次 cube の t 下限**。重なりは持たせない。
+// The time is partitioned in advance, since making the length of a piece a variable would render
+// the problem non-convex, and the pieces do not overlap: the upper t of a cube is the lower t of
+// the next.
 
 #include "../../context.hpp"
 #include "../../utils/sl_view_utils.hpp"
@@ -38,28 +40,28 @@
 namespace autoware::safety_planner
 {
 
-//! (s, l, t) の直方体。1 つが軌道の 1 区間に対応する
+//! A box in (s, l, t); one per piece of the trajectory
 struct SemanticCube
 {
   double t0{0.0};  //!< [s]
   double t1{0.0};
-  double s0{0.0};  //!< [m] reference_path 弧長 (後軸基準)
+  double s0{0.0};  //!< [m] arc length on the reference_path, of the rear axle
   double s1{0.0};
-  double l0{0.0};  //!< [m] 中心線からの横オフセット (左が正、後軸基準)
+  double l0{0.0};  //!< [m] lateral offset of the rear axle, positive to the left
   double l1{0.0};
 };
 
-//! 彫り込みのパラメータ (ROS ns `trajectory_optimizer.ssc_qp.*`)
+//! Parameters of the carving (ROS namespace `trajectory_optimizer.ssc_qp.*`)
 struct SscCorridorParams
 {
-  double cube_duration_s{1.0};                //!< [s] 1 cube の時間長 α
-  double margin_m{0.1};                       //!< [m] 障害物・境界へ足す安全マージン
-  double inflation_step_m{0.2};               //!< [m] 膨張の 1 ステップ
-  double max_lateral_inflation_m{4.0};        //!< [m] seed から片側へ膨らませる上限
-  double max_longitudinal_inflation_m{20.0};  //!< [m] 同 (s 方向)
+  double cube_duration_s{1.0};                //!< [s] duration alpha of one cube
+  double margin_m{0.1};                       //!< [m] safety margin against obstacles and bounds
+  double inflation_step_m{0.2};               //!< [m] one step of the inflation
+  double max_lateral_inflation_m{4.0};        //!< [m] how far a face may leave the seed, in l
+  double max_longitudinal_inflation_m{20.0};  //!< [m] the same, in s
 };
 
-//! seed (rough_plan) の 1 点を (s, l, t) へ落としたもの
+//! One point of the seed, i.e. of the rough plan, in (s, l, t)
 struct CorridorSeedPoint
 {
   double t{0.0};
@@ -67,33 +69,36 @@ struct CorridorSeedPoint
   double l{0.0};
 };
 
-//! rough_plan を reference_path の Frenet 座標へ落とす (s は rough_plan が持つ値をそのまま使い、
-//! l だけ世界座標から射影する)
+//! Converts the rough plan into the Frenet frame of the reference_path. s comes from the plan
+//! itself; only l is projected from world coordinates.
 std::vector<CorridorSeedPoint> make_corridor_seed(
   const PlannerContext & context, const RoughPlan & rough_plan);
 
-//! seed をホモトピーごと包む cube 列を彫る。
-//! - 時間分割は [0, T] を cube_duration_s で等分 (T = seed の終端時刻)
-//! - 各 cube は「その時間帯の seed を包む最小 box」から出発し、4 面を交互に膨らませる
-//! - 膨らませる先が制約 (境界の禁止側・占有・停止線) に当たったら、その面はそこで止める
+//! Carves the cubes that enclose the seed together with its homotopy.
+//! - [0, T] is divided evenly into pieces of about cube_duration_s, T being the end of the seed
+//! - each cube starts as the smallest box around the seed of its time span, and its four faces are
+//!   inflated in turn
+//! - a face stops where it meets a constraint (the forbidden side of a boundary, an occupancy, a
+//!   stop line)
 //!
-//! **seed 自身が制約を破っている場合は空を返して棄却する** (SSC Algorithm 1)。
-//! SSC が彫れるのは「既に衝突フリーな seed の周りの自由空間」だけで、塞がれた seed を
-//! 縮めて助けることはできない (縮めるとホモトピー = 上流の決定が壊れる)。
-//! 塞がれている周期に停止 rough_plan を出すのは rough_planner の仕事 (S3)
+//! **An empty result rejects the corridor when the seed itself violates a constraint.** SSC can
+//! only carve the free space around a seed that is already collision free; shrinking a blocked seed
+//! would break the homotopy, i.e. the decision taken upstream. Emitting a stop plan in a blocked
+//! cycle is the rough planner's job.
 std::vector<SemanticCube> generate_semantic_corridor(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
   const std::vector<CorridorSeedPoint> & seed, const SscCorridorParams & params);
 
-//! 後軸基準の box が (s, l, t) 空間で制約に触れていないか。cube の膨張判定そのもの
+//! Whether a box of the rear axle stays clear of the constraints in (s, l, t); this is the test
+//! the inflation runs
 bool is_cube_free(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
   const SemanticCube & cube, double margin_m);
 
-//! cube 列をデバッグマーカーへ (s, l) → 世界座標で落とす
+//! Converts the cubes into debug markers, from (s, l) back to world coordinates
 MarkerArray make_corridor_markers(
   const PlannerContext & context, const std::vector<SemanticCube> & cubes, double z_base);
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__SSC_CORRIDOR_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__SSC_CORRIDOR_HPP_

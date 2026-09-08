@@ -43,7 +43,8 @@
 namespace autoware::safety_planner::testing
 {
 
-// One scenario = test_data/<name>.yaml; it alone defines the map, the vehicle and the route
+// One scenario = test_data/scenarios/<name>.yaml; it alone defines the map, the vehicle and the
+// route
 struct Scenario
 {
   LaneletMapBin map_bin;
@@ -61,7 +62,7 @@ struct Scenario
 Scenario load_scenario(const std::string & yaml_filename)
 {
   const auto yaml_path = ament_index_cpp::get_package_share_directory("autoware_safety_planner") +
-                         "/test_data/" + yaml_filename;
+                         "/test_data/scenarios/" + yaml_filename;
   const auto config = YAML::LoadFile(yaml_path);
 
   // package://<pkg>/<path> or a plain filesystem path (for local maps that are not installed)

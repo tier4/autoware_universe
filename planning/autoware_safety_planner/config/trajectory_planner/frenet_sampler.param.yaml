@@ -3,11 +3,11 @@
     frenet_sampler:
       time_step_s: 0.1 # [s]
       horizon_s: 10.0 # [s]
-      path_resolution_m: 0.5 # [m] 経路 l(s) の空間サンプル間隔
-      target_lengths_m: [10.0, 20.0, 40.0] # [m] 横移動を終える弧長 L
-      target_durations_s: [2.0, 4.0, 6.0, 8.0] # [s] 速度プロファイルの終端時間 T
-      target_lateral_positions_m: [-2.0, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 2.0] # [m] 左が正
-      target_velocity_ratios: [0.0, 0.25, 0.5, 0.75, 1.0] # [-] ego 位置の速度上限に対する比
+      path_resolution_m: 0.5 # [m] spacing at which the path l(s) is sampled
+      target_lengths_m: [10.0, 20.0, 40.0] # [m] arc lengths over which the lateral motion completes
+      target_durations_s: [2.0, 4.0, 6.0, 8.0] # [s] terminal times of the velocity profile
+      target_lateral_positions_m: [-2.0, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 2.0] # [m] positive to the left
+      target_velocity_ratios: [0.0, 0.25, 0.5, 0.75, 1.0] # [-] ratios of the speed limit at the ego position
       weights:
         lateral: 1.0
         velocity: 0.5

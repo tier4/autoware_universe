@@ -47,14 +47,14 @@ bool is_cube_free(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
   const SemanticCube & cube, const double margin_m)
 {
-  // cube が縛るのは後軸基準点。判定は footprint 掃引 box + 安全マージンで行う
+  // A cube bounds the rear axle, so the test runs on the swept footprint plus the safety margin
   SlBox box = footprint_sl_box(context.vehicle_info, to_reference_box(cube));
   box.s_min -= margin_m;
   box.s_max += margin_m;
   box.l_min -= margin_m;
   box.l_max += margin_m;
 
-  // Tier 削除により全エントリが cube を狭める (落とせる制約の区別は制約セット側で行う)
+  // Every entry narrows the cube; which constraints may be dropped is decided by the set
   for (const auto & bound : compiled_constraints.lateral_bounds) {
     if (violates_lateral_bound(bound, box)) {
       return false;
@@ -83,8 +83,8 @@ std::vector<CorridorSeedPoint> make_corridor_seed(
     CorridorSeedPoint point;
     point.t = rough_plan.points[k].t;
     point.s = rough_plan.s[k];
-    // rough_plan は s を持っているので、l だけ世界座標から射影する
-    // (中心線上の点との差を左法線へ射影するだけなので最近傍探索は要らない)
+    // The rough plan carries s, so only l is projected: the offset from the centerline point onto
+    // the left normal, which needs no nearest point search
     point.l =
       lateral_offset_at(context.reference_path, point.s, rough_plan.points[k].pose.position);
     seed.push_back(point);
@@ -105,7 +105,8 @@ std::vector<SemanticCube> generate_semantic_corridor(
   if (!(horizon > EPS)) {
     return cubes;
   }
-  // [0, T] を等分する。α は要求値ちょうどではなく T/n (端数のある最終区間を作らない)
+  // Divide [0, T] evenly. alpha is T/n rather than exactly the requested duration, so that the
+  // last piece is not a remainder
   const int num_cubes = std::max(static_cast<int>(std::round(horizon / params.cube_duration_s)), 1);
   const double alpha = horizon / static_cast<double>(num_cubes);
   const double t_origin = seed.front().t;
@@ -115,9 +116,9 @@ std::vector<SemanticCube> generate_semantic_corridor(
     cube.t0 = t_origin + static_cast<double>(j) * alpha;
     cube.t1 = t_origin + static_cast<double>(j + 1) * alpha;
 
-    // ---- seed box: この時間帯の seed を包む最小 box ----
-    // 区間の両端は隣の cube と値を共有する必要があるので、境界時刻の seed は
-    // 線形補間して必ず含める (t 格子と cube 境界が一致しない場合の取りこぼし対策)
+    // ---- the smallest box around the seed of this time span ----
+    // Neighboring cubes share the value at their common time, so the seed is interpolated at both
+    // ends of the span and always included, even when the t grid misses the cube boundary
     const auto interpolate = [&seed](const double t) {
       if (t <= seed.front().t) {
         return seed.front();
@@ -155,23 +156,23 @@ std::vector<SemanticCube> generate_semantic_corridor(
       cube.l1 = std::max(cube.l1, point.l);
     }
 
-    // ---- seed の棄却 (SSC Algorithm 1) ----
-    // 初期 cube (= seed を包む最小 box) が衝突フリーでなければ、**コリドー全体を棄却する**。
-    // SSC が彫れるのは「既に衝突フリーな seed の周りの自由空間」だけで、
-    // 塞がれた seed を縮めて助けることはできない (縮めるとホモトピーが壊れる)。
-    // 塞がれている周期に停止 rough_plan を出すのは rough_planner の仕事 (S3)
+    // ---- rejection of the seed (Algorithm 1 of SSC) ----
+    // When the initial cube, the smallest box around the seed, is not collision free, the whole
+    // corridor is rejected: SSC can only carve the free space around a seed that is already
+    // collision free, and shrinking a blocked seed would break the homotopy. Emitting a stop plan
+    // in a blocked cycle is the rough planner's job
     if (!is_cube_free(context, compiled_constraints, cube, params.margin_m)) {
       return {};
     }
 
-    // ---- inflation: 4 面を交互に、当たるまで膨らませる (SSC Algorithm 1) ----
+    // ---- inflation: grow the four faces in turn until each one is blocked ----
     const double step = std::max(params.inflation_step_m, EPS);
     struct Face
     {
       double * value;
-      double sign;  //!< +1 = 上限側 (s1 / l1)、−1 = 下限側
+      double sign;  //!< +1 for an upper face (s1 / l1), -1 for a lower one
       double origin;
-      double limit;  //!< seed からの膨張量の上限
+      double limit;  //!< how far this face may leave the seed
     };
     const double s_origin0 = cube.s0;
     const double s_origin1 = cube.s1;
@@ -199,7 +200,7 @@ std::vector<SemanticCube> generate_semantic_corridor(
         }
         *face.value = previous + face.sign * step;
         if (!is_cube_free(context, compiled_constraints, cube, params.margin_m)) {
-          *face.value = previous;  // 当たったのでこの面はここで確定
+          *face.value = previous;  // blocked, so this face is settled
           blocked[f] = true;
           continue;
         }
@@ -210,7 +211,7 @@ std::vector<SemanticCube> generate_semantic_corridor(
     cubes.push_back(cube);
   }
 
-  // ---- 区間接続: 現 cube の t 上限 = 次 cube の t 下限 (数値上も厳密に一致させる) ----
+  // ---- join the pieces: the upper t of a cube becomes exactly the lower t of the next ----
   for (std::size_t j = 0; j + 1 < cubes.size(); ++j) {
     cubes[j + 1].t0 = cubes[j].t1;
   }
@@ -229,7 +230,8 @@ MarkerArray make_corridor_markers(
       Marker::LINE_STRIP, autoware_utils_visualization::create_marker_scale(0.05, 0.0, 0.0),
       autoware_utils_visualization::create_marker_color(0.2, 0.7, 1.0, 0.6));
 
-    // (s, l) の 4 隅を世界座標へ。カーブでも形が分かるよう辺を細分する
+    // The four corners in (s, l), converted to world coordinates. The edges are subdivided so
+    // that the shape stays recognizable on a curve
     const std::vector<std::pair<double, double>> corners{
       {cube.s0, cube.l0},
       {cube.s1, cube.l0},

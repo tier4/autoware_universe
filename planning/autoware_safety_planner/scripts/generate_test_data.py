@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Build test_data/<name>.yaml for test/closed_loop with a GUI.
+"""Build test_data/scenarios/<name>.yaml for test/closed_loop with a GUI.
 
 Map drawing and the lanelet id tooltip are reused as-is from test_case_generator.py of
 autoware_lanelet2_utils. Start and goal are placed by dragging, and Generate writes the shortest path
@@ -228,7 +228,7 @@ def main():
     parser.add_argument(
         "--out-dir",
         # with a symlink install __file__ points at the source, so this writes to the source test_data
-        default=str(Path(__file__).resolve().parent.parent / "test_data"),
+        default=str(Path(__file__).resolve().parent.parent / "test_data" / "scenarios"),
         help="directory the scenario yaml is written to",
     )
     args = parser.parse_args()

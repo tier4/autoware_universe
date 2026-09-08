@@ -12,23 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_PLANNER_HPP_
-#define TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_PLANNER_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_PLANNER_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_PLANNER_HPP_
 
-// rough_planner: ホモトピー選択 (どちら側を抜けるか / 譲るか先に行くか / 止まるか通るか) の
-// 全責任を持つ層。下流の optimizer は非凸探索をしない。
+// rough_planner owns the choice of the homotopy: which side to pass on, whether to yield or go
+// first, whether to stop or drive through. The optimizer downstream performs no non-convex search.
 //
-// 設計の出典 (docs/safety_planner_arch_design/homotopy_resolution.md, v0 spec S3):
-// - rough_planner は**無状態**。周期間の持ち越し (PreviousPlanningResult) の所有は Node で、
-//   const 参照で受け取るだけ。次周期分は Node が出力から書き戻す
-// - 離散決定 (Decisions) は持ち越さず、**毎周期軌道の幾何から再導出**する。
-//   持ち越した Decisions はヒステリシス比較にのみ使う。キーは周期間で安定な ID
-//   (Source の ID)。s や配列添字に紐づけない
-// - ヒステリシスは二層: 第一層 = 編成 (前周期解が通る限り決定は変わらない)、
-//   第二層 = 危険側への切替は無条件・安全余裕を減らす側の切替には障壁
-// - 出力は**優先順位付きの候補列**。v0 の「最初に成立した 1 本」は早期 commit が弱点
-//   (homotopy_resolution.md 論点 2) なので、IF は top-K を許す形にしておく。
-//   当面の運用は K = 1 (consumer は先頭のみ消費)
+// - the layer is **stateless**. What carries across cycles (PreviousPlanningResult) is owned by the
+//   node and only read here through a const reference; the node writes the next one back from the
+//   output
+// - the discrete decisions are not carried across cycles either: they are **derived again from the
+//   geometry of the trajectory every cycle**, and the ones carried over are used only for the
+//   hysteresis comparison. Their keys are the ids that stay stable across cycles (the ones in
+//   Source), never an arc length or an array index
+// - the hysteresis has two layers: the ordering of the candidates keeps the decision as long as the
+//   previous solution still holds, and on top of that a switch towards the unsafe side faces a
+//   barrier while a switch towards more margin does not
+// - the output is a **list of candidates in priority order**. Committing to the first feasible one
+//   is a weakness, so the interface admits a top-K; for now K = 1 and only the first is consumed
 
 #include "../../constraint.hpp"
 #include "../../context.hpp"
@@ -43,62 +44,63 @@ namespace autoware::safety_planner
 {
 
 // ---------------------------------------------------------------------------------------------
-// 離散決定
+// the discrete decisions
 // ---------------------------------------------------------------------------------------------
 
 enum class LeadLag : std::uint8_t { LEAD, FOLLOW };
 enum class StopGo : std::uint8_t { STOP, GO };
 
-//! ホモトピーを定める離散決定。キーは周期間で安定な ID (Source::target_id: perception UUID /
-//! lanelet id 等)。毎周期 derive_decisions() で軌道の幾何から再導出する
+//! The discrete decisions that define the homotopy, keyed by the ids that stay stable across
+//! cycles (Source::target_id: a perception UUID, a lanelet id, ...). They are derived again from
+//! the geometry of the trajectory every cycle, by derive_decisions().
 struct Decisions
 {
-  std::map<std::string, Side> side;         //!< 静的物体ごとの左右
-  std::map<std::string, LeadLag> lead_lag;  //!< 動的物体ごとの先行/追従
-  std::map<std::string, StopGo> stop_go;    //!< 停止線・譲り対象ごとの停止/通過
+  std::map<std::string, Side> side;         //!< which side of a static object to pass on
+  std::map<std::string, LeadLag> lead_lag;  //!< whether to lead or to follow a dynamic object
+  std::map<std::string, StopGo> stop_go;    //!< whether to stop at or drive through a stop line
 };
 
 // ---------------------------------------------------------------------------------------------
-// 出力型
+// output types
 // ---------------------------------------------------------------------------------------------
 
 enum class RoughPlanSource : std::uint8_t {
-  PREVIOUS_SOLUTION,  //!< 前周期解の再利用
-  SPATIOTEMPORAL_DP,  //!< 時空間 DP
-  REFERENCE_FOLLOW,   //!< 中心線追従 (幾何制約を見ない暫定実装。DP 実装後に置き換える)
-  STOP,               //!< 停止 rough_plan (最終手段、無条件成立)
+  PREVIOUS_SOLUTION,  //!< the solution of the previous cycle, reused
+  SPATIOTEMPORAL_DP,  //!< the space-time DP
+  REFERENCE_FOLLOW,   //!< following the centerline, a stand-in that ignores the geometry
+  STOP,               //!< the stop plan, the last resort and always feasible
 };
 
-//! 粗軌道の 1 点。時間グリッドは下流 optimizer のステージと同一 (t_k = k·dt) にし、
-//! 格子変換の曖昧さを持たない
+//! One point of a rough plan. The time grid is the one of the optimizer downstream (t_k = k*dt),
+//! so no grid conversion is needed.
 struct RoughPlanPoint
 {
   double t{0.0};      //!< [s]
-  Pose2d pose{};      //!< 世界座標
-  double kappa{0.0};  //!< [1/m] optimizer 状態の初期値として rough_planner 層が埋める
+  Pose2d pose{};      //!< world coordinates
+  double kappa{0.0};  //!< [1/m] filled in here as the initial state of the optimizer
   double v{0.0};      //!< [m/s]
-  double a{0.0};      //!< [m/s²]
+  double a{0.0};      //!< [m/s^2]
 };
 
 struct RoughPlan
 {
-  std::vector<RoughPlanPoint> points;  //!< N+1 点 (t_k = k·dt)
-  std::vector<double> s;               //!< 同長。reference_path 弧長 s(t_k)。再投影の曖昧さ排除用
-  Decisions decisions;                 //!< derive_decisions() の結果
+  std::vector<RoughPlanPoint> points;  //!< N+1 points (t_k = k*dt)
+  std::vector<double> s;               //!< same length; s(t_k), so that nothing has to reproject
+  Decisions decisions;                 //!< what derive_decisions() returned
   RoughPlanSource source{RoughPlanSource::STOP};
-  bool blocked{false};          //!< 停止の原因が SAFETY 障害 (raw への逆参照で判定)
-  int blocked_first_stage{-1};  //!< blocked 時、停止の原因となる最初のステージ (report 用)
+  bool blocked{false};          //!< whether the stop is caused by a safety constraint
+  int blocked_first_stage{-1};  //!< when blocked, the first stage that causes it, for the report
 };
 
-//! report・マーカー用。意味論には関与しない
+//! For the report and the markers only; nothing here changes the behavior
 struct RoughPlanDebug
 {
-  std::vector<std::string> rejected;  //!< 不成立候補とその理由
+  std::vector<std::string> rejected;  //!< the rejected candidates and why
   double elapsed_ms{0.0};
   MarkerArray debug_markers;
 };
 
-//! plan_rough_trajectories() の戻り値。候補列とデバッグ情報を束ねる
+//! What plan_rough_trajectories() returns: the candidates and the debug information
 struct RoughPlanResult
 {
   std::vector<RoughPlan> plans;
@@ -106,53 +108,54 @@ struct RoughPlanResult
 };
 
 // ---------------------------------------------------------------------------------------------
-// 周期間持ち越し (所有は Node。rough_planner は const 参照で読むだけ)
+// carried across cycles; owned by the node and only read here
 // ---------------------------------------------------------------------------------------------
 
 struct PreviousPlanningResult
 {
-  //! 前周期に採用された rough_plan (地図座標)。編成の第一候補 (前周期解の再利用) と
-  //! ヒステリシス比較 (decisions) に使う
+  //! The rough plan taken in the previous cycle, in map coordinates. It is the first candidate of
+  //! this cycle and the reference of the hysteresis comparison
   std::optional<RoughPlan> plan;
-  //! 前周期解が使えなかった連続周期数。閾値超過で side 固執を解く (ヒステリシス材料)
+  //! For how many cycles in a row the previous solution was unusable; past a threshold the side
+  //! stops being held on to
   int consecutive_fallbacks{0};
 };
 
 // ---------------------------------------------------------------------------------------------
-// パラメータ
+// parameters
 // ---------------------------------------------------------------------------------------------
 
-//! rough_planner 層のパラメータ (ROS ns `rough_planner.*`。S3 §7)。
-//! 既定値は S3 の初期値表。Node が生成パラメータから詰めて渡す
+//! Parameters of the layer (ROS namespace `rough_planner.*`), filled in by the node from the
+//! generated parameters.
 struct RoughPlannerParams
 {
-  double time_step_s{0.1};  //!< [s] 出力時間グリッド (下流 optimizer のステージと同一)
+  double time_step_s{0.1};  //!< [s] output time grid, the one of the optimizer downstream
   int num_points{101};      //!< N + 1
-  int max_candidates{1};    //!< 出力候補数の上限 (当面 1。top-K 比較は将来拡張)
+  int max_candidates{1};    //!< upper bound on the number of candidates; 1 for now
 
-  //! (s, l, t, v) DP 格子と遷移条件 (S3 §3.1 / §3.3)
+  //! The (s, l, t, v) grid of the DP and its transitions
   struct Dp
   {
-    double s_max_m{150.0};   //!< [m] 前方範囲
+    double s_max_m{150.0};   //!< [m] how far ahead the grid reaches
     double s_step_m{2.0};    //!< [m]
-    double l_range_m{3.0};   //!< [m] 中心線から ± この範囲
+    double l_range_m{3.0};   //!< [m] the grid spans this far to each side of the centerline
     double l_step_m{0.5};    //!< [m]
-    double t_step_s{1.0};    //!< [s] 層間隔
-    double horizon_s{10.0};  //!< [s] 下流 optimizer の T と一致させる
-    double v_step_mps{1.0};  //!< [m/s] v 軸刻み
+    double t_step_s{1.0};    //!< [s] spacing of the layers
+    double horizon_s{10.0};  //!< [s] keep it equal to the T of the optimizer downstream
+    double v_step_mps{1.0};  //!< [m/s]
 
-    double lateral_slope_max{0.3};     //!< [-] 参照からの許容ヘディング偏差 (≈ 17°)
-    double lateral_rate_max_mps{1.5};  //!< [m/s] 横速度上限
+    double lateral_slope_max{0.3};     //!< [-] heading deviation allowed, ~17 deg
+    double lateral_rate_max_mps{1.5};  //!< [m/s] upper bound on the lateral speed
 
-    //! コスト重み (S3 §3.4。「進行 1 m の価値 = 1」の等価換算)
+    //! Cost weights, scaled so that one meter of progress is worth 1
     struct Weights
     {
       double progress{1.0};       //!< [1/m]
-      double lateral{0.5};        //!< [1/(m²·s)] 横オフセット維持
-      double lateral_rate{1.0};   //!< [s/m²] 横速度 (格子ジグザグ抑制)
-      double velocity{0.2};       //!< [s³/m²] 目標速度からの乖離
-      double accel{0.1};          //!< [s⁵/m²] 平滑化 (弱く)
-      double accel_nominal{2.0};  //!< [s⁵/m²] 快適域超過の抑制
+      double lateral{0.5};        //!< [1/(m^2 s)] holding the lateral offset
+      double lateral_rate{1.0};   //!< [s/m^2] lateral speed, which keeps the path from zigzagging
+      double velocity{0.2};       //!< [s^3/m^2] deviation from the target speed
+      double accel{0.1};          //!< [s^5/m^2] smoothing, weakly
+      double accel_nominal{2.0};  //!< [s^5/m^2] penalty for leaving the comfortable range
     } weights;
   } dp;
 };
@@ -166,8 +169,8 @@ class RoughPlanner
 public:
   explicit RoughPlanner(const RoughPlannerParams & params);
 
-  //! 優先順位付きの rough_plan 候補列を返す。plans は**必ず 1 本以上** (停止 rough_plan が
-  //! 無条件成立)。当面 consumer は先頭のみ消費する (top-K 比較は将来拡張)
+  //! Returns the candidates in priority order. There is **always at least one**, the stop plan
+  //! being unconditionally feasible. For now only the first one is consumed.
   RoughPlanResult plan_rough_trajectories(
     const PlannerContext & context, const CompiledConstraints & compiled_constraints,
     const PreviousPlanningResult & prev_planning_result) const;
@@ -176,12 +179,12 @@ private:
   RoughPlannerParams params_;
 };
 
-//! 全 rough_planner 共通の離散決定の幾何導出。決定は毎周期ここで再導出し、
-//! prev_decisions はヒステリシス比較にのみ使う
+//! Derives the discrete decisions from the geometry, shared by every rough planner. They are
+//! derived again every cycle, and prev_decisions is used only for the hysteresis comparison.
 Decisions derive_decisions(
   const RoughPlan & plan, const CompiledConstraints & compiled_constraints,
   const Decisions & prev_decisions);
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_PLANNER_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_PLANNER_HPP_

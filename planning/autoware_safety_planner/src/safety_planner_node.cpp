@@ -183,7 +183,7 @@ void SafetyPlannerNode::on_timer()
   }
   const auto & result = planned.value();
 
-  // publish (normal 側のみ。cautial 側の consumer は未実装)
+  // Only the normal side is published; nothing consumes the cautious one yet
   if (result.normal_trajectory) {
     publish_trajectory(*result.normal_trajectory);
   }
@@ -192,7 +192,7 @@ void SafetyPlannerNode::on_timer()
   publish_rough_plan_markers(result.debug.rough_plan_result);
   publish_debug_markers(result.debug);
 
-  // どの制約が経路に影響を与えたかの情報をpublishする(どうやって検出する？)
+  // TODO(odashima): publish which constraints shaped the trajectory, once we can tell
   // publish_planning_factors();
 }
 
@@ -202,7 +202,7 @@ bool SafetyPlannerNode::update_route_manager(const InputData & input_data)
 
   const auto & current_pose = input_data.odometry_ptr->pose.pose;
 
-  // route / map が差し替わったら追従は意味を持たないので作り直す
+  // Rebuild it when the route or the map is replaced, since the old one no longer applies
   const bool needs_create = !input_.route_manager ||
                             route_uuid_of_route_manager_ != input_data.route_ptr->uuid ||
                             map_ptr_of_route_manager_ != input_data.lanelet_map_bin_ptr;
@@ -263,7 +263,7 @@ bool SafetyPlannerNode::update_input(const InputData & input_data)
 
 void SafetyPlannerNode::publish_trajectory(const Trajectory & trajectory) const
 {
-  // 本線出力: CandidateTrajectories (Selector が generator_id / generator_name で識別する)
+  // The main output. The selector identifies a candidate by generator_id / generator_name
   CandidateTrajectories candidate_trajectories;
   auto & candidate = candidate_trajectories.candidate_trajectories.emplace_back();
   candidate.header = trajectory.header;
@@ -274,7 +274,7 @@ void SafetyPlannerNode::publish_trajectory(const Trajectory & trajectory) const
   generator_info.generator_name.data = "SafetyPlanner_Normal";
   pub_candidate_trajectories_->publish(candidate_trajectories);
 
-  // デバッグ用
+  // for debugging
   pub_debug_trajectory_->publish(trajectory);
 }
 
@@ -286,7 +286,7 @@ void SafetyPlannerNode::publish_rough_plan_trajectory(const RoughPlanResult & ro
     return;
   }
 
-  // 当面 consumer は先頭候補のみ消費する (rough_planner.hpp の運用 K = 1)
+  // For now only the first candidate is consumed (K = 1, see rough_planner.hpp)
   const auto & plan = rough_plan_result.plans.front();
   if (plan.points.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -310,8 +310,8 @@ void SafetyPlannerNode::publish_rough_plan_trajectory(const RoughPlanResult & ro
 
 void SafetyPlannerNode::publish_rough_plan_markers(const RoughPlanResult & rough_plan_result) const
 {
-  // 候補本数が周期で変わる (candidate_<i> の ns が減る) と前周期のマーカーが残るので、
-  // DELETEALL を先頭に挟んでから今周期分を積む
+  // The number of candidates changes between cycles, which would leave the markers of the
+  // namespaces that disappeared behind, so clear them first
   MarkerArray marker_array;
   Marker delete_all;
   delete_all.action = Marker::DELETEALL;
@@ -331,7 +331,7 @@ void SafetyPlannerNode::publish_debug_markers(const SafetyPlannerResult::Debug &
   const auto now = this->now();
   MarkerArray marker_array;
 
-  // -------------------- コンテキストの可視化 --------------------
+  // -------------------- the context --------------------
   // current_pose
   {
     auto marker = create_default_marker(
@@ -350,13 +350,13 @@ void SafetyPlannerNode::publish_debug_markers(const SafetyPlannerResult::Debug &
     marker_array.markers.push_back(marker);
   }
 
-  // reference_pathの可視化
+  // reference_path
   {
     auto marker = create_default_marker(
       "map", now, "reference_path", 0, Marker::LINE_STRIP, create_marker_scale(0.2, 0.0, 0.0),
       create_marker_color(0.0, 0.5, 1.0, 0.999));
-    // 基底点 (waypoint、数 m 間隔) だけだと折れ線に見えるので、補間形状が分かるように 1 m 以下で
-    // サンプルする (終端も含める)
+    // The bases are meters apart and would look like a polyline, so sample at 1 m or less, the
+    // end point included, to show the interpolated shape
     constexpr double MARKER_INTERVAL_M = 1.0;
     const auto & reference_path = debug.reference_path;
     for (double s = 0.0; s < reference_path.length(); s += MARKER_INTERVAL_M) {
@@ -370,8 +370,9 @@ void SafetyPlannerNode::publish_debug_markers(const SafetyPlannerResult::Debug &
     }
   }
 
-  // 横境界 (射影ビュー) の可視化: reference_path 上の一定間隔ごとに、中心線から各境界までを
-  // 法線方向の細線で結ぶ。どの s にどちら側の境界が効いているかを見るためのもの
+  // The lateral bounds of the projected views, drawn at a constant spacing along the
+  // reference_path as thin lines from the centerline to each boundary along the normal. They show
+  // which boundary is in effect at which s, and on which side
   {
     constexpr double INTERVAL_M = 2.0;
     auto hard_marker = create_default_marker(
@@ -411,7 +412,7 @@ void SafetyPlannerNode::publish_debug_markers(const SafetyPlannerResult::Debug &
     }
   }
 
-  // -------------------- IRの可視化 --------------------
+  // -------------------- the IR --------------------
   (void)debug.compiled_constraints;
 
   pub_debug_marker_->publish(marker_array);

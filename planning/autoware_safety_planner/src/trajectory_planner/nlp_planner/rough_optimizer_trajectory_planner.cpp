@@ -27,7 +27,7 @@ namespace autoware::safety_planner
 namespace
 {
 
-//! 生成パラメータ (ROS) から rough_planner 層のパラメータ struct へ詰め替える
+//! Copies the generated ROS parameters into the parameter struct of the rough planner
 RoughPlannerParams to_rough_planner_params(const Params & params)
 {
   const auto & p = params.rough_planner;
@@ -90,13 +90,13 @@ TrajectoryPlannerResult RoughOptimizerTrajectoryPlanner::plan(const TrajectoryPl
 
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
-    // 制約のコンパイル (重複の削除・reference_path への射影) はセットごとに独立
+    // Each set is compiled on its own
     auto compiled = compile_constraint_list(input.context, input.normal_constraints);
     RoughPlanResult rough_plan_result;
     TrajectoryOptimizerResult optimizer_result;
     result.normal_trajectory =
       plan_one_side(input.context, compiled, normal_state_, rough_plan_result, optimizer_result);
-    // デバッグは当面 normal 側のみ (trajectory_planner_interface.hpp)
+    // Debug output covers the normal side only
     result.debug.compiled_constraints = std::move(compiled);
     result.debug.rough_plan_result = std::move(rough_plan_result);
     result.debug.trajectory_optimizer_result = std::move(optimizer_result);
@@ -118,17 +118,18 @@ std::optional<Trajectory> RoughOptimizerTrajectoryPlanner::plan_one_side(
   SideState & state, RoughPlanResult & rough_plan_result,
   TrajectoryOptimizerResult & optimizer_result)
 {
-  // 粗い経路計画 (ホモトピー解決)。優先順位付き候補列が返り、当面は先頭のみ消費する
+  // The rough plan settles the homotopy. It returns candidates in priority order, of which only
+  // the first is consumed for now
   rough_plan_result = [&]() {
     autoware_utils_debug::ScopedTimeTrack rough_st("plan_rough_trajectories", *time_keeper_);
     return rough_planner_->plan_rough_trajectories(
       context, compiled_constraints, state.prev_planning_result);
   }();
 
-  // 粗い経路計画の結果をもとに、最終的な経路を生成する
+  // Refine it into the final trajectory
   optimizer_result = optimize_trajectory(context, compiled_constraints, rough_plan_result, state);
 
-  // 周期間持ち越しの更新
+  // update what is carried into the next cycle
   if (!rough_plan_result.plans.empty()) {
     state.prev_planning_result.plan = rough_plan_result.plans.front();
   }
@@ -166,8 +167,8 @@ TrajectoryOptimizerResult RoughOptimizerTrajectoryPlanner::optimize_trajectory(
     result.debug.message = "trajectory optimizer plugin is not loaded";
     return result;
   }
-  // rough_planner は必ず 1 本以上返す契約 (停止 rough_plan が無条件成立) だが、
-  // 空の周期に備えて防御する。当面 consumer は先頭候補のみ消費する
+  // The rough planner always returns at least one candidate, the stop plan being unconditionally
+  // feasible, but guard against an empty result anyway
   if (rough_plan_result.plans.empty()) {
     result.debug.message = "no rough plan candidate";
     return result;

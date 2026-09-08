@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONSTRAINT_HPP_
-#define CONSTRAINT_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__CONSTRAINT_HPP_
+#define AUTOWARE__SAFETY_PLANNER__CONSTRAINT_HPP_
 
 #include "type_alias.hpp"
 
@@ -31,22 +31,22 @@ namespace autoware::safety_planner
 
 inline constexpr double INF = std::numeric_limits<double>::infinity();
 
-//! 制約の**前提がどれだけ確かか**。どの制約セット (normal / cautious) にその制約が
-//! 入るかを決める: normal = DEFINITE のみ / cautious = DEFINITE + POSSIBLE。
-//! プラグインは自分が出す制約の確度だけを宣言し、何本の軌道が作られるかを知らない
+//! How certain the premise of a constraint is. It selects the constraint set the constraint goes
+//! into: normal = DEFINITE only, cautious = DEFINITE + POSSIBLE. A generator only declares the
+//! certainty of what it emits and does not know how many trajectories are planned.
 enum class Certainty : std::uint8_t {
   DEFINITE,
   POSSIBLE,
 };
 
-//! 制約の出どころの分類。使い道はレポートのグルーピングだけで、パイプラインは区別しない
+//! Origin of a constraint. Used only to group entries in the report; the pipeline ignores it.
 enum class Category : std::uint8_t {
-  SAFETY,   //!< 安全に関する制約 (Safety Constraints Generator)
-  TRAFFIC,  //!< 道交法に関する制約 (Traffic Constraints Generator)
+  SAFETY,
+  TRAFFIC,
 };
 
-//! 制約の硬さ。HARD は必ず満たす (スラック無し)。SOFT はスラック付きで破ることを許し、
-//! 破り量は Constraint::slack_weight で罰する
+//! HARD must be satisfied (no slack). SOFT may be violated with a slack variable, penalized by
+//! Constraint::slack_weight.
 enum class Hardness : std::uint8_t {
   HARD,
   SOFT,
@@ -60,7 +60,7 @@ struct TimeWindow
 
 struct ArcRange
 {
-  double s0{-INF};  //!< [m] ego 投影点基準
+  double s0{-INF};  //!< [m] relative to the projection of ego
   double s1{INF};
 };
 
@@ -70,23 +70,21 @@ struct Domain
   ArcRange arc{};
 };
 
-//! 発行元識別子(レポート・診断・マーカー・PlanningFactor 用)。
-//! 表示形式は "<plugin_name>/<detail>"
+//! Identifies the emitter, for reports, diagnostics, markers and PlanningFactor.
 struct Source
 {
-  std::string plugin_name;              //!< 制約を出したプラグインの識別子(レポート・デバッグ用)
-  Category category{Category::SAFETY};  //!< Safety / Traffic の分類(パイプラインは区別しない)
-  //! 制約が対象にしている実体の識別子。**周期間で安定な ID** であること
-  //! (perception の UUID・lanelet id 等)。s や配列添字に紐づけない。空 = 特定の対象を持たない
-  //! (車両運動制約など)。次の 2 つがこの ID を使う:
-  //! - 離散決定 (Decisions) のキー。周期をまたいで同じ対象の決定を照合する
-  //! - SafetyFactor の object_id。検証層が「どの物体で止まったか」を埋める
+  std::string plugin_name;
+  Category category{Category::SAFETY};
+  //! Identifies the entity the constraint is about, and must be **stable across cycles**
+  //! (perception UUID, lanelet id, ...); never an arc length or an array index. Empty means the
+  //! constraint has no specific target (vehicle kinematics, ...). Two consumers use it:
+  //! - key of the discrete decisions, matching the decision on the same target across cycles
+  //! - object_id of the SafetyFactor, so the validation layer can tell which object caused a stop
   std::string target_id;
 
-  // TODO(odashima): PlanningFactorを参考にする
+  // TODO(odashima): follow PlanningFactor
 
-  std::string detail;  //!< 制約の種別を端的に表す文字列、例: "stop_line",
-                       //!< "dynamic_obstacle", "lateral_accel_limit"
+  std::string detail;  //!< kind of the constraint, e.g. "stop_line", "dynamic_obstacle"
 };
 
 struct Pose2d
@@ -95,14 +93,14 @@ struct Pose2d
   double yaw{0.0};
 };
 
-//! 時刻付き pose。t は計画基準時刻からの相対秒
+//! Pose with a time stamp. t is seconds relative to the planning reference time.
 struct TimedPose
 {
   double t{0.0};
   Pose2d pose{};
 };
 
-//! 時刻付き多角形。t は計画基準時刻からの相対秒
+//! Polygon with a time stamp. t is seconds relative to the planning reference time.
 struct TimedPolygon
 {
   double t{0.0};
@@ -110,70 +108,72 @@ struct TimedPolygon
 };
 
 // ---------------------------------------------------------------------------------------------
-// payload(constraint_desing.md §2.9 の 4 型に 1:1 対応)
+// payloads
 // ---------------------------------------------------------------------------------------------
 
 enum class BoundedQuantity : std::uint8_t {
-  VELOCITY,     //!< v      [m/s]   縦速度
-  LON_ACCEL,    //!< a      [m/s²]  縦加速度(両側 bound が意味を持つ唯一の量)
-  LON_JERK,     //!< j      [m/s³]  縦躍度(|j| に対する上限)
-  LAT_ACCEL,    //!< v²|κ|  [m/s²]  横加速度
-  CURVATURE,    //!< |κ|    [1/m]   曲率
-  STEER_ANGLE,  //!< |δ|    [rad]   ステア角
-  STEER_RATE,   //!< |δ̇|    [rad/s] ステアレート
+  VELOCITY,     //!< v      [m/s]
+  LON_ACCEL,    //!< a      [m/s^2] the only quantity for which both bounds are meaningful
+  LON_JERK,     //!< j      [m/s^3] bound on |j|
+  LAT_ACCEL,    //!< v^2|k| [m/s^2]
+  CURVATURE,    //!< |k|    [1/m]
+  STEER_ANGLE,  //!< |d|    [rad]
+  STEER_RATE,   //!< |d'|   [rad/s]
 };
 
-//! (i) スカラー box。region が無ければ全域(車両運動)、有れば「base_link が region 内にいる間」
-//! (§3.5 決定 6: 判定は base_link 包含。保守的にしたい発行側は region を膨張して出す)
+//! (i) Scalar box. Without a region it holds everywhere (vehicle kinematics); with one it holds
+//! while base_link is inside the region. An emitter that wants to be conservative inflates the
+//! region itself.
 struct ScalarBound
 {
   BoundedQuantity quantity;
-  double min{-INF};  //!< 絶対値量(|j| 等)では使わない(-INF のまま)
+  double min{-INF};  //!< unused (left at -INF) for quantities bounded in absolute value
   double max{+INF};
-  std::optional<Polygon2d> region{};  //!< nullopt = 全域。上限速度は lanelet 形状
+  std::optional<Polygon2d> region{};  //!< nullopt = everywhere
 };
 
-//! Boundary の禁止側(折れ線の進行向き基準)
-enum class Side : std::uint8_t { LEFT, RIGHT };
-
-//! (ii) 越境禁止。走行可能領域の境界折れ線 + 禁止側。周期内静的・無期限
-//! 分割・面選択・弧長割当は consumer の仕事(折れ線は生の地図頂点のままでよい)
+//! (ii) Do not cross. A drivable area boundary polyline; the forbidden side is not tagged here,
+//! the consumer decides it from where the polyline lies relative to its own reference path.
+//! Splitting, face selection and arc length assignment are the consumer's job, so the polyline may
+//! stay as the raw map vertices. Static within a cycle and valid for all times.
 struct Boundary
 {
-  LineString2d polyline{};          //!< 折れ線(頂点 2 点以上)
-  Side forbidden_side{Side::LEFT};  //!< 越えてはいけない側
-  double margin{0.0};               //!< [m] ≥ 0。禁止側をこの分だけ膨張して評価
+  LineString2d polyline{};  //!< two vertices or more
+  double margin{0.0};       //!< [m] >= 0, the forbidden side is inflated by this much
 };
 
-//! 剛体占有。物体ローカル形状が予測 pose 列に沿って動く。waypoint 1 点 = 静的物体。
-//! waypoints 間は線形補間(yaw は最短角)、時刻範囲外は無効
+//! Rigid occupancy: a body-local shape moving along a predicted pose sequence. A single waypoint
+//! means a static object. Poses are interpolated linearly between waypoints (yaw along the shortest
+//! angle); outside the covered time range the occupancy is undefined.
 struct RigidBody
 {
-  Polygon2d shape{};                 //!< 物体ローカル(pose 基準)
-  std::vector<TimedPose> waypoints;  //!< t 昇順(1 点以上)
+  Polygon2d shape{};                 //!< in body frame
+  std::vector<TimedPose> waypoints;  //!< ascending in t, at least one
 };
 
-//! 時変多角形列の占有。時刻とともに変形・成長する領域(飛び出しの到達可能領域等)。
-//! polygons 間の補間は保守側(隣接 2 多角形の和で評価してよい)、時刻範囲外は無効
+//! Occupancy given as a sequence of time-varying polygons, for regions that grow or deform (the
+//! reachable set of a possible cut-in, ...). Interpolation between polygons is conservative (the
+//! union of the two neighbors may be used); outside the covered time range it is undefined.
 struct TimedPolygonSequence
 {
-  std::vector<TimedPolygon> polygons;  //!< t 昇順(1 点以上)
+  std::vector<TimedPolygon> polygons;  //!< ascending in t, at least one
 };
 
-//! (iii) 占有禁止。footprint(margin 膨張込み)が占有と交わってはいけない
+//! (iii) Do not occupy. The footprint, inflated by the margin, must not intersect the occupancy.
 struct KeepOut
 {
   std::variant<RigidBody, TimedPolygonSequence> occupancy{};
-  double margin_m{0.0};  //!< [m] ≥ 0。定数マージン(消費側が footprint をこの分膨張して評価)
+  double margin_m{0.0};  //!< [m] >= 0, the consumer inflates the footprint by this much
 };
 
-//! (iv) 通過禁止ゲート。有効時間帯(Constraint::time)の間、footprint が線分を禁止側へ
-//! 越えてはいけない。禁止側 = first → second の向きに対して左側(手前 = 右側が可)。
-//! 線分の横は素通りできるので、効かせたい幅の分だけ伸ばして発行する
+//! (iv) Gate that must not be passed. While the constraint is active (Constraint::domain), the
+//! footprint must not cross the segment towards the forbidden side, which is the left of first ->
+//! second. A gate can be driven around, so it has to be emitted long enough to cover the width it
+//! is meant to block.
 struct Gate
 {
-  Segment2d line{};    //!< 有向線分
-  double margin{0.0};  //!< [m] ≥ 0。手前に置く追加余裕
+  Segment2d line{};    //!< directed segment
+  double margin{0.0};  //!< [m] >= 0, extra clearance kept in front of the line
 };
 
 using ConstraintPayload = std::variant<ScalarBound, Boundary, KeepOut, Gate>;
@@ -184,15 +184,14 @@ using ConstraintPayload = std::variant<ScalarBound, Boundary, KeepOut, Gate>;
 
 struct Constraint
 {
-  Certainty certainty{Certainty::DEFINITE};  //!< 前提の確度。normal / cautious の振り分けに使う
-  Hardness hardness{Hardness::HARD};         //!< HARD = 必ず満たす / SOFT = スラック付きで破れる
-  //! [-] スラック (制約の破り量) に対するペナルティ重み。SOFT のときのみ有効
-  double slack_weight{0.0};
-  Domain domain{};  //!< 有効時間帯 + 弧長範囲
+  Certainty certainty{Certainty::DEFINITE};
+  Hardness hardness{Hardness::HARD};
+  double slack_weight{0.0};  //!< [-] penalty on the slack, only used when hardness is SOFT
+  Domain domain{};
   ConstraintPayload payload{};
   Source source{};
 };
 
 }  // namespace autoware::safety_planner
 
-#endif  // CONSTRAINT_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__CONSTRAINT_HPP_

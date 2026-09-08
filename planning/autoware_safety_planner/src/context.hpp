@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONTEXT_HPP_
-#define CONTEXT_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__CONTEXT_HPP_
+#define AUTOWARE__SAFETY_PLANNER__CONTEXT_HPP_
 
 #include "type_alias.hpp"
 
@@ -23,7 +23,7 @@
 namespace autoware::safety_planner
 {
 
-//! Node が周期ごとに集める入力。reference_path の構築は SafetyPlanner 側の仕事
+//! What the node collects every cycle. Building the reference_path is SafetyPlanner's job.
 struct SafetyPlannerInput
 {
   VehicleInfo vehicle_info;
@@ -35,9 +35,8 @@ struct SafetyPlannerInput
   PredictedObjects::ConstSharedPtr predicted_objects;
 };
 
-//! SafetyPlannerInput に reference_path を足したもの。プラグインへ渡す。
-//! RouteManager が move-only で入力をコピーできないので、入力側は参照で持つ
-//! (寿命は SafetyPlanner::plan の 1 周期内)
+//! SafetyPlannerInput plus the reference_path, as handed to the plugins. RouteManager is move-only
+//! so the input cannot be copied; it is held by reference and lives for one SafetyPlanner::plan.
 struct PlannerContext
 {
   explicit PlannerContext(const SafetyPlannerInput & input, PathPointTrajectory reference_path)
@@ -61,15 +60,16 @@ struct PlannerContext
   const PredictedObjects::ConstSharedPtr & predicted_objects;
   PathPointTrajectory reference_path;
 
-  //! goal_pose の reference_path 上の弧長 [m]。接続していない周期 (前方打ち切りで
-  //! 経路が goal に届いていない等) は nullopt。判定は下の接続判定と同一
+  //! [m] Arc length of goal_pose along reference_path, or nullopt in a cycle where the two are not
+  //! connected (the path is cut short of the goal, ...). Decided as in the predicate below.
   std::optional<double> goal_arc_length() const;
 
-  //! goal_pose が reference_path の終端に対して縦距離 0.1 m 以内である場合は接続しているとみなす。
-  //! 横距離は路肩駐車のような場合だとつながらないので縦距離のみで判定する
+  //! The goal counts as connected when it is within 0.1 m of the end of reference_path
+  //! longitudinally. Only the longitudinal distance is used, because the lateral one does not close
+  //! for a goal off to the side, such as parking on the shoulder.
   bool is_reference_path_connected_to_goal_pose() const;
 };
 
 }  // namespace autoware::safety_planner
 
-#endif  // CONTEXT_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__CONTEXT_HPP_

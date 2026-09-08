@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""NlpTrajectoryOptimizer が駆動する acados OCP の codegen (docs/spec/nlp_and_fallback.md S5).
+"""Code generation of the acados OCP that NlpTrajectoryOptimizer drives.
 
-**数値 (上下限・重み・参照・dt) は 1 つも codegen 時に決めない**。ここで固定するのは構造だけ:
+**No number is decided here**: no bound, weight, reference or dt. Only the structure is fixed:
 
-  N               ステージ数 (rough_planner.num_points - 1 と一致させる)
-  どの状態・入力に box を張るか
-  どの行にスラックを付けるか
-  コストの型 (LINEAR_LS)
+  N               the number of stages (kept equal to rough_planner.num_points - 1)
+  which states and inputs carry a box
+  which rows carry a slack
+  the type of the cost (LINEAR_LS)
 
-三段フォールバック (S5 §8.1) は**同一の生成物のまま境界値の書き換えだけ**で実現する
-(行を消すのではなく ±1e6 へ開いて無効化する。S6 §4.1 原則 2)。ソルバーを作り直さないので、
-段を落とすたびのコストは再解 1 回分だけ。
+The three-level fallback works on this one generated solver by rewriting bounds: a row is disabled
+by opening it to +-1e6 rather than by removing it. The solver is never rebuilt, so dropping a level
+costs one more solve and nothing else.
 """
 
 import os
@@ -39,11 +39,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from generators.time_bicycle_model import ROW_STEER_RATE_HARD  # noqa: E402
 from generators.time_bicycle_model import time_bicycle_model  # noqa: E402
 
-# ステージ数。codegen 時に固定。C++ 側は生成された RBP_NLP_TIME_N を読み直して合わせる。
-# 既定は rough_planner の既定格子 (num_points = 101, time_step_s = 0.1 → T = 10 s)。
+# Number of stages, fixed at generation time; the C++ side reads the generated RBP_NLP_TIME_N back.
+# The default matches the default grid of the rough planner (101 points, 0.1 s, i.e. T = 10 s).
 DEFAULT_N = 100
 
-# 無効化した行の開き幅。「常に満たされる無効行」の実体 (S6 §4.4)。
+# How far a disabled row is opened, which is what makes it always satisfied.
 FREE_BOUND = 1.0e6
 
 
@@ -73,9 +73,10 @@ def build_ocp(n_horizon=DEFAULT_N, code_export_directory="c_generated_code_nlp_t
 
     ocp.solver_options.N_horizon = n_horizon
 
-    # --- コスト: 状態と入力の LINEAR_LS。重み・参照は C++ が毎周期上書きする -------------------
-    # y   = [px, py, theta, kappa, v, a, w, j]   (S5 §4 の追従項 + 平滑項)
-    # y_e = [px, py, theta, kappa, v, a]         (終端停止項は v_N / a_N の重みで表す)
+    # --- cost: LINEAR_LS over the states and the inputs; C++ overwrites the weights and the
+    # reference every cycle ---
+    # y   = [px, py, theta, kappa, v, a, w, j]   (the tracking and the smoothing terms)
+    # y_e = [px, py, theta, kappa, v, a]         (stopping at the end is the weight on v_N and a_N)
     ny = nx + nu
     ny_e = nx
 
@@ -95,10 +96,10 @@ def build_ocp(n_horizon=DEFAULT_N, code_export_directory="c_generated_code_nlp_t
     ocp.cost.yref = np.zeros(ny)
     ocp.cost.yref_e = np.zeros(ny_e)
 
-    # --- box 制約 (すべて tier A = ハード、スラックなし) ------------------------------------
-    # 入力 box |w| <= w_max, |j| <= j_hard。状態 box は kappa, v, a。
-    # A をハードにできる根拠は S5 §7.4: コンディショニング済み初期状態からの前進シミュレーション
-    # (certificate) がこれらを必ず満たすので、実行可能集合が空にならない。
+    # --- box constraints, all of them hard and without a slack ---
+    # The inputs are bounded by |w| <= w_max and |j| <= j_hard, the states in kappa, v and a.
+    # They can be hard because the certificate, simulated forward from the conditioned initial
+    # state, satisfies every one of them, so the feasible set is never empty.
     ocp.constraints.idxbu = np.arange(nu)
     ocp.constraints.lbu = -np.ones(nu)
     ocp.constraints.ubu = np.ones(nu)
@@ -107,23 +108,24 @@ def build_ocp(n_horizon=DEFAULT_N, code_export_directory="c_generated_code_nlp_t
     ocp.constraints.lbx = np.array([-1.0, 0.0, -1.0])
     ocp.constraints.ubx = np.array([1.0, 1.0, 1.0])
 
-    # 初期状態はコンディショニング済み ego に pin する (S5 §2 / §6)。
+    # The initial state is pinned to the conditioned ego state.
     ocp.constraints.x0 = np.zeros(nx)
 
-    # 終端も kappa, v, a の同じ box。位置・姿勢は box を張らない (終端は自由で、
-    # 参照追従と終端停止項がコストで引く)。
+    # The last stage carries the same box on kappa, v and a. The position and the heading are left
+    # free there, and the tracking and the terminal stop term pull them through the cost.
     ocp.constraints.idxbx_e = np.array([model.idx_kappa, model.idx_v, model.idx_a])
     ocp.constraints.lbx_e = np.array([-1.0, 0.0, -1.0])
     ocp.constraints.ubx_e = np.array([1.0, 1.0, 1.0])
 
-    # --- 非線形行 --------------------------------------------------------------------------
-    # 行 0 (ステアレートのハード上限) 以外は**すべてスラック付き**。理由は行の性質で決まる:
-    # B (コリドー・区間速度) と C (快適) は地図・知覚・ego の入り方に依存するので、
-    # ハードにすると実行不能で iterate が返らない周期が出る。スラックにしておけば必ず
-    # iterate が返り、成否は独立検証 (S5 §9 / C++ 側の verify) が決める (solved != satisfied)。
+    # --- nonlinear rows ---
+    # Every row but row 0, the hard steer rate, carries a slack. The safety rows (the corridor and
+    # the interval speed limits) and the comfort rows depend on the map, the perception and the
+    # state the ego enters in, so making them hard would leave cycles infeasible with no iterate at
+    # all. With a slack an iterate always comes back, and the independent verification on the C++
+    # side decides whether it is acceptable: solved is not satisfied.
     #
-    # ペナルティは**二次のみ** (zl = zu = 0 のまま。L1 は S5 §3.4 で禁止 — 実験記録で収束を壊した)。
-    # 係数 Zl / Zu は C++ が rho_B = 1e6 / rho_C = 1e4 で書く。
+    # The penalty is **quadratic only** (zl and zu stay 0); an L1 penalty wrecked the convergence.
+    # C++ writes the coefficients Zl and Zu.
     slacked = np.array([row for row in range(nh) if row != ROW_STEER_RATE_HARD])
     ocp.constraints.lh = np.full(nh, -FREE_BOUND)
     ocp.constraints.uh = np.full(nh, FREE_BOUND)
@@ -141,24 +143,26 @@ def build_ocp(n_horizon=DEFAULT_N, code_export_directory="c_generated_code_nlp_t
     ocp.cost.zl_e = np.zeros(nh_e)
     ocp.cost.zu_e = np.zeros(nh_e)
 
-    # 置き場所だけ。C++ が全ステージのパラメータを毎周期書く。
+    # Only a placeholder; C++ writes the parameters of every stage each cycle.
     ocp.parameter_values = np.zeros(model.p.rows())
 
-    # --- ソルバー ---------------------------------------------------------------------------
-    # 1 ステージ = 正規化 1 単位。物理時間は dt パラメータが持つ (time_bicycle_model の docstring)。
+    # --- solver ---
+    # One stage is one normalized unit; the physical time lives in the dt parameter, see the
+    # docstring of time_bicycle_model.
     ocp.solver_options.tf = float(n_horizon)
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.nlp_solver_type = "SQP"
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
     ocp.solver_options.integrator_type = "ERK"
-    # RK4 1 ステップ/ステージ (S5 §1.2)。certificate・検証の離散写像もこれと同一にする。
+    # RK4, one step per stage. The certificate and the verification use the same discrete map.
     ocp.solver_options.sim_method_num_stages = 4
     ocp.solver_options.sim_method_num_steps = 1
     ocp.solver_options.nlp_solver_max_iter = 50
-    # 最悪周期を縛るのは SQP 反復数ではなく QP 反復数 (空間版の実測: 単一 QP に 100 ms 超)。
+    # What bounds the worst cycle is the number of QP iterations, not of SQP ones: a single QP was
+    # measured at over 100 ms in the space-parameterized version.
     ocp.solver_options.qp_solver_iter_max = 20
     ocp.solver_options.hpipm_mode = "SPEED"
-    # 実行可能性 (eq/ineq/comp) は 1e-4、最適性 (stat) は 1e-1 と分離する (S5 §8.4)。
+    # Feasibility is required to 1e-4 while optimality is only required to 1e-1.
     ocp.solver_options.tol = 1.0e-4
     ocp.solver_options.tol_stat = 1.0e-1
     ocp.solver_options.levenberg_marquardt = 1.0e-4

@@ -37,7 +37,7 @@ namespace autoware::safety_planner
 namespace
 {
 
-//! 弧長 s で有効な VELOCITY 上限 (全域 + region 限定の両方)
+//! The VELOCITY limit in effect at the arc length s, global and region-limited bounds together
 double velocity_limit_at(
   const CompiledConstraints & compiled_constraints, const KinematicLimits & limits, const double s)
 {
@@ -50,8 +50,9 @@ double velocity_limit_at(
   return v_max;
 }
 
-//! 全域 (region 無し) の ScalarBound の上限を量ごとに集める (collect_kinematic_limits が
-//! 読まない LAT_ACCEL / LON_JERK / STEER_ANGLE / STEER_RATE / CURVATURE 用)
+//! Upper bounds of the global ScalarBound constraints, per quantity: the ones
+//! collect_kinematic_limits does not read (LAT_ACCEL, LON_JERK, STEER_ANGLE, STEER_RATE,
+//! CURVATURE)
 struct GlobalBounds
 {
   double lat_accel{INF};
@@ -85,13 +86,13 @@ GlobalBounds collect_global_bounds(const CompiledConstraints & compiled_constrai
         bounds.steer_rate = std::min(bounds.steer_rate, bound.max);
         break;
       default:
-        break;  // VELOCITY / LON_ACCEL は KinematicLimits 側
+        break;  // VELOCITY and LON_ACCEL belong to KinematicLimits
     }
   }
   return bounds;
 }
 
-//! 等間隔サンプル列 (先頭 s0・間隔 res) の線形補間。範囲外は端でクランプ
+//! Linear interpolation of samples spaced res apart from s0, clamped at both ends
 double interpolate_uniform(
   const std::vector<double> & values, const double s0, const double res, const double s)
 {
@@ -104,7 +105,7 @@ double interpolate_uniform(
   return values[i] * (1.0 - r) + values[i + 1] * r;
 }
 
-//! yaw 列の線形補間 (2π の巻き込みを考慮)
+//! Linear interpolation of headings, wrapping at 2 pi
 double interpolate_uniform_angle(
   const std::vector<double> & yaws, const double s0, const double res, const double s)
 {
@@ -128,7 +129,8 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan(const TrajectoryPlanner
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
     auto compiled = compile_constraint_list(input.context, input.normal_constraints);
-    // 候補の可視化は rough_plan 用のマーカー配信に載せる (Node 側の配信経路を増やさない)
+    // The candidates ride on the marker topic of the rough plan, so that the node does not need
+    // another publisher
     result.normal_trajectory =
       plan_one_side(input.context, compiled, result.debug.rough_plan_result.debug.debug_markers);
     result.debug.compiled_constraints = std::move(compiled);
@@ -182,7 +184,8 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
       rclcpp::get_logger("safety_planner"), steady_clock, 5000,
       "[frenet_sampler] no valid candidate (%zu sampled:%s). Falling back to the stop trajectory.",
       candidates.size(), ss.str().c_str());
-    // 停止経路 = 現在の横位置を保つ (ego heading から l0 へ戻る経路に最大減速を載せる)
+    // The stop trajectory keeps the current lateral position: the path back from the ego heading
+    // to l0, driven at the hardest deceleration
     const auto straight =
       sample_path(context, initial_state, context.reference_path.length(), initial_state.l);
     const auto stop =
@@ -204,13 +207,15 @@ FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_ini
   InitialState state;
   state.s = ego.s;
   state.l = ego.l;
-  // 中心線に対して ±90° 近くの向きは tan が発散するので、勾配は ±60° 相当で打ち切る。
-  // (1 − κ_ref l) は sample_path の heading 式の逆で、これが無いと yaw[0] が ego と一致しない
+  // tan diverges as the heading approaches +-90 deg against the centerline, so the slope is cut
+  // off at the equivalent of +-60 deg. The factor (1 - k_ref*l) inverts the heading expression of
+  // sample_path; without it yaw[0] does not match the ego heading
   state.dl_ds = (1.0 - path.curvature(ego.s) * ego.l) *
                 std::tan(std::clamp(frenet_yaw, -M_PI / 3.0, M_PI / 3.0));
-  // l''(0) を 0 に固定すると、毎周期の再計画で横方向の動き出しが平らに戻り、40 m 先の横位置目標に
-  // ほとんど寄れない (receding horizon の再スタート問題)。ego の実ステア角から初期曲率を与える。
-  // 小角近似 (l' が小さい前提) で Frenet の厳密式は使わない
+  // Pinning l''(0) to 0 would flatten the start of the lateral motion at every replan and barely
+  // approach a lateral target 40 m ahead, the restart problem of a receding horizon. The initial
+  // curvature comes from the measured steer angle instead, under the small angle approximation
+  // (l' assumed small) rather than the exact Frenet expression
   const double kappa_ego =
     std::tan(context.steering.steering_tire_angle) / context.vehicle_info.wheel_base_m;
   state.d2l_ds2 = kappa_ego - path.curvature(ego.s);
@@ -232,8 +237,8 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
   const double s0 = initial_state.s;
   const double s_max = ref.length();
 
-  // l(s): 初期 (l0, l'0, l''0) → 終端 (l_T, 0, 0) を弧長 L で結ぶ。L 以降は l_T を保つ。
-  // 終端が経路終端より先なら経路終端で切る
+  // l(s) joins the initial (l0, l'0, l''0) to the terminal (l_T, 0, 0) over the arc length L and
+  // holds l_T beyond it. A terminal state past the end of the path is cut at the end
   const double L = std::max(res, std::min(length, s_max - s0));
   const Polynomial lat(
     initial_state.l, initial_state.dl_ds, initial_state.d2l_ds2, l_target, 0.0, 0.0, L);
@@ -246,15 +251,17 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
     const double s_ref = std::clamp(s, 0.0, s_max);
     path.s.push_back(s);
     path.l.push_back(l);
-    // heading は Frenet の解析式 ψ = ψ_ref + atan(l' / (1 − κ_ref l)) で取る。世界座標の位置差分
-    // (弦) から取ると先頭の heading が ego と κ·res/2 ずれ、閉ループで ego の向きが周期ごとに
-    // 流されて数十周期で steer_rate に掛かる
+    // The heading comes from the analytic Frenet expression psi = psi_ref + atan(l' /
+    // (1 - k_ref*l)). Taking it from the chord between world positions would put the first heading
+    // off the ego heading by k*res/2, which in closed loop drifts the ego heading a little every
+    // cycle until it hits the steer rate limit after a few dozen of them
     path.yaw.push_back(
       autoware_utils_math::normalize_radian(
         ref.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - ref.curvature(s_ref) * l)));
   }
-  // 曲率は heading 差 / 弧長 (中央差分、端は片側)。先頭は l'(0) を ego heading から取っているので
-  // ego と向きの違う出発は yaw[0] の時点で ego と一致し、ここで別途弾く必要は無い
+  // The curvature is the difference of the headings over the arc length, centered except at the
+  // ends. Since l'(0) comes from the ego heading, yaw[0] already matches it and a candidate leaving
+  // in another direction needs no separate rejection here
   const auto n = path.s.size();
   for (std::size_t i = 0; i < n; ++i) {
     const auto i0 = i == 0 ? i : i - 1;
@@ -272,7 +279,8 @@ std::vector<FrenetSamplingBasedPlanner::PathCandidate> FrenetSamplingBasedPlanne
   const PlannerContext & context, const InitialState & initial_state) const
 {
   const auto & p = params_.frenet_sampler;
-  // 路肩の goal など格子に無い横位置へ寄せられるように、goal の横位置も終端候補に加える
+  // The lateral position of the goal joins the terminal candidates, so that a goal off the grid
+  // (on the shoulder, ...) can still be reached
   auto lateral_targets = p.target_lateral_positions_m;
   const bool on_grid = std::any_of(
     lateral_targets.begin(), lateral_targets.end(),
@@ -303,12 +311,15 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
   const auto limits = collect_kinematic_limits(compiled_constraints);
   double v_limit = velocity_limit_at(compiled_constraints, limits, initial_state.s);
   {
-    // ホライゾン内に届く範囲の経路曲率から、横加速度・ステアレートで通過できる速度の上限を取り、
-    // 終端速度サンプルの基準にする。全域上限 (数十 km/h) の比だけだと、カーブ手前で通過可能な
-    // 中間速度の候補が 1 本も無く、停止プロファイルだけが生き残って漸近的に止まってしまう
-    // 先の地点の上限は、そこまで減速して届く速度に換算して現在地の上限にする。先の曲率をそのまま
-    // 現在地の上限にすると、経路終端 (goal 接続部) の曲率スパイクでホライゾン全域が徐行になる。
-    // 減速度はサンプル基準を決めるだけなので固定値でよい (実際の可否は evaluate 側でふるう)
+    // The terminal speeds are sampled against the speed at which the path curvature within the
+    // horizon can still be taken under the lateral acceleration and steer rate limits. Sampling
+    // ratios of the global limit (tens of km/h) instead leaves no candidate at an intermediate
+    // speed in front of a curve, so only the stop profile survives and the ego crawls to a halt.
+    // The limit at a point ahead is converted into the speed from which that point is reachable by
+    // braking; taking the curvature ahead as the limit here would slow the whole horizon down
+    // because of the curvature spike at the end of the path, where it joins the goal. The
+    // deceleration only sets the sampling reference, so a fixed value is enough; whether a
+    // candidate really works is decided in evaluate()
     constexpr double SAMPLING_DECEL_MPS2 = 1.0;
     const auto bounds = collect_global_bounds(compiled_constraints);
     const double wheel_base_m = context.vehicle_info.wheel_base_m;
@@ -346,7 +357,7 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
         profile.v.push_back(lon.velocity(t));
         profile.a.push_back(lon.acceleration(t));
       } else {
-        // 終端状態を保ってホライゾンまで延長 (等速)
+        // Hold the terminal state at a constant speed until the end of the horizon
         profile.s.push_back(s_target + v_target * (t - duration));
         profile.v.push_back(v_target);
         profile.a.push_back(0.0);
@@ -361,16 +372,18 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
   for (const double duration : p.target_durations_s) {
     for (const double v_ratio : p.target_velocity_ratios) {
       const double v_target = v_ratio * v_limit;
-      // 終端 s は平均速度で進んだ距離 (velocity-keeping 相当)。goal (経路終端) より先には出さない
+      // The terminal s is the distance covered at the average speed, as in velocity keeping, and
+      // never reaches beyond the goal at the end of the path
       const double s_target =
         std::min(s_max, initial_state.s + 0.5 * (initial_state.v + v_target) * duration);
       sample(duration, v_target, s_target);
     }
   }
 
-  // goal 停止プロファイル: 残距離を初速の平均で走り切る時間 T を距離から決める。固定の T 列
-  // だけだと goal 手前で「T 内に残距離を進み切れない (逆走)」か「行き過ぎる」候補しか残らず、
-  // 数 m 手前で全滅する
+  // Profiles that stop at the goal: T is derived from the remaining distance, as the time to
+  // cover it at the average of the initial speed. With a fixed set of T the only candidates left a
+  // few meters before the goal either cannot cover the distance within T, i.e. drive backwards, or
+  // overshoot it, and all of them are rejected
   {
     // Stop at the goal, or at the nearest stop bar (Gate) ahead if that comes first. Without this
     // the only candidate that respects a stop bar is standstill (every profile that moves reaches
@@ -470,14 +483,14 @@ void FrenetSamplingBasedPlanner::evaluate(
     const double l = candidate.l[k];
     const auto & point = candidate.points[k];
 
-    // 経路終端 (goal) を越える候補・逆走する候補は不成立
+    // A candidate that passes the goal at the end of the path, or drives backwards, is invalid
     if (s > s_max + 1e-3) {
       return reject("beyond_goal");
     }
     if (point.v < -1e-3) {
       return reject("reverse");
     }
-    // --- 車両運動 (VehicleKinematics の ScalarBound) ---
+    // --- vehicle kinematics (the ScalarBound constraints of VehicleKinematics) ---
     const double v_max = velocity_limit_at(compiled_constraints, limits, s);
     if (point.v > v_max + 1e-6) {
       return reject("velocity");
@@ -506,7 +519,7 @@ void FrenetSamplingBasedPlanner::evaluate(
       }
     }
 
-    // --- 幾何制約 (射影ビュー) ---
+    // --- geometric constraints, on the projected views ---
     const auto box = footprint_sl_box(context.vehicle_info, s, l);
     const double t0 = point.t;
     const double t1 = (k + 1 < candidate.points.size()) ? candidate.points[k + 1].t : t0;
@@ -519,7 +532,8 @@ void FrenetSamplingBasedPlanner::evaluate(
         }
         continue;
       }
-      // SOFT 境界 (並走車線側の自レーン bound) は slack_weight × はみ出し量² のコスト
+      // A soft boundary, the own lane bound towards a parallel lane, costs slack_weight times the
+      // squared amount by which it is exceeded
       double extreme_l = 0.0;
       if (!lateral_bound_extreme_l(bound, box.s_min, box.s_max, extreme_l)) {
         continue;
@@ -542,10 +556,11 @@ void FrenetSamplingBasedPlanner::evaluate(
       }
     }
 
-    // soft コスト (時間積分)。横位置の参照は中心線 (0) だが、goal 手前 2B〜B (B = 最長の横移動長)
-    // で goal の横位置へ線形にブレンドし、残り B は goal の横位置に置く。B
-    // 手前で初めて寄せ始めると、 残距離が縮むほど必要な曲率が増えて steer_rate
-    // で候補が落ち、中心線寄りで止まってしまう
+    // Soft cost, integrated over time. The lateral reference is the centerline, except that over
+    // the last 2B to B before the goal (B being the longest lateral travel) it blends linearly into
+    // the lateral position of the goal, and stays there for the remaining B. Starting to approach
+    // it only B ahead would need an ever larger curvature as the distance shrinks, and the
+    // candidates would be rejected by the steer rate and end up near the centerline
     const double l_ref =
       l_goal * std::clamp((2.0 * blend_length - (s_max - s)) / blend_length, 0.0, 1.0);
     const double dv = v_max - point.v;

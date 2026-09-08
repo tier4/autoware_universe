@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef UTILS__SL_VIEW_UTILS_HPP_
-#define UTILS__SL_VIEW_UTILS_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__UTILS__SL_VIEW_UTILS_HPP_
+#define AUTOWARE__SAFETY_PLANNER__UTILS__SL_VIEW_UTILS_HPP_
 
-// CompiledConstraints の射影ビュー ((s, l) 空間) を読む側の共通ヘルパー。
-// rough_planner (時空間 DP) と trajectory_optimizer (SSC のコリドー彫り込み) の
-// どちらもここを通す。**弧長 s の基準はその周期の context.reference_path 1 本だけ**
-// (constraints_compiler.hpp の規約)。
+// Helpers shared by everything that reads the projected views of CompiledConstraints, i.e. the
+// (s, l) space: the space-time DP of rough_planner and the corridor carving of
+// trajectory_optimizer. As stated in constraints_compiler.hpp, s is always measured on the
+// reference_path of the current cycle.
 
 #include "../context.hpp"
 #include "../trajectory_planner/nlp_planner/constraints_compiler.hpp"
@@ -30,53 +30,53 @@ namespace autoware::safety_planner
 {
 
 // ---------------------------------------------------------------------------------------------
-// 車両運動限界 (IR から読む)
+// Kinematic limits of the vehicle, read from the IR
 // ---------------------------------------------------------------------------------------------
 
-//! 全域 (region 無し・常時) の ScalarBound を IR から集約したもの。発行元は
-//! vehicle_kinematics プラグイン (値の正はその ROS パラメータ)。
-//! Tier 削除に伴い IR から読むのはハード上限 (v_hard / a_hard_*) のみで、
-//! nominal 系 (v_nom / a_nom_* / a_lat_nom) はこの struct の既定値を使う
-//! (IR 経由の快適上限の受け渡しは廃止。設定可能にしたくなったら params 経由で渡す)
+//! The ScalarBound constraints that hold everywhere and at all times, collected from the IR. They
+//! come from the vehicle_kinematics plugin, whose ROS parameters are the source of truth. Only the
+//! hard limits (v_hard, a_hard_*) are read from the IR; the nominal values keep the defaults below.
+//! Make them configurable through the parameters rather than through the IR.
 struct KinematicLimits
 {
-  double v_hard{16.7};      //!< [m/s] 速度ハード上限 (VELOCITY)
-  double a_hard_min{-6.0};  //!< [m/s²] 最大減速 (LON_ACCEL)
-  double a_hard_max{6.0};   //!< [m/s²] 最大加速
-  double v_nom{13.88};      //!< [m/s] 巡航目標速度
-  double a_nom_min{-1.0};   //!< [m/s²] 快適減速
-  double a_nom_max{1.0};    //!< [m/s²] 快適加速
-  double a_lat_nom{2.0};    //!< [m/s²] コーナー減速の横加速度上限 (S3 §3.3)
+  double v_hard{16.7};      //!< [m/s] hard speed limit
+  double a_hard_min{-6.0};  //!< [m/s^2] hardest deceleration
+  double a_hard_max{6.0};   //!< [m/s^2] hardest acceleration
+  double v_nom{13.88};      //!< [m/s] cruising speed
+  double a_nom_min{-1.0};   //!< [m/s^2] comfortable deceleration
+  double a_nom_max{1.0};    //!< [m/s^2] comfortable acceleration
+  double a_lat_nom{2.0};    //!< [m/s^2] lateral acceleration the corner deceleration aims at
 };
 
 KinematicLimits collect_kinematic_limits(const CompiledConstraints & compiled_constraints);
 
 // ---------------------------------------------------------------------------------------------
-// reference_path 上の Frenet 座標
+// Frenet coordinates on the reference_path
 // ---------------------------------------------------------------------------------------------
 
-//! reference_path 上の弧長と横オフセット (左が正)
+//! Arc length and lateral offset (positive to the left) on the reference_path
 struct EgoFrenetState
 {
   double s{0.0};
   double l{0.0};
 };
 
-//! ego の位置を reference_path へ射影する
+//! Projects the ego position onto the reference_path
 EgoFrenetState compute_ego_frenet_state(const PlannerContext & context);
 
-//! 弧長 s の中心線上の点から見た、世界座標の点 q の横オフセット l
+//! Lateral offset of the world point q, seen from the centerline point at arc length s
 double lateral_offset_at(const PathPointTrajectory & path, double s, const Point2d & q);
 
-//! (s, l) を世界座標へ戻す。yaw は中心線接線 (l 方向の傾きは含まない)
+//! Converts (s, l) back to world coordinates. The yaw is the centerline tangent.
 Pose2d to_world_pose(const PathPointTrajectory & path, double s, double l);
 
 // ---------------------------------------------------------------------------------------------
-// footprint の (s, l) 外接 box
+// Bounding box of the footprint in (s, l)
 // ---------------------------------------------------------------------------------------------
 
-//! footprint を (s, l) 空間で外接する box (射影ビュー評価用の保守近似。
-//! θ = θ_ref で代表し、ヘディング偏差分の膨らみは margin が吸収する。S3 §3.2)
+//! Box bounding the footprint in (s, l): the conservative approximation the projected views are
+//! evaluated with. The heading is taken as the one of the centerline, and the growth from the
+//! heading deviation is absorbed by the margins.
 struct SlBox
 {
   double s_min{0.0};
@@ -85,36 +85,37 @@ struct SlBox
   double l_max{0.0};
 };
 
-//! 基準点 (後軸) が (s, l) にあるときの footprint 外接 box
+//! Bounding box of the footprint with the reference point (the rear axle) at (s, l)
 SlBox footprint_sl_box(const VehicleInfo & vehicle_info, double s, double l);
 
-//! 基準点が (s, l) の box を動く場合の footprint 掃引 box
+//! Bounding box of the footprint swept while the reference point moves inside the given box
 SlBox footprint_sl_box(const VehicleInfo & vehicle_info, const SlBox & reference_box);
 
 // ---------------------------------------------------------------------------------------------
-// 射影ビューの評価
+// Evaluation of the projected views
 // ---------------------------------------------------------------------------------------------
 
-//! 境界折れ線の l を弧長 s で線形補間する (polyline は s 昇順)
+//! Interpolates l of a boundary polyline (ascending in s) linearly at the arc length s
 double interpolate_boundary_l(const std::vector<SlPoint> & polyline, double s);
 
-//! 弧長区間 [s_lo, s_hi] における境界 l の極値。
-//! LEFT 禁止 (境界より左が禁止) なら最も許容が狭い min(l)、RIGHT なら max(l)。
-//! 区間が折れ線の s 範囲と重ならない場合は false を返し、l は書き換えない
+//! Extremum of the boundary l over the arc length interval [s_lo, s_hi]: min(l) when the boundary
+//! forbids its left, max(l) when it forbids its right, i.e. the tightest value of the interval.
+//! Returns false without touching extreme_l when the interval misses the polyline.
 bool lateral_bound_extreme_l(
   const LateralBoundEntry & bound, double s_lo, double s_hi, double & extreme_l);
 
-//! footprint box が境界の禁止側 (margin 膨張込み) に踏み込むか
+//! Whether the footprint box reaches into the forbidden side of the boundary, margin included
 bool violates_lateral_bound(const LateralBoundEntry & bound, const SlBox & box);
 
-//! footprint box が時刻窓 [t0, t1] に占有スラブと重なるか (KeepOut の定数 margin_m 膨張込み)
+//! Whether the footprint box overlaps an occupancy slab during [t0, t1], inflated by
+//! KeepOut::margin_m
 bool violates_occupancy(
   const OccupancyEntry & occupancy, const CompiledConstraints & compiled_constraints,
   const SlBox & box, double t0, double t1);
 
-//! footprint 前端が時刻窓 [t0, t1] に有効な停止線を越えるか
+//! Whether the front of the footprint passes a stop line that is active during [t0, t1]
 bool violates_stop_bar(const StopBarEntry & stop_bar, const SlBox & box, double t0, double t1);
 
 }  // namespace autoware::safety_planner
 
-#endif  // UTILS__SL_VIEW_UTILS_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__UTILS__SL_VIEW_UTILS_HPP_

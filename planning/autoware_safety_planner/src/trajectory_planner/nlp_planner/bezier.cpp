@@ -25,7 +25,7 @@ namespace autoware::safety_planner
 namespace
 {
 
-//! 二項係数 C(n, k)。n ≤ 10 程度でしか使わないので素直に積で作る
+//! Binomial coefficient C(n, k), built as a plain product since n stays around 10
 double binomial(const int n, const int k)
 {
   if (k < 0 || k > n) {
@@ -50,7 +50,7 @@ double bernstein(const int m, const int i, const double u)
 
 std::vector<std::vector<double>> hodograph_matrix(const int m, const int k)
 {
-  // D_0 = I。以降 D_k = Δ_k · D_{k-1} で、Δ_k は「(m−k+1) 倍の前進差分」
+  // D_0 = I, then D_k = Delta_k D_(k-1), Delta_k being the forward difference times (m - k + 1)
   std::vector<std::vector<double>> d(
     static_cast<std::size_t>(m + 1), std::vector<double>(static_cast<std::size_t>(m + 1), 0.0));
   for (int i = 0; i <= m; ++i) {
@@ -58,7 +58,7 @@ std::vector<std::vector<double>> hodograph_matrix(const int m, const int k)
   }
 
   for (int step = 1; step <= k; ++step) {
-    const int rows = m - step + 1;  // q^{(step)} の要素数
+    const int rows = m - step + 1;  // size of q^(step)
     const double factor = static_cast<double>(m - step + 1);
     std::vector<std::vector<double>> next(
       static_cast<std::size_t>(rows), std::vector<double>(static_cast<std::size_t>(m + 1), 0.0));
@@ -76,10 +76,10 @@ std::vector<std::vector<double>> hodograph_matrix(const int m, const int k)
 
 std::vector<std::vector<double>> jerk_hessian(const int m)
 {
-  // y'''(u) = Σ_i q_i^{(3)} b_i^{m-3}(u) なので
-  //   ∫ (y''')² du = q^T M q,   M_ij = ∫ b_i^{m-3} b_j^{m-3} du
-  // Bernstein の積の積分は閉形式:
-  //   ∫₀¹ b_i^a b_j^c du = C(a,i)·C(c,j) / ( (a+c+1)·C(a+c, i+j) )
+  // With y'''(u) = sum_i q_i^(3) b_i^(m-3)(u),
+  //   int (y''')^2 du = q' M q,   M_ij = int b_i^(m-3) b_j^(m-3) du
+  // and the integral of a product of Bernstein polynomials is closed form:
+  //   int_0^1 b_i^a b_j^c du = C(a,i) C(c,j) / ((a+c+1) C(a+c, i+j))
   const int k = 3;
   const int a = m - k;
   const auto d = hodograph_matrix(m, k);

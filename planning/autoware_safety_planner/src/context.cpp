@@ -23,15 +23,15 @@ namespace autoware::safety_planner
 
 std::optional<double> PlannerContext::goal_arc_length() const
 {
-  //! 接続とみなす縦距離 [m]
+  //! [m] longitudinal distance within which the goal counts as connected
   constexpr double LON_DISTANCE_TOLERANCE_M = 0.1;
 
   if (reference_path.get_underlying_bases().empty()) {
     return std::nullopt;
   }
 
-  // 終端点の接線方向に測った goal の符号付き縦距離。閉じた閾値との比較なので
-  // closest() の射影 (終端でクランプされ、goal が経路の先にある場合に 0 になる) は使わない
+  // Signed longitudinal distance of the goal along the tangent at the end point. The projection of
+  // closest() is not used: it clamps at the end and would report 0 for a goal beyond the path
   const double s_end = reference_path.length();
   const auto end_point = reference_path.compute(s_end).point.pose.position;
   const double end_yaw = reference_path.azimuth(s_end);

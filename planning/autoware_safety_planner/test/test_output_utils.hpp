@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TEST_OUTPUT_UTILS_HPP_
-#define TEST_OUTPUT_UTILS_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TEST_OUTPUT_UTILS_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TEST_OUTPUT_UTILS_HPP_
 
 // Output location for test artifacts (CSV dumps and figures).
 // Everything goes under TEST_RESULTS_DIR (build tree), never into the source tree.
@@ -31,4 +31,4 @@ std::string current_test_file_stem();
 
 }  // namespace autoware::safety_planner
 
-#endif  // TEST_OUTPUT_UTILS_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TEST_OUTPUT_UTILS_HPP_

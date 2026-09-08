@@ -42,27 +42,28 @@ namespace autoware::safety_planner
 namespace
 {
 
-//! centerline の goal 周辺 (search_radius_m 以内) を捨て、goal 手前 1.0 / 0.5 m の点と goal を
-//! 加えてスプラインで作り直す (goal_planner の smooth goal connection と同じ構成)。
-//! 接続区間がレーン外に出る場合は半径を 1 m ずつ縮めて再試行し、goal が経路から遠すぎる
-//! (半径の外) 場合と構築に失敗した場合は nullopt
+//! Drops the centerline within search_radius_m of the goal and rebuilds it as a spline through
+//! two points 1.0 m and 0.5 m in front of the goal and the goal itself, as the smooth goal
+//! connection of goal_planner does. When the new stretch leaves the lane the radius is reduced by
+//! 1 m and it is retried. Returns nullopt when the goal is farther from the path than the radius,
+//! or when the build fails.
 std::optional<PathPointTrajectory> connect_reference_path_to_goal(
   const PathPointTrajectory & path, const Pose & goal,
   const lanelet::ConstLanelets & route_lanelets, const lanelet::LaneletMapConstPtr & lanelet_map,
   const double search_radius_m)
 {
   using autoware_utils_geometry::calc_distance2d;
-  //! [m] goal 手前に置く接続点の距離 (goal_planner と同じ値)
+  //! [m] where the connecting points are placed in front of the goal, as in goal_planner
   constexpr double PRE_GOAL_DISTANCE_M = 1.0;
   constexpr double PRE_MID_GOAL_DISTANCE_M = 0.5;
-  //! [m] 接続区間のレーン内判定のサンプル間隔
+  //! [m] spacing at which the new stretch is checked against the lanes
   constexpr double VALIDATION_STEP_M = 1.0;
-  //! [m] 再試行ごとの半径の縮め幅
+  //! [m] by how much the radius shrinks per retry
   constexpr double RADIUS_REDUCE_M = 1.0;
 
   const double s_goal = experimental::trajectory::closest(path, goal.position);
   if (calc_distance2d(path.compute(s_goal).point.pose, goal) > search_radius_m) {
-    return std::nullopt;  // goal が前方窓の外、または横に遠すぎて接続対象でない
+    return std::nullopt;  // the goal is outside the window ahead, or too far off to the side
   }
   const auto points = path.restore();
   const auto bases = path.get_underlying_bases();
@@ -85,7 +86,7 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
         return true;
       }
     }
-    // 路肩の goal など route 外の lanelet も走行可能領域に含める
+    // A lanelet off the route counts as drivable too, for a goal on the shoulder
     return !experimental::lanelet2_utils::get_road_lanelets_at(lanelet_map, p.x(), p.y()).empty() ||
            !experimental::lanelet2_utils::get_shoulder_lanelets_at(lanelet_map, p.x(), p.y())
               .empty();
@@ -93,7 +94,7 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
 
   std::optional<PathPointTrajectory> last_built;
   for (double radius = search_radius_m; radius >= 0.0; radius -= RADIUS_REDUCE_M) {
-    // goal 手前で、goal から radius より遠い最後の点まで残す (goal 側から後退して探す)
+    // Keep everything up to the last point farther from the goal than the radius
     std::size_t cut_index = 0;
     for (std::size_t i = 0; i < points.size(); ++i) {
       if (bases[i] > s_goal) {
@@ -232,8 +233,8 @@ tl::expected<PathPointTrajectory, std::string> SafetyPlanner::build_reference_pa
     }
   }
   if (policy == "goal_connection_and_smooth") {
-    // ego 側は固定しない (ego 足元の経路は sampler が ego 姿勢から作り直すので、生の centerline に
-    // 固定すると ego から離れた経路になる)。固定は goal 側だけ
+    // Only the goal end is held fixed. Pinning the ego end to the raw centerline would put the
+    // path away from the ego, since the sampler rebuilds the first meters from the ego pose
     if (
       auto smoothed = smooth_reference_path(
         *reference_path, lane_sequence.as_lanelets(), input.vehicle_info.max_lateral_offset_m,
@@ -242,18 +243,19 @@ tl::expected<PathPointTrajectory, std::string> SafetyPlanner::build_reference_pa
     }
   }
 
-  // goal_pose より先だけを crop する。後方 (backward_length_m 分) は残す —
-  // 制約の射影が ego 後方の footprint・後方から来る物体を扱うため。
-  // goal がまだ前方 (reference_path の終端より先) にある間は終端が最近傍になるので、
-  // 実質「後方端から前方終端まで」になる。
+  // Crop only what lies beyond the goal_pose; the backward_length_m behind the ego stays, because
+  // the projected constraints cover the footprint behind the ego and objects approaching from
+  // behind. While the goal is still ahead of the end of the reference_path the end is the closest
+  // point, so this keeps the path from its rear end to its front end
   const double s_ego =
     experimental::trajectory::closest(*reference_path, input.odometry.pose.pose.position);
   const double s_goal =
     experimental::trajectory::closest(*reference_path, input.goal_pose.position);
 
-  // closest() は弦近似なので、goal の真横 (路肩の goal 等、中心線から離れた位置) では s_ego が
-  // s_goal を数 mm 追い越して見えることがある。この範囲は「goal に居る」とみなして経路を ego
-  // で打ち切り (残距離 0 → 停止軌道になる)、本当に通り過ぎた場合だけ失敗にする
+  // closest() approximates the path by chords, so right beside the goal (a goal on the shoulder,
+  // away from the centerline) s_ego can appear a few millimeters past s_goal. Within this tolerance
+  // the ego counts as being at the goal and the path is cut there, leaving no distance and hence a
+  // stop trajectory; only a real overrun fails
   constexpr double GOAL_OVERRUN_TOLERANCE_M = 1.0;
   if (s_goal - s_ego < -GOAL_OVERRUN_TOLERANCE_M) {
     return tl::unexpected(
@@ -275,11 +277,10 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
   }
   const PlannerContext context(input, std::move(reference_path.value()));
 
-  // 制約ジェネレータープラグインを呼び出して制約のリストを生成する
+  // Call the constraint generator plugins
   auto constraints = calculate_constraints(context);
 
-  // certainty ごとに 2 セットへ振り分ける:
-  // normal = DEFINITE のみ / cautious = DEFINITE + POSSIBLE
+  // Split by certainty: normal = DEFINITE only, cautious = DEFINITE + POSSIBLE
   std::vector<Constraint> normal_list;
   std::vector<Constraint> cautious_list;
   for (const auto & [plugin_name, output] : constraints) {
@@ -291,8 +292,7 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
     }
   }
 
-  // 軌道生成はプラグインの仕事 (制約のコンパイル・rough_planner / optimizer の
-  // 呼び出し方は実装詳細)
+  // Planning the trajectory is the plugin's job
   SafetyPlannerResult result;
   if (trajectory_planner_) {
     const TrajectoryPlannerInput input{context, normal_list, cautious_list};

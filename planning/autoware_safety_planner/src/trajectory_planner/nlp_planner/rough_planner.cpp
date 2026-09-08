@@ -36,62 +36,63 @@ namespace
 {
 
 // =============================================================================================
-// 定数
+// constants
 // =============================================================================================
 
-// 数値パラメータ (格子・重み・出力グリッド) は RoughPlannerParams (rough_planner.hpp) へ移した。
-// ここに残るのは数値誤差の許容値だけ
+// The grid, the weights and the output grid live in RoughPlannerParams (rough_planner.hpp); what
+// stays here are the numerical tolerances
 constexpr double CURVATURE_EPS = 1e-6;
 constexpr double EPS = 1e-9;
 
 // =============================================================================================
-// DP 内部型
+// internal types of the DP
 // =============================================================================================
 
-//! (s_i, l_j) ごとの格子幾何 (時間層・速度に依らない)
+//! Geometry of a grid cell (s_i, l_j), independent of the layer and the speed
 struct DpNodeGeometry
 {
-  Pose2d pose{};          //!< 世界座標。yaw は中心線接線 (dl/ds 補正は遷移側で加味。S3 §3.1)
-  double curvature{0.0};  //!< [1/m] 中心線曲率 κ_ref(s_i) (l 補正なし)
+  Pose2d pose{};          //!< world coordinates; the yaw is the centerline tangent, the dl/ds
+                          //!< correction being applied by the transitions
+  double curvature{0.0};  //!< [1/m] centerline curvature at s_i, without the l correction
 };
 
-//! DP 格子の 1 ノード (t_k, s_i, l_j, v_m)。4D 化で速度が格子軸になったため、
-//! 幾何は DpNodeGeometry へ分離し、ノードは有効性と探索状態だけを持つ
+//! One node (t_k, s_i, l_j, v_m) of the DP grid. The speed is an axis of the grid, so the geometry
+//! sits in DpNodeGeometry and a node carries only its validity and its search state.
 struct DpNode
 {
-  // --- 有効性 (build_dp_grid の棄却工程が書く。S3 §3.2) ---
-  //! false = A 到達可能バンド外 (s・v とも) or B 棄却 or 速度上限超過。探索から除外
+  // --- validity, written by the rejection stage of build_dp_grid ---
+  //! false when the node is outside the reachable band in s or v, rejected by the geometry, or
+  //! above the speed limit. Such a node is excluded from the search
   bool valid{true};
 
-  // --- 探索状態 (search_dp_candidates が書く。S3 §3.3–3.4) ---
-  double cost{INF};  //!< cost-to-come。INF = 未到達
-  int parent_s{-1};  //!< 後退追跡用: 最良親の s index (-1 = 親なし)
-  int parent_l{-1};  //!< 後退追跡用: 最良親の l index
-  int parent_v{-1};  //!< 後退追跡用: 最良親の v index
+  // --- search state, written by search_dp_candidates ---
+  double cost{INF};  //!< cost to come; INF means unreached
+  int parent_s{-1};  //!< s index of the best parent, for the backtracking (-1 = no parent)
+  int parent_l{-1};  //!< l index of the best parent
+  int parent_v{-1};  //!< v index of the best parent
 };
 
-//! (s, l, t, v) 4 次元の DP 格子。周期ごとに使い捨て
-//! (S1 §1 原則「IR は毎周期使い捨て」と同じ扱い)
+//! The four-dimensional (s, l, t, v) grid of the DP, rebuilt every cycle
 struct DpGrid
 {
-  std::vector<double> s_values;  //!< [m] reference_path 弧長 (ego 位置起点、s 昇順)
-  std::vector<double> l_values;  //!< [m] 横オフセット (左 = 正、l 昇順)
-  std::vector<double> t_values;  //!< [s] 層時刻 (t = 0 = 計画基準時刻。層 0 = ego 実状態)
-  std::vector<double> v_values;  //!< [m/s] 速度 (0 起点、v 昇順)
+  std::vector<double> s_values;  //!< [m] arc length from the ego position, ascending
+  std::vector<double> l_values;  //!< [m] lateral offset, positive to the left, ascending
+  std::vector<double> t_values;  //!< [s] time of a layer; layer 0 is the actual ego state at t = 0
+  std::vector<double> v_values;  //!< [m/s] speed, from 0 upwards
 
-  std::vector<DpNodeGeometry> geometries;  //!< size = s × l ((s_i, l_j) ごと)
-  std::vector<DpNode> nodes;               //!< size = t × s × l × v (t-major)
+  std::vector<DpNodeGeometry> geometries;  //!< size = s * l, one per (s_i, l_j)
+  std::vector<DpNode> nodes;               //!< size = t * s * l * v, t-major
 
-  //! s 格子ごとの目標速度 (コストの参照。S3 §3.4)。mark_invalid_nodes が埋める
+  //! Target speed per s, the reference of the cost, filled in by mark_invalid_nodes
   std::vector<double> v_target;
 
-  //! 層 k の s_i が B (幾何・停止線) で全 l 塞がっているか。size = t × s (t-major)。
-  //! 壁 (制動可能性条件) の判定はこれだけを見る。A 到達可能バンド外・速度上限超過は
-  //! 「まだ届かない」だけで物理的な障害ではないので含めない
+  //! Whether every l of s_i in layer k is blocked by the geometry or a stop line; size = t * s,
+  //! t-major. It is all the wall of the braking condition looks at: being outside the reachable
+  //! band or above the speed limit only means "not there yet", not that something is in the way
   std::vector<std::uint8_t> b_blocked;
 
-  double s_ego{0.0};  //!< [m] reference_path 上の ego 弧長 (格子の原点)
-  double l_ego{0.0};  //!< [m] ego の横オフセット実値 (格子に丸めない。S3 §3.1)
+  double s_ego{0.0};  //!< [m] arc length of the ego, the origin of the grid
+  double l_ego{0.0};  //!< [m] lateral offset of the ego, kept exact rather than snapped
 
   std::size_t geometry_index(const int s_index, const int l_index) const
   {
@@ -125,16 +126,16 @@ struct DpGrid
   }
 };
 
-//! DP 後退追跡で得た粗経路の 1 点 (層ごと 1 点、Δt_dp 刻み)
+//! One point of the rough path from the backtracking, one per layer
 struct DpPathPoint
 {
   double t{0.0};  //!< [s]
   double s{0.0};  //!< [m]
   double l{0.0};  //!< [m]
-  double v{0.0};  //!< [m/s] 最良親由来の到達速度
+  double v{0.0};  //!< [m/s] the speed reached through the best parent
 };
 
-//! DP 候補経路。cost は cost-to-come 合計 (候補間の順位付けに使う)
+//! A candidate path of the DP. cost is the total cost to come, which orders the candidates.
 struct DpPath
 {
   std::vector<DpPathPoint> points;
@@ -142,23 +143,24 @@ struct DpPath
 };
 
 // =============================================================================================
-// DP 段階の関数 (SpatiotemporalDpPlanner 相当。S3 §3)
+// the stages of the DP
 // =============================================================================================
 
-//! [DP 1a] 格子の幾何を張る。reference_path の ego 前方 [0, params.dp.s_max_m] を (s, l) 格子に、
-//! [0, params.dp.horizon_s] を時間層にして、各ノードの世界座標 pose と中心線曲率を引き当てる
+//! [DP 1a] Spans the geometry of the grid: [0, params.dp.s_max_m] ahead of the ego along the
+//! reference_path becomes the (s, l) grid and [0, params.dp.horizon_s] the layers, and every node
+//! gets its world pose and the curvature of the centerline.
 DpGrid build_grid_geometry(
   const RoughPlannerParams & params, const PlannerContext & context, const KinematicLimits & limits)
 {
   DpGrid grid;
   const auto & path = context.reference_path;
 
-  // ego の弧長と横オフセット (l_ego は格子に丸めず実値で持つ。S3 §3.1)
+  // Arc length and lateral offset of the ego; l_ego is kept exact rather than snapped
   const EgoFrenetState ego = compute_ego_frenet_state(context);
   grid.s_ego = ego.s;
   grid.l_ego = ego.l;
 
-  // s 軸: ego 弧長を起点に Δs 刻みで reference_path 終端まで (最大 params.dp.s_max_m)
+  // s axis: from the ego, in steps of s_step_m, to the end of the path or s_max_m
   const double s_end = std::min(path.length(), grid.s_ego + params.dp.s_max_m);
   const int num_s =
     std::max(static_cast<int>(std::floor((s_end - grid.s_ego) / params.dp.s_step_m)), 0) + 1;
@@ -166,39 +168,39 @@ DpGrid build_grid_geometry(
     grid.s_values.push_back(grid.s_ego + i * params.dp.s_step_m);
   }
 
-  // l 軸: [-params.dp.l_range_m, +params.dp.l_range_m] / Δl 刻み (左 = 正)
+  // l axis: [-l_range_m, +l_range_m] in steps of l_step_m, positive to the left
   const int num_l_half = static_cast<int>(std::round(params.dp.l_range_m / params.dp.l_step_m));
   for (int j = -num_l_half; j <= num_l_half; ++j) {
     grid.l_values.push_back(j * params.dp.l_step_m);
   }
 
-  // t 軸: [0, params.dp.horizon_s] / Δt 刻み (層 0 = ego 実状態)
+  // t axis: [0, horizon_s] in steps of t_step_s; layer 0 is the actual ego state
   const int num_t = static_cast<int>(std::round(params.dp.horizon_s / params.dp.t_step_s)) + 1;
   for (int k = 0; k < num_t; ++k) {
     grid.t_values.push_back(k * params.dp.t_step_s);
   }
 
-  // v 軸: [0, v_hard] / Δv 刻み
+  // v axis: [0, v_hard] in steps of v_step_mps
   const int num_v = static_cast<int>(std::floor(limits.v_hard / params.dp.v_step_mps)) + 1;
   for (int m = 0; m < num_v; ++m) {
     grid.v_values.push_back(m * params.dp.v_step_mps);
   }
 
-  // (s, l) ごとの格子幾何 (時間層・速度で共通)
+  // Geometry per (s, l), shared by every layer and speed
   grid.geometries.resize(grid.s_values.size() * grid.l_values.size());
   for (std::size_t i = 0; i < grid.s_values.size(); ++i) {
     const double s = grid.s_values[i];
     const auto ref_position = path.compute(s).point.pose.position;
     const double ref_yaw = path.azimuth(s);
     const double ref_curvature = path.curvature(s);
-    const double normal_x = -std::sin(ref_yaw);  // 中心線の左法線 (l 正方向)
+    const double normal_x = -std::sin(ref_yaw);  // left normal, the positive direction of l
     const double normal_y = std::cos(ref_yaw);
     for (std::size_t j = 0; j < grid.l_values.size(); ++j) {
       const double l = grid.l_values[j];
       DpNodeGeometry & geometry = grid.geometry(i, j);
       geometry.pose.position =
         Point2d{ref_position.x + normal_x * l, ref_position.y + normal_y * l};
-      geometry.pose.yaw = ref_yaw;  // dl/ds 補正は遷移側で加味 (S3 §3.1)
+      geometry.pose.yaw = ref_yaw;  // the dl/ds correction is applied by the transitions
       geometry.curvature = ref_curvature;
     }
   }
@@ -208,7 +210,7 @@ DpGrid build_grid_geometry(
   return grid;
 }
 
-//! A 到達可能バンドの下限: 最大減速 (a_hard_min) で減速し続けた場合の走行距離
+//! Lower end of the reachable band: the distance covered while braking at a_hard_min throughout
 double min_reachable_distance(const double v0, const double t, const KinematicLimits & limits)
 {
   const double decel = std::abs(limits.a_hard_min);
@@ -219,7 +221,7 @@ double min_reachable_distance(const double v0, const double t, const KinematicLi
   return v0 * t - 0.5 * decel * t * t;
 }
 
-//! A 到達可能バンドの上限: 最大加速 (a_hard_max、v_hard で飽和) の走行距離
+//! Upper end of the reachable band: the distance covered at a_hard_max, saturating at v_hard
 double max_reachable_distance(const double v0, const double t, const KinematicLimits & limits)
 {
   const double t_saturate = std::max((limits.v_hard - v0) / limits.a_hard_max, 0.0);
@@ -231,9 +233,9 @@ double max_reachable_distance(const double v0, const double t, const KinematicLi
   return distance_to_saturate + limits.v_hard * (t - t_saturate);
 }
 
-//! s 格子ごとの速度上限 (v_upper = ハード条件) と目標速度 (v_target = コストの参照)。
-//! v_upper = min(v_hard, v_legal, v_curve)、v_target = min(v_nom, v_upper, C の速度目標)
-//! (S3 §3.3–3.4)。goal に接続していれば終端への停止包絡 (a_nom) も両方に掛ける
+//! Per s, the speed limit v_upper = min(v_hard, v_legal, v_curve), which is hard, and the target
+//! speed v_target = min(v_nom, v_upper), which the cost refers to. When the path is connected to
+//! the goal, the envelope of stopping there at a_nom applies to both.
 struct SpeedLimits
 {
   std::vector<double> v_upper;
@@ -262,12 +264,12 @@ SpeedLimits compute_speed_limits(
       if (bound.quantity != BoundedQuantity::VELOCITY || s < bound.s0 || s > bound.s1) {
         continue;
       }
-      // Tier 削除により区間 bound は全て v_legal (B の速度上限) として扱う
+      // Every interval bound counts as a legal speed limit
       v_target = std::min(v_target, bound.max);
       v_upper = std::min(v_upper, bound.max);
     }
     if (stop_at_path_end) {
-      // goal で v = 0 に至る快適減速の包絡
+      // The envelope of decelerating comfortably to v = 0 at the goal
       const double v_stop =
         std::sqrt(2.0 * std::abs(kinematic_limits.a_nom_min) * std::max(s_path_end - s, 0.0));
       v_upper = std::min(v_upper, v_stop);
@@ -279,31 +281,31 @@ SpeedLimits compute_speed_limits(
   return limits;
 }
 
-//! [DP 1b] 制約からノードの valid フラグを落とす (S3 §3.2)
-//! - A 到達可能バンド: 最大減速〜最大加速の s(t_k) 包絡の外を除外
-//! - B 幾何 (静的): lateral_bounds は層に依らないので (s, l) ごとに 1 回だけ評価
-//! - B 幾何 (動的): occupancies を層時刻 ±半窓で評価
-//! - B 停止線: stop_bars の時間窓と層時刻が交わるノードの前端越えを棄却
-//! C は棄却にもコストにも使わない (S3 §1 原則 5)。射影ビューで通って raw で落ちるのは許す
-//! (compiler の射影規約。精密評価は下流の compiler / verification が raw で行う)
+//! [DP 1b] Clears the valid flag of the nodes the constraints reject:
+//! - the reachable band: everything outside the s(t_k) envelope between hardest braking and
+//!   hardest acceleration
+//! - static geometry: the lateral bounds do not depend on the layer, so they are evaluated once
+//!   per (s, l)
+//! - dynamic geometry: the occupancies, over the layer time plus and minus half a window
+//! - stop lines: a node whose front passes a stop bar whose time window covers the layer
+//! Passing here and failing on raw is allowed; the exact evaluation happens downstream.
 DpGrid mark_invalid_nodes(
   const RoughPlannerParams & params, DpGrid grid, const CompiledConstraints & compiled_constraints,
   const PlannerContext & context, const KinematicLimits & limits)
 {
-  //! 層時刻 t_k の周りに動的制約を評価する半窓 (層間を保守側に覆う。S3 §3.2)
+  //! Half window around the layer time over which the dynamic constraints are evaluated, so that
+  //! the gap between two layers is covered conservatively
   const double half_window = 0.5 * params.dp.t_step_s;
   const double v0 = std::max(context.odometry.twist.twist.linear.x, 0.0);
-  const double band_tolerance = 0.5 * params.dp.s_step_m;  // 格子丸め分の余裕
+  const double band_tolerance = 0.5 * params.dp.s_step_m;  // slack for the grid rounding
 
-  // 速度上限は 4D 化でノードの属性になった: v_m > v_upper(s_i) のノードを無効にする。
-  // v_target はコストの参照として grid に持たせて探索へ渡す
+  // The speed limit is a property of a node: v_m > v_upper(s_i) makes it invalid. v_target rides
+  // on the grid into the search, as the reference of the cost
   const SpeedLimits speed_limits =
     compute_speed_limits(grid, compiled_constraints, context, limits);
   grid.v_target = speed_limits.v_target;
 
-  // Tier 削除により幾何エントリは全て棄却に使う (落とせる制約の区別は制約セット側で行う)
-
-  // 静的 B (境界) は層・速度に依らない → (s, l) ごとに 1 回だけ評価
+  // The boundaries depend on neither the layer nor the speed, so evaluate them once per (s, l)
   std::vector<std::uint8_t> static_valid(grid.s_values.size() * grid.l_values.size(), 1);
   for (std::size_t i = 0; i < grid.s_values.size(); ++i) {
     for (std::size_t j = 0; j < grid.l_values.size(); ++j) {
@@ -317,13 +319,13 @@ DpGrid mark_invalid_nodes(
     }
   }
 
-  // 層ごと: A 到達可能バンド (s・v とも) + 動的 B (占有・停止線) + 速度上限
+  // Per layer: the reachable band in s and v, the occupancies and stop lines, the speed limit
   grid.b_blocked.assign(grid.t_values.size() * grid.s_values.size(), 0);
   for (std::size_t k = 0; k < grid.t_values.size(); ++k) {
     const double t = grid.t_values[k];
     const double s_band_min = grid.s_ego + min_reachable_distance(v0, t, limits) - band_tolerance;
     const double s_band_max = grid.s_ego + max_reachable_distance(v0, t, limits) + band_tolerance;
-    // v の到達可能バンド: 初速 v0 から最大加減速で到達できる速度範囲
+    // Reachable band in v: what the hardest acceleration and braking reach from v0
     const double v_band_min = v0 + limits.a_hard_min * t - 0.5 * params.dp.v_step_mps;
     const double v_band_max = v0 + limits.a_hard_max * t + 0.5 * params.dp.v_step_mps;
     for (std::size_t i = 0; i < grid.s_values.size(); ++i) {
@@ -331,8 +333,8 @@ DpGrid mark_invalid_nodes(
       const bool in_band = s >= s_band_min && s <= s_band_max;
       bool all_l_b_blocked = true;
       for (std::size_t j = 0; j < grid.l_values.size(); ++j) {
-        // (s, l, t) レベルの棄却判定を 1 回だけ行い、全 v へ反映する。
-        // B 起因の棄却だけは別に集計する (壁判定の材料。grid.b_blocked)
+        // The rejection is decided once at the (s, l, t) level and applied to every v. What the
+        // geometry rejects is counted separately, as the material of the wall test
         bool b_valid = static_valid[i * grid.l_values.size() + j] != 0;
         if (b_valid) {
           const SlBox box = footprint_sl_box(context.vehicle_info, s, grid.l_values[j]);
@@ -367,7 +369,7 @@ DpGrid mark_invalid_nodes(
   return grid;
 }
 
-//! [DP 1] 探索可能な格子の作成 = 幾何 + 有効性まで確定した使い捨て格子を返す
+//! [DP 1] Builds the searchable grid: the geometry plus the validity
 DpGrid build_dp_grid(
   const RoughPlannerParams & params, const PlannerContext & context,
   const CompiledConstraints & compiled_constraints, const KinematicLimits & limits)
@@ -376,27 +378,26 @@ DpGrid build_dp_grid(
     params, build_grid_geometry(params, context, limits), compiled_constraints, context, limits);
 }
 
-//! DP 探索の結果。candidates が空 = B 充足経路無し (→ 編成が停止 rough_plan へ落とす)。
-//! rejected は不成立理由 (debug.rejected へ連結する)
+//! Result of the search. An empty candidates means no path satisfies the geometry, and the caller
+//! falls back to the stop plan; rejected carries the reasons, for debug.rejected.
 struct DpSearchResult
 {
-  std::vector<DpPath> candidates;  //!< コスト昇順
+  std::vector<DpPath> candidates;  //!< ascending in cost
   std::vector<std::string> rejected;
 };
 
-//! [DP 3] コスト計算と候補抽出。前向き cost-to-come 掃引 (S3 §3.3–3.4) の後、
-//! 終端ノードから後退追跡して候補を返す (S3 §3.5)。
-//! prev_decisions はヒステリシス障壁 (S3 §5) の搬入用: side 反転経路への
-//! w_side_switch 加算 (コスト側)、STOP→GO 保守窓・FOLLOW→LEAD ギャップ (棄却側)
+//! [DP 3] Sweeps the cost to come forward and backtracks from the terminal node to the candidates.
+//! prev_decisions carries in the hysteresis barrier: a surcharge on a path that flips a side, and
+//! the rejection of a hasty STOP -> GO or FOLLOW -> LEAD.
 DpSearchResult search_dp_candidates(
   const RoughPlannerParams & params, DpGrid grid, const CompiledConstraints & compiled_constraints,
   const PlannerContext & context, const Decisions & prev_decisions,
   const KinematicLimits & kinematic_limits)
 {
-  // grid は値で受ける: 探索状態 (cost / parent) をノードに書き込みながら掃引し、
-  // 使い捨てる (呼び出し側に書き戻さない)
-  // TODO(odashima): prev_decisions によるヒステリシス障壁 (S3 §5。w_side_switch /
-  // STOP→GO 保守窓 / FOLLOW→LEAD ギャップ) は derive_decisions() 実装後に搬入する
+  // The grid is taken by value: the sweep writes the cost and the parents into its nodes and
+  // throws it away afterwards
+  // TODO(odashima): carry in the hysteresis barrier from prev_decisions once derive_decisions() is
+  // implemented
   (void)prev_decisions;
   (void)compiled_constraints;
 
@@ -414,7 +415,7 @@ DpSearchResult search_dp_candidates(
   const double decel = std::abs(kinematic_limits.a_hard_min);
   const double v0 = std::clamp(context.odometry.twist.twist.linear.x, 0.0, kinematic_limits.v_hard);
 
-  // 遷移コスト (S3 §3.4)。v_target は mark 側が grid に埋めた値を読む
+  // Transition cost. v_target is the one mark_invalid_nodes put into the grid
   const auto edge_cost = [&](
                            const double ds, const double l_prev, const double l_next,
                            const double v_next, const double accel, const std::size_t i_next) {
@@ -428,7 +429,7 @@ DpSearchResult search_dp_candidates(
            params.dp.weights.accel_nominal * accel_over * accel_over * dt;
   };
 
-  //! 探索の元になる状態。s_index < 0 は ego 実状態 (格子外) を表す
+  //! A state the search expands from. s_index < 0 marks the actual ego state, off the grid
   struct SourceState
   {
     double s{0.0};
@@ -462,21 +463,22 @@ DpSearchResult search_dp_candidates(
     node.parent_v = src.v_index;
   };
 
-  // 経路終端が goal に接続しているときだけ、終端を壁として扱う (下の distance_to_wall 参照)
+  // The end of the path is a wall only when it is connected to the goal, see distance_to_wall
   const double goal_wall_s =
     context.is_reference_path_connected_to_goal_pose() ? context.reference_path.length() : INF;
 
-  // 層 k → k+1 の前向き掃引
+  // Forward sweep from layer k to k + 1
   for (std::size_t k = 0; k + 1 < num_t; ++k) {
     const std::size_t layer_next = k + 1;
 
-    // wall までの制動可能性 (S3 §3.3 保守側条件): 層 k+1 で「B (幾何・停止線) が全 l を
-    // 塞ぐ」s を壁とみなし、壁までの残距離を最大減速で使い切って止まれる速度以下の
-    // 遷移だけを許す。
-    // A 到達可能バンド外・速度上限超過のノードは壁に数えない (バンド前端は「その時刻には
-    // まだ届かない」だけで障害ではなく、壁にすると層 1 の目前に幻の壁が立って速度が頭打ちになる)。
-    // 格子前端も、s_max_m / 前方長で経路が切れているだけのときは壁にしない (その先が
-    // 見えていないだけ)。goal に接続しているときだけ goal 位置を壁にする
+    // Braking feasibility up to the wall, the conservative condition: an s of layer k + 1 where
+    // the geometry or a stop line blocks every l is a wall, and only a transition slow enough to
+    // stop within the remaining distance at the hardest braking is allowed.
+    // A node outside the reachable band or above the speed limit is not a wall: the front of the
+    // band only means "not there yet at that time", and taking it for a wall would raise a phantom
+    // one right in front of layer 1 and cap the speed. Nor is the front of the grid, where the path
+    // is merely cut off by s_max_m or the forward length and nothing beyond is known. Only a goal
+    // the path is connected to becomes a wall
     std::vector<double> distance_to_wall(num_s, INF);
     {
       double wall_s = goal_wall_s;
@@ -490,12 +492,14 @@ DpSearchResult search_dp_candidates(
 
     const auto expand = [&](const SourceState & src) {
       const bool from_ego = src.s_index < 0;
-      // ego ノードの格子スナップ余裕 (S3 §3.3): 初層のみ横移動条件に +0.5·Δl を許す
+      // The ego is not on the grid, so the first layer gets half a cell of slack on the lateral
+      // condition
       const double snap_slack = from_ego ? 0.5 * params.dp.l_step_m : 0.0;
 
-      // 4D: v' を軸から列挙し (加速度 box 内)、Δs = (v + v')/2·Δt は等加速度仮定から
-      // 従属して決まる。s' は最近傍格子へ丸め、コストは実際の格子間距離で評価する。
-      // v' = 0 も通常列挙に含まれるため停止遷移の別枠 (3D 版) は不要
+      // v' is enumerated along its axis, within the acceleration box, and ds = (v + v')/2 * dt
+      // follows from assuming a constant acceleration. s' is snapped to the nearest cell and the
+      // cost uses the real distance between the cells. v' = 0 is part of the enumeration, so a
+      // stopping transition needs no case of its own
       const int m_lo = std::max(
         static_cast<int>(std::ceil(to_v_index(src.v + kinematic_limits.a_hard_min * dt) - EPS)), 0);
       const int m_hi = std::min(
@@ -513,11 +517,11 @@ DpSearchResult search_dp_candidates(
           continue;
         }
         if (v_next * v_next > 2.0 * decel * distance_to_wall[i_next] + EPS) {
-          continue;  // 壁の手前で止まれない速度で入らない
+          continue;  // too fast to stop in front of the wall
         }
         const double accel = (v_next - src.v) / dt;
 
-        // 横移動条件。停止 (Δs = 0) 中は横移動しない
+        // Lateral condition; nothing moves sideways while standing still (ds = 0)
         const double dl_max =
           (ds < EPS)
             ? 0.0
@@ -536,7 +540,7 @@ DpSearchResult search_dp_candidates(
     };
 
     if (k == 0) {
-      // 層 0 は ego の実状態 1 点 (格子に丸めない。S3 §3.1)
+      // Layer 0 is the single, unsnapped actual ego state
       SourceState ego;
       ego.s = grid.s_ego;
       ego.l = grid.l_ego;
@@ -566,8 +570,8 @@ DpSearchResult search_dp_candidates(
     }
   }
 
-  // 終端 (最終層) は cost-to-come 最小のノードを採用 (進行報酬が edge に入っているため
-  // 終端項は不要。S3 §3.4)
+  // The terminal node is the one of the last layer with the smallest cost to come. No terminal
+  // term is needed, the reward for progress already being part of the edges
   const std::size_t last_layer = num_t - 1;
   int best_i = -1;
   int best_j = -1;
@@ -591,7 +595,7 @@ DpSearchResult search_dp_candidates(
     return result;
   }
 
-  // 後退追跡 (S3 §3.5)。当面 top-1 のみ (top-K 抽出は将来拡張)
+  // Backtracking; only the best path for now
   DpPath path;
   path.cost = best_cost;
   std::vector<DpPathPoint> reversed_points;
@@ -610,14 +614,15 @@ DpSearchResult search_dp_candidates(
     j_trace = node.parent_l;
     m_trace = node.parent_v;
   }
-  path.points.push_back({0.0, grid.s_ego, grid.l_ego, v0});  // 層 0 = ego 実状態
+  path.points.push_back({0.0, grid.s_ego, grid.l_ego, v0});  // layer 0, the actual ego state
   path.points.insert(path.points.end(), reversed_points.rbegin(), reversed_points.rend());
   result.candidates.push_back(std::move(path));
   return result;
 }
 
-//! l(s) の cubic Hermite 内挿 (S3 §3.7 手順 1。線形だと折れ点の κ がスパイクする)。
-//! 節点は s 狭義単調 (停止区間は 1 点に潰す)、勾配は中心差分・端点 0
+//! Cubic Hermite interpolation of l(s); a linear one would spike the curvature at every knot. The
+//! knots are strictly increasing in s, a standstill collapsing into one, and the slopes are central
+//! differences, 0 at the ends.
 class LateralOffsetSpline
 {
 public:
@@ -629,7 +634,7 @@ public:
         knot_l_.push_back(point.l);
       }
     }
-    knot_slope_.assign(knot_s_.size(), 0.0);  // 端点勾配 0
+    knot_slope_.assign(knot_s_.size(), 0.0);  // the slope is 0 at both ends
     for (std::size_t i = 1; i + 1 < knot_s_.size(); ++i) {
       knot_slope_[i] = (knot_l_[i + 1] - knot_l_[i - 1]) / (knot_s_[i + 1] - knot_s_[i - 1]);
     }
@@ -664,7 +669,7 @@ private:
   std::vector<double> knot_slope_;
 };
 
-//! (s, l) を世界座標の RoughPlanPoint に引き当てる (yaw は中心線接線で代表)
+//! Turns (s, l) into a RoughPlanPoint in world coordinates, with the centerline tangent as yaw
 RoughPlanPoint to_rough_plan_point(
   const PathPointTrajectory & path, const double t, const double s, const double l, const double v,
   const double a)
@@ -682,8 +687,9 @@ RoughPlanPoint to_rough_plan_point(
   return point;
 }
 
-//! [DP 4] DP 粗経路 (Δt_dp 刻み) を NLP ステージ (params.time_step_s × params.num_points)
-//! へ持ち上げる (S3 §3.7)。手順 5.5 (躍度制限) は未実装 (TODO(odashima): NLP 接続時に追加)
+//! [DP 4] Lifts the rough path, sampled at the DP layers, onto the stages of the optimizer
+//! (params.num_points points spaced params.time_step_s apart).
+//! TODO(odashima): the jerk limit of step 5.5 is missing
 RoughPlan lift_to_stage_grid(
   const RoughPlannerParams & params, const DpPath & dp_path,
   const CompiledConstraints & compiled_constraints, const PlannerContext & context,
@@ -697,7 +703,8 @@ RoughPlan lift_to_stage_grid(
   const auto & path = context.reference_path;
   const double s_path_end = path.length();
 
-  // --- 手順 1–2: 区間等加速度で v(t)・s(t) を params.time_step_s 刻みに展開 ---
+  // --- steps 1-2: expand v(t) and s(t) to the stage spacing, at a constant acceleration per
+  //     interval ---
   std::vector<double> v_fine(params.num_points);
   std::vector<double> s_fine(params.num_points);
   for (int k = 0; k < params.num_points; ++k) {
@@ -712,8 +719,9 @@ RoughPlan lift_to_stage_grid(
     s_fine[k] = std::min(p0.s + p0.v * tau + 0.5 * accel * tau * tau, s_path_end);
   }
 
-  // --- 手順 3: 速度キャップ (0.1 s 解像度で曲率・速度制約・goal 停止包絡を再適用。
-  //     DP の 2 m 格子が拾えない鋭い曲率を潰す) ---
+  // --- step 3: cap the speed, reapplying the curvature, the speed limits and the stopping
+  //     envelope at the stage resolution, which catches the sharp curvature the 2 m grid of the DP
+  //     cannot see ---
   const bool stop_at_path_end = context.is_reference_path_connected_to_goal_pose();
   const auto v_cap_at = [&](const double s) {
     const double curvature = std::abs(path.curvature(s));
@@ -735,8 +743,8 @@ RoughPlan lift_to_stage_grid(
     v_fine[k] = std::min(v_fine[k], v_cap_at(s_fine[k]));
   }
 
-  // --- 手順 4–5: forward / backward pass (a_nom = ±1.0)。
-  //     初期は ego 実速度に接続する (jerk 制限接続は手順 5.5 と併せて TODO) ---
+  // --- steps 4-5: the forward and backward pass at a_nom, starting from the measured ego
+  //     speed ---
   v_fine[0] = std::clamp(context.odometry.twist.twist.linear.x, 0.0, v_fine[0]);
   for (int k = 0; k + 1 < params.num_points; ++k) {
     v_fine[k + 1] =
@@ -747,7 +755,7 @@ RoughPlan lift_to_stage_grid(
       v_fine[k], v_fine[k + 1] + std::abs(kinematic_limits.a_nom_min) * params.time_step_s);
   }
 
-  // --- 手順 6: 平滑後の v で s(t) を積分し直す (1 回のみ) ---
+  // --- step 6: integrate s(t) again from the smoothed v, once ---
   s_fine[0] = dp_path.points.front().s;
   for (int k = 0; k + 1 < params.num_points; ++k) {
     s_fine[k + 1] =
@@ -757,7 +765,7 @@ RoughPlan lift_to_stage_grid(
     }
   }
 
-  // --- 手順 7: l(s) 内挿と κ・a 付与 ---
+  // --- step 7: interpolate l(s) and fill in the curvature and the acceleration ---
   const LateralOffsetSpline lateral_spline(dp_path.points);
   plan.points.reserve(params.num_points);
   plan.s.reserve(params.num_points);
@@ -772,35 +780,36 @@ RoughPlan lift_to_stage_grid(
 }
 
 // =============================================================================================
-// 編成の他候補 (S3 §2.3)
+// the other candidates
 // =============================================================================================
 
-//! 前周期解再利用の試行結果。plan = nullopt なら不成立 (理由は rejected)
+//! Outcome of trying to reuse the previous solution; a nullopt plan means it does not hold, and
+//! rejected says why
 struct PreviousSolutionResult
 {
   std::optional<RoughPlan> plan;
   std::vector<std::string> rejected;
 };
 
-//! [編成 1] 前周期解の再利用 (S3 §4)。
-//! 成立時は §3.7 の速度平滑を通した RoughPlan を返す
-//! ([[maybe_unused]] は DP 動作確認のための一時無効化中のみ。有効化時に外す)
+//! [candidate 1] Reuses the solution of the previous cycle, returning it through the same speed
+//! smoothing as the DP path.
+//! ([[maybe_unused]] only while this is disabled to exercise the DP; drop it when it comes back)
 [[maybe_unused]] PreviousSolutionResult try_previous_solution(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
   const PreviousPlanningResult & prev_planning_result)
 {
-  // TODO(odashima): S3 §4.2 の 6 検査 (品質 / 初期状態乖離 / B 幾何 / B 停止線 / B 速度 /
-  // 新規物体の決定不能)
+  // TODO(odashima): the six checks (quality, deviation of the initial state, geometry, stop
+  // lines, speed limits, and an object new enough that no decision covers it)
   (void)context;
   (void)compiled_constraints;
   (void)prev_planning_result;
   return {};
 }
 
-//! [編成 3] 停止 rough_plan (S3 §6)。無条件成立の最終手段。
-//! ego の現横オフセットを保持して reference_path に平行に、快適減速で止まる。
-//! TODO(odashima): S3 §6 の減速度段階選択 (障害の手前で止まれる最小の減速度)・
-//! jerk 制限接続・blocked 判定
+//! [candidate 3] The stop plan, the last resort and always feasible: hold the current lateral
+//! offset, run parallel to the reference_path and stop at a comfortable deceleration.
+//! TODO(odashima): choose the deceleration (the smallest one that still stops in front of the
+//! obstacle), connect it under the jerk limit, and decide the blocked flag
 RoughPlan make_stop_plan(
   const RoughPlannerParams & params, const PlannerContext & context,
   const CompiledConstraints & compiled_constraints, const KinematicLimits & kinematic_limits)
@@ -830,11 +839,11 @@ RoughPlan make_stop_plan(
 }
 
 // =============================================================================================
-// デバッグマーカー (可視化のみ。意味論には関与しない)
+// debug markers; nothing here changes the behavior
 // =============================================================================================
 
-//! DP 格子の可視化。格子点を世界座標 (ego 前方 = s、横 = l) に置き、高さで時間層を表す
-//! (1 s = 1 m)。valid = 緑 / invalid = 赤の小球
+//! The DP grid: the cells in world coordinates, with the layer as the height at 1 s = 1 m, drawn
+//! as small spheres, green where valid and red where not
 MarkerArray make_grid_markers(const DpGrid & grid, const double z_base)
 {
   using autoware_utils_visualization::create_default_marker;
@@ -852,7 +861,7 @@ MarkerArray make_grid_markers(const DpGrid & grid, const double z_base)
   for (std::size_t k = 0; k < grid.t_values.size(); ++k) {
     for (std::size_t i = 0; i < grid.s_values.size(); ++i) {
       for (std::size_t j = 0; j < grid.l_values.size(); ++j) {
-        // 4D 格子の v 軸は表示上潰す: ひとつでも valid な v があれば緑
+        // The v axis is collapsed for the display: green as soon as one v is valid
         bool any_v_valid = false;
         for (std::size_t m = 0; m < grid.v_values.size(); ++m) {
           if (grid.node(k, i, j, m).valid) {
@@ -879,8 +888,8 @@ MarkerArray make_grid_markers(const DpGrid & grid, const double z_base)
   return marker_array;
 }
 
-//! 出力候補経路の可視化。候補ごとにオレンジの LINE_STRIP を張り、高さは格子と同じ
-//! 時間スケール (1 s = 1 m)。ns = "candidate_<優先順位>" で何番目の候補かを区別する
+//! The candidates: one orange line strip each, at the same time scale as the grid, in the
+//! namespace "candidate_<rank>"
 MarkerArray make_candidate_markers(const std::vector<RoughPlan> & plans, const double z_base)
 {
   using autoware_utils_visualization::create_default_marker;
@@ -907,7 +916,7 @@ MarkerArray make_candidate_markers(const std::vector<RoughPlan> & plans, const d
   return marker_array;
 }
 
-//! 2 つの MarkerArray を連結して返す
+//! Concatenates two MarkerArrays
 MarkerArray merge_marker_arrays(MarkerArray first, const MarkerArray & second)
 {
   first.markers.insert(first.markers.end(), second.markers.begin(), second.markers.end());
@@ -915,10 +924,10 @@ MarkerArray merge_marker_arrays(MarkerArray first, const MarkerArray & second)
 }
 
 // =============================================================================================
-// 結果組み立て
+// assembling the result
 // =============================================================================================
 
-//! [組み立て] decisions を軌道の幾何から導出して plan を完成させる (S3 §2.4)
+//! Completes a plan by deriving its decisions from the geometry of the trajectory
 RoughPlan finalize_plan(
   RoughPlan plan, const CompiledConstraints & compiled_constraints,
   const Decisions & prev_decisions)
@@ -927,8 +936,9 @@ RoughPlan finalize_plan(
   return plan;
 }
 
-//! 編成 (S3 §2.3): 前周期解 → 時空間 DP → 停止 rough_plan を固定順に試し、最初に成立した段の
-//! 候補列を返す。停止 rough_plan が無条件成立するため plans は必ず 1 本以上
+//! Tries the previous solution, then the space-time DP, then the stop plan, in that order, and
+//! returns the candidates of the first stage that holds. The stop plan is always feasible, so
+//! there is always at least one.
 RoughPlanResult make_plan_candidates(
   const RoughPlannerParams & params, const PlannerContext & context,
   const CompiledConstraints & compiled_constraints,
@@ -938,8 +948,8 @@ RoughPlanResult make_plan_candidates(
   const Decisions prev_decisions =
     prev_planning_result.plan ? prev_planning_result.plan->decisions : Decisions{};
 
-  // [1] 前周期解の再利用 (ヒステリシス第一層: 通る限り決定は変わらない。S3 §5)
-  // memo: DPの動作確認目的のためしばらくは無効化する
+  // [1] Reuse of the previous solution, the first layer of the hysteresis: as long as it holds,
+  // the decisions do not change. Disabled for now, to exercise the DP
   // const auto previous = try_previous_solution(context, compiled_constraints,
   //                                             prev_planning_result);
   // result.debug.rejected = previous.rejected;
@@ -948,10 +958,10 @@ RoughPlanResult make_plan_candidates(
   //   return result;
   // }
 
-  // 車両運動限界を IR (vehicle_kinematics プラグインの全域 ScalarBound) から集約する
+  // Collect the kinematic limits from the IR
   const KinematicLimits kinematic_limits = collect_kinematic_limits(compiled_constraints);
 
-  // [2] 時空間 DP (格子作成 [幾何 + 有効性] → 探索・候補抽出 → ステージ持ち上げ)
+  // [2] The space-time DP: build the grid, search it, lift the result onto the stages
   DpGrid grid = build_dp_grid(params, context, compiled_constraints, kinematic_limits);
   result.debug.debug_markers = make_grid_markers(grid, context.odometry.pose.pose.position.z);
   const DpSearchResult dp_result = search_dp_candidates(
@@ -967,7 +977,7 @@ RoughPlanResult make_plan_candidates(
     return result;
   }
 
-  // [3] 停止 rough_plan (無条件成立)
+  // [3] The stop plan, always feasible
   result.plans.push_back(finalize_plan(
     make_stop_plan(params, context, compiled_constraints, kinematic_limits), compiled_constraints,
     prev_decisions));
@@ -1002,10 +1012,11 @@ Decisions derive_decisions(
   const RoughPlan & plan, const CompiledConstraints & compiled_constraints,
   const Decisions & prev_decisions)
 {
-  // TODO(odashima): 軌道の幾何からの決定導出 (S3 §2.4)
-  // - side: 占有の s 区間と軌道の s が重なる静的物体の、最接近点での左右
-  // - lead_lag: コンフリクト s 区間を ego が先に抜けるか後か
-  // - stop_go: 時間窓内に s_stop を越えるか
+  // TODO(odashima): derive the decisions from the geometry of the trajectory
+  // - side: for a static object whose s range overlaps the trajectory, which side the closest
+  //   point passes on
+  // - lead_lag: whether the ego clears the conflicting s range first or last
+  // - stop_go: whether s_stop is passed within the time window
   (void)plan;
   (void)compiled_constraints;
   (void)prev_decisions;

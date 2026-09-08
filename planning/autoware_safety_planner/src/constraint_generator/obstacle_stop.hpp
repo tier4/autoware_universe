@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
-#define CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
+#define AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
 
 #include "constraint_generator_interface.hpp"
 
@@ -25,11 +25,12 @@
 namespace autoware::safety_planner
 {
 
-//! 予測物体 1 件ごとに KeepOut (剛体) を certainty = DEFINITE で発行するプラグイン
-//! (S7 §3-2 obstacle_stop)。waypoints は最尤の予測経路 1 本の翻訳で、予測経路が無い物体は
-//! waypoint 1 点 = 静的物体として出す。
-//! Why not 全予測モードの発行: 最尤以外まで DEFINITE で縛ると Nominal 軌道が過剰に硬くなる。
-//! 低確度モードは POSSIBLE を出す別プラグイン (run_out 等) の領分
+//! Emits one rigid-body KeepOut with certainty = DEFINITE per predicted object. The waypoints are
+//! the most likely predicted path; an object without one becomes a single waypoint, i.e. a static
+//! object.
+//! Why not emit every predicted mode: binding the less likely modes as DEFINITE too makes the
+//! nominal trajectory needlessly stiff. Low-confidence modes belong to a plugin that emits
+//! POSSIBLE (run_out, ...).
 class ObstacleStopConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:
@@ -37,9 +38,9 @@ public:
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 };
 
-//! PredictedObjects → KeepOut 制約列。t_plan は計画基準時刻 = odometry の stamp (S1 §2-1)。
-//! perception のスタンプずれは waypoints の t にオフセットとして織り込む。
-//! 退化した shape・非有限の pose を持つ物体は落として続行する (S7 §2)
+//! PredictedObjects -> KeepOut constraints. t_plan is the planning reference time, i.e. the stamp
+//! of the odometry; the offset to the perception stamp is folded into the t of the waypoints.
+//! Objects with a degenerate shape or a non-finite pose are dropped and the rest is kept.
 std::vector<Constraint> make_obstacle_keep_out_constraints(
   const PredictedObjects & objects, const rclcpp::Time & t_plan, const double margin_m);
 
@@ -55,4 +56,4 @@ std::vector<Constraint> make_obstacle_stop_line_constraints(
 
 }  // namespace autoware::safety_planner
 
-#endif  // CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_

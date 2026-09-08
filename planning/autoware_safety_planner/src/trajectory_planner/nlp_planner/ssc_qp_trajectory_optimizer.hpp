@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
-#define TRAJECTORY_PLANNER__NLP_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
 
 #include "ssc_corridor.hpp"
 #include "trajectory_optimizer_interface.hpp"
@@ -25,42 +25,46 @@
 namespace autoware::safety_planner
 {
 
-// Spatio-temporal Semantic Corridor (SSC) の凸 QP による軌道最適化。
-// 定式化は docs/safety_planner_arch_design/formulation_ssc_vs_poc.md §2
-// (原典: arXiv:1906.09788、要約は同 ref/summary_1906.09788_ssc.md)。
+// Trajectory optimization as the convex QP of the spatio-temporal semantic corridor
+// (arXiv:1906.09788).
 //
-// 意味制約を (s, l, t) の cube 列へ落とし、各 cube に区分 5 次 Bézier の 1 区間を割り当てて
-// s(t), l(t) の制御点を単一の QP で解く。Bernstein 基底の
-//   (P1) 凸包性       … 制御点を箱に入れれば曲線全体が箱に入る
-//   (P2) hodograph 性 … 微分の制御点は元の制御点の線形写像
-// により、自由空間と縦横の速度・加速度が制御点についての**線形不等式**になる。
-// 目的関数 (jerk の二乗積分) は制御点についての二次形式。→ 凸 QP。
+// The semantic constraints become a sequence of (s, l, t) cubes, each cube gets one piece of a
+// quintic Bezier, and the control points of s(t) and l(t) are solved in a single QP. Through the
+// two properties of the Bernstein basis,
+//   (P1) convex hull: putting the control points in a box puts the whole curve in that box
+//   (P2) hodograph: the control points of a derivative are a linear map of the original ones
+// the free space and the longitudinal and lateral speeds and accelerations become **linear
+// inequalities** in the control points, while the objective, the squared jerk integral, is a
+// quadratic form in them: a convex QP.
 //
-// この十分条件のおかげで、制約充足が**標本点ではなく区間全体**で成り立つ。
-// NLP 版との違いは姿勢 θ と曲率 κ が変数に無いこと (κ は微分の比なので線形制約に書けない)。
-// ego は点として扱い、車両形状は cube 側 (障害物の膨張) で吸収する。
+// Because these conditions are sufficient, the constraints hold **over the whole interval** rather
+// than at sample points. Unlike the NLP formulation, neither the heading nor the curvature is a
+// variable, the curvature being a ratio of derivatives and hence not expressible linearly. The ego
+// is treated as a point, and its shape is absorbed by inflating the obstacles when carving the
+// cubes.
 
-//! QP のパラメータ (ROS ns `trajectory_optimizer.ssc_qp.*`)
+//! Parameters of the QP (ROS namespace `trajectory_optimizer.ssc_qp.*`)
 struct SscQpParams
 {
   SscCorridorParams corridor;
 
-  double lateral_rate_max_mps{2.0};    //!< [m/s]  |l̇| 上限 (P2 を k=1 に適用)
-  double lateral_accel_max_mps2{2.0};  //!< [m/s²] |l̈| 上限 (P2 を k=2 に適用)
+  double lateral_rate_max_mps{2.0};    //!< [m/s] bound on the lateral speed, (P2) at k = 1
+  double lateral_accel_max_mps2{2.0};  //!< [m/s^2] bound on the lateral acceleration, (P2) at k = 2
 
-  double weight_jerk_s{1.0};    //!< 縦 jerk 二乗積分の重み
-  double weight_jerk_l{1.0};    //!< 横 jerk 二乗積分の重み
-  double regularization{1e-8};  //!< P の対角に足す正則化 (jerk Hessian は 2 次以下が零空間)
+  double weight_jerk_s{1.0};    //!< weight of the longitudinal squared jerk integral
+  double weight_jerk_l{1.0};    //!< weight of the lateral one
+  double regularization{1e-8};  //!< added to the diagonal of P; the jerk Hessian has the
+                                //!< polynomials of degree two and below in its null space
 
   double osqp_eps_abs{1e-5};
 };
 
-//! QP を解いた結果の生の値 (制御点)。cube 1 つあたり s / l 各 6 点
+//! The raw solution of the QP: six control points each for s and l, per cube
 struct SscQpSolution
 {
-  //! [cube0 の s 6 点, cube0 の l 6 点, cube1 の s 6 点, ...] の順に並べた制御点
+  //! ordered as [the six s of cube 0, the six l of cube 0, the six s of cube 1, ...]
   std::vector<double> control_points;
-  double alpha{0.0};  //!< [s] 区間長 (全 cube 共通)
+  double alpha{0.0};  //!< [s] length of a piece, the same for every cube
 };
 
 class SscQpTrajectoryOptimizer : public TrajectoryOptimizerInterface
@@ -71,15 +75,16 @@ public:
   TrajectoryOptimizerResult optimize(const TrajectoryOptimizerInput & input) override;
 
 private:
-  //! ROS パラメータを読む (on_initialize 済みであること)
+  //! Reads the ROS parameters; on_initialize must have run
   SscQpParams read_params() const;
 };
 
 // ---------------------------------------------------------------------------------------------
-// 以下は plugin 外からもテストできるよう自由関数にしてある
+// free functions, so that they can be tested outside the plugin
 // ---------------------------------------------------------------------------------------------
 
-//! Frenet の初期・終端状態 (位置・速度・加速度)。QP の等式制約に入る
+//! The initial and terminal state in Frenet coordinates (position, speed, acceleration), which
+//! enter the QP as equality constraints
 struct SscBoundaryState
 {
   double s{0.0};
@@ -90,30 +95,34 @@ struct SscBoundaryState
   double l_ddot{0.0};
 };
 
-//! rough_plan の 1 点 (世界座標の v, a と姿勢) を Frenet の (ṡ, l̇, s̈, l̈) へ落とす。
-//! 参照曲率による縮尺 (1 − κ_ref·l) を掛けた小偏差近似で、加速度は向きの変化を無視する
+//! Converts one point of the rough plan, with its world speed, acceleration and heading, into the
+//! Frenet derivatives of s and l. It is a small-deviation approximation scaled by (1 - k_ref l),
+//! and the acceleration ignores the change of heading.
 SscBoundaryState to_frenet_boundary_state(
   const PlannerContext & context, const RoughPlanPoint & point, double s, double l);
 
-//! cube の s 区間に効く縦速度の上限 [m/s]。IR の区間付き VELOCITY 行と、参照曲率からの
-//! 横加速度上限 √(a_lat_nom/|κ|) の両方を掛ける。曲率は SSC の変数に無いので、
-//! cube ごとの ṡ 上限という「意味境界」に落とすしかない (formulation_ssc_vs_poc.md §2.6)
+//! [m/s] Upper bound on the longitudinal speed over the s range of a cube: the interval VELOCITY
+//! constraints of the IR together with sqrt(a_lat_nom / |k|) from the reference curvature. The
+//! curvature is not a variable of SSC, so the only place this can land is a bound on the
+//! longitudinal speed of each cube.
 double cube_velocity_upper(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
   const SemanticCube & cube, const KinematicLimits & limits);
 
-//! cube 列 + 境界条件から QP を組んで解く。infeasible / ソルバー失敗なら nullopt。
-//! velocity_upper は cube ごとの ṡ 上限 (cubes と同じ長さ)
+//! Builds the QP from the cubes and the boundary conditions and solves it, returning nullopt when
+//! it is infeasible or the solver fails. velocity_upper holds one longitudinal speed bound per
+//! cube.
 std::optional<SscQpSolution> solve_ssc_qp(
   const std::vector<SemanticCube> & cubes, const std::vector<double> & velocity_upper,
   const SscBoundaryState & initial, const SscBoundaryState & terminal,
   const KinematicLimits & limits, const SscQpParams & params);
 
-//! QP の解を時間グリッド (rough_plan と同一) 上でサンプルし、世界座標の軌道へ戻す
+//! Samples the solution on the time grid of the rough plan and converts it back to world
+//! coordinates
 OptimizedTrajectory sample_ssc_solution(
   const PlannerContext & context, const std::vector<SemanticCube> & cubes,
   const SscQpSolution & solution, const std::vector<double> & sample_times);
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__SSC_QP_TRAJECTORY_OPTIMIZER_HPP_

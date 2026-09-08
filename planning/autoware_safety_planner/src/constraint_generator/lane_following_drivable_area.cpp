@@ -34,18 +34,20 @@ namespace autoware::safety_planner
 namespace
 {
 
-//! [m] bound 上のサンプル間隔
+//! [m] spacing of the samples taken along a bound
 constexpr double SAMPLE_STEP_M = 5.0;
-//! [m] bound の外側にこの分出た点で並走車線を探す (車線幅の半分より小さいこと)
+//! [m] a parallel lane is looked for this far outside the bound; keep it below half a lane width
 constexpr double ADJACENT_OFFSET_M = 1.5;
-//! [rad] 並走とみなす方位差 (対向は反転して評価)。交差点で直交する道路を除外する
+//! [rad] heading difference still counted as parallel (an oncoming lane is compared flipped). It
+//! keeps the crossing roads of an intersection out
 constexpr double PARALLEL_YAW_THRESHOLD = M_PI / 4.0;
-//! サンプルのこの割合以上で並走車線ヒットなら「車線あり」とみなす (継ぎ目の取りこぼし吸収)
+//! fraction of the samples that must hit a parallel lane for the side to count as having one; it
+//! absorbs the samples lost at the seams
 constexpr double ADJACENT_FRACTION = 0.5;
-//! [m] road_border を探す半径
+//! [m] search radius for a road_border
 constexpr double BORDER_SEARCH_RADIUS_M = 15.0;
 
-//! 折れ線を弧長 step ごとにサンプルした (点, 進行方位) 列
+//! Samples a polyline every step of arc length, as (point, heading) pairs
 std::vector<std::pair<lanelet::BasicPoint2d, double>> sample_polyline_with_yaw(
   const lanelet::ConstLineString3d & line, const double step)
 {
@@ -71,7 +73,7 @@ double point_segment_distance(
   return (p - (a + ab * t)).norm();
 }
 
-//! line 上で p に最も近い点
+//! Point of line closest to p
 lanelet::BasicPoint2d closest_point_on_polyline(
   const lanelet::BasicPoint2d & p, const lanelet::ConstLineString3d & line)
 {
@@ -93,7 +95,7 @@ lanelet::BasicPoint2d closest_point_on_polyline(
   return best_point;
 }
 
-//! line のうち point に最も近いセグメントの方位
+//! Heading of the segment of line closest to point
 double nearest_segment_yaw(
   const lanelet::ConstLineString3d & line, const lanelet::BasicPoint2d & point)
 {
@@ -111,7 +113,7 @@ double nearest_segment_yaw(
   return best_yaw;
 }
 
-//! p_out に並走車線 (対向含む) が存在するか
+//! Whether a parallel lane (oncoming included) covers p_out
 bool has_parallel_road_lanelet_at(
   const lanelet::LaneletMapConstPtr & lanelet_map, const lanelet::BasicPoint2d & p_out,
   const double yaw, const lanelet::Id self_id)
@@ -130,19 +132,20 @@ bool has_parallel_road_lanelet_at(
   return false;
 }
 
-//! Boundary 制約を 1 本組み立てる。polyline は進行方向順であること (forbidden_side の前提)
+//! Builds one Boundary constraint. The order of the vertices does not matter: the side the
+//! boundary forbids is decided by the consumer, from where the polyline falls relative to its
+//! reference path.
 Constraint make_boundary_constraint(
-  const std::vector<Point2d> & polyline, const Side side, const double margin_m,
-  const Hardness hardness, const double slack_weight, const std::string & plugin_name,
-  const std::string & target_id, const std::string & detail)
+  const std::vector<Point2d> & polyline, const double margin_m, const Hardness hardness,
+  const double slack_weight, const std::string & plugin_name, const std::string & target_id,
+  const std::string & detail)
 {
   Constraint constraint;
-  constraint.certainty = Certainty::DEFINITE;  // 地図は前提が確定している
+  constraint.certainty = Certainty::DEFINITE;  // the map is a settled premise
   constraint.hardness = hardness;
   constraint.slack_weight = hardness == Hardness::SOFT ? slack_weight : 0.0;
   Boundary boundary;
   boundary.polyline.assign(polyline.begin(), polyline.end());
-  boundary.forbidden_side = side;
   boundary.margin = margin_m;
   constraint.payload = std::move(boundary);
   constraint.source = Source{plugin_name, Category::SAFETY, target_id, detail};
@@ -158,12 +161,12 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
 
   ConstraintGeneratorOutput output;
 
-  // route 未確立の周期は制約を出せない (S7 §2: 空を返してパイプラインを継続させる)
+  // Without a route there is nothing to constrain; an empty output keeps the pipeline running
   if (!context.route_manager) {
     return output;
   }
 
-  // reference_path と同じ窓のレーン列を対象にする (S2 の reference_path パラメータを共有)
+  // Cover the same window of lanes as the reference_path, sharing its parameters
   const auto & route_manager = *context.route_manager;
   const auto lanelets =
     route_manager
@@ -177,22 +180,22 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
   for (const auto & lanelet : lanelets) {
     for (const auto side_left : {true, false}) {
       const auto & bound = side_left ? lanelet.leftBound() : lanelet.rightBound();
-      // 地図 (外部リソース) の境界。頂点 2 点未満の不正形状は折れ線にならないので出さない
+      // The map is an external resource: a bound with fewer than two vertices is not a polyline
       if (bound.size() < 2) {
         continue;
       }
-      const Side side = side_left ? Side::LEFT : Side::RIGHT;
       const double side_sign = side_left ? 1.0 : -1.0;
       const auto samples = sample_polyline_with_yaw(bound, SAMPLE_STEP_M);
       if (samples.empty()) {
         continue;
       }
 
-      // 並走車線の有無の判定と、無い区間の最寄り road_border の収集を 1 パスで行う
+      // One pass decides whether there is a parallel lane and collects the nearest road_border of
+      // the stretches without one
       std::size_t adjacent_hits = 0;
       std::set<lanelet::Id> border_ids;
       for (const auto & [point, yaw] : samples) {
-        // 左 bound の外側 = 進行方向の左 (+90°)、右 bound の外側 = 右 (-90°)
+        // Outside of the left bound is to the left of the driving direction, and vice versa
         const lanelet::BasicPoint2d p_out{
           point.x() - std::sin(yaw) * ADJACENT_OFFSET_M * side_sign,
           point.y() + std::cos(yaw) * ADJACENT_OFFSET_M * side_sign};
@@ -214,8 +217,9 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
           if (type != "road_border" || linestring.size() < 2) {
             continue;
           }
-          // 反対側の border を拾わない (右側に border が無い道路で左側の border を RIGHT 禁止として
-          // 出すと走行可能領域が消える)。bound の外向き法線に対して負側にある border は候補外
+          // Never take the border of the other side: emitting the left border for a road without
+          // one on the right would close the drivable area. Anything on the negative side of the
+          // outward normal of the bound is not a candidate
           const auto q = closest_point_on_polyline(p_out, linestring);
           const double outward =
             (-std::sin(yaw) * (q.x() - point.x()) + std::cos(yaw) * (q.y() - point.y())) *
@@ -223,9 +227,10 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
           if (outward <= 0.0) {
             continue;
           }
-          // bbox 検索は線分の外接矩形で当たるので、長い border は数百 m 先の点しか無くても返る。
-          // 半径内に実際に近づく border だけを採用する (遠方の border を採ると、射影後に反対側の
-          // 巨大な l の境界になって全候補が落ちる)
+          // The bbox search hits the bounding rectangle of the linestring, so a long border comes
+          // back even when its nearest vertex is hundreds of meters away. Take only the borders
+          // that really come within the radius; a distant one projects to a huge l on the other
+          // side and rejects every candidate
           const double dist = (p_out - q).norm();
           if (dist > BORDER_SEARCH_RADIUS_M) {
             continue;
@@ -245,10 +250,11 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         ADJACENT_FRACTION;
 
       if (adjacent || border_ids.empty()) {
-        // 並走車線あり: 自レーンの bound を soft にする (この側に road_border は出さない)。
-        // 並走車線も road_border も無い側 (地図の外縁が線種だけで描かれている等) は、自レーンの
-        // bound を hard にする。何も出さないとこの側が無制限になり、goal の横位置へ寄せる候補が
-        // レーン外へ出る
+        // With a parallel lane the bound of the own lane becomes soft, and no road_border is
+        // emitted on this side. Where there is neither a parallel lane nor a road_border (the edge
+        // of the map drawn as a line type only, ...) it becomes hard instead: emitting nothing
+        // would leave the side unbounded and let a candidate aiming at the lateral goal position
+        // leave the lane
         std::vector<Point2d> polyline;
         polyline.reserve(bound.size());
         for (const auto & point : bound) {
@@ -256,45 +262,35 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         }
         const auto hardness = adjacent ? Hardness::SOFT : Hardness::HARD;
         output.constraints.push_back(make_boundary_constraint(
-          polyline, side, margin_m, hardness, bound_slack_weight, get_name(),
+          polyline, margin_m, hardness, bound_slack_weight, get_name(),
           std::to_string(lanelet.id()), side_left ? "left_bound" : "right_bound"));
         continue;
       }
 
-      // 並走車線なし: road_border を hard にする (路肩等の上は走行可能領域に含まれる)。
-      // border は 1 本の linestring が道路を数百 m 取り巻くことがあるので、自レーン bound から
-      // BORDER_SEARCH_RADIUS_M 以内にある頂点の連続区間だけを切り出す (遠方の区間まで出すと、
-      // 射影後に反対側・巨大な l の境界になって全候補が落ちる)
+      // Without a parallel lane the road_border becomes the hard boundary, which keeps the
+      // shoulder inside the drivable area. A single linestring can wrap hundreds of meters of road,
+      // so only the runs of vertices within BORDER_SEARCH_RADIUS_M of the own bound are emitted; a
+      // distant run projects to a huge l on the other side and rejects every candidate
       for (const auto border_id : border_ids) {
         const auto border = lanelet_map->lineStringLayer.get(border_id);
-        // forbidden_side は折れ線の進行向き基準。地図の road_border は向きが不定なので、
-        // 逆向き (進行方向と反平行) なら反転してから発行する
-        const auto & [mid_point, mid_yaw] = samples[samples.size() / 2];
-        const double dyaw =
-          std::abs(std::remainder(nearest_segment_yaw(border, mid_point) - mid_yaw, 2.0 * M_PI));
-        const bool reversed = dyaw > M_PI / 2.0;
-
         std::vector<Point2d> polyline;
         polyline.reserve(border.size());
         for (const auto & point : border) {
           polyline.emplace_back(point.x(), point.y());
         }
-        if (reversed) {
-          std::reverse(polyline.begin(), polyline.end());
-        }
         std::vector<Point2d> run;
         const auto flush = [&]() {
           if (run.size() >= 2) {
             output.constraints.push_back(make_boundary_constraint(
-              run, side, margin_m, Hardness::HARD, 0.0, get_name(), std::to_string(border_id),
+              run, margin_m, Hardness::HARD, 0.0, get_name(), std::to_string(border_id),
               side_left ? "left_road_border" : "right_road_border"));
           }
           run.clear();
         };
         for (const auto & vertex : polyline) {
           const lanelet::BasicPoint2d q{vertex.x(), vertex.y()};
-          // 同じ border がロータリーのように道路を取り巻いて反対側にも来ることがあるので、bound の
-          // 外向き側 (この side 側) にある頂点だけを残す
+          // The same border can wrap around the road, as in a rotary, and come back on the other
+          // side, so keep only the vertices outside the bound on this side
           const auto foot = closest_point_on_polyline(q, bound);
           const double bound_yaw = nearest_segment_yaw(bound, q);
           const double outward =
@@ -311,7 +307,7 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
     }
   }
 
-  // --- debug marker: 採用した境界の折れ線 ---
+  // --- debug marker: the boundary polylines that were emitted ---
   {
     using autoware_utils_visualization::create_default_marker;
     using autoware_utils_visualization::create_marker_color;

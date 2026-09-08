@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
-#define CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
+#define AUTOWARE__SAFETY_PLANNER__CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
 
 // Lightweight closed-loop simulation without a ROS node.
 // Builds SafetyPlannerInput the same way SafetyPlannerNode::on_timer does, advances the ego
@@ -108,4 +108,4 @@ private:
 
 }  // namespace autoware::safety_planner::testing
 
-#endif  // CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_

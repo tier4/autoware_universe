@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef UTILS__REFERENCE_PATH_SMOOTHER_HPP_
-#define UTILS__REFERENCE_PATH_SMOOTHER_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__UTILS__REFERENCE_PATH_SMOOTHER_HPP_
+#define AUTOWARE__SAFETY_PLANNER__UTILS__REFERENCE_PATH_SMOOTHER_HPP_
 
 #include "../type_alias.hpp"
 
@@ -24,15 +24,16 @@
 namespace autoware::safety_planner
 {
 
-//! reference_path を elastic band 型の QP でなめらかにする (autoware_path_smoother の EB と同じ
-//! 定式化: 1 m 再サンプル点の 2 階差分の二乗和を最小化し、各点は法線方向にだけ動く)。
-//! 可動範囲は ±clearance_m と、lanelets の左右 bound までの距離 − vehicle_half_width_m − マージン
-//! の小さい方。終端 2 点 (goal 位置・向き) は動かさない。QP が解けない・点数が足りないときは
-//! nullopt
+//! Smooths the reference_path with an elastic band QP, formulated as in the EB of
+//! autoware_path_smoother: minimize the sum of squared second differences of the points resampled
+//! every 1 m, each point free to move along its normal only. The travel is limited to the smaller
+//! of +-clearance_m and the distance to the lane bounds minus vehicle_half_width_m and a margin.
+//! The last two points (the goal position and heading) are held fixed. Returns nullopt when the QP
+//! does not solve or there are too few points.
 std::optional<PathPointTrajectory> smooth_reference_path(
   const PathPointTrajectory & path, const lanelet::ConstLanelets & lanelets,
   double vehicle_half_width_m, double clearance_m);
 
 }  // namespace autoware::safety_planner
 
-#endif  // UTILS__REFERENCE_PATH_SMOOTHER_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__UTILS__REFERENCE_PATH_SMOOTHER_HPP_

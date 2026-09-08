@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
-#define TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
 
-// 既定の軌道プランナープラグイン。制約セットごとに
-// rough_planner (時空間 DP によるホモトピー解決) → trajectory optimizer (精緻化) を回し、
-// normal / cautious の 2 本の軌道を作る。optimizer は pluginlib で差し替え可能
-// (`trajectory_optimizer.plugin`)
+// The default trajectory planner plugin. For each constraint set it runs the rough planner, which
+// settles the homotopy with a space-time DP, followed by the trajectory optimizer, and so produces
+// the normal and the cautious trajectory. The optimizer is a pluginlib plugin, selected by
+// `trajectory_optimizer.plugin`.
 
 #include "../trajectory_planner_interface.hpp"
 #include "rough_planner.hpp"
@@ -43,14 +43,15 @@ public:
   TrajectoryPlannerResult plan(const TrajectoryPlannerInput & input) override;
 
 private:
-  //! 周期間持ち越し。normal / cautious は制約セットが違い解も別物なので、別々に持つ
+  //! Carried across cycles. The normal and the cautious side see different constraints and reach
+  //! different solutions, so each keeps its own
   struct SideState
   {
     PreviousPlanningResult prev_planning_result;
     std::optional<OptimizedTrajectory> prev_optimized_trajectory;
   };
 
-  //! 1 つの制約セットについて rough → optimize を回す。SUCCESS でなければ nullopt
+  //! Runs the rough planner and the optimizer for one constraint set; nullopt unless it succeeds
   std::optional<Trajectory> plan_one_side(
     const PlannerContext & context, const CompiledConstraints & compiled_constraints,
     SideState & state, RoughPlanResult & rough_plan_result,
@@ -65,7 +66,7 @@ private:
   std::optional<RoughPlanner> rough_planner_;
 
   using TrajectoryOptimizerLoader = pluginlib::ClassLoader<TrajectoryOptimizerInterface>;
-  //! ロード済みインスタンスより長生きさせること (unload はローダの破棄で起こる)
+  //! Must outlive the loaded instance: destroying the loader unloads it
   std::unique_ptr<TrajectoryOptimizerLoader> trajectory_optimizer_loader_;
   std::shared_ptr<TrajectoryOptimizerInterface> trajectory_optimizer_;
 
@@ -75,4 +76,4 @@ private:
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__ROUGH_OPTIMIZER_TRAJECTORY_PLANNER_HPP_

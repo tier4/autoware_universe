@@ -12,22 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_PLANNER__FRENET_SAMPLER__FRENET_SAMPLER_HPP_
-#define TRAJECTORY_PLANNER__FRENET_SAMPLER__FRENET_SAMPLER_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__FRENET_SAMPLER__FRENET_SAMPLER_HPP_
+#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__FRENET_SAMPLER__FRENET_SAMPLER_HPP_
 
-// サンプリングベースの軌道プランナープラグイン (sampling_based_planner/autoware_path_sampler
-// の Frenet 経路サンプリングを踏襲)。
-// 経路と速度を分離してサンプルする:
-// - 経路 l(s): reference_path 上の Frenet 座標で、終端 (弧長 L・横位置 l_T) を格子状にサンプル
-//   し quintic 多項式 l(s) で結ぶ。初期勾配 l'(0) は ego の heading、初期曲率 l''(0) は ego の
-//   ステア角から取るので開始 heading・曲率が ego と一致する。各点の heading は Frenet の解析式、
-//   曲率はその差分 (path_resolution_m 間隔) で求まる
-// - 速度 s(t): 終端 (時間長 T・縦速度 v_T) をサンプルし quintic 多項式 s(t) で結ぶ
-// 候補 = 経路 × 速度。制約 IR の射影ビュー (sl_view_utils) で hard 制約を評価し、通った
-// もののうちコスト最小を採用する。座標基準は constraints_compiler.hpp の規約どおり、その
-// 周期の context.reference_path 1 本だけ (autoware_frenet_planner の Spline2D は使わない)。
-// 時間パラメタライズの l(t) を直接サンプルしないのは、停止発進時に s も l も t³ で立ち上がって
-// 開始 heading が ego とずれ、車両運動チェックで全候補が落ちるため
+// Sampling based trajectory planner plugin, following the Frenet path sampling of
+// sampling_based_planner / autoware_path_sampler. Path and velocity are sampled separately:
+// - path l(s): in Frenet coordinates on the reference_path, sampling a grid of terminal states
+//   (arc length L, lateral position l_T) and joining them with a quintic polynomial l(s). The
+//   initial slope l'(0) comes from the ego heading and the initial curvature l''(0) from the ego
+//   steer angle, so the candidate starts with the heading and the curvature of the ego. The
+//   heading of each point comes from the analytic Frenet expression and the curvature from its
+//   difference over path_resolution_m
+// - velocity s(t): sampling terminal states (duration T, longitudinal speed v_T) and joining them
+//   with a quintic polynomial s(t)
+// A candidate is one path combined with one velocity profile. The hard constraints are evaluated on
+// the projected views of the IR (sl_view_utils) and the cheapest candidate that passes is taken. As
+// stated in constraints_compiler.hpp, everything is measured on the reference_path of the current
+// cycle; the Spline2D of autoware_frenet_planner is not used.
+// Why not sample l(t) directly: starting from standstill both s and l would rise as t^3, which puts
+// the initial heading off the ego heading and rejects every candidate in the kinematic check.
 
 #include "../../utils/sl_view_utils.hpp"
 #include "../nlp_planner/constraints_compiler.hpp"
@@ -48,29 +51,29 @@ public:
   TrajectoryPlannerResult plan(const TrajectoryPlannerInput & input) override;
 
 private:
-  //! ego 状態 (Frenet)。多項式の初期条件
+  //! Ego state in Frenet coordinates, the initial conditions of the polynomials
   struct InitialState
   {
     double s{0.0};
     double l{0.0};
-    double dl_ds{0.0};    //!< [-] 横位置の弧長勾配 tan(ego heading − 中心線接線)
-    double d2l_ds2{0.0};  //!< [1/m] 横位置の弧長 2 階微分 (ego のステア角による曲率 − 中心線曲率)
-    double v{0.0};        //!< [m/s] 縦速度 ds/dt
-    double a{0.0};        //!< [m/s²]
-    double l_goal{0.0};   //!< [m] goal_pose の横位置 (経路終端 = goal なので終端で評価)
+    double dl_ds{0.0};    //!< [-] tan(ego heading - centerline tangent)
+    double d2l_ds2{0.0};  //!< [1/m] curvature from the ego steer angle, less the centerline one
+    double v{0.0};        //!< [m/s] longitudinal speed ds/dt
+    double a{0.0};        //!< [m/s^2]
+    double l_goal{0.0};   //!< [m] lateral position of goal_pose, evaluated at the end of the path
   };
 
-  //! 空間サンプルされた経路 (s 昇順・等間隔 path_resolution_m、s0 から reference_path 終端まで)
+  //! Path sampled in space, every path_resolution_m from s0 to the end of the reference_path
   struct PathCandidate
   {
     std::vector<double> s;
     std::vector<double> l;
-    std::vector<double> yaw;    //!< [rad] 世界座標の heading
+    std::vector<double> yaw;    //!< [rad] heading in world coordinates
     std::vector<double> kappa;  //!< [1/m]
     std::string tag;
   };
 
-  //! 時間サンプルされた縦プロファイル (t_k = k·dt)
+  //! Longitudinal profile sampled in time (t_k = k*dt)
   struct VelocityProfile
   {
     std::vector<double> t;
@@ -80,7 +83,7 @@ private:
     std::string tag;
   };
 
-  //! 経路 × 速度を合成した軌道候補
+  //! A trajectory candidate: one path combined with one velocity profile
   struct Candidate
   {
     std::vector<double> s;  //!< [m] s(t_k)
@@ -97,7 +100,8 @@ private:
 
   InitialState compute_initial_state(const PlannerContext & context) const;
 
-  //! 終端 (弧長 length・横位置 l_target) を 1 組決めて quintic l(s) を空間サンプルする
+  //! Samples the quintic l(s) for one terminal state (arc length length, lateral position
+  //! l_target)
   PathCandidate sample_path(
     const PlannerContext & context, const InitialState & initial_state, const double length,
     const double l_target) const;
@@ -109,16 +113,17 @@ private:
     const PlannerContext & context, const InitialState & initial_state,
     const CompiledConstraints & compiled_constraints) const;
 
-  //! 有効な候補が 1 本も無いときの最終手段: 現在の横位置を保ったまま最大減速で止まる
+  //! Last resort when no candidate is valid: hold the current lateral position and stop at the
+  //! hardest deceleration
   VelocityProfile make_stop_profile(
     const InitialState & initial_state, const KinematicLimits & limits) const;
 
-  //! 経路上の s(t_k) に沿って l / yaw / κ を補間し、世界座標の点列を作る
+  //! Interpolates l, yaw and the curvature at s(t_k) along the path, in world coordinates
   Candidate combine(
     const PlannerContext & context, const PathCandidate & path,
     const VelocityProfile & profile) const;
 
-  //! hard 制約の評価と soft コストの計算。valid / cost を書き込む
+  //! Evaluates the hard constraints and accumulates the soft cost, writing valid and cost
   void evaluate(
     const PlannerContext & context, const CompiledConstraints & compiled_constraints,
     const double l_goal, Candidate & candidate) const;
@@ -132,4 +137,4 @@ private:
 
 }  // namespace autoware::safety_planner
 
-#endif  // TRAJECTORY_PLANNER__FRENET_SAMPLER__FRENET_SAMPLER_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__FRENET_SAMPLER__FRENET_SAMPLER_HPP_

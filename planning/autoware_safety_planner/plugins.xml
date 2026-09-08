@@ -2,37 +2,37 @@
   <library path="autoware_safety_planner_constraint_plugins">
     <class type="autoware::safety_planner::VehicleKinematicsConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
-      <description>車両運動制約 (VEHICLE) と快適上限 (COMFORT) の ScalarBound を生成する</description>
+      <description>Emits the ScalarBound constraints of the vehicle kinematics</description>
     </class>
     <class type="autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
-      <description>route 上の lanelet の車線境界から走行可能領域 (Boundary) を生成する</description>
+      <description>Builds the drivable area from the lane bounds of the lanelets on the route</description>
     </class>
     <class type="autoware::safety_planner::SimpleDrivableAreaConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
-      <description>reference_path を左右へ定数幅・前後へ定数長だけ広げた簡易走行可能領域 (Boundary 2 本) を生成する</description>
+      <description>Takes the reference_path widened by a constant half width and extended at both ends as the drivable area, emitted as two boundaries</description>
     </class>
     <class type="autoware::safety_planner::ObstacleStopConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
-      <description>予測物体ごとに KeepOut (剛体・最尤予測経路) を certainty = DEFINITE で生成する</description>
+      <description>Emits one rigid-body KeepOut per predicted object, along its most likely predicted path</description>
     </class>
   </library>
   <library path="autoware_safety_planner_trajectory_planner_plugins">
     <class type="autoware::safety_planner::FrenetSamplingBasedPlanner"
            base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
-      <description>Frenet 座標で終端状態 (T, l_T, v_T) をサンプルし quintic 多項式で結ぶ。制約 IR の射影ビューで候補をふるいコスト最小を採用する</description>
+      <description>Samples terminal states in Frenet coordinates and joins them with quintic polynomials, then takes the cheapest candidate that passes the projected views of the constraint IR</description>
     </class>
     <class type="autoware::safety_planner::RoughOptimizerTrajectoryPlanner"
            base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
-      <description>制約セットごとに rough_planner (時空間 DP) → trajectory optimizer を回して 2 本の軌道を作る既定プランナー</description>
+      <description>The default planner: runs the rough planner and then the trajectory optimizer for each constraint set</description>
     </class>
     <class type="autoware::safety_planner::NlpTrajectoryOptimizer"
            base_class_type="autoware::safety_planner::TrajectoryOptimizerInterface">
-      <description>時間パラメタライズの非凸 NLP で軌道を解く</description>
+      <description>Solves the trajectory as a time-parameterized non-convex NLP</description>
     </class>
     <class type="autoware::safety_planner::SscQpTrajectoryOptimizer"
            base_class_type="autoware::safety_planner::TrajectoryOptimizerInterface">
-      <description>(s,l,t) cube 上の区分 Bézier を凸 QP で解く (SSC 路線。arXiv:1906.09788)</description>
+      <description>Solves a piecewise Bezier over (s, l, t) cubes as a convex QP (SSC, arXiv:1906.09788)</description>
     </class>
   </library>
 </class_libraries>

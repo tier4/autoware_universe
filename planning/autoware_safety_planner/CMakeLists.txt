@@ -4,17 +4,17 @@ project(autoware_safety_planner)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
-# 生成ヘッダは include/${PROJECT_NAME}/safety_planner_parameters.hpp に置かれる
+# The generated header lands in include/${PROJECT_NAME}/safety_planner_parameters.hpp
 generate_parameter_library(safety_planner_parameters
   param/safety_planner_parameter_struct.yaml
 )
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# 周期入力 (PlannerContext) と射影ビュー ((s, l) 空間) の共通ヘルパー。
-# node / rough_planner / trajectory_optimizer プラグインが共有する
-# (プラグインの .so からも呼ぶので node 側ライブラリではなくここに置く)。
-# SHARED にすると推移的な .so のリンクだけで数十分掛かるので STATIC
+# Helpers around the per-cycle input (PlannerContext) and the projected (s, l) views, shared by the
+# node, the rough planner and the trajectory optimizer plugins. They live here rather than in the
+# node library because the plugin .so files call them too.
+# STATIC: as a SHARED library, linking the transitive .so files alone takes tens of minutes
 ament_auto_add_library(${PROJECT_NAME}_common STATIC
   src/context.cpp
   src/utils/sl_view_utils.cpp
@@ -39,9 +39,9 @@ target_compile_options(${PROJECT_NAME}_constraint_plugins PRIVATE -Wno-deprecate
 
 
 # ---------------------------------------------------------------------------------------------
-# acados code generation (Python -> C)。NlpTrajectoryOptimizer が駆動する OCP の生成物。
-# 構造 (ステージ数・行レイアウト・スラック・コストの型) だけが codegen 時に決まり、数値は
-# すべて実行時に注入する (generators/nlp_time_ocp.py)。生成物はソースツリーへ書かない。
+# acados code generation (Python -> C): the OCP that NlpTrajectoryOptimizer drives. Only the
+# structure (the number of stages, the row layout, the slacks and the type of the cost) is fixed
+# here; every number is injected at run time. Nothing is written into the source tree.
 # ---------------------------------------------------------------------------------------------
 set(ACADOS_SOURCE_DIR "$ENV{ACADOS_SOURCE_DIR}")
 if(NOT ACADOS_SOURCE_DIR)
@@ -81,7 +81,8 @@ add_custom_command(
 )
 add_custom_target(generate_acados_code_nlp_time DEPENDS ${NLP_GENERATED_FILES})
 
-# 軌道プランナープラグイン (制約コンパイル・rough_planner・optimizer はこの .so の実装詳細)
+# The trajectory planner plugins; compiling the constraints and driving the rough planner and the
+# optimizer are implementation details of this .so
 ament_auto_add_library(${PROJECT_NAME}_trajectory_planner_plugins SHARED
   src/trajectory_planner/frenet_sampler/frenet_sampler.cpp
   src/trajectory_planner/nlp_planner/constraints_compiler.cpp
@@ -100,7 +101,7 @@ target_link_libraries(${PROJECT_NAME}_trajectory_planner_plugins
   acados
 )
 target_include_directories(${PROJECT_NAME}_trajectory_planner_plugins PRIVATE
-  # 生成ヘッダはプラグインの実装詳細 (pimpl) なので PRIVATE
+  # The generated headers are an implementation detail of the plugin, hence PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}
   ${ACADOS_SOURCE_DIR}/include
   ${ACADOS_SOURCE_DIR}/include/acados
@@ -110,14 +111,14 @@ target_include_directories(${PROJECT_NAME}_trajectory_planner_plugins PRIVATE
 )
 target_compile_options(${PROJECT_NAME}_trajectory_planner_plugins PRIVATE -Wno-deprecated-declarations)
 
-# 生成 C の警告は我々が直せるものではない
+# The warnings of the generated C are not ours to fix
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
   set_source_files_properties(${NLP_GENERATED_FILES} PROPERTIES
     COMPILE_OPTIONS "-Wno-unused-variable;-Wno-unused-parameter;-Wno-unused-function")
 endif()
 
-# libacados の推移的な依存 (blasfeo / hpipm) は acados のインストールツリーにしかないので、
-# 呼び出し側が LD_LIBRARY_PATH を設定しなくても解決できるよう rpath を焼く
+# The transitive dependencies of libacados (blasfeo, hpipm) exist only in the acados install tree,
+# so an rpath is baked in and the caller does not have to set LD_LIBRARY_PATH
 get_target_property(_acados_location acados IMPORTED_LOCATION)
 if(NOT _acados_location)
   get_target_property(_acados_location acados IMPORTED_LOCATION_RELEASE)
@@ -131,12 +132,13 @@ set_target_properties(${PROJECT_NAME}_trajectory_planner_plugins PROPERTIES
   BUILD_RPATH "${_acados_lib_dir}"
   INSTALL_RPATH "${_acados_lib_dir}")
 
-# libacados.so 自身は rpath を持たないので、その NEEDED (hpipm / blasfeo / qpOASES_e) は
-# ldconfig の既定パス (/usr/local/lib) から拾われる。そこに別ビルドの libhpipm.so が居ると
-# libacados と構造体レイアウトが食い違い、ソルバー生成で SIGSEGV する。
-# プラグイン自身の DT_NEEDED に acados ツリーの実体を絶対パスで足し、
-# DT_RPATH (--disable-new-dtags: LD_LIBRARY_PATH より先に引かれる) で固定して、
-# libacados が読まれる前に必ず同じツリーの hpipm / blasfeo を載せる。
+# libacados.so carries no rpath of its own, so its NEEDED entries (hpipm, blasfeo, qpOASES_e) are
+# picked up from the default ldconfig path (/usr/local/lib). A libhpipm.so from another build there
+# disagrees with libacados about the struct layout and segfaults while the solver is generated.
+# The libraries of the acados tree are therefore added to the DT_NEEDED of the plugin by absolute
+# path and pinned through DT_RPATH (--disable-new-dtags, which is searched before
+# LD_LIBRARY_PATH), so the hpipm and blasfeo of that same tree are always loaded before
+# libacados.
 foreach(_acados_dep hpipm blasfeo qpOASES_e)
   if(EXISTS "${_acados_lib_dir}/lib${_acados_dep}.so")
     target_link_libraries(${PROJECT_NAME}_trajectory_planner_plugins
@@ -157,7 +159,7 @@ target_link_libraries(${PROJECT_NAME}_lib
   safety_planner_parameters
   ${PROJECT_NAME}_common
 )
-# generate_parameter_library の生成ヘッダが deprecated な parameter_traits の別名を使う
+# The header generated by generate_parameter_library uses a deprecated alias of parameter_traits
 target_compile_options(${PROJECT_NAME}_lib PRIVATE -Wno-deprecated-declarations)
 
 rclcpp_components_register_node(${PROJECT_NAME}_lib

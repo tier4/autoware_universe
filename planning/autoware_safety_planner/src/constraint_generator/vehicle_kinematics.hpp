@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
-#define CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
+#ifndef AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
+#define AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
 
 #include "constraint_generator_interface.hpp"
 
@@ -22,9 +22,9 @@
 namespace autoware::safety_planner
 {
 
-//! 車両運動の ScalarBound を生成するプラグイン。
-//! 車両ハード上限 (v, a, j, a_lat, δ, δ̇) のみを発行する。δ は vehicle_info から取る。
-//! 場所・時間によらない全域制約なので region / 時間窓は既定 (常時・全域) のまま
+//! Emits the ScalarBound constraints of the vehicle kinematics: only the hard limits of the
+//! vehicle (v, a, j, a_lat, steer angle, steer rate), the steer angle taken from vehicle_info.
+//! They hold everywhere and at all times, so the region and the time window are left at default.
 class VehicleKinematicsConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:
@@ -34,4 +34,4 @@ public:
 
 }  // namespace autoware::safety_planner
 
-#endif  // CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
+#endif  // AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_

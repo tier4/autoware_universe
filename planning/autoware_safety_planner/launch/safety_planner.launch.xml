@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  minimum_rule_based_planner.launch.xml と同型 (外部契約を踏襲する)。
-  shadow モードは output_candidate_trajectories の remap 先を差し替えるだけで実現する。
-  パラメータは本体 (safety_planner.param.yaml) とプラグインごとのファイルに分かれている。
+  Shaped like minimum_rule_based_planner.launch.xml, which is the external contract.
+  Shadow mode only changes what output_candidate_trajectories is remapped to.
+  The parameters are split between safety_planner.param.yaml and one file per plugin.
 -->
 <launch>
   <arg name="safety_planner_config_dir" default="$(find-pkg-share autoware_safety_planner)/config"/>
