@@ -430,39 +430,53 @@ whether a failed optimized output is rejected.
 
 ## 12. Cost normalization and MPPI weights
 
-After raw rollout costs are produced, a three-level GPU histogram estimates the configured upper
-percentile (95% by default). Costs above it are clamped before normalization:
+Only finite, collision-free rollouts are eligible for weighting. Unsafe and nonfinite rollouts
+receive exactly zero weight, regardless of lambda. Four GPU radix-selection passes find the exact
+nearest-rank percentile among eligible raw costs; extreme outliers cannot reduce its resolution.
 
 ```text
-J_upper        = percentile(J, cost_normalization_percentile)
-S_i_normalized = clamp((J_i - min(J)) / (J_upper - min(J)), 0, 1)
-w_i_raw        = exp(-S_i_normalized / lambda)
+J_min          = min(J_eligible)
+J_upper        = percentile(J_eligible, cost_normalization_percentile)
+S_i_normalized = clamp((J_i - J_min) / (J_upper - J_min), 0, 1)
+w_i_raw        = exp(-S_i_normalized / lambda)    # eligible samples only
 w_i            = w_i_raw / sum(w_raw)
 ESS            = 1 / sum(w_i^2)
 ```
 
-If the retained finite cost range is below `1e-6`, finite rollouts at the retained percentile receive
-normalized cost zero while any upper-tail rollouts still receive one. A non-finite rollout receives
-normalized cost one when any finite rollout exists; if all rollouts are non-finite, weights are
-uniform.
+When the retained cost range is below `1e-6`, eligible costs at or below the percentile receive
+normalized cost zero and the upper tail receives one. With no eligible weight, the device reduction
+preserves its previous mean. Any such iteration makes the control step fail without applying a
+candidate or adapting lambda. The interface records `no_eligible_rollouts` and returns its
+reference fallback, including active velocity limits, regardless of `skip_if_invalid`. A weighted
+mean of safe rollouts still needs the normal output trajectory validation.
 
-Robust normalization has an important tuning implication: multiplying **all** cost coefficients
-by a common positive scalar normally leaves the weights unchanged. Coefficients matter primarily
-through the relative balance and shape of terms.
-
-Lambda is fixed across all optimization iterations in one control step. After the final iteration,
-ESS adapts the lambda prepared for the next control step:
+Lambda stays fixed throughout a control step. The final eligible population determines the next
+step's temperature using bounded log-ratio feedback:
 
 ```text
-lambda_next = clamp(
-  lambda_used * exp(lambda_adaptation_gain * (target_ess_ratio - ESS / N)),
-  lambda_min,
-  lambda_max)
+target_ess = target_ess_ratio * eligible_count
+log_step = clamp(lambda_adaptation_gain * log(target_ess / ESS), -log(2), log(2))
+lambda_next = clamp(lambda_used * exp(log_step), lambda_min, lambda_max)
 ```
 
-If the final iteration's `unsafe_rollout_fraction` reaches
-`unsafe_rollout_fraction_threshold`, `lambda_next` is forced to `lambda_max`. Tracking, terminal,
-comfort, and velocity-limit costs cannot activate this override.
+Adaptation holds lambda unchanged for failed or degenerate populations, a zero gain, or a target at
+or below the number of tied minimum-cost samples (the attainable ESS floor). `lambda_min` must be
+at least `1e-6`. These guards prevent temperature windup when cooling cannot improve selection.
+The factor-of-two bound permits faster recovery from concentrated weights without unbounded jumps.
+The gain now acts on an ESS ratio in log space; existing gain values have a different response.
+
+`unsafe_rollout_fraction_threshold` now controls the diagnostic `unsafe_rollout_population` flag
+only. It never raises lambda or changes sampling noise. Exploration recovery is separate from
+weighting; an entirely unsafe population invokes fallback rather than averaging unsafe samples.
+Diagnostics also report the eligible count and tied-minimum count alongside ESS.
+
+Raw-cost diagnostic downloads retain the actual final-iteration costs, including clipped-tail,
+unsafe, and nonfinite values. They are not reconstructed from weights. This uses one persistent
+rollout-sized device buffer and one device-to-device copy per control cycle, with host download
+only when requested.
+
+Multiplying all state/control cost coefficients by a common positive scalar normally leaves
+weights unchanged, except at the small-range threshold; relative cost balances remain significant.
 
 ## 13. Parameter sources and shipped configuration
 

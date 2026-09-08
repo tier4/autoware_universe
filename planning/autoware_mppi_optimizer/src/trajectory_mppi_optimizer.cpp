@@ -614,6 +614,11 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("mppi/max_rollout_cost", debug.max_rollout_cost);
   cost_diagnostics_->add_key_value("mppi/normalization_upper_cost", debug.normalization_upper_cost);
   cost_diagnostics_->add_key_value("mppi/unsafe_rollout_fraction", debug.unsafe_rollout_fraction);
+  cost_diagnostics_->add_key_value("mppi/eligible_rollout_count", debug.eligible_rollout_count);
+  cost_diagnostics_->add_key_value(
+    "mppi/minimum_cost_rollout_count", debug.minimum_cost_rollout_count);
+  cost_diagnostics_->add_key_value(
+    "mppi/unsafe_rollout_population", debug.unsafe_rollout_population);
   for (std::size_t iteration = 0; iteration < debug.iteration_effective_sample_sizes.size();
        ++iteration) {
     cost_diagnostics_->add_key_value(

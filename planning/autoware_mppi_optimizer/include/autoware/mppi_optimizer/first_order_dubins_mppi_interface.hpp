@@ -169,6 +169,7 @@ enum class FirstOrderDubinsMppiInvalidityReason : std::uint8_t {
   road_border = 1U << 2U,
   reverse = 1U << 3U,
   nonfinite_state = 1U << 4U,
+  no_eligible_rollouts = 1U << 5U,
 };
 
 inline std::string to_string(FirstOrderDubinsMppiInvalidityReason reason)
@@ -197,6 +198,9 @@ inline std::string to_string(FirstOrderDubinsMppiInvalidityReason reason)
   }
 
   // Remove the trailing " | " if the string is not empty
+  if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts)) {
+    result += "no_eligible_rollouts | ";
+  }
   if (!result.empty()) {
     result.resize(result.size() - 3);
   } else {
@@ -284,6 +288,9 @@ struct FirstOrderDubinsMppiDebug
   float normalization_upper_cost{0.0F};
   /** Fraction of final-iteration rollouts that encountered a collision/safety violation. */
   float unsafe_rollout_fraction{0.0F};
+  int eligible_rollout_count{0};
+  int minimum_cost_rollout_count{0};
+  bool unsafe_rollout_population{false};
   /** Hard-constraint validation of the generated post-step states. */
   FirstOrderDubinsMppiValidationResult validation;
   /** True while the deterministic external-only maximum-velocity profile is applied. */
