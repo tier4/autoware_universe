@@ -114,8 +114,6 @@ private:
   bool m_enable_confidence_steer_slew_limit{false};
   /** When true, publish trajectory front_wheel_angle_rad directly and skip MPC QP. */
   bool m_steering_direct_passthrough{false};
-  double m_steering_passthrough_timeout{0.5};
-  double m_steering_passthrough_rate_limit_rad_s{0.6};
   double m_reference_confidence_L_ahead_min{0.4};
   double m_reference_confidence_L_ahead_ref{2.0};
   double m_steer_slew_rate_min_rad_s{0.02};
