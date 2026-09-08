@@ -15,16 +15,16 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_
 
-#include "autoware_trajectory_validator/msg/metric_report.hpp"
-#include "autoware_trajectory_validator/msg/risk_level.hpp"
+#include "autoware_internal_planning_msgs/msg/metric_report.hpp"
+#include "autoware_internal_planning_msgs/msg/risk_level.hpp"
 
 #include <algorithm>
 #include <vector>
 
 namespace autoware::trajectory_validator
 {
-using autoware_trajectory_validator::msg::MetricReport;
-using autoware_trajectory_validator::msg::RiskLevel;
+using autoware_internal_planning_msgs::msg::MetricReport;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using RiskLevelType = RiskLevel::_level_type;
 
 /**
@@ -53,6 +53,16 @@ inline RiskLevelType worst_risk_level(const std::vector<MetricReport> & metrics)
     worst = std::max(worst, metric.risk.level);
   }
   return worst;
+}
+
+/**
+ * @brief Returns a boolean indicating the trajectory is feasible based on risk level.
+ * @param metrics Worst risk level.
+ * @return True if risk level is less or equal to HIGH_CAUTION.
+ */
+inline bool is_feasible(const RiskLevelType risk_level)
+{
+  return risk_level <= RiskLevel::HIGH_CAUTION;
 }
 }  // namespace autoware::trajectory_validator
 #endif  // AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_

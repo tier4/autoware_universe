@@ -80,7 +80,7 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
     RiskLevel risk;
     risk.level = risk_level;
     reports.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
+      autoware_internal_planning_msgs::build<MetricReport>()
         .validator_name(get_name())
         .validator_category(category())
         .metric_name(std::string(metric_name))
@@ -157,7 +157,6 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     debug_markers_, global_params_.time_resolution);
 
   return ValidationResult{
-    calc_worst_risk({drac_artifact.risk, rss_artifact.risk}) < RiskLevel::DANGER,
     generate_metric_reports(drac_artifact, rss_artifact), std::move(planning_factors)};
 }
 

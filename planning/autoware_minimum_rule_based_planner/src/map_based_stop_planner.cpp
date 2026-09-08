@@ -14,23 +14,28 @@
 
 #include "map_based_stop_planner.hpp"
 
+#include <autoware/lanelet2_utils/kind.hpp>
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp>
+#include <autoware/trajectory_processor/trajectory_modifier_utils/utils.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>
 #include <autoware_lanelet2_extension/visualization/visualization.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 
 #include <boost/geometry/algorithms/intersection.hpp>
 #include <boost/geometry/algorithms/intersects.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/geometry/LineString.h>
+#include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_routing/RoutingGraph.h>
+#include <tf2/utils.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -66,6 +71,7 @@ bool is_possibility_type(StopLineType type)
     case StopLineType::TrafficLight:
     case StopLineType::Intersection:
     case StopLineType::PrivateArea:
+    case StopLineType::RoadShoulder:
       return true;
   }
   return true;
@@ -193,8 +199,42 @@ const char * to_string(const StopLineType type)
       return "intersection";
     case StopLineType::PrivateArea:
       return "private_area";
+    case StopLineType::RoadShoulder:
+      return "road_shoulder";
   }
   return "unknown";
+}
+
+// Vehicle footprint rectangle at the given pose, counter-clockwise and open as boost expects for
+// lanelet::BasicPolygon2d.
+lanelet::BasicPolygon2d make_vehicle_footprint(
+  const geometry_msgs::msg::Pose & pose, const VehicleInfo & vehicle_info)
+{
+  const double yaw = tf2::getYaw(pose.orientation);
+  const double cos_yaw = std::cos(yaw);
+  const double sin_yaw = std::sin(yaw);
+  const std::array<std::pair<double, double>, 4> corners{
+    {{vehicle_info.max_longitudinal_offset_m, vehicle_info.max_lateral_offset_m},
+     {vehicle_info.min_longitudinal_offset_m, vehicle_info.max_lateral_offset_m},
+     {vehicle_info.min_longitudinal_offset_m, vehicle_info.min_lateral_offset_m},
+     {vehicle_info.max_longitudinal_offset_m, vehicle_info.min_lateral_offset_m}}};
+
+  lanelet::BasicPolygon2d footprint;
+  footprint.reserve(corners.size());
+  for (const auto & [x, y] : corners) {
+    footprint.emplace_back(
+      pose.position.x + cos_yaw * x - sin_yaw * y, pose.position.y + sin_yaw * x + cos_yaw * y);
+  }
+  return footprint;
+}
+
+lanelet::BoundingBox2d bounding_box_2d(const lanelet::BasicPolygon2d & polygon)
+{
+  lanelet::BoundingBox2d box;
+  for (const auto & point : polygon) {
+    box.extend(point);
+  }
+  return box;
 }
 
 bool is_crosswalk_or_walkway(const lanelet::ConstLanelet & lanelet, bool & is_walkway)
@@ -319,6 +359,7 @@ void MapBasedStopPlanner::set_planner_data(
   const LaneletMapBin::ConstSharedPtr & lanelet_map_bin_ptr,
   const LaneletRoute::ConstSharedPtr & route_ptr, const RouteContext & route_context)
 {
+  lanelet_map_ptr_ = route_context.lanelet_map_ptr;
   if (lanelet_map_bin_ptr == stop_lines_map_ptr_ && route_ptr == stop_lines_route_ptr_) {
     return;
   }
@@ -341,7 +382,26 @@ MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
   if (trajectory.points.size() < 2) return result;
 
   const auto stop_lines = filter_stop_lines_on_trajectory(stop_lines_, trajectory.points);
-  result.stop_line_markers = create_stop_line_marker_array(stop_lines);
+  const auto road_shoulder_stop_arc_length =
+    select_road_shoulder_stop_arc_length(trajectory.points, ego_pose, params);
+
+  {
+    // NOTE(odashima): the shoulder stop target is not a map line, so it is synthesized for
+    // visualization only; it is fed to plan_single_stop as an arc length instead, because its
+    // margin is measured from the footprint rather than from base_link_to_front.
+    constexpr double stop_line_half_width_m = 3.0;
+    constexpr lanelet::Id road_shoulder_line_id = -(INT64_C(1) << 43);
+    auto marker_lines = stop_lines;
+    if (road_shoulder_stop_arc_length) {
+      marker_lines.push_back(
+        StopLine{
+          make_perpendicular_line(
+            trajectory.points, *road_shoulder_stop_arc_length, stop_line_half_width_m,
+            road_shoulder_line_id),
+          StopLineType::RoadShoulder, false});
+    }
+    result.stop_line_markers = create_stop_line_marker_array(marker_lines);
+  }
 
   // Debug visualization of the intersection lanelet groups behind the non-priority judgement.
   {
@@ -373,16 +433,16 @@ MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
       make_color(1.0f, 0.0f, 0.0f, 0.99f));
   }
 
-  if (stop_lines.empty()) return result;
+  if (stop_lines.empty() && !road_shoulder_stop_arc_length) return result;
 
   // The go trajectory stops only at mandatory targets (e.g. stop lines); the stop trajectory
   // additionally stops at possibility targets (e.g. traffic lights).
   const auto go_stop = plan_single_stop(
     stop_lines, trajectory, ego_pose, ego_velocity, ego_acceleration, params,
-    /*include_possibility=*/false);
+    /*include_possibility=*/false, road_shoulder_stop_arc_length);
   const auto stop_stop = plan_single_stop(
     stop_lines, trajectory, ego_pose, ego_velocity, ego_acceleration, params,
-    /*include_possibility=*/true);
+    /*include_possibility=*/true, road_shoulder_stop_arc_length);
 
   if (go_stop) result.go_trajectory = go_stop->trajectory;
 
@@ -398,24 +458,29 @@ MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
 std::optional<MapBasedStopPlanner::SingleStopResult> MapBasedStopPlanner::plan_single_stop(
   const std::vector<StopLine> & stop_lines, const Trajectory & trajectory,
   const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
-  const double ego_acceleration, const StopSelectionParams & params,
-  const bool include_possibility) const
+  const double ego_acceleration, const StopSelectionParams & params, const bool include_possibility,
+  const std::optional<double> & road_shoulder_stop_arc_length) const
 {
   autoware_utils_debug::ScopedTimeTrack st(
     include_possibility ? "plan_single_stop(stop)" : "plan_single_stop(go)", *time_keeper_);
 
-  const auto stop_point_arc_length = select_stop_arc_length(
+  auto stop_point_arc_length = select_stop_arc_length(
     stop_lines, trajectory.points, ego_pose, ego_velocity, ego_acceleration, params,
     include_possibility);
+  if (
+    include_possibility && road_shoulder_stop_arc_length &&
+    (!stop_point_arc_length || *road_shoulder_stop_arc_length < *stop_point_arc_length)) {
+    stop_point_arc_length = road_shoulder_stop_arc_length;
+  }
   if (!stop_point_arc_length) return std::nullopt;
 
-  if (autoware::trajectory_modifier::utils::stop_point_exists(
+  if (autoware::trajectory_processor::utils::stop_point_exists(
         trajectory.points, *stop_point_arc_length)) {
     return std::nullopt;
   }
 
   Trajectory stop_trajectory = trajectory;
-  if (!autoware::trajectory_modifier::utils::insert_stop_point(
+  if (!autoware::trajectory_processor::utils::insert_stop_point(
         stop_trajectory.points, *stop_point_arc_length)) {
     return std::nullopt;
   }
@@ -803,6 +868,86 @@ std::optional<double> MapBasedStopPlanner::select_stop_arc_length(
   }
 
   return nearest_stop_point_arc_length;
+}
+
+std::optional<double> MapBasedStopPlanner::select_road_shoulder_stop_arc_length(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
+  const geometry_msgs::msg::Pose & ego_pose, const StopSelectionParams & params) const
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  if (!lanelet_map_ptr_ || trajectory_points.size() < 2) {
+    return std::nullopt;
+  }
+
+  // Lanelets of the given kind whose polygon overlaps the footprint.
+  const auto overlaps = [this](const lanelet::BasicPolygon2d & footprint, const bool road_lane) {
+    for (const auto & lanelet : lanelet_map_ptr_->laneletLayer.search(bounding_box_2d(footprint))) {
+      const bool kind_matches =
+        road_lane ? autoware::experimental::lanelet2_utils::is_road_lane(lanelet)
+                  : autoware::experimental::lanelet2_utils::is_shoulder_lane(lanelet);
+      if (!kind_matches) continue;
+      if (boost::geometry::intersects(footprint, lanelet.polygon2d().basicPolygon())) return true;
+    }
+    return false;
+  };
+
+  const auto ego_footprint = make_vehicle_footprint(ego_pose, params.vehicle_info);
+  const bool ego_in_road_lane = overlaps(ego_footprint, /*road_lane=*/true);
+  const bool ego_in_shoulder_lane = overlaps(ego_footprint, /*road_lane=*/false);
+  const bool departing = !ego_in_road_lane && ego_in_shoulder_lane;
+  const bool entering = ego_in_road_lane && !ego_in_shoulder_lane;
+  if (!departing && !entering) {
+    return std::nullopt;
+  }
+
+  const double ego_arc_length =
+    autoware::motion_utils::calcSignedArcLength(trajectory_points, 0UL, ego_pose.position);
+
+  // NOTE(odashima): the braking-distance reachability check applied to map stop lines is
+  // deliberately skipped, and the stop point is clamped to ego instead: crossing the shoulder
+  // boundary is what the vehicle must not do, and around a shoulder it travels slowly enough that
+  // the clamp holds it in place rather than demanding an infeasible deceleration.
+  const auto stop_arc_length = [&](const double crossing_arc_length) {
+    return std::max(
+      crossing_arc_length - params.stop_margin_distance - params.stop_distance_from_road_shoulder,
+      ego_arc_length);
+  };
+
+  double arc_length = 0.0;
+  double shoulder_touch_arc_length = 0.0;
+  bool shoulder_touched = false;
+  for (size_t i = 0; i < trajectory_points.size(); ++i) {
+    if (i > 0) {
+      arc_length += autoware_utils::calc_distance2d(trajectory_points[i - 1], trajectory_points[i]);
+    }
+    if (arc_length < ego_arc_length) continue;
+    const auto footprint = make_vehicle_footprint(trajectory_points[i].pose, params.vehicle_info);
+    const bool in_road_lane = overlaps(footprint, /*road_lane=*/true);
+    const bool in_shoulder_lane = overlaps(footprint, /*road_lane=*/false);
+
+    if (departing) {
+      if (in_road_lane) return stop_arc_length(arc_length);
+      continue;
+    }
+
+    // Entering: stop where the footprint starts to straddle the boundary, but only once the
+    // trajectory is known to end up wholly inside the shoulder — merely clipping a shoulder while
+    // staying in the road lane is normal driving and must not stop the vehicle.
+    if (!in_shoulder_lane) {
+      // The straddle that led here did not complete, so a later one anchors the stop instead.
+      shoulder_touched = false;
+      continue;
+    }
+    if (!shoulder_touched) {
+      shoulder_touch_arc_length = arc_length;
+      shoulder_touched = true;
+    }
+    if (!in_road_lane) {
+      return stop_arc_length(shoulder_touch_arc_length);
+    }
+  }
+  return std::nullopt;
 }
 
 visualization_msgs::msg::MarkerArray MapBasedStopPlanner::create_stop_line_marker_array(

@@ -5,18 +5,26 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
-  src/node.cpp
   src/object_filtering.cpp
   src/boundary.cpp
   src/parameter.cpp
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "autoware::avoidance_target_detector::AvoidanceTargetDetectorNode"
-  EXECUTABLE ${PROJECT_NAME}_node
-)
+if(BUILD_TESTING)
+  ament_auto_add_gtest(test_boundary
+    test/test_boundary.cpp
+  )
+  target_link_libraries(test_boundary
+    ${PROJECT_NAME}
+  )
 
-ament_auto_package(
-  INSTALL_TO_SHARE
-  launch
-)
+  ament_auto_add_gtest(test_update_objects
+    test/test_update_objects.cpp
+  )
+  target_link_libraries(test_update_objects
+    ${PROJECT_NAME}
+  )
+
+endif()
+
+ament_auto_package()

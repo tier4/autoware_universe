@@ -43,7 +43,7 @@ public:
 
 private:
   /// @brief 評価に必要な入力が揃っているかを判定する。
-  /// false のとき is_feasible は評価せず feasible（ValidationResult{}）を返す。
+  /// false のとき is_feasible は評価せず、メトリクスなし（ValidationResult{}）を返す。
   bool is_available_data(
     const CandidateTrajectory & candidate_trajectory, const FilterContext & context) const;
 
@@ -60,8 +60,8 @@ private:
   std::vector<point_cloud_collision_check::StopObstacle> calc_obstacle_stop(
     const std::vector<TrajectoryPoint> & raw_trajectory_points);
 
-  /// @brief 停止対象から停止可否を判定する。未実装のため現状は常に true を返す。
-  bool judge_stop_feasibility(
+  /// @brief 停止対象から停止可否のリスクレベルを判定する。未実装のため現状は常に SAFE を返す。
+  RiskLevel judge_stop_risk(
     const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
     const geometry_msgs::msg::Twist & twist) const;
 

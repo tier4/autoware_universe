@@ -14,6 +14,8 @@
 
 #include "minimum_rule_based_planner.hpp"
 
+#include "autoware/trajectory_processor/trajectory_processor_parameters.hpp"
+
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -21,7 +23,10 @@
 #include <autoware/velocity_smoother/resample.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
+#include <tf2/utils.h>
+
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
@@ -33,14 +38,12 @@ namespace autoware::minimum_rule_based_planner
 
 namespace
 {
-trajectory_optimizer::TrajectoryOptimizerData make_optimizer_data(
+trajectory_processor::TrajectoryProcessorData make_optimizer_data(
   const MinimumRuleBasedPlannerNode::InputData & input_data)
 {
-  trajectory_optimizer::TrajectoryOptimizerData data;
-  data.current_odometry = *input_data.odometry_ptr;
-  if (input_data.acceleration_ptr) {
-    data.current_acceleration = *input_data.acceleration_ptr;
-  }
+  trajectory_processor::TrajectoryProcessorData data;
+  data.current_odometry = input_data.odometry_ptr;
+  data.current_acceleration = input_data.acceleration_ptr;
   return data;
 }
 
@@ -80,6 +83,14 @@ void assign_time_from_start(
     traj_points.at(i).time_from_start = rclcpp::Duration::from_seconds(times.at(i) - ego_time);
   }
 }
+
+turn_indicator::TurnSignalParams make_turn_signal_params(
+  const minimum_rule_based_planner::Params & p)
+{
+  return {
+    p.turn_signal.search_distance, p.turn_signal.min_blink_duration,
+    p.turn_signal.stopped_velocity_threshold, p.turn_signal.heading_align_threshold};
+}
 }  // namespace
 
 MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptions & options)
@@ -87,6 +98,8 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   go_generator_uuid_(autoware_utils_uuid::generate_uuid()),
   stop_generator_uuid_(autoware_utils_uuid::generate_uuid()),
   vehicle_info_(vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()),
+  optimizer_context_(
+    std::make_shared<autoware::trajectory_processor::TrajectoryProcessorContext>(this)),
   modifier_plugin_loader_(
     "autoware_minimum_rule_based_planner",
     "autoware::minimum_rule_based_planner::plugin::PluginInterface"),
@@ -121,6 +134,8 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   path_planner_ =
     std::make_unique<PathPlanner>(get_logger(), get_clock(), time_keeper_, params_, vehicle_info_);
   map_based_stop_planner_ = std::make_unique<MapBasedStopPlanner>(get_logger(), time_keeper_);
+  turn_indicator_decider_ =
+    std::make_unique<TurnIndicatorDecider>(make_turn_signal_params(params_));
   timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&MinimumRuleBasedPlannerNode::on_timer, this));
@@ -130,16 +145,19 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
 
 void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
 {
-  // Create plugin loader for autoware_trajectory_optimizer
+  // Create the common loader for optimizer plugins exported by autoware_trajectory_processor.
   plugin_loader_ = std::make_unique<OptimizerPluginLoader>(
-    "autoware_trajectory_optimizer",
-    "autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase");
+    "autoware_trajectory_processor",
+    "autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase");
 
   auto try_load_optimizer_plugin = [&](const std::string & plugin_path, const std::string & name)
     -> std::shared_ptr<OptimizerPluginInterface> {
+    trajectory_processor::TrajectoryProcessorParams processor_params;
+    processor_params.use_eb_smoother = true;
     try {
       auto plugin = plugin_loader_->createSharedInstance(plugin_path);
-      plugin->initialize(name, this, time_keeper_);
+      plugin->initialize(
+        plugin_path, name, this, time_keeper_, optimizer_context_, processor_params);
       pub_debug_optimizer_module_trajectories_[plugin->get_name()] =
         this->create_publisher<Trajectory>(
           "~/debug/optimizer/" + plugin->get_name() + "/trajectory", 1);
@@ -153,7 +171,7 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
   };
 
   path_smoother_ = try_load_optimizer_plugin(
-    "autoware::trajectory_optimizer::plugin::TrajectoryEBSmootherOptimizer", "eb_smoother");
+    "autoware::trajectory_processor::plugin::TrajectoryEBSmootherOptimizer", "eb_smoother");
 
   // Set up velocity optimizer
   // NOTE(odashima):
@@ -306,6 +324,17 @@ void MinimumRuleBasedPlannerNode::on_timer()
     return;
   }
 
+  // 2.5 Decide the turn-signal command from the path (still carries lane_ids, which are lost in
+  //     convert_path_to_trajectory). The same command is written into every candidate trajectory,
+  //     since the go/stop candidates share the path shape and differ only in stop position.
+  TurnIndicatorsCommand turn_indicators_command;
+  {
+    autoware_utils_debug::ScopedTimeTrack st_ti("turn_indicators", *time_keeper_);
+    turn_indicators_command = turn_indicator_decider_->decide(
+      *path, path_planner_->route_context(), input_data.odometry_ptr->pose.pose,
+      input_data.odometry_ptr->twist.twist.linear.x, now());
+  }
+
   // 3. Convert path to trajectory
   auto trajectory =
     path_planner_->convert_path_to_trajectory(*path, params_.path_planning.output.delta_arc_length);
@@ -340,7 +369,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
       : std::nullopt;
 
   // 9. Create and publish CandidateTrajectories message
-  publish_candidate_trajectories(go_trajectory, stop_trajectory);
+  publish_candidate_trajectories(go_trajectory, stop_trajectory, turn_indicators_command);
 
   // 10. Publish debug information
   publish_debug_outputs(*path, go_trajectory, stop_trajectory);
@@ -356,7 +385,9 @@ StopSelectionParams MinimumRuleBasedPlannerNode::make_map_based_stop_params() co
   params.stop_distance_from_crosswalk = params_.map_based_stop.stop_distance_from_crosswalk;
   params.stop_distance_from_private_area = params_.map_based_stop.stop_distance_from_private_area;
   params.stop_distance_from_intersection = params_.map_based_stop.stop_distance_from_intersection;
+  params.stop_distance_from_road_shoulder = params_.map_based_stop.stop_distance_from_road_shoulder;
   params.base_link_to_front = vehicle_info_.max_longitudinal_offset_m;
+  params.vehicle_info = vehicle_info_;
   params.stop_point_diff_threshold = params_.map_based_stop.stop_point_diff_threshold;
   return params;
 }
@@ -395,6 +426,63 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
     input_data.odometry_ptr->header.stamp);
 }
 
+geometry_msgs::msg::Pose predict_ego_pose(
+  const geometry_msgs::msg::Pose & pose, const double longitudinal_velocity, const double yaw_rate,
+  const double dt)
+{
+  if (dt < 1e-3) return pose;
+
+  // Treat near-zero yaw rate as straight-line motion to avoid v/ω blow-up.
+  if (std::abs(yaw_rate) < 1e-6) {
+    return autoware_utils_geometry::calc_offset_pose(pose, longitudinal_velocity * dt, 0.0, 0.0);
+  }
+
+  const double yaw = tf2::getYaw(pose.orientation);
+  geometry_msgs::msg::Pose predicted = pose;
+  const double r = longitudinal_velocity / yaw_rate;
+  const double yaw_next = yaw + yaw_rate * dt;
+  predicted.position.x += r * (std::sin(yaw_next) - std::sin(yaw));
+  predicted.position.y += r * (-std::cos(yaw_next) + std::cos(yaw));
+  predicted.orientation = autoware_utils::create_quaternion_from_yaw(yaw_next);
+  return predicted;
+}
+
+void prepend_predicted_connection(
+  Trajectory & trajectory, const geometry_msgs::msg::Pose & current_pose, const double current_vel,
+  const double accel, const double yaw_rate, const double time_offset)
+{
+  if (trajectory.points.empty()) return;
+
+  constexpr double min_interval = 0.1;
+  const auto & first_pose = trajectory.points.front().pose;
+  if (autoware_utils::calc_distance2d(current_pose, first_pose) < min_interval) {
+    return;
+  }
+
+  std::vector<TrajectoryPoint> prefix;
+  TrajectoryPoint pt;
+  pt.pose = current_pose;
+  pt.longitudinal_velocity_mps = static_cast<float>(current_vel);
+  pt.acceleration_mps2 = static_cast<float>(accel);
+  prefix.push_back(pt);
+
+  auto t = min_interval / std::max(std::abs(current_vel), 1.0e-3);
+  for (; t < time_offset;) {
+    // Average speed over [0, t] for constant-accel arc integration.
+    pt.pose = predict_ego_pose(current_pose, current_vel + 0.5 * accel * t, yaw_rate, t);
+    const double v_t = current_vel + accel * t;
+    pt.longitudinal_velocity_mps = static_cast<float>(v_t);
+    if (autoware_utils::calc_distance2d(pt.pose, first_pose) < min_interval) {
+      break;
+    }
+    prefix.push_back(pt);
+    if (std::abs(v_t) < 1.0e-3) break;
+    t += min_interval / std::abs(v_t);
+  }
+
+  trajectory.points.insert(trajectory.points.begin(), prefix.begin(), prefix.end());
+}
+
 Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
   const Trajectory & trajectory, const InputData & input_data) const
 {
@@ -407,12 +495,24 @@ Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
   shift_params.minimum_shift_distance = params_.path_planning.path_shift.minimum_shift_distance;
   shift_params.min_speed_for_curvature = params_.path_planning.path_shift.min_speed_for_curvature;
   shift_params.lateral_accel_limit = params_.path_planning.path_shift.lateral_accel_limit;
+  shift_params.curvature_limit = params_.path_planning.path_shift.curvature_limit;
 
-  const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
-  const double ego_yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
-  const auto shifted_trajectory = path_planner_->shift_trajectory_to_ego(
-    trajectory, input_data.odometry_ptr->pose.pose, ego_velocity, ego_yaw_rate, shift_params,
+  const double time_offset = params_.path_planning.path_shift.start_time_offset;
+  const auto & current_pose = input_data.odometry_ptr->pose.pose;
+  const double current_vel = input_data.odometry_ptr->twist.twist.linear.x;
+  const double accel = input_data.acceleration_ptr->accel.accel.linear.x;
+  const double yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
+
+  const double pred_ego_vel = current_vel + accel * time_offset;
+  const auto pred_ego_pose =
+    predict_ego_pose(current_pose, 0.5 * (current_vel + pred_ego_vel), yaw_rate, time_offset);
+
+  auto shifted_trajectory = path_planner_->shift_trajectory_to_ego(
+    trajectory, pred_ego_pose, pred_ego_vel, yaw_rate, shift_params,
     params_.path_planning.output.delta_arc_length);
+
+  prepend_predicted_connection(
+    shifted_trajectory, current_pose, current_vel, accel, yaw_rate, time_offset);
 
   if (params_.debug.enable_shifted_trajectory) {
     Trajectory shifted_traj;
@@ -429,14 +529,11 @@ Trajectory MinimumRuleBasedPlannerNode::smooth_trajectory(
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   auto optimizer_data = make_optimizer_data(input_data);
 
-  trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
-  optimizer_params.use_eb_smoother = true;
-
   auto trajectory_points = trajectory.points;
   if (path_smoother_) {
     autoware_utils_debug::ScopedTimeTrack st_path_smoother(
       path_smoother_->get_name(), *time_keeper_);
-    path_smoother_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
+    path_smoother_->process(trajectory_points, optimizer_data);
     if (params_.debug.enable_optimizer_trajectory) {
       publish_debug_trajectory(path_smoother_->get_name(), trajectory_points);
     }
@@ -519,7 +616,8 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
 }
 
 void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(
-  const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory) const
+  const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory,
+  const TurnIndicatorsCommand & turn_indicators_command) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -533,13 +631,16 @@ void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(
     msg.generator_info.push_back(generator_info);
   };
 
-  const auto add_candidate = [&msg, &add_generator_info](
+  // The go/stop candidates share the same path shape (they differ only in stop position), so the
+  // same turn-signal command is written into both.
+  const auto add_candidate = [&msg, &add_generator_info, &turn_indicators_command](
                                const UUID & generator_id, const std::string & generator_name,
                                const Trajectory & trajectory) {
     autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_traj;
     candidate_traj.header = trajectory.header;
     candidate_traj.generator_id = generator_id;
     candidate_traj.points = trajectory.points;
+    candidate_traj.turn_indicators_command = turn_indicators_command;
     msg.candidate_trajectories.push_back(candidate_traj);
 
     add_generator_info(generator_id, generator_name);
@@ -640,6 +741,7 @@ void MinimumRuleBasedPlannerNode::update_params()
 {
   params_ = param_listener_->get_params();
   path_planner_->update_params(params_);
+  turn_indicator_decider_->update_params(make_turn_signal_params(params_));
 
   for (auto & modifier : modifier_plugins_) {
     modifier->update_params(params_);
