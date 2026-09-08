@@ -29,12 +29,10 @@
 
 namespace autoware::trajectory_validator
 {
+using autoware_internal_planning_msgs::msg::CandidateTrajectory;
+using autoware_internal_planning_msgs::msg::MetricReport;
 using autoware_internal_planning_msgs::msg::RiskLevel;
 using autoware_internal_planning_msgs::msg::ValidationReport;
-using autoware_internal_planning_msgs::msg::CandidateTrajectory;
-using autoware_trajectory_validator::msg::MetricReport;
-using autoware_trajectory_validator::msg::RiskLevel;
-using autoware_trajectory_validator::msg::ValidationReport;
 
 TrajectoryValidatorReport TrajectoryValidator::process(
   const autoware_internal_planning_msgs::msg::CandidateTrajectories & input_trajectories,
