@@ -241,74 +241,50 @@ Float32MultiArrayStamped generatePassthroughDiagData(
 }
 
 ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
-  const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
-  Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon)
+  const Trajectory & trajectory, const SteeringReport & current_steer,
+  const Odometry & current_kinematics, Lateral & ctrl_cmd, Float32MultiArrayStamped & diagnostic,
+  LateralHorizon & ctrl_cmd_horizon, const double timeout_s)
 {
-  if (!m_reference_trajectory_has_steering) {
-    return ResultWithReason{false, "trajectory has no steering for passthrough."};
+  ctrl_cmd_horizon = {};
+  diagnostic.data.clear();
+  // Preserve the existing availability contract: an all-zero horizon falls back to MPC.
+  constexpr double steering_availability_threshold = 1.0e-6;
+  const bool has_steering = std::any_of(
+    trajectory.points.begin(), trajectory.points.end(),
+    [steering_availability_threshold](const auto & point) {
+      return std::abs(static_cast<double>(point.front_wheel_angle_rad)) >
+             steering_availability_threshold;
+    });
+  if (!has_steering || !m_use_temporal_trajectory) {
+    return ResultWithReason{false, "passthrough requires a temporal trajectory with steering"};
+  }
+  const double age_s = (m_clock->now() - rclcpp::Time(trajectory.header.stamp)).seconds();
+  std::string reason;
+  if (!MPCUtils::makeSteeringPassthroughHorizon(
+        trajectory, age_s, timeout_s, ctrl_cmd_horizon, reason)) {
+    return ResultWithReason{false, reason};
   }
 
-  const auto reference_trajectory =
-    applyVelocityDynamicsFilter(m_reference_trajectory, current_kinematics);
+  // These are issued actuator commands, not desired future tire states. Do not advance
+  // them by input_delay, trajectory age, or MPC's prediction/resampling time step.
+  ctrl_cmd = ctrl_cmd_horizon.controls.front();
 
-  const auto [get_data_result, mpc_data_raw] =
-    getData(reference_trajectory, current_steer, current_kinematics);
-  if (!get_data_result.result) {
-    return ResultWithReason{false, fmt::format("getting MPC Data ({}).", get_data_result.reason)};
+  // Diagnostics refer to the original first point too. Geometry-derived MPC diagnostics
+  // remain available when setReferenceTrajectory prepared a reference, but never select u[0].
+  if (!m_reference_trajectory.empty() && m_vehicle_model_ptr) {
+    MPCData data{};
+    data.nearest_idx = 0;
+    data.nearest_pose = trajectory.points.front().pose;
+    data.steer = current_steer.steering_tire_angle;
+    data.lateral_err = MPCUtils::calcLateralError(current_kinematics.pose.pose, data.nearest_pose);
+    data.yaw_err = normalize_radian(
+      tf2::getYaw(current_kinematics.pose.pose.orientation) -
+      tf2::getYaw(data.nearest_pose.orientation));
+    diagnostic = generatePassthroughDiagData(
+      m_reference_trajectory, data, ctrl_cmd, trajectory.points.front().front_wheel_angle_rad,
+      m_vehicle_model_ptr->getWheelbase(), current_kinematics);
   }
-
-  MPCTrajectory mpc_reference_trajectory = reference_trajectory;
-  MPCData mpc_data = mpc_data_raw;
-  if (m_use_temporal_trajectory) {
-    const double nearest_time_offset = mpc_data_raw.nearest_time;
-    for (auto & t : mpc_reference_trajectory.relative_time) {
-      t -= nearest_time_offset;
-    }
-    mpc_data.nearest_time = 0.0;
-  }
-
-  const double mpc_start_time = mpc_data.nearest_time + m_param.input_delay;
-  const double prediction_dt =
-    getPredictionDeltaTime(mpc_start_time, mpc_reference_trajectory, current_kinematics);
-
-  const auto [resample_result, mpc_resampled_ref_trajectory] =
-    resampleMPCTrajectoryByTime(mpc_start_time, prediction_dt, mpc_reference_trajectory);
-  if (!resample_result.result) {
-    return ResultWithReason{
-      false, fmt::format("trajectory resampling ({}).", resample_result.reason)};
-  }
-  if (mpc_resampled_ref_trajectory.steer.empty()) {
-    return ResultWithReason{false, "empty resampled steering reference."};
-  }
-
-  const double u_raw = mpc_resampled_ref_trajectory.steer.at(0);
-  const double u_saturated = std::clamp(u_raw, -m_steer_lim, m_steer_lim);
-  const double steer_rate =
-    (u_saturated - static_cast<double>(current_steer.steering_tire_angle)) / m_ctrl_period;
-
-  ctrl_cmd.steering_tire_angle = static_cast<float>(u_saturated);
-  ctrl_cmd.steering_tire_rotation_rate = static_cast<float>(steer_rate);
-
-  ctrl_cmd_horizon.time_step_ms = prediction_dt * 1000.0;
-  ctrl_cmd_horizon.controls.clear();
-  ctrl_cmd_horizon.controls.push_back(ctrl_cmd);
-  for (size_t i = 1; i < mpc_resampled_ref_trajectory.steer.size(); ++i) {
-    Lateral horizon_cmd;
-    horizon_cmd.steering_tire_angle = static_cast<float>(
-      std::clamp(mpc_resampled_ref_trajectory.steer.at(i), -m_steer_lim, m_steer_lim));
-    horizon_cmd.steering_tire_rotation_rate =
-      (horizon_cmd.steering_tire_angle - ctrl_cmd_horizon.controls.back().steering_tire_angle) /
-      static_cast<float>(prediction_dt);
-    ctrl_cmd_horizon.controls.push_back(horizon_cmd);
-  }
-
-  m_raw_steer_cmd_prev = u_saturated;
-  m_raw_steer_cmd_pprev = u_saturated;
-
-  diagnostic = generatePassthroughDiagData(
-    mpc_reference_trajectory, mpc_data, ctrl_cmd, u_raw, m_vehicle_model_ptr->getWheelbase(),
-    current_kinematics);
-
+  // History is updated by the wrapper using the final published command after calibration/hold.
   return ResultWithReason{true};
 }
 

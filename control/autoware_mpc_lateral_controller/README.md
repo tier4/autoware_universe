@@ -1,5 +1,32 @@
 # MPC Lateral Controller
 
+## MPPI steering command passthrough
+
+With `steering_direct_passthrough` enabled, a temporal trajectory containing at least one steering
+value above the existing availability threshold (`1e-6 rad`) is treated as an MPPI command sequence.
+An all-zero steering sequence still selects normal MPC. The first raw `front_wheel_angle_rad` is
+`u[0]`, to issue now, even though its trajectory point also contains the post-step vehicle state.
+Passthrough does not advance the command index by elapsed time or MPC `input_delay`, apply velocity
+dynamics filtering, or resample to the MPC prediction interval. Repeated controller cycles use the
+same `u[0]` until the trajectory changes or expires.
+
+Command timestamps must have a positive uniform interval because `LateralHorizon` carries one time
+step for all entries. The original command spacing is preserved, with `u[0]` at the published horizon
+origin. Invalid, future-dated, or expired passthrough trajectories hold the previous published angle.
+`steering_passthrough_timeout` bounds trajectory stamp age (default `0.5 s`); the command horizon's
+duration also bounds validity. A hold or failed calculation publishes a single held command with
+zero rate, so a downstream adaptor cannot continue executing a rejected moving horizon.
+
+Steering calibration is applied to the scalar command and every horizon entry. The first horizon
+entry, including its timestamp and rate, equals the final scalar command. The first passthrough
+rate is the change from the previous published angle divided by the controller interval; later
+rates use consecutive commands and the MPPI interval. The rate is therefore zero for an unchanged
+published target, even while measured steering is still converging. The magnitude is bounded by
+`steering_passthrough_rate_limit_rad_s` (default `0.6 rad/s`, matching the current MPPI actuator
+configuration). This bounds command-rate feedforward, not the angle change itself: no extra slew
+filter is added to `u[0]`. Angle saturation still applies. If the actuator-model rate bound changes,
+update this parameter accordingly.
+
 This is the design document for the lateral controller node
 in the `autoware_trajectory_follower_node` package.
 
