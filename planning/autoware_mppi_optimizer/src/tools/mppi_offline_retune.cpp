@@ -183,6 +183,10 @@ void applyCostParam(
     params.steer_cmd_coeff = value;
   } else if (key == "steer_rate_coeff") {
     params.steer_rate_coeff = value;
+  } else if (key == "accel_cmd_rate_coeff") {
+    params.accel_cmd_rate_coeff = value;
+  } else if (key == "steer_cmd_rate_coeff") {
+    params.steer_cmd_rate_coeff = value;
   } else if (key == "initial_steer_rate_coeff") {
     params.initial_steer_rate_coeff = value;
   } else if (key == "overlimit_coeff") {

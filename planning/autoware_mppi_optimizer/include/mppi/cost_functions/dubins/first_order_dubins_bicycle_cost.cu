@@ -160,32 +160,33 @@ __host__ __device__ float lateralBoundaryBarrierCost(
 
 template <class PARAMS_T>
 __host__ __device__ void comfortTerms(
-  const PARAMS_T & params, const float * u, const float * y, float & lateral_accel,
-  float & lateral_jerk, float & longitudinal_jerk, float & steer_rate)
+  const PARAMS_T & params, const float * y, float & lateral_accel, float & lateral_jerk,
+  float & longitudinal_jerk, float & steer_rate)
 {
   const float v = y[static_cast<int>(O::BASELINK_VEL_B_X)];
   const float steer = y[static_cast<int>(O::STEER_ANGLE)];
-  const float accel = y[static_cast<int>(O::ACCELERATION)];
-  const float accel_cmd = u[static_cast<int>(C::ACCELERATION_CMD)];
-  const float steer_cmd = u[static_cast<int>(C::STEER_CMD)];
+  lateral_accel = v * v * tanf(steer) / fmaxf(params.wheel_base, 1.0E-4F);
+  lateral_jerk = y[static_cast<int>(O::LATERAL_JERK)];
+  longitudinal_jerk = y[static_cast<int>(O::LONGITUDINAL_JERK)];
+  steer_rate = y[static_cast<int>(O::STEERING_RATE)];
+}
 
-  const float accel_tau = fmaxf(params.accel_time_constant, 1.0E-4F);
-  const float steer_tau = fmaxf(params.steer_time_constant, 1.0E-4F);
-  const float wheel_base = fmaxf(params.wheel_base, 1.0E-4F);
-
-  longitudinal_jerk = (accel_cmd - accel) / accel_tau;
-
-  steer_rate = clampSteerRate(params, (steer_cmd - steer) / steer_tau);
-  const float curvature = tanf(steer) / wheel_base;
-#ifdef __CUDA_ARCH__
-  const float sec_sq = 1.0F / fmaxf(cosf(steer) * cosf(steer), 1.0E-6F);
-#else
-  const float sec_sq = 1.0F / std::max(std::cos(steer) * std::cos(steer), 1.0E-6F);
-#endif
-  const float curvature_dot = sec_sq * steer_rate / wheel_base;
-
-  lateral_accel = v * v * curvature;
-  lateral_jerk = v * v * curvature_dot + 3.0F * v * accel * curvature;
+// Command regularization is separate from physical comfort and jerk-limit evaluation.
+// t=0 has no previous command in the horizon; the existing initial-steering penalty
+// supplies its measured-angle anchor. Do not treat an unseeded previous command as zero.
+template <class PARAMS_T>
+__host__ __device__ void commandChangeTerms(
+  const PARAMS_T & params, const float * y, int timestep, float & acceleration_command_rate_cost,
+  float & steering_command_rate_cost)
+{
+  acceleration_command_rate_cost = 0.0F;
+  steering_command_rate_cost = 0.0F;
+  if (timestep <= 0) return;
+  const float acceleration_rate = y[static_cast<int>(O::ACCEL_COMMAND_RATE)];
+  const float steering_rate = y[static_cast<int>(O::STEER_COMMAND_RATE)];
+  acceleration_command_rate_cost =
+    params.accel_cmd_rate_coeff * acceleration_rate * acceleration_rate;
+  steering_command_rate_cost = params.steer_cmd_rate_coeff * steering_rate * steering_rate;
 }
 
 template <int NUM_TIMESTEPS>
@@ -1364,8 +1365,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
   float steer_rate = 0.0F;
-  comfortTerms(
-    this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
+  comfortTerms(this->params_, y.data(), lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
   result.lateral_acceleration =
     this->params_.lateral_acceleration_coeff * lateral_accel * lateral_accel;
   result.lateral_jerk = this->params_.lateral_jerk_coeff * lateral_jerk * lateral_jerk;
@@ -1373,6 +1373,9 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     this->params_.longitudinal_jerk_coeff * longitudinal_jerk * longitudinal_jerk;
   result.steering_rate = this->params_.steer_rate_coeff * steer_rate * steer_rate;
   result.initial_steering_rate = computeInitialSteeringRateCost(u.data(), timestep);
+  commandChangeTerms(
+    this->params_, y.data(), timestep, result.acceleration_command_rate,
+    result.steering_command_rate);
   const auto kinematic_cost = computeKinematicLimitCost(
     y[static_cast<int>(O::BASELINK_VEL_B_X)], y[static_cast<int>(O::ACCELERATION)],
     longitudinal_jerk, timestep);
@@ -1694,43 +1697,52 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   computeComfortCost(
-    const Eigen::Ref<const control_array> & u, const Eigen::Ref<const output_array> & y,
+    const Eigen::Ref<const control_array> & /*u*/, const Eigen::Ref<const output_array> & y,
     int timestep)
 {
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
   float steer_rate = 0.0F;
-  comfortTerms(
-    this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
+  comfortTerms(this->params_, y.data(), lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
   const auto kinematic_cost = computeKinematicLimitCost(
     y(static_cast<int>(O::BASELINK_VEL_B_X)), y(static_cast<int>(O::ACCELERATION)),
     longitudinal_jerk, timestep);
   return this->params_.lateral_acceleration_coeff * lateral_accel * lateral_accel +
          this->params_.lateral_jerk_coeff * lateral_jerk * lateral_jerk +
          this->params_.longitudinal_jerk_coeff * longitudinal_jerk * longitudinal_jerk +
-         this->params_.steer_rate_coeff * steer_rate * steer_rate +
-         computeInitialSteeringRateCost(u.data(), timestep) + kinematic_cost.total;
+         this->params_.steer_rate_coeff * steer_rate * steer_rate + kinematic_cost.total;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __device__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::computeComfortCost(
-  float * u, float * y, int timestep) const
+  float * /*u*/, float * y, int timestep) const
 {
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
   float steer_rate = 0.0F;
-  comfortTerms(this->params_, u, y, lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
+  comfortTerms(this->params_, y, lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
   const auto kinematic_cost = computeKinematicLimitCost(
     y[static_cast<int>(O::BASELINK_VEL_B_X)], y[static_cast<int>(O::ACCELERATION)],
     longitudinal_jerk, timestep);
   return this->params_.lateral_acceleration_coeff * lateral_accel * lateral_accel +
          this->params_.lateral_jerk_coeff * lateral_jerk * lateral_jerk +
          this->params_.longitudinal_jerk_coeff * longitudinal_jerk * longitudinal_jerk +
-         this->params_.steer_rate_coeff * steer_rate * steer_rate +
-         computeInitialSteeringRateCost(u, timestep) + kinematic_cost.total;
+         this->params_.steer_rate_coeff * steer_rate * steer_rate + kinematic_cost.total;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ __device__ float FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::computeCommandChangeCost(const float * u, const float * y, int timestep) const
+{
+  float acceleration_command_rate_cost, steering_command_rate_cost;
+  commandChangeTerms(
+    this->params_, y, timestep, acceleration_command_rate_cost, steering_command_rate_cost);
+  return computeInitialSteeringRateCost(u, timestep) + acceleration_command_rate_cost +
+         steering_command_rate_cost;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1740,7 +1752,8 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
     int timestep, int * crash)
 {
   const float state_cost = computeStateCost(y, timestep, crash);
-  return state_cost + computeControlCost(u, timestep, crash) + computeComfortCost(u, y, timestep);
+  return state_cost + computeControlCost(u, timestep, crash) + computeComfortCost(u, y, timestep) +
+         computeCommandChangeCost(u.data(), y.data(), timestep);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1751,7 +1764,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   if (threadIdx.y == 0) {
     const float state_cost = computeStateCost(y, timestep, theta_c, crash);
     return state_cost + computeControlCost(u, timestep, theta_c, crash) +
-           computeComfortCost(u, y, timestep);
+           computeComfortCost(u, y, timestep) + computeCommandChangeCost(u, y, timestep);
   }
   return 0.0F;
 }
