@@ -57,44 +57,6 @@ bool isValidTrajectory(const Trajectory & traj, const bool use_temporal_trajecto
 double calcStopDistance(
   const Pose & current_pose, const Trajectory & traj, const double max_dist, const double max_yaw);
 
-double calcStopDistance(
-  const Pose & current_pose, const Trajectory & traj, const double max_dist, const double max_yaw,
-  const size_t stop_idx);
-
-struct TemporalStopInfo
-{
-  // Indices refer to the original trajectory, before interpolation inserts any points.
-  std::optional<size_t> stop_idx;
-  bool departure_requested{false};
-  bool forward{true};
-
-  bool allowsDeparture(const double stop_dist, const double threshold) const
-  {
-    return departure_requested && (!stop_idx || stop_dist > threshold);
-  }
-
-  bool requiresStopping(const double stop_dist, const double threshold) const
-  {
-    return !departure_requested || (stop_idx && stop_dist < threshold);
-  }
-};
-
-/**
- * @brief distinguish a temporal launch prefix from the first subsequent stop
- *
- * A stationary prefix is released only when the delay-compensated target requests velocity
- * or positive feedforward acceleration and the trajectory contains subsequent motion.
- * A later stop is never skipped, even when the trajectory subsequently resumes motion.
- * A moving horizon endpoint is not an explicit stop. Times are relative to the trajectory stamp.
- */
-TemporalStopInfo findTemporalStop(
-  const Trajectory & traj, const double current_time, const double target_time);
-
-/** @brief sample by time without looking beyond the selected stop or the horizon endpoint */
-TrajectoryPoint calcTemporalLookaheadPoint(
-  const Trajectory & traj, const double target_time, const double lookahead_time,
-  const TemporalStopInfo & stop);
-
 /**
  * @brief calculate pitch angle from estimated current pose
  */
