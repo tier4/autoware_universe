@@ -353,7 +353,7 @@ public:
   /**
    * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
    * @param use_last_control_as_nominal When true and a previous optimized control sequence
-   *        exists and ego is not stopped (|v| >= 0.05 m/s), seed u_nom by shifting that
+   *        exists, seed u_nom by shifting that
    *        sequence (warm start). From a stop, always reseed from the diffusion reference.
    */
   void setAblationOptions(
