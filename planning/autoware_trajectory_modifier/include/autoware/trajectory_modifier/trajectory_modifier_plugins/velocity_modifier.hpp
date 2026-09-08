@@ -1,4 +1,4 @@
-// Copyright 2025 TIER IV, Inc.
+// Copyright 2026 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,43 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__STOP_POINT_FIXER_HPP_
-#define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__STOP_POINT_FIXER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__VELOCITY_MODIFIER_HPP_
+#define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__VELOCITY_MODIFIER_HPP_
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/trajectory_modifier_plugin_base.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
+
+#include <rclcpp/rclcpp.hpp>
 
 namespace autoware::trajectory_modifier::plugin
 {
 
-class StopPointFixer : public TrajectoryModifierPluginBase
+class VelocityModifier : public TrajectoryModifierPluginBase
 {
 public:
-  StopPointFixer() = default;
+  VelocityModifier() = default;
 
   bool modify_trajectory(TrajectoryPoints & traj_points, const InputData & input) override;
 
-  bool is_long_stop_trajectory(const TrajectoryPoints & traj_points) const;
-  bool is_stop_point_close_to_ego(
-    const TrajectoryPoints & traj_points, const InputData & input) const;
   [[nodiscard]] bool is_trajectory_modification_required(
-    const TrajectoryPoints & traj_points, const InputData & input) override;
+    const TrajectoryPoints & traj_points, [[maybe_unused]] const InputData & input) override;
 
   void update_params(const TrajectoryModifierParams & params) override
   {
-    params_ = params.stop_point_fixer;
-    enabled_ = params.use_stop_point_fixer;
+    enabled_ = params.use_velocity_modifier;
     trajectory_time_step_ = params.trajectory_time_step;
-  }
-
-  const TrajectoryModifierParams::StopPointFixer & get_params() const { return params_; }
+    params_ = params.stopping_constraints;
+  };
 
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
 private:
-  TrajectoryModifierParams::StopPointFixer params_;
+  TrajectoryModifierParams::StoppingConstraints params_;
+
+  size_t update_velocities(
+    TrajectoryPoints & trajectory, const double jerk, const double decel) const;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin
 
-#endif  // AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__STOP_POINT_FIXER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__VELOCITY_MODIFIER_HPP_
