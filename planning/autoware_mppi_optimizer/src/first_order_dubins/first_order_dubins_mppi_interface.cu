@@ -60,8 +60,8 @@ namespace
 constexpr int kMppiHorizon = detail::kMppiHorizon;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = detail::kMppiDt;
-constexpr size_t kMaxIter = 5;
-constexpr int kNumRollouts = 8 * 1024;
+constexpr size_t kMaxIter = 10;
+constexpr int kNumRollouts = 4 * 1024;
 constexpr int kMaxVizRollouts = 256;
 constexpr int kMaxWorstVizRollouts = 128;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
@@ -745,6 +745,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool prevent_reverse_velocity{true};
   /** When false, force N_acc = N_steer = 0 (vehicle delay params ignored). */
   bool enable_input_delay_compensation{true};
+  /** Optimized trajectory carries plant lag states instead of undelayed commands. */
+  bool use_plant_states_on_trajectory{false};
   detail::TemporalMptNominalSeeder temporal_mpt_nominal_seeder;
   /** Fill debug.rollouts with top-K weighted samples (CPU replay). Offline retune only by default.
    */
@@ -1705,6 +1707,7 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   }
   impl_->use_temporal_mpt_as_nominal = options.use_temporal_mpt_as_nominal;
   impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
+  impl_->use_plant_states_on_trajectory = options.use_plant_states_on_trajectory;
   impl_->min_optimization_length = options.min_optimization_length;
   impl_->dyn.prevent_reverse_velocity = options.prevent_reverse_velocity;
   if (impl_->initialized) {
@@ -1719,10 +1722,11 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   RCLCPP_INFO(
     mppiLogger(),
     "MPPI nominal seed: use_temporal_mpt_as_nominal=%s enable_input_delay_compensation=%s "
-    "prevent_reverse_velocity=%s",
+    "prevent_reverse_velocity=%s use_plant_states_on_trajectory=%s",
     options.use_temporal_mpt_as_nominal ? "true" : "false",
     options.enable_input_delay_compensation ? "true" : "false",
-    options.prevent_reverse_velocity ? "true" : "false");
+    options.prevent_reverse_velocity ? "true" : "false",
+    options.use_plant_states_on_trajectory ? "true" : "false");
 }
 void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
   const bool enable, const std::string & directory)
@@ -1766,6 +1770,7 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
   runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
   runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
+  runtime.use_plant_states_on_trajectory = impl_->use_plant_states_on_trajectory;
   impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
 }
 
@@ -2008,7 +2013,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     optimized_controls.push_back(optimized_control);
   }
 
-  Trajectory output = detail::buildOptimizedTrajectory(input, optimized_states, optimized_controls);
+  Trajectory output = detail::buildOptimizedTrajectory(
+    input, optimized_states, optimized_controls, impl_->use_plant_states_on_trajectory);
   if (impl_->active_velocity_limit_profile.active) {
     // buildOptimizedTrajectory intentionally preserves the suffix outside the MPPI horizon.
     // An active velocity profile must not allow that suffix to jump back to its input speed.
@@ -2116,6 +2122,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
     runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
     runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
+    runtime.use_plant_states_on_trajectory = impl_->use_plant_states_on_trajectory;
     impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
   }
   impl_->debug_trajectory_logger.logFrame(

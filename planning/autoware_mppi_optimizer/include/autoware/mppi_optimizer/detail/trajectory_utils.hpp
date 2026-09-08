@@ -157,7 +157,8 @@ void applyActiveVelocityLimitProfile(
 
 [[nodiscard]] Trajectory buildOptimizedTrajectory(
   const Trajectory & input, const std::vector<OptimizedState> & post_step_states,
-  const std::vector<FirstOrderDubinsMppiControl> & controls);
+  const std::vector<FirstOrderDubinsMppiControl> & controls,
+  bool use_plant_states_on_trajectory = false);
 
 [[nodiscard]] float computeMengerCurvatureWithMinChord(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & points, std::size_t target_idx,

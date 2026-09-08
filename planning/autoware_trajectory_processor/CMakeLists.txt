@@ -169,6 +169,7 @@ install(TARGETS acados_interface_temporal
   RUNTIME DESTINATION bin
 )
 install(FILES include/temporal_mpt/path_tracking_solver.hpp
+  include/temporal_mpt/bicycle_model_params.hpp
   DESTINATION include/temporal_mpt)
 
 set(TEMPORAL_MODEL "kinematic_bicycle_temporal")

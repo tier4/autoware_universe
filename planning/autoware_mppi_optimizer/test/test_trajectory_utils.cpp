@@ -711,6 +711,18 @@ TEST(OutputConversion, OverwritesOnlyAvailablePostStepSamples)
   EXPECT_TRUE(output.points[2] == input.points[2]);
 }
 
+TEST(OutputConversion, CanPublishPlantLagStatesInsteadOfControls)
+{
+  const auto input = makeTrajectory(2U, 1.0, 2.0F);
+  const std::vector<OptimizedState> states = {{10.0F, 20.0F, 0.3F, 4.0F, 0.7F, 0.1F}};
+  const std::vector<FirstOrderDubinsMppiControl> controls = {{0.5F, -0.1F}};
+
+  const auto output = buildOptimizedTrajectory(input, states, controls, true);
+  ASSERT_EQ(output.points.size(), 1U);
+  EXPECT_FLOAT_EQ(output.points[0].acceleration_mps2, states[0].acceleration);
+  EXPECT_FLOAT_EQ(output.points[0].front_wheel_angle_rad, states[0].steering);
+}
+
 TEST(EngageVelocity, ChangesAllLeadingStoppedPointsWhenMovementIsRequested)
 {
   auto trajectory = makeTrajectory(4U, 1.0, 0.0F);
