@@ -70,6 +70,13 @@ double calcStopDistance(
   const auto stop_idx_opt = autoware::motion_utils::searchZeroVelocityIndex(traj.points);
 
   const size_t end_idx = stop_idx_opt ? *stop_idx_opt : traj.points.size() - 1;
+  return calcStopDistance(current_pose, traj, max_dist, max_yaw, end_idx);
+}
+
+double calcStopDistance(
+  const Pose & current_pose, const Trajectory & traj, const double max_dist, const double max_yaw,
+  const size_t end_idx)
+{
   const size_t seg_idx = autoware::motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
     traj.points, current_pose, max_dist, max_yaw);
   const double signed_length_on_traj = autoware::motion_utils::calcSignedArcLength(
@@ -80,6 +87,90 @@ double calcStopDistance(
     return 0.0;
   }
   return signed_length_on_traj;
+}
+
+TemporalStopInfo findTemporalStop(
+  const Trajectory & traj, const double current_time, const double target_time)
+{
+  TemporalStopInfo result;
+  // Match searchZeroVelocityIndex. Validate the original sequence, not the sequence containing
+  // inserted interpolation points (which can have duplicate timestamps).
+  constexpr double velocity_epsilon = 1.0e-3;
+  if (
+    traj.points.empty() || !isValidTrajectory(traj, true) || !std::isfinite(current_time) ||
+    !std::isfinite(target_time) || target_time < current_time) {
+    result.stop_idx = 0;
+    return result;
+  }
+
+  size_t first_moving = 0;
+  while (first_moving < traj.points.size() &&
+         std::abs(traj.points[first_moving].longitudinal_velocity_mps) <= velocity_epsilon) {
+    ++first_moving;
+  }
+  if (first_moving == traj.points.size()) {
+    result.stop_idx = 0;
+    return result;
+  }
+
+  const double direction = traj.points[first_moving].longitudinal_velocity_mps > 0.0 ? 1.0 : -1.0;
+  result.forward = direction > 0.0;
+  for (size_t i = first_moving + 1; i < traj.points.size(); ++i) {
+    const double velocity = traj.points[i].longitudinal_velocity_mps;
+    if (std::abs(velocity) <= velocity_epsilon) {
+      result.stop_idx = i;
+      break;
+    }
+    if (direction * velocity < 0.0) {
+      // A direction change without a zero-speed sample is not a continuous launch. Stop at
+      // the preceding point instead of advancing the target into the opposite gear.
+      result.stop_idx = i - 1;
+      break;
+    }
+  }
+
+  const double end_time = rclcpp::Duration(traj.points.back().time_from_start).seconds();
+  const double start_time = rclcpp::Duration(traj.points.front().time_from_start).seconds();
+  const double stop_time =
+    result.stop_idx ? rclcpp::Duration(traj.points[*result.stop_idx].time_from_start).seconds()
+                    : std::numeric_limits<double>::infinity();
+  const auto target = lerpTrajectoryPointByTime(traj.points, target_time).first;
+  // MPPI may already request throttle while predicted speed is still zero because of actuator
+  // delay. Use the same positive-acceleration-as-drive-effort convention as calcCtrlCmd(), and
+  // require subsequent motion above; acceleration alone cannot release an all-stationary plan.
+  constexpr double acceleration_epsilon = 1.0e-3;
+  const bool launch_acceleration = std::abs(target.longitudinal_velocity_mps) <= velocity_epsilon &&
+                                   target.acceleration_mps2 > acceleration_epsilon;
+  result.departure_requested =
+    target_time >= start_time && current_time <= end_time && target_time < stop_time &&
+    (direction * target.longitudinal_velocity_mps > velocity_epsilon || launch_acceleration);
+
+  const double first_moving_time =
+    rclcpp::Duration(traj.points[first_moving].time_from_start).seconds();
+  if (first_moving > 0 && current_time < first_moving_time && !result.departure_requested) {
+    // The controller must still hold during an initial scheduled wait. Do not let a long
+    // feedback lookahead release it earlier than the actuator-delay target requests.
+    result.stop_idx = 0;
+  }
+  return result;
+}
+
+TrajectoryPoint calcTemporalLookaheadPoint(
+  const Trajectory & traj, const double target_time, const double lookahead_time,
+  const TemporalStopInfo & stop)
+{
+  if (traj.points.empty()) return TrajectoryPoint{};
+  const size_t end_idx = stop.stop_idx.value_or(traj.points.size() - 1);
+  const double end_time = rclcpp::Duration(traj.points.at(end_idx).time_from_start).seconds();
+  const double sample_time = std::min(target_time + std::max(0.0, lookahead_time), end_time);
+  auto point = lerpTrajectoryPointByTime(traj.points, sample_time).first;
+  if (stop.stop_idx && sample_time >= end_time) {
+    // Also covers a malformed direction reversal for which findTemporalStop selected the
+    // last point before the reversal as a conservative stopping point.
+    point.longitudinal_velocity_mps = 0.0;
+    point.acceleration_mps2 = std::min(point.acceleration_mps2, 0.0F);
+  }
+  return point;
 }
 
 double getPitchByPose(const Quaternion & quaternion_msg)
