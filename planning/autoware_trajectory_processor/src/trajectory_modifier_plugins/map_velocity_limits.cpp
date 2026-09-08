@@ -68,6 +68,9 @@ void MapVelocityLimits::update_params(const TrajectoryProcessorParams & params)
 bool MapVelocityLimits::is_trajectory_modification_required(
   [[maybe_unused]] const TrajectoryPoints & traj_points, const TrajectoryProcessorData & input)
 {
+  if (!input.lanelet_map_bin || !input.route) {
+    return false;
+  }
   if (!extended_route_handler_ || previous_route_uuid_ != input.route->uuid) {
     auto handler = std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
       *input.lanelet_map_bin, *input.route);

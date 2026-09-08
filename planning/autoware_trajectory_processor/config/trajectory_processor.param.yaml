@@ -181,6 +181,6 @@
       hysteresis_time: 0.2
       ego_stopped_vel_th: 0.1 # [m/s]
 
-  map_velocity_limits:
-    limit_velocity_from_map_debug_lanelet_ids: [0]
-    limit_velocity_from_map_debug_max_velocities: [0]
+    map_velocity_limits:
+      limit_velocity_from_map_debug_lanelet_ids: [0]
+      limit_velocity_from_map_debug_max_velocities: [1000.0]
