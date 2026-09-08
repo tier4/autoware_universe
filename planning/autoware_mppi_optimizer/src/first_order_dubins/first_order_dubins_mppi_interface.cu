@@ -1508,11 +1508,14 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
 
     // After a tracking reset, step_count is 0 and u_opt was cleared — fall back to DP / MPT seed.
-    const bool have_last_u = use_last_control_as_nominal && step_count > 0;
+    // Also reseed when departing from a stop: shifted last u_opt is usually near-zero / braking.
+    constexpr float kStoppedVelocityMps = 0.05F;
+    const bool started_from_stop = std::abs(ego.velocity) < kStoppedVelocityMps;
+    const bool have_last_u = use_last_control_as_nominal && step_count > 0 && !started_from_stop;
 
     if (use_temporal_mpt_as_nominal) {
       // t-MPT warm-starts from its own previous x/u, shifted one stage. Do not inject MPPI u_opt.
-      if (step_count == 0) {
+      if (started_from_stop || step_count == 0) {
         temporal_mpt_nominal_seeder.resetWarmStart();
       }
       seedNominalControlFromTemporalMpt(reference, ego);
@@ -2407,12 +2410,11 @@ try {
     max_vel_delta = std::max(max_vel_delta, std::abs(state.velocity - ref_v));
   }
 
-  // Disabled as it is causes a command that diverges from what the MPPI expects
-  // const auto initial_effective_maximum =
-  //   !impl_->effective_max_velocity_by_reference_point.empty()
-  //     ? impl_->effective_max_velocity_by_reference_point.front()
-  //     : std::nullopt;
-  // detail::setInitialEngageVelocity(output, initial_effective_maximum);
+  const auto initial_effective_maximum =
+    !impl_->effective_max_velocity_by_reference_point.empty()
+      ? impl_->effective_max_velocity_by_reference_point.front()
+      : std::nullopt;
+  detail::setInitialEngageVelocity(output, initial_effective_maximum);
 
   result.trajectory = output;
   result.debug.reference_trajectory = input;
