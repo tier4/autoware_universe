@@ -51,7 +51,7 @@ using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::PredictedPath;
 using autoware_planning_msgs::msg::TrajectoryPoint;
-using autoware_trajectory_validator::msg::RiskLevel;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using autoware_utils_geometry::create_quaternion_from_yaw;
 
 namespace

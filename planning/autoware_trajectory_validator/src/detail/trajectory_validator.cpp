@@ -137,7 +137,7 @@ PluginsValidationResult TrajectoryValidator::validate_candidate_trajectory(
     }
 
     validation_results.combined_metrics.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
+      autoware_internal_planning_msgs::build<MetricReport>()
         .validator_name(plugin_name)
         .validator_category(plugin->category())
         .metric_name("trajectory_feasibility")
@@ -196,7 +196,7 @@ ValidationReport TrajectoryValidator::build_validation_report(
   RiskLevel risk_level;
   risk_level.level = worst_risk_level(active_metrics);
 
-  return autoware_trajectory_validator::build<ValidationReport>()
+  return autoware_internal_planning_msgs::build<ValidationReport>()
     .trajectory_stamp(candidate_trajectory.header.stamp)
     .generator_id(candidate_trajectory.generator_id)
     .generator_name(generator_name)
