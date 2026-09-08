@@ -4,6 +4,7 @@
     traj_resample_dist: 0.1         # path resampling interval [m]
     use_steer_prediction: false     # flag for using steer prediction (do not use steer measurement)
     use_delayed_initial_state: true # flag to use x0_delayed as initial state for predicted trajectory
+    use_trajectory_steering_for_feedforward: true
 
     # -- path smoothing --
     enable_path_smoothing: false   # flag for path smoothing
@@ -63,6 +64,13 @@
     new_traj_duration_time: 1.0
     new_traj_end_dist: 0.3
     mpc_converged_threshold_rps:  0.01 # threshold of mpc convergence check [rad/s]
+    stop_state_steer_hold_duration: 2.0  # [s] confirm full stop / expire confidence hold
+
+    # reference-confidence steer soft hold (post-MPC): flicker is low confidence, not stop
+    enable_confidence_steer_slew_limit: true
+    reference_confidence_L_ahead_min: 0.5   # [m] low-confidence remaining spatial extent
+    reference_confidence_L_ahead_ref: 1.0   # [m] full confidence; refresh hold timer
+    steer_slew_rate_min_rad_s: 0.02         # [rad/s] soft-hold rate at zero confidence
 
     # steer offset
     steering_offset:
