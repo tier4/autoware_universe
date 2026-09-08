@@ -93,6 +93,8 @@ private:
     Motion current_motion{};
     Shift shift{Shift::Forward};  // shift is used only to calculate the sign of pitch compensation
     double stop_dist{0.0};  // signed distance that is positive when car is before the stopline
+    longitudinal_utils::TemporalStopInfo temporal_stop{};
+    autoware_planning_msgs::msg::TrajectoryPoint temporal_lookahead_point{};
     double slope_angle{0.0};
     double dt{0.0};
     double temporal_predicted_time{std::numeric_limits<double>::quiet_NaN()};

@@ -488,10 +488,13 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
 
   autoware_planning_msgs::msg::TrajectoryPoint nearest_point;
   autoware_planning_msgs::msg::TrajectoryPoint target_point;
+  double temporal_current_time = 0.0;
+  longitudinal_utils::TemporalStopInfo temporal_stop;
 
   if (m_use_temporal_trajectory) {
     const rclcpp::Time traj_stamp(m_trajectory.header.stamp);
     const double elapsed_time = (clock_->now() - traj_stamp).seconds();
+    temporal_current_time = elapsed_time;
     const double nearest_time = std::clamp(elapsed_time, traj_start_time, traj_end_time);
     control_data.temporal_predicted_time = nearest_time;
     control_data.temporal_fused_time = nearest_time;
@@ -529,15 +532,25 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
   // calculate the target motion for delay compensation
   constexpr double min_running_dist = 0.01;
   if (m_use_temporal_trajectory) {
-    const double nearest_time = rclcpp::Duration(nearest_point.time_from_start).seconds();
-    const double target_time = nearest_time + m_delay_compensation_time;
+    // Use elapsed time before clamping to the first post-step point. Adding delay to an
+    // already clamped time would advance a launch by the trajectory's initial time offset.
+    const double target_time = temporal_current_time + m_delay_compensation_time;
+    temporal_stop =
+      longitudinal_utils::findTemporalStop(m_trajectory, temporal_current_time, target_time);
+    control_data.temporal_stop = temporal_stop;
+    target_point =
+      longitudinal_utils::calcTemporalLookaheadPoint(m_trajectory, target_time, 0.0, temporal_stop);
+    control_data.temporal_lookahead_point = longitudinal_utils::calcTemporalLookaheadPoint(
+      m_trajectory, target_time, m_velocity_lookahead_time, temporal_stop);
     const auto target_interpolated_point = longitudinal_utils::lerpTrajectoryPointByTime(
-      control_data.interpolated_traj.points, target_time);
+      control_data.interpolated_traj.points,
+      rclcpp::Duration(target_point.time_from_start).seconds());
     control_data.target_idx = target_interpolated_point.second + 1;
+    if (control_data.target_idx <= control_data.nearest_idx) {
+      ++control_data.nearest_idx;
+    }
     control_data.interpolated_traj.points.insert(
-      control_data.interpolated_traj.points.begin() + control_data.target_idx,
-      target_interpolated_point.first);
-    target_point = target_interpolated_point.first;
+      control_data.interpolated_traj.points.begin() + control_data.target_idx, target_point);
   } else if (control_data.state_after_delay.running_distance > min_running_dist) {
     control_data.interpolated_traj.points =
       autoware::motion_utils::removeOverlapPoints(control_data.interpolated_traj.points);
@@ -586,9 +599,17 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
   m_prev_shift = control_data.shift;
 
   // distance to stopline
-  control_data.stop_dist = longitudinal_utils::calcStopDistance(
-    current_pose, control_data.interpolated_traj, m_ego_nearest_dist_threshold,
-    m_ego_nearest_yaw_threshold);
+  if (m_use_temporal_trajectory) {
+    // Keep a finite distance for diagnostics and smooth stopping when the horizon expires,
+    // but do not treat a moving horizon endpoint as a stop during a valid temporal launch.
+    control_data.stop_dist = longitudinal_utils::calcStopDistance(
+      current_pose, m_trajectory, m_ego_nearest_dist_threshold, m_ego_nearest_yaw_threshold,
+      temporal_stop.stop_idx.value_or(m_trajectory.points.size() - 1));
+  } else {
+    control_data.stop_dist = longitudinal_utils::calcStopDistance(
+      current_pose, control_data.interpolated_traj, m_ego_nearest_dist_threshold,
+      m_ego_nearest_yaw_threshold);
+  }
 
   // pitch
   // NOTE: getPitchByTraj() calculates the pitch angle as defined in
@@ -682,13 +703,22 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
   const auto & p = m_state_transition_params;
 
   const bool departure_condition_from_stopping =
-    stop_dist > p.drive_state_stop_dist + p.drive_state_offset_stop_dist;
-  const bool departure_condition_from_stopped = stop_dist > p.drive_state_stop_dist;
+    m_use_temporal_trajectory
+      ? control_data.temporal_stop.allowsDeparture(
+          stop_dist, p.drive_state_stop_dist + p.drive_state_offset_stop_dist)
+      : stop_dist > p.drive_state_stop_dist + p.drive_state_offset_stop_dist;
+  const bool departure_condition_from_stopped =
+    m_use_temporal_trajectory
+      ? control_data.temporal_stop.allowsDeparture(stop_dist, p.drive_state_stop_dist)
+      : stop_dist > p.drive_state_stop_dist;
 
   // NOTE: the same velocity threshold as autoware::motion_utils::searchZeroVelocity
   static constexpr double vel_epsilon = 1e-3;
 
-  const bool stopping_condition = stop_dist < p.stopping_state_stop_dist;
+  const bool stopping_condition =
+    m_use_temporal_trajectory
+      ? control_data.temporal_stop.requiresStopping(stop_dist, p.stopping_state_stop_dist)
+      : stop_dist < p.stopping_state_stop_dist;
 
   const bool is_stopped = std::abs(current_vel) < p.stopped_state_entry_vel;
 
@@ -720,8 +750,10 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
   // NOTE: due to removeOverlapPoints() in getControlData() m_trajectory and
   // control_data.interpolated_traj have different size.
   // ==========================================================================================
-  const double current_vel_cmd = std::fabs(
-    control_data.interpolated_traj.points.at(control_data.nearest_idx).longitudinal_velocity_mps);
+  const double current_vel_cmd =
+    std::fabs(control_data.interpolated_traj.points
+                .at(m_use_temporal_trajectory ? control_data.target_idx : control_data.nearest_idx)
+                .longitudinal_velocity_mps);
   const auto emergency_condition = [&]() {
     if (
       m_enable_overshoot_emergency && stop_dist < -p.emergency_state_overshoot_stop_dist &&
@@ -798,7 +830,7 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
   // in STOPPED state
   if (m_control_state == ControlState::STOPPED) {
     // keep STOPPED if is_under_control is false
-    if (!is_under_control && stopped_condition) return;
+    if (!is_under_control) return;
 
     // debug print
     if (has_nonzero_target_vel && !departure_condition_from_stopped) {
@@ -1057,6 +1089,14 @@ enum PidLongitudinalController::Shift PidLongitudinalController::getCurrentShift
   const double target_vel =
     control_data.interpolated_traj.points.at(control_data.target_idx).longitudinal_velocity_mps;
 
+  if (
+    m_use_temporal_trajectory && control_data.temporal_stop.departure_requested &&
+    std::abs(target_vel) <= 1.0e-3) {
+    // A delayed launch can have zero target speed and positive drive effort. Its direction
+    // comes from the upcoming moving interval, rather than whichever gear was used last.
+    return control_data.temporal_stop.forward ? Shift::Forward : Shift::Reverse;
+  }
+
   if (target_vel > epsilon) {
     return Shift::Forward;
   } else if (target_vel < -epsilon) {
@@ -1217,38 +1257,43 @@ double PidLongitudinalController::applyVelocityFeedback(const ControlData & cont
     const double dt_target = m_velocity_lookahead_time;
     const double w = m_velocity_lookahead_blend_weight;
 
-    const double current_vel_abs = std::max(std::abs(current_vel), 0.1);
-    const double lookahead_distance = current_vel_abs * dt_target;
+    autoware_planning_msgs::msg::TrajectoryPoint future_point;
+    if (m_use_temporal_trajectory) {
+      future_point = control_data.temporal_lookahead_point;
+    } else {
+      const double current_vel_abs = std::max(std::abs(current_vel), 0.1);
+      const double lookahead_distance = current_vel_abs * dt_target;
 
-    size_t future_idx = control_data.target_idx;
-    double accumulated_dist = 0.0;
+      size_t future_idx = control_data.target_idx;
+      double accumulated_dist = 0.0;
 
-    for (size_t i = control_data.target_idx; i + 1 < control_data.interpolated_traj.points.size();
-         ++i) {
-      const auto & p0 = control_data.interpolated_traj.points.at(i).pose.position;
-      const auto & p1 = control_data.interpolated_traj.points.at(i + 1).pose.position;
+      for (size_t i = control_data.target_idx; i + 1 < control_data.interpolated_traj.points.size();
+           ++i) {
+        const auto & p0 = control_data.interpolated_traj.points.at(i).pose.position;
+        const auto & p1 = control_data.interpolated_traj.points.at(i + 1).pose.position;
 
-      const double dx = p1.x - p0.x;
-      const double dy = p1.y - p0.y;
-      const double dz = p1.z - p0.z;
-      const double ds = std::sqrt(dx * dx + dy * dy + dz * dz);
+        const double dx = p1.x - p0.x;
+        const double dy = p1.y - p0.y;
+        const double dz = p1.z - p0.z;
+        const double ds = std::sqrt(dx * dx + dy * dy + dz * dz);
 
-      accumulated_dist += ds;
-      future_idx = i + 1;
+        accumulated_dist += ds;
+        future_idx = i + 1;
 
-      if (accumulated_dist >= lookahead_distance) {
-        break;
+        if (accumulated_dist >= lookahead_distance) {
+          break;
+        }
       }
+      future_point = control_data.interpolated_traj.points.at(future_idx);
     }
 
-    const auto target_motion = Motion{
-      control_data.interpolated_traj.points.at(future_idx).longitudinal_velocity_mps,
-      control_data.interpolated_traj.points.at(future_idx).acceleration_mps2};
+    const auto target_motion =
+      Motion{future_point.longitudinal_velocity_mps, future_point.acceleration_mps2};
 
     const double diff_vel = (target_motion.vel - current_vel) * vel_sign;
     const double error_vel_filtered = m_lpf_vel_error->filter(diff_vel);
 
-    const double a_connect = error_vel_filtered / dt_target;
+    const double a_connect = error_vel_filtered / std::max(dt_target, control_data.dt);
 
     double target_acc = target_motion.acc;
 
