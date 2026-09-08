@@ -110,31 +110,6 @@ Depending on the actuating principle of the vehicle, the mechanism that physical
 
 In this controller, the predicted ego-velocity and the target velocity after the delay time are calculated and used for the feedback to address the time delay problem.
 
-#### Temporal launches and stops
-
-With `trajectory_reference_mode: temporal`, the delay target is sampled at the elapsed time since
-the trajectory stamp plus `delay_compensation_time`. Same-position points with different timestamps
-are preserved. A leading zero-speed interval does not become a permanent stop line: it can be
-released when the delay target requests motion, including positive feedforward acceleration before
-physical speed rises, and the trajectory contains subsequent nonzero velocity. An all-stationary
-trajectory remains stopped. A scheduled hold is not released merely because a longer feedback
-lookahead reaches a moving point.
-
-The first subsequent stop remains the stopping point even if later points request another start.
-Both delay targeting and feedback lookahead are capped at that stop. A direction reversal without
-a zero-speed sample is treated conservatively as a stop at the preceding point. The configured
-departure-distance hysteresis, smooth stopping, and signed overshoot distance still apply to an
-explicit stop. A horizon ending with nonzero velocity is not an explicit stop, so its short length
-does not prevent departure or trigger smooth stopping. Once the current trajectory time exceeds
-the horizon, departure is disabled and stopping is requested. Trajectory stamps and point times
-must therefore describe the current rolling plan.
-
-When `enable_velocity_lookahead_feedback` is enabled, temporal feedback samples
-`velocity_lookahead_time` seconds beyond the delay target, bounded by the stop and horizon. Spatial
-mode retains its distance-based lookahead. This feedback branch blends a velocity-error correction
-with trajectory acceleration and bypasses the PID calculation; PID gains and low-speed integration
-settings do not affect it. No engage-velocity floor is applied to the trajectory.
-
 ### Slope compensation
 
 Based on the slope information, a compensation term is added to the target acceleration.
