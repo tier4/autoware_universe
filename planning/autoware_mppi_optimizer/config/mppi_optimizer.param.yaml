@@ -10,15 +10,14 @@
 
       # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
       # Rollout costs are robust-percentile normalized to [0, 1]; ESS feedback adapts this initial
-      # dimensionless temperature to the observed distribution.
+      # dimensionless temperature to the eligible (finite, collision-free) distribution.
       lambda: 0.01
       lambda_min: 0.00001
       lambda_max: 10.0
       target_ess_ratio: 0.03
-      # Lambda is adapted once per control cycle; keep this slow enough to avoid cycle-to-cycle
-      # temperature oscillation while still recovering from weight collapse.
+      # Bounded log ESS-ratio feedback, once per cycle; lambda changes by at most a factor of two.
       lambda_adaptation_gain: 1.0
-      # Panic exploration is driven only by rollout collision/safety flags, not total cost.
+      # Diagnostic unsafe-population threshold; safety flags never force a higher lambda.
       unsafe_rollout_fraction_threshold: 0.95
       # Clamp the upper 5% cost tail before weighting so rare barrier outliers do not compress the
       # useful rollout population near normalized cost zero.
