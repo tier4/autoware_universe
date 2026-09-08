@@ -9,6 +9,8 @@
     # When true, publish trajectory front_wheel_angle_rad directly (MPPI passthrough).
     # Requires temporal trajectories with populated front_wheel_angle_rad.
     steering_direct_passthrough: false
+    steering_passthrough_timeout: 0.5 # maximum trajectory stamp age [s]; hold on expiry
+    steering_passthrough_rate_limit_rad_s: 0.6 # bound published command-rate feedforward [rad/s]
     # NOTE: trajectory_reference_mode is now set at trajectory_follower_node level
     # This default file is for MPC-specific parameters only
 

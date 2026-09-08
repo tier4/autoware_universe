@@ -492,11 +492,13 @@ public:
 
   /**
    * @brief Publish trajectory front_wheel_angle_rad as the lateral command (MPPI passthrough).
-   * Uses the same delay-compensated resampling origin as calculateMPC, but skips the QP solve.
+   * The input carries issued commands alongside post-step states. Execute raw u[0] without
+   * advancing by input_delay or elapsed trajectory time; reject stale inputs instead.
    */
   ResultWithReason calculateTrajectorySteeringPassthrough(
-    const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
-    Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon);
+    const Trajectory & trajectory, const SteeringReport & current_steer,
+    const Odometry & current_kinematics, Lateral & ctrl_cmd, Float32MultiArrayStamped & diagnostic,
+    LateralHorizon & ctrl_cmd_horizon, const double timeout_s);
 
   /**
    * @brief Set the reference trajectory to be followed.
