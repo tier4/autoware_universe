@@ -70,7 +70,8 @@ void CurvatureAdaptiveSteeringFilter::reset()
 }
 
 void CurvatureAdaptiveSteeringFilter::filter(
-  std::vector<float> & steering_commands, const float measured_steering)
+  std::vector<float> & steering_commands, const float measured_steering,
+  const bool preserve_first_command)
 {
   if (steering_commands.empty()) {
     return;
@@ -78,10 +79,17 @@ void CurvatureAdaptiveSteeringFilter::filter(
 
   float previous = initialized_ ? previous_filtered_command_
                                 : (std::isfinite(measured_steering) ? measured_steering : 0.0F);
-  for (auto & command : steering_commands) {
+  auto first = steering_commands.begin();
+  if (preserve_first_command && initialized_ && std::isfinite(*first)) {
+    previous = *first;
+    ++first;
+  }
+  for (auto it = first; it != steering_commands.end(); ++it) {
+    auto & command = *it;
     const float target = std::isfinite(command) ? command : previous;
-    // Use both sides of the transition so entering and leaving a turn receive the fast response.
-    const float steering_magnitude = std::max(std::abs(target), std::abs(previous));
+    // Adapt from the filtered steering, not the potentially noisy new target. Keep alpha_turn
+    // below one to retain smoothing during turns, turn exits, and sign reversals.
+    const float steering_magnitude = std::abs(previous);
     const float turn_ratio = std::clamp(steering_magnitude / params_.turn_angle_rad, 0.0F, 1.0F);
     const float alpha =
       params_.alpha_straight + turn_ratio * (params_.alpha_turn - params_.alpha_straight);

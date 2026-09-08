@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
@@ -237,9 +238,79 @@ protected:
 
 FirstOrderDubinsMppiControlSequencePostprocessor fixedAcceleration(const float acceleration)
 {
-  return [acceleration](std::vector<FirstOrderDubinsMppiControl> & controls) {
+  return [acceleration](
+           std::vector<FirstOrderDubinsMppiControl> & controls,
+           const FirstOrderDubinsMppiPostprocessingContext &) {
     for (auto & control : controls) control = {acceleration, 0.0F};
   };
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringFilterPreservesOnlyAcceptedShiftedCommands)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  interface_->setCostParams(costs);
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.use_last_control_as_nominal = true;
+  options.use_temporal_mpt_as_nominal = false;
+  interface_->setRuntimeOptions(options);
+  const auto input = makeStraightTrajectory(80U);
+  CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
+  auto candidate_filter = filter;
+  std::optional<bool> shifted;
+  float first_before_filter = 0.0F;
+  const FirstOrderDubinsMppiControlSequencePostprocessor postprocessor =
+    [&](auto & controls, const FirstOrderDubinsMppiPostprocessingContext & context) {
+      shifted = context.first_command_is_shifted;
+      ASSERT_FALSE(controls.empty());
+      if (!context.first_command_is_shifted) {
+        // Deterministic cold horizon: the next command needs smoothing once before execution.
+        for (auto & control : controls) control.steer_cmd = 0.01F;
+        controls.front().steer_cmd = 0.0F;
+      }
+      first_before_filter = controls.front().steer_cmd;
+      std::vector<float> steering;
+      for (const auto & control : controls) steering.push_back(control.steer_cmd);
+      candidate_filter = filter;
+      candidate_filter.filter(steering, 0.0F, context.first_command_is_shifted);
+      for (std::size_t i = 0; i < controls.size(); ++i) controls[i].steer_cmd = steering[i];
+    };
+  const auto preview = [&]() {
+    shifted.reset();
+    return interface_->optimizeTrajectory(
+      input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+      postprocessor, true);
+  };
+
+  preview();
+  ASSERT_TRUE(shifted.has_value());
+  EXPECT_FALSE(*shifted);
+  interface_->discardPendingTrajectory();
+
+  const auto accepted = preview();
+  ASSERT_TRUE(shifted.has_value());
+  EXPECT_FALSE(*shifted);  // A discarded preview cannot supply the warm start.
+  ASSERT_FALSE(accepted.debug.was_rejected);
+  ASSERT_GT(accepted.optimized_point_count, 1U);
+  const float next_command = accepted.trajectory.points[1].front_wheel_angle_rad;
+  ASSERT_NEAR(next_command, 0.001F, 1.0E-7F);
+  interface_->commitPendingTrajectory();
+  filter = candidate_filter;
+
+  const auto following = preview();
+  ASSERT_TRUE(shifted.has_value());
+  EXPECT_TRUE(*shifted);
+  EXPECT_FLOAT_EQ(first_before_filter, next_command);
+  ASSERT_FALSE(following.trajectory.points.empty());
+  EXPECT_FLOAT_EQ(following.trajectory.points.front().front_wheel_angle_rad, next_command);
+  interface_->discardPendingTrajectory();
+
+  options.force_cold_start_each_step = true;
+  interface_->setRuntimeOptions(options);
+  preview();
+  ASSERT_TRUE(shifted.has_value());
+  EXPECT_FALSE(*shifted);
+  interface_->discardPendingTrajectory();
 }
 
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, DeferredCandidatesCommitHistoryOnlyOnAcceptance)
@@ -313,7 +384,7 @@ TEST_F(
   EXPECT_THROW(
     interface_->optimizeTrajectory(
       input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
-      [](auto &) { throw std::runtime_error("injected postprocessor failure"); }),
+      [](auto &, const auto &) { throw std::runtime_error("injected postprocessor failure"); }),
     std::runtime_error);
 
   const auto following = interface_->optimizeTrajectory(
@@ -335,7 +406,7 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, CudaFailureDisablesFurtherWorkUntil
   EXPECT_THROW(
     interface_->optimizeTrajectory(
       input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
-      [](auto &) { throw CudaError(cudaErrorMemoryAllocation, __FILE__, __LINE__); }),
+      [](auto &, const auto &) { throw CudaError(cudaErrorMemoryAllocation, __FILE__, __LINE__); }),
     CudaError);
   EXPECT_FALSE(interface_->isInitialized());
   EXPECT_THROW(optimize(*interface_, input), std::runtime_error);
@@ -344,7 +415,7 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, CudaFailureDisablesFurtherWorkUntil
   EXPECT_THROW(
     interface_->optimizeTrajectory(
       input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
-      [](auto &) { throw CudaError(cudaErrorIllegalAddress, __FILE__, __LINE__); }),
+      [](auto &, const auto &) { throw CudaError(cudaErrorIllegalAddress, __FILE__, __LINE__); }),
     CudaError);
   EXPECT_FALSE(interface_->isInitialized());
   EXPECT_THROW(interface_->initialize(), std::runtime_error);
