@@ -41,11 +41,12 @@ public:
     TrajectoryPoints & traj_points, TrajectoryProcessorData & input) override;
 
   [[nodiscard]] bool is_trajectory_modification_required(
-    const TrajectoryPoints & traj_points, [[maybe_unused]] const TrajectoryProcessorData & input);
+    const TrajectoryPoints & traj_points, const TrajectoryProcessorData & input);
 
   void update_params(const TrajectoryProcessorParams & params) override;
 
 protected:
+  autoware_planning_msgs::msg::LaneletRoute::_uuid_type previous_route_uuid_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
