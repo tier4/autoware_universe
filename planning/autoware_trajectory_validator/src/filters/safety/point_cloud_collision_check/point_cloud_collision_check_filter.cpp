@@ -73,7 +73,7 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
   const auto stop_obstacles = calc_obstacle_stop(candidate_trajectory.points);
 
   std::vector<MetricReport> metrics{
-    autoware_trajectory_validator::build<MetricReport>()
+    autoware_internal_planning_msgs::build<MetricReport>()
       .validator_name(get_name())
       .validator_category(category())
       .metric_name("point_cloud_stop_feasibility")
