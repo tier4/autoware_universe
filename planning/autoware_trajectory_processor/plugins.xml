@@ -1,6 +1,14 @@
 <?xml version="1.0"?>
 <class_libraries>
   <library path="autoware_trajectory_optimizer_plugins">
+    <class type="autoware::trajectory_processor::plugin::TrajectoryTimeSequenceRawOptimizer"
+          base_class_type="autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase">
+      <description>
+        Pose-only time-sequence raw optimizer. Shifts overlapping poses off road borders, then
+        tracks the time-indexed position sequence with an independent acados kinematic bicycle OCP.
+        Does not use incoming trajectory speed as a reference.
+      </description>
+    </class>
     <class type="autoware::trajectory_processor::plugin::TrajectoryPointFixer"
           base_class_type="autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase">
       <description>

@@ -36,6 +36,8 @@ using autoware::trajectory_processor::plugin::ProcessingResult;
 using autoware::trajectory_processor::plugin::TrajectoryPoints;
 using autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase;
 using ModifierParams = trajectory_processor_params::Params;
+using autoware::traffic_light_compliance_checker::Violation;
+using autoware::traffic_light_compliance_checker::ViolationType;
 using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using visualization_msgs::msg::MarkerArray;
@@ -62,7 +64,7 @@ private:
   ModifierParams::TrafficLightStop params_;
   ModifierParams::StoppingConstraints stopping_params_;
 
-  std::optional<autoware::traffic_light_compliance_checker::Violation> nearest_violation_;
+  std::optional<Violation> nearest_violation_;
 
   std::unique_ptr<autoware::traffic_light_compliance_checker::TrafficLightComplianceChecker>
     checker_;
@@ -73,6 +75,7 @@ private:
     size_t violations_count = 0;
     double nearest_violation_arc_length = 0.0;
     double stop_point_arc_length = 0.0;
+    ViolationType nearest_violation_type;
   } debug_data_;
 
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;

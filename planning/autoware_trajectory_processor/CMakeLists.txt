@@ -31,6 +31,8 @@ endif()
 # Temporal kinematic-bicycle acados solver: Python codegen at build time (add_custom_command).
 # See src/acados_mpt/CMakeLists.txt — target acados_interface_temporal.
 add_subdirectory(src/acados_mpt)
+# Pose-only time-sequence acados solver (independent of Temporal MPT).
+add_subdirectory(src/acados_time_sequence_raw)
 pluginlib_export_plugin_description_file(${PROJECT_NAME} plugins.xml)
 
 generate_parameter_library(trajectory_processor_param
@@ -72,6 +74,7 @@ ament_auto_add_library(autoware_trajectory_optimizer_plugins SHARED
   src/trajectory_optimizer_plugins/trajectory_kinematic_feasibility_enforcer.cpp
   src/trajectory_optimizer_plugins/trajectory_mpt_optimizer.cpp
   src/trajectory_optimizer_plugins/trajectory_temporal_mpt_optimizer.cpp
+  src/trajectory_optimizer_plugins/trajectory_time_sequence_raw_optimizer.cpp
   src/trajectory_optimizer_plugins/trajectory_point_fixer.cpp
   src/trajectory_optimizer_plugins/trajectory_qp_smoother.cpp
   src/trajectory_optimizer_plugins/trajectory_spline_smoother.cpp
@@ -82,10 +85,13 @@ ament_auto_add_library(autoware_trajectory_optimizer_plugins SHARED
   src/trajectory_optimizer_plugins/plugin_utils/trajectory_point_fixer_utils.cpp
   src/trajectory_optimizer_plugins/plugin_utils/trajectory_spline_smoother_utils.cpp
   src/trajectory_optimizer_plugins/plugin_utils/trajectory_velocity_optimizer_utils.cpp
+  src/trajectory_optimizer_plugins/plugin_utils/time_sequence_trajectory_optimizer.cpp
+  src/trajectory_optimizer_plugins/plugin_utils/road_border_avoidance.cpp
 )
 target_link_libraries(
   autoware_trajectory_optimizer_plugins
   acados_interface_temporal
+  acados_interface_time_seq
   autoware_trajectory_processor_utils
   tf2_geometry_msgs::tf2_geometry_msgs
   trajectory_processor_param
@@ -128,7 +134,7 @@ unset(_traj_opt_qpoases_lib_path CACHE)
 # Ensure pluginlib/dlopen can resolve acados runtime deps (e.g. libqpOASES_e)
 # in container environments where LD_LIBRARY_PATH is restricted.
 if(_acados_lib_dir AND EXISTS "${_acados_lib_dir}")
-  foreach(_target acados_interface_temporal autoware_trajectory_optimizer_plugins)
+  foreach(_target acados_interface_temporal acados_interface_time_seq autoware_trajectory_optimizer_plugins)
     set_property(TARGET ${_target} APPEND PROPERTY BUILD_RPATH "${_acados_lib_dir}")
     set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH "${_acados_lib_dir}")
   endforeach()
@@ -160,10 +166,11 @@ if(BUILD_TESTING)
     autoware_trajectory_optimizer_plugins
     autoware_trajectory_modifier_plugins
     autoware_trajectory_modifier_utils
+    acados_interface_time_seq
   )
 endif()
 
-install(TARGETS acados_interface_temporal
+install(TARGETS acados_interface_temporal acados_interface_time_seq
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -188,7 +195,7 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-ament_export_libraries(acados_interface_temporal)
+ament_export_libraries(acados_interface_temporal acados_interface_time_seq)
 
 ament_auto_package(
   INSTALL_TO_SHARE
