@@ -62,6 +62,7 @@ public:
 
   std::string name() const override { return "camera"; }
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
+  void bind_stream(cudaStream_t stream) override { stream_ = stream; }
   bool collect(
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs,
     std::string & error) override;
@@ -121,7 +122,10 @@ private:
   autoware::cuda_utils::CudaUniquePtr<uint8_t[]> d_input_;
   autoware::cuda_utils::CudaUniquePtr<uint8_t[]> d_resized_;
   autoware::cuda_utils::CudaUniquePtr<float[]> d_output_;
+  //! The node's tick stream when one was bound, else this provider's own (then it is the
+  //! provider's to destroy and to drain before handing its tensor over).
   cudaStream_t stream_{nullptr};
+  bool owns_stream_{false};
 
   // Static transforms are looked up once and cached.
   std::vector<std::optional<std::array<float, 16>>> cached_extrinsics_;

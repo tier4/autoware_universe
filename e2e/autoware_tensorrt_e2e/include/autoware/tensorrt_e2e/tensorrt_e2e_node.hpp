@@ -43,6 +43,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::tensorrt_e2e
@@ -89,6 +90,17 @@ public:
   explicit TensorrtE2eNode(const rclcpp::NodeOptions & options);
 
 private:
+  //! Stage durations of one tick, captured at each stage boundary.
+  struct TickTiming
+  {
+    double collect_ms{0.0};
+    //! Each provider's share of collect_ms, in collection order.
+    std::vector<std::pair<std::string, double>> provider_collect_ms;
+    double inference_ms{0.0};
+    double postprocess_ms{0.0};
+    double total_ms{0.0};
+  };
+
   void set_up_params();
 
   /**
@@ -99,8 +111,12 @@ private:
   void initialize_pipeline();
   void create_providers();
 
-  //! One pass: collect, infer, publish, driven by the pacing provider's input.
+  //! One pass: collect, infer, publish, driven by the pacing provider's input; then
+  //! whatever the providers still owe once the trajectory is out.
   void run_once();
+  //! The pass itself, up to and including the trajectory. Fills `timing` as it goes and
+  //! returns early when an input is missing.
+  void run_tick(TickTiming & timing);
 
   /**
    * @brief Build the per-tick ego frame from the latest odometry/acceleration.
@@ -117,14 +133,6 @@ private:
   /// The diffusion planner's `valid_*_count` diagnostics, for the context tensors present.
   void add_input_diagnostics(const TensorMap & inputs);
   void publish_planning_factor(const Trajectory & trajectory);
-  //! Stage durations of one tick, captured at each stage boundary.
-  struct TickTiming
-  {
-    double collect_ms{0.0};
-    double inference_ms{0.0};
-    double postprocess_ms{0.0};
-    double total_ms{0.0};
-  };
   /// The bevfusion debug topic set: cyclic time, pipeline latency, per-stage processing time.
   void publish_debug_timing(
     const rclcpp::Time & now, const EgoFrame & ego, const TickTiming & timing);
@@ -140,6 +148,10 @@ private:
   std::unique_ptr<InferenceEngine> engine_;
   std::vector<std::unique_ptr<InputProviderInterface>> providers_;
   ContextInputProvider * context_provider_{nullptr};  //!< Borrowed from providers_.
+  //! The provider whose sensor drives the pass (borrowed from providers_). Its GPU work
+  //! is already in flight when the pass starts, so it is collected last: the others'
+  //! CPU work overlaps it instead of waiting behind it.
+  InputProviderInterface * pacing_provider_{nullptr};
   std::unique_ptr<TrajectoryPostprocessor> postprocessor_;
   autoware::diffusion_planner::utils::NormalizationMap normalization_map_;
   bool pipeline_ready_{false};

@@ -101,6 +101,9 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
       RCLCPP_INFO(
         get_logger(), "Paced by '%s': planning runs when its input arrives",
         provider->name().c_str());
+      if (!pacing_provider_) {
+        pacing_provider_ = provider.get();
+      }
       paced = true;
     }
   }
@@ -193,6 +196,12 @@ void TensorrtE2eNode::initialize_pipeline()
   }
 
   create_providers();
+  // One stream for the whole tick. A provider's GPU work, the network, and the output copy
+  // are ordered on it, so nothing in the middle of a pass has to wait for the device: the
+  // single host synchronization is the one that waits for the outputs.
+  for (const auto & provider : providers_) {
+    provider->bind_stream(engine_->stream());
+  }
 
   // Match provider claims against the engine input manifest.
   std::map<std::string, std::string> claimed_by;  // tensor name -> provider name
@@ -301,6 +310,22 @@ std::optional<std::string> TensorrtE2eNode::find_invalid_tensor(const TensorMap 
 
 void TensorrtE2eNode::run_once()
 {
+  TickTiming timing;
+  run_tick(timing);
+  // Whatever a provider still owes runs now, whether the pass published or gave up:
+  // a detection head's decode, say. It is off the trajectory's path on purpose, so the
+  // consumer of the trajectory never waits for a message it does not read. It does
+  // occupy this callback until it is done, which is why it is measured separately.
+  stop_watch_.tic("finish");
+  for (const auto & provider : providers_) {
+    provider->finish_tick();
+  }
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "debug/processing_time/finish_ms", stop_watch_.toc("finish"));
+}
+
+void TensorrtE2eNode::run_tick(TickTiming & timing)
+{
   stop_watch_.tic("processing_time");
   diagnostics_->clear();
   const rclcpp::Time now = get_clock()->now();
@@ -329,13 +354,28 @@ void TensorrtE2eNode::run_once()
     return;
   }
 
-  // Collect all model inputs.
-  TickTiming timing;
+  // Collect all model inputs. The pacing provider goes last: its sensor callback already
+  // queued its GPU work before this pass began, so the other providers' CPU work (map
+  // and route tensors, mostly) overlaps that instead of waiting behind it, and the pass
+  // costs the longer of the two rather than their sum.
   stop_watch_.tic("collect");
   TensorMap inputs;
+  std::vector<InputProviderInterface *> collection_order;
+  collection_order.reserve(providers_.size());
   for (const auto & provider : providers_) {
+    if (provider.get() != pacing_provider_) {
+      collection_order.push_back(provider.get());
+    }
+  }
+  if (pacing_provider_) {
+    collection_order.push_back(pacing_provider_);
+  }
+  for (auto * provider : collection_order) {
+    stop_watch_.tic("provider");
     std::string error;
-    if (!provider->collect(*ego, now, inputs, error)) {
+    const bool collected = provider->collect(*ego, now, inputs, error);
+    timing.provider_collect_ms.emplace_back(provider->name(), stop_watch_.toc("provider"));
+    if (!collected) {
       RCLCPP_WARN_STREAM_THROTTLE(
         get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
         "Input collection failed [" << provider->name() << "]: " << error);
@@ -478,6 +518,9 @@ void TensorrtE2eNode::publish_debug_timing(
     "debug/pipeline_latency_ms", (now - input_stamp).seconds() * 1e3);
   debug_publisher_->publish<Float64Stamped>("debug/processing_time/total_ms", timing.total_ms);
   debug_publisher_->publish<Float64Stamped>("debug/processing_time/collect_ms", timing.collect_ms);
+  for (const auto & [provider, ms] : timing.provider_collect_ms) {
+    debug_publisher_->publish<Float64Stamped>("debug/processing_time/collect/" + provider + "_ms", ms);
+  }
   debug_publisher_->publish<Float64Stamped>(
     "debug/processing_time/inference_ms", timing.inference_ms);
   debug_publisher_->publish<Float64Stamped>(

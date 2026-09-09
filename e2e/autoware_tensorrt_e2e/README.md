@@ -105,6 +105,8 @@ missing traffic-signal message leaves lanes marked as having no signal.
 | `/planning/planning_factors/tensorrt_e2e` | `autoware_internal_planning_msgs/msg/PlanningFactorArray` | Stop and slow-down factors read off the trajectory, as `autoware_diffusion_planner` reports them |
 | `~/debug/processing_time_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | Per-tick processing time |
 | `~/debug/cyclic_time_ms`, `~/debug/pipeline_latency_ms`, `~/debug/processing_time/{total,collect,inference,postprocess}_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | The `autoware_bevfusion` debug set |
+| `~/debug/processing_time/collect/<provider>_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | Each provider's share of `collect_ms` (`context`, `bev_feature`, ...) |
+| `~/debug/processing_time/finish_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | Provider work done after the trajectory is out (`finish_tick()`); not part of `total_ms` |
 | `/diagnostics` | | `inference_status` |
 
 The `inference_status` diagnostic carries the readiness state, the reason a tick was skipped,

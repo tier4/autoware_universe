@@ -163,11 +163,23 @@ the pass from its own subscription, the way `autoware_bevfusion` is driven by th
 cloud. There is no timer. A pass:
 
 1. takes the latest ego state;
-2. collects all provider tensors;
+2. collects all provider tensors -- the pacing provider last, because its sensor callback
+   already queued its GPU work before the pass began, so the other providers' CPU work
+   overlaps it rather than waiting behind it;
 3. applies optional normalization and rejects NaN/Inf host values;
 4. runs TensorRT inference;
 5. decodes and publishes the trajectory;
-6. publishes processing time and diagnostics.
+6. publishes processing time and diagnostics;
+7. calls every provider's `finish_tick()`, for work that is not on the trajectory's path
+   (a detection head's decode, say), so a consumer of the trajectory never waits for a
+   message it does not read. This step runs after a pass that gave up, too.
+
+The whole pass runs on one CUDA stream, the engine's, handed to each provider through
+`bind_stream()` before it sizes its buffers. A provider's GPU work, the network, and the
+output copy are ordered on it, so nothing in the middle of a pass drains the device: the
+single host synchronization is the engine's wait for its outputs. A device-resident tensor
+produced on that stream is read by the network where it is, without a copy; host tensors are
+staged into one pinned block and cross the bus in one copy per contiguous run.
 
 Missing sensor data is reported as a warning and skips that pass. Initialization errors
 disable inference and publish an error diagnostic. A pass taking longer than the interval
@@ -189,7 +201,9 @@ contracts, no C++ changes are required.
 
 Implement `InputProviderInterface`, add the provider to the node's provider factory in the
 downstream branch, and document its tensor contract. The provider can own its subscriptions,
-CUDA preprocessing, feature extractor, and model-specific deployment parameters.
+CUDA preprocessing, feature extractor, and model-specific deployment parameters. Submit GPU
+work on the stream from `bind_stream()` and return device tensors without synchronizing; put
+anything the trajectory does not need in `finish_tick()`.
 
 ### New output representation
 

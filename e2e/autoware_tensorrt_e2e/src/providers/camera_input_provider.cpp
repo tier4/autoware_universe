@@ -85,7 +85,7 @@ CameraInputProvider::CameraInputProvider(rclcpp::Node & node, tf2_ros::Buffer & 
 
 CameraInputProvider::~CameraInputProvider()
 {
-  if (stream_) {
+  if (owns_stream_) {
     cudaStreamDestroy(stream_);
   }
 }
@@ -170,7 +170,10 @@ void CameraInputProvider::allocate_gpu_buffers()
   d_input_ = autoware::cuda_utils::make_unique<uint8_t[]>(input_bytes);
   d_resized_ = autoware::cuda_utils::make_unique<uint8_t[]>(resized_bytes);
   d_output_ = autoware::cuda_utils::make_unique<float[]>(output_floats);
-  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+  if (!stream_) {
+    CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+    owns_stream_ = true;
+  }
 }
 
 void CameraInputProvider::create_subscriptions()
@@ -285,7 +288,11 @@ bool CameraInputProvider::build_images_tensor(
     d_input_.get(), d_resized_.get(), preprocess_config_, stream_));
   CHECK_CUDA_ERROR(launch_camera_normalize_kernel(
     d_resized_.get(), d_output_.get(), preprocess_config_, stream_));
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  // On the node's stream the network reads d_output_ in order; only a stream of our own
+  // has to be drained before the tensor is handed over.
+  if (owns_stream_) {
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  }
 
   inputs[images_tensor_name_] = Tensor::from_device(images_shape_, d_output_.get());
   return true;
