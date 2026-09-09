@@ -239,19 +239,24 @@ sequence or the previous command.
 
 ### 7.2 Modeled longitudinal jerk and steering rate
 
-Using the configured first-order actuator time constants:
+The dynamics computes these rates from realized state increments after applying delay queues,
+actuator lag, steering-rate limiting, and state saturation:
 
 ```text
-j_long = (u_a - a) / max(accel_time_constant, 1e-4)
-delta_rate_raw = (u_delta - delta) / max(steer_time_constant, 1e-4)
-delta_rate = clamp(delta_rate_raw, -max_steer_rate, max_steer_rate)
+j_long     = (a_next - a_pre) / dt
+delta_rate = (delta_next - delta_pre) / dt
 
 L_longitudinal_jerk = longitudinal_jerk_coeff * j_long^2
 L_steering_rate     = steer_rate_coeff * delta_rate^2
 ```
 
-Here `a` and `delta` come from the post-step output. See the actuator-delay caveat in the review
-findings.
+`comfortTerms()` reads `LONGITUDINAL_JERK` and `STEERING_RATE` from the transition output. The same
+physical longitudinal jerk feeds the optional jerk-limit cost. A command merely appended to a delay
+queue has no physical jerk cost until it changes the actuator state.
+
+Issued-command changes are regularized independently using successive issued commands divided by
+`dt`. These command-change terms are omitted at stage zero, where the previous command is not
+established by the horizon; zero-filled history is not interpreted as a real prior command.
 
 At the first rollout stage only, a separate transient cost compares the issued steering command
 with the measured pre-rollout steering state:
@@ -277,8 +282,10 @@ L_lateral_acceleration = lateral_acceleration_coeff * a_lateral^2
 L_lateral_jerk         = lateral_jerk_coeff * j_lateral^2
 ```
 
-The steering rate used here is the same rate-limited value used by the steering-rate cost and the
-bicycle dynamics.
+Lateral acceleration uses post-step velocity and steering. Lateral jerk is the inertial lateral
+component in vehicle coordinates: its formula above uses pre-step velocity/curvature and realized
+`delta_rate` and `(v_next - v_pre) / dt` for acceleration. The coefficient three includes the rotating
+frame contribution; the scalar derivative of lateral acceleration alone would use two.
 
 ## 8. Kinematic-limit costs
 
@@ -520,15 +527,14 @@ distance and no barrier cost. `pointInPolygon()` exists as a geometry helper but
 validator also does not check drivable-area containment. If drivable containment is required, this
 should become a true signed distance or an explicit polygon/occupancy check.
 
-### 14.2 Actuator-delay handling is inconsistent in comfort costs
+### 14.2 Actuator-delay comfort mismatch — resolved (L7)
 
-The dynamics applies delayed acceleration and steering commands from its FIFO, but `comfortTerms()`
-uses the newly issued `u_a` and `u_delta` directly. It also uses the post-step acceleration and
-steering states. With input delay enabled, the reported `j_long`, `delta_rate`, and derived lateral
-jerk are therefore not the actuator derivatives that produced that step. Even without delay, they
-represent the derivative at the post-step state under a repeated current command rather than the
-explicit-Euler derivative used during the step. This can make comfort tuning disagree with plant
-motion, especially during command transitions.
+The earlier command/post-step-state proxy has been replaced by physical transition outputs, as
+described in section 7.2. Both host and device cost paths consume the same rates, including jerk-limit
+evaluation. `test_costs.cu` covers lag, delays, saturation, and the inertial lateral-jerk convention.
+The focused queued-command regression and extended GPU replay additionally check that command
+changes do not trigger physical jerk-limit costs before the delay expires. These latest test changes
+are pending execution.
 
 ### 14.3 `overlimit_coeff` is not connected to the generated plugin parameters
 
@@ -552,12 +558,17 @@ a barrier calibration target and kinematic-cost cap, while hard collisions are h
 optimization. Renaming it or clarifying the generated parameter description would reduce tuning
 errors.
 
-### 14.6 Spatial projection assumes locally continuous progress
+### 14.6 Spatial projection uses the globally closest finite segment
 
-The GPU uses a closest-segment warm start and local hill-climb after the first stage. This is fast
-for an ordinary, forward-moving corridor, but a self-intersecting path or a rollout that jumps to a
-distant branch can converge to a local rather than global closest segment. That affects every
-spatial cost and the hard lateral validation.
+Host and GPU projection now examine every segment. Texture seeds and previous-query hints affect
+evaluation order only; equal computed distances select the lowest segment index. The selected
+segment drives lateral distance, yaw, progress, reference velocity and terminal path costs. Signed
+lateral offset and endpoint-extension behavior are unchanged. This objective can switch branches
+at crossings; it does not impose continuity of route progress.
+
+This resolves the local-search discrepancy in K7 in source, with validation pending. Query work is
+O(n), up to 255 corridor segments. Measure the existing performance cases and the new 256-point
+hairpin case before adding acceleration; see [K7_VALIDATION.md](K7_VALIDATION.md).
 
 ### 14.7 Reference velocity is assumed finite
 
