@@ -10,7 +10,9 @@
           "type": "array",
           "description": "List of trajectory modifier plugins to load",
           "default": [
+            "autoware::trajectory_modifier::plugin::ModelPlanningFactorID",
             "autoware::trajectory_modifier::plugin::ObstacleStop",
+            "autoware::trajectory_modifier::plugin::TrafficLightStop",
             "autoware::trajectory_modifier::plugin::StopPointFixer",
             "autoware::trajectory_modifier::plugin::VelocityModifier"
           ],
@@ -31,6 +33,11 @@
         "use_velocity_modifier": {
           "type": "boolean",
           "description": "Enable the velocity modifier plugin",
+          "default": true
+        },
+        "use_model_planning_factor_id": {
+          "type": "boolean",
+          "description": "Enable ModelPlanningFactorID stop/slowdown planning-factor labeling",
           "default": true
         },
         "trajectory_time_step": {
@@ -372,6 +379,42 @@
               },
               "required": [],
               "additionalProperties": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "model_planning_factor_id": {
+          "type": "object",
+          "description": "Inspect the planner trajectory and publish stop/slowdown factors as module planning_model",
+          "properties": {
+            "enable_stop": {
+              "type": "boolean",
+              "description": "Publish STOP planning factors inferred from the planner trajectory",
+              "default": true
+            },
+            "enable_slowdown": {
+              "type": "boolean",
+              "description": "Publish SLOW_DOWN planning factors inferred from the planner trajectory",
+              "default": false
+            },
+            "stop_velocity_threshold": {
+              "type": "number",
+              "description": "Velocity at or below which a trajectory point is treated as stopped [m/s]",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "stop_keep_duration_threshold": {
+              "type": "number",
+              "description": "Minimum duration the trajectory must remain stopped to accept the stop [s]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "slowdown_accel_threshold": {
+              "type": "number",
+              "description": "Acceleration below which a slowdown section starts [m/s^2]",
+              "default": -0.3,
+              "maximum": 0.0
             }
           },
           "required": [],
