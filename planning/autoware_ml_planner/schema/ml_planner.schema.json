@@ -128,6 +128,32 @@
               "default": 2.5,
               "description": "Terminal state weight = scale * stage weight"
             },
+            "goal": {
+              "type": "object",
+              "description": "Soft terminal penalty settings near the route goal",
+              "properties": {
+                "weight_longitudinal": {
+                  "type": "number",
+                  "default": 5.0
+                },
+                "weight_lateral": {
+                  "type": "number",
+                  "default": 5.0
+                },
+                "weight_yaw": {
+                  "type": "number",
+                  "default": 0.5
+                },
+                "weight_velocity": {
+                  "type": "number",
+                  "default": 0.1
+                },
+                "snap_distance_m": {
+                  "type": "number",
+                  "default": 1.0
+                }
+              }
+            },
             "min_velocity_mps": {
               "type": "number",
               "default": 0.0,

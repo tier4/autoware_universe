@@ -210,6 +210,16 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.weight_steering_rate", 10.0);
   opt.terminal_weight_scale =
     this->declare_parameter<double>("trajectory_optimization.terminal_weight_scale", 2.5);
+  opt.goal.weight_longitudinal =
+    this->declare_parameter<double>("trajectory_optimization.goal.weight_longitudinal", 5.0);
+  opt.goal.weight_lateral =
+    this->declare_parameter<double>("trajectory_optimization.goal.weight_lateral", 5.0);
+  opt.goal.weight_yaw =
+    this->declare_parameter<double>("trajectory_optimization.goal.weight_yaw", 0.5);
+  opt.goal.weight_velocity =
+    this->declare_parameter<double>("trajectory_optimization.goal.weight_velocity", 0.1);
+  opt.goal.snap_distance_m =
+    this->declare_parameter<double>("trajectory_optimization.goal.snap_distance_m", 1.0);
   opt.min_velocity_mps =
     this->declare_parameter<double>("trajectory_optimization.min_velocity_mps", 0.0);
   opt.max_velocity_mps =
@@ -331,6 +341,15 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "trajectory_optimization.terminal_weight_scale", opt.terminal_weight_scale);
   update_param<double>(
+    parameters, "trajectory_optimization.goal.weight_longitudinal", opt.goal.weight_longitudinal);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.weight_lateral", opt.goal.weight_lateral);
+  update_param<double>(parameters, "trajectory_optimization.goal.weight_yaw", opt.goal.weight_yaw);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.weight_velocity", opt.goal.weight_velocity);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.snap_distance_m", opt.goal.snap_distance_m);
+  update_param<double>(
     parameters, "trajectory_optimization.min_velocity_mps", opt.min_velocity_mps);
   update_param<double>(
     parameters, "trajectory_optimization.max_velocity_mps", opt.max_velocity_mps);
@@ -437,15 +456,19 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     return failure("trajectory optimization is not available in this build");
   }
 #endif
-  const std::array<double, 8> weights{
+  const std::array<double, 12> weights{
     opt.weight_longitudinal,  opt.weight_lateral,        opt.weight_yaw,
     opt.weight_velocity,      opt.weight_steering_angle, opt.weight_acceleration,
-    opt.weight_steering_rate, opt.terminal_weight_scale};
+    opt.weight_steering_rate, opt.terminal_weight_scale, opt.goal.weight_longitudinal,
+    opt.goal.weight_lateral,  opt.goal.weight_yaw,       opt.goal.weight_velocity};
   if (std::any_of(weights.begin(), weights.end(), [](const double value) { return value < 0.0; })) {
     return failure("trajectory optimization weights must be non-negative");
   }
   if (opt.min_velocity_mps > opt.max_velocity_mps) {
     return failure("trajectory_optimization.min_velocity_mps must not exceed max_velocity_mps");
+  }
+  if (opt.goal.snap_distance_m < 0.0) {
+    return failure("trajectory_optimization.goal.snap_distance_m must be non-negative");
   }
   if (opt.min_acceleration_mps2 > opt.max_acceleration_mps2) {
     return failure(

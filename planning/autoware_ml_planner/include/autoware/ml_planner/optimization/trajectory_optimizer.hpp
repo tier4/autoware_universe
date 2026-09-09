@@ -22,6 +22,7 @@
 #include <rclcpp/time.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <memory>
@@ -69,19 +70,23 @@ public:
    */
   OptimizationResult optimize(
     const Trajectory & raw_trajectory, const Odometry & ego_odometry,
-    double current_steering_angle_rad, size_t batch_index);
+    double current_steering_angle_rad, size_t batch_index,
+    const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
 
 private:
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;
   double max_steering_angle_rad_;
   std::unique_ptr<AcadosSolverWrapper> solver_;
+  std::optional<geometry_msgs::msg::Pose> observed_goal_pose_;
+  std::optional<geometry_msgs::msg::Pose> latched_goal_pose_;
 
   // Previous solutions in map frame, per candidate, used as warm starts.
   struct PreviousSolution
   {
     SolverSolution solution;
     rclcpp::Time stamp;
+    bool goal_active{false};
   };
   std::vector<std::optional<PreviousSolution>> previous_solutions_;
 };
