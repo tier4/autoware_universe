@@ -72,10 +72,82 @@ struct FirstOrderDubinsMppiControl
   float steer_cmd{0.0F};
 };
 
+enum class FirstOrderDubinsMppiNominalSeedSource : std::uint8_t {
+  diffusion_reference,
+  previous_optimized,
+  temporal_mpt,
+  forced
+};
+
+enum class FirstOrderDubinsMppiNominalResetReason : std::uint8_t {
+  none,
+  unavailable,
+  forced_cold_start,
+  stopped,
+  invalid_timestamp,
+  expired,
+  prediction_error,
+  reference_discontinuity,
+  rejected,
+  skipped,
+  configuration_changed,
+  externally_invalidated
+};
+
+inline const char * to_string(const FirstOrderDubinsMppiNominalSeedSource source)
+{
+  switch (source) {
+    case FirstOrderDubinsMppiNominalSeedSource::diffusion_reference:
+      return "diffusion_reference";
+    case FirstOrderDubinsMppiNominalSeedSource::previous_optimized:
+      return "previous_optimized";
+    case FirstOrderDubinsMppiNominalSeedSource::temporal_mpt:
+      return "temporal_mpt";
+    case FirstOrderDubinsMppiNominalSeedSource::forced:
+      return "forced";
+  }
+  return "unknown";
+}
+
+inline const char * to_string(const FirstOrderDubinsMppiNominalResetReason reason)
+{
+  switch (reason) {
+    case FirstOrderDubinsMppiNominalResetReason::none:
+      return "none";
+    case FirstOrderDubinsMppiNominalResetReason::unavailable:
+      return "unavailable";
+    case FirstOrderDubinsMppiNominalResetReason::forced_cold_start:
+      return "forced_cold_start";
+    case FirstOrderDubinsMppiNominalResetReason::stopped:
+      return "stopped";
+    case FirstOrderDubinsMppiNominalResetReason::invalid_timestamp:
+      return "invalid_timestamp";
+    case FirstOrderDubinsMppiNominalResetReason::expired:
+      return "expired";
+    case FirstOrderDubinsMppiNominalResetReason::prediction_error:
+      return "prediction_error";
+    case FirstOrderDubinsMppiNominalResetReason::reference_discontinuity:
+      return "reference_discontinuity";
+    case FirstOrderDubinsMppiNominalResetReason::rejected:
+      return "rejected";
+    case FirstOrderDubinsMppiNominalResetReason::skipped:
+      return "skipped";
+    case FirstOrderDubinsMppiNominalResetReason::configuration_changed:
+      return "configuration_changed";
+    case FirstOrderDubinsMppiNominalResetReason::externally_invalidated:
+      return "externally_invalidated";
+  }
+  return "unknown";
+}
+
 struct FirstOrderDubinsMppiPostprocessingContext
 {
-  /** u[0] was shifted from the previous accepted horizon and locked during GPU optimization. */
-  bool first_command_is_shifted{false};
+  FirstOrderDubinsMppiNominalSeedSource seed_source{
+    FirstOrderDubinsMppiNominalSeedSource::diffusion_reference};
+  /** Number of samples removed from a previous accepted horizon. */
+  int shift_count{0};
+  /** True only when optimized steering u[0] still equals its already-filtered shifted seed. */
+  bool preserve_first_steering_command{false};
 };
 
 /** Optional host-side output conditioning supplied by the interface caller. */
@@ -312,6 +384,11 @@ struct FirstOrderDubinsMppiDebug
   FirstOrderDubinsMppiAppliedPlantState applied_plant;
   /** Open-loop delay-bicycle replay vs measured ego since the previous MPPI cycle. */
   FirstOrderDubinsMppiPredictionAccuracy prediction_accuracy;
+  FirstOrderDubinsMppiNominalSeedSource nominal_seed_source{
+    FirstOrderDubinsMppiNominalSeedSource::diffusion_reference};
+  FirstOrderDubinsMppiNominalResetReason nominal_reset_reason{
+    FirstOrderDubinsMppiNominalResetReason::unavailable};
+  int nominal_shift_count{0};
 };
 
 struct FirstOrderDubinsMppiOptimizationResult
@@ -370,9 +447,9 @@ public:
 
   /**
    * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
-   * @param use_last_control_as_nominal When true and a previous optimized control sequence
-   *        exists and ego is not stopped (|v| >= 0.05 m/s), seed u_nom by shifting that
-   *        sequence (warm start). From a stop, always reseed from the diffusion reference.
+   * @param use_last_control_as_nominal When true, reuse a recent applied optimized control
+   *        sequence while its plant replay and shifted reference remain continuous. Otherwise
+   *        seed from the diffusion reference.
    */
   void setAblationOptions(
     const bool ignore_obstacles, const bool ignore_road_borders, const bool ignore_drivable_area,
@@ -454,8 +531,9 @@ public:
    *        external acceleration and jerk bounds.
    * @param control_postprocessor Optional caller-owned conditioning applied to the optimized
    *        control horizon before state recomputation and applied-control bookkeeping. The second
-   *        callback argument identifies a first command shifted from the accepted horizon, so an
-   *        output filter can avoid filtering that command twice. It is false for fresh seeds.
+   *        callback argument reports the nominal source and shift count. Its steering-preservation
+   *        flag is true only when optimized u[0] still equals the already-filtered shifted steering
+   *        seed, so an output filter can avoid filtering it twice.
    * @param defer_commit Require commitPendingTrajectory() before recording candidate commands
    *        in the accepted execution history; use this when the caller can reject or shadow output.
    * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
@@ -478,6 +556,9 @@ public:
    */
   void commitPendingTrajectory();
   void discardPendingTrajectory() noexcept;
+
+  /** Prevent reuse of an accepted horizon after execution switches to another trajectory. */
+  void invalidateNominalWarmStart() noexcept;
 
 private:
   struct Impl;

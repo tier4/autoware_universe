@@ -130,6 +130,24 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.min_optimization_length = static_cast<float>(params.min_optimization_length);
   output.min_trajectory_progress_m = static_cast<float>(params.min_trajectory_progress_m);
   output.use_last_control_as_nominal = params.use_last_control_as_nominal;
+  output.last_control_warm_start_max_age_s =
+    static_cast<float>(params.last_control_warm_start_max_age_s);
+  output.last_control_warm_start_max_position_error_m =
+    static_cast<float>(params.last_control_warm_start_max_position_error_m);
+  output.last_control_warm_start_max_yaw_error_rad =
+    static_cast<float>(params.last_control_warm_start_max_yaw_error_rad);
+  output.last_control_warm_start_max_velocity_error_mps =
+    static_cast<float>(params.last_control_warm_start_max_velocity_error_mps);
+  output.last_control_warm_start_max_reference_position_error_m =
+    static_cast<float>(params.last_control_warm_start_max_reference_position_error_m);
+  output.last_control_warm_start_max_reference_yaw_error_rad =
+    static_cast<float>(params.last_control_warm_start_max_reference_yaw_error_rad);
+  output.last_control_warm_start_max_reference_velocity_error_mps =
+    static_cast<float>(params.last_control_warm_start_max_reference_velocity_error_mps);
+  output.last_control_warm_start_stop_enter_velocity_mps =
+    static_cast<float>(params.last_control_warm_start_stop_enter_velocity_mps);
+  output.last_control_warm_start_stop_exit_velocity_mps =
+    static_cast<float>(params.last_control_warm_start_stop_exit_velocity_mps);
   output.use_temporal_mpt_as_nominal = params.use_temporal_mpt_as_nominal;
   output.prevent_reverse_velocity = params.prevent_reverse_velocity;
   output.enable_input_delay_compensation = params.enable_input_delay_compensation;
@@ -322,6 +340,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   debug_pending_ = false;
 
   if (!params_.enabled) {
+    if (optimizer_) optimizer_->invalidateNominalWarmStart();
     steering_filter_.reset();
     publish_enabled(false);
     clear_markers(data.candidate_header);
@@ -329,6 +348,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   }
 
   if (!data.current_odometry || !data.tracked_objects || !data.route || !data.lanelet_map_bin) {
+    if (optimizer_) optimizer_->invalidateNominalWarmStart();
     steering_filter_.reset();
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
     publish_enabled(false);
@@ -404,7 +424,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
           steering_commands.push_back(control.steer_cmd);
         }
         candidate_steering_filter.filter(
-          steering_commands, measured_steering, context.first_command_is_shifted);
+          steering_commands, measured_steering, context.preserve_first_steering_command);
         for (std::size_t index = 0; index < controls.size(); ++index) {
           controls[index].steer_cmd = steering_commands[index];
         }
@@ -477,7 +497,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     }
     return !result.debug.was_rejected ? ProcessingResult::Unchanged : ProcessingResult::Modified;
   } catch (const std::exception & error) {
-    if (optimizer_) optimizer_->discardPendingTrajectory();
+    if (optimizer_) optimizer_->invalidateNominalWarmStart();
     steering_filter_.reset();
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     publish_enabled(false);
@@ -615,6 +635,11 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("mppi/max_rollout_cost", debug.max_rollout_cost);
   cost_diagnostics_->add_key_value("mppi/normalization_upper_cost", debug.normalization_upper_cost);
   cost_diagnostics_->add_key_value("mppi/unsafe_rollout_fraction", debug.unsafe_rollout_fraction);
+  cost_diagnostics_->add_key_value(
+    "nominal/seed_source", std::string{to_string(debug.nominal_seed_source)});
+  cost_diagnostics_->add_key_value(
+    "nominal/reset_reason", std::string{to_string(debug.nominal_reset_reason)});
+  cost_diagnostics_->add_key_value("nominal/shift_count", debug.nominal_shift_count);
   cost_diagnostics_->add_key_value("mppi/eligible_rollout_count", debug.eligible_rollout_count);
   cost_diagnostics_->add_key_value(
     "mppi/minimum_cost_rollout_count", debug.minimum_cost_rollout_count);
