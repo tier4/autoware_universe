@@ -38,11 +38,12 @@ defaults to `0.5`, retaining smoothing through turns, turn exits, and reversals;
 explicitly allows unfiltered transitions once the preceding steering reaches the turn threshold.
 The filter is not a hard steering-rate limiter.
 
-When the nominal sequence is shifted from the previous accepted MPPI output, its first command
-has already been filtered. With valid filter history, the host preserves that command exactly and
-filters the remaining horizon starting from it. Fresh seeds filter the entire horizon. The MPPI
-interface passes this distinction through `FirstOrderDubinsMppiPostprocessingContext` as the second
-argument to the control postprocessor, then recomputes the predicted states from the final controls.
+When the nominal sequence is shifted from the previous accepted MPPI output, its first seed command
+has already been filtered. The host preserves it only when GPU optimization leaves it unchanged;
+otherwise the new first command is filtered with the rest of the horizon. The MPPI interface passes
+the seed source, shift count, and preservation decision through
+`FirstOrderDubinsMppiPostprocessingContext`, then recomputes predicted states from the final
+controls.
 
 Filter history is committed only for filtered output selected for publication. A limited fallback
 is filtered from the pre-candidate history; an unfiltered fallback, skipped optimization, or error
@@ -105,12 +106,13 @@ Notes:
 - `ignore_road_borders` drops static road-border segments before MPPI.
 - `ignore_drivable_area` is retained as an ablation flag; on this stack boundary crash is already
   disabled in the cost (`isEgoOutsideDrivableArea` always false).
-- `force_cold_start_each_step` only resets tracking counters / arc-length (control is already
-  re-seeded via `updateImportanceSampler(u_nom)` each cycle).
+- `force_cold_start_each_step` invalidates only the reusable nominal horizon. It preserves actuator
+  delay FIFOs and execution-history diagnostics.
 - `min_optimization_length` skips MPPI for a stopping reference shorter than the configured arc
   length in meters; `0.0` disables the length-based skip.
-- `use_last_control_as_nominal` warm-starts `u_nom` from the shifted previous optimized control
-  sequence when available; otherwise (and on cold start) reseeds from the diffusion reference.
+- `use_last_control_as_nominal` warm-starts `u_nom` from the previous applied MPPI result when its
+  timestamp, plant replay, and shifted reference remain continuous. The elapsed timestamp selects
+  the shift count, and the current diffusion seed fills the newly exposed tail.
 
 ### Replay only
 

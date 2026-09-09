@@ -852,8 +852,21 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::unique_ptr<MppiWithHistoryAccess> controller;
   Mppi::control_trajectory u_nom = Mppi::control_trajectory::Zero();
   Mppi::control_trajectory u_opt = Mppi::control_trajectory::Zero();
-  // Recomputed on every nominal seed; this describes the current candidate, not committed state.
-  bool first_command_is_shifted{false};
+  struct AcceptedWarmStart
+  {
+    bool valid{false};
+    Mppi::control_trajectory controls = Mppi::control_trajectory::Zero();
+    builtin_interfaces::msg::Time stamp{};
+    Trajectory reference;
+    FirstOrderDubinsMppiKinematicLimits kinematic_limits;
+  };
+  AcceptedWarmStart accepted_warm_start;
+  FirstOrderDubinsMppiNominalSeedSource nominal_seed_source{
+    FirstOrderDubinsMppiNominalSeedSource::diffusion_reference};
+  FirstOrderDubinsMppiNominalResetReason nominal_reset_reason{
+    FirstOrderDubinsMppiNominalResetReason::unavailable};
+  int nominal_shift_count{0};
+  FirstOrderDubinsMppiPredictionAccuracy prediction_accuracy;
   DYN::state_array x = DYN::state_array::Zero();
 
   std::vector<float> obs_traj_x;
@@ -885,6 +898,17 @@ struct FirstOrderDubinsMppiInterface::Impl
   float min_trajectory_progress_m{0.0F};
   /** Warm-start u_nom from shifted previous u_opt when available. */
   bool use_last_control_as_nominal{false};
+  float last_control_warm_start_max_age_s{0.5F};
+  float last_control_warm_start_max_position_error_m{0.75F};
+  float last_control_warm_start_max_yaw_error_rad{0.35F};
+  float last_control_warm_start_max_velocity_error_mps{2.0F};
+  float last_control_warm_start_max_reference_position_error_m{1.0F};
+  float last_control_warm_start_max_reference_yaw_error_rad{0.35F};
+  float last_control_warm_start_max_reference_velocity_error_mps{2.0F};
+  float last_control_warm_start_stop_enter_velocity_mps{0.03F};
+  float last_control_warm_start_stop_exit_velocity_mps{0.08F};
+  bool stopped_state_initialized{false};
+  bool stopped_state{false};
   /** Cold-seed u_nom from acados temporal MPT instead of geometric diffusion seed. */
   bool use_temporal_mpt_as_nominal{false};
   /** Prevent acceleration commands and integrated states from producing reverse velocity. */
@@ -917,7 +941,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::vector<float> steer_delay_buffer;
   bool delay_buffer_seeded{false};
 
-  /** Pending offline seeds applied after setup() / step_count==0 reset. */
+  /** Pending offline seeds applied after setup() initializes execution state. */
   bool pending_control_history{false};
   float pending_hist_accel_tm2{0.0F};
   float pending_hist_steer_tm2{0.0F};
@@ -946,6 +970,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   struct TrackingState
   {
     Mppi::control_trajectory controls;
+    AcceptedWarmStart warm_start;
     DYN::state_array state;
     int steps;
     float time;
@@ -962,6 +987,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   {
     return {
       u_opt,
+      accepted_warm_start,
       x,
       step_count,
       sim_time,
@@ -977,6 +1003,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   void restoreTrackingState(TrackingState && state) noexcept
   {
     u_opt = state.controls;
+    accepted_warm_start = std::move(state.warm_start);
     x = state.state;
     step_count = state.steps;
     sim_time = state.time;
@@ -1000,6 +1027,13 @@ struct FirstOrderDubinsMppiInterface::Impl
     ~TrackingTransaction() noexcept
     {
       if (!accepted) owner.restoreTrackingState(std::move(previous));
+    }
+
+    void invalidatePreviousWarmStart(const FirstOrderDubinsMppiNominalResetReason reason)
+    {
+      previous.warm_start.valid = false;
+      owner.accepted_warm_start.valid = false;
+      owner.nominal_reset_reason = reason;
     }
   };
 
@@ -1125,9 +1159,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     model.GPUSetup();
 
     initialized = true;
-    step_count = 0;
+    resetExecutionState();
     tracking_start_idx = 0U;
-    sim_time = 0.0F;
     RCLCPP_INFO(
       mppiLogger(),
       "MPPI GPU initialized (horizon=%d, rollouts=%d, iterations=%d, dt=%.2f, lambda=%.3f, "
@@ -1162,10 +1195,15 @@ struct FirstOrderDubinsMppiInterface::Impl
     throw;
   }
 
-  void resetTrackingState()
+  void resetExecutionState()
   {
     step_count = 0;
     u_opt.setZero();
+    accepted_warm_start = {};
+    nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::diffusion_reference;
+    nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::unavailable;
+    nominal_shift_count = 0;
+    prediction_accuracy = {};
     sim_time = 0.0F;
     accel_delay_buffer.clear();
     steer_delay_buffer.clear();
@@ -1173,6 +1211,14 @@ struct FirstOrderDubinsMppiInterface::Impl
     temporal_mpt_nominal_seeder.resetWarmStart();
     prediction_anchor_.valid = false;
     prediction_control_history_.clear();
+    stopped_state_initialized = false;
+  }
+
+  void invalidateNominalWarmStart(const FirstOrderDubinsMppiNominalResetReason reason) noexcept
+  {
+    accepted_warm_start.valid = false;
+    nominal_reset_reason = reason;
+    nominal_shift_count = 0;
   }
 
   void syncDelayStepsToModel()
@@ -1400,13 +1446,208 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
   }
 
-  void seedNominalControlFromLastOptimized()
+  void seedNominalControlFromLastOptimized(const int shift_count)
   {
-    // Drop the control already applied at the previous cycle; hold the terminal command.
-    for (int t = 0; t < kMppiHorizon - 1; ++t) {
-      u_nom.col(t) = u_opt.col(t + 1);
+    const auto fresh_nominal = u_nom;
+    const int reused_count = kMppiHorizon - shift_count;
+    for (int t = 0; t < reused_count; ++t) {
+      u_nom.col(t) = accepted_warm_start.controls.col(t + shift_count);
     }
-    u_nom.col(kMppiHorizon - 1) = u_opt.col(kMppiHorizon - 1);
+
+    // Ease the old horizon into the current reference-derived tail. This retains the useful
+    // near-term solution without repeating an obsolete terminal command.
+    constexpr int kTailBlendSamples = 3;
+    const int blend_count = std::min(kTailBlendSamples, reused_count);
+    for (int i = 0; i < blend_count; ++i) {
+      const int t = reused_count - blend_count + i;
+      const float fresh_weight = static_cast<float>(i + 1) / static_cast<float>(blend_count + 1);
+      u_nom.col(t) = (1.0F - fresh_weight) * u_nom.col(t) + fresh_weight * fresh_nominal.col(t);
+    }
+  }
+
+  void updateStoppedState(const float velocity)
+  {
+    const float speed = std::abs(velocity);
+    if (!stopped_state_initialized) {
+      stopped_state = speed <= last_control_warm_start_stop_enter_velocity_mps;
+      stopped_state_initialized = true;
+      return;
+    }
+    if (stopped_state) {
+      stopped_state = speed < last_control_warm_start_stop_exit_velocity_mps;
+    } else {
+      stopped_state = speed <= last_control_warm_start_stop_enter_velocity_mps;
+    }
+  }
+
+  bool referenceIsContinuous(const Trajectory & reference, const int shift_count) const
+  {
+    const auto & previous = accepted_warm_start.reference;
+    if (
+      (!previous.header.frame_id.empty() || !reference.header.frame_id.empty()) &&
+      previous.header.frame_id != reference.header.frame_id) {
+      return false;
+    }
+    if (shift_count < 0 || static_cast<std::size_t>(shift_count) >= previous.points.size()) {
+      return false;
+    }
+    constexpr std::size_t kContinuityWindowSamples = 20U;
+    const std::size_t overlap = std::min(
+      {kContinuityWindowSamples, reference.points.size(),
+       previous.points.size() - static_cast<std::size_t>(shift_count)});
+    if (overlap < 2U) {
+      return false;
+    }
+    for (std::size_t index = 0; index < overlap; ++index) {
+      const auto & current_point = reference.points[index];
+      const auto & previous_point = previous.points[index + static_cast<std::size_t>(shift_count)];
+      const float dx =
+        static_cast<float>(current_point.pose.position.x - previous_point.pose.position.x);
+      const float dy =
+        static_cast<float>(current_point.pose.position.y - previous_point.pose.position.y);
+      if (
+        last_control_warm_start_max_reference_position_error_m > 0.0F &&
+        std::hypot(dx, dy) > last_control_warm_start_max_reference_position_error_m) {
+        return false;
+      }
+      const float yaw_delta = static_cast<float>(
+        tf2::getYaw(current_point.pose.orientation) - tf2::getYaw(previous_point.pose.orientation));
+      const float wrapped_yaw_delta = std::atan2(std::sin(yaw_delta), std::cos(yaw_delta));
+      if (
+        last_control_warm_start_max_reference_yaw_error_rad > 0.0F &&
+        std::abs(wrapped_yaw_delta) > last_control_warm_start_max_reference_yaw_error_rad) {
+        return false;
+      }
+      if (
+        last_control_warm_start_max_reference_velocity_error_mps > 0.0F &&
+        std::abs(
+          current_point.longitudinal_velocity_mps - previous_point.longitudinal_velocity_mps) >
+          last_control_warm_start_max_reference_velocity_error_mps) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool kinematicLimitsAreCompatible(const int shift_count) const
+  {
+    constexpr float kTolerance = 1.0E-3F;
+    const auto same_optional =
+      [=](const std::optional<float> & lhs, const std::optional<float> & rhs) {
+        return lhs.has_value() == rhs.has_value() && (!lhs || std::abs(*lhs - *rhs) <= kTolerance);
+      };
+    const auto & previous = accepted_warm_start.kinematic_limits;
+    if (
+      !same_optional(previous.max_velocity, active_kinematic_limits.max_velocity) ||
+      !same_optional(
+        previous.min_longitudinal_acceleration,
+        active_kinematic_limits.min_longitudinal_acceleration) ||
+      !same_optional(
+        previous.max_longitudinal_acceleration,
+        active_kinematic_limits.max_longitudinal_acceleration) ||
+      !same_optional(
+        previous.min_longitudinal_jerk, active_kinematic_limits.min_longitudinal_jerk) ||
+      !same_optional(
+        previous.max_longitudinal_jerk, active_kinematic_limits.max_longitudinal_jerk)) {
+      return false;
+    }
+
+    const auto & previous_pointwise = previous.max_velocity_by_reference_point;
+    const auto & current_pointwise = active_kinematic_limits.max_velocity_by_reference_point;
+    if (previous_pointwise.empty() && current_pointwise.empty()) {
+      return true;
+    }
+    if (shift_count < 0 || static_cast<std::size_t>(shift_count) >= previous_pointwise.size()) {
+      return false;
+    }
+    const std::size_t overlap = std::min(
+      current_pointwise.size(), previous_pointwise.size() - static_cast<std::size_t>(shift_count));
+    if (overlap == 0U) {
+      return false;
+    }
+    for (std::size_t index = 0; index < overlap; ++index) {
+      if (!same_optional(
+            current_pointwise[index],
+            previous_pointwise[index + static_cast<std::size_t>(shift_count)])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  std::optional<int> reusableWarmStartShift(
+    const Trajectory & reference, const detail::InitialState & ego,
+    const builtin_interfaces::msg::Time & stamp)
+  {
+    updateStoppedState(ego.velocity);
+    nominal_shift_count = 0;
+    if (!use_last_control_as_nominal) {
+      return std::nullopt;
+    }
+    if (stopped_state) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::stopped);
+      return std::nullopt;
+    }
+    if (!accepted_warm_start.valid) {
+      return std::nullopt;
+    }
+
+    const double elapsed = detail::elapsedSeconds(accepted_warm_start.stamp, stamp);
+    if (!std::isfinite(elapsed) || elapsed <= 1.0E-6) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::invalid_timestamp);
+      return std::nullopt;
+    }
+    if (elapsed > static_cast<double>(last_control_warm_start_max_age_s)) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::expired);
+      return std::nullopt;
+    }
+    if (
+      !prediction_accuracy.valid ||
+      (last_control_warm_start_max_position_error_m > 0.0F &&
+       prediction_accuracy.pos_error_m > last_control_warm_start_max_position_error_m) ||
+      (last_control_warm_start_max_yaw_error_rad > 0.0F &&
+       std::abs(prediction_accuracy.yaw_error_rad) > last_control_warm_start_max_yaw_error_rad) ||
+      (last_control_warm_start_max_velocity_error_mps > 0.0F &&
+       std::abs(prediction_accuracy.vel_error_mps) >
+         last_control_warm_start_max_velocity_error_mps)) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::prediction_error);
+      return std::nullopt;
+    }
+
+    const int shift_count = static_cast<int>(std::llround(elapsed / static_cast<double>(kDt)));
+    if (shift_count <= 0) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::invalid_timestamp);
+      return std::nullopt;
+    }
+    if (shift_count >= kMppiHorizon) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::expired);
+      return std::nullopt;
+    }
+    if (!kinematicLimitsAreCompatible(shift_count)) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
+      return std::nullopt;
+    }
+    if (!referenceIsContinuous(reference, shift_count)) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::reference_discontinuity);
+      return std::nullopt;
+    }
+    nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::none;
+    nominal_shift_count = shift_count;
+    return shift_count;
+  }
+
+  void markAcceptedWarmStart(
+    const Trajectory & reference, const builtin_interfaces::msg::Time & stamp)
+  {
+    if (stopped_state) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::stopped);
+      return;
+    }
+    accepted_warm_start.valid = true;
+    accepted_warm_start.controls = u_opt;
+    accepted_warm_start.stamp = stamp;
+    accepted_warm_start.reference = reference;
+    accepted_warm_start.kinematic_limits = active_kinematic_limits;
   }
 
   void seedNominalControlFromDiffusionReference(
@@ -1424,14 +1665,14 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
   }
 
-  void seedNominalControlFromTemporalMpt(
+  bool seedNominalControlFromTemporalMpt(
     const Trajectory & reference, const detail::InitialState & ego)
   {
     auto nominal = temporal_mpt_nominal_seeder.solve(reference, ego, vehicle_params, kMppiHorizon);
     if (!nominal) {
       temporal_mpt_nominal_seeder.resetWarmStart();
       seedNominalControlFromDiffusionReference(reference, tracking_start_idx);
-      return;
+      return false;
     }
     if (enable_input_delay_compensation && (acc_delay_steps > 0 || steer_delay_steps > 0)) {
       nominal =
@@ -1444,6 +1685,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       u_nom(accel_idx, t) = (*nominal)[static_cast<size_t>(t)].accel_cmd;
       u_nom(steer_idx, t) = (*nominal)[static_cast<size_t>(t)].steer_cmd;
     }
+    return true;
   }
 
   void applyActiveVelocityLimitToNominal()
@@ -1506,40 +1748,53 @@ struct FirstOrderDubinsMppiInterface::Impl
   }
 
   void seedNominalControl(
-    const Trajectory & reference, const size_t start_idx, const detail::InitialState & ego)
+    const Trajectory & reference, const size_t start_idx, const detail::InitialState & ego,
+    const builtin_interfaces::msg::Time & stamp)
   {
-    first_command_is_shifted = false;
+    nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::diffusion_reference;
+    nominal_shift_count = 0;
+    if (!force_cold_start_each_step && !use_last_control_as_nominal) {
+      nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::unavailable;
+    }
+    updateStoppedState(ego.velocity);
     if (forced_nominal_pending) {
       seedNominalControlFromForced();
       forced_nominal_pending = false;
+      nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::forced;
+      nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::none;
       snapshotNominalForLog();
       return;
     }
-
-    // After a tracking reset, step_count is 0 and u_opt was cleared — fall back to DP / MPT seed.
-    // Also reseed when departing from a stop: shifted last u_opt is usually near-zero / braking.
-    constexpr float kStoppedVelocityMps = 0.05F;
-    const bool started_from_stop = std::abs(ego.velocity) < kStoppedVelocityMps;
-    const bool have_last_u = use_last_control_as_nominal && step_count > 0 && !started_from_stop;
 
     if (use_temporal_mpt_as_nominal) {
       // t-MPT warm-starts from its own previous x/u, shifted one stage. Do not inject MPPI u_opt.
-      if (started_from_stop || step_count == 0) {
+      if (stopped_state || step_count == 0) {
         temporal_mpt_nominal_seeder.resetWarmStart();
       }
-      seedNominalControlFromTemporalMpt(reference, ego);
+      const bool temporal_seeded = seedNominalControlFromTemporalMpt(reference, ego);
       filterNominalControl(ego);
+      nominal_seed_source = temporal_seeded
+                              ? FirstOrderDubinsMppiNominalSeedSource::temporal_mpt
+                              : FirstOrderDubinsMppiNominalSeedSource::diffusion_reference;
+      if (!force_cold_start_each_step) {
+        nominal_reset_reason = temporal_seeded
+                                 ? FirstOrderDubinsMppiNominalResetReason::none
+                                 : FirstOrderDubinsMppiNominalResetReason::unavailable;
+      }
       snapshotNominalForLog();
       return;
     }
-    if (have_last_u) {
-      seedNominalControlFromLastOptimized();
-      first_command_is_shifted = true;
-      snapshotNominalForLog();
-      return;
-    }
+
+    // Always construct a current-reference seed. Reused controls overwrite its prefix while its
+    // suffix supplies newly exposed horizon samples.
     seedNominalControlFromDiffusionReference(reference, start_idx);
     filterNominalControl(ego);
+    if (const auto shift_count = reusableWarmStartShift(reference, ego, stamp)) {
+      seedNominalControlFromLastOptimized(*shift_count);
+      nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::previous_optimized;
+      snapshotNominalForLog();
+      return;
+    }
     snapshotNominalForLog();
   }
 
@@ -1572,7 +1827,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     cost.beginDataUpdate();
 
     if (force_cold_start_each_step) {
-      resetTrackingState();
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::forced_cold_start);
+      temporal_mpt_nominal_seeder.resetWarmStart();
     }
 
     diffusion_reference = reference;
@@ -1600,16 +1856,13 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     // Optimize from measured ego; delay is applied in dynamics (no reference time shift).
     tracking_start_idx = 0U;
-    if (step_count == 0) {
-      resetTrackingState();
-    }
-    // Offline retune seeds must land after the step_count==0 reset (which clears the delay FIFO).
     applyPendingControlHistory();
     syncDelayStepsToModel();
     applyPendingDelayBuffer();
 
     const auto initial_state =
       detail::makeInitialState(odometry, acceleration, steering_status, vehicle_params);
+    prediction_accuracy = evaluatePredictionAccuracy(odometry);
     cost.setInitialSteeringAngle(initial_state.steering);
     const std::vector<FirstOrderDubinsMppiControl> profile_seed(
       std::max(static_cast<std::size_t>(kMppiHorizon), diffusion_reference.points.size()));
@@ -1648,13 +1901,17 @@ struct FirstOrderDubinsMppiInterface::Impl
       accel_delay_buffer, kDt, keep_velocity_limit_active, profile_reference_velocities);
     detail::applyActiveVelocityLimitProfile(diffusion_reference, active_velocity_limit_profile);
     const auto seed_t0 = std::chrono::steady_clock::now();
-    seedNominalControl(diffusion_reference, tracking_start_idx, initial_state);
+    seedNominalControl(
+      diffusion_reference, tracking_start_idx, initial_state, odometry.header.stamp);
     last_seed_nominal_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - seed_t0).count();
     applyActiveVelocityLimitToNominal();
     if (active_velocity_limit_profile.active) {
       snapshotNominalForLog();
     }
+    RCLCPP_DEBUG(
+      mppiLogger(), "MPPI nominal seed: source=%s reset_reason=%s shift=%d",
+      to_string(nominal_seed_source), to_string(nominal_reset_reason), nominal_shift_count);
 
     x = model.getZeroState();
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)) = initial_state.x;
@@ -1866,8 +2123,14 @@ struct FirstOrderDubinsMppiInterface::Impl
         optimized_controls[static_cast<std::size_t>(timestep)] = {
           u_opt_traj(accel_idx, timestep), u_opt_traj(steer_idx, timestep)};
       }
+      constexpr float kPreservedSeedTolerance = 1.0E-6F;
+      const bool preserve_first_steering_command =
+        nominal_seed_source == FirstOrderDubinsMppiNominalSeedSource::previous_optimized &&
+        std::abs(u_opt_traj(steer_idx, 0) - u_nom(steer_idx, 0)) <= kPreservedSeedTolerance;
       control_postprocessor(
-        optimized_controls, FirstOrderDubinsMppiPostprocessingContext{first_command_is_shifted});
+        optimized_controls,
+        FirstOrderDubinsMppiPostprocessingContext{
+          nominal_seed_source, nominal_shift_count, preserve_first_steering_command});
       if (optimized_controls.size() != static_cast<std::size_t>(u_opt_traj.cols())) {
         throw std::invalid_argument("MPPI control postprocessor must preserve the horizon size");
       }
@@ -1973,6 +2236,7 @@ void FirstOrderDubinsMppiInterface::setVehicleParams(
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
+  impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   if (impl_->initialized) {
     impl_->teardown();
   }
@@ -2012,6 +2276,7 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
       "non-negative lambda_adaptation_gain, unsafe_rollout_fraction_threshold and "
       "cost_normalization_percentile in [0, 1], and max_iter greater than zero");
   }
+  impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   if (impl_->initialized) {
     impl_->teardown();
   }
@@ -2028,14 +2293,55 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     }
     if (
       !std::isfinite(options.min_trajectory_progress_m) ||
-      options.min_trajectory_progress_m < 0.0F) {
-      throw std::invalid_argument("min_trajectory_progress_m must be finite and non-negative");
+      options.min_trajectory_progress_m < 0.0F ||
+      !std::isfinite(options.last_control_warm_start_max_age_s) ||
+      options.last_control_warm_start_max_age_s <= 0.0F ||
+      !std::isfinite(options.last_control_warm_start_max_position_error_m) ||
+      options.last_control_warm_start_max_position_error_m < 0.0F ||
+      !std::isfinite(options.last_control_warm_start_max_yaw_error_rad) ||
+      options.last_control_warm_start_max_yaw_error_rad < 0.0F ||
+      !std::isfinite(options.last_control_warm_start_max_velocity_error_mps) ||
+      options.last_control_warm_start_max_velocity_error_mps < 0.0F ||
+      !std::isfinite(options.last_control_warm_start_max_reference_position_error_m) ||
+      options.last_control_warm_start_max_reference_position_error_m < 0.0F ||
+      !std::isfinite(options.last_control_warm_start_max_reference_yaw_error_rad) ||
+      options.last_control_warm_start_max_reference_yaw_error_rad < 0.0F ||
+      !std::isfinite(options.last_control_warm_start_max_reference_velocity_error_mps) ||
+      options.last_control_warm_start_max_reference_velocity_error_mps < 0.0F ||
+      !std::isfinite(options.last_control_warm_start_stop_enter_velocity_mps) ||
+      options.last_control_warm_start_stop_enter_velocity_mps < 0.0F ||
+      !std::isfinite(options.last_control_warm_start_stop_exit_velocity_mps) ||
+      options.last_control_warm_start_stop_exit_velocity_mps <
+        options.last_control_warm_start_stop_enter_velocity_mps) {
+      throw std::invalid_argument(
+        "MPPI runtime thresholds must be finite and non-negative, warm-start max age must be "
+        "positive, and stop exit velocity must be at least stop enter velocity");
     }
+    impl_->invalidateNominalWarmStart(
+      FirstOrderDubinsMppiNominalResetReason::configuration_changed);
     impl_->prevent_reverse_velocity = options.prevent_reverse_velocity;
     impl_->use_temporal_mpt_as_nominal = options.use_temporal_mpt_as_nominal;
     impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
     impl_->min_optimization_length = options.min_optimization_length;
     impl_->min_trajectory_progress_m = options.min_trajectory_progress_m;
+    impl_->last_control_warm_start_max_age_s = options.last_control_warm_start_max_age_s;
+    impl_->last_control_warm_start_max_position_error_m =
+      options.last_control_warm_start_max_position_error_m;
+    impl_->last_control_warm_start_max_yaw_error_rad =
+      options.last_control_warm_start_max_yaw_error_rad;
+    impl_->last_control_warm_start_max_velocity_error_mps =
+      options.last_control_warm_start_max_velocity_error_mps;
+    impl_->last_control_warm_start_max_reference_position_error_m =
+      options.last_control_warm_start_max_reference_position_error_m;
+    impl_->last_control_warm_start_max_reference_yaw_error_rad =
+      options.last_control_warm_start_max_reference_yaw_error_rad;
+    impl_->last_control_warm_start_max_reference_velocity_error_mps =
+      options.last_control_warm_start_max_reference_velocity_error_mps;
+    impl_->last_control_warm_start_stop_enter_velocity_mps =
+      options.last_control_warm_start_stop_enter_velocity_mps;
+    impl_->last_control_warm_start_stop_exit_velocity_mps =
+      options.last_control_warm_start_stop_exit_velocity_mps;
+    impl_->stopped_state_initialized = false;
     setDebugTrajectoryLogging(
       options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
     impl_->cost.setDistanceMapTextureDebugEnabled(options.enable_distance_map_texture_debug);
@@ -2092,6 +2398,7 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
+  impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   impl_->ignore_obstacles = ignore_obstacles;
   impl_->ignore_road_borders = ignore_road_borders;
   impl_->ignore_drivable_area = ignore_drivable_area;
@@ -2116,6 +2423,23 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   runtime.min_optimization_length = impl_->min_optimization_length;
   runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
   runtime.use_last_control_as_nominal = use_last_control_as_nominal;
+  runtime.last_control_warm_start_max_age_s = impl_->last_control_warm_start_max_age_s;
+  runtime.last_control_warm_start_max_position_error_m =
+    impl_->last_control_warm_start_max_position_error_m;
+  runtime.last_control_warm_start_max_yaw_error_rad =
+    impl_->last_control_warm_start_max_yaw_error_rad;
+  runtime.last_control_warm_start_max_velocity_error_mps =
+    impl_->last_control_warm_start_max_velocity_error_mps;
+  runtime.last_control_warm_start_max_reference_position_error_m =
+    impl_->last_control_warm_start_max_reference_position_error_m;
+  runtime.last_control_warm_start_max_reference_yaw_error_rad =
+    impl_->last_control_warm_start_max_reference_yaw_error_rad;
+  runtime.last_control_warm_start_max_reference_velocity_error_mps =
+    impl_->last_control_warm_start_max_reference_velocity_error_mps;
+  runtime.last_control_warm_start_stop_enter_velocity_mps =
+    impl_->last_control_warm_start_stop_enter_velocity_mps;
+  runtime.last_control_warm_start_stop_exit_velocity_mps =
+    impl_->last_control_warm_start_stop_exit_velocity_mps;
   runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
   runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
   runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
@@ -2171,8 +2495,7 @@ void FirstOrderDubinsMppiInterface::setInputDelayBuffer(
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
-  // Always defer until updateDiffusionReference (after step_count==0 reset) so offline seeds
-  // are not wiped by resetTrackingState.
+  // Always defer until updateDiffusionReference so setup cannot wipe offline delay seeds.
   impl_->pending_delay_accel = accel_cmd;
   impl_->pending_delay_steer = steer_cmd;
   impl_->pending_delay_buffer = true;
@@ -2278,6 +2601,7 @@ try {
   const auto optimization_required =
     detail::isOptimizationRequired(input, impl_->min_optimization_length);
   if (not_enough_input_points || !optimization_required) {
+    impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::skipped);
     RCLCPP_WARN(
       mppiLogger(), "MPPI skipped: %s",
       not_enough_input_points ? "trajectory has fewer than 2 points"
@@ -2286,6 +2610,7 @@ try {
     result.trajectory = input;
     result.debug.reference_trajectory = input;
     result.debug.optimized_trajectory = input;
+    result.debug.nominal_reset_reason = impl_->nominal_reset_reason;
     return result;
   }
 
@@ -2295,7 +2620,10 @@ try {
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
     kinematic_limits);
   Impl::TrackingTransaction transaction(*impl_);
-  result.debug.prediction_accuracy = impl_->evaluatePredictionAccuracy(odometry);
+  result.debug.prediction_accuracy = impl_->prediction_accuracy;
+  result.debug.nominal_seed_source = impl_->nominal_seed_source;
+  result.debug.nominal_reset_reason = impl_->nominal_reset_reason;
+  result.debug.nominal_shift_count = impl_->nominal_shift_count;
   impl_->capturePredictionAnchor(odometry);
   // Capture IC before runStep advances the ego state with the applied control.
   const DYN::state_array x_at_optimization = impl_->x;
@@ -2506,6 +2834,23 @@ try {
       runtime.min_optimization_length = impl_->min_optimization_length;
       runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
       runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
+      runtime.last_control_warm_start_max_age_s = impl_->last_control_warm_start_max_age_s;
+      runtime.last_control_warm_start_max_position_error_m =
+        impl_->last_control_warm_start_max_position_error_m;
+      runtime.last_control_warm_start_max_yaw_error_rad =
+        impl_->last_control_warm_start_max_yaw_error_rad;
+      runtime.last_control_warm_start_max_velocity_error_mps =
+        impl_->last_control_warm_start_max_velocity_error_mps;
+      runtime.last_control_warm_start_max_reference_position_error_m =
+        impl_->last_control_warm_start_max_reference_position_error_m;
+      runtime.last_control_warm_start_max_reference_yaw_error_rad =
+        impl_->last_control_warm_start_max_reference_yaw_error_rad;
+      runtime.last_control_warm_start_max_reference_velocity_error_mps =
+        impl_->last_control_warm_start_max_reference_velocity_error_mps;
+      runtime.last_control_warm_start_stop_enter_velocity_mps =
+        impl_->last_control_warm_start_stop_enter_velocity_mps;
+      runtime.last_control_warm_start_stop_exit_velocity_mps =
+        impl_->last_control_warm_start_stop_exit_velocity_mps;
       runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
       runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
       runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
@@ -2560,10 +2905,13 @@ try {
   if (result.debug.was_rejected) {
     // The fallback's actual actuator command is unknown here; do not commit the candidate.
     result.debug.applied_plant.valid = false;
+    transaction.invalidatePreviousWarmStart(FirstOrderDubinsMppiNominalResetReason::rejected);
   } else if (defer_commit) {
+    impl_->markAcceptedWarmStart(impl_->diffusion_reference, odometry.header.stamp);
     impl_->pending_trajectory_ = impl_->snapshotTrackingState();
     result.debug.applied_plant.valid = false;
   } else {
+    impl_->markAcceptedWarmStart(impl_->diffusion_reference, odometry.header.stamp);
     impl_->controller->slideControlSequence(1);
     transaction.accepted = true;
   }
@@ -2586,6 +2934,15 @@ void FirstOrderDubinsMppiInterface::commitPendingTrajectory()
 void FirstOrderDubinsMppiInterface::discardPendingTrajectory() noexcept
 {
   if (impl_) impl_->pending_trajectory_.reset();
+}
+
+void FirstOrderDubinsMppiInterface::invalidateNominalWarmStart() noexcept
+{
+  if (impl_) {
+    impl_->pending_trajectory_.reset();
+    impl_->invalidateNominalWarmStart(
+      FirstOrderDubinsMppiNominalResetReason::externally_invalidated);
+  }
 }
 
 namespace detail

@@ -171,6 +171,24 @@ TEST(FirstOrderDubinsMppiInterface, RejectsInvalidMinimumTrajectoryProgress)
   EXPECT_FALSE(interface.isInitialized());
 }
 
+TEST(FirstOrderDubinsMppiInterface, RejectsInvalidWarmStartThresholds)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.last_control_warm_start_max_age_s = 0.0F;
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+
+  options = {};
+  options.last_control_warm_start_max_position_error_m = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+
+  options = {};
+  options.last_control_warm_start_stop_enter_velocity_mps = 0.1F;
+  options.last_control_warm_start_stop_exit_velocity_mps = 0.05F;
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+  EXPECT_FALSE(interface.isInitialized());
+}
+
 // These cases deliberately have no CUDA availability skip. They must run in a process with
 // CUDA_VISIBLE_DEVICES=-1 as well as on a GPU machine.
 TEST(FirstOrderDubinsMppiInterface, RejectsGeometryOverflowBeforeCudaSetup)
@@ -269,13 +287,13 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringFilterPreservesOnlyAccepted
   const auto input = makeStraightTrajectory(80U);
   CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
   auto candidate_filter = filter;
-  std::optional<bool> shifted;
+  std::optional<FirstOrderDubinsMppiPostprocessingContext> postprocessing_context;
   float first_before_filter = 0.0F;
   const FirstOrderDubinsMppiControlSequencePostprocessor postprocessor =
     [&](auto & controls, const FirstOrderDubinsMppiPostprocessingContext & context) {
-      shifted = context.first_command_is_shifted;
+      postprocessing_context = context;
       ASSERT_FALSE(controls.empty());
-      if (!context.first_command_is_shifted) {
+      if (context.seed_source != FirstOrderDubinsMppiNominalSeedSource::previous_optimized) {
         // Deterministic cold horizon: the next command needs smoothing once before execution.
         for (auto & control : controls) control.steer_cmd = 0.01F;
         controls.front().steer_cmd = 0.0F;
@@ -284,24 +302,36 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringFilterPreservesOnlyAccepted
       std::vector<float> steering;
       for (const auto & control : controls) steering.push_back(control.steer_cmd);
       candidate_filter = filter;
-      candidate_filter.filter(steering, 0.0F, context.first_command_is_shifted);
+      candidate_filter.filter(steering, 0.0F, context.preserve_first_steering_command);
       for (std::size_t i = 0; i < controls.size(); ++i) controls[i].steer_cmd = steering[i];
     };
+  std::int32_t stamp_nanoseconds = 0;
+  float ego_x = 0.0F;
   const auto preview = [&]() {
-    shifted.reset();
+    postprocessing_context.reset();
+    auto odometry = makeOdometry();
+    odometry.header.stamp.sec = 123;
+    stamp_nanoseconds += 100000000;
+    odometry.header.stamp.nanosec = static_cast<std::uint32_t>(stamp_nanoseconds);
+    odometry.pose.pose.position.x = ego_x;
+    ego_x += 0.2F;
     return interface_->optimizeTrajectory(
-      input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
-      postprocessor, true);
+      input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, postprocessor,
+      true);
   };
 
   preview();
-  ASSERT_TRUE(shifted.has_value());
-  EXPECT_FALSE(*shifted);
+  ASSERT_TRUE(postprocessing_context.has_value());
+  EXPECT_EQ(
+    postprocessing_context->seed_source,
+    FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
   interface_->discardPendingTrajectory();
 
   const auto accepted = preview();
-  ASSERT_TRUE(shifted.has_value());
-  EXPECT_FALSE(*shifted);  // A discarded preview cannot supply the warm start.
+  ASSERT_TRUE(postprocessing_context.has_value());
+  EXPECT_EQ(
+    postprocessing_context->seed_source,
+    FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
   ASSERT_FALSE(accepted.debug.was_rejected);
   ASSERT_GT(accepted.optimized_point_count, 1U);
   const float next_command = accepted.trajectory.points[1].front_wheel_angle_rad;
@@ -310,18 +340,162 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringFilterPreservesOnlyAccepted
   filter = candidate_filter;
 
   const auto following = preview();
-  ASSERT_TRUE(shifted.has_value());
-  EXPECT_TRUE(*shifted);
+  ASSERT_TRUE(postprocessing_context.has_value());
+  EXPECT_EQ(
+    postprocessing_context->seed_source, FirstOrderDubinsMppiNominalSeedSource::previous_optimized);
+  EXPECT_EQ(postprocessing_context->shift_count, 1);
   EXPECT_NEAR(first_before_filter, next_command, 1.0E-3F);
-  ASSERT_FALSE(following.trajectory.points.empty());
-  EXPECT_NEAR(following.trajectory.points.front().front_wheel_angle_rad, next_command, 1.0E-3F);
+  EXPECT_EQ(following.debug.nominal_shift_count, 1);
   interface_->discardPendingTrajectory();
 
   options.force_cold_start_each_step = true;
   interface_->setRuntimeOptions(options);
   preview();
-  ASSERT_TRUE(shifted.has_value());
-  EXPECT_FALSE(*shifted);
+  ASSERT_TRUE(postprocessing_context.has_value());
+  EXPECT_EQ(
+    postprocessing_context->seed_source,
+    FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
+  EXPECT_EQ(postprocessing_context->shift_count, 0);
+  interface_->discardPendingTrajectory();
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, WarmStartUsesElapsedShiftAndExpires)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  interface_->setCostParams(costs);
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.use_last_control_as_nominal = true;
+  options.use_temporal_mpt_as_nominal = false;
+  options.last_control_warm_start_max_age_s = 0.5F;
+  options.last_control_warm_start_max_position_error_m = 100.0F;
+  options.last_control_warm_start_max_yaw_error_rad = 100.0F;
+  options.last_control_warm_start_max_velocity_error_mps = 100.0F;
+  options.last_control_warm_start_max_reference_position_error_m = 100.0F;
+  options.last_control_warm_start_max_reference_yaw_error_rad = 100.0F;
+  interface_->setRuntimeOptions(options);
+  const auto input = makeStraightTrajectory(80U);
+
+  auto odometry = makeOdometry();
+  odometry.header.stamp.sec = 123;
+  const auto accepted = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+  ASSERT_FALSE(accepted.debug.was_rejected);
+  interface_->commitPendingTrajectory();
+
+  odometry.header.stamp.nanosec = 200000000U;
+  odometry.pose.pose.position.x = 0.4;
+  const auto shifted = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+  EXPECT_EQ(
+    shifted.debug.nominal_seed_source, FirstOrderDubinsMppiNominalSeedSource::previous_optimized);
+  EXPECT_EQ(shifted.debug.nominal_shift_count, 2);
+  interface_->discardPendingTrajectory();
+
+  odometry.header.stamp.nanosec = 600000000U;
+  odometry.pose.pose.position.x = 1.2;
+  const auto expired = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+  EXPECT_EQ(
+    expired.debug.nominal_seed_source, FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
+  EXPECT_EQ(expired.debug.nominal_reset_reason, FirstOrderDubinsMppiNominalResetReason::expired);
+  interface_->discardPendingTrajectory();
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, ReferenceDiscontinuityInvalidatesWarmStart)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  interface_->setCostParams(costs);
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.use_last_control_as_nominal = true;
+  options.use_temporal_mpt_as_nominal = false;
+  options.last_control_warm_start_max_position_error_m = 100.0F;
+  options.last_control_warm_start_max_yaw_error_rad = 100.0F;
+  options.last_control_warm_start_max_velocity_error_mps = 100.0F;
+  options.last_control_warm_start_max_reference_position_error_m = 0.5F;
+  interface_->setRuntimeOptions(options);
+  const auto input = makeStraightTrajectory(80U);
+
+  auto odometry = makeOdometry();
+  odometry.header.stamp.sec = 123;
+  const auto accepted = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+  ASSERT_FALSE(accepted.debug.was_rejected);
+  interface_->commitPendingTrajectory();
+
+  auto changed_reference = input;
+  for (auto & point : changed_reference.points) {
+    point.pose.position.y += 2.0;
+  }
+  odometry.header.stamp.nanosec = 100000000U;
+  odometry.pose.pose.position.x = 0.2;
+  const auto reset = interface_->optimizeTrajectory(
+    changed_reference, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {},
+    true);
+  EXPECT_EQ(
+    reset.debug.nominal_seed_source, FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
+  EXPECT_EQ(
+    reset.debug.nominal_reset_reason,
+    FirstOrderDubinsMppiNominalResetReason::reference_discontinuity);
+  interface_->discardPendingTrajectory();
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, StopHysteresisRequiresAFreshMovingAcceptance)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  interface_->setCostParams(costs);
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.use_last_control_as_nominal = true;
+  options.use_temporal_mpt_as_nominal = false;
+  options.last_control_warm_start_max_position_error_m = 100.0F;
+  options.last_control_warm_start_max_yaw_error_rad = 100.0F;
+  options.last_control_warm_start_max_velocity_error_mps = 100.0F;
+  options.last_control_warm_start_max_reference_position_error_m = 100.0F;
+  options.last_control_warm_start_stop_enter_velocity_mps = 0.03F;
+  options.last_control_warm_start_stop_exit_velocity_mps = 0.08F;
+  interface_->setRuntimeOptions(options);
+  const auto input = makeStraightTrajectory(80U);
+
+  auto odometry = makeOdometry();
+  odometry.header.stamp.sec = 124;
+  const auto accepted = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+  ASSERT_FALSE(accepted.debug.was_rejected);
+  interface_->commitPendingTrajectory();
+
+  odometry.header.stamp.nanosec = 100000000U;
+  odometry.pose.pose.position.x = 0.2;
+  odometry.twist.twist.linear.x = 0.02;
+  const auto stopped = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+  EXPECT_EQ(stopped.debug.nominal_reset_reason, FirstOrderDubinsMppiNominalResetReason::stopped);
+  interface_->discardPendingTrajectory();
+
+  odometry.header.stamp.nanosec = 200000000U;
+  odometry.twist.twist.linear.x = 0.05;
+  const auto creeping = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+  EXPECT_EQ(creeping.debug.nominal_reset_reason, FirstOrderDubinsMppiNominalResetReason::stopped);
+  interface_->discardPendingTrajectory();
+
+  odometry.header.stamp.nanosec = 300000000U;
+  odometry.twist.twist.linear.x = 0.09;
+  const auto resumed = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+  EXPECT_EQ(
+    resumed.debug.nominal_seed_source, FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
+  ASSERT_FALSE(resumed.debug.was_rejected);
+  interface_->commitPendingTrajectory();
+
+  odometry.header.stamp.nanosec = 400000000U;
+  odometry.twist.twist.linear.x = 0.05;
+  const auto hysteresis = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+  EXPECT_EQ(
+    hysteresis.debug.nominal_seed_source,
+    FirstOrderDubinsMppiNominalSeedSource::previous_optimized);
   interface_->discardPendingTrajectory();
 }
 
@@ -355,6 +529,9 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, DeferredCandidatesCommitHistoryOnly
   EXPECT_NO_THROW(interface_->commitPendingTrajectory());
   EXPECT_THROW(interface_->commitPendingTrajectory(), std::logic_error);
 
+  FirstOrderDubinsMppiRuntimeOptions cold_start_options;
+  cold_start_options.force_cold_start_each_step = true;
+  interface_->setRuntimeOptions(cold_start_options);
   const auto following = preview(3.0F);
   EXPECT_FLOAT_EQ(following.debug.applied_plant.sim_time, 0.2F);
   ASSERT_EQ(following.debug.applied_plant.accel_cmd_delay_buffer.size(), 2U);
