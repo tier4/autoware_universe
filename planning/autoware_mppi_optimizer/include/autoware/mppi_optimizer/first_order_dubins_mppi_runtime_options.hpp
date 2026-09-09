@@ -45,6 +45,11 @@ struct FirstOrderDubinsMppiRuntimeOptions
   /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle).
    *  Ignored when use_temporal_mpt_as_nominal is true (t-MPT uses its own shifted solution). */
   bool use_last_control_as_nominal{false};
+  /**
+   * Maximum difference between nominal steer u[0] and the predicted steering when it reaches the
+   * actuator. Zero disables nominal steering continuity guarding.
+   */
+  float nominal_initial_steering_max_deviation_rad{0.0F};
   /** Maximum age of an accepted control horizon eligible for reuse. */
   float last_control_warm_start_max_age_s{0.5F};
   /** Maximum open-loop plant position error eligible for reuse; zero disables this gate. */

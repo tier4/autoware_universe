@@ -215,6 +215,8 @@ void loadParamsYaml(
     {"crash_contact_penalty", &cost.crash_contact_penalty},
   };
   std::unordered_map<std::string, float *> runtime_fields = {
+    {"nominal_initial_steering_max_deviation_rad",
+     &runtime.nominal_initial_steering_max_deviation_rad},
     {"last_control_warm_start_max_age_s", &runtime.last_control_warm_start_max_age_s},
     {"last_control_warm_start_max_position_error_m",
      &runtime.last_control_warm_start_max_position_error_m},
