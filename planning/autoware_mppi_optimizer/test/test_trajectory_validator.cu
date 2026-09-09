@@ -19,6 +19,7 @@
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -759,6 +760,38 @@ TEST_F(TrajectoryValidatorTest, AppliesBoundaryThresholdSymmetricallyAndInclusiv
       !test_case.valid)
       << "offset=" << test_case.lateral_offset;
   }
+}
+
+TEST_F(TrajectoryValidatorTest, MinimumTrajectoryProgressIsOptionalAndInclusive)
+{
+  auto params = makeParams();
+  cost_->setParams(params);
+  setStraightReference();
+
+  std::vector<detail::OptimizedState> states(3U);
+  states[0] = makeFirstPostStepState();
+  states[1] = makeFirstPostStepState();
+  states[2] = makeFirstPostStepState();
+  states[0].x = 0.25F;
+  states[1].x = 0.5F;
+  states[2].x = 0.75F;
+
+  // The projected gain is 0.5 m. Zero disables the condition and equality is sufficient.
+  EXPECT_TRUE(detail::validateOptimizedTrajectory(*cost_, states, 0.0F).isValid());
+  EXPECT_TRUE(detail::validateOptimizedTrajectory(*cost_, states, 0.5F).isValid());
+
+  const auto insufficient = detail::validateOptimizedTrajectory(*cost_, states, 0.51F);
+  EXPECT_FALSE(insufficient.isValid());
+  EXPECT_TRUE(hasInvalidityReason(
+    insufficient.reasons, FirstOrderDubinsMppiInvalidityReason::insufficient_progress));
+  EXPECT_EQ(to_string(insufficient.reasons), "insufficient_progress");
+  ASSERT_TRUE(insufficient.first_invalid_index.has_value());
+  EXPECT_EQ(insufficient.first_invalid_index.value(), states.size() - 1U);
+
+  std::reverse(states.begin(), states.end());
+  EXPECT_TRUE(detail::validateOptimizedTrajectory(*cost_, states, 0.0F).isValid());
+  EXPECT_FALSE(detail::validateOptimizedTrajectory(*cost_, states, 0.01F).isValid());
+  EXPECT_FALSE(detail::validateOptimizedTrajectory(*cost_, {}, 0.01F).isValid());
 }
 
 TEST_F(TrajectoryValidatorTest, RoadBorderMarginInflatesTheEgoFootprint)
