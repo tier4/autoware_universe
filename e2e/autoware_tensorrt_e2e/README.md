@@ -142,9 +142,9 @@ delivered raises a `WARN` diagnostic (`Processing time exceeded the planning per
 100 ms budget on the target hardware.
 
 TensorRT engines are built in-node by `TrtCommon` and cached beside the ONNX files. Both
-engines are built with the `trt_workspace_mib` workspace (default 16 GiB): below a graph's
-need the builder segfaults rather than failing, and the threshold moves with whatever else
-holds GPU memory.
+engines are built with the `trt_workspace_mib` workspace (default 4 GiB), an upper bound on the
+builder's scratch rather than an allocation; raise it only for a graph whose build reports
+insufficient workspace.
 
 ## Configuration layout
 

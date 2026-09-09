@@ -238,8 +238,8 @@
         "trt_workspace_mib": {
           "type": "integer",
           "minimum": 1,
-          "default": 16384,
-          "description": "TensorRT builder workspace for every engine the node builds, in MiB. Below a graph's need the builder segfaults rather than failing; a property of the deployment host."
+          "default": 4096,
+          "description": "TensorRT builder workspace for every engine the node builds, in MiB. An upper bound on builder scratch, not an allocation; 4 GiB builds both ResWorld engines. Raise it only for a graph whose build reports insufficient workspace."
         },
         "planning_factor": {
           "type": "object",
