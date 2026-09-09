@@ -54,6 +54,9 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "use_last_control_as_nominal"), defaults.use_last_control_as_nominal);
   node.declare_parameter(
+    param_name(prefix, "nominal_initial_steering_max_deviation_rad"),
+    defaults.nominal_initial_steering_max_deviation_rad);
+  node.declare_parameter(
     param_name(prefix, "last_control_warm_start_max_age_s"),
     defaults.last_control_warm_start_max_age_s);
   node.declare_parameter(
@@ -115,6 +118,9 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
     node.get_parameter(param_name(prefix, "min_trajectory_progress_m")).as_double());
   options.use_last_control_as_nominal =
     node.get_parameter(param_name(prefix, "use_last_control_as_nominal")).as_bool();
+  options.nominal_initial_steering_max_deviation_rad = static_cast<float>(
+    node.get_parameter(param_name(prefix, "nominal_initial_steering_max_deviation_rad"))
+      .as_double());
   options.last_control_warm_start_max_age_s = static_cast<float>(
     node.get_parameter(param_name(prefix, "last_control_warm_start_max_age_s")).as_double());
   options.last_control_warm_start_max_position_error_m = static_cast<float>(

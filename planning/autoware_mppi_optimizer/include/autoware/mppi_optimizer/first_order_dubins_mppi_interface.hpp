@@ -88,6 +88,7 @@ enum class FirstOrderDubinsMppiNominalResetReason : std::uint8_t {
   expired,
   prediction_error,
   reference_discontinuity,
+  initial_steering_discontinuity,
   rejected,
   skipped,
   configuration_changed,
@@ -128,6 +129,8 @@ inline const char * to_string(const FirstOrderDubinsMppiNominalResetReason reaso
       return "prediction_error";
     case FirstOrderDubinsMppiNominalResetReason::reference_discontinuity:
       return "reference_discontinuity";
+    case FirstOrderDubinsMppiNominalResetReason::initial_steering_discontinuity:
+      return "initial_steering_discontinuity";
     case FirstOrderDubinsMppiNominalResetReason::rejected:
       return "rejected";
     case FirstOrderDubinsMppiNominalResetReason::skipped:
@@ -160,6 +163,16 @@ struct FirstOrderDubinsMppiNominalControlProfile
   float time_step_s{0.0F};
   std::vector<float> acceleration_commands_mps2;
   std::vector<float> steering_commands_rad;
+};
+
+/** Result of anchoring nominal steer u[0] to the steering state at command application time. */
+struct FirstOrderDubinsMppiNominalSteeringContinuity
+{
+  bool active{false};
+  bool clamped{false};
+  float application_steering_rad{0.0F};
+  float unguarded_command_rad{0.0F};
+  float guarded_command_rad{0.0F};
 };
 
 struct FirstOrderDubinsMppiRollout
@@ -389,6 +402,7 @@ struct FirstOrderDubinsMppiDebug
   FirstOrderDubinsMppiNominalResetReason nominal_reset_reason{
     FirstOrderDubinsMppiNominalResetReason::unavailable};
   int nominal_shift_count{0};
+  FirstOrderDubinsMppiNominalSteeringContinuity nominal_steering_continuity;
 };
 
 struct FirstOrderDubinsMppiOptimizationResult
