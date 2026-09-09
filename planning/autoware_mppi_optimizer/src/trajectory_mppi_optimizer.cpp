@@ -342,8 +342,10 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   if (!params_.enabled) {
     if (optimizer_) optimizer_->invalidateNominalWarmStart();
     steering_filter_.reset();
+    constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::STALE;
     publish_enabled(false);
     clear_markers(data.candidate_header);
+    publish_status_diagnostic(level, "MPPI disabled", rclcpp::Time{data.candidate_header.stamp});
     return ProcessingResult::Unchanged;
   }
 
@@ -436,12 +438,11 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       to_mppi_segments(road_borders), to_mppi_segments(drivable_area), kinematic_limits,
       control_postprocessor, /*defer_commit=*/true);
 
-    const bool apply_limited_fallback =
-      result.debug.was_rejected && result.debug.velocity_limit_profile_active;
-    const bool apply_result =
-      !params_.shadow_mode && (!result.debug.was_rejected || apply_limited_fallback);
-    if (filter_candidate && apply_result) {
-      if (apply_limited_fallback) {
+    const auto application = makeMppiApplicationStatus(
+      params_.shadow_mode, result.debug.was_rejected, result.debug.velocity_limit_profile_active,
+      result.optimized_point_count);
+    if (filter_candidate && application.output_applied) {
+      if (application.fallback_applied) {
         // The interface replaced the optimized result with its longitudinally limited reference.
         // Filter the fallback that is actually published from the pre-cycle filter state.
         candidate_steering_filter = steering_filter_;
@@ -471,31 +472,27 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       create_mppi_rollout_markers(result.debug, data.current_odometry->pose.pose.position.z);
     debug_pending_ = true;
 
-    publish_enabled(apply_result);
-    publish_cost_diagnostics(result.debug, apply_result, rclcpp::Time{input.header.stamp});
+    publish_enabled(application.optimized_trajectory_applied);
+    publish_cost_diagnostics(result.debug, application, rclcpp::Time{input.header.stamp});
     publish_processing_time(result.debug.timing);
     publish_prediction_accuracy(result.debug.prediction_accuracy);
     publish_ego_to_dp_first_point_distance(*data.current_odometry, input);
     publish_ego_signed_lateral_error_on_dp(*data.current_odometry, input);
-    if (!apply_result) {
-      optimizer_->discardPendingTrajectory();
-    }
-
-    if (apply_result) trajectory_points = result.trajectory.points;
-    if (apply_result && !result.debug.was_rejected && result.optimized_point_count > 0U) {
+    if (application.output_applied) trajectory_points = result.trajectory.points;
+    if (application.optimized_trajectory_applied) {
       optimizer_->commitPendingTrajectory();
       pending_debug_->applied_plant.valid = true;
     } else {
       optimizer_->discardPendingTrajectory();
     }
-    if (filter_candidate && apply_result && result.optimized_point_count > 0U) {
+    if (filter_candidate && application.output_applied) {
       steering_filter_ = std::move(candidate_steering_filter);
     } else {
       // Rejected/unfiltered fallbacks and skipped optimization do not execute the candidate's
       // first command. Re-seed from measured steering when filtered output resumes.
       steering_filter_.reset();
     }
-    return !result.debug.was_rejected ? ProcessingResult::Unchanged : ProcessingResult::Modified;
+    return application.output_applied ? ProcessingResult::Modified : ProcessingResult::Unchanged;
   } catch (const std::exception & error) {
     if (optimizer_) optimizer_->invalidateNominalWarmStart();
     steering_filter_.reset();
@@ -569,10 +566,10 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
   object_filter_prediction_extension_s_ = delay_steps * autoware::mppi_optimizer::detail::kMppiDt;
 }
 
-void TrajectoryMppiOptimizer::publish_enabled(const bool enabled) const
+void TrajectoryMppiOptimizer::publish_enabled(const bool applied) const
 {
   std_msgs::msg::Bool message;
-  message.data = enabled;
+  message.data = applied;
   enabled_pub_->publish(message);
 }
 
@@ -624,7 +621,8 @@ void TrajectoryMppiOptimizer::publish_debug_data(const std::string &) const
 }
 
 void TrajectoryMppiOptimizer::publish_cost_diagnostics(
-  const FirstOrderDubinsMppiDebug & debug, const bool was_applied, const rclcpp::Time & stamp)
+  const FirstOrderDubinsMppiDebug & debug, const MppiApplicationStatus & application,
+  const rclcpp::Time & stamp)
 {
   using diagnostic_msgs::msg::DiagnosticStatus;
   cost_diagnostics_->clear();
@@ -692,7 +690,13 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("map_velocity_limit_active", debug.map_velocity_limit_active);
   cost_diagnostics_->add_key_value(
     "velocity_limit_profile_active", debug.velocity_limit_profile_active);
-  cost_diagnostics_->add_key_value("was_applied", was_applied);
+  cost_diagnostics_->add_key_value("optimization_succeeded", application.optimization_succeeded);
+  cost_diagnostics_->add_key_value(
+    "optimized_trajectory_applied", application.optimized_trajectory_applied);
+  cost_diagnostics_->add_key_value("fallback_applied", application.fallback_applied);
+  cost_diagnostics_->add_key_value("output_applied", application.output_applied);
+  // Preserve the existing key for consumers of the enabled/applied MPPI status.
+  cost_diagnostics_->add_key_value("was_applied", application.optimized_trajectory_applied);
   if (debug.prediction_accuracy.valid) {
     const auto & pred = debug.prediction_accuracy;
     cost_diagnostics_->add_key_value("prediction/elapsed_s", pred.elapsed_s);
@@ -704,16 +708,20 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
     cost_diagnostics_->add_key_value("prediction/vel_error_mps", pred.vel_error_mps);
   }
 
-  if (cost.evaluated_timesteps == 0U) {
+  if (!application.optimization_succeeded && !debug.was_rejected) {
     cost_diagnostics_->update_level_and_message(
       DiagnosticStatus::STALE, "MPPI optimization skipped");
   } else if (!std::isfinite(cost.total) || !std::isfinite(debug.baseline_cost)) {
     cost_diagnostics_->update_level_and_message(DiagnosticStatus::ERROR, "Non-finite MPPI cost");
   } else if (debug.was_rejected) {
-    cost_diagnostics_->update_level_and_message(DiagnosticStatus::WARN, "MPPI trajectory rejected");
+    cost_diagnostics_->update_level_and_message(
+      DiagnosticStatus::WARN, application.fallback_applied
+                                ? "MPPI trajectory rejected; velocity-limited fallback applied"
+                                : "MPPI trajectory rejected");
   } else {
     cost_diagnostics_->update_level_and_message(
-      DiagnosticStatus::OK, was_applied ? "MPPI trajectory applied" : "MPPI shadow output");
+      DiagnosticStatus::OK,
+      application.optimized_trajectory_applied ? "MPPI trajectory applied" : "MPPI shadow output");
   }
   cost_diagnostics_->publish(stamp);
 }
@@ -722,6 +730,11 @@ void TrajectoryMppiOptimizer::publish_status_diagnostic(
   const std::uint8_t level, const std::string & message, const rclcpp::Time & stamp)
 {
   cost_diagnostics_->clear();
+  cost_diagnostics_->add_key_value("optimization_succeeded", false);
+  cost_diagnostics_->add_key_value("optimized_trajectory_applied", false);
+  cost_diagnostics_->add_key_value("fallback_applied", false);
+  cost_diagnostics_->add_key_value("output_applied", false);
+  cost_diagnostics_->add_key_value("was_applied", false);
   cost_diagnostics_->update_level_and_message(level, message);
   cost_diagnostics_->publish(stamp);
 }

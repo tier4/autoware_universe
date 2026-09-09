@@ -26,9 +26,9 @@ autoware_mppi_optimizer/
 
 Configure `autoware::mppi_optimizer::plugin::TrajectoryMppiOptimizer` in the `plugin_names` list of `autoware_trajectory_processor`. Place it first to optimize the primary candidate before other modifiers and optimizers.
 
-The plugin uses odometry, acceleration, steering, tracked objects, route, and raw lanelet map data from the processor. It returns the input points when MPPI is disabled, runs in shadow mode, rejects a result, or reports an error.
+The plugin uses odometry, acceleration, steering, tracked objects, route, and raw lanelet map data from the processor. It returns the input points when MPPI is disabled, skipped, running in shadow mode, or reports an error. A rejected result preserves the input geometry and may still apply its deterministic velocity-limit fallback.
 
-Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory processor node.
+Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory processor node. The transient-local `enabled` debug topic is true only for a cycle where an optimized MPPI trajectory replaced the primary candidate; it is false when MPPI is disabled, skipped, rejected, or running in shadow mode.
 
 ### Steering output filtering
 
