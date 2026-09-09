@@ -37,6 +37,7 @@ public:
   {
     params_ = params.stop_point_fixer;
     enabled_ = params.use_stop_point_fixer;
+    trajectory_time_step_ = params.trajectory_time_step;
   }
 
   const TrajectoryModifierParams::StopPointFixer & get_params() const { return params_; }

@@ -31,6 +31,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 
 #include <deque>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -156,6 +157,14 @@ struct MPCData
   // Pose (position and orientation) of the nearest point in the trajectory.
   Pose nearest_pose{};
 
+  // Temporal tracking debug values.
+  double temporal_predicted_time{std::numeric_limits<double>::quiet_NaN()};
+  double temporal_observed_time{std::numeric_limits<double>::quiet_NaN()};
+  double temporal_fused_time{std::numeric_limits<double>::quiet_NaN()};
+  double temporal_window_min{std::numeric_limits<double>::quiet_NaN()};
+  double temporal_window_max{std::numeric_limits<double>::quiet_NaN()};
+  bool temporal_observation_used{false};
+
   // Current steering angle.
   double steer{};
 
@@ -226,6 +235,8 @@ private:
   double m_yaw_error_prev = 0.0;       // Previous heading error for derivative calculation.
 
   bool m_is_forward_shift = true;  // Flag indicating if the shift is in the forward direction.
+  bool m_reference_trajectory_has_steering =
+    false;  // True when the complete received trajectory contains a nonzero steering state.
 
   rclcpp::Publisher<Trajectory>::SharedPtr m_debug_frenet_predicted_trajectory_pub;
   rclcpp::Publisher<Trajectory>::SharedPtr m_debug_resampled_reference_trajectory_pub;
@@ -437,6 +448,12 @@ public:
   bool m_use_delayed_initial_state =
     true;  // Flag to use x0_delayed as initial state for predicted trajectory
 
+  bool m_use_temporal_trajectory =
+    false;  // true: use timestamps; false: spatial distance/velocity time
+
+  bool m_use_trajectory_steering_for_feedforward =
+    false;  // Prefer temporal trajectory steering when the received field is populated.
+
   bool m_publish_debug_trajectories = false;  // Flag to publish predicted trajectory and
                                               // resampled reference trajectory for debug purpose
 
@@ -471,6 +488,12 @@ public:
    * @param current_steer Current steering report.
    */
   void resetPrevResult(const SteeringReport & current_steer);
+
+  /**
+   * @brief Reset steering-command LPF internal state to a published command value.
+   * Keeps the filter tracking post-MPC output (soft hold / stop freeze) instead of raw Uex.
+   */
+  void resetSteeringCmdFilter(const double steering_tire_angle);
 
   /**
    * @brief Set the vehicle model for this MPC.
