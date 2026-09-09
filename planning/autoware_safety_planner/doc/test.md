@@ -18,16 +18,19 @@ The planner parameters come from the production config: `config/safety_planner.p
 
 ## Build
 
+The closed-loop tests are opt-in because every scenario runs the planner for tens of seconds. A default build only
+builds and runs the unit tests (`test/unit/`, executable `test_autoware_safety_planner`).
+
 ```bash
-# without plots (default)
+# unit tests only (default)
 colcon build --packages-select autoware_safety_planner
 
-# with plots
-colcon build --packages-select autoware_safety_planner --cmake-args -DEXPORT_TEST_PLOT_FIGURE=ON
+# unit tests + closed-loop tests (executable test_autoware_safety_planner_closed_loop)
+colcon build --packages-select autoware_safety_planner --cmake-args -DSAFETY_PLANNER_CLOSED_LOOP_TEST=ON
 ```
 
-`EXPORT_TEST_PLOT_FIGURE` is stored in the CMake cache, so pass `-DEXPORT_TEST_PLOT_FIGURE=OFF` explicitly to turn it back off.
-Plotting uses `autoware_pyplot` (pybind11 + matplotlib). The test pins the backend to `Agg`
+`SAFETY_PLANNER_CLOSED_LOOP_TEST` is stored in the CMake cache, so pass `-DSAFETY_PLANNER_CLOSED_LOOP_TEST=OFF` explicitly to turn it back off.
+The closed-loop tests always write the plots. Plotting uses `autoware_pyplot` (pybind11 + matplotlib). The test pins the backend to `Agg`
 (with Qt5Agg the process segfaults at exit).
 
 ## Run
@@ -39,9 +42,9 @@ colcon test-result --verbose
 
 # run the executable directly (handy for gtest filters and repeated runs)
 source install/setup.bash
-./build/autoware_safety_planner/test_autoware_safety_planner
-./build/autoware_safety_planner/test_autoware_safety_planner --gtest_filter='*behavior_normal_route*'
-./build/autoware_safety_planner/test_autoware_safety_planner --gtest_list_tests
+./build/autoware_safety_planner/test_autoware_safety_planner_closed_loop
+./build/autoware_safety_planner/test_autoware_safety_planner_closed_loop --gtest_filter='*behavior_normal_route*'
+./build/autoware_safety_planner/test_autoware_safety_planner_closed_loop --gtest_list_tests
 ```
 
 Plugins are resolved by pluginlib from `plugins.xml` under `install/`, so `source install/setup.bash` is required even when
@@ -61,7 +64,7 @@ source tree). They are written regardless of pass/fail. `<name>` below is the sn
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `<name>_ego.csv`          | one row per cycle: `step, t, x, y, z, yaw, v, a, steer, num_trajectory_points` (ego state at the start of the cycle). The last row is the ego state at termination, i.e. the state the goal check was evaluated on; it has `num_trajectory_points = 0` |
 | `<name>_trajectories.csv` | one row per trajectory point of every cycle: `step, t, idx, time_from_start, x, y, z, yaw, v, a, steer` (raw output of `SafetyPlanner::plan`, normal side)                                                                                             |
-| `<name>.png`              | only with `EXPORT_TEST_PLOT_FIGURE=ON`: route lanelets, reference path (green) and output trajectory (blue) of every cycle, ego trace, vehicle footprint every 1 s, ego velocity over time                                                             |
+| `<name>.png`              | route lanelets, reference path (green) and output trajectory (blue) of every cycle, ego trace, vehicle footprint every 1 s, ego velocity over time                                                                                                     |
 
 Units are SI (m, s, m/s, m/s^2, rad). `t` is the simulation time of the cycle (`step * 0.1`), and `time_from_start` is relative
 to that cycle. A typical analysis is `pandas.read_csv(...)` and grouping `_trajectories.csv` by `step`.

@@ -64,37 +64,55 @@ rclcpp_components_register_node(${PROJECT_NAME}_lib
 
 if(BUILD_TESTING)
   find_package(ament_cmake_ros REQUIRED)
-  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-  find_package(pybind11_vendor REQUIRED)
-  find_package(pybind11 REQUIRED)
+
+  file(GLOB UNIT_TEST_SOURCES test/unit/*.cpp)
+  if(UNIT_TEST_SOURCES)
+    ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
+      ${UNIT_TEST_SOURCES}
+      TIMEOUT 120
+    )
+    target_link_libraries(test_${PROJECT_NAME}
+      ${PROJECT_NAME}_lib
+      ${PROJECT_NAME}_common
+      safety_planner_parameters
+    )
+    target_include_directories(test_${PROJECT_NAME} PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/src
+      ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
+    # parameter_traits::OK in the generated parameter header is deprecated
+    target_compile_options(test_${PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
+  endif()
 
   # Closed-loop simulation (test/closed_loop) that drives SafetyPlanner::plan without a node.
-  option(EXPORT_TEST_PLOT_FIGURE "Enable plotting in tests" OFF)
+  option(SAFETY_PLANNER_CLOSED_LOOP_TEST "Build and run the closed-loop simulation tests" OFF)
+  if(SAFETY_PLANNER_CLOSED_LOOP_TEST)
+    message(STATUS "SAFETY_PLANNER_CLOSED_LOOP_TEST is ON")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+    find_package(pybind11_vendor REQUIRED)
+    find_package(pybind11 REQUIRED)
 
-  file(GLOB_RECURSE TEST_SOURCES test/*.cpp)
-  ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
-    ${TEST_SOURCES}
-    TIMEOUT 300
-  )
-  target_link_libraries(test_${PROJECT_NAME}
-    ${PROJECT_NAME}_lib
-    ${PROJECT_NAME}_common
-    safety_planner_parameters
-    Python3::Python
-    pybind11::embed
-  )
-  target_include_directories(test_${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/test
-  )
-  ament_target_dependencies(test_${PROJECT_NAME} autoware_pyplot autoware_test_utils)
-  target_compile_options(test_${PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
-  target_compile_definitions(test_${PROJECT_NAME} PRIVATE
-    TEST_RESULTS_DIR="${CMAKE_CURRENT_BINARY_DIR}/test_results"
-  )
-  if(EXPORT_TEST_PLOT_FIGURE)
-    message(STATUS "EXPORT_TEST_PLOT_FIGURE is ON")
-    target_compile_definitions(test_${PROJECT_NAME} PRIVATE EXPORT_TEST_PLOT_FIGURE)
+    file(GLOB CLOSED_LOOP_TEST_SOURCES test/closed_loop/*.cpp test/*.cpp)
+    ament_add_ros_isolated_gtest(test_${PROJECT_NAME}_closed_loop
+      ${CLOSED_LOOP_TEST_SOURCES}
+      TIMEOUT 600
+    )
+    target_link_libraries(test_${PROJECT_NAME}_closed_loop
+      ${PROJECT_NAME}_lib
+      ${PROJECT_NAME}_common
+      safety_planner_parameters
+      Python3::Python
+      pybind11::embed
+    )
+    target_include_directories(test_${PROJECT_NAME}_closed_loop PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/src
+      ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
+    ament_target_dependencies(test_${PROJECT_NAME}_closed_loop autoware_pyplot autoware_test_utils)
+    target_compile_options(test_${PROJECT_NAME}_closed_loop PRIVATE -Wno-deprecated-declarations)
+    target_compile_definitions(test_${PROJECT_NAME}_closed_loop PRIVATE
+      TEST_RESULTS_DIR="${CMAKE_CURRENT_BINARY_DIR}/test_results"
+    )
   endif()
 endif()
 

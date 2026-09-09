@@ -21,7 +21,6 @@
 
 namespace autoware::safety_planner
 {
-#ifdef EXPORT_TEST_PLOT_FIGURE
 // With a DISPLAY, matplotlib picks the interactive Qt5Agg backend, which segfaults in
 // Py_FinalizeEx. Pin the file-only Agg backend; it must be set before the interpreter starts.
 static const int mpl_backend_is_set = setenv("MPLBACKEND", "Agg", 1);
@@ -34,5 +33,4 @@ void save_figure(autoware::pyplot::PyPlot & plt, const std::string & sub_dir)
   plt.savefig(Args(path), Kwargs("dpi"_a = 150));
   plt.clf();
 }
-#endif
 }  // namespace autoware::safety_planner

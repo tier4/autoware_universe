@@ -20,6 +20,9 @@
 #include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 #include <autoware_test_utils/mock_data_parser.hpp>
+#include <autoware_test_utils/visualization.hpp>
+#include <autoware_utils_geometry/boost_polygon_utils.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <gtest/gtest.h>
@@ -33,12 +36,6 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#ifdef EXPORT_TEST_PLOT_FIGURE
-#include <autoware_test_utils/visualization.hpp>
-#include <autoware_utils_geometry/boost_polygon_utils.hpp>
-#include <autoware_utils_geometry/geometry.hpp>
-#endif
 
 namespace autoware::safety_planner::testing
 {
@@ -116,7 +113,6 @@ protected:
   void SetUp() override { rclcpp::init(0, nullptr); }
   void TearDown() override { rclcpp::shutdown(); }
 
-#ifdef EXPORT_TEST_PLOT_FIGURE
   static void plot_footprint(
     autoware::pyplot::Axes & ax, const Pose & pose, const VehicleInfo & vehicle_info,
     const std::string & color)
@@ -219,7 +215,6 @@ protected:
     fig.tight_layout();
     save_figure(plt, "closed_loop");
   }
-#endif
 };
 
 TEST_P(ClosedLoopTest, ReachesGoalWithValidTrajectories)
@@ -230,7 +225,7 @@ TEST_P(ClosedLoopTest, ReachesGoalWithValidTrajectories)
     scenario.predicted_objects, ClosedLoopConfig{});
   const auto result = simulator.run();
   write_result_csv(result, make_test_results_dir("closed_loop") + current_test_file_stem());
-  SP_PLOT_RESULT({ plot(scenario, simulator, result); });
+  plot(scenario, simulator, result);
 
   if (scenario.expectation == "stop") {
     EXPECT_FALSE(result.goal_reached) << result.termination_reason;
