@@ -17,6 +17,7 @@
 
 #include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/mppi_application_status.hpp"
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware/avoidance_target_detector/object_filtering.hpp>
@@ -86,12 +87,13 @@ private:
   /** @brief Creates and configures the GPU optimizer on first use. */
   void ensure_optimizer();
 
-  /** @brief Publishes whether MPPI replaced the primary candidate. */
-  void publish_enabled(bool enabled) const;
+  /** @brief Publishes whether an optimized MPPI trajectory replaced the primary candidate. */
+  void publish_enabled(bool applied) const;
 
   /** @brief Publishes the MPPI cost breakdown and result status. */
   void publish_cost_diagnostics(
-    const FirstOrderDubinsMppiDebug & debug, bool was_applied, const rclcpp::Time & stamp);
+    const FirstOrderDubinsMppiDebug & debug, const MppiApplicationStatus & application,
+    const rclcpp::Time & stamp);
 
   /** @brief Publishes a diagnostic for a skipped or failed MPPI pass. */
   void publish_status_diagnostic(
