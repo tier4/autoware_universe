@@ -1,6 +1,7 @@
 /**:
   ros__parameters:
     plugin_names:
+      - "autoware::trajectory_modifier::plugin::ModelPlanningFactorID"
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
       - "autoware::trajectory_modifier::plugin::TrafficLightStop"
       - "autoware::trajectory_modifier::plugin::VelocityModifier"
@@ -9,6 +10,7 @@
     use_obstacle_stop: true
     use_traffic_light_stop: true
     use_velocity_modifier: true
+    use_model_planning_factor_id: true
     trajectory_time_step: 0.1 # [s]
 
     # Stop Point Fixer Plugin Parameters
@@ -93,3 +95,15 @@
       amber_rejection:
         th_hysteresis: 0.5 # [s]
         reject_if_stop_detected: true
+
+    # ModelPlanningFactorID Plugin Parameters
+    # Inspect the input pose-sequence trajectory (any learning-based planner) and
+    # publish /planning/planning_factors/planning_model (launch remaps to
+    # /planning/planning_factors/neural_network_planner). Does not mutate.
+    # Source: autoware_diffusion_planner planning_factor_utils.
+    model_planning_factor_id:
+      enable_stop: true
+      enable_slowdown: false
+      stop_velocity_threshold: 0.1       # [m/s]
+      stop_keep_duration_threshold: 1.0  # [s]
+      slowdown_accel_threshold: -0.3     # [m/s^2]

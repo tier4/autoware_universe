@@ -314,6 +314,15 @@ Following `autoware_tensorrt_vad`:
 
 ## Expected Use Cases
 
+A builder crash is not evidence about a graph or a flag until it reproduces on a second host.
+This package's docs briefly recorded that the TensorRT 10.16 builder "segfaults below 16 GiB of
+workspace", "segfaults in fp16", and "segfaults with auxiliary streams or optimization level
+5". All of it was one development machine's CPU faulting at its boost clock: the identical
+fp32 build crashed 8 of 8 times at stock clocks, 0 of 8 with the CPU capped at 4.5 GHz, and 8
+of 8 again at stock (2026-09-09). With the CPU capped, every one of those configurations
+builds. The workspace default went back to 4 GiB; the knobs were re-measured, see the
+model-specific notes.
+
 Missing sensor data is reported as a warning and skips that pass. Initialization errors
 disable inference and publish an error diagnostic. A pass taking longer than the interval
 the sensor actually delivered raises a warning, so an output-rate regression is visible
