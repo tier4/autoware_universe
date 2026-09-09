@@ -183,7 +183,7 @@ bool ObstacleStop::is_trajectory_modification_required(
       traj_points, input.current_odometry->pose.pose, context_->vehicle_info,
       input.current_odometry->twist.twist.linear.x,
       input.current_acceleration->accel.accel.linear.x, stopping_params_.nominal_deceleration,
-      stopping_params_.jerk_limit, params_.stop_margin);
+      stopping_params_.jerk_limit, params_.stop_margin, stopping_params_.delay_response_time);
   }
 
   check_obstacles(traj_points, input);
@@ -233,7 +233,7 @@ bool ObstacleStop::set_stop_point(
     nearest_collision_point_->arc_length - target_stop_margin,
     debug_data_.trajectory_shape.trajectory_length, input.current_odometry->twist.twist.linear.x,
     input.current_acceleration->accel.accel.linear.x, stopping_params_.maximum_deceleration,
-    stopping_params_.jerk_limit);
+    stopping_params_.jerk_limit, stopping_params_.delay_response_time);
 
   // actual stop margin from ego front to collision point
   const auto actual_stop_margin =
@@ -345,7 +345,7 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
 
   auto collision_point = get_nearest_object_collision(
     debug_data_.target_objects, traj_points, context_->vehicle_info, object_decel_map_,
-    params_.rss_params.ego_decel, params_.rss_params.reaction_time,
+    params_.rss_params.ego_decel, stopping_params_.delay_response_time, params_.stop_margin,
     params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
     params_.rss_params.lookahead_horizon, params_.rss_params.enable);
 

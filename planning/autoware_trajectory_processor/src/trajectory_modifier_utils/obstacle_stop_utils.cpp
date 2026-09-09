@@ -56,11 +56,10 @@ void trim_trajectory_and_remove_duplicates(TrajectoryPoints & trajectory_points)
 
 double get_detection_length(
   const double forward_traj_length, const double current_vel, const double current_accel,
-  const double decel, const double jerk, const double stop_margin)
+  const double decel, const double jerk, const double stop_margin, const double time_delay)
 {
   // add a buffer length to account for the reaction time of the vehicle
   constexpr double buffer_length = 1.0;
-  constexpr double time_delay = 0.3;
   const auto margin = stop_margin + buffer_length;
   auto nominal_stopping_distance = autoware::motion_utils::calculate_stop_distance(
     current_vel, current_accel, decel, jerk, time_delay);
@@ -143,7 +142,8 @@ TrajectoryPoints extend_trajectory(const TrajectoryPoints & trajectory_points, c
 TrajectoryShape build_trajectory_footprint_index(
   const TrajectoryPoints & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double ego_vel,
-  const double ego_accel, const double decel, const double jerk, const double stop_margin)
+  const double ego_accel, const double decel, const double jerk, const double stop_margin,
+  const double time_delay)
 {
   TrajectoryShape shape;
   shape.trajectory_length = 0.0;
@@ -165,8 +165,8 @@ TrajectoryShape build_trajectory_footprint_index(
   shape.trajectory_length = traj_length;
   shape.forward_traj_length = forward_traj_length;
 
-  const auto detection_length =
-    get_detection_length(forward_traj_length, ego_vel, ego_accel, decel, jerk, stop_margin);
+  const auto detection_length = get_detection_length(
+    forward_traj_length, ego_vel, ego_accel, decel, jerk, stop_margin, time_delay);
 
   const auto detection_traj = std::invoke([&]() -> TrajectoryPoints {
     if (detection_length < forward_traj_length) {
@@ -476,7 +476,7 @@ double get_safe_distance(
   const auto ego_stopping_distance = ego_vel * ego_vel / (2 * ego_decel_mag);
   const auto safe_distance =
     reaction_distance + ego_stopping_distance - object_stopping_distance + safety_margin;
-  return std::max(safe_distance, safety_margin);
+  return safe_distance;
 }
 
 std::optional<CollisionPoint> get_nearest_object_collision(
@@ -512,8 +512,8 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
   const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
-  const double safety_margin, const double stopped_vel_th, const double lookahead_horizon,
-  const bool use_rss_check)
+  const double min_safe_distance, const double rss_safety_buffer, const double stopped_vel_th,
+  const double lookahead_horizon, const bool use_rss_check)
 {
   if (target_objects.empty() || trajectory_points.size() < 2) return std::nullopt;
 
@@ -547,8 +547,10 @@ std::optional<CollisionPoint> get_nearest_object_collision(
     const auto relative_arc_length = std::max(0.0, obj_arc_length - ego_front_arc_length);
     if (obj_stopping_distance <= eps)
       return std::make_tuple(false, relative_arc_length, relative_arc_length);
-    const auto safe_dist =
-      get_safe_distance(ego_vel, ego_decel, obj_stopping_distance, reaction_time, safety_margin);
+    const auto safe_dist = std::max(
+      min_safe_distance,
+      get_safe_distance(
+        ego_vel, ego_decel, obj_stopping_distance, reaction_time, rss_safety_buffer));
     return std::make_tuple(relative_arc_length - safe_dist > 1e-3, safe_dist, relative_arc_length);
   };
 

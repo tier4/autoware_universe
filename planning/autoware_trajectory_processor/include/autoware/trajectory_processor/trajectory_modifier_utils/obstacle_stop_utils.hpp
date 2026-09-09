@@ -274,7 +274,8 @@ void trim_trajectory_and_remove_duplicates(TrajectoryPoints & trajectory_points)
 TrajectoryShape build_trajectory_footprint_index(
   const TrajectoryPoints & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double ego_vel,
-  const double ego_accel, const double decel, const double jerk, const double stop_margin);
+  const double ego_accel, const double decel, const double jerk, const double stop_margin,
+  const double time_delay = 0.0);
 
 using QueryResult = std::pair<size_t, Polygon2d>;
 
@@ -332,7 +333,8 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
  * the safe-distance model.
  * @param ego_decel Magnitude of ego deceleration [m/s^2] for the ego stopping term.
  * @param reaction_time system reaction time [s] to respond to detected collision.
- * @param safety_margin Extra longitudinal buffer [m] added to the computed safe distance.
+ * @param min_safe_distance Lower limit on the required gap while the object is moving [m].
+ * @param rss_safety_buffer Buffer added inside the RSS safe-distance formula [m].
  * @param stopped_vel_th Objects with longitudinal speed along the path below this [m/s] are
  * considered static.
  * @param lookahead_horizon Maximum `time_from_start` along the trajectory [s] to propagate objects
@@ -343,8 +345,8 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
   const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
-  const double safety_margin, const double stopped_vel_th, const double lookahead_horizon,
-  const bool use_rss_check = true);
+  const double min_safe_distance, const double rss_safety_buffer, const double stopped_vel_th,
+  const double lookahead_horizon, const bool use_rss_check = true);
 
 /// Filters predicted objects by semantic type, speed, and spatial relationship to the trajectory.
 struct ObjectFilter
