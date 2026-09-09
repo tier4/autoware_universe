@@ -335,6 +335,12 @@ trajectory_mppi_optimizer:
     description: Minimum input arc length for optimization
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  min_trajectory_progress_m:
+    type: double
+    default_value: 0.0
+    description: Minimum forward arc-length gain required from an optimized trajectory; zero disables validation
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   use_temporal_mpt_as_nominal:
     type: bool
     default_value: true

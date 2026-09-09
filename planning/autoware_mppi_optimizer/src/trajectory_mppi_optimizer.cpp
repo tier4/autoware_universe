@@ -128,6 +128,7 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.force_cold_start_each_step = params.force_cold_start_each_step;
   output.skip_if_invalid = params.skip_if_invalid;
   output.min_optimization_length = static_cast<float>(params.min_optimization_length);
+  output.min_trajectory_progress_m = static_cast<float>(params.min_trajectory_progress_m);
   output.use_last_control_as_nominal = params.use_last_control_as_nominal;
   output.use_temporal_mpt_as_nominal = params.use_temporal_mpt_as_nominal;
   output.prevent_reverse_velocity = params.prevent_reverse_velocity;
