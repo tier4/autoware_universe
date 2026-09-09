@@ -134,8 +134,8 @@ private:
    * @brief Load TensorRT model and normalization statistics.
    *
    * Updates the normalization_map_ and diffusion_planner_inference_ member variables.
-   * On failure, stores the exception text in model_load_error_ and publishes model_status
-   * before rethrowing.
+   * On failure, stores the exception text in model_load_error_ and publishes it on
+   * inference_status before rethrowing.
    *
    * @throws std::runtime_error if args_path or model paths are invalid, if the
    *         model version is incompatible, or if TensorRT engine setup fails.
@@ -143,15 +143,9 @@ private:
   void load_model();
 
   /**
-   * @brief Publish model_status diagnostics (load error, loading, or OK).
-   * @param stamp Timestamp forwarded to DiagnosticsInterface::publish.
+   * @brief Add model path and backend key-values to inference_status.
    */
-  void publish_model_status(const rclcpp::Time & stamp);
-
-  /**
-   * @brief Add model path and backend key-values to model_status.
-   */
-  void fill_model_status_key_values();
+  void fill_model_key_values();
 
   /**
    * @brief Timer callback for periodic processing and publishing.
@@ -284,7 +278,6 @@ private:
   VehicleInfo vehicle_info_;
 
   std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
-  std::unique_ptr<DiagnosticsInterface> diagnostics_model_status_;
   std::optional<std::string> model_load_error_;
   std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_{nullptr};
 
