@@ -320,8 +320,8 @@ bool project_boundary(
 }
 
 bool project_gate(
-  const Centerline & centerline, const Constraint & constraint, const Gate & gate,
-  const std::size_t raw_index, std::vector<StopBarEntry> & out)
+  const Centerline & centerline, const Gate & gate, const std::size_t raw_index,
+  std::vector<StopBarEntry> & out)
 {
   const auto & p = centerline.points();
   const auto & s = centerline.arc_lengths();
@@ -357,7 +357,7 @@ bool project_gate(
 
   StopBarEntry entry;
   entry.s_stop = *s_stop;
-  entry.time = constraint.domain.time;
+  entry.time = gate.time;
   entry.raw_index = raw_index;
   out.push_back(entry);
   return true;
@@ -392,8 +392,8 @@ std::vector<std::pair<double, std::vector<Point2d>>> sample_occupancy(const Keep
 }
 
 bool project_keep_out(
-  const Centerline & centerline, const Constraint & constraint, const KeepOut & keep_out,
-  const std::size_t raw_index, std::vector<OccupancyEntry> & out)
+  const Centerline & centerline, const KeepOut & keep_out, const std::size_t raw_index,
+  std::vector<OccupancyEntry> & out)
 {
   const auto samples = sample_occupancy(keep_out);
   if (samples.empty()) {
@@ -401,21 +401,15 @@ bool project_keep_out(
   }
 
   // A slab spans two neighboring samples, and its occupancy conservatively bounds the union of the
-  // shapes at both ends. A static object, with a single sample, becomes one slab covering the whole
-  // time window
+  // shapes at both ends. A static object, with a single sample, becomes one slab covering all times
   OccupancyEntry entry;
   entry.raw_index = raw_index;
 
   const std::size_t slab_count = std::max<std::size_t>(samples.size() - 1, 1);
   for (std::size_t i = 0; i < slab_count; ++i) {
     const bool single = samples.size() == 1;
-    const double t_begin = single ? constraint.domain.time.t0 : samples[i].first;
-    const double t_end = single ? constraint.domain.time.t1 : samples[i + 1].first;
-    const double t0 = std::max(t_begin, constraint.domain.time.t0);
-    const double t1 = std::min(t_end, constraint.domain.time.t1);
-    if (t1 < t0) {
-      continue;  // outside the time window
-    }
+    const double t0 = single ? 0.0 : samples[i].first;
+    const double t1 = single ? INF : samples[i + 1].first;
 
     double s0 = +INF;
     double s1 = -INF;
@@ -481,7 +475,6 @@ CompiledConstraints compile_constraint_list(
   }
 
   for (std::size_t i = 0; i < constraints.size(); ++i) {
-    const auto & constraint = constraints[i];
     const bool projected = std::visit(
       [&](const auto & payload) {
         using Payload = std::decay_t<decltype(payload)>;
@@ -490,12 +483,12 @@ CompiledConstraints compile_constraint_list(
         } else if constexpr (std::is_same_v<Payload, Boundary>) {
           return project_boundary(centerline, payload, i, compiled.lateral_bounds);
         } else if constexpr (std::is_same_v<Payload, Gate>) {
-          return project_gate(centerline, constraint, payload, i, compiled.stop_bars);
+          return project_gate(centerline, payload, i, compiled.stop_bars);
         } else {
-          return project_keep_out(centerline, constraint, payload, i, compiled.occupancies);
+          return project_keep_out(centerline, payload, i, compiled.occupancies);
         }
       },
-      constraint.payload);
+      constraints[i].payload);
     if (!projected) {
       compiled.unprojected.push_back(i);
     }

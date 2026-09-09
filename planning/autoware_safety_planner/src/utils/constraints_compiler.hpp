@@ -92,7 +92,7 @@ struct LateralBoundEntry
 struct StopBarEntry
 {
   double s_stop{0.0};  //!< [m] entry is forbidden beyond this s (evaluated on the footprint front)
-  TimeWindow time{};   //!< copy of the time window in raw
+  TimeWindow time{};   //!< copy of Gate::time
   std::size_t raw_index{0};
 };
 

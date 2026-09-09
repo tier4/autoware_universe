@@ -51,18 +51,6 @@ struct TimeWindow
   double t1{INF};
 };
 
-struct ArcRange
-{
-  double s0{-INF};  //!< [m] relative to the projection of ego
-  double s1{INF};
-};
-
-struct Domain
-{
-  TimeWindow time{};
-  ArcRange arc{};
-};
-
 struct Source
 {
   std::string plugin_name;
@@ -117,7 +105,6 @@ struct ScalarBound
   double min{-INF};  //!< unused (left at -INF) for quantities bounded in absolute value
   double max{+INF};
 
-  // TODO(odashima): need region for lateral range constraint?
   std::optional<Polygon2d> region{};  //!< nullopt = everywhere
 };
 
@@ -129,7 +116,7 @@ struct Boundary
 struct RigidBody
 {
   Polygon2d shape{};                 //!< in body frame
-  std::vector<TimedPose> waypoints;  //!< ascending in t, at least one
+  std::vector<TimedPose> waypoints;  //!< ascending in t, at least one. one = static at all times
 };
 
 struct TimedPolygonSequence
@@ -145,6 +132,7 @@ struct KeepOut
 struct Gate
 {
   Segment2d line{};
+  TimeWindow time{};  //!< while closed
 };
 
 using ConstraintPayload = std::variant<ScalarBound, Boundary, KeepOut, Gate>;
@@ -158,7 +146,6 @@ struct Constraint
   Certainty certainty{Certainty::DEFINITE};
   Hardness hardness{Hardness::HARD};
   double slack_weight{0.0};  //!< [-] penalty on the slack, only used when hardness is SOFT
-  Domain domain{};
   ConstraintPayload payload{};
   Source source{};
 };
