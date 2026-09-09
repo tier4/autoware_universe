@@ -16,42 +16,137 @@
 
 #include <boost/geometry.hpp>
 
+#include <lanelet2_core/LaneletMap.h>
+
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
+
+namespace autoware::trajectory_validator::plugin::safety
+{
+namespace
+{
+bool is_pedestrian_or_bicycle(
+  const autoware_perception_msgs::msg::PredictedObject & predicted_object)
+{
+  using autoware_perception_msgs::msg::ObjectClassification;
+
+  const auto label =
+    autoware::object_recognition_utils::getHighestProbLabel(predicted_object.classification);
+  return label == ObjectClassification::PEDESTRIAN || label == ObjectClassification::BICYCLE;
+}
+
+std::vector<Polygon2d> collect_nearby_intersection_area_polygons(
+  const lanelet::LaneletMap & lanelet_map, const Polygon2d & object_hull)
+{
+  std::vector<Polygon2d> polygons;
+  std::set<lanelet::Id> intersection_area_ids;
+  lanelet::BoundingBox2d search_bbox;
+  for (const auto & point : object_hull.outer()) {
+    search_bbox.extend(lanelet::BasicPoint2d(point.x(), point.y()));
+  }
+
+  for (const auto & lanelet : lanelet_map.laneletLayer.search(search_bbox)) {
+    const lanelet::Id area_id =
+      std::atoi(std::string(lanelet.attributeOr("intersection_area", std::string{"0"})).c_str());
+    if (area_id == 0 || !intersection_area_ids.insert(area_id).second) {
+      continue;
+    }
+
+    const auto polygon_it = lanelet_map.polygonLayer.find(area_id);
+    if (polygon_it == lanelet_map.polygonLayer.end()) {
+      continue;
+    }
+
+    Polygon2d polygon;
+    for (const auto & point : polygon_it->basicPolygon()) {
+      polygon.outer().emplace_back(point.x(), point.y());
+    }
+    polygons.push_back(std::move(polygon));
+  }
+
+  return polygons;
+}
+
+std::vector<Polygon2d> collect_nearby_crosswalk_or_walkway_polygons(
+  const lanelet::LaneletMap & lanelet_map, const Polygon2d & object_hull)
+{
+  std::vector<Polygon2d> polygons;
+  lanelet::BoundingBox2d search_bbox;
+  for (const auto & point : object_hull.outer()) {
+    search_bbox.extend(lanelet::BasicPoint2d(point.x(), point.y()));
+  }
+
+  for (const auto & lanelet : lanelet_map.laneletLayer.search(search_bbox)) {
+    const auto subtype = lanelet.attributeOr(lanelet::AttributeName::Subtype, std::string{});
+    if (
+      subtype != lanelet::AttributeValueString::Crosswalk &&
+      subtype != lanelet::AttributeValueString::Walkway) {
+      continue;
+    }
+
+    Polygon2d polygon;
+    for (const auto & point : lanelet.polygon2d().basicPolygon()) {
+      polygon.outer().emplace_back(point.x(), point.y());
+    }
+    polygons.push_back(std::move(polygon));
+  }
+
+  return polygons;
+}
+
+bool intersects_any(const Polygon2d & object_polygon, const std::vector<Polygon2d> & polygons)
+{
+  return std::any_of(polygons.begin(), polygons.end(), [&](const auto & polygon) {
+    return boost::geometry::intersects(object_polygon, polygon);
+  });
+}
+
+bool is_vru_prioritized_at_collision(
+  const CollisionDetail & nominal_collision_result, const lanelet::LaneletMap & lanelet_map)
+{
+  const auto intersection_area_polygons =
+    collect_nearby_intersection_area_polygons(lanelet_map, nominal_collision_result.object_hull);
+  if (!intersects_any(nominal_collision_result.object_hull, intersection_area_polygons)) {
+    return true;
+  }
+
+  const auto crosswalk_or_walkway_polygons =
+    collect_nearby_crosswalk_or_walkway_polygons(lanelet_map, nominal_collision_result.object_hull);
+  return intersects_any(nominal_collision_result.object_hull, crosswalk_or_walkway_polygons);
+}
+}  // namespace
+}  // namespace autoware::trajectory_validator::plugin::safety
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
 std::optional<CollisionDetail> find_collision_timing(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
-  const DracParams::PetMargin & pet_find_range, double time_resolution)
+  DracParams::PetMargin pet_find_range, double time_resolution)
 {
-  const double max_pet_threshold =
-    std::max(pet_find_range.ego_earlier, pet_find_range.object_earlier);
-
-  const auto overall_test_index_range = test_trajectory.resolve_covering_index_range(
-    {ref_trajectory.getTimes().front() - pet_find_range.object_earlier,
-     ref_trajectory.getTimes().back() + pet_find_range.ego_earlier});
-  if (!overall_test_index_range) {
-    return std::nullopt;
-  }
-
-  if (!boost::geometry::intersects(
-        ref_trajectory.get_or_compute_overall_envelope(),
-        test_trajectory.get_or_compute_envelope(*overall_test_index_range))) {
-    return std::nullopt;
-  }
-
   struct CandidateFinding
   {
     double ttc;
     double pet;
     IndexRange ref_index_range;
     IndexRange test_index_range;
+  };
+
+  struct TimeOffsets
+  {
+    double ref;
+    double test;
+  };
+
+  // Positive PET means that ref arrives earlier; negative PET means that test arrives earlier.
+  const auto offsets_from_pet = [](const double pet) {
+    return TimeOffsets{std::max(0.0, -pet), std::max(0.0, pet)};
   };
 
   const auto make_collision_detail =
@@ -68,66 +163,104 @@ std::optional<CollisionDetail> find_collision_timing(
       test_trajectory.get_or_compute_convex(worst_pet.test_index_range)};
   };
 
+  // todo(takagi): rename "first_collision" and "worst_pet"
   std::optional<CandidateFinding> first_collision_timing{};
   std::optional<CandidateFinding> worst_pet_timing{};
-  for (size_t i = 0; i < ref_trajectory.size(); ++i) {
-    size_t prev_i = (i == 0) ? 0 : i - 1;
-    const double ref_start_time = ref_trajectory.getTimes().at(prev_i);
-    const double ref_end_time = ref_trajectory.getTimes().at(i);
-
-    const IndexRange ref_index_range{prev_i, i};
-    const Box2d & ref_envelope = ref_trajectory.get_or_compute_envelope(ref_index_range);
-    const Polygon2d & ref_convex = ref_trajectory.get_or_compute_convex(ref_index_range);
-
-    const double current_pet_limit =
-      worst_pet_timing.has_value() ? std::abs(worst_pet_timing->pet) : max_pet_threshold;
-
-    const auto rough_test_index_range = test_trajectory.resolve_covering_index_range(
-      {ref_start_time - current_pet_limit, ref_end_time + current_pet_limit});
-    if (!rough_test_index_range) {
-      continue;
+  const auto update_first_collision = [&](const CandidateFinding & candidate) {
+    if (
+      !first_collision_timing.has_value() ||
+      (candidate.pet < first_collision_timing->pet && candidate.pet < 0.0)) {
+      first_collision_timing = candidate;
     }
-
-    if (!boost::geometry::intersects(
-          ref_envelope, test_trajectory.get_or_compute_envelope(rough_test_index_range.value()))) {
-      continue;
+  };
+  const auto update_worst_pet = [&](const CandidateFinding & candidate) {
+    if (
+      !worst_pet_timing.has_value() || std::abs(candidate.pet) < std::abs(worst_pet_timing->pet)) {
+      worst_pet_timing = candidate;
+      const double pet_limit = std::abs(candidate.pet);
+      pet_find_range.ego_earlier = std::min(pet_find_range.ego_earlier, pet_limit);
+      pet_find_range.object_earlier = std::min(pet_find_range.object_earlier, pet_limit);
     }
+  };
 
-    const auto has_intersects = [&](const IndexRange & index_range) -> bool {
-      if (!boost::geometry::intersects(
-            ref_envelope, test_trajectory.get_or_compute_envelope(index_range))) {
-        return false;
-      }
+  const auto overall_test_index_range = test_trajectory.resolve_covering_index_range(
+    {ref_trajectory.getTimes().front(),
+     ref_trajectory.getTimes().back() + pet_find_range.ego_earlier});
+  if (
+    !overall_test_index_range ||
+    !boost::geometry::intersects(
+      ref_trajectory.get_or_compute_overall_envelope(),
+      test_trajectory.get_or_compute_envelope(*overall_test_index_range))) {
+    return std::nullopt;
+  }
 
-      return geometry::intersects_sat(
-        ref_convex, test_trajectory.get_or_compute_convex(index_range));
+  const auto has_intersects =
+    [](
+      const TrajectoryData & first_trajectory, const IndexRange & first_index_range,
+      const TrajectoryData & second_trajectory, const IndexRange & second_index_range) {
+      return (
+        boost::geometry::intersects(
+          first_trajectory.get_or_compute_envelope(first_index_range),
+          second_trajectory.get_or_compute_envelope(second_index_range)) &&
+        geometry::intersects_sat(
+          first_trajectory.get_or_compute_convex(first_index_range),
+          second_trajectory.get_or_compute_convex(second_index_range)));
     };
 
-    const auto find_candidate = [&](const double pet_range) -> std::optional<CandidateFinding> {
-      for (const double pet : {-pet_range, pet_range}) {
-        const auto test_index_range =
-          test_trajectory.resolve_covering_index_range({ref_start_time + pet, ref_end_time + pet});
-        if (!test_index_range || !has_intersects(test_index_range.value())) {
+  for (size_t i = 0; i < ref_trajectory.size(); ++i) {
+    const size_t prev_i = (i == 0) ? 0 : i - 1;
+    const double base_start_time = ref_trajectory.getTimes().at(prev_i);
+    const double base_end_time = ref_trajectory.getTimes().at(i);
+
+    const auto find_future_candidate =
+      [&](const double signed_pet_limit) -> std::optional<CandidateFinding> {
+      const auto max_offsets = offsets_from_pet(signed_pet_limit);
+      const auto rough_ref_index_range = ref_trajectory.resolve_covering_index_range(
+        {base_start_time, base_end_time + max_offsets.ref});
+      const auto rough_test_index_range = test_trajectory.resolve_covering_index_range(
+        {base_start_time, base_end_time + max_offsets.test});
+      if (
+        !rough_ref_index_range || !rough_test_index_range ||
+        !boost::geometry::intersects(
+          ref_trajectory.get_or_compute_envelope(*rough_ref_index_range),
+          test_trajectory.get_or_compute_envelope(*rough_test_index_range))) {
+        return std::nullopt;
+      }
+
+      for (size_t tick = 0U;; ++tick) {
+        const double signed_pet =
+          std::copysign(static_cast<double>(tick) * time_resolution, signed_pet_limit);
+        if (std::abs(signed_pet) > std::abs(signed_pet_limit) + 1e-3) {
+          return std::nullopt;
+        }
+
+        const auto offsets = offsets_from_pet(signed_pet);
+        const auto ref_index_range = ref_trajectory.resolve_covering_index_range(
+          {base_start_time + offsets.ref, base_end_time + offsets.ref});
+        const auto test_index_range = test_trajectory.resolve_covering_index_range(
+          {base_start_time + offsets.test, base_end_time + offsets.test});
+        if (!ref_index_range || !test_index_range) {
           continue;
         }
 
-        return CandidateFinding{ref_start_time, pet, ref_index_range, test_index_range.value()};
+        if (has_intersects(ref_trajectory, *ref_index_range, test_trajectory, *test_index_range)) {
+          return CandidateFinding{base_start_time, signed_pet, *ref_index_range, *test_index_range};
+        }
       }
-      return std::nullopt;
     };
 
-    for (double pet_range = 0.0; pet_range < current_pet_limit; pet_range += time_resolution) {
-      const auto candidate = find_candidate(pet_range);
-      if (!candidate) {
-        continue;
-      }
-
-      worst_pet_timing = *candidate;
-      if (!first_collision_timing.has_value()) {
-        first_collision_timing = worst_pet_timing;
-      }
-      break;
+    const auto object_earlier_candidate = find_future_candidate(-pet_find_range.object_earlier);
+    if (object_earlier_candidate.has_value()) {
+      update_first_collision(object_earlier_candidate.value());
+      update_worst_pet(object_earlier_candidate.value());
     }
+
+    const auto ego_earlier_candidate = find_future_candidate(+pet_find_range.ego_earlier);
+    if (ego_earlier_candidate.has_value()) {
+      update_first_collision(ego_earlier_candidate.value());
+      update_worst_pet(ego_earlier_candidate.value());
+    }
+
     if (worst_pet_timing.has_value() && worst_pet_timing->pet == 0.0) {
       return make_collision_detail(worst_pet_timing.value(), first_collision_timing.value());
     }
@@ -145,7 +278,7 @@ RiskLevel::_level_type identify_risk_level(
   const DracParams::EgoDracAcceleration & acceleration_params)
 {
   if (!required_acceleration.has_value()) {
-    return acceleration_params.enable_abandon ? RiskLevel::HIGH_CAUTION : RiskLevel::FATAL;
+    return acceleration_params.enable_abandon ? RiskLevel::LOW_CAUTION : RiskLevel::FATAL;
   }
 
   if (required_acceleration >= acceleration_params.safe_limit) {
@@ -295,7 +428,9 @@ DracArtifact assess_constant_curvature(
     return drac_artifact;
   }
 
-  if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
+  if (
+    nominal_collision_result.value().first_collision_timing.pet >
+    drac_params.pet_margin.object_earlier_judgement_bias) {
     if (drac_params.constant_curvature.ego_earlier.enable_assessment) {
       throw std::invalid_argument("constant_curvature.ego_earlier is not implemented.");
     }
@@ -382,7 +517,8 @@ DracArtifact assess_map_based(
   const trajectory::ObjectTrajectoryCache & object_trajectory_cache,
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const autoware_perception_msgs::msg::PredictedObject & object, const StopTrackers & stop_trackers,
-  const DracParams & drac_params, const GlobalParams & global_params)
+  const DracParams & drac_params, const GlobalParams & global_params,
+  const lanelet::LaneletMap & lanelet_map)
 {
   DracArtifact drac_artifact{};
 
@@ -405,9 +541,21 @@ DracArtifact assess_map_based(
     if (!nominal_collision_result.has_value()) {
       continue;
     }
+    const bool use_object_prioritized_assessment = [&]() {
+      if (
+        ego_turn_indicator.command != autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE) {
+        return true;
+      }
+      if (!is_pedestrian_or_bicycle(object)) {
+        return false;
+      }
+      return is_vru_prioritized_at_collision(nominal_collision_result.value(), lanelet_map);
+    }();
 
-    if (ego_turn_indicator.command == autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE) {
-      if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
+    if (!use_object_prioritized_assessment) {
+      if (
+        nominal_collision_result.value().first_collision_timing.pet >
+        drac_params.pet_margin.object_earlier_judgement_bias) {
         if (!drac_params.map_based.ego_prioritized_ego_earlier.enable_assessment) {
           continue;
         }
@@ -420,7 +568,9 @@ DracArtifact assess_map_based(
         throw std::invalid_argument("map_based.ego_prioritized_object_earlier is not implemented.");
       }
     } else {
-      if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
+      if (
+        nominal_collision_result.value().first_collision_timing.pet >
+        drac_params.pet_margin.object_earlier_judgement_bias) {
         if (!drac_params.map_based.object_prioritized_ego_earlier.enable_assessment) {
           continue;
         }
@@ -461,8 +611,8 @@ DracArtifact assess(
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const nav_msgs::msg::Odometry & odometry,
   const autoware_perception_msgs::msg::PredictedObjects & predicted_objects,
-  StopTrackers & stop_trackers, const DracParamMap & drac_param_map,
-  const GlobalParams & global_params)
+  const lanelet::LaneletMap & lanelet_map, StopTrackers & stop_trackers,
+  const DracParamMap & drac_param_map, const GlobalParams & global_params)
 {
   DracArtifact drac_artifact{};
 
@@ -484,7 +634,7 @@ DracArtifact assess(
     if (drac_params.map_based.enable_assessment) {
       drac_artifact.merge(assess_map_based(
         ego_trajectory_cache, object_trajectory_cache, ego_turn_indicator, predicted_object,
-        stop_trackers, drac_params, global_params));
+        stop_trackers, drac_params, global_params, lanelet_map));
     }
   }
   return drac_artifact;

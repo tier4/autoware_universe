@@ -63,12 +63,6 @@ void CollisionCheckFilter::update_parameters(const validator::Params & node_para
   }
 }
 
-void CollisionCheckFilter::clear_detection_times()
-{
-  rss_continuous_times_.clear();
-  drac_continuous_times_.clear();
-}
-
 std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
   const DracArtifact & drac_artifact, const RssArtifact & rss_artifact) const
 {
@@ -127,12 +121,14 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const auto & traj_points = candidate_trajectory.points;
 
   if (!context.odometry || !context.predicted_objects) {
-    clear_detection_times();
     return {};  // No objects to check collision with
   }
 
+  if (!context.lanelet_map) {
+    return {};  // No lanelet map to check collision with
+  }
+
   if (traj_points.empty()) {
-    clear_detection_times();
     return {};  // No trajectory to check
   }
 
@@ -149,12 +145,12 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
 
   const auto drac_artifact = collision_timing_assessment::assess(
     ego_trajectory_cache, object_trajectory_cache_, candidate_trajectory.turn_indicators_command,
-    *context.odometry, *context.predicted_objects, stop_tracker_, drac_param_map_, global_params_);
+    *context.odometry, *context.predicted_objects, *context.lanelet_map, stop_tracker_,
+    drac_param_map_, global_params_);
   const auto rss_artifact = rss_deceleration::assess(ego_trajectory_cache, context, rss_param_map_);
 
   auto planning_factors = reporter::process_collision_artifacts(
-    *context.odometry, drac_artifact, drac_continuous_times_, rss_artifact, rss_continuous_times_,
-    debug_markers_, global_params_.time_resolution);
+    *context.odometry, drac_artifact, rss_artifact, debug_markers_, global_params_.time_resolution);
 
   return ValidationResult{
     generate_metric_reports(drac_artifact, rss_artifact), std::move(planning_factors)};

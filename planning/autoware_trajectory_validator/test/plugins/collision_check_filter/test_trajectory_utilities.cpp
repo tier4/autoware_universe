@@ -17,10 +17,12 @@
 #include "../../../src/filters/safety/collision_check_filter/trajectory_utils.hpp"
 
 #include <gtest/gtest.h>
+#include <lanelet2_core/LaneletMap.h>
 #include <tf2/utils.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -163,7 +165,183 @@ TrajectoryData create_trajectory_data(const TimeTrajectory & times)
     std::move(footprints)};
 }
 
+TrajectoryData create_trajectory_data(
+  const std::string & classification, const TimeTrajectory & times, const PoseTrajectory & poses,
+  const autoware_perception_msgs::msg::Shape & shape)
+{
+  TravelDistanceTrajectory distances;
+  distances.reserve(times.size());
+  for (size_t i = 0; i < times.size(); ++i) {
+    distances.push_back(static_cast<double>(i));
+  }
+
+  auto footprints = trajectory::footprint::compute_footprint_trajectory(poses, shape);
+  return TrajectoryData{
+    TrajectoryIdentification{classification}, times, std::move(distances), poses,
+    std::move(footprints)};
+}
+
+DracArtifact assess_stationary_collision(
+  const DracParams & drac_params, const uint8_t turn_indicator_command)
+{
+  CandidateTrajectory candidate_trajectory;
+  candidate_trajectory.points = create_straight_trajectory_points({0.0, 0.0});
+  for (size_t i = 0; i < candidate_trajectory.points.size(); ++i) {
+    auto & point = candidate_trajectory.points.at(i);
+    point.longitudinal_velocity_mps = 0.0;
+    point.time_from_start = rclcpp::Duration::from_seconds(static_cast<double>(i));
+  }
+
+  autoware_perception_msgs::msg::PredictedPath predicted_path;
+  predicted_path.time_step = rclcpp::Duration::from_seconds(kDefaultTimeResolution);
+  predicted_path.path = {create_pose(0.0, 0.0), create_pose(0.0, 0.0)};
+  const auto object = create_predicted_object(
+    create_pose(0.0, 0.0), create_twist(0.0), create_bounding_box_shape(), {predicted_path});
+
+  nav_msgs::msg::Odometry odometry;
+  odometry.pose.pose = create_pose(0.0, 0.0);
+  odometry.twist.twist = create_twist(0.0);
+
+  autoware_perception_msgs::msg::PredictedObjects predicted_objects;
+  predicted_objects.objects = {object};
+
+  const rclcpp::Time frame_stamp(predicted_objects.header.stamp);
+  const trajectory::EgoTrajectoryCache ego_trajectory_cache(
+    candidate_trajectory, frame_stamp, rclcpp::Time(odometry.header.stamp), kDefaultTimeResolution,
+    create_vehicle_info());
+  trajectory::ObjectTrajectoryCache object_trajectory_cache;
+  object_trajectory_cache.update(frame_stamp, kDefaultTimeResolution);
+
+  autoware_vehicle_msgs::msg::TurnIndicatorsCommand turn_indicator;
+  turn_indicator.command = turn_indicator_command;
+  StopTrackers stop_trackers;
+  const DracParamMap drac_param_map{{"unknown", drac_params}};
+  const lanelet::LaneletMap lanelet_map;
+
+  return collision_timing_assessment::assess(
+    ego_trajectory_cache, object_trajectory_cache, turn_indicator, odometry, predicted_objects,
+    lanelet_map, stop_trackers, drac_param_map, GlobalParams{});
+}
+
 }  // namespace
+
+TEST(CollisionCheckParameterTest, StoresObjectEarlierJudgementBiasPerClass)
+{
+  validator::Params params;
+  auto & bias = params.collision_check.drac.pet_margin.object_earlier_judgement_bias;
+  bias.base = 0.1;
+  bias.pedestrian = 0.5;
+  bias.bicycle = 0.6;
+
+  const auto param_map = create_param_map_per_object<DracParams>(params);
+
+  EXPECT_DOUBLE_EQ(param_map.at("car").pet_margin.object_earlier_judgement_bias, 0.1);
+  EXPECT_DOUBLE_EQ(param_map.at("pedestrian").pet_margin.object_earlier_judgement_bias, 0.5);
+  EXPECT_DOUBLE_EQ(param_map.at("bicycle").pet_margin.object_earlier_judgement_bias, 0.6);
+}
+
+TEST(CollisionTimingAssessmentTest, ConstantCurvatureUsesObjectEarlierJudgementBias)
+{
+  DracParams params;
+  params.pet_margin.object_earlier_judgement_bias = -0.1;
+  params.constant_curvature.enable_assessment = true;
+  params.constant_curvature.ego_earlier.enable_assessment = true;
+  params.constant_curvature.object_earlier.enable_assessment = false;
+  params.map_based.enable_assessment = false;
+
+  EXPECT_THROW(
+    assess_stationary_collision(params, autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE),
+    std::invalid_argument);
+
+  params.pet_margin.object_earlier_judgement_bias = 0.0;
+  const auto artifact =
+    assess_stationary_collision(params, autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE);
+  EXPECT_TRUE(artifact.evaluations.empty());
+}
+
+TEST(CollisionTimingAssessmentTest, EgoPrioritizedMapBasedUsesObjectEarlierJudgementBias)
+{
+  DracParams params;
+  params.pet_margin.object_earlier_judgement_bias = -0.1;
+  params.constant_curvature.enable_assessment = false;
+  params.map_based.enable_assessment = true;
+  params.map_based.ego_prioritized_ego_earlier.enable_assessment = true;
+  params.map_based.ego_prioritized_object_earlier.enable_assessment = false;
+
+  EXPECT_THROW(
+    assess_stationary_collision(params, autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE),
+    std::invalid_argument);
+
+  params.pet_margin.object_earlier_judgement_bias = 0.0;
+  const auto artifact =
+    assess_stationary_collision(params, autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE);
+  EXPECT_TRUE(artifact.evaluations.empty());
+}
+
+TEST(CollisionTimingAssessmentTest, ObjectPrioritizedMapBasedUsesObjectEarlierJudgementBias)
+{
+  DracParams params;
+  params.pet_margin.object_earlier_judgement_bias = -0.1;
+  params.constant_curvature.enable_assessment = false;
+  params.map_based.enable_assessment = true;
+  params.map_based.object_prioritized_ego_earlier.enable_assessment = false;
+  params.map_based.object_prioritized_object_earlier.enable_assessment = true;
+
+  const auto ego_earlier_artifact = assess_stationary_collision(
+    params, autoware_vehicle_msgs::msg::TurnIndicatorsCommand::ENABLE_LEFT);
+  EXPECT_TRUE(ego_earlier_artifact.evaluations.empty());
+
+  params.pet_margin.object_earlier_judgement_bias = 0.0;
+  const auto object_earlier_artifact = assess_stationary_collision(
+    params, autoware_vehicle_msgs::msg::TurnIndicatorsCommand::ENABLE_LEFT);
+  ASSERT_EQ(object_earlier_artifact.evaluations.size(), 1U);
+  EXPECT_EQ(
+    object_earlier_artifact.evaluations.front().method,
+    "map_based, object prioritized, object earlier");
+  EXPECT_DOUBLE_EQ(
+    object_earlier_artifact.evaluations.front().detail.first_collision_timing.pet, 0.0);
+}
+
+TEST(CollisionTimingAssessmentTest, PrefersObjectEarlierForMultipleCollisionEvents)
+{
+  // The ego reaches the first crossing at t=1 and the second at t=5. The same object reaches them
+  // at t=2 and t=4, respectively, so the two events have opposite arrival orders.
+  TimeTrajectory times;
+  PoseTrajectory ego_poses;
+  PoseTrajectory object_poses;
+  for (size_t tick = 0U; tick <= 60U; ++tick) {
+    const double time = static_cast<double>(tick) * kDefaultTimeResolution;
+    times.push_back(time);
+
+    const double ego_x = time <= 1.0 ? time - 1.0 : 2.0 * (time - 1.0);
+    ego_poses.push_back(create_pose(ego_x, 0.0));
+
+    if (time <= 2.0) {
+      object_poses.push_back(create_pose(0.0, time - 2.0, M_PI_2));
+    } else if (time <= 3.0) {
+      object_poses.push_back(create_pose(4.0 * (time - 2.0), 4.0 * (time - 2.0)));
+    } else if (time <= 4.0) {
+      object_poses.push_back(create_pose(4.0 + 4.0 * (time - 3.0), 4.0 - 4.0 * (time - 3.0)));
+    } else {
+      object_poses.push_back(create_pose(8.0, 4.0 - time, -M_PI_2));
+    }
+  }
+
+  const auto small_shape = create_bounding_box_shape(0.02, 0.02);
+  const auto ego_trajectory = create_trajectory_data("EGO", times, ego_poses, small_shape);
+  const auto object_trajectory =
+    create_trajectory_data("unknown", times, object_poses, small_shape);
+  DracParams::PetMargin pet_find_range;
+  pet_find_range.ego_earlier = 1.5;
+  pet_find_range.object_earlier = 1.5;
+
+  const auto collision = collision_timing_assessment::find_collision_timing(
+    ego_trajectory, object_trajectory, pet_find_range, kDefaultTimeResolution);
+
+  ASSERT_TRUE(collision.has_value());
+  EXPECT_NEAR(collision->first_collision_timing.pet, -1.0, kDefaultTimeResolution);
+  EXPECT_GT(collision->worst_pet_timing.pet, 0.0);
+}
 
 TEST(TrajectoryUtilitiesTest, ResolveCoveringIndexRangeHandlesAvailableTimeRange)
 {

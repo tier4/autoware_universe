@@ -25,6 +25,8 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/pose_deviation.hpp>
 
+#include <lanelet2_core/LaneletMap.h>
+
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -32,14 +34,18 @@
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
+std::optional<CollisionDetail> find_collision_timing(
+  const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
+  DracParams::PetMargin pet_find_range, double time_resolution);
+
 DracArtifact assess(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
   const trajectory::ObjectTrajectoryCache & object_trajectory_cache,
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const nav_msgs::msg::Odometry & odometry,
   const autoware_perception_msgs::msg::PredictedObjects & predicted_objects,
-  StopTrackers & stop_trackers, const DracParamMap & drac_param_map,
-  const GlobalParams & global_params);
+  const lanelet::LaneletMap & lanelet_map, StopTrackers & stop_trackers,
+  const DracParamMap & drac_param_map, const GlobalParams & global_params);
 }  // namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 
 namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
