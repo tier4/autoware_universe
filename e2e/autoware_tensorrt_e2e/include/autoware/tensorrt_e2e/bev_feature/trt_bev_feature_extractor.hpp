@@ -118,14 +118,29 @@ public:
    * The cloud is read straight from its device buffer, as `autoware_bevfusion` reads its
    * input; it must use the Autoware `PointXYZIRC` layout (the concatenated cloud format).
    * @return Device pointer to the `[C, H, W]` feature map (owned by the extractor, valid until
-   *         the next call), or nullptr with `error` set.
+   *         the next call), or nullptr with `error` set. The map is complete in stream
+   *         order: the work is queued on the constructor's stream and not waited for, so a
+   *         consumer on that stream reads the finished map and a host reader synchronizes
+   *         first. The one host wait inside is the voxel count, which sizes the engine's
+   *         inputs.
    */
   const float * extract(const cuda_blackboard::CudaPointCloud2 & cloud, std::string & error);
 
   /// True when the engine carries the detection head and it was configured on.
   bool detection_enabled() const { return detection_enabled_; }
   /**
-   * @brief Decoded, circle-NMS'd proposals of the last extract().
+   * @brief Decode the detection head's proposals of the last extract() into
+   *        last_detections().
+   *
+   * Separate from extract() so that it can run after the trajectory is out: the planner
+   * never reads these boxes, so nothing that consumes the trajectory should wait for them.
+   * Waits for the device (the boxes come back to the host). A no-op when detection is
+   * disabled or the last extract() has already been decoded.
+   * @return false with `error` set when the decode kernels fail.
+   */
+  bool decode_detections(std::string & error);
+  /**
+   * @brief Decoded, circle-NMS'd proposals of the last decode_detections().
    *
    * Empty when detection is disabled. Boxes are in the frame of the cloud that
    * produced them, in metres, still carrying every class the head knows.
@@ -176,6 +191,7 @@ private:
   int64_t last_num_voxels_{0};
   bool last_voxels_within_range_{true};
   bool detection_enabled_{false};
+  bool detections_pending_{false};
   std::vector<autoware::bevfusion::Box3D> last_detections_;
 };
 

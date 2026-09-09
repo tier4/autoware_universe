@@ -115,10 +115,11 @@ TemporalBevCache::InsertResult TemporalBevCache::insert(
   }
   slot.pose = pose;
   slot.stamp = stamp;
+  // Queued, not waited for: the extractor produced d_feature on this same stream and will
+  // not touch it again before the next frame's work, which is queued behind this copy.
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     slot.feature.get(), d_feature, frame_elements_ * sizeof(float), cudaMemcpyDeviceToDevice,
     stream));
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
   slots_.push_front(std::move(slot));
 
   // Everything older than the deepest history target (plus tolerance) can never be selected.
@@ -176,7 +177,8 @@ const float * TemporalBevCache::build_history(cudaStream_t stream)
     CHECK_CUDA_ERROR(launch_se2_warp_kernel(
       slot.feature.get(), destination, params, static_cast<int32_t>(channels_), stream));
   }
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+  // Also queued: the network reads history_ on this stream, so it sees the finished
+  // warps, and the one host wait of the tick is the engine's.
   return history_.get();
 }
 

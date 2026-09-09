@@ -82,8 +82,8 @@ public:
    * would quantize a slow-speed inter-frame displacement to centimetres before the warp ever
    * sees it. A stamp at or before the newest cached stamp resets the cache first and reports
    * `kGapReset`. Maps that fall out of the history window are evicted (their device buffers
-   * are recycled). Synchronizes `stream` before returning (the source buffer may be reused by
-   * the caller afterwards).
+   * are recycled). The copy is queued on `stream` and not waited for: the caller may reuse
+   * the source buffer through work queued on the same stream afterwards, and nothing else.
    */
   InsertResult insert(
     const float * d_feature, const std::array<double, 4> & pose, const rclcpp::Time & stamp,
@@ -97,7 +97,8 @@ public:
    * @brief Assemble the `[frames, C, H, W]` current-to-past history on the GPU.
    *
    * Requires `ready()`. The returned device buffer is owned by the cache and valid until the
-   * next `insert()`/`build_history()` call. Synchronizes `stream` before returning.
+   * next `insert()`/`build_history()` call. Its contents are complete in stream order: a
+   * consumer on `stream` reads the finished history, a host reader synchronizes first.
    */
   const float * build_history(cudaStream_t stream);
 

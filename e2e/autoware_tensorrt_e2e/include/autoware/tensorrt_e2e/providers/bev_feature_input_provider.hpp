@@ -54,7 +54,14 @@ namespace autoware::tensorrt_e2e
  * The extractor graph also carries the frozen BEVFusion detection head, so the same
  * engine pass that produces the feature map produces the boxes AWML's own BEVFusion
  * export ships. They are decoded and published on `~/output/detected_objects` with
- * `autoware_bevfusion`'s own postprocessing; nothing in the planner path reads them.
+ * `autoware_bevfusion`'s own postprocessing; nothing in the planner path reads them, so
+ * the decode runs in `finish_tick()`, after the trajectory is out.
+ *
+ * The extractor is launched from the point cloud callback itself, before the node's
+ * pass is triggered, on the stream the node bound: by the time the pass collects the
+ * context tensors on the CPU the feature map is already being computed, and `collect()`
+ * only queues the cache insert and the history assembly behind it. Nothing here waits
+ * for the device; the engine's wait for its outputs covers all of it.
  *
  * Claimable tensors:
  * - `bev_feature_history` (name configurable) `[1, K, C, H, W]`: device-resident.
@@ -70,7 +77,9 @@ public:
 
   std::string name() const override { return "bev_feature"; }
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
+  void bind_stream(cudaStream_t stream) override { stream_ = stream; }
   bool pace(std::function<void()> on_data) override;
+  void finish_tick() override;
 
   bool collect(
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs,
@@ -116,7 +125,17 @@ private:
   rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr
     detected_objects_pub_;
   size_t last_detected_object_count_{0};
+  //! The node's tick stream once bound, else this provider's own (then destroyed here).
   cudaStream_t stream_{nullptr};
+  bool owns_stream_{false};
+  //! The extraction queued by the last point cloud callback: the map it produced (or
+  //! nullptr with the reason), the stamp of the cloud it came from, and whether the cache
+  //! has taken it. Touched only from the callback and the pass it triggers.
+  const float * pending_feature_{nullptr};
+  std::string pending_error_;
+  std::optional<rclcpp::Time> pending_stamp_;
+  bool pending_inserted_{false};
+  bool pending_detections_published_{false};
   std::optional<rclcpp::Time> last_extracted_stamp_;
   const float * history_ptr_{nullptr};
 

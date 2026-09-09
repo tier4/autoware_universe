@@ -180,7 +180,7 @@ void BevFeatureInputProvider::declare_detection_params()
 
 BevFeatureInputProvider::~BevFeatureInputProvider()
 {
-  if (stream_) {
+  if (owns_stream_) {
     cudaStreamDestroy(stream_);
   }
 }
@@ -211,7 +211,10 @@ std::vector<std::string> BevFeatureInputProvider::claim_inputs(
   }
   history_shape_ = shape;
 
-  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+  if (!stream_) {
+    CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+    owns_stream_ = true;
+  }
   try {
     extractor_ = std::make_unique<TrtBevFeatureExtractor>(extractor_config_, stream_);
   } catch (const std::exception & e) {
@@ -260,7 +263,26 @@ std::vector<std::string> BevFeatureInputProvider::claim_inputs(
     [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
       {
         std::lock_guard<std::mutex> lock(mutex_);
-        latest_pointcloud_ = std::move(msg);
+        latest_pointcloud_ = msg;
+      }
+      // The extractor starts here, before the pass this triggers: queued on the tick's
+      // stream and not waited for, it runs while the pass collects the context tensors
+      // on the CPU. The staleness check comes first, as it did when the extraction ran
+      // inside the pass: a cloud that is already too old to plan on is not worth the GPU,
+      // and the pass reports it exactly as before.
+      pending_stamp_ = rclcpp::Time(msg->header.stamp);
+      pending_inserted_ = false;
+      pending_detections_published_ = false;
+      pending_error_.clear();
+      pending_feature_ = nullptr;
+      const double delay_ms = (node_.now() - *pending_stamp_).seconds() * 1e3;
+      if (delay_ms > max_delay_ms_) {
+        pending_error_ = "Point cloud is stale (" + std::to_string(delay_ms) + " ms > " +
+                         std::to_string(max_delay_ms_) + " ms)";
+      } else {
+        pending_feature_ = extractor_->extract(*msg, pending_error_);
+        last_extracted_stamp_ = pending_stamp_;
+        history_ptr_ = nullptr;
       }
       // Outside the lock: what this starts collects from this provider.
       if (on_data_) {
@@ -292,33 +314,33 @@ bool BevFeatureInputProvider::collect(
     return false;
   }
 
-  // The extractor runs once per new LiDAR frame; between frames the assembled history is
-  // reused (it stays anchored at the newest frame's ego pose, as in the reference cache).
-  if (!last_extracted_stamp_ || cloud_stamp != *last_extracted_stamp_) {
-    const float * feature = extractor_->extract(*cloud, error);
-    if (!feature) {
-      return false;
-    }
+  // The extraction itself was queued by the callback that triggered this pass; here the
+  // map is only handed to the cache, once per LiDAR frame. Between frames the assembled
+  // history is reused (it stays anchored at the newest frame's ego pose, as in the
+  // reference cache).
+  if (!pending_stamp_ || *pending_stamp_ != cloud_stamp) {
+    // The subscription delivered nothing new since the last pass, so no extraction was
+    // queued for the cloud this pass is looking at.
+    error = "No extraction queued for the current point cloud";
+    return false;
+  }
+  if (!pending_feature_) {
+    error = pending_error_;
+    return false;
+  }
+  if (!pending_inserted_) {
     // The BEV feature lives in the base_link frame of its source LiDAR frame; the pose is
     // sampled from the newest odometry (the stamps differ by at most one sensor period).
-    const auto insert_result =
-      cache_->insert(feature, pose_from_odometry(ego.odometry), cloud_stamp, stream_);
+    // Queued behind the extractor on the same stream: the cache has its copy before the
+    // next callback's extraction can overwrite the map.
+    const auto insert_result = cache_->insert(
+      pending_feature_, pose_from_odometry(ego.odometry), cloud_stamp, stream_);
     if (insert_result == TemporalBevCache::InsertResult::kGapReset) {
       RCLCPP_WARN_THROTTLE(
         node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS,
         "LiDAR timestamps went backwards (time jump or bag loop); BEV feature cache reset");
     }
-    // The boxes belong to this cloud, so they are published once per LiDAR frame rather
-    // than once per planning tick -- republishing the same detection at 10 Hz would give
-    // a consumer a false sense of a fresh measurement.
-    if (detection_postprocessor_) {
-      const auto objects = detection_postprocessor_->build(
-        extractor_->last_detections(), cloud->header);
-      last_detected_object_count_ = objects.objects.size();
-      detected_objects_pub_->publish(objects);
-    }
-    last_extracted_stamp_ = cloud_stamp;
-    history_ptr_ = nullptr;
+    pending_inserted_ = true;
   }
 
   if (!cache_->ready()) {
@@ -344,6 +366,33 @@ bool BevFeatureInputProvider::pace(std::function<void()> on_data)
 {
   on_data_ = std::move(on_data);
   return true;
+}
+
+void BevFeatureInputProvider::finish_tick()
+{
+  // The trajectory is out (or the pass gave up). Only now are the detection head's
+  // proposals brought to the host, decoded and published -- once per LiDAR frame, in that
+  // cloud's frame, as before; the planner never reads them, so nothing that consumes the
+  // trajectory waits for them.
+  if (!detection_postprocessor_ || !pending_feature_ || pending_detections_published_) {
+    return;
+  }
+  pending_detections_published_ = true;
+  std::string error;
+  if (!extractor_->decode_detections(error)) {
+    RCLCPP_WARN_STREAM_THROTTLE(
+      node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS, error);
+    return;
+  }
+  std::shared_ptr<const cuda_blackboard::CudaPointCloud2> cloud;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cloud = latest_pointcloud_;
+  }
+  const auto objects =
+    detection_postprocessor_->build(extractor_->last_detections(), cloud->header);
+  last_detected_object_count_ = objects.objects.size();
+  detected_objects_pub_->publish(objects);
 }
 
 }  // namespace autoware::tensorrt_e2e

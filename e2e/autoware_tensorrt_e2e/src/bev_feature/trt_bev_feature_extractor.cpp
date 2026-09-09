@@ -359,10 +359,11 @@ const float * TrtBevFeatureExtractor::extract(
     reinterpret_cast<const InputPointType *>(cloud.data.get()), num_points,
     /*time_lag=*/0.0f, identity_transform_d_.get(), points_d_.get()));
 
+  // generateVoxels returns the voxel count on the host, which is the one wait this
+  // function cannot avoid: the engine's input shapes are set from it.
   const auto num_voxels = static_cast<int64_t>(preprocess_->generateVoxels(
     points_d_.get(), static_cast<unsigned int>(num_points), voxel_features_d_.get(),
     voxel_coords_d_.get(), num_points_per_voxel_d_.get()));
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   last_num_voxels_ = num_voxels;
   // Same policy as autoware_bevfusion: below the profile minimum the frame cannot run;
@@ -388,17 +389,29 @@ const float * TrtBevFeatureExtractor::extract(
     error = "Failed to enqueue the BEV feature extractor engine";
     return nullptr;
   }
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
-
-  if (detection_enabled_) {
-    // autoware_bevfusion's own decode: TransFusion coder, score cut, circle NMS. The
-    // boxes come back on the host, already sorted by score.
-    last_detections_.clear();
-    CHECK_CUDA_ERROR(postprocess_->generateDetectedBoxes3D_launch(
-      label_pred_d_.get(), bbox_pred_d_.get(), score_d_.get(), last_detections_, stream_));
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
-  }
+  // Not waited for. The feature map is complete in stream order for whoever reads it on
+  // this stream; the proposals stay on the device until decode_detections() asks for them.
+  detections_pending_ = detection_enabled_;
   return feature_d_.get();
+}
+
+bool TrtBevFeatureExtractor::decode_detections(std::string & error)
+{
+  if (!detections_pending_) {
+    return true;
+  }
+  detections_pending_ = false;
+  // autoware_bevfusion's own decode: TransFusion coder, score cut, circle NMS. Ordered on
+  // the stream behind the extractor engine, so the proposals it reads are finished; the
+  // boxes come back on the host, already sorted by score, and that copy is the wait.
+  last_detections_.clear();
+  const cudaError_t status = postprocess_->generateDetectedBoxes3D_launch(
+    label_pred_d_.get(), bbox_pred_d_.get(), score_d_.get(), last_detections_, stream_);
+  if (status != cudaSuccess) {
+    error = std::string("Decoding the detection head failed: ") + cudaGetErrorString(status);
+    return false;
+  }
+  return true;
 }
 
 }  // namespace autoware::tensorrt_e2e
