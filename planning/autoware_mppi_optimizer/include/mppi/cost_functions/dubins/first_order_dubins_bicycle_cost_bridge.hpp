@@ -23,6 +23,7 @@
 #include <mppi/path/path_reference_generator.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 namespace mppi
@@ -96,6 +97,8 @@ inline void fillFirstOrderDubinsBicycleCostFromPathReference(
   float ref_y[NUM_TIMESTEPS];
   float ref_v[NUM_TIMESTEPS];
   float ref_yaw[NUM_TIMESTEPS];
+  float ref_max_velocity[NUM_TIMESTEPS];
+  std::uint8_t ref_velocity_limit_active[NUM_TIMESTEPS];
 
   for (int t = 0; t < NUM_TIMESTEPS; ++t) {
     const size_t idx =
@@ -104,9 +107,17 @@ inline void fillFirstOrderDubinsBicycleCostFromPathReference(
     ref_y[t] = ref[idx].y;
     ref_v[t] = ref[idx].v;
     ref_yaw[t] = ref[idx].yaw;
+    ref_max_velocity[t] = ref[idx].max_velocity;
+    ref_velocity_limit_active[t] = ref[idx].velocity_limit_active;
   }
 
-  cost.setReferenceTrajectory(ref_x, ref_y, ref_v, NUM_TIMESTEPS, ref_yaw);
+  const bool has_pointwise_velocity_limits = std::any_of(
+    ref_velocity_limit_active, ref_velocity_limit_active + NUM_TIMESTEPS,
+    [](const std::uint8_t active) { return active != 0U; });
+  cost.setReferenceTrajectory(
+    ref_x, ref_y, ref_v, NUM_TIMESTEPS, ref_yaw,
+    has_pointwise_velocity_limits ? ref_max_velocity : nullptr,
+    has_pointwise_velocity_limits ? ref_velocity_limit_active : nullptr);
 }
 
 }  // namespace cost

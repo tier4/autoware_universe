@@ -22,19 +22,28 @@ Offline logs (written when enable_debug_trajectory_log:=true):
   <log_dir>/000000_reference.csv
   <log_dir>/000000_optimized.csv
   <log_dir>/000000_ego.csv
+  <log_dir>/000000_nominal.csv   (u_nom warm-start accel/steer cmds)
   ...
 
 Trajectory CSV columns:
   t_from_start_s,x,y,z,yaw,v,a,steer,steer_rate
 Ego CSV columns:
   x,y,z,yaw,v,accel,steer
+Nominal CSV columns:
+  t_idx,accel_cmd,steer_cmd
+(Offline XY overlay rolls these out from ego with FirstOrderDubinsBicycle.)
 
 Retune also writes <out_dir>/NNNNNN_costs.csv:
   rollout_index,raw_cost,normalized_weight
 (used for cost / weight distribution histograms in --enable-retune mode).
 
+and <out_dir>/NNNNNN_cost_breakdown.csv:
+  key,value
+(selected output trajectory cost components used for the stacked bar).
+
 and <out_dir>/NNNNNN_rollouts.csv:
-  rollout_index,cost,step,x,y
+  rollout_index,cost,step,x,y[,is_worst]
+(top-weighted and high-cost samples for XY overlay).
 (top-K weighted sample trajectories overlaid on the XY plot).
 
 Offline retune mode (--enable-retune) overlays a third retuned trajectory and lets you
@@ -93,55 +102,85 @@ VEHICLE_PARAMS_DEFAULT_WHEEL_BASE = 4.76
 # Must match first_order_dubins_mppi_interface.cu kDt.
 MPPI_DT = 0.1
 
-# Must match first_order_dubins_mppi_interface.cu (kNumRollouts / kMaxVizRollouts).
-MPPI_NUM_ROLLOUTS = 32 * 1024
-MPPI_MAX_VIZ_ROLLOUTS = 200
+# Must match first_order_dubins_mppi_interface.cu (kNumRollouts / kMaxVizRollouts /
+# kMaxWorstVizRollouts). Cost CSV from retune is strided (kCostVizStride=8).
+MPPI_NUM_ROLLOUTS = 8 * 1024
+MPPI_MAX_VIZ_ROLLOUTS = 256
+MPPI_MAX_WORST_VIZ_ROLLOUTS = 128
 
 # Numerical cost params from mppi_optimizer.param.yaml / FirstOrderDubinsMppiCostParams.
 # (Excludes bool/string runtime flags: enable_debug_trajectory_log, ignore_*, etc.)
+# Keep in sync with config/mppi_optimizer.param.yaml (overridden by cost_params.csv when present).
 DEFAULT_PARAMS: Dict[str, float] = {
-    "lambda": 14000.0,
-    "desired_speed": 2.5,
-    "speed_coeff": 500.0,
-    "track_coeff": 3000.0,
+    "lambda": 100.0,
+    "speed_coeff": 300.0,
+    "track_coeff": 1200.0,
     "track_terminal_scale": 10.0,
-    "heading_coeff": 1000.0,
+    "heading_coeff": 600.0,
     "lateral_distance_coeff": 0.0,
     "lateral_yaw_error_coeff": 0.0,
-    "crash_coeff": 100000.0,
+    "remaining_distance_coeff": 0.0,
+    "path_overshoot_coeff": 0.0,
+    "track_center_coeff": 0.0,
+    "corner_buffer_coeff": 0.0,
+    "corner_safe_margin": 0.3,
     "boundary_threshold": 0.8,
+    "lateral_boundary_soft_margin": 0.2,
     "boundary_threshold_left": -1.0,
     "boundary_threshold_right": -1.0,
-    "lateral_acceleration_coeff": 500.0,
-    "lateral_jerk_coeff": 1000.0,
-    "longitudinal_jerk_coeff": 10.0,
-    "accel_cmd_coeff": 0.0,
-    "steer_cmd_coeff": 10.0,
-    "steer_rate_coeff": 0.0,  # cost param; not always present in yaml
+    "lateral_acceleration_coeff": 100.0,
+    "lateral_jerk_coeff": 100000.0,
+    "longitudinal_jerk_coeff": 100.0,
+    "accel_cmd_coeff": 50.0,
+    "steer_cmd_coeff": 250.0,
+    "steer_rate_coeff": 100000.0,
+    "overlimit_coeff": 10000.0,
+    "accel_cmd_std_dev": 0.35,
+    "steer_cmd_std_dev": 0.024,
+    "nominal_curvature_min_chord_length_m": 1.5,
     "obstacle_collision_margin": 0.2,
+    "road_border_collision_margin": 0.3,
+    "obstacle_safe_margin": 0.5,
+    "road_border_safe_margin": 0.3,
+    "drivable_area_safe_margin": 0.0,
+    "drivable_area_barrier_weight": 2000.0,
+    "crash_contact_penalty": 100000.0,
 }
 
 # (name, vmin, vmax) — keep in sync with DEFAULT_PARAMS keys.
+# vmax must cover yaml / logged values; create_sliders also expands to fit valinit.
 SLIDER_SPECS: List[Tuple[str, float, float]] = [
-    ("lambda", 100.0, 20000.0),
-    ("desired_speed", 0.0, 20.0),
+    ("lambda", 1.0, 20000.0),
     ("track_coeff", 0.0, 10000.0),
     ("track_terminal_scale", 0.0, 50.0),
     ("speed_coeff", 0.0, 5000.0),
     ("heading_coeff", 0.0, 5000.0),
     ("lateral_distance_coeff", 0.0, 10000.0),
     ("lateral_yaw_error_coeff", 0.0, 5000.0),
+    ("remaining_distance_coeff", 0.0, 10000.0),
+    ("path_overshoot_coeff", 0.0, 10000.0),
+    ("track_center_coeff", 0.0, 10000.0),
+    ("corner_buffer_coeff", 0.0, 10000.0),
+    ("corner_safe_margin", 0.0, 2.0),
     ("lateral_acceleration_coeff", 0.0, 5000.0),
-    ("lateral_jerk_coeff", 0.0, 10000.0),
+    ("lateral_jerk_coeff", 0.0, 500000.0),
     ("longitudinal_jerk_coeff", 0.0, 5000.0),
     ("accel_cmd_coeff", 0.0, 2000.0),
     ("steer_cmd_coeff", 0.0, 5000.0),
-    ("steer_rate_coeff", 0.0, 10000.0),
+    ("steer_rate_coeff", 0.0, 500000.0),
+    ("overlimit_coeff", 0.0, 100000.0),
+    ("accel_cmd_std_dev", 0.0, 2.0),
+    ("steer_cmd_std_dev", 0.0, 0.2),
+    ("nominal_curvature_min_chord_length_m", 0.0, 5.0),
     ("boundary_threshold", 0.1, 5.0),
-    ("boundary_threshold_left", -1.0, 5.0),
-    ("boundary_threshold_right", -1.0, 5.0),
+    ("lateral_boundary_soft_margin", 0.0, 2.0),
     ("obstacle_collision_margin", 0.0, 2.0),
-    ("crash_coeff", 0.0, 500000.0),
+    ("road_border_collision_margin", 0.0, 2.0),
+    ("obstacle_safe_margin", 0.0, 5.0),
+    ("road_border_safe_margin", 0.0, 5.0),
+    ("drivable_area_safe_margin", 0.0, 5.0),
+    ("drivable_area_barrier_weight", 0.0, 100000.0),
+    ("crash_contact_penalty", 1.0, 1000000.0),
 ]
 
 
@@ -243,18 +282,25 @@ class MppiDebugFrame:
     reference_xy: Optional[Tuple[List[float], List[float]]] = None
     optimized_xy: Optional[Tuple[List[float], List[float]]] = None
     retuned_xy: Optional[Tuple[List[float], List[float]]] = None
+    # Open-loop rollout of logged u_nom from ego (offline).
+    nominal_xy: Optional[Tuple[List[float], List[float]]] = None
     reference_heading: List[float] = field(default_factory=list)
     optimized_heading: List[float] = field(default_factory=list)
     retuned_heading: List[float] = field(default_factory=list)
+    nominal_heading: List[float] = field(default_factory=list)
     reference_vel: List[float] = field(default_factory=list)
     optimized_vel: List[float] = field(default_factory=list)
     retuned_vel: List[float] = field(default_factory=list)
+    nominal_vel: List[float] = field(default_factory=list)
     reference_accel: List[float] = field(default_factory=list)
     optimized_accel: List[float] = field(default_factory=list)
     retuned_accel: List[float] = field(default_factory=list)
+    # Nominal panels use accel_cmd / steer_cmd from *_nominal.csv.
+    nominal_accel: List[float] = field(default_factory=list)
     reference_steer: List[float] = field(default_factory=list)
     optimized_steer: List[float] = field(default_factory=list)
     retuned_steer: List[float] = field(default_factory=list)
+    nominal_steer: List[float] = field(default_factory=list)
     reference_steer_rate: List[float] = field(default_factory=list)
     optimized_steer_rate: List[float] = field(default_factory=list)
     retuned_steer_rate: List[float] = field(default_factory=list)
@@ -270,10 +316,12 @@ class MppiDebugFrame:
     wheel_base: float = VEHICLE_PARAMS_DEFAULT_WHEEL_BASE
     raw_costs: List[float] = field(default_factory=list)
     normalized_weights: List[float] = field(default_factory=list)
-    # Retune top-K rollouts: (cost, xs, ys) from NNNNNN_rollouts.csv.
-    rollouts: List[Tuple[float, List[float], List[float]]] = field(default_factory=list)
+    cost_breakdown: Dict[str, float] = field(default_factory=dict)
+    # Retune rollouts: (cost, xs, ys, is_worst) from NNNNNN_rollouts.csv.
+    rollouts: List[Tuple[float, List[float], List[float], bool]] = field(default_factory=list)
     stamp_text: str = ""
     metrics_text: str = ""
+    retune_status: str = ""
     # Live: whether diffusion_planner is applying MPPI to the published trajectory.
     # None = unknown / offline; False = disabled or shadow; True = applied.
     mppi_enabled: Optional[bool] = None
@@ -303,9 +351,156 @@ def load_trajectory_csv(path: Path) -> LoadedTrajectory:
 
 
 @dataclass
+class LoadedEgoState:
+    x: float = 0.0
+    y: float = 0.0
+    yaw: float = 0.0
+    v: float = 0.0
+    accel: float = 0.0
+    steer: float = 0.0
+
+
+@dataclass
+class LoadedNominalControl:
+    accel_cmd: List[float] = field(default_factory=list)
+    steer_cmd: List[float] = field(default_factory=list)
+
+
+def load_ego_csv(path: Path) -> Optional[LoadedEgoState]:
+    if not path.is_file():
+        return None
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                return LoadedEgoState(
+                    x=float(row["x"]),
+                    y=float(row["y"]),
+                    yaw=float(row["yaw"]),
+                    v=float(row["v"]),
+                    accel=float(row["accel"]),
+                    steer=float(row["steer"]),
+                )
+            except (KeyError, ValueError, TypeError):
+                continue
+    return None
+
+
+def load_nominal_csv(path: Path) -> LoadedNominalControl:
+    nominal = LoadedNominalControl()
+    if not path.is_file():
+        return nominal
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                nominal.accel_cmd.append(float(row["accel_cmd"]))
+                nominal.steer_cmd.append(float(row["steer_cmd"]))
+            except (KeyError, ValueError, TypeError):
+                continue
+    return nominal
+
+
+def _normalize_angle(yaw: float) -> float:
+    while yaw > math.pi:
+        yaw -= 2.0 * math.pi
+    while yaw < -math.pi:
+        yaw += 2.0 * math.pi
+    return yaw
+
+
+def rollout_nominal_trajectory(
+    ego: LoadedEgoState,
+    nominal: LoadedNominalControl,
+    *,
+    wheel_base: float,
+    accel_time_constant: float,
+    steer_time_constant: float,
+    max_steer_angle: float,
+    max_steer_rate: float,
+    min_accel: float = -6.0,
+    max_accel: float = 4.0,
+    dt: float = MPPI_DT,
+) -> LoadedTrajectory:
+    """Open-loop FirstOrderDubinsBicycle rollout; returns post-step states (same as logged MPPI)."""
+    traj = LoadedTrajectory()
+    n = min(len(nominal.accel_cmd), len(nominal.steer_cmd))
+    if n <= 0 or wheel_base <= 1.0e-6:
+        return traj
+
+    x = float(ego.x)
+    y = float(ego.y)
+    yaw = float(ego.yaw)
+    v = float(ego.v)
+    accel = float(ego.accel)
+    steer = float(ego.steer)
+    accel_tau = max(float(accel_time_constant), 1.0e-4)
+    steer_tau = max(float(steer_time_constant), 1.0e-4)
+    wb = float(wheel_base)
+    max_delta = float(max_steer_angle)
+    max_rate = float(max_steer_rate)
+
+    for i in range(n):
+        accel_cmd = float(nominal.accel_cmd[i])
+        steer_cmd = float(nominal.steer_cmd[i])
+
+        accel_dot = (accel_cmd - accel) / accel_tau
+        steer_dot = (steer_cmd - steer) / steer_tau
+        steer_dot = max(-max_rate, min(max_rate, steer_dot))
+        yaw_dot = (v / wb) * math.tan(steer)
+        x_dot = v * math.cos(yaw)
+        y_dot = v * math.sin(yaw)
+        v_dot = accel
+
+        x = x + x_dot * dt
+        y = y + y_dot * dt
+        yaw = _normalize_angle(yaw + yaw_dot * dt)
+        v = v + v_dot * dt
+        steer = max(-max_delta, min(max_delta, steer + steer_dot * dt))
+        accel = max(min_accel, min(max_accel, accel + accel_dot * dt))
+
+        traj.x.append(x)
+        traj.y.append(y)
+        traj.heading.append(yaw)
+        traj.vel.append(v)
+        # Panels compare nominal *commands* against logged / retuned sequences.
+        traj.accel.append(accel_cmd)
+        traj.steer.append(steer_cmd)
+        traj.steer_rate.append(steer_dot)
+
+    return traj
+
+
+@dataclass
 class LoadedCostDistribution:
     raw_costs: List[float] = field(default_factory=list)
     normalized_weights: List[float] = field(default_factory=list)
+
+
+CRASH_STATUS_LABELS = {
+    0: "ok",
+    1: "lateral_bound",
+    2: "obstacle",
+    3: "road_border",
+}
+
+
+def crash_status_label(code: int) -> str:
+    return CRASH_STATUS_LABELS.get(code, f"unknown({code})")
+
+
+def load_crash_status_csv(path: Path) -> Optional[int]:
+    """Return crash_status int from <tag>_crash_status.csv, or None if missing."""
+    if not path.is_file():
+        return None
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                return int(float(row["crash_status"]))
+            except (KeyError, ValueError, TypeError):
+                continue
+    return None
 
 
 def load_costs_csv(path: Path) -> LoadedCostDistribution:
@@ -323,11 +518,42 @@ def load_costs_csv(path: Path) -> LoadedCostDistribution:
     return dist
 
 
-def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float]]]:
-    """Load top-K rollouts as (cost, xs, ys) ordered by rollout_index."""
+def effective_sample_size(
+    normalized_weights: List[float],
+    *,
+    total_rollouts: int = MPPI_NUM_ROLLOUTS,
+) -> float:
+    """Estimate N_eff = 1 / Σ w_i² for the full sample set.
+
+    Retune cost CSVs store true softmax weights for a strided subset (every 8th
+    rollout in mppi_offline_retune). Scale Σ w² by N / n so the estimate matches
+    the full population under exchangeable sample indices.
+    """
+    weights = [w for w in normalized_weights if w > 0.0]
+    n = len(weights)
+    if n == 0:
+        return 0.0
+    sum_sq = sum(w * w for w in weights)
+    if sum_sq <= 0.0:
+        return 0.0
+    if total_rollouts > n:
+        sum_sq *= float(total_rollouts) / float(n)
+    return 1.0 / sum_sq
+
+
+def format_effective_sample_size(normalized_weights: List[float]) -> str:
+    n_eff = effective_sample_size(normalized_weights)
+    if n_eff <= 0.0:
+        return "N_eff=0"
+    pct = 100.0 * n_eff / float(MPPI_NUM_ROLLOUTS)
+    return f"N_eff≈{n_eff:.1f} ({pct:.2f}% of {MPPI_NUM_ROLLOUTS})"
+
+
+def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float], bool]]:
+    """Load rollouts as (cost, xs, ys, is_worst) ordered by rollout_index."""
     if not path.is_file():
         return []
-    by_idx: Dict[int, Tuple[float, List[float], List[float]]] = {}
+    by_idx: Dict[int, Tuple[float, List[float], List[float], bool]] = {}
     with path.open(newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -337,21 +563,29 @@ def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float]]
                 step = int(row["step"])
                 x = float(row["x"])
                 y = float(row["y"])
+                is_worst = False
+                if "is_worst" in row and row["is_worst"] not in (None, ""):
+                    is_worst = int(float(row["is_worst"])) != 0
             except (KeyError, ValueError, TypeError):
                 continue
             if idx not in by_idx:
-                by_idx[idx] = (cost, [], [])
-            cost0, xs, ys = by_idx[idx]
+                by_idx[idx] = (cost, [], [], is_worst)
+            cost0, xs, ys, worst0 = by_idx[idx]
             # Grow lists to cover step index (steps are written in order).
             while len(xs) <= step:
                 xs.append(float("nan"))
                 ys.append(float("nan"))
             xs[step] = x
             ys[step] = y
-            by_idx[idx] = (cost0 if abs(cost0) < 1.0e20 else cost, xs, ys)
-    rollouts: List[Tuple[float, List[float], List[float]]] = []
+            by_idx[idx] = (
+                cost0 if abs(cost0) < 1.0e20 else cost,
+                xs,
+                ys,
+                worst0 or is_worst,
+            )
+    rollouts: List[Tuple[float, List[float], List[float], bool]] = []
     for idx in sorted(by_idx):
-        cost, xs, ys = by_idx[idx]
+        cost, xs, ys, is_worst = by_idx[idx]
         # Drop incomplete leading NaNs if any; keep contiguous prefix of valid points.
         clean_xs: List[float] = []
         clean_ys: List[float] = []
@@ -361,19 +595,32 @@ def load_rollouts_csv(path: Path) -> List[Tuple[float, List[float], List[float]]
             clean_xs.append(xv)
             clean_ys.append(yv)
         if len(clean_xs) >= 2:
-            rollouts.append((cost, clean_xs, clean_ys))
+            rollouts.append((cost, clean_xs, clean_ys, is_worst))
     return rollouts
 
 
 def discover_log_frames(log_dir: Path) -> List[int]:
+    """List frame ids from index.csv, or by scanning *_reference.csv.
+
+    Tolerates a missing header row (online logger appends; if index.csv was
+    truncated mid-session the header can be gone).
+    """
     index_path = log_dir / "index.csv"
     frame_ids: List[int] = []
     if index_path.is_file():
-        with index_path.open(newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                frame_ids.append(int(row["frame_id"]))
-        return frame_ids
+        lines = index_path.read_text().splitlines()
+        start = 1 if lines and lines[0].strip().startswith("frame_id") else 0
+        for line in lines[start:]:
+            line = line.strip()
+            if not line:
+                continue
+            cell = line.split(",", 1)[0]
+            try:
+                frame_ids.append(int(cell))
+            except ValueError:
+                continue
+        if frame_ids:
+            return frame_ids
 
     for ref in sorted(log_dir.glob("*_reference.csv")):
         stem = ref.name[: -len("_reference.csv")]
@@ -527,27 +774,36 @@ def frame_from_loaded(
     optimized: LoadedTrajectory,
     stamp_text: str,
     retuned: Optional[LoadedTrajectory] = None,
+    nominal: Optional[LoadedTrajectory] = None,
     costs: Optional[LoadedCostDistribution] = None,
-    rollouts: Optional[List[Tuple[float, List[float], List[float]]]] = None,
+    rollouts: Optional[List[Tuple[float, List[float], List[float], bool]]] = None,
     steer_time_constant: float = VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT,
     wheel_base: float = VEHICLE_PARAMS_DEFAULT_WHEEL_BASE,
+    retune_crash_status: Optional[int] = None,
+    cost_breakdown: Optional[Dict[str, float]] = None,
+    retune_status: str = "",
 ) -> MppiDebugFrame:
     frame = MppiDebugFrame(
         reference_xy=(reference.x, reference.y) if reference.x else None,
         optimized_xy=(optimized.x, optimized.y) if optimized.x else None,
         retuned_xy=(retuned.x, retuned.y) if retuned and retuned.x else None,
+        nominal_xy=(nominal.x, nominal.y) if nominal and nominal.x else None,
         reference_heading=reference.heading,
         optimized_heading=optimized.heading,
         retuned_heading=retuned.heading if retuned else [],
+        nominal_heading=nominal.heading if nominal else [],
         reference_vel=reference.vel,
         optimized_vel=optimized.vel,
         retuned_vel=retuned.vel if retuned else [],
+        nominal_vel=nominal.vel if nominal else [],
         reference_accel=reference.accel,
         optimized_accel=optimized.accel,
         retuned_accel=retuned.accel if retuned else [],
+        nominal_accel=nominal.accel if nominal else [],
         reference_steer=reference.steer,
         optimized_steer=optimized.steer,
         retuned_steer=retuned.steer if retuned else [],
+        nominal_steer=nominal.steer if nominal else [],
         reference_steer_rate=reference.steer_rate,
         optimized_steer_rate=optimized.steer_rate,
         retuned_steer_rate=retuned.steer_rate if retuned else [],
@@ -555,8 +811,10 @@ def frame_from_loaded(
         wheel_base=wheel_base,
         raw_costs=costs.raw_costs if costs else [],
         normalized_weights=costs.normalized_weights if costs else [],
+        cost_breakdown=dict(cost_breakdown) if cost_breakdown else {},
         rollouts=list(rollouts) if rollouts else [],
         stamp_text=stamp_text,
+        retune_status=retune_status,
     )
     orig_pos = max_pos_err(frame.reference_xy, frame.optimized_xy)
     orig_vel = max_vel_err(frame.reference_vel, frame.optimized_vel)
@@ -575,6 +833,10 @@ def frame_from_loaded(
             f"retune max‖Δp‖={ret_pos:.3f}m max|Δψ|={ret_dpsi:.3f}rad max|v|={ret_vel:.3f}m/s"
         )
         parts.append(f"logged↔retune max‖Δp‖={vs_logged:.3f}m")
+    if retune_crash_status is not None:
+        parts.append(
+            f"retune crash_status={retune_crash_status} ({crash_status_label(retune_crash_status)})"
+        )
     if frame.raw_costs:
         finite_costs = [c for c in frame.raw_costs if abs(c) < 1.0e20]
         if finite_costs:
@@ -584,10 +846,12 @@ def frame_from_loaded(
             )
     if frame.normalized_weights:
         parts.append(f"w_max={max(frame.normalized_weights):.4f}")
+        parts.append(format_effective_sample_size(frame.normalized_weights))
     if frame.rollouts:
         parts.append(
-            f"showing {len(frame.rollouts)} of {MPPI_NUM_ROLLOUTS} "
-            f"top-weighted rollouts (export ≤{MPPI_MAX_VIZ_ROLLOUTS})"
+            f"showing {sum(1 for *_r, w in frame.rollouts if not w)} top-weighted + "
+            f"{sum(1 for *_r, w in frame.rollouts if w)} worst of {MPPI_NUM_ROLLOUTS} "
+            f"(export ≤{MPPI_MAX_VIZ_ROLLOUTS}+{MPPI_MAX_WORST_VIZ_ROLLOUTS})"
         )
     frame.metrics_text = "  |  ".join(parts)
     return frame
@@ -636,10 +900,32 @@ def reset_view_baselines(axes) -> None:
         ax.autoscale_view()
 
 
+def retune_placeholder(frame: MppiDebugFrame) -> str:
+    if frame.retune_status and frame.retune_status != "Ready":
+        return f"No retune data produced\n{frame.retune_status}"
+    return "Retune to populate"
+
+
 def draw_frame(axes, frame: MppiDebugFrame) -> None:
     saved_views = [(ax, capture_user_view(ax)) for ax in axes if ax is not None]
 
-    if len(axes) >= 11:
+    if len(axes) >= 12:
+        (
+            ax_xy,
+            ax_lat,
+            ax_heading_err,
+            ax_vel,
+            ax_accel,
+            ax_steer_cmd,
+            ax_steer_meas,
+            ax_lat_jerk,
+            ax_replan_ade,
+            ax_cost,
+            ax_weight,
+            ax_cost_breakdown,
+        ) = axes
+        ax_heading = None
+    elif len(axes) >= 11:
         (
             ax_xy,
             ax_lat,
@@ -654,6 +940,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_weight,
         ) = axes
         ax_heading = None
+        ax_cost_breakdown = None
     elif len(axes) >= 10:
         # Retune layout before replan-ADE panel.
         (
@@ -670,6 +957,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ) = axes
         ax_replan_ade = None
         ax_heading = None
+        ax_cost_breakdown = None
     elif len(axes) >= 9:
         (
             ax_xy,
@@ -684,6 +972,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ) = axes
         ax_cost = ax_weight = None
         ax_heading = None
+        ax_cost_breakdown = None
     elif len(axes) >= 8:
         (
             ax_xy,
@@ -698,6 +987,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ax_replan_ade = None
         ax_cost = ax_weight = None
         ax_heading = None
+        ax_cost_breakdown = None
     elif len(axes) >= 7:
         (
             ax_xy,
@@ -711,48 +1001,85 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ax_lat_jerk = ax_replan_ade = None
         ax_cost = ax_weight = None
         ax_heading = None
+        ax_cost_breakdown = None
     else:
         # Pre path-error layout (absolute heading plot).
         ax_xy, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas = axes
         ax_lat = ax_heading_err = ax_cost = ax_weight = ax_lat_jerk = ax_replan_ade = None
+        ax_cost_breakdown = None
 
     lengths = [len(frame.reference_vel), len(frame.optimized_vel)]
     if frame.retuned_vel:
         lengths.append(len(frame.retuned_vel))
+    if frame.nominal_vel:
+        lengths.append(len(frame.nominal_vel))
     if frame.reference_xy:
         lengths.append(len(frame.reference_xy[0]))
     if frame.optimized_xy:
         lengths.append(len(frame.optimized_xy[0]))
     if frame.retuned_xy:
         lengths.append(len(frame.retuned_xy[0]))
+    if frame.nominal_xy:
+        lengths.append(len(frame.nominal_xy[0]))
     n_compare = min(n for n in lengths if n > 0) if any(lengths) else 0
 
     ax_xy.clear()
-    ax_xy.set_title("Trajectory (diffusion ref vs MPPI)")
+    ax_xy.set_title("Trajectory (diffusion ref vs MPPI / nominal)")
     ax_xy.set_xlabel("x [m]")
     ax_xy.set_ylabel("y [m]")
     ax_xy.grid(True)
     if frame.rollouts:
-        costs = [c for c, _xs, _ys in frame.rollouts]
-        min_c = min(costs)
-        max_c = max(costs)
-        for cost, xs, ys in frame.rollouts:
-            if max_c > min_c:
-                t = (cost - min_c) / (max_c - min_c)
-            else:
-                t = 0.5
-            # Match mppi_debug_markers.hpp costGradientColor: green (low) -> red (high).
-            ax_xy.plot(xs, ys, color=(t, 1.0 - t, 0.0, 0.35), linewidth=0.7, zorder=1)
-        ax_xy.plot(
-            [],
-            [],
-            color=(0.5, 0.5, 0.0, 0.8),
-            linewidth=0.7,
-            label=(
-                f"rollouts ({len(frame.rollouts)} of {MPPI_NUM_ROLLOUTS} "
-                f"top-weighted, ≤{MPPI_MAX_VIZ_ROLLOUTS} exported)"
-            ),
-        )
+        best = [(c, xs, ys) for c, xs, ys, is_worst in frame.rollouts if not is_worst]
+        worst = [(c, xs, ys) for c, xs, ys, is_worst in frame.rollouts if is_worst]
+        if best:
+            costs = [c for c, _xs, _ys in best]
+            min_c = min(costs)
+            max_c = max(costs)
+            min_traj = min(best, key=lambda item: item[0])
+            for cost, xs, ys in best:
+                if max_c > min_c:
+                    t = (cost - min_c) / (max_c - min_c)
+                else:
+                    t = 0.5
+                # Teal (low cost) -> purple (high cost); α 0.95 -> 0.05.
+                # Match mppi_debug_markers.hpp costGradientColor.
+                r = 0.05 + t * (0.55 - 0.05)
+                g = 0.65 + t * (0.15 - 0.65)
+                b = 0.60 + t * (0.75 - 0.60)
+                a = 0.95 + t * (0.05 - 0.95)
+                ax_xy.plot(xs, ys, color=(r, g, b, a), linewidth=0.7, zorder=1)
+            # Same colour as the cost-histogram min marker (tab:green).
+            ax_xy.plot(
+                min_traj[1],
+                min_traj[2],
+                color="tab:green",
+                linewidth=2.2,
+                zorder=3,
+                label=f"min-cost rollout ({min_traj[0]:.1f})",
+            )
+            ax_xy.plot(
+                [],
+                [],
+                color=(0.05, 0.65, 0.60, 0.9),
+                linewidth=0.7,
+                label=(
+                    f"top rollouts ({len(best)} of {MPPI_NUM_ROLLOUTS}, "
+                    f"≤{MPPI_MAX_VIZ_ROLLOUTS}; teal=low cost)"
+                ),
+            )
+        if worst:
+            for _cost, xs, ys in worst:
+                ax_xy.plot(xs, ys, color=(0.85, 0.15, 0.10, 0.18), linewidth=0.6, zorder=0)
+            ax_xy.plot(
+                [],
+                [],
+                color=(0.85, 0.15, 0.10, 0.6),
+                linewidth=0.7,
+                label=(
+                    f"worst rollouts ({len(worst)} of {MPPI_NUM_ROLLOUTS}, "
+                    f"≤{MPPI_MAX_WORST_VIZ_ROLLOUTS})"
+                ),
+            )
 
     def _plot_xy_path(ax, xs, ys, *, color, linestyle, linewidth, label, zorder):
         # Legend handle (single stroke); actual path is drawn segment-by-segment colored
@@ -770,6 +1097,8 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
                 seg_color = (0.35 + 0.65 * t, 0.05, 0.05)
             elif color == "cyan":
                 seg_color = (0.05, 0.45 + 0.40 * t, 0.50 + 0.35 * t)
+            elif color == "orange":
+                seg_color = (0.75 + 0.25 * t, 0.35 + 0.25 * t, 0.05)
             else:
                 seg_color = color
             ax.plot(
@@ -812,6 +1141,17 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             label="diffusion reference",
             zorder=3,
         )
+    if frame.nominal_xy and len(frame.nominal_xy[0]) > 0:
+        _plot_xy_path(
+            ax_xy,
+            frame.nominal_xy[0],
+            frame.nominal_xy[1],
+            color="orange",
+            linestyle="-.",
+            linewidth=2.0,
+            label="nominal (u_nom rollout)",
+            zorder=3,
+        )
     if frame.optimized_xy and len(frame.optimized_xy[0]) > 0:
         _plot_xy_path(
             ax_xy,
@@ -827,10 +1167,11 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         ax_xy.plot(
             frame.retuned_xy[0],
             frame.retuned_xy[1],
-            color="tab:green",
-            linewidth=2.2,
+            color=(0.35, 0.0, 0.45, 1.0),
+            linewidth=2.4,
             label="MPPI retuned",
             zorder=5,
+            solid_capstyle="round",
         )
     overlay = frame.stamp_text
     if frame.metrics_text:
@@ -873,6 +1214,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         or (frame.reference_xy and len(frame.reference_xy[0]) > 0)
         or (frame.optimized_xy and len(frame.optimized_xy[0]) > 0)
         or (frame.retuned_xy and len(frame.retuned_xy[0]) > 0)
+        or (frame.nominal_xy and len(frame.nominal_xy[0]) > 0)
     ):
         ax_xy.relim()
         ax_xy.autoscale_view()
@@ -968,6 +1310,15 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     ax_vel.grid(True)
     if n_compare > 0:
         ax_vel.plot(idx, frame.reference_vel[:n_compare], "c--", linewidth=2, label="diffusion")
+        if frame.nominal_vel:
+            ax_vel.plot(
+                idx,
+                frame.nominal_vel[:n_compare],
+                color="darkorange",
+                linestyle="-.",
+                linewidth=2,
+                label="nominal",
+            )
         ax_vel.plot(idx, frame.optimized_vel[:n_compare], "r-", linewidth=2, label="MPPI logged")
         if frame.retuned_vel:
             ax_vel.plot(
@@ -993,6 +1344,15 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             linewidth=2,
             label="diffusion accel",
         )
+        if frame.nominal_accel:
+            ax_accel.plot(
+                idx,
+                frame.nominal_accel[:n_compare],
+                color="darkorange",
+                linestyle="-.",
+                linewidth=2,
+                label="nominal u_accel",
+            )
         ax_accel.plot(
             idx,
             frame.optimized_accel[:n_compare],
@@ -1036,17 +1396,32 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     elif frame.retuned_steer:
         cmd_seq = list(frame.retuned_steer)
         cmd_label = "δ_cmd (retuned)"
+    elif frame.nominal_steer:
+        cmd_seq = list(frame.nominal_steer)
+        cmd_label = "δ_cmd (nominal)"
     if cmd_seq:
         idx_cmd = list(range(len(cmd_seq)))
         (h_cmd,) = ax_steer_cmd.plot(
             idx_cmd,
             cmd_seq,
-            color="tab:orange",
+            color="tab:orange" if cmd_label != "δ_cmd (nominal)" else "darkorange",
+            linestyle="-" if cmd_label != "δ_cmd (nominal)" else "-.",
             linewidth=2,
             label=cmd_label,
         )
         cmd_handles.append(h_cmd)
         cmd_labels.append(cmd_label)
+        if frame.nominal_steer and cmd_label != "δ_cmd (nominal)":
+            (h_nom,) = ax_steer_cmd.plot(
+                list(range(len(frame.nominal_steer))),
+                frame.nominal_steer,
+                color="darkorange",
+                linestyle="-.",
+                linewidth=2,
+                label="δ_cmd (nominal)",
+            )
+            cmd_handles.append(h_nom)
+            cmd_labels.append("δ_cmd (nominal)")
         if frame.retuned_steer and frame.optimized_steer:
             (h_ret,) = ax_steer_cmd.plot(
                 list(range(len(frame.retuned_steer))),
@@ -1293,15 +1668,20 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_cost.text(
                 0.5,
                 0.5,
-                "Retune to populate",
+                retune_placeholder(frame),
                 ha="center",
                 va="center",
+                fontsize=8,
+                wrap=True,
                 transform=ax_cost.transAxes,
             )
 
     if ax_weight is not None:
         ax_weight.clear()
-        ax_weight.set_title("Retune weight distribution")
+        n_eff_title = ""
+        if frame.normalized_weights:
+            n_eff_title = "  |  " + format_effective_sample_size(frame.normalized_weights)
+        ax_weight.set_title("Retune weight distribution" + n_eff_title)
         ax_weight.set_xlabel("normalized weight")
         ax_weight.set_ylabel("count")
         ax_weight.grid(True, alpha=0.3)
@@ -1327,10 +1707,95 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_weight.text(
                 0.5,
                 0.5,
-                "Retune to populate",
+                retune_placeholder(frame),
                 ha="center",
                 va="center",
+                fontsize=8,
+                wrap=True,
                 transform=ax_weight.transAxes,
+            )
+
+    if ax_cost_breakdown is not None:
+        ax_cost_breakdown.clear()
+        ax_cost_breakdown.set_title("Retuned output trajectory cost breakdown")
+        ax_cost_breakdown.set_xlabel("horizon-average cost")
+        ax_cost_breakdown.grid(True, axis="x", alpha=0.3)
+        component_labels = (
+            ("state/speed", "speed"),
+            ("state/track", "track"),
+            ("state/heading", "heading"),
+            ("state/lateral_distance", "lat distance"),
+            ("state/lateral_boundary", "lat boundary"),
+            ("state/lateral_yaw_error", "lat yaw error"),
+            ("state/remaining_distance", "remaining dist"),
+            ("state/path_overshoot", "path overshoot"),
+            ("state/track_center", "track center"),
+            ("state/corner_buffer", "corner buffer"),
+            ("state/drivable_area", "drivable area"),
+            ("state/obstacle", "obstacle"),
+            ("state/road_border", "road border"),
+            ("control/acceleration_command", "accel cmd"),
+            ("control/steering_command", "steer cmd"),
+            ("comfort/lateral_acceleration", "lat accel"),
+            ("comfort/lateral_jerk", "lat jerk"),
+            ("comfort/longitudinal_jerk", "long jerk"),
+            ("comfort/steering_rate", "steer rate"),
+            ("kinematic/velocity_overlimit", "velocity limit"),
+            ("kinematic/acceleration_overlimit", "accel limit"),
+            ("kinematic/jerk_overlimit", "jerk limit"),
+        )
+        components = [
+            (key, label, frame.cost_breakdown.get(key, 0.0))
+            for key, label in component_labels
+            if math.isfinite(frame.cost_breakdown.get(key, 0.0))
+            and frame.cost_breakdown.get(key, 0.0) > 0.0
+        ]
+        component_total = sum(value for _, _, value in components)
+        if components and component_total > 0.0:
+            left = 0.0
+            colors = plt.get_cmap("tab20").colors
+            for index, (_key, display_label, value) in enumerate(components):
+                percentage = 100.0 * value / component_total
+                label = f"{display_label}: {value:.4g} ({percentage:.2f}%)"
+                ax_cost_breakdown.barh(
+                    ["selected output"],
+                    [value],
+                    left=left,
+                    color=colors[index % len(colors)],
+                    label=label,
+                )
+                if percentage >= 4.0:
+                    ax_cost_breakdown.text(
+                        left + 0.5 * value,
+                        0.0,
+                        f"{percentage:.1f}%",
+                        ha="center",
+                        va="center",
+                        fontsize=8,
+                    )
+                left += value
+            output_total = frame.cost_breakdown.get("output_total_cost", component_total)
+            baseline = frame.cost_breakdown.get("controller_baseline_cost")
+            title = f"Retuned output cost breakdown — total={output_total:.6g}"
+            if baseline is not None and math.isfinite(baseline):
+                title += f", GPU baseline={baseline:.6g}, Δ={output_total - baseline:.6g}"
+            ax_cost_breakdown.set_title(title)
+            ax_cost_breakdown.legend(
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.30),
+                ncol=4,
+                fontsize=7,
+            )
+        else:
+            ax_cost_breakdown.text(
+                0.5,
+                0.5,
+                retune_placeholder(frame),
+                ha="center",
+                va="center",
+                fontsize=8,
+                wrap=True,
+                transform=ax_cost_breakdown.transAxes,
             )
 
     for ax, saved in saved_views:
@@ -1344,9 +1809,15 @@ def create_figure(*, with_retune_panel: bool = False):
 
     if with_retune_panel:
         # Third column stays empty: _build_retune_controls() places the sliders there.
-        fig = plt.figure(figsize=(15, 11))
+        fig = plt.figure(figsize=(15, 13))
         gs = gridspec.GridSpec(
-            5, 3, figure=fig, width_ratios=[1.0, 1.0, 0.85], wspace=0.30, hspace=0.55
+            6,
+            3,
+            figure=fig,
+            width_ratios=[1.0, 1.0, 0.85],
+            height_ratios=[1.0, 1.0, 1.0, 1.0, 1.0, 1.5],
+            wspace=0.30,
+            hspace=0.70,
         )
         ax_lat = fig.add_subplot(gs[0, 0])
         ax_heading_err = fig.add_subplot(gs[1, 0])
@@ -1358,6 +1829,7 @@ def create_figure(*, with_retune_panel: bool = False):
         ax_lat_jerk = fig.add_subplot(gs[2, 1])
         ax_cost = fig.add_subplot(gs[3, 1])
         ax_weight = fig.add_subplot(gs[4, 1])
+        ax_cost_breakdown = fig.add_subplot(gs[5, 0:2])
         fig.canvas.manager.set_window_title("MPPI Diagnostics + Retune")
         fig._mppi_related_figures = (trajectory_fig,)
         return fig, (
@@ -1372,6 +1844,7 @@ def create_figure(*, with_retune_panel: bool = False):
             ax_replan_ade,
             ax_cost,
             ax_weight,
+            ax_cost_breakdown,
         )
 
     fig = plt.figure(figsize=(12, 9))
@@ -1506,23 +1979,28 @@ def load_key_value_csv(path: Path) -> Dict[str, float]:
 
 
 def load_params_from_log(log_dir: Path, params_yaml: Optional[Path]) -> Dict[str, float]:
-    """Prefer logged cost_params.csv, then yaml, then defaults."""
+    """Load slider defaults for offline compare/retune.
+
+    Priority: DEFAULT_PARAMS ← yaml (fill baseline) ← cost_params.csv (online wins).
+    Logged ``cost_params.csv`` always beats yaml so replay matches the run that produced
+    the log. Pass ``--params-yaml`` only to seed sliders when ``cost_params.csv`` is missing.
+    """
     params = dict(DEFAULT_PARAMS)
+    if params_yaml is not None:
+        yaml_params = load_params_yaml(params_yaml)
+        for key, value in yaml_params.items():
+            if key in params:
+                params[key] = value
     logged = load_key_value_csv(log_dir / "cost_params.csv")
     for key, value in logged.items():
         if key in params:
             params[key] = value
-    if params_yaml is not None:
-        yaml_params = load_params_yaml(params_yaml)
-        # Yaml only fills keys still at default when log is missing; if log exists, keep log.
-        if not logged:
-            params.update({k: v for k, v in yaml_params.items() if k in params})
-        else:
-            # Still allow yaml to supply keys absent from the log file.
-            for key, value in yaml_params.items():
-                if key in params and key not in logged:
-                    params[key] = value
     return params
+
+
+def load_logged_cost_params(log_dir: Path) -> Dict[str, float]:
+    """All numeric keys from cost_params.csv (includes fields without sliders)."""
+    return load_key_value_csv(log_dir / "cost_params.csv")
 
 
 def load_vehicle_from_log(
@@ -1538,15 +2016,29 @@ def load_vehicle_from_log(
     )
 
 
+def load_dynamics_from_log(log_dir: Path) -> Dict[str, float]:
+    """Dynamics knobs used to roll out *_nominal.csv (FirstOrderDubinsBicycle)."""
+    logged = load_key_value_csv(log_dir / "vehicle_params.csv")
+    vel_rate = float(logged.get("vel_rate_lim", 4.0))
+    return {
+        "wheel_base": float(logged.get("wheel_base", VEHICLE_PARAMS_DEFAULT_WHEEL_BASE)),
+        "accel_time_constant": float(logged.get("acc_time_constant", 0.15)),
+        "steer_time_constant": float(
+            logged.get("steer_time_constant", VEHICLE_PARAMS_DEFAULT_STEER_TIME_CONSTANT)
+        ),
+        "max_steer_angle": float(logged.get("max_steer_angle", 0.45)),
+        "max_steer_rate": float(logged.get("steer_rate_lim", 3.0)),
+        "min_accel": -abs(vel_rate),
+        "max_accel": abs(vel_rate),
+    }
+
+
 def find_retune_binary(explicit: str = "") -> Path:
     if explicit:
         return Path(explicit)
     env = os.environ.get("MPPI_OFFLINE_RETUNE")
     if env:
         return Path(env)
-    which = shutil.which("mppi_offline_retune")
-    if which:
-        return Path(which)
     try:
         prefix = subprocess.check_output(
             ["ros2", "pkg", "prefix", "autoware_mppi_optimizer"], text=True
@@ -1556,6 +2048,9 @@ def find_retune_binary(explicit: str = "") -> Path:
             return candidate
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
+    which = shutil.which("mppi_offline_retune")
+    if which:
+        return Path(which)
     raise FileNotFoundError(
         "mppi_offline_retune not found. Build autoware_mppi_optimizer and source install, "
         "or set MPPI_OFFLINE_RETUNE / --retune-bin."
@@ -1587,6 +2082,7 @@ class MppiDebugVisualizer(Node):
         self._frame = MppiDebugFrame()
         self._logged_reference = False
         self._logged_optimized = False
+        self._logged_nominal = False
         self._logged_measured_steer = False
         self._logged_cmd_steer = False
         self._logged_mppi_enabled = False
@@ -1625,6 +2121,9 @@ class MppiDebugVisualizer(Node):
         self.create_subscription(
             Trajectory, f"{prefix}/optimized_trajectory", self.on_optimized_trajectory, qos
         )
+        self.create_subscription(
+            Trajectory, f"{prefix}/nominal_trajectory", self.on_nominal_trajectory, qos
+        )
         self.create_subscription(Bool, f"{prefix}/enabled", self.on_mppi_enabled, enabled_qos)
         self.create_subscription(
             SteeringReport, measured_steering_topic, self.on_measured_steering, measured_qos
@@ -1640,6 +2139,7 @@ class MppiDebugVisualizer(Node):
         self.get_logger().info("MPPI debug visualizer started (live).")
         self.get_logger().info(f"Reference: {prefix}/reference_trajectory")
         self.get_logger().info(f"Optimized: {prefix}/optimized_trajectory")
+        self.get_logger().info(f"Nominal: {prefix}/nominal_trajectory")
         self.get_logger().info(f"Enabled flag: {prefix}/enabled")
         self.get_logger().info(f"Measured steer: {measured_steering_topic}")
         self.get_logger().info(
@@ -1649,7 +2149,9 @@ class MppiDebugVisualizer(Node):
         self.get_logger().info(
             "Subscriptions use RELIABLE QoS (matches diffusion_planner publishers)."
         )
-        self.get_logger().info("Ensure use_mppi_optimizer:=true in diffusion_planner params.")
+        self.get_logger().info(
+            "Ensure mppi_optimizer.enabled:=true in the trajectory processor params."
+        )
         self.get_logger().info(
             f"Plot navigation (matplotlib backend: {matplotlib.get_backend()}): "
             "scroll = zoom, drag = pan, double-click = re-fit one panel, "
@@ -1793,6 +2295,21 @@ class MppiDebugVisualizer(Node):
                 f"plotting last {MEASURED_STEER_HISTORY_S:.0f}s on the history panel."
             )
 
+    def on_nominal_trajectory(self, msg: Trajectory) -> None:
+        # Same field mapping as optimized: a / front_wheel_angle carry u_nom cmds.
+        processed = self._process_trajectory(msg, is_optimized=True)
+        with self._lock:
+            self._frame.nominal_xy = processed.reference_xy
+            self._frame.nominal_heading = processed.reference_heading
+            self._frame.nominal_vel = processed.reference_vel
+            self._frame.nominal_accel = processed.reference_accel
+            self._frame.nominal_steer = list(processed.reference_steer)
+            if not self._frame.stamp_text:
+                self._frame.stamp_text = processed.stamp_text
+        if not self._logged_nominal and msg.points:
+            self._logged_nominal = True
+            self.get_logger().info(f"Receiving nominal_trajectory ({len(msg.points)} points).")
+
     def on_mppi_enabled(self, msg: Bool) -> None:
         with self._lock:
             self._frame.mppi_enabled = bool(msg.data)
@@ -1834,14 +2351,19 @@ class MppiDebugVisualizer(Node):
             frame = MppiDebugFrame(
                 reference_xy=self._frame.reference_xy,
                 optimized_xy=self._frame.optimized_xy,
+                nominal_xy=self._frame.nominal_xy,
                 reference_heading=list(self._frame.reference_heading),
                 optimized_heading=list(self._frame.optimized_heading),
+                nominal_heading=list(self._frame.nominal_heading),
                 reference_vel=list(self._frame.reference_vel),
                 optimized_vel=list(self._frame.optimized_vel),
+                nominal_vel=list(self._frame.nominal_vel),
                 reference_accel=list(self._frame.reference_accel),
                 optimized_accel=list(self._frame.optimized_accel),
+                nominal_accel=list(self._frame.nominal_accel),
                 reference_steer=list(self._frame.reference_steer),
                 optimized_steer=list(self._frame.optimized_steer),
+                nominal_steer=list(self._frame.nominal_steer),
                 reference_steer_rate=list(self._frame.reference_steer_rate),
                 optimized_steer_rate=[],
                 measured_steer=self._frame.measured_steer,
@@ -1915,6 +2437,7 @@ class OfflineLogVisualizer:
         self._enable_retune = enable_retune
         self._params_yaml = params_yaml
         self._params = load_params_from_log(log_dir, params_yaml)
+        self._logged_cost_params = load_logged_cost_params(log_dir)
         (
             self._wheel_base,
             self._ego_width,
@@ -1925,6 +2448,9 @@ class OfflineLogVisualizer:
             float(steer_time_constant if steer_time_constant is not None else logged_steer_tau),
             1.0e-4,
         )
+        self._dynamics = load_dynamics_from_log(log_dir)
+        self._dynamics["wheel_base"] = float(self._wheel_base)
+        self._dynamics["steer_time_constant"] = float(self._steer_time_constant)
         self._status = "Ready"
         if enable_retune and not (log_dir / "000000_ego.csv").is_file():
             # Any frame's ego file; check first available frame.
@@ -1933,6 +2459,7 @@ class OfflineLogVisualizer:
                 self._status = "WARNING: no *_ego.csv — retune uses ref[0] IC; re-log after rebuild"
         self._out_dir = Path(tempfile.mkdtemp(prefix="mppi_retune_")) if enable_retune else None
         self._retune_bin = retune_bin
+        self._reseed_counts: Dict[int, int] = {}
         self._fig, self._axes = create_figure(with_retune_panel=enable_retune)
         for fig in (self._fig, *getattr(self._fig, "_mppi_related_figures", ())):
             fig.canvas.mpl_connect("key_press_event", self._on_key)
@@ -1946,7 +2473,7 @@ class OfflineLogVisualizer:
         plt.show(block=False)
         keys = "left/right or n/p = step, home/end, a = autoplay, escape = re-fit axes, q = quit"
         if enable_retune:
-            keys += ", r = retune"
+            keys += ", r = retune, s = re-seed from last retune"
         print(f"Offline MPPI log: {log_dir} ({len(self._frame_ids)} frames). Keys: {keys}.")
         if enable_retune:
             print(
@@ -1954,8 +2481,27 @@ class OfflineLogVisualizer:
                 f"ego_length={self._ego_length}, ego_width={self._ego_width}, "
                 f"steer_time_constant={self._steer_time_constant}"
             )
+            if self._logged_cost_params:
+                print(
+                    "Retune cost baseline: cost_params.csv from log "
+                    f"(lambda={self._logged_cost_params.get('lambda', '?')}, "
+                    f"track_coeff={self._logged_cost_params.get('track_coeff', '?')}, "
+                    f"lateral_distance_coeff="
+                    f"{self._logged_cost_params.get('lateral_distance_coeff', '?')})"
+                )
+            elif self._params_yaml is not None:
+                print(
+                    f"Retune cost baseline: --params-yaml {self._params_yaml} (no cost_params.csv)"
+                )
+            else:
+                print("WARNING: no cost_params.csv — sliders use script DEFAULT_PARAMS, not online")
             print(f"Retune binary: {self._retune_bin}")
+            print(f"Retune output directory: {self._out_dir}")
             print("Move sliders, then click Retune (or press r). Sliders alone do nothing.")
+            print(
+                "Re-seed (or press s) warm-starts MPPI from the current retuned u_opt "
+                "(requires a prior Retune on this frame)."
+            )
 
     def _build_retune_controls(self) -> None:
         n = max(len(SLIDER_SPECS), 1)
@@ -1965,27 +2511,44 @@ class OfflineLogVisualizer:
         top = 0.94
         for i, (name, vmin, vmax) in enumerate(SLIDER_SPECS):
             ax = self._fig.add_axes([0.72, top - i * (slider_h + gap), 0.26, slider_h])
-            self._sliders[name] = Slider(
-                ax, name, vmin, vmax, valinit=self._params.get(name, DEFAULT_PARAMS[name])
-            )
-        ax_prev = self._fig.add_axes([0.72, 0.06, 0.07, 0.035])
-        ax_next = self._fig.add_axes([0.80, 0.06, 0.07, 0.035])
-        ax_run = self._fig.add_axes([0.88, 0.06, 0.10, 0.035])
+            valinit = float(self._params.get(name, DEFAULT_PARAMS[name]))
+            # Matplotlib Slider clamps valinit into [vmin, vmax]; expand so logged/yaml
+            # values (e.g. lateral_jerk_coeff=1e5) are not silently truncated on Retune.
+            lo = min(vmin, valinit)
+            hi = max(vmax, valinit)
+            if hi <= lo:
+                hi = lo + 1.0e-6
+            self._sliders[name] = Slider(ax, name, lo, hi, valinit=valinit)
+        ax_prev = self._fig.add_axes([0.72, 0.06, 0.06, 0.035])
+        ax_next = self._fig.add_axes([0.785, 0.06, 0.06, 0.035])
+        ax_run = self._fig.add_axes([0.85, 0.06, 0.065, 0.035])
+        ax_reseed = self._fig.add_axes([0.92, 0.06, 0.06, 0.035])
         self._btn_prev = Button(ax_prev, "Prev")
         self._btn_next = Button(ax_next, "Next")
         self._btn_run = Button(ax_run, "Retune")
+        self._btn_reseed = Button(ax_reseed, "Re-seed")
         self._btn_prev.on_clicked(lambda _e: self._step(-1))
         self._btn_next.on_clicked(lambda _e: self._step(1))
-        self._btn_run.on_clicked(lambda _e: self._retune_current())
+        self._btn_run.on_clicked(lambda _e: self._retune_current(reseed=False))
+        self._btn_reseed.on_clicked(lambda _e: self._retune_current(reseed=True))
         self._fig.canvas.manager.set_window_title("MPPI Offline Compare + Retune")
 
     def _load_frame(self, frame_id: int) -> MppiDebugFrame:
         tag = f"{frame_id:06d}"
         reference = load_trajectory_csv(self._log_dir / f"{tag}_reference.csv")
         optimized = load_trajectory_csv(self._log_dir / f"{tag}_optimized.csv")
+        nominal = None
+        ego = load_ego_csv(self._log_dir / f"{tag}_ego.csv")
+        nominal_cmds = load_nominal_csv(self._log_dir / f"{tag}_nominal.csv")
+        if ego is not None and nominal_cmds.accel_cmd:
+            rolled = rollout_nominal_trajectory(ego, nominal_cmds, **self._dynamics)
+            if rolled.x:
+                nominal = rolled
         retuned = None
         costs = None
         rollouts = None
+        retune_crash_status = None
+        cost_breakdown = None
         if self._out_dir is not None:
             retuned = load_trajectory_csv(self._out_dir / f"{tag}_optimized.csv")
             if not retuned.x:
@@ -1996,6 +2559,8 @@ class OfflineLogVisualizer:
             rollouts = load_rollouts_csv(self._out_dir / f"{tag}_rollouts.csv")
             if not rollouts:
                 rollouts = None
+            retune_crash_status = load_crash_status_csv(self._out_dir / f"{tag}_crash_status.csv")
+            cost_breakdown = load_key_value_csv(self._out_dir / f"{tag}_cost_breakdown.csv")
         stamp = f"frame: {frame_id} / {self._frame_ids[-1]}"
         if self._enable_retune:
             stamp = f"{stamp}   |   {self._status}"
@@ -2004,10 +2569,14 @@ class OfflineLogVisualizer:
             optimized,
             stamp_text=stamp,
             retuned=retuned,
+            nominal=nominal,
             costs=costs,
             rollouts=rollouts,
             steer_time_constant=self._steer_time_constant,
             wheel_base=self._wheel_base,
+            retune_crash_status=retune_crash_status,
+            cost_breakdown=cost_breakdown,
+            retune_status=self._status,
         )
         self._fill_offline_replan_ade(frame, up_to_index=self._index)
         return frame
@@ -2054,16 +2623,33 @@ class OfflineLogVisualizer:
         self._show_current()
 
     def _current_params(self) -> Dict[str, float]:
-        """All known cost params: log/yaml/defaults, overridden by slider values."""
-        params = dict(self._params)
+        """Cost params sent to mppi_offline_retune: log extras + slider overrides."""
+        params = dict(self._logged_cost_params)
+        params.update(self._params)
         for name, slider in self._sliders.items():
             params[name] = float(slider.val)
         return params
 
-    def _retune_current(self) -> None:
+    def _retune_current(self, *, reseed: bool = False) -> None:
         if not self._enable_retune or self._retune_bin is None or self._out_dir is None:
             return
         frame_id = self._frame_ids[self._index]
+        tag = f"{frame_id:06d}"
+        seed_path = self._out_dir / f"{tag}_seed_nominal.csv"
+        if reseed:
+            if not seed_path.is_file():
+                self._status = (
+                    f"Re-seed needs {tag}_seed_nominal.csv — run Retune on this frame first"
+                )
+                self._show_current()
+                return
+            if not (self._out_dir / f"{tag}_optimized.csv").is_file():
+                self._status = (
+                    f"Re-seed needs a retuned path — run Retune on frame {frame_id} first"
+                )
+                self._show_current()
+                return
+
         params = self._current_params()
         cmd = [
             str(self._retune_bin),
@@ -2081,31 +2667,100 @@ class OfflineLogVisualizer:
             "--ego-length",
             str(self._ego_length),
         ]
-        if self._params_yaml is not None:
-            cmd.extend(["--params-yaml", str(self._params_yaml)])
+        # Do not pass --params-yaml into retune: it would overwrite cost_params.csv for
+        # keys without sliders (noise exponents, etc.). Sliders + --set carry user edits.
+        if reseed:
+            cmd.extend(["--nominal-csv", str(seed_path)])
+        elif not math.isclose(
+            params["nominal_curvature_min_chord_length_m"],
+            self._params["nominal_curvature_min_chord_length_m"],
+            rel_tol=0.0,
+            abs_tol=1.0e-6,
+        ):
+            cmd.append("--reseed-nominal-from-reference")
         for key, value in params.items():
             cmd.extend(["--set", f"{key}={value}"])
 
         lam = params.get("lambda", float("nan"))
         track = params.get("track_coeff", float("nan"))
+        mode = "Re-seeding" if reseed else "Retuning"
+        prev_count = self._reseed_counts.get(frame_id, 0)
+        for suffix in (
+            "optimized.csv",
+            "costs.csv",
+            "rollouts.csv",
+            "crash_status.csv",
+            "cost_breakdown.csv",
+        ):
+            (self._out_dir / f"{tag}_{suffix}").unlink(missing_ok=True)
         self._status = (
-            f"Retuning frame {frame_id} via {self._retune_bin.name} "
-            f"(lambda={lam:.0f}, track={track:.0f})..."
+            f"{mode} frame {frame_id} via {self._retune_bin.name} "
+            f"(lambda={lam:.0f}, track={track:.0f}"
+            + (f", pass={prev_count + 1}" if reseed else "")
+            + ")..."
         )
         self._show_current()
         try:
             completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            required_outputs = (
+                self._out_dir / f"{tag}_optimized.csv",
+                self._out_dir / f"{tag}_costs.csv",
+                self._out_dir / f"{tag}_cost_breakdown.csv",
+            )
+            missing_outputs = [path.name for path in required_outputs if not path.is_file()]
+            if missing_outputs:
+                raise RuntimeError(
+                    "retune completed without expected output: "
+                    + ", ".join(missing_outputs)
+                    + f" (binary: {self._retune_bin})"
+                )
             lines = [ln for ln in completed.stdout.splitlines() if ln.strip()]
             # Prefer the applied_params line when present; else last status line.
             applied = next((ln for ln in lines if ln.startswith("applied_params ")), "")
             tail = lines[-1] if lines else "OK"
             self._status = f"{applied} | {tail}" if applied else tail
+            if reseed:
+                self._reseed_counts[frame_id] = prev_count + 1
+                self._status = f"reseed_pass={self._reseed_counts[frame_id]} | {self._status}"
+            else:
+                # Fresh Retune resets the iterative re-seed counter for this frame.
+                self._reseed_counts[frame_id] = 0
             warn_lines = []
             if completed.stderr:
                 warn_lines = [ln for ln in completed.stderr.splitlines() if "WARNING:" in ln]
             # Highlight when retune barely moved vs logged (usually lambda still too high).
             opt = load_trajectory_csv(self._out_dir / f"{frame_id:06d}_optimized.csv")
             logged = load_trajectory_csv(self._log_dir / f"{frame_id:06d}_optimized.csv")
+            costs = load_costs_csv(self._out_dir / f"{frame_id:06d}_costs.csv")
+            rollouts = load_rollouts_csv(self._out_dir / f"{frame_id:06d}_rollouts.csv")
+            finite_costs = [c for c in costs.raw_costs if abs(c) < 1.0e20]
+            best_rollouts = [r for r in rollouts if not r[3]]
+            if finite_costs:
+                global_min = min(finite_costs)
+                print(
+                    f"[retune] frame {frame_id}: min rollout cost (sampled hist) = {global_min:.6g}"
+                )
+                self._status = f"{self._status} | min_cost={global_min:.1f}"
+            if costs.normalized_weights:
+                n_eff_txt = format_effective_sample_size(costs.normalized_weights)
+                print(f"[retune] frame {frame_id}: {n_eff_txt}")
+                self._status = f"{self._status} | {n_eff_txt}"
+            if best_rollouts:
+                viz_min = min(r[0] for r in best_rollouts)
+                print(f"[retune] frame {frame_id}: min exported top-rollout cost = {viz_min:.6g}")
+            # Echo retune binary lines that mention cost / crash.
+            for ln in lines:
+                if (
+                    "baseline_cost=" in ln
+                    or "min_exported_rollout_cost=" in ln
+                    or "crash_status=" in ln
+                ):
+                    print(ln)
+            crash = load_crash_status_csv(self._out_dir / f"{tag}_crash_status.csv")
+            if crash is not None:
+                self._status = (
+                    f"{self._status} | crash_status={crash} ({crash_status_label(crash)})"
+                )
             if opt.x and logged.x:
                 vs = max_pos_err((logged.x, logged.y), (opt.x, opt.y))
                 self._status = f"{self._status} | logged↔retune Δpos={vs:.3f}m"
@@ -2116,10 +2771,24 @@ class OfflineLogVisualizer:
             if warn_lines:
                 self._status = f"{self._status}  ||  {warn_lines[-1]}"
         except subprocess.CalledProcessError as exc:
-            err = (exc.stderr or exc.stdout or str(exc)).strip()
-            self._status = f"Retune failed: {err[-240:]}"
+            details = (exc.stderr or exc.stdout or str(exc)).strip()
+            print(
+                f"[retune] command failed with exit code {exc.returncode}:\n"
+                f"{' '.join(cmd)}\n{details}",
+                file=sys.stderr,
+            )
+            detail_line = next(
+                (line.strip() for line in reversed(details.splitlines()) if line), ""
+            )
+            self._status = (
+                f"{'Re-seed' if reseed else 'Retune'} failed "
+                f"(exit {exc.returncode}): {detail_line[-180:]}"
+            )
+        except RuntimeError as exc:
+            print(f"[retune] {exc}", file=sys.stderr)
+            self._status = f"{'Re-seed' if reseed else 'Retune'} failed: {exc}"
         except FileNotFoundError as exc:
-            self._status = f"Retune failed: {exc}"
+            self._status = f"{'Re-seed' if reseed else 'Retune'} failed: {exc}"
         self._show_current()
 
     def _on_key(self, event) -> None:
@@ -2139,7 +2808,9 @@ class OfflineLogVisualizer:
             reset_view_baselines(self._axes)
             self._show_current()
         elif event.key == "r" and self._enable_retune:
-            self._retune_current()
+            self._retune_current(reseed=False)
+        elif event.key == "s" and self._enable_retune:
+            self._retune_current(reseed=True)
         elif event.key == "q":
             for fig in (self._fig, *getattr(self._fig, "_mppi_related_figures", ())):
                 plt.close(fig)
@@ -2157,7 +2828,7 @@ class OfflineLogVisualizer:
 def parse_args(argv: List[str]) -> argparse.Namespace:
     default_prefix = (
         "/planning/trajectory_generator/neural_network_based_planner/"
-        "diffusion_planner_node/debug/mppi"
+        "trajectory_processor/debug/mppi"
     )
     parser = argparse.ArgumentParser(
         description="Plot diffusion-planner reference vs MPPI-optimized trajectories.",
@@ -2166,7 +2837,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument(
         "--topic-prefix",
         default=default_prefix,
-        help="Prefix for ~/debug/mppi/{reference,optimized}_trajectory and enabled topics",
+        help="Prefix for ~/debug/mppi/{reference,optimized,nominal}_trajectory and enabled topics",
     )
     parser.add_argument(
         "--log-dir",

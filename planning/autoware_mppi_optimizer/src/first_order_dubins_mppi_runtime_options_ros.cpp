@@ -37,12 +37,22 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "debug_trajectory_log_directory"), defaults.debug_trajectory_log_directory);
   node.declare_parameter(param_name(prefix, "ignore_obstacles"), defaults.ignore_obstacles);
+  node.declare_parameter(param_name(prefix, "ignore_road_borders"), defaults.ignore_road_borders);
   node.declare_parameter(param_name(prefix, "ignore_drivable_area"), defaults.ignore_drivable_area);
   node.declare_parameter(
     param_name(prefix, "force_cold_start_each_step"), defaults.force_cold_start_each_step);
   node.declare_parameter(param_name(prefix, "skip_if_invalid"), defaults.skip_if_invalid);
   node.declare_parameter(
+    param_name(prefix, "min_optimization_length"), defaults.min_optimization_length);
+  node.declare_parameter(
     param_name(prefix, "use_last_control_as_nominal"), defaults.use_last_control_as_nominal);
+  node.declare_parameter(
+    param_name(prefix, "use_temporal_mpt_as_nominal"), defaults.use_temporal_mpt_as_nominal);
+  node.declare_parameter(
+    param_name(prefix, "prevent_reverse_velocity"), defaults.prevent_reverse_velocity);
+  node.declare_parameter(
+    param_name(prefix, "enable_input_delay_compensation"),
+    defaults.enable_input_delay_compensation);
 }
 
 FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
@@ -54,13 +64,23 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.debug_trajectory_log_directory =
     node.get_parameter(param_name(prefix, "debug_trajectory_log_directory")).as_string();
   options.ignore_obstacles = node.get_parameter(param_name(prefix, "ignore_obstacles")).as_bool();
+  options.ignore_road_borders =
+    node.get_parameter(param_name(prefix, "ignore_road_borders")).as_bool();
   options.ignore_drivable_area =
     node.get_parameter(param_name(prefix, "ignore_drivable_area")).as_bool();
   options.force_cold_start_each_step =
     node.get_parameter(param_name(prefix, "force_cold_start_each_step")).as_bool();
   options.skip_if_invalid = node.get_parameter(param_name(prefix, "skip_if_invalid")).as_bool();
+  options.min_optimization_length = static_cast<float>(
+    node.get_parameter(param_name(prefix, "min_optimization_length")).as_double());
   options.use_last_control_as_nominal =
     node.get_parameter(param_name(prefix, "use_last_control_as_nominal")).as_bool();
+  options.use_temporal_mpt_as_nominal =
+    node.get_parameter(param_name(prefix, "use_temporal_mpt_as_nominal")).as_bool();
+  options.prevent_reverse_velocity =
+    node.get_parameter(param_name(prefix, "prevent_reverse_velocity")).as_bool();
+  options.enable_input_delay_compensation =
+    node.get_parameter(param_name(prefix, "enable_input_delay_compensation")).as_bool();
   return options;
 }
 

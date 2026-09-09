@@ -19,10 +19,10 @@
 #include "autoware/trajectory_ranker/interface/metrics_interface.hpp"
 
 #include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
-#include <autoware_trajectory_validator/msg/validation_report.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/scored_candidate_trajectories.hpp>
+#include <autoware_internal_planning_msgs/msg/validation_report.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
@@ -39,7 +39,7 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectory;
 using autoware_internal_planning_msgs::msg::GeneratorInfo;
 using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectories;
 using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectory;
-using autoware_trajectory_validator::msg::ValidationReport;
+using autoware_internal_planning_msgs::msg::ValidationReport;
 using metrics::MetricInterface;
 
 using ValidationReports = std::vector<ValidationReport>;
@@ -60,7 +60,7 @@ enum class TrajectorySource : uint8_t {
 struct RankerInputTrajectory
 {
   CandidateTrajectory candidate_trajectory;
-  autoware_trajectory_validator::msg::RiskLevel::_level_type risk_level{};
+  autoware_internal_planning_msgs::msg::RiskLevel::_level_type risk_level{};
   TrajectorySource source{};
 };
 using RankerInputTrajectories = std::vector<RankerInputTrajectory>;

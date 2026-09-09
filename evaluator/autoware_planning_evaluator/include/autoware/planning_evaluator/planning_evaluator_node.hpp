@@ -25,7 +25,6 @@
 #include "tf2_ros/transform_listener.h"
 
 #include <autoware/route_handler/route_handler.hpp>
-#include <autoware_trajectory_validator/msg/validation_report_array.hpp>
 #include <autoware_utils/math/accumulator.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
@@ -34,6 +33,7 @@
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
+#include <autoware_internal_planning_msgs/msg/validation_report_array.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/pose_with_uuid_stamped.hpp>
@@ -70,8 +70,8 @@ using nav_msgs::msg::Odometry;
 using LaneletMapBin = autoware_map_msgs::msg::LaneletMapBin;
 using autoware_internal_planning_msgs::msg::PlanningFactor;
 using autoware_internal_planning_msgs::msg::PlanningFactorArray;
+using autoware_internal_planning_msgs::msg::ValidationReportArray;
 using autoware_planning_msgs::msg::LaneletRoute;
-using autoware_trajectory_validator::msg::ValidationReportArray;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 /**
  * @brief Node for planning evaluation

@@ -15,6 +15,9 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/minimum_rule_based_planner.cpp
   src/map_based_stop_planner.cpp
   src/path_planner.cpp
+  src/turn_indicator_decider.cpp
+  src/start_goal_planner/clothoid_pull_generater.cpp
+  src/start_goal_planner/start_goal_planner.cpp
   src/velocity_smoother.cpp
 )
 
@@ -56,6 +59,8 @@ target_link_libraries(${PROJECT_NAME}_plugins
   ${PROJECT_NAME}_lib
 )
 
+target_compile_options(${PROJECT_NAME}_plugins PRIVATE -Wno-deprecated-declarations)
+
 if(BUILD_TESTING)
   file(GLOB_RECURSE TEST_SOURCES test/*.cpp)
   ament_add_ros_isolated_gmock(test_${PROJECT_NAME} ${TEST_SOURCES})
@@ -67,6 +72,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_${PROJECT_NAME}
     ${PROJECT_NAME}_lib
   )
+
+  target_compile_options(test_${PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
 endif()
 
 ament_auto_package(

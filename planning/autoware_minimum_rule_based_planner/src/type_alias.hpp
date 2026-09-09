@@ -15,7 +15,7 @@
 #ifndef TYPE_ALIAS_HPP_
 #define TYPE_ALIAS_HPP_
 
-#include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
+#include "autoware/trajectory_processor/trajectory_processor_plugin_base.hpp"
 #include "plugin_interface.hpp"
 
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
@@ -30,6 +30,7 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
+#include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -48,6 +49,7 @@ using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
+using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 using sensor_msgs::msg::PointCloud2;
@@ -60,7 +62,7 @@ using TrajectoryPointTrajectory = autoware::experimental::trajectory::Trajectory
 using TrajectoryClass = PathPointTrajectory;
 
 using OptimizerPluginInterface =
-  autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase;
+  autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase;
 using OptimizerPluginLoader = pluginlib::ClassLoader<OptimizerPluginInterface>;
 
 using ModifierPluginLoader =

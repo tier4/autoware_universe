@@ -15,8 +15,9 @@
 
 r"""Thin wrapper: launches mppi_debug_visualizer.py in offline compare+retune mode.
 
-Uses the same plots as the debug visualizer (XY + heading/vel/accel/steer/steer-rate),
-overlaying diffusion reference, logged MPPI output, and a retuned MPPI result.
+Uses the same plots as the debug visualizer (trajectory, state/control diagnostics,
+rollout distributions, and selected-output cost breakdown), overlaying the diffusion
+reference, logged MPPI output, and a retuned MPPI result.
 
 Example:
   ros2 run autoware_mppi_optimizer mppi_offline_tuner.py -- \
