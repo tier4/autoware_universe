@@ -2,15 +2,11 @@
 <launch>
   <!-- Deployment defaults from the package, then the model's own description from the
        directory that holds its ONNX (see README, "Configuration layout"). -->
-  <arg name="param_path" default="$(find-pkg-share autoware_tensorrt_e2e)/config/e2e_planner.param.yaml"/>
+  <arg name="param_path" default="$(find-pkg-share autoware_tensorrt_e2e)/config/e2e_planner_latentdrive.param.yaml"/>
   <arg name="model_path" default="$(env HOME)/autoware_data/ml_models/tensorrt_e2e/latentdrive" description="directory holding the planner ONNX and ml_package_$(var model_name).param.yaml"/>
   <arg name="model_name" default="latentdrive"/>
   <arg name="planner_onnx" default="e2e-idx8-hist4-wp10hz-e3.onnx" description="planner ONNX file name inside model_path"/>
   <arg name="ml_package_param_path" default="$(var model_path)/ml_package_$(var model_name).param.yaml"/>
-  <!-- e2e_planner.param.yaml substitutes these for the bev_feature deployment. LatentDrive
-       never enables that provider, so the values are not read; they only have to resolve. -->
-  <arg name="extractor_onnx" default=""/>
-  <arg name="contract_file" default=""/>
   <arg name="vehicle_info_param_path" default="$(find-pkg-share autoware_vehicle_info_utils)/config/vehicle_info.param.yaml"/>
   <arg name="build_only" default="false" description="shutdown node after the TensorRT engine file is built"/>
   <arg name="use_sim_time" default="false" description="clock every node here from /clock, as a bag replay needs"/>
