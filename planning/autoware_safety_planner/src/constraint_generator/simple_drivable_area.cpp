@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::safety_planner
+namespace autoware::safety_planner::experiment
 {
 
 namespace
@@ -187,9 +187,9 @@ ConstraintGeneratorOutput SimpleDrivableAreaConstraintGenerator::generate_constr
   return output;
 }
 
-}  // namespace autoware::safety_planner
+}  // namespace autoware::safety_planner::experiment
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::safety_planner::SimpleDrivableAreaConstraintGenerator,
+  autoware::safety_planner::experiment::SimpleDrivableAreaConstraintGenerator,
   autoware::safety_planner::ConstraintGeneratorInterface)

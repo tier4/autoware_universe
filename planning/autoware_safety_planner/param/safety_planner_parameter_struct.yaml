@@ -80,15 +80,15 @@ safety_planner:
   constraint_generator_plugins:
     type: string_array
     default_value:
-      - autoware::safety_planner::VehicleKinematicsConstraintGenerator
-      - autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator
-      - autoware::safety_planner::ObstacleStopConstraintGenerator
+      - autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator
+      - autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator
+      - autoware::safety_planner::experiment::ObstacleStopConstraintGenerator
     read_only: true
     description: fully qualified class names of the constraint generator plugins to load
 
   trajectory_planner_plugin:
     type: string
-    default_value: autoware::safety_planner::FrenetSamplingBasedPlanner
+    default_value: autoware::safety_planner::experiment::FrenetSamplingBasedPlanner
     read_only: true
     description: fully qualified class name of the trajectory planner plugin to load. It turns the two constraint sets into two trajectories
 

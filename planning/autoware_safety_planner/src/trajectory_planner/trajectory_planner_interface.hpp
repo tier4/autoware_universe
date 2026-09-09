@@ -15,10 +15,6 @@
 #ifndef TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
 #define TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
 
-// Interface of the trajectory planner plugins. SafetyPlanner generates the constraints and splits
-// them by certainty; compiling them and planning on them is left to the plugin. Input: the two
-// constraint sets (normal / cautious); output: the two trajectories.
-
 #include "../constraint.hpp"
 #include "../context.hpp"
 #include "../type_alias.hpp"
@@ -42,18 +38,26 @@ struct TrajectoryPlannerInput
   const std::vector<Constraint> & cautious_constraints;  //!< DEFINITE + POSSIBLE
 };
 
+struct TrajectoryPlannerDebug
+{
+  std::map<std::string, Trajectory> trajectories;
+  std::map<std::string, MarkerArray> markers;
+};
+
+//! A trajectory and the turn indicator that goes with it. Kept as one unit because the selector
+//! adopts both from the same candidate; stamp is overwritten downstream
+struct PlannedTrajectory
+{
+  Trajectory trajectory;
+  TurnIndicatorsCommand turn_indicators;
+};
+
 struct TrajectoryPlannerResult
 {
-  std::optional<Trajectory> normal_trajectory;
-  std::optional<Trajectory> cautious_trajectory;
-
-  //! Debug output of the plugin as ROS messages keyed by a name; the node publishes each under
-  //! ~/debug/<name>. What is in it depends on the plugin
-  struct Debug
-  {
-    std::map<std::string, Trajectory> trajectories;
-    std::map<std::string, MarkerArray> markers;
-  } debug;
+  std::optional<PlannedTrajectory> normal_trajectory;
+  std::optional<PlannedTrajectory> cautious_trajectory;
+  TrajectoryPlannerDebug normal_debug;
+  TrajectoryPlannerDebug cautious_debug;
 };
 
 class TrajectoryPlannerInterface
@@ -62,8 +66,6 @@ public:
   TrajectoryPlannerInterface() = default;
   virtual ~TrajectoryPlannerInterface() = default;
 
-  //! Called once right after the plugin is loaded. A derived class loads its own inner plugins
-  //! (the optimizer, ...) by overriding this.
   virtual void on_initialize(
     const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params)
   {

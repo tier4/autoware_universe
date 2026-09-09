@@ -15,12 +15,6 @@
 #ifndef SAFETY_PLANNER_HPP_
 #define SAFETY_PLANNER_HPP_
 
-// The pipeline itself. The ROS interface (subscriptions, publications, timer) belongs to
-// SafetyPlannerNode; this class only takes a SafetyPlannerInput and returns the result, and holds
-// neither a publisher nor a clock (message types, the TimeKeeper and pluginlib are fine). It
-// generates the constraints and splits them by certainty; compiling them and planning on them is
-// the trajectory_planner plugin's job.
-
 #include "constraint_generator/constraint_generator_interface.hpp"
 #include "context.hpp"
 #include "trajectory_planner/trajectory_planner_interface.hpp"
@@ -39,14 +33,14 @@ namespace autoware::safety_planner
 
 struct SafetyPlannerResult
 {
-  std::optional<Trajectory> normal_trajectory;
-  std::optional<Trajectory> cautious_trajectory;
+  std::optional<PlannedTrajectory> normal_trajectory;
+  std::optional<PlannedTrajectory> cautious_trajectory;
   struct Debug
   {
     std::map<std::string, ConstraintGeneratorOutput> constraint_generator_outputs;
     PathPointTrajectory reference_path;
-    std::map<std::string, Trajectory> planner_trajectories;
-    std::map<std::string, MarkerArray> planner_markers;  //!< e.g. "candidates", "lateral_bounds"
+    TrajectoryPlannerDebug normal;
+    TrajectoryPlannerDebug cautious;
   } debug;
 };
 

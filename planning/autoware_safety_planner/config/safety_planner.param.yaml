@@ -20,8 +20,8 @@
       velocity_hard_mps: 0.3 # [m/s]
 
     constraint_generator_plugins:
-      - "autoware::safety_planner::VehicleKinematicsConstraintGenerator"
-      - "autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator"
-      - "autoware::safety_planner::ObstacleStopConstraintGenerator"
+      - "autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator"
+      - "autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator"
+      - "autoware::safety_planner::experiment::ObstacleStopConstraintGenerator"
 
-    trajectory_planner_plugin: "autoware::safety_planner::FrenetSamplingBasedPlanner"
+    trajectory_planner_plugin: "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"

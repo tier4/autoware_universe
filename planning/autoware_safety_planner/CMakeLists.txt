@@ -4,19 +4,13 @@ project(autoware_safety_planner)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
-# The generated header lands in include/${PROJECT_NAME}/safety_planner_parameters.hpp
 generate_parameter_library(safety_planner_parameters
   param/safety_planner_parameter_struct.yaml
 )
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Helpers around the per-cycle input (PlannerContext), the constraint IR and its projected (s, l)
-# views, shared by the node and the trajectory planner plugins. They live here rather than in the
-# node library because the plugin .so files call them too.
-# STATIC: as a SHARED library, linking the transitive .so files alone takes tens of minutes
 ament_auto_add_library(${PROJECT_NAME}_common STATIC
-  src/context.cpp
   src/utils/constraints_compiler.cpp
   src/utils/sl_view_utils.cpp
   src/utils/trajectory_conversion.cpp
@@ -75,9 +69,6 @@ if(BUILD_TESTING)
   find_package(pybind11 REQUIRED)
 
   # Closed-loop simulation (test/closed_loop) that drives SafetyPlanner::plan without a node.
-  # Numeric results (CSV) are always written under TEST_RESULTS_DIR (build tree, not tracked by git);
-  # figures are written there too when EXPORT_TEST_PLOT_FIGURE is ON
-  # (colcon build --cmake-args -DEXPORT_TEST_PLOT_FIGURE=ON).
   option(EXPORT_TEST_PLOT_FIGURE "Enable plotting in tests" OFF)
 
   file(GLOB_RECURSE TEST_SOURCES test/*.cpp)

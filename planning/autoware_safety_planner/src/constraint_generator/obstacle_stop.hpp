@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
-#define AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
+#ifndef CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
+#define CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
 
 #include "constraint_generator_interface.hpp"
 
@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-namespace autoware::safety_planner
+namespace autoware::safety_planner::experiment
 {
 
 //! Emits one rigid-body KeepOut with certainty = DEFINITE per predicted object. The waypoints are
@@ -54,6 +54,6 @@ std::vector<Constraint> make_obstacle_stop_line_constraints(
   const double corridor_half_width_m, const double stop_distance_m,
   const double max_object_speed_mps);
 
-}  // namespace autoware::safety_planner
+}  // namespace autoware::safety_planner::experiment
 
-#endif  // AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_
+#endif  // CONSTRAINT_GENERATOR__OBSTACLE_STOP_HPP_

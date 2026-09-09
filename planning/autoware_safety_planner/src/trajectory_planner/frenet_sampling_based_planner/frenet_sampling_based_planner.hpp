@@ -41,7 +41,7 @@
 #include <string>
 #include <vector>
 
-namespace autoware::safety_planner
+namespace autoware::safety_planner::experiment
 {
 
 class FrenetSamplingBasedPlanner : public TrajectoryPlannerInterface
@@ -96,8 +96,8 @@ private:
   };
 
   std::optional<Trajectory> plan_one_side(
-    const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-    MarkerArray & debug_markers) const;
+    const PlannerContext & context, const std::vector<Constraint> & constraints,
+    TrajectoryPlannerDebug & debug) const;
 
   InitialState compute_initial_state(const PlannerContext & context) const;
 
@@ -141,6 +141,6 @@ private:
     const PlannerContext & context, const CompiledConstraints & compiled_constraints) const;
 };
 
-}  // namespace autoware::safety_planner
+}  // namespace autoware::safety_planner::experiment
 
 #endif  // TRAJECTORY_PLANNER__FRENET_SAMPLING_BASED_PLANNER__FRENET_SAMPLING_BASED_PLANNER_HPP_

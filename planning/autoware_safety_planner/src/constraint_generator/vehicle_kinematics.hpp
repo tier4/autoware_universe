@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
-#define AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
+#ifndef CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
+#define CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
 
 #include "constraint_generator_interface.hpp"
 
 #include <string>
 
-namespace autoware::safety_planner
+namespace autoware::safety_planner::experiment
 {
 
 //! Emits the ScalarBound constraints of the vehicle kinematics: only the hard limits of the
@@ -32,6 +32,6 @@ public:
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 };
 
-}  // namespace autoware::safety_planner
+}  // namespace autoware::safety_planner::experiment
 
-#endif  // AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_
+#endif  // CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_

@@ -31,7 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::safety_planner
+namespace autoware::safety_planner::experiment
 {
 
 namespace
@@ -128,24 +128,34 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan(const TrajectoryPlanner
   TrajectoryPlannerResult result;
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
-    const auto compiled = compile_constraint_list(input.context, input.normal_constraints);
-    result.normal_trajectory =
-      plan_one_side(input.context, compiled, result.debug.markers["candidates"]);
-    result.debug.markers["lateral_bounds"] = make_lateral_bounds_markers(input.context, compiled);
+    if (
+      auto trajectory =
+        plan_one_side(input.context, input.normal_constraints, result.normal_debug)) {
+      // turn_indicators is left as NO_COMMAND until the shape-based decision is implemented
+      // TODO(odashima): implement turn_indicators_command decider
+      result.normal_trajectory = PlannedTrajectory{std::move(*trajectory), TurnIndicatorsCommand{}};
+    }
   }
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
-    const auto compiled = compile_constraint_list(input.context, input.cautious_constraints);
-    MarkerArray unused_markers;
-    result.cautious_trajectory = plan_one_side(input.context, compiled, unused_markers);
+    if (
+      auto trajectory =
+        plan_one_side(input.context, input.cautious_constraints, result.cautious_debug)) {
+      result.cautious_trajectory =
+        PlannedTrajectory{std::move(*trajectory), TurnIndicatorsCommand{}};
+    }
   }
   return result;
 }
 
 std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
-  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-  MarkerArray & debug_markers) const
+  const PlannerContext & context, const std::vector<Constraint> & constraints,
+  TrajectoryPlannerDebug & debug) const
 {
+  const auto compiled_constraints = compile_constraint_list(context, constraints);
+  debug.markers["lateral_bounds"] = make_lateral_bounds_markers(context, compiled_constraints);
+  auto & debug_markers = debug.markers["candidates"];
+
   const auto initial_state = compute_initial_state(context);
   const auto paths = generate_paths(context, initial_state);
   const auto profiles = generate_velocity_profiles(context, initial_state, compiled_constraints);
@@ -678,8 +688,8 @@ MarkerArray FrenetSamplingBasedPlanner::make_lateral_bounds_markers(
   return marker_array;
 }
 
-}  // namespace autoware::safety_planner
+}  // namespace autoware::safety_planner::experiment
 
 PLUGINLIB_EXPORT_CLASS(
-  autoware::safety_planner::FrenetSamplingBasedPlanner,
+  autoware::safety_planner::experiment::FrenetSamplingBasedPlanner,
   autoware::safety_planner::TrajectoryPlannerInterface)

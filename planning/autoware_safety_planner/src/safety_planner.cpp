@@ -280,8 +280,8 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
     auto planner_result = trajectory_planner_->plan(input);
     result.normal_trajectory = std::move(planner_result.normal_trajectory);
     result.cautious_trajectory = std::move(planner_result.cautious_trajectory);
-    result.debug.planner_trajectories = std::move(planner_result.debug.trajectories);
-    result.debug.planner_markers = std::move(planner_result.debug.markers);
+    result.debug.normal = std::move(planner_result.normal_debug);
+    result.debug.cautious = std::move(planner_result.cautious_debug);
   }
 
   result.debug.constraint_generator_outputs = std::move(constraints);

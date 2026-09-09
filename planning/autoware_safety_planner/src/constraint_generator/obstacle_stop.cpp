@@ -32,7 +32,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::safety_planner
+namespace autoware::safety_planner::experiment
 {
 
 namespace
@@ -300,9 +300,9 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
   return output;
 }
 
-}  // namespace autoware::safety_planner
+}  // namespace autoware::safety_planner::experiment
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::safety_planner::ObstacleStopConstraintGenerator,
+  autoware::safety_planner::experiment::ObstacleStopConstraintGenerator,
   autoware::safety_planner::ConstraintGeneratorInterface)

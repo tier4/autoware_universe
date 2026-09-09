@@ -38,14 +38,17 @@ namespace autoware::safety_planner
 
 SafetyPlannerNode::SafetyPlannerNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("safety_planner_node", options),
-  generator_uuid_(autoware_utils_uuid::generate_uuid()),
+  normal_generator_uuid_(autoware_utils_uuid::generate_uuid()),
+  cautious_generator_uuid_(autoware_utils_uuid::generate_uuid()),
   vehicle_info_(vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo())
 {
   param_listener_ =
     std::make_shared<::safety_planner::ParamListener>(get_node_parameters_interface());
   params_ = param_listener_->get_params();
 
-  pub_debug_trajectory_ = this->create_publisher<Trajectory>("~/debug/trajectory", 1);
+  pub_debug_normal_trajectory_ = this->create_publisher<Trajectory>("~/debug/normal/trajectory", 1);
+  pub_debug_cautious_trajectory_ =
+    this->create_publisher<Trajectory>("~/debug/cautious/trajectory", 1);
   pub_candidate_trajectories_ =
     this->create_publisher<CandidateTrajectories>("~/output/candidate_trajectories", 1);
   pub_debug_marker_ = this->create_publisher<MarkerArray>("~/debug/debug_marker", 1);
@@ -184,10 +187,7 @@ void SafetyPlannerNode::on_timer()
   }
   const auto & result = planned.value();
 
-  if (result.normal_trajectory) {
-    publish_trajectory(*result.normal_trajectory);
-  }
-  // TODO(odashima): publish cautious trajectory
+  publish_trajectories(result);
 
   publish_constraints_debug_markers(result.debug.constraint_generator_outputs);
 
@@ -263,37 +263,63 @@ bool SafetyPlannerNode::update_input(const InputData & input_data)
   return true;
 }
 
-void SafetyPlannerNode::publish_trajectory(const Trajectory & trajectory) const
+void SafetyPlannerNode::publish_trajectories(const SafetyPlannerResult & result) const
 {
-  // The main output. The selector identifies a candidate by generator_id / generator_name
   CandidateTrajectories candidate_trajectories;
-  auto & candidate = candidate_trajectories.candidate_trajectories.emplace_back();
-  candidate.header = trajectory.header;
-  candidate.generator_id = generator_uuid_;
-  candidate.points = trajectory.points;
-  auto & generator_info = candidate_trajectories.generator_info.emplace_back();
-  generator_info.generator_id = generator_uuid_;
-  generator_info.generator_name.data = "SafetyPlanner_Normal";
+  const auto add = [&](
+                     const std::optional<PlannedTrajectory> & planned, const UUID & generator_id,
+                     const std::string & generator_name) {
+    if (!planned) {
+      return;
+    }
+    auto & candidate = candidate_trajectories.candidate_trajectories.emplace_back();
+    candidate.header = planned->trajectory.header;
+    candidate.generator_id = generator_id;
+    candidate.points = planned->trajectory.points;
+    candidate.turn_indicators_command = planned->turn_indicators;
+    auto & generator_info = candidate_trajectories.generator_info.emplace_back();
+    generator_info.generator_id = generator_id;
+    generator_info.generator_name.data = generator_name;
+  };
+  add(result.normal_trajectory, normal_generator_uuid_, "SafetyPlanner_Normal");
+  add(result.cautious_trajectory, cautious_generator_uuid_, "SafetyPlanner_Cautious");
+  if (candidate_trajectories.candidate_trajectories.empty()) {
+    return;
+  }
   pub_candidate_trajectories_->publish(candidate_trajectories);
 
   // for debugging
-  pub_debug_trajectory_->publish(trajectory);
+  if (result.normal_trajectory) {
+    pub_debug_normal_trajectory_->publish(result.normal_trajectory->trajectory);
+  }
+  if (result.cautious_trajectory) {
+    pub_debug_cautious_trajectory_->publish(result.cautious_trajectory->trajectory);
+  }
 }
 
 void SafetyPlannerNode::publish_planner_debug(const SafetyPlannerResult::Debug & debug)
 {
-  for (const auto & [name, trajectory] : debug.planner_trajectories) {
-    auto & pub = planner_debug_trajectory_pubs_[name];
+  publish_planner_debug("normal", debug.normal);
+  publish_planner_debug("cautious", debug.cautious);
+}
+
+void SafetyPlannerNode::publish_planner_debug(
+  const std::string & side, const TrajectoryPlannerDebug & debug)
+{
+  for (const auto & [name, trajectory] : debug.trajectories) {
+    auto & pub = planner_debug_trajectory_pubs_[side + "/" + name];
     if (!pub) {
-      pub = this->create_publisher<Trajectory>("~/debug/" + name, 1);
+      pub = this->create_publisher<Trajectory>("~/debug/" + side + "/" + name, 1);
     }
     pub->publish(trajectory);
   }
-  for (const auto & [name, markers] : debug.planner_markers) {
-    auto & pub = planner_debug_marker_pubs_[name];
+  for (const auto & [name, markers] : debug.markers) {
+    auto & pub = planner_debug_marker_pubs_[side + "/" + name];
     if (!pub) {
-      pub = this->create_publisher<MarkerArray>("~/debug/" + name, 1);
+      pub = this->create_publisher<MarkerArray>("~/debug/" + side + "/" + name, 1);
     }
+    // The number of markers changes between cycles, which would leave the ones of the namespaces
+    // that disappeared behind, so clear them first
     MarkerArray marker_array;
     Marker delete_all;
     delete_all.action = Marker::DELETEALL;

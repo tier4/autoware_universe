@@ -71,7 +71,8 @@ private:
 
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<::safety_planner::ParamListener> param_listener_;
-  const UUID generator_uuid_;
+  const UUID normal_generator_uuid_;
+  const UUID cautious_generator_uuid_;
   const VehicleInfo vehicle_info_;
   std::shared_ptr<TimeKeeper> time_keeper_;
   safety_planner::Params params_;
@@ -132,17 +133,20 @@ private:
 
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_normal_trajectory_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_cautious_trajectory_;
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_candidate_trajectories_;
 
-  void publish_trajectory(const Trajectory & trajectory) const;
+  //! Both sides go out in one CandidateTrajectories, each under its own generator_id
+  void publish_trajectories(const SafetyPlannerResult & result) const;
   void publish_debug_markers(const SafetyPlannerResult::Debug & debug) const;
   void publish_constraints_debug_markers(
     const std::map<std::string, ConstraintGeneratorOutput> & constraints) const;
   std::map<std::string, rclcpp::Publisher<MarkerArray>::SharedPtr>
     constraint_debug_marker_publishers_;
   void publish_planner_debug(const SafetyPlannerResult::Debug & debug);
+  void publish_planner_debug(const std::string & side, const TrajectoryPlannerDebug & debug);
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr> planner_debug_trajectory_pubs_;
   std::map<std::string, rclcpp::Publisher<MarkerArray>::SharedPtr> planner_debug_marker_pubs_;
 

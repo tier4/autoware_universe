@@ -277,7 +277,7 @@ ClosedLoopResult ClosedLoopSimulator::run()
       result.violations.push_back("step " + std::to_string(step_) + ": normal_trajectory is empty");
       return finish("no trajectory at step " + std::to_string(step_));
     }
-    const auto & trajectory = *planned->normal_trajectory;
+    const auto & trajectory = planned->normal_trajectory->trajectory;
     std::vector<std::pair<double, double>> reference_path_xy;
     const auto & reference_path = planned->debug.reference_path;
     for (double s = 0.0; s <= reference_path.length(); s += 1.0) {

@@ -56,15 +56,6 @@ struct PlannerContext
   const Pose & goal_pose;
   const PredictedObjects::ConstSharedPtr & predicted_objects;
   PathPointTrajectory reference_path;
-
-  //! [m] Arc length of goal_pose along reference_path, or nullopt in a cycle where the two are not
-  //! connected (the path is cut short of the goal, ...). Decided as in the predicate below.
-  std::optional<double> goal_arc_length() const;
-
-  //! The goal counts as connected when it is within 0.1 m of the end of reference_path
-  //! longitudinally. Only the longitudinal distance is used, because the lateral one does not close
-  //! for a goal off to the side, such as parking on the shoulder.
-  bool is_reference_path_connected_to_goal_pose() const;
 };
 
 }  // namespace autoware::safety_planner

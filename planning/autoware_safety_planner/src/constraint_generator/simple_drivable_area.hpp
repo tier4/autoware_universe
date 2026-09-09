@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__SIMPLE_DRIVABLE_AREA_HPP_
-#define AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__SIMPLE_DRIVABLE_AREA_HPP_
+#ifndef CONSTRAINT_GENERATOR__SIMPLE_DRIVABLE_AREA_HPP_
+#define CONSTRAINT_GENERATOR__SIMPLE_DRIVABLE_AREA_HPP_
 
 #include "constraint_generator_interface.hpp"
 
 #include <string>
 #include <vector>
 
-namespace autoware::safety_planner
+namespace autoware::safety_planner::experiment
 {
 
 //! Takes the reference_path widened by a constant half width and extended by a constant length at
@@ -50,6 +50,6 @@ DrivableAreaShape make_drivable_area_shape(
   const std::vector<Pose2d> & centerline, double half_width_m, double forward_extension_m,
   double backward_extension_m);
 
-}  // namespace autoware::safety_planner
+}  // namespace autoware::safety_planner::experiment
 
-#endif  // AUTOWARE__SAFETY_PLANNER__CONSTRAINT_GENERATOR__SIMPLE_DRIVABLE_AREA_HPP_
+#endif  // CONSTRAINT_GENERATOR__SIMPLE_DRIVABLE_AREA_HPP_
