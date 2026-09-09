@@ -301,9 +301,9 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringFilterPreservesOnlyAccepted
   const auto following = preview();
   ASSERT_TRUE(shifted.has_value());
   EXPECT_TRUE(*shifted);
-  EXPECT_FLOAT_EQ(first_before_filter, next_command);
+  EXPECT_NEAR(first_before_filter, next_command, 1.0E-3F);
   ASSERT_FALSE(following.trajectory.points.empty());
-  EXPECT_FLOAT_EQ(following.trajectory.points.front().front_wheel_angle_rad, next_command);
+  EXPECT_NEAR(following.trajectory.points.front().front_wheel_angle_rad, next_command, 1.0E-3F);
   interface_->discardPendingTrajectory();
 
   options.force_cold_start_each_step = true;

@@ -705,7 +705,15 @@ void selectWorstRolloutIndices(
   const int keep = std::min(worst_n, static_cast<int>(candidates.size()));
   std::partial_sort(
     candidates.begin(), candidates.begin() + keep, candidates.end(), [&](const int a, const int b) {
-      return raw_costs[static_cast<size_t>(a)] > raw_costs[static_cast<size_t>(b)];
+      const float lhs = raw_costs[static_cast<size_t>(a)];
+      const float rhs = raw_costs[static_cast<size_t>(b)];
+      const bool lhs_finite = std::isfinite(lhs);
+      const bool rhs_finite = std::isfinite(rhs);
+      if (lhs_finite != rhs_finite) return !lhs_finite;
+      // Exact raw costs may now contain NaNs. Order failed samples first with a deterministic
+      // tie-breaker, preserving the strict weak ordering required by partial_sort.
+      if (!lhs_finite || lhs == rhs) return a < b;
+      return lhs > rhs;
     });
   candidates.resize(static_cast<size_t>(keep));
   rollout_indices = std::move(candidates);
