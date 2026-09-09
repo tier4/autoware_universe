@@ -37,6 +37,11 @@ struct FirstOrderDubinsMppiRuntimeOptions
   bool skip_if_invalid{false};
   /** Skip optimization for stopping trajectories shorter than this arc length in meters. */
   float min_optimization_length{0.0F};
+  /**
+   * Reject an optimized trajectory whose last path projection advances less than this many
+   * meters from its first path projection. Zero disables minimum-progress validation.
+   */
+  float min_trajectory_progress_m{0.0F};
   /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle).
    *  Ignored when use_temporal_mpt_as_nominal is true (t-MPT uses its own shifted solution). */
   bool use_last_control_as_nominal{false};

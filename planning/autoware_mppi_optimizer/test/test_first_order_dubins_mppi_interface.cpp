@@ -160,6 +160,17 @@ TEST(FirstOrderDubinsMppiInterface, SkippedInputsDoNotInitializeCuda)
   EXPECT_FALSE(interface.isInitialized());
 }
 
+TEST(FirstOrderDubinsMppiInterface, RejectsInvalidMinimumTrajectoryProgress)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.min_trajectory_progress_m = -0.1F;
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+  options.min_trajectory_progress_m = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+  EXPECT_FALSE(interface.isInitialized());
+}
+
 // These cases deliberately have no CUDA availability skip. They must run in a process with
 // CUDA_VISIBLE_DEVICES=-1 as well as on a GPU machine.
 TEST(FirstOrderDubinsMppiInterface, RejectsGeometryOverflowBeforeCudaSetup)
@@ -772,6 +783,24 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, RejectsBeyondLateralBoundaryThresho
   ASSERT_TRUE(result.debug.validation.first_invalid_index.has_value());
   EXPECT_EQ(result.debug.validation.first_invalid_index.value(), 0U);
   EXPECT_TRUE(std::isfinite(result.debug.baseline_cost));
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, RejectsInsufficientTrajectoryProgressWhenEnabled)
+{
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.skip_if_invalid = true;
+  options.min_trajectory_progress_m = 100.0F;
+  interface_->setRuntimeOptions(options);
+
+  const auto input = makeStraightTrajectory(80U);
+  const auto result = optimize(*interface_, input);
+
+  EXPECT_TRUE(result.trajectory == input);
+  EXPECT_TRUE(result.debug.was_rejected);
+  EXPECT_TRUE(hasInvalidityReason(
+    result.debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::insufficient_progress));
+  ASSERT_TRUE(result.debug.validation.first_invalid_index.has_value());
+  EXPECT_EQ(result.debug.validation.first_invalid_index.value(), 79U);
 }
 
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, RejectsRoadBorderInsideConfiguredMargin)

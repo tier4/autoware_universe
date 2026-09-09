@@ -170,6 +170,7 @@ enum class FirstOrderDubinsMppiInvalidityReason : std::uint8_t {
   reverse = 1U << 3U,
   nonfinite_state = 1U << 4U,
   no_eligible_rollouts = 1U << 5U,
+  insufficient_progress = 1U << 6U,
 };
 
 inline std::string to_string(FirstOrderDubinsMppiInvalidityReason reason)
@@ -200,6 +201,10 @@ inline std::string to_string(FirstOrderDubinsMppiInvalidityReason reason)
   // Remove the trailing " | " if the string is not empty
   if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts)) {
     result += "no_eligible_rollouts | ";
+  }
+  if (
+    val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::insufficient_progress)) {
+    result += "insufficient_progress | ";
   }
   if (!result.empty()) {
     result.resize(result.size() - 3);
