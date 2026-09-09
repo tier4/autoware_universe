@@ -866,6 +866,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   FirstOrderDubinsMppiNominalResetReason nominal_reset_reason{
     FirstOrderDubinsMppiNominalResetReason::unavailable};
   int nominal_shift_count{0};
+  FirstOrderDubinsMppiNominalSteeringContinuity nominal_steering_continuity;
   FirstOrderDubinsMppiPredictionAccuracy prediction_accuracy;
   DYN::state_array x = DYN::state_array::Zero();
 
@@ -898,6 +899,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   float min_trajectory_progress_m{0.0F};
   /** Warm-start u_nom from shifted previous u_opt when available. */
   bool use_last_control_as_nominal{false};
+  float nominal_initial_steering_max_deviation_rad{0.0F};
   float last_control_warm_start_max_age_s{0.5F};
   float last_control_warm_start_max_position_error_m{0.75F};
   float last_control_warm_start_max_yaw_error_rad{0.35F};
@@ -1203,6 +1205,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::diffusion_reference;
     nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::unavailable;
     nominal_shift_count = 0;
+    nominal_steering_continuity = {};
     prediction_accuracy = {};
     sim_time = 0.0F;
     accel_delay_buffer.clear();
@@ -1465,6 +1468,24 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
   }
 
+  FirstOrderDubinsMppiNominalSteeringContinuity evaluateNominalSteeringContinuity(
+    const float command, const detail::InitialState & ego,
+    const bool steering_measurement_available) const
+  {
+    return detail::guardInitialNominalSteeringCommand(
+      command, ego.steering, vehicle_params, steer_delay_steps, steer_delay_buffer,
+      steering_measurement_available ? nominal_initial_steering_max_deviation_rad : 0.0F, kDt);
+  }
+
+  void applyNominalSteeringContinuityGuard(
+    const detail::InitialState & ego, const bool steering_measurement_available)
+  {
+    const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+    nominal_steering_continuity =
+      evaluateNominalSteeringContinuity(u_nom(steer_idx, 0), ego, steering_measurement_available);
+    u_nom(steer_idx, 0) = nominal_steering_continuity.guarded_command_rad;
+  }
+
   void updateStoppedState(const float velocity)
   {
     const float speed = std::abs(velocity);
@@ -1577,7 +1598,7 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   std::optional<int> reusableWarmStartShift(
     const Trajectory & reference, const detail::InitialState & ego,
-    const builtin_interfaces::msg::Time & stamp)
+    const builtin_interfaces::msg::Time & stamp, const bool steering_measurement_available)
   {
     updateStoppedState(ego.velocity);
     nominal_shift_count = 0;
@@ -1629,6 +1650,14 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
     if (!referenceIsContinuous(reference, shift_count)) {
       invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::reference_discontinuity);
+      return std::nullopt;
+    }
+    const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+    const auto steering_continuity = evaluateNominalSteeringContinuity(
+      accepted_warm_start.controls(steer_idx, shift_count), ego, steering_measurement_available);
+    if (steering_continuity.active && steering_continuity.clamped) {
+      invalidateNominalWarmStart(
+        FirstOrderDubinsMppiNominalResetReason::initial_steering_discontinuity);
       return std::nullopt;
     }
     nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::none;
@@ -1749,10 +1778,11 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   void seedNominalControl(
     const Trajectory & reference, const size_t start_idx, const detail::InitialState & ego,
-    const builtin_interfaces::msg::Time & stamp)
+    const builtin_interfaces::msg::Time & stamp, const bool steering_measurement_available)
   {
     nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::diffusion_reference;
     nominal_shift_count = 0;
+    nominal_steering_continuity = {};
     if (!force_cold_start_each_step && !use_last_control_as_nominal) {
       nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::unavailable;
     }
@@ -1762,6 +1792,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       forced_nominal_pending = false;
       nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::forced;
       nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::none;
+      applyNominalSteeringContinuityGuard(ego, steering_measurement_available);
       snapshotNominalForLog();
       return;
     }
@@ -1773,6 +1804,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       }
       const bool temporal_seeded = seedNominalControlFromTemporalMpt(reference, ego);
       filterNominalControl(ego);
+      applyNominalSteeringContinuityGuard(ego, steering_measurement_available);
       nominal_seed_source = temporal_seeded
                               ? FirstOrderDubinsMppiNominalSeedSource::temporal_mpt
                               : FirstOrderDubinsMppiNominalSeedSource::diffusion_reference;
@@ -1789,12 +1821,16 @@ struct FirstOrderDubinsMppiInterface::Impl
     // suffix supplies newly exposed horizon samples.
     seedNominalControlFromDiffusionReference(reference, start_idx);
     filterNominalControl(ego);
-    if (const auto shift_count = reusableWarmStartShift(reference, ego, stamp)) {
+    if (
+      const auto shift_count =
+        reusableWarmStartShift(reference, ego, stamp, steering_measurement_available)) {
       seedNominalControlFromLastOptimized(*shift_count);
       nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::previous_optimized;
+      applyNominalSteeringContinuityGuard(ego, steering_measurement_available);
       snapshotNominalForLog();
       return;
     }
+    applyNominalSteeringContinuityGuard(ego, steering_measurement_available);
     snapshotNominalForLog();
   }
 
@@ -1901,8 +1937,11 @@ struct FirstOrderDubinsMppiInterface::Impl
       accel_delay_buffer, kDt, keep_velocity_limit_active, profile_reference_velocities);
     detail::applyActiveVelocityLimitProfile(diffusion_reference, active_velocity_limit_profile);
     const auto seed_t0 = std::chrono::steady_clock::now();
+    const bool steering_measurement_available =
+      steering_status.has_value() && std::isfinite(steering_status->steering_tire_angle);
     seedNominalControl(
-      diffusion_reference, tracking_start_idx, initial_state, odometry.header.stamp);
+      diffusion_reference, tracking_start_idx, initial_state, odometry.header.stamp,
+      steering_measurement_available);
     last_seed_nominal_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - seed_t0).count();
     applyActiveVelocityLimitToNominal();
@@ -1910,8 +1949,15 @@ struct FirstOrderDubinsMppiInterface::Impl
       snapshotNominalForLog();
     }
     RCLCPP_DEBUG(
-      mppiLogger(), "MPPI nominal seed: source=%s reset_reason=%s shift=%d",
-      to_string(nominal_seed_source), to_string(nominal_reset_reason), nominal_shift_count);
+      mppiLogger(),
+      "MPPI nominal seed: source=%s reset_reason=%s shift=%d steer_guard=%s clamped=%s "
+      "application_steer=%.3f unguarded_u0=%.3f guarded_u0=%.3f",
+      to_string(nominal_seed_source), to_string(nominal_reset_reason), nominal_shift_count,
+      nominal_steering_continuity.active ? "true" : "false",
+      nominal_steering_continuity.clamped ? "true" : "false",
+      nominal_steering_continuity.application_steering_rad,
+      nominal_steering_continuity.unguarded_command_rad,
+      nominal_steering_continuity.guarded_command_rad);
 
     x = model.getZeroState();
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)) = initial_state.x;
@@ -2294,6 +2340,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     if (
       !std::isfinite(options.min_trajectory_progress_m) ||
       options.min_trajectory_progress_m < 0.0F ||
+      !std::isfinite(options.nominal_initial_steering_max_deviation_rad) ||
+      options.nominal_initial_steering_max_deviation_rad < 0.0F ||
       !std::isfinite(options.last_control_warm_start_max_age_s) ||
       options.last_control_warm_start_max_age_s <= 0.0F ||
       !std::isfinite(options.last_control_warm_start_max_position_error_m) ||
@@ -2324,6 +2372,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
     impl_->min_optimization_length = options.min_optimization_length;
     impl_->min_trajectory_progress_m = options.min_trajectory_progress_m;
+    impl_->nominal_initial_steering_max_deviation_rad =
+      options.nominal_initial_steering_max_deviation_rad;
     impl_->last_control_warm_start_max_age_s = options.last_control_warm_start_max_age_s;
     impl_->last_control_warm_start_max_position_error_m =
       options.last_control_warm_start_max_position_error_m;
@@ -2370,10 +2420,11 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     RCLCPP_INFO(
       mppiLogger(),
       "MPPI nominal seed: use_temporal_mpt_as_nominal=%s enable_input_delay_compensation=%s "
-      "prevent_reverse_velocity=%s",
+      "prevent_reverse_velocity=%s nominal_initial_steering_max_deviation_rad=%.3f",
       options.use_temporal_mpt_as_nominal ? "true" : "false",
       options.enable_input_delay_compensation ? "true" : "false",
-      options.prevent_reverse_velocity ? "true" : "false");
+      options.prevent_reverse_velocity ? "true" : "false",
+      options.nominal_initial_steering_max_deviation_rad);
   } catch (const GpuError & error) {
     if (impl_) impl_->recordGpuFailure(error);
     throw;
@@ -2423,6 +2474,8 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   runtime.min_optimization_length = impl_->min_optimization_length;
   runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
   runtime.use_last_control_as_nominal = use_last_control_as_nominal;
+  runtime.nominal_initial_steering_max_deviation_rad =
+    impl_->nominal_initial_steering_max_deviation_rad;
   runtime.last_control_warm_start_max_age_s = impl_->last_control_warm_start_max_age_s;
   runtime.last_control_warm_start_max_position_error_m =
     impl_->last_control_warm_start_max_position_error_m;
@@ -2624,6 +2677,7 @@ try {
   result.debug.nominal_seed_source = impl_->nominal_seed_source;
   result.debug.nominal_reset_reason = impl_->nominal_reset_reason;
   result.debug.nominal_shift_count = impl_->nominal_shift_count;
+  result.debug.nominal_steering_continuity = impl_->nominal_steering_continuity;
   impl_->capturePredictionAnchor(odometry);
   // Capture IC before runStep advances the ego state with the applied control.
   const DYN::state_array x_at_optimization = impl_->x;

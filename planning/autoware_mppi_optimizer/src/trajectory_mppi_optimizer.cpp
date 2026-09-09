@@ -130,6 +130,8 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.min_optimization_length = static_cast<float>(params.min_optimization_length);
   output.min_trajectory_progress_m = static_cast<float>(params.min_trajectory_progress_m);
   output.use_last_control_as_nominal = params.use_last_control_as_nominal;
+  output.nominal_initial_steering_max_deviation_rad =
+    static_cast<float>(params.nominal_initial_steering_max_deviation_rad);
   output.last_control_warm_start_max_age_s =
     static_cast<float>(params.last_control_warm_start_max_age_s);
   output.last_control_warm_start_max_position_error_m =
@@ -638,6 +640,17 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value(
     "nominal/reset_reason", std::string{to_string(debug.nominal_reset_reason)});
   cost_diagnostics_->add_key_value("nominal/shift_count", debug.nominal_shift_count);
+  cost_diagnostics_->add_key_value(
+    "nominal/steering_continuity_guard_active", debug.nominal_steering_continuity.active);
+  cost_diagnostics_->add_key_value(
+    "nominal/initial_steering_clamped", debug.nominal_steering_continuity.clamped);
+  cost_diagnostics_->add_key_value(
+    "nominal/application_steering_rad", debug.nominal_steering_continuity.application_steering_rad);
+  cost_diagnostics_->add_key_value(
+    "nominal/unguarded_initial_steering_rad",
+    debug.nominal_steering_continuity.unguarded_command_rad);
+  cost_diagnostics_->add_key_value(
+    "nominal/guarded_initial_steering_rad", debug.nominal_steering_continuity.guarded_command_rad);
   cost_diagnostics_->add_key_value("mppi/eligible_rollout_count", debug.eligible_rollout_count);
   cost_diagnostics_->add_key_value(
     "mppi/minimum_cost_rollout_count", debug.minimum_cost_rollout_count);

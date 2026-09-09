@@ -130,6 +130,16 @@ void applyActiveVelocityLimitProfile(
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, int horizon = kMppiHorizon);
 
 /**
+ * Anchor nominal steer u[0] to the steering predicted after the existing input-delay queue drains.
+ * A non-positive maximum deviation disables the guard and preserves the command exactly.
+ */
+[[nodiscard]] FirstOrderDubinsMppiNominalSteeringContinuity guardInitialNominalSteeringCommand(
+  float nominal_steering_command, float current_steering,
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, int steering_delay_steps = 0,
+  const std::vector<float> & steering_delay_buffer = {}, float maximum_deviation_rad = 0.0F,
+  float dt = kMppiDt);
+
+/**
  * Filter an MPPI nominal control sequence through optional longitudinal kinematic limits.
  *
  * The filter predicts the first-order acceleration state through the pending input-delay queue.
