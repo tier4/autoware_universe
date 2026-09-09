@@ -436,6 +436,9 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
   };
   options.last_control_warm_start_max_age_s =
     as_float("last_control_warm_start_max_age_s", options.last_control_warm_start_max_age_s);
+  options.nominal_initial_steering_max_deviation_rad = as_float(
+    "nominal_initial_steering_max_deviation_rad",
+    options.nominal_initial_steering_max_deviation_rad);
   options.last_control_warm_start_max_position_error_m = as_float(
     "last_control_warm_start_max_position_error_m",
     options.last_control_warm_start_max_position_error_m);
