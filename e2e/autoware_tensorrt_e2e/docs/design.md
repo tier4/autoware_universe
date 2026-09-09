@@ -82,6 +82,17 @@ The engine does not know what a tensor means. It only checks that each required 
 has the expected element count, and can be copied to the engine's data type. Extra entries in a
 `TensorMap` are ignored, which lets multiple providers share a common collection path.
 
+Precision belongs to the model, so the engine lets the graph decide it. `precision: "fp16"` sets
+the builder flag; on an all-float32 graph that means any layer may run in half, which is how the
+BEV extractor builds. A graph whose float tensors are partly float16 has had its precision chosen
+by the exporter (OnePlanner's fp16-core / fp32-rim pass keeps the metric coordinates at the
+graph's two ends in float32 and the transformer between them in float16). Under the flag alone
+the builder would be free to run those float32 layers in half too, so `obey_graph_precision()`
+pins every layer to the dtype of its outputs and sets `kOBEY_PRECISION_CONSTRAINTS`; the engine
+then computes exactly what the exporter validated. With `precision: "fp32"` such a graph is
+upcast and runs slower than intended, and the node says so at startup. The node adds no precision
+knowledge of its own: no layer names, no hop counts, nothing model-specific.
+
 ## Input provider contract
 
 Providers have two phases:

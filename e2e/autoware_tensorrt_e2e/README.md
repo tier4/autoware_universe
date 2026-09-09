@@ -169,7 +169,10 @@ ros2 launch autoware_tensorrt_e2e <launch file> \
 One file describes the network, and the node reads no other. Everything the runtime needs
 about a model is in its ml_package file: which providers it needs, its tensor names, its
 voxelization geometry, its history length and cadence, its horizon and its validated
-precision.
+precision. A graph can also carry its precision itself: when the exporter has written a
+float16 core with a float32 rim into the ONNX, `precision: "fp16"` makes the node pin every
+layer to its tensor type and the builder obey it, so the engine runs exactly the split the
+exporter validated rather than whatever the FP16 flag would pick.
 
 This package does not produce that file, or the graphs beside it. It receives artifacts
 that are already prepared and runs them; exporting a checkpoint, freezing the graph's batch

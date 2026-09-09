@@ -17,7 +17,7 @@
         },
         "precision": {
           "type": "string",
-          "description": "TensorRT engine precision.",
+          "description": "TensorRT builder precision. For an all-float32 graph, fp16 lets the builder run any layer in half. A graph that carries float16 tensors of its own (an exporter-side fp16-core / fp32-rim graph) decides layer by layer: with fp16 the node pins every layer to the dtype of its outputs and the builder obeys; with fp32 the float16 core is upcast and the engine runs slower than the exporter intended.",
           "enum": [
             "fp32",
             "fp16"

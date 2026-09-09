@@ -98,12 +98,74 @@ void InferenceEngine::load_engine(const Config & config)
   if (builder_config) {
     builder_config->setMaxAuxStreams(0);
   }
+  obey_graph_precision(config.precision);
 
   if (!trt_common_->setup()) {
     throw std::runtime_error("Failed to setup TensorRT engine from " + config.model_path);
   }
 
   introspect_and_bind();
+}
+
+void InferenceEngine::obey_graph_precision(const std::string & precision)
+{
+  auto network = trt_common_->getNetwork();
+  auto builder_config = trt_common_->getBuilderConfig();
+  auto logger = trt_common_->getLogger();
+  if (!network || !builder_config) {
+    return;
+  }
+  std::vector<std::pair<nvinfer1::ILayer *, nvinfer1::DataType>> typed_layers;
+  int fp32_layers = 0;
+  int fp16_layers = 0;
+  for (int i = 0; i < network->getNbLayers(); ++i) {
+    auto * layer = network->getLayer(i);
+    if (
+      layer->getType() == nvinfer1::LayerType::kSHAPE ||
+      layer->getType() == nvinfer1::LayerType::kCONSTANT || layer->getNbOutputs() == 0) {
+      continue;
+    }
+    const auto type = layer->getOutput(0)->getType();
+    if (type != nvinfer1::DataType::kFLOAT && type != nvinfer1::DataType::kHALF) {
+      continue;
+    }
+    bool uniform = true;
+    for (int j = 1; j < layer->getNbOutputs(); ++j) {
+      uniform = uniform && layer->getOutput(j)->getType() == type;
+    }
+    if (!uniform) {
+      continue;
+    }
+    typed_layers.emplace_back(layer, type);
+    (type == nvinfer1::DataType::kHALF ? fp16_layers : fp32_layers)++;
+  }
+  if (fp16_layers == 0) {
+    return;  // an all-float32 graph: precision is the builder flag's business
+  }
+  if (precision != "fp16") {
+    if (logger) {
+      logger->log(
+        nvinfer1::ILogger::Severity::kWARNING,
+        "The graph carries a float16 core (%d layers) but precision is \"%s\": the core is "
+        "upcast and the engine runs slower than the exporter intended",
+        fp16_layers, precision.c_str());
+    }
+    return;
+  }
+  builder_config->setFlag(nvinfer1::BuilderFlag::kOBEY_PRECISION_CONSTRAINTS);
+  for (auto & [layer, type] : typed_layers) {
+    layer->setPrecision(type);
+    for (int j = 0; j < layer->getNbOutputs(); ++j) {
+      layer->setOutputType(j, type);
+    }
+  }
+  if (logger) {
+    logger->log(
+      nvinfer1::ILogger::Severity::kINFO,
+      "The graph carries its own precision: %d layers float32, %d layers float16; the builder "
+      "obeys it",
+      fp32_layers, fp16_layers);
+  }
 }
 
 namespace

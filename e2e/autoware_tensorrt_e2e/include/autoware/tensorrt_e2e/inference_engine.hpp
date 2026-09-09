@@ -47,10 +47,11 @@ public:
   {
     std::string model_path;    //!< ONNX model path; the built engine is cached alongside it.
     std::string plugins_path;  //!< Optional TensorRT plugin library path ("" to disable).
+    //! "fp32" or "fp16" (or "int8"): the builder flag. A graph that carries float16
+    //! tensors of its own decides layer by layer; see obey_graph_precision().
     std::string precision{"fp16"};
-    //! TensorRT builder workspace. Too small a pool does not merely cost
-    //! performance on these graphs: building the ResWorld planner with 1 GiB
-    //! segfaults inside the builder, while 4 GiB builds cleanly. Configurable
+    //! TensorRT builder workspace: an upper bound on the builder's scratch, not an
+    //! allocation. 4 GiB builds both ResWorld engines. Configurable
     //! (`trt_workspace_mib`) because it is a property of the deployment host,
     //! not of the model.
     size_t max_workspace_size{4ULL << 30U};
@@ -108,6 +109,18 @@ private:
     bool host_fed{false};
   };
   void load_engine(const Config & config);
+  /**
+   * @brief Let a graph that carries its own precision decide the builder's.
+   *
+   * An ONNX graph whose float tensors are partly float16 has had its precision chosen by
+   * the exporter (OnePlanner's fp16-core / fp32-rim pass keeps the metric coordinates at
+   * the graph's two ends in fp32 and the transformer in fp16). Under the plain FP16 flag
+   * the builder would be free to run those fp32 layers in half anyway, so this pins every
+   * layer to the dtype of its outputs and asks the builder to obey. An all-float32 graph
+   * is left alone: the flag keeps meaning "any layer may run in fp16", which is how the
+   * BEV extractor builds.
+   */
+  void obey_graph_precision(const std::string & precision);
   void introspect_and_bind();
   /// Point the network at `address` for this binding, if it is not already there.
   void bind_address(Binding & binding, const void * address);
