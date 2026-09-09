@@ -340,8 +340,8 @@ class MppiDebugFrame:
     stamp_text: str = ""
     metrics_text: str = ""
     retune_status: str = ""
-    # Live: whether diffusion_planner is applying MPPI to the published trajectory.
-    # None = unknown / offline; False = disabled or shadow; True = applied.
+    # Live: whether MPPI's optimized trajectory was applied to the primary candidate this cycle.
+    # None = unknown / offline; False = not applied; True = applied.
     mppi_enabled: Optional[bool] = None
     # Cycle-to-cycle replan ADE history (time-aligned mean ‖p_k − p_{k-1}‖).
     # Stamps are absolute seconds in live mode, or frame indices offline.
@@ -1198,11 +1198,11 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     status_color = "black"
     status_background = "white"
     if frame.mppi_enabled is True:
-        status_line = "MPPI ENABLED (optimized trajectory applied)"
+        status_line = "MPPI APPLIED (optimized trajectory selected)"
         status_color = "green"
         status_background = "#e6ffe6"
     elif frame.mppi_enabled is False:
-        status_line = "MPPI DISABLED (output is diffusion only)"
+        status_line = "MPPI NOT APPLIED"
         status_color = "tab:red"
         status_background = "#ffe6e6"
     if status_line:
@@ -1224,9 +1224,9 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             },
         )
     if frame.mppi_enabled is True:
-        ax_xy.set_title("Trajectory (MPPI ENABLED)")
+        ax_xy.set_title("Trajectory (MPPI APPLIED)")
     elif frame.mppi_enabled is False:
-        ax_xy.set_title("Trajectory (MPPI DISABLED)")
+        ax_xy.set_title("Trajectory (MPPI NOT APPLIED)")
     if (
         frame.rollouts
         or (frame.reference_xy and len(frame.reference_xy[0]) > 0)
@@ -2159,7 +2159,7 @@ class MppiDebugVisualizer(Node):
         self.get_logger().info(f"Reference: {prefix}/reference_trajectory")
         self.get_logger().info(f"Optimized: {prefix}/optimized_trajectory")
         self.get_logger().info(f"Nominal: {prefix}/nominal_trajectory")
-        self.get_logger().info(f"Enabled flag: {prefix}/enabled")
+        self.get_logger().info(f"Application flag: {prefix}/enabled")
         self.get_logger().info(f"Measured steer: {measured_steering_topic}")
         self.get_logger().info(
             f"Horizon δ̇ uses MPPI first-order steer lag τ={self._steer_time_constant:.4f}s "
@@ -2335,7 +2335,7 @@ class MppiDebugVisualizer(Node):
         if not self._logged_mppi_enabled:
             self._logged_mppi_enabled = True
             self.get_logger().info(
-                f"Receiving mppi enabled flag ({'ENABLED' if msg.data else 'DISABLED'})."
+                f"Receiving MPPI application flag ({'APPLIED' if msg.data else 'NOT APPLIED'})."
             )
 
     def on_measured_steering(self, msg: SteeringReport) -> None:
