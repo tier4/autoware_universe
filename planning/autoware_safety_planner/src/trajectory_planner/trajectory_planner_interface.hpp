@@ -44,8 +44,6 @@ struct TrajectoryPlannerDebug
   std::map<std::string, MarkerArray> markers;
 };
 
-//! A trajectory and the turn indicator that goes with it. Kept as one unit because the selector
-//! adopts both from the same candidate; stamp is overwritten downstream
 struct PlannedTrajectory
 {
   Trajectory trajectory;

@@ -1,9 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  Shaped like minimum_rule_based_planner.launch.xml, which is the external contract.
-  Shadow mode only changes what output_candidate_trajectories is remapped to.
-  The parameters are split between safety_planner.param.yaml and one file per plugin.
--->
 <launch>
   <arg name="safety_planner_config_dir" default="$(find-pkg-share autoware_safety_planner)/config"/>
   <arg name="safety_planner_param_path" default="$(var safety_planner_config_dir)/safety_planner.param.yaml"/>
