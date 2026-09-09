@@ -20,6 +20,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <optional>
 
 namespace autoware::ml_planner::optimization
 {
@@ -40,6 +41,14 @@ struct StageReference
   double x{0.0};
   double y{0.0};
   double yaw{0.0};
+};
+
+struct GoalTerminalReference
+{
+  double x{0.0};
+  double y{0.0};
+  double yaw{0.0};
+  double velocity{0.0};
 };
 
 struct SolverSolution
@@ -82,7 +91,9 @@ public:
    */
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,
-    const std::array<StageReference, opt_horizon> & references, const SolverSolution * warm_start);
+    const std::array<StageReference, opt_horizon> & references,
+    const std::optional<GoalTerminalReference> & goal_terminal_reference,
+    const SolverSolution * warm_start);
 
 private:
   struct Impl;

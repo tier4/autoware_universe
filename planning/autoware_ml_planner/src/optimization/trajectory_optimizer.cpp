@@ -33,6 +33,7 @@ namespace
 {
 // Warm starts older than this are discarded (stale after a planner hiccup).
 constexpr double max_warm_start_age_s = 0.5;
+constexpr double goal_position_change_threshold_m = 1.0e-3;
 
 double yaw_from_quaternion(const geometry_msgs::msg::Quaternion & q)
 {
@@ -54,7 +55,8 @@ TrajectoryOptimizer::TrajectoryOptimizer(
 
 OptimizationResult TrajectoryOptimizer::optimize(
   const Trajectory & raw_trajectory, const Odometry & ego_odometry,
-  const double current_steering_angle_rad, const size_t batch_index)
+  const double current_steering_angle_rad, const size_t batch_index,
+  const std::optional<geometry_msgs::msg::Pose> & goal_pose)
 {
   OptimizationResult result;
   result.trajectory = raw_trajectory;
@@ -92,15 +94,52 @@ OptimizationResult TrajectoryOptimizer::optimize(
     previous_yaw = ref.yaw;
   }
 
+  if (goal_pose) {
+    const bool goal_position_changed =
+      !observed_goal_pose_ ||
+      std::hypot(
+        goal_pose->position.x - observed_goal_pose_->position.x,
+        goal_pose->position.y - observed_goal_pose_->position.y) > goal_position_change_threshold_m;
+    if (goal_position_changed) {
+      latched_goal_pose_.reset();
+      for (auto & previous : previous_solutions_) {
+        previous.reset();
+      }
+    }
+    observed_goal_pose_ = goal_pose;
+
+    const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
+    const double distance =
+      std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
+    if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
+      latched_goal_pose_ = goal_pose;
+    } else if (latched_goal_pose_) {
+      latched_goal_pose_ = goal_pose;
+    }
+  }
+
+  std::optional<GoalTerminalReference> goal_terminal_reference;
+  if (latched_goal_pose_) {
+    const auto & goal = *latched_goal_pose_;
+    const double raw_goal_yaw = yaw_from_quaternion(goal.orientation);
+    references.back().x = goal.position.x - base_x;
+    references.back().y = goal.position.y - base_y;
+    references.back().yaw =
+      previous_yaw + autoware_utils::normalize_radian(raw_goal_yaw - previous_yaw);
+    goal_terminal_reference =
+      GoalTerminalReference{references.back().x, references.back().y, references.back().yaw, 0.0};
+  }
+
   // Warm start from the previous solution of this candidate, re-centered on the current
   // ego position. Discarded when stale.
   const rclcpp::Time stamp(raw_trajectory.header.stamp);
+  const bool goal_active = goal_terminal_reference.has_value();
   SolverSolution warm_start;
   const SolverSolution * warm_start_ptr = nullptr;
   auto & previous = previous_solutions_[batch_index];
   if (previous.has_value()) {
     const double age_s = (stamp - previous->stamp).seconds();
-    if (age_s >= 0.0 && age_s <= max_warm_start_age_s) {
+    if (age_s >= 0.0 && age_s <= max_warm_start_age_s && previous->goal_active == goal_active) {
       warm_start = previous->solution;
       for (auto & state : warm_start.states) {
         state[0] -= base_x;
@@ -112,7 +151,8 @@ OptimizationResult TrajectoryOptimizer::optimize(
     }
   }
 
-  SolverSolution solution = solver_->solve(initial_state, references, warm_start_ptr);
+  SolverSolution solution =
+    solver_->solve(initial_state, references, goal_terminal_reference, warm_start_ptr);
   result.solver_status = solution.status;
   result.solve_time_ms = solution.solve_time_s * 1e3;
 
@@ -153,7 +193,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
     state[0] += base_x;
     state[1] += base_y;
   }
-  previous = PreviousSolution{solution, stamp};
+  previous = PreviousSolution{solution, stamp, goal_active};
 
   return result;
 }

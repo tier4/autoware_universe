@@ -21,6 +21,12 @@
       weight_acceleration: 0.1       # regularization weight on acceleration input
       weight_steering_rate: 10.0     # regularization weight on steering rate input
       terminal_weight_scale: 2.5     # terminal state weight = scale * stage weight
+      goal:
+        weight_longitudinal: 5.0
+        weight_lateral: 5.0
+        weight_yaw: 0.5
+        weight_velocity: 0.1
+        snap_distance_m: 1.0
       min_velocity_mps: 0.0          # lower velocity bound; 0 prevents backward motion [m/s]
       max_velocity_mps: 30.0         # upper velocity bound [m/s]
       min_acceleration_mps2: -4.0    # [m/s^2]

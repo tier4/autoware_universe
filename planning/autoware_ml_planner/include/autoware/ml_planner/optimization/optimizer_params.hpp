@@ -43,6 +43,14 @@ struct TrajectoryOptimizationParams
   double weight_steering_rate{10.0};
   // Terminal state weight = terminal_weight_scale * stage state weight.
   double terminal_weight_scale{2.5};
+  struct GoalParams
+  {
+    double weight_longitudinal{5.0};
+    double weight_lateral{5.0};
+    double weight_yaw{0.5};
+    double weight_velocity{0.1};
+    double snap_distance_m{1.0};
+  } goal;
 
   // State bounds (stages 1..N). min_velocity_mps >= 0 prevents backward motion.
   double min_velocity_mps{0.0};
