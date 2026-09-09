@@ -55,6 +55,11 @@ bool optimization_params_changed(
          lhs.weight_acceleration != rhs.weight_acceleration ||
          lhs.weight_steering_rate != rhs.weight_steering_rate ||
          lhs.terminal_weight_scale != rhs.terminal_weight_scale ||
+         lhs.goal.weight_longitudinal != rhs.goal.weight_longitudinal ||
+         lhs.goal.weight_lateral != rhs.goal.weight_lateral ||
+         lhs.goal.weight_yaw != rhs.goal.weight_yaw ||
+         lhs.goal.weight_velocity != rhs.goal.weight_velocity ||
+         lhs.goal.snap_distance_m != rhs.goal.snap_distance_m ||
          lhs.min_velocity_mps != rhs.min_velocity_mps ||
          lhs.max_velocity_mps != rhs.max_velocity_mps ||
          lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
@@ -372,8 +377,12 @@ PlannerOutput MLPlannerCore::create_planner_output(
 
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
     if (trajectory_optimizer_) {
+      std::optional<geometry_msgs::msg::Pose> goal_pose;
+      if (route_ptr_) {
+        goal_pose = route_ptr_->goal_pose;
+      }
       auto optimization_result = trajectory_optimizer_->optimize(
-        trajectory, kinematic_state, current_steering_angle_rad, static_cast<size_t>(i));
+        trajectory, kinematic_state, current_steering_angle_rad, static_cast<size_t>(i), goal_pose);
       if (i == 0) {
         output.optimization_debug.attempted = true;
         output.optimization_debug.optimized = optimization_result.optimized;

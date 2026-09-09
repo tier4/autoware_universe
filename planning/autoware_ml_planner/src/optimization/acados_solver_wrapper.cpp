@@ -131,7 +131,9 @@ AcadosSolverWrapper::~AcadosSolverWrapper()
 
 SolverSolution AcadosSolverWrapper::solve(
   const std::array<double, opt_nx> & initial_state,
-  const std::array<StageReference, opt_horizon> & references, const SolverSolution * warm_start)
+  const std::array<StageReference, opt_horizon> & references,
+  const std::optional<GoalTerminalReference> & goal_terminal_reference,
+  const SolverSolution * warm_start)
 {
   auto x0 = initial_state;
 
@@ -151,14 +153,15 @@ SolverSolution AcadosSolverWrapper::solve(
   const double unscale = 1.0 / opt_dt_s;
   const double w_lon = impl_->params.weight_longitudinal;
   const double w_lat = impl_->params.weight_lateral;
-  auto position_block = [&](const double yaw) {
-    const double c = std::cos(yaw);
-    const double s = std::sin(yaw);
-    return std::array<double, 3>{
-      w_lon * c * c + w_lat * s * s,  // xx
-      w_lon * s * s + w_lat * c * c,  // yy
-      (w_lon - w_lat) * c * s};       // xy = yx
-  };
+  auto position_block =
+    [](const double yaw, const double longitudinal_weight, const double lateral_weight) {
+      const double c = std::cos(yaw);
+      const double s = std::sin(yaw);
+      return std::array<double, 3>{
+        longitudinal_weight * c * c + lateral_weight * s * s,  // xx
+        longitudinal_weight * s * s + lateral_weight * c * c,  // yy
+        (longitudinal_weight - lateral_weight) * c * s};       // xy = yx
+    };
   std::array<double, gen_ny * gen_ny> stage_weight_matrix{};
   stage_weight_matrix[2 * gen_ny + 2] = unscale * impl_->params.weight_yaw;
   stage_weight_matrix[3 * gen_ny + 3] = unscale * impl_->params.weight_velocity;
@@ -167,7 +170,7 @@ SolverSolution AcadosSolverWrapper::solve(
   stage_weight_matrix[6 * gen_ny + 6] = unscale * impl_->params.weight_steering_rate;
   for (size_t stage = 0; stage < gen_n; ++stage) {
     const double yaw_ref = (stage == 0) ? x0[2] : references[stage - 1].yaw;
-    const auto [w_xx, w_yy, w_xy] = position_block(yaw_ref);
+    const auto [w_xx, w_yy, w_xy] = position_block(yaw_ref, w_lon, w_lat);
     stage_weight_matrix[0] = unscale * w_xx;
     stage_weight_matrix[gen_ny + 1] = unscale * w_yy;
     stage_weight_matrix[1] = unscale * w_xy;
@@ -178,7 +181,9 @@ SolverSolution AcadosSolverWrapper::solve(
   }
   const double terminal_scale = impl_->params.terminal_weight_scale / unscale;
   std::array<double, gen_nyn * gen_nyn> terminal_weight_matrix{};
-  const auto [we_xx, we_yy, we_xy] = position_block(references[gen_n - 1].yaw);
+  const double terminal_yaw =
+    goal_terminal_reference ? goal_terminal_reference->yaw : references[gen_n - 1].yaw;
+  const auto [we_xx, we_yy, we_xy] = position_block(terminal_yaw, w_lon, w_lat);
   terminal_weight_matrix[0] = terminal_scale * we_xx;
   terminal_weight_matrix[gen_nyn + 1] = terminal_scale * we_yy;
   terminal_weight_matrix[1] = terminal_scale * we_xy;
@@ -186,6 +191,17 @@ SolverSolution AcadosSolverWrapper::solve(
   terminal_weight_matrix[2 * gen_nyn + 2] = terminal_scale * impl_->params.weight_yaw;
   terminal_weight_matrix[3 * gen_nyn + 3] = terminal_scale * impl_->params.weight_velocity;
   terminal_weight_matrix[4 * gen_nyn + 4] = terminal_scale * impl_->params.weight_steering_angle;
+  if (goal_terminal_reference) {
+    const auto [goal_xx, goal_yy, goal_xy] = position_block(
+      goal_terminal_reference->yaw, impl_->params.goal.weight_longitudinal,
+      impl_->params.goal.weight_lateral);
+    terminal_weight_matrix[0] += goal_xx;
+    terminal_weight_matrix[gen_nyn + 1] += goal_yy;
+    terminal_weight_matrix[1] += goal_xy;
+    terminal_weight_matrix[gen_nyn] += goal_xy;
+    terminal_weight_matrix[2 * gen_nyn + 2] += impl_->params.goal.weight_yaw;
+    terminal_weight_matrix[3 * gen_nyn + 3] += impl_->params.goal.weight_velocity;
+  }
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "W",
     terminal_weight_matrix.data());
@@ -203,6 +219,11 @@ SolverSolution AcadosSolverWrapper::solve(
   }
   const auto & terminal_ref = references[gen_n - 1];
   std::array<double, gen_nyn> yref_e{terminal_ref.x, terminal_ref.y, terminal_ref.yaw, 0.0, 0.0};
+  if (goal_terminal_reference) {
+    yref_e = {
+      goal_terminal_reference->x, goal_terminal_reference->y, goal_terminal_reference->yaw,
+      goal_terminal_reference->velocity, 0.0};
+  }
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "yref", yref_e.data());
 
