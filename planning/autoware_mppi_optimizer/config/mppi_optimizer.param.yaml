@@ -99,6 +99,15 @@
       # Cold-seed u_nom from acados temporal MPT.
       use_temporal_mpt_as_nominal: false
       use_last_control_as_nominal: true
+      last_control_warm_start_max_age_s: 0.5
+      last_control_warm_start_max_position_error_m: 0.75
+      last_control_warm_start_max_yaw_error_rad: 0.35
+      last_control_warm_start_max_velocity_error_mps: 2.0
+      last_control_warm_start_max_reference_position_error_m: 1.0
+      last_control_warm_start_max_reference_yaw_error_rad: 0.35
+      last_control_warm_start_max_reference_velocity_error_mps: 2.0
+      last_control_warm_start_stop_enter_velocity_mps: 0.03
+      last_control_warm_start_stop_exit_velocity_mps: 0.08
 
       # Adapt from preceding filtered steering; retain smoothing in turns and reversals.
       enable_curvature_adaptive_steering_filter: true

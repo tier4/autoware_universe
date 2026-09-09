@@ -45,6 +45,24 @@ struct FirstOrderDubinsMppiRuntimeOptions
   /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle).
    *  Ignored when use_temporal_mpt_as_nominal is true (t-MPT uses its own shifted solution). */
   bool use_last_control_as_nominal{false};
+  /** Maximum age of an accepted control horizon eligible for reuse. */
+  float last_control_warm_start_max_age_s{0.5F};
+  /** Maximum open-loop plant position error eligible for reuse; zero disables this gate. */
+  float last_control_warm_start_max_position_error_m{0.75F};
+  /** Maximum absolute open-loop plant yaw error eligible for reuse; zero disables this gate. */
+  float last_control_warm_start_max_yaw_error_rad{0.35F};
+  /** Maximum absolute open-loop plant velocity error eligible for reuse; zero disables the gate. */
+  float last_control_warm_start_max_velocity_error_mps{2.0F};
+  /** Maximum pointwise position change in the shifted reference prefix; zero disables this gate. */
+  float last_control_warm_start_max_reference_position_error_m{1.0F};
+  /** Maximum pointwise yaw change in the shifted reference prefix; zero disables this gate. */
+  float last_control_warm_start_max_reference_yaw_error_rad{0.35F};
+  /** Maximum pointwise velocity change in the shifted reference prefix; zero disables this gate. */
+  float last_control_warm_start_max_reference_velocity_error_mps{2.0F};
+  /** Enter the stopped state at or below this absolute velocity. */
+  float last_control_warm_start_stop_enter_velocity_mps{0.03F};
+  /** Leave the stopped state at or above this absolute velocity. */
+  float last_control_warm_start_stop_exit_velocity_mps{0.08F};
   /**
    * When true (and not forced nominal), seed u_nom from acados temporal MPT
    * instead of the geometric diffusion seed. Falls back to diffusion seed on solve failure.
