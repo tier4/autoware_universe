@@ -44,6 +44,7 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -142,6 +143,11 @@ private:
    * @brief Add model path and backend key-values to inference_status.
    */
   void fill_model_key_values();
+
+  /**
+   * @brief Clear inference_status, refill model key-values, set level/message, and publish.
+   */
+  void publish_inference_status(int8_t level, const std::string & message = "");
 
   /**
    * @brief Timer callback for periodic processing and publishing.

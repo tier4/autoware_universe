@@ -277,27 +277,29 @@ void DiffusionPlanner::fill_model_key_values()
   }
 }
 
-void DiffusionPlanner::load_model()
+void DiffusionPlanner::publish_inference_status(const int8_t level, const std::string & message)
 {
   diagnostics_inference_->clear();
   fill_model_key_values();
-  diagnostics_inference_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
+  if (level > DiagnosticStatus::OK) {
+    diagnostics_inference_->update_level_and_message(level, message);
+  }
   diagnostics_inference_->publish(get_clock()->now());
+}
+
+void DiffusionPlanner::load_model()
+{
+  publish_inference_status(DiagnosticStatus::WARN, "Loading model");
   try {
     core_->resolve_model_paths();
     core_->load_model();
   } catch (const std::exception & e) {
     model_load_error_ = e.what();
-    diagnostics_inference_->clear();
-    fill_model_key_values();
-    diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, *model_load_error_);
-    diagnostics_inference_->publish(get_clock()->now());
+    publish_inference_status(DiagnosticStatus::ERROR, *model_load_error_);
     throw;
   }
   model_load_error_.reset();
-  diagnostics_inference_->clear();
-  fill_model_key_values();
-  diagnostics_inference_->publish(get_clock()->now());
+  publish_inference_status(DiagnosticStatus::OK);
 
   if (params_.model_type == "single_step") {
     RCLCPP_INFO_STREAM(

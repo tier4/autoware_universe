@@ -287,26 +287,28 @@ void MLPlanner::fill_model_key_values()
   }
 }
 
-void MLPlanner::load_model()
+void MLPlanner::publish_inference_status(const int8_t level, const std::string & message)
 {
   diagnostics_inference_->clear();
   fill_model_key_values();
-  diagnostics_inference_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
+  if (level > DiagnosticStatus::OK) {
+    diagnostics_inference_->update_level_and_message(level, message);
+  }
   diagnostics_inference_->publish(get_clock()->now());
+}
+
+void MLPlanner::load_model()
+{
+  publish_inference_status(DiagnosticStatus::WARN, "Loading model");
   try {
     core_->load_model();
   } catch (const std::exception & e) {
     model_load_error_ = e.what();
-    diagnostics_inference_->clear();
-    fill_model_key_values();
-    diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, *model_load_error_);
-    diagnostics_inference_->publish(get_clock()->now());
+    publish_inference_status(DiagnosticStatus::ERROR, *model_load_error_);
     throw;
   }
   model_load_error_.reset();
-  diagnostics_inference_->clear();
-  fill_model_key_values();
-  diagnostics_inference_->publish(get_clock()->now());
+  publish_inference_status(DiagnosticStatus::OK);
 
   RCLCPP_INFO_STREAM(
     get_logger(), "Loaded model.onnx_model_path=" << params_.model_path << " (hash="
