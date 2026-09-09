@@ -36,6 +36,8 @@
     use_time_sequence_raw_optimizer: false
 
     trajectory_time_step: 0.1 # [s]
+    input_trajectories_warn_timeout_s: 1.0 # [s]
+    input_trajectories_error_timeout_s: 3.0 # [s]
 
     # Stop Point Fixer Plugin Parameters
     stop_point_fixer:

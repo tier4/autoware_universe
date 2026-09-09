@@ -33,6 +33,7 @@
 #include <functional>
 #include <iomanip>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -130,6 +131,7 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
       this, "ml_planner");
 
   diagnostics_inference_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
+  diagnostics_model_status_ = std::make_unique<DiagnosticsInterface>(this, "model_status");
   try {
     load_model();
     if (params_.build_only) {
@@ -138,7 +140,7 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
     }
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), e.what() << ". Inference will be disabled.");
-    diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, e.what());
+    diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, "Model not loaded");
     diagnostics_inference_->publish(get_clock()->now());
     if (params_.build_only) {
       RCLCPP_ERROR(get_logger(), "Build only mode: exiting due to model load failure.");
@@ -279,13 +281,43 @@ void MLPlanner::set_up_params()
     this->declare_parameter<bool>("debug_params.publish_debug_linestrings", true);
 }
 
+void MLPlanner::fill_model_status_key_values()
+{
+  diagnostics_model_status_->add_key_value("backend", params_.backend);
+  diagnostics_model_status_->add_key_value("model_loaded", core_->is_model_loaded());
+  if (!params_.model_path.empty()) {
+    diagnostics_model_status_->add_key_value("onnx_model_path", params_.model_path);
+  }
+}
+
+void MLPlanner::publish_model_status(const rclcpp::Time & stamp)
+{
+  diagnostics_model_status_->clear();
+  fill_model_status_key_values();
+  if (model_load_error_) {
+    diagnostics_model_status_->update_level_and_message(
+      DiagnosticStatus::ERROR, *model_load_error_);
+  } else if (!core_->is_model_loaded()) {
+    diagnostics_model_status_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
+  }
+  diagnostics_model_status_->publish(stamp);
+}
+
 void MLPlanner::load_model()
 {
-  diagnostics_inference_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
-  diagnostics_inference_->publish(get_clock()->now());
-  core_->load_model();
-  diagnostics_inference_->update_level_and_message(DiagnosticStatus::OK, "Model loaded");
-  diagnostics_inference_->publish(get_clock()->now());
+  diagnostics_model_status_->clear();
+  fill_model_status_key_values();
+  diagnostics_model_status_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
+  diagnostics_model_status_->publish(get_clock()->now());
+  try {
+    core_->load_model();
+  } catch (const std::exception & e) {
+    model_load_error_ = e.what();
+    publish_model_status(get_clock()->now());
+    throw;
+  }
+  model_load_error_.reset();
+  publish_model_status(get_clock()->now());
 
   RCLCPP_INFO_STREAM(
     get_logger(), "Loaded model.onnx_model_path=" << params_.model_path << " (hash="
@@ -574,9 +606,11 @@ void MLPlanner::on_timer()
   stop_watch_ptr_ = std::make_unique<autoware_utils_system::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("processing_time");
 
+  const rclcpp::Time current_time(get_clock()->now());
+  publish_model_status(current_time);
+
   diagnostics_inference_->clear();
 
-  const rclcpp::Time current_time(get_clock()->now());
   if (!core_->is_model_loaded()) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,

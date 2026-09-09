@@ -51,6 +51,20 @@ trajectory_processor_params:
     read_only: false
     validation:
       bounds<>: [0.05, 1.0]
+  input_trajectories_warn_timeout_s:
+    type: double
+    default_value: 1.0
+    description: Age of ~/input/trajectories after which input_trajectories diagnostics become WARN [s]
+    read_only: false
+    validation:
+      bounds<>: [0.0, 60.0]
+  input_trajectories_error_timeout_s:
+    type: double
+    default_value: 3.0
+    description: Age of ~/input/trajectories after which input_trajectories diagnostics become ERROR [s]
+    read_only: false
+    validation:
+      bounds<>: [0.0, 60.0]
 
   stop_point_fixer:
     force_stop_long_stopped_trajectories:
