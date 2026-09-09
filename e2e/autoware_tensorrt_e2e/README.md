@@ -34,8 +34,9 @@ configuration file:
 | `bevfusion_lidar_feature.onnx` | The production BEVFusion lidar branch exported with its `bev_feature` map `[1, 512, 180, 180]` as the output, and the frozen BEVFusion detection head beside it (`bbox_pred`, `score`, `label_pred`; see [Detection head](#detection-head)). Carries the sparse-convolution custom nodes, so its engine needs `autoware_tensorrt_plugins` and an `spconv` build for this GPU. |
 | `ml_package_resworld.param.yaml` | The whole network description, generated from those graphs and the exporter's contract (see [Configuration layout](#configuration-layout)). The copy under `config/` is a reference; the node reads the one beside the artifacts. |
 
-The planner runs in fp32: its graph embeds normalization statistics that overflow fp16, and
-TensorRT clips silently rather than failing. The extractor runs in fp16. The ResWorld graph
+The planner runs in fp32 because that is the precision OnePlanner validates it at; an fp16
+build works and is about 40% faster on this graph (numbers in `docs/design.md`), and it is
+declared in the ml_package file when the exporter signs off on it. The extractor runs in fp16. The ResWorld graph
 declares a `turn_indicators` input it never reads (perturbing it changes no output), so its
 ml_package file sets `context.turn_indicators.enabled: false` and the node subscribes to
 nothing for it.
@@ -177,9 +178,9 @@ delivered raises a `WARN` diagnostic
 100 ms budget on the target hardware.
 
 TensorRT engines are built in-node by `TrtCommon` and cached beside the ONNX files. Both
-engines are built with the `trt_workspace_mib` workspace (default 16 GiB): below a graph's
-need the builder segfaults rather than failing, and the threshold moves with whatever else
-holds GPU memory.
+engines are built with the `trt_workspace_mib` workspace (default 4 GiB), an upper bound on the
+builder's scratch rather than an allocation; raise it only for a graph whose build reports
+insufficient workspace.
 
 ## Detection head
 

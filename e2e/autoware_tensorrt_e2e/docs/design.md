@@ -275,16 +275,32 @@ are published, mirroring the diffusion planner topics.
     captured once and relaunched): 11.2 ms of inference without it, 11.5 ms with it, over 560
     ticks each. The stage is GPU-bound and its kernels already run back to back; there was no
     launch gap for a graph to remove, so the capture machinery was removed.
-  - Building the planner engine in **fp16**: the TensorRT 10.16 builder segfaults on this
-    graph (`build_only:=true`, 16 GiB workspace, the fp32 build of the same graph succeeds).
-    The exporter's own note -- embedded normalization statistics exceed the fp16 range -- is
-    the reason the ml_package pins fp32; fp16 for this planner is an exporter-side change,
-    not a deployment switch.
+  - Building the planner engine in **fp16**: 7.5 ms -> 4.1 ms for the planner alone
+    (standalone bench, 200 iterations), 11.2 ms -> 7.2 ms for the node's inference stage and
+    14.1 ms -> 9.9 ms for the whole tick on a prdjt replay (median over ~550 ticks). Against
+    the fp32 engine on the same bag the trajectories differ by 1.2 cm mean, 30 cm p99 of the
+    per-frame maximum, 5 frames of 384 above 20 cm at 10 m/s -- but two fp32 replays of the
+    same bag already differ by 0.7 cm mean, 17 cm p99, 3 frames above 20 cm, so fp16 adds
+    little on top of the replay's own run-to-run spread. The one constant outside the fp16
+    range is the attention mask's `-inf` (clipped to -65504, harmless). Not adopted here
+    because accuracy is the exporter's call: OnePlanner validates the graph on the T4
+    dataset, and its ml_package file is where fp16 gets declared. A note in this file used to
+    say the fp16 build segfaults; that was the build host's CPU (see the paragraph after
+    this list), not TensorRT.
   - TensorRT's **auxiliary streams** (`setMaxAuxStreams(2)`) and **builder optimization
-    level 5**: the same builder segfaults on the same graph about 15 s into either build.
-    On this host only the default builder configuration (one stream, level 3, 16 GiB
-    workspace, fp32) produces an engine; the knobs were not kept, since a parameter that
-    crashes the builder when turned is a trap, not an option.
+    level 5**: both build (35 s each, same as the default) and neither is faster -- 7.44 ms
+    and 7.50 ms against 7.46 ms for the default one-stream level-3 engine. Myelin already
+    fuses the whole planner into one foreign node, so there is nothing for extra streams or
+    a longer tactic search to parallelize. The knobs were not kept. The earlier "builder
+    segfaults" note about them was the same host CPU fault.
+
+A builder crash is not evidence about a graph or a flag until it reproduces on a second host.
+This file briefly recorded that the TensorRT 10.16 builder "segfaults in fp16", "segfaults with
+auxiliary streams or optimization level 5", and (in the config) "segfaults below 16 GiB of
+workspace". All of it was one development machine's CPU faulting at its boost clock: the
+identical fp32 build crashed 8 of 8 times at stock clocks, 0 of 8 with the CPU capped at
+4.5 GHz, and 8 of 8 again at stock (2026-09-09). With the CPU capped, every one of those
+configurations builds, and the measurements above were taken that way.
 
 ### Separation between model architecture and deployment parameters
 
@@ -297,6 +313,11 @@ Following `autoware_tensorrt_vad`:
   live in the ROS param YAML (`config/*.param.yaml`), one file per sensor prototype.
 
 ## Expected Use Cases
+
+Missing sensor data is reported as a warning and skips that pass. Initialization errors
+disable inference and publish an error diagnostic. A pass taking longer than the interval
+the sensor actually delivered raises a warning, so an output-rate regression is visible
+against the rate the sensor is really running at rather than against a configured one.
 
 ### Switching sensor prototypes
 
