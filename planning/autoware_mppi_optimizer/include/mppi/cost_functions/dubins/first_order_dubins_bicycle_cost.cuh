@@ -208,7 +208,7 @@ public:
    *     [2, 2+kMax) corridor_x, then corridor_y, corridor_s
    *     then ref_x/y/s/v/yaw [NUM_TIMESTEPS each]
    *   BLK (per sample, after float4-aligned GRD):
-   *     [0] warm-start segment index for polyline projection (-1 = full scan)
+   *     [0] first-candidate segment index for polyline projection (-1 = no hint)
    */
   static constexpr int kSharedTotalOffset = 0;
   static constexpr int kSharedNumCorridorOffset = 1;
@@ -331,8 +331,8 @@ public:
    * Unified closest-segment projection used when either lateral weight is active.
    * Also stores path length along the corridor chord-length array and remaining distance
    * to the polyline end (used by remaining_distance_coeff).
-   * On device, an in-bounds nearest-segment texture fetch provides an O(1) seed with a bounded
-   * local correction. Out-of-bounds queries fall back to the per-sample theta_c warm start.
+   * On device, a texture fetch or per-sample theta_c hint supplies an optional first candidate.
+   * Both host and device scan every segment and select the lowest index on equal distances.
    */
   struct LateralPathMetrics
   {

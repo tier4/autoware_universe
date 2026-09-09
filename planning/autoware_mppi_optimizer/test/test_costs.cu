@@ -13,6 +13,10 @@
 // limitations under the License.
 
 #include "cost_test_report.hpp"
+#include "projection_test_cases.hpp"
+
+#include <mppi/core/mppi_common.cuh>
+#include <mppi/sampling_distributions/gaussian/gaussian.cuh>
 
 #include <memory>
 #include <utility>
@@ -658,6 +662,57 @@ TEST_F(CostEvaluation, TerminalIsCountedOnceInHorizonObjective)
   report.expect("objective_divided_by_H", ledger / H, 0.1125);
 }
 
+TEST_F(CostEvaluation, QueuedCommandChangeDoesNotCreatePhysicalJerkOrJerkLimitCost)
+{
+  FirstOrderDubinsBicycleParams mp;
+  mp.acc_delay_steps = mp.steer_delay_steps = 2;
+  mp.accel_time_constant = mp.steer_time_constant = 0.2F;
+  Model model(mp);
+  auto state = model.getZeroState();
+  state(static_cast<int>(S::VEL_X)) = 2.0F;
+  state(static_cast<int>(S::ACCELERATION)) = 1.0F;
+  state(static_cast<int>(S::STEER_ANGLE)) = 0.2F;
+  state(static_cast<int>(S::PREVIOUS_ACCEL_CMD)) = 1.0F;
+  state(static_cast<int>(S::PREVIOUS_STEER_CMD)) = 0.2F;
+  for (int i = 0; i < 2; ++i) {
+    state(static_cast<int>(S::ACCEL_CMD_D0) + i) = 1.0F;
+    state(static_cast<int>(S::STEER_CMD_D0) + i) = 0.2F;
+  }
+  params.longitudinal_jerk_coeff = params.steer_rate_coeff = 1.0F;
+  params.accel_cmd_rate_coeff = params.steer_cmd_rate_coeff = 1.0F;
+  params.overlimit_coeff = 1.0F;
+  apply();
+  FirstOrderDubinsBicycleKinematicLimitData limits;
+  limits.active_mask = kJerkLimitActive;
+  limits.min_longitudinal_jerk = -1.0F;
+  limits.max_longitudinal_jerk = 1.0F;
+  cost->setKinematicLimits(limits);
+  auto next = state;
+  auto derivative = state;
+  auto y = Cost::output_array::Zero().eval();
+  auto u = Cost::control_array::Zero().eval();
+  u << 2.0F, -0.1F;
+  for (int stage = 1; stage <= 3; ++stage) {
+    model.step(state, next, derivative, u, y, stage * dt, dt);
+    const auto b = record(y, u, stage, "queued command versus physical jerk", "running");
+    report.captureModel(mp, state);
+    if (stage <= 2) {
+      expected(b, &Breakdown::longitudinal_jerk, "longitudinal_jerk", 0.0);
+      expected(b, &Breakdown::steering_rate, "steering_rate", 0.0);
+      expected(b, &Breakdown::kinematic_jerk_overlimit, "kinematic_jerk_overlimit", 0.0);
+    } else {
+      // The queued acceleration reaches the actuator: (2 - 1) / tau = 5 m/s^3.
+      expected(b, &Breakdown::longitudinal_jerk, "longitudinal_jerk", 25.0);
+      report.expect("jerk_limit_detects_realized_change", b.kinematic_jerk_overlimit > 0.0F, 1, 0);
+    }
+    expected(
+      b, &Breakdown::acceleration_command_rate, "acceleration_command_rate",
+      stage == 1 ? 100.0 : 0.0);
+    expected(b, &Breakdown::steering_command_rate, "steering_command_rate", stage == 1 ? 9.0 : 0.0);
+    state = next;
+  }
+}
+
 TEST_F(CostEvaluation, ActuatorSaturationAndConstantTurnJerkConvention)
 {
   FirstOrderDubinsBicycleParams mp;
@@ -711,12 +766,20 @@ struct DeviceBuffer
   DeviceBuffer(const DeviceBuffer &) = delete;
   DeviceBuffer & operator=(const DeviceBuffer &) = delete;
 };
-__global__ void evaluateDevice(Cost * cost, float * y, float * u, int t, float * result)
+__global__ void evaluateDevice(
+  Cost * cost, float * y, float * u, int t, float * result, const bool use_shared)
 {
+  extern __shared__ float theta[];
+  cost->initializeCosts(y, u, theta, 0.0F, dt);
   int crash = 0;
-  result[0] = cost->computeRunningCost(y, u, t, nullptr, &crash);
-  result[1] = cost->terminalCost(y, nullptr);
+  result[0] = cost->computeRunningCost(y, u, t, use_shared ? theta : nullptr, &crash);
+  result[1] = cost->terminalCost(y, use_shared ? theta : nullptr);
   result[2] = static_cast<float>(crash);
+}
+
+__global__ void enableProjectionTexture(Cost * cost, const bool enabled)
+{
+  cost->texture_state_.nearest_segment_texture_valid_ = enabled;
 }
 class GpuCostEvaluation : public CostEvaluation
 {
@@ -743,7 +806,7 @@ protected:
   }
   void parity(
     const Cost::output_array & y, const Cost::control_array & u, int t, const std::string & label,
-    double tolerance = 1.0E-4)
+    double tolerance = 1.0E-4, const bool use_shared = false)
   {
     const auto b = record(y, u, t, label);
     DeviceBuffer<float> dy(Cost::OUTPUT_DIM), du(Cost::CONTROL_DIM), result(3);
@@ -751,7 +814,9 @@ protected:
       cudaMemcpy(dy.data, y.data(), sizeof(float) * Cost::OUTPUT_DIM, cudaMemcpyHostToDevice));
     HANDLE_ERROR(
       cudaMemcpy(du.data, u.data(), sizeof(float) * Cost::CONTROL_DIM, cudaMemcpyHostToDevice));
-    evaluateDevice<<<1, 1>>>(cost->cost_d_, dy.data, du.data, t, result.data);
+    const auto shared_bytes = mppi::kernels::calcClassSharedMemSize(cost.get(), dim3(1, 1, 1));
+    evaluateDevice<<<1, 1, shared_bytes>>>(
+      cost->cost_d_, dy.data, du.data, t, result.data, use_shared);
     HANDLE_ERROR(cudaGetLastError());
     HANDLE_ERROR(cudaDeviceSynchronize());
     std::array<float, 3> actual{};
@@ -764,6 +829,106 @@ protected:
       tolerance + 1.0E-5 * std::abs(terminal.total));
   }
 };
+
+TEST_F(GpuCostEvaluation, AdversarialProjectionCostsAndTerminalMatchHost)
+{
+  auto y = Cost::output_array::Zero().eval();
+  const auto u = Cost::control_array::Zero().eval();
+  y(static_cast<int>(O::YAW)) = 0.3F;
+  y(static_cast<int>(O::TOTAL_VELOCITY)) = 5.0F;
+  y(static_cast<int>(O::BASELINK_VEL_B_X)) = 5.0F;
+  for (const auto & c : projection_test::cases()) {
+    SCOPED_TRACE(c.name);
+    std::vector<float> velocity(c.x.size());
+    for (std::size_t i = 0; i < velocity.size(); ++i) {
+      velocity[i] = 1.0F + 0.01F * static_cast<float>(i);
+    }
+    cost->setLateralCorridor(
+      c.x.data(), c.y.data(), static_cast<int>(c.x.size()), nullptr, velocity.data());
+    y(static_cast<int>(O::BASELINK_POS_I_X)) = c.query_x;
+    y(static_cast<int>(O::BASELINK_POS_I_Y)) = c.query_y;
+    for (const auto & component : components) {
+      const std::string name = component.name;
+      if (
+        name != "lateral_distance" && name != "lateral_boundary" && name != "lateral_yaw_error" &&
+        name != "remaining_distance" && name != "path_overshoot" && name != "spatial_overspeed") {
+        continue;
+      }
+      params = disabledParams();
+      params.*(component.weight) = 1.0F;
+      apply();
+      for (bool texture : {true, false}) {
+        enableProjectionTexture<<<1, 1>>>(cost->cost_d_, texture);
+        HANDLE_ERROR(cudaGetLastError());
+        for (bool shared : {false, true}) {
+          SCOPED_TRACE(texture);
+          SCOPED_TRACE(shared);
+          parity(y, u, 1, std::string(c.name) + " " + name, 1.0E-4, shared);
+        }
+      }
+    }
+  }
+}
+
+TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
+{
+  // Deterministic zero controls isolate projection from random sampling. Both production
+  // launchers use the same bicycle/cost specialization and the deployed block dimensions.
+  using Sampler = mppi::sampling_distributions::GaussianDistribution<FirstOrderDubinsBicycleParams>;
+  constexpr int rollouts = 32;
+  Sampler::SAMPLING_PARAMS_T sampling_params;
+  sampling_params.num_rollouts = rollouts;
+  sampling_params.num_timesteps = H;
+  sampling_params.num_distributions = 1;
+  for (auto & sigma : sampling_params.std_dev) {
+    sigma = 1.0F;
+  }
+  Sampler sampler(sampling_params);
+  Model model;
+  model.GPUSetup();
+  sampler.GPUSetup();
+  const auto mean = Eigen::Matrix<float, Model::CONTROL_DIM, H>::Zero().eval();
+  sampler.copyImportanceSamplerToDevice(mean.data(), 0, true);
+  HANDLE_ERROR(cudaMemset(
+    sampler.getControlSample(0, 0, 0), 0, rollouts * H * Model::CONTROL_DIM * sizeof(float)));
+  params = disabledParams();
+  params.lateral_distance_coeff = 1.0F;
+  apply();
+  const float x[] = {0, 10, 10, 0};
+  const float y[] = {0, 0, 10, 10};
+  cost->setLateralCorridor(x, y, 4);
+  auto state = model.getZeroState();
+  state(static_cast<int>(S::POS_X)) = 1.0F;
+  state(static_cast<int>(S::POS_Y)) = 9.0F;
+  DeviceBuffer<float> initial(Model::STATE_DIM), totals(rollouts);
+  DeviceBuffer<float> outputs(rollouts * H * Model::OUTPUT_DIM);
+  HANDLE_ERROR(cudaMemcpy(
+    initial.data, state.data(), Model::STATE_DIM * sizeof(float), cudaMemcpyHostToDevice));
+  for (bool texture : {true, false}) {
+    enableProjectionTexture<<<1, 1>>>(cost->cost_d_, texture);
+    HANDLE_ERROR(cudaGetLastError());
+    for (bool split : {false, true}) {
+      SCOPED_TRACE(texture);
+      SCOPED_TRACE(split);
+      if (split) {
+        mppi::kernels::launchSplitRolloutKernel(
+          &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, outputs.data,
+          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true);
+      } else {
+        mppi::kernels::launchRolloutKernel(
+          &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
+          dim3(32, 2, 1), 0, true);
+      }
+      std::array<float, rollouts> actual{};
+      HANDLE_ERROR(cudaMemcpy(actual.data(), totals.data, sizeof(actual), cudaMemcpyDeviceToHost));
+      for (float total : actual) {
+        // Stationary at (1,9): lateral error is 1 m for H running stages and terminal.
+        EXPECT_NEAR(total, 1.0F + 1.0F / H, 1.0E-4F);
+      }
+    }
+  }
+}
+
 TEST_F(GpuCostEvaluation, EveryComponentAndTerminalMatchesHost)
 {
   auto y = Cost::output_array::Zero().eval();
@@ -882,7 +1047,13 @@ TEST_F(GpuCostEvaluation, DelayedSteadyTurnAndCommandStepReplayMatchesHost)
   params.accel_time_constant = mp.accel_time_constant;
   params.steer_time_constant = mp.steer_time_constant;
   params.max_steer_rate = mp.max_steer_rate;
+  params.overlimit_coeff = 1.0F;
   apply();
+  FirstOrderDubinsBicycleKinematicLimitData limits;
+  limits.active_mask = kJerkLimitActive;
+  limits.min_longitudinal_jerk = -1.0F;
+  limits.max_longitudinal_jerk = 1.0F;
+  cost->setKinematicLimits(limits);
   cost->setInitialSteeringAngle(0.2F);
   auto state = model.getZeroState();
   state(static_cast<int>(S::VEL_X)) = 2;
@@ -935,6 +1106,13 @@ TEST_F(GpuCostEvaluation, DelayedSteadyTurnAndCommandStepReplayMatchesHost)
       expected(b, &Breakdown::steering_rate, "steering_rate", 0);
       expected(b, &Breakdown::acceleration_command_rate, "acceleration_command_rate", 75);
       expected(b, &Breakdown::steering_command_rate, "steering_command_rate", 0.75);
+    }
+    if (t == 10 || t == 11) {
+      expected(b, &Breakdown::kinematic_jerk_overlimit, "kinematic_jerk_overlimit", 0);
+    }
+    if (t == 12) {
+      expected(b, &Breakdown::longitudinal_jerk, "longitudinal_jerk", 6.25);
+      report.expect("gpu_replay_jerk_limit_after_delay", b.kinematic_jerk_overlimit > 0.0F, 1, 0);
     }
     host_sum += b.total;
     device_sum += device_costs[t];
