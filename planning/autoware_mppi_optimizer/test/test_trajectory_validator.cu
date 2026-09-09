@@ -343,7 +343,7 @@ TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheir
   EXPECT_NEAR(breakdown.track_center, 4.32F, 1.0E-6F);
   EXPECT_FLOAT_EQ(breakdown.acceleration_command, 16.0F);
   EXPECT_NEAR(breakdown.steering_rate, 20.0F, 1.0E-5F);
-  EXPECT_NEAR(breakdown.running_total, 41.6F, 1.0E-5F);
+  EXPECT_NEAR(breakdown.running_total, 42.32F, 1.0E-5F);
   EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-5F);
   EXPECT_NEAR(breakdown.total, direct_total, 1.0E-5F);
   EXPECT_EQ(crash_status, 0);

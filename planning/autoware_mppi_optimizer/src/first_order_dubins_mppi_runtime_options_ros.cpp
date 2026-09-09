@@ -54,6 +54,33 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "use_last_control_as_nominal"), defaults.use_last_control_as_nominal);
   node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_age_s"),
+    defaults.last_control_warm_start_max_age_s);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_position_error_m"),
+    defaults.last_control_warm_start_max_position_error_m);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_yaw_error_rad"),
+    defaults.last_control_warm_start_max_yaw_error_rad);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_velocity_error_mps"),
+    defaults.last_control_warm_start_max_velocity_error_mps);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_reference_position_error_m"),
+    defaults.last_control_warm_start_max_reference_position_error_m);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_reference_yaw_error_rad"),
+    defaults.last_control_warm_start_max_reference_yaw_error_rad);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_reference_velocity_error_mps"),
+    defaults.last_control_warm_start_max_reference_velocity_error_mps);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_stop_enter_velocity_mps"),
+    defaults.last_control_warm_start_stop_enter_velocity_mps);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_stop_exit_velocity_mps"),
+    defaults.last_control_warm_start_stop_exit_velocity_mps);
+  node.declare_parameter(
     param_name(prefix, "use_temporal_mpt_as_nominal"), defaults.use_temporal_mpt_as_nominal);
   node.declare_parameter(
     param_name(prefix, "prevent_reverse_velocity"), defaults.prevent_reverse_velocity);
@@ -88,6 +115,33 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
     node.get_parameter(param_name(prefix, "min_trajectory_progress_m")).as_double());
   options.use_last_control_as_nominal =
     node.get_parameter(param_name(prefix, "use_last_control_as_nominal")).as_bool();
+  options.last_control_warm_start_max_age_s = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_age_s")).as_double());
+  options.last_control_warm_start_max_position_error_m = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_position_error_m"))
+      .as_double());
+  options.last_control_warm_start_max_yaw_error_rad = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_yaw_error_rad"))
+      .as_double());
+  options.last_control_warm_start_max_velocity_error_mps = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_velocity_error_mps"))
+      .as_double());
+  options.last_control_warm_start_max_reference_position_error_m = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_reference_position_error_m"))
+      .as_double());
+  options.last_control_warm_start_max_reference_yaw_error_rad = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_reference_yaw_error_rad"))
+      .as_double());
+  options.last_control_warm_start_max_reference_velocity_error_mps = static_cast<float>(
+    node
+      .get_parameter(param_name(prefix, "last_control_warm_start_max_reference_velocity_error_mps"))
+      .as_double());
+  options.last_control_warm_start_stop_enter_velocity_mps = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_stop_enter_velocity_mps"))
+      .as_double());
+  options.last_control_warm_start_stop_exit_velocity_mps = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_stop_exit_velocity_mps"))
+      .as_double());
   options.use_temporal_mpt_as_nominal =
     node.get_parameter(param_name(prefix, "use_temporal_mpt_as_nominal")).as_bool();
   options.prevent_reverse_velocity =

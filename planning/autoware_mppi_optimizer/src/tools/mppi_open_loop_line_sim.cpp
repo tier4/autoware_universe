@@ -214,6 +214,25 @@ void loadParamsYaml(
     {"drivable_area_barrier_weight", &cost.drivable_area_barrier_weight},
     {"crash_contact_penalty", &cost.crash_contact_penalty},
   };
+  std::unordered_map<std::string, float *> runtime_fields = {
+    {"last_control_warm_start_max_age_s", &runtime.last_control_warm_start_max_age_s},
+    {"last_control_warm_start_max_position_error_m",
+     &runtime.last_control_warm_start_max_position_error_m},
+    {"last_control_warm_start_max_yaw_error_rad",
+     &runtime.last_control_warm_start_max_yaw_error_rad},
+    {"last_control_warm_start_max_velocity_error_mps",
+     &runtime.last_control_warm_start_max_velocity_error_mps},
+    {"last_control_warm_start_max_reference_position_error_m",
+     &runtime.last_control_warm_start_max_reference_position_error_m},
+    {"last_control_warm_start_max_reference_yaw_error_rad",
+     &runtime.last_control_warm_start_max_reference_yaw_error_rad},
+    {"last_control_warm_start_max_reference_velocity_error_mps",
+     &runtime.last_control_warm_start_max_reference_velocity_error_mps},
+    {"last_control_warm_start_stop_enter_velocity_mps",
+     &runtime.last_control_warm_start_stop_enter_velocity_mps},
+    {"last_control_warm_start_stop_exit_velocity_mps",
+     &runtime.last_control_warm_start_stop_exit_velocity_mps},
+  };
 
   std::string line;
   while (std::getline(in, line)) {
@@ -256,12 +275,17 @@ void loadParamsYaml(
       continue;
     }
 
-    const auto it = cost_fields.find(key);
-    if (it == cost_fields.end()) {
+    const auto runtime_it = runtime_fields.find(key);
+    const auto cost_it = cost_fields.find(key);
+    if (runtime_it == runtime_fields.end() && cost_it == cost_fields.end()) {
       continue;
     }
     try {
-      *it->second = std::stof(value);
+      if (runtime_it != runtime_fields.end()) {
+        *runtime_it->second = std::stof(value);
+      } else {
+        *cost_it->second = std::stof(value);
+      }
     } catch (const std::exception &) {
     }
   }
@@ -738,7 +762,7 @@ int run(int argc, char ** argv)
           steering_commands.push_back(control.steer_cmd);
         }
         candidate_steering_filter.filter(
-          steering_commands, measured_steering, context.first_command_is_shifted);
+          steering_commands, measured_steering, context.preserve_first_steering_command);
         for (std::size_t index = 0; index < controls.size(); ++index) {
           controls[index].steer_cmd = steering_commands[index];
         }

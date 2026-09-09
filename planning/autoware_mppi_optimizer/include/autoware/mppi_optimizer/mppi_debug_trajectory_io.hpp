@@ -430,6 +430,35 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
   if (min_trajectory_progress_it != kv.end()) {
     options.min_trajectory_progress_m = min_trajectory_progress_it->second;
   }
+  const auto as_float = [&](const char * key, const float fallback) {
+    const auto it = kv.find(key);
+    return it == kv.end() ? fallback : it->second;
+  };
+  options.last_control_warm_start_max_age_s =
+    as_float("last_control_warm_start_max_age_s", options.last_control_warm_start_max_age_s);
+  options.last_control_warm_start_max_position_error_m = as_float(
+    "last_control_warm_start_max_position_error_m",
+    options.last_control_warm_start_max_position_error_m);
+  options.last_control_warm_start_max_yaw_error_rad = as_float(
+    "last_control_warm_start_max_yaw_error_rad", options.last_control_warm_start_max_yaw_error_rad);
+  options.last_control_warm_start_max_velocity_error_mps = as_float(
+    "last_control_warm_start_max_velocity_error_mps",
+    options.last_control_warm_start_max_velocity_error_mps);
+  options.last_control_warm_start_max_reference_position_error_m = as_float(
+    "last_control_warm_start_max_reference_position_error_m",
+    options.last_control_warm_start_max_reference_position_error_m);
+  options.last_control_warm_start_max_reference_yaw_error_rad = as_float(
+    "last_control_warm_start_max_reference_yaw_error_rad",
+    options.last_control_warm_start_max_reference_yaw_error_rad);
+  options.last_control_warm_start_max_reference_velocity_error_mps = as_float(
+    "last_control_warm_start_max_reference_velocity_error_mps",
+    options.last_control_warm_start_max_reference_velocity_error_mps);
+  options.last_control_warm_start_stop_enter_velocity_mps = as_float(
+    "last_control_warm_start_stop_enter_velocity_mps",
+    options.last_control_warm_start_stop_enter_velocity_mps);
+  options.last_control_warm_start_stop_exit_velocity_mps = as_float(
+    "last_control_warm_start_stop_exit_velocity_mps",
+    options.last_control_warm_start_stop_exit_velocity_mps);
   options.ignore_obstacles = as_bool("ignore_obstacles", options.ignore_obstacles);
   options.ignore_road_borders = as_bool("ignore_road_borders", options.ignore_road_borders);
   options.ignore_drivable_area = as_bool("ignore_drivable_area", options.ignore_drivable_area);
