@@ -250,8 +250,22 @@ are published, mirroring the diffusion planner topics.
   than a configured one: exceeding it raises a `WARN` diagnostic
   (`processing time exceeded the planning period`), so rate violations are visible in the
   field instead of silent.
-- GPU work is submitted on dedicated CUDA streams; image preprocessing writes directly into
-  device memory consumed by the engine (no host round-trip of image tensors).
+- The whole pass runs on **one CUDA stream**, the engine's, handed to each provider through
+  `bind_stream()` before it sizes its buffers. A provider's GPU work, the network, and the
+  output copy are ordered on it, so nothing in the middle of a pass drains the device: the
+  single host synchronization is the engine's wait for its outputs. A device-resident tensor
+  produced on that stream (the BEV history, an image batch) is read by the network where it is,
+  without a copy; host tensors are staged into one pinned block and cross the bus in one copy
+  per contiguous run.
+- The **pacing provider is collected last**. Its sensor callback queued its GPU work (the
+  feature extractor) before the pass began, so the context provider's CPU work — map and route
+  tensors — overlaps it instead of waiting behind it, and the pass costs the longer of the two
+  rather than their sum. Each provider's share is published as
+  `~/debug/processing_time/collect/<provider>_ms`.
+- `finish_tick()` runs on every provider after the trajectory is out, or after the pass gave
+  up: the detection head's decode and its `~/output/detected_objects` message live there,
+  because a consumer of the trajectory should never wait for a message it does not read. Its
+  cost is `~/debug/processing_time/finish_ms`, outside `total_ms`.
 - If a future model cannot fit the 100 ms budget, the intended extension is a double-buffered
   worker thread (collect in the sensor callback, infer+publish on the worker). The provider/engine
   interfaces already keep all state exchange in `TensorMap` values, so this changes only the
@@ -284,7 +298,9 @@ Nothing to do. The new engine's manifest requests a different tensor set; the
 
 Implement `InputProviderInterface` (two methods: `claim_inputs`, `collect`), register it in
 `TensorrtE2eNode::create_providers()`, and enable it via the `sensor_inputs` parameter.
-No changes to the engine wrapper, postprocessing, or existing providers.
+No changes to the engine wrapper, postprocessing, or existing providers. Submit GPU work on
+the stream from `bind_stream()` and return device tensors without synchronizing; put anything
+the trajectory does not need in `finish_tick()`.
 
 ### A model with a different horizon
 

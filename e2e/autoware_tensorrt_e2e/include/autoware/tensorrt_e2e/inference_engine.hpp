@@ -74,10 +74,18 @@ public:
 
   const std::vector<TensorSpec> & input_specs() const { return input_specs_; }
   const std::vector<TensorSpec> & output_specs() const { return output_specs_; }
+  //! The stream every tick runs on. Providers producing device-resident tensors submit
+  //! their work here, so the network reads them in stream order without a host sync.
+  cudaStream_t stream() const { return stream_; }
 
   /**
    * @brief Run inference. Every input spec must be present in `inputs` with a matching element
    * count; extra entries in `inputs` are ignored. Outputs are returned as host tensors.
+   *
+   * Host tensors are staged into one pinned block and cross the bus in as few copies as
+   * their layout allows; a device-resident tensor is read by the network where it already
+   * is, without a copy, when its address is suitably aligned. The only host synchronization
+   * of the call is the one that waits for the outputs.
    */
   Result infer(const TensorMap & inputs);
 
@@ -86,24 +94,39 @@ private:
   {
     TensorSpec spec;
     size_t byte_size{0};
-    autoware::cuda_utils::CudaUniquePtr<uint8_t[]> device;
-    // Outputs only: pinned host buffer for fast async D2H.
-    autoware::cuda_utils::CudaUniquePtrHost<float[]> pinned;
-    // Bool/int32 inputs only: staging buffer for host-side dtype conversion.
-    std::vector<uint8_t> staging;
+    //! Byte offset of this tensor inside its direction's block (256-byte aligned).
+    size_t offset{0};
+    //! This tensor's slot in the device block: where a host tensor lands, and where a
+    //! device tensor that cannot be read in place is copied to.
+    uint8_t * device{nullptr};
+    //! Outputs only: this tensor's slot in the pinned output block.
+    const float * pinned{nullptr};
+    //! The address the network currently reads this tensor from.
+    const void * bound_address{nullptr};
+    //! Inputs only: whether the last transfer filled the pinned staging slot (and so the
+    //! slot must be part of the H2D copy) rather than pointing the network at a device tensor.
+    bool host_fed{false};
   };
-
   void load_engine(const Config & config);
   void introspect_and_bind();
-  /// Copy one input tensor to its device buffer (H2D with dtype conversion, or D2D).
-  /// Returns an error message on failure, empty string on success.
+  /// Point the network at `address` for this binding, if it is not already there.
+  void bind_address(Binding & binding, const void * address);
+  /// Stage one input tensor: host data into the pinned block (with dtype conversion), or a
+  /// device tensor bound in place / copied D2D. Returns an error message, "" on success.
   std::string transfer_input(Binding & binding, const Tensor & tensor);
-
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_;
   std::vector<TensorSpec> input_specs_;
   std::vector<TensorSpec> output_specs_;
   std::vector<Binding> input_bindings_;
   std::vector<Binding> output_bindings_;
+  // One block per direction, so a tick's host inputs go up in one copy per contiguous run
+  // and its outputs come back in one.
+  size_t input_block_bytes_{0};
+  size_t output_block_bytes_{0};
+  autoware::cuda_utils::CudaUniquePtr<uint8_t[]> device_inputs_;
+  autoware::cuda_utils::CudaUniquePtrHost<uint8_t[]> pinned_inputs_;
+  autoware::cuda_utils::CudaUniquePtr<uint8_t[]> device_outputs_;
+  autoware::cuda_utils::CudaUniquePtrHost<uint8_t[]> pinned_outputs_;
   cudaStream_t stream_{nullptr};
 };
 

@@ -20,6 +20,8 @@
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <rclcpp/time.hpp>
 
+#include <cuda_runtime_api.h>
+
 #include <functional>
 #include <optional>
 #include <string>
@@ -65,6 +67,25 @@ public:
   virtual bool collect(
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs, std::string & error) = 0;
 
+  /**
+   * @brief Hand the provider the stream the tick runs on, before `claim_inputs()`.
+   *
+   * A provider that produces device-resident tensors submits its GPU work here. The
+   * engine consumes those tensors on the same stream, so ordering alone guarantees they
+   * are complete when the network reads them, and no provider has to drain the device
+   * with a host synchronization in the middle of the tick. A provider with no GPU work
+   * ignores it. Providers that were never handed a stream keep creating their own.
+   */
+  virtual void bind_stream(cudaStream_t stream) { (void)stream; }
+  /**
+   * @brief Called at the end of every tick, after the trajectory is out -- or after the tick
+   *        gave up, whichever came first.
+   *
+   * Work that is not on the trajectory's path belongs here: a sensor provider that also
+   * publishes what its network detected does the decoding after the trajectory, so a
+   * consumer of the trajectory never waits for a message it does not read.
+   */
+  virtual void finish_tick() {}
   /**
    * @brief Add this provider's key-values to the tick's diagnostics, after a successful collect().
    *

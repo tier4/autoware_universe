@@ -19,6 +19,7 @@
 
 #include <NvInfer.h>
 
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -105,6 +106,23 @@ void InferenceEngine::load_engine(const Config & config)
   introspect_and_bind();
 }
 
+namespace
+{
+//! cudaMalloc's alignment guarantee, and what a tensor address handed to TensorRT has to
+//! satisfy; every slot in a block starts on it so any tensor can be read from its slot.
+constexpr size_t kTensorAlignment = 256;
+
+size_t align_up(const size_t bytes)
+{
+  return (bytes + kTensorAlignment - 1) / kTensorAlignment * kTensorAlignment;
+}
+
+bool is_aligned(const void * address)
+{
+  return reinterpret_cast<uintptr_t>(address) % kTensorAlignment == 0;
+}
+}  // namespace
+
 void InferenceEngine::introspect_and_bind()
 {
   const int32_t num_io = trt_common_->getNbIOTensors();
@@ -134,7 +152,6 @@ void InferenceEngine::introspect_and_bind()
       }
       spec.shape.push_back(dim);
     }
-
     if (is_input && dims.nbDims > 0 && dims.d[0] < 0) {
       nvinfer1::Dims resolved = dims;
       resolved.d[0] = 1;
@@ -146,13 +163,9 @@ void InferenceEngine::introspect_and_bind()
     Binding binding;
     binding.spec = spec;
     binding.byte_size = static_cast<size_t>(spec.num_elements()) * dtype_size(spec.dtype);
-    binding.device = autoware::cuda_utils::make_unique<uint8_t[]>(binding.byte_size);
-
-    if (!trt_common_->setTensorAddress(spec.name.c_str(), binding.device.get())) {
-      throw std::runtime_error("Failed to bind device buffer for engine tensor '" + spec.name + "'");
-    }
-
     if (is_input) {
+      binding.offset = input_block_bytes_;
+      input_block_bytes_ += align_up(binding.byte_size);
       input_specs_.push_back(spec);
       input_bindings_.push_back(std::move(binding));
     } else {
@@ -161,16 +174,48 @@ void InferenceEngine::introspect_and_bind()
           "Engine output tensor '" + spec.name + "' is not float32; only float32 outputs are "
           "supported.");
       }
-      binding.pinned = autoware::cuda_utils::make_unique_host<float[]>(
-        static_cast<size_t>(spec.num_elements()), cudaHostAllocDefault);
+      binding.offset = output_block_bytes_;
+      output_block_bytes_ += align_up(binding.byte_size);
       output_specs_.push_back(spec);
       output_bindings_.push_back(std::move(binding));
     }
   }
-
   if (output_specs_.empty()) {
     throw std::runtime_error("The engine has no output tensors.");
   }
+
+  // One device block and one pinned block per direction. A tick's host tensors are staged
+  // side by side in the pinned block and go up the bus in one copy per contiguous run,
+  // instead of one pageable-memory copy each -- a dozen of those, each of which the
+  // runtime has to stage and wait on, cost more than the bytes they move. The outputs come
+  // back the same way, in one copy.
+  device_inputs_ = autoware::cuda_utils::make_unique<uint8_t[]>(input_block_bytes_);
+  pinned_inputs_ = autoware::cuda_utils::make_unique_host<uint8_t[]>(
+    input_block_bytes_, cudaHostAllocDefault);
+  device_outputs_ = autoware::cuda_utils::make_unique<uint8_t[]>(output_block_bytes_);
+  pinned_outputs_ = autoware::cuda_utils::make_unique_host<uint8_t[]>(
+    output_block_bytes_, cudaHostAllocDefault);
+  for (auto & binding : input_bindings_) {
+    binding.device = device_inputs_.get() + binding.offset;
+    bind_address(binding, binding.device);
+  }
+  for (auto & binding : output_bindings_) {
+    binding.device = device_outputs_.get() + binding.offset;
+    binding.pinned = reinterpret_cast<const float *>(pinned_outputs_.get() + binding.offset);
+    bind_address(binding, binding.device);
+  }
+}
+
+void InferenceEngine::bind_address(Binding & binding, const void * address)
+{
+  if (binding.bound_address == address) {
+    return;
+  }
+  if (!trt_common_->setTensorAddress(binding.spec.name.c_str(), const_cast<void *>(address))) {
+    throw std::runtime_error(
+      "Failed to bind device buffer for engine tensor '" + binding.spec.name + "'");
+  }
+  binding.bound_address = address;
 }
 
 std::string InferenceEngine::transfer_input(Binding & binding, const Tensor & tensor)
@@ -186,38 +231,39 @@ std::string InferenceEngine::transfer_input(Binding & binding, const Tensor & te
     if (spec.dtype != TensorDataType::kFLOAT32) {
       return "Device-resident input '" + spec.name + "' requires a float32 engine tensor";
     }
+    binding.host_fed = false;
+    // The tensor was produced on this stream (InputProviderInterface::bind_stream), so the
+    // network can read it where it is: no copy, and stream order guarantees it is complete.
+    if (is_aligned(tensor.device_data)) {
+      bind_address(binding, tensor.device_data);
+      return "";
+    }
+    // A provider buffer that is not aligned for TensorRT goes through this tensor's slot.
+    bind_address(binding, binding.device);
     CHECK_CUDA_ERROR(cudaMemcpyAsync(
-      binding.device.get(), tensor.device_data, binding.byte_size, cudaMemcpyDeviceToDevice,
-      stream_));
+      binding.device, tensor.device_data, binding.byte_size, cudaMemcpyDeviceToDevice, stream_));
     return "";
   }
 
+  binding.host_fed = true;
+  bind_address(binding, binding.device);
+  uint8_t * staging = pinned_inputs_.get() + binding.offset;
   switch (spec.dtype) {
     case TensorDataType::kFLOAT32: {
-      CHECK_CUDA_ERROR(cudaMemcpyAsync(
-        binding.device.get(), tensor.host_data.data(), binding.byte_size, cudaMemcpyHostToDevice,
-        stream_));
+      std::memcpy(staging, tensor.host_data.data(), binding.byte_size);
       break;
     }
     case TensorDataType::kBOOL: {
-      binding.staging.resize(tensor.host_data.size());
       for (size_t i = 0; i < tensor.host_data.size(); ++i) {
-        binding.staging[i] = tensor.host_data[i] > std::numeric_limits<float>::epsilon() ? 1 : 0;
+        staging[i] = tensor.host_data[i] > std::numeric_limits<float>::epsilon() ? 1 : 0;
       }
-      CHECK_CUDA_ERROR(cudaMemcpyAsync(
-        binding.device.get(), binding.staging.data(), binding.byte_size, cudaMemcpyHostToDevice,
-        stream_));
       break;
     }
     case TensorDataType::kINT32: {
-      binding.staging.resize(tensor.host_data.size() * sizeof(int32_t));
-      auto * staging_i32 = reinterpret_cast<int32_t *>(binding.staging.data());
+      auto * staging_i32 = reinterpret_cast<int32_t *>(staging);
       for (size_t i = 0; i < tensor.host_data.size(); ++i) {
         staging_i32[i] = static_cast<int32_t>(tensor.host_data[i]);
       }
-      CHECK_CUDA_ERROR(cudaMemcpyAsync(
-        binding.device.get(), binding.staging.data(), binding.byte_size, cudaMemcpyHostToDevice,
-        stream_));
       break;
     }
   }
@@ -227,7 +273,6 @@ std::string InferenceEngine::transfer_input(Binding & binding, const Tensor & te
 InferenceEngine::Result InferenceEngine::infer(const TensorMap & inputs)
 {
   Result result;
-
   for (auto & binding : input_bindings_) {
     const auto it = inputs.find(binding.spec.name);
     if (it == inputs.end()) {
@@ -241,18 +286,41 @@ InferenceEngine::Result InferenceEngine::infer(const TensorMap & inputs)
     }
   }
 
-  const bool status = trt_common_->enqueueV3(stream_);
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
-  if (!status) {
+  // Bindings are laid out in manifest order, so consecutive host-fed tensors are one
+  // contiguous span of both blocks: copy each such run at once. Device-fed tensors sit
+  // between runs and are skipped -- a BEV history is tens of megabytes that must never
+  // ride along.
+  const auto flush = [this](const size_t begin, const size_t end) {
+    if (end > begin) {
+      CHECK_CUDA_ERROR(cudaMemcpyAsync(
+        device_inputs_.get() + begin, pinned_inputs_.get() + begin, end - begin,
+        cudaMemcpyHostToDevice, stream_));
+    }
+  };
+  size_t run_begin = 0;
+  size_t run_end = 0;
+  for (const auto & binding : input_bindings_) {
+    if (binding.host_fed) {
+      if (run_end == run_begin) {
+        run_begin = binding.offset;
+      }
+      run_end = binding.offset + binding.byte_size;
+    } else {
+      flush(run_begin, run_end);
+      run_begin = run_end = 0;
+    }
+  }
+  flush(run_begin, run_end);
+
+  if (!trt_common_->enqueueV3(stream_)) {
     result.error_msg = "Failed to enqueue inference";
     return result;
   }
-
-  for (auto & binding : output_bindings_) {
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(
-      binding.pinned.get(), binding.device.get(), binding.byte_size, cudaMemcpyDeviceToHost,
-      stream_));
-  }
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    pinned_outputs_.get(), device_outputs_.get(), output_block_bytes_, cudaMemcpyDeviceToHost,
+    stream_));
+  // The one host synchronization of the tick: everything a provider queued on this stream,
+  // the network, and the output copy have completed when it returns.
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   TensorMap outputs;
@@ -260,10 +328,8 @@ InferenceEngine::Result InferenceEngine::infer(const TensorMap & inputs)
     const size_t count = static_cast<size_t>(binding.spec.num_elements());
     outputs.emplace(
       binding.spec.name,
-      Tensor::from_host(
-        binding.spec.shape, std::vector<float>(binding.pinned.get(), binding.pinned.get() + count)));
+      Tensor::from_host(binding.spec.shape, std::vector<float>(binding.pinned, binding.pinned + count)));
   }
-
   result.outputs = std::move(outputs);
   return result;
 }
