@@ -301,7 +301,6 @@ bool project_boundary(
 
   LateralBoundEntry entry;
   entry.forbidden_side = forbids_left ? Side::LEFT : Side::RIGHT;
-  entry.margin = boundary.margin;
   entry.raw_index = raw_index;
   for (const auto & sl : projected) {
     // Vertices on the other side belong to the folded-back part of the polyline, not to the
@@ -359,7 +358,6 @@ bool project_gate(
   StopBarEntry entry;
   entry.s_stop = *s_stop;
   entry.time = constraint.domain.time;
-  entry.margin = gate.margin;  // copied, not baked in; the consumer applies it to the front
   entry.raw_index = raw_index;
   out.push_back(entry);
   return true;

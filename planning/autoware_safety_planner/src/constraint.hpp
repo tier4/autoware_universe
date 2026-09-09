@@ -32,17 +32,10 @@ namespace autoware::safety_planner
 inline constexpr double INF = std::numeric_limits<double>::infinity();
 
 //! How certain the premise of a constraint is. It selects the constraint set the constraint goes
-//! into: normal = DEFINITE only, cautious = DEFINITE + POSSIBLE. A generator only declares the
-//! certainty of what it emits and does not know how many trajectories are planned.
+//! into: normal = DEFINITE only, cautious = DEFINITE + POSSIBLE.
 enum class Certainty : std::uint8_t {
   DEFINITE,
   POSSIBLE,
-};
-
-//! Origin of a constraint. Used only to group entries in the report; the pipeline ignores it.
-enum class Category : std::uint8_t {
-  SAFETY,
-  TRAFFIC,
 };
 
 //! HARD must be satisfied (no slack). SOFT may be violated with a slack variable, penalized by
@@ -70,12 +63,10 @@ struct Domain
   ArcRange arc{};
 };
 
-//! Identifies the emitter, for reports, diagnostics, markers and PlanningFactor.
 struct Source
 {
   std::string plugin_name;
-  Category category{Category::SAFETY};
-  //! Identifies the entity the constraint is about, and must be **stable across cycles**
+  //! Identifies the entity the constraint is about, and must be stable across cycles
   //! (perception UUID, lanelet id, ...); never an arc length or an array index. Empty means the
   //! constraint has no specific target (vehicle kinematics, ...). Two consumers use it:
   //! - key of the discrete decisions, matching the decision on the same target across cycles
@@ -94,14 +85,12 @@ struct Pose2d
   double yaw{0.0};
 };
 
-//! Pose with a time stamp. t is seconds relative to the planning reference time.
 struct TimedPose
 {
   double t{0.0};
   Pose2d pose{};
 };
 
-//! Polygon with a time stamp. t is seconds relative to the planning reference time.
 struct TimedPolygon
 {
   double t{0.0};
@@ -122,59 +111,40 @@ enum class BoundedQuantity : std::uint8_t {
   STEER_RATE,   //!< |d'|   [rad/s]
 };
 
-//! (i) Scalar box. Without a region it holds everywhere (vehicle kinematics); with one it holds
-//! while base_link is inside the region. An emitter that wants to be conservative inflates the
-//! region itself.
 struct ScalarBound
 {
   BoundedQuantity quantity;
   double min{-INF};  //!< unused (left at -INF) for quantities bounded in absolute value
   double max{+INF};
+
+  // TODO(odashima): need region for lateral range constraint?
   std::optional<Polygon2d> region{};  //!< nullopt = everywhere
 };
 
-//! (ii) Do not cross. A drivable area boundary polyline; the forbidden side is not tagged here,
-//! the consumer decides it from where the polyline lies relative to its own reference path.
-//! Splitting, face selection and arc length assignment are the consumer's job, so the polyline may
-//! stay as the raw map vertices. Static within a cycle and valid for all times.
 struct Boundary
 {
   LineString2d polyline{};  //!< two vertices or more
-  double margin{0.0};       //!< [m] >= 0, the forbidden side is inflated by this much
 };
 
-//! Rigid occupancy: a body-local shape moving along a predicted pose sequence. A single waypoint
-//! means a static object. Poses are interpolated linearly between waypoints (yaw along the shortest
-//! angle); outside the covered time range the occupancy is undefined.
 struct RigidBody
 {
   Polygon2d shape{};                 //!< in body frame
   std::vector<TimedPose> waypoints;  //!< ascending in t, at least one
 };
 
-//! Occupancy given as a sequence of time-varying polygons, for regions that grow or deform (the
-//! reachable set of a possible cut-in, ...). Interpolation between polygons is conservative (the
-//! union of the two neighbors may be used); outside the covered time range it is undefined.
 struct TimedPolygonSequence
 {
   std::vector<TimedPolygon> polygons;  //!< ascending in t, at least one
 };
 
-//! (iii) Do not occupy. The footprint, inflated by the margin, must not intersect the occupancy.
 struct KeepOut
 {
   std::variant<RigidBody, TimedPolygonSequence> occupancy{};
-  double margin_m{0.0};  //!< [m] >= 0, the consumer inflates the footprint by this much
 };
 
-//! (iv) Gate that must not be passed. While the constraint is active (Constraint::domain), the
-//! footprint must not cross the segment towards the forbidden side, which is the left of first ->
-//! second. A gate can be driven around, so it has to be emitted long enough to cover the width it
-//! is meant to block.
 struct Gate
 {
-  Segment2d line{};    //!< directed segment
-  double margin{0.0};  //!< [m] >= 0, extra clearance kept in front of the line
+  Segment2d line{};
 };
 
 using ConstraintPayload = std::variant<ScalarBound, Boundary, KeepOut, Gate>;

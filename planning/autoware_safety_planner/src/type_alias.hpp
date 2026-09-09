@@ -75,8 +75,6 @@ using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Polygon2d;
 using autoware_utils_geometry::Segment2d;
 
-// using TrajectoryClass = PathPointTrajectory;
-
 }  // namespace autoware::safety_planner
 
 #endif  // TYPE_ALIAS_HPP_

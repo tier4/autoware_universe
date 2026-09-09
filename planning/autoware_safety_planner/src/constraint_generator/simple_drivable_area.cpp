@@ -124,8 +124,9 @@ ConstraintGeneratorOutput SimpleDrivableAreaConstraintGenerator::generate_constr
     centerline.push_back(Pose2d{Point2d{position.x, position.y}, path.azimuth(s)});
   }
 
+  // The IR carries no margin, so it narrows the corridor here
   const auto shape = make_drivable_area_shape(
-    centerline, p.half_width_m, p.forward_extension_m, p.backward_extension_m);
+    centerline, p.half_width_m - p.margin_m, p.forward_extension_m, p.backward_extension_m);
   if (shape.left.size() < 2) {
     return output;
   }
@@ -140,10 +141,9 @@ ConstraintGeneratorOutput SimpleDrivableAreaConstraintGenerator::generate_constr
     for (const auto & point : points) {
       boundary.polyline.push_back(point);
     }
-    boundary.margin = p.margin_m;
     constraint.payload = std::move(boundary);
     // The geometry is built from reference_path, so there is no lanelet to point at
-    constraint.source = Source{get_name(), Category::SAFETY, "", detail};
+    constraint.source = Source{get_name(), "", detail};
     output.constraints.push_back(std::move(constraint));
   };
   add_boundary(shape.left, "left_bound");

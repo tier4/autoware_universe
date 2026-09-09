@@ -177,25 +177,21 @@ bool violates_lateral_bound(const LateralBoundEntry & bound, const SlBox & box)
     return false;
   }
   if (bound.forbidden_side == Side::LEFT) {
-    return box.l_max > extreme_l - bound.margin;
+    return box.l_max > extreme_l;
   }
-  return box.l_min < extreme_l + bound.margin;
+  return box.l_min < extreme_l;
 }
 
 bool violates_occupancy(
-  const OccupancyEntry & occupancy, const CompiledConstraints & compiled_constraints,
-  const SlBox & box, const double t0, const double t1)
+  const OccupancyEntry & occupancy, const SlBox & box, const double t0, const double t1)
 {
-  const auto * keep_out =
-    std::get_if<KeepOut>(&compiled_constraints.raw_constraints[occupancy.raw_index].payload);
-  const double margin = keep_out ? keep_out->margin_m : 0.0;
   for (const auto & slab : occupancy.slabs) {
     const bool time_overlaps = slab.t1 >= t0 && slab.t0 <= t1;
     if (!time_overlaps) {
       continue;
     }
-    const bool box_overlaps = slab.s1 + margin >= box.s_min && slab.s0 - margin <= box.s_max &&
-                              slab.l1 + margin >= box.l_min && slab.l0 - margin <= box.l_max;
+    const bool box_overlaps =
+      slab.s1 >= box.s_min && slab.s0 <= box.s_max && slab.l1 >= box.l_min && slab.l0 <= box.l_max;
     if (box_overlaps) {
       return true;
     }
@@ -210,7 +206,7 @@ bool violates_stop_bar(
   if (!time_overlaps) {
     return false;
   }
-  return box.s_max > stop_bar.s_stop - stop_bar.margin;
+  return box.s_max > stop_bar.s_stop;
 }
 
 }  // namespace autoware::safety_planner

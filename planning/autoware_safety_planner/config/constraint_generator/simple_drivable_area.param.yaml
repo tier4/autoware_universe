@@ -4,5 +4,5 @@
       half_width_m: 3.0 # [m] half width of the area to each side of the centerline
       forward_extension_m: 5.0 # [m] extension beyond the end of the path
       backward_extension_m: 5.0 # [m] extension behind the start of the path
-      margin_m: 0.0 # [m] margin by which the forbidden side of a Boundary is inflated
+      margin_m: 0.0 # [m] the corridor is narrowed by this much on each side
       sample_interval_m: 1.0 # [m] spacing of the centerline samples

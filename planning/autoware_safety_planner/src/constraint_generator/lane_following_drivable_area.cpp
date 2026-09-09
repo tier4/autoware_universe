@@ -132,13 +132,38 @@ bool has_parallel_road_lanelet_at(
   return false;
 }
 
+//! Moves every vertex by margin_m towards its foot on the inner polyline (the centerline for a lane
+//! bound, the lane bound for a road_border). The IR carries no margin, so the clearance is baked
+//! into the geometry here. A vertex lying on the inner polyline has no direction and stays put.
+std::vector<Point2d> offset_towards(
+  const std::vector<Point2d> & polyline, const lanelet::ConstLineString3d & inner,
+  const double margin_m)
+{
+  if (!(margin_m > 0.0)) {
+    return polyline;
+  }
+  std::vector<Point2d> offset;
+  offset.reserve(polyline.size());
+  for (const auto & vertex : polyline) {
+    const lanelet::BasicPoint2d q{vertex.x(), vertex.y()};
+    const auto to_inner = closest_point_on_polyline(q, inner) - q;
+    const double dist = to_inner.norm();
+    if (dist <= margin_m) {
+      offset.push_back(vertex);
+      continue;
+    }
+    const auto moved = q + to_inner * (margin_m / dist);
+    offset.emplace_back(moved.x(), moved.y());
+  }
+  return offset;
+}
+
 //! Builds one Boundary constraint. The order of the vertices does not matter: the side the
 //! boundary forbids is decided by the consumer, from where the polyline falls relative to its
 //! reference path.
 Constraint make_boundary_constraint(
-  const std::vector<Point2d> & polyline, const double margin_m, const Hardness hardness,
-  const double slack_weight, const std::string & plugin_name, const std::string & target_id,
-  const std::string & detail)
+  const std::vector<Point2d> & polyline, const Hardness hardness, const double slack_weight,
+  const std::string & plugin_name, const std::string & target_id, const std::string & detail)
 {
   Constraint constraint;
   constraint.certainty = Certainty::DEFINITE;  // the map is a settled premise
@@ -146,9 +171,8 @@ Constraint make_boundary_constraint(
   constraint.slack_weight = hardness == Hardness::SOFT ? slack_weight : 0.0;
   Boundary boundary;
   boundary.polyline.assign(polyline.begin(), polyline.end());
-  boundary.margin = margin_m;
   constraint.payload = std::move(boundary);
-  constraint.source = Source{plugin_name, Category::SAFETY, target_id, detail};
+  constraint.source = Source{plugin_name, target_id, detail};
   return constraint;
 }
 
@@ -262,8 +286,8 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         }
         const auto hardness = adjacent ? Hardness::SOFT : Hardness::HARD;
         output.constraints.push_back(make_boundary_constraint(
-          polyline, margin_m, hardness, bound_slack_weight, get_name(),
-          std::to_string(lanelet.id()), side_left ? "left_bound" : "right_bound"));
+          offset_towards(polyline, lanelet.centerline(), margin_m), hardness, bound_slack_weight,
+          get_name(), std::to_string(lanelet.id()), side_left ? "left_bound" : "right_bound"));
         continue;
       }
 
@@ -282,8 +306,8 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         const auto flush = [&]() {
           if (run.size() >= 2) {
             output.constraints.push_back(make_boundary_constraint(
-              run, margin_m, Hardness::HARD, 0.0, get_name(), std::to_string(border_id),
-              side_left ? "left_road_border" : "right_road_border"));
+              offset_towards(run, bound, margin_m), Hardness::HARD, 0.0, get_name(),
+              std::to_string(border_id), side_left ? "left_road_border" : "right_road_border"));
           }
           run.clear();
         };

@@ -403,9 +403,8 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
       if (stop_bar.time.t1 < 0.0 || stop_bar.time.t0 > horizon) {
         continue;
       }
-      s_stop_target = std::min(
-        s_stop_target,
-        stop_bar.s_stop - stop_bar.margin - context.vehicle_info.max_longitudinal_offset_m);
+      s_stop_target =
+        std::min(s_stop_target, stop_bar.s_stop - context.vehicle_info.max_longitudinal_offset_m);
     }
     s_stop_target = std::max(s_stop_target, initial_state.s);
     const double remaining = s_stop_target - initial_state.s;
@@ -547,15 +546,14 @@ void FrenetSamplingBasedPlanner::evaluate(
       if (!lateral_bound_extreme_l(bound, box.s_min, box.s_max, extreme_l)) {
         continue;
       }
-      const double violation = bound.forbidden_side == Side::LEFT
-                                 ? box.l_max - (extreme_l - bound.margin)
-                                 : (extreme_l + bound.margin) - box.l_min;
+      const double violation =
+        bound.forbidden_side == Side::LEFT ? box.l_max - extreme_l : extreme_l - box.l_min;
       if (violation > 0.0) {
         soft_bound_cost += raw.slack_weight * violation * violation;
       }
     }
     for (const auto & occupancy : compiled_constraints.occupancies) {
-      if (violates_occupancy(occupancy, compiled_constraints, box, t0, t1)) {
+      if (violates_occupancy(occupancy, box, t0, t1)) {
         return reject("occupancy");
       }
     }

@@ -93,6 +93,8 @@ std::vector<Constraint> make_obstacle_keep_out_constraints(
     if (shape.outer().size() < 4) {  // a closed ring of fewer than 4 points has no area
       continue;
     }
+    // The IR carries no margin, so the clearance is baked into the shape
+    shape = autoware_utils_geometry::expand_polygon(shape, margin_m);
 
     const auto initial_pose = to_pose2d(object.kinematics.initial_pose_with_covariance.pose);
     if (!is_finite(initial_pose)) {
@@ -123,10 +125,9 @@ std::vector<Constraint> make_obstacle_keep_out_constraints(
     constraint.certainty = Certainty::DEFINITE;
     // The time window is left at default: outside the times of the waypoints the RigidBody is
     // undefined anyway
-    constraint.payload = KeepOut{RigidBody{std::move(shape), std::move(waypoints)}, margin_m};
+    constraint.payload = KeepOut{RigidBody{std::move(shape), std::move(waypoints)}};
     constraint.source = Source{
-      "obstacle_stop", Category::SAFETY, autoware_utils_uuid::to_hex_string(object.object_id),
-      "dynamic_obstacle"};
+      "obstacle_stop", autoware_utils_uuid::to_hex_string(object.object_id), "dynamic_obstacle"};
     constraints.push_back(std::move(constraint));
   }
   return constraints;
@@ -197,10 +198,9 @@ std::vector<Constraint> make_obstacle_stop_line_constraints(
     constraint.certainty = Certainty::DEFINITE;
     // Gate: left of first -> second is forbidden, so first = left end, second = right end makes
     // the far side (along the path) forbidden
-    constraint.payload = Gate{Segment2d{left, right}, 0.0};
-    constraint.source = Source{
-      "obstacle_stop", Category::SAFETY, autoware_utils_uuid::to_hex_string(object.object_id),
-      "stop_line"};
+    constraint.payload = Gate{Segment2d{left, right}};
+    constraint.source =
+      Source{"obstacle_stop", autoware_utils_uuid::to_hex_string(object.object_id), "stop_line"};
     constraints.push_back(std::move(constraint));
   }
   return constraints;

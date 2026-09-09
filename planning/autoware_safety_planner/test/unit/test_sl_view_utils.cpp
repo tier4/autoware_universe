@@ -97,27 +97,25 @@ TEST(SlViewUtils, ViolatesLateralBound)
   LateralBoundEntry bound;
   bound.polyline = {{0.0, 2.0}, {20.0, 2.0}};
   bound.forbidden_side = Side::LEFT;
-  bound.margin = 0.5;
 
-  EXPECT_FALSE(violates_lateral_bound(bound, SlBox{5.0, 10.0, -1.0, 1.4}));
-  EXPECT_TRUE(violates_lateral_bound(bound, SlBox{5.0, 10.0, -1.0, 1.6}));    // inside the margin
+  EXPECT_FALSE(violates_lateral_bound(bound, SlBox{5.0, 10.0, -1.0, 1.9}));
+  EXPECT_TRUE(violates_lateral_bound(bound, SlBox{5.0, 10.0, -1.0, 2.1}));
   EXPECT_FALSE(violates_lateral_bound(bound, SlBox{30.0, 35.0, -1.0, 5.0}));  // beyond the polyline
 
   bound.forbidden_side = Side::RIGHT;
-  EXPECT_TRUE(violates_lateral_bound(bound, SlBox{5.0, 10.0, 2.4, 3.0}));
-  EXPECT_FALSE(violates_lateral_bound(bound, SlBox{5.0, 10.0, 2.6, 3.0}));
+  EXPECT_TRUE(violates_lateral_bound(bound, SlBox{5.0, 10.0, 1.9, 3.0}));
+  EXPECT_FALSE(violates_lateral_bound(bound, SlBox{5.0, 10.0, 2.1, 3.0}));
 }
 
 TEST(SlViewUtils, ViolatesStopBar)
 {
   StopBarEntry stop_bar;
   stop_bar.s_stop = 50.0;
-  stop_bar.margin = 1.0;
   stop_bar.time = TimeWindow{2.0, 4.0};
 
-  EXPECT_TRUE(violates_stop_bar(stop_bar, SlBox{45.0, 49.5, -1.0, 1.0}, 2.5, 3.0));
-  EXPECT_FALSE(violates_stop_bar(stop_bar, SlBox{45.0, 48.5, -1.0, 1.0}, 2.5, 3.0));
-  EXPECT_FALSE(violates_stop_bar(stop_bar, SlBox{45.0, 49.5, -1.0, 1.0}, 5.0, 6.0));  // inactive
+  EXPECT_TRUE(violates_stop_bar(stop_bar, SlBox{45.0, 50.5, -1.0, 1.0}, 2.5, 3.0));
+  EXPECT_FALSE(violates_stop_bar(stop_bar, SlBox{45.0, 49.5, -1.0, 1.0}, 2.5, 3.0));
+  EXPECT_FALSE(violates_stop_bar(stop_bar, SlBox{45.0, 50.5, -1.0, 1.0}, 5.0, 6.0));  // inactive
 }
 
 }  // namespace autoware::safety_planner

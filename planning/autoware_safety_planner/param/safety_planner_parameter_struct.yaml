@@ -137,7 +137,7 @@ safety_planner:
       type: double
       default_value: 0.0
       read_only: true
-      description: "[m] margin of a Boundary; its forbidden side is inflated by this much"
+      description: "[m] the lane bounds and road_borders are moved this far towards the inside of the lane"
       validation:
         gt_eq<>: [0.0]
     bound_slack_weight:
@@ -153,7 +153,7 @@ safety_planner:
       type: double
       default_value: 0.5
       read_only: true
-      description: "[m] constant margin of a KeepOut; the footprint is inflated by this much"
+      description: "[m] the shape of an object is inflated by this much"
       validation:
         gt_eq<>: [0.0]
     stop_distance_m:
@@ -197,7 +197,7 @@ safety_planner:
       type: double
       default_value: 0.0
       read_only: true
-      description: "[m] margin of a Boundary; its forbidden side is inflated by this much"
+      description: "[m] the corridor is narrowed by this much on each side"
       validation:
         gt_eq<>: [0.0]
     sample_interval_m:

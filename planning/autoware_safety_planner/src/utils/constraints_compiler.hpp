@@ -84,7 +84,6 @@ struct LateralBoundEntry
 {
   std::vector<SlPoint> polyline;    //!< ascending in s
   Side forbidden_side{Side::LEFT};  //!< the side of the reference path the boundary closes off
-  double margin{0.0};               //!< [m] copy of the margin in raw
   std::size_t raw_index{0};
 };
 
@@ -94,13 +93,11 @@ struct StopBarEntry
 {
   double s_stop{0.0};  //!< [m] entry is forbidden beyond this s (evaluated on the footprint front)
   TimeWindow time{};   //!< copy of the time window in raw
-  double margin{0.0};  //!< [m] copy of the margin in raw
   std::size_t raw_index{0};
 };
 
 //! The occupancy of a KeepOut, rounded conservatively into an (s, l) range per time slab: the box
-//! bounding the union of the shapes interpolated at both ends of the slab. The margin is not baked
-//! in; the consumer inflates by KeepOut::margin_m from raw.
+//! bounding the union of the shapes interpolated at both ends of the slab.
 struct OccupancySlab
 {
   double t0{0.0};  //!< [s] time span of the slab

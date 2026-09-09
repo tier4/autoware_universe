@@ -31,7 +31,7 @@ ConstraintGeneratorOutput VehicleKinematicsConstraintGenerator::generate_constra
                      const std::string & detail) {
     Constraint constraint;
     constraint.payload = ScalarBound{quantity, min, max, std::nullopt};
-    constraint.source = Source{"vehicle_kinematics", Category::SAFETY, "", detail};
+    constraint.source = Source{"vehicle_kinematics", "", detail};
     output.constraints.push_back(std::move(constraint));
   };
 

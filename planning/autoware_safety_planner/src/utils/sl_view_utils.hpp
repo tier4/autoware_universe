@@ -75,7 +75,7 @@ Pose2d to_world_pose(const PathPointTrajectory & path, double s, double l);
 
 //! Box bounding the footprint in (s, l): the conservative approximation the projected views are
 //! evaluated with. The heading is taken as the one of the centerline, and the growth from the
-//! heading deviation is absorbed by the margins.
+//! heading deviation is not compensated.
 struct SlBox
 {
   double s_min{0.0};
@@ -103,14 +103,11 @@ double interpolate_boundary_l(const std::vector<SlPoint> & polyline, double s);
 bool lateral_bound_extreme_l(
   const LateralBoundEntry & bound, double s_lo, double s_hi, double & extreme_l);
 
-//! Whether the footprint box reaches into the forbidden side of the boundary, margin included
+//! Whether the footprint box reaches into the forbidden side of the boundary
 bool violates_lateral_bound(const LateralBoundEntry & bound, const SlBox & box);
 
-//! Whether the footprint box overlaps an occupancy slab during [t0, t1], inflated by
-//! KeepOut::margin_m
-bool violates_occupancy(
-  const OccupancyEntry & occupancy, const CompiledConstraints & compiled_constraints,
-  const SlBox & box, double t0, double t1);
+//! Whether the footprint box overlaps an occupancy slab during [t0, t1]
+bool violates_occupancy(const OccupancyEntry & occupancy, const SlBox & box, double t0, double t1);
 
 //! Whether the front of the footprint passes a stop line that is active during [t0, t1]
 bool violates_stop_bar(const StopBarEntry & stop_bar, const SlBox & box, double t0, double t1);
