@@ -426,6 +426,10 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
   if (min_optimization_length_it != kv.end()) {
     options.min_optimization_length = min_optimization_length_it->second;
   }
+  const auto min_trajectory_progress_it = kv.find("min_trajectory_progress_m");
+  if (min_trajectory_progress_it != kv.end()) {
+    options.min_trajectory_progress_m = min_trajectory_progress_it->second;
+  }
   options.ignore_obstacles = as_bool("ignore_obstacles", options.ignore_obstacles);
   options.ignore_road_borders = as_bool("ignore_road_borders", options.ignore_road_borders);
   options.ignore_drivable_area = as_bool("ignore_drivable_area", options.ignore_drivable_area);

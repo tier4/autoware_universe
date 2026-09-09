@@ -702,6 +702,9 @@ TEST_F(DistanceMapGpuTest, OutOfBoundsProjectionRetainsAnalyticalFallback)
 
 TEST_F(DistanceMapGpuTest, AdversarialProjectionMatchesHostWithAndWithoutPersistentHints)
 {
+  TestParams params = distanceOnlyParams();
+  params.lateral_distance_coeff = 1.0F;
+  cost_->setParams(params);
   for (const auto & c : autoware::mppi_optimizer::projection_test::cases()) {
     SCOPED_TRACE(c.name);
     std::vector<float> velocity(c.x.size());

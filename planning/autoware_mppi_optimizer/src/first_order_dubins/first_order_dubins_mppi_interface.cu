@@ -882,6 +882,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
   float min_optimization_length{0.0F};
+  float min_trajectory_progress_m{0.0F};
   /** Warm-start u_nom from shifted previous u_opt when available. */
   bool use_last_control_as_nominal{false};
   /** Cold-seed u_nom from acados temporal MPT instead of geometric diffusion seed. */
@@ -2025,7 +2026,16 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     if (!impl_) {
       throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
     }
+    if (
+      !std::isfinite(options.min_trajectory_progress_m) ||
+      options.min_trajectory_progress_m < 0.0F) {
+      throw std::invalid_argument("min_trajectory_progress_m must be finite and non-negative");
+    }
     impl_->prevent_reverse_velocity = options.prevent_reverse_velocity;
+    impl_->use_temporal_mpt_as_nominal = options.use_temporal_mpt_as_nominal;
+    impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
+    impl_->min_optimization_length = options.min_optimization_length;
+    impl_->min_trajectory_progress_m = options.min_trajectory_progress_m;
     setDebugTrajectoryLogging(
       options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
     impl_->cost.setDistanceMapTextureDebugEnabled(options.enable_distance_map_texture_debug);
@@ -2041,9 +2051,6 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     if (!impl_) {
       throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
     }
-    impl_->use_temporal_mpt_as_nominal = options.use_temporal_mpt_as_nominal;
-    impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
-    impl_->min_optimization_length = options.min_optimization_length;
     impl_->dyn.prevent_reverse_velocity = options.prevent_reverse_velocity;
     if (impl_->initialized) {
       impl_->syncDelayStepsToModel();
@@ -2094,10 +2101,12 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   RCLCPP_INFO(
     mppiLogger(),
     "MPPI ablation options: ignore_obstacles=%s ignore_road_borders=%s ignore_drivable_area=%s "
-    "force_cold_start_each_step=%s skip_if_invalid=%s use_last_control_as_nominal=%s",
+    "force_cold_start_each_step=%s skip_if_invalid=%s min_trajectory_progress_m=%.2f "
+    "use_last_control_as_nominal=%s",
     ignore_obstacles ? "true" : "false", ignore_road_borders ? "true" : "false",
     ignore_drivable_area ? "true" : "false", force_cold_start_each_step ? "true" : "false",
-    skip_if_invalid ? "true" : "false", use_last_control_as_nominal ? "true" : "false");
+    skip_if_invalid ? "true" : "false", impl_->min_trajectory_progress_m,
+    use_last_control_as_nominal ? "true" : "false");
   FirstOrderDubinsMppiRuntimeOptions runtime{};
   runtime.ignore_obstacles = ignore_obstacles;
   runtime.ignore_road_borders = ignore_road_borders;
@@ -2105,6 +2114,7 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   runtime.force_cold_start_each_step = force_cold_start_each_step;
   runtime.skip_if_invalid = skip_if_invalid;
   runtime.min_optimization_length = impl_->min_optimization_length;
+  runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
   runtime.use_last_control_as_nominal = use_last_control_as_nominal;
   runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
   runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
@@ -2400,7 +2410,8 @@ try {
 
   // Validate every published optimized state, including reconstructed x[H]. Obstacle slot i
   // represents the same post-step time (i + 1) * dt as optimized_states[i].
-  auto validation = detail::validateOptimizedTrajectory(impl_->cost, optimized_states);
+  auto validation = detail::validateOptimizedTrajectory(
+    impl_->cost, optimized_states, impl_->min_trajectory_progress_m);
   if (no_eligible_rollouts) {
     validation.reasons =
       validation.reasons | FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts;
@@ -2493,6 +2504,7 @@ try {
       runtime.force_cold_start_each_step = impl_->force_cold_start_each_step;
       runtime.skip_if_invalid = impl_->skip_if_invalid;
       runtime.min_optimization_length = impl_->min_optimization_length;
+      runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
       runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
       runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
       runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
