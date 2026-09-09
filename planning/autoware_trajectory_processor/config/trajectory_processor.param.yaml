@@ -2,6 +2,7 @@
   ros__parameters:
     # Complete plugin execution order: modifiers followed by optimizers.
     plugin_names:
+      - "autoware::trajectory_processor::plugin::MapVelocityLimits"
       - "autoware::trajectory_processor::plugin::TrajectoryTimeSequenceRawOptimizer"
       - "autoware::trajectory_processor::plugin::StopPointFixer"
       - "autoware::trajectory_processor::plugin::SurroundObstacleStop"
@@ -18,6 +19,9 @@
       - "autoware::trajectory_processor::plugin::TrajectorySplineSmoother"
       - "autoware::trajectory_processor::plugin::TrajectoryMPTOptimizer"
       - "autoware::trajectory_processor::plugin::TrajectoryExtender"
+    use_map_velocity_limits: true
+    map_velocity_limits:
+      enable_smoothing: true
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
@@ -176,3 +180,7 @@
       hysteresis_distance: 0.1
       hysteresis_time: 0.2
       ego_stopped_vel_th: 0.1 # [m/s]
+
+    map_velocity_limits:
+      limit_velocity_from_map_debug_lanelet_ids: [0]
+      limit_velocity_from_map_debug_max_velocities: [1000.0]

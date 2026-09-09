@@ -6,6 +6,29 @@
     "trajectory_processor": {
       "type": "object",
       "properties": {
+        "map_velocity_limits": {
+          "type": "object",
+          "properties": {
+            "enable_smoothing": {
+              "type": "boolean",
+              "default": true,
+              "description": "Smooth unreachable velocities with constant deceleration from the current velocity"
+            },
+            "limit_velocity_from_map_debug_lanelet_ids": {
+              "type": "array",
+              "items": { "type": "integer" },
+              "default": [],
+              "description": "Lanelet IDs whose map velocity limits are overridden when map limiting is enabled"
+            },
+            "limit_velocity_from_map_debug_max_velocities": {
+              "type": "array",
+              "items": { "type": "number", "minimum": 0.0 },
+              "default": [],
+              "description": "Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs"
+            }
+          },
+          "additionalProperties": false
+        },
         "plugin_names": {
           "type": "array",
           "description": "Ordered list of modifier and optimizer plugin class names",
@@ -29,6 +52,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "use_map_velocity_limits": {
+          "type": "boolean",
+          "description": "Enable the map velocity limits plugin",
+          "default": true
         },
         "use_stop_point_fixer": {
           "type": "boolean",
@@ -838,6 +866,7 @@
               },
               "required": [],
               "additionalProperties": false
+            }
           },
           "required": [],
           "additionalProperties": false
