@@ -423,6 +423,11 @@ trajectory at the first state that has any of these conditions:
 - ego OBB (inflated by `road_border_collision_margin`) intersects a road-border segment;
 - velocity is negative.
 
+When `min_trajectory_progress_m > 0`, validation also projects the first and last optimized
+post-step states onto the lateral corridor (or reference fallback). It reports
+`insufficient_progress` when `last_s - first_s` is below the configured distance. A value of zero
+disables this trajectory-level condition. Equality passes.
+
 This validation does not add `crash_contact_penalty` to rollouts. The rollout cost now sets its
 `crash_status` safety flag when it detects lateral-boundary contact, obstacle contact, or road-border
 contact. The flag is reduced to `unsafe_rollout_fraction` for temperature adaptation; it does not
