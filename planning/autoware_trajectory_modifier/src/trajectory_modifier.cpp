@@ -112,8 +112,11 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
   std::string modified_plugins_str;
   for (auto & trajectory : output_trajectories.candidate_trajectories) {
     for (auto & modifier : plugins_) {
-      if (!modifier->modify_trajectory(trajectory.points, input)) continue;
+      const bool modified = modifier->modify_trajectory(trajectory.points, input);
+      // Always publish so inspection-only plugins (ModelPlanningFactorID) can emit factors
+      // without mutating the trajectory. An empty publish also clears stale factors.
       modifier->publish_planning_factor();
+      if (!modified) continue;
       const auto ns = "trajectory_" + std::to_string(trajectory_count);
       modifier->publish_debug_data(ns);
       if (!modified_plugins_str.empty()) modified_plugins_str += ", ";

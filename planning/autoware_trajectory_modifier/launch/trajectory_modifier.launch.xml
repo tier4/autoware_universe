@@ -21,5 +21,10 @@
     <remap from="~/input/vector_map" to="$(var input_vector_map)"/>
     <remap from="~/input/traffic_signals" to="$(var input_traffic_signals)"/>
     <remap from="~/output/candidate_trajectories" to="$(var output_candidate_trajectories)"/>
+    <!-- ModelPlanningFactorID publishes /planning/planning_factors/planning_model.
+         Remap onto neural_network_planner so RViz / bags keep a stable topic.
+         Factor.module (RViz red-wall reason) stays planning_model. -->
+    <remap from="/planning/planning_factors/planning_model"
+           to="/planning/planning_factors/neural_network_planner"/>
   </node>
 </launch>
