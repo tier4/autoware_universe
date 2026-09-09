@@ -270,6 +270,16 @@ are published, mirroring the diffusion planner topics.
   worker thread (collect in the sensor callback, infer+publish on the worker). The provider/engine
   interfaces already keep all state exchange in `TensorMap` values, so this changes only the
   node orchestration.
+- Tried and not adopted, measured 2026-09-09 on the 619-layer ResWorld planner:
+  - Replaying the engine's tick as a **CUDA graph** (input copies, `enqueueV3`, output copy
+    captured once and relaunched): 11.2 ms of inference without it, 11.5 ms with it, over 560
+    ticks each. The stage is GPU-bound and its kernels already run back to back; there was no
+    launch gap for a graph to remove, so the capture machinery was removed.
+  - Building the planner engine in **fp16**: the TensorRT 10.16 builder segfaults on this
+    graph (`build_only:=true`, 16 GiB workspace, the fp32 build of the same graph succeeds).
+    The exporter's own note -- embedded normalization statistics exceed the fp16 range -- is
+    the reason the ml_package pins fp32; fp16 for this planner is an exporter-side change,
+    not a deployment switch.
 
 ### Separation between model architecture and deployment parameters
 
