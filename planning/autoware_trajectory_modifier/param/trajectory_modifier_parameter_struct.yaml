@@ -3,6 +3,7 @@ trajectory_modifier_params:
     type: string_array
     default_value:
       [
+        autoware::trajectory_modifier::plugin::ModelPlanningFactorID,
         autoware::trajectory_modifier::plugin::ObstacleStop,
         autoware::trajectory_modifier::plugin::TrafficLightStop,
         autoware::trajectory_modifier::plugin::StopPointFixer,
@@ -29,6 +30,11 @@ trajectory_modifier_params:
     type: bool
     default_value: true
     description: Enable the use of velocity modifier
+    read_only: false
+  use_model_planning_factor_id:
+    type: bool
+    default_value: true
+    description: Enable model-planning-factor-id stop/slowdown planning-factor labeling
     read_only: false
   trajectory_time_step:
     type: double
@@ -442,3 +448,36 @@ trajectory_modifier_params:
         default_value: true
         description: Reject if we detect a previous stop attempt from input trajectory
         read_only: false
+
+  model_planning_factor_id:
+    enable_stop:
+      type: bool
+      default_value: true
+      description: Publish STOP planning factors inferred from the planner trajectory
+      read_only: false
+    enable_slowdown:
+      type: bool
+      default_value: false
+      description: Publish SLOW_DOWN planning factors inferred from the planner trajectory
+      read_only: false
+    stop_velocity_threshold:
+      type: double
+      default_value: 0.1
+      description: Velocity at or below which a trajectory point is treated as stopped [m/s]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 10.0]
+    stop_keep_duration_threshold:
+      type: double
+      default_value: 1.0
+      description: Minimum duration the trajectory must remain stopped to accept the stop [s]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 10.0]
+    slowdown_accel_threshold:
+      type: double
+      default_value: -0.3
+      description: Acceleration below which a slowdown section starts [m/s^2]
+      read_only: false
+      validation:
+        bounds<>: [-10.0, 0.0]
