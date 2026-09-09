@@ -181,6 +181,13 @@ single host synchronization is the engine's wait for its outputs. A device-resid
 produced on that stream is read by the network where it is, without a copy; host tensors are
 staged into one pinned block and cross the bus in one copy per contiguous run.
 
+Not adopted, measured 2026-09-09: replaying the engine's tick as a CUDA graph (input copies,
+`enqueueV3`, output copy captured once and relaunched). On the 619-layer ResWorld planner the
+inference stage read 11.2 ms without the graph and 11.5 ms with it over 560 ticks each -- the
+stage is GPU-bound, its kernels already run back to back, and there was no launch gap for a
+graph to remove. The capture machinery was removed rather than left in as a default-on
+feature that buys nothing.
+
 Missing sensor data is reported as a warning and skips that pass. Initialization errors
 disable inference and publish an error diagnostic. A pass taking longer than the interval
 the sensor actually delivered raises a warning, so an output-rate regression is visible
