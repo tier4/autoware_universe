@@ -233,11 +233,22 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<std::string>("ego_snap_to_prev_trajectory.limit_mode", "bound");
   params_.ego_snap_to_prev_trajectory.snap_strength =
     this->declare_parameter<double>("ego_snap_to_prev_trajectory.snap_strength", 0.9);
+  // Reject an out-of-range or non-finite value before the cap can turn it into something valid.
+  {
+    const double raw = params_.ego_snap_to_prev_trajectory.snap_strength;
+    if (!std::isfinite(raw) || raw < 0.0 || raw > 1.0) {
+      throw std::runtime_error(
+        "ego_snap_to_prev_trajectory.snap_strength must be in [0, 1] (values above 0.95 are "
+        "clipped to 0.95)");
+    }
+  }
   if (params_.ego_snap_to_prev_trajectory.snap_strength > kMaxSnapStrength) {
     RCLCPP_WARN(
       get_logger(),
-      "ego_snap_to_prev_trajectory.snap_strength=%.3f exceeds %.2f; clipping to %.2f. Above this the "
-      "virtual pose carries none of the localized pose and the gap to the trajectory is not closed.",
+      "ego_snap_to_prev_trajectory.snap_strength=%.3f exceeds %.2f; clipping to %.2f. Above this "
+      "the "
+      "virtual pose carries none of the localized pose and the gap to the trajectory is not "
+      "closed.",
       params_.ego_snap_to_prev_trajectory.snap_strength, kMaxSnapStrength, kMaxSnapStrength);
     params_.ego_snap_to_prev_trajectory.snap_strength = kMaxSnapStrength;
     this->set_parameter(
@@ -446,7 +457,8 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(
       parameters, "guidance.centerline_guidance.start_time_s",
       temp_params.centerline_guidance_start_time_s);
-    if (const std::string reason = validate_ego_snap_params(temp_params.ego_snap_to_prev_trajectory);
+    if (const std::string reason =
+          validate_ego_snap_params(temp_params.ego_snap_to_prev_trajectory);
         !reason.empty()) {
       SetParametersResult result;
       result.successful = false;
