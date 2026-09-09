@@ -96,6 +96,7 @@ ignore_drivable_area: true
 force_cold_start_each_step: true
 min_optimization_length: 0.0
 use_last_control_as_nominal: true
+nominal_initial_steering_max_deviation_rad: 0.1
 ```
 
 Then restart the trajectory processor and compare live MPPI to offline retune.
@@ -113,6 +114,10 @@ Notes:
 - `use_last_control_as_nominal` warm-starts `u_nom` from the previous applied MPPI result when its
   timestamp, plant replay, and shifted reference remain continuous. The elapsed timestamp selects
   the shift count, and the current diffusion seed fills the newly exposed tail.
+- `nominal_initial_steering_max_deviation_rad` limits `u_nom[0]` around the steering predicted when
+  that command reaches the actuator after the existing steering-delay queue. A discontinuous
+  reused horizon is discarded before the current-reference seed is clamped; `0.0` disables the
+  guard.
 
 ### Replay only
 

@@ -600,6 +600,47 @@ TEST(NominalControlFilter, LeavesNominalExactlyUnchangedWithoutExternalLimits)
   }
 }
 
+TEST(NominalSteeringContinuity, ClampsFirstCommandAroundMeasuredSteeringWithoutDelay)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.max_steer_angle = 0.5F;
+
+  const auto result = guardInitialNominalSteeringCommand(0.4F, -0.2F, vehicle, 0, {}, 0.1F, 0.1F);
+
+  EXPECT_TRUE(result.active);
+  EXPECT_TRUE(result.clamped);
+  EXPECT_FLOAT_EQ(result.application_steering_rad, -0.2F);
+  EXPECT_FLOAT_EQ(result.unguarded_command_rad, 0.4F);
+  EXPECT_FLOAT_EQ(result.guarded_command_rad, -0.1F);
+}
+
+TEST(NominalSteeringContinuity, AnchorsToDelayPredictedApplicationSteering)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.max_steer_angle = 0.5F;
+  vehicle.steer_time_constant = 0.2F;
+  vehicle.steer_rate_lim = 10.0F;
+
+  const auto result =
+    guardInitialNominalSteeringCommand(-0.4F, 0.0F, vehicle, 2, {0.2F, 0.2F}, 0.05F, 0.1F);
+
+  EXPECT_TRUE(result.active);
+  EXPECT_TRUE(result.clamped);
+  EXPECT_NEAR(result.application_steering_rad, 0.15F, 1.0E-6F);
+  EXPECT_NEAR(result.guarded_command_rad, 0.1F, 1.0E-6F);
+}
+
+TEST(NominalSteeringContinuity, DisabledGuardPreservesCommandExactly)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+
+  const auto result = guardInitialNominalSteeringCommand(0.4F, -0.2F, vehicle);
+
+  EXPECT_FALSE(result.active);
+  EXPECT_FALSE(result.clamped);
+  EXPECT_FLOAT_EQ(result.guarded_command_rad, 0.4F);
+}
+
 TEST(NominalControlFilter, ClampsAccelerationAndAppliesJerkAtCommandApplicationTime)
 {
   const std::vector<FirstOrderDubinsMppiControl> nominal = {{-3.0F, 0.2F}, {3.0F, -0.3F}};
