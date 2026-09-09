@@ -351,6 +351,60 @@ trajectory_mppi_optimizer:
     default_value: true
     description: Warm-start MPPI u_nom from the previous optimized control (ignored when t-MPT seeds u_nom)
     read_only: false
+  last_control_warm_start_max_age_s:
+    type: double
+    default_value: 0.5
+    description: Maximum elapsed time for reusing an accepted MPPI control horizon
+    validation: { gt<>: [0.0] }
+    read_only: false
+  last_control_warm_start_max_position_error_m:
+    type: double
+    default_value: 0.75
+    description: Maximum plant replay position error for reusing an accepted horizon
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  last_control_warm_start_max_yaw_error_rad:
+    type: double
+    default_value: 0.35
+    description: Maximum absolute plant replay yaw error for reusing an accepted horizon
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  last_control_warm_start_max_velocity_error_mps:
+    type: double
+    default_value: 2.0
+    description: Maximum absolute plant replay velocity error for reusing an accepted horizon
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  last_control_warm_start_max_reference_position_error_m:
+    type: double
+    default_value: 1.0
+    description: Maximum pointwise position change in the shifted reference prefix
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  last_control_warm_start_max_reference_yaw_error_rad:
+    type: double
+    default_value: 0.35
+    description: Maximum pointwise yaw change in the shifted reference prefix
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  last_control_warm_start_max_reference_velocity_error_mps:
+    type: double
+    default_value: 2.0
+    description: Maximum pointwise velocity change in the shifted reference prefix
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  last_control_warm_start_stop_enter_velocity_mps:
+    type: double
+    default_value: 0.03
+    description: Absolute ego velocity at which warm-start reuse enters the stopped state
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  last_control_warm_start_stop_exit_velocity_mps:
+    type: double
+    default_value: 0.08
+    description: Absolute ego velocity at which warm-start reuse leaves the stopped state
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   enable_curvature_adaptive_steering_filter:
     type: bool
     default_value: true
