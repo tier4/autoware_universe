@@ -130,9 +130,22 @@ in parameters (`camera.num_cameras`, topic remaps).
 - Optionally claims `camera_intrinsics` (`[1, N, 3, 3]`, from `camera_info`, rescaled to the
   model resolution) and `camera2ego` (`[1, N, 4, 4]`, from TF) when the engine requests them.
 
+Precision belongs to the model, so the engine lets the graph decide it. `precision: "fp16"` sets
+the builder flag; on an all-float32 graph that means any layer may run in half, which is how the
+BEV extractor builds. A graph whose float tensors are partly float16 has had its precision chosen
+by the exporter (OnePlanner's fp16-core / fp32-rim pass keeps the metric coordinates at the
+graph's two ends in float32 and the transformer between them in float16). Under the flag alone
+the builder would be free to run those float32 layers in half too, so `obey_graph_precision()`
+pins every layer to the dtype of its outputs and sets `kOBEY_PRECISION_CONSTRAINTS`; the engine
+then computes exactly what the exporter validated. With `precision: "fp32"` such a graph is
+upcast and runs slower than intended, and the node says so at startup. The node adds no precision
+knowledge of its own: no layer names, no hop counts, nothing model-specific.
+
 The Autoware camera IDs (e.g. xx1's `camera1` = `CAM_FRONT_WIDE`) appear **only** in launch
 remaps, mirroring the `autoware_to_vad_camera_mapping` design of `autoware_tensorrt_vad`:
 changing the vehicle's camera numbering touches no code.
+
+## Input provider contract
 
 #### `LidarInputProvider` — prototype 3
 
@@ -275,18 +288,23 @@ are published, mirroring the diffusion planner topics.
     captured once and relaunched): 11.2 ms of inference without it, 11.5 ms with it, over 560
     ticks each. The stage is GPU-bound and its kernels already run back to back; there was no
     launch gap for a graph to remove, so the capture machinery was removed.
-  - Building the planner engine in **fp16**: 7.5 ms -> 4.1 ms for the planner alone
-    (standalone bench, 200 iterations), 11.2 ms -> 7.2 ms for the node's inference stage and
-    14.1 ms -> 9.9 ms for the whole tick on a prdjt replay (median over ~550 ticks). Against
-    the fp32 engine on the same bag the trajectories differ by 1.2 cm mean, 30 cm p99 of the
-    per-frame maximum, 5 frames of 384 above 20 cm at 10 m/s -- but two fp32 replays of the
-    same bag already differ by 0.7 cm mean, 17 cm p99, 3 frames above 20 cm, so fp16 adds
-    little on top of the replay's own run-to-run spread. The one constant outside the fp16
-    range is the attention mask's `-inf` (clipped to -65504, harmless). Not adopted here
-    because accuracy is the exporter's call: OnePlanner validates the graph on the T4
-    dataset, and its ml_package file is where fp16 gets declared. A note in this file used to
-    say the fp16 build segfaults; that was the build host's CPU (see the paragraph after
-    this list), not TensorRT.
+  - Building the planner engine in **fp16 from the builder flag alone**: 7.5 ms -> 4.1 ms for
+    the planner (standalone bench), 11.2 ms -> 7.2 ms for the node's inference stage and
+    14.1 ms -> 9.9 ms for the tick on a prdjt replay, but the trajectory moves by up to 3.0 cm
+    against fp32 on identical inputs. The error grows linearly along the horizon (0.4 cm at the
+    first point, 2.3 cm mean at the last): it is float16 quantization of metric coordinates at the
+    graph's two ends (input normalization, output denormalization `x*19.2+20.8`), not the
+    transformer. What replaced it is the exporter writing the precision into the graph
+    (OnePlanner `mixed_precision.py`, `export_resworld_onnx.py --fp16-core`): every node within
+    3 hops of a metric input and 15 hops of an output stays float32, the rest is float16, and
+    this node obeys the tensor types (see "Engine IO manifest"). Measured on the node-built
+    engine: 4.1 ms, trajectory within 0.42 cm of fp32. Widening the rim to 25 output hops or
+    adding the BEV input to it measured no further gain (0.39 cm at 4.1 ms; 0.58 cm at 4.45 ms);
+    pinning every LayerNormalization/Softmax on top cost 0.7 ms for nothing. On bag replays the
+    difference between any two of these engines is below the replay's own fp32 run-to-run
+    spread (0.7-4.7 cm mean across prdjt splits), so the ranking above comes from the
+    deterministic offline bench. Switching the deployed package is an ml_package change
+    (`precision: "fp16"` with the typed graph), decided by the exporter's validation, not here.
   - TensorRT's **auxiliary streams** (`setMaxAuxStreams(2)`) and **builder optimization
     level 5**: both build (35 s each, same as the default) and neither is faster -- 7.44 ms
     and 7.50 ms against 7.46 ms for the default one-stream level-3 engine. Myelin already

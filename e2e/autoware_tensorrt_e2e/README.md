@@ -34,9 +34,11 @@ configuration file:
 | `bevfusion_lidar_feature.onnx` | The production BEVFusion lidar branch exported with its `bev_feature` map `[1, 512, 180, 180]` as the output, and the frozen BEVFusion detection head beside it (`bbox_pred`, `score`, `label_pred`; see [Detection head](#detection-head)). Carries the sparse-convolution custom nodes, so its engine needs `autoware_tensorrt_plugins` and an `spconv` build for this GPU. |
 | `ml_package_resworld.param.yaml` | The whole network description, generated from those graphs and the exporter's contract (see [Configuration layout](#configuration-layout)). The copy under `config/` is a reference; the node reads the one beside the artifacts. |
 
-The planner runs in fp32 because that is the precision OnePlanner validates it at; an fp16
-build works and is about 40% faster on this graph (numbers in `docs/design.md`), and it is
-declared in the ml_package file when the exporter signs off on it. The extractor runs in fp16. The ResWorld graph
+The planner runs in fp32 until OnePlanner ships it typed: its exporter can write a float16
+core with a float32 rim into the graph (`--fp16-core`), which this node builds at the speed of
+pure fp16 with the trajectory within half a centimetre of fp32 (numbers in `docs/design.md`);
+the ml_package file generated for such a graph says `precision: "fp16"`. The extractor runs in
+fp16. The ResWorld graph
 declares a `turn_indicators` input it never reads (perturbing it changes no output), so its
 ml_package file sets `context.turn_indicators.enabled: false` and the node subscribes to
 nothing for it.
@@ -251,7 +253,10 @@ ros2 launch autoware_tensorrt_e2e <launch file> \
 One file describes the network, and the node reads no other. Everything the runtime needs
 about a model is in its ml_package file: which providers it needs, its tensor names, its
 voxelization geometry, its history length and cadence, its horizon and its validated
-precision.
+precision. A graph can also carry its precision itself: when the exporter has written a
+float16 core with a float32 rim into the ONNX, `precision: "fp16"` makes the node pin every
+layer to its tensor type and the builder obey it, so the engine runs exactly the split the
+exporter validated rather than whatever the FP16 flag would pick.
 
 This package does not produce that file, or the graphs beside it. It receives artifacts
 that are already prepared and runs them; exporting a checkpoint, freezing the graph's batch
