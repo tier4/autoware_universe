@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__FRENET_SAMPLER__FRENET_SAMPLER_HPP_
-#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__FRENET_SAMPLER__FRENET_SAMPLER_HPP_
+#ifndef TRAJECTORY_PLANNER__FRENET_SAMPLING_BASED_PLANNER__FRENET_SAMPLING_BASED_PLANNER_HPP_
+#define TRAJECTORY_PLANNER__FRENET_SAMPLING_BASED_PLANNER__FRENET_SAMPLING_BASED_PLANNER_HPP_
 
 // Sampling based trajectory planner plugin, following the Frenet path sampling of
 // sampling_based_planner / autoware_path_sampler. Path and velocity are sampled separately:
@@ -32,8 +32,9 @@
 // Why not sample l(t) directly: starting from standstill both s and l would rise as t^3, which puts
 // the initial heading off the ego heading and rejects every candidate in the kinematic check.
 
+#include "../../utils/constraints_compiler.hpp"
 #include "../../utils/sl_view_utils.hpp"
-#include "../nlp_planner/constraints_compiler.hpp"
+#include "../../utils/trajectory_conversion.hpp"
 #include "../trajectory_planner_interface.hpp"
 
 #include <optional>
@@ -46,7 +47,7 @@ namespace autoware::safety_planner
 class FrenetSamplingBasedPlanner : public TrajectoryPlannerInterface
 {
 public:
-  std::string get_name() const override { return "frenet_sampler"; }
+  std::string get_name() const override { return "frenet_sampling_based_planner"; }
 
   TrajectoryPlannerResult plan(const TrajectoryPlannerInput & input) override;
 
@@ -133,8 +134,13 @@ private:
   void append_debug_markers(
     const PlannerContext & context, const std::vector<Candidate> & candidates,
     MarkerArray & debug_markers) const;
+
+  //! The lateral bounds of the projected views, drawn at a constant spacing along the
+  //! reference_path as thin lines from the centerline to each boundary along the normal
+  MarkerArray make_lateral_bounds_markers(
+    const PlannerContext & context, const CompiledConstraints & compiled_constraints) const;
 };
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__FRENET_SAMPLER__FRENET_SAMPLER_HPP_
+#endif  // TRAJECTORY_PLANNER__FRENET_SAMPLING_BASED_PLANNER__FRENET_SAMPLING_BASED_PLANNER_HPP_

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__CONTEXT_HPP_
-#define AUTOWARE__SAFETY_PLANNER__CONTEXT_HPP_
+#ifndef CONTEXT_HPP_
+#define CONTEXT_HPP_
 
 #include "type_alias.hpp"
 
@@ -23,7 +23,6 @@
 namespace autoware::safety_planner
 {
 
-//! What the node collects every cycle. Building the reference_path is SafetyPlanner's job.
 struct SafetyPlannerInput
 {
   VehicleInfo vehicle_info;
@@ -35,8 +34,6 @@ struct SafetyPlannerInput
   PredictedObjects::ConstSharedPtr predicted_objects;
 };
 
-//! SafetyPlannerInput plus the reference_path, as handed to the plugins. RouteManager is move-only
-//! so the input cannot be copied; it is held by reference and lives for one SafetyPlanner::plan.
 struct PlannerContext
 {
   explicit PlannerContext(const SafetyPlannerInput & input, PathPointTrajectory reference_path)
@@ -72,4 +69,4 @@ struct PlannerContext
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__CONTEXT_HPP_
+#endif  // CONTEXT_HPP_

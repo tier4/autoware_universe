@@ -86,10 +86,7 @@ Scenario load_scenario(const std::string & yaml_filename)
         "constraint_generator/lane_following_drivable_area.param.yaml",
         "constraint_generator/obstacle_stop.param.yaml",
         "constraint_generator/simple_drivable_area.param.yaml",
-        "trajectory_planner/frenet_sampler.param.yaml",
-        "trajectory_planner/rough_optimizer.param.yaml",
-        "trajectory_planner/nlp_trajectory_optimizer.param.yaml",
-        "trajectory_planner/ssc_qp_trajectory_optimizer.param.yaml"}) {
+        "trajectory_planner/frenet_sampling_based_planner.param.yaml"}) {
     param_files.push_back(
       autoware::test_utils::get_absolute_path_to_config("autoware_safety_planner", relative_path));
   }

@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__UTILS__SL_VIEW_UTILS_HPP_
-#define AUTOWARE__SAFETY_PLANNER__UTILS__SL_VIEW_UTILS_HPP_
+#ifndef UTILS__SL_VIEW_UTILS_HPP_
+#define UTILS__SL_VIEW_UTILS_HPP_
 
 // Helpers shared by everything that reads the projected views of CompiledConstraints, i.e. the
-// (s, l) space: the space-time DP of rough_planner and the corridor carving of
-// trajectory_optimizer. As stated in constraints_compiler.hpp, s is always measured on the
-// reference_path of the current cycle.
+// (s, l) space. As stated in constraints_compiler.hpp, s is always measured on the reference_path
+// of the current cycle.
 
 #include "../context.hpp"
-#include "../trajectory_planner/nlp_planner/constraints_compiler.hpp"
 #include "../type_alias.hpp"
+#include "constraints_compiler.hpp"
 
 #include <vector>
 
@@ -118,4 +117,4 @@ bool violates_stop_bar(const StopBarEntry & stop_bar, const SlBox & box, double 
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__UTILS__SL_VIEW_UTILS_HPP_
+#endif  // UTILS__SL_VIEW_UTILS_HPP_

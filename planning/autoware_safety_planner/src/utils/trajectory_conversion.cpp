@@ -24,25 +24,6 @@ namespace autoware::safety_planner
 {
 
 TrajectoryPoint to_trajectory_point(
-  const RoughPlanPoint & rough_point, const double z, const double wheel_base_m)
-{
-  TrajectoryPoint point;
-  point.time_from_start = rclcpp::Duration::from_seconds(std::max(0.0, rough_point.t));
-  point.pose.position.x = rough_point.pose.position.x();
-  point.pose.position.y = rough_point.pose.position.y();
-  point.pose.position.z = z;
-  point.pose.orientation =
-    autoware_utils_geometry::create_quaternion_from_yaw(rough_point.pose.yaw);
-  point.longitudinal_velocity_mps = static_cast<float>(rough_point.v);
-  point.lateral_velocity_mps = 0.0F;
-  point.acceleration_mps2 = static_cast<float>(rough_point.a);
-  point.heading_rate_rps = static_cast<float>(rough_point.v * rough_point.kappa);
-  point.front_wheel_angle_rad = static_cast<float>(std::atan(rough_point.kappa * wheel_base_m));
-  point.rear_wheel_angle_rad = 0.0F;
-  return point;
-}
-
-TrajectoryPoint to_trajectory_point(
   const OptimizedTrajectoryPoint & optimized_point, const double z, const double wheel_base_m)
 {
   TrajectoryPoint point;

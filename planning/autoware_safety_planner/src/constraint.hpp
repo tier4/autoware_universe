@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__CONSTRAINT_HPP_
-#define AUTOWARE__SAFETY_PLANNER__CONSTRAINT_HPP_
+#ifndef CONSTRAINT_HPP_
+#define CONSTRAINT_HPP_
 
 #include "type_alias.hpp"
 
@@ -80,6 +80,7 @@ struct Source
   //! constraint has no specific target (vehicle kinematics, ...). Two consumers use it:
   //! - key of the discrete decisions, matching the decision on the same target across cycles
   //! - object_id of the SafetyFactor, so the validation layer can tell which object caused a stop
+  // TODO(odashima): change to object?
   std::string target_id;
 
   // TODO(odashima): follow PlanningFactor
@@ -194,4 +195,4 @@ struct Constraint
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__CONSTRAINT_HPP_
+#endif  // CONSTRAINT_HPP_

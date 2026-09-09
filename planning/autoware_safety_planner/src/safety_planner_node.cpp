@@ -46,12 +46,9 @@ SafetyPlannerNode::SafetyPlannerNode(const rclcpp::NodeOptions & options)
   params_ = param_listener_->get_params();
 
   pub_debug_trajectory_ = this->create_publisher<Trajectory>("~/debug/trajectory", 1);
-  pub_debug_rough_trajectory_ = this->create_publisher<Trajectory>("~/debug/rough_trajectory", 1);
   pub_candidate_trajectories_ =
     this->create_publisher<CandidateTrajectories>("~/output/candidate_trajectories", 1);
   pub_debug_marker_ = this->create_publisher<MarkerArray>("~/debug/debug_marker", 1);
-  pub_debug_rough_planner_marker_ =
-    this->create_publisher<MarkerArray>("~/debug/rough_planner_marker", 1);
 
   debug_processing_time_detail_pub_ =
     this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
@@ -179,20 +176,25 @@ void SafetyPlannerNode::on_timer()
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000, "%s. Skipping this cycle.",
       planned.error().c_str());
+
+    // TODO(odashima): publish invalid(only 1point) trajectory to prevent selector use old
+    // trajectory?
+
     return;
   }
   const auto & result = planned.value();
 
-  // Only the normal side is published; nothing consumes the cautious one yet
   if (result.normal_trajectory) {
     publish_trajectory(*result.normal_trajectory);
   }
+  // TODO(odashima): publish cautious trajectory
+
   publish_constraints_debug_markers(result.debug.constraint_generator_outputs);
-  publish_rough_plan_trajectory(result.debug.rough_plan_result);
-  publish_rough_plan_markers(result.debug.rough_plan_result);
+
+  publish_planner_debug(result.debug);
   publish_debug_markers(result.debug);
 
-  // TODO(odashima): publish which constraints shaped the trajectory, once we can tell
+  // TODO(odashima): publish planning factors?
   // publish_planning_factors();
 }
 
@@ -278,48 +280,28 @@ void SafetyPlannerNode::publish_trajectory(const Trajectory & trajectory) const
   pub_debug_trajectory_->publish(trajectory);
 }
 
-void SafetyPlannerNode::publish_rough_plan_trajectory(const RoughPlanResult & rough_plan_result)
+void SafetyPlannerNode::publish_planner_debug(const SafetyPlannerResult::Debug & debug)
 {
-  if (rough_plan_result.plans.empty()) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), 5000, "rough_plan candidates are empty.");
-    return;
+  for (const auto & [name, trajectory] : debug.planner_trajectories) {
+    auto & pub = planner_debug_trajectory_pubs_[name];
+    if (!pub) {
+      pub = this->create_publisher<Trajectory>("~/debug/" + name, 1);
+    }
+    pub->publish(trajectory);
   }
-
-  // For now only the first candidate is consumed (K = 1, see rough_planner.hpp)
-  const auto & plan = rough_plan_result.plans.front();
-  if (plan.points.empty()) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), 5000,
-      "the adopted rough_plan has no points. Skipping trajectory publish.");
-    return;
+  for (const auto & [name, markers] : debug.planner_markers) {
+    auto & pub = planner_debug_marker_pubs_[name];
+    if (!pub) {
+      pub = this->create_publisher<MarkerArray>("~/debug/" + name, 1);
+    }
+    MarkerArray marker_array;
+    Marker delete_all;
+    delete_all.action = Marker::DELETEALL;
+    marker_array.markers.push_back(delete_all);
+    marker_array.markers.insert(
+      marker_array.markers.end(), markers.markers.begin(), markers.markers.end());
+    pub->publish(marker_array);
   }
-
-  Trajectory trajectory;
-  trajectory.header.frame_id = "map";
-  trajectory.header.stamp = this->now();
-  trajectory.points.reserve(plan.points.size());
-  const double z = input_.odometry.pose.pose.position.z;
-  const double wheel_base_m = input_.vehicle_info.wheel_base_m;
-  for (const auto & rough_point : plan.points) {
-    trajectory.points.push_back(to_trajectory_point(rough_point, z, wheel_base_m));
-  }
-
-  pub_debug_rough_trajectory_->publish(trajectory);
-}
-
-void SafetyPlannerNode::publish_rough_plan_markers(const RoughPlanResult & rough_plan_result) const
-{
-  // The number of candidates changes between cycles, which would leave the markers of the
-  // namespaces that disappeared behind, so clear them first
-  MarkerArray marker_array;
-  Marker delete_all;
-  delete_all.action = Marker::DELETEALL;
-  marker_array.markers.push_back(delete_all);
-
-  const auto & markers = rough_plan_result.debug.debug_markers.markers;
-  marker_array.markers.insert(marker_array.markers.end(), markers.begin(), markers.end());
-  pub_debug_rough_planner_marker_->publish(marker_array);
 }
 
 void SafetyPlannerNode::publish_debug_markers(const SafetyPlannerResult::Debug & debug) const
@@ -355,8 +337,6 @@ void SafetyPlannerNode::publish_debug_markers(const SafetyPlannerResult::Debug &
     auto marker = create_default_marker(
       "map", now, "reference_path", 0, Marker::LINE_STRIP, create_marker_scale(0.2, 0.0, 0.0),
       create_marker_color(0.0, 0.5, 1.0, 0.999));
-    // The bases are meters apart and would look like a polyline, so sample at 1 m or less, the
-    // end point included, to show the interpolated shape
     constexpr double MARKER_INTERVAL_M = 1.0;
     const auto & reference_path = debug.reference_path;
     for (double s = 0.0; s < reference_path.length(); s += MARKER_INTERVAL_M) {
@@ -369,51 +349,6 @@ void SafetyPlannerNode::publish_debug_markers(const SafetyPlannerResult::Debug &
       marker_array.markers.push_back(marker);
     }
   }
-
-  // The lateral bounds of the projected views, drawn at a constant spacing along the
-  // reference_path as thin lines from the centerline to each boundary along the normal. They show
-  // which boundary is in effect at which s, and on which side
-  {
-    constexpr double INTERVAL_M = 2.0;
-    auto hard_marker = create_default_marker(
-      "map", now, "lateral_bounds_hard", 0, Marker::LINE_LIST, create_marker_scale(0.05, 0.0, 0.0),
-      create_marker_color(1.0, 0.2, 0.0, 0.8));
-    auto soft_marker = create_default_marker(
-      "map", now, "lateral_bounds_soft", 0, Marker::LINE_LIST, create_marker_scale(0.05, 0.0, 0.0),
-      create_marker_color(1.0, 0.8, 0.0, 0.5));
-    const auto & reference_path = debug.reference_path;
-    const auto & compiled = debug.compiled_constraints;
-    const double z = input_.odometry.pose.pose.position.z;
-    for (double s = 0.0; s <= reference_path.length(); s += INTERVAL_M) {
-      for (const auto & bound : compiled.lateral_bounds) {
-        if (
-          bound.polyline.size() < 2 || s < bound.polyline.front().s ||
-          s > bound.polyline.back().s) {
-          continue;
-        }
-        const double l_bound = interpolate_boundary_l(bound.polyline, s);
-        auto & marker = compiled.raw_constraints[bound.raw_index].hardness == Hardness::HARD
-                          ? hard_marker
-                          : soft_marker;
-        for (const double l : {0.0, l_bound}) {
-          const auto pose = to_world_pose(reference_path, s, l);
-          geometry_msgs::msg::Point q;
-          q.x = pose.position.x();
-          q.y = pose.position.y();
-          q.z = z;
-          marker.points.push_back(q);
-        }
-      }
-    }
-    for (auto & marker : {hard_marker, soft_marker}) {
-      if (!marker.points.empty()) {
-        marker_array.markers.push_back(marker);
-      }
-    }
-  }
-
-  // -------------------- the IR --------------------
-  (void)debug.compiled_constraints;
 
   pub_debug_marker_->publish(marker_array);
 }

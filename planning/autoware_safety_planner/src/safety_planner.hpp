@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_HPP_
-#define AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_HPP_
+#ifndef SAFETY_PLANNER_HPP_
+#define SAFETY_PLANNER_HPP_
 
 // The pipeline itself. The ROS interface (subscriptions, publications, timer) belongs to
 // SafetyPlannerNode; this class only takes a SafetyPlannerInput and returns the result, and holds
 // neither a publisher nor a clock (message types, the TimeKeeper and pluginlib are fine). It
-// generates the constraints and splits them by certainty; compiling them and driving the rough
-// planner and the optimizer is the trajectory_planner plugin's job.
+// generates the constraints and splits them by certainty; compiling them and planning on them is
+// the trajectory_planner plugin's job.
 
 #include "constraint_generator/constraint_generator_interface.hpp"
 #include "context.hpp"
@@ -41,15 +41,12 @@ struct SafetyPlannerResult
 {
   std::optional<Trajectory> normal_trajectory;
   std::optional<Trajectory> cautious_trajectory;
-
   struct Debug
   {
-    //! plugin name (get_name()) -> output; publishing debug_markers is the node's job
     std::map<std::string, ConstraintGeneratorOutput> constraint_generator_outputs;
     PathPointTrajectory reference_path;
-    CompiledConstraints compiled_constraints;  //!< of the normal side; cautious is not visualized
-    RoughPlanResult rough_plan_result;
-    TrajectoryOptimizerResult trajectory_optimizer_result;
+    std::map<std::string, Trajectory> planner_trajectories;
+    std::map<std::string, MarkerArray> planner_markers;  //!< e.g. "candidates", "lateral_bounds"
   } debug;
 };
 
@@ -58,14 +55,10 @@ class SafetyPlanner
 public:
   SafetyPlanner(const Params & params, std::shared_ptr<TimeKeeper> time_keeper);
 
-  //! Returns the reason as a string in a cycle where the reference_path could not be built (no
-  //! path along the route, the goal behind the ego)
   tl::expected<SafetyPlannerResult, std::string> plan(const SafetyPlannerInput & input);
 
-  //! Names (get_name()) of the loaded plugins, which the node turns into debug marker publishers
   std::vector<std::string> get_constraint_generator_plugin_names() const;
 
-  //! Name (get_name()) of the loaded trajectory planner plugin, empty when none is loaded
   std::string get_trajectory_planner_plugin_name() const;
 
 private:
@@ -111,4 +104,4 @@ private:
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_HPP_
+#endif  // SAFETY_PLANNER_HPP_

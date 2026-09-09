@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
-#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
+#ifndef TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
+#define TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
 
 // Interface of the trajectory planner plugins. SafetyPlanner generates the constraints and splits
-// them by certainty; compiling them and driving the rough planner and the optimizer is left to the
-// plugin. Input: the two constraint sets (normal / cautious); output: the two trajectories.
+// them by certainty; compiling them and planning on them is left to the plugin. Input: the two
+// constraint sets (normal / cautious); output: the two trajectories.
 
 #include "../constraint.hpp"
 #include "../context.hpp"
 #include "../type_alias.hpp"
-#include "nlp_planner/constraints_compiler.hpp"
-#include "nlp_planner/rough_planner.hpp"
-#include "nlp_planner/trajectory_optimizer_interface.hpp"
 
+#include <autoware_utils_debug/time_keeper.hpp>
+
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,12 +47,12 @@ struct TrajectoryPlannerResult
   std::optional<Trajectory> normal_trajectory;
   std::optional<Trajectory> cautious_trajectory;
 
-  //! Debug output covers the normal pipeline only; the cautious side is not visualized yet
+  //! Debug output of the plugin as ROS messages keyed by a name; the node publishes each under
+  //! ~/debug/<name>. What is in it depends on the plugin
   struct Debug
   {
-    CompiledConstraints compiled_constraints;  //!< of the normal side
-    RoughPlanResult rough_plan_result;
-    TrajectoryOptimizerResult trajectory_optimizer_result;
+    std::map<std::string, Trajectory> trajectories;
+    std::map<std::string, MarkerArray> markers;
   } debug;
 };
 
@@ -81,4 +81,4 @@ protected:
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_
+#endif  // TRAJECTORY_PLANNER__TRAJECTORY_PLANNER_INTERFACE_HPP_

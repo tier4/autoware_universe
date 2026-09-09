@@ -12,27 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__UTILS__TRAJECTORY_CONVERSION_HPP_
-#define AUTOWARE__SAFETY_PLANNER__UTILS__TRAJECTORY_CONVERSION_HPP_
+#ifndef UTILS__TRAJECTORY_CONVERSION_HPP_
+#define UTILS__TRAJECTORY_CONVERSION_HPP_
 
-// Conversion from the internal representations (RoughPlanPoint / OptimizedTrajectoryPoint) to the
-// output message, plus the post-processing of the output trajectory. Both the node (debug
-// publishing) and the trajectory_planner plugins call it, so it lives here.
+// The internal trajectory point shared by the trajectory_planner plugins, its conversion to the
+// output message, plus the post-processing of the output trajectory.
 
-#include "../trajectory_planner/nlp_planner/rough_planner.hpp"
-#include "../trajectory_planner/nlp_planner/trajectory_optimizer_interface.hpp"
+#include "../constraint.hpp"
 #include "../type_alias.hpp"
 
 namespace autoware::safety_planner
 {
 
-//! Converts one point of a RoughPlan. The plan is 2D (Pose2d + kappa), so z is taken from the
-//! reference pose (ego).
-TrajectoryPoint to_trajectory_point(
-  const RoughPlanPoint & rough_point, const double z, const double wheel_base_m);
+//! One point of a planned trajectory: the state (px, py, theta, k, v, a) and the input (w, j).
+//! The input is the one held from this point to the next, and is 0 at the last point (k = N).
+struct OptimizedTrajectoryPoint
+{
+  double t{0.0};      //!< [s] relative to the planning reference time
+  Pose2d pose{};      //!< world coordinates (px, py, theta)
+  double kappa{0.0};  //!< [1/m] path curvature
+  double v{0.0};      //!< [m/s]
+  double a{0.0};      //!< [m/s^2]
+  double w{0.0};      //!< [1/(m·s)] dκ/dt
+  double j{0.0};      //!< [m/s³]  da/dt
+};
 
-//! Converts one point of an optimized trajectory. It is 2D, so z is taken from the reference pose
-//! (ego).
+//! Converts one point. It is 2D, so z is taken from the reference pose (ego).
 TrajectoryPoint to_trajectory_point(
   const OptimizedTrajectoryPoint & optimized_point, const double z, const double wheel_base_m);
 
@@ -45,4 +50,4 @@ Trajectory set_engage_speed(const Trajectory & trajectory, const double engage_v
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__UTILS__TRAJECTORY_CONVERSION_HPP_
+#endif  // UTILS__TRAJECTORY_CONVERSION_HPP_

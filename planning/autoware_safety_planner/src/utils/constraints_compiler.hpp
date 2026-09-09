@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__CONSTRAINTS_COMPILER_HPP_
-#define AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__CONSTRAINTS_COMPILER_HPP_
+#ifndef UTILS__CONSTRAINTS_COMPILER_HPP_
+#define UTILS__CONSTRAINTS_COMPILER_HPP_
 
 // Constraint compilation: turns the generator output (a list of Constraint in world coordinates)
 // into the IR the consumers read, CompiledConstraints.
@@ -22,7 +22,7 @@
 // - raw: every Constraint, flattened, still in world coordinates. **This is the single source of
 //   truth**
 // - projected views (scalar_bounds / lateral_bounds / stop_bars / occupancies): raw projected onto
-//   context.reference_path, for the coarse consumers (the DP of rough_planner, ...). Each entry
+//   context.reference_path, for the coarse consumers (the sampling planner, ...). Each entry
 //   points back to raw through raw_index
 //
 // Rules of the projection:
@@ -44,8 +44,8 @@
 // - the IR is rebuilt every cycle. s carries no meaning across cycles (targets are matched across
 //   cycles through the id in Source)
 
-#include "../../constraint.hpp"
-#include "../../context.hpp"
+#include "../constraint.hpp"
+#include "../context.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -141,4 +141,4 @@ CompiledConstraints compile_constraint_list(
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__TRAJECTORY_PLANNER__NLP_PLANNER__CONSTRAINTS_COMPILER_HPP_
+#endif  // UTILS__CONSTRAINTS_COMPILER_HPP_

@@ -22,17 +22,5 @@
            base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
       <description>Samples terminal states in Frenet coordinates and joins them with quintic polynomials, then takes the cheapest candidate that passes the projected views of the constraint IR</description>
     </class>
-    <class type="autoware::safety_planner::RoughOptimizerTrajectoryPlanner"
-           base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
-      <description>The default planner: runs the rough planner and then the trajectory optimizer for each constraint set</description>
-    </class>
-    <class type="autoware::safety_planner::NlpTrajectoryOptimizer"
-           base_class_type="autoware::safety_planner::TrajectoryOptimizerInterface">
-      <description>Solves the trajectory as a time-parameterized non-convex NLP</description>
-    </class>
-    <class type="autoware::safety_planner::SscQpTrajectoryOptimizer"
-           base_class_type="autoware::safety_planner::TrajectoryOptimizerInterface">
-      <description>Solves a piecewise Bezier over (s, l, t) cubes as a convex QP (SSC, arXiv:1906.09788)</description>
-    </class>
   </library>
 </class_libraries>

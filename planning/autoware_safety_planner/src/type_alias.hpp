@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__TYPE_ALIAS_HPP_
-#define AUTOWARE__SAFETY_PLANNER__TYPE_ALIAS_HPP_
+#ifndef TYPE_ALIAS_HPP_
+#define TYPE_ALIAS_HPP_
 
 #include <autoware/lanelet2_utils/route_manager.hpp>
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
 #include <autoware/trajectory/trajectory_point.hpp>
-#include <autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_safety_planner/safety_planner_parameters.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
@@ -74,12 +73,8 @@ using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Polygon2d;
 using autoware_utils_geometry::Segment2d;
 
-using TrajectoryClass = PathPointTrajectory;
-
-using OptimizerPluginInterface =
-  autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase;
-using OptimizerPluginLoader = pluginlib::ClassLoader<OptimizerPluginInterface>;
+// using TrajectoryClass = PathPointTrajectory;
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__TYPE_ALIAS_HPP_
+#endif  // TYPE_ALIAS_HPP_

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_NODE_HPP_
-#define AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_NODE_HPP_
+#ifndef SAFETY_PLANNER_NODE_HPP_
+#define SAFETY_PLANNER_NODE_HPP_
 
 #include "constraint_generator/constraint_generator_interface.hpp"
 #include "context.hpp"
@@ -133,23 +133,22 @@ private:
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_rough_trajectory_;
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_rough_planner_marker_;
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_candidate_trajectories_;
 
   void publish_trajectory(const Trajectory & trajectory) const;
-  void publish_rough_plan_trajectory(const RoughPlanResult & rough_plan_result);
-  void publish_rough_plan_markers(const RoughPlanResult & rough_plan_result) const;
   void publish_debug_markers(const SafetyPlannerResult::Debug & debug) const;
   void publish_constraints_debug_markers(
     const std::map<std::string, ConstraintGeneratorOutput> & constraints) const;
   std::map<std::string, rclcpp::Publisher<MarkerArray>::SharedPtr>
     constraint_debug_marker_publishers_;
+  void publish_planner_debug(const SafetyPlannerResult::Debug & debug);
+  std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr> planner_debug_trajectory_pubs_;
+  std::map<std::string, rclcpp::Publisher<MarkerArray>::SharedPtr> planner_debug_marker_pubs_;
 
   /** @* */
 };
 
 }  // namespace autoware::safety_planner
 
-#endif  // AUTOWARE__SAFETY_PLANNER__SAFETY_PLANNER_NODE_HPP_
+#endif  // SAFETY_PLANNER_NODE_HPP_

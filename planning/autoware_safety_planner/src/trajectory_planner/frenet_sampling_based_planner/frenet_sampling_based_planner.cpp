@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "frenet_sampler.hpp"
+#include "frenet_sampling_based_planner.hpp"
 
 #include "../../utils/trajectory_conversion.hpp"
 
@@ -128,12 +128,10 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan(const TrajectoryPlanner
   TrajectoryPlannerResult result;
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
-    auto compiled = compile_constraint_list(input.context, input.normal_constraints);
-    // The candidates ride on the marker topic of the rough plan, so that the node does not need
-    // another publisher
+    const auto compiled = compile_constraint_list(input.context, input.normal_constraints);
     result.normal_trajectory =
-      plan_one_side(input.context, compiled, result.debug.rough_plan_result.debug.debug_markers);
-    result.debug.compiled_constraints = std::move(compiled);
+      plan_one_side(input.context, compiled, result.debug.markers["candidates"]);
+    result.debug.markers["lateral_bounds"] = make_lateral_bounds_markers(input.context, compiled);
   }
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
@@ -182,7 +180,8 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
     static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
     RCLCPP_WARN_THROTTLE(
       rclcpp::get_logger("safety_planner"), steady_clock, 5000,
-      "[frenet_sampler] no valid candidate (%zu sampled:%s). Falling back to the stop trajectory.",
+      "[frenet_sampling_based_planner] no valid candidate (%zu sampled:%s). Falling back to the "
+      "stop trajectory.",
       candidates.size(), ss.str().c_str());
     // The stop trajectory keeps the current lateral position: the path back from the ego heading
     // to l0, driven at the hardest deceleration
@@ -233,7 +232,7 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
   using autoware::frenet_planner::Polynomial;
 
   const auto & ref = context.reference_path;
-  const double res = params_.frenet_sampler.path_resolution_m;
+  const double res = params_.frenet_sampling_based_planner.path_resolution_m;
   const double s0 = initial_state.s;
   const double s_max = ref.length();
 
@@ -278,7 +277,7 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
 std::vector<FrenetSamplingBasedPlanner::PathCandidate> FrenetSamplingBasedPlanner::generate_paths(
   const PlannerContext & context, const InitialState & initial_state) const
 {
-  const auto & p = params_.frenet_sampler;
+  const auto & p = params_.frenet_sampling_based_planner;
   // The lateral position of the goal joins the terminal candidates, so that a goal off the grid
   // (on the shoulder, ...) can still be reached
   auto lateral_targets = p.target_lateral_positions_m;
@@ -304,7 +303,7 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
 {
   using autoware::frenet_planner::Polynomial;
 
-  const auto & p = params_.frenet_sampler;
+  const auto & p = params_.frenet_sampling_based_planner;
   const double dt = p.time_step_s;
   const double horizon = p.horizon_s;
   const double s_max = context.reference_path.length();
@@ -410,7 +409,7 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
 FrenetSamplingBasedPlanner::VelocityProfile FrenetSamplingBasedPlanner::make_stop_profile(
   const InitialState & initial_state, const KinematicLimits & limits) const
 {
-  const auto & p = params_.frenet_sampler;
+  const auto & p = params_.frenet_sampling_based_planner;
   const double dt = p.time_step_s;
   const double decel = std::abs(limits.a_hard_min);
 
@@ -434,7 +433,7 @@ FrenetSamplingBasedPlanner::Candidate FrenetSamplingBasedPlanner::combine(
   const PlannerContext & context, const PathCandidate & path, const VelocityProfile & profile) const
 {
   const auto & ref = context.reference_path;
-  const double res = params_.frenet_sampler.path_resolution_m;
+  const double res = params_.frenet_sampling_based_planner.path_resolution_m;
   const double s0 = path.s.front();
   const double s_max = ref.length();
 
@@ -464,7 +463,7 @@ void FrenetSamplingBasedPlanner::evaluate(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
   const double l_goal, Candidate & candidate) const
 {
-  const auto & p = params_.frenet_sampler;
+  const auto & p = params_.frenet_sampling_based_planner;
   const double s_max = context.reference_path.length();
   const double blend_length =
     *std::max_element(p.target_lengths_m.begin(), p.target_lengths_m.end());
@@ -630,6 +629,53 @@ void FrenetSamplingBasedPlanner::append_debug_markers(
   if (!invalid_marker.points.empty()) {
     debug_markers.markers.push_back(invalid_marker);
   }
+}
+
+MarkerArray FrenetSamplingBasedPlanner::make_lateral_bounds_markers(
+  const PlannerContext & context, const CompiledConstraints & compiled_constraints) const
+{
+  using autoware_utils_visualization::create_default_marker;
+  using autoware_utils_visualization::create_marker_color;
+  using autoware_utils_visualization::create_marker_scale;
+
+  constexpr double INTERVAL_M = 2.0;
+  const auto now = context.odometry.header.stamp;
+  auto hard_marker = create_default_marker(
+    "map", now, "lateral_bounds_hard", 0, Marker::LINE_LIST, create_marker_scale(0.05, 0.0, 0.0),
+    create_marker_color(1.0, 0.2, 0.0, 0.8));
+  auto soft_marker = create_default_marker(
+    "map", now, "lateral_bounds_soft", 0, Marker::LINE_LIST, create_marker_scale(0.05, 0.0, 0.0),
+    create_marker_color(1.0, 0.8, 0.0, 0.5));
+  const auto & reference_path = context.reference_path;
+  const double z = context.odometry.pose.pose.position.z;
+  for (double s = 0.0; s <= reference_path.length(); s += INTERVAL_M) {
+    for (const auto & bound : compiled_constraints.lateral_bounds) {
+      if (
+        bound.polyline.size() < 2 || s < bound.polyline.front().s || s > bound.polyline.back().s) {
+        continue;
+      }
+      const double l_bound = interpolate_boundary_l(bound.polyline, s);
+      auto & marker =
+        compiled_constraints.raw_constraints[bound.raw_index].hardness == Hardness::HARD
+          ? hard_marker
+          : soft_marker;
+      for (const double l : {0.0, l_bound}) {
+        const auto pose = to_world_pose(reference_path, s, l);
+        geometry_msgs::msg::Point q;
+        q.x = pose.position.x();
+        q.y = pose.position.y();
+        q.z = z;
+        marker.points.push_back(q);
+      }
+    }
+  }
+  MarkerArray marker_array;
+  for (auto & marker : {hard_marker, soft_marker}) {
+    if (!marker.points.empty()) {
+      marker_array.markers.push_back(marker);
+    }
+  }
+  return marker_array;
 }
 
 }  // namespace autoware::safety_planner

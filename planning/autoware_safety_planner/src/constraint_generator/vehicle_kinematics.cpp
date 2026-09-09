@@ -31,23 +31,22 @@ ConstraintGeneratorOutput VehicleKinematicsConstraintGenerator::generate_constra
                      const std::string & detail) {
     Constraint constraint;
     constraint.payload = ScalarBound{quantity, min, max, std::nullopt};
-    // A kinematic limit has no specific target, hence the empty target_id
     constraint.source = Source{"vehicle_kinematics", Category::SAFETY, "", detail};
     output.constraints.push_back(std::move(constraint));
   };
 
   const auto & p = params_.vehicle_kinematics;
 
-  // Only the hard limits, the ones whose violation makes the trajectory untrackable
   add(BoundedQuantity::VELOCITY, 0.0, p.velocity_hard_mps, "velocity");
   add(
     BoundedQuantity::LON_ACCEL, p.lon_accel_hard_min_mps2, p.lon_accel_hard_max_mps2, "lon_accel");
+  // NOTE(odashima): left at -INF for quantities bounded in absolute value
   add(BoundedQuantity::LON_JERK, -INF, p.lon_jerk_hard_mps3, "lon_jerk");
   add(BoundedQuantity::LAT_ACCEL, -INF, p.lat_accel_hard_mps2, "lat_accel");
-  // The steer angle comes from the vehicle dimensions rather than from a parameter of its own, and
-  // the curvature limit is derived from it instead of being declared twice
   add(BoundedQuantity::STEER_ANGLE, -INF, context.vehicle_info.max_steer_angle_rad, "steer_angle");
   add(BoundedQuantity::STEER_RATE, -INF, p.steer_rate_hard_radps, "steer_rate");
+
+  // TODO(odashima): add soft constraints for comfort
 
   return output;
 }

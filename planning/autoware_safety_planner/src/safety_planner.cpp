@@ -42,11 +42,6 @@ namespace autoware::safety_planner
 namespace
 {
 
-//! Drops the centerline within search_radius_m of the goal and rebuilds it as a spline through
-//! two points 1.0 m and 0.5 m in front of the goal and the goal itself, as the smooth goal
-//! connection of goal_planner does. When the new stretch leaves the lane the radius is reduced by
-//! 1 m and it is retried. Returns nullopt when the goal is farther from the path than the radius,
-//! or when the build fails.
 std::optional<PathPointTrajectory> connect_reference_path_to_goal(
   const PathPointTrajectory & path, const Pose & goal,
   const lanelet::ConstLanelets & route_lanelets, const lanelet::LaneletMapConstPtr & lanelet_map,
@@ -86,7 +81,6 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
         return true;
       }
     }
-    // A lanelet off the route counts as drivable too, for a goal on the shoulder
     return !experimental::lanelet2_utils::get_road_lanelets_at(lanelet_map, p.x(), p.y()).empty() ||
            !experimental::lanelet2_utils::get_shoulder_lanelets_at(lanelet_map, p.x(), p.y())
               .empty();
@@ -94,7 +88,6 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
 
   std::optional<PathPointTrajectory> last_built;
   for (double radius = search_radius_m; radius >= 0.0; radius -= RADIUS_REDUCE_M) {
-    // Keep everything up to the last point farther from the goal than the radius
     std::size_t cut_index = 0;
     for (std::size_t i = 0; i < points.size(); ++i) {
       if (bases[i] > s_goal) {
@@ -233,8 +226,6 @@ tl::expected<PathPointTrajectory, std::string> SafetyPlanner::build_reference_pa
     }
   }
   if (policy == "goal_connection_and_smooth") {
-    // Only the goal end is held fixed. Pinning the ego end to the raw centerline would put the
-    // path away from the ego, since the sampler rebuilds the first meters from the ego pose
     if (
       auto smoothed = smooth_reference_path(
         *reference_path, lane_sequence.as_lanelets(), input.vehicle_info.max_lateral_offset_m,
@@ -243,19 +234,11 @@ tl::expected<PathPointTrajectory, std::string> SafetyPlanner::build_reference_pa
     }
   }
 
-  // Crop only what lies beyond the goal_pose; the backward_length_m behind the ego stays, because
-  // the projected constraints cover the footprint behind the ego and objects approaching from
-  // behind. While the goal is still ahead of the end of the reference_path the end is the closest
-  // point, so this keeps the path from its rear end to its front end
   const double s_ego =
     experimental::trajectory::closest(*reference_path, input.odometry.pose.pose.position);
   const double s_goal =
     experimental::trajectory::closest(*reference_path, input.goal_pose.position);
 
-  // closest() approximates the path by chords, so right beside the goal (a goal on the shoulder,
-  // away from the centerline) s_ego can appear a few millimeters past s_goal. Within this tolerance
-  // the ego counts as being at the goal and the path is cut there, leaving no distance and hence a
-  // stop trajectory; only a real overrun fails
   constexpr double GOAL_OVERRUN_TOLERANCE_M = 1.0;
   if (s_goal - s_ego < -GOAL_OVERRUN_TOLERANCE_M) {
     return tl::unexpected(
@@ -277,7 +260,6 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
   }
   const PlannerContext context(input, std::move(reference_path.value()));
 
-  // Call the constraint generator plugins
   auto constraints = calculate_constraints(context);
 
   // Split by certainty: normal = DEFINITE only, cautious = DEFINITE + POSSIBLE
@@ -292,17 +274,14 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
     }
   }
 
-  // Planning the trajectory is the plugin's job
   SafetyPlannerResult result;
   if (trajectory_planner_) {
     const TrajectoryPlannerInput input{context, normal_list, cautious_list};
     auto planner_result = trajectory_planner_->plan(input);
     result.normal_trajectory = std::move(planner_result.normal_trajectory);
     result.cautious_trajectory = std::move(planner_result.cautious_trajectory);
-    result.debug.compiled_constraints = std::move(planner_result.debug.compiled_constraints);
-    result.debug.rough_plan_result = std::move(planner_result.debug.rough_plan_result);
-    result.debug.trajectory_optimizer_result =
-      std::move(planner_result.debug.trajectory_optimizer_result);
+    result.debug.planner_trajectories = std::move(planner_result.debug.trajectories);
+    result.debug.planner_markers = std::move(planner_result.debug.markers);
   }
 
   result.debug.constraint_generator_outputs = std::move(constraints);
