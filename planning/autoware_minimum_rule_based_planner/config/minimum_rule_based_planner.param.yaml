@@ -123,7 +123,6 @@
           bicycle: 3.0
           pedestrian: 5.0
         ego_decel: 2.0           # [m/s^2]
-        reaction_time: 0.4       # [s]
         safety_margin: 1.5       # [m]
         lookahead_horizon: 1.5   # [s]
 
