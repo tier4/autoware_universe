@@ -98,7 +98,7 @@
 
     # ModelPlanningFactorID Plugin Parameters
     # Inspect the input pose-sequence trajectory (any learning-based planner) and
-    # publish /planning/planning_factors/model_planning_factor_id. Does not mutate the trajectory.
+    # publish /planning/planning_factors/planning_model. Does not mutate the trajectory.
     # Source: autoware_diffusion_planner planning_factor_utils.
     model_planning_factor_id:
       enable_stop: true

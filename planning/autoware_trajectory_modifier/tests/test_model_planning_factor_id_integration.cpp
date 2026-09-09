@@ -126,7 +126,7 @@ TEST_F(ModelPlanningFactorIDIntegrationTest, PublishesStopFactorFromInputTraject
   const auto factors = plugin_->get_planning_factors();
   ASSERT_EQ(factors.size(), 1u);
   EXPECT_EQ(factors.front().behavior, PlanningFactor::STOP);
-  EXPECT_EQ(factors.front().module, "model_planning_factor_id");
+  EXPECT_EQ(factors.front().module, "planning_model");
   ASSERT_FALSE(factors.front().control_points.empty());
   EXPECT_DOUBLE_EQ(factors.front().control_points.front().pose.position.x, 3.0);
 }

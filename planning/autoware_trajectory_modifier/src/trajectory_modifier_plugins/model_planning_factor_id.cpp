@@ -34,7 +34,7 @@ void ModelPlanningFactorID::on_initialize(const TrajectoryModifierParams & param
 {
   planning_factor_interface_ =
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
-      get_node_ptr(), "model_planning_factor_id");
+      get_node_ptr(), "planning_model");
   apply_params(params);
 }
 

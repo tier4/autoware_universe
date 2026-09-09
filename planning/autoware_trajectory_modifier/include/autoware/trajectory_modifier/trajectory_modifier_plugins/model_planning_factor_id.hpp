@@ -26,7 +26,9 @@ namespace autoware::trajectory_modifier::plugin
  *
  * Learning-based planners (diffusion, tensorrt e2e, …) emit a pose sequence without an
  * explicit planning-factor. This plugin reads the *input* trajectory kinematics, does not
- * mutate points, and publishes `/planning/planning_factors/model_planning_factor_id`.
+ * mutate points, and publishes `/planning/planning_factors/planning_model`.
+ * The factor `module` (RViz red-wall reason) is `planning_model`; this plugin
+ * only identifies that factor from the model trajectory.
  *
  * Load it first in `plugin_names` so labels describe the raw model output, not later
  * ObstacleStop / TrafficLightStop insertions.

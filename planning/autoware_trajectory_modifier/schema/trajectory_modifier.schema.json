@@ -386,7 +386,7 @@
         },
         "model_planning_factor_id": {
           "type": "object",
-          "description": "Inspect the planner trajectory and publish stop/slowdown planning factors",
+          "description": "Inspect the planner trajectory and publish stop/slowdown factors as module planning_model",
           "properties": {
             "enable_stop": {
               "type": "boolean",

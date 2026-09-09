@@ -28,7 +28,7 @@
          base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
     <description>
       Inspects the planner trajectory kinematics and publishes stop/slowdown planning factors
-      as module model_planning_factor_id without mutating the trajectory
+      as module planning_model without mutating the trajectory
     </description>
   </class>
 </library>

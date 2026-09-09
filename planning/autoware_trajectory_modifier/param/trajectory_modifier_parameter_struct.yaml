@@ -34,7 +34,7 @@ trajectory_modifier_params:
   use_model_planning_factor_id:
     type: bool
     default_value: true
-    description: Enable model-planning-factor-id stop/slowdown planning-factor labeling
+    description: Enable ModelPlanningFactorID (publishes module planning_model)
     read_only: false
   trajectory_time_step:
     type: double
