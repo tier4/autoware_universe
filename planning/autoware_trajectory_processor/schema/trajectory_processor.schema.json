@@ -446,16 +446,10 @@
                   "default": 2,
                   "minimum": 0
                 },
-                "reaction_time": {
-                  "type": "number",
-                  "description": "Reaction time to consider for RSS calculation [s]",
-                  "default": 0.4,
-                  "minimum": 0
-                },
                 "safety_margin": {
                   "type": "number",
                   "description": "Safety margin to consider for RSS calculation [m]",
-                  "default": 3,
+                  "default": 1.5,
                   "minimum": 0
                 },
                 "lookahead_horizon": {
