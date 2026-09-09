@@ -349,9 +349,9 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     theta_c[kSharedRefYawOffset + i] = mppi::memory::loadReadOnly(&data.ref_yaw_[i]);
   }
 
-  // One warm-start slot per sample; -1 forces a full scan on the first projection.
+  // One optional first-candidate slot per sample; -1 means no previous projection.
   if (threadIdx.y == 0) {
-    *projectionHintSlot(theta_c) = 0.0F;
+    *projectionHintSlot(theta_c) = -1.0F;
   }
   __syncthreads();
 }
@@ -814,7 +814,6 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   }
 
   int hint_i = -1;
-  bool texture_seeded = false;
 #ifdef __CUDA_ARCH__
   float * hint_slot = nullptr;
   const cudaTextureObject_t nearest_segment_texture =
@@ -827,7 +826,6 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     if (textureCoordinateInBounds(texture_x, texture_y, texture_state_.nearest_segment_map_grid_)) {
       hint_i =
         static_cast<int>(tex2D<NearestSegmentIndex>(nearest_segment_texture, texture_x, texture_y));
-      texture_seeded = true;
     }
   }
   if (theta_c != nullptr) {
@@ -837,9 +835,8 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     }
   }
 #endif
-  constexpr int kTextureSeedCorrectionSteps = 6;
-  const auto proj = projectPointToPolyline(
-    x, y, poly_x, poly_y, n_pts, hint_i, texture_seeded ? kTextureSeedCorrectionSteps : -1);
+  // Seeds affect evaluation order only; every query verifies the global nearest segment.
+  const auto proj = projectPointToPolyline(x, y, poly_x, poly_y, n_pts, hint_i);
 #ifdef __CUDA_ARCH__
   if (hint_slot != nullptr) {
     *hint_slot = static_cast<float>(proj.best_i);

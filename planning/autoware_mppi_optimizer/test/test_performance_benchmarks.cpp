@@ -46,6 +46,8 @@ constexpr std::size_t kHorizon = 80U;
 constexpr int kOptimizerIterations = 20;
 // Matches FirstOrderDubinsRuntimeData::kMaxRoadBorderSegments.
 constexpr std::size_t kRoadBorderSegments = 256U;
+// Matches FirstOrderDubinsRuntimeData::kMaxLateralCorridorPoints.
+constexpr std::size_t kProjectionPathPoints = 256U;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
 static_assert(detail::kMppiHorizon == kHorizon, "Rebaseline if the MPPI horizon changes");
 static_assert(detail::kMppiDt == 0.1F, "Rebaseline trajectory timestamps if MPPI dt changes");
@@ -65,6 +67,38 @@ Trajectory makeBenchmarkTrajectory()
     point.time_from_start.sec = static_cast<std::int32_t>((i + 1U) / 10U);
     point.time_from_start.nanosec = static_cast<std::uint32_t>(((i + 1U) % 10U) * 100000000U);
     trajectory.points.push_back(point);
+  }
+  return trajectory;
+}
+
+Trajectory makeHairpinBenchmarkTrajectory()
+{
+  auto trajectory = makeBenchmarkTrajectory();
+  trajectory.points.resize(kProjectionPathPoints);
+  constexpr double pi = 3.14159265358979323846;
+  constexpr double straight_length = 16.0;
+  constexpr double radius = 3.0;
+  for (std::size_t i = 0; i < trajectory.points.size(); ++i) {
+    auto & point = trajectory.points[i];
+    const double distance = 2.0 * detail::kMppiDt * static_cast<double>(i + 1U);
+    double yaw = 0.0;
+    if (distance <= straight_length) {
+      point.pose.position.x = distance;
+      point.pose.position.y = 0.0;
+    } else if (distance < straight_length + pi * radius) {
+      yaw = (distance - straight_length) / radius;
+      point.pose.position.x = straight_length + radius * std::sin(yaw);
+      point.pose.position.y = radius * (1.0 - std::cos(yaw));
+    } else {
+      yaw = pi;
+      point.pose.position.x = straight_length - (distance - straight_length - pi * radius);
+      point.pose.position.y = 2.0 * radius;
+    }
+    point.pose.orientation.z = std::sin(0.5 * yaw);
+    point.pose.orientation.w = std::cos(0.5 * yaw);
+    point.longitudinal_velocity_mps = 2.0F;
+    point.time_from_start.sec = static_cast<std::int32_t>((i + 1U) / 10U);
+    point.time_from_start.nanosec = static_cast<std::uint32_t>(((i + 1U) % 10U) * 100000000U);
   }
   return trajectory;
 }
@@ -102,7 +136,7 @@ std::vector<Segment> makeTightCorridor()
   constexpr std::size_t segments_per_side = kRoadBorderSegments / 2U;
   std::vector<Segment> borders;
   borders.reserve(kRoadBorderSegments);
-  const auto half_width = [](const float x) { return 0.55F + 0.03F * std::sin(x); };
+  const auto half_width = [](const float x) { return 0.65F + 0.03F * std::sin(x); };
   for (std::size_t i = 0; i < segments_per_side; ++i) {
     const float x0 = -2.0F + 20.0F * static_cast<float>(i) / segments_per_side;
     const float x1 = -2.0F + 20.0F * static_cast<float>(i + 1U) / segments_per_side;
@@ -114,11 +148,11 @@ std::vector<Segment> makeTightCorridor()
 }
 
 ::testing::AssertionResult completedOptimization(
-  const FirstOrderDubinsMppiOptimizationResult & result)
+  const FirstOrderDubinsMppiOptimizationResult & result, const std::size_t input_points)
 {
   if (
     !result.debug.applied_plant.valid || result.optimized_point_count != kHorizon ||
-    result.trajectory.points.size() != kHorizon || !std::isfinite(result.debug.baseline_cost)) {
+    result.trajectory.points.size() != input_points || !std::isfinite(result.debug.baseline_cost)) {
     return ::testing::AssertionFailure() << "Expected a completed, finite 80-step optimization";
   }
   return ::testing::AssertionSuccess();
@@ -171,9 +205,10 @@ protected:
     }
   }
 
-  void benchmark(const TrackedObjects & objects, const std::vector<Segment> & borders)
+  void benchmark(
+    const TrackedObjects & objects, const std::vector<Segment> & borders,
+    const Trajectory & trajectory = makeBenchmarkTrajectory())
   {
-    const auto trajectory = makeBenchmarkTrajectory();
     Odometry odometry;
     odometry.header = trajectory.header;
     odometry.child_frame_id = "base_link";
@@ -192,7 +227,7 @@ protected:
       const cudaError_t status = cudaDeviceSynchronize();
       ASSERT_EQ(status, cudaSuccess) << cudaGetErrorString(status);
       ASSERT_TRUE(interface_->isInitialized());
-      ASSERT_TRUE(completedOptimization(warmup));
+      ASSERT_TRUE(completedOptimization(warmup, trajectory.points.size()));
     }
 
     using Clock = std::chrono::high_resolution_clock;
@@ -208,7 +243,7 @@ protected:
 
       // Assertions, statistics, printing and destruction of the result are outside timing.
       ASSERT_EQ(status, cudaSuccess) << "Iteration " << i << ": " << cudaGetErrorString(status);
-      ASSERT_TRUE(completedOptimization(result)) << "Iteration " << i;
+      ASSERT_TRUE(completedOptimization(result, trajectory.points.size())) << "Iteration " << i;
       elapsed_ms[i] = std::chrono::duration<double, std::milli>(stop - start).count();
       ASSERT_GE(elapsed_ms[i], 0.0) << "high_resolution_clock moved backwards";
     }
@@ -222,6 +257,7 @@ protected:
             << "\n  GPU: " << device_properties_.name << " | CUDA runtime: " << runtime_version_
             << " | driver: " << driver_version_ << "\n  horizon=" << kHorizon
             << " | optimizer_iterations=" << kOptimizerIterations
+            << " | projection_path_points=" << trajectory.points.size()
             << " | obstacles=" << objects.objects.size() << " | road_borders=" << borders.size()
             << " | warmup=1 | measured=" << kMeasuredIterations << "\n  average=" << average
             << " ms | minimum=" << *extrema.first << " ms | maximum=" << *extrema.second << " ms\n";
@@ -257,6 +293,15 @@ TEST_F(MppiPerformanceBenchmark, Benchmark_TightCorridor)
   const auto borders = makeTightCorridor();
   ASSERT_EQ(borders.size(), kRoadBorderSegments);
   benchmark(TrackedObjects{}, borders);
+}
+
+TEST_F(MppiPerformanceBenchmark, Benchmark_256PointHairpin)
+{
+  const auto trajectory = makeHairpinBenchmarkTrajectory();
+  ASSERT_EQ(trajectory.points.size(), kProjectionPathPoints);
+  // The full input feeds the lateral corridor; optimization still uses 80 time steps.
+  // This measures maximum-capacity projection work with a nearby returning branch.
+  benchmark(TrackedObjects{}, {}, trajectory);
 }
 }  // namespace
 }  // namespace autoware::mppi_optimizer

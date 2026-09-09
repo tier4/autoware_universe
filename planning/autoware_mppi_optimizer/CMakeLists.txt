@@ -27,6 +27,17 @@ if(BUILD_TESTING)
   )
   set_tests_properties(test_cost_report_parser PROPERTIES LABELS "cost;unit" TIMEOUT 30)
 
+  ament_add_gtest(test_path_tracking_geometry
+    test/test_path_tracking_geometry.cpp
+  )
+  target_include_directories(test_path_tracking_geometry PRIVATE include)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # The shared header contains CUDA unroll pragmas; this target uses an ordinary host compiler.
+    target_compile_options(test_path_tracking_geometry PRIVATE -Wno-unknown-pragmas)
+  endif()
+  set_target_properties(test_path_tracking_geometry PROPERTIES CXX_STANDARD 17)
+  set_tests_properties(test_path_tracking_geometry PROPERTIES LABELS "cost;unit" TIMEOUT 30)
+
   ament_add_gtest(test_mppi_trajectory_utils
     test/test_trajectory_utils.cpp
   )
