@@ -51,6 +51,12 @@ if(BUILD_TESTING)
   target_link_libraries(test_curvature_adaptive_steering_filter
     mppi_curvature_adaptive_steering_filter
   )
+
+  ament_add_gtest(test_mppi_application_status
+    test/test_mppi_application_status.cpp
+  )
+  target_include_directories(test_mppi_application_status PRIVATE include)
+  set_target_properties(test_mppi_application_status PROPERTIES CXX_STANDARD 17)
 endif()
 
 # Find CUDA
