@@ -230,6 +230,8 @@ public:
       out << "min_trajectory_progress_m," << options.min_trajectory_progress_m << "\n";
       out << "use_last_control_as_nominal," << (options.use_last_control_as_nominal ? 1 : 0)
           << "\n";
+      out << "nominal_initial_steering_max_deviation_rad,"
+          << options.nominal_initial_steering_max_deviation_rad << "\n";
       out << "last_control_warm_start_max_age_s," << options.last_control_warm_start_max_age_s
           << "\n";
       out << "last_control_warm_start_max_position_error_m,"

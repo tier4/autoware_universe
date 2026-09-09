@@ -351,6 +351,12 @@ trajectory_mppi_optimizer:
     default_value: true
     description: Warm-start MPPI u_nom from the previous optimized control (ignored when t-MPT seeds u_nom)
     read_only: false
+  nominal_initial_steering_max_deviation_rad:
+    type: double
+    default_value: 0.0
+    description: Maximum difference between nominal steer u[0] and delay-predicted steering at application; zero disables the guard
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   last_control_warm_start_max_age_s:
     type: double
     default_value: 0.5

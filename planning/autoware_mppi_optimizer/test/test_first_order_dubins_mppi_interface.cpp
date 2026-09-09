@@ -183,6 +183,10 @@ TEST(FirstOrderDubinsMppiInterface, RejectsInvalidWarmStartThresholds)
   EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
 
   options = {};
+  options.nominal_initial_steering_max_deviation_rad = -0.1F;
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+
+  options = {};
   options.last_control_warm_start_stop_enter_velocity_mps = 0.1F;
   options.last_control_warm_start_stop_exit_velocity_mps = 0.05F;
   EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
@@ -399,6 +403,57 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, WarmStartUsesElapsedShiftAndExpires
   EXPECT_EQ(
     expired.debug.nominal_seed_source, FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
   EXPECT_EQ(expired.debug.nominal_reset_reason, FirstOrderDubinsMppiNominalResetReason::expired);
+  interface_->discardPendingTrajectory();
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringDiscontinuityRejectsReusedNominal)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  interface_->setCostParams(costs);
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.use_last_control_as_nominal = true;
+  options.use_temporal_mpt_as_nominal = false;
+  options.enable_input_delay_compensation = false;
+  options.nominal_initial_steering_max_deviation_rad = 0.05F;
+  options.last_control_warm_start_max_position_error_m = 100.0F;
+  options.last_control_warm_start_max_yaw_error_rad = 100.0F;
+  options.last_control_warm_start_max_velocity_error_mps = 100.0F;
+  options.last_control_warm_start_max_reference_position_error_m = 100.0F;
+  options.last_control_warm_start_max_reference_yaw_error_rad = 100.0F;
+  interface_->setRuntimeOptions(options);
+
+  const auto input = makeStraightTrajectory(80U);
+  autoware_vehicle_msgs::msg::SteeringReport steering;
+  steering.steering_tire_angle = 0.0F;
+  auto odometry = makeOdometry();
+  odometry.header.stamp.sec = 123;
+  const FirstOrderDubinsMppiControlSequencePostprocessor turn_seed =
+    [](auto & controls, const auto &) {
+      for (auto & control : controls) control.steer_cmd = 0.3F;
+    };
+
+  const auto accepted = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, steering, TrackedObjects{}, {}, {}, {}, turn_seed, true);
+  ASSERT_FALSE(accepted.debug.was_rejected);
+  interface_->commitPendingTrajectory();
+
+  odometry.header.stamp.nanosec = 100000000U;
+  odometry.pose.pose.position.x = 0.2;
+  const auto reset = interface_->optimizeTrajectory(
+    input, odometry, std::nullopt, steering, TrackedObjects{}, {}, {}, {}, turn_seed, true);
+
+  EXPECT_EQ(
+    reset.debug.nominal_seed_source, FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
+  EXPECT_EQ(
+    reset.debug.nominal_reset_reason,
+    FirstOrderDubinsMppiNominalResetReason::initial_steering_discontinuity);
+  ASSERT_FALSE(reset.debug.nominal_control_profile.steering_commands_rad.empty());
+  EXPECT_LE(
+    std::abs(
+      reset.debug.nominal_control_profile.steering_commands_rad.front() -
+      reset.debug.nominal_steering_continuity.application_steering_rad),
+    options.nominal_initial_steering_max_deviation_rad + 1.0E-6F);
   interface_->discardPendingTrajectory();
 }
 

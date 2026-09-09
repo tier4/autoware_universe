@@ -549,6 +549,60 @@ std::vector<FirstOrderDubinsMppiControl> buildForcedNominalControl(
   return nominal;
 }
 
+FirstOrderDubinsMppiNominalSteeringContinuity guardInitialNominalSteeringCommand(
+  const float nominal_steering_command, const float current_steering,
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, const int steering_delay_steps,
+  const std::vector<float> & steering_delay_buffer, const float maximum_deviation_rad,
+  const float dt)
+{
+  FirstOrderDubinsMppiNominalSteeringContinuity result;
+  result.active = std::isfinite(maximum_deviation_rad) && maximum_deviation_rad > 0.0F;
+  result.unguarded_command_rad = nominal_steering_command;
+  result.guarded_command_rad = nominal_steering_command;
+
+  const float maximum_steering = std::isfinite(vehicle_params.max_steer_angle)
+                                   ? std::max(0.0F, vehicle_params.max_steer_angle)
+                                   : 0.0F;
+  float application_steering = std::isfinite(current_steering) ? current_steering : 0.0F;
+  application_steering = std::clamp(application_steering, -maximum_steering, maximum_steering);
+
+  const float safe_dt = std::isfinite(dt) ? std::max(dt, 1.0E-4F) : kMppiDt;
+  const float steering_time_constant = std::isfinite(vehicle_params.steer_time_constant)
+                                         ? std::max(vehicle_params.steer_time_constant, 1.0E-4F)
+                                         : 1.0E-4F;
+  const float maximum_steering_rate = std::isfinite(vehicle_params.steer_rate_lim)
+                                        ? std::max(0.0F, vehicle_params.steer_rate_lim)
+                                        : 0.0F;
+  const int delay_steps = std::max(0, steering_delay_steps);
+  for (int step = 0; step < delay_steps; ++step) {
+    const float queued = static_cast<std::size_t>(step) < steering_delay_buffer.size()
+                           ? steering_delay_buffer[static_cast<std::size_t>(step)]
+                           : application_steering;
+    const float queued_command = std::isfinite(queued)
+                                   ? std::clamp(queued, -maximum_steering, maximum_steering)
+                                   : application_steering;
+    const float steering_rate = std::clamp(
+      (queued_command - application_steering) / steering_time_constant, -maximum_steering_rate,
+      maximum_steering_rate);
+    application_steering = std::clamp(
+      application_steering + steering_rate * safe_dt, -maximum_steering, maximum_steering);
+  }
+  result.application_steering_rad = application_steering;
+
+  if (!result.active) {
+    return result;
+  }
+
+  const float finite_command =
+    std::isfinite(nominal_steering_command) ? nominal_steering_command : application_steering;
+  const float lower = std::max(-maximum_steering, application_steering - maximum_deviation_rad);
+  const float upper = std::min(maximum_steering, application_steering + maximum_deviation_rad);
+  result.guarded_command_rad = std::clamp(finite_command, lower, upper);
+  result.clamped = !std::isfinite(nominal_steering_command) ||
+                   std::abs(result.guarded_command_rad - nominal_steering_command) > 1.0E-6F;
+  return result;
+}
+
 std::vector<FirstOrderDubinsMppiControl> filterNominalControlWithKinematicLimits(
   const std::vector<FirstOrderDubinsMppiControl> & nominal, const InitialState & initial_state,
   const FirstOrderDubinsMppiKinematicLimits & limits,
