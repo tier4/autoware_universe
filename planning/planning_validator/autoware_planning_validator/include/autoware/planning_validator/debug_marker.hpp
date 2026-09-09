@@ -82,6 +82,7 @@ public:
     if (!status.is_valid_forward_trajectory_length) append_string("forward_traj_length");
     if (!status.is_valid_trajectory_shift) append_string("traj_shift");
     if (!status.is_valid_intersection_collision_check) append_string("collision");
+    if (!status.is_valid_boundary_departure) append_string("boundary_departure");
 
     if (ss.str().empty()) {
       return "";

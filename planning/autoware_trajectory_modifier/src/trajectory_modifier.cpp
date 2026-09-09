@@ -14,10 +14,14 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier.hpp"
 
+#include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 
+#include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -34,6 +38,9 @@ TrajectoryModifier::TrajectoryModifier(const rclcpp::NodeOptions & options)
     "autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase"),
   context_{std::make_shared<TrajectoryModifierContext>(this)}
 {
+  sub_map_ = create_subscription<LaneletMapBin>(
+    "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
+    std::bind(&TrajectoryModifier::on_map, this, std::placeholders::_1));
   trajectories_sub_ = create_subscription<CandidateTrajectories>(
     "~/input/candidate_trajectories", 1,
     std::bind(&TrajectoryModifier::on_traj, this, std::placeholders::_1));
@@ -84,6 +91,16 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
   if (!input.obstacle_pointcloud) {
     RCLCPP_WARN(get_logger(), "Missing data: obstacle_pointcloud is not set");
   }
+  if (!input.traffic_light_signals) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000, "Missing data: traffic_light_signals is not set");
+  }
+  if (!input.lanelet_map) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: lanelet_map is not set");
+  }
+  if (!input.route) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: route is not set");
+  }
 
   CandidateTrajectories output_trajectories = *msg;
 
@@ -124,7 +141,18 @@ plugin::InputData TrajectoryModifier::make_input_data()
   input.current_acceleration = sub_current_acceleration_.take_data();
   input.predicted_objects = sub_objects_.take_data();
   input.obstacle_pointcloud = sub_pointcloud_.take_data();
+  input.route = sub_route_.take_data();
+  input.traffic_light_signals = sub_traffic_lights_.take_data();
+  input.lanelet_map = lanelet_map_ptr_;
+  input.lanelet_map_bin = lanelet_map_bin_ptr_;
   return input;
+}
+
+void TrajectoryModifier::on_map(const LaneletMapBin::ConstSharedPtr msg)
+{
+  lanelet_map_bin_ptr_ = msg;
+  lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
+    autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg));
 }
 
 void TrajectoryModifier::load_plugin(const std::string & name)
