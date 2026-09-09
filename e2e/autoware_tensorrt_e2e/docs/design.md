@@ -280,6 +280,11 @@ are published, mirroring the diffusion planner topics.
     The exporter's own note -- embedded normalization statistics exceed the fp16 range -- is
     the reason the ml_package pins fp32; fp16 for this planner is an exporter-side change,
     not a deployment switch.
+  - TensorRT's **auxiliary streams** (`setMaxAuxStreams(2)`) and **builder optimization
+    level 5**: the same builder segfaults on the same graph about 15 s into either build.
+    On this host only the default builder configuration (one stream, level 3, 16 GiB
+    workspace, fp32) produces an engine; the knobs were not kept, since a parameter that
+    crashes the builder when turned is a trap, not an option.
 
 ### Separation between model architecture and deployment parameters
 
