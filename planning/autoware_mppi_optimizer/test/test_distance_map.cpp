@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "projection_test_cases.hpp"
+
+#include <mppi/core/mppi_common.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh>
 
 #include <cuda_runtime_api.h>
@@ -221,6 +224,88 @@ __global__ void sampleProjectionSegmentKernel(
 }
 
 enum class DistanceQuery : int { Obstacle, RoadBorder, DrivableArea };
+
+__global__ void setProjectionTextureEnabled(TestCost * cost, const bool enabled)
+{
+  cost->texture_state_.nearest_segment_texture_valid_ = enabled;
+}
+
+struct ProjectionSample
+{
+  TestCost::LateralPathMetrics metrics;
+  float initial_hint;
+};
+
+__global__ void sampleProjectionSequenceKernel(
+  TestCost * cost, const float2 * queries, const int count, const bool use_shared,
+  ProjectionSample * output)
+{
+  extern __shared__ float theta[];
+  cost->initializeCosts(nullptr, nullptr, theta, 0.0F, 0.1F);
+  if (threadIdx.y == 0) {
+    const float initial_hint = *cost->projectionHintSlot(theta);
+    // Lane zero tests fresh initialization. Other lanes start from deliberately unrelated
+    // hints. Later queries reuse the result written by the preceding query in that lane.
+    if (threadIdx.x > 0) {
+      *cost->projectionHintSlot(theta) = static_cast<float>(threadIdx.x - 1);
+    }
+    for (int i = 0; i < count; ++i) {
+      auto & sample = output[threadIdx.x * count + i];
+      sample.initial_hint = initial_hint;
+      sample.metrics = cost->computeLateralPathMetrics(
+        queries[i].x, queries[i].y, 0.3F, use_shared ? theta : nullptr);
+    }
+  }
+}
+
+void expectProjectionSequence(
+  TestCost & cost, const std::vector<float2> & queries, const cudaStream_t stream)
+{
+  constexpr int lanes = 32;
+  const dim3 block(lanes, 2, 1);
+  const auto shared_bytes = mppi::kernels::calcClassSharedMemSize(&cost, block);
+  DeviceBuffer<float2> device_queries(queries.size());
+  CUDA_CHECK(cudaMemcpyAsync(
+    device_queries.get(), queries.data(), queries.size() * sizeof(float2), cudaMemcpyHostToDevice,
+    stream));
+  DeviceBuffer<ProjectionSample> output(lanes * queries.size());
+  std::vector<ProjectionSample> actual(lanes * queries.size());
+  for (bool texture : {true, false}) {
+    SCOPED_TRACE(texture ? "texture seed" : "no texture");
+    setProjectionTextureEnabled<<<1, 1, 0, stream>>>(cost.cost_d_, texture);
+    CUDA_CHECK(cudaGetLastError());
+    for (bool shared : {true, false}) {
+      SCOPED_TRACE(shared ? "persistent shared hint" : "no shared hint");
+      sampleProjectionSequenceKernel<<<1, block, shared_bytes, stream>>>(
+        cost.cost_d_, device_queries.get(), static_cast<int>(queries.size()), shared, output.get());
+      CUDA_CHECK(cudaGetLastError());
+      output.copyToHost(actual.data(), stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      for (int lane = 0; lane < lanes; ++lane) {
+        SCOPED_TRACE(lane);
+        for (std::size_t i = 0; i < queries.size(); ++i) {
+          SCOPED_TRACE(i);
+          const auto expected = cost.computeLateralPathMetrics(queries[i].x, queries[i].y, 0.3F);
+          const auto & sample = actual[lane * queries.size() + i];
+          EXPECT_FLOAT_EQ(sample.initial_hint, -1.0F);
+          const auto & value = sample.metrics;
+          EXPECT_EQ(value.best_segment_i, expected.best_segment_i);
+          // Analytical projection has no texture-resolution error allowance.
+          EXPECT_NEAR(value.lateral_distance, expected.lateral_distance, 1.0E-4F);
+          EXPECT_NEAR(value.lateral_yaw_error_sq, expected.lateral_yaw_error_sq, 1.0E-4F);
+          EXPECT_NEAR(value.path_length_s, expected.path_length_s, 1.0E-4F);
+          EXPECT_NEAR(value.spatial_s, expected.spatial_s, 1.0E-4F);
+          EXPECT_NEAR(value.spatial_ref_velocity, expected.spatial_ref_velocity, 1.0E-4F);
+          EXPECT_NEAR(value.remaining_distance_s, expected.remaining_distance_s, 1.0E-4F);
+          EXPECT_NEAR(value.overshoot_distance_s, expected.overshoot_distance_s, 1.0E-4F);
+        }
+      }
+    }
+  }
+  setProjectionTextureEnabled<<<1, 1, 0, stream>>>(cost.cost_d_, true);
+  CUDA_CHECK(cudaGetLastError());
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+}
 
 template <class CostT>
 __global__ void sampleCostDistanceKernel(
@@ -613,6 +698,50 @@ TEST_F(DistanceMapGpuTest, OutOfBoundsProjectionRetainsAnalyticalFallback)
   constexpr float query_y = 1000.0F;
   const int host_segment = cost_->computeLateralPathMetrics(query_x, query_y, 0.0F).best_segment_i;
   EXPECT_EQ(sampleProjectionSegment(*cost_, query_x, query_y, stream()), host_segment);
+}
+
+TEST_F(DistanceMapGpuTest, AdversarialProjectionMatchesHostWithAndWithoutPersistentHints)
+{
+  for (const auto & c : autoware::mppi_optimizer::projection_test::cases()) {
+    SCOPED_TRACE(c.name);
+    std::vector<float> velocity(c.x.size());
+    for (std::size_t i = 0; i < velocity.size(); ++i) {
+      velocity[i] = 1.0F + static_cast<float>(i) * 0.1F;
+    }
+    cost_->setLateralCorridor(
+      c.x.data(), c.y.data(), static_cast<int>(c.x.size()), nullptr, velocity.data());
+    ASSERT_TRUE(cost_->texture_state_.nearest_segment_texture_valid_);
+    const auto expected = cost_->computeLateralPathMetrics(c.query_x, c.query_y, 0.3F);
+    EXPECT_EQ(expected.best_segment_i, c.segment);
+    EXPECT_NEAR(expected.lateral_distance, c.lateral, 1.0E-5F);
+    const auto & grid = cost_->texture_state_.nearest_segment_map_grid_;
+    const float boundary_x = grid.origin_x + 128.0F * grid.resolution;
+    const float boundary_y = grid.origin_y + 128.0F * grid.resolution;
+    const float epsilon = 0.001F * grid.resolution;
+    expectProjectionSequence(
+      *cost_,
+      {make_float2(c.x.front(), c.y.front()), make_float2(c.query_x, c.query_y),
+       make_float2(boundary_x - epsilon, boundary_y - epsilon),
+       make_float2(boundary_x + epsilon, boundary_y + epsilon),
+       make_float2(grid.origin_x - 10.0F, c.query_y), make_float2(c.query_x, c.query_y)},
+      stream());
+  }
+}
+
+TEST_F(DistanceMapGpuTest, ReferenceOnlyProjectionUsesTheSameGlobalSearch)
+{
+  std::array<float, kTestHorizon> x{}, y{}, velocity{};
+  x[1] = x[2] = 10.0F;
+  for (int i = 2; i < kTestHorizon; ++i) {
+    y[i] = 10.0F;
+  }
+  velocity.fill(2.0F);
+  cost_->beginDataUpdate();
+  cost_->clearLateralCorridor();
+  cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon);
+  cost_->commitDataUpdate();
+  expectProjectionSequence(
+    *cost_, {make_float2(1, 0), make_float2(1, 9), make_float2(-1000, 9)}, stream());
 }
 
 TEST_F(DistanceMapGpuTest, EgoSpineSubtractsTheConservativeSliceRadius)

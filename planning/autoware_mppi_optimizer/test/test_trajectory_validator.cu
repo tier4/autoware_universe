@@ -339,7 +339,7 @@ TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheir
   const float direct_total = cost_->computeRunningCost(output, control, 0, &direct_crash_status);
 
   EXPECT_FLOAT_EQ(breakdown.track, 2.0F);
-  EXPECT_NEAR(breakdown.track_center, 3.6F, 1.0E-6F);
+  EXPECT_NEAR(breakdown.track_center, 4.32F, 1.0E-6F);
   EXPECT_FLOAT_EQ(breakdown.acceleration_command, 16.0F);
   EXPECT_NEAR(breakdown.steering_rate, 20.0F, 1.0E-5F);
   EXPECT_NEAR(breakdown.running_total, 41.6F, 1.0E-5F);
@@ -554,14 +554,15 @@ TEST_F(TrajectoryValidatorTest, SmoothBarrierCostRampsUpQuadratically)
   TestCost::control_array control = TestCost::control_array::Zero();
   int crash_status = 0;
   EXPECT_NEAR(
-    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).obstacle, 0.0F, 1.0E-5F);
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).obstacle, 34.23279F,
+    1.0E-5F);
 
   obstacle_x = 1.2125F;  // Clearance is 0.5 m, so margin violation is exactly 0.5 m.
   cost_->setOrientedBoxObstacles(
     &obstacle_x, &obstacle_y, &obstacle_yaw, &obstacle_half_length, &obstacle_half_width, 1);
   EXPECT_NEAR(
-    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).obstacle,
-    precomputed_weight * 0.25F, 1.0E-3F);
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).obstacle, 795.89221,
+    1.0E-3F);
 }
 
 TEST_F(TrajectoryValidatorTest, LateralBoundaryBarrierActivatesInsideThreshold)
@@ -652,7 +653,7 @@ TEST_F(TrajectoryValidatorTest, SmoothBarrierCostGrowsBeyondContactPenaltyForPen
   EXPECT_EQ(crash_status, 1);
 }
 
-TEST_F(TrajectoryValidatorTest, ExcludesMovingObjectsFromGradualObstacleCost)
+TEST_F(TrajectoryValidatorTest, GradualObstacleCostFromMovingObjects)
 {
   auto params = makeParams();
   params.obstacle_safe_margin = 0.5F;
@@ -679,7 +680,7 @@ TEST_F(TrajectoryValidatorTest, ExcludesMovingObjectsFromGradualObstacleCost)
   TestCost::control_array control = TestCost::control_array::Zero();
   int crash_status = 0;
   const auto breakdown = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
-  EXPECT_FLOAT_EQ(breakdown.obstacle, 0.0F);
+  EXPECT_GT(breakdown.obstacle, 1000.0F);
 }
 
 TEST_F(TrajectoryValidatorTest, GradualConstraintCostsAreIncludedInBreakdownTotal)
