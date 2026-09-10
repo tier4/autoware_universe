@@ -158,7 +158,8 @@ private:
 
   // ROS interfaces
   tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_{tf_buffer_};
+  //! Started by create_providers() only when a provider uses_tf(); see the interface.
+  std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
   //! When the previous pass ran, to judge this one's processing time
   //! against the interval the sensor actually delivered.
   std::optional<rclcpp::Time> previous_run_;
