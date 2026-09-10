@@ -60,7 +60,7 @@ listed in `postprocess.extra_trajectory_tensors` are published as extra candidat
 | --- | --- | --- | --- |
 | camera | `camera_images` | `[1, N, 3, H, W]` | this package, normalized RGB, `H` and `W` from the engine |
 | camera | `camera_intrinsics` | `[1, N, 3, 3]` | rescaled to the model resolution |
-| camera | `camera2ego` | `[1, N, 4, 4]` | TF, camera frame to `base_link` |
+| camera | `camera2ego` | `[1, N, 4, 4]` | TF, camera frame to `base_link`; the node listens to `/tf` only when a provider declares it uses TF, so a model line without cameras has no TF subscription |
 | lidar | `points` | `[1, P, D]` | `D` in 3 to 5, padded or truncated to `P` |
 | lidar | `num_points` | `[1, 1]` | valid point count |
 | context | `ego_current_state` | `[1, 10]` | `autoware_diffusion_planner` |

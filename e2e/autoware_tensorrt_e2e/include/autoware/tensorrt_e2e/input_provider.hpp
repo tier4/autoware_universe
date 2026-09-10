@@ -48,6 +48,16 @@ public:
   virtual std::string name() const = 0;
 
   /**
+   * @brief Whether the provider looks transforms up in the node's TF buffer.
+   *
+   * The node starts a TF listener only when some provider says so: a listener subscribes
+   * to `/tf` and `/tf_static` from a helper node, and a model line without cameras has no
+   * use for either. The buffer itself is always there to be passed in; empty, it costs
+   * nothing.
+   */
+  virtual bool uses_tf() const { return false; }
+
+  /**
    * @brief Claim the engine input tensors this provider will produce.
    * @param engine_inputs The engine's input manifest.
    * @return Names of the claimed tensors (possibly empty).

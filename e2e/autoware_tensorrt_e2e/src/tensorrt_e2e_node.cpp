@@ -168,6 +168,11 @@ void TensorrtE2eNode::create_providers()
     context_provider_ = context_provider.get();
     providers_.push_back(std::move(context_provider));
   }
+  const bool any_tf = std::any_of(
+    providers_.begin(), providers_.end(), [](const auto & provider) { return provider->uses_tf(); });
+  if (any_tf) {
+    tf_listener_ = std::make_unique<tf2_ros::TransformListener>(tf_buffer_);
+  }
   if (providers_.empty()) {
     throw std::runtime_error(
       "No input providers configured: set sensor_inputs and/or enable_context_inputs");

@@ -55,6 +55,7 @@ class CameraInputProvider : public InputProviderInterface
 {
 public:
   CameraInputProvider(rclcpp::Node & node, tf2_ros::Buffer & tf_buffer);
+  bool uses_tf() const override { return true; }  // camera -> base_link extrinsics
   ~CameraInputProvider() override;
 
   CameraInputProvider(const CameraInputProvider &) = delete;
