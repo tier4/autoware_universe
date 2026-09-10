@@ -15,6 +15,7 @@
 #include "safety_planner_node.hpp"
 
 #include <autoware_utils/geometry/geometry.hpp>
+#include <autoware_utils_geometry/ear_clipping.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 
@@ -619,19 +620,26 @@ void SafetyPlannerNode::publish_constraints_markers(
         if (ring.empty()) {
           continue;
         }
-        auto outline = create_default_marker(
-          "map", now, plugin_name + "/scalar_bound", id, Marker::LINE_STRIP,
-          create_marker_scale(0.1, 0.0, 0.0),
-          is_hard ? hard_constraint_color : soft_constraint_color);
+        // A filled face rather than an outline, which would be lost among the Boundary lines.
+        // Lanelet regions are concave, so a fan from the centroid would not do
+        auto fill_color = is_hard ? hard_constraint_color : soft_constraint_color;
+        fill_color.a = 0.3;
+        auto fill = create_default_marker(
+          "map", now, plugin_name + "/scalar_bound", id, Marker::TRIANGLE_LIST,
+          create_marker_scale(1.0, 1.0, 1.0), fill_color);
+        for (const auto & triangle : autoware_utils_geometry::triangulate(*bound->region)) {
+          for (std::size_t k = 0; k < 3; ++k) {
+            fill.points.push_back(to_point(triangle.outer()[2 - k], z));
+          }
+        }
         Point2d centroid{0.0, 0.0};
         for (const auto & p : ring) {
-          outline.points.push_back(to_point(p, z));
           centroid += p;
         }
         centroid /= static_cast<double>(ring.size());
         auto text = text_marker(plugin_name + "/scalar_bound_text", id, line);
         text.pose.position = to_point(centroid, z + 0.5);
-        add(std::move(outline), constraint);
+        add(std::move(fill), constraint);
         add(std::move(text), constraint);
         ++id;
       }
