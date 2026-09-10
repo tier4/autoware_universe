@@ -96,6 +96,8 @@ ignore_drivable_area: true
 force_cold_start_each_step: true
 min_optimization_length: 0.0
 use_last_control_as_nominal: true
+use_mpc_predicted_trajectory_as_nominal_steering: false
+mpc_predicted_trajectory_max_age_s: 0.5
 nominal_initial_steering_max_deviation_rad: 0.1
 ```
 
@@ -114,6 +116,12 @@ Notes:
 - `use_last_control_as_nominal` warm-starts `u_nom` from the previous applied MPPI result when its
   timestamp, plant replay, and shifted reference remain continuous. The elapsed timestamp selects
   the shift count, and the current diffusion seed fills the newly exposed tail.
+- `use_mpc_predicted_trajectory_as_nominal_steering` replaces the nominal steering prefix with
+  steering inferred from the fresh MPC-predicted path only when MPPI was not applied on the
+  preceding primary-candidate cycle. The MPC trajectory is read from
+  `~/input/mpc_predicted_trajectory`; `mpc_predicted_trajectory_max_age_s` rejects stale input.
+  Acceleration and the nominal suffix continue to come from the configured diffusion or temporal
+  seed.
 - `nominal_initial_steering_max_deviation_rad` limits `u_nom[0]` around the steering predicted when
   that command reaches the actuator after the existing steering-delay queue. A discontinuous
   reused horizon is discarded before the current-reference seed is clamped; `0.0` disables the

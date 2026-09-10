@@ -28,6 +28,8 @@
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
+#include <tf2/utils.h>
+
 #include <algorithm>
 #include <cmath>
 #include <exception>
@@ -271,6 +273,35 @@ double ego_signed_lateral_error_on_reference_m(
   return best_signed;
 }
 
+bool is_valid_mpc_predicted_trajectory(
+  const autoware_planning_msgs::msg::Trajectory & trajectory, const std::string & expected_frame)
+{
+  if (
+    trajectory.points.size() < 2U || trajectory.header.frame_id.empty() ||
+    (!expected_frame.empty() && trajectory.header.frame_id != expected_frame)) {
+    return false;
+  }
+
+  double previous_time = -std::numeric_limits<double>::infinity();
+  for (const auto & point : trajectory.points) {
+    const auto & orientation = point.pose.orientation;
+    const double orientation_norm_squared =
+      orientation.x * orientation.x + orientation.y * orientation.y +
+      orientation.z * orientation.z + orientation.w * orientation.w;
+    const double time = static_cast<double>(point.time_from_start.sec) +
+                        1.0E-9 * static_cast<double>(point.time_from_start.nanosec);
+    if (
+      !std::isfinite(point.pose.position.x) || !std::isfinite(point.pose.position.y) ||
+      !std::isfinite(orientation_norm_squared) || orientation_norm_squared <= 0.0 ||
+      !std::isfinite(tf2::getYaw(orientation)) || !std::isfinite(time) || time < 0.0 ||
+      time <= previous_time) {
+      return false;
+    }
+    previous_time = time;
+  }
+  return true;
+}
+
 }  // namespace
 
 void TrajectoryMppiOptimizer::on_initialize(
@@ -287,6 +318,9 @@ void TrajectoryMppiOptimizer::on_initialize(
   velocity_limit_sub_ =
     std::make_shared<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>(
       node, "~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+  mpc_predicted_trajectory_sub_ =
+    std::make_shared<autoware_utils_rclcpp::InterProcessPollingSubscriber<Trajectory>>(
+      node, "~/input/mpc_predicted_trajectory", rclcpp::QoS{1});
 
   reference_trajectory_pub_ =
     node->create_publisher<Trajectory>("~/debug/mppi/reference_trajectory", 1);
@@ -328,6 +362,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       publish_enabled(false);
       publish_status_diagnostic(level, error.what(), rclcpp::Time{data.candidate_header.stamp});
       RCLCPP_ERROR(get_node_ptr()->get_logger(), "%s", error.what());
+      if (data.candidate_index == 0U) previous_mppi_trajectory_applied_ = false;
       return ProcessingResult::Unchanged;
     }
     params_ = std::move(updated_params);
@@ -348,6 +383,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     publish_enabled(false);
     clear_markers(data.candidate_header);
     publish_status_diagnostic(level, "MPPI disabled", rclcpp::Time{data.candidate_header.stamp});
+    previous_mppi_trajectory_applied_ = false;
     return ProcessingResult::Unchanged;
   }
 
@@ -362,6 +398,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
       "MPPI input data is not ready: odometry, tracked objects, route, or map is missing");
+    previous_mppi_trajectory_applied_ = false;
     return ProcessingResult::Unchanged;
   }
 
@@ -372,6 +409,29 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     Trajectory input;
     input.header = data.candidate_header;
     input.points = trajectory_points;
+
+    const bool was_previous_mppi_trajectory_applied = previous_mppi_trajectory_applied_;
+    std::optional<Trajectory> mpc_predicted_trajectory;
+    const auto latest_mpc_prediction = mpc_predicted_trajectory_sub_->take_data();
+    bool mpc_prediction_fresh = false;
+    bool mpc_prediction_valid = false;
+    if (latest_mpc_prediction) {
+      const double age =
+        (get_node_ptr()->now() - rclcpp::Time{latest_mpc_prediction->header.stamp}).seconds();
+      mpc_prediction_fresh =
+        std::isfinite(age) && age >= -0.1 && age <= params_.mpc_predicted_trajectory_max_age_s;
+      mpc_prediction_valid =
+        mpc_prediction_fresh &&
+        is_valid_mpc_predicted_trajectory(*latest_mpc_prediction, input.header.frame_id);
+    }
+    auto mpc_seed_status = resolveMpcNominalSeedStatus(
+      params_.use_mpc_predicted_trajectory_as_nominal_steering,
+      was_previous_mppi_trajectory_applied, static_cast<bool>(latest_mpc_prediction),
+      mpc_prediction_fresh, mpc_prediction_valid);
+    if (
+      mpc_seed_status == FirstOrderDubinsMppiMpcNominalSeedStatus::used && latest_mpc_prediction) {
+      mpc_predicted_trajectory = *latest_mpc_prediction;
+    }
 
     const auto objects_in_range = autoware::avoidance_target_detector::filter_objects_in_range(
       *data.tracked_objects, input, object_filter_margin_m_, object_filter_prediction_extension_s_);
@@ -438,7 +498,24 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     auto result = optimizer_->optimizeTrajectory(
       input, *data.current_odometry, acceleration, steering, all_targets,
       to_mppi_segments(road_borders), to_mppi_segments(drivable_area), kinematic_limits,
-      control_postprocessor, /*defer_commit=*/true);
+      control_postprocessor, /*defer_commit=*/true, mpc_predicted_trajectory);
+
+    result.debug.previous_mppi_trajectory_applied = was_previous_mppi_trajectory_applied;
+    if (mpc_predicted_trajectory) {
+      if (
+        result.debug.nominal_seed_source ==
+        FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory) {
+        mpc_seed_status = FirstOrderDubinsMppiMpcNominalSeedStatus::used;
+      } else if (result.optimized_point_count == 0U) {
+        mpc_seed_status = FirstOrderDubinsMppiMpcNominalSeedStatus::optimization_not_run;
+      } else if (
+        result.debug.nominal_seed_source == FirstOrderDubinsMppiNominalSeedSource::forced) {
+        mpc_seed_status = FirstOrderDubinsMppiMpcNominalSeedStatus::forced_nominal;
+      } else {
+        mpc_seed_status = FirstOrderDubinsMppiMpcNominalSeedStatus::invalid;
+      }
+    }
+    result.debug.mpc_nominal_seed_status = mpc_seed_status;
 
     const auto application = makeMppiApplicationStatus(
       params_.shadow_mode, result.debug.was_rejected, result.debug.velocity_limit_profile_active,
@@ -494,6 +571,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       // first command. Re-seed from measured steering when filtered output resumes.
       steering_filter_.reset();
     }
+    previous_mppi_trajectory_applied_ = application.optimized_trajectory_applied;
     return application.output_applied ? ProcessingResult::Modified : ProcessingResult::Unchanged;
   } catch (const std::exception & error) {
     if (optimizer_) optimizer_->invalidateNominalWarmStart();
@@ -505,6 +583,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     RCLCPP_ERROR_THROTTLE(
       get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 1000,
       "MPPI optimization failed: %s", error.what());
+    previous_mppi_trajectory_applied_ = false;
     return ProcessingResult::Unchanged;
   }
 }
@@ -638,6 +717,16 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value(
     "nominal/seed_source", std::string{to_string(debug.nominal_seed_source)});
   cost_diagnostics_->add_key_value(
+    "nominal/previous_mppi_trajectory_applied", debug.previous_mppi_trajectory_applied);
+  cost_diagnostics_->add_key_value(
+    "nominal/mpc_predicted_trajectory_status",
+    std::string{to_string(debug.mpc_nominal_seed_status)});
+  cost_diagnostics_->add_key_value(
+    "nominal/use_mpc_predicted_trajectory_as_nominal_steering",
+    params_.use_mpc_predicted_trajectory_as_nominal_steering);
+  cost_diagnostics_->add_key_value(
+    "nominal/mpc_predicted_trajectory_max_age_s", params_.mpc_predicted_trajectory_max_age_s);
+  cost_diagnostics_->add_key_value(
     "nominal/reset_reason", std::string{to_string(debug.nominal_reset_reason)});
   cost_diagnostics_->add_key_value("nominal/shift_count", debug.nominal_shift_count);
   cost_diagnostics_->add_key_value(
@@ -743,6 +832,14 @@ void TrajectoryMppiOptimizer::publish_status_diagnostic(
   const std::uint8_t level, const std::string & message, const rclcpp::Time & stamp)
 {
   cost_diagnostics_->clear();
+  cost_diagnostics_->add_key_value(
+    "nominal/previous_mppi_trajectory_applied", previous_mppi_trajectory_applied_);
+  cost_diagnostics_->add_key_value(
+    "nominal/mpc_predicted_trajectory_status",
+    std::string{to_string(
+      params_.use_mpc_predicted_trajectory_as_nominal_steering
+        ? FirstOrderDubinsMppiMpcNominalSeedStatus::optimization_not_run
+        : FirstOrderDubinsMppiMpcNominalSeedStatus::disabled)});
   cost_diagnostics_->add_key_value("optimization_succeeded", false);
   cost_diagnostics_->add_key_value("optimized_trajectory_applied", false);
   cost_diagnostics_->add_key_value("fallback_applied", false);

@@ -76,7 +76,8 @@ enum class FirstOrderDubinsMppiNominalSeedSource : std::uint8_t {
   diffusion_reference,
   previous_optimized,
   temporal_mpt,
-  forced
+  forced,
+  mpc_predicted_trajectory
 };
 
 enum class FirstOrderDubinsMppiNominalResetReason : std::uint8_t {
@@ -106,6 +107,8 @@ inline const char * to_string(const FirstOrderDubinsMppiNominalSeedSource source
       return "temporal_mpt";
     case FirstOrderDubinsMppiNominalSeedSource::forced:
       return "forced";
+    case FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory:
+      return "mpc_predicted_trajectory";
   }
   return "unknown";
 }
@@ -152,6 +155,54 @@ struct FirstOrderDubinsMppiPostprocessingContext
   /** True only when optimized steering u[0] still equals its already-filtered shifted seed. */
   bool preserve_first_steering_command{false};
 };
+
+enum class FirstOrderDubinsMppiMpcNominalSeedStatus : std::uint8_t {
+  disabled,
+  previous_mppi_applied,
+  unavailable,
+  stale,
+  invalid,
+  forced_nominal,
+  optimization_not_run,
+  used
+};
+
+inline const char * to_string(const FirstOrderDubinsMppiMpcNominalSeedStatus status)
+{
+  switch (status) {
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::disabled:
+      return "disabled";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::previous_mppi_applied:
+      return "previous_mppi_applied";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::unavailable:
+      return "unavailable";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::stale:
+      return "stale";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::invalid:
+      return "invalid";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::forced_nominal:
+      return "forced_nominal";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::optimization_not_run:
+      return "optimization_not_run";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::used:
+      return "used";
+  }
+  return "unknown";
+}
+
+constexpr FirstOrderDubinsMppiMpcNominalSeedStatus resolveMpcNominalSeedStatus(
+  const bool enabled, const bool previous_mppi_applied, const bool prediction_available,
+  const bool prediction_fresh, const bool prediction_valid)
+{
+  if (!enabled) return FirstOrderDubinsMppiMpcNominalSeedStatus::disabled;
+  if (previous_mppi_applied) {
+    return FirstOrderDubinsMppiMpcNominalSeedStatus::previous_mppi_applied;
+  }
+  if (!prediction_available) return FirstOrderDubinsMppiMpcNominalSeedStatus::unavailable;
+  if (!prediction_fresh) return FirstOrderDubinsMppiMpcNominalSeedStatus::stale;
+  if (!prediction_valid) return FirstOrderDubinsMppiMpcNominalSeedStatus::invalid;
+  return FirstOrderDubinsMppiMpcNominalSeedStatus::used;
+}
 
 /** Optional host-side output conditioning supplied by the interface caller. */
 using FirstOrderDubinsMppiControlSequencePostprocessor = std::function<void(
@@ -403,6 +454,10 @@ struct FirstOrderDubinsMppiDebug
     FirstOrderDubinsMppiNominalResetReason::unavailable};
   int nominal_shift_count{0};
   FirstOrderDubinsMppiNominalSteeringContinuity nominal_steering_continuity;
+  /** Whether the optimized MPPI trajectory was applied on the preceding plugin cycle. */
+  bool previous_mppi_trajectory_applied{false};
+  FirstOrderDubinsMppiMpcNominalSeedStatus mpc_nominal_seed_status{
+    FirstOrderDubinsMppiMpcNominalSeedStatus::disabled};
 };
 
 struct FirstOrderDubinsMppiOptimizationResult
@@ -550,6 +605,9 @@ public:
    *        seed, so an output filter can avoid filtering it twice.
    * @param defer_commit Require commitPendingTrajectory() before recording candidate commands
    *        in the accepted execution history; use this when the caller can reject or shadow output.
+   * @param mpc_predicted_trajectory Optional path whose geometry supplies the nominal steering
+   *        prefix. Eligibility based on previous application and freshness is decided by the
+   * caller.
    * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
@@ -560,7 +618,8 @@ public:
     const std::vector<Segment> & drivable_area,
     const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {},
     const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor = {},
-    bool defer_commit = false);
+    bool defer_commit = false,
+    const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt);
 
   /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
    * This records an assumed first actuator command, not feedback from the downstream controller.

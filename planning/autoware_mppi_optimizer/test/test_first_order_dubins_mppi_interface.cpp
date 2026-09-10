@@ -20,9 +20,11 @@
 #include <mppi/utils/gpu_err_chk.cuh>
 
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
+#include <tf2/LinearMath/Quaternion.h>
 
 #include <algorithm>
 #include <cmath>
@@ -454,6 +456,62 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringDiscontinuityRejectsReusedN
       reset.debug.nominal_control_profile.steering_commands_rad.front() -
       reset.debug.nominal_steering_continuity.application_steering_rad),
     options.nominal_initial_steering_max_deviation_rad + 1.0E-6F);
+  interface_->discardPendingTrajectory();
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, MpcPredictionReplacesOnlyNominalSteeringPrefix)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  interface_->setCostParams(costs);
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.use_last_control_as_nominal = true;
+  options.use_temporal_mpt_as_nominal = false;
+  options.enable_input_delay_compensation = false;
+  interface_->setRuntimeOptions(options);
+
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 2.5F;
+  vehicle.max_steer_angle = 0.6F;
+  interface_->setVehicleParams(vehicle);
+
+  constexpr double steering = 0.2;
+  constexpr double speed = 2.0;
+  constexpr double dt = detail::kMppiDt;
+  auto odometry = makeOdometry();
+  Trajectory mpc_prediction;
+  mpc_prediction.header.frame_id = "map";
+  double x = odometry.pose.pose.position.x;
+  double y = odometry.pose.pose.position.y;
+  double yaw = 0.0;
+  for (std::size_t index = 0; index < 4U; ++index) {
+    x += speed * dt * std::cos(yaw);
+    y += speed * dt * std::sin(yaw);
+    yaw += speed * dt * std::tan(steering) / vehicle.wheel_base;
+    autoware_planning_msgs::msg::TrajectoryPoint point;
+    point.pose.position.x = x;
+    point.pose.position.y = y;
+    tf2::Quaternion orientation;
+    orientation.setRPY(0.0, 0.0, yaw);
+    point.pose.orientation = tf2::toMsg(orientation);
+    point.time_from_start.nanosec = static_cast<std::uint32_t>(index * 100000000U);
+    mpc_prediction.points.push_back(point);
+  }
+
+  const auto result = interface_->optimizeTrajectory(
+    makeStraightTrajectory(80U), odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+    {}, true, mpc_prediction);
+
+  EXPECT_EQ(
+    result.debug.nominal_seed_source,
+    FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory);
+  EXPECT_EQ(result.debug.mpc_nominal_seed_status, FirstOrderDubinsMppiMpcNominalSeedStatus::used);
+  ASSERT_GE(result.debug.nominal_control_profile.steering_commands_rad.size(), 5U);
+  for (std::size_t index = 0; index < mpc_prediction.points.size(); ++index) {
+    EXPECT_NEAR(
+      result.debug.nominal_control_profile.steering_commands_rad[index], steering, 1.0E-5);
+  }
+  EXPECT_FLOAT_EQ(result.debug.nominal_control_profile.steering_commands_rad[4], 0.0F);
   interface_->discardPendingTrajectory();
 }
 

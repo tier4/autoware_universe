@@ -130,6 +130,19 @@ void applyActiveVelocityLimitProfile(
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, int horizon = kMppiHorizon);
 
 /**
+ * Replace the nominal steering prefix with commands inferred from an MPC-predicted path.
+ * The first transition is anchored at the measured ego pose. Later transitions use consecutive
+ * predicted poses. Prediction time_from_start values are interpolated onto the MPPI timestep.
+ * Acceleration and any suffix beyond the prediction remain unchanged.
+ *
+ * @return Number of nominal steering commands replaced.
+ */
+std::size_t overlayNominalSteeringFromPredictedTrajectory(
+  std::vector<FirstOrderDubinsMppiControl> & nominal, const Trajectory & predicted_trajectory,
+  const InitialState & ego, const FirstOrderDubinsMppiVehicleParams & vehicle_params,
+  float dt = kMppiDt);
+
+/**
  * Anchor nominal steer u[0] to the steering predicted after the existing input-delay queue drains.
  * A non-positive maximum deviation disables the guard and preserves the command exactly.
  */
