@@ -14,11 +14,12 @@
 
 #include "turn_indicator_decider.hpp"
 
-#include "sl_view_utils.hpp"
+#include "frenet_utils.hpp"
 
 #include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/lanelet2_utils/intersection.hpp>
 #include <autoware/lanelet2_utils/topology.hpp>
+#include <autoware/trajectory/utils/closest.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_math/normalization.hpp>
 #include <rclcpp/time.hpp>
@@ -46,7 +47,7 @@ constexpr double SEARCH_TIME_S = 3.0;
 constexpr double EXIT_LOOKAHEAD_M = 15.0;
 constexpr double GOAL_ARRIVAL_DISTANCE_M = 1.0;
 constexpr double LATERAL_SHIFT_THRESHOLD_M = 0.5;
-// Must exceed the lateral deviation a lane change or avoidance produces, or those blink too
+// Above what an in-lane avoidance produces and below a lane change, so only the latter blinks
 constexpr double DEPARTURE_LATERAL_THRESHOLD_M = 1.5;
 
 double activation_distance(const double ego_velocity, const TurnSignalParams & params)
@@ -123,6 +124,27 @@ uint8_t decide_pull_over(
   }
 
   return direction_from_lateral_offset(goal_offset, LATERAL_SHIFT_THRESHOLD_M);
+}
+
+// Read off the trajectory projected onto the reference_path rather than the planner's own Frenet
+// samples, so the decider does not depend on how a planner represents its output
+uint8_t decide_lateral_shift(
+  const PathPointTrajectory & path, const Trajectory & trajectory, const double s_ego,
+  const double l_ego, const double ego_velocity, const TurnSignalParams & params)
+{
+  for (const auto & point : trajectory.points) {
+    const double s = experimental::trajectory::closest(path, point.pose.position);
+    const double l =
+      lateral_offset_at(path, s, Point2d{point.pose.position.x, point.pose.position.y});
+    if (std::abs(l - l_ego) <= DEPARTURE_LATERAL_THRESHOLD_M) {
+      continue;
+    }
+    if (s - s_ego > activation_distance(ego_velocity, params)) {
+      return DISABLE;
+    }
+    return l > l_ego ? LEFT : RIGHT;
+  }
+  return DISABLE;
 }
 
 bool is_private(const lanelet::ConstLanelet & lanelet)
@@ -242,7 +264,8 @@ std::vector<Maneuver> find_maneuvers(
 
 }  // namespace
 
-TurnIndicatorsCommand TurnIndicatorDecider::decide(const PlannerContext & context)
+TurnIndicatorsCommand TurnIndicatorDecider::decide(
+  const PlannerContext & context, const Trajectory & trajectory)
 {
   // Not guarded: SafetyPlanner::plan builds the reference_path from it before any planner runs
   const auto & route_manager = *context.route_manager;
@@ -259,12 +282,12 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(const PlannerContext & contex
   }
 
   const double ego_yaw = autoware_utils_geometry::get_rpy(ego_pose).z;
-  const double s_ego = compute_ego_frenet_state(context).s;
+  const auto ego = compute_ego_frenet_state(context);
 
   // The first lit maneuver wins, so a turn still being completed is not stolen by the next one
   uint8_t maneuver_signal = DISABLE;
   for (const auto & maneuver :
-       find_maneuvers(context.reference_path, s_ego, *route_manager.lanelet_map_ptr(), params_)) {
+       find_maneuvers(context.reference_path, ego.s, *route_manager.lanelet_map_ptr(), params_)) {
     maneuver_signal = decide_maneuver_signal(
       maneuver.direction, maneuver.dist_to_start, ego_yaw, maneuver.exit_yaw, ego_velocity,
       params_);
@@ -272,6 +295,9 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(const PlannerContext & contex
       break;
     }
   }
+
+  const auto lateral_shift =
+    decide_lateral_shift(context.reference_path, trajectory, ego.s, ego.l, ego_velocity, params_);
 
   // Not the lanelet under the goal: a shoulder goal must read as offset from the road lane
   const double dist_to_goal = autoware_utils_geometry::calc_distance2d(ego_pose, context.goal_pose);
@@ -291,7 +317,7 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(const PlannerContext & contex
     dist_to_goal <= params_.search_distance, params_, pull_out_latch_);
 
   uint8_t desired = DISABLE;
-  for (const uint8_t candidate : {maneuver_signal, pull_out, pull_over}) {
+  for (const uint8_t candidate : {maneuver_signal, lateral_shift, pull_out, pull_over}) {
     if (candidate != DISABLE) {
       desired = candidate;
       break;

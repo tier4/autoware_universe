@@ -11,8 +11,7 @@ generate_parameter_library(safety_planner_parameters
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 ament_auto_add_library(${PROJECT_NAME}_common STATIC
-  src/utils/constraints_compiler.cpp
-  src/utils/sl_view_utils.cpp
+  src/utils/frenet_utils.cpp
   src/utils/trajectory_postprocess.cpp
   src/utils/turn_indicator_decider.cpp
 )
@@ -36,6 +35,8 @@ target_compile_options(${PROJECT_NAME}_constraint_plugins PRIVATE -Wno-deprecate
 
 # The trajectory planner plugins; compiling the constraints is an implementation detail of this .so
 ament_auto_add_library(${PROJECT_NAME}_trajectory_planner_plugins SHARED
+  src/trajectory_planner/frenet_sampling_based_planner/compiled_constraints_utils.cpp
+  src/trajectory_planner/frenet_sampling_based_planner/constraints_compiler.cpp
   src/trajectory_planner/frenet_sampling_based_planner/frenet_sampling_based_planner.cpp
 )
 target_link_libraries(${PROJECT_NAME}_trajectory_planner_plugins
@@ -75,6 +76,7 @@ if(BUILD_TESTING)
     target_link_libraries(test_${PROJECT_NAME}
       ${PROJECT_NAME}_lib
       ${PROJECT_NAME}_common
+      ${PROJECT_NAME}_trajectory_planner_plugins
       safety_planner_parameters
     )
     target_include_directories(test_${PROJECT_NAME} PRIVATE

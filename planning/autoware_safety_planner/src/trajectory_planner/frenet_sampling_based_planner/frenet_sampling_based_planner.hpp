@@ -26,16 +26,16 @@
 // - velocity s(t): sampling terminal states (duration T, longitudinal speed v_T) and joining them
 //   with a quintic polynomial s(t)
 // A candidate is one path combined with one velocity profile. The hard constraints are evaluated on
-// the projected views of the IR (sl_view_utils) and the cheapest candidate that passes is taken. As
-// stated in constraints_compiler.hpp, everything is measured on the reference_path of the current
-// cycle; the Spline2D of autoware_frenet_planner is not used.
-// Why not sample l(t) directly: starting from standstill both s and l would rise as t^3, which puts
-// the initial heading off the ego heading and rejects every candidate in the kinematic check.
+// the projected views of the IR (compiled_constraints_utils) and the cheapest candidate that passes
+// is taken. As stated in constraints_compiler.hpp, everything is measured on the reference_path of
+// the current cycle; the Spline2D of autoware_frenet_planner is not used. Why not sample l(t)
+// directly: starting from standstill both s and l would rise as t^3, which puts the initial heading
+// off the ego heading and rejects every candidate in the kinematic check.
 
-#include "../../utils/constraints_compiler.hpp"
-#include "../../utils/sl_view_utils.hpp"
 #include "../../utils/turn_indicator_decider.hpp"
 #include "../trajectory_planner_interface.hpp"
+#include "compiled_constraints_utils.hpp"
+#include "constraints_compiler.hpp"
 
 #include <memory>
 #include <optional>

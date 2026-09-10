@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef UTILS__CONSTRAINTS_COMPILER_HPP_
-#define UTILS__CONSTRAINTS_COMPILER_HPP_
+#ifndef TRAJECTORY_PLANNER__FRENET_SAMPLING_BASED_PLANNER__CONSTRAINTS_COMPILER_HPP_
+#define TRAJECTORY_PLANNER__FRENET_SAMPLING_BASED_PLANNER__CONSTRAINTS_COMPILER_HPP_
 
 // Constraint compilation: turns the generator output (a list of Constraint in world coordinates)
 // into the IR the consumers read, CompiledConstraints.
@@ -44,8 +44,8 @@
 // - the IR is rebuilt every cycle. s carries no meaning across cycles (targets are matched across
 //   cycles through the id in Source)
 
-#include "../constraint.hpp"
-#include "../context.hpp"
+#include "../../constraint.hpp"
+#include "../../context.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -138,4 +138,4 @@ CompiledConstraints compile_constraint_list(
 
 }  // namespace autoware::safety_planner
 
-#endif  // UTILS__CONSTRAINTS_COMPILER_HPP_
+#endif  // TRAJECTORY_PLANNER__FRENET_SAMPLING_BASED_PLANNER__CONSTRAINTS_COMPILER_HPP_

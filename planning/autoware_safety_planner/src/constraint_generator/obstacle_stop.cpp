@@ -14,7 +14,7 @@
 
 #include "obstacle_stop.hpp"
 
-#include "../utils/sl_view_utils.hpp"
+#include "../utils/frenet_utils.hpp"
 
 #include <autoware/trajectory/utils/closest.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>

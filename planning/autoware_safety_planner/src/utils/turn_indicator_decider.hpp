@@ -39,7 +39,7 @@ public:
 
   void update_params(const TurnSignalParams & params) { params_ = params; }
 
-  TurnIndicatorsCommand decide(const PlannerContext & context);
+  TurnIndicatorsCommand decide(const PlannerContext & context, const Trajectory & trajectory);
 
 private:
   TurnSignalParams params_;

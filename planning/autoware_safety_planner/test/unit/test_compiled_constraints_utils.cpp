@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "utils/sl_view_utils.hpp"
+#include "trajectory_planner/frenet_sampling_based_planner/compiled_constraints_utils.hpp"
 
 #include <gtest/gtest.h>
 
@@ -21,52 +21,7 @@
 namespace autoware::safety_planner
 {
 
-// Straight path along +x from (0, 0) to (100, 0), so s == x and l == y
-PathPointTrajectory make_straight_path()
-{
-  std::vector<PathPointWithLaneId> points;
-  for (int i = 0; i <= 10; ++i) {
-    auto & p = points.emplace_back();
-    p.point.pose.position.x = 10.0 * i;
-    p.point.pose.orientation.w = 1.0;
-  }
-  return *PathPointTrajectory::Builder{}.build(points);
-}
-
-TEST(SlViewUtils, LateralOffsetAndWorldPoseRoundTrip)
-{
-  const auto path = make_straight_path();
-  EXPECT_NEAR(lateral_offset_at(path, 30.0, Point2d{30.0, 2.5}), 2.5, 1e-6);
-  EXPECT_NEAR(lateral_offset_at(path, 30.0, Point2d{30.0, -1.0}), -1.0, 1e-6);
-
-  const auto pose = to_world_pose(path, 40.0, 1.5);
-  EXPECT_NEAR(pose.position.x(), 40.0, 1e-6);
-  EXPECT_NEAR(pose.position.y(), 1.5, 1e-6);
-  EXPECT_NEAR(pose.yaw, 0.0, 1e-6);
-}
-
-TEST(SlViewUtils, FootprintSlBox)
-{
-  VehicleInfo vehicle_info;
-  vehicle_info.min_longitudinal_offset_m = -1.0;
-  vehicle_info.max_longitudinal_offset_m = 4.0;
-  vehicle_info.min_lateral_offset_m = -0.9;
-  vehicle_info.max_lateral_offset_m = 0.9;
-
-  const auto box = footprint_sl_box(vehicle_info, 10.0, 0.5);
-  EXPECT_DOUBLE_EQ(box.s_min, 9.0);
-  EXPECT_DOUBLE_EQ(box.s_max, 14.0);
-  EXPECT_DOUBLE_EQ(box.l_min, -0.4);
-  EXPECT_DOUBLE_EQ(box.l_max, 1.4);
-
-  const auto swept = footprint_sl_box(vehicle_info, SlBox{10.0, 20.0, -1.0, 1.0});
-  EXPECT_DOUBLE_EQ(swept.s_min, 9.0);
-  EXPECT_DOUBLE_EQ(swept.s_max, 24.0);
-  EXPECT_DOUBLE_EQ(swept.l_min, -1.9);
-  EXPECT_DOUBLE_EQ(swept.l_max, 1.9);
-}
-
-TEST(SlViewUtils, InterpolateBoundaryL)
+TEST(CompiledConstraintsUtils, InterpolateBoundaryL)
 {
   const std::vector<SlPoint> polyline{{0.0, 1.0}, {10.0, 3.0}, {20.0, 3.0}};
   EXPECT_DOUBLE_EQ(interpolate_boundary_l(polyline, -5.0), 1.0);  // clamped before the start
@@ -75,7 +30,7 @@ TEST(SlViewUtils, InterpolateBoundaryL)
   EXPECT_DOUBLE_EQ(interpolate_boundary_l(polyline, 25.0), 3.0);  // clamped after the end
 }
 
-TEST(SlViewUtils, LateralBoundExtremeL)
+TEST(CompiledConstraintsUtils, LateralBoundExtremeL)
 {
   LateralBoundEntry bound;
   bound.polyline = {{0.0, 2.0}, {10.0, 1.0}, {20.0, 2.0}};
@@ -92,7 +47,7 @@ TEST(SlViewUtils, LateralBoundExtremeL)
   EXPECT_FALSE(lateral_bound_extreme_l(bound, 30.0, 40.0, extreme_l));  // no overlap in s
 }
 
-TEST(SlViewUtils, ViolatesLateralBound)
+TEST(CompiledConstraintsUtils, ViolatesLateralBound)
 {
   LateralBoundEntry bound;
   bound.polyline = {{0.0, 2.0}, {20.0, 2.0}};
@@ -107,7 +62,7 @@ TEST(SlViewUtils, ViolatesLateralBound)
   EXPECT_FALSE(violates_lateral_bound(bound, SlBox{5.0, 10.0, 2.1, 3.0}));
 }
 
-TEST(SlViewUtils, ViolatesStopBar)
+TEST(CompiledConstraintsUtils, ViolatesStopBar)
 {
   StopBarEntry stop_bar;
   stop_bar.s_stop = 50.0;

@@ -141,8 +141,9 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan(const TrajectoryPlanner
     if (
       auto trajectory =
         plan_one_side(input.context, input.normal_constraints, result.normal_debug)) {
-      result.normal_trajectory = PlannedTrajectory{
-        std::move(*trajectory), normal_turn_indicator_decider_.decide(input.context)};
+      const auto turn_indicators =
+        normal_turn_indicator_decider_.decide(input.context, *trajectory);
+      result.normal_trajectory = PlannedTrajectory{std::move(*trajectory), turn_indicators};
     }
   }
   {
@@ -150,8 +151,9 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan(const TrajectoryPlanner
     if (
       auto trajectory =
         plan_one_side(input.context, input.cautious_constraints, result.cautious_debug)) {
-      result.cautious_trajectory = PlannedTrajectory{
-        std::move(*trajectory), cautious_turn_indicator_decider_.decide(input.context)};
+      const auto turn_indicators =
+        cautious_turn_indicator_decider_.decide(input.context, *trajectory);
+      result.cautious_trajectory = PlannedTrajectory{std::move(*trajectory), turn_indicators};
     }
   }
   return result;
