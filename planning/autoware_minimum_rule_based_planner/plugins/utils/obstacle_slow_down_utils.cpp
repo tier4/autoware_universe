@@ -331,7 +331,7 @@ void insert_slowdown(EgoTrajectory & trajectory, const SlowdownInterval & slowdo
   const auto [bases, values] = vel.get_data();
   for (size_t i = 0; i < bases.size(); ++i) {
     if (
-      slowdown_interval.from_s <= bases.at(i) && bases.at(i) <= slowdown_interval.to_s &&
+      slowdown_interval.from_s <= bases.at(i) && bases.at(i) < slowdown_interval.to_s &&
       slowdown_interval.velocity < values.at(i)) {
       vel.at(bases.at(i)).set(slowdown_interval.velocity);
     }
@@ -411,17 +411,13 @@ bool SlowDownPlanner::is_slow_down_obstacle(const uint8_t label) const
          target_object_labels_.end();
 }
 
-// static candidate check: object type, lateral distance range, and trajectory center line overlap
+// static candidate check: lateral distance range and trajectory center line overlap
 bool SlowDownPlanner::is_slow_down_candidate(
   const PredictedObject & object, const Polygon2d & obstacle_poly, const EgoTrajectory & trajectory,
   const double dist_from_obj_poly_to_traj_poly) const
 {
   const auto & p = params_.obstacle_filtering;
   const auto obj_uuid_str = autoware_utils_uuid::to_hex_string(object.object_id);
-
-  if (!is_slow_down_obstacle(object.classification.at(0).label)) {
-    return false;
-  }
 
   if (dist_from_obj_poly_to_traj_poly <= p.min_lat_margin) {
     RCLCPP_DEBUG(
@@ -523,7 +519,12 @@ std::vector<SlowDownObstacle> SlowDownPlanner::filter_slow_down_obstacle_for_pre
       continue;
     }
 
-    // 1.2. Check if the rough lateral distance is smaller than the threshold.
+    // 1.2. Check the object type before get_object_param(), which has no entry for other labels
+    if (!is_slow_down_obstacle(object.classification.at(0).label)) {
+      continue;
+    }
+
+    // 1.3. Check if the rough lateral distance is smaller than the threshold.
     const double min_lat_dist_to_traj_poly =
       calc_possible_min_dist_from_obj_to_traj_poly(object, trajectory, obj_s, vehicle_info_);
     if (params_.obstacle_filtering.max_lat_margin < min_lat_dist_to_traj_poly) {

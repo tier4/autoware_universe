@@ -665,11 +665,15 @@ minimum_rule_based_planner:
       type: double
       default_value: -1.0
       description: slow down min deceleration [m/ss]
+      validation:
+        lt<>: [0.0]
       read_only: false
     slow_down_min_jerk:
       type: double
       default_value: -1.0
       description: slow down min jerk [m/sss]
+      validation:
+        lt<>: [0.0]
       read_only: false
     lpf_gain_slow_down_vel:
       type: double
