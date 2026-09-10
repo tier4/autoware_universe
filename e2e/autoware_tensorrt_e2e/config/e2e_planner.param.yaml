@@ -94,8 +94,15 @@
     # Stop and slow-down factors derived from the published trajectory, the way
     # autoware_diffusion_planner derives them, for the consumers of a trajectory
     # generator. Same defaults as that node's shipped configuration.
+    # Off by default: stop/slowdown labeling lives in trajectory_modifier's
+    # ModelPlanningFactorID plugin (published as
+    # /planning/planning_factors/neural_network_planner), which applies to any
+    # learning-based planner downstream of this node. Turning this on as well
+    # reports the same stop twice. Matches the deployment config in
+    # autoware_launch (neural_net_planner/e2e_planner.param.yaml and
+    # diffusion_planner.param.yaml since 2026-09-09).
     planning_factor:
-      enable_stop: true
+      enable_stop: false
       enable_slowdown: false
       stop_velocity_threshold: 0.1
       stop_keep_duration_threshold: 1.0
