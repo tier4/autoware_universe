@@ -27,6 +27,7 @@
   <arg name="input_traffic_signals" default="/perception/traffic_light_recognition/traffic_signals"/>
   <arg name="input_vector_map" default="/map/vector_map"/>
   <arg name="input_external_velocity_limit_mps" default="/planning/scenario_planning/max_velocity_default"/>
+  <arg name="input_mpc_predicted_trajectory" default="/control/trajectory_follower/lateral/predicted_trajectory"/>
   <arg name="output_trajectory" default="/planning/trajectory"/>
   <arg name="output_trajectories" default="/planning/generator/candidate_trajectories"/>
   <arg name="output_current_velocity_limit_mps" default="/planning/scenario_planning/current_max_velocity"/>
@@ -62,6 +63,7 @@
     <remap from="~/input/traffic_signals" to="$(var input_traffic_signals)"/>
     <remap from="~/input/vector_map" to="$(var input_vector_map)"/>
     <remap from="~/input/external_velocity_limit_mps" to="$(var input_external_velocity_limit_mps)"/>
+    <remap from="~/input/mpc_predicted_trajectory" to="$(var input_mpc_predicted_trajectory)"/>
     <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
     <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
     <remap from="~/output/current_velocity_limit_mps" to="$(var output_current_velocity_limit_mps)"/>
