@@ -39,7 +39,6 @@ using tier4_autoware_utils::calcAzimuthAngle;
 using tier4_autoware_utils::calcDistance2d;
 using tier4_autoware_utils::calcSignedArcLength;
 using tier4_autoware_utils::createPoint;
-using tier4_autoware_utils::findNearestIndex;
 using tier4_autoware_utils::getRPY;
 
 namespace
@@ -448,6 +447,7 @@ ObstacleStopPlannerNode::ObstacleStopPlannerNode(const rclcpp::NodeOptions & nod
     lpf_acc_ = std::make_shared<LowpassFilter1d>(0.0, p.lowpass_gain);
     const double max_yaw_deviation_deg = declare_parameter("max_yaw_deviation_deg", 90.0);
     p.max_yaw_deviation_rad = tier4_autoware_utils::deg2rad(max_yaw_deviation_deg);
+    p.distance_thresh = declare_parameter("distance_thresh", 5.0);
   }
 
   {
@@ -1234,10 +1234,11 @@ TrajectoryPoints ObstacleStopPlannerNode::trimTrajectoryWithIndexFromSelfPose(
   TrajectoryPoints output{};
 
   size_t min_distance_index = 0;
-  const auto nearest_index = tier4_autoware_utils::findNearestIndex(
-    input, self_pose, 10.0, node_param_.max_yaw_deviation_rad);
+  const auto nearest_index = tier4_autoware_utils::findFirstNearestIndex(
+    input, self_pose, 10.0, node_param_.max_yaw_deviation_rad, node_param_.distance_thresh);
   if (!nearest_index) {
-    min_distance_index = tier4_autoware_utils::findNearestIndex(input, self_pose.position);
+    min_distance_index = tier4_autoware_utils::findFirstNearestIndex(
+      input, self_pose.position, node_param_.distance_thresh);
   } else {
     min_distance_index = nearest_index.value();
   }

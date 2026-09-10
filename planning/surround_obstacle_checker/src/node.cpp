@@ -29,6 +29,7 @@
 
 #define EIGEN_MPL2_ONLY
 #include "tier4_autoware_utils/geometry/geometry.hpp"
+#include "tier4_autoware_utils/trajectory/trajectory.hpp"
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -74,6 +75,7 @@ SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptio
     this->declare_parameter("surround_check_recover_distance", 2.5);
   state_clear_time_ = this->declare_parameter("state_clear_time", 2.0);
   stop_state_ego_speed_ = this->declare_parameter("stop_state_ego_speed", 0.1);
+  distance_thresh_ = this->declare_parameter("distance_thresh", 5.0);
   debug_ptr_ = std::make_shared<SurroundObstacleCheckerDebugNode>(
     vehicle_info_.max_longitudinal_offset_m, this->get_clock(), *this);
   self_poly_ = createSelfPolygon();
@@ -134,7 +136,8 @@ void SurroundObstacleCheckerNode::pathCallback(
   }
 
   // get closest idx
-  const size_t closest_idx = getClosestIdx(output_trajectory_points, current_pose);
+  const size_t closest_idx =
+    getFirstClosestIndex(output_trajectory_points, current_pose, distance_thresh_);
 
   // get nearest object
   double min_dist_to_obj = std::numeric_limits<double>::max();
@@ -263,6 +266,16 @@ size_t SurroundObstacleCheckerNode::getClosestIdx(
     }
   }
   return min_dist_idx;
+}
+
+size_t SurroundObstacleCheckerNode::getFirstClosestIndex(
+  const TrajectoryPoints & traj, const geometry_msgs::msg::Pose current_pose,
+  const double distance_thresh)
+{
+  if (traj.empty()) {
+    return 0;
+  }
+  return tier4_autoware_utils::findFirstNearestIndex(traj, current_pose.position, distance_thresh);
 }
 
 void SurroundObstacleCheckerNode::getNearestObstacle(

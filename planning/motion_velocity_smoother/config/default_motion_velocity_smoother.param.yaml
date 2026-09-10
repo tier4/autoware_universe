@@ -28,6 +28,7 @@
     extract_ahead_dist: 200.0         # forward trajectory distance used for planning [m]
     extract_behind_dist: 5.0          # backward trajectory distance used for planning [m]
     delta_yaw_threshold: 1.0472       # Allowed delta yaw between ego pose and trajectory pose [radian]
+    distance_thresh: 5.0
 
     # resampling parameters for optimization
     max_trajectory_length: 200.0        # max trajectory length for resampling [m]
