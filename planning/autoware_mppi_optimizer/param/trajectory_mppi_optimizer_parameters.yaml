@@ -351,6 +351,17 @@ trajectory_mppi_optimizer:
     default_value: true
     description: Warm-start MPPI u_nom from the previous optimized control (ignored when t-MPT seeds u_nom)
     read_only: false
+  use_mpc_predicted_trajectory_as_nominal_steering:
+    type: bool
+    default_value: false
+    description: Seed the nominal steering prefix from a fresh MPC prediction only when MPPI was not applied on the preceding cycle
+    read_only: false
+  mpc_predicted_trajectory_max_age_s:
+    type: double
+    default_value: 0.5
+    description: Maximum age of an MPC predicted trajectory eligible to seed nominal steering
+    validation: { gt<>: [0.0] }
+    read_only: false
   nominal_initial_steering_max_deviation_rad:
     type: double
     default_value: 0.0
