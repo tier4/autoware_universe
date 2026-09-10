@@ -622,6 +622,10 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
 
   auto cost_params = make_cost_params(params_);
   auto vehicle_params = get_first_order_dubins_mppi_vehicle_params(*get_node_ptr());
+  vehicle_params.max_lateral_jerk_mps3 = static_cast<float>(params_.max_lateral_jerk_mps3);
+  vehicle_params.standstill_steer_rate_lim = static_cast<float>(params_.standstill_steer_rate_lim);
+  vehicle_params.restart_velocity_threshold_mps =
+    static_cast<float>(params_.restart_velocity_threshold_mps);
   optimizer_ = std::make_unique<FirstOrderDubinsMppiInterface>();
   optimizer_->setCostParams(cost_params);
   optimizer_->setVehicleParams(vehicle_params);
@@ -726,6 +730,11 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
     params_.use_mpc_predicted_trajectory_as_nominal_steering);
   cost_diagnostics_->add_key_value(
     "nominal/mpc_predicted_trajectory_max_age_s", params_.mpc_predicted_trajectory_max_age_s);
+  cost_diagnostics_->add_key_value("vehicle/max_lateral_jerk_mps3", params_.max_lateral_jerk_mps3);
+  cost_diagnostics_->add_key_value(
+    "vehicle/standstill_steer_rate_lim", params_.standstill_steer_rate_lim);
+  cost_diagnostics_->add_key_value(
+    "vehicle/restart_velocity_threshold_mps", params_.restart_velocity_threshold_mps);
   cost_diagnostics_->add_key_value(
     "nominal/reset_reason", std::string{to_string(debug.nominal_reset_reason)});
   cost_diagnostics_->add_key_value("nominal/shift_count", debug.nominal_shift_count);

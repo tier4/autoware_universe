@@ -205,6 +205,9 @@ public:
         out << "acc_time_constant," << vehicle.acc_time_constant << "\n";
         out << "steer_time_constant," << vehicle.steer_time_constant << "\n";
         out << "steer_rate_lim," << vehicle.steer_rate_lim << "\n";
+        out << "max_lateral_jerk_mps3," << vehicle.max_lateral_jerk_mps3 << "\n";
+        out << "standstill_steer_rate_lim," << vehicle.standstill_steer_rate_lim << "\n";
+        out << "restart_velocity_threshold_mps," << vehicle.restart_velocity_threshold_mps << "\n";
         out << "vel_rate_lim," << vehicle.vel_rate_lim << "\n";
         out << "acc_time_delay," << vehicle.acc_time_delay << "\n";
         out << "steer_time_delay," << vehicle.steer_time_delay << "\n";

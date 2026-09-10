@@ -281,6 +281,12 @@ void applyVehicleParam(
     params.steer_time_constant = value;
   } else if (key == "steer_rate_lim") {
     params.steer_rate_lim = value;
+  } else if (key == "max_lateral_jerk_mps3") {
+    params.max_lateral_jerk_mps3 = value;
+  } else if (key == "standstill_steer_rate_lim") {
+    params.standstill_steer_rate_lim = value;
+  } else if (key == "restart_velocity_threshold_mps") {
+    params.restart_velocity_threshold_mps = value;
   } else if (key == "vel_rate_lim") {
     params.vel_rate_lim = value;
   } else if (key == "acc_time_delay") {

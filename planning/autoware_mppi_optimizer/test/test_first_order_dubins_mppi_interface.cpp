@@ -173,6 +173,23 @@ TEST(FirstOrderDubinsMppiInterface, RejectsInvalidMinimumTrajectoryProgress)
   EXPECT_FALSE(interface.isInitialized());
 }
 
+TEST(FirstOrderDubinsMppiInterface, RejectsInvalidVelocityDependentSteeringRateParams)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.max_lateral_jerk_mps3 = -0.1F;
+  EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
+
+  vehicle = {};
+  vehicle.standstill_steer_rate_lim = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
+
+  vehicle = {};
+  vehicle.restart_velocity_threshold_mps = -0.1F;
+  EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
+  EXPECT_FALSE(interface.isInitialized());
+}
+
 TEST(FirstOrderDubinsMppiInterface, RejectsInvalidWarmStartThresholds)
 {
   FirstOrderDubinsMppiInterface interface;
