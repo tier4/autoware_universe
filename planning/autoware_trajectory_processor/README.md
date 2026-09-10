@@ -161,6 +161,22 @@ All modifier plugins must inherit from `TrajectoryProcessorPluginBase` and imple
 
 #### Current Plugins
 
+##### MapVelocityLimits
+
+The `autoware::trajectory_processor::plugin::MapVelocityLimits` plugin caps each trajectory point's longitudinal velocity at the map velocity limit for its position. It uses the route and raw lanelet map to build an extended route handler, reuses it while the route message pointer is unchanged, and rebuilds it when a new route message is used.
+
+Optional smoothing raises velocities that cannot be reached from the current forward velocity using the nominal deceleration. It uses the distance along the trajectory from the current odometry position and the constant-deceleration relation `v² = v_current² - 2 × deceleration × distance`. This can temporarily exceed map limits while the vehicle slows down. Points behind the vehicle and negative velocities are left unchanged by smoothing.
+
+| Parameter                                                          | Default | Description                                                       |
+| ------------------------------------------------------------------ | ------- | ----------------------------------------------------------------- |
+| `use_map_velocity_limits`                                          | `true`  | Enable the plugin when included in `plugin_names`.                |
+| `map_velocity_limits.enable_smoothing`                             | `true`  | Enable constant-deceleration smoothing after applying map limits. |
+| `stopping_constraints.nominal_deceleration`                        | `1.0`   | Shared nominal deceleration used for smoothing, in m/s².          |
+| `map_velocity_limits.limit_velocity_from_map_debug_lanelet_ids`    | `[]`    | Lanelet IDs whose map limits are overridden for debugging.        |
+| `map_velocity_limits.limit_velocity_from_map_debug_max_velocities` | `[]`    | Corresponding override velocities in m/s.                         |
+
+The debug arrays must have equal lengths, lanelet IDs must be unique, and override velocities must be finite and non-negative. Setting `map_velocity_limits.enable_smoothing` to `false` keeps map limiting active without smoothing. Place this plugin before stop-enforcing plugins if their stop velocities must be preserved.
+
 ##### Stop Point Fixer
 
 The Stop Point Fixer plugin addresses trajectory issues when the ego vehicle is stationary or moving at very low speeds. It prevents problematic trajectory points that could cause planning issues by replacing the trajectory with a single stop point when either of two independently configurable conditions is met:

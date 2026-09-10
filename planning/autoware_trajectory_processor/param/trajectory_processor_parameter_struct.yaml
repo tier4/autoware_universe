@@ -2,6 +2,7 @@ trajectory_processor_params:
   plugin_names:
     type: string_array
     default_value:
+      - autoware::trajectory_processor::plugin::MapVelocityLimits
       - autoware::trajectory_processor::plugin::StopPointFixer
       - autoware::trajectory_processor::plugin::SurroundObstacleStop
       - autoware::trajectory_processor::plugin::ObstacleStop
@@ -18,6 +19,11 @@ trajectory_processor_params:
       - autoware::trajectory_processor::plugin::TrajectoryMPTOptimizer
       - autoware::trajectory_processor::plugin::TrajectoryExtender
     description: Ordered list of trajectory processor plugin class names
+    read_only: false
+  use_map_velocity_limits:
+    type: bool
+    default_value: true
+    description: Enable the use of map velocity limits
     read_only: false
   use_stop_point_fixer:
     type: bool
@@ -1393,4 +1399,21 @@ trajectory_processor_params:
       description: Yaw threshold for ego nearest search [rad]
       validation:
         bounds<>: [0.0, 3.14]
+      read_only: false
+
+  map_velocity_limits:
+    enable_smoothing:
+      type: bool
+      default_value: true
+      description: Smooth unreachable velocities with constant deceleration from the current velocity
+      read_only: false
+    limit_velocity_from_map_debug_lanelet_ids:
+      type: int_array
+      default_value: []
+      description: Lanelet IDs whose map velocity limits are overridden when map limiting is enabled
+      read_only: false
+    limit_velocity_from_map_debug_max_velocities:
+      type: double_array
+      default_value: []
+      description: Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs
       read_only: false
