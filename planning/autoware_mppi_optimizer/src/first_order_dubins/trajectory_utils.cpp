@@ -14,6 +14,8 @@
 
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 
+#include <mppi/dynamics/dubins/velocity_dependent_steering_rate.cuh>
+
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <tf2/LinearMath/Quaternion.h>
@@ -648,11 +650,20 @@ std::size_t overlayNominalSteeringFromPredictedTrajectory(
   return replaced;
 }
 
+float velocityDependentSteeringRateLimit(
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, const float velocity)
+{
+  return ::velocityDependentSteeringRateLimit(
+    velocity, vehicle_params.wheel_base, vehicle_params.steer_rate_lim,
+    vehicle_params.max_lateral_jerk_mps3, vehicle_params.standstill_steer_rate_lim,
+    vehicle_params.restart_velocity_threshold_mps);
+}
+
 FirstOrderDubinsMppiNominalSteeringContinuity guardInitialNominalSteeringCommand(
   const float nominal_steering_command, const float current_steering,
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, const int steering_delay_steps,
   const std::vector<float> & steering_delay_buffer, const float maximum_deviation_rad,
-  const float dt)
+  const float dt, const float current_velocity)
 {
   FirstOrderDubinsMppiNominalSteeringContinuity result;
   result.active = std::isfinite(maximum_deviation_rad) && maximum_deviation_rad > 0.0F;
@@ -669,9 +680,8 @@ FirstOrderDubinsMppiNominalSteeringContinuity guardInitialNominalSteeringCommand
   const float steering_time_constant = std::isfinite(vehicle_params.steer_time_constant)
                                          ? std::max(vehicle_params.steer_time_constant, 1.0E-4F)
                                          : 1.0E-4F;
-  const float maximum_steering_rate = std::isfinite(vehicle_params.steer_rate_lim)
-                                        ? std::max(0.0F, vehicle_params.steer_rate_lim)
-                                        : 0.0F;
+  const float maximum_steering_rate =
+    velocityDependentSteeringRateLimit(vehicle_params, current_velocity);
   const int delay_steps = std::max(0, steering_delay_steps);
   for (int step = 0; step < delay_steps; ++step) {
     const float queued = static_cast<std::size_t>(step) < steering_delay_buffer.size()

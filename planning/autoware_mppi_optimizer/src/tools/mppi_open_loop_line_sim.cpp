@@ -350,6 +350,9 @@ void logVehicleParams(const FirstOrderDubinsMppiVehicleParams & vehicle)
             << " acc_delay=" << vehicle.acc_time_delay
             << " steer_delay=" << vehicle.steer_time_delay
             << " steer_rate_lim=" << vehicle.steer_rate_lim
+            << " max_lateral_jerk_mps3=" << vehicle.max_lateral_jerk_mps3
+            << " standstill_steer_rate_lim=" << vehicle.standstill_steer_rate_lim
+            << " restart_velocity_threshold_mps=" << vehicle.restart_velocity_threshold_mps
             << " vel_rate_lim=" << vehicle.vel_rate_lim << "\n";
 }
 
