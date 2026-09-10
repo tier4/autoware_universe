@@ -743,6 +743,13 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool use_temporal_mpt_as_nominal{false};
   /** Prevent acceleration commands and integrated states from producing reverse velocity. */
   bool prevent_reverse_velocity{true};
+  /** Filter optimized steering strongly near zero and progressively less in turns. */
+  bool enable_curvature_adaptive_steering_filter{true};
+  float steering_filter_alpha_straight{0.1F};
+  float steering_filter_alpha_turn{1.0F};
+  float steering_filter_turn_angle_rad{0.1F};
+  bool steering_filter_initialized{false};
+  float previous_filtered_steering_command{0.0F};
   /** When false, force N_acc = N_steer = 0 (vehicle delay params ignored). */
   bool enable_input_delay_compensation{true};
   detail::TemporalMptNominalSeeder temporal_mpt_nominal_seeder;
@@ -880,6 +887,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     step_count = 0;
     tracking_start_idx = 0U;
     sim_time = 0.0F;
+    steering_filter_initialized = false;
 
     RCLCPP_INFO(
       mppiLogger(),
@@ -917,6 +925,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     temporal_mpt_nominal_seeder.resetWarmStart();
     prediction_anchor_.valid = false;
     prediction_control_history_.clear();
+    steering_filter_initialized = false;
   }
 
   void syncDelayStepsToModel()
@@ -1346,6 +1355,10 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     const auto initial_state =
       detail::makeInitialState(odometry, acceleration, steering_status, vehicle_params);
+    if (!steering_filter_initialized) {
+      previous_filtered_steering_command = initial_state.steering;
+      steering_filter_initialized = true;
+    }
     const std::vector<FirstOrderDubinsMppiControl> profile_seed(
       std::max(static_cast<std::size_t>(kMppiHorizon), diffusion_reference.points.size()));
     std::vector<float> profile_reference_velocities(profile_seed.size(), 0.0F);
@@ -1570,6 +1583,30 @@ struct FirstOrderDubinsMppiInterface::Impl
     checkCuda("computeControl");
 
     Mppi::control_trajectory u_opt_traj = controller->getControlSeq();
+    bool control_sequence_modified = false;
+    if (enable_curvature_adaptive_steering_filter) {
+      const int accel_idx =
+        static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+      const int steer_idx =
+        static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+      std::vector<FirstOrderDubinsMppiControl> optimized_controls(
+        static_cast<std::size_t>(u_opt_traj.cols()));
+      for (int timestep = 0; timestep < u_opt_traj.cols(); ++timestep) {
+        optimized_controls[static_cast<std::size_t>(timestep)] = {
+          u_opt_traj(accel_idx, timestep), u_opt_traj(steer_idx, timestep)};
+      }
+      detail::filterSteeringCommandsWithCurvatureAdaptiveEma(
+        optimized_controls, previous_filtered_steering_command, steering_filter_alpha_straight,
+        steering_filter_alpha_turn, steering_filter_turn_angle_rad);
+      if (!optimized_controls.empty()) {
+        previous_filtered_steering_command = optimized_controls.front().steer_cmd;
+      }
+      for (int timestep = 0; timestep < u_opt_traj.cols(); ++timestep) {
+        u_opt_traj(steer_idx, timestep) =
+          optimized_controls[static_cast<std::size_t>(timestep)].steer_cmd;
+      }
+      control_sequence_modified = true;
+    }
     if (active_velocity_limit_profile.active) {
       const int accel_idx =
         static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
@@ -1580,8 +1617,9 @@ struct FirstOrderDubinsMppiInterface::Impl
         u_opt_traj(accel_idx, timestep) =
           active_velocity_limit_profile.controls[static_cast<std::size_t>(timestep)].accel_cmd;
       }
-      // The vendor Savitzky-Golay filter remains unchanged and executes first. Project its
-      // longitudinal result onto the active profile and reconstruct the host state rollout.
+      control_sequence_modified = true;
+    }
+    if (control_sequence_modified) {
       controller->setControlSequenceAndRecomputeState(u_opt_traj, x);
     }
     u_opt = u_opt_traj;
@@ -1693,7 +1731,28 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
+  if (
+    !std::isfinite(options.steering_filter_alpha_straight) ||
+    !std::isfinite(options.steering_filter_alpha_turn) ||
+    !std::isfinite(options.steering_filter_turn_angle_rad) ||
+    options.steering_filter_alpha_straight < 0.0F ||
+    options.steering_filter_alpha_straight > options.steering_filter_alpha_turn ||
+    options.steering_filter_alpha_turn > 1.0F || options.steering_filter_turn_angle_rad <= 0.0F) {
+    throw std::invalid_argument(
+      "MPPI steering filter requires 0 <= straight alpha <= turn alpha <= 1 and a positive "
+      "finite turn angle");
+  }
   impl_->prevent_reverse_velocity = options.prevent_reverse_velocity;
+  if (
+    impl_->enable_curvature_adaptive_steering_filter !=
+    options.enable_curvature_adaptive_steering_filter) {
+    impl_->steering_filter_initialized = false;
+  }
+  impl_->enable_curvature_adaptive_steering_filter =
+    options.enable_curvature_adaptive_steering_filter;
+  impl_->steering_filter_alpha_straight = options.steering_filter_alpha_straight;
+  impl_->steering_filter_alpha_turn = options.steering_filter_alpha_turn;
+  impl_->steering_filter_turn_angle_rad = options.steering_filter_turn_angle_rad;
   setDebugTrajectoryLogging(
     options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
   setAblationOptions(
@@ -1719,10 +1778,13 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   RCLCPP_INFO(
     mppiLogger(),
     "MPPI nominal seed: use_temporal_mpt_as_nominal=%s enable_input_delay_compensation=%s "
-    "prevent_reverse_velocity=%s",
+    "prevent_reverse_velocity=%s adaptive_steering_filter=%s alpha=%.3f..%.3f at %.3f rad",
     options.use_temporal_mpt_as_nominal ? "true" : "false",
     options.enable_input_delay_compensation ? "true" : "false",
-    options.prevent_reverse_velocity ? "true" : "false");
+    options.prevent_reverse_velocity ? "true" : "false",
+    options.enable_curvature_adaptive_steering_filter ? "true" : "false",
+    options.steering_filter_alpha_straight, options.steering_filter_alpha_turn,
+    options.steering_filter_turn_angle_rad);
 }
 void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
   const bool enable, const std::string & directory)
@@ -1765,6 +1827,11 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   runtime.use_last_control_as_nominal = use_last_control_as_nominal;
   runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
   runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
+  runtime.enable_curvature_adaptive_steering_filter =
+    impl_->enable_curvature_adaptive_steering_filter;
+  runtime.steering_filter_alpha_straight = impl_->steering_filter_alpha_straight;
+  runtime.steering_filter_alpha_turn = impl_->steering_filter_alpha_turn;
+  runtime.steering_filter_turn_angle_rad = impl_->steering_filter_turn_angle_rad;
   runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
   impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
 }
@@ -2115,6 +2182,11 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
     runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
     runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
+    runtime.enable_curvature_adaptive_steering_filter =
+      impl_->enable_curvature_adaptive_steering_filter;
+    runtime.steering_filter_alpha_straight = impl_->steering_filter_alpha_straight;
+    runtime.steering_filter_alpha_turn = impl_->steering_filter_alpha_turn;
+    runtime.steering_filter_turn_angle_rad = impl_->steering_filter_turn_angle_rad;
     runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
     impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
   }

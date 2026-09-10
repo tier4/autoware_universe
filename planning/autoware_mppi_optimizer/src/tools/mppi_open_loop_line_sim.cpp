@@ -214,7 +214,22 @@ void loadParamsYaml(
         runtime.enable_input_delay_compensation = *flag;
       } else if (key == "prevent_reverse_velocity") {
         runtime.prevent_reverse_velocity = *flag;
+      } else if (key == "enable_curvature_adaptive_steering_filter") {
+        runtime.enable_curvature_adaptive_steering_filter = *flag;
       }
+      continue;
+    }
+
+    if (key == "steering_filter_alpha_straight") {
+      runtime.steering_filter_alpha_straight = std::stof(value);
+      continue;
+    }
+    if (key == "steering_filter_alpha_turn") {
+      runtime.steering_filter_alpha_turn = std::stof(value);
+      continue;
+    }
+    if (key == "steering_filter_turn_angle_rad") {
+      runtime.steering_filter_turn_angle_rad = std::stof(value);
       continue;
     }
 

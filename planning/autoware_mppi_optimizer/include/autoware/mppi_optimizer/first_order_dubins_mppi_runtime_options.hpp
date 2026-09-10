@@ -49,6 +49,14 @@ struct FirstOrderDubinsMppiRuntimeOptions
    * Vehicle τ (first-order lag) is unchanged. Default true preserves delay compensation.
    */
   bool enable_input_delay_compensation{true};
+  /** Apply a steering-command EMA whose response increases with steering magnitude. */
+  bool enable_curvature_adaptive_steering_filter{true};
+  /** EMA smoothing factor used for a zero steering command. */
+  float steering_filter_alpha_straight{0.1F};
+  /** EMA smoothing factor used at and above steering_filter_turn_angle_rad. */
+  float steering_filter_alpha_turn{1.0F};
+  /** Absolute steering command [rad] at which alpha reaches steering_filter_alpha_turn. */
+  float steering_filter_turn_angle_rad{0.1F};
 };
 
 }  // namespace autoware::mppi_optimizer
