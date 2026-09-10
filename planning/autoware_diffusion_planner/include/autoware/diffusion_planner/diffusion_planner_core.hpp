@@ -187,9 +187,10 @@ struct EgoSnapParams
   int64_t history_prefix_count;
 };
 
-// Checks every EgoSnapParams field for a value the snap can run with: finite numbers, the documented
-// ranges, and a recognised mode string. Returns an empty string when valid, otherwise a message
-// naming the parameter and the accepted values. Used at startup and on every runtime update.
+// Checks every EgoSnapParams field for a value the snap can run with: finite numbers, the
+// documented ranges, and a recognised mode string. Returns an empty string when valid, otherwise a
+// message naming the parameter and the accepted values. Used at startup and on every runtime
+// update.
 std::string validate_ego_snap_params(const EgoSnapParams & params);
 
 // What snap_ego_to_previous_trajectory produces: the virtual ego pose handed to the model (map
