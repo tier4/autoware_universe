@@ -96,7 +96,9 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
   state_der[static_cast<int>(S::POS_X)] = v * cos_yaw;
   state_der[static_cast<int>(S::POS_Y)] = v * sin_yaw;
 
-  const float steer_dot = clampSteerRate(p, (steer_cmd - steer) / steer_tau);
+  // Sampled controls are target steering angles and may jump because of rollout noise. Clamp the
+  // realized actuator derivative here so every host/device integration step remains achievable.
+  const float steer_dot = clampSteerRate(p, v, (steer_cmd - steer) / steer_tau);
   state_der[static_cast<int>(S::STEER_ANGLE)] = steer_dot;
 
   state_der[static_cast<int>(S::PREVIOUS_ACCEL_CMD)] = 0.0F;

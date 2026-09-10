@@ -142,6 +142,10 @@ std::size_t overlayNominalSteeringFromPredictedTrajectory(
   const InitialState & ego, const FirstOrderDubinsMppiVehicleParams & vehicle_params,
   float dt = kMppiDt);
 
+/** Compute the steering actuator-rate bound used by host prediction and CUDA rollouts. */
+float velocityDependentSteeringRateLimit(
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, float velocity);
+
 /**
  * Anchor nominal steer u[0] to the steering predicted after the existing input-delay queue drains.
  * A non-positive maximum deviation disables the guard and preserves the command exactly.
@@ -150,7 +154,7 @@ std::size_t overlayNominalSteeringFromPredictedTrajectory(
   float nominal_steering_command, float current_steering,
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, int steering_delay_steps = 0,
   const std::vector<float> & steering_delay_buffer = {}, float maximum_deviation_rad = 0.0F,
-  float dt = kMppiDt);
+  float dt = kMppiDt, float current_velocity = 0.0F);
 
 /**
  * Filter an MPPI nominal control sequence through optional longitudinal kinematic limits.

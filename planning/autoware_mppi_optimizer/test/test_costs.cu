@@ -1033,6 +1033,68 @@ __global__ void replayDevice(
     __syncthreads();
   }
 }
+
+__global__ void propagateSteeringRateDevice(Model * model, const float velocity, float * result)
+{
+  float state[Model::STATE_DIM];
+  float next[Model::STATE_DIM];
+  float derivative[Model::STATE_DIM];
+  float output[Model::OUTPUT_DIM];
+  float control[Model::CONTROL_DIM];
+  for (int index = 0; index < Model::STATE_DIM; ++index) {
+    state[index] = 0.0F;
+    next[index] = 0.0F;
+    derivative[index] = 0.0F;
+  }
+  for (int index = 0; index < Model::OUTPUT_DIM; ++index) output[index] = 0.0F;
+  for (int index = 0; index < Model::CONTROL_DIM; ++index) control[index] = 0.0F;
+  state[static_cast<int>(S::VEL_X)] = velocity;
+  control[static_cast<int>(C::STEER_CMD)] = 0.45F;
+  model->enforceConstraints(state, control);
+  model->step(state, next, derivative, control, output, nullptr, 0.0F, dt);
+  result[0] = output[static_cast<int>(O::STEERING_RATE)];
+}
+
+TEST_F(GpuCostEvaluation, VelocityDependentSteeringRatePropagationMatchesHost)
+{
+  FirstOrderDubinsBicycleParams mp;
+  mp.wheel_base = 2.8F;
+  mp.max_steer_rate = 5.0F;
+  mp.max_lateral_jerk_mps3 = 2.5F;
+  mp.standstill_steer_rate_lim = 0.15F;
+  mp.restart_velocity_threshold_mps = 0.5F;
+  mp.steer_time_constant = 0.01F;
+  Model model(mp);
+  model.GPUSetup();
+
+  for (const float velocity : {0.2F, 25.0F}) {
+    auto state = model.getZeroState();
+    auto next = state;
+    auto derivative = state;
+    auto output = Model::output_array::Zero().eval();
+    auto control = Model::control_array::Zero().eval();
+    state(static_cast<int>(S::VEL_X)) = velocity;
+    control(static_cast<int>(C::STEER_CMD)) = 0.45F;
+    model.enforceConstraints(state, control);
+    model.step(state, next, derivative, control, output, 0.0F, dt);
+
+    const float expected = velocity < mp.restart_velocity_threshold_mps
+                             ? mp.standstill_steer_rate_lim
+                             : mp.max_lateral_jerk_mps3 * mp.wheel_base / (velocity * velocity);
+    EXPECT_NEAR(output(static_cast<int>(O::STEERING_RATE)), expected, 1.0E-5F);
+
+    DeviceBuffer<float> device_result(1U);
+    propagateSteeringRateDevice<<<1, 1>>>(model.model_d_, velocity, device_result.data);
+    HANDLE_ERROR(cudaGetLastError());
+    HANDLE_ERROR(cudaDeviceSynchronize());
+    float device_rate = 0.0F;
+    HANDLE_ERROR(
+      cudaMemcpy(&device_rate, device_result.data, sizeof(device_rate), cudaMemcpyDeviceToHost));
+    EXPECT_NEAR(device_rate, expected, 1.0E-5F);
+    EXPECT_NEAR(device_rate, output(static_cast<int>(O::STEERING_RATE)), 1.0E-5F);
+  }
+}
+
 TEST_F(GpuCostEvaluation, DelayedSteadyTurnAndCommandStepReplayMatchesHost)
 {
   FirstOrderDubinsBicycleParams mp;

@@ -96,6 +96,9 @@ ignore_drivable_area: true
 force_cold_start_each_step: true
 min_optimization_length: 0.0
 use_last_control_as_nominal: true
+max_lateral_jerk_mps3: 2.5
+standstill_steer_rate_lim: 0.15
+restart_velocity_threshold_mps: 0.5
 use_mpc_predicted_trajectory_as_nominal_steering: false
 mpc_predicted_trajectory_max_age_s: 0.5
 nominal_initial_steering_max_deviation_rad: 0.1
@@ -113,6 +116,9 @@ Notes:
   delay FIFOs and execution-history diagnostics.
 - `min_optimization_length` skips MPPI for a stopping reference shorter than the configured arc
   length in meters; `0.0` disables the length-based skip.
+- Rollout steering propagation uses `standstill_steer_rate_lim` below
+  `restart_velocity_threshold_mps`. At higher absolute velocity, it limits steering rate to the
+  smaller of the hardware `steer_rate_lim` and `max_lateral_jerk_mps3 * wheel_base / velocity^2`.
 - `use_last_control_as_nominal` warm-starts `u_nom` from the previous applied MPPI result when its
   timestamp, plant replay, and shifted reference remain continuous. The elapsed timestamp selects
   the shift count, and the current diffusion seed fills the newly exposed tail.

@@ -95,6 +95,9 @@
       skip_if_invalid: true
       min_optimization_length: 10.0
       min_trajectory_progress_m: 0.0
+      max_lateral_jerk_mps3: 2.5
+      standstill_steer_rate_lim: 0.15
+      restart_velocity_threshold_mps: 0.5
 
       # Cold-seed u_nom from acados temporal MPT.
       use_temporal_mpt_as_nominal: false
