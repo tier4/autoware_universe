@@ -25,7 +25,7 @@ ros2 launch autoware_tensorrt_e2e e2e_planner_resworld.launch.xml
 ```
 
 The model directory, `$(var data_path)/$(var model_name)` (by default
-`$HOME/autoware_data/ml_models/tensorrt_e2e/resworld`), holds two graphs and one
+`$HOME/autoware_data/tensorrt_e2e`), holds two graphs and one
 configuration file:
 
 | File | Role |
@@ -248,7 +248,7 @@ at startup instead of running with another network's geometry.
 
 ```bash
 ros2 launch autoware_tensorrt_e2e <launch file> \
-  data_path:=$HOME/autoware_data/ml_models/tensorrt_e2e model_name:=<model>
+  data_path:=$HOME/autoware_data/tensorrt_e2e model_name:=<model>
 ```
 
 One file describes the network, and the node reads no other. Everything the runtime needs

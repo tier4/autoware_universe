@@ -4,9 +4,9 @@
        description travels with the artifacts as ml_package_<model>.param.yaml
        (autoware_bevfusion convention), so switching models or re-trained
        variants never edits this package. -->
-  <arg name="data_path" default="$(env HOME)/autoware_data/ml_models/tensorrt_e2e" description="ml model artifacts root"/>
+  <arg name="data_path" default="$(env HOME)/autoware_data/tensorrt_e2e" description="ml model artifacts root"/>
   <arg name="model_name" default="resworld"/>
-  <arg name="model_path" default="$(var data_path)/$(var model_name)"/>
+  <arg name="model_path" default="$(var data_path)" description="the model directory itself; the model_name only names the files in it, like the other packages under ~/autoware_data"/>
   <arg name="planner_onnx" default="$(var model_name)_planner.simplified.onnx"/>
   <arg name="extractor_onnx" default="bevfusion_lidar_feature.onnx"/>
 
