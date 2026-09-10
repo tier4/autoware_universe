@@ -53,6 +53,10 @@ struct SmoothingParams
   double reset_jump_m{8.0};
   //! A gap between ticks longer than this (or a step back in time) drops the state [s].
   double max_gap_seconds{1.0};
+  //! Publish the unfiltered plan as an extra candidate trajectory. It carries the same generator
+  //! id as the filtered one, which a consumer that keys candidates by that id cannot tell apart,
+  //! so turn it off when the candidates drive something rather than an offline comparison.
+  bool publish_raw_candidate{true};
 };
 
 /// Wrap an angle into (-pi, pi].
@@ -120,7 +124,8 @@ private:
  * When `latentdrive.smoothing.enable` is set, the `(x, y, yaw)` plan is filtered in the ego
  * frame before the base class turns it into messages, and the unfiltered plan is published as
  * an extra candidate trajectory whose generator name ends in `_raw`, so evaluations can read
- * either. On by default in the deployment configuration: the filter trades about
+ * either (`latentdrive.smoothing.publish_raw_candidate`, off when the candidates feed a planning
+ * chain: both entries share the generator id). On by default in the deployment configuration: the filter trades about
  * `(1 - alpha) / alpha` ticks of lag for a steady reference, and open-loop accuracy figures
  * belong to the raw output.
  *

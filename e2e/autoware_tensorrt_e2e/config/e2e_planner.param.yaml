@@ -74,6 +74,9 @@
         alpha: 0.35  # weight of the fresh plan; 1.0 disables the blend
         reset_jump_m: 8.0  # a larger end-point jump is a new decision, passed through
         max_gap_seconds: 1.0  # a longer gap (or a step back in time) drops the state
+        # The `_raw` candidate shares its generator id with the filtered one, so turn it off
+        # where the candidates feed a planning chain rather than an offline comparison.
+        publish_raw_candidate: true
 
     context:
       traffic_light_group_msg_timeout_seconds: 0.2

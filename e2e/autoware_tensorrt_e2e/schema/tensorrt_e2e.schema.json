@@ -180,6 +180,11 @@
                   "description": "A gap between ticks beyond this, or a step back in time, drops the filter state.",
                   "default": 1.0,
                   "exclusiveMinimum": 0.0
+                },
+                "publish_raw_candidate": {
+                  "type": "boolean",
+                  "description": "Publish the unfiltered plan as an extra candidate trajectory named `<generator>_raw`. It carries the same generator id as the filtered one, so turn it off where the candidates feed a planning chain.",
+                  "default": true
                 }
               }
             }

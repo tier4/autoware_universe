@@ -12,6 +12,7 @@
   <arg name="use_sim_time" default="false" description="clock every node here from /clock, as a bag replay needs"/>
   <arg name="tick_log" default="false" description="one [LatentDrive-debug] INFO line per planning tick: frame ages and status, or why the tick was skipped"/>
   <arg name="smoothing" default="true" description="temporal smoothing of the plan (latentdrive.smoothing.enable); the raw plan stays published as the _raw candidate"/>
+  <arg name="publish_raw_candidate" default="true" description="publish the unfiltered plan as an extra candidate trajectory; it shares the filtered one's generator id, so turn it off where the candidates feed a planning chain"/>
   <arg name="rviz" default="false" description="open RViz (the standard Autoware layout)"/>
   <!-- The standard layout draws /planning/trajectory; pass
        output_trajectory:=/planning/trajectory to see this node's output in it. -->
@@ -51,6 +52,7 @@
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
     <param name="build_only" value="$(var build_only)"/>
     <param name="latentdrive.smoothing.enable" value="$(var smoothing)"/>
+    <param name="latentdrive.smoothing.publish_raw_candidate" value="$(var publish_raw_candidate)"/>
     <param name="latentdrive.tick_log" value="$(var tick_log)"/>
     <param name="latentdrive.subgoal_source" value="$(var subgoal_source)"/>
     <remap from="~/input/camera0/image" to="$(var input_camera0_image)"/>

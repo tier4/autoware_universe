@@ -132,6 +132,8 @@ LatentDrivePostprocessor::LatentDrivePostprocessor(
     node_.declare_parameter<double>("latentdrive.smoothing.reset_jump_m", 8.0);
   smoothing_.max_gap_seconds =
     node_.declare_parameter<double>("latentdrive.smoothing.max_gap_seconds", 1.0);
+  smoothing_.publish_raw_candidate =
+    node_.declare_parameter<bool>("latentdrive.smoothing.publish_raw_candidate", true);
   if (smoothing_.alpha <= 0.0 || smoothing_.alpha > 1.0) {
     throw std::runtime_error("latentdrive.smoothing.alpha must be in (0, 1]");
   }
@@ -240,6 +242,10 @@ TrajectoryPostprocessor::Output LatentDrivePostprocessor::process(
   write_plan(smoothed, smoothed_outputs[params().prediction_tensor]);
   Output output = TrajectoryPostprocessor::process(
     smoothed_outputs, ego, neighbor_histories, stamp, generator_uuid);
+
+  if (!smoothing_.publish_raw_candidate) {
+    return output;
+  }
 
   // The unfiltered plan rides along as a candidate, so what the model said stays observable.
   Output raw =
