@@ -120,9 +120,17 @@ void InferenceEngine::obey_graph_precision(const std::string & precision)
   int fp16_layers = 0;
   for (int i = 0; i < network->getNbLayers(); ++i) {
     auto * layer = network->getLayer(i);
+    // A plugin negotiates its own I/O formats through supportsFormatCombination. Pinning one
+    // under kOBEY_PRECISION_CONSTRAINTS demands a combination it may not implement, and the
+    // builder then fails outright rather than choosing a legal one: TensorRT 10.8 rejects the
+    // rasterizer's ScatterElements-with-reduction that way ("No supported formats"). Leave
+    // plugins to negotiate; the tensor types the exporter gave them still stand.
     if (
       layer->getType() == nvinfer1::LayerType::kSHAPE ||
-      layer->getType() == nvinfer1::LayerType::kCONSTANT || layer->getNbOutputs() == 0) {
+      layer->getType() == nvinfer1::LayerType::kCONSTANT ||
+      layer->getType() == nvinfer1::LayerType::kPLUGIN ||
+      layer->getType() == nvinfer1::LayerType::kPLUGIN_V2 ||
+      layer->getType() == nvinfer1::LayerType::kPLUGIN_V3 || layer->getNbOutputs() == 0) {
       continue;
     }
     const auto type = layer->getOutput(0)->getType();
