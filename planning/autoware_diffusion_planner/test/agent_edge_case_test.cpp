@@ -170,4 +170,28 @@ TEST_F(AgentEdgeCaseTest, EmptyClassificationObjectIsStillIgnored)
   EXPECT_TRUE(run(true).empty());
 }
 
+TEST_F(AgentEdgeCaseTest, UnrecognizedFutureLabelIsRemapped)
+{
+  // Stands in for a class added to ObjectClassification later: get_model_label() sends it to
+  // IGNORE, so a remap keyed on a fixed list of labels would drop it silently.
+  set_label(200);
+
+  const auto histories = run(true);
+
+  ASSERT_EQ(histories.size(), 1u);
+  EXPECT_EQ(histories.front().get_latest_state().label, AgentLabel::PEDESTRIAN);
+}
+
+TEST_F(AgentEdgeCaseTest, DeliberatelyIgnoredLabelsAreNotRemapped)
+{
+  for (const uint8_t label :
+       {autoware_perception_msgs::msg::ObjectClassification::ANIMAL,
+        autoware_perception_msgs::msg::ObjectClassification::OVER_DRIVABLE,
+        autoware_perception_msgs::msg::ObjectClassification::UNDER_DRIVABLE}) {
+    set_label(label);
+
+    EXPECT_TRUE(run(true).empty()) << "label " << static_cast<int>(label) << " was remapped";
+  }
+}
+
 }  // namespace autoware::diffusion_planner::test

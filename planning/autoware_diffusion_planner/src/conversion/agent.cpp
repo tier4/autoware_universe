@@ -53,12 +53,9 @@ double get_yaw(const Eigen::Matrix4d & pose)
   return std::atan2(pose(1, 0), pose(0, 0));
 }
 
-AgentLabel get_model_label(const TrackedObject & object)
+AgentLabel get_model_label(const uint8_t label)
 {
-  const uint8_t autoware_label =
-    autoware::object_recognition_utils::getHighestProbLabel(object.classification);
-
-  switch (autoware_label) {
+  switch (label) {
     case autoware_perception_msgs::msg::ObjectClassification::CAR:
     case autoware_perception_msgs::msg::ObjectClassification::TRUCK:
     case autoware_perception_msgs::msg::ObjectClassification::BUS:
@@ -74,14 +71,26 @@ AgentLabel get_model_label(const TrackedObject & object)
   }
 }
 
-// UNKNOWN and HAZARD are not classes the model was trained on, so get_model_label() maps them to
-// IGNORE and they are dropped. They can still obstruct driving. ANIMAL, OVER_DRIVABLE and
-// UNDER_DRIVABLE are deliberately excluded: they are either not obstacles or not drivable-space
-// hazards the planner should brake for.
+AgentLabel get_model_label(const TrackedObject & object)
+{
+  return get_model_label(
+    autoware::object_recognition_utils::getHighestProbLabel(object.classification));
+}
+
+// Anything the model does not know reaches get_model_label()'s IGNORE default and is dropped, even
+// though it can obstruct driving. ANIMAL, OVER_DRIVABLE and UNDER_DRIVABLE are the deliberate
+// exceptions: not obstacles, or not drivable-space hazards worth braking for. Listing the
+// exceptions keeps a class added to ObjectClassification later fail-safe: remapped, not ignored.
 bool is_unsupported_obstacle_label(const uint8_t label)
 {
-  return label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN ||
-         label == autoware_perception_msgs::msg::ObjectClassification::HAZARD;
+  switch (label) {
+    case autoware_perception_msgs::msg::ObjectClassification::ANIMAL:
+    case autoware_perception_msgs::msg::ObjectClassification::OVER_DRIVABLE:
+    case autoware_perception_msgs::msg::ObjectClassification::UNDER_DRIVABLE:
+      return false;
+    default:
+      return get_model_label(label) == AgentLabel::IGNORE;
+  }
 }
 
 // Rewrite unsupported obstacles to PEDESTRIAN, the most conservative supported class, so they
