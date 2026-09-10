@@ -22,6 +22,7 @@
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -315,18 +316,38 @@ std::optional<std::string> TensorrtE2eNode::find_invalid_tensor(const TensorMap 
 
 void TensorrtE2eNode::run_once()
 {
-  TickTiming timing;
-  run_tick(timing);
-  // Whatever a provider still owes runs now, whether the pass published or gave up:
-  // a detection head's decode, say. It is off the trajectory's path on purpose, so the
-  // consumer of the trajectory never waits for a message it does not read. It does
-  // occupy this callback until it is done, which is why it is measured separately.
-  stop_watch_.tic("finish");
-  for (const auto & provider : providers_) {
-    provider->finish_tick();
+  if (runtime_failed_) {
+    return;
   }
-  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "debug/processing_time/finish_ms", stop_watch_.toc("finish"));
+  // Everything below throws: CHECK_CUDA_ERROR raises std::runtime_error, and so do the
+  // extractor, the temporal cache and the inference engine. This runs in a subscription
+  // callback, so an escaping exception does not fail this node -- it terminates the
+  // process, and in the deployed configuration that process is the shared
+  // /pointcloud_container, which takes the vehicle's whole CUDA sensing stack with it.
+  // Catch here and go quiet instead: no trajectory, a latched ERROR diagnostic saying
+  // why, and the sensing stack still running. The failure is sticky because a CUDA error
+  // usually leaves the context unusable, so retrying every 100 ms would only fill the log.
+  try {
+    TickTiming timing;
+    run_tick(timing);
+    // Whatever a provider still owes runs now, whether the pass published or gave up:
+    // a detection head's decode, say. It is off the trajectory's path on purpose, so the
+    // consumer of the trajectory never waits for a message it does not read. It does
+    // occupy this callback until it is done, which is why it is measured separately.
+    stop_watch_.tic("finish");
+    for (const auto & provider : providers_) {
+      provider->finish_tick();
+    }
+    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/processing_time/finish_ms", stop_watch_.toc("finish"));
+  } catch (const std::exception & e) {
+    runtime_failed_ = true;
+    RCLCPP_ERROR(
+      get_logger(), "Inference failed and the planner is now disabled: %s", e.what());
+    diagnostics_->update_level_and_message(
+      DiagnosticStatus::ERROR, std::string("Inference failed, planner disabled: ") + e.what());
+    diagnostics_->publish(now());
+  }
 }
 
 void TensorrtE2eNode::run_tick(TickTiming & timing)

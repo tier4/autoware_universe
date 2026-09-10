@@ -155,6 +155,10 @@ private:
   std::unique_ptr<TrajectoryPostprocessor> postprocessor_;
   autoware::diffusion_planner::utils::NormalizationMap normalization_map_;
   bool pipeline_ready_{false};
+  /// Set when a tick threw. A CUDA error normally poisons the context, so the node stops
+  /// ticking rather than retrying at sensor rate; it reports ERROR and leaves the shared
+  /// container alive.
+  bool runtime_failed_{false};
 
   // ROS interfaces
   tf2_ros::Buffer tf_buffer_;

@@ -14,6 +14,8 @@
 
 #include "autoware/tensorrt_e2e/inference_engine.hpp"
 
+#include "autoware/tensorrt_e2e/engine_cache.hpp"
+
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 #include <autoware/tensorrt_common/utils.hpp>
 
@@ -85,6 +87,12 @@ void InferenceEngine::load_engine(const Config & config)
 {
   const auto trt_config = TrtCommonConfig(
     config.model_path, config.precision, "", config.max_workspace_size, -1, false);
+
+  // A cached engine older than its ONNX is stale: this node hands TrtCommon no IO list to
+  // validate against (it reads its bindings out of the engine instead), so nothing else
+  // would notice, and it would run the previous export's weights. See engine_cache.hpp.
+  drop_stale_engine(
+    config.model_path, trt_config.engine_path.string(), rclcpp::get_logger("tensorrt_e2e"));
 
   std::vector<std::string> plugin_paths;
   if (!config.plugins_path.empty()) {

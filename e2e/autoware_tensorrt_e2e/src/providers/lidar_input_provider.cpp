@@ -85,6 +85,9 @@ LidarInputProvider::LidarInputProvider(rclcpp::Node & node) : node_(node)
     node_.declare_parameter<std::string>("lidar.num_points_tensor", "num_points");
   max_delay_ms_ = node_.declare_parameter<double>("lidar.max_delay_ms", 200.0);
   intensity_scale_ = node_.declare_parameter<double>("lidar.intensity_scale", 1.0);
+
+  // Subscribe here, as autoware_bevfusion does; see subscribe().
+  subscribe();
 }
 
 std::vector<std::string> LidarInputProvider::claim_inputs(
@@ -130,11 +133,25 @@ std::vector<std::string> LidarInputProvider::claim_inputs(
     claimed.push_back(num_points_tensor_name_);
   }
 
-  // Same subscriber as autoware_bevfusion, so one publisher setup serves both providers.
+  return claimed;
+}
+
+void LidarInputProvider::subscribe()
+{
+  // Same subscriber as autoware_bevfusion, so one publisher setup serves both providers --
+  // and created from the constructor for the same reason it is there: in a shared
+  // container the CUDA concatenator negotiates and registers itself as a blackboard
+  // producer while the node is still building its TensorRT engine, and a subscriber that
+  // joins after that flips an already-running topic into negotiated mode.
   pointcloud_sub_ = std::make_unique<
     cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
     node_, "~/input/pointcloud",
     [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
+      // Subscribing happens before claim_inputs(), so a cloud can arrive before the
+      // tensor shapes this provider fills are known (max_points_ is set there). Drop those.
+      if (max_points_ == 0) {
+        return;
+      }
       {
         std::lock_guard<std::mutex> lock(mutex_);
         latest_pointcloud_ = std::move(msg);
@@ -144,8 +161,6 @@ std::vector<std::string> LidarInputProvider::claim_inputs(
         on_data_();
       }
     });
-
-  return claimed;
 }
 
 bool LidarInputProvider::collect(

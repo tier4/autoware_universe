@@ -47,6 +47,10 @@ public:
   explicit LidarInputProvider(rclcpp::Node & node);
 
   std::string name() const override { return "lidar"; }
+  //! Create the point cloud subscription, from the constructor, so that in a shared
+  //! container we subscribe before the CUDA concatenator registers as a producer.
+  void subscribe();
+
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
   bool pace(std::function<void()> on_data) override;
 
