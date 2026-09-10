@@ -132,6 +132,11 @@ private:
 
   std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
     velocity_limit_sub_;
+  std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<Trajectory>>
+    mpc_predicted_trajectory_sub_;
+
+  /** Application result from the preceding primary-candidate cycle. */
+  bool previous_mppi_trajectory_applied_{false};
 
   rclcpp::Publisher<Trajectory>::SharedPtr reference_trajectory_pub_;
   rclcpp::Publisher<Trajectory>::SharedPtr nominal_control_trajectory_pub_;

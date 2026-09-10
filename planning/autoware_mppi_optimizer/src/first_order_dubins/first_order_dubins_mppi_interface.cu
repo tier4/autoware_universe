@@ -1763,6 +1763,25 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
   }
 
+  bool overlayMpcPredictedSteering(
+    const Trajectory & predicted_trajectory, const detail::InitialState & ego)
+  {
+    const int accel_idx =
+      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+    const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+    std::vector<FirstOrderDubinsMppiControl> nominal(static_cast<std::size_t>(kMppiHorizon));
+    for (int timestep = 0; timestep < kMppiHorizon; ++timestep) {
+      nominal[static_cast<std::size_t>(timestep)] = {
+        u_nom(accel_idx, timestep), u_nom(steer_idx, timestep)};
+    }
+    const std::size_t replaced = detail::overlayNominalSteeringFromPredictedTrajectory(
+      nominal, predicted_trajectory, ego, vehicle_params, kDt);
+    for (std::size_t timestep = 0; timestep < replaced; ++timestep) {
+      u_nom(steer_idx, static_cast<int>(timestep)) = nominal[timestep].steer_cmd;
+    }
+    return replaced > 0U;
+  }
+
   void snapshotNominalForLog()
   {
     const int accel_idx =
@@ -1778,7 +1797,8 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   void seedNominalControl(
     const Trajectory & reference, const size_t start_idx, const detail::InitialState & ego,
-    const builtin_interfaces::msg::Time & stamp, const bool steering_measurement_available)
+    const builtin_interfaces::msg::Time & stamp, const bool steering_measurement_available,
+    const std::optional<Trajectory> & mpc_predicted_trajectory)
   {
     nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::diffusion_reference;
     nominal_shift_count = 0;
@@ -1804,12 +1824,15 @@ struct FirstOrderDubinsMppiInterface::Impl
       }
       const bool temporal_seeded = seedNominalControlFromTemporalMpt(reference, ego);
       filterNominalControl(ego);
+      const bool mpc_seeded =
+        mpc_predicted_trajectory && overlayMpcPredictedSteering(*mpc_predicted_trajectory, ego);
       applyNominalSteeringContinuityGuard(ego, steering_measurement_available);
-      nominal_seed_source = temporal_seeded
-                              ? FirstOrderDubinsMppiNominalSeedSource::temporal_mpt
-                              : FirstOrderDubinsMppiNominalSeedSource::diffusion_reference;
+      nominal_seed_source =
+        mpc_seeded ? FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory
+                   : (temporal_seeded ? FirstOrderDubinsMppiNominalSeedSource::temporal_mpt
+                                      : FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
       if (!force_cold_start_each_step) {
-        nominal_reset_reason = temporal_seeded
+        nominal_reset_reason = (mpc_seeded || temporal_seeded)
                                  ? FirstOrderDubinsMppiNominalResetReason::none
                                  : FirstOrderDubinsMppiNominalResetReason::unavailable;
       }
@@ -1821,6 +1844,15 @@ struct FirstOrderDubinsMppiInterface::Impl
     // suffix supplies newly exposed horizon samples.
     seedNominalControlFromDiffusionReference(reference, start_idx);
     filterNominalControl(ego);
+    if (mpc_predicted_trajectory && overlayMpcPredictedSteering(*mpc_predicted_trajectory, ego)) {
+      nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory;
+      if (!force_cold_start_each_step) {
+        nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::none;
+      }
+      applyNominalSteeringContinuityGuard(ego, steering_measurement_available);
+      snapshotNominalForLog();
+      return;
+    }
     if (
       const auto shift_count =
         reusableWarmStartShift(reference, ego, stamp, steering_measurement_available)) {
@@ -1840,7 +1872,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects_in, const std::vector<Segment> & road_borders_in,
     const std::vector<Segment> & drivable_area_in,
-    const FirstOrderDubinsMppiKinematicLimits & kinematic_limits)
+    const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
+    const std::optional<Trajectory> & mpc_predicted_trajectory)
   {
     const auto check_capacity = [](std::size_t count, std::size_t capacity, const char * kind) {
       if (count > capacity) {
@@ -1941,7 +1974,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       steering_status.has_value() && std::isfinite(steering_status->steering_tire_angle);
     seedNominalControl(
       diffusion_reference, tracking_start_idx, initial_state, odometry.header.stamp,
-      steering_measurement_available);
+      steering_measurement_available, mpc_predicted_trajectory);
     last_seed_nominal_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - seed_t0).count();
     applyActiveVelocityLimitToNominal();
@@ -2643,7 +2676,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const std::vector<Segment> & drivable_area,
   const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
   const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor,
-  const bool defer_commit)
+  const bool defer_commit, const std::optional<Trajectory> & mpc_predicted_trajectory)
 try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -2664,6 +2697,10 @@ try {
     result.debug.reference_trajectory = input;
     result.debug.optimized_trajectory = input;
     result.debug.nominal_reset_reason = impl_->nominal_reset_reason;
+    if (mpc_predicted_trajectory) {
+      result.debug.mpc_nominal_seed_status =
+        FirstOrderDubinsMppiMpcNominalSeedStatus::optimization_not_run;
+    }
     return result;
   }
 
@@ -2671,13 +2708,21 @@ try {
 
   impl_->updateDiffusionReference(
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
-    kinematic_limits);
+    kinematic_limits, mpc_predicted_trajectory);
   Impl::TrackingTransaction transaction(*impl_);
   result.debug.prediction_accuracy = impl_->prediction_accuracy;
   result.debug.nominal_seed_source = impl_->nominal_seed_source;
   result.debug.nominal_reset_reason = impl_->nominal_reset_reason;
   result.debug.nominal_shift_count = impl_->nominal_shift_count;
   result.debug.nominal_steering_continuity = impl_->nominal_steering_continuity;
+  if (mpc_predicted_trajectory) {
+    result.debug.mpc_nominal_seed_status =
+      impl_->nominal_seed_source == FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory
+        ? FirstOrderDubinsMppiMpcNominalSeedStatus::used
+        : (impl_->nominal_seed_source == FirstOrderDubinsMppiNominalSeedSource::forced
+             ? FirstOrderDubinsMppiMpcNominalSeedStatus::forced_nominal
+             : FirstOrderDubinsMppiMpcNominalSeedStatus::invalid);
+  }
   impl_->capturePredictionAnchor(odometry);
   // Capture IC before runStep advances the ego state with the applied control.
   const DYN::state_array x_at_optimization = impl_->x;
