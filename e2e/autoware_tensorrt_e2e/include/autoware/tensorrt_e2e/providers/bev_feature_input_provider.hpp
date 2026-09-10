@@ -101,6 +101,10 @@ private:
   //! Declares the `bev_feature.detection.*` parameters; a no-op when the model is not
   //! configured for the head.
   void declare_detection_params();
+  //! Create the point cloud subscription. Called from the constructor, like
+  //! autoware_bevfusion does, so that in a shared container we are subscribed before the
+  //! CUDA concatenator registers itself as a blackboard producer.
+  void subscribe();
 
   rclcpp::Node & node_;
 

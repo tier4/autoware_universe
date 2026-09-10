@@ -67,10 +67,22 @@
        callback as designed, and then receives nothing at all. Point this at
        the container the CUDA concatenator runs in to get the zero copy.
 
-       Deliberately no use_intra_process_comms: this node subscribes to latched
-       topics (the vector map), and rclcpp refuses intra-process delivery for
-       anything but volatile durability, which disables inference outright. That
-       is a different mechanism from the one being used here. -->
+       use_intra_process_comms is on, as it is for autoware_bevfusion.
+       cuda_blackboard hands out its buffer tickets by
+       get_intra_process_subscription_count(), so a node that negotiates without
+       being counted joins the negotiation and never draws a ticket. Turning it
+       off node-wide, as this launch used to, opted us out of that accounting.
+       (Turning it back on did NOT stop the container abort this was written
+       while chasing - registerData still reports "already exists. Deleting"
+       and thrust still aborts with cudaErrorInvalidDevice. It is kept because
+       being counted the way the reference node is counted is correct, not
+       because it was the cure.)
+
+       The latched subscriptions this node does have are handled where they are
+       created, not by disabling intra-process for everything: rclcpp refuses
+       intra-process for non-volatile durability, so the vector map subscription
+       sets IntraProcessSetting::Disable on itself, and the route already goes
+       through an InterProcessPollingSubscriber. -->
   <load_composable_node target="$(var target_container)"
                         unless="$(eval &quot;'$(var target_container)'==''&quot;)">
     <!-- No namespace attribute, deliberately. launch_ros combines a composable
@@ -101,6 +113,7 @@
       <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
       <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
       <remap from="~/output/detected_objects" to="$(var output_detected_objects)"/>
+      <extra_arg name="use_intra_process_comms" value="true"/>
     </composable_node>
   </load_composable_node>
 

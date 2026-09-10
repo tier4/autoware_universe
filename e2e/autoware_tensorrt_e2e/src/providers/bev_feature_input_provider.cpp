@@ -114,6 +114,21 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
     node_.declare_parameter<bool>("bev_feature.extractor.use_intensity", network_field());
 
   declare_detection_params();
+
+  // Subscribe here, in the constructor, as autoware_bevfusion does -- not later from
+  // claim_inputs(), which builds the TensorRT extractor first and so lands a full second
+  // after the node starts. In a shared container the concatenator negotiates and
+  // registers itself as a blackboard producer during that second, and a subscriber that
+  // joins afterwards flips an already-running topic into negotiated mode. Subscribing
+  // before the engine is built keeps the ordering the same as the node the blackboard
+  // was built around.
+  //
+  // (This alone does NOT fix the container abort under investigation: with the ordering
+  // reversed and verified in the logs, CudaBlackboard::registerData() still reports
+  // "already exists. Deleting. It had 1 tickets left" and the container still dies with
+  // cudaErrorInvalidDevice. Kept because matching the reference node is the better
+  // implementation, not because it is the cure.)
+  subscribe();
 }
 
 void BevFeatureInputProvider::declare_detection_params()
@@ -257,10 +272,21 @@ std::vector<std::string> BevFeatureInputProvider::claim_inputs(
     }
   }
 
+  return {history_tensor_name_};
+}
+
+void BevFeatureInputProvider::subscribe()
+{
   pointcloud_sub_ = std::make_unique<
     cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
     node_, "~/input/pointcloud",
     [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
+      // Subscribing happens in the constructor, so a cloud can arrive before the
+      // extractor exists. Drop those: the cache is empty anyway and the first ticks
+      // would have nothing to plan on.
+      if (!extractor_) {
+        return;
+      }
       {
         std::lock_guard<std::mutex> lock(mutex_);
         latest_pointcloud_ = msg;
@@ -289,8 +315,6 @@ std::vector<std::string> BevFeatureInputProvider::claim_inputs(
         on_data_();
       }
     });
-
-  return {history_tensor_name_};
 }
 
 bool BevFeatureInputProvider::collect(

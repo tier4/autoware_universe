@@ -14,6 +14,7 @@
 
 #include "autoware/tensorrt_e2e/bev_feature/trt_bev_feature_extractor.hpp"
 
+#include "autoware/tensorrt_e2e/engine_cache.hpp"
 #include "autoware/tensorrt_e2e/types.hpp"
 
 #include <autoware/bevfusion/preprocess/point_type.hpp>
@@ -127,6 +128,12 @@ void TrtBevFeatureExtractor::init_engine(const Config & config)
   profile_dims.emplace_back(
     "coors", nvinfer1::Dims{2, {config.voxels_num[0], 3}},
     nvinfer1::Dims{2, {config.voxels_num[1], 3}}, nvinfer1::Dims{2, {config.voxels_num[2], 3}});
+
+  // Same staleness guard as the planner engine: profile dims alone do not detect a
+  // re-exported graph, so a cached engine older than its ONNX is dropped. See
+  // engine_cache.hpp.
+  drop_stale_engine(
+    config.onnx_path, trt_config.engine_path.string(), rclcpp::get_logger("tensorrt_e2e"));
 
   trt_common_ = std::make_unique<TrtCommon>(
     trt_config, std::make_shared<Profiler>(), std::vector<std::string>{config.plugins_path});
