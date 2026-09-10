@@ -13,7 +13,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 ament_auto_add_library(${PROJECT_NAME}_common STATIC
   src/utils/constraints_compiler.cpp
   src/utils/sl_view_utils.cpp
-  src/utils/trajectory_conversion.cpp
+  src/utils/trajectory_postprocess.cpp
+  src/utils/turn_indicator_decider.cpp
 )
 target_link_libraries(${PROJECT_NAME}_common
   safety_planner_parameters

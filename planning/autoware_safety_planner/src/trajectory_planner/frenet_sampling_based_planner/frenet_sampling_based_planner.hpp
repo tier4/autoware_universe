@@ -34,9 +34,10 @@
 
 #include "../../utils/constraints_compiler.hpp"
 #include "../../utils/sl_view_utils.hpp"
-#include "../../utils/trajectory_conversion.hpp"
+#include "../../utils/turn_indicator_decider.hpp"
 #include "../trajectory_planner_interface.hpp"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -49,9 +50,18 @@ class FrenetSamplingBasedPlanner : public TrajectoryPlannerInterface
 public:
   std::string get_name() const override { return "frenet_sampling_based_planner"; }
 
+  void on_initialize(
+    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
+    const Params & params) override;
+
   TrajectoryPlannerResult plan(const TrajectoryPlannerInput & input) override;
 
 private:
+  // The turn signal is decided after the fact from the reference_path, the map and the ego state;
+  // one decider per output, since each holds its own anti-chatter and latch state
+  TurnIndicatorDecider normal_turn_indicator_decider_{TurnSignalParams{}};
+  TurnIndicatorDecider cautious_turn_indicator_decider_{TurnSignalParams{}};
+
   //! Ego state in Frenet coordinates, the initial conditions of the polynomials
   struct InitialState
   {
@@ -87,9 +97,10 @@ private:
   //! A trajectory candidate: one path combined with one velocity profile
   struct Candidate
   {
-    std::vector<double> s;  //!< [m] s(t_k)
-    std::vector<double> l;  //!< [m] l(s(t_k))
-    std::vector<OptimizedTrajectoryPoint> points;
+    std::vector<double> s;      //!< [m] s(t_k)
+    std::vector<double> l;      //!< [m] l(s(t_k))
+    std::vector<double> kappa;  //!< [1/m] kappa(s(t_k)), kept at double precision for the checks
+    TrajectoryPoints points;    //!< the output points, in world coordinates (z from ego)
     double cost{0.0};
     bool valid{true};
     std::string tag;

@@ -14,8 +14,6 @@
 
 #include "frenet_sampling_based_planner.hpp"
 
-#include "../../utils/trajectory_conversion.hpp"
-
 #include <autoware_frenet_planner/polynomials.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_math/normalization.hpp>
@@ -26,6 +24,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -121,6 +120,17 @@ double interpolate_uniform_angle(
 
 }  // namespace
 
+void FrenetSamplingBasedPlanner::on_initialize(
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params)
+{
+  TrajectoryPlannerInterface::on_initialize(time_keeper, params);
+  const TurnSignalParams turn_signal_params{
+    params.turn_signal.search_distance, params.turn_signal.min_blink_duration,
+    params.turn_signal.stopped_velocity_threshold, params.turn_signal.heading_align_threshold};
+  normal_turn_indicator_decider_.update_params(turn_signal_params);
+  cautious_turn_indicator_decider_.update_params(turn_signal_params);
+}
+
 TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan(const TrajectoryPlannerInput & input)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
@@ -131,9 +141,8 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan(const TrajectoryPlanner
     if (
       auto trajectory =
         plan_one_side(input.context, input.normal_constraints, result.normal_debug)) {
-      // turn_indicators is left as NO_COMMAND until the shape-based decision is implemented
-      // TODO(odashima): implement turn_indicators_command decider
-      result.normal_trajectory = PlannedTrajectory{std::move(*trajectory), TurnIndicatorsCommand{}};
+      result.normal_trajectory = PlannedTrajectory{
+        std::move(*trajectory), normal_turn_indicator_decider_.decide(input.context)};
     }
   }
   {
@@ -141,8 +150,8 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan(const TrajectoryPlanner
     if (
       auto trajectory =
         plan_one_side(input.context, input.cautious_constraints, result.cautious_debug)) {
-      result.cautious_trajectory =
-        PlannedTrajectory{std::move(*trajectory), TurnIndicatorsCommand{}};
+      result.cautious_trajectory = PlannedTrajectory{
+        std::move(*trajectory), cautious_turn_indicator_decider_.decide(input.context)};
     }
   }
   return result;
@@ -445,24 +454,35 @@ FrenetSamplingBasedPlanner::Candidate FrenetSamplingBasedPlanner::combine(
   const double res = params_.frenet_sampling_based_planner.path_resolution_m;
   const double s0 = path.s.front();
   const double s_max = ref.length();
+  const double z = context.odometry.pose.pose.position.z;
+  const double wheel_base_m = context.vehicle_info.wheel_base_m;
 
   Candidate candidate;
   candidate.tag = path.tag + " " + profile.tag;
   candidate.s = profile.s;
   candidate.l.reserve(profile.s.size());
+  candidate.kappa.reserve(profile.s.size());
   candidate.points.reserve(profile.s.size());
   for (std::size_t k = 0; k < profile.t.size(); ++k) {
     const double s = profile.s[k];
     const double l = interpolate_uniform(path.l, s0, res, s);
+    const double kappa = interpolate_uniform(path.kappa, s0, res, s);
+    const double v = profile.v[k];
     candidate.l.push_back(l);
+    candidate.kappa.push_back(kappa);
 
-    OptimizedTrajectoryPoint point;
-    point.t = profile.t[k];
-    point.pose = to_world_pose(ref, std::clamp(s, 0.0, s_max), l);
-    point.pose.yaw = interpolate_uniform_angle(path.yaw, s0, res, s);
-    point.kappa = interpolate_uniform(path.kappa, s0, res, s);
-    point.v = profile.v[k];
-    point.a = profile.a[k];
+    const auto pose = to_world_pose(ref, std::clamp(s, 0.0, s_max), l);
+    TrajectoryPoint point;
+    point.time_from_start = rclcpp::Duration::from_seconds(std::max(0.0, profile.t[k]));
+    point.pose.position.x = pose.position.x();
+    point.pose.position.y = pose.position.y();
+    point.pose.position.z = z;
+    point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(
+      interpolate_uniform_angle(path.yaw, s0, res, s));
+    point.longitudinal_velocity_mps = static_cast<float>(v);
+    point.acceleration_mps2 = static_cast<float>(profile.a[k]);
+    point.heading_rate_rps = static_cast<float>(v * kappa);
+    point.front_wheel_angle_rad = static_cast<float>(std::atan(kappa * wheel_base_m));
     candidate.points.push_back(point);
   }
   return candidate;
@@ -489,39 +509,41 @@ void FrenetSamplingBasedPlanner::evaluate(
   for (std::size_t k = 0; k < candidate.points.size(); ++k) {
     const double s = candidate.s[k];
     const double l = candidate.l[k];
-    const auto & point = candidate.points[k];
+    const double kappa = candidate.kappa[k];
+    const double v = candidate.points[k].longitudinal_velocity_mps;
+    const double a = candidate.points[k].acceleration_mps2;
 
     // A candidate that passes the goal at the end of the path, or drives backwards, is invalid
     if (s > s_max + 1e-3) {
       return reject("beyond_goal");
     }
-    if (point.v < -1e-3) {
+    if (v < -1e-3) {
       return reject("reverse");
     }
     // --- vehicle kinematics (the ScalarBound constraints of VehicleKinematics) ---
     const double v_max = velocity_limit_at(compiled_constraints, limits, s);
-    if (point.v > v_max + 1e-6) {
+    if (v > v_max + 1e-6) {
       return reject("velocity");
     }
-    if (point.a < limits.a_hard_min - 1e-6 || point.a > limits.a_hard_max + 1e-6) {
+    if (a < limits.a_hard_min - 1e-6 || a > limits.a_hard_max + 1e-6) {
       return reject("lon_accel");
     }
-    if (std::abs(point.kappa) > bounds.curvature) {
+    if (std::abs(kappa) > bounds.curvature) {
       return reject("curvature");
     }
-    const double steer = std::atan(point.kappa * wheel_base_m);
+    const double steer = std::atan(kappa * wheel_base_m);
     if (std::abs(steer) > bounds.steer_angle) {
       return reject("steer_angle");
     }
-    if (std::abs(point.v * point.v * point.kappa) > bounds.lat_accel) {
+    if (std::abs(v * v * kappa) > bounds.lat_accel) {
       return reject("lat_accel");
     }
     if (k + 1 < candidate.points.size()) {
-      const auto & next = candidate.points[k + 1];
-      if (std::abs((next.a - point.a) / dt) > bounds.lon_jerk) {
+      const double next_a = candidate.points[k + 1].acceleration_mps2;
+      if (std::abs((next_a - a) / dt) > bounds.lon_jerk) {
         return reject("lon_jerk");
       }
-      const double next_steer = std::atan(next.kappa * wheel_base_m);
+      const double next_steer = std::atan(candidate.kappa[k + 1] * wheel_base_m);
       if (std::abs((next_steer - steer) / dt) > bounds.steer_rate) {
         return reject("steer_rate");
       }
@@ -529,8 +551,10 @@ void FrenetSamplingBasedPlanner::evaluate(
 
     // --- geometric constraints, on the projected views ---
     const auto box = footprint_sl_box(context.vehicle_info, s, l);
-    const double t0 = point.t;
-    const double t1 = (k + 1 < candidate.points.size()) ? candidate.points[k + 1].t : t0;
+    const double t0 = rclcpp::Duration(candidate.points[k].time_from_start).seconds();
+    const double t1 = (k + 1 < candidate.points.size())
+                        ? rclcpp::Duration(candidate.points[k + 1].time_from_start).seconds()
+                        : t0;
     double soft_bound_cost = 0.0;
     for (const auto & bound : compiled_constraints.lateral_bounds) {
       const auto & raw = compiled_constraints.raw_constraints[bound.raw_index];
@@ -570,13 +594,13 @@ void FrenetSamplingBasedPlanner::evaluate(
     // candidates would be rejected by the steer rate and end up near the centerline
     const double l_ref =
       l_goal * std::clamp((2.0 * blend_length - (s_max - s)) / blend_length, 0.0, 1.0);
-    const double dv = v_max - point.v;
+    const double dv = v_max - v;
     cost += p.weights.lateral * (l - l_ref) * (l - l_ref) * dt;
     cost += soft_bound_cost * dt;
     cost += p.weights.velocity * dv * dv * dt;
-    cost += p.weights.curvature * point.kappa * point.kappa * dt;
+    cost += p.weights.curvature * kappa * kappa * dt;
     if (k + 1 < candidate.points.size()) {
-      const double lon_jerk = (candidate.points[k + 1].a - point.a) / dt;
+      const double lon_jerk = (candidate.points[k + 1].acceleration_mps2 - a) / dt;
       cost += p.weights.lon_jerk * lon_jerk * lon_jerk * dt;
     }
   }
@@ -586,19 +610,11 @@ void FrenetSamplingBasedPlanner::evaluate(
 Trajectory FrenetSamplingBasedPlanner::to_trajectory_msg(
   const PlannerContext & context, const Candidate & candidate) const
 {
-  const double z = context.odometry.pose.pose.position.z;
-  const double wheel_base_m = context.vehicle_info.wheel_base_m;
-
   Trajectory trajectory;
   trajectory.header.frame_id = "map";
   trajectory.header.stamp = context.odometry.header.stamp;
-  trajectory.points.reserve(candidate.points.size());
-  for (const auto & point : candidate.points) {
-    trajectory.points.push_back(to_trajectory_point(point, z, wheel_base_m));
-  }
-  const double engage_velocity_mps =
-    params_.engage_velocity.enable ? params_.engage_velocity.velocity_hard_mps : 0.0;
-  return set_engage_speed(trajectory, engage_velocity_mps);
+  trajectory.points = candidate.points;
+  return trajectory;
 }
 
 void FrenetSamplingBasedPlanner::append_debug_markers(
@@ -609,7 +625,6 @@ void FrenetSamplingBasedPlanner::append_debug_markers(
   using autoware_utils_visualization::create_marker_color;
   using autoware_utils_visualization::create_marker_scale;
 
-  const double z = context.odometry.pose.pose.position.z;
   const auto stamp = context.odometry.header.stamp;
 
   auto valid_marker = create_default_marker(
@@ -623,11 +638,7 @@ void FrenetSamplingBasedPlanner::append_debug_markers(
     auto & marker = candidate.valid ? valid_marker : invalid_marker;
     for (std::size_t k = 0; k + 1 < candidate.points.size(); ++k) {
       for (const std::size_t i : {k, k + 1}) {
-        geometry_msgs::msg::Point point;
-        point.x = candidate.points[i].pose.position.x();
-        point.y = candidate.points[i].pose.position.y();
-        point.z = z;
-        marker.points.push_back(point);
+        marker.points.push_back(candidate.points[i].pose.position);
       }
     }
   }

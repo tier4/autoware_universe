@@ -12,35 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "trajectory_conversion.hpp"
+#include "trajectory_postprocess.hpp"
 
 #include <autoware_utils_geometry/geometry.hpp>
 
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
 
 namespace autoware::safety_planner
 {
-
-TrajectoryPoint to_trajectory_point(
-  const OptimizedTrajectoryPoint & optimized_point, const double z, const double wheel_base_m)
-{
-  TrajectoryPoint point;
-  point.time_from_start = rclcpp::Duration::from_seconds(std::max(0.0, optimized_point.t));
-  point.pose.position.x = optimized_point.pose.position.x();
-  point.pose.position.y = optimized_point.pose.position.y();
-  point.pose.position.z = z;
-  point.pose.orientation =
-    autoware_utils_geometry::create_quaternion_from_yaw(optimized_point.pose.yaw);
-  point.longitudinal_velocity_mps = static_cast<float>(optimized_point.v);
-  point.lateral_velocity_mps = 0.0F;
-  point.acceleration_mps2 = static_cast<float>(optimized_point.a);
-  point.heading_rate_rps = static_cast<float>(optimized_point.v * optimized_point.kappa);
-  point.front_wheel_angle_rad = static_cast<float>(std::atan(optimized_point.kappa * wheel_base_m));
-  point.rear_wheel_angle_rad = 0.0F;
-  return point;
-}
 
 Trajectory set_engage_speed(const Trajectory & trajectory, const double engage_velocity_mps)
 {

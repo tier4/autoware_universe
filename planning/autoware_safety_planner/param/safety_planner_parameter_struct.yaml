@@ -77,6 +77,36 @@ safety_planner:
       read_only: true
       description: "[m/s] lower bound put on the velocity of the launch section, so that the longitudinal controller leaves STOPPED when starting from standstill; the same idea as the engage_velocity of velocity_smoother. 0 disables it"
 
+  turn_signal:
+    search_distance:
+      type: double
+      default_value: 30.0
+      read_only: true
+      description: "[m] lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this)"
+      validation:
+        gt_eq<>: [0.0]
+    min_blink_duration:
+      type: double
+      default_value: 3.0
+      read_only: true
+      description: "[s] minimum time a turn signal is held on once lit, to suppress chatter"
+      validation:
+        gt_eq<>: [0.0]
+    stopped_velocity_threshold:
+      type: double
+      default_value: 0.1
+      read_only: true
+      description: "[m/s] speed at/below which ego counts as stopped, for latching a pull-out and detecting arrival at the goal"
+      validation:
+        gt_eq<>: [0.0]
+    heading_align_threshold:
+      type: double
+      default_value: 0.15
+      read_only: true
+      description: "[rad] yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared; also the gap below which a private-area merge counts as straight and raises no signal"
+      validation:
+        gt<>: [0.0]
+
   constraint_generator_plugins:
     type: string_array
     default_value:

@@ -14,9 +14,6 @@
 
 #include "safety_planner_node.hpp"
 
-#include "utils/sl_view_utils.hpp"
-#include "utils/trajectory_conversion.hpp"
-
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
 #include <rclcpp_components/register_node_macro.hpp>

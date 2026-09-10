@@ -15,6 +15,7 @@
 #include "safety_planner.hpp"
 
 #include "utils/reference_path_smoother.hpp"
+#include "utils/trajectory_postprocess.hpp"
 
 #include <autoware/lanelet2_utils/nn_search.hpp>
 #include <autoware/trajectory/threshold.hpp>
@@ -278,6 +279,16 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
   if (trajectory_planner_) {
     const TrajectoryPlannerInput input{context, normal_list, cautious_list};
     auto planner_result = trajectory_planner_->plan(input);
+    if (params_.engage_velocity.enable) {
+      if (planner_result.normal_trajectory) {
+        auto & trajectory = planner_result.normal_trajectory->trajectory;
+        trajectory = set_engage_speed(trajectory, params_.engage_velocity.velocity_hard_mps);
+      }
+      if (planner_result.cautious_trajectory) {
+        auto & trajectory = planner_result.cautious_trajectory->trajectory;
+        trajectory = set_engage_speed(trajectory, params_.engage_velocity.velocity_hard_mps);
+      }
+    }
     result.normal_trajectory = std::move(planner_result.normal_trajectory);
     result.cautious_trajectory = std::move(planner_result.cautious_trajectory);
     result.debug.normal = std::move(planner_result.normal_debug);
