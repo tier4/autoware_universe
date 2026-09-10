@@ -37,6 +37,8 @@
 #undef signals
 namespace rviz_plugins
 {
+constexpr double flashing_frequency_hz = 1.0;
+
 TrafficLightPublishPanel::TrafficLightPublishPanel(QWidget * parent) : rviz_common::Panel(parent)
 {
   // Publish Rate
@@ -245,11 +247,34 @@ void TrafficLightPublishPanel::createWallTimer()
   pub_timer_ = raw_node_->create_wall_timer(period, [&]() { onTimer(); });
 }
 
+// Recognition reports the instantaneous bulb state, so publish FLASHING as SOLID_ON and SOLID_OFF
+// alternating at 1Hz.
+TrafficLightGroupArray TrafficLightPublishPanel::createPublishingSignals(
+  const rclcpp::Time & stamp) const
+{
+  constexpr auto half_period_ns = static_cast<int64_t>(1e9 / (2.0 * flashing_frequency_hz));
+  const auto flashing_status = (stamp.nanoseconds() / half_period_ns) % 2 == 0
+                                 ? TrafficLightElement::SOLID_ON
+                                 : TrafficLightElement::SOLID_OFF;
+
+  TrafficLightGroupArray signals = extra_traffic_signals_;
+  signals.stamp = stamp;
+
+  for (auto & signal : signals.traffic_light_groups) {
+    for (auto & element : signal.elements) {
+      if (element.status == TrafficLightElement::FLASHING) {
+        element.status = flashing_status;
+      }
+    }
+  }
+
+  return signals;
+}
+
 void TrafficLightPublishPanel::onTimer()
 {
   if (enable_publish_) {
-    extra_traffic_signals_.stamp = rclcpp::Clock().now();
-    pub_traffic_signals_->publish(extra_traffic_signals_);
+    pub_traffic_signals_->publish(createPublishingSignals(rclcpp::Clock().now()));
   }
 
   traffic_table_->setRowCount(extra_traffic_signals_.traffic_light_groups.size());

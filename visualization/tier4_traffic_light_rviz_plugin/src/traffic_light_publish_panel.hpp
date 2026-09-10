@@ -57,6 +57,7 @@ protected:
   void onTimer();
   void createWallTimer();
   void onVectorMap(const LaneletMapBin::ConstSharedPtr msg);
+  TrafficLightGroupArray createPublishingSignals(const rclcpp::Time & stamp) const;
 
   rclcpp::Node::SharedPtr raw_node_;
   rclcpp::TimerBase::SharedPtr pub_timer_;
