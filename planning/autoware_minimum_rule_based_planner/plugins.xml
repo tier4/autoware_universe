@@ -12,4 +12,10 @@
       Surround obstacle stop plugin for minimum rule based planner
     </description>
   </class>
+  <class type="autoware::minimum_rule_based_planner::plugin::ObstacleSlowDown"
+         base_class_type="autoware::minimum_rule_based_planner::plugin::PluginInterface">
+    <description>
+      Obstacle slow down plugin for minimum rule based planner
+    </description>
+  </class>
 </library>
