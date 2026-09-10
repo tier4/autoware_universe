@@ -549,6 +549,105 @@ std::vector<FirstOrderDubinsMppiControl> buildForcedNominalControl(
   return nominal;
 }
 
+std::size_t overlayNominalSteeringFromPredictedTrajectory(
+  std::vector<FirstOrderDubinsMppiControl> & nominal, const Trajectory & predicted_trajectory,
+  const InitialState & ego, const FirstOrderDubinsMppiVehicleParams & vehicle_params,
+  const float dt)
+{
+  struct SteeringSample
+  {
+    float time{0.0F};
+    float steering{0.0F};
+  };
+
+  if (
+    nominal.empty() || predicted_trajectory.points.empty() || !std::isfinite(dt) || dt <= 0.0F ||
+    !std::isfinite(ego.x) || !std::isfinite(ego.y) || !std::isfinite(ego.yaw) ||
+    !std::isfinite(vehicle_params.wheel_base) || vehicle_params.wheel_base <= 0.0F ||
+    !std::isfinite(vehicle_params.max_steer_angle) || vehicle_params.max_steer_angle < 0.0F) {
+    return 0U;
+  }
+
+  constexpr double kMinimumTransitionDistance = 1.0E-3;
+  std::vector<SteeringSample> samples;
+  samples.reserve(predicted_trajectory.points.size());
+
+  double previous_x = ego.x;
+  double previous_y = ego.y;
+  double previous_yaw = ego.yaw;
+  float previous_time = -1.0F;
+  for (std::size_t index = 0; index < predicted_trajectory.points.size(); ++index) {
+    const auto & point = predicted_trajectory.points[index];
+    const double x = point.pose.position.x;
+    const double y = point.pose.position.y;
+    const double yaw = tf2::getYaw(point.pose.orientation);
+    const float time = static_cast<float>(point.time_from_start.sec) +
+                       1.0E-9F * static_cast<float>(point.time_from_start.nanosec);
+    if (
+      !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(yaw) || !std::isfinite(time) ||
+      time < 0.0F || (index > 0U && time <= previous_time)) {
+      return 0U;
+    }
+
+    const double delta_x = x - previous_x;
+    const double delta_y = y - previous_y;
+    const double distance = std::hypot(delta_x, delta_y);
+    if (distance >= kMinimumTransitionDistance) {
+      // The MPC publisher fills front_wheel_angle_rad from its reference curvature. Its optimized
+      // steering is instead observable in the yaw progression of the predicted world path.
+      const double yaw_delta =
+        std::atan2(std::sin(yaw - previous_yaw), std::cos(yaw - previous_yaw));
+      const double longitudinal_displacement =
+        delta_x * std::cos(previous_yaw) + delta_y * std::sin(previous_yaw);
+      const double signed_distance = std::copysign(distance, longitudinal_displacement);
+      const double curvature = yaw_delta / signed_distance;
+      const double steering = std::atan(static_cast<double>(vehicle_params.wheel_base) * curvature);
+      if (std::isfinite(steering)) {
+        samples.push_back(
+          {time, std::clamp(
+                   static_cast<float>(steering), -vehicle_params.max_steer_angle,
+                   vehicle_params.max_steer_angle)});
+      }
+    }
+
+    previous_x = x;
+    previous_y = y;
+    previous_yaw = yaw;
+    previous_time = time;
+  }
+
+  if (samples.empty()) {
+    return 0U;
+  }
+
+  std::size_t replaced = 0U;
+  std::size_t upper_index = 0U;
+  for (std::size_t index = 0; index < nominal.size(); ++index) {
+    const float target_time = static_cast<float>(index) * dt;
+    if (target_time > samples.back().time) {
+      break;
+    }
+    while (upper_index < samples.size() && samples[upper_index].time < target_time) {
+      ++upper_index;
+    }
+    if (upper_index == samples.size()) {
+      break;
+    }
+
+    float steering = samples[upper_index].steering;
+    if (upper_index > 0U && samples[upper_index].time > target_time) {
+      const auto & lower = samples[upper_index - 1U];
+      const auto & upper = samples[upper_index];
+      const float span = upper.time - lower.time;
+      const float alpha = span > 0.0F ? (target_time - lower.time) / span : 0.0F;
+      steering = lower.steering + std::clamp(alpha, 0.0F, 1.0F) * (upper.steering - lower.steering);
+    }
+    nominal[index].steer_cmd = steering;
+    ++replaced;
+  }
+  return replaced;
+}
+
 FirstOrderDubinsMppiNominalSteeringContinuity guardInitialNominalSteeringCommand(
   const float nominal_steering_command, const float current_steering,
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, const int steering_delay_steps,
