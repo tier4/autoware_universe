@@ -99,6 +99,8 @@
       # Cold-seed u_nom from acados temporal MPT.
       use_temporal_mpt_as_nominal: false
       use_last_control_as_nominal: true
+      use_mpc_predicted_trajectory_as_nominal_steering: false
+      mpc_predicted_trajectory_max_age_s: 0.5
       nominal_initial_steering_max_deviation_rad: 0.1
       last_control_warm_start_max_age_s: 0.5
       last_control_warm_start_max_position_error_m: 0.75
