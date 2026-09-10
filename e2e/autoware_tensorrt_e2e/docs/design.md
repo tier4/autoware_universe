@@ -132,6 +132,15 @@ on demand. History lengths and capacity dimensions are taken from the model spec
 feature contract allows them. The implementation reuses the exported diffusion-planner utility
 functions so the feature encoding remains consistent with the source pipeline.
 
+One tensor is the provider's own: `lanes_on_route` `[1, S, 2]` marks, per lane slot, whether the
+mission route runs through it and how far along the route it lies (0 at the route's first visible
+lanelet, 1 at its last, 0 with the flag down everywhere else). OnePlanner derives it in training by
+matching route polylines against lane polylines on exact centreline equality; the provider builds
+both tensors from one segment table, so the same answer is an index lookup between the two
+selections of the tick. A route lanelet that is not among the selected lanes marks nothing, as in
+training. The tensor exists because the route stream repeats lane geometry the model already has
+and states identity only implicitly; the marker states it.
+
 ## Common input contract
 
 The following tensor names and shapes are understood by the foundation providers:

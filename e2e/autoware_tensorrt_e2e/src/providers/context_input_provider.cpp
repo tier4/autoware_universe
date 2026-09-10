@@ -24,11 +24,46 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace autoware::tensorrt_e2e
 {
+namespace
+{
+//! OnePlanner's `lanes_on_route`: for every lane slot, whether the mission route runs through
+//! it and how far along the route it lies -- 0 at the route's first visible lanelet, 1 at its
+//! last, and 0 on every off-route slot, where the flag tells the two apart. Training derives
+//! it by matching route polylines against lane polylines on exact centreline equality; here
+//! both tensors are built from the same segment table, so the match is an index lookup with
+//! the same result. A route lanelet outside the lane set marks nothing, as in training.
+std::vector<float> mark_lanes_on_route(
+  const std::vector<int64_t> & lane_segments, const std::vector<int64_t> & route_segments,
+  const int64_t num_lane_slots)
+{
+  std::vector<float> marker(static_cast<size_t>(num_lane_slots) * 2, 0.0f);
+  if (route_segments.empty()) {
+    return marker;
+  }
+  std::unordered_map<int64_t, size_t> route_position;
+  for (size_t i = 0; i < route_segments.size(); ++i) {
+    route_position.emplace(route_segments[i], i);
+  }
+  const auto denominator = static_cast<float>(std::max<size_t>(1, route_segments.size() - 1));
+  const size_t slots = std::min(lane_segments.size(), static_cast<size_t>(num_lane_slots));
+  for (size_t slot = 0; slot < slots; ++slot) {
+    const auto found = route_position.find(lane_segments[slot]);
+    if (found == route_position.end()) {
+      continue;
+    }
+    marker[slot * 2] = 1.0f;
+    marker[slot * 2 + 1] = static_cast<float>(found->second) / denominator;
+  }
+  return marker;
+}
+}  // namespace
+
 
 namespace dp = autoware::diffusion_planner;
 
@@ -138,6 +173,14 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
     }
     validate_shape(
       *spec, {1, route_lanes_shape_[1], 1}, "one speed limit flag per route segment");
+  }
+  if (const auto * spec = claim("lanes_on_route", lanes_on_route_shape_)) {
+    if (lanes_shape_.empty() || route_lanes_shape_.empty()) {
+      throw std::runtime_error(
+        "Model takes 'lanes_on_route' but not both 'lanes' and 'route_lanes'");
+    }
+    validate_shape(
+      *spec, {1, lanes_shape_[1], 2}, "per lane slot: on-route flag, position along the route");
   }
 
   if (const auto * spec = claim("polygons", polygons_shape_)) {
@@ -302,6 +345,7 @@ bool ContextInputProvider::collect_map_tensors(
       ego.map_to_ego, center_x, center_y, num_segments);
     auto [lanes, lanes_speed_limit] = lane_segment_context_->create_tensor_data_from_indices(
       ego.map_to_ego, traffic_light_id_map_, segment_indices, num_segments);
+    lane_segment_indices_ = segment_indices;
     inputs["lanes"] = Tensor::from_host(lanes_shape_, std::move(lanes));
     if (!lanes_has_speed_limit_shape_.empty()) {
       // Same values as the speed limit tensor; the engine converts to bool by dtype.
@@ -354,6 +398,11 @@ bool ContextInputProvider::collect_route_tensors(
     auto [route_lanes, route_speed_limit] = lane_segment_context_->create_tensor_data_from_indices(
       ego.map_to_ego, traffic_light_id_map_, segment_indices, num_segments);
     inputs["route_lanes"] = Tensor::from_host(route_lanes_shape_, std::move(route_lanes));
+    if (!lanes_on_route_shape_.empty()) {
+      inputs["lanes_on_route"] = Tensor::from_host(
+        lanes_on_route_shape_,
+        mark_lanes_on_route(lane_segment_indices_, segment_indices, lanes_on_route_shape_[1]));
+    }
     if (!route_lanes_has_speed_limit_shape_.empty()) {
       inputs["route_lanes_has_speed_limit"] =
         Tensor::from_host(route_lanes_has_speed_limit_shape_, route_speed_limit);

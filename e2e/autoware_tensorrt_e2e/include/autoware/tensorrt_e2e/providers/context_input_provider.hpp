@@ -107,6 +107,12 @@ private:
   std::vector<int64_t> route_lanes_shape_;
   std::vector<int64_t> route_lanes_speed_limit_shape_;
   std::vector<int64_t> route_lanes_has_speed_limit_shape_;
+  //! `lanes_on_route` `[1, S, 2]`: per lane slot, whether the mission route runs through it
+  //! and how far along the route it lies. Derived from the lane and route selections of the
+  //! same tick, so it needs both `lanes` and `route_lanes`.
+  std::vector<int64_t> lanes_on_route_shape_;
+  //! Segment table indices behind this tick's `lanes` slots, kept for `lanes_on_route`.
+  std::vector<int64_t> lane_segment_indices_;
   std::vector<int64_t> polygons_shape_;
   std::vector<int64_t> line_strings_shape_;
   std::vector<int64_t> goal_pose_shape_;
