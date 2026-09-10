@@ -12,6 +12,10 @@
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Takes the reference_path widened by a constant half width and extended at both ends as the drivable area, emitted as two boundaries</description>
     </class>
+    <class type="autoware::safety_planner::experiment::NextLaneletSpeedLimitConstraintGenerator"
+           base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
+      <description>Debug: emits a regional velocity bound over the lanelet following the current one</description>
+    </class>
     <class type="autoware::safety_planner::experiment::ObstacleStopConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Emits one rigid-body KeepOut per predicted object, along its most likely predicted path</description>

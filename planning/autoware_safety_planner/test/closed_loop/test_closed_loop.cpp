@@ -81,6 +81,7 @@ Scenario load_scenario(const std::string & yaml_filename)
   for (const auto & relative_path :
        {"safety_planner.param.yaml", "constraint_generator/vehicle_kinematics.param.yaml",
         "constraint_generator/lane_following_drivable_area.param.yaml",
+        "constraint_generator/next_lanelet_speed_limit.param.yaml",
         "constraint_generator/obstacle_stop.param.yaml",
         "constraint_generator/simple_drivable_area.param.yaml",
         "trajectory_planner/frenet_sampling_based_planner.param.yaml"}) {

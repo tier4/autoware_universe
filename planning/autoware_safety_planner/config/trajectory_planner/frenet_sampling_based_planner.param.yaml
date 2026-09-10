@@ -2,7 +2,6 @@
   ros__parameters:
     frenet_sampling_based_planner:
       time_step_s: 0.1 # [s]
-      horizon_s: 10.0 # [s]
       path_resolution_m: 0.5 # [m] spacing at which the path l(s) is sampled
       target_lengths_m: [10.0, 20.0, 40.0] # [m] arc lengths over which the lateral motion completes
       target_durations_s: [2.0, 4.0, 6.0, 8.0] # [s] terminal times of the velocity profile

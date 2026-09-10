@@ -7,6 +7,14 @@ safety_planner:
     validation:
       bounds<>: [0.0001, 50.0]
 
+  trajectory_horizon_s:
+    type: double
+    default_value: 10.0
+    read_only: true
+    description: "[s] duration of the output trajectory; a candidate whose terminal time is shorter holds its terminal state until then"
+    validation:
+      gt<>: [0.0]
+
   ego_nearest_lanelet:
     dist_threshold_m:
       type: double
@@ -178,6 +186,15 @@ safety_planner:
       validation:
         gt_eq<>: [0.0]
 
+  next_lanelet_speed_limit:
+    velocity_mps:
+      type: double
+      default_value: 2.78
+      read_only: true
+      description: "[m/s] hard bound on the speed inside the lanelet following the current one"
+      validation:
+        gt_eq<>: [0.0]
+
   obstacle_stop:
     margin_m:
       type: double
@@ -244,13 +261,6 @@ safety_planner:
       default_value: 0.1
       read_only: true
       description: "[s] spacing of the output time grid"
-      validation:
-        gt<>: [0.0]
-    horizon_s:
-      type: double
-      default_value: 10.0
-      read_only: true
-      description: "[s] duration of the output trajectory; a candidate whose terminal time is shorter holds its terminal state until then"
       validation:
         gt<>: [0.0]
     path_resolution_m:

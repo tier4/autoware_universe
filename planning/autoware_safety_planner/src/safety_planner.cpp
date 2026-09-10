@@ -278,7 +278,7 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
   SafetyPlannerResult result;
   if (trajectory_planner_) {
     const TrajectoryPlannerInput input{context, normal_list, cautious_list};
-    auto planner_result = trajectory_planner_->plan(input);
+    auto planner_result = trajectory_planner_->plan_trajectories(input);
     if (params_.engage_velocity.enable) {
       if (planner_result.normal_trajectory) {
         auto & trajectory = planner_result.normal_trajectory->trajectory;

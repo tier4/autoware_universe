@@ -72,7 +72,7 @@ public:
   }
 
   virtual std::string get_name() const = 0;
-  virtual TrajectoryPlannerResult plan(const TrajectoryPlannerInput & input) = 0;
+  virtual TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) = 0;
 
 protected:
   mutable std::shared_ptr<TimeKeeper> time_keeper_{nullptr};

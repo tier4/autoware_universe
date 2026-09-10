@@ -15,7 +15,6 @@
 #include "lane_following_drivable_area.hpp"
 
 #include <autoware/lanelet2_utils/nn_search.hpp>
-#include <autoware_utils_visualization/marker_helper.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
@@ -328,35 +327,6 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         }
         flush();
       }
-    }
-  }
-
-  // --- debug marker: the boundary polylines that were emitted ---
-  {
-    using autoware_utils_visualization::create_default_marker;
-    using autoware_utils_visualization::create_marker_color;
-    using autoware_utils_visualization::create_marker_scale;
-
-    auto bound_marker = create_default_marker(
-      "map", rclcpp::Time(0, 0, RCL_ROS_TIME), "lane_following_drivable_area_bounds", 0,
-      Marker::LINE_LIST, create_marker_scale(0.15, 0.0, 0.0),
-      create_marker_color(1.0, 0.6, 0.0, 0.9));
-    for (const auto & constraint : output.constraints) {
-      const auto & boundary = std::get<Boundary>(constraint.payload);
-      for (std::size_t i = 0; i + 1 < boundary.polyline.size(); ++i) {
-        for (const auto & p : {boundary.polyline[i], boundary.polyline[i + 1]}) {
-          geometry_msgs::msg::Point q;
-          q.x = p.x();
-          q.y = p.y();
-          q.z = context.odometry.pose.pose.position.z;
-          bound_marker.points.push_back(q);
-        }
-      }
-    }
-    if (!bound_marker.points.empty()) {
-      MarkerArray marker_array;
-      marker_array.markers.push_back(std::move(bound_marker));
-      output.debug_markers = std::move(marker_array);
     }
   }
 

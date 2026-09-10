@@ -1,6 +1,7 @@
 /**:
   ros__parameters:
     planning_frequency_hz: 10.0
+    trajectory_horizon_s: 10.0 # [s]
 
     ego_nearest_lanelet:
       dist_threshold_m: 6.0 # [m]
@@ -29,5 +30,6 @@
       - "autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator"
       - "autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator"
       - "autoware::safety_planner::experiment::ObstacleStopConstraintGenerator"
+      - "autoware::safety_planner::experiment::NextLaneletSpeedLimitConstraintGenerator"
 
     trajectory_planner_plugin: "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"

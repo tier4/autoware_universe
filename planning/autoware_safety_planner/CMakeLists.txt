@@ -22,6 +22,7 @@ target_compile_options(${PROJECT_NAME}_common PRIVATE -Wno-deprecated-declaratio
 
 ament_auto_add_library(${PROJECT_NAME}_constraint_plugins SHARED
   src/constraint_generator/lane_following_drivable_area.cpp
+  src/constraint_generator/next_lanelet_speed_limit.cpp
   src/constraint_generator/obstacle_stop.cpp
   src/constraint_generator/simple_drivable_area.cpp
   src/constraint_generator/vehicle_kinematics.cpp

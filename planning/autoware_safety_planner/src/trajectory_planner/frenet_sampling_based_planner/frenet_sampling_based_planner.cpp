@@ -131,7 +131,8 @@ void FrenetSamplingBasedPlanner::on_initialize(
   cautious_turn_indicator_decider_.update_params(turn_signal_params);
 }
 
-TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan(const TrajectoryPlannerInput & input)
+TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
+  const TrajectoryPlannerInput & input)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -326,7 +327,7 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
 
   const auto & p = params_.frenet_sampling_based_planner;
   const double dt = p.time_step_s;
-  const double horizon = p.horizon_s;
+  const double horizon = params_.trajectory_horizon_s;
   const double s_max = context.reference_path.length();
   const auto limits = collect_kinematic_limits(compiled_constraints);
   double v_limit = velocity_limit_at(compiled_constraints, limits, initial_state.s);
@@ -349,7 +350,10 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
     for (double s = initial_state.s + res; s <= s_end; s += res) {
       const double kappa = context.reference_path.curvature(s);
       const double steer = std::atan(kappa * wheel_base_m);
-      double v_cap = INF;
+      // A regional velocity bound ahead (a speed limit zone) has to be reached by braking too,
+      // otherwise every candidate above it is rejected inside the region and only the stop
+      // profile survives
+      double v_cap = velocity_limit_at(compiled_constraints, limits, s);
       if (std::abs(kappa) > 1e-6) {
         v_cap = std::min(v_cap, std::sqrt(bounds.lat_accel / std::abs(kappa)));
       }
@@ -437,7 +441,7 @@ FrenetSamplingBasedPlanner::VelocityProfile FrenetSamplingBasedPlanner::make_sto
   profile.tag = "stop";
   double s = initial_state.s;
   double v = initial_state.v;
-  for (double t = 0.0; t <= p.horizon_s + 1e-9; t += dt) {
+  for (double t = 0.0; t <= params_.trajectory_horizon_s + 1e-9; t += dt) {
     profile.t.push_back(t);
     profile.s.push_back(s);
     profile.v.push_back(v);

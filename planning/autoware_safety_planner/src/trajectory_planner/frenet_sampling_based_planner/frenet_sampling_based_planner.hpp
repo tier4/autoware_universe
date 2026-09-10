@@ -54,7 +54,7 @@ public:
     const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
     const Params & params) override;
 
-  TrajectoryPlannerResult plan(const TrajectoryPlannerInput & input) override;
+  TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) override;
 
 private:
   // The turn signal is decided after the fact from the reference_path, the map and the ego state;
