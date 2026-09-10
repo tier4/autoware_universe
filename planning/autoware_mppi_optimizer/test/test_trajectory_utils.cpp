@@ -730,6 +730,7 @@ TEST(NominalSteeringContinuity, AnchorsToDelayPredictedApplicationSteering)
   vehicle.max_steer_angle = 0.5F;
   vehicle.steer_time_constant = 0.2F;
   vehicle.steer_rate_lim = 10.0F;
+  vehicle.standstill_steer_rate_lim = 10.0F;
 
   const auto result =
     guardInitialNominalSteeringCommand(-0.4F, 0.0F, vehicle, 2, {0.2F, 0.2F}, 0.05F, 0.1F);
@@ -749,6 +750,33 @@ TEST(NominalSteeringContinuity, DisabledGuardPreservesCommandExactly)
   EXPECT_FALSE(result.active);
   EXPECT_FALSE(result.clamped);
   EXPECT_FLOAT_EQ(result.guarded_command_rad, 0.4F);
+}
+
+TEST(VelocityDependentSteeringRate, UsesStandstillLimitDuringRestart)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 2.8F;
+  vehicle.steer_rate_lim = 5.0F;
+  vehicle.max_lateral_jerk_mps3 = 2.5F;
+  vehicle.standstill_steer_rate_lim = 0.15F;
+  vehicle.restart_velocity_threshold_mps = 0.5F;
+
+  EXPECT_FLOAT_EQ(velocityDependentSteeringRateLimit(vehicle, 0.2F), 0.15F);
+  EXPECT_FLOAT_EQ(velocityDependentSteeringRateLimit(vehicle, -0.2F), 0.15F);
+}
+
+TEST(VelocityDependentSteeringRate, UsesLateralJerkLimitAtHighSpeed)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 2.8F;
+  vehicle.steer_rate_lim = 5.0F;
+  vehicle.max_lateral_jerk_mps3 = 2.5F;
+  vehicle.standstill_steer_rate_lim = 0.15F;
+  vehicle.restart_velocity_threshold_mps = 0.5F;
+  constexpr float velocity = 25.0F;
+  const float expected = vehicle.max_lateral_jerk_mps3 * vehicle.wheel_base / (velocity * velocity);
+
+  EXPECT_NEAR(velocityDependentSteeringRateLimit(vehicle, velocity), expected, 1.0E-5F);
 }
 
 TEST(NominalControlFilter, ClampsAccelerationAndAppliesJerkAtCommandApplicationTime)

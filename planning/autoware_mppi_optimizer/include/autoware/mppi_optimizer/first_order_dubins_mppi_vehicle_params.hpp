@@ -33,6 +33,9 @@ struct FirstOrderDubinsMppiVehicleParams
   float acc_time_constant{0.1F};
   float steer_time_constant{0.27F};
   float steer_rate_lim{5.0F};
+  float max_lateral_jerk_mps3{2.5F};
+  float standstill_steer_rate_lim{0.15F};
+  float restart_velocity_threshold_mps{0.5F};
   float vel_rate_lim{7.0F};
   float acc_time_delay{0.1F};
   float steer_time_delay{0.24F};

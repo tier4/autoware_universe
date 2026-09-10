@@ -99,6 +99,13 @@ void declare_first_order_dubins_mppi_vehicle_dynamics_params(rclcpp::Node & node
   declare_if_missing(
     node, "steer_time_constant", static_cast<double>(defaults.steer_time_constant));
   declare_if_missing(node, "steer_rate_lim", static_cast<double>(defaults.steer_rate_lim));
+  declare_if_missing(
+    node, "max_lateral_jerk_mps3", static_cast<double>(defaults.max_lateral_jerk_mps3));
+  declare_if_missing(
+    node, "standstill_steer_rate_lim", static_cast<double>(defaults.standstill_steer_rate_lim));
+  declare_if_missing(
+    node, "restart_velocity_threshold_mps",
+    static_cast<double>(defaults.restart_velocity_threshold_mps));
   declare_if_missing(node, "vel_rate_lim", static_cast<double>(defaults.vel_rate_lim));
   declare_if_missing(node, "acc_time_delay", static_cast<double>(defaults.acc_time_delay));
   declare_if_missing(node, "steer_time_delay", static_cast<double>(defaults.steer_time_delay));
@@ -130,6 +137,12 @@ FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params(rcl
   // Rate limits are shared top-level simulator_model fields for all vehicle models.
   params.steer_rate_lim =
     static_cast<float>(read_double(node, "steer_rate_lim", defaults.steer_rate_lim));
+  params.max_lateral_jerk_mps3 =
+    static_cast<float>(read_double(node, "max_lateral_jerk_mps3", defaults.max_lateral_jerk_mps3));
+  params.standstill_steer_rate_lim = static_cast<float>(
+    read_double(node, "standstill_steer_rate_lim", defaults.standstill_steer_rate_lim));
+  params.restart_velocity_threshold_mps = static_cast<float>(
+    read_double(node, "restart_velocity_threshold_mps", defaults.restart_velocity_threshold_mps));
   params.vel_rate_lim =
     static_cast<float>(read_double(node, "vel_rate_lim", defaults.vel_rate_lim));
   return params;
