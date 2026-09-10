@@ -1070,6 +1070,9 @@ struct FirstOrderDubinsMppiInterface::Impl
     dyn.accel_time_constant = vehicle_params.acc_time_constant;
     dyn.steer_time_constant = vehicle_params.steer_time_constant;
     dyn.max_steer_rate = vehicle_params.steer_rate_lim;
+    dyn.max_lateral_jerk_mps3 = vehicle_params.max_lateral_jerk_mps3;
+    dyn.standstill_steer_rate_lim = vehicle_params.standstill_steer_rate_lim;
+    dyn.restart_velocity_threshold_mps = vehicle_params.restart_velocity_threshold_mps;
     dyn.min_accel = vehicle_params.min_accel();
     dyn.max_accel = vehicle_params.max_accel();
     dyn.prevent_reverse_velocity = prevent_reverse_velocity;
@@ -1169,7 +1172,9 @@ struct FirstOrderDubinsMppiInterface::Impl
       "wheel_base=%.2f, max_steer=%.2f, accel_std=%.3f, steer_std=%.3f, "
       "std_decay=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "acc_delay=%.3f (%d steps), steer_delay=%.3f (%d steps), "
-      "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
+      "steer_rate_lim=%.2f, max_lat_jerk=%.2f, standstill_steer_rate_lim=%.2f, "
+      "restart_velocity_threshold=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, "
+      "axle_to_center=%.2f, "
       "boundary_threshold=%.2f, obs_margin=%.2f, road_border_margin=%.2f, "
       "lateral_barrier=%.2f@%.2f, obs_barrier=%.2f@%.2f, road_barrier=%.2f@%.2f, "
       "drive_barrier=%.2f@%.2f, crash_contact_penalty=%.2f)",
@@ -1179,14 +1184,15 @@ struct FirstOrderDubinsMppiInterface::Impl
       user_cost_params_.std_dev_decay, vehicle_params.acc_time_constant,
       vehicle_params.steer_time_constant, vehicle_params.acc_time_delay, acc_delay_steps,
       vehicle_params.steer_time_delay, steer_delay_steps, vehicle_params.steer_rate_lim,
-      vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,
-      vehicle_params.ego_axle_to_box_center, cost_params.boundary_threshold,
-      cost_params.obstacle_collision_margin, cost_params.road_border_collision_margin,
-      cost_params.lateral_boundary_barrier_weight, cost_params.lateral_boundary_soft_margin,
-      cost_params.obstacle_barrier_weight, cost_params.obstacle_safe_margin,
-      cost_params.road_border_barrier_weight, cost_params.road_border_safe_margin,
-      cost_params.drivable_area_barrier_weight, cost_params.drivable_area_safe_margin,
-      cost_params.crash_contact_penalty);
+      vehicle_params.max_lateral_jerk_mps3, vehicle_params.standstill_steer_rate_lim,
+      vehicle_params.restart_velocity_threshold_mps, vehicle_params.vel_rate_lim,
+      vehicle_params.ego_length, vehicle_params.ego_width, vehicle_params.ego_axle_to_box_center,
+      cost_params.boundary_threshold, cost_params.obstacle_collision_margin,
+      cost_params.road_border_collision_margin, cost_params.lateral_boundary_barrier_weight,
+      cost_params.lateral_boundary_soft_margin, cost_params.obstacle_barrier_weight,
+      cost_params.obstacle_safe_margin, cost_params.road_border_barrier_weight,
+      cost_params.road_border_safe_margin, cost_params.drivable_area_barrier_weight,
+      cost_params.drivable_area_safe_margin, cost_params.crash_contact_penalty);
   }
 
   catch (const GpuError & error) {
@@ -1474,7 +1480,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   {
     return detail::guardInitialNominalSteeringCommand(
       command, ego.steering, vehicle_params, steer_delay_steps, steer_delay_buffer,
-      steering_measurement_available ? nominal_initial_steering_max_deviation_rad : 0.0F, kDt);
+      steering_measurement_available ? nominal_initial_steering_max_deviation_rad : 0.0F, kDt,
+      ego.velocity);
   }
 
   void applyNominalSteeringContinuityGuard(
@@ -2314,6 +2321,14 @@ void FirstOrderDubinsMppiInterface::setVehicleParams(
   if (impl_) impl_->pending_trajectory_.reset();
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
+  }
+  if (
+    !std::isfinite(params.max_lateral_jerk_mps3) || params.max_lateral_jerk_mps3 < 0.0F ||
+    !std::isfinite(params.standstill_steer_rate_lim) || params.standstill_steer_rate_lim < 0.0F ||
+    !std::isfinite(params.restart_velocity_threshold_mps) ||
+    params.restart_velocity_threshold_mps < 0.0F) {
+    throw std::invalid_argument(
+      "Velocity-dependent steering-rate limits must be finite and non-negative");
   }
   impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   if (impl_->initialized) {
@@ -3158,6 +3173,9 @@ FirstOrderDubinsBicycleParams makePlantPredictionDynamicsParams(
   dyn.accel_time_constant = vehicle.acc_time_constant;
   dyn.steer_time_constant = vehicle.steer_time_constant;
   dyn.max_steer_rate = vehicle.steer_rate_lim;
+  dyn.max_lateral_jerk_mps3 = vehicle.max_lateral_jerk_mps3;
+  dyn.standstill_steer_rate_lim = vehicle.standstill_steer_rate_lim;
+  dyn.restart_velocity_threshold_mps = vehicle.restart_velocity_threshold_mps;
   dyn.min_accel = vehicle.min_accel();
   dyn.max_accel = vehicle.max_accel();
   dyn.acc_delay_steps = acc_delay_steps;
