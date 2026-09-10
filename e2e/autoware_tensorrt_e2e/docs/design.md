@@ -205,10 +205,21 @@ feature pipeline. The trade-off (an `e2e` package depending on a `planning` pack
 accepted deliberately; if it becomes a problem the shared code should be extracted into a
 common library, not forked.
 
+One tensor is the provider's own: `lanes_on_route` `[1, S, 2]` marks, per lane slot, whether the
+mission route runs through it and how far along the route it lies (0 at the route's first visible
+lanelet, 1 at its last, 0 with the flag down everywhere else). OnePlanner derives it in training by
+matching route polylines against lane polylines on exact centreline equality; the provider builds
+both tensors from one segment table, so the same answer is an index lookup between the two
+selections of the tick. A route lanelet that is not among the selected lanes marks nothing, as in
+training. The tensor exists because the route stream repeats lane geometry the model already has
+and states identity only implicitly; the marker states it.
+
 Diffusion-specific inputs (`sampled_trajectories`, `delay`) are *not* provided; they belong to
 the diffusion sampling loop, not to the shared feature set. A model requiring them should run
 under `autoware_diffusion_planner`, or a dedicated provider can be added (see
 [Adding a new input](#expected-use-cases)).
+
+## Common input contract
 
 ### Inference engine
 

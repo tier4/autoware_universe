@@ -99,6 +99,7 @@ listed in `postprocess.extra_trajectory_tensors` are published as extra candidat
 | context | `ego_agent_past` | `[1, T, 4]` | `autoware_diffusion_planner` |
 | context | `lanes`, `lanes_speed_limit`, `lanes_has_speed_limit` | `[1, S, 20, 33]`, `[1, S, 1]` | `autoware_diffusion_planner`; traffic-light state in channels 8 to 12 |
 | context | `route_lanes` and its two speed-limit tensors | as above | `autoware_diffusion_planner` |
+| context | `lanes_on_route` | `[1, S, 2]` | per lane slot: on-route flag and position along the route (0 first, 1 last); an index match between the lane and route selections, OnePlanner's `lanes_on_route` |
 | context | `polygons`, `line_strings` | `[1, 10, 40, 3]`, `[1, 60, 20, 4]` | `autoware_diffusion_planner` |
 | context | `goal_pose`, `ego_shape` | `[1, 4]`, `[1, 3]` | route goal in the ego frame; vehicle info |
 | context | `turn_indicators` | `[1, T]` | report history, or a constant when disabled |
