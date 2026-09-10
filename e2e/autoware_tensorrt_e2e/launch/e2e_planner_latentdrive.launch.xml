@@ -9,6 +9,15 @@
   <arg name="ml_package_param_path" default="$(var model_path)/ml_package_$(var model_name).param.yaml"/>
   <arg name="vehicle_info_param_path" default="$(find-pkg-share autoware_vehicle_info_utils)/config/vehicle_info.param.yaml"/>
   <arg name="build_only" default="false" description="shutdown node after the TensorRT engine file is built"/>
+  <!-- Where the node sits in the graph. Its outputs are private names, so a node name and
+       namespace that match another planner's put this planner's trajectory, candidates and
+       predicted objects exactly where that planner's downstream chain already listens, with no
+       remapping. Both parameter files apply to any node ('/**'), so they follow along.
+       Remapping the outputs one by one does the same job and is the safer route for a deep
+       namespace: image_transport expresses the image topic relative to the node namespace and
+       throws when the image topic is the shorter of the two. -->
+  <arg name="node_name" default="tensorrt_e2e"/>
+  <arg name="node_namespace" default="/"/>
   <arg name="use_sim_time" default="false" description="clock every node here from /clock, as a bag replay needs"/>
   <arg name="tick_log" default="false" description="one [LatentDrive-debug] INFO line per planning tick: frame ages and status, or why the tick was skipped"/>
   <arg name="smoothing" default="true" description="temporal smoothing of the plan (latentdrive.smoothing.enable); the raw plan stays published as the _raw candidate"/>
@@ -46,7 +55,8 @@
        and RViz and the ego publisher follow the same time base. -->
   <set_parameter name="use_sim_time" value="$(var use_sim_time)"/>
 
-  <node pkg="autoware_tensorrt_e2e" exec="autoware_tensorrt_e2e_node" name="tensorrt_e2e" output="both">
+  <node pkg="autoware_tensorrt_e2e" exec="autoware_tensorrt_e2e_node" name="$(var node_name)"
+        namespace="$(var node_namespace)" output="both">
     <param from="$(var param_path)" allow_substs="true"/>
     <param from="$(var ml_package_param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
