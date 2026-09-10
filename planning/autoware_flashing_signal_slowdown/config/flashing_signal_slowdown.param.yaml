@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    update_rate_hz: 10.0
+
+    # Lanelet2 regulatory element IDs, e.g. [1000, 1014]. Omit the key rather than writing an
+    # empty list: rclcpp cannot infer the element type of an empty YAML sequence.
+    # target_traffic_light_group_ids: []
+
+    history_window_sec: 3.0
+    detect_min_transitions: 3
+    detect_min_span_sec: 0.8
+    release_no_transition_sec: 3.0
+
+    slowdown_velocity_mps: 2.78

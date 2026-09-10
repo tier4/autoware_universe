@@ -1,0 +1,13 @@
+<launch>
+  <arg name="param_path" default="$(find-pkg-share autoware_flashing_signal_slowdown)/config/flashing_signal_slowdown.param.yaml"/>
+  <arg name="input_traffic_signals" default="/perception/traffic_light_recognition/traffic_signals"/>
+  <arg name="output_max_velocity" default="/planning/scenario_planning/max_velocity_candidates"/>
+  <arg name="output_velocity_limit_clear_command" default="/planning/scenario_planning/clear_velocity_limit"/>
+
+  <node pkg="autoware_flashing_signal_slowdown" exec="autoware_flashing_signal_slowdown_node" name="flashing_signal_slowdown" output="screen">
+    <param from="$(var param_path)"/>
+    <remap from="~/input/traffic_signals" to="$(var input_traffic_signals)"/>
+    <remap from="~/output/max_velocity" to="$(var output_max_velocity)"/>
+    <remap from="~/output/velocity_limit_clear_command" to="$(var output_velocity_limit_clear_command)"/>
+  </node>
+</launch>

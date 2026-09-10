@@ -32,3 +32,10 @@ This plugin panel publishes dummy traffic light signals.
 <div align="center">
   <img src="images/traffic_light_publish_panel.gif">
 </div>
+
+### Flashing traffic lights
+
+Recognition reports the instantaneous state of the bulb, so a flashing light appears as `SOLID_ON`
+and `SOLID_OFF` alternating rather than as `FLASHING`. Setting `Traffic Light Status` to `FLASHING`
+reproduces that: `status` toggles at 1Hz while `color` and `shape` stay as they are set. Keep
+`Rate` at 4Hz or higher so that the cycle is represented on the topic.
