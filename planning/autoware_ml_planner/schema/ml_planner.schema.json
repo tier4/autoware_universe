@@ -189,6 +189,54 @@
               "default": 50,
               "minimum": 1,
               "description": "Maximum SQP iterations per solve"
+            },
+            "temporal_consistency": {
+              "type": "object",
+              "description": "Weakly tracks the previous cycle's own plan, shifted by the elapsed interval, so consecutive outputs stay coherent. Keep the weights clearly below the tracking weights; at comparable magnitude the term becomes a memory that stops the planner reacting to new model output",
+              "properties": {
+                "enable": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Add the temporal consistency term to the cost"
+                },
+                "weight_longitudinal": {
+                  "type": "number",
+                  "default": 0.4,
+                  "minimum": 0.0,
+                  "description": "Consistency weight along the previous plan's heading [1/m^2]; low values let the timing float while the path stays put"
+                },
+                "weight_lateral": {
+                  "type": "number",
+                  "default": 2.0,
+                  "minimum": 0.0,
+                  "description": "Consistency weight perpendicular to the previous plan's heading [1/m^2]"
+                },
+                "weight_yaw": {
+                  "type": "number",
+                  "default": 0.2,
+                  "minimum": 0.0,
+                  "description": "Consistency weight for heading [1/rad^2]"
+                },
+                "weight_velocity": {
+                  "type": "number",
+                  "default": 0.4,
+                  "minimum": 0.0,
+                  "description": "Consistency weight for velocity; keeps the speed profile from being re-planned every cycle"
+                },
+                "decay_time_constant_s": {
+                  "type": "number",
+                  "default": 1.0,
+                  "description": "Time constant of the weight decay over the horizon [s]: alpha(t) = far_weight_ratio + (1 - far_weight_ratio) * exp(-t / decay_time_constant_s). Holds the near stages, which the controller executes, and frees the far stages, which are a prediction that is supposed to move. Zero or negative keeps the weights uniform"
+                },
+                "far_weight_ratio": {
+                  "type": "number",
+                  "default": 0.05,
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "description": "Fraction of the consistency weight that remains at the far end of the horizon"
+                }
+              },
+              "required": ["enable"]
             }
           },
           "required": ["enable"]

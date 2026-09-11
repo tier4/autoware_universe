@@ -66,7 +66,16 @@ bool optimization_params_changed(
          lhs.max_acceleration_mps2 != rhs.max_acceleration_mps2 ||
          lhs.max_steering_rate_rps != rhs.max_steering_rate_rps ||
          lhs.max_lateral_acceleration_mps2 != rhs.max_lateral_acceleration_mps2 ||
-         lhs.max_sqp_iterations != rhs.max_sqp_iterations;
+         lhs.max_sqp_iterations != rhs.max_sqp_iterations ||
+         lhs.temporal_consistency.enable != rhs.temporal_consistency.enable ||
+         lhs.temporal_consistency.weight_longitudinal !=
+           rhs.temporal_consistency.weight_longitudinal ||
+         lhs.temporal_consistency.weight_lateral != rhs.temporal_consistency.weight_lateral ||
+         lhs.temporal_consistency.weight_yaw != rhs.temporal_consistency.weight_yaw ||
+         lhs.temporal_consistency.weight_velocity != rhs.temporal_consistency.weight_velocity ||
+         lhs.temporal_consistency.decay_time_constant_s !=
+           rhs.temporal_consistency.decay_time_constant_s ||
+         lhs.temporal_consistency.far_weight_ratio != rhs.temporal_consistency.far_weight_ratio;
 }
 #endif
 

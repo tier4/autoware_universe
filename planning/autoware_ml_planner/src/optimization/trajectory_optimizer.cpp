@@ -20,6 +20,7 @@
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -151,8 +152,44 @@ OptimizationResult TrajectoryOptimizer::optimize(
     }
   }
 
-  SolverSolution solution =
-    solver_->solve(initial_state, references, goal_terminal_reference, warm_start_ptr);
+  // Temporal consistency reference: the previous plan of this candidate, resampled onto the
+  // absolute times of this cycle's stages. Current stage k sits at t_now + k * dt, which in
+  // the previous plan is index k + (t_now - t_prev) / dt, so the whole plan is shifted by
+  // the elapsed interval and interpolated. It is available under exactly the conditions that
+  // make the previous solution usable as a warm start, and `warm_start` is already
+  // re-centered on the current ego position, so it shares the solver's frame.
+  std::array<StageTemporalReference, opt_horizon> temporal_references;
+  const std::array<StageTemporalReference, opt_horizon> * temporal_references_ptr = nullptr;
+  if (params_.temporal_consistency.enable && warm_start_ptr != nullptr) {
+    const double stage_shift = std::max(0.0, (stamp - previous->stamp).seconds() / opt_dt_s);
+    for (size_t k = 0; k < opt_horizon; ++k) {
+      // Beyond the end of the previous horizon there is nothing left to be consistent with,
+      // so the last few stages fall back to its terminal state.
+      const double index =
+        std::min(static_cast<double>(k + 1) + stage_shift, static_cast<double>(opt_horizon));
+      const auto lower = static_cast<size_t>(std::floor(index));
+      const size_t upper = std::min(lower + 1, opt_horizon);
+      const double ratio = index - static_cast<double>(lower);
+      const auto & from = warm_start.states[lower];
+      const auto & to = warm_start.states[upper];
+      const auto interpolate = [ratio](const double a, const double b) {
+        return a + ratio * (b - a);
+      };
+      StageTemporalReference & ref = temporal_references[k];
+      ref.x = interpolate(from[0], to[0]);
+      ref.y = interpolate(from[1], to[1]);
+      // The previous solution's yaw is continuous within itself but lives on its own branch;
+      // put it on the branch of this stage's tracking reference so the two can be blended.
+      const double previous_yaw = interpolate(from[2], to[2]);
+      ref.yaw =
+        references[k].yaw + autoware_utils::normalize_radian(previous_yaw - references[k].yaw);
+      ref.velocity = interpolate(from[3], to[3]);
+    }
+    temporal_references_ptr = &temporal_references;
+  }
+
+  SolverSolution solution = solver_->solve(
+    initial_state, references, goal_terminal_reference, temporal_references_ptr, warm_start_ptr);
   result.solver_status = solution.status;
   result.solve_time_ms = solution.solve_time_s * 1e3;
 
