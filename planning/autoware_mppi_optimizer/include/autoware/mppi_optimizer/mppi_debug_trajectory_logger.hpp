@@ -133,9 +133,19 @@ public:
         out << "key,value\n";
         out << std::setprecision(9) << std::fixed;
         out << "lambda," << cost.lambda << "\n";
-        out << "speed_coeff," << cost.speed_coeff << "\n";
+        out << "lambda_min," << cost.lambda_min << "\n";
+        out << "lambda_max," << cost.lambda_max << "\n";
+        out << "target_ess_ratio," << cost.target_ess_ratio << "\n";
+        out << "lambda_adaptation_gain," << cost.lambda_adaptation_gain << "\n";
+        out << "unsafe_rollout_fraction_threshold," << cost.unsafe_rollout_fraction_threshold
+            << "\n";
+        out << "cost_normalization_percentile," << cost.cost_normalization_percentile << "\n";
+        out << "max_iter," << cost.max_iter << "\n";
+        out << "spatial_overspeed_coeff," << cost.spatial_overspeed_coeff << "\n";
         out << "track_coeff," << cost.track_coeff << "\n";
         out << "track_terminal_scale," << cost.track_terminal_scale << "\n";
+        out << "terminal_error_coeff," << cost.terminal_error_coeff << "\n";
+        out << "terminal_heading_coeff," << cost.terminal_heading_coeff << "\n";
         out << "heading_coeff," << cost.heading_coeff << "\n";
         out << "lateral_distance_coeff," << cost.lateral_distance_coeff << "\n";
         out << "lateral_yaw_error_coeff," << cost.lateral_yaw_error_coeff << "\n";
@@ -149,9 +159,14 @@ public:
         out << "accel_cmd_coeff," << cost.accel_cmd_coeff << "\n";
         out << "steer_cmd_coeff," << cost.steer_cmd_coeff << "\n";
         out << "steer_rate_coeff," << cost.steer_rate_coeff << "\n";
+        out << "accel_cmd_rate_coeff," << cost.accel_cmd_rate_coeff << "\n";
+        out << "steer_cmd_rate_coeff," << cost.steer_cmd_rate_coeff << "\n";
+
+        out << "initial_steer_rate_coeff," << cost.initial_steer_rate_coeff << "\n";
         out << "overlimit_coeff," << cost.overlimit_coeff << "\n";
         out << "accel_cmd_std_dev," << cost.accel_cmd_std_dev << "\n";
         out << "steer_cmd_std_dev," << cost.steer_cmd_std_dev << "\n";
+        out << "std_dev_decay," << cost.std_dev_decay << "\n";
         out << "accel_cmd_noise_exponent," << cost.accel_cmd_noise_exponent << "\n";
         out << "steer_cmd_noise_exponent," << cost.steer_cmd_noise_exponent << "\n";
         out << "nominal_curvature_min_chord_length_m," << cost.nominal_curvature_min_chord_length_m
@@ -190,6 +205,9 @@ public:
         out << "acc_time_constant," << vehicle.acc_time_constant << "\n";
         out << "steer_time_constant," << vehicle.steer_time_constant << "\n";
         out << "steer_rate_lim," << vehicle.steer_rate_lim << "\n";
+        out << "max_lateral_jerk_mps3," << vehicle.max_lateral_jerk_mps3 << "\n";
+        out << "standstill_steer_rate_lim," << vehicle.standstill_steer_rate_lim << "\n";
+        out << "restart_velocity_threshold_mps," << vehicle.restart_velocity_threshold_mps << "\n";
         out << "vel_rate_lim," << vehicle.vel_rate_lim << "\n";
         out << "acc_time_delay," << vehicle.acc_time_delay << "\n";
         out << "steer_time_delay," << vehicle.steer_time_delay << "\n";
@@ -212,12 +230,35 @@ public:
       out << "force_cold_start_each_step," << (options.force_cold_start_each_step ? 1 : 0) << "\n";
       out << "skip_if_invalid," << (options.skip_if_invalid ? 1 : 0) << "\n";
       out << "min_optimization_length," << options.min_optimization_length << "\n";
+      out << "min_trajectory_progress_m," << options.min_trajectory_progress_m << "\n";
       out << "use_last_control_as_nominal," << (options.use_last_control_as_nominal ? 1 : 0)
           << "\n";
+      out << "nominal_initial_steering_max_deviation_rad,"
+          << options.nominal_initial_steering_max_deviation_rad << "\n";
+      out << "last_control_warm_start_max_age_s," << options.last_control_warm_start_max_age_s
+          << "\n";
+      out << "last_control_warm_start_max_position_error_m,"
+          << options.last_control_warm_start_max_position_error_m << "\n";
+      out << "last_control_warm_start_max_yaw_error_rad,"
+          << options.last_control_warm_start_max_yaw_error_rad << "\n";
+      out << "last_control_warm_start_max_velocity_error_mps,"
+          << options.last_control_warm_start_max_velocity_error_mps << "\n";
+      out << "last_control_warm_start_max_reference_position_error_m,"
+          << options.last_control_warm_start_max_reference_position_error_m << "\n";
+      out << "last_control_warm_start_max_reference_yaw_error_rad,"
+          << options.last_control_warm_start_max_reference_yaw_error_rad << "\n";
+      out << "last_control_warm_start_max_reference_velocity_error_mps,"
+          << options.last_control_warm_start_max_reference_velocity_error_mps << "\n";
+      out << "last_control_warm_start_stop_enter_velocity_mps,"
+          << options.last_control_warm_start_stop_enter_velocity_mps << "\n";
+      out << "last_control_warm_start_stop_exit_velocity_mps,"
+          << options.last_control_warm_start_stop_exit_velocity_mps << "\n";
       out << "use_temporal_mpt_as_nominal," << (options.use_temporal_mpt_as_nominal ? 1 : 0)
           << "\n";
       out << "prevent_reverse_velocity," << (options.prevent_reverse_velocity ? 1 : 0) << "\n";
       out << "enable_input_delay_compensation," << (options.enable_input_delay_compensation ? 1 : 0)
+          << "\n";
+      out << "enable_iteration_rollout_debug," << (options.enable_iteration_rollout_debug ? 1 : 0)
           << "\n";
     }
     runtime_written_ = true;

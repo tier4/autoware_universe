@@ -26,6 +26,10 @@ struct FirstOrderDubinsMppiRuntimeOptions
   bool enable_debug_trajectory_log{false};
   /** Empty -> process current working directory. */
   std::string debug_trajectory_log_directory;
+  /** Open the zero-copy CUDA-OpenGL distance-map texture debug window. */
+  bool enable_distance_map_texture_debug{false};
+  /** Capture sampled rollouts after every MPPI iteration and publish them as debug markers. */
+  bool enable_iteration_rollout_debug{false};
   bool ignore_obstacles{false};
   bool ignore_road_borders{false};
   bool ignore_drivable_area{false};
@@ -33,9 +37,37 @@ struct FirstOrderDubinsMppiRuntimeOptions
   bool skip_if_invalid{false};
   /** Skip optimization for stopping trajectories shorter than this arc length in meters. */
   float min_optimization_length{0.0F};
+  /**
+   * Reject an optimized trajectory whose last path projection advances less than this many
+   * meters from its first path projection. Zero disables minimum-progress validation.
+   */
+  float min_trajectory_progress_m{0.0F};
   /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle).
    *  Ignored when use_temporal_mpt_as_nominal is true (t-MPT uses its own shifted solution). */
   bool use_last_control_as_nominal{false};
+  /**
+   * Maximum difference between nominal steer u[0] and the predicted steering when it reaches the
+   * actuator. Zero disables nominal steering continuity guarding.
+   */
+  float nominal_initial_steering_max_deviation_rad{0.0F};
+  /** Maximum age of an accepted control horizon eligible for reuse. */
+  float last_control_warm_start_max_age_s{0.5F};
+  /** Maximum open-loop plant position error eligible for reuse; zero disables this gate. */
+  float last_control_warm_start_max_position_error_m{0.75F};
+  /** Maximum absolute open-loop plant yaw error eligible for reuse; zero disables this gate. */
+  float last_control_warm_start_max_yaw_error_rad{0.35F};
+  /** Maximum absolute open-loop plant velocity error eligible for reuse; zero disables the gate. */
+  float last_control_warm_start_max_velocity_error_mps{2.0F};
+  /** Maximum pointwise position change in the shifted reference prefix; zero disables this gate. */
+  float last_control_warm_start_max_reference_position_error_m{1.0F};
+  /** Maximum pointwise yaw change in the shifted reference prefix; zero disables this gate. */
+  float last_control_warm_start_max_reference_yaw_error_rad{0.35F};
+  /** Maximum pointwise velocity change in the shifted reference prefix; zero disables this gate. */
+  float last_control_warm_start_max_reference_velocity_error_mps{2.0F};
+  /** Enter the stopped state at or below this absolute velocity. */
+  float last_control_warm_start_stop_enter_velocity_mps{0.03F};
+  /** Leave the stopped state at or above this absolute velocity. */
+  float last_control_warm_start_stop_exit_velocity_mps{0.08F};
   /**
    * When true (and not forced nominal), seed u_nom from acados temporal MPT
    * instead of the geometric diffusion seed. Falls back to diffusion seed on solve failure.

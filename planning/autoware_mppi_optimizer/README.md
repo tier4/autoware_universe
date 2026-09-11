@@ -26,9 +26,38 @@ autoware_mppi_optimizer/
 
 Configure `autoware::mppi_optimizer::plugin::TrajectoryMppiOptimizer` in the `plugin_names` list of `autoware_trajectory_processor`. Place it first to optimize the primary candidate before other modifiers and optimizers.
 
-The plugin uses odometry, acceleration, steering, tracked objects, route, and raw lanelet map data from the processor. It returns the input points when MPPI is disabled, runs in shadow mode, rejects a result, or reports an error.
+The plugin uses odometry, acceleration, steering, tracked objects, route, and raw lanelet map data from the processor. It returns the input points when MPPI is disabled, skipped, running in shadow mode, or reports an error. A rejected result preserves the input geometry and may still apply its deterministic velocity-limit fallback.
 
-Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory processor node.
+Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory processor node. The transient-local `enabled` debug topic is true only for a cycle where an optimized MPPI trajectory replaced the primary candidate; it is false when MPPI is disabled, skipped, rejected, or running in shadow mode.
+
+### Steering output filtering
+
+The curvature-adaptive EMA uses the magnitude of the preceding **filtered** steering as its turn
+estimate. A new target cannot increase its own smoothing factor. `steering_filter_alpha_turn`
+defaults to `0.5`, retaining smoothing through turns, turn exits, and reversals; setting it to `1`
+explicitly allows unfiltered transitions once the preceding steering reaches the turn threshold.
+The filter is not a hard steering-rate limiter.
+
+When the nominal sequence is shifted from the previous accepted MPPI output, its first seed command
+has already been filtered. The host preserves it only when GPU optimization leaves it unchanged;
+otherwise the new first command is filtered with the rest of the horizon. The MPPI interface passes
+the seed source, shift count, and preservation decision through
+`FirstOrderDubinsMppiPostprocessingContext`, then recomputes predicted states from the final
+controls.
+
+Filter history is committed only for filtered output selected for publication. A limited fallback
+is filtered from the pre-candidate history; an unfiltered fallback, skipped optimization, or error
+invalidates history so resumed filtering starts from measured steering. Turn smoothing introduces
+response lag, so assess tracking and clearance together with steering continuity when tuning alpha.
+
+## Live distance-texture visualization
+
+Set `enable_distance_map_texture_debug: true` under `mppi_optimizer` to open the CUDA-OpenGL
+distance-map viewer. It displays road-border, drivable-boundary, and dynamic-obstacle ESDF panels.
+Drag the slider below the obstacle panel, or use the arrow/Home/End keys, to select its horizon
+timestep. Red is at or inside the boundary, green is at or beyond the configured safe margin, and
+gray means that texture channel is not valid yet. The viewer requires a graphical display; it is
+disabled by default and closing its window stops its updates.
 
 ## Offline debug logging + retune
 
@@ -67,6 +96,12 @@ ignore_drivable_area: true
 force_cold_start_each_step: true
 min_optimization_length: 0.0
 use_last_control_as_nominal: true
+max_lateral_jerk_mps3: 2.5
+standstill_steer_rate_lim: 0.15
+restart_velocity_threshold_mps: 0.5
+use_mpc_predicted_trajectory_as_nominal_steering: false
+mpc_predicted_trajectory_max_age_s: 0.5
+nominal_initial_steering_max_deviation_rad: 0.1
 ```
 
 Then restart the trajectory processor and compare live MPPI to offline retune.
@@ -77,12 +112,26 @@ Notes:
 - `ignore_road_borders` drops static road-border segments before MPPI.
 - `ignore_drivable_area` is retained as an ablation flag; on this stack boundary crash is already
   disabled in the cost (`isEgoOutsideDrivableArea` always false).
-- `force_cold_start_each_step` only resets tracking counters / arc-length (control is already
-  re-seeded via `updateImportanceSampler(u_nom)` each cycle).
+- `force_cold_start_each_step` invalidates only the reusable nominal horizon. It preserves actuator
+  delay FIFOs and execution-history diagnostics.
 - `min_optimization_length` skips MPPI for a stopping reference shorter than the configured arc
   length in meters; `0.0` disables the length-based skip.
-- `use_last_control_as_nominal` warm-starts `u_nom` from the shifted previous optimized control
-  sequence when available; otherwise (and on cold start) reseeds from the diffusion reference.
+- Rollout steering propagation uses `standstill_steer_rate_lim` below
+  `restart_velocity_threshold_mps`. At higher absolute velocity, it limits steering rate to the
+  smaller of the hardware `steer_rate_lim` and `max_lateral_jerk_mps3 * wheel_base / velocity^2`.
+- `use_last_control_as_nominal` warm-starts `u_nom` from the previous applied MPPI result when its
+  timestamp, plant replay, and shifted reference remain continuous. The elapsed timestamp selects
+  the shift count, and the current diffusion seed fills the newly exposed tail.
+- `use_mpc_predicted_trajectory_as_nominal_steering` replaces the nominal steering prefix with
+  steering inferred from the fresh MPC-predicted path only when MPPI was not applied on the
+  preceding primary-candidate cycle. The MPC trajectory is read from
+  `~/input/mpc_predicted_trajectory`; `mpc_predicted_trajectory_max_age_s` rejects stale input.
+  Acceleration and the nominal suffix continue to come from the configured diffusion or temporal
+  seed.
+- `nominal_initial_steering_max_deviation_rad` limits `u_nom[0]` around the steering predicted when
+  that command reaches the actuator after the existing steering-delay queue. A discontinuous
+  reused horizon is discarded before the current-reference seed is clamped; `0.0` disables the
+  guard.
 
 ### Replay only
 

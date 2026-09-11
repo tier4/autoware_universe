@@ -19,6 +19,7 @@
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -78,7 +79,7 @@ protected:
     return params;
   }
 
-  void setStraightReference()
+  void setStraightReference(const float * terminal_reference = nullptr)
   {
     std::array<float, kTestHorizon> x{};
     std::array<float, kTestHorizon> y{};
@@ -91,7 +92,9 @@ protected:
       velocity[static_cast<size_t>(i)] = 2.0F;
       yaw[static_cast<size_t>(i)] = 0.0F;
     }
-    cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon, yaw.data());
+    cost_->setReferenceTrajectory(
+      x.data(), y.data(), velocity.data(), kTestHorizon, yaw.data(), nullptr, nullptr,
+      terminal_reference);
   }
 
   detail::OptimizedState makeFirstPostStepState(const float y = 0.0F) const
@@ -107,10 +110,203 @@ protected:
   std::unique_ptr<TestCost> cost_;
 };
 
+// These transition/cost checks are host-only and intentionally require no CUDA context.
+TEST(PhysicalComfortTest, DelayedCommandDoesNotCreatePhysicalJerk)
+{
+  FirstOrderDubinsBicycleParams model_params;
+  model_params.acc_delay_steps = 1;
+  model_params.steer_delay_steps = 1;
+  model_params.accel_time_constant = 0.2F;
+  model_params.steer_time_constant = 0.2F;
+  FirstOrderDubinsBicycle model(model_params);
+  auto cost = std::make_unique<TestCost>();
+  TestCostParams params;
+  params.lateral_acceleration_coeff = 0.0F;
+  params.lateral_jerk_coeff = 0.0F;
+  params.longitudinal_jerk_coeff = 3.0F;
+  params.steer_rate_coeff = 7.0F;
+  params.accel_cmd_rate_coeff = 2.0F;
+  params.steer_cmd_rate_coeff = 4.0F;
+  cost->setParams(params);
+  auto state = model.getZeroState();
+  auto next = model.getZeroState();
+  auto derivative = model.getZeroState();
+  FirstOrderDubinsBicycle::output_array output = FirstOrderDubinsBicycle::output_array::Zero();
+  FirstOrderDubinsBicycle::control_array command;
+  command << 1.0F, 0.1F;
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::LONGITUDINAL_JERK)), 0.0F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.0F);
+  EXPECT_FLOAT_EQ(
+    next(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACCEL_CMD_D0)), 1.0F);
+  int crash = 0;
+  // Evaluate an interior stage to exercise command-change regularization separately.
+  const auto breakdown = cost->computeRunningCostBreakdown(output, command, 1, &crash);
+  EXPECT_FLOAT_EQ(breakdown.longitudinal_jerk, 0.0F);
+  EXPECT_FLOAT_EQ(breakdown.steering_rate, 0.0F);
+  EXPECT_FLOAT_EQ(breakdown.acceleration_command_rate, 200.0F);
+  EXPECT_NEAR(breakdown.steering_command_rate, 4.0F, 1.0E-5F);
+  EXPECT_FLOAT_EQ(cost->computeComfortCost(command, output, 1), 0.0F);
+  EXPECT_NEAR(cost->computeCommandChangeCost(command.data(), output.data(), 1), 204.0F, 1.0E-5F);
+  // At t=0 only the explicit initial-steering anchor applies, not an invented prior command.
+  EXPECT_FLOAT_EQ(cost->computeCommandChangeCost(command.data(), output.data(), 0), 0.0F);
+
+  state = next;
+  model.step(state, next, derivative, command, output, 0.1F, 0.1F);
+  // The queued command now reaches the actuators: da/dt=5 and d(delta)/dt=0.5.
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::LONGITUDINAL_JERK)), 5.0F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.5F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::ACCEL_COMMAND_RATE)), 0.0F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEER_COMMAND_RATE)), 0.0F);
+  EXPECT_NEAR(cost->computeComfortCost(command, output, 1), 76.75F, 1.0E-5F);
+}
+
+TEST(PhysicalComfortTest, RealizedRatesIncludeStateSaturation)
+{
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+  FirstOrderDubinsBicycleParams params;
+  params.accel_time_constant = 0.05F;
+  params.steer_time_constant = 0.05F;
+  params.max_accel = 1.0F;
+  params.max_steer_angle = 0.45F;
+  FirstOrderDubinsBicycle model(params);
+  auto state = model.getZeroState();
+  state(static_cast<int>(S::ACCELERATION)) = 0.9F;
+  state(static_cast<int>(S::STEER_ANGLE)) = 0.44F;
+  auto next = model.getZeroState();
+  auto derivative = model.getZeroState();
+  FirstOrderDubinsBicycle::control_array command;
+  command << 1.0F, 0.45F;
+  FirstOrderDubinsBicycle::output_array output;
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+  EXPECT_NEAR(output(static_cast<int>(OutputIndex::LONGITUDINAL_JERK)), 1.0F, 1.0E-5F);
+  EXPECT_NEAR(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.1F, 1.0E-5F);
+}
+
+TEST(PhysicalComfortTest, SteeringRateLimitAndConstantTurnConvention)
+{
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+  FirstOrderDubinsBicycleParams params;
+  params.max_steer_rate = 0.25F;
+  params.wheel_base = 2.0F;
+  FirstOrderDubinsBicycle model(params);
+  auto state = model.getZeroState();
+  auto next = model.getZeroState();
+  auto derivative = model.getZeroState();
+  FirstOrderDubinsBicycle::control_array command;
+  command << 0.0F, 0.3F;
+  FirstOrderDubinsBicycle::output_array output;
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+  EXPECT_NEAR(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.25F, 1.0E-6F);
+
+  state = model.getZeroState();
+  state(static_cast<int>(S::VEL_X)) = 2.0F;
+  state(static_cast<int>(S::ACCELERATION)) = 1.0F;
+  state(static_cast<int>(S::STEER_ANGLE)) = std::atan(0.2F);  // curvature = 0.1 / m
+  command << 1.0F, std::atan(0.2F);
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+  // Lateral inertial jerk is 0.6, while the derivative of scalar lateral acceleration is 0.4.
+  EXPECT_NEAR(output(static_cast<int>(OutputIndex::LATERAL_JERK)), 0.6F, 1.0E-5F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::LONGITUDINAL_JERK)), 0.0F);
+  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.0F);
+}
+
+__global__ void delayedComfortParityKernel(
+  FirstOrderDubinsBicycle * model, TestCost * cost, float * results)
+{
+  __shared__ float state[FirstOrderDubinsBicycle::STATE_DIM];
+  __shared__ float next[FirstOrderDubinsBicycle::STATE_DIM];
+  __shared__ float derivative[FirstOrderDubinsBicycle::STATE_DIM];
+  __shared__ float command[FirstOrderDubinsBicycle::CONTROL_DIM];
+  __shared__ float output[FirstOrderDubinsBicycle::OUTPUT_DIM];
+  for (int i = threadIdx.y; i < FirstOrderDubinsBicycle::STATE_DIM; i += blockDim.y)
+    state[i] = 0.0F;
+  if (threadIdx.y == 0) {
+    command[0] = 1.0F;
+    command[1] = 0.1F;
+  }
+  __syncthreads();
+  for (int step = 0; step < 2; ++step) {
+    model->step(state, next, derivative, command, output, nullptr, step * 0.1F, 0.1F);
+    __syncthreads();
+    if (threadIdx.y == 0) {
+      results[step * 4] = output[static_cast<int>(OutputIndex::LONGITUDINAL_JERK)];
+      results[step * 4 + 1] = output[static_cast<int>(OutputIndex::STEERING_RATE)];
+      results[step * 4 + 2] = cost->computeComfortCost(command, output, 1);
+      results[step * 4 + 3] = cost->computeCommandChangeCost(command, output, 1);
+    }
+    __syncthreads();
+    for (int i = threadIdx.y; i < FirstOrderDubinsBicycle::STATE_DIM; i += blockDim.y)
+      state[i] = next[i];
+    __syncthreads();
+  }
+}
+
+TEST_F(TrajectoryValidatorTest, DeviceDelayedComfortMatchesPhysicalAndCommandCosts)
+{
+  FirstOrderDubinsBicycleParams model_params;
+  model_params.acc_delay_steps = 1;
+  model_params.steer_delay_steps = 1;
+  model_params.accel_time_constant = 0.2F;
+  model_params.steer_time_constant = 0.2F;
+  FirstOrderDubinsBicycle model(model_params);
+  model.GPUSetup();
+  auto params = makeParams();
+  params.lateral_acceleration_coeff = 0.0F;
+  params.lateral_jerk_coeff = 0.0F;
+  params.longitudinal_jerk_coeff = 3.0F;
+  params.steer_rate_coeff = 7.0F;
+  params.accel_cmd_rate_coeff = 2.0F;
+  params.steer_cmd_rate_coeff = 4.0F;
+  cost_->setParams(params);
+  struct ResultsBuffer
+  {
+    float * data{nullptr};
+    ~ResultsBuffer() { cudaFreeNoThrow(data); }
+  } device;
+  ASSERT_EQ(cudaMalloc(reinterpret_cast<void **>(&device.data), 8 * sizeof(float)), cudaSuccess);
+  delayedComfortParityKernel<<<1, dim3(1, 2, 1)>>>(model.model_d_, cost_->cost_d_, device.data);
+  ASSERT_EQ(cudaGetLastError(), cudaSuccess);
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  std::array<float, 8> results{};
+  ASSERT_EQ(
+    cudaMemcpy(results.data(), device.data, sizeof(results), cudaMemcpyDeviceToHost), cudaSuccess);
+  EXPECT_FLOAT_EQ(results[0], 0.0F);
+  EXPECT_FLOAT_EQ(results[1], 0.0F);
+  EXPECT_FLOAT_EQ(results[2], 0.0F);
+  EXPECT_NEAR(results[3], 204.0F, 1.0E-5F);
+  EXPECT_FLOAT_EQ(results[4], 5.0F);
+  EXPECT_FLOAT_EQ(results[5], 0.5F);
+  EXPECT_NEAR(results[6], 76.75F, 1.0E-5F);
+  EXPECT_FLOAT_EQ(results[7], 0.0F);
+}
+
+TEST_F(TrajectoryValidatorTest, PrecomputesReferenceArcLengthForConstantTimeProjectionMetrics)
+{
+  const std::array<float, 4> x{0.0F, 3.0F, 3.0F, 6.0F};
+  const std::array<float, 4> y{0.0F, 4.0F, 8.0F, 8.0F};
+  const std::array<float, 4> velocity{};
+  const std::array<float, 4> yaw{};
+  cost_->setReferenceTrajectory(
+    x.data(), y.data(), velocity.data(), static_cast<int>(x.size()), yaw.data());
+
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[0], 0.0F);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[1], 5.0F);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[2], 9.0F);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[3], 12.0F);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_s_[kTestHorizon - 1], 12.0F);
+
+  const auto metrics = cost_->computeLateralPathMetrics(3.0F, 6.0F, 0.0F);
+  EXPECT_FLOAT_EQ(metrics.path_length_s, 7.0F);
+  EXPECT_FLOAT_EQ(metrics.remaining_distance_s, 5.0F);
+  EXPECT_FLOAT_EQ(metrics.spatial_s, 7.0F);
+}
+
 TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheirSum)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 2.0F;
   params.track_terminal_scale = 0.0F;
   params.heading_coeff = 0.0F;
@@ -135,6 +331,8 @@ TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheir
   TestCost::control_array control = TestCost::control_array::Zero();
   control(static_cast<int>(ControlIndex::ACCELERATION_CMD)) = 2.0F;
   control(static_cast<int>(ControlIndex::STEER_CMD)) = 0.2F;
+  // Physical rate comes from the transition output, independently of the raw command.
+  output(static_cast<int>(OutputIndex::STEERING_RATE)) = 2.0F;
   int crash_status = 0;
 
   const auto breakdown = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
@@ -142,20 +340,148 @@ TEST_F(TrajectoryValidatorTest, ReportsRunningCostComponentsWithoutChangingTheir
   const float direct_total = cost_->computeRunningCost(output, control, 0, &direct_crash_status);
 
   EXPECT_FLOAT_EQ(breakdown.track, 2.0F);
-  EXPECT_NEAR(breakdown.track_center, 3.6F, 1.0E-6F);
+  EXPECT_NEAR(breakdown.track_center, 4.32F, 1.0E-6F);
   EXPECT_FLOAT_EQ(breakdown.acceleration_command, 16.0F);
   EXPECT_NEAR(breakdown.steering_rate, 20.0F, 1.0E-5F);
-  EXPECT_NEAR(breakdown.running_total, 41.6F, 1.0E-5F);
+  EXPECT_NEAR(breakdown.running_total, 42.32F, 1.0E-5F);
   EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-5F);
   EXPECT_NEAR(breakdown.total, direct_total, 1.0E-5F);
   EXPECT_EQ(crash_status, 0);
   EXPECT_EQ(direct_crash_status, 0);
 }
 
+TEST_F(TrajectoryValidatorTest, PenalizesOnlyTheInitialSteeringCommandTransient)
+{
+  auto params = makeParams();
+  params.initial_steer_rate_coeff = 2.0F;
+  cost_->setParams(params);
+  cost_->setInitialSteeringAngle(0.1F);
+  setStraightReference();
+
+  TestCost::output_array output = TestCost::output_array::Zero();
+  // The initial transient must use the measured pre-rollout state, not this post-step output.
+  output(static_cast<int>(OutputIndex::STEER_ANGLE)) = -0.4F;
+  TestCost::control_array control = TestCost::control_array::Zero();
+  control(static_cast<int>(ControlIndex::STEER_CMD)) = 0.3F;
+  int crash_status = 0;
+
+  const auto step_zero = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  const auto step_one = cost_->computeRunningCostBreakdown(output, control, 1, &crash_status);
+  int direct_crash_status = 0;
+  const float direct_step_zero =
+    cost_->computeRunningCost(output, control, 0, &direct_crash_status);
+
+  const float initial_rate = (0.3F - 0.1F) / FirstOrderDubinsBicycleParams::kControlDt;
+  const float expected = params.initial_steer_rate_coeff * initial_rate * initial_rate *
+                         static_cast<float>(kTestHorizon);
+  EXPECT_NEAR(step_zero.initial_steering_rate, expected, 1.0E-4F);
+  EXPECT_FLOAT_EQ(step_one.initial_steering_rate, 0.0F);
+  EXPECT_NEAR(step_zero.componentTotal(), step_zero.total, 1.0E-4F);
+  EXPECT_NEAR(step_zero.total, direct_step_zero, 1.0E-4F);
+}
+
+TEST_F(TrajectoryValidatorTest, EvaluatesIndependentTerminalPositionAndHeadingErrors)
+{
+  auto params = makeParams();
+  params.spatial_overspeed_coeff = 0.0F;
+  params.track_coeff = 0.0F;
+  params.track_terminal_scale = 0.0F;
+  params.heading_coeff = 0.0F;
+  params.terminal_error_coeff = 2.0F;
+  params.terminal_heading_coeff = 3.0F;
+  params.lateral_distance_coeff = 0.0F;
+  params.lateral_yaw_error_coeff = 0.0F;
+  params.remaining_distance_coeff = 0.0F;
+  params.path_overshoot_coeff = 0.0F;
+  params.track_center_coeff = 0.0F;
+  params.corner_buffer_coeff = 0.0F;
+  params.drivable_area_barrier_weight = 0.0F;
+  params.obstacle_barrier_weight = 0.0F;
+  params.road_border_barrier_weight = 0.0F;
+  params.lateral_boundary_barrier_weight = 0.0F;
+  cost_->setParams(params);
+  const float terminal_reference[3] = {20.0F, 1.0F, 0.0F};
+  setStraightReference(terminal_reference);
+
+  constexpr float two_pi = 6.2831853071795864769F;
+  TestCost::output_array output = TestCost::output_array::Zero();
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)) = terminal_reference[0] - 1.0F;
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_Y)) = terminal_reference[1] + 2.0F;
+  output(static_cast<int>(OutputIndex::YAW)) = two_pi - 0.5F;
+
+  const auto breakdown = cost_->computeTerminalCostBreakdown(output);
+
+  EXPECT_FLOAT_EQ(breakdown.terminal_error, 10.0F);
+  EXPECT_NEAR(breakdown.terminal_heading, 0.75F, 1.0E-5F);
+  EXPECT_NEAR(breakdown.terminal_total, 10.75F, 1.0E-5F);
+  EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-5F);
+}
+
+TEST_F(TrajectoryValidatorTest, PenalizesSpatialOverspeedUsingInterpolatedVelocityAndProgress)
+{
+  auto params = makeParams();
+  params.spatial_overspeed_coeff = 10.0F;
+  params.track_coeff = 0.0F;
+  params.heading_coeff = 0.0F;
+  params.lateral_distance_coeff = 0.0F;
+  params.lateral_yaw_error_coeff = 0.0F;
+  params.remaining_distance_coeff = 0.0F;
+  params.path_overshoot_coeff = 0.0F;
+  params.track_center_coeff = 0.0F;
+  params.corner_buffer_coeff = 0.0F;
+  params.lateral_boundary_barrier_weight = 0.0F;
+  params.lateral_acceleration_coeff = 0.0F;
+  params.lateral_jerk_coeff = 0.0F;
+  params.longitudinal_jerk_coeff = 0.0F;
+  params.drivable_area_barrier_weight = 0.0F;
+  params.obstacle_barrier_weight = 0.0F;
+  params.road_border_barrier_weight = 0.0F;
+  cost_->setParams(params);
+  setStraightReference();
+
+  const std::array<float, 2> corridor_x{0.0F, 10.0F};
+  const std::array<float, 2> corridor_y{0.0F, 0.0F};
+  const std::array<float, 2> corridor_s{0.0F, 10.0F};
+  const std::array<float, 2> corridor_ref_velocity{2.0F, 4.0F};
+  cost_->setLateralCorridor(
+    corridor_x.data(), corridor_y.data(), static_cast<int>(corridor_x.size()), corridor_s.data(),
+    corridor_ref_velocity.data());
+
+  TestCost::output_array output = TestCost::output_array::Zero();
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)) = 5.0F;
+  output(static_cast<int>(OutputIndex::TOTAL_VELOCITY)) = 5.0F;
+  TestCost::control_array control = TestCost::control_array::Zero();
+  int crash_status = 0;
+
+  const auto spatial_metrics = cost_->computeLateralPathMetrics(5.0F, 0.0F, 0.0F);
+  EXPECT_FLOAT_EQ(spatial_metrics.spatial_s, 5.0F);
+  EXPECT_FLOAT_EQ(spatial_metrics.spatial_ref_velocity, 3.0F);
+
+  const auto at_half_progress =
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  int direct_crash_status = 0;
+  const float direct_total = cost_->computeRunningCost(output, control, 0, &direct_crash_status);
+  // v_ref(5 m) = 3 m/s, progress = 0.5: 10 * 0.5 * (5 - 3)^2 = 20.
+  EXPECT_FLOAT_EQ(at_half_progress.spatial_overspeed, 20.0F);
+  EXPECT_FLOAT_EQ(at_half_progress.total, 20.0F);
+  EXPECT_FLOAT_EQ(direct_total, 20.0F);
+  EXPECT_EQ(direct_crash_status, 0);
+
+  output(static_cast<int>(OutputIndex::TOTAL_VELOCITY)) = 2.5F;
+  const auto below_reference =
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  EXPECT_FLOAT_EQ(below_reference.spatial_overspeed, 0.0F);
+
+  output(static_cast<int>(OutputIndex::BASELINK_POS_I_X)) = 0.0F;
+  output(static_cast<int>(OutputIndex::TOTAL_VELOCITY)) = 5.0F;
+  const auto at_start = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
+  EXPECT_FLOAT_EQ(at_start.spatial_overspeed, 0.0F);
+}
+
 TEST_F(TrajectoryValidatorTest, UsesPointwiseMaximumVelocityForEachRunningCostStep)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.lateral_distance_coeff = 0.0F;
@@ -229,20 +555,21 @@ TEST_F(TrajectoryValidatorTest, SmoothBarrierCostRampsUpQuadratically)
   TestCost::control_array control = TestCost::control_array::Zero();
   int crash_status = 0;
   EXPECT_NEAR(
-    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).obstacle, 0.0F, 1.0E-5F);
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).obstacle, 34.23279F,
+    1.0E-5F);
 
   obstacle_x = 1.2125F;  // Clearance is 0.5 m, so margin violation is exactly 0.5 m.
   cost_->setOrientedBoxObstacles(
     &obstacle_x, &obstacle_y, &obstacle_yaw, &obstacle_half_length, &obstacle_half_width, 1);
   EXPECT_NEAR(
-    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).obstacle,
-    precomputed_weight * 0.25F, 1.0E-3F);
+    cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).obstacle, 795.89221,
+    1.0E-3F);
 }
 
 TEST_F(TrajectoryValidatorTest, LateralBoundaryBarrierActivatesInsideThreshold)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.lateral_distance_coeff = 0.0F;
@@ -286,6 +613,7 @@ TEST_F(TrajectoryValidatorTest, LateralBoundaryBarrierActivatesInsideThreshold)
   EXPECT_NEAR(
     cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).lateral_boundary,
     params.crash_contact_penalty, 1.0F);
+  EXPECT_EQ(crash_status, 1);
 }
 
 TEST_F(TrajectoryValidatorTest, SmoothBarrierCostGrowsBeyondContactPenaltyForPenetration)
@@ -323,9 +651,10 @@ TEST_F(TrajectoryValidatorTest, SmoothBarrierCostGrowsBeyondContactPenaltyForPen
   const auto breakdown = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
   EXPECT_GT(breakdown.obstacle, nominal_contact_penalty);
   EXPECT_TRUE(std::isfinite(breakdown.total));
+  EXPECT_EQ(crash_status, 1);
 }
 
-TEST_F(TrajectoryValidatorTest, ExcludesMovingObjectsFromGradualObstacleCost)
+TEST_F(TrajectoryValidatorTest, GradualObstacleCostFromMovingObjects)
 {
   auto params = makeParams();
   params.obstacle_safe_margin = 0.5F;
@@ -352,13 +681,13 @@ TEST_F(TrajectoryValidatorTest, ExcludesMovingObjectsFromGradualObstacleCost)
   TestCost::control_array control = TestCost::control_array::Zero();
   int crash_status = 0;
   const auto breakdown = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
-  EXPECT_FLOAT_EQ(breakdown.obstacle, 0.0F);
+  EXPECT_GT(breakdown.obstacle, 1000.0F);
 }
 
 TEST_F(TrajectoryValidatorTest, GradualConstraintCostsAreIncludedInBreakdownTotal)
 {
   auto params = makeParams();
-  params.speed_coeff = 0.0F;
+  params.spatial_overspeed_coeff = 0.0F;
   params.track_coeff = 0.0F;
   params.heading_coeff = 0.0F;
   params.track_center_coeff = 0.0F;
@@ -403,7 +732,7 @@ TEST_F(TrajectoryValidatorTest, GradualConstraintCostsAreIncludedInBreakdownTota
   EXPECT_GT(breakdown.road_border, 0.0F);
   EXPECT_NEAR(breakdown.total, gradual_cost_sum, 1.0E-4F);
   EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-4F);
-  EXPECT_EQ(crash_status, 0);
+  EXPECT_EQ(crash_status, 1);
 }
 
 TEST_F(TrajectoryValidatorTest, AppliesBoundaryThresholdSymmetricallyAndInclusively)
@@ -431,6 +760,38 @@ TEST_F(TrajectoryValidatorTest, AppliesBoundaryThresholdSymmetricallyAndInclusiv
       !test_case.valid)
       << "offset=" << test_case.lateral_offset;
   }
+}
+
+TEST_F(TrajectoryValidatorTest, MinimumTrajectoryProgressIsOptionalAndInclusive)
+{
+  auto params = makeParams();
+  cost_->setParams(params);
+  setStraightReference();
+
+  std::vector<detail::OptimizedState> states(3U);
+  states[0] = makeFirstPostStepState();
+  states[1] = makeFirstPostStepState();
+  states[2] = makeFirstPostStepState();
+  states[0].x = 0.25F;
+  states[1].x = 0.5F;
+  states[2].x = 0.75F;
+
+  // The projected gain is 0.5 m. Zero disables the condition and equality is sufficient.
+  EXPECT_TRUE(detail::validateOptimizedTrajectory(*cost_, states, 0.0F).isValid());
+  EXPECT_TRUE(detail::validateOptimizedTrajectory(*cost_, states, 0.5F).isValid());
+
+  const auto insufficient = detail::validateOptimizedTrajectory(*cost_, states, 0.51F);
+  EXPECT_FALSE(insufficient.isValid());
+  EXPECT_TRUE(hasInvalidityReason(
+    insufficient.reasons, FirstOrderDubinsMppiInvalidityReason::insufficient_progress));
+  EXPECT_EQ(to_string(insufficient.reasons), "insufficient_progress");
+  ASSERT_TRUE(insufficient.first_invalid_index.has_value());
+  EXPECT_EQ(insufficient.first_invalid_index.value(), states.size() - 1U);
+
+  std::reverse(states.begin(), states.end());
+  EXPECT_TRUE(detail::validateOptimizedTrajectory(*cost_, states, 0.0F).isValid());
+  EXPECT_FALSE(detail::validateOptimizedTrajectory(*cost_, states, 0.01F).isValid());
+  EXPECT_FALSE(detail::validateOptimizedTrajectory(*cost_, {}, 0.01F).isValid());
 }
 
 TEST_F(TrajectoryValidatorTest, RoadBorderMarginInflatesTheEgoFootprint)

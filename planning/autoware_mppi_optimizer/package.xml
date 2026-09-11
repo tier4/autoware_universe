@@ -33,7 +33,9 @@
   <depend>eigen</depend>
   <depend>generate_parameter_library</depend>
   <depend>geometry_msgs</depend>
+  <depend>libglfw3-dev</depend>
   <depend>nav_msgs</depend>
+  <depend>opengl</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
@@ -47,6 +49,8 @@
   <test_depend>ament_cmake_ros</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>autoware_lint_common</test_depend>
+  <test_depend>python3</test_depend>
+  <test_depend>rcutils</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

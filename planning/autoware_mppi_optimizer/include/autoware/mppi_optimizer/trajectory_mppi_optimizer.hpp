@@ -15,7 +15,9 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 
+#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/mppi_application_status.hpp"
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware/avoidance_target_detector/object_filtering.hpp>
@@ -85,12 +87,13 @@ private:
   /** @brief Creates and configures the GPU optimizer on first use. */
   void ensure_optimizer();
 
-  /** @brief Publishes whether MPPI replaced the primary candidate. */
-  void publish_enabled(bool enabled) const;
+  /** @brief Publishes whether an optimized MPPI trajectory replaced the primary candidate. */
+  void publish_enabled(bool applied) const;
 
   /** @brief Publishes the MPPI cost breakdown and result status. */
   void publish_cost_diagnostics(
-    const FirstOrderDubinsMppiDebug & debug, bool was_applied, const rclcpp::Time & stamp);
+    const FirstOrderDubinsMppiDebug & debug, const MppiApplicationStatus & application,
+    const rclcpp::Time & stamp);
 
   /** @brief Publishes a diagnostic for a skipped or failed MPPI pass. */
   void publish_status_diagnostic(
@@ -116,6 +119,7 @@ private:
   std::unique_ptr<trajectory_mppi_optimizer::ParamListener> param_listener_;
   MppiParams params_;
   std::unique_ptr<FirstOrderDubinsMppiInterface> optimizer_;
+  CurvatureAdaptiveSteeringFilter steering_filter_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
@@ -128,6 +132,11 @@ private:
 
   std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
     velocity_limit_sub_;
+  std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<Trajectory>>
+    mpc_predicted_trajectory_sub_;
+
+  /** Application result from the preceding primary-candidate cycle. */
+  bool previous_mppi_trajectory_applied_{false};
 
   rclcpp::Publisher<Trajectory>::SharedPtr reference_trajectory_pub_;
   rclcpp::Publisher<Trajectory>::SharedPtr nominal_control_trajectory_pub_;
@@ -135,12 +144,14 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr nominal_trajectory_pub_;
   rclcpp::Publisher<Trajectory>::SharedPtr velocity_limit_trajectory_pub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr markers_pub_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr rollouts_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr enabled_pub_;
   std::unique_ptr<autoware_utils_debug::DebugPublisher> debug_publisher_;
   std::unique_ptr<DiagnosticsInterface> cost_diagnostics_;
 
   std::optional<FirstOrderDubinsMppiDebug> pending_debug_;
   MarkerArray pending_markers_;
+  MarkerArray pending_rollouts_;
   std_msgs::msg::Header pending_debug_header_;
   mutable bool debug_pending_{false};
 };

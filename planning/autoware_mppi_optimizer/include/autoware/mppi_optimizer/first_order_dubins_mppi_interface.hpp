@@ -27,6 +27,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -71,6 +72,142 @@ struct FirstOrderDubinsMppiControl
   float steer_cmd{0.0F};
 };
 
+enum class FirstOrderDubinsMppiNominalSeedSource : std::uint8_t {
+  diffusion_reference,
+  previous_optimized,
+  temporal_mpt,
+  forced,
+  mpc_predicted_trajectory
+};
+
+enum class FirstOrderDubinsMppiNominalResetReason : std::uint8_t {
+  none,
+  unavailable,
+  forced_cold_start,
+  stopped,
+  invalid_timestamp,
+  expired,
+  prediction_error,
+  reference_discontinuity,
+  initial_steering_discontinuity,
+  rejected,
+  skipped,
+  configuration_changed,
+  externally_invalidated
+};
+
+inline const char * to_string(const FirstOrderDubinsMppiNominalSeedSource source)
+{
+  switch (source) {
+    case FirstOrderDubinsMppiNominalSeedSource::diffusion_reference:
+      return "diffusion_reference";
+    case FirstOrderDubinsMppiNominalSeedSource::previous_optimized:
+      return "previous_optimized";
+    case FirstOrderDubinsMppiNominalSeedSource::temporal_mpt:
+      return "temporal_mpt";
+    case FirstOrderDubinsMppiNominalSeedSource::forced:
+      return "forced";
+    case FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory:
+      return "mpc_predicted_trajectory";
+  }
+  return "unknown";
+}
+
+inline const char * to_string(const FirstOrderDubinsMppiNominalResetReason reason)
+{
+  switch (reason) {
+    case FirstOrderDubinsMppiNominalResetReason::none:
+      return "none";
+    case FirstOrderDubinsMppiNominalResetReason::unavailable:
+      return "unavailable";
+    case FirstOrderDubinsMppiNominalResetReason::forced_cold_start:
+      return "forced_cold_start";
+    case FirstOrderDubinsMppiNominalResetReason::stopped:
+      return "stopped";
+    case FirstOrderDubinsMppiNominalResetReason::invalid_timestamp:
+      return "invalid_timestamp";
+    case FirstOrderDubinsMppiNominalResetReason::expired:
+      return "expired";
+    case FirstOrderDubinsMppiNominalResetReason::prediction_error:
+      return "prediction_error";
+    case FirstOrderDubinsMppiNominalResetReason::reference_discontinuity:
+      return "reference_discontinuity";
+    case FirstOrderDubinsMppiNominalResetReason::initial_steering_discontinuity:
+      return "initial_steering_discontinuity";
+    case FirstOrderDubinsMppiNominalResetReason::rejected:
+      return "rejected";
+    case FirstOrderDubinsMppiNominalResetReason::skipped:
+      return "skipped";
+    case FirstOrderDubinsMppiNominalResetReason::configuration_changed:
+      return "configuration_changed";
+    case FirstOrderDubinsMppiNominalResetReason::externally_invalidated:
+      return "externally_invalidated";
+  }
+  return "unknown";
+}
+
+struct FirstOrderDubinsMppiPostprocessingContext
+{
+  FirstOrderDubinsMppiNominalSeedSource seed_source{
+    FirstOrderDubinsMppiNominalSeedSource::diffusion_reference};
+  /** Number of samples removed from a previous accepted horizon. */
+  int shift_count{0};
+  /** True only when optimized steering u[0] still equals its already-filtered shifted seed. */
+  bool preserve_first_steering_command{false};
+};
+
+enum class FirstOrderDubinsMppiMpcNominalSeedStatus : std::uint8_t {
+  disabled,
+  previous_mppi_applied,
+  unavailable,
+  stale,
+  invalid,
+  forced_nominal,
+  optimization_not_run,
+  used
+};
+
+inline const char * to_string(const FirstOrderDubinsMppiMpcNominalSeedStatus status)
+{
+  switch (status) {
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::disabled:
+      return "disabled";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::previous_mppi_applied:
+      return "previous_mppi_applied";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::unavailable:
+      return "unavailable";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::stale:
+      return "stale";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::invalid:
+      return "invalid";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::forced_nominal:
+      return "forced_nominal";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::optimization_not_run:
+      return "optimization_not_run";
+    case FirstOrderDubinsMppiMpcNominalSeedStatus::used:
+      return "used";
+  }
+  return "unknown";
+}
+
+constexpr FirstOrderDubinsMppiMpcNominalSeedStatus resolveMpcNominalSeedStatus(
+  const bool enabled, const bool previous_mppi_applied, const bool prediction_available,
+  const bool prediction_fresh, const bool prediction_valid)
+{
+  if (!enabled) return FirstOrderDubinsMppiMpcNominalSeedStatus::disabled;
+  if (previous_mppi_applied) {
+    return FirstOrderDubinsMppiMpcNominalSeedStatus::previous_mppi_applied;
+  }
+  if (!prediction_available) return FirstOrderDubinsMppiMpcNominalSeedStatus::unavailable;
+  if (!prediction_fresh) return FirstOrderDubinsMppiMpcNominalSeedStatus::stale;
+  if (!prediction_valid) return FirstOrderDubinsMppiMpcNominalSeedStatus::invalid;
+  return FirstOrderDubinsMppiMpcNominalSeedStatus::used;
+}
+
+/** Optional host-side output conditioning supplied by the interface caller. */
+using FirstOrderDubinsMppiControlSequencePostprocessor = std::function<void(
+  std::vector<FirstOrderDubinsMppiControl> &, const FirstOrderDubinsMppiPostprocessingContext &)>;
+
 /** Nominal control sequence supplied to MPPI before sampling and optimization. */
 struct FirstOrderDubinsMppiNominalControlProfile
 {
@@ -79,10 +216,22 @@ struct FirstOrderDubinsMppiNominalControlProfile
   std::vector<float> steering_commands_rad;
 };
 
+/** Result of anchoring nominal steer u[0] to the steering state at command application time. */
+struct FirstOrderDubinsMppiNominalSteeringContinuity
+{
+  bool active{false};
+  bool clamped{false};
+  float application_steering_rad{0.0F};
+  float unguarded_command_rad{0.0F};
+  float guarded_command_rad{0.0F};
+};
+
 struct FirstOrderDubinsMppiRollout
 {
   std::vector<std::pair<float, float>> points;
   float cost{0.0F};
+  /** One-based MPPI optimization iteration; zero denotes a legacy/offline aggregate sample. */
+  int iteration{0};
   /** True when this sample was selected as a high-cost (worst) viz sample, not top-weighted. */
   bool is_worst{false};
 };
@@ -103,9 +252,11 @@ struct FirstOrderDubinsMppiKinematicLimits
 /** Host reconstruction of the cost assigned to the selected MPPI trajectory. */
 struct FirstOrderDubinsMppiCostBreakdown
 {
-  float speed{0.0F};
+  float spatial_overspeed{0.0F};
   float track{0.0F};
   float heading{0.0F};
+  float terminal_error{0.0F};
+  float terminal_heading{0.0F};
   float lateral_distance{0.0F};
   float lateral_boundary{0.0F};
   float lateral_yaw_error{0.0F};
@@ -122,6 +273,9 @@ struct FirstOrderDubinsMppiCostBreakdown
   float lateral_jerk{0.0F};
   float longitudinal_jerk{0.0F};
   float steering_rate{0.0F};
+  float initial_steering_rate{0.0F};
+  float acceleration_command_rate{0.0F};
+  float steering_command_rate{0.0F};
   float kinematic_velocity_overlimit{0.0F};
   float kinematic_acceleration_overlimit{0.0F};
   float kinematic_jerk_overlimit{0.0F};
@@ -134,11 +288,13 @@ struct FirstOrderDubinsMppiCostBreakdown
 
   [[nodiscard]] float componentTotal() const
   {
-    return speed + track + heading + lateral_distance + lateral_boundary + lateral_yaw_error +
-           remaining_distance + path_overshoot + track_center + corner_buffer + drivable_area +
-           acceleration_command + steering_command + lateral_acceleration + lateral_jerk +
-           longitudinal_jerk + steering_rate + kinematic_velocity_overlimit +
-           kinematic_acceleration_overlimit + kinematic_jerk_overlimit + obstacle + road_border;
+    return spatial_overspeed + track + heading + terminal_error + terminal_heading +
+           lateral_distance + lateral_boundary + lateral_yaw_error + remaining_distance +
+           path_overshoot + track_center + corner_buffer + drivable_area + acceleration_command +
+           steering_command + lateral_acceleration + lateral_jerk + longitudinal_jerk +
+           steering_rate + initial_steering_rate + acceleration_command_rate +
+           steering_command_rate + kinematic_velocity_overlimit + kinematic_acceleration_overlimit +
+           kinematic_jerk_overlimit + obstacle + road_border;
   }
 };
 
@@ -148,6 +304,9 @@ enum class FirstOrderDubinsMppiInvalidityReason : std::uint8_t {
   obstacle = 1U << 1U,
   road_border = 1U << 2U,
   reverse = 1U << 3U,
+  nonfinite_state = 1U << 4U,
+  no_eligible_rollouts = 1U << 5U,
+  insufficient_progress = 1U << 6U,
 };
 
 inline std::string to_string(FirstOrderDubinsMppiInvalidityReason reason)
@@ -171,8 +330,18 @@ inline std::string to_string(FirstOrderDubinsMppiInvalidityReason reason)
   if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::reverse)) {
     result += "reverse | ";
   }
+  if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::nonfinite_state)) {
+    result += "nonfinite_state | ";
+  }
 
   // Remove the trailing " | " if the string is not empty
+  if (val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts)) {
+    result += "no_eligible_rollouts | ";
+  }
+  if (
+    val & static_cast<std::uint8_t>(FirstOrderDubinsMppiInvalidityReason::insufficient_progress)) {
+    result += "insufficient_progress | ";
+  }
   if (!result.empty()) {
     result.resize(result.size() - 3);
   } else {
@@ -249,6 +418,20 @@ struct FirstOrderDubinsMppiDebug
   FirstOrderDubinsMppiTiming timing;
   FirstOrderDubinsMppiKinematicLimits active_kinematic_limits;
   float baseline_cost{0.0F};
+  /** ESS for every MPPI optimization iteration in the most recent control step. */
+  std::vector<float> iteration_effective_sample_sizes;
+  /** Lambda used for those weights and the adapted value prepared for the next control step. */
+  float lambda_used{0.0F};
+  float lambda_next{0.0F};
+  /** Maximum finite raw cost in the final rollout population. */
+  float max_rollout_cost{0.0F};
+  /** Robust upper raw cost used to normalize the final rollout population. */
+  float normalization_upper_cost{0.0F};
+  /** Fraction of final-iteration rollouts that encountered a collision/safety violation. */
+  float unsafe_rollout_fraction{0.0F};
+  int eligible_rollout_count{0};
+  int minimum_cost_rollout_count{0};
+  bool unsafe_rollout_population{false};
   /** Hard-constraint validation of the generated post-step states. */
   FirstOrderDubinsMppiValidationResult validation;
   /** True while the deterministic external-only maximum-velocity profile is applied. */
@@ -265,12 +448,24 @@ struct FirstOrderDubinsMppiDebug
   FirstOrderDubinsMppiAppliedPlantState applied_plant;
   /** Open-loop delay-bicycle replay vs measured ego since the previous MPPI cycle. */
   FirstOrderDubinsMppiPredictionAccuracy prediction_accuracy;
+  FirstOrderDubinsMppiNominalSeedSource nominal_seed_source{
+    FirstOrderDubinsMppiNominalSeedSource::diffusion_reference};
+  FirstOrderDubinsMppiNominalResetReason nominal_reset_reason{
+    FirstOrderDubinsMppiNominalResetReason::unavailable};
+  int nominal_shift_count{0};
+  FirstOrderDubinsMppiNominalSteeringContinuity nominal_steering_continuity;
+  /** Whether the optimized MPPI trajectory was applied on the preceding plugin cycle. */
+  bool previous_mppi_trajectory_applied{false};
+  FirstOrderDubinsMppiMpcNominalSeedStatus mpc_nominal_seed_status{
+    FirstOrderDubinsMppiMpcNominalSeedStatus::disabled};
 };
 
 struct FirstOrderDubinsMppiOptimizationResult
 {
   Trajectory trajectory;
   FirstOrderDubinsMppiDebug debug;
+  /** Number of leading points generated from the MPPI control horizon. */
+  std::size_t optimized_point_count{0U};
 };
 
 /** Static 2D line segment supplied to the MPPI cost function in map coordinates. */
@@ -321,9 +516,9 @@ public:
 
   /**
    * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
-   * @param use_last_control_as_nominal When true and a previous optimized control sequence
-   *        exists and ego is not stopped (|v| >= 0.05 m/s), seed u_nom by shifting that
-   *        sequence (warm start). From a stop, always reseed from the diffusion reference.
+   * @param use_last_control_as_nominal When true, reuse a recent applied optimized control
+   *        sequence while its plant replay and shifted reference remain continuous. Otherwise
+   *        seed from the diffusion reference.
    */
   void setAblationOptions(
     const bool ignore_obstacles, const bool ignore_road_borders, const bool ignore_drivable_area,
@@ -339,9 +534,9 @@ public:
     std::vector<float> & raw_costs, std::vector<float> & normalized_weights, int stride = 1) const;
 
   /**
-   * @brief When true, optimizeTrajectory fills debug.rollouts with top-K weighted samples
-   *        plus worst-K high-cost samples (CPU replay; ~tens of ms). Enable only for offline
-   *        retune — leave false for online planning and debug trajectory logging.
+   * @brief Replace the per-iteration sampled debug rollouts with top-K weighted samples plus
+   *        worst-K high-cost samples from the final iteration (CPU replay; ~tens of ms). Enable
+   *        only for offline retune; leave false for online planning and debug trajectory logging.
    */
   void setRolloutVisualizationEnabled(bool enable);
 
@@ -403,6 +598,17 @@ public:
    * @param drivable_area Static drivable-area boundary segments used as a gradual constraint.
    * @param kinematic_limits Optional external scalar and map pointwise velocity bounds, plus
    *        external acceleration and jerk bounds.
+   * @param control_postprocessor Optional caller-owned conditioning applied to the optimized
+   *        control horizon before state recomputation and applied-control bookkeeping. The second
+   *        callback argument reports the nominal source and shift count. Its steering-preservation
+   *        flag is true only when optimized u[0] still equals the already-filtered shifted steering
+   *        seed, so an output filter can avoid filtering it twice.
+   * @param defer_commit Require commitPendingTrajectory() before recording candidate commands
+   *        in the accepted execution history; use this when the caller can reject or shadow output.
+   * @param mpc_predicted_trajectory Optional path whose geometry supplies the nominal steering
+   *        prefix. Eligibility based on previous application and freshness is decided by the
+   * caller.
+   * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
@@ -410,7 +616,22 @@ public:
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
     const std::vector<Segment> & drivable_area,
-    const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {});
+    const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {},
+    const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor = {},
+    bool defer_commit = false,
+    const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt);
+
+  /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
+   * This records an assumed first actuator command, not feedback from the downstream controller.
+   * Callers with actual command history should supply that history through the existing seed APIs.
+   * A subsequent optimizeTrajectory call discards an uncommitted candidate automatically.
+   * Changes to parameters, ablations, or control/delay seeds also discard it.
+   */
+  void commitPendingTrajectory();
+  void discardPendingTrajectory() noexcept;
+
+  /** Prevent reuse of an accepted horizon after execution switches to another trajectory. */
+  void invalidateNominalWarmStart() noexcept;
 
 private:
   struct Impl;

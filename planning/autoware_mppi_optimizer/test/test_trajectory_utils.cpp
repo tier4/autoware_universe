@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <optional>
 #include <vector>
@@ -114,6 +115,115 @@ TEST(InitialState, UsesOdometryDefaultsAndClampsOptionalVehicleState)
   const auto clamped = makeInitialState(odometry, acceleration, steering, vehicle);
   EXPECT_FLOAT_EQ(clamped.acceleration, vehicle.max_accel());
   EXPECT_FLOAT_EQ(clamped.steering, -vehicle.max_steer_angle);
+}
+
+TEST(MpcPredictedNominalSteering, ReplacesOnlyTheTimeAlignedSteeringPrefix)
+{
+  constexpr float dt = 0.1F;
+  constexpr float speed = 2.0F;
+  constexpr float desired_steering = 0.25F;
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 2.5F;
+  vehicle.max_steer_angle = 0.6F;
+
+  InitialState ego;
+  ego.x = 1.0F;
+  ego.y = -2.0F;
+  ego.yaw = 0.2F;
+
+  Trajectory prediction;
+  prediction.header.frame_id = "map";
+  double x = ego.x;
+  double y = ego.y;
+  double yaw = ego.yaw;
+  const double distance = static_cast<double>(speed * dt);
+  const double yaw_step = distance * std::tan(desired_steering) / vehicle.wheel_base;
+  for (std::size_t index = 0; index < 3U; ++index) {
+    x += distance * std::cos(yaw);
+    y += distance * std::sin(yaw);
+    yaw += yaw_step;
+    autoware_planning_msgs::msg::TrajectoryPoint point;
+    point.pose.position.x = x;
+    point.pose.position.y = y;
+    point.pose.orientation = makeQuaternion(yaw);
+    point.time_from_start.nanosec = static_cast<std::uint32_t>(index * 100000000U);
+    prediction.points.push_back(point);
+  }
+
+  std::vector<FirstOrderDubinsMppiControl> nominal(5U);
+  for (std::size_t index = 0; index < nominal.size(); ++index) {
+    nominal[index] = {static_cast<float>(index), -0.15F};
+  }
+
+  const std::size_t replaced =
+    overlayNominalSteeringFromPredictedTrajectory(nominal, prediction, ego, vehicle, dt);
+
+  ASSERT_EQ(replaced, 3U);
+  for (std::size_t index = 0; index < replaced; ++index) {
+    EXPECT_FLOAT_EQ(nominal[index].accel_cmd, static_cast<float>(index));
+    EXPECT_NEAR(nominal[index].steer_cmd, desired_steering, 1.0E-5F);
+  }
+  EXPECT_FLOAT_EQ(nominal[3].steer_cmd, -0.15F);
+  EXPECT_FLOAT_EQ(nominal[4].steer_cmd, -0.15F);
+}
+
+TEST(MpcPredictedNominalSteering, RejectsInvalidPredictionWithoutChangingNominal)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  InitialState ego;
+  std::vector<FirstOrderDubinsMppiControl> nominal = {{1.0F, 0.1F}, {2.0F, 0.2F}};
+  const auto original = nominal;
+  Trajectory prediction;
+  prediction.points.resize(2U);
+  prediction.points[0].pose.orientation = makeQuaternion(0.0);
+  prediction.points[1].pose.position.x = 1.0;
+  prediction.points[1].pose.orientation = makeQuaternion(0.1);
+  // Equal timestamps make the prediction unsuitable for temporal resampling.
+
+  EXPECT_EQ(
+    overlayNominalSteeringFromPredictedTrajectory(nominal, prediction, ego, vehicle, 0.1F), 0U);
+  ASSERT_EQ(nominal.size(), original.size());
+  for (std::size_t index = 0; index < nominal.size(); ++index) {
+    EXPECT_FLOAT_EQ(nominal[index].accel_cmd, original[index].accel_cmd);
+    EXPECT_FLOAT_EQ(nominal[index].steer_cmd, original[index].steer_cmd);
+  }
+}
+
+TEST(MpcPredictedNominalSteering, PreservesSteeringSignWhenReversing)
+{
+  constexpr float dt = 0.1F;
+  constexpr float distance = 0.2F;
+  constexpr float desired_steering = 0.25F;
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 2.5F;
+  vehicle.max_steer_angle = 0.6F;
+
+  InitialState ego;
+  ego.yaw = 0.3F;
+  Trajectory prediction;
+  autoware_planning_msgs::msg::TrajectoryPoint point;
+  point.pose.position.x = -distance * std::cos(ego.yaw);
+  point.pose.position.y = -distance * std::sin(ego.yaw);
+  const double yaw = ego.yaw - distance * std::tan(desired_steering) / vehicle.wheel_base;
+  point.pose.orientation = makeQuaternion(yaw);
+  prediction.points.push_back(point);
+
+  std::vector<FirstOrderDubinsMppiControl> nominal(2U, {0.0F, 0.0F});
+  ASSERT_EQ(
+    overlayNominalSteeringFromPredictedTrajectory(nominal, prediction, ego, vehicle, dt), 1U);
+  EXPECT_NEAR(nominal.front().steer_cmd, desired_steering, 1.0E-5F);
+}
+
+TEST(MpcPredictedNominalSteering, IsEligibleOnlyAfterMppiWasNotApplied)
+{
+  using Status = FirstOrderDubinsMppiMpcNominalSeedStatus;
+  EXPECT_EQ(resolveMpcNominalSeedStatus(false, false, true, true, true), Status::disabled);
+  EXPECT_EQ(
+    resolveMpcNominalSeedStatus(true, true, true, true, true), Status::previous_mppi_applied);
+  EXPECT_EQ(resolveMpcNominalSeedStatus(true, false, false, true, true), Status::unavailable);
+  EXPECT_EQ(resolveMpcNominalSeedStatus(true, false, true, false, true), Status::stale);
+  EXPECT_EQ(resolveMpcNominalSeedStatus(true, false, true, true, false), Status::invalid);
+  EXPECT_EQ(resolveMpcNominalSeedStatus(true, false, true, true, true), Status::used);
 }
 
 TEST(ReferenceHorizon, MapsInputDirectlyAndHoldsTheLastSample)
@@ -598,6 +708,75 @@ TEST(NominalControlFilter, LeavesNominalExactlyUnchangedWithoutExternalLimits)
     EXPECT_FLOAT_EQ(filtered[i].accel_cmd, nominal[i].accel_cmd);
     EXPECT_FLOAT_EQ(filtered[i].steer_cmd, nominal[i].steer_cmd);
   }
+}
+
+TEST(NominalSteeringContinuity, ClampsFirstCommandAroundMeasuredSteeringWithoutDelay)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.max_steer_angle = 0.5F;
+
+  const auto result = guardInitialNominalSteeringCommand(0.4F, -0.2F, vehicle, 0, {}, 0.1F, 0.1F);
+
+  EXPECT_TRUE(result.active);
+  EXPECT_TRUE(result.clamped);
+  EXPECT_FLOAT_EQ(result.application_steering_rad, -0.2F);
+  EXPECT_FLOAT_EQ(result.unguarded_command_rad, 0.4F);
+  EXPECT_FLOAT_EQ(result.guarded_command_rad, -0.1F);
+}
+
+TEST(NominalSteeringContinuity, AnchorsToDelayPredictedApplicationSteering)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.max_steer_angle = 0.5F;
+  vehicle.steer_time_constant = 0.2F;
+  vehicle.steer_rate_lim = 10.0F;
+  vehicle.standstill_steer_rate_lim = 10.0F;
+
+  const auto result =
+    guardInitialNominalSteeringCommand(-0.4F, 0.0F, vehicle, 2, {0.2F, 0.2F}, 0.05F, 0.1F);
+
+  EXPECT_TRUE(result.active);
+  EXPECT_TRUE(result.clamped);
+  EXPECT_NEAR(result.application_steering_rad, 0.15F, 1.0E-6F);
+  EXPECT_NEAR(result.guarded_command_rad, 0.1F, 1.0E-6F);
+}
+
+TEST(NominalSteeringContinuity, DisabledGuardPreservesCommandExactly)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+
+  const auto result = guardInitialNominalSteeringCommand(0.4F, -0.2F, vehicle);
+
+  EXPECT_FALSE(result.active);
+  EXPECT_FALSE(result.clamped);
+  EXPECT_FLOAT_EQ(result.guarded_command_rad, 0.4F);
+}
+
+TEST(VelocityDependentSteeringRate, UsesStandstillLimitDuringRestart)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 2.8F;
+  vehicle.steer_rate_lim = 5.0F;
+  vehicle.max_lateral_jerk_mps3 = 2.5F;
+  vehicle.standstill_steer_rate_lim = 0.15F;
+  vehicle.restart_velocity_threshold_mps = 0.5F;
+
+  EXPECT_FLOAT_EQ(velocityDependentSteeringRateLimit(vehicle, 0.2F), 0.15F);
+  EXPECT_FLOAT_EQ(velocityDependentSteeringRateLimit(vehicle, -0.2F), 0.15F);
+}
+
+TEST(VelocityDependentSteeringRate, UsesLateralJerkLimitAtHighSpeed)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 2.8F;
+  vehicle.steer_rate_lim = 5.0F;
+  vehicle.max_lateral_jerk_mps3 = 2.5F;
+  vehicle.standstill_steer_rate_lim = 0.15F;
+  vehicle.restart_velocity_threshold_mps = 0.5F;
+  constexpr float velocity = 25.0F;
+  const float expected = vehicle.max_lateral_jerk_mps3 * vehicle.wheel_base / (velocity * velocity);
+
+  EXPECT_NEAR(velocityDependentSteeringRateLimit(vehicle, velocity), expected, 1.0E-5F);
 }
 
 TEST(NominalControlFilter, ClampsAccelerationAndAppliesJerkAtCommandApplicationTime)

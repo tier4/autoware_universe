@@ -18,6 +18,7 @@
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <vector>
 
@@ -26,10 +27,20 @@ namespace autoware::mppi_optimizer::detail
 
 template <class Cost>
 [[nodiscard]] FirstOrderDubinsMppiValidationResult validateOptimizedTrajectory(
-  const Cost & cost, const std::vector<OptimizedState> & states)
+  const Cost & cost, const std::vector<OptimizedState> & states,
+  const float min_trajectory_progress_m = 0.0F)
 {
+  // states contains post-step samples x[1] through x[H], including the reconstructed terminal
+  // state when the full horizon is published. Keep every sample and its obstacle time index.
   for (std::size_t i = 0; i < states.size(); ++i) {
     const auto & state = states[i];
+    if (
+      !std::isfinite(state.x) || !std::isfinite(state.y) || !std::isfinite(state.yaw) ||
+      !std::isfinite(state.velocity) || !std::isfinite(state.acceleration) ||
+      !std::isfinite(state.steering)) {
+      // Reject before calling geometry routines that may index buffers using these values.
+      return {FirstOrderDubinsMppiInvalidityReason::nonfinite_state, i};
+    }
     const int timestep = static_cast<int>(i);
     auto reasons = FirstOrderDubinsMppiInvalidityReason::none;
     if (cost.exceedsLateralBoundary(state.x, state.y)) {
@@ -46,6 +57,19 @@ template <class Cost>
     }
     if (reasons != FirstOrderDubinsMppiInvalidityReason::none) {
       return FirstOrderDubinsMppiValidationResult{reasons, i};
+    }
+  }
+
+  if (min_trajectory_progress_m > 0.0F) {
+    if (states.empty()) {
+      return {FirstOrderDubinsMppiInvalidityReason::insufficient_progress, std::nullopt};
+    }
+    const auto & first = states.front();
+    const auto & last = states.back();
+    const float first_s = cost.computeLateralPathMetrics(first.x, first.y, first.yaw).path_length_s;
+    const float last_s = cost.computeLateralPathMetrics(last.x, last.y, last.yaw).path_length_s;
+    if (last_s - first_s < min_trajectory_progress_m) {
+      return {FirstOrderDubinsMppiInvalidityReason::insufficient_progress, states.size() - 1U};
     }
   }
   return {};
