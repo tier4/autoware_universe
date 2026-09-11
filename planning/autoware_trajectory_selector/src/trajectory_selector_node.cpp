@@ -181,6 +181,7 @@ std::optional<TrajectorySource> generator_name_prefix_to_source(
 {
   static const std::unordered_map<std::string, TrajectorySource> generator_name_prefix_to_source = {
     {"DiffusionPlanner_", TrajectorySource::DIFFUSION_PLANNER},
+    {"MLPlanner_", TrajectorySource::DIFFUSION_PLANNER},
     {"MinimumRuleBasedPlanner_Go", TrajectorySource::BACKUP_PLANNER_GO},
     {"MinimumRuleBasedPlanner_Stop", TrajectorySource::BACKUP_PLANNER_STOP},
   };
