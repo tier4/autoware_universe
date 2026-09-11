@@ -15,15 +15,18 @@
 #include "autoware/trajectory_processor/trajectory_optimizer_plugins/trajectory_time_sequence_raw_optimizer.hpp"
 
 #include "autoware/trajectory_processor/trajectory_modifier_utils/utils.hpp"
+#include "autoware/trajectory_processor/time_sequence_raw/acados_solver_wrapper.hpp"
 
 #include <rclcpp/logging.hpp>
 
+#include <builtin_interfaces/msg/duration.hpp>
 #include <std_msgs/msg/header.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -107,6 +110,30 @@ bool is_stopped_reference_trajectory(
          stopped_velocity_threshold_mps;
 }
 
+double duration_to_sec(const builtin_interfaces::msg::Duration & duration)
+{
+  return static_cast<double>(duration.sec) + 1e-9 * static_cast<double>(duration.nanosec);
+}
+
+/// Instant speed from pose spacing. Uses time_from_start when dt is valid, else 0.1 s.
+double chord_longitudinal_speed_mps(
+  const autoware_planning_msgs::msg::Trajectory & trajectory, const size_t index)
+{
+  using time_sequence_raw::opt_dt_s;
+  if (index + 1 >= trajectory.points.size()) {
+    return 0.0;
+  }
+  const auto & a = trajectory.points[index];
+  const auto & b = trajectory.points[index + 1];
+  const double dist_m = std::hypot(
+    b.pose.position.x - a.pose.position.x, b.pose.position.y - a.pose.position.y);
+  double dt_s = duration_to_sec(b.time_from_start) - duration_to_sec(a.time_from_start);
+  if (dt_s < 1e-6) {
+    dt_s = opt_dt_s;
+  }
+  return dist_m / dt_s;
+}
+
 bool is_near_route_goal(
   const TrajectoryProcessorData & data, const double goal_steer_zero_distance_m)
 {
@@ -129,6 +156,10 @@ void TrajectoryTimeSequenceRawOptimizer::set_params(const TrajectoryProcessorPar
   border_params_ = to_border_params(params.road_border_avoidance);
   road_border_enable_ = border_params_.enable;
   publish_debug_topics_ = params.time_sequence_raw_optimizer.publish_debug_topics;
+  use_stamped_ego_state_ = params.time_sequence_raw_optimizer.use_stamped_ego_state;
+  ego_state_buffer_duration_s_ = params.time_sequence_raw_optimizer.ego_state_buffer_duration_s;
+  max_ego_stamp_mismatch_s_ = params.time_sequence_raw_optimizer.max_ego_stamp_mismatch_s;
+  ego_buffer_.set_duration(ego_state_buffer_duration_s_);
   stopped_velocity_threshold_mps_ =
     params.time_sequence_raw_optimizer.stopped_velocity_threshold_mps;
   stopped_trajectory_max_length_m_ =
@@ -142,10 +173,91 @@ void TrajectoryTimeSequenceRawOptimizer::set_params(const TrajectoryProcessorPar
 void TrajectoryTimeSequenceRawOptimizer::on_initialize(const TrajectoryProcessorParams & params)
 {
   set_params(params);
+  ensure_ego_subscriptions();
   ensure_debug_publishers();
   if (enabled_) {
     ensure_optimizer();
   }
+}
+
+void TrajectoryTimeSequenceRawOptimizer::ensure_ego_subscriptions()
+{
+  if (odom_sub_) {
+    return;
+  }
+  auto * node = get_node_ptr();
+  const auto qos = rclcpp::QoS{50};
+  odom_sub_ = node->create_subscription<nav_msgs::msg::Odometry>(
+    "~/input/odometry", qos,
+    [this](const nav_msgs::msg::Odometry::ConstSharedPtr msg) { ego_buffer_.push_odometry(*msg); });
+  accel_sub_ = node->create_subscription<geometry_msgs::msg::AccelWithCovarianceStamped>(
+    "~/input/acceleration", qos,
+    [this](const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr msg) {
+      ego_buffer_.push_acceleration(*msg);
+    });
+  steer_sub_ = node->create_subscription<autoware_vehicle_msgs::msg::SteeringReport>(
+    "~/input/steering_status", qos,
+    [this](const autoware_vehicle_msgs::msg::SteeringReport::ConstSharedPtr msg) {
+      ego_buffer_.push_steering(*msg);
+    });
+}
+
+void TrajectoryTimeSequenceRawOptimizer::ingest_live_ego(const TrajectoryProcessorData & data)
+{
+  if (data.current_odometry) {
+    ego_buffer_.push_odometry(*data.current_odometry);
+  }
+  if (data.current_acceleration) {
+    ego_buffer_.push_acceleration(*data.current_acceleration);
+  }
+  if (data.current_steering) {
+    ego_buffer_.push_steering(*data.current_steering);
+  }
+}
+
+nav_msgs::msg::Odometry TrajectoryTimeSequenceRawOptimizer::resolve_ocp_odometry(
+  const TrajectoryProcessorData & data, double & accel_mps2, std::optional<double> & steering)
+{
+  last_lookup_dt_s_ = 0.0;
+  last_live_lag_s_ = 0.0;
+  accel_mps2 = data.current_acceleration->accel.accel.linear.x;
+  if (data.current_steering) {
+    steering = data.current_steering->steering_tire_angle;
+  }
+
+  if (!use_stamped_ego_state_) {
+    return *data.current_odometry;
+  }
+
+  const rclcpp::Time query(data.candidate_header.stamp, RCL_ROS_TIME);
+  if (query.nanoseconds() == 0) {
+    return *data.current_odometry;
+  }
+
+  const auto looked = ego_buffer_.lookup(query, max_ego_stamp_mismatch_s_);
+  if (!looked) {
+    return *data.current_odometry;
+  }
+
+  last_lookup_dt_s_ = looked->lookup_dt_s;
+  last_live_lag_s_ = looked->live_lag_s;
+  if (looked->has_acceleration) {
+    accel_mps2 = looked->acceleration.accel.accel.linear.x;
+  }
+  if (looked->has_steering) {
+    steering = looked->steering.steering_tire_angle;
+  }
+
+  if (
+    looked->fallback_latest &&
+    std::abs(looked->lookup_dt_s) > max_ego_stamp_mismatch_s_) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 1000,
+      "TS stamped ego fallback to latest odom (lookup_dt=%.3fs live_lag=%.3fs). "
+      "Buffer may still be filling.",
+      looked->lookup_dt_s, looked->live_lag_s);
+  }
+  return looked->odometry;
 }
 
 void TrajectoryTimeSequenceRawOptimizer::update_params(const TrajectoryProcessorParams & params)
@@ -200,6 +312,109 @@ void TrajectoryTimeSequenceRawOptimizer::ensure_debug_publishers()
     "~/debug/time_sequence_raw_optimizer/solver_status", rclcpp::QoS{1});
   debug_solve_time_pub_ = node->create_publisher<std_msgs::msg::Float64>(
     "~/debug/time_sequence_raw_optimizer/solve_time_ms", rclcpp::QoS{1});
+  debug_optimized_pub_ = node->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+    "~/debug/time_sequence_raw_optimizer/optimized_trajectory", rclcpp::QoS{1});
+  debug_geometry_velocity_pub_ = node->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+    "~/debug/time_sequence_raw_optimizer/geometry_velocity_trajectory", rclcpp::QoS{1});
+  debug_velocity_profile_pub_ = node->create_publisher<std_msgs::msg::Float64MultiArray>(
+    "~/debug/time_sequence_raw_optimizer/velocity_profile", rclcpp::QoS{1});
+}
+
+autoware_planning_msgs::msg::Trajectory
+TrajectoryTimeSequenceRawOptimizer::make_geometry_velocity_trajectory(
+  const autoware_planning_msgs::msg::Trajectory & src) const
+{
+  auto out = src;
+  if (out.points.size() < 2) {
+    return out;
+  }
+  for (size_t i = 0; i + 1 < out.points.size(); ++i) {
+    out.points[i].longitudinal_velocity_mps =
+      static_cast<float>(chord_longitudinal_speed_mps(src, i));
+  }
+  out.points.back().longitudinal_velocity_mps =
+    out.points[out.points.size() - 2].longitudinal_velocity_mps;
+  for (size_t i = 0; i + 1 < out.points.size(); ++i) {
+    double dt_s = duration_to_sec(out.points[i + 1].time_from_start) -
+                  duration_to_sec(out.points[i].time_from_start);
+    if (dt_s < 1e-6) {
+      dt_s = time_sequence_raw::opt_dt_s;
+    }
+    out.points[i].acceleration_mps2 = static_cast<float>(
+      (out.points[i + 1].longitudinal_velocity_mps - out.points[i].longitudinal_velocity_mps) /
+      dt_s);
+  }
+  out.points.back().acceleration_mps2 = 0.0F;
+  return out;
+}
+
+void TrajectoryTimeSequenceRawOptimizer::publish_velocity_diagnostics(
+  const autoware_planning_msgs::msg::Trajectory & reference,
+  const autoware_planning_msgs::msg::Trajectory & optimized,
+  const time_sequence_raw::OptimizationResult & result, const nav_msgs::msg::Odometry & ocp_odom)
+{
+  if (!publish_debug_topics_) {
+    return;
+  }
+  last_geometry_velocity_trajectory_ = make_geometry_velocity_trajectory(reference);
+
+  using time_sequence_raw::opt_dt_s;
+  constexpr size_t k_horizon = 80;
+  const double ego_v = ocp_odom.twist.twist.linear.x;
+  const auto & ego_pos = ocp_odom.pose.pose.position;
+  const size_t n_steps = std::min(k_horizon, reference.points.size());
+
+  double ego_to_p0_speed_mps = 0.0;
+  if (!reference.points.empty()) {
+    const auto & p0 = reference.points.front().pose.position;
+    ego_to_p0_speed_mps =
+      std::hypot(p0.x - ego_pos.x, p0.y - ego_pos.y) / opt_dt_s;
+  }
+  const double opt_a0 =
+    optimized.points.empty() ? 0.0 : static_cast<double>(optimized.points.front().acceleration_mps2);
+  const size_t a_idx = optimized.points.size() > 10 ? 10 : 0;
+  const double opt_a1s =
+    optimized.points.empty() ? 0.0
+                             : static_cast<double>(optimized.points[a_idx].acceleration_mps2);
+
+  std_msgs::msg::Float64MultiArray profile;
+  profile.layout.dim.resize(1);
+  profile.layout.dim[0].label =
+    "v0_seed,a0_seed,ego_v,max_accel_limit,weight_jerk,ego_to_p0_speed,opt_a_t0,opt_a_t1s,"
+    "lookup_dt_s,live_lag_s then per-step geom_v,msg_v,opt_v";
+  profile.layout.dim[0].size = 10 + 3 * static_cast<uint32_t>(n_steps);
+  profile.layout.data_offset = 0;
+  profile.data = {
+    result.initial_speed_mps, result.initial_accel_mps2, ego_v, opt_params_.max_acceleration_mps2,
+    opt_params_.weight_jerk, ego_to_p0_speed_mps, opt_a0, opt_a1s, last_lookup_dt_s_,
+    last_live_lag_s_};
+  for (size_t k = 0; k < n_steps; ++k) {
+    const double geom_v = chord_longitudinal_speed_mps(reference, k);
+    const double msg_v = static_cast<double>(reference.points[k].longitudinal_velocity_mps);
+    const double opt_v =
+      (k < optimized.points.size())
+        ? static_cast<double>(optimized.points[k].longitudinal_velocity_mps)
+        : 0.0;
+    profile.data.push_back(geom_v);
+    profile.data.push_back(msg_v);
+    profile.data.push_back(opt_v);
+  }
+  if (debug_velocity_profile_pub_) {
+    debug_velocity_profile_pub_->publish(profile);
+  }
+  if (debug_geometry_velocity_pub_) {
+    debug_geometry_velocity_pub_->publish(last_geometry_velocity_trajectory_);
+  }
+
+  RCLCPP_WARN_THROTTLE(
+    get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 500,
+    "TS velocity diag: v0_seed=%.3f a0_meas=%.3f ego_to_p0=%.3f lookup_dt=%.3fs live_lag=%.3fs | "
+    "opt a[0]=%.3f a[1s]=%.3f | t0 geom=%.3f opt_v=%.3f | t1s geom=%.3f opt_v=%.3f",
+    result.initial_speed_mps, result.initial_accel_mps2, ego_to_p0_speed_mps, last_lookup_dt_s_,
+    last_live_lag_s_, opt_a0, opt_a1s, chord_longitudinal_speed_mps(reference, 0),
+    optimized.points.empty() ? 0.0 : optimized.points.front().longitudinal_velocity_mps,
+    chord_longitudinal_speed_mps(reference, std::min<size_t>(10, n_steps - 1)),
+    optimized.points.size() > 10 ? optimized.points[10].longitudinal_velocity_mps : 0.0F);
 }
 
 void TrajectoryTimeSequenceRawOptimizer::publish_debug_data(const std::string & /*ns*/) const
@@ -212,6 +427,12 @@ void TrajectoryTimeSequenceRawOptimizer::publish_debug_data(const std::string & 
   }
   if (debug_adjusted_pub_) {
     debug_adjusted_pub_->publish(last_adjusted_trajectory_);
+  }
+  if (debug_optimized_pub_) {
+    debug_optimized_pub_->publish(last_optimized_trajectory_);
+  }
+  if (debug_geometry_velocity_pub_) {
+    debug_geometry_velocity_pub_->publish(last_geometry_velocity_trajectory_);
   }
   if (debug_shifted_count_pub_) {
     std_msgs::msg::Int32 msg;
@@ -299,8 +520,13 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   if (!optimizer_) {
     return ProcessingResult::Unchanged;
   }
+  ingest_live_ego(data);
   maybe_update_map(data);
   ensure_debug_publishers();
+
+  double accel_mps2 = 0.0;
+  std::optional<double> steering;
+  const auto ocp_odom = resolve_ocp_odometry(data, accel_mps2, steering);
 
   const auto original = to_trajectory_msg(traj_points, data.candidate_header);
   last_raw_trajectory_ = original;
@@ -309,7 +535,7 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   last_shifted_point_count_ = 0;
   if (road_border_enable_ && road_border_avoidance_) {
     const auto border_result =
-      road_border_avoidance_->adjust(original, data.current_odometry->pose.pose);
+      road_border_avoidance_->adjust(original, ocp_odom.pose.pose);
     reference = border_result.trajectory;
     last_shifted_point_count_ =
       static_cast<int>(border_result.num_shifted_points + border_result.num_unresolved_points);
@@ -342,14 +568,8 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   }
   in_stopped_regime_ = false;
 
-  std::optional<double> steering;
-  if (data.current_steering) {
-    steering = data.current_steering->steering_tire_angle;
-  }
-
-  const auto result = optimizer_->optimize(
-    reference, *data.current_odometry, steering, data.current_acceleration->accel.accel.linear.x,
-    data.candidate_index);
+  const auto result =
+    optimizer_->optimize(reference, ocp_odom, steering, accel_mps2, data.candidate_index);
   last_solver_status_ = result.solver_status;
   last_solve_time_ms_ = result.solve_time_ms;
 
@@ -361,6 +581,12 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
         result.solver_status);
     }
     return ProcessingResult::Unchanged;
+  }
+
+  last_optimized_trajectory_ = result.trajectory;
+  publish_velocity_diagnostics(reference, result.trajectory, result, ocp_odom);
+  if (debug_optimized_pub_) {
+    debug_optimized_pub_->publish(result.trajectory);
   }
 
   const size_t n_out = std::min(traj_points.size(), result.trajectory.points.size());

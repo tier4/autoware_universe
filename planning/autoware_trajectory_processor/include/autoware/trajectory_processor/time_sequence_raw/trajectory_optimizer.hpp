@@ -39,6 +39,9 @@ struct OptimizationResult
   bool optimized{false};
   int solver_status{0};
   double solve_time_ms{0.0};
+  /// Chord-speed seed for acados x0 (first three poses), not ego twist.
+  double initial_speed_mps{0.0};
+  double initial_accel_mps2{0.0};
 };
 
 /// Tracks a pose-only time-indexed trajectory with a kinematic bicycle OCP.
