@@ -573,6 +573,11 @@ validator:
       default_value: 0.15
       description: buffer for deactivating departure detection [s]
       read_only: false
+    enable_align_to_ego_pose:
+      type: bool
+      default_value: true
+      description: correct the trajectory poses near the ego vehicle to match the measured ego pose
+      read_only: false
     enable_developer_marker:
       type: bool
       default_value: true

@@ -783,6 +783,11 @@
               "default": 0.15,
               "minimum": 0.0
             },
+            "enable_align_to_ego_pose": {
+              "type": "boolean",
+              "description": "Correct the trajectory poses near the ego vehicle to match the measured ego pose.",
+              "default": true
+            },
             "enable_developer_marker": {
               "type": "boolean",
               "description": "Publish diagnostic visualization markers intended for developer use.",

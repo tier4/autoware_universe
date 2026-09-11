@@ -155,6 +155,7 @@
     boundary_departure:
       boundary_types: ["road_border"]
       brake_delay_s: 1.0
+      enable_align_to_ego_pose: true
       enable_developer_marker: false
       lateral_margin_m: 0.01
       longitudinal_margin_m: 1.0

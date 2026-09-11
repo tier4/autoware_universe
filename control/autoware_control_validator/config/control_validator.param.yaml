@@ -25,6 +25,7 @@
       time_to_departure_cutoff_s: 2.0
       on_time_buffer_s: 0.20
       off_time_buffer_s: 0.10
+      enable_align_to_ego_pose: true
       enable_developer_marker: false
 
     latency_validator:
