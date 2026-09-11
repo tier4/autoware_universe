@@ -94,7 +94,6 @@ enum class BoundedQuantity : std::uint8_t {
   LON_ACCEL,    //!< a      [m/s^2] the only quantity for which both bounds are meaningful
   LON_JERK,     //!< j      [m/s^3] bound on |j|
   LAT_ACCEL,    //!< v^2|k| [m/s^2]
-  CURVATURE,    //!< |k|    [1/m]
   STEER_ANGLE,  //!< |d|    [rad]
   STEER_RATE,   //!< |d'|   [rad/s]
 };

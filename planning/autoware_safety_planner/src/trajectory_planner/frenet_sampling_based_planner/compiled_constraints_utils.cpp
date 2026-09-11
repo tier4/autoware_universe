@@ -41,7 +41,7 @@ KinematicLimits collect_kinematic_limits(const CompiledConstraints & compiled_co
         limits.a_hard_max = std::min(limits.a_hard_max, bound.max);
         break;
       default:
-        // LAT_ACCEL / LON_JERK / CURVATURE / STEER_* are the NLP's job, not the views'
+        // LAT_ACCEL / LON_JERK / STEER_* are the NLP's job, not the views'
         break;
     }
   }

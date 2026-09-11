@@ -556,10 +556,6 @@ void SafetyPlannerNode::publish_constraints_markers(
         symbol = "|a_lat|";
         unit = "[m/s^2]";
         break;
-      case BoundedQuantity::CURVATURE:
-        symbol = "|k|";
-        unit = "[1/m]";
-        break;
       case BoundedQuantity::STEER_ANGLE:
         symbol = "|d|";
         unit = "[rad]";

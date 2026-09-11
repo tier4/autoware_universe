@@ -50,13 +50,11 @@ double velocity_limit_at(
 }
 
 //! Upper bounds of the global ScalarBound constraints, per quantity: the ones
-//! collect_kinematic_limits does not read (LAT_ACCEL, LON_JERK, STEER_ANGLE, STEER_RATE,
-//! CURVATURE)
+//! collect_kinematic_limits does not read (LAT_ACCEL, LON_JERK, STEER_ANGLE, STEER_RATE)
 struct GlobalBounds
 {
   double lat_accel{INF};
   double lon_jerk{INF};
-  double curvature{INF};
   double steer_angle{INF};
   double steer_rate{INF};
 };
@@ -74,9 +72,6 @@ GlobalBounds collect_global_bounds(const CompiledConstraints & compiled_constrai
         break;
       case BoundedQuantity::LON_JERK:
         bounds.lon_jerk = std::min(bounds.lon_jerk, bound.max);
-        break;
-      case BoundedQuantity::CURVATURE:
-        bounds.curvature = std::min(bounds.curvature, bound.max);
         break;
       case BoundedQuantity::STEER_ANGLE:
         bounds.steer_angle = std::min(bounds.steer_angle, bound.max);
@@ -533,9 +528,6 @@ void FrenetSamplingBasedPlanner::evaluate(
     }
     if (a < limits.a_hard_min - 1e-6 || a > limits.a_hard_max + 1e-6) {
       return reject("lon_accel");
-    }
-    if (std::abs(kappa) > bounds.curvature) {
-      return reject("curvature");
     }
     const double steer = std::atan(kappa * wheel_base_m);
     if (std::abs(steer) > bounds.steer_angle) {
