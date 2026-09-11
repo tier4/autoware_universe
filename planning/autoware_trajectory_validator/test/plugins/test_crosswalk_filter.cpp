@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/trajectory_validator/detail/risk_utils.hpp"
 #include "autoware/trajectory_validator/filters/traffic_rule/crosswalk_filter.hpp"
 
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
-#include <autoware_trajectory_validator/msg/risk_level.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
+#include <autoware_internal_planning_msgs/msg/risk_level.hpp>
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -42,13 +43,15 @@
 #include <vector>
 
 using autoware::trajectory_validator::FilterContext;
+using autoware::trajectory_validator::is_feasible;
+using autoware::trajectory_validator::worst_risk_level;
 using autoware::trajectory_validator::plugin::traffic_rule::CrosswalkFilter;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::PredictedPath;
 using autoware_planning_msgs::msg::TrajectoryPoint;
-using autoware_trajectory_validator::msg::RiskLevel;
 using autoware_utils_geometry::create_quaternion_from_yaw;
 
 namespace
@@ -297,7 +300,7 @@ protected:
     const auto res = filter_->is_feasible(candidate_trajectory, context_);
     ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error: "
                                  << (res.has_value() ? "" : res.error()) << " " << message;
-    EXPECT_EQ(res->is_feasible, expected_feasible) << message;
+    EXPECT_EQ(is_feasible(worst_risk_level(res->metrics)), expected_feasible) << message;
   }
 
   void set_vehicle_front_offset(const double front_offset_m)
@@ -316,7 +319,7 @@ protected:
     const auto res = filter_->is_feasible(candidate_trajectory, context_);
     ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error: "
                                  << (res.has_value() ? "" : res.error()) << " " << message;
-    EXPECT_EQ(res->is_feasible, expected_feasible) << message;
+    EXPECT_EQ(is_feasible(worst_risk_level(res->metrics)), expected_feasible) << message;
 
     const auto it = std::find_if(res->metrics.begin(), res->metrics.end(), [](const auto & metric) {
       return metric.metric_name == "check_crosswalk_obstruction";
@@ -600,8 +603,9 @@ TEST_F(CrosswalkFilterTest, RiskLevelHighCautionWhenOnlyHardBrakingCanStop)
   set_pedestrian_at(stop_line_x, -7.0);
 
   expect_obstruction_risk(
-    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::HIGH_CAUTION, false,
-    "obstruction beyond minimum but within nominal stop distance should report HIGH_CAUTION");
+    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::HIGH_CAUTION, true,
+    "obstruction beyond minimum but within nominal stop distance should report HIGH_CAUTION and "
+    "stay usable");
 }
 
 TEST_F(CrosswalkFilterTest, RiskLevelLowCautionWhenNominalBrakingCanStop)
@@ -618,8 +622,8 @@ TEST_F(CrosswalkFilterTest, RiskLevelLowCautionWhenNominalBrakingCanStop)
   set_pedestrian_at(stop_line_x, -7.0);
 
   expect_obstruction_risk(
-    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::LOW_CAUTION, false,
-    "obstruction beyond nominal stop distance should report LOW_CAUTION");
+    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::LOW_CAUTION, true,
+    "obstruction beyond nominal stop distance should report LOW_CAUTION and stay usable");
 }
 
 TEST_F(CrosswalkFilterTest, RiskLevelAccountsForVehicleFrontOffset)
@@ -643,6 +647,6 @@ TEST_F(CrosswalkFilterTest, RiskLevelAccountsForVehicleFrontOffset)
   set_pedestrian_at(stop_line_x, -7.0);
 
   expect_obstruction_risk(
-    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::HIGH_CAUTION, false,
+    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::HIGH_CAUTION, true,
     "risk should use ego-front-to-stop-line distance, not raw arc length");
 }

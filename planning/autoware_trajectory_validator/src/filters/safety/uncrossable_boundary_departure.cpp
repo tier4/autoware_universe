@@ -68,15 +68,16 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
       break;
   }
 
-  std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+  std::vector<MetricReport> metrics{autoware_internal_planning_msgs::build<MetricReport>()
                                       .validator_name(get_name())
                                       .validator_category(category())
                                       .metric_name("lat_dist_to_uncrossable_bound")
                                       .metric_value(status.lat_dist_to_uncrossable_bound)
                                       .risk(risk_level)};
 
-  // Only a CRITICAL departure rejects the trajectory. NEAR_BOUNDARY is advisory.
-  return ValidationResult{!is_critical_departure, std::move(metrics)};
+  // Only a CRITICAL departure rejects the trajectory, because it reports DANGER. NEAR_BOUNDARY
+  // reports LOW_CAUTION and is advisory.
+  return ValidationResult{std::move(metrics)};
 }
 
 void UncrossableBoundaryDepartureFilter::update_parameters(const validator::Params & params)

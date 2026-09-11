@@ -107,6 +107,13 @@ trajectory_processor_params:
       read_only: false
       validation:
         bounds<>: [0.0, 10.0]
+    delay_response_time:
+      type: double
+      default_value: 0.5
+      description: Delay response time used to estimate the minimum ego stopping distance [s]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
     arrived_distance_threshold:
       type: double
       default_value: 0.5
@@ -149,13 +156,6 @@ trajectory_processor_params:
       description: Minimum distance to maintain from an obstacle when stopped [m]
       validation:
         bounds<>: [0.0, 100.0]
-      read_only: false
-    lateral_margin:
-      type: double
-      default_value: 0.5
-      description: Lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
-      validation:
-        bounds<>: [0.0, 10.0]
       read_only: false
     duplicate_check_threshold:
       type: double
@@ -222,6 +222,11 @@ trajectory_processor_params:
           default_value: [car, truck, bus, trailer, pedestrian, hazard, unknown]
           description: Types of polygon shaped objects to consider for obstacle stop
           read_only: false
+        pointcloud:
+          type: string_array
+          default_value: [structure, vegetation]
+          description: Types of pointcloud to consider for obstacle stop
+          read_only: false
       stopped_velocity_th:
         type: double
         default_value: 0.25
@@ -243,26 +248,98 @@ trajectory_processor_params:
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
-    pointcloud:
-      target_types:
-        type: string_array
-        default_value: [structure, vegetation]
-        description: Pointcloud types to consider for obstacle stop
-        read_only: false
-      height_buffer:
+      pointcloud_height_buffer:
         type: double
-        default_value: 0.5
-        description: Height buffer to add above ego height [m]
+        default_value: 0.2
+        description: Height buffer to add above ego height for pointcloud [m]
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
-      min_height:
+      pointcloud_min_height:
         type: double
         default_value: 0.2
         description: Minimum height of pointcloud [m]
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
+      lateral_margin:
+        car:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for car objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        truck:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for truck objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        bus:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for bus objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        trailer:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for trailer objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        motorcycle:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for motorcycle objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        bicycle:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for bicycle objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        pedestrian:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for pedestrian objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        hazard:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for hazard objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        structure:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for structure pointcloud [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        vegetation:
+          type: double
+          default_value: 0.1
+          description: Lateral margin on top of ego width for vegetation pointcloud [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        unknown:
+          type: double
+          default_value: 0.0
+          description: Lateral margin on top of ego width for unknown objects and unclassified pointcloud [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
 
     rss_params:
       enable:
@@ -334,16 +411,9 @@ trajectory_processor_params:
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
-      reaction_time:
-        type: double
-        default_value: 0.4
-        description: Reaction time to consider for RSS calculation [s]
-        validation:
-          bounds<>: [0.0, 10.0]
-        read_only: false
       safety_margin:
         type: double
-        default_value: 3.0
+        default_value: 1.5
         description: Safety margin to consider for RSS calculation [m]
         validation:
           bounds<>: [0.0, 10.0]
@@ -504,13 +574,6 @@ trajectory_processor_params:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
-    crossing_time_limit:
-      type: double
-      default_value: 2.75
-      description: Crossing time limit [s]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
     amber_rejection:
       th_hysteresis:
         type: double
@@ -523,6 +586,27 @@ trajectory_processor_params:
         type: bool
         default_value: true
         description: Reject if we detect a previous stop attempt from input trajectory
+        read_only: false
+      can_stop_decel:
+        type: double
+        default_value: 2.8
+        description: Deceleration threshold for ego vehicle to stop [m/s^2]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      can_stop_jerk:
+        type: double
+        default_value: 5.0
+        description: Jerk threshold for ego vehicle to stop [m/s^3]
+        validation:
+          bounds<>: [0.0, 100.0]
+        read_only: false
+      crossing_time_limit:
+        type: double
+        default_value: 2.75
+        description: Crossing time limit [s]
+        validation:
+          bounds<>: [0.0, 10.0]
         read_only: false
   use_akima_spline_interpolation:
     type: bool

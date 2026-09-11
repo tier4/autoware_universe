@@ -9,7 +9,7 @@ This package provides a pluginlib-based C++ library for evaluating candidate tra
 For each input `CandidateTrajectories` message the library runs every loaded plugin against every trajectory:
 
 1. **Plugin evaluation**: each plugin's `is_feasible()` is called with the trajectory points and the current `ValidatorContext` (odometry, predicted objects, acceleration, HD map, traffic light states).
-2. **Feasibility decision**: a trajectory survives if every plugin listed in `filter_names` returns `is_feasible = true`. Plugins listed in `shadow_mode_filter_names` are evaluated and reported but never remove a trajectory.
+2. **Feasibility decision**: each plugin reports metrics with a risk level. A plugin accepts the trajectory when the worst risk level of its metrics is `SAFE`, `LOW_CAUTION`, or `HIGH_CAUTION`, and rejects it on `DANGER` or `FATAL`. A trajectory survives if every plugin listed in `filter_names` accepts it. Plugins listed in `shadow_mode_filter_names` are evaluated and reported but never remove a trajectory.
 3. **Diagnostics**: `TrajectoryValidatorDiagnostic` selects the best candidate (the one with the least severe action across all active filters), resolves the `(filter_name, action)` pair to a named `DiagnosticStatus` via the `configured_actions` parameter, and publishes every tracked status every cycle (active ones at their level, inactive ones at `OK` to prevent staleness). Shadow-mode filters never contribute to the action aggregation. See [docs/TrajectoryValidatorDiagnostic.md](docs/TrajectoryValidatorDiagnostic.md) for details.
 
 ## Built-in Plugins
@@ -27,20 +27,20 @@ This package is a C++ library. The topics below are subscribed to by the hosting
 
 ### Topics
 
-| Direction  | Topic name                                 | Message Type                                              | Description                                                                         |
-| ---------- | ------------------------------------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Subscriber | `~/input/odometry`                         | `nav_msgs/msg/Odometry`                                   | Current ego pose and velocity (mandatory)                                           |
-| Subscriber | `~/input/acceleration`                     | `geometry_msgs/msg/AccelWithCovarianceStamped`            | Current ego acceleration (mandatory)                                                |
-| Subscriber | `~/input/objects`                          | `autoware_perception_msgs/msg/PredictedObjects`           | Surrounding dynamic obstacles (mandatory)                                           |
-| Subscriber | `~/input/traffic_signals`                  | `autoware_perception_msgs/msg/TrafficLightGroupArray`     | Traffic light states (optional; absent data does not block validation)              |
-| Subscriber | `~/input/lanelet2_map`                     | `autoware_map_msgs/msg/LaneletMapBin`                     | HD map loaded once at startup (transient local QoS; mandatory)                      |
-| Subscribe  | `~/input/route`                            | `autoware_planning_msgs/msg/LaneletRoute`                 | Route with the lanelets followed by ego (only required by the `TrafficLightFilter`) |
-| Publisher  | `~/debug/validation_reports`               | `autoware_trajectory_validator/msg/ValidationReportArray` | Per-trajectory validation verdict and per-metric values                             |
-| Publisher  | `~/debug/markers/<plugin_name>`            | `visualization_msgs/msg/MarkerArray`                      | Per-plugin debug visualization markers                                              |
-| Publisher  | `~/debug/plugin_report_text`               | `visualization_msgs/msg/MarkerArray`                      | Text overlay summarizing how many paths each plugin filtered                        |
-| Publisher  | `~/debug/processing_time_ms`               | `autoware_internal_debug_msgs/msg/Float64Stamped`         | Total validator processing time [ms]                                                |
-| Publisher  | `~/debug/<plugin_name>/processing_time_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped`         | Per-plugin processing time [ms]                                                     |
-| Publisher  | `~/debug/processing_time_text`             | `autoware_internal_debug_msgs/msg/StringStamped`          | Human-readable processing time breakdown                                            |
+| Direction  | Topic name                                 | Message Type                                                | Description                                                                         |
+| ---------- | ------------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Subscriber | `~/input/odometry`                         | `nav_msgs/msg/Odometry`                                     | Current ego pose and velocity (mandatory)                                           |
+| Subscriber | `~/input/acceleration`                     | `geometry_msgs/msg/AccelWithCovarianceStamped`              | Current ego acceleration (mandatory)                                                |
+| Subscriber | `~/input/objects`                          | `autoware_perception_msgs/msg/PredictedObjects`             | Surrounding dynamic obstacles (mandatory)                                           |
+| Subscriber | `~/input/traffic_signals`                  | `autoware_perception_msgs/msg/TrafficLightGroupArray`       | Traffic light states (optional; absent data does not block validation)              |
+| Subscriber | `~/input/lanelet2_map`                     | `autoware_map_msgs/msg/LaneletMapBin`                       | HD map loaded once at startup (transient local QoS; mandatory)                      |
+| Subscribe  | `~/input/route`                            | `autoware_planning_msgs/msg/LaneletRoute`                   | Route with the lanelets followed by ego (only required by the `TrafficLightFilter`) |
+| Publisher  | `~/debug/validation_reports`               | `autoware_internal_planning_msgs/msg/ValidationReportArray` | Per-trajectory validation verdict and per-metric values                             |
+| Publisher  | `~/debug/markers/<plugin_name>`            | `visualization_msgs/msg/MarkerArray`                        | Per-plugin debug visualization markers                                              |
+| Publisher  | `~/debug/plugin_report_text`               | `visualization_msgs/msg/MarkerArray`                        | Text overlay summarizing how many paths each plugin filtered                        |
+| Publisher  | `~/debug/processing_time_ms`               | `autoware_internal_debug_msgs/msg/Float64Stamped`           | Total validator processing time [ms]                                                |
+| Publisher  | `~/debug/<plugin_name>/processing_time_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped`           | Per-plugin processing time [ms]                                                     |
+| Publisher  | `~/debug/processing_time_text`             | `autoware_internal_debug_msgs/msg/StringStamped`            | Human-readable processing time breakdown                                            |
 
 ### Parameters
 

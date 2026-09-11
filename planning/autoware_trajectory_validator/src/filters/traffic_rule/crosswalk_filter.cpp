@@ -355,7 +355,7 @@ CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
   const auto target_crosswalks = get_target_crosswalks(candidate_trajectory.points, context);
 
   std::vector<MetricReport> metrics;
-  if (target_crosswalks.empty()) return ValidationResult{true, std::move(metrics)};
+  if (target_crosswalks.empty()) return ValidationResult{std::move(metrics)};
 
   update_target_objects(context, target_crosswalks);
 
@@ -377,7 +377,7 @@ CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
   RiskLevel risk_level;
   risk_level.level = feasible ? RiskLevel::SAFE : get_risk_level(arc_length_to_stop_line);
   metrics.push_back(
-    autoware_trajectory_validator::build<MetricReport>()
+    autoware_internal_planning_msgs::build<MetricReport>()
       .validator_name(get_name())
       .validator_category(category())
       .metric_name("check_crosswalk_obstruction")
@@ -406,7 +406,7 @@ CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
     return planning_factors;
   }();
 
-  return ValidationResult{feasible, std::move(metrics), std::move(planning_factors)};
+  return ValidationResult{std::move(metrics), std::move(planning_factors)};
 }
 
 RiskLevel::_level_type CrosswalkFilter::get_risk_level(const double arc_length_to_stop_line) const
