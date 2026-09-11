@@ -2,6 +2,8 @@
   ros__parameters:
     # Complete plugin execution order: modifiers followed by optimizers.
     plugin_names:
+      - "autoware::trajectory_processor::plugin::MapVelocityLimits"
+      - "autoware::trajectory_processor::plugin::TrajectoryTimeSequenceRawOptimizer"
       - "autoware::trajectory_processor::plugin::StopPointFixer"
       - "autoware::trajectory_processor::plugin::SurroundObstacleStop"
       - "autoware::trajectory_processor::plugin::ObstacleStop"
@@ -17,6 +19,9 @@
       - "autoware::trajectory_processor::plugin::TrajectorySplineSmoother"
       - "autoware::trajectory_processor::plugin::TrajectoryMPTOptimizer"
       - "autoware::trajectory_processor::plugin::TrajectoryExtender"
+    use_map_velocity_limits: true
+    map_velocity_limits:
+      enable_smoothing: true
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
@@ -32,6 +37,7 @@
     use_kinematic_feasibility_enforcer: true
     use_mpt_optimizer: false
     use_temporal_mpt_optimizer: true
+    use_time_sequence_raw_optimizer: false
 
     trajectory_time_step: 0.1 # [s]
 
@@ -47,6 +53,7 @@
       nominal_deceleration: 1.0 # [m/s^2]
       maximum_deceleration: 4.0 # [m/s^2]
       jerk_limit: 3.0 # [m/s^3]
+      delay_response_time: 0.5 # [s] delay response time used to estimate the minimum ego stopping distance
       arrived_distance_threshold: 0.5 # threshold to check if the ego vehicle has arrived at the stop point [m]
 
     # Obstacle Stop Plugin Parameters
@@ -57,7 +64,6 @@
       enable_stop_for_pointcloud: false
       stop_margin: 6.0 # [m]
       minimum_stop_margin: 3.0 # [m]
-      lateral_margin: 0.2     # lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
       duplicate_check_threshold: 0.5 # threshold to check if the stop point is already in the trajectory [m]
 
       obstacle_tracking:
@@ -72,14 +78,24 @@
         target_objects:
           bbox: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "unknown"]
           polygon: ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "unknown"]
+          pointcloud: ["structure", "vegetation"]
         stopped_velocity_th: 0.3 # [m/s]
         max_lateral_velocity_th: 1.0 # [m/s] max lateral velocity (w.r.t ego traj) to consider for obstacle stop
         safety_buffer: 0.1 # [m] safety buffer to expand object shape
-
-      pointcloud:
-        target_types: ["structure", "vegetation"]
-        height_buffer: 0.5  # height buffer to add above ego height [m]
-        min_height: 0.2  # minimum height of pointcloud [m]
+        pointcloud_height_buffer: 0.2
+        pointcloud_min_height: 0.2
+        lateral_margin:
+          car: 0.1
+          truck: 0.1
+          bus: 0.1
+          trailer: 0.1
+          motorcycle: 0.1
+          bicycle: 0.1
+          pedestrian: 0.1
+          hazard: 0.1
+          structure: 0.1
+          vegetation: 0.1
+          unknown: 0.0
 
       rss_params:
         enable: true
@@ -93,28 +109,29 @@
           pedestrian: 5.0
           animal: 5.0
         ego_decel: 2.0 # [m/s^2]
-        reaction_time: 0.4 # [s]
-        safety_margin: 3.0 # [m]
+        safety_margin: 1.5 # [m]
         lookahead_horizon: 1.5 # [s]
 
     # Traffic Light Stop Plugin Parameters
     traffic_light_stop:
       stop_margin: 0.75 # [m]
       stop_for_red_light: true
-      stop_for_amber_light: false
+      stop_for_amber_light: true
       treat_amber_light_as_red: false
       treat_unknown_light_as_red: true
-      enable_arrow_aware_amber_passing: true # allow Green->Amber on turn lanes with mapped static arrow
+      enable_arrow_aware_amber_passing: true # [-] allow Green->Amber on turn lanes with mapped static arrow
       overshoot_tolerance: 0.5 # [m]
       allow_if_cannot_stop_distance: 1.0 # [m]
       min_lookahead_distance: 20.0 # [m] minimum forward length to scan for stop lines even at low ego speed
       th_stable_duration_red: 0.2 # [s]
       th_stable_duration_amber: 0.2 # [s]
       th_stable_duration_unknown: 0.5 # [s]
-      crossing_time_limit: 2.75 # [s]
       amber_rejection:
         th_hysteresis: 0.5 # [s]
         reject_if_stop_detected: true # reject if we detect a previous stop attempt from input trajectory
+        can_stop_decel: 2.8
+        can_stop_jerk: 5.0
+        crossing_time_limit: 2.75 # [s] trajectories crossing an amber light are rejected if they cannot cross before this time
 
     # Surround Obstacle Stop Plugin Parameters
     surround_obstacle_stop:
@@ -163,3 +180,7 @@
       hysteresis_distance: 0.1
       hysteresis_time: 0.2
       ego_stopped_vel_th: 0.1 # [m/s]
+
+    map_velocity_limits:
+      limit_velocity_from_map_debug_lanelet_ids: [0]
+      limit_velocity_from_map_debug_max_velocities: [1000.0]

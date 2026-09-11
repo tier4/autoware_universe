@@ -18,10 +18,10 @@
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
-#include <autoware_trajectory_validator/msg/risk_level.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
+#include <autoware_internal_planning_msgs/msg/risk_level.hpp>
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -46,12 +46,12 @@ using autoware::trajectory_validator::FilterContext;
 using autoware::trajectory_validator::is_feasible;
 using autoware::trajectory_validator::worst_risk_level;
 using autoware::trajectory_validator::plugin::traffic_rule::CrosswalkFilter;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::PredictedPath;
 using autoware_planning_msgs::msg::TrajectoryPoint;
-using autoware_trajectory_validator::msg::RiskLevel;
 using autoware_utils_geometry::create_quaternion_from_yaw;
 
 namespace

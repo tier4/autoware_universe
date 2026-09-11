@@ -20,6 +20,7 @@
   <buildtool_depend>autoware_cmake</buildtool_depend>
 
   <depend>autoware_agnocast_wrapper</depend>
+  <depend>autoware_avoidance_target_detector</depend>
   <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_internal_planning_msgs</depend>
   <depend>autoware_lanelet2_utils</depend>
@@ -39,7 +40,7 @@
   <depend>autoware_traffic_light_compliance_checker</depend>
   <depend>autoware_trajectory</depend>
   <depend>autoware_utils</depend>
-  <depend>autoware_utils_debug</depend>
+  <depend>autoware_utils_geometry</depend>
   <depend>autoware_utils_math</depend>
   <depend>autoware_utils_rclcpp</depend>
   <depend>autoware_vehicle_info_utils</depend>
@@ -48,7 +49,6 @@
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>pluginlib</depend>
-  <depend>range-v3</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>rclpy</depend>

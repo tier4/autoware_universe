@@ -11,6 +11,7 @@
   <arg name="trajectory_kinematic_feasibility_enforcer_param_path" default="$(find-pkg-share autoware_trajectory_processor)/config/plugins/trajectory_kinematic_feasibility_enforcer.param.yaml"/>
   <arg name="trajectory_mpt_optimizer_param_path" default="$(find-pkg-share autoware_trajectory_processor)/config/plugins/trajectory_mpt_optimizer.param.yaml"/>
   <arg name="trajectory_temporal_mpt_optimizer_param_path" default="$(find-pkg-share autoware_trajectory_processor)/config/plugins/trajectory_temporal_mpt_optimizer.param.yaml"/>
+  <arg name="trajectory_time_sequence_raw_optimizer_param_path" default="$(find-pkg-share autoware_trajectory_processor)/config/plugins/trajectory_time_sequence_raw_optimizer.param.yaml"/>
   <arg name="vehicle_info_param_path" default="$(find-pkg-share autoware_trajectory_processor)/config/empty.param.yaml"/>
   <arg name="simulator_model_param_path" default="$(find-pkg-share autoware_trajectory_processor)/config/empty.param.yaml"/>
   <arg name="mppi_param_path" default="$(find-pkg-share autoware_trajectory_processor)/config/empty.param.yaml"/>
@@ -46,6 +47,7 @@
     <param from="$(var trajectory_kinematic_feasibility_enforcer_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_mpt_optimizer_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_temporal_mpt_optimizer_param_path)" allow_substs="true"/>
+    <param from="$(var trajectory_time_sequence_raw_optimizer_param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
     <param from="$(var simulator_model_param_path)"/>
     <param from="$(var mppi_param_path)" allow_substs="true"/>

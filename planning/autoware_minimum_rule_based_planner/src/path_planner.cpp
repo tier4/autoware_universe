@@ -1449,16 +1449,9 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
 
   const lanelet::LaneletSequence lanelet_sequence(lanelets);
   const auto s = s_on_current_lanelet + lanelet::utils::getLaneletLength2d(backward_lanelets);
-  const auto [s_start, s_end] = [&]() {
-    Interval range = utils::refine_path_range(
-      {s - path_length_backward, s + path_length_forward}, lanelet_sequence, route_context_,
-      vehicle_info_, stop_margin);
-
-    if (route_deviation_stop(*current_lanelet_, vehicle_center_pose, route_context_)) {
-      range.end = std::min(range.end, s);
-    }
-    return range;
-  }();
+  const auto [s_start, s_end] = utils::refine_path_range(
+    {s - path_length_backward, s + path_length_forward}, lanelet_sequence, route_context_,
+    vehicle_info_, stop_margin);
 
   if (s_end < s_start) {
     RCLCPP_WARN_THROTTLE(
@@ -1635,6 +1628,17 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
       RCLCPP_WARN(logger_, "Trajectory length too short after cropping: %f", trajectory->length());
       return std::nullopt;
     }
+  }
+
+  const auto vehicle_center_pose = autoware_utils::calc_offset_pose(
+    current_pose,
+    (vehicle_info_.max_longitudinal_offset_m + vehicle_info_.min_longitudinal_offset_m) / 2.0, 0.0,
+    0.0);
+  if (
+    !start_goal_planner_.start_planner_active() && !start_goal_planner_.goal_planner_active() &&
+    route_deviation_stop(*current_lanelet_, vehicle_center_pose, route_context_)) {
+    RCLCPP_WARN(logger_, "Route deviation detected, cannot generate path");
+    return std::nullopt;
   }
 
   // Compose the polished path

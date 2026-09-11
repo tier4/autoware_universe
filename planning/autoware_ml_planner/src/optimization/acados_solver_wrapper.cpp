@@ -146,7 +146,8 @@ SolverSolution AcadosSolverWrapper::solve(
   //   W_pos = R(yaw_ref) * diag(w_lon, w_lat) * R(yaw_ref)^T.
   // acados scales stage costs by dt; multiply by 1/dt (= N/Tf) so the configured weights
   // keep a per-sample magnitude (same convention as generate_solver.py).
-  // y = [x, y, yaw, v, delta, a, delta_rate]; v and delta have no reference (see header).
+  // y = [x, y, yaw, v, delta, a, delta_rate]. The v and delta references remain zero,
+  // so their weights penalize state magnitude directly.
   const double unscale = 1.0 / opt_dt_s;
   const double w_lon = impl_->params.weight_longitudinal;
   const double w_lat = impl_->params.weight_lateral;
@@ -160,6 +161,8 @@ SolverSolution AcadosSolverWrapper::solve(
   };
   std::array<double, gen_ny * gen_ny> stage_weight_matrix{};
   stage_weight_matrix[2 * gen_ny + 2] = unscale * impl_->params.weight_yaw;
+  stage_weight_matrix[3 * gen_ny + 3] = unscale * impl_->params.weight_velocity;
+  stage_weight_matrix[4 * gen_ny + 4] = unscale * impl_->params.weight_steering_angle;
   stage_weight_matrix[5 * gen_ny + 5] = unscale * impl_->params.weight_acceleration;
   stage_weight_matrix[6 * gen_ny + 6] = unscale * impl_->params.weight_steering_rate;
   for (size_t stage = 0; stage < gen_n; ++stage) {
@@ -181,6 +184,8 @@ SolverSolution AcadosSolverWrapper::solve(
   terminal_weight_matrix[1] = terminal_scale * we_xy;
   terminal_weight_matrix[gen_nyn] = terminal_scale * we_xy;
   terminal_weight_matrix[2 * gen_nyn + 2] = terminal_scale * impl_->params.weight_yaw;
+  terminal_weight_matrix[3 * gen_nyn + 3] = terminal_scale * impl_->params.weight_velocity;
+  terminal_weight_matrix[4 * gen_nyn + 4] = terminal_scale * impl_->params.weight_steering_angle;
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "W",
     terminal_weight_matrix.data());

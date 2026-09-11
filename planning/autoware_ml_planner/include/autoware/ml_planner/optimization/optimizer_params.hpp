@@ -21,8 +21,8 @@ namespace autoware::ml_planner::optimization
 /**
  * @brief Runtime parameters for the acados-based trajectory optimization.
  *
- * Cost weights and constraint bounds are injected into the generated solver at startup,
- * so tuning them does not require regenerating the acados code
+ * Cost weights and constraint bounds are injected when the solver is constructed or
+ * reconfigured, so tuning them does not require regenerating the acados code
  * (see scripts/generate_solver.py for the baked-in defaults and the OCP definition).
  */
 struct TrajectoryOptimizationParams
@@ -33,11 +33,12 @@ struct TrajectoryOptimizationParams
   // The position error is split along the reference heading: longitudinal errors
   // (ahead/behind the time schedule, i.e. velocity-profile freedom) and lateral errors
   // (path deviation) are weighted separately via a per-stage rotated 2x2 weight block.
-  // Velocity and steering angle carry no tracking weight: the model outputs positions
-  // and headings only, so no reference exists for them.
   double weight_longitudinal{0.5};
   double weight_lateral{0.5};
   double weight_yaw{0.05};
+  // Penalize velocity and steering-angle magnitude relative to zero.
+  double weight_velocity{0.01};
+  double weight_steering_angle{1.0};
   double weight_acceleration{0.1};
   double weight_steering_rate{10.0};
   // Terminal state weight = terminal_weight_scale * stage state weight.

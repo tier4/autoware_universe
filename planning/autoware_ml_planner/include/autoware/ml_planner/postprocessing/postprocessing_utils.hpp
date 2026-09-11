@@ -75,17 +75,22 @@ PredictedObjects create_predicted_objects(
 /**
  * @brief Creates a Trajectory message from parsed agent poses for a specific batch and ego agent.
  *
- * Only pose information is filled; the model predicts positions and headings only, so
- * velocity and acceleration are not derived here (see the trajectory optimization).
+ * The velocity of each point is its distance to the previous point divided by the time step,
+ * with the current ego position as the predecessor of the first point, and the acceleration is
+ * the forward difference of that speed profile (0 on the last point). The model predicts poses
+ * only, so the heading rate and steering angle are left at zero. When the trajectory
+ * optimization is enabled it recomputes all of these consistently with the vehicle model.
  *
  * @param agent_poses The parsed agent poses [batch][agent][timestep] -> pose matrix.
  * @param stamp The ROS time stamp for the message.
+ * @param base_position The current ego position in map coordinates.
  * @param batch_index The batch index to extract.
  * @return A Trajectory message for the ego agent in the specified batch.
  */
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, int64_t batch_index);
+  const rclcpp::Time & stamp, const geometry_msgs::msg::Point & base_position,
+  int64_t batch_index);
 
 /**
  * @brief Counts valid elements in a tensor with shape (B, len, dim2, dim3).

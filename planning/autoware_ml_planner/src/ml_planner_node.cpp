@@ -192,7 +192,7 @@ void MLPlanner::set_up_params()
   params_.noise_scale_list = this->declare_parameter<std::vector<double>>("noise_scale", {1.0});
   params_.line_string_max_step_m = this->declare_parameter<double>("line_string_max_step_m", 5.0);
 
-  // trajectory optimization params (static; changing them requires a restart)
+  // trajectory optimization params
   auto & opt = params_.trajectory_optimization;
   opt.enable = this->declare_parameter<bool>("trajectory_optimization.enable", false);
   opt.weight_longitudinal =
@@ -200,6 +200,10 @@ void MLPlanner::set_up_params()
   opt.weight_lateral =
     this->declare_parameter<double>("trajectory_optimization.weight_lateral", 0.5);
   opt.weight_yaw = this->declare_parameter<double>("trajectory_optimization.weight_yaw", 0.05);
+  opt.weight_velocity =
+    this->declare_parameter<double>("trajectory_optimization.weight_velocity", 0.01);
+  opt.weight_steering_angle =
+    this->declare_parameter<double>("trajectory_optimization.weight_steering_angle", 1.0);
   opt.weight_acceleration =
     this->declare_parameter<double>("trajectory_optimization.weight_acceleration", 0.1);
   opt.weight_steering_rate =
@@ -230,9 +234,11 @@ void MLPlanner::set_up_params()
   }
 #endif
 
-  // road border avoidance params (static; changing them requires a restart)
+  // road border avoidance params
   auto & avoidance = params_.road_border_avoidance;
   avoidance.enable = this->declare_parameter<bool>("road_border_avoidance.enable", false);
+  avoidance.start_time_s =
+    this->declare_parameter<double>("road_border_avoidance.start_time_s", 0.0);
   avoidance.footprint_margin_m =
     this->declare_parameter<double>("road_border_avoidance.footprint_margin_m", 0.2);
   avoidance.search_radius_m =
@@ -244,7 +250,7 @@ void MLPlanner::set_up_params()
   avoidance.propagate_shift =
     this->declare_parameter<bool>("road_border_avoidance.propagate_shift", true);
 
-  // stop point fixing params (static; changing them requires a restart)
+  // stop point fixing params
   auto & stop_fixing = params_.stop_point_fixing;
   stop_fixing.enable = this->declare_parameter<bool>("stop_point_fixing.enable", false);
   stop_fixing.velocity_threshold_mps =
@@ -287,98 +293,227 @@ void MLPlanner::load_model()
                                                   << ")");
 }
 
-SetParametersResult MLPlanner::on_parameter(
-  [[maybe_unused]] const std::vector<rclcpp::Parameter> & parameters)
+SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter> & parameters)
 {
   using autoware_utils::update_param;
-  {
-    MLPlannerParams temp_params = params_;
-    const auto previous_model_path = params_.model_path;
-    const auto previous_batch_size = params_.batch_size;
-    const auto previous_backend = params_.backend;
-    const auto previous_trt_precision = params_.trt_precision;
-    const auto previous_use_cuda_graph = params_.use_cuda_graph;
-    const auto previous_line_string_max_step_m = params_.line_string_max_step_m;
-    update_param<std::string>(parameters, "model.onnx_model_path", temp_params.model_path);
-    update_param<std::string>(parameters, "model.backend", temp_params.backend);
-    update_param<std::string>(parameters, "model.precision", temp_params.trt_precision);
-    update_param<bool>(parameters, "model.use_cuda_graph", temp_params.use_cuda_graph);
-    update_param<double>(
-      parameters, "traffic_light_group_msg_timeout_seconds",
-      temp_params.traffic_light_group_msg_timeout_seconds);
-    update_param<int>(parameters, "batch_size", temp_params.batch_size);
-    update_param<std::vector<double>>(parameters, "noise_scale", temp_params.noise_scale_list);
-    update_param<double>(parameters, "line_string_max_step_m", temp_params.line_string_max_step_m);
-    if (temp_params.trt_precision != "fp32" && temp_params.trt_precision != "fp16") {
-      SetParametersResult result;
-      result.successful = false;
-      result.reason = "model.precision must be either 'fp32' or 'fp16'";
-      return result;
-    }
-    const bool valid_backend = temp_params.backend == "tensorrt"
+  MLPlannerParams new_params = params_;
+  MLPlannerPlanningFactorParams new_planning_factor_params = planning_factor_params_;
+  MLPlannerDebugParams new_debug_params = debug_params_;
+  bool requested_build_only = params_.build_only;
+
+  update_param<std::string>(parameters, "model.onnx_model_path", new_params.model_path);
+  update_param<std::string>(parameters, "model.backend", new_params.backend);
+  update_param<std::string>(parameters, "model.precision", new_params.trt_precision);
+  update_param<bool>(parameters, "model.use_cuda_graph", new_params.use_cuda_graph);
+  update_param<std::string>(parameters, "plugins_path", new_params.plugins_path);
+  update_param<bool>(parameters, "build_only", requested_build_only);
+  update_param<double>(parameters, "planning_frequency_hz", new_params.planning_frequency_hz);
+  update_param<double>(
+    parameters, "traffic_light_group_msg_timeout_seconds",
+    new_params.traffic_light_group_msg_timeout_seconds);
+  update_param<int>(parameters, "batch_size", new_params.batch_size);
+  update_param<std::vector<double>>(parameters, "noise_scale", new_params.noise_scale_list);
+  update_param<double>(parameters, "line_string_max_step_m", new_params.line_string_max_step_m);
+
+  auto & opt = new_params.trajectory_optimization;
+  update_param<bool>(parameters, "trajectory_optimization.enable", opt.enable);
+  update_param<double>(
+    parameters, "trajectory_optimization.weight_longitudinal", opt.weight_longitudinal);
+  update_param<double>(parameters, "trajectory_optimization.weight_lateral", opt.weight_lateral);
+  update_param<double>(parameters, "trajectory_optimization.weight_yaw", opt.weight_yaw);
+  update_param<double>(parameters, "trajectory_optimization.weight_velocity", opt.weight_velocity);
+  update_param<double>(
+    parameters, "trajectory_optimization.weight_steering_angle", opt.weight_steering_angle);
+  update_param<double>(
+    parameters, "trajectory_optimization.weight_acceleration", opt.weight_acceleration);
+  update_param<double>(
+    parameters, "trajectory_optimization.weight_steering_rate", opt.weight_steering_rate);
+  update_param<double>(
+    parameters, "trajectory_optimization.terminal_weight_scale", opt.terminal_weight_scale);
+  update_param<double>(
+    parameters, "trajectory_optimization.min_velocity_mps", opt.min_velocity_mps);
+  update_param<double>(
+    parameters, "trajectory_optimization.max_velocity_mps", opt.max_velocity_mps);
+  update_param<double>(
+    parameters, "trajectory_optimization.min_acceleration_mps2", opt.min_acceleration_mps2);
+  update_param<double>(
+    parameters, "trajectory_optimization.max_acceleration_mps2", opt.max_acceleration_mps2);
+  update_param<double>(
+    parameters, "trajectory_optimization.max_steering_rate_rps", opt.max_steering_rate_rps);
+  update_param<double>(
+    parameters, "trajectory_optimization.max_lateral_acceleration_mps2",
+    opt.max_lateral_acceleration_mps2);
+  update_param<int>(
+    parameters, "trajectory_optimization.max_sqp_iterations", opt.max_sqp_iterations);
+
+  auto & avoidance = new_params.road_border_avoidance;
+  update_param<bool>(parameters, "road_border_avoidance.enable", avoidance.enable);
+  update_param<double>(parameters, "road_border_avoidance.start_time_s", avoidance.start_time_s);
+  update_param<double>(
+    parameters, "road_border_avoidance.footprint_margin_m", avoidance.footprint_margin_m);
+  update_param<double>(
+    parameters, "road_border_avoidance.search_radius_m", avoidance.search_radius_m);
+  update_param<double>(parameters, "road_border_avoidance.shift_step_m", avoidance.shift_step_m);
+  update_param<double>(
+    parameters, "road_border_avoidance.max_lateral_shift_m", avoidance.max_lateral_shift_m);
+  update_param<bool>(
+    parameters, "road_border_avoidance.propagate_shift", avoidance.propagate_shift);
+
+  auto & stop_fixing = new_params.stop_point_fixing;
+  update_param<bool>(parameters, "stop_point_fixing.enable", stop_fixing.enable);
+  update_param<double>(
+    parameters, "stop_point_fixing.velocity_threshold_mps", stop_fixing.velocity_threshold_mps);
+  update_param<double>(
+    parameters, "stop_point_fixing.min_deceleration_duration_sec",
+    stop_fixing.min_deceleration_duration_sec);
+
+  update_param<bool>(
+    parameters, "planning_factor.enable_stop", new_planning_factor_params.enable_stop);
+  update_param<bool>(
+    parameters, "planning_factor.enable_slowdown", new_planning_factor_params.enable_slowdown);
+  update_param<double>(
+    parameters, "planning_factor.stop_velocity_threshold",
+    new_planning_factor_params.detection_config.stop_velocity_threshold);
+  update_param<double>(
+    parameters, "planning_factor.stop_keep_duration_threshold",
+    new_planning_factor_params.detection_config.stop_keep_duration_threshold);
+  update_param<double>(
+    parameters, "planning_factor.slowdown_accel_threshold",
+    new_planning_factor_params.detection_config.slowdown_accel_threshold);
+
+  update_param<bool>(
+    parameters, "debug_params.publish_debug_map", new_debug_params.publish_debug_map);
+  update_param<bool>(
+    parameters, "debug_params.publish_debug_route", new_debug_params.publish_debug_route);
+  update_param<bool>(
+    parameters, "debug_params.publish_debug_linestrings",
+    new_debug_params.publish_debug_linestrings);
+
+  auto failure = [](const std::string & reason) {
+    SetParametersResult result;
+    result.successful = false;
+    result.reason = reason;
+    return result;
+  };
+  if (requested_build_only != params_.build_only) {
+    return failure("build_only is a startup-only parameter and cannot be changed at runtime");
+  }
+  if (new_params.trt_precision != "fp32" && new_params.trt_precision != "fp16") {
+    return failure("model.precision must be either 'fp32' or 'fp16'");
+  }
+  const bool valid_backend = new_params.backend == "tensorrt"
 #ifdef AUTOWARE_ML_PLANNER_USE_ONNXRUNTIME
-                               || temp_params.backend == "ort_cpu" ||
-                               temp_params.backend == "ort_cuda" ||
-                               temp_params.backend == "ort_tensorrt"
+                             || new_params.backend == "ort_cpu" ||
+                             new_params.backend == "ort_cuda" ||
+                             new_params.backend == "ort_tensorrt"
 #endif
-      ;
-    if (!valid_backend) {
-      SetParametersResult result;
-      result.successful = false;
-      result.reason = "model.backend must be 'tensorrt'";
+    ;
+  if (!valid_backend) {
+    std::string reason = "model.backend must be 'tensorrt'";
 #ifdef AUTOWARE_ML_PLANNER_USE_ONNXRUNTIME
-      result.reason += ", 'ort_cpu', 'ort_cuda', or 'ort_tensorrt'";
+    reason += ", 'ort_cpu', 'ort_cuda', or 'ort_tensorrt'";
 #else
-      result.reason += "; ONNX Runtime support is not available in this build";
+    reason += "; ONNX Runtime support is not available in this build";
 #endif
-      return result;
-    }
-    if (
-      temp_params.batch_size < 1 || temp_params.batch_size > 2 ||
-      temp_params.noise_scale_list.size() != static_cast<size_t>(temp_params.batch_size)) {
-      SetParametersResult result;
-      result.successful = false;
-      result.reason =
-        "batch_size must be 1 or 2 and noise_scale must contain exactly batch_size values";
-      return result;
-    }
-    const bool model_path_changed = temp_params.model_path != previous_model_path;
-    const bool batch_size_changed = temp_params.batch_size != previous_batch_size;
-    const bool backend_changed = temp_params.backend != previous_backend;
-    const bool trt_config_changed = temp_params.trt_precision != previous_trt_precision ||
-                                    temp_params.use_cuda_graph != previous_use_cuda_graph;
-    const bool line_string_max_step_changed =
-      temp_params.line_string_max_step_m != previous_line_string_max_step_m;
-    params_ = temp_params;
-    core_->update_params(params_);
-
-    if (model_path_changed || batch_size_changed || backend_changed || trt_config_changed) {
-      try {
-        load_model();
-      } catch (const std::exception & e) {
-        RCLCPP_ERROR_STREAM(get_logger(), e.what() << ". Failed to reload model.");
-        SetParametersResult result;
-        result.successful = false;
-        result.reason = e.what();
-        return result;
-      }
-    }
-
-    if (line_string_max_step_changed && lanelet_map_ptr_) {
-      core_->set_map(lanelet_map_ptr_);
-    }
+    return failure(reason);
+  }
+  if (
+    new_params.batch_size < 1 || new_params.batch_size > 2 ||
+    new_params.noise_scale_list.size() != static_cast<size_t>(new_params.batch_size)) {
+    return failure(
+      "batch_size must be 1 or 2 and noise_scale must contain exactly batch_size values");
+  }
+  if (new_params.planning_frequency_hz <= 0.0) {
+    return failure("planning_frequency_hz must be greater than zero");
+  }
+  if (new_params.traffic_light_group_msg_timeout_seconds < 0.0) {
+    return failure("traffic_light_group_msg_timeout_seconds must be non-negative");
+  }
+  if (new_params.line_string_max_step_m <= 0.0) {
+    return failure("line_string_max_step_m must be greater than zero");
+  }
+#ifndef AUTOWARE_ML_PLANNER_USE_ACADOS
+  if (opt.enable) {
+    return failure("trajectory optimization is not available in this build");
+  }
+#endif
+  const std::array<double, 8> weights{
+    opt.weight_longitudinal,  opt.weight_lateral,        opt.weight_yaw,
+    opt.weight_velocity,      opt.weight_steering_angle, opt.weight_acceleration,
+    opt.weight_steering_rate, opt.terminal_weight_scale};
+  if (std::any_of(weights.begin(), weights.end(), [](const double value) { return value < 0.0; })) {
+    return failure("trajectory optimization weights must be non-negative");
+  }
+  if (opt.min_velocity_mps > opt.max_velocity_mps) {
+    return failure("trajectory_optimization.min_velocity_mps must not exceed max_velocity_mps");
+  }
+  if (opt.min_acceleration_mps2 > opt.max_acceleration_mps2) {
+    return failure(
+      "trajectory_optimization.min_acceleration_mps2 must not exceed max_acceleration_mps2");
+  }
+  if (
+    opt.max_steering_rate_rps < 0.0 || opt.max_lateral_acceleration_mps2 < 0.0 ||
+    opt.max_sqp_iterations < 1) {
+    return failure("trajectory optimization limits and max_sqp_iterations must be positive");
+  }
+  if (
+    avoidance.start_time_s < 0.0 || avoidance.footprint_margin_m < 0.0 ||
+    avoidance.search_radius_m < 0.0 || avoidance.shift_step_m <= 0.0 ||
+    avoidance.max_lateral_shift_m < 0.0) {
+    return failure(
+      "road border avoidance distances must be non-negative and shift_step_m positive");
+  }
+  if (stop_fixing.velocity_threshold_mps < 0.0 || stop_fixing.min_deceleration_duration_sec < 0.0) {
+    return failure("stop point fixing thresholds must be non-negative");
   }
 
-  {
-    MLPlannerDebugParams temp_debug_params = debug_params_;
-    update_param<bool>(
-      parameters, "debug_params.publish_debug_map", temp_debug_params.publish_debug_map);
-    update_param<bool>(
-      parameters, "debug_params.publish_debug_route", temp_debug_params.publish_debug_route);
-    update_param<bool>(
-      parameters, "debug_params.publish_debug_linestrings",
-      temp_debug_params.publish_debug_linestrings);
-    debug_params_ = temp_debug_params;
+  const bool reload_model = new_params.model_path != params_.model_path ||
+                            new_params.plugins_path != params_.plugins_path ||
+                            new_params.batch_size != params_.batch_size ||
+                            new_params.backend != params_.backend ||
+                            new_params.trt_precision != params_.trt_precision ||
+                            new_params.use_cuda_graph != params_.use_cuda_graph;
+  const bool recreate_timer = new_params.planning_frequency_hz != params_.planning_frequency_hz;
+  const bool rebuild_map = new_params.line_string_max_step_m != params_.line_string_max_step_m;
+  const MLPlannerParams old_params = params_;
+  const MLPlannerPlanningFactorParams old_planning_factor_params = planning_factor_params_;
+  const MLPlannerDebugParams old_debug_params = debug_params_;
+
+  try {
+    core_->update_params(new_params);
+    params_ = new_params;
+    planning_factor_params_ = new_planning_factor_params;
+    debug_params_ = new_debug_params;
+    if (reload_model) {
+      load_model();
+    }
+    if (rebuild_map && lanelet_map_ptr_) {
+      core_->set_map(lanelet_map_ptr_);
+    }
+    if (recreate_timer) {
+      timer_ = rclcpp::create_timer(
+        this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
+        std::bind(&MLPlanner::on_timer, this));
+    }
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR_STREAM(get_logger(), e.what() << ". Failed to update parameters.");
+    try {
+      core_->update_params(old_params);
+      params_ = old_params;
+      planning_factor_params_ = old_planning_factor_params;
+      debug_params_ = old_debug_params;
+      if (reload_model) {
+        load_model();
+      }
+      if (rebuild_map && lanelet_map_ptr_) {
+        core_->set_map(lanelet_map_ptr_);
+      }
+    } catch (const std::exception & rollback_error) {
+      RCLCPP_ERROR_STREAM(
+        get_logger(),
+        "Failed to restore parameters after update failure: " << rollback_error.what());
+    }
+    return failure(e.what());
   }
 
   SetParametersResult result;

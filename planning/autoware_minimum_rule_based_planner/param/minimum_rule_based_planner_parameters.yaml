@@ -206,6 +206,13 @@ minimum_rule_based_planner:
         default_value: true
         description: enable path shifting from ego position to centerline
 
+      start_time_offset:
+        type: double
+        default_value: 0.1
+        description: time offset from current ego state to start path shifting [s]
+        validation:
+          gt<>: [0.0]
+
       minimum_shift_length:
         type: double
         default_value: 0.1
@@ -225,7 +232,7 @@ minimum_rule_based_planner:
 
       lateral_accel_limit:
         type: double
-        default_value: 0.5
+        default_value: 0.8
         description: allowed lateral acceleration budget for the shift polynomial (comfort/safety limit) [m/s^2]
         validation:
           gt<>: [0.0]
@@ -353,6 +360,10 @@ minimum_rule_based_planner:
       type: double
       default_value: 3.0
       description: stopping jerk [m/s^3]
+    delay_response_time:
+      type: double
+      default_value: 0.5
+      description: delay response time used to estimate the minimum ego stopping distance [s]
     on_time_buffer:
       type: double
       default_value: 0.5
@@ -361,10 +372,6 @@ minimum_rule_based_planner:
       type: double
       default_value: 1.0
       description: time buffer after obstacle stop [s]
-    lateral_margin:
-      type: double
-      default_value: 0.2
-      description: lateral margin for obstacle stop [m]
     arrived_distance_threshold:
       type: double
       default_value: 0.5
@@ -384,6 +391,11 @@ minimum_rule_based_planner:
           default_value: [car, truck, bus, trailer, pedestrian, hazard, unknown]
           description: types of polygon shaped objects to consider for obstacle stop
           read_only: false
+        pointcloud:
+          type: string_array
+          default_value: [structure, vegetation]
+          description: types of pointcloud to consider for obstacle stop
+          read_only: false
       stopped_velocity_th:
         type: double
         default_value: 0.3
@@ -400,24 +412,96 @@ minimum_rule_based_planner:
         description: safety buffer to expand object shape [m]
         validation:
           bounds<>: [0.0, 10.0]
-    pointcloud:
-      target_types:
-        type: string_array
-        default_value: [structure, vegetation]
-        description: pointcloud types to consider for obstacle stop
-        read_only: false
-      height_buffer:
+      pointcloud_height_buffer:
         type: double
         default_value: 0.5
-        description: height buffer to add above ego height [m]
+        description: height buffer to add above ego height for pointcloud [m]
         validation:
           bounds<>: [0.0, 10.0]
-      min_height:
+      pointcloud_min_height:
         type: double
         default_value: 0.2
         description: minimum height of pointcloud [m]
         validation:
           bounds<>: [0.0, 10.0]
+      lateral_margin:
+        car:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for car objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        truck:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for truck objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        bus:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for bus objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        trailer:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for trailer objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        motorcycle:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for motorcycle objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        bicycle:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for bicycle objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        pedestrian:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for pedestrian objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        hazard:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for hazard objects [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        structure:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for structure pointcloud [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        vegetation:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for vegetation pointcloud [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
+        unknown:
+          type: double
+          default_value: 0.2
+          description: Lateral margin on top of ego width for unknown objects and unclassified pointcloud [m]
+          validation:
+            bounds<>: [0.0, 10.0]
+          read_only: false
     rss_params:
       enable:
         type: bool
@@ -472,15 +556,9 @@ minimum_rule_based_planner:
         description: deceleration for ego vehicle used in RSS calculation [m/s^2]
         validation:
           bounds<>: [0.0, 10.0]
-      reaction_time:
-        type: double
-        default_value: 0.4
-        description: reaction time used in RSS calculation [s]
-        validation:
-          bounds<>: [0.0, 10.0]
       safety_margin:
         type: double
-        default_value: 3.0
+        default_value: 1.5
         description: safety margin used in RSS calculation [m]
         validation:
           bounds<>: [0.0, 10.0]
@@ -569,6 +647,122 @@ minimum_rule_based_planner:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
+
+  obstacle_slow_down:
+    enable:
+      type: bool
+      default_value: true
+      description: enable obstacle slow down
+      read_only: false
+    target_objects:
+      type: string_array
+      default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard, animal]
+      description: types of objects to consider for obstacle slow down
+      read_only: false
+    slow_down_min_acc:
+      type: double
+      default_value: -1.0
+      description: slow down min deceleration [m/ss]
+      validation:
+        lt<>: [0.0]
+      read_only: false
+    slow_down_min_jerk:
+      type: double
+      default_value: -1.0
+      description: slow down min jerk [m/sss]
+      validation:
+        lt<>: [0.0]
+      read_only: false
+    lpf_gain_slow_down_vel:
+      type: double
+      default_value: 0.9
+      description: low-pass filter gain for slow down velocity
+      read_only: false
+    lpf_gain_lateral_distance:
+      type: double
+      default_value: 0.7
+      description: low-pass filter gain for lateral distance from obstacle to ego's path
+      read_only: false
+    lpf_gain_dist_to_slow_down:
+      type: double
+      default_value: 0.7
+      description: low-pass filter gain for distance to slow down start
+      read_only: false
+    time_margin_on_target_velocity:
+      type: double
+      default_value: 1.5
+      description: time margin on target velocity [s]
+      read_only: false
+    moving_object_speed_threshold:
+      type: double
+      default_value: 0.5
+      description: how fast the object needs to move to be considered as moving [m/s]
+      read_only: false
+    moving_object_hysteresis_range:
+      type: double
+      default_value: 0.1
+      description: hysteresis range for the moving object speed threshold [m/s]
+      read_only: false
+    obstacle_filtering:
+      min_lat_margin:
+        type: double
+        default_value: -10.0
+        description: lateral margin between obstacle and trajectory band with ego's width to avoid the conflict with the obstacle_stop [m]
+        read_only: false
+      max_lat_margin:
+        type: double
+        default_value: 1.1
+        description: lateral margin between obstacle and trajectory band with ego's width [m]
+        read_only: false
+      lat_hysteresis_margin:
+        type: double
+        default_value: 0.2
+        description: lateral hysteresis margin to prevent chattering [m]
+        read_only: false
+      max_lat_velocity:
+        type: double
+        default_value: 3.0
+        description: max lateral velocity of obstacle to be considered [m/s]
+        read_only: false
+      time_to_entry_slow_down_condition:
+        type: double
+        default_value: 0.5
+        description: duration for which the slow down condition must be met to enter the slow down state [s]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      time_to_exit_slow_down_condition:
+        type: double
+        default_value: 0.5
+        description: duration for which the slow down condition must fail to exit the slow down state [s]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+    trajectory_polygon:
+      decimate_trajectory_step_length:
+        type: double
+        default_value: 2.0
+        description: longitudinal step length to calculate trajectory polygon for collision checking [m]
+        validation:
+          gt<>: [0.0]
+        read_only: false
+      goal_extended_trajectory_length:
+        type: double
+        default_value: 6.0
+        description: trajectory extension length behind the goal for the lateral distance calculation [m]
+        read_only: false
+      enable_to_consider_current_pose:
+        type: bool
+        default_value: true
+        description: consider the current ego pose in the trajectory polygon
+        read_only: false
+      time_to_convergence:
+        type: double
+        default_value: 1.5
+        description: time duration for the ego pose error to converge to zero [s]
+        validation:
+          gt<>: [0.0]
+        read_only: false
 
   debug:
     enable_path:

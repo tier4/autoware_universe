@@ -48,6 +48,17 @@
           "default": false,
           "description": "Use fixed random seed for deterministic behavior"
         },
+        "publish_object_pointcloud": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include object point clouds in output/points_raw"
+        },
+        "point_type": {
+          "type": "string",
+          "default": "XYZCPE",
+          "enum": ["XYZIRC", "XYZCPE"],
+          "description": "Point cloud layout published on output/points_raw. Object and static pose point clouds are converted to this layout."
+        },
         "object_centric_pointcloud": {
           "type": "boolean",
           "default": false,
@@ -182,6 +193,8 @@
         "publish_ground_truth",
         "random_seed",
         "use_fixed_random_seed",
+        "publish_object_pointcloud",
+        "point_type",
         "object_centric_pointcloud",
         "angle_increment",
         "min_predicted_path_keep_duration",
