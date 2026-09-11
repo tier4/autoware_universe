@@ -80,17 +80,26 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     lib/postprocess/postprocess_kernel.cu
     lib/postprocess/detection3d_postprocess.cu
     lib/preprocess/preprocess_kernel.cu
+    lib/preprocess/sweep_kernel.cu
   )
 
   target_include_directories(${PROJECT_NAME}_cuda_lib
     SYSTEM PUBLIC
     ${autoware_cuda_utils_INCLUDE_DIRS}
   )
+
+  # detection3d_postprocess_test needs this: it host-compiles Thrust and gets no ament_target_dependencies.
+  target_link_libraries(${PROJECT_NAME}_cuda_lib
+    autoware_cuda_utils::autoware_cuda_utils
+  )
+
   ament_target_dependencies(${PROJECT_NAME}_cuda_lib
     autoware_point_types
   )
 
   ament_auto_add_library(${PROJECT_NAME}_lib SHARED
+    lib/preprocess/pointcloud_densification.cpp
+    lib/preprocess/sweep_aggregator.cpp
     lib/ptv3_trt.cpp
     lib/ros_utils.cpp
   )
@@ -164,6 +173,15 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       ${PROJECT_NAME}_cuda_lib
     )
 
+    ament_add_gtest(test_sweep_kernel
+      test/test_sweep_kernel.cpp
+    )
+
+    target_link_libraries(test_sweep_kernel
+      CUDA::cudart
+      ${PROJECT_NAME}_cuda_lib
+    )
+
     ament_add_gtest(postprocess_kernel_test
       test/postprocess_kernel_test.cpp
     )
@@ -187,7 +205,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       ${PROJECT_NAME}_cuda_lib
     )
 
-    ament_add_gtest(ros_utils_test
+    ament_add_ros_isolated_gtest(ros_utils_test
       test/ros_utils_test.cpp
     )
 

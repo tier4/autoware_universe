@@ -10,6 +10,16 @@ This package implements a TensorRT powered inference node for Point Transformers
 The sparse convolution backend corresponds to [spconv](https://github.com/traveller59/spconv).
 Autoware installs it automatically in its setup script. If needed, the user can also build it and install it following the [following instructions](https://github.com/autowarefoundation/spconv_cpp).
 
+The network input is a densified point cloud: the current lidar frame is concatenated with
+ego-motion-compensated past frames (`densification_num_past_frames`), and every point carries
+five features `(x, y, z, intensity, time_lag)`, where `time_lag` is the point age in seconds
+relative to the current frame. The densified cloud is voxelized on the GPU into padded voxels
+(`max_points_per_voxel` slots holding the first points of each voxel in input order) together with
+the valid point count per voxel, and the encoder graph averages the points of every voxel itself,
+so training and inference share one voxel feature definition. Past sweeps provide geometric and
+temporal context to the network, while every segmentation output cloud describes only the
+current frame's points.
+
 ## Inputs / Outputs
 
 ### Input
@@ -38,14 +48,14 @@ Autoware installs it automatically in its setup script. If needed, the user can 
 The `~/output/pointcloud/segmentation` topic uses the naturally aligned `PointXYZCPE` point type.
 Its `point_step` is 24 bytes.
 
-| Field         | Data type | Offset | Description                                                                                                                                                               |
-| ------------- | --------- | -----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `x`           | `FLOAT32` |      0 | X coordinate in meters.                                                                                                                                                   |
-| `y`           | `FLOAT32` |      4 | Y coordinate in meters.                                                                                                                                                   |
-| `z`           | `FLOAT32` |      8 | Z coordinate in meters.                                                                                                                                                   |
-| `class_id`    | `UINT8`   |     12 | Predicted class encoded as `autoware::point_types::PointCloudClassification`, resolved through `segmentation3d.class_remap`; `INVALID` (255) represents an invalid label. |
-| `probability` | `FLOAT32` |     16 | Probability of the predicted class.                                                                                                                                       |
-| `entropy`     | `FLOAT32` |     20 | Shannon entropy normalized by the logarithm of the number of classes.                                                                                                     |
+| Field         | Data type | Offset | Description                                                                                                                |
+| ------------- | --------- | -----: | -------------------------------------------------------------------------------------------------------------------------- |
+| `x`           | `FLOAT32` |      0 | X coordinate in meters.                                                                                                    |
+| `y`           | `FLOAT32` |      4 | Y coordinate in meters.                                                                                                    |
+| `z`           | `FLOAT32` |      8 | Z coordinate in meters.                                                                                                    |
+| `class_id`    | `UINT8`   |     12 | Predicted class encoded as `autoware::point_types::PointCloudClassification`; `INVALID` (255) represents an invalid label. |
+| `probability` | `FLOAT32` |     16 | Probability of the predicted class.                                                                                        |
+| `entropy`     | `FLOAT32` |     20 | Shannon entropy normalized by the logarithm of the number of classes.                                                      |
 
 Bytes 13 through 15 are alignment padding. The output is intentionally not packed so that the
 floating-point fields remain naturally aligned on both the CPU and GPU.
@@ -65,11 +75,11 @@ therefore guard against `NaN` before using the `entropy` field.
 
 {{ json_to_markdown("perception/autoware_ptv3/schema/ml_package_ptv3.schema.json") }}
 
-`filter.*` and `class_remap.*` parameters are configured in `config/ptv3.param.yaml`, while
+`filter.*` and `class_mapping.*` parameters are configured in `config/ptv3.param.yaml`, while
 class metadata and the visualization `palette` are configured in
 `config/ml_package_ptv3_seg3d_head.param.yaml`.
 
-`segmentation3d.class_remap` maps each segmentation class name to the
+`segmentation3d.class_mapping` maps each segmentation class name to the
 `autoware::point_types::PointCloudClassification` value published in the segmentation point cloud's
 `class_id` field. Its keys must match `segmentation3d.class_names` exactly, and every entry of
 `class_names` must be present — the node fails to start otherwise, naming the missing class. This
@@ -104,6 +114,11 @@ supports:
 
 The filtered output cloud format is controlled by `filter.output_format`. When it is set to an
 empty string, the filtered output preserves the same format as the input cloud.
+
+Densification requires the transform between `densification_world_frame_id` and the lidar frame;
+frames are skipped while the transform is unavailable. The filtered output cloud is rebuilt from
+the current frame's original points and therefore requires `source_reconstruction` to be
+`partial` or `full`.
 
 ## Trained Models
 

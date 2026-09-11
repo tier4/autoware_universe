@@ -137,7 +137,7 @@
           "description": "Controls mapping of voxel predictions back to source points. 'none': voxel representative points; 'partial': cropped source points inside point_cloud_range; 'full': full input cloud with unknown label 255 for out-of-range points.",
           "enum": ["none", "partial", "full"]
         },
-        "class_remap": {
+        "class_mapping": {
           "type": "object",
           "description": "Mapping from each segmentation3d.class_names entry to a PointCloudClassification value. Keys must match class_names exactly and every class_names entry must be present.",
           "additionalProperties": {
@@ -186,7 +186,7 @@
               "onnx_path",
               "engine_path",
               "source_reconstruction",
-              "class_remap",
+              "class_mapping",
               "filter"
             ]
           }
@@ -291,6 +291,15 @@
           "description": "Point cloud buffer capacity. Must be at least the maximum expected number of points per frame.",
           "minimum": 1
         },
+        "densification_world_frame_id": {
+          "type": "string",
+          "description": "World frame used to compensate the ego motion of cached sweeps."
+        },
+        "densification_num_past_frames": {
+          "type": "integer",
+          "description": "Number of past lidar frames concatenated with the current frame as network input.",
+          "minimum": 0
+        },
         "encoder": {
           "$ref": "#/definitions/encoder"
         },
@@ -305,6 +314,8 @@
         "plugins_path",
         "trt_precision",
         "cloud_capacity",
+        "densification_world_frame_id",
+        "densification_num_past_frames",
         "encoder",
         "segmentation3d",
         "detection3d"
