@@ -439,6 +439,8 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
     as_bool("prevent_reverse_velocity", options.prevent_reverse_velocity);
   options.enable_input_delay_compensation =
     as_bool("enable_input_delay_compensation", options.enable_input_delay_compensation);
+  options.use_plant_states_on_trajectory =
+    as_bool("use_plant_states_on_trajectory", options.use_plant_states_on_trajectory);
   return true;
 }
 

@@ -67,7 +67,7 @@ Kinematic bicycle in the world frame (`generators/bicycle_model_temporal.py`):
 
 - States: \(x, y, \psi, v\)
 - Controls: longitudinal acceleration \(a\), front steering \(\delta\) [rad]
-- Parameters: fixed \(l_f = l_r = 1.0\,\mathrm{m}\), matching the Python reference model
+- Parameters: \(l_f\), \(l_r\) with \(L = l_f + l_r =\) `wheel_base` from `vehicle_info` (loaded on `trajectory_processor` via `vehicle_info_param_path`). \(l_r\) is rear-axle to geometric box center (same as MPPI `ego_axle_to_box_center`); \(l_f = \mathrm{wheel\_base} - l_r\). For j6_gen2: \(l_f \approx 2.67\,\mathrm{m}\), \(l_r \approx 2.09\,\mathrm{m}\) — not the codegen placeholder \(1.0\,\mathrm{m}\) each.
 
 ### Cost
 

@@ -77,6 +77,7 @@ private:
 
   void set_mpt_params(
     const trajectory_processor_params::Params::TrajectoryTemporalMptOptimizer & params);
+  void apply_vehicle_bicycle_params();
 
   bool have_prev_solution_{false};
   std::array<std::array<double, temporal_mpt::NX>, temporal_mpt::N + 1> prev_x_world_{};
