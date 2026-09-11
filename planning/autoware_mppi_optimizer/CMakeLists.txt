@@ -79,14 +79,44 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   # Parallelize NVCC device-code passes (CUDA 11.5+); 0 = use all host cores.
   list(APPEND CUDA_NVCC_FLAGS "--threads" "0")
 
-  # Compile only for the GPU(s) on this machine (FindCUDA Auto = nvidia-smi detect).
-  # Avoids the multi-SM fat-binary compile that dominated MPPI build time.
-  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS Auto)
+  # MPPI-Generic enables cuda::barrier by default (sm_70+). Legacy cuda_add_library ignores
+  # CMAKE_CUDA_ARCHITECTURES, so honor MPPI_CUDA_ARCH_LIST / CMAKE_CUDA_ARCHITECTURES before Auto.
+  set(MPPI_CUDA_ARCH_LIST "" CACHE STRING
+    "CUDA architectures for MPPI (e.g. 75;86;89). Empty = CMAKE_CUDA_ARCHITECTURES or auto-detect.")
+  set(MPPI_MIN_CUDA_ARCH 70 CACHE STRING
+    "Minimum CUDA compute capability for MPPI (CUDA barriers require sm_70+).")
+
+  set(_mppi_cuda_arch_spec Auto)
+  if(NOT MPPI_CUDA_ARCH_LIST STREQUAL "")
+    set(_mppi_cuda_arch_spec ${MPPI_CUDA_ARCH_LIST})
+  elseif(DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT "${CMAKE_CUDA_ARCHITECTURES}" STREQUAL "")
+    if(CMAKE_CUDA_ARCHITECTURES STREQUAL "native")
+      set(_mppi_cuda_arch_spec Auto)
+    else()
+      set(_mppi_cuda_arch_spec ${CMAKE_CUDA_ARCHITECTURES})
+    endif()
+  endif()
+
+  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${_mppi_cuda_arch_spec})
   if(MPPI_CUDA_ARCH_FLAGS STREQUAL "")
     message(FATAL_ERROR
-      "MPPI CUDA: failed to detect a local GPU architecture. "
-      "Is the NVIDIA driver available at configure time?")
+      "MPPI CUDA: failed to resolve GPU architecture from '${_mppi_cuda_arch_spec}'. "
+      "Set MPPI_CUDA_ARCH_LIST or CMAKE_CUDA_ARCHITECTURES (sm_${MPPI_MIN_CUDA_ARCH}+).")
   endif()
+
+  foreach(_mppi_arch_flag IN LISTS MPPI_CUDA_ARCH_FLAGS)
+    if(_mppi_arch_flag MATCHES "arch=compute_([0-9]+)")
+      if(CMAKE_MATCH_1 LESS MPPI_MIN_CUDA_ARCH)
+        message(WARNING
+          "MPPI CUDA: architecture sm_${CMAKE_MATCH_1} < sm_${MPPI_MIN_CUDA_ARCH} "
+          "(required for MPPI-Generic CUDA barriers). Using sm_${MPPI_MIN_CUDA_ARCH} instead. "
+          "Set MPPI_CUDA_ARCH_LIST or CMAKE_CUDA_ARCHITECTURES to override.")
+        CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${MPPI_MIN_CUDA_ARCH})
+      endif()
+      break()
+    endif()
+  endforeach()
+
   list(APPEND CUDA_NVCC_FLAGS ${MPPI_CUDA_ARCH_FLAGS})
   message(STATUS "MPPI CUDA architecture(s): ${MPPI_CUDA_ARCH_FLAGS}")
 
