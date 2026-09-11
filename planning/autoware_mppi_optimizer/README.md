@@ -20,7 +20,11 @@ autoware_mppi_optimizer/
 ### Requirements
 
 - CUDA Toolkit (curand, cufft)
+- GPU with compute capability 7.0+ (MPPI-Generic uses CUDA barriers)
 - Eigen3
+
+Build picks `CMAKE_CUDA_ARCHITECTURES` or `MPPI_CUDA_ARCH_LIST` when set (CI uses `87`).
+Otherwise it auto-detects the local GPU, with a minimum of sm_70.
 
 ## Trajectory processor plugin
 
