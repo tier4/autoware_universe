@@ -97,7 +97,23 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     endif()
   endif()
 
-  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${_mppi_cuda_arch_spec})
+  # --- FIX 1: Bypass CUDA_SELECT_NVCC_ARCH_FLAGS for architectures >= 87 ---
+  set(MPPI_CUDA_ARCH_FLAGS "")
+  if(_mppi_cuda_arch_spec STREQUAL "Auto")
+    CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS Auto)
+  else()
+    foreach(_arch IN LISTS _mppi_cuda_arch_spec)
+      if(_arch MATCHES "^[0-9]+$")
+        # Manually generate flags for numeric architectures to prevent CMake 3.22 crash
+        list(APPEND MPPI_CUDA_ARCH_FLAGS "-gencode=arch=compute_${_arch},code=sm_${_arch}")
+      else()
+        CUDA_SELECT_NVCC_ARCH_FLAGS(_tmp_flags ${_arch})
+        list(APPEND MPPI_CUDA_ARCH_FLAGS ${_tmp_flags})
+      endif()
+    endforeach()
+  endif()
+  # -------------------------------------------------------------------------
+
   if(MPPI_CUDA_ARCH_FLAGS STREQUAL "")
     message(FATAL_ERROR
       "MPPI CUDA: failed to resolve GPU architecture from '${_mppi_cuda_arch_spec}'. "
@@ -111,7 +127,9 @@ if(CUDA_AVAIL AND TRT_AVAIL)
           "MPPI CUDA: architecture sm_${CMAKE_MATCH_1} < sm_${MPPI_MIN_CUDA_ARCH} "
           "(required for MPPI-Generic CUDA barriers). Using sm_${MPPI_MIN_CUDA_ARCH} instead. "
           "Set MPPI_CUDA_ARCH_LIST or CMAKE_CUDA_ARCHITECTURES to override.")
-        CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${MPPI_MIN_CUDA_ARCH})
+
+        # --- FIX 2: Manually set fallback arch instead of relying on the buggy macro ---
+        set(MPPI_CUDA_ARCH_FLAGS "-gencode=arch=compute_${MPPI_MIN_CUDA_ARCH},code=sm_${MPPI_MIN_CUDA_ARCH}")
       endif()
       break()
     endif()
@@ -287,4 +305,5 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   ament_export_libraries(first_order_dubins_mppi)
   ament_export_dependencies(MPPI-Generic)
 endif()
+
 ament_auto_package(INSTALL_TO_SHARE config)
