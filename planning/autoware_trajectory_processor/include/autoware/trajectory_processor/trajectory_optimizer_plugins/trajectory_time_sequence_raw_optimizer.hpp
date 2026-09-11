@@ -16,11 +16,16 @@
 #define AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_OPTIMIZER_PLUGINS__TRAJECTORY_TIME_SEQUENCE_RAW_OPTIMIZER_HPP_  // NOLINT
 
 #include "autoware/trajectory_processor/time_sequence_raw/road_border_avoidance.hpp"
+#include "autoware/trajectory_processor/time_sequence_raw/stamped_ego_buffer.hpp"
 #include "autoware/trajectory_processor/time_sequence_raw/trajectory_optimizer.hpp"
 #include "autoware/trajectory_processor/trajectory_processor_plugin_base.hpp"
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 #include <std_msgs/msg/int32.hpp>
 
 #include <memory>
@@ -45,8 +50,18 @@ protected:
 private:
   void set_params(const TrajectoryProcessorParams & params);
   void ensure_optimizer();
+  void ensure_ego_subscriptions();
   void maybe_update_map(const TrajectoryProcessorData & data);
   void ensure_debug_publishers();
+  void ingest_live_ego(const TrajectoryProcessorData & data);
+  nav_msgs::msg::Odometry resolve_ocp_odometry(
+    const TrajectoryProcessorData & data, double & accel_mps2, std::optional<double> & steering);
+  void publish_velocity_diagnostics(
+    const autoware_planning_msgs::msg::Trajectory & reference,
+    const autoware_planning_msgs::msg::Trajectory & optimized,
+    const time_sequence_raw::OptimizationResult & result, const nav_msgs::msg::Odometry & ocp_odom);
+  autoware_planning_msgs::msg::Trajectory make_geometry_velocity_trajectory(
+    const autoware_planning_msgs::msg::Trajectory & src) const;
 
   enum class SteerStopMode { Track, Hold, Zero };
 
@@ -61,6 +76,9 @@ private:
   time_sequence_raw::RoadBorderAvoidanceParams border_params_;
   bool road_border_enable_{false};
   bool publish_debug_topics_{true};
+  bool use_stamped_ego_state_{true};
+  double ego_state_buffer_duration_s_{1.0};
+  double max_ego_stamp_mismatch_s_{0.15};
   double stopped_velocity_threshold_mps_{0.15};
   double stopped_trajectory_max_length_m_{1.5};
   bool goal_steer_zero_enable_{true};
@@ -76,15 +94,28 @@ private:
 
   mutable autoware_planning_msgs::msg::Trajectory last_raw_trajectory_;
   mutable autoware_planning_msgs::msg::Trajectory last_adjusted_trajectory_;
+  mutable autoware_planning_msgs::msg::Trajectory last_optimized_trajectory_;
+  mutable autoware_planning_msgs::msg::Trajectory last_geometry_velocity_trajectory_;
   mutable int last_shifted_point_count_{0};
   mutable int last_solver_status_{0};
   mutable double last_solve_time_ms_{0.0};
+  mutable double last_lookup_dt_s_{0.0};
+  mutable double last_live_lag_s_{0.0};
+
+  time_sequence_raw::StampedEgoBuffer ego_buffer_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr accel_sub_;
+  rclcpp::Subscription<autoware_vehicle_msgs::msg::SteeringReport>::SharedPtr steer_sub_;
 
   rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_raw_pub_;
   rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_adjusted_pub_;
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr debug_shifted_count_pub_;
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr debug_solver_status_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr debug_solve_time_pub_;
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_optimized_pub_;
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr
+    debug_geometry_velocity_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr debug_velocity_profile_pub_;
 };
 
 }  // namespace autoware::trajectory_processor::plugin
