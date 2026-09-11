@@ -186,6 +186,17 @@
           "default": "0.0",
           "description": "Understeer gradient [rad·s²/m]"
         },
+        "use_dynamic_understeer_gradient": {
+          "type": "boolean",
+          "default": "false",
+          "description": "When true and convert_steer_cmd_method is understeer_compensation, use ~/input/estimated_understeer_gradient instead of the static understeer_gradient parameter"
+        },
+        "max_estimated_understeer_gradient_age_sec": {
+          "type": "number",
+          "default": "1.0",
+          "minimum": 0.0,
+          "description": "Maximum age [s] of the estimated understeer gradient topic before falling back to the static understeer_gradient parameter"
+        },
         "convert_actuation_to_steering_status": {
           "type": "boolean",
           "default": "true",
