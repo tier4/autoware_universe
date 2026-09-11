@@ -111,28 +111,38 @@ std::uint8_t get_classification_type(const std::string & class_name)
   return Label::UNKNOWN;
 }
 
-std::unordered_map<std::string, std::string> declare_class_remap(
+std::unordered_map<std::string, std::string> declare_class_mapping(
   rclcpp::Node & node, const std::vector<std::string> & class_names,
   const rcl_interfaces::msg::ParameterDescriptor & descriptor)
 {
-  std::unordered_map<std::string, std::string> class_remaps;
-  class_remaps.reserve(class_names.size());
+  std::unordered_map<std::string, std::string> class_mapping;
+  class_mapping.reserve(class_names.size());
 
-  // The remap keys live in ptv3.param.yaml while class_names comes from the ml_package parameter
+  // The mapping keys live in ptv3.param.yaml while class_names comes from the ml_package parameter
   // file, so report which one is out of sync when an entry is missing.
+  std::optional<std::string> missing_classes;
   for (const auto & class_name : class_names) {
-    const std::string param_name = "segmentation3d.class_remap." + class_name;
-    const auto class_remap =
+    const std::string param_name = "segmentation3d.class_mapping." + class_name;
+    const auto mapped_class =
       node.declare_parameter<std::string>(param_name, std::string{}, descriptor);
-    if (class_remap.empty()) {
-      throw std::runtime_error(
-        "segmentation3d.class_remap is missing an entry for class '" + class_name +
-        "'. Every segmentation3d.class_names entry must be mapped in ptv3.param.yaml.");
+    if (!mapped_class.empty()) {
+      class_mapping.emplace(class_name, mapped_class);
+      continue;
     }
-    class_remaps.emplace(class_name, class_remap);
+
+    if (missing_classes) {
+      *missing_classes += ", " + class_name;
+    } else {
+      missing_classes = class_name;
+    }
   }
 
-  return class_remaps;
+  if (missing_classes) {
+    throw std::runtime_error(
+      "segmentation3d.class_mapping is missing entries for segmentation3d.class_names: [" +
+      *missing_classes + "].");
+  }
+  return class_mapping;
 }
 
 }  // namespace autoware::ptv3
