@@ -51,6 +51,21 @@ struct GoalTerminalReference
   double velocity{0.0};
 };
 
+/**
+ * @brief Per-stage reference for the temporal consistency term (solver's local frame).
+ *
+ * This is where the previous cycle's plan said the vehicle would be at this stage's absolute
+ * time. Unlike the model output it carries a velocity, because it comes from a solved
+ * trajectory rather than from the pose-only model output.
+ */
+struct StageTemporalReference
+{
+  double x{0.0};
+  double y{0.0};
+  double yaw{0.0};
+  double velocity{0.0};
+};
+
 struct SolverSolution
 {
   int status{-1};  // acados status, 0 on success
@@ -66,8 +81,9 @@ struct SolverSolution
  * @brief Thin RAII wrapper around the generated acados OCP solver.
  *
  * Owns the solver capsule and hides the generated C headers (pimpl), so this header
- * stays usable without the code-generated sources. Weights and bounds are written into
- * the solver once at construction.
+ * stays usable without the code-generated sources. Bounds are written into the solver once
+ * at construction; the cost weights and references are written per solve, because both
+ * depend on the per-stage reference heading and on the temporal consistency term.
  */
 class AcadosSolverWrapper
 {
@@ -87,12 +103,18 @@ public:
    * @param initial_state Stage-0 state (equality constrained): x, y, yaw, v, delta.
    * @param references Tracking references for stages 1..N; the last entry doubles as the
    *                   terminal reference. Positions must share the frame of initial_state.
+   * @param goal_terminal_reference Extra terminal penalty pulling the end state to the goal.
+   * @param temporal_references Previous plan resampled onto stages 1..N, or nullptr to run
+   *                            without the temporal consistency term. Same frame as
+   *                            initial_state. Yaw must be on the same branch as the
+   *                            corresponding entry of `references`.
    * @param warm_start Previous solution in the same frame, or nullptr for a cold start.
    */
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,
     const std::array<StageReference, opt_horizon> & references,
     const std::optional<GoalTerminalReference> & goal_terminal_reference,
+    const std::array<StageTemporalReference, opt_horizon> * temporal_references,
     const SolverSolution * warm_start);
 
 private:

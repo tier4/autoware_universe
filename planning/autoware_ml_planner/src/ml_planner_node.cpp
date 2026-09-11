@@ -234,6 +234,21 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.max_lateral_acceleration_mps2", 3.0);
   opt.max_sqp_iterations =
     this->declare_parameter<int>("trajectory_optimization.max_sqp_iterations", 50);
+  auto & temporal = opt.temporal_consistency;
+  temporal.enable =
+    this->declare_parameter<bool>("trajectory_optimization.temporal_consistency.enable", false);
+  temporal.weight_longitudinal = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.weight_longitudinal", 0.4);
+  temporal.weight_lateral = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.weight_lateral", 2.0);
+  temporal.weight_yaw =
+    this->declare_parameter<double>("trajectory_optimization.temporal_consistency.weight_yaw", 0.2);
+  temporal.weight_velocity = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.weight_velocity", 0.4);
+  temporal.decay_time_constant_s = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.decay_time_constant_s", 1.0);
+  temporal.far_weight_ratio = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.far_weight_ratio", 0.05);
 #ifndef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (opt.enable) {
     RCLCPP_WARN(
@@ -364,6 +379,26 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     opt.max_lateral_acceleration_mps2);
   update_param<int>(
     parameters, "trajectory_optimization.max_sqp_iterations", opt.max_sqp_iterations);
+  auto & temporal = opt.temporal_consistency;
+  update_param<bool>(
+    parameters, "trajectory_optimization.temporal_consistency.enable", temporal.enable);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.weight_longitudinal",
+    temporal.weight_longitudinal);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.weight_lateral",
+    temporal.weight_lateral);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.weight_yaw", temporal.weight_yaw);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.weight_velocity",
+    temporal.weight_velocity);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.decay_time_constant_s",
+    temporal.decay_time_constant_s);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.far_weight_ratio",
+    temporal.far_weight_ratio);
 
   auto & avoidance = new_params.road_border_avoidance;
   update_param<bool>(parameters, "road_border_avoidance.enable", avoidance.enable);
@@ -478,6 +513,17 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     opt.max_steering_rate_rps < 0.0 || opt.max_lateral_acceleration_mps2 < 0.0 ||
     opt.max_sqp_iterations < 1) {
     return failure("trajectory optimization limits and max_sqp_iterations must be positive");
+  }
+  {
+    const auto & temporal = opt.temporal_consistency;
+    if (
+      temporal.weight_longitudinal < 0.0 || temporal.weight_lateral < 0.0 ||
+      temporal.weight_yaw < 0.0 || temporal.weight_velocity < 0.0) {
+      return failure("temporal consistency weights must be non-negative");
+    }
+    if (temporal.far_weight_ratio < 0.0 || temporal.far_weight_ratio > 1.0) {
+      return failure("temporal_consistency.far_weight_ratio must be within [0, 1]");
+    }
   }
   if (
     avoidance.start_time_s < 0.0 || avoidance.footprint_margin_m < 0.0 ||
