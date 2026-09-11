@@ -38,10 +38,12 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -56,6 +58,7 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
+using autoware_vehicle_msgs::msg::SteeringReport;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
 using autoware::vehicle_info_utils::VehicleInfo;
@@ -242,6 +245,11 @@ private:
     pub_snap_interpolation_time_{nullptr};
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_inference_time_{nullptr};
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pub_denoising_steps_{nullptr};
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_raw_trajectory_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_optimization_status_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_optimization_time_{nullptr};
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_avoidance_trajectory_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_avoidance_shifted_count_{nullptr};
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
     pub_guidance_status_{nullptr};
   rclcpp::Service<SetBool>::SharedPtr set_start_guidance_enabled_service_{nullptr};
@@ -250,6 +258,8 @@ private:
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
   autoware_utils::InterProcessPollingSubscriber<Odometry> sub_current_odometry_{
     this, "~/input/odometry"};
+  autoware_utils::InterProcessPollingSubscriber<SteeringReport> sub_steering_status_{
+    this, "~/input/steering_status"};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_current_acceleration_{this, "~/input/acceleration"};
   autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{

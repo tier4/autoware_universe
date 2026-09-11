@@ -21,6 +21,11 @@
 #include "autoware/diffusion_planner/inference/guidance/start_guidance.hpp"
 #include "autoware/diffusion_planner/inference/guidance/stop_guidance.hpp"
 #include "autoware/diffusion_planner/inference/inference.hpp"
+#include "autoware/diffusion_planner/optimization/optimizer_params.hpp"
+#ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
+#include "autoware/diffusion_planner/optimization/trajectory_optimizer.hpp"
+#endif
+#include "autoware/diffusion_planner/postprocessing/road_border_avoidance.hpp"
 #include "autoware/diffusion_planner/postprocessing/turn_indicator_manager.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
@@ -90,6 +95,21 @@ struct VehicleSpec
   }
 };
 
+struct TrajectoryOptimizationDebug
+{
+  bool attempted{false};
+  bool optimized{false};
+  int solver_status{0};
+  double solve_time_ms{0.0};
+};
+
+struct RoadBorderAvoidanceDebug
+{
+  bool active{false};
+  int shifted_points{0};
+  int unresolved_points{0};
+};
+
 struct PlannerOutput
 {
   Trajectory trajectory;
@@ -98,6 +118,10 @@ struct PlannerOutput
   TurnIndicatorsCommand turn_indicators_command;
   Float32MultiArray denoising_steps;
   std::unordered_map<std::string, std::vector<bool>> guidance_triggered;
+  std::optional<Trajectory> raw_trajectory;
+  TrajectoryOptimizationDebug optimization_debug;
+  std::optional<Trajectory> avoidance_adjusted_trajectory;
+  RoadBorderAvoidanceDebug avoidance_debug;
 };
 
 struct FrameContext
@@ -178,6 +202,8 @@ struct DiffusionPlannerParams
   double start_guidance_max_scale;
   double stop_guidance_stop_acceleration_mps2;
   double centerline_guidance_start_time_s;
+  optimization::TrajectoryOptimizationParams trajectory_optimization;
+  postprocess::RoadBorderAvoidanceParams road_border_avoidance;
 };
 
 /**
@@ -319,11 +345,14 @@ public:
    * @param frame_context Context of the current frame.
    * @param timestamp The ROS time stamp for the messages.
    * @param generator_uuid The unique identifier for the planner instance.
+   * @param current_steering_angle_rad Measured steering angle used by trajectory optimization
+   *        (estimated from yaw rate when not available).
    * @return PlannerOutput containing all output messages.
    */
   PlannerOutput create_planner_output(
     const InferenceOutput & inference_output, const FrameContext & frame_context,
-    const rclcpp::Time & timestamp, const UUID & generator_uuid);
+    const rclcpp::Time & timestamp, const UUID & generator_uuid,
+    const std::optional<double> & current_steering_angle_rad = std::nullopt);
 
   /**
    * @brief Get the first traffic light on the route for debugging.
@@ -361,6 +390,10 @@ private:
 
   // Inference engine
   std::unique_ptr<Inference> diffusion_planner_inference_{nullptr};
+#ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ACADOS
+  std::unique_ptr<optimization::TrajectoryOptimizer> trajectory_optimizer_{nullptr};
+#endif
+  std::unique_ptr<postprocess::RoadBorderAvoidance> road_border_avoidance_{nullptr};
   std::shared_ptr<StartGuidance> start_guidance_{nullptr};
   std::shared_ptr<StopGuidance> stop_guidance_{nullptr};
   std::shared_ptr<CenterlineGuidance> centerline_guidance_{nullptr};

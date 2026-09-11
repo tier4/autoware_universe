@@ -94,6 +94,16 @@ Trajectory create_ego_trajectory(
   const double stopping_threshold);
 
 /**
+ * @brief Creates a pose-only ego Trajectory from parsed agent poses.
+ *
+ * Velocity, acceleration, and steering are left at zero. Used as the tracking
+ * reference for trajectory optimization (and as a raw-output debug message).
+ */
+Trajectory create_ego_pose_trajectory(
+  const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
+  const rclcpp::Time & stamp, const int64_t batch_index);
+
+/**
  * @brief Counts valid elements in a tensor with shape (B, len, dim2, dim3).
  * An element is considered valid if not all values in the (dim2, dim3) block are zero.
  *
