@@ -30,6 +30,7 @@
       - "autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator"
       - "autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator"
       - "autoware::safety_planner::experiment::ObstacleStopConstraintGenerator"
-      - "autoware::safety_planner::experiment::NextLaneletSpeedLimitConstraintGenerator"
+      # - "autoware::safety_planner::experiment::NextLaneletSpeedLimitConstraintGenerator"
 
-    trajectory_planner_plugin: "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"
+    # trajectory_planner_plugin: "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"
+    trajectory_planner_plugin: "autoware::safety_planner::experiment::MppiPlanner"

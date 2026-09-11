@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -84,7 +85,8 @@ Scenario load_scenario(const std::string & yaml_filename)
         "constraint_generator/next_lanelet_speed_limit.param.yaml",
         "constraint_generator/obstacle_stop.param.yaml",
         "constraint_generator/simple_drivable_area.param.yaml",
-        "trajectory_planner/frenet_sampling_based_planner.param.yaml"}) {
+        "trajectory_planner/frenet_sampling_based_planner.param.yaml",
+        "trajectory_planner/mppi_planner.param.yaml"}) {
     param_files.push_back(
       autoware::test_utils::get_absolute_path_to_config("autoware_safety_planner", relative_path));
   }
@@ -97,6 +99,10 @@ Scenario load_scenario(const std::string & yaml_filename)
   scenario.vehicle_info = vehicle_info_utils::VehicleInfoUtils(*node).getVehicleInfo();
   scenario.params =
     ::safety_planner::ParamListener(node->get_node_parameters_interface()).get_params();
+  // SAFETY_PLANNER_TRAJECTORY_PLANNER_PLUGIN=<class name> runs every scenario with that planner
+  if (const char * plugin = std::getenv("SAFETY_PLANNER_TRAJECTORY_PLANNER_PLUGIN")) {
+    scenario.params.trajectory_planner_plugin = plugin;
+  }
   scenario.route = autoware::test_utils::parse<LaneletRoute>(config["route"]);
   if (config["predicted_objects"]) {
     scenario.predicted_objects =
