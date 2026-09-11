@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__INFERENCE__MULTI_STEP_INFERENCE_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__INFERENCE__MULTI_STEP_INFERENCE_HPP_
 
+#include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/inference/guidance/guidance.hpp"
 #include "autoware/diffusion_planner/inference/inference.hpp"
 #include "autoware/diffusion_planner/inference/solver/dpm_solver.hpp"
@@ -26,6 +27,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -42,17 +44,21 @@ public:
   MultiStepInference(
     const std::string & encoder_model_path, const std::string & decoder_model_path,
     const std::string & turn_indicator_model_path, const std::string & plugins_path, int batch_size,
-    const std::string & precision = "fp32", bool use_cuda_graph = false, int dpm_solver_steps = 10,
-    std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances = {});
+    const std::string & precision, bool use_cuda_graph, int dpm_solver_steps,
+    std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances,
+    ModelInputType input_type);
   ~MultiStepInference() override;
 
   void load_engines(
     const std::string & encoder_model_path, const std::string & decoder_model_path,
     const std::string & turn_indicator_model_path);
-  InferenceResult infer(const preprocess::InputDataMap & input_data_map) override;
+  InferenceResult infer(
+    const preprocess::InputDataMap & input_data_map,
+    const std::vector<uint8_t> & bev_image) override;
 
 private:
   int batch_size_{1};
+  ModelInputType input_type_{ModelInputType::VECTOR};
   int dpm_solver_steps_{10};
   std::string plugins_path_;
   std::string precision_{"fp32"};
@@ -69,6 +75,7 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> sampled_trajectories_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> diffusion_time_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> ego_history_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> ego_current_state_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> neighbor_agents_past_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> static_objects_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> lanes_d_;
@@ -82,6 +89,9 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> goal_pose_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> ego_shape_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> turn_indicators_d_;
+  // Bound only in ModelInputType::IMAGE; the graph declares it as uint8, straight from the
+  // renderer.
+  autoware::cuda_utils::CudaUniquePtr<uint8_t[]> bev_image_d_;
 
   autoware::cuda_utils::CudaUniquePtr<float[]> encoding_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> model_output_d_;
@@ -98,7 +108,8 @@ private:
   void bind_encoder_buffers();
   void bind_decoder_buffers();
   void bind_turn_indicator_buffers();
-  void transfer_inputs_to_device(const preprocess::InputDataMap & input_data_map);
+  void transfer_inputs_to_device(
+    const preprocess::InputDataMap & input_data_map, const std::vector<uint8_t> & bev_image);
   DpmSolver::SampleResult run_dpm_solver(const preprocess::InputDataMap & input_data_map);
   std::vector<float> evaluate_decoder(const std::vector<float> & x, float t);
   std::vector<float> create_diffusion_time(float t) const;

@@ -4,6 +4,7 @@ project(autoware_diffusion_planner)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 find_package(Boost REQUIRED)
+find_package(OpenCV REQUIRED)
 find_package(onnxruntime QUIET)
 
 # Options
@@ -77,6 +78,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     src/conversion/agent.cpp
     src/conversion/agent_history_resampler.cpp
     src/postprocessing/postprocessing_utils.cpp
+    src/preprocessing/bev_image.cpp
     src/preprocessing/lane_segments.cpp
     src/preprocessing/preprocessing_utils.cpp
     src/preprocessing/traffic_signals.cpp
@@ -109,6 +111,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${CUDA_INCLUDE_DIRS}
     ${autoware_cuda_utils_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIRS}
+    ${OpenCV_INCLUDE_DIRS}
   )
   if(onnxruntime_FOUND)
     target_include_directories(autoware_diffusion_planner_component PUBLIC
@@ -123,6 +126,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${NVONNXPARSER}
     ${CUDA_LIBRARIES}
     ${CUBLAS_LIBRARIES}
+    ${OpenCV_LIBRARIES}
   )
 
   if(onnxruntime_FOUND)
@@ -160,6 +164,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       test/lanelet_test.cpp
       test/lane_segments_test.cpp
       test/pre_processing_utils_test.cpp
+      test/bev_image_test.cpp
       test/postprocessing_utils_test.cpp
       test/utils_test.cpp
       test/marker_utils_test.cpp

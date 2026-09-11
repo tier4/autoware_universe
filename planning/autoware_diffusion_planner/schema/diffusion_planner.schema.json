@@ -335,9 +335,19 @@
               "type": "boolean",
               "default": true,
               "description": "Publish debug linestring markers"
+            },
+            "publish_debug_bev_image": {
+              "type": "boolean",
+              "default": false,
+              "description": "Publish a colorized preview of the rendered BEV rasters, one image per scale. Only meaningful for a model whose encoder takes image input."
             }
           },
-          "required": ["publish_debug_map", "publish_debug_route", "publish_debug_linestrings"]
+          "required": [
+            "publish_debug_map",
+            "publish_debug_route",
+            "publish_debug_linestrings",
+            "publish_debug_bev_image"
+          ]
         }
       },
       "required": [

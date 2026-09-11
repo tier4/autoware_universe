@@ -19,6 +19,7 @@
 
 #include <tl/expected.hpp>
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -44,7 +45,15 @@ class Inference
 public:
   virtual ~Inference() = default;
 
-  virtual InferenceResult infer(const preprocess::InputDataMap & input_data_map) = 0;
+  /**
+   * @brief Run one planning inference.
+   *
+   * @param input_data_map Normalized float inputs.
+   * @param bev_image      Rendered BEV stack (see preprocessing/bev_image.hpp). Read only by
+   *                       models whose encoder takes image input; empty otherwise.
+   */
+  virtual InferenceResult infer(
+    const preprocess::InputDataMap & input_data_map, const std::vector<uint8_t> & bev_image) = 0;
 };
 
 }  // namespace autoware::diffusion_planner
