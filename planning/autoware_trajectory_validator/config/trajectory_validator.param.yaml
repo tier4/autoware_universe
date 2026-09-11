@@ -101,7 +101,8 @@
           lateral: 0.0
           front: 0.0
           rear: 0.0
-        object_assumed_acceleration: -4.0
+        object_assumed_acceleration:
+          base: -4.0
         error_threshold:
           ego_acceleration: -4.0
 
