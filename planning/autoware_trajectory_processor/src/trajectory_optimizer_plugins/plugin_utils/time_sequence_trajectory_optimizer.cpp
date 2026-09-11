@@ -102,6 +102,9 @@ OptimizationResult TrajectoryOptimizer::optimize(
   const double a0 = std::clamp(
     current_longitudinal_accel_mps2, params_.min_acceleration_mps2, params_.max_acceleration_mps2);
 
+  result.initial_speed_mps = v0;
+  result.initial_accel_mps2 = a0;
+
   const std::array<double, opt_nx> initial_state{0.0, 0.0, yaw0, v0, delta0, a0};
 
   std::array<StageReference, opt_horizon> references;

@@ -997,6 +997,25 @@ trajectory_processor_params:
       default_value: true
       description: Publish raw/adjusted trajectories and solver debug topics
       read_only: false
+    use_stamped_ego_state:
+      type: bool
+      default_value: true
+      description: Seed OCP from localization interpolated at the candidate trajectory stamp
+      read_only: false
+    ego_state_buffer_duration_s:
+      type: double
+      default_value: 1.0
+      description: Localization history length for stamp-aligned OCP init [s]
+      validation:
+        gt<>: [0.0]
+      read_only: false
+    max_ego_stamp_mismatch_s:
+      type: double
+      default_value: 0.15
+      description: Warn when matched odom stamp differs from trajectory stamp by more than this [s]
+      validation:
+        gt<>: [0.0]
+      read_only: false
     stopped_velocity_threshold_mps:
       type: double
       default_value: 0.15

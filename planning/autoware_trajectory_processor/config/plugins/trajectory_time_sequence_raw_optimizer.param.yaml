@@ -17,6 +17,9 @@
       max_lateral_acceleration_mps2: 3.0
       max_sqp_iterations: 50
       publish_debug_topics: true
+      use_stamped_ego_state: true
+      ego_state_buffer_duration_s: 1.0
+      max_ego_stamp_mismatch_s: 0.15
       stopped_velocity_threshold_mps: 0.15
       stopped_trajectory_max_length_m: 1.5
       goal_steer_zero_enable: true
