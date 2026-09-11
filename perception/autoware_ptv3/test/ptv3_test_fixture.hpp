@@ -46,7 +46,7 @@ struct PTv3ConfigParams
   std::vector<float> point_cloud_range = {-1.0F, -1.0F, -1.0F, 3.0F, 3.0F, 3.0F};
   std::vector<float> voxel_size = {1.0F, 1.0F, 1.0F};
   std::vector<std::string> segmentation_class_names = {"noise", "car"};
-  std::unordered_map<std::string, std::string> segmentation_class_remaps = {
+  std::unordered_map<std::string, std::string> segmentation_class_mapping = {
     {"noise", "NOISE"}, {"car", "CAR"}};
   std::vector<std::string> serialization_orders = {"z", "z-trans"};
   std::vector<std::int64_t> pooling_strides = {2, 2};
