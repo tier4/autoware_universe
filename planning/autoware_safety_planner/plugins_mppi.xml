@@ -1,0 +1,8 @@
+<class_libraries>
+  <library path="autoware_safety_planner_mppi_planner_plugin">
+    <class type="autoware::safety_planner::experiment::MppiPlanner"
+           base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
+      <description>Refines the trajectory of FrenetSamplingBasedPlanner with autoware_mppi_optimizer (GPU); falls back to it when MPPI rejects its output</description>
+    </class>
+  </library>
+</class_libraries>

@@ -1,0 +1,36 @@
+/**:
+  ros__parameters:
+    planning_frequency_hz: 10.0
+    trajectory_horizon_s: 10.0 # [s]
+
+    ego_nearest_lanelet:
+      dist_threshold_m: 6.0 # [m]
+      yaw_threshold_rad: 1.57 # [rad]
+
+    reference_path:
+      policy: "goal_connection_and_smooth" # simple / goal_connection / goal_connection_and_smooth
+      goal_connection:
+        search_radius_m: 15.0 # [m]
+      smoother:
+        clearance_m: 1.0 # [m]
+      forward_length_m: 200.0 # [m]
+      backward_length_m: 15.0 # [m]
+
+    engage_velocity:
+      enable: true
+      velocity_hard_mps: 0.3 # [m/s]
+
+    turn_signal:
+      search_distance: 30.0 # [m]
+      min_blink_duration: 3.0 # [s]
+      stopped_velocity_threshold: 0.1 # [m/s]
+      heading_align_threshold: 0.15 # [rad]
+
+    constraint_generator_plugins:
+      - "autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator"
+      - "autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator"
+      - "autoware::safety_planner::experiment::ObstacleStopConstraintGenerator"
+      # - "autoware::safety_planner::experiment::NextLaneletSpeedLimitConstraintGenerator"
+
+    # trajectory_planner_plugin: "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"
+    trajectory_planner_plugin: "autoware::safety_planner::experiment::MppiPlanner"

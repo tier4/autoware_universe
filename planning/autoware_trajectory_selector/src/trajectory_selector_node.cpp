@@ -184,6 +184,7 @@ std::optional<TrajectorySource> generator_name_prefix_to_source(
     {"MLPlanner_", TrajectorySource::DIFFUSION_PLANNER},
     {"MinimumRuleBasedPlanner_Go", TrajectorySource::BACKUP_PLANNER_GO},
     {"MinimumRuleBasedPlanner_Stop", TrajectorySource::BACKUP_PLANNER_STOP},
+    {"SafetyPlanner_", TrajectorySource::BACKUP_PLANNER_GO},
   };
   if (generator_name_prefix_to_source.count(generator_name_prefix) == 0) {
     return std::nullopt;

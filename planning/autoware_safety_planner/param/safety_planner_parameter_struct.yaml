@@ -1,0 +1,478 @@
+safety_planner:
+  planning_frequency_hz:
+    type: double
+    default_value: 10.0
+    read_only: true
+    description: planning frequency [Hz]
+    validation:
+      bounds<>: [0.0001, 50.0]
+
+  trajectory_horizon_s:
+    type: double
+    default_value: 10.0
+    read_only: true
+    description: "[s] duration of the output trajectory; a candidate whose terminal time is shorter holds its terminal state until then"
+    validation:
+      gt<>: [0.0]
+
+  ego_nearest_lanelet:
+    dist_threshold_m:
+      type: double
+      default_value: 3.0
+      read_only: true
+      description: "[m] soft distance threshold for following the route lanelets"
+      validation:
+        gt<>: [0.0]
+    yaw_threshold_rad:
+      type: double
+      default_value: 1.046
+      read_only: true
+      description: "[rad] soft heading threshold for following the route lanelets"
+      validation:
+        gt<>: [0.0]
+
+  reference_path:
+    policy:
+      type: string
+      default_value: simple
+      read_only: true
+      description: >
+        How the reference_path is built. simple = the centerline of the map, cut at the goal.
+        goal_connection = the centerline around the goal is dropped and replaced by a cubic spline
+        into the goal. goal_connection_and_smooth = goal_connection followed by an elastic band QP
+        over the whole path
+      validation:
+        one_of<>: [[simple, goal_connection, goal_connection_and_smooth]]
+    goal_connection:
+      search_radius_m:
+        type: double
+        default_value: 12.0
+        read_only: true
+        description: "[m] centerline points within this distance of the goal are dropped and replaced by the connection to it; when the new stretch leaves the lane, the radius shrinks by 1 m and it is retried"
+        validation:
+          gt_eq<>: [0.0]
+    smoother:
+      clearance_m:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[m] how far the smoothing may move a point from its original position; the points around the ego and the last two before the goal are held fixed"
+        validation:
+          gt_eq<>: [0.0]
+    forward_length_m:
+      type: double
+      default_value: 200.0
+      read_only: true
+      description: reference path forward length from ego [m]
+      validation:
+        gt<>: [0.0]
+    backward_length_m:
+      type: double
+      default_value: 5.0
+      read_only: true
+      description: reference path backward length from ego [m]
+      validation:
+        gt_eq<>: [0.0]
+
+  engage_velocity:
+    enable:
+      type: bool
+      default_value: true
+      read_only: true
+    velocity_hard_mps:
+      type: double
+      default_value: 0.3
+      read_only: true
+      description: "[m/s] lower bound put on the velocity of the launch section, so that the longitudinal controller leaves STOPPED when starting from standstill; the same idea as the engage_velocity of velocity_smoother. 0 disables it"
+
+  turn_signal:
+    search_distance:
+      type: double
+      default_value: 30.0
+      read_only: true
+      description: "[m] lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this)"
+      validation:
+        gt_eq<>: [0.0]
+    min_blink_duration:
+      type: double
+      default_value: 3.0
+      read_only: true
+      description: "[s] minimum time a turn signal is held on once lit, to suppress chatter"
+      validation:
+        gt_eq<>: [0.0]
+    stopped_velocity_threshold:
+      type: double
+      default_value: 0.1
+      read_only: true
+      description: "[m/s] speed at/below which ego counts as stopped, for latching a pull-out and detecting arrival at the goal"
+      validation:
+        gt_eq<>: [0.0]
+    heading_align_threshold:
+      type: double
+      default_value: 0.15
+      read_only: true
+      description: "[rad] yaw gap between ego and the heading a maneuver exits on, at/below which the maneuver is complete and the signal is cleared; also the gap below which a private-area merge counts as straight and raises no signal"
+      validation:
+        gt<>: [0.0]
+
+  constraint_generator_plugins:
+    type: string_array
+    default_value:
+      - autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator
+      - autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator
+      - autoware::safety_planner::experiment::ObstacleStopConstraintGenerator
+    read_only: true
+    description: fully qualified class names of the constraint generator plugins to load
+
+  trajectory_planner_plugin:
+    type: string
+    default_value: autoware::safety_planner::experiment::FrenetSamplingBasedPlanner
+    read_only: true
+    description: fully qualified class name of the trajectory planner plugin to load. It turns the two constraint sets into two trajectories
+
+  vehicle_kinematics:
+    velocity_hard_mps:
+      type: double
+      default_value: 16.67
+      read_only: true
+      description: "[m/s] hard bound on the longitudinal speed"
+      validation:
+        gt_eq<>: [0.0]
+    lon_accel_hard_min_mps2:
+      type: double
+      default_value: -6.0
+      read_only: true
+      description: "[m/s^2] hard bound on the deceleration"
+    lon_accel_hard_max_mps2:
+      type: double
+      default_value: 6.0
+      read_only: true
+      description: "[m/s^2] hard bound on the acceleration"
+    lon_jerk_hard_mps3:
+      type: double
+      default_value: 5.0
+      read_only: true
+      description: "[m/s^3] hard bound on the longitudinal jerk |j|"
+      validation:
+        gt<>: [0.0]
+    lat_accel_hard_mps2:
+      type: double
+      default_value: 6.0
+      read_only: true
+      description: "[m/s^2] hard bound on the lateral acceleration v^2|k|, about the limit of grip"
+      validation:
+        gt<>: [0.0]
+    steer_rate_hard_radps:
+      type: double
+      default_value: 3.0
+      read_only: true
+      description: "[rad/s] hard bound on the steer rate, the limit of the actuator"
+      validation:
+        gt<>: [0.0]
+
+  lane_following_drivable_area:
+    margin_m:
+      type: double
+      default_value: 0.0
+      read_only: true
+      description: "[m] the lane bounds and road_borders are moved this far towards the inside of the lane"
+      validation:
+        gt_eq<>: [0.0]
+    bound_slack_weight:
+      type: double
+      default_value: 100.0
+      read_only: true
+      description: "[-] slack weight of the own lane bound, which is soft where a parallel lane exists; a road_border is always hard"
+      validation:
+        gt_eq<>: [0.0]
+
+  next_lanelet_speed_limit:
+    velocity_mps:
+      type: double
+      default_value: 2.78
+      read_only: true
+      description: "[m/s] hard bound on the speed inside the lanelet following the current one"
+      validation:
+        gt_eq<>: [0.0]
+
+  obstacle_stop:
+    margin_m:
+      type: double
+      default_value: 0.5
+      read_only: true
+      description: "[m] the shape of an object is inflated by this much"
+      validation:
+        gt_eq<>: [0.0]
+    stop_distance_m:
+      type: double
+      default_value: 6.0
+      read_only: true
+      description: distance [m] between the stop line (Gate) and the nearest point of an object on the reference path corridor. 0 disables the stop line
+      validation:
+        gt_eq<>: [0.0]
+    stop_line_max_object_speed_mps:
+      type: double
+      default_value: 1.0
+      read_only: true
+      description: stop lines are issued only for objects slower than this [m/s] (a moving lead vehicle is handled by the KeepOut, not by a stop line)
+      validation:
+        gt_eq<>: [0.0]
+
+  simple_drivable_area:
+    half_width_m:
+      type: double
+      default_value: 2.0
+      read_only: true
+      description: "[m] half width of the drivable area to each side of the reference_path"
+      validation:
+        gt<>: [0.0]
+    forward_extension_m:
+      type: double
+      default_value: 5.0
+      read_only: true
+      description: "[m] how far the area extends beyond the end of the reference_path"
+      validation:
+        gt_eq<>: [0.0]
+    backward_extension_m:
+      type: double
+      default_value: 5.0
+      read_only: true
+      description: "[m] how far the area extends behind the start of the reference_path"
+      validation:
+        gt_eq<>: [0.0]
+    margin_m:
+      type: double
+      default_value: 0.0
+      read_only: true
+      description: "[m] the corridor is narrowed by this much on each side"
+      validation:
+        gt_eq<>: [0.0]
+    sample_interval_m:
+      type: double
+      default_value: 1.0
+      read_only: true
+      description: "[m] arc length between the centerline samples"
+      validation:
+        gt<>: [0.0]
+
+  frenet_sampling_based_planner:
+    time_step_s:
+      type: double
+      default_value: 0.1
+      read_only: true
+      description: "[s] spacing of the output time grid"
+      validation:
+        gt<>: [0.0]
+    path_resolution_m:
+      type: double
+      default_value: 0.5
+      read_only: true
+      description: "[m] spacing at which the path l(s) is sampled; the heading and the curvature are differenced over it"
+      validation:
+        gt<>: [0.0]
+    target_lengths_m:
+      type: double_array
+      default_value: [10.0, 20.0, 40.0]
+      read_only: true
+      description: "[m] the arc lengths over which l(s) reaches its terminal lateral position"
+    target_durations_s:
+      type: double_array
+      default_value: [2.0, 4.0, 6.0, 8.0]
+      read_only: true
+      description: "[s] the terminal times of the velocity profile s(t)"
+    target_lateral_positions_m:
+      type: double_array
+      default_value: [-2.0, -1.0, 0.0, 1.0, 2.0]
+      read_only: true
+      description: "[m] the terminal lateral positions to sample, measured from the reference_path and positive to the left"
+    target_velocity_ratios:
+      type: double_array
+      default_value: [0.0, 0.25, 0.5, 0.75, 1.0]
+      read_only: true
+      description: "[-] the terminal speeds to sample, as ratios of the speed limit at the ego position"
+    weights:
+      lateral:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[1/(m^2 s)] weight on the squared lateral offset"
+      velocity:
+        type: double
+        default_value: 0.5
+        read_only: true
+        description: "[s/m^2] weight on the squared deviation from the speed limit"
+      lon_jerk:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: "[s^5/m^2] weight on the squared longitudinal jerk"
+      curvature:
+        type: double
+        default_value: 10.0
+        read_only: true
+        description: "[m^2/s] weight on the squared curvature"
+
+  mppi_planner:
+    boundary_threshold_m:
+      type: double
+      default_value: 1.0
+      read_only: true
+      description: "[m] MPPI rejects an output whose lateral deviation from the Frenet reference exceeds this"
+      validation:
+        gt<>: [0.0]
+    vehicle:
+      acc_time_constant_s:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: "[s] first-order lag of the longitudinal acceleration in the MPPI plant"
+      steer_time_constant_s:
+        type: double
+        default_value: 0.27
+        read_only: true
+        description: "[s] first-order lag of the steer angle in the MPPI plant"
+      acc_time_delay_s:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: "[s] dead time of the acceleration command, used only with enable_input_delay_compensation"
+      steer_time_delay_s:
+        type: double
+        default_value: 0.24
+        read_only: true
+        description: "[s] dead time of the steer command, used only with enable_input_delay_compensation"
+      accel_lim_mps2:
+        type: double
+        default_value: 6.0
+        read_only: true
+        description: "[m/s^2] physical bound on |a| of the MPPI plant; the LON_ACCEL constraint narrows it"
+      steer_rate_lim_radps:
+        type: double
+        default_value: 3.0
+        read_only: true
+        description: "[rad/s] physical bound on the steer rate of the MPPI plant; the STEER_RATE constraint narrows it"
+      enable_input_delay_compensation:
+        type: bool
+        default_value: false
+        read_only: true
+    sampling:
+      accel_cmd_std_dev_mps2:
+        type: double
+        default_value: 0.1
+        read_only: true
+      steer_cmd_std_dev_rad:
+        type: double
+        default_value: 0.02
+        read_only: true
+      accel_cmd_noise_exponent:
+        type: double
+        default_value: 2.0
+        read_only: true
+        description: "[-] power-law exponent of the sampling noise (0 white, 1 pink, 2 brown)"
+      steer_cmd_noise_exponent:
+        type: double
+        default_value: 2.0
+        read_only: true
+    margin:
+      obstacle_collision_m:
+        type: double
+        default_value: 0.2
+        read_only: true
+        description: "[m] footprint inflation in the obstacle collision check (hard)"
+      obstacle_safe_m:
+        type: double
+        default_value: 0.4
+        read_only: true
+        description: "[m] clearance below which the obstacle barrier cost rises; >= obstacle_collision_m"
+      road_border_collision_m:
+        type: double
+        default_value: 0.1
+        read_only: true
+      road_border_safe_m:
+        type: double
+        default_value: 0.2
+        read_only: true
+      drivable_area_safe_m:
+        type: double
+        default_value: 0.0
+        read_only: true
+      corner_safe_m:
+        type: double
+        default_value: 0.3
+        read_only: true
+    cost:
+      lambda:
+        type: double
+        default_value: 100.0
+        read_only: true
+        description: "[-] softmax temperature of the rollout weights"
+      speed:
+        type: double
+        default_value: 300.0
+        read_only: true
+        description: "[-] weight on (v - v_ref)^2"
+      track_center:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[-] weight on the squared distance between the footprint center and the reference point of the same time; this is what makes MPPI keep the timing of the reference"
+      corner_buffer:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[-] weight on the squared shortfall of the footprint corners below margin.corner_safe_m from the SOFT boundaries"
+      lateral_distance:
+        type: double
+        default_value: 0.0
+        read_only: true
+        description: "[-] weight on the squared cross-track error to the reference polyline"
+      lateral_yaw_error:
+        type: double
+        default_value: 200.0
+        read_only: true
+      remaining_distance:
+        type: double
+        default_value: 1.0
+        read_only: true
+      path_overshoot:
+        type: double
+        default_value: 1000.0
+        read_only: true
+      lateral_acceleration:
+        type: double
+        default_value: 100.0
+        read_only: true
+      lateral_jerk:
+        type: double
+        default_value: 10.0
+        read_only: true
+      longitudinal_jerk:
+        type: double
+        default_value: 100.0
+        read_only: true
+      accel_cmd:
+        type: double
+        default_value: 50.0
+        read_only: true
+      steer_cmd:
+        type: double
+        default_value: 250.0
+        read_only: true
+      steer_rate:
+        type: double
+        default_value: 1000000.0
+        read_only: true
+      overlimit:
+        type: double
+        default_value: 10000.0
+        read_only: true
+        description: "[-] weight on the velocity / acceleration / jerk interval violations"
+      drivable_area_barrier:
+        type: double
+        default_value: 2000.0
+        read_only: true
+        description: "[-] weight of the barrier at the SOFT boundaries; 0 disables"
+      crash_contact_penalty:
+        type: double
+        default_value: 100000.0
+        read_only: true

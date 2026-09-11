@@ -1,0 +1,4 @@
+/**:
+  ros__parameters:
+    next_lanelet_speed_limit:
+      velocity_mps: 2.78 # [m/s] (10 km/h)

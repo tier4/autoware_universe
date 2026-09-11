@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    lane_following_drivable_area:
+      margin_m: 0.0 # [m] the lane bounds and road_borders are moved this far towards the inside of the lane
+      bound_slack_weight: 100.0 # [-] slack weight of the soft own lane bound; a road_border is always hard
