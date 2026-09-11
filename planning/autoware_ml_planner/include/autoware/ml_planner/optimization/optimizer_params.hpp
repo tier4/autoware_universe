@@ -65,6 +65,48 @@ struct TrajectoryOptimizationParams
   double max_lateral_acceleration_mps2{3.0};
 
   int max_sqp_iterations{50};
+
+  /**
+   * @brief Temporal consistency: weakly track the previous cycle's own plan.
+   *
+   * The model output is re-sampled every cycle and is not temporally coherent, so
+   * consecutive plans can differ even when nothing in the scene changed. These weights add a
+   * second tracking term whose reference is the previous solution of the same candidate,
+   * shifted by the time elapsed since it was computed, which makes the published trajectory
+   * evolve smoothly instead of jumping between equally good interpretations of the scene.
+   *
+   * The term is a low-pass filter on the plan and trades consistency against responsiveness
+   * to new model output. Same longitudinal/lateral split as the tracking weights - a lower
+   * longitudinal weight lets the timing float while the path stays put.
+   *
+   * The weights decay over the horizon. The near stages are what the controller actually
+   * executes, so they should be held still, while the far stages are a prediction that is
+   * *supposed* to move as new information arrives - pinning them down is what makes the
+   * planner slow to react. The weights are therefore scaled per stage by
+   *
+   *   alpha(t) = far_weight_ratio + (1 - far_weight_ratio) * exp(-t / decay_time_constant_s)
+   *
+   * where t is the stage's time from the start of the horizon.
+   *
+   * The reference is the previous *solver solution*, not the previous published trajectory,
+   * so postprocessing (e.g. stop point fixing) does not feed back into the optimization. It
+   * is only applied while a previous solution is available and fresh, i.e. under exactly the
+   * conditions that also make it usable as a warm start.
+   */
+  struct TemporalConsistencyParams
+  {
+    bool enable{false};
+    // These are the weights at t = 0; the decay below scales them down over the horizon, so
+    // they may exceed the tracking weights without making the planner sluggish overall.
+    double weight_longitudinal{0.4};
+    double weight_lateral{2.0};
+    double weight_yaw{0.2};
+    double weight_velocity{0.4};
+    /// Time constant of the decay over the horizon [s]. <= 0 keeps the weights uniform.
+    double decay_time_constant_s{1.0};
+    /// Fraction of the weight that remains at the far end of the horizon, in [0, 1].
+    double far_weight_ratio{0.05};
+  } temporal_consistency;
 };
 
 }  // namespace autoware::ml_planner::optimization
