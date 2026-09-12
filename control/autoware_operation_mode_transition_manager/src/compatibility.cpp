@@ -19,7 +19,7 @@
 namespace autoware::operation_mode_transition_manager
 {
 
-Compatibility::Compatibility(rclcpp::Node * node) : node_(node)
+Compatibility::Compatibility(autoware::agnocast_wrapper::Node * node) : node_(node)
 {
   sub_autoware_engage_ = node->create_subscription<AutowareEngage>(
     "/api/autoware/get/engage", 1,
@@ -118,7 +118,7 @@ void Compatibility::set_mode(const OperationMode mode)
       is_calling_service_ = true;
       cli_selector_mode_->async_send_request(
         req,
-        [this](rclcpp::Client<SelectorModeSrv>::SharedFuture) { is_calling_service_ = false; });
+        [this](AUTOWARE_CLIENT_SHARED_FUTURE(SelectorModeSrv)) { is_calling_service_ = false; });
     }
   }
 
