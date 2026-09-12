@@ -21,10 +21,17 @@ namespace autoware::operation_mode_transition_manager
 
 AutonomousModeTransitionFlagNode::AutonomousModeTransitionFlagNode(
   const rclcpp::NodeOptions & options)
-: Node("autonomous_mode_transition_flag_node", options)
+: autoware::agnocast_wrapper::Node("autonomous_mode_transition_flag_node", options)
 {
   declare_parameter<double>("stable_check.duration");
   autonomous_mode_ = std::make_unique<AutonomousMode>(this);
+
+  namespace polling = autoware::agnocast_wrapper::polling;
+  sub_kinematics_ = polling::create_polling_subscriber<Odometry>(this, "kinematics");
+  sub_trajectory_ = polling::create_polling_subscriber<Trajectory>(this, "trajectory");
+  sub_control_cmd_ = polling::create_polling_subscriber<Control>(this, "control_cmd");
+  sub_trajectory_follower_control_cmd_ =
+    polling::create_polling_subscriber<Control>(this, "trajectory_follower_control_cmd");
 
   pub_transition_available_ =
     create_publisher<ModeChangeAvailable>("/system/command_mode/transition/available", 1);
@@ -34,7 +41,8 @@ AutonomousModeTransitionFlagNode::AutonomousModeTransitionFlagNode(
   pub_debug_ = create_publisher<ModeChangeBase::DebugInfo>("~/debug_info", 1);
 
   const auto period = rclcpp::Rate(declare_parameter<double>("frequency_hz")).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
+  timer_ =
+    autoware::agnocast_wrapper::create_timer(this, get_clock(), period, [this]() { on_timer(); });
 }
 
 void AutonomousModeTransitionFlagNode::on_timer()
@@ -63,22 +71,22 @@ InputData AutonomousModeTransitionFlagNode::take_data()
 {
   InputData data;
 
-  const auto kinematics = sub_kinematics_.take_data();
+  const auto kinematics = sub_kinematics_->take_data();
   if (kinematics) {
     data.kinematics = *kinematics;
   }
 
-  const auto trajectory = sub_trajectory_.take_data();
+  const auto trajectory = sub_trajectory_->take_data();
   if (trajectory) {
     data.trajectory = *trajectory;
   }
 
-  const auto control_cmd = sub_control_cmd_.take_data();
+  const auto control_cmd = sub_control_cmd_->take_data();
   if (control_cmd) {
     data.control_cmd = *control_cmd;
   }
 
-  const auto trajectory_follower_control_cmd = sub_trajectory_follower_control_cmd_.take_data();
+  const auto trajectory_follower_control_cmd = sub_trajectory_follower_control_cmd_->take_data();
   if (trajectory_follower_control_cmd) {
     data.trajectory_follower_control_cmd = *trajectory_follower_control_cmd;
   }
