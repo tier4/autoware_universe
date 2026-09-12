@@ -384,6 +384,10 @@ PlannerOutput MLPlannerCore::create_planner_output(
       trajectory = std::move(avoidance_result.trajectory);
     }
 
+    // A candidate whose optimization failed is dropped entirely rather than falling back to
+    // the raw model output (see PlannerOutput::trajectory).
+    bool optimization_failed = false;
+
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
     if (trajectory_optimizer_) {
       std::optional<geometry_msgs::msg::Pose> goal_pose;
@@ -398,11 +402,16 @@ PlannerOutput MLPlannerCore::create_planner_output(
         output.optimization_debug.solver_status = optimization_result.solver_status;
         output.optimization_debug.solve_time_ms = optimization_result.solve_time_ms;
       }
+      optimization_failed = !optimization_result.optimized;
       trajectory = std::move(optimization_result.trajectory);
     }
 #else
     (void)current_steering_angle_rad;
 #endif
+
+    if (optimization_failed) {
+      continue;
+    }
 
     if (params_.stop_point_fixing.enable) {
       if (i == 0) {
