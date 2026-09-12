@@ -15,6 +15,7 @@
 #ifndef ADAPI_PAUSE_INTERFACE_HPP_
 #define ADAPI_PAUSE_INTERFACE_HPP_
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware/component_interface_specs_universe/control.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -27,6 +28,7 @@ namespace autoware::vehicle_cmd_gate
 class AdapiPauseInterface
 {
 private:
+  using NodeT = autoware::agnocast_wrapper::Node;
   static constexpr double eps = 1e-3;
   using Control = autoware_control_msgs::msg::Control;
   using SetPause = autoware::component_interface_specs_universe::control::SetPause;
@@ -34,7 +36,7 @@ private:
   using IsStartRequested = autoware::component_interface_specs_universe::control::IsStartRequested;
 
 public:
-  explicit AdapiPauseInterface(rclcpp::Node * node);
+  explicit AdapiPauseInterface(NodeT * node);
   bool is_paused() const;
   void publish();
   void update(const Control & control);
@@ -45,10 +47,10 @@ private:
   std::optional<bool> prev_is_paused_;
   std::optional<bool> prev_is_start_requested_;
 
-  rclcpp::Node * node_;
-  autoware::component_interface_utils::Service<SetPause>::SharedPtr srv_set_pause_;
-  autoware::component_interface_utils::Publisher<IsPaused>::SharedPtr pub_is_paused_;
-  autoware::component_interface_utils::Publisher<IsStartRequested>::SharedPtr
+  NodeT * node_;
+  autoware::component_interface_utils::Service<SetPause, NodeT>::SharedPtr srv_set_pause_;
+  autoware::component_interface_utils::Publisher<IsPaused, NodeT>::SharedPtr pub_is_paused_;
+  autoware::component_interface_utils::Publisher<IsStartRequested, NodeT>::SharedPtr
     pub_is_start_requested_;
 
   void on_pause(

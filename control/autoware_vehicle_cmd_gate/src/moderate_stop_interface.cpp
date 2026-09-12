@@ -17,9 +17,9 @@
 namespace autoware::vehicle_cmd_gate
 {
 
-ModerateStopInterface::ModerateStopInterface(rclcpp::Node * node) : node_(node)
+ModerateStopInterface::ModerateStopInterface(NodeT * node) : node_(node)
 {
-  const auto adaptor = autoware::component_interface_utils::NodeAdaptor(node);
+  const auto adaptor = autoware::component_interface_utils::NodeAdaptor<NodeT>(node);
   adaptor.init_srv(srv_set_stop_, this, &ModerateStopInterface::on_stop_request);
   adaptor.init_pub(pub_is_stopped_);
 
