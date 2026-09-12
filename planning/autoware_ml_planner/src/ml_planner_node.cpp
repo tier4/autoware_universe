@@ -781,8 +781,18 @@ void MLPlanner::on_timer()
     return;
   }
 
-  pub_trajectory_->publish(planner_output.trajectory);
-  pub_trajectories_->publish(planner_output.candidate_trajectories);
+  // The trajectory is only published when the optimization produced one. A failed cycle is
+  // skipped rather than falling back to the raw model output, which the optimization never
+  // validated and which carries no velocity profile consistent with the ego state. The next
+  // cycle is expected to recover, so this is a skip and not an escalation.
+  if (planner_output.trajectory) {
+    pub_trajectory_->publish(*planner_output.trajectory);
+  }
+  if (!planner_output.candidate_trajectories.candidate_trajectories.empty()) {
+    pub_trajectories_->publish(planner_output.candidate_trajectories);
+  }
+  // Perception output and the turn indicator command do not come from the optimization, so
+  // they are published either way.
   pub_objects_->publish(planner_output.predicted_objects);
   pub_turn_indicators_->publish(planner_output.turn_indicators_command);
 
@@ -820,16 +830,30 @@ void MLPlanner::on_timer()
     solve_time_msg.data = optimization_debug.solve_time_ms;
     pub_optimization_time_->publish(solve_time_msg);
     if (!optimization_debug.optimized) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-        "Trajectory optimization failed (acados status %d); publishing the raw trajectory.",
-        optimization_debug.solver_status);
+      // status 0 with no solution means the solve never ran - the model output was too
+      // short to build the horizon from - which is a different problem from a solver that
+      // ran and failed. Either way the cycle is skipped.
+      if (optimization_debug.solver_status == 0) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+          "Trajectory optimization did not run (model output too short); skipping this "
+          "cycle.");
+      } else {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+          "Trajectory optimization failed (acados status %d); skipping this cycle.",
+          optimization_debug.solver_status);
+      }
+      // WARN, not ERROR: a skipped cycle is expected to be recovered by the next one, so it
+      // should be visible without escalating into an MRM.
       diagnostics_inference_->update_level_and_message(
-        DiagnosticStatus::WARN, "Trajectory optimization failed");
+        DiagnosticStatus::WARN, "Trajectory optimization failed, cycle skipped");
     }
   }
 
-  publish_planning_factor(planner_output.trajectory);
+  if (planner_output.trajectory) {
+    publish_planning_factor(*planner_output.trajectory);
+  }
 
   // Publish diagnostics
   diagnostics_inference_->publish(frame_time);
