@@ -81,7 +81,15 @@ struct RoadBorderAvoidanceDebug
 
 struct PlannerOutput
 {
-  Trajectory trajectory;
+  /// The trajectory to publish, or nullopt when this cycle is skipped.
+  ///
+  /// Unset when the trajectory optimization was attempted and did not produce a solution.
+  /// The raw model output is not a usable fallback: it is pose-only and its timing carries
+  /// no velocity profile consistent with the current ego state, so publishing it would hand
+  /// the controller a trajectory the optimization never validated. Skipping the cycle keeps
+  /// the previously published trajectory in effect until the next solve succeeds.
+  std::optional<Trajectory> trajectory;
+  /// Candidates whose optimization succeeded. Empty when none did.
   CandidateTrajectories candidate_trajectories;
   PredictedObjects predicted_objects;
   TurnIndicatorsCommand turn_indicators_command;
