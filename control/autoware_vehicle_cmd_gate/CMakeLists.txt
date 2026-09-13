@@ -11,13 +11,11 @@ ament_auto_add_library(vehicle_cmd_gate_node SHARED
   src/moderate_stop_interface.cpp
 )
 
-# VehicleCmdGate derives from autoware::agnocast_wrapper::Node, which requires an AgnocastOnly
-# executor.
 autoware_agnocast_wrapper_register_node(vehicle_cmd_gate_node
   PLUGIN "autoware::vehicle_cmd_gate::VehicleCmdGate"
   EXECUTABLE vehicle_cmd_gate_exe
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR AgnocastOnlySingleThreadedExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 rosidl_generate_interfaces(
