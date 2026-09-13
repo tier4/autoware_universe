@@ -18,7 +18,10 @@
   <arg name="input_turn_indicators" default="~/input/turn_indicators"/>
   <arg name="build_only" default="false" description="shutdown node after model initialization"/>
 
+  <include file="$(find-pkg-share autoware_agnocast_wrapper)/launch/agnocast_env.launch.xml"/>
+
   <node pkg="autoware_diffusion_planner" exec="autoware_diffusion_planner_node" name="diffusion_planner_node" output="both">
+    <env name="LD_PRELOAD" value="$(var ld_preload_value)"/>
     <param from="$(var diffusion_planner_param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
     <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
