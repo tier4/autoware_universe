@@ -15,10 +15,11 @@
 #include "mission_planner.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
+#include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/lanelet2_utils/nn_search.hpp>
 #include <autoware/mission_planner_universe/service_utils.hpp>
-#include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <autoware_utils/math/unit_conversion.hpp>
+#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -54,13 +55,25 @@ std::string route_state_to_string(const uint8_t state)
       // clang-format on
   }
 }
+
+ArrivalCheckerThreshold get_arrival_checker_threshold(rclcpp::Node & node)
+{
+  ArrivalCheckerThreshold threshold;
+  threshold.angle =
+    autoware_utils::deg2rad(node.declare_parameter<double>("arrival_check_angle_deg"));
+  threshold.lateral_distance = node.declare_parameter<double>("arrival_check_lateral_distance");
+  threshold.longitudinal_undershoot_distance =
+    node.declare_parameter<double>("arrival_check_longitudinal_undershoot_distance");
+  threshold.longitudinal_overshoot_distance =
+    node.declare_parameter<double>("arrival_check_longitudinal_overshoot_distance");
+  threshold.duration = node.declare_parameter<double>("arrival_check_duration");
+  return threshold;
+}
 }  // namespace
 
 MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
 : Node("mission_planner", options),
-  arrival_checker_(this),
-  plugin_loader_(
-    "autoware_mission_planner_universe", "autoware::mission_planner_universe::PlannerPlugin"),
+  arrival_checker_(get_arrival_checker_threshold(*this)),
   tf_buffer_(get_clock()),
   tf_listener_(tf_buffer_),
   odometry_(nullptr),
@@ -74,9 +87,20 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
   minimum_reroute_length_ = declare_parameter<double>("minimum_reroute_length");
   allow_reroute_in_autonomous_mode_ = declare_parameter<bool>("allow_reroute_in_autonomous_mode");
   goal_lanelet_transparency_ = declare_parameter<float>("goal_lanelet_transparency");
-  planner_ = plugin_loader_.createSharedInstance(
-    "autoware::mission_planner_universe::lanelet2::DefaultPlanner");
-  planner_->initialize(this);
+
+  lanelet2::DefaultPlannerParameters default_planner_param;
+  default_planner_param.goal_angle_threshold_deg =
+    declare_parameter<double>("goal_angle_threshold_deg");
+  default_planner_param.enable_correct_goal_pose =
+    declare_parameter<bool>("enable_correct_goal_pose");
+  default_planner_param.consider_no_drivable_lanes =
+    declare_parameter<bool>("consider_no_drivable_lanes");
+  default_planner_param.check_footprint_inside_lanes =
+    declare_parameter<bool>("check_footprint_inside_lanes");
+  default_planner_param.allow_area = declare_parameter<bool>("allow_area", false);
+
+  const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  planner_ = std::make_shared<lanelet2::DefaultPlanner>(default_planner_param, vehicle_info);
 
   const auto durable_qos = rclcpp::QoS(1).transient_local();
   sub_odometry_ = create_subscription<Odometry>(
@@ -87,6 +111,7 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
   sub_vector_map_ = create_subscription<LaneletMapBin>(
     "~/input/vector_map", durable_qos, std::bind(&MissionPlanner::on_map, this, _1));
   pub_marker_ = create_publisher<MarkerArray>("~/debug/route_marker", durable_qos);
+  pub_goal_footprint_marker_ = create_publisher<MarkerArray>("~/debug/goal_footprint", durable_qos);
 
   // NOTE: The route interface should be mutually exclusive by callback group.
   sub_modified_goal_ = create_subscription<PoseWithUuidStamped>(
@@ -173,13 +198,11 @@ void MissionPlanner::check_initialization()
 void MissionPlanner::on_odometry(const Odometry::ConstSharedPtr msg)
 {
   odometry_ = msg;
+  arrival_checker_.update(*msg);
 
   // NOTE: Do not check in the other states as goal may change.
   if (state_.state == RouteState::SET) {
-    PoseStamped pose;
-    pose.header = odometry_->header;
-    pose.pose = odometry_->pose.pose;
-    if (arrival_checker_.is_arrived(pose)) {
+    if (arrival_checker_.is_arrived()) {
       change_state(RouteState::ARRIVED);
     }
   }
@@ -195,6 +218,7 @@ void MissionPlanner::on_map(const LaneletMapBin::ConstSharedPtr msg)
   map_ptr_ = msg;
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
     autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_ptr_));
+  planner_->set_map(*map_ptr_);
 }
 
 Pose MissionPlanner::transform_pose(const Pose & pose, const Header & header)
@@ -409,11 +433,12 @@ void MissionPlanner::on_set_preferred_primitive(
     auto & segment = current_route.segments.at(i);
     const auto & preferred_primitive = req->preferred_primitives.at(i);
 
-    if (std::none_of(
-          segment.primitives.begin(), segment.primitives.end(),
-          [&preferred_primitive](const autoware_planning_msgs::msg::LaneletPrimitive & p) {
-            return p.id == preferred_primitive.id;
-          })) {
+    if (
+      std::none_of(
+        segment.primitives.begin(), segment.primitives.end(),
+        [&preferred_primitive](const autoware_planning_msgs::msg::LaneletPrimitive & p) {
+          return p.id == preferred_primitive.id;
+        })) {
       res->status.success = false;
       throw service_utils::ServiceException(
         autoware_adapi_v1_msgs::srv::SetRoute::Response::ERROR_INVALID_STATE,
@@ -495,7 +520,7 @@ void MissionPlanner::change_route()
 {
   current_route_ = nullptr;
   planner_->clearRoute();
-  arrival_checker_.set_goal();
+  arrival_checker_.clear_goal();
 
   // TODO(Takagi, Isamu): publish an empty route here
   // pub_route_->publish();
@@ -508,6 +533,21 @@ void MissionPlanner::change_route(const LaneletRoute & route)
   goal.header = route.header;
   goal.pose = route.goal_pose;
   goal.uuid = route.uuid;
+
+  {
+    size_t n_area = 0;
+    size_t n_lane = 0;
+    for (const auto & seg : route.segments) {
+      if (seg.preferred_primitive.primitive_type == "area") {
+        ++n_area;
+      } else {
+        ++n_lane;
+      }
+    }
+    RCLCPP_INFO(
+      get_logger(), "[MissionPlanner] Publishing route: segments=%zu (lane=%zu, area=%zu)",
+      route.segments.size(), n_lane, n_area);
+  }
 
   current_route_ = std::make_shared<LaneletRoute>(route);
   planner_->updateRoute(route);
@@ -591,14 +631,22 @@ LaneletRoute MissionPlanner::create_route(
   const Header & header, const std::vector<Pose> & waypoints, const Pose & start_pose,
   const Pose & goal_pose, const UUID & uuid, const bool allow_goal_modification)
 {
-  PlannerPlugin::RoutePoints points;
+  lanelet2::DefaultPlanner::RoutePoints points;
   points.push_back(start_pose);
   for (const auto & waypoint : waypoints) {
     points.push_back(transform_pose(waypoint, header));
   }
   points.push_back(transform_pose(goal_pose, header));
 
-  LaneletRoute route = planner_->plan(points);
+  const auto plan_result = planner_->plan(points);
+  if (plan_result.warning_message) {
+    RCLCPP_WARN(get_logger(), "%s", plan_result.warning_message->c_str());
+  }
+  if (plan_result.goal_footprint) {
+    pub_goal_footprint_marker_->publish(
+      lanelet2::DefaultPlanner::visualize_debug_footprint(*plan_result.goal_footprint));
+  }
+  LaneletRoute route = plan_result.route;
   route.header.stamp = header.stamp;
   route.header.frame_id = map_frame_;
   route.uuid = uuid;
@@ -695,7 +743,8 @@ bool MissionPlanner::check_reroute_safety(
     target_route.segments.front().primitives.begin(),
     target_route.segments.front().primitives.end(), [&](const auto & primitive) {
       const auto lanelet = lanelet_map_ptr_->laneletLayer.get(primitive.id);
-      return lanelet::utils::isInLanelet(target_route.start_pose, lanelet);
+      return autoware::experimental::lanelet2_utils::is_in_lanelet(
+        target_route.start_pose, lanelet);
     });
   if (!ego_is_on_first_target_section) {
     RCLCPP_ERROR(
@@ -782,7 +831,7 @@ bool MissionPlanner::check_reroute_safety(
   const auto & target_goal = target_route.goal_pose;
   for (const auto & target_end_primitive : target_end_primitives) {
     const auto lanelet = lanelet_map_ptr_->laneletLayer.get(target_end_primitive.id);
-    if (lanelet::utils::isInLanelet(target_goal, lanelet)) {
+    if (autoware::experimental::lanelet2_utils::is_in_lanelet(target_goal, lanelet)) {
       const auto target_goal_position =
         experimental::lanelet2_utils::from_ros(target_goal.position);
       const double dist_to_goal = lanelet::geometry::toArcCoordinates(
