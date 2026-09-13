@@ -712,11 +712,26 @@ void MLPlanner::on_timer()
   const rclcpp::Time frame_time = core_->frame_time();
 
   if (start_velocity_override_enabled_) {
-    // Make the model plan as if the vehicle were already moving: overwrite every ego
-    // velocity entry of the input (all history timesteps, all batches) with 1 m/s.
     auto & ego_agent_past = input_data_map.at("ego_agent_past");
-    xt::view(ego_agent_past, xt::all(), xt::all(), EGO_AGENT_PAST_IDX_VELOCITY) =
-      start_service_ego_velocity_mps;
+    // The last history timestep holds the current measured ego velocity. Once the vehicle has
+    // actually reached the overridden velocity the override is no longer needed, so stop it
+    // automatically instead of waiting for the service to be called with false.
+    const auto latest_timestep_idx = static_cast<std::size_t>(ego_agent_past.shape(1)) - 1;
+    const float measured_ego_velocity_mps =
+      ego_agent_past(0, latest_timestep_idx, EGO_AGENT_PAST_IDX_VELOCITY);
+    if (measured_ego_velocity_mps >= start_service_ego_velocity_mps) {
+      start_velocity_override_enabled_ = false;
+      RCLCPP_INFO(
+        get_logger(),
+        "Start service: ego velocity override disabled automatically (measured %.2f m/s reached "
+        "%.2f m/s)",
+        measured_ego_velocity_mps, start_service_ego_velocity_mps);
+    } else {
+      // Make the model plan as if the vehicle were already moving: overwrite every ego
+      // velocity entry of the input (all history timesteps, all batches) with 1 m/s.
+      xt::view(ego_agent_past, xt::all(), xt::all(), EGO_AGENT_PAST_IDX_VELOCITY) =
+        start_service_ego_velocity_mps;
+    }
   }
 
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(core_->ego_pose());
