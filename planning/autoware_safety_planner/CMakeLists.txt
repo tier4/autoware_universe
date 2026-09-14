@@ -137,6 +137,11 @@ if(BUILD_TESTING)
   endif()
 endif()
 
+install(PROGRAMS
+  scripts/generate_test_data.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_auto_package(INSTALL_TO_SHARE
   config
   launch

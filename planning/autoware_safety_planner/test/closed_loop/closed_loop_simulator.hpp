@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__SAFETY_PLANNER__CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
-#define AUTOWARE__SAFETY_PLANNER__CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
+#ifndef CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
+#define CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
 
 // Lightweight closed-loop simulation without a ROS node.
-// Builds SafetyPlannerInput the same way SafetyPlannerNode::on_timer does, advances the ego
-// along the output trajectory by dt (perfect tracking; no controller or vehicle model), and
-// repeats until the goal is reached / the ego stalls / the step limit is hit.
+// Builds SafetyPlannerInput the same way SafetyPlannerNode::on_timer does, applies the velocity
+// of the output trajectory at dt and a pure-pursuit steer toward it to a kinematic bicycle
+// model (pure pursuit stands in for the controller; the actuators respond perfectly), and repeats
+// until the goal is reached / the ego stalls / the step limit is hit.
 // Every output trajectory goes through a validity check.
 
 #include "context.hpp"
@@ -43,6 +44,9 @@ struct ClosedLoopConfig
   //! Stalled if the goal distance does not shrink by stall_progress_m within stall_window_steps
   size_t stall_window_steps{100};
   double stall_progress_m{0.1};
+  //! Pure-pursuit lookahead: max(min_lookahead_m, lookahead_time_s * v)
+  double lookahead_time_s{1.0};
+  double min_lookahead_m{2.0};
 };
 
 //! Ego state at the start of a cycle and the trajectory planned in that cycle
@@ -91,8 +95,9 @@ public:
   const SafetyPlannerInput & input() const { return input_; }
 
 private:
-  //! Moves the ego to the point dt seconds ahead on the trajectory and updates
-  //! odometry / acceleration / steering
+  //! Takes velocity / acceleration at dt seconds ahead on the trajectory, steers toward the
+  //! lookahead point on it (pure pursuit), and integrates the pose with the kinematic bicycle
+  //! model
   void advance_ego(const Trajectory & trajectory);
   bool update_route_manager();
 
@@ -108,4 +113,4 @@ private:
 
 }  // namespace autoware::safety_planner::testing
 
-#endif  // AUTOWARE__SAFETY_PLANNER__CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
+#endif  // CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_

@@ -6,3 +6,5 @@ scenarios:
   - rotary_goal_route.yaml
   - road_shoulder_rotary_goal_route.yaml
   - behavior_normal_route_static_obstacle.yaml
+  - intersection_right_route.yaml
+  - long_straight_route.yaml

@@ -317,9 +317,24 @@ safety_planner:
       type: double
       default_value: 1.0
       read_only: true
-      description: "[m] MPPI rejects an output whose lateral deviation from the Frenet reference exceeds this"
+      description: "[m] MPPI rejects an output whose lateral deviation from the reference_path exceeds this"
       validation:
         gt<>: [0.0]
+    reference:
+      lat_accel_mps2:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[m/s^2] lateral acceleration the longitudinal profile of the reference aims at in curves"
+        validation:
+          gt<>: [0.0]
+      goal_lateral_blend_m:
+        type: double
+        default_value: 20.0
+        read_only: true
+        description: "[m] the reference blends into the lateral position of the goal between 2x and 1x this distance before the end of the path"
+        validation:
+          gt<>: [0.0]
     vehicle:
       acc_time_constant_s:
         type: double

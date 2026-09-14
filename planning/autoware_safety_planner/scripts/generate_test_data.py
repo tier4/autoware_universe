@@ -51,6 +51,22 @@ def import_lanelet2_utils_generator():
     spec = importlib.util.spec_from_file_location("lanelet2_utils_test_case_generator", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+
+    # Test maps such as 2km_test.osm have empty lat/lon and carry the coordinates in
+    # local_x/local_y tags; autoware_test_utils::loadMap applies them after projection, and the
+    # module-level function is replaced so that LaneletVisualizationHandler loads the same way
+    projected_load = module.load_properly_projected_map
+
+    def load_with_local_coordinates(map_path, projector):
+        lanelet_map = projected_load(map_path, projector)
+        for point in lanelet_map.pointLayer:
+            if "local_x" in point.attributes:
+                point.x = float(point.attributes["local_x"])
+            if "local_y" in point.attributes:
+                point.y = float(point.attributes["local_y"])
+        return lanelet_map
+
+    module.load_properly_projected_map = load_with_local_coordinates
     return module
 
 
@@ -250,6 +266,8 @@ def main():
 
     fig, ax = plt.subplots(figsize=(14, 9))
     lanelet2_utils.LaneletVisualizationHandler(fig, ax, str(map_path))
+    # The handler uses adjustable="box", which shrinks the axes to a sliver for an elongated map
+    ax.set_aspect("equal", adjustable="datalim")
     fig.subplots_adjust(left=0.05, right=0.8, top=0.95, bottom=0.05)
 
     placer = PosePlacer(

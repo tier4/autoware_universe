@@ -213,16 +213,56 @@ void ClosedLoopSimulator::advance_ego(const Trajectory & trajectory)
   const double t1 = to_seconds(p1.time_from_start);
   const double ratio = (t1 - t0) > 1e-6 ? std::clamp((t_target - t0) / (t1 - t0), 0.0, 1.0) : 1.0;
 
-  // Points coincide while stopped, so slerp the orientation instead of deriving it from the
-  // position difference
-  input_.odometry.pose.pose =
-    autoware_utils_geometry::calc_interpolated_pose(p0.pose, p1.pose, ratio, false);
-  input_.odometry.twist.twist.linear.x =
+  // Only the velocity is taken from the trajectory (perfect actuator response). The steer is not
+  // read from front_wheel_angle_rad because the controller ignores that field; like the
+  // controller, the ego steers toward a lookahead point on the trajectory (pure pursuit), which
+  // also pulls it back when the trajectory does not start at the ego
+  const double v_prev = input_.odometry.twist.twist.linear.x;
+  const double steer_prev = input_.steering.steering_tire_angle;
+  const double v_cmd =
     (1.0 - ratio) * p0.longitudinal_velocity_mps + ratio * p1.longitudinal_velocity_mps;
+  auto & pose = input_.odometry.pose.pose;
+  const double yaw_prev = autoware_utils_geometry::get_rpy(pose).z;
+  const double wheel_base_m = input_.vehicle_info.wheel_base_m;
+  const double lookahead_m = std::max(config_.min_lookahead_m, config_.lookahead_time_s * v_cmd);
+  // The first point is the ego itself, so the search starts at the second one
+  size_t target = points.size() - 1;
+  for (size_t i = 1; i < points.size(); ++i) {
+    if (autoware_utils_geometry::calc_distance2d(points[i].pose, pose) >= lookahead_m) {
+      target = i;
+      break;
+    }
+  }
+  const double dist = autoware_utils_geometry::calc_distance2d(points[target].pose, pose);
+  // Every remaining point coincides with the ego while stopped; hold the steer
+  double steer_cmd = steer_prev;
+  if (dist > 1e-3) {
+    const double alpha = autoware_utils_geometry::normalize_radian(
+      std::atan2(
+        points[target].pose.position.y - pose.position.y,
+        points[target].pose.position.x - pose.position.x) -
+      yaw_prev);
+    steer_cmd = std::clamp(
+      std::atan(2.0 * wheel_base_m * std::sin(alpha) / dist),
+      -input_.vehicle_info.max_steer_angle_rad, input_.vehicle_info.max_steer_angle_rad);
+  }
+  input_.odometry.twist.twist.linear.x = v_cmd;
   input_.acceleration.accel.accel.linear.x =
     (1.0 - ratio) * p0.acceleration_mps2 + ratio * p1.acceleration_mps2;
-  input_.steering.steering_tire_angle =
-    static_cast<float>((1.0 - ratio) * p0.front_wheel_angle_rad + ratio * p1.front_wheel_angle_rad);
+  input_.steering.steering_tire_angle = static_cast<float>(steer_cmd);
+
+  // base_link is the rear axle, so the yaw rate is v * tan(steer) / wheel_base. Midpoint values
+  // keep the integration error small enough at dt = 0.1 s without sub-stepping
+  const double v_mid = 0.5 * (v_prev + v_cmd);
+  const double steer_mid = 0.5 * (steer_prev + steer_cmd);
+  const double yaw_rate = v_mid * std::tan(steer_mid) / wheel_base_m;
+  const double yaw_mid = yaw_prev + 0.5 * yaw_rate * t_target;
+  pose.position.x += v_mid * std::cos(yaw_mid) * t_target;
+  pose.position.y += v_mid * std::sin(yaw_mid) * t_target;
+  // z has no dynamics here; follow the planned height so the ego stays on the map surface
+  pose.position.z = (1.0 - ratio) * p0.pose.position.z + ratio * p1.pose.position.z;
+  pose.orientation =
+    autoware_utils_geometry::create_quaternion_from_yaw(yaw_prev + yaw_rate * t_target);
 }
 
 ClosedLoopResult ClosedLoopSimulator::run()

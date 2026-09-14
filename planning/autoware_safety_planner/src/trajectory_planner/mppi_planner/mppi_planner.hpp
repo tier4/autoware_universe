@@ -15,23 +15,24 @@
 #ifndef TRAJECTORY_PLANNER__MPPI_PLANNER__MPPI_PLANNER_HPP_
 #define TRAJECTORY_PLANNER__MPPI_PLANNER__MPPI_PLANNER_HPP_
 
-// MPPI trajectory planner plugin. The trajectory of FrenetSamplingBasedPlanner is the reference
-// that autoware_mppi_optimizer (FirstOrderDubinsMppiInterface) tracks and refines; MPPI alone has
-// no gradient away from moving objects and pulls towards its reference, so the avoidance geometry
-// and the stop decisions stay with the sampling planner. The constraints are handed to MPPI as far
-// as its API takes them (constraints_compiler.hpp IR -> road_borders / drivable_area segments,
-// kinematic limits, tracked objects); whatever it cannot represent (timed occupancy, lateral
-// acceleration, soft weights per constraint) is checked on the output, and the Frenet trajectory
-// is returned unchanged when the output fails or MPPI rejects it.
+// MPPI trajectory planner plugin. The reference that autoware_mppi_optimizer
+// (FirstOrderDubinsMppiInterface) tracks is the reference_path itself, sampled in time with a
+// longitudinal profile built from the constraints (speed bounds, curvature, stop bars, goal); the
+// lateral planning is left to MPPI. MPPI reads the reference by index, one point per kMppiDt, so a
+// path alone cannot be handed over. The constraints are passed to MPPI as far as its API takes
+// them (constraints_compiler.hpp IR -> road_borders / drivable_area segments, kinematic limits,
+// tracked objects); whatever it cannot represent (timed occupancy, lateral acceleration, soft
+// weights per constraint) is checked on the output. There is no planner behind this one: when
+// the output fails or MPPI rejects it, the reference is driven if it passes the same check, and
+// a stop trajectory from the ego pose is returned otherwise.
 
+#include "../../utils/turn_indicator_decider.hpp"
 #include "../frenet_sampling_based_planner/constraints_compiler.hpp"
-#include "../frenet_sampling_based_planner/frenet_sampling_based_planner.hpp"
 #include "../trajectory_planner_interface.hpp"
 
 #include <autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp>
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -52,11 +53,26 @@ public:
 private:
   using MppiInterface = autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
 
+  PlannedTrajectory plan_one_side(
+    MppiInterface & optimizer, TurnIndicatorDecider & turn_indicator_decider,
+    const PlannerContext & context, const std::vector<Constraint> & constraints,
+    TrajectoryPlannerDebug & debug);
+
+  //! The ego at t = 0 followed by the reference_path centerline, one point per kMppiDt over the
+  //! MPPI horizon, driven at the fastest profile under the speed bounds, the lateral acceleration,
+  //! the steer rate, the stop bars and the goal
+  Trajectory make_reference_trajectory(
+    const PlannerContext & context, const CompiledConstraints & compiled_constraints) const;
+
+  //! Straight ahead from the ego pose, braking at the hardest deceleration
+  Trajectory make_stop_trajectory(
+    const PlannerContext & context, const CompiledConstraints & compiled_constraints) const;
+
   //! Refines reference in place with optimizer; returns false (reference untouched) when MPPI
-  //! is skipped, rejects its result, or the result fails the constraint check
-  bool refine_one_side(
+  //! rejects its result or the result fails the constraint check
+  bool refine(
     MppiInterface & optimizer, const PlannerContext & context,
-    const std::vector<Constraint> & constraints, Trajectory & reference,
+    const CompiledConstraints & compiled_constraints, Trajectory & reference,
     TrajectoryPlannerDebug & debug);
 
   //! The GPU resources are allocated on the first call, once the steer bounds are known
@@ -68,7 +84,9 @@ private:
     const PlannerContext & context, const CompiledConstraints & compiled_constraints,
     const Trajectory & trajectory, std::string & reason) const;
 
-  FrenetSamplingBasedPlanner frenet_planner_;
+  // One decider per output, since each holds its own anti-chatter and latch state
+  TurnIndicatorDecider normal_turn_indicator_decider_{TurnSignalParams{}};
+  TurnIndicatorDecider cautious_turn_indicator_decider_{TurnSignalParams{}};
   //! One optimizer per output: the warm start (previous control sequence) is internal state
   std::unique_ptr<MppiInterface> normal_optimizer_;
   std::unique_ptr<MppiInterface> cautious_optimizer_;
