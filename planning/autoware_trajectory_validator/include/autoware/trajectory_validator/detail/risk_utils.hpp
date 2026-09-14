@@ -15,16 +15,16 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_
 
-#include "autoware_trajectory_validator/msg/metric_report.hpp"
-#include "autoware_trajectory_validator/msg/risk_level.hpp"
+#include "autoware_internal_planning_msgs/msg/metric_report.hpp"
+#include "autoware_internal_planning_msgs/msg/risk_level.hpp"
 
 #include <algorithm>
 #include <vector>
 
 namespace autoware::trajectory_validator
 {
-using autoware_trajectory_validator::msg::MetricReport;
-using autoware_trajectory_validator::msg::RiskLevel;
+using autoware_internal_planning_msgs::msg::MetricReport;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using RiskLevelType = RiskLevel::_level_type;
 
 /**

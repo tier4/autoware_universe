@@ -87,7 +87,7 @@ void TrajectoryValidatorDiagnostic::get_active_statuses(
 }
 
 void TrajectoryValidatorDiagnostic::update_and_publish(
-  const std::vector<autoware_trajectory_validator::msg::ValidationReport> & reports,
+  const std::vector<autoware_internal_planning_msgs::msg::ValidationReport> & reports,
   const rclcpp::Time & stamp)
 {
   // Within one candidate: returns most severe action for each filter.

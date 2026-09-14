@@ -50,30 +50,6 @@ target_link_libraries(autoware_trajectory_validator_plugins
   ${trajectory_validator_lib_target}
 )
 
-# Clear stale Python interpreter state so rosidl can resolve it correctly.
-unset(PYTHON_EXECUTABLE CACHE)
-unset(PYTHON_EXECUTABLE)
-
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/MetricReport.msg"
-  "msg/RiskLevel.msg"
-  "msg/ValidationReport.msg"
-  "msg/ValidationReportArray.msg"
-  DEPENDENCIES
-  builtin_interfaces
-  unique_identifier_msgs
-)
-
-# to use messages defined in the same package from C++
-if(${rosidl_cmake_VERSION} VERSION_LESS 2.5.0)
-  rosidl_target_interfaces(${trajectory_validator_lib_target}
-    ${PROJECT_NAME} "rosidl_typesupport_cpp")
-else()
-  rosidl_get_typesupport_target(
-    cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-  target_link_libraries(${trajectory_validator_lib_target} "${cpp_typesupport_target}")
-endif()
-
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_cmake_ros REQUIRED)

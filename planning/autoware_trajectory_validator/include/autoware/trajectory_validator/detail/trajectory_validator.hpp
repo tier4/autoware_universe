@@ -40,9 +40,9 @@ namespace autoware::trajectory_validator
 using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_internal_planning_msgs::msg::GeneratorInfo;
-using autoware_trajectory_validator::msg::MetricReport;
-using autoware_trajectory_validator::msg::RiskLevel;
-using autoware_trajectory_validator::msg::ValidationReport;
+using autoware_internal_planning_msgs::msg::MetricReport;
+using autoware_internal_planning_msgs::msg::RiskLevel;
+using autoware_internal_planning_msgs::msg::ValidationReport;
 
 /** @brief Generator info paired with its hex-string UUID, precomputed once to avoid reconversion.
  */

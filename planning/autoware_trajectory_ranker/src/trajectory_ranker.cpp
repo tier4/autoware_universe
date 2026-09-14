@@ -29,7 +29,7 @@
 namespace
 {
 using autoware::trajectory_ranker::TrajectorySource;
-using autoware_trajectory_validator::msg::RiskLevel;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using std::string;
 std::string to_risk_string(const RiskLevel::_level_type risk_level)
 {

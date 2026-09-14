@@ -203,7 +203,7 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
   };
 
   metrics.push_back(
-    autoware_trajectory_validator::build<MetricReport>()
+    autoware_internal_planning_msgs::build<MetricReport>()
       .validator_name(get_name())
       .validator_category(category())
       .metric_name("check_crossing_red_light")
@@ -211,7 +211,7 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       .risk(make_risk(is_crossing_red, red_arc_length_to_stop_line)));
 
   metrics.push_back(
-    autoware_trajectory_validator::build<MetricReport>()
+    autoware_internal_planning_msgs::build<MetricReport>()
       .validator_name(get_name())
       .validator_category(category())
       .metric_name("check_crossing_amber_light")

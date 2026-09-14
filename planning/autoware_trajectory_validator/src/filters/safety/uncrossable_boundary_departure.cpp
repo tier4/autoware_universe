@@ -68,7 +68,7 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
       break;
   }
 
-  std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+  std::vector<MetricReport> metrics{autoware_internal_planning_msgs::build<MetricReport>()
                                       .validator_name(get_name())
                                       .validator_category(category())
                                       .metric_name("lat_dist_to_uncrossable_bound")

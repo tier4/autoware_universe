@@ -17,7 +17,8 @@
 
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
-#include <autoware_trajectory_validator/msg/risk_level.hpp>
+
+#include <autoware_internal_planning_msgs/msg/risk_level.hpp>
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
@@ -38,11 +39,11 @@ using autoware::trajectory_validator::FilterContext;
 using autoware::trajectory_validator::is_feasible;
 using autoware::trajectory_validator::worst_risk_level;
 using autoware::trajectory_validator::plugin::traffic_rule::TrafficLightFilter;
+using autoware_internal_planning_msgs::msg::RiskLevel;
 using autoware_perception_msgs::msg::TrafficLightElement;
 using autoware_perception_msgs::msg::TrafficLightGroup;
 using autoware_perception_msgs::msg::TrafficLightGroupArray;
 using autoware_planning_msgs::msg::TrajectoryPoint;
-using autoware_trajectory_validator::msg::RiskLevel;
 
 namespace
 {
