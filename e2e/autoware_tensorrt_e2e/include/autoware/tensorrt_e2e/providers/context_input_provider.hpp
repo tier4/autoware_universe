@@ -126,8 +126,8 @@ private:
     sub_traffic_signals_;
   std::unique_ptr<autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsReport>>
     sub_turn_indicators_;
-  std::unique_ptr<
-    autoware_utils::InterProcessPollingSubscriber<LaneletRoute, autoware_utils::polling_policy::Newest>>
+  std::unique_ptr<autoware_utils::InterProcessPollingSubscriber<
+    LaneletRoute, autoware_utils::polling_policy::Newest>>
     sub_route_;
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
 

@@ -22,7 +22,6 @@
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
-
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -128,8 +127,8 @@ void TensorrtE2eNode::set_up_params()
   params_.args_path = declare_parameter<std::string>("args_path", "");
   params_.build_only = declare_parameter<bool>("build_only", false);
   params_.shift_x = declare_parameter<bool>("shift_x", false);
-  params_.sensor_inputs = declare_parameter<std::vector<std::string>>(
-    "sensor_inputs", std::vector<std::string>{});
+  params_.sensor_inputs =
+    declare_parameter<std::vector<std::string>>("sensor_inputs", std::vector<std::string>{});
   params_.enable_context_inputs = declare_parameter<bool>("enable_context_inputs", true);
 
   postprocess_params_.prediction_tensor =
@@ -146,7 +145,8 @@ void TensorrtE2eNode::set_up_params()
   postprocess_params_.generator_name =
     declare_parameter<std::string>("postprocess.generator_name", "TensorrtE2e");
 
-  planning_factor_params_.enable_stop = declare_parameter<bool>("planning_factor.enable_stop", false);
+  planning_factor_params_.enable_stop =
+    declare_parameter<bool>("planning_factor.enable_stop", false);
   planning_factor_params_.enable_slowdown =
     declare_parameter<bool>("planning_factor.enable_slowdown", false);
   planning_factor_params_.detection_config.stop_velocity_threshold =
@@ -169,8 +169,9 @@ void TensorrtE2eNode::create_providers()
     context_provider_ = context_provider.get();
     providers_.push_back(std::move(context_provider));
   }
-  const bool any_tf = std::any_of(
-    providers_.begin(), providers_.end(), [](const auto & provider) { return provider->uses_tf(); });
+  const bool any_tf = std::any_of(providers_.begin(), providers_.end(), [](const auto & provider) {
+    return provider->uses_tf();
+  });
   if (any_tf) {
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(tf_buffer_);
   }
@@ -342,8 +343,7 @@ void TensorrtE2eNode::run_once()
       "debug/processing_time/finish_ms", stop_watch_.toc("finish"));
   } catch (const std::exception & e) {
     runtime_failed_ = true;
-    RCLCPP_ERROR(
-      get_logger(), "Inference failed and the planner is now disabled: %s", e.what());
+    RCLCPP_ERROR(get_logger(), "Inference failed and the planner is now disabled: %s", e.what());
     diagnostics_->update_level_and_message(
       DiagnosticStatus::ERROR, std::string("Inference failed, planner disabled: ") + e.what());
     diagnostics_->publish(now());
@@ -437,9 +437,7 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
   stop_watch_.tic("postprocess");
   TrajectoryPostprocessor::Output output;
   try {
-
-    output = postprocessor_->process(
-      *result.outputs, *ego, ego->stamp, generator_uuid_);
+    output = postprocessor_->process(*result.outputs, *ego, ego->stamp, generator_uuid_);
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), "Postprocessing failed: " << e.what());
     finish(DiagnosticStatus::ERROR, e.what());
@@ -458,9 +456,8 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
   publish_debug_timing(now, *ego, timing);
   // Against the interval this run actually had, not a configured one: the pace
   // is the sensor's, and it is the pace the node has to keep up with.
-  const double period_ms = previous_run_.has_value()
-                             ? (now - previous_run_.value()).seconds() * 1e3
-                             : std::numeric_limits<double>::infinity();
+  const double period_ms = previous_run_.has_value() ? (now - previous_run_.value()).seconds() * 1e3
+                                                     : std::numeric_limits<double>::infinity();
   previous_run_ = now;
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = now;
@@ -539,13 +536,15 @@ void TensorrtE2eNode::publish_debug_timing(
       break;
     }
   }
-  debug_publisher_->publish<Float64Stamped>("debug/cyclic_time_ms", stop_watch_.toc("cyclic", true));
+  debug_publisher_->publish<Float64Stamped>(
+    "debug/cyclic_time_ms", stop_watch_.toc("cyclic", true));
   debug_publisher_->publish<Float64Stamped>(
     "debug/pipeline_latency_ms", (now - input_stamp).seconds() * 1e3);
   debug_publisher_->publish<Float64Stamped>("debug/processing_time/total_ms", timing.total_ms);
   debug_publisher_->publish<Float64Stamped>("debug/processing_time/collect_ms", timing.collect_ms);
   for (const auto & [provider, ms] : timing.provider_collect_ms) {
-    debug_publisher_->publish<Float64Stamped>("debug/processing_time/collect/" + provider + "_ms", ms);
+    debug_publisher_->publish<Float64Stamped>(
+      "debug/processing_time/collect/" + provider + "_ms", ms);
   }
   debug_publisher_->publish<Float64Stamped>(
     "debug/processing_time/inference_ms", timing.inference_ms);

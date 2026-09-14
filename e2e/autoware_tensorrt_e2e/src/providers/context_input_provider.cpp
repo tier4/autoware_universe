@@ -64,7 +64,6 @@ std::vector<float> mark_lanes_on_route(
 }
 }  // namespace
 
-
 namespace dp = autoware::diffusion_planner;
 
 namespace
@@ -94,12 +93,9 @@ ContextInputProvider::ContextInputProvider(
 {
   traffic_light_msg_timeout_s_ =
     node_.declare_parameter<double>("context.traffic_light_group_msg_timeout_seconds", 0.2);
-  turn_indicators_enabled_ =
-    node_.declare_parameter<bool>("context.turn_indicators.enabled", true);
-  line_string_max_step_m_ =
-    node_.declare_parameter<double>("context.line_string_max_step_m", 5.0);
-  use_time_interpolation_ =
-    node_.declare_parameter<bool>("context.use_time_interpolation", false);
+  turn_indicators_enabled_ = node_.declare_parameter<bool>("context.turn_indicators.enabled", true);
+  line_string_max_step_m_ = node_.declare_parameter<double>("context.line_string_max_step_m", 5.0);
+  use_time_interpolation_ = node_.declare_parameter<bool>("context.use_time_interpolation", false);
 }
 
 std::vector<std::string> ContextInputProvider::claim_inputs(
@@ -107,7 +103,8 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
 {
   std::vector<std::string> claimed;
   const auto claim = [&engine_inputs, &claimed](
-                       const std::string & name, std::vector<int64_t> & shape_out) -> const TensorSpec * {
+                       const std::string & name,
+                       std::vector<int64_t> & shape_out) -> const TensorSpec * {
     const TensorSpec * spec = find_spec(engine_inputs, name);
     if (spec) {
       shape_out = spec->shape;
@@ -130,8 +127,8 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
 
   if (const auto * spec = claim("lanes", lanes_shape_)) {
     if (
-      spec->shape.size() != 4 || spec->shape[0] != 1 ||
-      spec->shape[2] != dp::POINTS_PER_SEGMENT || spec->shape[3] != dp::SEGMENT_POINT_DIM) {
+      spec->shape.size() != 4 || spec->shape[0] != 1 || spec->shape[2] != dp::POINTS_PER_SEGMENT ||
+      spec->shape[3] != dp::SEGMENT_POINT_DIM) {
       throw std::runtime_error(
         "Model input 'lanes' has shape " + shape_to_string(spec->shape) + "; expected [1, S, " +
         std::to_string(dp::POINTS_PER_SEGMENT) + ", " + std::to_string(dp::SEGMENT_POINT_DIM) +
@@ -153,8 +150,8 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
 
   if (const auto * spec = claim("route_lanes", route_lanes_shape_)) {
     if (
-      spec->shape.size() != 4 || spec->shape[0] != 1 ||
-      spec->shape[2] != dp::POINTS_PER_SEGMENT || spec->shape[3] != dp::SEGMENT_POINT_DIM) {
+      spec->shape.size() != 4 || spec->shape[0] != 1 || spec->shape[2] != dp::POINTS_PER_SEGMENT ||
+      spec->shape[3] != dp::SEGMENT_POINT_DIM) {
       throw std::runtime_error(
         "Model input 'route_lanes' has shape " + shape_to_string(spec->shape) +
         "; expected [1, S, " + std::to_string(dp::POINTS_PER_SEGMENT) + ", " +
@@ -167,12 +164,12 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
     }
     validate_shape(*spec, {1, route_lanes_shape_[1], 1}, "one speed limit per route segment");
   }
-  if (const auto * spec = claim("route_lanes_has_speed_limit", route_lanes_has_speed_limit_shape_)) {
+  if (
+    const auto * spec = claim("route_lanes_has_speed_limit", route_lanes_has_speed_limit_shape_)) {
     if (route_lanes_shape_.empty()) {
       throw std::runtime_error("Model takes 'route_lanes_has_speed_limit' but not 'route_lanes'");
     }
-    validate_shape(
-      *spec, {1, route_lanes_shape_[1], 1}, "one speed limit flag per route segment");
+    validate_shape(*spec, {1, route_lanes_shape_[1], 1}, "one speed limit flag per route segment");
   }
   if (const auto * spec = claim("lanes_on_route", lanes_on_route_shape_)) {
     if (lanes_shape_.empty() || route_lanes_shape_.empty()) {
@@ -185,14 +182,12 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
 
   if (const auto * spec = claim("polygons", polygons_shape_)) {
     validate_shape(
-      *spec,
-      std::vector<int64_t>(dp::POLYGONS_SHAPE.begin(), dp::POLYGONS_SHAPE.end()),
+      *spec, std::vector<int64_t>(dp::POLYGONS_SHAPE.begin(), dp::POLYGONS_SHAPE.end()),
       "fixed by the diffusion planner feature pipeline");
   }
   if (const auto * spec = claim("line_strings", line_strings_shape_)) {
     validate_shape(
-      *spec,
-      std::vector<int64_t>(dp::LINE_STRINGS_SHAPE.begin(), dp::LINE_STRINGS_SHAPE.end()),
+      *spec, std::vector<int64_t>(dp::LINE_STRINGS_SHAPE.begin(), dp::LINE_STRINGS_SHAPE.end()),
       "fixed by the diffusion planner feature pipeline");
   }
   if (const auto * spec = claim("goal_pose", goal_pose_shape_)) {
@@ -267,8 +262,8 @@ void ContextInputProvider::on_map(const LaneletMapBin::ConstSharedPtr map_msg)
 {
   const auto lanelet_map_ptr =
     autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
-  lane_segment_context_ = std::make_unique<dp::preprocess::LaneSegmentContext>(
-    lanelet_map_ptr, line_string_max_step_m_);
+  lane_segment_context_ =
+    std::make_unique<dp::preprocess::LaneSegmentContext>(lanelet_map_ptr, line_string_max_step_m_);
 }
 
 bool ContextInputProvider::collect(
@@ -286,9 +281,8 @@ bool ContextInputProvider::collect(
     route_ptr_ = (!route_ptr_ || route) ? route : route_ptr_;
   }
 
-  return collect_ego_tensors(ego, inputs, error) &&
-         collect_map_tensors(ego, inputs, error) && collect_route_tensors(ego, inputs, error) &&
-         collect_turn_indicator_tensor(inputs, error);
+  return collect_ego_tensors(ego, inputs, error) && collect_map_tensors(ego, inputs, error) &&
+         collect_route_tensors(ego, inputs, error) && collect_turn_indicator_tensor(inputs, error);
 }
 
 bool ContextInputProvider::collect_ego_tensors(
@@ -303,9 +297,8 @@ bool ContextInputProvider::collect_ego_tensors(
     const std::optional<rclcpp::Time> reference_time =
       use_time_interpolation_ ? std::make_optional(ego.stamp) : std::nullopt;
     inputs["ego_agent_past"] = Tensor::from_host(
-      ego_agent_past_shape_,
-      dp::preprocess::create_ego_agent_past(
-        ego_history_, history_length, ego.map_to_ego, reference_time));
+      ego_agent_past_shape_, dp::preprocess::create_ego_agent_past(
+                               ego_history_, history_length, ego.map_to_ego, reference_time));
   }
 
   if (!ego_current_state_shape_.empty()) {
@@ -425,8 +418,7 @@ bool ContextInputProvider::collect_route_tensors(
   }
 
   if (!goal_pose_shape_.empty()) {
-    const Eigen::Matrix4d goal_pose_map =
-      dp::utils::pose_to_matrix4d(route_ptr_->goal_pose);
+    const Eigen::Matrix4d goal_pose_map = dp::utils::pose_to_matrix4d(route_ptr_->goal_pose);
     const Eigen::Matrix4d goal_pose_ego = ego.map_to_ego * goal_pose_map;
     const auto [cos_yaw, sin_yaw] =
       dp::utils::rotation_matrix_to_cos_sin(goal_pose_ego.block<3, 3>(0, 0));
@@ -445,7 +437,8 @@ bool ContextInputProvider::collect_turn_indicator_tensor(TensorMap & inputs, std
   }
 
   if (!turn_indicators_enabled_) {
-    inputs["turn_indicators"] = Tensor::from_host(turn_indicators_shape_, turn_indicators_constant_);
+    inputs["turn_indicators"] =
+      Tensor::from_host(turn_indicators_shape_, turn_indicators_constant_);
     return true;
   }
 

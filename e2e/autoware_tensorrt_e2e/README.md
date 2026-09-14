@@ -16,8 +16,8 @@ something, this node reports the same thing under the same name.
 
 ## Supported models
 
-| Model | Launch file | Sensing input |
-| --- | --- | --- |
+| Model                     | Launch file                       | Sensing input                                                                   |
+| ------------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
 | **ResWorld** (OnePlanner) | `e2e_planner_resworld.launch.xml` | Concatenated point cloud, frozen BEVFusion-L features, 3-frame temporal history |
 
 ```bash
@@ -28,11 +28,11 @@ The model directory, `$(var data_path)/$(var model_name)` (by default
 `$HOME/autoware_data/tensorrt_e2e`), holds two graphs and one
 configuration file:
 
-| File | Role |
-| --- | --- |
-| `resworld_planner.simplified.onnx` | The planner graph, batch frozen to 1. |
-| `bevfusion_lidar_feature.onnx` | The production BEVFusion lidar branch exported with its `bev_feature` map `[1, 512, 180, 180]` as the output, and the frozen BEVFusion detection head beside it (`bbox_pred`, `score`, `label_pred`; see [Detection head](#detection-head)). Carries the sparse-convolution custom nodes, so its engine needs `autoware_tensorrt_plugins` and an `spconv` build for this GPU. |
-| `ml_package_resworld.param.yaml` | The whole network description, generated from those graphs and the exporter's contract (see [Configuration layout](#configuration-layout)). The copy under `config/` is a reference; the node reads the one beside the artifacts. |
+| File                               | Role                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resworld_planner.simplified.onnx` | The planner graph, batch frozen to 1.                                                                                                                                                                                                                                                                                                                                         |
+| `bevfusion_lidar_feature.onnx`     | The production BEVFusion lidar branch exported with its `bev_feature` map `[1, 512, 180, 180]` as the output, and the frozen BEVFusion detection head beside it (`bbox_pred`, `score`, `label_pred`; see [Detection head](#detection-head)). Carries the sparse-convolution custom nodes, so its engine needs `autoware_tensorrt_plugins` and an `spconv` build for this GPU. |
+| `ml_package_resworld.param.yaml`   | The whole network description, generated from those graphs and the exporter's contract (see [Configuration layout](#configuration-layout)). The copy under `config/` is a reference; the node reads the one beside the artifacts.                                                                                                                                             |
 
 The planner runs in fp32 until OnePlanner ships it typed: its exporter can write a float16
 core with a float32 rim into the graph (`--fp16-core`), which this node builds at the speed of
@@ -64,12 +64,12 @@ and the node is identical on every branch that carries it.
 
 ## Sensor prototypes
 
-| Prototype | Launch file | Sensing input |
-| --- | --- | --- |
-| Front camera | `e2e_planner_front_camera.launch.xml` | `CAM_FRONT_WIDE` |
-| Surround cameras | `e2e_planner_surround_cameras.launch.xml` | Front wide plus four corner wide cameras |
-| LiDAR, raw points | `e2e_planner_lidar.launch.xml` | `/sensing/lidar/concatenated/pointcloud`, for a model that voxelizes in-graph |
-| LiDAR, BEV features | `e2e_planner_resworld.launch.xml` | Concatenated point cloud, temporal BEV feature history |
+| Prototype           | Launch file                               | Sensing input                                                                 |
+| ------------------- | ----------------------------------------- | ----------------------------------------------------------------------------- |
+| Front camera        | `e2e_planner_front_camera.launch.xml`     | `CAM_FRONT_WIDE`                                                              |
+| Surround cameras    | `e2e_planner_surround_cameras.launch.xml` | Front wide plus four corner wide cameras                                      |
+| LiDAR, raw points   | `e2e_planner_lidar.launch.xml`            | `/sensing/lidar/concatenated/pointcloud`, for a model that voxelizes in-graph |
+| LiDAR, BEV features | `e2e_planner_resworld.launch.xml`         | Concatenated point cloud, temporal BEV feature history                        |
 
 Add `build_only:=true` to any launch to build the TensorRT engines and exit.
 
@@ -87,23 +87,23 @@ listed in `postprocess.extra_trajectory_tensors` are published as extra candidat
 
 **Claimable inputs.**
 
-| Provider | Tensor (default name) | Shape | Built by |
-| --- | --- | --- | --- |
-| camera | `camera_images` | `[1, N, 3, H, W]` | this package, normalized RGB, `H` and `W` from the engine |
-| camera | `camera_intrinsics` | `[1, N, 3, 3]` | rescaled to the model resolution |
-| camera | `camera2ego` | `[1, N, 4, 4]` | TF, camera frame to `base_link`; the node listens to `/tf` only when a provider declares it uses TF, so a model line without cameras has no TF subscription |
-| lidar | `points` | `[1, P, D]` | `D` in 3 to 5, padded or truncated to `P` |
-| lidar | `num_points` | `[1, 1]` | valid point count |
-| bev_feature | `bev_feature_history` | `[1, K, C, H, W]` | `autoware_bevfusion` voxelizer, the frozen extractor engine, this package's temporal cache and SE(2) warp |
-| context | `ego_current_state` | `[1, 10]` | `autoware_diffusion_planner` |
-| context | `ego_agent_past` | `[1, T, 4]` | `autoware_diffusion_planner` |
-| context | `lanes`, `lanes_speed_limit`, `lanes_has_speed_limit` | `[1, S, 20, 33]`, `[1, S, 1]` | `autoware_diffusion_planner`; traffic-light state in channels 8 to 12 |
-| context | `route_lanes` and its two speed-limit tensors | as above | `autoware_diffusion_planner` |
-| context | `lanes_on_route` | `[1, S, 2]` | per lane slot: on-route flag and position along the route (0 first, 1 last); an index match between the lane and route selections, OnePlanner's `lanes_on_route` |
-| context | `polygons`, `line_strings` | `[1, 10, 40, 3]`, `[1, 60, 20, 4]` | `autoware_diffusion_planner` |
-| context | `goal_pose`, `ego_shape` | `[1, 4]`, `[1, 3]` | route goal in the ego frame; vehicle info |
-| context | `turn_indicators` | `[1, T]` | report history, or a constant when disabled |
-| context | `static_objects` | any | zero-filled, as in `autoware_diffusion_planner` |
+| Provider    | Tensor (default name)                                 | Shape                              | Built by                                                                                                                                                         |
+| ----------- | ----------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| camera      | `camera_images`                                       | `[1, N, 3, H, W]`                  | this package, normalized RGB, `H` and `W` from the engine                                                                                                        |
+| camera      | `camera_intrinsics`                                   | `[1, N, 3, 3]`                     | rescaled to the model resolution                                                                                                                                 |
+| camera      | `camera2ego`                                          | `[1, N, 4, 4]`                     | TF, camera frame to `base_link`; the node listens to `/tf` only when a provider declares it uses TF, so a model line without cameras has no TF subscription      |
+| lidar       | `points`                                              | `[1, P, D]`                        | `D` in 3 to 5, padded or truncated to `P`                                                                                                                        |
+| lidar       | `num_points`                                          | `[1, 1]`                           | valid point count                                                                                                                                                |
+| bev_feature | `bev_feature_history`                                 | `[1, K, C, H, W]`                  | `autoware_bevfusion` voxelizer, the frozen extractor engine, this package's temporal cache and SE(2) warp                                                        |
+| context     | `ego_current_state`                                   | `[1, 10]`                          | `autoware_diffusion_planner`                                                                                                                                     |
+| context     | `ego_agent_past`                                      | `[1, T, 4]`                        | `autoware_diffusion_planner`                                                                                                                                     |
+| context     | `lanes`, `lanes_speed_limit`, `lanes_has_speed_limit` | `[1, S, 20, 33]`, `[1, S, 1]`      | `autoware_diffusion_planner`; traffic-light state in channels 8 to 12                                                                                            |
+| context     | `route_lanes` and its two speed-limit tensors         | as above                           | `autoware_diffusion_planner`                                                                                                                                     |
+| context     | `lanes_on_route`                                      | `[1, S, 2]`                        | per lane slot: on-route flag and position along the route (0 first, 1 last); an index match between the lane and route selections, OnePlanner's `lanes_on_route` |
+| context     | `polygons`, `line_strings`                            | `[1, 10, 40, 3]`, `[1, 60, 20, 4]` | `autoware_diffusion_planner`                                                                                                                                     |
+| context     | `goal_pose`, `ego_shape`                              | `[1, 4]`, `[1, 3]`                 | route goal in the ego frame; vehicle info                                                                                                                        |
+| context     | `turn_indicators`                                     | `[1, T]`                           | report history, or a constant when disabled                                                                                                                      |
+| context     | `static_objects`                                      | any                                | zero-filled, as in `autoware_diffusion_planner`                                                                                                                  |
 
 Only the context tensors named in the engine manifest are produced, and only the
 subscriptions they need are created. A model input that no provider can produce is a
@@ -113,17 +113,17 @@ startup error naming the tensor.
 
 ### Inputs
 
-| Topic | Type | Used by |
-| --- | --- | --- |
-| `~/input/odometry` | `nav_msgs/msg/Odometry` | always |
-| `~/input/acceleration` | `geometry_msgs/msg/AccelWithCovarianceStamped` | `ego_current_state` |
-| `~/input/camera{i}/image` | `sensor_msgs/msg/Image`, raw or compressed | camera provider |
-| `~/input/camera{i}/camera_info` | `sensor_msgs/msg/CameraInfo` | `camera_intrinsics` |
-| `~/input/pointcloud` | `sensor_msgs/msg/PointCloud2` through `cuda_blackboard`: a GPU-resident cloud is negotiated on `~/input/pointcloud/cuda`, a plain publisher is accepted as the fallback | lidar providers, as `autoware_bevfusion` |
-| `~/input/traffic_signals` | `autoware_perception_msgs/msg/TrafficLightGroupArray` | `lanes`, `route_lanes` |
-| `~/input/route` | `autoware_planning_msgs/msg/LaneletRoute` | `route_lanes`, `goal_pose` |
-| `~/input/vector_map` | `autoware_map_msgs/msg/LaneletMapBin` | map tensors |
-| `~/input/turn_indicators` | `autoware_vehicle_msgs/msg/TurnIndicatorsReport` | `turn_indicators`; not subscribed when `context.turn_indicators.enabled` is false |
+| Topic                           | Type                                                                                                                                                                    | Used by                                                                           |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `~/input/odometry`              | `nav_msgs/msg/Odometry`                                                                                                                                                 | always                                                                            |
+| `~/input/acceleration`          | `geometry_msgs/msg/AccelWithCovarianceStamped`                                                                                                                          | `ego_current_state`                                                               |
+| `~/input/camera{i}/image`       | `sensor_msgs/msg/Image`, raw or compressed                                                                                                                              | camera provider                                                                   |
+| `~/input/camera{i}/camera_info` | `sensor_msgs/msg/CameraInfo`                                                                                                                                            | `camera_intrinsics`                                                               |
+| `~/input/pointcloud`            | `sensor_msgs/msg/PointCloud2` through `cuda_blackboard`: a GPU-resident cloud is negotiated on `~/input/pointcloud/cuda`, a plain publisher is accepted as the fallback | lidar providers, as `autoware_bevfusion`                                          |
+| `~/input/traffic_signals`       | `autoware_perception_msgs/msg/TrafficLightGroupArray`                                                                                                                   | `lanes`, `route_lanes`                                                            |
+| `~/input/route`                 | `autoware_planning_msgs/msg/LaneletRoute`                                                                                                                               | `route_lanes`, `goal_pose`                                                        |
+| `~/input/vector_map`            | `autoware_map_msgs/msg/LaneletMapBin`                                                                                                                                   | map tensors                                                                       |
+| `~/input/turn_indicators`       | `autoware_vehicle_msgs/msg/TurnIndicatorsReport`                                                                                                                        | `turn_indicators`; not subscribed when `context.turn_indicators.enabled` is false |
 
 A missing input stops planning for that tick with a throttled warning and a `WARN`
 diagnostic naming the input. The one exception mirrors `autoware_diffusion_planner`: a
@@ -131,17 +131,17 @@ missing traffic-signal message leaves lanes marked as having no signal.
 
 ### Outputs
 
-| Topic | Type | Content |
-| --- | --- | --- |
-| `~/output/trajectory` | `autoware_planning_msgs/msg/Trajectory` | Ego trajectory in `map`, 40 points at 0.1 s, stamped with the odometry it was planned from |
-| `~/output/trajectories` | `autoware_internal_planning_msgs/msg/CandidateTrajectories` | One candidate per batch and per extra trajectory tensor, with `GeneratorInfo` |
-| `~/output/detected_objects` | `autoware_perception_msgs/msg/DetectedObjects` | The extractor graph's detection head, when the model carries one; one message per LiDAR frame, in that cloud's frame |
-| `/planning/planning_factors/tensorrt_e2e` | `autoware_internal_planning_msgs/msg/PlanningFactorArray` | Stop and slow-down factors read off the trajectory, as `autoware_diffusion_planner` reports them |
-| `~/debug/processing_time_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | Per-tick processing time |
-| `~/debug/cyclic_time_ms`, `~/debug/pipeline_latency_ms`, `~/debug/processing_time/{total,collect,inference,postprocess}_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | The `autoware_bevfusion` debug set |
-| `~/debug/processing_time/collect/<provider>_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | Each provider's share of `collect_ms` (`context`, `bev_feature`, ...) |
-| `~/debug/processing_time/finish_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped` | Provider work done after the trajectory is out (`finish_tick()`); not part of `total_ms` |
-| `/diagnostics` | | `inference_status` |
+| Topic                                                                                                                       | Type                                                        | Content                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `~/output/trajectory`                                                                                                       | `autoware_planning_msgs/msg/Trajectory`                     | Ego trajectory in `map`, 40 points at 0.1 s, stamped with the odometry it was planned from                           |
+| `~/output/trajectories`                                                                                                     | `autoware_internal_planning_msgs/msg/CandidateTrajectories` | One candidate per batch and per extra trajectory tensor, with `GeneratorInfo`                                        |
+| `~/output/detected_objects`                                                                                                 | `autoware_perception_msgs/msg/DetectedObjects`              | The extractor graph's detection head, when the model carries one; one message per LiDAR frame, in that cloud's frame |
+| `/planning/planning_factors/tensorrt_e2e`                                                                                   | `autoware_internal_planning_msgs/msg/PlanningFactorArray`   | Stop and slow-down factors read off the trajectory, as `autoware_diffusion_planner` reports them                     |
+| `~/debug/processing_time_ms`                                                                                                | `autoware_internal_debug_msgs/msg/Float64Stamped`           | Per-tick processing time                                                                                             |
+| `~/debug/cyclic_time_ms`, `~/debug/pipeline_latency_ms`, `~/debug/processing_time/{total,collect,inference,postprocess}_ms` | `autoware_internal_debug_msgs/msg/Float64Stamped`           | The `autoware_bevfusion` debug set                                                                                   |
+| `~/debug/processing_time/collect/<provider>_ms`                                                                             | `autoware_internal_debug_msgs/msg/Float64Stamped`           | Each provider's share of `collect_ms` (`context`, `bev_feature`, ...)                                                |
+| `~/debug/processing_time/finish_ms`                                                                                         | `autoware_internal_debug_msgs/msg/Float64Stamped`           | Provider work done after the trajectory is out (`finish_tick()`); not part of `total_ms`                             |
+| `/diagnostics`                                                                                                              |                                                             | `inference_status`                                                                                                   |
 
 The `inference_status` diagnostic carries the readiness state, the reason a tick was skipped,
 a `WARN` when processing exceeded the planning period, and the keys the reference nodes
@@ -236,10 +236,10 @@ nothing rather than looking like a dead detector.
 Parameters are split the way `autoware_bevfusion` splits them, so that deploying a model
 never edits this package:
 
-| File | Lives in | Holds |
-| --- | --- | --- |
-| `config/e2e_planner.param.yaml` | the package | Deployment defaults, model-agnostic: artifact paths (from launch arguments), TensorRT workspace, planning rate, staleness bounds, context, postprocess and planning-factor behaviour |
-| `ml_package_<model>.param.yaml` | the model directory, beside the ONNX files | The network: which providers it needs, tensor names, voxelization geometry, temporal contract, horizon, validated precision, and which declared inputs it actually reads |
+| File                            | Lives in                                   | Holds                                                                                                                                                                                |
+| ------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `config/e2e_planner.param.yaml` | the package                                | Deployment defaults, model-agnostic: artifact paths (from launch arguments), TensorRT workspace, planning rate, staleness bounds, context, postprocess and planning-factor behaviour |
+| `ml_package_<model>.param.yaml` | the model directory, beside the ONNX files | The network: which providers it needs, tensor names, voxelization geometry, temporal contract, horizon, validated precision, and which declared inputs it actually reads             |
 
 The launch loads the package defaults first and the ml_package second, so the model's
 values win. Fields that describe the network are declared without defaults, as
@@ -300,8 +300,8 @@ does.
 
 ## Reference nodes
 
-| Package | What this node takes from it |
-| --- | --- |
-| [`autoware_bevfusion`](../../perception/autoware_bevfusion/README.md) | `cuda_blackboard` point cloud input, `PreprocessCuda` voxelization, the engine build through `TrtCommon`, the ml_package convention, the debug topic set and the voxel-range diagnostic |
-| [`autoware_diffusion_planner`](../../planning/autoware_diffusion_planner/README.md) | Every context tensor, the trajectory conversion, candidate trajectories, planning factors and the valid-count diagnostics |
-| [`autoware_tensorrt_vad`](../autoware_tensorrt_vad/README.md) | Camera synchronization and the separation of ROS and CUDA domains |
+| Package                                                                             | What this node takes from it                                                                                                                                                            |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`autoware_bevfusion`](../../perception/autoware_bevfusion/README.md)               | `cuda_blackboard` point cloud input, `PreprocessCuda` voxelization, the engine build through `TrtCommon`, the ml_package convention, the debug topic set and the voxel-range diagnostic |
+| [`autoware_diffusion_planner`](../../planning/autoware_diffusion_planner/README.md) | Every context tensor, the trajectory conversion, candidate trajectories, planning factors and the valid-count diagnostics                                                               |
+| [`autoware_tensorrt_vad`](../autoware_tensorrt_vad/README.md)                       | Camera synchronization and the separation of ROS and CUDA domains                                                                                                                       |

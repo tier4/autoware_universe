@@ -13,11 +13,11 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_e2e/providers/bev_feature_input_provider.hpp"
+
 #include "autoware/tensorrt_e2e/input_provider_registry.hpp"
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 #include <autoware/diffusion_planner/utils/utils.hpp>
-
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
 
 #include <algorithm>
@@ -45,8 +45,8 @@ std::array<double, 4> pose_from_odometry(const nav_msgs::msg::Odometry & odometr
   // Double throughout: map coordinates are ~1e5 m, and the warp needs the metre-scale pose
   // DIFFERENCE — a float cast here quantizes slow-speed inter-frame displacements away.
   return {
-    odometry.pose.pose.position.x, odometry.pose.pose.position.y,
-    static_cast<double>(cos_yaw), static_cast<double>(sin_yaw)};
+    odometry.pose.pose.position.x, odometry.pose.pose.position.y, static_cast<double>(cos_yaw),
+    static_cast<double>(sin_yaw)};
 }
 
 // Fields of the network description are declared the way autoware_bevfusion declares
@@ -95,19 +95,18 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
   // One workspace setting for both engines; declared by the node before any provider.
   if (node_.has_parameter("trt_workspace_mib")) {
     extractor_config_.max_workspace_size =
-      static_cast<size_t>(node_.get_parameter("trt_workspace_mib").as_int()) * 1024ULL *
-      1024ULL;
+      static_cast<size_t>(node_.get_parameter("trt_workspace_mib").as_int()) * 1024ULL * 1024ULL;
   }
 
   // Network description: no defaults (see network_field()).
-  extractor_config_.max_points_per_voxel = node_.declare_parameter<int64_t>(
-    "bev_feature.extractor.max_points_per_voxel", network_field());
+  extractor_config_.max_points_per_voxel =
+    node_.declare_parameter<int64_t>("bev_feature.extractor.max_points_per_voxel", network_field());
   extractor_config_.voxels_num = node_.declare_parameter<std::vector<int64_t>>(
     "bev_feature.extractor.voxels_num", network_field());
   const auto point_cloud_range = node_.declare_parameter<std::vector<double>>(
     "bev_feature.extractor.point_cloud_range", network_field());
-  const auto voxel_size =
-    node_.declare_parameter<std::vector<double>>("bev_feature.extractor.voxel_size", network_field());
+  const auto voxel_size = node_.declare_parameter<std::vector<double>>(
+    "bev_feature.extractor.voxel_size", network_field());
   extractor_config_.point_cloud_range.assign(point_cloud_range.begin(), point_cloud_range.end());
   extractor_config_.voxel_size.assign(voxel_size.begin(), voxel_size.end());
   extractor_config_.use_intensity =
@@ -159,12 +158,10 @@ void BevFeatureInputProvider::declare_detection_params()
     node_.declare_parameter<double>("bev_feature.detection.iou_nms_search_distance_2d", 10.0);
   detection_config_.iou_nms_threshold =
     node_.declare_parameter<double>("bev_feature.detection.iou_nms_threshold", 0.1);
-  extractor_config_.detection.yaw_norm_thresholds =
-    node_.declare_parameter<std::vector<double>>(
-      "bev_feature.detection.yaw_norm_thresholds", std::vector<double>{});
-  detection_config_.allow_remapping_by_area_matrix =
-    node_.declare_parameter<std::vector<int64_t>>(
-      "bev_feature.detection.allow_remapping_by_area_matrix", std::vector<int64_t>{});
+  extractor_config_.detection.yaw_norm_thresholds = node_.declare_parameter<std::vector<double>>(
+    "bev_feature.detection.yaw_norm_thresholds", std::vector<double>{});
+  detection_config_.allow_remapping_by_area_matrix = node_.declare_parameter<std::vector<int64_t>>(
+    "bev_feature.detection.allow_remapping_by_area_matrix", std::vector<int64_t>{});
   detection_config_.min_area_matrix = node_.declare_parameter<std::vector<double>>(
     "bev_feature.detection.min_area_matrix", std::vector<double>{});
   detection_config_.max_area_matrix = node_.declare_parameter<std::vector<double>>(
@@ -277,44 +274,44 @@ std::vector<std::string> BevFeatureInputProvider::claim_inputs(
 
 void BevFeatureInputProvider::subscribe()
 {
-  pointcloud_sub_ = std::make_unique<
-    cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
-    node_, "~/input/pointcloud",
-    [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
-      // Subscribing happens in the constructor, so a cloud can arrive before the
-      // extractor exists. Drop those: the cache is empty anyway and the first ticks
-      // would have nothing to plan on.
-      if (!extractor_) {
-        return;
-      }
-      {
-        std::lock_guard<std::mutex> lock(mutex_);
-        latest_pointcloud_ = msg;
-      }
-      // The extractor starts here, before the pass this triggers: queued on the tick's
-      // stream and not waited for, it runs while the pass collects the context tensors
-      // on the CPU. The staleness check comes first, as it did when the extraction ran
-      // inside the pass: a cloud that is already too old to plan on is not worth the GPU,
-      // and the pass reports it exactly as before.
-      pending_stamp_ = rclcpp::Time(msg->header.stamp);
-      pending_inserted_ = false;
-      pending_detections_published_ = false;
-      pending_error_.clear();
-      pending_feature_ = nullptr;
-      const double delay_ms = (node_.now() - *pending_stamp_).seconds() * 1e3;
-      if (delay_ms > max_delay_ms_) {
-        pending_error_ = "Point cloud is stale (" + std::to_string(delay_ms) + " ms > " +
-                         std::to_string(max_delay_ms_) + " ms)";
-      } else {
-        pending_feature_ = extractor_->extract(*msg, pending_error_);
-        last_extracted_stamp_ = pending_stamp_;
-        history_ptr_ = nullptr;
-      }
-      // Outside the lock: what this starts collects from this provider.
-      if (on_data_) {
-        on_data_();
-      }
-    });
+  pointcloud_sub_ =
+    std::make_unique<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
+      node_, "~/input/pointcloud",
+      [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
+        // Subscribing happens in the constructor, so a cloud can arrive before the
+        // extractor exists. Drop those: the cache is empty anyway and the first ticks
+        // would have nothing to plan on.
+        if (!extractor_) {
+          return;
+        }
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          latest_pointcloud_ = msg;
+        }
+        // The extractor starts here, before the pass this triggers: queued on the tick's
+        // stream and not waited for, it runs while the pass collects the context tensors
+        // on the CPU. The staleness check comes first, as it did when the extraction ran
+        // inside the pass: a cloud that is already too old to plan on is not worth the GPU,
+        // and the pass reports it exactly as before.
+        pending_stamp_ = rclcpp::Time(msg->header.stamp);
+        pending_inserted_ = false;
+        pending_detections_published_ = false;
+        pending_error_.clear();
+        pending_feature_ = nullptr;
+        const double delay_ms = (node_.now() - *pending_stamp_).seconds() * 1e3;
+        if (delay_ms > max_delay_ms_) {
+          pending_error_ = "Point cloud is stale (" + std::to_string(delay_ms) + " ms > " +
+                           std::to_string(max_delay_ms_) + " ms)";
+        } else {
+          pending_feature_ = extractor_->extract(*msg, pending_error_);
+          last_extracted_stamp_ = pending_stamp_;
+          history_ptr_ = nullptr;
+        }
+        // Outside the lock: what this starts collects from this provider.
+        if (on_data_) {
+          on_data_();
+        }
+      });
 }
 
 bool BevFeatureInputProvider::collect(
@@ -357,8 +354,8 @@ bool BevFeatureInputProvider::collect(
     // sampled from the newest odometry (the stamps differ by at most one sensor period).
     // Queued behind the extractor on the same stream: the cache has its copy before the
     // next callback's extraction can overwrite the map.
-    const auto insert_result = cache_->insert(
-      pending_feature_, pose_from_odometry(ego.odometry), cloud_stamp, stream_);
+    const auto insert_result =
+      cache_->insert(pending_feature_, pose_from_odometry(ego.odometry), cloud_stamp, stream_);
     if (insert_result == TemporalBevCache::InsertResult::kGapReset) {
       RCLCPP_WARN_THROTTLE(
         node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS,
@@ -381,10 +378,9 @@ bool BevFeatureInputProvider::collect(
   return true;
 }
 
-TENSORRT_E2E_REGISTER_INPUT_PROVIDER(
-  "bev_feature", [](rclcpp::Node & node, tf2_ros::Buffer &) {
-    return std::make_unique<BevFeatureInputProvider>(node);
-  });
+TENSORRT_E2E_REGISTER_INPUT_PROVIDER("bev_feature", [](rclcpp::Node & node, tf2_ros::Buffer &) {
+  return std::make_unique<BevFeatureInputProvider>(node);
+});
 
 bool BevFeatureInputProvider::pace(std::function<void()> on_data)
 {
