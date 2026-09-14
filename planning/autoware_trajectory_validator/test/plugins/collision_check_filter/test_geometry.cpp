@@ -14,9 +14,12 @@
 
 #include "../../../src/filters/safety/collision_check_filter/trajectory_utils.hpp"
 
+#include <geometry_msgs/msg/point32.hpp>
+
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -99,6 +102,72 @@ Polygon2d create_regular_polygon(
     vertices.emplace_back(center_x + radius * std::cos(theta), center_y + radius * std::sin(theta));
   }
   return create_polygon(vertices);
+}
+
+autoware_perception_msgs::msg::Shape create_shape(
+  const uint8_t type, const double dimension_x, const double dimension_y,
+  const std::vector<Point2d> & footprint = {})
+{
+  autoware_perception_msgs::msg::Shape shape;
+  shape.type = type;
+  shape.dimensions.x = dimension_x;
+  shape.dimensions.y = dimension_y;
+  shape.dimensions.z = 1.5;
+  shape.footprint.points.reserve(footprint.size());
+  for (const auto & vertex : footprint) {
+    geometry_msgs::msg::Point32 point;
+    point.x = static_cast<float>(vertex.x());
+    point.y = static_cast<float>(vertex.y());
+    point.z = 0.0F;
+    shape.footprint.points.push_back(point);
+  }
+  return shape;
+}
+
+std::vector<Point2d> bounding_box_outline(const double length, const double width)
+{
+  const double half_length = length * 0.5;
+  const double half_width = width * 0.5;
+  return {
+    Point2d(half_length, half_width), Point2d(half_length, -half_width),
+    Point2d(-half_length, -half_width), Point2d(-half_length, half_width)};
+}
+
+void expect_same_vertices(
+  const std::vector<Point2d> & actual, const std::vector<Point2d> & expected)
+{
+  ASSERT_EQ(actual.size(), expected.size());
+  for (size_t i = 0; i < actual.size(); ++i) {
+    EXPECT_DOUBLE_EQ(actual.at(i).x(), expected.at(i).x()) << "vertex " << i;
+    EXPECT_DOUBLE_EQ(actual.at(i).y(), expected.at(i).y()) << "vertex " << i;
+  }
+}
+
+// `create_base_polygon()` returns an open ring whose first vertex is not repeated at the end, which
+// `to_polygon2d()` and `compute_footprint_trajectory()` both rely on.
+void expect_open_ring(const std::vector<Point2d> & ring)
+{
+  ASSERT_FALSE(ring.empty());
+  if (ring.size() < 2U) {
+    return;
+  }
+  EXPECT_FALSE(boost::geometry::equals(ring.front(), ring.back()))
+    << "the ring repeats its first vertex at the end";
+}
+
+void expect_convex(const Polygon2d & polygon)
+{
+  Polygon2d hull;
+  boost::geometry::convex_hull(polygon, hull);
+  EXPECT_TRUE(boost::geometry::equals(polygon, hull)) << "the polygon is not convex";
+}
+
+void expect_covers_all(const Polygon2d & polygon, const std::vector<Point2d> & points)
+{
+  for (const auto & point : points) {
+    EXPECT_TRUE(boost::geometry::covered_by(point, polygon))
+      << "(" << point.x() << ", " << point.y() << ") is outside the polygon";
+  }
 }
 
 std::string make_xy_case_name(const std::string_view prefix, const double dx, const double dy)
@@ -320,6 +389,180 @@ TEST(GeometryTest, IntersectsSatMatchesBoostForRingsAdmittedByTheEmptyGuard)
   }
 
   expect_both_outcomes_covered("degenerate footprints", saw_intersection, saw_separation);
+}
+
+// The DRAC path passes use_extra_polygon = false, so this is the guard that keeps it untouched: the
+// vertices have to stay identical down to their order, which is what preserves the four-vertex fast
+// path of compute_footprint_trajectory().
+TEST(CreateBasePolygonTest, KeepsPrimitiveOutlineWhenExtraPolygonIsDisabled)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  const std::vector<Point2d> extra_footprint = {Point2d(3.0, 0.0), Point2d(0.0, 2.0)};
+  const auto bbox = create_shape(Shape::BOUNDING_BOX, 4.0, 2.0, extra_footprint);
+  const auto cylinder = create_shape(Shape::CYLINDER, 2.0, 2.0, extra_footprint);
+
+  expect_same_vertices(create_base_polygon(bbox, false), bounding_box_outline(4.0, 2.0));
+  expect_same_vertices(create_base_polygon(cylinder, false), bounding_box_outline(2.0, 2.0));
+}
+
+// An object that carries no extra footprint keeps the polygon it had: the convex hull of the
+// primitive outline is that outline again, only starting at another vertex.
+TEST(CreateBasePolygonTest, ReproducesThePrimitiveOutlineWhenExtraFootprintIsEmpty)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  for (const auto & shape :
+       {create_shape(Shape::BOUNDING_BOX, 4.0, 2.0), create_shape(Shape::CYLINDER, 2.0, 2.0)}) {
+    const auto outline = create_base_polygon(shape, false);
+    const auto polygon = create_base_polygon(shape, true);
+
+    EXPECT_EQ(polygon.size(), outline.size());
+    expect_open_ring(polygon);
+    EXPECT_TRUE(boost::geometry::equals(create_closed_ring(polygon), create_polygon(outline)));
+  }
+}
+
+TEST(CreateBasePolygonTest, MergesExtraFootprintOfBoundingBoxIntoConvexHull)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  const std::vector<Point2d> extra_footprint = {
+    Point2d(3.0, 0.0), Point2d(2.0, 1.0), Point2d(-1.0, 0.5)};
+  const auto shape = create_shape(Shape::BOUNDING_BOX, 4.0, 2.0, extra_footprint);
+
+  const auto polygon = create_base_polygon(shape, true);
+
+  expect_open_ring(polygon);
+  const auto hull = create_closed_ring(polygon);
+  expect_convex(hull);
+  expect_covers_all(hull, extra_footprint);
+  expect_covers_all(hull, bounding_box_outline(4.0, 2.0));
+  // The bounding box alone spans 4.0 x 2.0, and (3.0, 0.0) sticks out of it.
+  EXPECT_GT(std::abs(boost::geometry::area(hull)), 8.0);
+}
+
+TEST(CreateBasePolygonTest, KeepsBoundingBoxWhenExtraFootprintStaysInside)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  const auto shape = create_shape(
+    Shape::BOUNDING_BOX, 4.0, 2.0, {Point2d(0.5, 0.5), Point2d(-1.0, 0.0), Point2d(2.0, 1.0)});
+
+  const auto polygon = create_base_polygon(shape, true);
+
+  // The hull may start at another vertex than the primitive outline does, so the two are compared
+  // as polygons rather than vertex by vertex.
+  ASSERT_EQ(polygon.size(), 4U);
+  expect_open_ring(polygon);
+  EXPECT_TRUE(
+    boost::geometry::equals(
+      create_closed_ring(polygon), create_polygon(bounding_box_outline(4.0, 2.0))));
+}
+
+TEST(CreateBasePolygonTest, MergesExtraFootprintOfCylinderIntoConvexHull)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  const std::vector<Point2d> extra_footprint = {Point2d(3.0, 0.0)};
+  const auto shape = create_shape(Shape::CYLINDER, 2.0, 2.0, extra_footprint);
+
+  const auto polygon = create_base_polygon(shape, true);
+
+  expect_open_ring(polygon);
+  const auto hull = create_closed_ring(polygon);
+  expect_convex(hull);
+  expect_covers_all(hull, extra_footprint);
+  // The cylinder is approximated by its circumscribed square, which spans 2.0 x 2.0.
+  expect_covers_all(hull, bounding_box_outline(2.0, 2.0));
+  EXPECT_GT(std::abs(boost::geometry::area(hull)), 4.0);
+}
+
+// A POLYGON object is outlined by its perception footprint alone, which upstream already delivers
+// convex. There is therefore nothing to merge in and nothing to make convex, and the footprint is
+// handed over untouched whichever way the flag is set.
+TEST(CreateBasePolygonTest, KeepsPerceptionPolygonUntouched)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  // Deliberately an L shape, whose vertex at (1.0, 1.0) is reflex. Upstream does not emit such a
+  // footprint; it is used here because it is what makes the pass-through observable at all.
+  const std::vector<Point2d> concave_footprint = {Point2d(0.0, 0.0), Point2d(4.0, 0.0),
+                                                  Point2d(4.0, 1.0), Point2d(1.0, 1.0),
+                                                  Point2d(1.0, 3.0), Point2d(0.0, 3.0)};
+  const auto shape = create_shape(Shape::POLYGON, 0.0, 0.0, concave_footprint);
+
+  expect_same_vertices(create_base_polygon(shape, false), concave_footprint);
+  expect_same_vertices(create_base_polygon(shape, true), concave_footprint);
+
+  EXPECT_TRUE(create_base_polygon(create_shape(Shape::POLYGON, 0.0, 0.0), true).empty());
+}
+
+// A hull without area stays without area: a zero-sized bounding box must not be padded into a
+// polygon that reports a collision the object cannot have. Degenerate rings are already handled by
+// intersects_sat(), see IntersectsSatMatchesBoostForRingsAdmittedByTheEmptyGuard.
+TEST(CreateBasePolygonTest, KeepsDegenerateHullsDegenerate)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  const auto coincident_vertices = create_base_polygon(
+    create_shape(Shape::BOUNDING_BOX, 0.0, 0.0, {Point2d(0.0, 0.0), Point2d(0.0, 0.0)}), true);
+  ASSERT_FALSE(coincident_vertices.empty());
+  for (const auto & vertex : coincident_vertices) {
+    EXPECT_DOUBLE_EQ(vertex.x(), 0.0);
+    EXPECT_DOUBLE_EQ(vertex.y(), 0.0);
+  }
+
+  const auto collinear_vertices = create_base_polygon(
+    create_shape(
+      Shape::BOUNDING_BOX, 0.0, 0.0, {Point2d(0.0, 0.0), Point2d(1.0, 0.0), Point2d(2.0, 0.0)}),
+    true);
+  ASSERT_FALSE(collinear_vertices.empty());
+  EXPECT_DOUBLE_EQ(boost::geometry::area(create_closed_ring(collinear_vertices)), 0.0);
+  for (const auto & vertex : collinear_vertices) {
+    EXPECT_DOUBLE_EQ(vertex.y(), 0.0);
+    EXPECT_GE(vertex.x(), 0.0);
+    EXPECT_LE(vertex.x(), 2.0);
+  }
+}
+
+TEST(ToPolygon2dTest, ClosesTheRingAndAppliesThePoseToTheMergedHull)
+{
+  using autoware_perception_msgs::msg::Shape;
+
+  constexpr double yaw = M_PI / 6.0;
+  const double center_x = 1.0;
+  const double center_y = 2.0;
+
+  const std::vector<Point2d> extra_footprint = {Point2d(3.0, 0.0)};
+  const auto shape = create_shape(Shape::BOUNDING_BOX, 4.0, 2.0, extra_footprint);
+
+  geometry_msgs::msg::Pose pose;
+  pose.position.x = center_x;
+  pose.position.y = center_y;
+  pose.orientation = autoware::universe_utils::createQuaternionFromYaw(yaw);
+
+  const auto polygon = to_polygon2d(pose, shape, true);
+
+  ASSERT_FALSE(polygon.outer().empty());
+  EXPECT_TRUE(boost::geometry::equals(polygon.outer().front(), polygon.outer().back()));
+  EXPECT_TRUE(boost::geometry::is_valid(polygon));
+  expect_convex(polygon);
+
+  std::vector<Point2d> expected_points;
+  for (const auto & vertex : bounding_box_outline(4.0, 2.0)) {
+    expected_points.push_back(
+      rotate_and_translate(vertex.x(), vertex.y(), center_x, center_y, yaw));
+  }
+  for (const auto & vertex : extra_footprint) {
+    expected_points.push_back(
+      rotate_and_translate(vertex.x(), vertex.y(), center_x, center_y, yaw));
+  }
+  expect_covers_all(polygon, expected_points);
+
+  const auto without_extra = to_polygon2d(pose, shape, false);
+  EXPECT_TRUE(
+    boost::geometry::equals(without_extra, create_oriented_box(center_x, center_y, 4.0, 2.0, yaw)));
 }
 
 TEST(TargetShapeTypeParamsTest, SupportsConfiguredShapeTypes)
