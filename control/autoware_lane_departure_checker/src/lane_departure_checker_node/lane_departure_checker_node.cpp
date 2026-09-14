@@ -83,7 +83,7 @@ std::map<lanelet::Id, lanelet::ConstLanelet> getRouteLanelets(
     }
   }
 
-  for (const auto & route_section : route.segments) {
+  for (const auto & route_section : route_ptr->segments) {
     for (const auto & primitive : route_section.primitives) {
       const auto lane_id = primitive.id;
       route_lanelets[lane_id] = lanelet_map->laneletLayer.get(lane_id);
