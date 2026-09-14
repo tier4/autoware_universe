@@ -649,7 +649,7 @@ std::optional<double> compute_distance_to_collision(
   const autoware_perception_msgs::msg::PredictedObject & object)
 {
   const auto object_footprint =
-    geometry::to_polygon2d(object.kinematics.initial_pose_with_covariance.pose, object.shape);
+    geometry::to_polygon2d(object.kinematics.initial_pose_with_covariance.pose, object.shape, true);
   const auto object_envelope = boost::geometry::return_envelope<Box2d>(object_footprint);
 
   if (!boost::geometry::intersects(
