@@ -19,6 +19,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/trajectory_point.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 
@@ -129,6 +130,25 @@ ProcessingResult MapVelocityLimits::process(
       point.longitudinal_velocity_mps = static_cast<float>(std::sqrt(reachable_velocity_squared));
       result = ProcessingResult::Modified;
     }
+  }
+  if (result == ProcessingResult::Unchanged) {
+    return result;
+  }
+  for (size_t i = 0; i + 1 < traj_points.size(); ++i) {
+    auto & point = traj_points[i];
+    const auto & next_point = traj_points[i + 1];
+    const auto distance_to_next = std::hypot(
+      next_point.pose.position.x - point.pose.position.x,
+      next_point.pose.position.y - point.pose.position.y);
+    if (distance_to_next <= 1e-6) {
+      continue;
+    }
+    const auto velocity = static_cast<double>(point.longitudinal_velocity_mps);
+    const auto next_velocity = static_cast<double>(next_point.longitudinal_velocity_mps);
+    const auto accel =
+      (next_velocity * next_velocity - velocity * velocity) / (2.0 * distance_to_next);
+    point.acceleration_mps2 = std::min(
+      point.acceleration_mps2, static_cast<float>(std::max(-constant_deceleration_, accel)));
   }
   return result;
 }
