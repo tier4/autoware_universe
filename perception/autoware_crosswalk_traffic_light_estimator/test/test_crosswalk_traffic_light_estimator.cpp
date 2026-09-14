@@ -51,7 +51,9 @@ CrosswalkTrafficLightEstimatorConfig make_default_config()
   return config;
 }
 
-TrafficSignal make_signal(lanelet::Id tl_id, uint8_t color, float confidence = 1.0)
+TrafficSignal make_signal(
+  lanelet::Id tl_id, uint8_t color, float confidence = 1.0,
+  uint8_t shape = TrafficSignalElement::CIRCLE)
 {
   TrafficSignal signal;
   signal.traffic_light_group_id = tl_id;
@@ -391,7 +393,7 @@ TEST(
     VEHICLE_TL_REG_ELEM_ID, TrafficSignalElement::GREEN, 1.0, TrafficSignalElement::RIGHT_ARROW)});
 
   // Act
-  const auto result = estimator.estimate(input, make_time(0.0));
+  const auto result = estimator.estimate(input);
 
   // Assert
   assert_estimated_linked_signal(
@@ -418,7 +420,7 @@ TEST(
      make_signal_element(TrafficSignalElement::GREEN, 0.1, TrafficSignalElement::RIGHT_ARROW)})});
 
   // Act
-  const auto result = estimator.estimate(input, make_time(0.0));
+  const auto result = estimator.estimate(input);
 
   // Assert: green_right_arrow:red wins over red:green.
   assert_estimated_linked_signal(result, TrafficSignalElement::RED, TrafficSignalElement::CIRCLE);
@@ -443,7 +445,7 @@ TEST(
      make_signal_element(TrafficSignalElement::GREEN, 0.1, TrafficSignalElement::CROSS)})});
 
   // Act
-  const auto result = estimator.estimate(input, make_time(0.0));
+  const auto result = estimator.estimate(input);
 
   // Assert: green_cross:red wins over red:green.
   assert_estimated_linked_signal(result, TrafficSignalElement::RED, TrafficSignalElement::CIRCLE);
