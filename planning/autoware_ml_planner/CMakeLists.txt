@@ -17,6 +17,8 @@ include(AddAcadosSolver)
 
 ml_planner_find_dependencies()
 
+if(ML_PLANNER_CUDA_AVAIL AND ML_PLANNER_TRT_AVAIL)
+
 set(ML_PLANNER_SOURCES
   src/ml_planner_core.cpp
   src/ml_planner_node.cpp
@@ -131,6 +133,8 @@ if(BUILD_TESTING)
     autoware_perception_msgs
     autoware_test_utils
   )
+endif()
+
 endif()
 
 ament_auto_package(
