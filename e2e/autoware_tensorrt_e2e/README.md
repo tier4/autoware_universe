@@ -24,9 +24,9 @@ something, this node reports the same thing under the same name.
 ros2 launch autoware_tensorrt_e2e e2e_planner_resworld.launch.xml
 ```
 
-The model directory, `$(var data_path)/$(var model_name)` (by default
-`$HOME/autoware_data/tensorrt_e2e`), holds two graphs and one
-configuration file:
+The model directory (by default `$HOME/autoware_data/OnePlanner`, one directory of its
+own under `~/autoware_data` as every other model package has) holds two graphs and one
+configuration file. The files inside it are named by `model_name`, not the directory:
 
 | File                               | Role                                                                                                                                                                                                                                                                                                                                                                          |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -269,7 +269,7 @@ at startup instead of running with another network's geometry.
 
 ```bash
 ros2 launch autoware_tensorrt_e2e <launch file> \
-  data_path:=$HOME/autoware_data/tensorrt_e2e model_name:=<model>
+  data_path:=$HOME/autoware_data/OnePlanner model_name:=<model>
 ```
 
 One file describes the network, and the node reads no other. Everything the runtime needs
