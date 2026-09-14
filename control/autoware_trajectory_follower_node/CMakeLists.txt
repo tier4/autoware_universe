@@ -31,7 +31,8 @@ autoware_agnocast_wrapper_register_node(${SIMPLE_TRAJECTORY_FOLLOWER_NODE}
   ROS2_EXECUTOR SingleThreadedExecutor
 )
 
-if(BUILD_TESTING)
+# Controller is an agnocast_wrapper::Node; the gtest main brings up no agnocast context.
+if(BUILD_TESTING AND NOT "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
   set(TRAJECTORY_FOLLOWER_NODES_TEST test_trajectory_follower_node)
   ament_add_ros_isolated_gtest(${TRAJECTORY_FOLLOWER_NODES_TEST}
     test/trajectory_follower_test_utils.hpp

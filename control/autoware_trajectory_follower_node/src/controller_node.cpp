@@ -53,7 +53,7 @@ namespace autoware::motion::control::trajectory_follower_node
 {
 Controller::Controller(const rclcpp::NodeOptions & node_options)
 : Node("controller", node_options),
-  diag_updater_(std::make_shared<diagnostic_updater::Updater>(this))
+  diag_updater_(std::make_shared<autoware::agnocast_wrapper::diagnostic_updater::Updater>(this))
 {
   using std::placeholders::_1;
 
@@ -117,9 +117,9 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   sub_steering_offset_update_ =
     create_subscription<autoware_internal_debug_msgs::msg::Float32Stamped>(
       "~/input/steering_offset_update", rclcpp::QoS{1}.transient_local(),
-      [this](const autoware_internal_debug_msgs::msg::Float32Stamped::ConstSharedPtr msg) {
-        lateral_controller_->set_steering_offset(static_cast<double>(msg->data));
-      });
+      [this](
+        const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_internal_debug_msgs::msg::Float32Stamped) &
+        msg) { lateral_controller_->set_steering_offset(static_cast<double>(msg->data)); });
 
   if (enable_control_cmd_horizon_pub_) {
     control_cmd_horizon_pub_ = create_publisher<autoware_control_msgs::msg::ControlHorizon>(
@@ -130,13 +130,15 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   {
     const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::duration<double>(ctrl_period));
-    timer_control_ = rclcpp::create_timer(
+    timer_control_ = autoware::agnocast_wrapper::create_timer(
       this, get_clock(), period_ns, std::bind(&Controller::callbackTimerControl, this));
   }
 
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
+  logger_configure_ = std::make_unique<
+    autoware_utils_logging::BasicLoggerLevelConfigure<autoware::agnocast_wrapper::Node>>(this);
 
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  published_time_publisher_ = std::make_unique<
+    autoware_utils_debug::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(this);
 }
 
 Controller::LateralControllerMode Controller::getLateralControllerMode(
@@ -158,7 +160,7 @@ Controller::LongitudinalControllerMode Controller::getLongitudinalControllerMode
 
 void Controller::check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  const auto traj_timestamp = sub_ref_path_.last_taken_data_timestamp();
+  const auto traj_timestamp = last_trajectory_taken_time_;
 
   if (!traj_timestamp) {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "timeout");
@@ -186,7 +188,7 @@ bool Controller::processData(rclcpp::Clock & clock)
   };
 
   const auto & getData = [&logData](auto & dest, auto & sub, const std::string & data_type = "") {
-    const auto temp = sub.take_data();
+    const auto temp = sub->take_data();
     if (temp) {
       dest = temp;
       return true;
@@ -197,7 +199,11 @@ bool Controller::processData(rclcpp::Clock & clock)
 
   is_ready &= getData(current_accel_ptr_, sub_accel_, "acceleration");
   is_ready &= getData(current_steering_ptr_, sub_steering_, "steering");
-  is_ready &= getData(current_trajectory_ptr_, sub_ref_path_, "trajectory");
+  if (getData(current_trajectory_ptr_, sub_ref_path_, "trajectory")) {
+    last_trajectory_taken_time_ = this->now();
+  } else {
+    is_ready = false;
+  }
   is_ready &= getData(current_odometry_ptr_, sub_odometry_, "odometry");
   is_ready &= getData(current_operation_mode_ptr_, sub_operation_mode_, "operation mode");
 
@@ -330,7 +336,7 @@ void Controller::publishDebugMarker(
 }
 
 void Controller::publishProcessingTime(
-  const double t_ms, const rclcpp::Publisher<Float64Stamped>::SharedPtr pub)
+  const double t_ms, const AUTOWARE_PUBLISHER_PTR(Float64Stamped) & pub)
 {
   Float64Stamped msg{};
   msg.stamp = this->now();
