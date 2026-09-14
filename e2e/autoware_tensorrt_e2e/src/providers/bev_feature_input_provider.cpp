@@ -280,8 +280,14 @@ void BevFeatureInputProvider::subscribe()
       [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
         // Subscribing happens in the constructor, so a cloud can arrive before the
         // extractor exists. Drop those: the cache is empty anyway and the first ticks
-        // would have nothing to plan on.
+        // would have nothing to plan on. This is also the normal start-up state -- the
+        // node is regularly composed before the LiDAR pipeline it reads is up -- and it
+        // is a wait, not a failure: report_status() says so once a second.
         if (!extractor_) {
+          return;
+        }
+        if (!extraction_error_.empty()) {
+          // Already latched and already reported by the tick it was rethrown into.
           return;
         }
         {
@@ -303,7 +309,19 @@ void BevFeatureInputProvider::subscribe()
           pending_error_ = "Point cloud is stale (" + std::to_string(delay_ms) + " ms > " +
                            std::to_string(max_delay_ms_) + " ms)";
         } else {
-          pending_feature_ = extractor_->extract(*msg, pending_error_);
+          // extract() reports a frame it cannot use (empty cloud, too few voxels, a failed
+          // enqueue) through `pending_error_`, but CHECK_CUDA_ERROR and TrtCommon throw.
+          // This is a subscription callback: an exception leaving it unwinds through the
+          // executor and terminates the process, and in the deployed configuration that
+          // process is the shared /pointcloud_container running the vehicle's whole CUDA
+          // sensing stack. Latch it here and let collect() rethrow it inside the tick,
+          // which already catches, latches ERROR and stops planning.
+          try {
+            pending_feature_ = extractor_->extract(*msg, pending_error_);
+          } catch (const std::exception & e) {
+            extraction_error_ = std::string("BEV feature extraction failed: ") + e.what();
+            pending_feature_ = nullptr;
+          }
           last_extracted_stamp_ = pending_stamp_;
           history_ptr_ = nullptr;
         }
@@ -317,12 +335,20 @@ void BevFeatureInputProvider::subscribe()
 bool BevFeatureInputProvider::collect(
   const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs, std::string & error)
 {
+  if (!extraction_error_.empty()) {
+    // Thrown here rather than where it happened: run_once() catches it, reports ERROR on
+    // `inference_status` and stops the node planning, with the container still standing.
+    throw std::runtime_error(extraction_error_);
+  }
+
   std::shared_ptr<const cuda_blackboard::CudaPointCloud2> cloud;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     cloud = latest_pointcloud_;
   }
   if (!cloud) {
+    // The start-up state until the LiDAR pipeline comes up. The node waits; the tick
+    // reports WARN and publishes nothing, as autoware_bevfusion does for the same cloud.
     error = "No point cloud received yet";
     return false;
   }

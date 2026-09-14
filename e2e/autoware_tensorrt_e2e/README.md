@@ -126,8 +126,10 @@ startup error naming the tensor.
 | `~/input/turn_indicators`       | `autoware_vehicle_msgs/msg/TurnIndicatorsReport`                                                                                                                        | `turn_indicators`; not subscribed when `context.turn_indicators.enabled` is false |
 
 A missing input stops planning for that tick with a throttled warning and a `WARN`
-diagnostic naming the input. The one exception mirrors `autoware_diffusion_planner`: a
-missing traffic-signal message leaves lanes marked as having no signal.
+diagnostic naming the input. It is never an error and never fatal: at start-up this node
+is regularly running before the publishers it reads, and none of them has to exist for the
+node to load. The one exception mirrors `autoware_diffusion_planner`: a missing
+traffic-signal message leaves lanes marked as having no signal.
 
 ### Outputs
 
@@ -142,6 +144,12 @@ missing traffic-signal message leaves lanes marked as having no signal.
 | `~/debug/processing_time/collect/<provider>_ms`                                                                             | `autoware_internal_debug_msgs/msg/Float64Stamped`           | Each provider's share of `collect_ms` (`context`, `bev_feature`, ...)                                                |
 | `~/debug/processing_time/finish_ms`                                                                                         | `autoware_internal_debug_msgs/msg/Float64Stamped`           | Provider work done after the trajectory is out (`finish_tick()`); not part of `total_ms`                             |
 | `/diagnostics`                                                                                                              |                                                             | `inference_status`                                                                                                   |
+
+While the pacing sensor has not delivered for `input_timeout_seconds` (default 1.0, and so
+for the whole of start-up before the LiDAR pipeline is up), a 1 Hz timer reports the wait on
+`inference_status` as a `WARN` naming the provider it is waiting for. It never plans; it
+exists so that "waiting" and "dead" do not look the same from outside, and so a start-up
+failure keeps being reported instead of being said once and going stale in the aggregator.
 
 The `inference_status` diagnostic carries the readiness state, the reason a tick was skipped,
 a `WARN` when processing exceeded the planning period, and the keys the reference nodes
@@ -165,9 +173,22 @@ difference from `autoware_diffusion_planner` is the horizon, 4 s instead of 8 s.
 
 The node runs when the sensor the model waits on delivers: the provider reading it says so
 and drives the pass, as `autoware_bevfusion` does with the same cloud. There is no timer and
-no second way to run -- a tick firing between sweeps would plan on the previous one and
-publish a trajectory indistinguishable from a fresh one. A model that consumes no sensor is
-rejected at startup rather than started and left idle.
+no second way to plan -- a tick firing between sweeps would plan on the previous one and
+publish a trajectory indistinguishable from a fresh one.
+
+Nothing that can be reported at runtime is raised out of the constructor. The deployed
+configuration composes this node into `/pointcloud_container` next to the CUDA sensing
+stack, and a component constructor that throws is not loaded at all: the operator gets
+launch_ros's `Component constructor threw an exception` and a node that is simply absent,
+while the real reason -- a model that failed to build, a missing artifact, an ml_package
+that does not match the graph -- stays buried in the container's log. Instead the node
+loads, disables inference, and reports that reason on `inference_status` once a second for
+as long as it holds. A model that consumes no sensor (nothing would ever trigger planning)
+is reported the same way. The same rule covers the subscription callbacks: an exception
+escaping one of those does not fail the node, it terminates the process -- which here is
+the vehicle's whole CUDA sensing stack -- so the BEV extraction and the vector-map parse
+catch, and the extraction is rethrown inside the tick, which already catches, latches
+`ERROR` and stops planning with the container still standing.
 
 Each sensor input has a staleness bound (`*.max_delay_ms`), measured
 against the node clock, so a run on recorded data has to put the node on the same clock as

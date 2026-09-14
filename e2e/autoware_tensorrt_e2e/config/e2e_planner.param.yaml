@@ -34,6 +34,16 @@
     # -- runtime --
     shift_x: false
 
+    # How long the pacing sensor may stay silent before the node reports it on
+    # `inference_status` (WARN, never an error). Waiting is the normal start-up
+    # state -- this node is composed into /pointcloud_container and is regularly
+    # running before the LiDAR pipeline that paces it -- so it waits rather than
+    # failing, exactly as autoware_bevfusion does with the same cloud. What the
+    # timeout buys is that the wait is visible instead of looking like a dead node.
+    # An order of magnitude above the 10 Hz LiDAR period, so a single dropped frame
+    # is not reported as a dropout.
+    input_timeout_seconds: 1.0
+
     bev_feature:
       # Cache semantics (frames, interval, extent, tensor names) describe the
       # network and come from the model's ml_package file; what is left here is

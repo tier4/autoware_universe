@@ -260,10 +260,20 @@ void ContextInputProvider::create_subscriptions()
 
 void ContextInputProvider::on_map(const LaneletMapBin::ConstSharedPtr map_msg)
 {
-  const auto lanelet_map_ptr =
-    autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
-  lane_segment_context_ =
-    std::make_unique<dp::preprocess::LaneSegmentContext>(lanelet_map_ptr, line_string_max_step_m_);
+  // A subscription callback: parsing throws on a map this build cannot read, and an
+  // exception leaving here unwinds through the executor and terminates the process --
+  // the shared /pointcloud_container in the deployed configuration. Report it and keep
+  // waiting instead; the map tensors simply stay unavailable and every tick says so.
+  try {
+    const auto lanelet_map_ptr =
+      autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
+    lane_segment_context_ = std::make_unique<dp::preprocess::LaneSegmentContext>(
+      lanelet_map_ptr, line_string_max_step_m_);
+    map_error_.clear();
+  } catch (const std::exception & e) {
+    map_error_ = std::string("The vector map could not be loaded: ") + e.what();
+    RCLCPP_ERROR_STREAM(node_.get_logger(), map_error_);
+  }
 }
 
 bool ContextInputProvider::collect(
@@ -336,7 +346,7 @@ bool ContextInputProvider::collect_map_tensors(
     return true;
   }
   if (!lane_segment_context_) {
-    error = "Vector map not received yet";
+    error = map_error_.empty() ? "Vector map not received yet" : map_error_;
     return false;
   }
 
@@ -389,7 +399,7 @@ bool ContextInputProvider::collect_route_tensors(
 
   if (!route_lanes_shape_.empty()) {
     if (!lane_segment_context_) {
-      error = "Vector map not received yet";
+      error = map_error_.empty() ? "Vector map not received yet" : map_error_;
       return false;
     }
     const double center_x = ego.ego_to_map(0, 3);

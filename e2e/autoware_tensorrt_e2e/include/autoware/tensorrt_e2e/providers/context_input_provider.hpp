@@ -138,6 +138,10 @@ private:
     traffic_light_id_map_;
   std::unique_ptr<autoware::diffusion_planner::preprocess::LaneSegmentContext>
     lane_segment_context_;
+  //! Why the latched map could not be turned into lane segments, if it could not. The
+  //! tensors stay unavailable either way; this only distinguishes "no map yet" from
+  //! "the map that arrived is unusable" in the diagnostic.
+  std::string map_error_;
   LaneletRoute::ConstSharedPtr route_ptr_;
 };
 

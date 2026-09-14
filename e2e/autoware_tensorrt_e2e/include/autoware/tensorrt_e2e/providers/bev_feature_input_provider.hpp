@@ -137,6 +137,10 @@ private:
   //! has taken it. Touched only from the callback and the pass it triggers.
   const float * pending_feature_{nullptr};
   std::string pending_error_;
+  //! Set when the extraction threw in the point cloud callback. Sticky: a CUDA error
+  //! normally leaves the context unusable, so the next cloud is not tried. collect()
+  //! rethrows it inside the tick, where the node can catch it; see subscribe().
+  std::string extraction_error_;
   std::optional<rclcpp::Time> pending_stamp_;
   bool pending_inserted_{false};
   bool pending_detections_published_{false};

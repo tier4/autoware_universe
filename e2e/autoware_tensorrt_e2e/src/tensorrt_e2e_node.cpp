@@ -23,11 +23,13 @@
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -78,12 +80,40 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
     }
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), e.what() << ". Inference will be disabled.");
-    diagnostics_->update_level_and_message(DiagnosticStatus::ERROR, e.what());
-    diagnostics_->publish(get_clock()->now());
+    latch_status(DiagnosticStatus::ERROR, std::string(e.what()) + " -- inference is disabled");
     if (params_.build_only) {
       RCLCPP_ERROR(get_logger(), "Build only mode: exiting due to initialization failure.");
       std::exit(EXIT_FAILURE);
     }
+  }
+
+  wire_pacing();
+
+  // No runtime condition throws out of this constructor any more. A component
+  // constructor that throws is never loaded: launch_ros reports "Component constructor
+  // threw an exception" and the node is simply absent, with the actual reason -- an
+  // engine that failed to build, a missing artifact -- left somewhere further up a
+  // shared container's log, which is how the pipeline failure below used to surface as
+  // the pacing check firing on an empty provider list. Those reasons are reported on
+  // `inference_status` instead, by a loaded node that keeps saying them. (A malformed
+  // deployment still throws where rclcpp throws it -- an undeclared vehicle_info or
+  // ml_package parameter -- exactly as autoware_bevfusion's read-only parameters do.)
+  //
+  // Waiting is not one of those reasons. At start-up this node is regularly composed
+  // and running before the LiDAR pipeline that paces it exists, and the correct
+  // behaviour is to wait: autoware_bevfusion, reading the same cloud, warns and skips
+  // for as long as its inputs are missing and never takes itself or the container down.
+  status_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  status_timer_ = create_wall_timer(
+    std::chrono::milliseconds(1000), [this]() { report_status(); }, status_callback_group_);
+}
+
+void TensorrtE2eNode::wire_pacing()
+{
+  if (!pipeline_ready_) {
+    // initialize_pipeline() failed and said why. There is no engine to run, so pacing a
+    // tick off the sensor would only replace that message with a vaguer one every frame.
+    return;
   }
 
   // Run when the sensor the model waits on delivers, rather than on a tick that
@@ -95,7 +125,6 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
   // The callback is serialised with itself by its callback group, so a run
   // cannot re-enter; a frame arriving during one is simply the next run's, which
   // is what planning on the newest sample means.
-  bool paced = false;
   for (const auto & provider : providers_) {
     if (provider->pace([this]() { run_once(); })) {
       RCLCPP_INFO(
@@ -104,18 +133,65 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
       if (!pacing_provider_) {
         pacing_provider_ = provider.get();
       }
-      paced = true;
     }
   }
-  if (!paced) {
+  if (!pacing_provider_) {
     // There is no second way to run. A timer here would plan on whatever the
     // last sensor sample happened to be, at a rate unrelated to it, and publish
     // a trajectory that looks exactly like a fresh one -- which is worse than
     // not running, because nothing downstream can tell the difference.
-    throw std::runtime_error(
+    const std::string message =
       "No input provider paces this model: nothing would ever trigger planning. "
-      "A model this node can run has to consume a sensor.");
+      "A model this node can run has to consume a sensor (set sensor_inputs).";
+    RCLCPP_ERROR(get_logger(), "%s", message.c_str());
+    latch_status(DiagnosticStatus::ERROR, message);
   }
+}
+
+void TensorrtE2eNode::latch_status(const int8_t level, const std::string & message)
+{
+  latched_level_ = level;
+  latched_message_ = message;
+  diagnostics_->clear();
+  diagnostics_->update_level_and_message(level, message);
+  diagnostics_->publish(get_clock()->now());
+}
+
+void TensorrtE2eNode::report_status()
+{
+  std::unique_lock<std::mutex> lock(tick_mutex_, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    // A tick holds it: the node is alive and is publishing its own status. Racing it to
+    // the same diagnostic would only interleave two messages on one status object.
+    return;
+  }
+
+  const rclcpp::Time now = get_clock()->now();
+
+  if (!latched_message_.empty()) {
+    // Republished rather than said once at construction: a status that stops arriving is
+    // reported as stale by the aggregator, which reads as "gone", not as "broken, here is
+    // why". This is the only thing a node whose pipeline failed still does.
+    diagnostics_->clear();
+    diagnostics_->update_level_and_message(latched_level_, latched_message_);
+    diagnostics_->publish(now);
+    return;
+  }
+
+  const double silent_seconds = last_tick_ ? (now - *last_tick_).seconds() : -1.0;
+  if (silent_seconds >= 0.0 && silent_seconds < params_.input_timeout_seconds) {
+    return;  // the sensor is delivering; each tick publishes its own status
+  }
+
+  const std::string source = pacing_provider_ ? pacing_provider_->name() : std::string("sensor");
+  const std::string message =
+    !last_tick_ ? "Waiting for the first input from '" + source + "'"
+                : "No input from '" + source + "' for " +
+                    std::to_string(static_cast<int64_t>(silent_seconds * 1e3)) + " ms";
+  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "%s", message.c_str());
+  diagnostics_->clear();
+  diagnostics_->update_level_and_message(DiagnosticStatus::WARN, message);
+  diagnostics_->publish(now);
 }
 
 void TensorrtE2eNode::set_up_params()
@@ -130,6 +206,7 @@ void TensorrtE2eNode::set_up_params()
   params_.sensor_inputs =
     declare_parameter<std::vector<std::string>>("sensor_inputs", std::vector<std::string>{});
   params_.enable_context_inputs = declare_parameter<bool>("enable_context_inputs", true);
+  params_.input_timeout_seconds = declare_parameter<double>("input_timeout_seconds", 1.0);
 
   postprocess_params_.prediction_tensor =
     declare_parameter<std::string>("postprocess.prediction_tensor", "prediction");
@@ -320,6 +397,10 @@ void TensorrtE2eNode::run_once()
   if (runtime_failed_) {
     return;
   }
+  // Excludes report_status(), which shares `diagnostics_`; two providers that both pace
+  // would otherwise also be able to enter this from two executor threads at once.
+  std::lock_guard<std::mutex> lock(tick_mutex_);
+  last_tick_ = get_clock()->now();
   // Everything below throws: CHECK_CUDA_ERROR raises std::runtime_error, and so do the
   // extractor, the temporal cache and the inference engine. This runs in a subscription
   // callback, so an escaping exception does not fail this node -- it terminates the
@@ -344,9 +425,8 @@ void TensorrtE2eNode::run_once()
   } catch (const std::exception & e) {
     runtime_failed_ = true;
     RCLCPP_ERROR(get_logger(), "Inference failed and the planner is now disabled: %s", e.what());
-    diagnostics_->update_level_and_message(
+    latch_status(
       DiagnosticStatus::ERROR, std::string("Inference failed, planner disabled: ") + e.what());
-    diagnostics_->publish(now());
   }
 }
 
