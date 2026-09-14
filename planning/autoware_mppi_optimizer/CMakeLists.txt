@@ -79,14 +79,63 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   # Parallelize NVCC device-code passes (CUDA 11.5+); 0 = use all host cores.
   list(APPEND CUDA_NVCC_FLAGS "--threads" "0")
 
-  # Compile only for the GPU(s) on this machine (FindCUDA Auto = nvidia-smi detect).
-  # Avoids the multi-SM fat-binary compile that dominated MPPI build time.
-  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS Auto)
-  if(MPPI_CUDA_ARCH_FLAGS STREQUAL "")
-    message(FATAL_ERROR
-      "MPPI CUDA: failed to detect a local GPU architecture. "
-      "Is the NVIDIA driver available at configure time?")
+  # CUDA architectures to build device code for.
+  #   Default : the portable gencode list shared with the perception/sensing CUDA
+  #             packages. Needs no GPU at configure time, so it also works on
+  #             headless build machines and in containers started without --gpus.
+  #   Auto    : detect the GPU(s) on this machine and build only for those. Much
+  #             faster -- MPPI-Generic is template-heavy and every extra SM is a
+  #             full device-code pass -- but only valid when the build host has
+  #             the target GPU.
+  #   <list>  : an explicit capability list, e.g. -DMPPI_CUDA_ARCH=8.6, passed
+  #             through to CUDA_SELECT_NVCC_ARCH_FLAGS.
+  set(MPPI_CUDA_ARCH "Default" CACHE STRING
+    "CUDA architectures for MPPI: Default, Auto, or an explicit list (e.g. 8.6)")
+
+  if(MPPI_CUDA_ARCH STREQUAL "Default")
+    set(MPPI_CUDA_ARCH_FLAGS
+      "-gencode arch=compute_75,code=sm_75"
+      "-gencode arch=compute_86,code=sm_86"
+      "-gencode arch=compute_87,code=sm_87"
+      "-gencode arch=compute_89,code=sm_89")
+    if(CUDA_VERSION VERSION_GREATER_EQUAL "12.8")
+      if(CUDA_VERSION VERSION_LESS "13.0")
+        list(APPEND MPPI_CUDA_ARCH_FLAGS "-gencode arch=compute_101,code=sm_101")
+      else()  # CUDA 13.0 renamed SM101 to SM110
+        list(APPEND MPPI_CUDA_ARCH_FLAGS "-gencode arch=compute_110,code=sm_110")
+      endif()
+      list(APPEND MPPI_CUDA_ARCH_FLAGS "-gencode arch=compute_120,code=sm_120")
+      list(APPEND MPPI_CUDA_ARCH_FLAGS "-gencode arch=compute_120,code=compute_120")
+    else()
+      list(APPEND MPPI_CUDA_ARCH_FLAGS "-gencode arch=compute_89,code=compute_89")
+    endif()
+  else()
+    cuda_select_nvcc_arch_flags(MPPI_CUDA_ARCH_FLAGS ${MPPI_CUDA_ARCH})
+    if(MPPI_CUDA_ARCH_FLAGS STREQUAL "")
+      message(FATAL_ERROR
+        "MPPI CUDA: MPPI_CUDA_ARCH=${MPPI_CUDA_ARCH} selected no architecture. "
+        "With Auto, is the NVIDIA driver available at configure time? "
+        "Use -DMPPI_CUDA_ARCH=Default to build the portable gencode list.")
+    endif()
   endif()
+
+  # MPPI-Generic includes <cuda/barrier>, and libcu++ hard-#errors below sm_70.
+  # CUDA_SELECT_NVCC_ARCH_FLAGS(Auto) silently falls back to *every* known
+  # architecture when no GPU is visible, which drags in sm_53 and buries the real
+  # cause under a wall of libcu++ template errors -- so reject it here instead.
+  foreach(mppi_arch_flag IN LISTS MPPI_CUDA_ARCH_FLAGS)
+    string(REGEX MATCHALL "(compute|sm)_[0-9]+" mppi_arch_names "${mppi_arch_flag}")
+    foreach(mppi_arch_name IN LISTS mppi_arch_names)
+      string(REGEX REPLACE "^(compute|sm)_" "" mppi_arch_sm "${mppi_arch_name}")
+      if(mppi_arch_sm LESS 70)
+        message(FATAL_ERROR
+          "MPPI CUDA: sm_${mppi_arch_sm} is below the sm_70 that MPPI-Generic "
+          "requires via <cuda/barrier>. Selected by MPPI_CUDA_ARCH="
+          "${MPPI_CUDA_ARCH}: ${MPPI_CUDA_ARCH_FLAGS}")
+      endif()
+    endforeach()
+  endforeach()
+
   list(APPEND CUDA_NVCC_FLAGS ${MPPI_CUDA_ARCH_FLAGS})
   message(STATUS "MPPI CUDA architecture(s): ${MPPI_CUDA_ARCH_FLAGS}")
 
