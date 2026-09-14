@@ -1,33 +1,43 @@
 include_guard(GLOBAL)
 
 function(ml_planner_find_dependencies)
-  find_package(CUDAToolkit REQUIRED)
-
-  find_library(ML_PLANNER_NVINFER_LIBRARY NAMES nvinfer)
-  find_library(ML_PLANNER_NVONNXPARSER_LIBRARY NAMES nvonnxparser)
-  if(NOT ML_PLANNER_NVINFER_LIBRARY OR
-     NOT ML_PLANNER_NVONNXPARSER_LIBRARY)
-    message(FATAL_ERROR
-      "TensorRT libraries (nvinfer and nvonnxparser) are required by ${PROJECT_NAME}")
-  endif()
-
-  add_library(MLPlanner::nvinfer UNKNOWN IMPORTED)
-  set_target_properties(MLPlanner::nvinfer PROPERTIES
-    IMPORTED_LOCATION "${ML_PLANNER_NVINFER_LIBRARY}"
-  )
-  add_library(MLPlanner::nvonnxparser UNKNOWN IMPORTED)
-  set_target_properties(MLPlanner::nvonnxparser PROPERTIES
-    IMPORTED_LOCATION "${ML_PLANNER_NVONNXPARSER_LIBRARY}"
-  )
-
-  if(ML_PLANNER_VERBOSE_DEPENDENCIES)
-    message(STATUS "CUDA toolkit: ${CUDAToolkit_VERSION}")
-    message(STATUS "TensorRT inference library: ${ML_PLANNER_NVINFER_LIBRARY}")
-    message(STATUS "TensorRT ONNX parser: ${ML_PLANNER_NVONNXPARSER_LIBRARY}")
-  endif()
-
+  set(ML_PLANNER_CUDA_AVAIL OFF)
+  set(ML_PLANNER_TRT_AVAIL OFF)
   set(has_onnxruntime FALSE)
-  if(ENABLE_ONNXRUNTIME)
+
+  find_package(CUDAToolkit)
+  if(CUDAToolkit_FOUND)
+    set(ML_PLANNER_CUDA_AVAIL ON)
+  else()
+    message(WARNING "CUDA NOT FOUND")
+  endif()
+
+  if(ML_PLANNER_CUDA_AVAIL)
+    find_library(ML_PLANNER_NVINFER_LIBRARY NAMES nvinfer)
+    find_library(ML_PLANNER_NVONNXPARSER_LIBRARY NAMES nvonnxparser)
+    if(ML_PLANNER_NVINFER_LIBRARY AND ML_PLANNER_NVONNXPARSER_LIBRARY)
+      set(ML_PLANNER_TRT_AVAIL ON)
+
+      add_library(MLPlanner::nvinfer UNKNOWN IMPORTED)
+      set_target_properties(MLPlanner::nvinfer PROPERTIES
+        IMPORTED_LOCATION "${ML_PLANNER_NVINFER_LIBRARY}"
+      )
+      add_library(MLPlanner::nvonnxparser UNKNOWN IMPORTED)
+      set_target_properties(MLPlanner::nvonnxparser PROPERTIES
+        IMPORTED_LOCATION "${ML_PLANNER_NVONNXPARSER_LIBRARY}"
+      )
+
+      if(ML_PLANNER_VERBOSE_DEPENDENCIES)
+        message(STATUS "CUDA toolkit: ${CUDAToolkit_VERSION}")
+        message(STATUS "TensorRT inference library: ${ML_PLANNER_NVINFER_LIBRARY}")
+        message(STATUS "TensorRT ONNX parser: ${ML_PLANNER_NVONNXPARSER_LIBRARY}")
+      endif()
+    else()
+      message(WARNING "TensorRT is NOT Available")
+    endif()
+  endif()
+
+  if(ML_PLANNER_CUDA_AVAIL AND ML_PLANNER_TRT_AVAIL AND ENABLE_ONNXRUNTIME)
     find_package(onnxruntime QUIET)
 
     if(TARGET onnxruntime::onnxruntime)
@@ -64,5 +74,7 @@ function(ml_planner_find_dependencies)
     endif()
   endif()
 
+  set(ML_PLANNER_CUDA_AVAIL ${ML_PLANNER_CUDA_AVAIL} PARENT_SCOPE)
+  set(ML_PLANNER_TRT_AVAIL ${ML_PLANNER_TRT_AVAIL} PARENT_SCOPE)
   set(ML_PLANNER_HAS_ONNXRUNTIME ${has_onnxruntime} PARENT_SCOPE)
 endfunction()
