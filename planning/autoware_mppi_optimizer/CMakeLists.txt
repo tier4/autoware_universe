@@ -97,7 +97,47 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     endif()
   endif()
 
-  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${_mppi_cuda_arch_spec})
+  # CMake 3.22 FindCUDA/select_compute_arch.cmake does not know sm_87+ (Jetson Orin, Ada, etc.).
+  set(_mppi_cmake322_known_sms
+    20 21 30 32 35 37 50 52 53 60 61 62 70 72 75 80 86)
+
+  set(_mppi_sm_targets "")
+  if(_mppi_cuda_arch_spec STREQUAL "Auto")
+    execute_process(
+      COMMAND nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits
+      OUTPUT_VARIABLE _mppi_gpu_cc
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(_mppi_gpu_cc STREQUAL "")
+      list(APPEND _mppi_sm_targets ${MPPI_MIN_CUDA_ARCH})
+    else()
+      string(REPLACE "\n" ";" _mppi_gpu_cc_list "${_mppi_gpu_cc}")
+      list(GET _mppi_gpu_cc_list 0 _mppi_gpu_cc_primary)
+      string(REPLACE "." "" _mppi_gpu_sm "${_mppi_gpu_cc_primary}")
+      list(APPEND _mppi_sm_targets ${_mppi_gpu_sm})
+    endif()
+  else()
+    string(REPLACE ";" " " _mppi_arch_spec_normalized "${_mppi_cuda_arch_spec}")
+    string(REPLACE " " ";" _mppi_arch_spec_normalized "${_mppi_arch_spec_normalized}")
+    string(REPLACE "," ";" _mppi_arch_spec_normalized "${_mppi_arch_spec_normalized}")
+    set(_mppi_sm_targets ${_mppi_arch_spec_normalized})
+  endif()
+
+  set(MPPI_CUDA_ARCH_FLAGS "")
+  set(_mppi_legacy_sm_targets "")
+  foreach(_mppi_sm IN LISTS _mppi_sm_targets)
+    if(_mppi_sm IN_LIST _mppi_cmake322_known_sms)
+      list(APPEND _mppi_legacy_sm_targets ${_mppi_sm})
+    else()
+      list(APPEND MPPI_CUDA_ARCH_FLAGS "-gencode" "arch=compute_${_mppi_sm},code=sm_${_mppi_sm}")
+    endif()
+  endforeach()
+
+  if(_mppi_legacy_sm_targets)
+    CUDA_SELECT_NVCC_ARCH_FLAGS(_mppi_legacy_arch_flags ${_mppi_legacy_sm_targets})
+    list(APPEND MPPI_CUDA_ARCH_FLAGS ${_mppi_legacy_arch_flags})
+  endif()
+
   if(MPPI_CUDA_ARCH_FLAGS STREQUAL "")
     message(FATAL_ERROR
       "MPPI CUDA: failed to resolve GPU architecture from '${_mppi_cuda_arch_spec}'. "
@@ -111,7 +151,9 @@ if(CUDA_AVAIL AND TRT_AVAIL)
           "MPPI CUDA: architecture sm_${CMAKE_MATCH_1} < sm_${MPPI_MIN_CUDA_ARCH} "
           "(required for MPPI-Generic CUDA barriers). Using sm_${MPPI_MIN_CUDA_ARCH} instead. "
           "Set MPPI_CUDA_ARCH_LIST or CMAKE_CUDA_ARCHITECTURES to override.")
-        CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${MPPI_MIN_CUDA_ARCH})
+        set(MPPI_CUDA_ARCH_FLAGS "")
+        set(_mppi_legacy_sm_targets ${MPPI_MIN_CUDA_ARCH})
+        CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${_mppi_legacy_sm_targets})
       endif()
       break()
     endif()
