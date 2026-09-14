@@ -38,6 +38,24 @@ Polygon2d create_polygon(const std::vector<Point2d> & vertices)
   return poly;
 }
 
+// Reproduces how `to_polygon2d()` builds an object ring: the vertices are copied verbatim and the
+// ring is closed only when it is not empty. A perception POLYGON footprint is therefore not padded,
+// so zero vertices stay an empty ring, one vertex becomes [p, p] and two vertices become
+// [p0, p1, p0]. `create_polygon()` above cannot express those cases because it dereferences
+// `front()` unconditionally and runs `boost::geometry::correct()`.
+Polygon2d create_closed_ring(const std::vector<Point2d> & vertices)
+{
+  Polygon2d poly;
+  poly.outer().reserve(vertices.size() + 1);
+  for (const auto & vertex : vertices) {
+    poly.outer().push_back(vertex);
+  }
+  if (!poly.outer().empty()) {
+    poly.outer().push_back(poly.outer().front());
+  }
+  return poly;
+}
+
 Polygon2d create_rect_poly(
   const double min_x, const double min_y, const double max_x, const double max_y)
 {
@@ -212,6 +230,96 @@ TEST(GeometryTest, IntersectsSatMatchesBoostForPointContactAndNearPointCases)
   }
 
   expect_both_outcomes_covered("point boundary shifts", saw_intersection, saw_separation);
+}
+
+// A degenerate ring is not a valid boost polygon, so the reference value is taken on the
+// equivalent point / segment geometry instead of on the ring itself.
+bool expect_degenerate_matches_boost(
+  const std::string & case_name, const Polygon2d & full_dimensional_poly,
+  const std::vector<Point2d> & degenerate_footprint)
+{
+  SCOPED_TRACE(case_name);
+
+  const bool reference =
+    degenerate_footprint.size() == 1U
+      ? boost::geometry::intersects(full_dimensional_poly, degenerate_footprint.front())
+      : boost::geometry::intersects(
+          full_dimensional_poly, autoware_utils_geometry::Segment2d{
+                                   degenerate_footprint.at(0), degenerate_footprint.at(1)});
+
+  const auto degenerate_poly = create_closed_ring(degenerate_footprint);
+  const bool sat_result = intersects_sat(full_dimensional_poly, degenerate_poly);
+  EXPECT_EQ(sat_result, reference);
+  // The predicate must not depend on the argument order.
+  EXPECT_EQ(intersects_sat(degenerate_poly, full_dimensional_poly), sat_result);
+
+  return sat_result;
+}
+
+// An empty ring is the empty set: it intersects nothing. It must also be rejected before
+// has_separating_axis() runs, because that function would increment end() on an empty ring.
+TEST(GeometryTest, IntersectsSatTreatsEmptyRingAsNoIntersection)
+{
+  const auto rect_poly = create_rect_poly(-2.0, -1.0, 2.0, 1.0);
+  const auto empty_poly = create_closed_ring({});
+  const auto point_poly = create_closed_ring({Point2d(0.0, 0.0)});
+  const auto segment_poly = create_closed_ring({Point2d(-5.0, 0.0), Point2d(5.0, 0.0)});
+
+  ASSERT_TRUE(empty_poly.outer().empty());
+
+  // The non-empty operand overlaps the origin in every case below, so a "no intersection" result
+  // can only come from the empty guard itself.
+  EXPECT_FALSE(intersects_sat(rect_poly, empty_poly));
+  EXPECT_FALSE(intersects_sat(empty_poly, rect_poly));
+  EXPECT_FALSE(intersects_sat(point_poly, empty_poly));
+  EXPECT_FALSE(intersects_sat(empty_poly, point_poly));
+  EXPECT_FALSE(intersects_sat(segment_poly, empty_poly));
+  EXPECT_FALSE(intersects_sat(empty_poly, segment_poly));
+  EXPECT_FALSE(intersects_sat(empty_poly, empty_poly));
+}
+
+// Pins the guard boundary at "empty" rather than at "fewer than three vertices". A perception
+// POLYGON footprint with one or two vertices reaches intersects_sat() as a two- or three-element
+// ring; those are valid convex sets and must be evaluated, not rejected. Rejecting them would make
+// an object that overlaps the ego footprint report "no collision", which is the fail-open this
+// guard exists to avoid. The other operand is a rectangle because SAT over edge normals is only
+// exhaustive while at least one operand has non-zero area; every production call site passes the
+// ego footprint, which always satisfies that.
+TEST(GeometryTest, IntersectsSatMatchesBoostForRingsAdmittedByTheEmptyGuard)
+{
+  const auto rect_poly = create_rect_poly(-2.0, -1.0, 2.0, 1.0);
+
+  struct DegenerateCase
+  {
+    std::string name;
+    std::vector<Point2d> footprint;
+  };
+
+  const std::vector<DegenerateCase> cases = {
+    {"single vertex inside", {Point2d(0.0, 0.0)}},
+    {"single vertex on edge", {Point2d(2.0, 0.0)}},
+    {"single vertex just outside", {Point2d(2.0 + 1e-6, 0.0)}},
+    {"single vertex far outside", {Point2d(9.0, 9.0)}},
+    {"two vertices crossing", {Point2d(-5.0, 0.0), Point2d(5.0, 0.0)}},
+    {"two vertices touching a corner", {Point2d(2.0, 1.0), Point2d(6.0, 5.0)}},
+    {"two vertices collinear but outside", {Point2d(5.0, 0.0), Point2d(9.0, 0.0)}},
+    {"two vertices diagonally outside", {Point2d(5.0, 5.0), Point2d(6.0, 6.0)}},
+    {"two identical vertices inside", {Point2d(0.0, 0.0), Point2d(0.0, 0.0)}},
+  };
+
+  bool saw_intersection = false;
+  bool saw_separation = false;
+  for (const auto & degenerate_case : cases) {
+    const auto ring_size = create_closed_ring(degenerate_case.footprint).outer().size();
+    EXPECT_LT(ring_size, 4U) << degenerate_case.name << " is not a degenerate ring";
+
+    const bool intersects =
+      expect_degenerate_matches_boost(degenerate_case.name, rect_poly, degenerate_case.footprint);
+    saw_intersection = saw_intersection || intersects;
+    saw_separation = saw_separation || !intersects;
+  }
+
+  expect_both_outcomes_covered("degenerate footprints", saw_intersection, saw_separation);
 }
 
 TEST(TargetShapeTypeParamsTest, SupportsConfiguredShapeTypes)

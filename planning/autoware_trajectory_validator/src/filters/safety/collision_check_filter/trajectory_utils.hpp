@@ -321,10 +321,7 @@ bool intersects_sat(const ConvexPolygon & poly_a, const ConvexPolygon & poly_b)
   const auto & ring_a = poly_a.outer();
   const auto & ring_b = poly_b.outer();
 
-  constexpr size_t minimum_closed_convex_ring_size = 3U;
-  if (
-    ring_a.size() < minimum_closed_convex_ring_size ||
-    ring_b.size() < minimum_closed_convex_ring_size) {
+  if (ring_a.empty() || ring_b.empty()) {
     return false;
   }
 
