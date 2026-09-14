@@ -211,7 +211,7 @@ minimum_rule_based_planner:
         default_value: 0.1
         description: time offset from current ego state to start path shifting [s]
         validation:
-          gt<>: [0.0]
+          gt_eq<>: [0.0]
 
       minimum_shift_length:
         type: double
