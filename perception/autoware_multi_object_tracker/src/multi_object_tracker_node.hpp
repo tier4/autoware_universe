@@ -48,8 +48,9 @@ private:
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     detailed_processing_time_publisher_;
 
-  // publish timer
+  // timers
   rclcpp::TimerBase::SharedPtr publish_timer_;
+  rclcpp::TimerBase::SharedPtr channel_optimizer_timer_;
 
   // parameters and internal state
   MultiObjectTrackerParameters params_;
@@ -62,6 +63,7 @@ private:
 
   // callback functions
   void onTimer();
+  void onChannelOptimizerTimer();
   void processObjects();
   void onMeasurement(
     const size_t channel_index,
