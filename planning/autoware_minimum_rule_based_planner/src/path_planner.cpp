@@ -1337,15 +1337,10 @@ void splice_shift_points(
 
 bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & current_pose)
 {
-  const auto vehicle_center_pose = autoware_utils::calc_offset_pose(
-    current_pose,
-    (vehicle_info_.max_longitudinal_offset_m + vehicle_info_.min_longitudinal_offset_m) / 2.0, 0.0,
-    0.0);
-
   if (!current_lanelet_ || std::exchange(route_updated_, false)) {
     lanelet::ConstLanelet closest;
     if (lanelet::utils::query::getClosestLaneletWithConstrains(
-          route_context_.route_lanelets, vehicle_center_pose, &closest,
+          route_context_.route_lanelets, current_pose, &closest,
           params_.path_planning.ego_nearest_lanelet.dist_threshold,
           params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
       current_lanelet_ = closest;
@@ -1390,14 +1385,14 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
   }
 
   if (lanelet::utils::query::getClosestLaneletWithConstrains(
-        candidates, vehicle_center_pose, &*current_lanelet_,
+        candidates, current_pose, &*current_lanelet_,
         params_.path_planning.ego_nearest_lanelet.dist_threshold,
         params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
     return true;
   }
 
   if (lanelet::utils::query::getClosestLaneletWithConstrains(
-        route_context_.route_lanelets, vehicle_center_pose, &*current_lanelet_,
+        route_context_.route_lanelets, current_pose, &*current_lanelet_,
         /*dist_threshold=*/std::numeric_limits<double>::max(),
         params_.path_planning.ego_nearest_lanelet.yaw_threshold)) {
     return true;
@@ -1419,13 +1414,8 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
     return std::nullopt;
   }
 
-  const auto vehicle_center_offset =
-    (vehicle_info_.max_longitudinal_offset_m + vehicle_info_.min_longitudinal_offset_m) / 2.0;
-  const auto vehicle_center_pose =
-    autoware_utils::calc_offset_pose(current_pose, vehicle_center_offset, 0.0, 0.0);
   const auto s_on_current_lanelet =
-    lanelet::utils::getArcCoordinates({*current_lanelet_}, vehicle_center_pose).length -
-    vehicle_center_offset;
+    lanelet::utils::getArcCoordinates({*current_lanelet_}, current_pose).length;
 
   const auto backward_length = std::max(
     0., path_length_backward + vehicle_info_.max_longitudinal_offset_m - s_on_current_lanelet);
@@ -1449,9 +1439,16 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
 
   const lanelet::LaneletSequence lanelet_sequence(lanelets);
   const auto s = s_on_current_lanelet + lanelet::utils::getLaneletLength2d(backward_lanelets);
-  const auto [s_start, s_end] = utils::refine_path_range(
-    {s - path_length_backward, s + path_length_forward}, lanelet_sequence, route_context_,
-    vehicle_info_, stop_margin);
+  const auto [s_start, s_end] = [&]() {
+    Interval range = utils::refine_path_range(
+      {s - path_length_backward, s + path_length_forward}, lanelet_sequence, route_context_,
+      vehicle_info_, stop_margin);
+
+    if (route_deviation_stop(*current_lanelet_, current_pose, route_context_)) {
+      range.end = std::min(range.end, s);
+    }
+    return range;
+  }();
 
   if (s_end < s_start) {
     RCLCPP_WARN_THROTTLE(
@@ -1628,17 +1625,6 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
       RCLCPP_WARN(logger_, "Trajectory length too short after cropping: %f", trajectory->length());
       return std::nullopt;
     }
-  }
-
-  const auto vehicle_center_pose = autoware_utils::calc_offset_pose(
-    current_pose,
-    (vehicle_info_.max_longitudinal_offset_m + vehicle_info_.min_longitudinal_offset_m) / 2.0, 0.0,
-    0.0);
-  if (
-    !start_goal_planner_.start_planner_active() && !start_goal_planner_.goal_planner_active() &&
-    route_deviation_stop(*current_lanelet_, vehicle_center_pose, route_context_)) {
-    RCLCPP_WARN(logger_, "Route deviation detected, cannot generate path");
-    return std::nullopt;
   }
 
   // Compose the polished path
