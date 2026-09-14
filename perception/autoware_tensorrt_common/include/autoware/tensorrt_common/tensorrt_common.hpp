@@ -27,6 +27,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -68,6 +69,8 @@ public:
    * parameter.
    * @param[in] profiler Per-layer profiler.
    * @param[in] plugin_paths Paths for TensorRT plugins.
+   * @throw std::runtime_error If TensorRT cannot be initialized, which includes failing to parse
+   * the ONNX model at `trt_config.onnx_path`.
    */
   TrtCommon(
     const TrtCommonConfig & trt_config,
@@ -93,12 +96,16 @@ public:
   /**
    * @brief Get TensorRT engine precision.
    *
+   * Valid immediately after construction. Valid to call before `setup()`.
+   *
    * @return string representation of TensorRT engine precision.
    */
   [[nodiscard]] std::string getPrecision() const;
 
   /**
    * @brief Get tensor name by index from TensorRT engine with fallback from TensorRT network.
+   *
+   * Valid immediately after construction. Valid to call before `setup()`.
    *
    * @param[in] index Tensor index.
    * @return Tensor name.
@@ -108,12 +115,28 @@ public:
   /**
    * @brief Get number of IO tensors from TensorRT engine with fallback from TensorRT network.
    *
+   * Valid immediately after construction. Valid to call before `setup()`.
+   *
    * @return Number of IO tensors.
    */
   [[nodiscard]] int32_t getNbIOTensors() const;
 
   /**
+   * @brief Get the names of all IO tensors from TensorRT engine with fallback from TensorRT
+   * network.
+   *
+   * Valid immediately after construction. Valid to call before `setup()`.
+   *
+   * @throw std::runtime_error If TensorRT counts a tensor it cannot name, which it should never
+   * do.
+   * @return Names of every IO tensor.
+   */
+  [[nodiscard]] std::unordered_set<std::string> getIOTensorNames() const;
+
+  /**
    * @brief Get tensor shape by index from TensorRT engine with fallback from TensorRT network.
+   *
+   * Valid immediately after construction. Valid to call before `setup()`.
    *
    * @param[in] index Tensor index.
    * @return Tensor shape.
@@ -147,6 +170,8 @@ public:
   /**
    * @brief Get input tensor shape by index from TensorRT network.
    *
+   * Valid immediately after construction. Valid to call before `setup()`.
+   *
    * @param[in] index Tensor index.
    * @return Tensor shape.
    */
@@ -154,6 +179,8 @@ public:
 
   /**
    * @brief Get output tensor shape by index from TensorRT network.
+   *
+   * Valid immediately after construction. Valid to call before `setup()`.
    *
    * @param[in] index Tensor index.
    * @return Tensor shape.
@@ -268,12 +295,16 @@ public:
   /**
    * @brief Get per-layer profiler for model.
    *
+   * Valid immediately after construction. Valid to call before `setup()`.
+   *
    * @return Per-layer profiler.
    */
   [[nodiscard]] std::shared_ptr<Profiler> getModelProfiler();
 
   /**
    * @brief Get per-layer profiler for host.
+   *
+   * Valid immediately after construction. Valid to call before `setup()`.
    *
    * @return Per-layer profiler.
    */
@@ -282,12 +313,16 @@ public:
   /**
    * @brief Get TensorRT common configuration.
    *
+   * Valid immediately after construction. Valid to call before `setup()`.
+   *
    * @return TensorRT common configuration.
    */
   [[nodiscard]] std::shared_ptr<TrtCommonConfig> getTrtCommonConfig();
 
   /**
    * @brief Get TensorRT builder configuration.
+   *
+   * Valid immediately after construction. Valid to call before `setup()`.
    *
    * @return TensorRT builder configuration.
    */
@@ -296,12 +331,16 @@ public:
   /**
    * @brief Get TensorRT network definition.
    *
+   * Valid immediately after construction. Valid to call before `setup()`.
+   *
    * @return TensorRT network definition.
    */
   [[nodiscard]] std::shared_ptr<nvinfer1::INetworkDefinition> getNetwork();
 
   /**
    * @brief Get TensorRT logger.
+   *
+   * Valid immediately after construction. Valid to call before `setup()`.
    *
    * @return TensorRT logger.
    */
@@ -319,6 +358,14 @@ public:
    * @brief Print per-layer information.
    */
   void printProfiling() const;
+
+  /**
+   * @brief Whether the network is built strongly typed (precision "strongly-typed"): tensor
+   * precisions are taken from the model itself.
+   *
+   * @return Whether the network is strongly typed.
+   */
+  [[nodiscard]] bool isStronglyTyped() const;
 
 private:
   /**
