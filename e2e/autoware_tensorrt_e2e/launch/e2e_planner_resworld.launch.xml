@@ -67,22 +67,26 @@
        callback as designed, and then receives nothing at all. Point this at
        the container the CUDA concatenator runs in to get the zero copy.
 
-       use_intra_process_comms is on, as it is for autoware_bevfusion.
-       cuda_blackboard hands out its buffer tickets by
-       get_intra_process_subscription_count(), so a node that negotiates without
-       being counted joins the negotiation and never draws a ticket. Turning it
-       off node-wide, as this launch used to, opted us out of that accounting.
-       (Turning it back on did NOT stop the container abort this was written
-       while chasing - registerData still reports "already exists. Deleting"
-       and thrust still aborts with cudaErrorInvalidDevice. It is kept because
-       being counted the way the reference node is counted is correct, not
-       because it was the cure.)
+       No use_intra_process_comms here, exactly as autoware_bevfusion's launch
+       has none. The zero-copy handover does not need it: cuda_blackboard enables
+       intra-process on its own two subscriptions explicitly
+       (IntraProcessSetting::Enable in cuda_blackboard_subscriber.cpp), and the
+       publisher counts exactly those when it hands out buffer tickets. That is
+       how bevfusion is counted, with the node default left off.
 
-       The latched subscriptions this node does have are handled where they are
-       created, not by disabling intra-process for everything: rclcpp refuses
-       intra-process for non-volatile durability, so the vector map subscription
-       sets IntraProcessSetting::Disable on itself, and the route already goes
-       through an InterProcessPollingSubscriber. -->
+       Turning it on node-wide, as this launch did until 2026-09-14, broke the
+       node on the vehicle without an error anyone saw. rclcpp refuses
+       intra-process for anything latched (transient_local), publisher or
+       subscription, and cuda_blackboard's NegotiatedSubscription creates a
+       latched publisher for its supported types with default options, i.e. the
+       node's. So the cloud subscriber itself threw in the provider constructor,
+       2 ms after the planner engine loaded: the node was loaded, had no cloud
+       subscription at all, and reported it only on /diagnostics. The route and
+       map subscriptions, also latched, would have thrown the same way one step
+       later. The standalone branch above never had the flag, which is why the
+       same launch worked there. Reproduced 2026-09-14 in a bare container with
+       valid artifacts: "intraprocess communication allowed only with volatile
+       durability" 2 ms after "Engine inputs". -->
   <load_composable_node target="$(var target_container)"
                         unless="$(eval &quot;'$(var target_container)'==''&quot;)">
     <!-- No namespace attribute, deliberately. launch_ros combines a composable
@@ -113,7 +117,6 @@
       <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
       <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
       <remap from="~/output/detected_objects" to="$(var output_detected_objects)"/>
-      <extra_arg name="use_intra_process_comms" value="true"/>
     </composable_node>
   </load_composable_node>
 

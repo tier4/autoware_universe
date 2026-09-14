@@ -13,19 +13,17 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_e2e/providers/lidar_input_provider.hpp"
+
 #include "autoware/tensorrt_e2e/input_provider_registry.hpp"
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 
-#include <cuda_runtime_api.h>
-
-#include <autoware/cuda_utils/cuda_check_error.hpp>
-
-#include <cuda_runtime_api.h>
-
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
+#include <cuda_runtime_api.h>
+
 #include <algorithm>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -143,24 +141,30 @@ void LidarInputProvider::subscribe()
   // container the CUDA concatenator negotiates and registers itself as a blackboard
   // producer while the node is still building its TensorRT engine, and a subscriber that
   // joins after that flips an already-running topic into negotiated mode.
-  pointcloud_sub_ = std::make_unique<
-    cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
-    node_, "~/input/pointcloud",
-    [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
-      // Subscribing happens before claim_inputs(), so a cloud can arrive before the
-      // tensor shapes this provider fills are known (max_points_ is set there). Drop those.
-      if (max_points_ == 0) {
-        return;
-      }
-      {
-        std::lock_guard<std::mutex> lock(mutex_);
-        latest_pointcloud_ = std::move(msg);
-      }
-      // Outside the lock: what this starts collects from this provider.
-      if (on_data_) {
-        on_data_();
-      }
-    });
+  pointcloud_sub_ =
+    std::make_unique<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
+      node_, "~/input/pointcloud",
+      [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
+        // Counted before any reason to drop it; see InputProviderInterface::received_count().
+        received_.fetch_add(1, std::memory_order_relaxed);
+        // Subscribing happens before claim_inputs(), so a cloud can arrive before the
+        // tensor shapes this provider fills are known (max_points_ is set there). Drop those.
+        if (max_points_ == 0) {
+          return;
+        }
+        if (!on_data_) {
+          // Nothing paces the node (its pipeline never came up and it has latched why).
+          return;
+        }
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          latest_pointcloud_ = std::move(msg);
+        }
+        // Outside the lock: what this starts collects from this provider.
+        if (on_data_) {
+          on_data_();
+        }
+      });
 }
 
 bool LidarInputProvider::collect(
@@ -212,8 +216,8 @@ bool LidarInputProvider::collect(
   // the device cloud comes back to the host here; the BEV provider never does this.
   const size_t point_step = cloud->point_step;
   std::vector<uint8_t> host_cloud(static_cast<size_t>(used_points) * point_step);
-  CHECK_CUDA_ERROR(cudaMemcpy(
-    host_cloud.data(), cloud->data.get(), host_cloud.size(), cudaMemcpyDeviceToHost));
+  CHECK_CUDA_ERROR(
+    cudaMemcpy(host_cloud.data(), cloud->data.get(), host_cloud.size(), cudaMemcpyDeviceToHost));
   std::vector<float> data(static_cast<size_t>(max_points_) * point_dim_, 0.0f);
   const uint8_t * cloud_data = host_cloud.data();
   for (int64_t i = 0; i < used_points; ++i) {
@@ -237,8 +241,9 @@ bool LidarInputProvider::collect(
   return true;
 }
 
-TENSORRT_E2E_REGISTER_INPUT_PROVIDER(
-  "lidar", [](rclcpp::Node & node, tf2_ros::Buffer &) { return std::make_unique<LidarInputProvider>(node); });
+TENSORRT_E2E_REGISTER_INPUT_PROVIDER("lidar", [](rclcpp::Node & node, tf2_ros::Buffer &) {
+  return std::make_unique<LidarInputProvider>(node);
+});
 
 bool LidarInputProvider::pace(std::function<void()> on_data)
 {

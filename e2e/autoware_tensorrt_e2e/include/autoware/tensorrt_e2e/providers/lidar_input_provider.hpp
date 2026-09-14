@@ -21,8 +21,11 @@
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -53,6 +56,10 @@ public:
 
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
   bool pace(std::function<void()> on_data) override;
+  std::optional<uint64_t> received_count() const override
+  {
+    return received_.load(std::memory_order_relaxed);
+  }
 
   bool collect(
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs,
@@ -79,6 +86,8 @@ private:
   std::shared_ptr<const cuda_blackboard::CudaPointCloud2> latest_pointcloud_;
   //! Set when this provider paces the node; called on every new cloud.
   std::function<void()> on_data_;
+  //! Clouds the subscription delivered, counted before anything can drop them.
+  std::atomic<uint64_t> received_{0};
   mutable std::mutex mutex_;
 };
 

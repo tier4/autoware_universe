@@ -131,6 +131,26 @@ is regularly running before the publishers it reads, and none of them has to exi
 node to load. The one exception mirrors `autoware_diffusion_planner`: a missing
 traffic-signal message leaves lanes marked as having no signal.
 
+Every subscription exists from the moment the node is constructed, before either engine is
+built, and stays for the life of the node: the sensor subscription as `autoware_bevfusion`
+creates its own, the context subscriptions as `autoware_diffusion_planner` declares them --
+the same topics, the same QoS, polling for everything but the map, and the same set whether
+or not the model turns out to claim the tensor behind one (turn indicators are the one
+exception, gated by `context.turn_indicators.enabled`). `ros2 node info` on a healthy node
+therefore lists the whole set, and every `inference_status` -- the per-tick one and the 1 Hz
+one published while nothing ticks -- carries `<provider>.received`, the number of messages the
+sensor subscription has actually delivered, so a subscription that receives nothing and a node
+that receives and does nothing are told apart on `/diagnostics`.
+
+The node is composed without `use_intra_process_comms`, exactly as `autoware_bevfusion` is.
+The zero-copy point cloud handover does not need the node-wide flag -- `cuda_blackboard`
+enables intra-process on its own two subscriptions explicitly and the publisher counts
+exactly those -- and the flag is incompatible with everything latched: rclcpp refuses
+intra-process for any non-volatile publisher or subscription, `cuda_blackboard`'s own
+supported-types publisher is one, and so are the route and the map. With the flag on, the
+node came up in the container with no cloud subscription at all and reported it only on
+`/diagnostics`; that was the vehicle failure of 2026-09-14.
+
 ### Outputs
 
 | Topic                                                                                                                       | Type                                                        | Content                                                                                                              |

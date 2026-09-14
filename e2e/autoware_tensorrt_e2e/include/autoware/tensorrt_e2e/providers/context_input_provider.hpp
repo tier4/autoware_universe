@@ -53,7 +53,12 @@ namespace autoware::tensorrt_e2e
  * `polygons`, `line_strings`, `goal_pose`, `ego_shape`, `turn_indicators`.
  *
  * Free dimensions (history length, lane/route segment count) are taken from
- * the engine manifest. Subscriptions are created only for the data the claimed tensors need.
+ * the engine manifest. Every subscription is created in the constructor, whether or not
+ * the model turns out to claim the tensor behind it -- the same set, the same QoS and
+ * the same moment as autoware_diffusion_planner, whose node declares them all as
+ * members. A polling subscription costs nothing to hold; what it buys is that the
+ * latched inputs (map, route) are there before the engines finish building, and that
+ * anything wrong with a subscription fails before any GPU work, not after it.
  */
 class ContextInputProvider : public InputProviderInterface
 {
@@ -120,7 +125,9 @@ private:
   std::vector<int64_t> turn_indicators_shape_;
   std::vector<float> turn_indicators_constant_;
 
-  // Subscriptions (created on demand in claim_inputs)
+  // Subscriptions, created in the constructor (see the class comment). Turn indicators
+  // are the one exception: `context.turn_indicators.enabled` false means the deployment
+  // has decided the network never reads them, and nothing is subscribed.
   std::unique_ptr<autoware_utils::InterProcessPollingSubscriber<
     TrafficLightGroupArray, autoware_utils::polling_policy::All>>
     sub_traffic_signals_;

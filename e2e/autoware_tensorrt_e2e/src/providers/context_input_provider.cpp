@@ -96,6 +96,8 @@ ContextInputProvider::ContextInputProvider(
   turn_indicators_enabled_ = node_.declare_parameter<bool>("context.turn_indicators.enabled", true);
   line_string_max_step_m_ = node_.declare_parameter<double>("context.line_string_max_step_m", 5.0);
   use_time_interpolation_ = node_.declare_parameter<bool>("context.use_time_interpolation", false);
+
+  create_subscriptions();
 }
 
 std::vector<std::string> ContextInputProvider::claim_inputs(
@@ -214,48 +216,35 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
     }
   }
 
-  create_subscriptions();
   return claimed;
 }
 
 void ContextInputProvider::create_subscriptions()
 {
-  const bool needs_map = !lanes_shape_.empty() || !route_lanes_shape_.empty() ||
-                         !polygons_shape_.empty() || !line_strings_shape_.empty();
-  const bool needs_route = !route_lanes_shape_.empty() || !goal_pose_shape_.empty();
-  const bool needs_traffic = !lanes_shape_.empty() || !route_lanes_shape_.empty();
-
-  if (needs_traffic) {
-    sub_traffic_signals_ = std::make_unique<autoware_utils::InterProcessPollingSubscriber<
-      TrafficLightGroupArray, autoware_utils::polling_policy::All>>(
-      &node_, "~/input/traffic_signals", rclcpp::QoS{10});
-  }
-  if (!turn_indicators_shape_.empty() && turn_indicators_enabled_) {
+  // autoware_diffusion_planner's subscriptions, one for one: the same topics, the same
+  // QoS, polling for everything but the map, and all of them created at construction.
+  // Two of them are latched (transient_local). rclcpp refuses to deliver a latched
+  // subscription intra-process, and InterProcessPollingSubscriber does not opt out of
+  // intra-process on its own -- so these can only be created in a node whose intra-process
+  // default is off, which is how the reference nodes run and how this node's launch now
+  // composes it. (It used to turn intra-process on node-wide while chasing a container
+  // abort. cuda_blackboard's own latched publisher threw first, before this ran; had it
+  // not, the route subscription below would have, one step later, to the same effect: a
+  // node loaded, silent and never planning.)
+  sub_traffic_signals_ = std::make_unique<autoware_utils::InterProcessPollingSubscriber<
+    TrafficLightGroupArray, autoware_utils::polling_policy::All>>(
+    &node_, "~/input/traffic_signals", rclcpp::QoS{10});
+  if (turn_indicators_enabled_) {
     sub_turn_indicators_ =
       std::make_unique<autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsReport>>(
         &node_, "~/input/turn_indicators");
   }
-  if (needs_route) {
-    sub_route_ = std::make_unique<autoware_utils::InterProcessPollingSubscriber<
-      LaneletRoute, autoware_utils::polling_policy::Newest>>(
-      &node_, "~/input/route", rclcpp::QoS{1}.transient_local());
-  }
-  if (needs_map) {
-    // Intra-process delivery is disabled for THIS subscription only, not for the node.
-    // rclcpp refuses intra-process on anything but volatile durability, and the map is
-    // latched -- but the node has to keep intra-process on overall, because
-    // cuda_blackboard hands out its buffer tickets by
-    // get_intra_process_subscription_count(). A node that negotiates without being
-    // counted takes part in the negotiation and never draws a ticket, so the publisher
-    // finds last frame's entry still unclaimed and erases it ("already exists. Deleting.
-    // It had 1 tickets left") -- and that entry is the buffer the CUDA concatenator is
-    // still reading, which then takes the whole container down.
-    rclcpp::SubscriptionOptions map_options;
-    map_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Disable;
-    sub_map_ = node_.create_subscription<LaneletMapBin>(
-      "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
-      std::bind(&ContextInputProvider::on_map, this, std::placeholders::_1), map_options);
-  }
+  sub_route_ = std::make_unique<autoware_utils::InterProcessPollingSubscriber<
+    LaneletRoute, autoware_utils::polling_policy::Newest>>(
+    &node_, "~/input/route", rclcpp::QoS{1}.transient_local());
+  sub_map_ = node_.create_subscription<LaneletMapBin>(
+    "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
+    std::bind(&ContextInputProvider::on_map, this, std::placeholders::_1));
 }
 
 void ContextInputProvider::on_map(const LaneletMapBin::ConstSharedPtr map_msg)

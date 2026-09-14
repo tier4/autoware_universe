@@ -114,6 +114,18 @@ public:
   virtual std::optional<rclcpp::Time> latest_input_stamp() const { return std::nullopt; }
 
   /**
+   * @brief How many messages this provider's own subscription has delivered so far.
+   *
+   * Counted at the top of the callback, before any reason to drop the message. It is
+   * what separates "the subscriber is not receiving" from "it receives and the node does
+   * nothing with it" on the diagnostic -- the two states that looked identical from the
+   * outside on the vehicle: a node loaded, silent, and not planning. A provider with no
+   * subscription of its own (the context tensors are polled by the node) has nothing to
+   * count and returns std::nullopt, so the node does not print a meaningless zero for it.
+   */
+  virtual std::optional<uint64_t> received_count() const { return std::nullopt; }
+
+  /**
    * @brief Offer to pace the node: call `on_data` when this provider's own sensor
    *        delivers, and return true.
    *

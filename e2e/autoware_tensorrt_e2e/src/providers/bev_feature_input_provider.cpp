@@ -278,12 +278,23 @@ void BevFeatureInputProvider::subscribe()
     std::make_unique<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
       node_, "~/input/pointcloud",
       [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
+        // Counted first, before any reason to drop the cloud: this number on the
+        // diagnostic is how an operator tells a subscription that receives nothing
+        // from a node that receives and does nothing.
+        received_.fetch_add(1, std::memory_order_relaxed);
         // Subscribing happens in the constructor, so a cloud can arrive before the
         // extractor exists. Drop those: the cache is empty anyway and the first ticks
         // would have nothing to plan on. This is also the normal start-up state -- the
         // node is regularly composed before the LiDAR pipeline it reads is up -- and it
         // is a wait, not a failure: report_status() says so once a second.
         if (!extractor_) {
+          return;
+        }
+        if (!on_data_) {
+          // Nothing paces the node: its pipeline never came up, it has latched why and
+          // is reporting it. Running the extractor for a pass that will never happen
+          // is ~10 ms of GPU per frame spent on nothing, inside the container the
+          // sensing stack shares.
           return;
         }
         if (!extraction_error_.empty()) {

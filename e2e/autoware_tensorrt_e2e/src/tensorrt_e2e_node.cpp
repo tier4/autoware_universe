@@ -168,12 +168,31 @@ void TensorrtE2eNode::report_status()
 
   const rclcpp::Time now = get_clock()->now();
 
+  // What each sensor provider's own subscription has delivered, on every status this
+  // timer publishes. On the vehicle the node was found loaded, silent and not planning,
+  // and nothing said whether the cloud was reaching it at all. Now the answer is on the
+  // diagnostic: `bev_feature.received: 0` is a subscription problem, a count that keeps
+  // climbing under an ERROR is this node's.
+  const auto add_received_counts = [this]() {
+    for (const auto & provider : providers_) {
+      if (const auto received = provider->received_count()) {
+        diagnostics_->add_key_value(
+          provider->name() + ".received", static_cast<int64_t>(*received));
+      }
+    }
+  };
+
   if (!latched_message_.empty()) {
     // Republished rather than said once at construction: a status that stops arriving is
     // reported as stale by the aggregator, which reads as "gone", not as "broken, here is
-    // why". This is the only thing a node whose pipeline failed still does.
+    // why". This is the only thing a node whose pipeline failed still does. It goes to
+    // the log as well, throttled, because one ERROR line at load time is invisible in a
+    // container log that keeps scrolling for the rest of the drive.
+    RCLCPP_ERROR_THROTTLE(
+      get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "%s", latched_message_.c_str());
     diagnostics_->clear();
     diagnostics_->update_level_and_message(latched_level_, latched_message_);
+    add_received_counts();
     diagnostics_->publish(now);
     return;
   }
@@ -191,6 +210,7 @@ void TensorrtE2eNode::report_status()
   RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "%s", message.c_str());
   diagnostics_->clear();
   diagnostics_->update_level_and_message(DiagnosticStatus::WARN, message);
+  add_received_counts();
   diagnostics_->publish(now);
 }
 
@@ -560,6 +580,12 @@ void TensorrtE2eNode::add_input_diagnostics(const TensorMap & inputs)
 {
   for (const auto & provider : providers_) {
     provider->add_diagnostics(*diagnostics_);
+    // On the healthy status too, so a bag of a good run shows the count climbing and a
+    // bag of a bad one shows where it stopped -- the same key report_status() carries
+    // while nothing ticks.
+    if (const auto received = provider->received_count()) {
+      diagnostics_->add_key_value(provider->name() + ".received", static_cast<int64_t>(*received));
+    }
   }
   // Same keys and the same counting as autoware_diffusion_planner: a [1, N, P, D] tensor's
   // valid elements are its non-zero rows in batch 0.

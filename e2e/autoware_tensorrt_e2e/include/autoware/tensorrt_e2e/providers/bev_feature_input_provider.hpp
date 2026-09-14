@@ -26,6 +26,7 @@
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -96,6 +97,10 @@ public:
   }
   /// The cloud behind the current history.
   std::optional<rclcpp::Time> latest_input_stamp() const override { return last_extracted_stamp_; }
+  std::optional<uint64_t> received_count() const override
+  {
+    return received_.load(std::memory_order_relaxed);
+  }
 
 private:
   //! Declares the `bev_feature.detection.*` parameters; a no-op when the model is not
@@ -152,6 +157,9 @@ private:
   std::shared_ptr<const cuda_blackboard::CudaPointCloud2> latest_pointcloud_;
   //! Set when this provider paces the node; called on every new cloud.
   std::function<void()> on_data_;
+  //! Clouds the subscription delivered, counted before anything can drop them. Read by
+  //! the node's status timer on another thread, hence atomic.
+  std::atomic<uint64_t> received_{0};
   mutable std::mutex mutex_;
 };
 
