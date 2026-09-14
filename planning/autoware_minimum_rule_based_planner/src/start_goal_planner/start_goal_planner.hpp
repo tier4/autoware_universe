@@ -88,6 +88,12 @@ private:
   // get polygon of available lanelet and area
   std::vector<AvailableArea> get_available_area(const PathPointTrajectory & trajectory);
 
+  // judge condition to activate start/goal planner
+  void judge_start_goal_planner_act(
+    const lanelet::ConstLanelet & current_lanelet, const PathPointTrajectory & trajectory,
+    const double & s_path_end, const std::vector<AvailableArea> & available_area,
+    const geometry_msgs::msg::Pose & ego_pose);
+
   // judge condition to activate start planner
   void judge_start_planner_act(
     const lanelet::ConstLanelet & current_lanelet, const geometry_msgs::msg::Pose & ego_pose);

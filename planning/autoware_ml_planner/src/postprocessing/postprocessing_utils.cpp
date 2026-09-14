@@ -47,16 +47,21 @@ namespace
 /**
  * @brief Converts a vector of poses to a Trajectory message.
  *
- * Only pose information is filled: the model predicts positions and headings only, so
- * velocity, acceleration, and steering are intentionally left at zero instead of being
- * derived by finite differences (the trajectory optimization computes them consistently).
+ * The speed of each point is its distance to the previous point divided by the time step, with
+ * the base position as the predecessor of the first point, and the acceleration is the forward
+ * difference of that speed profile. The heading rate and steering angle stay at zero: the model
+ * predicts poses only. The trajectory optimization, when enabled, recomputes all of them.
  *
  * @param poses The vector of 4x4 transformation matrices representing poses.
+ * @param base_x The base x position to calculate relative velocities.
+ * @param base_y The base y position to calculate relative velocities.
+ * @param base_z The base z position to calculate relative velocities.
  * @param stamp The ROS time stamp for the message.
  * @return A Trajectory message in map coordinates.
  */
 Trajectory get_trajectory_from_poses(
-  const std::vector<Eigen::Matrix4d> & poses, const rclcpp::Time & stamp);
+  const std::vector<Eigen::Matrix4d> & poses, const double base_x, const double base_y,
+  const double base_z, const rclcpp::Time & stamp);
 };  // namespace
 
 std::vector<float> denormalize_prediction(const std::vector<float> & prediction)
@@ -158,11 +163,13 @@ PredictedObjects create_predicted_objects(
     // Extract poses for this neighbor (neighbor_id + 1 because 0 is ego)
     const auto & neighbor_poses = agent_poses[batch_index][neighbor_id + 1];
 
-    const Trajectory trajectory_points_in_map_reference =
-      get_trajectory_from_poses(neighbor_poses, stamp);
-
     PredictedObject object;
     const TrackedObject & object_info = selected_agents.at(neighbor_id).current_object;
+
+    const auto & base_position = object_info.kinematics.pose_with_covariance.pose.position;
+    const Trajectory trajectory_points_in_map_reference = get_trajectory_from_poses(
+      neighbor_poses, base_position.x, base_position.y, base_position.z, stamp);
+
     {  // Extract path from prediction
       PredictedPath predicted_path;
       const double object_pose_z = object_info.kinematics.pose_with_covariance.pose.position.z;
@@ -193,7 +200,8 @@ PredictedObjects create_predicted_objects(
 
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const int64_t batch_index)
+  const rclcpp::Time & stamp, const geometry_msgs::msg::Point & base_position,
+  const int64_t batch_index)
 {
   const int64_t ego_index = 0;
 
@@ -207,7 +215,11 @@ Trajectory create_ego_trajectory(
   // Extract ego poses (ego_index = 0)
   const auto & ego_poses = agent_poses[batch_index][ego_index];
 
-  return get_trajectory_from_poses(ego_poses, stamp);
+  const double base_x = base_position.x;
+  const double base_y = base_position.y;
+  const double base_z = base_position.z;
+
+  return get_trajectory_from_poses(ego_poses, base_x, base_y, base_z, stamp);
 }
 
 int64_t count_valid_elements(
@@ -292,12 +304,17 @@ std::optional<size_t> fix_stop_points(Trajectory & trajectory, const StopPointFi
 namespace
 {
 Trajectory get_trajectory_from_poses(
-  const std::vector<Eigen::Matrix4d> & poses, const rclcpp::Time & stamp)
+  const std::vector<Eigen::Matrix4d> & poses, const double base_x, const double base_y,
+  const double base_z, const rclcpp::Time & stamp)
 {
   Trajectory trajectory;
   trajectory.header.stamp = stamp;
   trajectory.header.frame_id = "map";
   constexpr double dt = 0.1;
+
+  double previous_x = base_x;
+  double previous_y = base_y;
+  double previous_z = base_z;
 
   for (size_t i = 0; i < poses.size(); ++i) {
     const double curr_time = dt * static_cast<double>(i + 1);
@@ -318,7 +335,24 @@ Trajectory get_trajectory_from_poses(
     p.pose.orientation.z = quaternion.z();
     p.pose.orientation.w = quaternion.w();
 
+    const double distance = std::hypot(
+      p.pose.position.x - previous_x, p.pose.position.y - previous_y,
+      p.pose.position.z - previous_z);
+    p.longitudinal_velocity_mps = static_cast<float>(distance / dt);
+
+    previous_x = p.pose.position.x;
+    previous_y = p.pose.position.y;
+    previous_z = p.pose.position.z;
+
     trajectory.points.push_back(p);
+  }
+
+  // Acceleration as the forward difference of the velocity profile; the last point has no
+  // successor and keeps zero.
+  for (size_t i = 0; i + 1 < trajectory.points.size(); ++i) {
+    const double v0 = trajectory.points[i].longitudinal_velocity_mps;
+    const double v1 = trajectory.points[i + 1].longitudinal_velocity_mps;
+    trajectory.points[i].acceleration_mps2 = static_cast<float>((v1 - v0) / dt);
   }
 
   return trajectory;

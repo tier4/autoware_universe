@@ -32,16 +32,14 @@ HORIZON_N = 80
 HORIZON_TF_S = 8.0
 
 # Default cost weights (see config/ml_planner.param.yaml for the runtime values).
-# Velocity and steering angle carry no tracking weight: the model outputs positions and
-# headings only, so no reference exists for them. The velocity profile emerges from the
-# time-indexed position tracking and the input regularization/bounds.
+# Velocity and steering angle use zero references, so their weights penalize their magnitudes.
 # Note: the C++ wrapper overwrites W every solve with a position block rotated to the
 # per-stage reference heading (separate longitudinal/lateral weights); the isotropic
 # position weight baked here is only a placeholder.
 DEFAULT_WEIGHT_POSITION = 0.5
 DEFAULT_WEIGHT_YAW = 0.05
-DEFAULT_WEIGHT_VELOCITY = 0.0
-DEFAULT_WEIGHT_STEERING = 0.0
+DEFAULT_WEIGHT_VELOCITY = 0.01
+DEFAULT_WEIGHT_STEERING = 1.0
 DEFAULT_WEIGHT_ACCELERATION = 0.1
 DEFAULT_WEIGHT_STEERING_RATE = 10.0
 DEFAULT_TERMINAL_WEIGHT_SCALE = 2.5

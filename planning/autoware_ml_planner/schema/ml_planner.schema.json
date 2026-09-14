@@ -101,6 +101,18 @@
               "default": 0.05,
               "description": "Tracking weight for heading"
             },
+            "weight_velocity": {
+              "type": "number",
+              "default": 0.01,
+              "minimum": 0.0,
+              "description": "Weight on squared velocity magnitude relative to zero"
+            },
+            "weight_steering_angle": {
+              "type": "number",
+              "default": 1.0,
+              "minimum": 0.0,
+              "description": "Weight on squared steering-angle magnitude relative to zero"
+            },
             "weight_acceleration": {
               "type": "number",
               "default": 0.1,
@@ -162,6 +174,12 @@
               "type": "boolean",
               "default": false,
               "description": "Shift raw model-output trajectory points laterally away from road borders before the trajectory optimization"
+            },
+            "start_time_s": {
+              "type": "number",
+              "default": 0.0,
+              "minimum": 0.0,
+              "description": "Ignore trajectory points before this time from the trajectory start [s]"
             },
             "footprint_margin_m": {
               "type": "number",

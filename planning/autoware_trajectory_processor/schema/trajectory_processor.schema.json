@@ -6,6 +6,29 @@
     "trajectory_processor": {
       "type": "object",
       "properties": {
+        "map_velocity_limits": {
+          "type": "object",
+          "properties": {
+            "enable_smoothing": {
+              "type": "boolean",
+              "default": true,
+              "description": "Smooth unreachable velocities with constant deceleration from the current velocity"
+            },
+            "limit_velocity_from_map_debug_lanelet_ids": {
+              "type": "array",
+              "items": { "type": "integer" },
+              "default": [],
+              "description": "Lanelet IDs whose map velocity limits are overridden when map limiting is enabled"
+            },
+            "limit_velocity_from_map_debug_max_velocities": {
+              "type": "array",
+              "items": { "type": "number", "minimum": 0.0 },
+              "default": [],
+              "description": "Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs"
+            }
+          },
+          "additionalProperties": false
+        },
         "plugin_names": {
           "type": "array",
           "description": "Ordered list of modifier and optimizer plugin class names",
@@ -29,6 +52,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "use_map_velocity_limits": {
+          "type": "boolean",
+          "description": "Enable the map velocity limits plugin",
+          "default": true
         },
         "use_stop_point_fixer": {
           "type": "boolean",
@@ -117,6 +145,12 @@
               "default": 3,
               "minimum": 0
             },
+            "delay_response_time": {
+              "type": "number",
+              "description": "Delay response time used to estimate the minimum ego stopping distance [s]",
+              "default": 0.5,
+              "minimum": 0
+            },
             "arrived_distance_threshold": {
               "type": "number",
               "description": "Threshold to check if the ego vehicle has arrived at the stop point [m]",
@@ -160,12 +194,6 @@
               "type": "number",
               "description": "Minimum distance to maintain from an obstacle when stopped [m]",
               "default": 3,
-              "minimum": 0
-            },
-            "lateral_margin": {
-              "type": "number",
-              "description": "Lateral margin on top of ego width from trajectory to consider for obstacle stop [m]",
-              "default": 0.5,
               "minimum": 0
             },
             "duplicate_check_threshold": {
@@ -256,6 +284,14 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "pointcloud": {
+                      "type": "array",
+                      "description": "Types of pointcloud to consider for obstacle stop",
+                      "default": ["structure", "vegetation"],
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [],
@@ -278,33 +314,92 @@
                   "description": "Safety buffer to expand object shape [m]",
                   "default": 0,
                   "minimum": 0
-                }
-              },
-              "required": [],
-              "additionalProperties": false
-            },
-            "pointcloud": {
-              "type": "object",
-              "properties": {
-                "target_types": {
-                  "type": "array",
-                  "description": "Pointcloud types to consider for obstacle stop",
-                  "default": ["structure", "vegetation"],
-                  "items": {
-                    "type": "string"
-                  }
                 },
-                "height_buffer": {
+                "pointcloud_height_buffer": {
                   "type": "number",
-                  "description": "Height buffer to add above ego height [m]",
-                  "default": 0.5,
-                  "minimum": 0
+                  "description": "Height buffer to add above ego height for pointcloud [m]",
+                  "default": 0.2,
+                  "minimum": 0.0
                 },
-                "min_height": {
+                "pointcloud_min_height": {
                   "type": "number",
                   "description": "Minimum height of pointcloud [m]",
                   "default": 0.2,
-                  "minimum": 0
+                  "minimum": 0.0
+                },
+                "lateral_margin": {
+                  "type": "object",
+                  "description": "Lateral margin on top of ego width from trajectory, per object or pointcloud class [m]",
+                  "properties": {
+                    "car": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for car objects [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "truck": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for truck objects [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "bus": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for bus objects [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "trailer": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for trailer objects [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "motorcycle": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for motorcycle objects [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "bicycle": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for bicycle objects [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "pedestrian": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for pedestrian objects [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "hazard": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for hazard objects [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "structure": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for structure pointcloud [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "vegetation": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for vegetation pointcloud [m]",
+                      "default": 0.1,
+                      "minimum": 0.0
+                    },
+                    "unknown": {
+                      "type": "number",
+                      "description": "Lateral margin on top of ego width for unknown objects and unclassified pointcloud [m]",
+                      "default": 0.0,
+                      "minimum": 0.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
                 }
               },
               "required": [],
@@ -379,16 +474,10 @@
                   "default": 2,
                   "minimum": 0
                 },
-                "reaction_time": {
-                  "type": "number",
-                  "description": "Reaction time to consider for RSS calculation [s]",
-                  "default": 0.4,
-                  "minimum": 0
-                },
                 "safety_margin": {
                   "type": "number",
                   "description": "Safety margin to consider for RSS calculation [m]",
-                  "default": 3,
+                  "default": 1.5,
                   "minimum": 0
                 },
                 "lookahead_horizon": {
@@ -742,11 +831,41 @@
               "default": 0.5,
               "minimum": 0
             },
-            "crossing_time_limit": {
-              "type": "number",
-              "description": "Crossing time limit [s]",
-              "default": 2.75,
-              "minimum": 0
+            "amber_rejection": {
+              "type": "object",
+              "properties": {
+                "th_hysteresis": {
+                  "type": "number",
+                  "description": "Threshold for amber rejection hysteresis [s]",
+                  "default": 0.5,
+                  "minimum": 0
+                },
+                "reject_if_stop_detected": {
+                  "type": "boolean",
+                  "description": "Reject if we detect a previous stop attempt from input trajectory",
+                  "default": true
+                },
+                "can_stop_decel": {
+                  "type": "number",
+                  "description": "Deceleration threshold for ego vehicle to stop [m/s^2]",
+                  "default": 2.8,
+                  "minimum": 0
+                },
+                "can_stop_jerk": {
+                  "type": "number",
+                  "description": "Jerk threshold for ego vehicle to stop [m/s^3]",
+                  "default": 5.0,
+                  "minimum": 0
+                },
+                "crossing_time_limit": {
+                  "type": "number",
+                  "description": "Crossing time limit [s]",
+                  "default": 2.75,
+                  "minimum": 0
+                }
+              },
+              "required": [],
+              "additionalProperties": false
             }
           },
           "required": [],

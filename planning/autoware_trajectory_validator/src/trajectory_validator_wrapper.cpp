@@ -173,7 +173,7 @@ TrajectoryValidatorReport TrajectoryValidatorWrapper::validate_trajectories(
 void TrajectoryValidatorWrapper::publish_validation_reports(
   const std::vector<ValidationReport> & reports)
 {
-  auto msg = autoware_trajectory_validator::build<ValidationReportArray>().reports(reports);
+  auto msg = autoware_internal_planning_msgs::build<ValidationReportArray>().reports(reports);
   pub_debug_->publish<ValidationReportArray>("validation_reports", msg);
 }
 
