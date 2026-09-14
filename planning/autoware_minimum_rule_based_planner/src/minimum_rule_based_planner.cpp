@@ -455,15 +455,15 @@ void prepend_predicted_connection(
 
   constexpr double min_interval = 0.1;
   const auto & first_pose = trajectory.points.front().pose;
-  if (autoware_utils::calc_distance2d(current_pose, first_pose) < min_interval) {
+  if (autoware_utils::calc_distance2d(current_pose, first_pose) < 1.0e-3) {
     return;
   }
 
+  const float ref_velocity = trajectory.points.front().longitudinal_velocity_mps;
   std::vector<TrajectoryPoint> prefix;
   TrajectoryPoint pt;
   pt.pose = current_pose;
-  pt.longitudinal_velocity_mps = static_cast<float>(current_vel);
-  pt.acceleration_mps2 = static_cast<float>(accel);
+  pt.longitudinal_velocity_mps = ref_velocity;
   prefix.push_back(pt);
 
   auto t = min_interval / std::max(std::abs(current_vel), 1.0e-3);
@@ -471,7 +471,6 @@ void prepend_predicted_connection(
     // Average speed over [0, t] for constant-accel arc integration.
     pt.pose = predict_ego_pose(current_pose, current_vel + 0.5 * accel * t, yaw_rate, t);
     const double v_t = current_vel + accel * t;
-    pt.longitudinal_velocity_mps = static_cast<float>(v_t);
     if (autoware_utils::calc_distance2d(pt.pose, first_pose) < min_interval) {
       break;
     }
