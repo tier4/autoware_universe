@@ -71,6 +71,81 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
   target_link_libraries(mppi_extensions INTERFACE MPPI::MPPI)
 
+  # acados reaches this package transitively, through autoware_trajectory_processor.
+  # libacados.so lists libqpOASES_e.so / libhpipm.so / libblasfeo.so.0 as DT_NEEDED
+  # but carries no usable search path for them, and we link the trajectory_processor
+  # libraries directly instead of through ament_target_dependencies -- so the
+  # "-L<acados>/lib" that autoware_trajectory_processor publishes via
+  # ament_export_link_flags never reaches our link line. ld then cannot locate those
+  # transitive DSOs and every acados symbol comes back undefined.
+  # Same workaround as autoware_trajectory_processor/CMakeLists.txt: resolve the
+  # acados lib dir, link its runtime libs directly so they land as DT_NEEDED on our
+  # own binaries (surviving pluginlib dlopen without LD_LIBRARY_PATH), and record
+  # the directory in the build/install RPATH.
+  find_package(acados QUIET)
+  set(_mppi_acados_lib_dir "")
+  if(TARGET acados)
+    get_target_property(_mppi_acados_location acados IMPORTED_LOCATION)
+    if(NOT _mppi_acados_location)
+      get_target_property(_mppi_acados_location acados IMPORTED_LOCATION_RELEASE)
+    endif()
+    if(_mppi_acados_location)
+      get_filename_component(_mppi_acados_lib_dir "${_mppi_acados_location}" DIRECTORY)
+    endif()
+  endif()
+  if(NOT _mppi_acados_lib_dir)
+    # Fallback when acados is not exposed as an imported target (e.g. in-tree)
+    set(_mppi_acados_lib_dir "$ENV{ACADOS_SOURCE_DIR}/lib")
+  endif()
+  if(NOT EXISTS "${_mppi_acados_lib_dir}")
+    set(_mppi_acados_lib_dir "")
+    message(WARNING
+      "MPPI acados: could not locate the acados lib directory. Linking against "
+      "acados' transitive dependencies may fail; set ACADOS_SOURCE_DIR.")
+  endif()
+
+  set(_mppi_acados_runtime_libs "")
+  if(_mppi_acados_lib_dir)
+    foreach(_mppi_acados_dep qpOASES_e hpipm blasfeo)
+      find_library(_mppi_acados_dep_path NAMES ${_mppi_acados_dep}
+        PATHS "${_mppi_acados_lib_dir}" NO_DEFAULT_PATH)
+      if(NOT _mppi_acados_dep_path)
+        find_library(_mppi_acados_dep_path NAMES ${_mppi_acados_dep})
+      endif()
+      if(_mppi_acados_dep_path)
+        list(APPEND _mppi_acados_runtime_libs "${_mppi_acados_dep_path}")
+      endif()
+      unset(_mppi_acados_dep_path CACHE)
+    endforeach()
+  endif()
+
+  # Attach the resolved acados runtime to one target. -rpath-link lets ld resolve
+  # the transitive DSOs while linking; --no-as-needed keeps them as DT_NEEDED even
+  # though this package references none of their symbols directly. The as-needed
+  # pair is passed through target_link_libraries rather than target_link_options so
+  # that it actually brackets the libraries on the generated link line.
+  function(mppi_link_acados_runtime target)
+    if(NOT _mppi_acados_lib_dir)
+      return()
+    endif()
+    if(UNIX AND NOT APPLE)
+      target_link_options(${target} PRIVATE
+        "LINKER:-rpath-link,${_mppi_acados_lib_dir}")
+    endif()
+    if(_mppi_acados_runtime_libs)
+      if(UNIX AND NOT APPLE)
+        target_link_libraries(${target}
+          "-Wl,--no-as-needed" ${_mppi_acados_runtime_libs} "-Wl,--as-needed")
+      else()
+        target_link_libraries(${target} ${_mppi_acados_runtime_libs})
+      endif()
+    endif()
+    set_property(TARGET ${target} APPEND PROPERTY
+      BUILD_RPATH "${_mppi_acados_lib_dir}")
+    set_property(TARGET ${target} APPEND PROPERTY
+      INSTALL_RPATH "${_mppi_acados_lib_dir}")
+  endfunction()
+
   set(CUDA_PROPAGATE_HOST_FLAGS OFF)
   list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr -diag-suppress 20012")
   list(APPEND CUDA_NVCC_FLAGS "--extended-lambda")
@@ -153,6 +228,8 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     tf2_geometry_msgs::tf2_geometry_msgs
     autoware_planning_msgs::autoware_planning_msgs__rosidl_generator_cpp
   )
+  # Entry point for acados here: ${autoware_trajectory_processor_LIBRARIES} above.
+  mppi_link_acados_runtime(mppi_temporal_mpt_nominal)
   target_include_directories(first_order_dubins_mppi PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
@@ -171,6 +248,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     nav_msgs::nav_msgs__rosidl_generator_cpp
     ${CUDA_cufft_LIBRARY}
   )
+  mppi_link_acados_runtime(first_order_dubins_mppi)
   set_target_properties(first_order_dubins_mppi PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_STANDARD 17
@@ -183,6 +261,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     src/first_order_dubins_mppi_vehicle_params_ros.cpp
   )
   target_link_libraries(${PROJECT_NAME} first_order_dubins_mppi)
+  mppi_link_acados_runtime(${PROJECT_NAME})
 
   ament_auto_add_library(autoware_mppi_trajectory_processor_plugin SHARED
     src/trajectory_mppi_optimizer.cpp
@@ -192,6 +271,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     trajectory_mppi_optimizer_parameters
     ${PROJECT_NAME}
   )
+  mppi_link_acados_runtime(autoware_mppi_trajectory_processor_plugin)
 
   add_executable(mppi_offline_retune
     src/tools/mppi_offline_retune.cpp
@@ -210,6 +290,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     geometry_msgs::geometry_msgs__rosidl_generator_cpp
     nav_msgs::nav_msgs__rosidl_generator_cpp
   )
+  mppi_link_acados_runtime(mppi_offline_retune)
   set_target_properties(mppi_offline_retune PROPERTIES
     CXX_STANDARD 17
     POSITION_INDEPENDENT_CODE ON
@@ -226,6 +307,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       mppi_trajectory_utils
       ${CUDA_LIBRARIES}
     )
+    mppi_link_acados_runtime(test_first_order_dubins_mppi_interface)
     set_target_properties(test_first_order_dubins_mppi_interface PROPERTIES
       CXX_STANDARD 17
       CUDA_STANDARD 17
@@ -249,6 +331,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     target_include_directories(test_mppi_trajectory_validator SYSTEM PRIVATE
       ${GTEST_INCLUDE_DIRS}
     )
+    mppi_link_acados_runtime(test_mppi_trajectory_validator)
     set_target_properties(test_mppi_trajectory_validator PROPERTIES
       CXX_STANDARD 17
       CUDA_STANDARD 17
