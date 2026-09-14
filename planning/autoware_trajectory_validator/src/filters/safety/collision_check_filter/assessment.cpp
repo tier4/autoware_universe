@@ -649,7 +649,7 @@ std::optional<double> compute_distance_to_collision(
   const autoware_perception_msgs::msg::PredictedObject & object)
 {
   const auto object_footprint =
-    geometry::to_polygon2d(object.kinematics.initial_pose_with_covariance.pose, object.shape);
+    geometry::to_polygon2d(object.kinematics.initial_pose_with_covariance.pose, object.shape, true);
   const auto object_envelope = boost::geometry::return_envelope<Box2d>(object_footprint);
 
   if (!boost::geometry::intersects(
@@ -722,9 +722,8 @@ RssArtifact assess(
     const auto rss_detail = assess_required_acceleration(
       ego_trajectory, context.odometry->twist.twist, object, rss_params,
       context.predicted_objects->header.stamp);
-    // todo(takagi): fix risk level
     const auto risk_level =
-      rss_detail.rss_acceleration < rss_params.error_threshold.ego_acceleration ? RiskLevel::DANGER
+      rss_detail.rss_acceleration < rss_params.error_threshold.ego_acceleration ? RiskLevel::FATAL
                                                                                 : RiskLevel::SAFE;
     rss_evaluations.push_back(RssEvaluation{risk_level, rss_detail});
   }
