@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -85,8 +86,8 @@ InferenceEngine::~InferenceEngine()
 
 void InferenceEngine::load_engine(const Config & config)
 {
-  const auto trt_config = TrtCommonConfig(
-    config.model_path, config.precision, "", config.max_workspace_size, -1, false);
+  const auto trt_config =
+    TrtCommonConfig(config.model_path, config.precision, "", config.max_workspace_size, -1, false);
 
   // A cached engine older than its ONNX is stale: this node hands TrtCommon no IO list to
   // validate against (it reads its bindings out of the engine instead), so nothing else
@@ -98,7 +99,21 @@ void InferenceEngine::load_engine(const Config & config)
   if (!config.plugins_path.empty()) {
     plugin_paths.push_back(config.plugins_path);
   }
-  trt_common_ = std::make_unique<TrtCommon>(trt_config, std::make_shared<Profiler>(), plugin_paths);
+  try {
+    trt_common_ =
+      std::make_unique<TrtCommon>(trt_config, std::make_shared<Profiler>(), plugin_paths);
+  } catch (const std::exception & e) {
+    // TrtCommon's constructor throws a bare "Failed to initialize TensorRT", and it is what
+    // a missing or unreadable ONNX hits -- the most common start-up failure there is, and
+    // the one the operator most needs a path for. It throws before setup() below, so the
+    // message that names the file never runs. Name it here instead: the node latches this
+    // text onto `inference_status`, and a diagnostic that does not say which artifact it
+    // could not read sends whoever reads it back into the container log this node exists to
+    // keep them out of.
+    throw std::runtime_error(
+      std::string(e.what()) + " for " + config.model_path +
+      (std::filesystem::exists(config.model_path) ? "" : " (no such file)"));
+  }
 
   // Force single-stream execution to reduce scratch memory (same rationale as the diffusion
   // planner: large transformer models allocate hundreds of MB of auxiliary stream scratch).
@@ -209,7 +224,8 @@ void InferenceEngine::introspect_and_bind()
     const nvinfer1::Dims dims = trt_common_->getTensorShape(name);
     const auto nv_dtype = trt_common_->getTensorDataType(name);
     if (!nv_dtype) {
-      throw std::runtime_error(std::string("Failed to query dtype of engine tensor '") + name + "'");
+      throw std::runtime_error(
+        std::string("Failed to query dtype of engine tensor '") + name + "'");
     }
     const bool is_input = trt_common_->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT;
 
@@ -234,7 +250,8 @@ void InferenceEngine::introspect_and_bind()
       nvinfer1::Dims resolved = dims;
       resolved.d[0] = 1;
       if (!trt_common_->setInputShape(spec.name.c_str(), resolved)) {
-        throw std::runtime_error("Failed to set batch-1 shape for engine tensor '" + spec.name + "'");
+        throw std::runtime_error(
+          "Failed to set batch-1 shape for engine tensor '" + spec.name + "'");
       }
     }
 
@@ -249,7 +266,8 @@ void InferenceEngine::introspect_and_bind()
     } else {
       if (spec.dtype != TensorDataType::kFLOAT32) {
         throw std::runtime_error(
-          "Engine output tensor '" + spec.name + "' is not float32; only float32 outputs are "
+          "Engine output tensor '" + spec.name +
+          "' is not float32; only float32 outputs are "
           "supported.");
       }
       binding.offset = output_block_bytes_;
@@ -268,11 +286,11 @@ void InferenceEngine::introspect_and_bind()
   // runtime has to stage and wait on, cost more than the bytes they move. The outputs come
   // back the same way, in one copy.
   device_inputs_ = autoware::cuda_utils::make_unique<uint8_t[]>(input_block_bytes_);
-  pinned_inputs_ = autoware::cuda_utils::make_unique_host<uint8_t[]>(
-    input_block_bytes_, cudaHostAllocDefault);
+  pinned_inputs_ =
+    autoware::cuda_utils::make_unique_host<uint8_t[]>(input_block_bytes_, cudaHostAllocDefault);
   device_outputs_ = autoware::cuda_utils::make_unique<uint8_t[]>(output_block_bytes_);
-  pinned_outputs_ = autoware::cuda_utils::make_unique_host<uint8_t[]>(
-    output_block_bytes_, cudaHostAllocDefault);
+  pinned_outputs_ =
+    autoware::cuda_utils::make_unique_host<uint8_t[]>(output_block_bytes_, cudaHostAllocDefault);
   for (auto & binding : input_bindings_) {
     binding.device = device_inputs_.get() + binding.offset;
     bind_address(binding, binding.device);
@@ -406,7 +424,8 @@ InferenceEngine::Result InferenceEngine::infer(const TensorMap & inputs)
     const size_t count = static_cast<size_t>(binding.spec.num_elements());
     outputs.emplace(
       binding.spec.name,
-      Tensor::from_host(binding.spec.shape, std::vector<float>(binding.pinned, binding.pinned + count)));
+      Tensor::from_host(
+        binding.spec.shape, std::vector<float>(binding.pinned, binding.pinned + count)));
   }
   result.outputs = std::move(outputs);
   return result;
