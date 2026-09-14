@@ -131,6 +131,11 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     return {};  // No objects to check collision with
   }
 
+  if (!context.lanelet_map) {
+    clear_detection_times();
+    return {};  // No lanelet map to check collision with
+  }
+
   if (traj_points.empty()) {
     clear_detection_times();
     return {};  // No trajectory to check
@@ -149,7 +154,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
 
   const auto drac_artifact = collision_timing_assessment::assess(
     ego_trajectory_cache, object_trajectory_cache_, candidate_trajectory.turn_indicators_command,
-    *context.odometry, *context.predicted_objects, stop_tracker_, drac_param_map_, global_params_);
+    *context.odometry, *context.predicted_objects, *context.lanelet_map, stop_tracker_,
+    drac_param_map_, global_params_);
   const auto rss_artifact = rss_deceleration::assess(ego_trajectory_cache, context, rss_param_map_);
 
   auto planning_factors = reporter::process_collision_artifacts(
