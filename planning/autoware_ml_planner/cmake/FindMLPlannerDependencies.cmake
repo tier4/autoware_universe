@@ -5,8 +5,18 @@ function(ml_planner_find_dependencies)
   set(ML_PLANNER_TRT_AVAIL OFF)
   set(has_onnxruntime FALSE)
 
-  find_package(CUDAToolkit)
-  if(CUDAToolkit_FOUND)
+  # Never call find_package(CUDAToolkit) here: autoware_tensorrt_common exports it as
+  # REQUIRED and a second search can fatal when nvcc is absent. Legacy FindCUDA only
+  # clears CUDA_FOUND (same as autoware_tensorrt_common / autoware_diffusion_planner).
+  set(CUDA_FIND_REQUIRED FALSE)
+  set(CUDAToolkit_FIND_REQUIRED FALSE)
+  find_package(CUDA)
+  if(CUDA_FOUND)
+    find_library(ML_PLANNER_CUBLAS_LIBRARIES cublas HINTS
+      ${CUDA_TOOLKIT_ROOT_DIR}/lib64
+      ${CUDA_TOOLKIT_ROOT_DIR}/lib
+    )
+    unset(CUDA_cublas_device_LIBRARY CACHE)
     set(ML_PLANNER_CUDA_AVAIL ON)
   else()
     message(WARNING "CUDA NOT FOUND")
@@ -28,7 +38,9 @@ function(ml_planner_find_dependencies)
       )
 
       if(ML_PLANNER_VERBOSE_DEPENDENCIES)
-        message(STATUS "CUDA toolkit: ${CUDAToolkit_VERSION}")
+        message(STATUS "CUDA toolkit root: ${CUDA_TOOLKIT_ROOT_DIR}")
+        message(STATUS "CUDA libraries: ${CUDA_LIBRARIES}")
+        message(STATUS "cuBLAS library: ${ML_PLANNER_CUBLAS_LIBRARIES}")
         message(STATUS "TensorRT inference library: ${ML_PLANNER_NVINFER_LIBRARY}")
         message(STATUS "TensorRT ONNX parser: ${ML_PLANNER_NVONNXPARSER_LIBRARY}")
       endif()
@@ -77,4 +89,5 @@ function(ml_planner_find_dependencies)
   set(ML_PLANNER_CUDA_AVAIL ${ML_PLANNER_CUDA_AVAIL} PARENT_SCOPE)
   set(ML_PLANNER_TRT_AVAIL ${ML_PLANNER_TRT_AVAIL} PARENT_SCOPE)
   set(ML_PLANNER_HAS_ONNXRUNTIME ${has_onnxruntime} PARENT_SCOPE)
+  set(ML_PLANNER_CUBLAS_LIBRARIES ${ML_PLANNER_CUBLAS_LIBRARIES} PARENT_SCOPE)
 endfunction()
