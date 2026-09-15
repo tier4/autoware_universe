@@ -151,6 +151,7 @@ public:
         out << "lateral_yaw_error_coeff," << cost.lateral_yaw_error_coeff << "\n";
         out << "remaining_distance_coeff," << cost.remaining_distance_coeff << "\n";
         out << "path_overshoot_coeff," << cost.path_overshoot_coeff << "\n";
+        out << "preferred_lane_center_coeff," << cost.preferred_lane_center_coeff << "\n";
         out << "track_center_coeff," << cost.track_center_coeff << "\n";
         out << "corner_buffer_coeff," << cost.corner_buffer_coeff << "\n";
         out << "corner_safe_margin," << cost.corner_safe_margin << "\n";
@@ -275,7 +276,8 @@ public:
     const float hist_accel_tm2, const float hist_steer_tm2, const float hist_accel_tm1,
     const float hist_steer_tm1, const std::vector<float> & delay_accel_cmd,
     const std::vector<float> & delay_steer_cmd, const float applied_accel_cmd,
-    const float applied_steer_cmd, const FirstOrderDubinsMppiKinematicLimits & kinematic_limits)
+    const float applied_steer_cmd, const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
+    const PreferredLaneCenterlineInput & preferred_lane_centerline = {})
   {
     if (!enabled_) {
       return;
@@ -305,6 +307,15 @@ public:
     }
     writeSegmentsCsv(directory_ + "/" + frame_tag + "_road_borders.csv", road_borders);
     writeSegmentsCsv(directory_ + "/" + frame_tag + "_drivable.csv", drivable_area);
+    writeSegmentsCsv(
+      directory_ + "/" + frame_tag + "_preferred_lane_center.csv",
+      preferred_lane_centerline.segments);
+    {
+      std::ofstream metadata(directory_ + "/" + frame_tag + "_preferred_lane_center_metadata.csv");
+      metadata << "status,revision,frame_id\n"
+               << preferred_lane_centerline.status << "," << preferred_lane_centerline.revision
+               << "," << reference.header.frame_id << "\n";
+    }
     writeObjectsCsv(directory_ + "/" + frame_tag + "_objects.csv", tracked_objects);
     writeControlHistoryCsv(
       directory_ + "/" + frame_tag + "_control_history.csv", hist_accel_tm2, hist_steer_tm2,

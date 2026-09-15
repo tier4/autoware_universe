@@ -38,6 +38,11 @@ if(BUILD_TESTING)
   set_target_properties(test_path_tracking_geometry PROPERTIES CXX_STANDARD 17)
   set_tests_properties(test_path_tracking_geometry PROPERTIES LABELS "cost;unit" TIMEOUT 30)
 
+  ament_add_gtest(test_preferred_lane_centerline test/test_preferred_lane_centerline.cpp)
+  target_link_libraries(test_preferred_lane_centerline mppi_trajectory_utils)
+  set_target_properties(test_preferred_lane_centerline PROPERTIES CXX_STANDARD 17)
+  set_tests_properties(test_preferred_lane_centerline PROPERTIES LABELS "cost;unit" TIMEOUT 30)
+
   ament_add_gtest(test_mppi_trajectory_utils
     test/test_trajectory_utils.cpp
   )
@@ -96,6 +101,7 @@ else()
 endif()
 
 if(CUDA_AVAIL AND TRT_AVAIL)
+  set(MPPI_CUDA_ARCH_LIST "Auto" CACHE STRING "CUDA architectures (Auto or e.g. 8.9 for headless Ada builds)")
   find_package(MPPI-Generic REQUIRED)
   find_package(ament_index_cpp REQUIRED)
   pluginlib_export_plugin_description_file(
@@ -117,7 +123,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
 
   # Compile only for the GPU(s) on this machine (FindCUDA Auto = nvidia-smi detect).
   # Avoids the multi-SM fat-binary compile that dominated MPPI build time.
-  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS Auto)
+  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${MPPI_CUDA_ARCH_LIST})
   if(MPPI_CUDA_ARCH_FLAGS STREQUAL "")
     message(FATAL_ERROR
       "MPPI CUDA: failed to detect a local GPU architecture. "

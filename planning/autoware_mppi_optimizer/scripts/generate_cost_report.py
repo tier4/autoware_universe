@@ -11,10 +11,10 @@ import math
 from pathlib import Path
 import sys
 
-# Schema version 2: keep in sync with test/cost_test_report.hpp::components.
+# Schema version 3: keep in sync with test/cost_test_report.hpp::components.
 COMPONENTS = (
     "spatial_overspeed track heading terminal_error terminal_heading lateral_distance "
-    "lateral_boundary lateral_yaw_error remaining_distance path_overshoot track_center "
+    "lateral_boundary lateral_yaw_error remaining_distance path_overshoot preferred_lane_center track_center "
     "corner_buffer drivable_area obstacle road_border acceleration_command steering_command "
     "lateral_acceleration lateral_jerk longitudinal_jerk steering_rate initial_steering_rate "
     "acceleration_command_rate steering_command_rate kinematic_velocity_overlimit "
@@ -112,7 +112,7 @@ def load_case(directory, name):
         meta = read_table(directory / f"{name}.meta.csv", HEADERS["meta"])
         case.metadata = {r["key"]: r["value"] for r in meta}
         require(len(meta) == len(case.metadata), "duplicate metadata key")
-        require(case.metadata.get("schema_version") == "2", "expected schema_version=2")
+        require(case.metadata.get("schema_version") == "3", "expected schema_version=3")
         require(case.metadata.get("name") == name, "metadata name does not match filename")
         require(case.metadata.get("status") in {"PASS", "FAIL", "SKIPPED"}, "invalid test status")
         horizon = integer(case.metadata.get("horizon"), "horizon", 1)
@@ -213,7 +213,8 @@ def load_case(directory, name):
                     )
                 elif key == "geometry":
                     require(
-                        item["kind"] in {"obstacle", "road_border", "drivable_area"},
+                        item["kind"]
+                        in {"obstacle", "road_border", "drivable_area", "preferred_lane_center"},
                         "invalid geometry kind",
                     )
                     require(
@@ -325,7 +326,9 @@ def plot_case(case, destination):
             path.plot(
                 [g["x0"], g["x1"]],
                 [g["y0"], g["y1"]],
-                color="black" if g["kind"] == "road_border" else "purple",
+                color={"road_border": "black", "preferred_lane_center": "teal"}.get(
+                    g["kind"], "purple"
+                ),
                 alpha=0.5,
             )
     path.set(xlabel="x [m]", ylabel="y [m]", title="Scene (first/last geometry snapshots)")
@@ -534,7 +537,7 @@ def main(argv=None):
     for suffix in HEADERS:
         names.update(p.name[: -len(f".{suffix}.csv")] for p in source.glob(f"*.{suffix}.csv"))
     if not names:
-        parser.error("no schema-2 cost CSVs found; use the run_* directory, not its parent")
+        parser.error("no schema-3 cost CSVs found; use the run_* directory, not its parent")
     cases = [load_case(source, name) for name in sorted(names)]
     try:
         destination = write_report(

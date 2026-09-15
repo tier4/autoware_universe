@@ -83,6 +83,7 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   output.lateral_yaw_error_coeff = static_cast<float>(params.lateral_yaw_error_coeff);
   output.remaining_distance_coeff = static_cast<float>(params.remaining_distance_coeff);
   output.path_overshoot_coeff = static_cast<float>(params.path_overshoot_coeff);
+  output.preferred_lane_center_coeff = static_cast<float>(params.preferred_lane_center_coeff);
   output.track_center_coeff = static_cast<float>(params.track_center_coeff);
   output.corner_buffer_coeff = static_cast<float>(params.corner_buffer_coeff);
   output.corner_safe_margin = static_cast<float>(params.corner_safe_margin);
@@ -495,10 +496,37 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       };
     }
 
+    PreferredLaneCenterlineInput preferred_lane_centerline;
+    if (params_.preferred_lane_center_coeff > 0.0) {
+      if (
+        input.header.frame_id != data.route->header.frame_id ||
+        data.current_odometry->header.frame_id != input.header.frame_id ||
+        data.lanelet_map_bin->header.frame_id != input.header.frame_id) {
+        preferred_lane_centerline.status = "frame_mismatch";
+      } else {
+        const auto & pose = data.current_odometry->pose.pose;
+        const double horizon = detail::kMppiHorizon * detail::kMppiDt;
+        double length = 0.0;
+        for (std::size_t i = 1; i < input.points.size(); ++i) {
+          const auto & a = input.points[i - 1].pose.position;
+          const auto & b = input.points[i].pose.position;
+          length += std::hypot(b.x - a.x, b.y - a.y);
+        }
+        const double reachable = std::abs(data.current_odometry->twist.twist.linear.x) * horizon +
+                                 0.5 * preferred_lane_max_acceleration_ * horizon * horizon;
+        preferred_lane_centerline = preferred_lane_selector_.select(
+          {pose.position.x, pose.position.y, pose.position.z}, tf2::getYaw(pose.orientation),
+          std::max(length, reachable) + 10.0);
+      }
+    } else {
+      preferred_lane_centerline.status = "disabled";
+    }
+
     auto result = optimizer_->optimizeTrajectory(
       input, *data.current_odometry, acceleration, steering, all_targets,
       to_mppi_segments(road_borders), to_mppi_segments(drivable_area), kinematic_limits,
-      control_postprocessor, /*defer_commit=*/true, mpc_predicted_trajectory);
+      control_postprocessor, /*defer_commit=*/true, mpc_predicted_trajectory,
+      preferred_lane_centerline);
 
     result.debug.previous_mppi_trajectory_applied = was_previous_mppi_trajectory_applied;
     if (mpc_predicted_trajectory) {
@@ -547,6 +575,31 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     pending_markers_ = createMppiDebugMarkers(
       result.debug, road_borders, drivable_area, avoidance_targets, driving_along_targets,
       data.current_odometry->pose.pose.position.z);
+    visualization_msgs::msg::Marker centerline_marker;
+    centerline_marker.header = input.header;
+    centerline_marker.ns = "preferred_lane_centerline";
+    centerline_marker.id = 0;
+    centerline_marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+    centerline_marker.action = preferred_lane_centerline.segments.empty()
+                                 ? visualization_msgs::msg::Marker::DELETE
+                                 : visualization_msgs::msg::Marker::ADD;
+    centerline_marker.pose.orientation.w = 1.0;
+    centerline_marker.scale.x = 0.08;
+    centerline_marker.color.g = 1.0;
+    centerline_marker.color.b = 1.0;
+    centerline_marker.color.a = 1.0;
+    for (const auto & segment : preferred_lane_centerline.segments) {
+      geometry_msgs::msg::Point a, b;
+      a.x = segment.x0;
+      a.y = segment.y0;
+      a.z = data.current_odometry->pose.pose.position.z;
+      b.x = segment.x1;
+      b.y = segment.y1;
+      b.z = a.z;
+      centerline_marker.points.push_back(a);
+      centerline_marker.points.push_back(b);
+    }
+    pending_markers_.markers.push_back(std::move(centerline_marker));
     pending_rollouts_ =
       create_mppi_rollout_markers(result.debug, data.current_odometry->pose.pose.position.z);
     debug_pending_ = true;
@@ -598,19 +651,39 @@ void TrajectoryMppiOptimizer::reset_optimizer()
 void TrajectoryMppiOptimizer::update_route_context(
   const autoware::trajectory_processor::TrajectoryProcessorData & data)
 {
-  const bool route_changed =
-    !current_route_uuid_ || current_route_uuid_.value() != data.route->uuid;
+  const bool route_changed = !current_route_uuid_ ||
+                             current_route_uuid_.value() != data.route->uuid ||
+                             current_route_segments_ != data.route->segments;
   const bool map_changed = current_map_ != data.lanelet_map_bin;
   if (!route_changed && !map_changed && extended_route_handler_) {
     return;
   }
 
-  current_route_uuid_ = data.route->uuid;
-  current_map_ = data.lanelet_map_bin;
   extended_route_handler_ =
     std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
-      *current_map_, *data.route);
+      *data.lanelet_map_bin, *data.route);
   extended_route_handler_->create_map();
+  std::vector<PreferredLaneCenterlineSelector::Section> sections;
+  const auto map = extended_route_handler_->getOriginalRouteHandler()->getLaneletMapPtr();
+  for (const auto & route_section : data.route->segments) {
+    PreferredLaneCenterlineSelector::Section section;
+    for (const auto & primitive : route_section.primitives) {
+      if (!map->laneletLayer.exists(primitive.id)) continue;
+      const auto lanelet = map->laneletLayer.get(primitive.id);
+      PreferredLaneCenterlineSelector::Lane lane;
+      for (const auto & point : lanelet.centerline())
+        lane.centerline.push_back({point.x(), point.y(), point.z()});
+      for (const auto & point : lanelet.polygon3d())
+        lane.polygon.push_back({point.x(), point.y(), point.z()});
+      if (primitive.id == route_section.preferred_primitive.id) section.preferred = lane.centerline;
+      section.lanes.push_back(std::move(lane));
+    }
+    sections.push_back(std::move(section));
+  }
+  preferred_lane_selector_.reset(std::move(sections));
+  current_route_uuid_ = data.route->uuid;
+  current_route_segments_ = data.route->segments;
+  current_map_ = data.lanelet_map_bin;
   reset_optimizer();
 }
 
@@ -629,6 +702,7 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
   optimizer_ = std::make_unique<FirstOrderDubinsMppiInterface>();
   optimizer_->setCostParams(cost_params);
   optimizer_->setVehicleParams(vehicle_params);
+  preferred_lane_max_acceleration_ = std::max(0.0F, vehicle_params.max_accel());
   optimizer_->setRuntimeOptions(make_runtime_options(params_));
 
   const double max_longitudinal_offset = std::max(
@@ -773,6 +847,11 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("state/lateral_distance", cost.lateral_distance);
   cost_diagnostics_->add_key_value("state/signed_lateral_error_m", cost.signed_lateral_error_m);
   cost_diagnostics_->add_key_value("state/lateral_yaw_error", cost.lateral_yaw_error);
+  cost_diagnostics_->add_key_value("state/preferred_lane_center", cost.preferred_lane_center);
+  cost_diagnostics_->add_key_value(
+    "preferred_lane_center/status", debug.preferred_lane_center_status);
+  cost_diagnostics_->add_key_value(
+    "preferred_lane_center/segments", debug.preferred_lane_center_segment_count);
   cost_diagnostics_->add_key_value("state/track_center", cost.track_center);
   cost_diagnostics_->add_key_value("state/corner_buffer", cost.corner_buffer);
   cost_diagnostics_->add_key_value("state/drivable_area", cost.drivable_area);

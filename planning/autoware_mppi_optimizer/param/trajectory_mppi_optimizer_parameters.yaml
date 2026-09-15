@@ -132,6 +132,12 @@ trajectory_mppi_optimizer:
     description: Path overshoot cost coefficient
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  preferred_lane_center_coeff:
+    type: double
+    default_value: 0.0
+    description: Squared rear-axle distance to preferred route lanelet centerlines
+    validation: { bounds<>: [0.0, 3.402823466e+38] }
+    read_only: false
   track_center_coeff:
     type: double
     default_value: 0.0

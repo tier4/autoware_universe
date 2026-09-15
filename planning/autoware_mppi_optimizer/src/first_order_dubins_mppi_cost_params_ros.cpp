@@ -14,6 +14,8 @@
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp"
 
+#include <cmath>
+#include <stdexcept>
 #include <string>
 
 namespace autoware::mppi_optimizer
@@ -58,6 +60,8 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
   node.declare_parameter(
     param_name(prefix, "remaining_distance_coeff"), defaults.remaining_distance_coeff);
   node.declare_parameter(param_name(prefix, "path_overshoot_coeff"), defaults.path_overshoot_coeff);
+  node.declare_parameter(
+    param_name(prefix, "preferred_lane_center_coeff"), defaults.preferred_lane_center_coeff);
   node.declare_parameter(param_name(prefix, "track_center_coeff"), defaults.track_center_coeff);
   node.declare_parameter(param_name(prefix, "corner_buffer_coeff"), defaults.corner_buffer_coeff);
   node.declare_parameter(param_name(prefix, "corner_safe_margin"), defaults.corner_safe_margin);
@@ -141,6 +145,8 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "remaining_distance_coeff")).as_double());
   params.path_overshoot_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "path_overshoot_coeff")).as_double());
+  params.preferred_lane_center_coeff = static_cast<float>(
+    node.get_parameter(param_name(prefix, "preferred_lane_center_coeff")).as_double());
   params.track_center_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "track_center_coeff")).as_double());
   params.corner_buffer_coeff =
@@ -197,6 +203,11 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "drivable_area_barrier_weight")).as_double());
   params.crash_contact_penalty =
     static_cast<float>(node.get_parameter(param_name(prefix, "crash_contact_penalty")).as_double());
+  if (
+    !std::isfinite(params.preferred_lane_center_coeff) ||
+    params.preferred_lane_center_coeff < 0.0F) {
+    throw std::invalid_argument("preferred_lane_center_coeff must be finite and non-negative");
+  }
   return params;
 }
 

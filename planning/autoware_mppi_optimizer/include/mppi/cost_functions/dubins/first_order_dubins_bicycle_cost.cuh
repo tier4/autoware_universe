@@ -49,6 +49,8 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   /** Along-track distance past the corridor tip: coeff * (overshoot [m])^2; 0 disables. */
   float path_overshoot_coeff = 0.0F;
   /** Track ego footprint center vs ref[t]: coeff * ||center - ref[t]||^2; 0 disables. */
+  /** Squared rear-axle distance to preferred route centerlines; zero disables. */
+  float preferred_lane_center_coeff{0.0F};
   float track_center_coeff = 0.0F;
   /** Quadratic soft cost for ego corners closer than corner_safe_margin to a boundary. */
   float corner_buffer_coeff = 0.0F;
@@ -141,6 +143,13 @@ struct alignas(16) FirstOrderDubinsRuntimeData
   float road_border_y0_[kMaxRoadBorderSegments] = {};
   float road_border_x1_[kMaxRoadBorderSegments] = {};
   float road_border_y1_[kMaxRoadBorderSegments] = {};
+  static constexpr int kMaxPreferredLaneCenterSegments =
+    autoware::mppi_optimizer::kMaxPreferredLaneCenterSegments;
+  int num_preferred_lane_center_segments_ = 0;
+  float preferred_lane_center_x0_[kMaxPreferredLaneCenterSegments] = {};
+  float preferred_lane_center_y0_[kMaxPreferredLaneCenterSegments] = {};
+  float preferred_lane_center_x1_[kMaxPreferredLaneCenterSegments] = {};
+  float preferred_lane_center_y1_[kMaxPreferredLaneCenterSegments] = {};
   int num_drivable_area_segments_ = 0;
   float drivable_area_x0_[kMaxDrivableAreaSegments] = {};
   float drivable_area_y0_[kMaxDrivableAreaSegments] = {};
@@ -169,6 +178,8 @@ public:
   static constexpr bool COST_OBJECT_READ_ONLY = true;
   static constexpr int kNumTimesteps = NUM_TIMESTEPS;
   static constexpr int kMaxObstacles = RuntimeData::kMaxObstacles;
+  static constexpr int kMaxPreferredLaneCenterSegments =
+    RuntimeData::kMaxPreferredLaneCenterSegments;
   static constexpr int kMaxDrivablePolygonVertices = 1024;
   static constexpr int kMaxRoadBorderSegments = RuntimeData::kMaxRoadBorderSegments;
   static constexpr int kMaxDrivableAreaSegments = RuntimeData::kMaxDrivableAreaSegments;
@@ -279,6 +290,13 @@ public:
     const float * reference_velocity = nullptr);
 
   void clearLateralCorridor();
+
+  /** Returns active/unavailable/invalid_geometry/overflow; invalid input clears old geometry. */
+  std::string setPreferredLaneCenterSegments(
+    const std::vector<autoware::mppi_optimizer::Segment> & segments);
+  __host__ __device__ float computePreferredLaneCenterCost(float x, float y) const;
+  /** Exact-only mode for validation and backend benchmarks. */
+  void setPreferredLaneCenterTextureEnabled(bool enabled);
 
   /** Static obstacles: same pose replicated at every MPPI horizon step. */
   void setOrientedBoxObstacles(
@@ -448,6 +466,8 @@ private:
   __host__ bool updateDistanceMapGrid(
     DistanceMapTextureGrid & grid, int width, int height, float resolution);
   __host__ bool updateNearestSegmentMapGrid();
+  __host__ void refreshPreferredLaneCenterTexture();
+  __host__ void ensurePreferredLaneCenterResources();
   __host__ void ensureDistanceMapResources();
   __host__ void ensureNearestSegmentMapResources();
   __host__ void rebuildStaticDistanceTexture(bool update_road_border, bool update_drivable_area);
@@ -464,6 +484,8 @@ private:
   __host__ void distanceMapStateToDevice();
   __host__ void releaseDistanceMapResources();
 
+  bool preferred_lane_center_geometry_dirty_ = false;
+  bool preferred_lane_center_texture_enabled_ = true;
   bool data_update_active_ = false;
   bool runtime_data_dirty_ = false;
   bool distance_map_refresh_pending_ = false;

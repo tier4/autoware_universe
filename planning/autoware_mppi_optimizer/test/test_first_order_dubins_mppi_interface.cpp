@@ -142,6 +142,20 @@ TrackedObjects makeStationaryBoxObstacle(
   return objects;
 }
 
+TEST(FirstOrderDubinsMppiInterface, PreferredLaneCenterCoefficientMustBeFiniteAndNonnegative)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiCostParams params;
+  for (float invalid :
+       {-1.0F, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+    params.preferred_lane_center_coeff = invalid;
+    EXPECT_THROW(interface.setCostParams(params), std::invalid_argument);
+  }
+  params.preferred_lane_center_coeff = 42.0F;
+  EXPECT_NO_THROW(interface.setCostParams(params));
+  EXPECT_FALSE(interface.isInitialized());
+}
+
 TEST(FirstOrderDubinsMppiInterface, SkippedInputsDoNotInitializeCuda)
 {
   FirstOrderDubinsMppiInterface interface;
@@ -288,6 +302,32 @@ protected:
 
   std::unique_ptr<FirstOrderDubinsMppiInterface> interface_;
 };
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, PreferredLaneCenterInputDoesNotPersistAcrossCalls)
+{
+  FirstOrderDubinsMppiCostParams params;
+  params.max_iter = 1;
+  params.preferred_lane_center_coeff = 42.0F;
+  interface_->setCostParams(params);
+  const auto trajectory = makeStraightTrajectory(80);
+  const auto odometry = makeOdometry();
+  const auto run = [&](const PreferredLaneCenterlineInput & input) {
+    return interface_->optimizeTrajectory(
+      trajectory, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, false,
+      std::nullopt, input);
+  };
+  const auto first = run({{{-10, 0.3F, 100, 0.3F}}, "active", 1});
+  EXPECT_EQ(first.debug.preferred_lane_center_status, "active");
+  EXPECT_EQ(first.debug.preferred_lane_center_segment_count, 1U);
+  const auto empty = optimize(*interface_, trajectory, odometry);
+  EXPECT_EQ(empty.debug.preferred_lane_center_status, "unavailable");
+  EXPECT_EQ(empty.debug.preferred_lane_center_segment_count, 0U);
+  PreferredLaneCenterlineInput overflow;
+  overflow.segments.resize(kMaxPreferredLaneCenterSegments + 1, {-10, 0, 100, 0});
+  const auto invalid = run(overflow);
+  EXPECT_EQ(invalid.debug.preferred_lane_center_status, "overflow");
+  EXPECT_EQ(invalid.debug.preferred_lane_center_segment_count, 0U);
+}
 
 FirstOrderDubinsMppiControlSequencePostprocessor fixedAcceleration(const float acceleration)
 {
