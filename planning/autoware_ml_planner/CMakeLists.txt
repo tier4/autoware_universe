@@ -19,10 +19,6 @@ if(NOT (ML_PLANNER_CUDA_AVAIL AND ML_PLANNER_TRT_AVAIL))
   message(WARNING
     "${PROJECT_NAME} will not be built: CUDA and TensorRT are required for the ML planner component")
   find_package(ament_cmake_auto REQUIRED)
-  if(BUILD_TESTING)
-    find_package(ament_lint_auto REQUIRED)
-    ament_lint_auto_find_test_dependencies()
-  endif()
   ament_auto_package(
     INSTALL_TO_SHARE
       config
