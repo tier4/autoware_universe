@@ -43,6 +43,7 @@ plugin_names:
 6. **TrajectoryVelocityOptimizer** - Velocity profile optimization with lateral acceleration limits
 7. **TrajectoryExtender** - Extends trajectory backward using past ego states
 8. **TrajectoryKinematicFeasibilityEnforcer** - Enforces Ackermann steering and yaw rate constraints
+9. **TrajectoryTimeSequenceRawOptimizer** - Pose-only time-sequence tracking with an independent acados kinematic-bicycle OCP, optional road-border shift, and stopped-regime steering policy. Disabled by default (`use_time_sequence_raw_optimizer: false`). See [docs/time_sequence_raw_optimizer.md](docs/time_sequence_raw_optimizer.md).
 
 Each plugin can be enabled/disabled at runtime via activation flags (e.g., `use_qp_smoother`) and manages its own configuration independently.
 

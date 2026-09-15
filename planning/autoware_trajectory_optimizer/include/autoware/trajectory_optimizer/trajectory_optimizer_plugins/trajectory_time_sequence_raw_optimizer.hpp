@@ -1,0 +1,131 @@
+// Copyright 2026 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef AUTOWARE__TRAJECTORY_OPTIMIZER__TRAJECTORY_OPTIMIZER_PLUGINS__TRAJECTORY_TIME_SEQUENCE_RAW_OPTIMIZER_HPP_  // NOLINT
+#define AUTOWARE__TRAJECTORY_OPTIMIZER__TRAJECTORY_OPTIMIZER_PLUGINS__TRAJECTORY_TIME_SEQUENCE_RAW_OPTIMIZER_HPP_  // NOLINT
+
+#include "autoware/trajectory_optimizer/time_sequence_raw/road_border_avoidance.hpp"
+#include "autoware/trajectory_optimizer/time_sequence_raw/stamped_ego_buffer.hpp"
+#include "autoware/trajectory_optimizer/time_sequence_raw/trajectory_optimizer.hpp"
+#include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
+
+#include <autoware_vehicle_info_utils/vehicle_info.hpp>
+
+#include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_msgs/msg/int32.hpp>
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace autoware::trajectory_optimizer::plugin
+{
+
+class TrajectoryTimeSequenceRawOptimizer : public TrajectoryOptimizerPluginBase
+{
+public:
+  TrajectoryTimeSequenceRawOptimizer() = default;
+
+  void initialize(
+    const std::string & name, rclcpp::Node * node_ptr,
+    const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper) override;
+  void optimize_trajectory(
+    TrajectoryPoints & traj_points, const TrajectoryOptimizerParams & params,
+    TrajectoryOptimizerData & data) override;
+  void set_up_params() override;
+  rcl_interfaces::msg::SetParametersResult on_parameter(
+    const std::vector<rclcpp::Parameter> & parameters) override;
+
+private:
+  void ensure_optimizer();
+  void ensure_ego_subscriptions();
+  void maybe_update_map(const TrajectoryOptimizerData & data);
+  void ensure_debug_publishers();
+  void ingest_live_ego(const TrajectoryOptimizerData & data);
+  nav_msgs::msg::Odometry resolve_ocp_odometry(
+    const TrajectoryOptimizerData & data, double & accel_mps2, std::optional<double> & steering);
+  void publish_velocity_diagnostics(
+    const autoware_planning_msgs::msg::Trajectory & reference,
+    const autoware_planning_msgs::msg::Trajectory & optimized,
+    const time_sequence_raw::OptimizationResult & result, const nav_msgs::msg::Odometry & ocp_odom);
+  autoware_planning_msgs::msg::Trajectory make_geometry_velocity_trajectory(
+    const autoware_planning_msgs::msg::Trajectory & src) const;
+  void publish_debug_data() const;
+
+  enum class SteerStopMode { Track, Hold, Zero };
+
+  SteerStopMode resolve_steer_stop_mode(
+    const autoware_planning_msgs::msg::Trajectory & reference,
+    const TrajectoryOptimizerData & data);
+  void apply_stopped_reference(
+    TrajectoryPoints & traj_points, const autoware_planning_msgs::msg::Trajectory & reference,
+    double steer_rad) const;
+
+  autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
+  time_sequence_raw::TrajectoryOptimizationParams opt_params_;
+  time_sequence_raw::RoadBorderAvoidanceParams border_params_;
+  bool road_border_enable_{false};
+  bool publish_debug_topics_{true};
+  bool use_stamped_ego_state_{true};
+  double ego_state_buffer_duration_s_{1.0};
+  double max_ego_stamp_mismatch_s_{0.15};
+  double stopped_velocity_threshold_mps_{0.15};
+  double stopped_trajectory_max_length_m_{1.5};
+  bool goal_steer_zero_enable_{true};
+  double goal_steer_zero_distance_m_{5.0};
+  bool goal_steer_zero_requires_stopped_{true};
+  bool in_stopped_regime_{false};
+  bool in_goal_zero_regime_{false};
+  double latched_steering_rad_{0.0};
+
+  std::unique_ptr<time_sequence_raw::TrajectoryOptimizer> optimizer_;
+  std::unique_ptr<time_sequence_raw::RoadBorderAvoidance> road_border_avoidance_;
+  const lanelet::LaneletMap * cached_map_{nullptr};
+
+  mutable autoware_planning_msgs::msg::Trajectory last_raw_trajectory_;
+  mutable autoware_planning_msgs::msg::Trajectory last_adjusted_trajectory_;
+  mutable autoware_planning_msgs::msg::Trajectory last_optimized_trajectory_;
+  mutable autoware_planning_msgs::msg::Trajectory last_geometry_velocity_trajectory_;
+  mutable int last_shifted_point_count_{0};
+  mutable int last_solver_status_{0};
+  mutable double last_solve_time_ms_{0.0};
+  mutable double last_lookup_dt_s_{0.0};
+  mutable double last_live_lag_s_{0.0};
+
+  time_sequence_raw::StampedEgoBuffer ego_buffer_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr accel_sub_;
+  rclcpp::Subscription<autoware_vehicle_msgs::msg::SteeringReport>::SharedPtr steer_sub_;
+
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_raw_pub_;
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_adjusted_pub_;
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr debug_shifted_count_pub_;
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr debug_solver_status_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr debug_solve_time_pub_;
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_optimized_pub_;
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr
+    debug_geometry_velocity_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr debug_velocity_profile_pub_;
+};
+
+}  // namespace autoware::trajectory_optimizer::plugin
+// clang-format off
+#endif  // AUTOWARE__TRAJECTORY_OPTIMIZER__TRAJECTORY_OPTIMIZER_PLUGINS__TRAJECTORY_TIME_SEQUENCE_RAW_OPTIMIZER_HPP_  // NOLINT
+// clang-format on

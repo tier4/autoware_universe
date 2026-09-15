@@ -27,9 +27,14 @@
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
+#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+
+#include <lanelet2_core/LaneletMap.h>
 
 #include <memory>
 #include <string>
@@ -50,6 +55,7 @@ public:
 
 private:
   void on_traj(const CandidateTrajectories::ConstSharedPtr msg);
+  void on_map(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg);
   void publish_processing_time_ms(double processing_time_ms);
   void set_up_params();
   void initialize_optimizers();
@@ -78,9 +84,15 @@ private:
     this, "~/input/odometry"};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_current_acceleration_{this, "~/input/acceleration"};
+  autoware_utils::InterProcessPollingSubscriber<autoware_vehicle_msgs::msg::SteeringReport>
+    sub_current_steering_{this, "~/input/steering_status"};
+  autoware_utils::InterProcessPollingSubscriber<autoware_planning_msgs::msg::LaneletRoute>
+    sub_route_{this, "~/input/route"};
+  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_map_;
 
   Odometry::ConstSharedPtr current_odometry_ptr_;  // current odometry
   AccelWithCovarianceStamped::ConstSharedPtr current_acceleration_ptr_;
+  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   std::unique_ptr<autoware_utils_system::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
 
   rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
