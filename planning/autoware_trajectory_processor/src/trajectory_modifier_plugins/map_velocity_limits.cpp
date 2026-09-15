@@ -18,12 +18,11 @@
 
 #include <autoware/interpolation/linear_interpolation.hpp>
 #include <autoware/interpolation/spherical_linear_interpolation.hpp>
-#include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware/trajectory/trajectory_point.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_processor::plugin
@@ -66,7 +65,6 @@ void MapVelocityLimits::update_params(const TrajectoryProcessorParams & params)
   enabled_ = params.use_map_velocity_limits;
   limit_overrides_ = make_velocity_limit_overrides(params);
   constant_deceleration_ = params.stopping_constraints.nominal_deceleration;
-  enable_smoothing_ = params.map_velocity_limits.enable_smoothing;
 }
 
 bool MapVelocityLimits::is_trajectory_modification_required(
@@ -84,132 +82,130 @@ bool MapVelocityLimits::is_trajectory_modification_required(
   }
   return true;
 }
-ProcessingResult MapVelocityLimits::process(
-  TrajectoryPoints & traj_points, TrajectoryProcessorData & input)
+
+namespace detail
 {
-  if (!enabled_ || !is_trajectory_modification_required(traj_points, input)) {
-    return ProcessingResult::Unchanged;
+MapVelocityLimitResult apply_map_velocity_limits(
+  TrajectoryPoints & points, const double deceleration,
+  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit)
+{
+  if (points.empty()) {
+    return {};
   }
 
-  bool modified = false;
-  const double dt = 0.1;  // Fixed time step
+  if (!std::isfinite(deceleration) || deceleration < 0.0) {
+    return MapVelocityLimitResult{
+      ProcessingResult::Unchanged, "Map velocity limiting requires non-negative deceleration"};
+  }
 
-  // 1. Cap the map limits
-  for (auto & point : traj_points) {
-    const auto map_velocity_limit =
-      extended_route_handler_->get_velocity_limit(point.pose.position, limit_overrides_);
-    if (
-      map_velocity_limit && std::isfinite(*map_velocity_limit) &&
-      point.longitudinal_velocity_mps > *map_velocity_limit) {
-      point.longitudinal_velocity_mps = static_cast<float>(*map_velocity_limit);
-      modified = true;
+  constexpr double dt = 0.1;
+  const auto original = points;
+  const auto count = points.size();
+
+  // 1. Limit each velocity with the map velocity limit
+  std::optional<std::size_t> first_modified_idx = std::nullopt;
+
+  for (std::size_t i = 0; i < count; ++i) {
+    const auto limit = velocity_limit(points[i].pose.position);
+    if (limit && std::isfinite(*limit) && *limit >= 0.0) {
+      if (points[i].longitudinal_velocity_mps > *limit) {
+        points[i].longitudinal_velocity_mps = static_cast<float>(*limit);
+        points[i].acceleration_mps2 = std::min(points[i].acceleration_mps2, 0.0F);
+        // Remember the 1st modified point
+        if (!first_modified_idx) {
+          first_modified_idx = i;
+        }
+      }
     }
   }
 
-  if (!enable_smoothing_ || traj_points.size() < 2) {
-    return modified ? ProcessingResult::Modified : ProcessingResult::Unchanged;
+  // If no point was above the velocity limit -> return Unchanged
+  if (!first_modified_idx) {
+    return {ProcessingResult::Unchanged, {}};
   }
 
-  const double max_decel = std::abs(constant_deceleration_);
-  const double max_accel = max_decel;
+  // 2. Update velocities and accelerations between the 1st trajectory point and the 1st modified
+  // point We apply the desired deceleration backward, ignoring current ego velocity feasibility.
+  for (int i = static_cast<int>(*first_modified_idx); i >= 0; --i) {
+    // Only calculate the backward deceleration curve for points strictly before the first modified
+    // index
+    if (i < static_cast<int>(*first_modified_idx)) {
+      const float target_velocity =
+        points[i + 1].longitudinal_velocity_mps + static_cast<float>(deceleration * dt);
 
-  // 2. Backward pass: Enforce deceleration limits (v_i <= v_{i+1} + decel * dt)
-  for (int i = static_cast<int>(traj_points.size()) - 2; i >= 0; --i) {
-    const double limit = traj_points[i + 1].longitudinal_velocity_mps + (max_decel * dt);
-    if (traj_points[i].longitudinal_velocity_mps > limit) {
-      traj_points[i].longitudinal_velocity_mps = static_cast<float>(limit);
-      modified = true;
+      if (points[i].longitudinal_velocity_mps > target_velocity) {
+        points[i].longitudinal_velocity_mps = target_velocity;
+        points[i].acceleration_mps2 = -static_cast<float>(deceleration);
+      } else {
+        points[i].acceleration_mps2 = static_cast<float>(
+          (points[i + 1].longitudinal_velocity_mps - points[i].longitudinal_velocity_mps) / dt);
+      }
     }
   }
 
-  // 3. Forward pass: Enforce acceleration limits (v_i <= v_{i-1} + accel * dt)
-  const auto current_velocity = std::max(0.0, input.current_odometry->twist.twist.linear.x);
-
-  const double first_point_limit = current_velocity + (max_accel * dt);
-  if (traj_points[0].longitudinal_velocity_mps > first_point_limit) {
-    traj_points[0].longitudinal_velocity_mps = static_cast<float>(first_point_limit);
-    modified = true;
+  // 3. Starting from the 2nd point, update the point arc lengths along the trajectory
+  // based on the updated velocities to preserve the original shape.
+  std::vector<double> original_s(count, 0.0);
+  for (std::size_t i = 1; i < count; ++i) {
+    const auto & p0 = original[i - 1].pose.position;
+    const auto & p1 = original[i].pose.position;
+    original_s[i] = original_s[i - 1] + std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
   }
 
-  for (size_t i = 1; i < traj_points.size(); ++i) {
-    const double limit = traj_points[i - 1].longitudinal_velocity_mps + (max_accel * dt);
-    if (traj_points[i].longitudinal_velocity_mps > limit) {
-      traj_points[i].longitudinal_velocity_mps = static_cast<float>(limit);
-      modified = true;
-    }
+  std::vector<double> new_s(count, 0.0);
+  for (std::size_t i = 1; i < count; ++i) {
+    // Integrate new distance using the trapezoidal rule
+    new_s[i] =
+      new_s[i - 1] +
+      0.5 * (points[i - 1].longitudinal_velocity_mps + points[i].longitudinal_velocity_mps) * dt;
   }
 
-  if (!modified) {
-    return ProcessingResult::Unchanged;
-  }
-
-  // 4. Re-calculate spatial positions by interpolating the original shape
-  const auto original_points = traj_points;
-
-  // 4a. Calculate cumulative arc length of the original trajectory
-  std::vector<double> orig_s(original_points.size(), 0.0);
-  for (size_t i = 1; i < original_points.size(); ++i) {
-    const double dx = original_points[i].pose.position.x - original_points[i - 1].pose.position.x;
-    const double dy = original_points[i].pose.position.y - original_points[i - 1].pose.position.y;
-    const double dz = original_points[i].pose.position.z - original_points[i - 1].pose.position.z;
-    orig_s[i] = orig_s[i - 1] + std::sqrt(dx * dx + dy * dy + dz * dz);
-  }
-
-  // 4b. Calculate the new desired arc lengths based on the capped velocity profile
-  std::vector<double> new_s(traj_points.size(), 0.0);
-  for (size_t i = 1; i < traj_points.size(); ++i) {
-    // s = v * dt
-    new_s[i] = new_s[i - 1] + traj_points[i - 1].longitudinal_velocity_mps * dt;
-  }
-
-  // 4c. Sample the original trajectory at the new arc lengths
-  size_t orig_idx = 0;
-  for (size_t i = 1; i < traj_points.size(); ++i) {
-    const double target_s = new_s[i];
-
-    // Advance the index to find the original segment bracketing target_s
-    while (orig_idx + 1 < orig_s.size() && orig_s[orig_idx + 1] <= target_s) {
-      orig_idx++;
+  std::size_t segment = 0;
+  for (std::size_t i = 1; i < count; ++i) {
+    // Advance the segment to match the new integrated arc length
+    while (segment + 1 < count && original_s[segment + 1] <= new_s[i]) {
+      ++segment;
     }
 
-    if (orig_idx + 1 >= orig_s.size()) {
-      // If the new velocity profile pushes us past the end of the original trajectory,
-      // safely clamp to the final pose.
-      traj_points[i].pose = original_points.back().pose;
+    if (segment + 1 == count) {
+      // If the new velocity pushes us past the spatial end of the original path, clamp to the last
+      // pose
+      points[i].pose = original.back().pose;
     } else {
-      // Interpolate exactly between the original points
-      const double s_start = orig_s[orig_idx];
-      const double s_end = orig_s[orig_idx + 1];
-      const double ratio =
-        std::clamp((target_s - s_start) / std::max(s_end - s_start, 1e-6), 0.0, 1.0);
+      const double segment_length = original_s[segment + 1] - original_s[segment];
+      const double ratio = (new_s[i] - original_s[segment]) / std::max(segment_length, 1e-6);
 
-      const auto & p0 = original_points[orig_idx].pose;
-      const auto & p1 = original_points[orig_idx + 1].pose;
+      const auto & p0 = original[segment].pose;
+      const auto & p1 = original[segment + 1].pose;
+      auto & pose = points[i].pose;
 
-      traj_points[i].pose.position.x =
-        autoware::interpolation::lerp(p0.position.x, p1.position.x, ratio);
-      traj_points[i].pose.position.y =
-        autoware::interpolation::lerp(p0.position.y, p1.position.y, ratio);
-      traj_points[i].pose.position.z =
-        autoware::interpolation::lerp(p0.position.z, p1.position.z, ratio);
-
-      // Slerp the quaternion orientation to prevent normalization errors
-      traj_points[i].pose.orientation =
+      // Interpolate the exact shape
+      pose.position.x = autoware::interpolation::lerp(p0.position.x, p1.position.x, ratio);
+      pose.position.y = autoware::interpolation::lerp(p0.position.y, p1.position.y, ratio);
+      pose.position.z = autoware::interpolation::lerp(p0.position.z, p1.position.z, ratio);
+      pose.orientation =
         autoware::interpolation::lerpOrientation(p0.orientation, p1.orientation, ratio);
     }
   }
 
-  // 5. Calculate the acceleration via the time derivative (dv / dt)
-  for (size_t i = 0; i + 1 < traj_points.size(); ++i) {
-    const double dv =
-      traj_points[i + 1].longitudinal_velocity_mps - traj_points[i].longitudinal_velocity_mps;
-    traj_points[i].acceleration_mps2 = static_cast<float>(dv / dt);
+  return {ProcessingResult::Modified, {}};
+}
+}  // namespace detail
+
+ProcessingResult MapVelocityLimits::process(
+  TrajectoryPoints & traj_points, TrajectoryProcessorData & input)
+{
+  if (
+    !enabled_ || traj_points.empty() || !input.current_odometry ||
+    !is_trajectory_modification_required(traj_points, input)) {
+    return ProcessingResult::Unchanged;
   }
-
-  // Pad the last point's acceleration to match the previous point
-  traj_points.back().acceleration_mps2 = traj_points[traj_points.size() - 2].acceleration_mps2;
-
-  return ProcessingResult::Modified;
+  const auto result = detail::apply_map_velocity_limits(
+    traj_points, std::abs(constant_deceleration_),
+    [this](const geometry_msgs::msg::Point & position) {
+      return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
+    });
+  return result.status;
 }
 
 }  // namespace autoware::trajectory_processor::plugin
