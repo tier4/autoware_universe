@@ -15,6 +15,7 @@
 #include "autoware/mppi_optimizer/detail/temporal_mpt_nominal.hpp"
 
 #include <rclcpp/logging.hpp>
+#include <temporal_mpt/bicycle_model_params.hpp>
 #include <temporal_mpt/path_tracking_solver.hpp>
 
 #include <tf2/utils.h>
@@ -53,12 +54,10 @@ void TemporalMptNominalSeeder::setBicycleParameters(
   const float wheel_base_m, const float rear_axle_to_cg_m, const float accel_time_constant_s,
   const float steer_time_constant_s, const float max_steer_rate_rad_s)
 {
-  const double wb = static_cast<double>(std::max(wheel_base_m, 1.0e-3F));
-  double lr = static_cast<double>(rear_axle_to_cg_m);
-  lr = std::clamp(lr, 1.0e-3, wb - 1.0e-3);
-  const double lf = wb - lr;
+  const auto bicycle = temporal_mpt::bicycleLfLrFromWheelBaseAndRearAxleToCg(
+    static_cast<double>(wheel_base_m), static_cast<double>(rear_axle_to_cg_m));
   impl_->solver.setModelParameters(
-    lf, lr, static_cast<double>(std::max(accel_time_constant_s, 1.0e-4F)),
+    bicycle.lf, bicycle.lr, static_cast<double>(std::max(accel_time_constant_s, 1.0e-4F)),
     static_cast<double>(std::max(steer_time_constant_s, 1.0e-4F)),
     static_cast<double>(std::max(max_steer_rate_rad_s, 1.0e-6F)));
 }

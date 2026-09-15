@@ -113,6 +113,7 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.use_temporal_mpt_as_nominal = params.use_temporal_mpt_as_nominal;
   output.prevent_reverse_velocity = params.prevent_reverse_velocity;
   output.enable_input_delay_compensation = params.enable_input_delay_compensation;
+  output.use_plant_states_on_trajectory = params.use_plant_states_on_trajectory;
   return output;
 }
 

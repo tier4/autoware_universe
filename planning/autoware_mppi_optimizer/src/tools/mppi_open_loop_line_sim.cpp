@@ -214,6 +214,8 @@ void loadParamsYaml(
         runtime.enable_input_delay_compensation = *flag;
       } else if (key == "prevent_reverse_velocity") {
         runtime.prevent_reverse_velocity = *flag;
+      } else if (key == "use_plant_states_on_trajectory") {
+        runtime.use_plant_states_on_trajectory = *flag;
       }
       continue;
     }
