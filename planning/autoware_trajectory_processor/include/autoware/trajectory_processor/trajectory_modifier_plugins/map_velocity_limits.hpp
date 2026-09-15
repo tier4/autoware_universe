@@ -15,7 +15,6 @@
 #ifndef AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_PLUGINS__MAP_VELOCITY_LIMITS_HPP_
 #define AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_PLUGINS__MAP_VELOCITY_LIMITS_HPP_
 
-#include "autoware/trajectory_processor/trajectory_modifier_utils/utils.hpp"
 #include "autoware/trajectory_processor/trajectory_processor_plugin_base.hpp"
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
@@ -46,7 +45,7 @@ struct MapVelocityLimitResult
 // Retimes along the input polyline, keeping its first pose and every timestamp. The callback
 // permits checking the map again after resampling, independently of route-handler ownership.
 MapVelocityLimitResult apply_map_velocity_limits(
-  TrajectoryPoints & points, double current_velocity, double deceleration, bool smooth_acceleration,
+  TrajectoryPoints & points, double deceleration,
   const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit);
 }  // namespace detail
 
@@ -69,7 +68,7 @@ protected:
     extended_route_handler_;
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     limit_overrides_;
-  double constant_deceleration_;
+  double constant_deceleration_{};
 
   void on_initialize(const TrajectoryProcessorParams & params) override;
 };
