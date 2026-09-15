@@ -25,7 +25,9 @@
 
 #include <fmt/core.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -114,23 +116,66 @@ void add_collision_planning_factor(
   planning_factors.factors.push_back(std::move(factor));
 }
 
+std::string format_stamp(const builtin_interfaces::msg::Time & stamp)
+{
+  return fmt::format("{}.{:09d}", stamp.sec, stamp.nanosec);
+}
+
+std::string format_risk_level(const RiskLevel::_level_type level)
+{
+  switch (level) {
+    case RiskLevel::SAFE:
+      return "SAFE";
+    case RiskLevel::LOW_CAUTION:
+      return "LOW_CAUTION";
+    case RiskLevel::HIGH_CAUTION:
+      return "HIGH_CAUTION";
+    case RiskLevel::DANGER:
+      return "DANGER";
+    case RiskLevel::FATAL:
+      return "FATAL";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+std::string format_required_acceleration(const std::optional<double> & acceleration)
+{
+  return acceleration.has_value() ? fmt::format("{:.2f} m/s^2", acceleration.value())
+                                  : std::string{"cannot be avoided"};
+}
+
+// "1 DRAC collision" / "2 DRAC collisions"
+std::string format_finding_count(const size_t count, const std::string & noun)
+{
+  return fmt::format("{} {}{}", count, noun, count == 1 ? "" : "s");
+}
+
+// Findings are printed as indented multi-line blocks, separated by a blank line so that a report
+// covering several objects stays readable on a terminal.
+std::string join_findings(const std::vector<std::string> & findings)
+{
+  std::string joined{};
+  for (const auto & finding : findings) {
+    if (!joined.empty()) {
+      joined += "\n\n";
+    }
+    joined += finding;
+  }
+  return joined;
+}
+
 void process_drac_artifacts(
-  const nav_msgs::msg::Odometry & odometry,
-  reporter::ContinuousDetectionTimes & drac_continuous_times, const rclcpp::Time & current_time,
+  const nav_msgs::msg::Odometry & odometry, const rclcpp::Time & current_time,
   const DracArtifact & drac_artifact, VisualizationData & artifacts,
   visualization_msgs::msg::MarkerArray & debug_markers, double time_resolution)
 {
-  drac_continuous_times.update(
-    current_time, drac_artifact.evaluations, [](const auto & evaluation) {
-      return evaluation.detail.object_identification.trajectory_id_string();
-    });
-
   if (drac_artifact.evaluations.empty()) {
     return;
   }
 
-  std::string log_messages{};
-  std::string marker_messages{};
+  std::vector<std::string> findings{};
+  findings.reserve(drac_artifact.evaluations.size());
   for (const auto & evaluation : drac_artifact.evaluations) {
     if (evaluation.risk == RiskLevel::SAFE) {
       continue;
@@ -138,18 +183,20 @@ void process_drac_artifacts(
     const auto & timing = evaluation.detail;
     const auto & obj_id = timing.object_identification;
 
-    const auto finding_msg = fmt::format(
-      "DRAC collision, classification: {}, ID: {}, PET: {}, TTC: {}, DRAC: {}, duration: {}, "
-      "stamp: {}.{};",
-      obj_id.classification, obj_id.trajectory_id_string(), timing.worst_pet_timing.pet,
-      timing.first_collision_timing.ttc,
-      evaluation.ego_drac_acceleration.has_value()
-        ? std::to_string(evaluation.ego_drac_acceleration.value())
-        : "Cant be avoided",
-      drac_continuous_times.get_time(obj_id.trajectory_id_string()), obj_id.stamp.sec,
-      obj_id.stamp.nanosec);
-    log_messages += finding_msg;
-    reporter::append_text_marker_message(marker_messages, finding_msg);
+    findings.push_back(
+      fmt::format(
+        "  [{}] {} {} | {} (acc {:.2f} m/s^2)\n"
+        "      logic : {}\n"
+        "      first : TTC {:.3f} s, PET {:6.3f} s | worst PET: TTC {:.3f} s, PET {:6.3f} s\n"
+        "      result: {}, ego req. acc = {} | stamp {}",
+        findings.size() + 1, obj_id.classification, obj_id.object_id_string(),
+        obj_id.trajectory_type, obj_id.acceleration, evaluation.method,
+        timing.first_collision_timing.ttc, timing.first_collision_timing.pet,
+        timing.worst_pet_timing.ttc, timing.worst_pet_timing.pet,
+        format_risk_level(evaluation.risk),
+        format_required_acceleration(evaluation.ego_drac_acceleration),
+        format_stamp(obj_id.stamp)));
+
     reporter::add_debug_markers(
       debug_markers, current_time, "drac_collision", obj_id.trajectory_id_string(),
       timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull);
@@ -160,70 +207,49 @@ void process_drac_artifacts(
     }
   }
 
-  artifacts.error_msg += marker_messages;
-  reporter::log_collision_messages(drac_artifact.risk, log_messages);
+  if (findings.empty()) {
+    return;
+  }
+
+  const auto findings_text = join_findings(findings);
+  reporter::append_text_marker_message(artifacts.error_msg, findings_text);
+  reporter::log_collision_messages(
+    drac_artifact.risk, format_finding_count(findings.size(), "DRAC collision"), findings_text);
 }
 
-void process_rss_artifacts(
-  const RssArtifact & rss_artifact, reporter::ContinuousDetectionTimes & rss_continuous_times,
-  const rclcpp::Time & current_time, VisualizationData & artifacts)
+void process_rss_artifacts(const RssArtifact & rss_artifact, VisualizationData & artifacts)
 {
-  std::vector<RssEvaluation> violations{};
-  violations.reserve(rss_artifact.object_evaluations.size());
+  if (rss_artifact.risk == RiskLevel::SAFE) {
+    return;
+  }
+
+  std::vector<std::string> findings{};
+  findings.reserve(rss_artifact.object_evaluations.size());
   for (const auto & evaluation : rss_artifact.object_evaluations) {
     if (evaluation.risk == RiskLevel::SAFE) {
       continue;
     }
-    violations.push_back(evaluation);
-  }
-  rss_continuous_times.update(current_time, violations, [](const auto & violation) {
-    return violation.detail.object_identification.object_id_string();
-  });
+    const auto & detail = evaluation.detail;
 
-  if (rss_artifact.risk == RiskLevel::SAFE || violations.empty()) {
+    findings.push_back(
+      fmt::format(
+        "  [{}] {} {}\n"
+        "      result: {}, ego req. acc = {:.2f} m/s^2 | stamp {}",
+        findings.size() + 1, detail.object_identification.classification,
+        detail.object_identification.object_id_string(), format_risk_level(evaluation.risk),
+        detail.rss_acceleration, format_stamp(detail.object_identification.stamp)));
+  }
+
+  if (findings.empty()) {
     return;
   }
 
-  std::string log_messages{};
-  std::string marker_messages{};
-  for (const auto & violation : violations) {
-    const auto & detail = violation.detail;
-    const auto object_id = detail.object_identification.object_id_string();
-
-    const auto finding_msg = fmt::format(
-      "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, "
-      "stamp: {}.{};",
-      detail.object_identification.classification, object_id,
-      rss_continuous_times.get_time(object_id), detail.rss_acceleration,
-      detail.object_identification.stamp.sec, detail.object_identification.stamp.nanosec);
-    log_messages += finding_msg;
-    reporter::append_text_marker_message(marker_messages, finding_msg);
-  }
-
-  artifacts.error_msg += marker_messages;
-  reporter::log_collision_messages(rss_artifact.risk, log_messages);
+  const auto findings_text = join_findings(findings);
+  reporter::append_text_marker_message(artifacts.error_msg, findings_text);
+  reporter::log_collision_messages(
+    rss_artifact.risk, format_finding_count(findings.size(), "RSS violation"), findings_text);
 }
 }  // namespace
-
-void ContinuousDetectionTimes::clear()
-{
-  current_time_.reset();
-  detection_start_times_.clear();
-}
-
-double ContinuousDetectionTimes::get_time(const std::string & key) const
-{
-  if (!current_time_) {
-    return 0.0;
-  }
-
-  const auto it = detection_start_times_.find(key);
-  if (it == detection_start_times_.end()) {
-    return 0.0;
-  }
-
-  return (*current_time_ - it->second).seconds();
-}
 
 void add_debug_markers(
   visualization_msgs::msg::MarkerArray & debug_markers, const rclcpp::Time & stamp,
@@ -335,31 +361,34 @@ void append_text_marker_message(std::string & text, const std::string & message)
   }
 }
 
-void log_collision_messages(const RiskLevel::_level_type level, const std::string & messages)
+void log_collision_messages(
+  const RiskLevel::_level_type level, const std::string & summary, const std::string & findings)
 {
-  if (messages.empty()) {
+  if (findings.empty()) {
     return;
   }
   if (level >= RiskLevel::DANGER) {
-    RCLCPP_ERROR(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", messages.c_str());
+    RCLCPP_ERROR(
+      rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s\n\n%s", summary.c_str(),
+      findings.c_str());
     return;
   }
-  RCLCPP_DEBUG(rclcpp::get_logger("CollisionCheckFilter"), "Warning: %s", messages.c_str());
+  RCLCPP_DEBUG(
+    rclcpp::get_logger("CollisionCheckFilter"), "Warning: %s\n\n%s", summary.c_str(),
+    findings.c_str());
 }
 
 autoware_internal_planning_msgs::msg::PlanningFactorArray process_collision_artifacts(
   const nav_msgs::msg::Odometry & odometry, const DracArtifact & drac_artifact,
-  ContinuousDetectionTimes & drac_continuous_times, const RssArtifact & rss_artifact,
-  ContinuousDetectionTimes & rss_continuous_times,
-  visualization_msgs::msg::MarkerArray & debug_markers, double time_resolution)
+  const RssArtifact & rss_artifact, visualization_msgs::msg::MarkerArray & debug_markers,
+  double time_resolution)
 {
   VisualizationData visualization_data{};
   const auto current_time = rclcpp::Time{odometry.header.stamp};
 
   process_drac_artifacts(
-    odometry, drac_continuous_times, current_time, drac_artifact, visualization_data, debug_markers,
-    time_resolution);
-  process_rss_artifacts(rss_artifact, rss_continuous_times, current_time, visualization_data);
+    odometry, current_time, drac_artifact, visualization_data, debug_markers, time_resolution);
+  process_rss_artifacts(rss_artifact, visualization_data);
 
   if (!visualization_data.error_msg.empty()) {
     add_error_text_marker(

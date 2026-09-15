@@ -293,6 +293,9 @@
                     "object_earlier": {
                       "type": "number",
                       "description": "PET margin when the object reaches the collision point earlier than ego [s]."
+                    },
+                    "object_earlier_judgement_bias": {
+                      "$ref": "#/definitions/labeled_double"
                     }
                   },
                   "required": [],
@@ -406,9 +409,7 @@
                 },
                 "ego_footprint_margin": { "$ref": "#/definitions/ego_footprint_margin" },
                 "object_assumed_acceleration": {
-                  "type": "number",
-                  "description": "Assumed object acceleration for RSS calculation (negative, m/s²).",
-                  "default": -1.0
+                  "$ref": "#/definitions/labeled_double"
                 },
                 "error_threshold": {
                   "type": "object",

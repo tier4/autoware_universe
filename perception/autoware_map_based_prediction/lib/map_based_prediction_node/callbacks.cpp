@@ -15,14 +15,12 @@
 #include "autoware/map_based_prediction/map_based_prediction_node/callbacks.hpp"
 
 #include "autoware/map_based_prediction/map_based_prediction_node/diagnostics.hpp"
-#include "autoware/map_based_prediction/priority_predictor/debug_priority_pred.hpp"
 #include "autoware/map_based_prediction/utils.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware_utils/autoware_utils.hpp>
-#include <autoware_utils/ros/uuid_helper.hpp>
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -143,10 +141,6 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
 
   state_.predictor_vru->loadCurrentCrosswalkUsers(*in_objects);
 
-  if (state_.params.use_priority_prediction && state_.priority_predictor) {
-    state_.priority_predictor->clearFrameDebug();
-  }
-
   for (const auto & object : in_objects->objects) {
     TrackedObject transformed_object = object;
 
@@ -235,15 +229,6 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
   }
 
   publish(output, debug_markers);
-
-  if (pub_debug_markers_ && state_.priority_predictor) {
-    const auto & debug = state_.priority_predictor->getDebugInfo();
-
-    const auto stamp = rclcpp::Time(in_objects->header.stamp);
-    priority_predictor::debug::publishPriorityObjectMarkers(
-      *pub_debug_markers_, transform_listener_, output, stamp, debug.stop_hypothesis_path_indices,
-      debug.stop_lines, debug.used_signal_colors, stamp);
-  }
 
   const auto processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
   const auto cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);

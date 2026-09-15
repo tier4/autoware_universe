@@ -36,6 +36,7 @@ namespace
 {
 using Point2d = autoware_utils_geometry::Point2d;
 using Polygon2d = autoware_utils_geometry::Polygon2d;
+using Box2d = autoware_utils_geometry::Box2d;
 
 Polygon2d footprint_polygon_at_pose(
   const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
@@ -73,7 +74,7 @@ Polygon2d convex_polygon_covering_segment_footprints(
   return hull;
 }
 
-std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_vegetation_polygons(
+std::vector<Polygon2d> collect_candidate_vegetation_polygons(
   const lanelet::LaneletMap & vegetation_layer, const std::vector<PredictedPath> & predicted_paths,
   const autoware_perception_msgs::msg::Shape & object_shape)
 {
@@ -85,7 +86,7 @@ std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_vegetation_pol
   }
 
   const auto candidates = vegetation_layer.polygonLayer.search(search_bbox);
-  std::vector<autoware_utils_geometry::Polygon2d> vegetation_polygons_2d;
+  std::vector<Polygon2d> vegetation_polygons_2d;
   vegetation_polygons_2d.reserve(candidates.size());
   for (const auto & candidate : candidates) {
     autoware_utils_geometry::Polygon2d polygon;
@@ -97,19 +98,29 @@ std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_vegetation_pol
 }
 
 std::optional<size_t> find_vegetation_crossing_index(
-  const PredictedPath & predicted_path,
-  const std::vector<autoware_utils_geometry::Polygon2d> & vegetation_polygons_2d,
+  const PredictedPath & predicted_path, const std::vector<Polygon2d> & vegetation_polygons,
   const autoware_perception_msgs::msg::Shape & object_shape)
 {
   const auto & path = predicted_path.path;
-  if (path.size() < 2 || vegetation_polygons_2d.empty()) {
+  if (path.size() < 2 || vegetation_polygons.empty()) {
     return std::nullopt;
   }
 
-  for (auto i = 0UL; i + 1 < path.size(); ++i) {
-    const auto swept_polygon =
-      convex_polygon_covering_segment_footprints(path.at(i), path.at(i + 1), object_shape);
-    for (const auto & vegetation_polygon : vegetation_polygons_2d) {
+  boost::geometry::model::multi_point<Point2d> path_footprint_points;
+  for (const auto & pose : path) {
+    for (const auto & point : footprint_polygon_at_pose(pose, object_shape).outer()) {
+      path_footprint_points.push_back(point);
+    }
+  }
+  const auto path_bbox = boost::geometry::return_envelope<Box2d>(path_footprint_points);
+
+  for (const auto & vegetation_polygon : vegetation_polygons) {
+    if (!boost::geometry::intersects(path_bbox, vegetation_polygon)) {
+      continue;
+    }
+    for (auto i = 0UL; i + 1 < path.size(); ++i) {
+      const auto swept_polygon =
+        convex_polygon_covering_segment_footprints(path.at(i), path.at(i + 1), object_shape);
       if (boost::geometry::intersects(swept_polygon, vegetation_polygon)) {
         return i;
       }
@@ -146,7 +157,7 @@ std::vector<PredictedPath> VegetationModule::cut_paths_crossing_vegetation(
     return cut_paths;
   }
 
-  const std::vector<autoware_utils_geometry::Polygon2d> candidate_polygons =
+  const std::vector<Polygon2d> candidate_polygons =
     collect_candidate_vegetation_polygons(*vegetation_layer_, cut_paths, predicted_object.shape);
 
   for (PredictedPath & predicted_path : cut_paths) {

@@ -17,7 +17,6 @@
 
 #include "autoware/map_based_prediction/data_structure.hpp"
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
-#include "autoware/map_based_prediction/priority_predictor/debug_priority_pred.hpp"
 #include "autoware/map_based_prediction/priority_predictor/signal_stop_hysteresis.hpp"
 
 #include <autoware/lanelet2_utils/nn_search.hpp>
@@ -114,12 +113,8 @@ public:
 
   void setTrafficSignal(const TrafficLightGroupArray & traffic_signals, const rclcpp::Time & now);
 
-  void clearFrameDebug();
-
   std::vector<PredictedPath> addStopHypotheses(
     const ObjectPrediction & prediction, const rclcpp::Time & now);
-
-  const StopHypothesisDebug & getDebugInfo() const { return debug_; }
 
 private:
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
@@ -131,7 +126,6 @@ private:
   PriorityPredictionParams params_;
   path_cut::MaxDecelerationParams max_decel_params_;
   double signal_observation_timeout_{0.0};
-  StopHypothesisDebug debug_;
 };
 
 }  // namespace autoware::map_based_prediction::priority_predictor
