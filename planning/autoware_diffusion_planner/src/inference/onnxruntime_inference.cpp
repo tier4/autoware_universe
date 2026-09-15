@@ -33,11 +33,6 @@ namespace autoware::diffusion_planner
 {
 namespace
 {
-size_t num_elements_from_shape(const std::vector<int64_t> & shape)
-{
-  return std::accumulate(shape.begin(), shape.end(), size_t{1}, std::multiplies<>());
-}
-
 std::vector<uint8_t> make_speed_mask(const std::vector<float> & speed_limit)
 {
   std::vector<uint8_t> mask(speed_limit.size(), 0);
@@ -89,28 +84,16 @@ void append_tensorrt_provider(
   Ort::GetApi().ReleaseTensorRTProviderOptions(trt_options);
 }
 
-std::vector<FloatInput> single_step_float_inputs(const preprocess::InputDataMap & input_data_map)
+std::vector<FloatInput> encoder_float_inputs(
+  const preprocess::InputDataMap & input_data_map, const ModelInputType input_type)
 {
-  return {
-    {"sampled_trajectories", &input_data_map.at("sampled_trajectories")},
-    {"ego_agent_past", &input_data_map.at("ego_agent_past")},
-    {"ego_current_state", &input_data_map.at("ego_current_state")},
-    {"neighbor_agents_past", &input_data_map.at("neighbor_agents_past")},
-    {"static_objects", &input_data_map.at("static_objects")},
-    {"lanes", &input_data_map.at("lanes")},
-    {"lanes_speed_limit", &input_data_map.at("lanes_speed_limit")},
-    {"route_lanes", &input_data_map.at("route_lanes")},
-    {"route_lanes_speed_limit", &input_data_map.at("route_lanes_speed_limit")},
-    {"polygons", &input_data_map.at("polygons")},
-    {"line_strings", &input_data_map.at("line_strings")},
-    {"goal_pose", &input_data_map.at("goal_pose")},
-    {"ego_shape", &input_data_map.at("ego_shape")},
-    {"turn_indicators", &input_data_map.at("turn_indicators")},
-    {"delay", &input_data_map.at("delay")}};
-}
-
-std::vector<FloatInput> encoder_float_inputs(const preprocess::InputDataMap & input_data_map)
-{
+  if (input_type == ModelInputType::IMAGE) {
+    // Everything drawable is in the raster; only the scene facts with no pixel representation
+    // stay as tensors (see image_encoder.py).
+    return {
+      {"ego_current_state", &input_data_map.at("ego_current_state")},
+      {"turn_indicators", &input_data_map.at("turn_indicators")}};
+  }
   return {
     {"ego_agent_past", &input_data_map.at("ego_agent_past")},
     {"neighbor_agents_past", &input_data_map.at("neighbor_agents_past")},
@@ -126,12 +109,39 @@ std::vector<FloatInput> encoder_float_inputs(const preprocess::InputDataMap & in
     {"turn_indicators", &input_data_map.at("turn_indicators")}};
 }
 
+// The full graph takes the sampled trajectories and the control delay on top of whatever its
+// encoder reads.
+std::vector<FloatInput> single_step_float_inputs(
+  const preprocess::InputDataMap & input_data_map, const ModelInputType input_type)
+{
+  std::vector<FloatInput> inputs = encoder_float_inputs(input_data_map, input_type);
+  inputs.push_back({"sampled_trajectories", &input_data_map.at("sampled_trajectories")});
+  inputs.push_back({"delay", &input_data_map.at("delay")});
+  if (input_type == ModelInputType::IMAGE) {
+    // The decoder reads the neighbor histories even though the image encoder does not.
+    inputs.push_back({"neighbor_agents_past", &input_data_map.at("neighbor_agents_past")});
+  }
+  return inputs;
+}
+
 std::unordered_map<std::string, std::vector<uint8_t>> speed_limit_bool_inputs(
   const preprocess::InputDataMap & input_data_map)
 {
   return {
     {"lanes_has_speed_limit", make_speed_mask(input_data_map.at("lanes_speed_limit"))},
     {"route_lanes_has_speed_limit", make_speed_mask(input_data_map.at("route_lanes_speed_limit"))}};
+}
+
+// Encoder-side byte inputs: the speed-limit flags for the vector encoder, the raster for the
+// image encoder.
+std::unordered_map<std::string, std::vector<uint8_t>> encoder_byte_inputs(
+  const preprocess::InputDataMap & input_data_map, const ModelInputType input_type,
+  const std::vector<uint8_t> & bev_image)
+{
+  if (input_type == ModelInputType::IMAGE) {
+    return {{"bev_image", bev_image}};
+  }
+  return speed_limit_bool_inputs(input_data_map);
 }
 
 std::unordered_map<std::string, std::vector<float>> to_float_input_map(
@@ -181,142 +191,99 @@ OrtModel::OrtModel(
   }
 
   session_ = Ort::Session(env_, model_path.c_str(), session_options_);
+
+  // Cache what the graph declares about each input, so callers only ever supply payloads. Every
+  // dimension but the leading batch is fixed in these exports, and the declared element type is
+  // what decides whether a byte payload becomes a BOOL or a UINT8 tensor.
+  Ort::AllocatorWithDefaultOptions allocator;
+  const size_t input_count = session_.GetInputCount();
+  for (size_t i = 0; i < input_count; ++i) {
+    const Ort::AllocatedStringPtr name = session_.GetInputNameAllocated(i, allocator);
+    // GetTensorTypeAndShapeInfo hands back a non-owning view, so the TypeInfo has to outlive it.
+    const Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
+    const auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    input_specs_.emplace(
+      std::string{name.get()}, InputSpec{tensor_info.GetShape(), tensor_info.GetElementType()});
+  }
+}
+
+const OrtModel::InputSpec & OrtModel::input_spec(const std::string & name) const
+{
+  const auto it = input_specs_.find(name);
+  if (it == input_specs_.end()) {
+    throw std::runtime_error("The ONNX graph declares no input named " + name);
+  }
+  return it->second;
+}
+
+std::vector<int64_t> OrtModel::shape_for(const std::string & name, const size_t element_count) const
+{
+  std::vector<int64_t> shape = input_spec(name).shape;
+  if (shape.empty()) {
+    throw std::runtime_error("Input " + name + " is declared as a scalar");
+  }
+
+  const size_t elements_per_batch = std::accumulate(
+    shape.begin() + 1, shape.end(), size_t{1}, [&name](const size_t product, const int64_t dim) {
+      if (dim <= 0) {
+        throw std::runtime_error("Input " + name + " has a non-batch dynamic dimension");
+      }
+      return product * static_cast<size_t>(dim);
+    });
+  if (element_count % elements_per_batch != 0) {
+    throw std::runtime_error("Input size mismatch for " + name);
+  }
+  shape[0] = static_cast<int64_t>(element_count / elements_per_batch);
+  return shape;
 }
 
 std::unordered_map<std::string, std::vector<float>> OrtModel::run(
   const std::unordered_map<std::string, std::vector<float>> & float_inputs,
-  const std::unordered_map<std::string, std::vector<uint8_t>> & bool_inputs,
+  const std::unordered_map<std::string, std::vector<uint8_t>> & byte_inputs,
   const std::vector<std::string> & output_names)
 {
   std::vector<std::string> input_names;
   std::vector<const char *> input_name_ptrs;
   std::vector<Ort::Value> input_tensors;
-  const auto input_count = float_inputs.size() + bool_inputs.size();
+  std::vector<std::vector<int64_t>> input_shapes;
+  const auto input_count = float_inputs.size() + byte_inputs.size();
   input_names.reserve(input_count);
   input_name_ptrs.reserve(input_count);
   input_tensors.reserve(input_count);
+  input_shapes.reserve(input_count);
 
-  const auto add_float_tensor = [&](
-                                  const std::string & name, const std::vector<float> & data,
-                                  const std::vector<int64_t> & shape) {
-    if (data.size() != num_elements_from_shape(shape)) {
-      throw std::runtime_error("Input size mismatch for " + name);
-    }
+  const auto push_name = [&](const std::string & name) {
     input_names.push_back(name);
     input_name_ptrs.push_back(input_names.back().c_str());
-    input_tensors.push_back(
-      Ort::Value::CreateTensor<float>(
-        memory_info_, const_cast<float *>(data.data()), data.size(), shape.data(), shape.size()));
-  };
-
-  const auto add_bool_tensor = [&](
-                                 const std::string & name, const std::vector<uint8_t> & data,
-                                 const std::vector<int64_t> & shape) {
-    if (data.size() != num_elements_from_shape(shape)) {
-      throw std::runtime_error("Input size mismatch for " + name);
-    }
-    input_names.push_back(name);
-    input_name_ptrs.push_back(input_names.back().c_str());
-    input_tensors.push_back(
-      Ort::Value::CreateTensor(
-        memory_info_, const_cast<uint8_t *>(data.data()), data.size() * sizeof(uint8_t),
-        shape.data(), shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL));
   };
 
   for (const auto & [name, data] : float_inputs) {
-    if (name == "sampled_trajectories") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / (MAX_NUM_AGENTS * (OUTPUT_T + 1) * POSE_DIM)),
-         MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM});
-    } else if (name == "ego_agent_past") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / ((INPUT_T + 1) * POSE_DIM)), INPUT_T + 1, POSE_DIM});
-    } else if (name == "ego_current_state") {
-      add_float_tensor(name, data, {static_cast<int64_t>(data.size() / 10), 10});
-    } else if (name == "neighbor_agents_past") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / (MAX_NUM_NEIGHBORS * (INPUT_T + 1) * 11)),
-         MAX_NUM_NEIGHBORS, INPUT_T + 1, 11});
-    } else if (name == "static_objects") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / (NUM_STATIC_OBJECTS * 10)), NUM_STATIC_OBJECTS, 10});
-    } else if (name == "lanes") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(
-           data.size() / (NUM_SEGMENTS_IN_LANE * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM)),
-         NUM_SEGMENTS_IN_LANE, POINTS_PER_SEGMENT, SEGMENT_POINT_DIM});
-    } else if (name == "lanes_speed_limit") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / NUM_SEGMENTS_IN_LANE), NUM_SEGMENTS_IN_LANE, 1});
-    } else if (name == "route_lanes") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(
-           data.size() / (NUM_SEGMENTS_IN_ROUTE * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM)),
-         NUM_SEGMENTS_IN_ROUTE, POINTS_PER_SEGMENT, SEGMENT_POINT_DIM});
-    } else if (name == "route_lanes_speed_limit") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / NUM_SEGMENTS_IN_ROUTE), NUM_SEGMENTS_IN_ROUTE, 1});
-    } else if (name == "polygons") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(
-           data.size() / (NUM_POLYGONS * POINTS_PER_POLYGON * (2 + POLYGON_TYPE_NUM))),
-         NUM_POLYGONS, POINTS_PER_POLYGON, 2 + POLYGON_TYPE_NUM});
-    } else if (name == "line_strings") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(
-           data.size() / (NUM_LINE_STRINGS * POINTS_PER_LINE_STRING * (2 + LINE_STRING_TYPE_NUM))),
-         NUM_LINE_STRINGS, POINTS_PER_LINE_STRING, 2 + LINE_STRING_TYPE_NUM});
-    } else if (name == "goal_pose") {
-      add_float_tensor(name, data, {static_cast<int64_t>(data.size() / POSE_DIM), POSE_DIM});
-    } else if (name == "ego_shape") {
-      add_float_tensor(name, data, {static_cast<int64_t>(data.size() / 3), 3});
-    } else if (name == "turn_indicators") {
-      add_float_tensor(
-        name, data, {static_cast<int64_t>(data.size() / (INPUT_T + 1)), INPUT_T + 1});
-    } else if (name == "delay") {
-      add_float_tensor(name, data, {static_cast<int64_t>(data.size()), 1});
-    } else if (name == "encoding") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / (ENCODING_TOKEN_NUM * HIDDEN_DIM)), ENCODING_TOKEN_NUM,
-         HIDDEN_DIM});
-    } else if (name == "diffusion_time") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / (MAX_NUM_AGENTS * (OUTPUT_T + 1))), MAX_NUM_AGENTS,
-         OUTPUT_T + 1, 1});
-    } else if (name == "final_x0" || name == "model_output") {
-      add_float_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / (MAX_NUM_AGENTS * (OUTPUT_T + 1) * POSE_DIM)),
-         MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM});
-    } else {
-      throw std::runtime_error("Unsupported ONNX Runtime input: " + name);
+    if (input_spec(name).element_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+      throw std::runtime_error("Input " + name + " is not declared as float by the ONNX graph");
     }
+    input_shapes.push_back(shape_for(name, data.size()));
+    const std::vector<int64_t> & shape = input_shapes.back();
+    push_name(name);
+    input_tensors.push_back(
+      Ort::Value::CreateTensor<float>(
+        memory_info_, const_cast<float *>(data.data()), data.size(), shape.data(), shape.size()));
   }
 
-  for (const auto & [name, data] : bool_inputs) {
-    if (name == "lanes_has_speed_limit") {
-      add_bool_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / NUM_SEGMENTS_IN_LANE), NUM_SEGMENTS_IN_LANE, 1});
-    } else if (name == "route_lanes_has_speed_limit") {
-      add_bool_tensor(
-        name, data,
-        {static_cast<int64_t>(data.size() / NUM_SEGMENTS_IN_ROUTE), NUM_SEGMENTS_IN_ROUTE, 1});
-    } else {
-      throw std::runtime_error("Unsupported ONNX Runtime bool input: " + name);
+  for (const auto & [name, data] : byte_inputs) {
+    const ONNXTensorElementDataType element_type = input_spec(name).element_type;
+    if (
+      element_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL &&
+      element_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8) {
+      throw std::runtime_error(
+        "Input " + name + " is not declared as bool or uint8 by the ONNX graph");
     }
+    input_shapes.push_back(shape_for(name, data.size()));
+    const std::vector<int64_t> & shape = input_shapes.back();
+    push_name(name);
+    input_tensors.push_back(
+      Ort::Value::CreateTensor(
+        memory_info_, const_cast<uint8_t *>(data.data()), data.size() * sizeof(uint8_t),
+        shape.data(), shape.size(), element_type));
   }
 
   std::vector<const char *> output_name_ptrs;
@@ -341,19 +308,21 @@ std::unordered_map<std::string, std::vector<float>> OrtModel::run(
 
 OnnxruntimeSingleStepInference::OnnxruntimeSingleStepInference(
   const std::string & model_path, const std::string & execution_provider,
-  const std::string & plugins_path, const int)
-: model_(model_path, parse_execution_provider(execution_provider), plugins_path)
+  const std::string & plugins_path, const int, const ModelInputType input_type)
+: input_type_(input_type),
+  model_(model_path, parse_execution_provider(execution_provider), plugins_path)
 {
 }
 
 InferenceResult OnnxruntimeSingleStepInference::infer(
-  const preprocess::InputDataMap & input_data_map)
+  const preprocess::InputDataMap & input_data_map, const std::vector<uint8_t> & bev_image)
 {
   auto start = std::chrono::steady_clock::now();
   try {
     const auto outputs = model_.run(
-      to_float_input_map(single_step_float_inputs(input_data_map)),
-      speed_limit_bool_inputs(input_data_map), {"prediction", "turn_indicator_logit"});
+      to_float_input_map(single_step_float_inputs(input_data_map, input_type_)),
+      encoder_byte_inputs(input_data_map, input_type_, bev_image),
+      {"prediction", "turn_indicator_logit"});
 
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> elapsed = end - start;
@@ -372,8 +341,10 @@ OnnxruntimeMultiStepInference::OnnxruntimeMultiStepInference(
   const std::string & encoder_model_path, const std::string & decoder_model_path,
   const std::string & turn_indicator_model_path, const std::string & execution_provider,
   const std::string & plugins_path, const int batch_size, const int dpm_solver_steps,
-  std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances)
+  std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances,
+  const ModelInputType input_type)
 : batch_size_(batch_size),
+  input_type_(input_type),
   dpm_solver_steps_(dpm_solver_steps),
   guidances_(std::move(guidances)),
   encoder_model_(encoder_model_path, parse_execution_provider(execution_provider), plugins_path),
@@ -460,13 +431,13 @@ DpmSolver::SampleResult OnnxruntimeMultiStepInference::run_dpm_solver(
 }
 
 InferenceResult OnnxruntimeMultiStepInference::infer(
-  const preprocess::InputDataMap & input_data_map)
+  const preprocess::InputDataMap & input_data_map, const std::vector<uint8_t> & bev_image)
 {
   auto start = std::chrono::steady_clock::now();
   try {
     const auto encoder_outputs = encoder_model_.run(
-      to_float_input_map(encoder_float_inputs(input_data_map)),
-      speed_limit_bool_inputs(input_data_map), {"encoding"});
+      to_float_input_map(encoder_float_inputs(input_data_map, input_type_)),
+      encoder_byte_inputs(input_data_map, input_type_, bev_image), {"encoding"});
     encoding_ = encoder_outputs.at("encoding");
 
     auto solver_result = run_dpm_solver(input_data_map);

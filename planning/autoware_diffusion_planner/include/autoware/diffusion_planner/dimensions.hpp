@@ -31,7 +31,7 @@ inline constexpr int64_t NUM_STATIC_OBJECTS = 5;
 inline constexpr int64_t MAX_NUM_NEIGHBORS = 320;
 inline constexpr int64_t MAX_NUM_AGENTS = MAX_NUM_NEIGHBORS + 1;  // Including ego
 inline constexpr int64_t HIDDEN_DIM = 256;
-inline constexpr int64_t ENCODING_TOKEN_NUM =
+inline constexpr int64_t VECTOR_ENCODING_TOKEN_NUM =
   MAX_NUM_AGENTS + NUM_STATIC_OBJECTS + NUM_SEGMENTS_IN_LANE + NUM_SEGMENTS_IN_ROUTE +
   NUM_POLYGONS + NUM_LINE_STRINGS + 3;  // goal_pose, ego_shape, turn_indicator
 inline constexpr int64_t POINTS_PER_SEGMENT = 20;
@@ -103,5 +103,47 @@ inline constexpr std::array<int64_t, 2> GOAL_POSE_SHAPE = {1, POSE_DIM};
 inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, 3};
 inline constexpr std::array<int64_t, 2> TURN_INDICATORS_SHAPE = {1, INPUT_T + 1};
 inline constexpr std::array<int64_t, 2> DELAY_SHAPE = {1, 1};
+
+// ---------------------------------------------------------------------------
+// Scene representation fed to the encoder.
+//
+// VECTOR encodes every polyline and agent state as its own token. IMAGE instead rasterizes the
+// same scene into BEV binary masks (see preprocessing/bev_image.hpp) and encodes those with a
+// ResNet, leaving as tensors only the facts that have no pixel representation. Which one a
+// checkpoint expects is declared by "input_type" in its args JSON.
+// ---------------------------------------------------------------------------
+enum class ModelInputType { VECTOR, IMAGE };
+
+// BEV raster layout; mirrors diffusion_planner/utils/render_bev.py.
+//
+// An extent is the full side length of a view, not its reach from the ego: the 50 m view covers
+// +/-25 m at 50 / 224 = 0.223 m per pixel, and the 200 m view covers +/-100 m at 0.893 m per
+// pixel. Both are square and centred on the ego.
+inline constexpr int64_t BEV_IMAGE_SIZE = 224;
+inline constexpr int64_t BEV_NUM_SCALES = 2;
+inline constexpr int64_t BEV_NUM_CHANNELS = 17;
+inline constexpr double BEV_NEAR_EXTENT_M = 50.0;
+inline constexpr double BEV_FAR_EXTENT_M = 200.0;
+inline constexpr std::array<double, BEV_NUM_SCALES> BEV_VIEW_EXTENTS_M = {
+  BEV_NEAR_EXTENT_M, BEV_FAR_EXTENT_M};
+inline constexpr std::array<int64_t, 5> BEV_IMAGE_SHAPE = {
+  1, BEV_NUM_SCALES, BEV_NUM_CHANNELS, BEV_IMAGE_SIZE, BEV_IMAGE_SIZE};
+
+// resnet18 downsamples by 32 up to layer4, and every cell of the resulting feature map becomes
+// one token. On top of the per-scale cells the image encoder appends the ego-motion and the
+// turn-indicator scalar tokens (see model/module/image_encoder.py).
+inline constexpr int64_t BEV_RESNET_STRIDE = 32;
+inline constexpr int64_t BEV_FEATURE_GRID_SIZE = BEV_IMAGE_SIZE / BEV_RESNET_STRIDE;
+static_assert(
+  BEV_FEATURE_GRID_SIZE * BEV_RESNET_STRIDE == BEV_IMAGE_SIZE,
+  "BEV_IMAGE_SIZE must be a multiple of the ResNet stride");
+inline constexpr int64_t BEV_IMAGE_SCALAR_TOKEN_NUM = 2;  // ego motion, turn indicator
+inline constexpr int64_t IMAGE_ENCODING_TOKEN_NUM =
+  BEV_NUM_SCALES * BEV_FEATURE_GRID_SIZE * BEV_FEATURE_GRID_SIZE + BEV_IMAGE_SCALAR_TOKEN_NUM;
+
+inline constexpr int64_t encoding_token_num(const ModelInputType input_type)
+{
+  return input_type == ModelInputType::IMAGE ? IMAGE_ENCODING_TOKEN_NUM : VECTOR_ENCODING_TOKEN_NUM;
+}
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__DIMENSIONS_HPP_
