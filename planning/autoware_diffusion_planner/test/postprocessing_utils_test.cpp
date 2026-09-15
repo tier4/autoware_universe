@@ -58,6 +58,11 @@ TEST(PostprocessingUtilsTest, CreateTrajectoryAndMultipleTrajectories)
     agent_poses, stamp, base_position, 0, velocity_smoothing_window, enable_force_stop,
     stopping_threshold);
   ASSERT_EQ(traj.points.size(), expected_points);
+
+  const auto pose_traj = postprocess::create_ego_pose_trajectory(agent_poses, stamp, 0);
+  ASSERT_EQ(pose_traj.points.size(), expected_points);
+  EXPECT_FLOAT_EQ(pose_traj.points.front().longitudinal_velocity_mps, 0.0f);
+  EXPECT_FLOAT_EQ(pose_traj.points.front().acceleration_mps2, 0.0f);
 }
 
 }  // namespace autoware::diffusion_planner::test
