@@ -70,6 +70,12 @@ struct TensorrtE2eParams
   //! diagnostic. Waiting is not a failure -- at start-up the LiDAR is usually not up
   //! yet -- but silence with no explanation is indistinguishable from a dead node.
   double input_timeout_seconds{1.0};
+  //! Debug: directory the node writes every host-side input tensor and every output tensor
+  //! of its first `dump_max_frames` inferences to ("" = off). What the network was actually
+  //! fed, for comparing against what it was trained on; the 2026-09-15 goal-token skew was
+  //! only visible this way. Device-side inputs (a BEV feature map) are not written.
+  std::string dump_dir;
+  int64_t dump_max_frames{300};
 };
 
 //! Stop / slow-down factors read off the published trajectory, as
@@ -164,6 +170,9 @@ private:
   /// The diffusion planner's `valid_*_count` diagnostics, for the context tensors present.
   void add_input_diagnostics(const TensorMap & inputs);
   void publish_planning_factor(const Trajectory & trajectory);
+  //! See TensorrtE2eParams::dump_dir. One raw float32 file per host tensor and a JSONL
+  //! manifest line per frame (stamp, ego pose/twist, tensor shapes).
+  void dump_tensors(const TensorMap & inputs, const TensorMap & outputs, const EgoFrame & ego);
   /// The bevfusion debug topic set: cyclic time, pipeline latency, per-stage processing time.
   void publish_debug_timing(
     const rclcpp::Time & now, const EgoFrame & ego, const TickTiming & timing);
@@ -223,6 +232,7 @@ private:
   std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface_;
   unique_identifier_msgs::msg::UUID generator_uuid_;
+  int64_t dumped_frames_{0};
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch_;
 };
 

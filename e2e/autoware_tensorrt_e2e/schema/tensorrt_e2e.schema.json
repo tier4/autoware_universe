@@ -34,6 +34,26 @@
           "description": "Shutdown the node after the TensorRT engine file is built.",
           "default": false
         },
+        "debug": {
+          "type": "object",
+          "properties": {
+            "dump_dir": {
+              "type": "string",
+              "description": "Debug only: directory the node writes every host-side input tensor and every output tensor of its first dump_max_frames inferences to, as raw float32 files plus a JSONL manifest. Empty disables it.",
+              "default": ""
+            },
+            "dump_max_frames": {
+              "type": "integer",
+              "description": "How many inferences debug.dump_dir records.",
+              "default": 300
+            }
+          },
+          "required": [
+            "dump_dir",
+            "dump_max_frames"
+          ],
+          "additionalProperties": false
+        },
         "shift_x": {
           "type": "boolean",
           "description": "Use the vehicle center (instead of base_link) as the model reference frame, mirroring the diffusion planner option.",

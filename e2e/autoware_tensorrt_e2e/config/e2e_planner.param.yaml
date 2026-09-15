@@ -44,6 +44,16 @@
     # is not reported as a dropout.
     input_timeout_seconds: 1.0
 
+    # Debug only. A directory here makes the node write every host-side input
+    # tensor and every output tensor of its first `dump_max_frames` inferences
+    # as raw float32 files plus a JSONL manifest (stamp, ego pose/twist,
+    # shapes): what the network was actually fed, to compare against what it
+    # was trained on. Device-side inputs (a BEV feature map) are not written.
+    # Off ("") in every deployment.
+    debug:
+      dump_dir: ""
+      dump_max_frames: 300
+
     bev_feature:
       # Cache semantics (frames, interval, extent, tensor names) describe the
       # network and come from the model's ml_package file; what is left here is
