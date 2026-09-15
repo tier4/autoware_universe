@@ -60,11 +60,12 @@ ament_auto_add_library(autoware_ml_planner_component SHARED
 
 target_include_directories(autoware_ml_planner_component PUBLIC
   ${Boost_INCLUDE_DIRS}
+  ${CUDA_INCLUDE_DIRS}
 )
 
 target_link_libraries(autoware_ml_planner_component
-  CUDA::cudart
-  CUDA::cublas
+  ${CUDA_LIBRARIES}
+  ${ML_PLANNER_CUBLAS_LIBRARIES}
   MLPlanner::nvinfer
   MLPlanner::nvonnxparser
   xtensor
