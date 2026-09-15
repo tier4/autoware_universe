@@ -1,0 +1,45 @@
+/**:
+  ros__parameters:
+    mppi_planner:
+      boundary_threshold_m: 5.0 # [m] lateral deviation from the reference_path at which MPPI rejects its output; the ego may start this far off the centerline (a shoulder)
+      reference:
+        lat_accel_mps2: 1.0 # [m/s^2] lateral acceleration the reference profile aims at in curves
+        goal_lateral_blend_m: 20.0 # [m] the reference reaches the lateral position of the goal this far before the end of the path
+      vehicle:
+        acc_time_constant_s: 0.1
+        steer_time_constant_s: 0.27
+        acc_time_delay_s: 0.1
+        steer_time_delay_s: 0.24
+        accel_lim_mps2: 6.0
+        steer_rate_lim_radps: 3.0
+        enable_input_delay_compensation: false
+      sampling:
+        accel_cmd_std_dev_mps2: 0.1
+        steer_cmd_std_dev_rad: 0.02
+        accel_cmd_noise_exponent: 2.0
+        steer_cmd_noise_exponent: 2.0
+      margin:
+        obstacle_collision_m: 0.2
+        obstacle_safe_m: 0.4
+        road_border_collision_m: 0.0
+        road_border_safe_m: 0.4
+        drivable_area_safe_m: 0.0
+        corner_safe_m: 0.3
+      cost:
+        lambda: 100.0
+        speed: 500.0
+        track_center: 1.0
+        corner_buffer: 1.0
+        lateral_distance: 5000.0
+        lateral_yaw_error: 0.0
+        remaining_distance: 0.1
+        path_overshoot: 1.0
+        lateral_acceleration: 0.0
+        lateral_jerk: 0.0
+        longitudinal_jerk: 0.0
+        accel_cmd: 0.0
+        steer_cmd: 0.0
+        steer_rate: 100.0
+        overlimit: 1000.0
+        drivable_area_barrier: 0.0
+        crash_contact_penalty: 10000.0
