@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_validator/detail/risk_action.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <rclcpp/node.hpp>
@@ -48,7 +49,8 @@ using FilterConfiguredActionsMap = std::unordered_map<std::string, ConfiguredAct
 //   { "trajectory_validator_uncrossable_boundary_departure_danger" → DiagnosticsInterface,
 //     "trajectory_validator_uncrossable_boundary_departure_fatal"  → DiagnosticsInterface }
 using DiagnosticInterfaceMap = std::unordered_map<
-  std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>;
+  std::string,
+  std::unique_ptr<autoware_utils_diagnostics::BasicDiagnosticsInterface<autoware::agnocast_wrapper::Node>>>;
 
 /**
  * @brief Builds a FilterConfiguredActionsMap from a configured_actions string array loaded from
@@ -97,7 +99,8 @@ inline FilterConfiguredActionsMap make_filter_configured_actions_map(
  *        available.
  */
 DiagnosticInterfaceMap build_diagnostic_interface_map(
-  rclcpp::Node & node, const FilterConfiguredActionsMap & filter_configured_actions_map,
+  autoware::agnocast_wrapper::Node & node,
+  const FilterConfiguredActionsMap & filter_configured_actions_map,
   const std::string & no_candidates_diag_status_name);
 
 /**

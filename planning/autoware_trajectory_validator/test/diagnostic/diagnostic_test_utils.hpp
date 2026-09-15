@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_validator/detail/diagnostic.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -61,13 +62,13 @@ inline ValidationReport make_report(std::vector<MetricReport> metrics)
 }
 
 inline bool spin_until(
-  rclcpp::Node::SharedPtr node, std::function<bool()> pred,
+  std::shared_ptr<autoware::agnocast_wrapper::Node> node, std::function<bool()> pred,
   std::chrono::milliseconds timeout = std::chrono::milliseconds(2000))
 {
   const auto end = std::chrono::steady_clock::now() + timeout;
   rclcpp::Rate rate(200);
   while (std::chrono::steady_clock::now() < end) {
-    rclcpp::spin_some(node);
+    rclcpp::spin_some(node->get_node_base_interface());
     if (pred()) return true;
     rate.sleep();
   }
@@ -87,7 +88,7 @@ inline const DiagnosticStatus * find_status(
 }
 
 inline TrajectoryValidatorDiagnostic make_diag(
-  rclcpp::Node & node, FilterConfiguredActionsMap filter_map,
+  autoware::agnocast_wrapper::Node & node, FilterConfiguredActionsMap filter_map,
   std::string no_candidates_diag_status_name,
   const std::unordered_set<std::string> & active_filter_names = {})
 {
@@ -100,13 +101,13 @@ inline TrajectoryValidatorDiagnostic make_diag(
 
 struct DiagHarness
 {
-  rclcpp::Node::SharedPtr node;
+  std::shared_ptr<autoware::agnocast_wrapper::Node> node;
   std::vector<DiagnosticArray> received;
   rclcpp::Subscription<DiagnosticArray>::SharedPtr sub;
 
   explicit DiagHarness(const std::string & node_name = "test_node")
   {
-    node = rclcpp::Node::make_shared(node_name);
+    node = std::make_shared<autoware::agnocast_wrapper::Node>(node_name);
     sub = node->create_subscription<DiagnosticArray>(
       "/diagnostics", rclcpp::QoS(20),
       [this](const DiagnosticArray::SharedPtr msg) { received.push_back(*msg); });
@@ -119,8 +120,8 @@ struct DiagHarness
     const auto stamp = node->get_clock()->now();
     diag.update_and_publish(reports, stamp);
     spin_until(node, [this]() { return !received.empty(); });
-    rclcpp::spin_some(node);
-    rclcpp::spin_some(node);
+    rclcpp::spin_some(node->get_node_base_interface());
+    rclcpp::spin_some(node->get_node_base_interface());
   }
 
   [[nodiscard]] std::vector<DiagnosticStatus> all_statuses() const
