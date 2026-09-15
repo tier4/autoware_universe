@@ -39,7 +39,7 @@ struct RoadBorderAvoidanceParams
   double footprint_margin_m{0.2};
   // Road borders farther than this from the current ego position are ignored.
   double search_radius_m{120.0};
-  // Lateral shift resolution and cap (total offset from the raw position) per point.
+  // Lateral shift: first 3 probes use this step; remaining clearance via bisection.
   double shift_step_m{0.1};
   double max_lateral_shift_m{1.5};
   // When true, the lateral offset of an overlapping point is carried over to all
@@ -65,8 +65,9 @@ struct RoadBorderAvoidanceResult
  * For every trajectory point the ego footprint (inflated by footprint_margin_m) is placed
  * at the point's pose and checked for overlap against the road border line strings of the
  * lanelet map (boost::geometry). Overlapping points are moved perpendicular to their
- * heading, away from the nearest border, in shift_step_m increments until the footprint
- * clears all borders or the total offset reaches max_lateral_shift_m. With
+ * heading, away from the nearest border: up to three shift_step_m probes, then
+ * bisection to max_lateral_shift_m (with a linear fallback if the cap still
+ * collides). If the cap is reached the shift is kept as best effort. With
  * propagate_shift enabled the resulting offset is carried over to all subsequent points
  * (applied along each point's own lateral direction), so the path stays shifted after
  * passing the border instead of snapping back. Yaw and all non-position fields are left
