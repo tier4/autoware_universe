@@ -66,19 +66,15 @@ endif()
 set(MPPI_BUILD_CUDA OFF)
 if(CUDA_AVAIL AND TRT_AVAIL)
   set(MPPI_CUDA_ARCH_LIST "" CACHE STRING
-    "CUDA architectures for MPPI (e.g. 75;86;87;89). Empty = CMAKE_CUDA_ARCHITECTURES or auto-detect.")
+    "CUDA architectures for MPPI cross-compile (e.g. 87). Empty = auto-detect GPU via nvidia-smi.")
   set(MPPI_MIN_CUDA_ARCH 70 CACHE STRING
     "Minimum CUDA compute capability for MPPI (CUDA barriers require sm_70+).")
 
+  # Do not inherit global CMAKE_CUDA_ARCHITECTURES from colcon (CI sets 87 for other
+  # packages). MPPI only cross-compiles when MPPI_CUDA_ARCH_LIST is set explicitly.
   set(_mppi_cuda_arch_spec Auto)
   if(NOT MPPI_CUDA_ARCH_LIST STREQUAL "")
     set(_mppi_cuda_arch_spec ${MPPI_CUDA_ARCH_LIST})
-  elseif(DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT "${CMAKE_CUDA_ARCHITECTURES}" STREQUAL "")
-    if(CMAKE_CUDA_ARCHITECTURES STREQUAL "native")
-      set(_mppi_cuda_arch_spec Auto)
-    else()
-      set(_mppi_cuda_arch_spec ${CMAKE_CUDA_ARCHITECTURES})
-    endif()
   endif()
 
   set(_mppi_gpu_cc "")
@@ -109,7 +105,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   if(_mppi_sm_targets STREQUAL "")
     if(_mppi_cuda_arch_spec STREQUAL "Auto")
       set(_mppi_skip_reason
-        "no GPU detected and no MPPI_CUDA_ARCH_LIST / CMAKE_CUDA_ARCHITECTURES set")
+        "no GPU detected and MPPI_CUDA_ARCH_LIST not set")
     else()
       set(_mppi_skip_reason
         "failed to parse CUDA architecture spec '${_mppi_cuda_arch_spec}'")
@@ -153,7 +149,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     message(WARNING
       "autoware_mppi_optimizer: skipping MPPI CUDA plugin build (${_mppi_skip_reason}). "
       "Install trajectory_utils/parameters only. To cross-compile, set "
-      "MPPI_CUDA_ARCH_LIST (e.g. 87) or CMAKE_CUDA_ARCHITECTURES.")
+      "MPPI_CUDA_ARCH_LIST (e.g. -DMPPI_CUDA_ARCH_LIST=87).")
   else()
     message(STATUS "autoware_mppi_optimizer: building MPPI CUDA for sm ${_mppi_sm_targets}")
     message(STATUS "MPPI CUDA architecture(s): ${MPPI_CUDA_ARCH_FLAGS}")
