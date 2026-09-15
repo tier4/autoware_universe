@@ -19,7 +19,6 @@
 #include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/lanelet2_utils/intersection.hpp>
 #include <autoware/lanelet2_utils/topology.hpp>
-#include <autoware/trajectory/utils/closest.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_math/normalization.hpp>
 #include <rclcpp/time.hpp>
@@ -132,8 +131,9 @@ uint8_t decide_lateral_shift(
   const PathPointTrajectory & path, const Trajectory & trajectory, const double s_ego,
   const double l_ego, const double ego_velocity, const TurnSignalParams & params)
 {
+  const PathProjector projector(path);
   for (const auto & point : trajectory.points) {
-    const double s = experimental::trajectory::closest(path, point.pose.position);
+    const double s = projector.closest(point.pose.position);
     const double l =
       lateral_offset_at(path, s, Point2d{point.pose.position.x, point.pose.position.y});
     if (std::abs(l - l_ego) <= DEPARTURE_LATERAL_THRESHOLD_M) {

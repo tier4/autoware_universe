@@ -32,5 +32,6 @@
       - "autoware::safety_planner::experiment::ObstacleStopConstraintGenerator"
       # - "autoware::safety_planner::experiment::NextLaneletSpeedLimitConstraintGenerator"
 
-    # trajectory_planner_plugin: "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"
+    # "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"
+    # "autoware::safety_planner::experiment::MppiPlanner"
     trajectory_planner_plugin: "autoware::safety_planner::experiment::MppiPlanner"

@@ -21,7 +21,6 @@
 
 #include <cstdint>
 #include <limits>
-#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -38,8 +37,7 @@ enum class Certainty : std::uint8_t {
   POSSIBLE,
 };
 
-//! HARD must be satisfied (no slack). SOFT may be violated with a slack variable, penalized by
-//! Constraint::slack_weight.
+//! HARD must be satisfied. SOFT may be violated at a cost, weighted by the planner's parameters.
 enum class Hardness : std::uint8_t {
   HARD,
   SOFT,
@@ -79,12 +77,6 @@ struct TimedPose
   Pose2d pose{};
 };
 
-struct TimedPolygon
-{
-  double t{0.0};
-  Polygon2d polygon{};
-};
-
 // ---------------------------------------------------------------------------------------------
 // payloads
 // ---------------------------------------------------------------------------------------------
@@ -98,13 +90,18 @@ enum class BoundedQuantity : std::uint8_t {
   STEER_RATE,   //!< |d'|   [rad/s]
 };
 
+//! Holds everywhere. A bound limited to a region exists only for the velocity (SpeedLimitZone)
 struct ScalarBound
 {
   BoundedQuantity quantity;
   double min{-INF};  //!< unused (left at -INF) for quantities bounded in absolute value
   double max{+INF};
+};
 
-  std::optional<Polygon2d> region{};  //!< nullopt = everywhere
+struct SpeedLimitZone
+{
+  Polygon2d region{};
+  double v_max{+INF};
 };
 
 struct Boundary
@@ -112,20 +109,10 @@ struct Boundary
   LineString2d polyline{};  //!< two vertices or more
 };
 
-struct RigidBody
+struct KeepOut
 {
   Polygon2d shape{};                 //!< in body frame
   std::vector<TimedPose> waypoints;  //!< ascending in t, at least one. one = static at all times
-};
-
-struct TimedPolygonSequence
-{
-  std::vector<TimedPolygon> polygons;  //!< ascending in t, at least one
-};
-
-struct KeepOut
-{
-  std::variant<RigidBody, TimedPolygonSequence> occupancy{};
 };
 
 struct Gate
@@ -134,7 +121,7 @@ struct Gate
   TimeWindow time{};  //!< while closed
 };
 
-using ConstraintPayload = std::variant<ScalarBound, Boundary, KeepOut, Gate>;
+using ConstraintPayload = std::variant<ScalarBound, SpeedLimitZone, Boundary, KeepOut, Gate>;
 
 // ---------------------------------------------------------------------------------------------
 // Constraint
@@ -144,7 +131,6 @@ struct Constraint
 {
   Certainty certainty{Certainty::DEFINITE};
   Hardness hardness{Hardness::HARD};
-  double slack_weight{0.0};  //!< [-] penalty on the slack, only used when hardness is SOFT
   ConstraintPayload payload{};
   Source source{};
 };

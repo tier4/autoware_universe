@@ -33,6 +33,11 @@
 #include <utility>
 #include <vector>
 
+namespace autoware_utils_debug
+{
+class TimeKeeper;
+}  // namespace autoware_utils_debug
+
 namespace autoware::mppi_optimizer
 {
 
@@ -311,6 +316,9 @@ public:
 
   /** Configure debug logging and ablation options. */
   void setRuntimeOptions(const FirstOrderDubinsMppiRuntimeOptions & options);
+
+  /** Report optimizeTrajectory sub-step wall times as children of the caller's current track. */
+  void setTimeKeeper(std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
 
   /**
    * @brief Optionally write reference/optimized trajectories for offline viz.

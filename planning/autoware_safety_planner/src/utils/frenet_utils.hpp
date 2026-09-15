@@ -18,8 +18,26 @@
 #include "../context.hpp"
 #include "../type_alias.hpp"
 
+#include <array>
+#include <vector>
+
 namespace autoware::safety_planner
 {
+
+//! experimental::trajectory::closest() re-evaluates path.compute() at every base for each query,
+//! and the planners query it once per trajectory point. The bases are evaluated once here; the
+//! projection is the same chord search, so the s it returns is unchanged
+class PathProjector
+{
+public:
+  explicit PathProjector(const PathPointTrajectory & path);
+
+  double closest(const geometry_msgs::msg::Point & q) const;
+
+private:
+  std::vector<double> bases_;
+  std::vector<std::array<double, 3>> points_;
+};
 
 //! (s, l) on the reference_path of this cycle: s = 0 at its rear end, l positive to the left
 struct EgoFrenetState

@@ -36,7 +36,7 @@ namespace autoware::safety_planner::experiment
 namespace
 {
 
-//! The VELOCITY limit in effect at the arc length s, global and region-limited bounds together
+//! The VELOCITY limit in effect at the arc length s, global bounds and speed limit zones together
 double velocity_limit_at(
   const CompiledConstraints & compiled_constraints, const KinematicLimits & limits, const double s)
 {
@@ -562,8 +562,8 @@ void FrenetSamplingBasedPlanner::evaluate(
         }
         continue;
       }
-      // A soft boundary, the own lane bound towards a parallel lane, costs slack_weight times the
-      // squared amount by which it is exceeded
+      // A soft boundary, the own lane bound towards a parallel lane, costs the squared amount by
+      // which it is exceeded
       double extreme_l = 0.0;
       if (!lateral_bound_extreme_l(bound, box.s_min, box.s_max, extreme_l)) {
         continue;
@@ -571,7 +571,7 @@ void FrenetSamplingBasedPlanner::evaluate(
       const double violation =
         bound.forbidden_side == Side::LEFT ? box.l_max - extreme_l : extreme_l - box.l_min;
       if (violation > 0.0) {
-        soft_bound_cost += raw.slack_weight * violation * violation;
+        soft_bound_cost += p.weights.soft_bound * violation * violation;
       }
     }
     for (const auto & occupancy : compiled_constraints.occupancies) {

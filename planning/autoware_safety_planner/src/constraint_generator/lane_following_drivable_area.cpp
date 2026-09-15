@@ -161,13 +161,12 @@ std::vector<Point2d> offset_towards(
 //! boundary forbids is decided by the consumer, from where the polyline falls relative to its
 //! reference path.
 Constraint make_boundary_constraint(
-  const std::vector<Point2d> & polyline, const Hardness hardness, const double slack_weight,
-  const std::string & plugin_name, const std::string & target_id, const std::string & detail)
+  const std::vector<Point2d> & polyline, const Hardness hardness, const std::string & plugin_name,
+  const std::string & target_id, const std::string & detail)
 {
   Constraint constraint;
   constraint.certainty = Certainty::DEFINITE;  // the map is a settled premise
   constraint.hardness = hardness;
-  constraint.slack_weight = hardness == Hardness::SOFT ? slack_weight : 0.0;
   Boundary boundary;
   boundary.polyline.assign(polyline.begin(), polyline.end());
   constraint.payload = std::move(boundary);
@@ -198,7 +197,6 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
       .as_lanelets();
   const auto & lanelet_map = route_manager.lanelet_map_ptr();
   const double margin_m = params_.lane_following_drivable_area.margin_m;
-  const double bound_slack_weight = params_.lane_following_drivable_area.bound_slack_weight;
 
   for (const auto & lanelet : lanelets) {
     for (const auto side_left : {true, false}) {
@@ -285,8 +283,8 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         }
         const auto hardness = adjacent ? Hardness::SOFT : Hardness::HARD;
         output.constraints.push_back(make_boundary_constraint(
-          offset_towards(polyline, lanelet.centerline(), margin_m), hardness, bound_slack_weight,
-          get_name(), std::to_string(lanelet.id()), side_left ? "left_bound" : "right_bound"));
+          offset_towards(polyline, lanelet.centerline(), margin_m), hardness, get_name(),
+          std::to_string(lanelet.id()), side_left ? "left_bound" : "right_bound"));
         continue;
       }
 
@@ -305,7 +303,7 @@ ConstraintGeneratorOutput LaneFollowingDrivableAreaConstraintGenerator::generate
         const auto flush = [&]() {
           if (run.size() >= 2) {
             output.constraints.push_back(make_boundary_constraint(
-              offset_towards(run, bound, margin_m), Hardness::HARD, 0.0, get_name(),
+              offset_towards(run, bound, margin_m), Hardness::HARD, get_name(),
               std::to_string(border_id), side_left ? "left_road_border" : "right_road_border"));
           }
           run.clear();

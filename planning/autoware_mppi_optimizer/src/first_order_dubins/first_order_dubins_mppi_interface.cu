@@ -21,6 +21,7 @@
 #include "autoware/mppi_optimizer/mppi_debug_trajectory_logger.hpp"
 #include "autoware/mppi_optimizer/tracked_objects_obstacles.hpp"
 
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <mppi/controllers/MPPI/mppi_controller.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_cost_bridge.hpp>
@@ -758,6 +759,16 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::vector<float> logged_nominal_steer;
   /** Wall time of the most recent seedNominalControl call [ms]. */
   double last_seed_nominal_ms{0.0};
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper;
+
+  /** Null when no TimeKeeper is set so the tracked sections cost nothing in that case. */
+  std::unique_ptr<autoware_utils_debug::ScopedTimeTrack> track(const char * name) const
+  {
+    if (!time_keeper) {
+      return nullptr;
+    }
+    return std::make_unique<autoware_utils_debug::ScopedTimeTrack>(name, *time_keeper);
+  }
 
   /**
    * Per-channel discrete ZOH input delay (in dynamics taps, not host IC pre-roll):
@@ -1383,7 +1394,10 @@ struct FirstOrderDubinsMppiInterface::Impl
       accel_delay_buffer, kDt, keep_velocity_limit_active, profile_reference_velocities);
     detail::applyActiveVelocityLimitProfile(diffusion_reference, active_velocity_limit_profile);
     const auto seed_t0 = std::chrono::steady_clock::now();
-    seedNominalControl(diffusion_reference, tracking_start_idx, initial_state);
+    {
+      const auto st = track("seed_nominal_control");
+      seedNominalControl(diffusion_reference, tracking_start_idx, initial_state);
+    }
     last_seed_nominal_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - seed_t0).count();
     applyActiveVelocityLimitToNominal();
@@ -1424,8 +1438,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     plant.steer_cmd_delay_buffer = steer_delay_buffer;
   }
 
-  FirstOrderDubinsMppiPredictionAccuracy evaluatePredictionAccuracy(
-    const Odometry & odometry) const
+  FirstOrderDubinsMppiPredictionAccuracy evaluatePredictionAccuracy(const Odometry & odometry) const
   {
     if (!prediction_anchor_.valid) {
       return {};
@@ -1444,8 +1457,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     return detail::evaluatePlantPredictionAccuracy(input);
   }
 
-  void recordAppliedControl(
-    const Odometry & odometry, const FirstOrderDubinsMppiControl & control)
+  void recordAppliedControl(const Odometry & odometry, const FirstOrderDubinsMppiControl & control)
   {
     detail::FirstOrderDubinsMppiControlHistoryEntry entry;
     entry.stamp = odometry.header.stamp;
@@ -1455,8 +1467,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (prediction_control_history_.size() > kMaxHistoryEntries) {
       prediction_control_history_.erase(
         prediction_control_history_.begin(),
-        prediction_control_history_.end() -
-          static_cast<std::ptrdiff_t>(kMaxHistoryEntries));
+        prediction_control_history_.end() - static_cast<std::ptrdiff_t>(kMaxHistoryEntries));
     }
   }
 
@@ -1485,32 +1496,37 @@ struct FirstOrderDubinsMppiInterface::Impl
     ego.y = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y));
     ego.yaw = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW));
     ego.velocity = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X));
-    auto prepared_reference = detail::buildReferenceHorizon(
-      diffusion_reference, ego, kRefHorizon, kDt, tracking_start_idx,
-      &diffusion_reference_chord_length_s,
-      uniform_effective_max_velocity ? nullptr : &effective_max_velocity_by_reference_point);
-    if (uniform_effective_max_velocity && !active_velocity_limit_profile.active) {
-      for (auto & sample : prepared_reference) {
-        sample.velocity = std::clamp(sample.velocity, 0.0F, *uniform_effective_max_velocity);
+    std::vector<mppi::path::PathReferenceSample> ref;
+    {
+      const auto st = track("upload_reference_horizon");
+      auto prepared_reference = detail::buildReferenceHorizon(
+        diffusion_reference, ego, kRefHorizon, kDt, tracking_start_idx,
+        &diffusion_reference_chord_length_s,
+        uniform_effective_max_velocity ? nullptr : &effective_max_velocity_by_reference_point);
+      if (uniform_effective_max_velocity && !active_velocity_limit_profile.active) {
+        for (auto & sample : prepared_reference) {
+          sample.velocity = std::clamp(sample.velocity, 0.0F, *uniform_effective_max_velocity);
+        }
       }
-    }
-    std::vector<mppi::path::PathReferenceSample> ref(prepared_reference.size());
-    for (size_t i = 0; i < prepared_reference.size(); ++i) {
-      ref[i].t = prepared_reference[i].time;
-      ref[i].x = prepared_reference[i].x;
-      ref[i].y = prepared_reference[i].y;
-      ref[i].yaw = prepared_reference[i].yaw;
-      ref[i].v = prepared_reference[i].velocity;
-      ref[i].arc_length_s = prepared_reference[i].arc_length_s;
-      if (prepared_reference[i].max_velocity) {
-        ref[i].max_velocity = *prepared_reference[i].max_velocity;
-        ref[i].velocity_limit_active = 1U;
+      ref.resize(prepared_reference.size());
+      for (size_t i = 0; i < prepared_reference.size(); ++i) {
+        ref[i].t = prepared_reference[i].time;
+        ref[i].x = prepared_reference[i].x;
+        ref[i].y = prepared_reference[i].y;
+        ref[i].yaw = prepared_reference[i].yaw;
+        ref[i].v = prepared_reference[i].velocity;
+        ref[i].arc_length_s = prepared_reference[i].arc_length_s;
+        if (prepared_reference[i].max_velocity) {
+          ref[i].max_velocity = *prepared_reference[i].max_velocity;
+          ref[i].velocity_limit_active = 1U;
+        }
       }
+      mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(cost, ref);
     }
-    mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(cost, ref);
 
     // Lateral crash / soft lateral distance use the full DP polyline + chord lengths.
     {
+      const auto st = track("upload_lateral_corridor");
       const auto & pts = diffusion_reference.points;
       const int n_src = static_cast<int>(pts.size());
       if (n_src >= 2) {
@@ -1537,37 +1553,47 @@ struct FirstOrderDubinsMppiInterface::Impl
       }
     }
 
-    int obstacle_count = 0;
-    if (!tracked_objects.objects.empty()) {
-      buildObstacleTrajectoryBuffersFromTrackedObjects(
-        tracked_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw, obs_half_length,
-        obs_half_width, 0.0F);
-      obstacle_count = trackedObjectObstacleCount(tracked_objects);
-    } else if (!obstacles.empty()) {
-      mppi::cost::buildObstacleTrajectoryBuffers(
-        obstacles, sim_time, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw,
-        obs_half_length, obs_half_width);
-      obstacle_count =
-        static_cast<int>(std::min(obstacles.size(), static_cast<size_t>(kMaxMppiObstacles)));
-    } else {
-      obs_traj_x.clear();
-      obs_traj_y.clear();
-      obs_traj_yaw.clear();
-      obs_half_length.clear();
-      obs_half_width.clear();
+    {
+      const auto st = track("upload_obstacles");
+      int obstacle_count = 0;
+      if (!tracked_objects.objects.empty()) {
+        buildObstacleTrajectoryBuffersFromTrackedObjects(
+          tracked_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw, obs_half_length,
+          obs_half_width, 0.0F);
+        obstacle_count = trackedObjectObstacleCount(tracked_objects);
+      } else if (!obstacles.empty()) {
+        mppi::cost::buildObstacleTrajectoryBuffers(
+          obstacles, sim_time, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw,
+          obs_half_length, obs_half_width);
+        obstacle_count =
+          static_cast<int>(std::min(obstacles.size(), static_cast<size_t>(kMaxMppiObstacles)));
+      } else {
+        obs_traj_x.clear();
+        obs_traj_y.clear();
+        obs_traj_yaw.clear();
+        obs_half_length.clear();
+        obs_half_width.clear();
+      }
+      mppi::cost::fillFirstOrderDubinsBicycleCostObstacleTrajectories<kRefHorizon>(
+        cost, obstacle_count > 0 ? obs_traj_x.data() : nullptr,
+        obstacle_count > 0 ? obs_traj_y.data() : nullptr,
+        obstacle_count > 0 ? obs_traj_yaw.data() : nullptr,
+        obstacle_count > 0 ? obs_half_length.data() : nullptr,
+        obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
     }
-    mppi::cost::fillFirstOrderDubinsBicycleCostObstacleTrajectories<kRefHorizon>(
-      cost, obstacle_count > 0 ? obs_traj_x.data() : nullptr,
-      obstacle_count > 0 ? obs_traj_y.data() : nullptr,
-      obstacle_count > 0 ? obs_traj_yaw.data() : nullptr,
-      obstacle_count > 0 ? obs_half_length.data() : nullptr,
-      obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
-    uploadBoundarySegments();
+    {
+      const auto st = track("upload_boundary_segments");
+      uploadBoundarySegments();
+    }
 
-    controller->updateImportanceSampler(u_nom);
-    controller->computeControl(x, 1);
-    cudaStreamSynchronize(controller->stream_);
-    checkCuda("computeControl");
+    {
+      // Includes the stream sync so the GPU rollouts are attributed here, not to the next read.
+      const auto st = track("compute_control");
+      controller->updateImportanceSampler(u_nom);
+      controller->computeControl(x, 1);
+      cudaStreamSynchronize(controller->stream_);
+      checkCuda("computeControl");
+    }
 
     Mppi::control_trajectory u_opt_traj = controller->getControlSeq();
     if (active_velocity_limit_profile.active) {
@@ -1724,6 +1750,15 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     options.enable_input_delay_compensation ? "true" : "false",
     options.prevent_reverse_velocity ? "true" : "false");
 }
+void FirstOrderDubinsMppiInterface::setTimeKeeper(
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
+{
+  if (!impl_) {
+    throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
+  }
+  impl_->time_keeper = std::move(time_keeper);
+}
+
 void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
   const bool enable, const std::string & directory)
 {
@@ -1918,16 +1953,22 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   }
 
   const auto start_time = std::chrono::steady_clock::now();
+  const auto total_track = impl_->track("optimizeTrajectory");
 
-  impl_->updateDiffusionReference(
-    input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
-    kinematic_limits);
+  {
+    const auto st = impl_->track("update_diffusion_reference");
+    impl_->updateDiffusionReference(
+      input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
+      kinematic_limits);
+  }
   result.debug.prediction_accuracy = impl_->evaluatePredictionAccuracy(odometry);
   impl_->capturePredictionAnchor(odometry);
   // Capture IC before runStep advances the ego state with the applied control.
   const DYN::state_array x_at_optimization = impl_->x;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
   impl_->recordAppliedControl(odometry, control);
+
+  auto output_track = impl_->track("build_output_trajectory");
 
   FirstOrderDubinsMppiAppliedPlantState & applied_plant = result.debug.applied_plant;
   applied_plant.valid = true;
@@ -2058,7 +2099,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       ? impl_->effective_max_velocity_by_reference_point.front()
       : std::nullopt;
   detail::setInitialEngageVelocity(output, initial_effective_maximum);
+  output_track.reset();
 
+  auto debug_track = impl_->track("build_debug_output");
   result.trajectory = output;
   result.debug.reference_trajectory = input;
   result.debug.optimized_trajectory = output;
@@ -2125,6 +2168,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     impl_->logged_hist_accel_tm2, impl_->logged_hist_steer_tm2, impl_->logged_hist_accel_tm1,
     impl_->logged_hist_steer_tm1, impl_->logged_delay_accel, impl_->logged_delay_steer,
     impl_->logged_applied_accel, impl_->logged_applied_steer, impl_->active_kinematic_limits);
+  debug_track.reset();
 
   const auto validation_reasons = to_string(result.debug.validation.reasons);
   const auto cost_breakdown = formatCostBreakdown(result.debug.cost_breakdown);
@@ -2379,7 +2423,8 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
   builtin_interfaces::msg::Time query_time = input.anchor.stamp;
   float integration_time = 0.0F;
   for (const float step_dt : dts) {
-    const auto control = controlAtTimeForPrediction(input.control_history, query_time, fallback_control);
+    const auto control =
+      controlAtTimeForPrediction(input.control_history, query_time, fallback_control);
     FirstOrderDubinsBicycle::control_array u = FirstOrderDubinsBicycle::control_array::Zero();
     u(static_cast<int>(C::ACCELERATION_CMD)) = control.accel_cmd;
     u(static_cast<int>(C::STEER_CMD)) = control.steer_cmd;
@@ -2418,8 +2463,8 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
   result.predicted_y = x(static_cast<int>(S::POS_Y));
   result.predicted_yaw = x(static_cast<int>(S::YAW));
   result.predicted_vel = x(static_cast<int>(S::VEL_X));
-  result.pos_error_m = std::hypot(
-    result.predicted_x - input.measured_x, result.predicted_y - input.measured_y);
+  result.pos_error_m =
+    std::hypot(result.predicted_x - input.measured_x, result.predicted_y - input.measured_y);
   result.yaw_error_rad = wrapPiForPrediction(result.predicted_yaw - input.measured_yaw);
   result.vel_error_mps = result.predicted_vel - input.measured_vel;
   return result;

@@ -461,23 +461,16 @@ void SafetyPlannerNode::publish_constraints_markers(
 
     // (time, ring in the map frame) per sample
     std::vector<std::pair<double, std::vector<Point2d>>> samples;
-    if (const auto * body = std::get_if<RigidBody>(&keep_out.occupancy)) {
-      for (const auto & wp : body->waypoints) {
-        const double c = std::cos(wp.pose.yaw);
-        const double sn = std::sin(wp.pose.yaw);
-        std::vector<Point2d> ring;
-        for (const auto & v : body->shape.outer()) {
-          ring.emplace_back(
-            wp.pose.position.x() + c * v.x() - sn * v.y(),
-            wp.pose.position.y() + sn * v.x() + c * v.y());
-        }
-        samples.emplace_back(wp.t, std::move(ring));
+    for (const auto & wp : keep_out.waypoints) {
+      const double c = std::cos(wp.pose.yaw);
+      const double sn = std::sin(wp.pose.yaw);
+      std::vector<Point2d> ring;
+      for (const auto & v : keep_out.shape.outer()) {
+        ring.emplace_back(
+          wp.pose.position.x() + c * v.x() - sn * v.y(),
+          wp.pose.position.y() + sn * v.x() + c * v.y());
       }
-    } else if (const auto * seq = std::get_if<TimedPolygonSequence>(&keep_out.occupancy)) {
-      for (const auto & tp : seq->polygons) {
-        samples.emplace_back(
-          tp.t, std::vector<Point2d>(tp.polygon.outer().begin(), tp.polygon.outer().end()));
-      }
+      samples.emplace_back(wp.t, std::move(ring));
     }
 
     for (std::size_t k = 0; k < samples.size(); ++k) {
@@ -491,9 +484,6 @@ void SafetyPlannerNode::publish_constraints_markers(
         continue;
       }
       const auto & [t_prev, ring_prev] = samples[k - 1];
-      if (ring_prev.size() != ring.size()) {  // TimedPolygonSequence may change the vertex count
-        continue;
-      }
       const double z_prev = z + t_prev * TIME_Z_PER_SEC;
       for (std::size_t i = 0; i < ring.size(); ++i) {
         marker.points.push_back(to_point(ring_prev[i], z_prev));
@@ -533,9 +523,8 @@ void SafetyPlannerNode::publish_constraints_markers(
     cautious_markers.markers.push_back(std::move(marker));
   };
 
-  // A ScalarBound has no geometry of its own beyond the region, so the numbers go into text:
-  // "v <= 5.00 [m/s]" at the centroid of the region, or, for a bound that holds everywhere, one
-  // line of a list floating above the ego
+  // A ScalarBound has no geometry, so the numbers go into text, one line of a list floating above
+  // the ego; a SpeedLimitZone is drawn as a filled face with "v <= 5.00 [m/s]" at its centroid
   const auto bound_text = [](const ScalarBound & bound) {
     const char * symbol = "";
     const char * unit = "";
@@ -605,25 +594,27 @@ void SafetyPlannerNode::publish_constraints_markers(
       } else if (const auto * bound = std::get_if<ScalarBound>(&constraint.payload)) {
         const std::string line =
           plugin_name + (is_hard ? "[hard]: " : "[soft]: ") + bound_text(*bound);
-        if (!bound->region) {
-          if (constraint.certainty == Certainty::DEFINITE) {
-            normal_global_bounds[is_hard ? 0 : 1] += line + "\n";
-          }
-          cautious_global_bounds[is_hard ? 0 : 1] += line + "\n";
-          continue;
+        if (constraint.certainty == Certainty::DEFINITE) {
+          normal_global_bounds[is_hard ? 0 : 1] += line + "\n";
         }
-        const auto & ring = bound->region->outer();
+        cautious_global_bounds[is_hard ? 0 : 1] += line + "\n";
+      } else if (const auto * zone = std::get_if<SpeedLimitZone>(&constraint.payload)) {
+        const auto & ring = zone->region.outer();
         if (ring.empty()) {
           continue;
         }
+        std::ostringstream ss;
+        ss << plugin_name << (is_hard ? "[hard]: " : "[soft]: ") << std::fixed
+           << std::setprecision(2) << "v <= " << zone->v_max << " [m/s]";
+        const std::string line = ss.str();
         // A filled face rather than an outline, which would be lost among the Boundary lines.
         // Lanelet regions are concave, so a fan from the centroid would not do
         auto fill_color = is_hard ? hard_constraint_color : soft_constraint_color;
         fill_color.a = 0.3;
         auto fill = create_default_marker(
-          "map", now, plugin_name + "/scalar_bound", id, Marker::TRIANGLE_LIST,
+          "map", now, plugin_name + "/speed_limit_zone", id, Marker::TRIANGLE_LIST,
           create_marker_scale(1.0, 1.0, 1.0), fill_color);
-        for (const auto & triangle : autoware_utils_geometry::triangulate(*bound->region)) {
+        for (const auto & triangle : autoware_utils_geometry::triangulate(zone->region)) {
           for (std::size_t k = 0; k < 3; ++k) {
             fill.points.push_back(to_point(triangle.outer()[2 - k], z));
           }
@@ -633,7 +624,7 @@ void SafetyPlannerNode::publish_constraints_markers(
           centroid += p;
         }
         centroid /= static_cast<double>(ring.size());
-        auto text = text_marker(plugin_name + "/scalar_bound_text", id, line);
+        auto text = text_marker(plugin_name + "/speed_limit_zone_text", id, line);
         text.pose.position = to_point(centroid, z + 0.5);
         add(std::move(fill), constraint);
         add(std::move(text), constraint);

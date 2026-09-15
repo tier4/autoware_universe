@@ -22,8 +22,8 @@
 namespace autoware::safety_planner::experiment
 {
 
-//! Debug generator: emits one regional velocity ScalarBound over the lanelet that follows the
-//! current one on the route, to exercise the region path of the constraint IR end to end
+//! Debug generator: emits one SpeedLimitZone over the lanelet that follows the current one on
+//! the route, to exercise the zone path of the constraint IR end to end
 class NextLaneletSpeedLimitConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:

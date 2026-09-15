@@ -19,9 +19,9 @@
 
 #include <autoware/mppi_optimizer/detail/trajectory_utils.hpp>
 #include <autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_conversion.hpp>
-#include <autoware/trajectory/utils/closest.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_math/normalization.hpp>
+#include <autoware_utils_visualization/marker_helper.hpp>
 #include <pluginlib/class_list_macros.hpp>
 
 #include <autoware_perception_msgs/msg/shape.hpp>
@@ -67,7 +67,7 @@ double to_seconds(const builtin_interfaces::msg::Duration & d)
   return rclcpp::Duration(d).seconds();
 }
 
-//! The VELOCITY limit in effect at the arc length s, global and region-limited bounds together
+//! The VELOCITY limit in effect at the arc length s, global bounds and speed limit zones together
 double velocity_limit_at(
   const CompiledConstraints & compiled_constraints, const KinematicLimits & limits, const double s)
 {
@@ -117,10 +117,58 @@ void append_segments(const LineString2d & polyline, std::vector<Segment> & segme
   }
 }
 
+//! The segments exactly as MPPI receives them (after simplification): hard in red, soft in
+//! yellow, with the vertices as points so the remaining vertex density can be read off
+MarkerArray make_boundary_markers(
+  const std::vector<Segment> & road_borders, const std::vector<Segment> & drivable_area,
+  const builtin_interfaces::msg::Time & stamp, const double z)
+{
+  using autoware_utils_visualization::create_default_marker;
+  using autoware_utils_visualization::create_marker_color;
+  using autoware_utils_visualization::create_marker_scale;
+
+  auto hard_marker = create_default_marker(
+    "map", stamp, "mppi_road_borders", 0, Marker::LINE_LIST, create_marker_scale(0.1, 0.0, 0.0),
+    create_marker_color(1.0, 0.2, 0.2, 0.8));
+  auto soft_marker = create_default_marker(
+    "map", stamp, "mppi_drivable_area", 0, Marker::LINE_LIST, create_marker_scale(0.1, 0.0, 0.0),
+    create_marker_color(1.0, 1.0, 0.2, 0.8));
+  auto vertex_marker = create_default_marker(
+    "map", stamp, "mppi_boundary_vertices", 0, Marker::SPHERE_LIST,
+    create_marker_scale(0.25, 0.25, 0.25), create_marker_color(1.0, 1.0, 1.0, 0.8));
+
+  const auto append = [&](const std::vector<Segment> & segments, Marker & marker) {
+    for (const auto & segment : segments) {
+      geometry_msgs::msg::Point p0;
+      p0.x = segment.x0;
+      p0.y = segment.y0;
+      p0.z = z;
+      geometry_msgs::msg::Point p1;
+      p1.x = segment.x1;
+      p1.y = segment.y1;
+      p1.z = z;
+      marker.points.push_back(p0);
+      marker.points.push_back(p1);
+      vertex_marker.points.push_back(p0);
+      vertex_marker.points.push_back(p1);
+    }
+  };
+  append(road_borders, hard_marker);
+  append(drivable_area, soft_marker);
+
+  MarkerArray markers;
+  for (auto & marker : {hard_marker, soft_marker, vertex_marker}) {
+    if (!marker.points.empty()) {
+      markers.markers.push_back(marker);
+    }
+  }
+  return markers;
+}
+
 //! MPPI takes an oriented box per object, so the body-frame shape is reduced to its bounding
 //! box and the motion to the speed between the first two waypoints (it extrapolates at constant
 //! velocity; the later waypoints are not representable)
-TrackedObject to_tracked_object(const RigidBody & body)
+TrackedObject to_tracked_object(const KeepOut & body)
 {
   TrackedObject object;
   double x_min = std::numeric_limits<double>::infinity();
@@ -176,6 +224,11 @@ void MppiPlanner::on_initialize(
   cautious_turn_indicator_decider_.update_params(turn_signal_params);
   normal_optimizer_ = std::make_unique<MppiInterface>();
   cautious_optimizer_ = std::make_unique<MppiInterface>();
+  normal_optimizer_->setTimeKeeper(time_keeper_);
+  cautious_optimizer_->setTimeKeeper(time_keeper_);
+  constexpr std::size_t kBoundaryCacheSize = 256;
+  boundary_simplifier_ = std::make_unique<BoundarySimplifier>(
+    params.mppi_planner.boundary.simplify_tolerance_m, kBoundaryCacheSize);
 }
 
 TrajectoryPlannerResult MppiPlanner::plan_trajectories(const TrajectoryPlannerInput & input)
@@ -189,11 +242,18 @@ TrajectoryPlannerResult MppiPlanner::plan_trajectories(const TrajectoryPlannerIn
       *normal_optimizer_, normal_turn_indicator_decider_, input.context, input.normal_constraints,
       result.normal_debug);
   }
-  {
+  const bool cautious_differs = std::any_of(
+    input.cautious_constraints.begin(), input.cautious_constraints.end(),
+    [](const Constraint & constraint) { return constraint.certainty == Certainty::POSSIBLE; });
+  if (cautious_differs) {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
     result.cautious_trajectory = plan_one_side(
       *cautious_optimizer_, cautious_turn_indicator_decider_, input.context,
       input.cautious_constraints, result.cautious_debug);
+  } else {
+    // Not left empty: the node would publish an ego-only cautious candidate every cycle
+    result.cautious_trajectory = result.normal_trajectory;
+    result.cautious_debug = result.normal_debug;
   }
   return result;
 }
@@ -203,18 +263,31 @@ PlannedTrajectory MppiPlanner::plan_one_side(
   const PlannerContext & context, const std::vector<Constraint> & constraints,
   TrajectoryPlannerDebug & debug)
 {
+  auto compile_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+    "compile_constraint_list", *time_keeper_);
   const auto compiled_constraints = compile_constraint_list(context, constraints);
+  compile_st.reset();
+  auto reference_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+    "make_reference_trajectory", *time_keeper_);
   auto trajectory = make_reference_trajectory(context, compiled_constraints);
-  if (!refine(optimizer, context, compiled_constraints, trajectory, debug)) {
-    // The reference carries the lateral bounds and the stop bars by construction but not the
-    // moving objects, so it is driven only when it passes the same check as the MPPI output
-    std::string reason;
-    if (!satisfies_constraints(context, compiled_constraints, trajectory, reason)) {
-      RCLCPP_WARN_THROTTLE(
-        logger(), steady_clock(), 5000, "reference violates %s; stopping", reason.c_str());
-      trajectory = make_stop_trajectory(context, compiled_constraints);
-    }
+  reference_st.reset();
+  const PathProjector projector(context.reference_path);
+  if (
+    const auto failure =
+      refine(optimizer, context, compiled_constraints, projector, trajectory, debug)) {
+    RCLCPP_WARN_THROTTLE(logger(), steady_clock(), 5000, "MPPI failed: %s", failure->c_str());
+    // No fallback on purpose: the failure has to be visible downstream to measure the failure
+    // rate, so only the ego point (points[0]) is kept and the reason is recorded as a marker
+    trajectory.points.resize(1);
+    auto marker = autoware_utils_visualization::create_default_marker(
+      "map", context.odometry.header.stamp, "mppi_failure", 0, Marker::TEXT_VIEW_FACING,
+      autoware_utils_visualization::create_marker_scale(0.0, 0.0, 1.0),
+      autoware_utils_visualization::create_marker_color(1.0, 0.0, 0.0, 0.999));
+    marker.pose = context.odometry.pose.pose;
+    marker.text = *failure;
+    debug.markers["mppi_failure"].markers.push_back(std::move(marker));
   }
+  autoware_utils_debug::ScopedTimeTrack turn_st("decide_turn_indicators", *time_keeper_);
   const auto turn_indicators = turn_indicator_decider.decide(context, trajectory);
   return PlannedTrajectory{std::move(trajectory), turn_indicators};
 }
@@ -269,13 +342,24 @@ Trajectory MppiPlanner::make_reference_trajectory(
     prev_steer = steer;
     v_grid[i] = v_cap;
   }
-  const double a_dec = std::abs(limits.a_nom_min);
+  // Kept below the hard limit MPPI brakes with: its acceleration lags the reference by the input
+  // delay, and with no headroom it never catches up, so the crawl clamp in refine cuts the speed
+  constexpr double DECEL_HEADROOM_RATIO = 0.8;
+  const double a_dec =
+    std::min(std::abs(limits.a_nom_min), DECEL_HEADROOM_RATIO * std::abs(limits.a_hard_min));
   const double a_acc = limits.a_nom_max;
   for (std::size_t i = n - 1; i-- > 0;) {
     const double ds = s_grid[i + 1] - s_grid[i];
     v_grid[i] = std::min(v_grid[i], std::sqrt(v_grid[i + 1] * v_grid[i + 1] + 2.0 * a_dec * ds));
   }
-  double v_prev = std::max(0.0, context.odometry.twist.twist.linear.x);
+  // A stopped ego that could not even reach the engage speed before the stop stays stopped;
+  // the sqrt(2 a ds) cap would otherwise creep it up to the stop bar, where it violates the bar
+  const double engage_mps = params_.engage_velocity.velocity_hard_mps;
+  const double v_ego = std::max(0.0, context.odometry.twist.twist.linear.x);
+  if (v_ego < engage_mps && v_grid.front() < engage_mps) {
+    std::fill(v_grid.begin(), v_grid.end(), 0.0);
+  }
+  double v_prev = v_ego;
   for (std::size_t i = 0; i < n; ++i) {
     const double ds = i == 0 ? 0.0 : s_grid[i] - s_grid[i - 1];
     v_grid[i] = std::min(v_grid[i], std::sqrt(v_prev * v_prev + 2.0 * a_acc * ds));
@@ -298,9 +382,16 @@ Trajectory MppiPlanner::make_reference_trajectory(
   // The lateral offset blends linearly into the one of the goal over [2B, B] before the end and
   // holds it for the last B, as the sampling planner did; starting only B ahead needs an ever
   // larger curvature as the distance shrinks
+  // A goal the path was not connected to (e.g. in the neighboring lane) is not approached
+  // laterally either
+  constexpr double GOAL_CONNECTED_RADIUS_M = 1.0;
   const double blend_m = params_.mppi_planner.reference.goal_lateral_blend_m;
-  const double l_goal = lateral_offset_at(
-    path, s_max, Point2d{context.goal_pose.position.x, context.goal_pose.position.y});
+  const double l_goal =
+    autoware_utils_geometry::calc_distance2d(
+      path.compute(s_max).point.pose.position, context.goal_pose.position) < GOAL_CONNECTED_RADIUS_M
+      ? lateral_offset_at(
+          path, s_max, Point2d{context.goal_pose.position.x, context.goal_pose.position.y})
+      : 0.0;
   const auto lateral_at = [&](const double s) {
     return l_goal * std::clamp((2.0 * blend_m - (s_max - s)) / blend_m, 0.0, 1.0);
   };
@@ -337,36 +428,6 @@ Trajectory MppiPlanner::make_reference_trajectory(
       trajectory.points.push_back(point);
     }
     s = std::min(s + 0.5 * (v + v_next) * kMppiDt, s_max);
-    v = v_next;
-  }
-  return trajectory;
-}
-
-Trajectory MppiPlanner::make_stop_trajectory(
-  const PlannerContext & context, const CompiledConstraints & compiled_constraints) const
-{
-  const double decel = std::abs(collect_kinematic_limits(compiled_constraints).a_hard_min);
-  const auto ego = make_ego_point(context);
-  const double yaw = autoware_utils_geometry::get_rpy(ego.pose).z;
-
-  Trajectory trajectory;
-  trajectory.header.frame_id = "map";
-  trajectory.header.stamp = context.odometry.header.stamp;
-  trajectory.points.reserve(kMppiHorizon + 1);
-  double s = 0.0;
-  double v = ego.longitudinal_velocity_mps;
-  for (int k = 0; k <= kMppiHorizon; ++k) {
-    TrajectoryPoint point = ego;
-    point.time_from_start = rclcpp::Duration::from_seconds(k * kMppiDt);
-    point.pose.position.x += std::cos(yaw) * s;
-    point.pose.position.y += std::sin(yaw) * s;
-    point.longitudinal_velocity_mps = static_cast<float>(v);
-    point.acceleration_mps2 = static_cast<float>(v > 0.0 ? -decel : 0.0);
-    point.heading_rate_rps = static_cast<float>(
-      v * std::tan(ego.front_wheel_angle_rad) / context.vehicle_info.wheel_base_m);
-    trajectory.points.push_back(point);
-    const double v_next = std::max(0.0, v - decel * kMppiDt);
-    s += 0.5 * (v + v_next) * kMppiDt;
     v = v_next;
   }
   return trajectory;
@@ -437,10 +498,9 @@ void MppiPlanner::ensure_initialized(
   options.skip_if_invalid = true;
   // u_nom is forced from the reference every cycle (refine). Shifting the previous MPPI controls
   // instead keeps the sampling around a sequence whose head has no deceleration, and with the
-  // horizon receding the braking is deferred every cycle until the goal is overshot. The acados
-  // t-MPT seed is tuned for the diffusion planner stack
+  // horizon receding the braking is deferred every cycle until the goal is overshot
   options.use_last_control_as_nominal = false;
-  options.use_temporal_mpt_as_nominal = false;
+  options.use_temporal_mpt_as_nominal = p.nominal_seed == "temporal_mpt";
   options.enable_input_delay_compensation = p.vehicle.enable_input_delay_compensation;
 
   optimizer.setVehicleParams(vehicle);
@@ -449,20 +509,21 @@ void MppiPlanner::ensure_initialized(
   optimizer.initialize();
 }
 
-bool MppiPlanner::refine(
+std::optional<std::string> MppiPlanner::refine(
   MppiInterface & optimizer, const PlannerContext & context,
-  const CompiledConstraints & compiled_constraints, Trajectory & reference,
-  TrajectoryPlannerDebug & debug)
+  const CompiledConstraints & compiled_constraints, const PathProjector & projector,
+  Trajectory & reference, TrajectoryPlannerDebug & debug)
 {
   const auto limits = collect_kinematic_limits(compiled_constraints);
 
   try {
     ensure_initialized(optimizer, context, compiled_constraints);
   } catch (const std::exception & e) {
-    RCLCPP_ERROR_THROTTLE(logger(), steady_clock(), 5000, "MPPI initialize failed: %s", e.what());
-    return false;
+    return std::string("initialize: ") + e.what();
   }
 
+  auto inputs_st =
+    std::make_unique<autoware_utils_debug::ScopedTimeTrack>("build_mppi_inputs", *time_keeper_);
   // points[0] is the ego at t = 0; MPPI takes points[k] as the state at (k + 1) dt
   Trajectory mppi_input;
   mppi_input.header = reference.header;
@@ -477,14 +538,14 @@ bool MppiPlanner::refine(
   for (const auto & raw : compiled_constraints.raw_constraints) {
     if (const auto * boundary = std::get_if<Boundary>(&raw.payload)) {
       append_segments(
-        boundary->polyline, raw.hardness == Hardness::HARD ? road_borders : drivable_area);
+        boundary_simplifier_->simplify(boundary->polyline),
+        raw.hardness == Hardness::HARD ? road_borders : drivable_area);
     } else if (const auto * keep_out = std::get_if<KeepOut>(&raw.payload)) {
-      // TimedPolygonSequence has no box-per-object form; it stays on the output check
-      if (const auto * body = std::get_if<RigidBody>(&keep_out->occupancy)) {
-        tracked_objects.objects.push_back(to_tracked_object(*body));
-      }
+      tracked_objects.objects.push_back(to_tracked_object(*keep_out));
     }
   }
+  debug.markers["mppi_boundaries"] = make_boundary_markers(
+    road_borders, drivable_area, reference.header.stamp, context.odometry.pose.pose.position.z);
 
   FirstOrderDubinsMppiKinematicLimits kinematic_limits;
   // MPPI enables its velocity interval [0, max] (the sample cost and the recovery of the nominal
@@ -505,10 +566,9 @@ bool MppiPlanner::refine(
   // Stop bars become a per-point maximum of zero beyond the bar. A Gate has no time dimension
   // here: one that is closed anywhere in the horizon closes for the whole horizon
   const double horizon_s = to_seconds(mppi_input.points.back().time_from_start);
-  const auto & path = context.reference_path;
   kinematic_limits.max_velocity_by_reference_point.reserve(mppi_input.points.size());
   for (const auto & point : mppi_input.points) {
-    const double s = experimental::trajectory::closest(path, point.pose.position);
+    const double s = projector.closest(point.pose.position);
     std::optional<float> v_max;
     for (const auto & stop_bar : compiled_constraints.stop_bars) {
       if (stop_bar.time.t1 < 0.0 || stop_bar.time.t0 > horizon_s) {
@@ -535,7 +595,11 @@ bool MppiPlanner::refine(
     nominal_steer[k] = mppi_input.points[k].front_wheel_angle_rad;
     v_prev = v;
   }
-  optimizer.setForcedNominalControl(nominal_accel, nominal_steer);
+  // A forced nominal takes precedence over every other seed inside MPPI
+  if (params_.mppi_planner.nominal_seed == "reference") {
+    optimizer.setForcedNominalControl(nominal_accel, nominal_steer);
+  }
+  inputs_st.reset();
 
   autoware::mppi_optimizer::FirstOrderDubinsMppiOptimizationResult mppi_result;
   try {
@@ -543,8 +607,7 @@ bool MppiPlanner::refine(
       mppi_input, context.odometry, context.acceleration, context.steering, tracked_objects,
       road_borders, drivable_area, kinematic_limits);
   } catch (const std::exception & e) {
-    RCLCPP_ERROR_THROTTLE(logger(), steady_clock(), 5000, "MPPI failed: %s", e.what());
-    return false;
+    return std::string("optimize: ") + e.what();
   }
   debug.trajectories["mppi_reference"] = mppi_input;
   debug.trajectories["mppi_optimized"] = mppi_result.debug.optimized_trajectory;
@@ -571,10 +634,7 @@ bool MppiPlanner::refine(
     }
   }
   if (mppi_result.debug.was_rejected) {
-    RCLCPP_WARN_THROTTLE(
-      logger(), steady_clock(), 5000, "MPPI rejected its output (%s); driving the reference",
-      to_string(mppi_result.debug.validation.reasons).c_str());
-    return false;
+    return "rejected: " + to_string(mppi_result.debug.validation.reasons);
   }
 
   // ---- splice back ----
@@ -584,30 +644,24 @@ bool MppiPlanner::refine(
   // the steer command is used as is: it is what MPPI wants the wheels to do while (almost)
   // standing, e.g. unwinding a saturated steer before moving off, which the reference steer would
   // not show
+  auto splice_st =
+    std::make_unique<autoware_utils_debug::ScopedTimeTrack>("splice_back", *time_keeper_);
   Trajectory refined = reference;
   const double wheel_base_m = context.vehicle_info.wheel_base_m;
   const double max_steer = context.vehicle_info.max_steer_angle_rad;
   const auto & optimized = mppi_result.trajectory.points;
   refined.points.resize(optimized.size() + 1);
-  // Over the final crawl of the reference (below the engage speed up to its end) MPPI may not be
-  // faster than the reference: MPPI floors its own output at 0.25 m/s as soon as any later point
-  // exceeds that, and the creep at the stop (see below) makes one, so the ego would otherwise
-  // roll on at 0.25 m/s. A launch also starts below the engage speed, which is why the tail is
-  // taken and not every slow point
-  const float engage_mps = static_cast<float>(params_.engage_velocity.velocity_hard_mps);
-  std::size_t crawl_index = optimized.size();
-  while (crawl_index > 0 &&
-         mppi_input.points[crawl_index - 1].longitudinal_velocity_mps < engage_mps) {
-    --crawl_index;
-  }
+  // The reference is the fastest profile under the constraints, so MPPI is never allowed to be
+  // faster than it at the same index: MPPI tracks the reference speed loosely (the t-MPT seed
+  // brakes softer than the reference, and MPPI floors its output at 0.25 m/s as soon as any
+  // later point exceeds that), and the excess would either trip the checks below or, at the
+  // stop, be cut away in one step. The acceleration is rebuilt from the capped speeds afterwards
   for (std::size_t i = 0; i < optimized.size(); ++i) {
     const auto & in = optimized[i];
     auto & out = refined.points[i + 1];
     const auto & next = i + 1 < optimized.size() ? optimized[i + 1] : in;
-    const double v = i >= crawl_index ? std::min<double>(
-                                          in.longitudinal_velocity_mps,
-                                          mppi_input.points[i].longitudinal_velocity_mps)
-                                      : in.longitudinal_velocity_mps;
+    const double v = std::min<double>(
+      in.longitudinal_velocity_mps, mppi_input.points[i].longitudinal_velocity_mps);
     const double ds = autoware_utils_geometry::calc_distance2d(in.pose, next.pose);
     constexpr double MIN_CURVATURE_STEP_M = 0.1;
     const double steer = ds > MIN_CURVATURE_STEP_M
@@ -620,7 +674,6 @@ bool MppiPlanner::refine(
     const double kappa = std::tan(steer) / wheel_base_m;
     out.pose = in.pose;
     out.longitudinal_velocity_mps = static_cast<float>(v);
-    out.acceleration_mps2 = static_cast<float>((next.longitudinal_velocity_mps - v) / kMppiDt);
     out.front_wheel_angle_rad = static_cast<float>(std::clamp(steer, -max_steer, max_steer));
     out.heading_rate_rps = static_cast<float>(v * kappa);
   }
@@ -638,24 +691,32 @@ bool MppiPlanner::refine(
     auto & out = refined.points[i + 1];
     out.pose = refined.points[stop_index].pose;
     out.longitudinal_velocity_mps = 0.0F;
-    out.acceleration_mps2 = 0.0F;
     out.heading_rate_rps = 0.0F;
   }
+  for (std::size_t i = 1; i < refined.points.size(); ++i) {
+    const float v_next = i + 1 < refined.points.size()
+                           ? refined.points[i + 1].longitudinal_velocity_mps
+                           : refined.points[i].longitudinal_velocity_mps;
+    refined.points[i].acceleration_mps2 =
+      (v_next - refined.points[i].longitudinal_velocity_mps) / kMppiDt;
+  }
+
+  splice_st.reset();
 
   std::string reason;
-  if (!satisfies_constraints(context, compiled_constraints, refined, reason)) {
-    RCLCPP_WARN_THROTTLE(
-      logger(), steady_clock(), 5000, "MPPI output violates %s; driving the reference",
-      reason.c_str());
-    return false;
+  {
+    autoware_utils_debug::ScopedTimeTrack check_st("satisfies_constraints", *time_keeper_);
+    if (!satisfies_constraints(context, compiled_constraints, projector, refined, reason)) {
+      return "output violates " + reason;
+    }
   }
   reference = std::move(refined);
-  return true;
+  return std::nullopt;
 }
 
 bool MppiPlanner::satisfies_constraints(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-  const Trajectory & trajectory, std::string & reason) const
+  const PathProjector & projector, const Trajectory & trajectory, std::string & reason) const
 {
   const auto & path = context.reference_path;
   const auto limits = collect_kinematic_limits(compiled_constraints);
@@ -664,7 +725,7 @@ bool MppiPlanner::satisfies_constraints(
 
   for (std::size_t k = 0; k < trajectory.points.size(); ++k) {
     const auto & point = trajectory.points[k];
-    const double s = experimental::trajectory::closest(path, point.pose.position);
+    const double s = projector.closest(point.pose.position);
     const double l =
       lateral_offset_at(path, s, Point2d{point.pose.position.x, point.pose.position.y});
     const double v = point.longitudinal_velocity_mps;
@@ -674,11 +735,15 @@ bool MppiPlanner::satisfies_constraints(
       return false;
     }
     if (std::abs(v * v * kappa) > lat_accel_max + 1e-6) {
-      reason = "lat_accel";
+      reason = "lat_accel (k=" + std::to_string(k) + " v=" + std::to_string(v) +
+               " kappa=" + std::to_string(kappa) + ")";
       return false;
     }
-    if (v > velocity_limit_at(compiled_constraints, limits, s) + 1e-3) {
-      reason = "velocity";
+    // MPPI is given no reachable velocity limit (see refine), so its output overshoots the
+    // reference profile by the sampling noise, and points[0] carries the measured ego speed
+    constexpr double VELOCITY_MARGIN_MPS = 0.5;
+    if (v > velocity_limit_at(compiled_constraints, limits, s) + VELOCITY_MARGIN_MPS) {
+      reason = "velocity (k=" + std::to_string(k) + " v=" + std::to_string(v) + ")";
       return false;
     }
 

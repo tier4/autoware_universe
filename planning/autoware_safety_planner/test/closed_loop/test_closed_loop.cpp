@@ -50,8 +50,9 @@ struct Scenario
   Params params;
   LaneletRoute route;
   PredictedObjects predicted_objects;  //!< optional key "predicted_objects"; empty if absent
-  //! optional key "expectation": "goal_reached" (default) or "stop" (ego must come to a halt
-  //! before the goal, e.g. blocked by an obstacle)
+  //! optional key "expectation": "goal_reached" (default), "stop" (ego must come to a halt
+  //! before the goal, e.g. blocked by an obstacle) or "stop_beside_goal" (the goal lies in a lane
+  //! the ego cannot reach without a lane change; ego must halt next to it in its own lane)
   std::string expectation{"goal_reached"};
 };
 
@@ -210,7 +211,9 @@ protected:
       Args(scenario.route.goal_pose.position.x, scenario.route.goal_pose.position.y),
       Kwargs("color"_a = "red", "marker"_a = "*", "s"_a = 120, "label"_a = "goal"));
     ax_xy.set_aspect(Args("equal"));
-    ax_xy.set_title(Args(result.termination_reason));
+    ax_xy.set_title(Args(
+      result.termination_reason + " (planner failures: " + std::to_string(result.planner_failures) +
+      ")"));
     ax_xy.legend();
     ax_xy.grid();
 
@@ -232,13 +235,25 @@ TEST_P(ClosedLoopTest, ReachesGoalWithValidTrajectories)
     scenario.predicted_objects, ClosedLoopConfig{});
   const auto result = simulator.run();
   write_result_csv(result, make_test_results_dir("closed_loop") + current_test_file_stem());
+  RecordProperty("planner_failures", static_cast<int>(result.planner_failures));
   plot(scenario, simulator, result);
 
-  if (scenario.expectation == "stop") {
+  if (scenario.expectation == "stop" || scenario.expectation == "stop_beside_goal") {
     EXPECT_FALSE(result.goal_reached) << result.termination_reason;
     EXPECT_EQ(result.termination_reason.rfind("stalled", 0), 0u) << result.termination_reason;
     EXPECT_LT(std::abs(result.final_state.odometry.twist.twist.linear.x), 0.1);
-  } else {
+  }
+  if (scenario.expectation == "stop_beside_goal") {
+    // Ego position in the goal frame: level with the goal, at most one lane away
+    const auto & goal = scenario.route.goal_pose;
+    const auto & ego = result.final_state.odometry.pose.pose.position;
+    const double yaw = autoware_utils_geometry::get_rpy(goal).z;
+    const double dx = ego.x - goal.position.x;
+    const double dy = ego.y - goal.position.y;
+    EXPECT_LT(std::abs(dx * std::cos(yaw) + dy * std::sin(yaw)), 1.0);
+    EXPECT_LT(std::abs(-dx * std::sin(yaw) + dy * std::cos(yaw)), 5.0);
+  }
+  if (scenario.expectation == "goal_reached") {
     EXPECT_TRUE(result.goal_reached) << result.termination_reason;
   }
   EXPECT_TRUE(result.violations.empty()) << [&] {

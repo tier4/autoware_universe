@@ -30,7 +30,7 @@ ConstraintGeneratorOutput VehicleKinematicsConstraintGenerator::generate_constra
                      const BoundedQuantity quantity, const double min, const double max,
                      const std::string & detail) {
     Constraint constraint;
-    constraint.payload = ScalarBound{quantity, min, max, std::nullopt};
+    constraint.payload = ScalarBound{quantity, min, max};
     constraint.source = Source{"vehicle_kinematics", "", detail};
     output.constraints.push_back(std::move(constraint));
   };

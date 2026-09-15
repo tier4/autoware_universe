@@ -1,6 +1,7 @@
 /**:
   ros__parameters:
     mppi_planner:
+      nominal_seed: reference # reference / temporal_mpt
       boundary_threshold_m: 5.0 # [m] lateral deviation from the reference_path at which MPPI rejects its output; the ego may start this far off the centerline (a shoulder)
       reference:
         lat_accel_mps2: 1.0 # [m/s^2] lateral acceleration the reference profile aims at in curves
@@ -25,10 +26,12 @@
         road_border_safe_m: 0.4
         drivable_area_safe_m: 0.0
         corner_safe_m: 0.3
+      boundary:
+        simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the boundary polylines given to MPPI; 0 disables
       cost:
         lambda: 100.0
         speed: 500.0
-        track_center: 1.0
+        track_center: 100.0
         corner_buffer: 1.0
         lateral_distance: 5000.0
         lateral_yaw_error: 0.0

@@ -193,13 +193,13 @@ bool ClosedLoopSimulator::update_route_manager()
   return input_.route_manager.has_value();
 }
 
-void ClosedLoopSimulator::advance_ego(const Trajectory & trajectory)
+void ClosedLoopSimulator::advance_ego(const Trajectory & trajectory, const double t_target)
 {
   const auto & points = trajectory.points;
-  const double t_target = config_.dt_s;
+  const double dt = config_.dt_s;
 
   // The first point is the ego (time_from_start = 0). Interpolate linearly between the two
-  // points that bracket dt
+  // points that bracket t_target
   size_t idx = points.size() - 1;
   for (size_t i = 1; i < points.size(); ++i) {
     if (to_seconds(points[i].time_from_start) >= t_target) {
@@ -256,13 +256,12 @@ void ClosedLoopSimulator::advance_ego(const Trajectory & trajectory)
   const double v_mid = 0.5 * (v_prev + v_cmd);
   const double steer_mid = 0.5 * (steer_prev + steer_cmd);
   const double yaw_rate = v_mid * std::tan(steer_mid) / wheel_base_m;
-  const double yaw_mid = yaw_prev + 0.5 * yaw_rate * t_target;
-  pose.position.x += v_mid * std::cos(yaw_mid) * t_target;
-  pose.position.y += v_mid * std::sin(yaw_mid) * t_target;
+  const double yaw_mid = yaw_prev + 0.5 * yaw_rate * dt;
+  pose.position.x += v_mid * std::cos(yaw_mid) * dt;
+  pose.position.y += v_mid * std::sin(yaw_mid) * dt;
   // z has no dynamics here; follow the planned height so the ego stays on the map surface
   pose.position.z = (1.0 - ratio) * p0.pose.position.z + ratio * p1.pose.position.z;
-  pose.orientation =
-    autoware_utils_geometry::create_quaternion_from_yaw(yaw_prev + yaw_rate * t_target);
+  pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw_prev + yaw_rate * dt);
 }
 
 ClosedLoopResult ClosedLoopSimulator::run()
@@ -278,6 +277,8 @@ ClosedLoopResult ClosedLoopSimulator::run()
 
   double best_goal_distance = std::numeric_limits<double>::infinity();
   size_t last_progress_step = 0;
+  Trajectory last_complete_trajectory;
+  size_t steps_since_complete = 0;
 
   for (step_ = 0; step_ < config_.max_steps; ++step_) {
     const auto stamp = rclcpp::Time(static_cast<int64_t>(step_ * config_.dt_s * 1e9));
@@ -329,6 +330,28 @@ ClosedLoopResult ClosedLoopSimulator::run()
         input_.odometry, input_.acceleration, input_.steering, trajectory,
         std::move(reference_path_xy)});
 
+    // The planner has no fallback: on failure it returns the ego point alone (see mppi_planner),
+    // which is counted here and bridged with the last complete trajectory rather than treated as
+    // a broken one. Before the first complete trajectory the ego has not moved yet and stays put
+    if (trajectory.points.size() == 1) {
+      ++result.planner_failures;
+      ++steps_since_complete;
+      // A stopped ego just holds while the planner fails; the cutoff is for a moving one that
+      // would otherwise follow an old trajectory indefinitely
+      if (
+        steps_since_complete > config_.max_consecutive_planner_failures &&
+        std::abs(input_.odometry.twist.twist.linear.x) > config_.goal_velocity_threshold_mps) {
+        return finish(
+          "planner failed " + std::to_string(steps_since_complete) + " cycles in a row at step " +
+          std::to_string(step_));
+      }
+      if (!last_complete_trajectory.points.empty()) {
+        advance_ego(
+          last_complete_trajectory, static_cast<double>(steps_since_complete + 1) * config_.dt_s);
+      }
+      continue;
+    }
+
     const auto violations =
       validate_trajectory(trajectory, input_.odometry.pose.pose, input_.vehicle_info);
     for (const auto & v : violations) {
@@ -339,7 +362,9 @@ ClosedLoopResult ClosedLoopSimulator::run()
       return finish("invalid trajectory at step " + std::to_string(step_));
     }
 
-    advance_ego(trajectory);
+    last_complete_trajectory = trajectory;
+    steps_since_complete = 0;
+    advance_ego(trajectory, config_.dt_s);
   }
 
   return finish("reached max_steps (" + std::to_string(config_.max_steps) + ")");

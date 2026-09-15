@@ -75,19 +75,19 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
     return point;
   };
 
-  const auto is_inside_map_lane = [&](const geometry_msgs::msg::Pose & pose) {
+  // Road lanelets off the route are not accepted: a goal in the neighboring lane would otherwise
+  // be connected, i.e. a lane change, which is left to the driver / the other planner
+  const auto is_inside_route_or_shoulder_lane = [&](const geometry_msgs::msg::Pose & pose) {
     const lanelet::BasicPoint2d p{pose.position.x, pose.position.y};
     for (const auto & lanelet : route_lanelets) {
       if (lanelet::geometry::inside(lanelet, p)) {
         return true;
       }
     }
-    return !experimental::lanelet2_utils::get_road_lanelets_at(lanelet_map, p.x(), p.y()).empty() ||
-           !experimental::lanelet2_utils::get_shoulder_lanelets_at(lanelet_map, p.x(), p.y())
+    return !experimental::lanelet2_utils::get_shoulder_lanelets_at(lanelet_map, p.x(), p.y())
               .empty();
   };
 
-  std::optional<PathPointTrajectory> last_built;
   for (double radius = search_radius_m; radius >= 0.0; radius -= RADIUS_REDUCE_M) {
     std::size_t cut_index = 0;
     for (std::size_t i = 0; i < points.size(); ++i) {
@@ -115,20 +115,19 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
     if (!built) {
       continue;
     }
-    last_built = std::move(*built);
 
     bool valid = true;
-    for (double s = bases[cut_index]; s <= last_built->length(); s += VALIDATION_STEP_M) {
-      if (!is_inside_map_lane(last_built->compute(s).point.pose)) {
+    for (double s = bases[cut_index]; s <= built->length(); s += VALIDATION_STEP_M) {
+      if (!is_inside_route_or_shoulder_lane(built->compute(s).point.pose)) {
         valid = false;
         break;
       }
     }
     if (valid) {
-      break;
+      return built;
     }
   }
-  return last_built;
+  return std::nullopt;
 }
 
 }  // namespace

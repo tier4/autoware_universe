@@ -23,9 +23,9 @@
 // them (constraints_compiler.hpp IR -> road_borders / drivable_area segments, kinematic limits,
 // tracked objects); whatever it cannot represent (timed occupancy, lateral acceleration, soft
 // weights per constraint) is checked on the output. There is no planner behind this one: when
-// the output fails or MPPI rejects it, the reference is driven if it passes the same check, and
-// a stop trajectory from the ego pose is returned otherwise.
+// the output fails or MPPI rejects it, a trajectory of the ego point alone is returned.
 
+#include "../../utils/boundary_simplifier.hpp"
 #include "../../utils/turn_indicator_decider.hpp"
 #include "../frenet_sampling_based_planner/constraints_compiler.hpp"
 #include "../trajectory_planner_interface.hpp"
@@ -33,8 +33,14 @@
 #include <autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
+
+namespace autoware::safety_planner
+{
+class PathProjector;
+}  // namespace autoware::safety_planner
 
 namespace autoware::safety_planner::experiment
 {
@@ -64,16 +70,12 @@ private:
   Trajectory make_reference_trajectory(
     const PlannerContext & context, const CompiledConstraints & compiled_constraints) const;
 
-  //! Straight ahead from the ego pose, braking at the hardest deceleration
-  Trajectory make_stop_trajectory(
-    const PlannerContext & context, const CompiledConstraints & compiled_constraints) const;
-
-  //! Refines reference in place with optimizer; returns false (reference untouched) when MPPI
-  //! rejects its result or the result fails the constraint check
-  bool refine(
+  //! Refines reference in place with optimizer; returns the failure reason (reference untouched)
+  //! when MPPI rejects its result or the result fails the constraint check
+  std::optional<std::string> refine(
     MppiInterface & optimizer, const PlannerContext & context,
-    const CompiledConstraints & compiled_constraints, Trajectory & reference,
-    TrajectoryPlannerDebug & debug);
+    const CompiledConstraints & compiled_constraints, const PathProjector & projector,
+    Trajectory & reference, TrajectoryPlannerDebug & debug);
 
   //! The GPU resources are allocated on the first call, once the steer bounds are known
   void ensure_initialized(
@@ -82,7 +84,7 @@ private:
 
   bool satisfies_constraints(
     const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-    const Trajectory & trajectory, std::string & reason) const;
+    const PathProjector & projector, const Trajectory & trajectory, std::string & reason) const;
 
   // One decider per output, since each holds its own anti-chatter and latch state
   TurnIndicatorDecider normal_turn_indicator_decider_{TurnSignalParams{}};
@@ -90,6 +92,7 @@ private:
   //! One optimizer per output: the warm start (previous control sequence) is internal state
   std::unique_ptr<MppiInterface> normal_optimizer_;
   std::unique_ptr<MppiInterface> cautious_optimizer_;
+  std::unique_ptr<BoundarySimplifier> boundary_simplifier_;
 };
 
 }  // namespace autoware::safety_planner::experiment

@@ -47,9 +47,8 @@ ConstraintGeneratorOutput NextLaneletSpeedLimitConstraintGenerator::generate_con
     boost::geometry::correct(region);
 
     Constraint constraint;
-    constraint.payload = ScalarBound{
-      BoundedQuantity::VELOCITY, 0.0, params_.next_lanelet_speed_limit.velocity_mps,
-      std::move(region)};
+    constraint.payload =
+      SpeedLimitZone{std::move(region), params_.next_lanelet_speed_limit.velocity_mps};
     constraint.source = Source{get_name(), std::to_string(next.id()), "speed_limit"};
     output.constraints.push_back(std::move(constraint));
     break;

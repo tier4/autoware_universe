@@ -44,6 +44,9 @@ struct ClosedLoopConfig
   //! Stalled if the goal distance does not shrink by stall_progress_m within stall_window_steps
   size_t stall_window_steps{100};
   double stall_progress_m{0.1};
+  //! The run ends when the planner fails this many cycles in a row (the last complete trajectory
+  //! is not followed further than this)
+  size_t max_consecutive_planner_failures{30};
   //! Pure-pursuit lookahead: max(min_lookahead_m, lookahead_time_s * v)
   double lookahead_time_s{1.0};
   double min_lookahead_m{2.0};
@@ -70,6 +73,9 @@ struct ClosedLoopResult
   StepRecord final_state;
   //! "step N: <reason>" entries; empty if every trajectory was valid
   std::vector<std::string> violations;
+  //! Cycles in which the planner gave up (a trajectory of the ego point alone); the ego then
+  //! keeps following the last complete trajectory
+  size_t planner_failures{0};
 };
 
 //! Validity check of one output trajectory. Returns the list of violations (empty if valid)
@@ -95,10 +101,10 @@ public:
   const SafetyPlannerInput & input() const { return input_; }
 
 private:
-  //! Takes velocity / acceleration at dt seconds ahead on the trajectory, steers toward the
-  //! lookahead point on it (pure pursuit), and integrates the pose with the kinematic bicycle
-  //! model
-  void advance_ego(const Trajectory & trajectory);
+  //! Takes velocity / acceleration at t_target seconds on the trajectory, steers toward the
+  //! lookahead point on it (pure pursuit), and integrates the pose over dt with the kinematic
+  //! bicycle model
+  void advance_ego(const Trajectory & trajectory, double t_target);
   bool update_route_manager();
 
   Params params_;

@@ -11,6 +11,7 @@ generate_parameter_library(safety_planner_parameters
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 ament_auto_add_library(${PROJECT_NAME}_common STATIC
+  src/utils/boundary_simplifier.cpp
   src/utils/frenet_utils.cpp
   src/utils/trajectory_postprocess.cpp
   src/utils/turn_indicator_decider.cpp

@@ -12,3 +12,4 @@
         velocity: 0.5
         lon_jerk: 0.1
         curvature: 10.0
+        soft_bound: 100.0

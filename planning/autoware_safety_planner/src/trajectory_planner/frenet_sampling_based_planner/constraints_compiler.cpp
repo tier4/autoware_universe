@@ -241,24 +241,29 @@ std::vector<std::pair<double, double>> intersect_region(
 }
 
 bool project_scalar_bound(
-  const Centerline & centerline, const ScalarBound & bound, const std::size_t raw_index,
-  std::vector<ScalarBoundEntry> & out)
+  const ScalarBound & bound, const std::size_t raw_index, std::vector<ScalarBoundEntry> & out)
 {
   ScalarBoundEntry entry;
   entry.quantity = bound.quantity;
   entry.min = bound.min;
   entry.max = bound.max;
   entry.raw_index = raw_index;
+  out.push_back(entry);  // everywhere; s0 and s1 stay infinite
+  return true;
+}
 
-  if (!bound.region) {
-    out.push_back(entry);  // everywhere; s0 and s1 stay infinite
-    return true;
-  }
-
-  const auto intervals = intersect_region(centerline, *bound.region);
+bool project_speed_limit_zone(
+  const Centerline & centerline, const SpeedLimitZone & zone, const std::size_t raw_index,
+  std::vector<ScalarBoundEntry> & out)
+{
+  const auto intervals = intersect_region(centerline, zone.region);
   if (intervals.empty()) {
-    return false;  // a region that misses the centerline does not reach the coarse consumers
+    return false;  // a zone that misses the centerline does not reach the coarse consumers
   }
+  ScalarBoundEntry entry;
+  entry.quantity = BoundedQuantity::VELOCITY;
+  entry.max = zone.v_max;
+  entry.raw_index = raw_index;
   for (const auto & [s0, s1] : intervals) {
     entry.s0 = s0;
     entry.s1 = s1;
@@ -367,26 +372,19 @@ bool project_gate(
 std::vector<std::pair<double, std::vector<Point2d>>> sample_occupancy(const KeepOut & keep_out)
 {
   std::vector<std::pair<double, std::vector<Point2d>>> samples;
-  if (const auto * body = std::get_if<RigidBody>(&keep_out.occupancy)) {
-    const auto shape = ring_points(body->shape);
-    samples.reserve(body->waypoints.size());
-    for (const auto & wp : body->waypoints) {
-      const double cos_yaw = std::cos(wp.pose.yaw);
-      const double sin_yaw = std::sin(wp.pose.yaw);
-      std::vector<Point2d> world;
-      world.reserve(shape.size());
-      for (const auto & v : shape) {
-        world.emplace_back(
-          wp.pose.position.x() + cos_yaw * v.x() - sin_yaw * v.y(),
-          wp.pose.position.y() + sin_yaw * v.x() + cos_yaw * v.y());
-      }
-      samples.emplace_back(wp.t, std::move(world));
+  const auto shape = ring_points(keep_out.shape);
+  samples.reserve(keep_out.waypoints.size());
+  for (const auto & wp : keep_out.waypoints) {
+    const double cos_yaw = std::cos(wp.pose.yaw);
+    const double sin_yaw = std::sin(wp.pose.yaw);
+    std::vector<Point2d> world;
+    world.reserve(shape.size());
+    for (const auto & v : shape) {
+      world.emplace_back(
+        wp.pose.position.x() + cos_yaw * v.x() - sin_yaw * v.y(),
+        wp.pose.position.y() + sin_yaw * v.x() + cos_yaw * v.y());
     }
-  } else if (const auto * seq = std::get_if<TimedPolygonSequence>(&keep_out.occupancy)) {
-    samples.reserve(seq->polygons.size());
-    for (const auto & tp : seq->polygons) {
-      samples.emplace_back(tp.t, ring_points(tp.polygon));
-    }
+    samples.emplace_back(wp.t, std::move(world));
   }
   return samples;
 }
@@ -479,7 +477,9 @@ CompiledConstraints compile_constraint_list(
       [&](const auto & payload) {
         using Payload = std::decay_t<decltype(payload)>;
         if constexpr (std::is_same_v<Payload, ScalarBound>) {
-          return project_scalar_bound(centerline, payload, i, compiled.scalar_bounds);
+          return project_scalar_bound(payload, i, compiled.scalar_bounds);
+        } else if constexpr (std::is_same_v<Payload, SpeedLimitZone>) {
+          return project_speed_limit_zone(centerline, payload, i, compiled.scalar_bounds);
         } else if constexpr (std::is_same_v<Payload, Boundary>) {
           return project_boundary(centerline, payload, i, compiled.lateral_bounds);
         } else if constexpr (std::is_same_v<Payload, Gate>) {

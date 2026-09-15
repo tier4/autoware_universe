@@ -8,3 +8,4 @@ scenarios:
   - behavior_normal_route_static_obstacle.yaml
   - intersection_right_route.yaml
   - long_straight_route.yaml
+  - lane_change_route.yaml

@@ -18,9 +18,51 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace autoware::safety_planner
 {
+
+PathProjector::PathProjector(const PathPointTrajectory & path) : bases_(path.get_underlying_bases())
+{
+  points_.reserve(bases_.size());
+  for (const double s : bases_) {
+    const auto & p = path.compute(s).point.pose.position;
+    points_.push_back({p.x, p.y, p.z});
+  }
+}
+
+double PathProjector::closest(const geometry_msgs::msg::Point & q) const
+{
+  double best_distance = std::numeric_limits<double>::infinity();
+  double best_s = bases_.empty() ? 0.0 : bases_.front();
+  for (std::size_t i = 1; i < bases_.size(); ++i) {
+    const auto & p0 = points_[i - 1];
+    const auto & p1 = points_[i];
+    const std::array<double, 3> v{p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]};
+    const std::array<double, 3> w{q.x - p0[0], q.y - p0[1], q.z - p0[2]};
+    const double c1 = w[0] * v[0] + w[1] * v[1] + w[2] * v[2];
+    const double c2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    double s = bases_[i - 1];
+    std::array<double, 3> foot = p0;
+    if (c2 > std::numeric_limits<double>::epsilon() && c1 > 0.0) {
+      if (c2 <= c1) {
+        s = bases_[i];
+        foot = p1;
+      } else {
+        const double r = c1 / c2;
+        s = bases_[i - 1] + r * std::sqrt(c2);
+        foot = {p0[0] + r * v[0], p0[1] + r * v[1], p0[2] + r * v[2]};
+      }
+    }
+    const double distance = std::hypot(q.x - foot[0], q.y - foot[1], q.z - foot[2]);
+    if (distance < best_distance) {
+      best_distance = distance;
+      best_s = s;
+    }
+  }
+  return best_s;
+}
 
 double lateral_offset_at(const PathPointTrajectory & path, const double s, const Point2d & q)
 {

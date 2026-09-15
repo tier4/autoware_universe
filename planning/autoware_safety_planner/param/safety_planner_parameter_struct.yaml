@@ -178,13 +178,6 @@ safety_planner:
       description: "[m] the lane bounds and road_borders are moved this far towards the inside of the lane"
       validation:
         gt_eq<>: [0.0]
-    bound_slack_weight:
-      type: double
-      default_value: 100.0
-      read_only: true
-      description: "[-] slack weight of the own lane bound, which is soft where a parallel lane exists; a road_border is always hard"
-      validation:
-        gt_eq<>: [0.0]
 
   next_lanelet_speed_limit:
     velocity_mps:
@@ -311,8 +304,25 @@ safety_planner:
         default_value: 10.0
         read_only: true
         description: "[m^2/s] weight on the squared curvature"
+      soft_bound:
+        type: double
+        default_value: 100.0
+        read_only: true
+        description: "[1/m^2] weight on the squared violation of a soft Boundary"
+        validation:
+          gt_eq<>: [0.0]
 
   mppi_planner:
+    nominal_seed:
+      type: string
+      default_value: reference
+      read_only: true
+      description: >
+        Where MPPI's nominal control sequence comes from. reference = the steer and the
+        acceleration read off the reference trajectory; temporal_mpt = the acados t-MPT solve
+        on the reference, which accounts for the input delay and the time constants
+      validation:
+        one_of<>: [[reference, temporal_mpt]]
     boundary_threshold_m:
       type: double
       default_value: 1.0
@@ -415,6 +425,14 @@ safety_planner:
         type: double
         default_value: 0.3
         read_only: true
+    boundary:
+      simplify_tolerance_m:
+        type: double
+        default_value: 0.05
+        read_only: true
+        description: "[m] Douglas-Peucker tolerance applied to each Boundary polyline before it is handed to MPPI; 0 disables"
+        validation:
+          gt_eq<>: [0.0]
     cost:
       lambda:
         type: double

@@ -108,12 +108,13 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   target_include_directories(first_order_dubins_mppi PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
-    SYSTEM ${CUDA_INCLUDE_DIRS}
+    SYSTEM ${CUDA_INCLUDE_DIRS} ${autoware_utils_debug_INCLUDE_DIRS}
   )
   target_link_libraries(first_order_dubins_mppi
     mppi_trajectory_utils
     mppi_temporal_mpt_nominal
     mppi_extensions
+    ${autoware_utils_debug_LIBRARIES}
     rclcpp::rclcpp
     tf2_geometry_msgs::tf2_geometry_msgs
     autoware_perception_msgs::autoware_perception_msgs__rosidl_generator_cpp

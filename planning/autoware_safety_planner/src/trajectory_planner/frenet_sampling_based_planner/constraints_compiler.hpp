@@ -62,8 +62,8 @@ struct SlPoint
   double l{0.0};
 };
 
-//! Projection of a ScalarBound. With a region the arc length interval comes from intersecting the
-//! region with the centerline (one entry per interval); without one it covers everything.
+//! Projection of a ScalarBound (covers everything) or of a SpeedLimitZone (a VELOCITY bound over
+//! the arc length interval where the zone meets the centerline, one entry per interval).
 struct ScalarBoundEntry
 {
   BoundedQuantity quantity{BoundedQuantity::VELOCITY};

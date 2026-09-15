@@ -123,9 +123,9 @@ std::vector<Constraint> make_obstacle_keep_out_constraints(
 
     Constraint constraint;
     constraint.certainty = Certainty::DEFINITE;
-    // The time window is left at default: outside the times of the waypoints the RigidBody is
+    // The time window is left at default: outside the times of the waypoints the KeepOut is
     // undefined anyway
-    constraint.payload = KeepOut{RigidBody{std::move(shape), std::move(waypoints)}};
+    constraint.payload = KeepOut{std::move(shape), std::move(waypoints)};
     constraint.source = Source{
       "obstacle_stop", autoware_utils_uuid::to_hex_string(object.object_id), "dynamic_obstacle"};
     constraints.push_back(std::move(constraint));
@@ -260,16 +260,15 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
         ++id;
         continue;
       }
-      const auto & rigid_body =
-        std::get<RigidBody>(std::get<KeepOut>(constraint.payload).occupancy);
-      const auto & anchor = rigid_body.waypoints.front().pose;
+      const auto & keep_out = std::get<KeepOut>(constraint.payload);
+      const auto & anchor = keep_out.waypoints.front().pose;
       const double c = std::cos(anchor.yaw);
       const double s = std::sin(anchor.yaw);
 
       auto footprint_marker = create_default_marker(
         "map", rclcpp::Time(0, 0, RCL_ROS_TIME), "obstacle_stop_footprint", id, Marker::LINE_STRIP,
         create_marker_scale(0.1, 0.0, 0.0), create_marker_color(1.0, 0.2, 0.2, 0.9));
-      for (const auto & point : rigid_body.shape.outer()) {
+      for (const auto & point : keep_out.shape.outer()) {
         geometry_msgs::msg::Point q;
         q.x = anchor.position.x() + c * point.x() - s * point.y();
         q.y = anchor.position.y() + s * point.x() + c * point.y();
@@ -282,7 +281,7 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
         "map", rclcpp::Time(0, 0, RCL_ROS_TIME), "obstacle_stop_predicted_path", id,
         Marker::LINE_STRIP, create_marker_scale(0.05, 0.0, 0.0),
         create_marker_color(1.0, 0.5, 0.2, 0.7));
-      for (const auto & waypoint : rigid_body.waypoints) {
+      for (const auto & waypoint : keep_out.waypoints) {
         geometry_msgs::msg::Point q;
         q.x = waypoint.pose.position.x();
         q.y = waypoint.pose.position.y();
