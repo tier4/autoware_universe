@@ -16,6 +16,7 @@
 
 #include "autoware/trajectory_optimizer/utils.hpp"
 
+#include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/ros/parameter.hpp>
@@ -58,6 +59,9 @@ TrajectoryOptimizer::TrajectoryOptimizer(const rclcpp::NodeOptions & options)
   trajectories_sub_ = create_subscription<CandidateTrajectories>(
     "~/input/trajectories", 1,
     std::bind(&TrajectoryOptimizer::on_traj, this, std::placeholders::_1));
+  sub_map_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
+    "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
+    std::bind(&TrajectoryOptimizer::on_map, this, std::placeholders::_1));
   trajectory_pub_ = create_publisher<Trajectory>("~/output/trajectory", 1);
   trajectories_pub_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
 }
@@ -122,6 +126,8 @@ rcl_interfaces::msg::SetParametersResult TrajectoryOptimizer::on_parameter(
   update_param<bool>(
     parameters, "use_kinematic_feasibility_enforcer", params.use_kinematic_feasibility_enforcer);
   update_param<bool>(parameters, "use_mpt_optimizer", params.use_mpt_optimizer);
+  update_param<bool>(
+    parameters, "use_time_sequence_raw_optimizer", params.use_time_sequence_raw_optimizer);
 
   params_ = params;
 
@@ -142,6 +148,7 @@ void TrajectoryOptimizer::set_up_params()
 
   // Declare plugin_names parameter with default order
   const std::vector<std::string> default_plugins = {
+    "autoware::trajectory_optimizer::plugin::TrajectoryTimeSequenceRawOptimizer",
     "autoware::trajectory_optimizer::plugin::TrajectoryPointFixer",
     "autoware::trajectory_optimizer::plugin::TrajectoryKinematicFeasibilityEnforcer",
     "autoware::trajectory_optimizer::plugin::TrajectoryQPSmoother",
@@ -165,6 +172,8 @@ void TrajectoryOptimizer::set_up_params()
   params_.use_kinematic_feasibility_enforcer =
     get_or_declare_parameter<bool>(*this, "use_kinematic_feasibility_enforcer");
   params_.use_mpt_optimizer = get_or_declare_parameter<bool>(*this, "use_mpt_optimizer");
+  params_.use_time_sequence_raw_optimizer =
+    get_or_declare_parameter<bool>(*this, "use_time_sequence_raw_optimizer");
 }
 
 void TrajectoryOptimizer::publish_processing_time_ms(const double processing_time_ms)
@@ -173,6 +182,12 @@ void TrajectoryOptimizer::publish_processing_time_ms(const double processing_tim
   msg.stamp = get_clock()->now();
   msg.data = processing_time_ms;
   debug_processing_time_pub_->publish(msg);
+}
+
+void TrajectoryOptimizer::on_map(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg)
+{
+  lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
+    autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg));
 }
 
 void TrajectoryOptimizer::on_traj([[maybe_unused]] const CandidateTrajectories::ConstSharedPtr msg)
@@ -192,11 +207,21 @@ void TrajectoryOptimizer::on_traj([[maybe_unused]] const CandidateTrajectories::
   }
 
   CandidateTrajectories output_trajectories = *msg;
+  const auto current_steering_ptr = sub_current_steering_.take_data();
+  const auto route_ptr = sub_route_.take_data();
+  size_t candidate_index = 0;
   for (auto & trajectory : output_trajectories.candidate_trajectories) {
     // Create a fresh data instance per trajectory so semantic_speed_tracker is reset each time
     TrajectoryOptimizerData data;
     data.current_odometry = *current_odometry_ptr_;
     data.current_acceleration = *current_acceleration_ptr_;
+    if (current_steering_ptr) {
+      data.current_steering = *current_steering_ptr;
+    }
+    data.lanelet_map = lanelet_map_ptr_;
+    data.route = route_ptr;
+    data.candidate_header = trajectory.header;
+    data.candidate_index = candidate_index++;
     // Apply optimizations - plugins execute in order from plugin_names parameter
     for (auto & plugin : plugins_) {
       plugin->optimize_trajectory(trajectory.points, params_, data);

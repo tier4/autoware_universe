@@ -11,6 +11,8 @@
   <arg name="trajectory_velocity_optimizer_param_path" default="$(find-pkg-share autoware_trajectory_optimizer)/config/plugins/trajectory_velocity_optimizer.param.yaml"/>
   <arg name="trajectory_kinematic_feasibility_enforcer_param_path" default="$(find-pkg-share autoware_trajectory_optimizer)/config/plugins/trajectory_kinematic_feasibility_enforcer.param.yaml"/>
   <arg name="trajectory_mpt_optimizer_param_path" default="$(find-pkg-share autoware_trajectory_optimizer)/config/plugins/trajectory_mpt_optimizer.param.yaml"/>
+  <arg name="trajectory_time_sequence_raw_optimizer_param_path" default="$(find-pkg-share autoware_trajectory_optimizer)/config/plugins/trajectory_time_sequence_raw_optimizer.param.yaml"/>
+  <arg name="trajectory_temporal_mpt_optimizer_param_path" default="$(find-pkg-share autoware_trajectory_optimizer)/config/plugins/trajectory_mpt_optimizer.param.yaml"/>
 
   <arg name="input_traj" default="/planning/diffusion_planner/trajectory"/>
   <arg name="input_trajectories" default="/planning/diffusion_planner/candidate_trajectories"/>
@@ -30,6 +32,7 @@
     <param from="$(var trajectory_velocity_optimizer_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_kinematic_feasibility_enforcer_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_mpt_optimizer_param_path)" allow_substs="true"/>
+    <param from="$(var trajectory_time_sequence_raw_optimizer_param_path)" allow_substs="true"/>
     <remap from="~/output/trajectory" to="$(var output_traj)"/>
     <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
     <remap from="~/output/current_velocity_limit_mps" to="$(var output_current_velocity_limit_mps)"/>
@@ -38,5 +41,8 @@
     <remap from="~/input/external_velocity_limit_mps" to="$(var input_external_velocity_limit_mps)"/>
     <remap from="~/input/odometry" to="/localization/kinematic_state"/>
     <remap from="~/input/acceleration" to="/localization/acceleration"/>
+    <remap from="~/input/steering_status" to="/vehicle/status/steering_status"/>
+    <remap from="~/input/route" to="/planning/mission_planning/route"/>
+    <remap from="~/input/vector_map" to="/map/vector_map"/>
   </node>
 </launch>
