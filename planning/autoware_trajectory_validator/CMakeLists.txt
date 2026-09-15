@@ -23,6 +23,8 @@ ament_auto_add_library(${trajectory_validator_lib_target} SHARED
   src/detail/diagnostic.cpp
 )
 
+autoware_agnocast_wrapper_setup(${trajectory_validator_lib_target})
+
 target_link_libraries(${trajectory_validator_lib_target}
   ${PROJECT_NAME}_param
   ${PROJECT_NAME}_diagnostic_param
@@ -143,21 +145,24 @@ if(BUILD_TESTING)
     ${trajectory_validator_lib_target}
   )
 
-  ament_add_ros_isolated_gtest(test_diagnostic_core_behavior
-    test/diagnostic/diagnostic_core_behavior.cpp
-  )
-  target_link_libraries(test_diagnostic_core_behavior
-    ${trajectory_validator_lib_target}
-    rclcpp::rclcpp
-  )
+  # Tests that instantiate and spin a node are not built with ENABLE_AGNOCAST=1.
+  if(NOT (DEFINED ENV{ENABLE_AGNOCAST} AND "$ENV{ENABLE_AGNOCAST}" STREQUAL "1"))
+    ament_add_ros_isolated_gtest(test_diagnostic_core_behavior
+      test/diagnostic/diagnostic_core_behavior.cpp
+    )
+    target_link_libraries(test_diagnostic_core_behavior
+      ${trajectory_validator_lib_target}
+      rclcpp::rclcpp
+    )
 
-  ament_add_ros_isolated_gtest(test_diagnostic_shadow_mode
-    test/diagnostic/diagnostic_shadow_mode.cpp
-  )
-  target_link_libraries(test_diagnostic_shadow_mode
-    ${trajectory_validator_lib_target}
-    rclcpp::rclcpp
-  )
+    ament_add_ros_isolated_gtest(test_diagnostic_shadow_mode
+      test/diagnostic/diagnostic_shadow_mode.cpp
+    )
+    target_link_libraries(test_diagnostic_shadow_mode
+      ${trajectory_validator_lib_target}
+      rclcpp::rclcpp
+    )
+  endif()
 
 endif()
 

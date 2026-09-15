@@ -52,19 +52,22 @@ if(BUILD_TESTING)
   # ==========================================
   # Node Integration Tests
   # ==========================================
-  ament_add_ros_isolated_gtest(test_trajectory_selector_node
-    test/node/test_trajectory_selector_node.cpp
-  )
+  # Tests that instantiate and spin a node are not built with ENABLE_AGNOCAST=1.
+  if(NOT (DEFINED ENV{ENABLE_AGNOCAST} AND "$ENV{ENABLE_AGNOCAST}" STREQUAL "1"))
+    ament_add_ros_isolated_gtest(test_trajectory_selector_node
+      test/node/test_trajectory_selector_node.cpp
+    )
 
-  target_link_libraries(test_trajectory_selector_node
-    ${PROJECT_NAME}
-    dummy_validator_plugin
-  )
+    target_link_libraries(test_trajectory_selector_node
+      ${PROJECT_NAME}
+      dummy_validator_plugin
+    )
 
-  ament_target_dependencies(test_trajectory_selector_node
-    autoware_test_utils
-    rosgraph_msgs
-  )
+    ament_target_dependencies(test_trajectory_selector_node
+      autoware_test_utils
+      rosgraph_msgs
+    )
+  endif()
 endif()
 
 autoware_ament_auto_package(
