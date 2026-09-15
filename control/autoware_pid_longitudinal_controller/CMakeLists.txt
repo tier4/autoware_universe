@@ -11,6 +11,8 @@ ament_auto_add_library(${PID_LON_CON_LIB} SHARED
   DIRECTORY src
 )
 
+autoware_agnocast_wrapper_setup(${PID_LON_CON_LIB})
+
 if(BUILD_TESTING)
   set(TEST_LON_SOURCES
     test/test_pid.cpp
