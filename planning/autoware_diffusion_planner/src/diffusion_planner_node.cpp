@@ -131,9 +131,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
       &DiffusionPlanner::on_set_centerline_guidance_enabled, this, std::placeholders::_1,
       std::placeholders::_2));
 
-  planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
-      this, "diffusion_planner");
+  planning_factor_interface_ = std::make_unique<PlanningFactorInterface>(this, "diffusion_planner");
 
   diagnostics_inference_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
   try {
@@ -152,7 +150,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     }
   }
 
-  timer_ = rclcpp::create_timer(
+  timer_ = autoware::agnocast_wrapper::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&DiffusionPlanner::on_timer, this));
 
@@ -573,12 +571,12 @@ void DiffusionPlanner::on_timer()
   }
 
   // Take data from subscribers
-  auto objects = sub_tracked_objects_.take_data();
-  auto ego_kinematic_state = sub_current_odometry_.take_data();
-  auto ego_acceleration = sub_current_acceleration_.take_data();
-  auto traffic_signals = sub_traffic_signals_.take_data();
-  auto temp_route_ptr = route_subscriber_.take_data();
-  auto turn_indicators_ptr = sub_turn_indicators_.take_data();
+  auto objects = sub_tracked_objects_->take_data();
+  auto ego_kinematic_state = sub_current_odometry_->take_data();
+  auto ego_acceleration = sub_current_acceleration_->take_data();
+  auto traffic_signals = sub_traffic_signals_->take_data();
+  auto temp_route_ptr = route_subscriber_->take_data();
+  auto turn_indicators_ptr = sub_turn_indicators_->take_data();
 
   // Prepare frame context using core
   const std::optional<FrameContext> frame_context = core_->create_frame_context(
