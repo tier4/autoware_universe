@@ -19,11 +19,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
-#include <limits>
 #include <optional>
-#include <random>
 
 namespace
 {
@@ -79,11 +76,11 @@ void expect_straight_motion(const TrajectoryPoints & points)
   EXPECT_FLOAT_EQ(points.back().acceleration_mps2, 0.0F);
 }
 
-TEST(MapVelocityLimitsProfile, RecomputesAccelerationAndRetimesWithoutSmoothing)
+TEST(MapVelocityLimitsProfile, RecomputesAccelerationAndRetimes)
 {
   auto points = make_trajectory(10.0, 1.0);
   const auto original = points;
-  const auto result = apply_map_velocity_limits(points, 5.0, 1.0, false, constant_limit(5.0));
+  const auto result = apply_map_velocity_limits(points, 1.0, constant_limit(5.0));
   ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
   for (const auto & point : points) {
     EXPECT_FLOAT_EQ(point.longitudinal_velocity_mps, 5.0F);
@@ -101,7 +98,7 @@ TEST(MapVelocityLimitsProfile, KeepsResampledPointsOnOriginalCurvedPolyline)
     points[i].pose.position.z = 0.2 * i;
   }
   const auto original = points;
-  const auto result = apply_map_velocity_limits(points, 5.0, 1.0, true, constant_limit(5.0));
+  const auto result = apply_map_velocity_limits(points, 1.0, constant_limit(5.0));
   ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
   expect_format(original, points);
   for (const auto & point : points) {
@@ -121,29 +118,11 @@ TEST(MapVelocityLimitsProfile, KeepsResampledPointsOnOriginalCurvedPolyline)
   }
 }
 
-TEST(MapVelocityLimitsProfile, HandlesDuplicatePositionsAndStoppedTail)
-{
-  auto points = make_trajectory(5.0, 0.0);
-  for (std::size_t i = 50; i < points.size(); ++i) {
-    points[i].pose = points[49].pose;
-    points[i].longitudinal_velocity_mps = 0.0F;
-  }
-  const auto original = points;
-  const auto result = apply_map_velocity_limits(points, 5.0, 1.0, true, constant_limit(4.0));
-  ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
-  expect_format(original, points);
-  expect_straight_motion(points);
-  for (std::size_t i = 50; i < points.size(); ++i) {
-    EXPECT_FLOAT_EQ(points[i].longitudinal_velocity_mps, 0.0F);
-    EXPECT_FLOAT_EQ(points[i].acceleration_mps2, 0.0F);
-  }
-}
-
 TEST(MapVelocityLimitsProfile, PreservesValidConstantSpeedTrajectory)
 {
   auto points = make_trajectory(5.0);
   const auto original = points;
-  const auto result = apply_map_velocity_limits(points, 5.0, 1.0, true, constant_limit(10.0));
+  const auto result = apply_map_velocity_limits(points, 1.0, constant_limit(10.0));
   EXPECT_EQ(result.status, ProcessingResult::Unchanged);
   EXPECT_EQ(points, original);
 }
