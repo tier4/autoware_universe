@@ -68,6 +68,31 @@ Waypoint to_local(const Waypoint & point, const Waypoint & origin)
   return Waypoint{c * dx + s * dy, -s * dx + c * dy, wrap_pi(point.yaw - origin.yaw)};
 }
 
+Plan resample_plan(const Plan & plan, const double plan_dt, const double dt, const size_t steps)
+{
+  if (plan.empty() || plan_dt <= 0.0 || dt <= 0.0) {
+    throw std::runtime_error("resample_plan needs a non-empty plan and positive time steps");
+  }
+  const double end_t = static_cast<double>(plan.size()) * plan_dt;
+  Plan out(steps);
+  for (size_t i = 0; i < steps; ++i) {
+    const double t = std::min(static_cast<double>(i + 1) * dt, end_t);
+    // Segment j runs from t = j * plan_dt to (j + 1) * plan_dt; segment 0 starts at the origin.
+    const auto j = static_cast<size_t>(std::floor(t / plan_dt));
+    if (j >= plan.size()) {
+      out[i] = plan.back();
+      continue;
+    }
+    const Waypoint & from = j == 0 ? Waypoint{} : plan[j - 1];
+    const Waypoint & to = plan[j];
+    const double u = t / plan_dt - static_cast<double>(j);
+    out[i] = {
+      from.x + u * (to.x - from.x), from.y + u * (to.y - from.y),
+      from.yaw + u * (to.yaw - from.yaw)};
+  }
+  return out;
+}
+
 Plan carry_forward(
   const Plan & previous, const Waypoint & ego_now, const double elapsed_s, const double time_step)
 {
@@ -166,7 +191,36 @@ void LatentDrivePostprocessor::publish_plan(
 
 void LatentDrivePostprocessor::validate_output_specs(const std::vector<TensorSpec> & output_specs)
 {
-  TrajectoryPostprocessor::validate_output_specs(output_specs);
+  // What the trajectory needs, and what this model actually emits.
+  const auto trajectory_steps =
+    static_cast<int64_t>(std::llround(params().horizon_seconds / params().time_step));
+  std::vector<TensorSpec> specs = output_specs;
+  for (auto & spec : specs) {
+    if (spec.name != params().prediction_tensor || spec.shape.size() != 3) {
+      continue;
+    }
+    model_steps_ = spec.shape[1];
+    model_time_step_ = params().horizon_seconds / static_cast<double>(model_steps_);
+    if (model_steps_ == trajectory_steps) {
+      break;
+    }
+    if (spec.shape.back() != YAW_POSE_DIM) {
+      throw std::runtime_error(
+        "Model output '" + spec.name + "' plans " + std::to_string(model_steps_) +
+        " waypoints, which have to be interpolated onto the " + std::to_string(trajectory_steps) +
+        " of the trajectory, and that is only defined for an (x, y, yaw) plan");
+    }
+    // The base class checks and later reads the resampled plan, so it is told that shape.
+    spec.shape[1] = trajectory_steps;
+    RCLCPP_INFO(
+      node_.get_logger(),
+      "Model plans %ld waypoints %.2f s apart; interpolating them onto the trajectory's %ld "
+      "waypoints %.2f s apart",
+      model_steps_, model_time_step_, trajectory_steps, params().time_step);
+    break;
+  }
+
+  TrajectoryPostprocessor::validate_output_specs(specs);
   if (smoothing_.enable && (pose_dim() != YAW_POSE_DIM || num_agents() != 1)) {
     throw std::runtime_error(
       "latentdrive.smoothing works on an ego-only (x, y, yaw) plan; '" +
@@ -177,7 +231,7 @@ void LatentDrivePostprocessor::validate_output_specs(const std::vector<TensorSpe
 
 latentdrive::Plan LatentDrivePostprocessor::read_plan(const Tensor & tensor) const
 {
-  const auto steps = static_cast<size_t>(num_timesteps());
+  const auto steps = static_cast<size_t>(model_steps_ > 0 ? model_steps_ : num_timesteps());
   if (tensor.host_data.size() < steps * YAW_POSE_DIM) {
     throw std::runtime_error(
       "Prediction tensor holds " + std::to_string(tensor.host_data.size()) +
@@ -214,14 +268,42 @@ TrajectoryPostprocessor::Output LatentDrivePostprocessor::process(
   // The debug path and the smoother both need an ego-only (x, y, yaw) plan; the base class
   // handles anything else on its own.
   const bool ego_yaw_plan = pose_dim() == YAW_POSE_DIM && num_agents() == 1;
-  if (!smoothing_.enable || !ego_yaw_plan) {
+  const bool resampling = ego_yaw_plan && model_steps_ != num_timesteps();
+
+  if (!smoothing_.enable && !resampling) {
     if (ego_yaw_plan) {
       publish_plan(read_plan(it->second), stamp);
     }
     return TrajectoryPostprocessor::process(
       outputs, ego, neighbor_histories, stamp, generator_uuid);
   }
-  const latentdrive::Plan plan = read_plan(it->second);
+  if (!ego_yaw_plan) {
+    return TrajectoryPostprocessor::process(
+      outputs, ego, neighbor_histories, stamp, generator_uuid);
+  }
+
+  latentdrive::Plan plan = read_plan(it->second);
+  if (resampling) {
+    plan = latentdrive::resample_plan(
+      plan, model_time_step_, params().time_step, static_cast<size_t>(num_timesteps()));
+  }
+  // Everything below works on the trajectory's own grid, so the tensor handed on carries that
+  // many waypoints whether the model planned them or the interpolation did.
+  const auto plan_to_outputs = [this, &outputs](const latentdrive::Plan & p) {
+    TensorMap out = outputs;
+    Tensor & tensor = out[params().prediction_tensor];
+    tensor.shape = {1, num_timesteps(), YAW_POSE_DIM};
+    tensor.host_data.assign(static_cast<size_t>(num_timesteps() * YAW_POSE_DIM), 0.0F);
+    tensor.device_data = nullptr;
+    write_plan(p, tensor);
+    return out;
+  };
+
+  if (!smoothing_.enable) {
+    publish_plan(plan, stamp);
+    return TrajectoryPostprocessor::process(
+      plan_to_outputs(plan), ego, neighbor_histories, stamp, generator_uuid);
+  }
 
   // The current ego pose in the previous plan's ego frame, from odometry rather than from the
   // plan, so the carried-forward plan is anchored where the vehicle actually went.
@@ -238,18 +320,16 @@ TrajectoryPostprocessor::Output LatentDrivePostprocessor::process(
   const latentdrive::Plan smoothed = smoother_.update(plan, ego_now, elapsed_s, params().time_step);
   publish_plan(smoothed, stamp);
 
-  TensorMap smoothed_outputs = outputs;
-  write_plan(smoothed, smoothed_outputs[params().prediction_tensor]);
   Output output = TrajectoryPostprocessor::process(
-    smoothed_outputs, ego, neighbor_histories, stamp, generator_uuid);
+    plan_to_outputs(smoothed), ego, neighbor_histories, stamp, generator_uuid);
 
   if (!smoothing_.publish_raw_candidate) {
     return output;
   }
 
   // The unfiltered plan rides along as a candidate, so what the model said stays observable.
-  Output raw =
-    TrajectoryPostprocessor::process(outputs, ego, neighbor_histories, stamp, generator_uuid);
+  Output raw = TrajectoryPostprocessor::process(
+    plan_to_outputs(plan), ego, neighbor_histories, stamp, generator_uuid);
   for (auto & info : raw.candidate_trajectories.generator_info) {
     info.generator_name.data += "_raw";
   }

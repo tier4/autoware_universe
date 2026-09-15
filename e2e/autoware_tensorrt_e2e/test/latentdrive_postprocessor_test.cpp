@@ -57,6 +57,51 @@ TEST(LatentDrivePlanSamplingTest, ToLocalRotatesIntoTheOriginFrame)
   EXPECT_NEAR(local.yaw, 0.0, 1e-9);
 }
 
+TEST(LatentDriveResampleTest, CoarsePlanIsInterpolatedFromTheOrigin)
+{
+  // Two waypoints 0.5 s apart, straight ahead at 10 m/s, turning 0.1 rad per waypoint.
+  const Plan plan{{5.0, 0.0, 0.1}, {10.0, 1.0, 0.2}};
+  const Plan out = resample_plan(plan, 0.5, 0.1, 10);
+
+  ASSERT_EQ(out.size(), 10U);
+  // t = 0.1 s is a fifth of the way from the origin to the first waypoint.
+  EXPECT_NEAR(out[0].x, 1.0, 1e-9);
+  EXPECT_NEAR(out[0].y, 0.0, 1e-9);
+  EXPECT_NEAR(out[0].yaw, 0.02, 1e-9);
+  // t = 0.5 s lands exactly on the first waypoint, t = 1.0 s on the second.
+  EXPECT_NEAR(out[4].x, 5.0, 1e-9);
+  EXPECT_NEAR(out[9].x, 10.0, 1e-9);
+  EXPECT_NEAR(out[9].y, 1.0, 1e-9);
+  EXPECT_NEAR(out[9].yaw, 0.2, 1e-9);
+  // t = 0.7 s is two fifths from the first waypoint to the second.
+  EXPECT_NEAR(out[6].x, 7.0, 1e-9);
+  EXPECT_NEAR(out[6].y, 0.4, 1e-9);
+}
+
+TEST(LatentDriveResampleTest, BeyondThePlanTheLastWaypointHolds)
+{
+  const Plan plan{{5.0, 0.0, 0.0}, {10.0, 0.0, 0.0}};
+  const Plan out = resample_plan(plan, 0.5, 0.1, 14);   // asks for 1.4 s of a 1.0 s plan
+
+  ASSERT_EQ(out.size(), 14U);
+  for (size_t i = 9; i < out.size(); ++i) {
+    EXPECT_NEAR(out[i].x, 10.0, 1e-9) << "at index " << i;
+  }
+}
+
+TEST(LatentDriveResampleTest, MatchingGridReproducesThePlan)
+{
+  const Plan plan{{1.0, 0.1, 0.01}, {2.0, 0.2, 0.02}, {3.0, 0.3, 0.03}};
+  const Plan out = resample_plan(plan, 0.1, 0.1, 3);
+
+  ASSERT_EQ(out.size(), plan.size());
+  for (size_t i = 0; i < plan.size(); ++i) {
+    EXPECT_NEAR(out[i].x, plan[i].x, 1e-9);
+    EXPECT_NEAR(out[i].y, plan[i].y, 1e-9);
+    EXPECT_NEAR(out[i].yaw, plan[i].yaw, 1e-9);
+  }
+}
+
 TEST(LatentDriveCarryForwardTest, PlanFollowedExactlyCarriesOntoItself)
 {
   // Ego drove exactly as planned for one tick: the carried plan equals the plan itself.

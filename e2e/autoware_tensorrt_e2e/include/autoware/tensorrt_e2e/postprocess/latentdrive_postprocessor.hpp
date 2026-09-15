@@ -73,6 +73,20 @@ Waypoint sample_at(const Plan & plan, double u);
 Waypoint to_local(const Waypoint & point, const Waypoint & origin);
 
 /**
+ * @brief Put a plan on a finer time grid, the way the closed-loop benchmarks executed one.
+ *
+ * A model that plans P waypoints `plan_dt` apart is turned into `steps` waypoints `dt` apart by
+ * linear interpolation of x, y and yaw over time, starting from the ego origin at t = 0 and
+ * holding the last waypoint beyond the plan's end. This mirrors `plan_to_poses()` in
+ * LatentDrive-TRT's deploy_utils.py, which is what the reported closed-loop scores were measured
+ * with, so the vehicle executes what the benchmark executed.
+ *
+ * Yaw is interpolated as a plain number rather than an angle: the model emits a small heading
+ * delta in the ego frame, and the reference does the same.
+ */
+Plan resample_plan(const Plan & plan, double plan_dt, double dt, size_t steps);
+
+/**
  * @brief Re-anchor the previous plan on the current ego pose and the current time grid.
  *
  * `previous` is expressed in the previous ego frame; `ego_now` is the current ego pose in that
@@ -129,6 +143,11 @@ private:
  * `(1 - alpha) / alpha` ticks of lag for a steady reference, and open-loop accuracy figures
  * belong to the raw output.
  *
+ * A model whose output is coarser than the 0.1 s trajectory step (the 2 Hz checkpoint plans 8
+ * waypoints 0.5 s apart) is interpolated onto the trajectory's grid first, exactly as
+ * LatentDrive-TRT's deploy_utils.plan_to_poses does, so the vehicle executes what the closed-loop
+ * benchmarks executed.
+ *
  * The plan that goes into the trajectory is also published as a `nav_msgs/Path` in `base_link`
  * on `~/debug/latentdrive/plan`, the way the LatentDrive-TRT replay node published it. RViz
  * draws a base_link path attached to the ego model, whereas the map-frame trajectory is drawn
@@ -149,6 +168,10 @@ public:
 
   const latentdrive::SmoothingParams & smoothing_params() const { return smoothing_; }
 
+  /// Waypoints the model itself emits, and how far apart they are [s].
+  int64_t model_steps() const { return model_steps_; }
+  double model_time_step() const { return model_time_step_; }
+
 private:
   latentdrive::Plan read_plan(const Tensor & tensor) const;
   void write_plan(const latentdrive::Plan & plan, Tensor & tensor) const;
@@ -157,6 +180,11 @@ private:
 
   rclcpp::Node & node_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_plan_;
+  //! Waypoint count of the model's own output, and its spacing (horizon / count). A model that
+  //! plans on a coarser grid than the trajectory needs (8 waypoints 0.5 s apart, say) is
+  //! resampled to the trajectory's step before anything else looks at it.
+  int64_t model_steps_{0};
+  double model_time_step_{0.0};
   latentdrive::SmoothingParams smoothing_;
   latentdrive::PlanSmoother smoother_;
   std::optional<Eigen::Matrix4d> previous_map_to_ego_;
