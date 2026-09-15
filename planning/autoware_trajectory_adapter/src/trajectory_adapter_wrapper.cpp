@@ -20,7 +20,8 @@ namespace autoware::trajectory_adapter
 {
 
 TrajectoryAdapterWrapper::TrajectoryAdapterWrapper(
-  rclcpp::Node & node, std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
+  autoware::agnocast_wrapper::Node & node,
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
 : node_ptr_(&node),
   logger_(node.get_logger().get_child(interface_name_)),
   adapter_ptr_(std::make_unique<TrajectoryAdapter>()),
