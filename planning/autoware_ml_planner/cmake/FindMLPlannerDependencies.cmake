@@ -5,9 +5,11 @@ function(ml_planner_find_dependencies)
   set(ML_PLANNER_TRT_AVAIL OFF)
   set(has_onnxruntime FALSE)
 
-  # Use legacy FindCUDA (not CUDAToolkit alone): on CPU-only hosts FindCUDAToolkit can
-  # fatal-error when nvcc is missing, while FindCUDA only sets CUDA_FOUND to FALSE
-  # (same pattern as autoware_tensorrt_common and autoware_diffusion_planner).
+  # Never call find_package(CUDAToolkit) here: autoware_tensorrt_common exports it as
+  # REQUIRED and a second search can fatal when nvcc is absent. Legacy FindCUDA only
+  # clears CUDA_FOUND (same as autoware_tensorrt_common / autoware_diffusion_planner).
+  set(CUDA_FIND_REQUIRED FALSE)
+  set(CUDAToolkit_FIND_REQUIRED FALSE)
   find_package(CUDA)
   if(CUDA_FOUND)
     find_library(ML_PLANNER_CUBLAS_LIBRARIES cublas HINTS
