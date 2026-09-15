@@ -36,6 +36,11 @@ void declare_first_order_dubins_mppi_runtime_options(
     param_name(prefix, "enable_debug_trajectory_log"), defaults.enable_debug_trajectory_log);
   node.declare_parameter(
     param_name(prefix, "debug_trajectory_log_directory"), defaults.debug_trajectory_log_directory);
+  node.declare_parameter(
+    param_name(prefix, "enable_distance_map_texture_debug"),
+    defaults.enable_distance_map_texture_debug);
+  node.declare_parameter(
+    param_name(prefix, "enable_iteration_rollout_debug"), defaults.enable_iteration_rollout_debug);
   node.declare_parameter(param_name(prefix, "ignore_obstacles"), defaults.ignore_obstacles);
   node.declare_parameter(param_name(prefix, "ignore_road_borders"), defaults.ignore_road_borders);
   node.declare_parameter(param_name(prefix, "ignore_drivable_area"), defaults.ignore_drivable_area);
@@ -45,7 +50,39 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "min_optimization_length"), defaults.min_optimization_length);
   node.declare_parameter(
+    param_name(prefix, "min_trajectory_progress_m"), defaults.min_trajectory_progress_m);
+  node.declare_parameter(
     param_name(prefix, "use_last_control_as_nominal"), defaults.use_last_control_as_nominal);
+  node.declare_parameter(
+    param_name(prefix, "nominal_initial_steering_max_deviation_rad"),
+    defaults.nominal_initial_steering_max_deviation_rad);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_age_s"),
+    defaults.last_control_warm_start_max_age_s);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_position_error_m"),
+    defaults.last_control_warm_start_max_position_error_m);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_yaw_error_rad"),
+    defaults.last_control_warm_start_max_yaw_error_rad);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_velocity_error_mps"),
+    defaults.last_control_warm_start_max_velocity_error_mps);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_reference_position_error_m"),
+    defaults.last_control_warm_start_max_reference_position_error_m);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_reference_yaw_error_rad"),
+    defaults.last_control_warm_start_max_reference_yaw_error_rad);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_max_reference_velocity_error_mps"),
+    defaults.last_control_warm_start_max_reference_velocity_error_mps);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_stop_enter_velocity_mps"),
+    defaults.last_control_warm_start_stop_enter_velocity_mps);
+  node.declare_parameter(
+    param_name(prefix, "last_control_warm_start_stop_exit_velocity_mps"),
+    defaults.last_control_warm_start_stop_exit_velocity_mps);
   node.declare_parameter(
     param_name(prefix, "use_temporal_mpt_as_nominal"), defaults.use_temporal_mpt_as_nominal);
   node.declare_parameter(
@@ -63,6 +100,10 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
     node.get_parameter(param_name(prefix, "enable_debug_trajectory_log")).as_bool();
   options.debug_trajectory_log_directory =
     node.get_parameter(param_name(prefix, "debug_trajectory_log_directory")).as_string();
+  options.enable_distance_map_texture_debug =
+    node.get_parameter(param_name(prefix, "enable_distance_map_texture_debug")).as_bool();
+  options.enable_iteration_rollout_debug =
+    node.get_parameter(param_name(prefix, "enable_iteration_rollout_debug")).as_bool();
   options.ignore_obstacles = node.get_parameter(param_name(prefix, "ignore_obstacles")).as_bool();
   options.ignore_road_borders =
     node.get_parameter(param_name(prefix, "ignore_road_borders")).as_bool();
@@ -73,8 +114,40 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.skip_if_invalid = node.get_parameter(param_name(prefix, "skip_if_invalid")).as_bool();
   options.min_optimization_length = static_cast<float>(
     node.get_parameter(param_name(prefix, "min_optimization_length")).as_double());
+  options.min_trajectory_progress_m = static_cast<float>(
+    node.get_parameter(param_name(prefix, "min_trajectory_progress_m")).as_double());
   options.use_last_control_as_nominal =
     node.get_parameter(param_name(prefix, "use_last_control_as_nominal")).as_bool();
+  options.nominal_initial_steering_max_deviation_rad = static_cast<float>(
+    node.get_parameter(param_name(prefix, "nominal_initial_steering_max_deviation_rad"))
+      .as_double());
+  options.last_control_warm_start_max_age_s = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_age_s")).as_double());
+  options.last_control_warm_start_max_position_error_m = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_position_error_m"))
+      .as_double());
+  options.last_control_warm_start_max_yaw_error_rad = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_yaw_error_rad"))
+      .as_double());
+  options.last_control_warm_start_max_velocity_error_mps = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_velocity_error_mps"))
+      .as_double());
+  options.last_control_warm_start_max_reference_position_error_m = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_reference_position_error_m"))
+      .as_double());
+  options.last_control_warm_start_max_reference_yaw_error_rad = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_max_reference_yaw_error_rad"))
+      .as_double());
+  options.last_control_warm_start_max_reference_velocity_error_mps = static_cast<float>(
+    node
+      .get_parameter(param_name(prefix, "last_control_warm_start_max_reference_velocity_error_mps"))
+      .as_double());
+  options.last_control_warm_start_stop_enter_velocity_mps = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_stop_enter_velocity_mps"))
+      .as_double());
+  options.last_control_warm_start_stop_exit_velocity_mps = static_cast<float>(
+    node.get_parameter(param_name(prefix, "last_control_warm_start_stop_exit_velocity_mps"))
+      .as_double());
   options.use_temporal_mpt_as_nominal =
     node.get_parameter(param_name(prefix, "use_temporal_mpt_as_nominal")).as_bool();
   options.prevent_reverse_velocity =

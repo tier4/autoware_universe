@@ -7,6 +7,7 @@
 #define MPPI_COST_FUNCTIONS_PATH_TRACKING_GEOMETRY_CUH_
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 
 namespace mppi
@@ -189,15 +190,17 @@ __host__ __device__ inline void finalizePolylineProjection(
 }
 
 /**
- * Closest-segment projection onto a polyline.
- * @param hint_i warm-start segment index from a previous projection (e.g. last
- *               timestep). When >= 0, performs a local hill-climb from that
- *               segment (amortized O(1) along a trajectory). When < 0, full
- *               O(n) scan — use for the first query or when no prior exists.
+ * Globally closest finite-segment projection onto a polyline, with O(n) query work.
+ * Equal computed distances select the lowest segment index, independent of hints.
+ * Finalization retains the signed lateral offset and extended-tip conventions above.
+ * @param hint_i optional first candidate; invalid indices are ignored. A texture seed or
+ *               previous projection only changes evaluation order, never search coverage.
+ * @param max_local_search_steps retained for source compatibility, ignored. A local step
+ *               budget cannot establish the global nearest segment on arbitrary polylines.
  */
 __host__ __device__ inline PolylineProjection projectPointToPolyline(
   const float px, const float py, const float * poly_x, const float * poly_y, const int n_pts,
-  const int hint_i = -1)
+  const int hint_i = -1, const int /*max_local_search_steps*/ = -1)
 {
   PolylineProjection result;
   if (n_pts <= 0) {
@@ -211,52 +214,28 @@ __host__ __device__ inline PolylineProjection projectPointToPolyline(
   }
 
   const int n_seg = n_pts - 1;
-  float best_dist = 1.0E8F;
+  float best_dist = FLT_MAX;
   int best_i = 0;
   float best_t_raw = 0.5F;
 
-  if (hint_i < 0) {
-    for (int i = 0; i < n_seg; ++i) {
-      float dist = 0.0F;
-      float t_raw = 0.0F;
-      distanceToPolylineSegment(px, py, poly_x, poly_y, i, dist, t_raw);
-      if (dist < best_dist) {
-        best_dist = dist;
-        best_i = i;
-        best_t_raw = t_raw;
-      }
-    }
-  } else {
-    // Local search from previous solution (Newton-style warm start).
+  const bool valid_hint = hint_i >= 0 && hint_i < n_seg;
+  if (valid_hint) {
     best_i = hint_i;
-    if (best_i >= n_seg) {
-      best_i = n_seg - 1;
-    }
     distanceToPolylineSegment(px, py, poly_x, poly_y, best_i, best_dist, best_t_raw);
-    for (int iter = 0; iter < n_seg; ++iter) {
-      float left_dist = best_dist;
-      float left_t = best_t_raw;
-      float right_dist = best_dist;
-      float right_t = best_t_raw;
-      if (best_i > 0) {
-        distanceToPolylineSegment(px, py, poly_x, poly_y, best_i - 1, left_dist, left_t);
-      }
-      if (best_i < n_seg - 1) {
-        distanceToPolylineSegment(px, py, poly_x, poly_y, best_i + 1, right_dist, right_t);
-      }
-      if (left_dist < best_dist && left_dist <= right_dist) {
-        --best_i;
-        best_dist = left_dist;
-        best_t_raw = left_t;
-        continue;
-      }
-      if (right_dist < best_dist) {
-        ++best_i;
-        best_dist = right_dist;
-        best_t_raw = right_t;
-        continue;
-      }
-      break;
+  }
+  // A local minimum (including a texture-cell seed) does not exclude a closer,
+  // nonadjacent branch. Evaluate every remaining segment, including equal-distance ties.
+  for (int i = 0; i < n_seg; ++i) {
+    if (valid_hint && i == hint_i) {
+      continue;
+    }
+    float dist = 0.0F;
+    float t_raw = 0.0F;
+    distanceToPolylineSegment(px, py, poly_x, poly_y, i, dist, t_raw);
+    if (dist < best_dist || (dist == best_dist && i < best_i)) {
+      best_dist = dist;
+      best_i = i;
+      best_t_raw = t_raw;
     }
   }
 

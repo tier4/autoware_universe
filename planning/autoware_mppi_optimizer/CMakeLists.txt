@@ -12,10 +12,36 @@ ament_auto_add_library(mppi_trajectory_utils SHARED
   src/first_order_dubins/trajectory_utils.cpp
 )
 
+ament_auto_add_library(mppi_curvature_adaptive_steering_filter SHARED
+  src/curvature_adaptive_steering_filter.cpp
+)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME test_cost_report_parser
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_generate_cost_report.py"
+  )
+  set_tests_properties(test_cost_report_parser PROPERTIES LABELS "cost;unit" TIMEOUT 30)
+
+  ament_add_gtest(test_path_tracking_geometry
+    test/test_path_tracking_geometry.cpp
+  )
+  target_include_directories(test_path_tracking_geometry PRIVATE include)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # The shared header contains CUDA unroll pragmas; this target uses an ordinary host compiler.
+    target_compile_options(test_path_tracking_geometry PRIVATE -Wno-unknown-pragmas)
+  endif()
+  set_target_properties(test_path_tracking_geometry PROPERTIES CXX_STANDARD 17)
+  set_tests_properties(test_path_tracking_geometry PROPERTIES LABELS "cost;unit" TIMEOUT 30)
+
+  ament_add_gtest(test_preferred_lane_centerline test/test_preferred_lane_centerline.cpp)
+  target_link_libraries(test_preferred_lane_centerline mppi_trajectory_utils)
+  set_target_properties(test_preferred_lane_centerline PROPERTIES CXX_STANDARD 17)
+  set_tests_properties(test_preferred_lane_centerline PROPERTIES LABELS "cost;unit" TIMEOUT 30)
 
   ament_add_gtest(test_mppi_trajectory_utils
     test/test_trajectory_utils.cpp
@@ -23,6 +49,19 @@ if(BUILD_TESTING)
   target_link_libraries(test_mppi_trajectory_utils
     mppi_trajectory_utils
   )
+
+  ament_add_gtest(test_curvature_adaptive_steering_filter
+    test/test_curvature_adaptive_steering_filter.cpp
+  )
+  target_link_libraries(test_curvature_adaptive_steering_filter
+    mppi_curvature_adaptive_steering_filter
+  )
+
+  ament_add_gtest(test_mppi_application_status
+    test/test_mppi_application_status.cpp
+  )
+  target_include_directories(test_mppi_application_status PRIVATE include)
+  set_target_properties(test_mppi_application_status PROPERTIES CXX_STANDARD 17)
 endif()
 
 # Find CUDA
@@ -62,6 +101,7 @@ else()
 endif()
 
 if(CUDA_AVAIL AND TRT_AVAIL)
+  set(MPPI_CUDA_ARCH_LIST "Auto" CACHE STRING "CUDA architectures (Auto or e.g. 8.9 for headless Ada builds)")
   find_package(MPPI-Generic REQUIRED)
   find_package(ament_index_cpp REQUIRED)
   pluginlib_export_plugin_description_file(
@@ -78,10 +118,12 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=-std=c++17")
   # Parallelize NVCC device-code passes (CUDA 11.5+); 0 = use all host cores.
   list(APPEND CUDA_NVCC_FLAGS "--threads" "0")
+  list(APPEND CUDA_NVCC_FLAGS "-lineinfo")
+  list(APPEND CUDA_NVCC_FLAGS "--maxrregcount=64")
 
   # Compile only for the GPU(s) on this machine (FindCUDA Auto = nvidia-smi detect).
   # Avoids the multi-SM fat-binary compile that dominated MPPI build time.
-  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS Auto)
+  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${MPPI_CUDA_ARCH_LIST})
   if(MPPI_CUDA_ARCH_FLAGS STREQUAL "")
     message(FATAL_ERROR
       "MPPI CUDA: failed to detect a local GPU architecture. "
@@ -91,6 +133,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   message(STATUS "MPPI CUDA architecture(s): ${MPPI_CUDA_ARCH_FLAGS}")
 
   cuda_add_library(first_order_dubins_mppi SHARED
+    src/first_order_dubins/distance_map_texture_visualizer.cu
     src/first_order_dubins/first_order_dubins_mppi_interface.cu
   )
   find_package(autoware_trajectory_processor REQUIRED)
@@ -121,6 +164,8 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     autoware_vehicle_msgs::autoware_vehicle_msgs__rosidl_generator_cpp
     geometry_msgs::geometry_msgs__rosidl_generator_cpp
     nav_msgs::nav_msgs__rosidl_generator_cpp
+    OpenGL::GL
+    glfw
     ${CUDA_cufft_LIBRARY}
   )
   set_target_properties(first_order_dubins_mppi PROPERTIES
@@ -141,6 +186,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(autoware_mppi_trajectory_processor_plugin
     first_order_dubins_mppi
+    mppi_curvature_adaptive_steering_filter
     trajectory_mppi_optimizer_parameters
     ${PROJECT_NAME}
   )
@@ -176,6 +222,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(mppi_open_loop_line_sim
     first_order_dubins_mppi
+    mppi_curvature_adaptive_steering_filter
     ${PROJECT_NAME}
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp
@@ -200,6 +247,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     target_link_libraries(test_first_order_dubins_mppi_interface
       first_order_dubins_mppi
       mppi_trajectory_utils
+      mppi_curvature_adaptive_steering_filter
       ${CUDA_LIBRARIES}
     )
     set_target_properties(test_first_order_dubins_mppi_interface PROPERTIES
@@ -212,6 +260,25 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     set_tests_properties(test_first_order_dubins_mppi_interface PROPERTIES
       LABELS "gpu"
       TIMEOUT 180
+    )
+
+    find_package(rcutils REQUIRED)
+    ament_add_gtest(test_performance_benchmarks
+      test/test_performance_benchmarks.cpp
+      TIMEOUT 1800
+    )
+    target_link_libraries(test_performance_benchmarks
+      first_order_dubins_mppi
+      rcutils::rcutils
+      ${CUDA_LIBRARIES}
+    )
+    set_target_properties(test_performance_benchmarks PROPERTIES
+      CXX_STANDARD 17
+    )
+    # Prevent other tests in this CTest invocation from contending for the benchmark GPU.
+    set_tests_properties(test_performance_benchmarks PROPERTIES
+      LABELS "gpu;performance"
+      RUN_SERIAL TRUE
     )
 
     cuda_add_executable(test_mppi_trajectory_validator
@@ -237,6 +304,69 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       LABELS "gpu"
       TIMEOUT 60
     )
+
+    cuda_add_executable(test_costs
+      test/test_costs.cu
+    )
+    target_link_libraries(test_costs
+      first_order_dubins_mppi
+      ${GTEST_LIBRARIES}
+      ${GTEST_MAIN_LIBRARIES}
+    )
+    target_include_directories(test_costs SYSTEM PRIVATE
+      ${GTEST_INCLUDE_DIRS}
+    )
+    set_target_properties(test_costs PROPERTIES
+      CXX_STANDARD 17
+      CUDA_STANDARD 17
+    )
+    target_compile_options(test_costs PRIVATE
+      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
+    )
+    # Analytical checks remain runnable without a CUDA device; parity has its own GPU label.
+    ament_add_gtest_test(test_costs ENV "GTEST_FILTER=-GpuCostEvaluation.*")
+    set_tests_properties(test_costs PROPERTIES
+      LABELS "cost;gtest"
+      TIMEOUT 120
+    )
+    set(cost_gpu_result "${AMENT_TEST_RESULTS_DIR}/${PROJECT_NAME}/test_costs_gpu.gtest.xml")
+    ament_add_test(test_costs_gpu
+      COMMAND "$<TARGET_FILE:test_costs>"
+        "--gtest_filter=GpuCostEvaluation.*" "--gtest_output=xml:${cost_gpu_result}"
+      OUTPUT_FILE "${CMAKE_BINARY_DIR}/ament_cmake_gtest/test_costs_gpu.txt"
+      RESULT_FILE "${cost_gpu_result}"
+      TIMEOUT 120
+    )
+    set_tests_properties(test_costs_gpu PROPERTIES LABELS "cost;gpu;gtest")
+
+    # Keep the descriptive .cpp filename while compiling the texture-sampling test kernels with
+    # NVCC. FindCUDA treats a non-.cu source as CUDA when this property is set.
+    set_source_files_properties(test/test_distance_map.cpp PROPERTIES
+      CUDA_SOURCE_PROPERTY_FORMAT OBJ
+    )
+    cuda_add_executable(test_distance_map
+      test/test_distance_map.cpp
+    )
+    target_link_libraries(test_distance_map
+      first_order_dubins_mppi
+      ${GTEST_LIBRARIES}
+      ${GTEST_MAIN_LIBRARIES}
+    )
+    target_include_directories(test_distance_map SYSTEM PRIVATE
+      ${GTEST_INCLUDE_DIRS}
+    )
+    set_target_properties(test_distance_map PROPERTIES
+      CXX_STANDARD 17
+      CUDA_STANDARD 17
+    )
+    target_compile_options(test_distance_map PRIVATE
+      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
+    )
+    ament_add_gtest_test(test_distance_map)
+    set_tests_properties(test_distance_map PROPERTIES
+      LABELS "gpu"
+      TIMEOUT 180
+    )
   endif()
 
   install(TARGETS first_order_dubins_mppi mppi_offline_retune mppi_open_loop_line_sim
@@ -255,6 +385,6 @@ endif()
 ament_export_include_directories(include)
 if(CUDA_AVAIL AND TRT_AVAIL)
   ament_export_libraries(first_order_dubins_mppi)
-  ament_export_dependencies(MPPI-Generic)
+  ament_export_dependencies(MPPI-Generic OpenGL glfw3)
 endif()
 ament_auto_package(INSTALL_TO_SHARE config)

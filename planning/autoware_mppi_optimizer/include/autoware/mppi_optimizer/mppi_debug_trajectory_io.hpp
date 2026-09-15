@@ -119,13 +119,14 @@ inline bool writeMppiDebugRolloutsCsv(
   if (!out) {
     return false;
   }
-  out << "rollout_index,cost,step,x,y,is_worst\n";
+  out << "rollout_index,iteration,cost,step,x,y,is_worst\n";
   out << std::setprecision(9) << std::fixed;
   for (size_t r = 0; r < rollouts.size(); ++r) {
     const auto & rollout = rollouts[r];
     for (size_t s = 0; s < rollout.points.size(); ++s) {
-      out << r << "," << rollout.cost << "," << s << "," << rollout.points[s].first << ","
-          << rollout.points[s].second << "," << (rollout.is_worst ? 1 : 0) << "\n";
+      out << r << "," << rollout.iteration << "," << rollout.cost << "," << s << ","
+          << rollout.points[s].first << "," << rollout.points[s].second << ","
+          << (rollout.is_worst ? 1 : 0) << "\n";
     }
   }
   return true;
@@ -425,6 +426,42 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
   if (min_optimization_length_it != kv.end()) {
     options.min_optimization_length = min_optimization_length_it->second;
   }
+  const auto min_trajectory_progress_it = kv.find("min_trajectory_progress_m");
+  if (min_trajectory_progress_it != kv.end()) {
+    options.min_trajectory_progress_m = min_trajectory_progress_it->second;
+  }
+  const auto as_float = [&](const char * key, const float fallback) {
+    const auto it = kv.find(key);
+    return it == kv.end() ? fallback : it->second;
+  };
+  options.last_control_warm_start_max_age_s =
+    as_float("last_control_warm_start_max_age_s", options.last_control_warm_start_max_age_s);
+  options.nominal_initial_steering_max_deviation_rad = as_float(
+    "nominal_initial_steering_max_deviation_rad",
+    options.nominal_initial_steering_max_deviation_rad);
+  options.last_control_warm_start_max_position_error_m = as_float(
+    "last_control_warm_start_max_position_error_m",
+    options.last_control_warm_start_max_position_error_m);
+  options.last_control_warm_start_max_yaw_error_rad = as_float(
+    "last_control_warm_start_max_yaw_error_rad", options.last_control_warm_start_max_yaw_error_rad);
+  options.last_control_warm_start_max_velocity_error_mps = as_float(
+    "last_control_warm_start_max_velocity_error_mps",
+    options.last_control_warm_start_max_velocity_error_mps);
+  options.last_control_warm_start_max_reference_position_error_m = as_float(
+    "last_control_warm_start_max_reference_position_error_m",
+    options.last_control_warm_start_max_reference_position_error_m);
+  options.last_control_warm_start_max_reference_yaw_error_rad = as_float(
+    "last_control_warm_start_max_reference_yaw_error_rad",
+    options.last_control_warm_start_max_reference_yaw_error_rad);
+  options.last_control_warm_start_max_reference_velocity_error_mps = as_float(
+    "last_control_warm_start_max_reference_velocity_error_mps",
+    options.last_control_warm_start_max_reference_velocity_error_mps);
+  options.last_control_warm_start_stop_enter_velocity_mps = as_float(
+    "last_control_warm_start_stop_enter_velocity_mps",
+    options.last_control_warm_start_stop_enter_velocity_mps);
+  options.last_control_warm_start_stop_exit_velocity_mps = as_float(
+    "last_control_warm_start_stop_exit_velocity_mps",
+    options.last_control_warm_start_stop_exit_velocity_mps);
   options.ignore_obstacles = as_bool("ignore_obstacles", options.ignore_obstacles);
   options.ignore_road_borders = as_bool("ignore_road_borders", options.ignore_road_borders);
   options.ignore_drivable_area = as_bool("ignore_drivable_area", options.ignore_drivable_area);
@@ -439,6 +476,8 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
     as_bool("prevent_reverse_velocity", options.prevent_reverse_velocity);
   options.enable_input_delay_compensation =
     as_bool("enable_input_delay_compensation", options.enable_input_delay_compensation);
+  options.enable_iteration_rollout_debug =
+    as_bool("enable_iteration_rollout_debug", options.enable_iteration_rollout_debug);
   return true;
 }
 
