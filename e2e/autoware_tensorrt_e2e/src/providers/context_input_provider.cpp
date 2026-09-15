@@ -246,9 +246,20 @@ void ContextInputProvider::create_subscriptions()
       &node_, "~/input/route", rclcpp::QoS{1}.transient_local());
   }
   if (needs_map) {
+    // Intra-process delivery is disabled for THIS subscription only, not for the node.
+    // rclcpp refuses intra-process on anything but volatile durability, and the map is
+    // latched -- but the node has to keep intra-process on overall, because
+    // cuda_blackboard hands out its buffer tickets by
+    // get_intra_process_subscription_count(). A node that negotiates without being
+    // counted takes part in the negotiation and never draws a ticket, so the publisher
+    // finds last frame's entry still unclaimed and erases it ("already exists. Deleting.
+    // It had 1 tickets left") -- and that entry is the buffer the CUDA concatenator is
+    // still reading, which then takes the whole container down.
+    rclcpp::SubscriptionOptions map_options;
+    map_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Disable;
     sub_map_ = node_.create_subscription<LaneletMapBin>(
       "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
-      std::bind(&ContextInputProvider::on_map, this, std::placeholders::_1));
+      std::bind(&ContextInputProvider::on_map, this, std::placeholders::_1), map_options);
   }
 }
 
