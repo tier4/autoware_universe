@@ -18,6 +18,7 @@
 #include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/mppi_application_status.hpp"
+#include "autoware/mppi_optimizer/preferred_lane_centerline.hpp"
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware/avoidance_target_detector/object_filtering.hpp>
@@ -125,6 +126,9 @@ private:
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
   autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr current_map_;
   std::optional<unique_identifier_msgs::msg::UUID> current_route_uuid_;
+  std::vector<autoware_planning_msgs::msg::LaneletSegment> current_route_segments_;
+  PreferredLaneCenterlineSelector preferred_lane_selector_;
+  double preferred_lane_max_acceleration_{0.0};
   double object_filter_margin_m_{0.0};
   double object_filter_prediction_extension_s_{0.0};
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides

@@ -167,6 +167,8 @@ void applyCostParam(
     params.remaining_distance_coeff = value;
   } else if (key == "path_overshoot_coeff") {
     params.path_overshoot_coeff = value;
+  } else if (key == "preferred_lane_center_coeff") {
+    params.preferred_lane_center_coeff = value;
   } else if (key == "track_center_coeff") {
     params.track_center_coeff = value;
   } else if (key == "corner_buffer_coeff") {
@@ -711,6 +713,14 @@ int run(int argc, char ** argv)
       }
     }
 
+    autoware::mppi_optimizer::PreferredLaneCenterlineInput preferred_lane_centerline;
+    if (loadMppiDebugSegmentsCsv(
+          log_dir + "/" + tag + "_preferred_lane_center.csv", preferred_lane_centerline.segments)) {
+      preferred_lane_centerline.status =
+        preferred_lane_centerline.segments.empty() ? "unavailable" : "active";
+    } else {
+      std::cerr << "Preferred lane centerline unavailable for frame " << tag << "\n";
+    }
     std::vector<Segment> road_borders;
     std::vector<Segment> drivable_area;
     if (!loadMppiDebugSegmentsCsv(log_dir + "/" + tag + "_road_borders.csv", road_borders)) {
@@ -754,7 +764,7 @@ int run(int argc, char ** argv)
 
     const auto result = frame_mppi.optimizeTrajectory(
       reference, odom, accel, steering, tracked_objects, road_borders, drivable_area,
-      kinematic_limits);
+      kinematic_limits, {}, false, std::nullopt, preferred_lane_centerline);
 
     const std::string opt_path = out_dir + "/" + tag + "_optimized.csv";
     if (!writeMppiDebugTrajectoryCsv(opt_path, result.debug.optimized_trajectory)) {
@@ -840,6 +850,7 @@ int run(int argc, char ** argv)
       breakdown_out << "state/lateral_yaw_error," << breakdown.lateral_yaw_error << "\n";
       breakdown_out << "state/remaining_distance," << breakdown.remaining_distance << "\n";
       breakdown_out << "state/path_overshoot," << breakdown.path_overshoot << "\n";
+      breakdown_out << "state/preferred_lane_center," << breakdown.preferred_lane_center << "\n";
       breakdown_out << "state/track_center," << breakdown.track_center << "\n";
       breakdown_out << "state/corner_buffer," << breakdown.corner_buffer << "\n";
       breakdown_out << "state/drivable_area," << breakdown.drivable_area << "\n";

@@ -106,7 +106,7 @@ obstacle arrays test the cost's supplied stage index; wrapper timing retains its
   interpolation quantization. CPU analytical contact checks use tighter tolerances. This does not
   claim an error bound for arbitrary curved SDFs or all texture-edge configurations.
 
-## CSV schema 2
+## CSV schema 3
 
 Every test exports six files with a common name. Floating values use sufficient precision for
 round trips. Each reference, geometry and parameter snapshot is keyed by evaluation `row`, so a
@@ -136,3 +136,5 @@ Figures distinguish issued controls from actuator states, plot physical jerk sep
 command changes, show the actual reference/corridor and terminal target, and overlay the first and
 last geometry snapshots. The complete geometry history and parameter weights remain in the CSVs;
 figures are not an animation of every parameter-sweep scene.
+
+Preferred-lane centerline costs and their selected segments are included in schema 3.

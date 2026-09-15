@@ -52,6 +52,8 @@ inline constexpr Component components[] = {
   {"lateral_yaw_error", &Breakdown::lateral_yaw_error, &Params::lateral_yaw_error_coeff},
   {"remaining_distance", &Breakdown::remaining_distance, &Params::remaining_distance_coeff},
   {"path_overshoot", &Breakdown::path_overshoot, &Params::path_overshoot_coeff},
+  {"preferred_lane_center", &Breakdown::preferred_lane_center,
+   &Params::preferred_lane_center_coeff},
   {"track_center", &Breakdown::track_center, &Params::track_center_coeff},
   {"corner_buffer", &Breakdown::corner_buffer, &Params::corner_buffer_coeff},
   {"drivable_area", &Breakdown::drivable_area, &Params::drivable_area_barrier_weight},
@@ -231,6 +233,13 @@ public:
           << ',' << data.road_border_x1_[i] << ',' << data.road_border_y1_[i] << ",0,0,0,1";
       });
     }
+    for (int i = 0; i < data.num_preferred_lane_center_segments_; ++i) {
+      add(geometry, [&](auto & s) {
+        s << "preferred_lane_center," << i << ',' << data.preferred_lane_center_x0_[i] << ','
+          << data.preferred_lane_center_y0_[i] << ',' << data.preferred_lane_center_x1_[i] << ','
+          << data.preferred_lane_center_y1_[i] << ",0,0,0,1";
+      });
+    }
     for (int i = 0; i < data.num_drivable_area_segments_; ++i) {
       add(geometry, [&](auto & s) {
         s << "drivable_area," << i << ',' << data.drivable_area_x0_[i] << ','
@@ -336,7 +345,7 @@ public:
     sidecar(".params.csv", "row,parameter,value", parameters);
     // Write metadata last: absence signals an incomplete export, not a passing scenario.
     auto meta = csv(base.string() + ".meta.csv");
-    meta << "key,value\nschema_version,2\nhorizon," << H << "\ndt," << dt << "\nname,"
+    meta << "key,value\nschema_version,3\nhorizon," << H << "\ndt," << dt << "\nname,"
          << quoted(name) << "\nstatus,"
          << (skipped  ? "SKIPPED"
              : failed ? "FAIL"

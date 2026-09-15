@@ -41,6 +41,12 @@ struct alignas(16) DistanceMapTextureState
   DistanceMapTextureGrid static_distance_map_grid_{};
   DistanceMapTextureGrid obstacle_distance_map_grid_{};
   DistanceMapTextureGrid nearest_segment_map_grid_{};
+  DistanceMapTextureGrid preferred_lane_center_grid_{};
+  cudaTextureObject_t preferred_lane_center_texture_ = 0;
+  cudaArray_t preferred_lane_center_array_ = nullptr;
+  cudaSurfaceObject_t preferred_lane_center_surface_ = 0;
+  bool preferred_lane_center_texture_valid_ = false;
+  std::uint64_t preferred_lane_center_build_count_ = 0;
   cudaTextureObject_t static_distance_texture_ = 0;
   cudaTextureObject_t obstacle_distance_texture_ = 0;
   cudaTextureObject_t nearest_segment_texture_ = 0;

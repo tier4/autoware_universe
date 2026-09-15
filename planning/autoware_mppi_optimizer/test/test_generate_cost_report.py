@@ -27,7 +27,7 @@ class ReportIntegrityTest(unittest.TestCase):
         self.tables["meta"] = [
             dict(key=key, value=value)
             for key, value in {
-                "schema_version": "2",
+                "schema_version": "3",
                 "horizon": "2",
                 "dt": "0.1",
                 "name": self.name,

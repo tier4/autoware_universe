@@ -129,6 +129,55 @@ protected:
   }
 };
 
+TEST_F(CostEvaluation, PreferredLaneCenterUsesIndependentRouteGeometry)
+{
+  params.preferred_lane_center_coeff = 4.0F;
+  params.track_terminal_scale = 3.0F;
+  apply();
+  line(20.0F, 5.0F);  // Diffusion reference deliberately differs from preferred lane.
+  ASSERT_EQ(cost->setPreferredLaneCenterSegments({{-10, 0, 30, 0}}), "active");
+  auto y = Cost::output_array::Zero().eval();
+  const auto u = Cost::control_array::Zero().eval();
+  y(static_cast<int>(O::BASELINK_POS_I_X)) = 2.0F;
+  for (float offset : {0.0F, -0.5F, 0.5F, 1.0F}) {
+    y(static_cast<int>(O::BASELINK_POS_I_Y)) = offset;
+    const auto b = record(y, u, 0, "preferred offset=" + std::to_string(offset));
+    expected(b, &Breakdown::preferred_lane_center, "preferred_lane_center", 4 * offset * offset);
+    const auto terminal = record(y, u, H - 1, "preferred terminal", "terminal");
+    expected(
+      terminal, &Breakdown::preferred_lane_center, "preferred_lane_center", 12 * offset * offset);
+  }
+  ASSERT_EQ(cost->setPreferredLaneCenterSegments({{-10, 3, 30, 3}}), "active");
+  EXPECT_FLOAT_EQ(cost->computePreferredLaneCenterCost(2, 1), 16);
+  // Finite segment endpoints deliberately retain Euclidean endpoint attraction.
+  EXPECT_FLOAT_EQ(cost->computePreferredLaneCenterCost(33, 7), 100);
+  EXPECT_EQ(cost->setPreferredLaneCenterSegments({}), "unavailable");
+  EXPECT_FLOAT_EQ(cost->computePreferredLaneCenterCost(2, 1), 0);
+}
+
+TEST_F(CostEvaluation, PreferredLaneCenterInvalidOrOverflowInputClearsPreviousTarget)
+{
+  params.preferred_lane_center_coeff = 2.0F;
+  apply();
+  std::vector<Segment> segments(kMaxPreferredLaneCenterSegments, {-10, 0, 30, 0});
+  ASSERT_EQ(cost->setPreferredLaneCenterSegments(segments), "active");
+  EXPECT_FLOAT_EQ(cost->computePreferredLaneCenterCost(2, 1), 2);
+  segments.push_back(segments.back());
+  EXPECT_EQ(cost->setPreferredLaneCenterSegments(segments), "overflow");
+  EXPECT_FLOAT_EQ(cost->computePreferredLaneCenterCost(2, 1), 0);
+  record(
+    Cost::output_array::Zero().eval(), Cost::control_array::Zero().eval(), 0,
+    "overflow clears preferred geometry");
+  ASSERT_EQ(cost->setPreferredLaneCenterSegments({{-10, 0, 30, 0}}), "active");
+  EXPECT_EQ(cost->setPreferredLaneCenterSegments({{0, 0, 0, 0}}), "invalid_geometry");
+  EXPECT_FLOAT_EQ(cost->computePreferredLaneCenterCost(2, 1), 0);
+  EXPECT_EQ(cost->setPreferredLaneCenterSegments({{NAN, 0, 30, 0}}), "invalid_geometry");
+  params.preferred_lane_center_coeff = 0;
+  apply();
+  cost->setPreferredLaneCenterSegments({{-10, 0, 30, 0}});
+  EXPECT_FLOAT_EQ(cost->computePreferredLaneCenterCost(2, 1), 0);
+}
+
 struct QuadraticCase
 {
   const char * name;
@@ -926,6 +975,81 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
         EXPECT_NEAR(total, 1.0F + 1.0F / H, 1.0E-4F);
       }
     }
+  }
+}
+
+TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUsePreferredLaneCenter)
+{
+  // Deterministic zero controls isolate the preferred-centerline cost. Both production
+  // launchers use the same bicycle/cost specialization and the deployed block dimensions.
+  using Sampler = mppi::sampling_distributions::GaussianDistribution<FirstOrderDubinsBicycleParams>;
+  constexpr int rollouts = 32;
+  Sampler::SAMPLING_PARAMS_T sampling_params;
+  sampling_params.num_rollouts = rollouts;
+  sampling_params.num_timesteps = H;
+  sampling_params.num_distributions = 1;
+  for (auto & sigma : sampling_params.std_dev) {
+    sigma = 1.0F;
+  }
+  Sampler sampler(sampling_params);
+  Model model;
+  model.GPUSetup();
+  sampler.GPUSetup();
+  const auto mean = Eigen::Matrix<float, Model::CONTROL_DIM, H>::Zero().eval();
+  sampler.copyImportanceSamplerToDevice(mean.data(), 0, true);
+  HANDLE_ERROR(cudaMemset(
+    sampler.getControlSample(0, 0, 0), 0, rollouts * H * Model::CONTROL_DIM * sizeof(float)));
+  params = disabledParams();
+  params.preferred_lane_center_coeff = 1.0F;
+  apply();
+  cost->setPreferredLaneCenterSegments({{-10, 8, 30, 8}});
+  auto state = model.getZeroState();
+  state(static_cast<int>(S::POS_X)) = 1.0F;
+  state(static_cast<int>(S::POS_Y)) = 9.0F;
+  DeviceBuffer<float> initial(Model::STATE_DIM), totals(rollouts);
+  DeviceBuffer<float> outputs(rollouts * H * Model::OUTPUT_DIM);
+  HANDLE_ERROR(cudaMemcpy(
+    initial.data, state.data(), Model::STATE_DIM * sizeof(float), cudaMemcpyHostToDevice));
+  for (bool texture : {true, false}) {
+    cost->setPreferredLaneCenterTextureEnabled(texture);
+    HANDLE_ERROR(cudaGetLastError());
+    for (bool split : {false, true}) {
+      SCOPED_TRACE(texture);
+      SCOPED_TRACE(split);
+      if (split) {
+        mppi::kernels::launchSplitRolloutKernel(
+          &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, outputs.data,
+          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true);
+      } else {
+        mppi::kernels::launchRolloutKernel(
+          &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
+          dim3(32, 2, 1), 0, true);
+      }
+      std::array<float, rollouts> actual{};
+      HANDLE_ERROR(cudaMemcpy(actual.data(), totals.data, sizeof(actual), cudaMemcpyDeviceToHost));
+      for (float total : actual) {
+        // Stationary at (1,9): lateral error is 1 m for H running stages and terminal.
+        EXPECT_NEAR(total, 1.0F + 1.0F / H, 0.01F);
+      }
+    }
+  }
+}
+
+TEST_F(GpuCostEvaluation, PreferredLaneCenterRunningAndTerminalMatchHost)
+{
+  params = disabledParams();
+  params.preferred_lane_center_coeff = 4;
+  params.track_terminal_scale = 3;
+  apply();
+  cost->setPreferredLaneCenterSegments({{-10, 0, 30, 0}, {30, 0, 40, 10}});
+  auto y = Cost::output_array::Zero().eval();
+  const auto u = Cost::control_array::Zero().eval();
+  y(static_cast<int>(O::BASELINK_POS_I_X)) = 5;
+  y(static_cast<int>(O::BASELINK_POS_I_Y)) = 2;
+  for (bool texture : {false, true}) {
+    cost->setPreferredLaneCenterTextureEnabled(texture);
+    parity(y, u, 0, "preferred centerline", texture ? 0.02 : 0.0001);
+    parity(y, u, H - 1, "preferred centerline shared", texture ? 0.02 : 0.0001, true);
   }
 }
 
