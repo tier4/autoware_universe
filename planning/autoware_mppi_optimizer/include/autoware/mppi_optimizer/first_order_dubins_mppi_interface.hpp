@@ -262,6 +262,7 @@ struct FirstOrderDubinsMppiCostBreakdown
   float lateral_yaw_error{0.0F};
   float remaining_distance{0.0F};
   float path_overshoot{0.0F};
+  float preferred_lane_center{0.0F};
   float track_center{0.0F};
   float corner_buffer{0.0F};
   float drivable_area{0.0F};
@@ -290,9 +291,9 @@ struct FirstOrderDubinsMppiCostBreakdown
   {
     return spatial_overspeed + track + heading + terminal_error + terminal_heading +
            lateral_distance + lateral_boundary + lateral_yaw_error + remaining_distance +
-           path_overshoot + track_center + corner_buffer + drivable_area + acceleration_command +
-           steering_command + lateral_acceleration + lateral_jerk + longitudinal_jerk +
-           steering_rate + initial_steering_rate + acceleration_command_rate +
+           path_overshoot + preferred_lane_center + track_center + corner_buffer + drivable_area +
+           acceleration_command + steering_command + lateral_acceleration + lateral_jerk +
+           longitudinal_jerk + steering_rate + initial_steering_rate + acceleration_command_rate +
            steering_command_rate + kinematic_velocity_overlimit + kinematic_acceleration_overlimit +
            kinematic_jerk_overlimit + obstacle + road_border;
   }
@@ -413,6 +414,8 @@ struct FirstOrderDubinsMppiDebug
   FirstOrderDubinsMppiNominalControlProfile nominal_control_profile;
   /** Cost of the pre-optimization nominal control rollout. */
   FirstOrderDubinsMppiCostBreakdown nominal_cost_breakdown;
+  std::string preferred_lane_center_status{"unavailable"};
+  std::size_t preferred_lane_center_segment_count{0};
   /** Cost of the final selected control rollout. */
   FirstOrderDubinsMppiCostBreakdown cost_breakdown;
   FirstOrderDubinsMppiTiming timing;
@@ -477,6 +480,18 @@ struct Segment
   float y1{0.0F};
 };
 
+inline constexpr std::size_t kMaxPreferredLaneCenterSegments = 256;
+
+/** Optional per-call geometry, in the same map frame as the ego and reference. */
+struct PreferredLaneCenterlineInput
+{
+  std::vector<Segment> segments;
+  /** Reason for empty geometry; nonempty segments are validated by the interface. */
+  std::string status{"unavailable"};
+  /** Source route revision; geometry itself also participates in texture invalidation. */
+  std::uint64_t revision{0};
+};
+
 /**
  * @brief Host-side interface to the first-order Dubins MPPI controller used in the
  *        two-lane double-park path-tracking example.
@@ -503,6 +518,9 @@ public:
 
   /** Configure MPPI cost weights (FirstOrderDubinsBicycleCostParams). */
   void setCostParams(const FirstOrderDubinsMppiCostParams & params);
+
+  /** Select exact geometry instead of the centerline texture for validation/benchmarks. */
+  void setPreferredLaneCenterTextureEnabled(bool enabled);
 
   /** Configure debug logging and ablation options. */
   void setRuntimeOptions(const FirstOrderDubinsMppiRuntimeOptions & options);
@@ -608,6 +626,9 @@ public:
    * @param mpc_predicted_trajectory Optional path whose geometry supplies the nominal steering
    *        prefix. Eligibility based on previous application and freshness is decided by the
    * caller.
+   * @param preferred_lane_centerline Optional map-frame preferred route centerline segments.
+   *        Empty input clears this objective for the call; invalid/oversized input disables it
+   *        with a debug status. It never replaces the diffusion-reference corridor.
    * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
@@ -619,7 +640,8 @@ public:
     const FirstOrderDubinsMppiKinematicLimits & kinematic_limits = {},
     const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor = {},
     bool defer_commit = false,
-    const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt);
+    const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt,
+    const PreferredLaneCenterlineInput & preferred_lane_centerline = {});
 
   /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
    * This records an assumed first actuator command, not feedback from the downstream controller.

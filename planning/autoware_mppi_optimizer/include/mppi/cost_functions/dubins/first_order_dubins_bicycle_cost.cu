@@ -281,6 +281,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   runtime_data_device_ = runtime_data_.data()[0];
   PARENT_CLASS::GPUSetup();
   setDistanceMapTextureDebugEnabled(distance_map_texture_debug_enabled_);
+  if (!data_update_active_) refreshPreferredLaneCenterTexture();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -361,6 +362,7 @@ void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::paramsToDevice()
 {
   PARENT_CLASS::paramsToDevice();
+  if (!data_update_active_) refreshPreferredLaneCenterTexture();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -395,6 +397,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     refreshDistanceMapTexturesNow(
       obstacle_geometry_changed, road_border_geometry_changed, drivable_area_geometry_changed);
   }
+  refreshPreferredLaneCenterTexture();
   if (nearest_segment_refresh_pending_) {
     const bool geometry_changed = nearest_segment_geometry_dirty_;
     nearest_segment_refresh_pending_ = false;
@@ -691,6 +694,86 @@ void FirstOrderDubinsBicycleCostImpl<
   runtimeData().num_obstacles_ = 0;
   dataToDevice();
   refreshDistanceMapTextures(geometry_changed, false, false);
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+std::string FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  setPreferredLaneCenterSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
+{
+  std::string status = segments.empty() ? "unavailable" : "active";
+  if (segments.size() > kMaxPreferredLaneCenterSegments) status = "overflow";
+  if (status == "active") {
+    for (const auto & s : segments) {
+      if (
+        !std::isfinite(s.x0) || !std::isfinite(s.y0) || !std::isfinite(s.x1) ||
+        !std::isfinite(s.y1) || (s.x0 == s.x1 && s.y0 == s.y1)) {
+        status = "invalid_geometry";
+        break;
+      }
+    }
+  }
+  auto & data = runtimeData();
+  const int count = status == "active" ? static_cast<int>(segments.size()) : 0;
+  bool changed = count != data.num_preferred_lane_center_segments_;
+  for (int i = 0; i < count; ++i) {
+    const auto & s = segments[i];
+    changed = changed || data.preferred_lane_center_x0_[i] != s.x0 ||
+              data.preferred_lane_center_y0_[i] != s.y0 ||
+              data.preferred_lane_center_x1_[i] != s.x1 ||
+              data.preferred_lane_center_y1_[i] != s.y1;
+    data.preferred_lane_center_x0_[i] = s.x0;
+    data.preferred_lane_center_y0_[i] = s.y0;
+    data.preferred_lane_center_x1_[i] = s.x1;
+    data.preferred_lane_center_y1_[i] = s.y1;
+  }
+  data.num_preferred_lane_center_segments_ = count;
+  preferred_lane_center_geometry_dirty_ |= changed;
+  if (changed) texture_state_.preferred_lane_center_texture_valid_ = false;
+  if (changed) dataToDevice();
+  if (!data_update_active_) refreshPreferredLaneCenterTexture();
+  return status;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  setPreferredLaneCenterTextureEnabled(const bool enabled)
+{
+  preferred_lane_center_texture_enabled_ = enabled;
+  if (!data_update_active_) refreshPreferredLaneCenterTexture();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ __device__ float FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::computePreferredLaneCenterCost(const float x, const float y) const
+{
+  const float weight = this->params_.preferred_lane_center_coeff;
+  if (!(weight > 0.0F)) return 0.0F;
+  const auto & data = runtimeData();
+  const int count = mppi::memory::loadReadOnly(&data.num_preferred_lane_center_segments_);
+  if (count == 0) return 0.0F;
+#ifdef __CUDA_ARCH__
+  if (texture_state_.preferred_lane_center_texture_valid_) {
+    const auto & grid = texture_state_.preferred_lane_center_grid_;
+    const float tx = (x - grid.origin_x) / grid.resolution;
+    const float ty = (y - grid.origin_y) / grid.resolution;
+    // Linear interpolation must not use clamped edge texels outside their centers.
+    if (tx >= 0.5F && ty >= 0.5F && tx <= grid.width - 0.5F && ty <= grid.height - 0.5F) {
+      const float d = tex2D<float>(texture_state_.preferred_lane_center_texture_, tx, ty);
+      return weight * d * d;
+    }
+  }
+#endif
+  float distance = kDistanceMapEmptyDistance;
+  for (int i = 0; i < count; ++i) {
+    distance = fminf(
+      distance, mppi::cost::detail::distancePointToSegment(
+                  x, y, mppi::memory::loadReadOnly(&data.preferred_lane_center_x0_[i]),
+                  mppi::memory::loadReadOnly(&data.preferred_lane_center_y0_[i]),
+                  mppi::memory::loadReadOnly(&data.preferred_lane_center_x1_[i]),
+                  mppi::memory::loadReadOnly(&data.preferred_lane_center_y1_[i])));
+  }
+  return weight * distance * distance;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1347,6 +1430,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   }
   result.track_center =
     this->params_.track_center_coeff * computeTrackCenterValue(x_pos, y_pos, yaw, timestep);
+  result.preferred_lane_center = computePreferredLaneCenterCost(x_pos, y_pos);
   result.corner_buffer = computeCornerBufferCost(x_pos, y_pos, yaw);
   computeGradualCrashCosts(
     x_pos, y_pos, yaw, timestep, result.drivable_area, result.obstacle, result.road_border,
@@ -1424,6 +1508,8 @@ autoware::mppi_optimizer::FirstOrderDubinsMppiCostBreakdown FirstOrderDubinsBicy
   result.track_center = this->params_.track_center_coeff *
                         computeTrackCenterValue(x_pos, y_pos, yaw, timestep) *
                         this->params_.track_terminal_scale;
+  result.preferred_lane_center =
+    this->params_.track_terminal_scale * computePreferredLaneCenterCost(x_pos, y_pos);
   result.corner_buffer = computeCornerBufferCost(x_pos, y_pos, yaw);
   computeGradualCrashCosts(
     x_pos, y_pos, yaw, timestep, result.drivable_area, result.obstacle, result.road_border);
@@ -1492,7 +1578,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   return spatial_overspeed_cost + track_cost + heading_cost + lateral_distance_cost +
          lateral_boundary_cost + lateral_yaw_error_cost + remaining_distance_cost +
          path_overshoot_cost + drivable_area_cost + track_center_cost + corner_buffer_cost +
-         obstacle_cost + road_border_cost;
+         obstacle_cost + road_border_cost + computePreferredLaneCenterCost(x_pos, y_pos);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1553,7 +1639,7 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   return spatial_overspeed_cost + track_cost + heading_cost + lateral_distance_cost +
          lateral_boundary_cost + lateral_yaw_error_cost + remaining_distance_cost +
          path_overshoot_cost + drivable_area_cost + track_center_cost + corner_buffer_cost +
-         obstacle_cost + road_border_cost;
+         obstacle_cost + road_border_cost + computePreferredLaneCenterCost(x_pos, y_pos);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1637,7 +1723,8 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     return track_cost + heading_cost + terminal_error_cost + terminal_heading_cost +
            lateral_distance_cost + lateral_boundary_cost + lateral_yaw_error_cost +
            remaining_distance_cost + path_overshoot_cost + drivable_area_cost + track_center_cost +
-           corner_buffer_cost + obstacle_cost + road_border_cost;
+           corner_buffer_cost + obstacle_cost + road_border_cost +
+           this->params_.track_terminal_scale * computePreferredLaneCenterCost(x_pos, y_pos);
   }
   return 0.0F;
 }

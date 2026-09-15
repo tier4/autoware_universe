@@ -223,7 +223,7 @@ __global__ void sampleProjectionSegmentKernel(
   }
 }
 
-enum class DistanceQuery : int { Obstacle, RoadBorder, DrivableArea };
+enum class DistanceQuery : int { Obstacle, RoadBorder, DrivableArea, PreferredLaneCenter };
 
 __global__ void setProjectionTextureEnabled(TestCost * cost, const bool enabled)
 {
@@ -316,7 +316,9 @@ __global__ void sampleCostDistanceKernel(
   if (index != 0) {
     return;
   }
-  if (query == DistanceQuery::Obstacle) {
+  if (query == DistanceQuery::PreferredLaneCenter) {
+    output[0] = cost->computePreferredLaneCenterCost(x, y);
+  } else if (query == DistanceQuery::Obstacle) {
     output[0] = cost->distanceToClosestObstacle(x, y, yaw, timestep);
   } else if (query == DistanceQuery::RoadBorder) {
     output[0] = cost->distanceToRoadBorder(x, y, yaw);
@@ -546,6 +548,68 @@ protected:
   std::unique_ptr<CudaStream> stream_;
   std::unique_ptr<TestCost> cost_;
 };
+
+TEST_F(DistanceMapGpuTest, PreferredLaneCenterTextureCacheAndExactFallback)
+{
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_array_, nullptr);
+  auto params = cost_->getParams();
+  params.preferred_lane_center_coeff = 2.0F;
+  cost_->setParams(params);
+  cost_->beginDataUpdate();
+  ASSERT_EQ(cost_->setPreferredLaneCenterSegments({{-200, 0, 200, 0}}), "active");
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_build_count_, 0U);
+  cost_->commitDataUpdate();
+  const auto array = cost_->texture_state_.preferred_lane_center_array_;
+  ASSERT_NE(array, nullptr);
+  ASSERT_TRUE(cost_->texture_state_.preferred_lane_center_texture_valid_);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_build_count_, 1U);
+  const auto sample = [&](float x, float y) {
+    return sampleCostDistance(*cost_, x, y, 0, 0, DistanceQuery::PreferredLaneCenter, stream());
+  };
+  for (float y : {-2.0F, -0.5F, 0.0F, 0.5F, 2.0F}) {
+    const float d = std::abs(y), epsilon = 0.215F;
+    EXPECT_NEAR(sample(0, y), 2 * d * d, 2 * (2 * d * epsilon + epsilon * epsilon));
+  }
+  // Both the outer half-texel band and points outside the field must be exact.
+  const auto grid = cost_->texture_state_.preferred_lane_center_grid_;
+  EXPECT_NEAR(sample(grid.origin_x + 0.1F * grid.resolution, 2), 8, 1.0E-4);
+  EXPECT_NEAR(sample(300, 2), 20008, 0.01);
+  cost_->setPreferredLaneCenterSegments({{-200, 0, 200, 0}});
+  params.preferred_lane_center_coeff = 4;
+  cost_->setParams(params);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_build_count_, 1U);
+  EXPECT_NEAR(sample(0, 2), 16, 0.01);
+  cost_->setPreferredLaneCenterSegments({{-200, 3, 200, 3}});
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_build_count_, 2U);
+  EXPECT_NEAR(sample(0, 2), 4, 0.01);
+  cost_->setPreferredLaneCenterTextureEnabled(false);
+  EXPECT_FALSE(cost_->texture_state_.preferred_lane_center_texture_valid_);
+  EXPECT_NEAR(sample(0, 3), 0, 1.0E-6);
+  cost_->setPreferredLaneCenterTextureEnabled(true);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_build_count_, 3U);
+  fillReference(*cost_, 1.0F);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_build_count_, 4U);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_array_, array);
+  params.preferred_lane_center_coeff = 0;
+  cost_->setParams(params);
+  EXPECT_FLOAT_EQ(sample(0, 2), 0);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_build_count_, 4U);
+  params.preferred_lane_center_coeff = 4;
+  cost_->setParams(params);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_build_count_, 5U);
+  cost_->setPreferredLaneCenterSegments({});
+  EXPECT_FALSE(cost_->texture_state_.preferred_lane_center_texture_valid_);
+  EXPECT_FLOAT_EQ(sample(0, 2), 0);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_array_, array);
+  cost_->freeCudaMem();
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_array_, nullptr);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_surface_, 0U);
+  EXPECT_EQ(cost_->texture_state_.preferred_lane_center_texture_, 0U);
+  cost_->GPUSetup();
+  cost_->setPreferredLaneCenterSegments({{-200, 0, 200, 0}});
+  EXPECT_TRUE(cost_->texture_state_.preferred_lane_center_texture_valid_);
+  EXPECT_NEAR(sample(0, 2), 16, 0.01);
+}
 
 TEST_F(DistanceMapGpuTest, EmptyStaticEnvironmentFillsBothChannelsWithEmptyDistance)
 {

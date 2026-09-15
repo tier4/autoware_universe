@@ -141,7 +141,7 @@ using SAMPLER = mppi::sampling_distributions::GaussianDistribution<DYN::DYN_PARA
 using Mppi = VanillaMPPIController<DYN, COST, FB, kMppiHorizon, kNumRollouts, SAMPLER>;
 using CostBreakdown = FirstOrderDubinsMppiCostBreakdown;
 
-constexpr std::array<float CostBreakdown::*, 30> kCostBreakdownFields = {
+constexpr std::array<float CostBreakdown::*, 31> kCostBreakdownFields = {
   &CostBreakdown::spatial_overspeed,
   &CostBreakdown::track,
   &CostBreakdown::heading,
@@ -152,6 +152,7 @@ constexpr std::array<float CostBreakdown::*, 30> kCostBreakdownFields = {
   &CostBreakdown::lateral_yaw_error,
   &CostBreakdown::remaining_distance,
   &CostBreakdown::path_overshoot,
+  &CostBreakdown::preferred_lane_center,
   &CostBreakdown::track_center,
   &CostBreakdown::corner_buffer,
   &CostBreakdown::drivable_area,
@@ -262,10 +263,12 @@ std::string formatCostBreakdown(const CostBreakdown & cost)
          << ", lateral_distance=" << cost.lateral_distance
          << ", lateral_boundary=" << cost.lateral_boundary
          << ", lateral_yaw=" << cost.lateral_yaw_error << ", remaining=" << cost.remaining_distance
-         << ", overshoot=" << cost.path_overshoot << ", track_center=" << cost.track_center
-         << ", corner=" << cost.corner_buffer << ", drivable=" << cost.drivable_area
-         << ", obstacle=" << cost.obstacle << ", road_border=" << cost.road_border
-         << ", accel_cmd=" << cost.acceleration_command << ", steer_cmd=" << cost.steering_command
+         << ", overshoot=" << cost.path_overshoot
+         << ", preferred_lane_center=" << cost.preferred_lane_center
+         << ", track_center=" << cost.track_center << ", corner=" << cost.corner_buffer
+         << ", drivable=" << cost.drivable_area << ", obstacle=" << cost.obstacle
+         << ", road_border=" << cost.road_border << ", accel_cmd=" << cost.acceleration_command
+         << ", steer_cmd=" << cost.steering_command
          << ", lateral_accel=" << cost.lateral_acceleration
          << ", lateral_jerk=" << cost.lateral_jerk
          << ", longitudinal_jerk=" << cost.longitudinal_jerk
@@ -422,6 +425,7 @@ void applyUserCostParams(
   cost_params.lateral_yaw_error_coeff = user.lateral_yaw_error_coeff;
   cost_params.remaining_distance_coeff = user.remaining_distance_coeff;
   cost_params.path_overshoot_coeff = user.path_overshoot_coeff;
+  cost_params.preferred_lane_center_coeff = user.preferred_lane_center_coeff;
   cost_params.track_center_coeff = user.track_center_coeff;
   cost_params.corner_buffer_coeff = user.corner_buffer_coeff;
   cost_params.corner_safe_margin = user.corner_safe_margin;
@@ -831,6 +835,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   /** Cumulative chord length [m] along diffusion_reference.points (s[0]=0). */
   std::vector<float> diffusion_reference_chord_length_s;
   TrackedObjects tracked_objects;
+  PreferredLaneCenterlineInput preferred_lane_centerline;
   std::vector<Segment> road_borders;
   std::vector<Segment> drivable_area;
   std::vector<mppi::cost::MovingCarObstacle> obstacles;
@@ -1880,7 +1885,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     const TrackedObjects & tracked_objects_in, const std::vector<Segment> & road_borders_in,
     const std::vector<Segment> & drivable_area_in,
     const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
-    const std::optional<Trajectory> & mpc_predicted_trajectory)
+    const std::optional<Trajectory> & mpc_predicted_trajectory,
+    const PreferredLaneCenterlineInput & preferred_input = {})
   {
     const auto check_capacity = [](std::size_t count, std::size_t capacity, const char * kind) {
       if (count > capacity) {
@@ -1901,6 +1907,20 @@ struct FirstOrderDubinsMppiInterface::Impl
       setup();
     }
     cost.beginDataUpdate();
+    preferred_lane_centerline = preferred_input;
+    if (!(user_cost_params_.preferred_lane_center_coeff > 0.0F)) {
+      preferred_lane_centerline = {};
+      preferred_lane_centerline.status = "disabled";
+    }
+    const auto preferred_status =
+      cost.setPreferredLaneCenterSegments(preferred_lane_centerline.segments);
+    if (preferred_status != "active") {
+      preferred_lane_centerline.segments.clear();
+      if (preferred_status != "unavailable" || preferred_lane_centerline.status == "active")
+        preferred_lane_centerline.status = preferred_status;
+    } else {
+      preferred_lane_centerline.status = "active";
+    }
 
     if (force_cold_start_each_step) {
       invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::forced_cold_start);
@@ -2337,6 +2357,13 @@ void FirstOrderDubinsMppiInterface::setVehicleParams(
   impl_->vehicle_params = params;
 }
 
+void FirstOrderDubinsMppiInterface::setPreferredLaneCenterTextureEnabled(const bool enabled)
+{
+  if (!impl_) throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
+  impl_->pending_trajectory_.reset();
+  impl_->cost.setPreferredLaneCenterTextureEnabled(enabled);
+}
+
 void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCostParams & params)
 {
   if (impl_) impl_->pending_trajectory_.reset();
@@ -2344,10 +2371,12 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
   if (
-    !std::isfinite(params.overlimit_coeff) || params.overlimit_coeff < 0.0F ||
-    !std::isfinite(params.initial_steer_rate_coeff) || params.initial_steer_rate_coeff < 0.0F ||
-    !std::isfinite(params.accel_cmd_rate_coeff) || params.accel_cmd_rate_coeff < 0.0F ||
-    !std::isfinite(params.steer_cmd_rate_coeff) || params.steer_cmd_rate_coeff < 0.0F ||
+    !std::isfinite(params.preferred_lane_center_coeff) ||
+    params.preferred_lane_center_coeff < 0.0F || !std::isfinite(params.overlimit_coeff) ||
+    params.overlimit_coeff < 0.0F || !std::isfinite(params.initial_steer_rate_coeff) ||
+    params.initial_steer_rate_coeff < 0.0F || !std::isfinite(params.accel_cmd_rate_coeff) ||
+    params.accel_cmd_rate_coeff < 0.0F || !std::isfinite(params.steer_cmd_rate_coeff) ||
+    params.steer_cmd_rate_coeff < 0.0F ||
 
     !std::isfinite(params.crash_contact_penalty) || params.crash_contact_penalty < 0.0F ||
     !std::isfinite(params.std_dev_decay) || params.std_dev_decay < 0.0F ||
@@ -2691,7 +2720,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const std::vector<Segment> & drivable_area,
   const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
   const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor,
-  const bool defer_commit, const std::optional<Trajectory> & mpc_predicted_trajectory)
+  const bool defer_commit, const std::optional<Trajectory> & mpc_predicted_trajectory,
+  const PreferredLaneCenterlineInput & preferred_lane_centerline)
 try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -2723,8 +2753,11 @@ try {
 
   impl_->updateDiffusionReference(
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
-    kinematic_limits, mpc_predicted_trajectory);
+    kinematic_limits, mpc_predicted_trajectory, preferred_lane_centerline);
   Impl::TrackingTransaction transaction(*impl_);
+  result.debug.preferred_lane_center_status = impl_->preferred_lane_centerline.status;
+  result.debug.preferred_lane_center_segment_count =
+    impl_->preferred_lane_centerline.segments.size();
   result.debug.prediction_accuracy = impl_->prediction_accuracy;
   result.debug.nominal_seed_source = impl_->nominal_seed_source;
   result.debug.nominal_reset_reason = impl_->nominal_reset_reason;
@@ -2977,7 +3010,8 @@ try {
       impl_->logged_nominal_steer, road_borders, drivable_area, tracked_objects,
       impl_->logged_hist_accel_tm2, impl_->logged_hist_steer_tm2, impl_->logged_hist_accel_tm1,
       impl_->logged_hist_steer_tm1, impl_->logged_delay_accel, impl_->logged_delay_steer,
-      impl_->logged_applied_accel, impl_->logged_applied_steer, impl_->active_kinematic_limits);
+      impl_->logged_applied_accel, impl_->logged_applied_steer, impl_->active_kinematic_limits,
+      impl_->preferred_lane_centerline);
   }
 
   const auto validation_reasons = to_string(result.debug.validation.reasons);

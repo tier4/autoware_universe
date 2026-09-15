@@ -49,6 +49,8 @@ struct FirstOrderDubinsMppiCostParams
   float remaining_distance_coeff{0.0F};
   /** Soft cost on along-track overshoot past the corridor tip [m]; 0 disables. */
   float path_overshoot_coeff{0.0F};
+  /** Squared rear-axle distance to preferred route centerlines; zero disables. */
+  float preferred_lane_center_coeff{0.0F};
   float track_center_coeff{0.0F};
   float corner_buffer_coeff{0.0F};
   float corner_safe_margin{0.3F};
