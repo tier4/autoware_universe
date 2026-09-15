@@ -1421,11 +1421,6 @@ trajectory_processor_params:
       read_only: false
 
   map_velocity_limits:
-    enable_smoothing:
-      type: bool
-      default_value: true
-      description: Smooth unreachable velocities with constant deceleration from the current velocity
-      read_only: false
     limit_velocity_from_map_debug_lanelet_ids:
       type: int_array
       default_value: []
