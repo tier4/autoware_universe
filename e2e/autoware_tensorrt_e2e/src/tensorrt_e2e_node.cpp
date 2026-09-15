@@ -26,6 +26,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <map>
 #include <memory>
@@ -222,6 +225,8 @@ void TensorrtE2eNode::set_up_params()
   params_.trt_workspace_mib = declare_parameter<int64_t>("trt_workspace_mib", 4096);
   params_.args_path = declare_parameter<std::string>("args_path", "");
   params_.build_only = declare_parameter<bool>("build_only", false);
+  params_.dump_dir = declare_parameter<std::string>("debug.dump_dir", "");
+  params_.dump_max_frames = declare_parameter<int64_t>("debug.dump_max_frames", 300);
   params_.shift_x = declare_parameter<bool>("shift_x", false);
   params_.sensor_inputs =
     declare_parameter<std::vector<std::string>>("sensor_inputs", std::vector<std::string>{});
@@ -546,6 +551,10 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
 
   timing.postprocess_ms = stop_watch_.toc("postprocess");
 
+  if (!params_.dump_dir.empty() && dumped_frames_ < params_.dump_max_frames) {
+    dump_tensors(inputs, *result.outputs, *ego);
+  }
+
   pub_trajectory_->publish(output.trajectory);
   pub_trajectories_->publish(output.candidate_trajectories);
   publish_planning_factor(output.trajectory);
@@ -604,6 +613,63 @@ void TensorrtE2eNode::add_input_diagnostics(const TensorMap & inputs)
     diagnostics_->add_key_value(
       key, dp::postprocess::count_valid_elements(
              it->second.host_data, shape[1], shape[2], shape[3], /*batch_idx=*/0));
+  }
+}
+
+void TensorrtE2eNode::dump_tensors(
+  const TensorMap & inputs, const TensorMap & outputs, const EgoFrame & ego)
+{
+  namespace fs = std::filesystem;
+  const fs::path dir(params_.dump_dir);
+  std::error_code ec;
+  fs::create_directories(dir, ec);
+  if (ec) {
+    RCLCPP_WARN_STREAM_THROTTLE(
+      get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
+      "debug.dump_dir: cannot create " << dir << ": " << ec.message());
+    return;
+  }
+  const int64_t frame = dumped_frames_++;
+  std::ostringstream manifest;
+  const auto & pose = ego.odometry.pose.pose;
+  const auto & twist = ego.odometry.twist.twist;
+  manifest << std::setprecision(17) << "{\"frame\":" << frame << ",\"stamp\":" << ego.stamp.seconds()
+           << ",\"ego\":{\"x\":" << pose.position.x << ",\"y\":" << pose.position.y
+           << ",\"z\":" << pose.position.z << ",\"qx\":" << pose.orientation.x
+           << ",\"qy\":" << pose.orientation.y << ",\"qz\":" << pose.orientation.z
+           << ",\"qw\":" << pose.orientation.w << ",\"vx\":" << twist.linear.x
+           << ",\"vy\":" << twist.linear.y << ",\"wz\":" << twist.angular.z << "}";
+  const auto write_group = [&](const char * group, const TensorMap & tensors) {
+    manifest << ",\"" << group << "\":{";
+    bool first = true;
+    for (const auto & [name, tensor] : tensors) {
+      if (tensor.is_device()) {
+        continue;  // a BEV feature map: hundreds of MB per frame, and not a context tensor
+      }
+      std::ostringstream file;
+      file << std::setw(6) << std::setfill('0') << frame << "_" << group << "_" << name << ".f32";
+      std::ofstream out(dir / file.str(), std::ios::binary);
+      out.write(
+        reinterpret_cast<const char *>(tensor.host_data.data()),
+        static_cast<std::streamsize>(tensor.host_data.size() * sizeof(float)));
+      manifest << (first ? "" : ",") << "\"" << name << "\":{\"file\":\"" << file.str()
+               << "\",\"shape\":[";
+      for (size_t i = 0; i < tensor.shape.size(); ++i) {
+        manifest << (i ? "," : "") << tensor.shape[i];
+      }
+      manifest << "]}";
+      first = false;
+    }
+    manifest << "}";
+  };
+  write_group("inputs", inputs);
+  write_group("outputs", outputs);
+  manifest << "}\n";
+  std::ofstream(dir / "manifest.jsonl", std::ios::app) << manifest.str();
+  if (frame == 0) {
+    RCLCPP_INFO_STREAM(
+      get_logger(), "debug.dump_dir: writing the first " << params_.dump_max_frames
+                                                          << " inferences to " << dir);
   }
 }
 
