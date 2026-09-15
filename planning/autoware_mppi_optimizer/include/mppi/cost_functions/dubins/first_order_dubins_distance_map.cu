@@ -11,6 +11,33 @@ namespace
 using mppi::cost::detail::distancePointToSegment;
 
 template <class COST_T>
+__global__ void generatePreferredLaneCenterDistanceMapKernel(
+  const COST_T * cost, const cudaSurfaceObject_t output, const DistanceMapTextureGrid grid)
+{
+  __shared__ float4 segments[COST_T::kMaxPreferredLaneCenterSegments];
+  const auto & data = cost->runtimeData();
+  const int count = data.num_preferred_lane_center_segments_;
+  const int local = threadIdx.y * blockDim.x + threadIdx.x;
+  for (int i = local; i < count; i += blockDim.x * blockDim.y) {
+    segments[i] = make_float4(
+      data.preferred_lane_center_x0_[i], data.preferred_lane_center_y0_[i],
+      data.preferred_lane_center_x1_[i], data.preferred_lane_center_y1_[i]);
+  }
+  __syncthreads();
+  const int gx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int gy = blockIdx.y * blockDim.y + threadIdx.y;
+  if (gx >= grid.width || gy >= grid.height) return;
+  const float x = grid.origin_x + (gx + 0.5F) * grid.resolution;
+  const float y = grid.origin_y + (gy + 0.5F) * grid.resolution;
+  float distance = kDistanceMapEmptyDistance;
+  for (int i = 0; i < count; ++i) {
+    const float4 s = segments[i];
+    distance = fminf(distance, distancePointToSegment(x, y, s.x, s.y, s.z, s.w));
+  }
+  surf2Dwrite(distance, output, gx * static_cast<int>(sizeof(float)), gy);
+}
+
+template <class COST_T>
 __global__ void generateNearestSegmentMapKernel(
   const COST_T * cost, const cudaSurfaceObject_t output, const DistanceMapTextureGrid grid)
 {
@@ -360,6 +387,76 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::ensurePreferredLaneCenterResources()
+{
+  auto & state = texture_state_;
+  // Check each handle independently so partial allocation can be retried or cleaned up.
+  if (!state.preferred_lane_center_array_) {
+    const auto channel = cudaCreateChannelDesc<float>();
+    HANDLE_ERROR(cudaMallocArray(
+      &state.preferred_lane_center_array_, &channel, state.kStaticDistanceMapWidth,
+      state.kStaticDistanceMapHeight, cudaArraySurfaceLoadStore));
+  }
+  cudaResourceDesc resource{};
+  resource.resType = cudaResourceTypeArray;
+  resource.res.array.array = state.preferred_lane_center_array_;
+  if (!state.preferred_lane_center_surface_) {
+    HANDLE_ERROR(cudaCreateSurfaceObject(&state.preferred_lane_center_surface_, &resource));
+  }
+  if (!state.preferred_lane_center_texture_) {
+    cudaTextureDesc texture{};
+    texture.addressMode[0] = cudaAddressModeClamp;
+    texture.addressMode[1] = cudaAddressModeClamp;
+    texture.filterMode = cudaFilterModeLinear;
+    texture.readMode = cudaReadModeElementType;
+    HANDLE_ERROR(
+      cudaCreateTextureObject(&state.preferred_lane_center_texture_, &resource, &texture, nullptr));
+  }
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::refreshPreferredLaneCenterTexture()
+{
+  if (!this->GPUMemStatus_) return;
+  auto & state = texture_state_;
+  if (
+    !(this->params_.preferred_lane_center_coeff > 0.0F) ||
+    runtimeData().num_preferred_lane_center_segments_ == 0 ||
+    !preferred_lane_center_texture_enabled_) {
+    const bool publish =
+      state.preferred_lane_center_texture_valid_ || preferred_lane_center_geometry_dirty_;
+    state.preferred_lane_center_texture_valid_ = false;
+    preferred_lane_center_geometry_dirty_ = false;
+    if (publish) distanceMapStateToDevice();
+    return;
+  }
+  // Use the same snapped grid definition without changing the environment maps' cache keys.
+  const bool moved = updateDistanceMapGrid(
+    state.preferred_lane_center_grid_, state.kStaticDistanceMapWidth,
+    state.kStaticDistanceMapHeight, state.kStaticDistanceMapResolution);
+  if (
+    !moved && !preferred_lane_center_geometry_dirty_ && state.preferred_lane_center_texture_valid_)
+    return;
+  state.preferred_lane_center_texture_valid_ = false;
+  mppi::instrumentation::ScopedNvtxRange range(
+    "MPPI/distance_map_preferred_lane_center", mppi::instrumentation::NvtxColor::MAP_GENERATION);
+  ensurePreferredLaneCenterResources();
+  const dim3 block(16, 16);
+  const dim3 grid(
+    (state.preferred_lane_center_grid_.width + 15) / 16,
+    (state.preferred_lane_center_grid_.height + 15) / 16);
+  generatePreferredLaneCenterDistanceMapKernel<<<grid, block, 0, this->stream_>>>(
+    this->cost_d_, state.preferred_lane_center_surface_, state.preferred_lane_center_grid_);
+  HANDLE_ERROR(cudaGetLastError());
+  state.preferred_lane_center_texture_valid_ = true;
+  ++state.preferred_lane_center_build_count_;
+  preferred_lane_center_geometry_dirty_ = false;
+  distanceMapStateToDevice();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::ensureDistanceMapResources()
 {
   if (this->texture_state_.static_distance_array_ != nullptr) {
@@ -587,6 +684,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
     return;
   }
 
+  refreshPreferredLaneCenterTexture();
   const bool static_grid_changed = updateDistanceMapGrid(
     this->texture_state_.static_distance_map_grid_, this->texture_state_.kStaticDistanceMapWidth,
     this->texture_state_.kStaticDistanceMapHeight,
@@ -624,12 +722,15 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   if (
     this->texture_state_.static_distance_texture_ == 0 &&
     this->texture_state_.obstacle_distance_texture_ == 0 &&
+    this->texture_state_.preferred_lane_center_texture_ == 0 &&
     this->texture_state_.nearest_segment_texture_ == 0 &&
     this->texture_state_.static_distance_surface_ == 0 &&
     this->texture_state_.obstacle_distance_surface_ == 0 &&
+    this->texture_state_.preferred_lane_center_surface_ == 0 &&
     this->texture_state_.nearest_segment_surface_ == 0 &&
     this->texture_state_.static_distance_array_ == nullptr &&
     this->texture_state_.obstacle_distance_array_ == nullptr &&
+    this->texture_state_.preferred_lane_center_array_ == nullptr &&
     this->texture_state_.nearest_segment_array_ == nullptr) {
     return;
   }
@@ -646,6 +747,12 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
       cudaDestroySurfaceObject(this->texture_state_.obstacle_distance_surface_), __FILE__, __LINE__,
       false);
     this->texture_state_.obstacle_distance_surface_ = 0;
+  }
+  if (this->texture_state_.preferred_lane_center_surface_ != 0) {
+    gpuAssert(
+      cudaDestroySurfaceObject(this->texture_state_.preferred_lane_center_surface_), __FILE__,
+      __LINE__, false);
+    this->texture_state_.preferred_lane_center_surface_ = 0;
   }
   if (this->texture_state_.nearest_segment_surface_ != 0) {
     gpuAssert(
@@ -665,6 +772,12 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
       false);
     this->texture_state_.obstacle_distance_texture_ = 0;
   }
+  if (this->texture_state_.preferred_lane_center_texture_ != 0) {
+    gpuAssert(
+      cudaDestroyTextureObject(this->texture_state_.preferred_lane_center_texture_), __FILE__,
+      __LINE__, false);
+    this->texture_state_.preferred_lane_center_texture_ = 0;
+  }
   if (this->texture_state_.nearest_segment_texture_ != 0) {
     gpuAssert(
       cudaDestroyTextureObject(this->texture_state_.nearest_segment_texture_), __FILE__, __LINE__,
@@ -681,6 +794,11 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
       cudaFreeArray(this->texture_state_.obstacle_distance_array_), __FILE__, __LINE__, false);
     this->texture_state_.obstacle_distance_array_ = nullptr;
   }
+  if (this->texture_state_.preferred_lane_center_array_ != nullptr) {
+    gpuAssert(
+      cudaFreeArray(this->texture_state_.preferred_lane_center_array_), __FILE__, __LINE__, false);
+    this->texture_state_.preferred_lane_center_array_ = nullptr;
+  }
   if (this->texture_state_.nearest_segment_array_ != nullptr) {
     gpuAssert(
       cudaFreeArray(this->texture_state_.nearest_segment_array_), __FILE__, __LINE__, false);
@@ -690,5 +808,6 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   this->texture_state_.drivable_area_texture_valid_ = false;
   this->texture_state_.obstacle_texture_valid_ = false;
   this->texture_state_.obstacle_texture_has_obstacles_ = false;
+  this->texture_state_.preferred_lane_center_texture_valid_ = false;
   this->texture_state_.nearest_segment_texture_valid_ = false;
 }

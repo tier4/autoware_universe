@@ -63,33 +63,34 @@ the previous stage's closest segment; the first projection performs a full scan.
 
 ## 3. Cost summary
 
-| Breakdown field                    | Running | Terminal | Main parameter                       | Raw quantity                                      |
-| ---------------------------------- | :-----: | :------: | ------------------------------------ | ------------------------------------------------- |
-| `spatial_overspeed`                |   yes   |    no    | `spatial_overspeed_coeff`            | progress-weighted positive velocity error squared |
-| `track`                            |   yes   |   yes    | `track_coeff`                        | index-aligned rear-axle position error squared    |
-| `heading`                          |   yes   |   yes    | `heading_coeff`                      | index-aligned wrapped heading error squared       |
-| `terminal_error`                   |   no    |   yes    | `terminal_error_coeff`               | final XY error squared                            |
-| `terminal_heading`                 |   no    |   yes    | `terminal_heading_coeff`             | final wrapped heading error squared               |
-| `lateral_distance`                 |   yes   |   yes    | `lateral_distance_coeff`             | spatial cross-track error squared                 |
-| `lateral_boundary`                 |   yes   |   yes    | derived from `crash_contact_penalty` | soft barrier near `boundary_threshold`            |
-| `lateral_yaw_error`                |   yes   |   yes    | `lateral_yaw_error_coeff`            | heading error to closest segment squared          |
-| `remaining_distance`               |   yes   |   yes    | `remaining_distance_coeff`           | remaining corridor length squared                 |
-| `path_overshoot`                   |   yes   |   yes    | `path_overshoot_coeff`               | extension past corridor tip squared               |
-| `track_center`                     |   yes   |   yes    | `track_center_coeff`                 | footprint-center position error squared           |
-| `corner_buffer`                    |   yes   |   yes    | `corner_buffer_coeff`                | four-corner boundary-clearance violations         |
-| `drivable_area`                    |   yes   |   yes    | `drivable_area_barrier_weight`       | footprint-to-boundary soft barrier                |
-| `obstacle`                         |   yes   |   yes    | derived from `crash_contact_penalty` | footprint-to-OBB soft barrier                     |
-| `road_border`                      |   yes   |   yes    | derived from `crash_contact_penalty` | footprint-to-segment soft barrier                 |
-| `acceleration_command`             |   yes   |    no    | `accel_cmd_coeff`                    | acceleration command squared                      |
-| `steering_command`                 |   yes   |    no    | `steer_cmd_coeff`                    | steering command squared                          |
-| `lateral_acceleration`             |   yes   |    no    | `lateral_acceleration_coeff`         | modeled lateral acceleration squared              |
-| `lateral_jerk`                     |   yes   |    no    | `lateral_jerk_coeff`                 | modeled lateral jerk squared                      |
-| `longitudinal_jerk`                |   yes   |    no    | `longitudinal_jerk_coeff`            | modeled longitudinal jerk squared                 |
-| `steering_rate`                    |   yes   |    no    | `steer_rate_coeff`                   | modeled, clamped steering rate squared            |
-| `initial_steering_rate`            |   yes   |    no    | `initial_steer_rate_coeff`           | horizon-compensated first-command steering jump   |
-| `kinematic_velocity_overlimit`     |   yes   |    no    | `overlimit_coeff`                    | velocity interval violation squared               |
-| `kinematic_acceleration_overlimit` |   yes   |    no    | `overlimit_coeff`                    | scaled acceleration interval violation squared    |
-| `kinematic_jerk_overlimit`         |   yes   |    no    | `overlimit_coeff`                    | scaled jerk interval violation squared            |
+| Breakdown field                    | Running | Terminal | Main parameter                       | Raw quantity                                             |
+| ---------------------------------- | :-----: | :------: | ------------------------------------ | -------------------------------------------------------- |
+| `spatial_overspeed`                |   yes   |    no    | `spatial_overspeed_coeff`            | progress-weighted positive velocity error squared        |
+| `track`                            |   yes   |   yes    | `track_coeff`                        | index-aligned rear-axle position error squared           |
+| `heading`                          |   yes   |   yes    | `heading_coeff`                      | index-aligned wrapped heading error squared              |
+| `terminal_error`                   |   no    |   yes    | `terminal_error_coeff`               | final XY error squared                                   |
+| `terminal_heading`                 |   no    |   yes    | `terminal_heading_coeff`             | final wrapped heading error squared                      |
+| `lateral_distance`                 |   yes   |   yes    | `lateral_distance_coeff`             | spatial cross-track error squared                        |
+| `lateral_boundary`                 |   yes   |   yes    | derived from `crash_contact_penalty` | soft barrier near `boundary_threshold`                   |
+| `lateral_yaw_error`                |   yes   |   yes    | `lateral_yaw_error_coeff`            | heading error to closest segment squared                 |
+| `remaining_distance`               |   yes   |   yes    | `remaining_distance_coeff`           | remaining corridor length squared                        |
+| `path_overshoot`                   |   yes   |   yes    | `path_overshoot_coeff`               | extension past corridor tip squared                      |
+| `preferred_lane_center`            |   yes   |   yes    | `preferred_lane_center_coeff`        | rear-axle distance to preferred lane centerlines squared |
+| `track_center`                     |   yes   |   yes    | `track_center_coeff`                 | footprint-center position error squared                  |
+| `corner_buffer`                    |   yes   |   yes    | `corner_buffer_coeff`                | four-corner boundary-clearance violations                |
+| `drivable_area`                    |   yes   |   yes    | `drivable_area_barrier_weight`       | footprint-to-boundary soft barrier                       |
+| `obstacle`                         |   yes   |   yes    | derived from `crash_contact_penalty` | footprint-to-OBB soft barrier                            |
+| `road_border`                      |   yes   |   yes    | derived from `crash_contact_penalty` | footprint-to-segment soft barrier                        |
+| `acceleration_command`             |   yes   |    no    | `accel_cmd_coeff`                    | acceleration command squared                             |
+| `steering_command`                 |   yes   |    no    | `steer_cmd_coeff`                    | steering command squared                                 |
+| `lateral_acceleration`             |   yes   |    no    | `lateral_acceleration_coeff`         | modeled lateral acceleration squared                     |
+| `lateral_jerk`                     |   yes   |    no    | `lateral_jerk_coeff`                 | modeled lateral jerk squared                             |
+| `longitudinal_jerk`                |   yes   |    no    | `longitudinal_jerk_coeff`            | modeled longitudinal jerk squared                        |
+| `steering_rate`                    |   yes   |    no    | `steer_rate_coeff`                   | modeled, clamped steering rate squared                   |
+| `initial_steering_rate`            |   yes   |    no    | `initial_steer_rate_coeff`           | horizon-compensated first-command steering jump          |
+| `kinematic_velocity_overlimit`     |   yes   |    no    | `overlimit_coeff`                    | velocity interval violation squared                      |
+| `kinematic_acceleration_overlimit` |   yes   |    no    | `overlimit_coeff`                    | scaled acceleration interval violation squared           |
+| `kinematic_jerk_overlimit`         |   yes   |    no    | `overlimit_coeff`                    | scaled jerk interval violation squared                   |
 
 `running_total`, `terminal_total`, and `total` are aggregates, not independent costs.
 
@@ -222,6 +223,42 @@ Thus the barrier begins at
 `|e_lat| = boundary_threshold - lateral_boundary_soft_margin`, equals
 `crash_contact_penalty` at `|e_lat| = boundary_threshold`, and grows quadratically beyond it. It is
 also evaluated at the terminal state, but is **not** multiplied by `track_terminal_scale`.
+
+### 6.7 Preferred-route lane centering
+
+```text
+d_preferred = min distance(p, segment), over selected preferred lanelet centerline segments
+L_preferred_lane_center = preferred_lane_center_coeff * d_preferred^2
+```
+
+This independent spatial objective follows the map's preferred route lanelets, even when the
+incoming diffusion reference is offset. It evaluates the rear axle and has no heading or footprint
+term. Its terminal copy is multiplied by `track_terminal_scale`; both copies use the existing
+horizon average. `preferred_lane_center_coeff` defaults to zero (disabled).
+
+The plugin extracts centerlines from route sections' `preferred_primitive.id`. Ego association
+uses all route primitives, polygon containment, forward heading, and a 2 m elevation tolerance.
+Route order and previous association disambiguate local route occurrences where possible.
+A local interval includes 10 m behind ego and the greater of reference length and the 8 s
+reachable-distance bound, plus 10 m ahead. Individual lanelet segments remain disconnected where
+map centerlines are disconnected; no connecting line is invented. Finite segment endpoints exert
+longitudinal attraction beyond their ends.
+
+A dedicated 1024 × 1024, 0.15 m `float` texture stores unsigned distance, adding 4 MiB when used.
+It shares the environment maps' snapped grid definition but owns independent geometry, cache,
+and CUDA resources. GPU queries use bilinear interpolation; CPU breakdowns and GPU queries
+outside the interpolation interior use exact segment distances. Small nonzero sampled costs
+on the true centerline and grid-phase sensitivity are expected at this resolution.
+
+Unavailable, ambiguous, invalid, frame-mismatched, or over-capacity geometry disables this optional
+term and publishes a status. The 256-segment capacity is independent of boundary/reference limits;
+overflow clears the target instead of truncating it. Omitted per-call input also clears it.
+Route preference edits invalidate extraction even when the route UUID is unchanged.
+
+This preference can conflict with reference tracking and the reference `boundary_threshold`
+acceptance rule. It does not guarantee lane containment or choose direction at overlapping XY
+centerlines. Tune with obstacles, curves, lane changes, and rejection behavior in view. Debug
+markers show the selected centerlines; logs record their geometry for offline retuning.
 
 ## 7. Command and comfort costs
 
@@ -403,7 +440,7 @@ The unscaled terminal cost is:
 ```text
 Phi = track_terminal_scale *
         (track + heading + lateral_distance + lateral_yaw_error
-         + remaining_distance + path_overshoot + track_center)
+         + remaining_distance + path_overshoot + preferred_lane_center + track_center)
       + terminal_error + terminal_heading
       + lateral_boundary + corner_buffer
       + drivable_area + obstacle + road_border

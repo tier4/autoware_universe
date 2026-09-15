@@ -207,7 +207,8 @@ protected:
 
   void benchmark(
     const TrackedObjects & objects, const std::vector<Segment> & borders,
-    const Trajectory & trajectory = makeBenchmarkTrajectory())
+    Trajectory trajectory = makeBenchmarkTrajectory(),
+    const PreferredLaneCenterlineInput & preferred = {}, const bool moving_grid = false)
   {
     Odometry odometry;
     odometry.header = trajectory.header;
@@ -223,7 +224,8 @@ protected:
     // inputs and timestamps for all samples; persistent caches/control history remain live.
     {
       const auto warmup = interface_->optimizeTrajectory(
-        trajectory, odometry, acceleration, steering, objects, borders, drivable_area, limits);
+        trajectory, odometry, acceleration, steering, objects, borders, drivable_area, limits, {},
+        false, std::nullopt, preferred);
       const cudaError_t status = cudaDeviceSynchronize();
       ASSERT_EQ(status, cudaSuccess) << cudaGetErrorString(status);
       ASSERT_TRUE(interface_->isInitialized());
@@ -233,11 +235,16 @@ protected:
     using Clock = std::chrono::high_resolution_clock;
     std::array<double, kMeasuredIterations> elapsed_ms{};
     for (std::size_t i = 0; i < kMeasuredIterations; ++i) {
+      if (moving_grid) {
+        for (auto & point : trajectory.points) point.pose.position.x += 0.3;
+        odometry.pose.pose.position.x += 0.3;
+      }
       // Drain any preceding work outside the measured interval.
       ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
       const auto start = Clock::now();
       const auto result = interface_->optimizeTrajectory(
-        trajectory, odometry, acceleration, steering, objects, borders, drivable_area, limits);
+        trajectory, odometry, acceleration, steering, objects, borders, drivable_area, limits, {},
+        false, std::nullopt, preferred);
       const cudaError_t status = cudaDeviceSynchronize();
       const auto stop = Clock::now();
 
@@ -267,14 +274,47 @@ protected:
     RecordProperty("maximum_ms", std::to_string(*extrema.second));
   }
 
-private:
+protected:
   std::unique_ptr<FirstOrderDubinsMppiInterface> interface_;
+
+private:
   cudaDeviceProp device_properties_{};
   int runtime_version_{0};
   int driver_version_{0};
   int previous_log_level_{RCUTILS_LOG_SEVERITY_UNSET};
   bool restore_log_level_{false};
 };
+
+TEST_F(MppiPerformanceBenchmark, Benchmark_PreferredLaneCenterTexture)
+{
+  FirstOrderDubinsMppiCostParams params;
+  params.preferred_lane_center_coeff = 100;
+  interface_->setCostParams(params);
+  benchmark(TrackedObjects{}, {}, makeBenchmarkTrajectory(), {{{-100, 0, 200, 0}}, "active", 1});
+}
+
+TEST_F(MppiPerformanceBenchmark, Benchmark_PreferredLaneCenterExact)
+{
+  FirstOrderDubinsMppiCostParams params;
+  params.preferred_lane_center_coeff = 100;
+  interface_->setCostParams(params);
+  interface_->setPreferredLaneCenterTextureEnabled(false);
+  benchmark(TrackedObjects{}, {}, makeBenchmarkTrajectory(), {{{-100, 0, 200, 0}}, "active", 1});
+}
+
+TEST_F(MppiPerformanceBenchmark, Benchmark_PreferredLaneCenterMovingGrid)
+{
+  FirstOrderDubinsMppiCostParams params;
+  params.preferred_lane_center_coeff = 100;
+  interface_->setCostParams(params);
+  PreferredLaneCenterlineInput preferred;
+  preferred.status = "active";
+  for (int i = 0; i < 256; ++i) {
+    const float x = -100.0F + i * 1.5F;
+    preferred.segments.push_back({x, 0, x + 1.5F, 0});
+  }
+  benchmark(TrackedObjects{}, {}, makeBenchmarkTrajectory(), preferred, true);
+}
 
 TEST_F(MppiPerformanceBenchmark, Benchmark_FreeSpace)
 {
