@@ -2150,7 +2150,7 @@ class MppiDebugVisualizer(Node):
             "Subscriptions use RELIABLE QoS (matches diffusion_planner publishers)."
         )
         self.get_logger().info(
-            "Ensure mppi_optimizer.enabled:=true in the trajectory processor params."
+            "Ensure mppi_optimizer.enabled:=true in the trajectory modifier params."
         )
         self.get_logger().info(
             f"Plot navigation (matplotlib backend: {matplotlib.get_backend()}): "
@@ -2828,7 +2828,7 @@ class OfflineLogVisualizer:
 def parse_args(argv: List[str]) -> argparse.Namespace:
     default_prefix = (
         "/planning/trajectory_generator/neural_network_based_planner/"
-        "trajectory_processor/debug/mppi"
+        "trajectory_modifier/debug/mppi"
     )
     parser = argparse.ArgumentParser(
         description="Plot diffusion-planner reference vs MPPI-optimized trajectories.",
