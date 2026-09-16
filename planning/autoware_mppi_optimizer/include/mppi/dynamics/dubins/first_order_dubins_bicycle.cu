@@ -33,6 +33,14 @@ __host__ __device__ void enforceSteeringCommandContinuity(
 {
   const float dt = FirstOrderDubinsBicycleParams::kControlDt;
   const float velocity = state[static_cast<int>(S::VEL_X)];
+  const bool hold_active = state[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] > 0.5F &&
+                           fabsf(velocity) < fmaxf(p.standstill_steer_hold_exit_velocity_mps, 0.0F);
+  if (hold_active) {
+    const float held_command = state[static_cast<int>(S::PREVIOUS_STEER_CMD)];
+    control[static_cast<int>(C::STEER_CMD)] =
+      fmaxf(fminf(held_command, p.max_steer_angle), -p.max_steer_angle);
+    return;
+  }
   const float blend = restartBlend(velocity, p.restart_velocity_threshold_mps);
   // Above the release speed, allow the complete steering-command range in one control step. The
   // physical actuator-rate and lateral-jerk limits remain active in state propagation.
@@ -86,6 +94,12 @@ __host__ __device__ void advanceInputDelayPipes(
   next_state[static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)] =
     (control[static_cast<int>(C::STEER_CMD)] - state[static_cast<int>(S::PREVIOUS_STEER_CMD)]) /
     FirstOrderDubinsBicycleParams::kControlDt;
+  next_state[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] =
+    state[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] > 0.5F &&
+        fabsf(next_state[static_cast<int>(S::VEL_X)]) <
+          fmaxf(p.standstill_steer_hold_exit_velocity_mps, 0.0F)
+      ? 1.0F
+      : 0.0F;
   constexpr int kMax = FirstOrderDubinsBicycleParams::kMaxInputDelaySteps;
   const int n_acc = clampInputDelaySteps(p.acc_delay_steps);
   const int n_steer = clampInputDelaySteps(p.steer_delay_steps);
@@ -148,6 +162,7 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
   state_der[static_cast<int>(S::PREVIOUS_ACCEL_CMD)] = 0.0F;
   state_der[static_cast<int>(S::PREVIOUS_STEER_CMD)] = 0.0F;
   state_der[static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)] = 0.0F;
+  state_der[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] = 0.0F;
 
   // Delay taps are discrete; keep continuous ders at zero then overwrite in step().
 #ifdef __CUDA_ARCH__
@@ -425,5 +440,6 @@ FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::stateFromMap(
   set_if("PREVIOUS_ACCEL_CMD", static_cast<int>(S::PREVIOUS_ACCEL_CMD));
   set_if("PREVIOUS_STEER_CMD", static_cast<int>(S::PREVIOUS_STEER_CMD));
   set_if("PREVIOUS_STEER_CMD_RATE", static_cast<int>(S::PREVIOUS_STEER_CMD_RATE));
+  set_if("STEERING_COMMAND_HOLD_ACTIVE", static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE));
   return s;
 }

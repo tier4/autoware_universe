@@ -917,6 +917,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   float last_control_warm_start_stop_exit_velocity_mps{0.08F};
   bool stopped_state_initialized{false};
   bool stopped_state{false};
+  bool standstill_steering_hold_valid{false};
+  float standstill_steering_hold_command_rad{0.0F};
   /** Cold-seed u_nom from acados temporal MPT instead of geometric diffusion seed. */
   bool use_temporal_mpt_as_nominal{false};
   /** Prevent acceleration commands and integrated states from producing reverse velocity. */
@@ -1083,6 +1085,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     dyn.restart_steer_command_acceleration_lim =
       vehicle_params.restart_steer_command_acceleration_lim;
     dyn.restart_velocity_threshold_mps = vehicle_params.restart_velocity_threshold_mps;
+    dyn.standstill_steer_hold_exit_velocity_mps = last_control_warm_start_stop_exit_velocity_mps;
     dyn.min_accel = vehicle_params.min_accel();
     dyn.max_accel = vehicle_params.max_accel();
     dyn.prevent_reverse_velocity = prevent_reverse_velocity;
@@ -1234,6 +1237,9 @@ struct FirstOrderDubinsMppiInterface::Impl
     prediction_anchor_.valid = false;
     prediction_control_history_.clear();
     stopped_state_initialized = false;
+    stopped_state = false;
+    standstill_steering_hold_valid = false;
+    standstill_steering_hold_command_rad = 0.0F;
   }
 
   void invalidateNominalWarmStart(const FirstOrderDubinsMppiNominalResetReason reason) noexcept
@@ -1564,18 +1570,32 @@ struct FirstOrderDubinsMppiInterface::Impl
     u_nom(steer_idx, 0) = nominal_steering_continuity.guarded_command_rad;
   }
 
-  void updateStoppedState(const float velocity)
+  void updateStoppedState(const detail::InitialState & ego)
   {
-    const float speed = std::abs(velocity);
+    const float speed = std::abs(ego.velocity);
+    const bool was_stopped = stopped_state_initialized && stopped_state;
     if (!stopped_state_initialized) {
       stopped_state = speed <= last_control_warm_start_stop_enter_velocity_mps;
       stopped_state_initialized = true;
-      return;
-    }
-    if (stopped_state) {
+    } else if (stopped_state) {
       stopped_state = speed < last_control_warm_start_stop_exit_velocity_mps;
     } else {
       stopped_state = speed <= last_control_warm_start_stop_enter_velocity_mps;
+    }
+
+    if (stopped_state && !was_stopped) {
+      float command = ego.steering;
+      if (
+        !prediction_control_history_.empty() &&
+        std::isfinite(prediction_control_history_.back().control.steer_cmd)) {
+        command = prediction_control_history_.back().control.steer_cmd;
+      } else if (external_control_history_available && std::isfinite(pending_hist_steer_tm1)) {
+        command = pending_hist_steer_tm1;
+      }
+      standstill_steering_hold_command_rad = std::clamp(
+        std::isfinite(command) ? command : 0.0F, -vehicle_params.max_steer_angle,
+        vehicle_params.max_steer_angle);
+      standstill_steering_hold_valid = true;
     }
   }
 
@@ -1678,7 +1698,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     const Trajectory & reference, const detail::InitialState & ego,
     const builtin_interfaces::msg::Time & stamp, const bool steering_measurement_available)
   {
-    updateStoppedState(ego.velocity);
+    updateStoppedState(ego);
     nominal_shift_count = 0;
     if (!use_last_control_as_nominal) {
       return std::nullopt;
@@ -1885,7 +1905,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (!force_cold_start_each_step && !use_last_control_as_nominal) {
       nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::unavailable;
     }
-    updateStoppedState(ego.velocity);
+    updateStoppedState(ego);
     if (forced_nominal_pending) {
       seedNominalControlFromForced();
       forced_nominal_pending = false;
@@ -2098,6 +2118,12 @@ struct FirstOrderDubinsMppiInterface::Impl
     ensureDelayBufferSeeded();
     loadDelayPipesIntoState();
     loadAcceptedCommandHistoryIntoState(initial_state);
+    using S = FirstOrderDubinsBicycleParams::StateIndex;
+    if (stopped_state && standstill_steering_hold_valid) {
+      x(static_cast<int>(S::PREVIOUS_STEER_CMD)) = standstill_steering_hold_command_rad;
+      x(static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)) = 0.0F;
+      x(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)) = 1.0F;
+    }
     projectControlSequenceToDynamics(u_nom, x);
     snapshotNominalForLog();
     snapshotDelayBufferForLog();
@@ -2105,9 +2131,14 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   void capturePredictionAnchor(const Odometry & odometry)
   {
+    using S = FirstOrderDubinsBicycleParams::StateIndex;
     prediction_anchor_.valid = true;
     prediction_anchor_.stamp = odometry.header.stamp;
     prediction_anchor_.sim_time = sim_time;
+    prediction_anchor_.standstill_steering_hold_active =
+      x(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)) > 0.5F;
+    prediction_anchor_.standstill_steering_hold_command_rad =
+      x(static_cast<int>(S::PREVIOUS_STEER_CMD));
     auto & plant = prediction_anchor_.plant;
     plant.valid = true;
     plant.x = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X));
@@ -2131,6 +2162,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     input.vehicle = vehicle_params;
     input.enable_input_delay_compensation = enable_input_delay_compensation;
     input.integration_dt = kDt;
+    input.standstill_steering_hold_exit_velocity_mps =
+      last_control_warm_start_stop_exit_velocity_mps;
     input.anchor = prediction_anchor_;
     input.control_history = prediction_control_history_;
     input.measurement_stamp = odometry.header.stamp;
@@ -2307,7 +2340,8 @@ struct FirstOrderDubinsMppiInterface::Impl
       control_postprocessor(
         optimized_controls,
         FirstOrderDubinsMppiPostprocessingContext{
-          nominal_seed_source, nominal_shift_count, preserve_first_steering_command});
+          nominal_seed_source, nominal_shift_count, preserve_first_steering_command,
+          stopped_state && standstill_steering_hold_valid, standstill_steering_hold_command_rad});
       if (optimized_controls.size() != static_cast<std::size_t>(u_opt_traj.cols())) {
         throw std::invalid_argument("MPPI control postprocessor must preserve the horizon size");
       }
@@ -2570,6 +2604,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
       throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
     }
     impl_->dyn.prevent_reverse_velocity = options.prevent_reverse_velocity;
+    impl_->dyn.standstill_steer_hold_exit_velocity_mps =
+      options.last_control_warm_start_stop_exit_velocity_mps;
     if (impl_->initialized) {
       impl_->syncDelayStepsToModel();
       if (!impl_->enable_input_delay_compensation) {
@@ -2850,6 +2886,9 @@ try {
   result.debug.nominal_reset_reason = impl_->nominal_reset_reason;
   result.debug.nominal_shift_count = impl_->nominal_shift_count;
   result.debug.nominal_steering_continuity = impl_->nominal_steering_continuity;
+  result.debug.standstill_steering_hold_active =
+    impl_->stopped_state && impl_->standstill_steering_hold_valid;
+  result.debug.standstill_steering_hold_command_rad = impl_->standstill_steering_hold_command_rad;
   if (mpc_predicted_trajectory) {
     result.debug.mpc_nominal_seed_status =
       impl_->nominal_seed_source == FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory
@@ -3336,7 +3375,8 @@ void pushDelayedInputForPrediction(
 
 FirstOrderDubinsBicycleParams makePlantPredictionDynamicsParams(
   const FirstOrderDubinsMppiVehicleParams & vehicle, const int acc_delay_steps,
-  const int steer_delay_steps, const bool prevent_reverse_velocity)
+  const int steer_delay_steps, const bool prevent_reverse_velocity,
+  const float standstill_steer_hold_exit_velocity_mps)
 {
   FirstOrderDubinsBicycleParams dyn{};
   dyn.wheel_base = vehicle.wheel_base;
@@ -3349,6 +3389,7 @@ FirstOrderDubinsBicycleParams makePlantPredictionDynamicsParams(
   dyn.restart_steer_command_rate_lim = vehicle.restart_steer_command_rate_lim;
   dyn.restart_steer_command_acceleration_lim = vehicle.restart_steer_command_acceleration_lim;
   dyn.restart_velocity_threshold_mps = vehicle.restart_velocity_threshold_mps;
+  dyn.standstill_steer_hold_exit_velocity_mps = standstill_steer_hold_exit_velocity_mps;
   dyn.min_accel = vehicle.min_accel();
   dyn.max_accel = vehicle.max_accel();
   dyn.acc_delay_steps = acc_delay_steps;
@@ -3429,7 +3470,8 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
       sim_time, input.vehicle.steer_time_delay, input.integration_dt);
   }
   model.setParams(makePlantPredictionDynamicsParams(
-    input.vehicle, acc_delay_steps, steer_delay_steps, /*prevent_reverse_velocity=*/true));
+    input.vehicle, acc_delay_steps, steer_delay_steps, /*prevent_reverse_velocity=*/true,
+    input.standstill_steering_hold_exit_velocity_mps));
 
   FirstOrderDubinsBicycle::state_array x = FirstOrderDubinsBicycle::state_array::Zero();
   loadPlantIntoStateForPrediction(input.anchor.plant, x);
@@ -3463,6 +3505,11 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
         -input.vehicle.steer_rate_lim, input.vehicle.steer_rate_lim);
     }
   }
+  if (input.anchor.standstill_steering_hold_active) {
+    x(static_cast<int>(S::PREVIOUS_STEER_CMD)) = input.anchor.standstill_steering_hold_command_rad;
+    x(static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)) = 0.0F;
+    x(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)) = 1.0F;
+  }
 
   builtin_interfaces::msg::Time query_time = input.anchor.stamp;
   float integration_time = 0.0F;
@@ -3486,7 +3533,8 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
       steer_delay_steps = sampledDelayStepsForPrediction(
         sim_time, input.vehicle.steer_time_delay, input.integration_dt);
       model.setParams(makePlantPredictionDynamicsParams(
-        input.vehicle, acc_delay_steps, steer_delay_steps, /*prevent_reverse_velocity=*/true));
+        input.vehicle, acc_delay_steps, steer_delay_steps, /*prevent_reverse_velocity=*/true,
+        input.standstill_steering_hold_exit_velocity_mps));
     }
 
     FirstOrderDubinsBicycle::state_array x_next = model.getZeroState();
