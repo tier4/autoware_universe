@@ -27,8 +27,8 @@
 
 /**
  * Steering actuator-rate bound shared by host prediction and CUDA rollout propagation.
- * The hardware limit is retained at normal speeds unless the lateral-jerk approximation
- * j_lat = v^2 * steer_rate / L is more restrictive.
+ * The standstill limit blends smoothly into the normal-speed bound. The hardware limit is
+ * retained at normal speeds unless j_lat = v^2 * steer_rate / L is more restrictive.
  */
 MPPI_STEERING_RATE_HOST_DEVICE inline float velocityDependentSteeringRateLimit(
   const float velocity, const float wheel_base, const float hardware_limit,
@@ -37,14 +37,18 @@ MPPI_STEERING_RATE_HOST_DEVICE inline float velocityDependentSteeringRateLimit(
 {
   const float nonnegative_hardware_limit = fmaxf(hardware_limit, 0.0F);
   const float speed = fabsf(velocity);
-  if (speed < fmaxf(restart_velocity_threshold, 0.0F)) {
-    return fminf(fmaxf(standstill_limit, 0.0F), nonnegative_hardware_limit);
-  }
-
   constexpr float kMinimumSquaredSpeed = 1.0E-8F;
   const float jerk_limited_rate = fmaxf(max_lateral_jerk, 0.0F) * fmaxf(wheel_base, 0.0F) /
                                   fmaxf(speed * speed, kMinimumSquaredSpeed);
-  return fminf(nonnegative_hardware_limit, jerk_limited_rate);
+  const float moving_limit = fminf(nonnegative_hardware_limit, jerk_limited_rate);
+  const float stopped_limit = fminf(fmaxf(standstill_limit, 0.0F), nonnegative_hardware_limit);
+  const float release_speed = fmaxf(restart_velocity_threshold, 0.0F);
+  if (release_speed <= 1.0E-6F || speed >= release_speed) {
+    return moving_limit;
+  }
+  const float ratio = fminf(fmaxf(speed / release_speed, 0.0F), 1.0F);
+  const float blend = ratio * ratio * (3.0F - 2.0F * ratio);
+  return stopped_limit + blend * (moving_limit - stopped_limit);
 }
 
 #undef MPPI_STEERING_RATE_HOST_DEVICE

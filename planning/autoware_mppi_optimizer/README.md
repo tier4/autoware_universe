@@ -98,6 +98,8 @@ min_optimization_length: 0.0
 use_last_control_as_nominal: true
 max_lateral_jerk_mps3: 2.5
 standstill_steer_rate_lim: 0.15
+restart_steer_command_rate_lim: 0.15
+restart_steer_command_acceleration_lim: 0.5
 restart_velocity_threshold_mps: 0.5
 use_mpc_predicted_trajectory_as_nominal_steering: false
 mpc_predicted_trajectory_max_age_s: 0.5
@@ -116,9 +118,15 @@ Notes:
   delay FIFOs and execution-history diagnostics.
 - `min_optimization_length` skips MPPI for a stopping reference shorter than the configured arc
   length in meters; `0.0` disables the length-based skip.
-- Rollout steering propagation uses `standstill_steer_rate_lim` below
-  `restart_velocity_threshold_mps`. At higher absolute velocity, it limits steering rate to the
-  smaller of the hardware `steer_rate_lim` and `max_lateral_jerk_mps3 * wheel_base / velocity^2`.
+- Rollout steering propagation smoothly releases `standstill_steer_rate_lim` up to
+  `restart_velocity_threshold_mps`. Issued steering commands also obey the restart command-rate
+  and command-acceleration limits. Above the release speed, physical steering rate is the smaller
+  of hardware `steer_rate_lim` and `max_lateral_jerk_mps3 * wheel_base / velocity^2`.
+- The diffusion-reference nominal derives curvature from a local least-squares path fit over
+  `nominal_curvature_fit_window_m`. It advances through the path by predicted travel distance, so
+  a stopped vehicle does not consume one noisy reference point per controller tick.
+- Restart command continuity uses the last accepted command and command rate independently of the
+  reusable trajectory warm start, which is still invalidated while stopped.
 - `use_last_control_as_nominal` warm-starts `u_nom` from the previous applied MPPI result when its
   timestamp, plant replay, and shifted reference remain continuous. The elapsed timestamp selects
   the shift count, and the current diffusion seed fills the newly exposed tail.

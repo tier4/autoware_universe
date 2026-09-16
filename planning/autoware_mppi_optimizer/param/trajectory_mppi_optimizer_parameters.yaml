@@ -300,6 +300,12 @@ trajectory_mppi_optimizer:
     description: Minimum chord length for nominal curvature
     validation: { gt<>: [0.0] }
     read_only: false
+  nominal_curvature_fit_window_m:
+    type: double
+    default_value: 4.0
+    description: Arc-length span for the local least-squares nominal curvature fit
+    validation: { gt<>: [0.0] }
+    read_only: false
   enable_input_delay_compensation:
     type: bool
     default_value: true
@@ -362,13 +368,25 @@ trajectory_mppi_optimizer:
   standstill_steer_rate_lim:
     type: double
     default_value: 0.15
-    description: Steering-rate limit below the restart velocity threshold
+    description: Physical steering-rate limit at standstill
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  restart_steer_command_rate_lim:
+    type: double
+    default_value: 0.15
+    description: Maximum issued steering-command rate at standstill in road-wheel radians per second
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  restart_steer_command_acceleration_lim:
+    type: double
+    default_value: 0.5
+    description: Maximum issued steering-command acceleration at standstill in road-wheel radians per second squared
     validation: { gt_eq<>: [0.0] }
     read_only: false
   restart_velocity_threshold_mps:
     type: double
     default_value: 0.5
-    description: Absolute velocity below which the standstill steering-rate limit applies
+    description: Absolute velocity where restart steering protection is fully released
     validation: { gt_eq<>: [0.0] }
     read_only: false
   use_temporal_mpt_as_nominal:

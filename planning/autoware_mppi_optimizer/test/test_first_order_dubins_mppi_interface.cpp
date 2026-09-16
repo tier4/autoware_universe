@@ -199,6 +199,14 @@ TEST(FirstOrderDubinsMppiInterface, RejectsInvalidVelocityDependentSteeringRateP
   EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
 
   vehicle = {};
+  vehicle.restart_steer_command_rate_lim = -0.1F;
+  EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
+
+  vehicle = {};
+  vehicle.restart_steer_command_acceleration_lim = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
+
+  vehicle = {};
   vehicle.restart_velocity_threshold_mps = -0.1F;
   EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
   EXPECT_FALSE(interface.isInitialized());

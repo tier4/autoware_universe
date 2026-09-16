@@ -203,6 +203,7 @@ void loadParamsYaml(
     {"accel_cmd_noise_exponent", &cost.accel_cmd_noise_exponent},
     {"steer_cmd_noise_exponent", &cost.steer_cmd_noise_exponent},
     {"nominal_curvature_min_chord_length_m", &cost.nominal_curvature_min_chord_length_m},
+    {"nominal_curvature_fit_window_m", &cost.nominal_curvature_fit_window_m},
     {"lateral_acceleration_coeff", &cost.lateral_acceleration_coeff},
     {"lateral_jerk_coeff", &cost.lateral_jerk_coeff},
     {"longitudinal_jerk_coeff", &cost.longitudinal_jerk_coeff},
@@ -353,6 +354,9 @@ void logVehicleParams(const FirstOrderDubinsMppiVehicleParams & vehicle)
             << " steer_rate_lim=" << vehicle.steer_rate_lim
             << " max_lateral_jerk_mps3=" << vehicle.max_lateral_jerk_mps3
             << " standstill_steer_rate_lim=" << vehicle.standstill_steer_rate_lim
+            << " restart_steer_command_rate_lim=" << vehicle.restart_steer_command_rate_lim
+            << " restart_steer_command_acceleration_lim="
+            << vehicle.restart_steer_command_acceleration_lim
             << " restart_velocity_threshold_mps=" << vehicle.restart_velocity_threshold_mps
             << " vel_rate_lim=" << vehicle.vel_rate_lim << "\n";
 }

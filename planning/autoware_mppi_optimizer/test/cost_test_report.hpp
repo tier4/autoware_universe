@@ -171,6 +171,8 @@ public:
     REPORT_MODEL(max_steer_rate);
     REPORT_MODEL(max_lateral_jerk_mps3);
     REPORT_MODEL(standstill_steer_rate_lim);
+    REPORT_MODEL(restart_steer_command_rate_lim);
+    REPORT_MODEL(restart_steer_command_acceleration_lim);
     REPORT_MODEL(restart_velocity_threshold_mps);
     REPORT_MODEL(min_accel);
     REPORT_MODEL(max_accel);

@@ -21,6 +21,7 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -120,10 +121,16 @@ void setInitialEngageVelocity(
 void applyActiveVelocityLimitProfile(
   Trajectory & trajectory, const ActiveVelocityLimitProfile & profile);
 
+/**
+ * Build a cold nominal from a spatially smoothed curvature fit. Horizon samples advance by the
+ * distance predicted from initial_velocity_mps and reference acceleration instead of by point
+ * index; a non-finite initial velocity retains the legacy reference-velocity fallback for tools.
+ */
 [[nodiscard]] std::vector<FirstOrderDubinsMppiControl> buildDiffusionNominalControl(
   const Trajectory & reference, std::size_t start_idx,
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, int horizon = kMppiHorizon,
-  float min_chord_length_m = 1.5F);
+  float min_chord_length_m = 1.5F, float curvature_fit_window_m = 4.0F, float dt = kMppiDt,
+  float initial_velocity_mps = std::numeric_limits<float>::quiet_NaN());
 
 [[nodiscard]] std::vector<FirstOrderDubinsMppiControl> buildForcedNominalControl(
   const std::vector<float> & acceleration_commands, const std::vector<float> & steering_commands,

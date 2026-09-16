@@ -17,6 +17,47 @@ __host__ __device__ inline int steerDelayTapIndex(const int i)
   return static_cast<int>(S::STEER_CMD_D0) + i;
 }
 
+__host__ __device__ float restartBlend(const float velocity, const float release_velocity_threshold)
+{
+  const float threshold = fmaxf(release_velocity_threshold, 0.0F);
+  if (threshold <= 1.0E-6F) {
+    return 1.0F;
+  }
+  const float ratio = fminf(fmaxf(fabsf(velocity) / threshold, 0.0F), 1.0F);
+  return ratio * ratio * (3.0F - 2.0F * ratio);
+}
+
+/** Bound an issued steering command relative to the last accepted command and command rate. */
+__host__ __device__ void enforceSteeringCommandContinuity(
+  const FirstOrderDubinsBicycleParams & p, const float * state, float * control)
+{
+  const float dt = FirstOrderDubinsBicycleParams::kControlDt;
+  const float velocity = state[static_cast<int>(S::VEL_X)];
+  const float blend = restartBlend(velocity, p.restart_velocity_threshold_mps);
+  // Above the release speed, allow the complete steering-command range in one control step. The
+  // physical actuator-rate and lateral-jerk limits remain active in state propagation.
+  const float moving_rate_limit = 2.0F * fmaxf(p.max_steer_angle, 0.0F) / dt;
+  const float stopped_rate_limit =
+    fminf(fmaxf(p.restart_steer_command_rate_lim, 0.0F), moving_rate_limit);
+  const float rate_limit = stopped_rate_limit + blend * (moving_rate_limit - stopped_rate_limit);
+  // This permits a full command-rate reversal within one step after restart protection releases.
+  const float moving_acceleration_limit = 2.0F * moving_rate_limit / dt;
+  const float stopped_acceleration_limit = fmaxf(p.restart_steer_command_acceleration_lim, 0.0F);
+  const float acceleration_limit =
+    stopped_acceleration_limit + blend * (moving_acceleration_limit - stopped_acceleration_limit);
+
+  const float previous_command = state[static_cast<int>(S::PREVIOUS_STEER_CMD)];
+  const float previous_rate = state[static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)];
+  const int steer_index = static_cast<int>(C::STEER_CMD);
+  float requested_rate = (control[steer_index] - previous_command) / dt;
+  requested_rate = fmaxf(
+    fminf(requested_rate, previous_rate + acceleration_limit * dt),
+    previous_rate - acceleration_limit * dt);
+  requested_rate = fmaxf(fminf(requested_rate, rate_limit), -rate_limit);
+  control[steer_index] =
+    fmaxf(fminf(previous_command + requested_rate * dt, p.max_steer_angle), -p.max_steer_angle);
+}
+
 /** Resolve plant-facing commands: front of each delay pipe, or raw u when N=0. */
 __host__ __device__ void resolveDelayedControl(
   const FirstOrderDubinsBicycleParams & p, const float * state, const float * control,
@@ -42,6 +83,9 @@ __host__ __device__ void advanceInputDelayPipes(
   next_state[static_cast<int>(S::PREVIOUS_ACCEL_CMD)] =
     control[static_cast<int>(C::ACCELERATION_CMD)];
   next_state[static_cast<int>(S::PREVIOUS_STEER_CMD)] = control[static_cast<int>(C::STEER_CMD)];
+  next_state[static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)] =
+    (control[static_cast<int>(C::STEER_CMD)] - state[static_cast<int>(S::PREVIOUS_STEER_CMD)]) /
+    FirstOrderDubinsBicycleParams::kControlDt;
   constexpr int kMax = FirstOrderDubinsBicycleParams::kMaxInputDelaySteps;
   const int n_acc = clampInputDelaySteps(p.acc_delay_steps);
   const int n_steer = clampInputDelaySteps(p.steer_delay_steps);
@@ -103,6 +147,7 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
 
   state_der[static_cast<int>(S::PREVIOUS_ACCEL_CMD)] = 0.0F;
   state_der[static_cast<int>(S::PREVIOUS_STEER_CMD)] = 0.0F;
+  state_der[static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)] = 0.0F;
 
   // Delay taps are discrete; keep continuous ders at zero then overwrite in step().
 #ifdef __CUDA_ARCH__
@@ -290,9 +335,8 @@ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::enforceConstraints(
   Eigen::Ref<state_array> state, Eigen::Ref<control_array> control)
 {
   PARENT_CLASS::enforceConstraints(state, control);
-  if (!this->params_.prevent_reverse_velocity) {
-    return;
-  }
+  enforceSteeringCommandContinuity(this->params_, state.data(), control.data());
+  if (!this->params_.prevent_reverse_velocity) return;
 
   const int velocity_idx = static_cast<int>(S::VEL_X);
   const int acceleration_idx = static_cast<int>(C::ACCELERATION_CMD);
@@ -308,9 +352,11 @@ __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::enforceConstrain
   float * state, float * control)
 {
   PARENT_CLASS::enforceConstraints(state, control);
-  if (threadIdx.y != 0 || !this->params_.prevent_reverse_velocity) {
+  if (threadIdx.y != 0) {
     return;
   }
+  enforceSteeringCommandContinuity(this->params_, state, control);
+  if (!this->params_.prevent_reverse_velocity) return;
 
   const int velocity_idx = static_cast<int>(S::VEL_X);
   const int acceleration_idx = static_cast<int>(C::ACCELERATION_CMD);
@@ -376,5 +422,8 @@ FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::stateFromMap(
   set_if("POS_Y", static_cast<int>(S::POS_Y));
   set_if("STEER_ANGLE", static_cast<int>(S::STEER_ANGLE));
   set_if("ACCELERATION", static_cast<int>(S::ACCELERATION));
+  set_if("PREVIOUS_ACCEL_CMD", static_cast<int>(S::PREVIOUS_ACCEL_CMD));
+  set_if("PREVIOUS_STEER_CMD", static_cast<int>(S::PREVIOUS_STEER_CMD));
+  set_if("PREVIOUS_STEER_CMD_RATE", static_cast<int>(S::PREVIOUS_STEER_CMD_RATE));
   return s;
 }
