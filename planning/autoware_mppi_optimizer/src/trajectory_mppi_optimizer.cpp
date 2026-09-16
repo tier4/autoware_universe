@@ -103,6 +103,7 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   output.steer_cmd_noise_exponent = static_cast<float>(params.steer_cmd_noise_exponent);
   output.nominal_curvature_min_chord_length_m =
     static_cast<float>(params.nominal_curvature_min_chord_length_m);
+  output.nominal_curvature_fit_window_m = static_cast<float>(params.nominal_curvature_fit_window_m);
   output.lateral_acceleration_coeff = static_cast<float>(params.lateral_acceleration_coeff);
   output.lateral_jerk_coeff = static_cast<float>(params.lateral_jerk_coeff);
   output.longitudinal_jerk_coeff = static_cast<float>(params.longitudinal_jerk_coeff);
@@ -698,6 +699,10 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
   auto vehicle_params = get_first_order_dubins_mppi_vehicle_params(*get_node_ptr());
   vehicle_params.max_lateral_jerk_mps3 = static_cast<float>(params_.max_lateral_jerk_mps3);
   vehicle_params.standstill_steer_rate_lim = static_cast<float>(params_.standstill_steer_rate_lim);
+  vehicle_params.restart_steer_command_rate_lim =
+    static_cast<float>(params_.restart_steer_command_rate_lim);
+  vehicle_params.restart_steer_command_acceleration_lim =
+    static_cast<float>(params_.restart_steer_command_acceleration_lim);
   vehicle_params.restart_velocity_threshold_mps =
     static_cast<float>(params_.restart_velocity_threshold_mps);
   optimizer_ = std::make_unique<FirstOrderDubinsMppiInterface>();
@@ -808,6 +813,11 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("vehicle/max_lateral_jerk_mps3", params_.max_lateral_jerk_mps3);
   cost_diagnostics_->add_key_value(
     "vehicle/standstill_steer_rate_lim", params_.standstill_steer_rate_lim);
+  cost_diagnostics_->add_key_value(
+    "vehicle/restart_steer_command_rate_lim", params_.restart_steer_command_rate_lim);
+  cost_diagnostics_->add_key_value(
+    "vehicle/restart_steer_command_acceleration_lim",
+    params_.restart_steer_command_acceleration_lim);
   cost_diagnostics_->add_key_value(
     "vehicle/restart_velocity_threshold_mps", params_.restart_velocity_threshold_mps);
   cost_diagnostics_->add_key_value(

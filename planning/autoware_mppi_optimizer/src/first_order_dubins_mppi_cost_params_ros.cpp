@@ -88,6 +88,8 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
     param_name(prefix, "nominal_curvature_min_chord_length_m"),
     defaults.nominal_curvature_min_chord_length_m);
   node.declare_parameter(
+    param_name(prefix, "nominal_curvature_fit_window_m"), defaults.nominal_curvature_fit_window_m);
+  node.declare_parameter(
     param_name(prefix, "lateral_acceleration_coeff"), defaults.lateral_acceleration_coeff);
   node.declare_parameter(param_name(prefix, "lateral_jerk_coeff"), defaults.lateral_jerk_coeff);
   node.declare_parameter(
@@ -183,6 +185,8 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "steer_cmd_noise_exponent")).as_double());
   params.nominal_curvature_min_chord_length_m = static_cast<float>(
     node.get_parameter(param_name(prefix, "nominal_curvature_min_chord_length_m")).as_double());
+  params.nominal_curvature_fit_window_m = static_cast<float>(
+    node.get_parameter(param_name(prefix, "nominal_curvature_fit_window_m")).as_double());
   params.lateral_acceleration_coeff = static_cast<float>(
     node.get_parameter(param_name(prefix, "lateral_acceleration_coeff")).as_double());
   params.lateral_jerk_coeff =

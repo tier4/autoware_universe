@@ -104,6 +104,12 @@ void declare_first_order_dubins_mppi_vehicle_dynamics_params(rclcpp::Node & node
   declare_if_missing(
     node, "standstill_steer_rate_lim", static_cast<double>(defaults.standstill_steer_rate_lim));
   declare_if_missing(
+    node, "restart_steer_command_rate_lim",
+    static_cast<double>(defaults.restart_steer_command_rate_lim));
+  declare_if_missing(
+    node, "restart_steer_command_acceleration_lim",
+    static_cast<double>(defaults.restart_steer_command_acceleration_lim));
+  declare_if_missing(
     node, "restart_velocity_threshold_mps",
     static_cast<double>(defaults.restart_velocity_threshold_mps));
   declare_if_missing(node, "vel_rate_lim", static_cast<double>(defaults.vel_rate_lim));
@@ -141,6 +147,11 @@ FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params(rcl
     static_cast<float>(read_double(node, "max_lateral_jerk_mps3", defaults.max_lateral_jerk_mps3));
   params.standstill_steer_rate_lim = static_cast<float>(
     read_double(node, "standstill_steer_rate_lim", defaults.standstill_steer_rate_lim));
+  params.restart_steer_command_rate_lim = static_cast<float>(
+    read_double(node, "restart_steer_command_rate_lim", defaults.restart_steer_command_rate_lim));
+  params.restart_steer_command_acceleration_lim = static_cast<float>(read_double(
+    node, "restart_steer_command_acceleration_lim",
+    defaults.restart_steer_command_acceleration_lim));
   params.restart_velocity_threshold_mps = static_cast<float>(
     read_double(node, "restart_velocity_threshold_mps", defaults.restart_velocity_threshold_mps));
   params.vel_rate_lim =
