@@ -403,6 +403,27 @@ struct FirstOrderDubinsMppiAppliedPlantState
   bool valid{false};
 };
 
+/** Diagnostics for one sampled population, independent of nominal/output validation. */
+struct FirstOrderDubinsMppiRolloutDiagnostics
+{
+  int eligible_count{0};
+  int nonfinite_count{0};
+  int unsafe_count{0};
+  // Counts overlap when one rollout violates multiple constraints.
+  int lateral_violation_count{0};
+  int obstacle_violation_count{0};
+  int road_border_violation_count{0};
+  float weight_sum{0.0F};
+  float effective_sample_size{0.0F};
+  /** Earliest geometric violation across this population; -1 means unavailable. */
+  int first_violation_step{-1};
+  float first_violation_time_s{-1.0F};
+  std::string first_violation_type{"unavailable"};
+  /** Nearest analytical obstacle/road-border index in the supplied frame; -1 if unavailable. */
+  int first_violation_geometry_index{-1};
+  std::string first_violation_object_id;
+};
+
 struct FirstOrderDubinsMppiDebug
 {
   Trajectory reference_trajectory;
@@ -423,14 +444,18 @@ struct FirstOrderDubinsMppiDebug
   float baseline_cost{0.0F};
   /** ESS for every MPPI optimization iteration in the most recent control step. */
   std::vector<float> iteration_effective_sample_sizes;
+  /** Zero-based first failed iteration, or -1 if no iteration failed. */
+  int failed_rollout_iteration{-1};
+  std::vector<FirstOrderDubinsMppiRolloutDiagnostics> rollout_iteration_diagnostics;
   /** Lambda used for those weights and the adapted value prepared for the next control step. */
   float lambda_used{0.0F};
   float lambda_next{0.0F};
-  /** Maximum finite raw cost in the final rollout population. */
+  /** Maximum finite raw cost in the failed population, or final population on success. */
   float max_rollout_cost{0.0F};
-  /** Robust upper raw cost used to normalize the final rollout population. */
+  /** Robust upper raw cost used to normalize the failed population, or final population on success.
+   */
   float normalization_upper_cost{0.0F};
-  /** Fraction of final-iteration rollouts that encountered a collision/safety violation. */
+  /** Unsafe fraction in the failed population, or final population on success. */
   float unsafe_rollout_fraction{0.0F};
   int eligible_rollout_count{0};
   int minimum_cost_rollout_count{0};

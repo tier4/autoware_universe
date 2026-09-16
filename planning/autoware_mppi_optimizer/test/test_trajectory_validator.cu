@@ -613,7 +613,8 @@ TEST_F(TrajectoryValidatorTest, LateralBoundaryBarrierActivatesInsideThreshold)
   EXPECT_NEAR(
     cost_->computeRunningCostBreakdown(output, control, 0, &crash_status).lateral_boundary,
     params.crash_contact_penalty, 1.0F);
-  EXPECT_EQ(crash_status, 1);
+  EXPECT_NE(crash_status & mppi::safety::kLateral, 0);
+  EXPECT_EQ(mppi::safety::timestep(crash_status), 0);
 }
 
 TEST_F(TrajectoryValidatorTest, SmoothBarrierCostGrowsBeyondContactPenaltyForPenetration)
@@ -651,7 +652,9 @@ TEST_F(TrajectoryValidatorTest, SmoothBarrierCostGrowsBeyondContactPenaltyForPen
   const auto breakdown = cost_->computeRunningCostBreakdown(output, control, 0, &crash_status);
   EXPECT_GT(breakdown.obstacle, nominal_contact_penalty);
   EXPECT_TRUE(std::isfinite(breakdown.total));
-  EXPECT_EQ(crash_status, 1);
+  EXPECT_NE(crash_status & mppi::safety::kObstacle, 0);
+  EXPECT_EQ(mppi::safety::timestep(crash_status), 0);
+  EXPECT_EQ(mppi::safety::geometryIndex(crash_status), 0);
 }
 
 TEST_F(TrajectoryValidatorTest, GradualObstacleCostFromMovingObjects)
@@ -732,7 +735,8 @@ TEST_F(TrajectoryValidatorTest, GradualConstraintCostsAreIncludedInBreakdownTota
   EXPECT_GT(breakdown.road_border, 0.0F);
   EXPECT_NEAR(breakdown.total, gradual_cost_sum, 1.0E-4F);
   EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-4F);
-  EXPECT_EQ(crash_status, 1);
+  EXPECT_NE(crash_status & mppi::safety::kObstacle, 0);
+  EXPECT_NE(crash_status & mppi::safety::kRoadBorder, 0);
 }
 
 TEST_F(TrajectoryValidatorTest, AppliesBoundaryThresholdSymmetricallyAndInclusively)
