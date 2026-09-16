@@ -154,6 +154,9 @@ struct FirstOrderDubinsMppiPostprocessingContext
   int shift_count{0};
   /** True only when optimized steering u[0] still equals its already-filtered shifted seed. */
   bool preserve_first_steering_command{false};
+  /** True while the last accepted steering command is latched at standstill. */
+  bool standstill_steering_hold_active{false};
+  float standstill_steering_hold_command_rad{0.0F};
 };
 
 enum class FirstOrderDubinsMppiMpcNominalSeedStatus : std::uint8_t {
@@ -482,6 +485,8 @@ struct FirstOrderDubinsMppiDebug
     FirstOrderDubinsMppiNominalResetReason::unavailable};
   int nominal_shift_count{0};
   FirstOrderDubinsMppiNominalSteeringContinuity nominal_steering_continuity;
+  bool standstill_steering_hold_active{false};
+  float standstill_steering_hold_command_rad{0.0F};
   /** Whether the optimized MPPI trajectory was applied on the preceding plugin cycle. */
   bool previous_mppi_trajectory_applied{false};
   FirstOrderDubinsMppiMpcNominalSeedStatus mpc_nominal_seed_status{

@@ -50,6 +50,19 @@ TEST(CurvatureAdaptiveSteeringFilter, SeedsFromMeasuredSteering)
   EXPECT_NEAR(commands.front(), 0.1F, 1.0E-6F);
 }
 
+TEST(CurvatureAdaptiveSteeringFilter, SeedsFromEnforcedStandstillCommand)
+{
+  CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
+  filter.seed(0.12F);
+  std::vector<float> commands{0.12F, 0.3F};
+
+  filter.filter(commands, 0.0F, /*preserve_first_command=*/true);
+
+  EXPECT_FLOAT_EQ(commands.front(), 0.12F);
+  EXPECT_GT(commands.back(), 0.12F);
+  EXPECT_LT(commands.back(), 0.3F);
+}
+
 TEST(CurvatureAdaptiveSteeringFilter, SmoothsTheExitFromATurn)
 {
   CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});

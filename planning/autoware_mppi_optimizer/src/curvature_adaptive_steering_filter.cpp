@@ -69,6 +69,12 @@ void CurvatureAdaptiveSteeringFilter::reset()
   initialized_ = false;
 }
 
+void CurvatureAdaptiveSteeringFilter::seed(const float steering_command)
+{
+  previous_filtered_command_ = std::isfinite(steering_command) ? steering_command : 0.0F;
+  initialized_ = true;
+}
+
 void CurvatureAdaptiveSteeringFilter::filter(
   std::vector<float> & steering_commands, const float measured_steering,
   const bool preserve_first_command)
