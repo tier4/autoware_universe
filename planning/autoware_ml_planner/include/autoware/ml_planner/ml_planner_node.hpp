@@ -177,7 +177,8 @@ private:
   /**
    * @brief Callback for the start service. While enabled, the ego velocity entries of
    * the model input (ego_agent_past) are overwritten with 1 m/s so the model plans as if
-   * the vehicle were already moving.
+   * the vehicle were already moving. The override ends automatically once the measured ego
+   * velocity reaches that value.
    */
   void on_start_service(
     const std_srvs::srv::SetBool::Request::SharedPtr request,
@@ -217,7 +218,8 @@ private:
   // Stop point fixing debug topic (published when the fixing is enabled)
   rclcpp::Publisher<Trajectory>::SharedPtr pub_pre_stop_fixing_trajectory_{nullptr};
 
-  // Start service: while enabled, ego velocity in the model input is overwritten (1 m/s)
+  // Start service: while enabled, ego velocity in the model input is overwritten (1 m/s).
+  // Cleared automatically once the measured ego velocity reaches that value.
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr srv_start_{nullptr};
   bool start_velocity_override_enabled_{false};
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
