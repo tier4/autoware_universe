@@ -951,6 +951,7 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   /** Pending offline seeds applied after setup() initializes execution state. */
   bool pending_control_history{false};
+  bool external_control_history_available{false};
   float pending_hist_accel_tm2{0.0F};
   float pending_hist_steer_tm2{0.0F};
   float pending_hist_accel_tm1{0.0F};
@@ -1078,6 +1079,9 @@ struct FirstOrderDubinsMppiInterface::Impl
     dyn.max_steer_rate = vehicle_params.steer_rate_lim;
     dyn.max_lateral_jerk_mps3 = vehicle_params.max_lateral_jerk_mps3;
     dyn.standstill_steer_rate_lim = vehicle_params.standstill_steer_rate_lim;
+    dyn.restart_steer_command_rate_lim = vehicle_params.restart_steer_command_rate_lim;
+    dyn.restart_steer_command_acceleration_lim =
+      vehicle_params.restart_steer_command_acceleration_lim;
     dyn.restart_velocity_threshold_mps = vehicle_params.restart_velocity_threshold_mps;
     dyn.min_accel = vehicle_params.min_accel();
     dyn.max_accel = vehicle_params.max_accel();
@@ -1179,6 +1183,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       "std_decay=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "acc_delay=%.3f (%d steps), steer_delay=%.3f (%d steps), "
       "steer_rate_lim=%.2f, max_lat_jerk=%.2f, standstill_steer_rate_lim=%.2f, "
+      "restart_cmd_rate_lim=%.2f, restart_cmd_accel_lim=%.2f, "
       "restart_velocity_threshold=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, "
       "axle_to_center=%.2f, "
       "boundary_threshold=%.2f, obs_margin=%.2f, road_border_margin=%.2f, "
@@ -1191,6 +1196,8 @@ struct FirstOrderDubinsMppiInterface::Impl
       vehicle_params.steer_time_constant, vehicle_params.acc_time_delay, acc_delay_steps,
       vehicle_params.steer_time_delay, steer_delay_steps, vehicle_params.steer_rate_lim,
       vehicle_params.max_lateral_jerk_mps3, vehicle_params.standstill_steer_rate_lim,
+      vehicle_params.restart_steer_command_rate_lim,
+      vehicle_params.restart_steer_command_acceleration_lim,
       vehicle_params.restart_velocity_threshold_mps, vehicle_params.vel_rate_lim,
       vehicle_params.ego_length, vehicle_params.ego_width, vehicle_params.ego_axle_to_box_center,
       cost_params.boundary_threshold, cost_params.obstacle_collision_margin,
@@ -1330,6 +1337,64 @@ struct FirstOrderDubinsMppiInterface::Impl
     for (int i = 0; i < steer_delay_steps; ++i) {
       x(static_cast<int>(S::STEER_CMD_D0) + i) = steer_delay_buffer[static_cast<size_t>(i)];
     }
+  }
+
+  void loadAcceptedCommandHistoryIntoState(const detail::InitialState & ego)
+  {
+    using S = FirstOrderDubinsBicycleParams::StateIndex;
+    float previous_acceleration_command = ego.acceleration;
+    float previous_steering_command = ego.steering;
+    float previous_steering_command_rate = 0.0F;
+    if (!prediction_control_history_.empty()) {
+      const auto & latest = prediction_control_history_.back();
+      if (std::isfinite(latest.control.accel_cmd)) {
+        previous_acceleration_command = latest.control.accel_cmd;
+      }
+      if (std::isfinite(latest.control.steer_cmd)) {
+        previous_steering_command = latest.control.steer_cmd;
+      }
+      if (prediction_control_history_.size() >= 2U) {
+        const auto & earlier = prediction_control_history_[prediction_control_history_.size() - 2U];
+        const double elapsed = detail::elapsedSeconds(earlier.stamp, latest.stamp);
+        if (
+          std::isfinite(elapsed) && elapsed > 1.0E-6 && std::isfinite(earlier.control.steer_cmd)) {
+          previous_steering_command_rate =
+            static_cast<float>((latest.control.steer_cmd - earlier.control.steer_cmd) / elapsed);
+          previous_steering_command_rate = std::clamp(
+            previous_steering_command_rate, -vehicle_params.steer_rate_lim,
+            vehicle_params.steer_rate_lim);
+        }
+      }
+    } else if (external_control_history_available) {
+      previous_acceleration_command = pending_hist_accel_tm1;
+      previous_steering_command = pending_hist_steer_tm1;
+      previous_steering_command_rate = std::clamp(
+        (pending_hist_steer_tm1 - pending_hist_steer_tm2) / kDt, -vehicle_params.steer_rate_lim,
+        vehicle_params.steer_rate_lim);
+    }
+    x(static_cast<int>(S::PREVIOUS_ACCEL_CMD)) = previous_acceleration_command;
+    x(static_cast<int>(S::PREVIOUS_STEER_CMD)) = previous_steering_command;
+    x(static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)) = previous_steering_command_rate;
+  }
+
+  bool projectControlSequenceToDynamics(
+    Mppi::control_trajectory & controls, const DYN::state_array & initial_state)
+  {
+    DYN::state_array state = initial_state;
+    DYN::state_array next_state = model.getZeroState();
+    DYN::state_array state_derivative = model.getZeroState();
+    DYN::output_array output = DYN::output_array::Zero();
+    bool modified = false;
+    for (int timestep = 0; timestep < controls.cols(); ++timestep) {
+      const DYN::control_array original = controls.col(timestep);
+      model.enforceConstraints(state, controls.col(timestep));
+      modified = modified || !controls.col(timestep).isApprox(original, 1.0E-7F);
+      model.step(
+        state, next_state, state_derivative, controls.col(timestep), output,
+        static_cast<float>(timestep), kDt);
+      state = next_state;
+    }
+    return modified;
   }
 
   void applyPendingControlHistory()
@@ -1693,14 +1758,15 @@ struct FirstOrderDubinsMppiInterface::Impl
   }
 
   void seedNominalControlFromDiffusionReference(
-    const Trajectory & reference, const size_t start_idx)
+    const Trajectory & reference, const size_t start_idx, const float initial_velocity_mps)
   {
     const int accel_idx =
       static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
     const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
     const auto nominal = detail::buildDiffusionNominalControl(
       reference, start_idx, vehicle_params, kMppiHorizon,
-      user_cost_params_.nominal_curvature_min_chord_length_m);
+      user_cost_params_.nominal_curvature_min_chord_length_m,
+      user_cost_params_.nominal_curvature_fit_window_m, kDt, initial_velocity_mps);
     for (int t = 0; t < kMppiHorizon; ++t) {
       u_nom(accel_idx, t) = nominal[static_cast<size_t>(t)].accel_cmd;
       u_nom(steer_idx, t) = nominal[static_cast<size_t>(t)].steer_cmd;
@@ -1713,7 +1779,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     auto nominal = temporal_mpt_nominal_seeder.solve(reference, ego, vehicle_params, kMppiHorizon);
     if (!nominal) {
       temporal_mpt_nominal_seeder.resetWarmStart();
-      seedNominalControlFromDiffusionReference(reference, tracking_start_idx);
+      seedNominalControlFromDiffusionReference(reference, tracking_start_idx, ego.velocity);
       return false;
     }
     if (enable_input_delay_compensation && (acc_delay_steps > 0 || steer_delay_steps > 0)) {
@@ -1855,7 +1921,7 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     // Always construct a current-reference seed. Reused controls overwrite its prefix while its
     // suffix supplies newly exposed horizon samples.
-    seedNominalControlFromDiffusionReference(reference, start_idx);
+    seedNominalControlFromDiffusionReference(reference, start_idx, ego.velocity);
     filterNominalControl(ego);
     if (mpc_predicted_trajectory && overlayMpcPredictedSteering(*mpc_predicted_trajectory, ego)) {
       nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory;
@@ -2031,6 +2097,9 @@ struct FirstOrderDubinsMppiInterface::Impl
       initial_state.steering;
     ensureDelayBufferSeeded();
     loadDelayPipesIntoState();
+    loadAcceptedCommandHistoryIntoState(initial_state);
+    projectControlSequenceToDynamics(u_nom, x);
+    snapshotNominalForLog();
     snapshotDelayBufferForLog();
   }
 
@@ -2263,6 +2332,8 @@ struct FirstOrderDubinsMppiInterface::Impl
       // Publication reads the controller's state sequence, so replay profile overrides too.
       control_sequence_modified = control_sequence_modified || count > 0;
     }
+    control_sequence_modified =
+      projectControlSequenceToDynamics(u_opt_traj, x) || control_sequence_modified;
     if (control_sequence_modified) {
       controller->setControlSequenceAndRecomputeState(u_opt_traj, x);
     }
@@ -2347,10 +2418,15 @@ void FirstOrderDubinsMppiInterface::setVehicleParams(
   if (
     !std::isfinite(params.max_lateral_jerk_mps3) || params.max_lateral_jerk_mps3 < 0.0F ||
     !std::isfinite(params.standstill_steer_rate_lim) || params.standstill_steer_rate_lim < 0.0F ||
+    !std::isfinite(params.restart_steer_command_rate_lim) ||
+    params.restart_steer_command_rate_lim < 0.0F ||
+    !std::isfinite(params.restart_steer_command_acceleration_lim) ||
+    params.restart_steer_command_acceleration_lim < 0.0F ||
     !std::isfinite(params.restart_velocity_threshold_mps) ||
     params.restart_velocity_threshold_mps < 0.0F) {
     throw std::invalid_argument(
-      "Velocity-dependent steering-rate limits must be finite and non-negative");
+      "Restart steering-rate, command-rate, command-acceleration, and release-speed limits must "
+      "be finite and non-negative");
   }
   impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   if (impl_->initialized) {
@@ -2393,13 +2469,17 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
     params.unsafe_rollout_fraction_threshold < 0.0F ||
     params.unsafe_rollout_fraction_threshold > 1.0F ||
     params.cost_normalization_percentile < 0.0F || params.cost_normalization_percentile > 1.0F ||
-    params.max_iter <= 0) {
+    !std::isfinite(params.nominal_curvature_min_chord_length_m) ||
+    params.nominal_curvature_min_chord_length_m <= 0.0F ||
+    !std::isfinite(params.nominal_curvature_fit_window_m) ||
+    params.nominal_curvature_fit_window_m <= 0.0F || params.max_iter <= 0) {
     throw std::invalid_argument(
       "MPPI cost parameters must have finite non-negative penalties, std_dev_decay in [0, 1], "
       "lambda within [lambda_min, lambda_max] with lambda_min >= 1e-6, target_ess_ratio in [0, 1], "
       "a "
       "non-negative lambda_adaptation_gain, unsafe_rollout_fraction_threshold and "
-      "cost_normalization_percentile in [0, 1], and max_iter greater than zero");
+      "cost_normalization_percentile in [0, 1], positive nominal-curvature spans, and max_iter "
+      "greater than zero");
   }
   impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   if (impl_->initialized) {
@@ -2619,6 +2699,7 @@ void FirstOrderDubinsMppiInterface::setControlHistory(
   impl_->pending_hist_accel_tm1 = accel_tm1;
   impl_->pending_hist_steer_tm1 = steer_tm1;
   impl_->pending_control_history = true;
+  impl_->external_control_history_available = true;
   if (impl_->controller) {
     impl_->applyPendingControlHistory();
   }
@@ -3265,6 +3346,8 @@ FirstOrderDubinsBicycleParams makePlantPredictionDynamicsParams(
   dyn.max_steer_rate = vehicle.steer_rate_lim;
   dyn.max_lateral_jerk_mps3 = vehicle.max_lateral_jerk_mps3;
   dyn.standstill_steer_rate_lim = vehicle.standstill_steer_rate_lim;
+  dyn.restart_steer_command_rate_lim = vehicle.restart_steer_command_rate_lim;
+  dyn.restart_steer_command_acceleration_lim = vehicle.restart_steer_command_acceleration_lim;
   dyn.restart_velocity_threshold_mps = vehicle.restart_velocity_threshold_mps;
   dyn.min_accel = vehicle.min_accel();
   dyn.max_accel = vehicle.max_accel();
@@ -3358,6 +3441,28 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
   const FirstOrderDubinsMppiControl fallback_control = input.control_history.empty()
                                                          ? FirstOrderDubinsMppiControl{}
                                                          : input.control_history.back().control;
+  const auto anchor_control =
+    controlAtTimeForPrediction(input.control_history, input.anchor.stamp, fallback_control);
+  x(static_cast<int>(S::PREVIOUS_ACCEL_CMD)) = anchor_control.accel_cmd;
+  x(static_cast<int>(S::PREVIOUS_STEER_CMD)) = anchor_control.steer_cmd;
+  x(static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)) = 0.0F;
+  const double anchor_s = stampToSeconds(input.anchor.stamp);
+  const FirstOrderDubinsMppiControlHistoryEntry * latest = nullptr;
+  const FirstOrderDubinsMppiControlHistoryEntry * earlier = nullptr;
+  for (const auto & entry : input.control_history) {
+    if (stampToSeconds(entry.stamp) <= anchor_s + kPlantPredictionTimeEpsilonS) {
+      earlier = latest;
+      latest = &entry;
+    }
+  }
+  if (latest && earlier) {
+    const double command_dt = elapsedSeconds(earlier->stamp, latest->stamp);
+    if (command_dt > kPlantPredictionTimeEpsilonS) {
+      x(static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)) = std::clamp(
+        static_cast<float>((latest->control.steer_cmd - earlier->control.steer_cmd) / command_dt),
+        -input.vehicle.steer_rate_lim, input.vehicle.steer_rate_lim);
+    }
+  }
 
   builtin_interfaces::msg::Time query_time = input.anchor.stamp;
   float integration_time = 0.0F;
@@ -3367,6 +3472,8 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
     FirstOrderDubinsBicycle::control_array u = FirstOrderDubinsBicycle::control_array::Zero();
     u(static_cast<int>(C::ACCELERATION_CMD)) = control.accel_cmd;
     u(static_cast<int>(C::STEER_CMD)) = control.steer_cmd;
+
+    model.enforceConstraints(x, u);
 
     pushDelayedInputForPrediction(
       u, acc_delay_steps, steer_delay_steps, x, accel_delay_buffer, steer_delay_buffer);
@@ -3385,13 +3492,11 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
     FirstOrderDubinsBicycle::state_array x_next = model.getZeroState();
     FirstOrderDubinsBicycle::state_array xdot = model.getZeroState();
     FirstOrderDubinsBicycle::output_array y = FirstOrderDubinsBicycle::output_array::Zero();
-    model.enforceConstraints(x, u);
     model.step(x, x_next, xdot, u, y, sim_time, step_dt);
     x = x_next;
     sim_time += step_dt;
     integration_time += step_dt;
 
-    const double anchor_s = stampToSeconds(input.anchor.stamp);
     query_time.sec = static_cast<int32_t>(std::floor(anchor_s + integration_time));
     query_time.nanosec = static_cast<uint32_t>(
       (anchor_s + integration_time - static_cast<double>(query_time.sec)) * 1.0E9);

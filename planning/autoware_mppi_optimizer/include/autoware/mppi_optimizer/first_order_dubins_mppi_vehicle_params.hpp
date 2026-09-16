@@ -35,6 +35,9 @@ struct FirstOrderDubinsMppiVehicleParams
   float steer_rate_lim{5.0F};
   float max_lateral_jerk_mps3{2.5F};
   float standstill_steer_rate_lim{0.15F};
+  /** Issued road-wheel command limits at standstill [rad/s, rad/s^2]. */
+  float restart_steer_command_rate_lim{0.15F};
+  float restart_steer_command_acceleration_lim{0.5F};
   float restart_velocity_threshold_mps{0.5F};
   float vel_rate_lim{7.0F};
   float acc_time_delay{0.1F};

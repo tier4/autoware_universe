@@ -206,6 +206,8 @@ void applyCostParam(
     params.steer_cmd_noise_exponent = value;
   } else if (key == "nominal_curvature_min_chord_length_m") {
     params.nominal_curvature_min_chord_length_m = value;
+  } else if (key == "nominal_curvature_fit_window_m") {
+    params.nominal_curvature_fit_window_m = value;
   } else if (key == "lateral_acceleration_coeff") {
     params.lateral_acceleration_coeff = value;
   } else if (key == "lateral_jerk_coeff") {
@@ -301,6 +303,10 @@ void applyVehicleParam(
     params.max_lateral_jerk_mps3 = value;
   } else if (key == "standstill_steer_rate_lim") {
     params.standstill_steer_rate_lim = value;
+  } else if (key == "restart_steer_command_rate_lim") {
+    params.restart_steer_command_rate_lim = value;
+  } else if (key == "restart_steer_command_acceleration_lim") {
+    params.restart_steer_command_acceleration_lim = value;
   } else if (key == "restart_velocity_threshold_mps") {
     params.restart_velocity_threshold_mps = value;
   } else if (key == "vel_rate_lim") {
@@ -707,7 +713,8 @@ int run(int argc, char ** argv)
     } else {
       std::cout << "frame " << frame_id
                 << " reseeding u_nom from reference with nominal curvature chord "
-                << cost_params.nominal_curvature_min_chord_length_m << " m\n";
+                << cost_params.nominal_curvature_min_chord_length_m << " m and fit window "
+                << cost_params.nominal_curvature_fit_window_m << " m\n";
     }
 
     {

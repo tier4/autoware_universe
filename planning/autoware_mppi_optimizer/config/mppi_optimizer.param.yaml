@@ -81,7 +81,9 @@
       # separates unsafe rollouts without compressing all normal costs against a 100k outlier.
       crash_contact_penalty: 100000.0
 
+      # Cold-start curvature uses a local quadratic fit and advances by predicted distance.
       nominal_curvature_min_chord_length_m: 1.5
+      nominal_curvature_fit_window_m: 4.0
 
       # Actuator taus/delays come from simulator_model.param.yaml on the trajectory processor
       # node. For DELAY_STEER_ACC_GEARED_FOR_DIFFUSION_PLANNER, nested v{version}.* fields
@@ -101,6 +103,9 @@
       min_trajectory_progress_m: 0.0
       max_lateral_jerk_mps3: 2.5
       standstill_steer_rate_lim: 0.15
+      # Issued road-wheel command limits at standstill; smoothly released at the threshold below.
+      restart_steer_command_rate_lim: 0.15
+      restart_steer_command_acceleration_lim: 0.5
       restart_velocity_threshold_mps: 0.5
 
       # Cold-seed u_nom from acados temporal MPT.

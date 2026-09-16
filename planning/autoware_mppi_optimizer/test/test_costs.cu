@@ -1187,6 +1187,8 @@ TEST_F(GpuCostEvaluation, VelocityDependentSteeringRatePropagationMatchesHost)
   mp.max_steer_rate = 5.0F;
   mp.max_lateral_jerk_mps3 = 2.5F;
   mp.standstill_steer_rate_lim = 0.15F;
+  mp.restart_steer_command_rate_lim = mp.max_steer_rate;
+  mp.restart_steer_command_acceleration_lim = 1000.0F;
   mp.restart_velocity_threshold_mps = 0.5F;
   mp.steer_time_constant = 0.01F;
   Model model(mp);
@@ -1203,9 +1205,12 @@ TEST_F(GpuCostEvaluation, VelocityDependentSteeringRatePropagationMatchesHost)
     model.enforceConstraints(state, control);
     model.step(state, next, derivative, control, output, 0.0F, dt);
 
-    const float expected = velocity < mp.restart_velocity_threshold_mps
-                             ? mp.standstill_steer_rate_lim
-                             : mp.max_lateral_jerk_mps3 * mp.wheel_base / (velocity * velocity);
+    const float moving_limit =
+      std::min(mp.max_steer_rate, mp.max_lateral_jerk_mps3 * mp.wheel_base / (velocity * velocity));
+    const float ratio = std::min(velocity / mp.restart_velocity_threshold_mps, 1.0F);
+    const float blend = ratio * ratio * (3.0F - 2.0F * ratio);
+    const float expected =
+      mp.standstill_steer_rate_lim + blend * (moving_limit - mp.standstill_steer_rate_lim);
     EXPECT_NEAR(output(static_cast<int>(O::STEERING_RATE)), expected, 1.0E-5F);
 
     DeviceBuffer<float> device_result(1U);

@@ -551,17 +551,16 @@ TEST(CumulativeChordLength, AccumulatesPolylineSegmentLengthsByIndex)
   EXPECT_FLOAT_EQ(reference[2].arc_length_s, 9.0F);
 }
 
-TEST(NominalControl, CopiesClampsPadsAndDerivesSteeringFromCurvature)
+TEST(NominalControl, StoppedSeedHoldsSpatialSampleAndIgnoresNoisyPointSteering)
 {
   // 1. Create a 3-point trajectory so Menger curvature can evaluate 3 non-collinear points
   auto trajectory = makeTrajectory(3U, 2.0, 2.0F);
   trajectory.points[0].acceleration_mps2 = 20.0F;
-  trajectory.points[0].front_wheel_angle_rad = 0.0F;  // Zero -> triggers Menger curvature fallback
+  trajectory.points[0].front_wheel_angle_rad = 0.0F;
   trajectory.points[0].pose.orientation = makeQuaternion(0.0);
 
   trajectory.points[1].acceleration_mps2 = -20.0F;
-  trajectory.points[1].front_wheel_angle_rad =
-    1.0F;  // Non-zero -> uses explicit value (clamped to max)
+  trajectory.points[1].front_wheel_angle_rad = 1.0F;
   trajectory.points[1].pose.orientation = makeQuaternion(0.2);
 
   trajectory.points[2].acceleration_mps2 = -20.0F;
@@ -572,21 +571,18 @@ TEST(NominalControl, CopiesClampsPadsAndDerivesSteeringFromCurvature)
   vehicle.vel_rate_lim = 3.0F;
   vehicle.max_steer_angle = 0.4F;
   vehicle.wheel_base = 0.32F;
-  const auto nominal = buildDiffusionNominalControl(trajectory, 0U, vehicle, 4);
+  const auto nominal =
+    buildDiffusionNominalControl(trajectory, 0U, vehicle, 4, 1.5F, 4.0F, 0.1F, 0.0F);
 
   ASSERT_EQ(nominal.size(), 4U);
   EXPECT_FLOAT_EQ(nominal[0].accel_cmd, vehicle.max_accel());
 
-  // 2. Compute expected Menger curvature for the 3 points in makeTrajectory(3U, 2.0, ...)
-  // Points are: p0=(0, 0), p1=(2.0, -0.5), p2=(4.0, -1.0) -> Note: collinear if y is linear!
-  // To test curvature, let's make p1 slightly offset so it has real curvature:
-  const float expected_curvature = computeMengerCurvatureWithMinChord(trajectory.points, 0U, 1.5);
-  EXPECT_NEAR(nominal[0].steer_cmd, std::atan(vehicle.wheel_base * expected_curvature), 1.0E-6F);
-
-  EXPECT_FLOAT_EQ(nominal[1].accel_cmd, vehicle.min_accel());
-  EXPECT_FLOAT_EQ(nominal[1].steer_cmd, vehicle.max_steer_angle);  // Clamped from 1.0F -> 0.4F
-  EXPECT_FLOAT_EQ(nominal[3].accel_cmd, nominal[1].accel_cmd);
-  EXPECT_FLOAT_EQ(nominal[3].steer_cmd, nominal[1].steer_cmd);
+  // The spatial cursor does not walk one path point per controller tick while stopped. The local
+  // geometry fit also takes precedence over noisy per-point steering metadata.
+  for (const auto & control : nominal) {
+    EXPECT_FLOAT_EQ(control.accel_cmd, vehicle.max_accel());
+    EXPECT_NEAR(control.steer_cmd, nominal.front().steer_cmd, 1.0E-6F);
+  }
 }
 
 TEST(MengerCurvature, CollinearPointsHaveZeroCurvatureWithVariableSpacing)
@@ -651,7 +647,7 @@ TEST(MengerCurvature, EndpointsAndNearEndpointsRemainFinite)
   }
 }
 
-TEST(NominalControl, CurvatureChordParameterSmoothsColdStartSteeringSeed)
+TEST(NominalControl, CurvatureFitWindowSmoothsColdStartSteeringSeed)
 {
   Trajectory trajectory;
   for (std::size_t i = 0; i < 80U; ++i) {
@@ -662,8 +658,10 @@ TEST(NominalControl, CurvatureChordParameterSmoothsColdStartSteeringSeed)
   FirstOrderDubinsMppiVehicleParams vehicle;
   vehicle.wheel_base = 4.76F;
   vehicle.max_steer_angle = 1.5F;
-  const auto adjacent = buildDiffusionNominalControl(trajectory, 20U, vehicle, 30, 0.0F);
-  const auto windowed = buildDiffusionNominalControl(trajectory, 20U, vehicle, 30, 1.5F);
+  const auto adjacent =
+    buildDiffusionNominalControl(trajectory, 20U, vehicle, 30, 0.0F, 0.2F, 0.1F, 1.0F);
+  const auto windowed =
+    buildDiffusionNominalControl(trajectory, 20U, vehicle, 30, 0.0F, 4.0F, 0.1F, 1.0F);
   float adjacent_peak = 0.0F;
   float windowed_peak = 0.0F;
   for (std::size_t i = 0; i < adjacent.size(); ++i) {
@@ -761,8 +759,12 @@ TEST(VelocityDependentSteeringRate, UsesStandstillLimitDuringRestart)
   vehicle.standstill_steer_rate_lim = 0.15F;
   vehicle.restart_velocity_threshold_mps = 0.5F;
 
-  EXPECT_FLOAT_EQ(velocityDependentSteeringRateLimit(vehicle, 0.2F), 0.15F);
-  EXPECT_FLOAT_EQ(velocityDependentSteeringRateLimit(vehicle, -0.2F), 0.15F);
+  const float ratio = 0.2F / vehicle.restart_velocity_threshold_mps;
+  const float blend = ratio * ratio * (3.0F - 2.0F * ratio);
+  const float expected = vehicle.standstill_steer_rate_lim +
+                         blend * (vehicle.steer_rate_lim - vehicle.standstill_steer_rate_lim);
+  EXPECT_NEAR(velocityDependentSteeringRateLimit(vehicle, 0.2F), expected, 1.0E-6F);
+  EXPECT_NEAR(velocityDependentSteeringRateLimit(vehicle, -0.2F), expected, 1.0E-6F);
 }
 
 TEST(VelocityDependentSteeringRate, UsesLateralJerkLimitAtHighSpeed)

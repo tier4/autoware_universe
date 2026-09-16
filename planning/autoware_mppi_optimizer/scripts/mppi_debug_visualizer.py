@@ -148,6 +148,7 @@ DEFAULT_PARAMS: Dict[str, float] = {
     "accel_cmd_std_dev": 0.35,
     "steer_cmd_std_dev": 0.024,
     "nominal_curvature_min_chord_length_m": 1.5,
+    "nominal_curvature_fit_window_m": 4.0,
     "obstacle_collision_margin": 0.2,
     "road_border_collision_margin": 0.3,
     "obstacle_safe_margin": 0.5,
@@ -192,6 +193,7 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("accel_cmd_std_dev", 0.0, 2.0),
     ("steer_cmd_std_dev", 0.0, 0.2),
     ("nominal_curvature_min_chord_length_m", 0.0, 5.0),
+    ("nominal_curvature_fit_window_m", 0.1, 10.0),
     ("boundary_threshold", 0.1, 5.0),
     ("lateral_boundary_soft_margin", 0.0, 2.0),
     ("obstacle_collision_margin", 0.0, 2.0),
@@ -2693,11 +2695,12 @@ class OfflineLogVisualizer:
         # keys without sliders (noise exponents, etc.). Sliders + --set carry user edits.
         if reseed:
             cmd.extend(["--nominal-csv", str(seed_path)])
-        elif not math.isclose(
-            params["nominal_curvature_min_chord_length_m"],
-            self._params["nominal_curvature_min_chord_length_m"],
-            rel_tol=0.0,
-            abs_tol=1.0e-6,
+        elif any(
+            not math.isclose(params[name], self._params[name], rel_tol=0.0, abs_tol=1.0e-6)
+            for name in (
+                "nominal_curvature_min_chord_length_m",
+                "nominal_curvature_fit_window_m",
+            )
         ):
             cmd.append("--reseed-nominal-from-reference")
         for key, value in params.items():

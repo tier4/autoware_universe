@@ -195,6 +195,7 @@ public:
         out << "steer_cmd_noise_exponent," << cost.steer_cmd_noise_exponent << "\n";
         out << "nominal_curvature_min_chord_length_m," << cost.nominal_curvature_min_chord_length_m
             << "\n";
+        out << "nominal_curvature_fit_window_m," << cost.nominal_curvature_fit_window_m << "\n";
         out << "lateral_acceleration_coeff," << cost.lateral_acceleration_coeff << "\n";
         out << "lateral_jerk_coeff," << cost.lateral_jerk_coeff << "\n";
         out << "longitudinal_jerk_coeff," << cost.longitudinal_jerk_coeff << "\n";
@@ -231,6 +232,9 @@ public:
         out << "steer_rate_lim," << vehicle.steer_rate_lim << "\n";
         out << "max_lateral_jerk_mps3," << vehicle.max_lateral_jerk_mps3 << "\n";
         out << "standstill_steer_rate_lim," << vehicle.standstill_steer_rate_lim << "\n";
+        out << "restart_steer_command_rate_lim," << vehicle.restart_steer_command_rate_lim << "\n";
+        out << "restart_steer_command_acceleration_lim,"
+            << vehicle.restart_steer_command_acceleration_lim << "\n";
         out << "restart_velocity_threshold_mps," << vehicle.restart_velocity_threshold_mps << "\n";
         out << "vel_rate_lim," << vehicle.vel_rate_lim << "\n";
         out << "acc_time_delay," << vehicle.acc_time_delay << "\n";
