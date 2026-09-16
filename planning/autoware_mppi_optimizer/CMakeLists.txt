@@ -79,39 +79,16 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   # Parallelize NVCC device-code passes (CUDA 11.5+); 0 = use all host cores.
   list(APPEND CUDA_NVCC_FLAGS "--threads" "0")
 
-  # MPPI-Generic includes <cuda/barrier>, which #errors below sm_70.
-  # Do not use CUDA_SELECT_NVCC_ARCH_FLAGS(Auto): container/CI configure (no
-  # bashrc, virtual GPU, or FindCUDA fallback) can still emit a pre-Volta pass
-  # such as compute_53, which then fails while compiling cuda/std/barrier.
-  # Match Autoware perception TensorRT packages: explicit Turing+ fatbin.
-  # Local override: -DMPPI_CUDA_ARCHITECTURES=86 (or a FindCUDA arch list).
-  if(DEFINED MPPI_CUDA_ARCHITECTURES AND NOT MPPI_CUDA_ARCHITECTURES STREQUAL "")
-    CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS ${MPPI_CUDA_ARCHITECTURES})
-    if(MPPI_CUDA_ARCH_FLAGS STREQUAL "")
-      message(FATAL_ERROR
-        "MPPI CUDA: MPPI_CUDA_ARCHITECTURES='${MPPI_CUDA_ARCHITECTURES}' "
-        "produced no NVCC arch flags")
-    endif()
-    list(APPEND CUDA_NVCC_FLAGS ${MPPI_CUDA_ARCH_FLAGS})
-    message(STATUS "MPPI CUDA architecture(s) (override): ${MPPI_CUDA_ARCH_FLAGS}")
-  else()
-    list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_75,code=sm_75")
-    list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_86,code=sm_86")
-    list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_87,code=sm_87")
-    list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=sm_89")
-    if(CUDA_VERSION VERSION_GREATER_EQUAL "12.8")
-      if(CUDA_VERSION VERSION_LESS "13.0")
-        list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_101,code=sm_101")
-      else()
-        list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_110,code=sm_110")
-      endif()
-      list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_120,code=sm_120")
-      list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_120,code=compute_120")
-    else()
-      list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=compute_89")
-    endif()
-    message(STATUS "MPPI CUDA architectures: Autoware perception set (sm_75+)")
+  # Compile only for the GPU(s) on this machine (FindCUDA Auto = nvidia-smi detect).
+  # Avoids the multi-SM fat-binary compile that dominated MPPI build time.
+  CUDA_SELECT_NVCC_ARCH_FLAGS(MPPI_CUDA_ARCH_FLAGS Auto)
+  if(MPPI_CUDA_ARCH_FLAGS STREQUAL "")
+    message(FATAL_ERROR
+      "MPPI CUDA: failed to detect a local GPU architecture. "
+      "Is the NVIDIA driver available at configure time?")
   endif()
+  list(APPEND CUDA_NVCC_FLAGS ${MPPI_CUDA_ARCH_FLAGS})
+  message(STATUS "MPPI CUDA architecture(s): ${MPPI_CUDA_ARCH_FLAGS}")
 
   cuda_add_library(first_order_dubins_mppi SHARED
     src/first_order_dubins/first_order_dubins_mppi_interface.cu
