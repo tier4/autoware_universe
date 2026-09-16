@@ -391,6 +391,22 @@ clearance reaches `obstacle_collision_margin`, and grows beyond that value durin
 and time-varying obstacle trajectories both participate. The implementation stores at most 64
 obstacles.
 
+The runtime parameter `dynamic_obstacle_horizon_s` limits how far into the future moving
+objects participate in obstacle costs and final OBB collision validation. Its default, `0.0`,
+uses the full MPPI horizon and preserves the previous behavior. A positive value includes only
+post-step samples with `(k + 1) * dt <= dynamic_obstacle_horizon_s`, measured from the current
+planning state. For example, `3.0` includes predictions through 3 seconds. A positive value
+smaller than `dt` includes no moving-object samples; values beyond the MPPI horizon use every
+sample. Negative and nonfinite values are rejected.
+
+Objects whose supplied predicted pose stays constant within the existing `1e-4` position/yaw
+tolerance are considered stationary and remain active for the full horizon. Moving objects are
+omitted after the cutoff, without freezing their final pose. This rule applies to GPU distance-map
+layers, exact CPU/out-of-grid distances, terminal costs, unsafe-rollout flags, and final collision
+validation. Changing the limit invalidates the obstacle map even if object geometry is unchanged.
+Debug logs record the parameter in `runtime_options.csv`; offline replay restores it and accepts
+`--set dynamic_obstacle_horizon_s=3.0` or a YAML override. Older logs default to the full horizon.
+
 ### 9.2 Road-border barrier
 
 `d_road` is the nonnegative minimum clearance from the four-circle ego approximation to a road
