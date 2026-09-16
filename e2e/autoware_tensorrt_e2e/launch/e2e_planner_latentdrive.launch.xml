@@ -20,6 +20,13 @@
   <arg name="node_namespace" default="/"/>
   <arg name="use_sim_time" default="false" description="clock every node here from /clock, as a bag replay needs"/>
   <arg name="tick_log" default="false" description="one [LatentDrive-debug] INFO line per planning tick: frame ages and status, or why the tick was skipped"/>
+  <!-- How often the model replans. Every plan reaches 4 s ahead, and the controller follows the
+       newest one, so this also sets how long a plan is driven before it is replaced: at 10 Hz
+       only its first 0.1 s, at 1.25 Hz its first 0.8 s. The closed-loop checkpoints were
+       benchmarked at 1.25 Hz (replan every 0.8 s, execute the first 8 waypoints), and replanning
+       every tick is untested by comparison, so match the benchmark before reading its numbers
+       across. Turn smoothing off as well for that, since the benchmark drove the raw plan. -->
+  <arg name="planning_frequency_hz" default="10.0"/>
   <arg name="smoothing" default="true" description="temporal smoothing of the plan (latentdrive.smoothing.enable); the raw plan stays published as the _raw candidate"/>
   <arg name="publish_raw_candidate" default="true" description="publish the unfiltered plan as an extra candidate trajectory; it shares the filtered one's generator id, so turn it off where the candidates feed a planning chain"/>
   <arg name="rviz" default="false" description="open RViz (the standard Autoware layout)"/>
@@ -61,6 +68,7 @@
     <param from="$(var ml_package_param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
     <param name="build_only" value="$(var build_only)"/>
+    <param name="planning_frequency_hz" value="$(var planning_frequency_hz)"/>
     <param name="latentdrive.smoothing.enable" value="$(var smoothing)"/>
     <param name="latentdrive.smoothing.publish_raw_candidate" value="$(var publish_raw_candidate)"/>
     <param name="latentdrive.tick_log" value="$(var tick_log)"/>

@@ -106,7 +106,8 @@ common `InferenceEngine`.
   (`autoware_planning_msgs/Trajectory`), for a replay whose bags carry no route. A route lanelet
   the map does not contain is skipped, reported, and bridged in a straight line. The subgoal
   actually used is published on `~/debug/latentdrive/subgoal`.
-- `traj` `[1, 40, 3]`: `(x, y, yaw)` at 0.1 s over 4 s, decoded by the common postprocessor
+- the trajectory tensor, `[1, N, 3]` of `(x, y, yaw)` over the configured horizon, decoded by
+  the common postprocessor
   through `LatentDrivePostprocessor`, which adds an optional temporal smoothing
   (`latentdrive.smoothing.*`, on by default). Consecutive plans disagree by about a metre on
   how far they reach, which reads as jitter in RViz and as a restless reference for a
@@ -116,6 +117,16 @@ common `InferenceEngine`.
   candidate trajectory whose generator name ends in `_raw`, so open-loop accuracy is measured
   on the model's output and the filter is declared as part of the system rather than hidden.
   `smoothing:=false` on the launch file turns it off for one run.
+  A model that plans fewer waypoints than the 0.1 s trajectory grid holds (the 2 Hz checkpoint
+  emits 8 over the same 4 s) is interpolated onto that grid first, from the ego origin through
+  its waypoints, which is what LatentDrive-TRT's `deploy_utils.plan_to_poses` does.
+
+`planning_frequency_hz` (10.0 by default, a launch argument) sets how often the model replans,
+and therefore how long one plan is driven before the next replaces it: the whole 4 s plan is
+published every time, but the controller follows the newest. The closed-loop checkpoints were
+benchmarked replanning every 0.8 s and executing the first 8 waypoints of each plan, so
+`planning_frequency_hz:=1.25 smoothing:=false` is the setting that matches their numbers;
+replanning every tick sees fresher images but was not measured.
 
 The offline validation builds the engine fp16 with the planner stage pinned to fp32, a layer
 precision recipe `autoware_tensorrt_common` cannot express; `precision` here is therefore the
