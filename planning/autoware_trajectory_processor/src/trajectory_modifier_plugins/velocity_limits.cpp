@@ -16,6 +16,7 @@
 
 #include <autoware/interpolation/linear_interpolation.hpp>
 #include <autoware/interpolation/spherical_linear_interpolation.hpp>
+#include <rclcpp/duration.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -27,7 +28,8 @@ namespace autoware::trajectory_processor::plugin::detail
 
 VelocityLimitResult apply_velocity_limits(
   TrajectoryPoints & points, const double deceleration,
-  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit)
+  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit,
+  const VelocityLimitOptions & options)
 {
   if (points.empty()) {
     return {};
@@ -38,9 +40,26 @@ VelocityLimitResult apply_velocity_limits(
       ProcessingResult::Unchanged, "Velocity limiting requires non-negative deceleration"};
   }
 
-  constexpr double dt = 0.1;
+  if (
+    options.make_profile_feasible &&
+    (!options.current_ego_velocity || !std::isfinite(*options.current_ego_velocity) ||
+     *options.current_ego_velocity < 0.0)) {
+    return VelocityLimitResult{
+      ProcessingResult::Unchanged,
+      "Feasible velocity limiting requires a finite non-negative current ego velocity"};
+  }
+
   const auto original = points;
   const auto count = points.size();
+  std::vector<double> times(count, 0.0);
+  for (std::size_t i = 0; i < count; ++i) {
+    times[i] = rclcpp::Duration(points[i].time_from_start).seconds();
+    if (!std::isfinite(times[i]) || times[i] < 0.0 || (i > 0 && times[i] <= times[i - 1])) {
+      return VelocityLimitResult{
+        ProcessingResult::Unchanged,
+        "Velocity limiting requires finite, non-negative, strictly increasing timestamps"};
+    }
+  }
 
   std::optional<std::size_t> first_modified_idx = std::nullopt;
   for (std::size_t i = 0; i < count; ++i) {
@@ -60,18 +79,37 @@ VelocityLimitResult apply_velocity_limits(
     return {ProcessingResult::Unchanged, {}};
   }
 
-  // Apply the desired deceleration backward, ignoring current ego velocity feasibility.
-  for (int i = static_cast<int>(*first_modified_idx); i >= 0; --i) {
-    if (i < static_cast<int>(*first_modified_idx)) {
-      const float target_velocity =
-        points[i + 1].longitudinal_velocity_mps + static_cast<float>(deceleration * dt);
+  if (options.make_profile_feasible) {
+    const double current_ego_velocity = *options.current_ego_velocity;
+    for (std::size_t i = 0; i < count; ++i) {
+      const double target_velocity = points[i].longitudinal_velocity_mps;
+      const double deceleration_profile = current_ego_velocity - deceleration * times[i];
+      points[i].longitudinal_velocity_mps = static_cast<float>(std::min(
+        static_cast<double>(original[i].longitudinal_velocity_mps),
+        std::max(target_velocity, deceleration_profile)));
+    }
 
-      if (points[i].longitudinal_velocity_mps > target_velocity) {
-        points[i].longitudinal_velocity_mps = target_velocity;
-        points[i].acceleration_mps2 = -static_cast<float>(deceleration);
-      } else {
-        points[i].acceleration_mps2 = static_cast<float>(
-          (points[i + 1].longitudinal_velocity_mps - points[i].longitudinal_velocity_mps) / dt);
+    for (std::size_t i = 0; i + 1 < count; ++i) {
+      const double dt = times[i + 1] - times[i];
+      points[i].acceleration_mps2 = static_cast<float>(
+        (points[i + 1].longitudinal_velocity_mps - points[i].longitudinal_velocity_mps) / dt);
+    }
+    points.back().acceleration_mps2 = 0.0F;
+  } else {
+    // Apply the desired deceleration backward, ignoring current ego velocity feasibility.
+    for (int i = static_cast<int>(*first_modified_idx); i >= 0; --i) {
+      if (i < static_cast<int>(*first_modified_idx)) {
+        const double dt = times[i + 1] - times[i];
+        const float target_velocity =
+          points[i + 1].longitudinal_velocity_mps + static_cast<float>(deceleration * dt);
+
+        if (points[i].longitudinal_velocity_mps > target_velocity) {
+          points[i].longitudinal_velocity_mps = target_velocity;
+          points[i].acceleration_mps2 = -static_cast<float>(deceleration);
+        } else {
+          points[i].acceleration_mps2 = static_cast<float>(
+            (points[i + 1].longitudinal_velocity_mps - points[i].longitudinal_velocity_mps) / dt);
+        }
       }
     }
   }
@@ -85,6 +123,7 @@ VelocityLimitResult apply_velocity_limits(
 
   std::vector<double> new_s(count, 0.0);
   for (std::size_t i = 1; i < count; ++i) {
+    const double dt = times[i] - times[i - 1];
     new_s[i] =
       new_s[i - 1] +
       0.5 * (points[i - 1].longitudinal_velocity_mps + points[i].longitudinal_velocity_mps) * dt;

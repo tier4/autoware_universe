@@ -52,9 +52,9 @@ void ExternalVelocityLimit::update_params(const TrajectoryProcessorParams & para
 }
 
 ProcessingResult ExternalVelocityLimit::process(
-  TrajectoryPoints & traj_points, [[maybe_unused]] TrajectoryProcessorData & input)
+  TrajectoryPoints & traj_points, TrajectoryProcessorData & input)
 {
-  if (!enabled_ || traj_points.empty()) {
+  if (!enabled_ || traj_points.empty() || !input.current_odometry) {
     return ProcessingResult::Unchanged;
   }
 
@@ -68,10 +68,15 @@ ProcessingResult ExternalVelocityLimit::process(
   const double deceleration =
     detail::get_external_velocity_limit_deceleration(*velocity_limit, nominal_deceleration_);
   const double max_velocity = velocity_limit->max_velocity;
+  detail::VelocityLimitOptions options;
+  options.make_profile_feasible = true;
+  options.current_ego_velocity = input.current_odometry->twist.twist.linear.x;
   const auto result = detail::apply_velocity_limits(
-    traj_points, deceleration, [max_velocity](const geometry_msgs::msg::Point &) {
+    traj_points, deceleration,
+    [max_velocity](const geometry_msgs::msg::Point &) {
       return std::optional<double>{max_velocity};
-    });
+    },
+    options);
   return result.status;
 }
 

@@ -32,11 +32,20 @@ struct VelocityLimitResult
   std::string error;
 };
 
+struct VelocityLimitOptions
+{
+  bool make_profile_feasible{false};
+  std::optional<double> current_ego_velocity{};
+};
+
 // Retimes along the input polyline, keeping its first pose and every timestamp. The callback
 // permits resolving either a spatially varying map limit or one external limit for every point.
+// Feasible mode anchors the velocity profile to the current ego velocity at t=0 and never raises
+// a point above its original velocity.
 VelocityLimitResult apply_velocity_limits(
   TrajectoryPoints & points, double deceleration,
-  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit);
+  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit,
+  const VelocityLimitOptions & options = {});
 
 }  // namespace autoware::trajectory_processor::plugin::detail
 

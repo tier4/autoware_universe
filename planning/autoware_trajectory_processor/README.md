@@ -169,7 +169,9 @@ The `autoware::trajectory_processor::plugin::ExternalVelocityLimit` plugin appli
 of `constraints.min_acceleration` as the constant deceleration when `use_constraints` is true, and
 otherwise falls back to `stopping_constraints.nominal_deceleration`. Like `MapVelocityLimits`, it
 preserves the first pose, point count, timestamps, and original polyline shape while retiming the
-trajectory.
+trajectory. Its velocity profile starts from the current ego velocity at t=0 and follows the
+constant-deceleration curve at each point's `time_from_start` until reaching the external limit.
+The adjusted velocity never exceeds the corresponding velocity in the input trajectory.
 
 | Parameter                                   | Default | Description                                              |
 | ------------------------------------------- | ------- | -------------------------------------------------------- |
@@ -178,7 +180,7 @@ trajectory.
 
 ##### MapVelocityLimits
 
-The autoware::trajectory_processor::plugin::MapVelocityLimits plugin limits forward trajectories using map speed limits. It preserves the first point's pose, the point count, and every timestamp. Input samples assume a fixed 0.1 s spacing.
+The autoware::trajectory_processor::plugin::MapVelocityLimits plugin limits forward trajectories using map speed limits. It preserves the first point's pose, the point count, and every timestamp. Velocity and pose updates use the spacing provided by each point's `time_from_start`.
 
 When map limits are exceeded, the plugin caps the violating velocities and performs a single backward pass starting from the first modified point to enforce the configured deceleration bound. Unlike earlier iterations, this backward smoothing relies strictly on the required deceleration and does not account for kinematic feasibility relative to the ego vehicle's current velocity. Accelerations are updated to reflect the constant deceleration, and any point whose velocity was reduced is strictly constrained to have an acceleration no greater than 0.0 m/s².
 
