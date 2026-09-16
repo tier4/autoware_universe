@@ -296,6 +296,37 @@ TEST(PhysicalComfortTest, RestartSteeringCommandLimitsRateAndReversalAcceleratio
   EXPECT_NEAR(command(static_cast<int>(C::STEER_CMD)), 0.115F, 1.0E-6F);
 }
 
+TEST(PhysicalComfortTest, StandstillSteeringHoldReleasesAfterPredictedMotionResumes)
+{
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+  using C = FirstOrderDubinsBicycleParams::ControlIndex;
+  FirstOrderDubinsBicycleParams params;
+  params.standstill_steer_hold_exit_velocity_mps = 0.08F;
+  FirstOrderDubinsBicycle model(params);
+  auto state = model.getZeroState();
+  state(static_cast<int>(S::VEL_X)) = 0.05F;
+  state(static_cast<int>(S::ACCELERATION)) = 1.0F;
+  state(static_cast<int>(S::PREVIOUS_STEER_CMD)) = 0.12F;
+  state(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)) = 1.0F;
+  auto command = FirstOrderDubinsBicycle::control_array::Zero().eval();
+  command(static_cast<int>(C::ACCELERATION_CMD)) = 1.0F;
+  command(static_cast<int>(C::STEER_CMD)) = 0.4F;
+
+  model.enforceConstraints(state, command);
+  EXPECT_FLOAT_EQ(command(static_cast<int>(C::STEER_CMD)), 0.12F);
+
+  auto next = model.getZeroState();
+  auto derivative = model.getZeroState();
+  auto output = FirstOrderDubinsBicycle::output_array::Zero().eval();
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+  EXPECT_GT(next(static_cast<int>(S::VEL_X)), params.standstill_steer_hold_exit_velocity_mps);
+  EXPECT_FLOAT_EQ(next(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)), 0.0F);
+
+  command(static_cast<int>(C::STEER_CMD)) = 0.4F;
+  model.enforceConstraints(next, command);
+  EXPECT_GT(command(static_cast<int>(C::STEER_CMD)), 0.12F);
+}
+
 TEST(PhysicalComfortTest, DelayedCommandDoesNotCreatePhysicalJerk)
 {
   FirstOrderDubinsBicycleParams model_params;

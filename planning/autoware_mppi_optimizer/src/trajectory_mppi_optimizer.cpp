@@ -490,8 +490,16 @@ ProcessingResult TrajectoryMppiOptimizer::process(
         for (const auto & control : controls) {
           steering_commands.push_back(control.steer_cmd);
         }
-        candidate_steering_filter.filter(
-          steering_commands, measured_steering, context.preserve_first_steering_command);
+        if (context.standstill_steering_hold_active && !steering_commands.empty()) {
+          steering_commands.front() = context.standstill_steering_hold_command_rad;
+          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
+          candidate_steering_filter.filter(
+            steering_commands, context.standstill_steering_hold_command_rad,
+            /*preserve_first_command=*/true);
+        } else {
+          candidate_steering_filter.filter(
+            steering_commands, measured_steering, context.preserve_first_steering_command);
+        }
         for (std::size_t index = 0; index < controls.size(); ++index) {
           controls[index].steer_cmd = steering_commands[index];
         }
@@ -562,8 +570,16 @@ ProcessingResult TrajectoryMppiOptimizer::process(
         for (std::size_t index = 0; index < optimized_count; ++index) {
           steering_commands.push_back(result.trajectory.points[index].front_wheel_angle_rad);
         }
-        candidate_steering_filter.filter(
-          steering_commands, steering ? steering->steering_tire_angle : 0.0F);
+        if (result.debug.standstill_steering_hold_active && !steering_commands.empty()) {
+          steering_commands.front() = result.debug.standstill_steering_hold_command_rad;
+          candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
+          candidate_steering_filter.filter(
+            steering_commands, result.debug.standstill_steering_hold_command_rad,
+            /*preserve_first_command=*/true);
+        } else {
+          candidate_steering_filter.filter(
+            steering_commands, steering ? steering->steering_tire_angle : 0.0F);
+        }
         for (std::size_t index = 0; index < optimized_count; ++index) {
           result.trajectory.points[index].front_wheel_angle_rad = steering_commands[index];
           result.debug.optimized_trajectory.points[index].front_wheel_angle_rad =

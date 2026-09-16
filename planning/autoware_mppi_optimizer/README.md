@@ -127,6 +127,10 @@ Notes:
   a stopped vehicle does not consume one noisy reference point per controller tick.
 - Restart command continuity uses the last accepted command and command rate independently of the
   reusable trajectory warm start, which is still invalidated while stopped.
+- On entry to the stopped state, MPPI latches the last accepted steering command (or the measured
+  steering fallback) and holds it exactly. Rollouts release the hold once predicted absolute
+  velocity reaches `last_control_warm_start_stop_exit_velocity_mps`, after which the restart
+  command-rate and command-acceleration limits provide the transition back to optimized steering.
 - `use_last_control_as_nominal` warm-starts `u_nom` from the previous applied MPPI result when its
   timestamp, plant replay, and shifted reference remain continuous. The elapsed timestamp selects
   the shift count, and the current diffusion seed fills the newly exposed tail.

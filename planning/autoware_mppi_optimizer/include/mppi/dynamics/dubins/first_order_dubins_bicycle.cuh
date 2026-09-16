@@ -58,6 +58,8 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     PREVIOUS_STEER_CMD,
     /** Previous issued steering-command rate, used to bound command acceleration. */
     PREVIOUS_STEER_CMD_RATE,
+    /** Keep the issued steering command fixed until predicted motion resumes. */
+    STEERING_COMMAND_HOLD_ACTIVE,
     NUM_STATES
   };
 
@@ -99,6 +101,8 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
   float restart_steer_command_rate_lim = 0.15F;
   float restart_steer_command_acceleration_lim = 0.5F;
   float restart_velocity_threshold_mps = 0.5F;
+  /** Release an active standstill command hold at or above this absolute velocity. */
+  float standstill_steer_hold_exit_velocity_mps = 0.08F;
   float min_accel = -6.0F;
   float max_accel = 4.0F;
   /** Prevent acceleration commands and integrated states from producing reverse velocity. */
