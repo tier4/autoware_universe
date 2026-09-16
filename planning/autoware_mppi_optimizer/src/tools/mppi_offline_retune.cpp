@@ -829,6 +829,13 @@ int run(int argc, char ** argv)
       }
     }
 
+    if (!autoware::mppi_optimizer::writeMppiRolloutDiagnosticsCsv(
+          out_dir + "/" + tag + "_rollout_diagnostics.csv",
+          result.debug.rollout_iteration_diagnostics, result.debug.failed_rollout_iteration)) {
+      std::cerr << "Failed to write rollout diagnostics for " << tag << "\n";
+      return 1;
+    }
+
     {
       const std::string crash_path = out_dir + "/" + tag + "_crash_status.csv";
       std::ofstream crash_out(crash_path);

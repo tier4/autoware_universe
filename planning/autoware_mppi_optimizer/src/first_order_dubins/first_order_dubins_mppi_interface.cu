@@ -2937,6 +2937,54 @@ try {
   result.debug.normalization_upper_cost = impl_->controller->getLastNormalizationUpperCost();
   result.debug.unsafe_rollout_fraction = impl_->controller->getLastUnsafeRolloutFraction();
   result.debug.eligible_rollout_count = impl_->controller->getLastEligibleRolloutCount();
+  result.debug.failed_rollout_iteration = impl_->controller->getFailedIteration();
+  for (const auto & stats : impl_->controller->getIterationWeightStats()) {
+    FirstOrderDubinsMppiRolloutDiagnostics diagnostic;
+    diagnostic.eligible_count = stats.eligible_count;
+    diagnostic.nonfinite_count = kNumRollouts - stats.finite_count;
+    diagnostic.unsafe_count = stats.unsafe_count;
+    diagnostic.lateral_violation_count = stats.lateral_violation_count;
+    diagnostic.obstacle_violation_count = stats.obstacle_violation_count;
+    diagnostic.road_border_violation_count = stats.road_border_violation_count;
+    diagnostic.weight_sum = stats.normalizer;
+    diagnostic.effective_sample_size = stats.effective_sample_size;
+    diagnostic.first_violation_step = mppi::safety::timestep(stats.first_violation_status);
+    if (diagnostic.first_violation_step >= 0) {
+      diagnostic.first_violation_time_s = (diagnostic.first_violation_step + 1) * kDt;
+      const int reason = mppi::safety::reason(stats.first_violation_status);
+      diagnostic.first_violation_type =
+        reason == 1 ? "lateral_boundary" : (reason == 2 ? "obstacle" : "road_border");
+      diagnostic.first_violation_geometry_index =
+        mppi::safety::geometryIndex(stats.first_violation_status);
+      const int index = diagnostic.first_violation_geometry_index;
+      if (
+        reason == 2 && index >= 0 && static_cast<size_t>(index) < tracked_objects.objects.size()) {
+        const auto & uuid = tracked_objects.objects[static_cast<size_t>(index)].object_id.uuid;
+        constexpr char hex[] = "0123456789abcdef";
+        for (size_t byte = 0; byte < uuid.size(); ++byte) {
+          if (byte == 4 || byte == 6 || byte == 8 || byte == 10)
+            diagnostic.first_violation_object_id += '-';
+          diagnostic.first_violation_object_id += hex[uuid[byte] >> 4];
+          diagnostic.first_violation_object_id += hex[uuid[byte] & 15];
+        }
+      }
+    }
+    result.debug.rollout_iteration_diagnostics.push_back(std::move(diagnostic));
+  }
+  if (result.debug.failed_rollout_iteration >= 0) {
+    const auto & failure = result.debug.rollout_iteration_diagnostics.at(
+      static_cast<size_t>(result.debug.failed_rollout_iteration));
+    RCLCPP_WARN(
+      mppiLogger(),
+      "MPPI failed iteration=%d (zero-based): eligible=%d unsafe=%d nonfinite=%d "
+      "lateral=%d obstacle=%d road_border=%d weight_sum=%.3g; "
+      "first_geometric_violation=%s step=%d time=%.3f s nearest_geometry_index=%d object_id=%s",
+      result.debug.failed_rollout_iteration, failure.eligible_count, failure.unsafe_count,
+      failure.nonfinite_count, failure.lateral_violation_count, failure.obstacle_violation_count,
+      failure.road_border_violation_count, failure.weight_sum, failure.first_violation_type.c_str(),
+      failure.first_violation_step, failure.first_violation_time_s,
+      failure.first_violation_geometry_index, failure.first_violation_object_id.c_str());
+  }
   result.debug.minimum_cost_rollout_count = impl_->controller->getLastMinimumCostCount();
   result.debug.unsafe_rollout_population = impl_->controller->hasUnsafeRolloutPopulation();
   result.debug.validation = validation;
@@ -3018,7 +3066,8 @@ try {
       impl_->logged_hist_accel_tm2, impl_->logged_hist_steer_tm2, impl_->logged_hist_accel_tm1,
       impl_->logged_hist_steer_tm1, impl_->logged_delay_accel, impl_->logged_delay_steer,
       impl_->logged_applied_accel, impl_->logged_applied_steer, impl_->active_kinematic_limits,
-      impl_->preferred_lane_centerline);
+      impl_->preferred_lane_centerline, result.debug.rollout_iteration_diagnostics,
+      result.debug.failed_rollout_iteration);
   }
 
   const auto validation_reasons = to_string(result.debug.validation.reasons);
