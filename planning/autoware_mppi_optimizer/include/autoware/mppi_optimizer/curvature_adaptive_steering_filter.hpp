@@ -50,6 +50,9 @@ public:
   /** Forget the previously applied filtered command. */
   void reset();
 
+  /** Set the persistent filter state to an externally enforced applied command. */
+  void seed(float steering_command);
+
   /**
    * Filter steering commands in place.
    *

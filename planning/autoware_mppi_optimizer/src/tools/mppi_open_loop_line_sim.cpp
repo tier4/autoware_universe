@@ -771,8 +771,16 @@ int run(int argc, char ** argv)
         for (const auto & control : controls) {
           steering_commands.push_back(control.steer_cmd);
         }
-        candidate_steering_filter.filter(
-          steering_commands, measured_steering, context.preserve_first_steering_command);
+        if (context.standstill_steering_hold_active && !steering_commands.empty()) {
+          steering_commands.front() = context.standstill_steering_hold_command_rad;
+          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
+          candidate_steering_filter.filter(
+            steering_commands, context.standstill_steering_hold_command_rad,
+            /*preserve_first_command=*/true);
+        } else {
+          candidate_steering_filter.filter(
+            steering_commands, measured_steering, context.preserve_first_steering_command);
+        }
         for (std::size_t index = 0; index < controls.size(); ++index) {
           controls[index].steer_cmd = steering_commands[index];
         }
