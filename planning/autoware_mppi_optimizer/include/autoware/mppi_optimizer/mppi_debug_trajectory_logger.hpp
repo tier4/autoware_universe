@@ -38,6 +38,29 @@
 namespace autoware::mppi_optimizer
 {
 
+/** One row per sampled population. Iteration and geometry indices are zero-based. */
+inline bool writeMppiRolloutDiagnosticsCsv(
+  const std::string & path, const std::vector<FirstOrderDubinsMppiRolloutDiagnostics> & diagnostics,
+  const int failed_iteration)
+{
+  std::ofstream out(path);
+  if (!out) return false;
+  out << "iteration,failed,eligible_count,nonfinite_count,unsafe_count,lateral_count,"
+         "obstacle_count,road_border_count,weight_sum,ess,first_violation_step,"
+         "first_violation_time_s,first_violation_type,nearest_geometry_index,object_id\n";
+  for (size_t iteration = 0; iteration < diagnostics.size(); ++iteration) {
+    const auto & d = diagnostics[iteration];
+    out << iteration << ',' << (static_cast<int>(iteration) == failed_iteration ? 1 : 0) << ','
+        << d.eligible_count << ',' << d.nonfinite_count << ',' << d.unsafe_count << ','
+        << d.lateral_violation_count << ',' << d.obstacle_violation_count << ','
+        << d.road_border_violation_count << ',' << d.weight_sum << ',' << d.effective_sample_size
+        << ',' << d.first_violation_step << ',' << d.first_violation_time_s << ','
+        << d.first_violation_type << ',' << d.first_violation_geometry_index << ','
+        << d.first_violation_object_id << '\n';
+  }
+  return static_cast<bool>(out);
+}
+
 /** Ego state used by MPPI at the start of a cycle (for offline replay). */
 struct MppiDebugEgoState
 {
@@ -278,7 +301,9 @@ public:
     const float hist_steer_tm1, const std::vector<float> & delay_accel_cmd,
     const std::vector<float> & delay_steer_cmd, const float applied_accel_cmd,
     const float applied_steer_cmd, const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
-    const PreferredLaneCenterlineInput & preferred_lane_centerline = {})
+    const PreferredLaneCenterlineInput & preferred_lane_centerline = {},
+    const std::vector<FirstOrderDubinsMppiRolloutDiagnostics> & rollout_diagnostics = {},
+    const int failed_iteration = -1)
   {
     if (!enabled_) {
       return;
@@ -286,6 +311,11 @@ public:
 
     ensureIndexHeader();
     const std::string frame_tag = formatFrameId(frame_id_);
+    if (!rollout_diagnostics.empty()) {
+      writeMppiRolloutDiagnosticsCsv(
+        directory_ + "/" + frame_tag + "_rollout_diagnostics.csv", rollout_diagnostics,
+        failed_iteration);
+    }
     const std::string ref_path = directory_ + "/" + frame_tag + "_reference.csv";
     const std::string opt_path = directory_ + "/" + frame_tag + "_optimized.csv";
     const std::string ego_path = directory_ + "/" + frame_tag + "_ego.csv";

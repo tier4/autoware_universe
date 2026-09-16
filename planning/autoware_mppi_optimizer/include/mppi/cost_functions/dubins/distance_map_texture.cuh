@@ -142,8 +142,9 @@ static __host__ __device__ __noinline__ float distanceEgoSpineToSegments(
   const float circle_x[kEgoSpineCircleCount], const float circle_y[kEgoSpineCircleCount],
   const float circle_radius, const float * segment_x0, const float * segment_y0,
   const float * segment_x1, const float * segment_y1, const int segment_count,
-  const bool signed_penetration)
+  const bool signed_penetration, int * closest_segment = nullptr)
 {
+  if (closest_segment != nullptr) *closest_segment = -1;
   if (segment_count <= 0) {
     return kDistanceMapEmptyDistance;
   }
@@ -152,14 +153,15 @@ static __host__ __device__ __noinline__ float distanceEgoSpineToSegments(
 #pragma unroll
   for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
     for (int segment = 0; segment < segment_count; ++segment) {
-      minimum = fminf(
-        minimum,
+      const float distance =
         mppi::cost::detail::distancePointToSegment(
           circle_x[circle], circle_y[circle], mppi::memory::loadReadOnly(&segment_x0[segment]),
           mppi::memory::loadReadOnly(&segment_y0[segment]),
           mppi::memory::loadReadOnly(&segment_x1[segment]),
           mppi::memory::loadReadOnly(&segment_y1[segment])) -
-          circle_radius);
+        circle_radius;
+      if (closest_segment != nullptr && distance < minimum) *closest_segment = segment;
+      minimum = fminf(minimum, distance);
     }
   }
   return signed_penetration ? minimum : fmaxf(minimum, 0.0F);

@@ -140,10 +140,13 @@ __host__ __device__ inline float absLateralDistance(const float signed_lateral_d
 #endif
 }
 
-__host__ __device__ inline void markSafetyViolation(int * crash_status, const bool violation)
+__host__ __device__ inline void markSafetyViolation(
+  int * crash_status, const bool violation, const int reason, const int timestep,
+  const int geometry_index = -1)
 {
   if (crash_status != nullptr && violation) {
-    crash_status[0] = 1;
+    crash_status[0] =
+      mppi::safety::merge(crash_status[0], mppi::safety::event(reason, timestep, geometry_index));
   }
 }
 
@@ -192,9 +195,11 @@ __host__ __device__ void commandChangeTerms(
 template <int NUM_TIMESTEPS>
 __host__ __device__ __noinline__ float distanceToClosestObstacleAnalyticalFallback(
   const float circle_x[kEgoSpineCircleCount], const float circle_y[kEgoSpineCircleCount],
-  const float circle_radius, const int t, const FirstOrderDubinsRuntimeData<NUM_TIMESTEPS> & data)
+  const float circle_radius, const int t, const FirstOrderDubinsRuntimeData<NUM_TIMESTEPS> & data,
+  int * closest_obstacle)
 {
   float min_distance = kDistanceMapEmptyDistance;
+  if (closest_obstacle != nullptr) *closest_obstacle = -1;
   const int num_obstacles = mppi::memory::loadReadOnly(&data.num_obstacles_);
   for (int i = 0; i < num_obstacles; ++i) {
     if (!data.obstacleActiveAtStep(i, t)) continue;
@@ -213,11 +218,12 @@ __host__ __device__ __noinline__ float distanceToClosestObstacleAnalyticalFallba
     const float obs_half_width = mppi::memory::loadReadOnly(&data.obs_half_width_[i]);
 #pragma unroll
     for (int circle = 0; circle < kEgoSpineCircleCount; ++circle) {
-      min_distance = fminf(
-        min_distance, signedDistancePointToOrientedBox(
-                        circle_x[circle], circle_y[circle], obs_x, obs_y, obs_cos, obs_sin,
-                        obs_half_length, obs_half_width) -
-                        circle_radius);
+      const float distance = signedDistancePointToOrientedBox(
+                               circle_x[circle], circle_y[circle], obs_x, obs_y, obs_cos, obs_sin,
+                               obs_half_length, obs_half_width) -
+                             circle_radius;
+      if (closest_obstacle != nullptr && distance < min_distance) *closest_obstacle = i;
+      min_distance = fminf(min_distance, distance);
     }
   }
   return min_distance;
@@ -1089,11 +1095,14 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ float
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  distanceToClosestObstacle(const float x, const float y, const float yaw, const int timestep) const
+  distanceToClosestObstacle(
+    const float x, const float y, const float yaw, const int timestep, int * closest_obstacle) const
 {
   const int t = timestep < 0 ? 0 : (timestep >= NUM_TIMESTEPS ? NUM_TIMESTEPS - 1 : timestep);
 #ifdef __CUDA_ARCH__
-  if (texture_state_.obstacle_texture_valid_ && !texture_state_.obstacle_texture_has_obstacles_) {
+  if (
+    closest_obstacle == nullptr && texture_state_.obstacle_texture_valid_ &&
+    !texture_state_.obstacle_texture_has_obstacles_) {
     return kDistanceMapEmptyDistance;
   }
 #endif
@@ -1118,7 +1127,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 #ifdef __CUDA_ARCH__
   const cudaTextureObject_t obstacle_distance_texture =
     texture_state_.obstacle_texture_valid_ ? texture_state_.obstacle_distance_texture_ : 0;
-  if (obstacle_distance_texture != 0) {
+  if (obstacle_distance_texture != 0 && closest_obstacle == nullptr) {
     float texture_x[kEgoSpineCircleCount];
     float texture_y[kEgoSpineCircleCount];
     bool all_circles_in_bounds = true;
@@ -1148,7 +1157,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   }
 #endif
   return distanceToClosestObstacleAnalyticalFallback(
-    circle_x, circle_y, circle_radius, t, runtimeData());
+    circle_x, circle_y, circle_radius, t, runtimeData(), closest_obstacle);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1262,9 +1271,9 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ __device__ float FirstOrderDubinsBicycleCostImpl<
-  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
-  DYN_PARAMS_T>::distanceToRoadBorder(const float x, const float y, const float yaw) const
+__host__ __device__ float
+FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  distanceToRoadBorder(const float x, const float y, const float yaw, int * closest_segment) const
 {
   float cos_yaw;
   float sin_yaw;
@@ -1285,7 +1294,7 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 #ifdef __CUDA_ARCH__
   const cudaTextureObject_t static_distance_texture =
     texture_state_.road_border_texture_valid_ ? texture_state_.static_distance_texture_ : 0;
-  if (static_distance_texture != 0) {
+  if (static_distance_texture != 0 && closest_segment == nullptr) {
     float texture_x[kEgoSpineCircleCount];
     float texture_y[kEgoSpineCircleCount];
     bool all_circles_in_bounds = true;
@@ -1314,7 +1323,7 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
   return distanceEgoSpineToSegments(
     circle_x, circle_y, circle_radius, runtimeData().road_border_x0_, runtimeData().road_border_y0_,
     runtimeData().road_border_x1_, runtimeData().road_border_y1_,
-    mppi::memory::loadReadOnly(&runtimeData().num_road_border_segments_), false);
+    mppi::memory::loadReadOnly(&runtimeData().num_road_border_segments_), false, closest_segment);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1379,7 +1388,8 @@ __host__ __device__ void
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   computeGradualCrashCosts(
     const float x, const float y, const float yaw, const int timestep, float & drivable_area_cost,
-    float & obstacle_cost, float & road_border_cost, bool * safety_violation) const
+    float & obstacle_cost, float & road_border_cost, bool * safety_violation,
+    int * rollout_status) const
 {
   drivable_area_cost =
     this->params_.drivable_area_barrier_weight == 0.0F
@@ -1398,6 +1408,16 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
       *safety_violation =
         *safety_violation || obstacle_distance <= this->params_.obstacle_collision_margin;
     }
+    if (rollout_status != nullptr && obstacle_distance <= this->params_.obstacle_collision_margin) {
+      int closest = -1;
+      // Resolve identity only when this stage can replace the earliest recorded event.
+      if (
+        mppi::safety::timestep(*rollout_status) < 0 ||
+        mppi::safety::timestep(*rollout_status) >= timestep) {
+        distanceToClosestObstacle(x, y, yaw, timestep, &closest);
+      }
+      markSafetyViolation(rollout_status, true, 2, timestep, closest);
+    }
   }
   road_border_cost = 0.0F;
   if (this->params_.road_border_barrier_weight != 0.0F) {
@@ -1409,6 +1429,17 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     if (safety_violation != nullptr) {
       *safety_violation =
         *safety_violation || road_border_distance <= this->params_.road_border_collision_margin;
+    }
+    if (
+      rollout_status != nullptr &&
+      road_border_distance <= this->params_.road_border_collision_margin) {
+      int closest = -1;
+      if (
+        mppi::safety::timestep(*rollout_status) < 0 ||
+        mppi::safety::timestep(*rollout_status) >= timestep) {
+        distanceToRoadBorder(x, y, yaw, &closest);
+      }
+      markSafetyViolation(rollout_status, true, 3, timestep, closest);
     }
   }
 }
@@ -1459,10 +1490,10 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     this->params_.track_center_coeff * computeTrackCenterValue(x_pos, y_pos, yaw, timestep);
   result.preferred_lane_center = computePreferredLaneCenterCost(x_pos, y_pos);
   result.corner_buffer = computeCornerBufferCost(x_pos, y_pos, yaw);
+  markSafetyViolation(crash_status, safety_violation, 1, timestep);
   computeGradualCrashCosts(
     x_pos, y_pos, yaw, timestep, result.drivable_area, result.obstacle, result.road_border,
-    &safety_violation);
-  markSafetyViolation(crash_status, safety_violation);
+    &safety_violation, crash_status);
 
   const float accel_cmd = u(static_cast<int>(C::ACCELERATION_CMD));
   const float steer_cmd = u(static_cast<int>(C::STEER_CMD));
@@ -1597,10 +1628,10 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   float drivable_area_cost = 0.0F;
   float obstacle_cost = 0.0F;
   float road_border_cost = 0.0F;
+  markSafetyViolation(crash_status, safety_violation, 1, timestep);
   computeGradualCrashCosts(
     x_pos, y_pos, yaw, timestep, drivable_area_cost, obstacle_cost, road_border_cost,
-    &safety_violation);
-  markSafetyViolation(crash_status, safety_violation);
+    &safety_violation, crash_status);
 
   return spatial_overspeed_cost + track_cost + heading_cost + lateral_distance_cost +
          lateral_boundary_cost + lateral_yaw_error_cost + remaining_distance_cost +
@@ -1658,10 +1689,10 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   float drivable_area_cost = 0.0F;
   float obstacle_cost = 0.0F;
   float road_border_cost = 0.0F;
+  markSafetyViolation(crash_status, safety_violation, 1, timestep);
   computeGradualCrashCosts(
     x_pos, y_pos, yaw, timestep, drivable_area_cost, obstacle_cost, road_border_cost,
-    &safety_violation);
-  markSafetyViolation(crash_status, safety_violation);
+    &safety_violation, crash_status);
 
   return spatial_overspeed_cost + track_cost + heading_cost + lateral_distance_cost +
          lateral_boundary_cost + lateral_yaw_error_cost + remaining_distance_cost +
