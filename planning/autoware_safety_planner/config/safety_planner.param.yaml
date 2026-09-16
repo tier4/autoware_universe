@@ -11,6 +11,8 @@
       policy: "goal_connection_and_smooth" # simple / goal_connection / goal_connection_and_smooth
       goal_connection:
         search_radius_m: 15.0 # [m]
+        shift_length_m: 30.0 # [m] arc length over which the lateral offset of the goal is taken up
+        curvature_margin: 0.9 # [-] fraction of the curvature at full steer the connection is held within
       smoother:
         clearance_m: 1.0 # [m]
       forward_length_m: 200.0 # [m]
@@ -28,10 +30,11 @@
 
     constraint_generator_plugins:
       - "autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator"
+      - "autoware::safety_planner::ExternalVelocityLimitConstraintGenerator"
+      - "autoware::safety_planner::experiment::LaneletSpeedLimitConstraintGenerator"
       - "autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator"
       - "autoware::safety_planner::experiment::ObstacleStopConstraintGenerator"
-      # - "autoware::safety_planner::experiment::NextLaneletSpeedLimitConstraintGenerator"
 
     # "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"
     # "autoware::safety_planner::experiment::MppiPlanner"
-    trajectory_planner_plugin: "autoware::safety_planner::experiment::MppiPlanner"
+    trajectory_planner_plugin: "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"

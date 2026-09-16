@@ -4,14 +4,17 @@
 
 `test/closed_loop/` is a lightweight closed-loop simulation that calls `SafetyPlanner::plan` periodically without launching a ROS node.
 Each cycle (0.1 s) the ego is advanced along the output trajectory (perfect tracking; no controller or vehicle model),
-and the loop runs until one of: goal reached (within 1.0 m of the goal and |v| < 0.1 m/s) / stalled / plan failure /
+and the loop runs until one of: goal reached (within 1.0 m of the goal and |v| < 0.1 m/s) / stalled (the ego moved less than 0.1 m in 10 s) / plan failure /
 invalid trajectory / step limit.
 Every output trajectory is validated (number of points, non-finite values, monotonic `time_from_start`, point interval,
 yaw jump, negative velocity, max steer angle, distance between the first point and ego).
 
 Scenarios live in `test_data/scenarios/<name>.yaml`, one scenario per file. Besides the map / vehicle / route, a scenario may carry
-`predicted_objects` (a `PredictedObjects` message in the `topic_snapshot_saver` yaml format, held fixed over the run) and
-`expectation` (`goal_reached`, the default, or `stop`: the ego must stall with |v| < 0.1 m/s before the goal, e.g. behind an obstacle). The list of scenarios to run is
+`predicted_objects` (a `PredictedObjects` message in the `topic_snapshot_saver` yaml format, held fixed over the run),
+`expectation` (`goal_reached`, the default, `stop`: the ego must stall with |v| < 0.1 m/s before the goal, e.g. behind an obstacle, or
+`stop_beside_goal`: the goal is in a lane reachable only by a lane change and the ego must stall next to it) and
+`external_lane_change` (`{start_step, duration_steps, offset_m}`: stands in for a lane change done by the other planner; the ego is
+shifted sideways by `offset_m`, positive = left, spread over `duration_steps` from `start_step`, holding its heading meanwhile). The list of scenarios to run is
 `test_data/scenarios.yaml`; it is read when the test executable starts, so adding or disabling a case
 needs no C++ change (only a `colcon build` to re-install `test_data/`, unless `--symlink-install` is used).
 The planner parameters come from the production config: `config/safety_planner.param.yaml` plus the per-plugin files under `config/constraint_generator/` and `config/trajectory_planner/`.

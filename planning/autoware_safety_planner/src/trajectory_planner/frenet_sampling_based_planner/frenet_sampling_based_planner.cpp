@@ -14,6 +14,8 @@
 
 #include "frenet_sampling_based_planner.hpp"
 
+#include "../../utils/frenet_utils.hpp"
+
 #include <autoware_frenet_planner/polynomials.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_math/normalization.hpp>
@@ -28,6 +30,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace autoware::safety_planner::experiment
@@ -113,7 +116,75 @@ double interpolate_uniform_angle(
   return autoware_utils_math::normalize_radian(yaws[i] + d * r);
 }
 
+//! Curvature of the offset path r = p_ref + l n at a point where the centerline has curvature
+//! k (and derivative dk), from theta = psi_ref + atan(l' / a) differentiated by the path arc
+//! length: kappa = (k + (a l'' + l' (dk l + k l')) / m^2) / m, a = 1 - k l, m = |r'| = hypot(a, l')
+double offset_path_curvature(
+  const double k, const double dk, const double l, const double dl, const double d2l)
+{
+  const double a = 1.0 - k * l;
+  // m vanishes at the center of curvature of the centerline; floored as in
+  // compute_ego_frenet_state
+  const double m = std::max(std::hypot(a, dl), 0.2);
+  return (k + (a * d2l + dl * (dk * l + k * dl)) / (m * m)) / m;
+}
+
+//! l'' that gives the path the curvature kappa: offset_path_curvature solved for d2l
+double offset_path_d2l(
+  const double k, const double dk, const double l, const double dl, const double kappa)
+{
+  const double a = 1.0 - k * l;
+  const double m = std::max(std::hypot(a, dl), 0.2);
+  return ((kappa * m - k) * m * m - dl * (dk * l + k * dl)) / (std::abs(a) < 0.2 ? 0.2 : a);
+}
+
+//! d kappa_ref / ds by central difference over res, clamped to the path
+double centerline_curvature_gradient(
+  const PathPointTrajectory & path, const double s, const double res)
+{
+  const double s0 = std::max(0.0, s - res);
+  const double s1 = std::min(path.length(), s + res);
+  return s1 > s0 ? (path.curvature(s1) - path.curvature(s0)) / (s1 - s0) : 0.0;
+}
+
 }  // namespace
+
+FrenetSamplingBasedPlanner::PreviousLateral::PreviousLateral(
+  const PathPointTrajectory & reference_path, const Trajectory & previous)
+{
+  const PathProjector projector(reference_path);
+  s.reserve(previous.points.size());
+  l.reserve(previous.points.size());
+  for (const auto & point : previous.points) {
+    const double projected_s = projector.closest(point.pose.position);
+    // The projection is not monotonic where the previous trajectory barely moves: a stopped ego
+    // puts all its points within a few millimeters of the same s, in no particular order. Only the
+    // increasing ones are kept, which is what at() searches on
+    if (!s.empty() && projected_s <= s.back()) {
+      continue;
+    }
+    s.push_back(projected_s);
+    l.push_back(lateral_offset_at(
+      reference_path, projected_s, Point2d{point.pose.position.x, point.pose.position.y}));
+  }
+}
+
+std::optional<double> FrenetSamplingBasedPlanner::PreviousLateral::at(const double query_s) const
+{
+  if (s.size() < 2) {
+    return std::nullopt;
+  }
+  const auto it = std::lower_bound(s.begin(), s.end(), query_s);
+  if (it == s.begin()) {
+    return l.front();
+  }
+  if (it == s.end()) {
+    return l.back();
+  }
+  const auto i = static_cast<std::size_t>(std::distance(s.begin(), it));
+  const double r = (query_s - s[i - 1]) / (s[i] - s[i - 1]);
+  return l[i - 1] * (1.0 - r) + l[i] * r;
+}
 
 void FrenetSamplingBasedPlanner::on_initialize(
   const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params)
@@ -124,6 +195,9 @@ void FrenetSamplingBasedPlanner::on_initialize(
     params.turn_signal.stopped_velocity_threshold, params.turn_signal.heading_align_threshold};
   normal_turn_indicator_decider_.update_params(turn_signal_params);
   cautious_turn_indicator_decider_.update_params(turn_signal_params);
+  constexpr std::size_t kBoundaryCacheSize = 256;
+  boundary_simplifier_ = std::make_unique<BoundarySimplifier>(
+    params.frenet_sampling_based_planner.boundary.simplify_tolerance_m, kBoundaryCacheSize);
 }
 
 TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
@@ -135,44 +209,72 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
     if (
-      auto trajectory =
-        plan_one_side(input.context, input.normal_constraints, result.normal_debug)) {
+      auto trajectory = plan_one_side(
+        input.context, input.normal_constraints, normal_previous_trajectory_,
+        result.normal_debug)) {
       const auto turn_indicators =
         normal_turn_indicator_decider_.decide(input.context, *trajectory);
+      normal_previous_trajectory_ = *trajectory;
       result.normal_trajectory = PlannedTrajectory{std::move(*trajectory), turn_indicators};
     }
   }
-  {
+  const bool cautious_differs = std::any_of(
+    input.cautious_constraints.begin(), input.cautious_constraints.end(),
+    [](const Constraint & constraint) { return constraint.certainty == Certainty::POSSIBLE; });
+  if (cautious_differs) {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
     if (
-      auto trajectory =
-        plan_one_side(input.context, input.cautious_constraints, result.cautious_debug)) {
+      auto trajectory = plan_one_side(
+        input.context, input.cautious_constraints, cautious_previous_trajectory_,
+        result.cautious_debug)) {
       const auto turn_indicators =
         cautious_turn_indicator_decider_.decide(input.context, *trajectory);
+      cautious_previous_trajectory_ = *trajectory;
       result.cautious_trajectory = PlannedTrajectory{std::move(*trajectory), turn_indicators};
     }
+  } else {
+    // Copied rather than solved again: the sampling is deterministic and holds no state across
+    // calls, so the same constraint set gives back the same trajectory. Not left empty either,
+    // since the node publishes the cautious candidate every cycle
+    result.cautious_trajectory = result.normal_trajectory;
+    result.cautious_debug = result.normal_debug;
+    cautious_previous_trajectory_ = normal_previous_trajectory_;
   }
   return result;
 }
 
 std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   const PlannerContext & context, const std::vector<Constraint> & constraints,
-  TrajectoryPlannerDebug & debug) const
+  const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug)
 {
-  const auto compiled_constraints = compile_constraint_list(context, constraints);
+  // The boundaries are thinned out before they are compiled: the projected polyline of every
+  // lateral bound is scanned once per candidate point (lateral_bound_extreme_l), so its vertex
+  // count multiplies the whole evaluation. The gain is on the boundaries whose vertices sit closer
+  // than the sampling interval of the compiler, which re-densifies to that interval anyway
+  auto simplified_constraints = constraints;
+  for (auto & constraint : simplified_constraints) {
+    if (auto * boundary = std::get_if<Boundary>(&constraint.payload)) {
+      boundary->polyline = boundary_simplifier_->simplify(boundary->polyline);
+    }
+  }
+  const auto compiled_constraints = compile_constraint_list(context, simplified_constraints);
   debug.markers["lateral_bounds"] = make_lateral_bounds_markers(context, compiled_constraints);
   auto & debug_markers = debug.markers["candidates"];
 
   const auto initial_state = compute_initial_state(context);
   const auto paths = generate_paths(context, initial_state);
   const auto profiles = generate_velocity_profiles(context, initial_state, compiled_constraints);
+  const auto previous_lateral = previous_trajectory
+                                  ? PreviousLateral{context.reference_path, *previous_trajectory}
+                                  : PreviousLateral{};
 
   std::vector<Candidate> candidates;
   candidates.reserve(paths.size() * profiles.size());
   for (const auto & path : paths) {
     for (const auto & profile : profiles) {
       candidates.push_back(combine(context, path, profile));
-      evaluate(context, compiled_constraints, initial_state.l_goal, candidates.back());
+      evaluate(
+        context, compiled_constraints, initial_state.l_goal, previous_lateral, candidates.back());
     }
   }
   append_debug_markers(context, candidates, debug_markers);
@@ -200,13 +302,13 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
       "[frenet_sampling_based_planner] no valid candidate (%zu sampled:%s). Falling back to the "
       "stop trajectory.",
       candidates.size(), ss.str().c_str());
-    // The stop trajectory keeps the current lateral position: the path back from the ego heading
-    // to l0, driven at the hardest deceleration
-    const auto straight =
-      sample_path(context, initial_state, context.reference_path.length(), initial_state.l);
+    // The stop trajectory holds the ego steer while braking at the hardest deceleration. Not the
+    // quintic back to l0 of the candidates: from a heading well off the centerline it bends past
+    // the steer limit within a few meters, and the fallback is not checked
+    const auto hold = hold_steer_path(context, initial_state);
     const auto stop =
       make_stop_profile(initial_state, collect_kinematic_limits(compiled_constraints));
-    return to_trajectory_msg(context, combine(context, straight, stop));
+    return to_trajectory_msg(context, combine(context, hold, stop));
   }
   return to_trajectory_msg(context, *best);
 }
@@ -230,13 +332,25 @@ FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_ini
                 std::tan(std::clamp(frenet_yaw, -M_PI / 3.0, M_PI / 3.0));
   // Pinning l''(0) to 0 would flatten the start of the lateral motion at every replan and barely
   // approach a lateral target 40 m ahead, the restart problem of a receding horizon. The initial
-  // curvature comes from the measured steer angle instead, under the small angle approximation
-  // (l' assumed small) rather than the exact Frenet expression
+  // curvature comes from the measured steer angle instead. Exact rather than the small angle
+  // k_ego - k_ref: with the ego at full steer the approximation puts kappa[0] over the steer limit
+  // and every candidate, the stop fallback included, is rejected on its first point
   const double kappa_ego =
     std::tan(context.steering.steering_tire_angle) / context.vehicle_info.wheel_base_m;
-  state.d2l_ds2 = kappa_ego - path.curvature(ego.s);
-  state.v = std::max(0.0, v * std::cos(frenet_yaw));
-  state.a = context.acceleration.accel.accel.linear.x;
+  state.d2l_ds2 = offset_path_d2l(
+    path.curvature(ego.s),
+    centerline_curvature_gradient(
+      path, ego.s, params_.frenet_sampling_based_planner.path_resolution_m),
+    ego.l, state.dl_ds, kappa_ego);
+  // Floored as in compute_ego_frenet_state: 1 - k l vanishes at the center of curvature
+  const double metric0 = std::max(1.0 - path.curvature(ego.s) * ego.l, 0.2);
+  state.v = std::max(0.0, v * std::cos(frenet_yaw)) / metric0;
+  // Not taken from the measurement below the engage velocity: a negative one (rolling back on a
+  // slope, the brake) starts every s(t) backwards, so all candidates fail the reverse check and
+  // only the stop fallback is left, and the ego chatters between the two. While moving it is also
+  // what the longitudinal controller feeds forward, so a slowdown would feed back into the command
+  const double a = context.acceleration.accel.accel.linear.x;
+  state.a = (state.v < params_.engage_velocity.velocity_hard_mps ? std::max(0.0, a) : a) / metric0;
   state.l_goal = lateral_offset_at(
     path, path.length(), Point2d{context.goal_pose.position.x, context.goal_pose.position.y});
   return state;
@@ -264,7 +378,9 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
     const double u = s - s0;
     const double l = u <= L ? lat.position(u) : l_target;
     const double dl_ds = u <= L ? lat.velocity(u) : 0.0;
+    const double d2l_ds2 = u <= L ? lat.acceleration(u) : 0.0;
     const double s_ref = std::clamp(s, 0.0, s_max);
+    const double k_ref = ref.curvature(s_ref);
     path.s.push_back(s);
     path.l.push_back(l);
     // The heading comes from the analytic Frenet expression psi = psi_ref + atan(l' /
@@ -273,21 +389,53 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
     // cycle until it hits the steer rate limit after a few dozen of them
     path.yaw.push_back(
       autoware_utils_math::normalize_radian(
-        ref.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - ref.curvature(s_ref) * l)));
-  }
-  // The curvature is the difference of the headings over the arc length, centered except at the
-  // ends. Since l'(0) comes from the ego heading, yaw[0] already matches it and a candidate leaving
-  // in another direction needs no separate rejection here
-  const auto n = path.s.size();
-  for (std::size_t i = 0; i < n; ++i) {
-    const auto i0 = i == 0 ? i : i - 1;
-    const auto i1 = i + 1 < n ? i + 1 : i;
-    const double dyaw = autoware_utils_math::normalize_radian(path.yaw[i1] - path.yaw[i0]);
-    path.kappa.push_back(i1 > i0 ? dyaw / (static_cast<double>(i1 - i0) * res) : 0.0);
+        ref.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
+    path.metric.push_back(std::hypot(1.0 - k_ref * l, dl_ds));
+    // Analytic, and per arc length of the path rather than of the reference: the two differ by the
+    // metric, which reaches 2 for an ego 4 m outside a lane of R 4 m, and with the difference of
+    // the headings over the reference arc length every candidate there failed the steer angle
+    // check. Since l'(0) and l''(0) come from the ego, the first point matches the ego heading and
+    // steer, so a candidate leaving in another direction needs no separate rejection here
+    path.kappa.push_back(offset_path_curvature(
+      k_ref, centerline_curvature_gradient(ref, s_ref, res), l, dl_ds, d2l_ds2));
   }
   std::stringstream ss;
   ss << "L=" << L << " l=" << l_target;
   path.tag = ss.str();
+  return path;
+}
+
+FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::hold_steer_path(
+  const PlannerContext & context, const InitialState & initial_state) const
+{
+  const auto & ref = context.reference_path;
+  const double res = params_.frenet_sampling_based_planner.path_resolution_m;
+  const double s_max = ref.length();
+  const double kappa = offset_path_curvature(
+    ref.curvature(initial_state.s), centerline_curvature_gradient(ref, initial_state.s, res),
+    initial_state.l, initial_state.dl_ds, initial_state.d2l_ds2);
+
+  // l(s) of the circle of curvature kappa, integrated over the samples with l'' from the
+  // curvature at each of them
+  PathCandidate path;
+  double l = initial_state.l;
+  double dl_ds = initial_state.dl_ds;
+  for (double s = initial_state.s; s <= s_max + 1e-9; s += res) {
+    const double s_ref = std::clamp(s, 0.0, s_max);
+    const double k_ref = ref.curvature(s_ref);
+    const double dk_ref = centerline_curvature_gradient(ref, s_ref, res);
+    const double d2l_ds2 = offset_path_d2l(k_ref, dk_ref, l, dl_ds, kappa);
+    path.s.push_back(s);
+    path.l.push_back(l);
+    path.yaw.push_back(
+      autoware_utils_math::normalize_radian(
+        ref.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
+    path.metric.push_back(std::hypot(1.0 - k_ref * l, dl_ds));
+    path.kappa.push_back(kappa);
+    l += dl_ds * res + 0.5 * d2l_ds2 * res * res;
+    dl_ds += d2l_ds2 * res;
+  }
+  path.tag = "hold_steer";
   return path;
 }
 
@@ -455,7 +603,6 @@ FrenetSamplingBasedPlanner::Candidate FrenetSamplingBasedPlanner::combine(
   const double res = params_.frenet_sampling_based_planner.path_resolution_m;
   const double s0 = path.s.front();
   const double s_max = ref.length();
-  const double z = context.odometry.pose.pose.position.z;
   const double wheel_base_m = context.vehicle_info.wheel_base_m;
 
   Candidate candidate;
@@ -468,20 +615,25 @@ FrenetSamplingBasedPlanner::Candidate FrenetSamplingBasedPlanner::combine(
     const double s = profile.s[k];
     const double l = interpolate_uniform(path.l, s0, res, s);
     const double kappa = interpolate_uniform(path.kappa, s0, res, s);
-    const double v = profile.v[k];
+    // The change of the metric along the path is left out of the acceleration
+    const double metric = interpolate_uniform(path.metric, s0, res, s);
+    const double v = profile.v[k] * metric;
     candidate.l.push_back(l);
     candidate.kappa.push_back(kappa);
 
-    const auto pose = to_world_pose(ref, std::clamp(s, 0.0, s_max), l);
+    const double s_ref = std::clamp(s, 0.0, s_max);
+    const auto pose = to_world_pose(ref, s_ref, l);
     TrajectoryPoint point;
     point.time_from_start = rclcpp::Duration::from_seconds(std::max(0.0, profile.t[k]));
     point.pose.position.x = pose.position.x();
     point.pose.position.y = pose.position.y();
-    point.pose.position.z = z;
+    // The road z, not the ego z: the longitudinal controller reads the slope it compensates from
+    // the z of the trajectory, and a flat trajectory leaves an uphill start uncompensated
+    point.pose.position.z = ref.compute(s_ref).point.pose.position.z;
     point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(
       interpolate_uniform_angle(path.yaw, s0, res, s));
     point.longitudinal_velocity_mps = static_cast<float>(v);
-    point.acceleration_mps2 = static_cast<float>(profile.a[k]);
+    point.acceleration_mps2 = static_cast<float>(profile.a[k] * metric);
     point.heading_rate_rps = static_cast<float>(v * kappa);
     point.front_wheel_angle_rad = static_cast<float>(std::atan(kappa * wheel_base_m));
     candidate.points.push_back(point);
@@ -491,7 +643,7 @@ FrenetSamplingBasedPlanner::Candidate FrenetSamplingBasedPlanner::combine(
 
 void FrenetSamplingBasedPlanner::evaluate(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-  const double l_goal, Candidate & candidate) const
+  const double l_goal, const PreviousLateral & previous_lateral, Candidate & candidate) const
 {
   const auto & p = params_.frenet_sampling_based_planner;
   const double s_max = context.reference_path.length();
@@ -592,6 +744,14 @@ void FrenetSamplingBasedPlanner::evaluate(
     // candidates would be rejected by the steer rate and end up near the centerline
     const double l_ref =
       l_goal * std::clamp((2.0 * blend_length - (s_max - s)) / blend_length, 0.0, 1.0);
+    // Continuity with the previous output. Without it the cheapest candidate of the grid is taken
+    // anew every cycle, and since the lateral targets are spaced far closer than the differences
+    // they make to the other terms, the winner flips between neighboring targets on the noise of
+    // the ego state alone
+    if (const auto l_previous = previous_lateral.at(s)) {
+      const double dl = l - *l_previous;
+      cost += p.weights.previous_lateral * dl * dl * dt;
+    }
     const double dv = v_max - v;
     cost += p.weights.lateral * (l - l_ref) * (l - l_ref) * dt;
     cost += soft_bound_cost * dt;

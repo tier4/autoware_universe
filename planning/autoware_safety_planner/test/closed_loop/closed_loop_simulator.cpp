@@ -14,6 +14,8 @@
 
 #include "closed_loop_simulator.hpp"
 
+#include "utils/route_tracking.hpp"
+
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/time.hpp>
@@ -21,7 +23,6 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
-#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -181,10 +182,9 @@ bool ClosedLoopSimulator::update_route_manager()
 {
   const auto & current_pose = input_.odometry.pose.pose;
   if (input_.route_manager) {
-    input_.route_manager = std::move(*input_.route_manager)
-                             .update_current_pose(
-                               current_pose, params_.ego_nearest_lanelet.dist_threshold_m,
-                               params_.ego_nearest_lanelet.yaw_threshold_rad);
+    input_.route_manager = track_current_lanelet(
+      std::move(*input_.route_manager), current_pose, params_.ego_nearest_lanelet.dist_threshold_m,
+      params_.ego_nearest_lanelet.yaw_threshold_rad);
     if (input_.route_manager) {
       return true;
     }
@@ -234,9 +234,11 @@ void ClosedLoopSimulator::advance_ego(const Trajectory & trajectory, const doubl
     }
   }
   const double dist = autoware_utils_geometry::calc_distance2d(points[target].pose, pose);
-  // Every remaining point coincides with the ego while stopped; hold the steer
-  double steer_cmd = steer_prev;
-  if (dist > 1e-3) {
+  // Every remaining point coincides with the ego while stopped; hold the steer. While the lane
+  // change is injected the ego keeps its heading, otherwise pure pursuit would pull it back into
+  // the lane it is leaving
+  double steer_cmd = lane_change_active() ? 0.0 : steer_prev;
+  if (!lane_change_active() && dist > 1e-3) {
     const double alpha = autoware_utils_geometry::normalize_radian(
       std::atan2(
         points[target].pose.position.y - pose.position.y,
@@ -264,6 +266,25 @@ void ClosedLoopSimulator::advance_ego(const Trajectory & trajectory, const doubl
   pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw_prev + yaw_rate * dt);
 }
 
+bool ClosedLoopSimulator::lane_change_active() const
+{
+  return config_.lane_change_duration_steps != 0 && step_ >= config_.lane_change_start_step &&
+         step_ < config_.lane_change_start_step + config_.lane_change_duration_steps;
+}
+
+void ClosedLoopSimulator::inject_lane_change()
+{
+  if (!lane_change_active()) {
+    return;
+  }
+  auto & pose = input_.odometry.pose.pose;
+  const double yaw = autoware_utils_geometry::get_rpy(pose).z;
+  const double shift =
+    config_.lane_change_offset_m / static_cast<double>(config_.lane_change_duration_steps);
+  pose.position.x -= std::sin(yaw) * shift;
+  pose.position.y += std::cos(yaw) * shift;
+}
+
 ClosedLoopResult ClosedLoopSimulator::run()
 {
   ClosedLoopResult result;
@@ -275,7 +296,7 @@ ClosedLoopResult ClosedLoopSimulator::run()
     return result;
   };
 
-  double best_goal_distance = std::numeric_limits<double>::infinity();
+  Pose last_progress_pose = input_.odometry.pose.pose;
   size_t last_progress_step = 0;
   Trajectory last_complete_trajectory;
   size_t steps_since_complete = 0;
@@ -295,8 +316,12 @@ ClosedLoopResult ClosedLoopSimulator::run()
       std::abs(input_.odometry.twist.twist.linear.x) < config_.goal_velocity_threshold_mps) {
       return finish("goal reached at step " + std::to_string(step_), true);
     }
-    if (goal_distance < best_goal_distance - config_.stall_progress_m) {
-      best_goal_distance = goal_distance;
+    // Progress is the distance driven, not the goal distance: a route may head away from the goal
+    // for hundreds of meters before turning back
+    if (
+      autoware_utils_geometry::calc_distance2d(input_.odometry.pose.pose, last_progress_pose) >=
+      config_.stall_progress_m) {
+      last_progress_pose = input_.odometry.pose.pose;
       last_progress_step = step_;
     } else if (step_ - last_progress_step >= config_.stall_window_steps) {
       return finish(
@@ -365,6 +390,7 @@ ClosedLoopResult ClosedLoopSimulator::run()
     last_complete_trajectory = trajectory;
     steps_since_complete = 0;
     advance_ego(trajectory, config_.dt_s);
+    inject_lane_change();
   }
 
   return finish("reached max_steps (" + std::to_string(config_.max_steps) + ")");

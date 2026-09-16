@@ -1,0 +1,89 @@
+# The goal is ~230 m ahead along the route (around the rotary) but only ~30 m away from the start
+# in a straight line, so on the 200 m reference path window the point closest to the goal is the
+# window start, behind the ego. Regression test for "goal_pose is behind ego on the reference path".
+format_version: 1
+expectation: goal_reached
+map_path_uri: package://autoware_test_utils/test_map/road_shoulder/lanelet2_map.osm
+vehicle_info_param_uri: package://autoware_test_utils/config/test_vehicle_info.param.yaml
+route:
+  start_pose:
+    position:
+      x: 390.54164257042197
+      y: 187.98199914880377
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.7069200031088047
+      w: 0.7072935099409916
+  goal_pose:
+    position:
+      x: 394.80489188611244
+      y: 154.78286275331956
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.6922902297779615
+      w: 0.7216191777897655
+  segments:
+    - preferred_primitive:
+        id: 5672
+        primitive_type: ""
+      primitives:
+        - id: 5672
+          primitive_type: lane
+    - preferred_primitive:
+        id: 5998
+        primitive_type: ""
+      primitives:
+        - id: 5998
+          primitive_type: lane
+    - preferred_primitive:
+        id: 5995
+        primitive_type: ""
+      primitives:
+        - id: 5995
+          primitive_type: lane
+    - preferred_primitive:
+        id: 5990
+        primitive_type: ""
+      primitives:
+        - id: 5990
+          primitive_type: lane
+    - preferred_primitive:
+        id: 5991
+        primitive_type: ""
+      primitives:
+        - id: 5991
+          primitive_type: lane
+    - preferred_primitive:
+        id: 5993
+        primitive_type: ""
+      primitives:
+        - id: 5993
+          primitive_type: lane
+    - preferred_primitive:
+        id: 5992
+        primitive_type: ""
+      primitives:
+        - id: 5992
+          primitive_type: lane
+    - preferred_primitive:
+        id: 5999
+        primitive_type: ""
+      primitives:
+        - id: 5999
+          primitive_type: lane
+    - preferred_primitive:
+        id: 5671
+        primitive_type: ""
+      primitives:
+        - id: 5671
+          primitive_type: lane
+    - preferred_primitive:
+        id: 5670
+        primitive_type: ""
+      primitives:
+        - id: 5670
+          primitive_type: lane

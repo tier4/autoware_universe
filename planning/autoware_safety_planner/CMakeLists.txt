@@ -13,6 +13,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 ament_auto_add_library(${PROJECT_NAME}_common STATIC
   src/utils/boundary_simplifier.cpp
   src/utils/frenet_utils.cpp
+  src/utils/route_tracking.cpp
   src/utils/trajectory_postprocess.cpp
   src/utils/turn_indicator_decider.cpp
 )
@@ -22,10 +23,10 @@ target_link_libraries(${PROJECT_NAME}_common
 target_compile_options(${PROJECT_NAME}_common PRIVATE -Wno-deprecated-declarations)
 
 ament_auto_add_library(${PROJECT_NAME}_constraint_plugins SHARED
+  src/constraint_generator/external_velocity_limit.cpp
   src/constraint_generator/lane_following_drivable_area.cpp
-  src/constraint_generator/next_lanelet_speed_limit.cpp
+  src/constraint_generator/lanelet_speed_limit.cpp
   src/constraint_generator/obstacle_stop.cpp
-  src/constraint_generator/simple_drivable_area.cpp
   src/constraint_generator/vehicle_kinematics.cpp
 )
 target_link_libraries(${PROJECT_NAME}_constraint_plugins

@@ -103,8 +103,8 @@ public:
       // rejected: at a kink the perpendicular bands of the neighboring segments do not meet and
       // leave a wedge of width |l*dtheta| on the outside of the turn. Treating a point in that
       // wedge as belonging to no segment would, for a generator whose boundary vertices sit at the
-      // centerline samples (simple_drivable_area), drop the outer vertices entirely and remove the
-      // lateral constraint over that s range, i.e. fail open
+      // centerline samples, drop the outer vertices entirely and remove the lateral constraint
+      // over that s range, i.e. fail open
       const bool first = (i == 0);
       const bool last = (i + 2 == points_.size());
       if (!first) {

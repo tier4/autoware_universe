@@ -39,8 +39,8 @@
 //   bands of the two neighboring segments do not meet, leaving a wedge of width |l*dtheta| on the
 //   outside of the turn; a point falling in it is still taken, with its foot clamped to the kink.
 //   Dropping it would fail open: for a generator whose boundary vertices are aligned with the
-//   centerline samples (simple_drivable_area) the outer vertices would disappear entirely and the
-//   lateral constraint over that s range would vanish
+//   centerline samples the outer vertices would disappear entirely and the lateral constraint over
+//   that s range would vanish
 // - the IR is rebuilt every cycle. s carries no meaning across cycles (targets are matched across
 //   cycles through the id in Source)
 

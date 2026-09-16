@@ -4,12 +4,15 @@
       time_step_s: 0.1 # [s]
       path_resolution_m: 0.5 # [m] spacing at which the path l(s) is sampled
       target_lengths_m: [10.0, 20.0, 40.0] # [m] arc lengths over which the lateral motion completes
-      target_durations_s: [2.0, 4.0, 6.0, 8.0] # [s] terminal times of the velocity profile
-      target_lateral_positions_m: [-2.0, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 2.0] # [m] positive to the left
-      target_velocity_ratios: [0.0, 0.25, 0.5, 0.75, 1.0] # [-] ratios of the speed limit at the ego position
+      target_durations_s: [1.0, 2.0, 4.0, 6.0, 8.0] # [s] terminal times of the velocity profile
+      target_lateral_positions_m: [-1.0, -0.75, -0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5, 0.75, 1.0] # [m] positive to the left
+      target_velocity_ratios: [0.0, 0.1, 0.25, 0.5, 0.75, 1.0] # [-] ratios of the speed limit at the ego position
+      boundary:
+        simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the boundary polylines; 0 disables
       weights:
         lateral: 1.0
         velocity: 0.5
         lon_jerk: 0.1
         curvature: 10.0
         soft_bound: 100.0
+        previous_lateral: 1.0

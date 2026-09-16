@@ -54,6 +54,9 @@ struct Scenario
   //! before the goal, e.g. blocked by an obstacle) or "stop_beside_goal" (the goal lies in a lane
   //! the ego cannot reach without a lane change; ego must halt next to it in its own lane)
   std::string expectation{"goal_reached"};
+  //! optional key "external_lane_change": {start_step, duration_steps, offset_m}, see
+  //! ClosedLoopConfig
+  ClosedLoopConfig config;
 };
 
 // Parameters and vehicle_info can only be read through a node (generate_parameter_library /
@@ -82,10 +85,9 @@ Scenario load_scenario(const std::string & yaml_filename)
   std::vector<std::string> param_files{*vehicle_info_param_path};
   for (const auto & relative_path :
        {"safety_planner.param.yaml", "constraint_generator/vehicle_kinematics.param.yaml",
+        "constraint_generator/external_velocity_limit.param.yaml",
         "constraint_generator/lane_following_drivable_area.param.yaml",
-        "constraint_generator/next_lanelet_speed_limit.param.yaml",
         "constraint_generator/obstacle_stop.param.yaml",
-        "constraint_generator/simple_drivable_area.param.yaml",
         "trajectory_planner/frenet_sampling_based_planner.param.yaml",
         "trajectory_planner/mppi_planner.param.yaml"}) {
     param_files.push_back(
@@ -111,6 +113,11 @@ Scenario load_scenario(const std::string & yaml_filename)
   }
   if (config["expectation"]) {
     scenario.expectation = config["expectation"].as<std::string>();
+  }
+  if (const auto lane_change = config["external_lane_change"]) {
+    scenario.config.lane_change_start_step = lane_change["start_step"].as<size_t>();
+    scenario.config.lane_change_duration_steps = lane_change["duration_steps"].as<size_t>();
+    scenario.config.lane_change_offset_m = lane_change["offset_m"].as<double>();
   }
   return scenario;
 }
@@ -232,7 +239,7 @@ TEST_P(ClosedLoopTest, ReachesGoalWithValidTrajectories)
   const auto scenario = load_scenario(GetParam());
   ClosedLoopSimulator simulator(
     scenario.params, scenario.vehicle_info, scenario.map_bin, scenario.route,
-    scenario.predicted_objects, ClosedLoopConfig{});
+    scenario.predicted_objects, scenario.config);
   const auto result = simulator.run();
   write_result_csv(result, make_test_results_dir("closed_loop") + current_test_file_stem());
   RecordProperty("planner_failures", static_cast<int>(result.planner_failures));

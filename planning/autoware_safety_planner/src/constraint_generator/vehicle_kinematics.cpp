@@ -37,7 +37,8 @@ ConstraintGeneratorOutput VehicleKinematicsConstraintGenerator::generate_constra
 
   const auto & p = params_.vehicle_kinematics;
 
-  add(BoundedQuantity::VELOCITY, 0.0, p.velocity_hard_mps, "velocity");
+  // NOTE(odashima): the speed bound is the one of external_velocity_limit, which owns both the
+  // default and the limit given from outside
   add(
     BoundedQuantity::LON_ACCEL, p.lon_accel_hard_min_mps2, p.lon_accel_hard_max_mps2, "lon_accel");
   // NOTE(odashima): left at -INF for quantities bounded in absolute value

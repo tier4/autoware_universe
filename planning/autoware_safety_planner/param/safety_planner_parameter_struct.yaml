@@ -48,9 +48,23 @@ safety_planner:
         type: double
         default_value: 12.0
         read_only: true
-        description: "[m] centerline points within this distance of the goal are dropped and replaced by the connection to it; when the new stretch leaves the lane, the radius shrinks by 1 m and it is retried"
+        description: "[m] a goal further than this from the reference path is not connected to; the path is then cut at the point closest to it"
         validation:
           gt_eq<>: [0.0]
+      shift_length_m:
+        type: double
+        default_value: 30.0
+        read_only: true
+        description: "[m] arc length over which the lateral offset of the goal is taken up; shorter bends the connection harder, longer starts leaving the centerline earlier"
+        validation:
+          gt<>: [0.0]
+      curvature_margin:
+        type: double
+        default_value: 0.9
+        read_only: true
+        description: "[-] fraction of the curvature at full steer that the connection is held within; the rest is left to the trajectory planner, whose candidates deviate from the reference"
+        validation:
+          bounds<>: [0.0, 1.0]
     smoother:
       clearance_m:
         type: double
@@ -119,6 +133,8 @@ safety_planner:
     type: string_array
     default_value:
       - autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator
+      - autoware::safety_planner::ExternalVelocityLimitConstraintGenerator
+      - autoware::safety_planner::experiment::LaneletSpeedLimitConstraintGenerator
       - autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator
       - autoware::safety_planner::experiment::ObstacleStopConstraintGenerator
     read_only: true
@@ -131,13 +147,6 @@ safety_planner:
     description: fully qualified class name of the trajectory planner plugin to load. It turns the two constraint sets into two trajectories
 
   vehicle_kinematics:
-    velocity_hard_mps:
-      type: double
-      default_value: 16.67
-      read_only: true
-      description: "[m/s] hard bound on the longitudinal speed"
-      validation:
-        gt_eq<>: [0.0]
     lon_accel_hard_min_mps2:
       type: double
       default_value: -6.0
@@ -170,21 +179,49 @@ safety_planner:
       validation:
         gt<>: [0.0]
 
+  external_velocity_limit:
+    default_velocity_mps:
+      type: double
+      default_value: 8.33
+      read_only: true
+      description: "[m/s] speed bound while no limit has arrived, and the ceiling the limit received from outside is capped to"
+      validation:
+        gt<>: [0.0]
+    decel_mps2:
+      type: double
+      default_value: 1.0
+      read_only: true
+      description: "[m/s^2] magnitude of the deceleration the distance to the start of a lowered limit is computed with"
+      validation:
+        gt<>: [0.0]
+    margin_m:
+      type: double
+      default_value: 0.3
+      read_only: true
+      description: "[m] the start of a lowered limit is pushed this far beyond the braking distance"
+      validation:
+        gt_eq<>: [0.0]
+    half_width_m:
+      type: double
+      default_value: 2.0
+      read_only: true
+      description: "[m] half width of the band the lowered limit is emitted over, to each side of the reference_path"
+      validation:
+        gt<>: [0.0]
+    sample_interval_m:
+      type: double
+      default_value: 2.0
+      read_only: true
+      description: "[m] arc length between the centerline samples of that band"
+      validation:
+        gt<>: [0.0]
+
   lane_following_drivable_area:
     margin_m:
       type: double
       default_value: 0.0
       read_only: true
       description: "[m] the lane bounds and road_borders are moved this far towards the inside of the lane"
-      validation:
-        gt_eq<>: [0.0]
-
-  next_lanelet_speed_limit:
-    velocity_mps:
-      type: double
-      default_value: 2.78
-      read_only: true
-      description: "[m/s] hard bound on the speed inside the lanelet following the current one"
       validation:
         gt_eq<>: [0.0]
 
@@ -210,43 +247,6 @@ safety_planner:
       description: stop lines are issued only for objects slower than this [m/s] (a moving lead vehicle is handled by the KeepOut, not by a stop line)
       validation:
         gt_eq<>: [0.0]
-
-  simple_drivable_area:
-    half_width_m:
-      type: double
-      default_value: 2.0
-      read_only: true
-      description: "[m] half width of the drivable area to each side of the reference_path"
-      validation:
-        gt<>: [0.0]
-    forward_extension_m:
-      type: double
-      default_value: 5.0
-      read_only: true
-      description: "[m] how far the area extends beyond the end of the reference_path"
-      validation:
-        gt_eq<>: [0.0]
-    backward_extension_m:
-      type: double
-      default_value: 5.0
-      read_only: true
-      description: "[m] how far the area extends behind the start of the reference_path"
-      validation:
-        gt_eq<>: [0.0]
-    margin_m:
-      type: double
-      default_value: 0.0
-      read_only: true
-      description: "[m] the corridor is narrowed by this much on each side"
-      validation:
-        gt_eq<>: [0.0]
-    sample_interval_m:
-      type: double
-      default_value: 1.0
-      read_only: true
-      description: "[m] arc length between the centerline samples"
-      validation:
-        gt<>: [0.0]
 
   frenet_sampling_based_planner:
     time_step_s:
@@ -309,6 +309,21 @@ safety_planner:
         default_value: 100.0
         read_only: true
         description: "[1/m^2] weight on the squared violation of a soft Boundary"
+        validation:
+          gt_eq<>: [0.0]
+      previous_lateral:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[1/(m^2 s)] weight on the squared lateral deviation from the output of the previous cycle, measured on the reference_path of the current one; 0 disables the continuity cost"
+        validation:
+          gt_eq<>: [0.0]
+    boundary:
+      simplify_tolerance_m:
+        type: double
+        default_value: 0.05
+        read_only: true
+        description: "[m] Douglas-Peucker tolerance applied to each Boundary polyline before it is compiled into the projected views; 0 disables"
         validation:
           gt_eq<>: [0.0]
 

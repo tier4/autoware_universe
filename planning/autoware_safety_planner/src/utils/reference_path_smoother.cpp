@@ -23,6 +23,7 @@
 #include <lanelet2_core/geometry/Polygon.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -32,6 +33,33 @@
 
 namespace autoware::safety_planner
 {
+
+std::pair<double, double> lateral_room(
+  const geometry_msgs::msg::Point & position, const lanelet::ConstLanelets & lanelets,
+  const double vehicle_half_width_m)
+{
+  //! [m] clearance kept between the footprint and the lane bound
+  constexpr double LANE_MARGIN_M = 0.3;
+
+  const lanelet::BasicPoint2d p{position.x, position.y};
+  const lanelet::ConstLanelet * nearest = nullptr;
+  double nearest_dist = std::numeric_limits<double>::max();
+  for (const auto & lanelet : lanelets) {
+    const double dist = lanelet::geometry::distance2d(lanelet.polygon2d(), p);
+    if (dist < nearest_dist) {
+      nearest_dist = dist;
+      nearest = &lanelet;
+    }
+  }
+  if (!nearest || nearest_dist > 0.0) {
+    return {0.0, 0.0};
+  }
+  const double left = lanelet::geometry::distance2d(nearest->leftBound2d(), p);
+  const double right = lanelet::geometry::distance2d(nearest->rightBound2d(), p);
+  return {
+    std::max(0.0, right - vehicle_half_width_m - LANE_MARGIN_M),
+    std::max(0.0, left - vehicle_half_width_m - LANE_MARGIN_M)};
+}
 
 std::optional<PathPointTrajectory> smooth_reference_path(
   const PathPointTrajectory & path, const lanelet::ConstLanelets & lanelets,
@@ -44,8 +72,6 @@ std::optional<PathPointTrajectory> smooth_reference_path(
   constexpr double LAT_ERROR_WEIGHT = 0.001;
   //! number of trailing points held fixed, to keep the position and heading of the goal
   constexpr std::size_t NUM_FIXED_TAIL = 2;
-  //! [m] clearance kept between the footprint and the lane bound
-  constexpr double LANE_MARGIN_M = 0.3;
   constexpr double OSQP_EPS_ABS = 1.0e-6;
 
   // Resample every 1 m, with the last sample pinned to the end of the path, i.e. the goal
@@ -93,29 +119,6 @@ std::optional<PathPointTrajectory> smooth_reference_path(
   const Eigen::VectorXd q_eigen = 2.0 * dn.transpose() * (d2 * p_ref);
   const std::vector<double> q_vector(q_eigen.data(), q_eigen.data() + ni);
 
-  // How far a point may travel: the distance to the bounds of the nearest lanelet, less the
-  // footprint and the margin. A point outside every lanelet, as around the goal, is held fixed
-  const auto lateral_room = [&](const geometry_msgs::msg::Point & position) {
-    const lanelet::BasicPoint2d p{position.x, position.y};
-    const lanelet::ConstLanelet * nearest = nullptr;
-    double nearest_dist = std::numeric_limits<double>::max();
-    for (const auto & lanelet : lanelets) {
-      const double dist = lanelet::geometry::distance2d(lanelet.polygon2d(), p);
-      if (dist < nearest_dist) {
-        nearest_dist = dist;
-        nearest = &lanelet;
-      }
-    }
-    if (!nearest || nearest_dist > 0.0) {
-      return std::pair<double, double>{0.0, 0.0};
-    }
-    const double left = lanelet::geometry::distance2d(nearest->leftBound2d(), p);
-    const double right = lanelet::geometry::distance2d(nearest->rightBound2d(), p);
-    return std::pair<double, double>{
-      std::max(0.0, right - vehicle_half_width_m - LANE_MARGIN_M),
-      std::max(0.0, left - vehicle_half_width_m - LANE_MARGIN_M)};
-  };
-
   std::vector<double> lower(n);
   std::vector<double> upper(n);
   for (std::size_t i = 0; i < n; ++i) {
@@ -124,7 +127,8 @@ std::optional<PathPointTrajectory> smooth_reference_path(
       upper[i] = 0.0;
       continue;
     }
-    const auto [room_right, room_left] = lateral_room(points[i].point.pose.position);
+    const auto [room_right, room_left] =
+      lateral_room(points[i].point.pose.position, lanelets, vehicle_half_width_m);
     lower[i] = -std::min(clearance_m, room_right);
     upper[i] = std::min(clearance_m, room_left);
   }
@@ -157,6 +161,105 @@ std::optional<PathPointTrajectory> smooth_reference_path(
       autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(p1.y - p0.y, p1.x - p0.x));
   }
   return experimental::trajectory::pretty_build(points);
+}
+
+std::optional<std::vector<double>> optimize_goal_shift(
+  const std::vector<double> & nominal, const std::vector<double> & centerline_curvature,
+  const double ds, const double max_curvature, const std::vector<double> & lower_bound,
+  const std::vector<double> & upper_bound)
+{
+  //! keeps P positive definite; the second difference alone is singular on constants and ramps
+  constexpr double REGULARIZER = 1.0e-6;
+  //! The curvature of the offset path is nonlinear in l through 1 - k_ref l and l'; both are
+  //! frozen at the profile of the previous pass and the QP re-run. k_ref * l reaches ~1 on the
+  //! tight lanelets this is for, so linearizing those terms away is not enough
+  constexpr int NUM_PASSES = 3;
+  constexpr double CONVERGED_M = 1.0e-3;
+  constexpr double OSQP_EPS_ABS = 1.0e-6;
+
+  const auto n = nominal.size();
+  if (n < 4) {
+    return std::nullopt;  // the end conditions leave nothing to optimize
+  }
+  const int ni = static_cast<int>(n);
+
+  Eigen::MatrixXd d2 = Eigen::MatrixXd::Zero(ni - 2, ni);
+  for (int i = 0; i + 2 < ni; ++i) {
+    d2(i, i) = 1.0;
+    d2(i, i + 1) = -2.0;
+    d2(i, i + 2) = 1.0;
+  }
+  const Eigen::MatrixXd p_matrix =
+    2.0 * (d2.transpose() * d2 + REGULARIZER * Eigen::MatrixXd::Identity(ni, ni));
+  const std::vector<double> q_vector(n, 0.0);
+
+  // Rows: the value and the slope at each end, the offset of every point, then the curvature of
+  // every interior point. The second difference at the ends is left free on purpose: pinning it at
+  // the start of the ramp takes away the freedom the tight lanelets need
+  constexpr int NUM_END_CONDITIONS = 4;
+  const int num_rows = NUM_END_CONDITIONS + ni + ni - 2;
+  const int curvature_row = NUM_END_CONDITIONS + ni;
+  Eigen::MatrixXd a_matrix = Eigen::MatrixXd::Zero(num_rows, ni);
+  a_matrix(0, 0) = 1.0;
+  a_matrix(1, 0) = -1.0;
+  a_matrix(1, 1) = 1.0;
+  a_matrix(2, ni - 1) = 1.0;
+  a_matrix(3, ni - 2) = -1.0;
+  a_matrix(3, ni - 1) = 1.0;
+  a_matrix.block(NUM_END_CONDITIONS, 0, ni, ni) = Eigen::MatrixXd::Identity(ni, ni);
+  std::vector<double> lower(static_cast<std::size_t>(num_rows));
+  std::vector<double> upper(static_cast<std::size_t>(num_rows));
+  const std::array<double, NUM_END_CONDITIONS> end_conditions{
+    nominal.front(), nominal[1] - nominal.front(), nominal.back(), nominal.back() - nominal[n - 2]};
+  for (std::size_t row = 0; row < NUM_END_CONDITIONS; ++row) {
+    lower[row] = end_conditions[row];
+    upper[row] = end_conditions[row];
+  }
+  for (std::size_t i = 0; i < n; ++i) {
+    lower[NUM_END_CONDITIONS + i] = lower_bound[i];
+    upper[NUM_END_CONDITIONS + i] = upper_bound[i];
+  }
+
+  std::vector<double> profile = nominal;
+  for (int pass = 0; pass < NUM_PASSES; ++pass) {
+    // The exact curvature of the offset path, with a = 1 - k_ref l and l' from the previous pass:
+    // (a^2 k_ref + a l'' + 2 k_ref l'^2) / (a^2 + l'^2)^(3/2). Only l'' is a variable, so the row
+    // carries the a and the rest goes into the bounds
+    for (int i = 1; i + 1 < ni; ++i) {
+      const auto idx = static_cast<std::size_t>(i);
+      const double k_ref = centerline_curvature[idx];
+      const double a = 1.0 - k_ref * profile[idx];
+      const double dl = (profile[idx + 1] - profile[idx - 1]) / (2.0 * ds);
+      const double denominator = std::pow(a * a + dl * dl, 1.5);
+      const double constant = a * a * k_ref + 2.0 * k_ref * dl * dl;
+      const int row = curvature_row + i - 1;
+      a_matrix(row, i - 1) = a / (ds * ds);
+      a_matrix(row, i) = -2.0 * a / (ds * ds);
+      a_matrix(row, i + 1) = a / (ds * ds);
+      lower[static_cast<std::size_t>(row)] = -max_curvature * denominator - constant;
+      upper[static_cast<std::size_t>(row)] = max_curvature * denominator - constant;
+    }
+
+    osqp_interface::OSQPInterface solver(OSQP_EPS_ABS, true);
+    const auto result = solver.optimize(p_matrix, a_matrix, q_vector, lower, upper);
+    if (
+      result.solution_status != OSQP_SOLVED ||
+      static_cast<int>(result.primal_solution.size()) != ni) {
+      return std::nullopt;
+    }
+    double change = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+      if (!std::isfinite(result.primal_solution[i])) {
+        return std::nullopt;
+      }
+      change = std::max(change, std::abs(result.primal_solution[i] - profile[i]));
+    }
+    profile = result.primal_solution;
+    if (change < CONVERGED_M) {
+      break;
+    }
+  }
+  return profile;
 }
 
 }  // namespace autoware::safety_planner

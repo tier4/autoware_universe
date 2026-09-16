@@ -14,6 +14,8 @@
 
 #include "safety_planner_node.hpp"
 
+#include "utils/route_tracking.hpp"
+
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/ear_clipping.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
@@ -155,6 +157,11 @@ SafetyPlannerNode::InputData SafetyPlannerNode::take_data()
   }
   input_data.obstacle_pointcloud_ptr = obstacle_pointcloud_ptr_;
 
+  if (const auto msg = external_velocity_limit_subscriber_.take_data()) {
+    external_velocity_limit_ptr_ = msg;
+  }
+  input_data.external_velocity_limit_ptr = external_velocity_limit_ptr_;
+
   return input_data;
 }
 
@@ -217,10 +224,10 @@ bool SafetyPlannerNode::update_route_manager(const InputData & input_data)
 
   if (!needs_create) {
     try {
-      input_.route_manager = std::move(*input_.route_manager)
-                               .update_current_pose(
-                                 current_pose, params_.ego_nearest_lanelet.dist_threshold_m,
-                                 params_.ego_nearest_lanelet.yaw_threshold_rad);
+      input_.route_manager = track_current_lanelet(
+        std::move(*input_.route_manager), current_pose,
+        params_.ego_nearest_lanelet.dist_threshold_m,
+        params_.ego_nearest_lanelet.yaw_threshold_rad);
     } catch (const std::exception & e) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000, "update_current_pose threw: %s", e.what());
@@ -265,6 +272,13 @@ bool SafetyPlannerNode::update_input(const InputData & input_data)
   input_.steering = *input_data.steering_ptr;
   input_.goal_pose = input_data.route_ptr->goal_pose;
   input_.predicted_objects = input_data.predicted_objects_ptr;
+  // Only the maximum is read: the deceleration profile in constraints belongs to the smoother of
+  // the rule based stack, and here the profile follows from the LON_ACCEL / LON_JERK bounds of the
+  // IR. Nothing consumes sender yet
+  input_.external_velocity_limit_mps =
+    input_data.external_velocity_limit_ptr
+      ? std::make_optional<double>(input_data.external_velocity_limit_ptr->max_velocity)
+      : std::nullopt;
 
   return true;
 }

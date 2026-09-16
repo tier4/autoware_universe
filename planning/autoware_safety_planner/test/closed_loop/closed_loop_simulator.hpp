@@ -38,10 +38,10 @@ namespace autoware::safety_planner::testing
 struct ClosedLoopConfig
 {
   double dt_s{0.1};  //!< one cycle (matches the node's planning_frequency_hz = 10 Hz)
-  size_t max_steps{1200};
+  size_t max_steps{3000};
   double goal_distance_threshold_m{1.0};
   double goal_velocity_threshold_mps{0.1};
-  //! Stalled if the goal distance does not shrink by stall_progress_m within stall_window_steps
+  //! Stalled if the ego does not move by stall_progress_m within stall_window_steps
   size_t stall_window_steps{100};
   double stall_progress_m{0.1};
   //! The run ends when the planner fails this many cycles in a row (the last complete trajectory
@@ -50,6 +50,12 @@ struct ClosedLoopConfig
   //! Pure-pursuit lookahead: max(min_lookahead_m, lookahead_time_s * v)
   double lookahead_time_s{1.0};
   double min_lookahead_m{2.0};
+  //! Stands in for a lane change done by the other planner: from lane_change_start_step on, the
+  //! ego is shifted sideways (positive = left) by lane_change_offset_m spread evenly over
+  //! lane_change_duration_steps while it keeps its heading and the planner's velocity. 0 = none
+  size_t lane_change_start_step{0};
+  size_t lane_change_duration_steps{0};
+  double lane_change_offset_m{0.0};
 };
 
 //! Ego state at the start of a cycle and the trajectory planned in that cycle
@@ -105,6 +111,8 @@ private:
   //! lookahead point on it (pure pursuit), and integrates the pose over dt with the kinematic
   //! bicycle model
   void advance_ego(const Trajectory & trajectory, double t_target);
+  bool lane_change_active() const;
+  void inject_lane_change();
   bool update_route_manager();
 
   Params params_;

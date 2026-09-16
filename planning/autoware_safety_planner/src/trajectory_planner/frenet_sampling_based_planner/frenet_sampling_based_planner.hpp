@@ -32,6 +32,7 @@
 // directly: starting from standstill both s and l would rise as t^3, which puts the initial heading
 // off the ego heading and rejects every candidate in the kinematic check.
 
+#include "../../utils/boundary_simplifier.hpp"
 #include "../../utils/turn_indicator_decider.hpp"
 #include "../trajectory_planner_interface.hpp"
 #include "compiled_constraints_utils.hpp"
@@ -62,6 +63,15 @@ private:
   TurnIndicatorDecider normal_turn_indicator_decider_{TurnSignalParams{}};
   TurnIndicatorDecider cautious_turn_indicator_decider_{TurnSignalParams{}};
 
+  //! Output of the previous cycle, one per side, the reference of the continuity cost. Not cleared
+  //! on a route change: the cost is soft, so a previous output that no longer fits the new
+  //! reference_path is outvoted by the other terms within a cycle or two
+  std::optional<Trajectory> normal_previous_trajectory_;
+  std::optional<Trajectory> cautious_previous_trajectory_;
+
+  //! Shared by both sides: the cache keys on the geometry, so the second side pays a hash only
+  std::unique_ptr<BoundarySimplifier> boundary_simplifier_;
+
   //! Ego state in Frenet coordinates, the initial conditions of the polynomials
   struct InitialState
   {
@@ -79,8 +89,9 @@ private:
   {
     std::vector<double> s;
     std::vector<double> l;
-    std::vector<double> yaw;    //!< [rad] heading in world coordinates
-    std::vector<double> kappa;  //!< [1/m]
+    std::vector<double> yaw;     //!< [rad] heading in world coordinates
+    std::vector<double> kappa;   //!< [1/m]
+    std::vector<double> metric;  //!< [-] d sigma / d s, path arc length per reference arc length
     std::string tag;
   };
 
@@ -92,6 +103,21 @@ private:
     std::vector<double> v;
     std::vector<double> a;
     std::string tag;
+  };
+
+  //! Lateral profile l(s) of the previous output, measured on the reference_path of this cycle.
+  //! Compared in space and not in time: the ego has moved on by one cycle, so the point of the
+  //! previous trajectory at a given time is not the one at the same place any more
+  struct PreviousLateral
+  {
+    PreviousLateral() = default;
+    PreviousLateral(const PathPointTrajectory & reference_path, const Trajectory & previous);
+
+    std::vector<double> s;  //!< strictly increasing
+    std::vector<double> l;
+    //! l at the arc length query_s, held constant beyond both ends; empty when there is no
+    //! previous output to compare against
+    std::optional<double> at(double query_s) const;
   };
 
   //! A trajectory candidate: one path combined with one velocity profile
@@ -106,11 +132,16 @@ private:
     std::string tag;
   };
 
+  //! Not const: the boundary simplifier carries a cache
   std::optional<Trajectory> plan_one_side(
     const PlannerContext & context, const std::vector<Constraint> & constraints,
-    TrajectoryPlannerDebug & debug) const;
+    const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug);
 
   InitialState compute_initial_state(const PlannerContext & context) const;
+
+  //! Path of constant curvature, the one the ego is on with its current steer
+  PathCandidate hold_steer_path(
+    const PlannerContext & context, const InitialState & initial_state) const;
 
   //! Samples the quintic l(s) for one terminal state (arc length length, lateral position
   //! l_target)
@@ -138,7 +169,7 @@ private:
   //! Evaluates the hard constraints and accumulates the soft cost, writing valid and cost
   void evaluate(
     const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-    const double l_goal, Candidate & candidate) const;
+    const double l_goal, const PreviousLateral & previous_lateral, Candidate & candidate) const;
 
   Trajectory to_trajectory_msg(const PlannerContext & context, const Candidate & candidate) const;
 

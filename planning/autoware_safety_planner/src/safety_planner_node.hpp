@@ -63,6 +63,7 @@ private:
     PredictedObjects::ConstSharedPtr predicted_objects_ptr;
     PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr;
     SteeringReport::ConstSharedPtr steering_ptr;
+    VelocityLimit::ConstSharedPtr external_velocity_limit_ptr;
   };
 
   bool is_data_ready(const InputData & input_data);
@@ -130,6 +131,12 @@ private:
   autoware_utils_rclcpp::InterProcessPollingSubscriber<PointCloud2> pointcloud_subscriber_{
     this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
   PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr_;
+
+  //! Latched by the publisher (the API adaptor, rviz), so the QoS has to be transient_local to get
+  //! the limit that was set before this node came up
+  autoware_utils::InterProcessPollingSubscriber<VelocityLimit> external_velocity_limit_subscriber_{
+    this, "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local()};
+  VelocityLimit::ConstSharedPtr external_velocity_limit_ptr_;
 
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
