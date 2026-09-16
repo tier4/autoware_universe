@@ -56,6 +56,8 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     /** Previous issued commands, independent of physical actuator delay taps. */
     PREVIOUS_ACCEL_CMD,
     PREVIOUS_STEER_CMD,
+    /** Previous issued steering-command rate, used to bound command acceleration. */
+    PREVIOUS_STEER_CMD_RATE,
     NUM_STATES
   };
 
@@ -93,6 +95,9 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
   float max_steer_rate = 3.0F;
   float max_lateral_jerk_mps3 = 2.5F;
   float standstill_steer_rate_lim = 0.15F;
+  /** Steering-command limits applied at standstill and blended out during restart. */
+  float restart_steer_command_rate_lim = 0.15F;
+  float restart_steer_command_acceleration_lim = 0.5F;
   float restart_velocity_threshold_mps = 0.5F;
   float min_accel = -6.0F;
   float max_accel = 4.0F;
@@ -153,7 +158,7 @@ public:
   using output_array = typename PARENT_CLASS::output_array;
   using dfdx = typename PARENT_CLASS::dfdx;
   using dfdu = typename PARENT_CLASS::dfdu;
-  // Keep the parent host overload: MPPI's generic host pass supplies a placeholder zero state.
+  // Keep parent overloads visible alongside the state-aware specialization below.
   using PARENT_CLASS::enforceConstraints;
   using PARENT_CLASS::updateState;
 

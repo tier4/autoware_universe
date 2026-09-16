@@ -267,6 +267,35 @@ TEST_F(TrajectoryValidatorTest, TextureBroadPhaseEligibilityMatchesExactCollisio
 }
 
 // These transition/cost checks are host-only and intentionally require no CUDA context.
+TEST(PhysicalComfortTest, RestartSteeringCommandLimitsRateAndReversalAcceleration)
+{
+  using S = FirstOrderDubinsBicycleParams::StateIndex;
+  using C = FirstOrderDubinsBicycleParams::ControlIndex;
+  FirstOrderDubinsBicycleParams params;
+  params.restart_steer_command_rate_lim = 0.2F;
+  params.restart_steer_command_acceleration_lim = 0.5F;
+  params.restart_velocity_threshold_mps = 1.0F;
+  FirstOrderDubinsBicycle model(params);
+  auto state = model.getZeroState();
+  state(static_cast<int>(S::PREVIOUS_STEER_CMD)) = 0.1F;
+  state(static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)) = 0.05F;
+  auto command = FirstOrderDubinsBicycle::control_array::Zero().eval();
+  command(static_cast<int>(C::STEER_CMD)) = 0.4F;
+
+  model.enforceConstraints(state, command);
+  EXPECT_NEAR(command(static_cast<int>(C::STEER_CMD)), 0.11F, 1.0E-6F);
+
+  auto next = model.getZeroState();
+  auto derivative = model.getZeroState();
+  auto output = FirstOrderDubinsBicycle::output_array::Zero().eval();
+  model.step(state, next, derivative, command, output, 0.0F, 0.1F);
+  command(static_cast<int>(C::STEER_CMD)) = -0.4F;
+  model.enforceConstraints(next, command);
+  // The command rate can fall by only 0.05 rad/s in one tick, so a sudden reversal first
+  // decelerates the existing positive command motion.
+  EXPECT_NEAR(command(static_cast<int>(C::STEER_CMD)), 0.115F, 1.0E-6F);
+}
+
 TEST(PhysicalComfortTest, DelayedCommandDoesNotCreatePhysicalJerk)
 {
   FirstOrderDubinsBicycleParams model_params;

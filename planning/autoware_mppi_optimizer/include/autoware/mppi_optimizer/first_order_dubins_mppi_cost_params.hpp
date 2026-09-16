@@ -81,6 +81,8 @@ struct FirstOrderDubinsMppiCostParams
   float steer_cmd_noise_exponent{1.0F};
   /** Spatial window used only when deriving a cold-start nominal steer from the reference. */
   float nominal_curvature_min_chord_length_m{1.5F};
+  /** Arc-length span used by the local least-squares curvature fit. */
+  float nominal_curvature_fit_window_m{4.0F};
   float lateral_acceleration_coeff{300.0F};
   float lateral_jerk_coeff{300.0F};
   float longitudinal_jerk_coeff{10.0F};
