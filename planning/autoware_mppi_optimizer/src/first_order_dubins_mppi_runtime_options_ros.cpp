@@ -42,6 +42,8 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "enable_iteration_rollout_debug"), defaults.enable_iteration_rollout_debug);
   node.declare_parameter(param_name(prefix, "ignore_obstacles"), defaults.ignore_obstacles);
+  node.declare_parameter(
+    param_name(prefix, "dynamic_obstacle_horizon_s"), defaults.dynamic_obstacle_horizon_s);
   node.declare_parameter(param_name(prefix, "ignore_road_borders"), defaults.ignore_road_borders);
   node.declare_parameter(param_name(prefix, "ignore_drivable_area"), defaults.ignore_drivable_area);
   node.declare_parameter(
@@ -105,6 +107,8 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.enable_iteration_rollout_debug =
     node.get_parameter(param_name(prefix, "enable_iteration_rollout_debug")).as_bool();
   options.ignore_obstacles = node.get_parameter(param_name(prefix, "ignore_obstacles")).as_bool();
+  options.dynamic_obstacle_horizon_s = static_cast<float>(
+    node.get_parameter(param_name(prefix, "dynamic_obstacle_horizon_s")).as_double());
   options.ignore_road_borders =
     node.get_parameter(param_name(prefix, "ignore_road_borders")).as_bool();
   options.ignore_drivable_area =

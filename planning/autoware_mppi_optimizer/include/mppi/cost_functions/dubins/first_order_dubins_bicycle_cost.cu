@@ -197,6 +197,7 @@ __host__ __device__ __noinline__ float distanceToClosestObstacleAnalyticalFallba
   float min_distance = kDistanceMapEmptyDistance;
   const int num_obstacles = mppi::memory::loadReadOnly(&data.num_obstacles_);
   for (int i = 0; i < num_obstacles; ++i) {
+    if (!data.obstacleActiveAtStep(i, t)) continue;
     float obs_cos;
     float obs_sin;
     const float obs_yaw = mppi::memory::loadReadOnly(&data.obs_yaw_[i][t]);
@@ -632,6 +633,31 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  setDynamicObstacleHorizon(const float horizon_s, const float dt)
+{
+  if (!std::isfinite(horizon_s) || horizon_s < 0.0F || !std::isfinite(dt) || dt <= 0.0F) {
+    throw std::invalid_argument(
+      "Dynamic obstacle horizon must be finite and non-negative; dt must be positive");
+  }
+  int timesteps = NUM_TIMESTEPS;
+  if (horizon_s > 0.0F) {
+    timesteps = 0;
+    // Obstacles and ego are aligned at x[k+1]. Include the cutoff sample, allowing for
+    // float roundoff at exact multiples of dt without rounding up to the next stage.
+    while (timesteps < NUM_TIMESTEPS &&
+           static_cast<double>(timesteps + 1) * dt <= static_cast<double>(horizon_s) + 1.0E-6) {
+      ++timesteps;
+    }
+  }
+  if (runtimeData().dynamic_obstacle_timesteps_ == timesteps) return;
+  runtimeData().dynamic_obstacle_timesteps_ = timesteps;
+  dataToDevice();
+  // The cutoff changes map contents even when obstacle poses have not changed.
+  refreshDistanceMapTextures(true, false, false);
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setOrientedBoxObstacleTrajectories(
     const float * x, const float * y, const float * yaw, const float * half_length,
     const float * half_width, const int obstacle_count, const int num_timesteps)
@@ -1039,6 +1065,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 #pragma unroll
 #endif
   for (int i = 0; i < num_obstacles; ++i) {
+    if (!data.obstacleActiveAtStep(i, t)) continue;
     const float obs_yaw = mppi::memory::loadReadOnly(&data.obs_yaw_[i][t]);
 #ifdef __CUDA_ARCH__
     const float obs_cos = cosf(obs_yaw);

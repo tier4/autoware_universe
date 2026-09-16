@@ -434,6 +434,8 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
     const auto it = kv.find(key);
     return it == kv.end() ? fallback : it->second;
   };
+  options.dynamic_obstacle_horizon_s =
+    as_float("dynamic_obstacle_horizon_s", options.dynamic_obstacle_horizon_s);
   options.last_control_warm_start_max_age_s =
     as_float("last_control_warm_start_max_age_s", options.last_control_warm_start_max_age_s);
   options.nominal_initial_steering_max_deviation_rad = as_float(
