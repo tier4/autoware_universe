@@ -1292,9 +1292,12 @@ double PidLongitudinalController::applyVelocityFeedback(const ControlData & cont
   // Details: For accurate control, the feedforward should be calculated in the arclength coordinate
   // system, not in the time coordinate system. Otherwise, even if FF is applied, the vehicle speed
   // deviation will be bigger.
-  const double ff_scale = std::clamp(
-    std::abs(current_vel) / std::max(std::abs(target_motion.vel), 0.1), m_ff_scale_min,
-    m_ff_scale_max);
+  double ff_scale = 1.0;
+  if (!m_use_temporal_trajectory) {
+    ff_scale = std::clamp(
+      std::abs(current_vel) / std::max(std::abs(target_motion.vel), 0.1), m_ff_scale_min,
+      m_ff_scale_max);
+  }
   const double ff_acc =
     control_data.interpolated_traj.points.at(control_data.target_idx).acceleration_mps2 * ff_scale;
 
