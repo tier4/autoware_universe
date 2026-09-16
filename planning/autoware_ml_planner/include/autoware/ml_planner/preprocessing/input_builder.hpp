@@ -89,6 +89,7 @@ struct FrameInputs
 struct InputBuilderParams
 {
   double traffic_light_group_msg_timeout_seconds{0.2};
+  bool remap_unsupported_objects_to_pedestrian{false};
 };
 
 struct InputBuilderOutput

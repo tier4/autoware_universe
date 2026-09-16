@@ -55,9 +55,14 @@ struct SelectedAgent
 
 enum class AgentSequenceDirection { Past, Future };
 
+/// Pick the agents fed to the model at `current_time`, nearest first.
+/// With `remap_unsupported_objects_to_pedestrian` set, objects of a class the model does not know
+/// (UNKNOWN, HAZARD, and any class added later) are rewritten to PEDESTRIAN before the IGNORE and
+/// POLYGON filters, so the planner reacts to them instead of dropping them.
 std::vector<SelectedAgent> select_current_agents(
   const MessageView<TrackedObjects> & objects_msgs, const rclcpp::Time & current_time,
-  const Eigen::Matrix4d & map_to_ego_transform, size_t max_num_agent);
+  const Eigen::Matrix4d & map_to_ego_transform, size_t max_num_agent,
+  bool remap_unsupported_objects_to_pedestrian = false);
 
 xt::xarray<float> create_neighbor_agent_sequence(
   const MessageView<TrackedObjects> & objects_msgs, const std::vector<SelectedAgent> & agents,
