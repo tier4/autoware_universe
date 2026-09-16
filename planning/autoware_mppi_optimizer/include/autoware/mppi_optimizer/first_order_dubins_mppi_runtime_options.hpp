@@ -20,7 +20,7 @@
 namespace autoware::mppi_optimizer
 {
 
-/** Debug logging and ablation options from mppi_optimizer.param.yaml. */
+/** Runtime, debug logging and ablation options from mppi_optimizer.param.yaml. */
 struct FirstOrderDubinsMppiRuntimeOptions
 {
   bool enable_debug_trajectory_log{false};
@@ -31,6 +31,11 @@ struct FirstOrderDubinsMppiRuntimeOptions
   /** Capture sampled rollouts after every MPPI iteration and publish them as debug markers. */
   bool enable_iteration_rollout_debug{false};
   bool ignore_obstacles{false};
+  /**
+   * Maximum prediction time [s] from the current planning state for moving-object costs and
+   * collision validation. Zero uses the full MPPI horizon. Stationary objects remain active.
+   */
+  float dynamic_obstacle_horizon_s{0.0F};
   bool ignore_road_borders{false};
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};

@@ -90,6 +90,9 @@
       prevent_reverse_velocity: true
 
       ignore_obstacles: false
+      # Moving objects are considered through this time [s]; 0.0 uses the full MPPI horizon.
+      # Stationary objects remain active for the full horizon.
+      dynamic_obstacle_horizon_s: 0.0
       ignore_road_borders: false
       ignore_drivable_area: true
       force_cold_start_each_step: false

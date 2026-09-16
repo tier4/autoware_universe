@@ -896,6 +896,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   size_t tracking_start_idx{0U};
   float sim_time{0.0F};
   bool ignore_obstacles{false};
+  float dynamic_obstacle_horizon_s{0.0F};
   bool ignore_road_borders{false};
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
@@ -2181,6 +2182,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       }
 
       int obstacle_count = 0;
+      cost.setDynamicObstacleHorizon(dynamic_obstacle_horizon_s, kDt);
       if (!tracked_objects.objects.empty()) {
         buildObstacleTrajectoryBuffersFromTrackedObjects(
           tracked_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw, obs_half_length,
@@ -2415,6 +2417,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
       throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
     }
     if (
+      !std::isfinite(options.dynamic_obstacle_horizon_s) ||
+      options.dynamic_obstacle_horizon_s < 0.0F ||
       !std::isfinite(options.min_trajectory_progress_m) ||
       options.min_trajectory_progress_m < 0.0F ||
       !std::isfinite(options.nominal_initial_steering_max_deviation_rad) ||
@@ -2449,6 +2453,7 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
     impl_->min_optimization_length = options.min_optimization_length;
     impl_->min_trajectory_progress_m = options.min_trajectory_progress_m;
+    impl_->dynamic_obstacle_horizon_s = options.dynamic_obstacle_horizon_s;
     impl_->nominal_initial_steering_max_deviation_rad =
       options.nominal_initial_steering_max_deviation_rad;
     impl_->last_control_warm_start_max_age_s = options.last_control_warm_start_max_age_s;
@@ -2544,6 +2549,7 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
     use_last_control_as_nominal ? "true" : "false");
   FirstOrderDubinsMppiRuntimeOptions runtime{};
   runtime.ignore_obstacles = ignore_obstacles;
+  runtime.dynamic_obstacle_horizon_s = impl_->dynamic_obstacle_horizon_s;
   runtime.ignore_road_borders = ignore_road_borders;
   runtime.ignore_drivable_area = ignore_drivable_area;
   runtime.force_cold_start_each_step = force_cold_start_each_step;
@@ -2974,6 +2980,7 @@ try {
     {
       FirstOrderDubinsMppiRuntimeOptions runtime{};
       runtime.ignore_obstacles = impl_->ignore_obstacles;
+      runtime.dynamic_obstacle_horizon_s = impl_->dynamic_obstacle_horizon_s;
       runtime.ignore_road_borders = impl_->ignore_road_borders;
       runtime.ignore_drivable_area = impl_->ignore_drivable_area;
       runtime.force_cold_start_each_step = impl_->force_cold_start_each_step;

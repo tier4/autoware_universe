@@ -138,6 +138,14 @@ struct alignas(16) FirstOrderDubinsRuntimeData
   float obs_half_width_[kMaxObstacles] = {};
   /** True when the obstacle pose is invariant across the supplied horizon. */
   bool obs_is_static_[kMaxObstacles] = {};
+  /** Moving obstacles participate only in this many post-step samples; static ones always do. */
+  int dynamic_obstacle_timesteps_ = NUM_TIMESTEPS;
+
+  __host__ __device__ bool obstacleActiveAtStep(const int obstacle, const int timestep) const
+  {
+    return timestep < dynamic_obstacle_timesteps_ || obs_is_static_[obstacle];
+  }
+
   int num_road_border_segments_ = 0;
   float road_border_x0_[kMaxRoadBorderSegments] = {};
   float road_border_y0_[kMaxRoadBorderSegments] = {};
@@ -297,6 +305,9 @@ public:
   __host__ __device__ float computePreferredLaneCenterCost(float x, float y) const;
   /** Exact-only mode for validation and backend benchmarks. */
   void setPreferredLaneCenterTextureEnabled(bool enabled);
+
+  /** Limit moving-object costs and validation to horizon_s; zero uses the full horizon. */
+  void setDynamicObstacleHorizon(float horizon_s, float dt);
 
   /** Static obstacles: same pose replicated at every MPPI horizon step. */
   void setOrientedBoxObstacles(

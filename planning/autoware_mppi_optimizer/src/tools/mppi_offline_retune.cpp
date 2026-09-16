@@ -89,6 +89,7 @@ void printUsage(const char * argv0)
                "  --frame N              Only retune frame N (default: all)\n"
                "  --params-yaml FILE     Optional ROS-style yaml with cost params\n"
                "  --set key=value        Override a cost param (repeatable)\n"
+               "                         Also accepts dynamic_obstacle_horizon_s\n"
                "  --wheel-base M         Vehicle wheel base [m] (default 4.76)\n"
                "  --ego-length M         Ego length [m] (default 5.0)\n"
                "  --ego-width M          Ego width [m] (default 1.9)\n"
@@ -232,7 +233,20 @@ void applyCostParam(
   }
 }
 
-void loadParamsYaml(const std::string & path, FirstOrderDubinsMppiCostParams & params)
+void applyRetuneParam(
+  FirstOrderDubinsMppiCostParams & params, FirstOrderDubinsMppiRuntimeOptions & runtime,
+  const std::string & key, const float value)
+{
+  if (key == "dynamic_obstacle_horizon_s") {
+    runtime.dynamic_obstacle_horizon_s = value;
+  } else {
+    applyCostParam(params, key, value);
+  }
+}
+
+void loadParamsYaml(
+  const std::string & path, FirstOrderDubinsMppiCostParams & params,
+  FirstOrderDubinsMppiRuntimeOptions & runtime)
 {
   std::ifstream in(path);
   if (!in) {
@@ -257,7 +271,7 @@ void loadParamsYaml(const std::string & path, FirstOrderDubinsMppiCostParams & p
       continue;
     }
     try {
-      applyCostParam(params, key, std::stof(value));
+      applyRetuneParam(params, runtime, key, std::stof(value));
     } catch (const std::exception &) {
       // Ignore unknown / non-float keys in the yaml.
     }
@@ -487,6 +501,7 @@ int run(int argc, char ** argv)
   bool copy_reference = false;
   bool reseed_nominal_from_reference = false;
   FirstOrderDubinsMppiCostParams cost_params;
+  FirstOrderDubinsMppiRuntimeOptions runtime_options;
   FirstOrderDubinsMppiVehicleParams vehicle_params;
   // Defaults closer to j6_gen2 for Autoware replay.
   vehicle_params.wheel_base = 4.76F;
@@ -525,7 +540,7 @@ int run(int argc, char ** argv)
       if (!parseKeyValue(need("--set"), key, value)) {
         throw std::runtime_error("Expected --set key=value");
       }
-      applyCostParam(cost_params, key, std::stof(value));
+      applyRetuneParam(cost_params, runtime_options, key, std::stof(value));
     } else if (arg == "--wheel-base") {
       vehicle_params.wheel_base = std::stof(need("--wheel-base"));
     } else if (arg == "--ego-length") {
@@ -557,10 +572,10 @@ int run(int argc, char ** argv)
   // Prefer params captured at log time; then yaml; then CLI --set / vehicle flags.
   loadCostParamsFromLog(log_dir, cost_params);
   loadVehicleParamsFromLog(log_dir, vehicle_params);
-  const FirstOrderDubinsMppiRuntimeOptions runtime_options = loadRuntimeOptionsFromLog(log_dir);
+  runtime_options = loadRuntimeOptionsFromLog(log_dir);
 
   if (!params_yaml.empty()) {
-    loadParamsYaml(params_yaml, cost_params);
+    loadParamsYaml(params_yaml, cost_params, runtime_options);
   }
   // Re-apply --set / vehicle CLI so they win over log + yaml.
   for (int i = 1; i + 1 < argc; ++i) {
@@ -569,7 +584,7 @@ int run(int argc, char ** argv)
       std::string key;
       std::string value;
       if (parseKeyValue(argv[i + 1], key, value)) {
-        applyCostParam(cost_params, key, std::stof(value));
+        applyRetuneParam(cost_params, runtime_options, key, std::stof(value));
       }
     } else if (arg == "--wheel-base") {
       vehicle_params.wheel_base = std::stof(argv[i + 1]);
