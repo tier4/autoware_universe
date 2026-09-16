@@ -126,6 +126,7 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.enable_distance_map_texture_debug = params.enable_distance_map_texture_debug;
   output.enable_iteration_rollout_debug = params.enable_iteration_rollout_debug;
   output.ignore_obstacles = params.ignore_obstacles;
+  output.dynamic_obstacle_horizon_s = static_cast<float>(params.dynamic_obstacle_horizon_s);
   output.ignore_road_borders = params.ignore_road_borders;
   output.ignore_drivable_area = params.ignore_drivable_area;
   output.force_cold_start_each_step = params.force_cold_start_each_step;

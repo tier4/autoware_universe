@@ -187,6 +187,7 @@ __global__ void generateObstacleDistanceMapKernel(
   __shared__ float obstacle_sin[kMaxObstacles];
   __shared__ float obstacle_half_length[kMaxObstacles];
   __shared__ float obstacle_half_width[kMaxObstacles];
+  __shared__ bool obstacle_active[kMaxObstacles];
   const int local_thread = static_cast<int>(threadIdx.y * blockDim.x + threadIdx.x);
   const int local_thread_count = static_cast<int>(blockDim.x * blockDim.y);
   const auto & data = cost->runtimeData();
@@ -194,6 +195,8 @@ __global__ void generateObstacleDistanceMapKernel(
   for (int timestep = static_cast<int>(blockIdx.z * blockDim.z + threadIdx.z);
        timestep < grid.time_steps; timestep += static_cast<int>(blockDim.z * gridDim.z)) {
     for (int obstacle = local_thread; obstacle < obstacle_count; obstacle += local_thread_count) {
+      obstacle_active[obstacle] = data.obstacleActiveAtStep(obstacle, timestep);
+      if (!obstacle_active[obstacle]) continue;
       obstacle_x[obstacle] = mppi::memory::loadReadOnly(&data.obs_x_[obstacle][timestep]);
       obstacle_y[obstacle] = mppi::memory::loadReadOnly(&data.obs_y_[obstacle][timestep]);
       __sincosf(
@@ -212,6 +215,7 @@ __global__ void generateObstacleDistanceMapKernel(
         float minimum = kDistanceMapEmptyDistance;
 
         for (int obstacle = 0; obstacle < obstacle_count; ++obstacle) {
+          if (!obstacle_active[obstacle]) continue;
           minimum = fminf(
             minimum, signedDistancePointToOrientedBox(
                        world_x, world_y, obstacle_x[obstacle], obstacle_y[obstacle],

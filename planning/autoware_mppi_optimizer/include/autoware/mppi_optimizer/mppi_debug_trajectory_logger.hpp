@@ -226,6 +226,7 @@ public:
     if (out) {
       out << "key,value\n";
       out << "ignore_obstacles," << (options.ignore_obstacles ? 1 : 0) << "\n";
+      out << "dynamic_obstacle_horizon_s," << options.dynamic_obstacle_horizon_s << "\n";
       out << "ignore_road_borders," << (options.ignore_road_borders ? 1 : 0) << "\n";
       out << "ignore_drivable_area," << (options.ignore_drivable_area ? 1 : 0) << "\n";
       out << "force_cold_start_each_step," << (options.force_cold_start_each_step ? 1 : 0) << "\n";

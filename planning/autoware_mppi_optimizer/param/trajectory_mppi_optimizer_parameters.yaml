@@ -315,6 +315,12 @@ trajectory_mppi_optimizer:
     default_value: false
     description: Ignore object costs and validation
     read_only: false
+  dynamic_obstacle_horizon_s:
+    type: double
+    default_value: 0.0
+    description: Maximum prediction time in seconds for moving-object costs and collision validation; zero uses the full MPPI horizon and stationary objects always remain active
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   ignore_road_borders:
     type: bool
     default_value: false
