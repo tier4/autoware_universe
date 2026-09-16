@@ -396,7 +396,8 @@ public:
     const float x, const float y, float * theta_c = nullptr) const;
 
   __host__ __device__ bool egoIntersectsObstacleAtStep(
-    const float x, const float y, const float yaw, int timestep) const;
+    const float x, const float y, const float yaw, int timestep,
+    int * intersecting_obstacle = nullptr) const;
 
   /**
    * Signed clearance from the ego's four-circle spine approximation to the closest obstacle.
@@ -407,9 +408,9 @@ public:
   __host__ __device__ float distanceToClosestObstacle(
     float x, float y, float yaw, int timestep, int * closest_obstacle = nullptr) const;
 
-  /** Placeholder for ego-footprint collision against static road-border segments. */
+  /** Exact inflated-footprint collision; optionally returns the first intersecting segment. */
   __host__ __device__ bool egoIntersectsRoadBorder(
-    const float x, const float y, const float yaw) const;
+    const float x, const float y, const float yaw, int * intersecting_segment = nullptr) const;
 
   /**
    * Clearance from the ego's four-circle spine approximation to the closest road border. GPU and

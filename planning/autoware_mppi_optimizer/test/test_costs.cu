@@ -367,7 +367,7 @@ TEST_F(CostEvaluation, LateralBarrierThresholdsAreSymmetric)
         expected(
           b, &Breakdown::lateral_boundary, "lateral_boundary",
           w * std::pow(std::max(0.0F, offset - 1.5F), 2));
-        report.expect("lateral_crash", report.rows.back().crash, w > 0 && offset >= 2, 0);
+        report.expect("lateral_crash", report.rows.back().crash != 0, w > 0 && offset >= 2, 0);
       }
   }
 }
@@ -403,7 +403,7 @@ TEST_F(CostEvaluation, GeometryClearanceSweeps)
       params.drivable_area_safe_margin = 1;
       params.corner_safe_margin = 1;
       apply();
-      for (float clearance : {1.1F, 1.0F, 0.99F, 0.5F, 0.0F, -0.1F}) {
+      for (float clearance : {1.1F, 1.0F, 0.99F, 0.5F, 0.0F, -0.1F, -0.2F}) {
         const float wall_y = (kind == 3 ? 1.0F : radius) + clearance;
         if (kind == 0)
           obstacle(0, wall_y + 0.5F, 0, 10, 0.5F);
@@ -419,8 +419,9 @@ TEST_F(CostEvaluation, GeometryClearanceSweeps)
                                             : clearance;
         const float want = w * std::pow(std::max(0.0F, 1 - effective), 2) * (kind == 3 ? 2 : 1);
         expected(b, value, name, want);
-        if (kind < 2 && std::abs(clearance) > 0.01F)
-          report.expect("soft_contact_flag", report.rows.back().crash, w > 0 && clearance < 0, 0);
+        if (kind < 2)
+          report.expect(
+            "exact_contact_flag", report.rows.back().crash != 0, w > 0 && wall_y <= 1.0F, 0);
       }
     }
   cost->setRoadBorderSegments({});

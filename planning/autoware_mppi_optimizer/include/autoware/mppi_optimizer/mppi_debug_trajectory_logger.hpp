@@ -47,7 +47,7 @@ inline bool writeMppiRolloutDiagnosticsCsv(
   if (!out) return false;
   out << "iteration,failed,eligible_count,nonfinite_count,unsafe_count,lateral_count,"
          "obstacle_count,road_border_count,weight_sum,ess,first_violation_step,"
-         "first_violation_time_s,first_violation_type,nearest_geometry_index,object_id\n";
+         "first_violation_time_s,first_violation_type,geometry_index,object_id\n";
   for (size_t iteration = 0; iteration < diagnostics.size(); ++iteration) {
     const auto & d = diagnostics[iteration];
     out << iteration << ',' << (static_cast<int>(iteration) == failed_iteration ? 1 : 0) << ','

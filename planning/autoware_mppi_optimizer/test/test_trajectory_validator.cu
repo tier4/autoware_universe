@@ -110,6 +110,162 @@ protected:
   std::unique_ptr<TestCost> cost_;
 };
 
+// Exact eligibility must agree with final validation while keeping the smooth cost.
+TEST(ExactCollisionEligibility, ConservativeCircleContactKeepsSeparatedRectangleEligible)
+{
+  auto cost = std::make_unique<TestCost>();
+  TestCostParams params;
+  params.ego_length = 8.0F;
+  params.ego_width = 2.0F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.obstacle_collision_margin = 0.2F;
+  params.road_border_collision_margin = 0.2F;
+  params.obstacle_barrier_weight = params.road_border_barrier_weight = 1000.0F;
+  cost->setParams(params);
+  const float x = 1.0F, y = 1.5F, yaw = 0.0F, half = 0.05F;
+  cost->setOrientedBoxObstacles(&x, &y, &yaw, &half, &half, 1);
+  cost->setRoadBorderSegments({Segment{-5.0F, 1.35F, 5.0F, 1.35F}});
+  const float obstacle_distance = cost->distanceToClosestObstacle(0, 0, 0, 0);
+  const float road_distance = cost->distanceToRoadBorder(0, 0, 0);
+  ASSERT_LE(obstacle_distance, params.obstacle_collision_margin);
+  ASSERT_LE(road_distance, params.road_border_collision_margin);
+  ASSERT_FALSE(cost->egoIntersectsObstacleAtStep(0, 0, 0, 0));
+  ASSERT_FALSE(cost->egoIntersectsRoadBorder(0, 0, 0));
+  float drivable, obstacle, road;
+  bool unsafe = false;
+  int status = 0;
+  cost->computeGradualCrashCosts(0, 0, 0, 0, drivable, obstacle, road, &unsafe, &status);
+  EXPECT_FALSE(unsafe);
+  EXPECT_EQ(status, 0);
+  EXPECT_GT(obstacle, 0.0F);
+  EXPECT_GT(road, 0.0F);
+  EXPECT_FLOAT_EQ(
+    obstacle, computeSmoothBarrierCost(
+                obstacle_distance, params.obstacle_collision_margin + params.obstacle_safe_margin,
+                params.obstacle_barrier_weight));
+  EXPECT_FLOAT_EQ(
+    road, computeSmoothBarrierCost(
+            road_distance, params.road_border_collision_margin + params.road_border_safe_margin,
+            params.road_border_barrier_weight));
+}
+
+TEST(ExactCollisionEligibility, InflatedCornerContactBeyondOldThresholdIsRejected)
+{
+  auto cost = std::make_unique<TestCost>();
+  TestCostParams params;
+  params.ego_length = 8.0F;
+  params.ego_width = 2.0F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.obstacle_collision_margin = params.road_border_collision_margin = 0.5F;
+  params.obstacle_barrier_weight = params.road_border_barrier_weight = 1000.0F;
+  cost->setParams(params);
+  // The first obstacle is closer to a circle but does not intersect the rectangle.
+  const float x[] = {1.0F, 4.49F}, y[] = {1.6F, 1.49F};
+  const float yaw[] = {0.0F, 0.0F}, half[] = {0.005F, 0.005F};
+  cost->setOrientedBoxObstacles(x + 1, y + 1, yaw + 1, half + 1, half + 1, 1);
+  cost->setRoadBorderSegments({Segment{4.48F, 1.49F, 4.49F, 1.48F}});
+  ASSERT_GT(cost->distanceToClosestObstacle(0, 0, 0, 0), params.obstacle_collision_margin);
+  ASSERT_GT(cost->distanceToRoadBorder(0, 0, 0), params.road_border_collision_margin);
+  float drivable, obstacle, road;
+  bool unsafe = false;
+  int status = 0;
+  cost->computeGradualCrashCosts(0, 0, 0, 0, drivable, obstacle, road, &unsafe, &status);
+  EXPECT_TRUE(unsafe);
+  EXPECT_NE(status & mppi::safety::kObstacle, 0);
+  EXPECT_NE(status & mppi::safety::kRoadBorder, 0);
+
+  cost->setOrientedBoxObstacles(x, y, yaw, half, half, 2);
+  status = 0;
+  unsafe = false;
+  cost->computeGradualCrashCosts(0, 0, 0, 0, drivable, obstacle, road, &unsafe, &status);
+  EXPECT_EQ(mppi::safety::reason(status), 2);
+  EXPECT_EQ(mppi::safety::geometryIndex(status), 1);
+}
+
+TEST(ExactCollisionEligibility, MovingObjectCutoffStillAppliesToExactChecks)
+{
+  auto cost = std::make_unique<TestCost>();
+  TestCostParams params;
+  params.ego_length = 8.0F;
+  params.ego_width = 2.0F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.obstacle_barrier_weight = 1000.0F;
+  cost->setParams(params);
+  std::array<float, kTestHorizon> x{}, y{}, yaw{};
+  for (int t = 0; t < kTestHorizon; ++t) x[t] = 0.01F * t;
+  const float half = 0.1F;
+  cost->setOrientedBoxObstacleTrajectories(
+    x.data(), y.data(), yaw.data(), &half, &half, 1, kTestHorizon);
+  cost->setDynamicObstacleHorizon(0.1F, 0.1F);
+  for (int t : {0, 1, kTestHorizon - 1}) {
+    float drivable, obstacle, road;
+    bool unsafe = false;
+    int status = 0;
+    cost->computeGradualCrashCosts(0, 0, 0, t, drivable, obstacle, road, &unsafe, &status);
+    EXPECT_EQ(unsafe, t == 0);
+    EXPECT_EQ((status & mppi::safety::kObstacle) != 0, t == 0);
+  }
+  x.fill(0.0F);
+  cost->setOrientedBoxObstacleTrajectories(
+    x.data(), y.data(), yaw.data(), &half, &half, 1, kTestHorizon);
+  float drivable, obstacle, road;
+  bool unsafe = false;
+  int status = 0;
+  cost->computeGradualCrashCosts(
+    0, 0, 0, kTestHorizon - 1, drivable, obstacle, road, &unsafe, &status);
+  EXPECT_TRUE(unsafe);  // Stationary geometry still participates beyond the cutoff.
+}
+
+__global__ void exactEligibilityParityKernel(TestCost * cost, int * results)
+{
+  const int i = threadIdx.x;
+  const float x = 0.25F * (i % 8) - 1.0F;
+  const float y = 0.25F * (i / 8);
+  const float yaw = 0.03F * i;
+  float drivable, obstacle, road;
+  bool unsafe = false;
+  int status = 0;
+  cost->computeGradualCrashCosts(x, y, yaw, 0, drivable, obstacle, road, &unsafe, &status);
+  results[3 * i] = status;
+  results[3 * i + 1] = cost->egoIntersectsObstacleAtStep(x, y, yaw, 0);
+  results[3 * i + 2] = cost->egoIntersectsRoadBorder(x, y, yaw);
+}
+
+TEST_F(TrajectoryValidatorTest, TextureBroadPhaseEligibilityMatchesExactCollisionChecks)
+{
+  auto params = makeParams();
+  params.ego_length = 8.0F;
+  params.ego_width = 2.0F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.obstacle_collision_margin = params.road_border_collision_margin = 0.5F;
+  cost_->setParams(params);
+  setStraightReference();
+  const float x = 4.49F, y = 1.49F, yaw = 0.4F, half = 0.05F;
+  cost_->setOrientedBoxObstacles(&x, &y, &yaw, &half, &half, 1);
+  cost_->setRoadBorderSegments({Segment{-5.0F, 1.6F, 5.0F, 1.6F}});
+  struct ResultsBuffer
+  {
+    int * data{nullptr};
+    ~ResultsBuffer() { cudaFreeNoThrow(data); }
+  } device;
+  std::array<int, 3 * 64> results{};
+  ASSERT_EQ(cudaMalloc(reinterpret_cast<void **>(&device.data), sizeof(results)), cudaSuccess);
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  exactEligibilityParityKernel<<<1, 64>>>(cost_->cost_d_, device.data);
+  ASSERT_EQ(cudaGetLastError(), cudaSuccess);
+  ASSERT_EQ(
+    cudaMemcpy(results.data(), device.data, sizeof(results), cudaMemcpyDeviceToHost), cudaSuccess);
+  bool saw_contact = false, saw_separation = false;
+  for (int i = 0; i < 64; ++i) {
+    EXPECT_EQ((results[3 * i] & mppi::safety::kObstacle) != 0, results[3 * i + 1] != 0) << i;
+    EXPECT_EQ((results[3 * i] & mppi::safety::kRoadBorder) != 0, results[3 * i + 2] != 0) << i;
+    saw_contact |= results[3 * i + 1] != 0;
+    saw_separation |= results[3 * i + 1] == 0;
+  }
+  EXPECT_TRUE(saw_contact);
+  EXPECT_TRUE(saw_separation);
+}
+
 // These transition/cost checks are host-only and intentionally require no CUDA context.
 TEST(PhysicalComfortTest, DelayedCommandDoesNotCreatePhysicalJerk)
 {
@@ -736,7 +892,8 @@ TEST_F(TrajectoryValidatorTest, GradualConstraintCostsAreIncludedInBreakdownTota
   EXPECT_NEAR(breakdown.total, gradual_cost_sum, 1.0E-4F);
   EXPECT_NEAR(breakdown.componentTotal(), breakdown.total, 1.0E-4F);
   EXPECT_NE(crash_status & mppi::safety::kObstacle, 0);
-  EXPECT_NE(crash_status & mppi::safety::kRoadBorder, 0);
+  // The road is within the soft buffer but outside the exact rectangular footprint.
+  EXPECT_EQ(crash_status & mppi::safety::kRoadBorder, 0);
 }
 
 TEST_F(TrajectoryValidatorTest, AppliesBoundaryThresholdSymmetricallyAndInclusively)

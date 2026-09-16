@@ -1043,8 +1043,10 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ bool
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   egoIntersectsObstacleAtStep(
-    const float x, const float y, const float yaw, const int timestep) const
+    const float x, const float y, const float yaw, const int timestep,
+    int * intersecting_obstacle) const
 {
+  if (intersecting_obstacle != nullptr) *intersecting_obstacle = -1;
   int t = timestep;
   if (t < 0) {
     t = 0;
@@ -1086,6 +1088,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
           mppi::memory::loadReadOnly(&data.obs_y_[i][t]), obs_cos, obs_sin,
           mppi::memory::loadReadOnly(&data.obs_half_length_[i]),
           mppi::memory::loadReadOnly(&data.obs_half_width_[i]))) {
+      if (intersecting_obstacle != nullptr) *intersecting_obstacle = i;
       return true;
     }
   }
@@ -1251,9 +1254,10 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
-  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
-  DYN_PARAMS_T>::egoIntersectsRoadBorder(const float x, const float y, const float yaw) const
+__host__ __device__ bool
+FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  egoIntersectsRoadBorder(
+    const float x, const float y, const float yaw, int * intersecting_segment) const
 {
   const float half_length = this->params_.ego_length * 0.5f;
   const float half_width = this->params_.ego_width * 0.5f;
@@ -1267,7 +1271,7 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   return checkRectSegmentIntersections(
     x, y, yaw, front_ext, back_ext, left_ext, right_ext, margin, runtimeData().road_border_x0_,
     runtimeData().road_border_y0_, runtimeData().road_border_x1_, runtimeData().road_border_y1_,
-    mppi::memory::loadReadOnly(&runtimeData().num_road_border_segments_));
+    mppi::memory::loadReadOnly(&runtimeData().num_road_border_segments_), intersecting_segment);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -1404,19 +1408,21 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
       obstacle_distance,
       this->params_.obstacle_collision_margin + this->params_.obstacle_safe_margin,
       this->params_.obstacle_barrier_weight);
-    if (safety_violation != nullptr) {
-      *safety_violation =
-        *safety_violation || obstacle_distance <= this->params_.obstacle_collision_margin;
+    float resolution = 0.0F;
+#ifdef __CUDA_ARCH__
+    if (texture_state_.obstacle_texture_valid_) {
+      resolution = texture_state_.obstacle_distance_map_grid_.resolution;
     }
-    if (rollout_status != nullptr && obstacle_distance <= this->params_.obstacle_collision_margin) {
-      int closest = -1;
-      // Resolve identity only when this stage can replace the earliest recorded event.
-      if (
-        mppi::safety::timestep(*rollout_status) < 0 ||
-        mppi::safety::timestep(*rollout_status) >= timestep) {
-        distanceToClosestObstacle(x, y, yaw, timestep, &closest);
-      }
-      markSafetyViolation(rollout_status, true, 2, timestep, closest);
+#endif
+    if (
+      (safety_violation != nullptr || rollout_status != nullptr) &&
+      distanceFieldMayIntersectInflatedRectangle(
+        obstacle_distance, this->params_.obstacle_collision_margin, resolution, x, y)) {
+      int intersecting_obstacle = -1;
+      const bool collision =
+        egoIntersectsObstacleAtStep(x, y, yaw, timestep, &intersecting_obstacle);
+      if (safety_violation != nullptr) *safety_violation = *safety_violation || collision;
+      markSafetyViolation(rollout_status, collision, 2, timestep, intersecting_obstacle);
     }
   }
   road_border_cost = 0.0F;
@@ -1426,20 +1432,20 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
       road_border_distance,
       this->params_.road_border_collision_margin + this->params_.road_border_safe_margin,
       this->params_.road_border_barrier_weight);
-    if (safety_violation != nullptr) {
-      *safety_violation =
-        *safety_violation || road_border_distance <= this->params_.road_border_collision_margin;
+    float resolution = 0.0F;
+#ifdef __CUDA_ARCH__
+    if (texture_state_.road_border_texture_valid_) {
+      resolution = texture_state_.static_distance_map_grid_.resolution;
     }
+#endif
     if (
-      rollout_status != nullptr &&
-      road_border_distance <= this->params_.road_border_collision_margin) {
-      int closest = -1;
-      if (
-        mppi::safety::timestep(*rollout_status) < 0 ||
-        mppi::safety::timestep(*rollout_status) >= timestep) {
-        distanceToRoadBorder(x, y, yaw, &closest);
-      }
-      markSafetyViolation(rollout_status, true, 3, timestep, closest);
+      (safety_violation != nullptr || rollout_status != nullptr) &&
+      distanceFieldMayIntersectInflatedRectangle(
+        road_border_distance, this->params_.road_border_collision_margin, resolution, x, y)) {
+      int intersecting_segment = -1;
+      const bool collision = egoIntersectsRoadBorder(x, y, yaw, &intersecting_segment);
+      if (safety_violation != nullptr) *safety_violation = *safety_violation || collision;
+      markSafetyViolation(rollout_status, collision, 3, timestep, intersecting_segment);
     }
   }
 }
