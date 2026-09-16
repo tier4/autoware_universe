@@ -483,8 +483,8 @@ disables this trajectory-level condition. Equality passes.
 
 This validation does not add `crash_contact_penalty` to rollouts. The rollout cost now sets its
 `crash_status` safety flag when it detects lateral-boundary contact, obstacle contact, or road-border
-contact. The flag is reduced to `unsafe_rollout_fraction` for temperature adaptation; it does not
-itself add another cost. `crash_contact_penalty` serves three cost-calibration roles:
+contact. These flags exclude unsafe rollouts from weighting and supply the diagnostic
+`unsafe_rollout_fraction`; they do not themselves add another cost. `crash_contact_penalty` serves three cost-calibration roles:
 
 1. calibration target for the lateral-boundary barrier;
 2. calibration target for obstacle and road-border barriers;
@@ -514,6 +514,36 @@ preserves its previous mean. Any such iteration makes the control step fail with
 candidate or adapting lambda. The interface records `no_eligible_rollouts` and returns its
 reference fallback, including active velocity limits, regardless of `skip_if_invalid`. A weighted
 mean of safe rollouts still needs the normal output trajectory validation.
+
+### Rollout failure diagnostics
+
+`failed_rollout_iteration` identifies the first failed iteration (zero-based; `-1` on success).
+The summary eligible count, unsafe fraction, and normalization statistics describe that iteration
+on failure and the last iteration on success. Per-iteration ESS and population diagnostics remain
+available even when an earlier iteration fails and a later one recovers. No eligible baseline is
+reported as NaN rather than reusing a previous cycle's best cost. Raw rollout visualizations still
+represent the last sampled iteration; the preserved nominal's validation is a separate result.
+
+Each population reports eligible, nonfinite-cost, unsafe, lateral-boundary, obstacle, and
+road-border counts, plus weight sum and ESS. Reason counts overlap when one rollout violates
+several constraints, and unsafe rollouts may also have nonfinite costs. The earliest geometric
+violation includes its zero-based stage, time `(stage + 1) * dt`, type, and nearest analytical
+obstacle/road-border index in the supplied frame. Obstacle events also include the tracked-object
+UUID. Ties are resolved by stage, then type (lateral, obstacle, road border), then geometry index.
+
+Geometry identity is diagnostic: texture interpolation can flag a contact at a slightly different
+clearance than the analytical geometry. Nonfinite total costs have no geometric event unless
+that population also contains a geometric violation; unavailable stages/indices/times are `-1`,
+with type `unavailable`. The existing dynamic-object horizon also applies to these obstacle events.
+The underlying collision criteria and fallback policy are unchanged.
+
+ROS cost diagnostics expose all populations under `mppi/iteration_N/` (one-based display names)
+and the zero-based failed index as `mppi/failed_iteration`. On failure, a warning prints the failed
+population and earliest geometric event. Debug logging and offline retuning write
+`<frame>_rollout_diagnostics.csv`, with one row per iteration and `failed=1` for the first failed
+iteration. This sidecar does not change existing replay inputs.
+
+### Lambda adaptation
 
 Lambda stays fixed throughout a control step. The final eligible population determines the next
 step's temperature using bounded log-ratio feedback:

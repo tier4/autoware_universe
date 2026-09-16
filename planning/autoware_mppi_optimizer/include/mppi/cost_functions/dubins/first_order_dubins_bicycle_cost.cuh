@@ -6,6 +6,7 @@
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
+#include <mppi/core/rollout_safety_status.cuh>
 #include <mppi/cost_functions/cost.cuh>
 #include <mppi/cost_functions/dubins/distance_map_texture.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_kinematic_limits.cuh>
@@ -401,9 +402,10 @@ public:
    * Signed clearance from the ego's four-circle spine approximation to the closest obstacle.
    * GPU rollout samples the point ESDF at each circle center; host replay evaluates the same
    * circle-to-box geometry analytically.
+   * Supplying closest_obstacle forces analytical evaluation and returns the nearest index.
    */
   __host__ __device__ float distanceToClosestObstacle(
-    float x, float y, float yaw, int timestep) const;
+    float x, float y, float yaw, int timestep, int * closest_obstacle = nullptr) const;
 
   /** Placeholder for ego-footprint collision against static road-border segments. */
   __host__ __device__ bool egoIntersectsRoadBorder(
@@ -412,8 +414,10 @@ public:
   /**
    * Clearance from the ego's four-circle spine approximation to the closest road border. GPU and
    * host paths use the same circle geometry.
+   * Supplying closest_segment forces analytical evaluation and returns the nearest index.
    */
-  __host__ __device__ float distanceToRoadBorder(float x, float y, float yaw) const;
+  __host__ __device__ float distanceToRoadBorder(
+    float x, float y, float yaw, int * closest_segment = nullptr) const;
 
   /**
    * Signed clearance from the ego's four-circle spine approximation to drivable-area segments.
@@ -423,7 +427,8 @@ public:
 
   __host__ __device__ void computeGradualCrashCosts(
     float x, float y, float yaw, int timestep, float & drivable_area_cost, float & obstacle_cost,
-    float & road_border_cost, bool * safety_violation = nullptr) const;
+    float & road_border_cost, bool * safety_violation = nullptr,
+    int * rollout_status = nullptr) const;
 
   float computeStateCost(
     const Eigen::Ref<const output_array> & y, int timestep, int * crash_status);

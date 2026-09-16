@@ -1236,6 +1236,12 @@ TEST_F(
 
   EXPECT_FALSE(postprocessed);
   EXPECT_TRUE(result.debug.was_rejected);
+  EXPECT_EQ(result.debug.failed_rollout_iteration, 0);
+  ASSERT_EQ(result.debug.rollout_iteration_diagnostics.size(), 1U);
+  EXPECT_EQ(result.debug.rollout_iteration_diagnostics.front().eligible_count, 0);
+  EXPECT_GT(result.debug.rollout_iteration_diagnostics.front().nonfinite_count, 0);
+  ASSERT_EQ(result.debug.iteration_effective_sample_sizes.size(), 1U);
+  EXPECT_FLOAT_EQ(result.debug.iteration_effective_sample_sizes.front(), 0.0F);
   EXPECT_TRUE(result.trajectory == input);
   EXPECT_FALSE(result.debug.applied_plant.valid);
   EXPECT_TRUE(hasInvalidityReason(

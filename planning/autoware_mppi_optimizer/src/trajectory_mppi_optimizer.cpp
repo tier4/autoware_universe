@@ -825,6 +825,29 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value(
     "nominal/guarded_initial_steering_rad", debug.nominal_steering_continuity.guarded_command_rad);
   cost_diagnostics_->add_key_value("mppi/eligible_rollout_count", debug.eligible_rollout_count);
+  cost_diagnostics_->add_key_value("mppi/failed_iteration", debug.failed_rollout_iteration);
+  for (size_t iteration = 0; iteration < debug.rollout_iteration_diagnostics.size(); ++iteration) {
+    const auto & population = debug.rollout_iteration_diagnostics[iteration];
+    const std::string prefix = "mppi/iteration_" + std::to_string(iteration + 1U) + "/";
+    cost_diagnostics_->add_key_value(prefix + "eligible_count", population.eligible_count);
+    cost_diagnostics_->add_key_value(prefix + "nonfinite_count", population.nonfinite_count);
+    cost_diagnostics_->add_key_value(prefix + "unsafe_count", population.unsafe_count);
+    cost_diagnostics_->add_key_value(prefix + "lateral_count", population.lateral_violation_count);
+    cost_diagnostics_->add_key_value(
+      prefix + "obstacle_count", population.obstacle_violation_count);
+    cost_diagnostics_->add_key_value(
+      prefix + "road_border_count", population.road_border_violation_count);
+    cost_diagnostics_->add_key_value(prefix + "weight_sum", population.weight_sum);
+    cost_diagnostics_->add_key_value(
+      prefix + "first_violation_step", population.first_violation_step);
+    cost_diagnostics_->add_key_value(
+      prefix + "first_violation_time_s", population.first_violation_time_s);
+    cost_diagnostics_->add_key_value(
+      prefix + "first_violation_type", population.first_violation_type);
+    cost_diagnostics_->add_key_value(
+      prefix + "nearest_geometry_index", population.first_violation_geometry_index);
+    cost_diagnostics_->add_key_value(prefix + "object_id", population.first_violation_object_id);
+  }
   cost_diagnostics_->add_key_value(
     "mppi/minimum_cost_rollout_count", debug.minimum_cost_rollout_count);
   cost_diagnostics_->add_key_value(
