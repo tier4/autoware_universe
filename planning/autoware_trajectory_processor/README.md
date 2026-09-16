@@ -161,6 +161,21 @@ All modifier plugins must inherit from `TrajectoryProcessorPluginBase` and imple
 
 #### Current Plugins
 
+##### ExternalVelocityLimit
+
+The `autoware::trajectory_processor::plugin::ExternalVelocityLimit` plugin applies the latest
+`autoware_internal_planning_msgs::msg::VelocityLimit` received on
+`~/input/external_velocity_limit_mps` to every point of each trajectory. It uses the absolute value
+of `constraints.min_acceleration` as the constant deceleration when `use_constraints` is true, and
+otherwise falls back to `stopping_constraints.nominal_deceleration`. Like `MapVelocityLimits`, it
+preserves the first pose, point count, timestamps, and original polyline shape while retiming the
+trajectory.
+
+| Parameter                                   | Default | Description                                              |
+| ------------------------------------------- | ------- | -------------------------------------------------------- |
+| `use_external_velocity_limit`               | `true`  | Enable the plugin when included in `plugin_names`.       |
+| `stopping_constraints.nominal_deceleration` | `1.0`   | Fallback deceleration when constraints are not provided. |
+
 ##### MapVelocityLimits
 
 The autoware::trajectory_processor::plugin::MapVelocityLimits plugin limits forward trajectories using map speed limits. It preserves the first point's pose, the point count, and every timestamp. Input samples assume a fixed 0.1 s spacing.
