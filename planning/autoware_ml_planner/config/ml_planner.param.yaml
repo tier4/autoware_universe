@@ -21,6 +21,12 @@
       weight_acceleration: 0.1       # regularization weight on acceleration input
       weight_steering_rate: 10.0     # regularization weight on steering rate input
       terminal_weight_scale: 2.5     # terminal state weight = scale * stage weight
+      goal:
+        weight_longitudinal: 5.0
+        weight_lateral: 5.0
+        weight_yaw: 0.5
+        weight_velocity: 0.1
+        snap_distance_m: 1.0
       min_velocity_mps: 0.0          # lower velocity bound; 0 prevents backward motion [m/s]
       max_velocity_mps: 30.0         # upper velocity bound [m/s]
       min_acceleration_mps2: -4.0    # [m/s^2]
@@ -28,6 +34,20 @@
       max_steering_rate_rps: 1.0     # [rad/s]
       max_lateral_acceleration_mps2: 3.0  # soft constraint bound [m/s^2]
       max_sqp_iterations: 50
+      temporal_consistency:
+        # Track this candidate's own previous plan so consecutive outputs stay coherent.
+        # Weights below are the values at t = 0 and are scaled down over the horizon by
+        #   alpha(t) = far_weight_ratio + (1 - far_weight_ratio) * exp(-t / decay_time_constant_s)
+        # so the near stages, which the controller executes, are held still while the far
+        # stages - a prediction that is supposed to move - stay free. That is why the near
+        # weights may exceed the tracking weights above without making the planner sluggish.
+        enable: true
+        weight_longitudinal: 0.4    # let the timing float more than the path [1/m^2]
+        weight_lateral: 20.0         # main term: no lateral jumps between cycles [1/m^2]
+        weight_yaw: 0.2             # [1/rad^2]
+        weight_velocity: 0.4        # keeps the speed profile from being re-planned
+        decay_time_constant_s: 1.0  # <= 0 keeps the weights uniform over the horizon [s]
+        far_weight_ratio: 0.5      # weight fraction remaining at the far end, in [0, 1]
     road_border_avoidance:
       enable: false
       start_time_s: 0.0          # ignore trajectory points before this time [s]
