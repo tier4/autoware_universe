@@ -19,7 +19,8 @@
 namespace autoware::control_command_gate
 {
 
-CommandSubscription::CommandSubscription(uint16_t id, const std::string & name, rclcpp::Node & node)
+CommandSubscription::CommandSubscription(
+  uint16_t id, const std::string & name, autoware::agnocast_wrapper::Node & node)
 : CommandSource(id, name)
 {
   using std::placeholders::_1;

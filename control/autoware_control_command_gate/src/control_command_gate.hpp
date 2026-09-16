@@ -20,8 +20,9 @@
 #include "command/interface.hpp"
 #include "command/selector.hpp"
 
+#include <autoware/agnocast_wrapper/diagnostic_updater.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware_command_mode_types/sources.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <tier4_system_msgs/msg/command_source_status.hpp>
@@ -33,7 +34,7 @@
 namespace autoware::control_command_gate
 {
 
-class ControlCmdGate : public rclcpp::Node
+class ControlCmdGate : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit ControlCmdGate(const rclcpp::NodeOptions & options);
@@ -50,11 +51,11 @@ private:
     const SelectCommandSource::Request::SharedPtr req,
     const SelectCommandSource::Response::SharedPtr res);
 
-  rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<CommandSourceStatus>::SharedPtr pub_status_;
-  rclcpp::Service<SelectCommandSource>::SharedPtr srv_select_;
+  AUTOWARE_TIMER_PTR timer_;
+  AUTOWARE_PUBLISHER_PTR(CommandSourceStatus) pub_status_;
+  AUTOWARE_SERVICE_PTR(SelectCommandSource) srv_select_;
 
-  diagnostic_updater::Updater diag_;
+  autoware::agnocast_wrapper::diagnostic_updater::Updater diag_;
   std::unique_ptr<CommandSelector> selector_;
   CommandFilter * output_filter_;
   Compatibility * compatibility_;

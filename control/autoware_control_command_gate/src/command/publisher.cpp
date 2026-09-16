@@ -19,7 +19,7 @@
 namespace autoware::control_command_gate
 {
 
-CommandPublisher::CommandPublisher(rclcpp::Node & node)
+CommandPublisher::CommandPublisher(autoware::agnocast_wrapper::Node & node)
 {
   const auto control_qos = rclcpp::QoS(5);
   const auto volatile_qos = rclcpp::QoS(1);
