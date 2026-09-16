@@ -67,8 +67,7 @@ InputBuilderResult create_input_data_map(
   // Neighbor agents on ego reference frame. Return this exact selection so
   // callers can preserve the tensor row-to-object correspondence.
   auto selected_agents = select_current_agents(
-    frame_inputs.objects_history, frame_inputs.frame_time, map_to_ego_transform, MAX_NUM_NEIGHBORS,
-    params.remap_unsupported_objects_to_pedestrian);
+    frame_inputs.objects_history, frame_inputs.frame_time, map_to_ego_transform, MAX_NUM_NEIGHBORS);
   {
     input_data_map["neighbor_agents_past"] = create_neighbor_agent_sequence(
       frame_inputs.objects_history, selected_agents, frame_inputs.frame_time, map_to_ego_transform,

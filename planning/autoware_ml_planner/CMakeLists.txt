@@ -37,6 +37,7 @@ set(ML_PLANNER_SOURCES
   src/preprocessing/items/turn_indicators.cpp
   src/preprocessing/preprocessing_utils.cpp
   src/utils/marker_utils.cpp
+  src/utils/object_remap.cpp
   src/utils/planning_factor_utils.cpp
   src/utils/utils.cpp
 )
@@ -107,11 +108,11 @@ autoware_agnocast_wrapper_register_node(autoware_ml_planner_component
 
 if(BUILD_TESTING)
   set(ML_PLANNER_TEST_SOURCES
-    test/agent_remap_test.cpp
     test/lanelet_edge_case_test.cpp
     test/lanelet_integration_test.cpp
     test/lanelet_test.cpp
     test/marker_utils_test.cpp
+    test/object_remap_test.cpp
     test/planning_factor_utils_test.cpp
     test/postprocessing_utils_test.cpp
     test/postprocessing_utils_edge_case_test.cpp

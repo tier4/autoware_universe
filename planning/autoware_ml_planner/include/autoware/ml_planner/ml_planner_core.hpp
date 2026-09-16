@@ -109,7 +109,6 @@ struct MLPlannerParams
   bool use_cuda_graph;
   bool build_only;
   double planning_frequency_hz;
-  bool remap_unsupported_objects_to_pedestrian;
   double traffic_light_group_msg_timeout_seconds;
   int batch_size;
   std::vector<double> noise_scale_list;

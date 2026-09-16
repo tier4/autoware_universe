@@ -287,8 +287,7 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   }
 
   const preprocess::InputBuilderParams builder_params{
-    params_.traffic_light_group_msg_timeout_seconds,
-    params_.remap_unsupported_objects_to_pedestrian};
+    params_.traffic_light_group_msg_timeout_seconds};
   auto single_input_result = preprocess::create_input_data_map(
     frame_inputs, *lane_segment_context_, vehicle_spec_, builder_params);
   if (!single_input_result) {

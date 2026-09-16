@@ -14,20 +14,13 @@
 
 #include "autoware/ml_planner/preprocessing/items/agent.hpp"
 
-#include "autoware/ml_planner/constants.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
-#include <autoware_utils_uuid/uuid_helper.hpp>
-#include <rclcpp/clock.hpp>
-#include <rclcpp/logging.hpp>
 #include <xtensor/xbuilder.hpp>
-
-#include <autoware_perception_msgs/msg/shape.hpp>
 
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -39,9 +32,12 @@ namespace autoware::ml_planner::preprocess
 namespace
 {
 
-AgentLabel get_model_label(const uint8_t label)
+AgentLabel get_model_label(const TrackedObject & object)
 {
-  switch (label) {
+  const uint8_t autoware_label =
+    autoware::object_recognition_utils::getHighestProbLabel(object.classification);
+
+  switch (autoware_label) {
     case autoware_perception_msgs::msg::ObjectClassification::CAR:
     case autoware_perception_msgs::msg::ObjectClassification::TRUCK:
     case autoware_perception_msgs::msg::ObjectClassification::BUS:
@@ -57,72 +53,6 @@ AgentLabel get_model_label(const uint8_t label)
   }
 }
 
-AgentLabel get_model_label(const TrackedObject & object)
-{
-  return get_model_label(
-    autoware::object_recognition_utils::getHighestProbLabel(object.classification));
-}
-
-// Anything the model does not know reaches get_model_label()'s IGNORE default and is dropped, even
-// though it can obstruct driving. ANIMAL, OVER_DRIVABLE and UNDER_DRIVABLE are the deliberate
-// exceptions: not obstacles, or not drivable-space hazards worth braking for. Listing the
-// exceptions keeps a class added to ObjectClassification later fail-safe: remapped, not ignored.
-bool is_unsupported_obstacle_label(const uint8_t label)
-{
-  switch (label) {
-    case autoware_perception_msgs::msg::ObjectClassification::ANIMAL:
-    case autoware_perception_msgs::msg::ObjectClassification::OVER_DRIVABLE:
-    case autoware_perception_msgs::msg::ObjectClassification::UNDER_DRIVABLE:
-      return false;
-    default:
-      return get_model_label(label) == AgentLabel::IGNORE;
-  }
-}
-
-// Rewrite unsupported obstacles to PEDESTRIAN, the most conservative supported class, so they
-// survive the IGNORE and POLYGON filters in select_current_agents() and reach the model.
-TrackedObject remap_unsupported_to_pedestrian(const TrackedObject & object)
-{
-  // An empty classification also yields UNKNOWN from getHighestProbLabel(), but such an object
-  // carries no label to rewrite, so leave it alone rather than silently promoting it.
-  if (object.classification.empty()) {
-    return object;
-  }
-
-  const uint8_t highest_prob_label =
-    autoware::object_recognition_utils::getHighestProbLabel(object.classification);
-  if (!is_unsupported_obstacle_label(highest_prob_label)) {
-    return object;
-  }
-
-  TrackedObject remapped = object;
-  for (auto & classification : remapped.classification) {
-    if (is_unsupported_obstacle_label(classification.label)) {
-      classification.label = autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN;
-    }
-  }
-
-  // Two reasons to replace a non-BOX shape: the POLYGON filter would otherwise drop the object we
-  // just decided to keep, and a POLYGON carries its extent in `footprint` while
-  // create_agent_shape() reads dimensions.x/y as length/width, which would feed the model garbage
-  // extents.
-  if (remapped.shape.type != autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
-    static rclcpp::Clock clock{RCL_ROS_TIME};
-    RCLCPP_WARN_THROTTLE(
-      rclcpp::get_logger("ml_planner"), clock, constants::LOG_THROTTLE_INTERVAL_MS,
-      "Unsupported-class object %s (label=%u) has a non-BOX shape (type=%u). Replacing it with a "
-      "0.5 m bounding box.",
-      autoware_utils_uuid::to_hex_string(remapped.object_id).c_str(), highest_prob_label,
-      remapped.shape.type);
-    remapped.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
-    remapped.shape.footprint.points.clear();
-    remapped.shape.dimensions.x = 0.5;
-    remapped.shape.dimensions.y = 0.5;
-    remapped.shape.dimensions.z = 0.5;
-  }
-  return remapped;
-}
-
 }  // namespace
 
 size_t AgentIdHash::operator()(const AgentId & id) const noexcept
@@ -136,8 +66,7 @@ size_t AgentIdHash::operator()(const AgentId & id) const noexcept
 
 std::vector<SelectedAgent> select_current_agents(
   const MessageView<TrackedObjects> & objects_msgs, const rclcpp::Time & current_time,
-  const Eigen::Matrix4d & map_to_ego_transform, const size_t max_num_agent,
-  const bool remap_unsupported_objects_to_pedestrian)
+  const Eigen::Matrix4d & map_to_ego_transform, const size_t max_num_agent)
 {
   const TrackedObjects * current_msg = nullptr;
   for (auto it = objects_msgs.rbegin(); it != objects_msgs.rend(); ++it) {
@@ -158,12 +87,7 @@ std::vector<SelectedAgent> select_current_agents(
   std::vector<Candidate> candidates;
   candidates.reserve(current_msg->objects.size());
   std::unordered_set<AgentId, AgentIdHash> seen;
-  for (const auto & input_object : current_msg->objects) {
-    // Remap before the filters on purpose: the rewritten object is PEDESTRIAN with a BOX shape by
-    // then, so it survives both the IGNORE and the POLYGON guard below.
-    const TrackedObject object = remap_unsupported_objects_to_pedestrian
-                                   ? remap_unsupported_to_pedestrian(input_object)
-                                   : input_object;
+  for (const auto & object : current_msg->objects) {
     if (
       get_model_label(object) == AgentLabel::IGNORE ||
       object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
