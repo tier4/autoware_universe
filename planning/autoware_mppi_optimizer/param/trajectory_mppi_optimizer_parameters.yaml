@@ -2,7 +2,7 @@ trajectory_mppi_optimizer:
   enabled:
     type: bool
     default_value: false
-    description: Enable the MPPI trajectory processor plugin
+    description: Enable the MPPI trajectory modifier plugin
     read_only: false
   shadow_mode:
     type: bool
