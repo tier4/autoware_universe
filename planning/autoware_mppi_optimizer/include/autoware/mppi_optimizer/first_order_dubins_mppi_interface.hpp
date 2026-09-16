@@ -419,7 +419,7 @@ struct FirstOrderDubinsMppiRolloutDiagnostics
   int first_violation_step{-1};
   float first_violation_time_s{-1.0F};
   std::string first_violation_type{"unavailable"};
-  /** Nearest analytical obstacle/road-border index in the supplied frame; -1 if unavailable. */
+  /** First intersecting obstacle/road-border index in the supplied frame; -1 if unavailable. */
   int first_violation_geometry_index{-1};
   std::string first_violation_object_id;
 };

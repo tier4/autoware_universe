@@ -10,6 +10,7 @@
 
 #include <cuda_runtime.h>
 
+#include <cfloat>
 #include <cstdint>
 #include <type_traits>
 
@@ -114,6 +115,23 @@ __host__ __device__ inline void computeEgoSpineCircles(
     circle_x[circle] = center_x + longitudinal_offset * cos_yaw;
     circle_y[circle] = center_y + longitudinal_offset * sin_yaw;
   }
+}
+
+/**
+ * Broad phase only: a positive result requires exact rectangle collision testing.
+ * The circle union encloses the original rectangle. Inflating both rectangle axes by m
+ * adds at most sqrt(2)*m clearance. Bilinear sampling of a 1-Lipschitz distance field
+ * overestimates distance by at most a cell diagonal (including clamped edge texels).
+ * Obstacle samples use texel-center time coordinates, so there is no temporal interpolation.
+ * Pass resolution=0 for analytical distances. Include float roundoff at map coordinates.
+ */
+__host__ __device__ inline bool distanceFieldMayIntersectInflatedRectangle(
+  const float distance, const float margin, const float resolution, const float x, const float y)
+{
+  const float roundoff = 1.0E-3F + 16.0F * FLT_EPSILON * (fabsf(x) + fabsf(y));
+  const float threshold = 1.414214F * (fmaxf(margin, 0.0F) + fmaxf(resolution, 0.0F)) + roundoff;
+  // A NaN cannot prove separation; let the exact check decide.
+  return !(distance > threshold);
 }
 
 __device__ inline bool textureCoordinateInBounds(

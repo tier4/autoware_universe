@@ -2978,7 +2978,7 @@ try {
       mppiLogger(),
       "MPPI failed iteration=%d (zero-based): eligible=%d unsafe=%d nonfinite=%d "
       "lateral=%d obstacle=%d road_border=%d weight_sum=%.3g; "
-      "first_geometric_violation=%s step=%d time=%.3f s nearest_geometry_index=%d object_id=%s",
+      "first_geometric_violation=%s step=%d time=%.3f s geometry_index=%d object_id=%s",
       result.debug.failed_rollout_iteration, failure.eligible_count, failure.unsafe_count,
       failure.nonfinite_count, failure.lateral_violation_count, failure.obstacle_violation_count,
       failure.road_border_violation_count, failure.weight_sum, failure.first_violation_type.c_str(),

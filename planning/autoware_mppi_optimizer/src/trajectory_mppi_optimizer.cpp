@@ -845,7 +845,7 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
     cost_diagnostics_->add_key_value(
       prefix + "first_violation_type", population.first_violation_type);
     cost_diagnostics_->add_key_value(
-      prefix + "nearest_geometry_index", population.first_violation_geometry_index);
+      prefix + "geometry_index", population.first_violation_geometry_index);
     cost_diagnostics_->add_key_value(prefix + "object_id", population.first_violation_object_id);
   }
   cost_diagnostics_->add_key_value(
