@@ -386,8 +386,8 @@ L_obstacle = W_obstacle *
 W_obstacle = crash_contact_penalty / max(obstacle_safe_margin, 1e-3)^2
 ```
 
-The cost begins outside the collision envelope, equals `crash_contact_penalty` when physical
-clearance reaches `obstacle_collision_margin`, and grows beyond that value during overlap. Static
+The cost begins outside the circle-based collision envelope, equals `crash_contact_penalty` when
+circle-based clearance reaches `obstacle_collision_margin`, and grows beyond that value during overlap. Static
 and time-varying obstacle trajectories both participate. The implementation stores at most 64
 obstacles.
 
@@ -407,6 +407,19 @@ validation. Changing the limit invalidates the obstacle map even if object geome
 Debug logs record the parameter in `runtime_options.csv`; offline replay restores it and accepts
 `--set dynamic_obstacle_horizon_s=3.0` or a YAML override. Older logs default to the full horizon.
 
+Obstacle and road-border costs keep their smooth distance fields. Eligibility uses the field only
+as a conservative proximity filter, then checks the inflated rectangular ego footprint against
+obstacle boxes or road-border segments with the same exact routines as final validation. Circle
+contact alone no longer excludes a rollout. The exact check also supplies the intersecting geometry
+index used by failure diagnostics.
+
+The proximity band is `sqrt(2) * (collision_margin + grid_resolution)` plus a float-roundoff
+allowance. The first term covers the corners added by rectangular inflation; the second covers
+spatial texture interpolation error for the distance field. Analytical queries use zero grid
+resolution. Every near or penetrating sample receives an exact check; sufficiently separated
+samples avoid it. This preserves the barrier values, enabled/disabled barrier behavior, and dynamic
+object horizon. Lateral-boundary eligibility continues to use `boundary_threshold`.
+
 ### 9.2 Road-border barrier
 
 `d_road` is the nonnegative minimum clearance from the four-circle ego approximation to a road
@@ -419,7 +432,7 @@ L_road = W_road *
 W_road = crash_contact_penalty / max(road_border_safe_margin, 1e-3)^2
 ```
 
-It equals `crash_contact_penalty` at the collision-margin boundary. Up to 256 road-border segments
+It equals `crash_contact_penalty` at the circle-based collision-margin boundary. Up to 256 road-border segments
 are stored.
 
 ### 9.3 Drivable-area boundary barrier
@@ -527,15 +540,15 @@ represent the last sampled iteration; the preserved nominal's validation is a se
 Each population reports eligible, nonfinite-cost, unsafe, lateral-boundary, obstacle, and
 road-border counts, plus weight sum and ESS. Reason counts overlap when one rollout violates
 several constraints, and unsafe rollouts may also have nonfinite costs. The earliest geometric
-violation includes its zero-based stage, time `(stage + 1) * dt`, type, and nearest analytical
+violation includes its zero-based stage, time `(stage + 1) * dt`, type, and first intersecting
 obstacle/road-border index in the supplied frame. Obstacle events also include the tracked-object
 UUID. Ties are resolved by stage, then type (lateral, obstacle, road border), then geometry index.
 
-Geometry identity is diagnostic: texture interpolation can flag a contact at a slightly different
-clearance than the analytical geometry. Nonfinite total costs have no geometric event unless
+Geometry identity comes from exact collision testing, not the nearest distance-field primitive.
+Nonfinite total costs have no geometric event unless
 that population also contains a geometric violation; unavailable stages/indices/times are `-1`,
 with type `unavailable`. The existing dynamic-object horizon also applies to these obstacle events.
-The underlying collision criteria and fallback policy are unchanged.
+The fallback policy is unchanged.
 
 ROS cost diagnostics expose all populations under `mppi/iteration_N/` (one-based display names)
 and the zero-based failed index as `mppi/failed_iteration`. On failure, a warning prints the failed
@@ -641,10 +654,10 @@ can be active and included in totals while appearing absent from the live stacke
 
 ### 14.5 `crash_contact_penalty` is named and documented like a direct hard-crash cost
 
-No direct contact penalty or persistent crash status is added by this cost class. The parameter is
-a barrier calibration target and kinematic-cost cap, while hard collisions are handled only after
-optimization. Renaming it or clarifying the generated parameter description would reduce tuning
-errors.
+The parameter is a barrier calibration target and kinematic-cost cap, not an extra cost added at
+contact. Exact obstacle/road-border contacts exclude sampled rollouts and are checked again in final
+validation. The circle-based barrier need not equal this target at exact rectangular contact.
+Renaming the parameter or clarifying its generated description would reduce tuning errors.
 
 ### 14.6 Spatial projection uses the globally closest finite segment
 

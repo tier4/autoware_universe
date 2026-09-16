@@ -22,8 +22,10 @@ __host__ __device__ __forceinline__ bool checkRectSegmentIntersections(
   const float ego_x, const float ego_y, const float ego_yaw, const float front_ext,
   const float back_ext, const float left_ext, const float right_ext, const float margin,
   const float * __restrict__ seg_x0, const float * __restrict__ seg_y0,
-  const float * __restrict__ seg_x1, const float * __restrict__ seg_y1, const int num_segments)
+  const float * __restrict__ seg_x1, const float * __restrict__ seg_y1, const int num_segments,
+  int * intersecting_segment = nullptr)
 {
+  if (intersecting_segment != nullptr) *intersecting_segment = -1;
   if (num_segments <= 0) return false;
 
   // 1. Calculate local AABB bounds with margin
@@ -92,6 +94,7 @@ __host__ __device__ __forceinline__ bool checkRectSegmentIntersections(
     if (D > R) continue;
 
     // If it passes all 3 SAT tests, we have an intersection!
+    if (intersecting_segment != nullptr) *intersecting_segment = i;
     return true;
   }
   return false;
