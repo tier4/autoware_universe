@@ -38,6 +38,29 @@
 namespace autoware::mppi_optimizer
 {
 
+/** One row per sampled population. Iteration and geometry indices are zero-based. */
+inline bool writeMppiRolloutDiagnosticsCsv(
+  const std::string & path, const std::vector<FirstOrderDubinsMppiRolloutDiagnostics> & diagnostics,
+  const int failed_iteration)
+{
+  std::ofstream out(path);
+  if (!out) return false;
+  out << "iteration,failed,eligible_count,nonfinite_count,unsafe_count,lateral_count,"
+         "obstacle_count,road_border_count,weight_sum,ess,first_violation_step,"
+         "first_violation_time_s,first_violation_type,geometry_index,object_id\n";
+  for (size_t iteration = 0; iteration < diagnostics.size(); ++iteration) {
+    const auto & d = diagnostics[iteration];
+    out << iteration << ',' << (static_cast<int>(iteration) == failed_iteration ? 1 : 0) << ','
+        << d.eligible_count << ',' << d.nonfinite_count << ',' << d.unsafe_count << ','
+        << d.lateral_violation_count << ',' << d.obstacle_violation_count << ','
+        << d.road_border_violation_count << ',' << d.weight_sum << ',' << d.effective_sample_size
+        << ',' << d.first_violation_step << ',' << d.first_violation_time_s << ','
+        << d.first_violation_type << ',' << d.first_violation_geometry_index << ','
+        << d.first_violation_object_id << '\n';
+  }
+  return static_cast<bool>(out);
+}
+
 /** Ego state used by MPPI at the start of a cycle (for offline replay). */
 struct MppiDebugEgoState
 {
@@ -133,14 +156,25 @@ public:
         out << "key,value\n";
         out << std::setprecision(9) << std::fixed;
         out << "lambda," << cost.lambda << "\n";
-        out << "speed_coeff," << cost.speed_coeff << "\n";
+        out << "lambda_min," << cost.lambda_min << "\n";
+        out << "lambda_max," << cost.lambda_max << "\n";
+        out << "target_ess_ratio," << cost.target_ess_ratio << "\n";
+        out << "lambda_adaptation_gain," << cost.lambda_adaptation_gain << "\n";
+        out << "unsafe_rollout_fraction_threshold," << cost.unsafe_rollout_fraction_threshold
+            << "\n";
+        out << "cost_normalization_percentile," << cost.cost_normalization_percentile << "\n";
+        out << "max_iter," << cost.max_iter << "\n";
+        out << "spatial_overspeed_coeff," << cost.spatial_overspeed_coeff << "\n";
         out << "track_coeff," << cost.track_coeff << "\n";
         out << "track_terminal_scale," << cost.track_terminal_scale << "\n";
+        out << "terminal_error_coeff," << cost.terminal_error_coeff << "\n";
+        out << "terminal_heading_coeff," << cost.terminal_heading_coeff << "\n";
         out << "heading_coeff," << cost.heading_coeff << "\n";
         out << "lateral_distance_coeff," << cost.lateral_distance_coeff << "\n";
         out << "lateral_yaw_error_coeff," << cost.lateral_yaw_error_coeff << "\n";
         out << "remaining_distance_coeff," << cost.remaining_distance_coeff << "\n";
         out << "path_overshoot_coeff," << cost.path_overshoot_coeff << "\n";
+        out << "preferred_lane_center_coeff," << cost.preferred_lane_center_coeff << "\n";
         out << "track_center_coeff," << cost.track_center_coeff << "\n";
         out << "corner_buffer_coeff," << cost.corner_buffer_coeff << "\n";
         out << "corner_safe_margin," << cost.corner_safe_margin << "\n";
@@ -149,13 +183,19 @@ public:
         out << "accel_cmd_coeff," << cost.accel_cmd_coeff << "\n";
         out << "steer_cmd_coeff," << cost.steer_cmd_coeff << "\n";
         out << "steer_rate_coeff," << cost.steer_rate_coeff << "\n";
+        out << "accel_cmd_rate_coeff," << cost.accel_cmd_rate_coeff << "\n";
+        out << "steer_cmd_rate_coeff," << cost.steer_cmd_rate_coeff << "\n";
+
+        out << "initial_steer_rate_coeff," << cost.initial_steer_rate_coeff << "\n";
         out << "overlimit_coeff," << cost.overlimit_coeff << "\n";
         out << "accel_cmd_std_dev," << cost.accel_cmd_std_dev << "\n";
         out << "steer_cmd_std_dev," << cost.steer_cmd_std_dev << "\n";
+        out << "std_dev_decay," << cost.std_dev_decay << "\n";
         out << "accel_cmd_noise_exponent," << cost.accel_cmd_noise_exponent << "\n";
         out << "steer_cmd_noise_exponent," << cost.steer_cmd_noise_exponent << "\n";
         out << "nominal_curvature_min_chord_length_m," << cost.nominal_curvature_min_chord_length_m
             << "\n";
+        out << "nominal_curvature_fit_window_m," << cost.nominal_curvature_fit_window_m << "\n";
         out << "lateral_acceleration_coeff," << cost.lateral_acceleration_coeff << "\n";
         out << "lateral_jerk_coeff," << cost.lateral_jerk_coeff << "\n";
         out << "longitudinal_jerk_coeff," << cost.longitudinal_jerk_coeff << "\n";
@@ -190,6 +230,12 @@ public:
         out << "acc_time_constant," << vehicle.acc_time_constant << "\n";
         out << "steer_time_constant," << vehicle.steer_time_constant << "\n";
         out << "steer_rate_lim," << vehicle.steer_rate_lim << "\n";
+        out << "max_lateral_jerk_mps3," << vehicle.max_lateral_jerk_mps3 << "\n";
+        out << "standstill_steer_rate_lim," << vehicle.standstill_steer_rate_lim << "\n";
+        out << "restart_steer_command_rate_lim," << vehicle.restart_steer_command_rate_lim << "\n";
+        out << "restart_steer_command_acceleration_lim,"
+            << vehicle.restart_steer_command_acceleration_lim << "\n";
+        out << "restart_velocity_threshold_mps," << vehicle.restart_velocity_threshold_mps << "\n";
         out << "vel_rate_lim," << vehicle.vel_rate_lim << "\n";
         out << "acc_time_delay," << vehicle.acc_time_delay << "\n";
         out << "steer_time_delay," << vehicle.steer_time_delay << "\n";
@@ -207,17 +253,43 @@ public:
     if (out) {
       out << "key,value\n";
       out << "ignore_obstacles," << (options.ignore_obstacles ? 1 : 0) << "\n";
+      out << "dynamic_obstacle_horizon_s," << options.dynamic_obstacle_horizon_s << "\n";
       out << "ignore_road_borders," << (options.ignore_road_borders ? 1 : 0) << "\n";
       out << "ignore_drivable_area," << (options.ignore_drivable_area ? 1 : 0) << "\n";
       out << "force_cold_start_each_step," << (options.force_cold_start_each_step ? 1 : 0) << "\n";
       out << "skip_if_invalid," << (options.skip_if_invalid ? 1 : 0) << "\n";
       out << "min_optimization_length," << options.min_optimization_length << "\n";
+      out << "steering_hold_reference_length_threshold_m,"
+          << options.steering_hold_reference_length_threshold_m << "\n";
+      out << "min_trajectory_progress_m," << options.min_trajectory_progress_m << "\n";
       out << "use_last_control_as_nominal," << (options.use_last_control_as_nominal ? 1 : 0)
           << "\n";
+      out << "nominal_initial_steering_max_deviation_rad,"
+          << options.nominal_initial_steering_max_deviation_rad << "\n";
+      out << "last_control_warm_start_max_age_s," << options.last_control_warm_start_max_age_s
+          << "\n";
+      out << "last_control_warm_start_max_position_error_m,"
+          << options.last_control_warm_start_max_position_error_m << "\n";
+      out << "last_control_warm_start_max_yaw_error_rad,"
+          << options.last_control_warm_start_max_yaw_error_rad << "\n";
+      out << "last_control_warm_start_max_velocity_error_mps,"
+          << options.last_control_warm_start_max_velocity_error_mps << "\n";
+      out << "last_control_warm_start_max_reference_position_error_m,"
+          << options.last_control_warm_start_max_reference_position_error_m << "\n";
+      out << "last_control_warm_start_max_reference_yaw_error_rad,"
+          << options.last_control_warm_start_max_reference_yaw_error_rad << "\n";
+      out << "last_control_warm_start_max_reference_velocity_error_mps,"
+          << options.last_control_warm_start_max_reference_velocity_error_mps << "\n";
+      out << "last_control_warm_start_stop_enter_velocity_mps,"
+          << options.last_control_warm_start_stop_enter_velocity_mps << "\n";
+      out << "last_control_warm_start_stop_exit_velocity_mps,"
+          << options.last_control_warm_start_stop_exit_velocity_mps << "\n";
       out << "use_temporal_mpt_as_nominal," << (options.use_temporal_mpt_as_nominal ? 1 : 0)
           << "\n";
       out << "prevent_reverse_velocity," << (options.prevent_reverse_velocity ? 1 : 0) << "\n";
       out << "enable_input_delay_compensation," << (options.enable_input_delay_compensation ? 1 : 0)
+          << "\n";
+      out << "enable_iteration_rollout_debug," << (options.enable_iteration_rollout_debug ? 1 : 0)
           << "\n";
     }
     runtime_written_ = true;
@@ -234,7 +306,10 @@ public:
     const float hist_accel_tm2, const float hist_steer_tm2, const float hist_accel_tm1,
     const float hist_steer_tm1, const std::vector<float> & delay_accel_cmd,
     const std::vector<float> & delay_steer_cmd, const float applied_accel_cmd,
-    const float applied_steer_cmd, const FirstOrderDubinsMppiKinematicLimits & kinematic_limits)
+    const float applied_steer_cmd, const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
+    const PreferredLaneCenterlineInput & preferred_lane_centerline = {},
+    const std::vector<FirstOrderDubinsMppiRolloutDiagnostics> & rollout_diagnostics = {},
+    const int failed_iteration = -1)
   {
     if (!enabled_) {
       return;
@@ -242,6 +317,11 @@ public:
 
     ensureIndexHeader();
     const std::string frame_tag = formatFrameId(frame_id_);
+    if (!rollout_diagnostics.empty()) {
+      writeMppiRolloutDiagnosticsCsv(
+        directory_ + "/" + frame_tag + "_rollout_diagnostics.csv", rollout_diagnostics,
+        failed_iteration);
+    }
     const std::string ref_path = directory_ + "/" + frame_tag + "_reference.csv";
     const std::string opt_path = directory_ + "/" + frame_tag + "_optimized.csv";
     const std::string ego_path = directory_ + "/" + frame_tag + "_ego.csv";
@@ -264,6 +344,15 @@ public:
     }
     writeSegmentsCsv(directory_ + "/" + frame_tag + "_road_borders.csv", road_borders);
     writeSegmentsCsv(directory_ + "/" + frame_tag + "_drivable.csv", drivable_area);
+    writeSegmentsCsv(
+      directory_ + "/" + frame_tag + "_preferred_lane_center.csv",
+      preferred_lane_centerline.segments);
+    {
+      std::ofstream metadata(directory_ + "/" + frame_tag + "_preferred_lane_center_metadata.csv");
+      metadata << "status,revision,frame_id\n"
+               << preferred_lane_centerline.status << "," << preferred_lane_centerline.revision
+               << "," << reference.header.frame_id << "\n";
+    }
     writeObjectsCsv(directory_ + "/" + frame_tag + "_objects.csv", tracked_objects);
     writeControlHistoryCsv(
       directory_ + "/" + frame_tag + "_control_history.csv", hist_accel_tm2, hist_steer_tm2,
