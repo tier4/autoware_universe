@@ -184,53 +184,18 @@ TEST(TurnSignalLogic, PullOverSignalsTowardsTheGoalSide)
 {
   bool arrived = false;
   EXPECT_EQ(
-    decide_pull_over(
-      /*dist_to_shift_start=*/20.0, /*dist_to_goal=*/40.0, /*goal_offset=*/-1.5, k_moving,
-      TurnSignalParams{}, arrived),
+    decide_pull_over(20.0, /*goal_offset=*/-1.5, k_moving, TurnSignalParams{}, arrived),
     TurnDirection::RIGHT);
   EXPECT_EQ(
-    decide_pull_over(20.0, 40.0, /*goal_offset=*/1.5, k_moving, TurnSignalParams{}, arrived),
+    decide_pull_over(20.0, /*goal_offset=*/1.5, k_moving, TurnSignalParams{}, arrived),
     TurnDirection::LEFT);
 }
 
-TEST(TurnSignalLogic, PullOverStaysOffFarFromTheShiftStart)
+TEST(TurnSignalLogic, PullOverStaysOffFarFromTheGoal)
 {
   bool arrived = false;
   EXPECT_EQ(
-    decide_pull_over(30.1, 50.0, -1.5, k_moving, TurnSignalParams{}, arrived), TurnDirection::NONE);
-}
-
-TEST(TurnSignalLogic, PullOverIsTimedFromTheShiftStartNotTheGoal)
-{
-  // The goal sits well beyond the search distance, but the shift out of the lane starts inside it.
-  bool arrived = false;
-  EXPECT_EQ(
-    decide_pull_over(
-      /*dist_to_shift_start=*/25.0, /*dist_to_goal=*/60.0, -1.5, k_moving, TurnSignalParams{},
-      arrived),
-    TurnDirection::RIGHT);
-}
-
-TEST(TurnSignalLogic, PullOverUsesTheThreeSecondLeadAboveTheDistanceFloor)
-{
-  // 15 m/s * 3 s = 45 m, so a shift start 40 m ahead is already within reach; at 5 m/s the floor
-  // of 30 m applies and the same 40 m is still too far.
-  bool arrived = false;
-  EXPECT_EQ(
-    decide_pull_over(40.0, 60.0, -1.5, /*ego_velocity=*/15.0, TurnSignalParams{}, arrived),
-    TurnDirection::RIGHT);
-  arrived = false;
-  EXPECT_EQ(
-    decide_pull_over(40.0, 60.0, -1.5, /*ego_velocity=*/5.0, TurnSignalParams{}, arrived),
-    TurnDirection::NONE);
-}
-
-TEST(TurnSignalLogic, PullOverStaysLitOncePastTheShiftStart)
-{
-  // The shift start falls behind ego during the maneuver; the light must stay on until arrival.
-  bool arrived = false;
-  EXPECT_EQ(
-    decide_pull_over(-5.0, 8.0, -1.5, k_moving, TurnSignalParams{}, arrived), TurnDirection::RIGHT);
+    decide_pull_over(30.1, -1.5, k_moving, TurnSignalParams{}, arrived), TurnDirection::NONE);
 }
 
 TEST(TurnSignalLogic, PullOverStaysOffForAnOnCenterlineGoal)
@@ -238,7 +203,7 @@ TEST(TurnSignalLogic, PullOverStaysOffForAnOnCenterlineGoal)
   // Nothing to signal: the goal is not a bus stop / shoulder pull-in.
   bool arrived = false;
   EXPECT_EQ(
-    decide_pull_over(10.0, 20.0, /*goal_offset=*/0.2, k_moving, TurnSignalParams{}, arrived),
+    decide_pull_over(10.0, /*goal_offset=*/0.2, k_moving, TurnSignalParams{}, arrived),
     TurnDirection::NONE);
 }
 
@@ -246,16 +211,13 @@ TEST(TurnSignalLogic, PullOverClearsAfterArrival)
 {
   bool arrived = false;
   ASSERT_EQ(
-    decide_pull_over(10.0, 15.0, -1.5, k_moving, TurnSignalParams{}, arrived),
-    TurnDirection::RIGHT);
+    decide_pull_over(10.0, -1.5, k_moving, TurnSignalParams{}, arrived), TurnDirection::RIGHT);
   EXPECT_EQ(
-    decide_pull_over(-15.0, 0.5, -1.5, k_stopped, TurnSignalParams{}, arrived),
-    TurnDirection::NONE);
+    decide_pull_over(0.5, -1.5, k_stopped, TurnSignalParams{}, arrived), TurnDirection::NONE);
   EXPECT_TRUE(arrived);
   // Stays off while parked at the goal, even though the offset is unchanged.
   EXPECT_EQ(
-    decide_pull_over(-15.0, 0.5, -1.5, k_stopped, TurnSignalParams{}, arrived),
-    TurnDirection::NONE);
+    decide_pull_over(0.5, -1.5, k_stopped, TurnSignalParams{}, arrived), TurnDirection::NONE);
 }
 
 TEST(TurnSignalLogic, PullOverRearmsForANewApproach)
@@ -263,11 +225,10 @@ TEST(TurnSignalLogic, PullOverRearmsForANewApproach)
   bool arrived = true;
   // Leaving the search range re-arms it, so the next approach signals again.
   ASSERT_EQ(
-    decide_pull_over(50.0, 70.0, -1.5, k_moving, TurnSignalParams{}, arrived), TurnDirection::NONE);
+    decide_pull_over(50.0, -1.5, k_moving, TurnSignalParams{}, arrived), TurnDirection::NONE);
   EXPECT_FALSE(arrived);
   EXPECT_EQ(
-    decide_pull_over(10.0, 25.0, -1.5, k_moving, TurnSignalParams{}, arrived),
-    TurnDirection::RIGHT);
+    decide_pull_over(10.0, -1.5, k_moving, TurnSignalParams{}, arrived), TurnDirection::RIGHT);
 }
 
 // --- priority ----------------------------------------------------------------------------------
@@ -546,60 +507,6 @@ TEST(TurnIndicatorDeciderTest, PullOverClearsOnceStoppedAtTheGoal)
   const auto cmd = decider.decide(
     path, ctx, make_ego_pose(35.0, -1.5, 0.0), /*ego_velocity=*/0.0, rclcpp::Time(10, 0));
   EXPECT_EQ(cmd.command, TurnIndicatorsCommand::DISABLE);
-}
-
-TEST(TurnIndicatorDeciderTest, PullOverIsTimedFromWhereThePathLeavesTheLane)
-{
-  const auto lane = make_lanelet(1, 0.0, 80.0);
-  auto ctx = make_context({lane});
-  ctx.goal_lanelets = {lane};
-  ctx.goal_pose = make_ego_pose(75.0, -1.5, 0.0);
-  const auto path = make_straight_path(80, 80, 1, 1);
-  const auto shift_start = make_ego_pose(50.0, 0.0, 0.0);
-
-  TurnIndicatorDecider decider(turn_indicator::TurnSignalParams{});
-  // The goal itself is 55 m off - out of reach - but the shift out of the lane starts 30 m ahead.
-  EXPECT_EQ(
-    decider.decide(path, ctx, make_ego_pose(20.0, 0.0, 0.0), k_moving, rclcpp::Time(0), shift_start)
-      .command,
-    TurnIndicatorsCommand::ENABLE_RIGHT);
-}
-
-TEST(TurnIndicatorDeciderTest, PullOverStaysOffBeyondTheShiftStart)
-{
-  const auto lane = make_lanelet(1, 0.0, 80.0);
-  auto ctx = make_context({lane});
-  ctx.goal_lanelets = {lane};
-  ctx.goal_pose = make_ego_pose(75.0, -1.5, 0.0);
-  const auto path = make_straight_path(80, 80, 1, 1);
-  const auto shift_start = make_ego_pose(50.0, 0.0, 0.0);
-
-  TurnIndicatorDecider decider(turn_indicator::TurnSignalParams{});
-  // 40 m short of the shift start: past the 30 m floor, and 5 m/s * 3 s does not reach it either.
-  EXPECT_EQ(
-    decider.decide(path, ctx, make_ego_pose(10.0, 0.0, 0.0), k_moving, rclcpp::Time(0), shift_start)
-      .command,
-    TurnIndicatorsCommand::DISABLE);
-}
-
-TEST(TurnIndicatorDeciderTest, PullOverLightsThreeSecondsAheadWhenFast)
-{
-  const auto lane = make_lanelet(1, 0.0, 80.0);
-  auto ctx = make_context({lane});
-  ctx.goal_lanelets = {lane};
-  ctx.goal_pose = make_ego_pose(75.0, -1.5, 0.0);
-  const auto path = make_straight_path(80, 80, 1, 1);
-  const auto shift_start = make_ego_pose(50.0, 0.0, 0.0);
-
-  TurnIndicatorDecider decider(turn_indicator::TurnSignalParams{});
-  // Same 40 m, but at 15 m/s the 3 s lead (45 m) reaches further than the distance floor.
-  EXPECT_EQ(
-    decider
-      .decide(
-        path, ctx, make_ego_pose(10.0, 0.0, 0.0), /*ego_velocity=*/15.0, rclcpp::Time(0),
-        shift_start)
-      .command,
-    TurnIndicatorsCommand::ENABLE_RIGHT);
 }
 
 TEST(TurnIndicatorDeciderTest, AnEmptyPathRaisesNoSignal)

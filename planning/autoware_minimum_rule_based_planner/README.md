@@ -54,7 +54,7 @@ activation distance is `max(v * 3.0 s, search_distance)`.
 | Intersection turn | a `turn_direction=left/right` lanelet starts within the activation distance       | ego's heading matches the heading the turn exits on |
 | Private-area exit | the boundary where a `location=private` lanelet rejoins a public one is within it | as above                                            |
 | Pull-out          | ego is STOPPED more than 1.5 m off the lane centerline (bus stop, shoulder)       | ego is back within 0.5 m of the centerline          |
-| Pull-over         | the path leaves the lane towards an off-centerline goal (> 0.5 m) within it       | ego has stopped within 1.0 m of the goal            |
+| Pull-over         | an off-centerline goal (> 0.5 m) is within `search_distance`                      | ego has stopped within 1.0 m of the goal            |
 
 The exit heading is the path heading 15 m past the maneuver, so the end condition is decided by
 ego's pose rather than by where the lanelet happens to end. A private lanelet that carries a
