@@ -86,13 +86,17 @@ std::optional<NestedOverrideName> parse_nested_override_name(
 
 /// @brief Declare the nested YAML overrides that this node reads back via list_parameters().
 ///
-/// The constructor asks for `automatically_declare_parameters_from_overrides`, but
-/// `agnocast::Node` does not forward that option: it builds its NodeParameters from the
-/// overrides, the arguments and `allow_undeclared_parameters` only. On an Agnocast build the
-/// `label_cluster_params.*` / `confusable_label_groups.*` entries are therefore never declared,
-/// `list_parameters()` returns nothing, and every per-label override is silently replaced by the
-/// global default -- which widens the pedestrian clustering tolerance from 0.3 m to 0.65 m and
-/// loses the near-field clusters entirely.
+/// The constructor asks for `automatically_declare_parameters_from_overrides`, but that option
+/// only survives on one of the two implementations the wrapper can pick. Node chooses at
+/// runtime, on ENABLE_AGNOCAST: with it set it holds an `agnocast::Node`, which builds its
+/// NodeParameters from the overrides, the arguments and `allow_undeclared_parameters` only and
+/// never forwards the auto-declaration option (inside agnocastlib only the component containers
+/// set it, and this node is a standalone executable). The `label_cluster_params.*` /
+/// `confusable_label_groups.*` entries are then never declared, `list_parameters()` returns
+/// nothing, and every per-label override is silently replaced by the global default -- which
+/// widens the pedestrian clustering tolerance from 0.3 m to 0.65 m and raises
+/// `min_cluster_size_m` from 0.0 to 1.5 m, losing the near-field clusters entirely. The same
+/// binary is unaffected with ENABLE_AGNOCAST unset, which is why this is easy to miss.
 ///
 /// Declaring them here from the resolved overrides -- which already include everything parsed
 /// out of `--params-file` -- restores them without depending on that option being honoured. On a
