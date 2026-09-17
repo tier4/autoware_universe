@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_processor/trajectory_modifier_plugins/map_velocity_limits.hpp"
 
+#include "autoware/trajectory_processor/trajectory_modifier_plugins/velocity_limits.hpp"
 #include "autoware/trajectory_processor/trajectory_processor_plugin_base.hpp"
 
 #include <autoware/interpolation/linear_interpolation.hpp>
@@ -200,7 +201,7 @@ ProcessingResult MapVelocityLimits::process(
     !is_trajectory_modification_required(traj_points, input)) {
     return ProcessingResult::Unchanged;
   }
-  const auto result = detail::apply_map_velocity_limits(
+  const auto result = detail::apply_velocity_limits(
     traj_points, std::abs(constant_deceleration_),
     [this](const geometry_msgs::msg::Point & position) {
       return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
