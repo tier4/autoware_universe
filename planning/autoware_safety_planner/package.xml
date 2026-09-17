@@ -4,7 +4,11 @@
   <name>autoware_safety_planner</name>
   <version>0.0.1</version>
   <description>Safety Planner</description>
+
   <maintainer email="takumi.odashima@tier4.jp">Takumi Odashima</maintainer>
+  <maintainer email="hayate.sugahara@tier4.jp">Hayate Sugahara</maintainer>
+  <maintainer email="mamoru.sobue@tier4.jp">Mamoru Sobue</maintainer>
+
   <license>Apache License 2.0</license>
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
