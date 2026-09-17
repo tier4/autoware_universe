@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_processor/trajectory_modifier_plugins/map_velocity_limits.hpp"
+#include "autoware/trajectory_processor/trajectory_modifier_plugins/velocity_limits.hpp"
 
 #include <rclcpp/duration.hpp>
 
@@ -26,7 +26,7 @@ namespace
 {
 using autoware::trajectory_processor::plugin::ProcessingResult;
 using autoware::trajectory_processor::plugin::TrajectoryPoints;
-using autoware::trajectory_processor::plugin::detail::apply_map_velocity_limits;
+using autoware::trajectory_processor::plugin::detail::apply_velocity_limits;
 constexpr double dt = 0.1;
 constexpr double tolerance = 2e-5;
 
@@ -80,7 +80,7 @@ TEST(MapVelocityLimitsProfile, RecomputesAccelerationAndRetimes)
 {
   auto points = make_trajectory(10.0, 1.0);
   const auto original = points;
-  const auto result = apply_map_velocity_limits(points, 1.0, constant_limit(5.0));
+  const auto result = apply_velocity_limits(points, 1.0, constant_limit(5.0));
   ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
   for (const auto & point : points) {
     EXPECT_FLOAT_EQ(point.longitudinal_velocity_mps, 5.0F);
@@ -98,7 +98,7 @@ TEST(MapVelocityLimitsProfile, KeepsResampledPointsOnOriginalCurvedPolyline)
     points[i].pose.position.z = 0.2 * i;
   }
   const auto original = points;
-  const auto result = apply_map_velocity_limits(points, 1.0, constant_limit(5.0));
+  const auto result = apply_velocity_limits(points, 1.0, constant_limit(5.0));
   ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
   expect_format(original, points);
   for (const auto & point : points) {
@@ -122,7 +122,7 @@ TEST(MapVelocityLimitsProfile, PreservesValidConstantSpeedTrajectory)
 {
   auto points = make_trajectory(5.0);
   const auto original = points;
-  const auto result = apply_map_velocity_limits(points, 1.0, constant_limit(10.0));
+  const auto result = apply_velocity_limits(points, 1.0, constant_limit(10.0));
   EXPECT_EQ(result.status, ProcessingResult::Unchanged);
   EXPECT_EQ(points, original);
 }

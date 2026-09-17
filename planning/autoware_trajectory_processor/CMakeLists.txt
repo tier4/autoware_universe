@@ -135,12 +135,14 @@ if(_acados_lib_dir AND EXISTS "${_acados_lib_dir}")
 endif()
 
 ament_auto_add_library(autoware_trajectory_modifier_plugins SHARED
+  src/trajectory_modifier_plugins/external_velocity_limit.cpp
   src/trajectory_modifier_plugins/stop_point_fixer.cpp
   src/trajectory_modifier_plugins/obstacle_stop.cpp
   src/trajectory_modifier_plugins/velocity_modifier.cpp
   src/trajectory_modifier_plugins/surround_obstacle_stop.cpp
   src/trajectory_modifier_plugins/traffic_light_stop.cpp
   src/trajectory_modifier_plugins/map_velocity_limits.cpp
+  src/trajectory_modifier_plugins/velocity_limits.cpp
 )
 
 target_link_libraries(autoware_trajectory_modifier_plugins

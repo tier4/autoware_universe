@@ -2,6 +2,7 @@ trajectory_processor_params:
   plugin_names:
     type: string_array
     default_value:
+      - autoware::trajectory_processor::plugin::ExternalVelocityLimit
       - autoware::trajectory_processor::plugin::MapVelocityLimits
       - autoware::trajectory_processor::plugin::StopPointFixer
       - autoware::trajectory_processor::plugin::SurroundObstacleStop
@@ -24,6 +25,11 @@ trajectory_processor_params:
     type: bool
     default_value: true
     description: Enable the use of map velocity limits
+    read_only: false
+  use_external_velocity_limit:
+    type: bool
+    default_value: true
+    description: Enable the use of the external velocity limit
     read_only: false
   use_stop_point_fixer:
     type: bool

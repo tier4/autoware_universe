@@ -28,6 +28,8 @@
           "type": "array",
           "description": "Ordered list of modifier and optimizer plugin class names",
           "default": [
+            "autoware::trajectory_processor::plugin::ExternalVelocityLimit",
+            "autoware::trajectory_processor::plugin::MapVelocityLimits",
             "autoware::trajectory_processor::plugin::StopPointFixer",
             "autoware::trajectory_processor::plugin::SurroundObstacleStop",
             "autoware::trajectory_processor::plugin::ObstacleStop",
@@ -51,6 +53,11 @@
         "use_map_velocity_limits": {
           "type": "boolean",
           "description": "Enable the map velocity limits plugin",
+          "default": true
+        },
+        "use_external_velocity_limit": {
+          "type": "boolean",
+          "description": "Enable the external velocity limit plugin",
           "default": true
         },
         "use_stop_point_fixer": {
