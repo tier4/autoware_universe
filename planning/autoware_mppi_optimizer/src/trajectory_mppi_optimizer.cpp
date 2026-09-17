@@ -16,13 +16,15 @@
 
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_kinematic_limits_conversion.hpp"
-#include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_conversion.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
+#include <autoware_utils_debug/debug_publisher.hpp>
 #include <pluginlib/class_list_macros.hpp>
 
+#include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -114,22 +116,6 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   return output;
 }
 
-/** @brief Reads standard actuator dynamics and combines them with vehicle geometry. */
-FirstOrderDubinsMppiVehicleParams make_vehicle_params(
-  rclcpp::Node & node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
-{
-  auto output = makeVehicleParams(vehicle_info);
-  output.acc_time_constant =
-    static_cast<float>(node.get_parameter("acc_time_constant").as_double());
-  output.steer_time_constant =
-    static_cast<float>(node.get_parameter("steer_time_constant").as_double());
-  output.steer_rate_lim = static_cast<float>(node.get_parameter("steer_rate_lim").as_double());
-  output.vel_rate_lim = static_cast<float>(node.get_parameter("vel_rate_lim").as_double());
-  output.acc_time_delay = static_cast<float>(node.get_parameter("acc_time_delay").as_double());
-  output.steer_time_delay = static_cast<float>(node.get_parameter("steer_time_delay").as_double());
-  return output;
-}
-
 autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
 make_velocity_limit_overrides(const trajectory_mppi_optimizer::Params & params)
 {
@@ -171,6 +157,71 @@ std::vector<Segment> to_mppi_segments(const std::vector<Segment2d> & segments)
   return output;
 }
 
+/** @brief Planar distance [m] from ego odometry to the first DP reference point. */
+double ego_to_first_reference_point_distance_m(
+  const nav_msgs::msg::Odometry & odometry, const Trajectory & reference)
+{
+  if (reference.points.empty()) {
+    return 0.0;
+  }
+  const auto & ego = odometry.pose.pose.position;
+  const auto & first = reference.points.front().pose.position;
+  return std::hypot(ego.x - first.x, ego.y - first.y);
+}
+
+/** Match mppi::cost::detail::signedLateralOffsetPointToSegment (+ = left of tangent). */
+double signed_lateral_offset_point_to_segment(
+  const double px, const double py, const double x0, const double y0, const double x1,
+  const double y1)
+{
+  const double dx = x1 - x0;
+  const double dy = y1 - y0;
+  const double len_sq = dx * dx + dy * dy;
+  if (len_sq < 1.0E-8) {
+    return px - x0;
+  }
+  const double t = std::clamp(((px - x0) * dx + (py - y0) * dy) / len_sq, 0.0, 1.0);
+  const double cx = x0 + t * dx;
+  const double cy = y0 + t * dy;
+  const double len = std::hypot(dx, dy);
+  return ((px - cx) * (-dy) + (py - cy) * dx) / len;
+}
+
+/**
+ * @brief Signed cross-track error [m] from ego to the closest segment on the raw DP polyline.
+ * Uses the same closest-segment search and sign convention as MPPI lateral_distance_coeff.
+ */
+double ego_signed_lateral_error_on_reference_m(
+  const nav_msgs::msg::Odometry & odometry, const Trajectory & reference)
+{
+  if (reference.points.size() < 2) {
+    return 0.0;
+  }
+  const double px = odometry.pose.pose.position.x;
+  const double py = odometry.pose.pose.position.y;
+
+  double best_signed = 0.0;
+  double best_dist_sq = std::numeric_limits<double>::max();
+  for (size_t i = 0; i + 1 < reference.points.size(); ++i) {
+    const auto & p0 = reference.points[i].pose.position;
+    const auto & p1 = reference.points[i + 1].pose.position;
+    const double dx = p1.x - p0.x;
+    const double dy = p1.y - p0.y;
+    const double len_sq = dx * dx + dy * dy;
+    const double t = (len_sq < 1.0E-8)
+                       ? 0.0
+                       : std::clamp(((px - p0.x) * dx + (py - p0.y) * dy) / len_sq, 0.0, 1.0);
+    const double cx = p0.x + t * dx;
+    const double cy = p0.y + t * dy;
+    const double dist_sq = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+    if (dist_sq < best_dist_sq) {
+      best_dist_sq = dist_sq;
+      best_signed = signed_lateral_offset_point_to_segment(px, py, p0.x, p0.y, p1.x, p1.y);
+    }
+  }
+  return best_signed;
+}
+
 }  // namespace
 
 void TrajectoryMppiOptimizer::on_initialize(
@@ -200,6 +251,7 @@ void TrajectoryMppiOptimizer::on_initialize(
   markers_pub_ = node->create_publisher<MarkerArray>("~/debug/mppi/markers", 1);
   enabled_pub_ = node->create_publisher<std_msgs::msg::Bool>(
     "~/debug/mppi/enabled", rclcpp::QoS{1}.transient_local());
+  debug_publisher_ = std::make_unique<autoware_utils_debug::DebugPublisher>(node, "~/debug");
   cost_diagnostics_ = std::make_unique<DiagnosticsInterface>(node, "mppi_cost_breakdown");
   publish_enabled(false);
 }
@@ -320,6 +372,10 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       !params_.shadow_mode && (!result.debug.was_rejected || apply_limited_fallback);
     publish_enabled(apply_result);
     publish_cost_diagnostics(result.debug, apply_result, rclcpp::Time{input.header.stamp});
+    publish_processing_time(result.debug.timing);
+    publish_prediction_accuracy(result.debug.prediction_accuracy);
+    publish_ego_to_dp_first_point_distance(*data.current_odometry, input);
+    publish_ego_signed_lateral_error_on_dp(*data.current_odometry, input);
     if (result.debug.was_rejected) {
       pending_markers_.markers.clear();
       clear_markers(input.header);
@@ -374,7 +430,7 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
   }
 
   auto cost_params = make_cost_params(params_);
-  auto vehicle_params = make_vehicle_params(*get_node_ptr(), context_->vehicle_info);
+  auto vehicle_params = get_first_order_dubins_mppi_vehicle_params(*get_node_ptr());
   optimizer_ = std::make_unique<FirstOrderDubinsMppiInterface>();
   optimizer_->setCostParams(cost_params);
   optimizer_->setVehicleParams(vehicle_params);
@@ -469,6 +525,7 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("state/track", cost.track);
   cost_diagnostics_->add_key_value("state/heading", cost.heading);
   cost_diagnostics_->add_key_value("state/lateral_distance", cost.lateral_distance);
+  cost_diagnostics_->add_key_value("state/signed_lateral_error_m", cost.signed_lateral_error_m);
   cost_diagnostics_->add_key_value("state/lateral_yaw_error", cost.lateral_yaw_error);
   cost_diagnostics_->add_key_value("state/track_center", cost.track_center);
   cost_diagnostics_->add_key_value("state/corner_buffer", cost.corner_buffer);
@@ -495,6 +552,16 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value(
     "velocity_limit_profile_active", debug.velocity_limit_profile_active);
   cost_diagnostics_->add_key_value("was_applied", was_applied);
+  if (debug.prediction_accuracy.valid) {
+    const auto & pred = debug.prediction_accuracy;
+    cost_diagnostics_->add_key_value("prediction/elapsed_s", pred.elapsed_s);
+    cost_diagnostics_->add_key_value("prediction/full_steps", pred.full_steps);
+    cost_diagnostics_->add_key_value("prediction/remainder_s", pred.remainder_s);
+    cost_diagnostics_->add_key_value("prediction/integration_steps", pred.integration_steps);
+    cost_diagnostics_->add_key_value("prediction/pos_error_m", pred.pos_error_m);
+    cost_diagnostics_->add_key_value("prediction/yaw_error_rad", pred.yaw_error_rad);
+    cost_diagnostics_->add_key_value("prediction/vel_error_mps", pred.vel_error_mps);
+  }
 
   if (cost.evaluated_timesteps == 0U) {
     cost_diagnostics_->update_level_and_message(
@@ -516,6 +583,61 @@ void TrajectoryMppiOptimizer::publish_status_diagnostic(
   cost_diagnostics_->clear();
   cost_diagnostics_->update_level_and_message(level, message);
   cost_diagnostics_->publish(stamp);
+}
+
+void TrajectoryMppiOptimizer::publish_processing_time(const FirstOrderDubinsMppiTiming & timing)
+{
+  if (!debug_publisher_) {
+    return;
+  }
+  // Sibling Float64Stamped topics under ~/debug/processing_time_ms/ so PlotJuggler shows
+  // subdivisions next to the processor total (~/debug/processing_time_ms.data).
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "processing_time_ms/nominal", timing.seed_nominal_ms);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "processing_time_ms/mppi", timing.total_ms);
+}
+
+void TrajectoryMppiOptimizer::publish_prediction_accuracy(
+  const FirstOrderDubinsMppiPredictionAccuracy & accuracy) const
+{
+  if (!debug_publisher_ || !accuracy.valid) {
+    return;
+  }
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/elapsed_s", accuracy.elapsed_s);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/pos_error_m", accuracy.pos_error_m);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/yaw_error_rad", accuracy.yaw_error_rad);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/vel_error_mps", accuracy.vel_error_mps);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/full_steps", static_cast<double>(accuracy.full_steps));
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/prediction/remainder_s", accuracy.remainder_s);
+}
+
+void TrajectoryMppiOptimizer::publish_ego_to_dp_first_point_distance(
+  const nav_msgs::msg::Odometry & odometry, const Trajectory & reference) const
+{
+  if (!debug_publisher_ || reference.points.empty()) {
+    return;
+  }
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/ego_to_dp_first_point_distance_m",
+    ego_to_first_reference_point_distance_m(odometry, reference));
+}
+
+void TrajectoryMppiOptimizer::publish_ego_signed_lateral_error_on_dp(
+  const nav_msgs::msg::Odometry & odometry, const Trajectory & reference) const
+{
+  if (!debug_publisher_ || reference.points.size() < 2) {
+    return;
+  }
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "mppi/ego_signed_lateral_error_on_dp_m",
+    ego_signed_lateral_error_on_reference_m(odometry, reference));
 }
 
 void TrajectoryMppiOptimizer::clear_markers(const std_msgs::msg::Header & header) const

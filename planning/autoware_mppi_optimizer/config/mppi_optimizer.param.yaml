@@ -14,12 +14,12 @@
       track_coeff: 0.0
       track_terminal_scale: 10.0
       heading_coeff: 0.0
-      # Spatial (closest-segment) costs restored from pre time-indexed tracking; 0 = off.
-      lateral_distance_coeff: 4000.0
-      lateral_yaw_error_coeff: 500.0
-      # Soft cost on remaining corridor chord length to path end [m]; 0 = off.
-      remaining_distance_coeff: 40.0
-      # Soft cost on along-track distance past the corridor tip [m]; 0 = off.
+      # Spatial (closest-segment) cross-track: coeff * e_lat^2; 0 = off.
+      lateral_distance_coeff: 2000.0
+      lateral_yaw_error_coeff: 200.0
+      # Soft cost on remaining corridor chord length: coeff * s^2; 0 = off.
+      remaining_distance_coeff: 1.0
+      # Soft cost on along-track past corridor tip: coeff * s^2; 0 = off.
       path_overshoot_coeff: 1000.0
       # Track the center of the ego footprint against the time-indexed reference; 0 = off.
       track_center_coeff: 0.0
@@ -31,15 +31,15 @@
       longitudinal_jerk_coeff: 100.0
       accel_cmd_coeff: 50.0
       steer_cmd_coeff: 250.0
-      steer_rate_coeff: 20000.0
+      steer_rate_coeff: 1000000.0
       # Shared deadband-quadratic cost for optional VelocityLimit bounds.
       overlimit_coeff: 10000.0
       # MPPI control-sample noise std-devs around the nominal (u_nom).
       accel_cmd_std_dev: 0.1
       steer_cmd_std_dev: 0.02
       # Power-law PSD exponents (0 = white, 1 = pink, 2 = brown) for colored noise.
-      accel_cmd_noise_exponent: 1.0
-      steer_cmd_noise_exponent: 1.0
+      accel_cmd_noise_exponent: 2.0
+      steer_cmd_noise_exponent: 2.0
       drivable_area_safe_margin: 0.0
       drivable_area_barrier_weight: 0.0
       # Crash costs
@@ -53,7 +53,9 @@
 
       nominal_curvature_min_chord_length_m: 1.5
 
-      # Delays still come from simulator_model when this is true.
+      # Actuator taus/delays come from simulator_model.param.yaml on the trajectory processor
+      # node. For DELAY_STEER_ACC_GEARED_FOR_DIFFUSION_PLANNER, nested v{version}.* fields
+      # (vehicle-identified model); otherwise flat top-level fields.
       enable_input_delay_compensation: true
       prevent_reverse_velocity: true
 
@@ -64,7 +66,7 @@
       skip_if_invalid: true
       min_optimization_length: 0.0
 
-      # Cold-seed u_nom from acados temporal MPT.
+      # Seed u_nom from acados temporal MPT (self warm-start; ignores last MPPI u_opt).
       use_temporal_mpt_as_nominal: true
       use_last_control_as_nominal: true
 
