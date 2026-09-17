@@ -1424,7 +1424,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     plant.steer_cmd_delay_buffer = steer_delay_buffer;
   }
 
-  FirstOrderDubinsMppiPredictionAccuracy evaluatePredictionAccuracy(const Odometry & odometry) const
+  FirstOrderDubinsMppiPredictionAccuracy evaluatePredictionAccuracy(
+    const Odometry & odometry) const
   {
     if (!prediction_anchor_.valid) {
       return {};
@@ -1443,7 +1444,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     return detail::evaluatePlantPredictionAccuracy(input);
   }
 
-  void recordAppliedControl(const Odometry & odometry, const FirstOrderDubinsMppiControl & control)
+  void recordAppliedControl(
+    const Odometry & odometry, const FirstOrderDubinsMppiControl & control)
   {
     detail::FirstOrderDubinsMppiControlHistoryEntry entry;
     entry.stamp = odometry.header.stamp;
@@ -1453,7 +1455,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (prediction_control_history_.size() > kMaxHistoryEntries) {
       prediction_control_history_.erase(
         prediction_control_history_.begin(),
-        prediction_control_history_.end() - static_cast<std::ptrdiff_t>(kMaxHistoryEntries));
+        prediction_control_history_.end() -
+          static_cast<std::ptrdiff_t>(kMaxHistoryEntries));
     }
   }
 
@@ -2376,8 +2379,7 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
   builtin_interfaces::msg::Time query_time = input.anchor.stamp;
   float integration_time = 0.0F;
   for (const float step_dt : dts) {
-    const auto control =
-      controlAtTimeForPrediction(input.control_history, query_time, fallback_control);
+    const auto control = controlAtTimeForPrediction(input.control_history, query_time, fallback_control);
     FirstOrderDubinsBicycle::control_array u = FirstOrderDubinsBicycle::control_array::Zero();
     u(static_cast<int>(C::ACCELERATION_CMD)) = control.accel_cmd;
     u(static_cast<int>(C::STEER_CMD)) = control.steer_cmd;
@@ -2416,8 +2418,8 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
   result.predicted_y = x(static_cast<int>(S::POS_Y));
   result.predicted_yaw = x(static_cast<int>(S::YAW));
   result.predicted_vel = x(static_cast<int>(S::VEL_X));
-  result.pos_error_m =
-    std::hypot(result.predicted_x - input.measured_x, result.predicted_y - input.measured_y);
+  result.pos_error_m = std::hypot(
+    result.predicted_x - input.measured_x, result.predicted_y - input.measured_y);
   result.yaw_error_rad = wrapPiForPrediction(result.predicted_yaw - input.measured_yaw);
   result.vel_error_mps = result.predicted_vel - input.measured_vel;
   return result;
