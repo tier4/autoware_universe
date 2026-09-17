@@ -130,9 +130,9 @@ inline constexpr double kMaxSnapStrength = 0.95;
  * slightly drifted localization pose. The snapped position is the closest point on a cubic spline
  * through the previous trajectory's vertices (preceded by recent ego poses so the spline extends
  * behind the vehicle); the snapped heading is the spline tangent averaged over a window of arc
- * length, or the model's own heading channel. Distance and heading limits then apply either by
- * blending the snapped pose toward the localized pose and bounding the result ("bound", the
- * default, continuous) or by skipping the snap for the frame ("reject").
+ * length, or the model's own heading channel. The distance and heading limits are applied by
+ * blending the snapped pose toward the localized pose and bounding the result, so the pose handed
+ * to the model is continuous at the limits.
  */
 struct EgoSnapParams
 {
@@ -145,16 +145,9 @@ struct EgoSnapParams
   // Maximum allowed heading difference [deg] between the actual ego pose and the snapped pose.
   double max_yaw_error_deg;
 
-  // What happens at the error limits:
-  //  - "reject": the snap is skipped for the frame and the raw pose is used (a step in the ego pose
-  //    and in the ego history whenever the limit is crossed).
-  //  - "bound": the snapped pose is pulled toward the raw pose so it never exceeds the limits
-  //    (utils::bound_snapped_pose); continuous, no step.
-  std::string limit_mode;
-
   // How far from the raw pose toward the snapped pose the virtual pose is placed, in [0, 1].
   // 0 is the raw pose, so the feature has no effect; 1 is the snapped pose, fully on the previous
-  // plan; values in between sit on the segment between the two. Only used with limit_mode "bound".
+  // plan; values in between sit on the segment between the two.
   // Values above kMaxSnapStrength are clipped to it (see the constant).
   double snap_strength;
 
@@ -450,7 +443,7 @@ private:
    * @brief Snapped ego pose (map frame, model frame convention) and interpolation time [s] of the
    *        snapped point along the previous planning trajectory, according to
    *        params_.ego_snap_to_prev_trajectory. std::nullopt when the snap is disabled, not yet
-   *        possible (no previous trajectory), skipped (low speed) or rejected (error limits).
+   *        possible (no previous trajectory) or disabled.
    */
   // Recent distinct ego poses, oldest first, to prepend to the previous trajectory so the snap
   // spline has geometry behind the vehicle. The newest history entry is the previous planning start

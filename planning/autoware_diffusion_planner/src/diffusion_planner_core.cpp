@@ -368,31 +368,6 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   return frame_context;
 }
 
-namespace
-{
-// Applies the error limits to the snapped pose. "bound" blends toward the real pose and clamps the
-// result, so it always returns a pose. "reject" returns nullopt when either limit is exceeded, and
-// the caller keeps the raw pose for this frame.
-std::optional<utils::BoundedPose> limit_snapped_pose(
-  const EgoSnapParams & params, const Eigen::Vector2d & real_position, const double real_yaw,
-  const Eigen::Vector2d & snapped_position, const double snapped_yaw)
-{
-  const double max_yaw_error_rad = autoware_utils_math::deg2rad(params.max_yaw_error_deg);
-  if (params.limit_mode == "bound") {
-    return utils::bound_snapped_pose(
-      real_position, real_yaw, snapped_position, snapped_yaw, params.snap_strength,
-      params.max_position_error_m, max_yaw_error_rad);
-  }
-  const double position_error_m = (real_position - snapped_position).norm();
-  const double yaw_error_rad =
-    std::abs(autoware_utils_math::normalize_radian(real_yaw - snapped_yaw));
-  if (position_error_m > params.max_position_error_m || yaw_error_rad > max_yaw_error_rad) {
-    return std::nullopt;
-  }
-  return utils::BoundedPose{snapped_position, snapped_yaw};
-}
-}  // namespace
-
 std::string validate_ego_snap_params(const EgoSnapParams & p)
 {
   const std::string prefix = "ego_snap_to_prev_trajectory.";
@@ -422,9 +397,6 @@ std::string validate_ego_snap_params(const EgoSnapParams & p)
   }
   if (p.history_prefix_count < 0) {
     return prefix + "history_prefix_count must be >= 0";
-  }
-  if (p.limit_mode != "reject" && p.limit_mode != "bound") {
-    return prefix + "limit_mode must be 'reject' or 'bound'";
   }
   if (p.yaw_source != "predicted_heading" && p.yaw_source != "polyline_tangent") {
     return prefix + "yaw_source must be 'predicted_heading' or 'polyline_tangent'";
@@ -495,8 +467,9 @@ std::optional<SnappedEgo> DiffusionPlannerCore::snap_ego_to_previous_trajectory(
                                : snap->heading_yaw;
 
   const Eigen::Vector2d real_position(position.x, position.y);
-  const std::optional<utils::BoundedPose> virtual_pose =
-    limit_snapped_pose(snap_params, real_position, current_yaw, snap->position, snapped_yaw);
+  const std::optional<utils::BoundedPose> virtual_pose = utils::bound_snapped_pose(
+    real_position, current_yaw, snap->position, snapped_yaw, snap_params.snap_strength,
+    snap_params.max_position_error_m, autoware_utils_math::deg2rad(snap_params.max_yaw_error_deg));
   if (!virtual_pose) {
     return std::nullopt;
   }
