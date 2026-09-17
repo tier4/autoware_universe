@@ -76,20 +76,10 @@ public:
   void update_params(const StartGoalPlannerParams & params);
 
   // Confirm the start planner has generated the trajectory
-  bool start_planner_active() const { return start_planner_act_; }
+  bool start_planner_active() { return start_planner_act_; }
 
   // Confirm the goal planner has generated the trajectory
-  bool goal_planner_active() const
-  {
-    return goal_planner_act_ && generated_trajectory_.has_value();
-  }
-
-  // Pose at which the latched pull-over trajectory leaves the lane, i.e. where ego starts moving
-  // towards the shoulder. Empty while the goal planner is not shaping the path.
-  std::optional<Pose> goal_pull_start_pose() const
-  {
-    return goal_planner_active() ? goal_pull_start_pose_ : std::nullopt;
-  }
+  bool goal_planner_active() { return goal_planner_act_ && generated_trajectory_.has_value(); }
 
 private:
   // polygon type which can be used to pull-out and pull-over
@@ -153,9 +143,6 @@ private:
   // lached trajectory generated at previous time step
   std::optional<PathPointTrajectory> generated_trajectory_{std::nullopt};
   std::optional<Pose> goal_pose_prev_{std::nullopt};
-
-  // start of the pull-over shift in the latched trajectory, kept in step with it
-  std::optional<Pose> goal_pull_start_pose_{std::nullopt};
 
   RouteData route_data_;
   rclcpp::Logger logger_;

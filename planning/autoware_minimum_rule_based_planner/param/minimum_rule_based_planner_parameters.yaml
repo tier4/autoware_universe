@@ -298,7 +298,7 @@ minimum_rule_based_planner:
     search_distance:
       type: double
       default_value: 30.0
-      description: lead distance floor before a maneuver (JP law requires 30 m before a turn); the activation distance is max(v * 3.0 s, this), and it applies to intersection turns, private-area exits and the pull-over shift alike [m]
+      description: lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this) [m]
       validation:
         gt_eq<>: [0.0]
 

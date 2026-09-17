@@ -343,7 +343,7 @@
           "properties": {
             "search_distance": {
               "type": "number",
-              "description": "Lead distance floor before a maneuver (JP law requires 30 m before a turn); the activation distance is max(v * 3.0 s, this), and it applies to intersection turns, private-area exits and the pull-over shift alike [m]",
+              "description": "Lead distance floor before a maneuver (JP law requires 30 m before a turn), and the distance-to-goal at which the pull-over signal starts; the activation distance is max(v * 3.0 s, this) [m]",
               "default": 30.0,
               "minimum": 0.0
             },

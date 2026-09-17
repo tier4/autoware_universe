@@ -332,7 +332,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
     autoware_utils_debug::ScopedTimeTrack st_ti("turn_indicators", *time_keeper_);
     turn_indicators_command = turn_indicator_decider_->decide(
       *path, path_planner_->route_context(), input_data.odometry_ptr->pose.pose,
-      input_data.odometry_ptr->twist.twist.linear.x, now(), path_planner_->pull_over_start_pose());
+      input_data.odometry_ptr->twist.twist.linear.x, now());
   }
 
   // 3. Convert path to trajectory

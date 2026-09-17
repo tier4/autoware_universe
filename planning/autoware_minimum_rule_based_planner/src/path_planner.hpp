@@ -110,11 +110,6 @@ public:
 
   bool update_current_lanelet(const geometry_msgs::msg::Pose & current_pose);
 
-  std::optional<geometry_msgs::msg::Pose> pull_over_start_pose() const
-  {
-    return start_goal_planner_.goal_pull_start_pose();
-  }
-
   // Path planning
   std::optional<PathWithLaneId> plan_path(
     const geometry_msgs::msg::Pose & current_pose, double ego_velocity,
