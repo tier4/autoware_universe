@@ -2,10 +2,6 @@ cmake_minimum_required(VERSION 3.17)
 project(autoware_ml_planner)
 
 find_package(autoware_cmake REQUIRED)
-autoware_package()
-
-find_package(Boost REQUIRED)
-find_package(xtensor REQUIRED)
 
 option(ENABLE_ONNXRUNTIME "Enable ONNX Runtime inference when available" ON)
 option(ENABLE_ACADOS "Enable acados trajectory optimization when available" ON)
@@ -15,9 +11,27 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(FindMLPlannerDependencies)
 include(AddAcadosSolver)
 
+# Probe GPU toolchain before autoware_package(): exported deps (e.g. tensorrt_common)
+# call find_package(CUDAToolkit REQUIRED), which breaks optional CPU-only configures.
 ml_planner_find_dependencies()
 
-if(ML_PLANNER_CUDA_AVAIL AND ML_PLANNER_TRT_AVAIL)
+if(NOT (ML_PLANNER_CUDA_AVAIL AND ML_PLANNER_TRT_AVAIL))
+  message(WARNING
+    "${PROJECT_NAME} will not be built: CUDA and TensorRT are required for the ML planner component")
+  find_package(ament_cmake_auto REQUIRED)
+  ament_auto_package(
+    INSTALL_TO_SHARE
+      config
+      launch
+      test_map
+  )
+  return()
+endif()
+
+autoware_package()
+
+find_package(Boost REQUIRED)
+find_package(xtensor REQUIRED)
 
 set(ML_PLANNER_SOURCES
   src/ml_planner_core.cpp
@@ -61,11 +75,12 @@ ament_auto_add_library(autoware_ml_planner_component SHARED
 
 target_include_directories(autoware_ml_planner_component PUBLIC
   ${Boost_INCLUDE_DIRS}
+  ${CUDA_INCLUDE_DIRS}
 )
 
 target_link_libraries(autoware_ml_planner_component
-  CUDA::cudart
-  CUDA::cublas
+  ${CUDA_LIBRARIES}
+  ${ML_PLANNER_CUBLAS_LIBRARIES}
   MLPlanner::nvinfer
   MLPlanner::nvonnxparser
   xtensor
@@ -135,8 +150,6 @@ if(BUILD_TESTING)
     autoware_perception_msgs
     autoware_test_utils
   )
-endif()
-
 endif()
 
 ament_auto_package(
