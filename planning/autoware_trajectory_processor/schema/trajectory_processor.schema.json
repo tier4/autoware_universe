@@ -9,6 +9,11 @@
         "map_velocity_limits": {
           "type": "object",
           "properties": {
+            "enable_smoothing": {
+              "type": "boolean",
+              "default": true,
+              "description": "Smooth unreachable velocities with constant deceleration from the current velocity"
+            },
             "limit_velocity_from_map_debug_lanelet_ids": {
               "type": "array",
               "items": { "type": "integer" },

@@ -15,15 +15,13 @@
 #ifndef AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_PLUGINS__MAP_VELOCITY_LIMITS_HPP_
 #define AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_PLUGINS__MAP_VELOCITY_LIMITS_HPP_
 
+#include "autoware/trajectory_processor/trajectory_modifier_utils/utils.hpp"
 #include "autoware/trajectory_processor/trajectory_processor_plugin_base.hpp"
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <functional>
 #include <memory>
-#include <optional>
-#include <string>
 
 namespace autoware::trajectory_processor::plugin
 {
@@ -33,21 +31,6 @@ using autoware::trajectory_processor::plugin::ProcessingResult;
 using autoware::trajectory_processor::plugin::TrajectoryPoints;
 using autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase;
 using ModifierParams = trajectory_processor_params::Params;
-
-namespace detail
-{
-struct MapVelocityLimitResult
-{
-  ProcessingResult status{ProcessingResult::Unchanged};
-  std::string error;
-};
-
-// Retimes along the input polyline, keeping its first pose and every timestamp. The callback
-// permits checking the map again after resampling, independently of route-handler ownership.
-MapVelocityLimitResult apply_map_velocity_limits(
-  TrajectoryPoints & points, double deceleration,
-  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit);
-}  // namespace detail
 
 class MapVelocityLimits : public TrajectoryProcessorPluginBase
 {
@@ -68,7 +51,8 @@ protected:
     extended_route_handler_;
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     limit_overrides_;
-  double constant_deceleration_{};
+  double constant_deceleration_;
+  bool enable_smoothing_{true};
 
   void on_initialize(const TrajectoryProcessorParams & params) override;
 };

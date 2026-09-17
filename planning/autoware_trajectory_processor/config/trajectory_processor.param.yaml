@@ -20,6 +20,8 @@
       - "autoware::trajectory_processor::plugin::TrajectoryMPTOptimizer"
       - "autoware::trajectory_processor::plugin::TrajectoryExtender"
     use_map_velocity_limits: true
+    map_velocity_limits:
+      enable_smoothing: true
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
