@@ -14,6 +14,8 @@
 
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 
+#include <mppi/dynamics/dubins/velocity_dependent_steering_rate.cuh>
+
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <tf2/LinearMath/Quaternion.h>
@@ -23,6 +25,7 @@
 #include <cmath>
 #include <deque>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace autoware::mppi_optimizer::detail
@@ -494,10 +497,121 @@ float computeMengerCurvatureWithMinChord(
   return static_cast<float>(2.0 * cross / denominator);
 }
 
+namespace
+{
+
+bool solveThreeByThree(double matrix[3][4], double solution[3])
+{
+  constexpr double kPivotEpsilon = 1.0E-10;
+  for (int column = 0; column < 3; ++column) {
+    int pivot = column;
+    for (int row = column + 1; row < 3; ++row) {
+      if (std::abs(matrix[row][column]) > std::abs(matrix[pivot][column])) pivot = row;
+    }
+    if (std::abs(matrix[pivot][column]) < kPivotEpsilon) return false;
+    if (pivot != column) {
+      for (int entry = column; entry < 4; ++entry) {
+        std::swap(matrix[column][entry], matrix[pivot][entry]);
+      }
+    }
+    const double divisor = matrix[column][column];
+    for (int entry = column; entry < 4; ++entry) matrix[column][entry] /= divisor;
+    for (int row = 0; row < 3; ++row) {
+      if (row == column) continue;
+      const double factor = matrix[row][column];
+      for (int entry = column; entry < 4; ++entry) {
+        matrix[row][entry] -= factor * matrix[column][entry];
+      }
+    }
+  }
+  for (int row = 0; row < 3; ++row) solution[row] = matrix[row][3];
+  return true;
+}
+
+float computeLeastSquaresCurvature(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & points,
+  const std::vector<double> & arc_length, const std::size_t target_idx, const float fit_window_m,
+  const float fallback_min_chord_m)
+{
+  if (points.size() < 3U || target_idx >= points.size() || arc_length.size() != points.size()) {
+    return std::numeric_limits<float>::quiet_NaN();
+  }
+  const double half_window =
+    0.5 *
+    std::max(static_cast<double>(fit_window_m), 2.0 * static_cast<double>(fallback_min_chord_m));
+  const double target_s = arc_length[target_idx];
+  std::size_t first = static_cast<std::size_t>(
+    std::lower_bound(arc_length.begin(), arc_length.end(), target_s - half_window) -
+    arc_length.begin());
+  std::size_t last = static_cast<std::size_t>(
+    std::upper_bound(arc_length.begin(), arc_length.end(), target_s + half_window) -
+    arc_length.begin());
+  if (last > 0U) --last;
+
+  const double requested_span = 2.0 * half_window;
+  while (arc_length[last] - arc_length[first] < requested_span) {
+    const bool can_extend_before = first > 0U;
+    const bool can_extend_after = last + 1U < points.size();
+    if (!can_extend_before && !can_extend_after) break;
+    if (!can_extend_before) {
+      ++last;
+    } else if (!can_extend_after) {
+      --first;
+    } else if (target_s - arc_length[first - 1U] < arc_length[last + 1U] - target_s) {
+      --first;
+    } else {
+      ++last;
+    }
+  }
+  if (last <= first + 1U || arc_length[last] - arc_length[first] < 1.0E-3) {
+    return computeMengerCurvatureWithMinChord(points, target_idx, fallback_min_chord_m);
+  }
+
+  const auto & origin = points[target_idx].pose.position;
+  const auto & first_point = points[first].pose.position;
+  const auto & last_point = points[last].pose.position;
+  const double axis_x = last_point.x - first_point.x;
+  const double axis_y = last_point.y - first_point.y;
+  const double axis_norm = std::hypot(axis_x, axis_y);
+  if (axis_norm < 1.0E-6) {
+    return computeMengerCurvatureWithMinChord(points, target_idx, fallback_min_chord_m);
+  }
+  const double cosine = axis_x / axis_norm;
+  const double sine = axis_y / axis_norm;
+
+  // Weighted local fit y = a*x^2 + b*x + c in a path-aligned frame centered at the target.
+  double normal[3][4]{};
+  for (std::size_t index = first; index <= last; ++index) {
+    const double dx = points[index].pose.position.x - origin.x;
+    const double dy = points[index].pose.position.y - origin.y;
+    const double local_x = cosine * dx + sine * dy;
+    const double local_y = -sine * dx + cosine * dy;
+    const double relative_s = std::abs(arc_length[index] - target_s);
+    const double normalized_distance = relative_s / std::max(half_window, 1.0E-3);
+    const double weight = 1.0 / (1.0 + normalized_distance * normalized_distance);
+    const double basis[3] = {local_x * local_x, local_x, 1.0};
+    for (int row = 0; row < 3; ++row) {
+      for (int column = 0; column < 3; ++column) {
+        normal[row][column] += weight * basis[row] * basis[column];
+      }
+      normal[row][3] += weight * basis[row] * local_y;
+    }
+  }
+  double coefficients[3]{};
+  if (!solveThreeByThree(normal, coefficients)) {
+    return computeMengerCurvatureWithMinChord(points, target_idx, fallback_min_chord_m);
+  }
+  const double slope = coefficients[1];
+  return static_cast<float>(2.0 * coefficients[0] / std::pow(1.0 + slope * slope, 1.5));
+}
+
+}  // namespace
+
 std::vector<FirstOrderDubinsMppiControl> buildDiffusionNominalControl(
   const Trajectory & reference, const std::size_t start_idx,
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, const int horizon,
-  const float min_chord_length_m)
+  const float min_chord_length_m, const float curvature_fit_window_m, const float dt,
+  const float initial_velocity_mps)
 {
   const int control_count = std::max(0, horizon);
   std::vector<FirstOrderDubinsMppiControl> nominal(static_cast<std::size_t>(control_count));
@@ -505,23 +619,46 @@ std::vector<FirstOrderDubinsMppiControl> buildDiffusionNominalControl(
     return nominal;
   }
 
+  std::vector<double> arc_length(reference.points.size(), 0.0);
+  for (std::size_t index = 1U; index < reference.points.size(); ++index) {
+    arc_length[index] =
+      arc_length[index - 1U] +
+      std::hypot(
+        reference.points[index].pose.position.x - reference.points[index - 1U].pose.position.x,
+        reference.points[index].pose.position.y - reference.points[index - 1U].pose.position.y);
+  }
+  const std::size_t bounded_start = std::min(start_idx, reference.points.size() - 1U);
+  double target_s = arc_length[bounded_start];
+  float predicted_velocity =
+    std::isfinite(initial_velocity_mps)
+      ? std::max(initial_velocity_mps, 0.0F)
+      : std::max(reference.points[bounded_start].longitudinal_velocity_mps, 0.0F);
+  const float safe_dt = std::max(dt, 0.0F);
   for (int t = 0; t < control_count; ++t) {
-    const std::size_t index =
-      std::min(start_idx + static_cast<std::size_t>(t), reference.points.size() - 1U);
+    const auto lower =
+      std::lower_bound(arc_length.begin() + bounded_start, arc_length.end(), target_s);
+    std::size_t index = static_cast<std::size_t>(lower - arc_length.begin());
+    if (index >= reference.points.size()) index = reference.points.size() - 1U;
+    if (index > bounded_start && target_s - arc_length[index - 1U] < arc_length[index] - target_s) {
+      --index;
+    }
     const auto & point = reference.points[index];
     auto & control = nominal[static_cast<std::size_t>(t)];
     control.accel_cmd =
       std::clamp(point.acceleration_mps2, vehicle_params.min_accel(), vehicle_params.max_accel());
+    const float curvature = computeLeastSquaresCurvature(
+      reference.points, arc_length, index, curvature_fit_window_m, min_chord_length_m);
     float steering = point.front_wheel_angle_rad;
-    if (std::abs(steering) <= 1.0E-6F) {
-      const float curvature =
-        computeMengerCurvatureWithMinChord(reference.points, index, min_chord_length_m);
-      if (std::isfinite(curvature)) {
-        steering = std::atan(vehicle_params.wheel_base * curvature);
-      }
+    if (std::isfinite(curvature)) {
+      steering = std::atan(vehicle_params.wheel_base * curvature);
     }
     control.steer_cmd =
       std::clamp(steering, -vehicle_params.max_steer_angle, vehicle_params.max_steer_angle);
+    const float next_velocity = std::max(0.0F, predicted_velocity + control.accel_cmd * safe_dt);
+    target_s = std::min(
+      arc_length.back(), target_s + 0.5 * static_cast<double>(predicted_velocity + next_velocity) *
+                                      static_cast<double>(safe_dt));
+    predicted_velocity = next_velocity;
   }
   return nominal;
 }
@@ -547,6 +684,167 @@ std::vector<FirstOrderDubinsMppiControl> buildForcedNominalControl(
       std::clamp(steering, -vehicle_params.max_steer_angle, vehicle_params.max_steer_angle);
   }
   return nominal;
+}
+
+std::size_t overlayNominalSteeringFromPredictedTrajectory(
+  std::vector<FirstOrderDubinsMppiControl> & nominal, const Trajectory & predicted_trajectory,
+  const InitialState & ego, const FirstOrderDubinsMppiVehicleParams & vehicle_params,
+  const float dt)
+{
+  struct SteeringSample
+  {
+    float time{0.0F};
+    float steering{0.0F};
+  };
+
+  if (
+    nominal.empty() || predicted_trajectory.points.empty() || !std::isfinite(dt) || dt <= 0.0F ||
+    !std::isfinite(ego.x) || !std::isfinite(ego.y) || !std::isfinite(ego.yaw) ||
+    !std::isfinite(vehicle_params.wheel_base) || vehicle_params.wheel_base <= 0.0F ||
+    !std::isfinite(vehicle_params.max_steer_angle) || vehicle_params.max_steer_angle < 0.0F) {
+    return 0U;
+  }
+
+  constexpr double kMinimumTransitionDistance = 1.0E-3;
+  std::vector<SteeringSample> samples;
+  samples.reserve(predicted_trajectory.points.size());
+
+  double previous_x = ego.x;
+  double previous_y = ego.y;
+  double previous_yaw = ego.yaw;
+  float previous_time = -1.0F;
+  for (std::size_t index = 0; index < predicted_trajectory.points.size(); ++index) {
+    const auto & point = predicted_trajectory.points[index];
+    const double x = point.pose.position.x;
+    const double y = point.pose.position.y;
+    const double yaw = tf2::getYaw(point.pose.orientation);
+    const float time = static_cast<float>(point.time_from_start.sec) +
+                       1.0E-9F * static_cast<float>(point.time_from_start.nanosec);
+    if (
+      !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(yaw) || !std::isfinite(time) ||
+      time < 0.0F || (index > 0U && time <= previous_time)) {
+      return 0U;
+    }
+
+    const double delta_x = x - previous_x;
+    const double delta_y = y - previous_y;
+    const double distance = std::hypot(delta_x, delta_y);
+    if (distance >= kMinimumTransitionDistance) {
+      // The MPC publisher fills front_wheel_angle_rad from its reference curvature. Its optimized
+      // steering is instead observable in the yaw progression of the predicted world path.
+      const double yaw_delta =
+        std::atan2(std::sin(yaw - previous_yaw), std::cos(yaw - previous_yaw));
+      const double longitudinal_displacement =
+        delta_x * std::cos(previous_yaw) + delta_y * std::sin(previous_yaw);
+      const double signed_distance = std::copysign(distance, longitudinal_displacement);
+      const double curvature = yaw_delta / signed_distance;
+      const double steering = std::atan(static_cast<double>(vehicle_params.wheel_base) * curvature);
+      if (std::isfinite(steering)) {
+        samples.push_back(
+          {time, std::clamp(
+                   static_cast<float>(steering), -vehicle_params.max_steer_angle,
+                   vehicle_params.max_steer_angle)});
+      }
+    }
+
+    previous_x = x;
+    previous_y = y;
+    previous_yaw = yaw;
+    previous_time = time;
+  }
+
+  if (samples.empty()) {
+    return 0U;
+  }
+
+  std::size_t replaced = 0U;
+  std::size_t upper_index = 0U;
+  for (std::size_t index = 0; index < nominal.size(); ++index) {
+    const float target_time = static_cast<float>(index) * dt;
+    if (target_time > samples.back().time) {
+      break;
+    }
+    while (upper_index < samples.size() && samples[upper_index].time < target_time) {
+      ++upper_index;
+    }
+    if (upper_index == samples.size()) {
+      break;
+    }
+
+    float steering = samples[upper_index].steering;
+    if (upper_index > 0U && samples[upper_index].time > target_time) {
+      const auto & lower = samples[upper_index - 1U];
+      const auto & upper = samples[upper_index];
+      const float span = upper.time - lower.time;
+      const float alpha = span > 0.0F ? (target_time - lower.time) / span : 0.0F;
+      steering = lower.steering + std::clamp(alpha, 0.0F, 1.0F) * (upper.steering - lower.steering);
+    }
+    nominal[index].steer_cmd = steering;
+    ++replaced;
+  }
+  return replaced;
+}
+
+float velocityDependentSteeringRateLimit(
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, const float velocity)
+{
+  return ::velocityDependentSteeringRateLimit(
+    velocity, vehicle_params.wheel_base, vehicle_params.steer_rate_lim,
+    vehicle_params.max_lateral_jerk_mps3, vehicle_params.standstill_steer_rate_lim,
+    vehicle_params.restart_velocity_threshold_mps);
+}
+
+FirstOrderDubinsMppiNominalSteeringContinuity guardInitialNominalSteeringCommand(
+  const float nominal_steering_command, const float current_steering,
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, const int steering_delay_steps,
+  const std::vector<float> & steering_delay_buffer, const float maximum_deviation_rad,
+  const float dt, const float current_velocity)
+{
+  FirstOrderDubinsMppiNominalSteeringContinuity result;
+  result.active = std::isfinite(maximum_deviation_rad) && maximum_deviation_rad > 0.0F;
+  result.unguarded_command_rad = nominal_steering_command;
+  result.guarded_command_rad = nominal_steering_command;
+
+  const float maximum_steering = std::isfinite(vehicle_params.max_steer_angle)
+                                   ? std::max(0.0F, vehicle_params.max_steer_angle)
+                                   : 0.0F;
+  float application_steering = std::isfinite(current_steering) ? current_steering : 0.0F;
+  application_steering = std::clamp(application_steering, -maximum_steering, maximum_steering);
+
+  const float safe_dt = std::isfinite(dt) ? std::max(dt, 1.0E-4F) : kMppiDt;
+  const float steering_time_constant = std::isfinite(vehicle_params.steer_time_constant)
+                                         ? std::max(vehicle_params.steer_time_constant, 1.0E-4F)
+                                         : 1.0E-4F;
+  const float maximum_steering_rate =
+    velocityDependentSteeringRateLimit(vehicle_params, current_velocity);
+  const int delay_steps = std::max(0, steering_delay_steps);
+  for (int step = 0; step < delay_steps; ++step) {
+    const float queued = static_cast<std::size_t>(step) < steering_delay_buffer.size()
+                           ? steering_delay_buffer[static_cast<std::size_t>(step)]
+                           : application_steering;
+    const float queued_command = std::isfinite(queued)
+                                   ? std::clamp(queued, -maximum_steering, maximum_steering)
+                                   : application_steering;
+    const float steering_rate = std::clamp(
+      (queued_command - application_steering) / steering_time_constant, -maximum_steering_rate,
+      maximum_steering_rate);
+    application_steering = std::clamp(
+      application_steering + steering_rate * safe_dt, -maximum_steering, maximum_steering);
+  }
+  result.application_steering_rad = application_steering;
+
+  if (!result.active) {
+    return result;
+  }
+
+  const float finite_command =
+    std::isfinite(nominal_steering_command) ? nominal_steering_command : application_steering;
+  const float lower = std::max(-maximum_steering, application_steering - maximum_deviation_rad);
+  const float upper = std::min(maximum_steering, application_steering + maximum_deviation_rad);
+  result.guarded_command_rad = std::clamp(finite_command, lower, upper);
+  result.clamped = !std::isfinite(nominal_steering_command) ||
+                   std::abs(result.guarded_command_rad - nominal_steering_command) > 1.0E-6F;
+  return result;
 }
 
 std::vector<FirstOrderDubinsMppiControl> filterNominalControlWithKinematicLimits(
