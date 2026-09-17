@@ -902,6 +902,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
   float min_optimization_length{0.0F};
+  float steering_hold_reference_length_threshold_m{0.5F};
   float min_trajectory_progress_m{0.0F};
   /** Warm-start u_nom from shifted previous u_opt when available. */
   bool use_last_control_as_nominal{false};
@@ -917,6 +918,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   float last_control_warm_start_stop_exit_velocity_mps{0.08F};
   bool stopped_state_initialized{false};
   bool stopped_state{false};
+  bool short_reference_steering_hold_active{false};
   bool standstill_steering_hold_valid{false};
   float standstill_steering_hold_command_rad{0.0F};
   /** Cold-seed u_nom from acados temporal MPT instead of geometric diffusion seed. */
@@ -1238,6 +1240,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     prediction_control_history_.clear();
     stopped_state_initialized = false;
     stopped_state = false;
+    short_reference_steering_hold_active = false;
     standstill_steering_hold_valid = false;
     standstill_steering_hold_command_rad = 0.0F;
   }
@@ -1570,10 +1573,34 @@ struct FirstOrderDubinsMppiInterface::Impl
     u_nom(steer_idx, 0) = nominal_steering_continuity.guarded_command_rad;
   }
 
-  void updateStoppedState(const detail::InitialState & ego)
+  bool steeringCommandHoldActive() const
+  {
+    return stopped_state || short_reference_steering_hold_active;
+  }
+
+  bool referenceIsShortForSteeringHold(const Trajectory & reference) const
+  {
+    if (steering_hold_reference_length_threshold_m <= 0.0F || reference.points.empty()) {
+      return false;
+    }
+    double length = 0.0;
+    for (std::size_t index = 1; index < reference.points.size(); ++index) {
+      const auto & previous = reference.points[index - 1U].pose.position;
+      const auto & current = reference.points[index].pose.position;
+      length += std::hypot(current.x - previous.x, current.y - previous.y);
+      if (length > steering_hold_reference_length_threshold_m) {
+        return false;
+      }
+    }
+    return length <= steering_hold_reference_length_threshold_m;
+  }
+
+  void updateSteeringHoldState(
+    const detail::InitialState & ego, const bool short_reference,
+    const bool steering_measurement_available)
   {
     const float speed = std::abs(ego.velocity);
-    const bool was_stopped = stopped_state_initialized && stopped_state;
+    const bool was_hold_active = steeringCommandHoldActive();
     if (!stopped_state_initialized) {
       stopped_state = speed <= last_control_warm_start_stop_enter_velocity_mps;
       stopped_state_initialized = true;
@@ -1582,14 +1609,20 @@ struct FirstOrderDubinsMppiInterface::Impl
     } else {
       stopped_state = speed <= last_control_warm_start_stop_enter_velocity_mps;
     }
+    short_reference_steering_hold_active = short_reference;
 
-    if (stopped_state && !was_stopped) {
+    if (steeringCommandHoldActive() && !was_hold_active) {
       float command = ego.steering;
+      const bool prefer_measured_steering = short_reference && !stopped_state &&
+                                            steering_measurement_available &&
+                                            std::isfinite(ego.steering);
       if (
-        !prediction_control_history_.empty() &&
+        !prefer_measured_steering && !prediction_control_history_.empty() &&
         std::isfinite(prediction_control_history_.back().control.steer_cmd)) {
         command = prediction_control_history_.back().control.steer_cmd;
-      } else if (external_control_history_available && std::isfinite(pending_hist_steer_tm1)) {
+      } else if (
+        !prefer_measured_steering && external_control_history_available &&
+        std::isfinite(pending_hist_steer_tm1)) {
         command = pending_hist_steer_tm1;
       }
       standstill_steering_hold_command_rad = std::clamp(
@@ -1698,7 +1731,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     const Trajectory & reference, const detail::InitialState & ego,
     const builtin_interfaces::msg::Time & stamp, const bool steering_measurement_available)
   {
-    updateStoppedState(ego);
     nominal_shift_count = 0;
     if (!use_last_control_as_nominal) {
       return std::nullopt;
@@ -1905,7 +1937,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (!force_cold_start_each_step && !use_last_control_as_nominal) {
       nominal_reset_reason = FirstOrderDubinsMppiNominalResetReason::unavailable;
     }
-    updateStoppedState(ego);
+    updateSteeringHoldState(
+      ego, referenceIsShortForSteeringHold(reference), steering_measurement_available);
     if (forced_nominal_pending) {
       seedNominalControlFromForced();
       forced_nominal_pending = false;
@@ -2119,10 +2152,12 @@ struct FirstOrderDubinsMppiInterface::Impl
     loadDelayPipesIntoState();
     loadAcceptedCommandHistoryIntoState(initial_state);
     using S = FirstOrderDubinsBicycleParams::StateIndex;
-    if (stopped_state && standstill_steering_hold_valid) {
+    if (steeringCommandHoldActive() && standstill_steering_hold_valid) {
       x(static_cast<int>(S::PREVIOUS_STEER_CMD)) = standstill_steering_hold_command_rad;
       x(static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)) = 0.0F;
-      x(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)) = 1.0F;
+      x(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)) = stopped_state ? 1.0F : 0.0F;
+      x(static_cast<int>(S::SHORT_REFERENCE_STEERING_HOLD_ACTIVE)) =
+        short_reference_steering_hold_active ? 1.0F : 0.0F;
     }
     projectControlSequenceToDynamics(u_nom, x);
     snapshotNominalForLog();
@@ -2137,6 +2172,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     prediction_anchor_.sim_time = sim_time;
     prediction_anchor_.standstill_steering_hold_active =
       x(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)) > 0.5F;
+    prediction_anchor_.short_reference_steering_hold_active =
+      x(static_cast<int>(S::SHORT_REFERENCE_STEERING_HOLD_ACTIVE)) > 0.5F;
     prediction_anchor_.standstill_steering_hold_command_rad =
       x(static_cast<int>(S::PREVIOUS_STEER_CMD));
     auto & plant = prediction_anchor_.plant;
@@ -2341,7 +2378,9 @@ struct FirstOrderDubinsMppiInterface::Impl
         optimized_controls,
         FirstOrderDubinsMppiPostprocessingContext{
           nominal_seed_source, nominal_shift_count, preserve_first_steering_command,
-          stopped_state && standstill_steering_hold_valid, standstill_steering_hold_command_rad});
+          stopped_state && standstill_steering_hold_valid,
+          short_reference_steering_hold_active && standstill_steering_hold_valid,
+          standstill_steering_hold_command_rad});
       if (optimized_controls.size() != static_cast<std::size_t>(u_opt_traj.cols())) {
         throw std::invalid_argument("MPPI control postprocessor must preserve the horizon size");
       }
@@ -2535,6 +2574,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
       options.dynamic_obstacle_horizon_s < 0.0F ||
       !std::isfinite(options.min_trajectory_progress_m) ||
       options.min_trajectory_progress_m < 0.0F ||
+      !std::isfinite(options.steering_hold_reference_length_threshold_m) ||
+      options.steering_hold_reference_length_threshold_m < 0.0F ||
       !std::isfinite(options.nominal_initial_steering_max_deviation_rad) ||
       options.nominal_initial_steering_max_deviation_rad < 0.0F ||
       !std::isfinite(options.last_control_warm_start_max_age_s) ||
@@ -2566,6 +2607,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     impl_->use_temporal_mpt_as_nominal = options.use_temporal_mpt_as_nominal;
     impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
     impl_->min_optimization_length = options.min_optimization_length;
+    impl_->steering_hold_reference_length_threshold_m =
+      options.steering_hold_reference_length_threshold_m;
     impl_->min_trajectory_progress_m = options.min_trajectory_progress_m;
     impl_->dynamic_obstacle_horizon_s = options.dynamic_obstacle_horizon_s;
     impl_->nominal_initial_steering_max_deviation_rad =
@@ -2588,6 +2631,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     impl_->last_control_warm_start_stop_exit_velocity_mps =
       options.last_control_warm_start_stop_exit_velocity_mps;
     impl_->stopped_state_initialized = false;
+    impl_->stopped_state = false;
+    impl_->short_reference_steering_hold_active = false;
     setDebugTrajectoryLogging(
       options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
     impl_->cost.setDistanceMapTextureDebugEnabled(options.enable_distance_map_texture_debug);
@@ -2671,6 +2716,8 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   runtime.force_cold_start_each_step = force_cold_start_each_step;
   runtime.skip_if_invalid = skip_if_invalid;
   runtime.min_optimization_length = impl_->min_optimization_length;
+  runtime.steering_hold_reference_length_threshold_m =
+    impl_->steering_hold_reference_length_threshold_m;
   runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
   runtime.use_last_control_as_nominal = use_last_control_as_nominal;
   runtime.nominal_initial_steering_max_deviation_rad =
@@ -2852,9 +2899,15 @@ try {
   impl_->pending_trajectory_.reset();
   FirstOrderDubinsMppiOptimizationResult result;
   const auto not_enough_input_points = input.points.size() < 2U;
+  const bool short_reference = impl_->referenceIsShortForSteeringHold(input);
   const auto optimization_required =
     detail::isOptimizationRequired(input, impl_->min_optimization_length);
   if (not_enough_input_points || !optimization_required) {
+    const auto initial_state =
+      detail::makeInitialState(odometry, acceleration, steering_status, impl_->vehicle_params);
+    const bool steering_measurement_available =
+      steering_status.has_value() && std::isfinite(steering_status->steering_tire_angle);
+    impl_->updateSteeringHoldState(initial_state, short_reference, steering_measurement_available);
     impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::skipped);
     RCLCPP_WARN(
       mppiLogger(), "MPPI skipped: %s",
@@ -2862,9 +2915,19 @@ try {
                               : "trajectory does not require optimization");
 
     result.trajectory = input;
+    if (impl_->short_reference_steering_hold_active && impl_->standstill_steering_hold_valid) {
+      for (auto & point : result.trajectory.points) {
+        point.front_wheel_angle_rad = impl_->standstill_steering_hold_command_rad;
+      }
+    }
     result.debug.reference_trajectory = input;
-    result.debug.optimized_trajectory = input;
+    result.debug.optimized_trajectory = result.trajectory;
     result.debug.nominal_reset_reason = impl_->nominal_reset_reason;
+    result.debug.standstill_steering_hold_active =
+      impl_->stopped_state && impl_->standstill_steering_hold_valid;
+    result.debug.short_reference_steering_hold_active =
+      impl_->short_reference_steering_hold_active && impl_->standstill_steering_hold_valid;
+    result.debug.standstill_steering_hold_command_rad = impl_->standstill_steering_hold_command_rad;
     if (mpc_predicted_trajectory) {
       result.debug.mpc_nominal_seed_status =
         FirstOrderDubinsMppiMpcNominalSeedStatus::optimization_not_run;
@@ -2888,6 +2951,8 @@ try {
   result.debug.nominal_steering_continuity = impl_->nominal_steering_continuity;
   result.debug.standstill_steering_hold_active =
     impl_->stopped_state && impl_->standstill_steering_hold_valid;
+  result.debug.short_reference_steering_hold_active =
+    impl_->short_reference_steering_hold_active && impl_->standstill_steering_hold_valid;
   result.debug.standstill_steering_hold_command_rad = impl_->standstill_steering_hold_command_rad;
   if (mpc_predicted_trajectory) {
     result.debug.mpc_nominal_seed_status =
@@ -3154,6 +3219,8 @@ try {
       runtime.force_cold_start_each_step = impl_->force_cold_start_each_step;
       runtime.skip_if_invalid = impl_->skip_if_invalid;
       runtime.min_optimization_length = impl_->min_optimization_length;
+      runtime.steering_hold_reference_length_threshold_m =
+        impl_->steering_hold_reference_length_threshold_m;
       runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
       runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
       runtime.last_control_warm_start_max_age_s = impl_->last_control_warm_start_max_age_s;
@@ -3505,10 +3572,15 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
         -input.vehicle.steer_rate_lim, input.vehicle.steer_rate_lim);
     }
   }
-  if (input.anchor.standstill_steering_hold_active) {
+  if (
+    input.anchor.standstill_steering_hold_active ||
+    input.anchor.short_reference_steering_hold_active) {
     x(static_cast<int>(S::PREVIOUS_STEER_CMD)) = input.anchor.standstill_steering_hold_command_rad;
     x(static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)) = 0.0F;
-    x(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)) = 1.0F;
+    x(static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)) =
+      input.anchor.standstill_steering_hold_active ? 1.0F : 0.0F;
+    x(static_cast<int>(S::SHORT_REFERENCE_STEERING_HOLD_ACTIVE)) =
+      input.anchor.short_reference_steering_hold_active ? 1.0F : 0.0F;
   }
 
   builtin_interfaces::msg::Time query_time = input.anchor.stamp;

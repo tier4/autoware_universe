@@ -217,6 +217,8 @@ void loadParamsYaml(
   };
   std::unordered_map<std::string, float *> runtime_fields = {
     {"dynamic_obstacle_horizon_s", &runtime.dynamic_obstacle_horizon_s},
+    {"steering_hold_reference_length_threshold_m",
+     &runtime.steering_hold_reference_length_threshold_m},
     {"nominal_initial_steering_max_deviation_rad",
      &runtime.nominal_initial_steering_max_deviation_rad},
     {"last_control_warm_start_max_age_s", &runtime.last_control_warm_start_max_age_s},
@@ -771,7 +773,15 @@ int run(int argc, char ** argv)
         for (const auto & control : controls) {
           steering_commands.push_back(control.steer_cmd);
         }
-        if (context.standstill_steering_hold_active && !steering_commands.empty()) {
+        if (context.short_reference_steering_hold_active && !steering_commands.empty()) {
+          std::fill(
+            steering_commands.begin(), steering_commands.end(),
+            context.standstill_steering_hold_command_rad);
+          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
+          candidate_steering_filter.filter(
+            steering_commands, context.standstill_steering_hold_command_rad,
+            /*preserve_first_command=*/true);
+        } else if (context.standstill_steering_hold_active && !steering_commands.empty()) {
           steering_commands.front() = context.standstill_steering_hold_command_rad;
           candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
           candidate_steering_filter.filter(

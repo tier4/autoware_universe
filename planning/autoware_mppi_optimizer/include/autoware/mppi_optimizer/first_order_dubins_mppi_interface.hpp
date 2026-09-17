@@ -156,6 +156,8 @@ struct FirstOrderDubinsMppiPostprocessingContext
   bool preserve_first_steering_command{false};
   /** True while the last accepted steering command is latched at standstill. */
   bool standstill_steering_hold_active{false};
+  /** True while the current reference is too short for stable steering optimization. */
+  bool short_reference_steering_hold_active{false};
   float standstill_steering_hold_command_rad{0.0F};
 };
 
@@ -486,6 +488,7 @@ struct FirstOrderDubinsMppiDebug
   int nominal_shift_count{0};
   FirstOrderDubinsMppiNominalSteeringContinuity nominal_steering_continuity;
   bool standstill_steering_hold_active{false};
+  bool short_reference_steering_hold_active{false};
   float standstill_steering_hold_command_rad{0.0F};
   /** Whether the optimized MPPI trajectory was applied on the preceding plugin cycle. */
   bool previous_mppi_trajectory_applied{false};

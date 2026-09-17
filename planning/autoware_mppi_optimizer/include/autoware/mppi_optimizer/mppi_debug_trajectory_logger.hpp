@@ -259,6 +259,8 @@ public:
       out << "force_cold_start_each_step," << (options.force_cold_start_each_step ? 1 : 0) << "\n";
       out << "skip_if_invalid," << (options.skip_if_invalid ? 1 : 0) << "\n";
       out << "min_optimization_length," << options.min_optimization_length << "\n";
+      out << "steering_hold_reference_length_threshold_m,"
+          << options.steering_hold_reference_length_threshold_m << "\n";
       out << "min_trajectory_progress_m," << options.min_trajectory_progress_m << "\n";
       out << "use_last_control_as_nominal," << (options.use_last_control_as_nominal ? 1 : 0)
           << "\n";
