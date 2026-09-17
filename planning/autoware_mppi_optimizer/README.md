@@ -95,6 +95,7 @@ ignore_road_borders: true
 ignore_drivable_area: true
 force_cold_start_each_step: true
 min_optimization_length: 0.0
+steering_hold_reference_length_threshold_m: 0.5
 use_last_control_as_nominal: true
 max_lateral_jerk_mps3: 2.5
 standstill_steer_rate_lim: 0.15
@@ -131,6 +132,9 @@ Notes:
   steering fallback) and holds it exactly. Rollouts release the hold once predicted absolute
   velocity reaches `last_control_warm_start_stop_exit_velocity_mps`, after which the restart
   command-rate and command-acceleration limits provide the transition back to optimized steering.
+- The same command is held across the entire output when the current reference arc length is at or
+  below `steering_hold_reference_length_threshold_m`. This also applies when short stopping
+  references skip MPPI optimization. Set the threshold to `0.0` to disable the length trigger.
 - `use_last_control_as_nominal` warm-starts `u_nom` from the previous applied MPPI result when its
   timestamp, plant replay, and shifted reference remain continuous. The elapsed timestamp selects
   the shift count, and the current diffusion seed fills the newly exposed tail.

@@ -42,6 +42,8 @@ struct FirstOrderDubinsMppiRuntimeOptions
   bool skip_if_invalid{false};
   /** Skip optimization for stopping trajectories shorter than this arc length in meters. */
   float min_optimization_length{0.0F};
+  /** Hold the last accepted steering command while the reference is no longer than this. */
+  float steering_hold_reference_length_threshold_m{0.5F};
   /**
    * Reject an optimized trajectory whose last path projection advances less than this many
    * meters from its first path projection. Zero disables minimum-progress validation.

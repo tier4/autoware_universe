@@ -426,6 +426,11 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
   if (min_optimization_length_it != kv.end()) {
     options.min_optimization_length = min_optimization_length_it->second;
   }
+  const auto steering_hold_reference_length_it =
+    kv.find("steering_hold_reference_length_threshold_m");
+  if (steering_hold_reference_length_it != kv.end()) {
+    options.steering_hold_reference_length_threshold_m = steering_hold_reference_length_it->second;
+  }
   const auto min_trajectory_progress_it = kv.find("min_trajectory_progress_m");
   if (min_trajectory_progress_it != kv.end()) {
     options.min_trajectory_progress_m = min_trajectory_progress_it->second;
