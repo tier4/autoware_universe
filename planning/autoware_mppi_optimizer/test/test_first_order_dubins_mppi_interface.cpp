@@ -176,6 +176,31 @@ TEST(FirstOrderDubinsMppiInterface, SkippedInputsDoNotInitializeCuda)
   EXPECT_FALSE(interface.isInitialized());
 }
 
+TEST(FirstOrderDubinsMppiInterface, ShortSkippedReferenceHoldsMeasuredSteering)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.min_optimization_length = 1.0F;
+  options.steering_hold_reference_length_threshold_m = 0.5F;
+  interface.setRuntimeOptions(options);
+
+  auto trajectory = makeStraightTrajectory(3U);
+  trajectory.points.back().longitudinal_velocity_mps = 0.0F;
+  for (auto & point : trajectory.points) point.front_wheel_angle_rad = 0.33F;
+  autoware_vehicle_msgs::msg::SteeringReport steering;
+  steering.steering_tire_angle = 0.12F;
+  const auto result = interface.optimizeTrajectory(
+    trajectory, makeOdometry(), std::nullopt, steering, TrackedObjects{}, {}, {}, {});
+
+  EXPECT_TRUE(result.debug.short_reference_steering_hold_active);
+  EXPECT_FALSE(result.debug.standstill_steering_hold_active);
+  EXPECT_FLOAT_EQ(result.debug.standstill_steering_hold_command_rad, 0.12F);
+  for (const auto & point : result.trajectory.points) {
+    EXPECT_FLOAT_EQ(point.front_wheel_angle_rad, 0.12F);
+  }
+  EXPECT_FALSE(interface.isInitialized());
+}
+
 TEST(FirstOrderDubinsMppiInterface, RejectsInvalidMinimumTrajectoryProgress)
 {
   FirstOrderDubinsMppiInterface interface;
@@ -183,6 +208,17 @@ TEST(FirstOrderDubinsMppiInterface, RejectsInvalidMinimumTrajectoryProgress)
   options.min_trajectory_progress_m = -0.1F;
   EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
   options.min_trajectory_progress_m = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+  EXPECT_FALSE(interface.isInitialized());
+}
+
+TEST(FirstOrderDubinsMppiInterface, RejectsInvalidSteeringHoldReferenceLength)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.steering_hold_reference_length_threshold_m = -0.1F;
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+  options.steering_hold_reference_length_threshold_m = std::numeric_limits<float>::quiet_NaN();
   EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
   EXPECT_FALSE(interface.isInitialized());
 }

@@ -60,6 +60,8 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     PREVIOUS_STEER_CMD_RATE,
     /** Keep the issued steering command fixed until predicted motion resumes. */
     STEERING_COMMAND_HOLD_ACTIVE,
+    /** Keep the issued steering command fixed for a short current reference. */
+    SHORT_REFERENCE_STEERING_HOLD_ACTIVE,
     NUM_STATES
   };
 

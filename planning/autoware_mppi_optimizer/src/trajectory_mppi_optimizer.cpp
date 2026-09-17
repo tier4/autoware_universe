@@ -133,6 +133,8 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.force_cold_start_each_step = params.force_cold_start_each_step;
   output.skip_if_invalid = params.skip_if_invalid;
   output.min_optimization_length = static_cast<float>(params.min_optimization_length);
+  output.steering_hold_reference_length_threshold_m =
+    static_cast<float>(params.steering_hold_reference_length_threshold_m);
   output.min_trajectory_progress_m = static_cast<float>(params.min_trajectory_progress_m);
   output.use_last_control_as_nominal = params.use_last_control_as_nominal;
   output.nominal_initial_steering_max_deviation_rad =
@@ -490,7 +492,15 @@ ProcessingResult TrajectoryMppiOptimizer::process(
         for (const auto & control : controls) {
           steering_commands.push_back(control.steer_cmd);
         }
-        if (context.standstill_steering_hold_active && !steering_commands.empty()) {
+        if (context.short_reference_steering_hold_active && !steering_commands.empty()) {
+          std::fill(
+            steering_commands.begin(), steering_commands.end(),
+            context.standstill_steering_hold_command_rad);
+          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
+          candidate_steering_filter.filter(
+            steering_commands, context.standstill_steering_hold_command_rad,
+            /*preserve_first_command=*/true);
+        } else if (context.standstill_steering_hold_active && !steering_commands.empty()) {
           steering_commands.front() = context.standstill_steering_hold_command_rad;
           candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
           candidate_steering_filter.filter(
@@ -558,6 +568,9 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     const auto application = makeMppiApplicationStatus(
       params_.shadow_mode, result.debug.was_rejected, result.debug.velocity_limit_profile_active,
       result.optimized_point_count);
+    const bool steering_hold_only_applied =
+      !params_.shadow_mode && result.debug.short_reference_steering_hold_active &&
+      !result.trajectory.points.empty() && !application.output_applied;
     if (filter_candidate && application.output_applied) {
       if (application.fallback_applied) {
         // The interface replaced the optimized result with its longitudinally limited reference.
@@ -570,7 +583,15 @@ ProcessingResult TrajectoryMppiOptimizer::process(
         for (std::size_t index = 0; index < optimized_count; ++index) {
           steering_commands.push_back(result.trajectory.points[index].front_wheel_angle_rad);
         }
-        if (result.debug.standstill_steering_hold_active && !steering_commands.empty()) {
+        if (result.debug.short_reference_steering_hold_active && !steering_commands.empty()) {
+          std::fill(
+            steering_commands.begin(), steering_commands.end(),
+            result.debug.standstill_steering_hold_command_rad);
+          candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
+          candidate_steering_filter.filter(
+            steering_commands, result.debug.standstill_steering_hold_command_rad,
+            /*preserve_first_command=*/true);
+        } else if (result.debug.standstill_steering_hold_active && !steering_commands.empty()) {
           steering_commands.front() = result.debug.standstill_steering_hold_command_rad;
           candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
           candidate_steering_filter.filter(
@@ -585,6 +606,18 @@ ProcessingResult TrajectoryMppiOptimizer::process(
           result.debug.optimized_trajectory.points[index].front_wheel_angle_rad =
             steering_commands[index];
         }
+      }
+    }
+    if (filter_candidate && steering_hold_only_applied) {
+      candidate_steering_filter = steering_filter_;
+      candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
+    }
+    if (result.debug.short_reference_steering_hold_active) {
+      for (auto & point : result.trajectory.points) {
+        point.front_wheel_angle_rad = result.debug.standstill_steering_hold_command_rad;
+      }
+      for (auto & point : result.debug.optimized_trajectory.points) {
+        point.front_wheel_angle_rad = result.debug.standstill_steering_hold_command_rad;
       }
     }
 
@@ -628,14 +661,16 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     publish_prediction_accuracy(result.debug.prediction_accuracy);
     publish_ego_to_dp_first_point_distance(*data.current_odometry, input);
     publish_ego_signed_lateral_error_on_dp(*data.current_odometry, input);
-    if (application.output_applied) trajectory_points = result.trajectory.points;
+    if (application.output_applied || steering_hold_only_applied) {
+      trajectory_points = result.trajectory.points;
+    }
     if (application.optimized_trajectory_applied) {
       optimizer_->commitPendingTrajectory();
       pending_debug_->applied_plant.valid = true;
     } else {
       optimizer_->discardPendingTrajectory();
     }
-    if (filter_candidate && application.output_applied) {
+    if (filter_candidate && (application.output_applied || steering_hold_only_applied)) {
       steering_filter_ = std::move(candidate_steering_filter);
     } else {
       // Rejected/unfiltered fallbacks and skipped optimization do not execute the candidate's
@@ -643,7 +678,8 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       steering_filter_.reset();
     }
     previous_mppi_trajectory_applied_ = application.optimized_trajectory_applied;
-    return application.output_applied ? ProcessingResult::Modified : ProcessingResult::Unchanged;
+    return application.output_applied || steering_hold_only_applied ? ProcessingResult::Modified
+                                                                    : ProcessingResult::Unchanged;
   } catch (const std::exception & error) {
     if (optimizer_) optimizer_->invalidateNominalWarmStart();
     steering_filter_.reset();
