@@ -114,14 +114,6 @@ struct FrameContext
   std::optional<double> snapped_interpolation_time_s;
 };
 
-// Upper limit applied to snap_strength. At exactly 1 no part of the localized pose enters the
-// virtual pose, so once the vehicle sits against the position clamp the reference is regenerated
-// at the clamp distance every cycle and nothing pulls it back onto the vehicle; the gap to the
-// trajectory then depends entirely on the controller removing a standing lateral offset, which the
-// stock MPC weights do only slowly. Keeping at least 5% of the localized pose in the blend closes
-// that gap by itself with a time constant of about 20 planning cycles.
-inline constexpr double kMaxSnapStrength = 0.95;
-
 /**
  * @brief Parameters for snapping the ego pose onto the previous planning trajectory.
  *
@@ -148,7 +140,11 @@ struct EgoSnapParams
   // How far from the raw pose toward the snapped pose the virtual pose is placed, in [0, 1].
   // 0 is the raw pose, so the feature has no effect; 1 is the snapped pose, fully on the previous
   // plan; values in between sit on the segment between the two.
-  // Values above kMaxSnapStrength are clipped to it (see the constant).
+  // At 1 the virtual pose carries none of the localized pose, which is the behaviour of the
+  // implementation this replaces while it is inside its limits. Below 1 the remaining share of the
+  // localized pose also pulls the reference back onto the vehicle: at 0.9 a standing gap closes
+  // with a time constant of about ten planning cycles, at 1 it does not close at all and rests on
+  // the controller removing a standing lateral offset.
   double snap_strength;
 
   // Number of leading segments of the previous trajectory searched for the closest one. The

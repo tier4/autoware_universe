@@ -390,7 +390,7 @@ std::string validate_ego_snap_params(const EgoSnapParams & p)
     return r;
   }
   if (!std::isfinite(p.snap_strength) || p.snap_strength < 0.0 || p.snap_strength > 1.0) {
-    return prefix + "snap_strength must be in [0, 1] (values above 0.95 are clipped to 0.95)";
+    return prefix + "snap_strength must be in [0, 1]";
   }
   if (p.max_search_segment_count < 1) {
     return prefix + "max_search_segment_count must be >= 1";
