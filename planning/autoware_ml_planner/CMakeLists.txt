@@ -37,6 +37,7 @@ set(ML_PLANNER_SOURCES
   src/preprocessing/items/turn_indicators.cpp
   src/preprocessing/preprocessing_utils.cpp
   src/utils/marker_utils.cpp
+  src/utils/object_remap.cpp
   src/utils/planning_factor_utils.cpp
   src/utils/utils.cpp
 )
@@ -111,6 +112,7 @@ if(BUILD_TESTING)
     test/lanelet_integration_test.cpp
     test/lanelet_test.cpp
     test/marker_utils_test.cpp
+    test/object_remap_test.cpp
     test/planning_factor_utils_test.cpp
     test/postprocessing_utils_test.cpp
     test/postprocessing_utils_edge_case_test.cpp

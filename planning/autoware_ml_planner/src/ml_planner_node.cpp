@@ -18,6 +18,7 @@
 #include "autoware/ml_planner/dimensions.hpp"
 #include "autoware/ml_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/ml_planner/utils/marker_utils.hpp"
+#include "autoware/ml_planner/utils/object_remap.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -186,6 +187,8 @@ void MLPlanner::set_up_params()
   params_.plugins_path = this->declare_parameter<std::string>("plugins_path", "");
   params_.build_only = this->declare_parameter<bool>("build_only", false);
   params_.planning_frequency_hz = this->declare_parameter<double>("planning_frequency_hz", 10.0);
+  remap_unsupported_objects_to_pedestrian_ =
+    this->declare_parameter<bool>("remap_unsupported_objects_to_pedestrian", false);
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
@@ -324,6 +327,7 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   MLPlannerParams new_params = params_;
   MLPlannerPlanningFactorParams new_planning_factor_params = planning_factor_params_;
   MLPlannerDebugParams new_debug_params = debug_params_;
+  bool new_remap_unsupported_objects_to_pedestrian = remap_unsupported_objects_to_pedestrian_;
   bool requested_build_only = params_.build_only;
 
   update_param<std::string>(parameters, "model.onnx_model_path", new_params.model_path);
@@ -333,6 +337,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<std::string>(parameters, "plugins_path", new_params.plugins_path);
   update_param<bool>(parameters, "build_only", requested_build_only);
   update_param<double>(parameters, "planning_frequency_hz", new_params.planning_frequency_hz);
+  update_param<bool>(
+    parameters, "remap_unsupported_objects_to_pedestrian",
+    new_remap_unsupported_objects_to_pedestrian);
   update_param<double>(
     parameters, "traffic_light_group_msg_timeout_seconds",
     new_params.traffic_light_group_msg_timeout_seconds);
@@ -547,12 +554,14 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   const MLPlannerParams old_params = params_;
   const MLPlannerPlanningFactorParams old_planning_factor_params = planning_factor_params_;
   const MLPlannerDebugParams old_debug_params = debug_params_;
+  const bool old_remap_unsupported_objects_to_pedestrian = remap_unsupported_objects_to_pedestrian_;
 
   try {
     core_->update_params(new_params);
     params_ = new_params;
     planning_factor_params_ = new_planning_factor_params;
     debug_params_ = new_debug_params;
+    remap_unsupported_objects_to_pedestrian_ = new_remap_unsupported_objects_to_pedestrian;
     if (reload_model) {
       load_model();
     }
@@ -571,6 +580,7 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
       params_ = old_params;
       planning_factor_params_ = old_planning_factor_params;
       debug_params_ = old_debug_params;
+      remap_unsupported_objects_to_pedestrian_ = old_remap_unsupported_objects_to_pedestrian;
       if (reload_model) {
         load_model();
       }
@@ -666,6 +676,11 @@ void MLPlanner::on_timer()
 
   // Take data from subscribers
   auto objects = sub_tracked_objects_.take_data();
+  if (remap_unsupported_objects_to_pedestrian_) {
+    // Rewrite here, before the messages reach the core buffers, so that the preprocessing
+    // pipeline sees ordinary PEDESTRIAN objects and needs no knowledge of this feature.
+    objects = utils::remap_unsupported_objects_to_pedestrian(objects);
+  }
   auto ego_kinematic_state = sub_current_odometry_.take_data();
   auto traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
