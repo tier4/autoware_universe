@@ -35,6 +35,7 @@ struct FirstOrderDubinsMppiPlantSnapshot
   float sim_time{0.0F};
   FirstOrderDubinsMppiAppliedPlantState plant;
   bool standstill_steering_hold_active{false};
+  bool short_reference_steering_hold_active{false};
   float standstill_steering_hold_command_rad{0.0F};
 };
 

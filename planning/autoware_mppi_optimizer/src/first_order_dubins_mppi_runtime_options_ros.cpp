@@ -52,6 +52,9 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "min_optimization_length"), defaults.min_optimization_length);
   node.declare_parameter(
+    param_name(prefix, "steering_hold_reference_length_threshold_m"),
+    defaults.steering_hold_reference_length_threshold_m);
+  node.declare_parameter(
     param_name(prefix, "min_trajectory_progress_m"), defaults.min_trajectory_progress_m);
   node.declare_parameter(
     param_name(prefix, "use_last_control_as_nominal"), defaults.use_last_control_as_nominal);
@@ -118,6 +121,9 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.skip_if_invalid = node.get_parameter(param_name(prefix, "skip_if_invalid")).as_bool();
   options.min_optimization_length = static_cast<float>(
     node.get_parameter(param_name(prefix, "min_optimization_length")).as_double());
+  options.steering_hold_reference_length_threshold_m = static_cast<float>(
+    node.get_parameter(param_name(prefix, "steering_hold_reference_length_threshold_m"))
+      .as_double());
   options.min_trajectory_progress_m = static_cast<float>(
     node.get_parameter(param_name(prefix, "min_trajectory_progress_m")).as_double());
   options.use_last_control_as_nominal =

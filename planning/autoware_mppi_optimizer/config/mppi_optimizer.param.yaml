@@ -100,6 +100,8 @@
       force_cold_start_each_step: false
       skip_if_invalid: true
       min_optimization_length: 10.0
+      # Hold the last accepted steering command when the remaining reference is very short.
+      steering_hold_reference_length_threshold_m: 0.5
       min_trajectory_progress_m: 0.0
       max_lateral_jerk_mps3: 2.5
       standstill_steer_rate_lim: 0.15

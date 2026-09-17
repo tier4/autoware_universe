@@ -353,6 +353,12 @@ trajectory_mppi_optimizer:
     description: Minimum input arc length for optimization
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  steering_hold_reference_length_threshold_m:
+    type: double
+    default_value: 0.5
+    description: Hold the last accepted steering command when the reference arc length is at or below this threshold; zero disables the length trigger
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   min_trajectory_progress_m:
     type: double
     default_value: 0.0
