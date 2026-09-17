@@ -326,6 +326,12 @@ safety_planner:
         description: "[m] Douglas-Peucker tolerance applied to each Boundary polyline before it is compiled into the projected views; 0 disables"
         validation:
           gt_eq<>: [0.0]
+    debug:
+      publish_candidate_markers:
+        type: bool
+        default_value: false
+        read_only: true
+        description: Publish the sampled candidate paths as markers. About a thousand candidates of a hundred points each, a few MB per cycle, so it is off unless the sampling is being inspected
 
   mppi_planner:
     nominal_seed:

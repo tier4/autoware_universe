@@ -39,56 +39,6 @@ namespace autoware::safety_planner::experiment
 namespace
 {
 
-//! The VELOCITY limit in effect at the arc length s, global bounds and speed limit zones together
-double velocity_limit_at(
-  const CompiledConstraints & compiled_constraints, const KinematicLimits & limits, const double s)
-{
-  double v_max = limits.v_hard;
-  for (const auto & bound : compiled_constraints.scalar_bounds) {
-    if (bound.quantity == BoundedQuantity::VELOCITY && bound.s0 <= s && s <= bound.s1) {
-      v_max = std::min(v_max, bound.max);
-    }
-  }
-  return v_max;
-}
-
-//! Upper bounds of the global ScalarBound constraints, per quantity: the ones
-//! collect_kinematic_limits does not read (LAT_ACCEL, LON_JERK, STEER_ANGLE, STEER_RATE)
-struct GlobalBounds
-{
-  double lat_accel{INF};
-  double lon_jerk{INF};
-  double steer_angle{INF};
-  double steer_rate{INF};
-};
-
-GlobalBounds collect_global_bounds(const CompiledConstraints & compiled_constraints)
-{
-  GlobalBounds bounds;
-  for (const auto & bound : compiled_constraints.scalar_bounds) {
-    if (!(bound.s0 == -INF && bound.s1 == INF)) {
-      continue;
-    }
-    switch (bound.quantity) {
-      case BoundedQuantity::LAT_ACCEL:
-        bounds.lat_accel = std::min(bounds.lat_accel, bound.max);
-        break;
-      case BoundedQuantity::LON_JERK:
-        bounds.lon_jerk = std::min(bounds.lon_jerk, bound.max);
-        break;
-      case BoundedQuantity::STEER_ANGLE:
-        bounds.steer_angle = std::min(bounds.steer_angle, bound.max);
-        break;
-      case BoundedQuantity::STEER_RATE:
-        bounds.steer_rate = std::min(bounds.steer_rate, bound.max);
-        break;
-      default:
-        break;  // VELOCITY and LON_ACCEL belong to KinematicLimits
-    }
-  }
-  return bounds;
-}
-
 //! Linear interpolation of samples spaced res apart from s0, clamped at both ends
 double interpolate_uniform(
   const std::vector<double> & values, const double s0, const double res, const double s)
@@ -138,16 +88,191 @@ double offset_path_d2l(
   return ((kappa * m - k) * m * m - dl * (dk * l + k * dl)) / (std::abs(a) < 0.2 ? 0.2 : a);
 }
 
-//! d kappa_ref / ds by central difference over res, clamped to the path
-double centerline_curvature_gradient(
-  const PathPointTrajectory & path, const double s, const double res)
+//! The tightest boundary l over the s window that the footprint covers from anywhere within a
+//! cell, one entry per cell: min(l) for a boundary that forbids its left, max(l) for one that
+//! forbids its right, and +-INF where the boundary does not reach the window. Same as
+//! lateral_bound_extreme_l, except that the window is rounded out to whole cells, which can only
+//! tighten the bound
+std::vector<double> tabulate_lateral_bound(
+  const LateralBoundEntry & bound, const VehicleInfo & vehicle_info, const double res,
+  const std::size_t cells)
 {
-  const double s0 = std::max(0.0, s - res);
-  const double s1 = std::min(path.length(), s + res);
-  return s1 > s0 ? (path.curvature(s1) - path.curvature(s0)) / (s1 - s0) : 0.0;
+  const bool left = bound.forbidden_side == Side::LEFT;
+  const double none = left ? INF : -INF;
+  const auto tighter = [left](const double a, const double b) {
+    return left ? std::min(a, b) : std::max(a, b);
+  };
+  const auto & polyline = bound.polyline;
+  std::vector<double> window(cells, none);
+  if (polyline.size() < 2) {
+    return window;  // as in lateral_bound_extreme_l, such a boundary applies nowhere
+  }
+
+  // The extreme within each cell, walking the polyline once: s only grows from cell to cell, so
+  // both the segment holding it and the vertices inside it are found by advancing an index
+  std::vector<double> in_cell(cells, none);
+  std::size_t seg = 0;
+  std::size_t vertex = 0;
+  const auto l_at = [&](const double s) {
+    while (seg + 2 < polyline.size() && polyline[seg + 1].s < s) {
+      ++seg;
+    }
+    const auto & p0 = polyline[seg];
+    const auto & p1 = polyline[seg + 1];
+    const double r = p1.s > p0.s ? std::clamp((s - p0.s) / (p1.s - p0.s), 0.0, 1.0) : 0.0;
+    return p0.l * (1.0 - r) + p1.l * r;
+  };
+  for (std::size_t i = 0; i < cells; ++i) {
+    const double s_lo = std::max(static_cast<double>(i) * res, polyline.front().s);
+    const double s_hi = std::min(static_cast<double>(i + 1) * res, polyline.back().s);
+    if (s_hi < s_lo) {
+      continue;
+    }
+    double value = tighter(l_at(s_lo), l_at(s_hi));
+    while (vertex < polyline.size() && polyline[vertex].s <= s_lo) {
+      ++vertex;
+    }
+    for (; vertex < polyline.size() && polyline[vertex].s < s_hi; ++vertex) {
+      value = tighter(value, polyline[vertex].l);
+    }
+    in_cell[i] = value;
+  }
+
+  const auto count = static_cast<std::ptrdiff_t>(cells);
+  const auto behind =
+    static_cast<std::ptrdiff_t>(std::floor(vehicle_info.min_longitudinal_offset_m / res));
+  const auto ahead =
+    static_cast<std::ptrdiff_t>(std::floor(vehicle_info.max_longitudinal_offset_m / res)) + 1;
+  for (std::ptrdiff_t i = 0; i < count; ++i) {
+    double value = none;
+    for (std::ptrdiff_t j = std::max<std::ptrdiff_t>(i + behind, 0);
+         j <= std::min<std::ptrdiff_t>(i + ahead, count - 1); ++j) {
+      value = tighter(value, in_cell[j]);
+    }
+    window[i] = value;
+  }
+  return window;
 }
 
 }  // namespace
+
+FrenetSamplingBasedPlanner::ConstraintTables::ConstraintTables(
+  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
+  const double resolution)
+: res(resolution), limits(collect_kinematic_limits(compiled_constraints))
+{
+  cells = static_cast<std::size_t>(std::ceil(context.reference_path.length() / res)) + 1;
+
+  for (const auto & bound : compiled_constraints.scalar_bounds) {
+    if (!(bound.s0 == -INF && bound.s1 == INF)) {
+      continue;  // a bound limited to an interval is read per cell, from v_max
+    }
+    switch (bound.quantity) {
+      case BoundedQuantity::LAT_ACCEL:
+        bounds.lat_accel = std::min(bounds.lat_accel, bound.max);
+        break;
+      case BoundedQuantity::LON_JERK:
+        bounds.lon_jerk = std::min(bounds.lon_jerk, bound.max);
+        break;
+      case BoundedQuantity::STEER_ANGLE:
+        bounds.steer_angle = std::min(bounds.steer_angle, bound.max);
+        break;
+      case BoundedQuantity::STEER_RATE:
+        bounds.steer_rate = std::min(bounds.steer_rate, bound.max);
+        break;
+      default:
+        break;  // VELOCITY and LON_ACCEL belong to KinematicLimits
+    }
+  }
+
+  // The global VELOCITY bounds are already in v_hard; the regional ones (a speed limit zone) are
+  // applied to every cell they touch, so that a zone starting inside a cell is not missed
+  v_max.assign(cells, limits.v_hard);
+  for (const auto & bound : compiled_constraints.scalar_bounds) {
+    if (bound.quantity != BoundedQuantity::VELOCITY || (bound.s0 == -INF && bound.s1 == INF)) {
+      continue;
+    }
+    for (std::size_t i = cell(bound.s0); i <= cell(bound.s1); ++i) {
+      v_max[i] = std::min(v_max[i], bound.max);
+    }
+  }
+
+  lateral_is_hard.reserve(compiled_constraints.lateral_bounds.size());
+  lateral_extreme_l.reserve(compiled_constraints.lateral_bounds.size());
+  for (const auto & bound : compiled_constraints.lateral_bounds) {
+    lateral_is_hard.push_back(
+      compiled_constraints.raw_constraints[bound.raw_index].hardness == Hardness::HARD);
+    lateral_extreme_l.push_back(tabulate_lateral_bound(bound, context.vehicle_info, res, cells));
+  }
+}
+
+std::size_t FrenetSamplingBasedPlanner::ConstraintTables::cell(const double s) const
+{
+  return static_cast<std::size_t>(std::clamp(s / res, 0.0, static_cast<double>(cells - 1)));
+}
+
+FrenetSamplingBasedPlanner::ReferenceGrid::ReferenceGrid(
+  const PathPointTrajectory & path, const double resolution)
+{
+  const double s_max = path.length();
+  // The spacing is shrunk so that an integer number of intervals covers the path exactly: the
+  // lookups below take a uniform grid, and a shorter last interval would shift everything queried
+  // within it
+  const auto intervals = static_cast<std::size_t>(std::ceil(s_max / resolution));
+  res_ = s_max / static_cast<double>(intervals);
+  const std::size_t size = intervals + 1;
+  for (auto * v : {&x_, &y_, &z_, &yaw_, &cos_yaw_, &sin_yaw_, &curvature_, &dkappa_}) {
+    v->reserve(size);
+  }
+  for (std::size_t i = 0; i < size; ++i) {
+    const double s = std::min(static_cast<double>(i) * res_, s_max);
+    const auto position = path.compute(s).point.pose.position;
+    const double yaw = path.azimuth(s);
+    x_.push_back(position.x);
+    y_.push_back(position.y);
+    z_.push_back(position.z);
+    yaw_.push_back(yaw);
+    cos_yaw_.push_back(std::cos(yaw));
+    sin_yaw_.push_back(std::sin(yaw));
+    curvature_.push_back(path.curvature(s));
+  }
+  for (std::size_t i = 0; i < size; ++i) {
+    const std::size_t i0 = i > 0 ? i - 1 : i;
+    const std::size_t i1 = std::min(i + 1, size - 1);
+    dkappa_.push_back((curvature_[i1] - curvature_[i0]) / (static_cast<double>(i1 - i0) * res_));
+  }
+}
+
+double FrenetSamplingBasedPlanner::ReferenceGrid::curvature(const double s) const
+{
+  return interpolate_uniform(curvature_, 0.0, res_, s);
+}
+
+double FrenetSamplingBasedPlanner::ReferenceGrid::dkappa(const double s) const
+{
+  return interpolate_uniform(dkappa_, 0.0, res_, s);
+}
+
+double FrenetSamplingBasedPlanner::ReferenceGrid::azimuth(const double s) const
+{
+  return interpolate_uniform_angle(yaw_, 0.0, res_, s);
+}
+
+double FrenetSamplingBasedPlanner::ReferenceGrid::z(const double s) const
+{
+  return interpolate_uniform(z_, 0.0, res_, s);
+}
+
+Point2d FrenetSamplingBasedPlanner::ReferenceGrid::position(const double s, const double l) const
+{
+  const double u = std::clamp(s / res_, 0.0, static_cast<double>(x_.size() - 1));
+  const auto i = std::min(static_cast<std::size_t>(u), x_.size() - 2);
+  const double r = u - static_cast<double>(i);
+  // The tangent is interpolated as (cos, sin) rather than as the angle: this runs once per point
+  // of every candidate, and over one grid interval the two differ by less than a millimeter
+  const auto blend = [&](const std::vector<double> & v) { return v[i] * (1.0 - r) + v[i + 1] * r; };
+  return Point2d{blend(x_) - blend(sin_yaw_) * l, blend(y_) + blend(cos_yaw_) * l};
+}
 
 FrenetSamplingBasedPlanner::PreviousLateral::PreviousLateral(
   const PathPointTrajectory & reference_path, const Trajectory & previous)
@@ -205,15 +330,24 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
+  auto grid_st =
+    std::make_unique<autoware_utils_debug::ScopedTimeTrack>("build_reference_grid", *time_keeper_);
+  const ReferenceGrid grid(
+    input.context.reference_path, params_.frenet_sampling_based_planner.path_resolution_m);
+  grid_st.reset();
+
   TrajectoryPlannerResult result;
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
     if (
       auto trajectory = plan_one_side(
-        input.context, input.normal_constraints, normal_previous_trajectory_,
+        input.context, grid, input.normal_constraints, normal_previous_trajectory_,
         result.normal_debug)) {
+      auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+        "decide_turn_indicators", *time_keeper_);
       const auto turn_indicators =
         normal_turn_indicator_decider_.decide(input.context, *trajectory);
+      turn_st.reset();
       normal_previous_trajectory_ = *trajectory;
       result.normal_trajectory = PlannedTrajectory{std::move(*trajectory), turn_indicators};
     }
@@ -225,10 +359,13 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
     if (
       auto trajectory = plan_one_side(
-        input.context, input.cautious_constraints, cautious_previous_trajectory_,
+        input.context, grid, input.cautious_constraints, cautious_previous_trajectory_,
         result.cautious_debug)) {
+      auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+        "decide_turn_indicators", *time_keeper_);
       const auto turn_indicators =
         cautious_turn_indicator_decider_.decide(input.context, *trajectory);
+      turn_st.reset();
       cautious_previous_trajectory_ = *trajectory;
       result.cautious_trajectory = PlannedTrajectory{std::move(*trajectory), turn_indicators};
     }
@@ -244,40 +381,95 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
 }
 
 std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
-  const PlannerContext & context, const std::vector<Constraint> & constraints,
+  const PlannerContext & context, const ReferenceGrid & grid,
+  const std::vector<Constraint> & constraints,
   const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug)
 {
-  // The boundaries are thinned out before they are compiled: the projected polyline of every
-  // lateral bound is scanned once per candidate point (lateral_bound_extreme_l), so its vertex
-  // count multiplies the whole evaluation. The gain is on the boundaries whose vertices sit closer
-  // than the sampling interval of the compiler, which re-densifies to that interval anyway
+  // The phases below are timed one after another rather than through nested scopes, so that the
+  // tree published on ~/debug/processing_time_detail_ms lists them as siblings under
+  // plan_normal / plan_cautious
+  auto phase =
+    std::make_unique<autoware_utils_debug::ScopedTimeTrack>("simplify_boundaries", *time_keeper_);
+  // The boundaries are thinned out before they are compiled: their vertices are walked by the
+  // compiler and again by ConstraintTables. The gain is on the boundaries whose vertices sit
+  // closer than the sampling interval of the compiler, which re-densifies to that interval anyway
   auto simplified_constraints = constraints;
   for (auto & constraint : simplified_constraints) {
     if (auto * boundary = std::get_if<Boundary>(&constraint.payload)) {
       boundary->polyline = boundary_simplifier_->simplify(boundary->polyline);
     }
   }
-  const auto compiled_constraints = compile_constraint_list(context, simplified_constraints);
-  debug.markers["lateral_bounds"] = make_lateral_bounds_markers(context, compiled_constraints);
-  auto & debug_markers = debug.markers["candidates"];
 
-  const auto initial_state = compute_initial_state(context);
-  const auto paths = generate_paths(context, initial_state);
-  const auto profiles = generate_velocity_profiles(context, initial_state, compiled_constraints);
+  phase.reset();
+  phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+    "compile_constraint_list", *time_keeper_);
+  const auto compiled_constraints = compile_constraint_list(context, simplified_constraints);
+
+  phase.reset();
+  phase =
+    std::make_unique<autoware_utils_debug::ScopedTimeTrack>("tabulate_constraints", *time_keeper_);
+  const ConstraintTables tables(
+    context, compiled_constraints, params_.frenet_sampling_based_planner.path_resolution_m);
+
+  phase.reset();
+  phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+    "make_lateral_bounds_markers", *time_keeper_);
+  debug.markers["lateral_bounds"] =
+    make_lateral_bounds_markers(context, grid, compiled_constraints);
+
+  phase.reset();
+  phase =
+    std::make_unique<autoware_utils_debug::ScopedTimeTrack>("compute_initial_state", *time_keeper_);
+  const auto initial_state = compute_initial_state(context, grid);
+
+  phase.reset();
+  phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>("generate_paths", *time_keeper_);
+  const auto paths = generate_paths(context, grid, initial_state);
+
+  phase.reset();
+  phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+    "generate_velocity_profiles", *time_keeper_);
+  const auto profiles =
+    generate_velocity_profiles(context, grid, tables, initial_state, compiled_constraints);
+
+  phase.reset();
+  phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+    "project_previous_trajectory", *time_keeper_);
   const auto previous_lateral = previous_trajectory
                                   ? PreviousLateral{context.reference_path, *previous_trajectory}
                                   : PreviousLateral{};
 
+  // Combining and evaluating are two passes and not one, so that the time keeper can tell the two
+  // apart; they are independent per candidate, so the result is the same either way. Not tracked
+  // per candidate: the grid holds about a thousand of them and each track is a node of the
+  // published tree
+  phase.reset();
+  phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>("combine", *time_keeper_);
   std::vector<Candidate> candidates;
   candidates.reserve(paths.size() * profiles.size());
   for (const auto & path : paths) {
     for (const auto & profile : profiles) {
-      candidates.push_back(combine(context, path, profile));
-      evaluate(
-        context, compiled_constraints, initial_state.l_goal, previous_lateral, candidates.back());
+      candidates.push_back(combine(path, profile));
     }
   }
-  append_debug_markers(context, candidates, debug_markers);
+
+  phase.reset();
+  phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>("evaluate", *time_keeper_);
+  time_keeper_->comment(std::to_string(candidates.size()) + " candidates");
+  for (auto & candidate : candidates) {
+    evaluate(
+      context, compiled_constraints, tables, initial_state.l_goal, previous_lateral, candidate);
+  }
+
+  phase.reset();
+  // Off by default: the grid holds about a thousand candidates of a hundred points each, which is
+  // a few MB of markers per cycle
+  if (params_.frenet_sampling_based_planner.debug.publish_candidate_markers) {
+    phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+      "append_debug_markers", *time_keeper_);
+    append_debug_markers(context, grid, candidates, debug.markers["candidates"]);
+    phase.reset();
+  }
 
   const Candidate * best = nullptr;
   for (const auto & candidate : candidates) {
@@ -305,21 +497,20 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
     // The stop trajectory holds the ego steer while braking at the hardest deceleration. Not the
     // quintic back to l0 of the candidates: from a heading well off the centerline it bends past
     // the steer limit within a few meters, and the fallback is not checked
-    const auto hold = hold_steer_path(context, initial_state);
-    const auto stop =
-      make_stop_profile(initial_state, collect_kinematic_limits(compiled_constraints));
-    return to_trajectory_msg(context, combine(context, hold, stop));
+    const auto hold = hold_steer_path(context, grid, initial_state);
+    const auto stop = make_stop_profile(initial_state, tables.limits);
+    return to_trajectory_msg(context, combine(hold, stop));
   }
   return to_trajectory_msg(context, *best);
 }
 
 FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_initial_state(
-  const PlannerContext & context) const
+  const PlannerContext & context, const ReferenceGrid & grid) const
 {
   const auto ego = compute_ego_frenet_state(context);
   const auto & path = context.reference_path;
   const double ego_yaw = autoware_utils_geometry::get_rpy(context.odometry.pose.pose).z;
-  const double frenet_yaw = autoware_utils_math::normalize_radian(ego_yaw - path.azimuth(ego.s));
+  const double frenet_yaw = autoware_utils_math::normalize_radian(ego_yaw - grid.azimuth(ego.s));
   const double v = context.odometry.twist.twist.linear.x;
 
   InitialState state;
@@ -328,7 +519,7 @@ FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_ini
   // tan diverges as the heading approaches +-90 deg against the centerline, so the slope is cut
   // off at the equivalent of +-60 deg. The factor (1 - k_ref*l) inverts the heading expression of
   // sample_path; without it yaw[0] does not match the ego heading
-  state.dl_ds = (1.0 - path.curvature(ego.s) * ego.l) *
+  state.dl_ds = (1.0 - grid.curvature(ego.s) * ego.l) *
                 std::tan(std::clamp(frenet_yaw, -M_PI / 3.0, M_PI / 3.0));
   // Pinning l''(0) to 0 would flatten the start of the lateral motion at every replan and barely
   // approach a lateral target 40 m ahead, the restart problem of a receding horizon. The initial
@@ -337,13 +528,10 @@ FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_ini
   // and every candidate, the stop fallback included, is rejected on its first point
   const double kappa_ego =
     std::tan(context.steering.steering_tire_angle) / context.vehicle_info.wheel_base_m;
-  state.d2l_ds2 = offset_path_d2l(
-    path.curvature(ego.s),
-    centerline_curvature_gradient(
-      path, ego.s, params_.frenet_sampling_based_planner.path_resolution_m),
-    ego.l, state.dl_ds, kappa_ego);
+  state.d2l_ds2 =
+    offset_path_d2l(grid.curvature(ego.s), grid.dkappa(ego.s), ego.l, state.dl_ds, kappa_ego);
   // Floored as in compute_ego_frenet_state: 1 - k l vanishes at the center of curvature
-  const double metric0 = std::max(1.0 - path.curvature(ego.s) * ego.l, 0.2);
+  const double metric0 = std::max(1.0 - grid.curvature(ego.s) * ego.l, 0.2);
   state.v = std::max(0.0, v * std::cos(frenet_yaw)) / metric0;
   // Not taken from the measurement below the engage velocity: a negative one (rolling back on a
   // slope, the brake) starts every s(t) backwards, so all candidates fail the reverse check and
@@ -357,8 +545,8 @@ FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_ini
 }
 
 FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_path(
-  const PlannerContext & context, const InitialState & initial_state, const double length,
-  const double l_target) const
+  const PlannerContext & context, const ReferenceGrid & grid, const InitialState & initial_state,
+  const double length, const double l_target) const
 {
   using autoware::frenet_planner::Polynomial;
 
@@ -380,7 +568,7 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
     const double dl_ds = u <= L ? lat.velocity(u) : 0.0;
     const double d2l_ds2 = u <= L ? lat.acceleration(u) : 0.0;
     const double s_ref = std::clamp(s, 0.0, s_max);
-    const double k_ref = ref.curvature(s_ref);
+    const double k_ref = grid.curvature(s_ref);
     path.s.push_back(s);
     path.l.push_back(l);
     // The heading comes from the analytic Frenet expression psi = psi_ref + atan(l' /
@@ -389,15 +577,14 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
     // cycle until it hits the steer rate limit after a few dozen of them
     path.yaw.push_back(
       autoware_utils_math::normalize_radian(
-        ref.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
+        grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
     path.metric.push_back(std::hypot(1.0 - k_ref * l, dl_ds));
     // Analytic, and per arc length of the path rather than of the reference: the two differ by the
     // metric, which reaches 2 for an ego 4 m outside a lane of R 4 m, and with the difference of
     // the headings over the reference arc length every candidate there failed the steer angle
     // check. Since l'(0) and l''(0) come from the ego, the first point matches the ego heading and
     // steer, so a candidate leaving in another direction needs no separate rejection here
-    path.kappa.push_back(offset_path_curvature(
-      k_ref, centerline_curvature_gradient(ref, s_ref, res), l, dl_ds, d2l_ds2));
+    path.kappa.push_back(offset_path_curvature(k_ref, grid.dkappa(s_ref), l, dl_ds, d2l_ds2));
   }
   std::stringstream ss;
   ss << "L=" << L << " l=" << l_target;
@@ -406,14 +593,14 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
 }
 
 FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::hold_steer_path(
-  const PlannerContext & context, const InitialState & initial_state) const
+  const PlannerContext & context, const ReferenceGrid & grid,
+  const InitialState & initial_state) const
 {
-  const auto & ref = context.reference_path;
   const double res = params_.frenet_sampling_based_planner.path_resolution_m;
-  const double s_max = ref.length();
+  const double s_max = context.reference_path.length();
   const double kappa = offset_path_curvature(
-    ref.curvature(initial_state.s), centerline_curvature_gradient(ref, initial_state.s, res),
-    initial_state.l, initial_state.dl_ds, initial_state.d2l_ds2);
+    grid.curvature(initial_state.s), grid.dkappa(initial_state.s), initial_state.l,
+    initial_state.dl_ds, initial_state.d2l_ds2);
 
   // l(s) of the circle of curvature kappa, integrated over the samples with l'' from the
   // curvature at each of them
@@ -422,14 +609,13 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::hold_steer
   double dl_ds = initial_state.dl_ds;
   for (double s = initial_state.s; s <= s_max + 1e-9; s += res) {
     const double s_ref = std::clamp(s, 0.0, s_max);
-    const double k_ref = ref.curvature(s_ref);
-    const double dk_ref = centerline_curvature_gradient(ref, s_ref, res);
-    const double d2l_ds2 = offset_path_d2l(k_ref, dk_ref, l, dl_ds, kappa);
+    const double k_ref = grid.curvature(s_ref);
+    const double d2l_ds2 = offset_path_d2l(k_ref, grid.dkappa(s_ref), l, dl_ds, kappa);
     path.s.push_back(s);
     path.l.push_back(l);
     path.yaw.push_back(
       autoware_utils_math::normalize_radian(
-        ref.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
+        grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
     path.metric.push_back(std::hypot(1.0 - k_ref * l, dl_ds));
     path.kappa.push_back(kappa);
     l += dl_ds * res + 0.5 * d2l_ds2 * res * res;
@@ -440,7 +626,8 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::hold_steer
 }
 
 std::vector<FrenetSamplingBasedPlanner::PathCandidate> FrenetSamplingBasedPlanner::generate_paths(
-  const PlannerContext & context, const InitialState & initial_state) const
+  const PlannerContext & context, const ReferenceGrid & grid,
+  const InitialState & initial_state) const
 {
   const auto & p = params_.frenet_sampling_based_planner;
   // The lateral position of the goal joins the terminal candidates, so that a goal off the grid
@@ -455,7 +642,7 @@ std::vector<FrenetSamplingBasedPlanner::PathCandidate> FrenetSamplingBasedPlanne
   std::vector<PathCandidate> paths;
   for (const double length : p.target_lengths_m) {
     for (const double l_target : lateral_targets) {
-      paths.push_back(sample_path(context, initial_state, length, l_target));
+      paths.push_back(sample_path(context, grid, initial_state, length, l_target));
     }
   }
   return paths;
@@ -463,8 +650,8 @@ std::vector<FrenetSamplingBasedPlanner::PathCandidate> FrenetSamplingBasedPlanne
 
 std::vector<FrenetSamplingBasedPlanner::VelocityProfile>
 FrenetSamplingBasedPlanner::generate_velocity_profiles(
-  const PlannerContext & context, const InitialState & initial_state,
-  const CompiledConstraints & compiled_constraints) const
+  const PlannerContext & context, const ReferenceGrid & grid, const ConstraintTables & tables,
+  const InitialState & initial_state, const CompiledConstraints & compiled_constraints) const
 {
   using autoware::frenet_planner::Polynomial;
 
@@ -472,8 +659,7 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
   const double dt = p.time_step_s;
   const double horizon = params_.trajectory_horizon_s;
   const double s_max = context.reference_path.length();
-  const auto limits = collect_kinematic_limits(compiled_constraints);
-  double v_limit = velocity_limit_at(compiled_constraints, limits, initial_state.s);
+  double v_limit = tables.v_max[tables.cell(initial_state.s)];
   {
     // The terminal speeds are sampled against the speed at which the path curvature within the
     // horizon can still be taken under the lateral acceleration and steer rate limits. Sampling
@@ -485,18 +671,18 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
     // deceleration only sets the sampling reference, so a fixed value is enough; whether a
     // candidate really works is decided in evaluate()
     constexpr double SAMPLING_DECEL_MPS2 = 1.0;
-    const auto bounds = collect_global_bounds(compiled_constraints);
+    const auto & bounds = tables.bounds;
     const double wheel_base_m = context.vehicle_info.wheel_base_m;
     const double res = p.path_resolution_m;
     const double s_end = std::min(s_max, initial_state.s + v_limit * horizon);
-    double prev_steer = std::atan(context.reference_path.curvature(initial_state.s) * wheel_base_m);
+    double prev_steer = std::atan(grid.curvature(initial_state.s) * wheel_base_m);
     for (double s = initial_state.s + res; s <= s_end; s += res) {
-      const double kappa = context.reference_path.curvature(s);
+      const double kappa = grid.curvature(s);
       const double steer = std::atan(kappa * wheel_base_m);
       // A regional velocity bound ahead (a speed limit zone) has to be reached by braking too,
       // otherwise every candidate above it is rejected inside the region and only the stop
       // profile survives
-      double v_cap = velocity_limit_at(compiled_constraints, limits, s);
+      double v_cap = tables.v_max[tables.cell(s)];
       if (std::abs(kappa) > 1e-6) {
         v_cap = std::min(v_cap, std::sqrt(bounds.lat_accel / std::abs(kappa)));
       }
@@ -518,7 +704,6 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
       initial_state.s, initial_state.v, initial_state.a, s_target, v_target, 0.0, duration);
     VelocityProfile profile;
     for (double t = 0.0; t <= horizon + 1e-9; t += dt) {
-      profile.t.push_back(t);
       if (t <= duration) {
         profile.s.push_back(lon.position(t));
         profile.v.push_back(lon.velocity(t));
@@ -585,7 +770,6 @@ FrenetSamplingBasedPlanner::VelocityProfile FrenetSamplingBasedPlanner::make_sto
   double s = initial_state.s;
   double v = initial_state.v;
   for (double t = 0.0; t <= params_.trajectory_horizon_s + 1e-9; t += dt) {
-    profile.t.push_back(t);
     profile.s.push_back(s);
     profile.v.push_back(v);
     profile.a.push_back(v > 0.0 ? -decel : 0.0);
@@ -597,61 +781,42 @@ FrenetSamplingBasedPlanner::VelocityProfile FrenetSamplingBasedPlanner::make_sto
 }
 
 FrenetSamplingBasedPlanner::Candidate FrenetSamplingBasedPlanner::combine(
-  const PlannerContext & context, const PathCandidate & path, const VelocityProfile & profile) const
+  const PathCandidate & path, const VelocityProfile & profile) const
 {
-  const auto & ref = context.reference_path;
   const double res = params_.frenet_sampling_based_planner.path_resolution_m;
   const double s0 = path.s.front();
-  const double s_max = ref.length();
-  const double wheel_base_m = context.vehicle_info.wheel_base_m;
 
   Candidate candidate;
+  candidate.path = &path;
   candidate.tag = path.tag + " " + profile.tag;
   candidate.s = profile.s;
   candidate.l.reserve(profile.s.size());
   candidate.kappa.reserve(profile.s.size());
-  candidate.points.reserve(profile.s.size());
-  for (std::size_t k = 0; k < profile.t.size(); ++k) {
+  candidate.v.reserve(profile.s.size());
+  candidate.a.reserve(profile.s.size());
+  for (std::size_t k = 0; k < profile.s.size(); ++k) {
     const double s = profile.s[k];
-    const double l = interpolate_uniform(path.l, s0, res, s);
-    const double kappa = interpolate_uniform(path.kappa, s0, res, s);
     // The change of the metric along the path is left out of the acceleration
     const double metric = interpolate_uniform(path.metric, s0, res, s);
-    const double v = profile.v[k] * metric;
-    candidate.l.push_back(l);
-    candidate.kappa.push_back(kappa);
-
-    const double s_ref = std::clamp(s, 0.0, s_max);
-    const auto pose = to_world_pose(ref, s_ref, l);
-    TrajectoryPoint point;
-    point.time_from_start = rclcpp::Duration::from_seconds(std::max(0.0, profile.t[k]));
-    point.pose.position.x = pose.position.x();
-    point.pose.position.y = pose.position.y();
-    // The road z, not the ego z: the longitudinal controller reads the slope it compensates from
-    // the z of the trajectory, and a flat trajectory leaves an uphill start uncompensated
-    point.pose.position.z = ref.compute(s_ref).point.pose.position.z;
-    point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(
-      interpolate_uniform_angle(path.yaw, s0, res, s));
-    point.longitudinal_velocity_mps = static_cast<float>(v);
-    point.acceleration_mps2 = static_cast<float>(profile.a[k] * metric);
-    point.heading_rate_rps = static_cast<float>(v * kappa);
-    point.front_wheel_angle_rad = static_cast<float>(std::atan(kappa * wheel_base_m));
-    candidate.points.push_back(point);
+    candidate.l.push_back(interpolate_uniform(path.l, s0, res, s));
+    candidate.kappa.push_back(interpolate_uniform(path.kappa, s0, res, s));
+    candidate.v.push_back(profile.v[k] * metric);
+    candidate.a.push_back(profile.a[k] * metric);
   }
   return candidate;
 }
 
 void FrenetSamplingBasedPlanner::evaluate(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-  const double l_goal, const PreviousLateral & previous_lateral, Candidate & candidate) const
+  const ConstraintTables & tables, const double l_goal, const PreviousLateral & previous_lateral,
+  Candidate & candidate) const
 {
   const auto & p = params_.frenet_sampling_based_planner;
   const double s_max = context.reference_path.length();
   const double blend_length =
     *std::max_element(p.target_lengths_m.begin(), p.target_lengths_m.end());
   const double wheel_base_m = context.vehicle_info.wheel_base_m;
-  const auto limits = collect_kinematic_limits(compiled_constraints);
-  const auto bounds = collect_global_bounds(compiled_constraints);
+  const auto & bounds = tables.bounds;
   const double dt = p.time_step_s;
   const auto reject = [&](const char * reason) {
     candidate.valid = false;
@@ -659,12 +824,12 @@ void FrenetSamplingBasedPlanner::evaluate(
   };
 
   double cost = 0.0;
-  for (std::size_t k = 0; k < candidate.points.size(); ++k) {
+  for (std::size_t k = 0; k < candidate.s.size(); ++k) {
     const double s = candidate.s[k];
     const double l = candidate.l[k];
     const double kappa = candidate.kappa[k];
-    const double v = candidate.points[k].longitudinal_velocity_mps;
-    const double a = candidate.points[k].acceleration_mps2;
+    const double v = candidate.v[k];
+    const double a = candidate.a[k];
 
     // A candidate that passes the goal at the end of the path, or drives backwards, is invalid
     if (s > s_max + 1e-3) {
@@ -674,11 +839,12 @@ void FrenetSamplingBasedPlanner::evaluate(
       return reject("reverse");
     }
     // --- vehicle kinematics (the ScalarBound constraints of VehicleKinematics) ---
-    const double v_max = velocity_limit_at(compiled_constraints, limits, s);
+    const auto cell = tables.cell(s);
+    const double v_max = tables.v_max[cell];
     if (v > v_max + 1e-6) {
       return reject("velocity");
     }
-    if (a < limits.a_hard_min - 1e-6 || a > limits.a_hard_max + 1e-6) {
+    if (a < tables.limits.a_hard_min - 1e-6 || a > tables.limits.a_hard_max + 1e-6) {
       return reject("lon_accel");
     }
     const double steer = std::atan(kappa * wheel_base_m);
@@ -688,8 +854,8 @@ void FrenetSamplingBasedPlanner::evaluate(
     if (std::abs(v * v * kappa) > bounds.lat_accel) {
       return reject("lat_accel");
     }
-    if (k + 1 < candidate.points.size()) {
-      const double next_a = candidate.points[k + 1].acceleration_mps2;
+    if (k + 1 < candidate.s.size()) {
+      const double next_a = candidate.a[k + 1];
       if (std::abs((next_a - a) / dt) > bounds.lon_jerk) {
         return reject("lon_jerk");
       }
@@ -701,27 +867,22 @@ void FrenetSamplingBasedPlanner::evaluate(
 
     // --- geometric constraints, on the projected views ---
     const auto box = footprint_sl_box(context.vehicle_info, s, l);
-    const double t0 = rclcpp::Duration(candidate.points[k].time_from_start).seconds();
-    const double t1 = (k + 1 < candidate.points.size())
-                        ? rclcpp::Duration(candidate.points[k + 1].time_from_start).seconds()
-                        : t0;
+    const double t0 = static_cast<double>(k) * dt;
+    const double t1 = (k + 1 < candidate.s.size()) ? t0 + dt : t0;
     double soft_bound_cost = 0.0;
-    for (const auto & bound : compiled_constraints.lateral_bounds) {
-      const auto & raw = compiled_constraints.raw_constraints[bound.raw_index];
-      if (raw.hardness == Hardness::HARD) {
-        if (violates_lateral_bound(bound, box)) {
+    for (std::size_t b = 0; b < compiled_constraints.lateral_bounds.size(); ++b) {
+      const double extreme_l = tables.lateral_extreme_l[b][cell];
+      const bool forbids_left = compiled_constraints.lateral_bounds[b].forbidden_side == Side::LEFT;
+      if (tables.lateral_is_hard[b]) {
+        if (forbids_left ? box.l_max > extreme_l : box.l_min < extreme_l) {
           return reject("lateral_bound");
         }
         continue;
       }
       // A soft boundary, the own lane bound towards a parallel lane, costs the squared amount by
-      // which it is exceeded
-      double extreme_l = 0.0;
-      if (!lateral_bound_extreme_l(bound, box.s_min, box.s_max, extreme_l)) {
-        continue;
-      }
-      const double violation =
-        bound.forbidden_side == Side::LEFT ? box.l_max - extreme_l : extreme_l - box.l_min;
+      // which it is exceeded. Where the boundary does not reach, extreme_l is the infinity the
+      // table is filled with and the violation comes out negative
+      const double violation = forbids_left ? box.l_max - extreme_l : extreme_l - box.l_min;
       if (violation > 0.0) {
         soft_bound_cost += p.weights.soft_bound * violation * violation;
       }
@@ -757,8 +918,8 @@ void FrenetSamplingBasedPlanner::evaluate(
     cost += soft_bound_cost * dt;
     cost += p.weights.velocity * dv * dv * dt;
     cost += p.weights.curvature * kappa * kappa * dt;
-    if (k + 1 < candidate.points.size()) {
-      const double lon_jerk = (candidate.points[k + 1].acceleration_mps2 - a) / dt;
+    if (k + 1 < candidate.s.size()) {
+      const double lon_jerk = (candidate.a[k + 1] - a) / dt;
       cost += p.weights.lon_jerk * lon_jerk * lon_jerk * dt;
     }
   }
@@ -768,16 +929,47 @@ void FrenetSamplingBasedPlanner::evaluate(
 Trajectory FrenetSamplingBasedPlanner::to_trajectory_msg(
   const PlannerContext & context, const Candidate & candidate) const
 {
+  const auto & ref = context.reference_path;
+  const double res = params_.frenet_sampling_based_planner.path_resolution_m;
+  const double dt = params_.frenet_sampling_based_planner.time_step_s;
+  const double s0 = candidate.path->s.front();
+  const double s_max = ref.length();
+  const double wheel_base_m = context.vehicle_info.wheel_base_m;
+
   Trajectory trajectory;
   trajectory.header.frame_id = "map";
   trajectory.header.stamp = context.odometry.header.stamp;
-  trajectory.points = candidate.points;
+  trajectory.points.reserve(candidate.s.size());
+  // The spline is evaluated here rather than read off the ReferenceGrid: only the winner reaches
+  // this point, so the cost is one candidate worth of it, and the chord of the grid cuts a few
+  // millimeters off the inside of a tight curve
+  for (std::size_t k = 0; k < candidate.s.size(); ++k) {
+    const double s_ref = std::clamp(candidate.s[k], 0.0, s_max);
+    const auto ref_position = ref.compute(s_ref).point.pose.position;
+    const double ref_yaw = ref.azimuth(s_ref);
+    const double l = candidate.l[k];
+    const double kappa = candidate.kappa[k];
+    TrajectoryPoint point;
+    point.time_from_start = rclcpp::Duration::from_seconds(static_cast<double>(k) * dt);
+    point.pose.position.x = ref_position.x - std::sin(ref_yaw) * l;
+    point.pose.position.y = ref_position.y + std::cos(ref_yaw) * l;
+    // The road z, not the ego z: the longitudinal controller reads the slope it compensates from
+    // the z of the trajectory, and a flat trajectory leaves an uphill start uncompensated
+    point.pose.position.z = ref_position.z;
+    point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(
+      interpolate_uniform_angle(candidate.path->yaw, s0, res, candidate.s[k]));
+    point.longitudinal_velocity_mps = static_cast<float>(candidate.v[k]);
+    point.acceleration_mps2 = static_cast<float>(candidate.a[k]);
+    point.heading_rate_rps = static_cast<float>(candidate.v[k] * kappa);
+    point.front_wheel_angle_rad = static_cast<float>(std::atan(kappa * wheel_base_m));
+    trajectory.points.push_back(point);
+  }
   return trajectory;
 }
 
 void FrenetSamplingBasedPlanner::append_debug_markers(
-  const PlannerContext & context, const std::vector<Candidate> & candidates,
-  MarkerArray & debug_markers) const
+  const PlannerContext & context, const ReferenceGrid & grid,
+  const std::vector<Candidate> & candidates, MarkerArray & debug_markers) const
 {
   using autoware_utils_visualization::create_default_marker;
   using autoware_utils_visualization::create_marker_color;
@@ -792,12 +984,22 @@ void FrenetSamplingBasedPlanner::append_debug_markers(
     "map", stamp, "candidates_invalid", 0, Marker::LINE_LIST, create_marker_scale(0.03, 0.0, 0.0),
     create_marker_color(1.0, 0.0, 0.0, 0.2));
 
+  // The world points of one candidate, reused by the next one
+  std::vector<geometry_msgs::msg::Point> world;
   for (const auto & candidate : candidates) {
+    world.clear();
+    for (std::size_t k = 0; k < candidate.s.size(); ++k) {
+      const auto position = grid.position(candidate.s[k], candidate.l[k]);
+      geometry_msgs::msg::Point q;
+      q.x = position.x();
+      q.y = position.y();
+      q.z = grid.z(candidate.s[k]);
+      world.push_back(q);
+    }
     auto & marker = candidate.valid ? valid_marker : invalid_marker;
-    for (std::size_t k = 0; k + 1 < candidate.points.size(); ++k) {
-      for (const std::size_t i : {k, k + 1}) {
-        marker.points.push_back(candidate.points[i].pose.position);
-      }
+    for (std::size_t k = 0; k + 1 < world.size(); ++k) {
+      marker.points.push_back(world[k]);
+      marker.points.push_back(world[k + 1]);
     }
   }
   if (!valid_marker.points.empty()) {
@@ -809,7 +1011,8 @@ void FrenetSamplingBasedPlanner::append_debug_markers(
 }
 
 MarkerArray FrenetSamplingBasedPlanner::make_lateral_bounds_markers(
-  const PlannerContext & context, const CompiledConstraints & compiled_constraints) const
+  const PlannerContext & context, const ReferenceGrid & grid,
+  const CompiledConstraints & compiled_constraints) const
 {
   using autoware_utils_visualization::create_default_marker;
   using autoware_utils_visualization::create_marker_color;
@@ -837,10 +1040,10 @@ MarkerArray FrenetSamplingBasedPlanner::make_lateral_bounds_markers(
           ? hard_marker
           : soft_marker;
       for (const double l : {0.0, l_bound}) {
-        const auto pose = to_world_pose(reference_path, s, l);
+        const auto position = grid.position(s, l);
         geometry_msgs::msg::Point q;
-        q.x = pose.position.x();
-        q.y = pose.position.y();
+        q.x = position.x();
+        q.y = position.y();
         q.z = z;
         marker.points.push_back(q);
       }

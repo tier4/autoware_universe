@@ -38,6 +38,7 @@
 #include "compiled_constraints_utils.hpp"
 #include "constraints_compiler.hpp"
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -72,6 +73,68 @@ private:
   //! Shared by both sides: the cache keys on the geometry, so the second side pays a hash only
   std::unique_ptr<BoundarySimplifier> boundary_simplifier_;
 
+  //! Upper bounds of the global ScalarBound constraints, per quantity: the ones
+  //! collect_kinematic_limits does not read (LAT_ACCEL, LON_JERK, STEER_ANGLE, STEER_RATE)
+  struct GlobalBounds
+  {
+    double lat_accel{INF};
+    double lon_jerk{INF};
+    double steer_angle{INF};
+    double steer_rate{INF};
+  };
+
+  //! What evaluate() looks up per point, tabulated once per call over cells of the arc length:
+  //! without it every point scans every scalar bound and every vertex of every boundary polyline,
+  //! about a hundred thousand times per cycle
+  struct ConstraintTables
+  {
+    ConstraintTables(
+      const PlannerContext & context, const CompiledConstraints & compiled_constraints,
+      double resolution);
+
+    //! Index of the cell holding the arc length s, clamped to the table
+    std::size_t cell(double s) const;
+
+    double res{1.0};  //!< [m] cell size
+    std::size_t cells{1};
+    KinematicLimits limits;
+    GlobalBounds bounds;
+    //! [m/s] the velocity limit in the cell, the global bound and the speed limit zones together
+    std::vector<double> v_max;
+    //! Per lateral bound of the IR, in the same order: the boundary l the footprint has to stay
+    //! clear of, per cell (see tabulate_lateral_bound)
+    std::vector<std::vector<double>> lateral_extreme_l;
+    std::vector<bool> lateral_is_hard;
+  };
+
+  //! The reference path resampled at a fixed spacing. Every geometric query of the sampling loops
+  //! reads this instead of the spline: one Trajectory::compute() runs about ten spline evaluations
+  //! and allocates the lane_ids of the point it returns, and the loops query the geometry about a
+  //! hundred thousand times per cycle
+  class ReferenceGrid
+  {
+  public:
+    ReferenceGrid(const PathPointTrajectory & path, double resolution);
+
+    double curvature(double s) const;
+    double dkappa(double s) const;  //!< [1/m^2] central difference over the grid spacing
+    double azimuth(double s) const;
+    double z(double s) const;
+    //! World position of the point at the lateral offset l from the centerline point at s
+    Point2d position(double s, double l) const;
+
+  private:
+    double res_{1.0};  //!< the spacing, an exact divisor of the path length
+    std::vector<double> x_;
+    std::vector<double> y_;
+    std::vector<double> z_;
+    std::vector<double> yaw_;
+    std::vector<double> cos_yaw_;
+    std::vector<double> sin_yaw_;
+    std::vector<double> curvature_;
+    std::vector<double> dkappa_;
+  };
+
   //! Ego state in Frenet coordinates, the initial conditions of the polynomials
   struct InitialState
   {
@@ -95,10 +158,9 @@ private:
     std::string tag;
   };
 
-  //! Longitudinal profile sampled in time (t_k = k*dt)
+  //! Longitudinal profile sampled in time (t_k = k * time_step_s)
   struct VelocityProfile
   {
-    std::vector<double> t;
     std::vector<double> s;
     std::vector<double> v;
     std::vector<double> a;
@@ -120,13 +182,19 @@ private:
     std::optional<double> at(double query_s) const;
   };
 
-  //! A trajectory candidate: one path combined with one velocity profile
+  //! A trajectory candidate: one path combined with one velocity profile. Frenet quantities only,
+  //! sampled at t_k = k * time_step_s; the world pose is built in to_trajectory_msg, for the
+  //! winner alone
   struct Candidate
   {
+    //! The path it was combined from, for the heading of the output. Points into the paths of the
+    //! current call, which outlive the candidates
+    const PathCandidate * path{nullptr};
     std::vector<double> s;      //!< [m] s(t_k)
     std::vector<double> l;      //!< [m] l(s(t_k))
     std::vector<double> kappa;  //!< [1/m] kappa(s(t_k)), kept at double precision for the checks
-    TrajectoryPoints points;    //!< the output points, in world coordinates (z from ego)
+    std::vector<double> v;      //!< [m/s] along the path, the profile speed times the metric
+    std::vector<double> a;      //!< [m/s^2]
     double cost{0.0};
     bool valid{true};
     std::string tag;
@@ -134,53 +202,57 @@ private:
 
   //! Not const: the boundary simplifier carries a cache
   std::optional<Trajectory> plan_one_side(
-    const PlannerContext & context, const std::vector<Constraint> & constraints,
+    const PlannerContext & context, const ReferenceGrid & grid,
+    const std::vector<Constraint> & constraints,
     const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug);
 
-  InitialState compute_initial_state(const PlannerContext & context) const;
+  InitialState compute_initial_state(
+    const PlannerContext & context, const ReferenceGrid & grid) const;
 
   //! Path of constant curvature, the one the ego is on with its current steer
   PathCandidate hold_steer_path(
-    const PlannerContext & context, const InitialState & initial_state) const;
+    const PlannerContext & context, const ReferenceGrid & grid,
+    const InitialState & initial_state) const;
 
   //! Samples the quintic l(s) for one terminal state (arc length length, lateral position
   //! l_target)
   PathCandidate sample_path(
-    const PlannerContext & context, const InitialState & initial_state, const double length,
-    const double l_target) const;
+    const PlannerContext & context, const ReferenceGrid & grid, const InitialState & initial_state,
+    const double length, const double l_target) const;
 
   std::vector<PathCandidate> generate_paths(
-    const PlannerContext & context, const InitialState & initial_state) const;
+    const PlannerContext & context, const ReferenceGrid & grid,
+    const InitialState & initial_state) const;
 
   std::vector<VelocityProfile> generate_velocity_profiles(
-    const PlannerContext & context, const InitialState & initial_state,
-    const CompiledConstraints & compiled_constraints) const;
+    const PlannerContext & context, const ReferenceGrid & grid, const ConstraintTables & tables,
+    const InitialState & initial_state, const CompiledConstraints & compiled_constraints) const;
 
   //! Last resort when no candidate is valid: hold the current lateral position and stop at the
   //! hardest deceleration
   VelocityProfile make_stop_profile(
     const InitialState & initial_state, const KinematicLimits & limits) const;
 
-  //! Interpolates l, yaw and the curvature at s(t_k) along the path, in world coordinates
-  Candidate combine(
-    const PlannerContext & context, const PathCandidate & path,
-    const VelocityProfile & profile) const;
+  //! Interpolates l and the curvature at s(t_k) along the path
+  Candidate combine(const PathCandidate & path, const VelocityProfile & profile) const;
 
   //! Evaluates the hard constraints and accumulates the soft cost, writing valid and cost
   void evaluate(
     const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-    const double l_goal, const PreviousLateral & previous_lateral, Candidate & candidate) const;
+    const ConstraintTables & tables, const double l_goal, const PreviousLateral & previous_lateral,
+    Candidate & candidate) const;
 
   Trajectory to_trajectory_msg(const PlannerContext & context, const Candidate & candidate) const;
 
   void append_debug_markers(
-    const PlannerContext & context, const std::vector<Candidate> & candidates,
-    MarkerArray & debug_markers) const;
+    const PlannerContext & context, const ReferenceGrid & grid,
+    const std::vector<Candidate> & candidates, MarkerArray & debug_markers) const;
 
   //! The lateral bounds of the projected views, drawn at a constant spacing along the
   //! reference_path as thin lines from the centerline to each boundary along the normal
   MarkerArray make_lateral_bounds_markers(
-    const PlannerContext & context, const CompiledConstraints & compiled_constraints) const;
+    const PlannerContext & context, const ReferenceGrid & grid,
+    const CompiledConstraints & compiled_constraints) const;
 };
 
 }  // namespace autoware::safety_planner::experiment

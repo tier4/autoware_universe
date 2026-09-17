@@ -224,8 +224,6 @@ void MppiPlanner::on_initialize(
   cautious_turn_indicator_decider_.update_params(turn_signal_params);
   normal_optimizer_ = std::make_unique<MppiInterface>();
   cautious_optimizer_ = std::make_unique<MppiInterface>();
-  normal_optimizer_->setTimeKeeper(time_keeper_);
-  cautious_optimizer_->setTimeKeeper(time_keeper_);
   constexpr std::size_t kBoundaryCacheSize = 256;
   boundary_simplifier_ = std::make_unique<BoundarySimplifier>(
     params.mppi_planner.boundary.simplify_tolerance_m, kBoundaryCacheSize);
