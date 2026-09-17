@@ -88,5 +88,17 @@
         Modifies the trajectory to stop at traffic lights
       </description>
     </class>
+    <class type="autoware::trajectory_processor::plugin::MapVelocityLimits"
+          base_class_type="autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase">
+      <description>
+        Modifies the velocity of a trajectory to respect the velocity limits from the map
+      </description>
+    </class>
+    <class type="autoware::trajectory_processor::plugin::ExternalVelocityLimit"
+          base_class_type="autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase">
+      <description>
+        Modifies the velocity of a trajectory to respect the received external velocity limit
+      </description>
+    </class>
   </library>
 </class_libraries>
