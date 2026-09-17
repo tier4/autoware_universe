@@ -222,6 +222,11 @@ private:
   // Cleared automatically once the measured ego velocity reaches that value.
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr srv_start_{nullptr};
   bool start_velocity_override_enabled_{false};
+
+  // Rewrite tracked objects whose class the model does not support into PEDESTRIAN, at the node
+  // boundary. Kept here rather than in MLPlannerParams so that the preprocessing pipeline, which
+  // is shared with offline training-data generation, stays untouched.
+  bool remap_unsupported_objects_to_pedestrian_{false};
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
 
   template <typename MessageT>
