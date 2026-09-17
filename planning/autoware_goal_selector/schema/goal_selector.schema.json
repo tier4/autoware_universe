@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for Goal Selector Node",
+  "type": "object",
+  "definitions": {
+    "autoware_goal_selector": {
+      "type": "object",
+      "properties": {
+        "goal_footprint_margin": {
+          "type": "number",
+          "description": "uniform inflation of the vehicle footprint placed at the goal",
+          "default": "0.3",
+          "minimum": 0.0
+        }
+      },
+      "required": ["goal_footprint_margin"]
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "$ref": "#/definitions/autoware_goal_selector"
+        }
+      },
+      "required": ["ros__parameters"]
+    }
+  },
+  "required": ["/**"]
+}

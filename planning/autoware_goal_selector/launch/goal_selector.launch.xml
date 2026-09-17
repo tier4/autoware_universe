@@ -1,0 +1,16 @@
+<launch>
+  <arg name="param_path" default="$(find-pkg-share autoware_goal_selector)/config/goal_selector.param.yaml"/>
+
+  <arg name="input_route_state" default="/planning/route_state"/>
+  <arg name="input_route" default="/planning/route"/>
+  <arg name="input_objects" default="/perception/object_recognition/objects"/>
+  <arg name="output_goal" default="/planning/mission_planning/goal"/>
+
+  <node pkg="autoware_goal_selector" exec="autoware_goal_selector_node" name="goal_selector" output="screen">
+    <param from="$(var param_path)"/>
+    <remap from="~/input/route_state" to="$(var input_route_state)"/>
+    <remap from="~/input/route" to="$(var input_route)"/>
+    <remap from="~/input/objects" to="$(var input_objects)"/>
+    <remap from="~/output/goal" to="$(var output_goal)"/>
+  </node>
+</launch>
