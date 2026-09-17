@@ -251,19 +251,6 @@ void DiffusionPlanner::set_up_params()
     this->set_parameter(
       rclcpp::Parameter("ego_snap_to_prev_trajectory.snap_strength", kMaxSnapStrength));
   }
-  // `correction_gain` was this parameter under an inverted meaning: gain 1 was the raw pose and
-  // gain 0 the strongest snap, which reads backwards and was misconfigured in practice. Fail
-  // loudly on the old name rather than silently running at a different strength. Read the node's
-  // overrides instead of declaring the old name: a declared parameter stays on the node for its
-  // lifetime and shows up in introspection tools holding the sentinel value.
-  for (const auto & param_override : this->get_node_options().parameter_overrides()) {
-    if (param_override.get_name() == "ego_snap_to_prev_trajectory.correction_gain") {
-      throw std::runtime_error(
-        "ego_snap_to_prev_trajectory.correction_gain has been replaced by "
-        "ego_snap_to_prev_trajectory.snap_strength with the opposite sense: set "
-        "snap_strength = 1 - correction_gain (0 disables the snap, 1 stays on the previous plan).");
-    }
-  }
   params_.ego_snap_to_prev_trajectory.history_prefix_count =
     this->declare_parameter<int64_t>("ego_snap_to_prev_trajectory.history_prefix_count", 10);
   params_.ego_snap_to_prev_trajectory.yaw_source = this->declare_parameter<std::string>(
