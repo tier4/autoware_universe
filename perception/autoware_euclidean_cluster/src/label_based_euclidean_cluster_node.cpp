@@ -84,6 +84,35 @@ std::optional<NestedOverrideName> parse_nested_override_name(
   return NestedOverrideName{rest.substr(0, dot_pos), rest.substr(dot_pos + 1)};
 }
 
+/// @brief Declare the nested YAML overrides that this node reads back via list_parameters().
+///
+/// The constructor asks for `automatically_declare_parameters_from_overrides`, but
+/// `agnocast::Node` does not forward that option: it builds its NodeParameters from the
+/// overrides, the arguments and `allow_undeclared_parameters` only. On an Agnocast build the
+/// `label_cluster_params.*` / `confusable_label_groups.*` entries are therefore never declared,
+/// `list_parameters()` returns nothing, and every per-label override is silently replaced by the
+/// global default -- which widens the pedestrian clustering tolerance from 0.3 m to 0.65 m and
+/// loses the near-field clusters entirely.
+///
+/// Declaring them here from the resolved overrides -- which already include everything parsed
+/// out of `--params-file` -- restores them without depending on that option being honoured. On a
+/// plain rclcpp build they are already declared and the `has_parameter()` guard makes this a
+/// no-op.
+void declare_nested_parameter_overrides(
+  autoware::agnocast_wrapper::Node & node, const std::vector<std::string_view> & prefixes)
+{
+  for (const auto & [name, value] :
+       node.get_node_parameters_interface()->get_parameter_overrides()) {
+    const bool is_nested = std::any_of(
+      prefixes.begin(), prefixes.end(),
+      [&name](const std::string_view prefix) { return name.rfind(prefix, 0) == 0; });
+    if (!is_nested || node.has_parameter(name)) {
+      continue;
+    }
+    node.declare_parameter(name, value);
+  }
+}
+
 /// @brief Extract per-label parameter prefixes from declared parameters.
 std::unordered_map<std::string, std::string> load_label_cluster_parameter_prefixes(
   autoware::agnocast_wrapper::Node & node)
@@ -163,6 +192,8 @@ std::vector<ConfusableLabelGroup> load_confusable_groups(autoware::agnocast_wrap
 LabelBasedEuclideanClusterNode::LabelBasedEuclideanClusterNode(const rclcpp::NodeOptions & options)
 : Node("label_based_euclidean_cluster_node", allow_dynamic_params(options))
 {
+  declare_nested_parameter_overrides(*this, {"label_cluster_params.", "confusable_label_groups."});
+
   // Load parameters
   const auto min_probability = static_cast<float>(
     autoware_utils_rclcpp::get_or_declare_parameter<double>(*this, "min_probability"));
