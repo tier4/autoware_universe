@@ -20,7 +20,6 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <utility>
 
 namespace autoware::diagnostic_graph_aggregator
 {
@@ -73,16 +72,11 @@ AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options) : Node("aggr
         &AggregatorNode::on_set_initializing, this, std::placeholders::_1, std::placeholders::_2));
 
     const auto rate = rclcpp::Rate(declare_parameter<double>("rate"));
-    timer_ = autoware::agnocast_wrapper::create_timer(
-      this, get_clock(), rate.period(), [this]() { on_timer(); });
+    timer_ = rclcpp::create_timer(this, get_clock(), rate.period(), [this]() { on_timer(); });
   }
 
   // Send structure topic once.
-  {
-    auto struct_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_struct_);
-    *struct_msg = graph_->create_struct_msg(stamp);
-    pub_struct_->publish(std::move(struct_msg));
-  }
+  pub_struct_->publish(graph_->create_struct_msg(stamp));
 }
 
 AggregatorNode::~AggregatorNode()
@@ -97,16 +91,8 @@ void AggregatorNode::on_timer()
   graph_->update(stamp);
 
   // Publish status.
-  {
-    auto status_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_status_);
-    *status_msg = graph_->create_status_msg(stamp);
-    pub_status_->publish(std::move(status_msg));
-  }
-  {
-    auto unknown_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_unknown_);
-    *unknown_msg = graph_->create_unknown_msg(stamp);
-    pub_unknown_->publish(std::move(unknown_msg));
-  }
+  pub_status_->publish(graph_->create_status_msg(stamp));
+  pub_unknown_->publish(graph_->create_unknown_msg(stamp));
 
   // Update plugins.
   if (availability_) availability_->update(stamp);
@@ -118,16 +104,14 @@ void AggregatorNode::on_diag(const DiagnosticArray & msg)
 }
 
 void AggregatorNode::on_reset(
-  AUTOWARE_SERVER_REQUEST_PTR(ResetDiagGraph),
-  AUTOWARE_SERVER_RESPONSE_PTR(ResetDiagGraph) response)
+  const ResetDiagGraph::Request::SharedPtr, const ResetDiagGraph::Response::SharedPtr response)
 {
   graph_->reset();
   response->status.success = true;
 }
 
 void AggregatorNode::on_set_initializing(
-  AUTOWARE_SERVER_REQUEST_PTR(SetBool) request,
-  AUTOWARE_SERVER_RESPONSE_PTR(SetBool) response)
+  const SetBool::Request::SharedPtr request, const SetBool::Response::SharedPtr response)
 {
   graph_->set_initializing(request->data);
   response->success = true;

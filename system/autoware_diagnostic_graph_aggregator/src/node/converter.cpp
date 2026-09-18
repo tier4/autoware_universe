@@ -15,7 +15,6 @@
 #include "converter.hpp"
 
 #include <unordered_map>
-#include <utility>
 
 namespace autoware::diagnostic_graph_aggregator
 {
@@ -58,10 +57,7 @@ void ConverterNode::on_availability(const CommandModeAvailability & in)
   out_.emergency_stop = is_available(emergency_stop_, out_.emergency_stop);
   out_.comfortable_stop = is_available(comfortable_stop_, out_.comfortable_stop);
   out_.pull_over = is_available(pull_over_, out_.pull_over);
-
-  auto msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_operation_mode_);
-  *msg = out_;
-  pub_operation_mode_->publish(std::move(msg));
+  pub_operation_mode_->publish(out_);
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator
