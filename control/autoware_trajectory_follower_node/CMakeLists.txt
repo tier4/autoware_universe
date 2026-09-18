@@ -13,7 +13,7 @@ ament_auto_add_library(${CONTROLLER_NODE} SHARED
 autoware_agnocast_wrapper_register_node(${CONTROLLER_NODE}
   PLUGIN "autoware::motion::control::trajectory_follower_node::Controller"
   EXECUTABLE ${CONTROLLER_NODE}_exe
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
   ROS2_EXECUTOR SingleThreadedExecutor
 )
 
