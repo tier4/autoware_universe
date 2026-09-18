@@ -1,0 +1,41 @@
+# lane_change_route with the lane change done "by the other planner": from step 50 the ego is
+# shifted into the goal lane (right, ~4.1 m) over 3 s while following the safety planner's output.
+# Once it is fully inside the goal lane the planner must continue on that lane and reach the goal.
+format_version: 1
+external_lane_change: { start_step: 50, duration_steps: 30, offset_m: -4.1 }
+map_path_uri: package://autoware_test_utils/test_map/intersection/lanelet2_map.osm
+vehicle_info_param_uri: package://autoware_test_utils/config/test_vehicle_info.param.yaml
+route:
+  start_pose:
+    position:
+      x: 904.3336789247957
+      y: 1062.1326505825566
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.9999062221561982
+      w: 0.013694776132513943
+  goal_pose:
+    position:
+      x: 632.8031834139489
+      y: 1058.8035164144173
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.9997169943850204
+      w: 0.023789307215243128
+  segments:
+    - preferred_primitive:
+        id: 3008377
+        primitive_type: ""
+      primitives:
+        - id: 3008377
+          primitive_type: lane
+    - preferred_primitive:
+        id: 3008375
+        primitive_type: ""
+      primitives:
+        - id: 3008375
+          primitive_type: lane

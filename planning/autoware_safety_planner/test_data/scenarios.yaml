@@ -1,0 +1,17 @@
+scenarios:
+  - behavior_normal_route.yaml
+  - simple_straight_route.yaml
+  - road_shoulder_start_route.yaml
+  - road_shoulder_goal_route.yaml
+  - rotary_goal_route.yaml
+  - road_shoulder_rotary_goal_route.yaml
+  - behavior_normal_route_static_obstacle.yaml
+  - intersection_right_route.yaml
+  - long_straight_route.yaml
+  - lane_change_route.yaml
+  - lane_change_route_external_lane_change.yaml
+  - far_goal_behind_projection_route.yaml
+  - odaiba_goal_connection_case1_route.yaml
+  - odaiba_goal_connection_case2_route.yaml
+  - odaiba_goal_yaw_offset_route.yaml
+  - odaiba_rotary_exit_route.yaml

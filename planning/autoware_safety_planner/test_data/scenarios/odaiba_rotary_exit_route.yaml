@@ -1,0 +1,37 @@
+# Odaiba: start at the case 2 goal (bottom of the rotary), goal at the end of the same lanelet
+# 179280, ~26 m away and turning ~90 deg through the tightest corner of the rotary
+# (centerline R ~ 3 m against the R ~ 6.4 m the vehicle can steer). Taken from a planning
+# simulation in which the ego did not connect to this goal.
+# The map is the local Odaiba map, so this scenario only runs where that map is present.
+format_version: 1
+expectation: goal_reached
+map_path_uri: /home/takumiodashima/autoware_map/odaiba/lanelet2_map.osm
+vehicle_info_param_uri: package://j6_gen2_description/config/vehicle_info.param.yaml
+route:
+  start_pose:
+    position:
+      x: 89154.9218058107
+      y: 42419.730428608535
+      z: 7.345760563945012
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.9656518533189343
+      w: 0.25983852338680763
+  goal_pose:
+    position:
+      x: 89136.6640625
+      y: 42438.140625
+      z: 6.882464627735706
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.8713328384851418
+      w: 0.49069245416801116
+  segments:
+    - preferred_primitive:
+        id: 179280
+        primitive_type: ""
+      primitives:
+        - id: 179280
+          primitive_type: lane

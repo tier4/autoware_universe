@@ -1,0 +1,6 @@
+/**:
+  ros__parameters:
+    obstacle_stop:
+      margin_m: 0.5 # [m] the shape of an object is inflated by this much
+      stop_distance_m: 6.0 # [m] stop line this far before an object on the path (0 disables)
+      stop_line_max_object_speed_mps: 1.0 # [m/s] stop lines only for objects slower than this
