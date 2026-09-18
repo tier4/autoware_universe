@@ -2,6 +2,7 @@
   ros__parameters:
     # Complete plugin execution order: modifiers followed by optimizers.
     plugin_names:
+      - "autoware::trajectory_processor::plugin::ExternalVelocityLimit"
       - "autoware::trajectory_processor::plugin::MapVelocityLimits"
       - "autoware::trajectory_processor::plugin::TrajectoryTimeSequenceRawOptimizer"
       - "autoware::trajectory_processor::plugin::StopPointFixer"
@@ -19,6 +20,7 @@
       - "autoware::trajectory_processor::plugin::TrajectorySplineSmoother"
       - "autoware::trajectory_processor::plugin::TrajectoryMPTOptimizer"
       - "autoware::trajectory_processor::plugin::TrajectoryExtender"
+    use_external_velocity_limit: true
     use_map_velocity_limits: true
     use_stop_point_fixer: true
     use_obstacle_stop: true
