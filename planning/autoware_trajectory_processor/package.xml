@@ -20,6 +20,7 @@
   <buildtool_depend>autoware_cmake</buildtool_depend>
 
   <depend>autoware_agnocast_wrapper</depend>
+  <depend>autoware_avoidance_target_detector</depend>
   <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_internal_planning_msgs</depend>
   <depend>autoware_lanelet2_utils</depend>
