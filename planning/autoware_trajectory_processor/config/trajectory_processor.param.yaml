@@ -37,6 +37,7 @@
     use_kinematic_feasibility_enforcer: true
     use_mpt_optimizer: false
     use_temporal_mpt_optimizer: true
+    use_time_sequence_raw_optimizer: false
 
     trajectory_time_step: 0.1 # [s]
 
