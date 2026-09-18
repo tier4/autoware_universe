@@ -10,11 +10,9 @@ ament_auto_add_library(control_evaluator_node SHARED
   DIRECTORY src
 )
 
-autoware_agnocast_wrapper_register_node(control_evaluator_node
+rclcpp_components_register_node(control_evaluator_node
   PLUGIN "control_diagnostics::ControlEvaluatorNode"
   EXECUTABLE control_evaluator
-  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
-  ROS2_EXECUTOR SingleThreadedExecutor
 )
 
 if(BUILD_TESTING)
