@@ -33,7 +33,7 @@
 #include <variant>
 #include <vector>
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 namespace
@@ -1058,8 +1058,8 @@ MarkerArray FrenetSamplingBasedPlanner::make_lateral_bounds_markers(
   return marker_array;
 }
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 PLUGINLIB_EXPORT_CLASS(
-  autoware::safety_planner::experiment::FrenetSamplingBasedPlanner,
+  autoware::safety_planner::experimental::FrenetSamplingBasedPlanner,
   autoware::safety_planner::TrajectoryPlannerInterface)

@@ -44,7 +44,7 @@
 #include <string>
 #include <vector>
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 class FrenetSamplingBasedPlanner : public TrajectoryPlannerInterface
@@ -255,6 +255,6 @@ private:
     const CompiledConstraints & compiled_constraints) const;
 };
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 #endif  // TRAJECTORY_PLANNER__FRENET_SAMPLING_BASED_PLANNER__FRENET_SAMPLING_BASED_PLANNER_HPP_

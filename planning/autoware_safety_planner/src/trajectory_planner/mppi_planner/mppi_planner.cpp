@@ -38,7 +38,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 namespace
@@ -773,8 +773,8 @@ bool MppiPlanner::satisfies_constraints(
   return true;
 }
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 PLUGINLIB_EXPORT_CLASS(
-  autoware::safety_planner::experiment::MppiPlanner,
+  autoware::safety_planner::experimental::MppiPlanner,
   autoware::safety_planner::TrajectoryPlannerInterface)

@@ -18,7 +18,7 @@
 #include <string>
 #include <utility>
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 ConstraintGeneratorOutput VehicleKinematicsConstraintGenerator::generate_constraints(
@@ -52,9 +52,9 @@ ConstraintGeneratorOutput VehicleKinematicsConstraintGenerator::generate_constra
   return output;
 }
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator,
+  autoware::safety_planner::experimental::VehicleKinematicsConstraintGenerator,
   autoware::safety_planner::ConstraintGeneratorInterface)

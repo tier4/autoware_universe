@@ -29,12 +29,12 @@
       heading_align_threshold: 0.15 # [rad]
 
     constraint_generator_plugins:
-      - "autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator"
+      - "autoware::safety_planner::experimental::VehicleKinematicsConstraintGenerator"
       - "autoware::safety_planner::ExternalVelocityLimitConstraintGenerator"
-      - "autoware::safety_planner::experiment::LaneletSpeedLimitConstraintGenerator"
-      - "autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator"
-      - "autoware::safety_planner::experiment::ObstacleStopConstraintGenerator"
+      - "autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator"
+      - "autoware::safety_planner::experimental::LaneFollowingDrivableAreaConstraintGenerator"
+      - "autoware::safety_planner::experimental::ObstacleStopConstraintGenerator"
 
-    # "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"
-    # "autoware::safety_planner::experiment::MppiPlanner"
-    trajectory_planner_plugin: "autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"
+    # "autoware::safety_planner::experimental::FrenetSamplingBasedPlanner"
+    # "autoware::safety_planner::experimental::MppiPlanner"
+    trajectory_planner_plugin: "autoware::safety_planner::experimental::FrenetSamplingBasedPlanner"

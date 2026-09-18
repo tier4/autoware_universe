@@ -19,7 +19,7 @@
 
 #include <string>
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 //! Builds the drivable area constraints (Boundary) from the map. For every lanelet of the lane
@@ -40,6 +40,6 @@ public:
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 };
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 #endif  // CONSTRAINT_GENERATOR__LANE_FOLLOWING_DRIVABLE_AREA_HPP_

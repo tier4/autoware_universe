@@ -19,7 +19,7 @@
 
 #include <string>
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 //! Turns the speed limit of the map into one SpeedLimitZone per lanelet of the lane sequence on the
@@ -38,6 +38,6 @@ public:
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 };
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 #endif  // CONSTRAINT_GENERATOR__LANELET_SPEED_LIMIT_HPP_

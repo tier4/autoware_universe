@@ -19,7 +19,7 @@
 
 #include <string>
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 //! Emits the ScalarBound constraints of the vehicle kinematics: only the hard limits of the
@@ -34,6 +34,6 @@ public:
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 };
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 #endif  // CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_

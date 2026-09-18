@@ -32,7 +32,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 namespace
@@ -172,7 +172,7 @@ std::vector<Constraint> make_obstacle_stop_line_constraints(
       geometry_msgs::msg::Point q;
       q.x = vertex.x();
       q.y = vertex.y();
-      const double s = experimental::trajectory::closest(reference_path, q);
+      const double s = autoware::experimental::trajectory::closest(reference_path, q);
       s_min = std::min(s_min, s);
       s_max = std::max(s_max, s);
       const double l = lateral_offset_at(reference_path, s, vertex);
@@ -299,9 +299,9 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
   return output;
 }
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::safety_planner::experiment::ObstacleStopConstraintGenerator,
+  autoware::safety_planner::experimental::ObstacleStopConstraintGenerator,
   autoware::safety_planner::ConstraintGeneratorInterface)

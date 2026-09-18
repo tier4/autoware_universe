@@ -23,7 +23,7 @@
 #include <string>
 #include <utility>
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constraints(
@@ -77,9 +77,9 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
   return output;
 }
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::safety_planner::experiment::LaneletSpeedLimitConstraintGenerator,
+  autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator,
   autoware::safety_planner::ConstraintGeneratorInterface)

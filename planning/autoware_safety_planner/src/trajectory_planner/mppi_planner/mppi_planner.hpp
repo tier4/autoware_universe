@@ -42,7 +42,7 @@ namespace autoware::safety_planner
 class PathProjector;
 }  // namespace autoware::safety_planner
 
-namespace autoware::safety_planner::experiment
+namespace autoware::safety_planner::experimental
 {
 
 class MppiPlanner : public TrajectoryPlannerInterface
@@ -95,6 +95,6 @@ private:
   std::unique_ptr<BoundarySimplifier> boundary_simplifier_;
 };
 
-}  // namespace autoware::safety_planner::experiment
+}  // namespace autoware::safety_planner::experimental
 
 #endif  // TRAJECTORY_PLANNER__MPPI_PLANNER__MPPI_PLANNER_HPP_

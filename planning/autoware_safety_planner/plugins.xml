@@ -1,6 +1,6 @@
 <class_libraries>
   <library path="autoware_safety_planner_constraint_plugins">
-    <class type="autoware::safety_planner::experiment::VehicleKinematicsConstraintGenerator"
+    <class type="autoware::safety_planner::experimental::VehicleKinematicsConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Emits the ScalarBound constraints of the vehicle kinematics</description>
     </class>
@@ -8,21 +8,21 @@
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Emits the speed bound given from outside: a global bound, plus a zone from the braking distance onwards while the limit is below the current speed</description>
     </class>
-    <class type="autoware::safety_planner::experiment::LaneletSpeedLimitConstraintGenerator"
+    <class type="autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Emits the speed limit of the map as one zone per lanelet of the lane sequence on the route</description>
     </class>
-    <class type="autoware::safety_planner::experiment::LaneFollowingDrivableAreaConstraintGenerator"
+    <class type="autoware::safety_planner::experimental::LaneFollowingDrivableAreaConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Builds the drivable area from the lane bounds of the lanelets on the route</description>
     </class>
-    <class type="autoware::safety_planner::experiment::ObstacleStopConstraintGenerator"
+    <class type="autoware::safety_planner::experimental::ObstacleStopConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Emits one rigid-body KeepOut per predicted object, along its most likely predicted path</description>
     </class>
   </library>
   <library path="autoware_safety_planner_trajectory_planner_plugins">
-    <class type="autoware::safety_planner::experiment::FrenetSamplingBasedPlanner"
+    <class type="autoware::safety_planner::experimental::FrenetSamplingBasedPlanner"
            base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
       <description>Samples terminal states in Frenet coordinates and joins them with quintic polynomials, then takes the cheapest candidate that passes the projected views of the constraint IR</description>
     </class>
