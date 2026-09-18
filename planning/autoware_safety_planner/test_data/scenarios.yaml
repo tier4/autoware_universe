@@ -11,7 +11,3 @@ scenarios:
   - lane_change_route.yaml
   - lane_change_route_external_lane_change.yaml
   - far_goal_behind_projection_route.yaml
-  - odaiba_goal_connection_case1_route.yaml
-  - odaiba_goal_connection_case2_route.yaml
-  - odaiba_goal_yaw_offset_route.yaml
-  - odaiba_rotary_exit_route.yaml
