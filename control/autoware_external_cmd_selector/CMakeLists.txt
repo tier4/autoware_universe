@@ -8,11 +8,9 @@ ament_auto_add_library(${PROJECT_NAME}_node SHARED
   src/autoware_external_cmd_selector/external_cmd_selector_node.cpp
 )
 
-autoware_agnocast_wrapper_register_node(${PROJECT_NAME}_node
+rclcpp_components_register_node(${PROJECT_NAME}_node
   PLUGIN "autoware::external_cmd_selector::ExternalCmdSelector"
   EXECUTABLE autoware_external_cmd_selector
-  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
-  ROS2_EXECUTOR SingleThreadedExecutor
 )
 
 ament_auto_package(INSTALL_TO_SHARE
