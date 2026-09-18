@@ -14,8 +14,8 @@
 
 #include "autoware/trajectory_processor/trajectory_optimizer_plugins/trajectory_temporal_mpt_optimizer.hpp"
 
-#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/logging.hpp>
+#include <temporal_mpt/bicycle_model_params.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
@@ -108,6 +108,16 @@ void TrajectoryTemporalMPTOptimizer::set_mpt_params(
   mpt_params_.reroute_output = params.reroute_output;
 }
 
+void TrajectoryTemporalMPTOptimizer::apply_vehicle_bicycle_params()
+{
+  if (!context_) {
+    return;
+  }
+  const auto bicycle = temporal_mpt::bicycleLfLrFromVehicleInfo(context_->vehicle_info);
+  mpt_params_.lf = bicycle.lf;
+  mpt_params_.lr = bicycle.lr;
+}
+
 void TrajectoryTemporalMPTOptimizer::on_initialize(const TrajectoryProcessorParams & params)
 {
   auto node_ptr = get_node_ptr();
@@ -117,18 +127,8 @@ void TrajectoryTemporalMPTOptimizer::on_initialize(const TrajectoryProcessorPara
 
   enabled_ = params.use_temporal_mpt_optimizer;
   set_mpt_params(params.trajectory_temporal_mpt_optimizer);
+  apply_vehicle_bicycle_params();
 
-  // Bicycle lf/lr from vehicle_info: CG at geometric box center (same as MPPI
-  // ego_axle_to_box_center).
-  {
-    const auto vehicle_info =
-      autoware::vehicle_info_utils::VehicleInfoUtils(*node_ptr).getVehicleInfo();
-    const double wb = std::max(1.0e-3, vehicle_info.wheel_base_m);
-    double lr = 0.5 * vehicle_info.vehicle_length_m - vehicle_info.rear_overhang_m;
-    lr = std::clamp(lr, 1.0e-3, wb - 1.0e-3);
-    mpt_params_.lr = lr;
-    mpt_params_.lf = wb - lr;
-  }
   RCLCPP_INFO(
     node_ptr->get_logger(),
     "Temporal MPT: lf=%.3f m lr=%.3f m tau_a=%.3f s tau_d=%.3f s max_steer_rate=%.3f rad/s",
@@ -151,6 +151,7 @@ void TrajectoryTemporalMPTOptimizer::update_params(const TrajectoryProcessorPara
   const bool warm_start_was_enabled = mpt_params_.use_previous_solution_warm_start;
   enabled_ = params.use_temporal_mpt_optimizer;
   set_mpt_params(params.trajectory_temporal_mpt_optimizer);
+  apply_vehicle_bicycle_params();
   if (warm_start_was_enabled && !mpt_params_.use_previous_solution_warm_start) {
     have_prev_solution_ = false;
   }

@@ -59,6 +59,9 @@
       enable_input_delay_compensation: true
       prevent_reverse_velocity: true
 
+      # Ablation: publish plant lag states on trajectory instead of undelayed commands.
+      use_plant_states_on_trajectory: false
+
       ignore_obstacles: false
       ignore_road_borders: false
       ignore_drivable_area: false
