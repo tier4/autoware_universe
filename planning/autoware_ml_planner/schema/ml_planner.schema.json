@@ -276,7 +276,7 @@
               "type": "number",
               "default": 0.1,
               "exclusiveMinimum": 0.0,
-              "description": "Lateral shift resolution [m]"
+              "description": "Lateral shift step for the first 3 probes; remaining clearance is found by bisection [m]"
             },
             "max_lateral_shift_m": {
               "type": "number",
