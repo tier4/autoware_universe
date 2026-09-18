@@ -180,13 +180,15 @@ rclcpp::NodeOptions make_node_options()
     .append_parameter_override("visibility_estimation_only", false)
     .append_parameter_override("use_return_type_classification", true)
     .append_parameter_override("filter_secondary_returns", false)
-    .append_parameter_override("secondary_noise_threshold", 1)
+    .append_parameter_override("low_visibility_secondary_returns_threshold", 1)
+    .append_parameter_override("filter_ratio_secondary_returns_threshold", 1)
     .append_parameter_override("low_visibility_entropy_threshold", 0.0)
     .append_parameter_override("low_visibility_anisotropy_threshold", 1.0)
     .append_parameter_override("low_visibility_average_intensity_threshold", 255.0)
     .append_parameter_override("low_visibility_sparse_voxel_point_count_threshold", 10)
     .append_parameter_override("low_visibility_sparse_voxel_secondary_return_ratio_threshold", 0.2)
-    .append_parameter_override("intensity_threshold", 5)
+    .append_parameter_override("low_visibility_intensity_threshold", 5)
+    .append_parameter_override("filter_ratio_intensity_threshold", 5)
     .append_parameter_override("primary_return_types", std::vector<int64_t>{1, 6, 8, 10})
     .append_parameter_override("visibility_warn_threshold", 0.7)
     .append_parameter_override("filter_ratio_error_threshold", 0.5)
@@ -218,9 +220,9 @@ TEST_F(PolarVoxelOutlierFilterTest, UseReturnTypeClassification_True_PrimaryOnly
   auto options = make_node_options()
                    .append_parameter_override("use_return_type_classification", true)
                    .append_parameter_override("primary_return_types", std::vector<int64_t>{1})
-                   .append_parameter_override("intensity_threshold", 5)
+                   .append_parameter_override("filter_ratio_intensity_threshold", 5)
                    .append_parameter_override("voxel_points_threshold", 1)
-                   .append_parameter_override("secondary_noise_threshold", 3)
+                   .append_parameter_override("filter_ratio_secondary_returns_threshold", 3)
                    .append_parameter_override("filter_secondary_returns", true);
   PolarVoxelOutlierFilterComponentPublic node(options);
   auto input = make_filter_test_cloud();
@@ -243,7 +245,6 @@ TEST_F(PolarVoxelOutlierFilterTest, UseReturnTypeClassification_False_AllPoints)
 {
   auto options = make_node_options()
                    .append_parameter_override("use_return_type_classification", false)
-                   .append_parameter_override("intensity_threshold", 5)
                    .append_parameter_override("voxel_points_threshold", 1);
   PolarVoxelOutlierFilterComponentPublic node(options);
   auto input = make_filter_test_cloud();
@@ -271,14 +272,14 @@ TEST_F(PolarVoxelOutlierFilterTest, UseReturnTypeClassification_False_AllPoints)
 }
 
 // Only primary returns in valid voxels are output, noise cloud should contain the rest
-TEST_F(PolarVoxelOutlierFilterTest, IntensityThreshold_SecondaryReturn_NoiseCloud)
+TEST_F(PolarVoxelOutlierFilterTest, FilterRatioIntensityThreshold_SecondaryReturn_NoiseCloud)
 {
   auto options = make_node_options()
                    .append_parameter_override("use_return_type_classification", true)
                    .append_parameter_override("primary_return_types", std::vector<int64_t>{1})
-                   .append_parameter_override("intensity_threshold", 5)
+                   .append_parameter_override("filter_ratio_intensity_threshold", 5)
                    .append_parameter_override("voxel_points_threshold", 1)
-                   .append_parameter_override("secondary_noise_threshold", 3)
+                   .append_parameter_override("filter_ratio_secondary_returns_threshold", 3)
                    .append_parameter_override("filter_secondary_returns", true)
                    .append_parameter_override("publish_noise_cloud", true);
   PolarVoxelOutlierFilterComponentPublic node(options);
@@ -300,15 +301,18 @@ TEST_F(PolarVoxelOutlierFilterTest, IntensityThreshold_SecondaryReturn_NoiseClou
 // Visibility metric should be 0.5 for this cloud (both voxels counted, both are low visibility)
 TEST_F(PolarVoxelOutlierFilterTest, VisibilityMetric)
 {
-  int intensity_threshold = 5;
-  int secondary_noise_threshold = 2;
+  int low_visibility_intensity_threshold = 5;
+  int low_visibility_secondary_returns_threshold = 2;
   auto options =
     make_node_options()
       .append_parameter_override("visibility_estimation_only", true)
       .append_parameter_override("use_return_type_classification", true)
-      .append_parameter_override("intensity_threshold", intensity_threshold)
+      .append_parameter_override(
+        "low_visibility_intensity_threshold", low_visibility_intensity_threshold)
       .append_parameter_override("voxel_points_threshold", 1)
-      .append_parameter_override("secondary_noise_threshold", secondary_noise_threshold)
+      .append_parameter_override(
+        "low_visibility_secondary_returns_threshold", low_visibility_secondary_returns_threshold)
+      .append_parameter_override("low_visibility_sparse_voxel_point_count_threshold", 0)
       .append_parameter_override("visibility_estimation_max_secondary_voxel_count", 2);
   PolarVoxelOutlierFilterComponentPublic node(options);
   auto input = make_filter_test_cloud();
@@ -318,4 +322,41 @@ TEST_F(PolarVoxelOutlierFilterTest, VisibilityMetric)
 
   ASSERT_TRUE(node.visibility_.has_value());
   EXPECT_NEAR(node.visibility_.value(), 0.5, 1e-6);
+}
+
+TEST_F(PolarVoxelOutlierFilterTest, FilterRatioThresholdsDoNotAffectVisibility)
+{
+  auto options =
+    make_node_options()
+      .append_parameter_override("low_visibility_intensity_threshold", 5)
+      .append_parameter_override("low_visibility_secondary_returns_threshold", 2)
+      .append_parameter_override("filter_ratio_intensity_threshold", 3)
+      .append_parameter_override("filter_ratio_secondary_returns_threshold", 1)
+      .append_parameter_override("low_visibility_sparse_voxel_point_count_threshold", 0)
+      .append_parameter_override("visibility_estimation_max_secondary_voxel_count", 2);
+  PolarVoxelOutlierFilterComponentPublic node(options);
+  auto input = make_filter_test_cloud();
+  auto input_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>(input);
+  sensor_msgs::msg::PointCloud2 output;
+  node.filter(input_ptr, nullptr, output);
+
+  const auto points = extract_points(output);
+  ASSERT_EQ(points.size(), 3u);
+  for (const auto & point : points) {
+    EXPECT_EQ(point.x, 3.0F);
+  }
+
+  ASSERT_TRUE(node.visibility_.has_value());
+  EXPECT_NEAR(node.visibility_.value(), 0.5, 1e-6);
+}
+
+TEST_F(PolarVoxelOutlierFilterTest, IntensityThresholdValidation)
+{
+  PolarVoxelOutlierFilterComponentPublic node(make_node_options());
+  for (const auto & parameter_name :
+       {"low_visibility_intensity_threshold", "filter_ratio_intensity_threshold"}) {
+    EXPECT_FALSE(node.set_parameter(rclcpp::Parameter(parameter_name, -1)).successful);
+    EXPECT_FALSE(node.set_parameter(rclcpp::Parameter(parameter_name, 256)).successful);
+    EXPECT_TRUE(node.set_parameter(rclcpp::Parameter(parameter_name, 255)).successful);
+  }
 }
