@@ -19,7 +19,6 @@
 #include <autoware/mission_planner_universe/service_utils.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
-#include <autoware_utils/math/unit_conversion.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -55,25 +54,11 @@ std::string route_state_to_string(const uint8_t state)
       // clang-format on
   }
 }
-
-ArrivalCheckerThreshold get_arrival_checker_threshold(rclcpp::Node & node)
-{
-  ArrivalCheckerThreshold threshold;
-  threshold.angle =
-    autoware_utils::deg2rad(node.declare_parameter<double>("arrival_check_angle_deg"));
-  threshold.lateral_distance = node.declare_parameter<double>("arrival_check_lateral_distance");
-  threshold.longitudinal_undershoot_distance =
-    node.declare_parameter<double>("arrival_check_longitudinal_undershoot_distance");
-  threshold.longitudinal_overshoot_distance =
-    node.declare_parameter<double>("arrival_check_longitudinal_overshoot_distance");
-  threshold.duration = node.declare_parameter<double>("arrival_check_duration");
-  return threshold;
-}
 }  // namespace
 
 MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
 : Node("mission_planner", options),
-  arrival_checker_(get_arrival_checker_threshold(*this)),
+  arrival_checker_(this),
   plugin_loader_(
     "autoware_mission_planner_universe", "autoware::mission_planner_universe::PlannerPlugin"),
   tf_buffer_(get_clock()),
