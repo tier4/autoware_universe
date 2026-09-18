@@ -26,6 +26,10 @@ struct FirstOrderDubinsMppiRuntimeOptions
   bool enable_debug_trajectory_log{false};
   /** Empty -> process current working directory. */
   std::string debug_trajectory_log_directory;
+  /** Open the zero-copy CUDA-OpenGL distance-map texture debug window. */
+  bool enable_distance_map_texture_debug{false};
+  /** Capture sampled rollouts after every MPPI iteration and publish them as debug markers. */
+  bool enable_iteration_rollout_debug{false};
   bool ignore_obstacles{false};
   bool ignore_road_borders{false};
   bool ignore_drivable_area{false};

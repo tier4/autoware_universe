@@ -133,6 +133,7 @@ public:
         out << "key,value\n";
         out << std::setprecision(9) << std::fixed;
         out << "lambda," << cost.lambda << "\n";
+        out << "max_iter," << cost.max_iter << "\n";
         out << "speed_coeff," << cost.speed_coeff << "\n";
         out << "track_coeff," << cost.track_coeff << "\n";
         out << "track_terminal_scale," << cost.track_terminal_scale << "\n";
@@ -152,6 +153,7 @@ public:
         out << "overlimit_coeff," << cost.overlimit_coeff << "\n";
         out << "accel_cmd_std_dev," << cost.accel_cmd_std_dev << "\n";
         out << "steer_cmd_std_dev," << cost.steer_cmd_std_dev << "\n";
+        out << "std_dev_decay," << cost.std_dev_decay << "\n";
         out << "accel_cmd_noise_exponent," << cost.accel_cmd_noise_exponent << "\n";
         out << "steer_cmd_noise_exponent," << cost.steer_cmd_noise_exponent << "\n";
         out << "nominal_curvature_min_chord_length_m," << cost.nominal_curvature_min_chord_length_m
@@ -218,6 +220,8 @@ public:
           << "\n";
       out << "prevent_reverse_velocity," << (options.prevent_reverse_velocity ? 1 : 0) << "\n";
       out << "enable_input_delay_compensation," << (options.enable_input_delay_compensation ? 1 : 0)
+          << "\n";
+      out << "enable_iteration_rollout_debug," << (options.enable_iteration_rollout_debug ? 1 : 0)
           << "\n";
     }
     runtime_written_ = true;
