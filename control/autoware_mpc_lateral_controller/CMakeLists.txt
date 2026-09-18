@@ -22,12 +22,17 @@ ament_auto_add_library(${MPC_LAT_CON_LIB} SHARED
   src/vehicle_model/vehicle_model_interface.cpp
 )
 
+autoware_agnocast_wrapper_setup(${MPC_LAT_CON_LIB})
+
 if(BUILD_TESTING)
   set(TEST_LAT_SOURCES
-    test/test_mpc.cpp
     test/test_mpc_utils.cpp
     test/test_lowpass_filter.cpp
   )
+  # test_mpc.cpp builds an agnocast_wrapper::Node; the gtest main brings up no agnocast context.
+  if(NOT (DEFINED ENV{ENABLE_AGNOCAST} AND "$ENV{ENABLE_AGNOCAST}" STREQUAL "1"))
+    list(APPEND TEST_LAT_SOURCES test/test_mpc.cpp)
+  endif()
   set(TEST_LATERAL_CONTROLLER_EXE test_lateral_controller)
   ament_add_ros_isolated_gtest(${TEST_LATERAL_CONTROLLER_EXE} ${TEST_LAT_SOURCES})
   target_link_libraries(${TEST_LATERAL_CONTROLLER_EXE} ${MPC_LAT_CON_LIB})

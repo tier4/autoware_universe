@@ -58,7 +58,7 @@ enum TYPE {
 
 namespace autoware::pure_pursuit
 {
-PurePursuitLateralController::PurePursuitLateralController(rclcpp::Node & node)
+PurePursuitLateralController::PurePursuitLateralController(autoware::agnocast_wrapper::Node & node)
 : clock_(node.get_clock()),
   logger_(node.get_logger().get_child("lateral_controller")),
   tf_buffer_(clock_),
