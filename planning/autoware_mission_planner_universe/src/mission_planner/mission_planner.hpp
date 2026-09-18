@@ -18,7 +18,7 @@
 #include "arrival_checker.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 
-#include <autoware/mission_planner_universe/default_planner.hpp>
+#include <autoware/mission_planner_universe/mission_planner_plugin.hpp>
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_utils/ros/logger_level_configure.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
@@ -99,7 +99,6 @@ private:
 
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_vector_map_;
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_marker_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_goal_footprint_marker_;
   Odometry::ConstSharedPtr odometry_;
   OperationModeState::ConstSharedPtr operation_mode_state_;
   LaneletMapBin::ConstSharedPtr map_ptr_;
