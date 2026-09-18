@@ -16,6 +16,7 @@
 #define AUTOWARE__DIFFUSION_PLANNER__UTILS__ARG_READER_HPP_
 
 #include "autoware/diffusion_planner/constants.hpp"
+#include "autoware/diffusion_planner/dimensions.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -75,6 +76,35 @@ inline void check_weight_version(const std::string & json_path)
     throw std::runtime_error(
       "Unsupported major_version: " + std::to_string(major_version) + ". " + error_msg);
   }
+}
+
+inline ModelInputType load_model_input_type(const std::string & json_path)
+{
+  std::ifstream file(json_path);
+  if (!file) {
+    throw std::runtime_error("Could not open JSON file: " + json_path);
+  }
+
+  json j;
+  file >> j;
+
+  // Checkpoints trained before the image encoder existed carry no "input_type"; they are all
+  // vector runs, and the training code reads the field the same way (see
+  // diffusion_planner/model/diffusion_planner.py::build_encoder).
+  if (!j.contains("input_type")) {
+    return ModelInputType::VECTOR;
+  }
+
+  const std::string input_type = j["input_type"].get<std::string>();
+  if (input_type == "vector") {
+    return ModelInputType::VECTOR;
+  }
+  if (input_type == "image") {
+    return ModelInputType::IMAGE;
+  }
+  throw std::runtime_error(
+    "Unsupported 'input_type' in " + json_path + ": '" + input_type +
+    "'. Expected 'vector' or 'image'.");
 }
 
 inline ObservationNormalization load_observation_normalization(const std::string & json_path)
