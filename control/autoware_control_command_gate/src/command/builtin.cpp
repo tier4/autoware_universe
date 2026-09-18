@@ -20,14 +20,16 @@
 namespace autoware::control_command_gate
 {
 
-BuiltinEmergency::BuiltinEmergency(uint16_t id, const std::string & name, rclcpp::Node & node)
+BuiltinEmergency::BuiltinEmergency(
+  uint16_t id, const std::string & name, autoware::agnocast_wrapper::Node & node)
 : CommandSource(id, name)
 {
   acceleration_ = node.declare_parameter<double>("builtin_emergency_acceleration");
 
   const auto period = rclcpp::Rate(10.0).period();
   clock_ = node.get_clock();
-  timer_ = rclcpp::create_timer(&node, clock_, period, [this]() { on_timer(); });
+  timer_ =
+    autoware::agnocast_wrapper::create_timer(&node, clock_, period, [this]() { on_timer(); });
 }
 
 void BuiltinEmergency::on_timer()

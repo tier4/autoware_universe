@@ -19,6 +19,7 @@
 #include "common/vehicle_status.hpp"
 #include "interface.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace autoware::control_command_gate
@@ -27,7 +28,7 @@ namespace autoware::control_command_gate
 class CommandFilter : public CommandBridge
 {
 public:
-  CommandFilter(std::unique_ptr<CommandOutput> && output, rclcpp::Node & node);
+  CommandFilter(std::unique_ptr<CommandOutput> && output, autoware::agnocast_wrapper::Node & node);
   void set_nominal_filter_params(const VehicleCmdFilterParam & p);
   void set_transition_filter_params(const VehicleCmdFilterParam & p);
   void set_transition_flag(bool flag);
@@ -39,7 +40,7 @@ private:
   double get_delta_time();
   Control filter_command(const Control & msg);
 
-  rclcpp::Node & node_;
+  autoware::agnocast_wrapper::Node & node_;
   VehicleCmdFilter nominal_filter_;
   VehicleCmdFilter transition_filter_;
   VehicleStatus vehicle_status_;

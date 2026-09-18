@@ -14,12 +14,14 @@
 
 #include "filter.hpp"
 
+#include <memory>
 #include <utility>
 
 namespace autoware::control_command_gate
 {
 
-CommandFilter::CommandFilter(std::unique_ptr<CommandOutput> && output, rclcpp::Node & node)
+CommandFilter::CommandFilter(
+  std::unique_ptr<CommandOutput> && output, autoware::agnocast_wrapper::Node & node)
 : CommandBridge(std::move(output)), node_(node), vehicle_status_(node)
 {
   enable_command_limit_filter_ = node_.declare_parameter<bool>("enable_command_limit_filter");
