@@ -18,7 +18,6 @@
 #include "command_mode_mapping.hpp"
 #include "graph/graph.hpp"
 
-#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <std_srvs/srv/set_bool.hpp>
@@ -30,7 +29,7 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-class AggregatorNode : public autoware::agnocast_wrapper::Node
+class AggregatorNode : public rclcpp::Node
 {
 public:
   explicit AggregatorNode(const rclcpp::NodeOptions & options);
@@ -41,22 +40,21 @@ private:
   std::unique_ptr<CommandModeMapping> availability_;
 
   using SetBool = std_srvs::srv::SetBool;
-  AUTOWARE_TIMER_PTR timer_;
-  AUTOWARE_SUBSCRIPTION_PTR(DiagnosticArray) sub_input_;
-  AUTOWARE_PUBLISHER_PTR(DiagGraphStruct) pub_struct_;
-  AUTOWARE_PUBLISHER_PTR(DiagGraphStatus) pub_status_;
-  AUTOWARE_PUBLISHER_PTR(DiagnosticArray) pub_unknown_;
-  AUTOWARE_SERVICE_PTR(ResetDiagGraph) srv_reset_;
-  AUTOWARE_SERVICE_PTR(SetBool) srv_set_initializing_;
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Subscription<DiagnosticArray>::SharedPtr sub_input_;
+  rclcpp::Publisher<DiagGraphStruct>::SharedPtr pub_struct_;
+  rclcpp::Publisher<DiagGraphStatus>::SharedPtr pub_status_;
+  rclcpp::Publisher<DiagnosticArray>::SharedPtr pub_unknown_;
+  rclcpp::Service<ResetDiagGraph>::SharedPtr srv_reset_;
+  rclcpp::Service<SetBool>::SharedPtr srv_set_initializing_;
 
   void on_timer();
   void on_diag(const DiagnosticArray & msg);
   void on_reset(
-    AUTOWARE_SERVER_REQUEST_PTR(ResetDiagGraph) request,
-    AUTOWARE_SERVER_RESPONSE_PTR(ResetDiagGraph) response);
+    const ResetDiagGraph::Request::SharedPtr request,
+    const ResetDiagGraph::Response::SharedPtr response);
   void on_set_initializing(
-    AUTOWARE_SERVER_REQUEST_PTR(SetBool) request,
-    AUTOWARE_SERVER_RESPONSE_PTR(SetBool) response);
+    const SetBool::Request::SharedPtr request, const SetBool::Response::SharedPtr response);
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

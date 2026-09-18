@@ -8,14 +8,12 @@ ament_auto_add_library(autoware_external_cmd_converter SHARED
   src/node.cpp
 )
 
-autoware_agnocast_wrapper_register_node(autoware_external_cmd_converter
+rclcpp_components_register_node(autoware_external_cmd_converter
   PLUGIN "autoware::external_cmd_converter::ExternalCmdConverterNode"
   EXECUTABLE external_cmd_converter_node
-  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
-  ROS2_EXECUTOR SingleThreadedExecutor
 )
 
-if(BUILD_TESTING AND NOT "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
+if(BUILD_TESTING)
   ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
     tests/test_external_cmd_converter.cpp
   )
