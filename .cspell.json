@@ -8,11 +8,12 @@
   "words": [
     "dltype",
     "tvmgen",
-    "fromarray",
-    "soblin",
-    "brkay54",
-    "libtensorrt",
-    "TRTBEV",
-    "CUDA_HOSTDEV"
+    "utraj",
+    "vertcat",
+    "voxelizer",
+    "xdot",
+    "xtraj",
+    "ydot",
+    "yref"
   ]
 }
