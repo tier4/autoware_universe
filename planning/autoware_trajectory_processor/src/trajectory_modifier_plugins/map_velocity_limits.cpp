@@ -66,6 +66,7 @@ void MapVelocityLimits::update_params(const TrajectoryProcessorParams & params)
   enabled_ = params.use_map_velocity_limits;
   limit_overrides_ = make_velocity_limit_overrides(params);
   constant_deceleration_ = params.stopping_constraints.nominal_deceleration;
+  max_jerk_ = params.stopping_constraints.jerk_limit;
 }
 
 bool MapVelocityLimits::is_trajectory_modification_required(
@@ -201,11 +202,15 @@ ProcessingResult MapVelocityLimits::process(
     !is_trajectory_modification_required(traj_points, input)) {
     return ProcessingResult::Unchanged;
   }
+  detail::VelocityLimitOptions options;
+  options.current_ego_velocity = input.current_odometry->twist.twist.linear.x;
+  options.current_ego_acceleration = input.current_acceleration->accel.accel.linear.x;
   const auto result = detail::apply_velocity_limits(
-    traj_points, std::abs(constant_deceleration_),
+    traj_points, std::abs(constant_deceleration_), std::abs(max_jerk_),
     [this](const geometry_msgs::msg::Point & position) {
       return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
-    });
+    },
+    options);
   return result.status;
 }
 
