@@ -31,6 +31,9 @@ namespace detail
 double get_external_velocity_limit_deceleration(
   const autoware_internal_planning_msgs::msg::VelocityLimit & velocity_limit,
   double nominal_deceleration);
+double get_external_velocity_limit_min_jerk(
+  const autoware_internal_planning_msgs::msg::VelocityLimit & velocity_limit,
+  double nominal_min_jerk);
 }  // namespace detail
 
 class ExternalVelocityLimit : public TrajectoryProcessorPluginBase
@@ -50,6 +53,7 @@ private:
   std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
     velocity_limit_sub_;
   double nominal_deceleration_{};
+  double nominal_jerk_{};
 };
 
 }  // namespace autoware::trajectory_processor::plugin
