@@ -150,6 +150,8 @@ std::string ScenarioSelectorNode::selectScenarioByPosition()
     isInLane(route_handler_->getLaneletMapPtr(), route_->goal_pose.position);
   const auto is_in_parking_lot =
     isInParkingLot(route_handler_->getLaneletMapPtr(), current_pose_->pose.pose);
+  const auto is_goal_in_parking_lot =
+    isInParkingLot(route_handler_->getLaneletMapPtr(), route_->goal_pose);
 
   if (current_scenario_ == autoware_internal_planning_msgs::msg::Scenario::EMPTY) {
     if (is_in_lane && is_goal_in_lane) {
@@ -161,7 +163,7 @@ std::string ScenarioSelectorNode::selectScenarioByPosition()
   }
 
   if (current_scenario_ == autoware_internal_planning_msgs::msg::Scenario::LANEDRIVING) {
-    if (is_in_parking_lot && !is_goal_in_lane) {
+    if (is_in_parking_lot && (!is_goal_in_lane || is_goal_in_parking_lot)) {
       return autoware_internal_planning_msgs::msg::Scenario::PARKING;
     }
   }
