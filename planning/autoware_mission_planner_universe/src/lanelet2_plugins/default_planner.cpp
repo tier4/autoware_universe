@@ -343,8 +343,35 @@ PlannerPlugin::LaneletRoute DefaultPlanner::plan(const RoutePoints & points)
     const auto goal_check_point = points.at(i);
 
     lanelet::ConstLanelets path_lanelets;
-    if (!route_handler_.planPathLaneletsBetweenCheckpoints(
-          start_check_point, goal_check_point, &path_lanelets, param_.consider_no_drivable_lanes)) {
+    bool is_path_found = route_handler_.planPathLaneletsBetweenCheckpoints(
+      start_check_point, goal_check_point, &path_lanelets, param_.consider_no_drivable_lanes);
+
+    // A goal in a parking lot can be closest to a lane that no route can reach, e.g. a dead end
+    // lane drawn over the parking area. Then plan the route up to the closest reachable lane.
+    const auto goal_point = lanelet::utils::conversion::toLaneletPoint(goal_check_point.position);
+    if (
+      !is_path_found &&
+      is_in_parking_lot(
+        lanelet::utils::query::getAllParkingLots(route_handler_.getLaneletMapPtr()), goal_point)) {
+      constexpr size_t search_num = 10;
+      for (const auto & [distance, lanelet] : lanelet::geometry::findNearest(
+             route_handler_.getLaneletMapPtr()->laneletLayer, goal_point.basicPoint2d(),
+             search_num)) {
+        if (!route_handler_.isRoadLanelet(lanelet)) {
+          continue;
+        }
+        const auto lane_goal = convertBasicPoint3dToPose(
+          lanelet::geometry::project(lanelet.centerline(), goal_point.basicPoint()),
+          lanelet::utils::getLaneletAngle(lanelet, goal_check_point.position));
+        is_path_found = route_handler_.planPathLaneletsBetweenCheckpoints(
+          start_check_point, lane_goal, &path_lanelets, param_.consider_no_drivable_lanes);
+        if (is_path_found) {
+          break;
+        }
+      }
+    }
+
+    if (!is_path_found) {
       RCLCPP_WARN(logger, "Failed to plan route.");
       return route_msg;
     }
