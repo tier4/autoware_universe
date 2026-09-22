@@ -388,7 +388,7 @@ bool BevFeatureInputProvider::collect(
   }
   if (!pending_inserted_) {
     // The BEV feature lives in the base_link frame of its source LiDAR frame; the pose is
-    // sampled from the newest odometry (the stamps differ by at most one sensor period).
+    // interpolated to the source cloud timestamp by create_ego_frame().
     // Queued behind the extractor on the same stream: the cache has its copy before the
     // next callback's extraction can overwrite the map.
     const auto insert_result =

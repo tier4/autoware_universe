@@ -125,6 +125,7 @@ private:
 
   std::vector<int64_t> current_selection() const;
 
+  bool warmup_complete_{false};
   Config config_;
   int64_t channels_;
   int64_t height_;

@@ -100,7 +100,7 @@ private:
   //! subscribed and the tensor is a constant built once at claim time.
   bool turn_indicators_enabled_{true};
   double line_string_max_step_m_{5.0};
-  bool use_time_interpolation_{false};
+  bool use_time_interpolation_{true};
 
   // Claims and engine-derived dimensions. A claim is active when its shape is non-empty.
   std::vector<int64_t> ego_current_state_shape_;
@@ -139,7 +139,6 @@ private:
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
 
   // State (mirrors DiffusionPlannerCore)
-  std::deque<nav_msgs::msg::Odometry> ego_history_;
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
   std::map<lanelet::Id, autoware::diffusion_planner::preprocess::TrafficSignalStamped>
     traffic_light_id_map_;

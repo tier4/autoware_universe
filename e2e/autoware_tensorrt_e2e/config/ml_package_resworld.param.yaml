@@ -12,11 +12,13 @@
     # Which input providers this model needs, matched by tensor name.
     sensor_inputs: ["bev_feature"]
     enable_context_inputs: true
+    recorded_ego_dynamics: true
 
     # Precision this graph is validated in; overrides the package default.
     precision: "fp32"
 
     context:
+      use_time_interpolation: true
       turn_indicators:
         # The graph carries this input for a stable signature only;
         # perturbing it changes no output. Bind a constant, subscribe

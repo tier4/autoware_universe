@@ -105,7 +105,7 @@
       turn_indicators:
         enabled: true
       line_string_max_step_m: 5.0
-      use_time_interpolation: false
+      use_time_interpolation: true
 
     postprocess:
       velocity_smoothing_window: 8

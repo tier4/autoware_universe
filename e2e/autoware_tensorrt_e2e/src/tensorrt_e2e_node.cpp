@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <autoware_utils_geometry/geometry.hpp>
 #include "autoware/tensorrt_e2e/tensorrt_e2e_node.hpp"
 
 #include "autoware/tensorrt_e2e/input_provider_registry.hpp"
@@ -87,6 +88,50 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
     if (params_.build_only) {
       RCLCPP_ERROR(get_logger(), "Build only mode: exiting due to initialization failure.");
       std::exit(EXIT_FAILURE);
+    }
+  }
+
+  // These callbacks share the mutually-exclusive default callback group with
+  // sensor collection. Retry only a sensor tick waiting for its ego bracket.
+  sub_odometry_ = create_subscription<Odometry>(
+      "~/input/odometry", rclcpp::QoS(200),
+      [this](Odometry::ConstSharedPtr msg) {
+        if (odometry_history_.insert(
+                rclcpp::Time(msg->header.stamp).nanoseconds(), *msg,
+                ego_history_keep_ns_)) {
+          acceleration_history_.samples.clear();
+          steering_history_.samples.clear();
+        }
+        if (waiting_for_ego_)
+          run_once();
+      });
+  sub_acceleration_ = create_subscription<AccelWithCovarianceStamped>(
+      "~/input/acceleration", rclcpp::QoS(100),
+      [this](AccelWithCovarianceStamped::ConstSharedPtr msg) {
+        acceleration_history_.insert(
+            rclcpp::Time(msg->header.stamp).nanoseconds(), *msg,
+            ego_history_keep_ns_);
+        if (waiting_for_ego_)
+          run_once();
+      });
+  recorded_ego_dynamics_ =
+      declare_parameter<bool>("recorded_ego_dynamics", false);
+  if (recorded_ego_dynamics_) {
+    sub_steering_ = create_subscription<SteeringReport>(
+        "~/input/steering", rclcpp::QoS(100),
+        [this](SteeringReport::ConstSharedPtr msg) {
+          steering_history_.insert(rclcpp::Time(msg->stamp).nanoseconds(), *msg,
+                                   ego_history_keep_ns_);
+          if (waiting_for_ego_)
+            run_once();
+        });
+  }
+  if (engine_) {
+    if (const auto *spec =
+            find_spec(engine_->input_specs(), "ego_agent_past")) {
+      // The context preprocessor samples at the deployed 0.1 s contract.
+      ego_history_keep_ns_ = std::max(
+          ego_history_keep_ns_, (spec->shape[1] + 10) * int64_t{100000000});
     }
   }
 
@@ -360,25 +405,64 @@ void TensorrtE2eNode::initialize_pipeline()
 
 std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
 {
-  const auto odometry = sub_odometry_.take_data();
-  if (!odometry) {
+  waiting_for_ego_ = true;
+  if (odometry_history_.samples.empty())
     return std::nullopt;
-  }
-  const auto acceleration = sub_acceleration_.take_data();
+  const auto sensor_stamp =
+      pacing_provider_ ? pacing_provider_->latest_input_stamp() : std::nullopt;
+  const int64_t target = sensor_stamp
+                             ? sensor_stamp->nanoseconds()
+                             : odometry_history_.samples.back().stamp_ns;
+  const auto bracket = odometry_history_.bracket(target);
+  if (!bracket)
+    return std::nullopt; // Never extrapolate a LiDAR pose from a stale twist.
+  const auto &lo = odometry_history_.samples[bracket->first];
+  const auto &hi = odometry_history_.samples[bracket->second];
+  // A missing localization interval must not be bridged across a pose jump.
+  if (hi.stamp_ns - lo.stamp_ns > 200000000LL)
+    return std::nullopt;
+  const double alpha = hi.stamp_ns == lo.stamp_ns
+                           ? 0.0
+                           : static_cast<double>(target - lo.stamp_ns) /
+                                 (hi.stamp_ns - lo.stamp_ns);
 
   EgoFrame ego;
-  ego.odometry = *odometry;
-  ego.reference_odometry = *odometry;
+  ego.odometry = lo.value;
+  ego.stamp = rclcpp::Time(target, get_clock()->get_clock_type());
+  ego.odometry.header.stamp = ego.stamp;
+  ego.odometry.pose.pose = autoware_utils_geometry::calc_interpolated_pose(
+      lo.value.pose.pose, hi.value.pose.pose, alpha, false);
+  auto blend = [alpha](double a, double b) { return a + alpha * (b - a); };
+  ego.odometry.twist.twist.linear.x =
+      blend(lo.value.twist.twist.linear.x, hi.value.twist.twist.linear.x);
+  ego.odometry.twist.twist.linear.y =
+      blend(lo.value.twist.twist.linear.y, hi.value.twist.twist.linear.y);
+  ego.odometry.twist.twist.angular.z =
+      blend(lo.value.twist.twist.angular.z, hi.value.twist.twist.angular.z);
+  if (const auto *accel =
+          acceleration_history_.at_or_before(target, 200000000LL)) {
+    ego.acceleration = *accel;
+  }
+  if (const auto *steer = steering_history_.at_or_before(target, 200000000LL)) {
+    ego.steering_angle = steer->steering_tire_angle;
+  }
+  if (find_spec(engine_->input_specs(), "ego_current_state") &&
+      (!ego.acceleration || (recorded_ego_dynamics_ && !ego.steering_angle)))
+    return std::nullopt;
+  ego.reference_odometry = ego.odometry;
   if (params_.shift_x) {
     ego.reference_odometry.pose.pose =
-      dp::utils::shift_x(odometry->pose.pose, base_link_to_center_);
+      dp::utils::shift_x(ego.odometry.pose.pose, base_link_to_center_);
   }
-  if (acceleration) {
-    ego.acceleration = *acceleration;
+  for (const auto &sample : odometry_history_.samples) {
+    auto odom = sample.value;
+  if (params_.shift_x)
+      odom.pose.pose = dp::utils::shift_x(odom.pose.pose, base_link_to_center_);
+    ego.reference_history.push_back(std::move(odom));
   }
   ego.ego_to_map = dp::utils::pose_to_matrix4d(ego.reference_odometry.pose.pose);
   ego.map_to_ego = dp::utils::inverse(ego.ego_to_map);
-  ego.stamp = rclcpp::Time(odometry->header.stamp);
+  waiting_for_ego_ = false;
   return ego;
 }
 
@@ -480,8 +564,8 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
   const auto ego = create_ego_frame();
   if (!ego) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "Waiting for odometry...");
-    finish(DiagnosticStatus::WARN, "No odometry received");
+      get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "Waiting for timestamp-aligned ego state...");
+    finish(DiagnosticStatus::WARN, "Waiting for timestamp-aligned ego state");
     return;
   }
 

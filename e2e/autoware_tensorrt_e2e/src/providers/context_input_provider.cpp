@@ -95,7 +95,7 @@ ContextInputProvider::ContextInputProvider(
     node_.declare_parameter<double>("context.traffic_light_group_msg_timeout_seconds", 0.2);
   turn_indicators_enabled_ = node_.declare_parameter<bool>("context.turn_indicators.enabled", true);
   line_string_max_step_m_ = node_.declare_parameter<double>("context.line_string_max_step_m", 5.0);
-  use_time_interpolation_ = node_.declare_parameter<bool>("context.use_time_interpolation", false);
+  use_time_interpolation_ = node_.declare_parameter<bool>("context.use_time_interpolation", true);
 
   create_subscriptions();
 }
@@ -119,6 +119,11 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
     validate_shape(*spec, {1, 10}, "ego current state feature");
   }
   if (const auto * spec = claim("ego_agent_past", ego_agent_past_shape_)) {
+    if (!use_time_interpolation_) {
+      throw std::runtime_error(
+        "ego_agent_past requires context.use_time_interpolation=true: "
+        "callback-count history does not preserve the model's 0.1 s grid");
+    }
     if (spec->shape.size() != 3 || spec->shape[0] != 1 || spec->shape[2] != dp::POSE_DIM) {
       throw std::runtime_error(
         "Model input 'ego_agent_past' has shape " + shape_to_string(spec->shape) +
@@ -289,15 +294,10 @@ bool ContextInputProvider::collect_ego_tensors(
 {
   if (!ego_agent_past_shape_.empty()) {
     const auto history_length = static_cast<size_t>(ego_agent_past_shape_[1]);
-    ego_history_.push_back(ego.reference_odometry);
-    while (ego_history_.size() > history_length) {
-      ego_history_.pop_front();
-    }
-    const std::optional<rclcpp::Time> reference_time =
-      use_time_interpolation_ ? std::make_optional(ego.stamp) : std::nullopt;
+    const std::optional<rclcpp::Time> reference_time = ego.stamp;
     inputs["ego_agent_past"] = Tensor::from_host(
       ego_agent_past_shape_, dp::preprocess::create_ego_agent_past(
-                               ego_history_, history_length, ego.map_to_ego, reference_time));
+                                   ego.reference_history, history_length, ego.map_to_ego, reference_time));
   }
 
   if (!ego_current_state_shape_.empty()) {
@@ -305,10 +305,24 @@ bool ContextInputProvider::collect_ego_tensors(
       error = "No acceleration received yet (required by 'ego_current_state')";
       return false;
     }
+    if (!ego.steering_angle) {
+      // Other model families retain their existing conditioning convention.
     inputs["ego_current_state"] = Tensor::from_host(
       ego_current_state_shape_,
       dp::preprocess::create_ego_current_state(
         ego.odometry, *ego.acceleration, static_cast<float>(wheel_base_)));
+    } else {
+      const auto &twist = ego.odometry.twist.twist;
+      const auto &accel = ego.acceleration->accel.accel.linear;
+      // Match flat_window: recorded EKF channels, without low-speed zeroing or
+      // inferred/clamped steering. Pose differences are only history features.
+      inputs["ego_current_state"] = Tensor::from_host(
+          ego_current_state_shape_,
+          {0.0f, 0.0f, 1.0f, 0.0f, static_cast<float>(twist.linear.x),
+           static_cast<float>(twist.linear.y), static_cast<float>(accel.x),
+           static_cast<float>(accel.y), *ego.steering_angle,
+           static_cast<float>(twist.angular.z)});
+    }
   }
 
   if (!ego_shape_shape_.empty()) {

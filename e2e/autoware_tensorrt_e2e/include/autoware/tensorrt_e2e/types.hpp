@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__TENSORRT_E2E__TYPES_HPP_
 #define AUTOWARE__TENSORRT_E2E__TYPES_HPP_
 
+#include <deque>
 #include <Eigen/Dense>
 #include <rclcpp/time.hpp>
 
@@ -83,6 +84,8 @@ struct EgoFrame
   /// Odometry with the pose replaced by the model reference pose (differs from `odometry` only
   /// when `shift_x: true`). Used for ego history features, mirroring the diffusion planner.
   nav_msgs::msg::Odometry reference_odometry;
+  std::deque<nav_msgs::msg::Odometry> reference_history;
+  std::optional<float> steering_angle;
   std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration;
   Eigen::Matrix4d ego_to_map{Eigen::Matrix4d::Identity()};
   Eigen::Matrix4d map_to_ego{Eigen::Matrix4d::Identity()};

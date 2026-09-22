@@ -99,7 +99,14 @@ TemporalBevCache::InsertResult TemporalBevCache::insert(
   InsertResult result = InsertResult::kConsecutive;
   if (slots_.empty()) {
     result = InsertResult::kFirst;
-  } else if ((stamp - slots_.front().stamp).seconds() <= 0.0) {
+  } else if (stamp == slots_.front().stamp) {
+    // A repeated cloud updates its slot without discarding valid history.
+    slots_.front().pose = pose;
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
+      slots_.front().feature.get(), d_feature, frame_elements_ * sizeof(float),
+      cudaMemcpyDeviceToDevice, stream));
+    return result;
+  } else if ((stamp - slots_.front().stamp).seconds() < 0.0) {
     // A time jump (bag loop, clock reset) invalidates every cached map's age.
     reset();
     result = InsertResult::kGapReset;
@@ -130,6 +137,9 @@ TemporalBevCache::InsertResult TemporalBevCache::insert(
     free_slots_.push_back(std::move(slots_.back()));
     slots_.pop_back();
   }
+  const auto selection = current_selection();
+  warmup_complete_ = warmup_complete_ || std::none_of(
+    selection.begin(), selection.end(), [](const int64_t index) { return index < 0; });
   return result;
 }
 
@@ -138,12 +148,15 @@ bool TemporalBevCache::ready() const
   if (slots_.empty()) {
     return false;
   }
-  if (config_.duplicate_current_on_warmup) {
+  const auto selection = current_selection();
+  if (std::none_of(
+        selection.begin(), selection.end(), [](const int64_t index) { return index < 0; })) {
     return true;
   }
-  const auto selection = current_selection();
-  return std::none_of(
-    selection.begin(), selection.end(), [](const int64_t index) { return index < 0; });
+  const double required_span =
+    (config_.frames - 1) * config_.interval_seconds - config_.interval_tolerance_seconds;
+  return config_.duplicate_current_on_warmup && !warmup_complete_ &&
+         (slots_.front().stamp - slots_.back().stamp).seconds() < required_span;
 }
 
 const float * TemporalBevCache::build_history(cudaStream_t stream)
@@ -155,10 +168,10 @@ const float * TemporalBevCache::build_history(cudaStream_t stream)
   const auto selection = current_selection();
   const Slot & newest = slots_.front();
   for (int64_t frame = 0; frame < config_.frames; ++frame) {
-    // During duplicate-current warmup, missing history falls back to the oldest cached map.
+    // During initial warmup, missing history duplicates the current map.
     int64_t slot_index = selection[static_cast<size_t>(frame)];
     if (slot_index < 0) {
-      slot_index = static_cast<int64_t>(slots_.size()) - 1;
+      slot_index = 0;
     }
     const Slot & slot = slots_[static_cast<size_t>(slot_index)];
     float * destination = history_.get() + static_cast<size_t>(frame) * frame_elements_;
@@ -184,6 +197,7 @@ const float * TemporalBevCache::build_history(cudaStream_t stream)
 
 void TemporalBevCache::reset()
 {
+  warmup_complete_ = false;
   while (!slots_.empty()) {
     free_slots_.push_back(std::move(slots_.back()));
     slots_.pop_back();

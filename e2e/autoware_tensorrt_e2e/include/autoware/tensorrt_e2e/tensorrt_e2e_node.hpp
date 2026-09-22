@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__TENSORRT_E2E__TENSORRT_E2E_NODE_HPP_
 #define AUTOWARE__TENSORRT_E2E__TENSORRT_E2E_NODE_HPP_
 
+#include "autoware/tensorrt_e2e/timestamped_buffer.hpp"
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include "autoware/tensorrt_e2e/inference_engine.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
 #include "autoware/tensorrt_e2e/postprocess/trajectory_postprocessor.hpp"
@@ -156,8 +158,8 @@ private:
   void run_tick(TickTiming & timing);
 
   /**
-   * @brief Build the per-tick ego frame from the latest odometry/acceleration.
-   * @return std::nullopt when no odometry has been received yet.
+   * @brief Interpolate the ego frame at the pacing sensor timestamp.
+   * @return std::nullopt when its pose bracket or required dynamics are unavailable.
    */
   std::optional<EgoFrame> create_ego_frame();
 
@@ -222,9 +224,16 @@ private:
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
-  autoware_utils::InterProcessPollingSubscriber<Odometry> sub_odometry_{this, "~/input/odometry"};
-  autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> sub_acceleration_{
-    this, "~/input/acceleration"};
+  using SteeringReport = autoware_vehicle_msgs::msg::SteeringReport;
+  rclcpp::Subscription<Odometry>::SharedPtr sub_odometry_;
+  rclcpp::Subscription<AccelWithCovarianceStamped>::SharedPtr sub_acceleration_;
+  rclcpp::Subscription<SteeringReport>::SharedPtr sub_steering_;
+  TimestampedBuffer<Odometry> odometry_history_;
+  TimestampedBuffer<AccelWithCovarianceStamped> acceleration_history_;
+  TimestampedBuffer<SteeringReport> steering_history_;
+  int64_t ego_history_keep_ns_{5000000000LL};
+  bool waiting_for_ego_{false};
+  bool recorded_ego_dynamics_{false};
   rclcpp::TimerBase::SharedPtr status_timer_;
   rclcpp::CallbackGroup::SharedPtr status_callback_group_;
   std::unique_ptr<DiagnosticsInterface> diagnostics_;
