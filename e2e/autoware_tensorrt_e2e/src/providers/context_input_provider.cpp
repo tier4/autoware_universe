@@ -97,6 +97,11 @@ ContextInputProvider::ContextInputProvider(
   line_string_max_step_m_ = node_.declare_parameter<double>("context.line_string_max_step_m", 5.0);
   use_time_interpolation_ = node_.declare_parameter<bool>("context.use_time_interpolation", true);
 
+  const double interval = node_.declare_parameter<double>("context.ego_history_interval_seconds", 0.1);
+  if (interval != 0.1) {
+    throw std::runtime_error("Native ego history currently requires a 0.1 s interval");
+  }
+
   create_subscriptions();
 }
 

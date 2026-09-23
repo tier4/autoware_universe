@@ -46,7 +46,8 @@
     <param from="$(var model_param_path)" allow_substs="true"/>
     <param from="$(var ml_package_param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
-    <param name="build_only" value="$(var build_only)"/>
+    <param name="require_deployment_manifest" value="true"/>
+      <param name="build_only" value="$(var build_only)"/>
     <remap from="~/input/pointcloud" to="$(var input_pointcloud)"/>
     <remap from="~/input/pointcloud/cuda" to="$(var input_pointcloud)/cuda"/>
     <remap from="~/input/odometry" to="$(var input_odometry)"/>
@@ -107,6 +108,7 @@
       <param from="$(var model_param_path)" allow_substs="true"/>
       <param from="$(var ml_package_param_path)" allow_substs="true"/>
       <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
+      <param name="require_deployment_manifest" value="true"/>
       <param name="build_only" value="$(var build_only)"/>
       <remap from="~/input/pointcloud" to="$(var input_pointcloud)"/>
       <remap from="~/input/pointcloud/cuda" to="$(var input_pointcloud)/cuda"/>

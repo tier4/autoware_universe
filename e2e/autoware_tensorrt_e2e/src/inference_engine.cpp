@@ -92,8 +92,8 @@ void InferenceEngine::load_engine(const Config & config)
   // A cached engine older than its ONNX is stale: this node hands TrtCommon no IO list to
   // validate against (it reads its bindings out of the engine instead), so nothing else
   // would notice, and it would run the previous export's weights. See engine_cache.hpp.
-  drop_stale_engine(
-    config.model_path, trt_config.engine_path.string(), rclcpp::get_logger("tensorrt_e2e"));
+  drop_stale_engine(config.model_path, trt_config.engine_path.string(),
+                    rclcpp::get_logger("tensorrt_e2e"), config.precision);
 
   std::vector<std::string> plugin_paths;
   if (!config.plugins_path.empty()) {
@@ -127,6 +127,8 @@ void InferenceEngine::load_engine(const Config & config)
     throw std::runtime_error("Failed to setup TensorRT engine from " + config.model_path);
   }
 
+  record_engine_identity(config.model_path, trt_config.engine_path.string(),
+                         config.precision);
   introspect_and_bind();
 }
 

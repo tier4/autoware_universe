@@ -86,6 +86,7 @@ struct EgoFrame
   nav_msgs::msg::Odometry reference_odometry;
   std::deque<nav_msgs::msg::Odometry> reference_history;
   std::optional<float> steering_angle;
+  uint64_t localization_generation{0};
   std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration;
   Eigen::Matrix4d ego_to_map{Eigen::Matrix4d::Identity()};
   Eigen::Matrix4d map_to_ego{Eigen::Matrix4d::Identity()};

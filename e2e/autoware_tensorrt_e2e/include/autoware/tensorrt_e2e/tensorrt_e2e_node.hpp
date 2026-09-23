@@ -15,12 +15,14 @@
 #ifndef AUTOWARE__TENSORRT_E2E__TENSORRT_E2E_NODE_HPP_
 #define AUTOWARE__TENSORRT_E2E__TENSORRT_E2E_NODE_HPP_
 
-#include "autoware/tensorrt_e2e/timestamped_buffer.hpp"
-#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include "autoware/tensorrt_e2e/inference_engine.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
+#include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
 #include "autoware/tensorrt_e2e/postprocess/trajectory_postprocessor.hpp"
 #include "autoware/tensorrt_e2e/providers/context_input_provider.hpp"
+#include "autoware/tensorrt_e2e/rolling_latency.hpp"
+#include "autoware/tensorrt_e2e/timestamped_buffer.hpp"
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 
 #include <autoware/diffusion_planner/utils/arg_reader.hpp>
 #include <autoware/diffusion_planner/utils/planning_factor_utils.hpp>
@@ -232,6 +234,9 @@ private:
   TimestampedBuffer<AccelWithCovarianceStamped> acceleration_history_;
   TimestampedBuffer<SteeringReport> steering_history_;
   int64_t ego_history_keep_ns_{5000000000LL};
+  PoseContinuityLimits pose_limits_;
+  uint64_t localization_generation_{0};
+  RollingLatency pipeline_latency_, processing_latency_;
   bool waiting_for_ego_{false};
   bool recorded_ego_dynamics_{false};
   rclcpp::TimerBase::SharedPtr status_timer_;

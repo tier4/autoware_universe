@@ -36,6 +36,7 @@
   <depend>image_transport</depend>
   <depend>nav_msgs</depend>
   <depend>nlohmann-json-dev</depend>
+  <depend>openssl</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>

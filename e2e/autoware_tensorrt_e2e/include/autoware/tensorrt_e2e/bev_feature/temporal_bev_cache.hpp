@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__TENSORRT_E2E__BEV_FEATURE__TEMPORAL_BEV_CACHE_HPP_
 #define AUTOWARE__TENSORRT_E2E__BEV_FEATURE__TEMPORAL_BEV_CACHE_HPP_
 
+#include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
+
 #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
 #include <rclcpp/time.hpp>
 
@@ -64,9 +66,10 @@ public:
     double interval_tolerance_seconds{0.02};
     double bev_half_extent_m{122.4};
     bool duplicate_current_on_warmup{false};
+    PoseContinuityLimits pose_limits;
   };
 
-  enum class InsertResult { kConsecutive, kFirst, kGapReset };
+  enum class InsertResult { kConsecutive, kFirst, kGapReset, kPoseReset };
 
   /**
    * @throws std::runtime_error on invalid configuration or CUDA allocation failure.
@@ -75,21 +78,28 @@ public:
     const Config & config, const int64_t channels, const int64_t height, const int64_t width);
 
   /**
-   * @brief Insert the newest feature map (device `[C, H, W]`) with its source ego pose.
+   * @brief Insert the newest feature map (device `[C, H, W]`) with its source
+   * ego pose.
    *
-   * The pose is `[x, y, cos(yaw), sin(yaw)]` in the map frame, kept in double: map coordinates
-   * are ~1e5 m on T4-style maps, and the SE(2) warp composes pose differences — float storage
-   * would quantize a slow-speed inter-frame displacement to centimetres before the warp ever
-   * sees it. A stamp at or before the newest cached stamp resets the cache first and reports
-   * `kGapReset`. Maps that fall out of the history window are evicted (their device buffers
-   * are recycled). The copy is queued on `stream` and not waited for: the caller may reuse
-   * the source buffer through work queued on the same stream afterwards, and nothing else.
+   * The pose is `[x, y, cos(yaw), sin(yaw)]` in the map frame, kept in double:
+   * map coordinates are ~1e5 m on T4-style maps, and the SE(2) warp composes
+   * pose differences — float storage would quantize a slow-speed inter-frame
+   * displacement to centimetres before the warp ever sees it. A stamp before
+   * the newest cached stamp resets the cache first and reports `kGapReset`.
+   * Maps that fall out of the history window are evicted (their device buffers
+   * are recycled). The copy is queued on `stream` and not waited for: the
+   * caller may reuse the source buffer through work queued on the same stream
+   * afterwards, and nothing else.
    */
   InsertResult insert(
     const float * d_feature, const std::array<double, 4> & pose, const rclcpp::Time & stamp,
     cudaStream_t stream);
 
   bool ready() const;
+  size_t device_bytes() const {
+    return (slots_.size() + free_slots_.size() + config_.frames) *
+           frame_elements_ * sizeof(float);
+  }
   int64_t cached_frames() const { return static_cast<int64_t>(slots_.size()); }
   int64_t frames() const { return config_.frames; }
 

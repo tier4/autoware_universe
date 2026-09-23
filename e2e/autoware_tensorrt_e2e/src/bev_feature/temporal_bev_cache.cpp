@@ -37,6 +37,14 @@ TemporalBevCache::TemporalBevCache(
   width_(width),
   frame_elements_(static_cast<size_t>(channels) * height * width)
 {
+  for (const double value :
+       {config_.pose_limits.translation_slack_m,
+        config_.pose_limits.max_speed_mps, config_.pose_limits.yaw_slack_rad,
+        config_.pose_limits.max_yaw_rate_rps}) {
+    if (!std::isfinite(value) || value <= 0.0)
+      throw std::runtime_error(
+          "Localization continuity limits must be finite and positive");
+  }
   if (config_.frames < 2) {
     throw std::runtime_error(
       "TemporalBevCache: frames must be at least 2, got " + std::to_string(config_.frames));
@@ -112,6 +120,25 @@ TemporalBevCache::InsertResult TemporalBevCache::insert(
     result = InsertResult::kGapReset;
   }
 
+  if (!slots_.empty() &&
+      pose_discontinuous(slots_.front().pose, pose,
+                         (stamp - slots_.front().stamp).seconds(),
+                         config_.pose_limits)) {
+    reset();
+    result = InsertResult::kPoseReset;
+  }
+  // Recycle expired buffers BEFORE acquiring the incoming map's buffer. This
+  // avoids keeping one unnecessary full BEV allocation after steady-state
+  // warmup.
+  const double window_seconds =
+      static_cast<double>(config_.frames - 1) * config_.interval_seconds +
+      config_.interval_tolerance_seconds;
+  while (!slots_.empty() &&
+         (stamp - slots_.back().stamp).seconds() > window_seconds) {
+    free_slots_.push_back(std::move(slots_.back()));
+    slots_.pop_back();
+  }
+
   Slot slot;
   if (!free_slots_.empty()) {
     // Recycle an evicted device buffer instead of reallocating ~66 MB per frame.
@@ -129,14 +156,6 @@ TemporalBevCache::InsertResult TemporalBevCache::insert(
     stream));
   slots_.push_front(std::move(slot));
 
-  // Everything older than the deepest history target (plus tolerance) can never be selected.
-  const double window_seconds =
-    static_cast<double>(config_.frames - 1) * config_.interval_seconds +
-    config_.interval_tolerance_seconds;
-  while ((slots_.front().stamp - slots_.back().stamp).seconds() > window_seconds) {
-    free_slots_.push_back(std::move(slots_.back()));
-    slots_.pop_back();
-  }
   const auto selection = current_selection();
   warmup_complete_ = warmup_complete_ || std::none_of(
     selection.begin(), selection.end(), [](const int64_t index) { return index < 0; });

@@ -89,8 +89,21 @@ public:
   /// autoware_bevfusion's `is_num_voxels_within_range`, plus the detection count.
   void add_diagnostics(autoware_utils_diagnostics::DiagnosticsInterface & diagnostics) override
   {
+    diagnostics.add_key_value("bev_feature.stale_clouds",
+                              static_cast<int64_t>(stale_clouds_));
+    diagnostics.add_key_value("bev_feature.duplicate_clouds",
+                              static_cast<int64_t>(duplicate_clouds_));
     diagnostics.add_key_value(
       "is_num_voxels_within_range", extractor_ ? extractor_->last_voxels_within_range() : true);
+    if (cache_)
+      diagnostics.add_key_value("bev_feature.cache_device_bytes",
+                                static_cast<int64_t>(cache_->device_bytes()));
+    if (extraction_end_ && cudaEventQuery(extraction_end_) == cudaSuccess) {
+      float elapsed = 0.0f;
+      if (cudaEventElapsedTime(&elapsed, extraction_start_, extraction_end_) ==
+          cudaSuccess)
+        diagnostics.add_key_value("bev_feature.extraction_gpu_ms", elapsed);
+    }
     if (detection_postprocessor_) {
       diagnostics.add_key_value("detected_object_count", last_detected_object_count_);
     }
@@ -116,6 +129,7 @@ private:
   // Deployment parameters, from the package defaults and the model's ml_package file
   std::string history_tensor_name_;
   double max_delay_ms_{200.0};
+  double max_future_skew_ms_{20.0};
   TemporalBevCache::Config cache_config_;
   TrtBevFeatureExtractor::Config extractor_config_;
 
@@ -137,6 +151,9 @@ private:
   //! The node's tick stream once bound, else this provider's own (then destroyed here).
   cudaStream_t stream_{nullptr};
   bool owns_stream_{false};
+  cudaEvent_t extraction_start_{nullptr}, extraction_end_{nullptr};
+  uint64_t localization_generation_{0};
+  uint64_t stale_clouds_{0}, duplicate_clouds_{0};
   //! The extraction queued by the last point cloud callback: the map it produced (or
   //! nullptr with the reason), the stamp of the cloud it came from, and whether the cache
   //! has taken it. Touched only from the callback and the pass it triggers.

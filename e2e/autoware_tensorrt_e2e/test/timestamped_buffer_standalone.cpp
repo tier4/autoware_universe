@@ -1,4 +1,7 @@
 #include "autoware/tensorrt_e2e/timestamped_buffer.hpp"
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cmath>
 #include <iostream>

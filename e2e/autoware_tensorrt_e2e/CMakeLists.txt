@@ -48,6 +48,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   add_compile_options(-Wno-deprecated-declarations)
 
   find_package(OpenCV REQUIRED)
+  find_package(OpenSSL REQUIRED)
 
   include_directories(
     include
@@ -103,6 +104,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${NVONNXPARSER}
     ${CUDA_LIBRARIES}
     ${CUBLAS_LIBRARIES}
+    OpenSSL::Crypto
     ${OpenCV_LIBS}
     ${PROJECT_NAME}_cuda_lib
     ${AUTOWARE_BEVFUSION_CUDA_LIB}
@@ -147,3 +149,19 @@ ament_auto_package(
   config
   launch
 )
+
+# Pure host checks also run when CUDA/TensorRT is unavailable.
+if(BUILD_TESTING)
+  find_package(OpenSSL REQUIRED)
+  add_executable(test_deployment_checks test/deployment_checks_standalone.cpp)
+  target_include_directories(test_deployment_checks PRIVATE include)
+  target_link_libraries(test_deployment_checks OpenSSL::Crypto)
+  target_compile_features(test_deployment_checks PRIVATE cxx_std_17)
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/deployment-checks")
+  add_test(NAME deployment_checks COMMAND test_deployment_checks
+    "${CMAKE_CURRENT_BINARY_DIR}/deployment-checks")
+  add_executable(test_timestamped_buffer test/timestamped_buffer_standalone.cpp)
+  target_include_directories(test_timestamped_buffer PRIVATE include)
+  target_compile_features(test_timestamped_buffer PRIVATE cxx_std_17)
+  add_test(NAME timestamped_buffer COMMAND test_timestamped_buffer)
+endif()

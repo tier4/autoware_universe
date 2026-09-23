@@ -132,8 +132,8 @@ void TrtBevFeatureExtractor::init_engine(const Config & config)
   // Same staleness guard as the planner engine: profile dims alone do not detect a
   // re-exported graph, so a cached engine older than its ONNX is dropped. See
   // engine_cache.hpp.
-  drop_stale_engine(
-    config.onnx_path, trt_config.engine_path.string(), rclcpp::get_logger("tensorrt_e2e"));
+  drop_stale_engine(config.onnx_path, trt_config.engine_path.string(),
+                    rclcpp::get_logger("tensorrt_e2e"), config.precision);
 
   trt_common_ = std::make_unique<TrtCommon>(
     trt_config, std::make_shared<Profiler>(), std::vector<std::string>{config.plugins_path});
@@ -142,6 +142,9 @@ void TrtBevFeatureExtractor::init_engine(const Config & config)
     throw std::runtime_error(
       "Failed to setup the BEV feature extractor engine from " + config.onnx_path);
   }
+
+  record_engine_identity(config.onnx_path, trt_config.engine_path.string(),
+                         config.precision);
 
   // The feature output must have static dimensions (the sparse voxel count only affects the
   // engine's internal tensors; the scattered BEV grid is fixed by the model).

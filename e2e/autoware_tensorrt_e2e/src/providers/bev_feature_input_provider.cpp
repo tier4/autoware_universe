@@ -21,6 +21,7 @@
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <memory>
 #include <stdexcept>
@@ -64,6 +65,11 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
   history_tensor_name_ =
     node_.declare_parameter<std::string>("bev_feature.history_tensor", "bev_feature_history");
   max_delay_ms_ = node_.declare_parameter<double>("bev_feature.max_delay_ms", 200.0);
+  max_future_skew_ms_ = node_.declare_parameter<double>("bev_feature.max_future_skew_ms", 20.0);
+  if (!std::isfinite(max_delay_ms_) || max_delay_ms_ <= 0.0 ||
+      !std::isfinite(max_future_skew_ms_) || max_future_skew_ms_ < 0.0) {
+    throw std::runtime_error("BEV cloud age bounds must be finite, with positive max_delay_ms");
+  }
 
   cache_config_.frames = node_.declare_parameter<int64_t>("bev_feature.frames", 3);
   cache_config_.interval_seconds =
@@ -78,6 +84,15 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
       "bev_feature.warmup must be 'wait' or 'duplicate_current', got '" + warmup + "'");
   }
   cache_config_.duplicate_current_on_warmup = warmup == "duplicate_current";
+  cache_config_.pose_limits.translation_slack_m =
+      node_.declare_parameter<double>("localization_reset.translation_slack_m",
+                                      2.0);
+  cache_config_.pose_limits.max_speed_mps =
+      node_.declare_parameter<double>("localization_reset.max_speed_mps", 60.0);
+  cache_config_.pose_limits.yaw_slack_rad =
+      node_.declare_parameter<double>("localization_reset.yaw_slack_rad", 0.35);
+  cache_config_.pose_limits.max_yaw_rate_rps = node_.declare_parameter<double>(
+      "localization_reset.max_yaw_rate_rps", 2.0);
 
   // Host-side settings keep defaults; they describe the deployment, not the network.
   extractor_config_.onnx_path =
@@ -192,6 +207,10 @@ void BevFeatureInputProvider::declare_detection_params()
 
 BevFeatureInputProvider::~BevFeatureInputProvider()
 {
+  if (extraction_start_)
+    cudaEventDestroy(extraction_start_);
+  if (extraction_end_)
+    cudaEventDestroy(extraction_end_);
   if (owns_stream_) {
     cudaStreamDestroy(stream_);
   }
@@ -243,6 +262,8 @@ std::vector<std::string> BevFeatureInputProvider::claim_inputs(
       "] maps, but the planner expects '" + history_tensor_name_ + "' with shape " +
       shape_to_string(shape));
   }
+  CHECK_CUDA_ERROR(cudaEventCreate(&extraction_start_));
+  CHECK_CUDA_ERROR(cudaEventCreate(&extraction_end_));
   cache_ = std::make_unique<TemporalBevCache>(
     cache_config_, extractor_->channels(), extractor_->height(), extractor_->width());
 
@@ -301,6 +322,11 @@ void BevFeatureInputProvider::subscribe()
           // Already latched and already reported by the tick it was rethrown into.
           return;
         }
+        if (last_extracted_stamp_ &&
+            rclcpp::Time(msg->header.stamp) == *last_extracted_stamp_) {
+          ++duplicate_clouds_;
+          return;
+        }
         {
           std::lock_guard<std::mutex> lock(mutex_);
           latest_pointcloud_ = msg;
@@ -316,9 +342,9 @@ void BevFeatureInputProvider::subscribe()
         pending_error_.clear();
         pending_feature_ = nullptr;
         const double delay_ms = (node_.now() - *pending_stamp_).seconds() * 1e3;
-        if (delay_ms > max_delay_ms_) {
-          pending_error_ = "Point cloud is stale (" + std::to_string(delay_ms) + " ms > " +
-                           std::to_string(max_delay_ms_) + " ms)";
+        if (delay_ms > max_delay_ms_ || delay_ms < -max_future_skew_ms_) {
+          ++stale_clouds_;
+          pending_error_ = "Point cloud age outside allowed window: " + std::to_string(delay_ms) + " ms";
         } else {
           // extract() reports a frame it cannot use (empty cloud, too few voxels, a failed
           // enqueue) through `pending_error_`, but CHECK_CUDA_ERROR and TrtCommon throw.
@@ -328,7 +354,9 @@ void BevFeatureInputProvider::subscribe()
           // sensing stack. Latch it here and let collect() rethrow it inside the tick,
           // which already catches, latches ERROR and stops planning.
           try {
+            CHECK_CUDA_ERROR(cudaEventRecord(extraction_start_, stream_));
             pending_feature_ = extractor_->extract(*msg, pending_error_);
+            CHECK_CUDA_ERROR(cudaEventRecord(extraction_end_, stream_));
           } catch (const std::exception & e) {
             extraction_error_ = std::string("BEV feature extraction failed: ") + e.what();
             pending_feature_ = nullptr;
@@ -386,6 +414,12 @@ bool BevFeatureInputProvider::collect(
     error = pending_error_;
     return false;
   }
+  if (localization_generation_ != ego.localization_generation) {
+    cache_->reset();
+    history_ptr_ = nullptr;
+    pending_inserted_ = false;
+    localization_generation_ = ego.localization_generation;
+  }
   if (!pending_inserted_) {
     // The BEV feature lives in the base_link frame of its source LiDAR frame; the pose is
     // interpolated to the source cloud timestamp by create_ego_frame().
@@ -393,10 +427,11 @@ bool BevFeatureInputProvider::collect(
     // next callback's extraction can overwrite the map.
     const auto insert_result =
       cache_->insert(pending_feature_, pose_from_odometry(ego.odometry), cloud_stamp, stream_);
-    if (insert_result == TemporalBevCache::InsertResult::kGapReset) {
+    if (insert_result == TemporalBevCache::InsertResult::kGapReset ||
+        insert_result == TemporalBevCache::InsertResult::kPoseReset) {
       RCLCPP_WARN_THROTTLE(
-        node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS,
-        "LiDAR timestamps went backwards (time jump or bag loop); BEV feature cache reset");
+          node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS,
+          "Time/localization discontinuity: BEV feature cache reset");
     }
     pending_inserted_ = true;
   }

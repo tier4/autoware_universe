@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <autoware_utils_geometry/geometry.hpp>
 #include "autoware/tensorrt_e2e/tensorrt_e2e_node.hpp"
+#include "autoware/tensorrt_e2e/deployment_manifest.hpp"
+#include <autoware_utils_geometry/geometry.hpp>
 
 #include "autoware/tensorrt_e2e/input_provider_registry.hpp"
 
@@ -91,11 +92,49 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
     }
   }
 
+  auto limit = [this](const char *name, double value) {
+    const double configured = has_parameter(name)
+                                  ? get_parameter(name).as_double()
+                                  : declare_parameter<double>(name, value);
+    if (!std::isfinite(configured) || configured <= 0.0) {
+      throw std::runtime_error(std::string(name) +
+                               " must be finite and positive");
+    }
+    return configured;
+  };
+  pose_limits_.translation_slack_m =
+      limit("localization_reset.translation_slack_m", 2.0);
+  pose_limits_.max_speed_mps = limit("localization_reset.max_speed_mps", 60.0);
+  pose_limits_.yaw_slack_rad = limit("localization_reset.yaw_slack_rad", 0.35);
+  pose_limits_.max_yaw_rate_rps =
+      limit("localization_reset.max_yaw_rate_rps", 2.0);
   // These callbacks share the mutually-exclusive default callback group with
   // sensor collection. Retry only a sensor tick waiting for its ego bracket.
   sub_odometry_ = create_subscription<Odometry>(
       "~/input/odometry", rclcpp::QoS(200),
       [this](Odometry::ConstSharedPtr msg) {
+        if (!odometry_history_.samples.empty()) {
+          const auto &previous = odometry_history_.samples.back();
+          const double dt = (rclcpp::Time(msg->header.stamp).nanoseconds() -
+                             previous.stamp_ns) *
+                            1e-9;
+          auto pose = [](const Odometry &odom) {
+            const auto matrix = dp::utils::pose_to_matrix4d(odom.pose.pose);
+            return std::array<double, 4>{matrix(0, 3), matrix(1, 3),
+                                         matrix(0, 0), matrix(1, 0)};
+          };
+          if (dt < 0 || pose_discontinuous(pose(previous.value), pose(*msg), dt,
+                                           pose_limits_)) {
+            ++localization_generation_;
+            odometry_history_.samples.clear();
+            acceleration_history_.samples.clear();
+            steering_history_.samples.clear();
+            pipeline_latency_.clear();
+            processing_latency_.clear();
+            RCLCPP_WARN(get_logger(),
+                        "Localization discontinuity: discarded ego history");
+          }
+        }
         if (odometry_history_.insert(
                 rclcpp::Time(msg->header.stamp).nanoseconds(), *msg,
                 ego_history_keep_ns_)) {
@@ -114,8 +153,7 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
         if (waiting_for_ego_)
           run_once();
       });
-  recorded_ego_dynamics_ =
-      declare_parameter<bool>("recorded_ego_dynamics", false);
+
   if (recorded_ego_dynamics_) {
     sub_steering_ = create_subscription<SteeringReport>(
         "~/input/steering", rclcpp::QoS(100),
@@ -264,6 +302,9 @@ void TensorrtE2eNode::report_status()
 
 void TensorrtE2eNode::set_up_params()
 {
+  recorded_ego_dynamics_ =
+      declare_parameter<bool>("recorded_ego_dynamics", false);
+  declare_parameter<bool>("require_deployment_manifest", false);
   params_.model_path = declare_parameter<std::string>("model_path", "");
   params_.plugins_path = declare_parameter<std::string>("plugins_path", "");
   params_.precision = declare_parameter<std::string>("precision", "fp16");
@@ -333,6 +374,55 @@ void TensorrtE2eNode::initialize_pipeline()
   diagnostics_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
   diagnostics_->publish(get_clock()->now());
 
+  create_providers();
+  if (get_parameter("require_deployment_manifest").as_bool()) {
+    const auto graph = std::filesystem::path(params_.model_path);
+    const auto manifest = validate_deployment_manifest(
+        graph.parent_path() / "deployment_manifest.json");
+    if (graph.filename().string() !=
+            manifest.at("planner_file").get<std::string>() ||
+        std::filesystem::canonical(
+            get_parameter("bev_feature.extractor.onnx_path").as_string()) !=
+            std::filesystem::canonical(
+                graph.parent_path() /
+                manifest.at("extractor_file").get<std::string>()))
+      throw std::runtime_error(
+          "Configured ONNX paths do not match deployment manifest");
+    for (const auto &[name, expected] : manifest.at("parameters").items()) {
+      if (!has_parameter(name))
+        throw std::runtime_error("Missing contract parameter: " + name);
+      const auto parameter = get_parameter(name);
+      nlohmann::json actual;
+      switch (parameter.get_type()) {
+      case rclcpp::ParameterType::PARAMETER_BOOL:
+        actual = parameter.as_bool();
+        break;
+      case rclcpp::ParameterType::PARAMETER_INTEGER:
+        actual = parameter.as_int();
+        break;
+      case rclcpp::ParameterType::PARAMETER_DOUBLE:
+        actual = parameter.as_double();
+        break;
+      case rclcpp::ParameterType::PARAMETER_STRING:
+        actual = parameter.as_string();
+        break;
+      case rclcpp::ParameterType::PARAMETER_STRING_ARRAY:
+        actual = parameter.as_string_array();
+        break;
+      case rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY:
+        actual = parameter.as_integer_array();
+        break;
+      case rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY:
+        actual = parameter.as_double_array();
+        break;
+      default:
+        throw std::runtime_error("Unsupported contract parameter: " + name);
+      }
+      if (actual != expected)
+        throw std::runtime_error("Deployment contract mismatch: " + name);
+    }
+  }
+
   InferenceEngine::Config engine_config;
   engine_config.model_path = params_.model_path;
   engine_config.plugins_path = params_.plugins_path;
@@ -349,7 +439,6 @@ void TensorrtE2eNode::initialize_pipeline()
     RCLCPP_INFO_STREAM(get_logger(), "Engine inputs:" << manifest.str());
   }
 
-  create_providers();
   // One stream for the whole tick. A provider's GPU work, the network, and the output copy
   // are ordered on it, so nothing in the middle of a pass has to wait for the device: the
   // single host synchronization is the one that waits for the outputs.
@@ -427,6 +516,7 @@ std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
                                  (hi.stamp_ns - lo.stamp_ns);
 
   EgoFrame ego;
+  ego.localization_generation = localization_generation_;
   ego.odometry = lo.value;
   ego.stamp = rclcpp::Time(target, get_clock()->get_clock_type());
   ego.odometry.header.stamp = ego.stamp;
@@ -622,6 +712,11 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
     return;
   }
 
+  // The engine already completed its output wait on the shared stream. Query
+  // CUDA event durations here without adding another synchronization.
+  for (auto &provider : providers_)
+    provider->add_diagnostics(*diagnostics_);
+
   // Postprocess and publish.
   stop_watch_.tic("postprocess");
   TrajectoryPostprocessor::Output output;
@@ -646,7 +741,10 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
   // Timing: the whole tick must fit in the planning period to sustain the output rate.
   const double processing_time_ms = stop_watch_.toc("processing_time");
   timing.total_ms = processing_time_ms;
-  publish_debug_timing(now, *ego, timing);
+  const auto published_at = get_clock()->now();
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/input_age_ms", (now - ego->stamp).seconds() * 1e3);
+  publish_debug_timing(published_at, *ego, timing);
   // Against the interval this run actually had, not a configured one: the pace
   // is the sensor's, and it is the pace the node has to keep up with.
   const double period_ms = previous_run_.has_value() ? (now - previous_run_.value()).seconds() * 1e3
@@ -796,6 +894,17 @@ void TensorrtE2eNode::publish_debug_timing(
     "debug/cyclic_time_ms", stop_watch_.toc("cyclic", true));
   debug_publisher_->publish<Float64Stamped>(
     "debug/pipeline_latency_ms", (now - input_stamp).seconds() * 1e3);
+  pipeline_latency_.add((now - input_stamp).seconds() * 1e3);
+  processing_latency_.add(timing.total_ms);
+  for (const auto &entry : std::vector<std::pair<std::string, double>>{
+           {"p95", 0.95}, {"p99", 0.99}}) {
+    debug_publisher_->publish<Float64Stamped>(
+        "debug/pipeline_latency_" + entry.first + "_ms",
+        pipeline_latency_.percentile(entry.second));
+    debug_publisher_->publish<Float64Stamped>(
+        "debug/processing_time/" + entry.first + "_ms",
+        processing_latency_.percentile(entry.second));
+  }
   debug_publisher_->publish<Float64Stamped>("debug/processing_time/total_ms", timing.total_ms);
   debug_publisher_->publish<Float64Stamped>("debug/processing_time/collect_ms", timing.collect_ms);
   for (const auto & [provider, ms] : timing.provider_collect_ms) {
