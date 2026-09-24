@@ -27,7 +27,8 @@
         drivable_area_safe_m: 0.0
         corner_safe_m: 0.3
       boundary:
-        simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the boundary polylines given to MPPI; 0 disables
+        soft_simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the soft boundary polylines given to MPPI; 0 disables
+        hard_simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the hard boundary polylines given to MPPI; 0 disables
       cost:
         lambda: 100.0
         speed: 500.0

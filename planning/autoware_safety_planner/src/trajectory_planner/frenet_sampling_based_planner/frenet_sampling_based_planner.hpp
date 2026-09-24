@@ -71,7 +71,8 @@ private:
   std::optional<Trajectory> cautious_previous_trajectory_;
 
   //! Shared by both sides: the cache keys on the geometry, so the second side pays a hash only
-  std::unique_ptr<BoundarySimplifier> boundary_simplifier_;
+  std::unique_ptr<BoundarySimplifier> soft_boundary_simplifier_;
+  std::unique_ptr<BoundarySimplifier> hard_boundary_simplifier_;
 
   //! Upper bounds of the global ScalarBound constraints, per quantity: the ones
   //! collect_kinematic_limits does not read (LAT_ACCEL, LON_JERK, STEER_ANGLE, STEER_RATE)
@@ -86,11 +87,13 @@ private:
   //! What evaluate() looks up per point, tabulated once per call over cells of the arc length:
   //! without it every point scans every scalar bound and every vertex of every boundary polyline,
   //! about a hundred thousand times per cycle
+  class ReferenceGrid;
+
   struct ConstraintTables
   {
     ConstraintTables(
-      const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-      double resolution);
+      const PlannerContext & context, const ReferenceGrid & grid,
+      const CompiledConstraints & compiled_constraints, double resolution);
 
     //! Index of the cell holding the arc length s, clamped to the table
     std::size_t cell(double s) const;
@@ -102,9 +105,12 @@ private:
     //! [m/s] the velocity limit in the cell, the global bound and the speed limit zones together
     std::vector<double> v_max;
     //! Per lateral bound of the IR, in the same order: the boundary l the footprint has to stay
-    //! clear of, per cell (see tabulate_lateral_bound)
+    //! clear of, per cell (see tabulate_lateral_bound). Empty for the hard ones, which are checked
+    //! on boundary_profiles
     std::vector<std::vector<double>> lateral_extreme_l;
     std::vector<bool> lateral_is_hard;
+    //! Per cell, the hard lateral bounds in the frame at the start of the cell
+    std::vector<BoundaryProfile> boundary_profiles;
   };
 
   //! The reference path resampled at a fixed spacing. Every geometric query of the sampling loops
@@ -155,6 +161,11 @@ private:
     std::vector<double> yaw;     //!< [rad] heading in world coordinates
     std::vector<double> kappa;   //!< [1/m]
     std::vector<double> metric;  //!< [-] d sigma / d s, path arc length per reference arc length
+    //! Whether the path, followed to its end, stays clear of the hard boundaries and within the
+    //! steer limit; the candidates check only the part within the time horizon
+    bool feasible_to_end{true};
+    //! Cost of the soft boundaries along the whole path, the same for every velocity profile
+    double soft_bound_cost{0.0};
     std::string tag;
   };
 
@@ -215,10 +226,11 @@ private:
     const InitialState & initial_state) const;
 
   //! Samples the quintic l(s) for one terminal state (arc length length, lateral position
-  //! l_target)
+  //! l_target). With a positive return_length it comes back to the centerline over that arc length
+  //! instead of holding l_target
   PathCandidate sample_path(
     const PlannerContext & context, const ReferenceGrid & grid, const InitialState & initial_state,
-    const double length, const double l_target) const;
+    const double length, const double l_target, const double return_length = 0.0) const;
 
   std::vector<PathCandidate> generate_paths(
     const PlannerContext & context, const ReferenceGrid & grid,
@@ -238,9 +250,9 @@ private:
 
   //! Evaluates the hard constraints and accumulates the soft cost, writing valid and cost
   void evaluate(
-    const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-    const ConstraintTables & tables, const double l_goal, const PreviousLateral & previous_lateral,
-    Candidate & candidate) const;
+    const PlannerContext & context, const ReferenceGrid & grid,
+    const CompiledConstraints & compiled_constraints, const ConstraintTables & tables,
+    const double l_goal, const PreviousLateral & previous_lateral, Candidate & candidate) const;
 
   Trajectory to_trajectory_msg(const PlannerContext & context, const Candidate & candidate) const;
 

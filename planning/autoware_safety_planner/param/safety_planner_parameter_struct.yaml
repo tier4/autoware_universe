@@ -135,7 +135,7 @@ safety_planner:
       - autoware::safety_planner::experimental::VehicleKinematicsConstraintGenerator
       - autoware::safety_planner::ExternalVelocityLimitConstraintGenerator
       - autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator
-      - autoware::safety_planner::experimental::LaneFollowingDrivableAreaConstraintGenerator
+      - autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator
       - autoware::safety_planner::experimental::ObstacleStopConstraintGenerator
     read_only: true
     description: fully qualified class names of the constraint generator plugins to load
@@ -224,6 +224,18 @@ safety_planner:
       description: "[m] the lane bounds and road_borders are moved this far towards the inside of the lane"
       validation:
         gt_eq<>: [0.0]
+    road_border_distance_m:
+      type: double
+      default_value: 15.0
+      read_only: true
+      description: "[m] road_borders within this distance of the reference_path become hard boundaries"
+      validation:
+        gt<>: [0.0]
+    close_walkway_gap:
+      type: bool
+      default_value: false
+      read_only: true
+      description: Where the reference_path crosses a walkway lanelet, close the gap between the road_borders on each side of it with a hard boundary
 
   obstacle_stop:
     margin_m:
@@ -278,6 +290,23 @@ safety_planner:
       default_value: [-2.0, -1.0, 0.0, 1.0, 2.0]
       read_only: true
       description: "[m] the terminal lateral positions to sample, measured from the reference_path and positive to the left"
+    apex_lateral_offsets_m:
+      type: double_array
+      default_value: []
+      read_only: true
+      description: "[m] how far towards the inside of a curve the apex-aligned paths are at its apex: each reaches that offset at the curvature peak, arriving with zero slope, and comes back to the reference_path over each of apex_return_lengths_m; empty disables them"
+    apex_return_lengths_m:
+      type: double_array
+      default_value: []
+      read_only: true
+      description: "[m] the arc lengths over which an apex-aligned path comes back to the reference_path after the apex"
+    apex_min_curvature:
+      type: double
+      default_value: 0.05
+      read_only: true
+      description: "[1/m] a local peak of |curvature| of the reference_path at or above this is an apex; searched within the longest of target_lengths_m ahead of the ego"
+      validation:
+        gt<>: [0.0]
     target_velocity_ratios:
       type: double_array
       default_value: [0.0, 0.25, 0.5, 0.75, 1.0]
@@ -308,7 +337,7 @@ safety_planner:
         type: double
         default_value: 100.0
         read_only: true
-        description: "[1/m^2] weight on the squared violation of a soft Boundary"
+        description: "[1/m^3] weight on the squared violation of a soft Boundary, integrated along the arc length of the path"
         validation:
           gt_eq<>: [0.0]
       previous_lateral:
@@ -318,12 +347,26 @@ safety_planner:
         description: "[1/(m^2 s)] weight on the squared lateral deviation from the output of the previous cycle, measured on the reference_path of the current one; 0 disables the continuity cost"
         validation:
           gt_eq<>: [0.0]
+      path_infeasible:
+        type: double
+        default_value: 0.0
+        read_only: true
+        description: "[-] cost added to a candidate whose path, followed to its end beyond the time horizon, puts the footprint on a hard boundary or needs more than the steer limit; 0 disables it"
+        validation:
+          gt_eq<>: [0.0]
     boundary:
-      simplify_tolerance_m:
+      soft_simplify_tolerance_m:
         type: double
         default_value: 0.05
         read_only: true
-        description: "[m] Douglas-Peucker tolerance applied to each Boundary polyline before it is compiled into the projected views; 0 disables"
+        description: "[m] Douglas-Peucker tolerance applied to each soft Boundary polyline before it is compiled into the projected views; 0 disables"
+        validation:
+          gt_eq<>: [0.0]
+      hard_simplify_tolerance_m:
+        type: double
+        default_value: 0.05
+        read_only: true
+        description: "[m] Douglas-Peucker tolerance applied to each hard Boundary polyline before it is compiled into the projected views; 0 disables"
         validation:
           gt_eq<>: [0.0]
     debug:
@@ -447,11 +490,18 @@ safety_planner:
         default_value: 0.3
         read_only: true
     boundary:
-      simplify_tolerance_m:
+      soft_simplify_tolerance_m:
         type: double
         default_value: 0.05
         read_only: true
-        description: "[m] Douglas-Peucker tolerance applied to each Boundary polyline before it is handed to MPPI; 0 disables"
+        description: "[m] Douglas-Peucker tolerance applied to each soft Boundary polyline before it is handed to MPPI; 0 disables"
+        validation:
+          gt_eq<>: [0.0]
+      hard_simplify_tolerance_m:
+        type: double
+        default_value: 0.05
+        read_only: true
+        description: "[m] Douglas-Peucker tolerance applied to each hard Boundary polyline before it is handed to MPPI; 0 disables"
         validation:
           gt_eq<>: [0.0]
     cost:

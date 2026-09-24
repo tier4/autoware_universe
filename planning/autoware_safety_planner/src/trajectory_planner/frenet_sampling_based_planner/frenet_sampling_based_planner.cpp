@@ -157,8 +157,8 @@ std::vector<double> tabulate_lateral_bound(
 }  // namespace
 
 FrenetSamplingBasedPlanner::ConstraintTables::ConstraintTables(
-  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-  const double resolution)
+  const PlannerContext & context, const ReferenceGrid & grid,
+  const CompiledConstraints & compiled_constraints, const double resolution)
 : res(resolution), limits(collect_kinematic_limits(compiled_constraints))
 {
   cells = static_cast<std::size_t>(std::ceil(context.reference_path.length() / res)) + 1;
@@ -199,10 +199,43 @@ FrenetSamplingBasedPlanner::ConstraintTables::ConstraintTables(
 
   lateral_is_hard.reserve(compiled_constraints.lateral_bounds.size());
   lateral_extreme_l.reserve(compiled_constraints.lateral_bounds.size());
+  std::vector<const LateralBoundEntry *> hard_bounds;
   for (const auto & bound : compiled_constraints.lateral_bounds) {
-    lateral_is_hard.push_back(
-      compiled_constraints.raw_constraints[bound.raw_index].hardness == Hardness::HARD);
-    lateral_extreme_l.push_back(tabulate_lateral_bound(bound, context.vehicle_info, res, cells));
+    const bool hard =
+      compiled_constraints.raw_constraints[bound.raw_index].hardness == Hardness::HARD;
+    lateral_is_hard.push_back(hard);
+    lateral_extreme_l.push_back(
+      hard ? std::vector<double>{}
+           : tabulate_lateral_bound(bound, context.vehicle_info, res, cells));
+    if (hard) {
+      hard_bounds.push_back(&bound);
+    }
+  }
+
+  // The bins cover the footprint with the rear axle anywhere in the cell, at any heading. The
+  // margin holds the stretch of footprint_hits_boundary (half a time step of travel, below 1 m up
+  // to 60 km/h) and the lateral offset of the rear axle along the turning frame
+  constexpr double BIN_M = 0.25;
+  constexpr double X_MARGIN_M = 2.0;
+  const auto & vehicle_info = context.vehicle_info;
+  const double half_width =
+    std::max(vehicle_info.max_lateral_offset_m, -vehicle_info.min_lateral_offset_m);
+  const double reach = std::hypot(
+    std::max(vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m),
+    half_width);
+  const double x_min = -reach - X_MARGIN_M;
+  const double x_max = res + reach + X_MARGIN_M;
+  // A boundary point is taken by the arc length of its foot, and on the inside of a curve that
+  // runs ahead of x by 1 / (1 - k l); twice the reach covers |k l| up to 0.5, i.e. an inner curb
+  // at 3 m on the tightest curve of a bus (R 6.4 m). The window only keeps the other leg of a
+  // hairpin out, so it is not tightened further
+  boundary_profiles.reserve(cells);
+  const double length = context.reference_path.length();
+  for (std::size_t i = 0; i < cells; ++i) {
+    const double s = std::min(static_cast<double>(i) * res, length);
+    const Pose2d frame{grid.position(s, 0.0), grid.azimuth(s)};
+    boundary_profiles.push_back(make_boundary_profile(
+      hard_bounds, frame, x_min, x_max, s + 2.0 * x_min, s + 2.0 * x_max, BIN_M));
   }
 }
 
@@ -321,8 +354,10 @@ void FrenetSamplingBasedPlanner::on_initialize(
   normal_turn_indicator_decider_.update_params(turn_signal_params);
   cautious_turn_indicator_decider_.update_params(turn_signal_params);
   constexpr std::size_t kBoundaryCacheSize = 256;
-  boundary_simplifier_ = std::make_unique<BoundarySimplifier>(
-    params.frenet_sampling_based_planner.boundary.simplify_tolerance_m, kBoundaryCacheSize);
+  soft_boundary_simplifier_ = std::make_unique<BoundarySimplifier>(
+    params.frenet_sampling_based_planner.boundary.soft_simplify_tolerance_m, kBoundaryCacheSize);
+  hard_boundary_simplifier_ = std::make_unique<BoundarySimplifier>(
+    params.frenet_sampling_based_planner.boundary.hard_simplify_tolerance_m, kBoundaryCacheSize);
 }
 
 TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
@@ -396,7 +431,9 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   auto simplified_constraints = constraints;
   for (auto & constraint : simplified_constraints) {
     if (auto * boundary = std::get_if<Boundary>(&constraint.payload)) {
-      boundary->polyline = boundary_simplifier_->simplify(boundary->polyline);
+      auto & simplifier = constraint.hardness == Hardness::HARD ? *hard_boundary_simplifier_
+                                                                : *soft_boundary_simplifier_;
+      boundary->polyline = simplifier.simplify(boundary->polyline);
     }
   }
 
@@ -409,7 +446,7 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   phase =
     std::make_unique<autoware_utils_debug::ScopedTimeTrack>("tabulate_constraints", *time_keeper_);
   const ConstraintTables tables(
-    context, compiled_constraints, params_.frenet_sampling_based_planner.path_resolution_m);
+    context, grid, compiled_constraints, params_.frenet_sampling_based_planner.path_resolution_m);
 
   phase.reset();
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
@@ -424,7 +461,47 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
 
   phase.reset();
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>("generate_paths", *time_keeper_);
-  const auto paths = generate_paths(context, grid, initial_state);
+  auto paths = generate_paths(context, grid, initial_state);
+  // A path is followed to its end once here, shared by all the candidates built on it
+  {
+    const auto & p = params_.frenet_sampling_based_planner;
+    const double wheel_base_m = context.vehicle_info.wheel_base_m;
+    for (auto & path : paths) {
+      for (std::size_t i = 0; i < path.s.size(); ++i) {
+        const auto cell = tables.cell(path.s[i]);
+        // A soft boundary, the own lane bound towards a parallel lane, costs the squared amount by
+        // which it is exceeded, integrated along the path. Not over time within each candidate:
+        // there a profile that stops short of where the path leaves the lane pays less than one
+        // that drives on, and inside a corner that already overlaps the lane bound the cheapest
+        // candidate stands still. Where the boundary does not reach, extreme_l is the infinity
+        // the table is filled with and the violation comes out negative
+        const auto box = footprint_sl_box(context.vehicle_info, path.s[i], path.l[i]);
+        for (std::size_t b = 0; b < compiled_constraints.lateral_bounds.size(); ++b) {
+          if (tables.lateral_is_hard[b]) {
+            continue;
+          }
+          const double extreme_l = tables.lateral_extreme_l[b][cell];
+          const bool forbids_left =
+            compiled_constraints.lateral_bounds[b].forbidden_side == Side::LEFT;
+          const double violation = forbids_left ? box.l_max - extreme_l : extreme_l - box.l_min;
+          if (violation > 0.0) {
+            path.soft_bound_cost +=
+              p.weights.soft_bound * violation * violation * p.path_resolution_m;
+          }
+        }
+        // Without this the choice within the time horizon heads for the outside of a corner that
+        // is only cleared by cutting inside it, and stalls there. A penalty and not a rejection:
+        // far from such a corner every path still runs into it
+        if (p.weights.path_infeasible > 0.0 && path.feasible_to_end) {
+          const Pose2d rear_axle{grid.position(path.s[i], path.l[i]), path.yaw[i]};
+          path.feasible_to_end =
+            std::abs(std::atan(path.kappa[i] * wheel_base_m)) <= tables.bounds.steer_angle &&
+            !footprint_hits_boundary(
+              tables.boundary_profiles[cell], context.vehicle_info, rear_axle, 0.0);
+        }
+      }
+    }
+  }
 
   phase.reset();
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
@@ -458,7 +535,8 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   time_keeper_->comment(std::to_string(candidates.size()) + " candidates");
   for (auto & candidate : candidates) {
     evaluate(
-      context, compiled_constraints, tables, initial_state.l_goal, previous_lateral, candidate);
+      context, grid, compiled_constraints, tables, initial_state.l_goal, previous_lateral,
+      candidate);
   }
 
   phase.reset();
@@ -546,7 +624,7 @@ FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_ini
 
 FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_path(
   const PlannerContext & context, const ReferenceGrid & grid, const InitialState & initial_state,
-  const double length, const double l_target) const
+  const double length, const double l_target, const double return_length) const
 {
   using autoware::frenet_planner::Polynomial;
 
@@ -556,17 +634,38 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
   const double s_max = ref.length();
 
   // l(s) joins the initial (l0, l'0, l''0) to the terminal (l_T, 0, 0) over the arc length L and
-  // holds l_T beyond it. A terminal state past the end of the path is cut at the end
-  const double L = std::max(res, std::min(length, s_max - s0));
+  // holds l_T beyond it. A terminal state past the end of the path is cut at the end, but not
+  // below the shortest target length: a shift squeezed into the last meter before the goal is
+  // sampled at only one or two points, which hides its curvature from the checks in evaluate()
+  const auto & target_lengths = params_.frenet_sampling_based_planner.target_lengths_m;
+  const double L = std::max(
+    *std::min_element(target_lengths.begin(), target_lengths.end()), std::min(length, s_max - s0));
+  // The way back to the centerline is also cut at the end of the path
+  const bool returns = return_length > 0.0;
+  const double L_back = std::max(res, std::min(return_length, s_max - s0 - L));
+  // At the turning point of a way out and back, l'' takes that of a cosine bump of the same
+  // widths. With l'' = 0 there the path follows the reference at an offset, which on the inside
+  // of a curve is tighter than the reference itself; the bump is what eases the curvature
+  const double d2l_turn = returns ? -l_target * M_PI * M_PI / (L * L + L_back * L_back) : 0.0;
   const Polynomial lat(
-    initial_state.l, initial_state.dl_ds, initial_state.d2l_ds2, l_target, 0.0, 0.0, L);
+    initial_state.l, initial_state.dl_ds, initial_state.d2l_ds2, l_target, 0.0, d2l_turn, L);
+  const Polynomial back(l_target, 0.0, d2l_turn, 0.0, 0.0, 0.0, L_back);
 
   PathCandidate path;
   for (double s = s0; s <= s_max + 1e-9; s += res) {
     const double u = s - s0;
-    const double l = u <= L ? lat.position(u) : l_target;
-    const double dl_ds = u <= L ? lat.velocity(u) : 0.0;
-    const double d2l_ds2 = u <= L ? lat.acceleration(u) : 0.0;
+    double l = returns ? 0.0 : l_target;
+    double dl_ds = 0.0;
+    double d2l_ds2 = 0.0;
+    if (u <= L) {
+      l = lat.position(u);
+      dl_ds = lat.velocity(u);
+      d2l_ds2 = lat.acceleration(u);
+    } else if (returns && u <= L + L_back) {
+      l = back.position(u - L);
+      dl_ds = back.velocity(u - L);
+      d2l_ds2 = back.acceleration(u - L);
+    }
     const double s_ref = std::clamp(s, 0.0, s_max);
     const double k_ref = grid.curvature(s_ref);
     path.s.push_back(s);
@@ -588,6 +687,9 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
   }
   std::stringstream ss;
   ss << "L=" << L << " l=" << l_target;
+  if (returns) {
+    ss << " back=" << L_back;
+  }
   path.tag = ss.str();
   return path;
 }
@@ -643,6 +745,32 @@ std::vector<FrenetSamplingBasedPlanner::PathCandidate> FrenetSamplingBasedPlanne
   for (const double length : p.target_lengths_m) {
     for (const double l_target : lateral_targets) {
       paths.push_back(sample_path(context, grid, initial_state, length, l_target));
+    }
+  }
+  // Apex-aligned: on a corner too tight for the footprint to follow the reference_path, the way
+  // through cuts inside it and comes back, and it has to be timed on the corner. So the offset is
+  // reached at the curvature peak, whatever the distance from the ego; sampled on the ego like the
+  // others, such a path lines up with the corner only from a few positions
+  if (!p.apex_lateral_offsets_m.empty()) {
+    const double res = p.path_resolution_m;
+    const double s_end = std::min(
+      context.reference_path.length(),
+      initial_state.s + *std::max_element(p.target_lengths_m.begin(), p.target_lengths_m.end()));
+    for (double s = initial_state.s + res; s + res <= s_end; s += res) {
+      const double k = grid.curvature(s);
+      if (
+        std::abs(k) < p.apex_min_curvature || std::abs(k) < std::abs(grid.curvature(s - res)) ||
+        std::abs(k) < std::abs(grid.curvature(s + res))) {
+        continue;
+      }
+      // The inside of the curve is towards its center: left (positive l) for a left turn
+      const double inside = k > 0.0 ? 1.0 : -1.0;
+      for (const double offset : p.apex_lateral_offsets_m) {
+        for (const double return_length : p.apex_return_lengths_m) {
+          paths.push_back(sample_path(
+            context, grid, initial_state, s - initial_state.s, inside * offset, return_length));
+        }
+      }
     }
   }
   return paths;
@@ -807,9 +935,9 @@ FrenetSamplingBasedPlanner::Candidate FrenetSamplingBasedPlanner::combine(
 }
 
 void FrenetSamplingBasedPlanner::evaluate(
-  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-  const ConstraintTables & tables, const double l_goal, const PreviousLateral & previous_lateral,
-  Candidate & candidate) const
+  const PlannerContext & context, const ReferenceGrid & grid,
+  const CompiledConstraints & compiled_constraints, const ConstraintTables & tables,
+  const double l_goal, const PreviousLateral & previous_lateral, Candidate & candidate) const
 {
   const auto & p = params_.frenet_sampling_based_planner;
   const double s_max = context.reference_path.length();
@@ -869,23 +997,16 @@ void FrenetSamplingBasedPlanner::evaluate(
     const auto box = footprint_sl_box(context.vehicle_info, s, l);
     const double t0 = static_cast<double>(k) * dt;
     const double t1 = (k + 1 < candidate.s.size()) ? t0 + dt : t0;
-    double soft_bound_cost = 0.0;
-    for (std::size_t b = 0; b < compiled_constraints.lateral_bounds.size(); ++b) {
-      const double extreme_l = tables.lateral_extreme_l[b][cell];
-      const bool forbids_left = compiled_constraints.lateral_bounds[b].forbidden_side == Side::LEFT;
-      if (tables.lateral_is_hard[b]) {
-        if (forbids_left ? box.l_max > extreme_l : box.l_min < extreme_l) {
-          return reject("lateral_bound");
-        }
-        continue;
-      }
-      // A soft boundary, the own lane bound towards a parallel lane, costs the squared amount by
-      // which it is exceeded. Where the boundary does not reach, extreme_l is the infinity the
-      // table is filled with and the violation comes out negative
-      const double violation = forbids_left ? box.l_max - extreme_l : extreme_l - box.l_min;
-      if (violation > 0.0) {
-        soft_bound_cost += p.weights.soft_bound * violation * violation;
-      }
+    // Stretched by half the travel of a time step at both ends, so that the footprints of
+    // consecutive points leave no gap between them
+    const Pose2d rear_axle{
+      grid.position(s, l),
+      interpolate_uniform_angle(
+        candidate.path->yaw, candidate.path->s.front(), p.path_resolution_m, s)};
+    if (footprint_hits_boundary(
+          tables.boundary_profiles[cell], context.vehicle_info, rear_axle,
+          0.5 * std::abs(v) * dt)) {
+      return reject("lateral_bound");
     }
     for (const auto & occupancy : compiled_constraints.occupancies) {
       if (violates_occupancy(occupancy, box, t0, t1)) {
@@ -915,13 +1036,16 @@ void FrenetSamplingBasedPlanner::evaluate(
     }
     const double dv = v_max - v;
     cost += p.weights.lateral * (l - l_ref) * (l - l_ref) * dt;
-    cost += soft_bound_cost * dt;
     cost += p.weights.velocity * dv * dv * dt;
     cost += p.weights.curvature * kappa * kappa * dt;
     if (k + 1 < candidate.s.size()) {
       const double lon_jerk = (candidate.a[k + 1] - a) / dt;
       cost += p.weights.lon_jerk * lon_jerk * lon_jerk * dt;
     }
+  }
+  cost += candidate.path->soft_bound_cost;
+  if (!candidate.path->feasible_to_end) {
+    cost += p.weights.path_infeasible;
   }
   candidate.cost = cost;
 }
@@ -1029,16 +1153,26 @@ MarkerArray FrenetSamplingBasedPlanner::make_lateral_bounds_markers(
   const auto & reference_path = context.reference_path;
   const double z = context.odometry.pose.pose.position.z;
   for (double s = 0.0; s <= reference_path.length(); s += INTERVAL_M) {
+    // Only the nearest bound per side and hardness is drawn, as that is the one in effect; drawing
+    // every bound would let a farther one cover the nearer one and look like it breaks through
+    std::map<std::pair<bool, Side>, double> nearest;
     for (const auto & bound : compiled_constraints.lateral_bounds) {
       if (
         bound.polyline.size() < 2 || s < bound.polyline.front().s || s > bound.polyline.back().s) {
         continue;
       }
       const double l_bound = interpolate_boundary_l(bound.polyline, s);
-      auto & marker =
-        compiled_constraints.raw_constraints[bound.raw_index].hardness == Hardness::HARD
-          ? hard_marker
-          : soft_marker;
+      const bool hard =
+        compiled_constraints.raw_constraints[bound.raw_index].hardness == Hardness::HARD;
+      const auto [it, inserted] =
+        nearest.emplace(std::make_pair(hard, bound.forbidden_side), l_bound);
+      if (!inserted) {
+        it->second = bound.forbidden_side == Side::LEFT ? std::min(it->second, l_bound)
+                                                        : std::max(it->second, l_bound);
+      }
+    }
+    for (const auto & [key, l_bound] : nearest) {
+      auto & marker = key.first ? hard_marker : soft_marker;
       for (const double l : {0.0, l_bound}) {
         const auto position = grid.position(s, l);
         geometry_msgs::msg::Point q;

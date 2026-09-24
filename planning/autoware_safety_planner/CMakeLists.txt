@@ -105,6 +105,25 @@ if(BUILD_TESTING)
     )
     # parameter_traits::OK in the generated parameter header is deprecated
     target_compile_options(test_${PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
+
+    # Plots of the unit tests (pyplot), written to test_results/unit/
+    option(SAFETY_PLANNER_UNIT_TEST_PLOT "Plot the unit test cases with pyplot" OFF)
+    if(SAFETY_PLANNER_UNIT_TEST_PLOT)
+      message(STATUS "SAFETY_PLANNER_UNIT_TEST_PLOT is ON")
+      find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+      find_package(pybind11_vendor REQUIRED)
+      find_package(pybind11 REQUIRED)
+      target_sources(test_${PROJECT_NAME} PRIVATE
+        test/test_output_utils.cpp
+        test/test_plot_utils.cpp
+      )
+      target_link_libraries(test_${PROJECT_NAME} Python3::Python pybind11::embed)
+      ament_target_dependencies(test_${PROJECT_NAME} autoware_pyplot)
+      target_compile_definitions(test_${PROJECT_NAME} PRIVATE
+        SAFETY_PLANNER_UNIT_TEST_PLOT
+        TEST_RESULTS_DIR="${CMAKE_CURRENT_BINARY_DIR}/test_results"
+      )
+    endif()
   endif()
 
   # Closed-loop simulation (test/closed_loop) that drives SafetyPlanner::plan without a node.

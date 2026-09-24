@@ -92,7 +92,8 @@ private:
   //! One optimizer per output: the warm start (previous control sequence) is internal state
   std::unique_ptr<MppiInterface> normal_optimizer_;
   std::unique_ptr<MppiInterface> cautious_optimizer_;
-  std::unique_ptr<BoundarySimplifier> boundary_simplifier_;
+  std::unique_ptr<BoundarySimplifier> soft_boundary_simplifier_;
+  std::unique_ptr<BoundarySimplifier> hard_boundary_simplifier_;
 };
 
 }  // namespace autoware::safety_planner::experimental

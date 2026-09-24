@@ -14,6 +14,8 @@
 
 #include "constraints_compiler.hpp"
 
+#include "compiled_constraints_utils.hpp"
+
 #include <boost/geometry/algorithms/covered_by.hpp>
 
 #include <algorithm>
@@ -287,10 +289,15 @@ bool project_boundary(
 
   // Vertices that cannot be projected (outside the centerline, or ambiguous) are dropped; the
   // boundary is still usable as a lateral envelope as long as part of it lands on s
-  std::vector<SlPoint> projected;
-  for (const auto & v : densify(vertices, false)) {
-    if (const auto sl = centerline.project(v)) {
-      projected.push_back(*sl);
+  const auto densified = densify(vertices, false);
+  std::vector<std::optional<SlPoint>> projected;
+  std::size_t projected_count = 0;
+  std::size_t left_count = 0;
+  for (const auto & v : densified) {
+    const auto & sl = projected.emplace_back(centerline.project(v));
+    if (sl) {
+      ++projected_count;
+      left_count += static_cast<std::size_t>(sl->l > 0.0);
     }
   }
 
@@ -298,28 +305,34 @@ bool project_boundary(
   // polyline lies on. The sign is taken by majority: when the centerline is cut at the goal and the
   // lanelet folds back (hairpin, rotary), a few vertices of the return leg project to the other
   // side, and letting those flip the side would make the whole corridor undrivable
-  std::size_t left_count = 0;
-  for (const auto & sl : projected) {
-    left_count += static_cast<std::size_t>(sl.l > 0.0);
-  }
-  const bool forbids_left = 2 * left_count >= projected.size();
+  const bool forbids_left = 2 * left_count >= projected_count;
 
+  // Vertices on the other side belong to the folded-back part of the polyline, not to the boundary
+  // of the corridor around the reference path. The polyline is broken there rather than bridged,
+  // so that no segment joins two parts of the boundary that are not adjacent
   LateralBoundEntry entry;
-  entry.forbidden_side = forbids_left ? Side::LEFT : Side::RIGHT;
-  entry.raw_index = raw_index;
-  for (const auto & sl : projected) {
-    // Vertices on the other side belong to the folded-back part of the polyline, not to the
-    // boundary of the corridor around the reference path
-    if (forbids_left == (sl.l > 0.0)) {
-      entry.polyline.push_back(sl);
+  entry.pieces.emplace_back();
+  std::vector<std::vector<SlPoint>> sl_pieces(1);
+  for (std::size_t i = 0; i < projected.size(); ++i) {
+    const auto & sl = projected[i];
+    if (sl && forbids_left == (sl->l > 0.0)) {
+      entry.pieces.back().push_back({densified[i], *sl});
+      sl_pieces.back().push_back(*sl);
+    } else if (!sl_pieces.back().empty()) {
+      entry.pieces.emplace_back();
+      sl_pieces.emplace_back();
     }
   }
+  if (entry.pieces.back().empty()) {
+    entry.pieces.pop_back();
+  }
+
+  entry.forbidden_side = forbids_left ? Side::LEFT : Side::RIGHT;
+  entry.raw_index = raw_index;
+  entry.polyline = make_lateral_envelope(sl_pieces, entry.forbidden_side);
   if (entry.polyline.size() < 2) {
     return false;
   }
-  std::stable_sort(
-    entry.polyline.begin(), entry.polyline.end(),
-    [](const SlPoint & a, const SlPoint & b) { return a.s < b.s; });
   out.push_back(std::move(entry));
   return true;
 }
