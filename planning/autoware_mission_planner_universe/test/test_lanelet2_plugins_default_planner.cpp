@@ -90,6 +90,7 @@ create_default_planner_parameters()
   param.enable_correct_goal_pose = false;
   param.consider_no_drivable_lanes = false;
   param.check_footprint_inside_lanes = true;
+  param.allow_area = false;
   return param;
 }
 
