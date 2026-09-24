@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -120,7 +121,8 @@ AccelWithCovarianceStamped::ConstSharedPtr make_acceleration(double accel_x)
   return std::make_shared<const AccelWithCovarianceStamped>(acceleration);
 }
 
-TrafficLightGroupArray::ConstSharedPtr make_traffic_light_signal(lanelet::Id id, uint8_t color)
+TrafficLightGroupArray::ConstSharedPtr make_traffic_light_signal(
+  lanelet::Id id, uint8_t color, const std::optional<rclcpp::Time> & stamp = std::nullopt)
 {
   TrafficLightGroup group;
   group.traffic_light_group_id = id;
@@ -134,6 +136,9 @@ TrafficLightGroupArray::ConstSharedPtr make_traffic_light_signal(lanelet::Id id,
 
   auto signals = std::make_shared<TrafficLightGroupArray>();
   signals->traffic_light_groups.push_back(group);
+  if (stamp.has_value()) {
+    signals->stamp = *stamp;
+  }
   return signals;
 }
 
@@ -246,6 +251,7 @@ protected:
     tl.amber_rejection.th_hysteresis = 0.0;
     tl.amber_rejection.reject_if_stop_detected = false;
     tl.crossing_time_limit = 2.75;
+    tl.signal_timeout = 0.5;
   }
 
   void create_and_set_map(lanelet::Id light_id, double stop_line_x)
@@ -255,9 +261,11 @@ protected:
     stop_line_x_ = stop_line_x;
   }
 
-  void set_traffic_light_signal(lanelet::Id id, uint8_t color)
+  void set_traffic_light_signal(
+    lanelet::Id id, uint8_t color, const std::optional<rclcpp::Time> & stamp = std::nullopt)
   {
-    traffic_light_signals_ = make_traffic_light_signal(id, color);
+    // The plugin rejects signals older than signal_timeout, so use a fresh stamp by default.
+    traffic_light_signals_ = make_traffic_light_signal(id, color, stamp.value_or(node_->now()));
   }
 
   InputData make_default_input(double velocity = 5.0)
@@ -541,4 +549,19 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWhenRejectIfStopDet
   expect_not_modified(
     crossing_trajectory, make_default_input(10.0),
     "Input trajectory should not be modified when reject_if_stop_detected is false");
+}
+
+TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWithStaleSignals)
+{
+  const lanelet::Id light_id = 500;
+  const double stop_x = 15.0;
+
+  create_and_set_map(light_id, stop_x);
+  const auto age = rclcpp::Duration::from_seconds(params_.traffic_light_stop.signal_timeout + 1.0);
+  set_traffic_light_signal(light_id, TrafficLightElement::RED, node_->now() - age);
+
+  auto trajectory = create_straight_trajectory(0.0, 16.0, 5.0);
+  expect_not_modified(
+    trajectory, make_default_input(),
+    "Signals older than signal_timeout should skip the traffic light check");
 }

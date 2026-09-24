@@ -495,6 +495,12 @@
               "default": 2.75,
               "minimum": 0.0
             },
+            "signal_timeout": {
+              "type": "number",
+              "description": "Maximum age of the traffic light signals before the check is skipped [s]",
+              "default": 0.36,
+              "minimum": 0.01
+            },
             "amber_rejection": {
               "type": "object",
               "properties": {
@@ -508,6 +514,41 @@
                   "type": "boolean",
                   "description": "Reject if we detect a previous stop attempt from input trajectory",
                   "default": true
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "v2i_handling": {
+              "type": "object",
+              "properties": {
+                "use_v2i_remaining_time": {
+                  "type": "boolean",
+                  "description": "Use V2I signal predictions to decide whether to stop or go",
+                  "default": false
+                },
+                "get_last_time_allowed_to_pass_from_map": {
+                  "type": "boolean",
+                  "description": "Read last_time_allowed_to_pass from the lanelet2 map instead of the parameter below",
+                  "default": false
+                },
+                "last_time_allowed_to_pass": {
+                  "type": "number",
+                  "description": "Extra time margin ego must have before it passes the traffic light [s]",
+                  "default": 4.0,
+                  "minimum": 0.0
+                },
+                "velocity_threshold": {
+                  "type": "number",
+                  "description": "Below this speed, use required_time_to_departure instead of the estimated crossing time [m/s]",
+                  "default": 0.5,
+                  "minimum": 0.0
+                },
+                "required_time_to_departure": {
+                  "type": "number",
+                  "description": "Time ego needs to start from standstill and cross the stop line [s]",
+                  "default": 5.0,
+                  "minimum": 0.0
                 }
               },
               "required": [],
