@@ -54,7 +54,7 @@
       start_time_s: 0.0          # ignore trajectory points before this time [s]
       footprint_margin_m: 0.2     # ego footprint inflation for the overlap check [m]
       search_radius_m: 120.0      # road borders farther than this from ego are ignored [m]
-      shift_step_m: 0.1           # lateral shift resolution [m]
+      shift_step_m: 0.1           # first 3 probes; remaining clearance via bisection [m]
       max_lateral_shift_m: 1.5    # cap on the total lateral offset from the raw position [m]
       propagate_shift: true       # carry the offset over to all subsequent points
     stop_point_fixing:
