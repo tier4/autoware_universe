@@ -224,6 +224,18 @@ safety_planner:
       description: "[m] the lane bounds and road_borders are moved this far towards the inside of the lane"
       validation:
         gt_eq<>: [0.0]
+    road_border_distance_m:
+      type: double
+      default_value: 15.0
+      read_only: true
+      description: "[m] road_borders within this distance of the reference_path become hard boundaries"
+      validation:
+        gt<>: [0.0]
+    close_walkway_gap:
+      type: bool
+      default_value: false
+      read_only: true
+      description: Where the reference_path crosses a walkway lanelet, close the gap between the road_borders on each side of it with a hard boundary
 
   obstacle_stop:
     margin_m:
@@ -319,11 +331,18 @@ safety_planner:
         validation:
           gt_eq<>: [0.0]
     boundary:
-      simplify_tolerance_m:
+      soft_simplify_tolerance_m:
         type: double
         default_value: 0.05
         read_only: true
-        description: "[m] Douglas-Peucker tolerance applied to each Boundary polyline before it is compiled into the projected views; 0 disables"
+        description: "[m] Douglas-Peucker tolerance applied to each soft Boundary polyline before it is compiled into the projected views; 0 disables"
+        validation:
+          gt_eq<>: [0.0]
+      hard_simplify_tolerance_m:
+        type: double
+        default_value: 0.05
+        read_only: true
+        description: "[m] Douglas-Peucker tolerance applied to each hard Boundary polyline before it is compiled into the projected views; 0 disables"
         validation:
           gt_eq<>: [0.0]
     debug:
@@ -447,11 +466,18 @@ safety_planner:
         default_value: 0.3
         read_only: true
     boundary:
-      simplify_tolerance_m:
+      soft_simplify_tolerance_m:
         type: double
         default_value: 0.05
         read_only: true
-        description: "[m] Douglas-Peucker tolerance applied to each Boundary polyline before it is handed to MPPI; 0 disables"
+        description: "[m] Douglas-Peucker tolerance applied to each soft Boundary polyline before it is handed to MPPI; 0 disables"
+        validation:
+          gt_eq<>: [0.0]
+      hard_simplify_tolerance_m:
+        type: double
+        default_value: 0.05
+        read_only: true
+        description: "[m] Douglas-Peucker tolerance applied to each hard Boundary polyline before it is handed to MPPI; 0 disables"
         validation:
           gt_eq<>: [0.0]
     cost:

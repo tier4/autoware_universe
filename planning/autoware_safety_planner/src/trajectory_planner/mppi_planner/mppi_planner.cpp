@@ -225,8 +225,10 @@ void MppiPlanner::on_initialize(
   normal_optimizer_ = std::make_unique<MppiInterface>();
   cautious_optimizer_ = std::make_unique<MppiInterface>();
   constexpr std::size_t kBoundaryCacheSize = 256;
-  boundary_simplifier_ = std::make_unique<BoundarySimplifier>(
-    params.mppi_planner.boundary.simplify_tolerance_m, kBoundaryCacheSize);
+  soft_boundary_simplifier_ = std::make_unique<BoundarySimplifier>(
+    params.mppi_planner.boundary.soft_simplify_tolerance_m, kBoundaryCacheSize);
+  hard_boundary_simplifier_ = std::make_unique<BoundarySimplifier>(
+    params.mppi_planner.boundary.hard_simplify_tolerance_m, kBoundaryCacheSize);
 }
 
 TrajectoryPlannerResult MppiPlanner::plan_trajectories(const TrajectoryPlannerInput & input)
@@ -535,9 +537,11 @@ std::optional<std::string> MppiPlanner::refine(
   tracked_objects.header = reference.header;
   for (const auto & raw : compiled_constraints.raw_constraints) {
     if (const auto * boundary = std::get_if<Boundary>(&raw.payload)) {
+      const bool hard = raw.hardness == Hardness::HARD;
       append_segments(
-        boundary_simplifier_->simplify(boundary->polyline),
-        raw.hardness == Hardness::HARD ? road_borders : drivable_area);
+        (hard ? *hard_boundary_simplifier_ : *soft_boundary_simplifier_)
+          .simplify(boundary->polyline),
+        hard ? road_borders : drivable_area);
     } else if (const auto * keep_out = std::get_if<KeepOut>(&raw.payload)) {
       tracked_objects.objects.push_back(to_tracked_object(*keep_out));
     }

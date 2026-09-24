@@ -78,11 +78,23 @@ struct ScalarBoundEntry
 //! it is decided here, from where the polyline falls relative to the reference path.
 enum class Side : std::uint8_t { LEFT, RIGHT };
 
-//! Projection of a Boundary: the polyline sampled in (s, l), ascending in s. Combining the entries
-//! into the envelopes l_min(s) / l_max(s) is the consumer's job, so one boundary stays one entry.
+//! Projection of a Boundary: its lateral envelope in (s, l), ascending in s (the part of the
+//! boundary nearest to the reference path where several parts overlap in s, see
+//! make_lateral_envelope). Combining the entries into the envelopes l_min(s) / l_max(s) is the
+//! consumer's job, so one boundary stays one entry.
+struct ProjectedVertex
+{
+  Point2d position{};  //!< world coordinates
+  SlPoint sl{};
+};
+
 struct LateralBoundEntry
 {
-  std::vector<SlPoint> polyline;    //!< ascending in s
+  std::vector<SlPoint> polyline;  //!< ascending in s
+  //! The vertices the envelope was built from, in polyline order and in world coordinates, broken
+  //! where a vertex could not be taken; for the consumers that check the footprint as a rigid
+  //! rectangle rather than as a box in (s, l)
+  std::vector<std::vector<ProjectedVertex>> pieces;
   Side forbidden_side{Side::LEFT};  //!< the side of the reference path the boundary closes off
   std::size_t raw_index{0};
 };

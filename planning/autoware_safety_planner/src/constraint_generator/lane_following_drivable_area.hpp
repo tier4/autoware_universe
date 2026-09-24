@@ -22,17 +22,14 @@
 namespace autoware::safety_planner::experimental
 {
 
-//! Builds the drivable area constraints (Boundary) from the map. For every lanelet of the lane
-//! sequence on the route, on each side:
-//! - if there is a parallel lane next to it (oncoming included; road subtype, heading within
-//!   +-45 deg), the **bound of the own lane** becomes the boundary, forbidding a lane change
-//! - otherwise the nearest **road_border** (the physical edge of the road) becomes the boundary, so
-//!   that shoulders and zebras stay inside the drivable area
-//!
-//! Why not extend over the shoulder lanelets (left/right_shoulder_lanelet): the adjacency lookup
-//! assumes the linestring objects are shared, and never fires on a map that duplicates the
-//! linestring per lanelet. For the same reason the presence of a parallel lane is decided
-//! geometrically, from sampled points, rather than through the routing graph.
+//! Builds the drivable area constraints (Boundary) from the map:
+//! - both bounds of every lanelet of the lane sequence on the route become **soft**, so that the
+//!   ego keeps to its own lane unless something forces it out
+//! - every **road_border** (the physical edge of the road) within road_border_distance_m of the
+//!   reference_path becomes **hard**, on either side and regardless of the lanes in between
+//! - optionally (close_walkway_gap), where the reference_path crosses a walkway lanelet, the gap
+//! the
+//!   sidewalk leaves between the road_borders is closed by a **hard** segment on each side
 class LaneFollowingDrivableAreaConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:

@@ -8,7 +8,8 @@
       target_lateral_positions_m: [-1.0, -0.75, -0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5, 0.75, 1.0] # [m] positive to the left
       target_velocity_ratios: [0.0, 0.1, 0.25, 0.5, 0.75, 1.0] # [-] ratios of the speed limit at the ego position
       boundary:
-        simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the boundary polylines; 0 disables
+        soft_simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the soft boundary polylines; 0 disables
+        hard_simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the hard boundary polylines; 0 disables
       debug:
         publish_candidate_markers: false # publishing every sampled candidate costs a few MB per cycle
       weights:

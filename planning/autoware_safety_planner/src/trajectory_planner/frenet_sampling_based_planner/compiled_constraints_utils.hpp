@@ -37,6 +37,42 @@ struct KinematicLimits
 
 KinematicLimits collect_kinematic_limits(const CompiledConstraints & compiled_constraints);
 
+//! The lateral envelope a Boundary imposes, as a polyline ascending in s: at each s, the l of the
+//! boundary nearest to the reference path on the forbidden side, i.e. where a ray cast from the
+//! centerline towards that side first hits the boundary. pieces are runs of consecutive projected
+//! vertices, in polyline order; the polyline is broken where a vertex could not be taken
+std::vector<SlPoint> make_lateral_envelope(
+  const std::vector<std::vector<SlPoint>> & pieces, Side forbidden_side);
+
+//! The lateral bounds around one point of the reference path, in the Cartesian frame there (x
+//! along the tangent, y to the left), binned along x: per bin, the smallest y that a boundary
+//! forbidding its left reaches and the largest y of one forbidding its right. The footprint is
+//! checked here as a rigid rectangle: as a box in (s, l) its corners are off by about
+//! x^2 k / 2 + x sin(theta), over a meter at the front of a bus on the outside of a tight curve
+struct BoundaryProfile
+{
+  Pose2d frame{};
+  double x0{0.0};             //!< [m] start of the first bin
+  double bin{1.0};            //!< [m] bin width
+  std::vector<double> left;   //!< +INF where no boundary reaches
+  std::vector<double> right;  //!< -INF where no boundary reaches
+  double left_min{INF};
+  double right_max{-INF};
+};
+
+//! Bins the pieces of bounds over [x_min, x_max] of frame. Only the segments with a vertex within
+//! [s_min, s_max] are taken, which keeps the other leg of a hairpin out
+BoundaryProfile make_boundary_profile(
+  const std::vector<const LateralBoundEntry *> & bounds, const Pose2d & frame, double x_min,
+  double x_max, double s_min, double s_max, double bin);
+
+//! Whether the footprint with the rear axle at rear_axle (world coordinates), stretched by
+//! longitudinal_margin at both ends, reaches past a boundary of profile. The part of the footprint
+//! outside the bins of profile is not checked
+bool footprint_hits_boundary(
+  const BoundaryProfile & profile, const VehicleInfo & vehicle_info, const Pose2d & rear_axle,
+  double longitudinal_margin);
+
 //! Linear in s, clamped outside the polyline
 double interpolate_boundary_l(const std::vector<SlPoint> & polyline, double s);
 

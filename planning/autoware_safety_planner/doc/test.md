@@ -32,6 +32,9 @@ colcon build --packages-select autoware_safety_planner
 colcon build --packages-select autoware_safety_planner --cmake-args -DSAFETY_PLANNER_CLOSED_LOOP_TEST=ON
 ```
 
+`-DSAFETY_PLANNER_UNIT_TEST_PLOT=ON` additionally makes the unit tests draw their cases with pyplot, to
+`build/autoware_safety_planner/test_results/unit/<test name>.png`.
+
 `SAFETY_PLANNER_CLOSED_LOOP_TEST` is stored in the CMake cache, so pass `-DSAFETY_PLANNER_CLOSED_LOOP_TEST=OFF` explicitly to turn it back off.
 The closed-loop tests always write the plots. Plotting uses `autoware_pyplot` (pybind11 + matplotlib). The test pins the backend to `Agg`
 (with Qt5Agg the process segfaults at exit).
