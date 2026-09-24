@@ -23,6 +23,7 @@
 #include "autoware/tensorrt_e2e/rolling_latency.hpp"
 #include "autoware/tensorrt_e2e/timestamped_buffer.hpp"
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
+#include <autoware_vehicle_msgs/msg/velocity_report.hpp>
 
 #include <autoware/diffusion_planner/utils/arg_reader.hpp>
 #include <autoware/diffusion_planner/utils/planning_factor_utils.hpp>
@@ -227,12 +228,15 @@ private:
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
   using SteeringReport = autoware_vehicle_msgs::msg::SteeringReport;
+  using VelocityReport = autoware_vehicle_msgs::msg::VelocityReport;
   rclcpp::Subscription<Odometry>::SharedPtr sub_odometry_;
   rclcpp::Subscription<AccelWithCovarianceStamped>::SharedPtr sub_acceleration_;
   rclcpp::Subscription<SteeringReport>::SharedPtr sub_steering_;
+  rclcpp::Subscription<VelocityReport>::SharedPtr sub_velocity_;
   TimestampedBuffer<Odometry> odometry_history_;
   TimestampedBuffer<AccelWithCovarianceStamped> acceleration_history_;
   TimestampedBuffer<SteeringReport> steering_history_;
+  TimestampedBuffer<VelocityReport> velocity_history_;
   int64_t ego_history_keep_ns_{5000000000LL};
   PoseContinuityLimits pose_limits_;
   uint64_t localization_generation_{0};

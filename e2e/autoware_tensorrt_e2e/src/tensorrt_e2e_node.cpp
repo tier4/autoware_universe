@@ -129,6 +129,7 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
             odometry_history_.samples.clear();
             acceleration_history_.samples.clear();
             steering_history_.samples.clear();
+            velocity_history_.samples.clear();
             pipeline_latency_.clear();
             processing_latency_.clear();
             RCLCPP_WARN(get_logger(),
@@ -140,6 +141,7 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
                 ego_history_keep_ns_)) {
           acceleration_history_.samples.clear();
           steering_history_.samples.clear();
+          velocity_history_.samples.clear();
         }
         if (waiting_for_ego_)
           run_once();
@@ -162,6 +164,13 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
                                    ego_history_keep_ns_);
           if (waiting_for_ego_)
             run_once();
+        });
+    // The converter's fallback source for a zeroed EKF twist (below).
+    sub_velocity_ = create_subscription<VelocityReport>(
+        "~/input/velocity", rclcpp::QoS(100),
+        [this](VelocityReport::ConstSharedPtr msg) {
+          velocity_history_.insert(rclcpp::Time(msg->header.stamp).nanoseconds(),
+                                   *msg, ego_history_keep_ns_);
         });
   }
   if (engine_) {
@@ -535,6 +544,25 @@ std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
   }
   if (const auto *steer = steering_history_.at_or_before(target, 200000000LL)) {
     ego.steering_angle = steer->steering_tire_angle;
+  }
+  if (recorded_ego_dynamics_) {
+    // The twist exactly as the converter (e2e-data-producer parse_t4) built
+    // the training rows: the LATEST kinematic_state at or before the
+    // reference time -- not an interpolation -- and where its twist is
+    // exactly zero (the EKF stop filter), the latest VelocityReport at or
+    // before it. That is how creep below the stop filter reached the data.
+    const auto *odom = odometry_history_.at_or_before(target, 200000000LL);
+    if (!odom)
+      return std::nullopt;
+    auto twist = odom->twist.twist;
+    const auto *report = velocity_history_.at_or_before(target, ego_history_keep_ns_);
+    if (report && std::abs(twist.linear.x) < 1e-6 && std::abs(twist.linear.y) < 1e-6) {
+      twist.linear.x = report->longitudinal_velocity;
+      twist.linear.y = report->lateral_velocity;
+    }
+    if (report && std::abs(twist.angular.z) < 1e-6)
+      twist.angular.z = report->heading_rate;
+    ego.odometry.twist.twist = twist;
   }
   if (find_spec(engine_->input_specs(), "ego_current_state") &&
       (!ego.acceleration || (recorded_ego_dynamics_ && !ego.steering_angle)))
