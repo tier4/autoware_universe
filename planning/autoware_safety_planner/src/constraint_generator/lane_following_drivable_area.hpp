@@ -19,17 +19,9 @@
 
 #include <string>
 
-namespace autoware::safety_planner::experimental
+namespace autoware::safety_planner
 {
 
-//! Builds the drivable area constraints (Boundary) from the map:
-//! - both bounds of every lanelet of the lane sequence on the route become **soft**, so that the
-//!   ego keeps to its own lane unless something forces it out
-//! - every **road_border** (the physical edge of the road) within road_border_distance_m of the
-//!   reference_path becomes **hard**, on either side and regardless of the lanes in between
-//! - optionally (close_walkway_gap), where the reference_path crosses a walkway lanelet, the gap
-//! the
-//!   sidewalk leaves between the road_borders is closed by a **hard** segment on each side
 class LaneFollowingDrivableAreaConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:
@@ -37,6 +29,6 @@ public:
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 };
 
-}  // namespace autoware::safety_planner::experimental
+}  // namespace autoware::safety_planner
 
 #endif  // CONSTRAINT_GENERATOR__LANE_FOLLOWING_DRIVABLE_AREA_HPP_

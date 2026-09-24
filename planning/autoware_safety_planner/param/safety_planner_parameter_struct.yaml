@@ -135,7 +135,7 @@ safety_planner:
       - autoware::safety_planner::experimental::VehicleKinematicsConstraintGenerator
       - autoware::safety_planner::ExternalVelocityLimitConstraintGenerator
       - autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator
-      - autoware::safety_planner::experimental::LaneFollowingDrivableAreaConstraintGenerator
+      - autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator
       - autoware::safety_planner::experimental::ObstacleStopConstraintGenerator
     read_only: true
     description: fully qualified class names of the constraint generator plugins to load

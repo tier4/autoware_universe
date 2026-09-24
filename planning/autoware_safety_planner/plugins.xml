@@ -12,7 +12,7 @@
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Emits the speed limit of the map as one zone per lanelet of the lane sequence on the route</description>
     </class>
-    <class type="autoware::safety_planner::experimental::LaneFollowingDrivableAreaConstraintGenerator"
+    <class type="autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Builds the drivable area from the lane bounds of the lanelets on the route</description>
     </class>
