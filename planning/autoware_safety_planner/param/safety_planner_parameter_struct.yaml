@@ -290,6 +290,23 @@ safety_planner:
       default_value: [-2.0, -1.0, 0.0, 1.0, 2.0]
       read_only: true
       description: "[m] the terminal lateral positions to sample, measured from the reference_path and positive to the left"
+    apex_lateral_offsets_m:
+      type: double_array
+      default_value: []
+      read_only: true
+      description: "[m] how far towards the inside of a curve the apex-aligned paths are at its apex: each reaches that offset at the curvature peak, arriving with zero slope, and comes back to the reference_path over each of apex_return_lengths_m; empty disables them"
+    apex_return_lengths_m:
+      type: double_array
+      default_value: []
+      read_only: true
+      description: "[m] the arc lengths over which an apex-aligned path comes back to the reference_path after the apex"
+    apex_min_curvature:
+      type: double
+      default_value: 0.05
+      read_only: true
+      description: "[1/m] a local peak of |curvature| of the reference_path at or above this is an apex; searched within the longest of target_lengths_m ahead of the ego"
+      validation:
+        gt<>: [0.0]
     target_velocity_ratios:
       type: double_array
       default_value: [0.0, 0.25, 0.5, 0.75, 1.0]
@@ -320,7 +337,7 @@ safety_planner:
         type: double
         default_value: 100.0
         read_only: true
-        description: "[1/m^2] weight on the squared violation of a soft Boundary"
+        description: "[1/m^3] weight on the squared violation of a soft Boundary, integrated along the arc length of the path"
         validation:
           gt_eq<>: [0.0]
       previous_lateral:
@@ -328,6 +345,13 @@ safety_planner:
         default_value: 1.0
         read_only: true
         description: "[1/(m^2 s)] weight on the squared lateral deviation from the output of the previous cycle, measured on the reference_path of the current one; 0 disables the continuity cost"
+        validation:
+          gt_eq<>: [0.0]
+      path_infeasible:
+        type: double
+        default_value: 0.0
+        read_only: true
+        description: "[-] cost added to a candidate whose path, followed to its end beyond the time horizon, puts the footprint on a hard boundary or needs more than the steer limit; 0 disables it"
         validation:
           gt_eq<>: [0.0]
     boundary:

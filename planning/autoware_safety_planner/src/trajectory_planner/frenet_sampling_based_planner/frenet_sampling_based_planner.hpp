@@ -161,6 +161,11 @@ private:
     std::vector<double> yaw;     //!< [rad] heading in world coordinates
     std::vector<double> kappa;   //!< [1/m]
     std::vector<double> metric;  //!< [-] d sigma / d s, path arc length per reference arc length
+    //! Whether the path, followed to its end, stays clear of the hard boundaries and within the
+    //! steer limit; the candidates check only the part within the time horizon
+    bool feasible_to_end{true};
+    //! Cost of the soft boundaries along the whole path, the same for every velocity profile
+    double soft_bound_cost{0.0};
     std::string tag;
   };
 
@@ -221,10 +226,11 @@ private:
     const InitialState & initial_state) const;
 
   //! Samples the quintic l(s) for one terminal state (arc length length, lateral position
-  //! l_target)
+  //! l_target). With a positive return_length it comes back to the centerline over that arc length
+  //! instead of holding l_target
   PathCandidate sample_path(
     const PlannerContext & context, const ReferenceGrid & grid, const InitialState & initial_state,
-    const double length, const double l_target) const;
+    const double length, const double l_target, const double return_length = 0.0) const;
 
   std::vector<PathCandidate> generate_paths(
     const PlannerContext & context, const ReferenceGrid & grid,

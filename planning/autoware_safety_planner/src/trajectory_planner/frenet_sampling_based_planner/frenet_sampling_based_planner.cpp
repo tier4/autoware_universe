@@ -461,7 +461,47 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
 
   phase.reset();
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>("generate_paths", *time_keeper_);
-  const auto paths = generate_paths(context, grid, initial_state);
+  auto paths = generate_paths(context, grid, initial_state);
+  // A path is followed to its end once here, shared by all the candidates built on it
+  {
+    const auto & p = params_.frenet_sampling_based_planner;
+    const double wheel_base_m = context.vehicle_info.wheel_base_m;
+    for (auto & path : paths) {
+      for (std::size_t i = 0; i < path.s.size(); ++i) {
+        const auto cell = tables.cell(path.s[i]);
+        // A soft boundary, the own lane bound towards a parallel lane, costs the squared amount by
+        // which it is exceeded, integrated along the path. Not over time within each candidate:
+        // there a profile that stops short of where the path leaves the lane pays less than one
+        // that drives on, and inside a corner that already overlaps the lane bound the cheapest
+        // candidate stands still. Where the boundary does not reach, extreme_l is the infinity
+        // the table is filled with and the violation comes out negative
+        const auto box = footprint_sl_box(context.vehicle_info, path.s[i], path.l[i]);
+        for (std::size_t b = 0; b < compiled_constraints.lateral_bounds.size(); ++b) {
+          if (tables.lateral_is_hard[b]) {
+            continue;
+          }
+          const double extreme_l = tables.lateral_extreme_l[b][cell];
+          const bool forbids_left =
+            compiled_constraints.lateral_bounds[b].forbidden_side == Side::LEFT;
+          const double violation = forbids_left ? box.l_max - extreme_l : extreme_l - box.l_min;
+          if (violation > 0.0) {
+            path.soft_bound_cost +=
+              p.weights.soft_bound * violation * violation * p.path_resolution_m;
+          }
+        }
+        // Without this the choice within the time horizon heads for the outside of a corner that
+        // is only cleared by cutting inside it, and stalls there. A penalty and not a rejection:
+        // far from such a corner every path still runs into it
+        if (p.weights.path_infeasible > 0.0 && path.feasible_to_end) {
+          const Pose2d rear_axle{grid.position(path.s[i], path.l[i]), path.yaw[i]};
+          path.feasible_to_end =
+            std::abs(std::atan(path.kappa[i] * wheel_base_m)) <= tables.bounds.steer_angle &&
+            !footprint_hits_boundary(
+              tables.boundary_profiles[cell], context.vehicle_info, rear_axle, 0.0);
+        }
+      }
+    }
+  }
 
   phase.reset();
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
@@ -584,7 +624,7 @@ FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_ini
 
 FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_path(
   const PlannerContext & context, const ReferenceGrid & grid, const InitialState & initial_state,
-  const double length, const double l_target) const
+  const double length, const double l_target, const double return_length) const
 {
   using autoware::frenet_planner::Polynomial;
 
@@ -600,15 +640,32 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
   const auto & target_lengths = params_.frenet_sampling_based_planner.target_lengths_m;
   const double L = std::max(
     *std::min_element(target_lengths.begin(), target_lengths.end()), std::min(length, s_max - s0));
+  // The way back to the centerline is also cut at the end of the path
+  const bool returns = return_length > 0.0;
+  const double L_back = std::max(res, std::min(return_length, s_max - s0 - L));
+  // At the turning point of a way out and back, l'' takes that of a cosine bump of the same
+  // widths. With l'' = 0 there the path follows the reference at an offset, which on the inside
+  // of a curve is tighter than the reference itself; the bump is what eases the curvature
+  const double d2l_turn = returns ? -l_target * M_PI * M_PI / (L * L + L_back * L_back) : 0.0;
   const Polynomial lat(
-    initial_state.l, initial_state.dl_ds, initial_state.d2l_ds2, l_target, 0.0, 0.0, L);
+    initial_state.l, initial_state.dl_ds, initial_state.d2l_ds2, l_target, 0.0, d2l_turn, L);
+  const Polynomial back(l_target, 0.0, d2l_turn, 0.0, 0.0, 0.0, L_back);
 
   PathCandidate path;
   for (double s = s0; s <= s_max + 1e-9; s += res) {
     const double u = s - s0;
-    const double l = u <= L ? lat.position(u) : l_target;
-    const double dl_ds = u <= L ? lat.velocity(u) : 0.0;
-    const double d2l_ds2 = u <= L ? lat.acceleration(u) : 0.0;
+    double l = returns ? 0.0 : l_target;
+    double dl_ds = 0.0;
+    double d2l_ds2 = 0.0;
+    if (u <= L) {
+      l = lat.position(u);
+      dl_ds = lat.velocity(u);
+      d2l_ds2 = lat.acceleration(u);
+    } else if (returns && u <= L + L_back) {
+      l = back.position(u - L);
+      dl_ds = back.velocity(u - L);
+      d2l_ds2 = back.acceleration(u - L);
+    }
     const double s_ref = std::clamp(s, 0.0, s_max);
     const double k_ref = grid.curvature(s_ref);
     path.s.push_back(s);
@@ -630,6 +687,9 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
   }
   std::stringstream ss;
   ss << "L=" << L << " l=" << l_target;
+  if (returns) {
+    ss << " back=" << L_back;
+  }
   path.tag = ss.str();
   return path;
 }
@@ -685,6 +745,32 @@ std::vector<FrenetSamplingBasedPlanner::PathCandidate> FrenetSamplingBasedPlanne
   for (const double length : p.target_lengths_m) {
     for (const double l_target : lateral_targets) {
       paths.push_back(sample_path(context, grid, initial_state, length, l_target));
+    }
+  }
+  // Apex-aligned: on a corner too tight for the footprint to follow the reference_path, the way
+  // through cuts inside it and comes back, and it has to be timed on the corner. So the offset is
+  // reached at the curvature peak, whatever the distance from the ego; sampled on the ego like the
+  // others, such a path lines up with the corner only from a few positions
+  if (!p.apex_lateral_offsets_m.empty()) {
+    const double res = p.path_resolution_m;
+    const double s_end = std::min(
+      context.reference_path.length(),
+      initial_state.s + *std::max_element(p.target_lengths_m.begin(), p.target_lengths_m.end()));
+    for (double s = initial_state.s + res; s + res <= s_end; s += res) {
+      const double k = grid.curvature(s);
+      if (
+        std::abs(k) < p.apex_min_curvature || std::abs(k) < std::abs(grid.curvature(s - res)) ||
+        std::abs(k) < std::abs(grid.curvature(s + res))) {
+        continue;
+      }
+      // The inside of the curve is towards its center: left (positive l) for a left turn
+      const double inside = k > 0.0 ? 1.0 : -1.0;
+      for (const double offset : p.apex_lateral_offsets_m) {
+        for (const double return_length : p.apex_return_lengths_m) {
+          paths.push_back(sample_path(
+            context, grid, initial_state, s - initial_state.s, inside * offset, return_length));
+        }
+      }
     }
   }
   return paths;
@@ -922,21 +1008,6 @@ void FrenetSamplingBasedPlanner::evaluate(
           0.5 * std::abs(v) * dt)) {
       return reject("lateral_bound");
     }
-    double soft_bound_cost = 0.0;
-    for (std::size_t b = 0; b < compiled_constraints.lateral_bounds.size(); ++b) {
-      if (tables.lateral_is_hard[b]) {
-        continue;
-      }
-      const double extreme_l = tables.lateral_extreme_l[b][cell];
-      const bool forbids_left = compiled_constraints.lateral_bounds[b].forbidden_side == Side::LEFT;
-      // A soft boundary, the own lane bound towards a parallel lane, costs the squared amount by
-      // which it is exceeded. Where the boundary does not reach, extreme_l is the infinity the
-      // table is filled with and the violation comes out negative
-      const double violation = forbids_left ? box.l_max - extreme_l : extreme_l - box.l_min;
-      if (violation > 0.0) {
-        soft_bound_cost += p.weights.soft_bound * violation * violation;
-      }
-    }
     for (const auto & occupancy : compiled_constraints.occupancies) {
       if (violates_occupancy(occupancy, box, t0, t1)) {
         return reject("occupancy");
@@ -965,13 +1036,16 @@ void FrenetSamplingBasedPlanner::evaluate(
     }
     const double dv = v_max - v;
     cost += p.weights.lateral * (l - l_ref) * (l - l_ref) * dt;
-    cost += soft_bound_cost * dt;
     cost += p.weights.velocity * dv * dv * dt;
     cost += p.weights.curvature * kappa * kappa * dt;
     if (k + 1 < candidate.s.size()) {
       const double lon_jerk = (candidate.a[k + 1] - a) / dt;
       cost += p.weights.lon_jerk * lon_jerk * lon_jerk * dt;
     }
+  }
+  cost += candidate.path->soft_bound_cost;
+  if (!candidate.path->feasible_to_end) {
+    cost += p.weights.path_infeasible;
   }
   candidate.cost = cost;
 }

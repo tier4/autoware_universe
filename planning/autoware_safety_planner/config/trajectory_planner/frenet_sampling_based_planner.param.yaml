@@ -6,6 +6,9 @@
       target_lengths_m: [10.0, 20.0, 40.0] # [m] arc lengths over which the lateral motion completes
       target_durations_s: [1.0, 2.0, 4.0, 6.0, 8.0] # [s] terminal times of the velocity profile
       target_lateral_positions_m: [-1.0, -0.75, -0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5, 0.75, 1.0] # [m] positive to the left
+      apex_lateral_offsets_m: [0.5, 1.0, 1.5, 2.0] # [m] towards the inside of a curve at its apex, for a corner too tight to follow the reference_path
+      apex_return_lengths_m: [10.0, 15.0, 20.0] # [m] arc lengths over which an apex-aligned path returns to the reference_path
+      apex_min_curvature: 0.05 # [1/m] a local peak of |curvature| at or above this is an apex
       target_velocity_ratios: [0.0, 0.1, 0.25, 0.5, 0.75, 1.0] # [-] ratios of the speed limit at the ego position
       boundary:
         soft_simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the soft boundary polylines; 0 disables
@@ -19,3 +22,4 @@
         curvature: 10.0
         soft_bound: 100.0
         previous_lateral: 0.0
+        path_infeasible: 10000.0 # outweighs the rest of the cost, so a path still feasible past the time horizon wins
