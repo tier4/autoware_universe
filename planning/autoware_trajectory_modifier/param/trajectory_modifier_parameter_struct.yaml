@@ -460,6 +460,13 @@ trajectory_modifier_params:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
+    signal_timeout:
+      type: double
+      default_value: 0.36
+      description: Maximum age of the traffic light signals before the check is skipped [s]
+      validation:
+        bounds<>: [0.01, 60.0]
+      read_only: false
     amber_rejection:
       th_hysteresis:
         type: double
@@ -472,6 +479,38 @@ trajectory_modifier_params:
         type: bool
         default_value: true
         description: Reject if we detect a previous stop attempt from input trajectory
+        read_only: false
+    v2i_handling:
+      use_v2i_remaining_time:
+        type: bool
+        default_value: false
+        description: Use V2I information to decide STOP/GO
+        read_only: false
+      get_last_time_allowed_to_pass_from_map:
+        type: bool
+        default_value: false
+        description: Receive last_time_allowed_to_pass information from lanelet2 map
+        read_only: false
+      last_time_allowed_to_pass:
+        type: double
+        default_value: 4.0
+        description: Last allowed remaining time for ego to pass the traffic light
+        validation:
+          bounds<>: [0.0, 30.0]
+        read_only: false
+      velocity_threshold:
+        type: double
+        default_value: 0.5
+        description: Change the decision logic whether the current velocity is faster or not
+        validation:
+          bounds<>: [0.0, 30.0]
+        read_only: false
+      required_time_to_departure:
+        type: double
+        default_value: 5.0
+        description: Prevent low speed pass
+        validation:
+          bounds<>: [0.0, 60.0]
         read_only: false
 
   surround_obstacle_stop:
