@@ -28,8 +28,7 @@
 namespace autoware::ptv3
 {
 
-PTv3Node::PTv3Node(const rclcpp::NodeOptions & options)
-: Node("ptv3", options), tf_buffer_(this->get_clock())
+PTv3Node::PTv3Node(const rclcpp::NodeOptions & options) : Node("ptv3", options)
 {
   auto descriptor = rcl_interfaces::msg::ParameterDescriptor{}.set__read_only(true);
 
@@ -57,6 +56,10 @@ PTv3Node::PTv3Node(const rclcpp::NodeOptions & options)
     this->declare_parameter<std::int64_t>("densification_num_past_frames", descriptor);
   densification_world_frame_id_ = densification_world_frame_id;
   densification_num_past_frames_ = densification_num_past_frames;
+  if (densification_num_past_frames_ > 0) {
+    tf_buffer_.emplace(this->get_clock());
+    tf_listener_.emplace(*tf_buffer_);
+  }
 
   // Encoder parameters
   const std::string encoder_onnx_path =
@@ -64,12 +67,10 @@ PTv3Node::PTv3Node(const rclcpp::NodeOptions & options)
   const auto encoder_workspace_size = declare_workspace_size("encoder.workspace_size");
   const std::string encoder_engine_path =
     this->declare_parameter<std::string>("encoder.engine_path", descriptor);
-  const auto voxels_num_min =
-    this->declare_parameter<std::vector<std::int64_t>>("encoder.voxels_num_min", descriptor);
-  const auto voxels_num_opt =
-    this->declare_parameter<std::vector<std::int64_t>>("encoder.voxels_num_opt", descriptor);
-  const auto voxels_num_max =
-    this->declare_parameter<std::vector<std::int64_t>>("encoder.voxels_num_max", descriptor);
+  const auto voxels_num =
+    this->declare_parameter<std::vector<std::int64_t>>("encoder.voxels_num", descriptor);
+  const auto pooled_voxels_num_max =
+    this->declare_parameter<std::vector<std::int64_t>>("encoder.pooled_voxels_num_max", descriptor);
   const auto point_cloud_range = to_float_vector(
     this->declare_parameter<std::vector<double>>("encoder.point_cloud_range", descriptor));
   const auto voxel_size =
@@ -209,12 +210,12 @@ PTv3Node::PTv3Node(const rclcpp::NodeOptions & options)
 
   PTv3Config config(
     use_seg3d_head, use_det3d_head, plugins_path, cloud_capacity, densification_world_frame_id,
-    densification_num_past_frames, voxels_num_min, voxels_num_opt, voxels_num_max,
-    point_cloud_range, voxel_size, max_points_per_voxel, segmentation_class_names,
-    segmentation_class_mapping, serialization_orders, pooling_strides, enc_channels, palette,
-    filter_classes, filter_output_format, filter_apply_to_segmentation, source_reconstruction,
-    dec_depths, detection_class_names_, bbox_voxel_size, distance_bin_upper_limits,
-    detection_score_thresholds, yaw_norm_thresholds, has_twist_, num_proposals, post_center_range);
+    densification_num_past_frames, voxels_num, pooled_voxels_num_max, point_cloud_range, voxel_size,
+    max_points_per_voxel, segmentation_class_names, segmentation_class_mapping,
+    serialization_orders, pooling_strides, enc_channels, palette, filter_classes,
+    filter_output_format, filter_apply_to_segmentation, source_reconstruction, dec_depths,
+    detection_class_names_, bbox_voxel_size, distance_bin_upper_limits, detection_score_thresholds,
+    yaw_norm_thresholds, has_twist_, num_proposals, post_center_range);
 
   const auto encoder_trt_config = tensorrt_common::TrtCommonConfig(
     encoder_onnx_path, trt_precision, encoder_engine_path, encoder_workspace_size);
@@ -234,16 +235,20 @@ PTv3Node::PTv3Node(const rclcpp::NodeOptions & options)
     visualization_pointcloud_pub_ =
       std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
         *this, "~/output/pointcloud/visualization");
-    filtered_pointcloud_pub_ =
-      std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
+    // The filtered cloud only removes the configured classes, so without them the topic would
+    // repeat the input; it is advertised only when filtering is configured.
+    if (!filter_classes.empty()) {
+      filtered_pointcloud_pub_ = std::make_unique<
+        cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
         *this, "~/output/pointcloud/filtered");
+      model_ptr_->setPublishFilteredPointcloud(
+        std::bind(&PTv3Node::publishFilteredPointcloud, this, std::placeholders::_1));
+    }
 
     model_ptr_->setPublishSegmentedPointcloud(
       std::bind(&PTv3Node::publishSegmentedPointcloud, this, std::placeholders::_1));
     model_ptr_->setPublishVisualizationPointcloud(
       std::bind(&PTv3Node::publishVisualizationPointcloud, this, std::placeholders::_1));
-    model_ptr_->setPublishFilteredPointcloud(
-      std::bind(&PTv3Node::publishFilteredPointcloud, this, std::placeholders::_1));
   }
 
   if (use_det3d_head) {
@@ -298,11 +303,11 @@ std::optional<Eigen::Affine3f> PTv3Node::lookupWorldToLidar(
   const std_msgs::msg::Header & header) const
 {
   // Without past frames every cached sweep is the current frame itself and the pose cancels out.
-  if (densification_num_past_frames_ == 0) {
+  if (!tf_buffer_) {
     return Eigen::Affine3f::Identity();
   }
   try {
-    const auto transform = tf_buffer_.lookupTransform(
+    const auto transform = tf_buffer_->lookupTransform(
       header.frame_id, densification_world_frame_id_, header.stamp,
       rclcpp::Duration::from_seconds(0.5));
     Eigen::Affine3f affine;

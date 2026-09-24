@@ -6,7 +6,6 @@
           "car",
           "truck",
           "bus",
-          "train",
           "motorcycle",
           "bicycle",
           "pedestrian",
@@ -16,7 +15,6 @@
           "debris",
           "driveable_flat",
           "non_driveable_flat",
-          "curb",
           "vegetation",
           "manmade",
           "vertical_thin",
@@ -26,17 +24,15 @@
         0, 150, 245,    # Blue - car
         160, 32, 240,   # Purple - truck
         255, 255, 0,    # Yellow - bus
-        139, 69, 19,    # Saddle Brown - train
         255, 105, 180,  # Hot Pink - motorcycle
         255, 192, 203,  # Pink - bicycle
         255, 0, 0,      # Red - pedestrian
         173, 255, 47,   # Green Yellow - animal
         255, 127, 0,    # Orange - barrier
         255, 240, 150,  # Light Yellow - traffic_cone
-        210, 180, 140,  # Tan - debris
-        255, 0, 255,    # Magenta - driveable_flat
+        255, 0, 255,    # Magenta - debris
+        139, 137, 137,  # Grey - driveable_flat
         139, 137, 137,  # Grey - non_driveable_flat
-        0, 0, 128,      # Navy - curb
         0, 175, 0,      # Green - vegetation
         230, 230, 250,  # Lavender - manmade
         153, 50, 204,   # Dark Orchid - vertical_thin

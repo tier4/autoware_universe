@@ -116,9 +116,7 @@ The filtered output cloud format is controlled by `filter.output_format`. When i
 empty string, the filtered output preserves the same format as the input cloud.
 
 Densification requires the transform between `densification_world_frame_id` and the lidar frame;
-frames are skipped while the transform is unavailable. The filtered output cloud is rebuilt from
-the current frame's original points and therefore requires `source_reconstruction` to be
-`partial` or `full`.
+frames are skipped while the transform is unavailable.
 
 ## Trained Models
 
@@ -128,17 +126,13 @@ The model was trained on the T4Dataset using approximately 4,000 frames and is a
 
 ### `Fail to create host memory`
 
-This error may occur when TensorRT cannot satisfy the memory requirements for building an engine. A `workspace_size` that is too small can prevent TensorRT from using the tactics needed for the configured input profiles. Conversely, a `workspace_size` that is too large can allow memory usage to exceed the GPU's available VRAM. Large `encoder.voxels_num_max` values also increase the size of TensorRT profiles and intermediate buffers.
+This error may occur when TensorRT cannot satisfy the memory requirements for building an engine. A `workspace_size` that is too small can prevent TensorRT from using the tactics needed for the configured input profiles. Conversely, a `workspace_size` that is too large can allow memory usage to exceed the GPU's available VRAM. A large maximum value in `encoder.voxels_num` also increases the size of TensorRT profiles and intermediate buffers.
 
-Adjust the `workspace_size` values and `encoder.voxels_num_max` in `config/ptv3.param.yaml` to fit the available GPU memory. Finding a suitable balance between these parameters can resolve the issue.
+Adjust the `workspace_size` values and the maximum `encoder.voxels_num` value in `config/ptv3.param.yaml` to fit the available GPU memory. Finding a suitable balance between these parameters can resolve the issue.
 
-### GPU memory and the per-stage profiles `encoder.voxels_num_{min,opt,max}`
+### GPU memory and `encoder.pooled_voxels_num_max`
 
-TensorRT sizes each engine's activation memory for the profile maximum, not for the actual frame. If every pooled encoder level were bounded by the input maximum, the deeper levels would be over-provisioned many times over, since stride-2 pooling merges at least half of a lidar sweep's voxels at every level in practice while the channel width doubles per level; the deepest levels would then dominate the encoder's and the segmentation head's memory.
-
-`encoder.voxels_num_min`, `encoder.voxels_num_opt` and `encoder.voxels_num_max` give the TensorRT profile of every encoder stage (the input level first, then one entry per `encoder.pooling_strides` entry). `max` sizes the stage's profiles and buffers and therefore the GPU memory; choose it from measured per-stage peaks on representative data with a safety margin. `opt` is the shape TensorRT tunes kernels for; set it to the typical or realistic worst-case count. `min` can stay 1 everywhere, since the node rejects empty frames itself.
-
-If a frame's level would exceed its `max`, the node truncates the input instead of failing: voxels are processed in serialization (space-filling curve) order, so the voxels with the largest codes are dropped until every level fits, and a warning reports the per-level counts. This keeps the tensors consistent but removes a spatial region at the end of the curve, so `max` should be set high enough that truncation stays exceptional.
+`encoder.pooled_voxels_num_max` bounds each pooled encoder level's TensorRT profile and buffers (one entry per `encoder.pooling_strides` entry). Set it from measured per-stage peaks with a margin. A frame whose level would exceed its bound is truncated: the voxels with the largest serialization codes are dropped until every level fits, and a warning is logged.
 
 ## References/External links
 

@@ -20,9 +20,8 @@
 #include <autoware/point_types/memory.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <algorithm>
 #include <memory>
-#include <stdexcept>
-#include <string>
 #include <type_traits>
 
 namespace autoware::ptv3
@@ -62,15 +61,34 @@ SweepAggregator::SweepAggregator(const PTv3Config & config, cudaStream_t stream)
 
   points_d_ = autoware::cuda_utils::make_unique<float[]>(
     config_.densified_cloud_capacity_ * config_.num_point_feature_size_);
-  affine_past2current_d_ =
-    autoware::cuda_utils::make_unique<float[]>(Eigen::Affine3f::MatrixType::SizeAtCompileTime);
 }
 
-void SweepAggregator::enqueuePointCloud(
+bool SweepAggregator::enqueuePointCloud(
   const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr,
   const Eigen::Affine3f & affine_world2current)
 {
-  densification_ptr_->enqueuePointCloud(msg_ptr, affine_world2current);
+  const auto format = detectCloudFormat(*msg_ptr);
+  if (format == CloudFormat::UNKNOWN) {
+    RCLCPP_WARN_STREAM(
+      rclcpp::get_logger("ptv3"),
+      "Skipping a frame with an unsupported point cloud type. Expected one of: XYZIRCAEDT (10 "
+      "fields), XYZIRADRT (9 fields), XYZIRC (6 fields), or XYZI (4 fields).");
+    return false;
+  }
+
+  // The segmentation reconstruction buffers and output messages are sized per frame, so every
+  // frame must fit the single-frame capacity, not just the densified one.
+  const auto frame_num_points = static_cast<std::size_t>(msg_ptr->height) * msg_ptr->width;
+  if (frame_num_points > static_cast<std::size_t>(config_.cloud_capacity_)) {
+    RCLCPP_WARN_STREAM(
+      rclcpp::get_logger("ptv3"),
+      "Skipping a frame of " << frame_num_points << " points; it exceeds the cloud capacity ("
+                             << config_.cloud_capacity_ << "). Increase cloud_capacity.");
+    return false;
+  }
+
+  densification_ptr_->enqueuePointCloud(msg_ptr, affine_world2current, format);
+  return true;
 }
 
 DensifiedCloud SweepAggregator::aggregate()
@@ -79,66 +97,64 @@ DensifiedCloud SweepAggregator::aggregate()
   densified.points = points_d_.get();
 
   std::size_t point_counter{0};
+  std::size_t frame_index{0};
 
   for (auto cache_iter = densification_ptr_->getPointCloudCacheIter();
-       !densification_ptr_->isCacheEnd(cache_iter); cache_iter++) {
+       !densification_ptr_->isCacheEnd(cache_iter); cache_iter++, frame_index++) {
     const auto & msg_ptr = cache_iter->input_pointcloud_msg_ptr;
-    const auto frame_num_points = static_cast<std::size_t>(msg_ptr->height * msg_ptr->width);
-    const bool is_current_frame = densification_ptr_->getIdx(cache_iter) == 0;
+    const auto frame_num_points = static_cast<std::size_t>(msg_ptr->height) * msg_ptr->width;
+    const bool is_current_frame = frame_index == 0;
 
-    // The segmentation reconstruction buffers and output messages are sized per frame, so the
-    // current frame must fit the single-frame capacity, not just the densified one.
-    if (is_current_frame && frame_num_points > static_cast<std::size_t>(config_.cloud_capacity_)) {
-      throw std::runtime_error(
-        "The current frame (" + std::to_string(frame_num_points) +
-        " points) exceeds the cloud capacity (" + std::to_string(config_.cloud_capacity_) +
-        "). Increase cloud_capacity.");
-    }
+    // Frames are validated against the single-frame capacity when they are cached, so only the
+    // accumulated sweeps can run out of room here.
     if (
       point_counter + frame_num_points >
       static_cast<std::size_t>(config_.densified_cloud_capacity_)) {
-      if (is_current_frame) {
-        throw std::runtime_error(
-          "The current frame (" + std::to_string(frame_num_points) +
-          " points) exceeds the densified cloud capacity (" +
-          std::to_string(config_.densified_cloud_capacity_) + "). Increase cloud_capacity.");
-      }
       RCLCPP_WARN_STREAM(
         rclcpp::get_logger("ptv3"), "Exceeding densified cloud capacity. Used "
-                                      << densification_ptr_->getIdx(cache_iter) << " out of "
+                                      << frame_index << " out of "
                                       << densification_ptr_->getCacheSize() << " frame(s)");
       break;
-    }
-
-    const auto format = detectCloudFormat(*msg_ptr);
-    if (format == CloudFormat::UNKNOWN) {
-      throw std::runtime_error(
-        "Unsupported point cloud type. Expected one of: XYZIRCAEDT (10 fields), "
-        "XYZIRADRT (9 fields), XYZIRC (6 fields), or XYZI (4 fields).");
     }
 
     if (is_current_frame) {
       densified.num_current_points = frame_num_points;
       densified.current_msg = msg_ptr;
-      densified.current_format = format;
+      densified.current_format = cache_iter->format;
     }
 
-    Eigen::Affine3f affine_past2current =
-      densification_ptr_->getAffineWorldToCurrent() * cache_iter->affine_past2world;
+    // The current frame already sits in the current lidar frame. Multiplying its pose by its own
+    // inverse only adds float error, which would move the points the outputs publish.
+    const Eigen::Affine3f affine_past2current =
+      is_current_frame
+        ? Eigen::Affine3f::Identity()
+        : densification_ptr_->getAffineWorldToCurrent() * cache_iter->affine_past2world;
     static_assert(!Eigen::Matrix4f::IsRowMajor, "matrices should be col-major.");
+    SweepTransform transform{};
+    static_assert(
+      Eigen::Affine3f::MatrixType::SizeAtCompileTime ==
+        static_cast<int>(sizeof(transform.matrix) / sizeof(float)),
+      "the sweep transform must hold a 4x4 matrix.");
+    std::copy(
+      affine_past2current.data(),
+      affine_past2current.data() + Eigen::Affine3f::MatrixType::SizeAtCompileTime,
+      transform.matrix);
 
     const auto time_lag = static_cast<float>(
       densification_ptr_->getCurrentTimestamp() - rclcpp::Time(msg_ptr->header.stamp).seconds());
-
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(
-      affine_past2current_d_.get(), affine_past2current.data(),
-      Eigen::Affine3f::MatrixType::SizeAtCompileTime * sizeof(float), cudaMemcpyHostToDevice,
-      stream_));
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+    // A sweep must be strictly older than the current frame. A replayed or out-of-order stamp
+    // would otherwise enter as a second copy of it and keep its ego ghosts.
+    if (!is_current_frame && time_lag <= 0.0F) {
+      RCLCPP_WARN_STREAM(
+        rclcpp::get_logger("ptv3"),
+        "Skipping a cached sweep whose stamp is not older than the current frame (lag " << time_lag
+                                                                                        << " s).");
+      continue;
+    }
 
     generateSweepFeaturesLaunch(
-      msg_ptr->data.get(), format, frame_num_points, is_current_frame ? 0.f : time_lag,
-      config_.sweep_close_radius_, affine_past2current_d_.get(), config_.num_point_feature_size_,
+      msg_ptr->data.get(), cache_iter->format, frame_num_points, is_current_frame ? 0.f : time_lag,
+      is_current_frame, config_.sweep_close_radius_, transform, config_.num_point_feature_size_,
       points_d_.get() + point_counter * config_.num_point_feature_size_, config_.threads_per_block_,
       stream_);
     CHECK_CUDA_ERROR(cudaPeekAtLastError());

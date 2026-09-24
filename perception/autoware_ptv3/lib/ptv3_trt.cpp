@@ -28,7 +28,6 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -308,9 +307,8 @@ void PTv3TRT::initEncoderTrt(const tensorrt_common::TrtCommonConfig & trt_config
   std::vector<autoware::tensorrt_common::NetworkIO> network_io;
   std::vector<autoware::tensorrt_common::ProfileDims> profile_dims;
 
-  // Everything except the geometry and the point features is optional: an encoder variant that
-  // gates blocks off reads a subset, the exporter drops what the traced graph never consumes, and
-  // TrtCommon::setup drops the optional entries the artifact omits.
+  // Everything except the geometry and the point features is optional: PTv3 variants such
+  // as LitePT only need a subset of per-stage inputs.
   constexpr bool kOptional = true;
   const auto add_io = [&network_io, &profile_dims](
                         const std::string & name, const nvinfer1::Dims & io_dims,
@@ -343,10 +341,9 @@ void PTv3TRT::initEncoderTrt(const tensorrt_common::TrtCommonConfig & trt_config
     "grid_coord", nvinfer1::Dims{2, {-1, 3}}, nvinfer1::Dims{2, {input_counts[0], 3}},
     nvinfer1::Dims{2, {input_counts[1], 3}}, nvinfer1::Dims{2, {input_counts[2], 3}},
     nvinfer1::DataType::kINT32);
-  // The encoder consumes the input level's serialization order directly; it used to take the raw
-  // codes and argsort them in-graph, duplicating work the preprocessing already does for the
-  // pooling metadata. serialized_code stays a host-side buffer for chaining the pooling stages.
-  // Only consumed when the finest stage attends; a convolution-only stage 0 reads no base order.
+  // The encoder consumes the input level's serialization order directly; serialized_code stays a
+  // host-side buffer for chaining the pooling stages. Only consumed when the finest stage attends;
+  // a convolution-only stage 0 reads no base order.
   for (const auto * name : {"serialized_order", "serialized_inverse"}) {
     add_io(
       name, nvinfer1::Dims{2, {num_orders, -1}}, nvinfer1::Dims{2, {num_orders, input_counts[0]}},
@@ -569,29 +566,16 @@ void PTv3TRT::precomputeSerializedPoolingMetadata()
         stage.serialized_inverse.get()});
   }
 
-  const auto used_num_voxels = pre_ptr_->generateSerializedPoolingMetadata(
+  pre_ptr_->generateSerializedPoolingMetadata(
     grid_coord_d_.get(), serialized_code_d_.get(), num_voxels_, stage_views,
-    serialized_pooling_num_voxels_d_.get());
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    serialized_pooling_num_voxels_.get(), serialized_pooling_num_voxels_d_.get(),
-    (config_.pooling_strides_.size() + 1) * sizeof(std::int64_t), cudaMemcpyDeviceToHost, stream_));
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+    serialized_pooling_num_voxels_d_.get(), serialized_pooling_num_voxels_.get());
 
-  if (used_num_voxels < num_voxels_) {
-    // A pooled level would have exceeded its capacity (encoder.voxels_num_max): the input
-    // was truncated to the longest prefix whose levels all fit. The voxels are in serialization
-    // order, so the dropped ones are those with the largest codes.
-    std::ostringstream levels;
-    for (std::size_t level = 1; level <= config_.pooling_strides_.size(); ++level) {
-      levels << (level == 1 ? "" : ", ") << serialized_pooling_num_voxels_[level] << "/"
-             << config_.stage_voxel_capacity(level);
-    }
+  if (serialized_pooling_num_voxels_[0] < num_voxels_) {
     RCLCPP_WARN_STREAM(
       rclcpp::get_logger("ptv3"),
-      "A pooled level exceeded its voxel capacity; the input was truncated from "
-        << num_voxels_ << " to " << used_num_voxels
-        << " voxels (pooled level counts/capacities: " << levels.str() << ").");
-    num_voxels_ = used_num_voxels;
+      "A pooled level exceeded encoder.pooled_voxels_num_max; the input was truncated from "
+        << num_voxels_ << " to " << serialized_pooling_num_voxels_[0] << " voxels.");
+    num_voxels_ = serialized_pooling_num_voxels_[0];
   }
 }
 
@@ -802,9 +786,10 @@ bool PTv3TRT::preProcess(
 {
   using autoware::cuda_utils::clear_async;
 
-  aggregator_ptr_->enqueuePointCloud(msg_ptr, affine_world2current);
+  if (!aggregator_ptr_->enqueuePointCloud(msg_ptr, affine_world2current)) {
+    return false;
+  }
   densified_cloud_ = aggregator_ptr_->aggregate();
-  num_current_points_ = static_cast<std::int64_t>(densified_cloud_.num_current_points);
 
   if (densified_cloud_.num_current_points == 0) {
     RCLCPP_ERROR(rclcpp::get_logger("ptv3"), "Empty pointcloud. Skipping inference.");
@@ -931,13 +916,6 @@ bool PTv3TRT::preProcess(
       densified_cloud_.num_current_points, cropped_source_points_d_.get());
   }
 
-  if (num_voxels_ < config_.min_num_voxels_) {
-    RCLCPP_ERROR_STREAM(
-      rclcpp::get_logger("ptv3"), "Too few voxels (" << num_voxels_
-                                                     << ") for the actual optimization profile ("
-                                                     << config_.min_num_voxels_ << ")");
-    return false;
-  }
   if (num_voxels_ > config_.max_num_voxels_) {
     RCLCPP_WARN_STREAM(
       rclcpp::get_logger("ptv3"), "Actual number of voxels ("
@@ -950,10 +928,9 @@ bool PTv3TRT::preProcess(
   precomputeSerializedPoolingMetadata();
   if (num_voxels_ < config_.min_num_voxels_) {
     RCLCPP_ERROR_STREAM(
-      rclcpp::get_logger("ptv3"), "Too few voxels ("
-                                    << num_voxels_ << ") left after truncating to the pooled level "
-                                    << "capacities for the actual optimization profile ("
-                                    << config_.min_num_voxels_ << ")");
+      rclcpp::get_logger("ptv3"), "Too few voxels (" << num_voxels_
+                                                     << ") for the actual optimization profile ("
+                                                     << config_.min_num_voxels_ << ")");
     return false;
   }
 
@@ -965,7 +942,7 @@ bool PTv3TRT::preProcess(
   const auto num_orders = static_cast<std::int64_t>(config_.serialization_orders_.size());
   for (const auto * name : {"serialized_order", "serialized_inverse"}) {
     if (!encoder_trt_ptr_->setInputShape(name, nvinfer1::Dims{2, {num_orders, num_voxels_}})) {
-      RCLCPP_ERROR_STREAM(rclcpp::get_logger("ptv3"), "Failed to set " << name << " input shape.");
+      RCLCPP_ERROR(rclcpp::get_logger("ptv3"), "Failed to set %s input shape.", name);
       return false;
     }
   }
@@ -1070,6 +1047,8 @@ bool PTv3TRT::postProcess(
   const std_msgs::msg::Header & header, bool should_publish_segmented_pointcloud,
   bool should_publish_visualization_pointcloud, bool should_publish_filtered_pointcloud)
 {
+  const auto num_current_points = static_cast<std::int64_t>(densified_cloud_.num_current_points);
+
   // Segmentation outputs describe the current frame only. Current-frame points form the
   // leading block of the densified cloud and of every crop-derived array, so bounding the
   // reconstruction counts to the current frame publishes exactly the input frame's points.
@@ -1083,7 +1062,7 @@ bool PTv3TRT::postProcess(
     post_ptr_->reconstructFull(
       pre_ptr_->cropMask(), pre_ptr_->cropIndices(), inverse_map_d_.get(), pred_labels_d_.get(),
       pred_probs_d_.get(), reconstructed_labels_d_.get(), reconstructed_probs_d_.get(),
-      config_.segmentation_class_names_.size(), num_current_points_, num_voxels_);
+      config_.segmentation_class_names_.size(), num_current_points, num_voxels_);
   }
 
   // Without reconstruction the outputs sit at voxel level, positioned at each voxel's first
@@ -1102,13 +1081,14 @@ bool PTv3TRT::postProcess(
   const auto source_probs = config_.source_reconstruction_ != SourceReconstruction::NONE
                               ? reconstructed_probs_d_.get()
                               : pred_probs_d_.get();
-  const void * source_points = config_.source_reconstruction_ == SourceReconstruction::FULL
-                                 ? densified_cloud_.current_msg->data.get()
-                               : config_.source_reconstruction_ == SourceReconstruction::PARTIAL
+  const auto voxel_mapping = config_.source_reconstruction_ == SourceReconstruction::NONE
+                               ? pre_ptr_->voxelPointMapping(num_current_points)
+                               : VoxelPointMapping{};
+  const void * source_points = config_.source_reconstruction_ == SourceReconstruction::PARTIAL
                                  ? cropped_source_points_d_.get()
-                                 : nullptr;
+                                 : densified_cloud_.current_msg->data.get();
   const auto num_source_output_points =
-    config_.source_reconstruction_ == SourceReconstruction::FULL      ? num_current_points_
+    config_.source_reconstruction_ == SourceReconstruction::FULL      ? num_current_points
     : config_.source_reconstruction_ == SourceReconstruction::PARTIAL ? num_cropped_current_points_
                                                                       : num_voxels_;
 
@@ -1116,7 +1096,7 @@ bool PTv3TRT::postProcess(
     const auto num_segmented_points = post_ptr_->createSegmentationPointcloud(
       source_features, source_feature_stride, source_labels, source_probs,
       reinterpret_cast<point_types::PointXYZCPE *>(segmented_points_msg_ptr_->data.get()),
-      config_.segmentation_class_names_.size(), num_source_output_points);
+      config_.segmentation_class_names_.size(), num_source_output_points, voxel_mapping);
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
     segmented_points_msg_ptr_->header = header;
@@ -1129,32 +1109,30 @@ bool PTv3TRT::postProcess(
 
   // Visualization pointcloud
   if (should_publish_visualization_pointcloud) {
-    post_ptr_->createVisualizationPointcloud(
+    const auto num_visualization_points = post_ptr_->createVisualizationPointcloud(
       source_features, source_feature_stride, source_labels,
       reinterpret_cast<float *>(visualization_points_msg_ptr_->data.get()),
-      config_.segmentation_class_names_.size(), num_source_output_points);
+      config_.segmentation_class_names_.size(), num_source_output_points, voxel_mapping);
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
     visualization_points_msg_ptr_->header = header;
-    visualization_points_msg_ptr_->width = static_cast<std::uint32_t>(num_source_output_points);
+    visualization_points_msg_ptr_->width = static_cast<std::uint32_t>(num_visualization_points);
+    visualization_points_msg_ptr_->row_step =
+      visualization_points_msg_ptr_->width * visualization_points_msg_ptr_->point_step;
     publish_visualization_pointcloud_(std::move(visualization_points_msg_ptr_));
     visualization_points_msg_ptr_ = nullptr;
   }
 
   if (should_publish_filtered_pointcloud) {
-    // The filtered cloud is rebuilt from the current frame's original points; PTv3Config
-    // rejects filter classes in 'none' mode, where no per-point source exists.
-    if (source_points == nullptr) {
-      throw std::runtime_error(
-        "The filtered pointcloud requires source_reconstruction 'partial' or 'full'.");
-    }
     const auto num_filtered_points = post_ptr_->createFilteredPointcloud(
       source_points, densified_cloud_.current_format, filtered_output_format_, source_probs,
       filtered_points_msg_ptr_->data.get(), config_.segmentation_class_names_.size(),
-      num_source_output_points);
+      num_source_output_points, voxel_mapping);
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
     filtered_points_msg_ptr_->header = header;
     filtered_points_msg_ptr_->width = num_filtered_points;
+    filtered_points_msg_ptr_->row_step =
+      filtered_points_msg_ptr_->width * filtered_points_msg_ptr_->point_step;
     publish_filtered_pointcloud_(std::move(filtered_points_msg_ptr_));
     filtered_points_msg_ptr_ = nullptr;
   }
