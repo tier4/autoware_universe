@@ -34,6 +34,8 @@ ament_auto_add_library(autoware_path_optimizer SHARED
   src/utils/geometry_utils.cpp
 )
 
+autoware_agnocast_wrapper_setup(autoware_path_optimizer)
+
 target_include_directories(autoware_path_optimizer
   SYSTEM PUBLIC
     ${EIGEN3_INCLUDE_DIR}

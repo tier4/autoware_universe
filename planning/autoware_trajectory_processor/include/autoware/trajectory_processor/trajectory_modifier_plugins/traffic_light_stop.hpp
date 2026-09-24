@@ -25,6 +25,7 @@
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -78,7 +79,7 @@ private:
     ViolationType nearest_violation_type;
   } debug_data_;
 
-  rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
+  PublisherHandle<StringStamped> pub_debug_text_;
 
   bool check_traffic_lights(
     const TrajectoryPoints & traj_points, const TrajectoryProcessorData & input);
