@@ -6,4 +6,10 @@
     <description>TrafficLightPublishPanel</description>
   </class>
 
+  <class
+    type="rviz_plugins::TrafficLightRouteOverridePanel"
+    base_class_type="rviz_common::Panel">
+    <description>TrafficLightRouteOverridePanel</description>
+  </class>
+
 </library>
