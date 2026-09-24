@@ -35,7 +35,7 @@ namespace autoware::safety_planner
 namespace
 {
 
-// j6_gen2: the rear axle is 5.71 m behind the front and 1.53 m ahead of the rear
+// example bus profile
 VehicleInfo make_bus()
 {
   VehicleInfo vehicle_info;
