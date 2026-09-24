@@ -243,6 +243,7 @@ private:
   RollingLatency pipeline_latency_, processing_latency_;
   bool waiting_for_ego_{false};
   bool recorded_ego_dynamics_{false};
+  std::string ego_state_contract_;
   rclcpp::TimerBase::SharedPtr status_timer_;
   rclcpp::CallbackGroup::SharedPtr status_callback_group_;
   std::unique_ptr<DiagnosticsInterface> diagnostics_;

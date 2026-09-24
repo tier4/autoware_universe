@@ -313,6 +313,7 @@ void TensorrtE2eNode::set_up_params()
 {
   recorded_ego_dynamics_ =
       declare_parameter<bool>("recorded_ego_dynamics", false);
+  ego_state_contract_ = declare_parameter<std::string>("ego_state_contract", "");
   declare_parameter<bool>("require_deployment_manifest", false);
   params_.model_path = declare_parameter<std::string>("model_path", "");
   params_.plugins_path = declare_parameter<std::string>("plugins_path", "");
@@ -431,6 +432,16 @@ void TensorrtE2eNode::initialize_pipeline()
         throw std::runtime_error("Deployment contract mismatch: " + name);
     }
   }
+
+  // The recorded-dynamics ego state below is derived format_version 9's:
+  // measured steering_tire_angle, unmodified yaw rate, twist at or before and
+  // pose at the LiDAR time. Weights trained on older derived data learned a
+  // different input, so a package that does not state this is refused.
+  if (recorded_ego_dynamics_ && ego_state_contract_ != "derived-v9")
+    throw std::runtime_error(
+        "ego_state_contract is '" + ego_state_contract_ +
+        "', this node feeds 'derived-v9': the model was trained on older derived "
+        "data (or its package predates the field); retrain and re-export");
 
   InferenceEngine::Config engine_config;
   engine_config.model_path = params_.model_path;

@@ -13,6 +13,7 @@
     sensor_inputs: ["bev_feature"]
     enable_context_inputs: true
     recorded_ego_dynamics: true
+    ego_state_contract: "derived-v9"
 
     # Precision this graph is validated in; overrides the package default.
     precision: "fp32"
