@@ -319,8 +319,10 @@ bool ContextInputProvider::collect_ego_tensors(
     } else {
       const auto &twist = ego.odometry.twist.twist;
       const auto &accel = ego.acceleration->accel.accel.linear;
-      // Match flat_window: recorded EKF channels, without low-speed zeroing or
-      // inferred/clamped steering. Pose differences are only history features.
+      // Training contract (derived format_version 8): EKF velocity/accel and
+      // yaw rate unmodified at every speed, steering = steering_tire_angle
+      // as reported. No low-speed zeroing, no clamp, no offset. Pose
+      // differences are only history features.
       inputs["ego_current_state"] = Tensor::from_host(
           ego_current_state_shape_,
           {0.0f, 0.0f, 1.0f, 0.0f, static_cast<float>(twist.linear.x),
