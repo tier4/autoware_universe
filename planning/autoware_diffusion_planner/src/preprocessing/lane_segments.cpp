@@ -184,14 +184,16 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   struct ColWithDistance
   {
     int64_t index;           //!< Column index in the input matrix.
-    float distance_squared;  //!< Squared distance from the center.
+    //! Distance from the center (not squared, despite the name), in double so
+    //! the producer order's whole-mm rounding matches the producer's float64.
+    double distance_squared;
   };
 
   auto calc_distance = [&](const LanePoint & point) {
     const Eigen::Vector4d transformed_point =
       transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
-    const float diff_x = transformed_point.x();
-    const float diff_y = transformed_point.y();
+    const double diff_x = transformed_point.x();
+    const double diff_y = transformed_point.y();
     return std::sqrt(diff_x * diff_x + diff_y * diff_y);
   };
 
@@ -216,7 +218,7 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
     // Note: Because the last point (centerline.size() - 1) of the centerline is the same as the
     // first point of the next segment, we use (centerline.size() - 2) to avoid obtaining the same
     // distance for adjacent segments.
-    const float distance_squared =
+    const double distance_squared =
       std::min(calc_distance(centerline.front()), calc_distance(centerline[centerline.size() - 2]));
     distances.push_back({static_cast<int64_t>(i), distance_squared});
   }
