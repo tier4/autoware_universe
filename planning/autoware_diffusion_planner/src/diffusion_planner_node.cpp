@@ -131,9 +131,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
       &DiffusionPlanner::on_set_centerline_guidance_enabled, this, std::placeholders::_1,
       std::placeholders::_2));
 
-  planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
-      this, "diffusion_planner");
+  planning_factor_interface_ = std::make_unique<PlanningFactorInterface>(this, "diffusion_planner");
 
   diagnostics_inference_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
   try {
@@ -152,7 +150,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     }
   }
 
-  timer_ = rclcpp::create_timer(
+  timer_ = autoware::agnocast_wrapper::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&DiffusionPlanner::on_timer, this));
 
@@ -193,6 +191,8 @@ void DiffusionPlanner::set_up_params()
   params_.build_only = this->declare_parameter<bool>("build_only", false);
   params_.planning_frequency_hz = this->declare_parameter<double>("planning_frequency_hz", 10.0);
   params_.ignore_neighbors = this->declare_parameter<bool>("ignore_neighbors", false);
+  params_.remap_unsupported_objects_to_pedestrian =
+    this->declare_parameter<bool>("remap_unsupported_objects_to_pedestrian", false);
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
@@ -331,6 +331,9 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<std::string>(parameters, "model.precision", temp_params.trt_precision);
     update_param<bool>(parameters, "model.use_cuda_graph", temp_params.use_cuda_graph);
     update_param<bool>(parameters, "ignore_neighbors", temp_params.ignore_neighbors);
+    update_param<bool>(
+      parameters, "remap_unsupported_objects_to_pedestrian",
+      temp_params.remap_unsupported_objects_to_pedestrian);
     update_param<double>(
       parameters, "traffic_light_group_msg_timeout_seconds",
       temp_params.traffic_light_group_msg_timeout_seconds);
@@ -573,12 +576,12 @@ void DiffusionPlanner::on_timer()
   }
 
   // Take data from subscribers
-  auto objects = sub_tracked_objects_.take_data();
-  auto ego_kinematic_state = sub_current_odometry_.take_data();
-  auto ego_acceleration = sub_current_acceleration_.take_data();
-  auto traffic_signals = sub_traffic_signals_.take_data();
-  auto temp_route_ptr = route_subscriber_.take_data();
-  auto turn_indicators_ptr = sub_turn_indicators_.take_data();
+  auto objects = sub_tracked_objects_->take_data();
+  auto ego_kinematic_state = sub_current_odometry_->take_data();
+  auto ego_acceleration = sub_current_acceleration_->take_data();
+  auto traffic_signals = sub_traffic_signals_->take_data();
+  auto temp_route_ptr = route_subscriber_->take_data();
+  auto turn_indicators_ptr = sub_turn_indicators_->take_data();
 
   // Prepare frame context using core
   const std::optional<FrameContext> frame_context = core_->create_frame_context(

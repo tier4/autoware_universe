@@ -149,7 +149,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     PLUGIN "autoware::diffusion_planner::DiffusionPlanner"
     EXECUTABLE autoware_diffusion_planner_node
     ROS2_EXECUTOR SingleThreadedExecutor
-    AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+    AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
   )
 
   if(BUILD_TESTING)

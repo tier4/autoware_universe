@@ -378,6 +378,7 @@ void StartGoalPlanner::judge_start_goal_planner_act(
       start_planner_act_ = false;
       goal_planner_act_ = false;
       generated_trajectory_ = std::nullopt;
+      goal_pull_start_pose_ = std::nullopt;
     }
   }
 }
@@ -447,6 +448,7 @@ void StartGoalPlanner::judge_goal_planner_act(
   if (autoware_utils_geometry::calc_distance2d(*goal_pose_prev_, route_data_.goal_pose) > 1e-3) {
     goal_planner_act_ = false;
     generated_trajectory_ = std::nullopt;
+    goal_pull_start_pose_ = std::nullopt;
   } else if (!goal_planner_act_ || !generated_trajectory_.has_value()) {
     const auto s_path_end_clamped = std::min(trajectory.length(), s_path_end);
     const auto distance_to_goal_traj = autoware_utils::calc_distance2d(
@@ -799,6 +801,8 @@ std::optional<PathPointTrajectory> StartGoalPlanner::connect_goal_planner_trajec
 
   const auto pull_start_pose = pull_points[0].point.pose;
   const auto s_closest = autoware::experimental::trajectory::closest(trajectory, pull_start_pose);
+  // Where the path leaves the lane towards the shoulder; the turn signal is timed from here.
+  goal_pull_start_pose_ = pull_start_pose;
 
   auto base_points = autoware::experimental::trajectory::crop(trajectory, 0, s_closest).restore();
 

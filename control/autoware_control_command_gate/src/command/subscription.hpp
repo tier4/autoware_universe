@@ -38,6 +38,8 @@ private:
   void on_turn_indicators(const TurnIndicatorsCommand & msg);
   void on_hazard_lights(const HazardLightsCommand & msg);
 
+  rclcpp::Clock::SharedPtr clock_;
+  rclcpp::Logger logger_;
   AUTOWARE_SUBSCRIPTION_PTR(Control) sub_control_;
   AUTOWARE_SUBSCRIPTION_PTR(GearCommand) sub_gear_;
   AUTOWARE_SUBSCRIPTION_PTR(TurnIndicatorsCommand) sub_turn_indicators_;
