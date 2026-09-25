@@ -20,7 +20,7 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
-#include <autoware/trajectory_processor/trajectory_processor_plugin_base.hpp>
+#include <autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <pluginlib/class_list_macros.hpp>
 
