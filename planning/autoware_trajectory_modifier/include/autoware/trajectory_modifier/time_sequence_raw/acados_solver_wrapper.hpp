@@ -20,6 +20,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <optional>
 
 namespace autoware::trajectory_modifier::time_sequence_raw
 {
@@ -54,6 +55,15 @@ struct StageReference
   double yaw{0.0};
 };
 
+/// Extra terminal penalty pulling the end state onto the route goal.
+struct GoalTerminalReference
+{
+  double x{0.0};
+  double y{0.0};
+  double yaw{0.0};
+  double velocity{0.0};
+};
+
 struct SolverSolution
 {
   int status{-1};
@@ -79,7 +89,9 @@ public:
 
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,
-    const std::array<StageReference, opt_horizon> & references, const SolverSolution * warm_start);
+    const std::array<StageReference, opt_horizon> & references,
+    const std::optional<GoalTerminalReference> & goal_terminal_reference,
+    const SolverSolution * warm_start);
 
 private:
   struct Impl;
