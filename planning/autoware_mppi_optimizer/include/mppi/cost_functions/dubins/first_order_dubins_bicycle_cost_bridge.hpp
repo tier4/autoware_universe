@@ -91,7 +91,8 @@ inline void fillFirstOrderDubinsBicycleCostObstacleTrajectories(
 template <int NUM_TIMESTEPS>
 inline void fillFirstOrderDubinsBicycleCostFromPathReference(
   FirstOrderDubinsBicycleCost<NUM_TIMESTEPS> & cost,
-  const std::vector<mppi::path::PathReferenceSample> & ref)
+  const std::vector<mppi::path::PathReferenceSample> & ref,
+  const mppi::path::PathReferenceSample * terminal_reference = nullptr)
 {
   float ref_x[NUM_TIMESTEPS];
   float ref_y[NUM_TIMESTEPS];
@@ -114,10 +115,14 @@ inline void fillFirstOrderDubinsBicycleCostFromPathReference(
   const bool has_pointwise_velocity_limits = std::any_of(
     ref_velocity_limit_active, ref_velocity_limit_active + NUM_TIMESTEPS,
     [](const std::uint8_t active) { return active != 0U; });
+  const float terminal_pose[3] = {
+    terminal_reference != nullptr ? terminal_reference->x : ref_x[NUM_TIMESTEPS - 1],
+    terminal_reference != nullptr ? terminal_reference->y : ref_y[NUM_TIMESTEPS - 1],
+    terminal_reference != nullptr ? terminal_reference->yaw : ref_yaw[NUM_TIMESTEPS - 1]};
   cost.setReferenceTrajectory(
     ref_x, ref_y, ref_v, NUM_TIMESTEPS, ref_yaw,
     has_pointwise_velocity_limits ? ref_max_velocity : nullptr,
-    has_pointwise_velocity_limits ? ref_velocity_limit_active : nullptr);
+    has_pointwise_velocity_limits ? ref_velocity_limit_active : nullptr, terminal_pose);
 }
 
 }  // namespace cost

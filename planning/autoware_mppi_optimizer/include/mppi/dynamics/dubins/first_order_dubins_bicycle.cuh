@@ -16,6 +16,7 @@
 #ifndef MPPIGENERIC_FIRST_ORDER_DUBINS_BICYCLE_CUH
 #define MPPIGENERIC_FIRST_ORDER_DUBINS_BICYCLE_CUH
 
+#include <mppi/dynamics/dubins/velocity_dependent_steering_rate.cuh>
 #include <mppi/dynamics/dynamics.cuh>
 #include <mppi/utils/angle_utils.cuh>
 
@@ -52,6 +53,15 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     STEER_CMD_D5,
     STEER_CMD_D6,
     STEER_CMD_D7,
+    /** Previous issued commands, independent of physical actuator delay taps. */
+    PREVIOUS_ACCEL_CMD,
+    PREVIOUS_STEER_CMD,
+    /** Previous issued steering-command rate, used to bound command acceleration. */
+    PREVIOUS_STEER_CMD_RATE,
+    /** Keep the issued steering command fixed until predicted motion resumes. */
+    STEERING_COMMAND_HOLD_ACTIVE,
+    /** Keep the issued steering command fixed for a short current reference. */
+    SHORT_REFERENCE_STEERING_HOLD_ACTIVE,
     NUM_STATES
   };
 
@@ -66,8 +76,13 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     STEER_ANGLE,
     ACCELERATION,
     TOTAL_VELOCITY,
+    /** Inertial lateral jerk in vehicle coordinates at the transition's pre-step state. */
     LATERAL_JERK,
+    /** Realized acceleration increment / dt; step() supplies all transition rates below. */
     LONGITUDINAL_JERK,
+    STEERING_RATE,
+    ACCEL_COMMAND_RATE,
+    STEER_COMMAND_RATE,
     NUM_OUTPUTS
   };
 
@@ -82,6 +97,14 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
   float steer_time_constant = 0.08F;
   float max_steer_angle = 0.45F;
   float max_steer_rate = 3.0F;
+  float max_lateral_jerk_mps3 = 2.5F;
+  float standstill_steer_rate_lim = 0.15F;
+  /** Steering-command limits applied at standstill and blended out during restart. */
+  float restart_steer_command_rate_lim = 0.15F;
+  float restart_steer_command_acceleration_lim = 0.5F;
+  float restart_velocity_threshold_mps = 0.5F;
+  /** Release an active standstill command hold at or above this absolute velocity. */
+  float standstill_steer_hold_exit_velocity_mps = 0.08F;
   float min_accel = -6.0F;
   float max_accel = 4.0F;
   /** Prevent acceleration commands and integrated states from producing reverse velocity. */
@@ -102,11 +125,21 @@ static_assert(
     FirstOrderDubinsBicycleParams::kMaxInputDelaySteps,
   "steer delay taps must match kMaxInputDelaySteps");
 
-/** Apply the steering-rate limit shared by the dynamics and comfort-cost models. */
+/** Evaluate the velocity-dependent physical steering-rate limit. */
 template <class PARAMS_T>
-__host__ __device__ inline float clampSteerRate(const PARAMS_T & params, const float steer_rate)
+__host__ __device__ inline float steeringRateLimit(const PARAMS_T & params, const float velocity)
 {
-  return fmaxf(fminf(steer_rate, params.max_steer_rate), -params.max_steer_rate);
+  return velocityDependentSteeringRateLimit(
+    velocity, params.wheel_base, params.max_steer_rate, params.max_lateral_jerk_mps3,
+    params.standstill_steer_rate_lim, params.restart_velocity_threshold_mps);
+}
+
+template <class PARAMS_T>
+__host__ __device__ inline float clampSteerRate(
+  const PARAMS_T & params, const float velocity, const float steer_rate)
+{
+  const float limit = steeringRateLimit(params, velocity);
+  return fmaxf(fminf(steer_rate, limit), -limit);
 }
 
 /** Clamp delay step count into the fixed pipeline capacity. */
@@ -131,7 +164,7 @@ public:
   using output_array = typename PARENT_CLASS::output_array;
   using dfdx = typename PARENT_CLASS::dfdx;
   using dfdu = typename PARENT_CLASS::dfdu;
-  // Keep the parent host overload: MPPI's generic host pass supplies a placeholder zero state.
+  // Keep parent overloads visible alongside the state-aware specialization below.
   using PARENT_CLASS::enforceConstraints;
   using PARENT_CLASS::updateState;
 
@@ -151,7 +184,7 @@ public:
 
   __device__ void updateState(float * state, float * next_state, float * state_der, const float dt);
 
-  /** Host step: continuous plant with discrete per-channel command delay taps. */
+  /** Host step (dt > 0): post-step state outputs plus physical and command transition rates. */
   void step(
     Eigen::Ref<state_array> state, Eigen::Ref<state_array> next_state,
     Eigen::Ref<state_array> state_der, const Eigen::Ref<const control_array> & control,
