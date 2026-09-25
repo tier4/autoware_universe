@@ -28,6 +28,9 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 #include <map>
 #include <memory>
 #include <tuple>
@@ -54,6 +57,7 @@ LaneSegmentContext::LaneSegmentContext(
   const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
   const MapConversionOptions & options)
 : lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr, options)),
+  producer_slot_order_(options.producer_slot_order),
   lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments))
 {
   if (lanelet_map_.lane_segments.empty()) {
@@ -199,9 +203,18 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   }
 
   // Step 2: Sort indices by distance
-  std::sort(distances.begin(), distances.end(), [](const auto & a, const auto & b) {
-    return a.distance_squared < b.distance_squared;
-  });
+  if (producer_slot_order_) {
+    std::sort(distances.begin(), distances.end(), [&](const auto & a, const auto & b) {
+      const auto & sa = lanelet_map_.lane_segments[a.index];
+      const auto & sb = lanelet_map_.lane_segments[b.index];
+      return std::make_pair(slot_order_mm(a.distance_squared), sa.id) <
+             std::make_pair(slot_order_mm(b.distance_squared), sb.id);
+    });
+  } else {
+    std::sort(distances.begin(), distances.end(), [](const auto & a, const auto & b) {
+      return a.distance_squared < b.distance_squared;
+    });
+  }
 
   // Step 3: Select indices that are inside the mask
   std::vector<int64_t> selected_indices;
@@ -362,6 +375,8 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
     Polyline polyline;
     int type;
     double min_distance;
+    int64_t id;
+    int64_t piece;
   };
 
   std::vector<ElementWithDistance> result_list;
@@ -392,16 +407,30 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
       min_distance = std::min(min_distance, distance);
     }
 
-    result_list.push_back({transformed_polyline, static_cast<int>(element.type), min_distance});
+    int64_t piece = 0;
+    if constexpr (std::is_same_v<T, LineString>) {
+      piece = element.piece;
+    }
+    result_list.push_back(
+      {transformed_polyline, static_cast<int>(element.type), min_distance, element.id, piece});
   }
 
   // Stable, as the producer's sorted() is: equal distances (touching polygons
   // sharing their nearest vertex) keep the map's order on both sides.
-  std::stable_sort(
-    result_list.begin(), result_list.end(),
-    [](const ElementWithDistance & a, const ElementWithDistance & b) {
-      return a.min_distance < b.min_distance;
-    });
+  if (producer_slot_order_) {
+    std::sort(
+      result_list.begin(), result_list.end(),
+      [](const ElementWithDistance & a, const ElementWithDistance & b) {
+        return std::make_tuple(slot_order_mm(a.min_distance), a.id, a.piece) <
+               std::make_tuple(slot_order_mm(b.min_distance), b.id, b.piece);
+      });
+  } else {
+    std::stable_sort(
+      result_list.begin(), result_list.end(),
+      [](const ElementWithDistance & a, const ElementWithDistance & b) {
+        return a.min_distance < b.min_distance;
+      });
+  }
 
   // Create tensor data: [x, y, one_hot_type...]
   const int64_t point_dim = 2 + num_types;

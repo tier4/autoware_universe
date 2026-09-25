@@ -291,7 +291,7 @@ LaneletMap convert_to_internal_lanelet_map(
       const Polyline right = convert_to_polyline(lanelet.rightBound3d());
       outline.insert(outline.end(), right.rbegin(), right.rend());
       crosswalks.push_back(
-        Polygon{interpolate_points(outline, POINTS_PER_POLYGON), POLYGON_TYPE_CROSSWALK});
+        Polygon{interpolate_points(outline, POINTS_PER_POLYGON), POLYGON_TYPE_CROSSWALK, lanelet.id()});
       continue;
     }
     const auto & lane_subtypes =
@@ -379,7 +379,7 @@ LaneletMap convert_to_internal_lanelet_map(
     }
     const std::vector<LanePoint> points(
       interpolate_points(convert_to_polyline(polygon.basicLineString()), POINTS_PER_POLYGON));
-    lanelet_map.polygons.push_back(Polygon{points, it->second});
+    lanelet_map.polygons.push_back(Polygon{points, it->second, polygon.id()});
   }
   lanelet_map.polygons.insert(lanelet_map.polygons.end(), crosswalks.begin(), crosswalks.end());
 
@@ -396,8 +396,9 @@ LaneletMap convert_to_internal_lanelet_map(
         ? resample_line_string_linear(
             polyline, POINTS_PER_LINE_STRING, options.line_string_max_step_m)
         : resample_line_string(polyline, POINTS_PER_LINE_STRING, options.line_string_max_step_m);
-    for (const auto & points : segments) {
-      lanelet_map.line_strings.push_back(LineString{points, it->second});
+    for (size_t k = 0; k < segments.size(); ++k) {
+      lanelet_map.line_strings.push_back(LineString{
+        segments[k], it->second, line_string.id(), static_cast<int64_t>(k)});
     }
   }
 

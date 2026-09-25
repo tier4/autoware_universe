@@ -19,6 +19,7 @@
 
 #include <lanelet2_core/LaneletMap.h>
 
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -98,6 +99,10 @@ struct MapConversionOptions
   bool crosswalk_polygons{false};
   //! Resample line strings linearly in arc length (else an Akima spline).
   bool linear_line_strings{false};
+  //! Order slots by (distance in whole mm, map id[, piece]) -- the producer's
+  //! slot_order_key -- instead of by raw distance: forked lanelets tie exactly
+  //! (88 % of frames hold one), and std::sort leaves a tie's order undefined.
+  bool producer_slot_order{false};
   double line_string_max_step_m{5.0};
 
   //! The step is left at its default for the caller to set from its parameter.
@@ -108,23 +113,33 @@ struct MapConversionOptions
     options.drivable_lanes_only = true;
     options.crosswalk_polygons = true;
     options.linear_line_strings = true;
+    options.producer_slot_order = true;
     return options;
   }
 };
 
 using LanePoint = Eigen::Vector3d;
+
+//! The producer's slot_order_key distance: whole millimetres, floor(x + 0.5).
+inline int64_t slot_order_mm(const double distance_m)
+{
+  return static_cast<int64_t>(std::floor(distance_m * 1000.0 + 0.5));
+}
 using Polyline = std::vector<LanePoint>;
 
 struct Polygon
 {
   std::vector<LanePoint> points;
   PolygonType type;
+  int64_t id{0};  //!< Map id: the polygon's, or the crosswalk lanelet's.
 };
 
 struct LineString
 {
   std::vector<LanePoint> points;
   LineStringType type;
+  int64_t id{0};     //!< The source line string's map id.
+  int64_t piece{0};  //!< Which equal piece of it (resample_line_string*).
 };
 
 struct LaneSegment

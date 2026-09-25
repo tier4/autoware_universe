@@ -191,6 +191,7 @@ private:
     const int64_t num_points, const int64_t num_types) const;
 
   const autoware::diffusion_planner::LaneletMap lanelet_map_;
+  const bool producer_slot_order_;  //!< MapConversionOptions::producer_slot_order.
   const std::map<lanelet::Id, size_t> lanelet_id_to_array_index_;
 };
 
