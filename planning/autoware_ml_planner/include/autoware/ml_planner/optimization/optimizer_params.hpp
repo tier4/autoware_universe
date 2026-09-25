@@ -36,10 +36,12 @@ struct TrajectoryOptimizationParams
   double weight_longitudinal{0.5};
   double weight_lateral{0.5};
   double weight_yaw{0.05};
-  // Penalize velocity and steering-angle magnitude relative to zero.
+  // Penalize velocity, steering-angle, and acceleration magnitude relative to zero.
+  // Acceleration is a state; jerk is the longitudinal input that is minimized.
   double weight_velocity{0.01};
   double weight_steering_angle{1.0};
-  double weight_acceleration{0.1};
+  double weight_acceleration{0.0};
+  double weight_jerk{0.1};
   double weight_steering_rate{10.0};
   // Terminal state weight = terminal_weight_scale * stage state weight.
   double terminal_weight_scale{2.5};
@@ -56,9 +58,11 @@ struct TrajectoryOptimizationParams
   double min_velocity_mps{0.0};
   double max_velocity_mps{30.0};
 
-  // Input bounds.
+  // Acceleration is a state bound; jerk and steering rate are input bounds.
   double min_acceleration_mps2{-4.0};
   double max_acceleration_mps2{3.0};
+  double min_jerk_mps3{-5.0};
+  double max_jerk_mps3{5.0};
   double max_steering_rate_rps{1.0};
 
   // Soft nonlinear constraint |v^2 * tan(delta) / wheelbase| <= max_lateral_acceleration_mps2.

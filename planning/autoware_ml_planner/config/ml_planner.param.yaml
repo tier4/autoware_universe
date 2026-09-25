@@ -19,7 +19,8 @@
       weight_yaw: 0.05               # tracking weight for heading [1/rad^2]
       weight_velocity: 0.01          # penalizes squared velocity magnitude
       weight_steering_angle: 1.0     # penalizes squared steering-angle magnitude
-      weight_acceleration: 0.1       # regularization weight on acceleration input
+      weight_acceleration: 0.0       # penalizes squared acceleration-state magnitude
+      weight_jerk: 0.1               # regularization weight on the jerk input
       weight_steering_rate: 10.0     # regularization weight on steering rate input
       terminal_weight_scale: 2.5     # terminal state weight = scale * stage weight
       goal:
@@ -30,8 +31,10 @@
         snap_distance_m: 1.0
       min_velocity_mps: 0.0          # lower velocity bound; 0 prevents backward motion [m/s]
       max_velocity_mps: 30.0         # upper velocity bound [m/s]
-      min_acceleration_mps2: -4.0    # [m/s^2]
-      max_acceleration_mps2: 3.0     # [m/s^2]
+      min_acceleration_mps2: -4.0    # state bound [m/s^2]
+      max_acceleration_mps2: 3.0     # state bound [m/s^2]
+      min_jerk_mps3: -5.0            # input bound [m/s^3]
+      max_jerk_mps3: 5.0             # input bound [m/s^3]
       max_steering_rate_rps: 1.0     # [rad/s]
       max_lateral_acceleration_mps2: 3.0  # soft constraint bound [m/s^2]
       max_sqp_iterations: 50

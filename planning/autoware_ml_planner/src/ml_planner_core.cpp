@@ -52,7 +52,7 @@ bool optimization_params_changed(
          lhs.weight_lateral != rhs.weight_lateral || lhs.weight_yaw != rhs.weight_yaw ||
          lhs.weight_velocity != rhs.weight_velocity ||
          lhs.weight_steering_angle != rhs.weight_steering_angle ||
-         lhs.weight_acceleration != rhs.weight_acceleration ||
+         lhs.weight_acceleration != rhs.weight_acceleration || lhs.weight_jerk != rhs.weight_jerk ||
          lhs.weight_steering_rate != rhs.weight_steering_rate ||
          lhs.terminal_weight_scale != rhs.terminal_weight_scale ||
          lhs.goal.weight_longitudinal != rhs.goal.weight_longitudinal ||
@@ -64,6 +64,7 @@ bool optimization_params_changed(
          lhs.max_velocity_mps != rhs.max_velocity_mps ||
          lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
          lhs.max_acceleration_mps2 != rhs.max_acceleration_mps2 ||
+         lhs.min_jerk_mps3 != rhs.min_jerk_mps3 || lhs.max_jerk_mps3 != rhs.max_jerk_mps3 ||
          lhs.max_steering_rate_rps != rhs.max_steering_rate_rps ||
          lhs.max_lateral_acceleration_mps2 != rhs.max_lateral_acceleration_mps2 ||
          lhs.max_sqp_iterations != rhs.max_sqp_iterations ||
@@ -348,7 +349,8 @@ InferenceResult MLPlannerCore::run_inference(const TensorMap & input_data_map)
 
 PlannerOutput MLPlannerCore::create_planner_output(
   const InferenceOutput & inference_output, const rclcpp::Time & timestamp,
-  const UUID & generator_uuid, const double current_steering_angle_rad)
+  const UUID & generator_uuid, const double current_steering_angle_rad,
+  const double current_acceleration_mps2)
 {
   // Derive the frame state from the raw message buffers
   const Odometry & kinematic_state = ego_history_.back();
@@ -405,7 +407,8 @@ PlannerOutput MLPlannerCore::create_planner_output(
         goal_pose = route_ptr_->goal_pose;
       }
       auto optimization_result = trajectory_optimizer_->optimize(
-        trajectory, kinematic_state, current_steering_angle_rad, static_cast<size_t>(i), goal_pose);
+        trajectory, kinematic_state, current_steering_angle_rad, current_acceleration_mps2,
+        static_cast<size_t>(i), goal_pose);
       if (i == 0) {
         output.optimization_debug.attempted = true;
         output.optimization_debug.optimized = optimization_result.optimized;
@@ -417,6 +420,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
     }
 #else
     (void)current_steering_angle_rad;
+    (void)current_acceleration_mps2;
 #endif
 
     if (optimization_failed) {

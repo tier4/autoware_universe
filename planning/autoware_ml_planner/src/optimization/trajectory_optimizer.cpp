@@ -143,8 +143,8 @@ void TrajectoryOptimizer::clear_warm_start(const size_t batch_index)
 
 OptimizationResult TrajectoryOptimizer::optimize(
   const Trajectory & raw_trajectory, const Odometry & ego_odometry,
-  const double current_steering_angle_rad, const size_t batch_index,
-  const std::optional<geometry_msgs::msg::Pose> & goal_pose)
+  const double current_steering_angle_rad, const double current_acceleration_mps2,
+  const size_t batch_index, const std::optional<geometry_msgs::msg::Pose> & goal_pose)
 {
   OptimizationResult result;
   result.trajectory = raw_trajectory;
@@ -187,8 +187,10 @@ OptimizationResult TrajectoryOptimizer::optimize(
 
   const double delta0 =
     std::clamp(current_steering_angle_rad, -max_steering_angle_rad_, max_steering_angle_rad_);
+  const double a0 = std::clamp(
+    current_acceleration_mps2, params_.min_acceleration_mps2, params_.max_acceleration_mps2);
 
-  const std::array<double, opt_nx> initial_state{0.0, 0.0, yaw0, v0, delta0};
+  const std::array<double, opt_nx> initial_state{0.0, 0.0, yaw0, v0, delta0, a0};
 
   // References for stages 1..N from the raw 80-point sequence (t = k * 0.1 s).
   // Yaw is unwrapped so the reference stays continuous across the +-pi boundary.
@@ -325,10 +327,10 @@ OptimizationResult TrajectoryOptimizer::optimize(
     point.pose.position.z = raw_trajectory.points[i - 1].pose.position.z;
     point.pose.orientation =
       autoware_utils::create_quaternion_from_yaw(autoware_utils::normalize_radian(state[2]));
-    point.longitudinal_velocity_mps = static_cast<float>(state[3]);
-    point.front_wheel_angle_rad = static_cast<float>(state[4]);
-    point.acceleration_mps2 = (i < opt_horizon) ? static_cast<float>(solution.inputs[i][0]) : 0.0F;
-    point.heading_rate_rps = static_cast<float>(state[3] * std::tan(state[4]) / wheelbase_m_);
+    point.longitudinal_velocity_mps = static_cast<float>(state[kV]);
+    point.front_wheel_angle_rad = static_cast<float>(state[kDelta]);
+    point.acceleration_mps2 = static_cast<float>(state[kA]);
+    point.heading_rate_rps = static_cast<float>(state[kV] * std::tan(state[kDelta]) / wheelbase_m_);
     optimized.points.push_back(point);
   }
   result.trajectory = std::move(optimized);

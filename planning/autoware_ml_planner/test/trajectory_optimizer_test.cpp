@@ -75,7 +75,7 @@ TEST_F(TrajectoryOptimizerTest, OptimizesNoisyTrajectory)
   TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
 
   const auto raw = make_noisy_trajectory(8.0, 0.15);
-  const auto result = optimizer.optimize(raw, odometry_, 0.0, 0);
+  const auto result = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
 
   ASSERT_TRUE(result.optimized) << "acados status: " << result.solver_status;
   ASSERT_EQ(result.trajectory.points.size(), opt_horizon);
@@ -112,7 +112,7 @@ TEST_F(TrajectoryOptimizerTest, FallsBackOnShortTrajectory)
   short_trajectory.header.frame_id = "map";
   short_trajectory.points.resize(3);
 
-  const auto result = optimizer.optimize(short_trajectory, odometry_, 0.0, 0);
+  const auto result = optimizer.optimize(short_trajectory, odometry_, 0.0, 0.0, 0);
   EXPECT_FALSE(result.optimized);
   EXPECT_EQ(result.trajectory.points.size(), short_trajectory.points.size());
 }
@@ -124,11 +124,11 @@ TEST_F(TrajectoryOptimizerTest, WarmStartAcrossCycles)
   TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
 
   const auto raw = make_noisy_trajectory(8.0, 0.15);
-  const auto first = optimizer.optimize(raw, odometry_, 0.0, 0);
+  const auto first = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
   ASSERT_TRUE(first.optimized);
 
   // Second solve with warm start must also succeed.
-  const auto second = optimizer.optimize(raw, odometry_, 0.0, 0);
+  const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
   ASSERT_TRUE(second.optimized);
 }
 
@@ -156,7 +156,7 @@ TEST_F(TrajectoryOptimizerTest, LatchesSteeringOnStoppedReference)
 
   odometry_.twist.twist.linear.x = 0.0;
   auto raw = make_stopped_trajectory(opt_horizon, 0.5);
-  const auto first = optimizer.optimize(raw, odometry_, 0.35, 0);
+  const auto first = optimizer.optimize(raw, odometry_, 0.35, 0.0, 0);
   ASSERT_TRUE(first.optimized);
   EXPECT_EQ(first.solver_status, -1);
   for (const auto & point : first.trajectory.points) {
@@ -164,7 +164,7 @@ TEST_F(TrajectoryOptimizerTest, LatchesSteeringOnStoppedReference)
     EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0F, 1e-5F);
   }
 
-  const auto second = optimizer.optimize(raw, odometry_, 0.60, 0);
+  const auto second = optimizer.optimize(raw, odometry_, 0.60, 0.0, 0);
   ASSERT_TRUE(second.optimized);
   for (const auto & point : second.trajectory.points) {
     EXPECT_NEAR(point.front_wheel_angle_rad, 0.35F, 1e-5F);
@@ -182,7 +182,7 @@ TEST_F(TrajectoryOptimizerTest, ZerosSteeringNearGoalWhenStopped)
   goal.position.x = 2.0;
   goal.orientation.w = 1.0;
   const auto raw = make_stopped_trajectory(opt_horizon, 0.5);
-  const auto result = optimizer.optimize(raw, odometry_, 0.40, 0, goal);
+  const auto result = optimizer.optimize(raw, odometry_, 0.40, 0.0, 0, goal);
   ASSERT_TRUE(result.optimized);
   EXPECT_EQ(result.solver_status, -2);
   for (const auto & point : result.trajectory.points) {

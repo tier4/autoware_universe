@@ -120,8 +120,15 @@
             },
             "weight_acceleration": {
               "type": "number",
+              "default": 0.0,
+              "minimum": 0.0,
+              "description": "Weight on squared acceleration-state magnitude relative to zero"
+            },
+            "weight_jerk": {
+              "type": "number",
               "default": 0.1,
-              "description": "Regularization weight on the acceleration input"
+              "minimum": 0.0,
+              "description": "Regularization weight on the jerk input"
             },
             "weight_steering_rate": {
               "type": "number",
@@ -172,12 +179,22 @@
             "min_acceleration_mps2": {
               "type": "number",
               "default": -4.0,
-              "description": "Lower acceleration bound [m/s^2]"
+              "description": "Lower acceleration state bound [m/s^2]"
             },
             "max_acceleration_mps2": {
               "type": "number",
               "default": 3.0,
-              "description": "Upper acceleration bound [m/s^2]"
+              "description": "Upper acceleration state bound [m/s^2]"
+            },
+            "min_jerk_mps3": {
+              "type": "number",
+              "default": -5.0,
+              "description": "Lower jerk input bound [m/s^3]"
+            },
+            "max_jerk_mps3": {
+              "type": "number",
+              "default": 5.0,
+              "description": "Upper jerk input bound [m/s^3]"
             },
             "max_steering_rate_rps": {
               "type": "number",

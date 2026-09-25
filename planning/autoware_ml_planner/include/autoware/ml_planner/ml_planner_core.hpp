@@ -220,11 +220,14 @@ public:
    * @param timestamp The ROS time stamp for the messages.
    * @param generator_uuid The unique identifier for the planner instance.
    * @param current_steering_angle_rad Measured steering angle used by trajectory optimization.
+   * @param current_acceleration_mps2 Measured longitudinal acceleration used as the jerk-model
+   *        initial state. Zero is used when no acceleration sample is available.
    * @return PlannerOutput containing all output messages.
    */
   PlannerOutput create_planner_output(
     const InferenceOutput & inference_output, const rclcpp::Time & timestamp,
-    const UUID & generator_uuid, double current_steering_angle_rad);
+    const UUID & generator_uuid, double current_steering_angle_rad,
+    double current_acceleration_mps2);
 
   /**
    * @brief Get the first traffic light on the route for debugging.

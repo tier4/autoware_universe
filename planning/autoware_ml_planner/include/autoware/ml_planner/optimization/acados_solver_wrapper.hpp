@@ -28,9 +28,20 @@ namespace autoware::ml_planner::optimization
 // OCP dimensions. Must match scripts/generate_solver.py (static_asserts in the .cpp
 // verify them against the generated code).
 constexpr size_t opt_horizon = 80;  // = OUTPUT_T model output steps
-constexpr size_t opt_nx = 5;        // x, y, yaw, velocity, steering angle
-constexpr size_t opt_nu = 2;        // acceleration, steering rate
+constexpr size_t opt_nx = 6;        // x, y, yaw, velocity, steering angle, acceleration
+constexpr size_t opt_nu = 2;        // jerk, steering rate
 constexpr double opt_dt_s = 0.1;    // = PREDICTION_TIME_STEP_S
+
+constexpr size_t kX = 0;
+constexpr size_t kY = 1;
+constexpr size_t kPsi = 2;
+constexpr size_t kV = 3;
+constexpr size_t kDelta = 4;
+constexpr size_t kA = 5;
+constexpr size_t kJerk = 0;
+constexpr size_t kDeltaRate = 1;
+constexpr size_t kYJerk = opt_nx + kJerk;
+constexpr size_t kYDeltaRate = opt_nx + kDeltaRate;
 
 /// Per-stage tracking reference (positions in the solver's local frame).
 /// Only pose is tracked: the model outputs positions and headings only, so no velocity
@@ -100,7 +111,7 @@ public:
   /**
    * @brief Solve the OCP.
    *
-   * @param initial_state Stage-0 state (equality constrained): x, y, yaw, v, delta.
+   * @param initial_state Stage-0 state (equality constrained): x, y, yaw, v, delta, a.
    * @param references Tracking references for stages 1..N; the last entry doubles as the
    *                   terminal reference. Positions must share the frame of initial_state.
    * @param goal_terminal_reference Extra terminal penalty pulling the end state to the goal.
