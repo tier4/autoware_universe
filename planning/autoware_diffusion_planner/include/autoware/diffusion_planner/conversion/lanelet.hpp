@@ -89,6 +89,7 @@ const std::set<std::string> DRIVABLE_LANE_SUBTYPES = {
  */
 struct MapConversionOptions
 {
+  // Each switch is one point where the producer's conversion differs.
   //! Centerline as the midpoint of the two resampled bounds, instead of
   //! lanelet2's centerline3d() (which returns a mapped centerline if present).
   bool centerline_from_bounds{false};
@@ -103,6 +104,8 @@ struct MapConversionOptions
   //! slot_order_key -- instead of by raw distance: forked lanelets tie exactly
   //! (88 % of frames hold one), and std::sort leaves a tie's order undefined.
   bool producer_slot_order{false};
+  //! Speed limit through the producer's km/h -> mph -> m/s (x 0.621371 x 0.44704).
+  bool producer_speed_limit{false};
   double line_string_max_step_m{5.0};
 
   //! The step is left at its default for the caller to set from its parameter.
@@ -114,6 +117,7 @@ struct MapConversionOptions
     options.crosswalk_polygons = true;
     options.linear_line_strings = true;
     options.producer_slot_order = true;
+    options.producer_speed_limit = true;
     return options;
   }
 };

@@ -295,12 +295,17 @@ LaneSegmentContext::create_tensor_data_from_indices(
       const auto & signal = traffic_light_stamped_info_itr->second.signal;
       const uint8_t traffic_color =
         identify_current_light_status(lane_segment.turn_direction, signal.elements);
+      // The producer has no white state (it refuses the colour), so a model
+      // trained on its data reads a white light as unrecognised; upstream's
+      // encoding puts it in the no-traffic-light slot.
+      const bool white_as_unknown =
+        producer_slot_order_ && traffic_color == TrafficLightElement::WHITE;
       return Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM>{
-        traffic_color == TrafficLightElement::GREEN,    // 3
-        traffic_color == TrafficLightElement::AMBER,    // 2
-        traffic_color == TrafficLightElement::RED,      // 1
-        traffic_color == TrafficLightElement::UNKNOWN,  // 0
-        traffic_color == TrafficLightElement::WHITE     // 4
+        traffic_color == TrafficLightElement::GREEN,                         // 3
+        traffic_color == TrafficLightElement::AMBER,                         // 2
+        traffic_color == TrafficLightElement::RED,                           // 1
+        traffic_color == TrafficLightElement::UNKNOWN || white_as_unknown,  // 0
+        traffic_color == TrafficLightElement::WHITE && !white_as_unknown    // 4
       };
     }();
 

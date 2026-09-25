@@ -336,10 +336,17 @@ LaneletMap convert_to_internal_lanelet_map(
                                                 : LINE_TYPE_VIRTUAL);
 
     const lanelet::AttributeMap & attrs = lanelet.attributes();
+    // The producer stores km/h -> mph (x 0.621371) and converts mph -> m/s
+    // (x 0.44704) at use, 4e-6 off km/h / 3.6; a model trained on it reads
+    // that value, so the producer convention reproduces it exactly.
+    const auto to_mps = [&](const std::string & kmph) {
+      return options.producer_speed_limit
+               ? static_cast<float>(std::stod(kmph) * 0.621371 * 0.44704)
+               : autoware_utils_math::kmph2mps(std::stof(kmph));
+    };
     const std::optional<float> speed_limit_mps =
       attrs.find("speed_limit") != attrs.end()
-        ? std::make_optional(
-            autoware_utils_math::kmph2mps(std::stof(attrs.at("speed_limit").value())))
+        ? std::make_optional(to_mps(attrs.at("speed_limit").value()))
         : std::nullopt;
 
     int64_t turn_direction = LaneSegment::TURN_DIRECTION_NONE;
