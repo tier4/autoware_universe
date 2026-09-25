@@ -132,4 +132,63 @@ TEST_F(TrajectoryOptimizerTest, WarmStartAcrossCycles)
   ASSERT_TRUE(second.optimized);
 }
 
+Trajectory make_stopped_trajectory(const size_t num_points, const double span_m)
+{
+  Trajectory trajectory;
+  trajectory.header.frame_id = "map";
+  for (size_t i = 0; i < num_points; ++i) {
+    TrajectoryPoint point;
+    point.pose.position.x = span_m * static_cast<double>(i) / static_cast<double>(num_points - 1);
+    point.pose.orientation.w = 1.0;
+    point.longitudinal_velocity_mps = 0.0F;
+    point.front_wheel_angle_rad = 0.5F;
+    trajectory.points.push_back(point);
+  }
+  return trajectory;
+}
+
+TEST_F(TrajectoryOptimizerTest, LatchesSteeringOnStoppedReference)
+{
+  TrajectoryOptimizationParams params;
+  params.enable = true;
+  params.steer_stop_hold.stopped_velocity_threshold_mps = 0.08;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  odometry_.twist.twist.linear.x = 0.0;
+  auto raw = make_stopped_trajectory(opt_horizon, 0.5);
+  const auto first = optimizer.optimize(raw, odometry_, 0.35, 0);
+  ASSERT_TRUE(first.optimized);
+  EXPECT_EQ(first.solver_status, -1);
+  for (const auto & point : first.trajectory.points) {
+    EXPECT_NEAR(point.front_wheel_angle_rad, 0.35F, 1e-5F);
+    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0F, 1e-5F);
+  }
+
+  const auto second = optimizer.optimize(raw, odometry_, 0.60, 0);
+  ASSERT_TRUE(second.optimized);
+  for (const auto & point : second.trajectory.points) {
+    EXPECT_NEAR(point.front_wheel_angle_rad, 0.35F, 1e-5F);
+  }
+}
+
+TEST_F(TrajectoryOptimizerTest, ZerosSteeringNearGoalWhenStopped)
+{
+  TrajectoryOptimizationParams params;
+  params.enable = true;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  odometry_.twist.twist.linear.x = 0.0;
+  geometry_msgs::msg::Pose goal;
+  goal.position.x = 2.0;
+  goal.orientation.w = 1.0;
+  const auto raw = make_stopped_trajectory(opt_horizon, 0.5);
+  const auto result = optimizer.optimize(raw, odometry_, 0.40, 0, goal);
+  ASSERT_TRUE(result.optimized);
+  EXPECT_EQ(result.solver_status, -2);
+  for (const auto & point : result.trajectory.points) {
+    EXPECT_NEAR(point.front_wheel_angle_rad, 0.002F, 1e-5F);
+    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0F, 1e-5F);
+  }
+}
+
 }  // namespace autoware::ml_planner::test

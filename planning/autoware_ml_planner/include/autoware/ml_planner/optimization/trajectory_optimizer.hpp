@@ -51,6 +51,9 @@ struct OptimizationResult
  * the current ego state. The result is an 80-point trajectory (t = 0.1..8.0 s, same timing
  * convention as the raw output) that is dynamically consistent with the current ego state
  * and carries velocity, acceleration and steering profiles.
+ *
+ * While ego and the reference are both stopped, the solver is bypassed and the published
+ * steering angle is held (or zeroed near the route goal).
  */
 class TrajectoryOptimizer
 {
@@ -66,20 +69,32 @@ public:
    * @param ego_odometry Current ego kinematic state (base_link in map frame).
    * @param current_steering_angle_rad Measured steering angle.
    * @param batch_index Candidate index; warm starts are kept per candidate.
-   * @return Optimized trajectory, or the raw trajectory when the solver fails.
+   * @return Optimized trajectory, or the raw trajectory when the solver fails. A steering
+   *         stop-hold result is marked optimized so the held trajectory is published.
    */
   OptimizationResult optimize(
     const Trajectory & raw_trajectory, const Odometry & ego_odometry,
     double current_steering_angle_rad, size_t batch_index,
     const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
 
+  void clear_warm_start(size_t batch_index);
+
 private:
+  enum class SteerStopMode { Track, Hold, Zero };
+
+  SteerStopMode resolve_steer_stop_mode(
+    const Trajectory & reference, const Odometry & ego_odometry,
+    const std::optional<geometry_msgs::msg::Pose> & goal_pose);
+  Trajectory apply_stopped_reference(const Trajectory & reference, double steer_rad) const;
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;
   double max_steering_angle_rad_;
   std::unique_ptr<AcadosSolverWrapper> solver_;
   std::optional<geometry_msgs::msg::Pose> observed_goal_pose_;
   std::optional<geometry_msgs::msg::Pose> latched_goal_pose_;
+  bool in_stopped_regime_{false};
+  bool in_goal_zero_regime_{false};
+  double latched_steering_rad_{0.0};
 
   // Previous solutions in map frame, per candidate, used as warm starts.
   struct PreviousSolution
