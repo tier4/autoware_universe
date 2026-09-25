@@ -168,6 +168,7 @@ if(BUILD_TESTING)
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_obstacle_stop_integration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_stop_point_fixer_integration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_surround_obstacle_stop_integration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_time_sequence_raw_optimizer_stop_policy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_traffic_light_stop_integration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_trajectory_processor_integration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_trajectory_processor_plugin_base.cpp
