@@ -35,6 +35,15 @@ double get_external_velocity_limit_deceleration(
            ? std::abs(static_cast<double>(velocity_limit.constraints.min_acceleration))
            : std::abs(nominal_deceleration);
 }
+
+double get_external_velocity_limit_min_jerk(
+  const autoware_internal_planning_msgs::msg::VelocityLimit & velocity_limit,
+  const double nominal_jerk)
+{
+  return velocity_limit.use_constraints
+           ? std::abs(static_cast<double>(velocity_limit.constraints.min_jerk))
+           : std::abs(nominal_jerk);
+}
 }  // namespace detail
 
 void ExternalVelocityLimit::on_initialize(const TrajectoryProcessorParams & params)
@@ -49,6 +58,7 @@ void ExternalVelocityLimit::update_params(const TrajectoryProcessorParams & para
 {
   enabled_ = params.use_external_velocity_limit;
   nominal_deceleration_ = params.stopping_constraints.nominal_deceleration;
+  nominal_jerk_ = params.stopping_constraints.jerk_limit;
 }
 
 ProcessingResult ExternalVelocityLimit::process(
@@ -69,10 +79,12 @@ ProcessingResult ExternalVelocityLimit::process(
     detail::get_external_velocity_limit_deceleration(*velocity_limit, nominal_deceleration_);
   const double max_velocity = velocity_limit->max_velocity;
   detail::VelocityLimitOptions options;
-  options.make_profile_feasible = true;
   options.current_ego_velocity = input.current_odometry->twist.twist.linear.x;
+  options.current_ego_acceleration = input.current_acceleration->accel.accel.linear.x;
+  const double min_jerk =
+    detail::get_external_velocity_limit_min_jerk(*velocity_limit, nominal_jerk_);
   const auto result = detail::apply_velocity_limits(
-    traj_points, deceleration,
+    traj_points, deceleration, min_jerk,
     [max_velocity](const geometry_msgs::msg::Point &) {
       return std::optional<double>{max_velocity};
     },
