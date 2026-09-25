@@ -693,7 +693,7 @@ std::size_t overlayNominalSteeringFromPredictedTrajectory(
 {
   struct SteeringSample
   {
-    float time{0.0F};
+    double time{0.0};
     float steering{0.0F};
   };
 
@@ -712,14 +712,14 @@ std::size_t overlayNominalSteeringFromPredictedTrajectory(
   double previous_x = ego.x;
   double previous_y = ego.y;
   double previous_yaw = ego.yaw;
-  float previous_time = -1.0F;
+  double previous_time = -1.0;
   for (std::size_t index = 0; index < predicted_trajectory.points.size(); ++index) {
     const auto & point = predicted_trajectory.points[index];
     const double x = point.pose.position.x;
     const double y = point.pose.position.y;
     const double yaw = tf2::getYaw(point.pose.orientation);
-    const float time = static_cast<float>(point.time_from_start.sec) +
-                       1.0E-9F * static_cast<float>(point.time_from_start.nanosec);
+    const double time = static_cast<double>(point.time_from_start.sec) +
+                        1.0E-9 * static_cast<double>(point.time_from_start.nanosec);
     if (
       !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(yaw) || !std::isfinite(time) ||
       time < 0.0F || (index > 0U && time <= previous_time)) {
@@ -759,12 +759,16 @@ std::size_t overlayNominalSteeringFromPredictedTrajectory(
 
   std::size_t replaced = 0U;
   std::size_t upper_index = 0U;
+  // dt is stored as a float while prediction times have nanosecond precision. Allow their
+  // rounding difference at the last sample without extending the prediction by a full step.
+  constexpr double kTimeAlignmentToleranceS = 1.0E-6;
   for (std::size_t index = 0; index < nominal.size(); ++index) {
-    const float target_time = static_cast<float>(index) * dt;
-    if (target_time > samples.back().time) {
+    const double target_time = static_cast<double>(index) * static_cast<double>(dt);
+    if (target_time > samples.back().time + kTimeAlignmentToleranceS) {
       break;
     }
-    while (upper_index < samples.size() && samples[upper_index].time < target_time) {
+    while (upper_index < samples.size() &&
+           samples[upper_index].time + kTimeAlignmentToleranceS < target_time) {
       ++upper_index;
     }
     if (upper_index == samples.size()) {
@@ -772,12 +776,13 @@ std::size_t overlayNominalSteeringFromPredictedTrajectory(
     }
 
     float steering = samples[upper_index].steering;
-    if (upper_index > 0U && samples[upper_index].time > target_time) {
+    if (upper_index > 0U && samples[upper_index].time > target_time + kTimeAlignmentToleranceS) {
       const auto & lower = samples[upper_index - 1U];
       const auto & upper = samples[upper_index];
-      const float span = upper.time - lower.time;
-      const float alpha = span > 0.0F ? (target_time - lower.time) / span : 0.0F;
-      steering = lower.steering + std::clamp(alpha, 0.0F, 1.0F) * (upper.steering - lower.steering);
+      const double span = upper.time - lower.time;
+      const double alpha = span > 0.0 ? (target_time - lower.time) / span : 0.0;
+      steering = lower.steering + static_cast<float>(std::clamp(alpha, 0.0, 1.0)) *
+                                    (upper.steering - lower.steering);
     }
     nominal[index].steer_cmd = steering;
     ++replaced;

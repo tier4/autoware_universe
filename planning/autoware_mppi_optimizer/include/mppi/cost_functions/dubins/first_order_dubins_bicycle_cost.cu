@@ -547,6 +547,7 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   }
   dataToDevice();
   refreshNearestSegmentTexture(projection_geometry_changed);
+  if (!data_update_active_) refreshPreferredLaneCenterTexture();
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
