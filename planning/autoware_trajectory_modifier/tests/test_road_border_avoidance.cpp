@@ -161,8 +161,8 @@ TEST_F(RoadBorderAvoidanceTest, PropagatesShiftToSubsequentPoints)
 
 TEST_F(RoadBorderAvoidanceTest, BisectsAfterThreeLinearSteps)
 {
-  // Half-width + margin = 1.1 m. Border at y=0.73 needs ~0.37 m of shift, so the first
-  // three 0.1 m probes still collide and bisection must land between 0.3 m and 0.4 m.
+  // Half-width + margin = 1.1 m. Border at y=0.73 needs ~0.37 m of shift. The nearest
+  // feasible sample is 0.4 m, and the boundary refinement must land between 0.3 m and 0.4 m.
   params_.shift_step_m = 0.1;
   RoadBorderAvoidance avoidance(params_, vehicle_info_);
   avoidance.set_road_borders({make_parallel_border(0.73)});
@@ -173,6 +173,79 @@ TEST_F(RoadBorderAvoidanceTest, BisectsAfterThreeLinearSteps)
   for (const auto & point : result.trajectory.points) {
     EXPECT_LT(point.pose.position.y, -0.3);
     EXPECT_GT(point.pose.position.y, -0.4);
+  }
+}
+
+TEST_F(RoadBorderAvoidanceTest, PicksNearSideWhenBothSidesClear)
+{
+  // A border through the body is clear on both sides. The nearer side is about 0.8 m
+  // to the right (1.1 - 0.3); jumping over the line takes about 1.4 m.
+  params_.shift_step_m = 0.1;
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  avoidance.set_road_borders({make_parallel_border(0.3)});
+
+  const auto result = avoidance.adjust(make_straight_trajectory(0.0), ego_pose_);
+  ASSERT_GT(result.num_shifted_points, 0U);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+  for (const auto & point : result.trajectory.points) {
+    EXPECT_LT(point.pose.position.y, -0.7);
+    EXPECT_GT(point.pose.position.y, -0.9);
+  }
+}
+
+TEST_F(RoadBorderAvoidanceTest, ShiftsAlongPathNormalWhenYawDisagrees)
+{
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  avoidance.set_road_borders({make_parallel_border(1.0)});
+
+  auto raw = make_straight_trajectory(0.0);
+  for (auto & point : raw.points) {
+    point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(0.35);
+  }
+  const auto result = avoidance.adjust(raw, ego_pose_);
+
+  ASSERT_GT(result.num_shifted_points, 0U);
+  for (size_t i = 0; i < raw.points.size(); ++i) {
+    EXPECT_DOUBLE_EQ(result.trajectory.points[i].pose.position.x, raw.points[i].pose.position.x);
+    EXPECT_LT(result.trajectory.points[i].pose.position.y, 0.0);
+  }
+}
+
+TEST_F(RoadBorderAvoidanceTest, ShiftsOutwardOnALeftCurve)
+{
+  // Left turn, radius 30 m, center (0, 30). The inner border sits 0.5 m toward the
+  // center, inside the 1.1 m inflated half-width, so the path must move outward.
+  constexpr double k_radius = 30.0;
+  Trajectory raw;
+  raw.header.frame_id = "map";
+  for (int step = 0; step <= 20; ++step) {
+    const double theta = 0.05 * static_cast<double>(step);
+    TrajectoryPoint point;
+    point.pose.position.x = k_radius * std::sin(theta);
+    point.pose.position.y = k_radius * (1.0 - std::cos(theta));
+    point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(theta);
+    raw.points.push_back(point);
+  }
+
+  LineString2d inner_border;
+  constexpr double k_inner_radius = k_radius - 0.5;
+  for (int step = -2; step <= 24; ++step) {
+    const double theta = 0.05 * static_cast<double>(step);
+    inner_border.emplace_back(
+      k_inner_radius * std::sin(theta), k_radius - k_inner_radius * std::cos(theta));
+  }
+
+  params_.shift_step_m = 0.1;
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  avoidance.set_road_borders({inner_border});
+  const auto result = avoidance.adjust(raw, ego_pose_);
+
+  ASSERT_GT(result.num_shifted_points, 0U);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+  for (size_t i = 1; i + 1 < result.trajectory.points.size(); ++i) {
+    const auto & shifted = result.trajectory.points[i].pose.position;
+    const double shifted_radius = std::hypot(shifted.x, shifted.y - k_radius);
+    EXPECT_GT(shifted_radius, k_radius + 0.4);
   }
 }
 

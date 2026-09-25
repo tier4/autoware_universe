@@ -35,8 +35,12 @@ struct RoadBorderAvoidanceParams
   bool enable{false};
   double footprint_margin_m{0.2};
   double search_radius_m{120.0};
-  double shift_step_m{0.1};  // first 3 probes; remaining clearance via bisection
+  // Sample resolution along the path normal. The carried offset is projected onto the
+  // nearest feasible sample, then refined to the clearance boundary.
+  double shift_step_m{0.1};
   double max_lateral_shift_m{1.5};
+  // When true, a point that is already clear keeps the previous point's offset.
+  // When false, every point is measured from the raw path.
   bool propagate_shift{true};
 };
 
