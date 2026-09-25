@@ -945,6 +945,42 @@ trajectory_modifier_params:
       validation:
         gt_eq<>: [0.0]
       read_only: false
+    goal:
+      weight_longitudinal:
+        type: double
+        default_value: 5.0
+        description: Extra terminal weight along the goal heading, latched near the route goal [1/m^2]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      weight_lateral:
+        type: double
+        default_value: 5.0
+        description: Extra terminal weight perpendicular to the goal heading [1/m^2]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      weight_yaw:
+        type: double
+        default_value: 0.5
+        description: Extra terminal heading weight toward the route goal [1/rad^2]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      weight_velocity:
+        type: double
+        default_value: 0.1
+        description: Extra terminal weight pulling velocity to zero at the route goal
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      snap_distance_m:
+        type: double
+        default_value: 1.0
+        description: Latch the goal terminal penalty once the predicted endpoint is within this distance of the route goal [m]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
     min_velocity_mps:
       type: double
       default_value: 0.0

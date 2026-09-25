@@ -132,7 +132,9 @@ AcadosSolverWrapper::~AcadosSolverWrapper()
 
 SolverSolution AcadosSolverWrapper::solve(
   const std::array<double, opt_nx> & initial_state,
-  const std::array<StageReference, opt_horizon> & references, const SolverSolution * warm_start)
+  const std::array<StageReference, opt_horizon> & references,
+  const std::optional<GoalTerminalReference> & goal_terminal_reference,
+  const SolverSolution * warm_start)
 {
   auto x0 = initial_state;
 
@@ -144,12 +146,16 @@ SolverSolution AcadosSolverWrapper::solve(
   const double unscale = 1.0 / opt_dt_s;
   const double w_lon = impl_->params.weight_longitudinal;
   const double w_lat = impl_->params.weight_lateral;
-  auto position_block = [&](const double yaw) {
-    const double c = std::cos(yaw);
-    const double s = std::sin(yaw);
-    return std::array<double, 3>{
-      w_lon * c * c + w_lat * s * s, w_lon * s * s + w_lat * c * c, (w_lon - w_lat) * c * s};
-  };
+  // Symmetric 2x2 block [xx, yy, xy] of R(yaw) * diag(w_lon, w_lat) * R(yaw)^T.
+  auto position_block =
+    [](const double yaw, const double longitudinal_weight, const double lateral_weight) {
+      const double c = std::cos(yaw);
+      const double s = std::sin(yaw);
+      return std::array<double, 3>{
+        longitudinal_weight * c * c + lateral_weight * s * s,
+        longitudinal_weight * s * s + lateral_weight * c * c,
+        (longitudinal_weight - lateral_weight) * c * s};
+    };
   std::array<double, gen_ny * gen_ny> stage_weight_matrix{};
   stage_weight_matrix[w_index(kPsi, kPsi, gen_ny)] = unscale * impl_->params.weight_yaw;
   stage_weight_matrix[w_index(kYJerk, kYJerk, gen_ny)] = unscale * impl_->params.weight_jerk;
@@ -157,7 +163,7 @@ SolverSolution AcadosSolverWrapper::solve(
     unscale * impl_->params.weight_steering_rate;
   for (size_t stage = 0; stage < gen_n; ++stage) {
     const double yaw_ref = (stage == 0) ? x0[kPsi] : references[stage - 1].yaw;
-    const auto [w_xx, w_yy, w_xy] = position_block(yaw_ref);
+    const auto [w_xx, w_yy, w_xy] = position_block(yaw_ref, w_lon, w_lat);
     stage_weight_matrix[w_index(kX, kX, gen_ny)] = unscale * w_xx;
     stage_weight_matrix[w_index(kY, kY, gen_ny)] = unscale * w_yy;
     stage_weight_matrix[w_index(kX, kY, gen_ny)] = unscale * w_xy;
@@ -167,13 +173,40 @@ SolverSolution AcadosSolverWrapper::solve(
       stage_weight_matrix.data());
   }
   const double terminal_scale = impl_->params.terminal_weight_scale / unscale;
+  const auto & terminal_ref = references[gen_n - 1];
+  std::array<double, 2> terminal_position{terminal_ref.x, terminal_ref.y};
+  double terminal_yaw = terminal_ref.yaw;
+  double terminal_velocity = 0.0;
+  if (goal_terminal_reference) {
+    terminal_position = {goal_terminal_reference->x, goal_terminal_reference->y};
+    terminal_yaw = goal_terminal_reference->yaw;
+    terminal_velocity = goal_terminal_reference->velocity;
+  }
+  auto terminal_block = position_block(terminal_yaw, w_lon, w_lat);
+  for (auto & entry : terminal_block) {
+    entry *= terminal_scale;
+  }
+  double terminal_yaw_weight = terminal_scale * impl_->params.weight_yaw;
+  double terminal_velocity_weight = 0.0;
+  if (goal_terminal_reference) {
+    // Goal weights are absolute on the terminal cost. They are not multiplied by
+    // terminal_weight_scale.
+    const auto & goal = impl_->params.goal;
+    const auto goal_block =
+      position_block(goal_terminal_reference->yaw, goal.weight_longitudinal, goal.weight_lateral);
+    for (size_t i = 0; i < terminal_block.size(); ++i) {
+      terminal_block[i] += goal_block[i];
+    }
+    terminal_yaw_weight += goal.weight_yaw;
+    terminal_velocity_weight += goal.weight_velocity;
+  }
   std::array<double, gen_nyn * gen_nyn> terminal_weight_matrix{};
-  const auto [we_xx, we_yy, we_xy] = position_block(references[gen_n - 1].yaw);
-  terminal_weight_matrix[w_index(kX, kX, gen_nyn)] = terminal_scale * we_xx;
-  terminal_weight_matrix[w_index(kY, kY, gen_nyn)] = terminal_scale * we_yy;
-  terminal_weight_matrix[w_index(kX, kY, gen_nyn)] = terminal_scale * we_xy;
-  terminal_weight_matrix[w_index(kY, kX, gen_nyn)] = terminal_scale * we_xy;
-  terminal_weight_matrix[w_index(kPsi, kPsi, gen_nyn)] = terminal_scale * impl_->params.weight_yaw;
+  terminal_weight_matrix[w_index(kX, kX, gen_nyn)] = terminal_block[0];
+  terminal_weight_matrix[w_index(kY, kY, gen_nyn)] = terminal_block[1];
+  terminal_weight_matrix[w_index(kX, kY, gen_nyn)] = terminal_block[2];
+  terminal_weight_matrix[w_index(kY, kX, gen_nyn)] = terminal_block[2];
+  terminal_weight_matrix[w_index(kPsi, kPsi, gen_nyn)] = terminal_yaw_weight;
+  terminal_weight_matrix[w_index(kV, kV, gen_nyn)] = terminal_velocity_weight;
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "W",
     terminal_weight_matrix.data());
@@ -187,9 +220,8 @@ SolverSolution AcadosSolverWrapper::solve(
     ocp_nlp_cost_model_set(
       impl_->config, impl_->dims, impl_->in, static_cast<int>(stage), "yref", yref.data());
   }
-  const auto & terminal_ref = references[gen_n - 1];
   std::array<double, gen_nyn> yref_e{
-    terminal_ref.x, terminal_ref.y, terminal_ref.yaw, 0.0, 0.0, 0.0};
+    terminal_position[0], terminal_position[1], terminal_yaw, terminal_velocity, 0.0, 0.0};
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "yref", yref_e.data());
 
