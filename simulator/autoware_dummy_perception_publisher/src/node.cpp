@@ -19,6 +19,7 @@
 #include "autoware/point_types/types.hpp"
 #include "autoware_utils_geometry/geometry.hpp"
 
+#include <autoware/object_recognition_utils/pointcloud_classification.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <tf2/LinearMath/Quaternion.hpp>
 #include <tf2/LinearMath/Transform.hpp>
@@ -34,11 +35,13 @@
 
 #include <pcl/filters/voxel_grid_occlusion_estimation.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -53,6 +56,31 @@ using geometry_msgs::msg::Transform;
 using geometry_msgs::msg::TransformStamped;
 using tier4_simulation_msgs::msg::DummyObject;
 
+namespace
+{
+PointType parsePointType(const std::string & point_type)
+{
+  if (point_type == "XYZIRC") {
+    return PointType::XYZIRC;
+  }
+  if (point_type == "XYZCPE") {
+    return PointType::XYZCPE;
+  }
+  throw std::invalid_argument("point_type must be XYZIRC or XYZCPE");
+}
+
+uint8_t toPointCloudClassificationId(
+  const autoware_perception_msgs::msg::ObjectClassification & classification)
+{
+  using autoware::point_types::PointCloudClassification;
+
+  const auto pointcloud_classification =
+    autoware::object_recognition_utils::try_into_pointcloud(classification.label);
+  return static_cast<uint8_t>(
+    pointcloud_classification.value_or(PointCloudClassification::INVALID));
+}
+}  // namespace
+
 DummyPerceptionPublisherNode::DummyPerceptionPublisherNode()
 : Node("dummy_perception_publisher"), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
 {
@@ -64,6 +92,8 @@ DummyPerceptionPublisherNode::DummyPerceptionPublisherNode()
   const bool object_centric_pointcloud =
     this->declare_parameter("object_centric_pointcloud", false);
   publish_ground_truth_objects_ = this->declare_parameter("publish_ground_truth", false);
+  publish_object_pointcloud_ = this->declare_parameter("publish_object_pointcloud", false);
+  point_type_ = parsePointType(this->declare_parameter("point_type", std::string{"XYZCPE"}));
   const unsigned int random_seed =
     static_cast<unsigned int>(this->declare_parameter("random_seed", 0));
   const bool use_fixed_random_seed = this->declare_parameter("use_fixed_random_seed", false);
@@ -96,6 +126,9 @@ DummyPerceptionPublisherNode::DummyPerceptionPublisherNode()
   object_sub_ = this->create_subscription<tier4_simulation_msgs::msg::DummyObject>(
     "input/object", 100,
     std::bind(&DummyPerceptionPublisherNode::objectCallback, this, std::placeholders::_1));
+  static_area_sub_ = this->create_subscription<tier4_simulation_msgs::msg::DummyObject>(
+    "input/static_area", 100,
+    std::bind(&DummyPerceptionPublisherNode::staticAreaCallback, this, std::placeholders::_1));
 
   // optional ground truth publisher
   if (publish_ground_truth_objects_) {
@@ -132,6 +165,58 @@ DummyPerceptionPublisherNode::convertPointCloudXYZtoXYZIRC(
   }
 
   return cloud_xyzirc;
+}
+
+pcl::PointCloud<autoware::point_types::PointXYZIRC>
+DummyPerceptionPublisherNode::convertPointCloudXYZtoXYZIRC(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_cloud, const uint8_t class_id) const
+{
+  pcl::PointCloud<autoware::point_types::PointXYZIRC> cloud_xyzirc;
+  cloud_xyzirc.reserve(input_cloud->size());
+
+  for (const auto & pt_xyz : input_cloud->points) {
+    autoware::point_types::PointXYZIRC p_xyzirc;
+    p_xyzirc.x = pt_xyz.x;
+    p_xyzirc.y = pt_xyz.y;
+    p_xyzirc.z = pt_xyz.z;
+    p_xyzirc.intensity = class_id;
+    p_xyzirc.return_type = 0;
+    p_xyzirc.channel = 0;
+    cloud_xyzirc.push_back(p_xyzirc);
+  }
+
+  return cloud_xyzirc;
+}
+
+pcl::PointCloud<autoware::point_types::PointXYZCPE>
+DummyPerceptionPublisherNode::convertPointCloudXYZtoXYZCPE(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_cloud,
+  const autoware_perception_msgs::msg::ObjectClassification & classification) const
+{
+  return convertPointCloudXYZtoXYZCPE(
+    input_cloud, toPointCloudClassificationId(classification), classification.probability);
+}
+
+pcl::PointCloud<autoware::point_types::PointXYZCPE>
+DummyPerceptionPublisherNode::convertPointCloudXYZtoXYZCPE(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_cloud, const uint8_t class_id,
+  const float probability) const
+{
+  pcl::PointCloud<autoware::point_types::PointXYZCPE> cloud_xyzcpe;
+  cloud_xyzcpe.reserve(input_cloud->size());
+
+  for (const auto & pt_xyz : input_cloud->points) {
+    autoware::point_types::PointXYZCPE p_xyzcpe;
+    p_xyzcpe.x = pt_xyz.x;
+    p_xyzcpe.y = pt_xyz.y;
+    p_xyzcpe.z = pt_xyz.z;
+    p_xyzcpe.class_id = class_id;
+    p_xyzcpe.probability = probability;
+    p_xyzcpe.entropy = 0.0F;
+    cloud_xyzcpe.push_back(p_xyzcpe);
+  }
+
+  return cloud_xyzcpe;
 }
 
 void DummyPerceptionPublisherNode::timerCallback()
@@ -205,16 +290,53 @@ void DummyPerceptionPublisherNode::timerCallback()
   pcl::PointCloud<pcl::PointXYZ>::Ptr merged_pointcloud_ptr(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr detected_merged_pointcloud_ptr(
     new pcl::PointCloud<pcl::PointXYZ>);
+  std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> object_pointclouds;
 
-  if (all_objects.empty()) {
-    const auto pointcloud_xyzirc = convertPointCloudXYZtoXYZIRC(merged_pointcloud_ptr);
-    pcl::toROSMsg(pointcloud_xyzirc, output_pointcloud_msg);
-  } else {
-    pointcloud_creator_->create_pointclouds(
+  if (!all_objects.empty()) {
+    object_pointclouds = pointcloud_creator_->create_pointclouds(
       obj_infos, tf_base_link2map, random_generator_, merged_pointcloud_ptr);
-    const auto pointcloud_xyzirc = convertPointCloudXYZtoXYZIRC(merged_pointcloud_ptr);
-    pcl::toROSMsg(pointcloud_xyzirc, output_pointcloud_msg);
   }
+
+  std::vector<ObjectInfo> static_area_infos;
+  static_area_infos.reserve(static_areas_.size());
+  for (const auto & static_area : static_areas_) {
+    static_area_infos.push_back(ObjectInfo::fromDummyObject(static_area));
+  }
+
+  pcl::PointCloud<pcl::PointXYZ>::Ptr static_area_merged_pointcloud_ptr(
+    new pcl::PointCloud<pcl::PointXYZ>);
+  std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> static_area_pointclouds;
+  if (!static_area_infos.empty()) {
+    static_area_pointclouds = pointcloud_creator_->create_pointclouds(
+      static_area_infos, tf_base_link2map, random_generator_, static_area_merged_pointcloud_ptr);
+  }
+
+  if (point_type_ == PointType::XYZIRC) {
+    pcl::PointCloud<autoware::point_types::PointXYZIRC> output_pointcloud;
+    if (publish_object_pointcloud_) {
+      output_pointcloud += convertPointCloudXYZtoXYZIRC(merged_pointcloud_ptr);
+    }
+    for (size_t i = 0; i < static_area_pointclouds.size(); ++i) {
+      output_pointcloud += convertPointCloudXYZtoXYZIRC(
+        static_area_pointclouds.at(i), static_areas_.at(i).classification.label);
+    }
+    pcl::toROSMsg(output_pointcloud, output_pointcloud_msg);
+  } else {
+    pcl::PointCloud<autoware::point_types::PointXYZCPE> output_pointcloud;
+    if (publish_object_pointcloud_) {
+      for (size_t i = 0; i < object_pointclouds.size(); ++i) {
+        output_pointcloud +=
+          convertPointCloudXYZtoXYZCPE(object_pointclouds.at(i), all_objects.at(i).classification);
+      }
+    }
+    for (size_t i = 0; i < static_area_pointclouds.size(); ++i) {
+      output_pointcloud += convertPointCloudXYZtoXYZCPE(
+        static_area_pointclouds.at(i), static_areas_.at(i).classification.label,
+        static_areas_.at(i).classification.probability);
+    }
+    pcl::toROSMsg(output_pointcloud, output_pointcloud_msg);
+  }
+
   if (!selected_indices.empty()) {
     std::vector<ObjectInfo> detected_obj_infos;
     for (const auto selected_idx : selected_indices) {
@@ -299,6 +421,78 @@ void DummyPerceptionPublisherNode::timerCallback()
   }
   if (publish_ground_truth_objects_) {
     ground_truth_objects_pub_->publish(output_ground_truth_objects_msg);
+  }
+}
+
+void DummyPerceptionPublisherNode::staticAreaCallback(
+  const tier4_simulation_msgs::msg::DummyObject::ConstSharedPtr msg)
+{
+  if (msg->action == DummyObject::DELETEALL) {
+    static_areas_.clear();
+    return;
+  }
+
+  if (msg->action == DummyObject::DELETE) {
+    static_areas_.erase(
+      std::remove_if(
+        static_areas_.begin(), static_areas_.end(),
+        [&](const auto & static_area) { return static_area.id == msg->id; }),
+      static_areas_.end());
+    return;
+  }
+
+  if (
+    msg->shape.type != autoware_perception_msgs::msg::Shape::BOUNDING_BOX ||
+    msg->shape.dimensions.x <= 0.0 || msg->shape.dimensions.y <= 0.0 ||
+    msg->shape.dimensions.z <= 0.0) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Static area requires BOUNDING_BOX shape with positive dimensions.");
+    return;
+  }
+
+  tf2::Transform tf_input2map;
+  try {
+    TransformStamped ros_input2map;
+    ros_input2map = tf_buffer_.lookupTransform(
+      /*target*/ msg->header.frame_id, /*src*/ "map", msg->header.stamp,
+      rclcpp::Duration::from_seconds(0.5));
+    tf2::fromMsg(ros_input2map.transform, tf_input2map);
+  } catch (tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s", ex.what());
+    return;
+  }
+
+  tf2::Transform tf_input2object_origin;
+  tf2::fromMsg(msg->initial_state.pose_covariance.pose, tf_input2object_origin);
+  const auto tf_map2object_origin = tf_input2map.inverse() * tf_input2object_origin;
+
+  DummyObject static_area = *msg;
+  static_area.header.frame_id = "map";
+  static_area.header.stamp = msg->header.stamp;
+  tf2::toMsg(tf_map2object_origin, static_area.initial_state.pose_covariance.pose);
+
+  if (use_base_link_z_) {
+    TransformStamped ros_map2base_link;
+    try {
+      ros_map2base_link = tf_buffer_.lookupTransform(
+        "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(0.5));
+      static_area.initial_state.pose_covariance.pose.position.z +=
+        ros_map2base_link.transform.translation.z + 0.5 * static_area.shape.dimensions.z;
+    } catch (tf2::TransformException & ex) {
+      RCLCPP_WARN_SKIPFIRST_THROTTLE(get_logger(), *get_clock(), 5000, "%s", ex.what());
+      return;
+    }
+  }
+
+  static_areas_.erase(
+    std::remove_if(
+      static_areas_.begin(), static_areas_.end(),
+      [&](const auto & existing_static_area) { return existing_static_area.id == static_area.id; }),
+    static_areas_.end());
+
+  if (msg->action == DummyObject::ADD || msg->action == DummyObject::MODIFY) {
+    static_areas_.push_back(static_area);
   }
 }
 

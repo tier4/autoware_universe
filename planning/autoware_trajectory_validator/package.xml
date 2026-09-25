@@ -19,8 +19,12 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>autoware_cmake</buildtool_depend>
+  <build_depend>rosidl_default_generators</build_depend>
+
+  <exec_depend>rosidl_default_runtime</exec_depend>
 
   <depend>angles</depend>
+  <depend>autoware_agnocast_wrapper</depend>
   <depend>autoware_boundary_departure_checker</depend>
   <depend>autoware_internal_planning_msgs</depend>
   <depend>autoware_lanelet2_extension</depend>
@@ -50,6 +54,8 @@
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>autoware_lint_common</test_depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
     <build_type>ament_cmake</build_type>

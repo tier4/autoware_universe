@@ -6,10 +6,30 @@
     "trajectory_processor": {
       "type": "object",
       "properties": {
+        "map_velocity_limits": {
+          "type": "object",
+          "properties": {
+            "limit_velocity_from_map_debug_lanelet_ids": {
+              "type": "array",
+              "items": { "type": "integer" },
+              "default": [],
+              "description": "Lanelet IDs whose map velocity limits are overridden when map limiting is enabled"
+            },
+            "limit_velocity_from_map_debug_max_velocities": {
+              "type": "array",
+              "items": { "type": "number", "minimum": 0.0 },
+              "default": [],
+              "description": "Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs"
+            }
+          },
+          "additionalProperties": false
+        },
         "plugin_names": {
           "type": "array",
           "description": "Ordered list of modifier and optimizer plugin class names",
           "default": [
+            "autoware::trajectory_processor::plugin::ExternalVelocityLimit",
+            "autoware::trajectory_processor::plugin::MapVelocityLimits",
             "autoware::trajectory_processor::plugin::StopPointFixer",
             "autoware::trajectory_processor::plugin::SurroundObstacleStop",
             "autoware::trajectory_processor::plugin::ObstacleStop",
@@ -29,6 +49,16 @@
           "items": {
             "type": "string"
           }
+        },
+        "use_map_velocity_limits": {
+          "type": "boolean",
+          "description": "Enable the map velocity limits plugin",
+          "default": true
+        },
+        "use_external_velocity_limit": {
+          "type": "boolean",
+          "description": "Enable the external velocity limit plugin",
+          "default": true
         },
         "use_stop_point_fixer": {
           "type": "boolean",
@@ -838,6 +868,7 @@
               },
               "required": [],
               "additionalProperties": false
+            }
           },
           "required": [],
           "additionalProperties": false

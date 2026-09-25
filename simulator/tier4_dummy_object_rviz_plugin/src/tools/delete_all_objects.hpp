@@ -78,8 +78,10 @@ private Q_SLOTS:
 private:  // NOLINT for Qt
   rclcpp::Clock::SharedPtr clock_;
   rclcpp::Publisher<tier4_simulation_msgs::msg::DummyObject>::SharedPtr dummy_object_info_pub_;
+  rclcpp::Publisher<tier4_simulation_msgs::msg::DummyObject>::SharedPtr dummy_static_area_pub_;
 
   rviz_common::properties::StringProperty * topic_property_;
+  rviz_common::properties::StringProperty * static_area_topic_property_;
 };
 
 }  // namespace rviz_plugins
