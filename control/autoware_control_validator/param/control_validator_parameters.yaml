@@ -53,6 +53,9 @@ control_validator:
     off_time_buffer_s:
       type: double
       description: Continuous-safety time required to deactivate a critical departure [s].
+    enable_align_to_ego_pose:
+      type: bool
+      description: Correct the trajectory poses near the ego vehicle to match the measured ego pose.
     enable_developer_marker:
       type: bool
       description: If true, publish developer debug markers from the boundary departure checker.
