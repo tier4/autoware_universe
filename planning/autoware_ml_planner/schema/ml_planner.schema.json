@@ -242,6 +242,41 @@
                 }
               },
               "required": ["enable"]
+            },
+            "steer_stop_hold": {
+              "type": "object",
+              "description": "While stopped, publish a held steering angle instead of running the solver. Near the route goal the held angle is zero.",
+              "properties": {
+                "enable": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "stopped_velocity_threshold_mps": {
+                  "type": "number",
+                  "default": 0.15,
+                  "minimum": 0.0
+                },
+                "stopped_trajectory_max_length_m": {
+                  "type": "number",
+                  "default": 1.5,
+                  "minimum": 0.0
+                },
+                "goal_steer_zero_enable": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "goal_steer_zero_distance_m": {
+                  "type": "number",
+                  "default": 5.0,
+                  "minimum": 0.0
+                },
+                "goal_steer_zero_requires_stopped": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Enter zero steering only after ego is stopped. The regime stays latched until the goal is no longer near."
+                }
+              },
+              "required": ["enable"]
             }
           },
           "required": ["enable"]
