@@ -42,10 +42,10 @@ namespace autoware::mppi_optimizer::plugin
 namespace
 {
 
-using autoware::trajectory_processor::plugin::ProcessingResult;
+using autoware::trajectory_modifier::plugin::ProcessingResult;
 using autoware_utils_geometry::Segment2d;
 
-/** @brief Converts processor parameters into MPPI cost parameters. */
+/** @brief Converts modifier parameters into MPPI cost parameters. */
 FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer::Params & params)
 {
   if (params.obstacle_safe_margin < params.obstacle_collision_margin) {
@@ -96,7 +96,7 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   return output;
 }
 
-/** @brief Converts processor parameters into MPPI runtime options. */
+/** @brief Converts modifier parameters into MPPI runtime options. */
 FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   const trajectory_mppi_optimizer::Params & params)
 {
@@ -225,7 +225,7 @@ double ego_signed_lateral_error_on_reference_m(
 }  // namespace
 
 void TrajectoryMppiOptimizer::on_initialize(
-  const autoware::trajectory_processor::TrajectoryProcessorParams &)
+  const autoware::trajectory_modifier::TrajectoryModifierParams &)
 {
   auto * const node = get_node_ptr();
   param_listener_ =
@@ -257,13 +257,13 @@ void TrajectoryMppiOptimizer::on_initialize(
 }
 
 void TrajectoryMppiOptimizer::update_params(
-  const autoware::trajectory_processor::TrajectoryProcessorParams &)
+  const autoware::trajectory_modifier::TrajectoryModifierParams &)
 {
 }
 
 ProcessingResult TrajectoryMppiOptimizer::process(
   TrajectoryPoints & trajectory_points,
-  autoware::trajectory_processor::TrajectoryProcessorData & data)
+  autoware::trajectory_modifier::TrajectoryModifierData & data)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *get_time_keeper());
 
@@ -405,7 +405,7 @@ void TrajectoryMppiOptimizer::reset_optimizer()
 }
 
 void TrajectoryMppiOptimizer::update_route_context(
-  const autoware::trajectory_processor::TrajectoryProcessorData & data)
+  const autoware::trajectory_modifier::TrajectoryModifierData & data)
 {
   const bool route_changed =
     !current_route_uuid_ || current_route_uuid_.value() != data.route->uuid;
@@ -591,7 +591,7 @@ void TrajectoryMppiOptimizer::publish_processing_time(const FirstOrderDubinsMppi
     return;
   }
   // Sibling Float64Stamped topics under ~/debug/processing_time_ms/ so PlotJuggler shows
-  // subdivisions next to the processor total (~/debug/processing_time_ms.data).
+  // subdivisions next to the modifier total (~/debug/processing_time_ms.data).
   debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "processing_time_ms/nominal", timing.seed_nominal_ms);
   debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
@@ -654,4 +654,4 @@ void TrajectoryMppiOptimizer::clear_markers(const std_msgs::msg::Header & header
 
 PLUGINLIB_EXPORT_CLASS(
   autoware::mppi_optimizer::plugin::TrajectoryMppiOptimizer,
-  autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase)
+  autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase)

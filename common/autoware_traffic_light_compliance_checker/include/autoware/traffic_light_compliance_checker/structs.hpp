@@ -95,35 +95,35 @@ enum class AmberState {
 /// @brief parameters for traffic light signal status tracking
 struct StatusTrackerParameters
 {
-  double stable_duration_threshold_red;
-  double stable_duration_threshold_amber;
-  double stable_duration_threshold_unknown;
+  double stable_duration_threshold_red{0.0};
+  double stable_duration_threshold_amber{0.0};
+  double stable_duration_threshold_unknown{0.0};
 };
 
 /// @brief parameters for traffic light compliance check
 struct Parameters
 {
-  double deceleration_limit;
-  double jerk_limit;
-  double delay_response_time;
-  double crossing_time_limit;
-  bool treat_amber_light_as_red_light;
-  bool treat_unknown_light_as_red_light;
-  bool enable_arrow_aware_amber_passing;
-  double stop_overshoot_margin;
-  double allow_if_cannot_stop_distance;
-  double min_lookahead_distance;
-  double ego_stopped_velocity_threshold;
+  double deceleration_limit{2.8};
+  double jerk_limit{5.0};
+  double delay_response_time{0.5};
+  double crossing_time_limit{2.75};
+  bool treat_amber_light_as_red_light{false};
+  bool treat_unknown_light_as_red_light{false};
+  bool enable_arrow_aware_amber_passing{true};
+  double stop_overshoot_margin{0.5};
+  double allow_if_cannot_stop_distance{0.0};
+  double min_lookahead_distance{0.0};
+  double ego_stopped_velocity_threshold{0.01};
   StatusTrackerParameters status_tracker_parameters;
   struct CheckedTrajectoryLength
   {
-    double deceleration_limit;
-    double jerk_limit;
+    double deceleration_limit{2.0};
+    double jerk_limit{2.0};
   } checked_trajectory_length;
   struct AmberRejection
   {
-    double hysteresis_duration;
-    bool reject_if_stop_detected;
+    double hysteresis_duration{0.0};
+    bool reject_if_stop_detected{false};
   } amber_rejection;
 };
 
