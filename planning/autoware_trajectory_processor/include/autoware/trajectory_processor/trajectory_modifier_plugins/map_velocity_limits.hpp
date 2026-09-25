@@ -69,6 +69,7 @@ protected:
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     limit_overrides_;
   double constant_deceleration_{};
+  double max_jerk_{};
 
   void on_initialize(const TrajectoryProcessorParams & params) override;
 };
