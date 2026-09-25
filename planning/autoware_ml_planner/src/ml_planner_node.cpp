@@ -208,7 +208,8 @@ void MLPlanner::set_up_params()
   opt.weight_steering_angle =
     this->declare_parameter<double>("trajectory_optimization.weight_steering_angle", 1.0);
   opt.weight_acceleration =
-    this->declare_parameter<double>("trajectory_optimization.weight_acceleration", 0.1);
+    this->declare_parameter<double>("trajectory_optimization.weight_acceleration", 0.0);
+  opt.weight_jerk = this->declare_parameter<double>("trajectory_optimization.weight_jerk", 0.1);
   opt.weight_steering_rate =
     this->declare_parameter<double>("trajectory_optimization.weight_steering_rate", 10.0);
   opt.terminal_weight_scale =
@@ -231,6 +232,9 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.min_acceleration_mps2", -4.0);
   opt.max_acceleration_mps2 =
     this->declare_parameter<double>("trajectory_optimization.max_acceleration_mps2", 3.0);
+  opt.min_jerk_mps3 =
+    this->declare_parameter<double>("trajectory_optimization.min_jerk_mps3", -5.0);
+  opt.max_jerk_mps3 = this->declare_parameter<double>("trajectory_optimization.max_jerk_mps3", 5.0);
   opt.max_steering_rate_rps =
     this->declare_parameter<double>("trajectory_optimization.max_steering_rate_rps", 1.0);
   opt.max_lateral_acceleration_mps2 =
@@ -371,6 +375,7 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     parameters, "trajectory_optimization.weight_steering_angle", opt.weight_steering_angle);
   update_param<double>(
     parameters, "trajectory_optimization.weight_acceleration", opt.weight_acceleration);
+  update_param<double>(parameters, "trajectory_optimization.weight_jerk", opt.weight_jerk);
   update_param<double>(
     parameters, "trajectory_optimization.weight_steering_rate", opt.weight_steering_rate);
   update_param<double>(
@@ -392,6 +397,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     parameters, "trajectory_optimization.min_acceleration_mps2", opt.min_acceleration_mps2);
   update_param<double>(
     parameters, "trajectory_optimization.max_acceleration_mps2", opt.max_acceleration_mps2);
+  update_param<double>(parameters, "trajectory_optimization.min_jerk_mps3", opt.min_jerk_mps3);
+  update_param<double>(parameters, "trajectory_optimization.max_jerk_mps3", opt.max_jerk_mps3);
   update_param<double>(
     parameters, "trajectory_optimization.max_steering_rate_rps", opt.max_steering_rate_rps);
   update_param<double>(
@@ -528,11 +535,20 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     return failure("trajectory optimization is not available in this build");
   }
 #endif
-  const std::array<double, 12> weights{
-    opt.weight_longitudinal,  opt.weight_lateral,        opt.weight_yaw,
-    opt.weight_velocity,      opt.weight_steering_angle, opt.weight_acceleration,
-    opt.weight_steering_rate, opt.terminal_weight_scale, opt.goal.weight_longitudinal,
-    opt.goal.weight_lateral,  opt.goal.weight_yaw,       opt.goal.weight_velocity};
+  const std::array<double, 13> weights{
+    opt.weight_longitudinal,
+    opt.weight_lateral,
+    opt.weight_yaw,
+    opt.weight_velocity,
+    opt.weight_steering_angle,
+    opt.weight_acceleration,
+    opt.weight_jerk,
+    opt.weight_steering_rate,
+    opt.terminal_weight_scale,
+    opt.goal.weight_longitudinal,
+    opt.goal.weight_lateral,
+    opt.goal.weight_yaw,
+    opt.goal.weight_velocity};
   if (std::any_of(weights.begin(), weights.end(), [](const double value) { return value < 0.0; })) {
     return failure("trajectory optimization weights must be non-negative");
   }
@@ -545,6 +561,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   if (opt.min_acceleration_mps2 > opt.max_acceleration_mps2) {
     return failure(
       "trajectory_optimization.min_acceleration_mps2 must not exceed max_acceleration_mps2");
+  }
+  if (opt.min_jerk_mps3 > opt.max_jerk_mps3) {
+    return failure("trajectory_optimization.min_jerk_mps3 must not exceed max_jerk_mps3");
   }
   if (
     opt.max_steering_rate_rps < 0.0 || opt.max_lateral_acceleration_mps2 < 0.0 ||
@@ -722,6 +741,7 @@ void MLPlanner::on_timer()
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
   auto steering_ptr = sub_steering_.take_data();
+  auto acceleration_ptr = sub_acceleration_.take_data();
 
   if (!steering_ptr) {
     constexpr auto message = "Steering status is not available";
@@ -835,11 +855,14 @@ void MLPlanner::on_timer()
   pub_inference_time_->publish(inference_time_msg);
 
   const double current_steering_angle_rad = static_cast<double>(steering_ptr->steering_tire_angle);
+  const double current_acceleration_mps2 =
+    acceleration_ptr ? acceleration_ptr->accel.accel.linear.x : 0.0;
 
   PlannerOutput planner_output;
   try {
     planner_output = core_->create_planner_output(
-      *inference_result, frame_time, generator_uuid_, current_steering_angle_rad);
+      *inference_result, frame_time, generator_uuid_, current_steering_angle_rad,
+      current_acceleration_mps2);
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), "Postprocessing failed: " << e.what());
     diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, e.what());
