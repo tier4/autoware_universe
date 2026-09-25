@@ -311,41 +311,51 @@ void ContextInputProvider::select_traffic_signals_at(
   const std::vector<TrafficLightGroupArray::ConstSharedPtr> & incoming,
   const rclcpp::Time & frame_stamp)
 {
-  // The producer's _build_tl_recognition_per_frame: the latest message stamped
-  // at or before the frame (the LiDAR stamp, not processing time), at most
-  // 500 ms old, used whole -- a group it lacks is unrecognised this frame, not
-  // carried over from an older message. Messages are kept by stamp so one that
-  // arrives after the frame is processed still serves the next frame.
+  // The producer's _build_tl_recognition_per_frame, per GROUP: the elements
+  // from the latest message stamped at or before the frame (the LiDAR stamp,
+  // not processing time), at most 500 ms old, in which that group has a
+  // recognised colour. Two publishers share the topic with different group
+  // sets and sometimes disagree red / unknown, so neither a whole message nor
+  // a group's newest entry is the light's state. Messages are kept by stamp,
+  // so one that arrives after this frame is processed still serves the next.
   constexpr int64_t tolerance_ns = 500'000'000;
+  const auto stamp_ns = [](const auto & msg) { return rclcpp::Time(msg->stamp).nanoseconds(); };
   for (const auto & msg : incoming) {
+    // upper_bound: a stamp tie keeps arrival order, the later-received last.
     const auto at = std::upper_bound(
       traffic_light_messages_.begin(), traffic_light_messages_.end(), msg,
-      [](const auto & a, const auto & b) {
-        return rclcpp::Time(a->stamp).nanoseconds() < rclcpp::Time(b->stamp).nanoseconds();
-      });
+      [&](const auto & a, const auto & b) { return stamp_ns(a) < stamp_ns(b); });
     traffic_light_messages_.insert(at, msg);
   }
   const int64_t frame_ns = frame_stamp.nanoseconds();
   while (!traffic_light_messages_.empty() &&
-         rclcpp::Time(traffic_light_messages_.front()->stamp).nanoseconds() <
-           frame_ns - 2 * tolerance_ns) {
+         stamp_ns(traffic_light_messages_.front()) < frame_ns - 2 * tolerance_ns) {
     traffic_light_messages_.pop_front();
   }
   traffic_light_id_map_.clear();
-  // Latest at or before; on a stamp tie, the later-received (upper_bound order).
   for (auto it = traffic_light_messages_.rbegin(); it != traffic_light_messages_.rend(); ++it) {
-    const int64_t stamp_ns = rclcpp::Time((*it)->stamp).nanoseconds();
-    if (stamp_ns > frame_ns) {
+    const int64_t msg_ns = stamp_ns(*it);
+    if (msg_ns > frame_ns) {
       continue;
     }
-    if (frame_ns - stamp_ns <= tolerance_ns) {
-      for (const auto & group : (*it)->traffic_light_groups) {
+    if (frame_ns - msg_ns > tolerance_ns) {
+      break;
+    }
+    for (const auto & group : (*it)->traffic_light_groups) {
+      if (traffic_light_id_map_.count(group.traffic_light_group_id) > 0) {
+        continue;
+      }
+      const bool recognised = std::any_of(
+        group.elements.begin(), group.elements.end(), [](const auto & element) {
+          return element.color !=
+                 autoware_perception_msgs::msg::TrafficLightElement::UNKNOWN;
+        });
+      if (recognised) {
         auto & entry = traffic_light_id_map_[group.traffic_light_group_id];
         entry.signal = group;
         entry.stamp = (*it)->stamp;
       }
     }
-    break;
   }
 }
 
