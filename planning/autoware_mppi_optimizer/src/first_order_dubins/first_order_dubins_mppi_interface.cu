@@ -60,8 +60,8 @@ namespace
 constexpr int kMppiHorizon = detail::kMppiHorizon;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = detail::kMppiDt;
-constexpr size_t kMaxIter = 5;
-constexpr int kNumRollouts = 8 * 1024;
+constexpr int kNumRollouts = 16 * 1024;
+constexpr int kSampledDebugRollouts = 128;
 constexpr int kMaxVizRollouts = 256;
 constexpr int kMaxWorstVizRollouts = 128;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
@@ -274,7 +274,58 @@ class MppiWithHistoryAccess : public Mppi
 public:
   using Mppi::Mppi;
 
-  /** Replace the vendor-smoothed sequence and keep its host state rollout consistent. */
+  struct IterationRolloutSnapshot
+  {
+    int iteration{0};
+    std::vector<float> controls;
+    std::vector<float> costs;
+  };
+
+  void computeControl(
+    const Eigen::Ref<const Mppi::state_array> & state, const int optimization_stride = 1) override
+  {
+    if (iteration_rollout_capture_enabled_) {
+      // Retain each snapshot's vector capacity across planning cycles.
+      iteration_rollout_snapshots_.resize(static_cast<std::size_t>(this->getNumIters()));
+    } else {
+      iteration_rollout_snapshots_.clear();
+    }
+    Mppi::computeControl(state, optimization_stride);
+
+    // The base call may still be copying its filtered host rollout on the visualization stream.
+    // Finish that read before replacing control_ and output_ below.
+    HANDLE_ERROR(cudaStreamSynchronize(this->vis_stream_));
+
+    // smoothControlTrajectory() only overwrites the controller's host control_. The sampling
+    // distribution still owns the final reduced mean on the device.
+    this->sampler_->setHostOptimalControlSequence(this->control_.data(), 0, true);
+
+    // First reconstruct the predicted state at each command. Constraints such as reverse
+    // prevention depend on velocity, so applying them against the vendor's zero_state would erase
+    // every braking command. Then constrain the stored controls against their corresponding
+    // predicted states and replay once more to keep control_, state_, and output_ consistent.
+    this->computeStateTrajectory(state);
+    for (int timestep = 0; timestep < this->getNumTimesteps(); ++timestep) {
+      this->model_->enforceConstraints(this->state_.col(timestep), this->control_.col(timestep));
+    }
+    this->computeStateTrajectory(state);
+  }
+
+  const std::vector<MppiWithHistoryAccess::IterationRolloutSnapshot> & iterationRolloutSnapshots()
+    const
+  {
+    return iteration_rollout_snapshots_;
+  }
+
+  void setIterationRolloutCaptureEnabled(const bool enable)
+  {
+    iteration_rollout_capture_enabled_ = enable;
+    if (!enable) {
+      iteration_rollout_snapshots_.clear();
+    }
+  }
+
+  /** Replace the optimized sequence and keep its host state rollout consistent. */
   void setControlSequenceAndRecomputeState(
     const Mppi::control_trajectory & controls, const Mppi::state_array & initial_state)
   {
@@ -305,6 +356,37 @@ public:
     accel_tm1 = this->control_history_(accel_idx, 1);
     steer_tm1 = this->control_history_(steer_idx, 1);
   }
+
+protected:
+  void optimizationIterationComplete(const int iteration) override
+  {
+    if (
+      !iteration_rollout_capture_enabled_ || iteration < 0 ||
+      static_cast<std::size_t>(iteration) >= iteration_rollout_snapshots_.size()) {
+      return;
+    }
+    const int rollout_count = std::min(kSampledDebugRollouts, kNumRollouts);
+    const std::size_t controls_per_rollout =
+      static_cast<std::size_t>(kMppiHorizon) * static_cast<std::size_t>(DYN::CONTROL_DIM);
+
+    auto & snapshot = iteration_rollout_snapshots_[static_cast<std::size_t>(iteration)];
+    snapshot.iteration = iteration + 1;
+    snapshot.controls.resize(static_cast<std::size_t>(rollout_count) * controls_per_rollout);
+    snapshot.costs.resize(static_cast<std::size_t>(rollout_count));
+
+    // SamplingDistribution stores [rollout][timestep][control] contiguously. Copying the first
+    // debug subset as one block avoids the per-rollout cudaMemcpyAsync calls used by the vendor
+    // visualization staging path.
+    HANDLE_ERROR(cudaMemcpyAsync(
+      snapshot.controls.data(), this->sampler_->getControlSample(0, 0, 0),
+      snapshot.controls.size() * sizeof(float), cudaMemcpyDeviceToHost, this->stream_));
+    HANDLE_ERROR(cudaStreamSynchronize(this->stream_));
+    std::copy_n(this->trajectory_costs_.data(), rollout_count, snapshot.costs.data());
+  }
+
+private:
+  bool iteration_rollout_capture_enabled_{false};
+  std::vector<IterationRolloutSnapshot> iteration_rollout_snapshots_;
 };
 
 void applyUserCostParams(
@@ -680,6 +762,33 @@ void buildRolloutVisualization(
   }
 }
 
+void buildIterationDebugRollouts(
+  const std::vector<MppiWithHistoryAccess::IterationRolloutSnapshot> & snapshots, DYN & model,
+  const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug)
+{
+  debug.rollouts.clear();
+  debug.rollouts.reserve(snapshots.size() * static_cast<std::size_t>(kSampledDebugRollouts));
+  const std::size_t controls_per_rollout =
+    static_cast<std::size_t>(kMppiHorizon) * static_cast<std::size_t>(DYN::CONTROL_DIM);
+
+  for (const auto & snapshot : snapshots) {
+    const std::size_t rollout_count = std::min(
+      snapshot.costs.size(),
+      controls_per_rollout > 0U ? snapshot.controls.size() / controls_per_rollout : 0U);
+    for (std::size_t rollout_index = 0; rollout_index < rollout_count; ++rollout_index) {
+      FirstOrderDubinsMppiRollout rollout;
+      rollout.cost = snapshot.costs[rollout_index];
+      rollout.iteration = snapshot.iteration;
+      rollout.is_worst = false;
+      const float * controls = snapshot.controls.data() + rollout_index * controls_per_rollout;
+      // Preserve the existing debug convention: initial state plus horizon - 1 post-step states.
+      replayRolloutPoints(
+        model, x_at_optimization, controls, kMppiHorizon - 1, kDt, rollout.points);
+      debug.rollouts.push_back(std::move(rollout));
+    }
+  }
+}
+
 }  // namespace
 
 struct FirstOrderDubinsMppiInterface::Impl
@@ -749,6 +858,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   /** Fill debug.rollouts with top-K weighted samples (CPU replay). Offline retune only by default.
    */
   bool enable_rollout_visualization{false};
+  /** Capture and replay a sampled rollout subset from every internal MPPI iteration. */
+  bool enable_iteration_rollout_debug{false};
   /** One-shot u_nom override from offline retune (NNNNNN_nominal.csv). */
   bool forced_nominal_pending{false};
   std::vector<float> forced_nominal_accel;
@@ -851,6 +962,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       user_cost_params_.accel_cmd_std_dev;
     sp.std_dev[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] =
       user_cost_params_.steer_cmd_std_dev;
+    sp.std_dev_decay = user_cost_params_.std_dev_decay;
     sp.sum_strides = std::max(32, (kNumRollouts + 1023) / 1024);
 #ifdef USE_COLOURED_NOISE
     sp.exponents[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD)] =
@@ -865,14 +977,20 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     const float lambda = user_cost_params_.lambda;
     controller = std::make_unique<MppiWithHistoryAccess>(
-      &model, &cost, &feedback, &sampler, kDt, kMaxIter, lambda, 0.0F, kMppiHorizon, u_nom);
+      &model, &cost, &feedback, &sampler, kDt, user_cost_params_.max_iter, lambda, 0.0F,
+      kMppiHorizon, u_nom);
     auto cp = controller->getParams();
     cp.lambda_ = lambda;
     cp.dynamics_rollout_dim_ = dim3(32, 2, 1);
     cp.cost_rollout_dim_ = dim3(32, 2, 1);
     cp.seed_ = 1U;
     controller->setParams(cp);
-    controller->setPercentageSampledControlTrajectories(128.0F / static_cast<float>(kNumRollouts));
+    controller->setIterationRolloutCaptureEnabled(
+      enable_iteration_rollout_debug && !enable_rollout_visualization);
+    // Per-iteration debug controls are captured as one contiguous block by
+    // UnfilteredMppiController. Disable the vendor visualization staging buffers, whose
+    // per-rollout copies only preserve the final optimization iteration.
+    controller->setPercentageSampledControlTrajectories(0.0F);
 
     model.GPUSetup();
 
@@ -883,17 +1001,18 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     RCLCPP_INFO(
       mppiLogger(),
-      "MPPI GPU initialized (horizon=%d, rollouts=%d, dt=%.2f, lambda=%.1f, "
-      "wheel_base=%.2f, max_steer=%.2f, accel_std=%.3f, steer_std=%.3f, acc_tau=%.2f, "
-      "steer_tau=%.2f, "
+      "MPPI GPU initialized (horizon=%d, rollouts=%d, iterations=%d, dt=%.2f, lambda=%.1f, "
+      "wheel_base=%.2f, max_steer=%.2f, accel_std=%.3f, steer_std=%.3f, "
+      "std_decay=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "acc_delay=%.3f (%d steps), steer_delay=%.3f (%d steps), "
       "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
       "boundary_threshold=%.2f, obs_margin=%.2f, road_border_margin=%.2f, "
       "lateral_barrier=%.2f@%.2f, obs_barrier=%.2f@%.2f, road_barrier=%.2f@%.2f, "
       "drive_barrier=%.2f@%.2f, crash_contact_penalty=%.2f)",
-      kMppiHorizon, kNumRollouts, kDt, user_cost_params_.lambda, vehicle_params.wheel_base,
-      vehicle_params.max_steer_angle, user_cost_params_.accel_cmd_std_dev,
-      user_cost_params_.steer_cmd_std_dev, vehicle_params.acc_time_constant,
+      kMppiHorizon, kNumRollouts, user_cost_params_.max_iter, kDt, user_cost_params_.lambda,
+      vehicle_params.wheel_base, vehicle_params.max_steer_angle,
+      user_cost_params_.accel_cmd_std_dev, user_cost_params_.steer_cmd_std_dev,
+      user_cost_params_.std_dev_decay, vehicle_params.acc_time_constant,
       vehicle_params.steer_time_constant, vehicle_params.acc_time_delay, acc_delay_steps,
       vehicle_params.steer_time_delay, steer_delay_steps, vehicle_params.steer_rate_lim,
       vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,
@@ -1563,6 +1682,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       obstacle_count > 0 ? obs_half_length.data() : nullptr,
       obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
     uploadBoundarySegments();
+    cost.renderDistanceMapTextureDebug();
 
     controller->updateImportanceSampler(u_nom);
     controller->computeControl(x, 1);
@@ -1677,9 +1797,12 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
   }
   if (
     !std::isfinite(params.overlimit_coeff) || params.overlimit_coeff < 0.0F ||
-    !std::isfinite(params.crash_contact_penalty) || params.crash_contact_penalty < 0.0F) {
+    !std::isfinite(params.crash_contact_penalty) || params.crash_contact_penalty < 0.0F ||
+    !std::isfinite(params.std_dev_decay) || params.std_dev_decay < 0.0F ||
+    params.std_dev_decay > 1.0F || params.max_iter <= 0) {
     throw std::invalid_argument(
-      "MPPI overlimit_coeff and crash_contact_penalty must be finite and non-negative");
+      "MPPI cost parameters must have finite non-negative penalties, std_dev_decay in [0, 1], "
+      "and max_iter greater than zero");
   }
   if (impl_->initialized) {
     impl_->teardown();
@@ -1696,6 +1819,12 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   impl_->prevent_reverse_velocity = options.prevent_reverse_velocity;
   setDebugTrajectoryLogging(
     options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
+  impl_->cost.setDistanceMapTextureDebugEnabled(options.enable_distance_map_texture_debug);
+  impl_->enable_iteration_rollout_debug = options.enable_iteration_rollout_debug;
+  if (impl_->controller) {
+    impl_->controller->setIterationRolloutCaptureEnabled(
+      options.enable_iteration_rollout_debug && !impl_->enable_rollout_visualization);
+  }
   setAblationOptions(
     options.ignore_obstacles, options.ignore_road_borders, options.ignore_drivable_area,
     options.force_cold_start_each_step, options.skip_if_invalid,
@@ -1766,6 +1895,7 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
   runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
   runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
+  runtime.enable_iteration_rollout_debug = impl_->enable_iteration_rollout_debug;
   impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
 }
 
@@ -1775,6 +1905,10 @@ void FirstOrderDubinsMppiInterface::setRolloutVisualizationEnabled(const bool en
     return;
   }
   impl_->enable_rollout_visualization = enable;
+  if (impl_->controller) {
+    impl_->controller->setIterationRolloutCaptureEnabled(
+      impl_->enable_iteration_rollout_debug && !enable);
+  }
 }
 
 void FirstOrderDubinsMppiInterface::setForcedNominalControl(
@@ -2084,7 +2218,11 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   } else {
     fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
     result.debug.baseline_cost = impl_->controller->getBaselineCost();
-    result.debug.rollouts.clear();
+    if (impl_->enable_iteration_rollout_debug) {
+      buildIterationDebugRollouts(
+        impl_->controller->iterationRolloutSnapshots(), impl_->model, x_at_optimization,
+        result.debug);
+    }
   }
   if (impl_->debug_trajectory_logger.enabled() && n_state > 0 && n_ctrl > 0) {
     result.debug.cost_breakdown =
@@ -2116,6 +2254,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
     runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
     runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
+    runtime.enable_iteration_rollout_debug = impl_->enable_iteration_rollout_debug;
     impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
   }
   impl_->debug_trajectory_logger.logFrame(
