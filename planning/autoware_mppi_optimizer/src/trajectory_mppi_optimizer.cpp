@@ -987,13 +987,24 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   if (!application.optimization_succeeded && !debug.was_rejected) {
     cost_diagnostics_->update_level_and_message(
       DiagnosticStatus::STALE, "MPPI optimization skipped");
+  } else if (debug.was_rejected) {
+    if (hasInvalidityReason(
+          debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts)) {
+      cost_diagnostics_->update_level_and_message(
+        DiagnosticStatus::ERROR, application.fallback_applied
+                                   ? "No eligible MPPI rollouts; velocity-limited fallback applied"
+                                   : "No eligible MPPI rollouts; trajectory rejected");
+    } else if (!std::isfinite(cost.total) || !std::isfinite(debug.baseline_cost)) {
+      cost_diagnostics_->update_level_and_message(
+        DiagnosticStatus::ERROR, "Non-finite MPPI cost; trajectory rejected");
+    } else {
+      cost_diagnostics_->update_level_and_message(
+        DiagnosticStatus::WARN, application.fallback_applied
+                                  ? "MPPI trajectory rejected; velocity-limited fallback applied"
+                                  : "MPPI trajectory rejected");
+    }
   } else if (!std::isfinite(cost.total) || !std::isfinite(debug.baseline_cost)) {
     cost_diagnostics_->update_level_and_message(DiagnosticStatus::ERROR, "Non-finite MPPI cost");
-  } else if (debug.was_rejected) {
-    cost_diagnostics_->update_level_and_message(
-      DiagnosticStatus::WARN, application.fallback_applied
-                                ? "MPPI trajectory rejected; velocity-limited fallback applied"
-                                : "MPPI trajectory rejected");
   } else {
     cost_diagnostics_->update_level_and_message(
       DiagnosticStatus::OK,

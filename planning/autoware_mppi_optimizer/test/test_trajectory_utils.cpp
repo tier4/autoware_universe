@@ -167,6 +167,25 @@ TEST(MpcPredictedNominalSteering, ReplacesOnlyTheTimeAlignedSteeringPrefix)
   EXPECT_FLOAT_EQ(nominal[4].steer_cmd, -0.15F);
 }
 
+TEST(MpcPredictedNominalSteering, DoesNotExtendPredictionBeyondTimeTolerance)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  InitialState ego;
+  Trajectory prediction;
+  for (std::uint32_t index = 0; index < 2U; ++index) {
+    autoware_planning_msgs::msg::TrajectoryPoint point;
+    point.pose.position.x = 0.2 * static_cast<double>(index + 1U);
+    point.pose.orientation = makeQuaternion(0.0);
+    point.time_from_start.nanosec = index == 0U ? 0U : 99998000U;
+    prediction.points.push_back(point);
+  }
+
+  std::vector<FirstOrderDubinsMppiControl> nominal(3U, {0.0F, 0.25F});
+  EXPECT_EQ(
+    overlayNominalSteeringFromPredictedTrajectory(nominal, prediction, ego, vehicle, 0.1F), 1U);
+  EXPECT_FLOAT_EQ(nominal[1].steer_cmd, 0.25F);
+}
+
 TEST(MpcPredictedNominalSteering, RejectsInvalidPredictionWithoutChangingNominal)
 {
   FirstOrderDubinsMppiVehicleParams vehicle;
