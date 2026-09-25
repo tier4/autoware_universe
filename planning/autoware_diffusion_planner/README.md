@@ -169,6 +169,49 @@ ros2 launch autoware_launch planning_simulator.launch.xml \
 
 ---
 
+## Scene Representation
+
+The encoder of a checkpoint reads the scene in one of two ways, and the node picks the matching
+path automatically from the `input_type` field of the model's args JSON. A checkpoint that predates
+the image encoder carries no such field and is treated as `vector`.
+
+| `input_type` | Encoder input                                                          | Encoder tokens |
+| ------------ | ---------------------------------------------------------------------- | -------------- |
+| `vector`     | One token per lane segment, route segment, polygon, line string, agent | 501            |
+| `image`      | BEV rasters, plus the ego motion and turn-indicator scalar tokens      | 100            |
+
+In `image` mode the node rasterizes the same vector scene it builds for `vector` mode into a stack
+of binary bird's-eye-view masks - a mirror of `diffusion_planner/utils/render_bev.py` in the
+training repository - and feeds that to the encoder instead of the polylines:
+
+- Two scales share the ego pose as their origin, both 224x224 pixels with the ego heading
+  pointing up. The figure is the full side length of the view, not its reach from the ego:
+
+  | View  | Side  | Around ego | Resolution   |
+  | ----- | ----- | ---------- | ------------ |
+  | near  | 50 m  | +/-25 m    | 0.223 m/pixel |
+  | far   | 200 m | +/-100 m   | 0.893 m/pixel |
+- 17 semantic channels, each its own binary mask so overlapping elements never hide each other:
+  lane boundary, lane centerline, route, four traffic light planes, polygon, line string, static
+  object, goal pose, vehicle, pedestrian, bicycle, ego, neighbor history, ego history.
+- The traffic light state gets one plane per colour - go (green), caution (yellow), stop (red) and
+  unknown (the lane has a light whose colour never arrived) - so none of them is folded into
+  another. A lane with no traffic light at all is silent on all four planes, and that silence is
+  what identifies it.
+- Motion lives in the history channels: an agent's past track is a polyline that ends at its
+  current bounding box.
+
+Rendering happens before normalization, since the rasterizer works in meters. The elements the
+raster cannot carry stay as tensors: the ego velocity and acceleration (from `ego_current_state`)
+and the turn-indicator history. `goal_pose`, `ego_shape` and `ego_agent_past` are not passed at all
+in `image` mode - the encoder does not read them - though the renderer still draws them.
+
+Set `debug_params.publish_debug_bev_image` to `true` to publish a colorized preview of each scale
+on `~/debug/bev_image_50m` and `~/debug/bev_image_200m`. This is the quickest way to confirm the
+node's rasters match what the model was trained on.
+
+---
+
 ## Parameters
 
 {{ json_to_markdown("planning/autoware_diffusion_planner/schema/diffusion_planner.schema.json") }}
@@ -200,6 +243,8 @@ Parameters can be set via YAML (see `config/diffusion_planner.param.yaml`).
 | `~/output/debug/traffic_signal` | autoware_perception_msgs/msg/TrafficLightGroup            | First traffic light on route (ego forward) for RViz/ad_api |
 | `~/debug/lane_marker`           | visualization_msgs/msg/MarkerArray                        | Lane debug markers                                         |
 | `~/debug/route_marker`          | visualization_msgs/msg/MarkerArray                        | Route debug markers                                        |
+| `~/debug/bev_image_50m`         | sensor_msgs/msg/Image                                     | BEV raster preview, near view (image-input models only)    |
+| `~/debug/bev_image_200m`        | sensor_msgs/msg/Image                                     | BEV raster preview, far view (image-input models only)     |
 
 ---
 
