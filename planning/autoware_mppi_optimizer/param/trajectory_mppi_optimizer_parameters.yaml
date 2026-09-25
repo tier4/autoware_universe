@@ -226,6 +226,14 @@ trajectory_mppi_optimizer:
     default_value: true
     description: Prevent reverse rollout velocity
     read_only: false
+  use_plant_states_on_trajectory:
+    type: bool
+    default_value: false
+    description: >-
+      Ablation: write first-order plant lag states (acceleration, front_wheel_angle_rad) on the
+      optimized trajectory instead of undelayed accel_cmd / steer_cmd. Useful with lateral MPC
+      steering_direct_passthrough to match applied actuator state.
+    read_only: false
   ignore_obstacles:
     type: bool
     default_value: false

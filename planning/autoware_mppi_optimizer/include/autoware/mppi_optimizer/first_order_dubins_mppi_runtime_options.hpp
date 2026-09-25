@@ -49,6 +49,11 @@ struct FirstOrderDubinsMppiRuntimeOptions
    * Vehicle τ (first-order lag) is unchanged. Default true preserves delay compensation.
    */
   bool enable_input_delay_compensation{true};
+  /**
+   * When true, optimized trajectory acceleration_mps2 / front_wheel_angle_rad carry the MPPI plant
+   * lag states (post-step a, delta) instead of undelayed u_opt commands.
+   */
+  bool use_plant_states_on_trajectory{false};
 };
 
 }  // namespace autoware::mppi_optimizer

@@ -53,6 +53,8 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "enable_input_delay_compensation"),
     defaults.enable_input_delay_compensation);
+  node.declare_parameter(
+    param_name(prefix, "use_plant_states_on_trajectory"), defaults.use_plant_states_on_trajectory);
 }
 
 FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
@@ -81,6 +83,8 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
     node.get_parameter(param_name(prefix, "prevent_reverse_velocity")).as_bool();
   options.enable_input_delay_compensation =
     node.get_parameter(param_name(prefix, "enable_input_delay_compensation")).as_bool();
+  options.use_plant_states_on_trajectory =
+    node.get_parameter(param_name(prefix, "use_plant_states_on_trajectory")).as_bool();
   return options;
 }
 
