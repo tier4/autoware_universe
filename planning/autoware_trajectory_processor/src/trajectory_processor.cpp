@@ -21,7 +21,9 @@
 #include <rclcpp_components/register_node_macro.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <exception>
 #include <functional>
@@ -31,6 +33,7 @@
 
 namespace autoware::trajectory_processor
 {
+using diagnostic_msgs::msg::DiagnosticStatus;
 
 TrajectoryProcessor::TrajectoryProcessor(const rclcpp::NodeOptions & options)
 : Node{"trajectory_processor", options},
@@ -56,6 +59,13 @@ TrajectoryProcessor::TrajectoryProcessor(const rclcpp::NodeOptions & options)
   debug_publisher_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
   time_keeper_ =
     std::make_shared<autoware_utils_debug::TimeKeeper>(debug_processing_time_detail_pub_);
+
+  diagnostics_input_trajectories_ =
+    std::make_unique<DiagnosticsInterface>(this, "input_trajectories");
+  watchdog_origin_time_ = now();
+  input_trajectories_watchdog_timer_ = rclcpp::create_timer(
+    this, get_clock(), rclcpp::Rate(1.0).period(),
+    std::bind(&TrajectoryProcessor::on_input_trajectories_watchdog, this));
 
   load_plugins();
   RCLCPP_INFO(get_logger(), "TrajectoryProcessor initialized with %zu plugins", plugins_.size());
@@ -160,11 +170,57 @@ void TrajectoryProcessor::publish_processing_time(const double processing_time_m
     "processing_time_ms", processing_time_ms);
 }
 
+void TrajectoryProcessor::on_input_trajectories_watchdog()
+{
+  if (param_listener_->is_old(params_)) {
+    update_params();
+  }
+  publish_input_trajectories_diagnostic();
+}
+
+void TrajectoryProcessor::publish_input_trajectories_diagnostic()
+{
+  const auto current_time = now();
+  const auto reference_time = last_input_time_.value_or(watchdog_origin_time_);
+  const double age_sec = std::max(0.0, (current_time - reference_time).seconds());
+  const double warn_timeout_s = params_.input_trajectories_warn_timeout_s;
+  const double error_timeout_s =
+    std::max(params_.input_trajectories_error_timeout_s, warn_timeout_s);
+
+  diagnostics_input_trajectories_->clear();
+  diagnostics_input_trajectories_->add_key_value("age_sec", age_sec);
+  diagnostics_input_trajectories_->add_key_value("ever_received", ever_received_input_);
+  diagnostics_input_trajectories_->add_key_value("candidate_count", last_candidate_count_);
+
+  if (age_sec >= error_timeout_s) {
+    RCLCPP_ERROR_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "No planner candidate_trajectories (age=%.2fs, ever_received=%s)", age_sec,
+      ever_received_input_ ? "true" : "false");
+    diagnostics_input_trajectories_->update_level_and_message(
+      DiagnosticStatus::ERROR, "No planner candidate_trajectories");
+  } else if (age_sec >= warn_timeout_s) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "No planner candidate_trajectories (age=%.2fs, ever_received=%s)", age_sec,
+      ever_received_input_ ? "true" : "false");
+    diagnostics_input_trajectories_->update_level_and_message(
+      DiagnosticStatus::WARN, "No planner candidate_trajectories");
+  }
+
+  diagnostics_input_trajectories_->publish(current_time);
+}
+
 void TrajectoryProcessor::on_trajectories(const CandidateTrajectories::ConstSharedPtr msg)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch;
   stop_watch.tic(__func__);
+
+  last_input_time_ = now();
+  last_candidate_count_ = msg->candidate_trajectories.size();
+  ever_received_input_ = true;
+  publish_input_trajectories_diagnostic();
 
   if (param_listener_->is_old(params_)) {
     update_params();
