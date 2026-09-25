@@ -110,8 +110,6 @@ void TrajectoryTemporalMPTOptimizer::set_mpt_params(
 
 void TrajectoryTemporalMPTOptimizer::on_initialize(const TrajectoryProcessorParams & params)
 {
-  auto node_ptr = get_node_ptr();
-
   // SQP max_iter / tol: from codegen (generators/path_tracking_mpc_temporal.py → acados_ocp.json),
   // applied inside kinematic_bicycle_temporal_acados_create — not overridden in C++.
 
@@ -121,8 +119,8 @@ void TrajectoryTemporalMPTOptimizer::on_initialize(const TrajectoryProcessorPara
   // Bicycle lf/lr from vehicle_info: CG at geometric box center (same as MPPI
   // ego_axle_to_box_center).
   {
-    const auto vehicle_info =
-      autoware::vehicle_info_utils::VehicleInfoUtils(*node_ptr).getVehicleInfo();
+    const auto vehicle_info = with_node(
+      [](auto * node) { return autoware::vehicle_info_utils::VehicleInfoUtils(*node).getVehicleInfo(); });
     const double wb = std::max(1.0e-3, vehicle_info.wheel_base_m);
     double lr = 0.5 * vehicle_info.vehicle_length_m - vehicle_info.rear_overhang_m;
     lr = std::clamp(lr, 1.0e-3, wb - 1.0e-3);
@@ -130,14 +128,14 @@ void TrajectoryTemporalMPTOptimizer::on_initialize(const TrajectoryProcessorPara
     mpt_params_.lf = wb - lr;
   }
   RCLCPP_INFO(
-    node_ptr->get_logger(),
+    get_logger(),
     "Temporal MPT: lf=%.3f m lr=%.3f m tau_a=%.3f s tau_d=%.3f s max_steer_rate=%.3f rad/s",
     mpt_params_.lf, mpt_params_.lr, mpt_params_.tau_a, mpt_params_.tau_d,
     mpt_params_.max_steer_rate);
 
   if (mpt_params_.write_replay_fixture && !mpt_params_.replay_fixture_directory.empty()) {
     RCLCPP_INFO(
-      node_ptr->get_logger(),
+      get_logger(),
       "Temporal MPT: writing replay fixtures to %s (feed files to "
       "generators/example_trajectory_file_xyv.py)",
       expand_user_path_string(mpt_params_.replay_fixture_directory).c_str());
@@ -288,10 +286,10 @@ ProcessingResult TrajectoryTemporalMPTOptimizer::process(
 
     if (mpt_params_.enable_debug_info) {
       RCLCPP_WARN_THROTTLE(
-        get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 2000,
+        get_logger(), *get_clock(), 2000,
         "Temporal MPT acados solve failed with status %d", solution.status);
 
-      rclcpp::Logger logger = get_node_ptr()->get_logger();
+      rclcpp::Logger logger = get_logger();
       RCLCPP_INFO(logger, "Temporal MPT optimize: plugin=%s", get_name().c_str());
 
       RCLCPP_INFO(
@@ -332,7 +330,7 @@ ProcessingResult TrajectoryTemporalMPTOptimizer::process(
   } else {
     if (mpt_params_.enable_debug_info) {
       RCLCPP_INFO_THROTTLE(
-        get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 2000,
+        get_logger(), *get_clock(), 2000,
         "Temporal MPT acados solve succeeded with status %d", solution.status);
     }
     if (mpt_params_.use_previous_solution_warm_start) {
@@ -400,7 +398,7 @@ void TrajectoryTemporalMPTOptimizer::write_temporal_mpt_replay_fixture(
   }
   const std::string text = body.str();
 
-  rclcpp::Logger logger = get_node_ptr()->get_logger();
+  rclcpp::Logger logger = get_logger();
 
   if (want_console) {
     RCLCPP_ERROR(
@@ -451,21 +449,20 @@ void TrajectoryTemporalMPTOptimizer::ensure_debug_publishers()
   if (!mpt_params_.publish_debug_topics || debug_input_trajectory_pub_) {
     return;
   }
-  rclcpp::Node * const n = get_node_ptr();
   // Best effort (typical for high-rate planning). Subscribers must use matching reliability
   // (default rclpy reliable will not receive these messages).
   const auto qos = rclcpp::QoS(10).best_effort();
-  debug_input_trajectory_pub_ = n->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+  debug_input_trajectory_pub_ = make_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/debug/temporal_mpt/input/reference_trajectory", qos);
   debug_input_initial_state_pub_ =
-    n->create_publisher<nav_msgs::msg::Odometry>("~/debug/temporal_mpt/input/initial_state", qos);
-  debug_output_trajectory_pub_ = n->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+    make_publisher<nav_msgs::msg::Odometry>("~/debug/temporal_mpt/input/initial_state", qos);
+  debug_output_trajectory_pub_ = make_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/debug/temporal_mpt/output/trajectory", qos);
   debug_solve_status_pub_ =
-    n->create_publisher<std_msgs::msg::Int32>("~/debug/temporal_mpt/output/solve_status", qos);
-  debug_control_accel_pub_ = n->create_publisher<std_msgs::msg::Float64MultiArray>(
+    make_publisher<std_msgs::msg::Int32>("~/debug/temporal_mpt/output/solve_status", qos);
+  debug_control_accel_pub_ = make_publisher<std_msgs::msg::Float64MultiArray>(
     "~/debug/temporal_mpt/output/control_acceleration_mps2", qos);
-  debug_control_delta_cmd_pub_ = n->create_publisher<std_msgs::msg::Float64MultiArray>(
+  debug_control_delta_cmd_pub_ = make_publisher<std_msgs::msg::Float64MultiArray>(
     "~/debug/temporal_mpt/output/control_delta_cmd_rad", qos);
 }
 
@@ -479,9 +476,8 @@ void TrajectoryTemporalMPTOptimizer::publish_temporal_mpt_debug_io(
     return;
   }
 
-  rclcpp::Node * const node = get_node_ptr();
   std_msgs::msg::Header header;
-  header.stamp = node->now();
+  header.stamp = now();
   header.frame_id = initial_odom.header.frame_id.empty() ? "map" : initial_odom.header.frame_id;
 
   autoware_planning_msgs::msg::Trajectory input_traj;
@@ -512,15 +508,15 @@ void TrajectoryTemporalMPTOptimizer::publish_temporal_mpt_debug_io(
     }
   }
 
-  debug_input_trajectory_pub_->publish(std::move(input_traj));
-  debug_input_initial_state_pub_->publish(initial_odom);
-  debug_output_trajectory_pub_->publish(std::move(output_traj));
-  debug_solve_status_pub_->publish(std::move(status_msg));
+  debug_input_trajectory_pub_(input_traj);
+  debug_input_initial_state_pub_(initial_odom);
+  debug_output_trajectory_pub_(output_traj);
+  debug_solve_status_pub_(status_msg);
   if (debug_control_accel_pub_) {
-    debug_control_accel_pub_->publish(std::move(accel_msg));
+    debug_control_accel_pub_(accel_msg);
   }
   if (debug_control_delta_cmd_pub_) {
-    debug_control_delta_cmd_pub_->publish(std::move(delta_cmd_msg));
+    debug_control_delta_cmd_pub_(delta_cmd_msg);
   }
 }
 
