@@ -26,6 +26,8 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
+#include <string>
 #include <map>
 #include <memory>
 #include <tuple>
@@ -50,8 +52,8 @@ uint8_t identify_current_light_status(
 // LaneSegmentContext implementation
 LaneSegmentContext::LaneSegmentContext(
   const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
-  const double line_string_max_step_m)
-: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr, line_string_max_step_m)),
+  const MapConversionOptions & options)
+: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr, options)),
   lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments))
 {
   if (lanelet_map_.lane_segments.empty()) {
@@ -393,7 +395,9 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
     result_list.push_back({transformed_polyline, static_cast<int>(element.type), min_distance});
   }
 
-  std::sort(
+  // Stable, as the producer's sorted() is: equal distances (touching polygons
+  // sharing their nearest vertex) keep the map's order on both sides.
+  std::stable_sort(
     result_list.begin(), result_list.end(),
     [](const ElementWithDistance & a, const ElementWithDistance & b) {
       return a.min_distance < b.min_distance;
@@ -401,6 +405,14 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
 
   // Create tensor data: [x, y, one_hot_type...]
   const int64_t point_dim = 2 + num_types;
+  // A type past num_types would write into the next point's x.
+  for (const auto & result : result_list) {
+    if (result.type < 0 || result.type >= num_types) {
+      throw std::runtime_error(
+        "map element type " + std::to_string(result.type) + " does not fit a " +
+        std::to_string(num_types) + "-type tensor");
+    }
+  }
   std::vector<float> tensor_data(num_elements * num_points * point_dim, 0.0f);
   const size_t max_elements_size = std::min(static_cast<size_t>(num_elements), result_list.size());
   for (size_t i = 0; i < max_elements_size; ++i) {

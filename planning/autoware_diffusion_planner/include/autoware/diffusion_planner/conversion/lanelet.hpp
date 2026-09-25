@@ -60,13 +60,57 @@ enum LineStringType {
 const std::map<std::string, LineStringType> LINE_STRING_TYPE_MAP = {
   {"stop_line", LINE_STRING_TYPE_STOP_LINE}, {"road_border", LINE_STRING_TYPE_ROAD_BORDER}};
 
-enum PolygonType { POLYGON_TYPE_INTERSECTION_AREA = 0, POLYGON_TYPE_NUM = 1 };
+enum PolygonType {
+  POLYGON_TYPE_INTERSECTION_AREA = 0,
+  // The upstream model's polygon tensor has one type, so POLYGON_TYPE_NUM
+  // (which sizes POLYGONS_SHAPE) stays 1. A crosswalk polygon only exists
+  // under MapConversionOptions::crosswalk_polygons, whose models declare two.
+  POLYGON_TYPE_NUM = 1,
+  POLYGON_TYPE_CROSSWALK = 1,
+};
 
 const std::map<std::string, PolygonType> POLYGON_TYPE_MAP = {
   {"intersection_area", POLYGON_TYPE_INTERSECTION_AREA}};
 
 const std::set<std::string> ACCEPTABLE_LANE_SUBTYPES = {
   "bicycle_lane", "crosswalk", "highway", "pedestrian_lane", "road", "road_shoulder", "walkway"};
+
+// The lanelets the OnePlanner converter (e2e-data-producer) keeps as lanes.
+const std::set<std::string> DRIVABLE_LANE_SUBTYPES = {
+  "bicycle_lane", "highway", "road", "road_shoulder"};
+
+/**
+ * @brief How a lanelet map becomes the model's vector-map tensors.
+ *
+ * The defaults are the upstream diffusion planner's. OnePlanner models are
+ * trained on the e2e-data-producer conversion, which differs in four places;
+ * `oneplanner_derived_v10()` reproduces it, point for point.
+ */
+struct MapConversionOptions
+{
+  //! Centerline as the midpoint of the two resampled bounds, instead of
+  //! lanelet2's centerline3d() (which returns a mapped centerline if present).
+  bool centerline_from_bounds{false};
+  //! Keep only DRIVABLE_LANE_SUBTYPES as lanes (else ACCEPTABLE_LANE_SUBTYPES).
+  bool drivable_lanes_only{false};
+  //! Crosswalk lanelets as POLYGON_TYPE_CROSSWALK polygons, outlined as the
+  //! left bound followed by the right bound reversed.
+  bool crosswalk_polygons{false};
+  //! Resample line strings linearly in arc length (else an Akima spline).
+  bool linear_line_strings{false};
+  double line_string_max_step_m{5.0};
+
+  //! The step is left at its default for the caller to set from its parameter.
+  static MapConversionOptions oneplanner_derived_v10()
+  {
+    MapConversionOptions options;
+    options.centerline_from_bounds = true;
+    options.drivable_lanes_only = true;
+    options.crosswalk_polygons = true;
+    options.linear_line_strings = true;
+    return options;
+  }
+};
 
 using LanePoint = Eigen::Vector3d;
 using Polyline = std::vector<LanePoint>;
@@ -132,10 +176,11 @@ struct LaneletMap
 /**
  * @brief Convert a lanelet map to line segment data
  * @param lanelet_map_ptr Pointer of loaded lanelet map.
+ * @param options Conversion rules; the defaults are the upstream planner's.
  * @return LaneletMap
  */
 [[nodiscard]] LaneletMap convert_to_internal_lanelet_map(
-  const lanelet::LaneletMapConstPtr lanelet_map_ptr, double line_string_max_step_m = 5.0);
+  const lanelet::LaneletMapConstPtr lanelet_map_ptr, const MapConversionOptions & options = {});
 
 }  // namespace autoware::diffusion_planner
 

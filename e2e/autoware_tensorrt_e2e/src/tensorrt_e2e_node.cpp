@@ -313,7 +313,7 @@ void TensorrtE2eNode::set_up_params()
 {
   recorded_ego_dynamics_ =
       declare_parameter<bool>("recorded_ego_dynamics", false);
-  ego_state_contract_ = declare_parameter<std::string>("ego_state_contract", "");
+  derived_contract_ = declare_parameter<std::string>("derived_contract", "");
   declare_parameter<bool>("require_deployment_manifest", false);
   params_.model_path = declare_parameter<std::string>("model_path", "");
   params_.plugins_path = declare_parameter<std::string>("plugins_path", "");
@@ -363,7 +363,15 @@ void TensorrtE2eNode::create_providers()
     providers_.push_back(make_input_provider(sensor, *this, tf_buffer_));
   }
   if (params_.enable_context_inputs) {
-    auto context_provider = std::make_unique<ContextInputProvider>(*this, vehicle_info_);
+    // A model trained on the producer's data reads the map the way the producer
+    // wrote it; any other model keeps the upstream planner's conversion.
+    namespace dp = autoware::diffusion_planner;
+    dp::MapConversionOptions map_options;
+    if (derived_contract_ == DERIVED_CONTRACT) {
+      map_options = dp::MapConversionOptions::oneplanner_derived_v10();
+    }
+    auto context_provider =
+      std::make_unique<ContextInputProvider>(*this, vehicle_info_, map_options);
     context_provider_ = context_provider.get();
     providers_.push_back(std::move(context_provider));
   }
@@ -433,15 +441,17 @@ void TensorrtE2eNode::initialize_pipeline()
     }
   }
 
-  // The recorded-dynamics ego state below is derived format_version 9's:
-  // measured steering_tire_angle, unmodified yaw rate, twist at or before and
-  // pose at the LiDAR time. Weights trained on older derived data learned a
-  // different input, so a package that does not state this is refused.
-  if (recorded_ego_dynamics_ && ego_state_contract_ != "derived-v9")
+  // derived format_version 10: the ego state of 9 (measured steering_tire_angle,
+  // unmodified yaw rate, twist at or before and pose at the LiDAR time) and the
+  // producer's map conversion (see MapConversionOptions::oneplanner_derived_v10).
+  // Weights trained on older derived data learned different inputs, so a package
+  // that does not state this is refused.
+  if (recorded_ego_dynamics_ && derived_contract_ != DERIVED_CONTRACT)
     throw std::runtime_error(
-        "ego_state_contract is '" + ego_state_contract_ +
-        "', this node feeds 'derived-v9': the model was trained on older derived "
-        "data (or its package predates the field); retrain and re-export");
+        "derived_contract is '" + derived_contract_ + "', this node feeds '" +
+        std::string(DERIVED_CONTRACT) +
+        "': the model was trained on other derived data (or its package predates the "
+        "field); retrain and re-export");
 
   InferenceEngine::Config engine_config;
   engine_config.model_path = params_.model_path;

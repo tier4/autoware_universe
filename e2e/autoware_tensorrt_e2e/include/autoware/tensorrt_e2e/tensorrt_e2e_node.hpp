@@ -92,6 +92,10 @@ struct PlanningFactorParams
   autoware::diffusion_planner::PlanningFactorDetectionConfig detection_config;
 };
 
+//! The derived-data convention (e2e-data-producer ``format_version``) this node
+//! feeds a model trained with recorded ego dynamics; see initialize_pipeline().
+inline constexpr const char * DERIVED_CONTRACT = "derived-v10";
+
 /**
  * @class TensorrtE2eNode
  * @brief Abstract E2E trajectory planner node.
@@ -243,7 +247,8 @@ private:
   RollingLatency pipeline_latency_, processing_latency_;
   bool waiting_for_ego_{false};
   bool recorded_ego_dynamics_{false};
-  std::string ego_state_contract_;
+  //! The derived-data convention the model trained on (`derived_contract`).
+  std::string derived_contract_;
   rclcpp::TimerBase::SharedPtr status_timer_;
   rclcpp::CallbackGroup::SharedPtr status_callback_group_;
   std::unique_ptr<DiagnosticsInterface> diagnostics_;

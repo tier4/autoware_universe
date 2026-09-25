@@ -83,18 +83,21 @@ void validate_shape(
 }  // namespace
 
 ContextInputProvider::ContextInputProvider(
-  rclcpp::Node & node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
+  rclcpp::Node & node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+  const dp::MapConversionOptions & map_options)
 : node_(node),
   wheel_base_(vehicle_info.wheel_base_m),
   vehicle_length_(
     vehicle_info.front_overhang_m + vehicle_info.wheel_base_m + vehicle_info.rear_overhang_m),
   vehicle_width_(
-    vehicle_info.left_overhang_m + vehicle_info.wheel_tread_m + vehicle_info.right_overhang_m)
+    vehicle_info.left_overhang_m + vehicle_info.wheel_tread_m + vehicle_info.right_overhang_m),
+  map_options_(map_options)
 {
   traffic_light_msg_timeout_s_ =
     node_.declare_parameter<double>("context.traffic_light_group_msg_timeout_seconds", 0.2);
   turn_indicators_enabled_ = node_.declare_parameter<bool>("context.turn_indicators.enabled", true);
-  line_string_max_step_m_ = node_.declare_parameter<double>("context.line_string_max_step_m", 5.0);
+  map_options_.line_string_max_step_m =
+    node_.declare_parameter<double>("context.line_string_max_step_m", 5.0);
   use_time_interpolation_ = node_.declare_parameter<bool>("context.use_time_interpolation", true);
 
   const double interval = node_.declare_parameter<double>("context.ego_history_interval_seconds", 0.1);
@@ -192,15 +195,32 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
       *spec, {1, lanes_shape_[1], 2}, "per lane slot: on-route flag, position along the route");
   }
 
+  // Under the producer's convention the slot counts are the model's (the
+  // devkit's NUM_POLYGONS / NUM_LINE_STRINGS), and a polygon carries two types;
+  // the point counts and line-string types are the same either way.
+  const bool producer_map = map_options_.crosswalk_polygons;
   if (const auto * spec = claim("polygons", polygons_shape_)) {
+    auto expected = std::vector<int64_t>(dp::POLYGONS_SHAPE.begin(), dp::POLYGONS_SHAPE.end());
+    if (producer_map) {
+      expected[1] = spec->shape.size() == 4 ? spec->shape[1] : -1;
+      expected[3] = 2 + 2;
+    }
     validate_shape(
-      *spec, std::vector<int64_t>(dp::POLYGONS_SHAPE.begin(), dp::POLYGONS_SHAPE.end()),
-      "fixed by the diffusion planner feature pipeline");
+      *spec, expected,
+      producer_map ? "slot count from the model, points and two polygon types fixed by the "
+                     "producer's map convention"
+                   : "fixed by the diffusion planner feature pipeline");
   }
   if (const auto * spec = claim("line_strings", line_strings_shape_)) {
+    auto expected =
+      std::vector<int64_t>(dp::LINE_STRINGS_SHAPE.begin(), dp::LINE_STRINGS_SHAPE.end());
+    if (producer_map) {
+      expected[1] = spec->shape.size() == 4 ? spec->shape[1] : -1;
+    }
     validate_shape(
-      *spec, std::vector<int64_t>(dp::LINE_STRINGS_SHAPE.begin(), dp::LINE_STRINGS_SHAPE.end()),
-      "fixed by the diffusion planner feature pipeline");
+      *spec, expected,
+      producer_map ? "slot count from the model, points and types fixed by the pipeline"
+                   : "fixed by the diffusion planner feature pipeline");
   }
   if (const auto * spec = claim("goal_pose", goal_pose_shape_)) {
     validate_shape(*spec, {1, dp::POSE_DIM}, "goal pose as x, y, cos(yaw), sin(yaw)");
@@ -266,8 +286,8 @@ void ContextInputProvider::on_map(const LaneletMapBin::ConstSharedPtr map_msg)
   try {
     const auto lanelet_map_ptr =
       autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
-    lane_segment_context_ = std::make_unique<dp::preprocess::LaneSegmentContext>(
-      lanelet_map_ptr, line_string_max_step_m_);
+    lane_segment_context_ =
+      std::make_unique<dp::preprocess::LaneSegmentContext>(lanelet_map_ptr, map_options_);
     map_error_.clear();
   } catch (const std::exception & e) {
     map_error_ = std::string("The vector map could not be loaded: ") + e.what();
@@ -384,13 +404,14 @@ bool ContextInputProvider::collect_map_tensors(
 
   if (!polygons_shape_.empty()) {
     inputs["polygons"] = Tensor::from_host(
-      polygons_shape_,
-      lane_segment_context_->create_polygon_tensor(ego.map_to_ego, center_x, center_y));
+      polygons_shape_, lane_segment_context_->create_polygon_tensor(
+                         ego.map_to_ego, center_x, center_y, polygons_shape_[1],
+                         polygons_shape_[3] - 2));
   }
   if (!line_strings_shape_.empty()) {
     inputs["line_strings"] = Tensor::from_host(
-      line_strings_shape_,
-      lane_segment_context_->create_line_string_tensor(ego.map_to_ego, center_x, center_y));
+      line_strings_shape_, lane_segment_context_->create_line_string_tensor(
+                             ego.map_to_ego, center_x, center_y, line_strings_shape_[1]));
   }
 
   return true;

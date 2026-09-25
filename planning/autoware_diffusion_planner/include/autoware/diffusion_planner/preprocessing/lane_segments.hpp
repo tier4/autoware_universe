@@ -65,10 +65,11 @@ public:
    * @brief Constructor that initializes the context with static data determined at initialization.
    *
    * @param lanelet_map_ptr Shared pointer to the lanelet map.
+   * @param options How the map becomes tensors; the defaults are upstream's.
    */
   explicit LaneSegmentContext(
     const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
-    double line_string_max_step_m = 5.0);
+    const MapConversionOptions & options = {});
 
   /**
    * @brief Select route segment indices based on route and constraints.
@@ -148,6 +149,24 @@ public:
   {
     return create_line_tensor(
       lanelet_map_.line_strings, transform_matrix, center_x, center_y, NUM_LINE_STRINGS,
+      POINTS_PER_LINE_STRING, LINE_STRING_TYPE_NUM);
+  }
+  //! Sized by the model instead of by this package's constants: a model's
+  //! declared slot count and type width (validated by the caller).
+  std::vector<float> create_polygon_tensor(
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+    const int64_t num_elements, const int64_t num_types) const
+  {
+    return create_line_tensor(
+      lanelet_map_.polygons, transform_matrix, center_x, center_y, num_elements,
+      POINTS_PER_POLYGON, num_types);
+  }
+  std::vector<float> create_line_string_tensor(
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+    const int64_t num_elements) const
+  {
+    return create_line_tensor(
+      lanelet_map_.line_strings, transform_matrix, center_x, center_y, num_elements,
       POINTS_PER_LINE_STRING, LINE_STRING_TYPE_NUM);
   }
 

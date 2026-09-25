@@ -63,8 +63,11 @@ namespace autoware::tensorrt_e2e
 class ContextInputProvider : public InputProviderInterface
 {
 public:
+  //! @param map_options how the map becomes tensors: the model's training
+  //!   convention (its `context.line_string_max_step_m` is this provider's).
   ContextInputProvider(
-    rclcpp::Node & node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info);
+    rclcpp::Node & node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+    const autoware::diffusion_planner::MapConversionOptions & map_options = {});
 
   std::string name() const override { return "context"; }
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
@@ -99,7 +102,7 @@ private:
   //! input only to keep a stable signature and never reads it: nothing is
   //! subscribed and the tensor is a constant built once at claim time.
   bool turn_indicators_enabled_{true};
-  double line_string_max_step_m_{5.0};
+  autoware::diffusion_planner::MapConversionOptions map_options_;
   bool use_time_interpolation_{true};
 
   // Claims and engine-derived dimensions. A claim is active when its shape is non-empty.

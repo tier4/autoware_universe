@@ -214,15 +214,68 @@ std::vector<LanePoint> convert_to_polyline(const T & line_string) noexcept
   }
   return output;
 }
+// The e2e-data-producer's resample_line_string, point for point: consecutive
+// duplicates dropped, equal pieces of num_points each no more than max_step_m
+// apart, positions linear in arc length, the pieces sharing end points.
+std::vector<std::vector<LanePoint>> resample_line_string_linear(
+  const std::vector<LanePoint> & input, const size_t num_points, const double max_step_m)
+{
+  std::vector<LanePoint> points;
+  for (const auto & p : input) {
+    if (points.empty() || (p - points.back()).norm() > 0.0) {
+      points.push_back(p);
+    }
+  }
+  if (points.size() < 2) {
+    points = {input.front(), input.back()};
+  }
+  std::vector<double> arc(points.size(), 0.0);
+  for (size_t i = 1; i < points.size(); ++i) {
+    arc[i] = arc[i - 1] + (points[i] - points[i - 1]).norm();
+  }
+  const double total = arc.back();
+  if (total < 1e-6) {
+    return {std::vector<LanePoint>(num_points, points.front())};
+  }
+  const auto pieces = static_cast<size_t>(std::max(
+    1.0, std::ceil(total / static_cast<double>(num_points - 1) / std::max(max_step_m, 1e-6))));
+  const double length = total / static_cast<double>(pieces);
+  const auto at = [&](const double s) {
+    // np.interp: the first segment whose end is at or past s.
+    const auto upper = std::upper_bound(arc.begin(), arc.end(), s);
+    const size_t j = std::clamp<size_t>(
+      static_cast<size_t>(std::distance(arc.begin(), upper)), 1, arc.size() - 1);
+    const double t = std::clamp((s - arc[j - 1]) / (arc[j] - arc[j - 1]), 0.0, 1.0);
+    return LanePoint(points[j - 1] + t * (points[j] - points[j - 1]));
+  };
+  std::vector<std::vector<LanePoint>> result(pieces);
+  for (size_t k = 0; k < pieces; ++k) {
+    result[k].reserve(num_points);
+    for (size_t i = 0; i < num_points; ++i) {
+      const double s = std::clamp(
+        static_cast<double>(k) * length +
+          static_cast<double>(i) * (length / static_cast<double>(num_points - 1)),
+        0.0, total);
+      result[k].push_back(at(s));
+    }
+  }
+  result.front().front() = input.front();
+  result.back().back() = input.back();
+  return result;
+}
 }  // namespace
 
 LaneletMap convert_to_internal_lanelet_map(
-  const lanelet::LaneletMapConstPtr lanelet_map_ptr, const double line_string_max_step_m)
+  const lanelet::LaneletMapConstPtr lanelet_map_ptr, const MapConversionOptions & options)
 {
   LaneletMap lanelet_map;
   lanelet_map.lane_segments.reserve(lanelet_map_ptr->laneletLayer.size());
   lanelet_map.polygons.reserve(lanelet_map_ptr->polygonLayer.size());
   lanelet_map.line_strings.reserve(lanelet_map_ptr->lineStringLayer.size());
+
+  // Appended after the polygon layer: the producer lists intersection areas
+  // first, and the tensor's nearest-first sort is stable, so ties keep order.
+  std::vector<Polygon> crosswalks;
 
   // parse lanelet layers
   for (const auto & lanelet : lanelet_map_ptr->laneletLayer) {
@@ -230,15 +283,42 @@ LaneletMap convert_to_internal_lanelet_map(
       continue;
     }
     const auto lanelet_subtype = lanelet.attribute("subtype").as<std::string>();
-    if (!lanelet_subtype || ACCEPTABLE_LANE_SUBTYPES.count(lanelet_subtype.value()) == 0) {
+    if (!lanelet_subtype) {
       continue;
     }
-    const Polyline centerline(
-      interpolate_points(convert_to_polyline(lanelet.centerline3d()), POINTS_PER_SEGMENT));
+    if (options.crosswalk_polygons && lanelet_subtype.value() == "crosswalk") {
+      Polyline outline = convert_to_polyline(lanelet.leftBound3d());
+      const Polyline right = convert_to_polyline(lanelet.rightBound3d());
+      outline.insert(outline.end(), right.rbegin(), right.rend());
+      crosswalks.push_back(
+        Polygon{interpolate_points(outline, POINTS_PER_POLYGON), POLYGON_TYPE_CROSSWALK});
+      continue;
+    }
+    const auto & lane_subtypes =
+      options.drivable_lanes_only ? DRIVABLE_LANE_SUBTYPES : ACCEPTABLE_LANE_SUBTYPES;
+    if (lane_subtypes.count(lanelet_subtype.value()) == 0) {
+      continue;
+    }
     const Polyline left_boundary(
       interpolate_points(convert_to_polyline(lanelet.leftBound3d()), POINTS_PER_SEGMENT));
     const Polyline right_boundary(
       interpolate_points(convert_to_polyline(lanelet.rightBound3d()), POINTS_PER_SEGMENT));
+    Polyline centerline;
+    if (options.centerline_from_bounds) {
+      // A bound too short to resample never reaches the producer's output.
+      if (
+        left_boundary.size() != static_cast<size_t>(POINTS_PER_SEGMENT) ||
+        right_boundary.size() != static_cast<size_t>(POINTS_PER_SEGMENT)) {
+        continue;
+      }
+      centerline.resize(left_boundary.size());
+      for (size_t i = 0; i < centerline.size(); ++i) {
+        centerline[i] = 0.5 * (left_boundary[i] + right_boundary[i]);
+      }
+    } else {
+      centerline =
+        interpolate_points(convert_to_polyline(lanelet.centerline3d()), POINTS_PER_SEGMENT);
+    }
 
     LanePoint mean_point(0.0, 0.0, 0.0);
     for (const LanePoint & p : centerline) {
@@ -301,6 +381,7 @@ LaneletMap convert_to_internal_lanelet_map(
       interpolate_points(convert_to_polyline(polygon.basicLineString()), POINTS_PER_POLYGON));
     lanelet_map.polygons.push_back(Polygon{points, it->second});
   }
+  lanelet_map.polygons.insert(lanelet_map.polygons.end(), crosswalks.begin(), crosswalks.end());
 
   // parse line string layers
   for (const auto & line_string : lanelet_map_ptr->lineStringLayer) {
@@ -309,8 +390,12 @@ LaneletMap convert_to_internal_lanelet_map(
     if (it == LINE_STRING_TYPE_MAP.end()) {
       continue;
     }
-    const auto segments = resample_line_string(
-      convert_to_polyline(line_string), POINTS_PER_LINE_STRING, line_string_max_step_m);
+    const auto polyline = convert_to_polyline(line_string);
+    const auto segments =
+      options.linear_line_strings
+        ? resample_line_string_linear(
+            polyline, POINTS_PER_LINE_STRING, options.line_string_max_step_m)
+        : resample_line_string(polyline, POINTS_PER_LINE_STRING, options.line_string_max_step_m);
     for (const auto & points : segments) {
       lanelet_map.line_strings.push_back(LineString{points, it->second});
     }
