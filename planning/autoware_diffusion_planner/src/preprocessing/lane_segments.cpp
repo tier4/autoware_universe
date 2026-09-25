@@ -58,11 +58,28 @@ LaneSegmentContext::LaneSegmentContext(
   const MapConversionOptions & options)
 : lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr, options)),
   producer_slot_order_(options.producer_slot_order),
+  producer_lane_selection_(options.producer_lane_selection),
   lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments))
 {
   if (lanelet_map_.lane_segments.empty()) {
     throw std::runtime_error("No lane segments found in the map");
   }
+}
+
+bool LaneSegmentContext::segment_in_range(
+  const LaneSegment & segment, const double center_x, const double center_y) const
+{
+  if (!producer_lane_selection_) {
+    return is_segment_inside(segment, center_x, center_y);
+  }
+  // The producer's process_lanelet: mean, first or last point, strictly inside.
+  const double r = autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
+  const auto inside = [&](const double x, const double y) {
+    return x > center_x - r && x < center_x + r && y > center_y - r && y < center_y + r;
+  };
+  const auto & c = segment.centerline;
+  return inside(segment.mean_point.x(), segment.mean_point.y()) ||
+         (!c.empty() && (inside(c.front().x(), c.front().y()) || inside(c.back().x(), c.back().y())));
 }
 
 std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
@@ -87,13 +104,16 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
     for (const LanePoint & point : route_segment.centerline) {
       const double diff_x = point.x() - center_x;
       const double diff_y = point.y() - center_y;
-      const double diff_z = point.z() - center_z;
+      const double diff_z = producer_lane_selection_ ? 0.0 : point.z() - center_z;
       const double curr_distance = std::sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
       distance = std::min(distance, curr_distance);
     }
     if (distance < closest_distance) {
       closest_distance = distance;
-      closest_index = i;
+      // An index into array_indices, which skips route segments the map does
+      // not hold -- not into route.segments (i), which it was: one missing
+      // segment before the ego started the route that many lanelets late.
+      closest_index = array_indices.size() - 1;
     }
   }
 
@@ -104,12 +124,11 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   for (size_t i = closest_index; i < array_indices.size(); ++i) {
     const int64_t segment_idx = array_indices[i];
 
-    if (!is_segment_inside(lanelet_map_.lane_segments[segment_idx], center_x, center_y)) {
-      if (has_entered_valid_region) {
+    if (!segment_in_range(lanelet_map_.lane_segments[segment_idx], center_x, center_y)) {
+      if (has_entered_valid_region && !producer_lane_selection_) {
         break;
-      } else {
-        continue;
       }
+      continue;
     }
 
     has_entered_valid_region = true;
@@ -183,7 +202,7 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   for (size_t i = 0; i < lanelet_map_.lane_segments.size(); ++i) {
     const LaneSegment & segment = lanelet_map_.lane_segments[i];
 
-    if (!is_segment_inside(segment, center_x, center_y)) {
+    if (!segment_in_range(segment, center_x, center_y)) {
       continue;
     }
 

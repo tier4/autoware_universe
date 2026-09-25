@@ -171,6 +171,9 @@ public:
   }
 
 private:
+  //! Whether a lane segment is in the crop, under this context's selection rule.
+  bool segment_in_range(const LaneSegment & segment, double center_x, double center_y) const;
+
   /**
    * @brief Create line tensor data from elements with points and type.
    *
@@ -192,6 +195,7 @@ private:
 
   const autoware::diffusion_planner::LaneletMap lanelet_map_;
   const bool producer_slot_order_;  //!< MapConversionOptions::producer_slot_order.
+  const bool producer_lane_selection_;  //!< MapConversionOptions::producer_lane_selection.
   const std::map<lanelet::Id, size_t> lanelet_id_to_array_index_;
 };
 
