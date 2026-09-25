@@ -18,6 +18,8 @@
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
 #include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/polling_subscriber.hpp>
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
@@ -28,8 +30,6 @@
 #include <autoware_utils_system/stop_watch.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <rclcpp/subscription.hpp>
-#include <rclcpp/timer.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
@@ -60,7 +60,10 @@ using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
 using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_internal_planning_msgs::msg::PlanningFactor;
-using autoware_utils_diagnostics::DiagnosticsInterface;
+using DiagnosticsInterface =
+  autoware_utils_diagnostics::BasicDiagnosticsInterface<autoware::agnocast_wrapper::Node>;
+using PlanningFactorInterface =
+  autoware::planning_factor_interface::PlanningFactorInterfaceT<autoware::agnocast_wrapper::Node>;
 using geometry_msgs::msg::Pose;
 using rcl_interfaces::msg::SetParametersResult;
 using std_srvs::srv::SetBool;
@@ -117,7 +120,7 @@ struct DiffusionPlannerPlanningFactorParams
  * - generator_uuid_: Unique identifier for the planner instance.
  * - vehicle_info_: Vehicle-specific parameters.
  */
-class DiffusionPlanner : public rclcpp::Node
+class DiffusionPlanner : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit DiffusionPlanner(const rclcpp::NodeOptions & options);
@@ -214,68 +217,81 @@ private:
   void on_set_centerline_guidance_enabled(
     const SetBool::Request::SharedPtr request, const SetBool::Response::SharedPtr response);
 
+  // Node elements
+  AUTOWARE_TIMER_PTR timer_;
+  AUTOWARE_PUBLISHER_PTR(autoware_utils::ProcessingTimeDetail) debug_processing_time_detail_pub_;
+  AUTOWARE_PUBLISHER_PTR(autoware_internal_debug_msgs::msg::Float64Stamped)
+  debug_processing_time_pub_{nullptr};
+  AUTOWARE_PUBLISHER_PTR(Trajectory) pub_trajectory_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(CandidateTrajectories) pub_trajectories_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(PredictedObjects) pub_objects_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(MarkerArray) pub_lane_marker_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(MarkerArray) pub_linestring_marker_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(MarkerArray) pub_route_marker_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(TurnIndicatorsCommand) pub_turn_indicators_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(autoware_perception_msgs::msg::TrafficLightGroup)
+  pub_traffic_signal_{nullptr};
+  AUTOWARE_PUBLISHER_PTR(geometry_msgs::msg::PoseStamped) pub_snapped_pose_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(autoware_internal_debug_msgs::msg::Float64Stamped)
+  pub_snap_interpolation_time_{nullptr};
+  AUTOWARE_PUBLISHER_PTR(std_msgs::msg::Float64) pub_inference_time_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(std_msgs::msg::Float32MultiArray) pub_denoising_steps_ { nullptr };
+  AUTOWARE_PUBLISHER_PTR(autoware_internal_debug_msgs::msg::StringStamped)
+  pub_guidance_status_{nullptr};
+  AUTOWARE_SERVICE_PTR(SetBool) set_start_guidance_enabled_service_ { nullptr };
+  AUTOWARE_SERVICE_PTR(SetBool) set_stop_guidance_enabled_service_ { nullptr };
+  AUTOWARE_SERVICE_PTR(SetBool) set_centerline_guidance_enabled_service_ { nullptr };
+  mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
+  autoware::agnocast_wrapper::polling::PollingSubscriber<Odometry>::SharedPtr
+    sub_current_odometry_ =
+      autoware::agnocast_wrapper::polling::create_polling_subscriber<Odometry>(
+        this, "~/input/odometry", 1);
+  autoware::agnocast_wrapper::polling::PollingSubscriber<AccelWithCovarianceStamped>::SharedPtr
+    sub_current_acceleration_ =
+      autoware::agnocast_wrapper::polling::create_polling_subscriber<AccelWithCovarianceStamped>(
+        this, "~/input/acceleration", 1);
+  autoware::agnocast_wrapper::polling::PollingSubscriber<TrackedObjects>::SharedPtr
+    sub_tracked_objects_ =
+      autoware::agnocast_wrapper::polling::create_polling_subscriber<TrackedObjects>(
+        this, "~/input/tracked_objects", 1);
+  autoware::agnocast_wrapper::polling::PollingSubscriber<
+    autoware_perception_msgs::msg::TrafficLightGroupArray,
+    autoware_utils::polling_policy::All>::SharedPtr sub_traffic_signals_ =
+    autoware::agnocast_wrapper::polling::create_polling_subscriber<
+      autoware_perception_msgs::msg::TrafficLightGroupArray, autoware_utils::polling_policy::All>(
+      this, "~/input/traffic_signals", rclcpp::QoS{10});
+  autoware::agnocast_wrapper::polling::PollingSubscriber<TurnIndicatorsReport>::SharedPtr
+    sub_turn_indicators_ =
+      autoware::agnocast_wrapper::polling::create_polling_subscriber<TurnIndicatorsReport>(
+        this, "~/input/turn_indicators", 1);
+  autoware::agnocast_wrapper::polling::PollingSubscriber<
+    LaneletRoute, autoware_utils::polling_policy::Newest>::SharedPtr route_subscriber_ =
+    autoware::agnocast_wrapper::polling::create_polling_subscriber<
+      LaneletRoute, autoware_utils::polling_policy::Newest>(
+      this, "~/input/route", rclcpp::QoS{1}.transient_local());
+  autoware::agnocast_wrapper::polling::PollingSubscriber<
+    LaneletMapBin, autoware_utils::polling_policy::Newest>::SharedPtr vector_map_subscriber_ =
+    autoware::agnocast_wrapper::polling::create_polling_subscriber<
+      LaneletMapBin, autoware_utils::polling_policy::Newest>(
+      this, "~/input/vector_map", rclcpp::QoS{1}.transient_local());
+  AUTOWARE_SUBSCRIPTION_PTR(HADMapBin) sub_map_;
+  UUID generator_uuid_;
+  VehicleInfo vehicle_info_;
+
   // Core logic instance
   std::unique_ptr<DiffusionPlannerCore> core_;
 
   // Node parameters
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   DiffusionPlannerParams params_;
   DiffusionPlannerDebugParams debug_params_;
-
-  // Node elements
-  rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
-    debug_processing_time_detail_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
-    debug_processing_time_pub_{nullptr};
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_{nullptr};
-  rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
-  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_lane_marker_{nullptr};
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_linestring_marker_{nullptr};
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_route_marker_{nullptr};
-  rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_{nullptr};
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr
-    pub_traffic_signal_{nullptr};
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_snapped_pose_{nullptr};
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
-    pub_snap_interpolation_time_{nullptr};
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_inference_time_{nullptr};
-  rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pub_denoising_steps_{nullptr};
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
-    pub_guidance_status_{nullptr};
-  rclcpp::Service<SetBool>::SharedPtr set_start_guidance_enabled_service_{nullptr};
-  rclcpp::Service<SetBool>::SharedPtr set_stop_guidance_enabled_service_{nullptr};
-  rclcpp::Service<SetBool>::SharedPtr set_centerline_guidance_enabled_service_{nullptr};
-  mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
-  autoware_utils::InterProcessPollingSubscriber<Odometry> sub_current_odometry_{
-    this, "~/input/odometry"};
-  autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
-    sub_current_acceleration_{this, "~/input/acceleration"};
-  autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
-    this, "~/input/tracked_objects"};
-  autoware_utils::InterProcessPollingSubscriber<
-    autoware_perception_msgs::msg::TrafficLightGroupArray, autoware_utils::polling_policy::All>
-    sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
-  autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
-    this, "~/input/turn_indicators"};
-  autoware_utils::InterProcessPollingSubscriber<
-    LaneletRoute, autoware_utils::polling_policy::Newest>
-    route_subscriber_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
-  autoware_utils::InterProcessPollingSubscriber<
-    LaneletMapBin, autoware_utils::polling_policy::Newest>
-    vector_map_subscriber_{this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
-  rclcpp::Subscription<HADMapBin>::SharedPtr sub_map_;
-  UUID generator_uuid_;
-  VehicleInfo vehicle_info_;
 
   std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
   std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_{nullptr};
 
   std::unique_ptr<autoware_utils_system::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
 
-  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
-    planning_factor_interface_;
+  std::unique_ptr<PlanningFactorInterface> planning_factor_interface_;
   DiffusionPlannerPlanningFactorParams planning_factor_params_;
 };
 

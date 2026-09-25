@@ -16,6 +16,8 @@
 #include "../../../src/filters/safety/collision_check_filter/parameter.hpp"
 #include "../../../src/filters/safety/collision_check_filter/trajectory_utils.hpp"
 
+#include <geometry_msgs/msg/point32.hpp>
+
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
 #include <tf2/utils.h>
@@ -429,7 +431,34 @@ TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForCylinderUsesNgonTraje
   EXPECT_TRUE(std::holds_alternative<QuadTrajectory>(footprints));
   ASSERT_EQ(footprint_count(footprints), 1u);
   expect_same_polygon(
-    footprint_to_polygon2d(footprints, 0U), geometry::to_polygon2d(poses.front(), shape));
+    footprint_to_polygon2d(footprints, 0U), geometry::to_polygon2d(poses.front(), shape, false));
+}
+
+// DRAC propagates the object footprint over the whole predicted path and therefore uses the
+// primitive outline only. The extra perception footprint must not leak into it, so the four-vertex
+// fast path and the resulting polygon both have to stay unchanged.
+TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryIgnoresTheExtraPerceptionFootprint)
+{
+  const PoseTrajectory poses = {create_pose(1.0, 2.0, M_PI / 6.0)};
+
+  auto shape = create_bounding_box_shape(4.0, 2.0);
+  auto plain_shape = shape;
+  const std::vector<std::pair<float, float>> extra_footprint = {{5.0F, 0.0F}, {0.0F, 4.0F}};
+  for (const auto & [x, y] : extra_footprint) {
+    geometry_msgs::msg::Point32 point;
+    point.x = x;
+    point.y = y;
+    point.z = 0.0F;
+    shape.footprint.points.push_back(point);
+  }
+
+  const auto footprints = trajectory::footprint::compute_footprint_trajectory(poses, shape);
+
+  EXPECT_TRUE(std::holds_alternative<QuadTrajectory>(footprints));
+  ASSERT_EQ(footprint_count(footprints), 1u);
+  expect_same_polygon(
+    footprint_to_polygon2d(footprints, 0U),
+    autoware_utils_geometry::to_polygon2d(poses.front(), plain_shape));
 }
 
 TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForVehicleMatchesUtility)
@@ -499,6 +528,45 @@ TEST(TrajectoryUtilitiesTest, EgoTrajectoryCacheAppliesVehicleInfoAndFootprintMa
       vehicle_info.max_longitudinal_offset_m + margin.front,
       -vehicle_info.min_longitudinal_offset_m + margin.rear,
       vehicle_info.vehicle_width_m + 2.0 * margin.lateral));
+}
+
+// The RSS path is the only caller that merges the extra perception footprint in, so this pins that
+// the footprint really reaches compute_distance_to_collision(): an object whose bounding box stays
+// clear of the ego corridor but whose footprint reaches into it has to be detected.
+TEST(TrajectoryUtilitiesTest, ComputeDistanceToCollisionAccountsForTheExtraPerceptionFootprint)
+{
+  const TimeTrajectory times = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+  PoseTrajectory poses;
+  poses.reserve(times.size());
+  for (size_t i = 0; i < times.size(); ++i) {
+    poses.push_back(create_pose(static_cast<double>(i), 0.0));
+  }
+
+  // The ego footprint spans 4.0 x 2.0 around each pose, so the corridor it sweeps is |y| <= 1.0.
+  const auto ego_trajectory =
+    create_trajectory_data("EGO", times, poses, create_bounding_box_shape(4.0, 2.0));
+
+  // A 2.0 x 2.0 box centred at (5.0, 3.0) occupies y in [2.0, 4.0], clear of that corridor.
+  auto shape = create_bounding_box_shape(2.0, 2.0);
+  const auto object_pose = create_pose(5.0, 3.0);
+  EXPECT_FALSE(
+    rss_deceleration::compute_distance_to_collision(
+      ego_trajectory, create_predicted_object(object_pose, create_twist(0.0), shape, {}))
+      .has_value());
+
+  // (0.0, -2.5) in the object frame is (5.0, 0.5) in the map frame, inside the corridor.
+  geometry_msgs::msg::Point32 footprint_point;
+  footprint_point.x = 0.0F;
+  footprint_point.y = -2.5F;
+  footprint_point.z = 0.0F;
+  shape.footprint.points.push_back(footprint_point);
+
+  const auto distance = rss_deceleration::compute_distance_to_collision(
+    ego_trajectory, create_predicted_object(object_pose, create_twist(0.0), shape, {}));
+
+  ASSERT_TRUE(distance.has_value());
+  EXPECT_GT(distance.value(), 0.0);
+  EXPECT_LT(distance.value(), times.back());
 }
 
 TEST(TrajectoryUtilitiesTest, ObjectIdentificationClassificationConstructorSetsDefaults)

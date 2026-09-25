@@ -224,7 +224,10 @@ Point2d transform_point(const Eigen::Isometry2d & transform, const Point2d & poi
   return Point2d{transformed.x(), transformed.y()};
 }
 
-std::vector<Point2d> create_base_polygon(const autoware_perception_msgs::msg::Shape & shape)
+// Vertices of the outline that `shape` defines through its type, in the object local frame and as
+// an open ring (the first vertex is not repeated at the end), which is the convention every caller
+// of create_base_polygon() relies on.
+std::vector<Point2d> create_shape_outline(const autoware_perception_msgs::msg::Shape & shape)
 {
   if (shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
     const double half_x = shape.dimensions.x / 2.0;
@@ -253,6 +256,30 @@ std::vector<Point2d> create_base_polygon(const autoware_perception_msgs::msg::Sh
 }
 
 std::vector<Point2d> create_base_polygon(
+  const autoware_perception_msgs::msg::Shape & shape, const bool use_extra_polygon)
+{
+  const auto outline = create_shape_outline(shape);
+  if (!use_extra_polygon || shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
+    return outline;
+  }
+
+  // A BOUNDING_BOX or CYLINDER object may carry a footprint in addition to its dimensions, for
+  // example the outline of the cluster it was fused from, expressed in the same object local frame
+  // as the primitive outline.
+  MultiPoint2d points(outline.begin(), outline.end());
+  points.reserve(outline.size() + shape.footprint.points.size());
+  for (const auto & point : shape.footprint.points) {
+    points.push_back(Point2d{point.x, point.y});
+  }
+
+  // A clockwise and open ring, matching the convention of the returned vertices.
+  boost::geometry::model::ring<Point2d, true, false> hull;
+  boost::geometry::convex_hull(points, hull);
+
+  return {hull.begin(), hull.end()};
+}
+
+std::vector<Point2d> create_base_polygon(
   const trajectory::footprint::EgoDimensions & ego_dimensions)
 {
   const double half_width = ego_dimensions.vehicle_width / 2.0;
@@ -264,10 +291,11 @@ std::vector<Point2d> create_base_polygon(
 }
 
 Polygon2d to_polygon2d(
-  const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
+  const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape,
+  const bool use_extra_polygon)
 {
   const auto iso = pose_to_isometry(pose);
-  const auto points = create_base_polygon(shape);
+  const auto points = create_base_polygon(shape, use_extra_polygon);
 
   Polygon2d polygon;
   polygon.outer().reserve(points.size() + 1U);
@@ -326,7 +354,10 @@ FootprintTrajectory compute_footprint_trajectory(
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const autoware_perception_msgs::msg::Shape & object_shape)
 {
-  return compute_footprint_trajectory(pose_trajectory, geometry::create_base_polygon(object_shape));
+  // DRAC propagates this footprint over the whole predicted path, so the primitive outline is
+  // used as is; the extra perception footprint is only merged in on the RSS path.
+  return compute_footprint_trajectory(
+    pose_trajectory, geometry::create_base_polygon(object_shape, false));
 }
 
 FootprintTrajectory compute_footprint_trajectory(
