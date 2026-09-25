@@ -392,12 +392,12 @@ TEST(PhysicalComfortTest, DelayedCommandDoesNotCreatePhysicalJerk)
 
   state = next;
   model.step(state, next, derivative, command, output, 0.1F, 0.1F);
-  // The queued command now reaches the actuators: da/dt=5 and d(delta)/dt=0.5.
+  // The queued command reaches the actuators; steering is capped by the standstill rate.
   EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::LONGITUDINAL_JERK)), 5.0F);
-  EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.5F);
+  EXPECT_NEAR(output(static_cast<int>(OutputIndex::STEERING_RATE)), 0.15F, 1.0E-6F);
   EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::ACCEL_COMMAND_RATE)), 0.0F);
   EXPECT_FLOAT_EQ(output(static_cast<int>(OutputIndex::STEER_COMMAND_RATE)), 0.0F);
-  EXPECT_NEAR(cost->computeComfortCost(command, output, 1), 76.75F, 1.0E-5F);
+  EXPECT_NEAR(cost->computeComfortCost(command, output, 1), 75.1575F, 1.0E-5F);
 }
 
 TEST(PhysicalComfortTest, RealizedRatesIncludeStateSaturation)
@@ -430,6 +430,7 @@ TEST(PhysicalComfortTest, SteeringRateLimitAndConstantTurnConvention)
   params.wheel_base = 2.0F;
   FirstOrderDubinsBicycle model(params);
   auto state = model.getZeroState();
+  state(static_cast<int>(S::VEL_X)) = 1.0F;  // Above the standstill release threshold.
   auto next = model.getZeroState();
   auto derivative = model.getZeroState();
   FirstOrderDubinsBicycle::control_array command;
@@ -515,8 +516,8 @@ TEST_F(TrajectoryValidatorTest, DeviceDelayedComfortMatchesPhysicalAndCommandCos
   EXPECT_FLOAT_EQ(results[2], 0.0F);
   EXPECT_NEAR(results[3], 204.0F, 1.0E-5F);
   EXPECT_FLOAT_EQ(results[4], 5.0F);
-  EXPECT_FLOAT_EQ(results[5], 0.5F);
-  EXPECT_NEAR(results[6], 76.75F, 1.0E-5F);
+  EXPECT_NEAR(results[5], 0.15F, 1.0E-6F);
+  EXPECT_NEAR(results[6], 75.1575F, 1.0E-5F);
   EXPECT_FLOAT_EQ(results[7], 0.0F);
 }
 

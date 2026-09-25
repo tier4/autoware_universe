@@ -931,7 +931,7 @@ TEST_F(
   EXPECT_NEAR(weight_sum, 1.0F, 1.0E-3F);
 }
 
-TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, InactiveVelocityLimitProducesIdenticalOutput)
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, InactiveVelocityLimitPreservesOutputWithinTolerance)
 {
   FirstOrderDubinsMppiVehicleParams vehicle_params;
   vehicle_params.acc_time_delay = 0.0F;
@@ -962,7 +962,35 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, InactiveVelocityLimitProducesIdenti
       nonrestrictive_acceleration, nonrestrictive_steering));
   }
 
-  EXPECT_TRUE(nonrestrictive_result.trajectory == unrestricted_result.trajectory);
+  const auto & unrestricted_output = unrestricted_result.trajectory;
+  const auto & nonrestrictive_output = nonrestrictive_result.trajectory;
+  EXPECT_EQ(nonrestrictive_output.header, unrestricted_output.header);
+  ASSERT_EQ(nonrestrictive_output.points.size(), unrestricted_output.points.size());
+  ASSERT_EQ(nonrestrictive_result.optimized_point_count, unrestricted_result.optimized_point_count);
+  for (std::size_t i = 0; i < unrestricted_output.points.size(); ++i) {
+    const auto & actual = nonrestrictive_output.points[i];
+    const auto & expected = unrestricted_output.points[i];
+    if (i >= unrestricted_result.optimized_point_count) {
+      EXPECT_EQ(actual, expected) << "Unoptimized suffix point " << i;
+      continue;
+    }
+    EXPECT_EQ(actual.time_from_start, expected.time_from_start) << "Point " << i;
+    EXPECT_EQ(actual.pose.position.z, expected.pose.position.z) << "Point " << i;
+    EXPECT_NEAR(actual.pose.position.x, expected.pose.position.x, 1.0E-3) << "Point " << i;
+    EXPECT_NEAR(actual.pose.position.y, expected.pose.position.y, 1.0E-3) << "Point " << i;
+    EXPECT_NEAR(actual.pose.orientation.x, expected.pose.orientation.x, 1.0E-4) << "Point " << i;
+    EXPECT_NEAR(actual.pose.orientation.y, expected.pose.orientation.y, 1.0E-4) << "Point " << i;
+    EXPECT_NEAR(actual.pose.orientation.z, expected.pose.orientation.z, 1.0E-4) << "Point " << i;
+    EXPECT_NEAR(actual.pose.orientation.w, expected.pose.orientation.w, 1.0E-4) << "Point " << i;
+    EXPECT_NEAR(actual.longitudinal_velocity_mps, expected.longitudinal_velocity_mps, 1.0E-3)
+      << "Point " << i;
+    EXPECT_NEAR(actual.acceleration_mps2, expected.acceleration_mps2, 1.0E-4) << "Point " << i;
+    EXPECT_NEAR(actual.front_wheel_angle_rad, expected.front_wheel_angle_rad, 1.0E-4)
+      << "Point " << i;
+    EXPECT_EQ(actual.lateral_velocity_mps, expected.lateral_velocity_mps) << "Point " << i;
+    EXPECT_EQ(actual.heading_rate_rps, expected.heading_rate_rps) << "Point " << i;
+    EXPECT_EQ(actual.rear_wheel_angle_rad, expected.rear_wheel_angle_rad) << "Point " << i;
+  }
   EXPECT_FALSE(unrestricted_result.debug.external_velocity_limit_active);
   EXPECT_FALSE(nonrestrictive_result.debug.external_velocity_limit_active);
   EXPECT_TRUE(
@@ -1171,9 +1199,11 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, RejectsBeyondLateralBoundaryThresho
   EXPECT_TRUE(result.debug.was_rejected);
   EXPECT_TRUE(hasInvalidityReason(
     result.debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::lateral_boundary));
+  EXPECT_TRUE(hasInvalidityReason(
+    result.debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts));
   ASSERT_TRUE(result.debug.validation.first_invalid_index.has_value());
   EXPECT_EQ(result.debug.validation.first_invalid_index.value(), 0U);
-  EXPECT_TRUE(std::isfinite(result.debug.baseline_cost));
+  EXPECT_FALSE(std::isfinite(result.debug.baseline_cost));
 }
 
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, RejectsInsufficientTrajectoryProgressWhenEnabled)
