@@ -19,22 +19,32 @@
 namespace autoware::control_command_gate
 {
 
-VehicleStatus::VehicleStatus(rclcpp::Node & node) : node_(node), vehicle_stop_checker_(&node)
+VehicleStatus::VehicleStatus(autoware::agnocast_wrapper::Node & node)
+: node_(node), vehicle_stop_checker_(&node, velocity_buffer_time_sec)
 {
   stop_check_duration_ = node.declare_parameter<double>("stop_check_duration");
 
   sub_kinematics_ = node.create_subscription<Odometry>(
-    "/localization/kinematic_state", 1,
-    [this](Odometry::SharedPtr msg) { current_kinematics_ = *msg; });
+    "/localization/kinematic_state", 1, [this](const Odometry & msg) { on_kinematics(msg); });
   sub_acceleration_ = node.create_subscription<AccelWithCovarianceStamped>(
     "/localization/acceleration", 1,
-    [this](AccelWithCovarianceStamped::SharedPtr msg) { current_acceleration_ = *msg; });
+    [this](const AccelWithCovarianceStamped & msg) { current_acceleration_ = msg; });
   sub_steering_ = node.create_subscription<SteeringReport>(
     "/vehicle/status/steering_status", 1,
-    [this](SteeringReport::SharedPtr msg) { current_steering_ = *msg; });
+    [this](const SteeringReport & msg) { current_steering_ = msg; });
   sub_control_mode_ = node.create_subscription<ControlModeReport>(
     "/vehicle/status/control_mode", 1,
-    [this](ControlModeReport::SharedPtr msg) { current_control_mode_ = *msg; });
+    [this](const ControlModeReport & msg) { current_control_mode_ = msg; });
+}
+
+void VehicleStatus::on_kinematics(const Odometry & msg)
+{
+  current_kinematics_ = msg;
+
+  geometry_msgs::msg::TwistStamped twist;
+  twist.header = msg.header;
+  twist.twist = msg.twist.twist;
+  vehicle_stop_checker_.addTwist(twist);
 }
 
 bool VehicleStatus::is_autoware_control_enabled() const

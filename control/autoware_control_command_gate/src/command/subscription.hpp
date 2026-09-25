@@ -17,6 +17,7 @@
 
 #include "source.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <string>
@@ -27,7 +28,8 @@ namespace autoware::control_command_gate
 class CommandSubscription : public CommandSource
 {
 public:
-  CommandSubscription(uint16_t id, const std::string & name, rclcpp::Node & node);
+  CommandSubscription(
+    uint16_t id, const std::string & name, autoware::agnocast_wrapper::Node & node);
   void resend_last_command() override;
 
 private:
@@ -38,10 +40,10 @@ private:
 
   rclcpp::Clock::SharedPtr clock_;
   rclcpp::Logger logger_;
-  rclcpp::Subscription<Control>::SharedPtr sub_control_;
-  rclcpp::Subscription<GearCommand>::SharedPtr sub_gear_;
-  rclcpp::Subscription<TurnIndicatorsCommand>::SharedPtr sub_turn_indicators_;
-  rclcpp::Subscription<HazardLightsCommand>::SharedPtr sub_hazard_lights_;
+  AUTOWARE_SUBSCRIPTION_PTR(Control) sub_control_;
+  AUTOWARE_SUBSCRIPTION_PTR(GearCommand) sub_gear_;
+  AUTOWARE_SUBSCRIPTION_PTR(TurnIndicatorsCommand) sub_turn_indicators_;
+  AUTOWARE_SUBSCRIPTION_PTR(HazardLightsCommand) sub_hazard_lights_;
 
   std::optional<GearCommand> last_gear_;
   std::optional<TurnIndicatorsCommand> last_turn_indicators_;

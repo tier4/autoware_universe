@@ -20,8 +20,9 @@
 #include "command/interface.hpp"
 #include "command/selector.hpp"
 
+#include <autoware/agnocast_wrapper/diagnostic_updater.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware_command_mode_types/sources.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <tier4_system_msgs/msg/command_filter_status.hpp>
@@ -36,7 +37,7 @@
 namespace autoware::control_command_gate
 {
 
-class ControlCmdGate : public rclcpp::Node
+class ControlCmdGate : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit ControlCmdGate(const rclcpp::NodeOptions & options);
@@ -59,13 +60,13 @@ private:
     const ChangeCommandFilter::Request::SharedPtr req,
     const ChangeCommandFilter::Response::SharedPtr res);
 
-  rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<CommandSourceStatus>::SharedPtr pub_source_;
-  rclcpp::Publisher<CommandFilterStatus>::SharedPtr pub_filter_;
-  rclcpp::Service<ChangeCommandSource>::SharedPtr srv_source_;
-  rclcpp::Service<ChangeCommandFilter>::SharedPtr srv_filter_;
+  AUTOWARE_TIMER_PTR timer_;
+  AUTOWARE_PUBLISHER_PTR(CommandSourceStatus) pub_source_;
+  AUTOWARE_PUBLISHER_PTR(CommandFilterStatus) pub_filter_;
+  AUTOWARE_SERVICE_PTR(ChangeCommandSource) srv_source_;
+  AUTOWARE_SERVICE_PTR(ChangeCommandFilter) srv_filter_;
 
-  diagnostic_updater::Updater diag_;
+  autoware::agnocast_wrapper::diagnostic_updater::Updater diag_;
   std::unique_ptr<CommandSelector> selector_;
   CommandFilter * output_filter_;
   Compatibility * compatibility_;
@@ -75,7 +76,7 @@ private:
 
   // Note: for compatibility.
   using SelectCommandSource = tier4_system_msgs::srv::SelectCommandSource;
-  rclcpp::Service<SelectCommandSource>::SharedPtr srv_select_;
+  AUTOWARE_SERVICE_PTR(SelectCommandSource) srv_select_;
   void on_select_source(
     const SelectCommandSource::Request::SharedPtr req,
     const SelectCommandSource::Response::SharedPtr res);

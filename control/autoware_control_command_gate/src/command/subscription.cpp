@@ -29,7 +29,8 @@ bool validate_command(const Control & msg)
   return true;
 }
 
-CommandSubscription::CommandSubscription(uint16_t id, const std::string & name, rclcpp::Node & node)
+CommandSubscription::CommandSubscription(
+  uint16_t id, const std::string & name, autoware::agnocast_wrapper::Node & node)
 : CommandSource(id, name), clock_(node.get_clock()), logger_(node.get_logger())
 {
   using std::placeholders::_1;

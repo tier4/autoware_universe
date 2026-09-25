@@ -31,7 +31,8 @@
 namespace autoware::control_command_gate
 {
 
-VehicleCmdFilterParam declare_filter_params(rclcpp::Node & node, const std::string & ns)
+VehicleCmdFilterParam declare_filter_params(
+  autoware::agnocast_wrapper::Node & node, const std::string & ns)
 {
   VehicleCmdFilterParam p;
   p.vel_lim = node.declare_parameter<double>(ns + "vel_lim");
@@ -53,7 +54,7 @@ VehicleCmdFilterParam declare_filter_params(rclcpp::Node & node, const std::stri
 }
 
 ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
-: Node("control_command_gate", options), diag_(this, 0.5)
+: autoware::agnocast_wrapper::Node("control_command_gate", options), diag_(this, 0.5)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -85,7 +86,7 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
     transition_filter_params.wheel_base = info.wheel_base_m;
   }
 
-  const auto inputs = declare_parameter<std::vector<int>>("inputs");
+  const auto inputs = declare_parameter<std::vector<int64_t>>("inputs");
   for (const auto & input : inputs) {
     if (input == builtin || input == unknown) {
       throw std::invalid_argument("input source '" + std::to_string(input) + "' is reserved");
@@ -140,7 +141,8 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
   publish_filter_status();
 
   const auto period = rclcpp::Rate(declare_parameter<double>("rate")).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
+  timer_ =
+    autoware::agnocast_wrapper::create_timer(this, get_clock(), period, [this]() { on_timer(); });
 }
 
 void ControlCmdGate::on_timer()
@@ -198,10 +200,10 @@ void ControlCmdGate::publish_source_status()
   if (current_source_ == current_source) return;
   current_source_ = current_source;
 
-  CommandSourceStatus msg;
-  msg.stamp = now();
-  msg.source = current_source;
-  pub_source_->publish(msg);
+  auto msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_source_);
+  msg->stamp = now();
+  msg->source = current_source;
+  pub_source_->publish(std::move(msg));
 };
 
 void ControlCmdGate::publish_filter_status()
@@ -210,10 +212,10 @@ void ControlCmdGate::publish_filter_status()
   if (transition_flag_ == transition_flag) return;
   transition_flag_ = transition_flag;
 
-  CommandFilterStatus msg;
-  msg.stamp = now();
-  msg.filter = transition_flag;
-  pub_filter_->publish(msg);
+  auto msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_filter_);
+  msg->stamp = now();
+  msg->filter = transition_flag;
+  pub_filter_->publish(std::move(msg));
 }
 
 }  // namespace autoware::control_command_gate
