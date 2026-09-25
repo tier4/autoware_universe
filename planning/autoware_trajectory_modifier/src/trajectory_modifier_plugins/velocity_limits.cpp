@@ -169,7 +169,8 @@ VelocityLimitResult apply_velocity_limits(
     clamped_a = std::max(-deceleration, clamped_a);
 
     current_v = current_v + clamped_a * dt;
-    points[i].longitudinal_velocity_mps = static_cast<float>(current_v);
+    // prevent negative velocities
+    points[i].longitudinal_velocity_mps = std::max(0.0f, static_cast<float>(current_v));
 
     if (i > 0) {
       points[i - 1].acceleration_mps2 = static_cast<float>(clamped_a);
