@@ -35,6 +35,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -63,11 +64,20 @@ namespace autoware::tensorrt_e2e
 class ContextInputProvider : public InputProviderInterface
 {
 public:
+  //! (wheel base, length, width) in metres, the model's `ego_shape` input.
+  struct EgoShape
+  {
+    double wheel_base;
+    double length;
+    double width;
+  };
+
   //! @param map_options how the map becomes tensors: the model's training
   //!   convention (its `context.line_string_max_step_m` is this provider's).
   ContextInputProvider(
     rclcpp::Node & node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-    const autoware::diffusion_planner::MapConversionOptions & map_options = {});
+    const autoware::diffusion_planner::MapConversionOptions & map_options = {},
+    const std::optional<EgoShape> & training_ego_shape = std::nullopt);
 
   std::string name() const override { return "context"; }
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
@@ -80,6 +90,11 @@ private:
   using TurnIndicatorsReport = autoware_vehicle_msgs::msg::TurnIndicatorsReport;
   using LaneletRoute = autoware_planning_msgs::msg::LaneletRoute;
   using LaneletMapBin = autoware_map_msgs::msg::LaneletMapBin;
+
+  //! The producer's traffic-light rule, into traffic_light_id_map_ (see the .cpp).
+  void select_traffic_signals_at(
+    const std::vector<TrafficLightGroupArray::ConstSharedPtr> & incoming,
+    const rclcpp::Time & frame_stamp);
 
   void create_subscriptions();
   void on_map(const LaneletMapBin::ConstSharedPtr map_msg);
@@ -145,6 +160,9 @@ private:
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
   std::map<lanelet::Id, autoware::diffusion_planner::preprocess::TrafficSignalStamped>
     traffic_light_id_map_;
+  //! Under the producer convention: every recent TrafficLightGroupArray, by stamp,
+  //! so a frame can take the latest one at or before its LiDAR stamp (see collect()).
+  std::deque<TrafficLightGroupArray::ConstSharedPtr> traffic_light_messages_;
   std::unique_ptr<autoware::diffusion_planner::preprocess::LaneSegmentContext>
     lane_segment_context_;
   //! Why the latched map could not be turned into lane segments, if it could not. The

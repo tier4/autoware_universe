@@ -84,7 +84,7 @@ void validate_shape(
 
 ContextInputProvider::ContextInputProvider(
   rclcpp::Node & node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const dp::MapConversionOptions & map_options)
+  const dp::MapConversionOptions & map_options, const std::optional<EgoShape> & training_ego_shape)
 : node_(node),
   wheel_base_(vehicle_info.wheel_base_m),
   vehicle_length_(
@@ -93,6 +93,18 @@ ContextInputProvider::ContextInputProvider(
     vehicle_info.left_overhang_m + vehicle_info.wheel_tread_m + vehicle_info.right_overhang_m),
   map_options_(map_options)
 {
+  // The model learned ego_shape from the producer's per-vehicle table, not from
+  // this vehicle's vehicle_info; feed what it learned, and say so if they differ.
+  if (training_ego_shape) {
+    RCLCPP_INFO(
+      node_.get_logger(),
+      "ego_shape from the training table (%.3f, %.3f, %.3f); vehicle_info gives (%.3f, %.3f, %.3f)",
+      training_ego_shape->wheel_base, training_ego_shape->length, training_ego_shape->width,
+      wheel_base_, vehicle_length_, vehicle_width_);
+    wheel_base_ = training_ego_shape->wheel_base;
+    vehicle_length_ = training_ego_shape->length;
+    vehicle_width_ = training_ego_shape->width;
+  }
   traffic_light_msg_timeout_s_ =
     node_.declare_parameter<double>("context.traffic_light_group_msg_timeout_seconds", 0.2);
   turn_indicators_enabled_ = node_.declare_parameter<bool>("context.turn_indicators.enabled", true);
@@ -295,6 +307,48 @@ void ContextInputProvider::on_map(const LaneletMapBin::ConstSharedPtr map_msg)
   }
 }
 
+void ContextInputProvider::select_traffic_signals_at(
+  const std::vector<TrafficLightGroupArray::ConstSharedPtr> & incoming,
+  const rclcpp::Time & frame_stamp)
+{
+  // The producer's _build_tl_recognition_per_frame: the latest message stamped
+  // at or before the frame (the LiDAR stamp, not processing time), at most
+  // 500 ms old, used whole -- a group it lacks is unrecognised this frame, not
+  // carried over from an older message. Messages are kept by stamp so one that
+  // arrives after the frame is processed still serves the next frame.
+  constexpr int64_t tolerance_ns = 500'000'000;
+  for (const auto & msg : incoming) {
+    const auto at = std::upper_bound(
+      traffic_light_messages_.begin(), traffic_light_messages_.end(), msg,
+      [](const auto & a, const auto & b) {
+        return rclcpp::Time(a->stamp).nanoseconds() < rclcpp::Time(b->stamp).nanoseconds();
+      });
+    traffic_light_messages_.insert(at, msg);
+  }
+  const int64_t frame_ns = frame_stamp.nanoseconds();
+  while (!traffic_light_messages_.empty() &&
+         rclcpp::Time(traffic_light_messages_.front()->stamp).nanoseconds() <
+           frame_ns - 2 * tolerance_ns) {
+    traffic_light_messages_.pop_front();
+  }
+  traffic_light_id_map_.clear();
+  // Latest at or before; on a stamp tie, the later-received (upper_bound order).
+  for (auto it = traffic_light_messages_.rbegin(); it != traffic_light_messages_.rend(); ++it) {
+    const int64_t stamp_ns = rclcpp::Time((*it)->stamp).nanoseconds();
+    if (stamp_ns > frame_ns) {
+      continue;
+    }
+    if (frame_ns - stamp_ns <= tolerance_ns) {
+      for (const auto & group : (*it)->traffic_light_groups) {
+        auto & entry = traffic_light_id_map_[group.traffic_light_group_id];
+        entry.signal = group;
+        entry.stamp = (*it)->stamp;
+      }
+    }
+    break;
+  }
+}
+
 bool ContextInputProvider::collect(
   const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs, std::string & error)
 {
@@ -302,8 +356,12 @@ bool ContextInputProvider::collect(
   // tensors always carry the freshest signal encoding (mirrors DiffusionPlannerCore).
   if (sub_traffic_signals_) {
     const auto traffic_signals = sub_traffic_signals_->take_data();
-    dp::preprocess::process_traffic_signals(
-      traffic_signals, traffic_light_id_map_, now, traffic_light_msg_timeout_s_);
+    if (map_options_.producer_lane_selection) {
+      select_traffic_signals_at(traffic_signals, ego.stamp);
+    } else {
+      dp::preprocess::process_traffic_signals(
+        traffic_signals, traffic_light_id_map_, now, traffic_light_msg_timeout_s_);
+    }
   }
   if (sub_route_) {
     const auto route = sub_route_->take_data();

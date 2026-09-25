@@ -367,11 +367,15 @@ void TensorrtE2eNode::create_providers()
     // wrote it; any other model keeps the upstream planner's conversion.
     namespace dp = autoware::diffusion_planner;
     dp::MapConversionOptions map_options;
+    std::optional<ContextInputProvider::EgoShape> training_ego_shape;
     if (derived_contract_ == DERIVED_CONTRACT) {
       map_options = dp::MapConversionOptions::oneplanner_derived_v10();
+      // e2e-data-producer make_derived VEHICLE_DIMENSIONS["jpntaxi"]: the only
+      // vehicle this model is deployed on.
+      training_ego_shape = ContextInputProvider::EgoShape{2.75, 4.34, 1.84};
     }
-    auto context_provider =
-      std::make_unique<ContextInputProvider>(*this, vehicle_info_, map_options);
+    auto context_provider = std::make_unique<ContextInputProvider>(
+      *this, vehicle_info_, map_options, training_ego_shape);
     context_provider_ = context_provider.get();
     providers_.push_back(std::move(context_provider));
   }
