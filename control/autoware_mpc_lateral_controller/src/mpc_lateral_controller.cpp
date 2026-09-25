@@ -39,7 +39,8 @@ namespace autoware::motion::control::mpc_lateral_controller
 {
 
 MpcLateralController::MpcLateralController(
-  rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater)
+  autoware::agnocast_wrapper::Node & node,
+  std::shared_ptr<autoware::agnocast_wrapper::diagnostic_updater::Updater> diag_updater)
 : clock_(node.get_clock()), logger_(node.get_logger().get_child("lateral_controller"))
 {
   const auto dp_int = [&](const std::string & s) { return node.declare_parameter<int>(s); };
@@ -200,7 +201,8 @@ MpcLateralController::~MpcLateralController()
 }
 
 std::shared_ptr<VehicleModelInterface> MpcLateralController::createVehicleModel(
-  const double wheelbase, const double steer_lim, const double steer_tau, rclcpp::Node & node)
+  const double wheelbase, const double steer_lim, const double steer_tau,
+  autoware::agnocast_wrapper::Node & node)
 {
   std::shared_ptr<VehicleModelInterface> vehicle_model_ptr;
 
@@ -235,7 +237,7 @@ std::shared_ptr<VehicleModelInterface> MpcLateralController::createVehicleModel(
 }
 
 std::shared_ptr<QPSolverInterface> MpcLateralController::createQPSolverInterface(
-  rclcpp::Node & node)
+  autoware::agnocast_wrapper::Node & node)
 {
   std::shared_ptr<QPSolverInterface> qpsolver_ptr;
 
@@ -633,7 +635,7 @@ bool MpcLateralController::isMpcConverged()
   return (max_steering_value - min_steering_value) < m_mpc_converged_threshold_rps;
 }
 
-void MpcLateralController::declareMPCparameters(rclcpp::Node & node)
+void MpcLateralController::declareMPCparameters(autoware::agnocast_wrapper::Node & node)
 {
   m_mpc->m_param.prediction_horizon = node.declare_parameter<int>("mpc_prediction_horizon");
   m_mpc->m_param.prediction_dt = node.declare_parameter<double>("mpc_prediction_dt");
