@@ -32,7 +32,7 @@ using autoware::motion_utils::findNearestIndex;
 using autoware_utils::calc_distance2d;
 using autoware_utils::calc_yaw_deviation;
 
-AutonomousMode::AutonomousMode(rclcpp::Node * node)
+AutonomousMode::AutonomousMode(autoware::agnocast_wrapper::Node * node)
 : logger_(node->get_logger()), clock_(node->get_clock())
 {
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*node).getVehicleInfo();
