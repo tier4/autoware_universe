@@ -52,7 +52,7 @@
         out_size_factor: 8
         # Per class, from the head's own bbox coder. The device pre-filter uses
         # the lowest of them; the per-class cut is applied on the host.
-        score_thresholds: [0.015, 0.01, 0.01, 0.02, 0.03, 0.04, 0.02]
+        score_thresholds: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]  # autoware_bevfusion deployed cut
 
 
     postprocess:
