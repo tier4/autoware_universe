@@ -29,7 +29,7 @@
     bev_feature:
       history_tensor: "bev_feature_history"
       frames: 3
-      interval_seconds: 0.2
+      interval_seconds: 0.5
       bev_half_extent_m: 122.4
       extractor:
         precision: "fp16"
