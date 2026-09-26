@@ -328,6 +328,14 @@ void TrtBevFeatureExtractor::init_detection(const Config & config)
 bool TrtBevFeatureExtractor::validate_cloud_layout(
   const sensor_msgs::msg::PointCloud2 & cloud, std::string & error) const
 {
+  // The model's BEV was trained on LIDAR_CONCAT, which T4 records in base_link
+  // (identity extrinsics), and the temporal warp places this frame by the
+  // base_link odometry pose. A cloud in any other frame is misplaced silently.
+  if (cloud.header.frame_id != "base_link") {
+    error = "Point cloud frame is '" + cloud.header.frame_id +
+            "', expected 'base_link' (the frame the training LiDAR was recorded in)";
+    return false;
+  }
   if (cloud.point_step != sizeof(InputPointType)) {
     error = "Point cloud point_step is " + std::to_string(cloud.point_step) + ", expected " +
             std::to_string(sizeof(InputPointType)) +
