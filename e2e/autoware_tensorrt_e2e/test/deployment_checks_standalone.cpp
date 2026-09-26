@@ -3,6 +3,7 @@
 #include "autoware/tensorrt_e2e/deployment_manifest.hpp"
 #include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
 #include "autoware/tensorrt_e2e/rolling_latency.hpp"
+#include "autoware/tensorrt_e2e/training_ego_shape.hpp"
 #include <iostream>
 #include <limits>
 using namespace autoware::tensorrt_e2e;
@@ -14,6 +15,19 @@ int main(int argc, char **argv) {
   if (argc != 2)
     throw std::runtime_error("Pass an empty scratch directory");
   const std::filesystem::path root(argv[1]);
+  // The ego shape the model learned, chosen by the vehicle it runs on.
+  check(std::string(training_ego_shape_for(2.75).vehicle) == "jpntaxi");
+  check(std::string(training_ego_shape_for(4.76012).vehicle) == "j6");
+  check(training_ego_shape_for(4.76012).length == 7.2369);
+  for (const double unknown : {3.8, 1.0, std::numeric_limits<double>::quiet_NaN()}) {
+    bool refused = false;
+    try {
+      training_ego_shape_for(unknown);
+    } catch (const std::runtime_error &) {
+      refused = true;
+    }
+    check(refused);
+  }
   const auto file = root / "graph.onnx";
   std::ofstream(file) << "original graph";
   const auto digest = file_sha256(file);

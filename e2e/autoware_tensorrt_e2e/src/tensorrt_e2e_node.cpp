@@ -14,6 +14,7 @@
 
 #include "autoware/tensorrt_e2e/tensorrt_e2e_node.hpp"
 #include "autoware/tensorrt_e2e/deployment_manifest.hpp"
+#include "autoware/tensorrt_e2e/training_ego_shape.hpp"
 #include <autoware_utils_geometry/geometry.hpp>
 
 #include "autoware/tensorrt_e2e/input_provider_registry.hpp"
@@ -370,9 +371,11 @@ void TensorrtE2eNode::create_providers()
     std::optional<ContextInputProvider::EgoShape> training_ego_shape;
     if (derived_contract_ == DERIVED_CONTRACT) {
       map_options = dp::MapConversionOptions::oneplanner_derived_v10();
-      // e2e-data-producer make_derived VEHICLE_DIMENSIONS["jpntaxi"]: the only
-      // vehicle this model is deployed on.
-      training_ego_shape = ContextInputProvider::EgoShape{2.75, 4.34, 1.84};
+      // The producer's table entry for this vehicle, not its vehicle_info.
+      const auto & shape = training_ego_shape_for(vehicle_info_.wheel_base_m);
+      RCLCPP_INFO(get_logger(), "ego_shape: training table entry '%s'", shape.vehicle);
+      training_ego_shape =
+        ContextInputProvider::EgoShape{shape.wheel_base, shape.length, shape.width};
     }
     auto context_provider = std::make_unique<ContextInputProvider>(
       *this, vehicle_info_, map_options, training_ego_shape);
