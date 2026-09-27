@@ -43,6 +43,36 @@ void clamp_velocities(
     });
 }
 
+bool is_launch_trajectory(
+  const TrajectoryPoints & input_trajectory_array, const float engage_velocity)
+{
+  //! [m] A trajectory shorter than this is not a launch. It keeps the deceleration in front of the
+  //! goal and a stop plan (all points at the same place) from engaging
+  constexpr double min_engage_dist_m = 0.5;
+
+  if (input_trajectory_array.empty()) {
+    return false;
+  }
+
+  // The travelled distance is measured on the points themselves. After the time parameterization
+  // the points of a stopped section sit on top of each other, so a stop plan lands near 0 here
+  double length = 0.0;
+  for (size_t k = 0; k + 1 < input_trajectory_array.size(); ++k) {
+    length += autoware_utils_geometry::calc_distance2d(
+      input_trajectory_array[k].pose.position, input_trajectory_array[k + 1].pose.position);
+  }
+  if (length <= min_engage_dist_m) {
+    return false;
+  }
+
+  // A trajectory that never reaches the engage speed is a stop in progress, not a launch
+  return std::any_of(
+    input_trajectory_array.begin(), input_trajectory_array.end(),
+    [engage_velocity](const TrajectoryPoint & point) {
+      return point.longitudinal_velocity_mps >= engage_velocity;
+    });
+}
+
 void set_max_velocity(TrajectoryPoints & input_trajectory_array, const float max_velocity)
 {
   if (input_trajectory_array.empty()) {

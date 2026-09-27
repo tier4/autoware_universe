@@ -146,12 +146,15 @@ ProcessingResult TrajectoryVelocityOptimizer::process(
   auto initial_motion_acc = (current_speed > target_pull_out_speed_mps)
                               ? current_linear_acceleration
                               : target_pull_out_acc_mps2;
-
-  if (velocity_params_.set_engage_speed && (current_speed < target_pull_out_speed_mps)) {
+  if (
+    velocity_params_.set_engage_speed && (current_speed < target_pull_out_speed_mps) &&
+    trajectory_velocity_optimizer_utils::is_launch_trajectory(
+      traj_points, static_cast<float>(target_pull_out_speed_mps))) {
     trajectory_velocity_optimizer_utils::clamp_velocities(
       traj_points, static_cast<float>(initial_motion_speed),
       static_cast<float>(initial_motion_acc));
   }
+
   return ProcessingResult::Modified;
 }
 
