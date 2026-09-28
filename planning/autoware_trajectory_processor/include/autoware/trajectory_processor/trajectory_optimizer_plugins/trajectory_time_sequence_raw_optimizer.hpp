@@ -103,19 +103,19 @@ private:
   mutable double last_live_lag_s_{0.0};
 
   time_sequence_raw::StampedEgoBuffer ego_buffer_;
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr accel_sub_;
-  rclcpp::Subscription<autoware_vehicle_msgs::msg::SteeringReport>::SharedPtr steer_sub_;
+  // The handle type differs between the rclcpp and agnocast branches; only the lifetime matters.
+  std::shared_ptr<void> odom_sub_;
+  std::shared_ptr<void> accel_sub_;
+  std::shared_ptr<void> steer_sub_;
 
-  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_raw_pub_;
-  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_adjusted_pub_;
-  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr debug_shifted_count_pub_;
-  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr debug_solver_status_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr debug_solve_time_pub_;
-  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_optimized_pub_;
-  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr
-    debug_geometry_velocity_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr debug_velocity_profile_pub_;
+  PublisherHandle<autoware_planning_msgs::msg::Trajectory> debug_raw_pub_;
+  PublisherHandle<autoware_planning_msgs::msg::Trajectory> debug_adjusted_pub_;
+  PublisherHandle<std_msgs::msg::Int32> debug_shifted_count_pub_;
+  PublisherHandle<std_msgs::msg::Int32> debug_solver_status_pub_;
+  PublisherHandle<std_msgs::msg::Float64> debug_solve_time_pub_;
+  PublisherHandle<autoware_planning_msgs::msg::Trajectory> debug_optimized_pub_;
+  PublisherHandle<autoware_planning_msgs::msg::Trajectory> debug_geometry_velocity_pub_;
+  PublisherHandle<std_msgs::msg::Float64MultiArray> debug_velocity_profile_pub_;
 };
 
 }  // namespace autoware::trajectory_processor::plugin

@@ -31,10 +31,12 @@ namespace autoware::mppi_optimizer
  * delay_steer_acc_geared_for_diffusion_planner.v{version}.* (same source as
  * simple_planning_simulator). Other vehicle_model_type values use flat top-level fields.
  */
-void declare_first_order_dubins_mppi_vehicle_dynamics_params(rclcpp::Node & node);
+template <typename NodeT>
+void declare_first_order_dubins_mppi_vehicle_dynamics_params(NodeT & node);
 
 /** Geometry from vehicle_info plus actuation dynamics from the parameter server. */
-FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params(rclcpp::Node & node);
+template <typename NodeT>
+FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params(NodeT & node);
 
 }  // namespace autoware::mppi_optimizer
 

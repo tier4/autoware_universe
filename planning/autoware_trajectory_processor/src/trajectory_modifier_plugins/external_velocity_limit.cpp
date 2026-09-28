@@ -50,8 +50,7 @@ void ExternalVelocityLimit::on_initialize(const TrajectoryProcessorParams & para
 {
   update_params(params);
   velocity_limit_sub_ =
-    std::make_shared<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>(
-      get_node_ptr(), "~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+    make_polling_subscriber<VelocityLimit>("~/input/external_velocity_limit_mps", rclcpp::QoS{1});
 }
 
 void ExternalVelocityLimit::update_params(const TrajectoryProcessorParams & params)

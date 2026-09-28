@@ -50,7 +50,7 @@ protected:
 private:
   using VelocityLimit = autoware_internal_planning_msgs::msg::VelocityLimit;
 
-  std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
+  autoware::agnocast_wrapper::polling::PollingSubscriber<VelocityLimit>::SharedPtr
     velocity_limit_sub_;
   double nominal_deceleration_{};
   double nominal_jerk_{};

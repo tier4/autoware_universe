@@ -16,6 +16,7 @@
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_conversion.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <optional>
@@ -31,28 +32,32 @@ constexpr const char * kDiffusionPlannerVehicleModel =
 constexpr const char * kDiffusionPlannerVersionParam =
   "delay_steer_acc_geared_for_diffusion_planner.version";
 
-void declare_if_missing(rclcpp::Node & node, const std::string & name, const double value)
+template <typename NodeT>
+void declare_if_missing(NodeT & node, const std::string & name, const double value)
 {
   if (!node.has_parameter(name)) {
     node.declare_parameter(name, value);
   }
 }
 
-void declare_if_missing(rclcpp::Node & node, const std::string & name, const int value)
+template <typename NodeT>
+void declare_if_missing(NodeT & node, const std::string & name, const int value)
 {
   if (!node.has_parameter(name)) {
     node.declare_parameter(name, value);
   }
 }
 
-void declare_if_missing(rclcpp::Node & node, const std::string & name, const std::string & value)
+template <typename NodeT>
+void declare_if_missing(NodeT & node, const std::string & name, const std::string & value)
 {
   if (!node.has_parameter(name)) {
     node.declare_parameter(name, value);
   }
 }
 
-double read_double(rclcpp::Node & node, const std::string & name, const double default_value)
+template <typename NodeT>
+double read_double(NodeT & node, const std::string & name, const double default_value)
 {
   declare_if_missing(node, name, default_value);
   return node.get_parameter(name).as_double();
@@ -63,7 +68,8 @@ double read_double(rclcpp::Node & node, const std::string & name, const double d
  * live under delay_steer_acc_geared_for_diffusion_planner.v{version}.* (same as
  * simple_planning_simulator). Flat top-level fields are used for other vehicle_model_type values.
  */
-std::optional<std::string> diffusion_planner_actuator_prefix(rclcpp::Node & node)
+template <typename NodeT>
+std::optional<std::string> diffusion_planner_actuator_prefix(NodeT & node)
 {
   declare_if_missing(node, "vehicle_model_type", std::string{});
   if (node.get_parameter("vehicle_model_type").as_string() != kDiffusionPlannerVehicleModel) {
@@ -75,8 +81,9 @@ std::optional<std::string> diffusion_planner_actuator_prefix(rclcpp::Node & node
   return "delay_steer_acc_geared_for_diffusion_planner.v" + std::to_string(version) + ".";
 }
 
+template <typename NodeT>
 float read_actuator_scalar(
-  rclcpp::Node & node, const std::string & flat_name,
+  NodeT & node, const std::string & flat_name,
   const std::optional<std::string> & nested_prefix, const float default_value)
 {
   if (nested_prefix) {
@@ -90,7 +97,8 @@ float read_actuator_scalar(
 
 }  // namespace
 
-void declare_first_order_dubins_mppi_vehicle_dynamics_params(rclcpp::Node & node)
+template <typename NodeT>
+void declare_first_order_dubins_mppi_vehicle_dynamics_params(NodeT & node)
 {
   const FirstOrderDubinsMppiVehicleParams defaults;
   declare_if_missing(node, "vehicle_model_type", std::string{});
@@ -111,7 +119,8 @@ void declare_first_order_dubins_mppi_vehicle_dynamics_params(rclcpp::Node & node
   }
 }
 
-FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params(rclcpp::Node & node)
+template <typename NodeT>
+FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params(NodeT & node)
 {
   const FirstOrderDubinsMppiVehicleParams defaults;
   FirstOrderDubinsMppiVehicleParams params =
@@ -134,5 +143,15 @@ FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params(rcl
     static_cast<float>(read_double(node, "vel_rate_lim", defaults.vel_rate_lim));
   return params;
 }
+
+// Both node types are supported so the plugin can run under rclcpp and agnocast_wrapper.
+template void declare_first_order_dubins_mppi_vehicle_dynamics_params<rclcpp::Node>(rclcpp::Node &);
+template void declare_first_order_dubins_mppi_vehicle_dynamics_params<
+  autoware::agnocast_wrapper::Node>(autoware::agnocast_wrapper::Node &);
+template FirstOrderDubinsMppiVehicleParams get_first_order_dubins_mppi_vehicle_params<rclcpp::Node>(
+  rclcpp::Node &);
+template FirstOrderDubinsMppiVehicleParams
+get_first_order_dubins_mppi_vehicle_params<autoware::agnocast_wrapper::Node>(
+  autoware::agnocast_wrapper::Node &);
 
 }  // namespace autoware::mppi_optimizer

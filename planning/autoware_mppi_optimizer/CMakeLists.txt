@@ -262,11 +262,13 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     src/first_order_dubins_mppi_vehicle_params_ros.cpp
   )
   target_link_libraries(${PROJECT_NAME} first_order_dubins_mppi)
+  autoware_agnocast_wrapper_setup(${PROJECT_NAME})
   mppi_link_acados_runtime(${PROJECT_NAME})
 
   ament_auto_add_library(autoware_mppi_trajectory_processor_plugin SHARED
     src/trajectory_mppi_optimizer.cpp
   )
+  autoware_agnocast_wrapper_setup(autoware_mppi_trajectory_processor_plugin)
   target_link_libraries(autoware_mppi_trajectory_processor_plugin
     first_order_dubins_mppi
     trajectory_mppi_optimizer_parameters

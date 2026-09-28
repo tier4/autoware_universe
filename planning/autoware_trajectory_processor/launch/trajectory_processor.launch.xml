@@ -31,8 +31,11 @@
   <arg name="output_trajectories" default="/planning/generator/candidate_trajectories"/>
   <arg name="output_current_velocity_limit_mps" default="/planning/scenario_planning/current_max_velocity"/>
 
+  <include file="$(find-pkg-share autoware_agnocast_wrapper)/launch/agnocast_env.launch.xml"/>
+
   <node pkg="autoware_trajectory_processor" exec="autoware_trajectory_processor_node" name="trajectory_processor" output="screen">
     <env name="LD_LIBRARY_PATH" value="/opt/acados/lib:$(env LD_LIBRARY_PATH)"/>
+    <env name="LD_PRELOAD" value="$(var ld_preload_value)"/>
     <!-- Small acados/HPIPM QPs jitter badly with a BLAS thread pool. -->
     <env name="OPENBLAS_NUM_THREADS" value="1"/>
     <env name="MKL_NUM_THREADS" value="1"/>

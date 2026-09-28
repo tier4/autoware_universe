@@ -185,21 +185,23 @@ void TrajectoryTimeSequenceRawOptimizer::ensure_ego_subscriptions()
   if (odom_sub_) {
     return;
   }
-  auto * node = get_node_ptr();
   const auto qos = rclcpp::QoS{50};
-  odom_sub_ = node->create_subscription<nav_msgs::msg::Odometry>(
-    "~/input/odometry", qos,
-    [this](const nav_msgs::msg::Odometry::ConstSharedPtr msg) { ego_buffer_.push_odometry(*msg); });
-  accel_sub_ = node->create_subscription<geometry_msgs::msg::AccelWithCovarianceStamped>(
-    "~/input/acceleration", qos,
-    [this](const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr msg) {
-      ego_buffer_.push_acceleration(*msg);
-    });
-  steer_sub_ = node->create_subscription<autoware_vehicle_msgs::msg::SteeringReport>(
-    "~/input/steering_status", qos,
-    [this](const autoware_vehicle_msgs::msg::SteeringReport::ConstSharedPtr msg) {
-      ego_buffer_.push_steering(*msg);
-    });
+  with_node([&](auto * node) {
+    odom_sub_ = node->template create_subscription<nav_msgs::msg::Odometry>(
+      "~/input/odometry", qos,
+      [this](const nav_msgs::msg::Odometry & msg) { ego_buffer_.push_odometry(msg); });
+    accel_sub_ =
+      node->template create_subscription<geometry_msgs::msg::AccelWithCovarianceStamped>(
+        "~/input/acceleration", qos,
+        [this](const geometry_msgs::msg::AccelWithCovarianceStamped & msg) {
+          ego_buffer_.push_acceleration(msg);
+        });
+    steer_sub_ = node->template create_subscription<autoware_vehicle_msgs::msg::SteeringReport>(
+      "~/input/steering_status", qos,
+      [this](const autoware_vehicle_msgs::msg::SteeringReport & msg) {
+        ego_buffer_.push_steering(msg);
+      });
+  });
 }
 
 void TrajectoryTimeSequenceRawOptimizer::ingest_live_ego(const TrajectoryProcessorData & data)
@@ -252,7 +254,7 @@ nav_msgs::msg::Odometry TrajectoryTimeSequenceRawOptimizer::resolve_ocp_odometry
     looked->fallback_latest &&
     std::abs(looked->lookup_dt_s) > max_ego_stamp_mismatch_s_) {
     RCLCPP_WARN_THROTTLE(
-      get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 1000,
+      get_logger(), *get_clock(), 1000,
       "TS stamped ego fallback to latest odom (lookup_dt=%.3fs live_lag=%.3fs). "
       "Buffer may still be filling.",
       looked->lookup_dt_s, looked->live_lag_s);
@@ -301,22 +303,21 @@ void TrajectoryTimeSequenceRawOptimizer::ensure_debug_publishers()
   if (!publish_debug_topics_ || debug_raw_pub_) {
     return;
   }
-  auto * node = get_node_ptr();
-  debug_raw_pub_ = node->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+  debug_raw_pub_ = make_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/debug/time_sequence_raw_optimizer/raw_trajectory", rclcpp::QoS{1});
-  debug_adjusted_pub_ = node->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+  debug_adjusted_pub_ = make_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/debug/time_sequence_raw_optimizer/adjusted_trajectory", rclcpp::QoS{1});
-  debug_shifted_count_pub_ = node->create_publisher<std_msgs::msg::Int32>(
+  debug_shifted_count_pub_ = make_publisher<std_msgs::msg::Int32>(
     "~/debug/time_sequence_raw_optimizer/shifted_point_count", rclcpp::QoS{1});
-  debug_solver_status_pub_ = node->create_publisher<std_msgs::msg::Int32>(
+  debug_solver_status_pub_ = make_publisher<std_msgs::msg::Int32>(
     "~/debug/time_sequence_raw_optimizer/solver_status", rclcpp::QoS{1});
-  debug_solve_time_pub_ = node->create_publisher<std_msgs::msg::Float64>(
+  debug_solve_time_pub_ = make_publisher<std_msgs::msg::Float64>(
     "~/debug/time_sequence_raw_optimizer/solve_time_ms", rclcpp::QoS{1});
-  debug_optimized_pub_ = node->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+  debug_optimized_pub_ = make_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/debug/time_sequence_raw_optimizer/optimized_trajectory", rclcpp::QoS{1});
-  debug_geometry_velocity_pub_ = node->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+  debug_geometry_velocity_pub_ = make_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/debug/time_sequence_raw_optimizer/geometry_velocity_trajectory", rclcpp::QoS{1});
-  debug_velocity_profile_pub_ = node->create_publisher<std_msgs::msg::Float64MultiArray>(
+  debug_velocity_profile_pub_ = make_publisher<std_msgs::msg::Float64MultiArray>(
     "~/debug/time_sequence_raw_optimizer/velocity_profile", rclcpp::QoS{1});
 }
 
@@ -400,14 +401,14 @@ void TrajectoryTimeSequenceRawOptimizer::publish_velocity_diagnostics(
     profile.data.push_back(opt_v);
   }
   if (debug_velocity_profile_pub_) {
-    debug_velocity_profile_pub_->publish(profile);
+    debug_velocity_profile_pub_(profile);
   }
   if (debug_geometry_velocity_pub_) {
-    debug_geometry_velocity_pub_->publish(last_geometry_velocity_trajectory_);
+    debug_geometry_velocity_pub_(last_geometry_velocity_trajectory_);
   }
 
   RCLCPP_WARN_THROTTLE(
-    get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 500,
+    get_logger(), *get_clock(), 500,
     "TS velocity diag: v0_seed=%.3f a0_meas=%.3f ego_to_p0=%.3f lookup_dt=%.3fs live_lag=%.3fs | "
     "opt a[0]=%.3f a[1s]=%.3f | t0 geom=%.3f opt_v=%.3f | t1s geom=%.3f opt_v=%.3f",
     result.initial_speed_mps, result.initial_accel_mps2, ego_to_p0_speed_mps, last_lookup_dt_s_,
@@ -423,31 +424,31 @@ void TrajectoryTimeSequenceRawOptimizer::publish_debug_data(const std::string & 
     return;
   }
   if (debug_raw_pub_) {
-    debug_raw_pub_->publish(last_raw_trajectory_);
+    debug_raw_pub_(last_raw_trajectory_);
   }
   if (debug_adjusted_pub_) {
-    debug_adjusted_pub_->publish(last_adjusted_trajectory_);
+    debug_adjusted_pub_(last_adjusted_trajectory_);
   }
   if (debug_optimized_pub_) {
-    debug_optimized_pub_->publish(last_optimized_trajectory_);
+    debug_optimized_pub_(last_optimized_trajectory_);
   }
   if (debug_geometry_velocity_pub_) {
-    debug_geometry_velocity_pub_->publish(last_geometry_velocity_trajectory_);
+    debug_geometry_velocity_pub_(last_geometry_velocity_trajectory_);
   }
   if (debug_shifted_count_pub_) {
     std_msgs::msg::Int32 msg;
     msg.data = last_shifted_point_count_;
-    debug_shifted_count_pub_->publish(msg);
+    debug_shifted_count_pub_(msg);
   }
   if (debug_solver_status_pub_) {
     std_msgs::msg::Int32 msg;
     msg.data = last_solver_status_;
-    debug_solver_status_pub_->publish(msg);
+    debug_solver_status_pub_(msg);
   }
   if (debug_solve_time_pub_) {
     std_msgs::msg::Float64 msg;
     msg.data = last_solve_time_ms_;
-    debug_solve_time_pub_->publish(msg);
+    debug_solve_time_pub_(msg);
   }
 }
 
@@ -576,7 +577,7 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   if (!result.optimized) {
     if (result.solver_status != 0) {
       RCLCPP_WARN(
-        get_node_ptr()->get_logger(),
+        get_logger(),
         "Time-sequence raw optimizer acados solve failed with status %d; leaving input unchanged",
         result.solver_status);
     }
@@ -586,7 +587,7 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   last_optimized_trajectory_ = result.trajectory;
   publish_velocity_diagnostics(reference, result.trajectory, result, ocp_odom);
   if (debug_optimized_pub_) {
-    debug_optimized_pub_->publish(result.trajectory);
+    debug_optimized_pub_(result.trajectory);
   }
 
   const size_t n_out = std::min(traj_points.size(), result.trajectory.points.size());
