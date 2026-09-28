@@ -146,10 +146,11 @@ PathTrackingResult PathTrackingSolver::solve(
 
   for (size_t k = 0; k < N; ++k) {
     if (k == 0) {
-      // [x,y,psi,v,a,delta, a_cmd_ref, delta_cmd_ref]
+      // Stage 0: anchor pose/velocity on measured ego; actuator refs match k>=1 (path-aligned).
+      // Using x0.accel / x0.steer here while later stages target 0 forces a step in u_nom at
+      // indices 0→1 on straights (visible as a steering / accel dip in the nominal sequence).
       const std::array<double, NY> yref = {
-        x0_world[0] - x_off, x0_world[1] - y_off, x0_world[2], x0_world[3],
-        x0_world[4],         x0_world[5],         0.0,         0.0};
+        x0_world[0] - x_off, x0_world[1] - y_off, x0_world[2], x0_world[3], 0.0, 0.0, 0.0, 0.0};
       impl_->solver.setStageReference(static_cast<int>(k), yref);
       continue;
     }

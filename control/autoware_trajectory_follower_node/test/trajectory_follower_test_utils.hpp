@@ -29,15 +29,16 @@ namespace test_utils
 {
 using FakeNodeFixture = autoware::fake_test_node::FakeTestNode;
 
+template <typename NodeT>
 inline void waitForMessage(
-  const std::shared_ptr<rclcpp::Node> & node, FakeNodeFixture * fixture, const bool & received_flag,
+  const std::shared_ptr<NodeT> & node, FakeNodeFixture * fixture, const bool & received_flag,
   const std::chrono::duration<int> max_wait_time = std::chrono::seconds{10LL},
   const bool fail_on_timeout = true)
 {
   const auto dt{std::chrono::milliseconds{100LL}};
   auto time_passed{std::chrono::milliseconds{0LL}};
   while (!received_flag) {
-    rclcpp::spin_some(node);
+    rclcpp::spin_some(node->get_node_base_interface());
     rclcpp::spin_some(fixture->get_fake_node());
     std::this_thread::sleep_for(dt);
     time_passed += dt;
@@ -74,7 +75,7 @@ template <typename T>
 inline void spinWhile(T & node)
 {
   for (size_t i = 0; i < 10; i++) {
-    rclcpp::spin_some(node);
+    rclcpp::spin_some(node->get_node_base_interface());
     const auto dt{std::chrono::milliseconds{100LL}};
     std::this_thread::sleep_for(dt);
   }

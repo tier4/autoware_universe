@@ -20,7 +20,10 @@
 
   <arg name="enable_pseudo_emergency_stop" default="false"/>
 
+  <include file="$(find-pkg-share autoware_agnocast_wrapper)/launch/agnocast_env.launch.xml"/>
+
   <node pkg="autoware_trajectory_selector" exec="autoware_trajectory_selector_node" name="trajectory_selector_node" output="screen">
+    <env name="LD_PRELOAD" value="$(var ld_preload_value)"/>
     <param from="$(var trajectory_selector_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_concatenator_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_validator_param_path)" allow_substs="true"/>

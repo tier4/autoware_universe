@@ -22,6 +22,8 @@ ament_auto_add_library(${trajectory_ranker_lib_target} SHARED
   src/utils.cpp
 )
 
+autoware_agnocast_wrapper_setup(${trajectory_ranker_lib_target})
+
 target_link_libraries(${trajectory_ranker_lib_target}
   ${PROJECT_NAME}_param
 )
@@ -62,29 +64,32 @@ if(BUILD_TESTING)
     ${PROJECT_NAME}_plugins
   )
 
-  ament_add_gtest(test_evaluator
-    test/test_evaluator.cpp
-  )
-  target_link_libraries(test_evaluator
-    ${trajectory_ranker_lib_target}
-    ${PROJECT_NAME}_plugins
-  )
+  # Tests that instantiate and spin a node are not built with ENABLE_AGNOCAST=1.
+  if(NOT (DEFINED ENV{ENABLE_AGNOCAST} AND "$ENV{ENABLE_AGNOCAST}" STREQUAL "1"))
+    ament_add_gtest(test_evaluator
+      test/test_evaluator.cpp
+    )
+    target_link_libraries(test_evaluator
+      ${trajectory_ranker_lib_target}
+      ${PROJECT_NAME}_plugins
+    )
 
-  ament_add_gtest(test_metrics
-    test/test_metrics.cpp
-  )
-  target_link_libraries(test_metrics
-    ${trajectory_ranker_lib_target}
-    ${PROJECT_NAME}_plugins
-  )
+    ament_add_gtest(test_metrics
+      test/test_metrics.cpp
+    )
+    target_link_libraries(test_metrics
+      ${trajectory_ranker_lib_target}
+      ${PROJECT_NAME}_plugins
+    )
 
-  ament_add_gtest(test_trajectory_ranker_integration
-    test/test_trajectory_ranker_integration.cpp
-  )
-  target_link_libraries(test_trajectory_ranker_integration
-    ${trajectory_ranker_lib_target}
-    ${PROJECT_NAME}_plugins
-  )
+    ament_add_gtest(test_trajectory_ranker_integration
+      test/test_trajectory_ranker_integration.cpp
+    )
+    target_link_libraries(test_trajectory_ranker_integration
+      ${trajectory_ranker_lib_target}
+      ${PROJECT_NAME}_plugins
+    )
+  endif()
 endif()
 
 ament_auto_package(

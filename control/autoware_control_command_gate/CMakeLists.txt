@@ -28,7 +28,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::control_command_gate::ControlCmdGate"
   EXECUTABLE "control_command_gate_node"
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
   ROS2_EXECUTOR SingleThreadedExecutor
 )
 

@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<library path="autoware_mppi_trajectory_processor_plugin">
+  <class type="autoware::mppi_optimizer::plugin::TrajectoryMppiOptimizer"
+         base_class_type="autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase">
+    <description>
+      Applies first-order Dubins MPPI to the primary candidate trajectory.
+    </description>
+  </class>
+</library>

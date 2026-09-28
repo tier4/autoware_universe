@@ -47,11 +47,12 @@ const char * getGateModeName(const GateMode::_data_type & gate_mode)
 }  // namespace
 
 VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
-: Node("vehicle_cmd_gate", node_options), is_engaged_(false), updater_(this)
+: autoware::agnocast_wrapper::Node("vehicle_cmd_gate", node_options),
+  is_engaged_(false),
+  updater_(this)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
-  using std::placeholders::_3;
 
   prev_turn_indicator_ = nullptr;
   prev_hazard_light_ = nullptr;
@@ -60,8 +61,10 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
   rclcpp::QoS durable_qos{1};
   durable_qos.transient_local();
 
-  // Stop Checker
-  vehicle_stop_checker_ = std::make_unique<VehicleStopChecker>(this);
+  // Stop Checker. The buffer VehicleStopChecker keeps, reproduced here because its base takes it
+  // as an argument.
+  constexpr double velocity_buffer_time_sec = 10.0;
+  vehicle_stop_checker_ = std::make_unique<VehicleStopCheckerBase>(this, velocity_buffer_time_sec);
 
   // Publisher
   vehicle_cmd_emergency_pub_ =
@@ -98,18 +101,23 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
   engage_sub_ = create_subscription<EngageMsg>(
     "input/engage", 1, std::bind(&VehicleCmdGate::onEngage, this, _1));
   kinematics_sub_ = create_subscription<Odometry>(
-    "/localization/kinematic_state", 1,
-    [this](Odometry::SharedPtr msg) { current_kinematics_ = *msg; });
+    "/localization/kinematic_state", 1, [this](Odometry::ConstSharedPtr msg) {
+      current_kinematics_ = *msg;
+      geometry_msgs::msg::TwistStamped twist;
+      twist.header = msg->header;
+      twist.twist = msg->twist.twist;
+      vehicle_stop_checker_->addTwist(twist);
+    });
   acc_sub_ = create_subscription<AccelWithCovarianceStamped>(
-    "input/acceleration", 1, [this](AccelWithCovarianceStamped::SharedPtr msg) {
+    "input/acceleration", 1, [this](AccelWithCovarianceStamped::ConstSharedPtr msg) {
       current_acceleration_ = msg->accel.accel.linear.x;
     });
   steer_sub_ = create_subscription<SteeringReport>(
     "input/steering", 1,
-    [this](SteeringReport::SharedPtr msg) { current_steer_ = msg->steering_tire_angle; });
+    [this](SteeringReport::ConstSharedPtr msg) { current_steer_ = msg->steering_tire_angle; });
   operation_mode_sub_ = create_subscription<OperationModeState>(
     "input/operation_mode", rclcpp::QoS(1).transient_local(),
-    [this](const OperationModeState::SharedPtr msg) { current_operation_mode_ = *msg; });
+    [this](OperationModeState::ConstSharedPtr msg) { current_operation_mode_ = *msg; });
   mrm_state_sub_ = create_subscription<MrmState>(
     "input/mrm_state", 1, std::bind(&VehicleCmdGate::onMrmState, this, _1));
 
@@ -124,6 +132,25 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
   // Subscriber for emergency
   emergency_control_cmd_sub_ = create_subscription<Control>(
     "input/emergency/control_cmd", 1, std::bind(&VehicleCmdGate::onEmergencyCtrlCmd, this, _1));
+
+  namespace polling = autoware::agnocast_wrapper::polling;
+  auto_turn_indicator_cmd_sub_ = polling::create_polling_subscriber<TurnIndicatorsCommand>(
+    this, "input/auto/turn_indicators_cmd");
+  auto_hazard_light_cmd_sub_ =
+    polling::create_polling_subscriber<HazardLightsCommand>(this, "input/auto/hazard_lights_cmd");
+  auto_gear_cmd_sub_ = polling::create_polling_subscriber<GearCommand>(this, "input/auto/gear_cmd");
+  remote_turn_indicator_cmd_sub_ = polling::create_polling_subscriber<TurnIndicatorsCommand>(
+    this, "input/external/turn_indicators_cmd");
+  remote_hazard_light_cmd_sub_ = polling::create_polling_subscriber<HazardLightsCommand>(
+    this, "input/external/hazard_lights_cmd");
+  remote_gear_cmd_sub_ =
+    polling::create_polling_subscriber<GearCommand>(this, "input/external/gear_cmd");
+  emergency_turn_indicator_cmd_sub_ = polling::create_polling_subscriber<TurnIndicatorsCommand>(
+    this, "input/emergency/turn_indicators_cmd");
+  emergency_hazard_light_cmd_sub_ = polling::create_polling_subscriber<HazardLightsCommand>(
+    this, "input/emergency/hazard_lights_cmd");
+  emergency_gear_cmd_sub_ =
+    polling::create_polling_subscriber<GearCommand>(this, "input/emergency/gear_cmd");
 
   // Parameter
   use_emergency_handling_ = declare_parameter<bool>("use_emergency_handling");
@@ -202,13 +229,13 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
     "~/service/engage", std::bind(&VehicleCmdGate::onEngageService, this, _1, _2));
   srv_external_emergency_ = create_service<SetEmergency>(
     "~/service/external_emergency",
-    std::bind(&VehicleCmdGate::onExternalEmergencyStopService, this, _1, _2, _3));
+    std::bind(&VehicleCmdGate::onExternalEmergencyStopService, this, _1, _2));
   srv_external_emergency_stop_ = create_service<Trigger>(
     "~/service/external_emergency_stop",
-    std::bind(&VehicleCmdGate::onSetExternalEmergencyStopService, this, _1, _2, _3));
+    std::bind(&VehicleCmdGate::onSetExternalEmergencyStopService, this, _1, _2));
   srv_clear_external_emergency_stop_ = create_service<Trigger>(
     "~/service/clear_external_emergency_stop",
-    std::bind(&VehicleCmdGate::onClearExternalEmergencyStopService, this, _1, _2, _3));
+    std::bind(&VehicleCmdGate::onClearExternalEmergencyStopService, this, _1, _2));
 
   // Diagnostics Updater
   updater_.setHardwareID("vehicle_cmd_gate");
@@ -225,14 +252,15 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
   const auto update_period = 1.0 / declare_parameter<double>("update_rate");
   const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(update_period));
-  timer_ =
-    rclcpp::create_timer(this, get_clock(), period_ns, std::bind(&VehicleCmdGate::onTimer, this));
-  timer_pub_status_ = rclcpp::create_timer(
+  timer_ = autoware::agnocast_wrapper::create_timer(
+    this, get_clock(), period_ns, std::bind(&VehicleCmdGate::onTimer, this));
+  timer_pub_status_ = autoware::agnocast_wrapper::create_timer(
     this, get_clock(), period_ns, std::bind(&VehicleCmdGate::publishStatus, this));
 
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
+  logger_configure_ = std::make_unique<autoware_utils::BasicLoggerLevelConfigure<NodeT>>(this);
 
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  published_time_publisher_ =
+    std::make_unique<autoware_utils::BasicPublishedTimePublisher<NodeT>>(this);
 
   // Parameter Callback
   set_param_res_ =
@@ -412,38 +440,38 @@ void VehicleCmdGate::onTimer()
   autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch;
 
   // Subscriber for auto
-  const auto msg_auto_command_turn_indicator = auto_turn_indicator_cmd_sub_.take_data();
+  const auto msg_auto_command_turn_indicator = auto_turn_indicator_cmd_sub_->take_data();
   if (msg_auto_command_turn_indicator)
     auto_commands_.turn_indicator = *msg_auto_command_turn_indicator;
 
-  const auto msg_auto_command_hazard_light = auto_hazard_light_cmd_sub_.take_data();
+  const auto msg_auto_command_hazard_light = auto_hazard_light_cmd_sub_->take_data();
   if (msg_auto_command_hazard_light) auto_commands_.hazard_light = *msg_auto_command_hazard_light;
 
-  const auto msg_auto_command_gear = auto_gear_cmd_sub_.take_data();
+  const auto msg_auto_command_gear = auto_gear_cmd_sub_->take_data();
   if (msg_auto_command_gear) auto_commands_.gear = *msg_auto_command_gear;
 
   // Subscribe for external
-  const auto msg_remote_command_turn_indicator = remote_turn_indicator_cmd_sub_.take_data();
+  const auto msg_remote_command_turn_indicator = remote_turn_indicator_cmd_sub_->take_data();
   if (msg_remote_command_turn_indicator)
     remote_commands_.turn_indicator = *msg_remote_command_turn_indicator;
 
-  const auto msg_remote_command_hazard_light = remote_hazard_light_cmd_sub_.take_data();
+  const auto msg_remote_command_hazard_light = remote_hazard_light_cmd_sub_->take_data();
   if (msg_remote_command_hazard_light)
     remote_commands_.hazard_light = *msg_remote_command_hazard_light;
 
-  const auto msg_remote_command_gear = remote_gear_cmd_sub_.take_data();
+  const auto msg_remote_command_gear = remote_gear_cmd_sub_->take_data();
   if (msg_remote_command_gear) remote_commands_.gear = *msg_remote_command_gear;
 
   // Subscribe for emergency
-  const auto msg_emergency_command_hazard_light = emergency_hazard_light_cmd_sub_.take_data();
+  const auto msg_emergency_command_hazard_light = emergency_hazard_light_cmd_sub_->take_data();
   if (msg_emergency_command_hazard_light)
     emergency_commands_.hazard_light = *msg_emergency_command_hazard_light;
 
-  const auto msg_emergency_command_turn_indicator = emergency_turn_indicator_cmd_sub_.take_data();
+  const auto msg_emergency_command_turn_indicator = emergency_turn_indicator_cmd_sub_->take_data();
   if (msg_emergency_command_turn_indicator)
     emergency_commands_.turn_indicator = *msg_emergency_command_turn_indicator;
 
-  const auto msg_emergency_command_gear = emergency_gear_cmd_sub_.take_data();
+  const auto msg_emergency_command_gear = emergency_gear_cmd_sub_->take_data();
   if (msg_emergency_command_gear) emergency_commands_.gear = *msg_emergency_command_gear;
 
   updater_.force_update();
@@ -848,15 +876,14 @@ Control VehicleCmdGate::getActualStatusAsCommand()
 }
 
 void VehicleCmdGate::onExternalEmergencyStopService(
-  const std::shared_ptr<rmw_request_id_t> request_header,
   const SetEmergency::Request::SharedPtr request, const SetEmergency::Response::SharedPtr response)
 {
   auto req = std::make_shared<Trigger::Request>();
   auto res = std::make_shared<Trigger::Response>();
   if (request->emergency) {
-    onSetExternalEmergencyStopService(request_header, req, res);
+    onSetExternalEmergencyStopService(req, res);
   } else {
-    onClearExternalEmergencyStopService(request_header, req, res);
+    onClearExternalEmergencyStopService(req, res);
   }
 
   if (res->success) {
@@ -867,7 +894,6 @@ void VehicleCmdGate::onExternalEmergencyStopService(
 }
 
 bool VehicleCmdGate::onSetExternalEmergencyStopService(
-  [[maybe_unused]] const std::shared_ptr<rmw_request_id_t> req_header,
   [[maybe_unused]] const Trigger::Request::SharedPtr req, const Trigger::Response::SharedPtr res)
 {
   is_external_emergency_stop_ = true;
@@ -878,7 +904,6 @@ bool VehicleCmdGate::onSetExternalEmergencyStopService(
 }
 
 bool VehicleCmdGate::onClearExternalEmergencyStopService(
-  [[maybe_unused]] const std::shared_ptr<rmw_request_id_t> req_header,
   [[maybe_unused]] const Trigger::Request::SharedPtr req, const Trigger::Response::SharedPtr res)
 {
   if (is_external_emergency_stop_) {

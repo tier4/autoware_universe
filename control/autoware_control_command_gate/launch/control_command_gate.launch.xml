@@ -17,6 +17,8 @@
   <arg name="inputs/emergency_stop/hazard_lights" default="/system/emergency/hazard_lights_cmd"/>
   <arg name="inputs/emergency_stop/turn_indicators" default="/system/emergency/turn_indicators_cmd"/>
 
+  <include file="$(find-pkg-share autoware_agnocast_wrapper)/launch/agnocast_env.launch.py"/>
+
   <node pkg="autoware_control_command_gate" exec="control_command_gate_node">
     <param from="$(var config)"/>
     <remap from="~/output/control" to="$(var output/control)"/>
@@ -31,5 +33,6 @@
     <remap from="~/inputs/emergency_stop/gear" to="$(var inputs/emergency_stop/gear)"/>
     <remap from="~/inputs/emergency_stop/hazard_lights" to="$(var inputs/emergency_stop/hazard_lights)"/>
     <remap from="~/inputs/emergency_stop/turn_indicators" to="$(var inputs/emergency_stop/turn_indicators)"/>
+    <env name="LD_PRELOAD" value="$(var ld_preload_value)"/>
   </node>
 </launch>
