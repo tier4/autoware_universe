@@ -92,8 +92,9 @@ void InferenceEngine::load_engine(const Config & config)
   // A cached engine older than its ONNX is stale: this node hands TrtCommon no IO list to
   // validate against (it reads its bindings out of the engine instead), so nothing else
   // would notice, and it would run the previous export's weights. See engine_cache.hpp.
+  const std::string identity = config.precision + "+" + kPlannerBuildSettings;
   drop_stale_engine(config.model_path, trt_config.engine_path.string(),
-                    rclcpp::get_logger("tensorrt_e2e"), config.precision);
+                    rclcpp::get_logger("tensorrt_e2e"), identity);
 
   std::vector<std::string> plugin_paths;
   if (!config.plugins_path.empty()) {
@@ -120,6 +121,12 @@ void InferenceEngine::load_engine(const Config & config)
   auto builder_config = trt_common_->getBuilderConfig();
   if (builder_config) {
     builder_config->setMaxAuxStreams(0);
+    // No TF32. TensorRT otherwise runs float32 convolutions and matrix products on TF32
+    // tensor cores (10-bit mantissa), and a float32 planner then disagrees with its own
+    // ONNX by centimetres: up to 15 cm on the latency-aware ResWorld
+    // (1.3.1.0-test2), 0.015 cm with TF32 off, for 2.3 ms more per inference (RTX PRO 6000).
+    // The float16 layers of a float16-core graph are unaffected.
+    builder_config->clearFlag(nvinfer1::BuilderFlag::kTF32);
   }
   obey_graph_precision(config.precision);
 
@@ -127,8 +134,7 @@ void InferenceEngine::load_engine(const Config & config)
     throw std::runtime_error("Failed to setup TensorRT engine from " + config.model_path);
   }
 
-  record_engine_identity(config.model_path, trt_config.engine_path.string(),
-                         config.precision);
+  record_engine_identity(config.model_path, trt_config.engine_path.string(), identity);
   introspect_and_bind();
 }
 

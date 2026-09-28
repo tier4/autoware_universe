@@ -25,6 +25,11 @@
 namespace autoware::tensorrt_e2e
 {
 
+//! How this node builds a planner engine. It is part of the engine's identity (appended to
+//! the precision), so an engine built under other settings -- before TF32 was turned off,
+//! say -- is rebuilt once instead of being reused with the arithmetic it was built with.
+inline constexpr const char * kPlannerBuildSettings = "tf32-off";
+
 // Tie a serialized engine to BOTH graph and engine bytes, not mtimes. Copying
 // an old engine next to a new graph must never silently retain old weights.
 inline bool drop_stale_engine(const std::string &onnx_path,
