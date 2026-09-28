@@ -18,6 +18,7 @@
 #include <sensor_msgs/distortion_models.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -219,6 +220,30 @@ void updateOutputFusedObjects(
     refine_cluster.header = in_cloud.header;
     refine_cluster.fields = in_cloud.fields;
     feature_obj.object.kinematics.pose_with_covariance.pose.position = getCentroid(refine_cluster);
+    {
+      // Give the fused cluster a usable footprint: axis-aligned extent of its points in the cloud
+      // frame, floored so that downstream area / IoU gates accept the measurement. Without this the
+      // object keeps the default BOUNDING_BOX (0,0,0) and the tracker discards every detection.
+      float min_x = std::numeric_limits<float>::max(), min_y = min_x, min_z = min_x;
+      float max_x = std::numeric_limits<float>::lowest(), max_y = max_x, max_z = max_x;
+      for (sensor_msgs::PointCloud2ConstIterator<float> ix(refine_cluster, "x"),
+           iy(refine_cluster, "y"), iz(refine_cluster, "z");
+           ix != ix.end(); ++ix, ++iy, ++iz) {
+        min_x = std::min(min_x, *ix);
+        max_x = std::max(max_x, *ix);
+        min_y = std::min(min_y, *iy);
+        max_y = std::max(max_y, *iy);
+        min_z = std::min(min_z, *iz);
+        max_z = std::max(max_z, *iz);
+      }
+      constexpr float min_dim = 0.4f;  // 0.4 x 0.4 = 0.16 m^2, above the pedestrian min_area 0.1
+      auto & shape = feature_obj.object.shape;
+      shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+      shape.dimensions.x = std::max(max_x - min_x, min_dim);
+      shape.dimensions.y = std::max(max_y - min_y, min_dim);
+      shape.dimensions.z = std::max(max_z - min_z, min_dim);
+      feature_obj.object.kinematics.pose_with_covariance.pose.orientation.w = 1.0;
+    }
     feature_obj.object.existence_probability = 1.0f;
     feature_obj.feature.cluster = refine_cluster;
     output_fused_objects.push_back(feature_obj);
