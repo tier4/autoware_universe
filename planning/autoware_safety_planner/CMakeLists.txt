@@ -16,6 +16,7 @@ ament_auto_add_library(${PROJECT_NAME}_common STATIC
   src/utils/route_tracking.cpp
   src/utils/trajectory_postprocess.cpp
   src/utils/turn_indicator_decider.cpp
+  src/utils/velocity_optimizer.cpp
 )
 target_link_libraries(${PROJECT_NAME}_common
   safety_planner_parameters

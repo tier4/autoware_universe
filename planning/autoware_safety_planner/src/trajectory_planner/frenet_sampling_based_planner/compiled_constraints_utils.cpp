@@ -32,22 +32,43 @@ KinematicLimits collect_kinematic_limits(const CompiledConstraints & compiled_co
     if (!is_global) {
       continue;  // a bound limited to an interval (a map speed limit, ...) is read per s
     }
-    // Every global bound of the IR is a hard limit; the nominal values keep their defaults. In
-    // particular the hard LAT_ACCEL is not fed into a_lat_nom, which would loosen the corner
-    // deceleration
+    const bool hard =
+      compiled_constraints.raw_constraints[bound.raw_index].hardness == Hardness::HARD;
     switch (bound.quantity) {
       case BoundedQuantity::VELOCITY:
-        limits.v_hard = std::min(limits.v_hard, bound.max);
+        // NOTE(odashima): v_nom is not read, no SOFT VELOCITY bound is emitted
+        if (hard) {
+          limits.v_hard = std::min(limits.v_hard, bound.max);
+        }
         break;
       case BoundedQuantity::LON_ACCEL:
-        limits.a_hard_min = std::max(limits.a_hard_min, bound.min);
-        limits.a_hard_max = std::min(limits.a_hard_max, bound.max);
+        if (hard) {
+          limits.a_hard_min = std::max(limits.a_hard_min, bound.min);
+          limits.a_hard_max = std::min(limits.a_hard_max, bound.max);
+        } else {
+          limits.a_nom_min = std::max(limits.a_nom_min, bound.min);
+          limits.a_nom_max = std::min(limits.a_nom_max, bound.max);
+        }
+        break;
+      case BoundedQuantity::LAT_ACCEL:
+        // The hard LAT_ACCEL is not fed into a_lat_nom, which would loosen the corner deceleration
+        if (!hard) {
+          limits.a_lat_nom = std::min(limits.a_lat_nom, bound.max);
+        }
+        break;
+      case BoundedQuantity::LON_JERK:
+        // The hard one is read by the planners from the IR, as the STEER_* ones
+        if (!hard) {
+          limits.j_nom = std::min(limits.j_nom, bound.max);
+        }
         break;
       default:
-        // LAT_ACCEL / LON_JERK / STEER_* are the NLP's job, not the views'
+        // STEER_* are the NLP's job, not the views'
         break;
     }
   }
+  limits.a_nom_min = std::clamp(limits.a_nom_min, limits.a_hard_min, limits.a_hard_max);
+  limits.a_nom_max = std::clamp(limits.a_nom_max, limits.a_hard_min, limits.a_hard_max);
   return limits;
 }
 

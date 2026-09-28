@@ -19,14 +19,9 @@
 
 #include <string>
 
-namespace autoware::safety_planner::experimental
+namespace autoware::safety_planner
 {
 
-//! Emits the ScalarBound constraints of the vehicle kinematics: only the hard limits of the
-//! vehicle (a, j, a_lat, steer angle, steer rate), the steer angle taken from vehicle_info. The
-//! speed bound is not one of them: it is the operational limit, and external_velocity_limit
-//! owns it.
-//! They hold everywhere and at all times, so the region and the time window are left at default.
 class VehicleKinematicsConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:
@@ -34,6 +29,6 @@ public:
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 };
 
-}  // namespace autoware::safety_planner::experimental
+}  // namespace autoware::safety_planner
 
 #endif  // CONSTRAINT_GENERATOR__VEHICLE_KINEMATICS_HPP_

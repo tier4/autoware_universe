@@ -80,13 +80,16 @@ double velocity_limit_at(
   return v_max;
 }
 
-//! Upper bound of the global ScalarBound constraints on quantity; INF when there is none
+//! Upper bound of the global HARD ScalarBound constraints on quantity; INF when there is none
 double global_bound_max(
   const CompiledConstraints & compiled_constraints, const BoundedQuantity quantity)
 {
   double max = INF;
   for (const auto & bound : compiled_constraints.scalar_bounds) {
-    if (bound.quantity == quantity && bound.s0 == -INF && bound.s1 == INF) {
+    // TODO(odashima): consider SOFT kinematics constraints
+    if (
+      bound.quantity == quantity && bound.s0 == -INF && bound.s1 == INF &&
+      compiled_constraints.raw_constraints[bound.raw_index].hardness == Hardness::HARD) {
       max = std::min(max, bound.max);
     }
   }
