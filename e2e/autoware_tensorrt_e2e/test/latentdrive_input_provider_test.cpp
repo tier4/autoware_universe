@@ -127,6 +127,26 @@ TEST(LatentDriveFrameSlotsTest, NotReadyWithoutEnoughHistory)
   EXPECT_TRUE(select_frame_slots({100.0}, 1, 0.5, 0.15).has_value());
 }
 
+TEST(LatentDriveViewAlignTest, PairsEachAnchorFrameWithItsNearestPartner)
+{
+  // Anchor frames at 0.5 s spacing; the other camera runs 20 ms late and drops one frame.
+  const std::vector<double> anchor{100.0, 100.5, 101.0, 101.5};
+  const std::vector<double> other{99.92, 100.02, 100.12, 100.52, 101.02, 101.12, 101.52, 101.62};
+  const auto partners = align_view(anchor, other, 0.06);
+  ASSERT_TRUE(partners.has_value());
+  EXPECT_EQ(*partners, (std::vector<size_t>{1, 3, 4, 6}));
+}
+
+TEST(LatentDriveViewAlignTest, RefusesAnAnchorFrameWithoutAPartnerInTolerance)
+{
+  const std::vector<double> anchor{100.0, 100.5, 101.0, 101.5};
+  // The partner for 101.0 is 90 ms off: the tick must be skipped, never padded.
+  const std::vector<double> other{100.0, 100.5, 101.09, 101.5};
+  EXPECT_FALSE(align_view(anchor, other, 0.06).has_value());
+  EXPECT_TRUE(align_view(anchor, other, 0.1).has_value());
+  EXPECT_FALSE(align_view(anchor, {}, 0.06).has_value());
+}
+
 TEST(LatentDriveSubgoalTest, WalksArcLengthFromTheNearestPoint)
 {
   // A straight reference along x, 1 m apart, from 0 to 100 m.

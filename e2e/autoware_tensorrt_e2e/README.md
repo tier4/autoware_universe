@@ -121,6 +121,18 @@ common `InferenceEngine`.
   emits 8 over the same 4 s) is interpolated onto that grid first, from the ego origin through
   its waypoints, which is what LatentDrive-TRT's `deploy_utils.plan_to_poses` does.
 
+A two-camera LatentDrive (the `idx9` line: wide front camera plus telephoto) declares a video
+input of `[1, 2, 3, T, H, W]` instead of `[1, 3, T, H, W]`, and that shape alone switches the
+provider into two-view mode: it subscribes to `~/input/camera0/image` and `~/input/camera1/image`
+(launch arguments `input_camera0_image`, `input_camera1_image`; on this vehicle camera1 and
+camera2), preprocesses each frame with the same full-width 2:1 crop, and stacks one
+`[3, T, H, W]` block per view. View 0 anchors the clip; each of its chosen frames is paired with
+the other camera's frame nearest in time, within `latentdrive.view_sync_tolerance_seconds`
+(0.06, the cameras are not hardware-synchronised), and a tick with no partner that close is
+skipped rather than padded, because the model has only ever seen real telephoto frames. So
+choosing the single- or two-camera planner is a matter of `model_path`: the ml_package file
+that ships with each model carries its shape, nothing in the deployment configuration changes.
+
 `planning_frequency_hz` (10.0 by default, a launch argument) sets how often the model replans,
 and therefore how long one plan is driven before the next replaces it: the whole 4 s plan is
 published every time, but the controller follows the newest. The closed-loop checkpoints were

@@ -76,6 +76,21 @@ std::optional<std::vector<size_t>> select_frame_slots(
   const std::vector<double> & stamps, int64_t num_frames, double interval, double tolerance);
 
 /**
+ * @brief Pair a second camera's frames with the frames already chosen from the anchor camera.
+ *
+ * The cameras are not hardware-synchronised, so for every chosen anchor frame the other view
+ * contributes its frame nearest in time to that frame's own stamp (not to the nominal slot
+ * time), the way LatentDrive's `build_video_views` aligns the telephoto to the wide view.
+ * @param anchor_stamps Stamps of the chosen anchor frames, in seconds, oldest first.
+ * @param view_stamps Stamps of the other view's stored frames, in seconds, ascending.
+ * @return Indices into `view_stamps`, one per anchor frame; std::nullopt when any anchor frame
+ *         has no partner within `tolerance` seconds.
+ */
+std::optional<std::vector<size_t>> align_view(
+  const std::vector<double> & anchor_stamps, const std::vector<double> & view_stamps,
+  double tolerance);
+
+/**
  * @brief The point `ahead_m` of arc length beyond the reference point nearest to `position`.
  *
  * Follows the LatentDrive replay node: nearest point by Euclidean distance, then walk the
@@ -108,10 +123,17 @@ std::vector<Eigen::Vector2d> route_centerline(
  * front-camera clip, feeding a planner transformer).
  *
  * Claimable tensors (names configurable):
- * - `video` `[1, 3, T, H, W]`: T front-camera frames `frame_interval_seconds` apart, oldest
- *   first, each preprocessed once on arrival (see latentdrive::preprocess_frame) and stacked
- *   channel-major. T, H and W come from the engine. Frames are chosen by stamp, so a dropped
- *   camera frame shifts the pick to its neighbour rather than compressing the clip.
+ * - `video` `[1, 3, T, H, W]` or `[1, V, 3, T, H, W]`: T frames `frame_interval_seconds` apart,
+ *   oldest first, each preprocessed once on arrival (see latentdrive::preprocess_frame) and
+ *   stacked channel-major, one such block per camera view. V, T, H and W come from the engine,
+ *   so the model decides whether this is a one-camera or a two-camera planner; the views are
+ *   subscribed as `~/input/camera0/image`, `~/input/camera1/image`, ... in the model's view
+ *   order (the two-view models put the wide front camera at 0 and the telephoto at 1). View 0
+ *   anchors the clip: its frames are chosen by stamp, so a dropped frame shifts the pick to its
+ *   neighbour rather than compressing the clip, and every other view then contributes the frame
+ *   nearest in time to each chosen anchor frame, within `view_sync_tolerance_seconds`. A view
+ *   with no frame near enough skips the tick: the models were trained on real frames only and
+ *   must never be shown a grey, black or duplicated one.
  * - `status` `[1, 6]`: `(subgoal_x / d, subgoal_y / d, v_x, v_y, a_x, a_y)` in the ego frame,
  *   with `d = status_subgoal_divisor`. The subgoal is the point `subgoal_ahead_m` of arc length
  *   ahead on a reference polyline; velocity comes from the odometry, acceleration from the
@@ -124,12 +146,14 @@ std::vector<Eigen::Vector2d> route_centerline(
  * - `trajectory`: `~/input/reference_trajectory` (`Trajectory`); for a replay in which the
  *   recorded planner output stands in for the route.
  *
- * Subscribes to `~/input/camera0/image` (via image_transport) and the reference topics above.
+ * Subscribes to `~/input/camera<i>/image` per view (via image_transport) and the reference
+ * topics above.
  * The subgoal actually fed to the model is published on `~/debug/latentdrive/subgoal`, the
  * ego pose the plan is anchored on (odometry at the tick) on `~/debug/latentdrive/ego_pose`,
  * and every frame the provider receives is echoed on `~/debug/latentdrive/frame_age_ms`
- * (stamped with the frame's sensor stamp, value = age at arrival), so frames lost between
- * the camera and this node show up as gaps in that topic.
+ * (view 0; further views on `~/debug/latentdrive/view<i>/frame_age_ms`), stamped with the
+ * frame's sensor stamp and valued with its age at arrival, so frames lost between the camera
+ * and this node show up as gaps in that topic.
  */
 class LatentDriveInputProvider : public InputProviderInterface
 {
@@ -153,7 +177,7 @@ private:
     std::shared_ptr<const std::vector<float>> chw;  //!< 3 * H * W, preprocessed.
   };
 
-  void on_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg);
+  void on_image(size_t view, const sensor_msgs::msg::Image::ConstSharedPtr & msg);
   /// Rebuild the route polyline once both the map and the route are known.
   void update_route_polyline();
   /// The current reference polyline in the map frame, or an explanation of why there is none.
@@ -169,6 +193,7 @@ private:
   std::string transport_;
   double frame_interval_s_{0.5};
   double frame_tolerance_s_{0.15};
+  double view_sync_tolerance_s_{0.06};  //!< Other views must have a frame this close to the anchor's.
   double max_delay_ms_{200.0};
   std::array<float, 3> mean_{};
   std::array<float, 3> inverse_std_{};
@@ -182,21 +207,24 @@ private:
   // Engine-derived configuration
   std::vector<int64_t> video_shape_;
   std::vector<int64_t> status_shape_;
+  int64_t num_views_{1};
   int64_t num_frames_{0};
   int64_t height_{0};
   int64_t width_{0};
 
   // ROS interfaces
-  image_transport::Subscriber image_sub_;
+  std::vector<image_transport::Subscriber> image_subs_;  //!< One per view.
   rclcpp::Subscription<Trajectory>::SharedPtr trajectory_sub_;
   rclcpp::Subscription<LaneletRoute>::SharedPtr route_sub_;
   rclcpp::Subscription<LaneletMapBin>::SharedPtr map_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr pub_subgoal_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_ego_pose_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr pub_frame_age_;
+  //! One per view; index 0 keeps the historical topic name.
+  std::vector<rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr>
+    pub_frame_ages_;
 
   // State
-  std::deque<Frame> frames_;  //!< Ascending by stamp; pruned to the clip span on push.
+  std::vector<std::deque<Frame>> frames_;  //!< Per view, ascending by stamp; pruned to the clip span.
   Trajectory::ConstSharedPtr latest_trajectory_;
   LaneletRoute::ConstSharedPtr route_;
   lanelet::LaneletMapConstPtr lanelet_map_;
@@ -205,7 +233,7 @@ private:
   mutable std::mutex mutex_;
   std::vector<float> video_buffer_;
   bool warned_no_acceleration_{false};
-  std::vector<double> last_frame_ages_ms_;  //!< Ages of the selected frames at the last tick.
+  std::vector<double> last_frame_ages_ms_;  //!< Ages of the selected frames at the last tick, view-major.
   std::array<float, 6> last_status_{};      //!< Status vector of the last tick, encoded.
 };
 

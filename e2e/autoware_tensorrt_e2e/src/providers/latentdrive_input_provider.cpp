@@ -113,6 +113,33 @@ std::optional<std::vector<size_t>> select_frame_slots(
   return slots;
 }
 
+std::optional<std::vector<size_t>> align_view(
+  const std::vector<double> & anchor_stamps, const std::vector<double> & view_stamps,
+  const double tolerance)
+{
+  if (view_stamps.empty()) {
+    return std::nullopt;
+  }
+  std::vector<size_t> partners;
+  partners.reserve(anchor_stamps.size());
+  for (const double target : anchor_stamps) {
+    size_t best = 0;
+    double best_distance = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < view_stamps.size(); ++i) {
+      const double distance = std::abs(view_stamps[i] - target);
+      if (distance < best_distance) {
+        best_distance = distance;
+        best = i;
+      }
+    }
+    if (best_distance > tolerance) {
+      return std::nullopt;
+    }
+    partners.push_back(best);
+  }
+  return partners;
+}
+
 Eigen::Vector2d subgoal_along(
   const std::vector<Eigen::Vector2d> & reference, const Eigen::Vector2d & position,
   const double ahead_m)
@@ -206,6 +233,8 @@ LatentDriveInputProvider::LatentDriveInputProvider(rclcpp::Node & node) : node_(
   frame_interval_s_ = node_.declare_parameter<double>("latentdrive.frame_interval_seconds", 0.5);
   frame_tolerance_s_ =
     node_.declare_parameter<double>("latentdrive.frame_interval_tolerance_seconds", 0.15);
+  view_sync_tolerance_s_ =
+    node_.declare_parameter<double>("latentdrive.view_sync_tolerance_seconds", 0.06);
   max_delay_ms_ = node_.declare_parameter<double>("latentdrive.max_delay_ms", 200.0);
   subgoal_ahead_m_ = node_.declare_parameter<double>("latentdrive.subgoal_ahead_m", 50.0);
   subgoal_divisor_ = node_.declare_parameter<double>("latentdrive.status_subgoal_divisor", 10.0);
@@ -251,23 +280,38 @@ std::vector<std::string> LatentDriveInputProvider::claim_inputs(
       "The latentdrive input provider is enabled but the model has no input tensor named '" +
       video_tensor_name_ + "' (set latentdrive.video_tensor to match the model)");
   }
-  // Accept [1, 3, T, H, W] or [3, T, H, W].
+  // Accept [3, T, H, W] and [1, 3, T, H, W] (one view) or [1, V, 3, T, H, W] (V views).
   const auto & shape = video_spec->shape;
-  const bool has_batch = shape.size() == 5;
-  if (!(shape.size() == 4 || (has_batch && shape[0] == 1)) || shape[has_batch ? 1 : 0] != 3) {
+  size_t channel_axis = 0;
+  num_views_ = 1;
+  if (shape.size() == 4) {
+    channel_axis = 0;
+  } else if (shape.size() == 5 && shape[0] == 1) {
+    channel_axis = 1;
+  } else if (shape.size() == 6 && shape[0] == 1 && shape[1] >= 1) {
+    channel_axis = 2;
+    num_views_ = shape[1];
+  } else {
     throw std::runtime_error(
       "Model input '" + video_tensor_name_ + "' has shape " + shape_to_string(shape) +
-      "; expected [1, 3, T, H, W] or [3, T, H, W]");
+      "; expected [1, 3, T, H, W], [3, T, H, W] or [1, V, 3, T, H, W]");
   }
-  const size_t base = has_batch ? 2 : 1;
+  if (shape[channel_axis] != 3) {
+    throw std::runtime_error(
+      "Model input '" + video_tensor_name_ + "' has shape " + shape_to_string(shape) +
+      "; the channel dimension must be 3");
+  }
   video_shape_ = shape;
-  num_frames_ = shape[base];
-  height_ = shape[base + 1];
-  width_ = shape[base + 2];
+  num_frames_ = shape[channel_axis + 1];
+  height_ = shape[channel_axis + 2];
+  width_ = shape[channel_axis + 3];
   if (num_frames_ < 1 || height_ < 1 || width_ < 1) {
     throw std::runtime_error(
       "Model input '" + video_tensor_name_ + "' has shape " + shape_to_string(shape) +
       "; every dimension must be positive");
+  }
+  if (view_sync_tolerance_s_ <= 0.0) {
+    throw std::runtime_error("latentdrive.view_sync_tolerance_seconds must be positive");
   }
 
   const TensorSpec * status_spec = find_spec(engine_inputs, status_tensor_name_);
@@ -286,11 +330,26 @@ std::vector<std::string> LatentDriveInputProvider::claim_inputs(
 
   video_buffer_.assign(static_cast<size_t>(video_spec->num_elements()), 0.0f);
 
-  const std::string image_topic = "~/input/camera0/image";
-  image_sub_ = image_transport::create_subscription(
-    &node_, node_.get_node_topics_interface()->resolve_topic_name(image_topic),
-    [this](const sensor_msgs::msg::Image::ConstSharedPtr & msg) { on_image(msg); }, transport_,
-    rmw_qos_profile_sensor_data);
+  // One subscription and one frame store per view, in the model's view order.
+  frames_.assign(static_cast<size_t>(num_views_), {});
+  for (size_t view = 0; view < static_cast<size_t>(num_views_); ++view) {
+    const std::string image_topic = "~/input/camera" + std::to_string(view) + "/image";
+    image_subs_.push_back(image_transport::create_subscription(
+      &node_, node_.get_node_topics_interface()->resolve_topic_name(image_topic),
+      [this, view](const sensor_msgs::msg::Image::ConstSharedPtr & msg) { on_image(view, msg); },
+      transport_, rmw_qos_profile_sensor_data));
+    const std::string age_topic = view == 0 ? "~/debug/latentdrive/frame_age_ms"
+                                            : "~/debug/latentdrive/view" + std::to_string(view) +
+                                                "/frame_age_ms";
+    pub_frame_ages_.push_back(
+      node_.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(age_topic, 10));
+  }
+  if (num_views_ > 1) {
+    RCLCPP_INFO(
+      node_.get_logger(),
+      "Video input carries %ld views; view 0 anchors the clip, the others follow it within %.0f ms",
+      num_views_, view_sync_tolerance_s_ * 1e3);
+  }
   if (subgoal_source_ == "trajectory") {
     trajectory_sub_ = node_.create_subscription<Trajectory>(
       "~/input/reference_trajectory", rclcpp::QoS(1), [this](const Trajectory::ConstSharedPtr msg) {
@@ -316,15 +375,14 @@ std::vector<std::string> LatentDriveInputProvider::claim_inputs(
   }
   pub_subgoal_ =
     node_.create_publisher<geometry_msgs::msg::PointStamped>("~/debug/latentdrive/subgoal", 1);
-  pub_frame_age_ = node_.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "~/debug/latentdrive/frame_age_ms", 10);
   pub_ego_pose_ =
     node_.create_publisher<geometry_msgs::msg::PoseStamped>("~/debug/latentdrive/ego_pose", 1);
 
   return {video_tensor_name_, status_tensor_name_};
 }
 
-void LatentDriveInputProvider::on_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg)
+void LatentDriveInputProvider::on_image(
+  const size_t view, const sensor_msgs::msg::Image::ConstSharedPtr & msg)
 {
   cv_bridge::CvImageConstPtr cv_image;
   try {
@@ -350,38 +408,44 @@ void LatentDriveInputProvider::on_image(const sensor_msgs::msg::Image::ConstShar
   autoware_internal_debug_msgs::msg::Float64Stamped frame_age;
   frame_age.stamp = msg->header.stamp;
   frame_age.data = (node_.get_clock()->now() - stamp).seconds() * 1e3;
-  pub_frame_age_->publish(frame_age);
+  pub_frame_ages_[view]->publish(frame_age);
 
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!frames_.empty() && (frames_.back().stamp - stamp).seconds() > STAMP_JUMP_BACK_S) {
+  std::deque<Frame> & frames = frames_[view];
+  if (!frames.empty() && (frames.back().stamp - stamp).seconds() > STAMP_JUMP_BACK_S) {
     RCLCPP_WARN(
-      node_.get_logger(), "Camera stamp jumped back %.2f s; restarting the frame window",
-      (frames_.back().stamp - stamp).seconds());
-    frames_.clear();
+      node_.get_logger(), "Camera %zu stamp jumped back %.2f s; restarting its frame window", view,
+      (frames.back().stamp - stamp).seconds());
+    frames.clear();
   }
   // Keep the deque ordered even if a frame arrives slightly late.
-  auto position = frames_.end();
-  while (position != frames_.begin() && std::prev(position)->stamp > stamp) {
+  auto position = frames.end();
+  while (position != frames.begin() && std::prev(position)->stamp > stamp) {
     --position;
   }
-  frames_.insert(position, Frame{stamp, std::move(chw)});
+  frames.insert(position, Frame{stamp, std::move(chw)});
 
-  const double span_s =
-    static_cast<double>(num_frames_ - 1) * frame_interval_s_ + frame_tolerance_s_ + PRUNE_MARGIN_S;
-  const rclcpp::Time newest = frames_.back().stamp;
-  while (!frames_.empty() && (newest - frames_.front().stamp).seconds() > span_s) {
-    frames_.pop_front();
+  // Other views keep a little more than the anchor's span, so a partner is still there for an
+  // anchor frame that sits at the tolerance edge.
+  const double span_s = static_cast<double>(num_frames_ - 1) * frame_interval_s_ +
+                        frame_tolerance_s_ + view_sync_tolerance_s_ + PRUNE_MARGIN_S;
+  const rclcpp::Time newest = frames.back().stamp;
+  while (!frames.empty() && (newest - frames.front().stamp).seconds() > span_s) {
+    frames.pop_front();
   }
 }
 
 bool LatentDriveInputProvider::build_video_tensor(
   const rclcpp::Time & now, TensorMap & inputs, std::string & error)
 {
-  std::vector<Frame> frames;
+  std::vector<std::vector<Frame>> views(static_cast<size_t>(num_views_));
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    frames.assign(frames_.begin(), frames_.end());
+    for (size_t view = 0; view < views.size(); ++view) {
+      views[view].assign(frames_[view].begin(), frames_[view].end());
+    }
   }
+  const std::vector<Frame> & frames = views[0];
   if (frames.empty()) {
     error = "No camera image received yet";
     return false;
@@ -408,19 +472,54 @@ bool LatentDriveInputProvider::build_video_tensor(
     return false;
   }
 
-  last_frame_ages_ms_.clear();
+  // The anchor's chosen frames, then each other view's nearest partner per anchor frame.
+  std::vector<std::vector<size_t>> picks(views.size());
+  picks[0] = *slots;
+  std::vector<double> anchor_stamps;
+  anchor_stamps.reserve(slots->size());
   for (const size_t index : *slots) {
-    last_frame_ages_ms_.push_back((now - frames[index].stamp).seconds() * 1e3);
+    anchor_stamps.push_back(stamps[index]);
+  }
+  for (size_t view = 1; view < views.size(); ++view) {
+    if (views[view].empty()) {
+      error = "No image from camera " + std::to_string(view) + " received yet";
+      return false;
+    }
+    std::vector<double> view_stamps;
+    view_stamps.reserve(views[view].size());
+    for (const auto & frame : views[view]) {
+      view_stamps.push_back(frame.stamp.seconds());
+    }
+    const auto partners = latentdrive::align_view(anchor_stamps, view_stamps, view_sync_tolerance_s_);
+    if (!partners) {
+      error = "Camera " + std::to_string(view) + " has no frame within " +
+              std::to_string(std::lround(view_sync_tolerance_s_ * 1e3)) +
+              " ms of every chosen camera 0 frame (" + std::to_string(views[view].size()) +
+              " frames stored)";
+      return false;
+    }
+    picks[view] = *partners;
   }
 
-  // Layout [3, T, H, W]: channel-major, so each frame contributes one plane per channel.
+  last_frame_ages_ms_.clear();
+  for (size_t view = 0; view < views.size(); ++view) {
+    for (const size_t index : picks[view]) {
+      last_frame_ages_ms_.push_back((now - views[view][index].stamp).seconds() * 1e3);
+    }
+  }
+
+  // Layout [V, 3, T, H, W]: one contiguous [3, T, H, W] block per view, channel-major inside,
+  // so each frame contributes one plane per channel.
   const size_t plane = static_cast<size_t>(height_) * static_cast<size_t>(width_);
-  for (int64_t t = 0; t < num_frames_; ++t) {
-    const std::vector<float> & chw = *frames[(*slots)[t]].chw;
-    for (int64_t c = 0; c < 3; ++c) {
-      std::memcpy(
-        video_buffer_.data() + (c * num_frames_ + t) * plane, chw.data() + c * plane,
-        plane * sizeof(float));
+  const size_t view_block = static_cast<size_t>(3 * num_frames_) * plane;
+  for (size_t view = 0; view < views.size(); ++view) {
+    for (int64_t t = 0; t < num_frames_; ++t) {
+      const std::vector<float> & chw = *views[view][picks[view][static_cast<size_t>(t)]].chw;
+      for (int64_t c = 0; c < 3; ++c) {
+        std::memcpy(
+          video_buffer_.data() + view * view_block + (c * num_frames_ + t) * plane,
+          chw.data() + c * plane, plane * sizeof(float));
+      }
     }
   }
   inputs[video_tensor_name_] = Tensor::from_host(video_shape_, video_buffer_);
@@ -556,8 +655,12 @@ bool LatentDriveInputProvider::collect(
     if (ok) {
       std::ostringstream line;
       line << "[LatentDrive-debug] tick OK | frames before tick:";
-      for (const double age : last_frame_ages_ms_) {
-        line << " " << std::lround(age);
+      const auto per_view = static_cast<size_t>(num_frames_);
+      for (size_t i = 0; i < last_frame_ages_ms_.size(); ++i) {
+        if (i > 0 && i % per_view == 0) {
+          line << " ms | camera" << i / per_view << ":";
+        }
+        line << " " << std::lround(last_frame_ages_ms_[i]);
       }
       line << " ms | v=" << std::fixed << std::setprecision(1) << last_status_[2]
            << " m/s | subgoal=(" << last_status_[0] * subgoal_divisor_ << ", "

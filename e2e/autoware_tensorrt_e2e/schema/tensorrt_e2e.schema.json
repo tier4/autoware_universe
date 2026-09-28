@@ -118,6 +118,12 @@
               "default": 0.15,
               "minimum": 0.0
             },
+            "view_sync_tolerance_seconds": {
+              "type": "number",
+              "description": "For a multi-view model, how far in time another camera's frame may sit from the anchor (camera 0) frame it is paired with; a view with no frame that close skips the tick.",
+              "default": 0.06,
+              "exclusiveMinimum": 0.0
+            },
             "max_delay_ms": { "type": "number", "default": 200.0 },
             "normalization_mean": {
               "type": "array",

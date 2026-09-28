@@ -47,6 +47,10 @@
       # host; 300 ms keeps the 10 Hz output without accepting a two-frame lag.
       max_delay_ms: 300.0
       frame_interval_tolerance_seconds: 0.15
+      # Two-view models: the telephoto frame paired with each chosen wide frame may be at most
+      # this far from it in time (the cameras are not hardware-synchronised; 60 ms was used
+      # offline). No frame that close skips the tick rather than padding the view.
+      view_sync_tolerance_seconds: 0.06
       # Temporal smoothing of the plan, ported from LatentDrive-TRT's display filter and
       # re-anchored on measured ego motion. On by default: the raw plan jitters by about
       # a metre in reach from tick to tick, and the filter trades roughly
