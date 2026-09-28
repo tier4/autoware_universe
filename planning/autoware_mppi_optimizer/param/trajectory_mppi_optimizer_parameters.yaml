@@ -156,6 +156,35 @@ trajectory_mppi_optimizer:
     description: Steering command noise exponent
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  update_action_variance:
+    type: bool
+    default_value: false
+    description: >-
+      If true, update Gaussian sampling std-dev on each inner MPPI iteration (within one
+      computeControl / planning call) via weighted moment matching (VI-MPC / Okada & Taniguchi
+      arXiv:1907.04202). accel_cmd_std_dev and steer_cmd_std_dev are Sigma_init restored at the
+      start of each planning call when reset_action_sampling_std_dev_each_step is true.
+    read_only: false
+  accel_cmd_std_dev_min:
+    type: double
+    default_value: 0.01
+    description: Minimum acceleration sampling std-dev when update_action_variance is enabled
+    validation: { gt<>: [0.0] }
+    read_only: false
+  steer_cmd_std_dev_min:
+    type: double
+    default_value: 0.002
+    description: Minimum steering sampling std-dev when update_action_variance is enabled
+    validation: { gt<>: [0.0] }
+    read_only: false
+  reset_action_sampling_std_dev_each_step:
+    type: bool
+    default_value: true
+    description: >-
+      When update_action_variance is true, restore Sigma_init immediately before the inner MPPI
+      iteration loop (does not reset between inner iterations). Enables re-expansion when the
+      diffusion reference geometry changes on the next planning call.
+    read_only: false
   drivable_area_safe_margin:
     type: double
     default_value: 0.0

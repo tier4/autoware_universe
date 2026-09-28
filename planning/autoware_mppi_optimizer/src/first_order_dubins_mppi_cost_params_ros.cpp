@@ -60,6 +60,15 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
   node.declare_parameter(
     param_name(prefix, "steer_cmd_noise_exponent"), defaults.steer_cmd_noise_exponent);
   node.declare_parameter(
+    param_name(prefix, "update_action_variance"), defaults.update_action_variance);
+  node.declare_parameter(
+    param_name(prefix, "accel_cmd_std_dev_min"), defaults.accel_cmd_std_dev_min);
+  node.declare_parameter(
+    param_name(prefix, "steer_cmd_std_dev_min"), defaults.steer_cmd_std_dev_min);
+  node.declare_parameter(
+    param_name(prefix, "reset_action_sampling_std_dev_each_step"),
+    defaults.reset_action_sampling_std_dev_each_step);
+  node.declare_parameter(
     param_name(prefix, "nominal_curvature_min_chord_length_m"),
     defaults.nominal_curvature_min_chord_length_m);
   node.declare_parameter(
@@ -129,6 +138,14 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "accel_cmd_noise_exponent")).as_double());
   params.steer_cmd_noise_exponent = static_cast<float>(
     node.get_parameter(param_name(prefix, "steer_cmd_noise_exponent")).as_double());
+  params.update_action_variance =
+    node.get_parameter(param_name(prefix, "update_action_variance")).as_bool();
+  params.accel_cmd_std_dev_min =
+    static_cast<float>(node.get_parameter(param_name(prefix, "accel_cmd_std_dev_min")).as_double());
+  params.steer_cmd_std_dev_min =
+    static_cast<float>(node.get_parameter(param_name(prefix, "steer_cmd_std_dev_min")).as_double());
+  params.reset_action_sampling_std_dev_each_step =
+    node.get_parameter(param_name(prefix, "reset_action_sampling_std_dev_each_step")).as_bool();
   params.nominal_curvature_min_chord_length_m = static_cast<float>(
     node.get_parameter(param_name(prefix, "nominal_curvature_min_chord_length_m")).as_double());
   params.lateral_acceleration_coeff = static_cast<float>(

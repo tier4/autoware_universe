@@ -40,6 +40,10 @@
       # Power-law PSD exponents (0 = white, 1 = pink, 2 = brown) for colored noise.
       accel_cmd_noise_exponent: 2.0
       steer_cmd_noise_exponent: 2.0
+      update_action_variance: true
+      accel_cmd_std_dev_min: 0.01
+      steer_cmd_std_dev_min: 0.002
+      reset_action_sampling_std_dev_each_step: true
       drivable_area_safe_margin: 0.0
       drivable_area_barrier_weight: 0.0
       # Crash costs
@@ -59,6 +63,9 @@
       enable_input_delay_compensation: true
       prevent_reverse_velocity: true
 
+      # Ablation: publish plant lag states on trajectory instead of undelayed commands.
+      use_plant_states_on_trajectory: false
+
       ignore_obstacles: false
       ignore_road_borders: false
       ignore_drivable_area: false
@@ -71,5 +78,5 @@
       use_last_control_as_nominal: true
 
       # Optional offline debug log output.
-      enable_debug_trajectory_log: false
+      enable_debug_trajectory_log: true
       debug_trajectory_log_directory: ""

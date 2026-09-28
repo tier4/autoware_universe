@@ -81,6 +81,10 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   output.steer_cmd_std_dev = static_cast<float>(params.steer_cmd_std_dev);
   output.accel_cmd_noise_exponent = static_cast<float>(params.accel_cmd_noise_exponent);
   output.steer_cmd_noise_exponent = static_cast<float>(params.steer_cmd_noise_exponent);
+  output.update_action_variance = params.update_action_variance;
+  output.accel_cmd_std_dev_min = static_cast<float>(params.accel_cmd_std_dev_min);
+  output.steer_cmd_std_dev_min = static_cast<float>(params.steer_cmd_std_dev_min);
+  output.reset_action_sampling_std_dev_each_step = params.reset_action_sampling_std_dev_each_step;
   output.nominal_curvature_min_chord_length_m =
     static_cast<float>(params.nominal_curvature_min_chord_length_m);
   output.lateral_acceleration_coeff = static_cast<float>(params.lateral_acceleration_coeff);

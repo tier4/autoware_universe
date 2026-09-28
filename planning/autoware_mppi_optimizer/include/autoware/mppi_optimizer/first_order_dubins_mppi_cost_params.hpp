@@ -53,6 +53,14 @@ struct FirstOrderDubinsMppiCostParams
   float accel_cmd_noise_exponent{1.0F};
   /** Power-law PSD exponent for steering-command sampling noise. */
   float steer_cmd_noise_exponent{1.0F};
+  /** Moment-match sampling std-dev each MPPI iteration (VI-MPC, M=1 Gaussian). */
+  bool update_action_variance{false};
+  /** Floor on updated acceleration sampling std-dev [m/s^2] (VI-MPC). */
+  float accel_cmd_std_dev_min{0.01F};
+  /** Floor on updated steering sampling std-dev [rad] (VI-MPC). */
+  float steer_cmd_std_dev_min{0.002F};
+  /** Reset sampling std-dev to accel/steer_cmd_std_dev at each planning cycle (PaETS-style). */
+  bool reset_action_sampling_std_dev_each_step{true};
   /** Spatial window used only when deriving a cold-start nominal steer from the reference. */
   float nominal_curvature_min_chord_length_m{1.5F};
   float lateral_acceleration_coeff{300.0F};
