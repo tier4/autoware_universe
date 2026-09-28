@@ -77,7 +77,7 @@ bool interpolateReferenceStateAtTime(
 }
 }  // namespace
 
-MPC::MPC(rclcpp::Node & node)
+MPC::MPC(autoware::agnocast_wrapper::Node & node)
 {
   m_debug_frenet_predicted_trajectory_pub = node.create_publisher<Trajectory>(
     "~/debug/predicted_trajectory_in_frenet_coordinate", rclcpp::QoS(1));

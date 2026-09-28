@@ -29,6 +29,8 @@
   <depend>autoware_pure_pursuit</depend>
   <depend>autoware_trajectory_follower_base</depend>
   <depend>autoware_utils</depend>
+  <depend>autoware_utils_debug</depend>
+  <depend>autoware_utils_logging</depend>
   <depend>autoware_vehicle_info_utils</depend>
   <depend>autoware_vehicle_msgs</depend>
   <depend>rclcpp</depend>

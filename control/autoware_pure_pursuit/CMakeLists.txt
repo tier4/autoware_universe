@@ -28,6 +28,8 @@ target_link_libraries(${PROJECT_NAME}_lateral_controller
   ${PROJECT_NAME}_core
 )
 
+autoware_agnocast_wrapper_setup(${PROJECT_NAME}_lateral_controller)
+
 rclcpp_components_register_node(${PROJECT_NAME}_lateral_controller
   PLUGIN "autoware::pure_pursuit::PurePursuitLateralController"
   EXECUTABLE ${PROJECT_NAME}_lateral_controller_exe

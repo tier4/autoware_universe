@@ -23,6 +23,8 @@
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
+
 #include "autoware_control_msgs/msg/lateral.hpp"
 #include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
@@ -242,11 +244,11 @@ private:
     false;  // True when the complete received trajectory contains a nonzero steering state.
   std::optional<double> m_prev_nearest_time{};  // Stabilized nearest trajectory time.
 
-  rclcpp::Publisher<Trajectory>::SharedPtr m_debug_frenet_predicted_trajectory_pub;
-  rclcpp::Publisher<Trajectory>::SharedPtr m_debug_resampled_reference_trajectory_pub;
-  rclcpp::Publisher<PoseStamped>::SharedPtr m_debug_nearest_pose_pub;
-  rclcpp::Publisher<Trajectory>::SharedPtr m_debug_nearest_segment_pub;
-  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr m_debug_nearest_info_pub;
+  AUTOWARE_PUBLISHER_PTR(Trajectory) m_debug_frenet_predicted_trajectory_pub;
+  AUTOWARE_PUBLISHER_PTR(Trajectory) m_debug_resampled_reference_trajectory_pub;
+  AUTOWARE_PUBLISHER_PTR(PoseStamped) m_debug_nearest_pose_pub;
+  AUTOWARE_PUBLISHER_PTR(Trajectory) m_debug_nearest_segment_pub;
+  AUTOWARE_PUBLISHER_PTR(Float32MultiArrayStamped) m_debug_nearest_info_pub;
   /**
    * @brief Get variables for MPC calculation.
    * @param trajectory The reference trajectory.
@@ -474,7 +476,7 @@ public:
                                               // resampled reference trajectory for debug purpose
 
   //!< Constructor.
-  explicit MPC(rclcpp::Node & node);
+  explicit MPC(autoware::agnocast_wrapper::Node & node);
 
   /**
    * @brief Calculate control command using the MPC algorithm.
