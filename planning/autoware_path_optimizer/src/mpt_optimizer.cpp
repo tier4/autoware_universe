@@ -22,6 +22,7 @@
 #include "autoware_utils/geometry/geometry.hpp"
 #include "autoware_utils/math/normalization.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/logging.hpp>
 #include <tf2/utils.hpp>
 
@@ -174,21 +175,25 @@ double calcLateralDistToBounds(
 }
 }  // namespace
 
+template <typename NodeT>
 MPTOptimizer::MPTParam::MPTParam(
-  rclcpp::Node * node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
+  NodeT * node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
 {
   {  // option
-    steer_limit_constraint = node->declare_parameter<bool>("mpt.option.steer_limit_constraint");
-    enable_warm_start = node->declare_parameter<bool>("mpt.option.enable_warm_start");
-    enable_manual_warm_start = node->declare_parameter<bool>("mpt.option.enable_manual_warm_start");
+    steer_limit_constraint =
+      node->template declare_parameter<bool>("mpt.option.steer_limit_constraint");
+    enable_warm_start = node->template declare_parameter<bool>("mpt.option.enable_warm_start");
+    enable_manual_warm_start =
+      node->template declare_parameter<bool>("mpt.option.enable_manual_warm_start");
     enable_optimization_validation =
-      node->declare_parameter<bool>("mpt.option.enable_optimization_validation");
-    mpt_visualize_sampling_num = node->declare_parameter<int>("mpt.option.visualize_sampling_num");
+      node->template declare_parameter<bool>("mpt.option.enable_optimization_validation");
+    mpt_visualize_sampling_num =
+      node->template declare_parameter<int>("mpt.option.visualize_sampling_num");
   }
 
   {  // common
-    num_points = node->declare_parameter<int>("mpt.common.num_points");
-    delta_arc_length = node->declare_parameter<double>("mpt.common.delta_arc_length");
+    num_points = node->template declare_parameter<int>("mpt.common.num_points");
+    delta_arc_length = node->template declare_parameter<double>("mpt.common.delta_arc_length");
   }
 
   // kinematics
@@ -197,93 +202,103 @@ MPTOptimizer::MPTParam::MPTParam(
   // NOTE: By default, optimization_center_offset will be vehicle_info.wheel_base * 0.8
   //       The 0.8 scale is adopted as it performed the best.
   constexpr double default_wheel_base_ratio = 0.8;
-  optimization_center_offset = node->declare_parameter<double>(
+  optimization_center_offset = node->template declare_parameter<double>(
     "mpt.kinematics.optimization_center_offset",
     vehicle_info.wheel_base_m * default_wheel_base_ratio);
 
   {  // clearance
     hard_clearance_from_road =
-      node->declare_parameter<double>("mpt.clearance.hard_clearance_from_road");
+      node->template declare_parameter<double>("mpt.clearance.hard_clearance_from_road");
     soft_clearance_from_road =
-      node->declare_parameter<double>("mpt.clearance.soft_clearance_from_road");
+      node->template declare_parameter<double>("mpt.clearance.soft_clearance_from_road");
   }
 
   {  // weight
     soft_collision_free_weight =
-      node->declare_parameter<double>("mpt.weight.soft_collision_free_weight");
+      node->template declare_parameter<double>("mpt.weight.soft_collision_free_weight");
 
-    lat_error_weight = node->declare_parameter<double>("mpt.weight.lat_error_weight");
-    yaw_error_weight = node->declare_parameter<double>("mpt.weight.yaw_error_weight");
-    yaw_error_rate_weight = node->declare_parameter<double>("mpt.weight.yaw_error_rate_weight");
-    steer_input_weight = node->declare_parameter<double>("mpt.weight.steer_input_weight");
-    steer_rate_weight = node->declare_parameter<double>("mpt.weight.steer_rate_weight");
+    lat_error_weight = node->template declare_parameter<double>("mpt.weight.lat_error_weight");
+    yaw_error_weight = node->template declare_parameter<double>("mpt.weight.yaw_error_weight");
+    yaw_error_rate_weight =
+      node->template declare_parameter<double>("mpt.weight.yaw_error_rate_weight");
+    steer_input_weight = node->template declare_parameter<double>("mpt.weight.steer_input_weight");
+    steer_rate_weight = node->template declare_parameter<double>("mpt.weight.steer_rate_weight");
 
     terminal_lat_error_weight =
-      node->declare_parameter<double>("mpt.weight.terminal_lat_error_weight");
+      node->template declare_parameter<double>("mpt.weight.terminal_lat_error_weight");
     terminal_yaw_error_weight =
-      node->declare_parameter<double>("mpt.weight.terminal_yaw_error_weight");
-    goal_lat_error_weight = node->declare_parameter<double>("mpt.weight.goal_lat_error_weight");
-    goal_yaw_error_weight = node->declare_parameter<double>("mpt.weight.goal_yaw_error_weight");
+      node->template declare_parameter<double>("mpt.weight.terminal_yaw_error_weight");
+    goal_lat_error_weight =
+      node->template declare_parameter<double>("mpt.weight.goal_lat_error_weight");
+    goal_yaw_error_weight =
+      node->template declare_parameter<double>("mpt.weight.goal_yaw_error_weight");
   }
 
   {  // avoidance
-    max_longitudinal_margin_for_bound_violation =
-      node->declare_parameter<double>("mpt.avoidance.max_longitudinal_margin_for_bound_violation");
-    max_bound_fixing_time = node->declare_parameter<double>("mpt.avoidance.max_bound_fixing_time");
-    max_avoidance_cost = node->declare_parameter<double>("mpt.avoidance.max_avoidance_cost");
-    avoidance_cost_margin = node->declare_parameter<double>("mpt.avoidance.avoidance_cost_margin");
+    max_longitudinal_margin_for_bound_violation = node->template declare_parameter<double>(
+      "mpt.avoidance.max_longitudinal_margin_for_bound_violation");
+    max_bound_fixing_time =
+      node->template declare_parameter<double>("mpt.avoidance.max_bound_fixing_time");
+    max_avoidance_cost =
+      node->template declare_parameter<double>("mpt.avoidance.max_avoidance_cost");
+    avoidance_cost_margin =
+      node->template declare_parameter<double>("mpt.avoidance.avoidance_cost_margin");
     avoidance_cost_band_length =
-      node->declare_parameter<double>("mpt.avoidance.avoidance_cost_band_length");
+      node->template declare_parameter<double>("mpt.avoidance.avoidance_cost_band_length");
     avoidance_cost_decrease_rate =
-      node->declare_parameter<double>("mpt.avoidance.avoidance_cost_decrease_rate");
-    min_drivable_width = node->declare_parameter<double>("mpt.avoidance.min_drivable_width");
+      node->template declare_parameter<double>("mpt.avoidance.avoidance_cost_decrease_rate");
+    min_drivable_width =
+      node->template declare_parameter<double>("mpt.avoidance.min_drivable_width");
 
     avoidance_lat_error_weight =
-      node->declare_parameter<double>("mpt.avoidance.weight.lat_error_weight");
+      node->template declare_parameter<double>("mpt.avoidance.weight.lat_error_weight");
     avoidance_yaw_error_weight =
-      node->declare_parameter<double>("mpt.avoidance.weight.yaw_error_weight");
+      node->template declare_parameter<double>("mpt.avoidance.weight.yaw_error_weight");
     avoidance_steer_input_weight =
-      node->declare_parameter<double>("mpt.avoidance.weight.steer_input_weight");
+      node->template declare_parameter<double>("mpt.avoidance.weight.steer_input_weight");
   }
 
   {  // collision free constraints
-    l_inf_norm = node->declare_parameter<bool>("mpt.collision_free_constraints.option.l_inf_norm");
-    soft_constraint =
-      node->declare_parameter<bool>("mpt.collision_free_constraints.option.soft_constraint");
-    hard_constraint =
-      node->declare_parameter<bool>("mpt.collision_free_constraints.option.hard_constraint");
+    l_inf_norm =
+      node->template declare_parameter<bool>("mpt.collision_free_constraints.option.l_inf_norm");
+    soft_constraint = node->template declare_parameter<bool>(
+      "mpt.collision_free_constraints.option.soft_constraint");
+    hard_constraint = node->template declare_parameter<bool>(
+      "mpt.collision_free_constraints.option.hard_constraint");
   }
 
   {  // vehicle_circles
     // NOTE: Vehicle shape for collision free constraints is considered as a set of circles
-    vehicle_circles_method =
-      node->declare_parameter<std::string>("mpt.collision_free_constraints.vehicle_circles.method");
+    vehicle_circles_method = node->template declare_parameter<std::string>(
+      "mpt.collision_free_constraints.vehicle_circles.method");
 
     // uniform circles
-    vehicle_circles_uniform_circle_num = node->declare_parameter<int>(
+    vehicle_circles_uniform_circle_num = node->template declare_parameter<int>(
       "mpt.collision_free_constraints.vehicle_circles.uniform_circle.num");
-    vehicle_circles_uniform_circle_radius_ratio = node->declare_parameter<double>(
+    vehicle_circles_uniform_circle_radius_ratio = node->template declare_parameter<double>(
       "mpt.collision_free_constraints.vehicle_circles.uniform_circle.radius_ratio");
 
     // bicycle model
-    vehicle_circles_bicycle_model_num = node->declare_parameter<int>(
+    vehicle_circles_bicycle_model_num = node->template declare_parameter<int>(
       "mpt.collision_free_constraints.vehicle_circles.bicycle_model.num_for_"
       "calculation");
-    vehicle_circles_bicycle_model_rear_radius_ratio = node->declare_parameter<double>(
+    vehicle_circles_bicycle_model_rear_radius_ratio = node->template declare_parameter<double>(
       "mpt.collision_free_constraints.vehicle_circles."
       "bicycle_model.rear_radius_ratio");
-    vehicle_circles_bicycle_model_front_radius_ratio = node->declare_parameter<double>(
+    vehicle_circles_bicycle_model_front_radius_ratio = node->template declare_parameter<double>(
       "mpt.collision_free_constraints.vehicle_circles."
       "bicycle_model.front_radius_ratio");
 
     // fitting uniform circles
-    vehicle_circles_fitting_uniform_circle_num = node->declare_parameter<int>(
+    vehicle_circles_fitting_uniform_circle_num = node->template declare_parameter<int>(
       "mpt.collision_free_constraints.vehicle_circles.fitting_uniform_circle.num");
   }
 
   {  // validation
-    max_validation_lat_error = node->declare_parameter<double>("mpt.validation.max_lat_error");
-    max_validation_yaw_error = node->declare_parameter<double>("mpt.validation.max_yaw_error");
+    max_validation_lat_error =
+      node->template declare_parameter<double>("mpt.validation.max_lat_error");
+    max_validation_yaw_error =
+      node->template declare_parameter<double>("mpt.validation.max_yaw_error");
   }
 }
 
@@ -397,6 +412,34 @@ void MPTOptimizer::MPTParam::onParam(const std::vector<rclcpp::Parameter> & para
   }
 }
 
+template <typename NodeT>
+void MPTOptimizer::setUpPublishers(NodeT * node)
+{
+  const auto make_traj_pub = [&](const std::string & topic) {
+    return [publisher = node->template create_publisher<Trajectory>(topic, 1)](
+             const Trajectory & msg) { publisher->publish(msg); };
+  };
+
+  debug_fixed_traj_pub_ = make_traj_pub("~/debug/mpt_fixed_traj");
+  debug_ref_traj_pub_ = make_traj_pub("~/debug/mpt_ref_traj");
+  debug_mpt_traj_pub_ = make_traj_pub("~/debug/mpt_traj");
+}
+
+template <typename NodeT>
+void MPTOptimizer::initializeCommon(NodeT * node)
+{
+  mpt_param_ = MPTParam(node, vehicle_info_);
+  updateVehicleCircles();
+  debug_data_ptr_->mpt_visualize_sampling_num = mpt_param_.mpt_visualize_sampling_num;
+
+  state_equation_generator_ =
+    StateEquationGenerator(vehicle_info_.wheel_base_m, mpt_param_.max_steer_rad, time_keeper_);
+
+  osqp_solver_ptr_ = std::make_unique<autoware::osqp_interface::OSQPInterface>(osqp_epsilon_);
+
+  setUpPublishers(node);
+}
+
 MPTOptimizer::MPTOptimizer(
   rclcpp::Node * node, const bool enable_debug_info, const EgoNearestParam ego_nearest_param,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
@@ -410,22 +453,24 @@ MPTOptimizer::MPTOptimizer(
   time_keeper_(time_keeper),
   logger_(node->get_logger().get_child("mpt_optimizer"))
 {
-  // initialize mpt param
-  mpt_param_ = MPTParam(node, vehicle_info);
-  updateVehicleCircles();
-  debug_data_ptr_->mpt_visualize_sampling_num = mpt_param_.mpt_visualize_sampling_num;
+  initializeCommon(node);
+}
 
-  // state equation generator
-  state_equation_generator_ =
-    StateEquationGenerator(vehicle_info_.wheel_base_m, mpt_param_.max_steer_rad, time_keeper_);
-
-  // osqp solver
-  osqp_solver_ptr_ = std::make_unique<autoware::osqp_interface::OSQPInterface>(osqp_epsilon_);
-
-  // publisher
-  debug_fixed_traj_pub_ = node->create_publisher<Trajectory>("~/debug/mpt_fixed_traj", 1);
-  debug_ref_traj_pub_ = node->create_publisher<Trajectory>("~/debug/mpt_ref_traj", 1);
-  debug_mpt_traj_pub_ = node->create_publisher<Trajectory>("~/debug/mpt_traj", 1);
+MPTOptimizer::MPTOptimizer(
+  autoware::agnocast_wrapper::Node * node, const bool enable_debug_info,
+  const EgoNearestParam ego_nearest_param,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+  const TrajectoryParam & traj_param, const std::shared_ptr<DebugData> debug_data_ptr,
+  const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper)
+: enable_debug_info_(enable_debug_info),
+  ego_nearest_param_(ego_nearest_param),
+  vehicle_info_(vehicle_info),
+  traj_param_(traj_param),
+  debug_data_ptr_(debug_data_ptr),
+  time_keeper_(time_keeper),
+  logger_(node->get_logger().get_child("mpt_optimizer"))
+{
+  initializeCommon(node);
 }
 
 void MPTOptimizer::updateVehicleCircles()
@@ -1720,16 +1765,16 @@ void MPTOptimizer::publishDebugTrajectories(
   // reference points
   const auto ref_traj = autoware::motion_utils::convertToTrajectory(
     trajectory_utils::convertToTrajectoryPoints(ref_points), header);
-  debug_ref_traj_pub_->publish(ref_traj);
+  debug_ref_traj_pub_(ref_traj);
 
   // fixed reference points
   const auto fixed_traj_points = extractFixedPoints(ref_points);
   const auto fixed_traj = autoware::motion_utils::convertToTrajectory(fixed_traj_points, header);
-  debug_fixed_traj_pub_->publish(fixed_traj);
+  debug_fixed_traj_pub_(fixed_traj);
 
   // mpt points
   const auto mpt_traj = autoware::motion_utils::convertToTrajectory(mpt_traj_points, header);
-  debug_mpt_traj_pub_->publish(mpt_traj);
+  debug_mpt_traj_pub_(mpt_traj);
 }
 
 std::vector<TrajectoryPoint> MPTOptimizer::extractFixedPoints(

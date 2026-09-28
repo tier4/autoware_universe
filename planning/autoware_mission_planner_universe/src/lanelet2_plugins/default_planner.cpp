@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "default_planner.hpp"
-
 #include "utility_functions.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/lanelet2_utils/nn_search.hpp>
+#include <autoware/mission_planner_universe/default_planner.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
@@ -29,6 +28,7 @@
 #include <autoware_utils/math/unit_conversion.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <tf2/utils.hpp>
 
 #include <boost/geometry/algorithms/correct.hpp>
@@ -86,35 +86,17 @@ bool hasDirectionChangeAreaTag(const lanelet::ConstLanelet & lanelet)
 }
 }  // namespace
 
-void DefaultPlanner::initialize_common(rclcpp::Node * node)
+DefaultPlanner::DefaultPlanner(
+  const DefaultPlannerParameters & param,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
+: vehicle_info_(vehicle_info), is_graph_ready_(false), param_(param)
 {
-  is_graph_ready_ = false;
-  node_ = node;
-
-  const auto durable_qos = rclcpp::QoS(1).transient_local();
-  pub_goal_footprint_marker_ =
-    node_->create_publisher<MarkerArray>("~/debug/goal_footprint", durable_qos);
-
-  vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*node_).getVehicleInfo();
-  param_.goal_angle_threshold_deg = node_->declare_parameter<double>("goal_angle_threshold_deg");
-  param_.enable_correct_goal_pose = node_->declare_parameter<bool>("enable_correct_goal_pose");
-  param_.consider_no_drivable_lanes = node_->declare_parameter<bool>("consider_no_drivable_lanes");
-  param_.check_footprint_inside_lanes =
-    node_->declare_parameter<bool>("check_footprint_inside_lanes");
 }
 
-void DefaultPlanner::initialize(rclcpp::Node * node)
+void DefaultPlanner::set_map(const LaneletMapBin & msg)
 {
-  initialize_common(node);
-  map_subscriber_ = node_->create_subscription<LaneletMapBin>(
-    "~/input/vector_map", rclcpp::QoS{10}.transient_local(),
-    std::bind(&DefaultPlanner::map_callback, this, std::placeholders::_1));
-}
-
-void DefaultPlanner::initialize(rclcpp::Node * node, const LaneletMapBin::ConstSharedPtr msg)
-{
-  initialize_common(node);
-  map_callback(msg);
+  route_handler_.setMap(msg);
+  is_graph_ready_ = true;
 }
 
 bool DefaultPlanner::ready() const
@@ -122,13 +104,7 @@ bool DefaultPlanner::ready() const
   return is_graph_ready_;
 }
 
-void DefaultPlanner::map_callback(const LaneletMapBin::ConstSharedPtr msg)
-{
-  route_handler_.setMap(*msg);
-  is_graph_ready_ = true;
-}
-
-PlannerPlugin::MarkerArray DefaultPlanner::visualize(
+DefaultPlanner::MarkerArray DefaultPlanner::visualize(
   const LaneletRoute & route, float goal_lanelet_transparency) const
 {
   lanelet::ConstLanelets route_lanelets;
@@ -241,10 +217,9 @@ bool DefaultPlanner::check_goal_footprint_inside_lanes(
   return boost::geometry::covered_by(goal_footprint, lane_polygon);
 }
 
-bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
+DefaultPlanner::GoalValidationResult DefaultPlanner::is_goal_valid(
+  const geometry_msgs::msg::Pose & goal)
 {
-  const auto logger = node_->get_logger();
-
   const auto goal_lanelet_pt = experimental::lanelet2_utils::from_ros(goal.position);
 
   // check if goal is in shoulder lanelet
@@ -262,13 +237,13 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
     const double th_angle = autoware_utils::deg2rad(param_.goal_angle_threshold_deg);
     const bool has_direction_change_tag = hasDirectionChangeAreaTag(closest_shoulder_lanelet);
     if (std::abs(angle_diff) < th_angle) {
-      return true;
+      return {true, std::nullopt, std::nullopt};
     }
     if (has_direction_change_tag) {
       const double reversed_angle_diff =
         std::abs(autoware_utils::normalize_radian(angle_diff - M_PI));
       if (reversed_angle_diff < th_angle) {
-        return true;
+        return {true, std::nullopt, std::nullopt};
       }
     }
   }
@@ -293,7 +268,7 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
           }
           return false;  // continue the search
         });
-    if (!closest_road_lanelet_found) return false;
+    if (!closest_road_lanelet_found) return {false, std::nullopt, std::nullopt};
   }
 
   // If the goal is at the very beginning or the end of closest_lanelet_to_goal, base link to rear
@@ -308,10 +283,7 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
     closest_lanelet_to_goal, vehicle_info_.max_longitudinal_offset_m, false, route_handler_);
   lanelets_near_goal.insert(lanelets_near_goal.end(), next_lanelets.begin(), next_lanelets.end());
 
-  const auto local_vehicle_footprint = vehicle_info_.createFootprint();
-  autoware_utils::LinearRing2d goal_footprint =
-    autoware_utils::transform_vector(local_vehicle_footprint, autoware_utils::pose2transform(goal));
-  pub_goal_footprint_marker_->publish(visualize_debug_footprint(goal_footprint));
+  const autoware_utils::LinearRing2d goal_footprint = vehicle_info_.createFootprint(0.0, goal);
   const auto polygon_footprint = convert_linear_ring_to_polygon(goal_footprint);
 
   // check if goal footprint exceeds lane when the goal isn't in parking_lot
@@ -321,8 +293,7 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
     !is_in_parking_lot(
       lanelet::utils::query::getAllParkingLots(route_handler_.getLaneletMapPtr()),
       experimental::lanelet2_utils::from_ros(goal.position))) {
-    RCLCPP_WARN(logger, "Goal's footprint exceeds lane!");
-    return false;
+    return {false, goal_footprint, "Goal's footprint exceeds lane!"};
   }
 
   if (is_in_lane(closest_lanelet_to_goal, goal_lanelet_pt)) {
@@ -335,13 +306,13 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
     const double th_angle = autoware_utils::deg2rad(param_.goal_angle_threshold_deg);
     const bool has_direction_change_tag = hasDirectionChangeAreaTag(closest_lanelet_to_goal);
     if (std::abs(angle_diff) < th_angle) {
-      return true;
+      return {true, goal_footprint, std::nullopt};
     }
     if (has_direction_change_tag) {
       const double reversed_angle_diff =
         std::abs(autoware_utils::normalize_radian(angle_diff - M_PI));
       if (reversed_angle_diff < th_angle) {
-        return true;
+        return {true, goal_footprint, std::nullopt};
       }
     }
   }
@@ -350,28 +321,17 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
   const auto parking_spaces =
     lanelet::utils::query::getAllParkingSpaces(route_handler_.getLaneletMapPtr());
   if (is_in_parking_space(parking_spaces, goal_lanelet_pt)) {
-    return true;
+    return {true, goal_footprint, std::nullopt};
   }
 
   // check if goal is in parking lot
   const auto parking_lots =
     lanelet::utils::query::getAllParkingLots(route_handler_.getLaneletMapPtr());
-  return is_in_parking_lot(parking_lots, goal_lanelet_pt);
+  return {is_in_parking_lot(parking_lots, goal_lanelet_pt), goal_footprint, std::nullopt};
 }
 
-PlannerPlugin::LaneletRoute DefaultPlanner::plan(const RoutePoints & points)
+DefaultPlanner::PlanResult DefaultPlanner::plan(const RoutePoints & points)
 {
-  const auto logger = node_->get_logger();
-
-  std::stringstream log_ss;
-  for (const auto & point : points) {
-    log_ss << "x: " << point.position.x << " "
-           << "y: " << point.position.y << std::endl;
-  }
-  RCLCPP_DEBUG_STREAM(
-    logger, "start planning route with check points: " << std::endl
-                                                       << log_ss.str());
-
   LaneletRoute route_msg;
   RouteSections route_sections;
 
@@ -383,8 +343,7 @@ PlannerPlugin::LaneletRoute DefaultPlanner::plan(const RoutePoints & points)
     lanelet::ConstLanelets path_lanelets;
     if (!route_handler_.planPathLaneletsBetweenCheckpoints(
           start_check_point, goal_check_point, &path_lanelets, param_.consider_no_drivable_lanes)) {
-      RCLCPP_WARN(logger, "Failed to plan route.");
-      return route_msg;
+      return {route_msg, std::nullopt, "Failed to plan route."};
     }
 
     for (const auto & lane : path_lanelets) {
@@ -402,24 +361,24 @@ PlannerPlugin::LaneletRoute DefaultPlanner::plan(const RoutePoints & points)
       vehicle_info_);
   }
 
-  if (!is_goal_valid(goal_pose)) {
-    RCLCPP_WARN(logger, "Goal is not valid! Please check position and angle of goal_pose");
-    return route_msg;
+  const auto goal_validation_result = is_goal_valid(goal_pose);
+  if (!goal_validation_result.is_valid) {
+    const auto warning_message = goal_validation_result.warning_message.value_or("") +
+                                 "Goal is not valid! Please check position and angle of goal_pose";
+    return {route_msg, goal_validation_result.goal_footprint, warning_message};
   }
 
   if (route_handler::RouteHandler::isRouteLooped(route_sections)) {
-    RCLCPP_WARN(logger, "Loop detected within route!");
-    return route_msg;
+    return {route_msg, goal_validation_result.goal_footprint, "Loop detected within route!"};
   }
 
   const auto refined_goal = refine_goal_height(goal_pose, route_sections);
-  RCLCPP_DEBUG(logger, "Goal Pose Z : %lf", refined_goal.position.z);
 
   // The header is assigned by mission planner.
   route_msg.start_pose = points.front();
   route_msg.goal_pose = refined_goal;
   route_msg.segments = route_sections;
-  return route_msg;
+  return {route_msg, goal_validation_result.goal_footprint, std::nullopt};
 }
 
 geometry_msgs::msg::Pose DefaultPlanner::refine_goal_height(
@@ -435,7 +394,7 @@ geometry_msgs::msg::Pose DefaultPlanner::refine_goal_height(
   return refined_goal;
 }
 
-void DefaultPlanner::updateRoute(const PlannerPlugin::LaneletRoute & route)
+void DefaultPlanner::updateRoute(const LaneletRoute & route)
 {
   route_handler_.setRoute(route);
 }
@@ -446,8 +405,3 @@ void DefaultPlanner::clearRoute()
 }
 
 }  // namespace autoware::mission_planner_universe::lanelet2
-
-#include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(
-  autoware::mission_planner_universe::lanelet2::DefaultPlanner,
-  autoware::mission_planner_universe::PlannerPlugin)

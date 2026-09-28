@@ -199,8 +199,8 @@ TEST_F(TrajectoryValidatorDiagnosticTest, EmptyNameNoStatusFired)
   spin_until(h.node, [&h]() { return h.sub->get_publisher_count() > 0; });
   h.received.clear();
   diag.update_and_publish({candidate1}, h.node->get_clock()->now());
-  rclcpp::spin_some(h.node);
-  rclcpp::spin_some(h.node);
+  rclcpp::spin_some(h.node->get_node_base_interface());
+  rclcpp::spin_some(h.node->get_node_base_interface());
 
   EXPECT_TRUE(h.all_statuses().empty());
 }
@@ -227,8 +227,8 @@ TEST_F(TrajectoryValidatorDiagnosticTest, NoReportsEmptyNoCandidateNameNothing)
   spin_until(h.node, [&h]() { return h.sub->get_publisher_count() > 0; });
   h.received.clear();
   diag.update_and_publish({}, h.node->get_clock()->now());
-  rclcpp::spin_some(h.node);
-  rclcpp::spin_some(h.node);
+  rclcpp::spin_some(h.node->get_node_base_interface());
+  rclcpp::spin_some(h.node->get_node_base_interface());
 
   EXPECT_TRUE(h.all_statuses().empty());
 }

@@ -31,6 +31,8 @@ endif()
 # Temporal kinematic-bicycle acados solver: Python codegen at build time (add_custom_command).
 # See src/acados_mpt/CMakeLists.txt — target acados_interface_temporal.
 add_subdirectory(src/acados_mpt)
+# Pose-only time-sequence acados solver (independent of Temporal MPT).
+add_subdirectory(src/acados_time_sequence_raw)
 pluginlib_export_plugin_description_file(${PROJECT_NAME} plugins.xml)
 
 generate_parameter_library(trajectory_processor_param
@@ -40,6 +42,7 @@ generate_parameter_library(trajectory_processor_param
 ament_auto_add_library(autoware_trajectory_processor_utils SHARED
   src/utils.cpp
 )
+autoware_agnocast_wrapper_setup(autoware_trajectory_processor_utils)
 
 ament_auto_add_library(autoware_trajectory_processor_component SHARED
   src/trajectory_processor.cpp
@@ -58,13 +61,14 @@ autoware_agnocast_wrapper_register_node(autoware_trajectory_processor_component
   PLUGIN "autoware::trajectory_processor::TrajectoryProcessor"
   EXECUTABLE autoware_trajectory_processor_node
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 ament_auto_add_library(autoware_trajectory_modifier_utils SHARED
   src/trajectory_modifier_utils/utils.cpp
   src/trajectory_modifier_utils/obstacle_stop_utils.cpp
 )
+autoware_agnocast_wrapper_setup(autoware_trajectory_modifier_utils)
 
 ament_auto_add_library(autoware_trajectory_optimizer_plugins SHARED
   src/trajectory_optimizer_plugins/trajectory_eb_smoother_optimizer.cpp
@@ -72,6 +76,7 @@ ament_auto_add_library(autoware_trajectory_optimizer_plugins SHARED
   src/trajectory_optimizer_plugins/trajectory_kinematic_feasibility_enforcer.cpp
   src/trajectory_optimizer_plugins/trajectory_mpt_optimizer.cpp
   src/trajectory_optimizer_plugins/trajectory_temporal_mpt_optimizer.cpp
+  src/trajectory_optimizer_plugins/trajectory_time_sequence_raw_optimizer.cpp
   src/trajectory_optimizer_plugins/trajectory_point_fixer.cpp
   src/trajectory_optimizer_plugins/trajectory_qp_smoother.cpp
   src/trajectory_optimizer_plugins/trajectory_spline_smoother.cpp
@@ -82,10 +87,14 @@ ament_auto_add_library(autoware_trajectory_optimizer_plugins SHARED
   src/trajectory_optimizer_plugins/plugin_utils/trajectory_point_fixer_utils.cpp
   src/trajectory_optimizer_plugins/plugin_utils/trajectory_spline_smoother_utils.cpp
   src/trajectory_optimizer_plugins/plugin_utils/trajectory_velocity_optimizer_utils.cpp
+  src/trajectory_optimizer_plugins/plugin_utils/time_sequence_trajectory_optimizer.cpp
+  src/trajectory_optimizer_plugins/plugin_utils/road_border_avoidance.cpp
 )
+autoware_agnocast_wrapper_setup(autoware_trajectory_optimizer_plugins)
 target_link_libraries(
   autoware_trajectory_optimizer_plugins
   acados_interface_temporal
+  acados_interface_time_seq
   autoware_trajectory_processor_utils
   tf2_geometry_msgs::tf2_geometry_msgs
   trajectory_processor_param
@@ -128,19 +137,23 @@ unset(_traj_opt_qpoases_lib_path CACHE)
 # Ensure pluginlib/dlopen can resolve acados runtime deps (e.g. libqpOASES_e)
 # in container environments where LD_LIBRARY_PATH is restricted.
 if(_acados_lib_dir AND EXISTS "${_acados_lib_dir}")
-  foreach(_target acados_interface_temporal autoware_trajectory_optimizer_plugins)
+  foreach(_target acados_interface_temporal acados_interface_time_seq autoware_trajectory_optimizer_plugins)
     set_property(TARGET ${_target} APPEND PROPERTY BUILD_RPATH "${_acados_lib_dir}")
     set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH "${_acados_lib_dir}")
   endforeach()
 endif()
 
 ament_auto_add_library(autoware_trajectory_modifier_plugins SHARED
+  src/trajectory_modifier_plugins/external_velocity_limit.cpp
   src/trajectory_modifier_plugins/stop_point_fixer.cpp
   src/trajectory_modifier_plugins/obstacle_stop.cpp
   src/trajectory_modifier_plugins/velocity_modifier.cpp
   src/trajectory_modifier_plugins/surround_obstacle_stop.cpp
   src/trajectory_modifier_plugins/traffic_light_stop.cpp
+  src/trajectory_modifier_plugins/map_velocity_limits.cpp
+  src/trajectory_modifier_plugins/velocity_limits.cpp
 )
+autoware_agnocast_wrapper_setup(autoware_trajectory_modifier_plugins)
 
 target_link_libraries(autoware_trajectory_modifier_plugins
   autoware_trajectory_modifier_utils
@@ -151,7 +164,20 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
+  set(NODE_TEST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_obstacle_stop_integration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_stop_point_fixer_integration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_surround_obstacle_stop_integration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_time_sequence_raw_optimizer_stop_policy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_traffic_light_stop_integration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_trajectory_processor_integration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_trajectory_processor_plugin_base.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_velocity_modifier_integration.cpp
+  )
+
   file(GLOB_RECURSE TEST_SOURCES tests/*.cpp)
+  list(REMOVE_ITEM TEST_SOURCES ${NODE_TEST_SOURCES})
+
   ament_add_ros_isolated_gtest(test_autoware_trajectory_processor
     ${TEST_SOURCES}
   )
@@ -160,10 +186,23 @@ if(BUILD_TESTING)
     autoware_trajectory_optimizer_plugins
     autoware_trajectory_modifier_plugins
     autoware_trajectory_modifier_utils
+    acados_interface_time_seq
   )
+
+  if(NOT (DEFINED ENV{ENABLE_AGNOCAST} AND "$ENV{ENABLE_AGNOCAST}" STREQUAL "1"))
+    ament_add_ros_isolated_gtest(test_autoware_trajectory_processor_nodes
+      ${NODE_TEST_SOURCES}
+    )
+    target_link_libraries(test_autoware_trajectory_processor_nodes
+      autoware_trajectory_processor_component
+      autoware_trajectory_optimizer_plugins
+      autoware_trajectory_modifier_plugins
+      autoware_trajectory_modifier_utils
+    )
+  endif()
 endif()
 
-install(TARGETS acados_interface_temporal
+install(TARGETS acados_interface_temporal acados_interface_time_seq
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -188,7 +227,7 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-ament_export_libraries(acados_interface_temporal)
+ament_export_libraries(acados_interface_temporal acados_interface_time_seq)
 
 ament_auto_package(
   INSTALL_TO_SHARE

@@ -28,7 +28,7 @@ All movement plugins inherit from `DummyObjectMovementBasePlugin` which provides
 - **ADD**: New objects are created and they move in a straight line, acceleration and deceleration parameters can be used.
 - **MODIFY**: Handled directly by the node, bypassing plugin movement logic. Immediately replaces the object's position information across all plugins.
 - **DELETE**: The specified object is removed from all plugins.
-- **DELETEALL**: Clears all objects from all plugins.
+- **DELETEALL**: Clears all objects from all plugins. For `input/static_area`, it clears all stored static areas.
 - **PREDICT**: New objects are created, they move in a straight line for a set time and then the predictions extracted from the perception module are used to dictate where the objects will move to. NOTE: for ease of calculation, acceleration is not taken into account when calculating the object's position, only its initial speed.
 
 ## Inputs / Outputs
@@ -39,32 +39,60 @@ All movement plugins inherit from `DummyObjectMovementBasePlugin` which provides
 | ------------------- | ------------------------------------------------- | --------------------------------------------------------- |
 | `/tf`               | `tf2_msgs/TFMessage`                              | TF (self-pose)                                            |
 | `input/object`      | `tier4_simulation_msgs::msg::DummyObject`         | dummy detection objects                                   |
+| `input/static_area` | `tier4_simulation_msgs::msg::DummyObject`         | dummy static areas for point cloud generation             |
 | `predicted_objects` | `autoware_perception_msgs::msg::PredictedObjects` | predicted objects (used by PredictedObjectMovementPlugin) |
 
 ### Output
 
-| Name                                | Type                                                     | Description             |
-| ----------------------------------- | -------------------------------------------------------- | ----------------------- |
-| `output/dynamic_object`             | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | dummy detection objects |
-| `output/points_raw`                 | `sensor_msgs::msg::PointCloud2`                          | point cloud of objects  |
-| `output/debug/ground_truth_objects` | `autoware_perception_msgs::msg::TrackedObjects`          | ground truth objects    |
+| Name                                | Type                                                     | Description                                                              |
+| ----------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `output/dynamic_object`             | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | dummy detection objects                                                  |
+| `output/points_raw`                 | `sensor_msgs::msg::PointCloud2`                          | object and static area point clouds converted to the `point_type` layout |
+| `output/debug/ground_truth_objects` | `autoware_perception_msgs::msg::TrackedObjects`          | ground truth objects                                                     |
 
 ## Parameters
 
 ### Core Parameters
 
-| Name                        | Type   | Default Value | Explanation                                        |
-| --------------------------- | ------ | ------------- | -------------------------------------------------- |
-| `visible_range`             | double | 100.0         | sensor visible range [m]                           |
-| `detection_successful_rate` | double | 0.8           | sensor detection rate. (min) 0.0 - 1.0(max)        |
-| `enable_ray_tracing`        | bool   | true          | if True, use ray tracking                          |
-| `use_object_recognition`    | bool   | true          | if True, publish objects topic                     |
-| `use_base_link_z`           | bool   | true          | if True, node uses z coordinate of ego base_link   |
-| `publish_ground_truth`      | bool   | false         | if True, publish ground truth objects              |
-| `use_fixed_random_seed`     | bool   | false         | if True, use fixed random seed                     |
-| `random_seed`               | int    | 0             | random seed                                        |
-| `object_centric_pointcloud` | bool   | false         | if True, generate object-centric point clouds      |
-| `angle_increment`           | double | 0.004363323   | angle increment for ray tracing (0.25° in radians) |
+| Name                        | Type   | Default Value | Explanation                                                 |
+| --------------------------- | ------ | ------------- | ----------------------------------------------------------- |
+| `visible_range`             | double | 100.0         | sensor visible range [m]                                    |
+| `detection_successful_rate` | double | 0.8           | sensor detection rate. (min) 0.0 - 1.0(max)                 |
+| `enable_ray_tracing`        | bool   | true          | if True, use ray tracking                                   |
+| `use_object_recognition`    | bool   | true          | if True, publish objects topic                              |
+| `publish_object_pointcloud` | bool   | false         | if True, include object point clouds in `output/points_raw` |
+| `point_type`                | string | `XYZCPE`      | point cloud layout published on `output/points_raw`         |
+| `use_base_link_z`           | bool   | true          | if True, node uses z coordinate of ego base_link            |
+| `publish_ground_truth`      | bool   | false         | if True, publish ground truth objects                       |
+| `use_fixed_random_seed`     | bool   | false         | if True, use fixed random seed                              |
+| `random_seed`               | int    | 0             | random seed                                                 |
+| `object_centric_pointcloud` | bool   | false         | if True, generate object-centric point clouds               |
+| `angle_increment`           | double | 0.004363323   | angle increment for ray tracing (0.25° in radians)          |
+
+Object and static area point clouds are both published on `output/points_raw` regardless of `point_type`. `publish_object_pointcloud` only controls whether normal object point clouds are included. Static areas are not published as object-recognition boxes.
+
+The node's internal defaults are `publish_object_pointcloud=true` and `point_type=XYZIRC`, but the
+provided config file and launch arguments override them to `publish_object_pointcloud=false` and
+`point_type=XYZCPE`.
+
+### Static Area Input
+
+`input/static_area` uses `tier4_simulation_msgs::msg::DummyObject` on a dedicated topic.
+
+| Field | Meaning |
+| ----- | ------- |
+| `classification.label` | `autoware::point_types::PointCloudClassification` value |
+| `classification.probability` | `PointXYZCPE::probability` |
+| `shape.type` | `BOUNDING_BOX` |
+| `shape.dimensions.x` | static area length |
+| `shape.dimensions.y` | static area width |
+| `shape.dimensions.z` | static area height |
+| `initial_state.pose_covariance.pose` | static area pose |
+| `action` | `ADD`, `MODIFY`, `DELETE`, or `DELETEALL` |
+
+Static areas are stored separately from normal objects. They use the existing object point cloud
+creator, but their `classification.label` is copied directly as `PointCloudClassification` instead
+of being converted from `ObjectClassification`. `DELETEALL` clears all stored static areas.
 
 ### PredictedObjectMovementPlugin Parameters
 

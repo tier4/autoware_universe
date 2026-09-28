@@ -327,8 +327,7 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
 {
   const auto available_area = get_available_area(trajectory);
 
-  judge_goal_planner_act(trajectory, s_path_end, available_area, ego_pose);
-  judge_start_planner_act(current_lanelet, ego_pose);
+  judge_start_goal_planner_act(current_lanelet, trajectory, s_path_end, available_area, ego_pose);
 
   if (!start_planner_act_ && !goal_planner_act_) {
     return std::nullopt;  // StartGoalPlanner is not applied. normal termination
@@ -362,6 +361,26 @@ std::optional<PathPointTrajectory> StartGoalPlanner::plan(
   }
   generated_trajectory_ = refined_trajectory;
   return generated_trajectory_;
+}
+
+void StartGoalPlanner::judge_start_goal_planner_act(
+  const lanelet::ConstLanelet & current_lanelet, const PathPointTrajectory & trajectory,
+  const double & s_path_end, const std::vector<AvailableArea> & available_area,
+  const geometry_msgs::msg::Pose & ego_pose)
+{
+  judge_goal_planner_act(trajectory, s_path_end, available_area, ego_pose);
+  judge_start_planner_act(current_lanelet, ego_pose);
+
+  if (start_planner_act_ || goal_planner_act_) {
+    const bool ego_outside_available_area = !is_point_in_polygons(
+      autoware_utils_geometry::Point2d{ego_pose.position.x, ego_pose.position.y}, available_area);
+    if (ego_outside_available_area) {
+      start_planner_act_ = false;
+      goal_planner_act_ = false;
+      generated_trajectory_ = std::nullopt;
+      goal_pull_start_pose_ = std::nullopt;
+    }
+  }
 }
 
 void StartGoalPlanner::judge_start_planner_act(
@@ -429,6 +448,7 @@ void StartGoalPlanner::judge_goal_planner_act(
   if (autoware_utils_geometry::calc_distance2d(*goal_pose_prev_, route_data_.goal_pose) > 1e-3) {
     goal_planner_act_ = false;
     generated_trajectory_ = std::nullopt;
+    goal_pull_start_pose_ = std::nullopt;
   } else if (!goal_planner_act_ || !generated_trajectory_.has_value()) {
     const auto s_path_end_clamped = std::min(trajectory.length(), s_path_end);
     const auto distance_to_goal_traj = autoware_utils::calc_distance2d(
@@ -781,6 +801,8 @@ std::optional<PathPointTrajectory> StartGoalPlanner::connect_goal_planner_trajec
 
   const auto pull_start_pose = pull_points[0].point.pose;
   const auto s_closest = autoware::experimental::trajectory::closest(trajectory, pull_start_pose);
+  // Where the path leaves the lane towards the shoulder; the turn signal is timed from here.
+  goal_pull_start_pose_ = pull_start_pose;
 
   auto base_points = autoware::experimental::trajectory::crop(trajectory, 0, s_closest).restore();
 

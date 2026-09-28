@@ -27,20 +27,21 @@ template <int NUM_TIMESTEPS>
 struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
 {
   float speed_coeff = 500.0F;
+  /** Pull toward ref position at each step: coeff * ||p - ref[t]||^2; 0 disables. */
   float track_coeff = 1000.0F;
   /** Multiplier on track_coeff * track_val in terminalCost (running state cost uses scale 1). */
   float track_terminal_scale = 10.0F;
   /** Pull toward ref heading at each horizon step: coeff * (yaw - ref_yaw[t])^2; 0 disables. */
   float heading_coeff = 500.0F;
-  /** Spatial (closest-segment) distance to the reference polyline; 0 disables. */
+  /** Spatial (closest-segment) cross-track error: coeff * e_lat^2; 0 disables. */
   float lateral_distance_coeff = 0.0F;
   /** Spatial yaw error vs closest-segment tangent: coeff * Δψ^2; 0 disables. */
   float lateral_yaw_error_coeff = 0.0F;
-  /** Progress along corridor: coeff * remaining chord length to path end [m]; 0 disables. */
+  /** Progress along corridor: coeff * (remaining chord length [m])^2; 0 disables. */
   float remaining_distance_coeff = 0.0F;
-  /** Along-track distance past the corridor tip [m]; 0 disables. */
+  /** Along-track distance past the corridor tip: coeff * (overshoot [m])^2; 0 disables. */
   float path_overshoot_coeff = 0.0F;
-  /** Track the ego footprint center, rather than its rear-axle state, against ref[t]. */
+  /** Track ego footprint center vs ref[t]: coeff * ||center - ref[t]||^2; 0 disables. */
   float track_center_coeff = 0.0F;
   /** Quadratic soft cost for ego corners closer than corner_safe_margin to a boundary. */
   float corner_buffer_coeff = 0.0F;
@@ -179,7 +180,7 @@ public:
 
   void clearDrivableArea();
 
-  /** Euclidean position error to the time-aligned reference sample ref[t]. */
+  /** Euclidean position error squared: ||p - ref[t]||^2. */
   __host__ __device__ float computeTrackValue(
     float x, float y, int timestep, const float * theta_c = nullptr) const;
 
@@ -187,10 +188,8 @@ public:
     float yaw, int timestep, const float * theta_c = nullptr) const;
 
   /**
-   * Cross-track distance to the lateral corridor (or ref_ polyline). Projections past the
-   * polyline ends use perpendicular distance to the extended tip segment so horizon
-   * overshoot is not treated as lateral departure. Used by lateral_distance_coeff and
-   * exceedsLateralBoundary.
+   * Cross-track distance to the lateral corridor (or ref_ polyline). Returns signed
+   * lateral offset (+ = left of segment tangent); use fabs for magnitude-based checks.
    */
   __host__ __device__ float computeLateralDistanceValue(
     float x, float y, float * theta_c = nullptr) const;
@@ -203,6 +202,7 @@ public:
    */
   struct LateralPathMetrics
   {
+    /** Signed cross-track error [m]; + = left of closest-segment tangent. */
     float lateral_distance = 0.0F;
     float lateral_yaw_error_sq = 0.0F;
     float path_length_s = 0.0F;
@@ -216,7 +216,7 @@ public:
   __host__ __device__ LateralPathMetrics
   computeLateralPathMetrics(float x, float y, float yaw, float * theta_c = nullptr) const;
 
-  /** Distance from the ego footprint center to the time-aligned reference sample. */
+  /** Squared distance from the ego footprint center to the time-aligned reference sample. */
   __host__ __device__ float computeTrackCenterValue(
     float x, float y, float yaw, int timestep, const float * theta_c = nullptr) const;
 

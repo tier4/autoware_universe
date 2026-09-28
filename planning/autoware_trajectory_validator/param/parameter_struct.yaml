@@ -353,10 +353,25 @@ validator:
           description: rear margin added to the ego footprint for RSS assessment
           read_only: false
       object_assumed_acceleration:
-        type: double
-        default_value: .NAN
-        description: Assumed object acceleration for RSS calculation (m/s^2, negative)
-        read_only: false
+        base:
+          &rss_labeled_double_override {
+            type: double,
+            default_value: .NAN,
+            description: Per-class override. NaN uses the base value.,
+            read_only: false,
+          }
+        unknown: *rss_labeled_double_override
+        car: *rss_labeled_double_override
+        truck: *rss_labeled_double_override
+        bus: *rss_labeled_double_override
+        trailer: *rss_labeled_double_override
+        motorcycle: *rss_labeled_double_override
+        bicycle: *rss_labeled_double_override
+        pedestrian: *rss_labeled_double_override
+        animal: *rss_labeled_double_override
+        hazard: *rss_labeled_double_override
+        over_drivable: *rss_labeled_double_override
+        under_drivable: *rss_labeled_double_override
       error_threshold:
         ego_acceleration:
           type: double
