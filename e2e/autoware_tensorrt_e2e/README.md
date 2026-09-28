@@ -221,7 +221,10 @@ delivered raises a `WARN` diagnostic
 (`Processing time exceeded the planning period`). Model and preprocessing must fit the
 100 ms budget on the target hardware.
 
-TensorRT engines are built in-node by `TrtCommon` and cached beside the ONNX files. Both
+TensorRT engines are built in-node by `TrtCommon` and cached beside the ONNX files. The
+extractor's is `bevfusion_lidar_feature.trt.engine`, not `.engine`: `TrtCommon` writes its
+layer dump beside the engine with `.json`, and `bevfusion_lidar_feature.json` is the exporter's
+metadata that `deployment_manifest.json` hashes. Both
 engines are built with the `trt_workspace_mib` workspace (default 4 GiB), an upper bound on the
 builder's scratch rather than an allocation; raise it only for a graph whose build reports
 insufficient workspace.

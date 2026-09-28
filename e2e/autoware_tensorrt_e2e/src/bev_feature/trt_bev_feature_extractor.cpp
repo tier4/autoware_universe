@@ -26,6 +26,7 @@
 #include <NvInfer.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -107,8 +108,17 @@ TrtBevFeatureExtractor::TrtBevFeatureExtractor(const Config & config, cudaStream
 
 void TrtBevFeatureExtractor::init_engine(const Config & config)
 {
-  const auto trt_config = TrtCommonConfig(
-    config.onnx_path, config.precision, config.engine_path, config.max_workspace_size);
+  // TrtCommon writes its layer dump to the engine path with ".json", which for an engine
+  // beside bevfusion_lidar_feature.onnx is bevfusion_lidar_feature.json -- the exporter's
+  // metadata, hashed by deployment_manifest.json. Left there, the first build overwrites
+  // it and every later launch fails the manifest check, so the default cache is
+  // bevfusion_lidar_feature.trt.engine and the dump goes to bevfusion_lidar_feature.trt.json.
+  const std::string engine_path =
+    config.engine_path.empty()
+      ? std::filesystem::path(config.onnx_path).replace_extension(".trt.engine").string()
+      : config.engine_path;
+  const auto trt_config =
+    TrtCommonConfig(config.onnx_path, config.precision, engine_path, config.max_workspace_size);
 
   // Same lidar-branch IO contract as autoware_bevfusion: dynamic voxel count with a
   // min/opt/max optimization profile.

@@ -62,7 +62,7 @@
       warmup: "wait"  # "wait" or "duplicate_current"
       max_delay_ms: 200.0
       extractor:
-        engine_path: ""  # empty: cached beside the ONNX, as TrtCommon does
+        engine_path: ""  # empty: <onnx stem>.trt.engine beside the ONNX (its layer dump must not overwrite <stem>.json)
         onnx_path: $(var model_path)/$(var extractor_onnx)
         plugins_path: $(find-pkg-share autoware_tensorrt_plugins)/plugins/libautoware_tensorrt_plugins.so
         precision: "fp16"  # sparse-conv feature extractors are validated in fp16
