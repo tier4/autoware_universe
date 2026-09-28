@@ -210,6 +210,12 @@ trajectory_mppi_optimizer:
     description: Horizon-compensated cost on the first steering command relative to measured steering
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  overlimit_coeff:
+    type: double
+    default_value: 10000.0
+    description: Non-negative cost coefficient for supplied velocity, acceleration, and jerk limits
+    validation: { bounds<>: [0.0, 3.402823466e+38] }
+    read_only: false
   accel_cmd_std_dev:
     type: double
     default_value: 0.1

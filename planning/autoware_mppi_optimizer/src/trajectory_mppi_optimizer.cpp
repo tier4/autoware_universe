@@ -95,6 +95,7 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   output.initial_steer_rate_coeff = static_cast<float>(params.initial_steer_rate_coeff);
   output.accel_cmd_rate_coeff = static_cast<float>(params.accel_cmd_rate_coeff);
   output.steer_cmd_rate_coeff = static_cast<float>(params.steer_cmd_rate_coeff);
+  output.overlimit_coeff = static_cast<float>(params.overlimit_coeff);
 
   output.accel_cmd_std_dev = static_cast<float>(params.accel_cmd_std_dev);
   output.steer_cmd_std_dev = static_cast<float>(params.steer_cmd_std_dev);
@@ -931,6 +932,7 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value("terminal/error", cost.terminal_error);
   cost_diagnostics_->add_key_value("terminal/heading", cost.terminal_heading);
   cost_diagnostics_->add_key_value("state/lateral_distance", cost.lateral_distance);
+  cost_diagnostics_->add_key_value("state/lateral_boundary", cost.lateral_boundary);
   cost_diagnostics_->add_key_value("state/signed_lateral_error_m", cost.signed_lateral_error_m);
   cost_diagnostics_->add_key_value("state/lateral_yaw_error", cost.lateral_yaw_error);
   cost_diagnostics_->add_key_value("state/preferred_lane_center", cost.preferred_lane_center);
@@ -955,6 +957,11 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value(
     "mppi/acceleration_command_rate", cost.acceleration_command_rate);
   cost_diagnostics_->add_key_value("mppi/steering_command_rate", cost.steering_command_rate);
+  cost_diagnostics_->add_key_value(
+    "kinematic/velocity_overlimit", cost.kinematic_velocity_overlimit);
+  cost_diagnostics_->add_key_value(
+    "kinematic/acceleration_overlimit", cost.kinematic_acceleration_overlimit);
+  cost_diagnostics_->add_key_value("kinematic/jerk_overlimit", cost.kinematic_jerk_overlimit);
   cost_diagnostics_->add_key_value("validation_reason", to_string(debug.validation.reasons));
   cost_diagnostics_->add_key_value(
     "first_invalid_index", debug.validation.first_invalid_index
