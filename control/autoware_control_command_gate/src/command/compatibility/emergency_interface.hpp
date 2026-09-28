@@ -15,6 +15,7 @@
 #ifndef COMMAND__COMPATIBILITY__EMERGENCY_INTERFACE_HPP_
 #define COMMAND__COMPATIBILITY__EMERGENCY_INTERFACE_HPP_
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <tier4_external_api_msgs/msg/emergency.hpp>
@@ -26,20 +27,21 @@ namespace autoware::control_command_gate
 class EmergencyInterface
 {
 private:
+  using NodeT = autoware::agnocast_wrapper::Node;
   using Emergency = tier4_external_api_msgs::msg::Emergency;
   using SetEmergency = tier4_external_api_msgs::srv::SetEmergency;
 
 public:
-  explicit EmergencyInterface(rclcpp::Node * node);
+  explicit EmergencyInterface(NodeT * node);
   bool is_emergency() const { return is_emergency_; }
   void publish();
 
 private:
   bool is_emergency_ = false;
 
-  rclcpp::Node * node_;
-  rclcpp::Publisher<Emergency>::SharedPtr pub_external_emergency_;
-  rclcpp::Service<SetEmergency>::SharedPtr srv_external_emergency_;
+  NodeT * node_;
+  AUTOWARE_PUBLISHER_PTR(Emergency) pub_external_emergency_;
+  AUTOWARE_SERVICE_PTR(SetEmergency) srv_external_emergency_;
 
   void on_service(
     const SetEmergency::Request::SharedPtr req, const SetEmergency::Response::SharedPtr res);

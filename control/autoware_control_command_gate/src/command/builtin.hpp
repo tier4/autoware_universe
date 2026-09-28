@@ -17,6 +17,7 @@
 
 #include "source.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -28,13 +29,13 @@ namespace autoware::control_command_gate
 class BuiltinEmergency : public CommandSource
 {
 public:
-  BuiltinEmergency(uint16_t id, const std::string & name, rclcpp::Node & node);
+  BuiltinEmergency(uint16_t id, const std::string & name, autoware::agnocast_wrapper::Node & node);
   void resend_last_command() override;
   void set_prev_control(std::shared_ptr<Control> control) { prev_control_ = control; }
 
 private:
   void on_timer();
-  rclcpp::TimerBase::SharedPtr timer_;
+  AUTOWARE_TIMER_PTR timer_;
   rclcpp::Clock::SharedPtr clock_;
 
   double acceleration_;

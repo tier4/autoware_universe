@@ -21,7 +21,8 @@
 namespace autoware::control_command_gate
 {
 
-Compatibility::Compatibility(std::unique_ptr<CommandOutput> && output, rclcpp::Node & node)
+Compatibility::Compatibility(
+  std::unique_ptr<CommandOutput> && output, autoware::agnocast_wrapper::Node & node)
 : CommandBridge(std::move(output)), node_(node)
 {
   stop_hold_acceleration_ = node.declare_parameter<float>("stop_hold_acceleration");
