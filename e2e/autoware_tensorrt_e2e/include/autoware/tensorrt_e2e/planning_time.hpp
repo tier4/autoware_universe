@@ -33,8 +33,13 @@ namespace autoware::tensorrt_e2e
  * `kPlanningTime`: the plan starts at the newest odometry sample, T + L. The ego state,
  * history, map, route and goal are taken there; the BEV maps (current one included) are
  * warped into that pose; traffic lights stay selected at T, as in training; the model
- * reads `sensor_latency` = L; and the trajectory is stamped T + L. Training draws L from
- * the vehicle's measured cloud age, so the value fed here must be that same age.
+ * reads `sensor_latency` = L; and the trajectory is stamped T + L. Training must draw L
+ * from the distribution fed HERE, which is not the cloud's age: L runs to the newest
+ * odometry sample the node holds when the cloud arrives, so it is the cloud age minus up to
+ * one odometry period (20 ms at 50 Hz) minus the callback that has not run yet, and it comes
+ * in odometry-period steps. Measured on a replay with the car's LiDAR timing (2025-09-03
+ * split 0, packets retimed): concatenated cloud 143 ms old at publish, L = 110.5 ms on 425
+ * of 569 plans (90.5 on the rest of the low side).
  *
  * The package states its convention (`planning_time` in the ml_package file) and the
  * graph states it too, by whether it reads `sensor_latency`: the node refuses any
