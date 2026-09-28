@@ -75,6 +75,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   cuda_add_library(${PROJECT_NAME}_cuda_lib SHARED
     src/preprocess/camera_preprocess_kernel.cu
     src/bev_feature/bev_warp_kernel.cu
+    src/bev_feature/detection_decode_kernel.cu
   )
 
   ament_auto_add_library(${PROJECT_NAME}_component SHARED
@@ -82,6 +83,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     src/input_provider_registry.cpp
     src/inference_engine.cpp
     src/bev_feature/temporal_bev_cache.cpp
+    src/bev_feature/detection_decode.cpp
     src/bev_feature/trt_bev_feature_extractor.cpp
     src/providers/camera_input_provider.cpp
     src/providers/lidar_input_provider.cpp
@@ -127,6 +129,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       test/bev_warp_test.cpp
       test/bev_warp_golden_test.cpp
       test/temporal_bev_cache_test.cpp
+      test/detection_postprocessor_test.cpp
+      test/detection_decode_test.cpp
     )
     target_link_libraries(test_${PROJECT_NAME} ${PROJECT_NAME}_component)
     target_compile_definitions(test_${PROJECT_NAME} PRIVATE

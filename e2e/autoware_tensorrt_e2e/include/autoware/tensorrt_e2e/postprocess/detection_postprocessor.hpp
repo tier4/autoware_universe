@@ -31,18 +31,14 @@ namespace autoware::tensorrt_e2e
 
 /**
  * @class DetectionPostprocessor
- * @brief Turns the extractor's decoded proposals into `DetectedObjects`.
+ * @brief Turns the decoded, score-cut proposals into `DetectedObjects`.
  *
- * The device side of the postprocessing (TransFusion bbox coder, yaw-norm gate, score
- * cut, circle NMS) is `autoware_bevfusion`'s `PostprocessCuda` and runs inside
- * `TrtBevFeatureExtractor`. What is left is the host side, and it is the same sequence
- * `autoware_bevfusion`'s node runs after its own `detect()`: build one `DetectedObject`
- * per box, suppress overlaps with BEV-IoU NMS, then remap classes by area.
- *
- * The one step that is this package's own is the per-class score cut. The head's bbox
- * coder states a threshold PER CLASS and `PostprocessCuda` holds a single float, so the
- * device filter runs at the lowest of them and the per-class cut is applied here.
- * Together they are exactly the head's own thresholds.
+ * The device side (TransFusion coder, yaw-norm gate, per-(distance band, class) score
+ * thresholds) is TrtBevFeatureExtractor's decode kernel, which hands over the survivors in
+ * `autoware_bevfusion`'s order. What is left is that node's host sequence after its own
+ * decode: class-agnostic circle NMS (on the host here, with the device kernel's float
+ * arithmetic; see circle_nms()), one `DetectedObject` per box, BEV-IoU NMS, then the
+ * area-based class remapper.
  *
  * Class mapping: `class_names[label]` is looked up with `autoware_bevfusion`'s
  * `getSemanticType`, so a name that ObjectClassification has no label for becomes
@@ -57,8 +53,8 @@ public:
   {
     //! One Autoware class name per head class, indexed by the head's label.
     std::vector<std::string> class_names;
-    //! One score threshold per head class; empty keeps every box the device kept.
-    std::vector<double> score_thresholds;
+    //! Class-agnostic centre-distance NMS [m]; 0 disables it.
+    double circle_nms_dist_threshold{0.5};
     //! BEV-IoU NMS, as `autoware_bevfusion` parameterizes it.
     double iou_nms_search_distance_2d{10.0};
     double iou_nms_threshold{0.1};
@@ -69,29 +65,33 @@ public:
   };
 
   /**
-   * @throws std::runtime_error when the class names and thresholds disagree in length,
-   *         or when the remapper matrices are not a consistent square set.
+   * @throws std::runtime_error on a negative NMS parameter, or when the remapper matrices
+   *         are not a consistent square set.
    */
   explicit DetectionPostprocessor(const Config & config);
 
   /**
    * @brief Build the message for one frame's boxes.
-   * @param boxes Decoded proposals, score-descending, in the cloud's own frame.
+   * @param boxes Score-cut proposals, score-descending, in the cloud's own frame.
    * @param header Header of the point cloud the boxes were detected in.
    */
   autoware_perception_msgs::msg::DetectedObjects build(
     const std::vector<autoware::bevfusion::Box3D> & boxes, const std_msgs::msg::Header & header);
-
-  /// Boxes dropped by the per-class score cut in the last build().
-  size_t last_below_threshold() const { return last_below_threshold_; }
 
 private:
   Config config_;
   bool remap_classes_{false};
   autoware::bevfusion::NonMaximumSuppression iou_bev_nms_;
   autoware::bevfusion::DetectionClassRemapper class_remapper_;
-  size_t last_below_threshold_{0};
 };
+
+/**
+ * @brief `autoware_bevfusion`'s circle NMS over score-descending boxes: a box is dropped when
+ *        its centre lies closer than `distance_threshold` to a kept, higher-scored box of any
+ *        class. Float arithmetic, as the device kernel compares `dist2dPow < threshold^2`.
+ */
+std::vector<autoware::bevfusion::Box3D> circle_nms(
+  const std::vector<autoware::bevfusion::Box3D> & boxes, float distance_threshold);
 
 }  // namespace autoware::tensorrt_e2e
 

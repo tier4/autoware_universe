@@ -59,9 +59,9 @@ BEVFusionConfig make_lidar_only_config(const TrtBevFeatureExtractor::Config & co
     throw std::runtime_error("bev_feature.extractor.voxel_size must have 3 elements");
   }
   // Empty image-backbone paths select the lidar-only mode; the camera parameters are
-  // unused on this path and passed as neutral values. The postprocess parameters are
-  // real whenever the graph carries the detection head -- `PostprocessCuda` decodes
-  // proposals out of exactly this config.
+  // unused on this path and passed as neutral values. So are the postprocess ones: the
+  // detection head is decoded by this package's own kernel (detection_decode.hpp), and
+  // only the preprocessing reads this config.
   const auto & detection = config.detection;
   return BEVFusionConfig(
     config.plugins_path, "", "", "", detection.out_size_factor, config.cloud_capacity,
@@ -70,8 +70,8 @@ BEVFusionConfig make_lidar_only_config(const TrtBevFeatureExtractor::Config & co
     /*z_bound=*/{}, /*num_cameras=*/0, /*raw_image_height=*/0, /*raw_image_width=*/0,
     /*img_aug_scale_x=*/0.0f, /*img_aug_scale_y=*/0.0f, /*roi_height=*/0, /*roi_width=*/0,
     /*features_height=*/0, /*features_width=*/0, /*num_depth_features=*/0,
-    /*image_feature_channel=*/0, detection.num_proposals, detection.circle_nms_dist_threshold,
-    detection.yaw_norm_thresholds, detection.score_threshold, config.use_intensity);
+    /*image_feature_channel=*/0, detection.num_proposals, /*circle_nms_dist_threshold=*/0.0f,
+    detection.yaw_norm_thresholds, /*score_threshold=*/0.0f, config.use_intensity);
 }
 
 }  // namespace
@@ -329,9 +329,39 @@ void TrtBevFeatureExtractor::init_detection(const Config & config)
   bound_outputs_.push_back(detection.score_tensor);
   bound_outputs_.push_back(detection.label_tensor);
 
-  postprocess_ =
-    std::make_unique<autoware::bevfusion::PostprocessCuda>(bevfusion_config_, stream_);
-  last_detections_.reserve(static_cast<size_t>(proposals));
+  const auto table = make_score_threshold_table(
+    detection.distance_bin_upper_limits, detection.score_thresholds,
+    static_cast<size_t>(class_count));
+  const std::vector<float> yaw_norm_thresholds(
+    detection.yaw_norm_thresholds.begin(), detection.yaw_norm_thresholds.end());
+  const auto upload = [this](const std::vector<float> & values) {
+    auto device = autoware::cuda_utils::make_unique<float[]>(values.size());
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
+      device.get(), values.data(), values.size() * sizeof(float), cudaMemcpyHostToDevice, stream_));
+    return device;
+  };
+  yaw_norm_thresholds_d_ = upload(yaw_norm_thresholds);
+  squared_upper_limits_d_ = upload(table.squared_upper_limits);
+  score_thresholds_d_ = upload(table.thresholds);
+  // The uploads read host vectors that end with this scope.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+
+  decode_geometry_.num_proposals = static_cast<int32_t>(proposals);
+  decode_geometry_.num_classes = static_cast<int32_t>(class_count);
+  decode_geometry_.num_bands = static_cast<int32_t>(table.squared_upper_limits.size());
+  decode_geometry_.out_size_factor = static_cast<float>(detection.out_size_factor);
+  decode_geometry_.voxel_size_x = config.voxel_size[0];
+  decode_geometry_.voxel_size_y = config.voxel_size[1];
+  decode_geometry_.min_x_range = config.point_cloud_range[0];
+  decode_geometry_.min_y_range = config.point_cloud_range[1];
+
+  const auto capacity = static_cast<size_t>(proposals);
+  decoded_d_ = autoware::cuda_utils::make_unique<DecodedBox[]>(capacity);
+  decoded_count_d_ = autoware::cuda_utils::make_unique<int32_t[]>(1);
+  decoded_h_ = autoware::cuda_utils::make_unique_host<DecodedBox[]>(capacity, cudaHostAllocDefault);
+  decoded_count_h_ = autoware::cuda_utils::make_unique_host<int32_t[]>(1, cudaHostAllocDefault);
+  decoded_.reserve(capacity);
+  last_detections_.reserve(capacity);
   detection_enabled_ = true;
 }
 
@@ -429,15 +459,53 @@ bool TrtBevFeatureExtractor::decode_detections(std::string & error)
     return true;
   }
   detections_pending_ = false;
-  // autoware_bevfusion's own decode: TransFusion coder, score cut, circle NMS. Ordered on
-  // the stream behind the extractor engine, so the proposals it reads are finished; the
-  // boxes come back on the host, already sorted by score, and that copy is the wait.
+  // Ordered on the stream behind the extractor engine, so the proposals it reads are
+  // finished. The survivor buffer is copied whole with its count: at most num_proposals
+  // boxes, one transfer and one wait instead of a count round trip first.
   last_detections_.clear();
-  const cudaError_t status = postprocess_->generateDetectedBoxes3D_launch(
-    label_pred_d_.get(), bbox_pred_d_.get(), score_d_.get(), last_detections_, stream_);
+  const size_t capacity = static_cast<size_t>(decode_geometry_.num_proposals);
+  cudaError_t status = cudaMemsetAsync(decoded_count_d_.get(), 0, sizeof(int32_t), stream_);
+  if (status == cudaSuccess) {
+    status = launch_decode_detections(
+      label_pred_d_.get(), bbox_pred_d_.get(), score_d_.get(), yaw_norm_thresholds_d_.get(),
+      squared_upper_limits_d_.get(), score_thresholds_d_.get(), decode_geometry_, decoded_d_.get(),
+      decoded_count_d_.get(), stream_);
+  }
+  if (status == cudaSuccess) {
+    status = cudaMemcpyAsync(
+      decoded_count_h_.get(), decoded_count_d_.get(), sizeof(int32_t), cudaMemcpyDeviceToHost,
+      stream_);
+  }
+  if (status == cudaSuccess) {
+    status = cudaMemcpyAsync(
+      decoded_h_.get(), decoded_d_.get(), capacity * sizeof(DecodedBox), cudaMemcpyDeviceToHost,
+      stream_);
+  }
+  if (status == cudaSuccess) {
+    status = cudaStreamSynchronize(stream_);
+  }
   if (status != cudaSuccess) {
     error = std::string("Decoding the detection head failed: ") + cudaGetErrorString(status);
     return false;
+  }
+
+  const auto count = std::min<size_t>(static_cast<size_t>(decoded_count_h_[0]), capacity);
+  decoded_.assign(decoded_h_.get(), decoded_h_.get() + count);
+  sort_like_bevfusion(decoded_);
+  for (const auto & box : decoded_) {
+    autoware::bevfusion::Box3D out{};
+    out.label = box.label;
+    out.score = box.score;
+    out.x = box.x;
+    out.y = box.y;
+    out.z = box.z;
+    out.width = box.width;
+    out.length = box.length;
+    out.height = box.height;
+    out.yaw = box.yaw;
+    out.vx = box.vx;
+    out.vy = box.vy;
+    last_detections_.push_back(out);
   }
   return true;
 }

@@ -21,8 +21,9 @@
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
 
 #include <algorithm>
-#include <cmath>
 #include <array>
+#include <chrono>
+#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -158,7 +159,13 @@ void BevFeatureInputProvider::declare_detection_params()
   // exporter, so no defaults here.
   detection_config_.class_names = node_.declare_parameter<std::vector<std::string>>(
     "bev_feature.detection.class_names", network_field());
-  detection_config_.score_thresholds = node_.declare_parameter<std::vector<double>>(
+  // The head's calibrated score thresholds (autoware_bevfusion's
+  // detection_score_thresholds), shipped with its perception release and written into the
+  // package with it: ascending distance bands and one threshold per class per band.
+  extractor_config_.detection.distance_bin_upper_limits =
+    node_.declare_parameter<std::vector<double>>(
+      "bev_feature.detection.distance_bin_upper_limits", network_field());
+  extractor_config_.detection.score_thresholds = node_.declare_parameter<std::vector<double>>(
     "bev_feature.detection.score_thresholds", network_field());
   extractor_config_.detection.num_proposals =
     node_.declare_parameter<int64_t>("bev_feature.detection.num_proposals", network_field());
@@ -167,8 +174,8 @@ void BevFeatureInputProvider::declare_detection_params()
 
   // Host behaviour -- the same knobs, with the same names and defaults, that
   // autoware_bevfusion keeps in its deployment file rather than its ml_package.
-  extractor_config_.detection.circle_nms_dist_threshold = static_cast<float>(
-    node_.declare_parameter<double>("bev_feature.detection.circle_nms_dist_threshold", 0.5));
+  detection_config_.circle_nms_dist_threshold =
+    node_.declare_parameter<double>("bev_feature.detection.circle_nms_dist_threshold", 0.5);
   detection_config_.iou_nms_search_distance_2d =
     node_.declare_parameter<double>("bev_feature.detection.iou_nms_search_distance_2d", 10.0);
   detection_config_.iou_nms_threshold =
@@ -194,14 +201,6 @@ void BevFeatureInputProvider::declare_detection_params()
       " entries but the head has " + std::to_string(num_classes) + " classes");
   }
 
-  // PostprocessCuda holds ONE score threshold, the head states one per class: the device
-  // filter runs at the lowest and DetectionPostprocessor applies the per-class cut, so
-  // the two together are the head's own thresholds and nothing is dropped early.
-  extractor_config_.detection.score_threshold =
-    detection_config_.score_thresholds.empty()
-      ? 0.0f
-      : static_cast<float>(*std::min_element(
-          detection_config_.score_thresholds.begin(), detection_config_.score_thresholds.end()));
   extractor_config_.detection.enabled = true;
 }
 
@@ -273,10 +272,15 @@ std::vector<std::string> BevFeatureInputProvider::claim_inputs(
       detected_objects_pub_ =
         node_.create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
           "~/output/detected_objects", rclcpp::QoS(1));
+      detection_time_pub_ =
+        node_.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+          "~/debug/processing_time/detection_ms", 1);
       RCLCPP_INFO_STREAM(
         node_.get_logger(), "BEV feature extractor detection head enabled: "
                               << detection_config_.class_names.size() << " classes, "
-                              << extractor_config_.detection.num_proposals << " proposals");
+                              << extractor_config_.detection.num_proposals << " proposals, "
+                              << extractor_config_.detection.distance_bin_upper_limits.size()
+                              << " score-threshold distance bands");
     } else {
       // Configured on, but this graph has no head. That is a stale artifact next to a
       // current config, and silently publishing nothing would look like a dead detector.
@@ -476,6 +480,7 @@ void BevFeatureInputProvider::finish_tick()
     return;
   }
   pending_detections_published_ = true;
+  const auto started = std::chrono::steady_clock::now();
   std::string error;
   if (!extractor_->decode_detections(error)) {
     RCLCPP_WARN_STREAM_THROTTLE(
@@ -491,6 +496,12 @@ void BevFeatureInputProvider::finish_tick()
     detection_postprocessor_->build(extractor_->last_detections(), cloud->header);
   last_detected_object_count_ = objects.objects.size();
   detected_objects_pub_->publish(objects);
+  last_detection_ms_ =
+    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+  autoware_internal_debug_msgs::msg::Float64Stamped timing;
+  timing.stamp = node_.now();
+  timing.data = last_detection_ms_;
+  detection_time_pub_->publish(timing);
 }
 
 }  // namespace autoware::tensorrt_e2e

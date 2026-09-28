@@ -47,12 +47,8 @@ DetectionPostprocessor::DetectionPostprocessor(const Config & config) : config_(
   if (config_.class_names.empty()) {
     throw std::runtime_error("bev_feature.detection.class_names is empty");
   }
-  if (!config_.score_thresholds.empty() &&
-      config_.score_thresholds.size() != config_.class_names.size()) {
-    throw std::runtime_error(
-      "bev_feature.detection.score_thresholds has " +
-      std::to_string(config_.score_thresholds.size()) + " entries for " +
-      std::to_string(config_.class_names.size()) + " classes");
+  if (config_.circle_nms_dist_threshold < 0.0) {
+    throw std::runtime_error("bev_feature.detection.circle_nms_dist_threshold must be >= 0");
   }
 
   autoware::bevfusion::NMSParams nms_params;
@@ -86,24 +82,39 @@ DetectionPostprocessor::DetectionPostprocessor(const Config & config) : config_(
   }
 }
 
+std::vector<autoware::bevfusion::Box3D> circle_nms(
+  const std::vector<autoware::bevfusion::Box3D> & boxes, const float distance_threshold)
+{
+  if (!(distance_threshold > 0.f)) {
+    return boxes;
+  }
+  const float threshold_squared = distance_threshold * distance_threshold;
+  std::vector<autoware::bevfusion::Box3D> kept;
+  kept.reserve(boxes.size());
+  std::vector<bool> suppressed(boxes.size(), false);
+  for (size_t i = 0; i < boxes.size(); ++i) {
+    if (suppressed[i]) {
+      continue;
+    }
+    kept.push_back(boxes[i]);
+    for (size_t j = i + 1; j < boxes.size(); ++j) {
+      const float dx = boxes[i].x - boxes[j].x;
+      const float dy = boxes[i].y - boxes[j].y;
+      if (dx * dx + dy * dy < threshold_squared) {
+        suppressed[j] = true;
+      }
+    }
+  }
+  return kept;
+}
+
 autoware_perception_msgs::msg::DetectedObjects DetectionPostprocessor::build(
   const std::vector<autoware::bevfusion::Box3D> & boxes, const std_msgs::msg::Header & header)
 {
-  last_below_threshold_ = 0;
-
+  const auto kept = circle_nms(boxes, static_cast<float>(config_.circle_nms_dist_threshold));
   std::vector<autoware_perception_msgs::msg::DetectedObject> raw_objects;
-  raw_objects.reserve(boxes.size());
-  for (const auto & box : boxes) {
-    // The device filter ran at the LOWEST of the per-class thresholds, so a box can still
-    // be below its own class's. An out-of-range label is left to box3DToDetectedObject,
-    // which reports it and publishes UNKNOWN.
-    if (
-      !config_.score_thresholds.empty() && box.label >= 0 &&
-      static_cast<size_t>(box.label) < config_.score_thresholds.size() &&
-      static_cast<double>(box.score) < config_.score_thresholds[box.label]) {
-      ++last_below_threshold_;
-      continue;
-    }
+  raw_objects.reserve(kept.size());
+  for (const auto & box : kept) {
     autoware_perception_msgs::msg::DetectedObject object;
     autoware::bevfusion::box3DToDetectedObject(box, config_.class_names, object);
     raw_objects.emplace_back(std::move(object));
