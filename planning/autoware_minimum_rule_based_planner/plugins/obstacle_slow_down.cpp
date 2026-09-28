@@ -29,8 +29,9 @@ using autoware::minimum_rule_based_planner::plugin::obstacle_slow_down_utils::
 using autoware::minimum_rule_based_planner::plugin::obstacle_slow_down_utils::Side;
 using autoware_perception_msgs::msg::ObjectClassification;
 
+template <typename NodeT>
 std::unordered_map<std::string, ObjectTypeSpecificParams> load_object_type_specific_params(
-  rclcpp::Node & node)
+  NodeT & node)
 {
   const std::string param_prefix = "obstacle_slow_down.object_type_specified_params.";
 
@@ -96,8 +97,8 @@ void ObstacleSlowDown::on_initialize(const MinimumRuleBasedPlannerParams & param
   planner_->set_object_type_specific_params(load_object_type_specific_params(*get_node_ptr()));
 
   planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
-      get_node_ptr(), "backup_planner_obstacle_slow_down");
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceT<
+      autoware::agnocast_wrapper::Node>>(get_node_ptr(), "backup_planner_obstacle_slow_down");
 }
 
 void ObstacleSlowDown::update_params(const MinimumRuleBasedPlannerParams & params)
