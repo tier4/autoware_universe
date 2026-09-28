@@ -1,6 +1,7 @@
 // Copyright 2026 TIER IV, Inc.
 // Licensed under the Apache License, Version 2.0.
 #include "autoware/tensorrt_e2e/deployment_manifest.hpp"
+#include "autoware/tensorrt_e2e/planning_time.hpp"
 #include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
 #include "autoware/tensorrt_e2e/rolling_latency.hpp"
 #include "autoware/tensorrt_e2e/training_ego_shape.hpp"
@@ -85,6 +86,31 @@ int main(int argc, char **argv) {
   check(latency.percentile(.99) == 7);
   latency.clear();
   check(latency.percentile(.95) == 0);
+  // When the plan starts: a package and its graph must agree, and a planning-time plan
+  // starts at the newest odometry, never before the cloud.
+  const auto refuses = [](const auto &call) {
+    try {
+      call();
+    } catch (const std::runtime_error &) {
+      return true;
+    }
+    return false;
+  };
+  check(parse_planning_time("cloud_stamp") == PlanningTime::kCloudStamp);
+  check(parse_planning_time("planning_time") == PlanningTime::kPlanningTime);
+  check(refuses([] { parse_planning_time("now"); }));
+  check(refuses([] { parse_planning_time(""); }));
+  check(std::string(planning_time_name(PlanningTime::kPlanningTime)) == "planning_time");
+  check(!refuses([] { check_planning_time_inputs(PlanningTime::kCloudStamp, false); }));
+  check(!refuses([] { check_planning_time_inputs(PlanningTime::kPlanningTime, true); }));
+  check(refuses([] { check_planning_time_inputs(PlanningTime::kCloudStamp, true); }));
+  check(refuses([] { check_planning_time_inputs(PlanningTime::kPlanningTime, false); }));
+  const int64_t cloud = 1'000'000'000;
+  const int64_t odometry = cloud + 146'000'000;
+  check(planning_stamp_ns(PlanningTime::kCloudStamp, cloud, odometry) == cloud);
+  check(planning_stamp_ns(PlanningTime::kPlanningTime, cloud, odometry) == odometry);
+  check(planning_stamp_ns(PlanningTime::kPlanningTime, cloud, cloud) == cloud);
+  check(!planning_stamp_ns(PlanningTime::kPlanningTime, cloud, cloud - 1));
   std::cout
-      << "Manifest tampering/path checks, pose reset, rolling latency: PASS\n";
+      << "Manifest tampering/path checks, pose reset, rolling latency, planning time: PASS\n";
 }

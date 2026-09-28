@@ -178,14 +178,14 @@ bool TemporalBevCache::ready() const
          (slots_.front().stamp - slots_.back().stamp).seconds() < required_span;
 }
 
-const float * TemporalBevCache::build_history(cudaStream_t stream)
+const float * TemporalBevCache::build_history(
+  cudaStream_t stream, const std::array<double, 4> & target_pose)
 {
   if (!ready()) {
     throw std::runtime_error("TemporalBevCache::build_history called before the cache is ready");
   }
 
   const auto selection = current_selection();
-  const Slot & newest = slots_.front();
   for (int64_t frame = 0; frame < config_.frames; ++frame) {
     // During initial warmup, missing history duplicates the current map.
     int64_t slot_index = selection[static_cast<size_t>(frame)];
@@ -195,8 +195,9 @@ const float * TemporalBevCache::build_history(cudaStream_t stream)
     const Slot & slot = slots_[static_cast<size_t>(slot_index)];
     float * destination = history_.get() + static_cast<size_t>(frame) * frame_elements_;
 
-    if (frame == 0 || slot.pose == newest.pose) {
-      // The newest map is already in the target ego frame; identical poses need no warp.
+    if (slot.pose == target_pose) {
+      // Already in the target ego frame -- the newest map, when the plan starts at its
+      // stamp; identical poses need no warp.
       CHECK_CUDA_ERROR(cudaMemcpyAsync(
         destination, slot.feature.get(), frame_elements_ * sizeof(float),
         cudaMemcpyDeviceToDevice, stream));
@@ -204,7 +205,7 @@ const float * TemporalBevCache::build_history(cudaStream_t stream)
     }
 
     const Se2WarpParams params = make_se2_warp_params(
-      newest.pose, slot.pose, config_.bev_half_extent_m, static_cast<int32_t>(height_),
+      target_pose, slot.pose, config_.bev_half_extent_m, static_cast<int32_t>(height_),
       static_cast<int32_t>(width_));
     CHECK_CUDA_ERROR(launch_se2_warp_kernel(
       slot.feature.get(), destination, params, static_cast<int32_t>(channels_), stream));

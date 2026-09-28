@@ -315,6 +315,10 @@ void TensorrtE2eNode::set_up_params()
   recorded_ego_dynamics_ =
       declare_parameter<bool>("recorded_ego_dynamics", false);
   derived_contract_ = declare_parameter<std::string>("derived_contract", "");
+  // Defaulted to the convention every package before it had: a planning-time graph under
+  // the default is refused by the graph check in initialize_pipeline(), never run. Parsed
+  // there too, so a misspelt value is reported on the diagnostic like any other refusal.
+  declare_parameter<std::string>("planning_time", "cloud_stamp");
   declare_parameter<bool>("require_deployment_manifest", false);
   params_.model_path = declare_parameter<std::string>("model_path", "");
   params_.plugins_path = declare_parameter<std::string>("plugins_path", "");
@@ -460,6 +464,8 @@ void TensorrtE2eNode::initialize_pipeline()
         "': the model was trained on other derived data (or its package predates the "
         "field); retrain and re-export");
 
+  planning_time_ = parse_planning_time(get_parameter("planning_time").as_string());
+
   InferenceEngine::Config engine_config;
   engine_config.model_path = params_.model_path;
   engine_config.plugins_path = params_.plugins_path;
@@ -475,6 +481,11 @@ void TensorrtE2eNode::initialize_pipeline()
     }
     RCLCPP_INFO_STREAM(get_logger(), "Engine inputs:" << manifest.str());
   }
+  // Before the claims, so a disagreement says which side is wrong instead of surfacing
+  // as an unclaimed input (an old node refuses a planning-time graph exactly that way).
+  check_planning_time_inputs(
+    planning_time_, find_spec(engine_->input_specs(), SENSOR_LATENCY_TENSOR) != nullptr);
+  RCLCPP_INFO(get_logger(), "planning_time: %s", planning_time_name(planning_time_));
 
   // One stream for the whole tick. A provider's GPU work, the network, and the output copy
   // are ordered on it, so nothing in the middle of a pass has to wait for the device: the
@@ -529,17 +540,9 @@ void TensorrtE2eNode::initialize_pipeline()
   diagnostics_->publish(get_clock()->now());
 }
 
-std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
+std::optional<Odometry> TensorrtE2eNode::interpolate_odometry(const int64_t stamp_ns) const
 {
-  waiting_for_ego_ = true;
-  if (odometry_history_.samples.empty())
-    return std::nullopt;
-  const auto sensor_stamp =
-      pacing_provider_ ? pacing_provider_->latest_input_stamp() : std::nullopt;
-  const int64_t target = sensor_stamp
-                             ? sensor_stamp->nanoseconds()
-                             : odometry_history_.samples.back().stamp_ns;
-  const auto bracket = odometry_history_.bracket(target);
+  const auto bracket = odometry_history_.bracket(stamp_ns);
   if (!bracket)
     return std::nullopt; // Never extrapolate a LiDAR pose from a stale twist.
   const auto &lo = odometry_history_.samples[bracket->first];
@@ -549,23 +552,53 @@ std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
     return std::nullopt;
   const double alpha = hi.stamp_ns == lo.stamp_ns
                            ? 0.0
-                           : static_cast<double>(target - lo.stamp_ns) /
+                           : static_cast<double>(stamp_ns - lo.stamp_ns) /
                                  (hi.stamp_ns - lo.stamp_ns);
+
+  Odometry odometry = lo.value;
+  odometry.header.stamp = rclcpp::Time(stamp_ns, get_clock()->get_clock_type());
+  odometry.pose.pose = autoware_utils_geometry::calc_interpolated_pose(
+      lo.value.pose.pose, hi.value.pose.pose, alpha, false);
+  auto blend = [alpha](double a, double b) { return a + alpha * (b - a); };
+  odometry.twist.twist.linear.x =
+      blend(lo.value.twist.twist.linear.x, hi.value.twist.twist.linear.x);
+  odometry.twist.twist.linear.y =
+      blend(lo.value.twist.twist.linear.y, hi.value.twist.twist.linear.y);
+  odometry.twist.twist.angular.z =
+      blend(lo.value.twist.twist.angular.z, hi.value.twist.twist.angular.z);
+  return odometry;
+}
+
+std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
+{
+  waiting_for_ego_ = true;
+  if (odometry_history_.samples.empty())
+    return std::nullopt;
+  const auto sensor_stamp =
+      pacing_provider_ ? pacing_provider_->latest_input_stamp() : std::nullopt;
+  const int64_t sensor_ns = sensor_stamp
+                                ? sensor_stamp->nanoseconds()
+                                : odometry_history_.samples.back().stamp_ns;
+  // Where the cloud was recorded: its BEV map's source pose, in either convention.
+  const auto at_sensor = interpolate_odometry(sensor_ns);
+  if (!at_sensor)
+    return std::nullopt;
+  const auto planning_ns = planning_stamp_ns(
+      planning_time_, sensor_ns, odometry_history_.samples.back().stamp_ns);
+  if (!planning_ns)
+    return std::nullopt;
+  const int64_t target = *planning_ns;
+  // Under cloud_stamp the two are one instant, and the ego is exactly the pose above.
+  const auto at_target = target == sensor_ns ? at_sensor : interpolate_odometry(target);
+  if (!at_target)
+    return std::nullopt;
 
   EgoFrame ego;
   ego.localization_generation = localization_generation_;
-  ego.odometry = lo.value;
+  ego.odometry = *at_target;
   ego.stamp = rclcpp::Time(target, get_clock()->get_clock_type());
-  ego.odometry.header.stamp = ego.stamp;
-  ego.odometry.pose.pose = autoware_utils_geometry::calc_interpolated_pose(
-      lo.value.pose.pose, hi.value.pose.pose, alpha, false);
-  auto blend = [alpha](double a, double b) { return a + alpha * (b - a); };
-  ego.odometry.twist.twist.linear.x =
-      blend(lo.value.twist.twist.linear.x, hi.value.twist.twist.linear.x);
-  ego.odometry.twist.twist.linear.y =
-      blend(lo.value.twist.twist.linear.y, hi.value.twist.twist.linear.y);
-  ego.odometry.twist.twist.angular.z =
-      blend(lo.value.twist.twist.angular.z, hi.value.twist.twist.angular.z);
+  ego.sensor_stamp = rclcpp::Time(sensor_ns, get_clock()->get_clock_type());
+  ego.sensor_pose = at_sensor->pose.pose;
   if (const auto *accel =
           acceleration_history_.at_or_before(target, 200000000LL)) {
     ego.acceleration = *accel;
@@ -800,6 +833,14 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
   const auto published_at = get_clock()->now();
   debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/input_age_ms", (now - ego->stamp).seconds() * 1e3);
+  // What `sensor_latency` was fed (0 under cloud_stamp): the distribution to compare with
+  // the one the model was trained on.
+  const double sensor_latency_ms = (ego->stamp - ego->sensor_stamp).seconds() * 1e3;
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/sensor_latency_ms", sensor_latency_ms);
+  if (planning_time_ == PlanningTime::kPlanningTime) {
+    diagnostics_->add_key_value("sensor_latency_ms", sensor_latency_ms);
+  }
   publish_debug_timing(published_at, *ego, timing);
   // Against the interval this run actually had, not a configured one: the pace
   // is the sensor's, and it is the pace the node has to keep up with.
@@ -872,6 +913,7 @@ void TensorrtE2eNode::dump_tensors(
   const auto & pose = ego.odometry.pose.pose;
   const auto & twist = ego.odometry.twist.twist;
   manifest << std::setprecision(17) << "{\"frame\":" << frame << ",\"stamp\":" << ego.stamp.seconds()
+           << ",\"sensor_stamp\":" << ego.sensor_stamp.seconds()
            << ",\"ego\":{\"x\":" << pose.position.x << ",\"y\":" << pose.position.y
            << ",\"z\":" << pose.position.z << ",\"qx\":" << pose.orientation.x
            << ",\"qy\":" << pose.orientation.y << ",\"qz\":" << pose.orientation.z

@@ -237,6 +237,27 @@ under `autoware_diffusion_planner`, or a dedicated provider can be added (see
 Unlike the diffusion planner's `TensorrtInference` (which hard-codes 19 tensor names), no
 tensor identity is known at compile time.
 
+### When the plan starts (`planning_time`)
+
+A model is trained to plan from one instant, and the node must feed that instant. It is
+stated as `planning_time` in the ml_package file (default `cloud_stamp`), and the node refuses
+a graph that disagrees with it:
+
+| | `cloud_stamp` | `planning_time` |
+|---|---|---|
+| ego state, ego history, map, route, goal | at the pacing cloud's stamp T | at the newest odometry sample, T + L |
+| BEV maps (current and history) | warped into the pose at T (the current map is copied) | warped into the pose at T + L, the current map included |
+| traffic lights | selected at T | selected at T (as in training) |
+| `sensor_latency` input | absent (refused if the graph has it) | L = T + L − T, in seconds (required) |
+| trajectory stamp | T | T + L |
+
+T + L is the newest odometry sample, never an extrapolation to the wall clock, so the ego
+state, the trajectory stamp and `sensor_latency` all describe one measured instant. L is
+bounded by `bev_feature.max_delay_ms`, which already drops older clouds. The node publishes
+the value it fed on `~/debug/sensor_latency_ms` and, under `planning_time`, as
+`sensor_latency_ms` on its diagnostic. Post-processing is unchanged: a stamped-ego-state
+consumer looks the ego up at the trajectory stamp, which is now T + L.
+
 ### Trajectory postprocessing — identical to the diffusion planner
 
 The prediction tensor (default name `prediction`) is interpreted exactly like the diffusion

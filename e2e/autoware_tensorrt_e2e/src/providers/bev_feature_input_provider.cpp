@@ -38,15 +38,15 @@ namespace
 {
 constexpr int64_t LOG_THROTTLE_INTERVAL_MS = 5000;
 
-std::array<double, 4> pose_from_odometry(const nav_msgs::msg::Odometry & odometry)
+std::array<double, 4> se2_pose(const geometry_msgs::msg::Pose & pose)
 {
-  const Eigen::Matrix4d pose_matrix = dp::utils::pose_to_matrix4d(odometry.pose.pose);
+  const Eigen::Matrix4d pose_matrix = dp::utils::pose_to_matrix4d(pose);
   const auto [cos_yaw, sin_yaw] =
     dp::utils::rotation_matrix_to_cos_sin(pose_matrix.block<3, 3>(0, 0));
   // Double throughout: map coordinates are ~1e5 m, and the warp needs the metre-scale pose
   // DIFFERENCE — a float cast here quantizes slow-speed inter-frame displacements away.
   return {
-    odometry.pose.pose.position.x, odometry.pose.pose.position.y, static_cast<double>(cos_yaw),
+    pose.position.x, pose.position.y, static_cast<double>(cos_yaw),
     static_cast<double>(sin_yaw)};
 }
 
@@ -426,7 +426,7 @@ bool BevFeatureInputProvider::collect(
     // Queued behind the extractor on the same stream: the cache has its copy before the
     // next callback's extraction can overwrite the map.
     const auto insert_result =
-      cache_->insert(pending_feature_, pose_from_odometry(ego.odometry), cloud_stamp, stream_);
+      cache_->insert(pending_feature_, se2_pose(ego.sensor_pose), cloud_stamp, stream_);
     if (insert_result == TemporalBevCache::InsertResult::kGapReset ||
         insert_result == TemporalBevCache::InsertResult::kPoseReset) {
       RCLCPP_WARN_THROTTLE(
@@ -443,8 +443,14 @@ bool BevFeatureInputProvider::collect(
     return false;
   }
 
-  if (!history_ptr_) {
-    history_ptr_ = cache_->build_history(stream_);
+  // Every map is warped into the frame the plan starts in. That is the newest map's own
+  // frame under cloud_stamp -- it is then copied, not warped -- and the newer planning
+  // pose under planning_time, where the current map is warped like the older ones, as in
+  // training. A pass that plans from a different pose than the last one rebuilds.
+  const auto target_pose = se2_pose(ego.odometry.pose.pose);
+  if (!history_ptr_ || target_pose != history_target_pose_) {
+    history_ptr_ = cache_->build_history(stream_, target_pose);
+    history_target_pose_ = target_pose;
   }
   inputs[history_tensor_name_] = Tensor::from_device(history_shape_, history_ptr_);
   return true;

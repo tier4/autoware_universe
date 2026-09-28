@@ -44,8 +44,10 @@ namespace autoware::tensorrt_e2e
  *   LiDAR stores five maps and selects every second one.
  * - `build_history()` assembles `[frames, C, H, W]` ordered current-to-past by selecting, for
  *   each step k, the cached map closest to `newest - k * interval_seconds` (within tolerance).
- *   Slot 0 is the raw newest map (already in its own ego frame); older slots are SE(2)-warped
- *   from their source ego frame into the newest map's ego frame. This matches training, which
+ *   Every slot is SE(2)-warped from its source ego frame into the target ego frame the plan
+ *   starts in: the newest map's own frame when planning at the cloud stamp (slot 0 is then
+ *   copied, not warped), or the newer planning pose, which warps slot 0 as well
+ *   (`planning_time`; training's `points_pose -> center_pose`). This matches training, which
  *   anchors at every sensor frame while sampling history at the configured interval
  *   (`center_stride: 1` with `lidar_history_interval_seconds` >= the sensor period).
  * - A dropped sensor frame leaves a hole: `ready()` turns false until the window refills
@@ -104,13 +106,15 @@ public:
   int64_t frames() const { return config_.frames; }
 
   /**
-   * @brief Assemble the `[frames, C, H, W]` current-to-past history on the GPU.
+   * @brief Assemble the `[frames, C, H, W]` current-to-past history on the GPU, in the ego
+   * frame of `target_pose` (`[x, y, cos(yaw), sin(yaw)]`, map frame, like `insert()`'s).
    *
-   * Requires `ready()`. The returned device buffer is owned by the cache and valid until the
-   * next `insert()`/`build_history()` call. Its contents are complete in stream order: a
-   * consumer on `stream` reads the finished history, a host reader synchronizes first.
+   * A slot whose pose equals `target_pose` is copied; every other one is warped. Requires
+   * `ready()`. The returned device buffer is owned by the cache and valid until the next
+   * `insert()`/`build_history()` call. Its contents are complete in stream order: a consumer
+   * on `stream` reads the finished history, a host reader synchronizes first.
    */
-  const float * build_history(cudaStream_t stream);
+  const float * build_history(cudaStream_t stream, const std::array<double, 4> & target_pose);
 
   void reset();
 

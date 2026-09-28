@@ -20,6 +20,7 @@
 #include <rclcpp/time.hpp>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <cstdint>
@@ -90,7 +91,16 @@ struct EgoFrame
   std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration;
   Eigen::Matrix4d ego_to_map{Eigen::Matrix4d::Identity()};
   Eigen::Matrix4d map_to_ego{Eigen::Matrix4d::Identity()};
+  //! When the plan starts (see PlanningTime): the stamp of every ego-derived input and of
+  //! the published trajectory.
   rclcpp::Time stamp;
+  //! The pacing sensor input's stamp. Equal to `stamp` under `cloud_stamp`; under
+  //! `planning_time` it is the older cloud stamp T, and `stamp - sensor_stamp` is the
+  //! model's `sensor_latency`.
+  rclcpp::Time sensor_stamp;
+  //! The base_link pose interpolated to `sensor_stamp`: where the cloud was recorded, and
+  //! so the source pose of its BEV map. Equal to `odometry.pose.pose` under `cloud_stamp`.
+  geometry_msgs::msg::Pose sensor_pose;
 };
 
 int64_t shape_num_elements(const std::vector<int64_t> & shape);

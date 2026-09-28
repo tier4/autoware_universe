@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_e2e/providers/context_input_provider.hpp"
+#include "autoware/tensorrt_e2e/planning_time.hpp"
 
 #include <autoware/diffusion_planner/dimensions.hpp>
 #include <autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp>
@@ -240,6 +241,11 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
   if (const auto * spec = claim("ego_shape", ego_shape_shape_)) {
     validate_shape(*spec, {1, 3}, "wheel base, length, width");
   }
+  if (const auto * spec = claim(SENSOR_LATENCY_TENSOR, sensor_latency_shape_)) {
+    // Present only in a planning-time graph; the node has already checked that the
+    // package plans that way (check_planning_time_inputs).
+    validate_shape(*spec, {1, 1}, "seconds from the cloud stamp to planning");
+  }
   if (const auto * spec = claim("turn_indicators", turn_indicators_shape_)) {
     if (spec->shape.size() != 2 || spec->shape[0] != 1) {
       throw std::runtime_error(
@@ -367,7 +373,10 @@ bool ContextInputProvider::collect(
   if (sub_traffic_signals_) {
     const auto traffic_signals = sub_traffic_signals_->take_data();
     if (map_options_.producer_lane_selection) {
-      select_traffic_signals_at(traffic_signals, ego.stamp);
+      // At the cloud stamp even when the plan starts later: training selects the lights
+      // at the LiDAR frame in both conventions, and the recognition's own latency
+      // is not measured, so the cloud stamp is the one choice exact on both sides.
+      select_traffic_signals_at(traffic_signals, ego.sensor_stamp);
     } else {
       dp::preprocess::process_traffic_signals(
         traffic_signals, traffic_light_id_map_, now, traffic_light_msg_timeout_s_);
@@ -418,6 +427,12 @@ bool ContextInputProvider::collect_ego_tensors(
            static_cast<float>(accel.y), *ego.steering_angle,
            static_cast<float>(twist.angular.z)});
     }
+  }
+
+  if (!sensor_latency_shape_.empty()) {
+    // Raw seconds; the graph scales it (the observation normaliser would read 0 as padding).
+    inputs[SENSOR_LATENCY_TENSOR] = Tensor::from_host(
+      sensor_latency_shape_, {static_cast<float>((ego.stamp - ego.sensor_stamp).seconds())});
   }
 
   if (!ego_shape_shape_.empty()) {

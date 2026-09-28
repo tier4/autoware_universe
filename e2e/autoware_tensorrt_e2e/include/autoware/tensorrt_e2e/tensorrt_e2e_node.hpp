@@ -17,6 +17,7 @@
 
 #include "autoware/tensorrt_e2e/inference_engine.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
+#include "autoware/tensorrt_e2e/planning_time.hpp"
 #include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
 #include "autoware/tensorrt_e2e/postprocess/trajectory_postprocessor.hpp"
 #include "autoware/tensorrt_e2e/providers/context_input_provider.hpp"
@@ -165,10 +166,17 @@ private:
   void run_tick(TickTiming & timing);
 
   /**
-   * @brief Interpolate the ego frame at the pacing sensor timestamp.
-   * @return std::nullopt when its pose bracket or required dynamics are unavailable.
+   * @brief The ego frame at the planning stamp (see PlanningTime), with the pose at the
+   * pacing sensor timestamp beside it.
+   * @return std::nullopt when either pose bracket or the required dynamics are unavailable.
    */
   std::optional<EgoFrame> create_ego_frame();
+
+  /**
+   * @brief Odometry interpolated to `stamp_ns` between the two samples bracketing it.
+   * @return std::nullopt outside the history or across a localization gap over 200 ms.
+   */
+  std::optional<Odometry> interpolate_odometry(int64_t stamp_ns) const;
 
   /// Apply args-JSON normalization to host tensors that have stats (no-op without args_path).
   void apply_normalization(TensorMap & inputs) const;
@@ -249,6 +257,8 @@ private:
   bool recorded_ego_dynamics_{false};
   //! The derived-data convention the model trained on (`derived_contract`).
   std::string derived_contract_;
+  //! When the model plans from (`planning_time`); checked against the graph at start-up.
+  PlanningTime planning_time_{PlanningTime::kCloudStamp};
   rclcpp::TimerBase::SharedPtr status_timer_;
   rclcpp::CallbackGroup::SharedPtr status_callback_group_;
   std::unique_ptr<DiagnosticsInterface> diagnostics_;

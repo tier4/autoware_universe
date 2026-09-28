@@ -26,6 +26,7 @@
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -168,6 +169,8 @@ private:
   bool pending_detections_published_{false};
   std::optional<rclcpp::Time> last_extracted_stamp_;
   const float * history_ptr_{nullptr};
+  //! The pose `history_ptr_` was warped into (see collect()).
+  std::array<double, 4> history_target_pose_{};
 
   std::unique_ptr<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>
     pointcloud_sub_;

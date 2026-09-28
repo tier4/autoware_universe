@@ -141,6 +141,7 @@ private:
   std::vector<int64_t> goal_pose_shape_;
   std::vector<int64_t> ego_shape_shape_;
   std::vector<int64_t> turn_indicators_shape_;
+  std::vector<int64_t> sensor_latency_shape_;  //!< Planning-time graphs only.
   std::vector<float> turn_indicators_constant_;
 
   // Subscriptions, created in the constructor (see the class comment). Turn indicators

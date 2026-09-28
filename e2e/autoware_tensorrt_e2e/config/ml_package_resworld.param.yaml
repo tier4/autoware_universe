@@ -14,6 +14,10 @@
     enable_context_inputs: true
     recorded_ego_dynamics: true
     derived_contract: "derived-v10"
+    # When the plan starts: "cloud_stamp" (every input at the cloud stamp) or
+    # "planning_time" (at the newest odometry; the graph then reads sensor_latency).
+    # The node refuses a graph that disagrees.
+    planning_time: "cloud_stamp"
 
     # Precision this graph is validated in; overrides the package default.
     precision: "fp32"
