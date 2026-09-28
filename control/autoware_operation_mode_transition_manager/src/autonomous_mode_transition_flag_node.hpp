@@ -60,9 +60,9 @@ private:
   std::unique_ptr<ModeChangeBase> autonomous_mode_;
 
   // Driving mode interface
-  rclcpp::Subscription<DrivingModeInfo>::SharedPtr sub_driving_mode_info_;
-  rclcpp::Publisher<DrivingModeFlag>::SharedPtr pub_driving_mode_stable_;
-  rclcpp::Publisher<DiagnosticArray>::SharedPtr pub_driving_mode_available_;
+  AUTOWARE_SUBSCRIPTION_PTR(DrivingModeInfo) sub_driving_mode_info_;
+  AUTOWARE_PUBLISHER_PTR(DrivingModeFlag) pub_driving_mode_stable_;
+  AUTOWARE_PUBLISHER_PTR(DiagnosticArray) pub_driving_mode_available_;
   void on_driving_mode_info(const DrivingModeInfo & msg);
   void publish_driving_mode_stable(bool flag) const;
   void publish_driving_mode_available(bool flag) const;
