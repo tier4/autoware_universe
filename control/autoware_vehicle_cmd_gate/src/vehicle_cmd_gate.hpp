@@ -20,13 +20,15 @@
 #include "moderate_stop_interface.hpp"
 #include "vehicle_cmd_filter.hpp"
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
+#include <autoware/agnocast_wrapper/diagnostic_updater.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/polling_subscriber.hpp>
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_vehicle_cmd_gate/msg/is_filter_activated.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/manual_operator_heartbeat.hpp>
@@ -84,7 +86,7 @@ using Heartbeat = autoware_adapi_v1_msgs::msg::ManualOperatorHeartbeat;
 using EngageMsg = autoware_vehicle_msgs::msg::Engage;
 using EngageSrv = tier4_external_api_msgs::srv::Engage;
 
-using autoware::motion_utils::VehicleStopChecker;
+using autoware::motion_utils::VehicleStopCheckerBase;
 struct Commands
 {
   Control control;
@@ -97,39 +99,42 @@ struct Commands
   }
 };
 
-class VehicleCmdGate : public rclcpp::Node
+class VehicleCmdGate : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit VehicleCmdGate(const rclcpp::NodeOptions & node_options);
 
 private:
+  using NodeT = autoware::agnocast_wrapper::Node;
+  template <class T>
+  using PollingSubscriber = autoware::agnocast_wrapper::polling::PollingSubscriber<T>;
+
   // Publisher
-  rclcpp::Publisher<VehicleEmergencyStamped>::SharedPtr vehicle_cmd_emergency_pub_;
-  rclcpp::Publisher<Control>::SharedPtr control_cmd_pub_;
-  rclcpp::Publisher<GearCommand>::SharedPtr gear_cmd_pub_;
-  rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr turn_indicator_cmd_pub_;
-  rclcpp::Publisher<HazardLightsCommand>::SharedPtr hazard_light_cmd_pub_;
-  rclcpp::Publisher<GateMode>::SharedPtr gate_mode_pub_;
-  rclcpp::Publisher<EngageMsg>::SharedPtr engage_pub_;
-  rclcpp::Publisher<OperationModeState>::SharedPtr operation_mode_pub_;
-  rclcpp::Publisher<IsFilterActivated>::SharedPtr is_filter_activated_pub_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr filter_activated_marker_pub_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr filter_activated_marker_raw_pub_;
-  rclcpp::Publisher<BoolStamped>::SharedPtr filter_activated_flag_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
-    processing_time_pub_;
+  AUTOWARE_PUBLISHER_PTR(VehicleEmergencyStamped) vehicle_cmd_emergency_pub_;
+  AUTOWARE_PUBLISHER_PTR(Control) control_cmd_pub_;
+  AUTOWARE_PUBLISHER_PTR(GearCommand) gear_cmd_pub_;
+  AUTOWARE_PUBLISHER_PTR(TurnIndicatorsCommand) turn_indicator_cmd_pub_;
+  AUTOWARE_PUBLISHER_PTR(HazardLightsCommand) hazard_light_cmd_pub_;
+  AUTOWARE_PUBLISHER_PTR(GateMode) gate_mode_pub_;
+  AUTOWARE_PUBLISHER_PTR(EngageMsg) engage_pub_;
+  AUTOWARE_PUBLISHER_PTR(OperationModeState) operation_mode_pub_;
+  AUTOWARE_PUBLISHER_PTR(IsFilterActivated) is_filter_activated_pub_;
+  AUTOWARE_PUBLISHER_PTR(MarkerArray) filter_activated_marker_pub_;
+  AUTOWARE_PUBLISHER_PTR(MarkerArray) filter_activated_marker_raw_pub_;
+  AUTOWARE_PUBLISHER_PTR(BoolStamped) filter_activated_flag_pub_;
+  AUTOWARE_PUBLISHER_PTR(autoware_internal_debug_msgs::msg::Float64Stamped) processing_time_pub_;
   // Parameter callback
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   rcl_interfaces::msg::SetParametersResult onParameter(
     const std::vector<rclcpp::Parameter> & parameters);
   // Subscription
-  rclcpp::Subscription<Heartbeat>::SharedPtr external_emergency_stop_heartbeat_sub_;
-  rclcpp::Subscription<GateMode>::SharedPtr gate_mode_sub_;
-  rclcpp::Subscription<OperationModeState>::SharedPtr operation_mode_sub_;
-  rclcpp::Subscription<MrmState>::SharedPtr mrm_state_sub_;
-  rclcpp::Subscription<Odometry>::SharedPtr kinematics_sub_;             // for filter
-  rclcpp::Subscription<AccelWithCovarianceStamped>::SharedPtr acc_sub_;  // for filter
-  rclcpp::Subscription<SteeringReport>::SharedPtr steer_sub_;            // for filter
+  AUTOWARE_SUBSCRIPTION_PTR(Heartbeat) external_emergency_stop_heartbeat_sub_;
+  AUTOWARE_SUBSCRIPTION_PTR(GateMode) gate_mode_sub_;
+  AUTOWARE_SUBSCRIPTION_PTR(OperationModeState) operation_mode_sub_;
+  AUTOWARE_SUBSCRIPTION_PTR(MrmState) mrm_state_sub_;
+  AUTOWARE_SUBSCRIPTION_PTR(Odometry) kinematics_sub_;             // for filter and stop checker
+  AUTOWARE_SUBSCRIPTION_PTR(AccelWithCovarianceStamped) acc_sub_;  // for filter
+  AUTOWARE_SUBSCRIPTION_PTR(SteeringReport) steer_sub_;            // for filter
 
   void onGateMode(GateMode::ConstSharedPtr msg);
   void onExternalEmergencyStopHeartbeat(Heartbeat::ConstSharedPtr msg);
@@ -158,35 +163,26 @@ private:
 
   // Subscriber for auto
   Commands auto_commands_;
-  rclcpp::Subscription<Control>::SharedPtr auto_control_cmd_sub_;
-  autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsCommand> auto_turn_indicator_cmd_sub_{
-    this, "input/auto/turn_indicators_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<HazardLightsCommand> auto_hazard_light_cmd_sub_{
-    this, "input/auto/hazard_lights_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<GearCommand> auto_gear_cmd_sub_{
-    this, "input/auto/gear_cmd"};
+  AUTOWARE_SUBSCRIPTION_PTR(Control) auto_control_cmd_sub_;
+  PollingSubscriber<TurnIndicatorsCommand>::SharedPtr auto_turn_indicator_cmd_sub_;
+  PollingSubscriber<HazardLightsCommand>::SharedPtr auto_hazard_light_cmd_sub_;
+  PollingSubscriber<GearCommand>::SharedPtr auto_gear_cmd_sub_;
   void onAutoCtrlCmd(Control::ConstSharedPtr msg);
 
   // Subscription for external
   Commands remote_commands_;
-  rclcpp::Subscription<Control>::SharedPtr remote_control_cmd_sub_;
-  autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsCommand>
-    remote_turn_indicator_cmd_sub_{this, "input/external/turn_indicators_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<HazardLightsCommand> remote_hazard_light_cmd_sub_{
-    this, "input/external/hazard_lights_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<GearCommand> remote_gear_cmd_sub_{
-    this, "input/external/gear_cmd"};
+  AUTOWARE_SUBSCRIPTION_PTR(Control) remote_control_cmd_sub_;
+  PollingSubscriber<TurnIndicatorsCommand>::SharedPtr remote_turn_indicator_cmd_sub_;
+  PollingSubscriber<HazardLightsCommand>::SharedPtr remote_hazard_light_cmd_sub_;
+  PollingSubscriber<GearCommand>::SharedPtr remote_gear_cmd_sub_;
   void onRemoteCtrlCmd(Control::ConstSharedPtr msg);
 
   // Subscription for emergency
   Commands emergency_commands_;
-  rclcpp::Subscription<Control>::SharedPtr emergency_control_cmd_sub_;
-  autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsCommand>
-    emergency_turn_indicator_cmd_sub_{this, "input/emergency/turn_indicators_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<HazardLightsCommand>
-    emergency_hazard_light_cmd_sub_{this, "input/emergency/hazard_lights_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<GearCommand> emergency_gear_cmd_sub_{
-    this, "input/emergency/gear_cmd"};
+  AUTOWARE_SUBSCRIPTION_PTR(Control) emergency_control_cmd_sub_;
+  PollingSubscriber<TurnIndicatorsCommand>::SharedPtr emergency_turn_indicator_cmd_sub_;
+  PollingSubscriber<HazardLightsCommand>::SharedPtr emergency_hazard_light_cmd_sub_;
+  PollingSubscriber<GearCommand>::SharedPtr emergency_gear_cmd_sub_;
   void onEmergencyCtrlCmd(Control::ConstSharedPtr msg);
 
   // Previous Turn Indicators, Hazard Lights and Gear
@@ -207,31 +203,28 @@ private:
   double filter_activated_velocity_threshold_;
 
   // Service
-  rclcpp::Service<EngageSrv>::SharedPtr srv_engage_;
-  rclcpp::Service<SetEmergency>::SharedPtr srv_external_emergency_;
-  rclcpp::Publisher<Emergency>::SharedPtr pub_external_emergency_;
+  AUTOWARE_SERVICE_PTR(EngageSrv) srv_engage_;
+  AUTOWARE_SERVICE_PTR(SetEmergency) srv_external_emergency_;
+  AUTOWARE_PUBLISHER_PTR(Emergency) pub_external_emergency_;
   void onEngageService(
     const EngageSrv::Request::SharedPtr request, const EngageSrv::Response::SharedPtr response);
   void onExternalEmergencyStopService(
-    const std::shared_ptr<rmw_request_id_t> request_header,
     const SetEmergency::Request::SharedPtr request,
     const SetEmergency::Response::SharedPtr response);
 
   // TODO(Takagi, Isamu): deprecated
-  rclcpp::Subscription<EngageMsg>::SharedPtr engage_sub_;
-  rclcpp::Service<Trigger>::SharedPtr srv_external_emergency_stop_;
-  rclcpp::Service<Trigger>::SharedPtr srv_clear_external_emergency_stop_;
+  AUTOWARE_SUBSCRIPTION_PTR(EngageMsg) engage_sub_;
+  AUTOWARE_SERVICE_PTR(Trigger) srv_external_emergency_stop_;
+  AUTOWARE_SERVICE_PTR(Trigger) srv_clear_external_emergency_stop_;
   void onEngage(EngageMsg::ConstSharedPtr msg);
   bool onSetExternalEmergencyStopService(
-    const std::shared_ptr<rmw_request_id_t> req_header, const Trigger::Request::SharedPtr req,
-    const Trigger::Response::SharedPtr res);
+    const Trigger::Request::SharedPtr req, const Trigger::Response::SharedPtr res);
   bool onClearExternalEmergencyStopService(
-    const std::shared_ptr<rmw_request_id_t> req_header, const Trigger::Request::SharedPtr req,
-    const Trigger::Response::SharedPtr res);
+    const Trigger::Request::SharedPtr req, const Trigger::Response::SharedPtr res);
 
   // Timer / Event
-  rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::TimerBase::SharedPtr timer_pub_status_;
+  AUTOWARE_TIMER_PTR timer_;
+  AUTOWARE_TIMER_PTR timer_pub_status_;
 
   void onTimer();
   void publishControlCommands(const Commands & commands);
@@ -239,7 +232,7 @@ private:
   void publishStatus();
 
   // Diagnostics Updater
-  diagnostic_updater::Updater updater_;
+  autoware::agnocast_wrapper::diagnostic_updater::Updater updater_;
 
   void checkExternalEmergencyStop(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
@@ -269,17 +262,18 @@ private:
   std::unique_ptr<AdapiPauseInterface> adapi_pause_;
   std::unique_ptr<ModerateStopInterface> moderate_stop_interface_;
 
-  // stop checker
-  std::unique_ptr<VehicleStopChecker> vehicle_stop_checker_;
+  // stop checker. VehicleStopChecker owns an rclcpp subscription, so only its node-agnostic base
+  // is used and the odometry is fed from kinematics_sub_, which covers the same topic and QoS.
+  std::unique_ptr<VehicleStopCheckerBase> vehicle_stop_checker_;
   double stop_check_duration_;
 
   // debug
   MarkerArray createMarkerArray(const IsFilterActivated & filter_activated);
   void publishMarkers(const IsFilterActivated & filter_activated);
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
+  std::unique_ptr<autoware_utils::BasicLoggerLevelConfigure<NodeT>> logger_configure_;
 
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<NodeT>> published_time_publisher_;
 };
 
 }  // namespace autoware::vehicle_cmd_gate

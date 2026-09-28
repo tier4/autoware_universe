@@ -15,6 +15,7 @@
 #ifndef MODERATE_STOP_INTERFACE_HPP_
 #define MODERATE_STOP_INTERFACE_HPP_
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware/component_interface_specs_universe/control.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -28,12 +29,13 @@ namespace autoware::vehicle_cmd_gate
 class ModerateStopInterface
 {
 private:
+  using NodeT = autoware::agnocast_wrapper::Node;
   using SetStop = autoware::component_interface_specs_universe::control::SetStop;
   using IsStopped = autoware::component_interface_specs_universe::control::IsStopped;
   using IsStartRequested = autoware::component_interface_specs_universe::control::IsStartRequested;
 
 public:
-  explicit ModerateStopInterface(rclcpp::Node * node);
+  explicit ModerateStopInterface(NodeT * node);
   bool is_stop_requested() const;
   void publish();
 
@@ -42,9 +44,9 @@ private:
   std::unordered_map<std::string, bool> stop_map_;
   std::optional<std::unordered_map<std::string, bool>> prev_stop_map_;
 
-  rclcpp::Node * node_;
-  autoware::component_interface_utils::Service<SetStop>::SharedPtr srv_set_stop_;
-  autoware::component_interface_utils::Publisher<IsStopped>::SharedPtr pub_is_stopped_;
+  NodeT * node_;
+  autoware::component_interface_utils::Service<SetStop, NodeT>::SharedPtr srv_set_stop_;
+  autoware::component_interface_utils::Publisher<IsStopped, NodeT>::SharedPtr pub_is_stopped_;
 
   void on_stop_request(
     const SetStop::Service::Request::SharedPtr req,

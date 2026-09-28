@@ -11,9 +11,11 @@ ament_auto_add_library(vehicle_cmd_gate_node SHARED
   src/moderate_stop_interface.cpp
 )
 
-rclcpp_components_register_node(vehicle_cmd_gate_node
+autoware_agnocast_wrapper_register_node(vehicle_cmd_gate_node
   PLUGIN "autoware::vehicle_cmd_gate::VehicleCmdGate"
   EXECUTABLE vehicle_cmd_gate_exe
+  ROS2_EXECUTOR SingleThreadedExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 rosidl_generate_interfaces(
@@ -34,10 +36,18 @@ endif()
 
 
 if(BUILD_TESTING)
-  ament_add_ros_isolated_gtest(test_vehicle_cmd_gate
+  set(TEST_SOURCES
     test/src/test_main.cpp
     test/src/test_vehicle_cmd_filter.cpp
-    test/src/test_filter_in_vehicle_cmd_gate_node.cpp
+  )
+  # test_filter_in_vehicle_cmd_gate_node.cpp builds an agnocast_wrapper::Node; the gtest main
+  # brings up no agnocast context.
+  if(NOT (DEFINED ENV{ENABLE_AGNOCAST} AND "$ENV{ENABLE_AGNOCAST}" STREQUAL "1"))
+    list(APPEND TEST_SOURCES test/src/test_filter_in_vehicle_cmd_gate_node.cpp)
+  endif()
+
+  ament_add_ros_isolated_gtest(test_vehicle_cmd_gate
+    ${TEST_SOURCES}
   )
   ament_target_dependencies(test_vehicle_cmd_gate
     rclcpp
