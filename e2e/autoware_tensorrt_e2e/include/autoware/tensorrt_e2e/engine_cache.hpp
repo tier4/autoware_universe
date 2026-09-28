@@ -19,6 +19,8 @@
 #include <rclcpp/node.hpp>
 
 #include <filesystem>
+#include <fstream>
+#include <stdexcept>
 #include <string>
 
 namespace autoware::tensorrt_e2e
@@ -48,13 +50,45 @@ namespace autoware::tensorrt_e2e
  * @param logger Logger for the one-line notice when a stale engine is removed.
  * @return true when a stale engine was deleted.
  */
+//! How this node builds a planner engine, recorded beside it (`<engine>.build`). An engine
+//! built under other settings -- before TF32 was turned off, say -- is rebuilt once instead of
+//! being reused with the arithmetic it was built with.
+inline constexpr const char * kPlannerBuildSettings = "tf32-off";
+
+inline bool engine_build_settings_match(
+  const std::string & engine_path, const std::string & settings)
+{
+  std::ifstream input(engine_path + ".build");
+  std::string saved;
+  return static_cast<bool>(input >> saved) && saved == settings;
+}
+
+inline void record_engine_build_settings(
+  const std::string & engine_path, const std::string & settings)
+{
+  std::ofstream(engine_path + ".build") << settings << "\n";
+}
+
 inline bool drop_stale_engine(
-  const std::string & onnx_path, const std::string & engine_path, const rclcpp::Logger & logger)
+  const std::string & onnx_path, const std::string & engine_path, const rclcpp::Logger & logger,
+  const std::string & build_settings = "")
 {
   namespace fs = std::filesystem;
   std::error_code ec;
   if (!fs::exists(engine_path, ec) || !fs::exists(onnx_path, ec)) {
     return false;
+  }
+  if (!build_settings.empty() && !engine_build_settings_match(engine_path, build_settings)) {
+    fs::remove(engine_path, ec);
+    if (ec) {
+      throw std::runtime_error(
+        engine_path + " was built with other settings than \"" + build_settings +
+        "\" and could not be removed: " + ec.message());
+    }
+    RCLCPP_INFO(
+      logger, "%s was built with other settings than \"%s\": removed, the engine will be rebuilt.",
+      engine_path.c_str(), build_settings.c_str());
+    return true;
   }
   const auto engine_time = fs::last_write_time(engine_path, ec);
   if (ec) {
