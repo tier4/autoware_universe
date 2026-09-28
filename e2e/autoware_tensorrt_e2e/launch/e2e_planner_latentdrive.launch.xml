@@ -74,7 +74,9 @@
     <param from="$(var ml_package_param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
     <param name="build_only" value="$(var build_only)"/>
-    <param name="planning_frequency_hz" value="$(var planning_frequency_hz)"/>
+    <!-- Typed: the node declares a double, and "planning_frequency_hz:=5" on the command line
+         would otherwise arrive as an integer and be refused at startup. -->
+    <param name="planning_frequency_hz" value="$(var planning_frequency_hz)" type="float"/>
     <param name="latentdrive.smoothing.enable" value="$(var smoothing)"/>
     <param name="latentdrive.smoothing.publish_raw_candidate" value="$(var publish_raw_candidate)"/>
     <param name="latentdrive.tick_log" value="$(var tick_log)"/>
