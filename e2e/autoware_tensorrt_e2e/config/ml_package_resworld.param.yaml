@@ -50,10 +50,21 @@
         # no ObjectClassification label: traffic_cone->UNKNOWN, barrier->UNKNOWN
         num_proposals: 500
         out_size_factor: 8
-        # Per class, from the head's own bbox coder. The device pre-filter uses
-        # the lowest of them; the per-class cut is applied on the host.
-        score_thresholds: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]  # autoware_bevfusion deployed cut
-
+        # Per (distance band, class), calibrated for this head and shipped with
+        # its perception release, applied as autoware_bevfusion applies
+        # detection_score_thresholds: the box centre's radial distance picks the
+        # first band whose upper limit exceeds it, a box beyond the last is dropped.
+        # source: /mnt/storage_rdma/workspaces/wang/OnePlanner/checkpoints/bevfusion-l/awml-2.8.2-jpntaxi/bevfusion_lidar.param.yaml
+        # sha256: 35ac4f4f8cdaa31551659d68daabe7f7c60b12f152abff543316b754c3b6dbc7
+        distance_bin_upper_limits: [50.0, 90.0, 121.0, 200.0]
+        # distance-major: one row per band, one column per head class
+        # CAR           TRUCK         BUS           BICYCLE       PEDESTRIAN    TRAFFIC_CONE  BARRIER
+        score_thresholds: [
+          0.194733,     0.167118,     0.109791,     0.245172,     0.150065,     0.12842,      0.043799,     # [0, 50) m
+          0.221063,     0.18848,      0.168961,     0.160301,     0.152223,     0.15707,      0.1,          # [50, 90) m
+          0.155292,     0.163172,     0.08902,      0.185649,     0.154218,     0.239001,     0.1,          # [90, 121) m
+          0.1,          0.1,          0.1,          0.1,          0.1,          0.1,          0.1           # [121, 200) m
+        ]
 
     postprocess:
       prediction_tensor: "trajectory"

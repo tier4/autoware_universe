@@ -236,10 +236,10 @@ with that model's detection head attached: the same engine pass that produces th
 feature map the planner consumes also produces the boxes BEVFusion itself would publish.
 The graph stops where AWML's released `bevfusion_lidar.onnx` stops — undecoded proposals
 (`bbox_pred [10, P]`, `score [P]`, `label_pred [P]`) — because `autoware_bevfusion` decodes
-and suppresses on the C++ side. This node does the same, with that node's own code:
-`PostprocessCuda` on the device (TransFusion bbox coder, per-class yaw-norm gate, score cut,
-circle NMS), then `box3DToDetectedObject`, BEV-IoU NMS and the optional area-based class
-remapper on the host.
+and suppresses on the C++ side. This node does the same, in that node's order: one fused
+kernel on the device (TransFusion bbox coder, per-class yaw-norm gate, the calibrated
+per-(distance band, class) score thresholds, compaction of the survivors), then on the host
+circle NMS, `box3DToDetectedObject`, BEV-IoU NMS and the optional area-based class remapper.
 
 The result is published on `~/output/detected_objects` once per LiDAR frame, in that
 cloud's frame. **Nothing in the planner path reads it.** The model's view of other agents is
@@ -249,10 +249,34 @@ auxiliary output that costs one decode and changes no trajectory.
 Two things differ from a plain `autoware_bevfusion` deployment, both because the head's
 config says so:
 
-- **Per-class score thresholds.** The head's bbox coder states one threshold per class and
-  `PostprocessCuda` holds a single float, so the device filter runs at the lowest of them
-  and the per-class cut is applied on the host. Together they are exactly the head's own
-  thresholds.
+- **Calibrated score thresholds, per class and distance.** Every package carries the head's
+  calibration from its perception release (`bevfusion_lidar.param.yaml`,
+  `detection_score_thresholds`), and the node refuses a package without it. The box
+  centre's radial distance picks the first band whose upper limit exceeds it, a box beyond
+  the last band is dropped, and the box is kept when its score reaches the band's threshold
+  for its class -- `autoware_bevfusion`'s rule, with its float arithmetic (squared limits,
+  a threshold outside [0, 1) read as 0). The ml_package file holds the table distance-major:
+
+  ```yaml
+  distance_bin_upper_limits: [50.0, 90.0, 121.0, 200.0]
+  score_thresholds: [  # one row per band, one column per head class
+    0.194733, 0.167118, ...,  # [0, 50) m
+    ...
+  ]
+  ```
+
+  `make_ml_package_param.py --detection-thresholds` writes it (release_resworld.py takes the
+  file from the backbone directory, beside the checkpoint it was calibrated for), and
+  `deployment_manifest.json` pins it.
+- **Where each step runs.** The `PostprocessCuda` in this workspace predates the calibrated
+  thresholds and allocates device memory every frame, so the decode is this package's own
+  kernel (`detection_decode_kernel.cu`): `autoware_bevfusion`'s current decode arithmetic,
+  with the survivors compacted on the device and brought back in one copy and one wait.
+  Circle NMS (class-agnostic, 0.5 m) then runs on the host, over score-descending boxes in
+  that node's order (score, then proposal index, as its stable radix sort leaves them): the
+  survivors number tens, where a device NMS costs a launch, a mask copy and a host pass
+  anyway. The thresholds come before circle NMS, as in `autoware_bevfusion`: a box its own
+  threshold rejects never suppresses a neighbour.
 - **Classes Autoware has no label for.** The gen2 head predicts seven classes; the last two
   (`traffic_cone`, `barrier`) have no `ObjectClassification` counterpart, so the generated
   ml_package file writes those slots as `UNKNOWN`:

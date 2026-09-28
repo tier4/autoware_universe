@@ -24,6 +24,7 @@
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 
 #include <atomic>
@@ -106,6 +107,7 @@ public:
     }
     if (detection_postprocessor_) {
       diagnostics.add_key_value("detected_object_count", last_detected_object_count_);
+      diagnostics.add_key_value("detection_ms", last_detection_ms_);
     }
   }
   /// The cloud behind the current history.
@@ -148,6 +150,10 @@ private:
   rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr
     detected_objects_pub_;
   size_t last_detected_object_count_{0};
+  //! Decode through the finished message, host wall time.
+  double last_detection_ms_{0.0};
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    detection_time_pub_;
   //! The node's tick stream once bound, else this provider's own (then destroyed here).
   cudaStream_t stream_{nullptr};
   bool owns_stream_{false};

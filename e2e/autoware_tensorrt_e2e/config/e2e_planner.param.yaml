@@ -74,7 +74,7 @@
       # the head needs no configuration anywhere). What is left here is the same set of
       # knobs autoware_bevfusion keeps in its own deployment file, with its values.
       detection:
-        # Device-side circle NMS, applied to the decoded proposals.
+        # Class-agnostic circle NMS, applied on the host after the score thresholds.
         circle_nms_dist_threshold: 0.5
         # Host-side BEV-IoU NMS over the resulting objects.
         iou_nms_search_distance_2d: 10.0

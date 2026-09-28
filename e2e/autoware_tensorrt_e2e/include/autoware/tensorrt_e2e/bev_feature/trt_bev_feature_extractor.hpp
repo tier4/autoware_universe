@@ -15,13 +15,13 @@
 #ifndef AUTOWARE__TENSORRT_E2E__BEV_FEATURE__TRT_BEV_FEATURE_EXTRACTOR_HPP_
 #define AUTOWARE__TENSORRT_E2E__BEV_FEATURE__TRT_BEV_FEATURE_EXTRACTOR_HPP_
 
+#include "autoware/tensorrt_e2e/bev_feature/detection_decode.hpp"
+
 #include <autoware/bevfusion/bevfusion_config.hpp>
-#include <autoware/bevfusion/postprocess/postprocess_kernel.hpp>
 #include <autoware/bevfusion/preprocess/preprocess_kernel.hpp>
 #include <autoware/bevfusion/utils.hpp>
 #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
 #include <autoware/tensorrt_common/tensorrt_common.hpp>
-
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
 
 #include <cuda_runtime_api.h>
@@ -77,8 +77,9 @@ public:
      * The exported graph emits `bbox_pred [10, P]`, `score [P]` and `label_pred [P]`
      * next to the feature map -- undecoded proposals, exactly as AWML's released
      * `bevfusion_lidar.onnx` stops at them, because `autoware_tensorrt_bevfusion`
-     * decodes and suppresses on the C++ side. Decoding here reuses that node's own
-     * `PostprocessCuda`, so the boxes are the ones BEVFusion would have published.
+     * decodes and suppresses on the C++ side. Decoding here is that node's current
+     * decode kernel (TransFusion coder, yaw-norm gate, per-(distance band, class) score
+     * thresholds) with its arithmetic, fused with compaction; see detection_decode.hpp.
      */
     struct Detection
     {
@@ -91,11 +92,10 @@ public:
       int64_t num_proposals{0};
       //! BEV stride the TransFusion coder decodes centres with.
       int64_t out_size_factor{8};
-      //! Pre-filter applied on the device. The head's thresholds are per class, which
-      //! `PostprocessCuda` cannot express, so the lowest of them is used here and the
-      //! per-class cut is applied on the host (see DetectionPostprocessor).
-      float score_threshold{0.0f};
-      float circle_nms_dist_threshold{0.0f};
+      //! The calibrated score thresholds: ascending band limits [m] and one threshold per
+      //! class per band, distance-major (make_score_threshold_table).
+      std::vector<double> distance_bin_upper_limits;
+      std::vector<double> score_thresholds;
       //! One entry per class; a proposal whose (sin, cos) norm falls below its class's
       //! threshold is scored zero, as in autoware_bevfusion.
       std::vector<double> yaw_norm_thresholds;
@@ -134,13 +134,15 @@ public:
    *
    * Separate from extract() so that it can run after the trajectory is out: the planner
    * never reads these boxes, so nothing that consumes the trajectory should wait for them.
-   * Waits for the device (the boxes come back to the host). A no-op when detection is
-   * disabled or the last extract() has already been decoded.
+   * One kernel and one host wait: the survivors come back in a single copy and are put in
+   * `autoware_bevfusion`'s order. A no-op when detection is disabled or the last extract()
+   * has already been decoded.
    * @return false with `error` set when the decode kernels fail.
    */
   bool decode_detections(std::string & error);
   /**
-   * @brief Decoded, circle-NMS'd proposals of the last decode_detections().
+   * @brief Proposals of the last decode_detections() that passed the score thresholds,
+   *        score-descending, before any NMS.
    *
    * Empty when detection is disabled. Boxes are in the frame of the cloud that
    * produced them, in metres, still carrying every class the head knows.
@@ -168,7 +170,6 @@ private:
   cudaStream_t stream_;
 
   std::unique_ptr<autoware::bevfusion::PreprocessCuda> preprocess_;
-  std::unique_ptr<autoware::bevfusion::PostprocessCuda> postprocess_;
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_;
 
   // Device buffers (allocated once at maximum size)
@@ -181,6 +182,17 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> bbox_pred_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> score_d_;
   autoware::cuda_utils::CudaUniquePtr<int64_t[]> label_pred_d_;
+  // Detection decode: the thresholds, the compacted survivors and their count, and the
+  // pinned host copy both come back to in one transfer.
+  DetectionDecodeGeometry decode_geometry_{};
+  autoware::cuda_utils::CudaUniquePtr<float[]> yaw_norm_thresholds_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> squared_upper_limits_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> score_thresholds_d_;
+  autoware::cuda_utils::CudaUniquePtr<DecodedBox[]> decoded_d_;
+  autoware::cuda_utils::CudaUniquePtr<int32_t[]> decoded_count_d_;
+  autoware::cuda_utils::CudaUniquePtrHost<DecodedBox[]> decoded_h_;
+  autoware::cuda_utils::CudaUniquePtrHost<int32_t[]> decoded_count_h_;
+  std::vector<DecodedBox> decoded_;
   /// Outputs bound above, by engine tensor name; the rest get scratch buffers.
   std::vector<std::string> bound_outputs_;
   std::vector<autoware::cuda_utils::CudaUniquePtr<uint8_t[]>> unread_output_scratch_;
