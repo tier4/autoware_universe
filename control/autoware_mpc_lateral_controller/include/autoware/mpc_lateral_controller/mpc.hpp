@@ -256,7 +256,7 @@ private:
    */
   std::pair<ResultWithReason, MPCData> getData(
     const MPCTrajectory & trajectory, const SteeringReport & current_steer,
-    const Odometry & current_kinematics);
+    const Odometry & current_kinematics, bool require_prediction_horizon = true);
 
   /**
    * @brief Get the initial state for MPC.
@@ -470,6 +470,10 @@ public:
   bool m_use_trajectory_steering_for_feedforward =
     false;  // Prefer temporal trajectory steering when the received field is populated.
 
+  double m_steering_passthrough_timeout_s = 0.5;
+  double m_steering_passthrough_rate_limit_rad_s = 0.6;
+  double m_steering_passthrough_end_time_s = 0.0;
+
   bool m_publish_debug_trajectories = false;  // Flag to publish predicted trajectory and
                                               // resampled reference trajectory for debug purpose
 
@@ -492,7 +496,8 @@ public:
 
   /**
    * @brief Publish trajectory front_wheel_angle_rad as the lateral command (MPPI passthrough).
-   * Uses the same delay-compensated resampling origin as calculateMPC, but skips the QP solve.
+   * Selects the issued control for the current trajectory-time interval. MPPI already models
+   * actuator delay, so the MPC input-delay lookahead is not applied here.
    */
   ResultWithReason calculateTrajectorySteeringPassthrough(
     const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
