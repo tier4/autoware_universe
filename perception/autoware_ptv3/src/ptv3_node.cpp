@@ -367,7 +367,8 @@ void PTv3Node::cloudCallback(
     raw_objects.reserve(det_boxes3d->size());
     for (const auto & box3d : *det_boxes3d) {
       autoware_perception_msgs::msg::DetectedObject object;
-      box3d_to_detected_object(box3d, detection_class_names_, has_twist_, object);
+      // Force has_twist=false on the output objects; the engine still binds the vel head.
+      box3d_to_detected_object(box3d, detection_class_names_, false, object);
       raw_objects.emplace_back(std::move(object));
     }
 
