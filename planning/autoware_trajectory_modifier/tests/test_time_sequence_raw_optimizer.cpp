@@ -230,6 +230,7 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, SnapsTerminalWhenEndpointNearGoal)
   TrajectoryOptimizationParams params;
   params.temporal_consistency.enable = false;
   params.goal.snap_distance_m = 1.0;
+  params.goal.unlatch_horizon_s = 20.0;
   TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
 
   constexpr double x0 = 50.0;
@@ -251,6 +252,7 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedWhenGoalSn
   TrajectoryOptimizationParams params;
   params.temporal_consistency.enable = true;
   params.goal.snap_distance_m = 1.0;
+  params.goal.unlatch_horizon_s = 20.0;
   TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
 
   constexpr double x0 = 50.0;
@@ -266,6 +268,58 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedWhenGoalSn
   raw.header.stamp.nanosec = 100000000;
   const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
   ASSERT_TRUE(second.optimized);
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, DoesNotLatchGoalSnapWhenEgoIsFar)
+{
+  TrajectoryOptimizationParams params;
+  params.temporal_consistency.enable = false;
+  params.goal.snap_distance_m = 100.0;
+  params.goal.unlatch_horizon_s = 8.0;
+  params.goal.unlatch_min_speed_mps = 3.0;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  constexpr double speed = 8.0;
+  odometry_.twist.twist.linear.x = speed;
+  const auto raw = make_straight_trajectory(0.0, speed);
+  const auto goal = make_pose(100.0, 0.0);
+
+  const auto result = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
+  ASSERT_TRUE(result.optimized) << "acados status: " << result.solver_status;
+  // Horizon length is 8 s * 8 m/s = 64 m. Without snap the terminal stays near 64;
+  // a latched snap with snap_distance_m=100 would pull it toward the goal at 100.
+  EXPECT_NEAR(result.trajectory.points.back().pose.position.x, 64.0, 3.0);
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, UnlatchesGoalSnapWhenEgoDrivesAway)
+{
+  TrajectoryOptimizationParams params;
+  params.temporal_consistency.enable = false;
+  params.goal.snap_distance_m = 1.0;
+  params.goal.unlatch_horizon_s = 20.0;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  constexpr double x0 = 50.0;
+  constexpr double speed = 8.0;
+  odometry_.pose.pose.position.x = x0;
+  odometry_.twist.twist.linear.x = speed;
+  auto raw = make_straight_trajectory(x0, speed);
+  const auto & terminal = raw.points.back().pose.position;
+  const auto goal = make_pose(terminal.x + 0.2, 0.0);
+
+  const auto latched = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
+  ASSERT_TRUE(latched.optimized);
+  EXPECT_NEAR(latched.trajectory.points.back().pose.position.x, goal.position.x, 0.25);
+
+  constexpr double far_x0 = -200.0;
+  odometry_.pose.pose.position.x = far_x0;
+  raw = make_straight_trajectory(far_x0, speed);
+  raw.header.stamp.nanosec = 100000000;
+  const auto unlatched = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
+  ASSERT_TRUE(unlatched.optimized) << "acados status: " << unlatched.solver_status;
+  EXPECT_NEAR(
+    unlatched.trajectory.points.back().pose.position.x, far_x0 + speed * opt_dt_s * opt_horizon,
+    2.0);
 }
 
 }  // namespace autoware::trajectory_modifier::test
