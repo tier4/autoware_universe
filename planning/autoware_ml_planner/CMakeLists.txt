@@ -7,7 +7,8 @@ option(ENABLE_ONNXRUNTIME "Enable ONNX Runtime inference when available" ON)
 option(ENABLE_ACADOS "Enable acados trajectory optimization when available" ON)
 option(ML_PLANNER_VERBOSE_DEPENDENCIES "Print optional dependency details" OFF)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+# Prepend so our oneTBB-compatible FindTBB.cmake wins over mrt_cmake_modules.
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(FindMLPlannerDependencies)
 include(AddAcadosSolver)
 
@@ -28,6 +29,8 @@ if(NOT (ML_PLANNER_CUDA_AVAIL AND ML_PLANNER_TRT_AVAIL))
   return()
 endif()
 
+# Keep our cmake/ first: autoware_package() -> xtensor may call find_package(TBB).
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 autoware_package()
 
 find_package(Boost REQUIRED)
