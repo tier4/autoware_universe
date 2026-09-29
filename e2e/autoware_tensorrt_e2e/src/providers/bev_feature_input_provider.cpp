@@ -77,6 +77,8 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
     node_.declare_parameter<double>("bev_feature.interval_seconds", 0.2);
   cache_config_.interval_tolerance_seconds =
     node_.declare_parameter<double>("bev_feature.interval_tolerance_seconds", 0.02);
+  cache_config_.substitute_max_seconds =
+    node_.declare_parameter<double>("bev_feature.substitute_max_seconds", 0.2);
   cache_config_.bev_half_extent_m =
     node_.declare_parameter<double>("bev_feature.bev_half_extent_m", 122.4);
   const auto warmup = node_.declare_parameter<std::string>("bev_feature.warmup", "wait");
@@ -448,6 +450,11 @@ bool BevFeatureInputProvider::collect(
   }
 
   if (!history_ptr_) {
+    if (const int64_t substituted = cache_->substituted_frames(); substituted > 0) {
+      RCLCPP_WARN_THROTTLE(
+        node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS,
+        "LiDAR frame dropped: %ld BEV history step(s) use the next older map", substituted);
+    }
     history_ptr_ = cache_->build_history(stream_);
   }
   inputs[history_tensor_name_] = Tensor::from_device(history_shape_, history_ptr_);

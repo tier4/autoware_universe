@@ -55,6 +55,9 @@ TemporalBevCache::TemporalBevCache(
   if (config_.interval_tolerance_seconds < 0.0) {
     throw std::runtime_error("TemporalBevCache: interval_tolerance_seconds must be >= 0");
   }
+  if (!std::isfinite(config_.substitute_max_seconds) || config_.substitute_max_seconds < 0.0) {
+    throw std::runtime_error("TemporalBevCache: substitute_max_seconds must be finite and >= 0");
+  }
   if (config_.bev_half_extent_m <= 0.0 || !std::isfinite(config_.bev_half_extent_m)) {
     throw std::runtime_error("TemporalBevCache: bev_half_extent_m must be finite and positive");
   }
@@ -65,9 +68,17 @@ TemporalBevCache::TemporalBevCache(
     autoware::cuda_utils::make_unique<float[]>(static_cast<size_t>(config_.frames) * frame_elements_);
 }
 
+double TemporalBevCache::substitute_reach_seconds(
+  const double interval_seconds, const double tolerance_seconds,
+  const double substitute_max_seconds)
+{
+  return std::min(substitute_max_seconds + tolerance_seconds, interval_seconds - tolerance_seconds);
+}
+
 std::vector<int64_t> TemporalBevCache::select_history_slots(
   const std::vector<double> & stamps_newest_first, const int64_t frames,
-  const double interval_seconds, const double tolerance_seconds)
+  const double interval_seconds, const double tolerance_seconds,
+  const double substitute_max_seconds)
 {
   std::vector<int64_t> selection(static_cast<size_t>(frames), -1);
   if (stamps_newest_first.empty()) {
@@ -84,8 +95,47 @@ std::vector<int64_t> TemporalBevCache::select_history_slots(
         selection[static_cast<size_t>(step)] = static_cast<int64_t>(index);
       }
     }
+    if (step == 0 || selection[static_cast<size_t>(step)] >= 0) {
+      continue;
+    }
+    // The map for this step was dropped. Training's index stride would have handed it the
+    // next older recorded scan, so the newest map older than the target stands in -- when it
+    // is close enough to be a drop and not an outage, and never the next step's own map.
+    const double max_age =
+      substitute_reach_seconds(interval_seconds, tolerance_seconds, substitute_max_seconds);
+    for (size_t index = 0; index < stamps_newest_first.size(); ++index) {
+      const double age = target - stamps_newest_first[index];
+      if (age > tolerance_seconds) {
+        if (age <= max_age) {
+          selection[static_cast<size_t>(step)] = static_cast<int64_t>(index);
+        }
+        break;
+      }
+    }
   }
   return selection;
+}
+
+int64_t TemporalBevCache::substituted_frames() const
+{
+  if (slots_.empty()) {
+    return 0;
+  }
+  const auto selection = current_selection();
+  int64_t substituted = 0;
+  for (int64_t step = 1; step < config_.frames; ++step) {
+    const int64_t index = selection[static_cast<size_t>(step)];
+    if (index < 0) {
+      continue;
+    }
+    const double target = -static_cast<double>(step) * config_.interval_seconds;
+    const double offset =
+      (slots_[static_cast<size_t>(index)].stamp - slots_.front().stamp).seconds();
+    if (std::abs(offset - target) > config_.interval_tolerance_seconds) {
+      ++substituted;
+    }
+  }
+  return substituted;
 }
 
 std::vector<int64_t> TemporalBevCache::current_selection() const
@@ -97,7 +147,8 @@ std::vector<int64_t> TemporalBevCache::current_selection() const
     stamps.push_back((slot.stamp - *newest).seconds());
   }
   return select_history_slots(
-    stamps, config_.frames, config_.interval_seconds, config_.interval_tolerance_seconds);
+    stamps, config_.frames, config_.interval_seconds, config_.interval_tolerance_seconds,
+    config_.substitute_max_seconds);
 }
 
 TemporalBevCache::InsertResult TemporalBevCache::insert(
@@ -129,10 +180,15 @@ TemporalBevCache::InsertResult TemporalBevCache::insert(
   }
   // Recycle expired buffers BEFORE acquiring the incoming map's buffer. This
   // avoids keeping one unnecessary full BEV allocation after steady-state
-  // warmup.
+  // warmup. The window reaches past the oldest step as far as a substitute may,
+  // so the map that stands in for a dropped oldest frame is still here.
   const double window_seconds =
       static_cast<double>(config_.frames - 1) * config_.interval_seconds +
-      config_.interval_tolerance_seconds;
+      std::max(
+        config_.interval_tolerance_seconds,
+        substitute_reach_seconds(
+          config_.interval_seconds, config_.interval_tolerance_seconds,
+          config_.substitute_max_seconds));
   while (!slots_.empty() &&
          (stamp - slots_.back().stamp).seconds() > window_seconds) {
     free_slots_.push_back(std::move(slots_.back()));

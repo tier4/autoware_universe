@@ -210,6 +210,12 @@
               "type": "number",
               "default": 0.02
             },
+            "substitute_max_seconds": {
+              "type": "number",
+              "minimum": 0.0,
+              "default": 0.2,
+              "description": "How much older than its target a map may be to stand in for a dropped LiDAR frame (a T4 window indexes history by position over the recorded scans, so a dropped scan's slot is the next older one). Must be below interval_seconds."
+            },
             "bev_half_extent_m": {
               "type": "number",
               "default": 122.4

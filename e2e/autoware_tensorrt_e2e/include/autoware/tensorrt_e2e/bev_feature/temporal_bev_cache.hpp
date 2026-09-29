@@ -48,8 +48,16 @@ namespace autoware::tensorrt_e2e
  *   from their source ego frame into the newest map's ego frame. This matches training, which
  *   anchors at every sensor frame while sampling history at the configured interval
  *   (`center_stride: 1` with `lidar_history_interval_seconds` >= the sensor period).
- * - A dropped sensor frame leaves a hole: `ready()` turns false until the window refills
- *   (self-healing), instead of discarding the whole cache. Only a non-monotonic timestamp
+ * - A dropped sensor frame is filled the way a T4 window indexes its history: by position
+ *   over the recorded scans (`load_history_sweeps`: frame `center - k * stride`), where a
+ *   missing scan's slot is the next OLDER one, never a newer one. The training lists drop
+ *   every window that spans a timeline hole (devkit `ego_discontinuities`), so the model has
+ *   not seen a substitute: it is the least stale real map there is, and replayed plans made
+ *   with one score as their neighbours do. A history step whose map was dropped therefore
+ *   takes the newest cached map older than its target by at most
+ *   `substitute_max_seconds`; a step with no map that close (an outage, not a drop) leaves a
+ *   hole, and `ready()` turns false until the window refills (self-healing) instead of
+ *   discarding the whole cache. Step 0 is never substituted. Only a non-monotonic timestamp
  *   (time jump, bag loop) resets the cache, which `insert()` reports to the caller.
  * - Warmup either waits for a complete history or duplicates the newest map
  *   (`duplicate_current_on_warmup`, the contract's `duplicate_current_until_ready`).
@@ -64,6 +72,10 @@ public:
     //! with another cadence says so in its ml_package file.
     double interval_seconds{0.2};
     double interval_tolerance_seconds{0.02};
+    //! How much older than its target a map may be to stand in for a dropped one: 0.2 s is
+    //! two consecutive 10 Hz scans, 93 % of the scan-drop gaps in the recorded corpus; the
+    //! rest are outages.
+    double substitute_max_seconds{0.2};
     double bev_half_extent_m{122.4};
     bool duplicate_current_on_warmup{false};
     PoseContinuityLimits pose_limits;
@@ -101,6 +113,8 @@ public:
            frame_elements_ * sizeof(float);
   }
   int64_t cached_frames() const { return static_cast<int64_t>(slots_.size()); }
+  //! History steps the current selection fills with an older map for a dropped one.
+  int64_t substituted_frames() const;
   int64_t frames() const { return config_.frames; }
 
   /**
@@ -116,14 +130,20 @@ public:
 
   /**
    * @brief For each history step k, the index of the stamp closest to
-   * `stamps[0] - k * interval_seconds` within tolerance, or -1 when no stamp qualifies.
+   * `target = stamps[0] - k * interval_seconds` within tolerance; failing that (k >= 1), the
+   * newest stamp older than the target by at most `substitute_max_seconds` (+ tolerance) and
+   * short of the next step's target (- tolerance); -1 when neither exists.
    *
    * `stamps_newest_first` is ordered newest first; step 0 always selects index 0. Pure logic,
    * exposed for unit testing.
    */
   static std::vector<int64_t> select_history_slots(
     const std::vector<double> & stamps_newest_first, int64_t frames, double interval_seconds,
-    double tolerance_seconds);
+    double tolerance_seconds, double substitute_max_seconds);
+
+  //! How much older than its target a substitute may be: the bound, short of the next step.
+  static double substitute_reach_seconds(
+    double interval_seconds, double tolerance_seconds, double substitute_max_seconds);
 
 private:
   struct Slot
