@@ -54,7 +54,7 @@
         # its perception release, applied as autoware_bevfusion applies
         # detection_score_thresholds: the box centre's radial distance picks the
         # first band whose upper limit exceeds it, a box beyond the last is dropped.
-        # source: /mnt/storage_rdma/workspaces/wang/OnePlanner/checkpoints/bevfusion-l/awml-2.8.2-jpntaxi/bevfusion_lidar.param.yaml
+        # source: awml-2.8.2-jpntaxi/bevfusion_lidar.param.yaml
         # sha256: 35ac4f4f8cdaa31551659d68daabe7f7c60b12f152abff543316b754c3b6dbc7
         distance_bin_upper_limits: [50.0, 90.0, 121.0, 200.0]
         # distance-major: one row per band, one column per head class
