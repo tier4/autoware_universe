@@ -95,3 +95,4 @@ The input trajectory is detected as invalid if the index exceeds the following t
 | `boundary_departure.on_time_buffer_s`           | double       | continuous-violation time required to activate a critical departure [s]           | 0.20            |
 | `boundary_departure.off_time_buffer_s`          | double       | continuous-safety time required to deactivate a critical departure [s]            | 0.10            |
 | `boundary_departure.enable_developer_marker`    | bool         | if true, publish developer debug markers from the boundary departure checker      | false           |
+| `boundary_departure.enable_align_to_ego_pose`   | bool         | correct the trajectory poses near the ego vehicle to match the measured ego pose  | true            |
