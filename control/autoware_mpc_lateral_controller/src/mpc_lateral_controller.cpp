@@ -78,6 +78,10 @@ MpcLateralController::MpcLateralController(
   /* reference-confidence steer soft hold */
   m_enable_confidence_steer_slew_limit = dp_bool("enable_confidence_steer_slew_limit");
   m_steering_direct_passthrough = dp_bool("steering_direct_passthrough");
+  m_mpc->m_steering_passthrough_timeout_s =
+    node.declare_parameter<double>("steering_passthrough_timeout", 0.5);
+  m_mpc->m_steering_passthrough_rate_limit_rad_s =
+    node.declare_parameter<double>("steering_passthrough_rate_limit_rad_s", 0.6);
   m_reference_confidence_L_ahead_min = dp_double("reference_confidence_L_ahead_min");
   m_reference_confidence_L_ahead_ref = dp_double("reference_confidence_L_ahead_ref");
   m_steer_slew_rate_min_rad_s = dp_double("steer_slew_rate_min_rad_s");
@@ -734,7 +738,20 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
     update_param(parameters, "mpc_velocity_time_constant", param.velocity_time_constant);
     update_param(parameters, "mpc_min_prediction_length", param.min_prediction_length);
 
-    update_param(parameters, "steering_direct_passthrough", m_steering_direct_passthrough);
+    bool steering_direct_passthrough = m_steering_direct_passthrough;
+    update_param(parameters, "steering_direct_passthrough", steering_direct_passthrough);
+    double passthrough_timeout = m_mpc->m_steering_passthrough_timeout_s;
+    double passthrough_rate_limit = m_mpc->m_steering_passthrough_rate_limit_rad_s;
+    update_param(parameters, "steering_passthrough_timeout", passthrough_timeout);
+    update_param(parameters, "steering_passthrough_rate_limit_rad_s", passthrough_rate_limit);
+    if (
+      steering_direct_passthrough &&
+      (!std::isfinite(passthrough_timeout) || passthrough_timeout <= 0.0 ||
+       !std::isfinite(passthrough_rate_limit) || passthrough_rate_limit <= 0.0)) {
+      result.successful = false;
+      result.reason = "steering passthrough timeout and rate limit must be positive and finite";
+      return result;
+    }
 
     // initialize input buffer
     update_param(parameters, "input_delay", param.input_delay);
@@ -747,6 +764,9 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
 
     // transaction succeeds, now assign values
     m_mpc->m_param = param;
+    m_steering_direct_passthrough = steering_direct_passthrough;
+    m_mpc->m_steering_passthrough_timeout_s = passthrough_timeout;
+    m_mpc->m_steering_passthrough_rate_limit_rad_s = passthrough_rate_limit;
   } catch (const rclcpp::exceptions::InvalidParameterTypeException & e) {
     result.successful = false;
     result.reason = e.what();
