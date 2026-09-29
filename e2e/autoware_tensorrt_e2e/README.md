@@ -224,7 +224,7 @@ delivered raises a `WARN` diagnostic
 TensorRT engines are built in-node by `TrtCommon` and cached beside the ONNX files. The
 extractor's is `bevfusion_lidar_feature.trt.engine`, not `.engine`: `TrtCommon` writes its
 layer dump beside the engine with `.json`, and `bevfusion_lidar_feature.json` is the exporter's
-metadata that `deployment_manifest.json` hashes. Both
+metadata when a package carries it. Both
 engines are built with the `trt_workspace_mib` workspace (default 4 GiB), an upper bound on the
 builder's scratch rather than an allocation; raise it only for a graph whose build reports
 insufficient workspace.
@@ -266,8 +266,7 @@ config says so:
   ```
 
   `make_ml_package_param.py --detection-thresholds` writes it (release_resworld.py takes the
-  file from the backbone directory, beside the checkpoint it was calibrated for), and
-  `deployment_manifest.json` pins it.
+  file from the backbone directory, beside the checkpoint it was calibrated for).
 - **Where each step runs.** The `PostprocessCuda` in this workspace predates the calibrated
   thresholds and allocates device memory every frame, so the decode is this package's own
   kernel (`detection_decode_kernel.cu`): `autoware_bevfusion`'s current decode arithmetic,

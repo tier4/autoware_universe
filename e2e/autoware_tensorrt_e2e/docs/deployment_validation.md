@@ -1,11 +1,7 @@
 # Deployment identity, continuity and latency
 
-ResWorld launch now requires `deployment_manifest.json` beside the planner ONNX.
-Generate it with OnePlanner's `projects/resworld/scripts/make_ml_package_param.py`.
-Older packages must be regenerated; do not disable the check to use a mixed package.
-The manifest hashes the planner, extractor and their contract/provenance JSON files,
-and lists effective ROS parameters for comparison before either engine is created.
-This checks accidental package/config mismatch; it is not a signed authenticity mechanism.
+A model package is the planner ONNX, the extractor ONNX and the generated
+`ml_package_resworld.param.yaml`; the node reads nothing else from it.
 Training normalization is embedded in the planner; `args_path` must remain empty.
 
 Both TensorRT caches are tied to graph bytes, engine bytes and build precision by
@@ -66,7 +62,7 @@ rate: intermediate source timestamps remain retained to serve the target history
 
 ## Verification and profiling limits
 
-Host tests cover artifact tampering, graph/engine/precision identity, path rejection,
+Host tests cover graph/engine/precision identity,
 pose discontinuities/yaw wrap, percentile calculations, and timestamp interpolation.
 OnePlanner's `check_autoware_cache.py` checks the actual native cache using CPU memory
 shims, including reset isolation and allocation counts. These do not execute CUDA.

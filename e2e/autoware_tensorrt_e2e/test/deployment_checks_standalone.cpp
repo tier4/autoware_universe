@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/tensorrt_e2e/deployment_manifest.hpp"
+#include "autoware/tensorrt_e2e/engine_identity.hpp"
 #include "autoware/tensorrt_e2e/planning_time.hpp"
 #include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
 #include "autoware/tensorrt_e2e/rolling_latency.hpp"
@@ -53,33 +53,9 @@ int main(int argc, char **argv) {
   std::ofstream(engine) << "engine two";
   check(!engine_identity_matches(file.string(), engine.string()));
   record_engine_identity(file.string(), engine.string());
-  nlohmann::json manifest = {{"schema_version", 1},
-                             {"files", {{"graph.onnx", digest}}},
-                             {"planner_file", "graph.onnx"},
-                             {"extractor_file", "graph.onnx"},
-                             {"parameters", nlohmann::json::object()}};
-  const auto path = root / "deployment_manifest.json";
-  std::ofstream(path) << manifest;
-  check(validate_deployment_manifest(path) == manifest);
   std::ofstream(file) << "wrong graph";
-  bool rejected = false;
-  try {
-    validate_deployment_manifest(path);
-  } catch (const std::runtime_error &) {
-    rejected = true;
-  }
-  check(rejected);
   check(file_sha256(file) != digest);
   check(!engine_identity_matches(file.string(), engine.string()));
-  manifest["files"] = {{"../graph.onnx", digest}};
-  std::ofstream(path) << manifest;
-  rejected = false;
-  try {
-    validate_deployment_manifest(path);
-  } catch (const std::runtime_error &) {
-    rejected = true;
-  }
-  check(rejected);
   PoseContinuityLimits limits;
   check(!pose_discontinuous({100000, 0, 1, 0}, {100003, 0, 1, 0}, 0.1, limits));
   check(pose_discontinuous({100000, 0, 1, 0}, {100020, 0, 1, 0}, 0.1, limits));
@@ -124,5 +100,5 @@ int main(int argc, char **argv) {
   check(planning_stamp_ns(PlanningTime::kPlanningTime, cloud, cloud) == cloud);
   check(!planning_stamp_ns(PlanningTime::kPlanningTime, cloud, cloud - 1));
   std::cout
-      << "Manifest tampering/path checks, pose reset, rolling latency, planning time: PASS\n";
+      << "Engine identity, pose reset, rolling latency, planning time: PASS\n";
 }
