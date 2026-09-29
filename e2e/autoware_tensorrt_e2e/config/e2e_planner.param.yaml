@@ -59,6 +59,9 @@
       # network and come from the model's ml_package file; what is left here is
       # host behaviour.
       interval_tolerance_seconds: 0.02
+      # A history step whose LiDAR frame was dropped takes the newest map at most
+      # this much older than its target (the next older scan, as a T4 window indexes it).
+      substitute_max_seconds: 0.2
       warmup: "wait"  # "wait" or "duplicate_current"
       max_delay_ms: 200.0
       extractor:
