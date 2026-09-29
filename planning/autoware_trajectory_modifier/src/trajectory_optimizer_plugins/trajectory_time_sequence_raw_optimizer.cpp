@@ -59,6 +59,8 @@ time_sequence_raw::TrajectoryOptimizationParams to_opt_params(
   out.goal.weight_yaw = p.goal.weight_yaw;
   out.goal.weight_velocity = p.goal.weight_velocity;
   out.goal.snap_distance_m = p.goal.snap_distance_m;
+  out.goal.unlatch_horizon_s = p.goal.unlatch_horizon_s;
+  out.goal.unlatch_min_speed_mps = p.goal.unlatch_min_speed_mps;
   out.temporal_consistency.enable = p.temporal_consistency.enable;
   out.temporal_consistency.weight_longitudinal = p.temporal_consistency.weight_longitudinal;
   out.temporal_consistency.weight_lateral = p.temporal_consistency.weight_lateral;

@@ -981,6 +981,18 @@ trajectory_modifier_params:
         validation:
           gt_eq<>: [0.0]
         read_only: false
+      unlatch_horizon_s:
+        type: double
+        default_value: 8.0
+        description: Unlatch goal snap when ego-to-goal exceeds this horizon times speed. <= 0 disables the check [s]
+        read_only: false
+      unlatch_min_speed_mps:
+        type: double
+        default_value: 3.0
+        description: Floor on |ego speed| used with unlatch_horizon_s to compute the far-away range [m/s]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
     temporal_consistency:
       enable:
         type: bool

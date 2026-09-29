@@ -133,13 +133,24 @@ OptimizationResult TrajectoryOptimizer::optimize(
     }
     observed_goal_pose_ = goal_pose;
 
-    const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
-    const double distance =
-      std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
-    if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
-      latched_goal_pose_ = goal_pose;
-    } else if (latched_goal_pose_) {
-      latched_goal_pose_ = goal_pose;
+    const double ego_to_goal_m = std::hypot(
+      goal_pose->position.x - ego_pose.position.x, goal_pose->position.y - ego_pose.position.y);
+    const bool ego_too_far_from_goal =
+      params_.goal.unlatch_horizon_s > 0.0 &&
+      ego_to_goal_m >
+        params_.goal.unlatch_horizon_s *
+          std::max(std::abs(ego_odometry.twist.twist.linear.x), params_.goal.unlatch_min_speed_mps);
+    if (ego_too_far_from_goal) {
+      reset_goal_snap_state();
+    } else {
+      const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
+      const double distance =
+        std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
+      if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
+        latched_goal_pose_ = goal_pose;
+      } else if (latched_goal_pose_) {
+        latched_goal_pose_ = goal_pose;
+      }
     }
   }
 
