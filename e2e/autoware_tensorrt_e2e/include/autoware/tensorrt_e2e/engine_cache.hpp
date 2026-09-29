@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__TENSORRT_E2E__ENGINE_CACHE_HPP_
 #define AUTOWARE__TENSORRT_E2E__ENGINE_CACHE_HPP_
 
-#include "autoware/tensorrt_e2e/deployment_manifest.hpp"
+#include "autoware/tensorrt_e2e/engine_identity.hpp"
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 

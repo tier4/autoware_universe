@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_e2e/tensorrt_e2e_node.hpp"
-#include "autoware/tensorrt_e2e/deployment_manifest.hpp"
 #include "autoware/tensorrt_e2e/training_ego_shape.hpp"
 #include <autoware_utils_geometry/geometry.hpp>
 
@@ -315,7 +314,6 @@ void TensorrtE2eNode::set_up_params()
   recorded_ego_dynamics_ =
       declare_parameter<bool>("recorded_ego_dynamics", false);
   derived_contract_ = declare_parameter<std::string>("derived_contract", "");
-  declare_parameter<bool>("require_deployment_manifest", false);
   params_.model_path = declare_parameter<std::string>("model_path", "");
   params_.plugins_path = declare_parameter<std::string>("plugins_path", "");
   params_.precision = declare_parameter<std::string>("precision", "fp16");
@@ -400,54 +398,6 @@ void TensorrtE2eNode::initialize_pipeline()
   diagnostics_->publish(get_clock()->now());
 
   create_providers();
-  if (get_parameter("require_deployment_manifest").as_bool()) {
-    const auto graph = std::filesystem::path(params_.model_path);
-    const auto manifest = validate_deployment_manifest(
-        graph.parent_path() / "deployment_manifest.json");
-    if (graph.filename().string() !=
-            manifest.at("planner_file").get<std::string>() ||
-        std::filesystem::canonical(
-            get_parameter("bev_feature.extractor.onnx_path").as_string()) !=
-            std::filesystem::canonical(
-                graph.parent_path() /
-                manifest.at("extractor_file").get<std::string>()))
-      throw std::runtime_error(
-          "Configured ONNX paths do not match deployment manifest");
-    for (const auto &[name, expected] : manifest.at("parameters").items()) {
-      if (!has_parameter(name))
-        throw std::runtime_error("Missing contract parameter: " + name);
-      const auto parameter = get_parameter(name);
-      nlohmann::json actual;
-      switch (parameter.get_type()) {
-      case rclcpp::ParameterType::PARAMETER_BOOL:
-        actual = parameter.as_bool();
-        break;
-      case rclcpp::ParameterType::PARAMETER_INTEGER:
-        actual = parameter.as_int();
-        break;
-      case rclcpp::ParameterType::PARAMETER_DOUBLE:
-        actual = parameter.as_double();
-        break;
-      case rclcpp::ParameterType::PARAMETER_STRING:
-        actual = parameter.as_string();
-        break;
-      case rclcpp::ParameterType::PARAMETER_STRING_ARRAY:
-        actual = parameter.as_string_array();
-        break;
-      case rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY:
-        actual = parameter.as_integer_array();
-        break;
-      case rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY:
-        actual = parameter.as_double_array();
-        break;
-      default:
-        throw std::runtime_error("Unsupported contract parameter: " + name);
-      }
-      if (actual != expected)
-        throw std::runtime_error("Deployment contract mismatch: " + name);
-    }
-  }
-
   // derived format_version 10: the ego state of 9 (measured steering_tire_angle,
   // unmodified yaw rate, twist at or before and pose at the LiDAR time) and the
   // producer's map conversion (see MapConversionOptions::oneplanner_derived_v10).

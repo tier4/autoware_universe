@@ -110,8 +110,7 @@ void TrtBevFeatureExtractor::init_engine(const Config & config)
 {
   // TrtCommon writes its layer dump to the engine path with ".json", which for an engine
   // beside bevfusion_lidar_feature.onnx is bevfusion_lidar_feature.json -- the exporter's
-  // metadata, hashed by deployment_manifest.json. Left there, the first build overwrites
-  // it and every later launch fails the manifest check, so the default cache is
+  // metadata when a package carries it, so the default cache is
   // bevfusion_lidar_feature.trt.engine and the dump goes to bevfusion_lidar_feature.trt.json.
   const std::string engine_path =
     config.engine_path.empty()
