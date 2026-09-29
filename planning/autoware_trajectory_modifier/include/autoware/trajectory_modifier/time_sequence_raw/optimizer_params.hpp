@@ -39,6 +39,24 @@ struct TrajectoryOptimizationParams
     double snap_distance_m{1.0};
   } goal;
 
+  /**
+   * @brief Weakly track the previous cycle's solved plan (same idea as autoware_ml_planner).
+   *
+   * Default weights are ~0.01 of the ml_planner yaml values so this pose-only OCP does not
+   * overpower tracking. The term is skipped while goal snap is latched or the reference was
+   * shifted by road-border avoidance, because those cases are not "clean" network output.
+   */
+  struct TemporalConsistencyParams
+  {
+    bool enable{false};
+    double weight_longitudinal{0.004};
+    double weight_lateral{0.2};
+    double weight_yaw{0.002};
+    double weight_velocity{0.004};
+    double decay_time_constant_s{1.0};
+    double far_weight_ratio{0.5};
+  } temporal_consistency;
+
   double min_velocity_mps{0.0};
   double max_velocity_mps{30.0};
 

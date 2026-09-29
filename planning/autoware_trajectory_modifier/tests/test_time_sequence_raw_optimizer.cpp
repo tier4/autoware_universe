@@ -16,6 +16,8 @@
 
 #include <autoware_utils_geometry/geometry.hpp>
 
+#include <geometry_msgs/msg/pose.hpp>
+
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -63,6 +65,28 @@ protected:
       trajectory.points.push_back(point);
     }
     return trajectory;
+  }
+
+  static Trajectory make_straight_trajectory(const double x0, const double speed)
+  {
+    Trajectory trajectory;
+    trajectory.header.frame_id = "map";
+    for (size_t i = 1; i <= opt_horizon; ++i) {
+      TrajectoryPoint point;
+      point.pose.position.x = x0 + speed * opt_dt_s * static_cast<double>(i);
+      point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(0.0);
+      trajectory.points.push_back(point);
+    }
+    return trajectory;
+  }
+
+  static geometry_msgs::msg::Pose make_pose(const double x, const double y, const double yaw = 0.0)
+  {
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = x;
+    pose.position.y = y;
+    pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
+    return pose;
   }
 
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
@@ -167,6 +191,80 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, ClearWarmStartResetsPreviousSolution
 
   optimizer.clear_warm_start(0);
   const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(second.optimized);
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySucceedsAcrossCycles)
+{
+  TrajectoryOptimizationParams params;
+  params.temporal_consistency.enable = true;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  auto raw = make_noisy_trajectory(8.0, 0.15);
+  raw.header.stamp.sec = 0;
+  const auto first = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(first.optimized);
+
+  raw.header.stamp.nanosec = 100000000;
+  const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, std::nullopt, false);
+  ASSERT_TRUE(second.optimized);
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedWhenReferenceShifted)
+{
+  TrajectoryOptimizationParams params;
+  params.temporal_consistency.enable = true;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  auto raw = make_noisy_trajectory(8.0, 0.15);
+  const auto first = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(first.optimized);
+
+  raw.header.stamp.nanosec = 100000000;
+  const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, std::nullopt, true);
+  ASSERT_TRUE(second.optimized);
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, SnapsTerminalWhenEndpointNearGoal)
+{
+  TrajectoryOptimizationParams params;
+  params.temporal_consistency.enable = false;
+  params.goal.snap_distance_m = 1.0;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  constexpr double x0 = 50.0;
+  constexpr double speed = 8.0;
+  odometry_.pose.pose.position.x = x0;
+  odometry_.twist.twist.linear.x = speed;
+  const auto raw = make_straight_trajectory(x0, speed);
+  const auto & terminal = raw.points.back().pose.position;
+  const auto goal = make_pose(terminal.x + 0.4, 0.3);
+
+  const auto result = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
+  ASSERT_TRUE(result.optimized) << "acados status: " << result.solver_status;
+  EXPECT_NEAR(result.trajectory.points.back().pose.position.x, goal.position.x, 0.25);
+  EXPECT_NEAR(result.trajectory.points.back().pose.position.y, goal.position.y, 0.25);
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedWhenGoalSnapIsLatched)
+{
+  TrajectoryOptimizationParams params;
+  params.temporal_consistency.enable = true;
+  params.goal.snap_distance_m = 1.0;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  constexpr double x0 = 50.0;
+  constexpr double speed = 8.0;
+  odometry_.pose.pose.position.x = x0;
+  odometry_.twist.twist.linear.x = speed;
+  auto raw = make_straight_trajectory(x0, speed);
+  const auto & terminal = raw.points.back().pose.position;
+  const auto goal = make_pose(terminal.x + 0.2, 0.0);
+
+  const auto first = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
+  ASSERT_TRUE(first.optimized);
+  raw.header.stamp.nanosec = 100000000;
+  const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
   ASSERT_TRUE(second.optimized);
 }
 

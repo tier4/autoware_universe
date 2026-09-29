@@ -61,16 +61,21 @@ public:
    *                  endpoint is within goal.snap_distance_m, the terminal pose is snapped
    *                  to this goal and the extra terminal weights stay latched until the
    *                  goal position changes.
+   * @param reference_was_shifted True when road-border avoidance moved the input. Temporal
+   *                             consistency is then skipped so a geometric correction is not
+   *                             blended with the previous (unshifted) plan.
    */
   OptimizationResult optimize(
     const Trajectory & raw_trajectory, const Odometry & ego_odometry,
     const std::optional<double> & current_steering_angle_rad,
     double current_longitudinal_accel_mps2, size_t batch_index,
-    const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
+    const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt,
+    bool reference_was_shifted = false);
 
   void clear_warm_start(size_t batch_index);
 
 private:
+  void reset_goal_snap_state();
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;
   double max_steering_angle_rad_;

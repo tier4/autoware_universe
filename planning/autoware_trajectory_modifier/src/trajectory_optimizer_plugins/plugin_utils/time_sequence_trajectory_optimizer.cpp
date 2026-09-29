@@ -20,6 +20,7 @@
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -74,7 +75,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
   const Trajectory & raw_trajectory, const Odometry & ego_odometry,
   const std::optional<double> & current_steering_angle_rad,
   const double current_longitudinal_accel_mps2, const size_t batch_index,
-  const std::optional<geometry_msgs::msg::Pose> & goal_pose)
+  const std::optional<geometry_msgs::msg::Pose> & goal_pose, const bool reference_was_shifted)
 {
   OptimizationResult result;
   result.trajectory = raw_trajectory;
@@ -128,10 +129,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
         goal_pose->position.x - observed_goal_pose_->position.x,
         goal_pose->position.y - observed_goal_pose_->position.y) > goal_position_change_threshold_m;
     if (goal_position_changed) {
-      latched_goal_pose_.reset();
-      for (auto & previous : previous_solutions_) {
-        previous.reset();
-      }
+      reset_goal_snap_state();
     }
     observed_goal_pose_ = goal_pose;
 
@@ -176,8 +174,36 @@ OptimizationResult TrajectoryOptimizer::optimize(
     }
   }
 
-  SolverSolution solution =
-    solver_->solve(initial_state, references, goal_terminal_reference, warm_start_ptr);
+  std::array<StageTemporalReference, opt_horizon> temporal_references;
+  const std::array<StageTemporalReference, opt_horizon> * temporal_references_ptr = nullptr;
+  const bool allow_temporal = params_.temporal_consistency.enable && !reference_was_shifted &&
+                              !goal_active && warm_start_ptr != nullptr;
+  if (allow_temporal) {
+    const double stage_shift = std::max(0.0, (stamp - previous->stamp).seconds() / opt_dt_s);
+    for (size_t k = 0; k < opt_horizon; ++k) {
+      const double index =
+        std::min(static_cast<double>(k + 1) + stage_shift, static_cast<double>(opt_horizon));
+      const auto lower = static_cast<size_t>(std::floor(index));
+      const size_t upper = std::min(lower + 1, opt_horizon);
+      const double ratio = index - static_cast<double>(lower);
+      const auto & from = warm_start.states[lower];
+      const auto & to = warm_start.states[upper];
+      const auto interpolate = [ratio](const double a, const double b) {
+        return a + ratio * (b - a);
+      };
+      StageTemporalReference & ref = temporal_references[k];
+      ref.x = interpolate(from[kX], to[kX]);
+      ref.y = interpolate(from[kY], to[kY]);
+      const double previous_yaw = interpolate(from[kPsi], to[kPsi]);
+      ref.yaw =
+        references[k].yaw + autoware_utils_math::normalize_radian(previous_yaw - references[k].yaw);
+      ref.velocity = interpolate(from[kV], to[kV]);
+    }
+    temporal_references_ptr = &temporal_references;
+  }
+
+  SolverSolution solution = solver_->solve(
+    initial_state, references, goal_terminal_reference, temporal_references_ptr, warm_start_ptr);
   result.solver_status = solution.status;
   result.solve_time_ms = solution.solve_time_s * 1e3;
 
@@ -217,6 +243,14 @@ OptimizationResult TrajectoryOptimizer::optimize(
   previous = PreviousSolution{solution, stamp, goal_active};
 
   return result;
+}
+
+void TrajectoryOptimizer::reset_goal_snap_state()
+{
+  latched_goal_pose_.reset();
+  for (auto & previous : previous_solutions_) {
+    previous.reset();
+  }
 }
 
 void TrajectoryOptimizer::clear_warm_start(const size_t batch_index)

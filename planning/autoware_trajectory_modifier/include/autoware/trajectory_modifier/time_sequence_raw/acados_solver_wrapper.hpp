@@ -64,6 +64,15 @@ struct GoalTerminalReference
   double velocity{0.0};
 };
 
+/// Previous plan resampled onto stages 1..N (solver local frame), including velocity.
+struct StageTemporalReference
+{
+  double x{0.0};
+  double y{0.0};
+  double yaw{0.0};
+  double velocity{0.0};
+};
+
 struct SolverSolution
 {
   int status{-1};
@@ -87,10 +96,15 @@ public:
   AcadosSolverWrapper(AcadosSolverWrapper &&) = delete;
   AcadosSolverWrapper & operator=(AcadosSolverWrapper &&) = delete;
 
+  /**
+   * @param temporal_references Previous plan on stages 1..N, or nullptr to omit the term.
+   *                            Same frame as initial_state; yaw on the tracking-reference branch.
+   */
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,
     const std::array<StageReference, opt_horizon> & references,
     const std::optional<GoalTerminalReference> & goal_terminal_reference,
+    const std::array<StageTemporalReference, opt_horizon> * temporal_references,
     const SolverSolution * warm_start);
 
 private:
