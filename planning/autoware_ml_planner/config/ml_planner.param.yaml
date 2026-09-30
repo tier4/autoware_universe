@@ -57,6 +57,14 @@
       shift_step_m: 0.1           # first 3 probes; remaining clearance via bisection [m]
       max_lateral_shift_m: 1.5    # cap on the total lateral offset from the raw position [m]
       propagate_shift: true       # carry the offset over to all subsequent points
+    virtual_pose:
+      enable: false                 # give the model the closest point of its previous trajectory instead of the measured pose
+      max_position_error_m: 0.3     # [m]   reset the virtual pose onto the vehicle when the vehicle is farther than this from it
+      max_yaw_error_deg: 5.0        # [deg] reset when the headings differ by more than this
+      max_search_segment_count: 5   # leading segments of the previous trajectory searched for the closest point
+      yaw_fit_half_window_m: 1.0    # [m] arc length on each side of the closest point over which the tangent is averaged
+      yaw_fit_min_length_m: 0.2     # [m] below this window length the measured heading is used
+      history_prefix_count: 10      # earlier virtual poses prepended so the spline extends behind the vehicle
     stop_point_fixing:
       enable: false
       velocity_threshold_mps: 0.3  # stop detection velocity threshold [m/s]
