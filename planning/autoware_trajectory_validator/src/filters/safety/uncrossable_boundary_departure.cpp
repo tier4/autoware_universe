@@ -91,6 +91,7 @@ void UncrossableBoundaryDepartureFilter::update_parameters(const validator::Para
   params_.time_to_departure_cutoff_s = params.boundary_departure.time_to_departure_cutoff_s;
   params_.on_time_buffer_s = params.boundary_departure.on_time_buffer_s;
   params_.off_time_buffer_s = params.boundary_departure.off_time_buffer_s;
+  params_.enable_align_to_ego_pose = params.boundary_departure.enable_align_to_ego_pose;
   params_.enable_developer_marker = params.boundary_departure.enable_developer_marker;
   params_.boundary_types_to_detect = params.boundary_departure.boundary_types;
 

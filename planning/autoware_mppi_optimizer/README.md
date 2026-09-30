@@ -1,6 +1,6 @@
 # Autoware MPPI Optimizer
 
-The `autoware_mppi_optimizer` package optimizes trajectories with Model Predictive Path Integral (MPPI) control. Its trajectory processor plugin applies MPPI to the first candidate in an ordered processing pipeline.
+The `autoware_mppi_optimizer` package optimizes trajectories with Model Predictive Path Integral (MPPI) control. Its trajectory modifier plugin applies MPPI to the first candidate in an ordered processing pipeline.
 
 ## Overview
 
@@ -22,13 +22,13 @@ autoware_mppi_optimizer/
 - CUDA Toolkit (curand, cufft)
 - Eigen3
 
-## Trajectory processor plugin
+## Trajectory modifier plugin
 
-Configure `autoware::mppi_optimizer::plugin::TrajectoryMppiOptimizer` in the `plugin_names` list of `autoware_trajectory_processor`. Place it first to optimize the primary candidate before other modifiers and optimizers.
+Configure `autoware::mppi_optimizer::plugin::TrajectoryMppiOptimizer` in the `plugin_names` list of `autoware_trajectory_modifier`. Place it first to optimize the primary candidate before other modifiers and optimizers.
 
-The plugin uses odometry, acceleration, steering, tracked objects, route, and raw lanelet map data from the processor. It returns the input points when MPPI is disabled, runs in shadow mode, rejects a result, or reports an error.
+The plugin uses odometry, acceleration, steering, tracked objects, route, and raw lanelet map data from the modifier. It returns the input points when MPPI is disabled, runs in shadow mode, rejects a result, or reports an error.
 
-Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory processor node.
+Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory modifier node.
 
 ## Offline debug logging + retune
 
@@ -37,7 +37,7 @@ Enable CSV logging from the MPPI plugin parameters:
 ```yaml
 mppi_optimizer:
   enable_debug_trajectory_log: true
-  # Empty -> current working directory of the trajectory processor node
+  # Empty -> current working directory of the trajectory modifier node
   debug_trajectory_log_directory: ""
 ```
 
@@ -69,7 +69,7 @@ min_optimization_length: 0.0
 use_last_control_as_nominal: true
 ```
 
-Then restart the trajectory processor and compare live MPPI to offline retune.
+Then restart the trajectory modifier and compare live MPPI to offline retune.
 
 Notes:
 

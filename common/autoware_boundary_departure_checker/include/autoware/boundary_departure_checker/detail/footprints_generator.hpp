@@ -40,6 +40,35 @@ struct FootprintMargin
 };
 
 /**
+ * @brief Extent of the ego pose alignment along a trajectory.
+ */
+struct FootprintAlignment
+{
+  double align_dist_m{0.0};  ///< arc length over which the alignment applies [m]
+  size_t align_count{0};     ///< number of leading points that the alignment covers
+};
+
+/**
+ * @brief Give the alignment extent for the leading trajectory points within an arc length.
+ * @param[in] trajectory_points points along the trajectory
+ * @param[in] dist_m arc length from the trajectory start [m]
+ * @return alignment arc length and the number of leading points it covers
+ */
+FootprintAlignment count_points_within_distance(
+  const std::vector<TrajectoryPoint> & trajectory_points, const double dist_m);
+
+/**
+ * @brief Correct the trajectory poses near the ego vehicle to start at the measured ego pose.
+ * @param[in] trajectory_points points along the trajectory
+ * @param[in] ego_pose measured ego pose
+ * @param[in] expected_alignment extent of the alignment from the trajectory start
+ * @return trajectory points with the poses near the ego vehicle corrected
+ */
+std::vector<TrajectoryPoint> align_to_ego_pose(
+  const std::vector<TrajectoryPoint> & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,
+  const FootprintAlignment expected_alignment);
+
+/**
  * @brief Generate vehicle footprints along a trajectory.
  * @param[in] trajectory_points points along the trajectory
  * @param[in] vehicle_info information about the vehicle

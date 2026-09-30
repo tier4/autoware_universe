@@ -1,0 +1,130 @@
+// Copyright 2026 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
+#define CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_
+
+// Lightweight closed-loop simulation without a ROS node.
+// Builds SafetyPlannerInput the same way SafetyPlannerNode::on_timer does, applies the velocity
+// of the output trajectory at dt and a pure-pursuit steer toward it to a kinematic bicycle
+// model (pure pursuit stands in for the controller; the actuators respond perfectly), and repeats
+// until the goal is reached / the ego stalls / the step limit is hit.
+// Every output trajectory goes through a validity check.
+
+#include "context.hpp"
+#include "safety_planner.hpp"
+#include "type_alias.hpp"
+
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace autoware::safety_planner::testing
+{
+
+struct ClosedLoopConfig
+{
+  double dt_s{0.1};  //!< one cycle (matches the node's planning_frequency_hz = 10 Hz)
+  size_t max_steps{3000};
+  double goal_distance_threshold_m{1.0};
+  double goal_velocity_threshold_mps{0.1};
+  //! Stalled if the ego does not move by stall_progress_m within stall_window_steps
+  size_t stall_window_steps{100};
+  double stall_progress_m{0.1};
+  //! The run ends when the planner fails this many cycles in a row (the last complete trajectory
+  //! is not followed further than this)
+  size_t max_consecutive_planner_failures{30};
+  //! Pure-pursuit lookahead: max(min_lookahead_m, lookahead_time_s * v)
+  double lookahead_time_s{1.0};
+  double min_lookahead_m{2.0};
+  //! Stands in for a lane change done by the other planner: from lane_change_start_step on, the
+  //! ego is shifted sideways (positive = left) by lane_change_offset_m spread evenly over
+  //! lane_change_duration_steps while it keeps its heading and the planner's velocity. 0 = none
+  size_t lane_change_start_step{0};
+  size_t lane_change_duration_steps{0};
+  double lane_change_offset_m{0.0};
+};
+
+//! Ego state at the start of a cycle and the trajectory planned in that cycle
+struct StepRecord
+{
+  Odometry odometry;
+  AccelWithCovarianceStamped acceleration;
+  SteeringReport steering;
+  Trajectory trajectory;  //!< normal_trajectory
+  //! reference_path sampled at 1 m (x, y); kept as points so the plot does not need the
+  //! trajectory class
+  std::vector<std::pair<double, double>> reference_path_xy;
+};
+
+struct ClosedLoopResult
+{
+  bool goal_reached{false};
+  std::string termination_reason;
+  std::vector<StepRecord> steps;
+  //! Ego state at termination (after the last advance). Its trajectory is empty
+  StepRecord final_state;
+  //! "step N: <reason>" entries; empty if every trajectory was valid
+  std::vector<std::string> violations;
+  //! Cycles in which the planner gave up (a trajectory of the ego point alone); the ego then
+  //! keeps following the last complete trajectory
+  size_t planner_failures{0};
+};
+
+//! Validity check of one output trajectory. Returns the list of violations (empty if valid)
+std::vector<std::string> validate_trajectory(
+  const Trajectory & trajectory, const Pose & ego_pose, const VehicleInfo & vehicle_info);
+
+//! Writes <path_prefix>_ego.csv (one row per step plus the final state as the last row) and
+//! <path_prefix>_trajectories.csv (one row per trajectory point of every step) for offline analysis
+void write_result_csv(const ClosedLoopResult & result, const std::string & path_prefix);
+
+class ClosedLoopSimulator
+{
+public:
+  //! predicted_objects are held fixed over the whole run (only the stamp follows the ego clock)
+  ClosedLoopSimulator(
+    const Params & params, const VehicleInfo & vehicle_info, const LaneletMapBin & map_bin,
+    const LaneletRoute & route, const PredictedObjects & predicted_objects,
+    const ClosedLoopConfig & config);
+
+  ClosedLoopResult run();
+
+  //! For visualization (the lanelet map is reachable through route_manager)
+  const SafetyPlannerInput & input() const { return input_; }
+
+private:
+  //! Takes velocity / acceleration at t_target seconds on the trajectory, steers toward the
+  //! lookahead point on it (pure pursuit), and integrates the pose over dt with the kinematic
+  //! bicycle model
+  void advance_ego(const Trajectory & trajectory, double t_target);
+  bool lane_change_active() const;
+  void inject_lane_change();
+  bool update_route_manager();
+
+  Params params_;
+  ClosedLoopConfig config_;
+  LaneletMapBin map_bin_;
+  LaneletRoute route_;
+  PredictedObjects predicted_objects_;
+  SafetyPlanner planner_;
+  SafetyPlannerInput input_;
+  size_t step_{0};
+};
+
+}  // namespace autoware::safety_planner::testing
+
+#endif  // CLOSED_LOOP__CLOSED_LOOP_SIMULATOR_HPP_

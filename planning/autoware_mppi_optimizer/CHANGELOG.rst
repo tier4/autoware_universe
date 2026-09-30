@@ -4,7 +4,7 @@ Changelog for package autoware_mppi_optimizer
 
 Forthcoming
 -----------
-* Add an MPPI trajectory processor plugin with namespaced parameters and diagnostics.
+* Add an MPPI trajectory modifier plugin with namespaced parameters and diagnostics.
 
 0.51.0 (2026-06-10)
 -------------------

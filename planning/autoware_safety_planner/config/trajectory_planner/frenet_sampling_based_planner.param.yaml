@@ -1,0 +1,37 @@
+/**:
+  ros__parameters:
+    frenet_sampling_based_planner:
+      time_step_s: 0.1 # [s]
+      path_resolution_m: 0.5 # [m] spacing at which the path l(s) is sampled
+      target_lengths_m: [10.0, 20.0, 40.0] # [m] arc lengths over which the lateral motion completes
+      target_durations_s: [1.0, 2.0, 4.0, 6.0, 8.0] # [s] terminal times of the velocity profile
+      target_lateral_positions_m: [-1.0, -0.75, -0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5, 0.75, 1.0] # [m] positive to the left
+      apex_lateral_offsets_m: [0.5, 1.0, 1.5, 2.0] # [m] towards the inside of a curve at its apex, for a corner too tight to follow the reference_path
+      apex_return_lengths_m: [10.0, 15.0, 20.0] # [m] arc lengths over which an apex-aligned path returns to the reference_path
+      apex_min_curvature: 0.05 # [1/m] a local peak of |curvature| at or above this is an apex
+      target_velocity_ratios: [0.0, 0.1, 0.25, 0.5, 0.75, 1.0] # [-] ratios of the speed limit at the ego position
+      boundary:
+        soft_simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the soft boundary polylines; 0 disables
+        hard_simplify_tolerance_m: 0.03 # [m] Douglas-Peucker tolerance on the hard boundary polylines; 0 disables
+      validation:
+        velocity_margin_mps: 0.5 # [m/s] tolerance of the velocity limit check
+        lon_accel_margin_mps2: 0.2 # [m/s^2] tolerance of the hard longitudinal acceleration check
+      velocity_optimizer:
+        enable: true
+        resolution_m: 1.0 # [m] arc length spacing of the QP grid
+        max_length_m: 150.0 # [m] arc length of the chosen path the QP covers
+        weights:
+          jerk: 10.0
+          over_velocity: 100000.0
+          over_acceleration: 5000.0
+          over_jerk: 2000.0
+      debug:
+        publish_candidate_markers: false # publishing every sampled candidate costs a few MB per cycle
+      weights:
+        lateral: 3.0
+        velocity: 0.5
+        lon_jerk: 0.1
+        curvature: 3.0
+        soft_bound: 10.0
+        previous_lateral: 2.0
+        path_infeasible: 10000.0 # outweighs the rest of the cost, so a path still feasible past the time horizon wins

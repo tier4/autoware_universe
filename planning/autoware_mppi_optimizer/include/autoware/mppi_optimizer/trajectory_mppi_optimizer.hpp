@@ -19,7 +19,7 @@
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware/avoidance_target_detector/object_filtering.hpp>
-#include <autoware/trajectory_processor/trajectory_processor_plugin_base.hpp>
+#include <autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp>
 #include <autoware_mppi_optimizer/trajectory_mppi_optimizer_parameters.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
@@ -45,21 +45,21 @@
 namespace autoware::mppi_optimizer::plugin
 {
 
-using TrajectoryPoints = autoware::trajectory_processor::plugin::TrajectoryPoints;
+using TrajectoryPoints = autoware::trajectory_modifier::plugin::TrajectoryPoints;
 
 /** @brief Applies first-order Dubins MPPI to the primary candidate trajectory. */
 class TrajectoryMppiOptimizer final
-: public autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase
+: public autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase
 {
 public:
   /** @brief Optimizes candidate zero and preserves all other candidates. */
-  autoware::trajectory_processor::plugin::ProcessingResult process(
+  autoware::trajectory_modifier::plugin::ProcessingResult process(
     TrajectoryPoints & trajectory_points,
-    autoware::trajectory_processor::TrajectoryProcessorData & data) override;
+    autoware::trajectory_modifier::TrajectoryModifierData & data) override;
 
-  /** @brief Accepts the common processor update hook. */
+  /** @brief Accepts the common modifier update hook. */
   void update_params(
-    const autoware::trajectory_processor::TrajectoryProcessorParams & params) override;
+    const autoware::trajectory_modifier::TrajectoryModifierParams & params) override;
 
   /** @brief Publishes debug trajectories from the most recent MPPI pass. */
   void publish_debug_data(const std::string & ns) const override;
@@ -67,7 +67,7 @@ public:
 protected:
   /** @brief Creates plugin parameters, publishers, and diagnostics. */
   void on_initialize(
-    const autoware::trajectory_processor::TrajectoryProcessorParams & params) override;
+    const autoware::trajectory_modifier::TrajectoryModifierParams & params) override;
 
 private:
   using MppiParams = trajectory_mppi_optimizer::Params;
@@ -80,7 +80,7 @@ private:
   void reset_optimizer();
 
   /** @brief Updates route-dependent boundary indexes when their inputs change. */
-  void update_route_context(const autoware::trajectory_processor::TrajectoryProcessorData & data);
+  void update_route_context(const autoware::trajectory_modifier::TrajectoryModifierData & data);
 
   /** @brief Creates and configures the GPU optimizer on first use. */
   void ensure_optimizer();

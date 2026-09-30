@@ -65,7 +65,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   find_package(MPPI-Generic REQUIRED)
   find_package(ament_index_cpp REQUIRED)
   pluginlib_export_plugin_description_file(
-    autoware_trajectory_processor trajectory_processor_plugins.xml)
+    autoware_trajectory_modifier trajectory_modifier_plugins.xml)
   add_library(mppi_extensions INTERFACE)
   add_library(MppiExtensions::extensions ALIAS mppi_extensions)
   target_include_directories(mppi_extensions BEFORE INTERFACE
@@ -116,13 +116,13 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   cuda_add_library(first_order_dubins_mppi SHARED
     src/first_order_dubins/first_order_dubins_mppi_interface.cu
   )
-  find_package(autoware_trajectory_processor REQUIRED)
+  find_package(autoware_trajectory_modifier REQUIRED)
   ament_auto_add_library(mppi_temporal_mpt_nominal SHARED
     src/first_order_dubins/temporal_mpt_nominal.cpp
   )
   target_link_libraries(mppi_temporal_mpt_nominal
     mppi_trajectory_utils
-    ${autoware_trajectory_processor_LIBRARIES}
+    ${autoware_trajectory_modifier_LIBRARIES}
     rclcpp::rclcpp
     tf2::tf2
     tf2_geometry_msgs::tf2_geometry_msgs
@@ -159,10 +159,10 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(${PROJECT_NAME} first_order_dubins_mppi)
 
-  ament_auto_add_library(autoware_mppi_trajectory_processor_plugin SHARED
+  ament_auto_add_library(autoware_mppi_trajectory_modifier_plugin SHARED
     src/trajectory_mppi_optimizer.cpp
   )
-  target_link_libraries(autoware_mppi_trajectory_processor_plugin
+  target_link_libraries(autoware_mppi_trajectory_modifier_plugin
     first_order_dubins_mppi
     trajectory_mppi_optimizer_parameters
     ${PROJECT_NAME}

@@ -274,6 +274,8 @@ public:
       params.uncrossable_bound_departure_validator.time_to_departure_cutoff_s;
     params_.on_time_buffer_s = params.uncrossable_bound_departure_validator.on_time_buffer_s;
     params_.off_time_buffer_s = params.uncrossable_bound_departure_validator.off_time_buffer_s;
+    params_.enable_align_to_ego_pose =
+      params.uncrossable_bound_departure_validator.enable_align_to_ego_pose;
     params_.enable_developer_marker =
       params.uncrossable_bound_departure_validator.enable_developer_marker;
     params_.boundary_types_to_detect = params.uncrossable_bound_departure_validator.boundary_types;

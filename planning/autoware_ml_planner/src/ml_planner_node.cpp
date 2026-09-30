@@ -18,6 +18,7 @@
 #include "autoware/ml_planner/dimensions.hpp"
 #include "autoware/ml_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/ml_planner/utils/marker_utils.hpp"
+#include "autoware/ml_planner/utils/object_remap.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -186,6 +187,8 @@ void MLPlanner::set_up_params()
   params_.plugins_path = this->declare_parameter<std::string>("plugins_path", "");
   params_.build_only = this->declare_parameter<bool>("build_only", false);
   params_.planning_frequency_hz = this->declare_parameter<double>("planning_frequency_hz", 10.0);
+  remap_unsupported_objects_to_pedestrian_ =
+    this->declare_parameter<bool>("remap_unsupported_objects_to_pedestrian", false);
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
@@ -210,6 +213,16 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.weight_steering_rate", 10.0);
   opt.terminal_weight_scale =
     this->declare_parameter<double>("trajectory_optimization.terminal_weight_scale", 2.5);
+  opt.goal.weight_longitudinal =
+    this->declare_parameter<double>("trajectory_optimization.goal.weight_longitudinal", 5.0);
+  opt.goal.weight_lateral =
+    this->declare_parameter<double>("trajectory_optimization.goal.weight_lateral", 5.0);
+  opt.goal.weight_yaw =
+    this->declare_parameter<double>("trajectory_optimization.goal.weight_yaw", 0.5);
+  opt.goal.weight_velocity =
+    this->declare_parameter<double>("trajectory_optimization.goal.weight_velocity", 0.1);
+  opt.goal.snap_distance_m =
+    this->declare_parameter<double>("trajectory_optimization.goal.snap_distance_m", 1.0);
   opt.min_velocity_mps =
     this->declare_parameter<double>("trajectory_optimization.min_velocity_mps", 0.0);
   opt.max_velocity_mps =
@@ -224,6 +237,21 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.max_lateral_acceleration_mps2", 3.0);
   opt.max_sqp_iterations =
     this->declare_parameter<int>("trajectory_optimization.max_sqp_iterations", 50);
+  auto & temporal = opt.temporal_consistency;
+  temporal.enable =
+    this->declare_parameter<bool>("trajectory_optimization.temporal_consistency.enable", false);
+  temporal.weight_longitudinal = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.weight_longitudinal", 0.4);
+  temporal.weight_lateral = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.weight_lateral", 2.0);
+  temporal.weight_yaw =
+    this->declare_parameter<double>("trajectory_optimization.temporal_consistency.weight_yaw", 0.2);
+  temporal.weight_velocity = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.weight_velocity", 0.4);
+  temporal.decay_time_constant_s = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.decay_time_constant_s", 1.0);
+  temporal.far_weight_ratio = this->declare_parameter<double>(
+    "trajectory_optimization.temporal_consistency.far_weight_ratio", 0.05);
 #ifndef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (opt.enable) {
     RCLCPP_WARN(
@@ -299,6 +327,7 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   MLPlannerParams new_params = params_;
   MLPlannerPlanningFactorParams new_planning_factor_params = planning_factor_params_;
   MLPlannerDebugParams new_debug_params = debug_params_;
+  bool new_remap_unsupported_objects_to_pedestrian = remap_unsupported_objects_to_pedestrian_;
   bool requested_build_only = params_.build_only;
 
   update_param<std::string>(parameters, "model.onnx_model_path", new_params.model_path);
@@ -308,6 +337,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<std::string>(parameters, "plugins_path", new_params.plugins_path);
   update_param<bool>(parameters, "build_only", requested_build_only);
   update_param<double>(parameters, "planning_frequency_hz", new_params.planning_frequency_hz);
+  update_param<bool>(
+    parameters, "remap_unsupported_objects_to_pedestrian",
+    new_remap_unsupported_objects_to_pedestrian);
   update_param<double>(
     parameters, "traffic_light_group_msg_timeout_seconds",
     new_params.traffic_light_group_msg_timeout_seconds);
@@ -331,6 +363,15 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "trajectory_optimization.terminal_weight_scale", opt.terminal_weight_scale);
   update_param<double>(
+    parameters, "trajectory_optimization.goal.weight_longitudinal", opt.goal.weight_longitudinal);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.weight_lateral", opt.goal.weight_lateral);
+  update_param<double>(parameters, "trajectory_optimization.goal.weight_yaw", opt.goal.weight_yaw);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.weight_velocity", opt.goal.weight_velocity);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.snap_distance_m", opt.goal.snap_distance_m);
+  update_param<double>(
     parameters, "trajectory_optimization.min_velocity_mps", opt.min_velocity_mps);
   update_param<double>(
     parameters, "trajectory_optimization.max_velocity_mps", opt.max_velocity_mps);
@@ -345,6 +386,26 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     opt.max_lateral_acceleration_mps2);
   update_param<int>(
     parameters, "trajectory_optimization.max_sqp_iterations", opt.max_sqp_iterations);
+  auto & temporal = opt.temporal_consistency;
+  update_param<bool>(
+    parameters, "trajectory_optimization.temporal_consistency.enable", temporal.enable);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.weight_longitudinal",
+    temporal.weight_longitudinal);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.weight_lateral",
+    temporal.weight_lateral);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.weight_yaw", temporal.weight_yaw);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.weight_velocity",
+    temporal.weight_velocity);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.decay_time_constant_s",
+    temporal.decay_time_constant_s);
+  update_param<double>(
+    parameters, "trajectory_optimization.temporal_consistency.far_weight_ratio",
+    temporal.far_weight_ratio);
 
   auto & avoidance = new_params.road_border_avoidance;
   update_param<bool>(parameters, "road_border_avoidance.enable", avoidance.enable);
@@ -437,15 +498,19 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     return failure("trajectory optimization is not available in this build");
   }
 #endif
-  const std::array<double, 8> weights{
+  const std::array<double, 12> weights{
     opt.weight_longitudinal,  opt.weight_lateral,        opt.weight_yaw,
     opt.weight_velocity,      opt.weight_steering_angle, opt.weight_acceleration,
-    opt.weight_steering_rate, opt.terminal_weight_scale};
+    opt.weight_steering_rate, opt.terminal_weight_scale, opt.goal.weight_longitudinal,
+    opt.goal.weight_lateral,  opt.goal.weight_yaw,       opt.goal.weight_velocity};
   if (std::any_of(weights.begin(), weights.end(), [](const double value) { return value < 0.0; })) {
     return failure("trajectory optimization weights must be non-negative");
   }
   if (opt.min_velocity_mps > opt.max_velocity_mps) {
     return failure("trajectory_optimization.min_velocity_mps must not exceed max_velocity_mps");
+  }
+  if (opt.goal.snap_distance_m < 0.0) {
+    return failure("trajectory_optimization.goal.snap_distance_m must be non-negative");
   }
   if (opt.min_acceleration_mps2 > opt.max_acceleration_mps2) {
     return failure(
@@ -455,6 +520,17 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     opt.max_steering_rate_rps < 0.0 || opt.max_lateral_acceleration_mps2 < 0.0 ||
     opt.max_sqp_iterations < 1) {
     return failure("trajectory optimization limits and max_sqp_iterations must be positive");
+  }
+  {
+    const auto & temporal = opt.temporal_consistency;
+    if (
+      temporal.weight_longitudinal < 0.0 || temporal.weight_lateral < 0.0 ||
+      temporal.weight_yaw < 0.0 || temporal.weight_velocity < 0.0) {
+      return failure("temporal consistency weights must be non-negative");
+    }
+    if (temporal.far_weight_ratio < 0.0 || temporal.far_weight_ratio > 1.0) {
+      return failure("temporal_consistency.far_weight_ratio must be within [0, 1]");
+    }
   }
   if (
     avoidance.start_time_s < 0.0 || avoidance.footprint_margin_m < 0.0 ||
@@ -478,12 +554,14 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   const MLPlannerParams old_params = params_;
   const MLPlannerPlanningFactorParams old_planning_factor_params = planning_factor_params_;
   const MLPlannerDebugParams old_debug_params = debug_params_;
+  const bool old_remap_unsupported_objects_to_pedestrian = remap_unsupported_objects_to_pedestrian_;
 
   try {
     core_->update_params(new_params);
     params_ = new_params;
     planning_factor_params_ = new_planning_factor_params;
     debug_params_ = new_debug_params;
+    remap_unsupported_objects_to_pedestrian_ = new_remap_unsupported_objects_to_pedestrian;
     if (reload_model) {
       load_model();
     }
@@ -502,6 +580,7 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
       params_ = old_params;
       planning_factor_params_ = old_planning_factor_params;
       debug_params_ = old_debug_params;
+      remap_unsupported_objects_to_pedestrian_ = old_remap_unsupported_objects_to_pedestrian;
       if (reload_model) {
         load_model();
       }
@@ -597,6 +676,11 @@ void MLPlanner::on_timer()
 
   // Take data from subscribers
   auto objects = sub_tracked_objects_.take_data();
+  if (remap_unsupported_objects_to_pedestrian_) {
+    // Rewrite here, before the messages reach the core buffers, so that the preprocessing
+    // pipeline sees ordinary PEDESTRIAN objects and needs no knowledge of this feature.
+    objects = utils::remap_unsupported_objects_to_pedestrian(objects);
+  }
   auto ego_kinematic_state = sub_current_odometry_.take_data();
   auto traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
@@ -643,11 +727,26 @@ void MLPlanner::on_timer()
   const rclcpp::Time frame_time = core_->frame_time();
 
   if (start_velocity_override_enabled_) {
-    // Make the model plan as if the vehicle were already moving: overwrite every ego
-    // velocity entry of the input (all history timesteps, all batches) with 1 m/s.
     auto & ego_agent_past = input_data_map.at("ego_agent_past");
-    xt::view(ego_agent_past, xt::all(), xt::all(), EGO_AGENT_PAST_IDX_VELOCITY) =
-      start_service_ego_velocity_mps;
+    // The last history timestep holds the current measured ego velocity. Once the vehicle has
+    // actually reached the overridden velocity the override is no longer needed, so stop it
+    // automatically instead of waiting for the service to be called with false.
+    const auto latest_timestep_idx = static_cast<std::size_t>(ego_agent_past.shape(1)) - 1;
+    const float measured_ego_velocity_mps =
+      ego_agent_past(0, latest_timestep_idx, EGO_AGENT_PAST_IDX_VELOCITY);
+    if (measured_ego_velocity_mps >= start_service_ego_velocity_mps) {
+      start_velocity_override_enabled_ = false;
+      RCLCPP_INFO(
+        get_logger(),
+        "Start service: ego velocity override disabled automatically (measured %.2f m/s reached "
+        "%.2f m/s)",
+        measured_ego_velocity_mps, start_service_ego_velocity_mps);
+    } else {
+      // Make the model plan as if the vehicle were already moving: overwrite every ego
+      // velocity entry of the input (all history timesteps, all batches) with 1 m/s.
+      xt::view(ego_agent_past, xt::all(), xt::all(), EGO_AGENT_PAST_IDX_VELOCITY) =
+        start_service_ego_velocity_mps;
+    }
   }
 
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(core_->ego_pose());
@@ -712,8 +811,18 @@ void MLPlanner::on_timer()
     return;
   }
 
-  pub_trajectory_->publish(planner_output.trajectory);
-  pub_trajectories_->publish(planner_output.candidate_trajectories);
+  // The trajectory is only published when the optimization produced one. A failed cycle is
+  // skipped rather than falling back to the raw model output, which the optimization never
+  // validated and which carries no velocity profile consistent with the ego state. The next
+  // cycle is expected to recover, so this is a skip and not an escalation.
+  if (planner_output.trajectory) {
+    pub_trajectory_->publish(*planner_output.trajectory);
+  }
+  if (!planner_output.candidate_trajectories.candidate_trajectories.empty()) {
+    pub_trajectories_->publish(planner_output.candidate_trajectories);
+  }
+  // Perception output and the turn indicator command do not come from the optimization, so
+  // they are published either way.
   pub_objects_->publish(planner_output.predicted_objects);
   pub_turn_indicators_->publish(planner_output.turn_indicators_command);
 
@@ -751,16 +860,30 @@ void MLPlanner::on_timer()
     solve_time_msg.data = optimization_debug.solve_time_ms;
     pub_optimization_time_->publish(solve_time_msg);
     if (!optimization_debug.optimized) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-        "Trajectory optimization failed (acados status %d); publishing the raw trajectory.",
-        optimization_debug.solver_status);
+      // status 0 with no solution means the solve never ran - the model output was too
+      // short to build the horizon from - which is a different problem from a solver that
+      // ran and failed. Either way the cycle is skipped.
+      if (optimization_debug.solver_status == 0) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+          "Trajectory optimization did not run (model output too short); skipping this "
+          "cycle.");
+      } else {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+          "Trajectory optimization failed (acados status %d); skipping this cycle.",
+          optimization_debug.solver_status);
+      }
+      // WARN, not ERROR: a skipped cycle is expected to be recovered by the next one, so it
+      // should be visible without escalating into an MRM.
       diagnostics_inference_->update_level_and_message(
-        DiagnosticStatus::WARN, "Trajectory optimization failed");
+        DiagnosticStatus::WARN, "Trajectory optimization failed, cycle skipped");
     }
   }
 
-  publish_planning_factor(planner_output.trajectory);
+  if (planner_output.trajectory) {
+    publish_planning_factor(*planner_output.trajectory);
+  }
 
   // Publish diagnostics
   diagnostics_inference_->publish(frame_time);

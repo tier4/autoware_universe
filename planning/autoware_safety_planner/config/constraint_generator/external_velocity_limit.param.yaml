@@ -1,0 +1,8 @@
+/**:
+  ros__parameters:
+    external_velocity_limit:
+      default_velocity_mps: 8.33 # [m/s] (30 km/h)
+      decel_mps2: 0.5 # [m/s^2]
+      margin_m: 0.5 # [m]
+      half_width_m: 2.0 # [m]
+      sample_interval_m: 2.0 # [m]

@@ -15,14 +15,14 @@
 #ifndef MINIMUM_RULE_BASED_PLANNER_HPP_
 #define MINIMUM_RULE_BASED_PLANNER_HPP_
 
-#include "autoware/trajectory_processor/trajectory_processor_context.hpp"
-#include "autoware/trajectory_processor/trajectory_processor_data.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_context.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_data.hpp"
 #include "map_based_stop_planner.hpp"
 #include "path_planner.hpp"
 #include "turn_indicator_decider.hpp"
 #include "velocity_smoother.hpp"
 
-#include <autoware_trajectory_processor/trajectory_processor_param.hpp>
+#include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
@@ -148,7 +148,7 @@ private:
 
   std::unique_ptr<OptimizerPluginLoader> plugin_loader_;
   std::shared_ptr<OptimizerPluginInterface> path_smoother_;
-  std::shared_ptr<autoware::trajectory_processor::TrajectoryProcessorContext> optimizer_context_;
+  std::shared_ptr<autoware::trajectory_modifier::TrajectoryModifierContext> optimizer_context_;
   std::unique_ptr<VelocitySmoother> velocity_smoother_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
     pub_debug_optimizer_module_trajectories_;

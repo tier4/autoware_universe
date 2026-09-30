@@ -33,14 +33,15 @@ The module uses a structured parameter configuration to define thresholds, footp
 
 ## 5. Process Overview
 
-1. **Footprint Generation:** The module generates geometric footprints for the ego vehicle at every point along the candidate trajectory. It expands the footprint size using margins to account for localization uncertainty.
-2. **Boundary Extraction and Filtering:** Uncrossable boundaries (e.g., `road_border`) are extracted from the Lanelet2 map and stored in a spatial R-tree. Boundaries significantly above or below the vehicle's Z-axis height are filtered out to prevent false positives from overpasses.
-3. **Distance Calculation:** The system calculates the shortest lateral distance from the left and right footprint segments to the nearest filtered boundary.
-4. **Severity Evaluation:** A minimum physical braking distance is dynamically calculated using current speed, acceleration, maximum allowed deceleration, jerk, and brake delay. The departure severity is assigned as follows:
+1. **Ego pose alignment:** The trajectory start states the pose that the ego vehicle holds now, and localization measures that pose. The module moves the trajectory start onto the measured pose, and the correction decreases to nothing over the front overhang. A trajectory point inside that distance sits under the front body of the ego vehicle, ahead of no wheel, so the ego vehicle cannot have steered there yet. The trajectory therefore keeps its own shape and its own heading changes, and a trajectory that already starts at the measured pose does not change. A pose error from the trajectory generator therefore cannot raise a departure near the ego vehicle, and a measured departure still raises one. The module takes the align distance from the vehicle, so the distance has no parameter. The `enable_align_to_ego_pose` parameter turns the alignment off, and the module then evaluates the trajectory that the generator gives.
+2. **Footprint Generation:** The module generates geometric footprints for the ego vehicle at every point along the candidate trajectory. It expands the footprint size using margins to account for localization uncertainty.
+3. **Boundary Extraction and Filtering:** Uncrossable boundaries (e.g., `road_border`) are extracted from the Lanelet2 map and stored in a spatial R-tree. Boundaries significantly above or below the vehicle's Z-axis height are filtered out to prevent false positives from overpasses.
+4. **Distance Calculation:** The system calculates the shortest lateral distance from the left and right footprint segments to the nearest filtered boundary.
+5. **Severity Evaluation:** A minimum physical braking distance is dynamically calculated using current speed, acceleration, maximum allowed deceleration, jerk, and brake delay. The departure severity is assigned as follows:
    - **NONE:** The footprint lateral distance is greater than the critical lateral margin.
    - **APPROACHING:** A departure is detected, but it is farther than the braking distance AND the time to departure is greater than the cutoff threshold.
    - **CRITICAL:** A departure is detected within the braking distance OR before the cutoff time expires.
-5. **Hysteresis Logic:** To ensure stability, an **ON-Time buffer** suppresses the `CRITICAL` state until the departure is continuously detected for a set duration. If a collision is imminent, this buffer is bypassed. An **OFF-Time buffer** ensures the status does not revert to `NONE` until the trajectory is continuously evaluated as safe.
+6. **Hysteresis Logic:** To ensure stability, an **ON-Time buffer** suppresses the `CRITICAL` state until the departure is continuously detected for a set duration. If a collision is imminent, this buffer is bypassed. An **OFF-Time buffer** ensures the status does not revert to `NONE` until the trajectory is continuously evaluated as safe.
 
 ## 6. Possible Scenarios and Expected Behavior
 

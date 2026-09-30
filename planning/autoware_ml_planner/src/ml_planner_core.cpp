@@ -55,13 +55,27 @@ bool optimization_params_changed(
          lhs.weight_acceleration != rhs.weight_acceleration ||
          lhs.weight_steering_rate != rhs.weight_steering_rate ||
          lhs.terminal_weight_scale != rhs.terminal_weight_scale ||
+         lhs.goal.weight_longitudinal != rhs.goal.weight_longitudinal ||
+         lhs.goal.weight_lateral != rhs.goal.weight_lateral ||
+         lhs.goal.weight_yaw != rhs.goal.weight_yaw ||
+         lhs.goal.weight_velocity != rhs.goal.weight_velocity ||
+         lhs.goal.snap_distance_m != rhs.goal.snap_distance_m ||
          lhs.min_velocity_mps != rhs.min_velocity_mps ||
          lhs.max_velocity_mps != rhs.max_velocity_mps ||
          lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
          lhs.max_acceleration_mps2 != rhs.max_acceleration_mps2 ||
          lhs.max_steering_rate_rps != rhs.max_steering_rate_rps ||
          lhs.max_lateral_acceleration_mps2 != rhs.max_lateral_acceleration_mps2 ||
-         lhs.max_sqp_iterations != rhs.max_sqp_iterations;
+         lhs.max_sqp_iterations != rhs.max_sqp_iterations ||
+         lhs.temporal_consistency.enable != rhs.temporal_consistency.enable ||
+         lhs.temporal_consistency.weight_longitudinal !=
+           rhs.temporal_consistency.weight_longitudinal ||
+         lhs.temporal_consistency.weight_lateral != rhs.temporal_consistency.weight_lateral ||
+         lhs.temporal_consistency.weight_yaw != rhs.temporal_consistency.weight_yaw ||
+         lhs.temporal_consistency.weight_velocity != rhs.temporal_consistency.weight_velocity ||
+         lhs.temporal_consistency.decay_time_constant_s !=
+           rhs.temporal_consistency.decay_time_constant_s ||
+         lhs.temporal_consistency.far_weight_ratio != rhs.temporal_consistency.far_weight_ratio;
 }
 #endif
 
@@ -370,21 +384,34 @@ PlannerOutput MLPlannerCore::create_planner_output(
       trajectory = std::move(avoidance_result.trajectory);
     }
 
+    // A candidate whose optimization failed is dropped entirely rather than falling back to
+    // the raw model output (see PlannerOutput::trajectory).
+    bool optimization_failed = false;
+
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
     if (trajectory_optimizer_) {
+      std::optional<geometry_msgs::msg::Pose> goal_pose;
+      if (route_ptr_) {
+        goal_pose = route_ptr_->goal_pose;
+      }
       auto optimization_result = trajectory_optimizer_->optimize(
-        trajectory, kinematic_state, current_steering_angle_rad, static_cast<size_t>(i));
+        trajectory, kinematic_state, current_steering_angle_rad, static_cast<size_t>(i), goal_pose);
       if (i == 0) {
         output.optimization_debug.attempted = true;
         output.optimization_debug.optimized = optimization_result.optimized;
         output.optimization_debug.solver_status = optimization_result.solver_status;
         output.optimization_debug.solve_time_ms = optimization_result.solve_time_ms;
       }
+      optimization_failed = !optimization_result.optimized;
       trajectory = std::move(optimization_result.trajectory);
     }
 #else
     (void)current_steering_angle_rad;
 #endif
+
+    if (optimization_failed) {
+      continue;
+    }
 
     if (params_.stop_point_fixing.enable) {
       if (i == 0) {

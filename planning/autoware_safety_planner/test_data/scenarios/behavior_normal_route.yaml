@@ -1,0 +1,65 @@
+# One scenario of the closed-loop simulation (test/closed_loop).
+# "route" uses the LaneletRoute format of autoware_test_utils::topic_snapshot_saver, so a snapshot
+# taken from a real-vehicle / psim bag can be dropped in as is.
+# This one equals autoware_test_utils::makeBehaviorNormalRoute().
+format_version: 1
+map_path_uri: package://autoware_test_utils/test_map/lanelet2_map.osm
+vehicle_info_param_uri: package://autoware_test_utils/config/test_vehicle_info.param.yaml
+route:
+  start_pose:
+    position:
+      x: 3722.16015625
+      y: 73723.515625
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.233112560494183
+      w: 0.9724497591854532
+  goal_pose:
+    position:
+      x: 3778.362060546875
+      y: 73721.2734375
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.5107480274693206
+      w: 0.8597304533609347
+  segments:
+    - preferred_primitive:
+        id: 9102
+        primitive_type: ""
+      primitives:
+        - id: 9102
+          primitive_type: lane
+    - preferred_primitive:
+        id: 9540
+        primitive_type: ""
+      primitives:
+        - id: 9540
+          primitive_type: lane
+    - preferred_primitive:
+        id: 9546
+        primitive_type: ""
+      primitives:
+        - id: 9546
+          primitive_type: lane
+    - preferred_primitive:
+        id: 9178
+        primitive_type: ""
+      primitives:
+        - id: 9178
+          primitive_type: lane
+    - preferred_primitive:
+        id: 54
+        primitive_type: ""
+      primitives:
+        - id: 54
+          primitive_type: lane
+    - preferred_primitive:
+        id: 112
+        primitive_type: ""
+      primitives:
+        - id: 112
+          primitive_type: lane
