@@ -243,6 +243,11 @@
             },
             "velocity_smoothing_window": { "type": "integer", "minimum": 1, "default": 8 },
             "stopping_threshold": { "type": "number", "default": 0.3 },
+            "prepend_ego_pose": {
+              "type": "boolean",
+              "description": "Put the ego pose at the tick in front of the published trajectory (time_from_start 0), so a tracker's nearest reference point lies on the car instead of at the first predicted pose one time step ahead.",
+              "default": false
+            },
             "generator_name": { "type": "string", "default": "TensorrtE2e" }
           }
         }

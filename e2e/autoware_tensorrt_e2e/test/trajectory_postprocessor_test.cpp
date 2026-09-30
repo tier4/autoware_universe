@@ -242,6 +242,34 @@ TEST(TrajectoryPostprocessorTest, AppliesBaseLinkOffsetInReverse)
   EXPECT_DOUBLE_EQ(result.trajectory.points.front().pose.position.x, 1.0 - 1.5);
 }
 
+TEST(TrajectoryPostprocessorTest, PrependsTheEgoPoseWhenAsked)
+{
+  auto params = make_params();
+  const auto ego = make_ego_frame(5.0, 2.0, 10.0);
+  const auto outputs = make_straight_prediction(1, 1.0);
+  unique_identifier_msgs::msg::UUID uuid;
+
+  TrajectoryPostprocessor plain(params);
+  plain.validate_output_specs(make_output_specs({1, 1, kTimesteps, 4}));
+  const auto without = plain.process(outputs, ego, nullptr, rclcpp::Time(0), uuid).trajectory;
+
+  params.prepend_ego_pose = true;
+  TrajectoryPostprocessor anchored(params);
+  anchored.validate_output_specs(make_output_specs({1, 1, kTimesteps, 4}));
+  const auto with = anchored.process(outputs, ego, nullptr, rclcpp::Time(0), uuid).trajectory;
+
+  ASSERT_EQ(with.points.size(), without.points.size() + 1);
+  const auto & first = with.points.front();
+  EXPECT_DOUBLE_EQ(first.pose.position.x, 5.0);
+  EXPECT_DOUBLE_EQ(first.pose.position.y, 2.0);
+  EXPECT_EQ(first.time_from_start.sec, 0);
+  EXPECT_EQ(first.time_from_start.nanosec, 0u);
+  EXPECT_FLOAT_EQ(first.longitudinal_velocity_mps, without.points.front().longitudinal_velocity_mps);
+  // The predicted poses follow unchanged.
+  EXPECT_DOUBLE_EQ(with.points[1].pose.position.x, without.points.front().pose.position.x);
+  EXPECT_EQ(with.points[1].time_from_start.nanosec, without.points.front().time_from_start.nanosec);
+}
+
 TEST(TrajectoryPostprocessorTest, ExtraTrajectoryTensorsBecomeCandidates)
 {
   // A model may expose a main trajectory plus an ego-only prior trajectory.

@@ -105,3 +105,7 @@
     postprocess:
       velocity_smoothing_window: 8
       stopping_threshold: 0.3
+      # Put the ego pose in front of the published trajectory (time_from_start 0), so the
+      # controller's nearest reference point lies on the car rather than at the first predicted
+      # pose one step ahead, whose tangent already leads the heading on a curve.
+      prepend_ego_pose: false

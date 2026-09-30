@@ -213,6 +213,17 @@ autoware_planning_msgs::msg::Trajectory TrajectoryPostprocessor::create_trajecto
       point.pose = dp::utils::shift_x(point.pose, -params_.base_link_offset);
     }
   }
+  if (params_.prepend_ego_pose && !trajectory.points.empty()) {
+    // The predicted poses start one time step ahead of the tick; on a curve the tangent there
+    // already leads the car's heading. The ego pose itself (base_link, the stamp of the tick)
+    // anchors the reference on the car; it inherits the first point's speed so the velocity
+    // profile does not gain a step.
+    autoware_planning_msgs::msg::TrajectoryPoint anchor = trajectory.points.front();
+    anchor.pose = ego.odometry.pose.pose;
+    anchor.time_from_start.sec = 0;
+    anchor.time_from_start.nanosec = 0;
+    trajectory.points.insert(trajectory.points.begin(), anchor);
+  }
   return trajectory;
 }
 

@@ -111,6 +111,8 @@ void TensorrtE2eNode::set_up_params()
     declare_parameter<int64_t>("postprocess.velocity_smoothing_window", 8);
   postprocess_params_.stopping_threshold =
     declare_parameter<double>("postprocess.stopping_threshold", 0.3);
+  postprocess_params_.prepend_ego_pose =
+    declare_parameter<bool>("postprocess.prepend_ego_pose", false);
   postprocess_params_.generator_name =
     declare_parameter<std::string>("postprocess.generator_name", "TensorrtE2e");
 }

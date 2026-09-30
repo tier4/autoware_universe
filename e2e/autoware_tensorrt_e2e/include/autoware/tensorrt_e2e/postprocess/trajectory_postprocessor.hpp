@@ -55,6 +55,10 @@ struct PostprocessParams
   //! base_link -> vehicle-center offset applied in reverse to output poses when the node runs
   //! with `shift_x: true`; 0 disables the shift.
   double base_link_offset{0.0};
+  //! Put the ego pose at the stamp of the tick in front of the trajectory as a point at
+  //! time_from_start 0, so a tracker's nearest reference point lies on the car instead of at
+  //! the first predicted pose, one time step ahead.
+  bool prepend_ego_pose{false};
 };
 
 /**
