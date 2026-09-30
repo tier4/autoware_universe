@@ -184,14 +184,8 @@
     "object_drac_acceleration": {
       "type": "object",
       "properties": {
-        "safe_limit": {
-          "type": "number",
-          "description": "Required object deceleration at or milder than this is classified as safe [m/s²]."
-        },
-        "low_caution_limit": {
-          "type": "number",
-          "description": "Required object deceleration down to this is classified as low caution [m/s²]."
-        }
+        "safe_limit": { "$ref": "#/definitions/labeled_double" },
+        "low_caution_limit": { "$ref": "#/definitions/labeled_double" }
       },
       "required": [],
       "additionalProperties": false
