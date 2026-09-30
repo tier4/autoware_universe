@@ -21,6 +21,8 @@
 
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <tuple>
@@ -33,6 +35,12 @@
  * written into the tensors are expressed in the planning frame (`EgoFrame::map_to_ego`).
  * Under `cloud_stamp` the two frames are one, and every function here reduces to the plain
  * diffusion-planner call.
+ *
+ * Only the shared package's existing API is used. Lanes split selection from writing, so
+ * they are written straight into the planning frame. Polygons and line strings sort and
+ * write in one call, so they are built at the cloud pose and their present points are then
+ * moved into the planning frame by the planar transform between the two poses -- the same
+ * operation training applies (OnePlanner projects/resworld/latency.py, reexpress_map).
  */
 namespace autoware::tensorrt_e2e
 {
@@ -81,21 +89,72 @@ inline Lanes build_route_lanes(
   return lanes;
 }
 
+//! The cloud frame's planar pose in the planning frame: cos, sin of its yaw and its origin.
+struct PlanarTransform
+{
+  double cos_yaw;
+  double sin_yaw;
+  double x;
+  double y;
+};
+
+inline PlanarTransform cloud_to_planning(const EgoFrame & ego)
+{
+  const Eigen::Matrix4d transform = ego.map_to_ego * ego.sensor_to_map;
+  const double yaw = std::atan2(transform(1, 0), transform(0, 0));
+  return {std::cos(yaw), std::sin(yaw), transform(0, 3), transform(1, 3)};
+}
+
+//! Move each present point of a `[elements, points, point_dim]` tensor whose first two columns
+//! are x, y. A point is present when any of its values is non-zero, as in training; padding
+//! stays exactly zero and the type columns are untouched.
+inline void reexpress_points(
+  std::vector<float> & data, const int64_t point_dim, const PlanarTransform & transform)
+{
+  const auto dim = static_cast<size_t>(point_dim);
+  for (size_t base = 0; base + dim <= data.size(); base += dim) {
+    const auto first = data.begin() + static_cast<std::ptrdiff_t>(base);
+    if (std::all_of(first, first + static_cast<std::ptrdiff_t>(dim), [](const float v) {
+          return v == 0.0f;
+        })) {
+      continue;
+    }
+    const double x = data[base];
+    const double y = data[base + 1];
+    data[base] = static_cast<float>(transform.cos_yaw * x - transform.sin_yaw * y + transform.x);
+    data[base + 1] = static_cast<float>(transform.sin_yaw * x + transform.cos_yaw * y + transform.y);
+  }
+}
+
+//! A cloud-frame point tensor, moved into the planning frame when the two poses differ.
+inline std::vector<float> in_planning_frame(
+  std::vector<float> data, const EgoFrame & ego, const int64_t point_dim)
+{
+  if (ego.sensor_to_map != ego.ego_to_map) {
+    reexpress_points(data, point_dim, cloud_to_planning(ego));
+  }
+  return data;
+}
+
 inline std::vector<float> build_polygons(
   const LaneSegmentContext & context, const EgoFrame & ego, const int64_t num_elements,
   const int64_t num_types)
 {
-  return context.create_polygon_tensor(
-    ego.map_to_sensor, static_cast<float>(center_x(ego)), static_cast<float>(center_y(ego)),
-    num_elements, num_types, &ego.map_to_ego);
+  return in_planning_frame(
+    context.create_polygon_tensor(
+      ego.map_to_sensor, static_cast<float>(center_x(ego)), static_cast<float>(center_y(ego)),
+      num_elements, num_types),
+    ego, 2 + num_types);
 }
 
 inline std::vector<float> build_line_strings(
   const LaneSegmentContext & context, const EgoFrame & ego, const int64_t num_elements)
 {
-  return context.create_line_string_tensor(
-    ego.map_to_sensor, static_cast<float>(center_x(ego)), static_cast<float>(center_y(ego)),
-    num_elements, &ego.map_to_ego);
+  return in_planning_frame(
+    context.create_line_string_tensor(
+      ego.map_to_sensor, static_cast<float>(center_x(ego)), static_cast<float>(center_y(ego)),
+      num_elements),
+    ego, 2 + autoware::diffusion_planner::LINE_STRING_TYPE_NUM);
 }
 
 }  // namespace map_tensors
