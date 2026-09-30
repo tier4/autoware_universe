@@ -56,6 +56,7 @@
   <arg name="input_odometry" default="/localization/kinematic_state"/>
   <arg name="input_acceleration" default="/localization/acceleration"/>
   <arg name="subgoal_source" default="route" description="route | trajectory"/>
+  <arg name="status_source" default="pose_difference" description="pose_difference | twist: where the status vector's velocity and acceleration come from (latentdrive.status_source)"/>
   <arg name="input_route" default="/planning/mission_planning/route"/>
   <arg name="input_vector_map" default="/map/vector_map"/>
   <arg name="input_reference_trajectory" default="/planning/scenario_planning/lane_driving/trajectory"/>
@@ -81,6 +82,7 @@
     <param name="latentdrive.smoothing.publish_raw_candidate" value="$(var publish_raw_candidate)"/>
     <param name="latentdrive.tick_log" value="$(var tick_log)"/>
     <param name="latentdrive.subgoal_source" value="$(var subgoal_source)"/>
+    <param name="latentdrive.status_source" value="$(var status_source)"/>
     <remap from="~/input/camera0/image" to="$(var input_camera0_image)"/>
     <remap from="~/input/camera1/image" to="$(var input_camera1_image)"/>
     <remap from="~/input/odometry" to="$(var input_odometry)"/>

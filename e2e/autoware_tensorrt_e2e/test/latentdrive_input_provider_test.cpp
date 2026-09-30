@@ -20,6 +20,7 @@
 #include <lanelet2_core/primitives/Point.h>
 
 #include <array>
+#include <deque>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -145,6 +146,69 @@ TEST(LatentDriveViewAlignTest, RefusesAnAnchorFrameWithoutAPartnerInTolerance)
   EXPECT_FALSE(align_view(anchor, other, 0.06).has_value());
   EXPECT_TRUE(align_view(anchor, other, 0.1).has_value());
   EXPECT_FALSE(align_view(anchor, {}, 0.06).has_value());
+}
+
+TEST(LatentDriveMotionTest, PicksTheSampleNearestEachSlotOldestFirst)
+{
+  std::deque<PoseSample> history;
+  for (int i = 0; i <= 20; ++i) {
+    history.push_back({100.0 + 0.02 * i, static_cast<double>(i), 0.0});  // 50 Hz odometry
+  }
+  const auto picked = pick_motion_samples(history, 100.4, 0.1, 0.05);
+  ASSERT_TRUE(picked.has_value());
+  EXPECT_NEAR((*picked)[0].stamp, 100.1, 1e-9);
+  EXPECT_NEAR((*picked)[1].stamp, 100.2, 1e-9);
+  EXPECT_NEAR((*picked)[2].stamp, 100.3, 1e-9);
+  EXPECT_NEAR((*picked)[3].stamp, 100.4, 1e-9);
+  // A slot with no sample within tolerance (history starts too late) is a refusal, not a guess.
+  EXPECT_FALSE(pick_motion_samples(history, 100.2, 0.1, 0.05).has_value());
+  EXPECT_FALSE(pick_motion_samples({}, 100.4, 0.1, 0.05).has_value());
+}
+
+TEST(LatentDriveMotionTest, StraightConstantSpeedGivesForwardVelocityOnly)
+{
+  // Heading 30 deg in the map, 8 m/s: the ego-frame velocity is (8, 0), no acceleration.
+  const double yaw = M_PI / 6.0;
+  std::array<PoseSample, 4> s{};
+  for (int k = 0; k < 4; ++k) {
+    const double t = 0.1 * k;
+    s[k] = {t, 8.0 * t * std::cos(yaw), 8.0 * t * std::sin(yaw)};
+  }
+  const auto m = motion_from_poses(s, yaw);
+  EXPECT_NEAR(m[0], 8.0, 1e-9);
+  EXPECT_NEAR(m[1], 0.0, 1e-9);
+  EXPECT_NEAR(m[2], 0.0, 1e-9);
+  EXPECT_NEAR(m[3], 0.0, 1e-9);
+}
+
+TEST(LatentDriveMotionTest, LeftTurnGivesCentripetalLateralAcceleration)
+{
+  // Circle at 5 m/s with yaw rate 0.3 rad/s (radius 16.7 m), sampled every 0.1 s, the last
+  // sample at heading 0. Training's differencing yields a_y = v * yaw_rate and a slightly
+  // negative v_y (the chord lags the heading); the twist would report both as zero.
+  const double v = 5.0;
+  const double w = 0.3;
+  const double r = v / w;
+  std::array<PoseSample, 4> s{};
+  for (int k = 0; k < 4; ++k) {
+    const double t = 0.1 * (k - 3);
+    const double heading = w * t;  // heading 0 at the newest sample
+    s[k] = {t, r * std::sin(heading), r * (1.0 - std::cos(heading))};
+  }
+  const auto m = motion_from_poses(s, 0.0);
+  EXPECT_NEAR(m[0], v, 0.05);
+  EXPECT_NEAR(m[1], -v * w * 0.1, 0.02);
+  // The two chords point 0.03 rad apart, so their forward components differ by v (1 - cos):
+  // a spurious 0.07 m/s2 of deceleration that the training data carried as well.
+  EXPECT_NEAR(m[2], 0.0, 0.1);
+  EXPECT_NEAR(m[3], v * w, 0.05);
+  // Mirror image for a right turn.
+  for (auto & sample : s) {
+    sample.y = -sample.y;
+  }
+  const auto mr = motion_from_poses(s, 0.0);
+  EXPECT_NEAR(mr[1], v * w * 0.1, 0.02);
+  EXPECT_NEAR(mr[3], -v * w, 0.05);
 }
 
 TEST(LatentDriveSubgoalTest, WalksArcLengthFromTheNearestPoint)

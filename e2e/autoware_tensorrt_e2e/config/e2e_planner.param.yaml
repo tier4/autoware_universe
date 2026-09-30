@@ -57,6 +57,14 @@
       # vector map); "trajectory" follows a Trajectory topic, for a replay whose bags
       # carry no route.
       subgoal_source: "route"
+      # Where the status vector's velocity and acceleration come from. "pose_difference"
+      # (default) recomputes them from the odometry positions 0.1 s apart the way the training
+      # data did, which on a turning car gives a lateral acceleration of about v * yaw_rate;
+      # "twist" copies the odometry twist and /localization/acceleration, whose lateral
+      # components are identically zero on this vehicle.
+      status_source: "pose_difference"
+      status_sample_interval_seconds: 0.1
+      status_sample_tolerance_seconds: 0.05
       # Newest-frame staleness at the planning tick. The front-camera JPEG stream
       # itself arrives 40-60 ms behind the clock, but decode, preprocessing and
       # inference share one executor thread, so a busy tick can see a frame that

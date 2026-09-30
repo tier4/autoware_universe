@@ -105,7 +105,13 @@ common `InferenceEngine`.
   as the model was trained; `trajectory` follows `~/input/reference_trajectory`
   (`autoware_planning_msgs/Trajectory`), for a replay whose bags carry no route. A route lanelet
   the map does not contain is skipped, reported, and bridged in a straight line. The subgoal
-  actually used is published on `~/debug/latentdrive/subgoal`.
+  actually used is published on `~/debug/latentdrive/subgoal`. The velocity and acceleration
+  follow `latentdrive.status_source`: `pose_difference` (default) differences the odometry
+  positions 0.1 s apart and rotates them into the current heading, exactly as the training
+  data was built (`planner_io.ego_status`), so a turning car shows `a_y` of about
+  `v * yaw_rate` and a small negative `v_y`; `twist` copies the odometry twist and
+  `/localization/acceleration`, whose lateral components are identically zero on the vehicle
+  (the EKF has no lateral state), which the models never saw in training.
 - the trajectory tensor, `[1, N, 3]` of `(x, y, yaw)` over the configured horizon, decoded by
   the common postprocessor
   through `LatentDrivePostprocessor`, which adds an optional temporal smoothing

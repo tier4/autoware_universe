@@ -147,6 +147,24 @@
               "description": "Reference the subgoal is taken along: the route's lanelet centerlines (needs the vector map) or a Trajectory topic.",
               "default": "route"
             },
+            "status_source": {
+              "type": "string",
+              "enum": ["pose_difference", "twist"],
+              "description": "Where the status vector's velocity and acceleration come from: recomputed from the odometry positions the way the training data did (a turning car then shows a lateral acceleration of about v * yaw_rate), or copied from the odometry twist and the acceleration topic.",
+              "default": "pose_difference"
+            },
+            "status_sample_interval_seconds": {
+              "type": "number",
+              "description": "Spacing of the position samples the motion terms are differenced over (the training data used 0.1 s).",
+              "default": 0.1,
+              "exclusiveMinimum": 0.0
+            },
+            "status_sample_tolerance_seconds": {
+              "type": "number",
+              "description": "How far a stored position may sit from its sample slot; without a sample that close the tick falls back to the twist.",
+              "default": 0.05,
+              "minimum": 0.0
+            },
             "subgoal_ahead_m": {
               "type": "number",
               "description": "Arc length ahead on the reference trajectory at which the subgoal is taken.",

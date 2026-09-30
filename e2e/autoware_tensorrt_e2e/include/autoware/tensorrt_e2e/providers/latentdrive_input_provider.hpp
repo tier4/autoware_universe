@@ -28,6 +28,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
@@ -99,6 +100,34 @@ std::optional<std::vector<size_t>> align_view(
  * centerlines sampled metres apart). When the reference ends first, its last point is returned.
  * @param reference At least one point, in the frame the result is wanted in.
  */
+/// One ego position sample, as the status motion terms are computed from.
+struct PoseSample
+{
+  double stamp{0.0};
+  double x{0.0};
+  double y{0.0};
+};
+
+/**
+ * @brief From `history` (ascending by stamp) the sample nearest to each of
+ * `now - 3 dt, now - 2 dt, now - dt, now`, oldest first; nullopt when any of them is farther
+ * than `tolerance` from its target time.
+ */
+std::optional<std::array<PoseSample, 4>> pick_motion_samples(
+  const std::deque<PoseSample> & history, double now, double dt, double tolerance);
+
+/**
+ * @brief Ego-frame velocity and acceleration the way the training data defined them
+ * (planner_io.ego_status, "backward" mode): the velocity is the chord over the last two
+ * samples, rotated into the current heading; the acceleration is the difference to the same
+ * chord one sample earlier, over the last sample interval. Returns `(v_x, v_y, a_x, a_y)`.
+ *
+ * On a turning car this yields a small negative lateral velocity (the chord lags the heading)
+ * and a lateral acceleration of about `v * yaw_rate`, which is what the models were trained
+ * on; a localization twist reports both as zero.
+ */
+std::array<double, 4> motion_from_poses(const std::array<PoseSample, 4> & samples, double yaw_now);
+
 Eigen::Vector2d subgoal_along(
   const std::vector<Eigen::Vector2d> & reference, const Eigen::Vector2d & position, double ahead_m);
 
@@ -136,8 +165,10 @@ std::vector<Eigen::Vector2d> route_centerline(
  *   must never be shown a grey, black or duplicated one.
  * - `status` `[1, 6]`: `(subgoal_x / d, subgoal_y / d, v_x, v_y, a_x, a_y)` in the ego frame,
  *   with `d = status_subgoal_divisor`. The subgoal is the point `subgoal_ahead_m` of arc length
- *   ahead on a reference polyline; velocity comes from the odometry, acceleration from the
- *   acceleration topic.
+ *   ahead on a reference polyline. `status_source` decides where the motion terms come from:
+ *   `pose_difference` (default) recomputes them from the odometry positions the way the
+ *   training data did (see latentdrive::motion_from_poses), `twist` copies the odometry twist
+ *   and the acceleration topic, which on this vehicle carry no lateral component at all.
  *
  * The reference is what the model was trained to follow, the route sampled 50 m ahead.
  * `subgoal_source` selects where it comes from:
@@ -200,6 +231,9 @@ private:
   double subgoal_ahead_m_{50.0};
   double subgoal_divisor_{10.0};
   std::string subgoal_source_{"route"};  //!< "route" or "trajectory".
+  std::string status_source_{"pose_difference"};  //!< "pose_difference" or "twist".
+  double status_sample_interval_s_{0.1};   //!< Spacing of the position samples (training: 0.1 s).
+  double status_sample_tolerance_s_{0.05};  //!< How far a stored position may sit from its slot.
   //! One INFO line per tick, "[LatentDrive-debug] ...": whether the tick ran, the age of each
   //! selected frame relative to the tick, and the status fed to the model; or why it was skipped.
   bool tick_log_{false};
@@ -217,6 +251,7 @@ private:
   rclcpp::Subscription<Trajectory>::SharedPtr trajectory_sub_;
   rclcpp::Subscription<LaneletRoute>::SharedPtr route_sub_;
   rclcpp::Subscription<LaneletMapBin>::SharedPtr map_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr pub_subgoal_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_ego_pose_;
   //! One per view; index 0 keeps the historical topic name.
@@ -233,6 +268,8 @@ private:
   mutable std::mutex mutex_;
   std::vector<float> video_buffer_;
   bool warned_no_acceleration_{false};
+  bool warned_no_pose_history_{false};
+  std::deque<latentdrive::PoseSample> pose_history_;  //!< Ascending by stamp, about a second of it.
   std::vector<double> last_frame_ages_ms_;  //!< Ages of the selected frames at the last tick, view-major.
   std::array<float, 6> last_status_{};      //!< Status vector of the last tick, encoded.
 };

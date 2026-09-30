@@ -213,6 +213,49 @@ std::vector<Eigen::Vector2d> route_centerline(
   return polyline;
 }
 
+
+std::optional<std::array<PoseSample, 4>> pick_motion_samples(
+  const std::deque<PoseSample> & history, const double now, const double dt,
+  const double tolerance)
+{
+  if (history.empty() || dt <= 0.0) {
+    return std::nullopt;
+  }
+  std::array<PoseSample, 4> out{};
+  for (size_t k = 0; k < out.size(); ++k) {
+    const double target = now - static_cast<double>(3 - k) * dt;
+    const PoseSample * best = nullptr;
+    for (const auto & sample : history) {
+      if (!best || std::abs(sample.stamp - target) < std::abs(best->stamp - target)) {
+        best = &sample;
+      }
+    }
+    if (std::abs(best->stamp - target) > tolerance) {
+      return std::nullopt;
+    }
+    out[k] = *best;
+  }
+  return out;
+}
+
+std::array<double, 4> motion_from_poses(
+  const std::array<PoseSample, 4> & s, const double yaw_now)
+{
+  const double c = std::cos(yaw_now);
+  const double sn = std::sin(yaw_now);
+  // Chord between two samples, in the current ego frame, over the real time span.
+  const auto chord = [&](const PoseSample & a, const PoseSample & b) {
+    const double span = std::max(b.stamp - a.stamp, 1e-3);
+    const double dx = (b.x - a.x) / span;
+    const double dy = (b.y - a.y) / span;
+    return std::array<double, 2>{c * dx + sn * dy, -sn * dx + c * dy};
+  };
+  const auto v_now = chord(s[1], s[3]);
+  const auto v_prev = chord(s[0], s[2]);
+  const double step = std::max(s[3].stamp - s[2].stamp, 1e-3);
+  return {v_now[0], v_now[1], (v_now[0] - v_prev[0]) / step, (v_now[1] - v_prev[1]) / step};
+}
+
 }  // namespace latentdrive
 
 namespace
@@ -240,6 +283,22 @@ LatentDriveInputProvider::LatentDriveInputProvider(rclcpp::Node & node) : node_(
   subgoal_divisor_ = node_.declare_parameter<double>("latentdrive.status_subgoal_divisor", 10.0);
   tick_log_ = node_.declare_parameter<bool>("latentdrive.tick_log", false);
   subgoal_source_ = node_.declare_parameter<std::string>("latentdrive.subgoal_source", "route");
+  status_source_ =
+    node_.declare_parameter<std::string>("latentdrive.status_source", "pose_difference");
+  status_sample_interval_s_ =
+    node_.declare_parameter<double>("latentdrive.status_sample_interval_seconds", 0.1);
+  status_sample_tolerance_s_ =
+    node_.declare_parameter<double>("latentdrive.status_sample_tolerance_seconds", 0.05);
+  if (status_source_ != "pose_difference" && status_source_ != "twist") {
+    throw std::runtime_error(
+      "latentdrive.status_source must be \"pose_difference\" or \"twist\", got \"" +
+      status_source_ + "\"");
+  }
+  if (status_sample_interval_s_ <= 0.0 || status_sample_tolerance_s_ < 0.0) {
+    throw std::runtime_error(
+      "latentdrive.status_sample_interval_seconds must be positive and "
+      "latentdrive.status_sample_tolerance_seconds non-negative");
+  }
   if (subgoal_source_ != "route" && subgoal_source_ != "trajectory") {
     throw std::runtime_error(
       "latentdrive.subgoal_source must be \"route\" or \"trajectory\", got \"" + subgoal_source_ +
@@ -371,6 +430,23 @@ std::vector<std::string> LatentDriveInputProvider::claim_inputs(
         std::lock_guard<std::mutex> lock(mutex_);
         lanelet_map_ = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg);
         update_route_polyline();
+      });
+  }
+  if (status_source_ == "pose_difference") {
+    // The node's own odometry subscription only keeps the newest message; the motion terms need
+    // the last few positions, so they are collected here. Same topic, so the launch remap applies.
+    odometry_sub_ = node_.create_subscription<nav_msgs::msg::Odometry>(
+      "~/input/odometry", rclcpp::QoS(10), [this](const nav_msgs::msg::Odometry::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const double stamp = rclcpp::Time(msg->header.stamp).seconds();
+        if (!pose_history_.empty() && stamp < pose_history_.back().stamp - STAMP_JUMP_BACK_S) {
+          pose_history_.clear();  // the clock was rewound (bag restarted)
+        }
+        pose_history_.push_back({stamp, msg->pose.pose.position.x, msg->pose.pose.position.y});
+        const double keep_from = stamp - 4.0 * status_sample_interval_s_ - 1.0;
+        while (!pose_history_.empty() && pose_history_.front().stamp < keep_from) {
+          pose_history_.pop_front();
+        }
       });
   }
   pub_subgoal_ =
@@ -603,27 +679,51 @@ bool LatentDriveInputProvider::build_status_tensor(
   const Eigen::Vector4d subgoal_ego =
     ego.map_to_ego * Eigen::Vector4d(subgoal_map.x(), subgoal_map.y(), 0.0, 1.0);
 
-  const auto & velocity = ego.odometry.twist.twist.linear;
-  float acceleration_x = 0.0f;
-  float acceleration_y = 0.0f;
-  if (ego.acceleration) {
-    acceleration_x = static_cast<float>(ego.acceleration->accel.accel.linear.x);
-    acceleration_y = static_cast<float>(ego.acceleration->accel.accel.linear.y);
-  } else if (!warned_no_acceleration_) {
-    RCLCPP_WARN(
-      node_.get_logger(),
-      "No acceleration received; the status tensor carries zero acceleration until it arrives");
-    warned_no_acceleration_ = true;
+  // Motion terms. The training data differenced the recorded positions (planner_io.ego_status),
+  // which on a turning car gives a lateral acceleration of about v * yaw_rate; the localization
+  // twist and acceleration topics report zero there, so by default the positions are used.
+  std::array<double, 4> motion{};
+  std::optional<std::array<latentdrive::PoseSample, 4>> samples;
+  if (status_source_ == "pose_difference") {
+    std::lock_guard<std::mutex> lock(mutex_);
+    samples = latentdrive::pick_motion_samples(
+      pose_history_, ego.stamp.seconds(), status_sample_interval_s_, status_sample_tolerance_s_);
+  }
+  if (samples) {
+    const auto & q = ego.odometry.pose.pose.orientation;
+    const double yaw_now = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+    motion = latentdrive::motion_from_poses(*samples, yaw_now);
+  } else {
+    if (status_source_ == "pose_difference" && !warned_no_pose_history_) {
+      RCLCPP_WARN(
+        node_.get_logger(),
+        "No odometry history %.0f ms around the tick yet; the status motion terms fall back to "
+        "the twist and acceleration topics until it fills",
+        3.0 * status_sample_interval_s_ * 1e3);
+      warned_no_pose_history_ = true;
+    }
+    const auto & velocity = ego.odometry.twist.twist.linear;
+    motion[0] = velocity.x;
+    motion[1] = velocity.y;
+    if (ego.acceleration) {
+      motion[2] = ego.acceleration->accel.accel.linear.x;
+      motion[3] = ego.acceleration->accel.accel.linear.y;
+    } else if (!warned_no_acceleration_) {
+      RCLCPP_WARN(
+        node_.get_logger(),
+        "No acceleration received; the status tensor carries zero acceleration until it arrives");
+      warned_no_acceleration_ = true;
+    }
   }
 
   // The training-time layout: the subgoal is divided by `d`, the rest passes through.
   last_status_ = {
     static_cast<float>(subgoal_ego.x() / subgoal_divisor_),
     static_cast<float>(subgoal_ego.y() / subgoal_divisor_),
-    static_cast<float>(velocity.x),
-    static_cast<float>(velocity.y),
-    acceleration_x,
-    acceleration_y};
+    static_cast<float>(motion[0]),
+    static_cast<float>(motion[1]),
+    static_cast<float>(motion[2]),
+    static_cast<float>(motion[3])};
   inputs[status_tensor_name_] =
     Tensor::from_host(status_shape_, {last_status_.begin(), last_status_.end()});
 
@@ -662,8 +762,9 @@ bool LatentDriveInputProvider::collect(
         }
         line << " " << std::lround(last_frame_ages_ms_[i]);
       }
-      line << " ms | v=" << std::fixed << std::setprecision(1) << last_status_[2]
-           << " m/s | subgoal=(" << last_status_[0] * subgoal_divisor_ << ", "
+      line << " ms | v=" << std::fixed << std::setprecision(2) << last_status_[2] << ","
+           << last_status_[3] << " m/s | a=" << last_status_[4] << "," << last_status_[5]
+           << " m/s2 | subgoal=(" << std::setprecision(1) << last_status_[0] * subgoal_divisor_ << ", "
            << last_status_[1] * subgoal_divisor_ << ") m";
       RCLCPP_INFO(node_.get_logger(), "%s", line.str().c_str());
     } else {
