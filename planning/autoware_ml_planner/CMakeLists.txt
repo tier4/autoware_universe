@@ -54,6 +54,7 @@ set(ML_PLANNER_SOURCES
   src/utils/object_remap.cpp
   src/utils/planning_factor_utils.cpp
   src/utils/utils.cpp
+  src/utils/virtual_pose.cpp
 )
 
 if(ML_PLANNER_HAS_ONNXRUNTIME)
