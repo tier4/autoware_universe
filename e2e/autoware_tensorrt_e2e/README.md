@@ -185,7 +185,9 @@ velocity is the chord length between consecutive points over 0.1 s, seeded from 
 current ego position; it is smoothed with a trailing window of `velocity_smoothing_window`
 points; a drop below `stopping_threshold` while the ego is moving latches a stop, after
 which velocity is zero and the pose is held; acceleration is the forward difference of the
-smoothed velocity; the first point is at 0.1 s and the current pose is not prepended; `z`
+smoothed velocity; a point at t = 0 is prepended at the ego's base_link pose (position and
+heading) at the trajectory stamp, carrying the first plan point's velocity and acceleration,
+and the model's steps follow at 0.1 s, 0.2 s, ...; `z`
 is the ego's current `z`; lateral velocity and heading rate are left at zero. The only
 difference from `autoware_diffusion_planner` is the horizon, 4 s instead of 8 s.
 

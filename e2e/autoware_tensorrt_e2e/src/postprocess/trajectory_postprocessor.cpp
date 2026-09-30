@@ -20,6 +20,7 @@
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/generator_info.hpp>
+#include <builtin_interfaces/msg/duration.hpp>
 #include <std_msgs/msg/string.hpp>
 
 #include <algorithm>
@@ -200,6 +201,19 @@ autoware_planning_msgs::msg::Trajectory TrajectoryPostprocessor::create_trajecto
     for (auto & point : trajectory.points) {
       point.pose = dp::utils::shift_x(point.pose, -params_.base_link_offset);
     }
+  }
+
+  // The plan starts at the trajectory stamp: a temporal follower looks its reference up at
+  // (now - stamp), which is below the first point's 0.1 s for a plan planned at the newest
+  // odometry, and would clamp to that point. Prepend the ego pose at t = 0 (base_link, so
+  // after the offset shift). Velocity and acceleration are copied from the first plan point,
+  // not the measured twist: the smoothed plan speed is what stop logic reads, and a measured
+  // speed of 0 in front of a departing plan would read as a stop or as a large acceleration.
+  if (!trajectory.points.empty()) {
+    auto start = trajectory.points.front();
+    start.time_from_start = builtin_interfaces::msg::Duration();
+    start.pose = ego.odometry.pose.pose;
+    trajectory.points.insert(trajectory.points.begin(), start);
   }
   return trajectory;
 }

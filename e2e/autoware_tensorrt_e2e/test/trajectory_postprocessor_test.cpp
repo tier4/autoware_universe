@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -138,12 +139,13 @@ TEST(TrajectoryPostprocessorTest, ProducesTrajectoryInMapFrame)
   unique_identifier_msgs::msg::UUID uuid;
   const auto result = postprocessor.process(outputs, ego, rclcpp::Time(0), uuid);
 
-  ASSERT_EQ(result.trajectory.points.size(), static_cast<size_t>(kTimesteps));
+  // The model's steps, led by the ego pose at t = 0.
+  ASSERT_EQ(result.trajectory.points.size(), static_cast<size_t>(kTimesteps + 1));
   EXPECT_EQ(result.trajectory.header.frame_id, "map");
 
   // Positions are transformed from the ego frame to the map frame.
-  EXPECT_DOUBLE_EQ(result.trajectory.points.front().pose.position.x, ego_map_x + step_m);
-  EXPECT_DOUBLE_EQ(result.trajectory.points.front().pose.position.y, ego_map_y);
+  EXPECT_DOUBLE_EQ(result.trajectory.points[1].pose.position.x, ego_map_x + step_m);
+  EXPECT_DOUBLE_EQ(result.trajectory.points[1].pose.position.y, ego_map_y);
   EXPECT_DOUBLE_EQ(
     result.trajectory.points.back().pose.position.x, ego_map_x + step_m * kTimesteps);
 
@@ -152,9 +154,9 @@ TEST(TrajectoryPostprocessorTest, ProducesTrajectoryInMapFrame)
     EXPECT_NEAR(point.longitudinal_velocity_mps, 10.0f, 1e-3f);
   }
 
-  // time_from_start of the 10th point (index 9) is 1.0 s.
-  EXPECT_EQ(result.trajectory.points[9].time_from_start.sec, 1);
-  EXPECT_EQ(result.trajectory.points[9].time_from_start.nanosec, 0U);
+  // time_from_start of the 10th model step (index 10, after the t = 0 point) is 1.0 s.
+  EXPECT_EQ(result.trajectory.points[10].time_from_start.sec, 1);
+  EXPECT_EQ(result.trajectory.points[10].time_from_start.nanosec, 0U);
 
   // One candidate per batch, carrying the generator name.
   ASSERT_EQ(result.candidate_trajectories.candidate_trajectories.size(), 1U);
@@ -178,7 +180,9 @@ TEST(TrajectoryPostprocessorTest, AppliesBaseLinkOffsetInReverse)
   const auto result = postprocessor.process(outputs, ego, rclcpp::Time(0), uuid);
 
   // The vehicle-center pose is shifted back to base_link along the heading (x axis here).
-  EXPECT_DOUBLE_EQ(result.trajectory.points.front().pose.position.x, 1.0 - 1.5);
+  EXPECT_DOUBLE_EQ(result.trajectory.points[1].pose.position.x, 1.0 - 1.5);
+  // The t = 0 point is the odometry's base_link pose already: it is not shifted.
+  EXPECT_DOUBLE_EQ(result.trajectory.points.front().pose.position.x, 0.0);
 }
 
 TEST(TrajectoryPostprocessorTest, ExtraTrajectoryTensorsBecomeCandidates)
@@ -211,7 +215,13 @@ TEST(TrajectoryPostprocessorTest, ExtraTrajectoryTensorsBecomeCandidates)
     "TestGenerator_prior_trajectory_batch_0");
   // The prior advances 0.5 m per step instead of 1.0 m.
   EXPECT_DOUBLE_EQ(
-    result.candidate_trajectories.candidate_trajectories[1].points.front().pose.position.x, 0.5);
+    result.candidate_trajectories.candidate_trajectories[1].points[1].pose.position.x, 0.5);
+  // Both candidates, and the trajectory, start at the ego pose at t = 0.
+  for (const auto & candidate : result.candidate_trajectories.candidate_trajectories) {
+    EXPECT_EQ(candidate.points.front().time_from_start.sec, 0);
+    EXPECT_EQ(candidate.points.front().time_from_start.nanosec, 0U);
+    EXPECT_DOUBLE_EQ(candidate.points.front().pose.position.x, 0.0);
+  }
 
   // A missing extra tensor at validation time is a startup error.
   TrajectoryPostprocessor strict(params);
@@ -219,6 +229,126 @@ TEST(TrajectoryPostprocessorTest, ExtraTrajectoryTensorsBecomeCandidates)
     strict.validate_output_specs(
       {TensorSpec{"trajectory", {1, kTimesteps, 4}, TensorDataType::kFLOAT32}}),
     std::runtime_error);
+}
+
+namespace
+{
+/// Check the t = 0 point and that the rest is the model's steps, unchanged.
+void expect_leads_with_ego_pose(
+  const autoware_planning_msgs::msg::Trajectory & trajectory, const EgoFrame & ego,
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & without_start)
+{
+  ASSERT_EQ(trajectory.points.size(), without_start.size() + 1);
+  const auto & start = trajectory.points.front();
+  EXPECT_EQ(start.time_from_start.sec, 0);
+  EXPECT_EQ(start.time_from_start.nanosec, 0U);
+  const auto & pose = ego.odometry.pose.pose;
+  EXPECT_DOUBLE_EQ(start.pose.position.x, pose.position.x);
+  EXPECT_DOUBLE_EQ(start.pose.position.y, pose.position.y);
+  EXPECT_DOUBLE_EQ(start.pose.position.z, pose.position.z);
+  EXPECT_DOUBLE_EQ(start.pose.orientation.x, pose.orientation.x);
+  EXPECT_DOUBLE_EQ(start.pose.orientation.y, pose.orientation.y);
+  EXPECT_DOUBLE_EQ(start.pose.orientation.z, pose.orientation.z);
+  EXPECT_DOUBLE_EQ(start.pose.orientation.w, pose.orientation.w);
+  // Same dynamics as the first plan point, so stop logic reads what it read before.
+  EXPECT_NEAR(
+    start.longitudinal_velocity_mps, without_start.front().longitudinal_velocity_mps, 1e-3f);
+  EXPECT_FLOAT_EQ(start.acceleration_mps2, without_start.front().acceleration_mps2);
+  // Everything after it is untouched, in order.
+  for (size_t i = 0; i < without_start.size(); ++i) {
+    const auto & a = trajectory.points[i + 1];
+    const auto & b = without_start[i];
+    EXPECT_EQ(a.time_from_start.sec, b.time_from_start.sec);
+    EXPECT_EQ(a.time_from_start.nanosec, b.time_from_start.nanosec);
+    EXPECT_DOUBLE_EQ(a.pose.position.x, b.pose.position.x);
+    EXPECT_DOUBLE_EQ(a.pose.position.y, b.pose.position.y);
+    EXPECT_NEAR(a.longitudinal_velocity_mps, b.longitudinal_velocity_mps, 1e-3f);
+    EXPECT_FLOAT_EQ(a.acceleration_mps2, b.acceleration_mps2);
+  }
+}
+
+int64_t stamp_ns(const builtin_interfaces::msg::Time & stamp)
+{
+  return static_cast<int64_t>(stamp.sec) * 1000000000LL + static_cast<int64_t>(stamp.nanosec);
+}
+}  // namespace
+
+// The ego frame the two planning modes hand over differ only in the instant: under
+// cloud_stamp the pose is at the cloud stamp (stamp == sensor_stamp); under planning_time it
+// is at the newer odometry stamp and sensor_pose is the older, cloud-time pose. Either way
+// the plan starts at ego.odometry at ego.stamp, never at sensor_pose.
+TEST(TrajectoryPostprocessorTest, StartsAtEgoPoseAtTheStampInBothPlanningModes)
+{
+  TrajectoryPostprocessor postprocessor(make_params());
+  postprocessor.validate_output_specs(make_output_specs({1, 1, kTimesteps, 4}));
+  const auto outputs = make_straight_prediction(1, 1.0);
+  unique_identifier_msgs::msg::UUID uuid;
+
+  // The model's steps as the node published them before the t = 0 point existed: step k
+  // (1-based) is k m ahead at k * 0.1 s, at a constant 10 m/s and zero acceleration.
+  auto ego = make_ego_frame(100.0, 50.0, 10.0);
+  std::vector<autoware_planning_msgs::msg::TrajectoryPoint> steps(kTimesteps);
+  for (int64_t k = 1; k <= kTimesteps; ++k) {
+    auto & step = steps[k - 1];
+    step.time_from_start.sec = static_cast<int32_t>(k / 10);
+    step.time_from_start.nanosec = static_cast<uint32_t>((k % 10) * 100000000);
+    step.pose.position.x = 100.0 + static_cast<double>(k);
+    step.pose.position.y = 50.0;
+    step.longitudinal_velocity_mps = 10.0f;
+  }
+
+  // cloud_stamp: the sensor pose is the ego pose.
+  ego.sensor_stamp = ego.stamp;
+  ego.sensor_pose = ego.odometry.pose.pose;
+  auto result = postprocessor.process(outputs, ego, ego.stamp, uuid);
+  expect_leads_with_ego_pose(result.trajectory, ego, steps);
+  EXPECT_EQ(stamp_ns(result.trajectory.header.stamp), ego.stamp.nanoseconds());
+
+  // planning_time: 130 ms newer than the cloud, the ego (and the model reference) has moved
+  // and turned since it; the yaw here is 30 degrees, and the model steps are in that frame.
+  ego = make_ego_frame(100.0, 50.0, 10.0);
+  ego.stamp = rclcpp::Time(130000000LL);
+  ego.sensor_stamp = rclcpp::Time(0);
+  ego.sensor_pose.position.x = 98.7;
+  ego.sensor_pose.orientation.w = 1.0;
+  const double yaw = 0.5235987755982988;
+  ego.odometry.pose.pose.orientation.z = std::sin(0.5 * yaw);
+  ego.odometry.pose.pose.orientation.w = std::cos(0.5 * yaw);
+  ego.reference_odometry = ego.odometry;
+  ego.ego_to_map.block<2, 2>(0, 0) << std::cos(yaw), -std::sin(yaw), std::sin(yaw), std::cos(yaw);
+  ego.map_to_ego = ego.ego_to_map.inverse();
+  result = postprocessor.process(outputs, ego, ego.stamp, uuid);
+  ASSERT_EQ(result.trajectory.points.size(), static_cast<size_t>(kTimesteps + 1));
+  EXPECT_EQ(stamp_ns(result.trajectory.header.stamp), ego.stamp.nanoseconds());
+  const auto & start = result.trajectory.points.front();
+  EXPECT_EQ(start.time_from_start.sec, 0);
+  EXPECT_EQ(start.time_from_start.nanosec, 0U);
+  EXPECT_DOUBLE_EQ(start.pose.position.x, 100.0);  // not the sensor pose's 98.7
+  EXPECT_DOUBLE_EQ(start.pose.orientation.z, std::sin(0.5 * yaw));
+  EXPECT_DOUBLE_EQ(start.pose.orientation.w, std::cos(0.5 * yaw));
+  // The first model step is 1 m ahead along the rotated heading.
+  EXPECT_NEAR(result.trajectory.points[1].pose.position.x, 100.0 + std::cos(yaw), 1e-9);
+  EXPECT_NEAR(result.trajectory.points[1].pose.position.y, 50.0 + std::sin(yaw), 1e-9);
+  EXPECT_EQ(result.trajectory.points[1].time_from_start.nanosec, 100000000U);
+}
+
+TEST(TrajectoryPostprocessorTest, StoppedEgoStillGetsTheStartPointAndKeepsTheStopLogic)
+{
+  TrajectoryPostprocessor postprocessor(make_params());
+  postprocessor.validate_output_specs(make_output_specs({1, 1, kTimesteps, 4}));
+  // Standing still: every model step is at the ego, so t = 0 and step 1 coincide.
+  const auto outputs = make_straight_prediction(1, 0.0);
+  const auto ego = make_ego_frame(3.0, 4.0, 0.0);
+  unique_identifier_msgs::msg::UUID uuid;
+  const auto result = postprocessor.process(outputs, ego, rclcpp::Time(0), uuid);
+
+  ASSERT_EQ(result.trajectory.points.size(), static_cast<size_t>(kTimesteps + 1));
+  EXPECT_EQ(result.trajectory.points.front().time_from_start.nanosec, 0U);
+  for (const auto & point : result.trajectory.points) {
+    EXPECT_DOUBLE_EQ(point.pose.position.x, 3.0);
+    EXPECT_DOUBLE_EQ(point.pose.position.y, 4.0);
+    EXPECT_FLOAT_EQ(point.longitudinal_velocity_mps, 0.0f);
+  }
 }
 
 TEST(TrajectoryPostprocessorTest, ThrowsOnMissingOrShortOutput)
