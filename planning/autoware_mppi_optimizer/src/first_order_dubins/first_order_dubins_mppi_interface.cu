@@ -61,8 +61,8 @@ namespace
 constexpr int kMppiHorizon = detail::kMppiHorizon;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = detail::kMppiDt;
-constexpr size_t kMaxIter = 10;
-constexpr int kNumRollouts = 8 * 1024;
+constexpr size_t kMaxIter = 5;
+constexpr int kNumRollouts = 2 * 1024;
 constexpr int kMaxVizRollouts = 256;
 constexpr int kMaxWorstVizRollouts = 128;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
@@ -327,17 +327,6 @@ struct ActionSamplingStdDevPair
   float steer{0.0F};
 };
 
-ActionSamplingStdDevPair readActionSamplingStdDev(const SAMPLER & sampler)
-{
-  const auto sampling_params = sampler.getParams();
-  const int accel_idx =
-    static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
-  const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
-  return {
-    actionSamplingStdDevForDim(sampling_params, accel_idx).first,
-    actionSamplingStdDevForDim(sampling_params, steer_idx).first};
-}
-
 std::string formatViMpcSamplingStdDevLog(
   const ActionSamplingStdDevPair & at_mppi_start, const ActionSamplingStdDevPair & after_mppi_iters)
 {
@@ -348,6 +337,29 @@ std::string formatViMpcSamplingStdDevLog(
          << " sampling_std(steer) start=" << at_mppi_start.steer
          << " end=" << after_mppi_iters.steer;
   return stream.str();
+}
+
+/** Unpack first/last CONTROL_DIM samples from the GPU std-dev history pulled with optimal u. */
+bool readViMpcStdDevHistoryEndpoints(
+  const SAMPLER & sampler, ActionSamplingStdDevPair & at_mppi_start,
+  ActionSamplingStdDevPair & after_mppi_iters)
+{
+  const int sample_count = sampler.getStdDevHistorySampleCount();
+  const auto & history = sampler.getStdDevHistoryHost();
+  constexpr int control_dim =
+    static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::NUM_CONTROLS);
+  const int accel_idx =
+    static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+  const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+  if (
+    sample_count < 1 ||
+    static_cast<int>(history.size()) < sample_count * control_dim) {
+    return false;
+  }
+  at_mppi_start = {history[accel_idx], history[steer_idx]};
+  const int last = (sample_count - 1) * control_dim;
+  after_mppi_iters = {history[last + accel_idx], history[last + steer_idx]};
+  return true;
 }
 
 /** Expose vendor Savitzky–Golay control_history_ for offline retune parity. */
@@ -986,7 +998,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     cp.cost_rollout_dim_ = dim3(32, 2, 1);
     cp.seed_ = 1U;
     controller->setParams(cp);
-    controller->setPercentageSampledControlTrajectories(128.0F / static_cast<float>(kNumRollouts));
+    // Keep sample-trajectory D2H disabled unless rollout visualization is enabled.
+    controller->setPercentageSampledControlTrajectories(0.0F);
 
     model.GPUSetup();
 
@@ -1540,7 +1553,9 @@ struct FirstOrderDubinsMppiInterface::Impl
       initial_state.steering;
     ensureDelayBufferSeeded();
     loadDelayPipesIntoState();
-    snapshotDelayBufferForLog();
+    if (debug_trajectory_logger.enabled()) {
+      snapshotDelayBufferForLog();
+    }
   }
 
   void capturePredictionAnchor(const Odometry & odometry)
@@ -1612,7 +1627,9 @@ struct FirstOrderDubinsMppiInterface::Impl
   FirstOrderDubinsMppiControl runStep()
   {
     // History taps used by this cycle's Savitzky–Golay (before slideControlSequence).
-    snapshotControlHistoryForLog();
+    if (debug_trajectory_logger.enabled()) {
+      snapshotControlHistoryForLog();
+    }
 
     // Measured ego IC; per-channel delay lives in dynamics taps (no host pre-roll / ref shift).
     detail::InitialState ego;
@@ -1699,23 +1716,17 @@ struct FirstOrderDubinsMppiInterface::Impl
       obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
     uploadBoundarySegments();
 
-    // VI-MPC: restore Σ_init once per planning call; moment matching runs only inside
-    // VanillaMPPIController::computeControl() over kMaxIter inner iterations.
+    // VI-MPC: restore Σ_init once per planning call; moment matching + std-dev history stay on
+    // device inside computeControl(), then ride the same final D2H as the optimal trajectory.
     resetSamplingStdDevToInitial();
-    if (user_cost_params_.update_action_variance) {
-      sampler.syncHostStdDevFromDevice(0, true);
-      last_sampling_std_at_mppi_start_ = readActionSamplingStdDev(sampler);
-      last_vi_mpc_sampling_std_valid_ = true;
-    } else {
-      last_vi_mpc_sampling_std_valid_ = false;
-    }
     controller->updateImportanceSampler(u_nom);
     controller->computeControl(x, 1);
-    cudaStreamSynchronize(controller->stream_);
     checkCuda("computeControl");
     if (user_cost_params_.update_action_variance) {
-      sampler.syncHostStdDevFromDevice(0, true);
-      last_sampling_std_after_mppi_iters_ = readActionSamplingStdDev(sampler);
+      last_vi_mpc_sampling_std_valid_ = readViMpcStdDevHistoryEndpoints(
+        sampler, last_sampling_std_at_mppi_start_, last_sampling_std_after_mppi_iters_);
+    } else {
+      last_vi_mpc_sampling_std_valid_ = false;
     }
 
     Mppi::control_trajectory u_opt_traj = controller->getControlSeq();
@@ -1926,6 +1937,10 @@ void FirstOrderDubinsMppiInterface::setRolloutVisualizationEnabled(const bool en
     return;
   }
   impl_->enable_rollout_visualization = enable;
+  if (impl_->controller) {
+    impl_->controller->setPercentageSampledControlTrajectories(
+      enable ? (128.0F / static_cast<float>(kNumRollouts)) : 0.0F);
+  }
 }
 
 void FirstOrderDubinsMppiInterface::setForcedNominalControl(
@@ -2194,14 +2209,16 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const auto validation = detail::validateOptimizedTrajectory(impl_->cost, states_to_validate);
   float max_pos_delta = 0.0F;
   float max_vel_delta = 0.0F;
-  for (size_t i = 0; i < optimized_states.size(); ++i) {
-    const auto & state = optimized_states[i];
-    const auto & in_point = input.points[i];
-    const float ref_x = static_cast<float>(in_point.pose.position.x);
-    const float ref_y = static_cast<float>(in_point.pose.position.y);
-    const float ref_v = in_point.longitudinal_velocity_mps;
-    max_pos_delta = std::max(max_pos_delta, std::hypot(state.x - ref_x, state.y - ref_y));
-    max_vel_delta = std::max(max_vel_delta, std::abs(state.velocity - ref_v));
+  if (impl_->debug_trajectory_logger.enabled()) {
+    for (size_t i = 0; i < optimized_states.size(); ++i) {
+      const auto & state = optimized_states[i];
+      const auto & in_point = input.points[i];
+      const float ref_x = static_cast<float>(in_point.pose.position.x);
+      const float ref_y = static_cast<float>(in_point.pose.position.y);
+      const float ref_v = in_point.longitudinal_velocity_mps;
+      max_pos_delta = std::max(max_pos_delta, std::hypot(state.x - ref_x, state.y - ref_y));
+      max_vel_delta = std::max(max_vel_delta, std::abs(state.velocity - ref_v));
+    }
   }
 
   const auto initial_effective_maximum =
@@ -2246,48 +2263,49 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       impl_->cost, impl_->model, x_at_optimization, nominal_controls);
   }
 
-  MppiDebugEgoState ego;
-  ego.x = odometry.pose.pose.position.x;
-  ego.y = odometry.pose.pose.position.y;
-  ego.z = odometry.pose.pose.position.z;
-  ego.yaw = yawFromOdometry(odometry);
-  ego.v = odometry.twist.twist.linear.x;
-  ego.accel = longitudinalAccelerationMps2(acceleration);
-  ego.steer = steeringTireAngleRad(steering_status);
-  impl_->debug_trajectory_logger.writeParamsOnce(impl_->user_cost_params_, impl_->vehicle_params);
-  {
-    FirstOrderDubinsMppiRuntimeOptions runtime{};
-    runtime.ignore_obstacles = impl_->ignore_obstacles;
-    runtime.ignore_road_borders = impl_->ignore_road_borders;
-    runtime.ignore_drivable_area = impl_->ignore_drivable_area;
-    runtime.force_cold_start_each_step = impl_->force_cold_start_each_step;
-    runtime.skip_if_invalid = impl_->skip_if_invalid;
-    runtime.min_optimization_length = impl_->min_optimization_length;
-    runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
-    runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
-    runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
-    runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
-    impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
+  if (impl_->debug_trajectory_logger.enabled()) {
+    MppiDebugEgoState ego;
+    ego.x = odometry.pose.pose.position.x;
+    ego.y = odometry.pose.pose.position.y;
+    ego.z = odometry.pose.pose.position.z;
+    ego.yaw = yawFromOdometry(odometry);
+    ego.v = odometry.twist.twist.linear.x;
+    ego.accel = longitudinalAccelerationMps2(acceleration);
+    ego.steer = steeringTireAngleRad(steering_status);
+    impl_->debug_trajectory_logger.writeParamsOnce(impl_->user_cost_params_, impl_->vehicle_params);
+    {
+      FirstOrderDubinsMppiRuntimeOptions runtime{};
+      runtime.ignore_obstacles = impl_->ignore_obstacles;
+      runtime.ignore_road_borders = impl_->ignore_road_borders;
+      runtime.ignore_drivable_area = impl_->ignore_drivable_area;
+      runtime.force_cold_start_each_step = impl_->force_cold_start_each_step;
+      runtime.skip_if_invalid = impl_->skip_if_invalid;
+      runtime.min_optimization_length = impl_->min_optimization_length;
+      runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
+      runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
+      runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
+      runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
+      impl_->debug_trajectory_logger.writeRuntimeOptionsOnce(runtime);
+    }
+    impl_->debug_trajectory_logger.logFrame(
+      result.debug.reference_trajectory, result.debug.optimized_trajectory,
+      result.debug.nominal_trajectory, ego, result.debug.baseline_cost, impl_->logged_nominal_accel,
+      impl_->logged_nominal_steer, road_borders, drivable_area, tracked_objects,
+      impl_->logged_hist_accel_tm2, impl_->logged_hist_steer_tm2, impl_->logged_hist_accel_tm1,
+      impl_->logged_hist_steer_tm1, impl_->logged_delay_accel, impl_->logged_delay_steer,
+      impl_->logged_applied_accel, impl_->logged_applied_steer, impl_->active_kinematic_limits);
   }
-  impl_->debug_trajectory_logger.logFrame(
-    result.debug.reference_trajectory, result.debug.optimized_trajectory,
-    result.debug.nominal_trajectory, ego, result.debug.baseline_cost, impl_->logged_nominal_accel,
-    impl_->logged_nominal_steer, road_borders, drivable_area, tracked_objects,
-    impl_->logged_hist_accel_tm2, impl_->logged_hist_steer_tm2, impl_->logged_hist_accel_tm1,
-    impl_->logged_hist_steer_tm1, impl_->logged_delay_accel, impl_->logged_delay_steer,
-    impl_->logged_applied_accel, impl_->logged_applied_steer, impl_->active_kinematic_limits);
 
   result.debug.timing.total_ms =
     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_time)
       .count();
-  HANDLE_ERROR(cudaStreamSynchronize(impl_->controller->stream_));
-  impl_->sampler.syncHostStdDevFromDevice(0, true);
-  const std::string action_sampling_log =
-    impl_->user_cost_params_.update_action_variance && impl_->last_vi_mpc_sampling_std_valid_
-      ? formatViMpcSamplingStdDevLog(
-          impl_->last_sampling_std_at_mppi_start_, impl_->last_sampling_std_after_mppi_iters_)
-      : formatActionSamplingVariances(impl_->sampler);
+  // Host Σ / std-dev history already pulled with optimal control at end of computeControl().
   if (impl_->debug_trajectory_logger.enabled()) {
+    const std::string action_sampling_log =
+      impl_->user_cost_params_.update_action_variance && impl_->last_vi_mpc_sampling_std_valid_
+        ? formatViMpcSamplingStdDevLog(
+            impl_->last_sampling_std_at_mppi_start_, impl_->last_sampling_std_after_mppi_iters_)
+        : formatActionSamplingVariances(impl_->sampler);
     const auto validation_reasons = to_string(result.debug.validation.reasons);
     const auto cost_breakdown = formatCostBreakdown(result.debug.cost_breakdown);
     RCLCPP_INFO(
@@ -2302,10 +2320,6 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       tracked_objects.objects.size(), road_borders.size(), drivable_area.size(), control.accel_cmd,
       control.steer_cmd, result.debug.baseline_cost, cost_breakdown.c_str(),
       validation_reasons.c_str(), max_pos_delta, max_vel_delta, action_sampling_log.c_str());
-  } else {
-    RCLCPP_INFO(
-      mppiLogger(), "MPPI in %.1f ms: u_accel=%.3f u_steer=%.3f%s", result.debug.timing.total_ms,
-      control.accel_cmd, control.steer_cmd, action_sampling_log.c_str());
   }
 
   if (impl_->skip_if_invalid && !validation.isValid()) {
