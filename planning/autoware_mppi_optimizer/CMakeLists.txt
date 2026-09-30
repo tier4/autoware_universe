@@ -117,12 +117,18 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     src/first_order_dubins/first_order_dubins_mppi_interface.cu
   )
   find_package(autoware_trajectory_modifier REQUIRED)
+  # t-MPT links libacados.so. The imported `acados` target (not -lacados)
+  # carries INTERFACE_LINK_LIBRARIES qpOASES_e;hpipm;blasfeo, so GNU ld can
+  # resolve those DT_NEEDED without LD_LIBRARY_PATH / bashrc. libacados itself
+  # has empty RUNPATH.
+  find_package(acados REQUIRED)
   ament_auto_add_library(mppi_temporal_mpt_nominal SHARED
     src/first_order_dubins/temporal_mpt_nominal.cpp
   )
   target_link_libraries(mppi_temporal_mpt_nominal
     mppi_trajectory_utils
     ${autoware_trajectory_modifier_LIBRARIES}
+    acados
     rclcpp::rclcpp
     tf2::tf2
     tf2_geometry_msgs::tf2_geometry_msgs
@@ -137,6 +143,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     mppi_trajectory_utils
     mppi_temporal_mpt_nominal
     mppi_extensions
+    acados
     rclcpp::rclcpp
     tf2_geometry_msgs::tf2_geometry_msgs
     autoware_perception_msgs::autoware_perception_msgs__rosidl_generator_cpp
@@ -180,6 +187,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(mppi_offline_retune
     first_order_dubins_mppi
+    acados
     rclcpp::rclcpp
     tf2_geometry_msgs::tf2_geometry_msgs
     autoware_perception_msgs::autoware_perception_msgs__rosidl_generator_cpp
@@ -200,6 +208,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   target_link_libraries(mppi_open_loop_line_sim
     first_order_dubins_mppi
     ${PROJECT_NAME}
+    acados
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp
     tf2_geometry_msgs::tf2_geometry_msgs
@@ -223,6 +232,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     target_link_libraries(test_first_order_dubins_mppi_interface
       first_order_dubins_mppi
       mppi_trajectory_utils
+      acados
       ${CUDA_LIBRARIES}
     )
     set_target_properties(test_first_order_dubins_mppi_interface PROPERTIES
@@ -242,6 +252,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     )
     target_link_libraries(test_mppi_trajectory_validator
       first_order_dubins_mppi
+      acados
       ${GTEST_LIBRARIES}
       ${GTEST_MAIN_LIBRARIES}
     )
@@ -260,6 +271,38 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       LABELS "gpu"
       TIMEOUT 60
     )
+  endif()
+
+  get_target_property(_mppi_acados_location acados IMPORTED_LOCATION)
+  if(NOT _mppi_acados_location)
+    get_target_property(_mppi_acados_location acados IMPORTED_LOCATION_RELEASE)
+  endif()
+  if(_mppi_acados_location)
+    get_filename_component(_mppi_acados_lib_dir "${_mppi_acados_location}" DIRECTORY)
+  elseif(DEFINED ENV{ACADOS_SOURCE_DIR} AND EXISTS "$ENV{ACADOS_SOURCE_DIR}/lib")
+    set(_mppi_acados_lib_dir "$ENV{ACADOS_SOURCE_DIR}/lib")
+  else()
+    set(_mppi_acados_lib_dir "/opt/acados/lib")
+  endif()
+  set(_mppi_acados_rpath_targets
+    mppi_temporal_mpt_nominal
+    first_order_dubins_mppi
+    ${PROJECT_NAME}
+    autoware_mppi_trajectory_modifier_plugin
+    mppi_offline_retune
+    mppi_open_loop_line_sim
+  )
+  if(TARGET test_first_order_dubins_mppi_interface)
+    list(APPEND _mppi_acados_rpath_targets test_first_order_dubins_mppi_interface)
+  endif()
+  if(TARGET test_mppi_trajectory_validator)
+    list(APPEND _mppi_acados_rpath_targets test_mppi_trajectory_validator)
+  endif()
+  if(_mppi_acados_lib_dir AND EXISTS "${_mppi_acados_lib_dir}")
+    foreach(_target ${_mppi_acados_rpath_targets})
+      set_property(TARGET ${_target} APPEND PROPERTY BUILD_RPATH "${_mppi_acados_lib_dir}")
+      set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH "${_mppi_acados_lib_dir}")
+    endforeach()
   endif()
 
   install(TARGETS first_order_dubins_mppi mppi_offline_retune mppi_open_loop_line_sim
