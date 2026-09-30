@@ -265,3 +265,117 @@ TEST(trajectory, calcFirstSignedArcLength_10)
   ASSERT_TRUE(baseline);
   EXPECT_NEAR(*first, *baseline, epsilon);
 }
+
+namespace
+{
+class SegmentIndexedArcLength : public ::testing::Test
+{
+protected:
+  using Destination = tier4_autoware_utils::SegmentIndexWithPoint;
+  const first_nearest_inputs::TrajectoryPoints points{
+    first_nearest_inputs::makeTrajPoint(0.0, 0.0, 0.0),
+    first_nearest_inputs::makeTrajPoint(10.0, 0.0, 0.0),
+    first_nearest_inputs::makeTrajPoint(20.0, 0.0, 0.0)};
+};
+}  // namespace
+
+TEST_F(SegmentIndexedArcLength, ForwardWithOffsets)
+{
+  const auto result = tier4_autoware_utils::calcFirstSignedArcLength(
+    points, first_nearest_inputs::makePose(2.5, 0.0, 0.0),
+    Destination{1, first_nearest_inputs::makePoint(17.5, 0.0)});
+  ASSERT_TRUE(result);
+  EXPECT_NEAR(*result, 15.0, epsilon);
+}
+
+TEST_F(SegmentIndexedArcLength, BackwardWithOffsets)
+{
+  const auto result = tier4_autoware_utils::calcFirstSignedArcLength(
+    points, first_nearest_inputs::makePose(17.5, 0.0, 0.0),
+    Destination{0, first_nearest_inputs::makePoint(2.5, 0.0)});
+  ASSERT_TRUE(result);
+  EXPECT_NEAR(*result, -15.0, epsilon);
+}
+
+TEST_F(SegmentIndexedArcLength, SameSegment)
+{
+  const auto result = tier4_autoware_utils::calcFirstSignedArcLength(
+    points, first_nearest_inputs::makePose(2.5, 0.0, 0.0),
+    Destination{0, first_nearest_inputs::makePoint(7.5, 0.0)});
+  ASSERT_TRUE(result);
+  EXPECT_NEAR(*result, 5.0, epsilon);
+}
+
+TEST_F(SegmentIndexedArcLength, CoincidentAtSegmentBoundary)
+{
+  const auto result = tier4_autoware_utils::calcFirstSignedArcLength(
+    points, first_nearest_inputs::makePose(10.0, 0.0, 0.0),
+    Destination{1, first_nearest_inputs::makePoint(10.0, 0.0)});
+  ASSERT_TRUE(result);
+  EXPECT_NEAR(*result, 0.0, epsilon);
+}
+
+TEST_F(SegmentIndexedArcLength, LateralOffsetsDoNotAddLength)
+{
+  const auto result = tier4_autoware_utils::calcFirstSignedArcLength(
+    points, first_nearest_inputs::makePose(2.5, 1.0, 0.0),
+    Destination{1, first_nearest_inputs::makePoint(17.5, -2.0)});
+  ASSERT_TRUE(result);
+  EXPECT_NEAR(*result, 15.0, epsilon);
+}
+
+TEST_F(SegmentIndexedArcLength, EmptyPath)
+{
+  const first_nearest_inputs::TrajectoryPoints empty;
+  EXPECT_FALSE(tier4_autoware_utils::calcFirstSignedArcLength(
+    empty, first_nearest_inputs::makePose(0.0, 0.0, 0.0),
+    Destination{0, first_nearest_inputs::makePoint(0.0, 0.0)}));
+}
+
+TEST_F(SegmentIndexedArcLength, SourceOutsideDistanceLimit)
+{
+  EXPECT_FALSE(tier4_autoware_utils::calcFirstSignedArcLength(
+    points, first_nearest_inputs::makePose(0.0, 2.0, 0.0),
+    Destination{1, first_nearest_inputs::makePoint(17.5, 0.0)}, 1.0));
+}
+
+TEST_F(SegmentIndexedArcLength, SourceOutsideYawLimit)
+{
+  EXPECT_FALSE(tier4_autoware_utils::calcFirstSignedArcLength(
+    points, first_nearest_inputs::makePose(0.0, 0.0, tier4_autoware_utils::deg2rad(90.0)),
+    Destination{1, first_nearest_inputs::makePoint(17.5, 0.0)}, 10.0,
+    tier4_autoware_utils::deg2rad(30.0)));
+}
+
+TEST_F(SegmentIndexedArcLength, KnownDestinationAtCrossing)
+{
+  // (5, 0) occurs at arc lengths 5 m and 29 m. The collision is on the later pass.
+  const auto crossing = first_nearest_inputs::traj_overlap();
+  const auto src = first_nearest_inputs::makePose(4.0, 0.0, 0.0);
+  const auto dst = first_nearest_inputs::makePoint(5.0, 0.0);
+  const auto result =
+    tier4_autoware_utils::calcFirstSignedArcLength(crossing, src, Destination{289, dst});
+  ASSERT_TRUE(result);
+  EXPECT_NEAR(*result, 25.0, epsilon);
+
+  const auto searched = tier4_autoware_utils::calcFirstSignedArcLength(crossing, src, dst);
+  ASSERT_TRUE(searched);
+  EXPECT_NEAR(*searched, 1.0, epsilon);
+}
+
+TEST_F(SegmentIndexedArcLength, SourceSearchRespectsDistanceThreshold)
+{
+  const auto crossing = first_nearest_inputs::traj_overlap();
+  const auto src = first_nearest_inputs::overlap2_n_pose();
+  const Destination dst{292, first_nearest_inputs::overlap2_n_point()};
+  // A wide search includes the closer later pass; a narrow window picks the first pass.
+  const auto wide = tier4_autoware_utils::calcFirstSignedArcLength(
+    crossing, src, dst, first_nearest_inputs::max_dist, first_nearest_inputs::max_yaw, 20.0);
+  const auto narrow = tier4_autoware_utils::calcFirstSignedArcLength(
+    crossing, src, dst, first_nearest_inputs::max_dist, first_nearest_inputs::max_yaw,
+    first_nearest_inputs::distance_thresh_small);
+  ASSERT_TRUE(wide);
+  ASSERT_TRUE(narrow);
+  EXPECT_NEAR(*wide, 0.7, epsilon);
+  EXPECT_NEAR(*narrow, 24.36, epsilon);
+}
