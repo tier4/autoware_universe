@@ -18,6 +18,7 @@
 #include "autoware/tensorrt_e2e/inference_engine.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
 #include "autoware/tensorrt_e2e/planning_time.hpp"
+#include "autoware/tensorrt_e2e/prev_plan.hpp"
 #include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
 #include "autoware/tensorrt_e2e/postprocess/trajectory_postprocessor.hpp"
 #include "autoware/tensorrt_e2e/providers/context_input_provider.hpp"
@@ -252,6 +253,10 @@ private:
   int64_t ego_history_keep_ns_{5000000000LL};
   PoseContinuityLimits pose_limits_;
   uint64_t localization_generation_{0};
+  //! The previous tick's raw plan, fed back as `prev_plan` when the graph declares that input.
+  //! Emptied at the start of every tick and refilled only by a fully successful one.
+  std::optional<PrevPlanCache> prev_plan_cache_;
+  bool feeds_prev_plan_{false};
   RollingLatency pipeline_latency_, processing_latency_;
   bool waiting_for_ego_{false};
   bool recorded_ego_dynamics_{false};
