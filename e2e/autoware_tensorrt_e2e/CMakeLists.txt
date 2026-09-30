@@ -131,6 +131,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       test/temporal_bev_cache_test.cpp
       test/detection_postprocessor_test.cpp
       test/detection_decode_test.cpp
+      test/map_tensors_test.cpp
     )
     target_link_libraries(test_${PROJECT_NAME} ${PROJECT_NAME}_component)
     target_compile_definitions(test_${PROJECT_NAME} PRIVATE

@@ -591,6 +591,12 @@ std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
   }
   ego.ego_to_map = dp::utils::pose_to_matrix4d(ego.reference_odometry.pose.pose);
   ego.map_to_ego = dp::utils::inverse(ego.ego_to_map);
+  auto sensor_reference = ego.sensor_pose;
+  if (params_.shift_x) {
+    sensor_reference = dp::utils::shift_x(sensor_reference, base_link_to_center_);
+  }
+  ego.sensor_to_map = dp::utils::pose_to_matrix4d(sensor_reference);
+  ego.map_to_sensor = dp::utils::inverse(ego.sensor_to_map);
   waiting_for_ego_ = false;
   return ego;
 }

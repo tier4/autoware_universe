@@ -56,7 +56,13 @@ uint8_t identify_current_light_status(
 LaneSegmentContext::LaneSegmentContext(
   const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
   const MapConversionOptions & options)
-: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr, options)),
+: LaneSegmentContext(convert_to_internal_lanelet_map(lanelet_map_ptr, options), options)
+{
+}
+
+LaneSegmentContext::LaneSegmentContext(
+  autoware::diffusion_planner::LaneletMap lanelet_map, const MapConversionOptions & options)
+: lanelet_map_(std::move(lanelet_map)),
   producer_slot_order_(options.producer_slot_order),
   producer_lane_selection_(options.producer_lane_selection),
   lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments))
@@ -386,7 +392,7 @@ template <typename T>
 std::vector<float> LaneSegmentContext::create_line_tensor(
   const std::vector<T> & elements, const Eigen::Matrix4d & transform_matrix, const double center_x,
   const double center_y, const int64_t num_elements, const int64_t num_points,
-  const int64_t num_types) const
+  const int64_t num_types, const Eigen::Matrix4d * output_transform) const
 {
   using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
 
@@ -419,18 +425,19 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
       continue;
     }
 
+    // The slot order is decided by `transform_matrix`; the written points by `output_transform`.
     std::vector<LanePoint> transformed_polyline;
-    for (const auto & point : element.points) {
-      const Eigen::Vector4d transformed_point =
-        transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
-      transformed_polyline.emplace_back(
-        transformed_point.x(), transformed_point.y(), transformed_point.z());
-    }
-
     double min_distance = std::numeric_limits<double>::max();
-    for (const auto & point : transformed_polyline) {
-      const double distance = std::sqrt(point.x() * point.x() + point.y() * point.y());
-      min_distance = std::min(min_distance, distance);
+    for (const auto & point : element.points) {
+      const Eigen::Vector4d homogeneous(point.x(), point.y(), point.z(), 1.0);
+      const Eigen::Vector4d selected_point = transform_matrix * homogeneous;
+      min_distance = std::min(
+        min_distance, std::sqrt(
+                        selected_point.x() * selected_point.x() +
+                        selected_point.y() * selected_point.y()));
+      const Eigen::Vector4d written_point =
+        output_transform ? Eigen::Vector4d(*output_transform * homogeneous) : selected_point;
+      transformed_polyline.emplace_back(written_point.x(), written_point.y(), written_point.z());
     }
 
     int64_t piece = 0;
@@ -491,10 +498,10 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
 // Explicit template instantiations
 template std::vector<float> LaneSegmentContext::create_line_tensor<Polygon>(
   const std::vector<Polygon> &, const Eigen::Matrix4d &, const double, const double, const int64_t,
-  const int64_t, const int64_t) const;
+  const int64_t, const int64_t, const Eigen::Matrix4d *) const;
 template std::vector<float> LaneSegmentContext::create_line_tensor<LineString>(
   const std::vector<LineString> &, const Eigen::Matrix4d &, const double, const double,
-  const int64_t, const int64_t, const int64_t) const;
+  const int64_t, const int64_t, const int64_t, const Eigen::Matrix4d *) const;
 
 // Internal functions implementation
 namespace

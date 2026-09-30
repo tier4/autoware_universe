@@ -15,6 +15,8 @@
 #include "autoware/tensorrt_e2e/providers/context_input_provider.hpp"
 #include "autoware/tensorrt_e2e/planning_time.hpp"
 
+#include "autoware/tensorrt_e2e/providers/map_tensors.hpp"
+
 #include <autoware/diffusion_planner/dimensions.hpp>
 #include <autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp>
 #include <autoware/diffusion_planner/utils/utils.hpp>
@@ -463,17 +465,13 @@ bool ContextInputProvider::collect_map_tensors(
     return false;
   }
 
-  const auto center_x = static_cast<float>(ego.ego_to_map(0, 3));
-  const auto center_y = static_cast<float>(ego.ego_to_map(1, 3));
-
+  // Crop and order at the cloud pose, points in the planning frame (see map_tensors.hpp).
   if (!lanes_shape_.empty()) {
-    const int64_t num_segments = lanes_shape_[1];
-    const std::vector<int64_t> segment_indices = lane_segment_context_->select_lane_segment_indices(
-      ego.map_to_ego, center_x, center_y, num_segments);
-    auto [lanes, lanes_speed_limit] = lane_segment_context_->create_tensor_data_from_indices(
-      ego.map_to_ego, traffic_light_id_map_, segment_indices, num_segments);
-    lane_segment_indices_ = segment_indices;
-    inputs["lanes"] = Tensor::from_host(lanes_shape_, std::move(lanes));
+    auto lane_slots = map_tensors::build_lanes(
+      *lane_segment_context_, ego, traffic_light_id_map_, lanes_shape_[1]);
+    lane_segment_indices_ = std::move(lane_slots.indices);
+    auto lanes_speed_limit = std::move(lane_slots.speed_limit);
+    inputs["lanes"] = Tensor::from_host(lanes_shape_, std::move(lane_slots.data));
     if (!lanes_has_speed_limit_shape_.empty()) {
       // Same values as the speed limit tensor; the engine converts to bool by dtype.
       inputs["lanes_has_speed_limit"] =
@@ -487,14 +485,13 @@ bool ContextInputProvider::collect_map_tensors(
 
   if (!polygons_shape_.empty()) {
     inputs["polygons"] = Tensor::from_host(
-      polygons_shape_, lane_segment_context_->create_polygon_tensor(
-                         ego.map_to_ego, center_x, center_y, polygons_shape_[1],
-                         polygons_shape_[3] - 2));
+      polygons_shape_, map_tensors::build_polygons(
+                         *lane_segment_context_, ego, polygons_shape_[1], polygons_shape_[3] - 2));
   }
   if (!line_strings_shape_.empty()) {
     inputs["line_strings"] = Tensor::from_host(
-      line_strings_shape_, lane_segment_context_->create_line_string_tensor(
-                             ego.map_to_ego, center_x, center_y, line_strings_shape_[1]));
+      line_strings_shape_,
+      map_tensors::build_line_strings(*lane_segment_context_, ego, line_strings_shape_[1]));
   }
 
   return true;
@@ -516,16 +513,11 @@ bool ContextInputProvider::collect_route_tensors(
       error = map_error_.empty() ? "Vector map not received yet" : map_error_;
       return false;
     }
-    const double center_x = ego.ego_to_map(0, 3);
-    const double center_y = ego.ego_to_map(1, 3);
-    const double center_z = ego.ego_to_map(2, 3);
-    const int64_t num_segments = route_lanes_shape_[1];
-    const std::vector<int64_t> segment_indices =
-      lane_segment_context_->select_route_segment_indices(
-        *route_ptr_, center_x, center_y, center_z, num_segments);
-    auto [route_lanes, route_speed_limit] = lane_segment_context_->create_tensor_data_from_indices(
-      ego.map_to_ego, traffic_light_id_map_, segment_indices, num_segments);
-    inputs["route_lanes"] = Tensor::from_host(route_lanes_shape_, std::move(route_lanes));
+    auto route_slots = map_tensors::build_route_lanes(
+      *lane_segment_context_, ego, *route_ptr_, traffic_light_id_map_, route_lanes_shape_[1]);
+    const std::vector<int64_t> & segment_indices = route_slots.indices;
+    auto route_speed_limit = std::move(route_slots.speed_limit);
+    inputs["route_lanes"] = Tensor::from_host(route_lanes_shape_, std::move(route_slots.data));
     if (!lanes_on_route_shape_.empty()) {
       inputs["lanes_on_route"] = Tensor::from_host(
         lanes_on_route_shape_,

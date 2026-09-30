@@ -101,6 +101,12 @@ struct EgoFrame
   //! The base_link pose interpolated to `sensor_stamp`: where the cloud was recorded, and
   //! so the source pose of its BEV map. Equal to `odometry.pose.pose` under `cloud_stamp`.
   geometry_msgs::msg::Pose sensor_pose;
+  //! `ego_to_map` / `map_to_ego` for `sensor_pose` (the same reference-pose shift). The map
+  //! crop, slot order and route start are made here, as in training, which selects at the
+  //! cloud pose and only then re-expresses the points in the planning frame. Equal to
+  //! `ego_to_map` / `map_to_ego` under `cloud_stamp`.
+  Eigen::Matrix4d sensor_to_map{Eigen::Matrix4d::Identity()};
+  Eigen::Matrix4d map_to_sensor{Eigen::Matrix4d::Identity()};
 };
 
 int64_t shape_num_elements(const std::vector<int64_t> & shape);

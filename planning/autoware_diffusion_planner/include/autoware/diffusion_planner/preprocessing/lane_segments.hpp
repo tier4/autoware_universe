@@ -71,6 +71,11 @@ public:
     const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
     const MapConversionOptions & options = {});
 
+  //! From an already converted map (what the constructor above builds); lets a test hand-make
+  //! the segment table without a lanelet2 map.
+  explicit LaneSegmentContext(
+    autoware::diffusion_planner::LaneletMap lanelet_map, const MapConversionOptions & options = {});
+
   /**
    * @brief Select route segment indices based on route and constraints.
    *
@@ -153,21 +158,25 @@ public:
   }
   //! Sized by the model instead of by this package's constants: a model's
   //! declared slot count and type width (validated by the caller).
+  //! `output_transform`, when given, places the written points while `transform_matrix`
+  //! still decides the slot order (a crop and an ordering made at one pose, points
+  //! expressed in another frame); null writes with `transform_matrix`, as before.
   std::vector<float> create_polygon_tensor(
     const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-    const int64_t num_elements, const int64_t num_types) const
+    const int64_t num_elements, const int64_t num_types,
+    const Eigen::Matrix4d * output_transform = nullptr) const
   {
     return create_line_tensor(
       lanelet_map_.polygons, transform_matrix, center_x, center_y, num_elements,
-      POINTS_PER_POLYGON, num_types);
+      POINTS_PER_POLYGON, num_types, output_transform);
   }
   std::vector<float> create_line_string_tensor(
     const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-    const int64_t num_elements) const
+    const int64_t num_elements, const Eigen::Matrix4d * output_transform = nullptr) const
   {
     return create_line_tensor(
       lanelet_map_.line_strings, transform_matrix, center_x, center_y, num_elements,
-      POINTS_PER_LINE_STRING, LINE_STRING_TYPE_NUM);
+      POINTS_PER_LINE_STRING, LINE_STRING_TYPE_NUM, output_transform);
   }
 
 private:
@@ -185,13 +194,15 @@ private:
    * @param num_elements Maximum number of elements to include.
    * @param num_points Number of points per element.
    * @param num_types Number of type categories for one-hot encoding.
+   * @param output_transform Transform for the written points; null uses `transform_matrix`.
    * @return Vector of float tensor data with shape [num_elements, num_points, 2 + num_types].
    */
   template <typename T>
   std::vector<float> create_line_tensor(
     const std::vector<T> & elements, const Eigen::Matrix4d & transform_matrix,
     const double center_x, const double center_y, const int64_t num_elements,
-    const int64_t num_points, const int64_t num_types) const;
+    const int64_t num_points, const int64_t num_types,
+    const Eigen::Matrix4d * output_transform = nullptr) const;
 
   const autoware::diffusion_planner::LaneletMap lanelet_map_;
   const bool producer_slot_order_;  //!< MapConversionOptions::producer_slot_order.
