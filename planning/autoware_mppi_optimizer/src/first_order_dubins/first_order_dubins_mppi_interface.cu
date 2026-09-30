@@ -61,8 +61,8 @@ namespace
 constexpr int kMppiHorizon = detail::kMppiHorizon;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = detail::kMppiDt;
-constexpr size_t kMaxIter = 5;
-constexpr int kNumRollouts = 2 * 1024;
+constexpr size_t kMaxIter = 10;
+constexpr int kNumRollouts = 8 * 1024;
 constexpr int kMaxVizRollouts = 256;
 constexpr int kMaxWorstVizRollouts = 128;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
@@ -2300,12 +2300,12 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_time)
       .count();
   // Host Σ / std-dev history already pulled with optimal control at end of computeControl().
+  const std::string action_sampling_log =
+    impl_->user_cost_params_.update_action_variance && impl_->last_vi_mpc_sampling_std_valid_
+      ? formatViMpcSamplingStdDevLog(
+          impl_->last_sampling_std_at_mppi_start_, impl_->last_sampling_std_after_mppi_iters_)
+      : formatActionSamplingVariances(impl_->sampler);
   if (impl_->debug_trajectory_logger.enabled()) {
-    const std::string action_sampling_log =
-      impl_->user_cost_params_.update_action_variance && impl_->last_vi_mpc_sampling_std_valid_
-        ? formatViMpcSamplingStdDevLog(
-            impl_->last_sampling_std_at_mppi_start_, impl_->last_sampling_std_after_mppi_iters_)
-        : formatActionSamplingVariances(impl_->sampler);
     const auto validation_reasons = to_string(result.debug.validation.reasons);
     const auto cost_breakdown = formatCostBreakdown(result.debug.cost_breakdown);
     RCLCPP_INFO(
@@ -2320,6 +2320,10 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       tracked_objects.objects.size(), road_borders.size(), drivable_area.size(), control.accel_cmd,
       control.steer_cmd, result.debug.baseline_cost, cost_breakdown.c_str(),
       validation_reasons.c_str(), max_pos_delta, max_vel_delta, action_sampling_log.c_str());
+  } else {
+    RCLCPP_INFO(
+      mppiLogger(), "MPPI in %.1f ms: u_accel=%.3f u_steer=%.3f%s", result.debug.timing.total_ms,
+      control.accel_cmd, control.steer_cmd, action_sampling_log.c_str());
   }
 
   if (impl_->skip_if_invalid && !validation.isValid()) {
