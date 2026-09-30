@@ -267,15 +267,68 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
     return tl::unexpected(std::move(error));
   }
 
+  if (params_.virtual_pose.enable) {
+    frame_ego_ = build_frame_ego();
+  } else {
+    frame_ego_ = ego_history_.back();
+    virtual_pose_result_.reset();
+    virtual_history_.clear();
+  }
+  const auto & frame_ego_history =
+    params_.virtual_pose.enable ? virtual_history_.msgs() : ego_history_.msgs();
+
   return preprocess::FrameInputs{
     frame_time(),
-    preprocess::MessageView<nav_msgs::msg::Odometry>{ego_history_.msgs()},
+    preprocess::MessageView<nav_msgs::msg::Odometry>{frame_ego_history},
     preprocess::MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport>{
       turn_indicators_history_.msgs()},
     preprocess::MessageView<autoware_perception_msgs::msg::TrackedObjects>{objects_history_.msgs()},
     preprocess::MessageView<autoware_perception_msgs::msg::TrafficLightGroupArray>{
       traffic_signals_history_.msgs()},
     *route_ptr_};
+}
+
+Odometry MLPlannerCore::build_frame_ego()
+{
+  const Odometry & measured = ego_history_.back();
+  if (virtual_history_.empty()) {
+    for (const auto & msg : ego_history_.msgs()) {
+      virtual_history_.push_back(msg);
+    }
+  }
+
+  virtual_pose_result_ = utils::VirtualPoseResult{measured.pose.pose, false, false, 0.0, 0.0};
+  if (previous_frame_pose_ && !previous_ego_prediction_.empty()) {
+    // Earlier frame poses, oldest first, at least 5 cm apart, excluding the previous frame pose
+    // itself (the newest history entry), then the previous frame pose and its prediction.
+    constexpr double MIN_PREFIX_SPACING_M = 0.05;
+    std::vector<Eigen::Matrix4d> newest_first;
+    Eigen::Vector2d successor = previous_frame_pose_->block<2, 1>(0, 3);
+    const auto & past = virtual_history_.msgs();
+    for (auto it = past.rbegin();
+         it != past.rend() &&
+         static_cast<int64_t>(newest_first.size()) < params_.virtual_pose.history_prefix_count;
+         ++it) {
+      const Eigen::Matrix4d pose = utils::pose_to_matrix4d(it->pose.pose);
+      if ((pose.block<2, 1>(0, 3) - successor).norm() < MIN_PREFIX_SPACING_M) {
+        continue;
+      }
+      newest_first.push_back(pose);
+      successor = pose.block<2, 1>(0, 3);
+    }
+    std::vector<Eigen::Matrix4d> polyline(newest_first.rbegin(), newest_first.rend());
+    const auto prefix_count = static_cast<int64_t>(polyline.size());
+    polyline.push_back(*previous_frame_pose_);
+    polyline.insert(
+      polyline.end(), previous_ego_prediction_.begin(), previous_ego_prediction_.end());
+    virtual_pose_result_ = utils::compute_virtual_pose(
+      measured.pose.pose, polyline, prefix_count, params_.virtual_pose);
+  }
+
+  Odometry frame = measured;
+  frame.pose.pose = virtual_pose_result_->pose;
+  virtual_history_.push_back(frame);
+  return frame;
 }
 
 preprocess::TensorMapResult MLPlannerCore::create_input_data(
@@ -340,9 +393,10 @@ PlannerOutput MLPlannerCore::create_planner_output(
   const InferenceOutput & inference_output, const rclcpp::Time & timestamp,
   const UUID & generator_uuid, const double current_steering_angle_rad)
 {
-  // Derive the frame state from the raw message buffers
+  // The model output is in the frame it was given (frame_ego_, the virtual pose when enabled);
+  // everything downstream (border avoidance, optimization) starts from the measured state.
   const Odometry & kinematic_state = ego_history_.back();
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(kinematic_state.pose.pose);
+  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(frame_ego_.pose.pose);
 
   const auto & raw_predictions = inference_output.trajectory;
   const auto & turn_indicator_logits = inference_output.turn_indicator_logits;
@@ -359,12 +413,14 @@ PlannerOutput MLPlannerCore::create_planner_output(
 
   const auto agent_poses =
     postprocess::parse_predictions(denormalized_predictions, ego_to_map_transform);
+  previous_frame_pose_ = ego_to_map_transform;
+  previous_ego_prediction_ = agent_poses.front().front();
 
   PlannerOutput output;
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, kinematic_state.pose.pose.position, i);
+      agent_poses, timestamp, frame_ego_.pose.pose.position, i);
 
     if (i == 0) {
       // Keep the untouched model output for the debug topics.

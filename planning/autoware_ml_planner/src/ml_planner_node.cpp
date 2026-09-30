@@ -111,6 +111,10 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
     "~/debug/road_border_avoidance/shifted_point_count", 1);
   pub_pre_stop_fixing_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/stop_point_fixing/unfixed_trajectory", 1);
+  pub_virtual_pose_ =
+    this->create_publisher<geometry_msgs::msg::PoseStamped>("~/debug/virtual_pose", 1);
+  pub_virtual_pose_status_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
+    "~/debug/virtual_pose_status", 1);
 
   set_up_params();
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -285,6 +289,22 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("stop_point_fixing.velocity_threshold_mps", 0.3);
   stop_fixing.min_deceleration_duration_sec =
     this->declare_parameter<double>("stop_point_fixing.min_deceleration_duration_sec", 1.0);
+
+  // virtual ego pose params
+  auto & virtual_pose = params_.virtual_pose;
+  virtual_pose.enable = this->declare_parameter<bool>("virtual_pose.enable", false);
+  virtual_pose.max_position_error_m =
+    this->declare_parameter<double>("virtual_pose.max_position_error_m", 0.3);
+  virtual_pose.max_yaw_error_deg =
+    this->declare_parameter<double>("virtual_pose.max_yaw_error_deg", 5.0);
+  virtual_pose.max_search_segment_count =
+    this->declare_parameter<int64_t>("virtual_pose.max_search_segment_count", 5);
+  virtual_pose.yaw_fit_half_window_m =
+    this->declare_parameter<double>("virtual_pose.yaw_fit_half_window_m", 1.0);
+  virtual_pose.yaw_fit_min_length_m =
+    this->declare_parameter<double>("virtual_pose.yaw_fit_min_length_m", 0.2);
+  virtual_pose.history_prefix_count =
+    this->declare_parameter<int64_t>("virtual_pose.history_prefix_count", 10);
 
   // planning factor params
   planning_factor_params_.enable_stop =
@@ -725,6 +745,18 @@ void MLPlanner::on_timer()
   }
   TensorMap input_data_map = std::move(input_data_result.value());
   const rclcpp::Time frame_time = core_->frame_time();
+
+  if (const auto & virtual_pose = core_->virtual_pose_result()) {
+    geometry_msgs::msg::PoseStamped pose_msg;
+    pose_msg.header = core_->measured_ego().header;
+    pose_msg.pose = virtual_pose->pose;
+    pub_virtual_pose_->publish(pose_msg);
+    std_msgs::msg::Float64MultiArray status_msg;
+    status_msg.data = {
+      virtual_pose->snapped ? 1.0 : 0.0, virtual_pose->reset ? 1.0 : 0.0,
+      virtual_pose->position_error_m, virtual_pose->yaw_error_deg};
+    pub_virtual_pose_status_->publish(status_msg);
+  }
 
   if (start_velocity_override_enabled_) {
     auto & ego_agent_past = input_data_map.at("ego_agent_past");

@@ -39,7 +39,9 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -217,6 +219,9 @@ private:
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_avoidance_shifted_count_{nullptr};
   // Stop point fixing debug topic (published when the fixing is enabled)
   rclcpp::Publisher<Trajectory>::SharedPtr pub_pre_stop_fixing_trajectory_{nullptr};
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_virtual_pose_{nullptr};
+  // [snapped, reset, position_error_m, yaw_error_deg] of the current frame.
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_virtual_pose_status_{nullptr};
 
   // Start service: while enabled, ego velocity in the model input is overwritten (1 m/s).
   // Cleared automatically once the measured ego velocity reaches that value.

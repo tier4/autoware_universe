@@ -27,6 +27,7 @@
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 #include "autoware/ml_planner/preprocessing/items/traffic_signals.hpp"
 #include "autoware/ml_planner/utils/timed_buffer.hpp"
+#include "autoware/ml_planner/utils/virtual_pose.hpp"
 
 #include <Eigen/Dense>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
@@ -116,6 +117,7 @@ struct MLPlannerParams
   optimization::TrajectoryOptimizationParams trajectory_optimization;
   postprocess::RoadBorderAvoidanceParams road_border_avoidance;
   postprocess::StopPointFixingParams stop_point_fixing;
+  utils::VirtualPoseParams virtual_pose;
 };
 
 /**
@@ -179,7 +181,15 @@ public:
    */
   preprocess::TensorMapResult create_input_data(const preprocess::FrameInputs & frame_inputs);
 
-  const geometry_msgs::msg::Pose & ego_pose() const { return ego_history_.back().pose.pose; }
+  // Pose the current frame is built around: the virtual pose when it is enabled and applied.
+  const geometry_msgs::msg::Pose & ego_pose() const { return frame_ego_.pose.pose; }
+
+  // Virtual pose of the current frame; std::nullopt when the feature is disabled.
+  const std::optional<utils::VirtualPoseResult> & virtual_pose_result() const
+  {
+    return virtual_pose_result_;
+  }
+  const Odometry & measured_ego() const { return ego_history_.back(); }
 
   /**
    * @brief Set the lanelet map context.
@@ -285,6 +295,16 @@ private:
       }};
 
   // Lanelet map
+  // Virtual pose state. The model's past is built from the frame poses of earlier cycles
+  // (virtual_history_), so it matches the trajectories the model was planning from.
+  utils::TimedBuffer<Odometry> virtual_history_{
+    HISTORY_WINDOW_S, [](const Odometry & msg) { return rclcpp::Time(msg.header.stamp); }};
+  Odometry frame_ego_;
+  std::optional<utils::VirtualPoseResult> virtual_pose_result_;
+  std::optional<Eigen::Matrix4d> previous_frame_pose_;
+  std::vector<Eigen::Matrix4d> previous_ego_prediction_;
+  Odometry build_frame_ego();
+
   std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_;
   LaneletRoute::ConstSharedPtr route_ptr_;
   std::unique_ptr<preprocess::LaneSegmentContext> lane_segment_context_;
