@@ -326,8 +326,8 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   const auto mpc_solved_status =
     use_steering_direct_passthrough
       ? m_mpc->calculateTrajectorySteeringPassthrough(
-          m_current_steering, m_current_kinematic_state, ctrl_cmd, debug_values, ctrl_cmd_horizon,
-          input_data.trajectory_received_at)
+          m_current_steering, m_current_kinematic_state, ctrl_cmd, predicted_traj, debug_values,
+          ctrl_cmd_horizon, input_data.trajectory_received_at)
       : m_mpc->calculateMPC(
           m_current_steering, m_current_kinematic_state, ctrl_cmd, predicted_traj, debug_values,
           ctrl_cmd_horizon);
@@ -352,7 +352,6 @@ trajectory_follower::LateralOutput MpcLateralController::run(
 
   ctrl_cmd.steering_tire_angle -= static_cast<float>(m_steering_offset_filtered_);
 
-  publishPredictedTraj(predicted_traj);
   publishDebugValues(debug_values);
 
   const auto createLateralOutput =
@@ -377,12 +376,15 @@ trajectory_follower::LateralOutput MpcLateralController::run(
 
   // Confirmed full stop only (elapsed > duration). Until then stay in control.
   if (isStoppedState()) {
+    predicted_traj.points.clear();
+    publishPredictedTraj(predicted_traj);
     syncMpcSteerStateToCommand(m_ctrl_cmd_prev.steering_tire_angle);
     return createLateralOutput(m_ctrl_cmd_prev, false, ctrl_cmd_horizon);
   }
 
   if (!mpc_solved_status.result) {
     debug_throttle("MPC is not solved, use stop control command");
+    predicted_traj.points.clear();
     ctrl_cmd = getStopControlCommand();
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
   } else if (
@@ -392,7 +394,14 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
   }
 
+  if (mpc_solved_status.result && use_steering_direct_passthrough) {
+    // Passthrough did not run the MPC LPF. Keep only that filter in the issued command's internal
+    // steering coordinates; preserve the delay buffer and raw-command history updated above.
+    m_mpc->syncSteeringCmdFilterOnly(
+      static_cast<double>(ctrl_cmd.steering_tire_angle) + m_steering_offset_filtered_);
+  }
   m_ctrl_cmd_prev = ctrl_cmd;
+  publishPredictedTraj(predicted_traj);
   return createLateralOutput(ctrl_cmd, mpc_solved_status.result, ctrl_cmd_horizon);
 }
 
@@ -852,9 +861,10 @@ bool MpcLateralController::applyConfidenceSteerSlewLimit(Lateral & ctrl_cmd)
 
 void MpcLateralController::syncMpcSteerStateToCommand(const float steering_tire_angle)
 {
-  // Align delay buffer and steering LPF with the published command so soft hold / stop freeze
-  // is not undone by LPF state that tracked raw Uex.
-  m_mpc->resetSteeringCmdFilter(static_cast<double>(steering_tire_angle));
+  // Align delay buffer and steering LPF with the command in MPC's offset-compensated coordinates
+  // so soft hold / stop freeze is not undone by LPF state that tracked raw Uex.
+  m_mpc->resetSteeringCmdFilter(
+    static_cast<double>(steering_tire_angle) + m_steering_offset_filtered_);
 }
 
 bool MpcLateralController::isTrajectoryShapeChanged() const
