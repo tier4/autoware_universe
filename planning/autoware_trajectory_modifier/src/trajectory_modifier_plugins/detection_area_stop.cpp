@@ -15,10 +15,13 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/detection_area_stop.hpp"
 
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/detection_area_utils.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/object_recognition_utils/object_classification.hpp>
-#include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware/trajectory/utils/find_nearest.hpp>
+#include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
@@ -55,6 +58,8 @@ using detection_area::object_label_to_string;
 constexpr double ego_nearest_distance{5.0};
 constexpr double ego_nearest_yaw_deviation{1.5707963267948966};
 constexpr double stopped_velocity_threshold{1e-3};
+constexpr float restart_velocity_threshold{0.1F};
+constexpr double min_restorable_geometry_length{1.0};
 
 void append_debug_status(std::string & status, const std::string & message)
 {
@@ -74,6 +79,69 @@ std::vector<geometry_msgs::msg::Point> get_object_polygon_points(
   }
   return points;
 }
+
+float max_longitudinal_velocity(const TrajectoryPoints & trajectory)
+{
+  float max_velocity = 0.0F;
+  for (const auto & point : trajectory) {
+    max_velocity = std::max(max_velocity, point.longitudinal_velocity_mps);
+  }
+  return max_velocity;
+}
+
+double trajectory_length(const TrajectoryPoints & trajectory)
+{
+  if (trajectory.size() < 2) return 0.0;
+  return motion_utils::calcSignedArcLength(trajectory, 0, trajectory.size() - 1);
+}
+
+bool has_preceding_partial_stop(const TrajectoryPoints & trajectory)
+{
+  bool saw_moving = false;
+  for (const auto & point : trajectory) {
+    if (point.longitudinal_velocity_mps > restart_velocity_threshold) {
+      saw_moving = true;
+    } else if (saw_moving) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool restore_velocity_on_existing_geometry(
+  TrajectoryPoints & traj_points, const float reference_velocity)
+{
+  if (traj_points.size() < 2 || reference_velocity <= restart_velocity_threshold) {
+    return false;
+  }
+  if (trajectory_length(traj_points) < min_restorable_geometry_length) {
+    return false;
+  }
+  if (has_preceding_partial_stop(traj_points)) {
+    return false;
+  }
+
+  for (auto & point : traj_points) {
+    point.longitudinal_velocity_mps = reference_velocity;
+    point.acceleration_mps2 = 0.0F;
+  }
+  return true;
+}
+
+std::vector<lanelet::Id> collect_route_lanelet_ids(
+  const autoware_planning_msgs::msg::LaneletRoute & route)
+{
+  std::vector<lanelet::Id> ids;
+  for (const auto & segment : route.segments) {
+    ids.push_back(segment.preferred_primitive.id);
+    for (const auto & primitive : segment.primitives) {
+      ids.push_back(primitive.id);
+    }
+  }
+  std::sort(ids.begin(), ids.end());
+  ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+  return ids;
+}
 }  // namespace
 
 void DetectionAreaStop::on_initialize(const TrajectoryModifierParams & params)
@@ -85,47 +153,26 @@ void DetectionAreaStop::on_initialize(const TrajectoryModifierParams & params)
   debug_viz_pub_ = node_ptr->create_publisher<MarkerArray>("~/detection_area_stop/debug/marker", 1);
   pub_debug_text_ = node_ptr->create_publisher<StringStamped>("~/detection_area_stop/debug/text", 1);
   enabled_ = params.use_detection_area_stop;
-  update_params(params.detection_area);
+  params_ = params.detection_area;
+  stopping_params_ = params.stopping_constraints;
+  trajectory_time_step_ = params.trajectory_time_step;
 }
 
 void DetectionAreaStop::update_params(const TrajectoryModifierParams & params)
 {
   enabled_ = params.use_detection_area_stop;
-  update_params(params.detection_area);
+  params_ = params.detection_area;
+  stopping_params_ = params.stopping_constraints;
+  trajectory_time_step_ = params.trajectory_time_step;
 }
 
-void DetectionAreaStop::update_params(const TrajectoryModifierParams::DetectionArea & params)
+bool DetectionAreaStop::check_inputs(const InputData & input) const
 {
-  planner_param_.stop_margin = params.stop_margin;
-  planner_param_.use_dead_line = params.use_dead_line;
-  planner_param_.dead_line_margin = params.dead_line_margin;
-  planner_param_.state_clear_time = params.state_clear_time;
-  planner_param_.hold_stop_margin_distance = params.hold_stop_margin_distance;
-  planner_param_.distance_to_judge_over_stop_line = params.distance_to_judge_over_stop_line;
-  planner_param_.suppress_pass_judge_when_stopping = params.suppress_pass_judge_when_stopping;
-  planner_param_.enable_detected_obstacle_logging = params.enable_detected_obstacle_logging;
-  planner_param_.unstoppable_policy = params.unstoppable_policy;
-  planner_param_.max_deceleration = params.max_deceleration;
-  planner_param_.delay_response_time = params.delay_response_time;
-
-  planner_param_.target_filtering.pointcloud = params.target_filtering.pointcloud;
-  planner_param_.target_filtering.unknown = params.target_filtering.unknown;
-  planner_param_.target_filtering.car = params.target_filtering.car;
-  planner_param_.target_filtering.truck = params.target_filtering.truck;
-  planner_param_.target_filtering.bus = params.target_filtering.bus;
-  planner_param_.target_filtering.trailer = params.target_filtering.trailer;
-  planner_param_.target_filtering.motorcycle = params.target_filtering.motorcycle;
-  planner_param_.target_filtering.bicycle = params.target_filtering.bicycle;
-  planner_param_.target_filtering.pedestrian = params.target_filtering.pedestrian;
-  planner_param_.target_filtering.animal = params.target_filtering.animal;
-  planner_param_.target_filtering.hazard = params.target_filtering.hazard;
-  planner_param_.target_filtering.over_drivable = params.target_filtering.over_drivable;
-  planner_param_.target_filtering.under_drivable = params.target_filtering.under_drivable;
+  return input.current_odometry && input.lanelet_map && input.route;
 }
 
 void DetectionAreaStop::begin_cycle(const InputData & input)
 {
-  first_candidate_in_cycle_ = true;
   cycle_pointcloud_.reset();
   debug_status_.clear();
   last_candidate_modified_ = false;
@@ -138,7 +185,7 @@ void DetectionAreaStop::begin_cycle(const InputData & input)
     return;
   }
 
-  if (!input.current_odometry || !input.lanelet_map || !input.route) {
+  if (!check_inputs(input)) {
     debug_status_ = "fail-open: missing ";
     if (!input.current_odometry) debug_status_ += "odometry ";
     if (!input.lanelet_map) debug_status_ += "map ";
@@ -151,11 +198,9 @@ void DetectionAreaStop::begin_cycle(const InputData & input)
 
   rebuild_modules(input);
   reset_candidate_debug();
-  if (modules_.empty()) debug_status_ = "no DetectionArea modules on preferred route";
+  if (modules_.empty()) debug_status_ = "no DetectionArea modules on route";
   update_cycle_observations(input);
 }
-
-void DetectionAreaStop::end_cycle() {}
 
 void DetectionAreaStop::reset_candidate_debug()
 {
@@ -199,9 +244,7 @@ std::shared_ptr<const DetectionAreaStop::PointCloud> DetectionAreaStop::make_map
 void DetectionAreaStop::update_cycle_observations(const InputData & input)
 {
   cycle_pointcloud_ = make_map_pointcloud(input);
-  if (
-    planner_param_.target_filtering.pointcloud && input.obstacle_pointcloud &&
-    !cycle_pointcloud_) {
+  if (params_.target_filtering.pointcloud && input.obstacle_pointcloud && !cycle_pointcloud_) {
     append_debug_status(debug_status_, "pointcloud unavailable");
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,
@@ -224,7 +267,7 @@ void DetectionAreaStop::update_cycle_observations(const InputData & input)
     module.obstacle_points.clear();
     module.object_polygons.clear();
 
-    if (planner_param_.target_filtering.pointcloud && cycle_pointcloud_) {
+    if (params_.target_filtering.pointcloud && cycle_pointcloud_) {
       module.obstacle_points =
         get_obstacle_points(module.regulatory_element->detectionAreas(), *cycle_pointcloud_);
       if (!module.obstacle_points.empty()) {
@@ -236,7 +279,7 @@ void DetectionAreaStop::update_cycle_observations(const InputData & input)
     if (!module.has_obstacle && input.predicted_objects) {
       const auto detected_object = get_detected_object(
         module.regulatory_element->detectionAreas(), *input.predicted_objects,
-        planner_param_.target_filtering);
+        params_.target_filtering);
       if (detected_object) {
         module.has_obstacle = true;
         module.object_polygons.push_back(get_object_polygon_points(*detected_object));
@@ -248,7 +291,7 @@ void DetectionAreaStop::update_cycle_observations(const InputData & input)
 
     if (module.has_obstacle) {
       module.last_obstacle_found_time = now;
-      if (planner_param_.enable_detected_obstacle_logging) {
+      if (params_.enable_detected_obstacle_logging) {
         RCLCPP_INFO_THROTTLE(
           get_node_ptr()->get_logger(), *get_clock(), 1000,
           "[TM DetectionAreaStop] DetectionArea %ld detected obstacle from %s",
@@ -256,16 +299,13 @@ void DetectionAreaStop::update_cycle_observations(const InputData & input)
       }
     }
 
-    if (can_clear_stop_state(
-          module.last_obstacle_found_time, now, planner_param_.state_clear_time)) {
+    if (can_clear_stop_state(module.last_obstacle_found_time, now, params_.state_clear_time)) {
       module.last_obstacle_found_time.reset();
-      if (!planner_param_.suppress_pass_judge_when_stopping || !is_stopped) {
-        if (module.state != State::GO) {
-          RCLCPP_INFO(
-            get_node_ptr()->get_logger(), "[TM DetectionAreaStop] DetectionArea %ld: STOP -> GO",
-            module.regulatory_element->id());
+      if (!params_.suppress_pass_judge_when_stopping || !is_stopped) {
+        if (module.state == State::STOP && is_stopped) {
+          pending_trajectory_release_ = true;
         }
-        module.state = State::GO;
+        set_state(module, State::GO);
       }
     }
   }
@@ -273,11 +313,7 @@ void DetectionAreaStop::update_cycle_observations(const InputData & input)
 
 void DetectionAreaStop::rebuild_modules(const InputData & input)
 {
-  std::vector<lanelet::Id> route_ids;
-  route_ids.reserve(input.route->segments.size());
-  for (const auto & segment : input.route->segments) {
-    route_ids.push_back(segment.preferred_primitive.id);
-  }
+  const auto route_ids = collect_route_lanelet_ids(*input.route);
   if (route_ids == route_lanelet_ids_ && input.lanelet_map == last_lanelet_map_) return;
 
   std::unordered_map<std::string, Module> previous_modules;
@@ -291,15 +327,14 @@ void DetectionAreaStop::rebuild_modules(const InputData & input)
   last_lanelet_map_ = input.lanelet_map;
   std::unordered_set<std::string> registered_keys;
 
-  for (const auto & segment : input.route->segments) {
+  for (const auto lane_id : route_ids) {
     std::optional<lanelet::ConstLanelet> lane;
     try {
-      lane = input.lanelet_map->laneletLayer.get(segment.preferred_primitive.id);
+      lane = input.lanelet_map->laneletLayer.get(lane_id);
     } catch (const std::exception & error) {
       RCLCPP_WARN_THROTTLE(
         get_node_ptr()->get_logger(), *get_clock(), 5000,
-        "[TM DetectionAreaStop] Cannot find route lanelet %ld: %s",
-        segment.preferred_primitive.id, error.what());
+        "[TM DetectionAreaStop] Cannot find route lanelet %ld: %s", lane_id, error.what());
       continue;
     }
 
@@ -323,166 +358,354 @@ void DetectionAreaStop::rebuild_modules(const InputData & input)
 bool DetectionAreaStop::is_trajectory_modification_required(
   const TrajectoryPoints & traj_points, const InputData & input)
 {
+  autoware_utils_debug::ScopedTimeTrack st(
+    "DetectionAreaStop::is_trajectory_modification_required", *get_time_keeper());
   if (!enabled_ || traj_points.size() < 2 || modules_.empty() || !input.current_odometry) {
     return false;
   }
-  auto copy = traj_points;
-  return process_trajectory(copy, input, false, false);
+  if (should_hold_stop_at_ego(traj_points, input)) return true;
+  if (should_release_trajectory_at_ego(traj_points, input)) return true;
+  return find_stop_decision(traj_points, input).has_value();
 }
 
-bool DetectionAreaStop::modify_trajectory(
-  TrajectoryPoints & traj_points, const InputData & input)
+bool DetectionAreaStop::modify_trajectory(TrajectoryPoints & traj_points, const InputData & input)
 {
+  autoware_utils_debug::ScopedTimeTrack st(
+    "DetectionAreaStop::modify_trajectory", *get_time_keeper());
   reset_candidate_debug();
   last_candidate_modified_ = false;
   if (!enabled_ || traj_points.size() < 2 || modules_.empty() || !input.current_odometry) {
+    publish_debug_string();
     return false;
   }
-  const bool update_state = first_candidate_in_cycle_;
-  const bool modified = process_trajectory(traj_points, input, update_state, true);
-  last_candidate_modified_ = modified;
-  first_candidate_in_cycle_ = false;
-  return modified;
-}
 
-bool DetectionAreaStop::process_trajectory(
-  TrajectoryPoints & traj_points, const InputData & input, const bool update_state,
-  const bool apply_modification)
-{
-  bool modified = false;
-  for (auto & module : modules_) {
-    modified = process_module(module, traj_points, input, update_state, apply_modification) ||
-               modified;
+  const float max_input_velocity = max_longitudinal_velocity(traj_points);
+  if (max_input_velocity > restart_velocity_threshold) {
+    last_reference_velocity_ = max_input_velocity;
   }
-  return modified;
+
+  auto decision = find_stop_decision(traj_points, input);
+  if (!decision) {
+    if (should_hold_stop_at_ego(traj_points, input)) {
+      last_candidate_modified_ = hold_stop_at_ego(traj_points, input);
+      publish_debug_string();
+      return last_candidate_modified_;
+    }
+    if (should_release_trajectory_at_ego(traj_points, input)) {
+      last_candidate_modified_ = release_stopped_trajectory(traj_points, input);
+      publish_debug_string();
+      return last_candidate_modified_;
+    }
+    publish_debug_string();
+    return false;
+  }
+
+  last_candidate_modified_ = set_stop_point(traj_points, input, *decision);
+  publish_debug_string();
+  return last_candidate_modified_;
 }
 
-bool DetectionAreaStop::process_module(
-  Module & module, TrajectoryPoints & traj_points, const InputData & input,
-  const bool update_state, const bool apply_modification)
+std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::find_stop_decision(
+  const TrajectoryPoints & traj_points, const InputData & input)
+{
+  std::optional<StopDecision> nearest;
+  for (auto & module : modules_) {
+    const auto stop_s = evaluate_module(module, traj_points, input);
+    if (!stop_s) continue;
+    if (!nearest || *stop_s < nearest->stop_point_arc_length) {
+      nearest = StopDecision{&module, *stop_s, module.candidate_policy};
+    }
+  }
+  return nearest;
+}
+
+std::optional<double> DetectionAreaStop::evaluate_module(
+  Module & module, const TrajectoryPoints & traj_points, const InputData & input)
+{
+  const auto path_result = Trajectory::Builder{}.build(traj_points);
+  if (!path_result) {
+    return std::nullopt;
+  }
+  const auto & path = *path_result;
+
+  const auto self_s = autoware::experimental::trajectory::find_first_nearest_index(
+    path, input.current_odometry->pose.pose, ego_nearest_distance, ego_nearest_yaw_deviation);
+  if (!self_s) {
+    return std::nullopt;
+  }
+
+  const auto stop_line = module.regulatory_element->stopLine();
+  const auto stop_point_s_opt = get_stop_point(
+    path, stop_line, params_.stop_margin,
+    context_->vehicle_info.max_longitudinal_offset_m - module.forward_offset_to_stop_line);
+  if (!stop_point_s_opt) {
+    return std::nullopt;
+  }
+
+  const double stop_point_s = *stop_point_s_opt;
+  const double distance_to_stop = stop_point_s - *self_s;
+  module.stop_point_arc_length = stop_point_s;
+  module.stop_pose = path.compute(std::clamp(stop_point_s, 0.0, path.length())).pose;
+  const bool is_stopped =
+    std::abs(input.current_odometry->twist.twist.linear.x) < stopped_velocity_threshold;
+  const auto now = get_clock()->now();
+
+  if (params_.use_dead_line) {
+    const auto dead_line_s = get_stop_point(
+      path, stop_line, -params_.dead_line_margin, context_->vehicle_info.max_longitudinal_offset_m);
+    if (dead_line_s && *dead_line_s - *self_s < 0.0) {
+      module.dead_line_passed = true;
+      module.dead_line_pose = path.compute(std::clamp(*dead_line_s, 0.0, path.length())).pose;
+      RCLCPP_WARN_THROTTLE(
+        get_node_ptr()->get_logger(), *get_clock(), 1000,
+        "[TM DetectionAreaStop] DetectionArea %ld is over the dead line",
+        module.regulatory_element->id());
+      return std::nullopt;
+    }
+    if (dead_line_s) {
+      module.dead_line_pose = path.compute(std::clamp(*dead_line_s, 0.0, path.length())).pose;
+    }
+  }
+
+  if (can_clear_stop_state(module.last_obstacle_found_time, now, params_.state_clear_time)) {
+    return std::nullopt;
+  }
+
+  if (
+    module.state != State::STOP &&
+    distance_to_stop < -params_.distance_to_judge_over_stop_line) {
+    return std::nullopt;
+  }
+
+  const auto trajectory_length_m = trajectory_length(traj_points);
+  double target_stop_s = stop_point_s;
+  if (is_stopped && distance_to_stop < params_.hold_stop_margin_distance) {
+    target_stop_s = *self_s;
+  }
+
+  const double current_velocity = input.current_odometry->twist.twist.linear.x;
+  const double braking_distance =
+    std::max(0.0, current_velocity) * params_.delay_response_time +
+    feasible_stop_distance_by_max_acceleration(current_velocity, params_.max_deceleration);
+  const bool has_enough_distance =
+    current_velocity < stopped_velocity_threshold || distance_to_stop > braking_distance;
+
+  if (module.state != State::STOP && !has_enough_distance) {
+    if (params_.unstoppable_policy == "go") {
+      module.candidate_policy = "go";
+      RCLCPP_WARN_THROTTLE(
+        get_node_ptr()->get_logger(), *get_clock(), 1000,
+        "[TM DetectionAreaStop] Insufficient braking distance, policy: go");
+      return std::nullopt;
+    }
+    if (params_.unstoppable_policy == "stop_after_stopline") {
+      module.candidate_policy = "stop_after_stopline";
+      const double offset = std::max(
+        feasible_stop_distance_by_max_acceleration(current_velocity, params_.max_deceleration) -
+          distance_to_stop,
+        0.0);
+      module.forward_offset_to_stop_line = offset;
+      target_stop_s = stop_point_s + offset;
+      RCLCPP_WARN_THROTTLE(
+        get_node_ptr()->get_logger(), *get_clock(), 1000,
+        "[TM DetectionAreaStop] Insufficient braking distance, policy: stop_after_stopline");
+    } else {
+      module.candidate_policy = "force_stop";
+    }
+  } else {
+    module.candidate_policy = "normal";
+  }
+
+  target_stop_s = std::clamp(target_stop_s, 0.0, trajectory_length_m);
+  set_state(module, State::STOP);
+  return target_stop_s;
+}
+
+bool DetectionAreaStop::set_stop_point(
+  TrajectoryPoints & traj_points, const InputData & input, StopDecision & decision)
+{
+  autoware_utils_debug::ScopedTimeTrack st("DetectionAreaStop::set_stop_point", *get_time_keeper());
+
+  if (utils::stop_point_exists(traj_points, decision.stop_point_arc_length)) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 1000,
+      "[TM DetectionAreaStop] Preceding (or duplicate) stop point exists, skip inserting stop "
+      "point");
+    return false;
+  }
+
+  const auto ego_arc_length = motion_utils::calcSignedArcLength(
+    traj_points, 0, input.current_odometry->pose.pose.position);
+  const auto ego_to_stop_arc_length = decision.stop_point_arc_length - ego_arc_length;
+  const bool replaced_at_ego =
+    ego_to_stop_arc_length < stopping_params_.arrived_distance_threshold ||
+    !utils::insert_stop_point(
+      traj_points, decision.stop_point_arc_length, trajectory_time_step_);
+  if (replaced_at_ego) {
+    utils::replace_trajectory_with_stop_point(
+      traj_points, input.current_odometry->pose.pose, trajectory_time_step_);
+  }
+
+  const auto & stop_pose = traj_points.back().pose;
+  const auto & ego_pose = input.current_odometry->pose.pose;
+  auto distance =
+    motion_utils::calcSignedArcLength(traj_points, ego_pose.position, stop_pose.position);
+  if (std::isnan(distance) || distance < 1e-3) distance = 0.0;
+  planning_factor_interface_->add(
+    distance, stop_pose, PlanningFactor::STOP,
+    autoware_internal_planning_msgs::msg::SafetyFactorArray{});
+
+  decision.module->candidate_modified = true;
+  decision.module->stop_pose = stop_pose;
+  decision.module->stop_point_arc_length = decision.stop_point_arc_length;
+
+  RCLCPP_WARN_THROTTLE(
+    get_node_ptr()->get_logger(), *get_clock(), 1000,
+    "[TM DetectionAreaStop] Inserted stop for DetectionArea %ld (%s) at arc length %f m",
+    decision.module->regulatory_element->id(), decision.module->detection_source.c_str(),
+    decision.stop_point_arc_length);
+  pending_trajectory_release_ = true;
+  return true;
+}
+
+bool DetectionAreaStop::candidate_relates_to_active_stop(
+  const TrajectoryPoints & traj_points, const InputData & input, const Module & module) const
 {
   const auto path_result = Trajectory::Builder{}.build(traj_points);
   if (!path_result) return false;
-  auto path = *path_result;
+  const auto & path = *path_result;
 
   const auto self_s = autoware::experimental::trajectory::find_first_nearest_index(
     path, input.current_odometry->pose.pose, ego_nearest_distance, ego_nearest_yaw_deviation);
   if (!self_s) return false;
 
   const auto stop_line = module.regulatory_element->stopLine();
-  const auto stop_point_s_opt = get_stop_point(
-    path, stop_line, planner_param_.stop_margin,
-    context_->vehicle_info.max_longitudinal_offset_m - module.forward_offset_to_stop_line);
-  if (!stop_point_s_opt) return false;
+  const auto stop_point_s = get_stop_point(
+    path, stop_line, params_.stop_margin, context_->vehicle_info.max_longitudinal_offset_m);
+  if (!stop_point_s) return false;
 
-  const double stop_point_s = *stop_point_s_opt;
-  const double distance_to_stop = stop_point_s - *self_s;
-  double modified_stop_point_s = stop_point_s;
-  module.stop_point_arc_length = stop_point_s;
-  module.stop_pose = path.compute(std::clamp(stop_point_s, 0.0, path.length())).point.pose;
-  const bool is_stopped =
-    std::abs(input.current_odometry->twist.twist.linear.x) < stopped_velocity_threshold;
-
-  if (is_stopped && distance_to_stop < planner_param_.hold_stop_margin_distance) {
-    modified_stop_point_s = *self_s;
-  }
-
-  std::optional<double> dead_line_s;
-  if (planner_param_.use_dead_line) {
-    dead_line_s = get_stop_point(
-      path, stop_line, -planner_param_.dead_line_margin,
-      context_->vehicle_info.max_longitudinal_offset_m);
+  if (params_.use_dead_line) {
+    const auto dead_line_s = get_stop_point(
+      path, stop_line, -params_.dead_line_margin, context_->vehicle_info.max_longitudinal_offset_m);
     if (dead_line_s && *dead_line_s - *self_s < 0.0) {
-      module.dead_line_passed = true;
-      module.dead_line_pose =
-        path.compute(std::clamp(*dead_line_s, 0.0, path.length())).point.pose;
-      RCLCPP_WARN_THROTTLE(
-        get_node_ptr()->get_logger(), *get_clock(), 1000,
-        "[TM DetectionAreaStop] DetectionArea %ld is over the dead line",
-        module.regulatory_element->id());
-      if (update_state) module.state = State::GO;
       return false;
     }
-    if (dead_line_s) {
-      module.dead_line_pose =
-        path.compute(std::clamp(*dead_line_s, 0.0, path.length())).point.pose;
-    }
   }
+  return true;
+}
 
-  if (module.state == State::GO && !module.has_obstacle) return false;
+bool DetectionAreaStop::should_hold_stop_at_ego(
+  const TrajectoryPoints & traj_points, const InputData & input) const
+{
+  if (!input.current_odometry) return false;
 
-  if (
-    module.state != State::STOP &&
-    distance_to_stop < -planner_param_.distance_to_judge_over_stop_line) {
+  const bool is_stopped =
+    std::abs(input.current_odometry->twist.twist.linear.x) < stopped_velocity_threshold;
+  if (!is_stopped) return false;
+
+  const auto now = get_clock()->now();
+  for (const auto & module : modules_) {
+    if (module.state != State::STOP) continue;
+    if (can_clear_stop_state(module.last_obstacle_found_time, now, params_.state_clear_time)) {
+      continue;
+    }
+    if (!candidate_relates_to_active_stop(traj_points, input, module)) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+bool DetectionAreaStop::hold_stop_at_ego(
+  TrajectoryPoints & traj_points, const InputData & input)
+{
+  pending_trajectory_release_ = true;
+  utils::replace_trajectory_with_stop_point(
+    traj_points, input.current_odometry->pose.pose, trajectory_time_step_);
+  return true;
+}
+
+bool DetectionAreaStop::should_release_trajectory_at_ego(
+  const TrajectoryPoints & traj_points, const InputData & input) const
+{
+  if (!pending_trajectory_release_ || !input.current_odometry || traj_points.size() < 2 ||
+      modules_.empty() || !last_reference_velocity_) {
     return false;
   }
 
-  const double current_velocity = input.current_odometry->twist.twist.linear.x;
-  const double braking_distance =
-    std::max(0.0, current_velocity) * planner_param_.delay_response_time +
-    current_velocity * current_velocity / (2.0 * std::max(1e-3, planner_param_.max_deceleration));
-  const bool has_enough_distance =
-    current_velocity < stopped_velocity_threshold || distance_to_stop > braking_distance;
-
-  if (module.state != State::STOP && !has_enough_distance) {
-    if (planner_param_.unstoppable_policy == "go") {
-      module.candidate_policy = "go";
-      RCLCPP_WARN_THROTTLE(
-        get_node_ptr()->get_logger(), *get_clock(), 1000,
-        "[TM DetectionAreaStop] Insufficient braking distance, policy: go");
-      return false;
-    }
-    if (planner_param_.unstoppable_policy == "stop_after_stopline") {
-      module.candidate_policy = "stop_after_stopline";
-      const double offset = std::max(
-        feasible_stop_distance_by_max_acceleration(
-          current_velocity, planner_param_.max_deceleration) - distance_to_stop,
-        0.0);
-      if (update_state) module.forward_offset_to_stop_line = offset;
-      modified_stop_point_s =
-        stop_point_s + (update_state ? offset : module.forward_offset_to_stop_line);
-      RCLCPP_WARN_THROTTLE(
-        get_node_ptr()->get_logger(), *get_clock(), 1000,
-        "[TM DetectionAreaStop] Insufficient braking distance, policy: stop_after_stopline");
-    }
-    if (module.candidate_policy.empty()) module.candidate_policy = "force_stop";
-    if (update_state) set_state(module, State::STOP);
-    if (!apply_modification) return true;
-    const bool modified = insert_stop_velocity(
-      path, stop_point_s, modified_stop_point_s, input.current_odometry->pose.pose, module);
-    if (modified) traj_points = path.restore();
-    return modified;
+  const bool is_stopped =
+    std::abs(input.current_odometry->twist.twist.linear.x) < stopped_velocity_threshold;
+  if (!is_stopped) {
+    return false;
   }
 
-  if (update_state) set_state(module, State::STOP);
-  if (!module.has_obstacle && module.state == State::GO) return false;
-  module.candidate_policy = "normal";
-  if (!apply_modification) return true;
-  const bool modified = insert_stop_velocity(
-    path, stop_point_s, modified_stop_point_s, input.current_odometry->pose.pose, module);
-  if (modified) traj_points = path.restore();
-  return modified;
+  const auto now = get_clock()->now();
+  for (const auto & module : modules_) {
+    if (module.has_obstacle) {
+      return false;
+    }
+    if (module.state == State::STOP && params_.suppress_pass_judge_when_stopping && is_stopped) {
+      return false;
+    }
+    if (!can_clear_stop_state(module.last_obstacle_found_time, now, params_.state_clear_time)) {
+      return false;
+    }
+  }
+
+  if (has_preceding_partial_stop(traj_points)) {
+    return false;
+  }
+  if (trajectory_length(traj_points) < min_restorable_geometry_length) {
+    return false;
+  }
+  return max_longitudinal_velocity(traj_points) < restart_velocity_threshold;
 }
 
-bool DetectionAreaStop::insert_stop_velocity(
-  Trajectory & path, const double stop_point_s, const double modified_stop_point_s,
-  const geometry_msgs::msg::Pose & self_pose, Module & module)
+bool DetectionAreaStop::release_stopped_trajectory(
+  TrajectoryPoints & traj_points, [[maybe_unused]] const InputData & input)
 {
-  const double start_s = std::clamp(modified_stop_point_s, 0.0, path.length());
-  path.longitudinal_velocity_mps().range(start_s, path.length()).set(0.0);
-  const double factor_s = std::clamp(stop_point_s, 0.0, path.length());
-  const auto stop_pose = path.compute(factor_s).point.pose;
-  planning_factor_interface_->add(
-    path.restore(), self_pose, stop_pose, PlanningFactor::STOP,
-    autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true, 0.0, 0.0,
-    module.detection_source);
-  module.candidate_modified = true;
+  if (!last_reference_velocity_) return false;
 
-  RCLCPP_WARN_THROTTLE(
-    get_node_ptr()->get_logger(), *get_clock(), 1000,
-    "[TM DetectionAreaStop] Inserted stop for DetectionArea %ld (%s)",
-    module.regulatory_element->id(), module.detection_source.c_str());
-  return true;
+  const auto released =
+    restore_velocity_on_existing_geometry(traj_points, *last_reference_velocity_);
+  if (released) {
+    pending_trajectory_release_ = false;
+  }
+  return released;
+}
+
+void DetectionAreaStop::publish_debug_string() const
+{
+  std::ostringstream text;
+  text << std::fixed << std::setprecision(2) << std::boolalpha;
+  text << "DETECTION AREA STOP MODIFIER:\n";
+  text << "\tMODIFIED: " << last_candidate_modified_ << "\n";
+  text << "\tSTATUS: " << (debug_status_.empty() ? "ready" : debug_status_) << "\n";
+  text << "\tMODULES: " << modules_.size() << "\n";
+  for (const auto & module : modules_) {
+    if (!module.regulatory_element) continue;
+    text << "\tDetectionArea " << module.regulatory_element->id() << " lane " << module.lane_id
+         << ": state=" << (module.state == State::STOP ? "STOP" : "GO")
+         << ", source=" << (module.detection_source.empty() ? "none" : module.detection_source)
+         << ", pointcloud_points=" << module.obstacle_points.size()
+         << ", object_polygons=" << module.object_polygons.size();
+    if (module.stop_pose) {
+      text << ", stop_s=" << module.stop_point_arc_length;
+    }
+    if (params_.use_dead_line) {
+      text << ", dead_line=" << (module.dead_line_passed ? "passed" : "clear");
+    }
+    if (!module.candidate_policy.empty()) {
+      text << ", policy=" << module.candidate_policy;
+    }
+    text << ", candidate_modified=" << module.candidate_modified << "\n";
+  }
+
+  StringStamped debug_text;
+  debug_text.stamp = get_clock()->now();
+  debug_text.data = text.str();
+  pub_debug_text_->publish(debug_text);
 }
 
 void DetectionAreaStop::publish_debug_data(const std::string & ns) const
@@ -523,8 +746,7 @@ void DetectionAreaStop::publish_debug_data(const std::string & ns) const
   };
 
   const auto add_text_marker = [&](const std::string & marker_ns,
-                                   const geometry_msgs::msg::Point & point,
-                                   const std::string & text,
+                                   const geometry_msgs::msg::Point & point, const std::string & text,
                                    const std_msgs::msg::ColorRGBA & color) {
     auto marker = autoware_utils::create_default_marker(
       "map", now, marker_ns, marker_id++, Marker::TEXT_VIEW_FACING,
@@ -537,12 +759,12 @@ void DetectionAreaStop::publish_debug_data(const std::string & ns) const
 
   for (const auto & module : modules_) {
     if (!module.regulatory_element) continue;
-    const auto module_ns = ns + "/detection_area/" + module_key(
-      module.lane_id, module.regulatory_element->id());
+    const auto module_ns =
+      ns + "/detection_area/" + module_key(module.lane_id, module.regulatory_element->id());
     const auto state_color = module.state == State::STOP ? red : green;
 
-    for (const auto & detection_area : module.regulatory_element->detectionAreas()) {
-      const auto polygon = lanelet::utils::to2D(detection_area).basicPolygon();
+    for (const auto & detection_area_polygon : module.regulatory_element->detectionAreas()) {
+      const auto polygon = lanelet::utils::to2D(detection_area_polygon).basicPolygon();
       std::vector<geometry_msgs::msg::Point> polygon_points;
       polygon_points.reserve(polygon.size() + 1);
       for (const auto & point : polygon) {
@@ -611,37 +833,6 @@ void DetectionAreaStop::publish_debug_data(const std::string & ns) const
   }
 
   debug_viz_pub_->publish(marker_array);
-
-  std::ostringstream text;
-  text << std::fixed << std::setprecision(2) << std::boolalpha;
-  text << "DETECTION AREA STOP MODIFIER:\n";
-  text << "\tCANDIDATE: " << ns << "\n";
-  text << "\tMODIFIED: " << last_candidate_modified_ << "\n";
-  text << "\tSTATUS: " << (debug_status_.empty() ? "ready" : debug_status_) << "\n";
-  text << "\tMODULES: " << modules_.size() << "\n";
-  for (const auto & module : modules_) {
-    if (!module.regulatory_element) continue;
-    text << "\tDetectionArea " << module.regulatory_element->id() << " lane "
-         << module.lane_id << ": state=" << (module.state == State::STOP ? "STOP" : "GO")
-         << ", source=" << (module.detection_source.empty() ? "none" : module.detection_source)
-         << ", pointcloud_points=" << module.obstacle_points.size()
-         << ", object_polygons=" << module.object_polygons.size();
-    if (module.stop_pose) {
-      text << ", stop_s=" << module.stop_point_arc_length;
-    }
-    if (planner_param_.use_dead_line) {
-      text << ", dead_line=" << (module.dead_line_passed ? "passed" : "clear");
-    }
-    if (!module.candidate_policy.empty()) {
-      text << ", policy=" << module.candidate_policy;
-    }
-    text << ", candidate_modified=" << module.candidate_modified << "\n";
-  }
-
-  StringStamped debug_text;
-  debug_text.stamp = now;
-  debug_text.data = text.str();
-  pub_debug_text_->publish(debug_text);
 }
 
 void DetectionAreaStop::set_state(Module & module, const State state)

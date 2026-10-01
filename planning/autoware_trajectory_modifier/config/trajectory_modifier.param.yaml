@@ -10,7 +10,8 @@
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
-    use_detection_area_stop: false
+    use_detection_area_stop: true
+
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
     trajectory_time_step: 0.1 # [s]
@@ -111,7 +112,7 @@
         trailer: false
         motorcycle: false
         bicycle: false
-        pedestrian: false
+        pedestrian: true
         animal: false
         hazard: false
         over_drivable: false

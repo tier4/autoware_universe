@@ -13,7 +13,7 @@ The `autoware_trajectory_modifier` package provides a plugin-based architecture 
 
 The trajectory modifier uses a plugin-based system where different modification algorithms can be implemented as plugins. Each plugin inherits from the `TrajectoryModifierPluginBase` class and implements the required interface.
 
-Plugins may override `begin_cycle()` and `end_cycle()` when an input batch needs to be processed once before the candidate trajectories are modified. The Detection Area Stop plugin uses these hooks to share one pointcloud/object observation across all candidates while keeping each candidate's stop-line intersection independent.
+Plugins may override `begin_cycle()` and `end_cycle()` when an input batch needs to be processed once before the candidate trajectories are modified. The Detection Area Stop plugin uses `begin_cycle()` to share one pointcloud/object observation across all candidates while keeping each candidate's stop-line intersection independent.
 
 ### Plugin Interface
 
@@ -51,12 +51,13 @@ The Traffic Light Stop plugin serves as a deterministic safety shield operating 
 
 #### Detection Area Stop
 
-The Detection Area Stop plugin applies map-defined detection areas to candidate trajectories. It
-supports pointcloud and predicted-object detection, target filtering, stop-state hysteresis,
-dead-line handling, and unstoppable stopping policies. The plugin is disabled by default to avoid
-running alongside the legacy behavior-velocity detection area module. Its debug outputs are
-published on `~/detection_area_stop/debug/marker` and `~/detection_area_stop/debug/text`, including
-detection-area geometry, stop/dead-line state, detected obstacle details, and candidate status.
+The Detection Area Stop plugin ports the rule-based detection-area stop behavior onto candidate
+trajectories. It supports pointcloud and predicted-object detection, target filtering, stop-state
+hysteresis, dead-line handling, and unstoppable stopping policies. The plugin is disabled by
+default to avoid running alongside the legacy behavior-velocity detection area module. After
+`state_clear_time`, if the upstream trajectory is still all-zero, the plugin may restore velocity
+on the existing geometry; it does not synthesize a new path. Debug outputs are published on
+`~/detection_area_stop/debug/marker` and `~/detection_area_stop/debug/text`.
 
 #### Velocity Modifier
 
