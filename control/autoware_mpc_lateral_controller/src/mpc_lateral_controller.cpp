@@ -326,7 +326,8 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   const auto mpc_solved_status =
     use_steering_direct_passthrough
       ? m_mpc->calculateTrajectorySteeringPassthrough(
-          m_current_steering, m_current_kinematic_state, ctrl_cmd, debug_values, ctrl_cmd_horizon)
+          m_current_steering, m_current_kinematic_state, ctrl_cmd, debug_values, ctrl_cmd_horizon,
+          input_data.trajectory_received_at)
       : m_mpc->calculateMPC(
           m_current_steering, m_current_kinematic_state, ctrl_cmd, predicted_traj, debug_values,
           ctrl_cmd_horizon);

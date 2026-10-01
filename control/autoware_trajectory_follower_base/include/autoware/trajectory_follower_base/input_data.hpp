@@ -15,11 +15,15 @@
 #ifndef AUTOWARE__TRAJECTORY_FOLLOWER_BASE__INPUT_DATA_HPP_
 #define AUTOWARE__TRAJECTORY_FOLLOWER_BASE__INPUT_DATA_HPP_
 
+#include "rclcpp/time.hpp"
+
 #include "autoware_adapi_v1_msgs/msg/operation_mode_state.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "autoware_vehicle_msgs/msg/steering_report.hpp"
 #include "geometry_msgs/msg/accel_with_covariance_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+
+#include <optional>
 
 namespace autoware::motion::control::trajectory_follower
 {
@@ -30,6 +34,9 @@ struct InputData
   autoware_vehicle_msgs::msg::SteeringReport current_steering;
   geometry_msgs::msg::AccelWithCovarianceStamped current_accel;
   autoware_adapi_v1_msgs::msg::OperationModeState current_operation_mode;
+  // Set when the follower first takes this trajectory message; retained while reusing it.
+  // Keep this after the existing fields for controllers built against the earlier layout.
+  std::optional<rclcpp::Time> trajectory_received_at;
 };
 }  // namespace autoware::motion::control::trajectory_follower
 
