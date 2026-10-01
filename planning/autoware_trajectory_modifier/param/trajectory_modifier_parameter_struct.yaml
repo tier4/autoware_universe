@@ -1480,7 +1480,6 @@ trajectory_modifier_params:
     default_value: false
     description: Enable the use of virtual traffic light stop
     read_only: false
-
   virtual_traffic_light:
     max_delay_sec:
       type: double
@@ -1515,10 +1514,10 @@ trajectory_modifier_params:
       default_value: true
       description: Check virtual traffic light state timeout after crossing the stop line
       read_only: false
-    hold_stop_margin_distance:
+    min_hold_trajectory_length:
       type: double
-      default_value: 0.0
-      description: Distance below which a stopped vehicle keeps its current stop point [m]
+      default_value: 5.0
+      description: Minimum output trajectory length while holding at an end line [m]
       validation:
         bounds<>: [0.0, 100.0]
       read_only: false

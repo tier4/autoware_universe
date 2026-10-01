@@ -1629,10 +1629,10 @@
               "description": "Check virtual traffic light state timeout after crossing the stop line",
               "default": true
             },
-            "hold_stop_margin_distance": {
+            "min_hold_trajectory_length": {
               "type": "number",
-              "description": "Distance below which a stopped vehicle keeps its current stop point [m]",
-              "default": 0.0,
+              "description": "Minimum output trajectory length while holding at an end line [m]",
+              "default": 5.0,
               "minimum": 0.0
             }
           },

@@ -19,6 +19,7 @@
 
 #include <autoware_lanelet2_extension/regulatory_elements/virtual_traffic_light.hpp>
 
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <tier4_v2x_msgs/msg/infrastructure_command_array.hpp>
@@ -71,6 +72,27 @@ protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
 private:
+  enum class Decision : uint8_t {
+    NONE = 0,
+    STOP = 1,
+  };
+
+  enum class StopTarget : uint8_t {
+    NONE = 0,
+    STOP_LINE = 1,
+    END_LINE = 2,
+  };
+
+  enum class StopReason : uint8_t {
+    NONE = 0,
+    NO_STATE = 1,
+    NO_RIGHT_OF_WAY = 2,
+    STATE_TIMEOUT_BEFORE_STOP_LINE = 3,
+    STATE_TIMEOUT_AFTER_STOP_LINE = 4,
+    WAITING_FINALIZATION = 5,
+    INVALID_END_LINE = 6,
+  };
+
   struct PlannerParam
   {
     double max_delay_sec{3.0};
@@ -78,7 +100,36 @@ private:
     double dead_line_margin{1.0};
     double max_yaw_deviation_rad{1.5707963267948966};
     bool check_timeout_after_stop_line{true};
-    double hold_stop_margin_distance{0.0};
+    double min_hold_trajectory_length{5.0};
+  };
+
+  struct DebugData
+  {
+    Decision decision{Decision::NONE};
+    StopTarget stop_target{StopTarget::NONE};
+    StopReason stop_reason{StopReason::NONE};
+    bool modified{false};
+    bool has_vtl_state{false};
+    bool approval{false};
+    bool finalized{false};
+    bool timeout{false};
+    bool ego_is_in_module_lane{false};
+    bool stop_line_relevant{false};
+    std::optional<double> message_age_sec;
+    std::optional<double> start_arc_path;
+    std::optional<double> start_arc_centerline;
+    std::optional<double> stop_arc_path;
+    std::optional<double> stop_arc_centerline;
+    std::optional<double> end_arc_path;
+    std::optional<double> end_arc_centerline;
+    std::optional<double> stop_distance;
+  };
+
+  struct ActiveEndLine
+  {
+    lanelet::Id id{};
+    lanelet::ConstLineString3d line;
+    double centerline_arc{};
   };
 
   struct Module
@@ -92,42 +143,50 @@ private:
     geometry_msgs::msg::Point instrument_center;
     ModuleState state{ModuleState::NONE};
     std::optional<State> virtual_traffic_light_state;
+    std::optional<ActiveEndLine> active_end_line;
+    bool end_hold_active{false};
     std::optional<tier4_v2x_msgs::msg::InfrastructureCommand> infrastructure_command;
-    std::optional<geometry_msgs::msg::Pose> stop_head_pose_at_stop_line;
-    std::optional<geometry_msgs::msg::Pose> stop_head_pose_at_end_line;
+    DebugData debug_data;
   };
 
   PlannerParam planner_param_;
+  TrajectoryModifierParams::StoppingConstraints stopping_params_;
   bool enabled_{false};
-  bool first_candidate_in_cycle_{true};
   std::vector<lanelet::Id> route_lanelet_ids_;
   std::shared_ptr<lanelet::LaneletMap> last_lanelet_map_;
   std::vector<Module> modules_;
   rclcpp::Publisher<tier4_v2x_msgs::msg::InfrastructureCommandArray>::SharedPtr
     pub_infrastructure_commands_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr virtual_wall_pub_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr debug_text_pub_;
 
   void rebuild_modules(const InputData & input);
   void update_module_states(const InputData & input);
+  void update_module_lifecycle(const InputData & input);
   bool process_trajectory(
-    TrajectoryPoints & traj_points, const InputData & input, const bool update_state,
-    const bool apply_modification);
+    TrajectoryPoints & traj_points, const InputData & input, const bool apply_modification);
   bool process_module(
     Module & module, TrajectoryPoints & traj_points, const InputData & input,
-    const bool update_state, const bool apply_modification);
+    const bool apply_modification);
   bool insert_stop_velocity(
     TrajectoryPoints & traj_points, const TrajectoryPoints & path_points,
     const std::optional<double> & collision_s, const InputData & input, Module & module,
-    const bool stop_line);
+    StopReason reason, StopTarget target);
+  bool ensure_control_start_trajectory(
+    TrajectoryPoints & traj_points, const InputData & input, const Module & module) const;
 
   void update_command(Module & module);
   void set_state(Module & module, ModuleState state, std::optional<lanelet::Id> end_line_id = {});
   bool is_state_timeout(const Module & module) const;
   bool has_right_of_way(const Module & module) const;
 
+  void publish_debug_string(const std::string & ns) const;
+
   static std::string module_key(lanelet::Id lane_id, lanelet::Id regulatory_element_id);
   static std::string state_to_string(ModuleState state);
+  static std::string decision_to_string(Decision decision);
+  static std::string stop_target_to_string(StopTarget target);
+  static std::string stop_reason_to_string(StopReason reason);
 };
 }  // namespace autoware::trajectory_modifier::plugin
 
