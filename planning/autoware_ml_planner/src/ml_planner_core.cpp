@@ -413,8 +413,10 @@ PlannerOutput MLPlannerCore::create_planner_output(
 
   const auto agent_poses =
     postprocess::parse_predictions(denormalized_predictions, ego_to_map_transform);
-  previous_frame_pose_ = ego_to_map_transform;
-  previous_ego_prediction_ = agent_poses.front().front();
+  if (params_.virtual_pose.reference == "raw") {
+    previous_frame_pose_ = ego_to_map_transform;
+    previous_ego_prediction_ = agent_poses.front().front();
+  }
 
   PlannerOutput output;
   // Trajectory and CandidateTrajectories
@@ -530,6 +532,18 @@ PlannerOutput MLPlannerCore::create_planner_output(
   output.predicted_objects =
     postprocess::create_predicted_objects(agent_poses, selected_agents_, timestamp, batch_idx);
 
+  // With the optimized reference, the next virtual pose is taken from the trajectory that is
+  // actually published. A cycle whose optimization failed publishes none and keeps the previous one.
+  if (
+    params_.virtual_pose.reference == "optimized" && output.trajectory &&
+    output.trajectory->points.size() >= 2) {
+    const auto & points = output.trajectory->points;
+    previous_frame_pose_ = utils::pose_to_matrix4d(points.front().pose);
+    previous_ego_prediction_.clear();
+    for (size_t k = 1; k < points.size(); ++k) {
+      previous_ego_prediction_.push_back(utils::pose_to_matrix4d(points[k].pose));
+    }
+  }
   return output;
 }
 
