@@ -1,11 +1,11 @@
 /**:
   ros__parameters:
     plugin_names:
+      - "autoware::trajectory_modifier::plugin::VirtualTrafficLightStop"
       - "autoware::trajectory_modifier::plugin::StopPointFixer"
       - "autoware::trajectory_modifier::plugin::SurroundObstacleStop"
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
       - "autoware::trajectory_modifier::plugin::TrafficLightStop"
-      - "autoware::trajectory_modifier::plugin::VirtualTrafficLightStop"
       - "autoware::trajectory_modifier::plugin::VelocityModifier"
     use_stop_point_fixer: true
     use_obstacle_stop: true
@@ -106,7 +106,7 @@
       dead_line_margin: 1.0 # [m]
       max_yaw_deviation_deg: 90.0 # [deg]
       check_timeout_after_stop_line: true
-      hold_stop_margin_distance: 0.0 # [m]
+      min_hold_trajectory_length: 5.0 # [m]
 
     # Surround Obstacle Stop Plugin Parameters
     surround_obstacle_stop:
