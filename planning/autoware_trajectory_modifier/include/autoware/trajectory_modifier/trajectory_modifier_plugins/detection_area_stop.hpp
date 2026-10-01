@@ -44,8 +44,9 @@ public:
   using MarkerArray = visualization_msgs::msg::MarkerArray;
   using StringStamped = autoware_internal_debug_msgs::msg::StringStamped;
 
+  DetectionAreaStop() = default;
+
   void begin_cycle(const InputData & input) override;
-  void end_cycle() override;
 
   ProcessingResult process(TrajectoryPoints & points, TrajectoryModifierData & data) override
   {
@@ -61,30 +62,15 @@ public:
 
   void publish_debug_data(const std::string & ns) const override;
 
+  const TrajectoryModifierParams::DetectionArea & get_params() const { return params_; }
+
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
 private:
   using Trajectory = utils::detection_area::Trajectory;
   using PointCloud = utils::detection_area::PointCloud;
-  using TargetFiltering = utils::detection_area::TargetFiltering;
   using DetectionArea = lanelet::autoware::DetectionArea;
-
-  struct PlannerParam
-  {
-    double stop_margin{0.0};
-    bool use_dead_line{false};
-    double dead_line_margin{5.0};
-    double state_clear_time{2.0};
-    double hold_stop_margin_distance{0.0};
-    double distance_to_judge_over_stop_line{0.5};
-    bool suppress_pass_judge_when_stopping{false};
-    bool enable_detected_obstacle_logging{false};
-    std::string unstoppable_policy{"stop_after_stopline"};
-    double max_deceleration{1.0};
-    double delay_response_time{0.5};
-    TargetFiltering target_filtering;
-  };
 
   struct Module
   {
@@ -92,7 +78,6 @@ private:
     std::shared_ptr<const DetectionArea> regulatory_element;
     State state{State::GO};
     std::optional<rclcpp::Time> last_obstacle_found_time;
-    double forward_offset_to_stop_line{0.0};
     bool has_obstacle{false};
     std::string detection_source;
     std::vector<geometry_msgs::msg::Point> obstacle_points;
@@ -100,19 +85,30 @@ private:
     std::optional<geometry_msgs::msg::Pose> stop_pose;
     std::optional<geometry_msgs::msg::Pose> dead_line_pose;
     double stop_point_arc_length{0.0};
+    double forward_offset_to_stop_line{0.0};
     bool dead_line_passed{false};
     bool candidate_modified{false};
     std::string candidate_policy;
   };
 
-  PlannerParam planner_param_;
-  bool first_candidate_in_cycle_{true};
+  struct StopDecision
+  {
+    Module * module{nullptr};
+    double stop_point_arc_length{0.0};
+    std::string policy;
+  };
+
+  TrajectoryModifierParams::DetectionArea params_;
+  TrajectoryModifierParams::StoppingConstraints stopping_params_;
+
   std::vector<lanelet::Id> route_lanelet_ids_;
   std::shared_ptr<lanelet::LaneletMap> last_lanelet_map_;
   std::vector<Module> modules_;
   std::shared_ptr<const PointCloud> cycle_pointcloud_;
   std::string debug_status_;
   bool last_candidate_modified_{false};
+  bool pending_trajectory_release_{false};
+  std::optional<float> last_reference_velocity_;
   rclcpp::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
@@ -120,19 +116,25 @@ private:
   void update_cycle_observations(const InputData & input);
   std::shared_ptr<const PointCloud> make_map_pointcloud(const InputData & input) const;
 
-  bool process_trajectory(
-    TrajectoryPoints & traj_points, const InputData & input, bool update_state,
-    bool apply_modification);
-  bool process_module(
-    Module & module, TrajectoryPoints & traj_points, const InputData & input, bool update_state,
-    bool apply_modification);
-  bool insert_stop_velocity(
-    Trajectory & path, double stop_point_s, double modified_stop_point_s,
-    const geometry_msgs::msg::Pose & self_pose, Module & module);
+  [[nodiscard]] bool check_inputs(const InputData & input) const;
+  std::optional<StopDecision> find_stop_decision(
+    const TrajectoryPoints & traj_points, const InputData & input);
+  std::optional<double> evaluate_module(
+    Module & module, const TrajectoryPoints & traj_points, const InputData & input);
+  bool set_stop_point(
+    TrajectoryPoints & traj_points, const InputData & input, StopDecision & decision);
+  [[nodiscard]] bool should_hold_stop_at_ego(
+    const TrajectoryPoints & traj_points, const InputData & input) const;
+  bool hold_stop_at_ego(TrajectoryPoints & traj_points, const InputData & input);
+  [[nodiscard]] bool should_release_trajectory_at_ego(
+    const TrajectoryPoints & traj_points, const InputData & input) const;
+  bool release_stopped_trajectory(TrajectoryPoints & traj_points, const InputData & input);
+  [[nodiscard]] bool candidate_relates_to_active_stop(
+    const TrajectoryPoints & traj_points, const InputData & input, const Module & module) const;
 
-  void update_params(const TrajectoryModifierParams::DetectionArea & params);
-  void set_state(Module & module, State state);
   void reset_candidate_debug();
+  void set_state(Module & module, State state);
+  void publish_debug_string() const;
   static std::string module_key(lanelet::Id lane_id, lanelet::Id regulatory_element_id);
 };
 }  // namespace autoware::trajectory_modifier::plugin

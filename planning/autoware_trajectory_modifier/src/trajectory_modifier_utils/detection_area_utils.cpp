@@ -14,13 +14,10 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/detection_area_utils.hpp"
 
-#include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware/trajectory/utils/crossed.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
-#include <autoware_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
-
-#include <boost/geometry/algorithms/intersects.hpp>
 
 #include <lanelet2_core/geometry/Point.h>
 #include <lanelet2_core/geometry/Polygon.h>
@@ -108,60 +105,6 @@ std::vector<geometry_msgs::msg::Point> get_obstacle_points(
     }
   }
   return obstacle_points;
-}
-
-std::optional<autoware_perception_msgs::msg::PredictedObject> get_detected_object(
-  const lanelet::ConstPolygons3d & detection_areas,
-  const autoware_perception_msgs::msg::PredictedObjects & predicted_objects,
-  const TargetFiltering & target_filtering)
-{
-  for (const auto & object : predicted_objects.objects) {
-    if (!is_target_object(object.classification, target_filtering)) continue;
-    const auto & pose = object.kinematics.initial_pose_with_covariance.pose;
-    const auto object_polygon = autoware_utils::to_polygon2d(pose, object.shape);
-    for (const auto & detection_area : detection_areas) {
-      const auto detection_polygon = lanelet::utils::to2D(detection_area).basicPolygon();
-      if (boost::geometry::intersects(object_polygon, detection_polygon)) return object;
-    }
-  }
-  return std::nullopt;
-}
-
-bool is_target_object(
-  const std::vector<autoware_perception_msgs::msg::ObjectClassification> & classifications,
-  const TargetFiltering & target_filtering)
-{
-  using ObjectClassification = autoware_perception_msgs::msg::ObjectClassification;
-  if (classifications.empty()) return false;
-  const auto label = autoware::object_recognition_utils::getHighestProbLabel(classifications);
-  switch (label) {
-    case ObjectClassification::UNKNOWN:
-      return target_filtering.unknown;
-    case ObjectClassification::CAR:
-      return target_filtering.car;
-    case ObjectClassification::TRUCK:
-      return target_filtering.truck;
-    case ObjectClassification::BUS:
-      return target_filtering.bus;
-    case ObjectClassification::TRAILER:
-      return target_filtering.trailer;
-    case ObjectClassification::MOTORCYCLE:
-      return target_filtering.motorcycle;
-    case ObjectClassification::BICYCLE:
-      return target_filtering.bicycle;
-    case ObjectClassification::PEDESTRIAN:
-      return target_filtering.pedestrian;
-    case ObjectClassification::ANIMAL:
-      return target_filtering.animal;
-    case ObjectClassification::HAZARD:
-      return target_filtering.hazard;
-    case ObjectClassification::OVER_DRIVABLE:
-      return target_filtering.over_drivable;
-    case ObjectClassification::UNDER_DRIVABLE:
-      return target_filtering.under_drivable;
-    default:
-      return false;
-  }
 }
 
 std::string object_label_to_string(const uint8_t label)
