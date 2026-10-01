@@ -252,11 +252,13 @@ private:
    * @param trajectory The reference trajectory.
    * @param current_steer The current steering report.
    * @param current_kinematics The current vehicle kinematics.
+   * @param temporal_reference_time Optional time since receipt for temporal passthrough.
    * @return A pair of a boolean flag indicating success and the MPC data.
    */
   std::pair<ResultWithReason, MPCData> getData(
     const MPCTrajectory & trajectory, const SteeringReport & current_steer,
-    const Odometry & current_kinematics, bool require_prediction_horizon = true);
+    const Odometry & current_kinematics, bool require_prediction_horizon = true,
+    std::optional<double> temporal_reference_time = std::nullopt);
 
   /**
    * @brief Get the initial state for MPC.
@@ -496,12 +498,13 @@ public:
 
   /**
    * @brief Publish trajectory front_wheel_angle_rad as the lateral command (MPPI passthrough).
-   * Selects the issued control for the current trajectory-time interval. MPPI already models
-   * actuator delay, so the MPC input-delay lookahead is not applied here.
+   * Selects the issued control for the interval since the follower first received the trajectory.
+   * MPPI already models actuator delay, so the MPC input-delay lookahead is not applied here.
    */
   ResultWithReason calculateTrajectorySteeringPassthrough(
     const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
-    Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon);
+    Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon,
+    const std::optional<rclcpp::Time> & trajectory_received_at);
 
   /**
    * @brief Set the reference trajectory to be followed.
