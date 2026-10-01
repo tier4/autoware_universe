@@ -242,7 +242,8 @@ Float32MultiArrayStamped generatePassthroughDiagData(
 
 ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
   const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
-  Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon)
+  Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon,
+  const std::optional<rclcpp::Time> & trajectory_received_at)
 {
   if (!m_reference_trajectory_has_steering) {
     return ResultWithReason{false, "trajectory has no steering for passthrough."};
@@ -299,20 +300,22 @@ ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
     return ResultWithReason{true};
   }
 
-  const double trajectory_age =
-    (m_clock->now() - rclcpp::Time(m_reference_trajectory.stamp)).seconds();
+  if (!trajectory_received_at) {
+    return ResultWithReason{false, "steering passthrough trajectory receipt time is unavailable."};
+  }
+  const double trajectory_elapsed_s = (m_clock->now() - *trajectory_received_at).seconds();
   if (
-    !std::isfinite(trajectory_age) || trajectory_age < -0.1 ||
-    trajectory_age > m_steering_passthrough_timeout_s ||
-    trajectory_age >= m_steering_passthrough_end_time_s) {
-    return ResultWithReason{false, "steering passthrough trajectory is stale or future-dated."};
+    !std::isfinite(trajectory_elapsed_s) || trajectory_elapsed_s < 0.0 ||
+    trajectory_elapsed_s > m_steering_passthrough_timeout_s ||
+    trajectory_elapsed_s >= m_steering_passthrough_end_time_s) {
+    return ResultWithReason{false, "steering passthrough trajectory is stale or expired."};
   }
 
   const auto reference_trajectory =
     applyVelocityDynamicsFilter(m_reference_trajectory, current_kinematics);
 
   const auto [get_data_result, mpc_data_raw] =
-    getData(reference_trajectory, current_steer, current_kinematics, false);
+    getData(reference_trajectory, current_steer, current_kinematics, false, trajectory_elapsed_s);
   if (!get_data_result.result) {
     return ResultWithReason{false, fmt::format("getting MPC Data ({}).", get_data_result.reason)};
   }
@@ -327,11 +330,10 @@ ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
     mpc_data.nearest_time = 0.0;
   }
 
-  // MPPI's u[i] is newly issuable at i * dt. Its trajectory point is the post-step pose at
-  // (i + 1) * dt, so interpolating steering at age + MPC input_delay selects future commands.
-  // The trajectory age already includes planning and transport latency.
+  // MPPI's u[0] is the first command to issue after receiving a new trajectory. Each point is
+  // the post-step pose, so select later commands using time elapsed since that receipt.
   const auto first_command_index =
-    MPCUtils::findIssuedSteeringCommandIndex(reference_trajectory, trajectory_age);
+    MPCUtils::findIssuedSteeringCommandIndex(reference_trajectory, trajectory_elapsed_s);
   if (!first_command_index) {
     return ResultWithReason{false, "no steering command covers the current trajectory age."};
   }
@@ -361,9 +363,9 @@ ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
   ctrl_cmd_horizon.controls.push_back(ctrl_cmd);
   for (int i = 1; i < m_param.prediction_horizon; ++i) {
     const auto command_index = MPCUtils::findIssuedSteeringCommandIndex(
-      reference_trajectory, trajectory_age + static_cast<double>(i) * prediction_dt);
+      reference_trajectory, trajectory_elapsed_s + static_cast<double>(i) * prediction_dt);
     if (
-      !command_index || trajectory_age + static_cast<double>(i) * prediction_dt >=
+      !command_index || trajectory_elapsed_s + static_cast<double>(i) * prediction_dt >=
                           m_steering_passthrough_end_time_s) {
       break;
     }
@@ -391,9 +393,9 @@ ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
     current_kinematics);
   // Keep the MPC diagnostic indexes (16-26) reserved for MPC-only quantities.
   diagnostic.data.resize(27, std::numeric_limits<float>::quiet_NaN());
-  // Passthrough-only diagnostics: [27] plan age, [28] issued index, [29] interval end,
+  // Passthrough-only diagnostics: [27] time since receipt, [28] issued index, [29] interval end,
   // [30] steering after the rate limit.
-  diagnostic.data.push_back(static_cast<float>(trajectory_age));
+  diagnostic.data.push_back(static_cast<float>(trajectory_elapsed_s));
   diagnostic.data.push_back(static_cast<float>(*first_command_index));
   diagnostic.data.push_back(
     static_cast<float>(reference_trajectory.relative_time.at(*first_command_index)));
@@ -584,7 +586,8 @@ void MPC::resetSteeringCmdFilter(const double steering_tire_angle)
 
 std::pair<ResultWithReason, MPCData> MPC::getData(
   const MPCTrajectory & traj, const SteeringReport & current_steer,
-  const Odometry & current_kinematics, const bool require_prediction_horizon)
+  const Odometry & current_kinematics, const bool require_prediction_horizon,
+  const std::optional<double> temporal_reference_time)
 {
   const auto current_pose = current_kinematics.pose.pose;
 
@@ -593,8 +596,9 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
     const double traj_start_time = traj.relative_time.front();
     const double traj_end_time = traj.relative_time.back();
 
-    const rclcpp::Time traj_stamp(traj.stamp);
-    const double elapsed_time = (m_clock->now() - traj_stamp).seconds();
+    const double elapsed_time = temporal_reference_time
+                                  ? *temporal_reference_time
+                                  : (m_clock->now() - rclcpp::Time(traj.stamp)).seconds();
     const double fused_time = std::clamp(elapsed_time, traj_start_time, traj_end_time);
     data.temporal_predicted_time = fused_time;
     data.temporal_fused_time = fused_time;
