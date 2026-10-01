@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -33,6 +34,7 @@
 
 namespace autoware::motion::control::mpc_lateral_controller
 {
+using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_utils::calc_distance2d;
 using autoware_utils::normalize_radian;
 using autoware_utils::rad2deg;
@@ -240,13 +242,144 @@ Float32MultiArrayStamped generatePassthroughDiagData(
   return diagnostic;
 }
 
+Trajectory MPC::calculatePassthroughPredictedTrajectory(
+  const SteeringReport & current_steer, const Odometry & current_kinematics,
+  const MPCTrajectory & reference_trajectory, const double reference_start_time,
+  const double prediction_dt, const std::vector<double> & future_commands,
+  const double future_command_period, const std::deque<double> & previous_commands,
+  const double remaining_trajectory_time) const
+{
+  Trajectory predicted;
+  const double wheelbase = m_vehicle_model_ptr->getWheelbase();
+  if (
+    reference_trajectory.empty() || future_commands.empty() || !std::isfinite(prediction_dt) ||
+    prediction_dt <= 0.0 || !std::isfinite(m_ctrl_period) || m_ctrl_period <= 0.0 ||
+    !std::isfinite(future_command_period) || future_command_period <= 0.0 ||
+    !std::isfinite(wheelbase) || wheelbase <= 0.0 || !std::isfinite(remaining_trajectory_time) ||
+    remaining_trajectory_time <= 0.0) {
+    return predicted;
+  }
+
+  const auto & times = reference_trajectory.relative_time;
+  const auto sample_reference = [&](const std::vector<double> & values, const double time) {
+    if (time <= times.front()) return values.front();
+    const auto upper = std::upper_bound(times.begin(), times.end(), time);
+    if (upper == times.end()) return values.back();
+    const auto next = static_cast<size_t>(std::distance(times.begin(), upper));
+    const auto prev = next - 1;
+    const double ratio = (time - times.at(prev)) / (times.at(next) - times.at(prev));
+    return values.at(prev) + ratio * (values.at(next) - values.at(prev));
+  };
+
+  const auto command_at = [&](const double time) {
+    const double step = std::max(0.0, time) / future_command_period;
+    const auto index = std::min(static_cast<size_t>(step), future_commands.size() - 1);
+    return future_commands.at(index);
+  };
+
+  // The buffer holds previously issued commands at controller-period intervals. Its oldest entry
+  // is the command that reaches the steering actuator first; future inputs use the rate-limited
+  // command rollout. Do not mutate the buffer while constructing the prediction.
+  const double input_delay = static_cast<double>(previous_commands.size()) * m_ctrl_period;
+  const auto delayed_command_at = [&](const double time) {
+    const double issued_time = time - input_delay;
+    if (issued_time >= 0.0 || previous_commands.empty()) return command_at(issued_time);
+    const auto index = std::min(
+      static_cast<size_t>(std::max(0.0, std::floor(time / m_ctrl_period))),
+      previous_commands.size() - 1);
+    return previous_commands.at(index);
+  };
+
+  const auto & current_pose = current_kinematics.pose.pose;
+  double x = current_pose.position.x;
+  double y = current_pose.position.y;
+  double yaw = tf2::getYaw(current_pose.orientation);
+  double steer = current_steer.steering_tire_angle;
+  const double current_velocity = current_kinematics.twist.twist.linear.x;
+  if (
+    !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(yaw) || !std::isfinite(steer) ||
+    !std::isfinite(current_velocity)) {
+    return predicted;
+  }
+
+  const double z_offset =
+    current_pose.position.z - sample_reference(reference_trajectory.z, reference_start_time);
+  TrajectoryPoint initial_point;
+  initial_point.pose = current_pose;
+  initial_point.longitudinal_velocity_mps = static_cast<float>(current_velocity);
+  initial_point.front_wheel_angle_rad = static_cast<float>(steer);
+  predicted.points.push_back(initial_point);
+
+  // Only the kinematics model includes a first-order steering actuator state.
+  const double steer_tau =
+    m_vehicle_model_ptr->modelName() == "kinematics" ? m_param.steer_tau : 0.0;
+  const double max_horizon_time =
+    static_cast<double>(future_commands.size()) * future_command_period;
+  const double end_time = std::min(remaining_trajectory_time, max_horizon_time);
+  double time = 0.0;
+  for (size_t output_index = 1; time + 1.0e-9 < end_time; ++output_index) {
+    const double next_output_time =
+      std::min(end_time, static_cast<double>(output_index) * prediction_dt);
+    double yaw_rate = 0.0;
+    while (time + 1.0e-9 < next_output_time) {
+      // A command is held until its next buffer or future-command boundary. Split integration
+      // there so the input delay does not make a future command act early.
+      const double command_interval = time < input_delay ? m_ctrl_period : future_command_period;
+      const double command_time = time < input_delay ? time : time - input_delay;
+      const double next_command_time =
+        (std::floor(command_time / command_interval) + 1.0) * command_interval +
+        (time < input_delay ? 0.0 : input_delay);
+      double step = std::min(m_ctrl_period, next_output_time - time);
+      if (next_command_time - time > 1.0e-9) {
+        step = std::min(step, next_command_time - time);
+      }
+      const double delayed_command = delayed_command_at(time + 0.5 * step);
+      const double next_steer =
+        steer_tau > 0.0 ? delayed_command + (steer - delayed_command) * std::exp(-step / steer_tau)
+                        : delayed_command;
+      const double average_steer =
+        std::clamp(0.5 * (steer + next_steer), -m_steer_lim, m_steer_lim);
+      const double velocity_start =
+        time == 0.0 ? current_velocity
+                    : sample_reference(reference_trajectory.vx, reference_start_time + time);
+      const double velocity_end =
+        sample_reference(reference_trajectory.vx, reference_start_time + time + step);
+      const double velocity = 0.5 * (velocity_start + velocity_end);
+      yaw_rate = velocity * std::tan(average_steer) / wheelbase;
+      const double mid_yaw = yaw + 0.5 * yaw_rate * step;
+      x += velocity * std::cos(mid_yaw) * step;
+      y += velocity * std::sin(mid_yaw) * step;
+      yaw += yaw_rate * step;
+      steer = next_steer;
+      time += step;
+    }
+
+    TrajectoryPoint point;
+    point.pose.position.x = x;
+    point.pose.position.y = y;
+    point.pose.position.z =
+      sample_reference(reference_trajectory.z, reference_start_time + time) + z_offset;
+    point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+    point.longitudinal_velocity_mps =
+      static_cast<float>(sample_reference(reference_trajectory.vx, reference_start_time + time));
+    point.front_wheel_angle_rad = static_cast<float>(steer);
+    point.heading_rate_rps = static_cast<float>(yaw_rate);
+    point.time_from_start = rclcpp::Duration::from_seconds(time);
+    predicted.points.push_back(point);
+  }
+  return predicted;
+}
+
 ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
   const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
-  Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon,
-  const std::optional<rclcpp::Time> & trajectory_received_at)
+  Trajectory & predicted_trajectory, Float32MultiArrayStamped & diagnostic,
+  LateralHorizon & ctrl_cmd_horizon, const std::optional<rclcpp::Time> & trajectory_received_at)
 {
   if (!m_reference_trajectory_has_steering) {
     return ResultWithReason{false, "trajectory has no steering for passthrough."};
+  }
+  if (!std::isfinite(m_ctrl_period) || m_ctrl_period <= 0.0) {
+    return ResultWithReason{false, "invalid passthrough control period."};
   }
 
   if (!m_use_temporal_trajectory) {
@@ -262,6 +395,9 @@ ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
     const double mpc_start_time = mpc_data.nearest_time + m_param.input_delay;
     const double prediction_dt =
       getPredictionDeltaTime(mpc_start_time, reference_trajectory, current_kinematics);
+    if (!std::isfinite(prediction_dt) || prediction_dt <= 0.0) {
+      return ResultWithReason{false, "invalid passthrough prediction step."};
+    }
     const auto [resample_result, resampled_trajectory] =
       resampleMPCTrajectoryByTime(mpc_start_time, prediction_dt, reference_trajectory);
     if (!resample_result.result) {
@@ -292,6 +428,28 @@ ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
       ctrl_cmd_horizon.controls.push_back(horizon_cmd);
     }
 
+    std::vector<double> future_commands;
+    future_commands.reserve(ctrl_cmd_horizon.controls.size());
+    for (const auto & command : ctrl_cmd_horizon.controls) {
+      future_commands.push_back(command.steering_tire_angle);
+    }
+    if (reference_trajectory.size() < 3) {
+      return ResultWithReason{false, "passthrough reference has no valid terminal time."};
+    }
+    // Reference setup and velocity smoothing each append a 100-second terminal point.
+    const double real_end_time =
+      reference_trajectory.relative_time.at(reference_trajectory.size() - 3);
+    predicted_trajectory = calculatePassthroughPredictedTrajectory(
+      current_steer, current_kinematics, reference_trajectory, mpc_data.nearest_time, prediction_dt,
+      future_commands, prediction_dt, m_input_buffer, real_end_time - mpc_data.nearest_time);
+    if (predicted_trajectory.points.size() < 2) {
+      return ResultWithReason{false, "no valid passthrough prediction remains."};
+    }
+    m_steering_predictor->storeSteerCmd(u_saturated);
+    if (!m_input_buffer.empty()) {
+      m_input_buffer.push_back(u_saturated);
+      m_input_buffer.pop_front();
+    }
     m_raw_steer_cmd_prev = u_saturated;
     m_raw_steer_cmd_pprev = u_saturated;
     diagnostic = generatePassthroughDiagData(
@@ -341,6 +499,9 @@ ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
   const double mpc_start_time = mpc_data.nearest_time;
   const double prediction_dt =
     getPredictionDeltaTime(mpc_start_time, mpc_reference_trajectory, current_kinematics);
+  if (!std::isfinite(prediction_dt) || prediction_dt <= 0.0) {
+    return ResultWithReason{false, "invalid passthrough prediction step."};
+  }
   const double u_raw = reference_trajectory.steer.at(*first_command_index);
   const double u_saturated = std::clamp(u_raw, -m_steer_lim, m_steer_lim);
   const double max_steering_change = m_steering_passthrough_rate_limit_rad_s * m_ctrl_period;
@@ -352,39 +513,59 @@ ResultWithReason MPC::calculateTrajectorySteeringPassthrough(
   ctrl_cmd.steering_tire_angle = static_cast<float>(u_limited);
   ctrl_cmd.steering_tire_rotation_rate = static_cast<float>(steer_rate);
 
-  // Keep MPC's delay and steering-prediction history aligned with commands actually issued by
-  // temporal passthrough, in case a later cycle switches back to MPC optimization.
-  m_steering_predictor->storeSteerCmd(u_limited);
-  m_input_buffer.push_back(u_limited);
-  m_input_buffer.pop_front();
+  // Project each controller tick with the same command lookup and rate limit used on this tick.
+  // A future trajectory update can replace this sequence on the next control cycle.
+  const double remaining_trajectory_time = m_steering_passthrough_end_time_s - trajectory_elapsed_s;
+  const double max_projection_time = std::min(
+    remaining_trajectory_time, prediction_dt * static_cast<double>(m_param.prediction_horizon));
+  const auto num_control_ticks =
+    static_cast<size_t>(std::max(1.0, std::ceil(max_projection_time / m_ctrl_period)));
+  std::vector<double> future_commands;
+  future_commands.reserve(num_control_ticks);
+  future_commands.push_back(u_limited);
+  for (size_t tick = 1; tick < num_control_ticks; ++tick) {
+    const double future_elapsed = trajectory_elapsed_s + static_cast<double>(tick) * m_ctrl_period;
+    if (future_elapsed >= m_steering_passthrough_end_time_s) break;
+    const auto command_index =
+      MPCUtils::findIssuedSteeringCommandIndex(reference_trajectory, future_elapsed);
+    if (!command_index) break;
+    const double desired_steer =
+      std::clamp(reference_trajectory.steer.at(*command_index), -m_steer_lim, m_steer_lim);
+    future_commands.push_back(
+      std::clamp(
+        desired_steer, future_commands.back() - max_steering_change,
+        future_commands.back() + max_steering_change));
+  }
 
   ctrl_cmd_horizon.time_step_ms = prediction_dt * 1000.0;
   ctrl_cmd_horizon.controls.clear();
   ctrl_cmd_horizon.controls.push_back(ctrl_cmd);
   for (int i = 1; i < m_param.prediction_horizon; ++i) {
-    const auto command_index = MPCUtils::findIssuedSteeringCommandIndex(
-      reference_trajectory, trajectory_elapsed_s + static_cast<double>(i) * prediction_dt);
-    if (
-      !command_index || trajectory_elapsed_s + static_cast<double>(i) * prediction_dt >=
-                          m_steering_passthrough_end_time_s) {
-      break;
-    }
+    const double future_time = static_cast<double>(i) * prediction_dt;
+    if (future_time >= remaining_trajectory_time) break;
     Lateral horizon_cmd;
-    const double desired_steer =
-      std::clamp(reference_trajectory.steer.at(*command_index), -m_steer_lim, m_steer_lim);
-    const double max_horizon_change = m_steering_passthrough_rate_limit_rad_s * prediction_dt;
-    horizon_cmd.steering_tire_angle = static_cast<float>(std::clamp(
-      desired_steer,
-      static_cast<double>(ctrl_cmd_horizon.controls.back().steering_tire_angle) -
-        max_horizon_change,
-      static_cast<double>(ctrl_cmd_horizon.controls.back().steering_tire_angle) +
-        max_horizon_change));
+    const auto tick =
+      std::min(static_cast<size_t>(future_time / m_ctrl_period), future_commands.size() - 1);
+    horizon_cmd.steering_tire_angle = static_cast<float>(future_commands.at(tick));
     horizon_cmd.steering_tire_rotation_rate =
       (horizon_cmd.steering_tire_angle - ctrl_cmd_horizon.controls.back().steering_tire_angle) /
       static_cast<float>(prediction_dt);
     ctrl_cmd_horizon.controls.push_back(horizon_cmd);
   }
 
+  predicted_trajectory = calculatePassthroughPredictedTrajectory(
+    current_steer, current_kinematics, reference_trajectory, mpc_data_raw.nearest_time,
+    prediction_dt, future_commands, m_ctrl_period, m_input_buffer, remaining_trajectory_time);
+  if (predicted_trajectory.points.size() < 2) {
+    return ResultWithReason{false, "no valid passthrough prediction remains."};
+  }
+
+  // Keep MPC's delay and steering-prediction history aligned with issued passthrough commands.
+  m_steering_predictor->storeSteerCmd(u_limited);
+  if (!m_input_buffer.empty()) {
+    m_input_buffer.push_back(u_limited);
+    m_input_buffer.pop_front();
+  }
   m_raw_steer_cmd_prev = u_limited;
   m_raw_steer_cmd_pprev = u_limited;
 
@@ -582,6 +763,11 @@ void MPC::resetSteeringCmdFilter(const double steering_tire_angle)
   for (auto & value : m_input_buffer) {
     value = steering_tire_angle;
   }
+}
+
+void MPC::syncSteeringCmdFilterOnly(const double steering_tire_angle)
+{
+  m_lpf_steering_cmd.resetState(steering_tire_angle);
 }
 
 std::pair<ResultWithReason, MPCData> MPC::getData(
