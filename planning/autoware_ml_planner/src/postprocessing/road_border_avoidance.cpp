@@ -53,10 +53,17 @@ LinearRing2d place_footprint(
   return placed;
 }
 
-Point2d nearest_point_on_linestring(const LineString2d & line, const Point2d & point)
+struct NearestPoint
 {
-  Point2d nearest = line.front();
-  double min_sq_dist = std::numeric_limits<double>::max();
+  Point2d point;
+  double z{0.0};
+  double sq_dist{std::numeric_limits<double>::max()};
+};
+
+NearestPoint nearest_point_on_border(const RoadBorder & border, const Point2d & point)
+{
+  const LineString2d & line = border.line;
+  NearestPoint nearest{line.front(), border.z.front()};
   for (size_t i = 0; i + 1 < line.size(); ++i) {
     const Eigen::Vector2d & a = line[i];
     const Eigen::Vector2d & b = line[i + 1];
@@ -65,25 +72,26 @@ Point2d nearest_point_on_linestring(const LineString2d & line, const Point2d & p
     const double t = (ab_sq > 0.0) ? std::clamp((point - a).dot(ab) / ab_sq, 0.0, 1.0) : 0.0;
     const Eigen::Vector2d candidate = a + t * ab;
     const double sq_dist = (point - candidate).squaredNorm();
-    if (sq_dist < min_sq_dist) {
-      min_sq_dist = sq_dist;
-      nearest = Point2d(candidate.x(), candidate.y());
+    if (sq_dist < nearest.sq_dist) {
+      nearest.point = Point2d(candidate.x(), candidate.y());
+      nearest.z = border.z[i] + t * (border.z[i + 1] - border.z[i]);
+      nearest.sq_dist = sq_dist;
     }
   }
   return nearest;
 }
 
-const LineString2d * find_nearest_overlapping_border(
-  const std::vector<const LineString2d *> & borders, const LinearRing2d & footprint,
+const RoadBorder * find_nearest_overlapping_border(
+  const std::vector<const RoadBorder *> & borders, const LinearRing2d & footprint,
   const Point2d & position)
 {
-  const LineString2d * nearest_border = nullptr;
+  const RoadBorder * nearest_border = nullptr;
   double min_sq_dist = std::numeric_limits<double>::max();
-  for (const LineString2d * border : borders) {
-    if (!bg::intersects(footprint, *border)) {
+  for (const RoadBorder * border : borders) {
+    if (!bg::intersects(footprint, border->line)) {
       continue;
     }
-    const double sq_dist = bg::comparable_distance(position, *border);
+    const double sq_dist = bg::comparable_distance(position, border->line);
     if (sq_dist < min_sq_dist) {
       min_sq_dist = sq_dist;
       nearest_border = border;
@@ -93,6 +101,11 @@ const LineString2d * find_nearest_overlapping_border(
 }
 
 constexpr int k_linear_shift_steps = 3;
+// Borders whose height differs more than this from the trajectory point are on another level
+// (overpass / underpass). Well below the minimum vertical clearance of grade-separated roads.
+constexpr double k_max_height_difference_m = 2.5;
+// The reference height follows the nearest same-height border within this distance.
+constexpr double k_height_tracking_distance_m = 10.0;
 constexpr double k_bisection_eps_m = 1e-3;
 
 /// Clear a colliding pose: up to 3 `step` probes, then bisection to `max_shift`.
@@ -154,25 +167,46 @@ RoadBorderAvoidance::RoadBorderAvoidance(
 
 void RoadBorderAvoidance::set_map(const lanelet::LaneletMap & lanelet_map)
 {
-  std::vector<LineString2d> road_borders;
+  std::vector<RoadBorder> road_borders;
   for (const auto & line_string : lanelet_map.lineStringLayer) {
     const std::string line_string_type = line_string.attributeOr("type", "");
     if (line_string_type != "road_border" || line_string.size() < 2) {
       continue;
     }
-    LineString2d border;
-    border.reserve(line_string.size());
+    RoadBorder border;
+    border.line.reserve(line_string.size());
+    border.z.reserve(line_string.size());
     for (const auto & point : line_string) {
-      border.emplace_back(point.x(), point.y());
+      border.line.emplace_back(point.x(), point.y());
+      border.z.push_back(point.z());
     }
     road_borders.push_back(std::move(border));
   }
   set_road_borders(std::move(road_borders));
 }
 
-void RoadBorderAvoidance::set_road_borders(std::vector<LineString2d> road_borders)
+void RoadBorderAvoidance::set_road_borders(std::vector<RoadBorder> road_borders)
 {
-  road_borders_ = std::move(road_borders);
+  // Split into two-point segments so that the height check applies to each part of a border:
+  // a single line string may run from the ego road up onto an overpass.
+  road_borders_.clear();
+  for (const auto & border : road_borders) {
+    for (size_t i = 0; i + 1 < border.line.size(); ++i) {
+      road_borders_.push_back(
+        RoadBorder{
+          LineString2d{border.line[i], border.line[i + 1]}, {border.z[i], border.z[i + 1]}});
+    }
+  }
+}
+
+void RoadBorderAvoidance::set_road_borders(const std::vector<LineString2d> & road_borders)
+{
+  std::vector<RoadBorder> borders;
+  borders.reserve(road_borders.size());
+  for (const auto & line : road_borders) {
+    borders.push_back(RoadBorder{line, std::vector<double>(line.size(), 0.0)});
+  }
+  set_road_borders(std::move(borders));
 }
 
 RoadBorderAvoidanceResult RoadBorderAvoidance::adjust(
@@ -186,9 +220,9 @@ RoadBorderAvoidanceResult RoadBorderAvoidance::adjust(
 
   // Pre-filter borders reachable within the horizon.
   const Point2d ego_point(ego_pose.position.x, ego_pose.position.y);
-  std::vector<const LineString2d *> nearby_borders;
+  std::vector<const RoadBorder *> nearby_borders;
   for (const auto & border : road_borders_) {
-    if (bg::distance(ego_point, border) <= params_.search_radius_m) {
+    if (bg::distance(ego_point, border.line) <= params_.search_radius_m) {
       nearby_borders.push_back(&border);
     }
   }
@@ -196,10 +230,13 @@ RoadBorderAvoidanceResult RoadBorderAvoidance::adjust(
     return result;
   }
 
-  const auto intersects_any = [&nearby_borders](const LinearRing2d & footprint) {
+  // Borders at the height of the current trajectory point (updated per point).
+  std::vector<const RoadBorder *> same_level_borders;
+  double reference_z = ego_pose.position.z;
+  const auto intersects_any = [&same_level_borders](const LinearRing2d & footprint) {
     return std::any_of(
-      nearby_borders.begin(), nearby_borders.end(),
-      [&footprint](const LineString2d * border) { return bg::intersects(footprint, *border); });
+      same_level_borders.begin(), same_level_borders.end(),
+      [&footprint](const RoadBorder * border) { return bg::intersects(footprint, border->line); });
   };
 
   // Signed lateral offset from the raw position (positive = left of the heading). With
@@ -208,12 +245,30 @@ RoadBorderAvoidanceResult RoadBorderAvoidance::adjust(
   double carried_offset_m = 0.0;
 
   for (auto & point : result.trajectory.points) {
+    const double raw_x = point.pose.position.x;
+    const double raw_y = point.pose.position.y;
+
+    // Keep only borders on the same level and let the reference height follow the nearest one.
+    same_level_borders.clear();
+    NearestPoint nearest_same_level;
+    for (const RoadBorder * border : nearby_borders) {
+      const NearestPoint nearest = nearest_point_on_border(*border, Point2d(raw_x, raw_y));
+      if (std::abs(nearest.z - reference_z) > k_max_height_difference_m) {
+        continue;
+      }
+      same_level_borders.push_back(border);
+      if (nearest.sq_dist < nearest_same_level.sq_dist) {
+        nearest_same_level = nearest;
+      }
+    }
+    if (nearest_same_level.sq_dist <= k_height_tracking_distance_m * k_height_tracking_distance_m) {
+      reference_z = nearest_same_level.z;
+    }
+
     if (rclcpp::Duration(point.time_from_start).seconds() < params_.start_time_s) {
       continue;
     }
 
-    const double raw_x = point.pose.position.x;
-    const double raw_y = point.pose.position.y;
     const double yaw = yaw_from_quaternion(point.pose.orientation);
     const Eigen::Vector2d heading(std::cos(yaw), std::sin(yaw));
     const Eigen::Vector2d lateral_left(-heading.y(), heading.x());
@@ -232,8 +287,8 @@ RoadBorderAvoidanceResult RoadBorderAvoidance::adjust(
     const Point2d position(raw_x + lateral_left.x() * offset, raw_y + lateral_left.y() * offset);
 
     // The nearest overlapping border (if any) decides the shift direction.
-    const LineString2d * offending_border =
-      find_nearest_overlapping_border(nearby_borders, footprint, position);
+    const RoadBorder * offending_border =
+      find_nearest_overlapping_border(same_level_borders, footprint, position);
     if (offending_border == nullptr) {
       if (offset != 0.0) {
         apply_offset(offset);
@@ -243,7 +298,7 @@ RoadBorderAvoidanceResult RoadBorderAvoidance::adjust(
     }
 
     // Probe then bisect the offset perpendicular to the heading, away from the border.
-    const Point2d border_point = nearest_point_on_linestring(*offending_border, position);
+    const Point2d border_point = nearest_point_on_border(*offending_border, position).point;
     const Eigen::Vector2d to_border = border_point - position;
     const double cross = heading.x() * to_border.y() - heading.y() * to_border.x();
     const double step = (cross > 0.0) ? -params_.shift_step_m : params_.shift_step_m;
