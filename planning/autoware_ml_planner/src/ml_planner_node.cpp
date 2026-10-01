@@ -34,6 +34,7 @@
 #include <functional>
 #include <iomanip>
 #include <memory>
+#include <stdexcept>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -305,6 +306,10 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("virtual_pose.yaw_fit_min_length_m", 0.2);
   virtual_pose.history_prefix_count =
     this->declare_parameter<int64_t>("virtual_pose.history_prefix_count", 10);
+  virtual_pose.reference = this->declare_parameter<std::string>("virtual_pose.reference", "raw");
+  if (virtual_pose.reference != "raw" && virtual_pose.reference != "optimized") {
+    throw std::runtime_error("virtual_pose.reference must be 'raw' or 'optimized'");
+  }
 
   // planning factor params
   planning_factor_params_.enable_stop =

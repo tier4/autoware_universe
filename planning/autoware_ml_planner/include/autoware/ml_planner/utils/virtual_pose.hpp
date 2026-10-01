@@ -21,6 +21,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace autoware::ml_planner::utils
@@ -48,6 +49,9 @@ struct VirtualPoseParams
   // Virtual poses of earlier cycles prepended to the previous trajectory so the spline extends
   // behind the vehicle.
   int64_t history_prefix_count;
+  // Trajectory the virtual pose is taken from: "raw" (the model's prediction) or "optimized"
+  // (the node's output after border avoidance and trajectory optimization).
+  std::string reference;
 };
 
 struct VirtualPoseResult
