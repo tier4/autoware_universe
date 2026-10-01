@@ -58,6 +58,12 @@ std::vector<geometry_msgs::msg::Point> removeOverlapPoints(const T & points, con
 
 namespace tier4_autoware_utils
 {
+struct SegmentIndexWithPoint
+{
+  size_t index;
+  geometry_msgs::msg::Point point;
+};
+
 template <class T>
 void validateNonEmpty(const T & points)
 {
@@ -648,6 +654,39 @@ boost::optional<double> calcFirstSignedArcLength(
     calcLongitudinalOffsetToSegment(points, *src_seg_idx, src_pose.position);
   const double signed_length_dst_offset =
     calcLongitudinalOffsetToSegment(points, dst_seg_idx, dst_point);
+
+  return signed_length_on_traj - signed_length_src_offset + signed_length_dst_offset;
+}
+
+/**
+ * @brief calcFirstSignedArcLength from pose to segment-indexed point
+ *        Use when dst segment index is already known to avoid re-searching it
+ */
+template <class T>
+boost::optional<double> calcFirstSignedArcLength(
+  const T & points, const geometry_msgs::msg::Pose & src_pose, const SegmentIndexWithPoint & dst,
+  const double max_dist = std::numeric_limits<double>::max(),
+  const double max_yaw = std::numeric_limits<double>::max(),
+  const double distance_thresh = 5.0)
+{
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  const auto src_seg_idx =
+    findFirstNearestSegmentIndex(points, src_pose, max_dist, max_yaw, distance_thresh);
+  if (!src_seg_idx) {
+    return boost::none;
+  }
+
+  const double signed_length_on_traj = calcSignedArcLength(points, *src_seg_idx, dst.index);
+  const double signed_length_src_offset =
+    calcLongitudinalOffsetToSegment(points, *src_seg_idx, src_pose.position);
+  const double signed_length_dst_offset =
+    calcLongitudinalOffsetToSegment(points, dst.index, dst.point);
 
   return signed_length_on_traj - signed_length_src_offset + signed_length_dst_offset;
 }
