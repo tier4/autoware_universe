@@ -164,8 +164,10 @@ PathOptimizer::PathOptimizer(const rclcpp::NodeOptions & node_options)
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&PathOptimizer::onParam, this, std::placeholders::_1));
 
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  logger_configure_ = std::make_unique<
+    autoware_utils::BasicLoggerLevelConfigure<autoware::agnocast_wrapper::Node>>(this);
+  published_time_publisher_ = std::make_unique<
+    autoware_utils::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(this);
 }
 
 rcl_interfaces::msg::SetParametersResult PathOptimizer::onParam(
@@ -228,7 +230,7 @@ void PathOptimizer::resetPreviousData()
   mpt_optimizer_ptr_->resetPreviousData();
 }
 
-void PathOptimizer::onPath(const Path::ConstSharedPtr path_ptr)
+void PathOptimizer::onPath(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Path) path_ptr)
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   stop_watch_.tic();
@@ -239,7 +241,7 @@ void PathOptimizer::onPath(const Path::ConstSharedPtr path_ptr)
   }
 
   // check if ego's odometry is valid
-  const auto ego_odom_ptr = ego_odom_sub_.take_data();
+  const auto ego_odom_ptr = ego_odom_sub_->take_data();
   if (!ego_odom_ptr) {
     RCLCPP_INFO_SKIPFIRST_THROTTLE(
       get_logger(), *get_clock(), 5000, "Waiting for ego pose and twist.");

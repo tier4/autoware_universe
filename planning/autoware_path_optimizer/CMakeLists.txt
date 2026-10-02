@@ -42,12 +42,14 @@ target_include_directories(autoware_path_optimizer
 )
 
 # register node
-rclcpp_components_register_node(autoware_path_optimizer
+autoware_agnocast_wrapper_register_node(autoware_path_optimizer
   PLUGIN "autoware::path_optimizer::PathOptimizer"
   EXECUTABLE path_optimizer_node
+  ROS2_EXECUTOR SingleThreadedExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
-if(BUILD_TESTING)
+if(BUILD_TESTING AND NOT "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
   ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
     test/test_path_optimizer_node_interface.cpp
   )

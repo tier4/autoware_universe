@@ -22,11 +22,13 @@
 #include "autoware/path_optimizer/type_alias.hpp"
 #include "autoware/path_optimizer/utils/conditional_timer.hpp"
 #include "autoware_utils/ros/logger_level_configure.hpp"
-#include "autoware_utils/ros/polling_subscriber.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 #include "autoware_utils/system/time_keeper.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 
+#include <autoware/agnocast_wrapper/diagnostic_updater.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/polling_subscriber.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/publisher.hpp>
@@ -39,7 +41,7 @@
 
 namespace autoware::path_optimizer
 {
-class PathOptimizer : public rclcpp::Node
+class PathOptimizer : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit PathOptimizer(const rclcpp::NodeOptions & node_options);
@@ -91,28 +93,29 @@ protected:  // for the static_centerline_generator package
   EgoNearestParam ego_nearest_param_{};
 
   // interface publisher
-  rclcpp::Publisher<Trajectory>::SharedPtr traj_pub_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr virtual_wall_pub_;
+  AUTOWARE_PUBLISHER_PTR(Trajectory) traj_pub_;
+  AUTOWARE_PUBLISHER_PTR(MarkerArray) virtual_wall_pub_;
 
   // interface subscriber
-  rclcpp::Subscription<Path>::SharedPtr path_sub_;
-  autoware_utils::InterProcessPollingSubscriber<Odometry> ego_odom_sub_{this, "~/input/odometry"};
+  AUTOWARE_SUBSCRIPTION_PTR(Path) path_sub_;
+  autoware::agnocast_wrapper::polling::PollingSubscriber<Odometry>::SharedPtr ego_odom_sub_ =
+    autoware::agnocast_wrapper::polling::create_polling_subscriber<Odometry>(
+      this, "~/input/odometry");
 
   // debug publisher
-  rclcpp::Publisher<Trajectory>::SharedPtr debug_extended_traj_pub_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr debug_markers_pub_;
-  rclcpp::Publisher<StringStamped>::SharedPtr debug_calculation_time_str_pub_;
-  rclcpp::Publisher<Float64Stamped>::SharedPtr debug_calculation_time_float_pub_;
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
-    debug_processing_time_detail_pub_;
+  AUTOWARE_PUBLISHER_PTR(Trajectory) debug_extended_traj_pub_;
+  AUTOWARE_PUBLISHER_PTR(MarkerArray) debug_markers_pub_;
+  AUTOWARE_PUBLISHER_PTR(StringStamped) debug_calculation_time_str_pub_;
+  AUTOWARE_PUBLISHER_PTR(Float64Stamped) debug_calculation_time_float_pub_;
+  AUTOWARE_PUBLISHER_PTR(autoware_utils::ProcessingTimeDetail) debug_processing_time_detail_pub_;
 
   // parameter callback
   rcl_interfaces::msg::SetParametersResult onParam(
     const std::vector<rclcpp::Parameter> & parameters);
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   // subscriber callback function
-  void onPath(const Path::ConstSharedPtr path_ptr);
+  void onPath(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Path) path_ptr);
 
   // reset functions
   void initializePlanning();
@@ -145,14 +148,16 @@ protected:  // for the static_centerline_generator package
 private:
   double vehicle_stop_margin_outside_drivable_area_;
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
+  std::unique_ptr<autoware_utils::BasicLoggerLevelConfigure<autoware::agnocast_wrapper::Node>>
+    logger_configure_;
 
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>
+    published_time_publisher_;
 
   autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch_;
 
   // diag
-  diagnostic_updater::Updater updater_{this};
+  autoware::agnocast_wrapper::diagnostic_updater::Updater updater_{this};
 };
 }  // namespace autoware::path_optimizer
 

@@ -45,7 +45,9 @@ TEST(PlanningModuleInterfaceTest, NodeTestWithExceptionTrajectory)
      autoware_test_utils_dir + "/config/test_nearest_search.param.yaml", "--params-file",
      path_optimizer_dir + "/config/path_optimizer.param.yaml"});
 
-  auto test_target_node = std::make_shared<autoware::path_optimizer::PathOptimizer>(node_options);
+  auto test_target_wrapper_node =
+    std::make_shared<autoware::path_optimizer::PathOptimizer>(node_options);
+  auto test_target_node = test_target_wrapper_node->get_rclcpp_node();
 
   // publish necessary topics from test_manager
   test_manager->publishInput(
