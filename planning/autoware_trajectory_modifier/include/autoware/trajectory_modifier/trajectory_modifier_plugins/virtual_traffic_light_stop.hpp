@@ -37,7 +37,6 @@
 
 namespace autoware::trajectory_modifier::plugin
 {
-using InputData = TrajectoryModifierData;
 class VirtualTrafficLightStop : public TrajectoryModifierPluginBase
 {
 public:
@@ -51,18 +50,19 @@ public:
     FINALIZED = 4,
   };
 
-  void begin_cycle(const InputData & input) override;
+  void begin_cycle(const TrajectoryModifierData & input) override;
   void end_cycle() override;
 
   ProcessingResult process(TrajectoryPoints & points, TrajectoryModifierData & data) override
   {
-    return modify_trajectory(points, data) ? ProcessingResult::Modified : ProcessingResult::Unchanged;
+    return modify_trajectory(points, data) ? ProcessingResult::Modified
+                                           : ProcessingResult::Unchanged;
   }
 
-  bool modify_trajectory(TrajectoryPoints & traj_points, const InputData & input);
+  bool modify_trajectory(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 
   [[nodiscard]] bool is_trajectory_modification_required(
-    const TrajectoryPoints & traj_points, const InputData & input);
+    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 
   void update_params(const TrajectoryModifierParams & params) override;
 
@@ -160,20 +160,19 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr debug_text_pub_;
 
-  void rebuild_modules(const InputData & input);
-  void update_module_states(const InputData & input);
-  void update_module_lifecycle(const InputData & input);
+  void rebuild_modules(const TrajectoryModifierData & input);
+  void update_module_states(const TrajectoryModifierData & input);
+  void update_module_lifecycle(const TrajectoryModifierData & input);
   bool process_trajectory(
-    TrajectoryPoints & traj_points, const InputData & input, const bool apply_modification);
+    TrajectoryPoints & traj_points, const TrajectoryModifierData & input,
+    const bool apply_modification);
   bool process_module(
-    Module & module, TrajectoryPoints & traj_points, const InputData & input,
+    Module & module, TrajectoryPoints & traj_points, const TrajectoryModifierData & input,
     const bool apply_modification);
   bool insert_stop_velocity(
     TrajectoryPoints & traj_points, const TrajectoryPoints & path_points,
-    const std::optional<double> & collision_s, const InputData & input, Module & module,
-    StopReason reason, StopTarget target);
-  bool ensure_control_start_trajectory(
-    TrajectoryPoints & traj_points, const InputData & input, const Module & module) const;
+    const std::optional<double> & collision_s, const TrajectoryModifierData & input,
+    Module & module, StopReason reason, StopTarget target);
 
   void update_command(Module & module);
   void set_state(Module & module, ModuleState state, std::optional<lanelet::Id> end_line_id = {});

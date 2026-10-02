@@ -54,7 +54,8 @@ struct TrajectoryModifierData
   autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr route{nullptr};
   autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr traffic_light_signals{
     nullptr};
-  tier4_v2x_msgs::msg::VirtualTrafficLightStateArray::ConstSharedPtr virtual_traffic_light_states{nullptr};
+  tier4_v2x_msgs::msg::VirtualTrafficLightStateArray::ConstSharedPtr virtual_traffic_light_states{
+    nullptr};
   std_msgs::msg::Header candidate_header{};
   std::size_t candidate_index{0U};
   std::size_t candidate_count{0U};
