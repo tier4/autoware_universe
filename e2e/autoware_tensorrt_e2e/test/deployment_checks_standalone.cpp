@@ -17,6 +17,7 @@
 #include "autoware/tensorrt_e2e/planning_time.hpp"
 #include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
 #include "autoware/tensorrt_e2e/rolling_latency.hpp"
+#include "autoware/tensorrt_e2e/signal_history.hpp"
 #include "autoware/tensorrt_e2e/training_ego_shape.hpp"
 #include <iostream>
 #include <limits>
@@ -123,6 +124,48 @@ int main(int argc, char **argv) {
   check(!refuses([] { check_curvature_bias_inputs(true, true); }));
   check(refuses([] { check_curvature_bias_inputs(false, true); }));
   check(refuses([] { check_curvature_bias_inputs(true, false); }));
-  std::cout
-      << "Engine identity, pose reset, rolling latency, planning time, curvature bias: PASS\n";
+  // The signal history: a row is followed by its lanelet, not its slot (the devkit's
+  // test_a_row_is_followed_by_its_lanelet_not_by_its_slot, at 0.5 s ticks here).
+  {
+    constexpr int64_t points = 2, channels = 13, offset = 8, rows = 3;
+    const auto rows_of = [&](const std::vector<int> &lights) {
+      std::vector<float> data(rows * points * channels, 0.0f);
+      for (size_t r = 0; r < lights.size(); ++r)
+        for (int64_t p = 0; p < points; ++p)
+          data[(r * points + p) * channels + offset + lights[r]] = 1.0f;
+      return data;
+    };
+    const auto light = [](const std::vector<float> &timeline, int64_t row, int step) {
+      int hot = -1;
+      for (int s = 0; s < SIGNAL_STATES; ++s)
+        if (timeline[(row * 3 + step) * SIGNAL_STATES + s] == 1.0f) hot = s;
+      return hot;  // -1: all zeros, not observed
+    };
+    const int green = 0, red = 2, none = 4;
+    const int64_t A = 11, B = 22, E = 33, tick = 500'000'000;
+    SignalHistory history(3, 0.5);
+    history.update(0 * tick, {A, B}, rows_of({green, none}), rows, points, channels, offset);
+    history.update(1 * tick, {B, A}, rows_of({none, green}), rows, points, channels, offset);
+    const auto now =
+      history.update(2 * tick, {B, A, E}, rows_of({none, red, red}), rows, points, channels, offset);
+    check(light(now, 1, 0) == green && light(now, 1, 1) == green && light(now, 1, 2) == red);
+    check(light(now, 0, 0) == none && light(now, 0, 2) == none);
+    check(light(now, 2, 0) == -1 && light(now, 2, 1) == -1 && light(now, 2, 2) == red);
+    // A stamp 0.3 s off the step is further than step_s / 2: not observed.
+    SignalHistory sparse(2, 0.5);
+    sparse.update(0, {A}, rows_of({green}), rows, points, channels, offset);
+    const auto late = sparse.update(800'000'000, {A}, rows_of({red}), rows, points, channels, offset);
+    check(late[0] == 0.0f && late[SIGNAL_STATES + red] == 1.0f);
+    // Time going backwards (a replay restarted) forgets everything before.
+    const auto reset = history.update(0, {A}, rows_of({red}), rows, points, channels, offset);
+    check(light(reset, 0, 0) == -1 && light(reset, 0, 2) == red);
+  }
+  check(refuses([] { SignalHistory(0, 0.5); }));
+  check(!refuses([] { check_signal_history_inputs(false, false, false); }));
+  check(!refuses([] { check_signal_history_inputs(true, true, true); }));
+  check(refuses([] { check_signal_history_inputs(false, true, true); }));
+  check(refuses([] { check_signal_history_inputs(true, false, false); }));
+  check(refuses([] { check_signal_history_inputs(true, true, false); }));
+  std::cout << "Engine identity, pose reset, rolling latency, planning time, curvature bias, "
+               "signal history: PASS\n";
 }

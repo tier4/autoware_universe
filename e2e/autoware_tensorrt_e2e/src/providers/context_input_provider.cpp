@@ -122,6 +122,15 @@ ContextInputProvider::ContextInputProvider(
   if (curvature_bias_enabled_) {
     curvature_bias_.emplace(bias_tau_s, bias_min_speed);
   }
+  signal_history_enabled_ =
+    node_.declare_parameter<bool>("context.signal_history.enabled", false);
+  const auto signal_steps = node_.declare_parameter<int64_t>("context.signal_history.steps", 7);
+  const double signal_step_s =
+    node_.declare_parameter<double>("context.signal_history.step_s", 0.5);
+  if (signal_history_enabled_) {
+    lane_signal_history_.emplace(static_cast<int>(signal_steps), signal_step_s);
+    route_signal_history_.emplace(static_cast<int>(signal_steps), signal_step_s);
+  }
 
   const double interval = node_.declare_parameter<double>("context.ego_history_interval_seconds", 0.1);
   if (interval != 0.1) {
@@ -258,6 +267,26 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
   }
   check_curvature_bias_inputs(
     curvature_bias_enabled_, find_spec(engine_inputs, CURVATURE_BIAS_TENSOR) != nullptr);
+  check_signal_history_inputs(
+    signal_history_enabled_, find_spec(engine_inputs, LANE_SIGNALS_TENSOR) != nullptr,
+    find_spec(engine_inputs, ROUTE_SIGNALS_TENSOR) != nullptr);
+  if (const auto * spec = claim(LANE_SIGNALS_TENSOR, lane_signals_shape_)) {
+    if (lanes_shape_.empty()) {
+      throw std::runtime_error("Model takes 'lane_signals' but not 'lanes', whose rows they follow");
+    }
+    validate_shape(
+      *spec, {1, lanes_shape_[1], lane_signal_history_->steps(), SIGNAL_STATES},
+      "each lane row's traffic light over time");
+  }
+  if (const auto * spec = claim(ROUTE_SIGNALS_TENSOR, route_signals_shape_)) {
+    if (route_lanes_shape_.empty()) {
+      throw std::runtime_error(
+        "Model takes 'route_signals' but not 'route_lanes', whose rows they follow");
+    }
+    validate_shape(
+      *spec, {1, route_lanes_shape_[1], route_signal_history_->steps(), SIGNAL_STATES},
+      "each route row's traffic light over time");
+  }
   if (const auto * spec = claim(CURVATURE_BIAS_TENSOR, curvature_bias_shape_)) {
     validate_shape(*spec, {1, 1}, "the steering sensor's curvature bias, 1/m");
     if (ego_current_state_shape_.empty()) {
@@ -326,6 +355,9 @@ void ContextInputProvider::on_map(const LaneletMapBin::ConstSharedPtr map_msg)
     lane_segment_context_ =
       std::make_unique<dp::preprocess::LaneSegmentContext>(lanelet_map_ptr, map_options_);
     map_error_.clear();
+    // Segment indices name other lanelets in a rebuilt table.
+    if (lane_signal_history_) lane_signal_history_->clear();
+    if (route_signal_history_) route_signal_history_->clear();
   } catch (const std::exception & e) {
     map_error_ = std::string("The vector map could not be loaded: ") + e.what();
     RCLCPP_ERROR_STREAM(node_.get_logger(), map_error_);
@@ -506,6 +538,14 @@ bool ContextInputProvider::collect_map_tensors(
   if (!lanes_shape_.empty()) {
     auto lane_slots = map_tensors::build_lanes(
       *lane_segment_context_, ego, traffic_light_id_map_, lanes_shape_[1]);
+    if (!lane_signals_shape_.empty()) {
+      // At the cloud stamp, where the lights were selected (select_traffic_signals_at).
+      inputs[LANE_SIGNALS_TENSOR] = Tensor::from_host(
+        lane_signals_shape_,
+        lane_signal_history_->update(
+          ego.sensor_stamp.nanoseconds(), lane_slots.indices, lane_slots.data, lanes_shape_[1],
+          lanes_shape_[2], lanes_shape_[3], dp::TRAFFIC_LIGHT));
+    }
     lane_segment_indices_ = std::move(lane_slots.indices);
     auto lanes_speed_limit = std::move(lane_slots.speed_limit);
     inputs["lanes"] = Tensor::from_host(lanes_shape_, std::move(lane_slots.data));
@@ -553,6 +593,13 @@ bool ContextInputProvider::collect_route_tensors(
     auto route_slots = map_tensors::build_route_lanes(
       *lane_segment_context_, ego, *route_ptr_, traffic_light_id_map_, route_lanes_shape_[1]);
     const std::vector<int64_t> & segment_indices = route_slots.indices;
+    if (!route_signals_shape_.empty()) {
+      inputs[ROUTE_SIGNALS_TENSOR] = Tensor::from_host(
+        route_signals_shape_,
+        route_signal_history_->update(
+          ego.sensor_stamp.nanoseconds(), route_slots.indices, route_slots.data,
+          route_lanes_shape_[1], route_lanes_shape_[2], route_lanes_shape_[3], dp::TRAFFIC_LIGHT));
+    }
     auto route_speed_limit = std::move(route_slots.speed_limit);
     inputs["route_lanes"] = Tensor::from_host(route_lanes_shape_, std::move(route_slots.data));
     if (!lanes_on_route_shape_.empty()) {

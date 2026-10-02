@@ -17,6 +17,7 @@
 
 #include "autoware/tensorrt_e2e/curvature_bias.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
+#include "autoware/tensorrt_e2e/signal_history.hpp"
 
 #include <autoware/diffusion_planner/conversion/agent.hpp>
 #include <autoware/diffusion_planner/preprocessing/lane_segments.hpp>
@@ -149,6 +150,13 @@ private:
   bool curvature_bias_enabled_{false};
   std::optional<CurvatureBiasFilter> curvature_bias_;
   std::optional<rclcpp::Time> curvature_bias_stamp_;
+  //! `lane_signals` / `route_signals` `[1, rows, steps, 5]`, signal-history graphs only;
+  //! each row followed by its segment over the ticks (cleared when the map is rebuilt).
+  std::vector<int64_t> lane_signals_shape_;
+  std::vector<int64_t> route_signals_shape_;
+  bool signal_history_enabled_{false};
+  std::optional<SignalHistory> lane_signal_history_;
+  std::optional<SignalHistory> route_signal_history_;
   std::vector<float> turn_indicators_constant_;
 
   // Subscriptions, created in the constructor (see the class comment). Turn indicators

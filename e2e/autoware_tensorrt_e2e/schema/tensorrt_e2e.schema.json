@@ -442,6 +442,26 @@
                   "exclusiveMinimum": 0
                 }
               }
+            },
+            "signal_history": {
+              "type": "object",
+              "description": "Every lane / route row's traffic light over the last seconds, fed as lane_signals / route_signals to a graph that reads them; each row followed by its lanelet. The ml_package file states it; the node refuses a graph and package that disagree.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "steps": {
+                  "type": "integer",
+                  "default": 7,
+                  "minimum": 1
+                },
+                "step_s": {
+                  "type": "number",
+                  "default": 0.5,
+                  "exclusiveMinimum": 0
+                }
+              }
             }
           }
         },
