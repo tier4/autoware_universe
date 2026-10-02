@@ -59,6 +59,13 @@ time_sequence_raw::TrajectoryOptimizationParams to_opt_params(
   out.goal.weight_yaw = p.goal.weight_yaw;
   out.goal.weight_velocity = p.goal.weight_velocity;
   out.goal.snap_distance_m = p.goal.snap_distance_m;
+  out.temporal_consistency.enable = p.temporal_consistency.enable;
+  out.temporal_consistency.weight_longitudinal = p.temporal_consistency.weight_longitudinal;
+  out.temporal_consistency.weight_lateral = p.temporal_consistency.weight_lateral;
+  out.temporal_consistency.weight_yaw = p.temporal_consistency.weight_yaw;
+  out.temporal_consistency.weight_velocity = p.temporal_consistency.weight_velocity;
+  out.temporal_consistency.decay_time_constant_s = p.temporal_consistency.decay_time_constant_s;
+  out.temporal_consistency.far_weight_ratio = p.temporal_consistency.far_weight_ratio;
   out.min_velocity_mps = p.min_velocity_mps;
   out.max_velocity_mps = p.max_velocity_mps;
   out.min_acceleration_mps2 = p.min_acceleration_mps2;
@@ -574,7 +581,8 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
     goal_pose = data.route->goal_pose;
   }
   const auto result = optimizer_->optimize(
-    reference, ocp_odom, steering, accel_mps2, data.candidate_index, goal_pose);
+    reference, ocp_odom, steering, accel_mps2, data.candidate_index, goal_pose,
+    last_shifted_point_count_ > 0);
   last_solver_status_ = result.solver_status;
   last_solve_time_ms_ = result.solve_time_ms;
 

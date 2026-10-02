@@ -981,6 +981,52 @@ trajectory_modifier_params:
         validation:
           gt_eq<>: [0.0]
         read_only: false
+    temporal_consistency:
+      enable:
+        type: bool
+        default_value: true
+        description: Add a weak cost that tracks the previous solved plan (same candidate)
+        read_only: false
+      weight_longitudinal:
+        type: double
+        default_value: 0.004
+        description: Temporal consistency weight along the previous heading at t=0 [1/m^2]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      weight_lateral:
+        type: double
+        default_value: 0.2
+        description: Temporal consistency weight perpendicular to the previous heading at t=0 [1/m^2]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      weight_yaw:
+        type: double
+        default_value: 0.002
+        description: Temporal consistency heading weight at t=0 [1/rad^2]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      weight_velocity:
+        type: double
+        default_value: 0.004
+        description: Temporal consistency velocity weight at t=0
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      decay_time_constant_s:
+        type: double
+        default_value: 1.0
+        description: Horizon decay time constant; <= 0 keeps temporal weights uniform [s]
+        read_only: false
+      far_weight_ratio:
+        type: double
+        default_value: 0.5
+        description: Fraction of temporal weight remaining at the far end of the horizon
+        validation:
+          bounds<>: [0.0, 1.0]
+        read_only: false
     min_velocity_mps:
       type: double
       default_value: 0.0

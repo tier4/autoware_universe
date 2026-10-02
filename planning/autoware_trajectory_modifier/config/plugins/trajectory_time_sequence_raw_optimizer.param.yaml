@@ -15,6 +15,16 @@
         weight_yaw: 0.5
         weight_velocity: 0.1
         snap_distance_m: 1.0
+      # ~0.01 of autoware_ml_planner yaml weights. Skipped while goal snap is
+      # latched or road-border avoidance shifted the reference.
+      temporal_consistency:
+        enable: true
+        weight_longitudinal: 0.004
+        weight_lateral: 0.2
+        weight_yaw: 0.002
+        weight_velocity: 0.004
+        decay_time_constant_s: 1.0
+        far_weight_ratio: 0.5
       min_velocity_mps: 0.0
       max_velocity_mps: 30.0
       min_acceleration_mps2: -4.0
