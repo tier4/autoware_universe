@@ -117,6 +117,86 @@ std::vector<std::optional<double>> to_steering_angles(
 }
 
 /**
+ * @brief Compute the curvature at each trajectory point from three points that are at least
+ * `curvature_distance` apart in arc length.
+ *
+ * Using immediately adjacent points is numerically unstable when the trajectory is densely sampled
+ * (e.g. right after the vehicle starts moving, where the point interval can be a few centimeters):
+ * a sub-millimeter lateral jitter then yields a huge curvature. Spreading the three points over a
+ * fixed arc length makes the estimate independent of the sampling interval.
+ *
+ * Points near the ends of the trajectory that have no sufficiently distant neighbor reuse the
+ * curvature of the nearest point that does. If no point satisfies the distance requirement (the
+ * trajectory is shorter than `2 * curvature_distance`), every curvature is `std::nullopt`.
+ */
+std::vector<std::optional<double>> to_curvatures(
+  const TrajectoryPoints & traj_points, double curvature_distance)
+{
+  std::vector<std::optional<double>> curvatures(traj_points.size(), std::nullopt);
+  if (traj_points.size() < 3) {
+    return curvatures;
+  }
+
+  std::vector<double> arc_length(traj_points.size(), 0.0);
+  for (size_t i = 1; i < traj_points.size(); ++i) {
+    arc_length[i] =
+      arc_length[i - 1] + autoware_utils_geometry::calc_distance2d(
+                            traj_points[i - 1].pose.position, traj_points[i].pose.position);
+  }
+
+  std::optional<size_t> first_valid_index;
+  std::optional<size_t> last_valid_index;
+  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
+    std::optional<size_t> prev_index;
+    for (size_t j = i; j-- > 0;) {
+      if (arc_length[i] - arc_length[j] >= curvature_distance) {
+        prev_index = j;
+        break;
+      }
+    }
+    if (!prev_index) {
+      continue;
+    }
+
+    std::optional<size_t> next_index;
+    for (size_t j = i + 1; j < traj_points.size(); ++j) {
+      if (arc_length[j] - arc_length[i] >= curvature_distance) {
+        next_index = j;
+        break;
+      }
+    }
+    if (!next_index) {
+      break;  // no later point can satisfy the requirement either
+    }
+
+    try {
+      curvatures[i] = autoware_utils_geometry::calc_curvature(
+        traj_points[*prev_index].pose.position, traj_points[i].pose.position,
+        traj_points[*next_index].pose.position);
+    } catch (...) {
+      curvatures[i] = 0.0;  // points are too close, treat as straight
+    }
+    if (!first_valid_index) {
+      first_valid_index = i;
+    }
+    last_valid_index = i;
+  }
+
+  if (!first_valid_index) {
+    return curvatures;
+  }
+
+  // Extend the first/last valid curvature to the points where the distance is not enough.
+  for (size_t i = 0; i < *first_valid_index; ++i) {
+    curvatures[i] = curvatures[*first_valid_index];
+  }
+  for (size_t i = *last_valid_index + 1; i < traj_points.size(); ++i) {
+    curvatures[i] = curvatures[*last_valid_index];
+  }
+  return curvatures;
+}
+
+/**
  * @brief Convert a lanelet's speed limit attribute to m/s, if it exists.
  */
 std::optional<double> to_lanelet_speed_limit_mps(const lanelet::ConstLanelet & lanelet)
@@ -470,26 +550,20 @@ std::pair<double, bool> is_lateral_acceleration_ok(
   double max_observed = 0.0;
   bool is_ok = true;
 
-  if (traj_points.size() < 3) {
-    return {max_observed, is_ok};
-  }
-
-  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
-    const auto & prev_p = traj_points[i - 1].pose.position;
-    const auto & curr_p = traj_points[i].pose.position;
-    const auto & next_p = traj_points[i + 1].pose.position;
-
-    try {
-      const double curvature = autoware_utils_geometry::calc_curvature(prev_p, curr_p, next_p);
-      const double longitudinal_velocity = traj_points[i].longitudinal_velocity_mps;
-      const double lateral_acceleration =
-        std::abs(longitudinal_velocity * longitudinal_velocity * curvature);
-      if (lateral_acceleration > max_lateral_acceleration) {
-        max_observed = std::max(max_observed, lateral_acceleration);
-        is_ok = false;
-      }
-    } catch (...) {  // skip if three points are too close
+  // Minimum arc length between the three points used to estimate the curvature. This keeps the
+  // estimate independent of the sampling interval; see `to_curvatures()`.
+  constexpr double curvature_distance = 1.0;  // [m]
+  const auto curvatures = to_curvatures(traj_points, curvature_distance);
+  for (size_t i = 0; i < traj_points.size(); ++i) {
+    if (!curvatures[i].has_value()) {
       continue;
+    }
+    const double longitudinal_velocity = traj_points[i].longitudinal_velocity_mps;
+    const double lateral_acceleration =
+      std::abs(longitudinal_velocity * longitudinal_velocity * curvatures[i].value());
+    if (lateral_acceleration > max_lateral_acceleration) {
+      max_observed = std::max(max_observed, lateral_acceleration);
+      is_ok = false;
     }
   }
 
