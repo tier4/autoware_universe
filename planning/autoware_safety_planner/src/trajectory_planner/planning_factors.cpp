@@ -16,20 +16,14 @@
 
 #include "../utils/frenet_utils.hpp"
 
-#include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
 #include <autoware_internal_planning_msgs/msg/safety_factor.hpp>
 #include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
 
 #include <algorithm>
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <stdexcept>
 #include <string>
 #include <utility>
-#include <variant>
 
 namespace autoware::safety_planner
 {
@@ -39,22 +33,6 @@ using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 
 namespace
 {
-
-std::optional<unique_identifier_msgs::msg::UUID> parse_uuid(const std::string & hex)
-{
-  if (hex.size() != 32) {
-    return std::nullopt;
-  }
-  unique_identifier_msgs::msg::UUID uuid;
-  try {
-    for (std::size_t i = 0; i < uuid.uuid.size(); ++i) {
-      uuid.uuid[i] = static_cast<std::uint8_t>(std::stoul(hex.substr(i * 2, 2), nullptr, 16));
-    }
-  } catch (const std::exception &) {
-    return std::nullopt;
-  }
-  return uuid;
-}
 
 std::string detail_of(const Source & source)
 {
@@ -67,42 +45,30 @@ std::string detail_of(const Source & source)
   return source.plugin_name + ": " + source.detail;
 }
 
-//! Object id and position when the constraint names a predicted object
+//! Object id and position of the predicted object named by the constraint. Empty when that object
+//! is not in the current predictions.
 SafetyFactorArray safety_factors_of(const Constraint & constraint, const PlannerContext & context)
 {
   SafetyFactorArray safety_factors;
-  const auto uuid = parse_uuid(constraint.source.target_id);
-  if (!uuid) {
-    safety_factors.is_safe = true;
+  safety_factors.is_safe = true;
+  if (!context.predicted_objects) {
     return safety_factors;
   }
 
-  SafetyFactor factor;
-  factor.type = SafetyFactor::OBJECT;
-  factor.object_id = *uuid;
-  factor.is_safe = false;
-  if (context.predicted_objects) {
-    for (const auto & object : context.predicted_objects->objects) {
-      if (autoware_utils_uuid::to_hex_string(object.object_id) != constraint.source.target_id) {
-        continue;
-      }
-      factor.points.push_back(object.kinematics.initial_pose_with_covariance.pose.position);
-      break;
+  for (const auto & object : context.predicted_objects->objects) {
+    if (autoware_utils_uuid::to_hex_string(object.object_id) != constraint.source.target_id) {
+      continue;
     }
+    SafetyFactor factor;
+    factor.type = SafetyFactor::OBJECT;
+    factor.object_id = object.object_id;
+    factor.is_safe = false;
+    factor.points.push_back(object.kinematics.initial_pose_with_covariance.pose.position);
+    safety_factors.is_safe = false;
+    safety_factors.detail = constraint.source.detail;
+    safety_factors.factors.push_back(std::move(factor));
+    break;
   }
-  if (factor.points.empty()) {
-    if (const auto * keep_out = std::get_if<KeepOut>(&constraint.payload)) {
-      if (!keep_out->waypoints.empty()) {
-        geometry_msgs::msg::Point point;
-        point.x = keep_out->waypoints.front().pose.position.x();
-        point.y = keep_out->waypoints.front().pose.position.y();
-        factor.points.push_back(point);
-      }
-    }
-  }
-  safety_factors.is_safe = false;
-  safety_factors.detail = constraint.source.detail;
-  safety_factors.factors.push_back(std::move(factor));
   return safety_factors;
 }
 
