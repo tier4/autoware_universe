@@ -34,40 +34,9 @@ namespace autoware::safety_planner::experimental
 namespace
 {
 
-constexpr double sample_interval_m = 1.0;  // resolution of the position a limit takes effect at
-constexpr double half_width_m = 5.0;       // half width of the band a limit is applied to
+constexpr double sample_interval_m = 1.0;  // resolution of the position for speed limit band
 
 // Band of half_width_m around the reference_path from s_begin to s_end
-Polygon2d make_band_polygon(
-  const PathPointTrajectory & path, const double s_begin, const double s_end)
-{
-  const auto num_division = std::max<std::size_t>(
-    1, static_cast<std::size_t>(std::ceil((s_end - s_begin) / sample_interval_m)));
-  std::vector<Pose2d> centerline;
-  centerline.reserve(num_division + 1);
-  for (std::size_t i = 0; i <= num_division; ++i) {
-    const double s = std::min(s_begin + static_cast<double>(i) * sample_interval_m, s_end);
-    const auto position = path.compute(s).point.pose.position;
-    centerline.push_back(Pose2d{Point2d{position.x, position.y}, path.azimuth(s)});
-  }
-
-  Polygon2d polygon;
-  auto & ring = polygon.outer();
-  ring.reserve(2 * centerline.size() + 1);
-  for (const auto & pose : centerline) {
-    ring.emplace_back(
-      pose.position.x() - half_width_m * std::sin(pose.yaw),
-      pose.position.y() + half_width_m * std::cos(pose.yaw));
-  }
-  for (auto it = centerline.rbegin(); it != centerline.rend(); ++it) {
-    ring.emplace_back(
-      it->position.x() + half_width_m * std::sin(it->yaw),
-      it->position.y() - half_width_m * std::cos(it->yaw));
-  }
-  boost::geometry::correct(polygon);
-  return polygon;
-}
-
 std::optional<std::size_t> match_belonging_lanelet(
   const lanelet::ConstLanelets & lanelets, const std::size_t from,
   const lanelet::BasicPoint2d & point)
@@ -124,11 +93,13 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
     // always on the route lanelets
     index = match_belonging_lanelet(lanelets, index, lanelet::BasicPoint2d(position.x, position.y))
               .value_or(index);
-    if (spans.empty() || spans.back().lanelet_index != index) {
-      if (!spans.empty()) {
-        spans.back().s_end = s;
-      }
-      spans.push_back(LaneletSpan{index, spans.empty() ? 0.0 : s, length});
+    if (spans.empty()) {
+      spans.push_back(LaneletSpan{index, 0.0, 0.0});
+    } else if (spans.back().lanelet_index == index) {
+      spans.back().s_end = s;
+    } else {
+      spans.back().s_end = s;
+      spans.push_back(LaneletSpan{index, s, s});
     }
   }
 
@@ -137,11 +108,8 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
     const double v_limit =
       static_cast<double>(traffic_rules->speedLimit(lanelet).speedLimit.value());
 
-    auto region = make_band_polygon(path, span.s_begin, span.s_end);
-    // The path is built from the map, but a degenerate one is no region
-    if (region.outer().size() < 4) {
-      continue;
-    }
+    Polygon2d region;
+    boost::geometry::convert(lanelet.polygon2d(), region);
 
     Constraint constraint;
     constraint.payload = SpeedLimitZone{
