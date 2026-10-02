@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__TENSORRT_E2E__PROVIDERS__CONTEXT_INPUT_PROVIDER_HPP_
 #define AUTOWARE__TENSORRT_E2E__PROVIDERS__CONTEXT_INPUT_PROVIDER_HPP_
 
+#include "autoware/tensorrt_e2e/curvature_bias.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
 
 #include <autoware/diffusion_planner/conversion/agent.hpp>
@@ -142,6 +143,12 @@ private:
   std::vector<int64_t> ego_shape_shape_;
   std::vector<int64_t> turn_indicators_shape_;
   std::vector<int64_t> sensor_latency_shape_;  //!< Planning-time graphs only.
+  //! `ego_curvature_bias` `[1, 1]`, complementary-steer graphs only; its filter ticks once
+  //! per collect, on the values that tick's `ego_current_state` carries.
+  std::vector<int64_t> curvature_bias_shape_;
+  bool curvature_bias_enabled_{false};
+  std::optional<CurvatureBiasFilter> curvature_bias_;
+  std::optional<rclcpp::Time> curvature_bias_stamp_;
   std::vector<float> turn_indicators_constant_;
 
   // Subscriptions, created in the constructor (see the class comment). Turn indicators

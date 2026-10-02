@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/tensorrt_e2e/curvature_bias.hpp"
 #include "autoware/tensorrt_e2e/engine_identity.hpp"
 #include "autoware/tensorrt_e2e/planning_time.hpp"
 #include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
@@ -99,6 +100,29 @@ int main(int argc, char **argv) {
   check(planning_stamp_ns(PlanningTime::kPlanningTime, cloud, odometry) == odometry);
   check(planning_stamp_ns(PlanningTime::kPlanningTime, cloud, cloud) == cloud);
   check(!planning_stamp_ns(PlanningTime::kPlanningTime, cloud, cloud - 1));
+  // The curvature bias, tick for tick as OnePlanner's projects/resworld/curvature_bias.py
+  // runs it over these frames (values printed by that function, L = 2.75 m): held at
+  // rest and below 1 m/s, started on the first moving tick, signed through a reverse.
+  {
+    const double v[] = {0.0, 0.0, 0.5, 3.0, 6.0, 8.0, 8.0, 0.4, 0.0, 7.0, 9.0, -2.0, 10.0};
+    const double r[] = {0.0, 0.01, 0.02, 0.05, 0.06, 0.08, -0.04, 0.0, 0.0, 0.07, 0.09, 0.01, 0.1};
+    const double s[] = {0.01, 0.01, 0.02, 0.03, 0.02, 0.03, -0.01, 0.0, 0.0, 0.025, 0.03, 0.0,
+                        0.028};
+    const double b[] = {0.0, 0.0, 0.0, 5.754301851692e-03, 5.606624598994e-03,
+                        5.288689733601e-03, 4.964257873251e-03, 4.964257873251e-03,
+                        4.964257873251e-03, 4.766392655051e-03, 4.489436385117e-03,
+                        4.026631111451e-03, 3.821252805637e-03};
+    CurvatureBiasFilter filter(2.0, 1.0);
+    for (int i = 0; i < 13; ++i) {
+      filter.update(v[i], r[i], s[i], 2.75, 0.1);
+      check(std::abs(filter.value() - b[i]) <= 1e-7 * std::abs(b[i]) + 1e-12);
+    }
+  }
+  check(refuses([] { CurvatureBiasFilter(0.0, 1.0); }));
+  check(!refuses([] { check_curvature_bias_inputs(false, false); }));
+  check(!refuses([] { check_curvature_bias_inputs(true, true); }));
+  check(refuses([] { check_curvature_bias_inputs(false, true); }));
+  check(refuses([] { check_curvature_bias_inputs(true, false); }));
   std::cout
-      << "Engine identity, pose reset, rolling latency, planning time: PASS\n";
+      << "Engine identity, pose reset, rolling latency, planning time, curvature bias: PASS\n";
 }

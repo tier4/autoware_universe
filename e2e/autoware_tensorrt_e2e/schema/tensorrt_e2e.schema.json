@@ -422,6 +422,26 @@
                   "description": "Subscribe to the turn-indicator report for a model that declares the tensor. False for a network whose graph carries the input but never reads it: the node binds a constant and subscribes to nothing."
                 }
               }
+            },
+            "curvature_bias": {
+              "type": "object",
+              "description": "The steering sensor's curvature bias a ResWorld complementary-steer graph reads as ego_curvature_bias, low-passed from the EKF yaw rate once per planning tick. The ml_package file states it; the node refuses a graph and package that disagree.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "tau_s": {
+                  "type": "number",
+                  "default": 2.0,
+                  "exclusiveMinimum": 0
+                },
+                "min_speed_mps": {
+                  "type": "number",
+                  "default": 1.0,
+                  "exclusiveMinimum": 0
+                }
+              }
             }
           }
         },

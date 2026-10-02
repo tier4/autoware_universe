@@ -114,6 +114,14 @@ ContextInputProvider::ContextInputProvider(
   map_options_.line_string_max_step_m =
     node_.declare_parameter<double>("context.line_string_max_step_m", 5.0);
   use_time_interpolation_ = node_.declare_parameter<bool>("context.use_time_interpolation", true);
+  curvature_bias_enabled_ =
+    node_.declare_parameter<bool>("context.curvature_bias.enabled", false);
+  const double bias_tau_s = node_.declare_parameter<double>("context.curvature_bias.tau_s", 2.0);
+  const double bias_min_speed =
+    node_.declare_parameter<double>("context.curvature_bias.min_speed_mps", 1.0);
+  if (curvature_bias_enabled_) {
+    curvature_bias_.emplace(bias_tau_s, bias_min_speed);
+  }
 
   const double interval = node_.declare_parameter<double>("context.ego_history_interval_seconds", 0.1);
   if (interval != 0.1) {
@@ -247,6 +255,15 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
     // Present only in a planning-time graph; the node has already checked that the
     // package plans that way (check_planning_time_inputs).
     validate_shape(*spec, {1, 1}, "seconds from the cloud stamp to planning");
+  }
+  check_curvature_bias_inputs(
+    curvature_bias_enabled_, find_spec(engine_inputs, CURVATURE_BIAS_TENSOR) != nullptr);
+  if (const auto * spec = claim(CURVATURE_BIAS_TENSOR, curvature_bias_shape_)) {
+    validate_shape(*spec, {1, 1}, "the steering sensor's curvature bias, 1/m");
+    if (ego_current_state_shape_.empty()) {
+      throw std::runtime_error(
+        "Model takes 'ego_curvature_bias' but not 'ego_current_state', whose values it filters");
+    }
   }
   if (const auto * spec = claim("turn_indicators", turn_indicators_shape_)) {
     if (spec->shape.size() != 2 || spec->shape[0] != 1) {
@@ -429,6 +446,26 @@ bool ContextInputProvider::collect_ego_tensors(
            static_cast<float>(accel.y), *ego.steering_angle,
            static_cast<float>(twist.angular.z)});
     }
+  }
+
+  if (!curvature_bias_shape_.empty()) {
+    // The same values ego_current_state carries this tick (the branch above, which has
+    // already refused a tick without the steering report this needs).
+    if (!ego.steering_angle) {
+      error = "No steering report received yet (required by 'ego_curvature_bias')";
+      return false;
+    }
+    const auto & twist = ego.odometry.twist.twist;
+    const double dt_s =
+      curvature_bias_stamp_ ? (ego.stamp - *curvature_bias_stamp_).seconds() : 0.0;
+    if (!curvature_bias_stamp_ || dt_s > 0.0) {
+      curvature_bias_->update(
+        twist.linear.x, twist.angular.z, *ego.steering_angle, wheel_base_, dt_s);
+      curvature_bias_stamp_ = ego.stamp;
+    }
+    // Raw 1/m; the graph never normalises it.
+    inputs[CURVATURE_BIAS_TENSOR] =
+      Tensor::from_host(curvature_bias_shape_, {curvature_bias_->value()});
   }
 
   if (!sensor_latency_shape_.empty()) {
