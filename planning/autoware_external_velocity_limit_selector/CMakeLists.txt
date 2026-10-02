@@ -16,9 +16,11 @@ target_link_libraries(external_velocity_limit_selector_node
   external_velocity_limit_selector_parameters
 )
 
-rclcpp_components_register_node(external_velocity_limit_selector_node
+autoware_agnocast_wrapper_register_node(external_velocity_limit_selector_node
   PLUGIN "autoware::external_velocity_limit_selector::ExternalVelocityLimitSelectorNode"
   EXECUTABLE external_velocity_limit_selector
+  ROS2_EXECUTOR SingleThreadedExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlySingleThreadedExecutor
 )
 
 if(BUILD_TESTING)

@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__EXTERNAL_VELOCITY_LIMIT_SELECTOR__EXTERNAL_VELOCITY_LIMIT_SELECTOR_NODE_HPP_
 #define AUTOWARE__EXTERNAL_VELOCITY_LIMIT_SELECTOR__EXTERNAL_VELOCITY_LIMIT_SELECTOR_NODE_HPP_
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <external_velocity_limit_selector_parameters.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -36,21 +37,22 @@ using autoware_internal_planning_msgs::msg::VelocityLimitConstraints;
 
 using VelocityLimitTable = std::unordered_map<std::string, VelocityLimit>;
 
-class ExternalVelocityLimitSelectorNode : public rclcpp::Node
+class ExternalVelocityLimitSelectorNode : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit ExternalVelocityLimitSelectorNode(const rclcpp::NodeOptions & node_options);
 
-  void onVelocityLimitFromAPI(const VelocityLimit::ConstSharedPtr msg);
-  void onVelocityLimitFromInternal(const VelocityLimit::ConstSharedPtr msg);
-  void onVelocityLimitClearCommand(const VelocityLimitClearCommand::ConstSharedPtr msg);
+  void onVelocityLimitFromAPI(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(VelocityLimit) & msg);
+  void onVelocityLimitFromInternal(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(VelocityLimit) & msg);
+  void onVelocityLimitClearCommand(
+    const AUTOWARE_MESSAGE_CONST_SHARED_PTR(VelocityLimitClearCommand) & msg);
 
 private:
-  rclcpp::Subscription<VelocityLimit>::SharedPtr sub_external_velocity_limit_from_api_;
-  rclcpp::Subscription<VelocityLimit>::SharedPtr sub_external_velocity_limit_from_internal_;
-  rclcpp::Subscription<VelocityLimitClearCommand>::SharedPtr sub_velocity_limit_clear_command_;
-  rclcpp::Publisher<VelocityLimit>::SharedPtr pub_external_velocity_limit_;
-  rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_string_;
+  AUTOWARE_SUBSCRIPTION_PTR(VelocityLimit) sub_external_velocity_limit_from_api_;
+  AUTOWARE_SUBSCRIPTION_PTR(VelocityLimit) sub_external_velocity_limit_from_internal_;
+  AUTOWARE_SUBSCRIPTION_PTR(VelocityLimitClearCommand) sub_velocity_limit_clear_command_;
+  AUTOWARE_PUBLISHER_PTR(VelocityLimit) pub_external_velocity_limit_;
+  AUTOWARE_PUBLISHER_PTR(StringStamped) pub_debug_string_;
 
   void publishVelocityLimit(const VelocityLimit & velocity_limit);
   void setVelocityLimitFromAPI(const VelocityLimit & velocity_limit);

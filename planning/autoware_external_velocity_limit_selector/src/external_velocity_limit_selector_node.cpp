@@ -143,7 +143,7 @@ ExternalVelocityLimitSelectorNode::ExternalVelocityLimitSelectorNode(
 }
 
 void ExternalVelocityLimitSelectorNode::onVelocityLimitFromAPI(
-  const VelocityLimit::ConstSharedPtr msg)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(VelocityLimit) & msg)
 {
   RCLCPP_DEBUG(get_logger(), "set velocity limit. sender:%s", msg->sender.c_str());
   setVelocityLimitFromAPI(*msg);
@@ -155,7 +155,7 @@ void ExternalVelocityLimitSelectorNode::onVelocityLimitFromAPI(
 }
 
 void ExternalVelocityLimitSelectorNode::onVelocityLimitFromInternal(
-  const VelocityLimit::ConstSharedPtr msg)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(VelocityLimit) & msg)
 {
   RCLCPP_DEBUG(get_logger(), "set velocity limit. sender:%s", msg->sender.c_str());
   setVelocityLimitFromInternal(*msg);
@@ -167,7 +167,7 @@ void ExternalVelocityLimitSelectorNode::onVelocityLimitFromInternal(
 }
 
 void ExternalVelocityLimitSelectorNode::onVelocityLimitClearCommand(
-  const VelocityLimitClearCommand::ConstSharedPtr msg)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(VelocityLimitClearCommand) & msg)
 {
   if (!msg->command) {
     return;
