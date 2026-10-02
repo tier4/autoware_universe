@@ -51,6 +51,8 @@ using diagnostic_msgs::msg::DiagnosticStatus;
 namespace
 {
 constexpr int64_t LOG_THROTTLE_INTERVAL_MS = 5000;
+//! Below this EKF speed the ego stands still: the loader's "moving" threshold.
+constexpr double STANDSTILL_SPEED_MPS = 0.2;
 }  // namespace
 
 TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
@@ -828,6 +830,15 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       "debug/sensor_latency_ms", sensor_latency_ms);
   if (planning_time_ == PlanningTime::kPlanningTime) {
     diagnostics_->add_key_value("sensor_latency_ms", sensor_latency_ms);
+  }
+  // The acceleration the node feeds while the ego stands still. A sustained
+  // +0.2 m/s^2 there makes the kinematic models leave 91 % of the stops a human
+  // held (2026-10-02 audit 4.5), so a false start is traced by this first.
+  if (ego->acceleration && std::abs(ego->odometry.twist.twist.linear.x) < STANDSTILL_SPEED_MPS) {
+    const double standstill_accel = ego->acceleration->accel.accel.linear.x;
+    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/standstill_acceleration_mps2", standstill_accel);
+    diagnostics_->add_key_value("standstill_acceleration_mps2", standstill_accel);
   }
   publish_debug_timing(published_at, *ego, timing);
   // Against the interval this run actually had, not a configured one: the pace
