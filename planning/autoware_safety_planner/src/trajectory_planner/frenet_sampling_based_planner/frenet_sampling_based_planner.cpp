@@ -16,6 +16,7 @@
 
 #include "../../utils/frenet_utils.hpp"
 #include "../../utils/velocity_optimizer.hpp"
+#include "../planning_factors.hpp"
 
 #include <autoware_frenet_planner/polynomials.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -366,9 +367,10 @@ std::optional<double> FrenetSamplingBasedPlanner::PreviousLateral::at(const doub
 }
 
 void FrenetSamplingBasedPlanner::on_initialize(
-  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params)
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
+  rclcpp::Node * node)
 {
-  TrajectoryPlannerInterface::on_initialize(time_keeper, params);
+  TrajectoryPlannerInterface::on_initialize(time_keeper, params, node);
   const TurnSignalParams turn_signal_params{
     params.turn_signal.search_distance, params.turn_signal.min_blink_duration,
     params.turn_signal.stopped_velocity_threshold, params.turn_signal.heading_align_threshold};
@@ -398,7 +400,7 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
     if (
       auto trajectory = plan_one_side(
         input.context, grid, input.normal_constraints, normal_previous_trajectory_,
-        result.normal_debug)) {
+        result.normal_debug, normal_planning_factor_interface_.get())) {
       auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
         "decide_turn_indicators", *time_keeper_);
       const auto turn_indicators =
@@ -416,7 +418,7 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
     if (
       auto trajectory = plan_one_side(
         input.context, grid, input.cautious_constraints, cautious_previous_trajectory_,
-        result.cautious_debug)) {
+        result.cautious_debug, cautious_planning_factor_interface_.get())) {
       auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
         "decide_turn_indicators", *time_keeper_);
       const auto turn_indicators =
@@ -432,6 +434,8 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
     result.cautious_trajectory = result.normal_trajectory;
     result.cautious_debug = result.normal_debug;
     cautious_previous_trajectory_ = normal_previous_trajectory_;
+    copy_planning_factors(
+      normal_planning_factor_interface_.get(), cautious_planning_factor_interface_.get());
   }
   return result;
 }
@@ -439,7 +443,8 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
 std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   const PlannerContext & context, const ReferenceGrid & grid,
   const std::vector<Constraint> & constraints,
-  const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug)
+  const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug,
+  PlanningFactorInterface * planning_factor_interface)
 {
   // The phases below are timed one after another rather than through nested scopes, so that the
   // tree published on ~/debug/processing_time_detail_ms lists them as siblings under
@@ -462,6 +467,8 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
     "compile_constraint_list", *time_keeper_);
   const auto compiled_constraints = compile_constraint_list(context, simplified_constraints);
+  add_planning_factors(
+    planning_factor_interface, context, compiled_constraints, params_.trajectory_horizon_s);
 
   phase.reset();
   phase =

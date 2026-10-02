@@ -64,7 +64,7 @@ SafetyPlannerNode::SafetyPlannerNode(const rclcpp::NodeOptions & options)
   time_keeper_ =
     std::make_shared<autoware_utils_debug::TimeKeeper>(debug_processing_time_detail_pub_);
 
-  planner_ = std::make_unique<SafetyPlanner>(params_, time_keeper_);
+  planner_ = std::make_unique<SafetyPlanner>(params_, time_keeper_, this);
   for (const auto & name : planner_->get_constraint_generator_plugin_names()) {
     constraint_debug_marker_publishers_[name] =
       this->create_publisher<MarkerArray>("~/debug/constraints/" + name, 1);
@@ -191,6 +191,7 @@ void SafetyPlannerNode::on_timer()
       planned.error().c_str());
 
     publish_trajectories(SafetyPlannerResult{});
+    planner_->publish_planning_factors();
     return;
   }
   const auto & result = planned.value();
@@ -205,9 +206,7 @@ void SafetyPlannerNode::on_timer()
 
     publish_planner_debug_trajectories(result.debug);
     publish_debug_markers(result.debug);
-
-    // TODO(odashima): publish planning factors?
-    // publish_planning_factors();
+    planner_->publish_planning_factors();
   }
 }
 
