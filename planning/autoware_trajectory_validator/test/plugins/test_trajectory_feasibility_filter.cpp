@@ -26,6 +26,7 @@
 #include <lanelet2_core/primitives/LineString.h>
 #include <tf2/LinearMath/Quaternion.h>
 
+#include <cmath>
 #include <memory>
 
 namespace
@@ -815,6 +816,21 @@ TEST(IsVelocityDeviationOkTest, FalseWhenVelocityDeviationAboveMax)
   EXPECT_FALSE(is_ok);
 }
 
+TEST(IsLateralAccelerationOkTest, TrueWhenAllLateralAccelerationsBelowMax)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 10.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 0.0, 0.0, 10.0, 0.0, 0.1),
+    create_trajectory_point(2.0, 0.0, 0.0, 10.0, 0.0, 0.2),
+    create_trajectory_point(3.0, 0.0, 0.0, 10.0, 0.0, 0.3),
+    create_trajectory_point(4.0, 0.0, 0.0, 10.0, 0.0, 0.4)};
+
+  const auto [max_observed, is_ok] = is_lateral_acceleration_ok(traj_points, 1.0);
+
+  EXPECT_TRUE(is_ok);
+  EXPECT_DOUBLE_EQ(max_observed, 0.0);
+}
+
 TEST(IsLateralAccelerationOkTest, FalseWhenAnyLateralAccelerationAboveMax)
 {
   TrajectoryPoints traj_points = {
@@ -827,6 +843,65 @@ TEST(IsLateralAccelerationOkTest, FalseWhenAnyLateralAccelerationAboveMax)
   const auto [_, is_ok] = is_lateral_acceleration_ok(traj_points, 1.0);
 
   EXPECT_FALSE(is_ok);
+}
+
+// Right after the vehicle starts moving, the trajectory is densely sampled (a few centimeters
+// between points) while the planned velocity is already non-zero. A sub-millimeter lateral jitter
+// must not be interpreted as a large curvature.
+TEST(IsLateralAccelerationOkTest, TrueForDenselySampledStraightTrajectoryWithJitter)
+{
+  TrajectoryPoints traj_points;
+  constexpr size_t num_points = 301;
+  constexpr double interval = 0.01;  // [m]
+  constexpr double jitter = 0.0005;  // [m]
+  constexpr double velocity = 3.0;   // [m/s]
+  for (size_t i = 0; i < num_points; ++i) {
+    const double x = interval * static_cast<double>(i);
+    // period-3 pattern so that points one meter apart are not trivially collinear
+    const double y = (i % 3 == 0) ? jitter : (i % 3 == 1) ? -jitter : 0.0;
+    traj_points.push_back(create_trajectory_point(
+      x, y, 0.0, velocity, 0.0, static_cast<double>(i) * interval / velocity));
+  }
+
+  const auto [max_observed, is_ok] = is_lateral_acceleration_ok(traj_points, 9.8);
+
+  EXPECT_TRUE(is_ok) << "max observed lateral acceleration: " << max_observed;
+}
+
+// A real turn must still be detected when the trajectory is densely sampled.
+TEST(IsLateralAccelerationOkTest, FalseForDenselySampledCurvedTrajectory)
+{
+  TrajectoryPoints traj_points;
+  constexpr double radius = 5.0;     // [m] -> curvature 0.2
+  constexpr double velocity = 10.0;  // [m/s] -> lateral acceleration 20 m/s^2
+  constexpr double interval = 0.01;  // [m]
+  constexpr double length = 4.0;     // [m]
+  for (double s = 0.0; s <= length; s += interval) {
+    const double theta = s / radius;
+    traj_points.push_back(create_trajectory_point(
+      radius * std::sin(theta), radius * (1.0 - std::cos(theta)), 0.0, velocity, 0.0,
+      s / velocity));
+  }
+
+  const auto [max_observed, is_ok] = is_lateral_acceleration_ok(traj_points, 9.8);
+
+  EXPECT_FALSE(is_ok);
+  EXPECT_NEAR(max_observed, velocity * velocity / radius, 0.5);
+}
+
+// When the trajectory is too short to spread the curvature points, no point can be evaluated and
+// the check does not report a violation.
+TEST(IsLateralAccelerationOkTest, TrueWhenTrajectoryTooShortToEstimateCurvature)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 10.0, 0.0, 0.0),
+    create_trajectory_point(0.1, 0.05, 0.0, 10.0, 0.0, 0.01),
+    create_trajectory_point(0.2, 0.0, 0.0, 10.0, 0.0, 0.02)};
+
+  const auto [max_observed, is_ok] = is_lateral_acceleration_ok(traj_points, 1.0);
+
+  EXPECT_TRUE(is_ok);
+  EXPECT_DOUBLE_EQ(max_observed, 0.0);
 }
 
 TEST(IsDistanceDeviationOkTest, FalseWhenDistanceDeviationAboveMax)

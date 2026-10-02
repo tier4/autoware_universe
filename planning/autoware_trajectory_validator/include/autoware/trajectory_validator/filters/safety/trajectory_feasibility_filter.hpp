@@ -149,6 +149,11 @@ std::pair<double, bool> is_velocity_deviation_ok(
 /**
  * @brief Check if the trajectory respects the maximum lateral acceleration constraint.
  *
+ * The lateral acceleration at each point is `v^2 * curvature`, where the curvature is estimated
+ * from three points spread at least a fixed arc length (1.0 m) apart so that densely sampled
+ * sections (e.g. right after the vehicle starts moving) do not produce spurious spikes. Points
+ * whose curvature cannot be estimated are skipped.
+ *
  * @param traj_points Vector of trajectory points to check
  * @param max_lateral_acceleration Maximum allowed absolute lateral acceleration (m/s^2)
  * @return Pair of max observation and a boolean indicating if no point violated
