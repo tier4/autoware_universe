@@ -54,15 +54,56 @@ TrajectoryOptimizer::TrajectoryOptimizer(
 {
 }
 
+void TrajectoryOptimizer::set_goal(const std::optional<geometry_msgs::msg::Pose> & goal_pose)
+{
+  if (!goal_pose) {
+    return;
+  }
+  const bool goal_position_changed =
+    !observed_goal_pose_ ||
+    std::hypot(
+      goal_pose->position.x - observed_goal_pose_->position.x,
+      goal_pose->position.y - observed_goal_pose_->position.y) > goal_position_change_threshold_m;
+  if (goal_position_changed) {
+    latched_goal_pose_.reset();
+    for (auto & previous : previous_solutions_) {
+      previous.reset();
+    }
+  }
+  observed_goal_pose_ = goal_pose;
+  if (latched_goal_pose_) {
+    latched_goal_pose_ = goal_pose;
+  }
+}
+
+void TrajectoryOptimizer::latch_goal_if_reached(const Trajectory & reference)
+{
+  if (latched_goal_pose_ || !observed_goal_pose_ || reference.points.size() < opt_horizon) {
+    return;
+  }
+  const auto & terminal = reference.points[opt_horizon - 1].pose.position;
+  const double distance = std::hypot(
+    terminal.x - observed_goal_pose_->position.x, terminal.y - observed_goal_pose_->position.y);
+  if (distance <= params_.goal.snap_distance_m) {
+    latched_goal_pose_ = observed_goal_pose_;
+  }
+}
+
+void TrajectoryOptimizer::accept(const size_t batch_index, const OptimizationResult & result)
+{
+  if (batch_index < previous_solutions_.size()) {
+    previous_solutions_[batch_index] = result.solution;
+  }
+}
+
 OptimizationResult TrajectoryOptimizer::optimize(
-  const Trajectory & raw_trajectory, const Odometry & ego_odometry,
-  const double current_steering_angle_rad, const size_t batch_index,
-  const std::optional<geometry_msgs::msg::Pose> & goal_pose)
+  const Trajectory & reference, const Odometry & ego_odometry,
+  const double current_steering_angle_rad, const size_t batch_index) const
 {
   OptimizationResult result;
-  result.trajectory = raw_trajectory;
+  result.trajectory = reference;
 
-  if (raw_trajectory.points.size() < opt_horizon || batch_index >= previous_solutions_.size()) {
+  if (reference.points.size() < opt_horizon || batch_index >= previous_solutions_.size()) {
     return result;
   }
 
@@ -81,42 +122,18 @@ OptimizationResult TrajectoryOptimizer::optimize(
 
   const std::array<double, opt_nx> initial_state{0.0, 0.0, yaw0, v0, delta0};
 
-  // References for stages 1..N from the raw 80-point sequence (t = k * 0.1 s).
+  // References for stages 1..N from the 80-point reference sequence (t = k * 0.1 s).
   // Yaw is unwrapped so the reference stays continuous across the +-pi boundary.
   std::array<StageReference, opt_horizon> references;
   double previous_yaw = yaw0;
   for (size_t k = 0; k < opt_horizon; ++k) {
-    const auto & point = raw_trajectory.points[k];
+    const auto & point = reference.points[k];
     StageReference & ref = references[k];
     ref.x = point.pose.position.x - base_x;
     ref.y = point.pose.position.y - base_y;
     const double raw_yaw = yaw_from_quaternion(point.pose.orientation);
     ref.yaw = previous_yaw + autoware_utils::normalize_radian(raw_yaw - previous_yaw);
     previous_yaw = ref.yaw;
-  }
-
-  if (goal_pose) {
-    const bool goal_position_changed =
-      !observed_goal_pose_ ||
-      std::hypot(
-        goal_pose->position.x - observed_goal_pose_->position.x,
-        goal_pose->position.y - observed_goal_pose_->position.y) > goal_position_change_threshold_m;
-    if (goal_position_changed) {
-      latched_goal_pose_.reset();
-      for (auto & previous : previous_solutions_) {
-        previous.reset();
-      }
-    }
-    observed_goal_pose_ = goal_pose;
-
-    const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
-    const double distance =
-      std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
-    if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
-      latched_goal_pose_ = goal_pose;
-    } else if (latched_goal_pose_) {
-      latched_goal_pose_ = goal_pose;
-    }
   }
 
   std::optional<GoalTerminalReference> goal_terminal_reference;
@@ -132,12 +149,12 @@ OptimizationResult TrajectoryOptimizer::optimize(
   }
 
   // Warm start from the previous solution of this candidate, re-centered on the current
-  // ego position. Discarded when stale.
-  const rclcpp::Time stamp(raw_trajectory.header.stamp);
+  // ego position. Ignored when stale.
+  const rclcpp::Time stamp(reference.header.stamp);
   const bool goal_active = goal_terminal_reference.has_value();
   SolverSolution warm_start;
   const SolverSolution * warm_start_ptr = nullptr;
-  auto & previous = previous_solutions_[batch_index];
+  const auto & previous = previous_solutions_[batch_index];
   if (previous.has_value()) {
     const double age_s = (stamp - previous->stamp).seconds();
     if (age_s >= 0.0 && age_s <= max_warm_start_age_s && previous->goal_active == goal_active) {
@@ -147,8 +164,6 @@ OptimizationResult TrajectoryOptimizer::optimize(
         state[1] -= base_y;
       }
       warm_start_ptr = &warm_start;
-    } else {
-      previous.reset();
     }
   }
 
@@ -194,7 +209,6 @@ OptimizationResult TrajectoryOptimizer::optimize(
   result.solve_time_ms = solution.solve_time_s * 1e3;
 
   if (!solution.success()) {
-    previous.reset();
     return result;
   }
 
@@ -202,7 +216,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
   // as the raw model output). Stage 0 is the base_link initial state and is not published,
   // but the whole solution is dynamically consistent with it.
   Trajectory optimized;
-  optimized.header = raw_trajectory.header;
+  optimized.header = reference.header;
   optimized.points.reserve(opt_horizon);
   for (size_t i = 1; i <= opt_horizon; ++i) {
     const auto & state = solution.states[i];
@@ -213,7 +227,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
       static_cast<uint32_t>((time_s - point.time_from_start.sec) * 1e9);
     point.pose.position.x = state[0] + base_x;
     point.pose.position.y = state[1] + base_y;
-    point.pose.position.z = raw_trajectory.points[i - 1].pose.position.z;
+    point.pose.position.z = reference.points[i - 1].pose.position.z;
     point.pose.orientation =
       autoware_utils::create_quaternion_from_yaw(autoware_utils::normalize_radian(state[2]));
     point.longitudinal_velocity_mps = static_cast<float>(state[3]);
@@ -225,12 +239,12 @@ OptimizationResult TrajectoryOptimizer::optimize(
   result.trajectory = std::move(optimized);
   result.optimized = true;
 
-  // Store the solution in map frame for the next cycle's warm start.
+  // Keep the solution in map frame for the next cycle's warm start (see accept()).
   for (auto & state : solution.states) {
     state[0] += base_x;
     state[1] += base_y;
   }
-  previous = PreviousSolution{solution, stamp, goal_active};
+  result.solution = StoredSolution{solution, stamp, goal_active};
 
   return result;
 }

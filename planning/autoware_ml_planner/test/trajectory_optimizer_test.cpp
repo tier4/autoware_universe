@@ -126,6 +126,8 @@ TEST_F(TrajectoryOptimizerTest, WarmStartAcrossCycles)
   const auto raw = make_noisy_trajectory(8.0, 0.15);
   const auto first = optimizer.optimize(raw, odometry_, 0.0, 0);
   ASSERT_TRUE(first.optimized);
+  ASSERT_TRUE(first.solution.has_value());
+  optimizer.accept(0, first);
 
   // Second solve with warm start must also succeed.
   const auto second = optimizer.optimize(raw, odometry_, 0.0, 0);
