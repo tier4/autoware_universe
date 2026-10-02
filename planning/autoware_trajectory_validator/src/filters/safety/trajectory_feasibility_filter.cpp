@@ -29,6 +29,7 @@
 #include <tf2/utils.h>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <utility>
@@ -503,11 +504,23 @@ std::pair<double, bool> is_distance_deviation_ok(
   if (!context.odometry || traj_points.size() < 2) {
     return {0.0, true};
   }
-  const auto nearest_idx = autoware::motion_utils::findNearestSegmentIndex(
-    traj_points, context.odometry->pose.pose.position);
+
+  // calcLateralOffset() internally removes overlapping points and returns NaN when fewer than two
+  // distinct points remain (e.g. a stopped trajectory whose points share the same position).
+  // Guard against that case explicitly so the metric never reports NaN.
+  const auto overlap_removed_points = autoware::motion_utils::removeOverlapPoints(traj_points);
+  if (overlap_removed_points.size() < 2) {
+    return {0.0, true};
+  }
+
+  const auto & ego_position = context.odometry->pose.pose.position;
+  const auto nearest_idx =
+    autoware::motion_utils::findNearestSegmentIndex(overlap_removed_points, ego_position);
   const double distance_deviation = std::abs(
-    autoware::motion_utils::calcLateralOffset(
-      traj_points, context.odometry->pose.pose.position, nearest_idx));
+    autoware::motion_utils::calcLateralOffset(overlap_removed_points, ego_position, nearest_idx));
+  if (!std::isfinite(distance_deviation)) {
+    return {0.0, true};
+  }
   return {distance_deviation, distance_deviation <= max_distance_deviation};
 }
 
