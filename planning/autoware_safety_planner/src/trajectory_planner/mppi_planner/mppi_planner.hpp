@@ -52,7 +52,7 @@ public:
 
   void on_initialize(
     const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
-    const Params & params) override;
+    const Params & params, rclcpp::Node * node) override;
 
   TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) override;
 
@@ -62,7 +62,7 @@ private:
   PlannedTrajectory plan_one_side(
     MppiInterface & optimizer, TurnIndicatorDecider & turn_indicator_decider,
     const PlannerContext & context, const std::vector<Constraint> & constraints,
-    TrajectoryPlannerDebug & debug);
+    TrajectoryPlannerDebug & debug, PlanningFactorInterface * planning_factor_interface);
 
   //! The ego at t = 0 followed by the reference_path centerline, one point per kMppiDt over the
   //! MPPI horizon, driven at the fastest profile under the speed bounds, the lateral acceleration,

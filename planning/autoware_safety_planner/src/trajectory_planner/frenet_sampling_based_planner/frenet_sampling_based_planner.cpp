@@ -16,6 +16,7 @@
 
 #include "../../utils/frenet_utils.hpp"
 #include "../../utils/velocity_optimizer.hpp"
+#include "../planning_factors.hpp"
 
 #include <autoware_frenet_planner/polynomials.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -366,9 +367,9 @@ std::optional<double> FrenetSamplingBasedPlanner::PreviousLateral::at(const doub
 }
 
 void FrenetSamplingBasedPlanner::on_initialize(
-  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params)
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params, rclcpp::Node * node)
 {
-  TrajectoryPlannerInterface::on_initialize(time_keeper, params);
+  TrajectoryPlannerInterface::on_initialize(time_keeper, params, node);
   const TurnSignalParams turn_signal_params{
     params.turn_signal.search_distance, params.turn_signal.min_blink_duration,
     params.turn_signal.stopped_velocity_threshold, params.turn_signal.heading_align_threshold};
@@ -398,7 +399,7 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
     if (
       auto trajectory = plan_one_side(
         input.context, grid, input.normal_constraints, normal_previous_trajectory_,
-        result.normal_debug)) {
+        result.normal_debug, normal_planning_factor_interface_.get())) {
       auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
         "decide_turn_indicators", *time_keeper_);
       const auto turn_indicators =
@@ -416,7 +417,7 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
     if (
       auto trajectory = plan_one_side(
         input.context, grid, input.cautious_constraints, cautious_previous_trajectory_,
-        result.cautious_debug)) {
+        result.cautious_debug, cautious_planning_factor_interface_.get())) {
       auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
         "decide_turn_indicators", *time_keeper_);
       const auto turn_indicators =
@@ -432,6 +433,8 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
     result.cautious_trajectory = result.normal_trajectory;
     result.cautious_debug = result.normal_debug;
     cautious_previous_trajectory_ = normal_previous_trajectory_;
+    copy_planning_factors(
+      normal_planning_factor_interface_.get(), cautious_planning_factor_interface_.get());
   }
   return result;
 }
@@ -439,7 +442,8 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
 std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   const PlannerContext & context, const ReferenceGrid & grid,
   const std::vector<Constraint> & constraints,
-  const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug)
+  const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug,
+  PlanningFactorInterface * planning_factor_interface)
 {
   // The phases below are timed one after another rather than through nested scopes, so that the
   // tree published on ~/debug/processing_time_detail_ms lists them as siblings under
@@ -462,6 +466,9 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
     "compile_constraint_list", *time_keeper_);
   const auto compiled_constraints = compile_constraint_list(context, simplified_constraints);
+  add_planning_factors(
+    planning_factor_interface, context, compiled_constraints, params_.trajectory_horizon_s,
+    params_.reference_path.goal_connection.search_radius_m);
 
   phase.reset();
   phase =
@@ -722,9 +729,8 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
     // (1 - k_ref*l)). Taking it from the chord between world positions would put the first heading
     // off the ego heading by k*res/2, which in closed loop drifts the ego heading a little every
     // cycle until it hits the steer rate limit after a few dozen of them
-    path.yaw.push_back(
-      autoware_utils_math::normalize_radian(
-        grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
+    path.yaw.push_back(autoware_utils_math::normalize_radian(
+      grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
     path.metric.push_back(std::hypot(1.0 - k_ref * l, dl_ds));
     // Analytic, and per arc length of the path rather than of the reference: the two differ by the
     // metric, which reaches 2 for an ego 4 m outside a lane of R 4 m, and with the difference of
@@ -763,9 +769,8 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::hold_steer
     const double d2l_ds2 = offset_path_d2l(k_ref, grid.dkappa(s_ref), l, dl_ds, kappa);
     path.s.push_back(s);
     path.l.push_back(l);
-    path.yaw.push_back(
-      autoware_utils_math::normalize_radian(
-        grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
+    path.yaw.push_back(autoware_utils_math::normalize_radian(
+      grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
     path.metric.push_back(std::hypot(1.0 - k_ref * l, dl_ds));
     path.kappa.push_back(kappa);
     l += dl_ds * res + 0.5 * d2l_ds2 * res * res;

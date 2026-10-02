@@ -54,7 +54,7 @@ public:
 
   void on_initialize(
     const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
-    const Params & params) override;
+    const Params & params, rclcpp::Node * node) override;
 
   TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) override;
 
@@ -221,7 +221,8 @@ private:
   std::optional<Trajectory> plan_one_side(
     const PlannerContext & context, const ReferenceGrid & grid,
     const std::vector<Constraint> & constraints,
-    const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug);
+    const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug,
+    PlanningFactorInterface * planning_factor_interface);
 
   InitialState compute_initial_state(
     const PlannerContext & context, const ReferenceGrid & grid) const;
