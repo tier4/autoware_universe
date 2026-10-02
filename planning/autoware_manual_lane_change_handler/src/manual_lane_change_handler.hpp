@@ -15,11 +15,13 @@
 #ifndef MANUAL_LANE_CHANGE_HANDLER_HPP_
 #define MANUAL_LANE_CHANGE_HANDLER_HPP_
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/polling_subscriber.hpp>
 #include <autoware/mission_planner_universe/service_utils.hpp>
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
@@ -61,7 +63,7 @@ enum class DIRECTION {
   AUTO,
 };
 
-class ManualLaneChangeHandler : public rclcpp::Node
+class ManualLaneChangeHandler : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit ManualLaneChangeHandler(const rclcpp::NodeOptions & options);
@@ -85,28 +87,29 @@ private:
     return route_handler_.getLaneletMapPtr()->laneletLayer.get(id);
   }
 
-  void route_callback(const LaneletRoute::ConstSharedPtr msg);
+  void route_callback(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(LaneletRoute) & msg);
   void set_preferred_lane(
     const SetPreferredLane::Request::SharedPtr req,
     const SetPreferredLane::Response::SharedPtr res);
   LaneChangeRequestResult process_lane_change_request(
     const int64_t ego_lanelet_id, const SetPreferredLane::Request::SharedPtr req);
 
-  rclcpp::Service<SetPreferredLane>::SharedPtr srv_set_preferred_lane;
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odometry_;
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_map_;
-  rclcpp::Subscription<LaneletRoute>::SharedPtr sub_route_;
-  autoware_utils::InterProcessPollingSubscriber<tier4_planning_msgs::msg::RerouteAvailability>
-    sub_reroute_availability_{this, "~/input/reroute_availability"};
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
-    pub_processing_time_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Int32Stamped>::SharedPtr pub_shift_number_;
+  AUTOWARE_SERVICE_PTR(SetPreferredLane) srv_set_preferred_lane;
+  AUTOWARE_SUBSCRIPTION_PTR(nav_msgs::msg::Odometry) sub_odometry_;
+  AUTOWARE_SUBSCRIPTION_PTR(autoware_map_msgs::msg::LaneletMapBin) sub_map_;
+  AUTOWARE_SUBSCRIPTION_PTR(LaneletRoute) sub_route_;
+  autoware::agnocast_wrapper::polling::PollingSubscriber<
+    tier4_planning_msgs::msg::RerouteAvailability>::SharedPtr sub_reroute_availability_{
+    autoware::agnocast_wrapper::polling::create_polling_subscriber<
+      tier4_planning_msgs::msg::RerouteAvailability>(this, "~/input/reroute_availability", 1)};
+  AUTOWARE_PUBLISHER_PTR(autoware_internal_debug_msgs::msg::Float64Stamped) pub_processing_time_;
+  AUTOWARE_PUBLISHER_PTR(autoware_internal_debug_msgs::msg::Int32Stamped) pub_shift_number_;
 
   autoware::route_handler::RouteHandler route_handler_;
 
-  nav_msgs::msg::Odometry::ConstSharedPtr odometry_;
+  AUTOWARE_MESSAGE_CONST_SHARED_PTR(nav_msgs::msg::Odometry) odometry_;
   std::shared_ptr<LaneletRoute> current_route_;
-  rclcpp::Client<autoware_planning_msgs::srv::SetPreferredPrimitive>::SharedPtr client_;
+  AUTOWARE_CLIENT_PTR(autoware_planning_msgs::srv::SetPreferredPrimitive) client_;
   rclcpp::Logger logger_;
 
   int8_t shift_number_{0};

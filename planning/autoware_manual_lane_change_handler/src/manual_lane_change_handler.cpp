@@ -23,19 +23,21 @@ namespace autoware::manual_lane_change_handler
 {
 
 ManualLaneChangeHandler::ManualLaneChangeHandler(const rclcpp::NodeOptions & options)
-: Node("manual_lane_change_handler", options),
+: autoware::agnocast_wrapper::Node("manual_lane_change_handler", options),
   current_route_(nullptr),
   logger_(rclcpp::get_logger("ManualLaneChangeHandler"))
 {
   sub_map_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "~/input/vector_map", rclcpp::QoS(10).transient_local(),
-    [this](const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg) {
+    [this](const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_map_msgs::msg::LaneletMapBin) & msg) {
       route_handler_.setMap(*msg);
     });
 
   sub_odometry_ = create_subscription<nav_msgs::msg::Odometry>(
     "~/input/odometry", rclcpp::QoS(1),
-    [this](const nav_msgs::msg::Odometry::ConstSharedPtr msg) { odometry_ = msg; });
+    [this](const AUTOWARE_MESSAGE_CONST_SHARED_PTR(nav_msgs::msg::Odometry) & msg) {
+      odometry_ = msg;
+    });
 
   sub_route_ = create_subscription<LaneletRoute>(
     "/planning/mission_planning/route", rclcpp::QoS(1).transient_local(),
@@ -96,7 +98,8 @@ ManualLaneChangeHandler::sort_primitives_left_to_right(
   return result;
 }
 
-void ManualLaneChangeHandler::route_callback(const LaneletRoute::ConstSharedPtr msg)
+void ManualLaneChangeHandler::route_callback(
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(LaneletRoute) & msg)
 {
   RCLCPP_INFO(logger_, "Received new route with %zu segments", msg->segments.size());
   auto route = *msg;
@@ -147,7 +150,7 @@ void ManualLaneChangeHandler::set_preferred_lane(
     return;
   }
 
-  const auto reroute_availability = sub_reroute_availability_.take_data();
+  const auto reroute_availability = sub_reroute_availability_->take_data();
   if (!reroute_availability || !reroute_availability->availability) {
     res->status.success = false;
     res->status.message = "Not in lane driving state. Wait for the current scenario to end.";
@@ -187,7 +190,7 @@ void ManualLaneChangeHandler::set_preferred_lane(
 
   auto future = client_->async_send_request(
     set_preferred_primitive_req,
-    [this](rclcpp::Client<SetPreferredPrimitive>::SharedFuture future) {
+    [this](AUTOWARE_CLIENT_SHARED_FUTURE(SetPreferredPrimitive) future) {
       auto response = future.get();
       if (response->status.success) {
         RCLCPP_INFO(
