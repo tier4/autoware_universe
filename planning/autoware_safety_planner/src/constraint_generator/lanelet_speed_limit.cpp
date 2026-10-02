@@ -68,28 +68,16 @@ Polygon2d make_band_polygon(
   return polygon;
 }
 
-// Index into lanelets of the one the point belongs to. The lanelets are in the order of the lane
-// sequence, so the search never goes back before `from`
-// a point inside several lanelets (at the overlap of consecutive ones) takes the first one not
-// behind, and a point inside none (the reference_path may leave the lanelets while avoiding) takes
-// the closest.
-std::size_t match_lanelet(
+std::optional<std::size_t> match_belonging_lanelet(
   const lanelet::ConstLanelets & lanelets, const std::size_t from,
   const lanelet::BasicPoint2d & point)
 {
-  std::size_t closest = from;
-  double closest_distance = std::numeric_limits<double>::max();
   for (std::size_t i = from; i < lanelets.size(); ++i) {
-    const double distance = lanelet::geometry::distance2d(lanelets[i].polygon2d(), point);
-    if (distance <= 0.0) {
+    if (boost::geometry::within(point, lanelets[i].polygon2d().basicPolygon())) {
       return i;
     }
-    if (distance < closest_distance) {
-      closest_distance = distance;
-      closest = i;
-    }
   }
-  return closest;
+  return std::nullopt;
 }
 
 }  // namespace
@@ -107,12 +95,9 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
     return output;
   }
 
-  // Cover the same window of lanes as the reference_path, sharing its parameters
   const auto & route_manager = *context.route_manager;
   const auto lanelets =
-    route_manager
-      .get_lanelet_sequence_on_route(
-        params_.reference_path.forward_length_m, params_.reference_path.backward_length_m)
+    route_manager.get_lanelet_sequence_on_route(params_.reference_path.forward_length_m, 0.0)
       .as_lanelets();
   const auto & path = context.reference_path;
   const double length = path.length();
@@ -123,38 +108,36 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
   const auto current_id = route_manager.current_lanelet().id();
   const double v_ego = std::max(0.0, context.odometry.twist.twist.linear.x);
 
-  // Match the points of the reference_path to the lanelets: the limit of a lanelet is effective
-  // from the first point matched to it until the first point matched to the next one
-  struct Run
+  struct LaneletSpan  // <'a>
   {
-    std::size_t lanelet_index;
+    std::size_t lanelet_index;  // <'a> of lanelets
     double s_begin;
     double s_end;
   };
-  std::vector<Run> runs;
+  std::vector<LaneletSpan> spans;
   const auto num_division = static_cast<std::size_t>(std::ceil(length / sample_interval_m));
   std::size_t index = 0;
   for (std::size_t i = 0; i <= num_division; ++i) {
     const double s = std::min(static_cast<double>(i) * sample_interval_m, length);
     const auto position = path.compute(s).point.pose.position;
-    index = match_lanelet(lanelets, index, lanelet::BasicPoint2d(position.x, position.y));
-    if (runs.empty() || runs.back().lanelet_index != index) {
-      if (!runs.empty()) {
-        runs.back().s_end = s;
+    // NOTE(soblin): safety_planner never executes lane change, so the reference path points are
+    // always on the route lanelets
+    index = match_belonging_lanelet(lanelets, index, lanelet::BasicPoint2d(position.x, position.y))
+              .value_or(index);
+    if (spans.empty() || spans.back().lanelet_index != index) {
+      if (!spans.empty()) {
+        spans.back().s_end = s;
       }
-      runs.push_back(Run{index, runs.empty() ? 0.0 : s, length});
+      spans.push_back(LaneletSpan{index, spans.empty() ? 0.0 : s, length});
     }
   }
 
-  for (const auto & run : runs) {
-    if (run.s_end <= run.s_begin) {
-      continue;
-    }
-    const auto & lanelet = lanelets[run.lanelet_index];
+  for (const auto & span : spans) {
+    const auto & lanelet = lanelets[span.lanelet_index];
     const double v_limit =
       static_cast<double>(traffic_rules->speedLimit(lanelet).speedLimit.value());
 
-    auto region = make_band_polygon(path, run.s_begin, run.s_end);
+    auto region = make_band_polygon(path, span.s_begin, span.s_end);
     // The path is built from the map, but a degenerate one is no region
     if (region.outer().size() < 4) {
       continue;
