@@ -15,11 +15,14 @@
 #ifndef AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_UTILS__DETECTION_AREA_UTILS_HPP_
 #define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_UTILS__DETECTION_AREA_UTILS_HPP_
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/object_recognition_utils/object_classification.hpp>
+#include <autoware/trajectory/trajectory_point.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/detection_area.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -27,15 +30,11 @@
 #include <geometry_msgs/msg/point.hpp>
 
 #include <boost/geometry/algorithms/intersects.hpp>
+
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/Polygon.h>
-
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-
-#include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware/trajectory/trajectory_point.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <cstdint>
 #include <optional>

@@ -34,7 +34,6 @@
 
 namespace autoware::trajectory_modifier::plugin
 {
-using InputData = TrajectoryModifierData;
 class DetectionAreaStop : public TrajectoryModifierPluginBase
 {
 public:
@@ -46,17 +45,18 @@ public:
 
   DetectionAreaStop() = default;
 
-  void begin_cycle(const InputData & input) override;
+  void begin_cycle(const TrajectoryModifierData & input) override;
 
   ProcessingResult process(TrajectoryPoints & points, TrajectoryModifierData & data) override
   {
-    return modify_trajectory(points, data) ? ProcessingResult::Modified : ProcessingResult::Unchanged;
+    return modify_trajectory(points, data) ? ProcessingResult::Modified
+                                           : ProcessingResult::Unchanged;
   }
 
-  bool modify_trajectory(TrajectoryPoints & traj_points, const InputData & input);
+  bool modify_trajectory(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 
   [[nodiscard]] bool is_trajectory_modification_required(
-    const TrajectoryPoints & traj_points, const InputData & input);
+    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 
   void update_params(const TrajectoryModifierParams & params) override;
 
@@ -78,6 +78,9 @@ private:
     std::shared_ptr<const DetectionArea> regulatory_element;
     State state{State::GO};
     std::optional<rclcpp::Time> last_obstacle_found_time;
+    // Physical observations are computed once per cycle, independently of candidates.
+    std::optional<double> physical_stop_distance;
+    bool physical_deadline_passed{false};
     bool has_obstacle{false};
     std::string detection_source;
     std::vector<geometry_msgs::msg::Point> obstacle_points;
@@ -85,7 +88,6 @@ private:
     std::optional<geometry_msgs::msg::Pose> stop_pose;
     std::optional<geometry_msgs::msg::Pose> dead_line_pose;
     double stop_point_arc_length{0.0};
-    double forward_offset_to_stop_line{0.0};
     bool dead_line_passed{false};
     bool candidate_modified{false};
     std::string candidate_policy;
@@ -93,7 +95,9 @@ private:
 
   struct StopDecision
   {
-    Module * module{nullptr};
+    size_t module_index{0};
+    std::optional<geometry_msgs::msg::Pose> stop_pose;
+    std::optional<geometry_msgs::msg::Pose> dead_line_pose;
     double stop_point_arc_length{0.0};
     std::string policy;
   };
@@ -107,30 +111,30 @@ private:
   std::shared_ptr<const PointCloud> cycle_pointcloud_;
   std::string debug_status_;
   bool last_candidate_modified_{false};
-  bool pending_trajectory_release_{false};
-  std::optional<float> last_reference_velocity_;
+  rclcpp::Time cycle_time_{0, 0, RCL_ROS_TIME};
+  nav_msgs::msg::Odometry::ConstSharedPtr cycle_odometry_;
   rclcpp::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
-  void rebuild_modules(const InputData & input);
-  void update_cycle_observations(const InputData & input);
-  std::shared_ptr<const PointCloud> make_map_pointcloud(const InputData & input) const;
+  void rebuild_modules(const TrajectoryModifierData & input);
+  void update_cycle_observations(const TrajectoryModifierData & input);
+  void update_physical_stop_state(const TrajectoryModifierData & input);
+  std::shared_ptr<const PointCloud> make_map_pointcloud(const TrajectoryModifierData & input) const;
 
-  [[nodiscard]] bool check_inputs(const InputData & input) const;
+  [[nodiscard]] bool check_inputs(const TrajectoryModifierData & input) const;
   std::optional<StopDecision> find_stop_decision(
-    const TrajectoryPoints & traj_points, const InputData & input);
-  std::optional<double> evaluate_module(
-    Module & module, const TrajectoryPoints & traj_points, const InputData & input);
+    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input) const;
+  std::optional<StopDecision> evaluate_module(
+    const Module & module, const TrajectoryPoints & traj_points,
+    const TrajectoryModifierData & input) const;
   bool set_stop_point(
-    TrajectoryPoints & traj_points, const InputData & input, StopDecision & decision);
+    TrajectoryPoints & traj_points, const TrajectoryModifierData & input, StopDecision & decision);
   [[nodiscard]] bool should_hold_stop_at_ego(
-    const TrajectoryPoints & traj_points, const InputData & input) const;
-  bool hold_stop_at_ego(TrajectoryPoints & traj_points, const InputData & input);
-  [[nodiscard]] bool should_release_trajectory_at_ego(
-    const TrajectoryPoints & traj_points, const InputData & input) const;
-  bool release_stopped_trajectory(TrajectoryPoints & traj_points, const InputData & input);
+    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input) const;
+  bool hold_stop_at_ego(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
   [[nodiscard]] bool candidate_relates_to_active_stop(
-    const TrajectoryPoints & traj_points, const InputData & input, const Module & module) const;
+    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input,
+    const Module & module) const;
 
   void reset_candidate_debug();
   void set_state(Module & module, State state);

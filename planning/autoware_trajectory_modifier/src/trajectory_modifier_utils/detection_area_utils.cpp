@@ -14,10 +14,12 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/detection_area_utils.hpp"
 
-#include <autoware/trajectory/utils/crossed.hpp>
+#include "autoware/trajectory_modifier/trajectory_modifier_utils/stop_line_geometry.hpp"
+
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
-#include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
+
+#include <autoware_perception_msgs/msg/object_classification.hpp>
 
 #include <lanelet2_core/geometry/Point.h>
 #include <lanelet2_core/geometry/Polygon.h>
@@ -37,11 +39,11 @@ std::pair<lanelet::BasicPoint2d, double> get_smallest_enclosing_circle(
   const auto cross = [](const lanelet::BasicPoint2d & lhs, const lanelet::BasicPoint2d & rhs) {
     return lhs.x() * rhs.y() - lhs.y() * rhs.x();
   };
-  const auto make_circle_two = [&](const lanelet::BasicPoint2d & lhs,
-                                   const lanelet::BasicPoint2d & rhs) {
-    center = (lhs + rhs) * 0.5;
-    radius_squared = (center - lhs).squaredNorm() + epsilon;
-  };
+  const auto make_circle_two =
+    [&](const lanelet::BasicPoint2d & lhs, const lanelet::BasicPoint2d & rhs) {
+      center = (lhs + rhs) * 0.5;
+      radius_squared = (center - lhs).squaredNorm() + epsilon;
+    };
   const auto in_circle = [&](const lanelet::BasicPoint2d & point) {
     return (center - point).squaredNorm() <= radius_squared;
   };
@@ -64,8 +66,7 @@ std::pair<lanelet::BasicPoint2d, double> get_smallest_enclosing_circle(
         const double twice_area = cross(point_i - point_k, point_j - point_k);
         if (std::abs(twice_area) < epsilon) continue;
         center =
-          (a * (b + c - a) * point_i + b * (c + a - b) * point_j +
-           c * (a + b - c) * point_k) /
+          (a * (b + c - a) * point_i + b * (c + a - b) * point_j + c * (a + b - c) * point_k) /
           (4.0 * twice_area * twice_area);
         radius_squared = (center - point_i).squaredNorm() + epsilon;
       }
@@ -81,7 +82,7 @@ std::optional<double> get_stop_point(
   const Trajectory & path, const lanelet::ConstLineString3d & stop_line, const double margin,
   const double vehicle_offset)
 {
-  const auto collisions = autoware::experimental::trajectory::crossed(path, stop_line);
+  const auto collisions = utils::crossed_with_front_offset(path, stop_line, vehicle_offset);
   if (collisions.empty()) return std::nullopt;
   return collisions.front() - margin - vehicle_offset;
 }

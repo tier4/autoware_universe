@@ -251,7 +251,11 @@ To add a new modifier plugin:
 The Detection Area Stop plugin ports the rule-based detection-area stop behavior onto candidate
 trajectories. It supports pointcloud and predicted-object detection, target filtering, stop-state
 hysteresis, dead-line handling, and unstoppable stopping policies. The plugin is disabled by
-default to avoid running alongside the legacy behavior-velocity detection area module. After
-`state_clear_time`, if the upstream trajectory is still all-zero, the plugin may restore velocity
-on the existing geometry; it does not synthesize a new path. Debug outputs are published on
+default to avoid running alongside the legacy behavior-velocity detection area module.
+Observations and physical stop-hold state are updated once per cycle; candidates independently
+calculate braking policies and stop positions without changing persistent module state.
+Stop-line and dead-line checks extend checking geometry for the vehicle front beyond the
+candidate horizon, without extending output trajectories. Clearing a detection only removes
+this plugin's constraint: upstream zero velocities are preserved, and the upstream planner is
+responsible for resuming motion. Debug outputs are published on
 `~/detection_area_stop/debug/marker` and `~/detection_area_stop/debug/text`.

@@ -196,11 +196,7 @@ void TrajectoryModifier::on_trajectories(const CandidateTrajectories::ConstShare
         continue;
       }
       modifier_plugin->publish_planning_factor();
-      for (auto & modifier_plugin : plugins_) {
-    modifier_plugin->end_cycle();
-  }
-
-  if (!modified_instances.empty()) {
+      if (!modified_instances.empty()) {
         modified_instances += ", ";
       }
       modified_instances += modifier_plugin->get_short_name();
@@ -210,6 +206,10 @@ void TrajectoryModifier::on_trajectories(const CandidateTrajectories::ConstShare
         autoware::trajectory_modifier::utils::generate_three_point_stopped_trajectory(
           candidate.points, *data.current_odometry);
     }
+  }
+
+  for (auto & modifier_plugin : plugins_) {
+    modifier_plugin->end_cycle();
   }
 
   if (!modified_instances.empty()) {

@@ -34,6 +34,7 @@
 #include <lanelet2_core/LaneletMap.h>
 
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <thread>
 #include <utility>
@@ -42,8 +43,8 @@
 namespace
 {
 using autoware::trajectory_modifier::TrajectoryModifierContext;
+using autoware::trajectory_modifier::TrajectoryModifierData;
 using autoware::trajectory_modifier::plugin::DetectionAreaStop;
-using autoware::trajectory_modifier::plugin::InputData;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
@@ -212,12 +213,12 @@ TrajectoryPoints with_zero_velocity(TrajectoryPoints trajectory)
   return trajectory;
 }
 
-InputData make_input(
+TrajectoryModifierData make_input(
   std::shared_ptr<lanelet::LaneletMap> map = nullptr, LaneletRoute::ConstSharedPtr route = nullptr,
   PredictedObjects::ConstSharedPtr objects = nullptr,
   sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud = nullptr, const double y = 0.0)
 {
-  InputData input;
+  TrajectoryModifierData input;
   input.current_odometry = make_odometry(y);
   input.current_acceleration = make_acceleration();
   input.lanelet_map = std::move(map);
@@ -276,8 +277,7 @@ protected:
 
     const auto expected_stop_margin =
       params_.detection_area.stop_margin + context_->vehicle_info.max_longitudinal_offset_m;
-    EXPECT_NEAR(
-      stop_line_x - trajectory.back().pose.position.x, expected_stop_margin, 0.5);
+    EXPECT_NEAR(stop_line_x - trajectory.back().pose.position.x, expected_stop_margin, 0.5);
   }
 
   std::shared_ptr<rclcpp::Node> node_;
@@ -321,7 +321,7 @@ TEST_F(DetectionAreaStopIntegrationTest, DetectedObjectStopsAtDetectionAreaStopL
   expect_stop_before_stop_line(trajectory);
 }
 
-TEST_F(DetectionAreaStopIntegrationTest, ClearedObstacleRestoresVelocityOnExistingGeometry)
+TEST_F(DetectionAreaStopIntegrationTest, ClearedObstaclePreservesUpstreamZeroVelocity)
 {
   params_.detection_area.state_clear_time = 0.05;
   plugin_->update_params(params_);
@@ -341,11 +341,11 @@ TEST_F(DetectionAreaStopIntegrationTest, ClearedObstacleRestoresVelocityOnExisti
   const auto original_back_x = released_trajectory.back().pose.position.x;
   const auto original_size = released_trajectory.size();
   plugin_->begin_cycle(input_without_obstacle);
-  EXPECT_TRUE(plugin_->modify_trajectory(released_trajectory, input_without_obstacle));
+  EXPECT_FALSE(plugin_->modify_trajectory(released_trajectory, input_without_obstacle));
   ASSERT_EQ(released_trajectory.size(), original_size);
   EXPECT_DOUBLE_EQ(released_trajectory.back().pose.position.x, original_back_x);
-  EXPECT_GT(released_trajectory.front().longitudinal_velocity_mps, 0.1F);
-  EXPECT_GT(released_trajectory.back().longitudinal_velocity_mps, 0.1F);
+  EXPECT_FLOAT_EQ(released_trajectory.front().longitudinal_velocity_mps, 0.0F);
+  EXPECT_FLOAT_EQ(released_trajectory.back().longitudinal_velocity_mps, 0.0F);
 }
 
 TEST_F(DetectionAreaStopIntegrationTest, HoldDoesNotModifyUnrelatedCandidate)
@@ -416,11 +416,11 @@ TEST_F(DetectionAreaStopIntegrationTest, ClearedObstacleDoesNotFabricatePathPast
   const auto original_back_x = released_trajectory.back().pose.position.x;
   const auto original_size = released_trajectory.size();
   plugin_->begin_cycle(input_without_obstacle);
-  EXPECT_TRUE(plugin_->modify_trajectory(released_trajectory, input_without_obstacle));
+  EXPECT_FALSE(plugin_->modify_trajectory(released_trajectory, input_without_obstacle));
   ASSERT_EQ(released_trajectory.size(), original_size);
   EXPECT_DOUBLE_EQ(released_trajectory.back().pose.position.x, original_back_x);
   EXPECT_LT(released_trajectory.back().pose.position.x, ego_x + 1.0);
-  EXPECT_GT(released_trajectory.front().longitudinal_velocity_mps, 0.1F);
+  EXPECT_FLOAT_EQ(released_trajectory.front().longitudinal_velocity_mps, 0.0F);
 }
 
 TEST_F(DetectionAreaStopIntegrationTest, CandidateWithoutStopLineIntersectionIsUnchanged)
@@ -527,9 +527,8 @@ TEST_F(DetectionAreaStopIntegrationTest, UnstoppableStopAfterStoplineMovesStopFo
   plugin_->begin_cycle(input);
   EXPECT_TRUE(plugin_->modify_trajectory(trajectory, input));
   EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
-  const auto expected_nominal_stop =
-    stop_line_x - params_.detection_area.stop_margin -
-    context_->vehicle_info.max_longitudinal_offset_m;
+  const auto expected_nominal_stop = stop_line_x - params_.detection_area.stop_margin -
+                                     context_->vehicle_info.max_longitudinal_offset_m;
   EXPECT_GT(trajectory.back().pose.position.x, expected_nominal_stop + 0.5);
 }
 
@@ -611,6 +610,7 @@ TEST_F(DetectionAreaStopIntegrationTest, RegistersDetectionAreaOnNonPreferredPri
 
 TEST_F(DetectionAreaStopIntegrationTest, SuppressPassJudgeKeepsStopAndDoesNotRelease)
 {
+  params_.detection_area.unstoppable_policy = "force_stop";
   params_.detection_area.suppress_pass_judge_when_stopping = true;
   params_.detection_area.state_clear_time = 0.05;
   plugin_->update_params(params_);
@@ -622,6 +622,10 @@ TEST_F(DetectionAreaStopIntegrationTest, SuppressPassJudgeKeepsStopAndDoesNotRel
   EXPECT_TRUE(plugin_->modify_trajectory(stopping_trajectory, input_with_obstacle));
   expect_stop_before_stop_line(stopping_trajectory);
 
+  // A speculative candidate cannot latch STOP. Observe the actual stopped ego first.
+  input_with_obstacle.current_odometry =
+    make_stopped_odometry_at(stopping_trajectory.back().pose.position.x);
+  plugin_->begin_cycle(input_with_obstacle);
   std::this_thread::sleep_for(std::chrono::milliseconds(80));
 
   auto input_without_obstacle = make_input(map, route);
@@ -633,16 +637,25 @@ TEST_F(DetectionAreaStopIntegrationTest, SuppressPassJudgeKeepsStopAndDoesNotRel
   EXPECT_FALSE(plugin_->modify_trajectory(zero_trajectory, input_without_obstacle));
   EXPECT_EQ(zero_trajectory, original);
 
+  auto moving_candidate = make_trajectory();
+  EXPECT_TRUE(plugin_->modify_trajectory(moving_candidate, input_without_obstacle));
+  EXPECT_FLOAT_EQ(moving_candidate.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_NEAR(
+    moving_candidate.back().pose.position.x,
+    input_without_obstacle.current_odometry->pose.pose.position.x, 0.1);
+
   auto input_past_line = make_input(map, route, make_car_in_area());
   input_past_line.current_odometry = make_odometry_at(12.0);
   auto trajectory_past_line = make_trajectory();
   plugin_->begin_cycle(input_past_line);
-  EXPECT_TRUE(plugin_->modify_trajectory(trajectory_past_line, input_past_line));
-  EXPECT_FLOAT_EQ(trajectory_past_line.back().longitudinal_velocity_mps, 0.0F);
+  const auto original_past_line = trajectory_past_line;
+  EXPECT_FALSE(plugin_->modify_trajectory(trajectory_past_line, input_past_line));
+  EXPECT_EQ(trajectory_past_line, original_past_line);
 }
 
 TEST_F(DetectionAreaStopIntegrationTest, WithoutSuppressPastLineObstacleIsIgnoredAfterGo)
 {
+  params_.detection_area.unstoppable_policy = "force_stop";
   params_.detection_area.suppress_pass_judge_when_stopping = false;
   params_.detection_area.state_clear_time = 0.05;
   plugin_->update_params(params_);
@@ -660,7 +673,7 @@ TEST_F(DetectionAreaStopIntegrationTest, WithoutSuppressPastLineObstacleIsIgnore
     make_stopped_odometry_at(stopping_trajectory.back().pose.position.x);
   plugin_->begin_cycle(input_without_obstacle);
   auto released_trajectory = with_zero_velocity(make_trajectory());
-  EXPECT_TRUE(plugin_->modify_trajectory(released_trajectory, input_without_obstacle));
+  EXPECT_FALSE(plugin_->modify_trajectory(released_trajectory, input_without_obstacle));
 
   auto input_past_line = make_input(map, route, make_car_in_area());
   input_past_line.current_odometry = make_odometry_at(12.0);
@@ -669,4 +682,180 @@ TEST_F(DetectionAreaStopIntegrationTest, WithoutSuppressPastLineObstacleIsIgnore
   plugin_->begin_cycle(input_past_line);
   EXPECT_FALSE(plugin_->modify_trajectory(trajectory_past_line, input_past_line));
   EXPECT_EQ(trajectory_past_line, original);
+}
+
+TEST_F(DetectionAreaStopIntegrationTest, ReleaseMustNotCancelUnrelatedZeroTrajectory)
+{
+  params_.detection_area.state_clear_time = 0.01;
+  plugin_->update_params(params_);
+  const auto map = make_map();
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  auto input = make_input(map, route, make_car_in_area());
+  auto trajectory = make_trajectory();
+  plugin_->begin_cycle(input);
+  ASSERT_TRUE(plugin_->modify_trajectory(trajectory, input));
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  input = make_input(map, route);
+  input.current_odometry = make_stopped_odometry();
+  auto unrelated = with_zero_velocity(make_trajectory(10.0));
+  const auto original = unrelated;
+  plugin_->begin_cycle(input);
+  EXPECT_FALSE(plugin_->modify_trajectory(unrelated, input));
+  EXPECT_EQ(unrelated, original);
+}
+
+TEST_F(DetectionAreaStopIntegrationTest, ForwardOffsetMustClearAfterObstacleEpisode)
+{
+  params_.detection_area.unstoppable_policy = "stop_after_stopline";
+  params_.detection_area.max_deceleration = 1.0;
+  params_.detection_area.state_clear_time = 0.01;
+  plugin_->update_params(params_);
+  const auto map = make_map();
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  auto input = make_input(map, route, make_car_in_area());
+  auto trajectory = make_trajectory();
+  plugin_->begin_cycle(input);
+  ASSERT_TRUE(plugin_->modify_trajectory(trajectory, input));
+  ASSERT_GT(trajectory.back().pose.position.x, 10.0);
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  input = make_input(map, route);
+  plugin_->begin_cycle(input);
+  input = make_input(map, route, make_car_in_area());
+  input.current_odometry = make_odometry_at(0.0, 0.0, 1.0);
+  trajectory = make_trajectory();
+  plugin_->begin_cycle(input);
+  ASSERT_TRUE(plugin_->modify_trajectory(trajectory, input));
+  EXPECT_NEAR(
+    trajectory.back().pose.position.x, 10.0 - context_->vehicle_info.max_longitudinal_offset_m,
+    0.1);
+}
+TEST_F(DetectionAreaStopIntegrationTest, CandidatesAndQueriesAreIndependentForEveryPolicy)
+{
+  const auto map = make_map();
+  auto input = make_input(map, make_route(map->laneletLayer.begin()->id()), make_car_in_area());
+  for (const auto & policy : {"go", "force_stop", "stop_after_stopline"}) {
+    params_.detection_area.unstoppable_policy = policy;
+    params_.detection_area.max_deceleration = 2.0;
+    plugin_->update_params(params_);
+    const auto straight = make_trajectory();
+    auto curved = straight;
+    for (auto & p : curved) {
+      const auto x = p.pose.position.x;
+      if (x < 10.0) p.pose.position.y = 5.0 * std::sin(3.141592653589793 * x / 10.0);
+    }
+    const std::vector<TrajectoryPoints> candidates{straight, curved, make_short_trajectory(8.0)};
+    std::vector<TrajectoryPoints> expected;
+    std::vector<bool> changed;
+    plugin_->begin_cycle(input);
+    for (const auto & original : candidates) {
+      auto candidate = original;
+      changed.push_back(plugin_->modify_trajectory(candidate, input));
+      expected.push_back(candidate);
+    }
+    plugin_->begin_cycle(input);
+    for (size_t i = candidates.size(); i-- > 0;) {
+      auto candidate = candidates[i];
+      static_cast<void>(plugin_->is_trajectory_modification_required(candidate, input));
+      static_cast<void>(plugin_->is_trajectory_modification_required(candidate, input));
+      EXPECT_EQ(plugin_->modify_trajectory(candidate, input), changed[i]) << policy;
+      EXPECT_EQ(candidate, expected[i]) << policy;
+    }
+    if (std::string(policy) == "go") {
+      EXPECT_FALSE(changed[0]);
+      EXPECT_TRUE(changed[1]);
+    }
+  }
+}
+
+TEST_F(DetectionAreaStopIntegrationTest, ObservationTimeIsFrozenWithinCycle)
+{
+  params_.detection_area.state_clear_time = 0.01;
+  plugin_->update_params(params_);
+  const auto map = make_map();
+  auto input = make_input(map, make_route(map->laneletLayer.begin()->id()), make_car_in_area());
+  plugin_->begin_cycle(input);
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  auto candidate = make_trajectory();
+  EXPECT_TRUE(plugin_->is_trajectory_modification_required(candidate, input));
+  EXPECT_TRUE(plugin_->modify_trajectory(candidate, input));
+}
+
+TEST_F(DetectionAreaStopIntegrationTest, ShortHorizonStopsBeforeVehicleFrontCrossesLine)
+{
+  const auto map = make_map();
+  auto input = make_input(map, make_route(map->laneletLayer.begin()->id()), make_car_in_area());
+  input.current_odometry = make_odometry_at(0.0, 0.0, 1.0);
+  auto candidate = make_short_trajectory(8.0);
+  plugin_->begin_cycle(input);
+  EXPECT_TRUE(plugin_->modify_trajectory(candidate, input));
+  expect_stop_before_stop_line(candidate);
+  auto safe = make_short_trajectory(5.0);
+  const auto original = safe;
+  EXPECT_FALSE(plugin_->modify_trajectory(safe, input));
+  EXPECT_EQ(safe, original);
+}
+
+TEST_F(DetectionAreaStopIntegrationTest, ClearedObstacleAllowsNewMovingCandidate)
+{
+  params_.detection_area.state_clear_time = 0.01;
+  plugin_->update_params(params_);
+  const auto map = make_map();
+  auto input = make_input(map, make_route(map->laneletLayer.begin()->id()), make_car_in_area());
+  auto candidate = make_trajectory();
+  plugin_->begin_cycle(input);
+  ASSERT_TRUE(plugin_->modify_trajectory(candidate, input));
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  input.predicted_objects.reset();
+  plugin_->begin_cycle(input);
+  candidate = make_trajectory();
+  const auto original = candidate;
+  EXPECT_FALSE(plugin_->is_trajectory_modification_required(candidate, input));
+  EXPECT_FALSE(plugin_->modify_trajectory(candidate, input));
+  EXPECT_EQ(candidate, original);
+}
+
+TEST_F(DetectionAreaStopIntegrationTest, StopAfterLineContinuesWhenLineIsBehindCandidate)
+{
+  params_.detection_area.unstoppable_policy = "stop_after_stopline";
+  params_.detection_area.max_deceleration = 1.0;
+  plugin_->update_params(params_);
+  const auto map = make_map();
+  auto input = make_input(map, make_route(map->laneletLayer.begin()->id()), make_car_in_area());
+  input.current_odometry = make_odometry_at(12.0, 0.0, 2.0);
+  auto candidate = make_trajectory();
+  for (auto & p : candidate) p.pose.position.x += 12.0;
+  plugin_->begin_cycle(input);
+  ASSERT_TRUE(plugin_->modify_trajectory(candidate, input));
+  EXPECT_NEAR(candidate.back().pose.position.x, 14.0, 0.1);
+  EXPECT_FLOAT_EQ(candidate.back().longitudinal_velocity_mps, 0.0F);
+
+  params_.detection_area.use_dead_line = true;
+  plugin_->update_params(params_);
+  candidate = make_trajectory();
+  for (auto & p : candidate) p.pose.position.x += 12.0;
+  const auto original = candidate;
+  plugin_->begin_cycle(input);
+  EXPECT_FALSE(plugin_->modify_trajectory(candidate, input));
+  EXPECT_EQ(candidate, original);
+}
+
+TEST_F(DetectionAreaStopIntegrationTest, ProcessesCandidatesThroughNewFrameworkInterface)
+{
+  const auto map = make_map();
+  auto snapshot = make_input(map, make_route(map->laneletLayer.begin()->id()), make_car_in_area());
+  plugin_->begin_cycle(snapshot);
+  auto first = snapshot;
+  auto second = snapshot;
+  auto trajectory = make_trajectory();
+  EXPECT_EQ(
+    plugin_->process(trajectory, first),
+    autoware::trajectory_modifier::plugin::ProcessingResult::Modified);
+  expect_stop_before_stop_line(trajectory);
+  auto unrelated = make_trajectory(10.0);
+  const auto original = unrelated;
+  EXPECT_EQ(
+    plugin_->process(unrelated, second),
+    autoware::trajectory_modifier::plugin::ProcessingResult::Unchanged);
+  EXPECT_EQ(unrelated, original);
+  plugin_->end_cycle();
 }
