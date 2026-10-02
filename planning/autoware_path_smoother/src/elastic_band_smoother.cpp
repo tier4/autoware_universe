@@ -108,8 +108,12 @@ ElasticBandSmoother::ElasticBandSmoother(const rclcpp::NodeOptions & node_option
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&ElasticBandSmoother::onParam, this, std::placeholders::_1));
 
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  logger_configure_ =
+    std::make_unique<autoware_utils::BasicLoggerLevelConfigure<autoware::agnocast_wrapper::Node>>(
+      this);
+  published_time_publisher_ =
+    std::make_unique<autoware_utils::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(
+      this);
 }
 
 rcl_interfaces::msg::SetParametersResult ElasticBandSmoother::onParam(
@@ -151,13 +155,13 @@ void ElasticBandSmoother::resetPreviousData()
   prev_optimized_traj_points_ptr_ = nullptr;
 }
 
-void ElasticBandSmoother::onPath(const Path::ConstSharedPtr path_ptr)
+void ElasticBandSmoother::onPath(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Path) path_ptr)
 {
   time_keeper_ptr_->init();
   time_keeper_ptr_->tic(__func__);
 
   // check if data is ready and valid
-  const auto ego_state_ptr = odom_sub_.take_data();
+  const auto ego_state_ptr = odom_sub_->take_data();
   if (!isDataReady(*path_ptr, ego_state_ptr, *get_clock())) {
     return;
   }

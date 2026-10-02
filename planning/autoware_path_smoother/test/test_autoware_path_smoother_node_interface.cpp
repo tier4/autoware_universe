@@ -48,7 +48,7 @@ TEST(PlanningModuleInterfaceTest, NodeTestWithExceptionTrajectory)
 
   // publish necessary topics from test_manager
   test_manager->publishInput(
-    test_target_node, "autoware_path_smoother/input/odometry",
+    test_target_node->get_rclcpp_node(), "autoware_path_smoother/input/odometry",
     autoware::test_utils::makeOdometry());
 
   // set subscriber with topic name
@@ -61,13 +61,13 @@ TEST(PlanningModuleInterfaceTest, NodeTestWithExceptionTrajectory)
 
   // test with normal trajectory
   ASSERT_NO_THROW_WITH_ERROR_MSG(
-    test_manager->testWithNormalPath(test_target_node, input_path_topic));
+    test_manager->testWithNormalPath(test_target_node->get_rclcpp_node(), input_path_topic));
 
   EXPECT_GE(test_manager->getReceivedTopicNum(), 1);
 
   // test with trajectory with empty/one point/overlapping point
   ASSERT_NO_THROW_WITH_ERROR_MSG(
-    test_manager->testWithAbnormalPath(test_target_node, input_path_topic));
+    test_manager->testWithAbnormalPath(test_target_node->get_rclcpp_node(), input_path_topic));
 
   rclcpp::shutdown();
 }

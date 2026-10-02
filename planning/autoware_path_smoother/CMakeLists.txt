@@ -18,9 +18,11 @@ target_include_directories(autoware_path_smoother
 )
 
 # register node
-rclcpp_components_register_node(autoware_path_smoother
+autoware_agnocast_wrapper_register_node(autoware_path_smoother
   PLUGIN "autoware::path_smoother::ElasticBandSmoother"
   EXECUTABLE elastic_band_smoother
+  ROS2_EXECUTOR SingleThreadedExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 if(BUILD_TESTING)
