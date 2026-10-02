@@ -1,10 +1,12 @@
 /**:
   ros__parameters:
     # Complete plugin execution order: modifiers followed by optimizers.
+    # TSO then ModelPlanningFactorID, then velocity limits / remaining plugins.
     plugin_names:
+      - "autoware::trajectory_modifier::plugin::TrajectoryTimeSequenceRawOptimizer"
+      - "autoware::trajectory_modifier::plugin::ModelPlanningFactorID"
       - "autoware::trajectory_modifier::plugin::ExternalVelocityLimit"
       - "autoware::trajectory_modifier::plugin::MapVelocityLimits"
-      - "autoware::trajectory_modifier::plugin::TrajectoryTimeSequenceRawOptimizer"
       - "autoware::trajectory_modifier::plugin::StopPointFixer"
       - "autoware::trajectory_modifier::plugin::SurroundObstacleStop"
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
@@ -27,6 +29,7 @@
     use_traffic_light_stop: true
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
+    use_model_planning_factor_id: true
 
     use_akima_spline_interpolation: true
     use_eb_smoother: false
@@ -184,3 +187,12 @@
     map_velocity_limits:
       limit_velocity_from_map_debug_lanelet_ids: [0]
       limit_velocity_from_map_debug_max_velocities: [1000.0]
+
+    # ModelPlanningFactorID: inspect kinematics and publish
+    # /planning/planning_factors/diffusion_planner. Does not mutate.
+    model_planning_factor_id:
+      enable_stop: true
+      enable_slowdown: false
+      stop_velocity_threshold: 0.1       # [m/s]
+      stop_keep_duration_threshold: 1.0  # [s]
+      slowdown_accel_threshold: -0.3     # [m/s^2]
