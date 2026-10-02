@@ -15,6 +15,7 @@
 #include "frenet_sampling_based_planner.hpp"
 
 #include "../../utils/frenet_utils.hpp"
+#include "../../utils/velocity_optimizer.hpp"
 
 #include <autoware_frenet_planner/polynomials.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -154,6 +155,23 @@ std::vector<double> tabulate_lateral_bound(
   return window;
 }
 
+//! The base_link arc length to stop at: the goal at the end of the path, or the nearest stop bar
+//! (Gate) closed within the horizon if that comes first, where the footprint front just touches
+//! it (violates_stop_bar). Not behind s_min
+double stop_target_s(
+  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
+  const double horizon, const double s_min)
+{
+  double s_stop = context.reference_path.length();
+  for (const auto & stop_bar : compiled_constraints.stop_bars) {
+    if (stop_bar.time.t1 < 0.0 || stop_bar.time.t0 > horizon) {
+      continue;
+    }
+    s_stop = std::min(s_stop, stop_bar.s_stop - context.vehicle_info.max_longitudinal_offset_m);
+  }
+  return std::max(s_stop, s_min);
+}
+
 }  // namespace
 
 FrenetSamplingBasedPlanner::ConstraintTables::ConstraintTables(
@@ -166,6 +184,9 @@ FrenetSamplingBasedPlanner::ConstraintTables::ConstraintTables(
   for (const auto & bound : compiled_constraints.scalar_bounds) {
     if (!(bound.s0 == -INF && bound.s1 == INF)) {
       continue;  // a bound limited to an interval is read per cell, from v_max
+    }
+    if (compiled_constraints.raw_constraints[bound.raw_index].hardness != Hardness::HARD) {
+      continue;  // the nominal values are in KinematicLimits
     }
     switch (bound.quantity) {
       case BoundedQuantity::LAT_ACCEL:
@@ -533,10 +554,11 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   phase.reset();
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>("evaluate", *time_keeper_);
   time_keeper_->comment(std::to_string(candidates.size()) + " candidates");
+  const bool optimize_velocity = params_.frenet_sampling_based_planner.velocity_optimizer.enable;
   for (auto & candidate : candidates) {
     evaluate(
       context, grid, compiled_constraints, tables, initial_state.l_goal, previous_lateral,
-      candidate);
+      optimize_velocity, candidate);
   }
 
   phase.reset();
@@ -549,13 +571,39 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
     phase.reset();
   }
 
-  const Candidate * best = nullptr;
-  for (const auto & candidate : candidates) {
-    if (candidate.valid && (!best || candidate.cost < best->cost)) {
-      best = &candidate;
+  const auto cheapest = [&](const bool require_longitudinal_ok, const bool require_nominal) {
+    const Candidate * best = nullptr;
+    for (const auto & candidate : candidates) {
+      if (
+        candidate.valid && (candidate.longitudinal_ok || !require_longitudinal_ok) &&
+        (candidate.nominal_ok || !require_nominal) && (!best || candidate.cost < best->cost)) {
+        best = &candidate;
+      }
+    }
+    return best;
+  };
+
+  if (optimize_velocity) {
+    if (const auto * path_choice = cheapest(false, false)) {
+      phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+        "optimize_candidate_velocity", *time_keeper_);
+      const auto optimized = optimize_candidate_velocity(
+        context, grid, compiled_constraints, tables, initial_state, previous_trajectory,
+        *path_choice);
+      phase.reset();
+      if (optimized && optimized->valid) {
+        return to_trajectory_msg(context, *optimized);
+      }
     }
   }
 
+  // Without the optimizer, or when its output fails the checks: the sampled profile as it is,
+  // within the nominal acceleration and jerk when one passes. The hard limits are for when none
+  // does, a stop bar inside the nominal braking distance for one
+  const Candidate * best = cheapest(true, true);
+  if (!best) {
+    best = cheapest(true, false);
+  }
   if (!best) {
     std::map<std::string, int> reasons;
     for (const auto & candidate : candidates) {
@@ -865,19 +913,11 @@ FrenetSamplingBasedPlanner::generate_velocity_profiles(
   // few meters before the goal either cannot cover the distance within T, i.e. drive backwards, or
   // overshoot it, and all of them are rejected
   {
-    // Stop at the goal, or at the nearest stop bar (Gate) ahead if that comes first. Without this
-    // the only candidate that respects a stop bar is standstill (every profile that moves reaches
-    // the bar within the horizon), so the ego would never approach it. The target is the
-    // base_link position whose footprint front just touches the bar (violates_stop_bar)
-    double s_stop_target = s_max;
-    for (const auto & stop_bar : compiled_constraints.stop_bars) {
-      if (stop_bar.time.t1 < 0.0 || stop_bar.time.t0 > horizon) {
-        continue;
-      }
-      s_stop_target =
-        std::min(s_stop_target, stop_bar.s_stop - context.vehicle_info.max_longitudinal_offset_m);
-    }
-    s_stop_target = std::max(s_stop_target, initial_state.s);
+    // Stop at the goal, or at the nearest stop bar ahead. Without this the only candidate that
+    // respects a stop bar is standstill (every profile that moves reaches the bar within the
+    // horizon), so the ego would never approach it
+    const double s_stop_target =
+      stop_target_s(context, compiled_constraints, horizon, initial_state.s);
     const double remaining = s_stop_target - initial_state.s;
     const double duration = std::clamp(
       2.0 * remaining / std::max(initial_state.v, 0.1), p.target_durations_s.front(), horizon);
@@ -937,7 +977,8 @@ FrenetSamplingBasedPlanner::Candidate FrenetSamplingBasedPlanner::combine(
 void FrenetSamplingBasedPlanner::evaluate(
   const PlannerContext & context, const ReferenceGrid & grid,
   const CompiledConstraints & compiled_constraints, const ConstraintTables & tables,
-  const double l_goal, const PreviousLateral & previous_lateral, Candidate & candidate) const
+  const double l_goal, const PreviousLateral & previous_lateral, const bool defer_longitudinal,
+  Candidate & candidate) const
 {
   const auto & p = params_.frenet_sampling_based_planner;
   const double s_max = context.reference_path.length();
@@ -950,6 +991,35 @@ void FrenetSamplingBasedPlanner::evaluate(
     candidate.valid = false;
     candidate.tag += std::string(" [") + reason + "]";
   };
+  //! Returns whether the evaluation ends here
+  const auto reject_longitudinal = [&](const char * reason) {
+    if (!defer_longitudinal) {
+      reject(reason);
+      return true;
+    }
+    if (candidate.longitudinal_ok) {
+      candidate.longitudinal_ok = false;
+      candidate.tag += std::string(" (") + reason + ")";
+    }
+    return false;
+  };
+  const auto & margin = p.validation;
+  const auto & limits = tables.limits;
+  //! The nominal band of the acceleration at t: a measured a0 outside it is nobody's choice, and
+  //! the band is reached at the nominal jerk at the earliest, so the excess it leaves until then
+  //! is not held against the candidate
+  const double a0 = candidate.a.front();
+  const auto nominal_band = [&](const double t) {
+    const double relax = std::isfinite(limits.j_nom) ? limits.j_nom * t : INF;
+    return std::make_pair(
+      std::min(limits.a_nom_min, a0 + relax), std::max(limits.a_nom_max, a0 - relax));
+  };
+  const auto exceed_nominal = [&](const char * reason) {
+    if (candidate.nominal_ok) {
+      candidate.nominal_ok = false;
+      candidate.tag += std::string(" {") + reason + "}";
+    }
+  };
 
   double cost = 0.0;
   for (std::size_t k = 0; k < candidate.s.size(); ++k) {
@@ -960,8 +1030,8 @@ void FrenetSamplingBasedPlanner::evaluate(
     const double a = candidate.a[k];
 
     // A candidate that passes the goal at the end of the path, or drives backwards, is invalid
-    if (s > s_max + 1e-3) {
-      return reject("beyond_goal");
+    if (s > s_max + 1e-3 && reject_longitudinal("beyond_goal")) {
+      return;
     }
     if (v < -1e-3) {
       return reject("reverse");
@@ -969,27 +1039,42 @@ void FrenetSamplingBasedPlanner::evaluate(
     // --- vehicle kinematics (the ScalarBound constraints of VehicleKinematics) ---
     const auto cell = tables.cell(s);
     const double v_max = tables.v_max[cell];
-    if (v > v_max + 1e-6) {
-      return reject("velocity");
+    // Not at k = 0: that is the measured ego speed, which the plan cannot change
+    if (k > 0 && v > v_max + margin.velocity_margin_mps && reject_longitudinal("velocity")) {
+      return;
     }
-    if (a < tables.limits.a_hard_min - 1e-6 || a > tables.limits.a_hard_max + 1e-6) {
-      return reject("lon_accel");
+    if (
+      (a < limits.a_hard_min - margin.lon_accel_margin_mps2 ||
+       a > limits.a_hard_max + margin.lon_accel_margin_mps2) &&
+      reject_longitudinal("lon_accel")) {
+      return;
+    }
+    // Not the lateral acceleration: the ego a little over the nominal one in a corner can only
+    // leave it as fast as its speed drops, which would put every candidate in the hard tier
+    if (const auto [nom_min, nom_max] = nominal_band(static_cast<double>(k) * dt);
+        a < nom_min || a > nom_max) {
+      exceed_nominal("lon_accel");
     }
     const double steer = std::atan(kappa * wheel_base_m);
     if (std::abs(steer) > bounds.steer_angle) {
       return reject("steer_angle");
     }
-    if (std::abs(v * v * kappa) > bounds.lat_accel) {
-      return reject("lat_accel");
+    if (std::abs(v * v * kappa) > bounds.lat_accel && reject_longitudinal("lat_accel")) {
+      return;
     }
     if (k + 1 < candidate.s.size()) {
       const double next_a = candidate.a[k + 1];
-      if (std::abs((next_a - a) / dt) > bounds.lon_jerk) {
-        return reject("lon_jerk");
+      if (std::abs((next_a - a) / dt) > bounds.lon_jerk && reject_longitudinal("lon_jerk")) {
+        return;
+      }
+      if (std::abs((next_a - a) / dt) > limits.j_nom) {
+        exceed_nominal("lon_jerk");
       }
       const double next_steer = std::atan(candidate.kappa[k + 1] * wheel_base_m);
-      if (std::abs((next_steer - steer) / dt) > bounds.steer_rate) {
-        return reject("steer_rate");
+      if (
+        std::abs((next_steer - steer) / dt) > bounds.steer_rate &&
+        reject_longitudinal("steer_rate")) {
+        return;
       }
     }
 
@@ -1048,6 +1133,183 @@ void FrenetSamplingBasedPlanner::evaluate(
     cost += p.weights.path_infeasible;
   }
   candidate.cost = cost;
+}
+
+std::optional<FrenetSamplingBasedPlanner::Candidate>
+FrenetSamplingBasedPlanner::optimize_candidate_velocity(
+  const PlannerContext & context, const ReferenceGrid & grid,
+  const CompiledConstraints & compiled_constraints, const ConstraintTables & tables,
+  const InitialState & initial_state, const std::optional<Trajectory> & previous_trajectory,
+  const Candidate & candidate) const
+{
+  const auto & p = params_.frenet_sampling_based_planner;
+  const auto & vo = p.velocity_optimizer;
+  const auto & limits = tables.limits;
+  const auto & bounds = tables.bounds;
+  const auto & path = *candidate.path;
+  const double res = p.path_resolution_m;
+  const double s0 = path.s.front();
+
+  // The jerk filters of the optimizer need a finite jerk, which is missing only when no plugin
+  // bounds LON_JERK
+  const double j_max = std::min(limits.j_nom, bounds.lon_jerk);
+  if (!std::isfinite(j_max)) {
+    return std::nullopt;
+  }
+
+  // sigma: the arc length along the path at each of its samples
+  std::vector<double> sigma(path.s.size(), 0.0);
+  for (std::size_t i = 1; i < path.s.size(); ++i) {
+    sigma[i] = sigma[i - 1] + 0.5 * (path.metric[i - 1] + path.metric[i]) * res;
+  }
+  const auto s_at = [&](const double sig) {
+    const auto it = std::upper_bound(sigma.begin(), sigma.end(), sig);
+    if (it == sigma.begin()) {
+      return path.s.front();
+    }
+    if (it == sigma.end()) {
+      return path.s.back();
+    }
+    const auto j = static_cast<std::size_t>(std::distance(sigma.begin(), it)) - 1;
+    const double r = (sig - sigma[j]) / (sigma[j + 1] - sigma[j]);
+    return path.s[j] + r * (path.s[j + 1] - path.s[j]);
+  };
+  const double length = std::min(sigma.back(), vo.max_length_m);
+  // At the goal there is nothing left to optimize over; the sampled profile stands there
+  if (length < vo.resolution_m) {
+    return std::nullopt;
+  }
+  // Shrunk so that the grid ends exactly at the goal, where the stop is
+  const auto intervals = static_cast<std::size_t>(std::ceil(length / vo.resolution_m));
+  const double ds = length / static_cast<double>(intervals);
+
+  // The bound on v at each grid point: the velocity limit, the nominal lateral acceleration and
+  // the steer rate, read over the samples of the path rather than at the grid points. evaluate()
+  // checks the winner on the samples, and a change of steer within one of them (0.5 m) read over a
+  // grid interval (1 m) comes out at half. Each segment of the path bounds both ends of every grid
+  // interval it touches, and the speed in between stays under the smaller of the two. Plus the
+  // stop at the goal or a stop bar, placed on the last grid point before it
+  const double a_lat = std::min(limits.a_lat_nom, bounds.lat_accel);
+  const double s_stop =
+    stop_target_s(context, compiled_constraints, params_.trajectory_horizon_s, initial_state.s);
+  const double sigma_stop = interpolate_uniform(sigma, s0, res, s_stop);
+  const double wheel_base_m = context.vehicle_info.wheel_base_m;
+  const auto cap_at = [&](const std::size_t j) {
+    double cap = tables.v_max[tables.cell(path.s[j])];
+    if (std::abs(path.kappa[j]) > 1e-6) {
+      cap = std::min(cap, std::sqrt(a_lat / std::abs(path.kappa[j])));
+    }
+    return cap;
+  };
+  std::vector<double> v_max(intervals + 1, INF);
+  double prev_steer = std::atan(path.kappa.front() * wheel_base_m);
+  for (std::size_t j = 0; j + 1 < path.s.size() && sigma[j] < length; ++j) {
+    const double steer = std::atan(path.kappa[j + 1] * wheel_base_m);
+    const double steer_grad = std::abs(steer - prev_steer) / (sigma[j + 1] - sigma[j]);  // [rad/m]
+    prev_steer = steer;
+    double cap = std::min(cap_at(j), cap_at(j + 1));
+    if (steer_grad > 1e-6) {
+      cap = std::min(cap, bounds.steer_rate / steer_grad);
+    }
+    const auto first = static_cast<std::size_t>(std::floor(sigma[j] / ds));
+    const auto last = std::min(intervals, static_cast<std::size_t>(std::ceil(sigma[j + 1] / ds)));
+    for (std::size_t i = first; i <= last; ++i) {
+      v_max[i] = std::min(v_max[i], cap);
+    }
+  }
+  for (std::size_t i = 0; i <= intervals; ++i) {
+    if (static_cast<double>(i + 1) * ds > sigma_stop + 1e-6) {
+      v_max[i] = 0.0;
+    }
+  }
+
+  // The initial acceleration is the one planned for here in the previous output rather than the
+  // measured one: that carries the response of the controller back into the plan, so one cycle
+  // of braking fallback keeps the ego braking for seconds
+  double v0 = candidate.v.front();
+  std::optional<double> a0 = candidate.a.front();
+  if (v0 < params_.engage_velocity.velocity_hard_mps) {
+    // From standstill, as the VelocitySmoother of autoware_minimum_rule_based_planner: the first
+    // grid interval runs at a0 (b' = 2a), so from (0, 0) it takes tens of seconds to leave it.
+    // The acceleration is the QP's to choose: fixed, it sets the speed at the first grid point
+    // over whatever bounds it there
+    v0 = params_.engage_velocity.velocity_hard_mps;
+    a0 = std::nullopt;
+  } else if (previous_trajectory && !previous_trajectory->points.empty()) {
+    const auto & ego = context.odometry.pose.pose.position;
+    const auto & points = previous_trajectory->points;
+    const auto nearest = std::min_element(
+      points.begin(), points.end(), [&](const TrajectoryPoint & x, const TrajectoryPoint & y) {
+        return autoware_utils_geometry::calc_squared_distance2d(x, ego) <
+               autoware_utils_geometry::calc_squared_distance2d(y, ego);
+      });
+    // As the VelocitySmoother of autoware_minimum_rule_based_planner
+    constexpr double MAX_VELOCITY_DEVIATION_MPS = 3.0;
+    if (std::abs(nearest->longitudinal_velocity_mps - v0) <= MAX_VELOCITY_DEVIATION_MPS) {
+      a0 = nearest->acceleration_mps2;
+    }
+  }
+
+  VelocityOptimizerParams qp_params;
+  qp_params.a_min = limits.a_nom_min;
+  qp_params.a_max = limits.a_nom_max;
+  qp_params.j_min = -j_max;
+  qp_params.j_max = j_max;
+  qp_params.jerk_weight = vo.weights.jerk;
+  qp_params.over_v_weight = vo.weights.over_velocity;
+  qp_params.over_a_weight = vo.weights.over_acceleration;
+  qp_params.over_j_weight = vo.weights.over_jerk;
+  const auto profile = optimize_velocity(v_max, ds, v0, a0, qp_params);
+  if (!profile) {
+    return std::nullopt;
+  }
+
+  // Back onto the time grid, at a constant acceleration within each grid interval. An interval at
+  // standstill at both ends is never left; past the end of the grid the last speed is held
+  const auto & v = profile->v;
+  const auto & a = profile->a;
+  Candidate optimized;
+  optimized.path = candidate.path;
+  optimized.tag = candidate.tag + " optimized";
+  std::size_t i = 0;
+  double t_i = 0.0;
+  double seg_dt = INF;
+  for (std::size_t k = 0; k < candidate.s.size(); ++k) {
+    const double t = static_cast<double>(k) * p.time_step_s;
+    while (i + 1 < v.size()) {
+      const double v_sum = v[i] + v[i + 1];
+      seg_dt = v_sum > 1e-6 ? 2.0 * ds / v_sum : INF;
+      if (t_i + seg_dt > t) {
+        break;
+      }
+      t_i += seg_dt;
+      ++i;
+    }
+    double sig = static_cast<double>(i) * ds;
+    double vel = 0.0;
+    double acc = 0.0;
+    if (i + 1 < v.size() && std::isfinite(seg_dt)) {
+      const double tau = t - t_i;
+      const double a_seg = (v[i + 1] * v[i + 1] - v[i] * v[i]) / (2.0 * ds);
+      sig += v[i] * tau + 0.5 * a_seg * tau * tau;
+      vel = v[i] + a_seg * tau;
+      acc = a[i] + (a[i + 1] - a[i]) * tau / seg_dt;
+    } else if (i + 1 == v.size()) {
+      sig += v[i] * (t - t_i);
+      vel = v[i];
+    }
+    const double s = s_at(sig);
+    optimized.s.push_back(s);
+    optimized.l.push_back(interpolate_uniform(path.l, s0, res, s));
+    optimized.kappa.push_back(interpolate_uniform(path.kappa, s0, res, s));
+    optimized.v.push_back(vel);
+    optimized.a.push_back(acc);
+  }
+
+  evaluate(
+    context, grid, compiled_constraints, tables, initial_state.l_goal, PreviousLateral{}, false,
+    optimized);
+  return optimized;
 }
 
 Trajectory FrenetSamplingBasedPlanner::to_trajectory_msg(

@@ -20,6 +20,7 @@
 #include <builtin_interfaces/msg/duration.hpp>
 #include <rclcpp/logging.hpp>
 
+#include <geometry_msgs/msg/pose.hpp>
 #include <std_msgs/msg/header.hpp>
 
 #include <algorithm>
@@ -53,6 +54,11 @@ time_sequence_raw::TrajectoryOptimizationParams to_opt_params(
   out.weight_jerk = p.weight_jerk;
   out.weight_steering_rate = p.weight_steering_rate;
   out.terminal_weight_scale = p.terminal_weight_scale;
+  out.goal.weight_longitudinal = p.goal.weight_longitudinal;
+  out.goal.weight_lateral = p.goal.weight_lateral;
+  out.goal.weight_yaw = p.goal.weight_yaw;
+  out.goal.weight_velocity = p.goal.weight_velocity;
+  out.goal.snap_distance_m = p.goal.snap_distance_m;
   out.min_velocity_mps = p.min_velocity_mps;
   out.max_velocity_mps = p.max_velocity_mps;
   out.min_acceleration_mps2 = p.min_acceleration_mps2;
@@ -563,8 +569,12 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   }
   in_stopped_regime_ = false;
 
-  const auto result =
-    optimizer_->optimize(reference, ocp_odom, steering, accel_mps2, data.candidate_index);
+  std::optional<geometry_msgs::msg::Pose> goal_pose;
+  if (data.route) {
+    goal_pose = data.route->goal_pose;
+  }
+  const auto result = optimizer_->optimize(
+    reference, ocp_odom, steering, accel_mps2, data.candidate_index, goal_pose);
   last_solver_status_ = result.solver_status;
   last_solve_time_ms_ = result.solve_time_ms;
 

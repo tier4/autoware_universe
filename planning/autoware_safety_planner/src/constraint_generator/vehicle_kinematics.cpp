@@ -18,7 +18,7 @@
 #include <string>
 #include <utility>
 
-namespace autoware::safety_planner::experimental
+namespace autoware::safety_planner
 {
 
 ConstraintGeneratorOutput VehicleKinematicsConstraintGenerator::generate_constraints(
@@ -28,33 +28,44 @@ ConstraintGeneratorOutput VehicleKinematicsConstraintGenerator::generate_constra
 
   const auto add = [&output](
                      const BoundedQuantity quantity, const double min, const double max,
-                     const std::string & detail) {
+                     const std::string & detail, const Hardness hardness) {
     Constraint constraint;
+    constraint.hardness = hardness;
     constraint.payload = ScalarBound{quantity, min, max};
     constraint.source = Source{"vehicle_kinematics", "", detail};
     output.constraints.push_back(std::move(constraint));
   };
 
-  const auto & p = params_.vehicle_kinematics;
-
+  // HARD constraints
+  const auto & hard_params = params_.vehicle_kinematics.max;
   // NOTE(odashima): the speed bound is the one of external_velocity_limit, which owns both the
   // default and the limit given from outside
   add(
-    BoundedQuantity::LON_ACCEL, p.lon_accel_hard_min_mps2, p.lon_accel_hard_max_mps2, "lon_accel");
+    BoundedQuantity::LON_ACCEL, hard_params.lon_accel_min_mps2, hard_params.lon_accel_max_mps2,
+    "lon_accel", Hardness::HARD);
   // NOTE(odashima): left at -INF for quantities bounded in absolute value
-  add(BoundedQuantity::LON_JERK, -INF, p.lon_jerk_hard_mps3, "lon_jerk");
-  add(BoundedQuantity::LAT_ACCEL, -INF, p.lat_accel_hard_mps2, "lat_accel");
-  add(BoundedQuantity::STEER_ANGLE, -INF, context.vehicle_info.max_steer_angle_rad, "steer_angle");
-  add(BoundedQuantity::STEER_RATE, -INF, p.steer_rate_hard_radps, "steer_rate");
+  add(BoundedQuantity::LON_JERK, -INF, hard_params.lon_jerk_mps3, "lon_jerk", Hardness::HARD);
+  add(BoundedQuantity::LAT_ACCEL, -INF, hard_params.lat_accel_mps2, "lat_accel", Hardness::HARD);
+  add(
+    BoundedQuantity::STEER_ANGLE, -INF, context.vehicle_info.max_steer_angle_rad, "steer_angle",
+    Hardness::HARD);
+  add(
+    BoundedQuantity::STEER_RATE, -INF, hard_params.steer_rate_radps, "steer_rate", Hardness::HARD);
 
-  // TODO(odashima): add soft constraints for comfort
+  // SOFT constraints
+  const auto & soft_params = params_.vehicle_kinematics.nominal;
+  add(
+    BoundedQuantity::LON_ACCEL, soft_params.lon_accel_min_mps2, soft_params.lon_accel_max_mps2,
+    "lon_accel", Hardness::SOFT);
+  add(BoundedQuantity::LON_JERK, -INF, soft_params.lon_jerk_mps3, "lon_jerk", Hardness::SOFT);
+  add(BoundedQuantity::LAT_ACCEL, -INF, soft_params.lat_accel_mps2, "lat_accel", Hardness::SOFT);
 
   return output;
 }
 
-}  // namespace autoware::safety_planner::experimental
+}  // namespace autoware::safety_planner
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::safety_planner::experimental::VehicleKinematicsConstraintGenerator,
+  autoware::safety_planner::VehicleKinematicsConstraintGenerator,
   autoware::safety_planner::ConstraintGeneratorInterface)

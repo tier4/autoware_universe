@@ -13,6 +13,18 @@
       boundary:
         soft_simplify_tolerance_m: 0.1 # [m] Douglas-Peucker tolerance on the soft boundary polylines; 0 disables
         hard_simplify_tolerance_m: 0.03 # [m] Douglas-Peucker tolerance on the hard boundary polylines; 0 disables
+      validation:
+        velocity_margin_mps: 0.5 # [m/s] tolerance of the velocity limit check
+        lon_accel_margin_mps2: 0.2 # [m/s^2] tolerance of the hard longitudinal acceleration check
+      velocity_optimizer:
+        enable: true
+        resolution_m: 1.0 # [m] arc length spacing of the QP grid
+        max_length_m: 150.0 # [m] arc length of the chosen path the QP covers
+        weights:
+          jerk: 10.0
+          over_velocity: 100000.0
+          over_acceleration: 5000.0
+          over_jerk: 2000.0
       debug:
         publish_candidate_markers: false # publishing every sampled candidate costs a few MB per cycle
       weights:

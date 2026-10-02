@@ -34,8 +34,8 @@ struct VelocityLimitResult
 
 struct VelocityLimitOptions
 {
-  bool make_profile_feasible{false};
-  std::optional<double> current_ego_velocity{};
+  std::optional<double> current_ego_velocity;
+  std::optional<double> current_ego_acceleration;
 };
 
 // Retimes along the input polyline, keeping its first pose and every timestamp. The callback
@@ -43,7 +43,7 @@ struct VelocityLimitOptions
 // Feasible mode anchors the velocity profile to the current ego velocity at t=0 and never raises
 // a point above its original velocity.
 VelocityLimitResult apply_velocity_limits(
-  TrajectoryPoints & points, double deceleration,
+  TrajectoryPoints & points, const double deceleration, const double jerk,
   const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit,
   const VelocityLimitOptions & options = {});
 

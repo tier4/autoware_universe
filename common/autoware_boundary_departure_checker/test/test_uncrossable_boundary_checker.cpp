@@ -24,6 +24,20 @@
 
 namespace autoware::boundary_departure_checker
 {
+UncrossableBoundaryDepartureParam create_default_param()
+{
+  UncrossableBoundaryDepartureParam param;
+  param.critical_departure_lateral_th_m = 0.01;  // [m]
+  param.on_time_buffer_s = 0.15;   // 150ms of continuous violation to trigger CRITICAL
+  param.off_time_buffer_s = 0.15;  // 150ms of continuous safety to clear CRITICAL
+  param.max_deceleration_mps2 = -4.0;
+  param.max_jerk_mps3 = -5.0;
+  param.brake_delay_s = 1.0;
+  param.time_to_departure_cutoff_s = 3.0;
+  param.boundary_types_to_detect = {"road_border"};
+  return param;
+}
+
 UncrossableBoundaryChecker create_default_checker()
 {
   // 1. Setup Vehicle Info (Standard Sedan Size)
@@ -41,15 +55,7 @@ UncrossableBoundaryChecker create_default_checker()
   );
 
   // 2. Param
-  UncrossableBoundaryDepartureParam param;
-  param.critical_departure_lateral_th_m = 0.01;  // [m]
-  param.on_time_buffer_s = 0.15;   // 150ms of continuous violation to trigger CRITICAL
-  param.off_time_buffer_s = 0.15;  // 150ms of continuous safety to clear CRITICAL
-  param.max_deceleration_mps2 = -4.0;
-  param.max_jerk_mps3 = -5.0;
-  param.brake_delay_s = 1.0;
-  param.time_to_departure_cutoff_s = 3.0;
-  param.boundary_types_to_detect = {"road_border"};
+  const auto param = create_default_param();
 
   // 3. Create a LaneletMap with a straight road border at Y = 2.0
   auto map = std::make_shared<lanelet::LaneletMap>();
@@ -130,7 +136,121 @@ TEST(UncrossableBoundaryCheckerTest, TestCheckDepartureZeroVelocity)
 }
 
 // ==============================================================================
-// 2. Hysteresis and Time Buffering Tests
+// 2. Ego Pose Alignment Tests
+// ==============================================================================
+
+TrajectoryPoints create_stacked_trajectory(const double x, const double y, const double yaw)
+{
+  TrajectoryPoints traj;
+  for (int i = 0; i < 5; ++i) {
+    TrajectoryPoint p;
+    p.pose.position.x = x;
+    p.pose.position.y = y;
+    p.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
+    const double time = i * 0.5;
+    p.time_from_start.sec = static_cast<int32_t>(time);
+    p.time_from_start.nanosec = static_cast<uint32_t>((time - p.time_from_start.sec) * 1e9);
+    p.longitudinal_velocity_mps = 0.0F;
+    traj.push_back(p);
+  }
+  return traj;
+}
+
+EgoDynamicState create_stopped_ego_state(const double x, const double y, const double yaw)
+{
+  EgoDynamicState state;
+  state.pose_with_cov.pose.position.x = x;
+  state.pose_with_cov.pose.position.y = y;
+  state.pose_with_cov.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
+  for (auto & c : state.pose_with_cov.covariance) c = 0.0;
+  state.velocity = 0.0;
+  state.acceleration = 0.0;
+  state.current_time_s = 0.0;
+  return state;
+}
+
+TEST(UncrossableBoundaryCheckerTest, TestAlignToEgoPoseRejectsGeneratorYawError)
+{
+  // 1-line summary: A generator yaw error on a stopped ego raises no critical departure.
+
+  // Arrange: ego clears the boundary by 0.13 m, and the generator yaw puts a corner at Y = 2.09.
+  constexpr double ego_x = 0.0;
+  constexpr double ego_y = -1.45;
+  constexpr double generator_yaw_error_rad = 0.06;
+  auto traj = create_stacked_trajectory(ego_x, ego_y, generator_yaw_error_rad);
+  auto ego_state = create_stopped_ego_state(ego_x, ego_y, 0.0);
+
+  // Act:
+  auto checker = create_default_checker();
+  HysteresisState state;
+  auto result = checker.update_departure_status(traj, ego_state, state);
+
+  // Assert:
+  EXPECT_NE(result.status, DepartureType::CRITICAL);
+}
+
+TEST(UncrossableBoundaryCheckerTest, TestAlignToEgoPoseDisabledKeepsGeneratorPoses)
+{
+  // 1-line summary: With the alignment off, the generator yaw error raises a critical departure.
+  constexpr double ego_x = 0.0;
+  constexpr double ego_y = -1.45;
+  constexpr double generator_yaw_error_rad = 0.06;
+  auto traj = create_stacked_trajectory(ego_x, ego_y, generator_yaw_error_rad);
+  auto ego_state = create_stopped_ego_state(ego_x, ego_y, 0.0);
+
+  // Act:
+  auto checker = create_default_checker();
+  auto param_without_alignment = create_default_param();
+  param_without_alignment.enable_align_to_ego_pose = false;
+  checker.update_parameters(param_without_alignment);
+
+  HysteresisState state;
+  auto result = checker.update_departure_status(traj, ego_state, state);
+
+  // Assert:
+  EXPECT_EQ(result.status, DepartureType::CRITICAL);
+}
+
+TEST(UncrossableBoundaryCheckerTest, TestAlignToEgoPoseKeepsMeasuredDeparture)
+{
+  // 1-line summary: A measured ego pose across the boundary still raises a critical departure.
+  constexpr double ego_x = 0.0;
+  constexpr double ego_y = -1.45;
+  constexpr double measured_yaw_rad = 0.06;
+  auto traj = create_stacked_trajectory(ego_x, ego_y, measured_yaw_rad);
+  auto ego_state = create_stopped_ego_state(ego_x, ego_y, measured_yaw_rad);
+
+  // Act:
+  auto checker = create_default_checker();
+  HysteresisState state;
+  auto result = checker.update_departure_status(traj, ego_state, state);
+
+  // Assert:
+  EXPECT_EQ(result.status, DepartureType::CRITICAL);
+}
+
+TEST(UncrossableBoundaryCheckerTest, TestAlignToEgoPoseKeepsGeneratorPathAwayFromBoundary)
+{
+  // 1-line summary: An ego heading 0.2 rad off a clear trajectory raises no critical departure.
+  constexpr double ego_yaw_offset_rad = 0.2;
+  constexpr double safe_y = -2.5;
+  auto traj = create_trajectory(0.0, safe_y, 10.0, 0.0);
+
+  auto ego_state = create_ego_state(traj, 10.0, 0.0);
+  ego_state.pose_with_cov.pose.orientation =
+    autoware_utils_geometry::create_quaternion_from_yaw(ego_yaw_offset_rad);
+
+  // Act:
+  auto checker = create_default_checker();
+  HysteresisState state;
+  auto result = checker.update_departure_status(traj, ego_state, state);
+
+  // Assert:
+  EXPECT_NE(result.status, DepartureType::CRITICAL);
+}
+
+// ==============================================================================
+// 3. Hysteresis and Time Buffering Tests
 // ==============================================================================
 
 // clang-format off

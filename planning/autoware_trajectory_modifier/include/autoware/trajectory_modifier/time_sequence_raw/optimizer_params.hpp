@@ -28,6 +28,17 @@ struct TrajectoryOptimizationParams
   double weight_steering_rate{10.0};
   double terminal_weight_scale{2.5};
 
+  /// Extra terminal penalty latched once the predicted endpoint is near the route goal.
+  /// Weights are added on the terminal cost only and are not scaled by terminal_weight_scale.
+  struct GoalParams
+  {
+    double weight_longitudinal{5.0};
+    double weight_lateral{5.0};
+    double weight_yaw{0.5};
+    double weight_velocity{0.1};
+    double snap_distance_m{1.0};
+  } goal;
+
   double min_velocity_mps{0.0};
   double max_velocity_mps{30.0};
 

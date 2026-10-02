@@ -57,6 +57,11 @@
           "description": "Continuous safe detection time required to clear a departure alert [s].",
           "default": 0.15
         },
+        "enable_align_to_ego_pose": {
+          "type": "boolean",
+          "description": "Correct the trajectory poses near the ego vehicle to match the measured ego pose.",
+          "default": true
+        },
         "enable_developer_marker": {
           "type": "boolean",
           "description": "Enable advanced debug markers for developers.",

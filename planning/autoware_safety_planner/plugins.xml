@@ -1,6 +1,6 @@
 <class_libraries>
   <library path="autoware_safety_planner_constraint_plugins">
-    <class type="autoware::safety_planner::experimental::VehicleKinematicsConstraintGenerator"
+    <class type="autoware::safety_planner::VehicleKinematicsConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Emits the ScalarBound constraints of the vehicle kinematics</description>
     </class>

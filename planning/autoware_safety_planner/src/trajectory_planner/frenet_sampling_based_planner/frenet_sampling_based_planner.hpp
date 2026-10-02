@@ -208,6 +208,12 @@ private:
     std::vector<double> a;      //!< [m/s^2]
     double cost{0.0};
     bool valid{true};
+    //! False when the profile breaks a limit the velocity optimizer recomputes it under (see
+    //! evaluate); the path may still be taken then, with its velocity optimized
+    bool longitudinal_ok{true};
+    //! False when the profile leaves the nominal longitudinal acceleration or jerk; such a
+    //! candidate is taken only when none within them passes
+    bool nominal_ok{true};
     std::string tag;
   };
 
@@ -248,11 +254,24 @@ private:
   //! Interpolates l and the curvature at s(t_k) along the path
   Candidate combine(const PathCandidate & path, const VelocityProfile & profile) const;
 
-  //! Evaluates the hard constraints and accumulates the soft cost, writing valid and cost
+  //! Evaluates the hard constraints and accumulates the soft cost, writing valid and cost. With
+  //! defer_longitudinal, the checks the velocity optimizer covers (velocity, longitudinal
+  //! acceleration and jerk, lateral acceleration, steer rate) clear longitudinal_ok instead of
+  //! valid. The nominal longitudinal acceleration and jerk clear nominal_ok
   void evaluate(
     const PlannerContext & context, const ReferenceGrid & grid,
     const CompiledConstraints & compiled_constraints, const ConstraintTables & tables,
-    const double l_goal, const PreviousLateral & previous_lateral, Candidate & candidate) const;
+    const double l_goal, const PreviousLateral & previous_lateral, bool defer_longitudinal,
+    Candidate & candidate) const;
+
+  //! The candidate with the velocity along its path recomputed by optimize_velocity under the
+  //! nominal limits, sampled on the same time grid and evaluated again without deferral.
+  //! nullopt when the QP does not solve
+  std::optional<Candidate> optimize_candidate_velocity(
+    const PlannerContext & context, const ReferenceGrid & grid,
+    const CompiledConstraints & compiled_constraints, const ConstraintTables & tables,
+    const InitialState & initial_state, const std::optional<Trajectory> & previous_trajectory,
+    const Candidate & candidate) const;
 
   Trajectory to_trajectory_msg(const PlannerContext & context, const Candidate & candidate) const;
 

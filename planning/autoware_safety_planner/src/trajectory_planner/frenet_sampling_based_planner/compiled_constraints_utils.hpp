@@ -22,17 +22,19 @@
 namespace autoware::safety_planner
 {
 
-//! Only the hard limits are read from the IR (the global ScalarBounds of vehicle_kinematics); the
-//! nominal values keep the defaults below until they get parameters of their own
+//! Read from the global ScalarBounds of the IR (those of vehicle_kinematics): the HARD ones into
+//! the hard limits, the SOFT ones into the nominal values. A hard limit with no bound keeps its
+//! default; the nominal acceleration with none is the hard one
 struct KinematicLimits
 {
   double v_hard{16.7};      //!< [m/s] hard speed limit
   double a_hard_min{-6.0};  //!< [m/s^2] hardest deceleration
   double a_hard_max{6.0};   //!< [m/s^2] hardest acceleration
   double v_nom{13.88};      //!< [m/s] cruising speed
-  double a_nom_min{-1.0};   //!< [m/s^2] comfortable deceleration
-  double a_nom_max{1.0};    //!< [m/s^2] comfortable acceleration
-  double a_lat_nom{2.0};    //!< [m/s^2] lateral acceleration the corner deceleration aims at
+  double a_nom_min{-INF};   //!< [m/s^2] comfortable deceleration, within a_hard_min
+  double a_nom_max{INF};    //!< [m/s^2] comfortable acceleration, within a_hard_max
+  double a_lat_nom{INF};    //!< [m/s^2] lateral acceleration the corner deceleration aims at
+  double j_nom{INF};        //!< [m/s^3] comfortable |longitudinal jerk|
 };
 
 KinematicLimits collect_kinematic_limits(const CompiledConstraints & compiled_constraints);

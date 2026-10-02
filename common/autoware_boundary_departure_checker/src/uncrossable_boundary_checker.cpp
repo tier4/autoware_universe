@@ -49,12 +49,20 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
     return result;
   }
 
+  // An align distance of zero leaves the trajectory that the generator gives.
+  const auto align_dist_m =
+    param_.enable_align_to_ego_pose ? vehicle_info_.max_longitudinal_offset_m : 0.0;
+  const auto expected_alignment =
+    footprints::count_points_within_distance(predicted_traj, align_dist_m);
+  const auto aligned_traj =
+    footprints::align_to_ego_pose(predicted_traj, ego_state.pose_with_cov.pose, expected_alignment);
+
   const auto footprints =
-    footprints::generate(predicted_traj, vehicle_info_, ego_state.pose_with_cov);
+    footprints::generate(aligned_traj, vehicle_info_, ego_state.pose_with_cov);
   const auto footprints_sides = footprints::get_sides_from_footprints(footprints);
 
   const auto evaluation_result =
-    evaluator_ptr_->evaluate(predicted_traj, footprints_sides, ego_state);
+    evaluator_ptr_->evaluate(aligned_traj, footprints_sides, ego_state);
 
   const auto hysteresis_result =
     update_and_judge(state, evaluation_result, param_, ego_state.current_time_s);
@@ -78,8 +86,8 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
       severity_evaluator::get_min_lateral_distance_to_bound(*evaluation_result);
   }
 
-  result.debug_markers =
-    debug::create_debug_markers(state, footprints, ego_state, param_.enable_developer_marker);
+  result.debug_markers = debug::create_debug_markers(
+    state, footprints, expected_alignment.align_count, ego_state, param_.enable_developer_marker);
   return result;
 }
 

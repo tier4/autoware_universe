@@ -7,6 +7,14 @@
       weight_jerk: 0.1
       weight_steering_rate: 10.0
       terminal_weight_scale: 2.5
+      # Latch an extra terminal penalty once the predicted endpoint is within snap_distance_m
+      # of the route goal. Weights are added on the terminal cost only.
+      goal:
+        weight_longitudinal: 5.0
+        weight_lateral: 5.0
+        weight_yaw: 0.5
+        weight_velocity: 0.1
+        snap_distance_m: 1.0
       min_velocity_mps: 0.0
       max_velocity_mps: 30.0
       min_acceleration_mps2: -4.0

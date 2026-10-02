@@ -132,7 +132,7 @@ safety_planner:
   constraint_generator_plugins:
     type: string_array
     default_value:
-      - autoware::safety_planner::experimental::VehicleKinematicsConstraintGenerator
+      - autoware::safety_planner::VehicleKinematicsConstraintGenerator
       - autoware::safety_planner::ExternalVelocityLimitConstraintGenerator
       - autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator
       - autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator
@@ -147,37 +147,63 @@ safety_planner:
     description: fully qualified class name of the trajectory planner plugin to load. It turns the two constraint sets into two trajectories
 
   vehicle_kinematics:
-    lon_accel_hard_min_mps2:
-      type: double
-      default_value: -6.0
-      read_only: true
-      description: "[m/s^2] hard bound on the deceleration"
-    lon_accel_hard_max_mps2:
-      type: double
-      default_value: 6.0
-      read_only: true
-      description: "[m/s^2] hard bound on the acceleration"
-    lon_jerk_hard_mps3:
-      type: double
-      default_value: 5.0
-      read_only: true
-      description: "[m/s^3] hard bound on the longitudinal jerk |j|"
-      validation:
-        gt<>: [0.0]
-    lat_accel_hard_mps2:
-      type: double
-      default_value: 6.0
-      read_only: true
-      description: "[m/s^2] hard bound on the lateral acceleration v^2|k|, about the limit of grip"
-      validation:
-        gt<>: [0.0]
-    steer_rate_hard_radps:
-      type: double
-      default_value: 3.0
-      read_only: true
-      description: "[rad/s] hard bound on the steer rate, the limit of the actuator"
-      validation:
-        gt<>: [0.0]
+    max:
+      lon_accel_min_mps2:
+        type: double
+        default_value: -6.0
+        read_only: true
+        description: "[m/s^2] hard bound on the deceleration"
+      lon_accel_max_mps2:
+        type: double
+        default_value: 6.0
+        read_only: true
+        description: "[m/s^2] hard bound on the acceleration"
+      lon_jerk_mps3:
+        type: double
+        default_value: 5.0
+        read_only: true
+        description: "[m/s^3] hard bound on the longitudinal jerk |j|"
+        validation:
+          gt<>: [0.0]
+      lat_accel_mps2:
+        type: double
+        default_value: 6.0
+        read_only: true
+        description: "[m/s^2] hard bound on the lateral acceleration v^2|k|, about the limit of grip"
+        validation:
+          gt<>: [0.0]
+      steer_rate_radps:
+        type: double
+        default_value: 3.0
+        read_only: true
+        description: "[rad/s] hard bound on the steer rate, the limit of the actuator"
+        validation:
+          gt<>: [0.0]
+    nominal:
+      lon_accel_min_mps2:
+        type: double
+        default_value: -1.0
+        read_only: true
+        description: "[m/s^2] nominal deceleration of normal driving, a soft bound within the hard one"
+      lon_accel_max_mps2:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[m/s^2] nominal acceleration of normal driving, a soft bound within the hard one"
+      lon_jerk_mps3:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[m/s^3] nominal longitudinal jerk |j| of normal driving, a soft bound within the hard one"
+        validation:
+          gt<>: [0.0]
+      lat_accel_mps2:
+        type: double
+        default_value: 2.0
+        read_only: true
+        description: "[m/s^2] nominal lateral acceleration v^2|k| of normal driving, a soft bound within the hard one"
+        validation:
+          gt<>: [0.0]
 
   external_velocity_limit:
     default_velocity_mps:
@@ -369,6 +395,62 @@ safety_planner:
         description: "[m] Douglas-Peucker tolerance applied to each hard Boundary polyline before it is compiled into the projected views; 0 disables"
         validation:
           gt_eq<>: [0.0]
+    validation:
+      velocity_margin_mps:
+        type: double
+        default_value: 0.0
+        read_only: true
+        description: "[m/s] how far a candidate may exceed the velocity limit before it is rejected"
+        validation:
+          gt_eq<>: [0.0]
+      lon_accel_margin_mps2:
+        type: double
+        default_value: 0.0
+        read_only: true
+        description: "[m/s^2] how far a candidate may exceed the hard longitudinal acceleration bounds before it is rejected"
+        validation:
+          gt_eq<>: [0.0]
+    velocity_optimizer:
+      enable:
+        type: bool
+        default_value: false
+        read_only: true
+        description: Recompute the velocity of the chosen path with a QP under the nominal acceleration and jerk. The sampled profiles then only choose the path, and their violations of the velocity, the longitudinal acceleration and jerk, the lateral acceleration and the steer rate do not reject it
+      resolution_m:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[m] arc length spacing of the QP grid"
+        validation:
+          gt<>: [0.0]
+      max_length_m:
+        type: double
+        default_value: 150.0
+        read_only: true
+        description: "[m] arc length of the chosen path the QP covers; beyond it the path is left free, without a stop at its end"
+        validation:
+          gt<>: [0.0]
+      weights:
+        jerk:
+          type: double
+          default_value: 10.0
+          read_only: true
+          description: weight on the squared pseudo jerk
+        over_velocity:
+          type: double
+          default_value: 100000.0
+          read_only: true
+          description: weight on the squared excess of v^2 over its bound
+        over_acceleration:
+          type: double
+          default_value: 5000.0
+          read_only: true
+          description: weight on the squared excess of the acceleration over the nominal bounds
+        over_jerk:
+          type: double
+          default_value: 2000.0
+          read_only: true
+          description: weight on the squared excess of the jerk over the nominal bound
     debug:
       publish_candidate_markers:
         type: bool

@@ -17,6 +17,7 @@
 
 #include "autoware/boundary_departure_checker/detail/footprints_generator.hpp"
 #include "autoware/boundary_departure_checker/detail/hysteresis_logic.hpp"
+#include "autoware/boundary_departure_checker/detail/type_alias.hpp"
 
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -24,6 +25,18 @@ namespace autoware::boundary_departure_checker::debug
 {
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
+
+/**
+ * @brief Create a marker that shows the footprints that the alignment to the ego pose changes.
+ * @param[in] aligned_footprints footprints after the alignment
+ * @param[in] aligned_count number of leading footprints that the alignment changes
+ * @param[in] curr_time current time
+ * @param[in] base_link_z z-coordinate of the base_link
+ * @return array of markers for visualization
+ */
+MarkerArray create_pose_alignment_markers(
+  const footprints::Footprints & aligned_footprints, const size_t aligned_count,
+  const builtin_interfaces::msg::Time & curr_time, const double base_link_z);
 
 /**
  * @brief Create debug markers for boundary departure.
@@ -34,7 +47,8 @@ using visualization_msgs::msg::MarkerArray;
  */
 MarkerArray create_debug_markers(
   const HysteresisState & hysteresis_state, const footprints::Footprints & footprints,
-  const EgoDynamicState & ego_state, const bool enable_developer_marker);
+  const size_t aligned_count, const EgoDynamicState & ego_state,
+  const bool enable_developer_marker);
 }  // namespace autoware::boundary_departure_checker::debug
 
 #endif  // AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__DETAIL__DEBUG_HPP_
