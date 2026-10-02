@@ -114,9 +114,10 @@ TrajectoryPoint make_ego_point(const PlannerContext & context)
 void append_segments(const LineString2d & polyline, std::vector<Segment> & segments)
 {
   for (std::size_t i = 0; i + 1 < polyline.size(); ++i) {
-    segments.push_back(Segment{
-      static_cast<float>(polyline[i].x()), static_cast<float>(polyline[i].y()),
-      static_cast<float>(polyline[i + 1].x()), static_cast<float>(polyline[i + 1].y())});
+    segments.push_back(
+      Segment{
+        static_cast<float>(polyline[i].x()), static_cast<float>(polyline[i].y()),
+        static_cast<float>(polyline[i + 1].x()), static_cast<float>(polyline[i + 1].y())});
   }
 }
 
@@ -217,7 +218,8 @@ TrackedObject to_tracked_object(const KeepOut & body)
 }  // namespace
 
 void MppiPlanner::on_initialize(
-  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params, rclcpp::Node * node)
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
+  rclcpp::Node * node)
 {
   TrajectoryPlannerInterface::on_initialize(time_keeper, params, node);
   const TurnSignalParams turn_signal_params{
@@ -272,8 +274,7 @@ PlannedTrajectory MppiPlanner::plan_one_side(
     "compile_constraint_list", *time_keeper_);
   const auto compiled_constraints = compile_constraint_list(context, constraints);
   add_planning_factors(
-    planning_factor_interface, context, compiled_constraints, kMppiHorizon * kMppiDt,
-    params_.reference_path.goal_connection.search_radius_m);
+    planning_factor_interface, context, compiled_constraints, kMppiHorizon * kMppiDt);
   compile_st.reset();
   auto reference_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
     "make_reference_trajectory", *time_keeper_);

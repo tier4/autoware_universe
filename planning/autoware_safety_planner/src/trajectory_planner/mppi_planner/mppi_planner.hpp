@@ -51,8 +51,8 @@ public:
   std::string get_name() const override { return "mppi_planner"; }
 
   void on_initialize(
-    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
-    const Params & params, rclcpp::Node * node) override;
+    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
+    rclcpp::Node * node) override;
 
   TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) override;
 

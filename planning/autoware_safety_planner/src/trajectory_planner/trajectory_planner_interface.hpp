@@ -69,7 +69,8 @@ public:
   virtual ~TrajectoryPlannerInterface() = default;
 
   virtual void on_initialize(
-    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params, rclcpp::Node * node)
+    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
+    rclcpp::Node * node)
   {
     time_keeper_ = time_keeper;
     params_ = params;

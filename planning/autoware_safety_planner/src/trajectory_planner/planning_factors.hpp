@@ -22,11 +22,10 @@
 namespace autoware::safety_planner
 {
 
-//! Records the stop bar (or the goal, when the path ends there) and the regional speed bounds the
-//! planner is about to apply. Both are already on `compiled`. No-op without an interface.
+//! Records the stop bar, or the path end when there is none.
 void add_planning_factors(
   PlanningFactorInterface * planning_factor_interface, const PlannerContext & context,
-  const CompiledConstraints & compiled_constraints, double horizon_s, double goal_search_radius_m);
+  const CompiledConstraints & compiled_constraints, double horizon_s);
 
 //! The cautious side publishes the same factors when it reuses the normal trajectory
 void copy_planning_factors(const PlanningFactorInterface * from, PlanningFactorInterface * to);

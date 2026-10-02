@@ -70,11 +70,11 @@ std::string detail_of(const Source & source)
 //! Object id and position when the constraint names a predicted object
 SafetyFactorArray safety_factors_of(const Constraint & constraint, const PlannerContext & context)
 {
-  SafetyFactorArray safety;
+  SafetyFactorArray safety_factors;
   const auto uuid = parse_uuid(constraint.source.target_id);
   if (!uuid) {
-    safety.is_safe = true;
-    return safety;
+    safety_factors.is_safe = true;
+    return safety_factors;
   }
 
   SafetyFactor factor;
@@ -100,11 +100,10 @@ SafetyFactorArray safety_factors_of(const Constraint & constraint, const Planner
       }
     }
   }
-
-  safety.is_safe = false;
-  safety.detail = constraint.source.detail;
-  safety.factors.push_back(std::move(factor));
-  return safety;
+  safety_factors.is_safe = false;
+  safety_factors.detail = constraint.source.detail;
+  safety_factors.factors.push_back(std::move(factor));
+  return safety_factors;
 }
 
 Pose pose_on_path(const PathPointTrajectory & path, const double s)
@@ -142,8 +141,7 @@ const StopBarEntry * nearest_stop_bar(
 
 void add_planning_factors(
   PlanningFactorInterface * const planning_factor_interface, const PlannerContext & context,
-  const CompiledConstraints & compiled_constraints, const double horizon_s,
-  const double goal_search_radius_m)
+  const CompiledConstraints & compiled_constraints, const double horizon_s)
 {
   if (planning_factor_interface == nullptr) {
     return;
@@ -159,41 +157,12 @@ void add_planning_factors(
     planning_factor_interface->add(
       s_stop - s_ego, pose_on_path(path, s_stop), PlanningFactor::STOP,
       safety_factors_of(constraint, context), true, 0.0, 0.0, detail_of(constraint.source));
-  } else if (
-    autoware_utils_geometry::calc_distance2d(pose_on_path(path, path.length()), context.goal_pose) <
-    goal_search_radius_m) {
-    SafetyFactorArray safety;
-    safety.is_safe = true;
+  } else {
+    SafetyFactorArray safety_factors;
+    safety_factors.is_safe = true;
     planning_factor_interface->add(
-      path.length() - s_ego, pose_on_path(path, path.length()), PlanningFactor::STOP, safety, true,
-      0.0, 0.0, "goal");
-  }
-
-  for (const auto & bound : compiled_constraints.scalar_bounds) {
-    const bool global = bound.s0 == -INF && bound.s1 == INF;
-    if (bound.quantity != BoundedQuantity::VELOCITY || global) {
-      continue;
-    }
-    if (bound.raw_index >= compiled_constraints.raw_constraints.size()) {
-      continue;
-    }
-    if (bound.s1 < s_ego || bound.s0 > path.length()) {
-      continue;
-    }
-    const double s0 = std::max(bound.s0, s_ego);
-    const double s1 = std::min(bound.s1, path.length());
-    const auto & constraint = compiled_constraints.raw_constraints[bound.raw_index];
-    const auto safety = safety_factors_of(constraint, context);
-    const auto detail = detail_of(constraint.source);
-    if (s1 <= s0) {
-      planning_factor_interface->add(
-        s0 - s_ego, pose_on_path(path, s0), PlanningFactor::SLOW_DOWN, safety, true, bound.max, 0.0,
-        detail);
-    } else {
-      planning_factor_interface->add(
-        s0 - s_ego, s1 - s_ego, pose_on_path(path, s0), pose_on_path(path, s1),
-        PlanningFactor::SLOW_DOWN, safety, true, bound.max, bound.max, 0.0, 0.0, detail);
-    }
+      path.length() - s_ego, pose_on_path(path, path.length()), PlanningFactor::STOP,
+      safety_factors);
   }
 }
 

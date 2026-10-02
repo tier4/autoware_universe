@@ -367,7 +367,8 @@ std::optional<double> FrenetSamplingBasedPlanner::PreviousLateral::at(const doub
 }
 
 void FrenetSamplingBasedPlanner::on_initialize(
-  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params, rclcpp::Node * node)
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
+  rclcpp::Node * node)
 {
   TrajectoryPlannerInterface::on_initialize(time_keeper, params, node);
   const TurnSignalParams turn_signal_params{
@@ -467,8 +468,7 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
     "compile_constraint_list", *time_keeper_);
   const auto compiled_constraints = compile_constraint_list(context, simplified_constraints);
   add_planning_factors(
-    planning_factor_interface, context, compiled_constraints, params_.trajectory_horizon_s,
-    params_.reference_path.goal_connection.search_radius_m);
+    planning_factor_interface, context, compiled_constraints, params_.trajectory_horizon_s);
 
   phase.reset();
   phase =
@@ -729,8 +729,9 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::sample_pat
     // (1 - k_ref*l)). Taking it from the chord between world positions would put the first heading
     // off the ego heading by k*res/2, which in closed loop drifts the ego heading a little every
     // cycle until it hits the steer rate limit after a few dozen of them
-    path.yaw.push_back(autoware_utils_math::normalize_radian(
-      grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
+    path.yaw.push_back(
+      autoware_utils_math::normalize_radian(
+        grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
     path.metric.push_back(std::hypot(1.0 - k_ref * l, dl_ds));
     // Analytic, and per arc length of the path rather than of the reference: the two differ by the
     // metric, which reaches 2 for an ego 4 m outside a lane of R 4 m, and with the difference of
@@ -769,8 +770,9 @@ FrenetSamplingBasedPlanner::PathCandidate FrenetSamplingBasedPlanner::hold_steer
     const double d2l_ds2 = offset_path_d2l(k_ref, grid.dkappa(s_ref), l, dl_ds, kappa);
     path.s.push_back(s);
     path.l.push_back(l);
-    path.yaw.push_back(autoware_utils_math::normalize_radian(
-      grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
+    path.yaw.push_back(
+      autoware_utils_math::normalize_radian(
+        grid.azimuth(s_ref) + std::atan2(dl_ds, 1.0 - k_ref * l)));
     path.metric.push_back(std::hypot(1.0 - k_ref * l, dl_ds));
     path.kappa.push_back(kappa);
     l += dl_ds * res + 0.5 * d2l_ds2 * res * res;
