@@ -55,7 +55,7 @@ std::shared_ptr<ScenarioSelectorNode> generateNode()
 
 void publishMandatoryTopics(
   std::shared_ptr<PlanningInterfaceTestManager> test_manager,
-  std::shared_ptr<ScenarioSelectorNode> test_target_node)
+  rclcpp::Node::SharedPtr test_target_node)
 {
   // publish necessary topics from test_manager
   test_manager->publishInput(
@@ -77,18 +77,18 @@ TEST(PlanningModuleInterfaceTest, NodeTestWithExceptionTrajectoryLaneDrivingMode
   rclcpp::init(0, nullptr);
   auto test_manager = generateTestManager();
   auto test_target_node = generateNode();
+  const auto ros_node = test_target_node->get_rclcpp_node();
 
-  publishMandatoryTopics(test_manager, test_target_node);
+  publishMandatoryTopics(test_manager, ros_node);
 
   const std::string input_trajectory_topic = "input/lane_driving/trajectory";
 
   // test for normal trajectory
-  ASSERT_NO_THROW(test_manager->testWithNormalTrajectory(test_target_node, input_trajectory_topic));
+  ASSERT_NO_THROW(test_manager->testWithNormalTrajectory(ros_node, input_trajectory_topic));
   EXPECT_GE(test_manager->getReceivedTopicNum(), 1);
 
   // test for trajectory with empty/one point/overlapping point
-  ASSERT_NO_THROW(
-    test_manager->testWithAbnormalTrajectory(test_target_node, input_trajectory_topic));
+  ASSERT_NO_THROW(test_manager->testWithAbnormalTrajectory(ros_node, input_trajectory_topic));
   rclcpp::shutdown();
 }
 
@@ -98,18 +98,18 @@ TEST(PlanningModuleInterfaceTest, NodeTestWithExceptionTrajectoryParkingMode)
 
   auto test_manager = generateTestManager();
   auto test_target_node = generateNode();
+  const auto ros_node = test_target_node->get_rclcpp_node();
 
-  publishMandatoryTopics(test_manager, test_target_node);
+  publishMandatoryTopics(test_manager, ros_node);
 
   const std::string input_trajectory_topic = "input/parking/trajectory";
 
   // test for normal trajectory
-  ASSERT_NO_THROW(test_manager->testWithNormalTrajectory(test_target_node, input_trajectory_topic));
+  ASSERT_NO_THROW(test_manager->testWithNormalTrajectory(ros_node, input_trajectory_topic));
   EXPECT_GE(test_manager->getReceivedTopicNum(), 1);
 
   // test for trajectory with empty/one point/overlapping point
-  ASSERT_NO_THROW(
-    test_manager->testWithAbnormalTrajectory(test_target_node, input_trajectory_topic));
+  ASSERT_NO_THROW(test_manager->testWithAbnormalTrajectory(ros_node, input_trajectory_topic));
   rclcpp::shutdown();
 }
 
@@ -118,17 +118,18 @@ TEST(PlanningModuleInterfaceTest, NodeTestWithOffTrackEgoPose)
   rclcpp::init(0, nullptr);
   auto test_manager = generateTestManager();
   auto test_target_node = generateNode();
+  const auto ros_node = test_target_node->get_rclcpp_node();
 
-  publishMandatoryTopics(test_manager, test_target_node);
+  publishMandatoryTopics(test_manager, ros_node);
 
   const std::string input_trajectory_topic = "input/lane_driving/trajectory";
   const std::string input_odometry_topic = "input/odometry";
 
   // test for normal trajectory
-  ASSERT_NO_THROW(test_manager->testWithNormalTrajectory(test_target_node, input_trajectory_topic));
+  ASSERT_NO_THROW(test_manager->testWithNormalTrajectory(ros_node, input_trajectory_topic));
   EXPECT_GE(test_manager->getReceivedTopicNum(), 1);
 
-  ASSERT_NO_THROW(test_manager->testWithOffTrackOdometry(test_target_node, input_odometry_topic));
+  ASSERT_NO_THROW(test_manager->testWithOffTrackOdometry(ros_node, input_odometry_topic));
   rclcpp::shutdown();
 }
 }  // namespace autoware::scenario_selector

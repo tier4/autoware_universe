@@ -468,15 +468,17 @@ ScenarioSelectorNode::ScenarioSelectorNode(const rclcpp::NodeOptions & node_opti
     "input/route", rclcpp::QoS{1}.transient_local(),
     std::bind(&ScenarioSelectorNode::onRoute, this, std::placeholders::_1));
 
-  sub_odom_ = decltype(sub_odom_)::element_type::create_subscription(
+  sub_odom_ = autoware::agnocast_wrapper::polling::create_polling_subscriber<
+    nav_msgs::msg::Odometry, autoware::agnocast_wrapper::polling::polling_policy::All>(
     this, "input/odometry", rclcpp::QoS{100});
 
-  sub_parking_state_ = decltype(sub_parking_state_)::element_type::create_subscription(
-    this, "is_parking_completed", rclcpp::QoS{1});
+  sub_parking_state_ =
+    autoware::agnocast_wrapper::polling::create_polling_subscriber<std_msgs::msg::Bool>(
+      this, "is_parking_completed", rclcpp::QoS{1});
 
-  sub_operation_mode_state_ =
-    decltype(sub_operation_mode_state_)::element_type::create_subscription(
-      this, "input/operation_mode_state", rclcpp::QoS{1}.transient_local());
+  sub_operation_mode_state_ = autoware::agnocast_wrapper::polling::create_polling_subscriber<
+    autoware_adapi_v1_msgs::msg::OperationModeState>(
+    this, "input/operation_mode_state", rclcpp::QoS{1}.transient_local());
 
   // Output
   pub_scenario_ = this->create_publisher<autoware_internal_planning_msgs::msg::Scenario>(
@@ -487,9 +489,10 @@ ScenarioSelectorNode::ScenarioSelectorNode(const rclcpp::NodeOptions & node_opti
   // Timer Callback
   const auto period_ns = rclcpp::Rate(static_cast<double>(update_rate_)).period();
 
-  timer_ = rclcpp::create_timer(
+  timer_ = autoware::agnocast_wrapper::create_timer(
     this, get_clock(), period_ns, std::bind(&ScenarioSelectorNode::onTimer, this));
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  published_time_publisher_ = std::make_unique<
+    autoware_utils::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(this);
   pub_processing_time_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
 }
