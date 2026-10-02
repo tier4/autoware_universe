@@ -30,6 +30,12 @@ trajectory_mppi_optimizer:
     description: Softmax temperature for rollout weights
     validation: { gt<>: [0.0] }
     read_only: false
+  max_iter:
+    type: int
+    default_value: 20
+    description: Number of optimization iterations per MPPI update
+    validation: { gt<>: [0] }
+    read_only: false
   speed_coeff:
     type: double
     default_value: 300.0
@@ -143,6 +149,12 @@ trajectory_mppi_optimizer:
     default_value: 0.02
     description: Steering command noise standard deviation
     validation: { gt<>: [0.0] }
+    read_only: false
+  std_dev_decay:
+    type: double
+    default_value: 0.84
+    description: Per-iteration multiplier for the sampling noise standard deviation
+    validation: { bounds<>: [0.0, 1.0] }
     read_only: false
   accel_cmd_noise_exponent:
     type: double
@@ -276,4 +288,14 @@ trajectory_mppi_optimizer:
     type: string
     default_value: ""
     description: Directory for offline trajectory logs (empty = current working directory)
+    read_only: false
+  enable_distance_map_texture_debug:
+    type: bool
+    default_value: false
+    description: Open a CUDA-OpenGL window visualizing the static and dynamic distance textures
+    read_only: false
+  enable_iteration_rollout_debug:
+    type: bool
+    default_value: false
+    description: Capture sampled rollouts at every MPPI iteration and publish them as debug markers
     read_only: false

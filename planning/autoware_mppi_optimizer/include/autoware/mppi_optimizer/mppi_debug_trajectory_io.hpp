@@ -119,13 +119,14 @@ inline bool writeMppiDebugRolloutsCsv(
   if (!out) {
     return false;
   }
-  out << "rollout_index,cost,step,x,y,is_worst\n";
+  out << "rollout_index,iteration,cost,step,x,y,is_worst\n";
   out << std::setprecision(9) << std::fixed;
   for (size_t r = 0; r < rollouts.size(); ++r) {
     const auto & rollout = rollouts[r];
     for (size_t s = 0; s < rollout.points.size(); ++s) {
-      out << r << "," << rollout.cost << "," << s << "," << rollout.points[s].first << ","
-          << rollout.points[s].second << "," << (rollout.is_worst ? 1 : 0) << "\n";
+      out << r << "," << rollout.iteration << "," << rollout.cost << "," << s << ","
+          << rollout.points[s].first << "," << rollout.points[s].second << ","
+          << (rollout.is_worst ? 1 : 0) << "\n";
     }
   }
   return true;
@@ -439,6 +440,8 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
     as_bool("prevent_reverse_velocity", options.prevent_reverse_velocity);
   options.enable_input_delay_compensation =
     as_bool("enable_input_delay_compensation", options.enable_input_delay_compensation);
+  options.enable_iteration_rollout_debug =
+    as_bool("enable_iteration_rollout_debug", options.enable_iteration_rollout_debug);
   return true;
 }
 
