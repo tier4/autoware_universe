@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -52,95 +53,150 @@ LinearRing2d place_footprint(
   return placed;
 }
 
-Point2d nearest_point_on_linestring(const LineString2d & line, const Point2d & point)
+Eigen::Vector2d point_xy(const geometry_msgs::msg::Point & point)
 {
-  Point2d nearest = line.front();
-  double min_sq_dist = std::numeric_limits<double>::max();
-  for (size_t i = 0; i + 1 < line.size(); ++i) {
-    const Eigen::Vector2d & a = line[i];
-    const Eigen::Vector2d & b = line[i + 1];
-    const Eigen::Vector2d ab = b - a;
-    const double ab_sq = ab.squaredNorm();
-    const double t = (ab_sq > 0.0) ? std::clamp((point - a).dot(ab) / ab_sq, 0.0, 1.0) : 0.0;
-    const Eigen::Vector2d candidate = a + t * ab;
-    const double sq_dist = (point - candidate).squaredNorm();
-    if (sq_dist < min_sq_dist) {
-      min_sq_dist = sq_dist;
-      nearest = Point2d(candidate.x(), candidate.y());
-    }
-  }
-  return nearest;
+  return {point.x, point.y};
 }
 
-const LineString2d * find_nearest_overlapping_border(
-  const std::vector<const LineString2d *> & borders, const LinearRing2d & footprint,
-  const Point2d & position)
+/// Polyline tangent. Falls back to the pose yaw when the segment length vanishes.
+Eigen::Vector2d path_tangent(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & points, const size_t index,
+  const Eigen::Vector2d & yaw_heading)
 {
-  const LineString2d * nearest_border = nullptr;
-  double min_sq_dist = std::numeric_limits<double>::max();
+  Eigen::Vector2d direction = Eigen::Vector2d::Zero();
+  if (index + 1 < points.size()) {
+    direction += point_xy(points[index + 1].pose.position) - point_xy(points[index].pose.position);
+  }
+  if (index > 0) {
+    direction += point_xy(points[index].pose.position) - point_xy(points[index - 1].pose.position);
+  }
+  if (direction.norm() < 1e-4) {
+    return yaw_heading;
+  }
+  return direction.normalized();
+}
+
+/// Signed curvature [1/m], positive when the path turns left.
+double path_curvature(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & points, const size_t index)
+{
+  if (index == 0 || index + 1 >= points.size()) {
+    return 0.0;
+  }
+  const Eigen::Vector2d incoming =
+    point_xy(points[index].pose.position) - point_xy(points[index - 1].pose.position);
+  const Eigen::Vector2d outgoing =
+    point_xy(points[index + 1].pose.position) - point_xy(points[index].pose.position);
+  const double incoming_length = incoming.norm();
+  const double outgoing_length = outgoing.norm();
+  if (incoming_length < 1e-4 || outgoing_length < 1e-4) {
+    return 0.0;
+  }
+  const double turning =
+    std::atan2(incoming.x() * outgoing.y() - incoming.y() * outgoing.x(), incoming.dot(outgoing));
+  return turning / (0.5 * (incoming_length + outgoing_length));
+}
+
+double distance_to_nearest_border(
+  const std::vector<const LineString2d *> & borders, const Point2d & position)
+{
+  double min_distance = std::numeric_limits<double>::max();
   for (const LineString2d * border : borders) {
-    if (!bg::intersects(footprint, *border)) {
-      continue;
-    }
-    const double sq_dist = bg::comparable_distance(position, *border);
-    if (sq_dist < min_sq_dist) {
-      min_sq_dist = sq_dist;
-      nearest_border = border;
-    }
+    min_distance = std::min(min_distance, bg::distance(position, *border));
   }
-  return nearest_border;
+  return min_distance;
 }
 
-constexpr int k_linear_shift_steps = 3;
-constexpr double k_bisection_eps_m = 1e-3;
+constexpr double k_boundary_eps_m = 1e-3;
+constexpr double k_inward_curvature_margin = 0.05;
+constexpr double k_segment_heading_rad = 0.2;
 
-/// Clear a colliding pose: up to 3 `step` probes, then bisection to `max_shift`.
-/// If the cap is still colliding, finish with linear steps so a clear window
-/// between the last probe and an opposite curb is not skipped.
-template <typename CollidingFn>
-bool find_clear_offset(
-  double & offset, const double step, const double max_shift, const CollidingFn & colliding)
+struct OffsetProjection
 {
-  const auto within_max = [max_shift](const double candidate) {
-    return std::abs(candidate) <= max_shift + 1e-9;
+  double offset_m{0.0};
+  bool resolved{false};
+};
+
+/// Project `preferred` onto the feasible path-normal offsets inside ±max_shift.
+/// Feasible means the footprint (and, on a bend, the segment midpoint) is clear, and the
+/// inward offset has not collapsed the local radius. The result is the feasible value
+/// closest to `preferred`. An empty set keeps the in-range offset farthest from the borders.
+template <typename CollidingFn, typename DistanceFn>
+OffsetProjection project_offset(
+  const double preferred, const double step, const double max_shift, const double curvature,
+  const CollidingFn & colliding, const DistanceFn & border_distance)
+{
+  const auto in_range = [max_shift](const double offset) {
+    return std::abs(offset) <= max_shift + 1e-9;
+  };
+  const auto radius_ok = [curvature](const double offset) {
+    return !(std::abs(curvature) > 1e-6 && offset * curvature >= 1.0 - k_inward_curvature_margin);
+  };
+  const auto feasible = [&](const double offset) {
+    return in_range(offset) && radius_ok(offset) && !colliding(offset);
   };
 
-  int linear_steps = 0;
-  while (linear_steps < k_linear_shift_steps && within_max(offset + step)) {
-    offset += step;
-    ++linear_steps;
-    if (!colliding(offset)) {
-      return true;
+  if (feasible(preferred)) {
+    return {preferred, true};
+  }
+
+  std::vector<double> samples;
+  samples.reserve(static_cast<size_t>(2.0 * max_shift / std::max(step, 1e-3)) + 3U);
+  for (double offset = -max_shift; offset <= max_shift + 1e-9; offset += step) {
+    samples.push_back(offset);
+  }
+  if (samples.empty() || samples.back() < max_shift - 1e-9) {
+    samples.push_back(max_shift);
+  }
+
+  std::optional<double> nearest_feasible;
+  for (const double offset : samples) {
+    if (!feasible(offset)) {
+      continue;
+    }
+    if (
+      !nearest_feasible ||
+      std::abs(offset - preferred) < std::abs(*nearest_feasible - preferred) - 1e-12) {
+      nearest_feasible = offset;
     }
   }
 
-  const double hi = std::copysign(max_shift, step);
-  if (!within_max(hi) || std::abs(hi - offset) <= k_bisection_eps_m) {
-    return false;
-  }
-
-  if (colliding(hi)) {
-    while (within_max(offset + step)) {
-      offset += step;
-      if (!colliding(offset)) {
-        return true;
+  if (!nearest_feasible) {
+    double best = std::clamp(preferred, -max_shift, max_shift);
+    double best_distance = border_distance(best);
+    for (const double offset : samples) {
+      if (!in_range(offset) || !radius_ok(offset)) {
+        continue;
+      }
+      const double distance = border_distance(offset);
+      const bool farther = distance > best_distance + 1e-9;
+      const bool same_distance_closer = std::abs(distance - best_distance) <= 1e-9 &&
+                                        std::abs(offset - preferred) < std::abs(best - preferred);
+      if (farther || same_distance_closer) {
+        best = offset;
+        best_distance = distance;
       }
     }
-    return false;
+    return {best, false};
   }
 
-  double lo = offset;
-  double clear = hi;
-  while (std::abs(clear - lo) > k_bisection_eps_m) {
-    const double mid = 0.5 * (lo + clear);
-    if (colliding(mid)) {
-      lo = mid;
+  double colliding_side = std::clamp(preferred, -max_shift, max_shift);
+  double clear_side = *nearest_feasible;
+  if (feasible(colliding_side)) {
+    return {colliding_side, true};
+  }
+  for (int iteration = 0; iteration < 24; ++iteration) {
+    if (std::abs(clear_side - colliding_side) <= k_boundary_eps_m) {
+      break;
+    }
+    const double mid = 0.5 * (colliding_side + clear_side);
+    if (feasible(mid)) {
+      clear_side = mid;
     } else {
-      clear = mid;
+      colliding_side = mid;
     }
   }
-  offset = clear;
-  return true;
+  return {clear_side, true};
 }
 }  // namespace
 
@@ -200,49 +256,78 @@ RoadBorderAvoidanceResult RoadBorderAvoidance::adjust(
       [&footprint](const LineString2d * border) { return bg::intersects(footprint, *border); });
   };
 
+  // Tangents come from the raw polyline. Later points must not see already-shifted neighbors.
+  const auto raw_points = result.trajectory.points;
+  std::vector<Eigen::Vector2d> tangents(raw_points.size());
+  std::vector<double> curvatures(raw_points.size(), 0.0);
+  for (size_t index = 0; index < raw_points.size(); ++index) {
+    const double yaw = yaw_from_quaternion(raw_points[index].pose.orientation);
+    tangents[index] =
+      path_tangent(raw_points, index, Eigen::Vector2d(std::cos(yaw), std::sin(yaw)));
+    curvatures[index] = path_curvature(raw_points, index);
+  }
+
+  // Signed offset along the raw-path left normal. Positive is to the left of the polyline.
   double carried_offset_m = 0.0;
 
-  for (auto & point : result.trajectory.points) {
-    const double raw_x = point.pose.position.x;
-    const double raw_y = point.pose.position.y;
-    const double yaw = yaw_from_quaternion(point.pose.orientation);
-    const Eigen::Vector2d heading(std::cos(yaw), std::sin(yaw));
-    const Eigen::Vector2d lateral_left(-heading.y(), heading.x());
+  for (size_t index = 0; index < raw_points.size(); ++index) {
+    auto & point = result.trajectory.points[index];
+    const double raw_x = raw_points[index].pose.position.x;
+    const double raw_y = raw_points[index].pose.position.y;
+    const double yaw = yaw_from_quaternion(raw_points[index].pose.orientation);
+    const Eigen::Vector2d & tangent = tangents[index];
+    const Eigen::Vector2d normal_left(-tangent.y(), tangent.x());
+    const double curvature = curvatures[index];
 
-    double offset = params_.propagate_shift ? carried_offset_m : 0.0;
-    const auto footprint_at = [&](const double off) {
-      return place_footprint(
-        base_footprint_, raw_x + lateral_left.x() * off, raw_y + lateral_left.y() * off, yaw);
-    };
-    const auto apply_offset = [&](const double off) {
-      point.pose.position.x = raw_x + lateral_left.x() * off;
-      point.pose.position.y = raw_y + lateral_left.y() * off;
-    };
-
-    const LinearRing2d footprint = footprint_at(offset);
-    const Point2d position(raw_x + lateral_left.x() * offset, raw_y + lateral_left.y() * offset);
-
-    const LineString2d * offending_border =
-      find_nearest_overlapping_border(nearby_borders, footprint, position);
-    if (offending_border == nullptr) {
-      if (offset != 0.0) {
-        apply_offset(offset);
-        ++result.num_shifted_points;
-      }
-      continue;
+    const double preferred = params_.propagate_shift ? carried_offset_m : 0.0;
+    bool check_segment = false;
+    Eigen::Vector2d next_xy(raw_x, raw_y);
+    double next_yaw = yaw;
+    if (index + 1 < raw_points.size()) {
+      const Eigen::Vector2d & next_tangent = tangents[index + 1];
+      const double heading_change = std::atan2(
+        tangent.x() * next_tangent.y() - tangent.y() * next_tangent.x(), tangent.dot(next_tangent));
+      check_segment = std::abs(heading_change) >= k_segment_heading_rad;
+      next_xy = point_xy(raw_points[index + 1].pose.position);
+      next_yaw = yaw_from_quaternion(raw_points[index + 1].pose.orientation);
     }
 
-    const Point2d border_point = nearest_point_on_linestring(*offending_border, position);
-    const Eigen::Vector2d to_border = border_point - position;
-    const double cross = heading.x() * to_border.y() - heading.y() * to_border.x();
-    const double step = (cross > 0.0) ? -params_.shift_step_m : params_.shift_step_m;
-    const bool resolved = find_clear_offset(
-      offset, step, params_.max_lateral_shift_m,
-      [&](const double off) { return intersects_any(footprint_at(off)); });
+    const auto footprint_at = [&](const double offset) {
+      return place_footprint(
+        base_footprint_, raw_x + normal_left.x() * offset, raw_y + normal_left.y() * offset, yaw);
+    };
+    const auto colliding = [&](const double offset) {
+      if (intersects_any(footprint_at(offset))) {
+        return true;
+      }
+      if (!check_segment) {
+        return false;
+      }
+      const double mid_x = 0.5 * (raw_x + next_xy.x()) + normal_left.x() * offset;
+      const double mid_y = 0.5 * (raw_y + next_xy.y()) + normal_left.y() * offset;
+      const double mid_yaw =
+        std::atan2(std::sin(yaw) + std::sin(next_yaw), std::cos(yaw) + std::cos(next_yaw));
+      return intersects_any(place_footprint(base_footprint_, mid_x, mid_y, mid_yaw));
+    };
+    const auto border_distance = [&](const double offset) {
+      return distance_to_nearest_border(
+        nearby_borders,
+        Point2d(raw_x + normal_left.x() * offset, raw_y + normal_left.y() * offset));
+    };
 
-    apply_offset(offset);
-    carried_offset_m = offset;
-    if (resolved) {
+    const OffsetProjection projection = project_offset(
+      preferred, params_.shift_step_m, params_.max_lateral_shift_m, curvature, colliding,
+      border_distance);
+
+    if (std::abs(projection.offset_m) > 1e-12) {
+      point.pose.position.x = raw_x + normal_left.x() * projection.offset_m;
+      point.pose.position.y = raw_y + normal_left.y() * projection.offset_m;
+    }
+    carried_offset_m = projection.offset_m;
+    if (std::abs(projection.offset_m) <= 1e-12) {
+      continue;
+    }
+    if (projection.resolved) {
       ++result.num_shifted_points;
     } else {
       ++result.num_unresolved_points;
