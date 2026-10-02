@@ -149,10 +149,10 @@ std::pair<double, bool> is_velocity_deviation_ok(
 /**
  * @brief Check if the trajectory respects the maximum lateral acceleration constraint.
  *
- * The lateral acceleration at each point is `v^2 * curvature`, where the curvature is estimated
- * from three points spread at least a fixed arc length (1.0 m) apart so that densely sampled
- * sections (e.g. right after the vehicle starts moving) do not produce spurious spikes. Points
- * whose curvature cannot be estimated are skipped.
+ * The lateral acceleration at each point is `v^2 * curvature`. The curvature is estimated from
+ * three points spread at least a fixed arc length (1.0 m) apart so that densely sampled sections
+ * (e.g. right after the vehicle starts moving) do not produce spurious spikes. Points whose
+ * curvature cannot be estimated are skipped.
  *
  * @param traj_points Vector of trajectory points to check
  * @param max_lateral_acceleration Maximum allowed absolute lateral acceleration (m/s^2)
@@ -176,6 +176,10 @@ std::pair<double, bool> is_distance_deviation_ok(
 /**
  * @brief Check if the trajectory respects the maximum steering angle constraint.
  *
+ * The steering angle is derived from the path curvature with the bicycle model. The curvature is
+ * estimated the same way as in `is_lateral_acceleration_ok()`, i.e. from three points spread at
+ * least a fixed arc length (1.0 m) apart.
+ *
  * @param traj_points Vector of trajectory points to check
  * @param vehicle_info Vehicle information needed to calculate steering angle
  * @param max_steering_angle Maximum allowed steering angle (rad)
@@ -187,6 +191,11 @@ std::pair<double, bool> is_steering_angle_ok(
 
 /**
  * @brief Check if the trajectory respects the maximum steering rate constraint.
+ *
+ * The steering rate at each point is the change of steering angle between the two points used to
+ * estimate its curvature (at least 1.0 m away on each side), divided by the time between them.
+ * Differencing over this span instead of between adjacent points keeps the rate stable where the
+ * trajectory is densely sampled.
  *
  * @param traj_points Vector of trajectory points to check
  * @param vehicle_info Vehicle information needed to calculate steering rate
