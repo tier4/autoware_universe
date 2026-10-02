@@ -252,6 +252,19 @@ void MLPlanner::set_up_params()
     "trajectory_optimization.temporal_consistency.decay_time_constant_s", 1.0);
   temporal.far_weight_ratio = this->declare_parameter<double>(
     "trajectory_optimization.temporal_consistency.far_weight_ratio", 0.05);
+  auto & hold = opt.steer_stop_hold;
+  hold.enable =
+    this->declare_parameter<bool>("trajectory_optimization.steer_stop_hold.enable", true);
+  hold.stopped_velocity_threshold_mps = this->declare_parameter<double>(
+    "trajectory_optimization.steer_stop_hold.stopped_velocity_threshold_mps", 0.15);
+  hold.stopped_trajectory_max_length_m = this->declare_parameter<double>(
+    "trajectory_optimization.steer_stop_hold.stopped_trajectory_max_length_m", 1.5);
+  hold.goal_steer_zero_enable = this->declare_parameter<bool>(
+    "trajectory_optimization.steer_stop_hold.goal_steer_zero_enable", true);
+  hold.goal_steer_zero_distance_m = this->declare_parameter<double>(
+    "trajectory_optimization.steer_stop_hold.goal_steer_zero_distance_m", 5.0);
+  hold.goal_steer_zero_requires_stopped = this->declare_parameter<bool>(
+    "trajectory_optimization.steer_stop_hold.goal_steer_zero_requires_stopped", true);
 #ifndef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (opt.enable) {
     RCLCPP_WARN(
@@ -406,6 +419,23 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "trajectory_optimization.temporal_consistency.far_weight_ratio",
     temporal.far_weight_ratio);
+  auto & hold = opt.steer_stop_hold;
+  update_param<bool>(parameters, "trajectory_optimization.steer_stop_hold.enable", hold.enable);
+  update_param<double>(
+    parameters, "trajectory_optimization.steer_stop_hold.stopped_velocity_threshold_mps",
+    hold.stopped_velocity_threshold_mps);
+  update_param<double>(
+    parameters, "trajectory_optimization.steer_stop_hold.stopped_trajectory_max_length_m",
+    hold.stopped_trajectory_max_length_m);
+  update_param<bool>(
+    parameters, "trajectory_optimization.steer_stop_hold.goal_steer_zero_enable",
+    hold.goal_steer_zero_enable);
+  update_param<double>(
+    parameters, "trajectory_optimization.steer_stop_hold.goal_steer_zero_distance_m",
+    hold.goal_steer_zero_distance_m);
+  update_param<bool>(
+    parameters, "trajectory_optimization.steer_stop_hold.goal_steer_zero_requires_stopped",
+    hold.goal_steer_zero_requires_stopped);
 
   auto & avoidance = new_params.road_border_avoidance;
   update_param<bool>(parameters, "road_border_avoidance.enable", avoidance.enable);
@@ -531,6 +561,12 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     if (temporal.far_weight_ratio < 0.0 || temporal.far_weight_ratio > 1.0) {
       return failure("temporal_consistency.far_weight_ratio must be within [0, 1]");
     }
+  }
+  if (
+    opt.steer_stop_hold.stopped_velocity_threshold_mps < 0.0 ||
+    opt.steer_stop_hold.stopped_trajectory_max_length_m < 0.0 ||
+    opt.steer_stop_hold.goal_steer_zero_distance_m < 0.0) {
+    return failure("steer_stop_hold thresholds and distances must be non-negative");
   }
   if (
     avoidance.start_time_s < 0.0 || avoidance.footprint_margin_m < 0.0 ||
