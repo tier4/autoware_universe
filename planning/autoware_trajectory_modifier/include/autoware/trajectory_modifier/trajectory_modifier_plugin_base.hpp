@@ -84,6 +84,11 @@ public:
       class_name, class_name, node_ptr, std::move(time_keeper), std::move(context), params);
   }
 
+  /// @brief Observe the immutable callback inputs once before evaluating candidates.
+  virtual void begin_cycle([[maybe_unused]] const TrajectoryModifierData & data) {}
+  /// @brief Finish the callback once after all candidates have been evaluated.
+  virtual void end_cycle() {}
+
   /// @brief Process one candidate trajectory using data shared across its plugin pipeline.
   virtual ProcessingResult process(
     TrajectoryPoints & trajectory_points, TrajectoryModifierData & data) = 0;

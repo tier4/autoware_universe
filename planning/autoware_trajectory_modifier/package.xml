@@ -69,4 +69,6 @@
   <export>
     <build_type>ament_cmake</build_type>
   </export>
+  <depend>autoware_lanelet2_extension</depend>
+  <depend>pcl_conversions</depend>
 </package>
