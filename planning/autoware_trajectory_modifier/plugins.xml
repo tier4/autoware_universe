@@ -108,5 +108,11 @@
         Modifies the velocity of a trajectory to respect the received external velocity limit
       </description>
     </class>
-  </library>
+    <class type="autoware::trajectory_modifier::plugin::VirtualTrafficLightStop"
+         base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
+    <description>
+      Modifies the trajectory according to virtual traffic light coordination state
+    </description>
+  </class>
+</library>
 </class_libraries>
