@@ -55,7 +55,8 @@ SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptio
     param_listener_ = std::make_shared<surround_obstacle_checker_node::ParamListener>(
       this->get_node_parameters_interface());
 
-    logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
+    logger_configure_ = std::make_unique<
+      autoware_utils_logging::BasicLoggerLevelConfigure<autoware::agnocast_wrapper::Node>>(this);
   }
 
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -72,11 +73,23 @@ SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptio
     "~/debug/processing_time_ms", 1);
 
   using std::chrono_literals::operator""ms;
-  timer_ = rclcpp::create_timer(
+  timer_ = autoware::agnocast_wrapper::create_timer(
     this, get_clock(), 100ms, std::bind(&SurroundObstacleCheckerNode::onTimer, this));
 
   // Stop Checker
-  vehicle_stop_checker_ = std::make_unique<VehicleStopChecker>(this);
+  {
+    constexpr double velocity_buffer_time_sec = 10.0;
+    vehicle_stop_checker_ = std::make_unique<autoware::motion_utils::VehicleStopCheckerBase>(
+      this, velocity_buffer_time_sec);
+    sub_kinematic_state_ = this->create_subscription<nav_msgs::msg::Odometry>(
+      "/localization/kinematic_state", rclcpp::QoS(1),
+      [this](const nav_msgs::msg::Odometry & msg) {
+        geometry_msgs::msg::TwistStamped current_velocity;
+        current_velocity.header = msg.header;
+        current_velocity.twist = msg.twist.twist;
+        vehicle_stop_checker_->addTwist(current_velocity);
+      });
+  }
 
   // Debug
   odometry_ptr_ = std::make_shared<nav_msgs::msg::Odometry>();
@@ -165,9 +178,9 @@ void SurroundObstacleCheckerNode::onTimer()
   autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch;
   stop_watch.tic();
 
-  odometry_ptr_ = sub_odometry_.take_data();
-  pointcloud_ptr_ = sub_pointcloud_.take_data();
-  object_ptr_ = sub_dynamic_objects_.take_data();
+  odometry_ptr_ = sub_odometry_->take_data();
+  pointcloud_ptr_ = sub_pointcloud_->take_data();
+  object_ptr_ = sub_dynamic_objects_->take_data();
 
   if (!odometry_ptr_) {
     RCLCPP_INFO_THROTTLE(

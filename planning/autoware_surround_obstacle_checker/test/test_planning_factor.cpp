@@ -66,7 +66,8 @@ public:
 
   void setEnableCheck(const std::string & type, const bool enable)
   {
-    auto param_client = std::make_shared<rclcpp::SyncParametersClient>(test_target_node_);
+    auto param_client = std::make_shared<rclcpp::SyncParametersClient>(
+      autoware::agnocast_wrapper::to_rclcpp_node(test_target_node_));
     while (!param_client->wait_for_service(std::chrono::seconds(1))) {
       if (!rclcpp::ok()) {
         RCLCPP_ERROR(
@@ -226,7 +227,7 @@ public:
 
   void spinSome()
   {
-    rclcpp::spin_some(test_target_node_);
+    rclcpp::spin_some(test_target_node_->get_node_base_interface());
     rclcpp::spin_some(test_node_);
   }
 

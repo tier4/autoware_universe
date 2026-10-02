@@ -15,15 +15,18 @@
 #ifndef NODE_HPP_
 #define NODE_HPP_
 
-#include "autoware_utils/ros/logger_level_configure.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 #include "debug_marker.hpp"
 #include "type_alias.hpp"
 #include "types.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/polling_subscriber.hpp>
+#include <autoware/agnocast_wrapper/tf2.hpp>
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
 #include <autoware/obstacle_proximity_checker/obstacle_proximity_checker.hpp>
 #include <autoware_surround_obstacle_checker/surround_obstacle_checker_node_parameters.hpp>
+#include <autoware_utils_logging/logger_level_configure.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2/utils.hpp>
@@ -38,9 +41,6 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-
 #include <memory>
 #include <optional>
 #include <string>
@@ -53,7 +53,7 @@ namespace autoware::surround_obstacle_checker
 
 enum class State { PASS, STOP };
 
-class SurroundObstacleCheckerNode : public rclcpp::Node
+class SurroundObstacleCheckerNode : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit SurroundObstacleCheckerNode(const rclcpp::NodeOptions & node_options);
@@ -79,24 +79,31 @@ private:
     -> std::pair<bool, std::optional<rclcpp::Time>>;
 
   // ros
-  mutable tf2_ros::Buffer tf_buffer_{get_clock()};
-  mutable tf2_ros::TransformListener tf_listener_{tf_buffer_};
-  rclcpp::TimerBase::SharedPtr timer_;
+  mutable autoware::agnocast_wrapper::Buffer tf_buffer_{get_clock()};
+  autoware::agnocast_wrapper::TransformListener tf_listener_{tf_buffer_, *this};
+  AUTOWARE_TIMER_PTR timer_;
 
   // publisher and subscriber
-  autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry> sub_odometry_{
-    this, "~/input/odometry"};
-  autoware_utils::InterProcessPollingSubscriber<sensor_msgs::msg::PointCloud2> sub_pointcloud_{
-    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
-  autoware_utils::InterProcessPollingSubscriber<PredictedObjects> sub_dynamic_objects_{
-    this, "~/input/objects"};
-  rclcpp::Publisher<VelocityLimitClearCommand>::SharedPtr pub_clear_velocity_limit_;
-  rclcpp::Publisher<VelocityLimit>::SharedPtr pub_velocity_limit_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
-    pub_processing_time_;
+  autoware::agnocast_wrapper::polling::PollingSubscriber<nav_msgs::msg::Odometry>::SharedPtr
+    sub_odometry_{autoware::agnocast_wrapper::polling::create_polling_subscriber<
+      nav_msgs::msg::Odometry>(this, "~/input/odometry")};
+  autoware::agnocast_wrapper::polling::PollingSubscriber<sensor_msgs::msg::PointCloud2>::SharedPtr
+    sub_pointcloud_{autoware::agnocast_wrapper::polling::create_polling_subscriber<
+      sensor_msgs::msg::PointCloud2>(
+      this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos())};
+  autoware::agnocast_wrapper::polling::PollingSubscriber<PredictedObjects>::SharedPtr
+    sub_dynamic_objects_{
+      autoware::agnocast_wrapper::polling::create_polling_subscriber<PredictedObjects>(
+        this, "~/input/objects")};
+  AUTOWARE_PUBLISHER_PTR(VelocityLimitClearCommand) pub_clear_velocity_limit_;
+  AUTOWARE_PUBLISHER_PTR(VelocityLimit) pub_velocity_limit_;
+  AUTOWARE_PUBLISHER_PTR(autoware_internal_debug_msgs::msg::Float64Stamped) pub_processing_time_;
 
   // stop checker
-  std::unique_ptr<VehicleStopChecker> vehicle_stop_checker_;
+  // NOTE: autoware::motion_utils::VehicleStopChecker only accepts rclcpp::Node, so its
+  // /localization/kinematic_state subscription is reproduced here on top of VehicleStopCheckerBase.
+  std::unique_ptr<autoware::motion_utils::VehicleStopCheckerBase> vehicle_stop_checker_;
+  AUTOWARE_SUBSCRIPTION_PTR(nav_msgs::msg::Odometry) sub_kinematic_state_;
 
   // proximity checker
   std::unique_ptr<obstacle_proximity_checker::ProximityChecker> proximity_checker_;
@@ -117,7 +124,9 @@ private:
   State state_ = State::PASS;
   std::optional<rclcpp::Time> last_obstacle_found_time_;
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
+  std::unique_ptr<
+    autoware_utils_logging::BasicLoggerLevelConfigure<autoware::agnocast_wrapper::Node>>
+    logger_configure_;
 
   std::unordered_map<int, std::string> label_map_;
 
