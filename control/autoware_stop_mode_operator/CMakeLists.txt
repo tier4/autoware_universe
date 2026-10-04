@@ -13,7 +13,7 @@ autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::stop_mode_operator::StopModeOperator"
   EXECUTABLE "stop_mode_operator_node"
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR AgnocastOnlySingleThreadedExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 if(BUILD_TESTING)
