@@ -128,7 +128,7 @@
       "items": {
         "type": "number"
       },
-      "description": "Face displacement in meters [-x, -y, -z, x, y, z] in the box frame (x forward along the yaw, y left, z up). Positive moves the face outward, negative moves it inward, so asymmetric values also move the box center. A dimension is never shrunk below 0.1 m.",
+      "description": "Face displacement in meters [-x, -y, -z, x, y, z] in the box frame (x forward along the yaw, y left, z up). Positive moves the face outward, negative moves it inward, so asymmetric values also move the box center. Each face moving inward stops half an encoder.voxel_size before the original box center, so a shrunk box keeps at least one voxel around it.",
       "minItems": 6,
       "maxItems": 6
     },

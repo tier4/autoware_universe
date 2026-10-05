@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -129,11 +130,14 @@ autoware_perception_msgs::msg::DetectedObject makeObject(
   return object;
 }
 
+constexpr std::array<double, 3> voxel_size{0.12, 0.12, 0.12};
+
 TEST(BboxAdjustmentTest, ShrinksSidesWithoutMovingCenter)
 {
   auto object = makeObject("CAR", 0.3F);
 
-  adjust_bbox({{ObjectClassification::CAR, {0.0, -0.15, 0.0, 0.0, -0.15, 0.0}}}, object);
+  EXPECT_FALSE(adjust_bbox(
+    {{ObjectClassification::CAR, {0.0, -0.15, 0.0, 0.0, -0.15, 0.0}}}, voxel_size, object));
 
   EXPECT_NEAR(object.shape.dimensions.x, 4.0, 1e-6);
   EXPECT_NEAR(object.shape.dimensions.y, 1.7, 1e-6);
@@ -150,7 +154,8 @@ TEST(BboxAdjustmentTest, AsymmetricMarginsMoveCenterInBoxFrame)
   auto object = makeObject("CAR", 0.5F * pi);
 
   // Extend the front face by 0.5 m and lower the bottom face by 0.2 m.
-  adjust_bbox({{ObjectClassification::CAR, {0.0, 0.0, 0.2, 0.5, 0.0, 0.0}}}, object);
+  EXPECT_FALSE(
+    adjust_bbox({{ObjectClassification::CAR, {0.0, 0.0, 0.2, 0.5, 0.0, 0.0}}}, voxel_size, object));
 
   EXPECT_NEAR(object.shape.dimensions.x, 4.5, 1e-6);
   EXPECT_NEAR(object.shape.dimensions.y, 2.0, 1e-6);
@@ -166,28 +171,43 @@ TEST(BboxAdjustmentTest, LeavesOtherClassesUnchanged)
 {
   auto object = makeObject("PEDESTRIAN", 0.0F);
 
-  adjust_bbox({{ObjectClassification::CAR, {0.0, -0.15, 0.0, 0.0, -0.15, 0.0}}}, object);
+  EXPECT_FALSE(adjust_bbox(
+    {{ObjectClassification::CAR, {0.0, -0.15, 0.0, 0.0, -0.15, 0.0}}}, voxel_size, object));
 
   EXPECT_NEAR(object.shape.dimensions.y, 2.0, 1e-6);
   EXPECT_NEAR(object.kinematics.pose_with_covariance.pose.position.y, 5.0, 1e-6);
 }
 
-TEST(BboxAdjustmentTest, StopsShrinkAtMinimumDimension)
+TEST(BboxAdjustmentTest, TrimsEachFaceBeforeTheCenter)
 {
-  auto object = makeObject("CAR", 0.0F, 0.2F);
+  auto object = makeObject("CAR", 0.0F, 1.0F);
 
-  // Pulling the right face in by 0.3 m would leave -0.1 m, so it moves by 0.1 m only.
-  adjust_bbox({{ObjectClassification::CAR, {0.0, -0.3, 0.0, 0.0, 0.0, 0.0}}}, object);
+  // The right face may move in by 0.44 m only, half a voxel before the center, while the left face
+  // moves in by its full 0.2 m.
+  EXPECT_TRUE(adjust_bbox(
+    {{ObjectClassification::CAR, {0.0, -1.1, 0.0, 0.0, -0.2, 0.0}}}, voxel_size, object));
 
-  EXPECT_NEAR(object.shape.dimensions.y, min_bbox_dimension, 1e-6);
-  EXPECT_NEAR(object.kinematics.pose_with_covariance.pose.position.y, 5.05, 1e-6);
+  EXPECT_NEAR(object.shape.dimensions.y, 0.36, 1e-6);
+  EXPECT_NEAR(object.kinematics.pose_with_covariance.pose.position.y, 5.12, 1e-6);
+}
+
+TEST(BboxAdjustmentTest, ShrinksBothFacesToOneVoxelAroundTheCenter)
+{
+  auto object = makeObject("CAR", 0.0F, 1.0F);
+
+  EXPECT_TRUE(adjust_bbox(
+    {{ObjectClassification::CAR, {0.0, -0.6, 0.0, 0.0, -0.6, 0.0}}}, voxel_size, object));
+
+  EXPECT_NEAR(object.shape.dimensions.y, 0.12, 1e-6);
+  EXPECT_NEAR(object.kinematics.pose_with_covariance.pose.position.y, 5.0, 1e-6);
 }
 
 TEST(BboxAdjustmentTest, DoesNotShrinkDimensionBelowMinimum)
 {
   auto object = makeObject("CAR", 0.0F, 0.05F);
 
-  adjust_bbox({{ObjectClassification::CAR, {0.0, -0.1, 0.0, 0.2, -0.1, 0.0}}}, object);
+  EXPECT_TRUE(adjust_bbox(
+    {{ObjectClassification::CAR, {0.0, -0.1, 0.0, 0.2, -0.1, 0.0}}}, voxel_size, object));
 
   EXPECT_NEAR(object.shape.dimensions.x, 4.2, 1e-6);
   EXPECT_NEAR(object.shape.dimensions.y, 0.05, 1e-6);

@@ -177,36 +177,37 @@ std::unordered_map<std::uint8_t, BboxMargins> declare_bbox_adjustment(
   return margins_by_label;
 }
 
-void adjust_bbox(
+bool adjust_bbox(
   const std::unordered_map<std::uint8_t, BboxMargins> & margins_by_label,
-  autoware_perception_msgs::msg::DetectedObject & obj)
+  const std::array<double, 3> & min_dimensions, autoware_perception_msgs::msg::DetectedObject & obj)
 {
   if (obj.shape.type != autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
-    return;
+    return false;
   }
   const auto it = margins_by_label.find(
     autoware::object_recognition_utils::getHighestProbLabel(obj.classification));
   if (it == margins_by_label.end()) {
-    return;
+    return false;
   }
   const auto & margins = it->second;
 
   auto & dimensions = obj.shape.dimensions;
   const std::array<double *, 3> sizes{&dimensions.x, &dimensions.y, &dimensions.z};
   Eigen::Vector3d center_shift;
+  bool trimmed = false;
   for (std::size_t axis = 0; axis < sizes.size(); ++axis) {
-    const double min_face_margin = margins[axis];
-    const double max_face_margin = margins[axis + 3];
-    const double growth = min_face_margin + max_face_margin;
     double & size = *sizes[axis];
-    // Both faces keep their share of a shrink that is cut short at the minimum dimension.
-    double scale = 1.0;
-    if (growth < 0.0 && size + growth < min_bbox_dimension) {
-      scale = std::max(0.0, (min_bbox_dimension - size) / growth);
+    // Each face moving inward stops half the minimum dimension before the original center.
+    const double max_inward = std::max(0.0, 0.5 * (size - min_dimensions[axis]));
+    std::array<double, 2> face_shifts{margins[axis], margins[axis + 3]};
+    for (auto & face_shift : face_shifts) {
+      if (face_shift < -max_inward) {
+        face_shift = -max_inward;
+        trimmed = true;
+      }
     }
-    size += scale * growth;
-    center_shift[static_cast<Eigen::Index>(axis)] =
-      0.5 * scale * (max_face_margin - min_face_margin);
+    size += face_shifts[0] + face_shifts[1];
+    center_shift[static_cast<Eigen::Index>(axis)] = 0.5 * (face_shifts[1] - face_shifts[0]);
   }
 
   auto & pose = obj.kinematics.pose_with_covariance.pose;
@@ -216,6 +217,7 @@ void adjust_bbox(
   pose.position.x += position_shift.x();
   pose.position.y += position_shift.y();
   pose.position.z += position_shift.z();
+  return trimmed;
 }
 
 }  // namespace autoware::ptv3

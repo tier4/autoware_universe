@@ -39,6 +39,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -98,6 +99,8 @@ private:
   bool use_velocity_{false};
   // ObjectClassification label -> face margins applied to published boxes of that class
   std::unordered_map<std::uint8_t, BboxMargins> bbox_margins_;
+  // Encoder voxel size, the smallest length, width and height a bounding box adjustment leaves
+  std::array<double, 3> bbox_min_dimensions_{};
   std::string densification_world_frame_id_;
   std::int64_t densification_num_past_frames_{0};
 

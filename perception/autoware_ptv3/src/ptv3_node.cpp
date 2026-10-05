@@ -16,6 +16,8 @@
 
 #include "autoware/ptv3/ros_utils.hpp"
 
+#include <autoware/object_recognition_utils/object_classification.hpp>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -197,6 +199,8 @@ PTv3Node::PTv3Node(const rclcpp::NodeOptions & options) : Node("ptv3", options)
     use_velocity_ =
       this->declare_parameter<bool>("detection3d.post_process_params.use_velocity", descriptor);
     bbox_margins_ = declare_bbox_adjustment(*this, descriptor);
+    // The model sees nothing finer than a voxel, so a shrunk box keeps at least one.
+    bbox_min_dimensions_ = {voxel_size[0], voxel_size[1], voxel_size[2]};
 
     const auto num_proposals_param =
       this->declare_parameter<std::int64_t>("detection3d.num_proposals", descriptor);
@@ -379,8 +383,19 @@ void PTv3Node::cloudCallback(
     output_msg.objects = iou_bev_nms_.apply(raw_objects);
     detection_class_remapper_.mapClasses(output_msg);
     // NMS and class remapping run on the predicted boxes, so the adjustment comes last.
+    std::optional<std::uint8_t> trimmed_label;
     for (auto & object : output_msg.objects) {
-      adjust_bbox(bbox_margins_, object);
+      if (adjust_bbox(bbox_margins_, bbox_min_dimensions_, object) && !trimmed_label) {
+        trimmed_label =
+          autoware::object_recognition_utils::getHighestProbLabel(object.classification);
+      }
+    }
+    if (trimmed_label) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "detection3d.post_process_params.bbox_adjustment.margins.%s were trimmed to keep a box at "
+        "least one encoder voxel around its center.",
+        autoware::object_recognition_utils::convertLabelToString(*trimmed_label).c_str());
     }
     detected_objects_pub_->publish(output_msg);
     published_time_pub_->publish_if_subscribed(detected_objects_pub_, output_msg.header.stamp);
