@@ -59,6 +59,7 @@
       shift_step_m: 0.1           # first 3 probes; remaining clearance via bisection [m]
       max_lateral_shift_m: 1.5    # cap on the total lateral offset from the raw position [m]
       propagate_shift: true       # carry the offset over to all subsequent points
+      max_reoptimizations: 5      # re-check the optimized trajectory and re-optimize while it overlaps a border
     stop_point_fixing:
       enable: false
       velocity_threshold_mps: 0.3  # stop detection velocity threshold [m/s]
