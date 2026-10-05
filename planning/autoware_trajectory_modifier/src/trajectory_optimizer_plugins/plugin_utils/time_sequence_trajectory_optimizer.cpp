@@ -209,6 +209,10 @@ OptimizationResult TrajectoryOptimizer::optimize(
         goal_pose->position.y - observed_goal_pose_->position.y) > goal_position_change_threshold_m;
     if (goal_position_changed) {
       reset_goal_snap_state();
+      // A new route goal must not reuse the old snapped plan as a temporal reference.
+      for (auto & previous_plan : previous_solutions_) {
+        previous_plan.reset();
+      }
     }
     observed_goal_pose_ = goal_pose;
 

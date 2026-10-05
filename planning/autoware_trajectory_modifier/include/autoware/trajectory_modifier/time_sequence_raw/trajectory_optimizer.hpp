@@ -69,8 +69,10 @@ public:
    * @param goal_pose Route goal in the same frame as the trajectory. Once the predicted
    *                  endpoint is within goal.snap_distance_m, the terminal pose is snapped
    *                  to this goal and the extra terminal weights stay latched until the
-   *                  goal position changes, or until ego is farther from the goal than
-   *                  unlatch_horizon_s * max(|v|, unlatch_min_speed_mps).
+   *                  goal position changes (which also clears the previous-plan buffer), or
+   *                  until ego is farther from the goal than
+   *                  unlatch_horizon_s * max(|v|, unlatch_min_speed_mps). Far-away unlatch
+   *                  drops the latch only.
    * @param reference_was_shifted True when road-border avoidance moved the input. Temporal
    *                             consistency is then skipped so a geometric correction is not
    *                             blended with the previous (unshifted) plan.

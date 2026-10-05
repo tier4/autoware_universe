@@ -38,7 +38,8 @@ struct TrajectoryOptimizationParams
     double weight_velocity{0.1};
     double snap_distance_m{1.0};
     /// Drop the latch when ego-to-goal exceeds this time horizon times speed.
-    /// <= 0 disables the far-away unlatch.
+    /// <= 0 disables the far-away unlatch. Far-away unlatch does not clear previous-plan
+    /// memory; a route-goal position change does.
     double unlatch_horizon_s{8.0};
     /// Floor on speed used by the far-away range: range = horizon * max(|v|, this).
     double unlatch_min_speed_mps{3.0};
