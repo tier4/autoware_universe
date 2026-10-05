@@ -790,12 +790,14 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, PublishesProductionDebugMarkersTe
     }
   }
   for (const auto & expected :
-       {"VirtualTrafficLightStop::prepare_cycle", "VirtualTrafficLightStop::rebuild_modules",
+       {"VirtualTrafficLightStop::process", "VirtualTrafficLightStop::prepare_cycle",
+        "VirtualTrafficLightStop::rebuild_modules",
         "VirtualTrafficLightStop::update_module_states",
         "VirtualTrafficLightStop::update_module_lifecycle",
         "VirtualTrafficLightStop::modify_trajectory", "VirtualTrafficLightStop::process_trajectory",
         "VirtualTrafficLightStop::process_module", "VirtualTrafficLightStop::insert_stop_velocity",
-        "VirtualTrafficLightStop::publish_debug_data", "VirtualTrafficLightStop::publish_infrastructure_commands"}) {
+        "VirtualTrafficLightStop::publish_debug_data",
+        "VirtualTrafficLightStop::publish_infrastructure_commands"}) {
     EXPECT_NE(timing_names.find(expected), timing_names.end()) << expected;
   }
 }
