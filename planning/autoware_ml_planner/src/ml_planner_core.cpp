@@ -75,7 +75,17 @@ bool optimization_params_changed(
          lhs.temporal_consistency.weight_velocity != rhs.temporal_consistency.weight_velocity ||
          lhs.temporal_consistency.decay_time_constant_s !=
            rhs.temporal_consistency.decay_time_constant_s ||
-         lhs.temporal_consistency.far_weight_ratio != rhs.temporal_consistency.far_weight_ratio;
+         lhs.temporal_consistency.far_weight_ratio != rhs.temporal_consistency.far_weight_ratio ||
+         lhs.steer_stop_hold.enable != rhs.steer_stop_hold.enable ||
+         lhs.steer_stop_hold.stopped_velocity_threshold_mps !=
+           rhs.steer_stop_hold.stopped_velocity_threshold_mps ||
+         lhs.steer_stop_hold.stopped_trajectory_max_length_m !=
+           rhs.steer_stop_hold.stopped_trajectory_max_length_m ||
+         lhs.steer_stop_hold.goal_steer_zero_enable != rhs.steer_stop_hold.goal_steer_zero_enable ||
+         lhs.steer_stop_hold.goal_steer_zero_distance_m !=
+           rhs.steer_stop_hold.goal_steer_zero_distance_m ||
+         lhs.steer_stop_hold.goal_steer_zero_requires_stopped !=
+           rhs.steer_stop_hold.goal_steer_zero_requires_stopped;
 }
 #endif
 

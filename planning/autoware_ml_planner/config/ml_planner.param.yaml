@@ -49,6 +49,15 @@
         weight_velocity: 0.4        # keeps the speed profile from being re-planned
         decay_time_constant_s: 1.0  # <= 0 keeps the weights uniform over the horizon [s]
         far_weight_ratio: 0.5      # weight fraction remaining at the far end, in [0, 1]
+      steer_stop_hold:
+        # While ego and the reference are both stopped, skip the solver and publish the
+        # steering angle latched on entry. Near the route goal the latched angle is zero.
+        enable: true
+        stopped_velocity_threshold_mps: 0.15
+        stopped_trajectory_max_length_m: 1.5
+        goal_steer_zero_enable: true
+        goal_steer_zero_distance_m: 5.0
+        goal_steer_zero_requires_stopped: true
     road_border_avoidance:
       enable: false
       start_time_s: 0.0          # ignore trajectory points before this time [s]

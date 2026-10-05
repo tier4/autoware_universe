@@ -40,6 +40,31 @@ double yaw_from_quaternion(const geometry_msgs::msg::Quaternion & q)
 {
   return std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
 }
+
+double path_length_m(const Trajectory & trajectory)
+{
+  double length_m = 0.0;
+  for (size_t i = 1; i < trajectory.points.size(); ++i) {
+    const auto & a = trajectory.points[i - 1].pose.position;
+    const auto & b = trajectory.points[i].pose.position;
+    length_m += std::hypot(b.x - a.x, b.y - a.y);
+  }
+  return length_m;
+}
+
+bool is_stopped_reference(
+  const Trajectory & trajectory, const double velocity_threshold_mps, const double max_length_m)
+{
+  if (trajectory.points.empty() || path_length_m(trajectory) > max_length_m) {
+    return false;
+  }
+  const auto max_abs_velocity = std::max_element(
+    trajectory.points.begin(), trajectory.points.end(),
+    [](const TrajectoryPoint & lhs, const TrajectoryPoint & rhs) {
+      return std::abs(lhs.longitudinal_velocity_mps) < std::abs(rhs.longitudinal_velocity_mps);
+    });
+  return std::abs(max_abs_velocity->longitudinal_velocity_mps) <= velocity_threshold_mps;
+}
 }  // namespace
 
 TrajectoryOptimizer::TrajectoryOptimizer(
@@ -54,6 +79,68 @@ TrajectoryOptimizer::TrajectoryOptimizer(
 {
 }
 
+TrajectoryOptimizer::SteerStopMode TrajectoryOptimizer::resolve_steer_stop_mode(
+  const Trajectory & reference, const Odometry & ego_odometry,
+  const std::optional<geometry_msgs::msg::Pose> & goal_pose)
+{
+  const auto & hold = params_.steer_stop_hold;
+  if (!hold.enable) {
+    in_goal_zero_regime_ = false;
+    return SteerStopMode::Track;
+  }
+
+  const bool ego_stopped =
+    std::abs(ego_odometry.twist.twist.linear.x) <= hold.stopped_velocity_threshold_mps;
+  bool near_goal = false;
+  if (goal_pose) {
+    const auto & ego = ego_odometry.pose.pose.position;
+    near_goal = std::hypot(goal_pose->position.x - ego.x, goal_pose->position.y - ego.y) <
+                hold.goal_steer_zero_distance_m;
+  }
+
+  if (hold.goal_steer_zero_enable && near_goal) {
+    const bool stopped_enough = !hold.goal_steer_zero_requires_stopped || ego_stopped;
+    if (stopped_enough) {
+      in_goal_zero_regime_ = true;
+    }
+    if (in_goal_zero_regime_) {
+      return SteerStopMode::Zero;
+    }
+  } else {
+    in_goal_zero_regime_ = false;
+  }
+
+  if (
+    ego_stopped &&
+    is_stopped_reference(
+      reference, hold.stopped_velocity_threshold_mps, hold.stopped_trajectory_max_length_m)) {
+    return SteerStopMode::Hold;
+  }
+  return SteerStopMode::Track;
+}
+
+Trajectory TrajectoryOptimizer::apply_stopped_reference(
+  const Trajectory & reference, const double steer_rad) const
+{
+  Trajectory stopped = reference;
+  for (auto & point : stopped.points) {
+    point.longitudinal_velocity_mps = 0.0F;
+    point.lateral_velocity_mps = 0.0F;
+    point.acceleration_mps2 = 0.0F;
+    point.heading_rate_rps = 0.0F;
+    point.front_wheel_angle_rad = static_cast<float>(steer_rad);
+    point.rear_wheel_angle_rad = 0.0F;
+  }
+  return stopped;
+}
+
+void TrajectoryOptimizer::clear_warm_start(const size_t batch_index)
+{
+  if (batch_index < previous_solutions_.size()) {
+    previous_solutions_[batch_index].reset();
+  }
+}
+
 OptimizationResult TrajectoryOptimizer::optimize(
   const Trajectory & raw_trajectory, const Odometry & ego_odometry,
   const double current_steering_angle_rad, const size_t batch_index,
@@ -65,6 +152,28 @@ OptimizationResult TrajectoryOptimizer::optimize(
   if (raw_trajectory.points.size() < opt_horizon || batch_index >= previous_solutions_.size()) {
     return result;
   }
+
+  const auto steer_stop_mode = resolve_steer_stop_mode(raw_trajectory, ego_odometry, goal_pose);
+  if (steer_stop_mode != SteerStopMode::Track) {
+    clear_warm_start(batch_index);
+    if (steer_stop_mode == SteerStopMode::Zero) {
+      latched_steering_rad_ = 0.002;
+    } else if (!in_stopped_regime_) {
+      latched_steering_rad_ = current_steering_angle_rad;
+    }
+    const double output_steer_rad =
+      steer_stop_mode == SteerStopMode::Zero ? 0.002 : latched_steering_rad_;
+    result.trajectory = apply_stopped_reference(raw_trajectory, output_steer_rad);
+    result.optimized = true;
+    result.solver_status = steer_stop_mode == SteerStopMode::Zero ? -2 : -1;
+    result.solve_time_ms = 0.0;
+    in_stopped_regime_ = true;
+    return result;
+  }
+  if (in_stopped_regime_) {
+    clear_warm_start(batch_index);
+  }
+  in_stopped_regime_ = false;
 
   // Initial state at base_link. Positions are solved in a local frame centered on the ego
   // position for numerical conditioning.

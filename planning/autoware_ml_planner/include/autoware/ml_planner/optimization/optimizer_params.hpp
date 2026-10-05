@@ -107,6 +107,27 @@ struct TrajectoryOptimizationParams
     /// Fraction of the weight that remains at the far end of the horizon, in [0, 1].
     double far_weight_ratio{0.05};
   } temporal_consistency;
+
+  /**
+   * @brief Bypass the solver while stopped and publish a held (or goal-zeroed) steering angle.
+   *
+   * Enter Hold when ego speed and the reference trajectory are both below the stopped
+   * thresholds. The steering angle is latched on entry and kept until the vehicle is moving
+   * again. Enter Zero when ego is stopped within goal_steer_zero_distance_m of the route goal;
+   * that regime stays latched until the goal is no longer near, so a brief creep does not
+   * restore the held angle.
+   */
+  struct SteerStopHoldParams
+  {
+    bool enable{true};
+    double stopped_velocity_threshold_mps{0.15};
+    double stopped_trajectory_max_length_m{1.5};
+    bool goal_steer_zero_enable{true};
+    double goal_steer_zero_distance_m{5.0};
+    /// When true, zero-steer is entered only after ego is stopped. When false, proximity to
+    /// the goal is enough.
+    bool goal_steer_zero_requires_stopped{true};
+  } steer_stop_hold;
 };
 
 }  // namespace autoware::ml_planner::optimization
