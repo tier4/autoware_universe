@@ -21,6 +21,7 @@
 #include "autoware/ml_planner/utils/object_remap.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
+#include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
@@ -116,6 +117,8 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<geometry_msgs::msg::PoseStamped>("~/debug/virtual_pose", 1);
   pub_virtual_pose_status_ =
     this->create_publisher<std_msgs::msg::Float64MultiArray>("~/debug/virtual_pose_status", 1);
+  pub_virtual_pose_vehicle_ =
+    this->create_publisher<MarkerArray>("~/debug/virtual_pose_vehicle", 1);
 
   set_up_params();
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -818,6 +821,30 @@ void MLPlanner::on_timer()
       virtual_pose->snapped ? 1.0 : 0.0, virtual_pose->reset ? 1.0 : 0.0,
       virtual_pose->position_error_m, virtual_pose->yaw_error_deg};
     pub_virtual_pose_status_->publish(status_msg);
+
+    // The vehicle box is centred ahead of base_link (rear axle) by half its length minus the rear
+    // overhang, and sideways by half the left/right overhang difference.
+    visualization_msgs::msg::Marker body;
+    body.header.frame_id = "map";
+    body.header.stamp = pose_msg.header.stamp;
+    body.ns = "virtual_pose_vehicle";
+    body.id = 0;
+    body.type = visualization_msgs::msg::Marker::CUBE;
+    body.action = visualization_msgs::msg::Marker::ADD;
+    body.pose = autoware_utils_geometry::calc_offset_pose(
+      virtual_pose->pose, 0.5 * vehicle_info_.vehicle_length_m - vehicle_info_.rear_overhang_m,
+      0.5 * (vehicle_info_.left_overhang_m - vehicle_info_.right_overhang_m),
+      0.5 * vehicle_info_.vehicle_height_m);
+    body.scale.x = vehicle_info_.vehicle_length_m;
+    body.scale.y = vehicle_info_.vehicle_width_m;
+    body.scale.z = vehicle_info_.vehicle_height_m;
+    body.color.r = 1.0F;
+    body.color.g = 0.1F;
+    body.color.b = 0.1F;
+    body.color.a = 0.4F;
+    MarkerArray body_markers;
+    body_markers.markers.push_back(body);
+    pub_virtual_pose_vehicle_->publish(body_markers);
   }
 
   if (start_velocity_override_enabled_) {

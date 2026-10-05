@@ -222,6 +222,8 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_virtual_pose_{nullptr};
   // [snapped, reset, position_error_m, yaw_error_deg] of the current frame.
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_virtual_pose_status_{nullptr};
+  // Vehicle body at the virtual pose (red, translucent): where the planner thinks the vehicle is.
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_virtual_pose_vehicle_{nullptr};
 
   // Start service: while enabled, ego velocity in the model input is overwritten (1 m/s).
   // Cleared automatically once the measured ego velocity reaches that value.
