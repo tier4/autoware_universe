@@ -58,7 +58,7 @@
       max_lateral_shift_m: 1.5    # cap on the total lateral offset from the raw position [m]
       propagate_shift: true       # carry the offset over to all subsequent points
     virtual_pose:
-      enable: false                 # give the model the closest point of its previous trajectory instead of the measured pose
+      enable: true                  # give the model the closest point of its previous trajectory instead of the measured pose
       max_longitudinal_error_m: 0.5  # [m] reset the virtual pose onto the vehicle when the vehicle is farther than this from it along the virtual heading
       max_lateral_error_m: 0.3       # [m] ... or farther than this across it
       max_yaw_error_deg: 5.0        # [deg] reset when the headings differ by more than this

@@ -315,7 +315,7 @@ void MLPlanner::set_up_params()
 
   // virtual ego pose params
   auto & virtual_pose = params_.virtual_pose;
-  virtual_pose.enable = this->declare_parameter<bool>("virtual_pose.enable", false);
+  virtual_pose.enable = this->declare_parameter<bool>("virtual_pose.enable", true);
   virtual_pose.max_longitudinal_error_m =
     this->declare_parameter<double>("virtual_pose.max_longitudinal_error_m", 0.5);
   virtual_pose.max_lateral_error_m =
