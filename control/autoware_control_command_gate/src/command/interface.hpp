@@ -20,6 +20,7 @@
 #include <autoware_vehicle_msgs/msg/hazard_lights_command.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -35,7 +36,7 @@ class CommandOutput
 {
 public:
   virtual ~CommandOutput() = default;
-  virtual void on_control(const Control & msg) = 0;
+  virtual void on_control(uint16_t source_id, const Control & msg) = 0;
   virtual void on_gear(const GearCommand & msg) = 0;
   virtual void on_turn_indicators(const TurnIndicatorsCommand & msg) = 0;
   virtual void on_hazard_lights(const HazardLightsCommand & msg) = 0;
@@ -45,7 +46,7 @@ class CommandBridge : public CommandOutput
 {
 public:
   explicit CommandBridge(std::unique_ptr<CommandOutput> && output);
-  void on_control(const Control & msg) override;
+  void on_control(uint16_t source_id, const Control & msg) override;
   void on_gear(const GearCommand & msg) override;
   void on_turn_indicators(const TurnIndicatorsCommand & msg) override;
   void on_hazard_lights(const HazardLightsCommand & msg) override;

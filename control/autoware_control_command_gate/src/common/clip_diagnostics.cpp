@@ -1,4 +1,4 @@
-// Copyright 2025 The Autoware Contributors
+// Copyright 2026 The Autoware Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,36 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "interface.hpp"
+#include "clip_diagnostics.hpp"
 
-#include <utility>
+#include <string>
 
 namespace autoware::control_command_gate
 {
 
-CommandBridge::CommandBridge(std::unique_ptr<CommandOutput> && output)
+ClipDiag::ClipDiag(const std::string & name) : DiagnosticTask(name)
 {
-  output_ = std::move(output);
+  notified_ = false;
 }
 
-void CommandBridge::on_control(uint16_t source_id, const Control & msg)
+void ClipDiag::notify()
 {
-  output_->on_control(source_id, msg);
+  notified_ = true;
 }
 
-void CommandBridge::on_gear(const GearCommand & msg)
+void ClipDiag::run(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  output_->on_gear(msg);
-}
-
-void CommandBridge::on_turn_indicators(const TurnIndicatorsCommand & msg)
-{
-  output_->on_turn_indicators(msg);
-}
-
-void CommandBridge::on_hazard_lights(const HazardLightsCommand & msg)
-{
-  output_->on_hazard_lights(msg);
+  if (notified_) {
+    stat.summary(DiagnosticStatus::WARN, "steer accel clip integral exceeded threshold");
+  } else {
+    stat.summary(DiagnosticStatus::OK, "");
+  }
+  notified_ = false;
 }
 
 }  // namespace autoware::control_command_gate

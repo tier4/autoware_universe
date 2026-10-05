@@ -41,10 +41,16 @@ struct VehicleCmdFilterParam
   LimitArray steer_rate_lim_for_steer_cmd;
   LimitArray steer_cmd_diff_lim_from_current_steer;
   double lat_jerk_lim_for_steer_rate;
+  bool enable_steer_accel_limit;
+  LimitArray steer_accel_lim_for_steer_cmd;
+  double steer_accel_clip_integral_th_diag;
 };
 class VehicleCmdFilter
 {
 public:
+  static constexpr double DT_MIN_STEER_ACCEL_LIMIT = 0.005;
+  static constexpr double DT_MAX_STEER_ACCEL_LIMIT = 1.0;
+
   VehicleCmdFilter();
   ~VehicleCmdFilter() = default;
 
@@ -52,6 +58,12 @@ public:
   void setParam(const VehicleCmdFilterParam & p);
   VehicleCmdFilterParam getParam() const;
   void setPrevCmd(const Control & v) { prev_cmd_ = v; }
+  void setPrevSteerRates(double angle_rate, double rotation_rate)
+  {
+    prev_steer_angle_rate_ = angle_rate;
+    prev_steer_rotation_rate_ = rotation_rate;
+  }
+  double getSteerAccelLimForSteerCmd() const;
 
   void limitLongitudinalWithVel(Control & input) const;
   void limitLongitudinalWithAcc(const double dt, Control & input) const;
@@ -61,9 +73,13 @@ public:
   void limitActualSteerDiff(const double current_steer_angle, Control & input) const;
   void limitLateralSteer(Control & input) const;
   void limitLateralSteerRate(const double dt, Control & input) const;
+  void limitLateralSteerAccel(
+    const double dt, Control & input, double & steer_angle_rate_clip,
+    double & steer_rotation_rate_clip) const;
   void filterAll(
     const double dt, const double current_steer_angle, Control & cmd,
-    IsFilterActivated & is_activated) const;
+    IsFilterActivated & is_activated, const bool apply_steer_accel_limit,
+    double & steer_angle_rate_clip, double & steer_rotation_rate_clip) const;
   static IsFilterActivated checkIsActivated(
     const Control & c1, const Control & c2, const double tol = 1.0e-3);
 
@@ -71,6 +87,8 @@ private:
   VehicleCmdFilterParam param_;
   Control prev_cmd_;
   double current_speed_ = 0.0;
+  double prev_steer_angle_rate_ = 0.0;
+  double prev_steer_rotation_rate_ = 0.0;
 
   bool setParameterWithValidation(const VehicleCmdFilterParam & p);
 

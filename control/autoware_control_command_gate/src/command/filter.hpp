@@ -15,14 +15,22 @@
 #ifndef COMMAND__FILTER_HPP_
 #define COMMAND__FILTER_HPP_
 
+#include "common/clip_diagnostics.hpp"
 #include "common/control_command_filter.hpp"
 #include "common/vehicle_status.hpp"
 #include "interface.hpp"
 
+#include <autoware_command_mode_types/sources.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+#include <autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp>
+
+#include <memory>
 
 namespace autoware::control_command_gate
 {
+
+using autoware_internal_debug_msgs::msg::Float32MultiArrayStamped;
 
 class CommandFilter : public CommandBridge
 {
@@ -32,12 +40,13 @@ public:
   void set_transition_filter_params(const VehicleCmdFilterParam & p);
   void set_transition_flag(bool flag);
   bool get_transition_flag() const { return transition_flag_; }
+  ClipDiag * create_diag_task();
 
-  void on_control(const Control & msg) override;
+  void on_control(uint16_t source_id, const Control & msg) override;
 
 private:
   double get_delta_time();
-  Control filter_command(const Control & msg);
+  Control filter_command(uint16_t source_id, const Control & msg);
 
   rclcpp::Node & node_;
   VehicleCmdFilter nominal_filter_;
@@ -46,6 +55,13 @@ private:
   bool enable_command_limit_filter_;
   bool transition_flag_;
   std::optional<rclcpp::Time> prev_time_;
+  Control prev_command_;
+  double steer_angle_rate_clip_integral_ = 0.0;
+  double steer_rotation_rate_clip_integral_ = 0.0;
+  double prev_steer_angle_rate_ = 0.0;
+  double prev_steer_rotation_rate_ = 0.0;
+  std::unique_ptr<ClipDiag> clip_diag_;
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr debug_pub_;
 };
 
 }  // namespace autoware::control_command_gate

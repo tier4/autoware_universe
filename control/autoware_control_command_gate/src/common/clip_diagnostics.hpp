@@ -1,4 +1,4 @@
-// Copyright 2025 The Autoware Contributors
+// Copyright 2026 The Autoware Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,36 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "interface.hpp"
+#ifndef COMMON__CLIP_DIAGNOSTICS_HPP_
+#define COMMON__CLIP_DIAGNOSTICS_HPP_
 
-#include <utility>
+#include <diagnostic_updater/diagnostic_status_wrapper.hpp>
+#include <diagnostic_updater/diagnostic_updater.hpp>
+
+#include <string>
 
 namespace autoware::control_command_gate
 {
 
-CommandBridge::CommandBridge(std::unique_ptr<CommandOutput> && output)
+class ClipDiag : public diagnostic_updater::DiagnosticTask
 {
-  output_ = std::move(output);
-}
+public:
+  using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
 
-void CommandBridge::on_control(uint16_t source_id, const Control & msg)
-{
-  output_->on_control(source_id, msg);
-}
+  explicit ClipDiag(const std::string & name);
+  void notify();
 
-void CommandBridge::on_gear(const GearCommand & msg)
-{
-  output_->on_gear(msg);
-}
+private:
+  void run(diagnostic_updater::DiagnosticStatusWrapper & stat) override;
 
-void CommandBridge::on_turn_indicators(const TurnIndicatorsCommand & msg)
-{
-  output_->on_turn_indicators(msg);
-}
-
-void CommandBridge::on_hazard_lights(const HazardLightsCommand & msg)
-{
-  output_->on_hazard_lights(msg);
-}
+  bool notified_;
+};
 
 }  // namespace autoware::control_command_gate
+
+#endif  // COMMON__CLIP_DIAGNOSTICS_HPP_
