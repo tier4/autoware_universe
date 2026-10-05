@@ -81,7 +81,6 @@ public:
     const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
 
 private:
-  void reset_goal_snap_state();
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;
   double max_steering_angle_rad_;

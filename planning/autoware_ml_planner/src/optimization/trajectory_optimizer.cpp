@@ -102,7 +102,10 @@ OptimizationResult TrajectoryOptimizer::optimize(
         goal_pose->position.x - observed_goal_pose_->position.x,
         goal_pose->position.y - observed_goal_pose_->position.y) > goal_position_change_threshold_m;
     if (goal_position_changed) {
-      reset_goal_snap_state();
+      latched_goal_pose_.reset();
+      for (auto & previous : previous_solutions_) {
+        previous.reset();
+      }
     }
     observed_goal_pose_ = goal_pose;
 
@@ -114,7 +117,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
         params_.goal.unlatch_horizon_s *
           std::max(std::abs(ego_odometry.twist.twist.linear.x), params_.goal.unlatch_min_speed_mps);
     if (ego_too_far_from_goal) {
-      reset_goal_snap_state();
+      latched_goal_pose_.reset();
     } else {
       const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
       const double distance =
@@ -250,11 +253,6 @@ OptimizationResult TrajectoryOptimizer::optimize(
   previous = PreviousSolution{solution, stamp, goal_active};
 
   return result;
-}
-
-void TrajectoryOptimizer::reset_goal_snap_state()
-{
-  latched_goal_pose_.reset();
 }
 
 }  // namespace autoware::ml_planner::optimization
