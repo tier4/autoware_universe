@@ -102,20 +102,28 @@ OptimizationResult TrajectoryOptimizer::optimize(
         goal_pose->position.x - observed_goal_pose_->position.x,
         goal_pose->position.y - observed_goal_pose_->position.y) > goal_position_change_threshold_m;
     if (goal_position_changed) {
-      latched_goal_pose_.reset();
-      for (auto & previous : previous_solutions_) {
-        previous.reset();
-      }
+      reset_goal_snap_state();
     }
     observed_goal_pose_ = goal_pose;
 
-    const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
-    const double distance =
-      std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
-    if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
-      latched_goal_pose_ = goal_pose;
-    } else if (latched_goal_pose_) {
-      latched_goal_pose_ = goal_pose;
+    const double ego_to_goal_m = std::hypot(
+      goal_pose->position.x - ego_pose.position.x, goal_pose->position.y - ego_pose.position.y);
+    const bool ego_too_far_from_goal =
+      params_.goal.unlatch_horizon_s > 0.0 &&
+      ego_to_goal_m >
+        params_.goal.unlatch_horizon_s *
+          std::max(std::abs(ego_odometry.twist.twist.linear.x), params_.goal.unlatch_min_speed_mps);
+    if (ego_too_far_from_goal) {
+      reset_goal_snap_state();
+    } else {
+      const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
+      const double distance =
+        std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
+      if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
+        latched_goal_pose_ = goal_pose;
+      } else if (latched_goal_pose_) {
+        latched_goal_pose_ = goal_pose;
+      }
     }
   }
 
@@ -132,21 +140,27 @@ OptimizationResult TrajectoryOptimizer::optimize(
   }
 
   // Warm start from the previous solution of this candidate, re-centered on the current
-  // ego position. Discarded when stale.
+  // ego position. Discarded when stale. A goal-snap latch mismatch must not wipe this
+  // memory: clearing it also drops temporal consistency for the following cycle.
   const rclcpp::Time stamp(raw_trajectory.header.stamp);
   const bool goal_active = goal_terminal_reference.has_value();
+  result.goal_snap_active = goal_active;
   SolverSolution warm_start;
   const SolverSolution * warm_start_ptr = nullptr;
+  bool temporal_goal_compatible = true;
   auto & previous = previous_solutions_[batch_index];
   if (previous.has_value()) {
     const double age_s = (stamp - previous->stamp).seconds();
-    if (age_s >= 0.0 && age_s <= max_warm_start_age_s && previous->goal_active == goal_active) {
+    if (age_s >= 0.0 && age_s <= max_warm_start_age_s) {
       warm_start = previous->solution;
       for (auto & state : warm_start.states) {
         state[0] -= base_x;
         state[1] -= base_y;
       }
       warm_start_ptr = &warm_start;
+      if (previous->goal_active != goal_active) {
+        temporal_goal_compatible = false;
+      }
     } else {
       previous.reset();
     }
@@ -155,12 +169,14 @@ OptimizationResult TrajectoryOptimizer::optimize(
   // Temporal consistency reference: the previous plan of this candidate, resampled onto the
   // absolute times of this cycle's stages. Current stage k sits at t_now + k * dt, which in
   // the previous plan is index k + (t_now - t_prev) / dt, so the whole plan is shifted by
-  // the elapsed interval and interpolated. It is available under exactly the conditions that
-  // make the previous solution usable as a warm start, and `warm_start` is already
-  // re-centered on the current ego position, so it shares the solver's frame.
+  // the elapsed interval and interpolated. `warm_start` is already re-centered on the
+  // current ego position, so it shares the solver's frame. Skipped on a goal-snap latch
+  // mismatch so a latched terminal does not keep pulling after unlatch.
   std::array<StageTemporalReference, opt_horizon> temporal_references;
   const std::array<StageTemporalReference, opt_horizon> * temporal_references_ptr = nullptr;
-  if (params_.temporal_consistency.enable && warm_start_ptr != nullptr) {
+  result.temporal_applied = false;
+  if (
+    params_.temporal_consistency.enable && warm_start_ptr != nullptr && temporal_goal_compatible) {
     const double stage_shift = std::max(0.0, (stamp - previous->stamp).seconds() / opt_dt_s);
     for (size_t k = 0; k < opt_horizon; ++k) {
       // Beyond the end of the previous horizon there is nothing left to be consistent with,
@@ -186,6 +202,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
       ref.velocity = interpolate(from[3], to[3]);
     }
     temporal_references_ptr = &temporal_references;
+    result.temporal_applied = true;
   }
 
   SolverSolution solution = solver_->solve(
@@ -233,6 +250,11 @@ OptimizationResult TrajectoryOptimizer::optimize(
   previous = PreviousSolution{solution, stamp, goal_active};
 
   return result;
+}
+
+void TrajectoryOptimizer::reset_goal_snap_state()
+{
+  latched_goal_pose_.reset();
 }
 
 }  // namespace autoware::ml_planner::optimization

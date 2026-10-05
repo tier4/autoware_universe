@@ -60,6 +60,8 @@ bool optimization_params_changed(
          lhs.goal.weight_yaw != rhs.goal.weight_yaw ||
          lhs.goal.weight_velocity != rhs.goal.weight_velocity ||
          lhs.goal.snap_distance_m != rhs.goal.snap_distance_m ||
+         lhs.goal.unlatch_horizon_s != rhs.goal.unlatch_horizon_s ||
+         lhs.goal.unlatch_min_speed_mps != rhs.goal.unlatch_min_speed_mps ||
          lhs.min_velocity_mps != rhs.min_velocity_mps ||
          lhs.max_velocity_mps != rhs.max_velocity_mps ||
          lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
