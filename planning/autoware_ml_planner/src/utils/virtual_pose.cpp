@@ -19,9 +19,9 @@
 #include "autoware/trajectory/threshold.hpp"
 #include "autoware/trajectory/utils/closest.hpp"
 
-#include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils/math/normalization.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -82,11 +82,53 @@ std::optional<double> windowed_tangent_yaw(
   constexpr double SAMPLE_TICK_M = 0.05;
   double sum_cos = 0.0;
   double sum_sin = 0.0;
-  for (const double yaw : trajectory.azimuth(trajectory.base_arange({s - half, s + half}, SAMPLE_TICK_M))) {
+  for (const double yaw :
+       trajectory.azimuth(trajectory.base_arange({s - half, s + half}, SAMPLE_TICK_M))) {
     sum_cos += std::cos(yaw);
     sum_sin += std::sin(yaw);
   }
   return std::atan2(sum_sin, sum_cos);
+}
+
+// Savitzky-Golay smoothing of the trajectory points before the spline (the Diffusion-Planner
+// recipe: window 11, cubic, on x and y over the point index; the window shrinks at the ends of a
+// short trajectory, and the end points use the fit of the nearest full window). The spline then
+// follows the trajectory without passing through its point-to-point jitter; point count and order
+// are unchanged.
+std::vector<geometry_msgs::msg::Pose> smooth_positions(
+  const std::vector<geometry_msgs::msg::Pose> & poses)
+{
+  constexpr int ORDER = 3;
+  const auto n = static_cast<int>(poses.size());
+  int window = std::min(11, n % 2 == 0 ? n - 1 : n);
+  if (window < ORDER + 2) {
+    return poses;
+  }
+  const int half = window / 2;
+  // Least-squares polynomial on the window [-half, half]; row r of the pseudo-inverse evaluates
+  // the fit at offset (r - half).
+  Eigen::MatrixXd vandermonde(window, ORDER + 1);
+  for (int r = 0; r < window; ++r) {
+    for (int c = 0; c <= ORDER; ++c) {
+      vandermonde(r, c) = std::pow(static_cast<double>(r - half), c);
+    }
+  }
+  const Eigen::MatrixXd fit =
+    vandermonde * vandermonde.completeOrthogonalDecomposition().pseudoInverse();
+  std::vector<geometry_msgs::msg::Pose> smoothed = poses;
+  for (int i = 0; i < n; ++i) {
+    const int start = std::clamp(i - half, 0, n - window);
+    const int row = i - start;
+    double x = 0.0;
+    double y = 0.0;
+    for (int j = 0; j < window; ++j) {
+      x += fit(row, j) * poses[static_cast<size_t>(start + j)].position.x;
+      y += fit(row, j) * poses[static_cast<size_t>(start + j)].position.y;
+    }
+    smoothed[static_cast<size_t>(i)].position.x = x;
+    smoothed[static_cast<size_t>(i)].position.y = y;
+  }
+  return smoothed;
 }
 
 struct ClosestPoint
@@ -99,7 +141,8 @@ std::optional<ClosestPoint> closest_point_on_previous_trajectory(
   const geometry_msgs::msg::Point & query, const std::vector<Eigen::Matrix4d> & polyline,
   const int64_t prefix_count, const VirtualPoseParams & params)
 {
-  const std::vector<geometry_msgs::msg::Pose> poses = leading_distinct_poses(polyline);
+  const std::vector<geometry_msgs::msg::Pose> poses =
+    smooth_positions(leading_distinct_poses(polyline));
   const auto prefix = static_cast<size_t>(prefix_count);
   if (poses.size() < prefix + 2) {
     return std::nullopt;
@@ -128,16 +171,60 @@ std::optional<ClosestPoint> closest_point_on_previous_trajectory(
   const geometry_msgs::msg::Pose closest = trajectory->compute(*s);
   return ClosestPoint{
     Eigen::Vector2d(closest.position.x, closest.position.y),
-    windowed_tangent_yaw(*trajectory, *s, params.yaw_fit_half_window_m, params.yaw_fit_min_length_m)};
+    windowed_tangent_yaw(
+      *trajectory, *s, params.yaw_fit_half_window_m, params.yaw_fit_min_length_m)};
 }
 }  // namespace
+
+std::optional<ElapsedTimePoint> point_at_elapsed_time(
+  const Eigen::Matrix4d & frame_pose, const std::vector<Eigen::Matrix4d> & prediction,
+  const std::vector<double> & times, const double elapsed_sec)
+{
+  if (prediction.empty() || prediction.size() != times.size()) {
+    return std::nullopt;
+  }
+  Eigen::Vector2d start = frame_pose.block<2, 1>(0, 3);
+  double start_time = 0.0;
+  for (size_t i = 0; i < prediction.size(); ++i) {
+    const Eigen::Vector2d end = prediction[i].block<2, 1>(0, 3);
+    const double duration = times[i] - start_time;
+    if (duration > 1.0e-6 && (elapsed_sec <= times[i] || i + 1 == prediction.size())) {
+      const double ratio = std::clamp((elapsed_sec - start_time) / duration, 0.0, 1.0);
+      return ElapsedTimePoint{start + ratio * (end - start), (end - start).norm() / duration};
+    }
+    start = end;
+    start_time = times[i];
+  }
+  return ElapsedTimePoint{start, 0.0};
+}
+
+bool update_time_based_mode(
+  const bool active, const bool engaged, const double speed_mps, const VirtualPoseParams & params)
+{
+  if (!params.time_based_enable || !engaged) {
+    return false;
+  }
+  const double speed = std::abs(speed_mps);
+  if (active) {
+    return speed <= params.time_based_exit_speed_mps;
+  }
+  return speed < params.time_based_enter_speed_mps;
+}
 
 VirtualPoseResult compute_virtual_pose(
   const geometry_msgs::msg::Pose & measured_pose, const std::vector<Eigen::Matrix4d> & polyline,
   const int64_t prefix_count, const VirtualPoseParams & params)
 {
-  const auto closest =
-    closest_point_on_previous_trajectory(measured_pose.position, polyline, prefix_count, params);
+  return compute_virtual_pose(
+    measured_pose, measured_pose.position, polyline, prefix_count, params);
+}
+
+VirtualPoseResult compute_virtual_pose(
+  const geometry_msgs::msg::Pose & measured_pose, const geometry_msgs::msg::Point & query,
+  const std::vector<Eigen::Matrix4d> & polyline, const int64_t prefix_count,
+  const VirtualPoseParams & params)
+{
+  const auto closest = closest_point_on_previous_trajectory(query, polyline, prefix_count, params);
   if (!closest) {
     return VirtualPoseResult{measured_pose, false, false, 0.0, 0.0};
   }
@@ -145,11 +232,19 @@ VirtualPoseResult compute_virtual_pose(
   const double measured_yaw = autoware_utils_geometry::get_rpy(measured_pose.orientation).z;
   const double virtual_yaw = closest->tangent_yaw.value_or(measured_yaw);
   const double yaw_change = autoware_utils::normalize_radian(virtual_yaw - measured_yaw);
-  const double position_error_m =
-    (closest->position - Eigen::Vector2d(measured_pose.position.x, measured_pose.position.y)).norm();
+  // Vehicle offset from the virtual pose, split along and across the virtual heading.
+  const Eigen::Vector2d offset =
+    Eigen::Vector2d(measured_pose.position.x, measured_pose.position.y) - closest->position;
+  const double longitudinal_error_m =
+    std::abs(std::cos(virtual_yaw) * offset.x() + std::sin(virtual_yaw) * offset.y());
+  const double lateral_error_m =
+    std::abs(-std::sin(virtual_yaw) * offset.x() + std::cos(virtual_yaw) * offset.y());
+  const double position_error_m = offset.norm();
   const double yaw_error_deg = autoware_utils::rad2deg(std::abs(yaw_change));
 
-  if (position_error_m > params.max_position_error_m || yaw_error_deg > params.max_yaw_error_deg) {
+  if (
+    longitudinal_error_m > params.max_longitudinal_error_m ||
+    lateral_error_m > params.max_lateral_error_m || yaw_error_deg > params.max_yaw_error_deg) {
     return VirtualPoseResult{measured_pose, true, true, position_error_m, yaw_error_deg};
   }
 
