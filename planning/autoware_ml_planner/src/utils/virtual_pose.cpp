@@ -178,55 +178,12 @@ std::optional<ClosestPoint> closest_point_on_previous_trajectory(
 }
 }  // namespace
 
-std::optional<ElapsedTimePoint> point_at_elapsed_time(
-  const Eigen::Matrix4d & frame_pose, const std::vector<Eigen::Matrix4d> & prediction,
-  const std::vector<double> & times, const double elapsed_sec)
-{
-  if (prediction.empty() || prediction.size() != times.size()) {
-    return std::nullopt;
-  }
-  Eigen::Vector2d start = frame_pose.block<2, 1>(0, 3);
-  double start_time = 0.0;
-  for (size_t i = 0; i < prediction.size(); ++i) {
-    const Eigen::Vector2d end = prediction[i].block<2, 1>(0, 3);
-    const double duration = times[i] - start_time;
-    if (duration > 1.0e-6 && (elapsed_sec <= times[i] || i + 1 == prediction.size())) {
-      const double ratio = std::clamp((elapsed_sec - start_time) / duration, 0.0, 1.0);
-      return ElapsedTimePoint{start + ratio * (end - start), (end - start).norm() / duration};
-    }
-    start = end;
-    start_time = times[i];
-  }
-  return ElapsedTimePoint{start, 0.0};
-}
-
-bool update_time_based_mode(
-  const bool active, const bool engaged, const double speed_mps, const VirtualPoseParams & params)
-{
-  if (!params.time_based_enable || !engaged) {
-    return false;
-  }
-  const double speed = std::abs(speed_mps);
-  if (active) {
-    return speed <= params.time_based_exit_speed_mps;
-  }
-  return speed < params.time_based_enter_speed_mps;
-}
-
 VirtualPoseResult compute_virtual_pose(
   const geometry_msgs::msg::Pose & measured_pose, const std::vector<Eigen::Matrix4d> & polyline,
   const int64_t prefix_count, const VirtualPoseParams & params)
 {
-  return compute_virtual_pose(
-    measured_pose, measured_pose.position, polyline, prefix_count, params);
-}
-
-VirtualPoseResult compute_virtual_pose(
-  const geometry_msgs::msg::Pose & measured_pose, const geometry_msgs::msg::Point & query,
-  const std::vector<Eigen::Matrix4d> & polyline, const int64_t prefix_count,
-  const VirtualPoseParams & params)
-{
-  const auto closest = closest_point_on_previous_trajectory(query, polyline, prefix_count, params);
+  const auto closest =
+    closest_point_on_previous_trajectory(measured_pose.position, polyline, prefix_count, params);
   if (!closest) {
     return VirtualPoseResult{measured_pose, false, false, 0.0, 0.0};
   }
