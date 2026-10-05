@@ -35,7 +35,7 @@ current frame's points.
 | `~/output/pointcloud/segmentation`     | `sensor_msgs::msg::PointCloud2`                     | `PointXYZCPE` cloud with class ID, probability, and entropy fields. |
 | `~/output/pointcloud/visualization`    | `sensor_msgs::msg::PointCloud2`                     | XYZ cloud with RGB field.                                           |
 | `~/output/pointcloud/filtered`         | `sensor_msgs::msg::PointCloud2`                     | Filtered cloud in the requested `filter.output_format`.             |
-| `~/output/objects`                     | `autoware_perception_msgs::msg::DetectedObjects`    | Detected 3D objects after score filtering and IoU NMS.              |
+| `~/output/objects`                     | `autoware_perception_msgs::msg::DetectedObjects`    | Detected 3D objects after score filtering, NMS, and box adjustment. |
 | `debug/cyclic_time_ms`                 | `autoware_internal_debug_msgs::msg::Float64Stamped` | Cyclic time (ms).                                                   |
 | `debug/pipeline_latency_ms`            | `autoware_internal_debug_msgs::msg::Float64Stamped` | Pipeline latency time (ms).                                         |
 | `debug/processing_time/preprocess_ms`  | `autoware_internal_debug_msgs::msg::Float64Stamped` | Preprocess (ms).                                                    |
@@ -85,6 +85,13 @@ class metadata and the visualization `palette` are configured in
 `class_names` must be present — the node fails to start otherwise, naming the missing class. This
 makes the consolidation of model classes (for example `traffic_cone`, `debris` and `vertical_thin`
 into `HAZARD`) a configuration choice rather than a compile-time constant.
+
+`detection3d.post_process_params.bbox_adjustment` moves the faces of published bounding boxes per
+class, for example to exclude side mirrors from vehicle boxes. It runs after IoU NMS and class
+remapping, so both operate on the boxes predicted by the model, and its `margins` are matched
+against the published class. Every class needs a `margins.<class>` entry ordered
+`[-x, -y, -z, x, y, z]` like `post_center_range`, with zeros for a class that is not adjusted, and
+the node fails to start otherwise.
 
 ### The `build_only` option
 

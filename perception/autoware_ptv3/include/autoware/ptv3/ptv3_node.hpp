@@ -16,6 +16,7 @@
 #define AUTOWARE__PTV3__PTV3_NODE_HPP_
 
 #include "autoware/ptv3/ptv3_trt.hpp"
+#include "autoware/ptv3/ros_utils.hpp"
 #include "autoware/ptv3/visibility_control.hpp"
 
 #include <Eigen/Geometry>
@@ -43,6 +44,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::ptv3
@@ -93,6 +95,9 @@ private:
   perception_utils::DetectionClassRemapper detection_class_remapper_;
   std::vector<std::string> detection_class_names_;
   bool has_twist_{false};
+  bool use_velocity_{false};
+  // ObjectClassification label -> face margins applied to published boxes of that class
+  std::unordered_map<std::uint8_t, BboxMargins> bbox_margins_;
   std::string densification_world_frame_id_;
   std::int64_t densification_num_past_frames_{0};
 

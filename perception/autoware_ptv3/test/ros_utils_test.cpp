@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -117,6 +118,157 @@ TEST_F(ClassificationMappingTest, ThrowsWhenClassIsNotMapped)
   EXPECT_THROW(
     declare_class_mapping(*node, {"car", "truck"}, rcl_interfaces::msg::ParameterDescriptor{}),
     std::runtime_error);
+}
+
+autoware_perception_msgs::msg::DetectedObject makeObject(
+  const std::string & class_name, const float yaw, const float width = 2.0F)
+{
+  const Box3D box{0, 0.9F, 10.0F, 5.0F, 1.0F, 4.0F, width, 1.5F, yaw, 0.0F, 0.0F};
+  autoware_perception_msgs::msg::DetectedObject object;
+  box3d_to_detected_object(box, {class_name}, false, object);
+  return object;
+}
+
+TEST(BboxAdjustmentTest, ShrinksSidesWithoutMovingCenter)
+{
+  auto object = makeObject("CAR", 0.3F);
+
+  adjust_bbox({{ObjectClassification::CAR, {0.0, -0.15, 0.0, 0.0, -0.15, 0.0}}}, object);
+
+  EXPECT_NEAR(object.shape.dimensions.x, 4.0, 1e-6);
+  EXPECT_NEAR(object.shape.dimensions.y, 1.7, 1e-6);
+  EXPECT_NEAR(object.shape.dimensions.z, 1.5, 1e-6);
+  const auto & position = object.kinematics.pose_with_covariance.pose.position;
+  EXPECT_NEAR(position.x, 10.0, 1e-6);
+  EXPECT_NEAR(position.y, 5.0, 1e-6);
+  EXPECT_NEAR(position.z, 1.0, 1e-6);
+}
+
+TEST(BboxAdjustmentTest, AsymmetricMarginsMoveCenterInBoxFrame)
+{
+  constexpr float pi = 3.14159265358979323846F;
+  auto object = makeObject("CAR", 0.5F * pi);
+
+  // Extend the front face by 0.5 m and lower the bottom face by 0.2 m.
+  adjust_bbox({{ObjectClassification::CAR, {0.0, 0.0, 0.2, 0.5, 0.0, 0.0}}}, object);
+
+  EXPECT_NEAR(object.shape.dimensions.x, 4.5, 1e-6);
+  EXPECT_NEAR(object.shape.dimensions.y, 2.0, 1e-6);
+  EXPECT_NEAR(object.shape.dimensions.z, 1.7, 1e-6);
+  // The box x axis points along the map y axis at a yaw of pi / 2.
+  const auto & position = object.kinematics.pose_with_covariance.pose.position;
+  EXPECT_NEAR(position.x, 10.0, 1e-5);
+  EXPECT_NEAR(position.y, 5.25, 1e-5);
+  EXPECT_NEAR(position.z, 0.9, 1e-5);
+}
+
+TEST(BboxAdjustmentTest, LeavesOtherClassesUnchanged)
+{
+  auto object = makeObject("PEDESTRIAN", 0.0F);
+
+  adjust_bbox({{ObjectClassification::CAR, {0.0, -0.15, 0.0, 0.0, -0.15, 0.0}}}, object);
+
+  EXPECT_NEAR(object.shape.dimensions.y, 2.0, 1e-6);
+  EXPECT_NEAR(object.kinematics.pose_with_covariance.pose.position.y, 5.0, 1e-6);
+}
+
+TEST(BboxAdjustmentTest, StopsShrinkAtMinimumDimension)
+{
+  auto object = makeObject("CAR", 0.0F, 0.2F);
+
+  // Pulling the right face in by 0.3 m would leave -0.1 m, so it moves by 0.1 m only.
+  adjust_bbox({{ObjectClassification::CAR, {0.0, -0.3, 0.0, 0.0, 0.0, 0.0}}}, object);
+
+  EXPECT_NEAR(object.shape.dimensions.y, min_bbox_dimension, 1e-6);
+  EXPECT_NEAR(object.kinematics.pose_with_covariance.pose.position.y, 5.05, 1e-6);
+}
+
+TEST(BboxAdjustmentTest, DoesNotShrinkDimensionBelowMinimum)
+{
+  auto object = makeObject("CAR", 0.0F, 0.05F);
+
+  adjust_bbox({{ObjectClassification::CAR, {0.0, -0.1, 0.0, 0.2, -0.1, 0.0}}}, object);
+
+  EXPECT_NEAR(object.shape.dimensions.x, 4.2, 1e-6);
+  EXPECT_NEAR(object.shape.dimensions.y, 0.05, 1e-6);
+  const auto & position = object.kinematics.pose_with_covariance.pose.position;
+  EXPECT_NEAR(position.x, 10.1, 1e-6);
+  EXPECT_NEAR(position.y, 5.0, 1e-6);
+}
+
+class BboxAdjustmentParameterTest : public ::testing::Test
+{
+protected:
+  static void SetUpTestSuite() { rclcpp::init(0, nullptr); }
+  static void TearDownTestSuite() { rclcpp::shutdown(); }
+
+  static rclcpp::Node::SharedPtr makeNode(const std::vector<rclcpp::Parameter> & overrides)
+  {
+    rclcpp::NodeOptions options;
+    options.parameter_overrides(overrides);
+    return std::make_shared<rclcpp::Node>("bbox_adjustment_test_node", options);
+  }
+
+  static std::string param(const std::string & class_name)
+  {
+    return "detection3d.post_process_params.bbox_adjustment.margins." + class_name;
+  }
+
+  /// Margins of every class, zero unless given.
+  static std::vector<rclcpp::Parameter> marginOverrides(
+    const std::unordered_map<std::string, std::vector<double>> & margins_by_class)
+  {
+    std::vector<rclcpp::Parameter> overrides;
+    for (const auto * class_name :
+         {"UNKNOWN", "CAR", "TRUCK", "BUS", "TRAILER", "MOTORCYCLE", "BICYCLE", "PEDESTRIAN",
+          "ANIMAL", "HAZARD"}) {
+      const auto it = margins_by_class.find(class_name);
+      overrides.emplace_back(
+        param(class_name), it != margins_by_class.end() ? it->second : std::vector<double>(6, 0.0));
+    }
+    return overrides;
+  }
+};
+
+TEST_F(BboxAdjustmentParameterTest, ResolvesMarginsOfEveryClass)
+{
+  const auto node = makeNode(marginOverrides(
+    {{"CAR", {0.0, -0.15, 0.0, 0.0, -0.15, 0.0}}, {"BUS", {0.0, -0.25, 0.0, 0.1, -0.25, 0.0}}}));
+
+  const auto margins_by_label =
+    declare_bbox_adjustment(*node, rcl_interfaces::msg::ParameterDescriptor{});
+
+  ASSERT_EQ(margins_by_label.size(), 10U);
+  EXPECT_EQ(
+    margins_by_label.at(ObjectClassification::CAR),
+    (BboxMargins{0.0, -0.15, 0.0, 0.0, -0.15, 0.0}));
+  EXPECT_EQ(
+    margins_by_label.at(ObjectClassification::BUS),
+    (BboxMargins{0.0, -0.25, 0.0, 0.1, -0.25, 0.0}));
+  EXPECT_EQ(margins_by_label.at(ObjectClassification::HAZARD), BboxMargins{});
+}
+
+TEST_F(BboxAdjustmentParameterTest, ThrowsWhenAClassHasNoMargins)
+{
+  auto overrides = marginOverrides({});
+  overrides.erase(
+    std::remove_if(
+      overrides.begin(), overrides.end(),
+      [](const rclcpp::Parameter & parameter) { return parameter.get_name() == param("HAZARD"); }),
+    overrides.end());
+  const auto node = makeNode(overrides);
+
+  EXPECT_THROW(
+    declare_bbox_adjustment(*node, rcl_interfaces::msg::ParameterDescriptor{}),
+    rclcpp::exceptions::UninitializedStaticallyTypedParameterException);
+}
+
+TEST_F(BboxAdjustmentParameterTest, ThrowsOnWrongMarginCount)
+{
+  const auto node = makeNode(marginOverrides({{"CAR", {0.0, -0.15, 0.0}}}));
+
+  EXPECT_THROW(
+    declare_bbox_adjustment(*node, rcl_interfaces::msg::ParameterDescriptor{}), std::runtime_error);
 }
 
 }  // namespace test

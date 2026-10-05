@@ -14,10 +14,13 @@
 
 #include "autoware/ptv3/ros_utils.hpp"
 
+#include <Eigen/Geometry>
 #include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
@@ -143,6 +146,76 @@ std::unordered_map<std::string, std::string> declare_class_mapping(
       *missing_classes + "].");
   }
   return class_mapping;
+}
+
+std::unordered_map<std::uint8_t, BboxMargins> declare_bbox_adjustment(
+  rclcpp::Node & node, const rcl_interfaces::msg::ParameterDescriptor & descriptor)
+{
+  // Every published label needs margins rather than a list of adjusted classes, because rclcpp
+  // rejects an empty list in a parameter file, so no class could be left unadjusted.
+  constexpr std::array<std::uint8_t, 10> labels{
+    Label::UNKNOWN,    Label::CAR,     Label::TRUCK,      Label::BUS,    Label::TRAILER,
+    Label::MOTORCYCLE, Label::BICYCLE, Label::PEDESTRIAN, Label::ANIMAL, Label::HAZARD};
+
+  std::unordered_map<std::uint8_t, BboxMargins> margins_by_label;
+  margins_by_label.reserve(labels.size());
+  for (const auto label : labels) {
+    const std::string param_name = "detection3d.post_process_params.bbox_adjustment.margins." +
+                                   autoware::object_recognition_utils::convertLabelToString(label);
+    const auto values = node.declare_parameter<std::vector<double>>(param_name, descriptor);
+    BboxMargins margins{};
+    if (values.size() != margins.size()) {
+      throw std::runtime_error(param_name + " must contain 6 values [-x, -y, -z, x, y, z].");
+    }
+    if (!std::all_of(
+          values.begin(), values.end(), [](double value) { return std::isfinite(value); })) {
+      throw std::runtime_error(param_name + " values must be finite.");
+    }
+    std::copy(values.begin(), values.end(), margins.begin());
+    margins_by_label.emplace(label, margins);
+  }
+  return margins_by_label;
+}
+
+void adjust_bbox(
+  const std::unordered_map<std::uint8_t, BboxMargins> & margins_by_label,
+  autoware_perception_msgs::msg::DetectedObject & obj)
+{
+  if (obj.shape.type != autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
+    return;
+  }
+  const auto it = margins_by_label.find(
+    autoware::object_recognition_utils::getHighestProbLabel(obj.classification));
+  if (it == margins_by_label.end()) {
+    return;
+  }
+  const auto & margins = it->second;
+
+  auto & dimensions = obj.shape.dimensions;
+  const std::array<double *, 3> sizes{&dimensions.x, &dimensions.y, &dimensions.z};
+  Eigen::Vector3d center_shift;
+  for (std::size_t axis = 0; axis < sizes.size(); ++axis) {
+    const double min_face_margin = margins[axis];
+    const double max_face_margin = margins[axis + 3];
+    const double growth = min_face_margin + max_face_margin;
+    double & size = *sizes[axis];
+    // Both faces keep their share of a shrink that is cut short at the minimum dimension.
+    double scale = 1.0;
+    if (growth < 0.0 && size + growth < min_bbox_dimension) {
+      scale = std::max(0.0, (min_bbox_dimension - size) / growth);
+    }
+    size += scale * growth;
+    center_shift[static_cast<Eigen::Index>(axis)] =
+      0.5 * scale * (max_face_margin - min_face_margin);
+  }
+
+  auto & pose = obj.kinematics.pose_with_covariance.pose;
+  const Eigen::Quaterniond orientation(
+    pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
+  const Eigen::Vector3d position_shift = orientation * center_shift;
+  pose.position.x += position_shift.x();
+  pose.position.y += position_shift.y();
+  pose.position.z += position_shift.z();
 }
 
 }  // namespace autoware::ptv3

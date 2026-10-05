@@ -48,10 +48,89 @@
           },
           "description": "Per-class minimum sine/cosine norm for yaw. Boxes below threshold are discarded.",
           "minItems": 1
+        },
+        "use_velocity": {
+          "type": "boolean",
+          "description": "Publish the velocity predicted by the model. When false, the object twist is zero and has_twist is false, so trackers do not use it as a measurement. No effect when detection3d.has_twist is false."
+        },
+        "bbox_adjustment": {
+          "$ref": "#/definitions/bbox_adjustment"
         }
       },
-      "required": ["iou_nms_search_distance_2d", "iou_nms_threshold", "yaw_norm_thresholds"],
+      "required": [
+        "iou_nms_search_distance_2d",
+        "iou_nms_threshold",
+        "yaw_norm_thresholds",
+        "use_velocity",
+        "bbox_adjustment"
+      ],
       "additionalProperties": false
+    },
+    "bbox_adjustment": {
+      "type": "object",
+      "description": "Moves the faces of published bounding boxes, applied after IoU NMS and class remapping, so both operate on the boxes predicted by the model.",
+      "properties": {
+        "margins": {
+          "type": "object",
+          "description": "Per-class face displacement of published classes (after class remapping). Every class is required, and all zeros leave its boxes unchanged.",
+          "properties": {
+            "UNKNOWN": {
+              "$ref": "#/definitions/bbox_margins"
+            },
+            "CAR": {
+              "$ref": "#/definitions/bbox_margins"
+            },
+            "TRUCK": {
+              "$ref": "#/definitions/bbox_margins"
+            },
+            "BUS": {
+              "$ref": "#/definitions/bbox_margins"
+            },
+            "TRAILER": {
+              "$ref": "#/definitions/bbox_margins"
+            },
+            "MOTORCYCLE": {
+              "$ref": "#/definitions/bbox_margins"
+            },
+            "BICYCLE": {
+              "$ref": "#/definitions/bbox_margins"
+            },
+            "PEDESTRIAN": {
+              "$ref": "#/definitions/bbox_margins"
+            },
+            "ANIMAL": {
+              "$ref": "#/definitions/bbox_margins"
+            },
+            "HAZARD": {
+              "$ref": "#/definitions/bbox_margins"
+            }
+          },
+          "required": [
+            "UNKNOWN",
+            "CAR",
+            "TRUCK",
+            "BUS",
+            "TRAILER",
+            "MOTORCYCLE",
+            "BICYCLE",
+            "PEDESTRIAN",
+            "ANIMAL",
+            "HAZARD"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["margins"],
+      "additionalProperties": false
+    },
+    "bbox_margins": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Face displacement in meters [-x, -y, -z, x, y, z] in the box frame (x forward along the yaw, y left, z up). Positive moves the face outward, negative moves it inward, so asymmetric values also move the box center. A dimension is never shrunk below 0.1 m.",
+      "minItems": 6,
+      "maxItems": 6
     },
     "detection_score_thresholds": {
       "type": "object",

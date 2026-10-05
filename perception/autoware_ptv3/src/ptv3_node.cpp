@@ -194,6 +194,9 @@ PTv3Node::PTv3Node(const rclcpp::NodeOptions & options) : Node("ptv3", options)
       "detection3d.post_process_params.iou_nms_search_distance_2d", descriptor);
     nms_params.iou_threshold = this->declare_parameter<double>(
       "detection3d.post_process_params.iou_nms_threshold", descriptor);
+    use_velocity_ =
+      this->declare_parameter<bool>("detection3d.post_process_params.use_velocity", descriptor);
+    bbox_margins_ = declare_bbox_adjustment(*this, descriptor);
 
     const auto num_proposals_param =
       this->declare_parameter<std::int64_t>("detection3d.num_proposals", descriptor);
@@ -367,8 +370,7 @@ void PTv3Node::cloudCallback(
     raw_objects.reserve(det_boxes3d->size());
     for (const auto & box3d : *det_boxes3d) {
       autoware_perception_msgs::msg::DetectedObject object;
-      // Force has_twist=false on the output objects; the engine still binds the vel head.
-      box3d_to_detected_object(box3d, detection_class_names_, false, object);
+      box3d_to_detected_object(box3d, detection_class_names_, has_twist_ && use_velocity_, object);
       raw_objects.emplace_back(std::move(object));
     }
 
@@ -376,6 +378,10 @@ void PTv3Node::cloudCallback(
     output_msg.header = msg_ptr->header;
     output_msg.objects = iou_bev_nms_.apply(raw_objects);
     detection_class_remapper_.mapClasses(output_msg);
+    // NMS and class remapping run on the predicted boxes, so the adjustment comes last.
+    for (auto & object : output_msg.objects) {
+      adjust_bbox(bbox_margins_, object);
+    }
     detected_objects_pub_->publish(output_msg);
     published_time_pub_->publish_if_subscribed(detected_objects_pub_, output_msg.header.stamp);
   }
