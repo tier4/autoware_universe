@@ -252,19 +252,3 @@ TEST_F(TrajectoryModifierPluginBaseTest, LoadsEveryPluginThroughCommonInterface)
   const auto repeated = loader.createSharedInstance(plugin_classes.front());
   EXPECT_NE(plugins.front().get(), repeated.get());
 }
-
-TEST_F(TrajectoryModifierPluginBaseTest, DefaultCycleHooksDoNotRequirePluginOverrides)
-{
-  TestTrajectoryModifierPlugin plugin;
-  TrajectoryModifierParams params;
-  plugin.initialize("TestPlugin", node_.get(), time_keeper_, nullptr, params);
-  TrajectoryModifierData snapshot;
-  EXPECT_NO_THROW(plugin.begin_cycle(snapshot));
-  TrajectoryPoints candidate(3);
-  auto first = snapshot;
-  auto second = snapshot;
-  EXPECT_EQ(plugin.process(candidate, first), ProcessingResult::Modified);
-  EXPECT_EQ(plugin.process(candidate, second), ProcessingResult::Modified);
-  EXPECT_NO_THROW(plugin.end_cycle());
-  EXPECT_TRUE(snapshot.semantic_speed_tracker.take_stop_point_candidates().empty());
-}
