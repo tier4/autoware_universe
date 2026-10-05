@@ -29,9 +29,9 @@ TrajectorySubscription::TrajectorySubscription(
     std::bind(&TrajectorySubscription::on_msg, this, _1));
 }
 
-void TrajectorySubscription::on_msg(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Trajectory) & msg)
+void TrajectorySubscription::on_msg(const Trajectory & msg)
 {
-  TrajectorySender::send(*msg);
+  TrajectorySender::send(msg);
 }
 
 }  // namespace autoware::trajectory_gate

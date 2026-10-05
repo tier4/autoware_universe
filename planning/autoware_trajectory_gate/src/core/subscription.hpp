@@ -30,7 +30,7 @@ public:
   TrajectorySubscription(const std::string & name, autoware::agnocast_wrapper::Node & node);
 
 private:
-  void on_msg(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Trajectory) & msg);
+  void on_msg(const Trajectory & msg);
   AUTOWARE_SUBSCRIPTION_PTR(Trajectory) sub_trajectory_;
 };
 
