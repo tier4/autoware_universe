@@ -37,14 +37,20 @@ struct TrajectoryOptimizationParams
     double weight_yaw{0.5};
     double weight_velocity{0.1};
     double snap_distance_m{1.0};
+    /// Drop the latch when ego-to-goal exceeds this time horizon times speed.
+    /// <= 0 disables the far-away unlatch.
+    double unlatch_horizon_s{8.0};
+    /// Floor on speed used by the far-away range: range = horizon * max(|v|, this).
+    double unlatch_min_speed_mps{3.0};
   } goal;
 
   /**
    * @brief Weakly track the previous cycle's solved plan (same idea as autoware_ml_planner).
    *
-   * Default weights are ~0.01 of the ml_planner yaml values so this pose-only OCP does not
-   * overpower tracking. The term is skipped while goal snap is latched or the reference was
-   * shifted by road-border avoidance, because those cases are not "clean" network output.
+   * Lon/lat axes use the current tracking yaw. The previous plan is sampled by arc length
+   * along the current reference, not by timestamp; stages past the previous path have no
+   * temporal term (takeoff is then uncovered without a speed threshold). Terminal node
+   * omitted. Skipped on road-border shift or goal-snap latch mismatch.
    */
   struct TemporalConsistencyParams
   {

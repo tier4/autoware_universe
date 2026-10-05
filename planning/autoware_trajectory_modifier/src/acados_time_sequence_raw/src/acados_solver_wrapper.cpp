@@ -223,14 +223,14 @@ SolverSolution AcadosSolverWrapper::solve(
     double blended_yaw = yaw_ref;
     double blended_velocity = 0.0;
 
-    if (use_temporal && !is_initial_stage) {
+    if (use_temporal && !is_initial_stage && (*temporal_references)[stage - 1].valid) {
       const auto & previous = (*temporal_references)[stage - 1];
       const double scale = temporal_scale(stage);
       const double t_lon = scale * temporal.weight_longitudinal;
       const double t_lat = scale * temporal.weight_lateral;
       const double t_yaw = scale * temporal.weight_yaw;
       const double t_velocity = scale * temporal.weight_velocity;
-      const auto temporal_block = position_block(previous.yaw, t_lon, t_lat);
+      const auto temporal_block = position_block(yaw_ref, t_lon, t_lat);
       block = {
         track_block[0] + temporal_block[0], track_block[1] + temporal_block[1],
         track_block[2] + temporal_block[2]};
@@ -295,27 +295,11 @@ SolverSolution AcadosSolverWrapper::solve(
     terminal_yaw_weight += goal.weight_yaw;
     terminal_velocity_weight += goal.weight_velocity;
   }
-  if (use_temporal) {
-    const auto & previous = (*temporal_references)[gen_n - 1];
-    const double scale = temporal_scale(gen_n);
-    const double t_lon = scale * temporal.weight_longitudinal;
-    const double t_lat = scale * temporal.weight_lateral;
-    const double t_yaw = scale * temporal.weight_yaw;
-    const double t_velocity = scale * temporal.weight_velocity;
-    const auto temporal_block = position_block(previous.yaw, t_lon, t_lat);
-    auto summed_block = terminal_block;
-    for (size_t i = 0; i < summed_block.size(); ++i) {
-      summed_block[i] += temporal_block[i];
-    }
-    terminal_position = blend_position_reference(
-      terminal_block, terminal_position, temporal_block, {previous.x, previous.y}, summed_block);
-    terminal_block = summed_block;
-    terminal_yaw = blend_reference(terminal_yaw_weight, terminal_yaw, t_yaw, previous.yaw);
-    terminal_yaw_weight += t_yaw;
-    terminal_velocity =
-      blend_reference(terminal_velocity_weight, terminal_velocity, t_velocity, previous.velocity);
-    terminal_velocity_weight += t_velocity;
-  }
+  // Do not fold the previous terminal into yref_e. After age-based resampling the last
+  // temporal sample is clamped to the previous horizon end, whose heading is often stale
+  // relative to the current DP/goal yaw. Blending those anisotropic lon/lat frames with
+  // the goal pose produced a kinematically unreachable last point. Mid-horizon stages
+  // still carry the temporal term.
   std::array<double, gen_nyn * gen_nyn> terminal_weight_matrix{};
   terminal_weight_matrix[w_index(kX, kX, gen_nyn)] = terminal_block[0];
   terminal_weight_matrix[w_index(kY, kY, gen_nyn)] = terminal_block[1];
@@ -335,7 +319,7 @@ SolverSolution AcadosSolverWrapper::solve(
   for (size_t stage = 0; stage <= gen_n; ++stage) {
     std::array<double, gen_nx> x_guess = x0;
     if (warm_start != nullptr) {
-      x_guess = warm_start->states[std::min(stage + 1, gen_n)];
+      x_guess = warm_start->states[stage];
     }
     ocp_nlp_out_set(
       impl_->config, impl_->dims, impl_->out, impl_->in, static_cast<int>(stage), "x",
@@ -343,7 +327,7 @@ SolverSolution AcadosSolverWrapper::solve(
     if (stage < gen_n) {
       std::array<double, gen_nu> u_guess{};
       if (warm_start != nullptr) {
-        u_guess = warm_start->inputs[std::min(stage + 1, gen_n - 1)];
+        u_guess = warm_start->inputs[std::min(stage, gen_n - 1)];
       }
       ocp_nlp_out_set(
         impl_->config, impl_->dims, impl_->out, impl_->in, static_cast<int>(stage), "u",

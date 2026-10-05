@@ -15,8 +15,13 @@
         weight_yaw: 0.5
         weight_velocity: 0.1
         snap_distance_m: 1.0
-      # ~0.01 of autoware_ml_planner yaml weights. Skipped while goal snap is
-      # latched or road-border avoidance shifted the reference.
+        # Drop the latch when ego-to-goal exceeds
+        # unlatch_horizon_s * max(|v|, unlatch_min_speed_mps).
+        # This does not clear the previous-plan buffer.
+        unlatch_horizon_s: 8.0
+        unlatch_min_speed_mps: 3.0
+      # Previous plan sampled by path distance, not timestamp. Skipped on
+      # road-border shift or goal-snap latch mismatch.
       temporal_consistency:
         enable: true
         weight_longitudinal: 0.004
