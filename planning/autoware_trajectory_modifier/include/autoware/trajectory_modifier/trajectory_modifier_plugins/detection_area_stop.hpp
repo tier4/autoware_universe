@@ -45,18 +45,7 @@ public:
 
   DetectionAreaStop() = default;
 
-  void begin_cycle(const TrajectoryModifierData & input) override;
-
-  ProcessingResult process(TrajectoryPoints & points, TrajectoryModifierData & data) override
-  {
-    return modify_trajectory(points, data) ? ProcessingResult::Modified
-                                           : ProcessingResult::Unchanged;
-  }
-
-  bool modify_trajectory(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
-
-  [[nodiscard]] bool is_trajectory_modification_required(
-    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
+  ProcessingResult process(TrajectoryPoints & points, TrajectoryModifierData & data) override;
 
   void update_params(const TrajectoryModifierParams & params) override;
 
@@ -113,9 +102,12 @@ private:
   bool last_candidate_modified_{false};
   rclcpp::Time cycle_time_{0, 0, RCL_ROS_TIME};
   nav_msgs::msg::Odometry::ConstSharedPtr cycle_odometry_;
+  bool cycle_initialized_{false};
   rclcpp::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
+  void prepare_cycle(const TrajectoryModifierData & input);
+  bool modify_trajectory(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
   void rebuild_modules(const TrajectoryModifierData & input);
   void update_cycle_observations(const TrajectoryModifierData & input);
   void update_physical_stop_state(const TrajectoryModifierData & input);

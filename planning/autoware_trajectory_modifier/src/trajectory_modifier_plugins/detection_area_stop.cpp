@@ -130,8 +130,21 @@ bool DetectionAreaStop::check_inputs(const TrajectoryModifierData & input) const
   return input.current_odometry && input.lanelet_map && input.route;
 }
 
-void DetectionAreaStop::begin_cycle(const TrajectoryModifierData & input)
+ProcessingResult DetectionAreaStop::process(TrajectoryPoints & points, TrajectoryModifierData & input)
 {
+  autoware_utils_debug::ScopedTimeTrack st("DetectionAreaStop::process", *get_time_keeper());
+  // The framework processes candidate indices in order, starting at zero for each callback.
+  // Refresh physical observations once, then reuse them without candidate-dependent updates.
+  if (input.candidate_index == 0U || !cycle_initialized_) {
+    prepare_cycle(input);
+  }
+  const auto modified = modify_trajectory(points, input);
+  return modified ? ProcessingResult::Modified : ProcessingResult::Unchanged;
+}
+
+void DetectionAreaStop::prepare_cycle(const TrajectoryModifierData & input)
+{
+  cycle_initialized_ = true;
   cycle_time_ = get_clock()->now();
   cycle_odometry_ = input.current_odometry;
   cycle_pointcloud_.reset();
@@ -380,18 +393,6 @@ void DetectionAreaStop::rebuild_modules(const TrajectoryModifierData & input)
       modules_.push_back(std::move(module));
     }
   }
-}
-
-bool DetectionAreaStop::is_trajectory_modification_required(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
-{
-  autoware_utils_debug::ScopedTimeTrack st(
-    "DetectionAreaStop::is_trajectory_modification_required", *get_time_keeper());
-  if (!enabled_ || traj_points.size() < 2 || modules_.empty() || !input.current_odometry) {
-    return false;
-  }
-  if (should_hold_stop_at_ego(traj_points, input)) return true;
-  return find_stop_decision(traj_points, input).has_value();
 }
 
 bool DetectionAreaStop::modify_trajectory(
