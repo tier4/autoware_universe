@@ -105,7 +105,7 @@ inline constexpr std::array<int64_t, 4> STOP_LINES_SHAPE = {
 inline constexpr std::array<int64_t, 4> ROAD_BORDERS_SHAPE = {
   1, NUM_ROAD_BORDERS, POINTS_PER_ROAD_BORDER, 2};
 inline constexpr std::array<int64_t, 2> GOAL_POSE_SHAPE = {1, POSE_DIM};
-inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, 3};
+inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, 4};
 inline constexpr std::array<int64_t, 2> TURN_INDICATORS_SHAPE = {1, INPUT_T + 1};
 // Per-segment history of the associated traffic light state
 inline constexpr std::array<int64_t, 4> LANE_TRAFFIC_LIGHT_PAST_SHAPE = {
