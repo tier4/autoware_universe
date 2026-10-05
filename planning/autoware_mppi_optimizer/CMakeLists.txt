@@ -94,15 +94,18 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       get_filename_component(_mppi_acados_lib_dir "${_mppi_acados_location}" DIRECTORY)
     endif()
   endif()
-  if(NOT _mppi_acados_lib_dir)
-    # Fallback when acados is not exposed as an imported target (e.g. in-tree)
+  if(NOT _mppi_acados_lib_dir AND DEFINED ENV{ACADOS_SOURCE_DIR})
     set(_mppi_acados_lib_dir "$ENV{ACADOS_SOURCE_DIR}/lib")
   endif()
-  if(NOT EXISTS "${_mppi_acados_lib_dir}")
+  if(NOT _mppi_acados_lib_dir AND EXISTS "/opt/acados/lib")
+    set(_mppi_acados_lib_dir "/opt/acados/lib")
+  endif()
+  if(NOT _mppi_acados_lib_dir OR NOT EXISTS "${_mppi_acados_lib_dir}")
     set(_mppi_acados_lib_dir "")
     message(WARNING
       "MPPI acados: could not locate the acados lib directory. Linking against "
-      "acados' transitive dependencies may fail; set ACADOS_SOURCE_DIR.")
+      "acados' transitive dependencies may fail; set ACADOS_SOURCE_DIR or install "
+      "acados under /opt/acados.")
   endif()
 
   set(_mppi_acados_runtime_libs "")
