@@ -14,6 +14,21 @@
         "model": {
           "type": "object",
           "properties": {
+            "base_model_directory": {
+              "type": "string",
+              "default": "$(var data_path)/ml_planner",
+              "description": "Base directory containing the ONNX model and args file. Same ROS parameter name as autoware_diffusion_planner so both nodes can switch artifacts by setting this once."
+            },
+            "onnx_model_filename": {
+              "type": "string",
+              "default": "ml_planner_sampler.onnx",
+              "description": "ONNX model filename relative to base_model_directory"
+            },
+            "args_filename": {
+              "type": "string",
+              "default": "ml_planner.param.json",
+              "description": "Args/configuration JSON filename relative to base_model_directory. Same ROS parameter name as autoware_diffusion_planner."
+            },
             "backend": {
               "type": "string",
               "default": "tensorrt",
@@ -30,14 +45,16 @@
               "type": "boolean",
               "default": true,
               "description": "Use CUDA Graph replay for TensorRT enqueue calls"
-            },
-            "onnx_model_path": {
-              "type": "string",
-              "default": "$(var data_path)/ml_planner/ml_planner_sampler.onnx",
-              "description": "Path to the 20-step sampler ONNX model"
             }
           },
-          "required": ["backend", "precision", "use_cuda_graph", "onnx_model_path"]
+          "required": [
+            "backend",
+            "precision",
+            "use_cuda_graph",
+            "base_model_directory",
+            "onnx_model_filename",
+            "args_filename"
+          ]
         },
         "planning_frequency_hz": {
           "type": "number",
@@ -155,7 +172,20 @@
                 },
                 "snap_distance_m": {
                   "type": "number",
-                  "default": 1.0
+                  "default": 1.0,
+                  "minimum": 0.0,
+                  "description": "Latch the extra terminal penalty once the predicted endpoint is within this distance of the route goal [m]"
+                },
+                "unlatch_horizon_s": {
+                  "type": "number",
+                  "default": 8.0,
+                  "description": "Unlatch goal snap when ego-to-goal exceeds this horizon times speed. <= 0 disables the check [s]"
+                },
+                "unlatch_min_speed_mps": {
+                  "type": "number",
+                  "default": 3.0,
+                  "minimum": 0.0,
+                  "description": "Floor on |ego speed| used with unlatch_horizon_s to compute the far-away range [m/s]"
                 }
               }
             },

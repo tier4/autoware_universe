@@ -16,15 +16,40 @@
 
 #include <boost/geometry/algorithms/correct.hpp>
 
+#include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_traffic_rules/TrafficRules.h>
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace autoware::safety_planner::experimental
 {
+
+namespace
+{
+
+constexpr double sample_interval_m = 1.0;  // resolution of the position for speed limit band
+
+// Band of half_width_m around the reference_path from s_begin to s_end
+std::optional<std::size_t> match_belonging_lanelet(
+  const lanelet::ConstLanelets & lanelets, const std::size_t from,
+  const lanelet::BasicPoint2d & point)
+{
+  for (std::size_t i = from; i < lanelets.size(); ++i) {
+    if (boost::geometry::within(point, lanelets[i].polygon2d().basicPolygon())) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+}  // namespace
 
 ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constraints(
   const PlannerContext & context)
@@ -39,33 +64,52 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
     return output;
   }
 
-  // Cover the same window of lanes as the reference_path, sharing its parameters
   const auto & route_manager = *context.route_manager;
   const auto lanelets =
-    route_manager
-      .get_lanelet_sequence_on_route(
-        params_.reference_path.forward_length_m, params_.reference_path.backward_length_m)
+    route_manager.get_lanelet_sequence_on_route(params_.reference_path.forward_length_m, 0.0)
       .as_lanelets();
+  const auto & path = context.reference_path;
+  const double length = path.length();
+  if (lanelets.empty() || length <= 0.0) {
+    return output;
+  }
   const auto traffic_rules = route_manager.traffic_rules_ptr();
   const auto current_id = route_manager.current_lanelet().id();
   const double v_ego = std::max(0.0, context.odometry.twist.twist.linear.x);
 
-  for (const auto & lanelet : lanelets) {
+  struct LaneletSpan  // <'a>
+  {
+    std::size_t lanelet_index;  // <'a> of lanelets
+    double s_begin;
+    double s_end;
+  };
+  std::vector<LaneletSpan> spans;
+  const auto num_division = static_cast<std::size_t>(std::ceil(length / sample_interval_m));
+  std::size_t index = 0;
+  for (std::size_t i = 0; i <= num_division; ++i) {
+    const double s = std::min(static_cast<double>(i) * sample_interval_m, length);
+    const auto position = path.compute(s).point.pose.position;
+    // NOTE(soblin): safety_planner never executes lane change, so the reference path points are
+    // always on the route lanelets
+    index = match_belonging_lanelet(lanelets, index, lanelet::BasicPoint2d(position.x, position.y))
+              .value_or(index);
+    if (spans.empty()) {
+      spans.push_back(LaneletSpan{index, 0.0, 0.0});
+    } else if (spans.back().lanelet_index == index) {
+      spans.back().s_end = s;
+    } else {
+      spans.back().s_end = s;
+      spans.push_back(LaneletSpan{index, s, s});
+    }
+  }
+
+  for (const auto & span : spans) {
+    const auto & lanelet = lanelets[span.lanelet_index];
     const double v_limit =
       static_cast<double>(traffic_rules->speedLimit(lanelet).speedLimit.value());
 
     Polygon2d region;
-    auto & ring = region.outer();
-    const auto polygon = lanelet.polygon2d().basicPolygon();
-    ring.reserve(polygon.size() + 1);
-    for (const auto & point : polygon) {
-      ring.emplace_back(point.x(), point.y());
-    }
-    boost::geometry::correct(region);
-    // The map is an external resource: a lanelet whose bounds degenerate is no region
-    if (ring.size() < 4) {
-      continue;
-    }
+    boost::geometry::convert(lanelet.polygon2d(), region);
 
     Constraint constraint;
     constraint.payload = SpeedLimitZone{

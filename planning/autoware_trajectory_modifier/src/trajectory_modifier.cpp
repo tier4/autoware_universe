@@ -189,10 +189,12 @@ void TrajectoryModifier::on_trajectories(const CandidateTrajectories::ConstShare
     for (auto & modifier_plugin : plugins_) {
       const auto result = modifier_plugin->process(candidate.points, data);
       modifier_plugin->publish_debug_data("trajectory_" + std::to_string(candidate_index));
+      // Always publish so inspection-only plugins (ModelPlanningFactorID) can emit factors
+      // without mutating the trajectory. An empty publish also clears stale factors.
+      modifier_plugin->publish_planning_factor();
       if (result != plugin::ProcessingResult::Modified) {
         continue;
       }
-      modifier_plugin->publish_planning_factor();
       if (!modified_instances.empty()) {
         modified_instances += ", ";
       }
