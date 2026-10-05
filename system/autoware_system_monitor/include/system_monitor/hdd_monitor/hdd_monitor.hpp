@@ -23,6 +23,7 @@
 #include "system_monitor/hdd_reader/hdd_reader.hpp"
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <climits>
 #include <map>

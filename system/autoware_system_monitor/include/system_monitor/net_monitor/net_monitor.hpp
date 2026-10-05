@@ -24,6 +24,7 @@
 #include "system_monitor/traffic_reader/traffic_reader_common.hpp"
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <boost/asio.hpp>
 

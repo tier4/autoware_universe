@@ -23,6 +23,7 @@
 #include "system_monitor/process_monitor/diag_task.hpp"
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <boost/process.hpp>
 

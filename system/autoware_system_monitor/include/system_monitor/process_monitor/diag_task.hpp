@@ -21,6 +21,7 @@
 #define SYSTEM_MONITOR__PROCESS_MONITOR__DIAG_TASK_HPP_
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <string>
 
