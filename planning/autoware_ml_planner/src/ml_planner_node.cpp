@@ -335,16 +335,6 @@ void MLPlanner::set_up_params()
   if (virtual_pose.reference != "raw" && virtual_pose.reference != "optimized") {
     throw std::runtime_error("virtual_pose.reference must be 'raw' or 'optimized'");
   }
-  virtual_pose.time_based_enable =
-    this->declare_parameter<bool>("virtual_pose.time_based.enable", false);
-  virtual_pose.time_based_enter_speed_mps =
-    this->declare_parameter<double>("virtual_pose.time_based.enter_speed_mps", 0.5);
-  virtual_pose.time_based_exit_speed_mps =
-    this->declare_parameter<double>("virtual_pose.time_based.exit_speed_mps", 0.7);
-  if (virtual_pose.time_based_exit_speed_mps < virtual_pose.time_based_enter_speed_mps) {
-    throw std::runtime_error(
-      "virtual_pose.time_based.exit_speed_mps must not be below enter_speed_mps");
-  }
 
   // planning factor params
   planning_factor_params_.enable_stop =
@@ -778,11 +768,6 @@ void MLPlanner::on_timer()
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
   auto steering_ptr = sub_steering_.take_data();
-  if (const auto operation_mode = sub_operation_mode_.take_data()) {
-    core_->set_engaged(
-      operation_mode->mode == OperationModeState::AUTONOMOUS &&
-      operation_mode->is_autoware_control_enabled);
-  }
 
   if (!steering_ptr) {
     constexpr auto message = "Steering status is not available";
@@ -831,8 +816,7 @@ void MLPlanner::on_timer()
     std_msgs::msg::Float64MultiArray status_msg;
     status_msg.data = {
       virtual_pose->snapped ? 1.0 : 0.0, virtual_pose->reset ? 1.0 : 0.0,
-      virtual_pose->position_error_m, virtual_pose->yaw_error_deg,
-      virtual_pose->time_based ? 1.0 : 0.0};
+      virtual_pose->position_error_m, virtual_pose->yaw_error_deg};
     pub_virtual_pose_status_->publish(status_msg);
   }
 

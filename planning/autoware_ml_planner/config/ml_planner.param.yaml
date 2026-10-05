@@ -67,10 +67,6 @@
       yaw_fit_min_length_m: 0.2     # [m] below this window length the measured heading is used
       history_prefix_count: 10      # earlier virtual poses prepended so the spline extends behind the vehicle
       reference: "optimized"        # trajectory the virtual pose is taken from: "raw" (model prediction) or "optimized" (published output)
-      time_based:                   # while engaged and slow: take the previous trajectory at the elapsed time, not its closest point
-        enable: false
-        enter_speed_mps: 0.5        # [m/s] switch on below this speed
-        exit_speed_mps: 0.7         # [m/s] switch off above this speed (hysteresis against chattering)
     stop_point_fixing:
       enable: false
       velocity_threshold_mps: 0.3  # stop detection velocity threshold [m/s]

@@ -273,7 +273,6 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
     frame_ego_ = ego_history_.back();
     virtual_pose_result_.reset();
     virtual_history_.clear();
-    time_based_active_ = false;
   }
   const auto & frame_ego_history =
     params_.virtual_pose.enable ? virtual_history_.msgs() : ego_history_.msgs();
@@ -299,7 +298,6 @@ Odometry MLPlannerCore::build_frame_ego()
   }
 
   virtual_pose_result_ = utils::VirtualPoseResult{measured.pose.pose, false, false, 0.0, 0.0};
-  double time_based_speed_mps = 0.0;
   if (previous_frame_pose_ && !previous_ego_prediction_.empty()) {
     // Earlier frame poses, oldest first, at least 5 cm apart, excluding the previous frame pose
     // itself (the newest history entry), then the previous frame pose and its prediction.
@@ -323,34 +321,12 @@ Odometry MLPlannerCore::build_frame_ego()
     polyline.insert(
       polyline.end(), previous_ego_prediction_.begin(), previous_ego_prediction_.end());
 
-    // Low-speed mode: query the previous trajectory at the elapsed time instead of at the vehicle.
-    time_based_active_ = utils::update_time_based_mode(
-      time_based_active_, engaged_, measured.twist.twist.linear.x, params_.virtual_pose);
-    std::optional<utils::ElapsedTimePoint> elapsed_point;
-    if (time_based_active_ && previous_frame_time_) {
-      elapsed_point = utils::point_at_elapsed_time(
-        *previous_frame_pose_, previous_ego_prediction_, previous_prediction_times_,
-        (frame_time() - *previous_frame_time_).seconds());
-    }
-    geometry_msgs::msg::Point query = measured.pose.pose.position;
-    if (elapsed_point) {
-      query.x = elapsed_point->position.x();
-      query.y = elapsed_point->position.y();
-    }
     virtual_pose_result_ = utils::compute_virtual_pose(
-      measured.pose.pose, query, polyline, prefix_count, params_.virtual_pose);
-    virtual_pose_result_->time_based = elapsed_point.has_value() && !virtual_pose_result_->reset;
-    if (elapsed_point) {
-      time_based_speed_mps = elapsed_point->speed_mps;
-    }
+      measured.pose.pose, polyline, prefix_count, params_.virtual_pose);
   }
 
   Odometry frame = measured;
   frame.pose.pose = virtual_pose_result_->pose;
-  if (virtual_pose_result_->time_based) {
-    // The model is told it follows its trajectory: the speed is the trajectory's at that time.
-    frame.twist.twist.linear.x = time_based_speed_mps;
-  }
   virtual_history_.push_back(frame);
   return frame;
 }
@@ -440,13 +416,6 @@ PlannerOutput MLPlannerCore::create_planner_output(
   if (params_.virtual_pose.reference == "raw") {
     previous_frame_pose_ = ego_to_map_transform;
     previous_ego_prediction_ = agent_poses.front().front();
-    // The model output is on a fixed 0.1 s grid starting one step after the planning start.
-    constexpr double MODEL_OUTPUT_DT_S = 0.1;
-    previous_prediction_times_.resize(previous_ego_prediction_.size());
-    for (size_t k = 0; k < previous_prediction_times_.size(); ++k) {
-      previous_prediction_times_[k] = MODEL_OUTPUT_DT_S * static_cast<double>(k + 1);
-    }
-    previous_frame_time_ = frame_time();
   }
 
   PlannerOutput output;
@@ -594,14 +563,9 @@ PlannerOutput MLPlannerCore::create_planner_output(
     const auto & points = output.trajectory->points;
     previous_frame_pose_ = utils::pose_to_matrix4d(points.front().pose);
     previous_ego_prediction_.clear();
-    previous_prediction_times_.clear();
-    const double start_time_s = rclcpp::Duration(points.front().time_from_start).seconds();
     for (size_t k = 1; k < points.size(); ++k) {
       previous_ego_prediction_.push_back(utils::pose_to_matrix4d(points[k].pose));
-      previous_prediction_times_.push_back(
-        rclcpp::Duration(points[k].time_from_start).seconds() - start_time_s);
     }
-    previous_frame_time_ = frame_time();
   }
   return output;
 }
