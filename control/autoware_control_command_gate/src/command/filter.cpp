@@ -141,7 +141,7 @@ Control CommandFilter::filter_command(uint16_t source_id, const Control & msg)
   const auto integrate_clip = [steer_accel_dt](double & integral, const double clip) {
     integral = clip > 0.0 ? integral + clip * steer_accel_dt : 0.0;
   };
-  if (!apply_steer_accel_limit) {
+  if (!apply_steer_accel_limit || !is_autoware_lateral_control_enabled) {
     steer_angle_rate_clip_integral_ = 0.0;
     steer_rotation_rate_clip_integral_ = 0.0;
   } else if (is_valid_steer_accel_cycle) {
