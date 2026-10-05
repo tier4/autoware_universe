@@ -172,7 +172,20 @@
                 },
                 "snap_distance_m": {
                   "type": "number",
-                  "default": 1.0
+                  "default": 1.0,
+                  "minimum": 0.0,
+                  "description": "Latch the extra terminal penalty once the predicted endpoint is within this distance of the route goal [m]"
+                },
+                "unlatch_horizon_s": {
+                  "type": "number",
+                  "default": 8.0,
+                  "description": "Unlatch goal snap when ego-to-goal exceeds this horizon times speed. <= 0 disables the check [s]"
+                },
+                "unlatch_min_speed_mps": {
+                  "type": "number",
+                  "default": 3.0,
+                  "minimum": 0.0,
+                  "description": "Floor on |ego speed| used with unlatch_horizon_s to compute the far-away range [m/s]"
                 }
               }
             },

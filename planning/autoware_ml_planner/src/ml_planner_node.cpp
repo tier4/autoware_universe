@@ -229,6 +229,10 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.goal.weight_velocity", 0.1);
   opt.goal.snap_distance_m =
     this->declare_parameter<double>("trajectory_optimization.goal.snap_distance_m", 1.0);
+  opt.goal.unlatch_horizon_s =
+    this->declare_parameter<double>("trajectory_optimization.goal.unlatch_horizon_s", 8.0);
+  opt.goal.unlatch_min_speed_mps =
+    this->declare_parameter<double>("trajectory_optimization.goal.unlatch_min_speed_mps", 3.0);
   opt.min_velocity_mps =
     this->declare_parameter<double>("trajectory_optimization.min_velocity_mps", 0.0);
   opt.max_velocity_mps =
@@ -388,6 +392,11 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "trajectory_optimization.goal.snap_distance_m", opt.goal.snap_distance_m);
   update_param<double>(
+    parameters, "trajectory_optimization.goal.unlatch_horizon_s", opt.goal.unlatch_horizon_s);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.unlatch_min_speed_mps",
+    opt.goal.unlatch_min_speed_mps);
+  update_param<double>(
     parameters, "trajectory_optimization.min_velocity_mps", opt.min_velocity_mps);
   update_param<double>(
     parameters, "trajectory_optimization.max_velocity_mps", opt.max_velocity_mps);
@@ -527,6 +536,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   }
   if (opt.goal.snap_distance_m < 0.0) {
     return failure("trajectory_optimization.goal.snap_distance_m must be non-negative");
+  }
+  if (opt.goal.unlatch_min_speed_mps < 0.0) {
+    return failure("trajectory_optimization.goal.unlatch_min_speed_mps must be non-negative");
   }
   if (opt.min_acceleration_mps2 > opt.max_acceleration_mps2) {
     return failure(
