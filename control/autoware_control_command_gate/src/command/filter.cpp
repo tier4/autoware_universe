@@ -14,6 +14,8 @@
 
 #include "filter.hpp"
 
+#include <autoware_command_mode_types/sources.hpp>
+
 #include <algorithm>
 #include <limits>
 #include <memory>
@@ -101,22 +103,10 @@ Control CommandFilter::filter_command(uint16_t source_id, const Control & msg)
   const bool is_valid_steer_accel_cycle = dt >= VehicleCmdFilter::DT_MIN_STEER_ACCEL_LIMIT;
   const double steer_accel_dt = std::min(dt, VehicleCmdFilter::DT_MAX_STEER_ACCEL_LIMIT);
   const double out_rotation_rate = out.lateral.steering_tire_rotation_rate;
-  const double steer_angle_rate =
-    is_valid_steer_accel_cycle
-      ? (out.lateral.steering_tire_angle - prev_command_.lateral.steering_tire_angle) /
-          steer_accel_dt
-      : std::numeric_limits<double>::quiet_NaN();
 
   Float32MultiArrayStamped debug;
   debug.stamp = node_.now();
-  debug.data.push_back(
-    is_valid_steer_accel_cycle
-      ? static_cast<float>((steer_angle_rate - prev_steer_angle_rate_) / steer_accel_dt)
-      : std::numeric_limits<float>::quiet_NaN());
-  debug.data.push_back(
-    is_valid_steer_accel_cycle
-      ? static_cast<float>((out_rotation_rate - prev_steer_rotation_rate_) / steer_accel_dt)
-      : std::numeric_limits<float>::quiet_NaN());
+  debug.data.resize(2, std::numeric_limits<float>::quiet_NaN());
   const double steer_accel_lim = filter.getSteerAccelLimForSteerCmd();
   debug.data.push_back(static_cast<float>(steer_accel_lim));
   debug.data.push_back(static_cast<float>(-steer_accel_lim));
@@ -124,15 +114,23 @@ Control CommandFilter::filter_command(uint16_t source_id, const Control & msg)
   const auto set_prev_steer_rates = [this](const double angle_rate, const double rotation_rate) {
     nominal_filter_.setPrevSteerRates(angle_rate, rotation_rate);
     transition_filter_.setPrevSteerRates(angle_rate, rotation_rate);
-    prev_steer_angle_rate_ = angle_rate;
-    prev_steer_rotation_rate_ = rotation_rate;
   };
+  if (is_valid_steer_accel_cycle) {
+    const double steer_angle_rate =
+      (out.lateral.steering_tire_angle - filter.getPrevCmd().lateral.steering_tire_angle) /
+      steer_accel_dt;
+    debug.data.at(0) =
+      static_cast<float>((steer_angle_rate - filter.getPrevSteerAngleRate()) / steer_accel_dt);
+    debug.data.at(1) =
+      static_cast<float>((out_rotation_rate - filter.getPrevSteerRotationRate()) / steer_accel_dt);
+    if (is_autoware_control_enabled && apply_steer_accel_limit) {
+      set_prev_steer_rates(steer_angle_rate, out_rotation_rate);
+    }
+  }
   if (!is_autoware_control_enabled) {
     set_prev_steer_rates(0.0, 0.0);
   } else if (!apply_steer_accel_limit) {
     set_prev_steer_rates(0.0, out_rotation_rate);
-  } else if (is_valid_steer_accel_cycle) {
-    set_prev_steer_rates(steer_angle_rate, out_rotation_rate);
   }
 
   const auto integrate_clip = [steer_accel_dt](double & integral, const double clip) {
@@ -163,7 +161,6 @@ Control CommandFilter::filter_command(uint16_t source_id, const Control & msg)
   // is stopped to intend the autoware is trying to keep stopping.
   nominal_filter_.setPrevCmd(prev_command);
   transition_filter_.setPrevCmd(prev_command);
-  prev_command_ = prev_command;
 
   debug_pub_->publish(debug);
 

@@ -20,7 +20,6 @@
 #include "common/vehicle_status.hpp"
 #include "interface.hpp"
 
-#include <autoware_command_mode_types/sources.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp>
@@ -55,11 +54,8 @@ private:
   bool enable_command_limit_filter_;
   bool transition_flag_;
   std::optional<rclcpp::Time> prev_time_;
-  Control prev_command_;
   double steer_angle_rate_clip_integral_ = 0.0;
   double steer_rotation_rate_clip_integral_ = 0.0;
-  double prev_steer_angle_rate_ = 0.0;
-  double prev_steer_rotation_rate_ = 0.0;
   std::unique_ptr<ClipDiag> clip_diag_;
   rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr debug_pub_;
 };

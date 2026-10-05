@@ -48,8 +48,8 @@ struct VehicleCmdFilterParam
 class VehicleCmdFilter
 {
 public:
-  static constexpr double DT_MIN_STEER_ACCEL_LIMIT = 0.005;
-  static constexpr double DT_MAX_STEER_ACCEL_LIMIT = 1.0;
+  static constexpr double DT_MIN_STEER_ACCEL_LIMIT = 0.005;  // [s]
+  static constexpr double DT_MAX_STEER_ACCEL_LIMIT = 1.0;    // [s]
 
   VehicleCmdFilter();
   ~VehicleCmdFilter() = default;
@@ -58,11 +58,14 @@ public:
   void setParam(const VehicleCmdFilterParam & p);
   VehicleCmdFilterParam getParam() const;
   void setPrevCmd(const Control & v) { prev_cmd_ = v; }
+  const Control & getPrevCmd() const { return prev_cmd_; }
   void setPrevSteerRates(double angle_rate, double rotation_rate)
   {
     prev_steer_angle_rate_ = angle_rate;
     prev_steer_rotation_rate_ = rotation_rate;
   }
+  double getPrevSteerAngleRate() const { return prev_steer_angle_rate_; }
+  double getPrevSteerRotationRate() const { return prev_steer_rotation_rate_; }
   double getSteerAccelLimForSteerCmd() const;
 
   void limitLongitudinalWithVel(Control & input) const;
