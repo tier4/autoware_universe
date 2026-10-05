@@ -373,10 +373,6 @@ std::optional<size_t> find_closest_segment_index(
   const std::vector<LaneSegment> & lane_segments, const std::vector<int64_t> & segment_indices,
   const lanelet::BasicPoint2d & point, const double yaw, const double yaw_threshold);
 
-template <typename T>
-xt::xarray<float> create_line_tensor(
-  const std::vector<T> & elements, const Eigen::Matrix4d & transform_matrix, double center_x,
-  double center_y, int64_t num_elements, int64_t num_points, int64_t num_types);
 bool is_inside_lane_mask(const Eigen::Vector4d & ego_point);
 xt::xarray<float> create_polyline_tensor(
   const std::vector<MapPolyline> & elements, const Eigen::Matrix4d & transform_matrix,
@@ -669,87 +665,6 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
 namespace
 {
-template <typename T>
-xt::xarray<float> create_line_tensor(
-  const std::vector<T> & elements, const Eigen::Matrix4d & transform_matrix, const double center_x,
-  const double center_y, const int64_t num_elements, const int64_t num_points,
-  const int64_t num_types)
-{
-  using autoware::ml_planner::constants::LANE_MASK_RANGE_M;
-
-  auto judge_inside = [&](const double x, const double y) -> bool {
-    return (
-      x > center_x - LANE_MASK_RANGE_M && x < center_x + LANE_MASK_RANGE_M &&
-      y > center_y - LANE_MASK_RANGE_M && y < center_y + LANE_MASK_RANGE_M);
-  };
-
-  struct ElementWithDistance
-  {
-    Polyline polyline;
-    int type;
-    double min_distance;
-  };
-
-  std::vector<ElementWithDistance> result_list;
-
-  for (const auto & element : elements) {
-    bool inside_at_least_one = false;
-    for (const auto & point : element.points) {
-      if (judge_inside(point.x(), point.y())) {
-        inside_at_least_one = true;
-        break;
-      }
-    }
-    if (!inside_at_least_one) {
-      continue;
-    }
-
-    std::vector<LanePoint> transformed_polyline;
-    for (const auto & point : element.points) {
-      const Eigen::Vector4d transformed_point =
-        transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
-      transformed_polyline.emplace_back(
-        transformed_point.x(), transformed_point.y(), transformed_point.z());
-    }
-
-    double min_distance = std::numeric_limits<double>::max();
-    for (const auto & point : transformed_polyline) {
-      const double distance = std::sqrt(point.x() * point.x() + point.y() * point.y());
-      min_distance = std::min(min_distance, distance);
-    }
-
-    result_list.push_back({transformed_polyline, static_cast<int>(element.type), min_distance});
-  }
-
-  std::sort(
-    result_list.begin(), result_list.end(),
-    [](const ElementWithDistance & a, const ElementWithDistance & b) {
-      return a.min_distance < b.min_distance;
-    });
-
-  // Create tensor data: [x, y, one_hot_type...]
-  const int64_t point_dim = 2 + num_types;
-  xt::xarray<float> tensor_data = xt::zeros<float>(
-    {static_cast<size_t>(num_elements), static_cast<size_t>(num_points),
-     static_cast<size_t>(point_dim)});
-  const size_t max_elements_size = std::min(static_cast<size_t>(num_elements), result_list.size());
-  for (size_t i = 0; i < max_elements_size; ++i) {
-    const auto & result = result_list[i];
-    const size_t max_points_size =
-      std::min(static_cast<size_t>(num_points), result.polyline.size());
-
-    for (size_t j = 0; j < max_points_size; ++j) {
-      const auto & point = result.polyline[j];
-      tensor_data(i, j, 0) = static_cast<float>(point.x());
-      tensor_data(i, j, 1) = static_cast<float>(point.y());
-      // one-hot type encoding
-      tensor_data(i, j, 2 + result.type) = 1.0f;
-    }
-  }
-
-  return tensor_data;
-}
-
 xt::xarray<float> create_polyline_tensor(
   const std::vector<MapPolyline> & elements, const Eigen::Matrix4d & transform_matrix,
   const int64_t num_elements, const int64_t num_points)
