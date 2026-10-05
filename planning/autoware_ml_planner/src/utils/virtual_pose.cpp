@@ -141,8 +141,10 @@ std::optional<ClosestPoint> closest_point_on_previous_trajectory(
   const geometry_msgs::msg::Point & query, const std::vector<Eigen::Matrix4d> & polyline,
   const int64_t prefix_count, const VirtualPoseParams & params)
 {
+  // Only the raw model output is smoothed; the optimized trajectory is used as published.
+  const std::vector<geometry_msgs::msg::Pose> distinct = leading_distinct_poses(polyline);
   const std::vector<geometry_msgs::msg::Pose> poses =
-    smooth_positions(leading_distinct_poses(polyline));
+    params.reference == "raw" ? smooth_positions(distinct) : distinct;
   const auto prefix = static_cast<size_t>(prefix_count);
   if (poses.size() < prefix + 2) {
     return std::nullopt;
