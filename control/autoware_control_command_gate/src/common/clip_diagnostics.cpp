@@ -19,9 +19,8 @@
 namespace autoware::control_command_gate
 {
 
-ClipDiag::ClipDiag(const std::string & name) : DiagnosticTask(name)
+ClipDiag::ClipDiag(const std::string & name) : DiagnosticTask(name), notified_(false)
 {
-  notified_ = false;
 }
 
 void ClipDiag::notify()
