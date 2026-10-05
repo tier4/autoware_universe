@@ -93,9 +93,14 @@ Control CommandFilter::filter_command(uint16_t source_id, const Control & msg)
   // Actual steer, vel, acc should be considered in manual mode to prevent sudden motion when
   // switching from manual to autonomous
   const auto is_autoware_control_enabled = vehicle_status_.is_autoware_control_enabled();
+  const auto is_autoware_lateral_control_enabled =
+    vehicle_status_.is_autoware_lateral_control_enabled();
   const auto is_vehicle_stopped = vehicle_status_.is_vehicle_stopped();
   const auto current_status_command = vehicle_status_.get_actual_status_as_command();
   Control prev_command = is_autoware_control_enabled ? out : current_status_command;
+  if (is_autoware_lateral_control_enabled) {
+    prev_command.lateral = out.lateral;
+  }
   if (is_vehicle_stopped) {
     prev_command.longitudinal = out.longitudinal;
   }
@@ -123,11 +128,11 @@ Control CommandFilter::filter_command(uint16_t source_id, const Control & msg)
       static_cast<float>((steer_angle_rate - filter.getPrevSteerAngleRate()) / steer_accel_dt);
     debug.data.at(1) =
       static_cast<float>((out_rotation_rate - filter.getPrevSteerRotationRate()) / steer_accel_dt);
-    if (is_autoware_control_enabled && apply_steer_accel_limit) {
+    if (is_autoware_lateral_control_enabled && apply_steer_accel_limit) {
       set_prev_steer_rates(steer_angle_rate, out_rotation_rate);
     }
   }
-  if (!is_autoware_control_enabled) {
+  if (!is_autoware_lateral_control_enabled) {
     set_prev_steer_rates(0.0, 0.0);
   } else if (!apply_steer_accel_limit) {
     set_prev_steer_rates(0.0, out_rotation_rate);
