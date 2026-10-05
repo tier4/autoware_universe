@@ -114,7 +114,6 @@ struct MLPlannerParams
   double traffic_light_group_msg_timeout_seconds;
   int batch_size;
   std::vector<double> noise_scale_list;
-  double line_string_max_step_m;
   optimization::TrajectoryOptimizationParams trajectory_optimization;
   postprocess::RoadBorderAvoidanceParams road_border_avoidance;
   postprocess::StopPointFixingParams stop_point_fixing;

@@ -16,8 +16,6 @@
 
 #include "autoware/ml_planner/constants.hpp"
 #include "autoware/ml_planner/dimensions.hpp"
-#include "autoware/trajectory/interpolator/akima_spline.hpp"
-#include "autoware/trajectory/interpolator/linear.hpp"
 #include "autoware_utils_math/normalization.hpp"
 #include "autoware_utils_math/unit_conversion.hpp"
 
@@ -35,7 +33,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <functional>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -52,8 +49,6 @@ namespace autoware::ml_planner
 
 namespace
 {
-using autoware::experimental::trajectory::interpolator::AkimaSpline;
-using autoware::experimental::trajectory::interpolator::Linear;
 
 std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, size_t num_points)
 {
@@ -116,103 +111,63 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
   return result;
 }
 
-// Subdivides into multiple segments when step_m exceeds max_step_m so each segment stays within
-// the resolution bound. First/last points are exact (not spline-evaluated).
-std::vector<std::vector<LanePoint>> resample_line_string(
-  const std::vector<LanePoint> & input, const size_t num_points, const double max_step_m)
+/**
+ * @brief Densify a line string and split it into pieces of exactly num_points points.
+ *
+ * Every original point is kept. Gaps longer than max_step_m are filled with linearly
+ * interpolated points. The points are then divided as evenly as possible into the fewest pieces
+ * of at most num_points points; consecutive pieces share their end point and never overlap.
+ * Each piece is filled up to num_points by inserting midpoints on its longest gaps.
+ */
+std::vector<Polyline> split_line_string(
+  const Polyline & input, const size_t num_points, const double max_step_m)
 {
-  if (input.size() < 2 || num_points < 2) {
-    return {input};
+  if (input.empty() || num_points < 2) {
+    return {};
   }
-
-  // Compute cumulative arc lengths along the input polyline
-  std::vector<double> arc_lengths(input.size(), 0.0);
-  for (size_t i = 1; i < input.size(); ++i) {
-    arc_lengths[i] = arc_lengths[i - 1] + (input[i] - input[i - 1]).norm();
+  if (input.size() == 1) {
+    return {Polyline(num_points, input.front())};
   }
-  const double total_length = arc_lengths.back();
 
   constexpr double k_epsilon = 1e-6;
-  if (total_length < k_epsilon) {
-    return {std::vector<LanePoint>(num_points, input.front())};
-  }
-
-  // Determine the number of output segments needed to satisfy the resolution bound
-  const double step_m = total_length / static_cast<double>(num_points - 1);
   const double safe_max_step_m = std::max(max_step_m, k_epsilon);
-  const auto n_segments = static_cast<size_t>(std::max(1.0, std::ceil(step_m / safe_max_step_m)));
-
-  // Extract per-axis value arrays for interpolator construction
-  std::vector<double> x_vals(input.size());
-  std::vector<double> y_vals(input.size());
-  std::vector<double> z_vals(input.size());
-  for (size_t i = 0; i < input.size(); ++i) {
-    x_vals[i] = input[i].x();
-    y_vals[i] = input[i].y();
-    z_vals[i] = input[i].z();
+  Polyline dense;
+  dense.push_back(input.front());
+  for (size_t i = 1; i < input.size(); ++i) {
+    const LanePoint & from = input[i - 1];
+    const LanePoint & to = input[i];
+    const auto n_steps =
+      static_cast<size_t>(std::max(1.0, std::ceil((to - from).norm() / safe_max_step_m)));
+    for (size_t step = 1; step < n_steps; ++step) {
+      const double t = static_cast<double>(step) / static_cast<double>(n_steps);
+      dense.emplace_back(from + t * (to - from));
+    }
+    dense.push_back(to);
   }
 
-  // Build interpolators. AkimaSpline requires >= 5 input points; use Linear otherwise.
-  std::function<LanePoint(double)> compute_point;
-
-  if (input.size() >= 5) {
-    AkimaSpline x_spline;
-    AkimaSpline y_spline;
-    AkimaSpline z_spline;
-    const auto rx = x_spline.build(arc_lengths, x_vals);
-    const auto ry = y_spline.build(arc_lengths, y_vals);
-    const auto rz = z_spline.build(arc_lengths, z_vals);
-    if (!rx || !ry || !rz) {
-      std::cerr << "resample_line_string: failed to build AkimaSpline, returning single segment\n";
-      return {interpolate_points(input, num_points)};
-    }
-    compute_point = [x_spline, y_spline, z_spline](const double s) {
-      return LanePoint{x_spline.compute(s), y_spline.compute(s), z_spline.compute(s)};
-    };
-  } else {
-    Linear x_spline;
-    Linear y_spline;
-    Linear z_spline;
-    const auto rx = x_spline.build(arc_lengths, x_vals);
-    const auto ry = y_spline.build(arc_lengths, y_vals);
-    const auto rz = z_spline.build(arc_lengths, z_vals);
-    if (!rx || !ry || !rz) {
-      std::cerr
-        << "resample_line_string: failed to build Linear interpolator, returning single segment\n";
-      return {interpolate_points(input, num_points)};
-    }
-    compute_point = [x_spline, y_spline, z_spline](const double s) {
-      return LanePoint{x_spline.compute(s), y_spline.compute(s), z_spline.compute(s)};
-    };
-  }
-
-  // Sample each segment with exactly num_points points
-  const double segment_length = total_length / static_cast<double>(n_segments);
-  std::vector<std::vector<LanePoint>> result;
-  result.reserve(n_segments);
-
-  for (size_t i = 0; i < n_segments; ++i) {
-    const double s_start = static_cast<double>(i) * segment_length;
-    const double inner_step = segment_length / static_cast<double>(num_points - 1);
-
-    std::vector<LanePoint> lane_points;
-    lane_points.reserve(num_points);
-
-    for (size_t j = 0; j < num_points; ++j) {
-      if (i == 0 && j == 0) {
-        lane_points.push_back(input.front());
-        continue;
+  // Fewest pieces such that each holds at most num_points points (num_points - 1 gaps).
+  const size_t n_gaps = dense.size() - 1;
+  const size_t n_pieces = (n_gaps + num_points - 2) / (num_points - 1);
+  std::vector<Polyline> result;
+  result.reserve(n_pieces);
+  for (size_t piece_index = 0; piece_index < n_pieces; ++piece_index) {
+    const size_t begin = piece_index * n_gaps / n_pieces;
+    const size_t end = (piece_index + 1) * n_gaps / n_pieces;
+    Polyline piece(
+      dense.begin() + static_cast<std::ptrdiff_t>(begin),
+      dense.begin() + static_cast<std::ptrdiff_t>(end + 1));
+    while (piece.size() < num_points) {
+      size_t longest = 1;
+      for (size_t i = 2; i < piece.size(); ++i) {
+        if ((piece[i] - piece[i - 1]).norm() > (piece[longest] - piece[longest - 1]).norm()) {
+          longest = i;
+        }
       }
-      if (i == n_segments - 1 && j == num_points - 1) {
-        lane_points.push_back(input.back());
-        continue;
-      }
-      const double s = std::clamp(s_start + static_cast<double>(j) * inner_step, 0.0, total_length);
-      lane_points.push_back(compute_point(s));
+      const LanePoint midpoint = 0.5 * (piece[longest - 1] + piece[longest]);
+      piece.insert(piece.begin() + static_cast<std::ptrdiff_t>(longest), midpoint);
     }
-    result.push_back(std::move(lane_points));
+    result.push_back(std::move(piece));
   }
-
   return result;
 }
 
@@ -289,8 +244,7 @@ std::vector<LanePoint> convert_to_polyline(const T & line_string) noexcept
 }  // namespace
 
 LaneletMap convert_to_internal_lanelet_map(
-  const lanelet::LaneletMapConstPtr lanelet_map_ptr, const double line_string_max_step_m,
-  const double lane_segment_max_length_m)
+  const lanelet::LaneletMapConstPtr lanelet_map_ptr, const double lane_segment_max_length_m)
 {
   LaneletMap lanelet_map;
   lanelet_map.lane_segments.reserve(lanelet_map_ptr->laneletLayer.size());
@@ -394,7 +348,7 @@ LaneletMap convert_to_internal_lanelet_map(
       }
     } else if (line_string_type == "road_border") {
       const auto segments =
-        resample_line_string(points, POINTS_PER_ROAD_BORDER, line_string_max_step_m);
+        split_line_string(points, POINTS_PER_ROAD_BORDER, constants::ROAD_BORDER_MAX_STEP_M);
       for (const auto & segment : segments) {
         lanelet_map.road_borders.push_back(MapPolyline{segment});
       }
@@ -431,9 +385,8 @@ xt::xarray<float> create_polyline_tensor(
 
 // LaneSegmentContext implementation
 LaneSegmentContext::LaneSegmentContext(
-  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
-  const double line_string_max_step_m)
-: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr, line_string_max_step_m)),
+  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
+: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr)),
   lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments))
 {
   if (lanelet_map_.lane_segments.empty()) {

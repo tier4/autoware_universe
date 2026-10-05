@@ -59,15 +59,15 @@ protected:
 
 TEST_F(LaneSegmentSplitTest, DisabledKeepsOneSegmentPerLanelet)
 {
-  const auto map = convert_to_internal_lanelet_map(lanelet_map_ptr_, 5.0, 0.0);
+  const auto map = convert_to_internal_lanelet_map(lanelet_map_ptr_, 0.0);
   ASSERT_EQ(map.lane_segments.size(), 1u);
   EXPECT_EQ(map.lane_segments[0].centerline.size(), static_cast<size_t>(POINTS_PER_SEGMENT));
 }
 
 TEST_F(LaneSegmentSplitTest, ShortLaneletIsIdenticalToUnsplit)
 {
-  const auto unsplit = convert_to_internal_lanelet_map(lanelet_map_ptr_, 5.0, 0.0);
-  const auto split = convert_to_internal_lanelet_map(lanelet_map_ptr_, 5.0, 150.0);
+  const auto unsplit = convert_to_internal_lanelet_map(lanelet_map_ptr_, 0.0);
+  const auto split = convert_to_internal_lanelet_map(lanelet_map_ptr_, 150.0);
   ASSERT_EQ(split.lane_segments.size(), 1u);
   for (size_t i = 0; i < unsplit.lane_segments[0].centerline.size(); ++i) {
     EXPECT_EQ(split.lane_segments[0].centerline[i], unsplit.lane_segments[0].centerline[i]);
@@ -79,7 +79,7 @@ TEST_F(LaneSegmentSplitTest, ShortLaneletIsIdenticalToUnsplit)
 
 TEST_F(LaneSegmentSplitTest, LongLaneletIsSplitIntoContiguousEqualPieces)
 {
-  const auto map = convert_to_internal_lanelet_map(lanelet_map_ptr_, 5.0, 30.0);
+  const auto map = convert_to_internal_lanelet_map(lanelet_map_ptr_, 30.0);
   // ceil(100 / 30) = 4 pieces of 25 m.
   ASSERT_EQ(map.lane_segments.size(), 4u);
   for (size_t part = 0; part < map.lane_segments.size(); ++part) {
