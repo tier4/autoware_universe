@@ -28,6 +28,8 @@
         weight_yaw: 0.5
         weight_velocity: 0.1
         snap_distance_m: 1.0
+        unlatch_horizon_s: 8.0  # drop snap when ego-to-goal > this * max(|v|, unlatch_min_speed_mps); <= 0 disables
+        unlatch_min_speed_mps: 3.0
       min_velocity_mps: 0.0          # lower velocity bound; 0 prevents backward motion [m/s]
       max_velocity_mps: 30.0         # upper velocity bound [m/s]
       min_acceleration_mps2: -4.0    # [m/s^2]
@@ -57,6 +59,7 @@
       shift_step_m: 0.1           # first 3 probes; remaining clearance via bisection [m]
       max_lateral_shift_m: 1.5    # cap on the total lateral offset from the raw position [m]
       propagate_shift: true       # carry the offset over to all subsequent points
+      max_reoptimizations: 5      # re-check the optimized trajectory and re-optimize while it overlaps a border
     virtual_pose:
       enable: true                  # give the model the closest point of its previous trajectory instead of the measured pose
       max_longitudinal_error_m: 0.5  # [m] reset the virtual pose onto the vehicle when the vehicle is farther than this from it along the virtual heading

@@ -46,6 +46,20 @@ void clamp_velocities(
   const float min_acceleration);
 
 /**
+ * @brief Checks whether the trajectory is a launch (pull-out) rather than a stop plan.
+ *
+ * A trajectory is treated as a launch only if it is longer than a minimum distance and reaches
+ * the engage speed somewhere. Otherwise it is a stop plan or a stop in progress, and applying the
+ * engage speed would remove its stop point.
+ *
+ * @param input_trajectory_array The trajectory points to check
+ * @param engage_velocity The engage speed the trajectory must reach
+ * @return True if the engage speed should be applied to the trajectory
+ */
+bool is_launch_trajectory(
+  const TrajectoryPoints & input_trajectory_array, const float engage_velocity);
+
+/**
  * @brief Sets the maximum velocity for trajectory points while preserving dynamics.
  *
  * This function identifies segments where velocity exceeds max_velocity and caps them

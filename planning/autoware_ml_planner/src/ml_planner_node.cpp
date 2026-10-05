@@ -258,6 +258,10 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.goal.weight_velocity", 0.1);
   opt.goal.snap_distance_m =
     this->declare_parameter<double>("trajectory_optimization.goal.snap_distance_m", 1.0);
+  opt.goal.unlatch_horizon_s =
+    this->declare_parameter<double>("trajectory_optimization.goal.unlatch_horizon_s", 8.0);
+  opt.goal.unlatch_min_speed_mps =
+    this->declare_parameter<double>("trajectory_optimization.goal.unlatch_min_speed_mps", 3.0);
   opt.min_velocity_mps =
     this->declare_parameter<double>("trajectory_optimization.min_velocity_mps", 0.0);
   opt.max_velocity_mps =
@@ -312,6 +316,8 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("road_border_avoidance.max_lateral_shift_m", 1.5);
   avoidance.propagate_shift =
     this->declare_parameter<bool>("road_border_avoidance.propagate_shift", true);
+  avoidance.max_reoptimizations =
+    this->declare_parameter<int>("road_border_avoidance.max_reoptimizations", 0);
 
   // stop point fixing params
   auto & stop_fixing = params_.stop_point_fixing;
@@ -462,6 +468,11 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "trajectory_optimization.goal.snap_distance_m", opt.goal.snap_distance_m);
   update_param<double>(
+    parameters, "trajectory_optimization.goal.unlatch_horizon_s", opt.goal.unlatch_horizon_s);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.unlatch_min_speed_mps",
+    opt.goal.unlatch_min_speed_mps);
+  update_param<double>(
     parameters, "trajectory_optimization.min_velocity_mps", opt.min_velocity_mps);
   update_param<double>(
     parameters, "trajectory_optimization.max_velocity_mps", opt.max_velocity_mps);
@@ -509,6 +520,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     parameters, "road_border_avoidance.max_lateral_shift_m", avoidance.max_lateral_shift_m);
   update_param<bool>(
     parameters, "road_border_avoidance.propagate_shift", avoidance.propagate_shift);
+  update_param<int>(
+    parameters, "road_border_avoidance.max_reoptimizations", avoidance.max_reoptimizations);
 
   auto & stop_fixing = new_params.stop_point_fixing;
   update_param<bool>(parameters, "stop_point_fixing.enable", stop_fixing.enable);
@@ -619,6 +632,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   if (opt.goal.snap_distance_m < 0.0) {
     return failure("trajectory_optimization.goal.snap_distance_m must be non-negative");
   }
+  if (opt.goal.unlatch_min_speed_mps < 0.0) {
+    return failure("trajectory_optimization.goal.unlatch_min_speed_mps must be non-negative");
+  }
   if (opt.min_acceleration_mps2 > opt.max_acceleration_mps2) {
     return failure(
       "trajectory_optimization.min_acceleration_mps2 must not exceed max_acceleration_mps2");
@@ -645,6 +661,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     avoidance.max_lateral_shift_m < 0.0) {
     return failure(
       "road border avoidance distances must be non-negative and shift_step_m positive");
+  }
+  if (avoidance.max_reoptimizations < 0) {
+    return failure("road_border_avoidance.max_reoptimizations must be non-negative");
   }
   if (stop_fixing.velocity_threshold_mps < 0.0 || stop_fixing.min_deceleration_duration_sec < 0.0) {
     return failure("stop point fixing thresholds must be non-negative");
@@ -1007,6 +1026,13 @@ void MLPlanner::on_timer()
         "Road border avoidance could not clear %d trajectory points within the maximum "
         "lateral shift.",
         avoidance_debug.unresolved_points);
+    }
+    if (avoidance_debug.remaining_overlapping_points > 0) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+        "Optimized trajectory still overlaps a road border at %d points after %d "
+        "re-optimizations.",
+        avoidance_debug.remaining_overlapping_points, avoidance_debug.reoptimizations);
     }
   }
 

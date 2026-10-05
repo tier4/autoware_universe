@@ -34,12 +34,24 @@ namespace autoware::ml_planner::optimization
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
 
+/// A converged solution in map frame, kept to warm start the next cycle.
+struct StoredSolution
+{
+  SolverSolution solution;
+  rclcpp::Time stamp;
+  bool goal_active{false};
+};
+
 struct OptimizationResult
 {
   Trajectory trajectory;
   bool optimized{false};
   int solver_status{0};
   double solve_time_ms{0.0};
+  bool goal_snap_active{false};
+  bool temporal_applied{false};
+  /// Set when optimized; handed back through accept() to warm start the next cycle.
+  std::optional<StoredSolution> solution;
 };
 
 /**
@@ -51,6 +63,11 @@ struct OptimizationResult
  * the current ego state. The result is an 80-point trajectory (t = 0.1..8.0 s, same timing
  * convention as the raw output) that is dynamically consistent with the current ego state
  * and carries velocity, acceleration and steering profiles.
+ *
+ * optimize() has no side effects, so one candidate can be solved several times per cycle
+ * with different references (e.g. by the road border re-check). The state carried across
+ * cycles is updated only explicitly: set_goal() and latch_goal_if_reached() once per cycle
+ * before solving, and accept() with the result that is actually used.
  */
 class TrajectoryOptimizer
 {
@@ -60,18 +77,38 @@ public:
     const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, size_t batch_size);
 
   /**
-   * @brief Optimize one candidate trajectory.
+   * @brief Track the route goal. Call once per cycle before optimize().
    *
-   * @param raw_trajectory Raw trajectory from the model (>= 80 points, map frame).
+   * A goal that moved releases the latch and drops all warm starts, which were planned
+   * toward the old goal. While ego is farther from the goal than
+   * unlatch_horizon_s * max(|v|, unlatch_min_speed_mps) the latch is released and cannot
+   * latch again; warm starts are kept so temporal consistency survives a drive-away.
+   * Without a goal the previous state is kept.
+   */
+  void set_goal(
+    const std::optional<geometry_msgs::msg::Pose> & goal_pose, const Odometry & ego_odometry);
+
+  /// Latch the goal as the terminal reference once a candidate reference ends within
+  /// goal.snap_distance_m of it. Stays latched until the goal moves or ego gets too far.
+  void latch_goal_if_reached(const Trajectory & reference);
+
+  /**
+   * @brief Optimize one candidate trajectory. Does not modify the optimizer state.
+   *
+   * @param reference Reference trajectory (>= 80 points, map frame).
    * @param ego_odometry Current ego kinematic state (base_link in map frame).
    * @param current_steering_angle_rad Measured steering angle.
    * @param batch_index Candidate index; warm starts are kept per candidate.
-   * @return Optimized trajectory, or the raw trajectory when the solver fails.
+   * @return Optimized trajectory, or the reference when the solver fails. The terminal pose
+   *         is snapped to the goal while it is latched (see set_goal()).
    */
-  OptimizationResult optimize(
-    const Trajectory & raw_trajectory, const Odometry & ego_odometry,
-    double current_steering_angle_rad, size_t batch_index,
-    const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
+  [[nodiscard]] OptimizationResult optimize(
+    const Trajectory & reference, const Odometry & ego_odometry, double current_steering_angle_rad,
+    size_t batch_index) const;
+
+  /// Keep the result used for this cycle as the next cycle's warm start (a failed result
+  /// clears it).
+  void accept(size_t batch_index, const OptimizationResult & result);
 
 private:
   TrajectoryOptimizationParams params_;
@@ -80,15 +117,11 @@ private:
   std::unique_ptr<AcadosSolverWrapper> solver_;
   std::optional<geometry_msgs::msg::Pose> observed_goal_pose_;
   std::optional<geometry_msgs::msg::Pose> latched_goal_pose_;
+  // Set by set_goal() while ego is too far from the goal to latch the snap.
+  bool ego_too_far_from_goal_{false};
 
-  // Previous solutions in map frame, per candidate, used as warm starts.
-  struct PreviousSolution
-  {
-    SolverSolution solution;
-    rclcpp::Time stamp;
-    bool goal_active{false};
-  };
-  std::vector<std::optional<PreviousSolution>> previous_solutions_;
+  // Accepted solutions in map frame, per candidate, used as warm starts.
+  std::vector<std::optional<StoredSolution>> previous_solutions_;
 };
 
 }  // namespace autoware::ml_planner::optimization

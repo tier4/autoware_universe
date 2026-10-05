@@ -46,6 +46,10 @@ struct RoadBorderAvoidanceParams
   // subsequent points (the path stays shifted instead of snapping back to the raw
   // output right after the border). When false, only overlapping points are shifted.
   bool propagate_shift{true};
+  // After the trajectory optimization the optimized trajectory is checked again; while it
+  // still overlaps a road border, the shift it would need is added to the reference and the
+  // optimization is re-run, at most this many times. 0 disables the re-check.
+  int max_reoptimizations{0};
 };
 
 struct RoadBorderAvoidanceResult
