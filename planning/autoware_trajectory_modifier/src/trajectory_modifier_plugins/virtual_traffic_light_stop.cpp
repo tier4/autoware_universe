@@ -204,10 +204,27 @@ void VirtualTrafficLightStop::update_params(const TrajectoryModifierParams & par
   trajectory_time_step_ = params.trajectory_time_step;
 }
 
-void VirtualTrafficLightStop::begin_cycle(const TrajectoryModifierData & input)
+ProcessingResult VirtualTrafficLightStop::process(
+  TrajectoryPoints & points, TrajectoryModifierData & input)
+{
+  autoware_utils_debug::ScopedTimeTrack st("VirtualTrafficLightStop::process", *get_time_keeper());
+  // Candidate indices start at zero for each callback. Keep lifecycle updates independent
+  // of the candidate trajectory, and publish once after the last candidate, even if unchanged.
+  if (input.candidate_index == 0U || !cycle_initialized_) {
+    prepare_cycle(input);
+  }
+  const auto modified = modify_trajectory(points, input);
+  if (input.candidate_count == 0U || input.candidate_index == input.candidate_count - 1U) {
+    publish_infrastructure_commands();
+  }
+  return modified ? ProcessingResult::Modified : ProcessingResult::Unchanged;
+}
+
+void VirtualTrafficLightStop::prepare_cycle(const TrajectoryModifierData & input)
 {
   autoware_utils_debug::ScopedTimeTrack st(
-    "VirtualTrafficLightStop::begin_cycle", *get_time_keeper());
+    "VirtualTrafficLightStop::prepare_cycle", *get_time_keeper());
+  cycle_initialized_ = true;
   if (!enabled_ || !input.current_odometry || !input.lanelet_map || !input.route) {
     modules_.clear();
     route_lanelet_ids_.clear();
@@ -220,10 +237,10 @@ void VirtualTrafficLightStop::begin_cycle(const TrajectoryModifierData & input)
   update_module_lifecycle(input);
 }
 
-void VirtualTrafficLightStop::end_cycle()
+void VirtualTrafficLightStop::publish_infrastructure_commands()
 {
   autoware_utils_debug::ScopedTimeTrack st(
-    "VirtualTrafficLightStop::end_cycle", *get_time_keeper());
+    "VirtualTrafficLightStop::publish_infrastructure_commands", *get_time_keeper());
   if (!enabled_ || !pub_infrastructure_commands_) {
     return;
   }
@@ -383,19 +400,6 @@ void VirtualTrafficLightStop::publish_debug_string(const std::string & ns) const
   msg.stamp = get_clock()->now();
   msg.data = ss.str();
   debug_text_pub_->publish(msg);
-}
-
-bool VirtualTrafficLightStop::is_trajectory_modification_required(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
-{
-  autoware_utils_debug::ScopedTimeTrack st(
-    "VirtualTrafficLightStop::is_trajectory_modification_required", *get_time_keeper());
-  if (!enabled_ || traj_points.size() < 2 || modules_.empty()) {
-    return false;
-  }
-
-  auto copy = traj_points;
-  return process_trajectory(copy, input, false);
 }
 
 bool VirtualTrafficLightStop::modify_trajectory(

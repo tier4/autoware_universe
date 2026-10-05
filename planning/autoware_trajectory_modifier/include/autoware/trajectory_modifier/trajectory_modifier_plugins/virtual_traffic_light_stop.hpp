@@ -50,19 +50,7 @@ public:
     FINALIZED = 4,
   };
 
-  void begin_cycle(const TrajectoryModifierData & input) override;
-  void end_cycle() override;
-
-  ProcessingResult process(TrajectoryPoints & points, TrajectoryModifierData & data) override
-  {
-    return modify_trajectory(points, data) ? ProcessingResult::Modified
-                                           : ProcessingResult::Unchanged;
-  }
-
-  bool modify_trajectory(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
-
-  [[nodiscard]] bool is_trajectory_modification_required(
-    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
+  ProcessingResult process(TrajectoryPoints & points, TrajectoryModifierData & data) override;
 
   void update_params(const TrajectoryModifierParams & params) override;
 
@@ -155,11 +143,15 @@ private:
   std::vector<lanelet::Id> route_lanelet_ids_;
   std::shared_ptr<lanelet::LaneletMap> last_lanelet_map_;
   std::vector<Module> modules_;
+  bool cycle_initialized_{false};
   rclcpp::Publisher<tier4_v2x_msgs::msg::InfrastructureCommandArray>::SharedPtr
     pub_infrastructure_commands_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr debug_text_pub_;
 
+  void prepare_cycle(const TrajectoryModifierData & input);
+  void publish_infrastructure_commands();
+  bool modify_trajectory(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
   void rebuild_modules(const TrajectoryModifierData & input);
   void update_module_states(const TrajectoryModifierData & input);
   void update_module_lifecycle(const TrajectoryModifierData & input);

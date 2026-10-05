@@ -255,8 +255,8 @@ holds the vehicle at the end line until finalization, and publishes the correspo
 
 The plugin consumes `tier4_v2x_msgs/msg/VirtualTrafficLightStateArray` from
 `~/input/virtual_traffic_light_states`. Its state is maintained per virtual traffic light module
-and its command is published once for each candidate-trajectory processing cycle.
+and its command is published once after the last candidate in each non-empty batch.
+Empty candidate batches do not update the plugin state or publish infrastructure commands.
 The plugin never generates a start trajectory or raises upstream zero velocities when approval
 arrives. Resuming motion is the upstream planner's responsibility. Stop-line checks include a
 geometry-only extension for the vehicle front beyond the candidate horizon.
-
