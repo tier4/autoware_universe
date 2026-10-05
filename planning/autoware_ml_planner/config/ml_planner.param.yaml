@@ -93,3 +93,4 @@
       publish_debug_route: true
       publish_debug_map: false
       publish_debug_linestrings: true
+      virtual_pose_vehicle_mesh: ""  # mesh drawn at the virtual pose, e.g. package://<vehicle>_description/mesh/<body>.dae; empty: a box of the vehicle size

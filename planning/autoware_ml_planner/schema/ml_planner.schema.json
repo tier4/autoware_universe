@@ -438,6 +438,11 @@
               "type": "boolean",
               "default": true,
               "description": "Publish debug linestring markers"
+            },
+            "virtual_pose_vehicle_mesh": {
+              "type": "string",
+              "default": "",
+              "description": "Mesh resource drawn at the virtual pose (e.g. package://<vehicle>_description/mesh/<body>.dae); empty draws a box of the vehicle size"
             }
           },
           "required": ["publish_debug_map", "publish_debug_route", "publish_debug_linestrings"]
