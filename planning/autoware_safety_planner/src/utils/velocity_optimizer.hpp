@@ -15,6 +15,9 @@
 #ifndef UTILS__VELOCITY_OPTIMIZER_HPP_
 #define UTILS__VELOCITY_OPTIMIZER_HPP_
 
+#include "../type_alias.hpp"
+
+#include <cstddef>
 #include <optional>
 #include <vector>
 
@@ -49,6 +52,33 @@ struct VelocityOptimizerResult
 std::optional<VelocityOptimizerResult> optimize_velocity(
   const std::vector<double> & v_max, double ds, double v0, std::optional<double> a0,
   const VelocityOptimizerParams & params);
+
+//! The ego motion the profile starts from
+struct InitialMotion
+{
+  double v{0.0};            //!< [m/s]
+  std::optional<double> a;  //!< [m/s^2]; empty leaves it to the QP
+};
+
+//! The bounds of plan_velocity besides the speed limit baked into the path
+struct VelocityPlanningParams
+{
+  //! [m] QP grid spacing, shrunk so that the grid ends at the path end and has 10 intervals at
+  //! least
+  double resolution_m;
+  double max_length_m;  //!< [m] arc length from s0 the QP covers
+  double lat_accel;     //!< [m/s^2]
+  double steer_rate;    //!< [rad/s], INF when unbounded
+  double wheel_base_m;  //!< [m]
+  VelocityOptimizerParams optimizer;
+};
+
+//! The counterpart of the VelocitySmoother node. v_max on the QP grid from s0 is
+//! path.longitudinal_velocity_mps, the speed limit with the stops baked in as 0 and the path end a
+//! stop
+std::optional<TrajectoryPoints> plan_velocity(
+  const PathPointTrajectory & path, double s0, const InitialMotion & initial,
+  const VelocityPlanningParams & params, std::size_t num_points, double time_step_s);
 
 }  // namespace autoware::safety_planner
 

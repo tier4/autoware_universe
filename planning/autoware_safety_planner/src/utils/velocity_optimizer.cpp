@@ -16,10 +16,13 @@
 
 #include <Eigen/Sparse>
 #include <autoware/osqp_interface/osqp_interface.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
+#include <rclcpp/duration.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -99,6 +102,24 @@ std::vector<double> merge_filtered(
     merged[i] = std::min(forward[i], backward[i]);
   }
   return merged;
+}
+
+TrajectoryPoint make_trajectory_point(
+  const PathPointTrajectory & path, const double s, const double t, const double vel,
+  const double acc, const double wheel_base_m)
+{
+  const double kappa = path.curvature(s);
+  TrajectoryPoint point;
+  point.time_from_start = rclcpp::Duration::from_seconds(t);
+  // The road z, not the ego z: the longitudinal controller reads the slope it compensates from
+  // the z of the trajectory
+  point.pose.position = path.compute(s).point.pose.position;
+  point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(path.azimuth(s));
+  point.longitudinal_velocity_mps = static_cast<float>(vel);
+  point.acceleration_mps2 = static_cast<float>(acc);
+  point.heading_rate_rps = static_cast<float>(vel * kappa);
+  point.front_wheel_angle_rad = static_cast<float>(std::atan(kappa * wheel_base_m));
+  return point;
 }
 
 osqp_interface::CSC_Matrix to_csc(const Eigen::SparseMatrix<double> & matrix)
@@ -252,6 +273,160 @@ std::optional<VelocityOptimizerResult> optimize_velocity(
     output.a[i] = a;
   }
   return output;
+}
+
+namespace
+{
+
+//! The profile on the time grid t = k * time_step_s
+struct TimedVelocityProfile
+{
+  std::vector<double> sigma;  //!< [m] arc length from the first point of v_max
+  std::vector<double> v;      //!< [m/s]
+  std::vector<double> a;      //!< [m/s^2]
+};
+
+//! optimize_velocity, then back onto num_points of the time grid. An interval at standstill at
+//! both ends is never left; past the end of the grid the last speed is held
+std::optional<TimedVelocityProfile> apply_velocity_optimizer(
+  const std::vector<double> & v_max, const double ds, const InitialMotion & initial,
+  const VelocityOptimizerParams & params, const std::size_t num_points, const double time_step_s)
+{
+  const auto profile = optimize_velocity(v_max, ds, initial.v, initial.a, params);
+  if (!profile) {
+    return std::nullopt;
+  }
+
+  const auto & v = profile->v;
+  const auto & a = profile->a;
+  TimedVelocityProfile output;
+  output.sigma.reserve(num_points);
+  output.v.reserve(num_points);
+  output.a.reserve(num_points);
+  std::size_t i = 0;
+  double t_i = 0.0;
+  double seg_dt = std::numeric_limits<double>::infinity();
+  for (std::size_t k = 0; k < num_points; ++k) {
+    const double t = static_cast<double>(k) * time_step_s;
+    while (i + 1 < v.size()) {
+      const double v_sum = v[i] + v[i + 1];
+      seg_dt = v_sum > 1e-6 ? 2.0 * ds / v_sum : std::numeric_limits<double>::infinity();
+      if (t_i + seg_dt > t) {
+        break;
+      }
+      t_i += seg_dt;
+      ++i;
+    }
+    double sigma = static_cast<double>(i) * ds;
+    double vel = 0.0;
+    double acc = 0.0;
+    if (i + 1 < v.size() && std::isfinite(seg_dt)) {
+      const double tau = t - t_i;
+      const double a_seg = (v[i + 1] * v[i + 1] - v[i] * v[i]) / (2.0 * ds);
+      sigma += v[i] * tau + 0.5 * a_seg * tau * tau;
+      vel = v[i] + a_seg * tau;
+      acc = a[i] + (a[i + 1] - a[i]) * tau / seg_dt;
+    } else if (i + 1 == v.size()) {
+      sigma += v[i] * (t - t_i);
+      vel = v[i];
+    }
+    output.sigma.push_back(sigma);
+    output.v.push_back(vel);
+    output.a.push_back(acc);
+  }
+  return output;
+}
+
+}  // namespace
+
+std::optional<TrajectoryPoints> plan_velocity(
+  const PathPointTrajectory & path, const double s0, const InitialMotion & initial,
+  const VelocityPlanningParams & params, const std::size_t num_points, const double time_step_s)
+{
+  const double path_length = path.length();
+  const auto bases = path.get_underlying_bases();
+  const auto speed_limit_at = [&](const double s) {
+    return static_cast<double>(path.compute(s).point.longitudinal_velocity_mps);
+  };
+
+  double s_stop = path_length;
+  if (s0 <= path_length && speed_limit_at(s0) < STOP_VELOCITY_MPS) {
+    s_stop = s0;
+  } else {
+    for (auto it = std::upper_bound(bases.begin(), bases.end(), s0); it != bases.end(); ++it) {
+      if (speed_limit_at(*it) < STOP_VELOCITY_MPS) {
+        s_stop = *it;
+        break;
+      }
+    }
+  }
+  s_stop = std::max(s_stop, s0);
+
+  constexpr double MIN_GRID_LENGTH_M = 0.01;
+  const double length = std::min(path_length - s0, params.max_length_m);
+  if (length < MIN_GRID_LENGTH_M || (!initial.a && s_stop - s0 < params.resolution_m)) {
+    TrajectoryPoints points;
+    points.reserve(num_points);
+    for (std::size_t k = 0; k < num_points; ++k) {
+      const double ratio = static_cast<double>(k) / static_cast<double>(num_points - 1);
+      points.push_back(make_trajectory_point(
+        path, s0 + ratio * (s_stop - s0), static_cast<double>(k) * time_step_s, 0.0, 0.0,
+        params.wheel_base_m));
+    }
+    return points;
+  }
+
+  constexpr std::size_t MIN_INTERVALS = 10;
+  const auto intervals =
+    std::max(static_cast<std::size_t>(std::ceil(length / params.resolution_m)), MIN_INTERVALS);
+  const double ds = length / static_cast<double>(intervals);
+  constexpr double EPS = 1e-6;
+  std::vector<double> v_max(intervals + 1);
+  double prev_steer = std::atan(path.curvature(s0) * params.wheel_base_m);
+  for (std::size_t i = 0; i <= intervals; ++i) {
+    const double s = s0 + static_cast<double>(i) * ds;
+    const double lo = std::clamp(s - ds + EPS, 0.0, path_length);
+    const double hi = s + ds - EPS;
+    double v = hi >= path_length ? 0.0 : speed_limit_at(lo);
+    for (auto it = std::upper_bound(bases.begin(), bases.end(), lo); it != bases.end() && *it <= hi;
+         ++it) {
+      v = std::min(v, speed_limit_at(*it));
+    }
+    const double kappa = path.curvature(s);
+    if (std::abs(kappa) > 1e-6) {
+      v = std::min(v, std::sqrt(params.lat_accel / std::abs(kappa)));
+    }
+    const double steer = std::atan(kappa * params.wheel_base_m);
+    const double steer_grad = std::abs(steer - prev_steer) / ds;  // [rad/m]
+    prev_steer = steer;
+    if (steer_grad > 1e-6) {
+      v = std::min(v, params.steer_rate / steer_grad);
+    }
+    v_max[i] = v;
+  }
+
+  const auto profile =
+    apply_velocity_optimizer(v_max, ds, initial, params.optimizer, num_points, time_step_s);
+  if (!profile) {
+    return std::nullopt;
+  }
+
+  const bool stop_on_grid = s_stop <= s0 + length + EPS;
+  TrajectoryPoints points;
+  points.reserve(num_points);
+  for (std::size_t k = 0; k < num_points; ++k) {
+    double s = std::min(s0 + profile->sigma[k], path_length);
+    double v = profile->v[k];
+    double a = profile->a[k];
+    if (stop_on_grid && s >= s_stop) {
+      s = s_stop;
+      v = 0.0;
+      a = 0.0;
+    }
+    points.push_back(make_trajectory_point(
+      path, s, static_cast<double>(k) * time_step_s, v, a, params.wheel_base_m));
+  }
+  return points;
 }
 
 }  // namespace autoware::safety_planner
