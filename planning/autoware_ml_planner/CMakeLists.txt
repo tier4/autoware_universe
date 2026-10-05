@@ -134,6 +134,7 @@ if(BUILD_TESTING)
     test/postprocessing_utils_edge_case_test.cpp
     test/road_border_avoidance_test.cpp
     test/utils_test.cpp
+    test/virtual_pose_test.cpp
   )
 
   # Keep the optimizer test conditional because its public API is only available with acados.

@@ -301,6 +301,306 @@ std::optional<size_t> fix_stop_points(Trajectory & trajectory, const StopPointFi
   return static_cast<size_t>(std::distance(points.begin(), stop_it));
 }
 
+void smooth_initial_velocity(Trajectory & trajectory, const VelocitySmoothingParams & params)
+{
+  auto & points = trajectory.points;
+  std::vector<double> times;
+  std::vector<double> arc_lengths;
+  double arc_length = 0.0;
+  for (size_t i = 0; i < points.size(); ++i) {
+    const auto & stamp = points[i].time_from_start;
+    const double time =
+      static_cast<double>(stamp.sec) + 1.0e-9 * static_cast<double>(stamp.nanosec);
+    if (time > params.horizon_sec + 1.0e-6) {
+      break;
+    }
+    if (i > 0) {
+      const auto & a = points[i - 1].pose.position;
+      const auto & b = points[i].pose.position;
+      arc_length += std::hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    }
+    times.push_back(time);
+    arc_lengths.push_back(arc_length);
+  }
+  // A quadratic needs three points; fewer leaves the finite differences in place.
+  if (times.size() < 3) {
+    return;
+  }
+
+  // Least squares s(t) = c0 + c1 t + c2 t^2.
+  Eigen::MatrixXd design(times.size(), 3);
+  Eigen::VectorXd target(times.size());
+  for (size_t i = 0; i < times.size(); ++i) {
+    design(static_cast<Eigen::Index>(i), 0) = 1.0;
+    design(static_cast<Eigen::Index>(i), 1) = times[i];
+    design(static_cast<Eigen::Index>(i), 2) = times[i] * times[i];
+    target(static_cast<Eigen::Index>(i)) = arc_lengths[i];
+  }
+  Eigen::Vector3d coefficients = design.colPivHouseholderQr().solve(target);
+
+  // A plan that waits a moment before moving off fits a negative initial speed, and the clamp
+  // below then leaves zeros at the leading points: the longitudinal controller sees a stop at the
+  // vehicle and never departs, and the next plan, made at standstill, waits again. Such a plan
+  // moves off from rest, so refit it with the initial speed fixed at zero, s(t) = c0 + c2 t^2.
+  if (coefficients(1) < 0.0 && coefficients(2) > 0.0) {
+    Eigen::MatrixXd from_rest(times.size(), 2);
+    from_rest.col(0) = design.col(0);
+    from_rest.col(1) = design.col(2);
+    const Eigen::Vector2d refit = from_rest.colPivHouseholderQr().solve(target);
+    if (refit(1) > 0.0) {
+      coefficients = Eigen::Vector3d(refit(0), 0.0, refit(1));
+    }
+  }
+
+  const double acceleration = 2.0 * coefficients(2);
+  for (size_t i = 0; i < times.size(); ++i) {
+    const double velocity = coefficients(1) + acceleration * times[i];
+    points[i].longitudinal_velocity_mps = static_cast<float>(std::max(velocity, 0.0));
+    points[i].acceleration_mps2 = static_cast<float>(acceleration);
+  }
+}
+
+void limit_curve_speed(Trajectory & trajectory, const CurveSpeedLimitParams & params)
+{
+  auto & points = trajectory.points;
+  if (points.size() < 3 || params.max_lateral_acceleration_mps2 <= 0.0) {
+    return;
+  }
+  const auto n = points.size();
+  std::vector<Eigen::Vector2d> positions;
+  std::vector<double> arc_lengths(n, 0.0);
+  for (size_t i = 0; i < n; ++i) {
+    positions.emplace_back(points[i].pose.position.x, points[i].pose.position.y);
+    if (i > 0) {
+      arc_lengths[i] = arc_lengths[i - 1] + (positions[i] - positions[i - 1]).norm();
+    }
+  }
+
+  // Neighbours this far along the path, so centimetre spacing noise does not become curvature.
+  constexpr double CURVATURE_BASE_M = 1.0;
+  constexpr double MIN_CURVATURE = 1.0e-4;
+  std::vector<std::optional<double>> curvatures(n);
+  size_t previous = 0;
+  size_t next = 0;
+  for (size_t i = 1; i + 1 < n; ++i) {
+    while (previous + 1 < i && arc_lengths[i] - arc_lengths[previous + 1] >= CURVATURE_BASE_M) {
+      ++previous;
+    }
+    next = std::max(next, i + 1);
+    while (next + 1 < n && arc_lengths[next] - arc_lengths[i] < CURVATURE_BASE_M) {
+      ++next;
+    }
+    if (
+      arc_lengths[i] - arc_lengths[previous] < CURVATURE_BASE_M ||
+      arc_lengths[next] - arc_lengths[i] < CURVATURE_BASE_M) {
+      continue;
+    }
+    // Curvature of the circle through the three points.
+    const Eigen::Vector2d a = positions[i] - positions[previous];
+    const Eigen::Vector2d b = positions[next] - positions[i];
+    const Eigen::Vector2d c = positions[next] - positions[previous];
+    const double cross = a.x() * b.y() - a.y() * b.x();
+    curvatures[i] = std::abs(2.0 * cross) / (a.norm() * b.norm() * c.norm());
+  }
+  // Points within the base length of either end take the curvature of the nearest point that has
+  // one, so the end of a plan inside a curve is capped too.
+  const auto first = std::find_if(
+    curvatures.begin(), curvatures.end(), [](const auto & k) { return k.has_value(); });
+  if (first == curvatures.end()) {
+    return;
+  }
+  std::fill(curvatures.begin(), first, *first);
+  for (size_t i = 1; i < n; ++i) {
+    if (!curvatures[i]) {
+      curvatures[i] = curvatures[i - 1];
+    }
+  }
+
+  std::vector<double> velocities(n);
+  for (size_t i = 0; i < n; ++i) {
+    velocities[i] = points[i].longitudinal_velocity_mps;
+    if (*curvatures[i] > MIN_CURVATURE) {
+      velocities[i] =
+        std::min(velocities[i], std::sqrt(params.max_lateral_acceleration_mps2 / *curvatures[i]));
+    }
+  }
+  // Brake for each cap in advance: v_i^2 <= v_{i+1}^2 + 2 a_dec ds.
+  if (params.max_deceleration_mps2 > 0.0) {
+    for (size_t i = n - 1; i-- > 0;) {
+      const double ds = arc_lengths[i + 1] - arc_lengths[i];
+      velocities[i] = std::min(
+        velocities[i],
+        std::sqrt(velocities[i + 1] * velocities[i + 1] + 2.0 * params.max_deceleration_mps2 * ds));
+    }
+  }
+
+  constexpr double MIN_SEGMENT_M = 1.0e-3;
+  for (size_t i = 0; i < n; ++i) {
+    const bool changed = velocities[i] < points[i].longitudinal_velocity_mps;
+    const bool next_changed =
+      i + 1 < n && velocities[i + 1] < points[i + 1].longitudinal_velocity_mps;
+    if (changed) {
+      points[i].longitudinal_velocity_mps = static_cast<float>(velocities[i]);
+    }
+    if ((changed || next_changed) && i + 1 < n) {
+      const double ds = arc_lengths[i + 1] - arc_lengths[i];
+      if (ds > MIN_SEGMENT_M) {
+        points[i].acceleration_mps2 = static_cast<float>(
+          (velocities[i + 1] * velocities[i + 1] - velocities[i] * velocities[i]) / (2.0 * ds));
+      }
+    }
+  }
+}
+
+void smooth_initial_path(
+  Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose, const double ego_speed_mps,
+  const PathSmoothingParams & params)
+{
+  auto & points = trajectory.points;
+  const double fit_end_sec = params.horizon_sec + params.blend_sec;
+  const double ego_yaw = autoware_utils::get_rpy(ego_pose.orientation).z;
+  const double cos_yaw = std::cos(ego_yaw);
+  const double sin_yaw = std::sin(ego_yaw);
+  const auto point_time = [](const TrajectoryPoint & point) {
+    return static_cast<double>(point.time_from_start.sec) +
+           1.0e-9 * static_cast<double>(point.time_from_start.nanosec);
+  };
+
+  // Points within the fit window in the vehicle frame.
+  std::vector<double> times;
+  std::vector<Eigen::Vector2d> local_positions;
+  for (const auto & point : points) {
+    const double time = point_time(point);
+    if (time > fit_end_sec + 1.0e-6) {
+      break;
+    }
+    const double dx = point.pose.position.x - ego_pose.position.x;
+    const double dy = point.pose.position.y - ego_pose.position.y;
+    times.push_back(time);
+    local_positions.emplace_back(cos_yaw * dx + sin_yaw * dy, -sin_yaw * dx + cos_yaw * dy);
+  }
+  // Two coefficients per axis; fewer than three points leaves the model output in place.
+  if (times.size() < 3) {
+    return;
+  }
+
+  // Least squares with the start fixed at the vehicle: x - v t = a t^2 + b t^3, y = c t^2 + d t^3.
+  Eigen::MatrixXd design(times.size(), 2);
+  Eigen::MatrixXd target(times.size(), 2);
+  for (size_t i = 0; i < times.size(); ++i) {
+    const auto row = static_cast<Eigen::Index>(i);
+    const double t = times[i];
+    design(row, 0) = t * t;
+    design(row, 1) = t * t * t;
+    target(row, 0) = local_positions[i].x() - ego_speed_mps * t;
+    target(row, 1) = local_positions[i].y();
+  }
+  const Eigen::MatrixXd coefficients = design.colPivHouseholderQr().solve(target);
+  const double ax = coefficients(0, 0);
+  const double bx = coefficients(1, 0);
+  const double ay = coefficients(0, 1);
+  const double by = coefficients(1, 1);
+
+  // Below this fitted speed the direction of travel is undefined; the vehicle heading is used.
+  constexpr double MIN_HEADING_SPEED_MPS = 0.1;
+  for (size_t i = 0; i < times.size(); ++i) {
+    const double t = times[i];
+    const double fit_x = ego_speed_mps * t + ax * t * t + bx * t * t * t;
+    const double fit_y = ay * t * t + by * t * t * t;
+    const double fit_vx = ego_speed_mps + 2.0 * ax * t + 3.0 * bx * t * t;
+    const double fit_vy = 2.0 * ay * t + 3.0 * by * t * t;
+    const double fit_yaw =
+      std::hypot(fit_vx, fit_vy) > MIN_HEADING_SPEED_MPS ? std::atan2(fit_vy, fit_vx) : 0.0;
+
+    // Weight of the fit: 1 up to the horizon, falling linearly to 0 at the end of the blend.
+    const double weight =
+      t <= params.horizon_sec || params.blend_sec <= 0.0
+        ? 1.0
+        : std::clamp(1.0 - (t - params.horizon_sec) / params.blend_sec, 0.0, 1.0);
+    auto & pose = points[i].pose;
+    const double model_yaw = autoware_utils::get_rpy(pose.orientation).z - ego_yaw;
+    const double local_x = weight * fit_x + (1.0 - weight) * local_positions[i].x();
+    const double local_y = weight * fit_y + (1.0 - weight) * local_positions[i].y();
+    const double local_yaw =
+      model_yaw + weight * autoware_utils::normalize_radian(fit_yaw - model_yaw);
+
+    pose.position.x = ego_pose.position.x + cos_yaw * local_x - sin_yaw * local_y;
+    pose.position.y = ego_pose.position.y + sin_yaw * local_x + cos_yaw * local_y;
+    pose.orientation = autoware_utils::create_quaternion_from_yaw(
+      autoware_utils::normalize_radian(ego_yaw + local_yaw));
+  }
+}
+
+void smooth_path_tail(Trajectory & trajectory, const PathSmoothingParams & params)
+{
+  auto & points = trajectory.points;
+  if (params.tail_half_window_sec <= 0.0 || points.size() < 3) {
+    return;
+  }
+  std::vector<double> times;
+  std::vector<Eigen::Vector2d> positions;
+  for (const auto & point : points) {
+    times.push_back(
+      static_cast<double>(point.time_from_start.sec) +
+      1.0e-9 * static_cast<double>(point.time_from_start.nanosec));
+    positions.emplace_back(point.pose.position.x, point.pose.position.y);
+  }
+
+  // Below this fitted speed the direction of travel is undefined.
+  constexpr double MIN_HEADING_SPEED_MPS = 0.1;
+  constexpr double TIME_TOLERANCE_S = 1.0e-6;
+  std::optional<double> previous_yaw;
+  for (size_t i = 0; i < points.size(); ++i) {
+    if (times[i] <= params.horizon_sec + TIME_TOLERANCE_S) {
+      previous_yaw = autoware_utils::get_rpy(points[i].pose.orientation).z;
+      continue;
+    }
+    // Quadratic in the time from this point, so the value and the derivative at it are the
+    // first two coefficients; fitted to the input positions, not the already smoothed ones. The
+    // window is kept symmetric (shrunk near the end) so the fit does not extrapolate.
+    const double half_window_sec =
+      std::min(params.tail_half_window_sec, times.back() - times[i]) + TIME_TOLERANCE_S;
+    std::vector<size_t> window;
+    for (size_t j = 0; j < points.size(); ++j) {
+      if (std::abs(times[j] - times[i]) <= half_window_sec) {
+        window.push_back(j);
+      }
+    }
+    // Three points would be interpolated, not smoothed.
+    constexpr size_t MIN_WINDOW_POINTS = 5;
+    if (window.size() < MIN_WINDOW_POINTS) {
+      // The last points: their position is kept, their heading continues the one before.
+      if (previous_yaw) {
+        points[i].pose.orientation = autoware_utils::create_quaternion_from_yaw(*previous_yaw);
+      }
+      continue;
+    }
+    Eigen::MatrixXd design(window.size(), 3);
+    Eigen::MatrixXd target(window.size(), 2);
+    for (size_t k = 0; k < window.size(); ++k) {
+      const auto row = static_cast<Eigen::Index>(k);
+      const double dt = times[window[k]] - times[i];
+      design(row, 0) = 1.0;
+      design(row, 1) = dt;
+      design(row, 2) = dt * dt;
+      target.row(row) = positions[window[k]].transpose();
+    }
+    const Eigen::MatrixXd coefficients = design.colPivHouseholderQr().solve(target);
+
+    auto & pose = points[i].pose;
+    pose.position.x = coefficients(0, 0);
+    pose.position.y = coefficients(0, 1);
+    const double fit_vx = coefficients(1, 0);
+    const double fit_vy = coefficients(1, 1);
+    if (std::hypot(fit_vx, fit_vy) > MIN_HEADING_SPEED_MPS) {
+      previous_yaw = std::atan2(fit_vy, fit_vx);
+    }
+    if (previous_yaw) {
+      pose.orientation = autoware_utils::create_quaternion_from_yaw(*previous_yaw);
+    }
+  }
+}
+
 namespace
 {
 Trajectory get_trajectory_from_poses(

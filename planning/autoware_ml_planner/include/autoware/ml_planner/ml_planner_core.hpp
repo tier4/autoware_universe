@@ -117,6 +117,9 @@ struct MLPlannerParams
   optimization::TrajectoryOptimizationParams trajectory_optimization;
   postprocess::RoadBorderAvoidanceParams road_border_avoidance;
   postprocess::StopPointFixingParams stop_point_fixing;
+  postprocess::PathSmoothingParams path_smoothing;
+  postprocess::VelocitySmoothingParams velocity_smoothing;
+  postprocess::CurveSpeedLimitParams curve_speed_limit;
   utils::VirtualPoseParams virtual_pose;
 };
 
@@ -190,6 +193,10 @@ public:
     return virtual_pose_result_;
   }
   const Odometry & measured_ego() const { return ego_history_.back(); }
+
+  // Whether Autoware is driving the vehicle (autonomous mode with control enabled); gates the
+  // low-speed time-based virtual pose.
+  void set_engaged(const bool engaged) { engaged_ = engaged; }
 
   /**
    * @brief Set the lanelet map context.
@@ -303,6 +310,11 @@ private:
   std::optional<utils::VirtualPoseResult> virtual_pose_result_;
   std::optional<Eigen::Matrix4d> previous_frame_pose_;
   std::vector<Eigen::Matrix4d> previous_ego_prediction_;
+  // Time of each previous_ego_prediction_ pose from the previous planning start, and that start.
+  std::vector<double> previous_prediction_times_;
+  std::optional<rclcpp::Time> previous_frame_time_;
+  bool engaged_{false};
+  bool time_based_active_{false};
   Odometry build_frame_ego();
 
   std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_;

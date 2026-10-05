@@ -34,8 +34,8 @@
 #include <functional>
 #include <iomanip>
 #include <memory>
-#include <stdexcept>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -114,8 +114,8 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<Trajectory>("~/debug/stop_point_fixing/unfixed_trajectory", 1);
   pub_virtual_pose_ =
     this->create_publisher<geometry_msgs::msg::PoseStamped>("~/debug/virtual_pose", 1);
-  pub_virtual_pose_status_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
-    "~/debug/virtual_pose_status", 1);
+  pub_virtual_pose_status_ =
+    this->create_publisher<std_msgs::msg::Float64MultiArray>("~/debug/virtual_pose_status", 1);
 
   set_up_params();
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -202,7 +202,7 @@ void MLPlanner::set_up_params()
 
   // trajectory optimization params
   auto & opt = params_.trajectory_optimization;
-  opt.enable = this->declare_parameter<bool>("trajectory_optimization.enable", false);
+  opt.enable = this->declare_parameter<bool>("trajectory_optimization.enable", true);
   opt.weight_longitudinal =
     this->declare_parameter<double>("trajectory_optimization.weight_longitudinal", 0.5);
   opt.weight_lateral =
@@ -291,11 +291,35 @@ void MLPlanner::set_up_params()
   stop_fixing.min_deceleration_duration_sec =
     this->declare_parameter<double>("stop_point_fixing.min_deceleration_duration_sec", 1.0);
 
+  // path smoothing params
+  auto & path_smoothing = params_.path_smoothing;
+  path_smoothing.enable = this->declare_parameter<bool>("path_smoothing.enable", false);
+  path_smoothing.horizon_sec = this->declare_parameter<double>("path_smoothing.horizon_sec", 1.5);
+  path_smoothing.blend_sec = this->declare_parameter<double>("path_smoothing.blend_sec", 0.5);
+  path_smoothing.tail_half_window_sec =
+    this->declare_parameter<double>("path_smoothing.tail_half_window_sec", 0.5);
+
+  // velocity smoothing params
+  auto & velocity_smoothing = params_.velocity_smoothing;
+  velocity_smoothing.enable = this->declare_parameter<bool>("velocity_smoothing.enable", false);
+  velocity_smoothing.horizon_sec =
+    this->declare_parameter<double>("velocity_smoothing.horizon_sec", 1.5);
+
+  // curve speed limit params
+  auto & curve_speed_limit = params_.curve_speed_limit;
+  curve_speed_limit.enable = this->declare_parameter<bool>("curve_speed_limit.enable", false);
+  curve_speed_limit.max_lateral_acceleration_mps2 =
+    this->declare_parameter<double>("curve_speed_limit.max_lateral_acceleration_mps2", 1.0);
+  curve_speed_limit.max_deceleration_mps2 =
+    this->declare_parameter<double>("curve_speed_limit.max_deceleration_mps2", 1.0);
+
   // virtual ego pose params
   auto & virtual_pose = params_.virtual_pose;
   virtual_pose.enable = this->declare_parameter<bool>("virtual_pose.enable", false);
-  virtual_pose.max_position_error_m =
-    this->declare_parameter<double>("virtual_pose.max_position_error_m", 0.3);
+  virtual_pose.max_longitudinal_error_m =
+    this->declare_parameter<double>("virtual_pose.max_longitudinal_error_m", 0.5);
+  virtual_pose.max_lateral_error_m =
+    this->declare_parameter<double>("virtual_pose.max_lateral_error_m", 0.3);
   virtual_pose.max_yaw_error_deg =
     this->declare_parameter<double>("virtual_pose.max_yaw_error_deg", 5.0);
   virtual_pose.max_search_segment_count =
@@ -306,9 +330,20 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("virtual_pose.yaw_fit_min_length_m", 0.2);
   virtual_pose.history_prefix_count =
     this->declare_parameter<int64_t>("virtual_pose.history_prefix_count", 10);
-  virtual_pose.reference = this->declare_parameter<std::string>("virtual_pose.reference", "raw");
+  virtual_pose.reference =
+    this->declare_parameter<std::string>("virtual_pose.reference", "optimized");
   if (virtual_pose.reference != "raw" && virtual_pose.reference != "optimized") {
     throw std::runtime_error("virtual_pose.reference must be 'raw' or 'optimized'");
+  }
+  virtual_pose.time_based_enable =
+    this->declare_parameter<bool>("virtual_pose.time_based.enable", false);
+  virtual_pose.time_based_enter_speed_mps =
+    this->declare_parameter<double>("virtual_pose.time_based.enter_speed_mps", 0.5);
+  virtual_pose.time_based_exit_speed_mps =
+    this->declare_parameter<double>("virtual_pose.time_based.exit_speed_mps", 0.7);
+  if (virtual_pose.time_based_exit_speed_mps < virtual_pose.time_based_enter_speed_mps) {
+    throw std::runtime_error(
+      "virtual_pose.time_based.exit_speed_mps must not be below enter_speed_mps");
   }
 
   // planning factor params
@@ -452,6 +487,23 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "stop_point_fixing.min_deceleration_duration_sec",
     stop_fixing.min_deceleration_duration_sec);
+  auto & path_smoothing = new_params.path_smoothing;
+  update_param<bool>(parameters, "path_smoothing.enable", path_smoothing.enable);
+  update_param<double>(parameters, "path_smoothing.horizon_sec", path_smoothing.horizon_sec);
+  update_param<double>(parameters, "path_smoothing.blend_sec", path_smoothing.blend_sec);
+  update_param<double>(
+    parameters, "path_smoothing.tail_half_window_sec", path_smoothing.tail_half_window_sec);
+  auto & velocity_smoothing = new_params.velocity_smoothing;
+  update_param<bool>(parameters, "velocity_smoothing.enable", velocity_smoothing.enable);
+  update_param<double>(
+    parameters, "velocity_smoothing.horizon_sec", velocity_smoothing.horizon_sec);
+  auto & curve_speed_limit = new_params.curve_speed_limit;
+  update_param<bool>(parameters, "curve_speed_limit.enable", curve_speed_limit.enable);
+  update_param<double>(
+    parameters, "curve_speed_limit.max_lateral_acceleration_mps2",
+    curve_speed_limit.max_lateral_acceleration_mps2);
+  update_param<double>(
+    parameters, "curve_speed_limit.max_deceleration_mps2", curve_speed_limit.max_deceleration_mps2);
 
   update_param<bool>(
     parameters, "planning_factor.enable_stop", new_planning_factor_params.enable_stop);
@@ -566,6 +618,21 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   }
   if (stop_fixing.velocity_threshold_mps < 0.0 || stop_fixing.min_deceleration_duration_sec < 0.0) {
     return failure("stop point fixing thresholds must be non-negative");
+  }
+  if (
+    path_smoothing.horizon_sec <= 0.0 || path_smoothing.blend_sec < 0.0 ||
+    path_smoothing.tail_half_window_sec < 0.0) {
+    return failure(
+      "path_smoothing.horizon_sec must be positive, blend_sec and tail_half_window_sec "
+      "non-negative");
+  }
+  if (velocity_smoothing.horizon_sec <= 0.0) {
+    return failure("velocity_smoothing.horizon_sec must be positive");
+  }
+  if (
+    curve_speed_limit.max_lateral_acceleration_mps2 <= 0.0 ||
+    curve_speed_limit.max_deceleration_mps2 <= 0.0) {
+    return failure("curve_speed_limit accelerations must be positive");
   }
 
   const bool reload_model = new_params.model_path != params_.model_path ||
@@ -711,6 +778,11 @@ void MLPlanner::on_timer()
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
   auto steering_ptr = sub_steering_.take_data();
+  if (const auto operation_mode = sub_operation_mode_.take_data()) {
+    core_->set_engaged(
+      operation_mode->mode == OperationModeState::AUTONOMOUS &&
+      operation_mode->is_autoware_control_enabled);
+  }
 
   if (!steering_ptr) {
     constexpr auto message = "Steering status is not available";
@@ -759,7 +831,8 @@ void MLPlanner::on_timer()
     std_msgs::msg::Float64MultiArray status_msg;
     status_msg.data = {
       virtual_pose->snapped ? 1.0 : 0.0, virtual_pose->reset ? 1.0 : 0.0,
-      virtual_pose->position_error_m, virtual_pose->yaw_error_deg};
+      virtual_pose->position_error_m, virtual_pose->yaw_error_deg,
+      virtual_pose->time_based ? 1.0 : 0.0};
     pub_virtual_pose_status_->publish(status_msg);
   }
 

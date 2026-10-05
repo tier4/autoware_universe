@@ -315,6 +315,75 @@
           },
           "required": ["enable"]
         },
+        "path_smoothing": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": false,
+              "description": "Replace the leading points by a smooth path that starts at the vehicle with its heading and speed"
+            },
+            "horizon_sec": {
+              "type": "number",
+              "default": 1.5,
+              "exclusiveMinimum": 0.0,
+              "description": "Points up to this time from start take the smooth path [s]"
+            },
+            "blend_sec": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0.0,
+              "description": "After the horizon, the path moves back to the model output over this time [s]"
+            },
+            "tail_half_window_sec": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0.0,
+              "description": "After the horizon, each point comes from a quadratic fit over this half window and takes the fitted heading; 0 disables [s]"
+            }
+          },
+          "required": ["enable", "horizon_sec", "blend_sec", "tail_half_window_sec"]
+        },
+        "curve_speed_limit": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": false,
+              "description": "Cap the speed in curves by a lateral acceleration (for use without the trajectory optimizer)"
+            },
+            "max_lateral_acceleration_mps2": {
+              "type": "number",
+              "default": 1.0,
+              "exclusiveMinimum": 0.0,
+              "description": "Lateral acceleration giving the speed cap sqrt(a / curvature) [m/s^2]"
+            },
+            "max_deceleration_mps2": {
+              "type": "number",
+              "default": 1.0,
+              "exclusiveMinimum": 0.0,
+              "description": "Deceleration used to brake toward a cap in advance [m/s^2]"
+            }
+          },
+          "required": ["enable", "max_lateral_acceleration_mps2", "max_deceleration_mps2"]
+        },
+        "velocity_smoothing": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": false,
+              "description": "Replace the finite-difference velocity and acceleration of the leading points with a quadratic fit of the arc length over time"
+            },
+            "horizon_sec": {
+              "type": "number",
+              "default": 1.5,
+              "exclusiveMinimum": 0.0,
+              "description": "Points up to this time from start take their velocity and acceleration from the fit [s]"
+            }
+          },
+          "required": ["enable", "horizon_sec"]
+        },
         "planning_factor": {
           "type": "object",
           "properties": {

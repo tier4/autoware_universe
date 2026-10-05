@@ -59,17 +59,34 @@
       propagate_shift: true       # carry the offset over to all subsequent points
     virtual_pose:
       enable: false                 # give the model the closest point of its previous trajectory instead of the measured pose
-      max_position_error_m: 0.3     # [m]   reset the virtual pose onto the vehicle when the vehicle is farther than this from it
+      max_longitudinal_error_m: 0.5  # [m] reset the virtual pose onto the vehicle when the vehicle is farther than this from it along the virtual heading
+      max_lateral_error_m: 0.3       # [m] ... or farther than this across it
       max_yaw_error_deg: 5.0        # [deg] reset when the headings differ by more than this
       max_search_segment_count: 5   # leading segments of the previous trajectory searched for the closest point
       yaw_fit_half_window_m: 1.0    # [m] arc length on each side of the closest point over which the tangent is averaged
       yaw_fit_min_length_m: 0.2     # [m] below this window length the measured heading is used
       history_prefix_count: 10      # earlier virtual poses prepended so the spline extends behind the vehicle
-      reference: "raw"              # trajectory the virtual pose is taken from: "raw" (model prediction) or "optimized" (published output)
+      reference: "optimized"        # trajectory the virtual pose is taken from: "raw" (model prediction) or "optimized" (published output)
+      time_based:                   # while engaged and slow: take the previous trajectory at the elapsed time, not its closest point
+        enable: false
+        enter_speed_mps: 0.5        # [m/s] switch on below this speed
+        exit_speed_mps: 0.7         # [m/s] switch off above this speed (hysteresis against chattering)
     stop_point_fixing:
       enable: false
       velocity_threshold_mps: 0.3  # stop detection velocity threshold [m/s]
       min_deceleration_duration_sec: 1.0  # required continuous deceleration before fixing [s]
+    path_smoothing:
+      enable: false
+      horizon_sec: 1.5  # [s] points up to this time are replaced by a smooth path from the vehicle
+      blend_sec: 0.5    # [s] after the horizon, the path moves back to the model output over this time
+      tail_half_window_sec: 0.5  # [s] after the horizon, each point comes from a quadratic fit over this half window, heading from the fit (0: off)
+    velocity_smoothing:
+      enable: false
+      horizon_sec: 1.5  # [s] speed and acceleration of the points up to this time come from a quadratic fit of the arc length
+    curve_speed_limit:  # without the trajectory optimizer: cap the speed in curves (the optimizer does this with its lateral acceleration constraint)
+      enable: false
+      max_lateral_acceleration_mps2: 1.0  # [m/s^2] speed cap sqrt(a / curvature)
+      max_deceleration_mps2: 1.0          # [m/s^2] braking toward a cap starts early enough to stay within this
     planning_factor:
       enable_stop: true
       enable_slowdown: false
