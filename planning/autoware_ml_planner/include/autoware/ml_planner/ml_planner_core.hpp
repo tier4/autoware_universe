@@ -102,7 +102,11 @@ struct PlannerOutput
 
 struct MLPlannerParams
 {
+  std::string base_model_directory;
+  std::string onnx_model_filename;
+  std::string args_filename;
   std::string model_path;
+  std::string args_path;
   std::string plugins_path;
   std::string backend;
   std::string trt_precision;
@@ -152,6 +156,14 @@ public:
    * @param params New parameters to apply
    */
   void update_params(const MLPlannerParams & params);
+
+  /**
+   * @brief Resolve ONNX and args paths from base_model_directory and filenames.
+   *
+   * Paths are derived the same way as autoware_diffusion_planner, so both nodes can
+   * switch artifacts by setting model.base_model_directory (and optional filenames).
+   */
+  void resolve_model_paths();
 
   /**
    * @brief Reference time of the current frame (stamp of the newest ego odometry).

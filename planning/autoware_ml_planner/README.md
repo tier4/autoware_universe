@@ -20,7 +20,7 @@ It is implemented as a ROS 2 component node, making it easy to integrate into Au
 
 ### (1) Prerequisites
 
-Make sure that the directory specified in `planning/autoware_ml_planner/config/ml_planner.param.yaml` points to the correct model version and contains the required model weight and parameter files.
+Make sure that `model.base_model_directory` in `planning/autoware_ml_planner/config/ml_planner.param.yaml` points to the correct model version. ONNX and args files are resolved as `base_model_directory / onnx_model_filename` and `base_model_directory / args_filename`, matching `autoware_diffusion_planner`, so switching a model is a single directory change.
 
 ```bash
 $ ls ~/autoware_data/ml_models/ml_planner/v4.0/

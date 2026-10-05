@@ -30,6 +30,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -180,7 +181,12 @@ void MLPlanner::on_start_service(
 void MLPlanner::set_up_params()
 {
   // node params
-  params_.model_path = this->declare_parameter<std::string>("model.onnx_model_path", "");
+  params_.base_model_directory =
+    this->declare_parameter<std::string>("model.base_model_directory", "");
+  params_.onnx_model_filename =
+    this->declare_parameter<std::string>("model.onnx_model_filename", "ml_planner_sampler.onnx");
+  params_.args_filename =
+    this->declare_parameter<std::string>("model.args_filename", "ml_planner.param.json");
   params_.backend = this->declare_parameter<std::string>("model.backend", "tensorrt");
   params_.trt_precision = this->declare_parameter<std::string>("model.precision", "fp32");
   params_.use_cuda_graph = this->declare_parameter<bool>("model.use_cuda_graph", true);
@@ -311,14 +317,20 @@ void MLPlanner::load_model()
 {
   diagnostics_inference_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
   diagnostics_inference_->publish(get_clock()->now());
+  core_->update_params(params_);
   core_->load_model();
   diagnostics_inference_->update_level_and_message(DiagnosticStatus::OK, "Model loaded");
   diagnostics_inference_->publish(get_clock()->now());
 
+  const std::filesystem::path base_dir(params_.base_model_directory);
+  params_.model_path = (base_dir / params_.onnx_model_filename).string();
+  params_.args_path = (base_dir / params_.args_filename).string();
   RCLCPP_INFO_STREAM(
-    get_logger(), "Loaded model.onnx_model_path=" << params_.model_path << " (hash="
-                                                  << compute_file_hash_hex(params_.model_path)
-                                                  << ")");
+    get_logger(), "Loaded model_path=" << params_.model_path << " (hash="
+                                       << compute_file_hash_hex(params_.model_path) << ")");
+  RCLCPP_INFO_STREAM(
+    get_logger(), "Loaded args_path=" << params_.args_path << " (hash="
+                                      << compute_file_hash_hex(params_.args_path) << ")");
 }
 
 SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter> & parameters)
@@ -330,7 +342,11 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   bool new_remap_unsupported_objects_to_pedestrian = remap_unsupported_objects_to_pedestrian_;
   bool requested_build_only = params_.build_only;
 
-  update_param<std::string>(parameters, "model.onnx_model_path", new_params.model_path);
+  update_param<std::string>(
+    parameters, "model.base_model_directory", new_params.base_model_directory);
+  update_param<std::string>(
+    parameters, "model.onnx_model_filename", new_params.onnx_model_filename);
+  update_param<std::string>(parameters, "model.args_filename", new_params.args_filename);
   update_param<std::string>(parameters, "model.backend", new_params.backend);
   update_param<std::string>(parameters, "model.precision", new_params.trt_precision);
   update_param<bool>(parameters, "model.use_cuda_graph", new_params.use_cuda_graph);
@@ -543,7 +559,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     return failure("stop point fixing thresholds must be non-negative");
   }
 
-  const bool reload_model = new_params.model_path != params_.model_path ||
+  const bool reload_model = new_params.base_model_directory != params_.base_model_directory ||
+                            new_params.onnx_model_filename != params_.onnx_model_filename ||
+                            new_params.args_filename != params_.args_filename ||
                             new_params.plugins_path != params_.plugins_path ||
                             new_params.batch_size != params_.batch_size ||
                             new_params.backend != params_.backend ||
