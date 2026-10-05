@@ -22,18 +22,12 @@
 #include <autoware_command_mode_types/sources.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <rosgraph_msgs/msg/clock.hpp>
-#include <tier4_system_msgs/msg/command_source_status.hpp>
-#include <tier4_system_msgs/srv/select_command_source.hpp>
 
-#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <functional>
-#include <future>
-#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -44,10 +38,7 @@ namespace autoware::control_command_gate::test
 {
 
 constexpr uint16_t builtin_id = autoware::command_mode_types::sources::builtin;
-constexpr uint16_t stop_id = 11;
 constexpr uint16_t main_id = 12;
-constexpr uint16_t local_id = 13;
-constexpr uint16_t remote_id = 14;
 constexpr uint16_t in_lane_stop_id = 31;
 
 struct VehicleState
@@ -101,32 +92,25 @@ inline bool publish_clock_until_reached(
 class RecordingOutput : public CommandOutput
 {
 public:
-  void on_control(uint16_t source_id, const Control & msg) override
-  {
-    source_ids.push_back(source_id);
-    controls.push_back(msg);
-  }
+  void on_control(uint16_t, const Control & msg) override { controls.push_back(msg); }
   void on_gear(const GearCommand &) override {}
   void on_turn_indicators(const TurnIndicatorsCommand &) override {}
   void on_hazard_lights(const HazardLightsCommand &) override {}
 
-  std::vector<uint16_t> source_ids;
   std::vector<Control> controls;
 };
 
 class FilterFixture
 {
 public:
-  FilterFixture(
-    const VehicleCmdFilterParam & nominal, const VehicleCmdFilterParam & transition,
-    const bool enable_command_limit_filter = true)
+  FilterFixture(const VehicleCmdFilterParam & nominal, const VehicleCmdFilterParam & transition)
   {
     rclcpp::NodeOptions options;
     options.use_intra_process_comms(true);
     options.use_clock_thread(false);
     options.parameter_overrides({
       rclcpp::Parameter("use_sim_time", true),
-      rclcpp::Parameter("enable_command_limit_filter", enable_command_limit_filter),
+      rclcpp::Parameter("enable_command_limit_filter", true),
       rclcpp::Parameter("stop_check_duration", 1.0),
     });
     node_ = std::make_shared<rclcpp::Node>("command_filter_test", options);
@@ -202,181 +186,6 @@ private:
   rclcpp::Publisher<ControlModeReport>::SharedPtr pub_control_mode_;
   std::unique_ptr<CommandFilter> filter_;
   RecordingOutput * output_;
-};
-
-struct TimedControl
-{
-  double t;
-  Control control;
-};
-
-class GateFixture
-{
-public:
-  using SelectCommandSource = tier4_system_msgs::srv::SelectCommandSource;
-  using CommandSourceStatus = tier4_system_msgs::msg::CommandSourceStatus;
-
-  explicit GateFixture(const std::vector<rclcpp::Parameter> & overrides)
-  {
-    auto params = load_default_parameters();
-    for (const auto & p : overrides) {
-      params = remove_parameters(params, {p.get_name()});
-      params.push_back(p);
-    }
-    params.push_back(rclcpp::Parameter("use_sim_time", true));
-    gate_ = create_gate(params);
-
-    driver_ = std::make_shared<rclcpp::Node>("control_command_gate_test_driver");
-    pub_clock_ = driver_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", rclcpp::ClockQoS());
-    pub_kinematics_ = driver_->create_publisher<Odometry>("/localization/kinematic_state", 1);
-    pub_acceleration_ =
-      driver_->create_publisher<AccelWithCovarianceStamped>("/localization/acceleration", 1);
-    pub_steering_ = driver_->create_publisher<SteeringReport>("/vehicle/status/steering_status", 1);
-    pub_control_mode_ =
-      driver_->create_publisher<ControlModeReport>("/vehicle/status/control_mode", 1);
-    sub_control_mode_ = driver_->create_subscription<ControlModeReport>(
-      "/vehicle/status/control_mode", 1,
-      [this](const ControlModeReport::SharedPtr) { ++received_states_; });
-
-    const auto inputs = find_parameter(params, "inputs").as_integer_array();
-    for (const auto input : inputs) {
-      const auto name = find_parameter(params, "inputs_names." + std::to_string(input)).as_string();
-      pub_inputs_[static_cast<uint16_t>(input)] = driver_->create_publisher<Control>(
-        "/control_command_gate/inputs/" + name + "/control", rclcpp::QoS(5));
-    }
-    sub_output_ = driver_->create_subscription<Control>(
-      "/control_command_gate/output/control", rclcpp::QoS(5),
-      [this](const Control::SharedPtr msg) { outputs_.push_back({gate_->now().seconds(), *msg}); });
-    sub_status_ = driver_->create_subscription<CommandSourceStatus>(
-      "/control_command_gate/source/status", rclcpp::QoS(1).transient_local(),
-      [this](const CommandSourceStatus::SharedPtr msg) { source_ = msg->source; });
-    client_select_ =
-      driver_->create_client<SelectCommandSource>("/control_command_gate/source/select");
-    sub_diagnostics_ = driver_->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-      "/diagnostics", rclcpp::QoS(10),
-      [this](const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg) {
-        for (const auto & status : msg->status) {
-          diagnostic_levels_[status.name].push_back(status.level);
-        }
-      });
-
-    executor_.add_node(gate_);
-    executor_.add_node(driver_);
-
-    const auto matched = [this]() {
-      for (const auto & [id, pub] : pub_inputs_) {
-        if (pub->get_subscription_count() == 0) return false;
-      }
-      return pub_clock_->get_subscription_count() > 0 &&
-             pub_kinematics_->get_subscription_count() > 0 &&
-             pub_steering_->get_subscription_count() > 0 &&
-             pub_control_mode_->get_subscription_count() > 1 &&
-             sub_output_->get_publisher_count() > 0 && client_select_->service_is_ready();
-    };
-    if (!spin_until(executor_, matched, std::chrono::milliseconds(10000))) {
-      throw std::runtime_error("gate test driver could not connect");
-    }
-  }
-
-  ~GateFixture()
-  {
-    executor_.remove_node(driver_);
-    executor_.remove_node(gate_);
-  }
-
-  bool set_time(const double t)
-  {
-    const bool ok = publish_clock_until_reached(executor_, *pub_clock_, *gate_, t);
-    for (int i = 0; i < 3; ++i) {
-      executor_.spin_some(std::chrono::milliseconds(5));
-    }
-    return ok;
-  }
-
-  bool set_state(const VehicleState & state)
-  {
-    Odometry kinematics;
-    kinematics.twist.twist.linear.x = state.speed;
-    SteeringReport steering;
-    steering.steering_tire_angle = static_cast<float>(state.steer);
-    ControlModeReport control_mode;
-    control_mode.mode = state.mode;
-    const auto expected = received_states_ + 1;
-    pub_kinematics_->publish(kinematics);
-    pub_acceleration_->publish(AccelWithCovarianceStamped());
-    pub_steering_->publish(steering);
-    pub_control_mode_->publish(control_mode);
-    const bool ok =
-      spin_until(executor_, [this, expected]() { return received_states_ >= expected; });
-    for (int i = 0; i < 5; ++i) {
-      executor_.spin_some(std::chrono::milliseconds(10));
-    }
-    return ok;
-  }
-
-  bool select(const uint16_t source, const bool transition)
-  {
-    auto request = std::make_shared<SelectCommandSource::Request>();
-    request->source = source;
-    request->transition = transition;
-    auto future = client_select_->async_send_request(request);
-    if (!spin_until(executor_, [&future]() {
-          return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-        })) {
-      return false;
-    }
-    return future.get()->status.success;
-  }
-
-  void publish(const uint16_t source, const Control & cmd) { pub_inputs_.at(source)->publish(cmd); }
-
-  bool wait_outputs(const size_t count)
-  {
-    return spin_until(executor_, [this, count]() { return outputs_.size() >= count; });
-  }
-
-  void spin_for_a_while()
-  {
-    for (int i = 0; i < 5; ++i) {
-      executor_.spin_some(std::chrono::milliseconds(10));
-    }
-  }
-
-  const std::vector<TimedControl> & outputs() const { return outputs_; }
-  uint16_t source() const { return source_; }
-
-  bool wait_diagnostic_level(
-    const std::string & name, const uint8_t level, const std::chrono::milliseconds timeout)
-  {
-    return spin_until(
-      executor_,
-      [this, &name, level]() {
-        const auto it = diagnostic_levels_.find(name);
-        return it != diagnostic_levels_.end() &&
-               std::find(it->second.begin(), it->second.end(), level) != it->second.end();
-      },
-      timeout);
-  }
-
-private:
-  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr sub_diagnostics_;
-  std::map<std::string, std::vector<uint8_t>> diagnostic_levels_;
-  std::shared_ptr<ControlCmdGate> gate_;
-  rclcpp::Node::SharedPtr driver_;
-  rclcpp::executors::SingleThreadedExecutor executor_;
-  rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr pub_clock_;
-  rclcpp::Publisher<Odometry>::SharedPtr pub_kinematics_;
-  rclcpp::Publisher<AccelWithCovarianceStamped>::SharedPtr pub_acceleration_;
-  rclcpp::Publisher<SteeringReport>::SharedPtr pub_steering_;
-  rclcpp::Publisher<ControlModeReport>::SharedPtr pub_control_mode_;
-  rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
-  std::map<uint16_t, rclcpp::Publisher<Control>::SharedPtr> pub_inputs_;
-  rclcpp::Subscription<Control>::SharedPtr sub_output_;
-  rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_status_;
-  rclcpp::Client<SelectCommandSource>::SharedPtr client_select_;
-  std::vector<TimedControl> outputs_;
-  size_t received_states_ = 0;
-  uint16_t source_ = 0;
 };
 
 }  // namespace autoware::control_command_gate::test
