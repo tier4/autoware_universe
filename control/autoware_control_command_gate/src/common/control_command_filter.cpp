@@ -40,9 +40,17 @@ bool VehicleCmdFilter::setParameterWithValidation(const VehicleCmdFilterParam & 
   }
   if (std::any_of(
         p.steer_accel_lim_for_steer_cmd.begin(), p.steer_accel_lim_for_steer_cmd.end(),
-        [](const double v) { return !(v > 0.0); })) {
-    std::cerr << "VehicleCmdFilter::setParam() steer_accel_lim_for_steer_cmd must be positive. "
-                 "Parameter initialization failed."
+        [](const double v) { return !std::isfinite(v) || !(v > 0.0); })) {
+    std::cerr << "VehicleCmdFilter::setParam() steer_accel_lim_for_steer_cmd must be finite and "
+                 "positive. Parameter initialization failed."
+              << std::endl;
+    return false;
+  }
+  if (
+    !std::isfinite(p.steer_accel_clip_integral_th_diag) ||
+    p.steer_accel_clip_integral_th_diag < 0.0) {
+    std::cerr << "VehicleCmdFilter::setParam() steer_accel_clip_integral_th_diag must be finite "
+                 "and non-negative. Parameter initialization failed."
               << std::endl;
     return false;
   }
