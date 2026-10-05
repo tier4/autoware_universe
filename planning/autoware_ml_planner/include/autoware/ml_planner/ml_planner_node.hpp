@@ -72,6 +72,8 @@ struct MLPlannerDebugParams
   bool publish_debug_route{true};
   bool publish_debug_map{false};
   bool publish_debug_linestrings{true};
+  // Mesh drawn at the virtual pose; empty draws a box of the vehicle size.
+  std::string virtual_pose_vehicle_mesh;
 };
 
 struct MLPlannerPlanningFactorParams
