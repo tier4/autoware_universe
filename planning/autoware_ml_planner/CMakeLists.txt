@@ -123,6 +123,7 @@ autoware_agnocast_wrapper_register_node(autoware_ml_planner_component
 
 if(BUILD_TESTING)
   set(ML_PLANNER_TEST_SOURCES
+    test/lane_segment_split_test.cpp
     test/lanelet_edge_case_test.cpp
     test/lanelet_integration_test.cpp
     test/lanelet_test.cpp
