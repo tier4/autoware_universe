@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -138,8 +139,16 @@ MLPlannerCore::MLPlannerCore(const MLPlannerParams & params, const VehicleInfo &
   }
 }
 
+void MLPlannerCore::resolve_model_paths()
+{
+  const std::filesystem::path base_dir(params_.base_model_directory);
+  params_.model_path = (base_dir / params_.onnx_model_filename).string();
+  params_.args_path = (base_dir / params_.args_filename).string();
+}
+
 void MLPlannerCore::load_model()
 {
+  resolve_model_paths();
   ml_planner_inference_.reset();
   if (params_.backend == "tensorrt") {
     ml_planner_inference_ = std::make_unique<SingleStepInference>(
