@@ -208,6 +208,35 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySucceedsAcrossCyc
   raw.header.stamp.nanosec = 100000000;
   const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, std::nullopt, false);
   ASSERT_TRUE(second.optimized);
+  EXPECT_TRUE(second.temporal_applied);
+  EXPECT_STREQ(second.temporal_skip_reason, "none");
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencyAppliesWhenEgoIsFarFromGoal)
+{
+  TrajectoryOptimizationParams params;
+  params.temporal_consistency.enable = true;
+  params.goal.snap_distance_m = 100.0;
+  params.goal.unlatch_horizon_s = 8.0;
+  params.goal.unlatch_min_speed_mps = 3.0;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  constexpr double speed = 8.0;
+  odometry_.twist.twist.linear.x = speed;
+  auto raw = make_straight_trajectory(0.0, speed);
+  raw.header.stamp.sec = 0;
+  const auto goal = make_pose(100.0, 0.0);
+
+  const auto first = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
+  ASSERT_TRUE(first.optimized);
+  EXPECT_FALSE(first.temporal_applied);
+  EXPECT_STREQ(first.temporal_skip_reason, "no_warm_start");
+
+  raw.header.stamp.nanosec = 100000000;
+  const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
+  ASSERT_TRUE(second.optimized) << "acados status: " << second.solver_status;
+  EXPECT_TRUE(second.temporal_applied) << "skip=" << second.temporal_skip_reason;
+  EXPECT_STREQ(second.temporal_skip_reason, "none");
 }
 
 TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedWhenReferenceShifted)
@@ -223,6 +252,8 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedWhenRefere
   raw.header.stamp.nanosec = 100000000;
   const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, std::nullopt, true);
   ASSERT_TRUE(second.optimized);
+  EXPECT_FALSE(second.temporal_applied);
+  EXPECT_STREQ(second.temporal_skip_reason, "border_shift");
 }
 
 TEST_F(TimeSequenceTrajectoryOptimizerTest, SnapsTerminalWhenEndpointNearGoal)
@@ -247,7 +278,7 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, SnapsTerminalWhenEndpointNearGoal)
   EXPECT_NEAR(result.trajectory.points.back().pose.position.y, goal.position.y, 0.25);
 }
 
-TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedWhenGoalSnapIsLatched)
+TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencyAppliesWhenGoalSnapIsLatched)
 {
   TrajectoryOptimizationParams params;
   params.temporal_consistency.enable = true;
@@ -265,9 +296,64 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedWhenGoalSn
 
   const auto first = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
   ASSERT_TRUE(first.optimized);
+  EXPECT_TRUE(first.goal_snap_active);
+  EXPECT_FALSE(first.temporal_applied);
+  EXPECT_STREQ(first.temporal_skip_reason, "no_warm_start");
+
   raw.header.stamp.nanosec = 100000000;
   const auto second = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0, goal);
   ASSERT_TRUE(second.optimized);
+  EXPECT_TRUE(second.goal_snap_active);
+  EXPECT_TRUE(second.temporal_applied) << "skip=" << second.temporal_skip_reason;
+  EXPECT_STREQ(second.temporal_skip_reason, "none");
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedPastPreviousPathLength)
+{
+  TrajectoryOptimizationParams params;
+  params.temporal_consistency.enable = true;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  odometry_.twist.twist.linear.x = 0.0;
+  auto stopped = make_straight_trajectory(0.0, 0.0);
+  stopped.header.stamp.sec = 0;
+  const auto first = optimizer.optimize(stopped, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(first.optimized);
+
+  odometry_.twist.twist.linear.x = 8.0;
+  auto moving = make_straight_trajectory(0.0, 8.0);
+  moving.header.stamp.nanosec = 100000000;
+  const auto second = optimizer.optimize(moving, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(second.optimized);
+  EXPECT_FALSE(second.temporal_applied);
+  EXPECT_EQ(second.temporal_valid_stages, 0u);
+  EXPECT_STREQ(second.temporal_skip_reason, "beyond_previous_path");
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencyUncoversStagesPastOldPath)
+{
+  TrajectoryOptimizationParams params;
+  params.temporal_consistency.enable = true;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  constexpr double slow = 2.0;
+  constexpr double fast = 8.0;
+  odometry_.twist.twist.linear.x = slow;
+  auto first_raw = make_straight_trajectory(0.0, slow);
+  first_raw.header.stamp.sec = 0;
+  const auto first = optimizer.optimize(first_raw, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(first.optimized);
+
+  odometry_.twist.twist.linear.x = fast;
+  auto second_raw = make_straight_trajectory(0.0, fast);
+  second_raw.header.stamp.nanosec = 100000000;
+  const auto second = optimizer.optimize(second_raw, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(second.optimized);
+  EXPECT_TRUE(second.temporal_applied);
+  EXPECT_STREQ(second.temporal_skip_reason, "none");
+  // New path is ~64 m, old path ~16 m; only the overlapping prefix gets the loss.
+  EXPECT_GT(second.temporal_valid_stages, 0u);
+  EXPECT_LT(second.temporal_valid_stages, opt_horizon);
 }
 
 TEST_F(TimeSequenceTrajectoryOptimizerTest, DoesNotLatchGoalSnapWhenEgoIsFar)

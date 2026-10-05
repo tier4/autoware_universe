@@ -64,13 +64,15 @@ struct GoalTerminalReference
   double velocity{0.0};
 };
 
-/// Previous plan resampled onto stages 1..N (solver local frame), including velocity.
+/// Previous plan sampled at the same path distance as this stage (solver local frame).
 struct StageTemporalReference
 {
   double x{0.0};
   double y{0.0};
   double yaw{0.0};
   double velocity{0.0};
+  /// False when this stage's station is beyond the previous plan (no clamp).
+  bool valid{false};
 };
 
 struct SolverSolution
@@ -97,8 +99,8 @@ public:
   AcadosSolverWrapper & operator=(AcadosSolverWrapper &&) = delete;
 
   /**
-   * @param temporal_references Previous plan on stages 1..N, or nullptr to omit the term.
-   *                            Same frame as initial_state; yaw on the tracking-reference branch.
+   * @param warm_start Previous solution already resampled onto this cycle's stage times
+   *                   (index s = t_now + s*dt), or nullptr.
    */
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,
