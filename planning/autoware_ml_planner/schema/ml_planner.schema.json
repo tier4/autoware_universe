@@ -288,6 +288,12 @@
               "type": "boolean",
               "default": true,
               "description": "Carry the lateral offset of an overlapping point over to all subsequent points instead of shifting only the overlapping points"
+            },
+            "max_reoptimizations": {
+              "type": "integer",
+              "default": 0,
+              "minimum": 0,
+              "description": "Maximum number of times the optimized trajectory is re-checked against the road borders and, while it still overlaps one, re-optimized with the reference shifted further away. 0 disables the re-check"
             }
           },
           "required": ["enable"]
