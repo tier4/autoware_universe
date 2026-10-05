@@ -146,7 +146,7 @@ LidarMarkerLocalizer::LidarMarkerLocalizer(const rclcpp::NodeOptions & node_opti
   service_trigger_node_ = this->create_service<SetBool>(
     "~/service/trigger_node_srv",
     std::bind(&LidarMarkerLocalizer::service_trigger_node, this, _1, _2),
-    AUTOWARE_DEFAULT_SERVICES_QOS_PROFILE(), points_callback_group);
+    rclcpp::ServicesQoS().get_rmw_qos_profile(), points_callback_group);
 
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, this, false);
@@ -519,10 +519,10 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
       center_intensity_grid_msg.info.origin.position.y +=
         center_intensity_grid_msg.info.height * center_intensity_grid_msg.info.resolution;
       center_intensity_grid_msg.info.origin.orientation =
-        autoware_utils_geometry::create_quaternion_from_rpy(M_PI, 0.0, 0.0);
+        autoware_utils::create_quaternion_from_rpy(M_PI, 0.0, 0.0);
     } else {
       center_intensity_grid_msg.info.origin.orientation =
-        autoware_utils_geometry::create_quaternion_from_rpy(0.0, 0.0, 0.0);
+        autoware_utils::create_quaternion_from_rpy(0.0, 0.0, 0.0);
     }
   } else {
     center_intensity_grid_msg.info.origin.position.y = param_.marker_to_vehicle_offset_y;
@@ -530,7 +530,7 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
       param_.marker_height_from_ground +
       center_intensity_grid_msg.info.height * center_intensity_grid_msg.info.resolution / 2.0;
     center_intensity_grid_msg.info.origin.orientation =
-      autoware_utils_geometry::create_quaternion_from_rpy(-M_PI / 2.0, 0.0, 0.0);
+      autoware_utils::create_quaternion_from_rpy(-M_PI / 2.0, 0.0, 0.0);
   }
   center_intensity_grid_msg.data = std::vector<int8_t>(
     center_intensity_grid_msg.info.width * center_intensity_grid_msg.info.height, -1);

@@ -16,7 +16,6 @@
 #define LIDAR_MARKER_LOCALIZER_HPP_
 
 #include "autoware/localization_util/smart_pose_buffer.hpp"
-#include "autoware/qos_utils/qos_compatibility.hpp"
 
 #include <autoware/landmark_manager/landmark_manager.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
