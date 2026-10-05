@@ -343,4 +343,42 @@ TEST_F(TrajectoryOptimizerTest, UnlatchSkipsTemporalOnceThenRestoresIt)
   EXPECT_TRUE(restored.temporal_applied);
 }
 
+TEST_F(TrajectoryOptimizerTest, GoalPositionChangeClearsPreviousSolutions)
+{
+  TrajectoryOptimizationParams params;
+  params.enable = true;
+  params.temporal_consistency.enable = true;
+  params.goal.snap_distance_m = 1.0;
+  params.goal.unlatch_horizon_s = 20.0;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  constexpr double x0 = 50.0;
+  constexpr double speed = 8.0;
+  odometry_.pose.pose.position.x = x0;
+  odometry_.twist.twist.linear.x = speed;
+  auto raw = make_straight_trajectory(x0, speed);
+  raw.header.stamp.sec = 0;
+  const auto & terminal = raw.points.back().pose.position;
+  const auto goal_a = make_pose(terminal.x + 0.2, 0.0);
+
+  const auto first = optimizer.optimize(raw, odometry_, 0.0, 0, goal_a);
+  ASSERT_TRUE(first.optimized);
+  EXPECT_TRUE(first.goal_snap_active);
+
+  raw.header.stamp.nanosec = 100000000;
+  const auto second = optimizer.optimize(raw, odometry_, 0.0, 0, goal_a);
+  ASSERT_TRUE(second.optimized);
+  EXPECT_TRUE(second.goal_snap_active);
+  EXPECT_TRUE(second.temporal_applied);
+
+  // Nearby new goal still snap-eligible. Clearing previous_solutions_ is required so the
+  // old latched plan is not reused as a temporal reference under a matching latch flag.
+  const auto goal_b = make_pose(terminal.x + 0.5, 0.0);
+  raw.header.stamp.nanosec = 200000000;
+  const auto changed = optimizer.optimize(raw, odometry_, 0.0, 0, goal_b);
+  ASSERT_TRUE(changed.optimized) << "acados status: " << changed.solver_status;
+  EXPECT_TRUE(changed.goal_snap_active);
+  EXPECT_FALSE(changed.temporal_applied);
+}
+
 }  // namespace autoware::ml_planner::test
