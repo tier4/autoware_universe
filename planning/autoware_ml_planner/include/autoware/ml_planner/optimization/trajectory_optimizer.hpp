@@ -71,7 +71,8 @@ public:
    * @param goal_pose Route goal in the same frame as the trajectory. Once the predicted
    *                  endpoint is within goal.snap_distance_m, the terminal pose is snapped
    *                  to this goal and the extra terminal weights stay latched until the
-   *                  goal position changes, or until ego is farther from the goal than
+   *                  goal position changes, a new route is received (see
+   *                  release_goal_snap()), or until ego is farther from the goal than
    *                  unlatch_horizon_s * max(|v|, unlatch_min_speed_mps).
    * @return Optimized trajectory, or the raw trajectory when the solver fails.
    */
@@ -79,6 +80,15 @@ public:
     const Trajectory & raw_trajectory, const Odometry & ego_odometry,
     double current_steering_angle_rad, size_t batch_index,
     const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
+
+  /**
+   * @brief Drop the goal snap latch, e.g. because a new route was received.
+   *
+   * The snap latches again once a predicted endpoint comes within goal.snap_distance_m of the
+   * goal. Like the far-away unlatch, previous solutions are kept: a latch mismatch already
+   * skips the temporal consistency term for one cycle.
+   */
+  void release_goal_snap() { latched_goal_pose_.reset(); }
 
 private:
   TrajectoryOptimizationParams params_;

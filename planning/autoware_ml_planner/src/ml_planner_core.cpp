@@ -231,6 +231,14 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   const LaneletRoute::ConstSharedPtr & route_ptr)
 {
   if (route_ptr) {
+    // The subscriber hands back the last route every cycle; only a different message counts.
+    const bool is_new_route = !route_ptr_ || route_ptr->uuid.uuid != route_ptr_->uuid.uuid ||
+                              route_ptr->header.stamp != route_ptr_->header.stamp;
+#ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
+    if (is_new_route && trajectory_optimizer_) {
+      trajectory_optimizer_->release_goal_snap();
+    }
+#endif
     route_ptr_ = route_ptr;
   }
   for (const auto & msg : ego_kinematic_states) {
