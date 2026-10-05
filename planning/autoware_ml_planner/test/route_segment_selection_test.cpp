@@ -15,6 +15,8 @@
 #include "autoware/ml_planner/dimensions.hpp"
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 
+#include <Eigen/Geometry>
+
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/lanelet_segment.hpp>
 
@@ -35,6 +37,15 @@ using autoware_planning_msgs::msg::LaneletSegment;
 
 namespace
 {
+// Map-to-ego transform of an ego at (x, y) heading `yaw`.
+Eigen::Matrix4d map_to_ego(const double x, const double y, const double yaw)
+{
+  Eigen::Isometry3d ego_to_map = Eigen::Isometry3d::Identity();
+  ego_to_map.translate(Eigen::Vector3d(x, y, 0.0));
+  ego_to_map.rotate(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()));
+  return ego_to_map.inverse().matrix();
+}
+
 lanelet::Lanelet make_straight_lanelet(
   const double start_x, const double start_y, const double end_x, const double end_y)
 {
@@ -99,8 +110,8 @@ protected:
 TEST_F(RouteSegmentSelectionTest, SelectsSegmentAlignedWithEgoAtSelfCrossing)
 {
   // The ego drives east at the crossing point, where it is on both lanelets.
-  const auto indices =
-    context_->select_route_segment_indices(route_, 50.0, 0.3, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
+  const auto indices = context_->select_route_segment_indices(
+    route_, map_to_ego(50.0, 0.3, 0.0), 50.0, 0.3, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
 
   ASSERT_EQ(indices.size(), 2U);
   EXPECT_EQ(indices.front(), array_index(eastbound_));
@@ -110,7 +121,7 @@ TEST_F(RouteSegmentSelectionTest, SelectsSegmentAlignedWithEgoAtSelfCrossing)
 TEST_F(RouteSegmentSelectionTest, SelectsCrossingSegmentWhenEgoHeadsAlongIt)
 {
   const auto indices = context_->select_route_segment_indices(
-    route_, 50.3, 0.0, 0.0, M_PI / 2.0, NUM_SEGMENTS_IN_ROUTE);
+    route_, map_to_ego(50.3, 0.0, M_PI / 2.0), 50.3, 0.0, 0.0, M_PI / 2.0, NUM_SEGMENTS_IN_ROUTE);
 
   ASSERT_EQ(indices.size(), 1U);
   EXPECT_EQ(indices.front(), array_index(northbound_));
@@ -119,8 +130,8 @@ TEST_F(RouteSegmentSelectionTest, SelectsCrossingSegmentWhenEgoHeadsAlongIt)
 TEST_F(RouteSegmentSelectionTest, FallsBackToClosestSegmentWhenNoSegmentIsAligned)
 {
   // The ego heads west, which matches neither lanelet direction, and is only on `northbound_`.
-  const auto indices =
-    context_->select_route_segment_indices(route_, 50.0, 3.0, 0.0, M_PI, NUM_SEGMENTS_IN_ROUTE);
+  const auto indices = context_->select_route_segment_indices(
+    route_, map_to_ego(50.0, 3.0, M_PI), 50.0, 3.0, 0.0, M_PI, NUM_SEGMENTS_IN_ROUTE);
 
   ASSERT_EQ(indices.size(), 1U);
   EXPECT_EQ(indices.front(), array_index(northbound_));

@@ -16,12 +16,15 @@
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <Eigen/Core>
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -51,6 +54,18 @@ protected:
     lanelet.setAttribute("speed_limit", "30");
     lanelet_map_ptr_->add(lanelet);
     return lanelet.id();
+  }
+
+  // Map-to-ego transform for an ego at (x, 0) with the given heading.
+  static Eigen::Matrix4d ego_at(const double x, const double yaw = 0.0)
+  {
+    Eigen::Matrix4d ego_to_map = Eigen::Matrix4d::Identity();
+    ego_to_map(0, 0) = std::cos(yaw);
+    ego_to_map(0, 1) = -std::sin(yaw);
+    ego_to_map(1, 0) = std::sin(yaw);
+    ego_to_map(1, 1) = std::cos(yaw);
+    ego_to_map(0, 3) = x;
+    return ego_to_map.inverse();
   }
 
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
@@ -120,9 +135,26 @@ TEST_F(LaneSegmentSplitTest, RouteSelectionStartsFromClosestPiece)
 
   // Ego at x = 70 m lies on the fourth piece [60, 80]; the pieces behind it are dropped.
   const std::vector<int64_t> selected =
-    context.select_route_segment_indices(route, 70.0, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
+    context.select_route_segment_indices(
+      route, ego_at(70.0), 70.0, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
   const std::vector<int64_t> expected{3, 4};
   EXPECT_EQ(selected, expected);
+}
+
+TEST_F(LaneSegmentSplitTest, LaneSelectionKeepsFiftyMetresBehind)
+{
+  const preprocess::LaneSegmentContext context(lanelet_map_ptr_);
+  // Pieces are [0,20], [20,40], [40,60], [60,80], [80,100]. Facing +x at x = 100, only points
+  // with x >= 50 are inside, so the first two pieces are dropped.
+  std::vector<int64_t> forward =
+    context.select_lane_segment_indices(ego_at(100.0), NUM_SEGMENTS_IN_LANE);
+  std::sort(forward.begin(), forward.end());
+  EXPECT_EQ(forward, (std::vector<int64_t>{2, 3, 4}));
+
+  // Facing -x at the same spot, the whole lanelet lies ahead within 150 m.
+  const std::vector<int64_t> backward =
+    context.select_lane_segment_indices(ego_at(100.0, M_PI), NUM_SEGMENTS_IN_LANE);
+  EXPECT_EQ(backward.size(), 5u);
 }
 
 }  // namespace autoware::ml_planner::test

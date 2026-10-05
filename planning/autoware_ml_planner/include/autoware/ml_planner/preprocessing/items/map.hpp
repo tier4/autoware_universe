@@ -163,13 +163,13 @@ public:
    *
    * @param lanelet_map_ptr Shared pointer to the lanelet map.
    */
-  explicit LaneSegmentContext(
-    const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr);
+  explicit LaneSegmentContext(const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr);
 
   /**
    * @brief Select route segment indices based on route and constraints.
    *
    * @param route The lanelet route to process.
+   * @param transform_matrix Map-to-ego transform, used for the ego-frame range check.
    * @param center_x X-coordinate of the center point.
    * @param center_y Y-coordinate of the center point.
    * @param center_z Z-coordinate of the center point.
@@ -178,20 +178,19 @@ public:
    * @return Vector of lane segment indices.
    */
   std::vector<int64_t> select_route_segment_indices(
-    const LaneletRoute & route, const double center_x, const double center_y, const double center_z,
-    const double center_yaw, const int64_t max_segments) const;
+    const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+    const double center_y, const double center_z, const double center_yaw,
+    const int64_t max_segments) const;
 
   /**
    * @brief Select lane segment indices based on distances and constraints.
    *
-   * @param center_x X-coordinate of the center point.
-   * @param center_y Y-coordinate of the center point.
+   * @param transform_matrix Map-to-ego transform; the range check and distances use the ego frame.
    * @param max_segments Maximum number of segments to select.
    * @return Vector of lane segment indices.
    */
   std::vector<int64_t> select_lane_segment_indices(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-    const int64_t max_segments) const;
+    const Eigen::Matrix4d & transform_matrix, const int64_t max_segments) const;
 
   /**
    * @brief Create tensor data from selected segment indices.
@@ -220,6 +219,7 @@ public:
    * @brief Get the first traffic light on the route from ego position forward.
    *
    * @param route The lanelet route.
+   * @param transform_matrix Map-to-ego transform, used for the ego-frame range check.
    * @param center_x X-coordinate of ego center.
    * @param center_y Y-coordinate of ego center.
    * @param center_z Z-coordinate of ego center.
@@ -229,8 +229,8 @@ public:
    *         empty (traffic_light_group_id=0, elements empty) if no traffic light on route.
    */
   autoware_perception_msgs::msg::TrafficLightGroup get_first_traffic_light_on_route(
-    const LaneletRoute & route, const double center_x, const double center_y, const double center_z,
-    const double center_yaw,
+    const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+    const double center_y, const double center_z, const double center_yaw,
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map) const;
 
   /**
@@ -244,13 +244,11 @@ public:
     return lanelet_id_to_array_index_;
   }
 
-  // Create intersection-area and map-polyline tensor data
-  xt::xarray<float> create_intersection_area_tensor(
-    const Eigen::Matrix4d & transform_matrix, double center_x, double center_y) const;
-  xt::xarray<float> create_stop_line_tensor(
-    const Eigen::Matrix4d & transform_matrix, double center_x, double center_y) const;
-  xt::xarray<float> create_road_border_tensor(
-    const Eigen::Matrix4d & transform_matrix, double center_x, double center_y) const;
+  // Create intersection-area and map-polyline tensor data. Polylines are kept when a point lies
+  // within the same ego-frame box as lane segments.
+  xt::xarray<float> create_intersection_area_tensor(const Eigen::Matrix4d & transform_matrix) const;
+  xt::xarray<float> create_stop_line_tensor(const Eigen::Matrix4d & transform_matrix) const;
+  xt::xarray<float> create_road_border_tensor(const Eigen::Matrix4d & transform_matrix) const;
 
 private:
   const autoware::ml_planner::LaneletMap lanelet_map_;
