@@ -40,6 +40,8 @@ struct OptimizationResult
   bool optimized{false};
   int solver_status{0};
   double solve_time_ms{0.0};
+  bool goal_snap_active{false};
+  bool temporal_applied{false};
 };
 
 /**
@@ -66,6 +68,11 @@ public:
    * @param ego_odometry Current ego kinematic state (base_link in map frame).
    * @param current_steering_angle_rad Measured steering angle.
    * @param batch_index Candidate index; warm starts are kept per candidate.
+   * @param goal_pose Route goal in the same frame as the trajectory. Once the predicted
+   *                  endpoint is within goal.snap_distance_m, the terminal pose is snapped
+   *                  to this goal and the extra terminal weights stay latched until the
+   *                  goal position changes, or until ego is farther from the goal than
+   *                  unlatch_horizon_s * max(|v|, unlatch_min_speed_mps).
    * @return Optimized trajectory, or the raw trajectory when the solver fails.
    */
   OptimizationResult optimize(
@@ -74,6 +81,7 @@ public:
     const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
 
 private:
+  void reset_goal_snap_state();
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;
   double max_steering_angle_rad_;
