@@ -1,10 +1,12 @@
 /**:
   ros__parameters:
     # Complete plugin execution order: modifiers followed by optimizers.
+    # TSO then ModelPlanningFactorID, then velocity limits / remaining plugins.
     plugin_names:
+      - "autoware::trajectory_modifier::plugin::TrajectoryTimeSequenceRawOptimizer"
+      - "autoware::trajectory_modifier::plugin::ModelPlanningFactorID"
       - "autoware::trajectory_modifier::plugin::ExternalVelocityLimit"
       - "autoware::trajectory_modifier::plugin::MapVelocityLimits"
-      - "autoware::trajectory_modifier::plugin::TrajectoryTimeSequenceRawOptimizer"
       - "autoware::trajectory_modifier::plugin::StopPointFixer"
       - "autoware::trajectory_modifier::plugin::SurroundObstacleStop"
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
@@ -27,6 +29,7 @@
     use_traffic_light_stop: true
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
+    use_model_planning_factor_id: true
 
     use_akima_spline_interpolation: true
     use_eb_smoother: false
@@ -55,6 +58,7 @@
       jerk_limit: 3.0 # [m/s^3]
       delay_response_time: 0.5 # [s] delay response time used to estimate the minimum ego stopping distance
       arrived_distance_threshold: 0.5 # threshold to check if the ego vehicle has arrived at the stop point [m]
+      ego_stopped_vel_th: 0.1  # [m/s] velocity threshold below which ego is considered stopped
 
     # Obstacle Stop Plugin Parameters
     obstacle_stop:
@@ -126,6 +130,8 @@
       th_stable_duration_red: 0.2 # [s]
       th_stable_duration_amber: 0.2 # [s]
       th_stable_duration_unknown: 0.5 # [s]
+      hold_position_when_stopped: true # hold in place when already stopped near the stop point (avoids red-light creep)
+      hold_position_distance_threshold: 2.0 # [m] hold only if target stop is within this distance
       amber_rejection:
         th_hysteresis: 0.5 # [s]
         reject_if_stop_detected: true # reject if we detect a previous stop attempt from input trajectory
@@ -179,8 +185,16 @@
         pointcloud: 0.5
       hysteresis_distance: 0.1
       hysteresis_time: 0.2
-      ego_stopped_vel_th: 0.1 # [m/s]
 
     map_velocity_limits:
       limit_velocity_from_map_debug_lanelet_ids: [0]
       limit_velocity_from_map_debug_max_velocities: [1000.0]
+
+    # ModelPlanningFactorID: inspect kinematics and publish
+    # /planning/planning_factors/diffusion_planner. Does not mutate.
+    model_planning_factor_id:
+      enable_stop: true
+      enable_slowdown: false
+      stop_velocity_threshold: 0.1       # [m/s]
+      stop_keep_duration_threshold: 1.0  # [s]
+      slowdown_accel_threshold: -0.3     # [m/s^2]

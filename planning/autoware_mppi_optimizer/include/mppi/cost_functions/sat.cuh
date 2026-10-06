@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #pragma once
+#include <mppi/utils/read_only_load.cuh>
+
 #include <cmath>
 
 /// @brief rectangle to segment intersection check
@@ -20,8 +22,10 @@ __host__ __device__ __forceinline__ bool checkRectSegmentIntersections(
   const float ego_x, const float ego_y, const float ego_yaw, const float front_ext,
   const float back_ext, const float left_ext, const float right_ext, const float margin,
   const float * __restrict__ seg_x0, const float * __restrict__ seg_y0,
-  const float * __restrict__ seg_x1, const float * __restrict__ seg_y1, const int num_segments)
+  const float * __restrict__ seg_x1, const float * __restrict__ seg_y1, const int num_segments,
+  int * intersecting_segment = nullptr)
 {
+  if (intersecting_segment != nullptr) *intersecting_segment = -1;
   if (num_segments <= 0) return false;
 
   // 1. Calculate local AABB bounds with margin
@@ -51,10 +55,10 @@ __host__ __device__ __forceinline__ bool checkRectSegmentIntersections(
 #pragma unroll 4
   for (int i = 0; i < num_segments; ++i) {
     // Shift global coordinates to ego-relative origin
-    const float dx0 = seg_x0[i] - ego_x;
-    const float dy0 = seg_y0[i] - ego_y;
-    const float dx1 = seg_x1[i] - ego_x;
-    const float dy1 = seg_y1[i] - ego_y;
+    const float dx0 = mppi::memory::loadReadOnly(&seg_x0[i]) - ego_x;
+    const float dy0 = mppi::memory::loadReadOnly(&seg_y0[i]) - ego_y;
+    const float dx1 = mppi::memory::loadReadOnly(&seg_x1[i]) - ego_x;
+    const float dy1 = mppi::memory::loadReadOnly(&seg_y1[i]) - ego_y;
 
     // Rotate to align with AABB
     float lx0 = c * dx0 + s * dy0;
@@ -90,6 +94,7 @@ __host__ __device__ __forceinline__ bool checkRectSegmentIntersections(
     if (D > R) continue;
 
     // If it passes all 3 SAT tests, we have an intersection!
+    if (intersecting_segment != nullptr) *intersecting_segment = i;
     return true;
   }
   return false;

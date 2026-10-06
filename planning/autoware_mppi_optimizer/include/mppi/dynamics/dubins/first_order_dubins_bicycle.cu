@@ -17,6 +17,57 @@ __host__ __device__ inline int steerDelayTapIndex(const int i)
   return static_cast<int>(S::STEER_CMD_D0) + i;
 }
 
+__host__ __device__ float restartBlend(const float velocity, const float release_velocity_threshold)
+{
+  const float threshold = fmaxf(release_velocity_threshold, 0.0F);
+  if (threshold <= 1.0E-6F) {
+    return 1.0F;
+  }
+  const float ratio = fminf(fmaxf(fabsf(velocity) / threshold, 0.0F), 1.0F);
+  return ratio * ratio * (3.0F - 2.0F * ratio);
+}
+
+/** Bound an issued steering command relative to the last accepted command and command rate. */
+__host__ __device__ void enforceSteeringCommandContinuity(
+  const FirstOrderDubinsBicycleParams & p, const float * state, float * control)
+{
+  const float dt = FirstOrderDubinsBicycleParams::kControlDt;
+  const float velocity = state[static_cast<int>(S::VEL_X)];
+  const bool hold_active =
+    state[static_cast<int>(S::SHORT_REFERENCE_STEERING_HOLD_ACTIVE)] > 0.5F ||
+    (state[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] > 0.5F &&
+     fabsf(velocity) < fmaxf(p.standstill_steer_hold_exit_velocity_mps, 0.0F));
+  if (hold_active) {
+    const float held_command = state[static_cast<int>(S::PREVIOUS_STEER_CMD)];
+    control[static_cast<int>(C::STEER_CMD)] =
+      fmaxf(fminf(held_command, p.max_steer_angle), -p.max_steer_angle);
+    return;
+  }
+  const float blend = restartBlend(velocity, p.restart_velocity_threshold_mps);
+  // Above the release speed, allow the complete steering-command range in one control step. The
+  // physical actuator-rate and lateral-jerk limits remain active in state propagation.
+  const float moving_rate_limit = 2.0F * fmaxf(p.max_steer_angle, 0.0F) / dt;
+  const float stopped_rate_limit =
+    fminf(fmaxf(p.restart_steer_command_rate_lim, 0.0F), moving_rate_limit);
+  const float rate_limit = stopped_rate_limit + blend * (moving_rate_limit - stopped_rate_limit);
+  // This permits a full command-rate reversal within one step after restart protection releases.
+  const float moving_acceleration_limit = 2.0F * moving_rate_limit / dt;
+  const float stopped_acceleration_limit = fmaxf(p.restart_steer_command_acceleration_lim, 0.0F);
+  const float acceleration_limit =
+    stopped_acceleration_limit + blend * (moving_acceleration_limit - stopped_acceleration_limit);
+
+  const float previous_command = state[static_cast<int>(S::PREVIOUS_STEER_CMD)];
+  const float previous_rate = state[static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)];
+  const int steer_index = static_cast<int>(C::STEER_CMD);
+  float requested_rate = (control[steer_index] - previous_command) / dt;
+  requested_rate = fmaxf(
+    fminf(requested_rate, previous_rate + acceleration_limit * dt),
+    previous_rate - acceleration_limit * dt);
+  requested_rate = fmaxf(fminf(requested_rate, rate_limit), -rate_limit);
+  control[steer_index] =
+    fmaxf(fminf(previous_command + requested_rate * dt, p.max_steer_angle), -p.max_steer_angle);
+}
+
 /** Resolve plant-facing commands: front of each delay pipe, or raw u when N=0. */
 __host__ __device__ void resolveDelayedControl(
   const FirstOrderDubinsBicycleParams & p, const float * state, const float * control,
@@ -39,6 +90,20 @@ __host__ __device__ void advanceInputDelayPipes(
   const FirstOrderDubinsBicycleParams & p, const float * state, float * next_state,
   const float * control)
 {
+  next_state[static_cast<int>(S::PREVIOUS_ACCEL_CMD)] =
+    control[static_cast<int>(C::ACCELERATION_CMD)];
+  next_state[static_cast<int>(S::PREVIOUS_STEER_CMD)] = control[static_cast<int>(C::STEER_CMD)];
+  next_state[static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)] =
+    (control[static_cast<int>(C::STEER_CMD)] - state[static_cast<int>(S::PREVIOUS_STEER_CMD)]) /
+    FirstOrderDubinsBicycleParams::kControlDt;
+  next_state[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] =
+    state[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] > 0.5F &&
+        fabsf(next_state[static_cast<int>(S::VEL_X)]) <
+          fmaxf(p.standstill_steer_hold_exit_velocity_mps, 0.0F)
+      ? 1.0F
+      : 0.0F;
+  next_state[static_cast<int>(S::SHORT_REFERENCE_STEERING_HOLD_ACTIVE)] =
+    state[static_cast<int>(S::SHORT_REFERENCE_STEERING_HOLD_ACTIVE)] > 0.5F ? 1.0F : 0.0F;
   constexpr int kMax = FirstOrderDubinsBicycleParams::kMaxInputDelaySteps;
   const int n_acc = clampInputDelaySteps(p.acc_delay_steps);
   const int n_steer = clampInputDelaySteps(p.steer_delay_steps);
@@ -93,8 +158,16 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
   state_der[static_cast<int>(S::POS_X)] = v * cos_yaw;
   state_der[static_cast<int>(S::POS_Y)] = v * sin_yaw;
 
-  const float steer_dot = clampSteerRate(p, (steer_cmd - steer) / steer_tau);
+  // Sampled controls are target steering angles and may jump because of rollout noise. Clamp the
+  // realized actuator derivative here so every host/device integration step remains achievable.
+  const float steer_dot = clampSteerRate(p, v, (steer_cmd - steer) / steer_tau);
   state_der[static_cast<int>(S::STEER_ANGLE)] = steer_dot;
+
+  state_der[static_cast<int>(S::PREVIOUS_ACCEL_CMD)] = 0.0F;
+  state_der[static_cast<int>(S::PREVIOUS_STEER_CMD)] = 0.0F;
+  state_der[static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)] = 0.0F;
+  state_der[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] = 0.0F;
+  state_der[static_cast<int>(S::SHORT_REFERENCE_STEERING_HOLD_ACTIVE)] = 0.0F;
 
   // Delay taps are discrete; keep continuous ders at zero then overwrite in step().
 #ifdef __CUDA_ARCH__
@@ -104,6 +177,46 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
     state_der[accelDelayTapIndex(i)] = 0.0F;
     state_der[steerDelayTapIndex(i)] = 0.0F;
   }
+}
+// Transition outputs must be computed before the caller advances/swaps the state buffers.
+// Rate costs use realized increments, including actuator lag, queue delay and saturation.
+__host__ __device__ void transitionRates(
+  const FirstOrderDubinsBicycleParams & p, const float * state, const float * next_state,
+  const float * control, float * output, const float dt)
+{
+#ifdef __CUDA_ARCH__
+  // All Y workers reach the caller's barriers; only one writes each rollout's outputs.
+  if (threadIdx.y != 0) return;
+#endif
+  using O = FirstOrderDubinsBicycleParams::OutputIndex;
+  const float inv_dt = 1.0F / dt;
+  const float acceleration_rate =
+    (next_state[static_cast<int>(S::ACCELERATION)] - state[static_cast<int>(S::ACCELERATION)]) *
+    inv_dt;
+  const float steering_rate =
+    (next_state[static_cast<int>(S::STEER_ANGLE)] - state[static_cast<int>(S::STEER_ANGLE)]) *
+    inv_dt;
+  const float v = state[static_cast<int>(S::VEL_X)];
+  const float acceleration = (next_state[static_cast<int>(S::VEL_X)] - v) * inv_dt;
+  const float steering = state[static_cast<int>(S::STEER_ANGLE)];
+  const float wheel_base = fmaxf(p.wheel_base, 1.0E-4F);
+  const float cosine = cosf(steering);
+  const float curvature = tanf(steering) / wheel_base;
+  const float curvature_rate = steering_rate / (wheel_base * fmaxf(cosine * cosine, 1.0E-6F));
+  output[static_cast<int>(O::LONGITUDINAL_JERK)] = acceleration_rate;
+  output[static_cast<int>(O::STEERING_RATE)] = steering_rate;
+  // Preserve the lateral component of inertial jerk expressed in the vehicle frame:
+  // d(v^2*kappa)/dt + yaw_rate*a = v^2*kappa_dot + 3*v*a*kappa.
+  // Evaluate the stage derivative at the pre-step state with realized rates.
+  output[static_cast<int>(O::LATERAL_JERK)] =
+    v * v * curvature_rate + 3.0F * v * acceleration * curvature;
+  output[static_cast<int>(O::ACCEL_COMMAND_RATE)] =
+    (control[static_cast<int>(C::ACCELERATION_CMD)] -
+     state[static_cast<int>(S::PREVIOUS_ACCEL_CMD)]) *
+    inv_dt;
+  output[static_cast<int>(O::STEER_COMMAND_RATE)] =
+    (control[static_cast<int>(C::STEER_CMD)] - state[static_cast<int>(S::PREVIOUS_STEER_CMD)]) *
+    inv_dt;
 }
 }  // namespace
 
@@ -166,6 +279,8 @@ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::step(
   this->updateState(state, next_state, state_der, dt);
   advanceInputDelayPipes(this->params_, state.data(), next_state.data(), control.data());
   this->stateToOutput(next_state, output);
+  transitionRates(
+    this->params_, state.data(), next_state.data(), control.data(), output.data(), dt);
 }
 
 template <class CLASS_T, class PARAMS_T>
@@ -219,13 +334,20 @@ __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::step(
   }
   __syncthreads();
   this->stateToOutput(next_state, output);
+  transitionRates(this->params_, state, next_state, control, output, dt);
 }
 
 template <class CLASS_T, class PARAMS_T>
 __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::computeDynamics(
   float * state, float * control, float * state_der, float *)
 {
-  firstOrderDubinsBicycleDeriv(this->params_, state, control, state_der);
+  // Compute derivative locally to avoid read-after-write races without barriers,
+  // then partition the write to shared memory to avoid write-write races.
+  float local_der[PARENT_CLASS::STATE_DIM];
+  firstOrderDubinsBicycleDeriv(this->params_, state, control, local_der);
+  for (int i = threadIdx.y; i < PARENT_CLASS::STATE_DIM; i += blockDim.y) {
+    state_der[i] = local_der[i];
+  }
 }
 
 template <class CLASS_T, class PARAMS_T>
@@ -233,9 +355,8 @@ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::enforceConstraints(
   Eigen::Ref<state_array> state, Eigen::Ref<control_array> control)
 {
   PARENT_CLASS::enforceConstraints(state, control);
-  if (!this->params_.prevent_reverse_velocity) {
-    return;
-  }
+  enforceSteeringCommandContinuity(this->params_, state.data(), control.data());
+  if (!this->params_.prevent_reverse_velocity) return;
 
   const int velocity_idx = static_cast<int>(S::VEL_X);
   const int acceleration_idx = static_cast<int>(C::ACCELERATION_CMD);
@@ -251,9 +372,11 @@ __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::enforceConstrain
   float * state, float * control)
 {
   PARENT_CLASS::enforceConstraints(state, control);
-  if (threadIdx.y != 0 || !this->params_.prevent_reverse_velocity) {
+  if (threadIdx.y != 0) {
     return;
   }
+  enforceSteeringCommandContinuity(this->params_, state, control);
+  if (!this->params_.prevent_reverse_velocity) return;
 
   const int velocity_idx = static_cast<int>(S::VEL_X);
   const int acceleration_idx = static_cast<int>(C::ACCELERATION_CMD);
@@ -275,6 +398,13 @@ template <class CLASS_T, class PARAMS_T>
 __host__ __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::stateToOutput(
   const float * state, float * output)
 {
+#ifdef __CUDA_ARCH__
+  // Output is shared by the Y workers of one rollout. This function contains no barriers;
+  // non-writers return to the collective step/initialization call and its synchronization.
+  if (threadIdx.y != 0) {
+    return;
+  }
+#endif
   using O = FirstOrderDubinsBicycleParams::OutputIndex;
   const float v = state[static_cast<int>(S::VEL_X)];
 
@@ -286,6 +416,10 @@ __host__ __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::stateTo
   output[static_cast<int>(O::STEER_ANGLE)] = state[static_cast<int>(S::STEER_ANGLE)];
   output[static_cast<int>(O::ACCELERATION)] = state[static_cast<int>(S::ACCELERATION)];
   output[static_cast<int>(O::TOTAL_VELOCITY)] = fabsf(v);
+  // State-only conversion has no transition; step() replaces these rate placeholders.
+  output[static_cast<int>(O::STEERING_RATE)] = 0.0F;
+  output[static_cast<int>(O::ACCEL_COMMAND_RATE)] = 0.0F;
+  output[static_cast<int>(O::STEER_COMMAND_RATE)] = 0.0F;
   output[static_cast<int>(O::LONGITUDINAL_JERK)] = 0.0F;
   output[static_cast<int>(O::LATERAL_JERK)] = 0.0F;
 }
@@ -308,5 +442,12 @@ FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::stateFromMap(
   set_if("POS_Y", static_cast<int>(S::POS_Y));
   set_if("STEER_ANGLE", static_cast<int>(S::STEER_ANGLE));
   set_if("ACCELERATION", static_cast<int>(S::ACCELERATION));
+  set_if("PREVIOUS_ACCEL_CMD", static_cast<int>(S::PREVIOUS_ACCEL_CMD));
+  set_if("PREVIOUS_STEER_CMD", static_cast<int>(S::PREVIOUS_STEER_CMD));
+  set_if("PREVIOUS_STEER_CMD_RATE", static_cast<int>(S::PREVIOUS_STEER_CMD_RATE));
+  set_if("STEERING_COMMAND_HOLD_ACTIVE", static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE));
+  set_if(
+    "SHORT_REFERENCE_STEERING_HOLD_ACTIVE",
+    static_cast<int>(S::SHORT_REFERENCE_STEERING_HOLD_ACTIVE));
   return s;
 }

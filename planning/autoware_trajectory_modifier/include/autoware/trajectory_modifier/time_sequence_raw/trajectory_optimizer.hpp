@@ -43,6 +43,15 @@ struct OptimizationResult
   /// Chord-speed seed for acados x0 (first three poses), not ego twist.
   double initial_speed_mps{0.0};
   double initial_accel_mps2{0.0};
+  bool temporal_applied{false};
+  bool goal_snap_active{false};
+  /// Literal: none | disabled | border_shift | no_warm_start | stamp_rewind |
+  ///          warm_start_stale | goal_flag_mismatch | beyond_previous_path
+  const char * temporal_skip_reason{"disabled"};
+  /// Stages 0..N-1 whose station is still on the previous path (consistency loss applied).
+  size_t temporal_valid_stages{0};
+  /// Age of the stored previous solution, or -1 if none existed this cycle.
+  double warm_start_age_s{-1.0};
 };
 
 /// Tracks a pose-only time-indexed trajectory with a kinematic bicycle OCP.
@@ -60,17 +69,25 @@ public:
    * @param goal_pose Route goal in the same frame as the trajectory. Once the predicted
    *                  endpoint is within goal.snap_distance_m, the terminal pose is snapped
    *                  to this goal and the extra terminal weights stay latched until the
-   *                  goal position changes.
+   *                  goal position changes (which also clears the previous-plan buffer), or
+   *                  until ego is farther from the goal than
+   *                  unlatch_horizon_s * max(|v|, unlatch_min_speed_mps). Far-away unlatch
+   *                  drops the latch only.
+   * @param reference_was_shifted True when road-border avoidance moved the input. Temporal
+   *                             consistency is then skipped so a geometric correction is not
+   *                             blended with the previous (unshifted) plan.
    */
   OptimizationResult optimize(
     const Trajectory & raw_trajectory, const Odometry & ego_odometry,
     const std::optional<double> & current_steering_angle_rad,
     double current_longitudinal_accel_mps2, size_t batch_index,
-    const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
+    const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt,
+    bool reference_was_shifted = false);
 
   void clear_warm_start(size_t batch_index);
 
 private:
+  void reset_goal_snap_state();
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;
   double max_steering_angle_rad_;

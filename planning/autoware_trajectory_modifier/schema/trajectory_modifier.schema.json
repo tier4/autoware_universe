@@ -28,6 +28,8 @@
           "type": "array",
           "description": "Ordered list of modifier and optimizer plugin class names",
           "default": [
+            "autoware::trajectory_modifier::plugin::TrajectoryTimeSequenceRawOptimizer",
+            "autoware::trajectory_modifier::plugin::ModelPlanningFactorID",
             "autoware::trajectory_modifier::plugin::ExternalVelocityLimit",
             "autoware::trajectory_modifier::plugin::MapVelocityLimits",
             "autoware::trajectory_modifier::plugin::StopPointFixer",
@@ -79,6 +81,46 @@
           "type": "boolean",
           "description": "Enable the traffic light stop modifier plugin",
           "default": true
+        },
+        "use_model_planning_factor_id": {
+          "type": "boolean",
+          "description": "Enable ModelPlanningFactorID (publishes module diffusion_planner)",
+          "default": true
+        },
+        "model_planning_factor_id": {
+          "type": "object",
+          "description": "Inspection-only stop/slowdown labeling from trajectory kinematics",
+          "additionalProperties": false,
+          "properties": {
+            "enable_stop": {
+              "type": "boolean",
+              "description": "Publish STOP planning factors inferred from the planner trajectory",
+              "default": true
+            },
+            "enable_slowdown": {
+              "type": "boolean",
+              "description": "Publish SLOW_DOWN planning factors inferred from the planner trajectory",
+              "default": false
+            },
+            "stop_velocity_threshold": {
+              "type": "number",
+              "description": "Velocity at or below which a trajectory point is treated as stopped [m/s]",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "stop_keep_duration_threshold": {
+              "type": "number",
+              "description": "Minimum duration the trajectory must remain stopped to accept the stop [s]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "slowdown_accel_threshold": {
+              "type": "number",
+              "description": "Acceleration below which a slowdown section starts [m/s^2]",
+              "default": -0.3,
+              "maximum": 0.0
+            }
+          }
         },
         "use_velocity_modifier": {
           "type": "boolean",
@@ -157,6 +199,12 @@
               "type": "number",
               "description": "Threshold to check if the ego vehicle has arrived at the stop point [m]",
               "default": 0.5,
+              "minimum": 0
+            },
+            "ego_stopped_vel_th": {
+              "type": "number",
+              "description": "Velocity threshold below which ego is considered stopped [m/s]",
+              "default": 0.1,
               "minimum": 0
             }
           },
@@ -757,12 +805,6 @@
               "description": "Time hysteresis threshold for clearing stop [s]",
               "default": 0.2,
               "minimum": 0
-            },
-            "ego_stopped_vel_th": {
-              "type": "number",
-              "description": "Velocity threshold below which ego vehicle is considered stopped [m/s]",
-              "default": 0.1,
-              "minimum": 0
             }
           },
           "required": [],
@@ -831,6 +873,17 @@
               "type": "number",
               "description": "Threshold for amber rejection hysteresis [s]",
               "default": 0.5,
+              "minimum": 0
+            },
+            "hold_position_when_stopped": {
+              "type": "boolean",
+              "description": "When ego is already stopped at red/amber, hold in place instead of inserting a stop point ahead that would pull the vehicle forward",
+              "default": false
+            },
+            "hold_position_distance_threshold": {
+              "type": "number",
+              "description": "Maximum distance to the target stop point at which a stopped ego holds in place [m]. Farther short-stops are still allowed to pull forward to close the gap",
+              "default": 2.0,
               "minimum": 0
             },
             "amber_rejection": {

@@ -159,6 +159,10 @@ TEST(TrajectoryModifierParamsTest, PreservesDefaultCombinedPipelineOrder)
 {
   const TrajectoryModifierParams params;
   const std::vector<std::string> expected = {
+    "autoware::trajectory_modifier::plugin::TrajectoryTimeSequenceRawOptimizer",
+    "autoware::trajectory_modifier::plugin::ModelPlanningFactorID",
+    "autoware::trajectory_modifier::plugin::ExternalVelocityLimit",
+    "autoware::trajectory_modifier::plugin::MapVelocityLimits",
     "autoware::trajectory_modifier::plugin::StopPointFixer",
     "autoware::trajectory_modifier::plugin::SurroundObstacleStop",
     "autoware::trajectory_modifier::plugin::ObstacleStop",

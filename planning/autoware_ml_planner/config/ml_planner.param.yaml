@@ -5,7 +5,9 @@
       backend: "tensorrt" # "tensorrt" "ort_cpu" "ort_cuda" "ort_tensorrt"
       precision: "fp32"
       use_cuda_graph: true
-      onnx_model_path: $(var data_path)/ml_planner/ml_planner_sampler.onnx
+      base_model_directory: $(var data_path)/ml_planner
+      onnx_model_filename: ml_planner_sampler.onnx
+      args_filename: ml_planner.param.json
     planning_frequency_hz: 10.0
     remap_unsupported_objects_to_pedestrian: false
     traffic_light_group_msg_timeout_seconds: 0.2
@@ -28,6 +30,8 @@
         weight_yaw: 0.5
         weight_velocity: 0.1
         snap_distance_m: 1.0
+        unlatch_horizon_s: 8.0  # drop snap when ego-to-goal > this * max(|v|, unlatch_min_speed_mps); <= 0 disables
+        unlatch_min_speed_mps: 3.0
       min_velocity_mps: 0.0          # lower velocity bound; 0 prevents backward motion [m/s]
       max_velocity_mps: 30.0         # upper velocity bound [m/s]
       min_acceleration_mps2: -4.0    # [m/s^2]

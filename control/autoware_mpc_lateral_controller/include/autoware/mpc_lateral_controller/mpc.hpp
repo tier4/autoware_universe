@@ -252,11 +252,19 @@ private:
    * @param trajectory The reference trajectory.
    * @param current_steer The current steering report.
    * @param current_kinematics The current vehicle kinematics.
+   * @param temporal_reference_time Optional time since receipt for temporal passthrough.
    * @return A pair of a boolean flag indicating success and the MPC data.
    */
   std::pair<ResultWithReason, MPCData> getData(
     const MPCTrajectory & trajectory, const SteeringReport & current_steer,
-    const Odometry & current_kinematics);
+    const Odometry & current_kinematics, bool require_prediction_horizon = true,
+    std::optional<double> temporal_reference_time = std::nullopt);
+
+  Trajectory calculatePassthroughPredictedTrajectory(
+    const SteeringReport & current_steer, const Odometry & current_kinematics,
+    const MPCTrajectory & reference_trajectory, double reference_start_time, double prediction_dt,
+    const std::vector<double> & future_commands, double future_command_period,
+    const std::deque<double> & previous_commands, double remaining_trajectory_time) const;
 
   /**
    * @brief Get the initial state for MPC.
@@ -470,6 +478,10 @@ public:
   bool m_use_trajectory_steering_for_feedforward =
     false;  // Prefer temporal trajectory steering when the received field is populated.
 
+  double m_steering_passthrough_timeout_s = 0.5;
+  double m_steering_passthrough_rate_limit_rad_s = 0.6;
+  double m_steering_passthrough_end_time_s = 0.0;
+
   bool m_publish_debug_trajectories = false;  // Flag to publish predicted trajectory and
                                               // resampled reference trajectory for debug purpose
 
@@ -491,12 +503,16 @@ public:
     LateralHorizon & ctrl_cmd_horizon);
 
   /**
-   * @brief Publish trajectory front_wheel_angle_rad as the lateral command (MPPI passthrough).
-   * Uses the same delay-compensated resampling origin as calculateMPC, but skips the QP solve.
+   * @brief Use trajectory front_wheel_angle_rad as the lateral command (MPPI passthrough).
+   * Selects the issued control for the interval since the follower first received the trajectory.
+   * MPPI already models actuator delay, so the MPC input-delay lookahead is not applied here.
+   * The predicted path starts at ego and rolls forward through the rate-limited commands and
+   * actuator delay.
    */
   ResultWithReason calculateTrajectorySteeringPassthrough(
     const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
-    Float32MultiArrayStamped & diagnostic, LateralHorizon & ctrl_cmd_horizon);
+    Trajectory & predicted_trajectory, Float32MultiArrayStamped & diagnostic,
+    LateralHorizon & ctrl_cmd_horizon, const std::optional<rclcpp::Time> & trajectory_received_at);
 
   /**
    * @brief Set the reference trajectory to be followed.
@@ -514,10 +530,13 @@ public:
   void resetPrevResult(const SteeringReport & current_steer);
 
   /**
-   * @brief Reset steering-command LPF internal state to a published command value.
-   * Keeps the filter tracking post-MPC output (soft hold / stop freeze) instead of raw Uex.
+   * @brief Reset steering-command LPF and delay history to an internal steering command.
+   * The caller converts the published command to internal steering coordinates.
    */
   void resetSteeringCmdFilter(const double steering_tire_angle);
+
+  /** Set only the steering-command LPF state to the issued command in internal coordinates. */
+  void syncSteeringCmdFilterOnly(const double steering_tire_angle);
 
   /**
    * @brief Set the vehicle model for this MPC.

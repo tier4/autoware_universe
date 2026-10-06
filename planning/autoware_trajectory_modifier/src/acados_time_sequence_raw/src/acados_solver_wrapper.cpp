@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
 #include <stdexcept>
 
 extern "C" {
@@ -44,6 +45,49 @@ static_assert(gen_nyn == opt_nx, "generated solver NYN mismatch");
 size_t w_index(const size_t row, const size_t col, const size_t ny)
 {
   return row * ny + col;
+}
+
+/// Symmetric 2x2 block [xx, yy, xy] of R(yaw) * diag(w_lon, w_lat) * R(yaw)^T.
+std::array<double, 3> position_block(
+  const double yaw, const double longitudinal_weight, const double lateral_weight)
+{
+  const double c = std::cos(yaw);
+  const double s = std::sin(yaw);
+  return std::array<double, 3>{
+    longitudinal_weight * c * c + lateral_weight * s * s,  // xx
+    longitudinal_weight * s * s + lateral_weight * c * c,  // yy
+    (longitudinal_weight - lateral_weight) * c * s};       // xy = yx
+}
+
+std::array<double, 2> blend_position_reference(
+  const std::array<double, 3> & first_block, const std::array<double, 2> & first_reference,
+  const std::array<double, 3> & second_block, const std::array<double, 2> & second_reference,
+  const std::array<double, 3> & block)
+{
+  const auto weighted = [](const std::array<double, 3> & w, const std::array<double, 2> & r) {
+    return std::array<double, 2>{w[0] * r[0] + w[2] * r[1], w[2] * r[0] + w[1] * r[1]};
+  };
+  const auto lhs = weighted(first_block, first_reference);
+  const auto rhs = weighted(second_block, second_reference);
+  const std::array<double, 2> rhs_sum{lhs[0] + rhs[0], lhs[1] + rhs[1]};
+  const double determinant = block[0] * block[1] - block[2] * block[2];
+  if (!(std::abs(determinant) > 1.0e-12)) {
+    return first_reference;
+  }
+  return std::array<double, 2>{
+    (block[1] * rhs_sum[0] - block[2] * rhs_sum[1]) / determinant,
+    (block[0] * rhs_sum[1] - block[2] * rhs_sum[0]) / determinant};
+}
+
+double blend_reference(
+  const double first_weight, const double first_reference, const double second_weight,
+  const double second_reference)
+{
+  const double total = first_weight + second_weight;
+  if (!(total > 0.0)) {
+    return first_reference;
+  }
+  return (first_weight * first_reference + second_weight * second_reference) / total;
 }
 }  // namespace
 
@@ -134,6 +178,7 @@ SolverSolution AcadosSolverWrapper::solve(
   const std::array<double, opt_nx> & initial_state,
   const std::array<StageReference, opt_horizon> & references,
   const std::optional<GoalTerminalReference> & goal_terminal_reference,
+  const std::array<StageTemporalReference, opt_horizon> * temporal_references,
   const SolverSolution * warm_start)
 {
   auto x0 = initial_state;
@@ -146,32 +191,84 @@ SolverSolution AcadosSolverWrapper::solve(
   const double unscale = 1.0 / opt_dt_s;
   const double w_lon = impl_->params.weight_longitudinal;
   const double w_lat = impl_->params.weight_lateral;
-  // Symmetric 2x2 block [xx, yy, xy] of R(yaw) * diag(w_lon, w_lat) * R(yaw)^T.
-  auto position_block =
-    [](const double yaw, const double longitudinal_weight, const double lateral_weight) {
-      const double c = std::cos(yaw);
-      const double s = std::sin(yaw);
-      return std::array<double, 3>{
-        longitudinal_weight * c * c + lateral_weight * s * s,
-        longitudinal_weight * s * s + lateral_weight * c * c,
-        (longitudinal_weight - lateral_weight) * c * s};
-    };
+  const auto & temporal = impl_->params.temporal_consistency;
+  const bool use_temporal = temporal.enable && temporal_references != nullptr;
+  const double decay_ratio = std::clamp(temporal.far_weight_ratio, 0.0, 1.0);
+  const auto temporal_scale = [&temporal, decay_ratio](const size_t stage) {
+    if (!(temporal.decay_time_constant_s > 0.0)) {
+      return 1.0;
+    }
+    const double time_s = opt_dt_s * static_cast<double>(stage);
+    return decay_ratio + (1.0 - decay_ratio) * std::exp(-time_s / temporal.decay_time_constant_s);
+  };
+
   std::array<double, gen_ny * gen_ny> stage_weight_matrix{};
-  stage_weight_matrix[w_index(kPsi, kPsi, gen_ny)] = unscale * impl_->params.weight_yaw;
   stage_weight_matrix[w_index(kYJerk, kYJerk, gen_ny)] = unscale * impl_->params.weight_jerk;
   stage_weight_matrix[w_index(kYDeltaRate, kYDeltaRate, gen_ny)] =
     unscale * impl_->params.weight_steering_rate;
+  std::array<double, gen_ny> yref{};
   for (size_t stage = 0; stage < gen_n; ++stage) {
-    const double yaw_ref = (stage == 0) ? x0[kPsi] : references[stage - 1].yaw;
-    const auto [w_xx, w_yy, w_xy] = position_block(yaw_ref, w_lon, w_lat);
-    stage_weight_matrix[w_index(kX, kX, gen_ny)] = unscale * w_xx;
-    stage_weight_matrix[w_index(kY, kY, gen_ny)] = unscale * w_yy;
-    stage_weight_matrix[w_index(kX, kY, gen_ny)] = unscale * w_xy;
-    stage_weight_matrix[w_index(kY, kX, gen_ny)] = unscale * w_xy;
+    const bool is_initial_stage = stage == 0;
+    const auto & ref = references[is_initial_stage ? 0 : stage - 1];
+    const double yaw_ref = is_initial_stage ? x0[kPsi] : ref.yaw;
+    const std::array<double, 2> position_ref = is_initial_stage
+                                                 ? std::array<double, 2>{x0[kX], x0[kY]}
+                                                 : std::array<double, 2>{ref.x, ref.y};
+
+    const auto track_block = position_block(yaw_ref, w_lon, w_lat);
+    auto block = track_block;
+    auto blended_position = position_ref;
+    double yaw_weight = impl_->params.weight_yaw;
+    double velocity_weight = 0.0;
+    double blended_yaw = yaw_ref;
+    double blended_velocity = 0.0;
+
+    if (use_temporal && !is_initial_stage && (*temporal_references)[stage - 1].valid) {
+      const auto & previous = (*temporal_references)[stage - 1];
+      const double scale = temporal_scale(stage);
+      const double t_lon = scale * temporal.weight_longitudinal;
+      const double t_lat = scale * temporal.weight_lateral;
+      const double t_yaw = scale * temporal.weight_yaw;
+      const double t_velocity = scale * temporal.weight_velocity;
+      const auto temporal_block = position_block(yaw_ref, t_lon, t_lat);
+      block = {
+        track_block[0] + temporal_block[0], track_block[1] + temporal_block[1],
+        track_block[2] + temporal_block[2]};
+      blended_position = blend_position_reference(
+        track_block, position_ref, temporal_block, {previous.x, previous.y}, block);
+      blended_yaw = blend_reference(yaw_weight, yaw_ref, t_yaw, previous.yaw);
+      yaw_weight += t_yaw;
+      blended_velocity = blend_reference(velocity_weight, 0.0, t_velocity, previous.velocity);
+      velocity_weight += t_velocity;
+    }
+
+    stage_weight_matrix[w_index(kX, kX, gen_ny)] = unscale * block[0];
+    stage_weight_matrix[w_index(kY, kY, gen_ny)] = unscale * block[1];
+    stage_weight_matrix[w_index(kX, kY, gen_ny)] = unscale * block[2];
+    stage_weight_matrix[w_index(kY, kX, gen_ny)] = unscale * block[2];
+    stage_weight_matrix[w_index(kPsi, kPsi, gen_ny)] = unscale * yaw_weight;
+    stage_weight_matrix[w_index(kV, kV, gen_ny)] = unscale * velocity_weight;
     ocp_nlp_cost_model_set(
       impl_->config, impl_->dims, impl_->in, static_cast<int>(stage), "W",
       stage_weight_matrix.data());
+
+    if (is_initial_stage) {
+      yref = {};
+      std::copy(x0.begin(), x0.end(), yref.begin());
+    } else {
+      yref = {blended_position[0],
+              blended_position[1],
+              blended_yaw,
+              blended_velocity,
+              0.0,
+              0.0,
+              0.0,
+              0.0};
+    }
+    ocp_nlp_cost_model_set(
+      impl_->config, impl_->dims, impl_->in, static_cast<int>(stage), "yref", yref.data());
   }
+
   const double terminal_scale = impl_->params.terminal_weight_scale / unscale;
   const auto & terminal_ref = references[gen_n - 1];
   std::array<double, 2> terminal_position{terminal_ref.x, terminal_ref.y};
@@ -189,8 +286,6 @@ SolverSolution AcadosSolverWrapper::solve(
   double terminal_yaw_weight = terminal_scale * impl_->params.weight_yaw;
   double terminal_velocity_weight = 0.0;
   if (goal_terminal_reference) {
-    // Goal weights are absolute on the terminal cost. They are not multiplied by
-    // terminal_weight_scale.
     const auto & goal = impl_->params.goal;
     const auto goal_block =
       position_block(goal_terminal_reference->yaw, goal.weight_longitudinal, goal.weight_lateral);
@@ -200,6 +295,11 @@ SolverSolution AcadosSolverWrapper::solve(
     terminal_yaw_weight += goal.weight_yaw;
     terminal_velocity_weight += goal.weight_velocity;
   }
+  // Do not fold the previous terminal into yref_e. After age-based resampling the last
+  // temporal sample is clamped to the previous horizon end, whose heading is often stale
+  // relative to the current DP/goal yaw. Blending those anisotropic lon/lat frames with
+  // the goal pose produced a kinematically unreachable last point. Mid-horizon stages
+  // still carry the temporal term.
   std::array<double, gen_nyn * gen_nyn> terminal_weight_matrix{};
   terminal_weight_matrix[w_index(kX, kX, gen_nyn)] = terminal_block[0];
   terminal_weight_matrix[w_index(kY, kY, gen_nyn)] = terminal_block[1];
@@ -211,15 +311,6 @@ SolverSolution AcadosSolverWrapper::solve(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "W",
     terminal_weight_matrix.data());
 
-  std::array<double, gen_ny> yref{};
-  std::copy(x0.begin(), x0.end(), yref.begin());
-  ocp_nlp_cost_model_set(impl_->config, impl_->dims, impl_->in, 0, "yref", yref.data());
-  for (size_t stage = 1; stage < gen_n; ++stage) {
-    const auto & ref = references[stage - 1];
-    yref = {ref.x, ref.y, ref.yaw, 0.0, 0.0, 0.0, 0.0, 0.0};
-    ocp_nlp_cost_model_set(
-      impl_->config, impl_->dims, impl_->in, static_cast<int>(stage), "yref", yref.data());
-  }
   std::array<double, gen_nyn> yref_e{
     terminal_position[0], terminal_position[1], terminal_yaw, terminal_velocity, 0.0, 0.0};
   ocp_nlp_cost_model_set(
@@ -228,7 +319,7 @@ SolverSolution AcadosSolverWrapper::solve(
   for (size_t stage = 0; stage <= gen_n; ++stage) {
     std::array<double, gen_nx> x_guess = x0;
     if (warm_start != nullptr) {
-      x_guess = warm_start->states[std::min(stage + 1, gen_n)];
+      x_guess = warm_start->states[stage];
     }
     ocp_nlp_out_set(
       impl_->config, impl_->dims, impl_->out, impl_->in, static_cast<int>(stage), "x",
@@ -236,7 +327,7 @@ SolverSolution AcadosSolverWrapper::solve(
     if (stage < gen_n) {
       std::array<double, gen_nu> u_guess{};
       if (warm_start != nullptr) {
-        u_guess = warm_start->inputs[std::min(stage + 1, gen_n - 1)];
+        u_guess = warm_start->inputs[std::min(stage, gen_n - 1)];
       }
       ocp_nlp_out_set(
         impl_->config, impl_->dims, impl_->out, impl_->in, static_cast<int>(stage), "u",
