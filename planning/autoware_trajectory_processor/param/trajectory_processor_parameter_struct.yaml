@@ -133,6 +133,13 @@ trajectory_processor_params:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
+    ego_stopped_vel_th:
+      type: double
+      default_value: 0.1
+      description: Velocity threshold below which ego is considered stopped [m/s]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
 
   obstacle_stop:
     use_objects:
@@ -504,13 +511,6 @@ trajectory_processor_params:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
-    ego_stopped_vel_th:
-      type: double
-      default_value: 0.1
-      description: Velocity threshold below which ego vehicle is considered stopped [m/s]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
   traffic_light_stop:
     stop_margin:
       type: double
@@ -585,6 +585,18 @@ trajectory_processor_params:
       description: Threshold for stable duration of unknown light [s]
       validation:
         bounds<>: [0.0, 10.0]
+      read_only: false
+    hold_position_when_stopped:
+      type: bool
+      default_value: false
+      description: When ego is already stopped at red/amber, hold in place instead of inserting a stop point ahead that would pull the vehicle forward
+      read_only: false
+    hold_position_distance_threshold:
+      type: double
+      default_value: 2.0
+      description: Maximum distance to the target stop point at which a stopped ego holds in place [m]. Farther short-stops are still allowed to pull forward to close the gap
+      validation:
+        bounds<>: [0.0, 100.0]
       read_only: false
     amber_rejection:
       th_hysteresis:
