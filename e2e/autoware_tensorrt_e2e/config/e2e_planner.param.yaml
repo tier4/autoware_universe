@@ -57,6 +57,12 @@
       # vector map); "trajectory" follows a Trajectory topic, for a replay whose bags
       # carry no route.
       subgoal_source: "route"
+      # Route-point models (status [1, 2K + 4], K > 1; the K distances come from the model's
+      # ml_package file as route_points_m): before the points are taken, vertices at which the
+      # route turns back by more than this many degrees are dropped -- the mission-route
+      # centreline doubles back at some junction entries, which put near points behind the car.
+      # 0 disables. Single-subgoal models ([1, 6]) are not affected.
+      route_reversal_deg: 120.0
       # Where the status vector's velocity and acceleration come from. "pose_difference"
       # (default) recomputes them from the odometry positions 0.1 s apart the way the training
       # data did, which on a turning car gives a lateral acceleration of about v * yaw_rate;

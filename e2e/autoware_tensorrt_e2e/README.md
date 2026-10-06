@@ -112,6 +112,15 @@ common `InferenceEngine`.
   `v * yaw_rate` and a small negative `v_y`; `twist` copies the odometry twist and
   `/localization/acceleration`, whose lateral components are identically zero on the vehicle
   (the EKF has no lateral state), which the models never saw in training.
+- `status` `[1, 2K + 4]`, K > 1 (route-point models such as A-camfront-rptw-e2): K route points,
+  then the four motion terms above. The K distances are `latentdrive.route_points_m`, written into
+  the model's ml_package file (A-camfront-rptw-e2: 5, 10, 15, 20, 30 and 50 m). The reference is
+  first cleaned of vertices at which it turns back by more than `latentdrive.route_reversal_deg`
+  (the mission-route centreline doubles back at some junction entries), resampled at 1 m; the ego
+  is projected onto it with a forward hint kept across ticks, and each point is taken that many
+  metres further on, divided by `status_subgoal_divisor` -- planner_io.ego_status's recipe. All
+  points are published on `~/debug/latentdrive/route_points` (PoseArray, map frame); `subgoal`
+  then carries the farthest one. Single-subgoal models keep the computation described above.
 - the trajectory tensor, `[1, N, 3]` of `(x, y, yaw)` over the configured horizon, decoded by
   the common postprocessor
   through `LatentDrivePostprocessor`, which adds an optional temporal smoothing

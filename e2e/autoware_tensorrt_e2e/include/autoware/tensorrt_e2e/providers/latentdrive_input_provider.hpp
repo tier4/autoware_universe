@@ -27,6 +27,7 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -132,6 +133,38 @@ Eigen::Vector2d subgoal_along(
   const std::vector<Eigen::Vector2d> & reference, const Eigen::Vector2d & position, double ahead_m);
 
 /**
+ * @brief Uniformly resample a polyline at `step` metres of arc length, from its first point to
+ * its end (planner_io.resample_route with spacing 1 m: duplicate points dropped, linear
+ * interpolation, the last sample at or before the end).
+ */
+std::vector<Eigen::Vector2d> resample_polyline(
+  const std::vector<Eigen::Vector2d> & points, double step);
+
+/**
+ * @brief Drop vertices at which the polyline turns back by more than `max_turn_rad` (a spike or a
+ * stretch that doubles back, as the mission-route centreline does at some junction entries).
+ * Applied until no such vertex remains; the first and last points are kept.
+ */
+std::vector<Eigen::Vector2d> remove_reversals(
+  const std::vector<Eigen::Vector2d> & points, double max_turn_rad);
+
+/**
+ * @brief Index of the 1 m route vertex nearest `position` (planner_io.project_arclength): with a
+ * hint the search covers `[hint - 2, hint - 2 + window)` only, so a route that crosses itself
+ * cannot snap the projection backwards; without one the whole route is searched.
+ */
+size_t project_arclength(
+  const std::vector<Eigen::Vector2d> & route_1m, const Eigen::Vector2d & position,
+  std::optional<size_t> hint, size_t window = 80);
+
+/**
+ * @brief The point `ahead_m` metres of arc length past vertex `s_now` of a 1 m route, linearly
+ * interpolated and clamped to the route end (planner_io.ego_status's subgoal lookup).
+ */
+Eigen::Vector2d point_ahead(
+  const std::vector<Eigen::Vector2d> & route_1m, size_t s_now, double ahead_m);
+
+/**
  * @brief The route as one polyline: the centerlines of the route's preferred lanelets, in
  * order, consecutive duplicate points removed, cut at the point nearest the goal pose.
  *
@@ -163,7 +196,13 @@ std::vector<Eigen::Vector2d> route_centerline(
  *   nearest in time to each chosen anchor frame, within `view_sync_tolerance_seconds`. A view
  *   with no frame near enough skips the tick: the models were trained on real frames only and
  *   must never be shown a grey, black or duplicated one.
- * - `status` `[1, 6]`: `(subgoal_x / d, subgoal_y / d, v_x, v_y, a_x, a_y)` in the ego frame,
+ * - `status` `[1, 2K + 4]`: K route points then `(v_x, v_y, a_x, a_y)`. K = 1 is the original
+ *   contract, `[1, 6]`, with the single point `subgoal_ahead_m` ahead; route-point models take
+ *   K > 1 points at `route_points_m` (the README of A-camfront-rptw-e2: 5, 10, 15, 20, 30, 50 m).
+ *   For K > 1 the route is resampled at 1 m, the ego is projected onto it with a forward hint and
+ *   each point taken that many metres further on, exactly as planner_io.ego_status does; stretches
+ *   that double back are removed first (`route_reversal_deg`). The K = 1 path is unchanged.
+ * - single-point form: `(subgoal_x / d, subgoal_y / d, v_x, v_y, a_x, a_y)` in the ego frame,
  *   with `d = status_subgoal_divisor`. The subgoal is the point `subgoal_ahead_m` of arc length
  *   ahead on a reference polyline. `status_source` decides where the motion terms come from:
  *   `pose_difference` (default) recomputes them from the odometry positions the way the
@@ -231,6 +270,10 @@ private:
   double subgoal_ahead_m_{50.0};
   double subgoal_divisor_{10.0};
   std::string subgoal_source_{"route"};  //!< "route" or "trajectory".
+  //! Arc lengths of the route points fed to a route-point model (K > 1); one entry for the
+  //! single-subgoal contract, which then uses subgoal_ahead_m.
+  std::vector<double> route_points_m_;
+  double route_reversal_deg_{120.0};  //!< 0 disables the removal of stretches that double back.
   std::string status_source_{"pose_difference"};  //!< "pose_difference" or "twist".
   double status_sample_interval_s_{0.1};   //!< Spacing of the position samples (training: 0.1 s).
   double status_sample_tolerance_s_{0.05};  //!< How far a stored position may sit from its slot.
@@ -241,6 +284,7 @@ private:
   // Engine-derived configuration
   std::vector<int64_t> video_shape_;
   std::vector<int64_t> status_shape_;
+  size_t num_route_points_{1};  //!< K: 1 for [1, 6], (N - 4) / 2 for a route-point model.
   int64_t num_views_{1};
   int64_t num_frames_{0};
   int64_t height_{0};
@@ -253,6 +297,7 @@ private:
   rclcpp::Subscription<LaneletMapBin>::SharedPtr map_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr pub_subgoal_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pub_route_points_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_ego_pose_;
   //! One per view; index 0 keeps the historical topic name.
   std::vector<rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr>
@@ -271,7 +316,12 @@ private:
   bool warned_no_pose_history_{false};
   std::deque<latentdrive::PoseSample> pose_history_;  //!< Ascending by stamp, about a second of it.
   std::vector<double> last_frame_ages_ms_;  //!< Ages of the selected frames at the last tick, view-major.
-  std::array<float, 6> last_status_{};      //!< Status vector of the last tick, encoded.
+  std::vector<float> last_status_;          //!< Status vector of the last tick, encoded.
+  // Route-point models: the 1 m route and the projection hint, rebuilt when the route changes.
+  std::vector<Eigen::Vector2d> route_1m_;
+  uint64_t route_version_{0};       //!< Bumped whenever route_polyline_ is rebuilt.
+  uint64_t route_1m_version_{~0ULL};
+  std::optional<size_t> s_hint_;
 };
 
 }  // namespace autoware::tensorrt_e2e

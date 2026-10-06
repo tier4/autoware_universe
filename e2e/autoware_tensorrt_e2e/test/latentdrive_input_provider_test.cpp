@@ -20,6 +20,7 @@
 #include <lanelet2_core/primitives/Point.h>
 
 #include <array>
+#include <optional>
 #include <deque>
 #include <cmath>
 #include <stdexcept>
@@ -209,6 +210,52 @@ TEST(LatentDriveMotionTest, LeftTurnGivesCentripetalLateralAcceleration)
   const auto mr = motion_from_poses(s, 0.0);
   EXPECT_NEAR(mr[1], v * w * 0.1, 0.02);
   EXPECT_NEAR(mr[3], -v * w, 0.05);
+}
+
+TEST(LatentDriveRoutePointsTest, ResamplesAtOneMetreLikePlannerIo)
+{
+  // An L: 10 m east, then 5 m north, with a duplicate vertex.
+  const std::vector<Eigen::Vector2d> route = {{0, 0}, {10, 0}, {10, 0}, {10, 5}};
+  const auto r = resample_polyline(route, 1.0);
+  ASSERT_EQ(r.size(), 16u);  // arc 0..15 inclusive
+  EXPECT_NEAR(r[3].x(), 3.0, 1e-9);
+  EXPECT_NEAR(r[10].x(), 10.0, 1e-9);
+  EXPECT_NEAR(r[12].y(), 2.0, 1e-9);
+  EXPECT_NEAR(r.back().y(), 5.0, 1e-9);
+}
+
+TEST(LatentDriveRoutePointsTest, PointAheadInterpolatesAndClampsAtTheEnd)
+{
+  const auto r = resample_polyline({{0, 0}, {20, 0}}, 1.0);
+  EXPECT_NEAR(point_ahead(r, 3, 5.0).x(), 8.0, 1e-9);
+  EXPECT_NEAR(point_ahead(r, 3, 4.5).x(), 7.5, 1e-9);
+  EXPECT_NEAR(point_ahead(r, 3, 50.0).x(), 20.0, 1e-9);  // past the end: the end itself
+}
+
+TEST(LatentDriveRoutePointsTest, ForwardHintKeepsTheProjectionOnTheCurrentPass)
+{
+  // Out 100 m east and back on a parallel lane 1 m north: near the start both passes are close.
+  std::vector<Eigen::Vector2d> route;
+  for (int x = 0; x <= 100; ++x) route.emplace_back(x, 0.0);
+  for (int x = 100; x >= 0; --x) route.emplace_back(x, 1.0);
+  const auto r = resample_polyline(route, 1.0);
+  const Eigen::Vector2d car(10.0, 0.6);  // on the way out, a little towards the return lane
+  EXPECT_GT(project_arclength(r, car, std::nullopt), 150u);  // global search picks the return
+  EXPECT_EQ(project_arclength(r, car, std::make_optional<size_t>(8)), 10u);
+}
+
+TEST(LatentDriveRoutePointsTest, RemovesAStretchThatDoublesBack)
+{
+  // Heading east, a 2 m spike back west at x = 10, then on east.
+  const std::vector<Eigen::Vector2d> route = {{0, 0}, {10, 0}, {8, 0.1}, {12, 0.2}, {20, 0}};
+  const auto cleaned = remove_reversals(route, 120.0 * M_PI / 180.0);
+  for (size_t i = 1; i < cleaned.size(); ++i) {
+    EXPECT_GT(cleaned[i].x(), cleaned[i - 1].x()) << "vertex " << i << " still goes back";
+  }
+  EXPECT_NEAR(cleaned.front().x(), 0.0, 1e-9);
+  EXPECT_NEAR(cleaned.back().x(), 20.0, 1e-9);
+  // A genuine 90 deg corner is kept.
+  EXPECT_EQ(remove_reversals({{0, 0}, {10, 0}, {10, 10}}, 120.0 * M_PI / 180.0).size(), 3u);
 }
 
 TEST(LatentDriveSubgoalTest, WalksArcLengthFromTheNearestPoint)

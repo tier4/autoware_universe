@@ -22,7 +22,8 @@ planner ONNX:
 
 - `video` [1, 3, T, H, W] fixes the frame count and input resolution (the node
   reads them from the engine; they are recorded here as comments);
-- `status` [1, 6] is checked against the contract;
+- `status` [1, 2K + 4] is checked against the contract: K = 1 is the single 50 m subgoal,
+  K > 1 a route-point model whose point distances come from --route-points;
 - the trajectory tensor [1, N, 3] supplies the horizon: N waypoints over 4 s, so
   the model plans them 4/N apart. The trajectory the node publishes is always on
   a 0.1 s grid; a model that plans coarser (the 2 Hz checkpoint emits 8
@@ -76,6 +77,9 @@ def main() -> int:
                         help="seconds between the clip's frames (training contract)")
     parser.add_argument("--subgoal-ahead-m", type=float, default=50.0,
                         help="arc length ahead on the route at which the subgoal is taken")
+    parser.add_argument("--route-points", default="5,10,15,20,30,50",
+                        help="route-point models (status [1, 2K + 4], K > 1): arc lengths [m] of the "
+                             "K points, comma-separated; the default is A-camfront-rptw-e2's")
     parser.add_argument("--status-subgoal-divisor", type=float, default=10.0,
                         help="the subgoal is divided by this in the status vector")
     args = parser.parse_args()
@@ -105,8 +109,17 @@ def main() -> int:
         raise SystemExit(
             f"{args.video_tensor} has shape {video_shape}; want [1, 3, T, H, W] or "
             "[1, V, 3, T, H, W]")
-    if [d for d in status_shape if d != 1] != [6]:
-        raise SystemExit(f"{args.status_tensor} has shape {status_shape}; want [1, 6]")
+    status_dims = [d for d in status_shape if d != 1]
+    if len(status_dims) != 1 or status_dims[0] < 6 or (status_dims[0] - 4) % 2:
+        raise SystemExit(f"{args.status_tensor} has shape {status_shape}; want [1, 2K + 4]")
+    num_route_points = (status_dims[0] - 4) // 2
+    route_points = []
+    if num_route_points > 1:
+        route_points = [float(x) for x in args.route_points.split(",") if x.strip()]
+        if len(route_points) != num_route_points:
+            raise SystemExit(
+                f"{args.status_tensor} carries {num_route_points} route points; --route-points "
+                f"lists {len(route_points)}")
     if len(traj_shape) != 3 or traj_shape[2] != 3:
         raise SystemExit(f"{args.trajectory_tensor} has shape {traj_shape}; want [1, N, 3]")
 
@@ -146,7 +159,9 @@ def main() -> int:
         f"      status_tensor: \"{args.status_tensor}\"",
         f"      frame_interval_seconds: {args.frame_interval}"
         f"  # {num_frames} frames span {(num_frames - 1) * args.frame_interval:g} s",
-        f"      subgoal_ahead_m: {args.subgoal_ahead_m}",
+        (f"      route_points_m: [{', '.join(f'{d:.1f}' for d in route_points)}]"
+         f"  # {num_route_points} route points ahead on the 1 m route"
+         if num_route_points > 1 else f"      subgoal_ahead_m: {args.subgoal_ahead_m}"),
         f"      status_subgoal_divisor: {args.status_subgoal_divisor}",
         "",
         "    postprocess:",
@@ -165,6 +180,7 @@ def main() -> int:
     print(f"wrote {out_path}")
     print(f"  frames={num_frames} interval={args.frame_interval}s input={width}x{height} "
           f"views={num_views} waypoints={num_waypoints}"
+          + (f" route_points={route_points}" if num_route_points > 1 else "")
           + ("" if abs(plan_step - SUPPORTED_TIME_STEP) < 1e-9
              else f" ({plan_step:.3g}s apart, interpolated to {SUPPORTED_TIME_STEP}s)"))
     return 0

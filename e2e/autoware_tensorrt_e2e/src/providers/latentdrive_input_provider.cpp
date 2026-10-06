@@ -171,6 +171,103 @@ Eigen::Vector2d subgoal_along(
   return reference.back();
 }
 
+std::vector<Eigen::Vector2d> resample_polyline(
+  const std::vector<Eigen::Vector2d> & points, const double step)
+{
+  if (points.empty() || step <= 0.0) {
+    return {};
+  }
+  std::vector<Eigen::Vector2d> unique{points.front()};
+  for (size_t i = 1; i < points.size(); ++i) {
+    if ((points[i] - unique.back()).norm() > 1e-3) {
+      unique.push_back(points[i]);
+    }
+  }
+  std::vector<double> s(unique.size(), 0.0);
+  for (size_t i = 1; i < unique.size(); ++i) {
+    s[i] = s[i - 1] + (unique[i] - unique[i - 1]).norm();
+  }
+  std::vector<Eigen::Vector2d> out;
+  size_t j = 0;
+  for (double g = 0.0; g <= s.back() + 1e-6; g += step) {
+    while (j + 1 < unique.size() - 1 && s[j + 1] < g) {
+      ++j;
+    }
+    if (unique.size() == 1) {
+      out.push_back(unique.front());
+      break;
+    }
+    const double span = s[j + 1] - s[j];
+    const double u = span > 0.0 ? std::clamp((g - s[j]) / span, 0.0, 1.0) : 0.0;
+    out.push_back(unique[j] + u * (unique[j + 1] - unique[j]));
+  }
+  return out;
+}
+
+std::vector<Eigen::Vector2d> remove_reversals(
+  const std::vector<Eigen::Vector2d> & points, const double max_turn_rad)
+{
+  std::vector<Eigen::Vector2d> out;
+  for (const auto & p : points) {
+    if (out.empty() || (p - out.back()).norm() > 1e-3) {
+      out.push_back(p);
+    }
+  }
+  if (max_turn_rad <= 0.0) {
+    return out;
+  }
+  bool removed = true;
+  while (removed && out.size() > 2) {
+    removed = false;
+    for (size_t i = 1; i + 1 < out.size(); ++i) {
+      const Eigen::Vector2d a = out[i] - out[i - 1];
+      const Eigen::Vector2d b = out[i + 1] - out[i];
+      const double turn = std::abs(std::atan2(a.x() * b.y() - a.y() * b.x(), a.dot(b)));
+      if (turn > max_turn_rad) {
+        out.erase(out.begin() + static_cast<std::ptrdiff_t>(i));
+        removed = true;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+size_t project_arclength(
+  const std::vector<Eigen::Vector2d> & route_1m, const Eigen::Vector2d & position,
+  const std::optional<size_t> hint, const size_t window)
+{
+  if (route_1m.empty()) {
+    throw std::invalid_argument("project_arclength needs a non-empty route");
+  }
+  const size_t lo = hint ? (*hint > 2 ? *hint - 2 : 0) : 0;
+  const size_t hi = hint ? std::min(lo + window, route_1m.size()) : route_1m.size();
+  size_t best = std::min(lo, route_1m.size() - 1);
+  double best_d = std::numeric_limits<double>::infinity();
+  for (size_t i = lo; i < hi; ++i) {
+    const double d = (route_1m[i] - position).norm();
+    if (d < best_d) {
+      best_d = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+Eigen::Vector2d point_ahead(
+  const std::vector<Eigen::Vector2d> & route_1m, const size_t s_now, const double ahead_m)
+{
+  if (route_1m.empty()) {
+    throw std::invalid_argument("point_ahead needs a non-empty route");
+  }
+  const double last = static_cast<double>(route_1m.size() - 1);
+  const double s = std::min(static_cast<double>(s_now) + ahead_m, last);
+  const auto j = static_cast<size_t>(std::floor(s));
+  const double f = s - static_cast<double>(j);
+  const size_t k = std::min(j + 1, route_1m.size() - 1);
+  return route_1m[j] * (1.0 - f) + route_1m[k] * f;
+}
+
 std::vector<Eigen::Vector2d> route_centerline(
   const lanelet::LaneletMap & map, const autoware_planning_msgs::msg::LaneletRoute & route,
   std::vector<lanelet::Id> & missing)
@@ -283,6 +380,9 @@ LatentDriveInputProvider::LatentDriveInputProvider(rclcpp::Node & node) : node_(
   subgoal_divisor_ = node_.declare_parameter<double>("latentdrive.status_subgoal_divisor", 10.0);
   tick_log_ = node_.declare_parameter<bool>("latentdrive.tick_log", false);
   subgoal_source_ = node_.declare_parameter<std::string>("latentdrive.subgoal_source", "route");
+  route_points_m_ = node_.declare_parameter<std::vector<double>>(
+    "latentdrive.route_points_m", std::vector<double>{});
+  route_reversal_deg_ = node_.declare_parameter<double>("latentdrive.route_reversal_deg", 120.0);
   status_source_ =
     node_.declare_parameter<std::string>("latentdrive.status_source", "pose_difference");
   status_sample_interval_s_ =
@@ -379,11 +479,37 @@ std::vector<std::string> LatentDriveInputProvider::claim_inputs(
       "The latentdrive input provider is enabled but the model has no input tensor named '" +
       status_tensor_name_ + "' (set latentdrive.status_tensor to match the model)");
   }
-  if (status_spec->num_elements() != STATUS_DIM) {
+  // [1, 2K + 4]: K route points (x, y), then v_x, v_y, a_x, a_y. K = 1 is the original contract.
+  const int64_t status_elements = status_spec->num_elements();
+  if (status_elements < STATUS_DIM || (status_elements - 4) % 2 != 0) {
     throw std::runtime_error(
       "Model input '" + status_tensor_name_ + "' has shape " + shape_to_string(status_spec->shape) +
-      "; expected [1, " + std::to_string(STATUS_DIM) +
-      "] (subgoal x/y, velocity x/y, acceleration x/y)");
+      "; expected [1, 2K + 4]: K route points (x, y), then velocity x/y and acceleration x/y");
+  }
+  num_route_points_ = static_cast<size_t>((status_elements - 4) / 2);
+  if (num_route_points_ == 1) {
+    route_points_m_ = {subgoal_ahead_m_};
+  } else {
+    if (route_points_m_.empty() && num_route_points_ == 6) {
+      // The only route-point contract so far (A-camfront-rptw-e2).
+      route_points_m_ = {5.0, 10.0, 15.0, 20.0, 30.0, 50.0};
+      RCLCPP_WARN(
+        node_.get_logger(),
+        "latentdrive.route_points_m not set; using the A-camfront-rptw-e2 points 5/10/15/20/30/50 m");
+    }
+    if (route_points_m_.size() != num_route_points_) {
+      throw std::runtime_error(
+        "Model input '" + status_tensor_name_ + "' carries " + std::to_string(num_route_points_) +
+        " route points but latentdrive.route_points_m lists " +
+        std::to_string(route_points_m_.size()));
+    }
+    std::ostringstream points;
+    for (const double d : route_points_m_) {
+      points << " " << d;
+    }
+    RCLCPP_INFO(
+      node_.get_logger(), "Status carries %zu route points at%s m (1 m route, forward-hinted)",
+      num_route_points_, points.str().c_str());
   }
   status_shape_ = status_spec->shape;
 
@@ -451,6 +577,8 @@ std::vector<std::string> LatentDriveInputProvider::claim_inputs(
   }
   pub_subgoal_ =
     node_.create_publisher<geometry_msgs::msg::PointStamped>("~/debug/latentdrive/subgoal", 1);
+  pub_route_points_ =
+    node_.create_publisher<geometry_msgs::msg::PoseArray>("~/debug/latentdrive/route_points", 1);
   pub_ego_pose_ =
     node_.create_publisher<geometry_msgs::msg::PoseStamped>("~/debug/latentdrive/ego_pose", 1);
 
@@ -605,6 +733,7 @@ bool LatentDriveInputProvider::build_video_tensor(
 void LatentDriveInputProvider::update_route_polyline()
 {
   // Called with mutex_ held.
+  ++route_version_;
   route_polyline_.clear();
   route_error_.clear();
   if (!route_ || !lanelet_map_) {
@@ -674,10 +803,39 @@ bool LatentDriveInputProvider::build_status_tensor(
     return false;
   }
   const auto & ego_position = ego.reference_odometry.pose.pose.position;
-  const Eigen::Vector2d subgoal_map = latentdrive::subgoal_along(
-    reference, Eigen::Vector2d(ego_position.x, ego_position.y), subgoal_ahead_m_);
-  const Eigen::Vector4d subgoal_ego =
-    ego.map_to_ego * Eigen::Vector4d(subgoal_map.x(), subgoal_map.y(), 0.0, 1.0);
+  const Eigen::Vector2d ego_xy(ego_position.x, ego_position.y);
+  std::vector<Eigen::Vector2d> points_map;
+  if (num_route_points_ == 1) {
+    // The original single-subgoal contract, unchanged.
+    points_map.push_back(latentdrive::subgoal_along(reference, ego_xy, subgoal_ahead_m_));
+  } else {
+    // Route-point models: planner_io.ego_status on a 1 m route. The projection keeps a forward
+    // hint across ticks (a route that crosses itself cannot snap it back); a jump of more than
+    // 10 m from the hinted vertex (relocalisation, new route) falls back to a global search.
+    uint64_t version = 0;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      version = subgoal_source_ == "route" ? route_version_ : route_version_ + 1;
+    }
+    if (subgoal_source_ != "route" || version != route_1m_version_ || route_1m_.empty()) {
+      route_1m_ = latentdrive::resample_polyline(
+        latentdrive::remove_reversals(reference, route_reversal_deg_ * M_PI / 180.0), 1.0);
+      route_1m_version_ = version;
+      s_hint_.reset();
+    }
+    if (route_1m_.empty()) {
+      error = "Route reference has no points after resampling";
+      return false;
+    }
+    size_t s_now = latentdrive::project_arclength(route_1m_, ego_xy, s_hint_);
+    if (s_hint_ && (route_1m_[s_now] - ego_xy).norm() > 10.0) {
+      s_now = latentdrive::project_arclength(route_1m_, ego_xy, std::nullopt);
+    }
+    s_hint_ = s_now;
+    for (const double ahead : route_points_m_) {
+      points_map.push_back(latentdrive::point_ahead(route_1m_, s_now, ahead));
+    }
+  }
 
   // Motion terms. The training data differenced the recorded positions (planner_io.ego_status),
   // which on a turning car gives a lateral acceleration of about v * yaw_rate; the localization
@@ -716,24 +874,37 @@ bool LatentDriveInputProvider::build_status_tensor(
     }
   }
 
-  // The training-time layout: the subgoal is divided by `d`, the rest passes through.
-  last_status_ = {
-    static_cast<float>(subgoal_ego.x() / subgoal_divisor_),
-    static_cast<float>(subgoal_ego.y() / subgoal_divisor_),
-    static_cast<float>(motion[0]),
-    static_cast<float>(motion[1]),
-    static_cast<float>(motion[2]),
-    static_cast<float>(motion[3])};
+  // The training-time layout: every route point is divided by `d`, the rest passes through.
+  last_status_.clear();
+  for (const auto & p : points_map) {
+    const Eigen::Vector4d p_ego = ego.map_to_ego * Eigen::Vector4d(p.x(), p.y(), 0.0, 1.0);
+    last_status_.push_back(static_cast<float>(p_ego.x() / subgoal_divisor_));
+    last_status_.push_back(static_cast<float>(p_ego.y() / subgoal_divisor_));
+  }
+  for (const double m : motion) {
+    last_status_.push_back(static_cast<float>(m));
+  }
   inputs[status_tensor_name_] =
     Tensor::from_host(status_shape_, {last_status_.begin(), last_status_.end()});
 
   geometry_msgs::msg::PointStamped subgoal_msg;
   subgoal_msg.header.stamp = ego.stamp;
   subgoal_msg.header.frame_id = "map";
-  subgoal_msg.point.x = subgoal_map.x();
-  subgoal_msg.point.y = subgoal_map.y();
+  subgoal_msg.point.x = points_map.back().x();  // the farthest point (the 50 m one)
+  subgoal_msg.point.y = points_map.back().y();
   subgoal_msg.point.z = ego_position.z;
   pub_subgoal_->publish(subgoal_msg);
+  geometry_msgs::msg::PoseArray route_points_msg;
+  route_points_msg.header = subgoal_msg.header;
+  for (const auto & p : points_map) {
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = p.x();
+    pose.position.y = p.y();
+    pose.position.z = ego_position.z;
+    pose.orientation.w = 1.0;
+    route_points_msg.poses.push_back(pose);
+  }
+  pub_route_points_->publish(route_points_msg);
 
   // The pose the plan is anchored on: in RViz, an arrow that trails the ego model means the
   // display lags the planner; an arrow on the ego with the trajectory behind it means the plan
@@ -762,10 +933,16 @@ bool LatentDriveInputProvider::collect(
         }
         line << " " << std::lround(last_frame_ages_ms_[i]);
       }
-      line << " ms | v=" << std::fixed << std::setprecision(2) << last_status_[2] << ","
-           << last_status_[3] << " m/s | a=" << last_status_[4] << "," << last_status_[5]
-           << " m/s2 | subgoal=(" << std::setprecision(1) << last_status_[0] * subgoal_divisor_ << ", "
-           << last_status_[1] * subgoal_divisor_ << ") m";
+      const size_t m = 2 * num_route_points_;  // motion terms start here
+      line << " ms | v=" << std::fixed << std::setprecision(2) << last_status_[m] << ","
+           << last_status_[m + 1] << " m/s | a=" << last_status_[m + 2] << ","
+           << last_status_[m + 3] << " m/s2 | " << (num_route_points_ > 1 ? "route points=" : "subgoal=")
+           << std::setprecision(1);
+      for (size_t k = 0; k < num_route_points_; ++k) {
+        line << "(" << last_status_[2 * k] * subgoal_divisor_ << ", "
+             << last_status_[2 * k + 1] * subgoal_divisor_ << ")";
+      }
+      line << " m";
       RCLCPP_INFO(node_.get_logger(), "%s", line.str().c_str());
     } else {
       RCLCPP_INFO(node_.get_logger(), "[LatentDrive-debug] tick SKIPPED: %s", error.c_str());

@@ -165,6 +165,18 @@
               "default": 0.05,
               "minimum": 0.0
             },
+            "route_points_m": {
+              "type": "array",
+              "items": { "type": "number" },
+              "description": "Route-point models (status [1, 2K + 4], K > 1): arc lengths of the K route points past the ego's projection on the 1 m route. Written into the model's ml_package file; for K = 6 the default is 5, 10, 15, 20, 30, 50 m.",
+              "default": []
+            },
+            "route_reversal_deg": {
+              "type": "number",
+              "description": "Route-point models: drop route vertices at which the route turns back by more than this angle before resampling it at 1 m; 0 disables.",
+              "default": 120.0,
+              "minimum": 0.0
+            },
             "subgoal_ahead_m": {
               "type": "number",
               "description": "Arc length ahead on the reference trajectory at which the subgoal is taken.",
