@@ -293,7 +293,7 @@ ComplianceResult TrafficLightComplianceChecker::check_with_filtered_signals(
   const Inputs & input,
   const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
   const std::vector<int64_t> & force_reject_amber_ids, const bool check_red_lights,
-  const bool check_amber_lights, bool is_ego_stopped) const
+  const bool check_amber_lights, const bool is_ego_stopped) const
 {
   if (input.trajectory.empty() || (!check_red_lights && !check_amber_lights)) {
     return ComplianceResult{};
