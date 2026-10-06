@@ -26,7 +26,9 @@
 #include <lanelet2_core/primitives/LineString.h>
 #include <tf2/LinearMath/Quaternion.h>
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -937,6 +939,91 @@ TEST(IsDistanceDeviationOkTest, FalseWhenDistanceDeviationAboveMax)
   const auto [_, is_ok] = is_distance_deviation_ok(traj_points, context, 0.1);
 
   EXPECT_FALSE(is_ok);
+}
+
+TEST(IsDistanceDeviationOkTest, TrueAndFiniteWhenAllPointsOverlap)
+{
+  // A stopped trajectory may consist of points sharing the same position. The lateral offset is
+  // undefined in that case, so the check must not report NaN nor flag the trajectory.
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(1.0, 1.0, 0.0, 0.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    create_trajectory_point(1.0, 1.0, 0.0, 0.0, 0.0, 2.0)};
+
+  FilterContext context;
+  context.odometry = create_odometry(5.0, 5.0, 0.0);
+
+  const auto [deviation, is_ok] = is_distance_deviation_ok(traj_points, context, 0.1);
+
+  EXPECT_TRUE(std::isfinite(deviation));
+  EXPECT_DOUBLE_EQ(deviation, 0.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsDistanceDeviationOkTest, IgnoresOverlappingPointsWhenComputingDeviation)
+{
+  // Overlapping points must not affect the lateral offset of the remaining distinct segment.
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.5),
+    create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 1.0)};
+
+  FilterContext context;
+  context.odometry = create_odometry(1.0, 0.5, 0.0);
+
+  const auto [deviation, is_ok] = is_distance_deviation_ok(traj_points, context, 1.0);
+
+  EXPECT_DOUBLE_EQ(deviation, 0.5);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsDistanceDeviationOkTest, TrueAndFiniteWhenTrajectoryContainsNaN)
+{
+  constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+    create_trajectory_point(nan, nan, 0.0, 5.0, 0.0, 1.0),
+    create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0)};
+
+  FilterContext context;
+  context.odometry = create_odometry(1.0, 1.0, 0.0);
+
+  const auto [deviation, is_ok] = is_distance_deviation_ok(traj_points, context, 0.1);
+
+  EXPECT_TRUE(std::isfinite(deviation));
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(TrajectoryFeasibilityFilterTest, DistanceDeviationMetricIsFiniteWhenAllPointsOverlap)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(1.0, 1.0, 0.0, 0.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    create_trajectory_point(1.0, 1.0, 0.0, 0.0, 0.0, 2.0)};
+
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  TrajectoryFeasibilityFilter filter;
+  validator::Params params;
+  params.trajectory_feasibility.max_distance_deviation = 0.1;
+  filter.update_parameters(params);
+  filter.set_vehicle_info(vehicle_info);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.0, 5.0, 0.0);
+  CandidateTrajectory candidate_trajectory;
+  candidate_trajectory.points = traj_points;
+  auto result = filter.is_feasible(candidate_trajectory, context);
+
+  ASSERT_TRUE(result.has_value());
+  const auto & metrics = result.value().metrics;
+  const auto it = std::find_if(metrics.begin(), metrics.end(), [](const auto & metric) {
+    return metric.metric_name == "distance_deviation";
+  });
+  ASSERT_NE(it, metrics.end());
+  EXPECT_TRUE(std::isfinite(it->metric_value));
+  EXPECT_EQ(it->risk.level, RiskLevel::SAFE);
 }
 
 // --- is_steering_angle_ok(...) tests ---
