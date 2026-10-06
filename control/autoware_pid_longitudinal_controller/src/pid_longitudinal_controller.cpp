@@ -140,6 +140,12 @@ PidLongitudinalController::PidLongitudinalController(
     m_enable_brake_keeping_before_stop =
       node.declare_parameter<bool>("enable_brake_keeping_before_stop");         // [-]
     m_brake_keeping_acc = node.declare_parameter<double>("brake_keeping_acc");  // [m/s^2]
+    m_brake_keeping_params.terminal_clip_dist_th =
+      node.declare_parameter<double>("brake_keeping_terminal_clip_dist_th");
+    m_brake_keeping_params.terminal_clip_vel_th =
+      node.declare_parameter<double>("brake_keeping_terminal_clip_vel_th");
+    m_brake_keeping_params.abort_dist_th =
+      node.declare_parameter<double>("brake_keeping_abort_dist_th");
   }
 
   // parameters for smooth stop state
@@ -711,7 +717,7 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
   if (!is_not_running) {
     m_last_running_time = std::make_shared<rclcpp::Time>(clock_->now());
   }
-  const bool stopped_condition =
+  m_is_stopped_with_delay =
     m_last_running_time
       ? (clock_->now() - *m_last_running_time).seconds() > p.stopped_state_entry_duration_time
       : false;
@@ -754,7 +760,7 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
     if (emergency_condition.result) {
       return changeControlState(ControlState::EMERGENCY, emergency_condition.reason);
     }
-    if (!is_under_control && stopped_condition) {
+    if (!is_under_control && m_is_stopped_with_delay) {
       return changeControlState(ControlState::STOPPED);
     }
 
@@ -769,7 +775,7 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
         return changeControlState(ControlState::STOPPING);
       }
     } else {
-      if (stopped_condition && !departure_condition_from_stopped) {
+      if (m_is_stopped_with_delay && !departure_condition_from_stopped) {
         return changeControlState(ControlState::STOPPED);
       }
     }
@@ -781,7 +787,7 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
     if (emergency_condition.result) {
       return changeControlState(ControlState::EMERGENCY, emergency_condition.reason);
     }
-    if (stopped_condition) {
+    if (m_is_stopped_with_delay) {
       return changeControlState(ControlState::STOPPED);
     }
 
@@ -845,7 +851,7 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
 
   // in EMERGENCY state
   if (m_control_state == ControlState::EMERGENCY) {
-    if (stopped_condition) {
+    if (m_is_stopped_with_delay) {
       return changeControlState(ControlState::STOPPED);
     }
 
@@ -904,7 +910,7 @@ PidLongitudinalController::Motion PidLongitudinalController::calcCtrlCmd(
         raw_ctrl_cmd.vel = control_data.interpolated_traj.points.at(control_data.target_idx)
                              .longitudinal_velocity_mps;
         raw_ctrl_cmd.acc = applyVelocityFeedback(control_data);
-        raw_ctrl_cmd = keepBrakeBeforeStop(control_data, raw_ctrl_cmd, target_idx);
+        raw_ctrl_cmd = keepBrakeBeforeStop(control_data, raw_ctrl_cmd);
 
         RCLCPP_DEBUG(
           logger_,
@@ -1105,34 +1111,44 @@ double PidLongitudinalController::applySlopeCompensation(
 }
 
 PidLongitudinalController::Motion PidLongitudinalController::keepBrakeBeforeStop(
-  const ControlData & control_data, const Motion & target_motion, const size_t nearest_idx) const
+  const ControlData & control_data, const Motion & target_motion)
 {
   Motion output_motion = target_motion;
 
-  if (m_enable_brake_keeping_before_stop == false) {
-    return output_motion;
-  }
-  const auto traj = control_data.interpolated_traj;
-
-  const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj.points);
-  if (!stop_idx) {
+  const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(control_data.interpolated_traj.points);
+  if (!m_enable_brake_keeping_before_stop || !stop_idx) {
+    m_brake_keeping_state = BrakeKeepingState::NORMAL;
     return output_motion;
   }
 
-  double min_acc_before_stop = std::numeric_limits<double>::max();
-  size_t min_acc_idx = std::numeric_limits<size_t>::max();
-  for (int i = static_cast<int>(*stop_idx); i >= 0; --i) {
-    const auto ui = static_cast<size_t>(i);
-    if (traj.points.at(ui).acceleration_mps2 > static_cast<float>(min_acc_before_stop)) {
-      break;
+  const double D = control_data.stop_dist;
+  const double V = std::abs(control_data.current_motion.vel);
+  const auto & p = m_brake_keeping_params;
+
+  if (m_brake_keeping_state == BrakeKeepingState::NORMAL) {
+    if (D <= p.terminal_clip_dist_th && V < p.terminal_clip_vel_th) {
+      m_brake_keeping_state = BrakeKeepingState::TERMINAL_CLIP;
+      RCLCPP_DEBUG(logger_, "[keepBrake] NORMAL -> TERMINAL_CLIP");
     }
-    min_acc_before_stop = traj.points.at(ui).acceleration_mps2;
-    min_acc_idx = ui;
+  }
+  else if (m_brake_keeping_state == BrakeKeepingState::TERMINAL_CLIP) {
+    if (D > p.abort_dist_th) {
+      m_brake_keeping_state = BrakeKeepingState::NORMAL;
+      RCLCPP_DEBUG(logger_, "[keepBrake] TERMINAL_CLIP -> NORMAL (Abort)");
+    } else if (m_is_stopped_with_delay) {
+      m_brake_keeping_state = BrakeKeepingState::STOP_AND_GO;
+      RCLCPP_DEBUG(logger_, "[keepBrake] TERMINAL_CLIP -> STOP_AND_GO");
+    }
+  }
+  else if (m_brake_keeping_state == BrakeKeepingState::STOP_AND_GO) {
+    if (D > p.abort_dist_th) {
+      m_brake_keeping_state = BrakeKeepingState::NORMAL;
+      RCLCPP_DEBUG(logger_, "[keepBrake] STOP_AND_GO -> NORMAL");
+    }
   }
 
-  const double brake_keeping_acc = std::max(m_brake_keeping_acc, min_acc_before_stop);
-  if (nearest_idx >= min_acc_idx && target_motion.acc > brake_keeping_acc) {
-    output_motion.acc = brake_keeping_acc;
+  if (m_brake_keeping_state == BrakeKeepingState::TERMINAL_CLIP) {
+    output_motion.acc = std::min(target_motion.acc, m_brake_keeping_acc);
   }
 
   return output_motion;
