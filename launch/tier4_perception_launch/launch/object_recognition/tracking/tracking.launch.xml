@@ -57,7 +57,7 @@
   <arg name="input/camera_only/channel" default="camera_streampetr"/>
   <arg name="input/camera_vru/channel" default="camera_vru"/>
   <arg name="input/camera_vru/objects" default="/perception/object_recognition/detection/camera_vru/objects"/>
-  <arg name="input/v2x/raw_objects" default="/v2x/smartpole/tracking/objects"/>
+  <arg name="input/v2x/raw_objects" default="/v2x/smartpole/selected/tracked/objects"/>
 
   <arg name="output/objects" default="$(var ns)/objects"/>
 

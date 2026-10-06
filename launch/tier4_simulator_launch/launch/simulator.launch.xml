@@ -102,7 +102,7 @@
           <!-- Run with tracking merger to add far v2x information -->
           <include file="$(find-pkg-share autoware_object_sorter)/launch/tracked_object_sorter.launch.xml">
             <arg name="node_name" value="v2x_tracked_object_sorter"/>
-            <arg name="input/objects" value="/v2x/smartpole/tracking/objects"/>
+            <arg name="input/objects" value="/v2x/smartpole/selected/tracked/objects"/>
             <arg name="output/objects" value="v2x/sorted_tracked_objects"/>
             <arg name="param_path" value="$(var object_recognition_tracking_v2x_tracked_object_sorter_param_path)"/>
           </include>
