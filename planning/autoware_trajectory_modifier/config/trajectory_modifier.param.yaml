@@ -189,7 +189,7 @@
       limit_velocity_from_map_debug_lanelet_ids: [0]
       limit_velocity_from_map_debug_max_velocities: [1000.0]
 
-    use_detection_area_stop: true
+    use_detection_area_stop: false
     detection_area:
       stop_margin: 0.0 # [m]
       target_filtering:
@@ -201,7 +201,7 @@
         trailer: false
         motorcycle: false
         bicycle: false
-        pedestrian: true
+        pedestrian: false
         animal: false
         hazard: false
         over_drivable: false
