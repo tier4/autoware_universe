@@ -21,6 +21,7 @@
 #include "autoware/trajectory_validator/detail/trajectory_validator_report.hpp"
 #include "autoware/trajectory_validator/detail/validator_context.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -40,7 +41,7 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectory;
 class PseudoEmergencyStopHandler
 {
 public:
-  explicit PseudoEmergencyStopHandler(rclcpp::Node & node);
+  explicit PseudoEmergencyStopHandler(autoware::agnocast_wrapper::Node & node);
 
   void handle(
     const CandidateTrajectories & input_trajectories, CandidateTrajectories & filtered_trajectories,
@@ -64,7 +65,8 @@ private:
 
   bool pseudo_emergency_stop_active_{false};
   std::optional<CandidateTrajectory> cached_fallback_trajectory_{std::nullopt};
-  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+  std::unique_ptr<
+    autoware::planning_factor_interface::PlanningFactorInterfaceT<autoware::agnocast_wrapper::Node>>
     planning_factor_interface_;
 };
 

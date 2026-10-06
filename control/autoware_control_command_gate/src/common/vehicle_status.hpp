@@ -15,6 +15,7 @@
 #ifndef COMMON__VEHICLE_STATUS_HPP_
 #define COMMON__VEHICLE_STATUS_HPP_
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -36,7 +37,7 @@ using nav_msgs::msg::Odometry;
 class VehicleStatus
 {
 public:
-  explicit VehicleStatus(rclcpp::Node & node);
+  explicit VehicleStatus(autoware::agnocast_wrapper::Node & node);
   bool is_autoware_control_enabled() const;
   bool is_vehicle_stopped() const;
   double get_current_steering() const;
@@ -45,13 +46,19 @@ public:
   Control get_actual_status_as_command() const;
 
 private:
-  rclcpp::Node & node_;
-  rclcpp::Subscription<Odometry>::SharedPtr sub_kinematics_;
-  rclcpp::Subscription<AccelWithCovarianceStamped>::SharedPtr sub_acceleration_;
-  rclcpp::Subscription<SteeringReport>::SharedPtr sub_steering_;
-  rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
+  static constexpr double velocity_buffer_time_sec = 10.0;
 
-  autoware::motion_utils::VehicleStopChecker vehicle_stop_checker_;
+  void on_kinematics(const Odometry & msg);
+
+  autoware::agnocast_wrapper::Node & node_;
+  AUTOWARE_SUBSCRIPTION_PTR(Odometry) sub_kinematics_;
+  AUTOWARE_SUBSCRIPTION_PTR(AccelWithCovarianceStamped) sub_acceleration_;
+  AUTOWARE_SUBSCRIPTION_PTR(SteeringReport) sub_steering_;
+  AUTOWARE_SUBSCRIPTION_PTR(ControlModeReport) sub_control_mode_;
+
+  // Not VehicleStopChecker: it owns an rclcpp subscription, which an AgnocastOnly executor does
+  // not spin. The base holds only the twist buffer, which sub_kinematics_ feeds.
+  autoware::motion_utils::VehicleStopCheckerBase vehicle_stop_checker_;
 
   Odometry current_kinematics_;
   AccelWithCovarianceStamped current_acceleration_;

@@ -31,7 +31,8 @@
 namespace autoware::control_command_gate
 {
 
-VehicleCmdFilterParam declare_filter_params(rclcpp::Node & node, const std::string & ns)
+VehicleCmdFilterParam declare_filter_params(
+  autoware::agnocast_wrapper::Node & node, const std::string & ns)
 {
   VehicleCmdFilterParam p;
   p.vel_lim = node.declare_parameter<double>(ns + "vel_lim");
@@ -53,14 +54,20 @@ VehicleCmdFilterParam declare_filter_params(rclcpp::Node & node, const std::stri
 }
 
 ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
-: Node("control_command_gate", options), diag_(this, 0.5)
+: autoware::agnocast_wrapper::Node("control_command_gate", options), diag_(this, 0.5)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
 
   // Create ROS interface.
-  pub_status_ =
+  pub_source_ =
     create_publisher<CommandSourceStatus>("~/source/status", rclcpp::QoS(1).transient_local());
+  pub_filter_ =
+    create_publisher<CommandFilterStatus>("~/filter/status", rclcpp::QoS(1).transient_local());
+  srv_source_ = create_service<ChangeCommandSource>(
+    "~/source/change", std::bind(&ControlCmdGate::on_change_source, this, _1, _2));
+  srv_filter_ = create_service<ChangeCommandFilter>(
+    "~/filter/change", std::bind(&ControlCmdGate::on_change_filter, this, _1, _2));
   srv_select_ = create_service<SelectCommandSource>(
     "~/source/select", std::bind(&ControlCmdGate::on_select_source, this, _1, _2));
 
@@ -79,7 +86,7 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
     transition_filter_params.wheel_base = info.wheel_base_m;
   }
 
-  const auto inputs = declare_parameter<std::vector<int>>("inputs");
+  const auto inputs = declare_parameter<std::vector<int64_t>>("inputs");
   for (const auto & input : inputs) {
     if (input == builtin || input == unknown) {
       throw std::invalid_argument("input source '" + std::to_string(input) + "' is reserved");
@@ -131,9 +138,11 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
   // Select initial command source. Note that the select function calls on_change_source.
   selector_->select_builtin_source(builtin);
   publish_source_status();
+  publish_filter_status();
 
   const auto period = rclcpp::Rate(declare_parameter<double>("rate")).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
+  timer_ =
+    autoware::agnocast_wrapper::create_timer(this, get_clock(), period, [this]() { on_timer(); });
 }
 
 void ControlCmdGate::on_timer()
@@ -141,6 +150,31 @@ void ControlCmdGate::on_timer()
   selector_->update();
   compatibility_->publish();
   publish_source_status();
+  publish_filter_status();
+}
+
+void ControlCmdGate::on_change_source(
+  const ChangeCommandSource::Request::SharedPtr req,
+  const ChangeCommandSource::Response::SharedPtr res)
+{
+  const auto error = selector_->select(req->source);
+  if (!error.empty()) {
+    res->status.success = false;
+    res->status.message = error;
+    RCLCPP_ERROR_STREAM(get_logger(), error);
+    return;
+  }
+  res->status.success = true;
+  publish_source_status();
+}
+
+void ControlCmdGate::on_change_filter(
+  const ChangeCommandFilter::Request::SharedPtr req,
+  const ChangeCommandFilter::Response::SharedPtr res)
+{
+  output_filter_->set_transition_flag(req->filter);
+  res->status.success = true;
+  publish_filter_status();
 }
 
 void ControlCmdGate::on_select_source(
@@ -154,32 +188,35 @@ void ControlCmdGate::on_select_source(
     RCLCPP_ERROR_STREAM(get_logger(), error);
     return;
   }
-  const auto message = "select command source: " + std::to_string(req->source);
-  res->status.success = true;
-  res->status.message = message;
-  RCLCPP_INFO_STREAM(get_logger(), message);
-
-  // Update transition flag if command source is changed.
   output_filter_->set_transition_flag(req->transition);
+  res->status.success = true;
   publish_source_status();
+  publish_filter_status();
 }
 
 void ControlCmdGate::publish_source_status()
 {
   const auto current_source = selector_->get_source();
-  const auto transition_flag = output_filter_->get_transition_flag();
-  if (current_source_ == current_source && transition_flag_ == transition_flag) {
-    return;
-  }
+  if (current_source_ == current_source) return;
   current_source_ = current_source;
+
+  auto msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_source_);
+  msg->stamp = now();
+  msg->source = current_source;
+  pub_source_->publish(std::move(msg));
+};
+
+void ControlCmdGate::publish_filter_status()
+{
+  const auto transition_flag = output_filter_->get_transition_flag();
+  if (transition_flag_ == transition_flag) return;
   transition_flag_ = transition_flag;
 
-  CommandSourceStatus msg;
-  msg.stamp = now();
-  msg.source = current_source_;
-  msg.transition = transition_flag_;
-  pub_status_->publish(msg);
-};
+  auto msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_filter_);
+  msg->stamp = now();
+  msg->filter = transition_flag;
+  pub_filter_->publish(std::move(msg));
+}
 
 }  // namespace autoware::control_command_gate
 

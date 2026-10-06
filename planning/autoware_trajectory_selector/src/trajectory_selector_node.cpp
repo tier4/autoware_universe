@@ -55,7 +55,7 @@ void TrajectorySelectorNode::subscribers()
     "~/input/lanelet2_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrajectorySelectorNode::map_callback, this, std::placeholders::_1));
 
-  sub_route_ = create_subscription<autoware_planning_msgs::msg::LaneletRoute>(
+  sub_route_ = create_subscription<LaneletRoute>(
     "~/input/route", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrajectorySelectorNode::route_callback, this, std::placeholders::_1));
 
@@ -83,31 +83,38 @@ void TrajectorySelectorNode::publishers()
   time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(pub_processing_time_detail_);
 }
 
-void TrajectorySelectorNode::map_callback(const LaneletMapBin::ConstSharedPtr msg)
+void TrajectorySelectorNode::map_callback(
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(LaneletMapBin) & msg)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  if (!msg) return;
 
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
     autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg));
-  if (msg != nullptr) route_handler_ptr_->setMap(*msg);
+  route_handler_ptr_->setMap(*msg);
 }
 
 void TrajectorySelectorNode::route_callback(
-  const autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr msg)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(LaneletRoute) & msg)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  route_ptr_ = msg;
-  if (msg != nullptr) route_handler_ptr_->setRoute(*msg);
+  if (!msg) return;
+
+  route_ptr_ = std::make_shared<const LaneletRoute>(*msg);
+  route_handler_ptr_->setRoute(*msg);
 }
 
-void TrajectorySelectorNode::on_anchor_trajectories(const CandidateTrajectories::ConstSharedPtr msg)
+void TrajectorySelectorNode::on_anchor_trajectories(
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(CandidateTrajectories) & msg)
 {
   concatenator_ptr_->add_candidate(*msg);
   process_trajectories();
   timer_->reset();
 }
-void TrajectorySelectorNode::on_trajectories(const CandidateTrajectories::ConstSharedPtr msg)
+void TrajectorySelectorNode::on_trajectories(
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(CandidateTrajectories) & msg)
 {
   concatenator_ptr_->add_candidate(*msg);
 }
@@ -117,22 +124,22 @@ TrajectorySelectorNode::take_validator_data()
 {
   trajectory_validator::FilterContext context;
 
-  context.odometry = sub_odometry_.take_data();
+  context.odometry = sub_odometry_->take_data();
   if (!context.odometry) {
     return tl::make_unexpected("Failed to take odometry data");
   }
 
-  context.predicted_objects = sub_objects_.take_data();
+  context.predicted_objects = sub_objects_->take_data();
   if (!context.predicted_objects) {
     return tl::make_unexpected("Failed to take predicted objects data");
   }
 
-  context.acceleration = sub_acceleration_.take_data();
+  context.acceleration = sub_acceleration_->take_data();
   if (!context.acceleration) {
     return tl::make_unexpected("Failed to take acceleration data");
   }
 
-  context.traffic_light_signals = sub_traffic_lights_.take_data();
+  context.traffic_light_signals = sub_traffic_lights_->take_data();
   if (!context.traffic_light_signals) {
     context.traffic_light_signals =
       std::make_shared<autoware_perception_msgs::msg::TrafficLightGroupArray>();
@@ -140,7 +147,7 @@ TrajectorySelectorNode::take_validator_data()
 
   context.route = route_ptr_;
 
-  context.segmented_pointcloud = sub_segmented_pointcloud_.take_data();
+  context.segmented_pointcloud = sub_segmented_pointcloud_->take_data();
 
   context.lanelet_map = lanelet_map_ptr_;
   if (!context.lanelet_map) {
@@ -159,7 +166,7 @@ trajectory_ranker::RankerContext TrajectorySelectorNode::take_ranker_data(
 {
   trajectory_ranker::RankerContext context;
   context.route_handler = route_handler_ptr_;
-  context.odometry = sub_odometry_.take_data();
+  context.odometry = sub_odometry_->take_data();
   context.generator_info = candidate_trajectories.generator_info;
   return context;
 }
@@ -181,6 +188,7 @@ std::optional<TrajectorySource> generator_name_prefix_to_source(
 {
   static const std::unordered_map<std::string, TrajectorySource> generator_name_prefix_to_source = {
     {"DiffusionPlanner_", TrajectorySource::DIFFUSION_PLANNER},
+    {"MLPlanner_", TrajectorySource::DIFFUSION_PLANNER},
     {"MinimumRuleBasedPlanner_Go", TrajectorySource::BACKUP_PLANNER_GO},
     {"MinimumRuleBasedPlanner_Stop", TrajectorySource::BACKUP_PLANNER_STOP},
   };
@@ -287,7 +295,7 @@ void TrajectorySelectorNode::update_fallback_timer()
   RCLCPP_INFO(
     get_logger(), "New concatenate_and_validate timer callback created with period %ld.",
     selector_params_.fallback_period_ms);
-  timer_ = rclcpp::create_timer(
+  timer_ = autoware::agnocast_wrapper::create_timer(
     this, get_clock(), std::chrono::milliseconds(selector_params_.fallback_period_ms),
     std::bind(&TrajectorySelectorNode::process_trajectories, this));
 }

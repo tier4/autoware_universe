@@ -17,9 +17,14 @@
 
 #include "state.hpp"
 
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
+#include <tier4_system_msgs/msg/driving_mode_flag.hpp>
+#include <tier4_system_msgs/msg/driving_mode_info.hpp>
 #include <tier4_system_msgs/msg/mode_change_available.hpp>
 
 #include <memory>
@@ -27,30 +32,41 @@
 namespace autoware::operation_mode_transition_manager
 {
 
-class AutonomousModeTransitionFlagNode : public rclcpp::Node
+class AutonomousModeTransitionFlagNode : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit AutonomousModeTransitionFlagNode(const rclcpp::NodeOptions & options);
 
 private:
   using ModeChangeAvailable = tier4_system_msgs::msg::ModeChangeAvailable;
+  using DrivingModeFlag = tier4_system_msgs::msg::DrivingModeFlag;
+  using DrivingModeInfo = tier4_system_msgs::msg::DrivingModeInfo;
+  using DiagnosticArray = diagnostic_msgs::msg::DiagnosticArray;
   void on_timer();
   InputData take_data();
 
-  rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_available_;
-  rclcpp::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_completed_;
-  rclcpp::Publisher<ModeChangeBase::DebugInfo>::SharedPtr pub_debug_;
+  AUTOWARE_TIMER_PTR timer_;
+  AUTOWARE_PUBLISHER_PTR(ModeChangeAvailable) pub_transition_available_;
+  AUTOWARE_PUBLISHER_PTR(ModeChangeAvailable) pub_transition_completed_;
+  AUTOWARE_PUBLISHER_PTR(ModeChangeBase::DebugInfo) pub_debug_;
 
   template <class T>
-  using PollingSubscriber = autoware_utils_rclcpp::InterProcessPollingSubscriber<T>;
-  PollingSubscriber<Odometry> sub_kinematics_{this, "kinematics"};
-  PollingSubscriber<Trajectory> sub_trajectory_{this, "trajectory"};
-  PollingSubscriber<Control> sub_control_cmd_{this, "control_cmd"};
-  PollingSubscriber<Control> sub_trajectory_follower_control_cmd_{
-    this, "trajectory_follower_control_cmd"};
+  using PollingSubscriber = autoware::agnocast_wrapper::polling::PollingSubscriber<T>;
+  PollingSubscriber<Odometry>::SharedPtr sub_kinematics_;
+  PollingSubscriber<Trajectory>::SharedPtr sub_trajectory_;
+  PollingSubscriber<Control>::SharedPtr sub_control_cmd_;
+  PollingSubscriber<Control>::SharedPtr sub_trajectory_follower_control_cmd_;
 
   std::unique_ptr<ModeChangeBase> autonomous_mode_;
+
+  // Driving mode interface
+  AUTOWARE_SUBSCRIPTION_PTR(DrivingModeInfo) sub_driving_mode_info_;
+  AUTOWARE_PUBLISHER_PTR(DrivingModeFlag) pub_driving_mode_stable_;
+  AUTOWARE_PUBLISHER_PTR(DiagnosticArray) pub_driving_mode_available_;
+  void on_driving_mode_info(const DrivingModeInfo & msg);
+  void publish_driving_mode_stable(bool flag) const;
+  void publish_driving_mode_available(bool flag) const;
+  std::optional<uint32_t> driving_mode_id_;  // Refer to the driving_mode_manager for this ID.
 };
 
 }  // namespace autoware::operation_mode_transition_manager

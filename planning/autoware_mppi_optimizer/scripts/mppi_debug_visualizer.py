@@ -1979,22 +1979,28 @@ def load_key_value_csv(path: Path) -> Dict[str, float]:
 
 
 def load_params_from_log(log_dir: Path, params_yaml: Optional[Path]) -> Dict[str, float]:
-    """Load slider defaults: defaults ← logged cost_params.csv ← explicit --params-yaml.
+    """Load slider defaults for offline compare/retune.
 
-    When --params-yaml is passed, it wins over the online log so you can retune from a
-    local yaml without deleting cost_params.csv.
+    Priority: DEFAULT_PARAMS ← yaml (fill baseline) ← cost_params.csv (online wins).
+    Logged ``cost_params.csv`` always beats yaml so replay matches the run that produced
+    the log. Pass ``--params-yaml`` only to seed sliders when ``cost_params.csv`` is missing.
     """
     params = dict(DEFAULT_PARAMS)
-    logged = load_key_value_csv(log_dir / "cost_params.csv")
-    for key, value in logged.items():
-        if key in params:
-            params[key] = value
     if params_yaml is not None:
         yaml_params = load_params_yaml(params_yaml)
         for key, value in yaml_params.items():
             if key in params:
                 params[key] = value
+    logged = load_key_value_csv(log_dir / "cost_params.csv")
+    for key, value in logged.items():
+        if key in params:
+            params[key] = value
     return params
+
+
+def load_logged_cost_params(log_dir: Path) -> Dict[str, float]:
+    """All numeric keys from cost_params.csv (includes fields without sliders)."""
+    return load_key_value_csv(log_dir / "cost_params.csv")
 
 
 def load_vehicle_from_log(
@@ -2431,6 +2437,7 @@ class OfflineLogVisualizer:
         self._enable_retune = enable_retune
         self._params_yaml = params_yaml
         self._params = load_params_from_log(log_dir, params_yaml)
+        self._logged_cost_params = load_logged_cost_params(log_dir)
         (
             self._wheel_base,
             self._ego_width,
@@ -2474,6 +2481,20 @@ class OfflineLogVisualizer:
                 f"ego_length={self._ego_length}, ego_width={self._ego_width}, "
                 f"steer_time_constant={self._steer_time_constant}"
             )
+            if self._logged_cost_params:
+                print(
+                    "Retune cost baseline: cost_params.csv from log "
+                    f"(lambda={self._logged_cost_params.get('lambda', '?')}, "
+                    f"track_coeff={self._logged_cost_params.get('track_coeff', '?')}, "
+                    f"lateral_distance_coeff="
+                    f"{self._logged_cost_params.get('lateral_distance_coeff', '?')})"
+                )
+            elif self._params_yaml is not None:
+                print(
+                    f"Retune cost baseline: --params-yaml {self._params_yaml} (no cost_params.csv)"
+                )
+            else:
+                print("WARNING: no cost_params.csv — sliders use script DEFAULT_PARAMS, not online")
             print(f"Retune binary: {self._retune_bin}")
             print(f"Retune output directory: {self._out_dir}")
             print("Move sliders, then click Retune (or press r). Sliders alone do nothing.")
@@ -2602,8 +2623,9 @@ class OfflineLogVisualizer:
         self._show_current()
 
     def _current_params(self) -> Dict[str, float]:
-        """All known cost params: log/yaml/defaults, overridden by slider values."""
-        params = dict(self._params)
+        """Cost params sent to mppi_offline_retune: log extras + slider overrides."""
+        params = dict(self._logged_cost_params)
+        params.update(self._params)
         for name, slider in self._sliders.items():
             params[name] = float(slider.val)
         return params
@@ -2645,8 +2667,8 @@ class OfflineLogVisualizer:
             "--ego-length",
             str(self._ego_length),
         ]
-        if self._params_yaml is not None:
-            cmd.extend(["--params-yaml", str(self._params_yaml)])
+        # Do not pass --params-yaml into retune: it would overwrite cost_params.csv for
+        # keys without sliders (noise exponents, etc.). Sliders + --set carry user edits.
         if reseed:
             cmd.extend(["--nominal-csv", str(seed_path)])
         elif not math.isclose(

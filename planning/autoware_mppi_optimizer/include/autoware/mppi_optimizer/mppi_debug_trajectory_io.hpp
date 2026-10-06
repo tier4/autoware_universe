@@ -75,6 +75,24 @@ inline bool writeMppiDebugTrajectoryCsv(
   return true;
 }
 
+/** World-frame MPPI optimal rollout (includes ego IC at step 0); matches RViz mppi_optimal. */
+inline bool writeMppiDebugOptimalHorizonCsv(
+  const std::string & path, const std::vector<std::pair<float, float>> & optimal_horizon,
+  const float dt)
+{
+  std::ofstream out(path);
+  if (!out) {
+    return false;
+  }
+  out << "step,t,x,y\n";
+  out << std::setprecision(9) << std::fixed;
+  for (std::size_t i = 0; i < optimal_horizon.size(); ++i) {
+    out << i << "," << static_cast<double>(i) * static_cast<double>(dt) << ","
+        << optimal_horizon[i].first << "," << optimal_horizon[i].second << "\n";
+  }
+  return true;
+}
+
 inline bool writeMppiDebugCostsCsv(
   const std::string & path, const std::vector<float> & raw_costs,
   const std::vector<float> & normalized_weights)

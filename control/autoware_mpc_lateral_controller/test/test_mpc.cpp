@@ -21,6 +21,7 @@
 #include "gtest/gtest.h"
 #include "rclcpp/rclcpp.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware/trajectory_follower_base/control_horizon.hpp>
 
 #include "autoware_control_msgs/msg/lateral.hpp"
@@ -185,7 +186,7 @@ protected:
 /* cppcheck-suppress syntaxError */
 TEST_F(MPCTest, InitializeAndCalculate)
 {
-  auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
+  auto node = autoware::agnocast_wrapper::Node("mpc_test_node", rclcpp::NodeOptions{});
   auto mpc = std::make_unique<MPC>(node);
   EXPECT_FALSE(mpc->hasVehicleModel());
   EXPECT_FALSE(mpc->hasQPSolver());
@@ -219,7 +220,7 @@ TEST_F(MPCTest, InitializeAndCalculate)
 
 TEST_F(MPCTest, InitializeAndCalculateRightTurn)
 {
-  auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
+  auto node = autoware::agnocast_wrapper::Node("mpc_test_node", rclcpp::NodeOptions{});
   auto mpc = std::make_unique<MPC>(node);
   EXPECT_FALSE(mpc->hasVehicleModel());
   EXPECT_FALSE(mpc->hasQPSolver());
@@ -256,7 +257,7 @@ TEST_F(MPCTest, InitializeAndCalculateRightTurn)
 
 TEST_F(MPCTest, OsqpCalculate)
 {
-  auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
+  auto node = autoware::agnocast_wrapper::Node("mpc_test_node", rclcpp::NodeOptions{});
   auto mpc = std::make_unique<MPC>(node);
   initializeMPC(*mpc);
   const auto current_kinematics = makeOdometry(dummy_straight_trajectory.points.front().pose, 0.0);
@@ -289,7 +290,7 @@ TEST_F(MPCTest, OsqpCalculate)
 
 TEST_F(MPCTest, OsqpCalculateRightTurn)
 {
-  auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
+  auto node = autoware::agnocast_wrapper::Node("mpc_test_node", rclcpp::NodeOptions{});
   auto mpc = std::make_unique<MPC>(node);
   initializeMPC(*mpc);
   const auto current_kinematics =
@@ -323,7 +324,7 @@ TEST_F(MPCTest, OsqpCalculateRightTurn)
 
 TEST_F(MPCTest, KinematicsNoDelayCalculate)
 {
-  auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
+  auto node = autoware::agnocast_wrapper::Node("mpc_test_node", rclcpp::NodeOptions{});
   auto mpc = std::make_unique<MPC>(node);
   initializeMPC(*mpc);
 
@@ -358,7 +359,7 @@ TEST_F(MPCTest, KinematicsNoDelayCalculate)
 
 TEST_F(MPCTest, KinematicsNoDelayCalculateRightTurn)
 {
-  auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
+  auto node = autoware::agnocast_wrapper::Node("mpc_test_node", rclcpp::NodeOptions{});
   auto mpc = std::make_unique<MPC>(node);
   initializeMPC(*mpc);
   const auto current_kinematics =
@@ -394,7 +395,7 @@ TEST_F(MPCTest, KinematicsNoDelayCalculateRightTurn)
 
 TEST_F(MPCTest, DynamicCalculate)
 {
-  auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
+  auto node = autoware::agnocast_wrapper::Node("mpc_test_node", rclcpp::NodeOptions{});
   auto mpc = std::make_unique<MPC>(node);
   initializeMPC(*mpc);
 
@@ -424,7 +425,7 @@ TEST_F(MPCTest, DynamicCalculate)
 
 TEST_F(MPCTest, MultiSolveWithBuffer)
 {
-  auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
+  auto node = autoware::agnocast_wrapper::Node("mpc_test_node", rclcpp::NodeOptions{});
   auto mpc = std::make_unique<MPC>(node);
   std::shared_ptr<VehicleModelInterface> vehicle_model_ptr =
     std::make_shared<KinematicsBicycleModel>(wheelbase, steer_limit, steer_tau);

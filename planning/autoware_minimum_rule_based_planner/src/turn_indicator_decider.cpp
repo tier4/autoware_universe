@@ -108,10 +108,10 @@ TurnDirection decide_pull_out(
 }
 
 TurnDirection decide_pull_over(
-  const double dist_to_goal, const double goal_offset, const double ego_velocity,
-  const TurnSignalParams & params, bool & arrived)
+  const double dist_to_shift_start, const double dist_to_goal, const double goal_offset,
+  const double ego_velocity, const TurnSignalParams & params, bool & arrived)
 {
-  if (dist_to_goal > params.search_distance) {
+  if (dist_to_shift_start > activation_distance(ego_velocity, params)) {
     arrived = false;
     return TurnDirection::NONE;
   }
@@ -329,7 +329,8 @@ void TurnIndicatorDecider::update_params(const turn_indicator::TurnSignalParams 
 
 TurnIndicatorsCommand TurnIndicatorDecider::decide(
   const PathWithLaneId & path, const RouteContext & route_context,
-  const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity, const rclcpp::Time & stamp)
+  const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity, const rclcpp::Time & stamp,
+  const std::optional<geometry_msgs::msg::Pose> & pull_over_start_pose)
 {
   TurnIndicatorsCommand cmd;
   cmd.stamp = stamp;
@@ -371,14 +372,23 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(
 
   const double dist_to_goal =
     autoware_utils_geometry::calc_distance2d(ego_pose, route_context.goal_pose);
+  // What the pull-over signal announces is the move out of the lane, so it is timed off the point
+  // where the path leaves it. Until the goal planner has shaped that shift into the path there is
+  // nothing to measure and the goal stands in for it, which can only light the signal later.
+  const double dist_to_shift_start =
+    pull_over_start_pose
+      ? motion_utils::calcSignedArcLength(path.points, ego_index, pull_over_start_pose->position)
+      : dist_to_goal;
   const double goal_offset = route_context.goal_lanelets.empty()
                                ? 0.0
                                : lanelet2_utils::get_lateral_distance_to_centerline(
                                    route_context.goal_lanelets, route_context.goal_pose);
   const auto pull_over = turn_indicator::decide_pull_over(
-    dist_to_goal, goal_offset, ego_velocity, params_, arrived_at_goal_);
+    dist_to_shift_start, dist_to_goal, goal_offset, ego_velocity, params_, arrived_at_goal_);
 
   // Pull-out is suppressed inside the pull-over range so the two cannot fight over the direction.
+  const bool in_pull_over_range =
+    dist_to_shift_start <= turn_indicator::activation_distance(ego_velocity, params_);
   const auto lanes = ego_lanes(path, ego_index, route_context);
   const auto pull_out =
     lanes.empty()
@@ -386,7 +396,7 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(
       ? pull_out_latch_
       : turn_indicator::decide_pull_out(
           lanelet2_utils::get_lateral_distance_to_centerline(lanes, ego_pose), ego_velocity,
-          dist_to_goal <= params_.search_distance, params_, pull_out_latch_);
+          in_pull_over_range, params_, pull_out_latch_);
 
   const auto signal = turn_indicator::resolve_priority(
     {maneuver_signal, Signal{pull_out, ManeuverKind::PULL_OUT},

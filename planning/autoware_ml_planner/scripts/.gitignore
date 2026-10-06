@@ -1,0 +1,4 @@
+__pycache__/
+c_generated_code/
+acados_ocp.json
+optimizer_result.png

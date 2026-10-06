@@ -18,6 +18,7 @@
 #include "common/timeout_diagnostics.hpp"
 #include "interface.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -28,7 +29,7 @@ namespace autoware::control_command_gate
 class CommandPublisher : public CommandOutput
 {
 public:
-  explicit CommandPublisher(rclcpp::Node & node);
+  explicit CommandPublisher(autoware::agnocast_wrapper::Node & node);
   void set_prev_control(std::shared_ptr<Control> control) { prev_control_ = control; }
   TimeoutDiag * create_diag_task(const TimeoutDiag::Params & params, const rclcpp::Clock & clock);
 
@@ -38,10 +39,10 @@ public:
   void on_hazard_lights(const HazardLightsCommand & msg) override;
 
 private:
-  rclcpp::Publisher<Control>::SharedPtr pub_control_;
-  rclcpp::Publisher<GearCommand>::SharedPtr pub_gear_;
-  rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_;
-  rclcpp::Publisher<HazardLightsCommand>::SharedPtr pub_hazard_lights_;
+  AUTOWARE_PUBLISHER_PTR(Control) pub_control_;
+  AUTOWARE_PUBLISHER_PTR(GearCommand) pub_gear_;
+  AUTOWARE_PUBLISHER_PTR(TurnIndicatorsCommand) pub_turn_indicators_;
+  AUTOWARE_PUBLISHER_PTR(HazardLightsCommand) pub_hazard_lights_;
 
   std::unique_ptr<TimeoutDiag> timeout_;
   std::shared_ptr<Control> prev_control_;

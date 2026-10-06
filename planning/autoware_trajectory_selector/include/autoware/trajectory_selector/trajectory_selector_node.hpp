@@ -18,13 +18,14 @@
 #include "autoware/trajectory_validator/detail/validator_context.hpp"
 #include "autoware_trajectory_selector/autoware_trajectory_selector_param.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/polling_subscriber.hpp>
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/trajectory_adapter/trajectory_adapter_wrapper.hpp>
 #include <autoware/trajectory_concatenator/trajectory_concatenator_wrapper.hpp>
 #include <autoware/trajectory_ranker/trajectory_ranker_wrapper.hpp>
 #include <autoware/trajectory_validator/trajectory_validator_wrapper.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tl_expected/expected.hpp>
 
@@ -63,7 +64,7 @@ using trajectory_validator::ValidationReports;
  * @brief Concatenates candidate trajectories from multiple planners, validates them, ranks them,
  * and publishes the selected planning outputs.
  */
-class TrajectorySelectorNode : public rclcpp::Node
+class TrajectorySelectorNode : public autoware::agnocast_wrapper::Node
 {
 public:
   /**
@@ -83,13 +84,13 @@ private:
    * @brief Converts and stores the received lanelet map.
    * @param msg Binary lanelet map message.
    */
-  void map_callback(const LaneletMapBin::ConstSharedPtr msg);
+  void map_callback(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(LaneletMapBin) & msg);
 
   /**
    * @brief Converts and stores the received lanelet route.
    * @param msg Lanelet route message.
    */
-  void route_callback(const autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr msg);
+  void route_callback(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(LaneletRoute) & msg);
 
   /**
    * @brief Forwards incoming candidate trajectories to the concatenator and trigger the
@@ -98,12 +99,12 @@ private:
    * @warning must be in the same callback group as the timer callback as they both call
    * on_anchor_trajectories
    */
-  void on_anchor_trajectories(const CandidateTrajectories::ConstSharedPtr msg);
+  void on_anchor_trajectories(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(CandidateTrajectories) & msg);
   /**
    * @brief Forwards incoming candidate trajectories to the concatenator.
    * @param msg Incoming candidate trajectories message.
    */
-  void on_trajectories(const CandidateTrajectories::ConstSharedPtr msg);
+  void on_trajectories(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(CandidateTrajectories) & msg);
 
   /**
    * @brief Concatenates buffered trajectories, validates them, ranks them, and publishes the
@@ -132,39 +133,44 @@ private:
   std::unique_ptr<trajectory_validator::TrajectoryValidatorWrapper> validator_ptr_;
   std::unique_ptr<trajectory_ranker::TrajectoryRankerWrapper> ranker_ptr_;
   std::unique_ptr<trajectory_adapter::TrajectoryAdapterWrapper> adapter_ptr_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  AUTOWARE_TIMER_PTR timer_;
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   LaneletRoute::ConstSharedPtr route_ptr_;
   std::shared_ptr<route_handler::RouteHandler> route_handler_ptr_;
 
   // Polling Subscribers
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<Odometry> sub_odometry_{
-    this, "~/input/odometry"};
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<PredictedObjects> sub_objects_{
-    this, "~/input/objects"};
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
-    sub_acceleration_{this, "~/input/acceleration"};
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<
-    autoware_perception_msgs::msg::TrafficLightGroupArray>
-    sub_traffic_lights_{this, "~/input/traffic_signals"};
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<sensor_msgs::msg::PointCloud2>
-    sub_segmented_pointcloud_{
-      this, "~/input/segmented_pointcloud", autoware_utils_rclcpp::single_depth_sensor_qos()};
+  autoware::agnocast_wrapper::polling::PollingSubscriber<Odometry>::SharedPtr sub_odometry_ =
+    autoware::agnocast_wrapper::polling::create_polling_subscriber<Odometry>(
+      this, "~/input/odometry", 1);
+  autoware::agnocast_wrapper::polling::PollingSubscriber<PredictedObjects>::SharedPtr sub_objects_ =
+    autoware::agnocast_wrapper::polling::create_polling_subscriber<PredictedObjects>(
+      this, "~/input/objects", 1);
+  autoware::agnocast_wrapper::polling::PollingSubscriber<AccelWithCovarianceStamped>::SharedPtr
+    sub_acceleration_ =
+      autoware::agnocast_wrapper::polling::create_polling_subscriber<AccelWithCovarianceStamped>(
+        this, "~/input/acceleration", 1);
+  autoware::agnocast_wrapper::polling::PollingSubscriber<
+    autoware_perception_msgs::msg::TrafficLightGroupArray>::SharedPtr sub_traffic_lights_ =
+    autoware::agnocast_wrapper::polling::create_polling_subscriber<
+      autoware_perception_msgs::msg::TrafficLightGroupArray>(this, "~/input/traffic_signals", 1);
+  autoware::agnocast_wrapper::polling::PollingSubscriber<sensor_msgs::msg::PointCloud2>::SharedPtr
+    sub_segmented_pointcloud_ =
+      autoware::agnocast_wrapper::polling::create_polling_subscriber<sensor_msgs::msg::PointCloud2>(
+        this, "~/input/segmented_pointcloud", autoware_utils_rclcpp::single_depth_sensor_qos());
 
   // Normal Subscribers
-  rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
-  rclcpp::Subscription<autoware_planning_msgs::msg::LaneletRoute>::SharedPtr sub_route_;
-  rclcpp::Subscription<CandidateTrajectories>::SharedPtr sub_trajectories_generative_;
-  rclcpp::Subscription<CandidateTrajectories>::SharedPtr sub_trajectories_backup_;
+  AUTOWARE_SUBSCRIPTION_PTR(LaneletMapBin) sub_map_;
+  AUTOWARE_SUBSCRIPTION_PTR(LaneletRoute) sub_route_;
+  AUTOWARE_SUBSCRIPTION_PTR(CandidateTrajectories) sub_trajectories_generative_;
+  AUTOWARE_SUBSCRIPTION_PTR(CandidateTrajectories) sub_trajectories_backup_;
 
   // Publishers
-  rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_concatenated_trajectories_;
-  rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_validated_trajectories_;
-  rclcpp::Publisher<ScoredCandidateTrajectories>::SharedPtr pub_scored_trajectories_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_;
-  rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_;
-  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
-    pub_processing_time_detail_;
+  AUTOWARE_PUBLISHER_PTR(CandidateTrajectories) pub_concatenated_trajectories_;
+  AUTOWARE_PUBLISHER_PTR(CandidateTrajectories) pub_validated_trajectories_;
+  AUTOWARE_PUBLISHER_PTR(ScoredCandidateTrajectories) pub_scored_trajectories_;
+  AUTOWARE_PUBLISHER_PTR(Trajectory) pub_trajectory_;
+  AUTOWARE_PUBLISHER_PTR(TurnIndicatorsCommand) pub_turn_indicators_;
+  AUTOWARE_PUBLISHER_PTR(autoware_utils_debug::ProcessingTimeDetail) pub_processing_time_detail_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
 
   // Parameter interfaces

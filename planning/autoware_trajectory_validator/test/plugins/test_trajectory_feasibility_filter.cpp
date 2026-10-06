@@ -30,6 +30,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <vector>
 
 namespace
 {
@@ -54,18 +55,74 @@ autoware_planning_msgs::msg::TrajectoryPoint create_trajectory_point(
   return point;
 }
 
-lanelet::Lanelet create_straight_lanelet()
+// Densely sampled (1 cm) straight trajectory with a sub-millimeter lateral jitter, as seen right
+// after the vehicle starts moving. The jitter has period 3 so that points one meter apart are not
+// trivially collinear.
+std::vector<autoware_planning_msgs::msg::TrajectoryPoint>
+create_dense_straight_trajectory_with_jitter(const double velocity, const double length = 3.0)
 {
-  lanelet::Point3d left_start(lanelet::utils::getId(), 0.0, -2.0, 0.0);
-  lanelet::Point3d left_end(lanelet::utils::getId(), 20.0, -2.0, 0.0);
-  lanelet::Point3d right_start(lanelet::utils::getId(), 0.0, 2.0, 0.0);
-  lanelet::Point3d right_end(lanelet::utils::getId(), 20.0, 2.0, 0.0);
+  constexpr double interval = 0.01;  // [m]
+  constexpr double jitter = 0.0005;  // [m]
+  std::vector<autoware_planning_msgs::msg::TrajectoryPoint> traj_points;
+  const auto num_points = static_cast<size_t>(std::round(length / interval)) + 1;
+  for (size_t i = 0; i < num_points; ++i) {
+    const double x = interval * static_cast<double>(i);
+    const double y = (i % 3 == 0) ? jitter : (i % 3 == 1) ? -jitter : 0.0;
+    traj_points.push_back(create_trajectory_point(x, y, 0.0, velocity, 0.0, x / velocity));
+  }
+  return traj_points;
+}
+
+// Densely sampled (1 cm) trajectory: `straight_length` of straight line followed by a circular arc
+// of radius `radius` and length `arc_length`, driven at constant `velocity`.
+std::vector<autoware_planning_msgs::msg::TrajectoryPoint> create_dense_straight_then_arc_trajectory(
+  const double straight_length, const double radius, const double arc_length, const double velocity)
+{
+  constexpr double interval = 0.01;  // [m]
+  std::vector<autoware_planning_msgs::msg::TrajectoryPoint> traj_points;
+  for (double s = 0.0; s <= straight_length + arc_length + 1e-9; s += interval) {
+    double x = s;
+    double y = 0.0;
+    if (s > straight_length) {
+      const double theta = (s - straight_length) / radius;
+      x = straight_length + radius * std::sin(theta);
+      y = radius * (1.0 - std::cos(theta));
+    }
+    traj_points.push_back(create_trajectory_point(x, y, 0.0, velocity, 0.0, s / velocity));
+  }
+  return traj_points;
+}
+
+lanelet::Lanelet create_straight_lanelet(
+  const double left_bound_y = -2.0, const double right_bound_y = 2.0)
+{
+  lanelet::Point3d left_start(lanelet::utils::getId(), 0.0, left_bound_y, 0.0);
+  lanelet::Point3d left_end(lanelet::utils::getId(), 20.0, left_bound_y, 0.0);
+  lanelet::Point3d right_start(lanelet::utils::getId(), 0.0, right_bound_y, 0.0);
+  lanelet::Point3d right_end(lanelet::utils::getId(), 20.0, right_bound_y, 0.0);
 
   lanelet::LineString3d left_bound(lanelet::utils::getId(), {left_start, left_end});
   lanelet::LineString3d right_bound(lanelet::utils::getId(), {right_start, right_end});
 
   lanelet::Lanelet lanelet(lanelet::utils::getId(), left_bound, right_bound);
   lanelet.setAttribute("subtype", "road");
+
+  return lanelet;
+}
+
+// A crosswalk crossing `create_straight_lanelet()` perpendicularly, centered at `center_x`.
+lanelet::Lanelet create_crosswalk_lanelet(const double center_x)
+{
+  lanelet::Point3d left_start(lanelet::utils::getId(), center_x - 1.0, -4.0, 0.0);
+  lanelet::Point3d left_end(lanelet::utils::getId(), center_x - 1.0, 4.0, 0.0);
+  lanelet::Point3d right_start(lanelet::utils::getId(), center_x + 1.0, -4.0, 0.0);
+  lanelet::Point3d right_end(lanelet::utils::getId(), center_x + 1.0, 4.0, 0.0);
+
+  lanelet::LineString3d left_bound(lanelet::utils::getId(), {left_start, left_end});
+  lanelet::LineString3d right_bound(lanelet::utils::getId(), {right_start, right_end});
+
+  lanelet::Lanelet lanelet(lanelet::utils::getId(), left_bound, right_bound);
+  lanelet.setAttribute("subtype", "crosswalk");
 
   return lanelet;
 }
@@ -79,9 +136,45 @@ std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_speed_limit(
   return lanelet::utils::createMap({lanelet});
 }
 
+std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_overlapping_roads(
+  const double nearer_speed_limit_kmph, const double farther_speed_limit_kmph)
+{
+  auto nearer_road = create_straight_lanelet();
+  nearer_road.setAttribute("speed_limit", std::to_string(nearer_speed_limit_kmph));
+
+  // This road overlaps the nearer road in y=[1.6, 2.0].
+  auto farther_road = create_straight_lanelet(1.6, 5.6);
+  farther_road.setAttribute("speed_limit", std::to_string(farther_speed_limit_kmph));
+
+  return lanelet::utils::createMap({nearer_road, farther_road});
+}
+
 std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_without_speed_limit()
 {
   return lanelet::utils::createMap({create_straight_lanelet()});
+}
+
+// The crosswalk is the only lanelet on the map, so no road speed limit is available at all.
+std::shared_ptr<lanelet::LaneletMap> create_crosswalk_only_lanelet_map(
+  const double speed_limit_kmph)
+{
+  auto crosswalk = create_crosswalk_lanelet(5.0);
+  crosswalk.setAttribute("speed_limit", std::to_string(speed_limit_kmph));
+
+  return lanelet::utils::createMap({crosswalk});
+}
+
+// The crosswalk overlaps the road lanelet and declares a lower speed limit than the road.
+std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_road_and_crosswalk(
+  const double road_speed_limit_kmph, const double crosswalk_speed_limit_kmph)
+{
+  auto road = create_straight_lanelet();
+  road.setAttribute("speed_limit", std::to_string(road_speed_limit_kmph));
+
+  auto crosswalk = create_crosswalk_lanelet(5.0);
+  crosswalk.setAttribute("speed_limit", std::to_string(crosswalk_speed_limit_kmph));
+
+  return lanelet::utils::createMap({crosswalk, road});
 }
 
 nav_msgs::msg::Odometry::SharedPtr create_odometry(
@@ -362,7 +455,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenDistanceDeviationExceedsMax
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenSteeringAngleExceedsMax)
 {
-  // Create a trajectory that exceeds max steering angle after smoothing
+  // Create a trajectory that exceeds max steering angle
   TrajectoryPoints traj_points = {
     create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
     create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),
@@ -394,7 +487,7 @@ TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenSteeringAngleExceedsMax)
 
 TEST(TrajectoryFeasibilityFilterTest, HighCautionWhenSteeringRateExceedsMax)
 {
-  // Create a trajectory that exceeds max steering rate after smoothing
+  // Create a trajectory that exceeds max steering rate
   TrajectoryPoints traj_points = {
     create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
     create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),
@@ -498,6 +591,30 @@ TEST(IsLaneletSpeedLimitOkTest, FalseWhenNearestSpeedAboveLimit)
   EXPECT_FALSE(is_ok);
 }
 
+TEST(IsLaneletSpeedLimitOkTest, MaximumSpeedLimitIsUsedForOverlappingRoadLanelets)
+{
+  constexpr double lower_speed_limit_kmph = 30.0;
+  constexpr double higher_speed_limit_kmph = 50.0;
+  constexpr double longitudinal_velocity_mps = 10.0;
+  constexpr double lateral_offset = 1.2;
+
+  // The trajectory speed exceeds the nearer road's limit but is below the farther road's limit.
+  const TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, lateral_offset, 0.0, longitudinal_velocity_mps, 0.0, 0.0),
+    create_trajectory_point(5.0, lateral_offset, 0.0, longitudinal_velocity_mps, 0.0, 1.0),
+    create_trajectory_point(10.0, lateral_offset, 0.0, longitudinal_velocity_mps, 0.0, 2.0)};
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, lateral_offset, 0.0);
+  context.lanelet_map =
+    create_lanelet_map_with_overlapping_roads(lower_speed_limit_kmph, higher_speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, longitudinal_velocity_mps);
+  EXPECT_TRUE(is_ok);
+}
+
 TEST(IsLaneletSpeedLimitOkTest, ObservedSpeedIsTakenFromTheNearestPoint)
 {
   // Only the point nearest to the ego pose is evaluated, so a faster point elsewhere is ignored.
@@ -588,6 +705,72 @@ TEST(IsLaneletSpeedLimitOkTest, TrueWhenTrajectoryIsEmpty)
   EXPECT_TRUE(is_ok);
 }
 
+namespace
+{
+// The crosswalk under test declares 10 km/h, i.e. 2.777... m/s.
+constexpr double crosswalk_speed_limit_kmph = 10.0;
+
+// A trajectory offset laterally so that its points lie inside the crosswalk but outside the road
+// lanelet, which makes the crosswalk the strictly nearest lanelet.
+TrajectoryPoints create_laterally_offset_trajectory(const double longitudinal_velocity)
+{
+  constexpr double lateral_offset = 2.4;  // within 0.5 m of the road, but inside the crosswalk
+  return {
+    create_trajectory_point(0.0, lateral_offset, 0.0, longitudinal_velocity, 0.0, 0.0),
+    create_trajectory_point(5.0, lateral_offset, 0.0, longitudinal_velocity, 0.0, 1.0),
+    create_trajectory_point(10.0, lateral_offset, 0.0, longitudinal_velocity, 0.0, 2.0)};
+}
+}  // namespace
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenOnlyCrosswalkLaneletIsNearby)
+{
+  // A crosswalk never constrains ego's speed, so no speed limit applies even though the only
+  // nearby lanelet declares one well below the trajectory speed.
+  const auto traj_points = create_straight_trajectory(15.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_crosswalk_only_lanelet_map(crosswalk_speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 15.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, RoadSpeedLimitIsUsedEvenWhenACrosswalkIsNearer)
+{
+  // 8.0 m/s is below the road limit (30 km/h) but above the crosswalk's (10 km/h): the crosswalk
+  // must be skipped in favour of the farther road lanelet.
+  const auto traj_points = create_laterally_offset_trajectory(8.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 2.4, 0.0);
+  context.lanelet_map =
+    create_lanelet_map_with_road_and_crosswalk(speed_limit_kmph, crosswalk_speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 8.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, FalseWhenSpeedAboveRoadLimitAndACrosswalkIsNearer)
+{
+  // Skipping the crosswalk must not disable the check: the road limit still applies.
+  const auto traj_points = create_laterally_offset_trajectory(15.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 2.4, 0.0);
+  context.lanelet_map =
+    create_lanelet_map_with_road_and_crosswalk(speed_limit_kmph, crosswalk_speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 15.0);
+  EXPECT_FALSE(is_ok);
+}
+
 // --- is_acceleration_ok(...) tests ---
 
 TEST(IsAccelerationOkTest, TrueWhenAllAccelerationsBelowMax)
@@ -674,6 +857,21 @@ TEST(IsVelocityDeviationOkTest, FalseWhenVelocityDeviationAboveMax)
   EXPECT_FALSE(is_ok);
 }
 
+TEST(IsLateralAccelerationOkTest, TrueWhenAllLateralAccelerationsBelowMax)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 10.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 0.0, 0.0, 10.0, 0.0, 0.1),
+    create_trajectory_point(2.0, 0.0, 0.0, 10.0, 0.0, 0.2),
+    create_trajectory_point(3.0, 0.0, 0.0, 10.0, 0.0, 0.3),
+    create_trajectory_point(4.0, 0.0, 0.0, 10.0, 0.0, 0.4)};
+
+  const auto [max_observed, is_ok] = is_lateral_acceleration_ok(traj_points, 1.0);
+
+  EXPECT_TRUE(is_ok);
+  EXPECT_DOUBLE_EQ(max_observed, 0.0);
+}
+
 TEST(IsLateralAccelerationOkTest, FalseWhenAnyLateralAccelerationAboveMax)
 {
   TrajectoryPoints traj_points = {
@@ -686,6 +884,46 @@ TEST(IsLateralAccelerationOkTest, FalseWhenAnyLateralAccelerationAboveMax)
   const auto [_, is_ok] = is_lateral_acceleration_ok(traj_points, 1.0);
 
   EXPECT_FALSE(is_ok);
+}
+
+// Right after the vehicle starts moving, the trajectory is densely sampled while the planned
+// velocity is already non-zero. A sub-millimeter lateral jitter must not be interpreted as a large
+// curvature.
+TEST(IsLateralAccelerationOkTest, TrueForDenselySampledStraightTrajectoryWithJitter)
+{
+  const auto traj_points = create_dense_straight_trajectory_with_jitter(3.0);
+
+  const auto [max_observed, is_ok] = is_lateral_acceleration_ok(traj_points, 9.8);
+
+  EXPECT_TRUE(is_ok) << "max observed lateral acceleration: " << max_observed;
+}
+
+// A real turn must still be detected when the trajectory is densely sampled.
+TEST(IsLateralAccelerationOkTest, FalseForDenselySampledCurvedTrajectory)
+{
+  constexpr double radius = 5.0;     // [m] -> curvature 0.2
+  constexpr double velocity = 10.0;  // [m/s] -> lateral acceleration 20 m/s^2
+  const auto traj_points = create_dense_straight_then_arc_trajectory(0.0, radius, 4.0, velocity);
+
+  const auto [max_observed, is_ok] = is_lateral_acceleration_ok(traj_points, 9.8);
+
+  EXPECT_FALSE(is_ok);
+  EXPECT_NEAR(max_observed, velocity * velocity / radius, 0.5);
+}
+
+// When the trajectory is too short to spread the curvature points, no point can be evaluated and
+// the check does not report a violation.
+TEST(IsLateralAccelerationOkTest, TrueWhenTrajectoryTooShortToEstimateCurvature)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 10.0, 0.0, 0.0),
+    create_trajectory_point(0.1, 0.05, 0.0, 10.0, 0.0, 0.01),
+    create_trajectory_point(0.2, 0.0, 0.0, 10.0, 0.0, 0.02)};
+
+  const auto [max_observed, is_ok] = is_lateral_acceleration_ok(traj_points, 1.0);
+
+  EXPECT_TRUE(is_ok);
+  EXPECT_DOUBLE_EQ(max_observed, 0.0);
 }
 
 TEST(IsDistanceDeviationOkTest, FalseWhenDistanceDeviationAboveMax)
@@ -824,6 +1062,30 @@ TEST(IsSteeringAngleOkTest, FalseWhenAnySteeringAngleAboveMax)
   EXPECT_FALSE(is_ok);
 }
 
+TEST(IsSteeringAngleOkTest, TrueForDenselySampledStraightTrajectoryWithJitter)
+{
+  const auto traj_points = create_dense_straight_trajectory_with_jitter(3.0);
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  const auto [max_observed, is_ok] = is_steering_angle_ok(traj_points, vehicle_info, 0.8);
+
+  EXPECT_TRUE(is_ok) << "max observed steering angle: " << max_observed;
+}
+
+TEST(IsSteeringAngleOkTest, FalseForDenselySampledCurvedTrajectory)
+{
+  constexpr double radius = 5.0;  // [m]
+  const auto traj_points = create_dense_straight_then_arc_trajectory(0.0, radius, 4.0, 5.0);
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;  // -> steering angle atan(2.5 / 5.0) = 0.464 rad
+
+  const auto [max_observed, is_ok] = is_steering_angle_ok(traj_points, vehicle_info, 0.3);
+
+  EXPECT_FALSE(is_ok);
+  EXPECT_NEAR(max_observed, std::atan(vehicle_info.wheel_base_m / radius), 0.02);
+}
+
 // --- is_steering_rate_ok(...) tests ---
 
 TEST(IsSteeringRateOkTest, TrueWhenAllSteeringRatesBelowMax)
@@ -861,5 +1123,41 @@ TEST(IsSteeringRateOkTest, FalseWhenAnySteeringRateAboveMax)
   const auto [_, is_ok] = is_steering_rate_ok(traj_points, vehicle_info, max_steering_rate);
 
   EXPECT_FALSE(is_ok);
+}
+
+TEST(IsSteeringRateOkTest, TrueForDenselySampledStraightTrajectoryWithJitter)
+{
+  const auto traj_points = create_dense_straight_trajectory_with_jitter(3.0);
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  const auto [max_observed, is_ok] = is_steering_rate_ok(traj_points, vehicle_info, 0.3);
+
+  EXPECT_TRUE(is_ok) << "max observed steering rate: " << max_observed;
+}
+
+TEST(IsSteeringRateOkTest, TrueForDenselySampledConstantCurvatureTrajectory)
+{
+  const auto traj_points = create_dense_straight_then_arc_trajectory(0.0, 5.0, 4.0, 10.0);
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  const auto [max_observed, is_ok] = is_steering_rate_ok(traj_points, vehicle_info, 0.3);
+
+  EXPECT_TRUE(is_ok) << "max observed steering rate: " << max_observed;
+}
+
+// Entering a radius 5 m curve at 10 m/s requires about 0.46 rad of steering within the 2 m
+// (0.2 s) span used for the estimate, which is far above 0.3 rad/s.
+TEST(IsSteeringRateOkTest, FalseForDenselySampledStraightToCurveTransition)
+{
+  const auto traj_points = create_dense_straight_then_arc_trajectory(3.0, 5.0, 3.0, 10.0);
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  const auto [max_observed, is_ok] = is_steering_rate_ok(traj_points, vehicle_info, 0.3);
+
+  EXPECT_FALSE(is_ok);
+  EXPECT_GT(max_observed, 1.0);
 }
 }  // namespace autoware::trajectory_validator::plugin::safety::testing

@@ -28,7 +28,8 @@ namespace autoware::trajectory_validator
 {
 
 DiagnosticInterfaceMap build_diagnostic_interface_map(
-  rclcpp::Node & node, const FilterConfiguredActionsMap & filter_configured_actions_map,
+  autoware::agnocast_wrapper::Node & node,
+  const FilterConfiguredActionsMap & filter_configured_actions_map,
   const std::string & no_candidates_diag_status_name)
 {
   DiagnosticInterfaceMap diag_by_name;
@@ -37,7 +38,8 @@ DiagnosticInterfaceMap build_diagnostic_interface_map(
     if (!status_name.empty() && !diag_by_name.count(status_name)) {
       diag_by_name.emplace(
         status_name,
-        std::make_unique<autoware_utils_diagnostics::DiagnosticsInterface>(&node, status_name));
+        std::make_unique<autoware_utils_diagnostics::BasicDiagnosticsInterface<autoware::agnocast_wrapper::Node>>(
+          &node, status_name));
     }
   };
 

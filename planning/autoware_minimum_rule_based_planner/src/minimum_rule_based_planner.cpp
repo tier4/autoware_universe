@@ -23,6 +23,8 @@
 #include <autoware/velocity_smoother/resample.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
+#include <tf2/utils.h>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -92,7 +94,7 @@ turn_indicator::TurnSignalParams make_turn_signal_params(
 }  // namespace
 
 MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("minimum_rule_based_planner_node", options),
+: autoware::agnocast_wrapper::Node("minimum_rule_based_planner_node", options),
   go_generator_uuid_(autoware_utils_uuid::generate_uuid()),
   stop_generator_uuid_(autoware_utils_uuid::generate_uuid()),
   vehicle_info_(vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()),
@@ -105,6 +107,25 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
 {
   param_listener_ =
     std::make_shared<::minimum_rule_based_planner::ParamListener>(get_node_parameters_interface());
+
+  route_subscriber_ = namespace_polling::create_polling_subscriber<
+    LaneletRoute, namespace_polling::polling_policy::Newest>(
+    this, "~/input/route", rclcpp::QoS{1}.transient_local());
+  vector_map_subscriber_ = namespace_polling::create_polling_subscriber<
+    LaneletMapBin, namespace_polling::polling_policy::Newest>(
+    this, "~/input/vector_map", rclcpp::QoS{1}.transient_local());
+  odometry_subscriber_ =
+    namespace_polling::create_polling_subscriber<Odometry>(this, "~/input/odometry");
+  acceleration_subscriber_ =
+    namespace_polling::create_polling_subscriber<AccelWithCovarianceStamped>(
+      this, "~/input/acceleration");
+  objects_subscriber_ =
+    namespace_polling::create_polling_subscriber<PredictedObjects>(this, "~/input/objects");
+  pointcloud_subscriber_ = namespace_polling::create_polling_subscriber<PointCloud2>(
+    this, "~/input/pointcloud", autoware_utils_rclcpp::single_depth_sensor_qos());
+  test_path_with_lane_id_subscriber_ = namespace_polling::create_polling_subscriber<
+    PathWithLaneId, namespace_polling::polling_policy::Newest>(
+    this, "~/input/test/path_with_lane_id");
 
   pub_trajectories_ =
     this->create_publisher<CandidateTrajectories>("~/output/candidate_trajectories", 1);
@@ -134,7 +155,7 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   map_based_stop_planner_ = std::make_unique<MapBasedStopPlanner>(get_logger(), time_keeper_);
   turn_indicator_decider_ =
     std::make_unique<TurnIndicatorDecider>(make_turn_signal_params(params_));
-  timer_ = rclcpp::create_timer(
+  timer_ = autoware::agnocast_wrapper::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&MinimumRuleBasedPlannerNode::on_timer, this));
 
@@ -330,7 +351,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
     autoware_utils_debug::ScopedTimeTrack st_ti("turn_indicators", *time_keeper_);
     turn_indicators_command = turn_indicator_decider_->decide(
       *path, path_planner_->route_context(), input_data.odometry_ptr->pose.pose,
-      input_data.odometry_ptr->twist.twist.linear.x, now());
+      input_data.odometry_ptr->twist.twist.linear.x, now(), path_planner_->pull_over_start_pose());
   }
 
   // 3. Convert path to trajectory
@@ -424,6 +445,62 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
     input_data.odometry_ptr->header.stamp);
 }
 
+geometry_msgs::msg::Pose predict_ego_pose(
+  const geometry_msgs::msg::Pose & pose, const double longitudinal_velocity, const double yaw_rate,
+  const double dt)
+{
+  if (dt < 1e-3) return pose;
+
+  // Treat near-zero yaw rate as straight-line motion to avoid v/ω blow-up.
+  if (std::abs(yaw_rate) < 1e-6) {
+    return autoware_utils_geometry::calc_offset_pose(pose, longitudinal_velocity * dt, 0.0, 0.0);
+  }
+
+  const double yaw = tf2::getYaw(pose.orientation);
+  geometry_msgs::msg::Pose predicted = pose;
+  const double r = longitudinal_velocity / yaw_rate;
+  const double yaw_next = yaw + yaw_rate * dt;
+  predicted.position.x += r * (std::sin(yaw_next) - std::sin(yaw));
+  predicted.position.y += r * (-std::cos(yaw_next) + std::cos(yaw));
+  predicted.orientation = autoware_utils::create_quaternion_from_yaw(yaw_next);
+  return predicted;
+}
+
+void prepend_predicted_connection(
+  Trajectory & trajectory, const geometry_msgs::msg::Pose & current_pose, const double current_vel,
+  const double accel, const double yaw_rate, const double time_offset)
+{
+  if (trajectory.points.empty()) return;
+
+  constexpr double min_interval = 0.1;
+  const auto & first_pose = trajectory.points.front().pose;
+  if (autoware_utils::calc_distance2d(current_pose, first_pose) < 1.0e-3) {
+    return;
+  }
+
+  const float ref_velocity = trajectory.points.front().longitudinal_velocity_mps;
+  std::vector<TrajectoryPoint> prefix;
+  TrajectoryPoint pt;
+  pt.pose = current_pose;
+  pt.longitudinal_velocity_mps = ref_velocity;
+  prefix.push_back(pt);
+
+  auto t = min_interval / std::max(std::abs(current_vel), 1.0e-3);
+  for (; t < time_offset;) {
+    // Average speed over [0, t] for constant-accel arc integration.
+    pt.pose = predict_ego_pose(current_pose, current_vel + 0.5 * accel * t, yaw_rate, t);
+    const double v_t = current_vel + accel * t;
+    if (autoware_utils::calc_distance2d(pt.pose, first_pose) < min_interval) {
+      break;
+    }
+    prefix.push_back(pt);
+    if (std::abs(v_t) < 1.0e-3) break;
+    t += min_interval / std::abs(v_t);
+  }
+
+  trajectory.points.insert(trajectory.points.begin(), prefix.begin(), prefix.end());
+}
+
 Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
   const Trajectory & trajectory, const InputData & input_data) const
 {
@@ -438,11 +515,22 @@ Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
   shift_params.lateral_accel_limit = params_.path_planning.path_shift.lateral_accel_limit;
   shift_params.curvature_limit = params_.path_planning.path_shift.curvature_limit;
 
-  const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
-  const double ego_yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
-  const auto shifted_trajectory = path_planner_->shift_trajectory_to_ego(
-    trajectory, input_data.odometry_ptr->pose.pose, ego_velocity, ego_yaw_rate, shift_params,
+  const double time_offset = params_.path_planning.path_shift.start_time_offset;
+  const auto & current_pose = input_data.odometry_ptr->pose.pose;
+  const double current_vel = input_data.odometry_ptr->twist.twist.linear.x;
+  const double accel = input_data.acceleration_ptr->accel.accel.linear.x;
+  const double yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
+
+  const double pred_ego_vel = current_vel + accel * time_offset;
+  const auto pred_ego_pose =
+    predict_ego_pose(current_pose, 0.5 * (current_vel + pred_ego_vel), yaw_rate, time_offset);
+
+  auto shifted_trajectory = path_planner_->shift_trajectory_to_ego(
+    trajectory, pred_ego_pose, pred_ego_vel, yaw_rate, shift_params,
     params_.path_planning.output.delta_arc_length);
+
+  prepend_predicted_connection(
+    shifted_trajectory, current_pose, current_vel, accel, yaw_rate, time_offset);
 
   if (params_.debug.enable_shifted_trajectory) {
     Trajectory shifted_traj;
@@ -597,7 +685,7 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   InputData input_data;
 
-  if (const auto msg = route_subscriber_.take_data()) {
+  if (const auto msg = route_subscriber_->take_data()) {
     if (!msg->segments.empty()) {
       route_ptr_ = msg;
     } else {
@@ -606,32 +694,32 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
   }
   input_data.route_ptr = route_ptr_;
 
-  if (const auto msg = vector_map_subscriber_.take_data()) {
+  if (const auto msg = vector_map_subscriber_->take_data()) {
     lanelet_map_bin_ptr_ = msg;
   }
   input_data.lanelet_map_bin_ptr = lanelet_map_bin_ptr_;
 
-  if (const auto msg = odometry_subscriber_.take_data()) {
+  if (const auto msg = odometry_subscriber_->take_data()) {
     odometry_ptr_ = msg;
   }
   input_data.odometry_ptr = odometry_ptr_;
 
-  if (const auto msg = acceleration_subscriber_.take_data()) {
+  if (const auto msg = acceleration_subscriber_->take_data()) {
     acceleration_ptr_ = msg;
   }
   input_data.acceleration_ptr = acceleration_ptr_;
 
-  if (const auto msg = objects_subscriber_.take_data()) {
+  if (const auto msg = objects_subscriber_->take_data()) {
     predicted_objects_ptr_ = msg;
   }
   input_data.predicted_objects_ptr = predicted_objects_ptr_;
 
-  if (const auto msg = pointcloud_subscriber_.take_data()) {
+  if (const auto msg = pointcloud_subscriber_->take_data()) {
     obstacle_pointcloud_ptr_ = msg;
   }
   input_data.obstacle_pointcloud_ptr = obstacle_pointcloud_ptr_;
 
-  if (const auto msg = test_path_with_lane_id_subscriber_.take_data()) {
+  if (const auto msg = test_path_with_lane_id_subscriber_->take_data()) {
     test_path_with_lane_id_ptr = msg;
   }
   input_data.test_path_with_lane_id_ptr = test_path_with_lane_id_ptr;

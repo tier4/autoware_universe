@@ -19,14 +19,18 @@
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware/avoidance_target_detector/object_filtering.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/polling_subscriber.hpp>
 #include <autoware/trajectory_processor/trajectory_processor_plugin_base.hpp>
 #include <autoware_mppi_optimizer/trajectory_mppi_optimizer_parameters.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -44,6 +48,104 @@ namespace autoware::mppi_optimizer::plugin
 {
 
 using TrajectoryPoints = autoware::trajectory_processor::plugin::TrajectoryPoints;
+
+using autoware::trajectory_processor::plugin::PublisherHandle;
+
+/// @brief Debug publisher usable from either supported node type.
+class DebugPublisherAdapter
+{
+public:
+  DebugPublisherAdapter(rclcpp::Node * node, const char * ns)
+  : rclcpp_impl_(
+      std::make_unique<autoware_utils_debug::BasicDebugPublisher<rclcpp::Node>>(node, ns))
+  {
+  }
+
+  DebugPublisherAdapter(autoware::agnocast_wrapper::Node * node, const char * ns)
+  : agnocast_impl_(
+      std::make_unique<
+        autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>(node, ns))
+  {
+  }
+
+  template <typename T, typename... Args>
+  void publish(Args &&... args)
+  {
+    if (rclcpp_impl_) {
+      rclcpp_impl_->template publish<T>(std::forward<Args>(args)...);
+    } else {
+      agnocast_impl_->template publish<T>(std::forward<Args>(args)...);
+    }
+  }
+
+private:
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<rclcpp::Node>> rclcpp_impl_;
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>
+    agnocast_impl_;
+};
+
+/// @brief Diagnostics interface usable from either supported node type.
+class DiagnosticsAdapter
+{
+public:
+  DiagnosticsAdapter(rclcpp::Node * node, const std::string & name)
+  : rclcpp_impl_(
+      std::make_unique<autoware_utils_diagnostics::BasicDiagnosticsInterface<rclcpp::Node>>(
+        node, name))
+  {
+  }
+
+  DiagnosticsAdapter(autoware::agnocast_wrapper::Node * node, const std::string & name)
+  : agnocast_impl_(
+      std::make_unique<autoware_utils_diagnostics::BasicDiagnosticsInterface<
+        autoware::agnocast_wrapper::Node>>(node, name))
+  {
+  }
+
+  void clear()
+  {
+    if (rclcpp_impl_) {
+      rclcpp_impl_->clear();
+    } else {
+      agnocast_impl_->clear();
+    }
+  }
+
+  template <typename... Args>
+  void add_key_value(Args &&... args)
+  {
+    if (rclcpp_impl_) {
+      rclcpp_impl_->add_key_value(std::forward<Args>(args)...);
+    } else {
+      agnocast_impl_->add_key_value(std::forward<Args>(args)...);
+    }
+  }
+
+  void update_level_and_message(const int8_t level, const std::string & message)
+  {
+    if (rclcpp_impl_) {
+      rclcpp_impl_->update_level_and_message(level, message);
+    } else {
+      agnocast_impl_->update_level_and_message(level, message);
+    }
+  }
+
+  void publish(const rclcpp::Time & publish_time_stamp)
+  {
+    if (rclcpp_impl_) {
+      rclcpp_impl_->publish(publish_time_stamp);
+    } else {
+      agnocast_impl_->publish(publish_time_stamp);
+    }
+  }
+
+private:
+  std::unique_ptr<autoware_utils_diagnostics::BasicDiagnosticsInterface<rclcpp::Node>>
+    rclcpp_impl_;
+  std::unique_ptr<
+    autoware_utils_diagnostics::BasicDiagnosticsInterface<autoware::agnocast_wrapper::Node>>
+    agnocast_impl_;
+};
 
 /** @brief Applies first-order Dubins MPPI to the primary candidate trajectory. */
 class TrajectoryMppiOptimizer final
@@ -94,6 +196,20 @@ private:
   void publish_status_diagnostic(
     std::uint8_t level, const std::string & message, const rclcpp::Time & stamp);
 
+  /** @brief Publishes MPPI wall-time subdivisions under ~/debug/processing_time_ms/. */
+  void publish_processing_time(const FirstOrderDubinsMppiTiming & timing);
+
+  /** @brief Publishes planar distance from ego to the first DP reference point [m]. */
+  void publish_ego_to_dp_first_point_distance(
+    const nav_msgs::msg::Odometry & odometry, const Trajectory & reference) const;
+
+  /** @brief Signed cross-track from ego to the raw DP polyline (+ = left); matches MPPI cost. */
+  void publish_ego_signed_lateral_error_on_dp(
+    const nav_msgs::msg::Odometry & odometry, const Trajectory & reference) const;
+
+  /** @brief Publishes open-loop plant replay error vs measured ego since the previous cycle. */
+  void publish_prediction_accuracy(const FirstOrderDubinsMppiPredictionAccuracy & accuracy) const;
+
   /** @brief Deletes stale MPPI markers. */
   void clear_markers(const std_msgs::msg::Header & header) const;
 
@@ -103,24 +219,25 @@ private:
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
-  autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr current_map_;
+  AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_map_msgs::msg::LaneletMapBin) current_map_;
   std::optional<unique_identifier_msgs::msg::UUID> current_route_uuid_;
   double object_filter_margin_m_{0.0};
   double object_filter_prediction_extension_s_{0.0};
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     map_velocity_limit_overrides_;
 
-  std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
+  typename autoware::agnocast_wrapper::polling::PollingSubscriber<VelocityLimit>::SharedPtr
     velocity_limit_sub_;
 
-  rclcpp::Publisher<Trajectory>::SharedPtr reference_trajectory_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr nominal_control_trajectory_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr optimized_trajectory_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr nominal_trajectory_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr velocity_limit_trajectory_pub_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr markers_pub_;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr enabled_pub_;
-  std::unique_ptr<DiagnosticsInterface> cost_diagnostics_;
+  PublisherHandle<Trajectory> reference_trajectory_pub_;
+  PublisherHandle<Trajectory> nominal_control_trajectory_pub_;
+  PublisherHandle<Trajectory> optimized_trajectory_pub_;
+  PublisherHandle<Trajectory> nominal_trajectory_pub_;
+  PublisherHandle<Trajectory> velocity_limit_trajectory_pub_;
+  PublisherHandle<MarkerArray> markers_pub_;
+  PublisherHandle<std_msgs::msg::Bool> enabled_pub_;
+  std::unique_ptr<DebugPublisherAdapter> debug_publisher_;
+  std::unique_ptr<DiagnosticsAdapter> cost_diagnostics_;
 
   std::optional<FirstOrderDubinsMppiDebug> pending_debug_;
   MarkerArray pending_markers_;

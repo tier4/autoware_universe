@@ -38,7 +38,7 @@ enum class ManeuverKind { NONE, TURN, PULL_OUT, PULL_OVER };
 //! Tunable thresholds (mirrors the param/ `turn_signal:` section).
 struct TurnSignalParams
 {
-  double search_distance{30.0};            //! [m] activation distance floor
+  double search_distance{30.0};            //!< [m] activation distance floor
   double min_blink_duration{3.0};          //!< [s] min on-time once lit (anti-chatter)
   double stopped_velocity_threshold{0.1};  //!< [m/s] at/below this ego counts as stopped
   double heading_align_threshold{0.15};    //!< [rad] ego-vs-exit yaw gap that ends a maneuver
@@ -83,11 +83,17 @@ TurnDirection decide_pull_out(
   TurnDirection & latched);
 
 //! Signals toward the side an off-centerline goal sits on, and clears once ego has stopped there.
+//! Timed off the point where the path leaves the lane rather than off the goal, so the light is up
+//! before the lateral move starts and not partway into it.
+//! @param dist_to_shift_start [m] arc length from ego to where the path leaves the lane towards the
+//!        goal (negative once inside); the caller passes the distance to the goal when the path
+//!        does not carry a pull-over shift yet
+//! @param dist_to_goal [m] distance from ego to the goal, used only to detect arrival
 //! @param goal_offset goal lateral offset from the goal lane centerline (+ = left)
 //! @param[in,out] arrived latched arrival flag; the caller clears it when the route changes
 TurnDirection decide_pull_over(
-  double dist_to_goal, double goal_offset, double ego_velocity, const TurnSignalParams & params,
-  bool & arrived);
+  double dist_to_shift_start, double dist_to_goal, double goal_offset, double ego_velocity,
+  const TurnSignalParams & params, bool & arrived);
 
 //! A lit signal stays on for at least `min_duration` before it may switch off; switching directly
 //! between left and right is allowed immediately.
@@ -118,9 +124,12 @@ public:
 
   void update_params(const turn_indicator::TurnSignalParams & params);
 
+  //! @param pull_over_start_pose where the path leaves the lane towards an off-lane goal, when the
+  //!        goal planner is shaping the path
   TurnIndicatorsCommand decide(
     const PathWithLaneId & path, const RouteContext & route_context,
-    const geometry_msgs::msg::Pose & ego_pose, double ego_velocity, const rclcpp::Time & stamp);
+    const geometry_msgs::msg::Pose & ego_pose, double ego_velocity, const rclcpp::Time & stamp,
+    const std::optional<geometry_msgs::msg::Pose> & pull_over_start_pose = std::nullopt);
 
 private:
   turn_indicator::TurnSignalParams params_;
