@@ -938,6 +938,20 @@ void MLPlanner::on_timer()
     MarkerArray body_markers;
     body_markers.markers.push_back(body);
     pub_virtual_pose_vehicle_->publish(body_markers);
+    virtual_pose_vehicle_shown_ = true;
+  } else if (virtual_pose_vehicle_shown_) {
+    // The marker has no lifetime: without a delete, rviz keeps the last body after the virtual
+    // pose is turned off at runtime.
+    visualization_msgs::msg::Marker body;
+    body.header.frame_id = "map";
+    body.header.stamp = core_->measured_ego().header.stamp;
+    body.ns = "virtual_pose_vehicle";
+    body.id = 0;
+    body.action = visualization_msgs::msg::Marker::DELETE;
+    MarkerArray body_markers;
+    body_markers.markers.push_back(body);
+    pub_virtual_pose_vehicle_->publish(body_markers);
+    virtual_pose_vehicle_shown_ = false;
   }
 
   if (start_velocity_override_enabled_) {

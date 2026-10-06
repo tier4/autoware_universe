@@ -226,6 +226,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_virtual_pose_status_{nullptr};
   // Vehicle body at the virtual pose (red, translucent): where the planner thinks the vehicle is.
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_virtual_pose_vehicle_{nullptr};
+  // The body marker is shown and must be deleted once there is no virtual pose (feature turned off).
+  bool virtual_pose_vehicle_shown_{false};
 
   // Start service: while enabled, ego velocity in the model input is overwritten (1 m/s).
   // Cleared automatically once the measured ego velocity reaches that value.
