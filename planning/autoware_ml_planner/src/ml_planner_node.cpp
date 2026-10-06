@@ -547,6 +547,22 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     curve_speed_limit.max_lateral_acceleration_mps2);
   update_param<double>(
     parameters, "curve_speed_limit.max_deceleration_mps2", curve_speed_limit.max_deceleration_mps2);
+  auto & virtual_pose = new_params.virtual_pose;
+  update_param<bool>(parameters, "virtual_pose.enable", virtual_pose.enable);
+  update_param<double>(
+    parameters, "virtual_pose.max_longitudinal_error_m", virtual_pose.max_longitudinal_error_m);
+  update_param<double>(
+    parameters, "virtual_pose.max_lateral_error_m", virtual_pose.max_lateral_error_m);
+  update_param<double>(parameters, "virtual_pose.max_yaw_error_deg", virtual_pose.max_yaw_error_deg);
+  update_param<int64_t>(
+    parameters, "virtual_pose.max_search_segment_count", virtual_pose.max_search_segment_count);
+  update_param<double>(
+    parameters, "virtual_pose.yaw_fit_half_window_m", virtual_pose.yaw_fit_half_window_m);
+  update_param<double>(
+    parameters, "virtual_pose.yaw_fit_min_length_m", virtual_pose.yaw_fit_min_length_m);
+  update_param<int64_t>(
+    parameters, "virtual_pose.history_prefix_count", virtual_pose.history_prefix_count);
+  update_param<std::string>(parameters, "virtual_pose.reference", virtual_pose.reference);
 
   update_param<bool>(
     parameters, "planning_factor.enable_stop", new_planning_factor_params.enable_stop);
@@ -682,6 +698,18 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     curve_speed_limit.max_lateral_acceleration_mps2 <= 0.0 ||
     curve_speed_limit.max_deceleration_mps2 <= 0.0) {
     return failure("curve_speed_limit accelerations must be positive");
+  }
+  if (virtual_pose.reference != "raw" && virtual_pose.reference != "optimized") {
+    return failure("virtual_pose.reference must be 'raw' or 'optimized'");
+  }
+  if (
+    virtual_pose.max_longitudinal_error_m < 0.0 || virtual_pose.max_lateral_error_m < 0.0 ||
+    virtual_pose.max_yaw_error_deg < 0.0 || virtual_pose.max_search_segment_count < 1 ||
+    virtual_pose.yaw_fit_half_window_m < 0.0 || virtual_pose.yaw_fit_min_length_m < 0.0 ||
+    virtual_pose.history_prefix_count < 0) {
+    return failure(
+      "virtual_pose error limits, yaw fit lengths and history_prefix_count must be non-negative, "
+      "max_search_segment_count positive");
   }
 
   const bool reload_model = new_params.model_path != params_.model_path ||
