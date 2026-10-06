@@ -49,6 +49,9 @@
        camera1's 1486, 29.6 deg horizontal field of view). -->
   <arg name="input_camera0_image" default="/sensing/camera/camera1/image_raw"/>
   <arg name="input_camera1_image" default="/sensing/camera/camera2/image_raw"/>
+  <!-- third view of a three-camera model (front, front_left, front_right: on the kashiwanoha car
+       camera0, camera3, camera4); a model with fewer views never subscribes to it -->
+  <arg name="input_camera2_image" default="/sensing/camera/camera4/image_raw"/>
 
   <!-- Ego state and the reference the subgoal is taken from. subgoal_source:=route follows the
        route's lanelet centerlines (needs the route and the vector map);
@@ -87,6 +90,7 @@
     <param name="latentdrive.status_source" value="$(var status_source)"/>
     <remap from="~/input/camera0/image" to="$(var input_camera0_image)"/>
     <remap from="~/input/camera1/image" to="$(var input_camera1_image)"/>
+    <remap from="~/input/camera2/image" to="$(var input_camera2_image)"/>
     <remap from="~/input/odometry" to="$(var input_odometry)"/>
     <remap from="~/input/acceleration" to="$(var input_acceleration)"/>
     <remap from="~/input/route" to="$(var input_route)"/>
