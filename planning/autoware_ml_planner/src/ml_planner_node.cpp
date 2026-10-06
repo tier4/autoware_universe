@@ -585,6 +585,16 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<bool>(
     parameters, "debug_params.publish_debug_linestrings",
     new_debug_params.publish_debug_linestrings);
+  if (update_param<std::string>(
+        parameters, "debug_params.virtual_pose_vehicle_mesh",
+        new_debug_params.virtual_pose_vehicle_mesh) &&
+      !new_debug_params.virtual_pose_vehicle_mesh.empty() &&
+      !mesh_resource_exists(new_debug_params.virtual_pose_vehicle_mesh)) {
+    RCLCPP_WARN(
+      get_logger(), "virtual_pose_vehicle_mesh '%s' not found: drawing a box of the vehicle size",
+      new_debug_params.virtual_pose_vehicle_mesh.c_str());
+    new_debug_params.virtual_pose_vehicle_mesh.clear();
+  }
 
   auto failure = [](const std::string & reason) {
     SetParametersResult result;
