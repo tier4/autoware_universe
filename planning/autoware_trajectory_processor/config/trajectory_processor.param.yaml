@@ -182,6 +182,8 @@
         pointcloud: 0.5
       hysteresis_distance: 0.1
       hysteresis_time: 0.2
+      pcd_height_buffer: 0.5  # height buffer to add above ego height [m]
+      pcd_min_height: 0.2  # minimum height of pointcloud [m]
 
     map_velocity_limits:
       limit_velocity_from_map_debug_lanelet_ids: [0]

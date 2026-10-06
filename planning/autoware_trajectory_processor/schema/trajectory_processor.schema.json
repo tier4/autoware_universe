@@ -763,6 +763,18 @@
               "description": "Time hysteresis threshold for clearing stop [s]",
               "default": 0.2,
               "minimum": 0
+            },
+            "pcd_height_buffer": {
+              "type": "number",
+              "description": "Height buffer to add above ego height [m]",
+              "default": 0.5,
+              "minimum": 0
+            },
+            "pcd_min_height": {
+              "type": "number",
+              "description": "Minimum height of pointcloud [m]",
+              "default": 0.2,
+              "minimum": 0
             }
           },
           "required": [],
