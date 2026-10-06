@@ -178,6 +178,9 @@ protected:
 
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, ProducesFinitePostStepTrajectoryAndPreservesSuffix)
 {
+  FirstOrderDubinsMppiRuntimeOptions runtime_options;
+  runtime_options.enable_iteration_rollout_debug = true;
+  interface_->setRuntimeOptions(runtime_options);
   const auto input = makeStraightTrajectory(85U);
   const auto result = optimize(*interface_, input);
 
@@ -186,7 +189,23 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, ProducesFinitePostStepTrajectoryAnd
   EXPECT_EQ(result.trajectory.header, input.header);
   EXPECT_TRUE(result.debug.reference_trajectory == input);
   EXPECT_TRUE(result.debug.optimized_trajectory == result.trajectory);
-  EXPECT_TRUE(result.debug.rollouts.empty());
+  constexpr int kExpectedIterations = 20;
+  constexpr std::size_t kRolloutsPerIteration = 128U;
+  ASSERT_EQ(
+    result.debug.rollouts.size(),
+    kRolloutsPerIteration * static_cast<std::size_t>(kExpectedIterations));
+  std::vector<std::size_t> rollouts_by_iteration(
+    static_cast<std::size_t>(kExpectedIterations + 1), 0U);
+  for (const auto & rollout : result.debug.rollouts) {
+    EXPECT_EQ(rollout.points.size(), static_cast<std::size_t>(detail::kMppiHorizon));
+    EXPECT_TRUE(std::isfinite(rollout.cost));
+    ASSERT_GE(rollout.iteration, 1);
+    ASSERT_LE(rollout.iteration, kExpectedIterations);
+    ++rollouts_by_iteration[static_cast<std::size_t>(rollout.iteration)];
+  }
+  for (int iteration = 1; iteration <= kExpectedIterations; ++iteration) {
+    EXPECT_EQ(rollouts_by_iteration[static_cast<std::size_t>(iteration)], kRolloutsPerIteration);
+  }
   EXPECT_TRUE(std::isfinite(result.debug.baseline_cost));
   // Full host cost reconstruction is intentionally skipped unless debug logging is enabled.
   EXPECT_EQ(result.debug.cost_breakdown.evaluated_timesteps, 0U);
@@ -248,6 +267,7 @@ TEST_F(
     optimize(*interface_, makeStraightTrajectory(85U), odometry, TrackedObjects{}, {}, limits);
 
   EXPECT_TRUE(std::isfinite(result.debug.baseline_cost));
+  EXPECT_TRUE(result.debug.rollouts.empty());
   std::vector<float> costs;
   std::vector<float> weights;
   ASSERT_TRUE(interface_->copySampleCostDistribution(costs, weights));
