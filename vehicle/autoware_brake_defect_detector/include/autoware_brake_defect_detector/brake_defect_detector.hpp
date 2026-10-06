@@ -42,6 +42,7 @@ struct DiagnosticStatus
   double filtered_residual{0.0};
   double cusum_statistic{0.0};
   bool valid_condition{false};
+  bool data_ready{false};
 };
 
 class BrakeDefectDetector

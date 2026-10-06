@@ -13,8 +13,11 @@ This node passively compares requested deceleration with measured longitudinal a
 | `~/output/brake_defect_detected` | `std_msgs/msg/Bool`                              | True only while valid monitoring conditions hold and CUSUM exceeds the threshold |
 | `~/output/filtered_residual`     | `std_msgs/msg/Float64`                           | Filtered missing-braking residual, in m/s²                                       |
 | `~/output/cusum_statistic`       | `std_msgs/msg/Float64`                           | Upper-side CUSUM statistic, in m/s                                               |
+| `/diagnostic`                    | `diagnostic_msgs/msg/DiagnosticArray`            | Fault level and all detector outputs in one diagnostic status                    |
 
 The launch file maps the inputs to the standard Autoware control and localization topics. Launch it with `ros2 launch autoware_brake_defect_detector brake_defect_detector.launch.xml`.
+
+The `/diagnostic` status reports `brake_defect_detected`, `filtered_residual`, `cusum_statistic`, and `valid_condition` as key-value fields. Its level is `ERROR` for a detected defect, `STALE` when inputs are missing or invalid or the delay history is warming up, and `OK` when monitoring is active without a defect or inactive under normal guardrails.
 
 ## Detection
 

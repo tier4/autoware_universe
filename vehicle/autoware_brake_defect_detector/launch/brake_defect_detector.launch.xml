@@ -4,6 +4,7 @@
   <arg name="input_actuation_cmd" default="/control/command/actuation_cmd"/>
   <arg name="input_kinematics" default="/localization/kinematic_state"/>
   <arg name="input_measured_acceleration" default="/localization/acceleration"/>
+  <arg name="output_diagnostic" default="/diagnostics"/>
 
   <node pkg="autoware_brake_defect_detector" exec="brake_defect_detector_node" name="brake_defect_detector" output="screen">
     <param from="$(var config_file)"/>
@@ -11,5 +12,6 @@
     <remap from="~/input/actuation_cmd" to="$(var input_actuation_cmd)"/>
     <remap from="~/input/kinematics" to="$(var input_kinematics)"/>
     <remap from="~/input/measured_acceleration" to="$(var input_measured_acceleration)"/>
+    <remap from="/diagnostic" to="$(var output_diagnostic)"/>
   </node>
 </launch>

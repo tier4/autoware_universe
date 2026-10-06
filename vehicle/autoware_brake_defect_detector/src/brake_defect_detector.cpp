@@ -127,7 +127,7 @@ DiagnosticStatus BrakeDefectDetector::update(
 
   return {
     valid && cusum_statistic_ >= params_.cusum_threshold_h, filtered_residual_, cusum_statistic_,
-    valid};
+    valid, true};
 }
 
 }  // namespace autoware::brake_defect_detector

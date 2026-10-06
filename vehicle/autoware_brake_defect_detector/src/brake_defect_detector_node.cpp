@@ -18,6 +18,9 @@
 #include <rclcpp_components/register_node_macro.hpp>
 
 #include <autoware_control_msgs/msg/control.hpp>
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
+#include <diagnostic_msgs/msg/diagnostic_status.hpp>
+#include <diagnostic_msgs/msg/key_value.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/bool.hpp>
@@ -30,6 +33,7 @@
 #include <functional>
 #include <optional>
 #include <stdexcept>
+#include <string>
 
 namespace autoware::brake_defect_detector
 {
@@ -65,6 +69,8 @@ public:
       create_publisher<std_msgs::msg::Float64>("~/output/filtered_residual", rclcpp::QoS(10));
     cusum_pub_ =
       create_publisher<std_msgs::msg::Float64>("~/output/cusum_statistic", rclcpp::QoS(10));
+    diagnostic_pub_ =
+      create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostic", rclcpp::QoS(10));
 
     watchdog_ = create_wall_timer(
       std::chrono::milliseconds(100), std::bind(&BrakeDefectDetectorNode::on_watchdog, this));
@@ -128,7 +134,7 @@ private:
     return std::asin(std::clamp(sin_pitch, -1.0, 1.0));
   }
 
-  void publish(const DiagnosticStatus & status)
+  void publish(const DiagnosticStatus & status, const bool inputs_fresh = true)
   {
     std_msgs::msg::Bool defect;
     defect.data = status.brake_defect_detected;
@@ -141,12 +147,44 @@ private:
     std_msgs::msg::Float64 cusum;
     cusum.data = status.cusum_statistic;
     cusum_pub_->publish(cusum);
+
+    diagnostic_msgs::msg::DiagnosticArray diagnostic;
+    diagnostic.header.stamp = now();
+    diagnostic_msgs::msg::DiagnosticStatus entry;
+    entry.name = std::string(get_fully_qualified_name()) + ": brake_actuation";
+    entry.hardware_id = "brake_actuation";
+    if (!inputs_fresh || !status.data_ready) {
+      entry.level = diagnostic_msgs::msg::DiagnosticStatus::STALE;
+      entry.message = "Waiting for valid inputs and command history";
+    } else if (status.brake_defect_detected) {
+      entry.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+      entry.message = "Brake actuation defect detected";
+    } else if (!status.valid_condition) {
+      entry.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+      entry.message = "Monitoring inactive";
+    } else {
+      entry.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+      entry.message = "Brake response within threshold";
+    }
+
+    const auto add_value = [&entry](const std::string & key, const std::string & value) {
+      diagnostic_msgs::msg::KeyValue item;
+      item.key = key;
+      item.value = value;
+      entry.values.push_back(item);
+    };
+    add_value("brake_defect_detected", status.brake_defect_detected ? "true" : "false");
+    add_value("filtered_residual", std::to_string(status.filtered_residual));
+    add_value("cusum_statistic", std::to_string(status.cusum_statistic));
+    add_value("valid_condition", status.valid_condition ? "true" : "false");
+    diagnostic.status.push_back(entry);
+    diagnostic_pub_->publish(diagnostic);
   }
 
   void invalidate()
   {
     detector_.reset();
-    publish({});
+    publish({}, false);
   }
 
   void on_control(const autoware_control_msgs::msg::Control::ConstSharedPtr msg)
@@ -181,7 +219,11 @@ private:
     }
 
     const auto pitch = pitch_from_odometry(*odometry_);
-    if (!pitch) {
+    if (
+      !pitch || !std::isfinite(control_->longitudinal.acceleration) ||
+      !std::isfinite(actuation_->actuation.brake_cmd) ||
+      !std::isfinite(odometry_->twist.twist.linear.x) ||
+      !std::isfinite(msg->accel.accel.linear.x)) {
       invalidate();
       return;
     }
@@ -219,6 +261,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr defect_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr residual_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr cusum_pub_;
+  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostic_pub_;
   rclcpp::TimerBase::SharedPtr watchdog_;
 };
 
