@@ -1,0 +1,25 @@
+# Brake defect detector
+
+This node passively compares requested deceleration with measured longitudinal acceleration. It does not publish or modify control commands.
+
+## Interfaces
+
+| Topic                            | Type                                             | Purpose                                                                          |
+| -------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `~/input/control_cmd`            | `autoware_control_msgs/msg/Control`              | Requested longitudinal acceleration                                              |
+| `~/input/actuation_cmd`          | `tier4_vehicle_msgs/msg/ActuationCommandStamped` | Brake actuation command                                                          |
+| `~/input/kinematics`             | `nav_msgs/msg/Odometry`                          | Longitudinal speed and orientation                                               |
+| `~/input/measured_acceleration`  | `geometry_msgs/msg/AccelWithCovarianceStamped`   | Measured longitudinal acceleration                                               |
+| `~/output/brake_defect_detected` | `std_msgs/msg/Bool`                              | True only while valid monitoring conditions hold and CUSUM exceeds the threshold |
+| `~/output/filtered_residual`     | `std_msgs/msg/Float64`                           | Filtered missing-braking residual, in m/s²                                       |
+| `~/output/cusum_statistic`       | `std_msgs/msg/Float64`                           | Upper-side CUSUM statistic, in m/s                                               |
+
+The launch file maps the inputs to the standard Autoware control and localization topics. Launch it with `ros2 launch autoware_brake_defect_detector brake_defect_detector.launch.xml`.
+
+## Detection
+
+The command history is timestamped at reception. At each acceleration sample, the node looks up the command from `actuation_delay_sec` earlier and computes expected acceleration as `delayed_command + 9.81 * sin(pitch)`. Pitch is extracted from the odometry quaternion. The residual is **measured minus expected** acceleration. Since braking commands are negative, insufficient braking makes this residual positive. The upper-side CUSUM integrates the filtered residual above `cusum_drift_k` until it reaches `cusum_threshold_h`.
+
+Detection requires the current and delayed commands to request deceleration, brake command within the configured range, speed above the minimum, and no active settling lockout. A fast command transition starts the lockout. Outside valid conditions, the CUSUM decays and the fault flag is false. Missing, stale, nonfinite, or time-reversed data reset the detector and publish a false flag with zero metrics. The command history must warm up for the configured delay before evaluation starts.
+
+Brake command units depend on the vehicle interface. Set `brake_cmd_min` and `brake_cmd_max` for the actual command scale before using the detector. The other thresholds and delays are set in `config/brake_defect_detector.param.yaml`.
