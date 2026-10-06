@@ -239,7 +239,7 @@ protected:
     p.target_objects.pointcloud = {"unknown"};
     p.hysteresis_distance = 0.5;
     p.hysteresis_time = 0.0;
-    p.ego_stopped_vel_th = 0.1;
+    params_.stopping_constraints.ego_stopped_vel_th = 0.1;
     p.side_distance_th.car = 1.0;
     p.side_distance_th.pointcloud = 1.0;
   }

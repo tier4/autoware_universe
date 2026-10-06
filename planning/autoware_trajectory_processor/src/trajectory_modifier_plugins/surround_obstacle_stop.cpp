@@ -123,6 +123,7 @@ void SurroundObstacleStop::on_initialize(const TrajectoryProcessorParams & param
 
   enabled_ = params.use_surround_obstacle_stop;
   params_ = params.surround_obstacle_stop;
+  stopping_params_ = params.stopping_constraints;
   trajectory_time_step_ = params.trajectory_time_step;
 
   pointcloud_filter_ =
@@ -137,6 +138,7 @@ void SurroundObstacleStop::update_params(const TrajectoryProcessorParams & param
 {
   enabled_ = params.use_surround_obstacle_stop;
   params_ = params.surround_obstacle_stop;
+  stopping_params_ = params.stopping_constraints;
   trajectory_time_step_ = params.trajectory_time_step;
   proximity_checker_->update_parameters(to_proximity_checker_parameters(params_));
   pointcloud_filter_->set_params(params_.target_objects.pointcloud);
@@ -265,8 +267,9 @@ bool SurroundObstacleStop::is_trajectory_modification_required(
   }
 
   if (
-    utils::is_stop_trajectory(traj_points, params_.ego_stopped_vel_th) ||
-    utils::is_ego_vehicle_moving(input.current_odometry->twist.twist, params_.ego_stopped_vel_th)) {
+    utils::is_stop_trajectory(traj_points, stopping_params_.ego_stopped_vel_th) ||
+    utils::is_ego_vehicle_moving(
+      input.current_odometry->twist.twist, stopping_params_.ego_stopped_vel_th)) {
     is_stop_active_ = false;
     last_obstacle_found_time_ = std::nullopt;
     proximity_check_result_ = std::nullopt;
