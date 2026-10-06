@@ -49,6 +49,11 @@ VehicleCmdFilterParam declare_filter_params(rclcpp::Node & node, const std::stri
     node.declare_parameter<LimitArray>(ns + "steer_cmd_diff_lim_from_current_steer");
   p.lat_jerk_lim_for_steer_rate =
     node.declare_parameter<double>(ns + "lat_jerk_lim_for_steer_rate");
+  p.enable_steer_accel_limit = node.declare_parameter<bool>(ns + "enable_steer_accel_limit");
+  p.steer_accel_lim_for_steer_cmd =
+    node.declare_parameter<LimitArray>(ns + "steer_accel_lim_for_steer_cmd");
+  p.steer_accel_clip_integral_th_diag =
+    node.declare_parameter<double>(ns + "steer_accel_clip_integral_th_diag");
   return p;
 }
 
@@ -121,6 +126,7 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
     output_filter_ = filter.get();
     filter->set_nominal_filter_params(nominal_filter_params);
     filter->set_transition_filter_params(transition_filter_params);
+    diag_.add(*filter->create_diag_task());
 
     auto compatibility = std::make_unique<Compatibility>(std::move(filter), *this);
     compatibility_ = compatibility.get();
