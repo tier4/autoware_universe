@@ -197,7 +197,16 @@ bool Controller::processData(rclcpp::Clock & clock)
 
   is_ready &= getData(current_accel_ptr_, sub_accel_, "acceleration");
   is_ready &= getData(current_steering_ptr_, sub_steering_, "steering");
-  is_ready &= getData(current_trajectory_ptr_, sub_ref_path_, "trajectory");
+  const auto trajectory = sub_ref_path_.take_data();
+  if (trajectory) {
+    if (trajectory != current_trajectory_ptr_) {
+      trajectory_received_at_ = this->now();
+    }
+    current_trajectory_ptr_ = trajectory;
+  } else {
+    logData("trajectory");
+    is_ready = false;
+  }
   is_ready &= getData(current_odometry_ptr_, sub_odometry_, "odometry");
   is_ready &= getData(current_operation_mode_ptr_, sub_operation_mode_, "operation mode");
 
@@ -232,6 +241,7 @@ boost::optional<trajectory_follower::InputData> Controller::createInputData(rclc
 
   trajectory_follower::InputData input_data;
   input_data.current_trajectory = *current_trajectory_ptr_;
+  input_data.trajectory_received_at = trajectory_received_at_;
   input_data.current_odometry = *current_odometry_ptr_;
   input_data.current_steering = *current_steering_ptr_;
   input_data.current_accel = *current_accel_ptr_;

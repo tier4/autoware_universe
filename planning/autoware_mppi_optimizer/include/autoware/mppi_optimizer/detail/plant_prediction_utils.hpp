@@ -34,6 +34,9 @@ struct FirstOrderDubinsMppiPlantSnapshot
   builtin_interfaces::msg::Time stamp{};
   float sim_time{0.0F};
   FirstOrderDubinsMppiAppliedPlantState plant;
+  bool standstill_steering_hold_active{false};
+  bool short_reference_steering_hold_active{false};
+  float standstill_steering_hold_command_rad{0.0F};
 };
 
 /** Applied control issued at a wall-clock stamp (piecewise-constant replay). */
@@ -74,6 +77,7 @@ struct PlantPredictionReplayInput
   FirstOrderDubinsMppiVehicleParams vehicle{};
   bool enable_input_delay_compensation{true};
   float integration_dt{0.1F};
+  float standstill_steering_hold_exit_velocity_mps{0.08F};
   FirstOrderDubinsMppiPlantSnapshot anchor{};
   std::vector<FirstOrderDubinsMppiControlHistoryEntry> control_history{};
   builtin_interfaces::msg::Time measurement_stamp{};

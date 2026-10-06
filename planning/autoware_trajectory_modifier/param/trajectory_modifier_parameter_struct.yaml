@@ -140,6 +140,13 @@ trajectory_modifier_params:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
+    ego_stopped_vel_th:
+      type: double
+      default_value: 0.1
+      description: Velocity threshold below which ego is considered stopped [m/s]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
 
   obstacle_stop:
     use_objects:
@@ -511,13 +518,6 @@ trajectory_modifier_params:
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
-    ego_stopped_vel_th:
-      type: double
-      default_value: 0.1
-      description: Velocity threshold below which ego vehicle is considered stopped [m/s]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
   traffic_light_stop:
     stop_margin:
       type: double
@@ -592,6 +592,18 @@ trajectory_modifier_params:
       description: Threshold for stable duration of unknown light [s]
       validation:
         bounds<>: [0.0, 10.0]
+      read_only: false
+    hold_position_when_stopped:
+      type: bool
+      default_value: false
+      description: When ego is already stopped at red/amber, hold in place instead of inserting a stop point ahead that would pull the vehicle forward
+      read_only: false
+    hold_position_distance_threshold:
+      type: double
+      default_value: 2.0
+      description: Maximum distance to the target stop point at which a stopped ego holds in place [m]. Farther short-stops are still allowed to pull forward to close the gap
+      validation:
+        bounds<>: [0.0, 100.0]
       read_only: false
     amber_rejection:
       th_hysteresis:
@@ -1019,6 +1031,64 @@ trajectory_modifier_params:
         description: Latch the goal terminal penalty once the predicted endpoint is within this distance of the route goal [m]
         validation:
           gt_eq<>: [0.0]
+        read_only: false
+      unlatch_horizon_s:
+        type: double
+        default_value: 8.0
+        description: Unlatch goal snap when ego-to-goal exceeds this horizon times speed. <= 0 disables the check [s]
+        read_only: false
+      unlatch_min_speed_mps:
+        type: double
+        default_value: 3.0
+        description: Floor on |ego speed| used with unlatch_horizon_s to compute the far-away range [m/s]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+    temporal_consistency:
+      enable:
+        type: bool
+        default_value: true
+        description: Add a weak cost that tracks the previous solved plan by path distance
+        read_only: false
+      weight_longitudinal:
+        type: double
+        default_value: 0.004
+        description: Temporal consistency weight along the previous heading at t=0 [1/m^2]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      weight_lateral:
+        type: double
+        default_value: 0.2
+        description: Temporal consistency weight perpendicular to the previous heading at t=0 [1/m^2]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      weight_yaw:
+        type: double
+        default_value: 0.002
+        description: Temporal consistency heading weight at t=0 [1/rad^2]
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      weight_velocity:
+        type: double
+        default_value: 0.004
+        description: Temporal consistency velocity weight at t=0
+        validation:
+          gt_eq<>: [0.0]
+        read_only: false
+      decay_time_constant_s:
+        type: double
+        default_value: 1.0
+        description: Horizon decay time constant; <= 0 keeps temporal weights uniform [s]
+        read_only: false
+      far_weight_ratio:
+        type: double
+        default_value: 0.5
+        description: Fraction of temporal weight remaining at the far end of the horizon
+        validation:
+          bounds<>: [0.0, 1.0]
         read_only: false
     min_velocity_mps:
       type: double

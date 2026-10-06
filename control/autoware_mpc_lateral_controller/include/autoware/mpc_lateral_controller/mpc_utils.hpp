@@ -28,6 +28,7 @@
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <optional>
 #include <string>
@@ -76,6 +77,15 @@ double calcLateralError(const Pose & ego_pose, const Pose & ref_pose);
  */
 MPCTrajectory convertToMPCTrajectory(
   const Trajectory & input, const bool use_temporal_trajectory = true);
+
+/**
+ * MPPI stores issued control u[i] on the post-step trajectory point at time (i + 1) * dt.
+ * Select the control for the interval ending at that point. At an exact boundary, the next
+ * control becomes issuable. A trajectory starting at t=0 instead treats that first point as
+ * an immediately valid command.
+ */
+std::optional<std::size_t> findIssuedSteeringCommandIndex(
+  const MPCTrajectory & trajectory, double elapsed_time);
 
 /**
  * @brief convert the given MPCTrajectory to a Trajectory msg
