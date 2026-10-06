@@ -44,6 +44,7 @@ ament_auto_add_library(autoware_trajectory_modifier_utils SHARED
   src/trajectory_modifier_utils/utils.cpp
   src/trajectory_modifier_utils/obstacle_stop_utils.cpp
   src/trajectory_modifier_utils/detection_area_utils.cpp
+  src/trajectory_modifier_utils/planning_factor_utils.cpp
 )
 
 ament_auto_add_library(autoware_trajectory_modifier_component SHARED
@@ -148,6 +149,7 @@ ament_auto_add_library(autoware_trajectory_modifier_plugins SHARED
   src/trajectory_modifier_plugins/map_velocity_limits.cpp
   src/trajectory_modifier_plugins/velocity_limits.cpp
   src/trajectory_modifier_plugins/detection_area_stop.cpp
+  src/trajectory_modifier_plugins/model_planning_factor_id.cpp
 )
 
 target_link_libraries(autoware_trajectory_modifier_plugins

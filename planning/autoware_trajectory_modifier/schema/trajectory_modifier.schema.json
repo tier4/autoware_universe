@@ -33,6 +33,8 @@
           "type": "array",
           "description": "Ordered list of modifier and optimizer plugin class names",
           "default": [
+            "autoware::trajectory_modifier::plugin::TrajectoryTimeSequenceRawOptimizer",
+            "autoware::trajectory_modifier::plugin::ModelPlanningFactorID",
             "autoware::trajectory_modifier::plugin::ExternalVelocityLimit",
             "autoware::trajectory_modifier::plugin::MapVelocityLimits",
             "autoware::trajectory_modifier::plugin::StopPointFixer",
@@ -85,6 +87,46 @@
           "type": "boolean",
           "description": "Enable the traffic light stop modifier plugin",
           "default": true
+        },
+        "use_model_planning_factor_id": {
+          "type": "boolean",
+          "description": "Enable ModelPlanningFactorID (publishes module diffusion_planner)",
+          "default": true
+        },
+        "model_planning_factor_id": {
+          "type": "object",
+          "description": "Inspection-only stop/slowdown labeling from trajectory kinematics",
+          "additionalProperties": false,
+          "properties": {
+            "enable_stop": {
+              "type": "boolean",
+              "description": "Publish STOP planning factors inferred from the planner trajectory",
+              "default": true
+            },
+            "enable_slowdown": {
+              "type": "boolean",
+              "description": "Publish SLOW_DOWN planning factors inferred from the planner trajectory",
+              "default": false
+            },
+            "stop_velocity_threshold": {
+              "type": "number",
+              "description": "Velocity at or below which a trajectory point is treated as stopped [m/s]",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "stop_keep_duration_threshold": {
+              "type": "number",
+              "description": "Minimum duration the trajectory must remain stopped to accept the stop [s]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "slowdown_accel_threshold": {
+              "type": "number",
+              "description": "Acceleration below which a slowdown section starts [m/s^2]",
+              "default": -0.3,
+              "maximum": 0.0
+            }
+          }
         },
         "use_velocity_modifier": {
           "type": "boolean",

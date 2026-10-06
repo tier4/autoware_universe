@@ -109,10 +109,17 @@
       </description>
     </class>
     <class type="autoware::trajectory_modifier::plugin::DetectionAreaStop"
-         base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
-    <description>
-      Modifies the trajectory to stop before obstacles in map-defined detection areas
-    </description>
-  </class>
-</library>
+          base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
+      <description>
+        Modifies the trajectory to stop before obstacles in map-defined detection areas
+      </description>
+    </class>
+    <class type="autoware::trajectory_modifier::plugin::ModelPlanningFactorID"
+          base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
+      <description>
+        Inspects trajectory kinematics after time-sequence raw optimization and publishes
+        stop/slowdown planning factors as module diffusion_planner without mutating the trajectory
+      </description>
+    </class>
+  </library>
 </class_libraries>
