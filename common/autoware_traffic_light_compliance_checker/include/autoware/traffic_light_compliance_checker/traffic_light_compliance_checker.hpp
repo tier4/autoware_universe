@@ -77,7 +77,7 @@ private:
     const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
     const RouteTrafficLightIndex & route_traffic_light_index,
     const std::vector<int64_t> & force_reject_amber_ids, const bool check_red_lights,
-    const bool check_amber_lights) const;
+    const bool check_amber_lights, const bool is_ego_stopped) const;
 
   Violations get_red_light_violations(
     const std::vector<StopLineInfo> & red_stop_lines,
@@ -117,7 +117,7 @@ private:
     const Inputs & input,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
     const RouteTrafficLightIndex & route_traffic_light_index,
-    const bool use_v2i_remaining_time) const;
+    const bool use_v2i_remaining_time, const bool is_ego_stopped) const;
 
   Parameters params_;
   vehicle_info_utils::VehicleInfo vehicle_info_;

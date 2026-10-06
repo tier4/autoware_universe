@@ -198,8 +198,16 @@ bool TrafficLightStop::set_stop_point(TrajectoryPoints & traj_points, const Inpu
     return false;
   }
 
+  // Mitigation for red-light creep: if ego is already stopped and the target stop is
+  // only a short distance ahead, hold in place instead of chasing the stop point.
+  const bool hold_in_place =
+    params_.hold_position_when_stopped &&
+    !utils::is_ego_vehicle_moving(
+      input.current_odometry->twist.twist, stopping_params_.ego_stopped_vel_th) &&
+    target_stop_point_arc_length <= params_.hold_position_distance_threshold;
+
   if (
-    target_stop_point_arc_length < stopping_params_.arrived_distance_threshold ||
+    hold_in_place || target_stop_point_arc_length < stopping_params_.arrived_distance_threshold ||
     !utils::insert_stop_point(traj_points, target_stop_point_arc_length)) {
     utils::replace_trajectory_with_stop_point(
       traj_points, input.current_odometry->pose.pose, trajectory_time_step_);
