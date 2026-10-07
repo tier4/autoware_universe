@@ -17,10 +17,11 @@
 namespace autoware::ml_planner::preprocess
 {
 xt::xarray<float> create_ego_shape(
-  const double base_link_to_front, const double vehicle_length, const double vehicle_width)
+  const double base_link_to_front, const double vehicle_length, const double vehicle_width,
+  const double wheel_base)
 {
   return {
     static_cast<float>(base_link_to_front), static_cast<float>(vehicle_length),
-    static_cast<float>(vehicle_width)};
+    static_cast<float>(vehicle_width), static_cast<float>(wheel_base)};
 }
 }  // namespace autoware::ml_planner::preprocess

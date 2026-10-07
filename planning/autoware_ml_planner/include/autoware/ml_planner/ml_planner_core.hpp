@@ -38,6 +38,7 @@
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -59,6 +60,7 @@ using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
+using autoware_vehicle_msgs::msg::SteeringReport;
 using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using nav_msgs::msg::Odometry;
 using unique_identifier_msgs::msg::UUID;
@@ -167,6 +169,7 @@ public:
    */
   BufferUpdateResult update_buffer(
     const std::vector<std::shared_ptr<const Odometry>> & ego_kinematic_states,
+    const std::vector<std::shared_ptr<const SteeringReport>> & steering_reports,
     const std::vector<std::shared_ptr<const TrackedObjects>> & objects,
     const std::vector<
       std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
@@ -274,6 +277,8 @@ private:
   // All derived history data is computed statelessly from these buffers.
   utils::TimedBuffer<Odometry> ego_history_{
     HISTORY_WINDOW_S, [](const Odometry & msg) { return rclcpp::Time(msg.header.stamp); }};
+  utils::TimedBuffer<SteeringReport> steering_history_{
+    HISTORY_WINDOW_S, [](const SteeringReport & msg) { return rclcpp::Time(msg.stamp); }};
   utils::TimedBuffer<TurnIndicatorsReport> turn_indicators_history_{
     HISTORY_WINDOW_S, [](const TurnIndicatorsReport & msg) { return rclcpp::Time(msg.stamp); }};
   utils::TimedBuffer<TrackedObjects> objects_history_{

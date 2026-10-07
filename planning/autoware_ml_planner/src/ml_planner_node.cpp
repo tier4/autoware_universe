@@ -685,16 +685,7 @@ void MLPlanner::on_timer()
   auto traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
-  auto steering_ptr = sub_steering_.take_data();
-
-  if (!steering_ptr) {
-    constexpr auto message = "Steering status is not available";
-    RCLCPP_ERROR_THROTTLE(
-      get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS, "%s", message);
-    diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, message);
-    diagnostics_inference_->publish(current_time);
-    return;
-  }
+  auto steering_reports = sub_steering_.take_data();
 
   if (traffic_signals.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -703,7 +694,8 @@ void MLPlanner::on_timer()
   }
 
   auto buffer_result = core_->update_buffer(
-    ego_kinematic_state, objects, traffic_signals, turn_indicators_ptr, temp_route_ptr);
+    ego_kinematic_state, steering_reports, objects, traffic_signals, turn_indicators_ptr,
+    temp_route_ptr);
   if (!buffer_result) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
@@ -798,7 +790,8 @@ void MLPlanner::on_timer()
   inference_time_msg.data = inference_result->inference_time_ms;
   pub_inference_time_->publish(inference_time_msg);
 
-  const double current_steering_angle_rad = static_cast<double>(steering_ptr->steering_tire_angle);
+  const double current_steering_angle_rad =
+    static_cast<double>(buffer_result->steering_history.back().steering_tire_angle);
 
   PlannerOutput planner_output;
   try {

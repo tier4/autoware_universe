@@ -20,7 +20,7 @@
 namespace autoware::ml_planner::preprocess
 {
 xt::xarray<float> create_ego_shape(
-  double base_link_to_front, double vehicle_length, double vehicle_width);
+  double base_link_to_front, double vehicle_length, double vehicle_width, double wheel_base);
 }  // namespace autoware::ml_planner::preprocess
 
 #endif  // AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__EGO_SHAPE_HPP_
