@@ -425,12 +425,12 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryModifiedWithRedLightFrontOverh
 TEST_F(TrafficLightStopIntegrationTest, TrajectoryModifiedWithAmberLightCanStop)
 {
   const lanelet::Id light_id = 200;
-  const double stop_x = 10.0;
+  const double stop_x = 15.0;
 
   create_and_set_map(light_id, stop_x);
   set_traffic_light_signal(light_id, TrafficLightElement::AMBER);
 
-  auto trajectory = create_straight_trajectory(0.0, 11.0, 5.0);
+  auto trajectory = create_straight_trajectory(0.0, 16.0, 5.0);
   expect_modified_with_stop_before_stop_line(
     trajectory, make_default_input(), "Should insert stop point when amber light is stoppable");
 }
@@ -564,4 +564,55 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWithStaleSignals)
   expect_not_modified(
     trajectory, make_default_input(),
     "Signals older than signal_timeout should skip the traffic light check");
+}
+
+TEST_F(TrafficLightStopIntegrationTest, HoldsPositionWhenStoppedNearTargetStopPoint)
+{
+  const lanelet::Id light_id = 500;
+  const auto ego_front_offset = context_->vehicle_info.max_longitudinal_offset_m;
+  // Target stop ~1.5 m ahead of ego (within hold_position_distance_threshold).
+  const double target_stop_arc_length = 1.5;
+  const double stop_x =
+    target_stop_arc_length + params_.traffic_light_stop.stop_margin + ego_front_offset;
+
+  create_and_set_map(light_id, stop_x);
+  set_traffic_light_signal(light_id, TrafficLightElement::RED);
+
+  params_.stopping_constraints.ego_stopped_vel_th = 0.1;
+  params_.traffic_light_stop.hold_position_when_stopped = true;
+  params_.traffic_light_stop.hold_position_distance_threshold = 2.0;
+  plugin_->update_params(params_);
+
+  // Lookahead trajectory crosses the stop line while ego odometry velocity is 0.
+  auto trajectory = create_straight_trajectory(0.0, stop_x + 1.0, 1.0);
+  const bool modified = plugin_->modify_trajectory(trajectory, make_default_input(0.0));
+  ASSERT_TRUE(modified) << "Should modify trajectory for red light while ego is stopped";
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_NEAR(trajectory.back().pose.position.x, 0.0, 0.05)
+    << "Stopped ego near the stop point should hold in place instead of pulling forward";
+}
+
+TEST_F(TrafficLightStopIntegrationTest, PullsForwardWhenStoppedFarFromStopPoint)
+{
+  const lanelet::Id light_id = 501;
+  const auto ego_front_offset = context_->vehicle_info.max_longitudinal_offset_m;
+  // Target stop ~3.0 m ahead of ego (beyond hold_position_distance_threshold).
+  const double target_stop_arc_length = 3.0;
+  const double stop_x =
+    target_stop_arc_length + params_.traffic_light_stop.stop_margin + ego_front_offset;
+
+  create_and_set_map(light_id, stop_x);
+  set_traffic_light_signal(light_id, TrafficLightElement::RED);
+
+  params_.stopping_constraints.ego_stopped_vel_th = 0.1;
+  params_.traffic_light_stop.hold_position_when_stopped = true;
+  params_.traffic_light_stop.hold_position_distance_threshold = 2.0;
+  plugin_->update_params(params_);
+
+  auto trajectory = create_straight_trajectory(0.0, stop_x + 1.0, 1.0);
+  const bool modified = plugin_->modify_trajectory(trajectory, make_default_input(0.0));
+  ASSERT_TRUE(modified) << "Should modify trajectory for red light while ego is stopped";
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_NEAR(trajectory.back().pose.position.x, target_stop_arc_length, 0.5)
+    << "Stopped ego far from the stop point should still be allowed to pull forward";
 }

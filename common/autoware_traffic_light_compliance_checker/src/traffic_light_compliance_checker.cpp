@@ -104,11 +104,13 @@ collect_stop_lines(
 std::optional<PreparedTrajectory> prepare_trajectory(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & input_trajectory,
   const std::optional<double> max_length, const double stopped_velocity_threshold,
-  const double max_longitudinal_offset)
+  const double max_longitudinal_offset, const bool is_ego_stopped)
 {
   if (input_trajectory.empty()) {
     return std::nullopt;
   }
+
+  const auto forward_stop_point_offset = is_ego_stopped ? 0.25 : 0.0;
 
   PreparedTrajectory prepared_trajectory;
   auto length = 0.0;
@@ -130,7 +132,8 @@ std::optional<PreparedTrajectory> prepare_trajectory(
     prepared_trajectory.linestring.emplace_back(lanelet_p);
 
     // search for a stop point beyond the current ego position
-    if (length > 0.0 && p.longitudinal_velocity_mps <= stopped_velocity_threshold) {
+    if (length > forward_stop_point_offset &&
+        p.longitudinal_velocity_mps <= stopped_velocity_threshold) {
       prepared_trajectory.stop_point = prepared_trajectory.linestring.back();
       break;
     }
@@ -219,10 +222,10 @@ tl::expected<ComplianceResult, std::string> TrafficLightComplianceChecker::check
 
   auto result = check_with_filtered_signals(
     input, filtered_signals, route_traffic_light_index, force_reject_amber_ids, check_red_lights,
-    check_amber_lights);
+    check_amber_lights, is_ego_stopped);
 
   const auto v2i_result =
-    handle_v2i(input, filtered_signals, route_traffic_light_index, use_v2i_remaining_time);
+    handle_v2i(input, filtered_signals, route_traffic_light_index, use_v2i_remaining_time, is_ego_stopped);
   result.violations.insert(
     result.violations.end(), v2i_result.violations.begin(), v2i_result.violations.end());
 
@@ -362,7 +365,7 @@ ComplianceResult TrafficLightComplianceChecker::check_with_filtered_signals(
   const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
   const RouteTrafficLightIndex & route_traffic_light_index,
   const std::vector<int64_t> & force_reject_amber_ids, const bool check_red_lights,
-  const bool check_amber_lights) const
+  const bool check_amber_lights, const bool is_ego_stopped) const
 {
   if (input.trajectory.empty() || (!check_red_lights && !check_amber_lights)) {
     return ComplianceResult{};
@@ -377,7 +380,7 @@ ComplianceResult TrafficLightComplianceChecker::check_with_filtered_signals(
     ego_stopping_distance_.value_or(0.0) + params_.stop_overshoot_margin);
   const auto prepared_trajectory = prepare_trajectory(
     input.trajectory, max_trajectory_length, params_.ego_stopped_velocity_threshold,
-    vehicle_info_.max_longitudinal_offset_m);
+    vehicle_info_.max_longitudinal_offset_m, is_ego_stopped);
   if (!prepared_trajectory) {
     return ComplianceResult{};  // allow empty or stopped trajectories as they do not cross traffic
                                 // lights
@@ -480,7 +483,8 @@ bool TrafficLightComplianceChecker::is_allow_if_cannot_stop(
 ComplianceResult TrafficLightComplianceChecker::handle_v2i(
   const Inputs & input,
   const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
-  const RouteTrafficLightIndex & route_traffic_light_index, const bool use_v2i_remaining_time) const
+  const RouteTrafficLightIndex & route_traffic_light_index, const bool use_v2i_remaining_time,
+  const bool is_ego_stopped) const
 {
   if (!use_v2i_remaining_time) {
     return ComplianceResult{};
@@ -489,7 +493,7 @@ ComplianceResult TrafficLightComplianceChecker::handle_v2i(
   // scan the full trajectory, as a V2I prediction can concern a stop line far ahead of ego
   const auto prepared = prepare_trajectory(
     input.trajectory, std::nullopt, params_.ego_stopped_velocity_threshold,
-    vehicle_info_.max_longitudinal_offset_m);
+    vehicle_info_.max_longitudinal_offset_m, is_ego_stopped);
   if (!prepared) {
     return ComplianceResult{};
   }

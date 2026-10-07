@@ -111,6 +111,12 @@
               "description": "Threshold to check if the ego vehicle has arrived at the stop point [m]",
               "default": 0.5,
               "minimum": 0.0
+            },
+            "ego_stopped_vel_th": {
+              "type": "number",
+              "description": "Velocity threshold below which ego is considered stopped [m/s]",
+              "default": 0.1,
+              "minimum": 0.0
             }
           },
           "required": [],
@@ -501,6 +507,17 @@
               "default": 0.36,
               "minimum": 0.01
             },
+            "hold_position_when_stopped": {
+              "type": "boolean",
+              "description": "When ego is already stopped at red/amber, hold in place instead of inserting a stop point ahead that would pull the vehicle forward",
+              "default": false
+            },
+            "hold_position_distance_threshold": {
+              "type": "number",
+              "description": "Maximum distance to the target stop point at which a stopped ego holds in place [m]. Farther short-stops are still allowed to pull forward to close the gap",
+              "default": 2.0,
+              "minimum": 0
+            },
             "amber_rejection": {
               "type": "object",
               "properties": {
@@ -643,12 +660,6 @@
               "type": "number",
               "description": "Time hysteresis threshold for clearing stop [s]",
               "default": 0.2,
-              "minimum": 0.0
-            },
-            "ego_stopped_vel_th": {
-              "type": "number",
-              "description": "Velocity threshold below which ego vehicle is considered stopped [m/s]",
-              "default": 0.1,
               "minimum": 0.0
             }
           },
