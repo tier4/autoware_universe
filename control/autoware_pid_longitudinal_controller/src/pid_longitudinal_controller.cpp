@@ -1115,8 +1115,7 @@ PidLongitudinalController::Motion PidLongitudinalController::keepBrakeBeforeStop
 {
   Motion output_motion = target_motion;
 
-  const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(control_data.interpolated_traj.points);
-  if (!m_enable_brake_keeping_before_stop || !stop_idx) {
+  if (!m_enable_brake_keeping_before_stop) {
     m_brake_keeping_state = BrakeKeepingState::NORMAL;
     return output_motion;
   }
