@@ -804,7 +804,7 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
   // in STOPPED state
   if (m_control_state == ControlState::STOPPED) {
     // keep STOPPED if is_under_control is false
-    if (!is_under_control && stopped_condition) return;
+    if (!is_under_control && m_is_stopped_with_delay) return;
 
     // debug print
     if (has_nonzero_target_vel && !departure_condition_from_stopped) {
