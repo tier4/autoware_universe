@@ -461,12 +461,6 @@ void TensorrtE2eNode::initialize_pipeline()
         provider->name().c_str());
     }
   }
-  // `prev_plan` is the model's own last output, so the node (not a provider) feeds it.
-  feeds_prev_plan_ = find_spec(engine_->input_specs(), PREV_PLAN_TENSOR) != nullptr;
-  if (feeds_prev_plan_) {
-    claimed_by.emplace(PREV_PLAN_TENSOR, "node");
-    RCLCPP_INFO(get_logger(), "Input '%s' is provided by the node", PREV_PLAN_TENSOR);
-  }
   std::vector<std::string> unclaimed;
   for (const auto & spec : engine_->input_specs()) {
     if (claimed_by.find(spec.name) == claimed_by.end()) {
@@ -486,14 +480,6 @@ void TensorrtE2eNode::initialize_pipeline()
 
   postprocessor_ = std::make_unique<TrajectoryPostprocessor>(postprocess_params_);
   postprocessor_->validate_output_specs(engine_->output_specs());
-  if (feeds_prev_plan_) {
-    const auto & shape = find_spec(engine_->input_specs(), PREV_PLAN_TENSOR)->shape;
-    if (shape != std::vector<int64_t>{1, postprocessor_->num_timesteps(), 5}) {
-      throw std::runtime_error(
-        std::string("Input '") + PREV_PLAN_TENSOR + "' has shape " + shape_to_string(shape) +
-        "; expected [1, " + std::to_string(postprocessor_->num_timesteps()) + ", 5]");
-    }
-  }
 
   if (!params_.args_path.empty()) {
     normalization_map_ = dp::utils::load_normalization_stats(params_.args_path);
@@ -712,10 +698,6 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
     return;
   }
 
-  // Whatever this tick does, the plan it inherits is used once and never kept on failure.
-  const auto prev_plan = std::move(prev_plan_cache_);
-  prev_plan_cache_.reset();
-
   const auto ego = create_ego_frame();
   if (!ego) {
     RCLCPP_WARN_THROTTLE(
@@ -752,15 +734,6 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       finish(DiagnosticStatus::WARN, "[" + provider->name() + "] " + error);
       return;
     }
-  }
-
-  if (feeds_prev_plan_) {
-    const int64_t steps = postprocessor_->num_timesteps();
-    inputs[PREV_PLAN_TENSOR] = Tensor::from_host(
-      {1, steps, 5},
-      build_prev_plan_tensor(
-        prev_plan ? &*prev_plan : nullptr, ego->map_to_ego, ego->stamp.nanoseconds(),
-        ego->localization_generation, steps));
   }
 
   apply_normalization(inputs);
@@ -803,11 +776,6 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
   }
 
   timing.postprocess_ms = stop_watch_.toc("postprocess");
-  if (feeds_prev_plan_) {
-    prev_plan_cache_ = cache_from_output(
-      result.outputs->at(postprocess_params_.prediction_tensor).host_data, postprocessor_->num_timesteps(),
-      ego->ego_to_map, ego->stamp.nanoseconds(), ego->localization_generation);
-  }
 
   if (!params_.dump_dir.empty() && dumped_frames_ < params_.dump_max_frames) {
     dump_tensors(inputs, *result.outputs, *ego);

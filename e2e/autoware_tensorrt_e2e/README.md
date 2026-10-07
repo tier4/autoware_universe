@@ -54,7 +54,7 @@ the pacing sensor delivers
   │    bev_feature        frozen BEVFusion-L features, temporal history, SE(2)-warped
   │    context            the diffusion planner's ego / map / route / traffic-light tensors
   └─ inference            one TensorRT engine, built in-node with TrtCommon
-  └─ postprocess          diffusion planner's trajectory conversion, 4 s at 0.1 s
+  └─ postprocess          diffusion planner's trajectory conversion, the model's horizon at 0.1 s
   └─ publish              Trajectory, CandidateTrajectories, planning factors, diagnostics
 ```
 
@@ -81,7 +81,7 @@ ego trajectory tensor.
 
 **Output.** `[B, A, T, 4]` (agent 0 is the ego, the rest are neighbour predictions) or
 `[B, T, 4]` (ego only): `(x, y, cos yaw, sin yaw)` per 0.1 s step, in the ego frame. `T`
-is validated against `postprocess.horizon_seconds` (40 steps, 4 s, for the current models).
+is validated against `postprocess.horizon_seconds` (the ml_package file states it: 40 steps for a 4 s model, 60 for a 6 s one).
 The tensor name is `postprocess.prediction_tensor`; further ego-only trajectory outputs
 listed in `postprocess.extra_trajectory_tensors` are published as extra candidates.
 
@@ -100,6 +100,9 @@ listed in `postprocess.extra_trajectory_tensors` are published as extra candidat
 | context     | `lanes`, `lanes_speed_limit`, `lanes_has_speed_limit` | `[1, S, 20, 33]`, `[1, S, 1]`      | `autoware_diffusion_planner`; traffic-light state in channels 8 to 12                                                                                            |
 | context     | `route_lanes` and its two speed-limit tensors         | as above                           | `autoware_diffusion_planner`                                                                                                                                     |
 | context     | `lanes_on_route`                                      | `[1, S, 2]`                        | per lane slot: on-route flag and position along the route (0 first, 1 last); an index match between the lane and route selections, OnePlanner's `lanes_on_route` |
+| context     | `lane_signals`, `route_signals`                       | `[1, rows, steps, 5]`              | every lane / route row's traffic-light one-hot over the last seconds, oldest first; kept per tick by `context.signal_history.*` (the contract's `signal_history`)  |
+| context     | `ego_curvature_bias`                                  | `[1, 1]`                           | the steering sensor's curvature bias, low-passed once per planning tick by `context.curvature_bias.*` (the contract's `curvature_bias`)                          |
+| planning    | `sensor_latency`                                      | `[1, 1]`                           | seconds from the cloud stamp to planning time; only under `planning_time: planning_time`                                                                         |
 | context     | `polygons`, `line_strings`                            | `[1, 10, 40, 3]`, `[1, 60, 20, 4]` | `autoware_diffusion_planner`                                                                                                                                     |
 | context     | `goal_pose`, `ego_shape`                              | `[1, 4]`, `[1, 3]`                 | route goal in the ego frame; vehicle info                                                                                                                        |
 | context     | `turn_indicators`                                     | `[1, T]`                           | report history, or a constant when disabled                                                                                                                      |
@@ -155,7 +158,7 @@ node came up in the container with no cloud subscription at all and reported it 
 
 | Topic                                                                                                                       | Type                                                        | Content                                                                                                              |
 | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `~/output/trajectory`                                                                                                       | `autoware_planning_msgs/msg/Trajectory`                     | Ego trajectory in `map`, 40 points at 0.1 s, stamped with the odometry it was planned from                           |
+| `~/output/trajectory`                                                                                                       | `autoware_planning_msgs/msg/Trajectory`                     | Ego trajectory in `map`, one point per 0.1 s of the model's horizon, stamped with the odometry it was planned from                           |
 | `~/output/trajectories`                                                                                                     | `autoware_internal_planning_msgs/msg/CandidateTrajectories` | One candidate per batch and per extra trajectory tensor, with `GeneratorInfo`                                        |
 | `~/output/detected_objects`                                                                                                 | `autoware_perception_msgs/msg/DetectedObjects`              | The extractor graph's detection head, when the model carries one; one message per LiDAR frame, in that cloud's frame |
 | `/planning/planning_factors/tensorrt_e2e`                                                                                   | `autoware_internal_planning_msgs/msg/PlanningFactorArray`   | Stop and slow-down factors read off the trajectory, as `autoware_diffusion_planner` reports them                     |
@@ -189,7 +192,7 @@ smoothed velocity; a point at t = 0 is prepended at the ego's base_link pose (po
 heading) at the trajectory stamp, carrying the first plan point's velocity and acceleration,
 and the model's steps follow at 0.1 s, 0.2 s, ...; `z`
 is the ego's current `z`; lateral velocity and heading rate are left at zero. The only
-difference from `autoware_diffusion_planner` is the horizon, 4 s instead of 8 s.
+difference from `autoware_diffusion_planner` is the horizon, the model's own (4 s or 6 s) instead of 8 s.
 
 ## Operation
 

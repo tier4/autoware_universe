@@ -9,9 +9,9 @@ sensing inputs** while sharing the rest of the interface:
 
 | Prototype | Sensing input | Other inputs | Output |
 | --------------- | ------------------------------------------ | ---------------------------------- | ---------------------------- |
-| Front camera | 1 camera (`CAM_FRONT_WIDE`) | Diffusion-planner-style (optional) | Ego trajectory, 40 pts / 4 s |
-| Surround camera | 5 cameras (front wide + 4 corner wides) | Diffusion-planner-style (optional) | Ego trajectory, 40 pts / 4 s |
-| LiDAR | Concatenated point cloud (as in BEVFusion) | Diffusion-planner-style (optional) | Ego trajectory, 40 pts / 4 s |
+| Front camera | 1 camera (`CAM_FRONT_WIDE`) | Diffusion-planner-style (optional) | Ego trajectory, 0.1 s steps   |
+| Surround camera | 5 cameras (front wide + 4 corner wides) | Diffusion-planner-style (optional) | Ego trajectory, 0.1 s steps   |
+| LiDAR | Concatenated point cloud (as in BEVFusion) | Diffusion-planner-style (optional) | Ego trajectory, 0.1 s steps   |
 
 Writing one ROS node per model would duplicate subscription handling, TensorRT plumbing,
 postprocessing, and diagnostics — and every new model variant (new sensor set, added or removed
@@ -165,11 +165,13 @@ point cloud:
    `autoware_bevfusion` preprocessing (`PreprocessCuda`), sparse convolution runs via
    `autoware_tensorrt_plugins`, and the `bev_feature` output (`[1, C, H, W]`, xx1: 512×180×180)
    stays on the GPU.
-2. `TemporalBevCache` keeps the last K (=3) feature maps with their source ego poses at a
-   contract-checked 0.1 s spacing (a violated gap resets and re-warms the cache), and
-   assembles the `[1, K, C, H, W]` current-to-past history: slot 0 is the raw newest map,
-   older slots are **SE(2)-warped** from their source ego frame into the newest frame's ego
-   frame. The warp kernel replicates the Python reference (`deployment/temporal.py`) exactly:
+2. `TemporalBevCache` keeps the feature maps of the history window with their source ego poses
+   and assembles the `[1, K, C, H, W]` current-to-past history by time: step k is the map
+   nearest `newest - k * interval_seconds` (the contract's `temporal_cache.interval_seconds`,
+   0.5 s for the current models, not the sensor period), a dropped scan's slot is the next older
+   map, and a time jump or pose discontinuity resets and re-warms the cache. Every slot is
+   **SE(2)-warped** from its source ego frame into the target ego frame (the newest map's own
+   frame, whose slot 0 is then copied, or the planning pose under `planning_time`). The warp kernel replicates the Python reference (`deployment/temporal.py`) exactly:
    pose format `[x, y, cos(yaw), sin(yaw)]`, BEV axes height = x-forward / width = y-left,
    half extent 122.4 m, bilinear sampling with zero padding, `align_corners=False`
    pixel-centre convention. The coordinate math is host-callable and unit-tested.
@@ -264,8 +266,8 @@ The prediction tensor (default name `prediction`) is interpreted exactly like th
 planner output: `[batch, num_agents, T, 4]` with `(x, y, cos(yaw), sin(yaw))` per step in the
 ego frame at 0.1 s intervals; agent 0 is ego, and is the only agent read. `[batch, T, 4]` is
 accepted as the ego-only degenerate case. `T` comes from the engine and is validated against
-`postprocess.horizon_seconds / postprocess.time_step` (40 for the current models; the
-diffusion planner's 80 would work equally).
+`postprocess.horizon_seconds / postprocess.time_step` (40 for a 4 s model, 60 for a 6 s one;
+the diffusion planner's 80 would work equally).
 
 Pose parsing is a dimension-parameterized re-implementation of `parse_predictions`
 (the original hard-codes `OUTPUT_T = 80`); what follows it —
