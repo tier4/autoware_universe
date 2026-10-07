@@ -596,7 +596,7 @@ safety_planner:
         type: double
         default_value: 300.0
         read_only: true
-        description: "[-] weight on (v - v_ref)^2"
+        description: "[-] weight forwarded to MPPI spatial_overspeed_coeff: progress-weighted [v - v_ref]_+^2"
       track_center:
         type: double
         default_value: 1.0
