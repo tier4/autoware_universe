@@ -191,11 +191,6 @@
           "description": "Distance threshold to enter TERMINAL_CLIP state [m]",
           "default": "1.5"
         },
-        "brake_keeping_terminal_clip_vel_th": {
-          "type": "number",
-          "description": "Velocity threshold to enter TERMINAL_CLIP state [m/s]",
-          "default": "2.0"
-        },
         "brake_keeping_abort_dist_th": {
           "type": "number",
           "description": "Distance threshold to return to NORMAL state [m]",
@@ -382,7 +377,6 @@
         "enable_brake_keeping_before_stop",
         "brake_keeping_acc",
         "brake_keeping_terminal_clip_dist_th",
-        "brake_keeping_terminal_clip_vel_th",
         "brake_keeping_abort_dist_th",
         "smooth_stop_max_strong_acc",
         "smooth_stop_min_strong_acc",

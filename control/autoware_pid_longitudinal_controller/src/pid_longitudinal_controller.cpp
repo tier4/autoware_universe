@@ -142,8 +142,6 @@ PidLongitudinalController::PidLongitudinalController(
     m_brake_keeping_acc = node.declare_parameter<double>("brake_keeping_acc");  // [m/s^2]
     m_brake_keeping_params.terminal_clip_dist_th =
       node.declare_parameter<double>("brake_keeping_terminal_clip_dist_th");
-    m_brake_keeping_params.terminal_clip_vel_th =
-      node.declare_parameter<double>("brake_keeping_terminal_clip_vel_th");
     m_brake_keeping_params.abort_dist_th =
       node.declare_parameter<double>("brake_keeping_abort_dist_th");
   }
@@ -1121,11 +1119,10 @@ PidLongitudinalController::Motion PidLongitudinalController::keepBrakeBeforeStop
   }
 
   const double D = control_data.stop_dist;
-  const double V = std::abs(control_data.current_motion.vel);
   const auto & p = m_brake_keeping_params;
 
   if (m_brake_keeping_state == BrakeKeepingState::NORMAL) {
-    if (D <= p.terminal_clip_dist_th && V < p.terminal_clip_vel_th) {
+    if (D <= p.terminal_clip_dist_th) {
       m_brake_keeping_state = BrakeKeepingState::TERMINAL_CLIP;
       RCLCPP_DEBUG(logger_, "[keepBrake] NORMAL -> TERMINAL_CLIP");
     }
