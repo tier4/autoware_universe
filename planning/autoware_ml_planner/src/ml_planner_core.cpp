@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -60,6 +61,8 @@ bool optimization_params_changed(
          lhs.goal.weight_yaw != rhs.goal.weight_yaw ||
          lhs.goal.weight_velocity != rhs.goal.weight_velocity ||
          lhs.goal.snap_distance_m != rhs.goal.snap_distance_m ||
+         lhs.goal.unlatch_horizon_s != rhs.goal.unlatch_horizon_s ||
+         lhs.goal.unlatch_min_speed_mps != rhs.goal.unlatch_min_speed_mps ||
          lhs.min_velocity_mps != rhs.min_velocity_mps ||
          lhs.max_velocity_mps != rhs.max_velocity_mps ||
          lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
@@ -138,8 +141,16 @@ MLPlannerCore::MLPlannerCore(const MLPlannerParams & params, const VehicleInfo &
   }
 }
 
+void MLPlannerCore::resolve_model_paths()
+{
+  const std::filesystem::path base_dir(params_.base_model_directory);
+  params_.model_path = (base_dir / params_.onnx_model_filename).string();
+  params_.args_path = (base_dir / params_.args_filename).string();
+}
+
 void MLPlannerCore::load_model()
 {
+  resolve_model_paths();
   ml_planner_inference_.reset();
   if (params_.backend == "tensorrt") {
     ml_planner_inference_ = std::make_unique<SingleStepInference>(
@@ -489,12 +500,13 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
   const double center_x = pose_center.position.x;
   const double center_y = pose_center.position.y;
   const double center_z = pose_center.position.z;
+  const double center_yaw = utils::yaw_from_quaternion(pose_center.orientation);
 
   const auto traffic_light_id_map = preprocess::create_traffic_signal_map(
     traffic_signals_history_.msgs(), frame_time(), params_.traffic_light_group_msg_timeout_seconds);
 
   return lane_segment_context_->get_first_traffic_light_on_route(
-    *route_ptr_, center_x, center_y, center_z, traffic_light_id_map);
+    *route_ptr_, center_x, center_y, center_z, center_yaw, traffic_light_id_map);
 }
 
 int64_t MLPlannerCore::count_valid_elements(

@@ -20,6 +20,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   "src/common/control_command_filter.cpp"
   "src/common/vehicle_status.cpp"
   "src/common/timeout_diagnostics.cpp"
+  "src/common/clip_diagnostics.cpp"
 )
 target_include_directories(${PROJECT_NAME} PRIVATE
   "src"
@@ -33,6 +34,22 @@ autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
+  ament_add_ros_isolated_gtest(test_control_command_gate
+    test/test_main.cpp
+    test/test_steer_accel_limit.cpp
+    test/test_command_filter_integration.cpp
+    test/test_clip_diagnostics.cpp
+  )
+  target_include_directories(test_control_command_gate PRIVATE
+    "src"
+  )
+  ament_target_dependencies(test_control_command_gate
+    rclcpp
+    rosgraph_msgs
+  )
+  target_link_libraries(test_control_command_gate
+    ${PROJECT_NAME}
+  )
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE config launch)

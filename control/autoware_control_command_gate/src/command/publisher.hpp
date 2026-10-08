@@ -32,7 +32,7 @@ public:
   void set_prev_control(std::shared_ptr<Control> control) { prev_control_ = control; }
   TimeoutDiag * create_diag_task(const TimeoutDiag::Params & params, const rclcpp::Clock & clock);
 
-  void on_control(const Control & msg) override;
+  void on_control(uint16_t source_id, const Control & msg) override;
   void on_gear(const GearCommand & msg) override;
   void on_turn_indicators(const TurnIndicatorsCommand & msg) override;
   void on_hazard_lights(const HazardLightsCommand & msg) override;

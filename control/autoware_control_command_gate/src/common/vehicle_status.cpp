@@ -42,6 +42,12 @@ bool VehicleStatus::is_autoware_control_enabled() const
   return current_control_mode_.mode == ControlModeReport::AUTONOMOUS;
 }
 
+bool VehicleStatus::is_autoware_lateral_control_enabled() const
+{
+  return current_control_mode_.mode == ControlModeReport::AUTONOMOUS ||
+         current_control_mode_.mode == ControlModeReport::AUTONOMOUS_STEER_ONLY;
+}
+
 bool VehicleStatus::is_vehicle_stopped() const
 {
   return vehicle_stop_checker_.isVehicleStopped(stop_check_duration_);

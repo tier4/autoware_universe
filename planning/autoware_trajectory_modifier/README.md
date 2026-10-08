@@ -193,6 +193,23 @@ To preserve the trajectory's original geometric shape, the spatial poses are re-
 | `map_velocity_limits.limit_velocity_from_map_debug_lanelet_ids`    | `[]`    | Lanelet IDs whose map limits are overridden for debugging.       |
 | `map_velocity_limits.limit_velocity_from_map_debug_max_velocities` | `[]`    | Corresponding override velocities in m/s.                        |
 
+##### ModelPlanningFactorID
+
+Inspection-only plugin. It reads the current trajectory speed/acceleration, never mutates points, and publishes stop/slowdown factors on `/planning/planning_factors/diffusion_planner` with `module` `diffusion_planner` so existing RViz, FOA, and API consumers stay aligned.
+
+Place it immediately after `TrajectoryTimeSequenceRawOptimizer` and before `ExternalVelocityLimit` / object-stop plugins so the labels describe the post-TSO model output rather than later velocity capping or ObstacleStop / TrafficLightStop insertions. The host always calls `publish_planning_factor()` even when this plugin returns `Unchanged`.
+
+Disable the learning-based planner node's own `planning_factor.enable_stop` in launch to avoid two publishers on the same topic.
+
+| Parameter                                               | Default | Description                                             |
+| ------------------------------------------------------- | ------- | ------------------------------------------------------- |
+| `use_model_planning_factor_id`                          | `true`  | Enable the plugin when included in `plugin_names`.      |
+| `model_planning_factor_id.enable_stop`                  | `true`  | Publish STOP factors inferred from the trajectory.      |
+| `model_planning_factor_id.enable_slowdown`              | `false` | Publish SLOW_DOWN factors inferred from the trajectory. |
+| `model_planning_factor_id.stop_velocity_threshold`      | `0.1`   | Stop detection velocity [m/s].                          |
+| `model_planning_factor_id.stop_keep_duration_threshold` | `1.0`   | Required stop duration [s].                             |
+| `model_planning_factor_id.slowdown_accel_threshold`     | `-0.3`  | Slowdown detection acceleration [m/s²].                 |
+
 ##### Stop Point Fixer
 
 The Stop Point Fixer plugin addresses trajectory issues when the ego vehicle is stationary or moving at very low speeds. It prevents problematic trajectory points that could cause planning issues by replacing the trajectory with a single stop point when either of two independently configurable conditions is met:

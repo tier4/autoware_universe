@@ -127,9 +127,7 @@ private:
   void set_up_params();
 
   /**
-   * @brief Load TensorRT model and normalization statistics.
-   *
-   * Updates the normalization_map_ and ml_planner_inference_ member variables.
+   * @brief Load TensorRT model from model.base_model_directory and filenames.
    *
    * @throws std::runtime_error if the model path is invalid or engine setup fails.
    */
