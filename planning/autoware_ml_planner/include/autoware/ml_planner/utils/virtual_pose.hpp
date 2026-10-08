@@ -55,6 +55,13 @@ struct VirtualPoseParams
   // Trajectory the virtual pose is taken from: "raw" (the model's prediction) or "optimized"
   // (the node's output after border avoidance and trajectory optimization).
   std::string reference;
+  // Keep the frame pose of the previous cycle once the vehicle is slower than hold_max_speed_mps,
+  // until it has moved or turned beyond the tolerances from where the hold began. The tolerances
+  // cover the drift of the localized pose at standstill.
+  bool hold_at_standstill{true};
+  double hold_max_speed_mps{0.1};
+  double hold_position_tolerance_m{0.2};
+  double hold_yaw_tolerance_deg{0.5};
 };
 
 struct VirtualPoseResult

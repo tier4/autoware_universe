@@ -70,6 +70,10 @@
       yaw_fit_min_length_m: 0.2     # [m] below this window length the measured heading is used
       history_prefix_count: 10      # earlier virtual poses prepended so the spline extends behind the vehicle
       reference: "optimized"        # trajectory the virtual pose is taken from: "raw" (model prediction) or "optimized" (published output)
+      hold_at_standstill: true      # keep the previous frame pose while the vehicle stays where it stopped
+      hold_max_speed_mps: 0.1         # [m/s] a hold begins once the vehicle is slower than this
+      hold_position_tolerance_m: 0.2  # [m] the hold ends once the vehicle has moved this far from where it began
+      hold_yaw_tolerance_deg: 0.5     # [deg] ... or turned this much (both cover the localization drift at standstill)
     stop_point_fixing:
       enable: false
       velocity_threshold_mps: 0.3  # stop detection velocity threshold [m/s]
