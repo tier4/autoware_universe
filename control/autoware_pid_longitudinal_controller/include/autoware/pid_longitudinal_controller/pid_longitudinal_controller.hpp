@@ -192,8 +192,8 @@ private:
   BrakeKeepingState m_brake_keeping_state{BrakeKeepingState::NORMAL};
 
   struct BrakeKeepingParams {
-    double terminal_clip_dist_th{1.5}; // Distance threshold to enter TERMINAL_CLIP state [m]
-    double abort_dist_th{3.0};         // Distance threshold to return to NORMAL state [m]
+    double terminal_clip_dist_th{1.0}; // Distance threshold to enter TERMINAL_CLIP state [m]
+    double abort_dist_th{2.0};         // Distance threshold to return to NORMAL state [m]
   };
   BrakeKeepingParams m_brake_keeping_params;
 

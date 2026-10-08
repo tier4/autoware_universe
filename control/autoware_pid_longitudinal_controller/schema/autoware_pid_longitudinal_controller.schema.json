@@ -189,12 +189,12 @@
         "brake_keeping_terminal_clip_dist_th": {
           "type": "number",
           "description": "Distance threshold to enter TERMINAL_CLIP state [m]",
-          "default": "1.5"
+          "default": "1.0"
         },
         "brake_keeping_abort_dist_th": {
           "type": "number",
           "description": "Distance threshold to return to NORMAL state [m]",
-          "default": "3.0"
+          "default": "2.0"
         },
         "smooth_stop_max_strong_acc": {
           "type": "number",

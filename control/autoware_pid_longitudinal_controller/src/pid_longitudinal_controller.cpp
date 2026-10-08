@@ -141,9 +141,9 @@ PidLongitudinalController::PidLongitudinalController(
       node.declare_parameter<bool>("enable_brake_keeping_before_stop");         // [-]
     m_brake_keeping_acc = node.declare_parameter<double>("brake_keeping_acc");  // [m/s^2]
     m_brake_keeping_params.terminal_clip_dist_th =
-      node.declare_parameter<double>("brake_keeping_terminal_clip_dist_th");
+      node.declare_parameter<double>("brake_keeping_terminal_clip_dist_th", 1.0);
     m_brake_keeping_params.abort_dist_th =
-      node.declare_parameter<double>("brake_keeping_abort_dist_th");
+      node.declare_parameter<double>("brake_keeping_abort_dist_th", 2.0);
   }
 
   // parameters for smooth stop state
