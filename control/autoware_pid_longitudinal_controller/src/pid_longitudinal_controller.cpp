@@ -353,6 +353,10 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalController::paramCallbac
     update_param("ff_scale_max", m_ff_scale_max);
     update_param("velocity_lookahead_time", m_velocity_lookahead_time);
     update_param("velocity_lookahead_blend_weight", m_velocity_lookahead_blend_weight);
+
+    update_param("brake_keeping_acc", m_brake_keeping_acc);
+    update_param("brake_keeping_terminal_clip_dist_th", m_brake_keeping_params.terminal_clip_dist_th);
+    update_param("brake_keeping_abort_dist_th", m_brake_keeping_params.abort_dist_th);
   }
 
   // stopping state
