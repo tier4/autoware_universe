@@ -524,6 +524,26 @@ MPCTrajectory convertToMPCTrajectory(const Trajectory & input, const bool use_te
   return output;
 }
 
+std::optional<std::size_t> findIssuedSteeringCommandIndex(
+  const MPCTrajectory & trajectory, const double elapsed_time)
+{
+  const auto & times = trajectory.relative_time;
+  if (
+    times.empty() || times.size() != trajectory.steer.size() || !std::isfinite(elapsed_time) ||
+    elapsed_time >= times.back()) {
+    return std::nullopt;
+  }
+  for (std::size_t i = 0; i < times.size(); ++i) {
+    if (!std::isfinite(times[i]) || (i > 0 && times[i] <= times[i - 1])) {
+      return std::nullopt;
+    }
+  }
+  const auto it = std::upper_bound(times.begin(), times.end(), elapsed_time);
+  const auto index = static_cast<std::size_t>(std::distance(times.begin(), it));
+  // A point at t=0 describes a command already valid at the trajectory origin.
+  return times.front() <= 0.0 && index > 0 ? index - 1 : index;
+}
+
 Trajectory convertToAutowareTrajectory(const MPCTrajectory & input, const double wheelbase)
 {
   Trajectory output;

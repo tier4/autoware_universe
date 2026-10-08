@@ -91,6 +91,13 @@ bool violates_occupancy(const OccupancyEntry & occupancy, const SlBox & box, dou
 //! Evaluated on the front of the footprint box
 bool violates_stop_bar(const StopBarEntry & stop_bar, const SlBox & box, double t0, double t1);
 
+//! The base_link arc length to stop at: the goal at the end of the path, or the nearest stop bar
+//! (Gate) closed within the horizon if that comes first, where the footprint front just touches
+//! it (violates_stop_bar). Not behind s_min
+double stop_target_s(
+  const PlannerContext & context, const CompiledConstraints & compiled_constraints, double horizon,
+  double s_min);
+
 }  // namespace autoware::safety_planner
 
 #endif  // TRAJECTORY_PLANNER__FRENET_SAMPLING_BASED_PLANNER__COMPILED_CONSTRAINTS_UTILS_HPP_

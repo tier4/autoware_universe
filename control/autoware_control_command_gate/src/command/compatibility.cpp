@@ -40,7 +40,7 @@ void Compatibility::publish()
   moderate_stop_->publish();
 }
 
-void Compatibility::on_control(const Control & msg)
+void Compatibility::on_control(uint16_t source_id, const Control & msg)
 {
   const auto set_stop_command = [](auto & longitudinal, const auto & acceleration) {
     longitudinal.velocity = std::min(0.0f, longitudinal.velocity);
@@ -63,7 +63,7 @@ void Compatibility::on_control(const Control & msg)
     set_stop_command(out.longitudinal, stop_hold_acceleration_);
   }
 
-  CommandBridge::on_control(out);
+  CommandBridge::on_control(source_id, out);
 }
 
 }  // namespace autoware::control_command_gate
