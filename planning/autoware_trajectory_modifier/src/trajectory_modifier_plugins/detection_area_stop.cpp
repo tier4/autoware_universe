@@ -59,7 +59,6 @@ using detection_area::object_label_to_string;
 
 constexpr double ego_nearest_distance{5.0};
 constexpr double ego_nearest_yaw_deviation{1.5707963267948966};
-constexpr double stopped_velocity_threshold{1e-3};
 
 void append_debug_status(std::string & status, const std::string & message)
 {
@@ -280,7 +279,8 @@ void DetectionAreaStop::update_cycle_observations(const TrajectoryModifierData &
 void DetectionAreaStop::update_physical_stop_state(const TrajectoryModifierData & input)
 {
   const auto & ego = cycle_odometry_->pose.pose;
-  const bool stopped = std::abs(cycle_odometry_->twist.twist.linear.x) < stopped_velocity_threshold;
+  const bool stopped = !utils::is_ego_vehicle_moving(
+    cycle_odometry_->twist.twist, stopping_params_.ego_stopped_vel_th);
   for (auto & module : modules_) {
     const auto lane = input.lanelet_map->laneletLayer.get(module.lane_id);
     const auto point = lanelet::BasicPoint2d{ego.position.x, ego.position.y};
@@ -508,8 +508,8 @@ std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::evaluate_modul
   const double distance_to_stop = stop_point_s - *self_s;
   StopDecision decision;
   decision.module_index = static_cast<size_t>(&module - modules_.data());
-  const bool is_stopped =
-    std::abs(cycle_odometry_->twist.twist.linear.x) < stopped_velocity_threshold;
+  const bool is_stopped = !utils::is_ego_vehicle_moving(
+    cycle_odometry_->twist.twist, stopping_params_.ego_stopped_vel_th);
   const auto now = cycle_time_;
 
   if (params_.use_dead_line) {
@@ -549,8 +549,7 @@ std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::evaluate_modul
   const double braking_distance =
     std::max(0.0, current_velocity) * params_.delay_response_time +
     feasible_stop_distance_by_max_acceleration(current_velocity, params_.max_deceleration);
-  const bool has_enough_distance =
-    current_velocity < stopped_velocity_threshold || distance_to_stop > braking_distance;
+  const bool has_enough_distance = is_stopped || distance_to_stop > braking_distance;
 
   if (!has_enough_distance) {
     if (params_.unstoppable_policy == "go") {
@@ -663,8 +662,8 @@ bool DetectionAreaStop::should_hold_stop_at_ego(
 {
   if (!input.current_odometry) return false;
 
-  const bool is_stopped =
-    std::abs(cycle_odometry_->twist.twist.linear.x) < stopped_velocity_threshold;
+  const bool is_stopped = !utils::is_ego_vehicle_moving(
+    cycle_odometry_->twist.twist, stopping_params_.ego_stopped_vel_th);
   if (!is_stopped) return false;
 
   for (const auto & module : modules_) {

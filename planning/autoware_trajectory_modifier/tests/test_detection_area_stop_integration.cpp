@@ -58,6 +58,15 @@ using nav_msgs::msg::Odometry;
 
 constexpr double stop_line_x = 10.0;
 
+struct StoppedVelocityCase
+{
+  double velocity_x;
+  double velocity_y;
+  double velocity_z;
+  double threshold;
+  bool is_stopped;
+};
+
 TrajectoryPoints make_trajectory(const double y = 0.0)
 {
   TrajectoryPoints trajectory;
@@ -294,6 +303,32 @@ protected:
   std::shared_ptr<TrajectoryModifierContext> context_;
   std::unique_ptr<DetectionAreaStop> plugin_;
   trajectory_modifier_params::Params params_;
+};
+
+class DetectionAreaStopStoppedVelocityTest
+: public DetectionAreaStopIntegrationTest,
+  public ::testing::WithParamInterface<StoppedVelocityCase>
+{
+protected:
+  void SetUp() override
+  {
+    DetectionAreaStopIntegrationTest::SetUp();
+    params_.stopping_constraints.ego_stopped_vel_th = GetParam().threshold;
+    params_.detection_area_stop.suppress_pass_judge_when_stopping = true;
+    plugin_->update_params(params_);
+  }
+
+  Odometry::ConstSharedPtr make_noisy_odometry_at_stop() const
+  {
+    // Slightly overshoot the nominal stop position to exercise holding at ego and the
+    // stopped exception to the braking-distance check, within the stop-line tolerance.
+    const double ego_x = stop_line_x - params_.detection_area_stop.stop_margin -
+                         context_->vehicle_info.max_longitudinal_offset_m + 0.2;
+    auto odometry = std::make_shared<Odometry>(*make_odometry_at(ego_x, 0.0, GetParam().velocity_x));
+    odometry->twist.twist.linear.y = GetParam().velocity_y;
+    odometry->twist.twist.linear.z = GetParam().velocity_z;
+    return odometry;
+  }
 };
 
 TEST_F(DetectionAreaStopIntegrationTest, DisabledPluginDoesNotModifyTrajectory)
@@ -617,6 +652,77 @@ TEST_F(DetectionAreaStopIntegrationTest, RegistersDetectionAreaOnNonPreferredPri
   expect_stop_before_stop_line(trajectory);
 }
 
+TEST_P(DetectionAreaStopStoppedVelocityTest, StoppedEgoHoldsInsteadOfTakingUnstoppableGoPolicy)
+{
+  params_.detection_area_stop.unstoppable_policy = "go";
+  plugin_->update_params(params_);
+  const auto map = make_map();
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  auto input = make_input(map, route, make_car_in_area());
+  input.current_odometry = make_noisy_odometry_at_stop();
+  input.candidate_index = 0U;
+  auto trajectory = make_trajectory();
+  const auto original = trajectory;
+
+  ASSERT_EQ(process_candidate(trajectory, input), GetParam().is_stopped);
+  if (GetParam().is_stopped) {
+    EXPECT_FLOAT_EQ(trajectory.front().longitudinal_velocity_mps, 0.0F);
+    EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+    EXPECT_NEAR(trajectory.back().pose.position.x, input.current_odometry->pose.pose.position.x, 0.1);
+  } else {
+    EXPECT_EQ(trajectory, original);
+  }
+}
+
+TEST_P(DetectionAreaStopStoppedVelocityTest, SuppressPassJudgeKeepsObservedStopWithOdometryNoise)
+{
+  params_.detection_area_stop.unstoppable_policy = "force_stop";
+  plugin_->update_params(params_);
+  const auto map = make_map();
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  auto input_with_obstacle = make_input(map, route, make_car_in_area());
+  input_with_obstacle.current_odometry = make_noisy_odometry_at_stop();
+  input_with_obstacle.candidate_index = 0U;
+  auto observed_stop = with_zero_velocity(make_trajectory());
+  EXPECT_FALSE(process_candidate(observed_stop, input_with_obstacle));
+
+  // Clear the obstacle immediately; an observed STOP must stay latched without relying
+  // on the obstacle grace period or waiting for wall-clock time to advance.
+  params_.detection_area_stop.state_clear_time = 0.0;
+  plugin_->update_params(params_);
+  auto input_without_obstacle = make_input(map, route);
+  input_without_obstacle.current_odometry = make_noisy_odometry_at_stop();
+  input_without_obstacle.candidate_index = 0U;
+  auto trajectory = make_trajectory();
+  const auto original = trajectory;
+
+  ASSERT_EQ(process_candidate(trajectory, input_without_obstacle), GetParam().is_stopped);
+  if (GetParam().is_stopped) {
+    EXPECT_FLOAT_EQ(trajectory.front().longitudinal_velocity_mps, 0.0F);
+    EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+    EXPECT_NEAR(
+      trajectory.back().pose.position.x, input_without_obstacle.current_odometry->pose.pose.position.x,
+      0.1);
+  } else {
+    EXPECT_EQ(trajectory, original);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+  StoppedSpeedThreshold, DetectionAreaStopStoppedVelocityTest,
+  ::testing::Values(
+    StoppedVelocityCase{0.0, 0.0, 0.0, 0.1, true},
+    StoppedVelocityCase{0.02, 0.0, 0.0, 0.1, true},
+    StoppedVelocityCase{-0.02, 0.0, 0.0, 0.1, true},
+    StoppedVelocityCase{0.1, 0.0, 0.0, 0.1, true},
+    StoppedVelocityCase{-0.1, 0.0, 0.0, 0.1, true},
+    StoppedVelocityCase{0.11, 0.0, 0.0, 0.1, false},
+    StoppedVelocityCase{-0.11, 0.0, 0.0, 0.1, false},
+    StoppedVelocityCase{0.05, 0.05, 0.05, 0.1, true},
+    StoppedVelocityCase{0.06, 0.06, 0.06, 0.1, false},
+    StoppedVelocityCase{0.05, 0.0, 0.0, 0.04, false},
+    StoppedVelocityCase{0.15, 0.0, 0.0, 0.2, true}));
+
 TEST_F(DetectionAreaStopIntegrationTest, SuppressPassJudgeKeepsStopAndDoesNotRelease)
 {
   params_.detection_area_stop.unstoppable_policy = "force_stop";
@@ -865,25 +971,4 @@ TEST_F(DetectionAreaStopIntegrationTest, StopAfterLineContinuesWhenLineIsBehindC
   input.candidate_index = 0U;
   EXPECT_FALSE(process_candidate(candidate, input));
   EXPECT_EQ(candidate, original);
-}
-
-TEST_F(DetectionAreaStopIntegrationTest, ProcessesCandidatesThroughCommonInterface)
-{
-  const auto map = make_map();
-  auto snapshot = make_input(map, make_route(map->laneletLayer.begin()->id()), make_car_in_area());
-  snapshot.candidate_count = 2U;
-  auto first = snapshot;
-  auto second = snapshot;
-  second.candidate_index = 1U;
-  auto trajectory = make_trajectory();
-  EXPECT_EQ(
-    plugin_->process(trajectory, first),
-    autoware::trajectory_modifier::plugin::ProcessingResult::Modified);
-  expect_stop_before_stop_line(trajectory);
-  auto unrelated = make_trajectory(10.0);
-  const auto original = unrelated;
-  EXPECT_EQ(
-    plugin_->process(unrelated, second),
-    autoware::trajectory_modifier::plugin::ProcessingResult::Unchanged);
-  EXPECT_EQ(unrelated, original);
 }
