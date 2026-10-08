@@ -145,7 +145,6 @@ void MLPlannerCore::resolve_model_paths()
 {
   const std::filesystem::path base_dir(params_.base_model_directory);
   params_.model_path = (base_dir / params_.onnx_model_filename).string();
-  params_.args_path = (base_dir / params_.args_filename).string();
 }
 
 void MLPlannerCore::load_model()
