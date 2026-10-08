@@ -71,6 +71,7 @@ private:
     std::optional<double> physical_stop_distance;
     bool physical_deadline_passed{false};
     bool has_obstacle{false};
+    bool force_stop_required{false};
     std::string detection_source;
     std::vector<geometry_msgs::msg::Point> obstacle_points;
     std::vector<std::vector<geometry_msgs::msg::Point>> object_polygons;
@@ -102,6 +103,7 @@ private:
   bool last_candidate_modified_{false};
   rclcpp::Time cycle_time_{0, 0, RCL_ROS_TIME};
   nav_msgs::msg::Odometry::ConstSharedPtr cycle_odometry_;
+  double cycle_acceleration_{0.0};
   bool cycle_initialized_{false};
   rclcpp::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;

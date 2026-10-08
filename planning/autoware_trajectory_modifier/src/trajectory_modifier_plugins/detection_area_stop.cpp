@@ -36,6 +36,7 @@
 #include <cmath>
 #include <exception>
 #include <iomanip>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -146,6 +147,8 @@ void DetectionAreaStop::prepare_cycle(const TrajectoryModifierData & input)
   cycle_initialized_ = true;
   cycle_time_ = get_clock()->now();
   cycle_odometry_ = input.current_odometry;
+  cycle_acceleration_ =
+    input.current_acceleration ? input.current_acceleration->accel.accel.linear.x : 0.0;
   cycle_pointcloud_.reset();
   debug_status_.clear();
   last_candidate_modified_ = false;
@@ -282,6 +285,8 @@ void DetectionAreaStop::update_physical_stop_state(const TrajectoryModifierData 
   const bool stopped = !utils::is_ego_vehicle_moving(
     cycle_odometry_->twist.twist, stopping_params_.ego_stopped_vel_th);
   for (auto & module : modules_) {
+    const bool was_force_stop_required = module.force_stop_required;
+    module.force_stop_required = false;
     const auto lane = input.lanelet_map->laneletLayer.get(module.lane_id);
     const auto point = lanelet::BasicPoint2d{ego.position.x, ego.position.y};
     module.physical_stop_distance.reset();
@@ -341,12 +346,19 @@ void DetectionAreaStop::update_physical_stop_state(const TrajectoryModifierData 
       }
     }
     const auto distance = *stop_s - *self_s;
-    const bool near_stop = distance <= params_.hold_stop_margin_distance + 1e-3 &&
-                           (distance >= -params_.distance_to_judge_over_stop_line ||
-                            params_.unstoppable_policy == "stop_after_stopline");
     const bool obstacle_active =
       !can_clear_stop_state(module.last_obstacle_found_time, cycle_time_, params_.state_clear_time);
     const bool keep_hold = module.state == State::STOP && params_.suppress_pass_judge_when_stopping;
+    // A force-stop started before passing the line remains required while braking beyond it.
+    // Once an actual STOP was observed, resuming past the line releases this obligation.
+    module.force_stop_required =
+      params_.unstoppable_policy == "force_stop" && (obstacle_active || keep_hold) &&
+      ((was_force_stop_required && (module.state != State::STOP || stopped)) ||
+       distance >= -params_.distance_to_judge_over_stop_line);
+    const bool near_stop = distance <= params_.hold_stop_margin_distance + 1e-3 &&
+                           (distance >= -params_.distance_to_judge_over_stop_line ||
+                            params_.unstoppable_policy == "stop_after_stopline" ||
+                            module.force_stop_required);
     set_state(
       module, stopped && near_stop && (obstacle_active || keep_hold) ? State::STOP : State::GO);
   }
@@ -389,6 +401,7 @@ void DetectionAreaStop::rebuild_modules(const TrajectoryModifierData & input)
       if (const auto previous = previous_modules.find(key); previous != previous_modules.end()) {
         module.state = previous->second.state;
         module.last_obstacle_found_time = previous->second.last_obstacle_found_time;
+        module.force_stop_required = previous->second.force_stop_required;
       }
       modules_.push_back(std::move(module));
     }
@@ -489,11 +502,14 @@ std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::evaluate_modul
   const auto stop_line = module.regulatory_element->stopLine();
   auto stop_point_s_opt = get_stop_point(
     path, stop_line, params_.stop_margin, context_->vehicle_info.max_longitudinal_offset_m);
+  const bool continues_after_stop_line =
+    params_.unstoppable_policy == "stop_after_stopline" ||
+    (params_.unstoppable_policy == "force_stop" && module.force_stop_required);
   if (
-    !stop_point_s_opt && params_.unstoppable_policy == "stop_after_stopline" &&
+    !stop_point_s_opt && continues_after_stop_line &&
     module.physical_stop_distance && *module.physical_stop_distance < 0.0) {
     // Once the line is behind the candidate horizon, the ego/map observation still
-    // anchors the active stop-after-line obligation; no other candidate supplies state.
+    // anchors the active stopping obligation; no other candidate supplies state.
     const auto candidate_ego = path.compute(*self_s).pose.position;
     const auto lane = last_lanelet_map_->laneletLayer.get(module.lane_id);
     if (lanelet::geometry::inside(lane, lanelet::BasicPoint2d{candidate_ego.x, candidate_ego.y})) {
@@ -534,7 +550,7 @@ std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::evaluate_modul
   }
 
   if (
-    module.state != State::STOP && params_.unstoppable_policy != "stop_after_stopline" &&
+    module.state != State::STOP && !continues_after_stop_line &&
     distance_to_stop < -params_.distance_to_judge_over_stop_line) {
     return std::nullopt;
   }
@@ -578,6 +594,18 @@ std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::evaluate_modul
     decision.policy = "normal";
   }
 
+  if (!is_stopped) {
+    // The clamp operates on distance from ego, while candidate arc lengths start at
+    // the trajectory origin. Use the cycle snapshot for every candidate's braking state.
+    const double remaining_length = std::max(0.0, trajectory_length_m - *self_s);
+    // Apply the braking constraint before capping to the candidate horizon, which may be
+    // shorter than the minimum stopping distance. This keeps the shared clamp's bounds valid.
+    const double clamped_distance = utils::clamp_stop_point_arc_length(
+      target_stop_s - *self_s, std::numeric_limits<double>::infinity(), current_velocity,
+      cycle_acceleration_, stopping_params_.maximum_deceleration, stopping_params_.jerk_limit,
+      stopping_params_.delay_response_time);
+    target_stop_s = *self_s + std::min(clamped_distance, remaining_length);
+  }
   target_stop_s = std::clamp(target_stop_s, 0.0, trajectory_length_m);
   decision.stop_point_arc_length = target_stop_s;
   decision.stop_pose = path.compute(std::clamp(target_stop_s, 0.0, path.length())).pose;

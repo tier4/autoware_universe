@@ -15,6 +15,7 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/detection_area_stop.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
@@ -133,9 +134,10 @@ Odometry::ConstSharedPtr make_stopped_odometry(const double y = 0.0)
   return std::make_shared<const Odometry>(odometry);
 }
 
-AccelWithCovarianceStamped::ConstSharedPtr make_acceleration()
+AccelWithCovarianceStamped::ConstSharedPtr make_acceleration(const double acceleration_x = 0.0)
 {
   AccelWithCovarianceStamped acceleration;
+  acceleration.accel.accel.linear.x = acceleration_x;
   return std::make_shared<const AccelWithCovarianceStamped>(acceleration);
 }
 
@@ -253,11 +255,11 @@ protected:
     params_.use_detection_area_stop = true;
     params_.trajectory_time_step = 0.1;
     params_.stopping_constraints.nominal_deceleration = 1.0;
-    // Keep the nominal 5 m/s fixture stoppable with the 0.5 s response delay.
-    // Unstoppable-policy tests override the shared deceleration below.
-    params_.stopping_constraints.maximum_deceleration = 5.0;
+    // Keep the nominal 5 m/s fixture stoppable with both deceleration and jerk limits.
+    // Unstoppable-policy tests override the shared limits below.
+    params_.stopping_constraints.maximum_deceleration = 10.0;
     params_.stopping_constraints.delay_response_time = 0.5;
-    params_.stopping_constraints.jerk_limit = 3.0;
+    params_.stopping_constraints.jerk_limit = 10.0;
     params_.stopping_constraints.arrived_distance_threshold = 0.5;
     params_.detection_area_stop.target_filtering.pointcloud = false;
     params_.detection_area_stop.target_filtering.car = true;
@@ -596,6 +598,120 @@ TEST_F(DetectionAreaStopIntegrationTest, UnstoppableStopAfterStoplineMovesStopFo
   EXPECT_GT(trajectory.back().pose.position.x, expected_nominal_stop + 0.5);
 }
 
+TEST_F(DetectionAreaStopIntegrationTest, UnstoppablePoliciesRespectCycleBrakingState)
+{
+  params_.stopping_constraints.maximum_deceleration = 4.0;
+  params_.stopping_constraints.jerk_limit = 1.0;
+  const auto map = make_map();
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  constexpr double ego_x = 3.0;
+  const auto initial_stopping_distance =
+    autoware::motion_utils::calculate_stop_distance(5.0, 0.5, 4.0, 1.0, 0.5);
+  ASSERT_TRUE(initial_stopping_distance);
+  ASSERT_GT(ego_x + *initial_stopping_distance, stop_line_x);
+  ASSERT_LT(ego_x + *initial_stopping_distance, 30.0);
+
+  for (const auto & policy : {"force_stop", "stop_after_stopline"}) {
+    SCOPED_TRACE(policy);
+    params_.detection_area_stop.unstoppable_policy = policy;
+    plugin_->update_params(params_);
+    auto input = make_input(map, route, make_car_in_area());
+    input.current_odometry = make_odometry_at(ego_x);
+    input.current_acceleration = make_acceleration(0.5);
+    input.candidate_index = 0U;
+    auto trajectory = make_trajectory();
+    ASSERT_TRUE(process_candidate(trajectory, input));
+    EXPECT_NEAR(trajectory.back().pose.position.x, ego_x + *initial_stopping_distance, 0.1);
+    EXPECT_GT(trajectory.front().longitudinal_velocity_mps, 0.0F);
+    EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+
+    // Later candidates must use the original acceleration observation for this cycle.
+    input.current_acceleration = make_acceleration(-2.0);
+    auto later_candidate = make_trajectory();
+    ASSERT_TRUE(process_candidate(later_candidate, input));
+    EXPECT_EQ(later_candidate, trajectory);
+
+    input.candidate_index = 0U;
+    auto next_cycle = make_trajectory();
+    ASSERT_TRUE(process_candidate(next_cycle, input));
+    EXPECT_LT(next_cycle.back().pose.position.x, trajectory.back().pose.position.x);
+
+    // Acceleration remains optional; missing data uses zero acceleration, not stale data.
+    input.current_acceleration.reset();
+    input.candidate_index = 0U;
+    auto without_acceleration = make_trajectory();
+    const auto zero_acceleration_distance =
+      autoware::motion_utils::calculate_stop_distance(5.0, 0.0, 4.0, 1.0, 0.5);
+    ASSERT_TRUE(zero_acceleration_distance);
+    ASSERT_TRUE(process_candidate(without_acceleration, input));
+    EXPECT_NEAR(
+      without_acceleration.back().pose.position.x, ego_x + *zero_acceleration_distance, 0.1);
+  }
+}
+
+TEST_F(DetectionAreaStopIntegrationTest, ForceStopContinuesPastLineUntilObservedStopped)
+{
+  params_.detection_area_stop.unstoppable_policy = "force_stop";
+  params_.stopping_constraints.maximum_deceleration = 4.0;
+  params_.stopping_constraints.jerk_limit = 1.0;
+  plugin_->update_params(params_);
+  const auto map = make_map();
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  auto input = make_input(map, route, make_car_in_area());
+  input.current_odometry = make_odometry_at(3.0);
+  input.candidate_index = 0U;
+  auto trajectory = make_trajectory();
+  ASSERT_TRUE(process_candidate(trajectory, input));
+  ASSERT_GT(trajectory.back().pose.position.x, stop_line_x);
+
+  input.current_odometry = make_odometry_at(12.0, 0.0, 2.0);
+  input.candidate_index = 0U;
+  trajectory = make_trajectory();
+  for (auto & point : trajectory) point.pose.position.x += 12.0;
+  ASSERT_TRUE(process_candidate(trajectory, input));
+  EXPECT_GT(trajectory.back().pose.position.x, 12.0);
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+
+  const auto stopped_x = trajectory.back().pose.position.x;
+  input.current_odometry = make_stopped_odometry_at(stopped_x);
+  input.candidate_index = 0U;
+  trajectory = make_trajectory();
+  for (auto & point : trajectory) point.pose.position.x += stopped_x;
+  ASSERT_TRUE(process_candidate(trajectory, input));
+  EXPECT_NEAR(trajectory.back().pose.position.x, stopped_x, 0.1);
+
+  // A fulfilled stop must not become a permanent obligation after the vehicle resumes.
+  input.current_odometry = make_odometry_at(25.0, 0.0, 2.0);
+  input.candidate_index = 0U;
+  trajectory = make_trajectory();
+  for (auto & point : trajectory) point.pose.position.x += 25.0;
+  const auto original = trajectory;
+  EXPECT_FALSE(process_candidate(trajectory, input));
+  EXPECT_EQ(trajectory, original);
+}
+
+TEST_F(DetectionAreaStopIntegrationTest, UnstoppablePoliciesKeepStopWithinShortCandidate)
+{
+  params_.stopping_constraints.maximum_deceleration = 4.0;
+  params_.stopping_constraints.jerk_limit = 1.0;
+  const auto map = make_map();
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  for (const auto & policy : {"force_stop", "stop_after_stopline"}) {
+    SCOPED_TRACE(policy);
+    params_.detection_area_stop.unstoppable_policy = policy;
+    plugin_->update_params(params_);
+    auto input = make_input(map, route, make_car_in_area());
+    input.current_odometry = make_odometry_at(3.0);
+    input.current_acceleration = make_acceleration(0.5);
+    input.candidate_index = 0U;
+    auto trajectory = make_short_trajectory(8.0);
+    ASSERT_TRUE(process_candidate(trajectory, input));
+    EXPECT_DOUBLE_EQ(trajectory.back().pose.position.x, 8.0);
+    EXPECT_GT(trajectory.front().longitudinal_velocity_mps, 0.0F);
+    EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+  }
+}
+
 TEST_F(DetectionAreaStopIntegrationTest, DeadLineIgnoresDetectionAreaAfterPassing)
 {
   params_.detection_area_stop.use_dead_line = true;
@@ -680,6 +796,7 @@ TEST_P(DetectionAreaStopStoppedVelocityTest, StoppedEgoHoldsInsteadOfTakingUnsto
   const auto route = make_route(map->laneletLayer.begin()->id());
   auto input = make_input(map, route, make_car_in_area());
   input.current_odometry = make_noisy_odometry_at_stop();
+  input.current_acceleration = make_acceleration(1.0);
   input.candidate_index = 0U;
   auto trajectory = make_trajectory();
   const auto original = trajectory;
@@ -980,7 +1097,11 @@ TEST_F(DetectionAreaStopIntegrationTest, StopAfterLineContinuesWhenLineIsBehindC
   for (auto & p : candidate) p.pose.position.x += 12.0;
   input.candidate_index = 0U;
   ASSERT_TRUE(process_candidate(candidate, input));
-  EXPECT_NEAR(candidate.back().pose.position.x, 14.0, 0.1);
+  const auto stopping_distance = autoware::motion_utils::calculate_stop_distance(
+    2.0, 0.0, params_.stopping_constraints.maximum_deceleration,
+    params_.stopping_constraints.jerk_limit, params_.stopping_constraints.delay_response_time);
+  ASSERT_TRUE(stopping_distance);
+  EXPECT_NEAR(candidate.back().pose.position.x, 12.0 + *stopping_distance, 0.1);
   EXPECT_FLOAT_EQ(candidate.back().longitudinal_velocity_mps, 0.0F);
 
   params_.detection_area_stop.use_dead_line = true;
