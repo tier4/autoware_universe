@@ -376,8 +376,8 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("virtual_pose.hold_position_tolerance_m", 0.2);
   virtual_pose.hold_yaw_tolerance_deg =
     this->declare_parameter<double>("virtual_pose.hold_yaw_tolerance_deg", 0.5);
-  if (virtual_pose.reference != "raw" && virtual_pose.reference != "optimized") {
-    throw std::runtime_error("virtual_pose.reference must be 'raw' or 'optimized'");
+  if (const auto error = utils::validate(virtual_pose)) {
+    throw std::runtime_error(*error);
   }
 
   // planning factor params
@@ -727,22 +727,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     curve_speed_limit.max_deceleration_mps2 <= 0.0) {
     return failure("curve_speed_limit accelerations must be positive");
   }
-  if (virtual_pose.reference != "raw" && virtual_pose.reference != "optimized") {
-    return failure("virtual_pose.reference must be 'raw' or 'optimized'");
-  }
-  if (
-    virtual_pose.max_longitudinal_error_m < 0.0 || virtual_pose.max_lateral_error_m < 0.0 ||
-    virtual_pose.max_yaw_error_deg < 0.0 || virtual_pose.max_search_segment_count < 1 ||
-    virtual_pose.yaw_fit_half_window_m < 0.0 || virtual_pose.yaw_fit_min_length_m < 0.0 ||
-    virtual_pose.history_prefix_count < 0) {
-    return failure(
-      "virtual_pose error limits, yaw fit lengths and history_prefix_count must be non-negative, "
-      "max_search_segment_count positive");
-  }
-  if (
-    virtual_pose.hold_max_speed_mps < 0.0 || virtual_pose.hold_position_tolerance_m < 0.0 ||
-    virtual_pose.hold_yaw_tolerance_deg < 0.0) {
-    return failure("virtual_pose hold speed and tolerances must be non-negative");
+  if (const auto error = utils::validate(virtual_pose)) {
+    return failure(*error);
   }
 
   const bool reload_model = new_params.model_path != params_.model_path ||

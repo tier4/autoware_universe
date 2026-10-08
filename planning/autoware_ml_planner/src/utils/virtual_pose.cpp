@@ -178,6 +178,26 @@ std::optional<ClosestPoint> closest_point_on_previous_trajectory(
 }
 }  // namespace
 
+std::optional<std::string> validate(const VirtualPoseParams & params)
+{
+  if (params.reference != "raw" && params.reference != "optimized") {
+    return "virtual_pose.reference must be 'raw' or 'optimized'";
+  }
+  for (const double value :
+       {params.max_longitudinal_error_m, params.max_lateral_error_m, params.max_yaw_error_deg,
+        params.yaw_fit_half_window_m, params.yaw_fit_min_length_m, params.hold_max_speed_mps,
+        params.hold_position_tolerance_m, params.hold_yaw_tolerance_deg}) {
+    if (!std::isfinite(value) || value < 0.0) {
+      return "virtual_pose limits, tolerances and yaw fit lengths must be finite and non-negative";
+    }
+  }
+  if (params.max_search_segment_count < 1 || params.history_prefix_count < 0) {
+    return "virtual_pose.max_search_segment_count must be positive, history_prefix_count "
+           "non-negative";
+  }
+  return std::nullopt;
+}
+
 PoseOffset pose_offset(
   const geometry_msgs::msg::Pose & measured_pose, const Eigen::Vector2d & reference_position,
   const double reference_yaw)

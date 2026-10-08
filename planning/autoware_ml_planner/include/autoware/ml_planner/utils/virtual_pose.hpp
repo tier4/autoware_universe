@@ -87,6 +87,12 @@ struct VirtualPoseResult
  *        but are never selected as the closest point.
  * @param params See VirtualPoseParams.
  */
+/**
+ * @brief Why params are invalid (non-finite or negative limits, tolerances or lengths, unknown
+ * reference), or nullopt when they are valid.
+ */
+std::optional<std::string> validate(const VirtualPoseParams & params);
+
 /// Offset of the vehicle from a reference pose, split along and across the reference heading.
 struct PoseOffset
 {

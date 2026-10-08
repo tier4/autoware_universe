@@ -444,6 +444,9 @@ Odometry MLPlannerCore::build_frame_ego()
     for (const auto & msg : ego_history_.msgs()) {
       virtual_history_.push_back(msg);
     }
+    // The trajectory just left must not be snapped onto again if this cycle's planning fails.
+    previous_frame_pose_.reset();
+    previous_ego_prediction_.clear();
     restart_optimizer_ = true;
     return measured;
   }
