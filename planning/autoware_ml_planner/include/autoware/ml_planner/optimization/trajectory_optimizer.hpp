@@ -80,6 +80,10 @@ public:
     double current_steering_angle_rad, size_t batch_index,
     const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
 
+  /// Forget the previous solutions: the next cycle has no warm start and no temporal
+  /// consistency term (used when the planning start jumped, e.g. a virtual pose reset).
+  void drop_previous_solutions();
+
 private:
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;

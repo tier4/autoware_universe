@@ -54,6 +54,13 @@ TrajectoryOptimizer::TrajectoryOptimizer(
 {
 }
 
+void TrajectoryOptimizer::drop_previous_solutions()
+{
+  for (auto & previous : previous_solutions_) {
+    previous.reset();
+  }
+}
+
 OptimizationResult TrajectoryOptimizer::optimize(
   const Trajectory & raw_trajectory, const Odometry & ego_odometry,
   const double current_steering_angle_rad, const size_t batch_index,
