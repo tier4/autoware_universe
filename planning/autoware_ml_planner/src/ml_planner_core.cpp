@@ -500,12 +500,13 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
   const double center_x = pose_center.position.x;
   const double center_y = pose_center.position.y;
   const double center_z = pose_center.position.z;
+  const double center_yaw = utils::yaw_from_quaternion(pose_center.orientation);
 
   const auto traffic_light_id_map = preprocess::create_traffic_signal_map(
     traffic_signals_history_.msgs(), frame_time(), params_.traffic_light_group_msg_timeout_seconds);
 
   return lane_segment_context_->get_first_traffic_light_on_route(
-    *route_ptr_, center_x, center_y, center_z, traffic_light_id_map);
+    *route_ptr_, center_x, center_y, center_z, center_yaw, traffic_light_id_map);
 }
 
 int64_t MLPlannerCore::count_valid_elements(

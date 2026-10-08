@@ -31,7 +31,9 @@
 #include "geometry_msgs/msg/pose.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
+#include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -475,5 +477,86 @@ TEST_F(MPCTest, MultiSolveWithBuffer)
   EXPECT_EQ(ctrl_cmd_horizon.controls.size(), param.prediction_horizon);
   EXPECT_EQ(ctrl_cmd_horizon.controls.front().steering_tire_angle, 0.0f);
   EXPECT_EQ(ctrl_cmd_horizon.controls.front().steering_tire_rotation_rate, 0.0f);
+}
+
+TEST_F(MPCTest, PassthroughPredictionStartsAtEgoAndIncludesRateAndActuatorDelay)
+{
+  auto node = rclcpp::Node("mpc_passthrough_prediction_test_node", rclcpp::NodeOptions{});
+  auto mpc = std::make_unique<MPC>(node);
+  mpc->setClock(node.get_clock());
+  mpc->setVehicleModel(std::make_shared<KinematicsBicycleModel>(wheelbase, steer_limit, steer_tau));
+  initializeMPC(*mpc);
+  mpc->m_use_temporal_trajectory = true;
+  mpc->m_param.input_delay = 3.0 * ctrl_period;
+  mpc->m_input_buffer = {0.0, 0.0, 0.0};
+  mpc->m_steering_passthrough_rate_limit_rad_s = 0.5;
+  mpc->m_steering_passthrough_timeout_s = 10.0;
+  mpc->initializeSteeringPredictor();
+
+  Trajectory reference;
+  for (size_t i = 0; i <= 20; ++i) {
+    auto point = makePoint(0.2 * static_cast<double>(i), 0.0, 2.0f);
+    point.pose.orientation.w = 1.0;
+    point.front_wheel_angle_rad = 0.4f;
+    point.time_from_start = rclcpp::Duration::from_seconds(0.1 * static_cast<double>(i));
+    reference.points.push_back(point);
+  }
+  auto ego_pose = reference.points.front().pose;
+  ego_pose.position.y = 1.0;
+  const auto odom = makeOdometry(ego_pose, 2.0);
+  auto filtering_param = trajectory_param;
+  filtering_param.enable_path_smoothing = false;
+  filtering_param.extend_trajectory_for_end_yaw_control = false;
+  mpc->setReferenceTrajectory(reference, filtering_param, odom);
+
+  Lateral ctrl_cmd;
+  Trajectory predicted;
+  Float32MultiArrayStamped diagnostic;
+  LateralHorizon horizon;
+  const auto received_at = node.now();
+  ASSERT_TRUE(mpc
+                ->calculateTrajectorySteeringPassthrough(
+                  neutral_steer, odom, ctrl_cmd, predicted, diagnostic, horizon,
+                  std::optional<rclcpp::Time>{received_at})
+                .result);
+
+  ASSERT_GT(predicted.points.size(), 2U);
+  EXPECT_DOUBLE_EQ(predicted.points.front().pose.position.x, ego_pose.position.x);
+  EXPECT_DOUBLE_EQ(predicted.points.front().pose.position.y, ego_pose.position.y);
+  EXPECT_NEAR(ctrl_cmd.steering_tire_angle, 0.5 * ctrl_period, 1.0e-5);
+  ASSERT_GT(horizon.controls.size(), 1U);
+  EXPECT_GT(horizon.controls.at(1).steering_tire_angle, ctrl_cmd.steering_tire_angle);
+  EXPECT_LT(horizon.controls.at(1).steering_tire_angle, 0.4f);
+  EXPECT_LT(predicted.points.at(1).front_wheel_angle_rad, ctrl_cmd.steering_tire_angle);
+  EXPECT_NEAR(predicted.points.at(1).pose.position.y, ego_pose.position.y, 1.0e-3);
+  EXPECT_GT(predicted.points.back().pose.position.y, ego_pose.position.y + 0.02);
+  ASSERT_EQ(mpc->m_input_buffer.size(), 3U);
+  EXPECT_NEAR(mpc->m_input_buffer.back(), ctrl_cmd.steering_tire_angle, 1.0e-6);
+  EXPECT_NEAR(mpc->m_raw_steer_cmd_prev, ctrl_cmd.steering_tire_angle, 1.0e-6);
+}
+
+TEST_F(MPCTest, SyncingPassthroughFilterPreservesDelayAndRawCommandHistory)
+{
+  auto node = rclcpp::Node("mpc_passthrough_filter_test_node", rclcpp::NodeOptions{});
+  auto mpc = std::make_unique<MPC>(node);
+  mpc->setVehicleModel(std::make_shared<KinematicsBicycleModel>(wheelbase, steer_limit, steer_tau));
+  mpc->setQPSolver(std::make_shared<QPSolverEigenLeastSquareLLT>());
+  initializeMPC(*mpc);
+  mpc->m_param.input_delay = ctrl_period;
+  mpc->m_input_buffer = {0.0};
+  mpc->m_raw_steer_cmd_prev = 0.0;
+  mpc->syncSteeringCmdFilterOnly(0.4);
+
+  EXPECT_EQ(mpc->m_input_buffer, std::deque<double>({0.0}));
+  EXPECT_DOUBLE_EQ(mpc->m_raw_steer_cmd_prev, 0.0);
+
+  Lateral ctrl_cmd;
+  Trajectory predicted;
+  Float32MultiArrayStamped diagnostic;
+  LateralHorizon horizon;
+  const auto odom = makeOdometry(pose_zero, default_velocity);
+  ASSERT_TRUE(
+    mpc->calculateMPC(neutral_steer, odom, ctrl_cmd, predicted, diagnostic, horizon).result);
+  EXPECT_GT(ctrl_cmd.steering_tire_angle, 0.1f);
 }
 }  // namespace autoware::motion::control::mpc_lateral_controller

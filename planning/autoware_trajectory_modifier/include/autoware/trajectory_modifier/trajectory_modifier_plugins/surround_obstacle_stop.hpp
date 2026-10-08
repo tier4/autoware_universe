@@ -55,6 +55,7 @@ protected:
 
 private:
   ModifierParams::SurroundObstacleStop params_;
+  ModifierParams::StoppingConstraints stopping_params_;
 
   std::unique_ptr<obstacle_proximity_checker::ProximityChecker> proximity_checker_;
   std::unique_ptr<utils::obstacle_stop::PointCloudFilter> pointcloud_filter_;

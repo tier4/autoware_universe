@@ -117,6 +117,7 @@ private:
   rclcpp::Publisher<autoware_control_msgs::msg::ControlHorizon>::SharedPtr control_cmd_horizon_pub_;
 
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr current_trajectory_ptr_;
+  std::optional<rclcpp::Time> trajectory_received_at_;
   nav_msgs::msg::Odometry::ConstSharedPtr current_odometry_ptr_;
   autoware_vehicle_msgs::msg::SteeringReport::ConstSharedPtr current_steering_ptr_;
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr current_accel_ptr_;
