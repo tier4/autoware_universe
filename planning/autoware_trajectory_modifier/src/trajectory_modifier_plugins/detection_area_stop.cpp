@@ -317,9 +317,9 @@ void DetectionAreaStop::update_physical_stop_state(const TrajectoryModifierData 
     }
     // Map centerlines can contain only two far-apart points. Project continuously
     // before applying association limits, rather than requiring a nearby base point.
-    const std::optional<double> self_s{
-      autoware::experimental::trajectory::find_nearest_index(*path, ego.position)};
-    const auto projected_pose = path->compute(*self_s).pose;
+    const double self_s =
+      autoware::experimental::trajectory::find_nearest_index(*path, ego.position);
+    const auto projected_pose = path->compute(self_s).pose;
     if (
       autoware_utils::calc_distance2d(projected_pose, ego) > ego_nearest_distance ||
       std::abs(autoware_utils_geometry::calc_yaw_deviation(projected_pose, ego)) >
@@ -330,22 +330,22 @@ void DetectionAreaStop::update_physical_stop_state(const TrajectoryModifierData 
     const auto stop_s = get_stop_point(
       *path, module.regulatory_element->stopLine(), params_.stop_margin,
       context_->vehicle_info.max_longitudinal_offset_m);
-    if (!self_s || !stop_s) {
+    if (!stop_s) {
       set_state(module, State::GO);
       continue;
     }
-    module.physical_stop_distance = *stop_s - *self_s;
+    module.physical_stop_distance = *stop_s - self_s;
     if (params_.use_dead_line) {
       const auto deadline = get_stop_point(
         *path, module.regulatory_element->stopLine(), -params_.dead_line_margin,
         context_->vehicle_info.max_longitudinal_offset_m);
-      if (deadline && *deadline < *self_s) {
+      if (deadline && *deadline < self_s) {
         module.physical_deadline_passed = true;
         set_state(module, State::GO);
         continue;
       }
     }
-    const auto distance = *stop_s - *self_s;
+    const auto distance = *stop_s - self_s;
     const bool obstacle_active =
       !can_clear_stop_state(module.last_obstacle_found_time, cycle_time_, params_.state_clear_time);
     const bool keep_hold = module.state == State::STOP && params_.suppress_pass_judge_when_stopping;
