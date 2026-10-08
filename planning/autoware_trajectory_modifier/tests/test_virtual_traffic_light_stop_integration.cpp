@@ -27,6 +27,7 @@
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
+#include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/lanelet_segment.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -324,18 +325,6 @@ TrajectoryPoints make_curved_short_trajectory()
   return trajectory;
 }
 
-TrajectoryModifierData make_vtl_input(
-  Odometry::ConstSharedPtr odometry, std::shared_ptr<lanelet::LaneletMap> lanelet_map,
-  LaneletRoute::ConstSharedPtr route, VirtualTrafficLightStateArray::ConstSharedPtr states)
-{
-  TrajectoryModifierData input;
-  input.current_odometry = std::move(odometry);
-  input.lanelet_map = std::move(lanelet_map);
-  input.route = std::move(route);
-  input.virtual_traffic_light_states = std::move(states);
-  return input;
-}
-
 void expect_same_trajectory(const TrajectoryPoints & actual, const TrajectoryPoints & expected)
 {
   ASSERT_EQ(actual.size(), expected.size());
@@ -427,12 +416,15 @@ protected:
     plugin_ = std::make_unique<VirtualTrafficLightStop>();
     plugin_->initialize(
       "test_virtual_traffic_light_stop", node_.get(), time_keeper_, context_, params_);
+    states_pub_ = node_->create_publisher<VirtualTrafficLightStateArray>(
+      "~/input/virtual_traffic_light_states", rclcpp::QoS{1});
   }
 
   void TearDown() override
   {
     executor_->remove_node(node_);
     plugin_.reset();
+    states_pub_.reset();
     context_.reset();
     time_keeper_.reset();
     node_.reset();
@@ -458,6 +450,29 @@ protected:
     const auto result = plugin_->process(trajectory, input);
     ++snapshot.candidate_index;
     return result == autoware::trajectory_modifier::plugin::ProcessingResult::Modified;
+  }
+
+  void publish_vtl_states(const VirtualTrafficLightStateArray & states)
+  {
+    spin_until([this]() { return states_pub_->get_subscription_count() > 0U; });
+    ASSERT_GT(states_pub_->get_subscription_count(), 0U);
+    states_pub_->publish(states);
+    // Wait for DDS receipt before the plugin polls; executor callbacks do not consume this input.
+    ASSERT_TRUE(states_pub_->wait_for_all_acked(std::chrono::seconds(2)));
+  }
+
+  TrajectoryModifierData make_vtl_input(
+    Odometry::ConstSharedPtr odometry, std::shared_ptr<lanelet::LaneletMap> lanelet_map,
+    LaneletRoute::ConstSharedPtr route, VirtualTrafficLightStateArray::ConstSharedPtr states)
+  {
+    if (states) {
+      publish_vtl_states(*states);
+    }
+    TrajectoryModifierData input;
+    input.current_odometry = std::move(odometry);
+    input.lanelet_map = std::move(lanelet_map);
+    input.route = std::move(route);
+    return input;
   }
 
   void expect_single_stop_factor(const std::string & detail)
@@ -495,6 +510,7 @@ protected:
   rclcpp::Subscription<StringStamped>::SharedPtr text_sub_;
   rclcpp::Subscription<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr processing_time_sub_;
   rclcpp::Subscription<InfrastructureCommandArray>::SharedPtr command_sub_;
+  rclcpp::Publisher<VirtualTrafficLightStateArray>::SharedPtr states_pub_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   std::shared_ptr<TrajectoryModifierContext> context_;
   std::unique_ptr<VirtualTrafficLightStop> plugin_;
@@ -1369,12 +1385,63 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, ApprovalAllowsNewMovingCandidateA
   auto trajectory = make_straight_trajectory(10.0, 30.0);
   input.candidate_index = 0U;
   ASSERT_TRUE(process_candidate(trajectory, input));
-  input.virtual_traffic_light_states = make_vtl_states(12345, true, false, node_->now());
+  publish_vtl_states(*make_vtl_states(12345, true, false, node_->now()));
   trajectory = make_straight_trajectory(10.0, 30.0);
   const auto original = trajectory;
   input.candidate_index = 0U;
   EXPECT_FALSE(process_candidate(trajectory, input));
   expect_same_trajectory(trajectory, original);
+}
+
+TEST_F(VirtualTrafficLightStopIntegrationTest, IncomingStateIsAppliedOnlyToTheNextBatch)
+{
+  const auto map = make_vtl_map(12345, 5.0, 20.0, 40.0);
+  auto input = make_vtl_input(
+    make_odometry(10.0, 1.0, node_->now()), map, make_route(map->laneletLayer.begin()->id()),
+    make_vtl_states(12345, false, false, node_->now()));
+  input.candidate_count = 2U;
+  const auto original = make_straight_trajectory(10.0, 30.0);
+  auto first = original;
+  ASSERT_TRUE(process_candidate(first, input));
+  expect_single_stop_factor("VTL 12345: NO_RIGHT_OF_WAY -> STOP_LINE");
+
+  // Receipt of approval between candidates must not alter this batch's decisions.
+  publish_vtl_states(*make_vtl_states(12345, true, false, node_->now()));
+  auto second = original;
+  ASSERT_TRUE(process_candidate(second, input));
+  expect_same_trajectory(first, second);
+  expect_single_stop_factor("VTL 12345: NO_RIGHT_OF_WAY -> STOP_LINE");
+
+  input.candidate_index = 0U;
+  input.candidate_count = 1U;
+  auto next_batch = original;
+  EXPECT_FALSE(process_candidate(next_batch, input));
+  expect_same_trajectory(next_batch, original);
+
+  // Latest polling retains the received approval when no new message arrives.
+  input.candidate_index = 0U;
+  auto following_batch = original;
+  EXPECT_FALSE(process_candidate(following_batch, input));
+  expect_same_trajectory(following_batch, original);
+}
+
+TEST_F(VirtualTrafficLightStopIntegrationTest, EmptyStateArrayClearsPreviousApproval)
+{
+  const auto map = make_vtl_map(12345, 5.0, 20.0, 40.0);
+  auto input = make_vtl_input(
+    make_odometry(10.0, 1.0, node_->now()), map, make_route(map->laneletLayer.begin()->id()),
+    make_vtl_states(12345, true, false, node_->now()));
+  const auto original = make_straight_trajectory(10.0, 30.0);
+  auto approved = original;
+  EXPECT_FALSE(process_candidate(approved, input));
+  expect_same_trajectory(approved, original);
+
+  publish_vtl_states(VirtualTrafficLightStateArray{});
+  input.candidate_index = 0U;
+  auto no_state = original;
+  ASSERT_TRUE(process_candidate(no_state, input));
+  expect_truncated_stop_at_x(no_state, geometric_stop_x(20.0), 0.1);
+  expect_single_stop_factor("VTL 12345: NO_STATE -> STOP_LINE");
 }
 
 struct StopVelocityCase
@@ -1708,4 +1775,26 @@ TEST_F(
     EXPECT_EQ(command_count, cycle);
   }
   executor_->remove_node(modifier);
+}
+
+TEST_F(VirtualTrafficLightStopIntegrationTest, NodeWithoutVtlPluginDoesNotSubscribeToVtlStates)
+{
+  rclcpp::NodeOptions options;
+  const auto test_utils_dir = ament_index_cpp::get_package_share_directory("autoware_test_utils");
+  autoware::test_utils::updateNodeOptions(
+    options, {test_utils_dir + "/config/test_vehicle_info.param.yaml"});
+  options.append_parameter_override(
+    "plugin_names",
+    std::vector<std::string>{"autoware::trajectory_modifier::plugin::ExternalVelocityLimit"});
+  auto modifier = std::make_shared<autoware::trajectory_modifier::TrajectoryModifier>(options);
+  auto states = node_->create_publisher<VirtualTrafficLightStateArray>(
+    "/trajectory_modifier/input/virtual_traffic_light_states", rclcpp::QoS{1});
+  auto velocity_limit =
+    node_->create_publisher<autoware_internal_planning_msgs::msg::VelocityLimit>(
+      "/trajectory_modifier/input/external_velocity_limit_mps", rclcpp::QoS{1});
+
+  // Wait for discovery of the configured plugin before inspecting the node's subscriptions.
+  spin_until([&]() { return velocity_limit->get_subscription_count() > 0U; });
+  ASSERT_GT(velocity_limit->get_subscription_count(), 0U);
+  EXPECT_EQ(states->get_subscription_count(), 0U);
 }

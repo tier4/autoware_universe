@@ -189,6 +189,10 @@ std::optional<double> calc_arc_length_from_lanelet_centerline(
 void VirtualTrafficLightStop::on_initialize(const TrajectoryModifierParams & params)
 {
   const auto node_ptr = get_node_ptr();
+  virtual_traffic_light_states_sub_ =
+    std::make_unique<
+      autoware_utils_rclcpp::InterProcessPollingSubscriber<VirtualTrafficLightStateArray>>(
+      node_ptr, "~/input/virtual_traffic_light_states", rclcpp::QoS{1});
   planning_factor_interface_ =
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
       node_ptr, "modifier_virtual_traffic_light_stop");
@@ -254,7 +258,8 @@ void VirtualTrafficLightStop::prepare_cycle(const TrajectoryModifierData & input
   }
 
   rebuild_modules(input);
-  update_module_states(input);
+  // Read plugin-specific input once per batch; module states remain frozen for later candidates.
+  update_module_states(virtual_traffic_light_states_sub_->take_data());
   update_module_lifecycle();
 }
 
@@ -558,17 +563,18 @@ void VirtualTrafficLightStop::rebuild_modules(const TrajectoryModifierData & inp
   }
 }
 
-void VirtualTrafficLightStop::update_module_states(const TrajectoryModifierData & input)
+void VirtualTrafficLightStop::update_module_states(
+  const VirtualTrafficLightStateArray::ConstSharedPtr & states)
 {
   autoware_utils_debug::ScopedTimeTrack st(
     "VirtualTrafficLightStop::update_module_states", *get_time_keeper());
   for (auto & module : modules_) {
     const auto previous_state = module.virtual_traffic_light_state;
     module.virtual_traffic_light_state.reset();
-    if (!input.virtual_traffic_light_states) {
+    if (!states) {
       continue;
     }
-    for (const auto & state : input.virtual_traffic_light_states->states) {
+    for (const auto & state : states->states) {
       if (state.id == module.instrument_id) {
         const bool approval_changed = !previous_state || previous_state->approval != state.approval;
         const bool finalized_changed =

@@ -127,7 +127,6 @@ tl::expected<TrajectoryModifierData, std::string> TrajectoryModifier::make_input
   data.obstacle_pointcloud = sub_pointcloud_.take_data();
   data.route = sub_route_.take_data();
   data.traffic_light_signals = sub_traffic_lights_.take_data();
-  data.virtual_traffic_light_states = sub_virtual_traffic_light_states_.take_data();
   data.lanelet_map = lanelet_map_ptr_;
   data.lanelet_map_bin = lanelet_map_bin_ptr_;
 

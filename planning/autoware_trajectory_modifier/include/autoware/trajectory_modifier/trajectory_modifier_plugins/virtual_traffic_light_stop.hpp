@@ -19,6 +19,7 @@
 
 #include <autoware/trajectory/trajectory_point.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/virtual_traffic_light.hpp>
+#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -61,6 +62,8 @@ protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
 private:
+  using VirtualTrafficLightStateArray = tier4_v2x_msgs::msg::VirtualTrafficLightStateArray;
+
   enum class Decision : uint8_t {
     NONE = 0,
     STOP = 1,
@@ -151,6 +154,9 @@ private:
   rclcpp::Time cycle_time_;
   std::optional<nav_msgs::msg::Odometry> cycle_odometry_;
   double cycle_acceleration_{0.0};
+  std::unique_ptr<
+    autoware_utils_rclcpp::InterProcessPollingSubscriber<VirtualTrafficLightStateArray>>
+    virtual_traffic_light_states_sub_;
   rclcpp::Publisher<tier4_v2x_msgs::msg::InfrastructureCommandArray>::SharedPtr
     pub_infrastructure_commands_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
@@ -160,7 +166,7 @@ private:
   void publish_infrastructure_commands();
   bool modify_trajectory(TrajectoryPoints & traj_points);
   void rebuild_modules(const TrajectoryModifierData & input);
-  void update_module_states(const TrajectoryModifierData & input);
+  void update_module_states(const VirtualTrafficLightStateArray::ConstSharedPtr & states);
   void update_module_lifecycle();
   bool process_trajectory(TrajectoryPoints & traj_points);
   bool process_module(
