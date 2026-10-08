@@ -140,16 +140,7 @@ public:
     accel_pub->publish(acc_msg);
   };
 
-  void publish_autonomous_operation_mode()
-  {
-    OperationModeState msg;
-    msg.stamp = node->now();
-    msg.mode = OperationModeState::AUTONOMOUS;
-    msg.is_autoware_control_enabled = true;
-    operation_mode_pub->publish(msg);
-  };
-
-  void publish_operation_mode(const bool is_autoware_control_enabled)
+  void publish_autonomous_operation_mode(const bool is_autoware_control_enabled = true)
   {
     OperationModeState msg;
     msg.stamp = node->now();
@@ -340,7 +331,7 @@ TEST_F(FakeNodeFixture, manual_steering_beyond_limit_does_not_latch)
   ControllerTester tester(this, node_options);
   tester.send_default_transform();
   tester.publish_default_acc();
-  tester.publish_operation_mode(false);
+  tester.publish_autonomous_operation_mode(false);
 
   const auto publish_straight_trajectory = [&](const double end_x) {
     Trajectory traj_msg;
@@ -369,7 +360,7 @@ TEST_F(FakeNodeFixture, manual_steering_beyond_limit_does_not_latch)
   for (int i = 0; i < 10; ++i) {
     command_with(0.0);
   }
-  tester.publish_operation_mode(true);
+  tester.publish_autonomous_operation_mode(true);
   for (int i = 0; i < 10; ++i) {
     EXPECT_LT(std::abs(command_with(0.0)), 0.1);
   }
