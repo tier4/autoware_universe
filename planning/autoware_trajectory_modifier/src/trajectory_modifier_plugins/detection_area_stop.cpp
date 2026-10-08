@@ -220,7 +220,7 @@ std::shared_ptr<const DetectionAreaStop::PointCloud> DetectionAreaStop::make_map
 
 void DetectionAreaStop::update_cycle_observations(const TrajectoryModifierData & input)
 {
-  cycle_pointcloud_ = make_map_pointcloud(input);
+  cycle_pointcloud_ = params_.target_filtering.pointcloud ? make_map_pointcloud(input) : nullptr;
   if (params_.target_filtering.pointcloud && input.obstacle_pointcloud && !cycle_pointcloud_) {
     append_debug_status(debug_status_, "pointcloud unavailable");
     RCLCPP_WARN_THROTTLE(
