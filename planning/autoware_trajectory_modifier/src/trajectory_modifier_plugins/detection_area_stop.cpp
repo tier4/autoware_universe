@@ -415,7 +415,7 @@ bool DetectionAreaStop::modify_trajectory(
     "DetectionAreaStop::modify_trajectory", *get_time_keeper());
   reset_candidate_debug();
   last_candidate_modified_ = false;
-  if (!enabled_ || traj_points.size() < 2 || modules_.empty() || !input.current_odometry) {
+  if (!enabled_ || traj_points.size() < 2 || modules_.empty()) {
     publish_debug_string();
     return false;
   }
@@ -690,8 +690,6 @@ bool DetectionAreaStop::candidate_relates_to_active_stop(
 bool DetectionAreaStop::should_hold_stop_at_ego(
   const TrajectoryPoints & traj_points, const TrajectoryModifierData & input) const
 {
-  if (!input.current_odometry) return false;
-
   const bool is_stopped = !utils::is_ego_vehicle_moving(
     cycle_odometry_->twist.twist, stopping_params_.ego_stopped_vel_th);
   if (!is_stopped) return false;
