@@ -20,7 +20,7 @@
 namespace autoware::ml_planner::constants
 {
 
-// WEIGHT_MAJOR_VERSION should match the major version in ml_planner.param.json
+// Major version of the ONNX weights this node is built against.
 constexpr int WEIGHT_MAJOR_VERSION = 5;
 
 // Velocity thresholds
