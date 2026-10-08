@@ -87,6 +87,35 @@ struct VirtualPoseResult
  *        but are never selected as the closest point.
  * @param params See VirtualPoseParams.
  */
+/// Offset of the vehicle from a reference pose, split along and across the reference heading.
+struct PoseOffset
+{
+  double longitudinal_m;
+  double lateral_m;
+  double position_m;
+  double yaw_deg;
+};
+
+/**
+ * @brief Offset of the measured pose from a reference position and heading (map frame).
+ */
+PoseOffset pose_offset(
+  const geometry_msgs::msg::Pose & measured_pose, const Eigen::Vector2d & reference_position,
+  double reference_yaw);
+
+/**
+ * @brief True when the offset exceeds a reset limit of params.
+ */
+bool exceeds_reset_limits(const PoseOffset & offset, const VirtualPoseParams & params);
+
+/**
+ * @brief True while a standstill hold continues: the vehicle is within the hold tolerances of the
+ * pose where the hold began.
+ */
+bool hold_continues(
+  const geometry_msgs::msg::Pose & measured_pose, const geometry_msgs::msg::Pose & hold_anchor,
+  const VirtualPoseParams & params);
+
 VirtualPoseResult compute_virtual_pose(
   const geometry_msgs::msg::Pose & measured_pose, const std::vector<Eigen::Matrix4d> & polyline,
   int64_t prefix_count, const VirtualPoseParams & params);
