@@ -14,7 +14,6 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/virtual_traffic_light_stop.hpp"
 
-#include "autoware/trajectory_modifier/trajectory_modifier_utils/stop_line_geometry.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
@@ -26,6 +25,8 @@
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <rclcpp/duration.hpp>
 
+#include <boost/geometry/algorithms/intersection.hpp>
+
 #include <lanelet2_core/geometry/Lanelet.h>
 
 #include <algorithm>
@@ -33,8 +34,10 @@
 #include <exception>
 #include <iomanip>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -46,6 +49,35 @@ namespace
 using Trajectory =
   autoware::experimental::trajectory::Trajectory<autoware_planning_msgs::msg::TrajectoryPoint>;
 using VirtualTrafficLight = lanelet::autoware::VirtualTrafficLight;
+
+// Extend only the checking geometry: a short base_link trajectory may still carry
+// the vehicle front over a line. Output trajectory geometry and velocities are untouched.
+std::vector<double> crossed_with_front_offset(
+  const Trajectory & path, const lanelet::ConstLineString3d & line, const double front_offset)
+{
+  auto collisions = autoware::experimental::trajectory::crossed(path, line);
+  if (front_offset <= 0.0 || line.size() < 2) return collisions;
+
+  const auto pose = path.compute(path.length()).pose;
+  const auto front = autoware_utils::calc_offset_pose(pose, front_offset, 0.0, 0.0);
+  const autoware_utils::LineString2d extension{
+    {pose.position.x, pose.position.y}, {front.position.x, front.position.y}};
+  autoware_utils::LineString2d stop_line;
+  for (const auto & p : line) stop_line.emplace_back(p.x(), p.y());
+  std::vector<autoware_utils::Point2d> intersections;
+  boost::geometry::intersection(extension, stop_line, intersections);
+  for (const auto & p : intersections) {
+    collisions.push_back(
+      path.length() + std::hypot(p.x() - pose.position.x, p.y() - pose.position.y));
+  }
+  std::sort(collisions.begin(), collisions.end());
+  collisions.erase(
+    std::unique(
+      collisions.begin(), collisions.end(),
+      [](const double a, const double b) { return std::abs(a - b) < 1e-6; }),
+    collisions.end());
+  return collisions;
+}
 
 tier4_v2x_msgs::msg::KeyValue create_key_value(const std::string & key, const std::string & value)
 {
@@ -60,7 +92,7 @@ std::optional<double> find_last_collision_before_line(
   const double front_offset)
 {
   constexpr double collision_search_epsilon = 1e-2;
-  const auto collisions = utils::crossed_with_front_offset(path, line, front_offset);
+  const auto collisions = crossed_with_front_offset(path, line, front_offset);
   std::optional<double> last;
   for (const auto collision : collisions) {
     if (collision <= end_line_s + collision_search_epsilon) last = collision;
@@ -70,20 +102,14 @@ std::optional<double> find_last_collision_before_line(
 
 std::optional<double> calc_arc_length_from_collision(
   const Trajectory & path, const double end_line_s, const lanelet::ConstLineString3d & line,
-  const geometry_msgs::msg::Pose & ego_pose, const double front_offset,
-  const double max_yaw_deviation_rad)
+  const double ego_s, const double front_offset)
 {
   const auto collision = find_last_collision_before_line(path, end_line_s, line, front_offset);
   if (!collision) {
     return std::nullopt;
   }
 
-  const auto ego_s = autoware::experimental::trajectory::find_first_nearest_index(
-    path, ego_pose, 5.0, max_yaw_deviation_rad);
-  if (!ego_s) {
-    return std::nullopt;
-  }
-  return *collision - *ego_s - front_offset;
+  return *collision - ego_s - front_offset;
 }
 
 std::optional<double> calc_arc_length_on_centerline(
@@ -174,32 +200,21 @@ void VirtualTrafficLightStop::on_initialize(const TrajectoryModifierParams & par
   debug_text_pub_ = node_ptr->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
     "~/virtual_traffic_light_stop/debug/text", 1);
 
-  enabled_ = params.use_virtual_traffic_light_stop;
-  planner_param_.max_delay_sec = params.virtual_traffic_light.max_delay_sec;
-  planner_param_.near_line_distance = params.virtual_traffic_light.near_line_distance;
-  planner_param_.dead_line_margin = params.virtual_traffic_light.dead_line_margin;
-  planner_param_.max_yaw_deviation_rad =
-    autoware_utils::deg2rad(params.virtual_traffic_light.max_yaw_deviation_deg);
-  planner_param_.check_timeout_after_stop_line =
-    params.virtual_traffic_light.check_timeout_after_stop_line;
-  planner_param_.min_hold_trajectory_length =
-    params.virtual_traffic_light.min_hold_trajectory_length;
-  stopping_params_ = params.stopping_constraints;
-  trajectory_time_step_ = params.trajectory_time_step;
+  update_params(params);
 }
 
 void VirtualTrafficLightStop::update_params(const TrajectoryModifierParams & params)
 {
   enabled_ = params.use_virtual_traffic_light_stop;
-  planner_param_.max_delay_sec = params.virtual_traffic_light.max_delay_sec;
-  planner_param_.near_line_distance = params.virtual_traffic_light.near_line_distance;
-  planner_param_.dead_line_margin = params.virtual_traffic_light.dead_line_margin;
+  planner_param_.max_delay_sec = params.virtual_traffic_light_stop.max_delay_sec;
+  planner_param_.near_line_distance = params.virtual_traffic_light_stop.near_line_distance;
+  planner_param_.dead_line_margin = params.virtual_traffic_light_stop.dead_line_margin;
   planner_param_.max_yaw_deviation_rad =
-    autoware_utils::deg2rad(params.virtual_traffic_light.max_yaw_deviation_deg);
+    autoware_utils::deg2rad(params.virtual_traffic_light_stop.max_yaw_deviation_deg);
   planner_param_.check_timeout_after_stop_line =
-    params.virtual_traffic_light.check_timeout_after_stop_line;
+    params.virtual_traffic_light_stop.check_timeout_after_stop_line;
   planner_param_.min_hold_trajectory_length =
-    params.virtual_traffic_light.min_hold_trajectory_length;
+    params.virtual_traffic_light_stop.min_hold_trajectory_length;
   stopping_params_ = params.stopping_constraints;
   trajectory_time_step_ = params.trajectory_time_step;
 }
@@ -213,7 +228,7 @@ ProcessingResult VirtualTrafficLightStop::process(
   if (input.candidate_index == 0U || !cycle_initialized_) {
     prepare_cycle(input);
   }
-  const auto modified = modify_trajectory(points, input);
+  const auto modified = modify_trajectory(points);
   if (input.candidate_count == 0U || input.candidate_index == input.candidate_count - 1U) {
     publish_infrastructure_commands();
   }
@@ -225,6 +240,12 @@ void VirtualTrafficLightStop::prepare_cycle(const TrajectoryModifierData & input
   autoware_utils_debug::ScopedTimeTrack st(
     "VirtualTrafficLightStop::prepare_cycle", *get_time_keeper());
   cycle_initialized_ = true;
+  cycle_time_ = get_clock()->now();
+  cycle_odometry_ = input.current_odometry
+                      ? std::optional<nav_msgs::msg::Odometry>{*input.current_odometry}
+                      : std::nullopt;
+  cycle_acceleration_ =
+    input.current_acceleration ? input.current_acceleration->accel.accel.linear.x : 0.0;
   if (!enabled_ || !input.current_odometry || !input.lanelet_map || !input.route) {
     modules_.clear();
     route_lanelet_ids_.clear();
@@ -234,7 +255,7 @@ void VirtualTrafficLightStop::prepare_cycle(const TrajectoryModifierData & input
 
   rebuild_modules(input);
   update_module_states(input);
-  update_module_lifecycle(input);
+  update_module_lifecycle();
 }
 
 void VirtualTrafficLightStop::publish_infrastructure_commands()
@@ -402,8 +423,7 @@ void VirtualTrafficLightStop::publish_debug_string(const std::string & ns) const
   debug_text_pub_->publish(msg);
 }
 
-bool VirtualTrafficLightStop::modify_trajectory(
-  TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
+bool VirtualTrafficLightStop::modify_trajectory(TrajectoryPoints & traj_points)
 {
   autoware_utils_debug::ScopedTimeTrack st(
     "VirtualTrafficLightStop::modify_trajectory", *get_time_keeper());
@@ -414,7 +434,7 @@ bool VirtualTrafficLightStop::modify_trajectory(
     return false;
   }
 
-  return process_trajectory(traj_points, input, true);
+  return process_trajectory(traj_points);
 }
 
 void VirtualTrafficLightStop::rebuild_modules(const TrajectoryModifierData & input)
@@ -568,13 +588,14 @@ void VirtualTrafficLightStop::update_module_states(const TrajectoryModifierData 
   }
 }
 
-void VirtualTrafficLightStop::update_module_lifecycle(const TrajectoryModifierData & input)
+void VirtualTrafficLightStop::update_module_lifecycle()
 {
   autoware_utils_debug::ScopedTimeTrack st(
     "VirtualTrafficLightStop::update_module_lifecycle", *get_time_keeper());
-  const auto & ego_pose = input.current_odometry->pose.pose;
+  const auto & ego_pose = cycle_odometry_->pose.pose;
   const auto front_offset = context_->vehicle_info.max_longitudinal_offset_m;
-  const bool stopped = std::abs(input.current_odometry->twist.twist.linear.x) < 1e-3;
+  const bool stopped = !utils::is_ego_vehicle_moving(
+    cycle_odometry_->twist.twist, stopping_params_.ego_stopped_vel_th);
 
   for (auto & module : modules_) {
     const auto & reg_elem = *module.regulatory_element;
@@ -639,42 +660,41 @@ void VirtualTrafficLightStop::update_module_lifecycle(const TrajectoryModifierDa
   }
 }
 
-bool VirtualTrafficLightStop::process_trajectory(
-  TrajectoryPoints & traj_points, const TrajectoryModifierData & input,
-  const bool apply_modification)
+bool VirtualTrafficLightStop::process_trajectory(TrajectoryPoints & traj_points)
 {
   autoware_utils_debug::ScopedTimeTrack st(
     "VirtualTrafficLightStop::process_trajectory", *get_time_keeper());
+  const auto path = Trajectory::Builder{}.build(traj_points);
+  if (!path) {
+    return false;
+  }
+  const auto ego_s = autoware::experimental::trajectory::find_first_nearest_index(
+    *path, cycle_odometry_->pose.pose, 5.0, planner_param_.max_yaw_deviation_rad);
+  if (!ego_s) {
+    return false;
+  }
+
   bool modified = false;
   for (auto & module : modules_) {
-    modified = process_module(module, traj_points, input, apply_modification) || modified;
+    modified = process_module(module, traj_points, *path, *ego_s) || modified;
   }
   return modified;
 }
 
 bool VirtualTrafficLightStop::process_module(
-  Module & module, TrajectoryPoints & traj_points, const TrajectoryModifierData & input,
-  const bool apply_modification)
+  Module & module, TrajectoryPoints & traj_points, const Trajectory & path, const double ego_s)
 {
   autoware_utils_debug::ScopedTimeTrack st(
     "VirtualTrafficLightStop::process_module", *get_time_keeper());
-  if (apply_modification) {
-    module.debug_data = DebugData{};
-    module.debug_data.has_vtl_state = module.virtual_traffic_light_state.has_value();
-    if (module.virtual_traffic_light_state) {
-      module.debug_data.approval = module.virtual_traffic_light_state->approval;
-      module.debug_data.finalized = module.virtual_traffic_light_state->is_finalized;
-      module.debug_data.message_age_sec =
-        (get_clock()->now() - rclcpp::Time(module.virtual_traffic_light_state->stamp)).seconds();
-      module.debug_data.timeout = *module.debug_data.message_age_sec > planner_param_.max_delay_sec;
-    }
+  module.debug_data = DebugData{};
+  module.debug_data.has_vtl_state = module.virtual_traffic_light_state.has_value();
+  if (module.virtual_traffic_light_state) {
+    module.debug_data.approval = module.virtual_traffic_light_state->approval;
+    module.debug_data.finalized = module.virtual_traffic_light_state->is_finalized;
+    module.debug_data.message_age_sec =
+      (cycle_time_ - rclcpp::Time(module.virtual_traffic_light_state->stamp)).seconds();
+    module.debug_data.timeout = *module.debug_data.message_age_sec > planner_param_.max_delay_sec;
   }
-
-  auto path_result = Trajectory::Builder{}.build(traj_points);
-  if (!path_result) {
-    return false;
-  }
-  auto & path = *path_result;
 
   const auto front_offset = context_->vehicle_info.max_longitudinal_offset_m;
   const auto checking_length = path.length() + std::max(0.0, front_offset);
@@ -685,16 +705,14 @@ bool VirtualTrafficLightStop::process_module(
                            : std::optional<double>{};
   const auto collision_search_limit = end_collision.value_or(checking_length);
 
-  const auto ego_pose = input.current_odometry->pose.pose;
+  const auto ego_pose = cycle_odometry_->pose.pose;
   const auto start_arc = calc_arc_length_from_collision(
-    path, collision_search_limit, reg_elem.getStartLine(), ego_pose, front_offset,
-    planner_param_.max_yaw_deviation_rad);
+    path, collision_search_limit, reg_elem.getStartLine(), ego_s, front_offset);
   const auto start_centerline_arc = calc_arc_length_from_lanelet_centerline(
     module.lane, reg_elem.getStartLine(), ego_pose, front_offset);
   const auto stop_line = reg_elem.getStopLine();
   const auto stop_arc = stop_line ? calc_arc_length_from_collision(
-                                      path, collision_search_limit, *stop_line, ego_pose,
-                                      front_offset, planner_param_.max_yaw_deviation_rad)
+                                      path, collision_search_limit, *stop_line, ego_s, front_offset)
                                   : std::optional<double>{};
   const auto stop_collision = stop_line ? find_last_collision_before_line(
                                             path, collision_search_limit, *stop_line, front_offset)
@@ -702,25 +720,22 @@ bool VirtualTrafficLightStop::process_module(
   const auto stop_centerline_arc = stop_line ? calc_arc_length_from_lanelet_centerline(
                                                  module.lane, *stop_line, ego_pose, front_offset)
                                              : std::optional<double>{};
-  const auto end_arc = module.active_end_line
-                         ? calc_arc_length_from_collision(
-                             path, checking_length, module.active_end_line->line, ego_pose,
-                             front_offset, planner_param_.max_yaw_deviation_rad)
-                         : std::optional<double>{};
+  const auto end_arc = module.active_end_line ? calc_arc_length_from_collision(
+                                                  path, checking_length,
+                                                  module.active_end_line->line, ego_s, front_offset)
+                                              : std::optional<double>{};
   const auto end_centerline_arc =
     module.active_end_line ? calc_arc_length_from_lanelet_centerline(
                                module.lane, module.active_end_line->line, ego_pose, front_offset)
                            : std::optional<double>{};
 
-  if (apply_modification) {
-    auto & debug = module.debug_data;
-    debug.start_arc_path = start_arc;
-    debug.start_arc_centerline = start_centerline_arc;
-    debug.stop_arc_path = stop_arc;
-    debug.stop_arc_centerline = stop_centerline_arc;
-    debug.end_arc_path = end_arc;
-    debug.end_arc_centerline = end_centerline_arc;
-  }
+  auto & debug = module.debug_data;
+  debug.start_arc_path = start_arc;
+  debug.start_arc_centerline = start_centerline_arc;
+  debug.stop_arc_path = stop_arc;
+  debug.stop_arc_centerline = stop_centerline_arc;
+  debug.end_arc_path = end_arc;
+  debug.end_arc_centerline = end_centerline_arc;
 
   if (start_arc && *start_arc > 0.0) {
     return false;
@@ -747,11 +762,9 @@ bool VirtualTrafficLightStop::process_module(
   const bool timeout = is_state_timeout(module);
   const bool no_state = !module.virtual_traffic_light_state;
   const bool no_right_of_way = no_state || !has_right_of_way(module);
-  if (apply_modification) {
-    module.debug_data.ego_is_in_module_lane = ego_is_in_module_lane;
-    module.debug_data.stop_line_relevant = stop_line_relevant;
-    module.debug_data.timeout = timeout;
-  }
+  module.debug_data.ego_is_in_module_lane = ego_is_in_module_lane;
+  module.debug_data.stop_line_relevant = stop_line_relevant;
+  module.debug_data.timeout = timeout;
   if (module.state == ModuleState::FINALIZED) {
     return false;
   }
@@ -760,16 +773,12 @@ bool VirtualTrafficLightStop::process_module(
     if (!stop_line_relevant) {
       return false;
     }
-    if (apply_modification) {
-      RCLCPP_INFO_THROTTLE(
-        get_node_ptr()->get_logger(), *get_clock(), 5000,
-        "[TM VirtualTrafficLightStop] VTL %s requires a stop at its stop line: %s",
-        module.instrument_id.c_str(), stop_reason_to_string(reason).c_str());
-    }
-    const auto modified = apply_modification && insert_stop_velocity(
-                                                  traj_points, traj_points, stop_collision, input,
-                                                  module, reason, StopTarget::STOP_LINE);
-    return apply_modification ? modified : true;
+    RCLCPP_INFO_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 5000,
+      "[TM VirtualTrafficLightStop] VTL %s requires a stop at its stop line: %s",
+      module.instrument_id.c_str(), stop_reason_to_string(reason).c_str());
+    return insert_stop_velocity(
+      traj_points, path, ego_s, stop_collision, module, reason, StopTarget::STOP_LINE);
   };
 
   if (!module.active_end_line) {
@@ -799,31 +808,29 @@ bool VirtualTrafficLightStop::process_module(
   if (!module.virtual_traffic_light_state->is_finalized) {
     auto end_stop_collision = end_collision;
     if (!end_stop_collision && module.end_hold_active && end_centerline_arc) {
-      const auto ego_s_opt = autoware::experimental::trajectory::find_first_nearest_index(
-        path, ego_pose, 5.0, planner_param_.max_yaw_deviation_rad);
-      end_stop_collision = ego_s_opt.value_or(0.0) + *end_centerline_arc + front_offset;
+      end_stop_collision = ego_s + *end_centerline_arc + front_offset;
     }
     const bool skip_end_stop = !end_stop_collision && !module.end_hold_active;
-    const auto changed = apply_modification && !skip_end_stop &&
-                         insert_stop_velocity(
-                           traj_points, traj_points, end_stop_collision, input, module,
-                           StopReason::WAITING_FINALIZATION, StopTarget::END_LINE);
-    if (apply_modification && !skip_end_stop) {
+    const auto changed =
+      !skip_end_stop && insert_stop_velocity(
+                          traj_points, path, ego_s, end_stop_collision, module,
+                          StopReason::WAITING_FINALIZATION, StopTarget::END_LINE);
+    if (!skip_end_stop) {
       RCLCPP_INFO_THROTTLE(
         get_node_ptr()->get_logger(), *get_clock(), 5000,
         "[TM VirtualTrafficLightStop] VTL %s is waiting for finalization; stop at end line",
         module.instrument_id.c_str());
     }
-    return apply_modification ? changed : !skip_end_stop;
+    return changed;
   }
 
   return false;
 }
 
 bool VirtualTrafficLightStop::insert_stop_velocity(
-  TrajectoryPoints & traj_points, const TrajectoryPoints & path_points,
-  const std::optional<double> & collision_s, const TrajectoryModifierData & input, Module & module,
-  const StopReason reason, const StopTarget target)
+  TrajectoryPoints & traj_points, const Trajectory & path, const double ego_s,
+  const std::optional<double> & collision_s, Module & module, const StopReason reason,
+  const StopTarget target)
 {
   autoware_utils_debug::ScopedTimeTrack st(
     "VirtualTrafficLightStop::insert_stop_velocity", *get_time_keeper());
@@ -832,32 +839,29 @@ bool VirtualTrafficLightStop::insert_stop_velocity(
   debug.stop_reason = reason;
   debug.stop_target = target;
 
-  auto path_result = Trajectory::Builder{}.build(path_points);
-  if (!path_result) {
-    return false;
+  const auto & ego_pose = cycle_odometry_->pose.pose;
+  const bool stopped = !utils::is_ego_vehicle_moving(
+    cycle_odometry_->twist.twist, stopping_params_.ego_stopped_vel_th);
+  auto stop_s = collision_s
+                  ? std::max(0.0, *collision_s - context_->vehicle_info.max_longitudinal_offset_m)
+                  : ego_s;
+  if (stopped && target == StopTarget::END_LINE && module.state == ModuleState::FINALIZING) {
+    stop_s = ego_s;
   }
-  auto path = *path_result;
-  const auto & ego_pose = input.current_odometry->pose.pose;
-  geometry_msgs::msg::Pose stop_pose = ego_pose;
-  const auto ego_s = autoware::experimental::trajectory::find_first_nearest_index(
-                       path, ego_pose, 5.0, planner_param_.max_yaw_deviation_rad)
-                       .value_or(0.0);
-  const auto ego_vel = input.current_odometry->twist.twist.linear.x;
-  const auto ego_accel =
-    input.current_acceleration ? input.current_acceleration->accel.accel.linear.x : 0.0;
-
-  std::optional<double> stop_s;
-  if (collision_s) {
-    const auto geometric_stop_s =
-      std::max(0.0, *collision_s - context_->vehicle_info.max_longitudinal_offset_m);
-    stop_s = utils::clamp_stop_point_arc_length(
-      geometric_stop_s, path.length(), ego_vel, ego_accel, stopping_params_.maximum_deceleration,
-      stopping_params_.jerk_limit);
-    stop_pose = path.compute(std::clamp(*stop_s, 0.0, path.length())).pose;
+  if (!stopped) {
+    // The shared utility expects distance from ego. Clamp the physical braking distance
+    // before limiting it to this candidate, so a short horizon cannot invert clamp bounds.
+    const auto stopping_distance = utils::clamp_stop_point_arc_length(
+      stop_s - ego_s, std::numeric_limits<double>::infinity(),
+      cycle_odometry_->twist.twist.linear.x, cycle_acceleration_,
+      stopping_params_.maximum_deceleration, stopping_params_.jerk_limit,
+      stopping_params_.delay_response_time);
+    stop_s = ego_s + std::min(stopping_distance, std::max(0.0, path.length() - ego_s));
   }
+  stop_s = std::clamp(stop_s, 0.0, path.length());
+  auto stop_pose = path.compute(stop_s).pose;
 
-  const auto target_s = stop_s.value_or(ego_s);
-  if (utils::stop_point_exists(traj_points, target_s)) {
+  if (utils::stop_point_exists(traj_points, stop_s)) {
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,
       "[TM VirtualTrafficLightStop] Preceding (or duplicate) stop point exists, skip inserting "
@@ -866,12 +870,14 @@ bool VirtualTrafficLightStop::insert_stop_velocity(
     return false;
   }
 
-  const auto remaining = stop_s ? (*stop_s - ego_s) : 0.0;
+  const auto remaining = stop_s - ego_s;
   if (
-    !stop_s || remaining < stopping_params_.arrived_distance_threshold ||
-    !utils::insert_stop_point(traj_points, *stop_s, trajectory_time_step_)) {
+    (stopped && remaining < stopping_params_.arrived_distance_threshold) ||
+    !utils::insert_stop_point(traj_points, stop_s, trajectory_time_step_)) {
     utils::replace_trajectory_with_stop_point(traj_points, ego_pose, trajectory_time_step_);
     stop_pose = ego_pose;
+  } else {
+    stop_pose = traj_points.back().pose;
   }
 
   const auto raw_distance =
@@ -928,7 +934,7 @@ bool VirtualTrafficLightStop::is_state_timeout(const Module & module) const
     return false;
   }
   const auto delay =
-    (get_clock()->now() - rclcpp::Time(module.virtual_traffic_light_state->stamp)).seconds();
+    (cycle_time_ - rclcpp::Time(module.virtual_traffic_light_state->stamp)).seconds();
   return delay > planner_param_.max_delay_sec;
 }
 

@@ -54,6 +54,11 @@ trajectory_modifier_params:
     default_value: true
     description: Enable the use of surround obstacle stop
     read_only: false
+  use_virtual_traffic_light_stop:
+    type: bool
+    default_value: false
+    description: Enable the use of virtual traffic light stop
+    read_only: false
   use_traffic_light_stop:
     type: bool
     default_value: false
@@ -1598,12 +1603,7 @@ trajectory_modifier_params:
       description: Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs
       read_only: false
 
-  use_virtual_traffic_light_stop:
-    type: bool
-    default_value: false
-    description: Enable the use of virtual traffic light stop
-    read_only: false
-  virtual_traffic_light:
+  virtual_traffic_light_stop:
     max_delay_sec:
       type: double
       default_value: 3.0

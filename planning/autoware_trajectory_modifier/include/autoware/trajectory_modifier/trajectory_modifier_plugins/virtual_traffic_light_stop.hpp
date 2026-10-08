@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
 
+#include <autoware/trajectory/trajectory_point.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/virtual_traffic_light.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
@@ -137,6 +138,9 @@ private:
     DebugData debug_data;
   };
 
+  using Trajectory =
+    autoware::experimental::trajectory::Trajectory<autoware_planning_msgs::msg::TrajectoryPoint>;
+
   PlannerParam planner_param_;
   TrajectoryModifierParams::StoppingConstraints stopping_params_;
   bool enabled_{false};
@@ -144,6 +148,9 @@ private:
   std::shared_ptr<lanelet::LaneletMap> last_lanelet_map_;
   std::vector<Module> modules_;
   bool cycle_initialized_{false};
+  rclcpp::Time cycle_time_;
+  std::optional<nav_msgs::msg::Odometry> cycle_odometry_;
+  double cycle_acceleration_{0.0};
   rclcpp::Publisher<tier4_v2x_msgs::msg::InfrastructureCommandArray>::SharedPtr
     pub_infrastructure_commands_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
@@ -151,20 +158,17 @@ private:
 
   void prepare_cycle(const TrajectoryModifierData & input);
   void publish_infrastructure_commands();
-  bool modify_trajectory(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
+  bool modify_trajectory(TrajectoryPoints & traj_points);
   void rebuild_modules(const TrajectoryModifierData & input);
   void update_module_states(const TrajectoryModifierData & input);
-  void update_module_lifecycle(const TrajectoryModifierData & input);
-  bool process_trajectory(
-    TrajectoryPoints & traj_points, const TrajectoryModifierData & input,
-    const bool apply_modification);
+  void update_module_lifecycle();
+  bool process_trajectory(TrajectoryPoints & traj_points);
   bool process_module(
-    Module & module, TrajectoryPoints & traj_points, const TrajectoryModifierData & input,
-    const bool apply_modification);
+    Module & module, TrajectoryPoints & traj_points, const Trajectory & path, double ego_s);
   bool insert_stop_velocity(
-    TrajectoryPoints & traj_points, const TrajectoryPoints & path_points,
-    const std::optional<double> & collision_s, const TrajectoryModifierData & input,
-    Module & module, StopReason reason, StopTarget target);
+    TrajectoryPoints & traj_points, const Trajectory & path, double ego_s,
+    const std::optional<double> & collision_s, Module & module, StopReason reason,
+    StopTarget target);
 
   void update_command(Module & module);
   void set_state(Module & module, ModuleState state, std::optional<lanelet::Id> end_line_id = {});
@@ -181,4 +185,4 @@ private:
 };
 }  // namespace autoware::trajectory_modifier::plugin
 
-#endif  // AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__VIRTUAL_TRAFFIC_LIGHT_STOP_HPP_
+#endif  // VIRTUAL_TRAFFIC_LIGHT_STOP_HPP_
