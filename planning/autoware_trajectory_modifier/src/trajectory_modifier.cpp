@@ -178,14 +178,17 @@ void TrajectoryModifier::on_trajectories(const CandidateTrajectories::ConstShare
   }
 
   CandidateTrajectories output = *msg;
+  ++candidate_batch_sequence_;
   std::string modified_instances;
   for (std::size_t candidate_index = 0; candidate_index < output.candidate_trajectories.size();
        ++candidate_index) {
     auto & candidate = output.candidate_trajectories.at(candidate_index);
     auto data = input.value();
     data.candidate_header = candidate.header;
+    data.candidate_generator_id = candidate.generator_id;
     data.candidate_index = candidate_index;
     data.candidate_count = output.candidate_trajectories.size();
+    data.candidate_batch_sequence = candidate_batch_sequence_;
     for (auto & modifier_plugin : plugins_) {
       const auto result = modifier_plugin->process(candidate.points, data);
       modifier_plugin->publish_debug_data("trajectory_" + std::to_string(candidate_index));

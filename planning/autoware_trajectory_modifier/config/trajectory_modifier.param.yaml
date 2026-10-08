@@ -24,6 +24,16 @@
       - "autoware::trajectory_modifier::plugin::TrajectoryExtender"
     use_external_velocity_limit: true
     use_map_velocity_limits: true
+    fix_initial_deceleration_profile: false
+    fixed_velocity_limit_profile:
+      speed_deviation_threshold: 0.3 # [m/s]
+      acceleration_deviation_threshold: 0.3 # [m/s^2]
+      longitudinal_deviation_threshold: 0.5 # [m]
+      lateral_deviation_threshold: 0.5 # [m]
+      heading_deviation_threshold: 0.17 # [rad]
+      stamp_difference_threshold: 0.2 # [s]
+      limit_difference_threshold: 0.001 # [m/s]
+      constraint_difference_threshold: 0.000001 # [m/s^2 or m/s^3]
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true

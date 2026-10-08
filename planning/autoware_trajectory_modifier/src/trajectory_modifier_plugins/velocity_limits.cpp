@@ -26,6 +26,50 @@
 namespace autoware::trajectory_modifier::plugin::detail
 {
 
+void retime_velocity_profile(
+  TrajectoryPoints & points, const TrajectoryPoints & original, const std::vector<double> & times)
+{
+  const auto count = points.size();
+  std::vector<double> original_s(count, 0.0);
+  for (std::size_t i = 1; i < count; ++i) {
+    const auto & p0 = original[i - 1].pose.position;
+    const auto & p1 = original[i].pose.position;
+    original_s[i] = original_s[i - 1] + std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+  }
+
+  std::vector<double> new_s(count, 0.0);
+  for (std::size_t i = 1; i < count; ++i) {
+    const double dt = times[i] - times[i - 1];
+    new_s[i] =
+      new_s[i - 1] +
+      0.5 * (points[i - 1].longitudinal_velocity_mps + points[i].longitudinal_velocity_mps) * dt;
+  }
+
+  std::size_t segment = 0;
+  for (std::size_t i = 1; i < count; ++i) {
+    while (segment + 1 < count && original_s[segment + 1] <= new_s[i]) {
+      ++segment;
+    }
+
+    if (segment + 1 == count) {
+      points[i].pose = original.back().pose;
+    } else {
+      const double segment_length = original_s[segment + 1] - original_s[segment];
+      const double ratio = (new_s[i] - original_s[segment]) / std::max(segment_length, 1e-6);
+
+      const auto & p0 = original[segment].pose;
+      const auto & p1 = original[segment + 1].pose;
+      auto & pose = points[i].pose;
+
+      pose.position.x = autoware::interpolation::lerp(p0.position.x, p1.position.x, ratio);
+      pose.position.y = autoware::interpolation::lerp(p0.position.y, p1.position.y, ratio);
+      pose.position.z = autoware::interpolation::lerp(p0.position.z, p1.position.z, ratio);
+      pose.orientation =
+        autoware::interpolation::lerpOrientation(p0.orientation, p1.orientation, ratio);
+    }
+  }
+}
+
 VelocityLimitResult apply_velocity_limits(
   TrajectoryPoints & points, const double deceleration, const double max_jerk,
   const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit,
@@ -183,46 +227,9 @@ VelocityLimitResult apply_velocity_limits(
   points.back().acceleration_mps2 = 0.0F;
 
   // 4. SPATIAL INTERPOLATION
-  std::vector<double> original_s(count, 0.0);
-  for (std::size_t i = 1; i < count; ++i) {
-    const auto & p0 = original[i - 1].pose.position;
-    const auto & p1 = original[i].pose.position;
-    original_s[i] = original_s[i - 1] + std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
-  }
+  retime_velocity_profile(points, original, times);
 
-  std::vector<double> new_s(count, 0.0);
-  for (std::size_t i = 1; i < count; ++i) {
-    const double dt = times[i] - times[i - 1];
-    new_s[i] =
-      new_s[i - 1] +
-      0.5 * (points[i - 1].longitudinal_velocity_mps + points[i].longitudinal_velocity_mps) * dt;
-  }
-
-  std::size_t segment = 0;
-  for (std::size_t i = 1; i < count; ++i) {
-    while (segment + 1 < count && original_s[segment + 1] <= new_s[i]) {
-      ++segment;
-    }
-
-    if (segment + 1 == count) {
-      points[i].pose = original.back().pose;
-    } else {
-      const double segment_length = original_s[segment + 1] - original_s[segment];
-      const double ratio = (new_s[i] - original_s[segment]) / std::max(segment_length, 1e-6);
-
-      const auto & p0 = original[segment].pose;
-      const auto & p1 = original[segment + 1].pose;
-      auto & pose = points[i].pose;
-
-      pose.position.x = autoware::interpolation::lerp(p0.position.x, p1.position.x, ratio);
-      pose.position.y = autoware::interpolation::lerp(p0.position.y, p1.position.y, ratio);
-      pose.position.z = autoware::interpolation::lerp(p0.position.z, p1.position.z, ratio);
-      pose.orientation =
-        autoware::interpolation::lerpOrientation(p0.orientation, p1.orientation, ratio);
-    }
-  }
-
-  return {ProcessingResult::Modified, {}};
+  return {ProcessingResult::Modified, {}, true};
 }
 
 }  // namespace autoware::trajectory_modifier::plugin::detail

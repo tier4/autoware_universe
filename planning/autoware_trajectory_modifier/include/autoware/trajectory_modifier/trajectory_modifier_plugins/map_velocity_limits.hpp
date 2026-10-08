@@ -16,10 +16,12 @@
 #define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__MAP_VELOCITY_LIMITS_HPP_
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <cstdint>
 #include <memory>
 
 namespace autoware::trajectory_modifier::plugin
@@ -51,6 +53,10 @@ protected:
     limit_overrides_;
   double constant_deceleration_{};
   double max_jerk_{};
+  bool fix_initial_deceleration_profile_{false};
+  std::uint64_t fixed_profile_context_revision_{0U};
+  autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr previous_map_bin_;
+  detail::FixedVelocityLimitCache fixed_profile_cache_;
 
   void on_initialize(const TrajectoryModifierParams & params) override;
 };

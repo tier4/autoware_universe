@@ -14,8 +14,8 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/map_velocity_limits.hpp"
 
-#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 
 #include <cmath>
 #include <memory>
@@ -58,8 +58,19 @@ void MapVelocityLimits::on_initialize(const TrajectoryModifierParams & params)
 
 void MapVelocityLimits::update_params(const TrajectoryModifierParams & params)
 {
+  const auto overrides = make_velocity_limit_overrides(params);
+  if (
+    enabled_ != params.use_map_velocity_limits ||
+    fix_initial_deceleration_profile_ != params.fix_initial_deceleration_profile ||
+    constant_deceleration_ != params.stopping_constraints.nominal_deceleration ||
+    max_jerk_ != params.stopping_constraints.jerk_limit || limit_overrides_ != overrides) {
+    fixed_profile_cache_.clear();
+    ++fixed_profile_context_revision_;
+  }
   enabled_ = params.use_map_velocity_limits;
-  limit_overrides_ = make_velocity_limit_overrides(params);
+  fix_initial_deceleration_profile_ = params.fix_initial_deceleration_profile;
+  fixed_profile_cache_.set_parameters(detail::get_fixed_velocity_limit_parameters(params));
+  limit_overrides_ = overrides;
   constant_deceleration_ = params.stopping_constraints.nominal_deceleration;
   max_jerk_ = params.stopping_constraints.jerk_limit;
 }
@@ -68,14 +79,20 @@ bool MapVelocityLimits::is_trajectory_modification_required(
   [[maybe_unused]] const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
 {
   if (!input.lanelet_map_bin || !input.route) {
+    fixed_profile_cache_.clear();
     return false;
   }
-  if (!extended_route_handler_ || previous_route_uuid_ != input.route->uuid) {
+  if (
+    !extended_route_handler_ || previous_route_uuid_ != input.route->uuid ||
+    previous_map_bin_ != input.lanelet_map_bin) {
     auto handler = std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
       *input.lanelet_map_bin, *input.route);
     handler->create_map();
     extended_route_handler_ = handler;
     previous_route_uuid_ = input.route->uuid;
+    previous_map_bin_ = input.lanelet_map_bin;
+    fixed_profile_cache_.clear();
+    ++fixed_profile_context_revision_;
   }
   return true;
 }
@@ -91,12 +108,17 @@ ProcessingResult MapVelocityLimits::process(
   detail::VelocityLimitOptions options;
   options.current_ego_velocity = input.current_odometry->twist.twist.linear.x;
   options.current_ego_acceleration = input.current_acceleration->accel.accel.linear.x;
-  const auto result = detail::apply_velocity_limits(
-    traj_points, std::abs(constant_deceleration_), std::abs(max_jerk_),
-    [this](const geometry_msgs::msg::Point & position) {
-      return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
-    },
-    options);
+  const auto get_limit = [this](const geometry_msgs::msg::Point & position) {
+    return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
+  };
+  const double deceleration = std::abs(constant_deceleration_);
+  const double jerk = std::abs(max_jerk_);
+  const auto result =
+    fix_initial_deceleration_profile_
+      ? fixed_profile_cache_.process(
+          traj_points, input,
+          {std::nullopt, deceleration, jerk, fixed_profile_context_revision_, true}, get_limit)
+      : detail::apply_velocity_limits(traj_points, deceleration, jerk, get_limit, options);
   return result.status;
 }
 

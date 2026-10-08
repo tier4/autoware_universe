@@ -80,11 +80,17 @@ TEST(ExternalVelocityLimit, AppliesOneLimitToEveryTrajectoryPoint)
   }
   const auto original = points;
   constexpr double max_velocity = 4.0;
+  // Start at the requested limit so the uniform cap is immediately reachable.
+  VelocityLimitOptions options;
+  options.current_ego_velocity = max_velocity;
+  options.current_ego_acceleration = 0.0;
 
-  const auto result =
-    apply_velocity_limits(points, 1.0, 0.5, [max_velocity](const geometry_msgs::msg::Point &) {
+  const auto result = apply_velocity_limits(
+    points, 1.0, 0.5,
+    [max_velocity](const geometry_msgs::msg::Point &) {
       return std::optional<double>{max_velocity};
-    });
+    },
+    options);
 
   ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
   ASSERT_EQ(points.size(), original.size());

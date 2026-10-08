@@ -16,6 +16,7 @@
 #define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__EXTERNAL_VELOCITY_LIMIT_HPP_
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 
@@ -39,8 +40,7 @@ double get_external_velocity_limit_min_jerk(
 class ExternalVelocityLimit : public TrajectoryModifierPluginBase
 {
 public:
-  ProcessingResult process(
-    TrajectoryPoints & traj_points, TrajectoryModifierData & input) override;
+  ProcessingResult process(TrajectoryPoints & traj_points, TrajectoryModifierData & input) override;
 
   void update_params(const TrajectoryModifierParams & params) override;
 
@@ -54,6 +54,8 @@ private:
     velocity_limit_sub_;
   double nominal_deceleration_{};
   double nominal_jerk_{};
+  bool fix_initial_deceleration_profile_{false};
+  detail::FixedVelocityLimitCache fixed_profile_cache_;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin

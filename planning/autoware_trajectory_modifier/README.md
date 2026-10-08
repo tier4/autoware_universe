@@ -173,10 +173,11 @@ trajectory. Its velocity profile starts from the current ego velocity at t=0 and
 constant-deceleration curve at each point's `time_from_start` until reaching the external limit.
 The adjusted velocity never exceeds the corresponding velocity in the input trajectory.
 
-| Parameter                                   | Default | Description                                              |
-| ------------------------------------------- | ------- | -------------------------------------------------------- |
-| `use_external_velocity_limit`               | `true`  | Enable the plugin when included in `plugin_names`.       |
-| `stopping_constraints.nominal_deceleration` | `1.0`   | Fallback deceleration when constraints are not provided. |
+| Parameter                                   | Default | Description                                                                      |
+| ------------------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| `use_external_velocity_limit`               | `true`  | Enable the plugin when included in `plugin_names`.                               |
+| `stopping_constraints.nominal_deceleration` | `1.0`   | Fallback deceleration when constraints are not provided.                         |
+| `fix_initial_deceleration_profile`          | `false` | Reuse the first braking profile while limits and ego tracking remain consistent. |
 
 ##### MapVelocityLimits
 
@@ -186,12 +187,36 @@ When map limits are exceeded, the plugin caps the violating velocities and perfo
 
 To preserve the trajectory's original geometric shape, the spatial poses are re-sampled along the original polyline. The new arc lengths are calculated using trapezoidal integration of the updated velocity profile. If the new velocity profile integrates to a distance that exceeds the spatial length of the original path, the subsequent points are simply clamped to the final original pose.
 
-| Parameter                                                          | Default | Description                                                      |
-| ------------------------------------------------------------------ | ------- | ---------------------------------------------------------------- |
-| `use_map_velocity_limits`                                          | `true`  | Enable the plugin when included in `plugin_names`.               |
-| `stopping_constraints.nominal_deceleration`                        | `1.0`   | Braking bound, and optional forward acceleration bound, in m/s². |
-| `map_velocity_limits.limit_velocity_from_map_debug_lanelet_ids`    | `[]`    | Lanelet IDs whose map limits are overridden for debugging.       |
-| `map_velocity_limits.limit_velocity_from_map_debug_max_velocities` | `[]`    | Corresponding override velocities in m/s.                        |
+| Parameter                                                          | Default | Description                                                                      |
+| ------------------------------------------------------------------ | ------- | -------------------------------------------------------------------------------- |
+| `use_map_velocity_limits`                                          | `true`  | Enable the plugin when included in `plugin_names`.                               |
+| `fix_initial_deceleration_profile`                                 | `false` | Reuse the first braking profile while limits and ego tracking remain consistent. |
+| `stopping_constraints.nominal_deceleration`                        | `1.0`   | Braking bound, and optional forward acceleration bound, in m/s².                 |
+| `map_velocity_limits.limit_velocity_from_map_debug_lanelet_ids`    | `[]`    | Lanelet IDs whose map limits are overridden for debugging.                       |
+| `map_velocity_limits.limit_velocity_from_map_debug_max_velocities` | `[]`    | Corresponding override velocities in m/s.                                        |
+
+When `fix_initial_deceleration_profile` is enabled, both limit plugins keep a time-anchored
+braking schedule for each candidate. They reuse it while the effective limit, route and map
+context, and measured ego speed, acceleration, and path progress remain consistent. A changed
+limit or tracking deviation starts a new schedule. Invalid or stale timestamps use the existing
+per-callback limiter without reusing a cached schedule. The setting is shared by both plugins;
+its default keeps the existing behavior. The following shared parameters set the reuse tolerances;
+changing any of them clears both plugins' cached profiles on the next parameter update.
+
+| Parameter                                                       | Default    | Meaning                                                                 |
+| --------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------- |
+| `fixed_velocity_limit_profile.speed_deviation_threshold`        | `0.3`      | Ego speed difference [m/s].                                             |
+| `fixed_velocity_limit_profile.acceleration_deviation_threshold` | `0.3`      | Ego acceleration difference [m/s²].                                     |
+| `fixed_velocity_limit_profile.longitudinal_deviation_threshold` | `0.5`      | Progress difference along the reference path [m].                       |
+| `fixed_velocity_limit_profile.lateral_deviation_threshold`      | `0.5`      | Lateral distance from the reference path [m].                           |
+| `fixed_velocity_limit_profile.heading_deviation_threshold`      | `0.17`     | Ego heading difference [rad].                                           |
+| `fixed_velocity_limit_profile.stamp_difference_threshold`       | `0.2`      | Allowed odometry to acceleration or candidate timestamp difference [s]. |
+| `fixed_velocity_limit_profile.limit_difference_threshold`       | `0.001`    | Speed limit and incoming speed envelope comparison tolerance [m/s].     |
+| `fixed_velocity_limit_profile.constraint_difference_threshold`  | `0.000001` | Deceleration and jerk comparison tolerance [m/s² or m/s³].              |
+
+See
+[the fixed profile design](docs/fixed_initial_deceleration_profile.md) for the matching and
+invalidation rules.
 
 ##### ModelPlanningFactorID
 

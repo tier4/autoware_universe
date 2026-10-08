@@ -33,6 +33,68 @@ trajectory_modifier_params:
     default_value: true
     description: Enable the use of the external velocity limit
     read_only: false
+  fix_initial_deceleration_profile:
+    type: bool
+    default_value: false
+    description: Reuse the initial velocity-limit braking profile while limits and ego tracking remain consistent
+    read_only: false
+  fixed_velocity_limit_profile:
+    speed_deviation_threshold:
+      type: double
+      default_value: 0.3
+      description: Maximum ego speed error allowed when reusing a fixed velocity-limit profile [m/s]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 100.0]
+    acceleration_deviation_threshold:
+      type: double
+      default_value: 0.3
+      description: Maximum ego acceleration error allowed when reusing a fixed velocity-limit profile [m/s^2]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 100.0]
+    longitudinal_deviation_threshold:
+      type: double
+      default_value: 0.5
+      description: Maximum ego progress error allowed when reusing a fixed velocity-limit profile [m]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 100.0]
+    lateral_deviation_threshold:
+      type: double
+      default_value: 0.5
+      description: Maximum lateral path error allowed when reusing a fixed velocity-limit profile [m]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 100.0]
+    heading_deviation_threshold:
+      type: double
+      default_value: 0.17
+      description: Maximum ego heading error allowed when reusing a fixed velocity-limit profile [rad]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 3.141592653589793]
+    stamp_difference_threshold:
+      type: double
+      default_value: 0.2
+      description: Maximum difference between odometry and acceleration or candidate timestamps [s]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 10.0]
+    limit_difference_threshold:
+      type: double
+      default_value: 0.001
+      description: Tolerance for comparing speed limits and candidate velocity envelopes [m/s]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 10.0]
+    constraint_difference_threshold:
+      type: double
+      default_value: 0.000001
+      description: Tolerance for comparing effective deceleration and jerk constraints
+      read_only: false
+      validation:
+        bounds<>: [0.0, 10.0]
   use_stop_point_fixer:
     type: bool
     default_value: true

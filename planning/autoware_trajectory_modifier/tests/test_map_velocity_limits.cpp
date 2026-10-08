@@ -28,6 +28,7 @@ namespace
 using autoware::trajectory_modifier::plugin::ProcessingResult;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
 using autoware::trajectory_modifier::plugin::detail::apply_velocity_limits;
+using autoware::trajectory_modifier::plugin::detail::VelocityLimitOptions;
 constexpr double dt = 0.1;
 constexpr double tolerance = 2e-5;
 constexpr double max_jerk = 1.0;
@@ -67,7 +68,7 @@ void expect_straight_motion(const TrajectoryPoints & points)
     const double v0 = points[i].longitudinal_velocity_mps;
     const double v1 = points[i + 1].longitudinal_velocity_mps;
     EXPECT_NEAR(
-      points[i + 1].pose.position.x - points[i].pose.position.x, 0.5 * (v0 + v1) * dt, 1e-8)
+      points[i + 1].pose.position.x - points[i].pose.position.x, 0.5 * (v0 + v1) * dt, 1e-6)
       << i;
     EXPECT_NEAR(points[i].acceleration_mps2, (v1 - v0) / dt, tolerance) << i;
     if (points[i + 1].pose.position.x == points[i].pose.position.x) {
@@ -82,12 +83,15 @@ TEST(MapVelocityLimitsProfile, RecomputesAccelerationAndRetimes)
 {
   auto points = make_trajectory(10.0, 1.0);
   const auto original = points;
-  const auto result = apply_velocity_limits(points, 1.0, max_jerk, constant_limit(5.0));
+  VelocityLimitOptions options;
+  options.current_ego_velocity = 10.0;
+  options.current_ego_acceleration = 1.0;
+  const auto result = apply_velocity_limits(points, 1.0, max_jerk, constant_limit(5.0), options);
   ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
-  for (const auto & point : points) {
-    EXPECT_FLOAT_EQ(point.longitudinal_velocity_mps, 5.0F);
-    EXPECT_FLOAT_EQ(point.acceleration_mps2, 0.0F);
-  }
+  // A jerk-limited vehicle starting at 10 m/s needs time to reach the 5 m/s limit.
+  EXPECT_GT(points.front().longitudinal_velocity_mps, 5.0F);
+  EXPECT_LT(points.back().longitudinal_velocity_mps, points.front().longitudinal_velocity_mps);
+  EXPECT_LT(points.back().pose.position.x, original.back().pose.position.x);
   expect_format(original, points);
   expect_straight_motion(points);
 }

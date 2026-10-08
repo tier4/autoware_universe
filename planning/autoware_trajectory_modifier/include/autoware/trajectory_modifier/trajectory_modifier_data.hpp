@@ -27,10 +27,12 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
+#include <unique_identifier_msgs/msg/uuid.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 
 namespace autoware::trajectory_modifier
@@ -54,8 +56,10 @@ struct TrajectoryModifierData
   autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr traffic_light_signals{
     nullptr};
   std_msgs::msg::Header candidate_header{};
+  unique_identifier_msgs::msg::UUID candidate_generator_id{};
   std::size_t candidate_index{0U};
   std::size_t candidate_count{0U};
+  std::uint64_t candidate_batch_sequence{0U};
   SemanticSpeedTracker semantic_speed_tracker;
 };
 

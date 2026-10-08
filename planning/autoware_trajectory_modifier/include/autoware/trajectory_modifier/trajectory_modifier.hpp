@@ -42,6 +42,7 @@
 #include <lanelet2_core/LaneletMap.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -120,6 +121,7 @@ private:
 
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr lanelet_map_bin_ptr_;
+  std::uint64_t candidate_batch_sequence_{0U};
 };
 
 }  // namespace autoware::trajectory_modifier
