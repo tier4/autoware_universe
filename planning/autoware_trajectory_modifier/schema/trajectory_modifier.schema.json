@@ -1639,7 +1639,7 @@
           "description": "Enable the detection area stop modifier plugin",
           "default": false
         },
-        "detection_area": {
+        "detection_area_stop": {
           "type": "object",
           "properties": {
             "stop_margin": {

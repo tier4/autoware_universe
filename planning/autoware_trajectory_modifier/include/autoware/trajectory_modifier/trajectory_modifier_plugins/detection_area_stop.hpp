@@ -51,7 +51,7 @@ public:
 
   void publish_debug_data(const std::string & ns) const override;
 
-  const TrajectoryModifierParams::DetectionArea & get_params() const { return params_; }
+  const TrajectoryModifierParams::DetectionAreaStop & get_params() const { return params_; }
 
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
@@ -91,7 +91,7 @@ private:
     std::string policy;
   };
 
-  TrajectoryModifierParams::DetectionArea params_;
+  TrajectoryModifierParams::DetectionAreaStop params_;
   TrajectoryModifierParams::StoppingConstraints stopping_params_;
 
   std::vector<lanelet::Id> route_lanelet_ids_;

@@ -1520,7 +1520,7 @@ trajectory_modifier_params:
     description: Enable the use of detection area stop
     read_only: false
 
-  detection_area:
+  detection_area_stop:
     stop_margin:
       type: double
       default_value: 0.0

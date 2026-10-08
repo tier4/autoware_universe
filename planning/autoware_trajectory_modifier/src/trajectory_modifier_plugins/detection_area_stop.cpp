@@ -112,7 +112,7 @@ void DetectionAreaStop::on_initialize(const TrajectoryModifierParams & params)
   pub_debug_text_ =
     node_ptr->create_publisher<StringStamped>("~/detection_area_stop/debug/text", 1);
   enabled_ = params.use_detection_area_stop;
-  params_ = params.detection_area;
+  params_ = params.detection_area_stop;
   stopping_params_ = params.stopping_constraints;
   trajectory_time_step_ = params.trajectory_time_step;
 }
@@ -120,7 +120,7 @@ void DetectionAreaStop::on_initialize(const TrajectoryModifierParams & params)
 void DetectionAreaStop::update_params(const TrajectoryModifierParams & params)
 {
   enabled_ = params.use_detection_area_stop;
-  params_ = params.detection_area;
+  params_ = params.detection_area_stop;
   stopping_params_ = params.stopping_constraints;
   trajectory_time_step_ = params.trajectory_time_step;
 }
