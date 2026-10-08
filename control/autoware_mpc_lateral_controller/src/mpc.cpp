@@ -757,11 +757,15 @@ void MPC::resetPrevResult(const SteeringReport & current_steer)
 
 void MPC::resetSteeringCmdFilter(const double steering_tire_angle)
 {
-  m_lpf_steering_cmd.resetState(steering_tire_angle);
-  m_raw_steer_cmd_prev = steering_tire_angle;
-  m_raw_steer_cmd_pprev = steering_tire_angle;
+  // Consider limit, as in resetPrevResult: a previous command beyond the limit makes the first
+  // steering-rate constraint incompatible with the steering-angle bound, so every following QP
+  // fails and the failure path keeps re-syncing the same out-of-range value.
+  const double steer = std::clamp(steering_tire_angle, -m_steer_lim, m_steer_lim);
+  m_lpf_steering_cmd.resetState(steer);
+  m_raw_steer_cmd_prev = steer;
+  m_raw_steer_cmd_pprev = steer;
   for (auto & value : m_input_buffer) {
-    value = steering_tire_angle;
+    value = steer;
   }
 }
 
