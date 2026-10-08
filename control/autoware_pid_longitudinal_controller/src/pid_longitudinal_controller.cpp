@@ -1011,6 +1011,13 @@ void PidLongitudinalController::publishDebugData(
   m_debug_values.setValues(DebugValues::TYPE::SHIFT, static_cast<double>(control_data.shift));
   m_debug_values.setValues(DebugValues::TYPE::STOP_DIST, control_data.stop_dist);
   m_debug_values.setValues(DebugValues::TYPE::CONTROL_STATE, static_cast<double>(m_control_state));
+
+  m_debug_values.setValues(DebugValues::TYPE::BRAKE_KEEPING_STATE, static_cast<double>(m_brake_keeping_state));
+  m_debug_values.setValues(DebugValues::TYPE::IS_STOPPED_WITH_DELAY, m_is_stopped_with_delay ? 1.0 : 0.0);
+  const bool has_stop_point =
+    autoware::motion_utils::searchZeroVelocityIndex(control_data.interpolated_traj.points).has_value();
+  m_debug_values.setValues(DebugValues::TYPE::HAS_STOP_POINT, has_stop_point ? 1.0 : 0.0);
+
   m_debug_values.setValues(DebugValues::TYPE::ACC_CMD_PUBLISHED, ctrl_cmd.acc);
   m_debug_values.setValues(
     DebugValues::TYPE::TEMPORAL_PREDICTED_TIME, control_data.temporal_predicted_time);
