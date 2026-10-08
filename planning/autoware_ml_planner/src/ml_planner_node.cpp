@@ -368,6 +368,14 @@ void MLPlanner::set_up_params()
     this->declare_parameter<int64_t>("virtual_pose.history_prefix_count", 10);
   virtual_pose.reference =
     this->declare_parameter<std::string>("virtual_pose.reference", "optimized");
+  virtual_pose.hold_at_standstill =
+    this->declare_parameter<bool>("virtual_pose.hold_at_standstill", true);
+  virtual_pose.hold_max_speed_mps =
+    this->declare_parameter<double>("virtual_pose.hold_max_speed_mps", 0.1);
+  virtual_pose.hold_position_tolerance_m =
+    this->declare_parameter<double>("virtual_pose.hold_position_tolerance_m", 0.2);
+  virtual_pose.hold_yaw_tolerance_deg =
+    this->declare_parameter<double>("virtual_pose.hold_yaw_tolerance_deg", 0.5);
   if (virtual_pose.reference != "raw" && virtual_pose.reference != "optimized") {
     throw std::runtime_error("virtual_pose.reference must be 'raw' or 'optimized'");
   }
@@ -563,6 +571,12 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<int64_t>(
     parameters, "virtual_pose.history_prefix_count", virtual_pose.history_prefix_count);
   update_param<std::string>(parameters, "virtual_pose.reference", virtual_pose.reference);
+  update_param<bool>(parameters, "virtual_pose.hold_at_standstill", virtual_pose.hold_at_standstill);
+  update_param<double>(parameters, "virtual_pose.hold_max_speed_mps", virtual_pose.hold_max_speed_mps);
+  update_param<double>(
+    parameters, "virtual_pose.hold_position_tolerance_m", virtual_pose.hold_position_tolerance_m);
+  update_param<double>(
+    parameters, "virtual_pose.hold_yaw_tolerance_deg", virtual_pose.hold_yaw_tolerance_deg);
 
   update_param<bool>(
     parameters, "planning_factor.enable_stop", new_planning_factor_params.enable_stop);

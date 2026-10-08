@@ -337,6 +337,8 @@ private:
   std::optional<utils::VirtualPoseResult> virtual_pose_result_;
   std::optional<Eigen::Matrix4d> previous_frame_pose_;
   std::vector<Eigen::Matrix4d> previous_ego_prediction_;
+  // hold_at_standstill: measured pose at which the current hold began.
+  std::optional<geometry_msgs::msg::Pose> hold_anchor_;
   Odometry build_frame_ego();
 
   std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_;

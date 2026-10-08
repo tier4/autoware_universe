@@ -25,6 +25,10 @@
 #include "autoware/ml_planner/inference/onnxruntime_inference.hpp"
 #endif
 
+#include <autoware_utils/math/normalization.hpp>
+#include <autoware_utils/math/unit_conversion.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
+
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/generator_info.hpp>
 
@@ -337,6 +341,32 @@ Odometry MLPlannerCore::build_frame_ego()
     for (const auto & msg : ego_history_.msgs()) {
       virtual_history_.push_back(msg);
     }
+  }
+
+  // Standstill: while the vehicle stays where it stopped, keep the frame pose. Snapping again onto
+  // each new plan would only move it with the plan's jitter and the localization drift. The hold
+  // ends once the vehicle has moved or turned beyond the tolerances, e.g. on take-off.
+  const auto & vp = params_.virtual_pose;
+  if (vp.hold_at_standstill && hold_anchor_ && virtual_pose_result_ && !virtual_history_.empty()) {
+    const double moved_m = std::hypot(
+      measured.pose.pose.position.x - hold_anchor_->position.x,
+      measured.pose.pose.position.y - hold_anchor_->position.y);
+    const double turned_rad = std::abs(autoware_utils::normalize_radian(
+      autoware_utils_geometry::get_rpy(measured.pose.pose.orientation).z -
+      autoware_utils_geometry::get_rpy(hold_anchor_->orientation).z));
+    if (
+      moved_m < vp.hold_position_tolerance_m &&
+      turned_rad < autoware_utils::deg2rad(vp.hold_yaw_tolerance_deg)) {
+      Odometry frame = measured;
+      frame.pose.pose = virtual_history_.back().pose.pose;
+      virtual_pose_result_->reset = false;
+      virtual_history_.push_back(frame);
+      return frame;
+    }
+  }
+  hold_anchor_.reset();
+  if (vp.hold_at_standstill && std::abs(measured.twist.twist.linear.x) < vp.hold_max_speed_mps) {
+    hold_anchor_ = measured.pose.pose;
   }
 
   virtual_pose_result_ = utils::VirtualPoseResult{measured.pose.pose, false, false, 0.0, 0.0};
