@@ -78,6 +78,10 @@ MpcLateralController::MpcLateralController(
   /* reference-confidence steer soft hold */
   m_enable_confidence_steer_slew_limit = dp_bool("enable_confidence_steer_slew_limit");
   m_steering_direct_passthrough = dp_bool("steering_direct_passthrough");
+  m_mpc->m_steering_passthrough_timeout_s =
+    node.declare_parameter<double>("steering_passthrough_timeout", 0.5);
+  m_mpc->m_steering_passthrough_rate_limit_rad_s =
+    node.declare_parameter<double>("steering_passthrough_rate_limit_rad_s", 0.6);
   m_reference_confidence_L_ahead_min = dp_double("reference_confidence_L_ahead_min");
   m_reference_confidence_L_ahead_ref = dp_double("reference_confidence_L_ahead_ref");
   m_steer_slew_rate_min_rad_s = dp_double("steer_slew_rate_min_rad_s");
@@ -308,11 +312,22 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     m_is_ctrl_cmd_prev_initialized = true;
   }
 
+  constexpr double steering_availability_threshold = 1.0e-6;
+  const auto trajectory_has_steering = std::any_of(
+    input_data.current_trajectory.points.begin(), input_data.current_trajectory.points.end(),
+    [steering_availability_threshold](const auto & point) {
+      return std::abs(static_cast<double>(point.front_wheel_angle_rad)) >
+             steering_availability_threshold;
+    });
+  const auto use_steering_direct_passthrough =
+    m_steering_direct_passthrough && trajectory_has_steering;
+
   trajectory_follower::LateralHorizon ctrl_cmd_horizon{};
   const auto mpc_solved_status =
-    m_steering_direct_passthrough
+    use_steering_direct_passthrough
       ? m_mpc->calculateTrajectorySteeringPassthrough(
-          m_current_steering, m_current_kinematic_state, ctrl_cmd, debug_values, ctrl_cmd_horizon)
+          m_current_steering, m_current_kinematic_state, ctrl_cmd, predicted_traj, debug_values,
+          ctrl_cmd_horizon, input_data.trajectory_received_at)
       : m_mpc->calculateMPC(
           m_current_steering, m_current_kinematic_state, ctrl_cmd, predicted_traj, debug_values,
           ctrl_cmd_horizon);
@@ -337,7 +352,6 @@ trajectory_follower::LateralOutput MpcLateralController::run(
 
   ctrl_cmd.steering_tire_angle -= static_cast<float>(m_steering_offset_filtered_);
 
-  publishPredictedTraj(predicted_traj);
   publishDebugValues(debug_values);
 
   const auto createLateralOutput =
@@ -362,22 +376,32 @@ trajectory_follower::LateralOutput MpcLateralController::run(
 
   // Confirmed full stop only (elapsed > duration). Until then stay in control.
   if (isStoppedState()) {
+    predicted_traj.points.clear();
+    publishPredictedTraj(predicted_traj);
     syncMpcSteerStateToCommand(m_ctrl_cmd_prev.steering_tire_angle);
     return createLateralOutput(m_ctrl_cmd_prev, false, ctrl_cmd_horizon);
   }
 
   if (!mpc_solved_status.result) {
     debug_throttle("MPC is not solved, use stop control command");
+    predicted_traj.points.clear();
     ctrl_cmd = getStopControlCommand();
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
   } else if (
-    !m_steering_direct_passthrough && m_enable_confidence_steer_slew_limit &&
+    !use_steering_direct_passthrough && m_enable_confidence_steer_slew_limit &&
     applyConfidenceSteerSlewLimit(ctrl_cmd)) {
     // Low-confidence / flicker: soft-slew (not stop). Sync LPF to published output.
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
   }
 
+  if (mpc_solved_status.result && use_steering_direct_passthrough) {
+    // Passthrough did not run the MPC LPF. Keep only that filter in the issued command's internal
+    // steering coordinates; preserve the delay buffer and raw-command history updated above.
+    m_mpc->syncSteeringCmdFilterOnly(
+      static_cast<double>(ctrl_cmd.steering_tire_angle) + m_steering_offset_filtered_);
+  }
   m_ctrl_cmd_prev = ctrl_cmd;
+  publishPredictedTraj(predicted_traj);
   return createLateralOutput(ctrl_cmd, mpc_solved_status.result, ctrl_cmd_horizon);
 }
 
@@ -724,7 +748,20 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
     update_param(parameters, "mpc_velocity_time_constant", param.velocity_time_constant);
     update_param(parameters, "mpc_min_prediction_length", param.min_prediction_length);
 
-    update_param(parameters, "steering_direct_passthrough", m_steering_direct_passthrough);
+    bool steering_direct_passthrough = m_steering_direct_passthrough;
+    update_param(parameters, "steering_direct_passthrough", steering_direct_passthrough);
+    double passthrough_timeout = m_mpc->m_steering_passthrough_timeout_s;
+    double passthrough_rate_limit = m_mpc->m_steering_passthrough_rate_limit_rad_s;
+    update_param(parameters, "steering_passthrough_timeout", passthrough_timeout);
+    update_param(parameters, "steering_passthrough_rate_limit_rad_s", passthrough_rate_limit);
+    if (
+      steering_direct_passthrough &&
+      (!std::isfinite(passthrough_timeout) || passthrough_timeout <= 0.0 ||
+       !std::isfinite(passthrough_rate_limit) || passthrough_rate_limit <= 0.0)) {
+      result.successful = false;
+      result.reason = "steering passthrough timeout and rate limit must be positive and finite";
+      return result;
+    }
 
     // initialize input buffer
     update_param(parameters, "input_delay", param.input_delay);
@@ -737,6 +774,9 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
 
     // transaction succeeds, now assign values
     m_mpc->m_param = param;
+    m_steering_direct_passthrough = steering_direct_passthrough;
+    m_mpc->m_steering_passthrough_timeout_s = passthrough_timeout;
+    m_mpc->m_steering_passthrough_rate_limit_rad_s = passthrough_rate_limit;
   } catch (const rclcpp::exceptions::InvalidParameterTypeException & e) {
     result.successful = false;
     result.reason = e.what();
@@ -821,9 +861,10 @@ bool MpcLateralController::applyConfidenceSteerSlewLimit(Lateral & ctrl_cmd)
 
 void MpcLateralController::syncMpcSteerStateToCommand(const float steering_tire_angle)
 {
-  // Align delay buffer and steering LPF with the published command so soft hold / stop freeze
-  // is not undone by LPF state that tracked raw Uex.
-  m_mpc->resetSteeringCmdFilter(static_cast<double>(steering_tire_angle));
+  // Align delay buffer and steering LPF with the command in MPC's offset-compensated coordinates
+  // so soft hold / stop freeze is not undone by LPF state that tracked raw Uex.
+  m_mpc->resetSteeringCmdFilter(
+    static_cast<double>(steering_tire_angle) + m_steering_offset_filtered_);
 }
 
 bool MpcLateralController::isTrajectoryShapeChanged() const

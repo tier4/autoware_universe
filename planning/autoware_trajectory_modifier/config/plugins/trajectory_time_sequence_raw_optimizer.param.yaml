@@ -15,6 +15,21 @@
         weight_yaw: 0.5
         weight_velocity: 0.1
         snap_distance_m: 1.0
+        # Drop the latch when ego-to-goal exceeds
+        # unlatch_horizon_s * max(|v|, unlatch_min_speed_mps).
+        # Far-away unlatch does not clear the previous-plan buffer; a new route goal does.
+        unlatch_horizon_s: 8.0
+        unlatch_min_speed_mps: 3.0
+      # Previous plan sampled by path distance, not timestamp. Skipped on
+      # road-border shift or goal-snap latch mismatch.
+      temporal_consistency:
+        enable: true
+        weight_longitudinal: 0.004
+        weight_lateral: 0.2
+        weight_yaw: 0.002
+        weight_velocity: 0.004
+        decay_time_constant_s: 1.0
+        far_weight_ratio: 0.5
       min_velocity_mps: 0.0
       max_velocity_mps: 30.0
       min_acceleration_mps2: -4.0

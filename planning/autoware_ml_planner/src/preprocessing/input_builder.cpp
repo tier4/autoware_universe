@@ -59,6 +59,7 @@ InputBuilderResult create_input_data_map(
   const auto center_x = static_cast<float>(pose_center.position.x);
   const auto center_y = static_cast<float>(pose_center.position.y);
   const auto center_z = static_cast<float>(pose_center.position.z);
+  const double center_yaw = utils::yaw_from_quaternion(pose_center.orientation);
 
   // Ego history
   input_data_map["ego_agent_past"] = create_ego_history(
@@ -99,7 +100,7 @@ InputBuilderResult create_input_data_map(
   // Route data on ego reference frame
   {
     const std::vector<int64_t> segment_indices = map_context.select_route_segment_indices(
-      frame_inputs.route, center_x, center_y, center_z, NUM_SEGMENTS_IN_ROUTE);
+      frame_inputs.route, center_x, center_y, center_z, center_yaw, NUM_SEGMENTS_IN_ROUTE);
     auto [route_lanes, route_lane_types, route_lanes_speed_limit] =
       map_context.create_tensor_data_from_indices(
         map_to_ego_transform, segment_indices, NUM_SEGMENTS_IN_ROUTE);

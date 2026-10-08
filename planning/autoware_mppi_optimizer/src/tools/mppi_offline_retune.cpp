@@ -89,6 +89,7 @@ void printUsage(const char * argv0)
                "  --frame N              Only retune frame N (default: all)\n"
                "  --params-yaml FILE     Optional ROS-style yaml with cost params\n"
                "  --set key=value        Override a cost param (repeatable)\n"
+               "                         Also accepts dynamic_obstacle_horizon_s\n"
                "  --wheel-base M         Vehicle wheel base [m] (default 4.76)\n"
                "  --ego-length M         Ego length [m] (default 5.0)\n"
                "  --ego-width M          Ego width [m] (default 1.9)\n"
@@ -133,12 +134,30 @@ void applyCostParam(
 {
   if (key == "lambda") {
     params.lambda = value;
-  } else if (key == "speed_coeff") {
-    params.speed_coeff = value;
+  } else if (key == "lambda_min") {
+    params.lambda_min = value;
+  } else if (key == "lambda_max") {
+    params.lambda_max = value;
+  } else if (key == "target_ess_ratio") {
+    params.target_ess_ratio = value;
+  } else if (key == "lambda_adaptation_gain") {
+    params.lambda_adaptation_gain = value;
+  } else if (key == "unsafe_rollout_fraction_threshold") {
+    params.unsafe_rollout_fraction_threshold = value;
+  } else if (key == "cost_normalization_percentile") {
+    params.cost_normalization_percentile = value;
+  } else if (key == "max_iter") {
+    params.max_iter = static_cast<int>(value);
+  } else if (key == "spatial_overspeed_coeff") {
+    params.spatial_overspeed_coeff = value;
   } else if (key == "track_coeff") {
     params.track_coeff = value;
   } else if (key == "track_terminal_scale") {
     params.track_terminal_scale = value;
+  } else if (key == "terminal_error_coeff") {
+    params.terminal_error_coeff = value;
+  } else if (key == "terminal_heading_coeff") {
+    params.terminal_heading_coeff = value;
   } else if (key == "heading_coeff") {
     params.heading_coeff = value;
   } else if (key == "lateral_distance_coeff") {
@@ -149,6 +168,8 @@ void applyCostParam(
     params.remaining_distance_coeff = value;
   } else if (key == "path_overshoot_coeff") {
     params.path_overshoot_coeff = value;
+  } else if (key == "preferred_lane_center_coeff") {
+    params.preferred_lane_center_coeff = value;
   } else if (key == "track_center_coeff") {
     params.track_center_coeff = value;
   } else if (key == "corner_buffer_coeff") {
@@ -165,18 +186,28 @@ void applyCostParam(
     params.steer_cmd_coeff = value;
   } else if (key == "steer_rate_coeff") {
     params.steer_rate_coeff = value;
+  } else if (key == "accel_cmd_rate_coeff") {
+    params.accel_cmd_rate_coeff = value;
+  } else if (key == "steer_cmd_rate_coeff") {
+    params.steer_cmd_rate_coeff = value;
+  } else if (key == "initial_steer_rate_coeff") {
+    params.initial_steer_rate_coeff = value;
   } else if (key == "overlimit_coeff") {
     params.overlimit_coeff = value;
   } else if (key == "accel_cmd_std_dev") {
     params.accel_cmd_std_dev = value;
   } else if (key == "steer_cmd_std_dev") {
     params.steer_cmd_std_dev = value;
+  } else if (key == "std_dev_decay") {
+    params.std_dev_decay = value;
   } else if (key == "accel_cmd_noise_exponent") {
     params.accel_cmd_noise_exponent = value;
   } else if (key == "steer_cmd_noise_exponent") {
     params.steer_cmd_noise_exponent = value;
   } else if (key == "nominal_curvature_min_chord_length_m") {
     params.nominal_curvature_min_chord_length_m = value;
+  } else if (key == "nominal_curvature_fit_window_m") {
+    params.nominal_curvature_fit_window_m = value;
   } else if (key == "lateral_acceleration_coeff") {
     params.lateral_acceleration_coeff = value;
   } else if (key == "lateral_jerk_coeff") {
@@ -204,7 +235,20 @@ void applyCostParam(
   }
 }
 
-void loadParamsYaml(const std::string & path, FirstOrderDubinsMppiCostParams & params)
+void applyRetuneParam(
+  FirstOrderDubinsMppiCostParams & params, FirstOrderDubinsMppiRuntimeOptions & runtime,
+  const std::string & key, const float value)
+{
+  if (key == "dynamic_obstacle_horizon_s") {
+    runtime.dynamic_obstacle_horizon_s = value;
+  } else {
+    applyCostParam(params, key, value);
+  }
+}
+
+void loadParamsYaml(
+  const std::string & path, FirstOrderDubinsMppiCostParams & params,
+  FirstOrderDubinsMppiRuntimeOptions & runtime)
 {
   std::ifstream in(path);
   if (!in) {
@@ -229,7 +273,7 @@ void loadParamsYaml(const std::string & path, FirstOrderDubinsMppiCostParams & p
       continue;
     }
     try {
-      applyCostParam(params, key, std::stof(value));
+      applyRetuneParam(params, runtime, key, std::stof(value));
     } catch (const std::exception &) {
       // Ignore unknown / non-float keys in the yaml.
     }
@@ -255,6 +299,16 @@ void applyVehicleParam(
     params.steer_time_constant = value;
   } else if (key == "steer_rate_lim") {
     params.steer_rate_lim = value;
+  } else if (key == "max_lateral_jerk_mps3") {
+    params.max_lateral_jerk_mps3 = value;
+  } else if (key == "standstill_steer_rate_lim") {
+    params.standstill_steer_rate_lim = value;
+  } else if (key == "restart_steer_command_rate_lim") {
+    params.restart_steer_command_rate_lim = value;
+  } else if (key == "restart_steer_command_acceleration_lim") {
+    params.restart_steer_command_acceleration_lim = value;
+  } else if (key == "restart_velocity_threshold_mps") {
+    params.restart_velocity_threshold_mps = value;
   } else if (key == "vel_rate_lim") {
     params.vel_rate_lim = value;
   } else if (key == "acc_time_delay") {
@@ -453,6 +507,7 @@ int run(int argc, char ** argv)
   bool copy_reference = false;
   bool reseed_nominal_from_reference = false;
   FirstOrderDubinsMppiCostParams cost_params;
+  FirstOrderDubinsMppiRuntimeOptions runtime_options;
   FirstOrderDubinsMppiVehicleParams vehicle_params;
   // Defaults closer to j6_gen2 for Autoware replay.
   vehicle_params.wheel_base = 4.76F;
@@ -491,7 +546,7 @@ int run(int argc, char ** argv)
       if (!parseKeyValue(need("--set"), key, value)) {
         throw std::runtime_error("Expected --set key=value");
       }
-      applyCostParam(cost_params, key, std::stof(value));
+      applyRetuneParam(cost_params, runtime_options, key, std::stof(value));
     } else if (arg == "--wheel-base") {
       vehicle_params.wheel_base = std::stof(need("--wheel-base"));
     } else if (arg == "--ego-length") {
@@ -523,10 +578,10 @@ int run(int argc, char ** argv)
   // Prefer params captured at log time; then yaml; then CLI --set / vehicle flags.
   loadCostParamsFromLog(log_dir, cost_params);
   loadVehicleParamsFromLog(log_dir, vehicle_params);
-  const FirstOrderDubinsMppiRuntimeOptions runtime_options = loadRuntimeOptionsFromLog(log_dir);
+  runtime_options = loadRuntimeOptionsFromLog(log_dir);
 
   if (!params_yaml.empty()) {
-    loadParamsYaml(params_yaml, cost_params);
+    loadParamsYaml(params_yaml, cost_params, runtime_options);
   }
   // Re-apply --set / vehicle CLI so they win over log + yaml.
   for (int i = 1; i + 1 < argc; ++i) {
@@ -535,7 +590,7 @@ int run(int argc, char ** argv)
       std::string key;
       std::string value;
       if (parseKeyValue(argv[i + 1], key, value)) {
-        applyCostParam(cost_params, key, std::stof(value));
+        applyRetuneParam(cost_params, runtime_options, key, std::stof(value));
       }
     } else if (arg == "--wheel-base") {
       vehicle_params.wheel_base = std::stof(argv[i + 1]);
@@ -558,18 +613,18 @@ int run(int argc, char ** argv)
   }
 
   std::cout << "applied_params lambda=" << cost_params.lambda
+            << " lambda_min=" << cost_params.lambda_min << " lambda_max=" << cost_params.lambda_max
+            << " target_ess_ratio=" << cost_params.target_ess_ratio
+            << " lambda_adaptation_gain=" << cost_params.lambda_adaptation_gain
+            << " unsafe_rollout_fraction_threshold="
+            << cost_params.unsafe_rollout_fraction_threshold
+            << " cost_normalization_percentile=" << cost_params.cost_normalization_percentile
             << " track_coeff=" << cost_params.track_coeff
-            << " speed_coeff=" << cost_params.speed_coeff
+            << " spatial_overspeed_coeff=" << cost_params.spatial_overspeed_coeff
             << " overlimit_coeff=" << cost_params.overlimit_coeff
             << " heading_coeff=" << cost_params.heading_coeff
-            << " steer_rate_coeff=" << cost_params.steer_rate_coeff << "\n";
-  if (cost_params.lambda >= 5000.0F) {
-    std::cerr
-      << "WARNING: lambda=" << cost_params.lambda
-      << " is very high — softmax weights stay near-uniform and cost-weight edits "
-         "will barely move the trajectory. Try lambda around 100–1500 to see retune effects.\n";
-  }
-
+            << " steer_rate_coeff=" << cost_params.steer_rate_coeff
+            << " initial_steer_rate_coeff=" << cost_params.initial_steer_rate_coeff << "\n";
   const auto frame_ids = listMppiDebugFrameIds(log_dir);
   if (frame_ids.empty()) {
     std::cerr << "No frames found in " << log_dir << "\n";
@@ -658,7 +713,8 @@ int run(int argc, char ** argv)
     } else {
       std::cout << "frame " << frame_id
                 << " reseeding u_nom from reference with nominal curvature chord "
-                << cost_params.nominal_curvature_min_chord_length_m << " m\n";
+                << cost_params.nominal_curvature_min_chord_length_m << " m and fit window "
+                << cost_params.nominal_curvature_fit_window_m << " m\n";
     }
 
     {
@@ -679,6 +735,14 @@ int run(int argc, char ** argv)
       }
     }
 
+    autoware::mppi_optimizer::PreferredLaneCenterlineInput preferred_lane_centerline;
+    if (loadMppiDebugSegmentsCsv(
+          log_dir + "/" + tag + "_preferred_lane_center.csv", preferred_lane_centerline.segments)) {
+      preferred_lane_centerline.status =
+        preferred_lane_centerline.segments.empty() ? "unavailable" : "active";
+    } else {
+      std::cerr << "Preferred lane centerline unavailable for frame " << tag << "\n";
+    }
     std::vector<Segment> road_borders;
     std::vector<Segment> drivable_area;
     if (!loadMppiDebugSegmentsCsv(log_dir + "/" + tag + "_road_borders.csv", road_borders)) {
@@ -722,7 +786,7 @@ int run(int argc, char ** argv)
 
     const auto result = frame_mppi.optimizeTrajectory(
       reference, odom, accel, steering, tracked_objects, road_borders, drivable_area,
-      kinematic_limits);
+      kinematic_limits, {}, false, std::nullopt, preferred_lane_centerline);
 
     const std::string opt_path = out_dir + "/" + tag + "_optimized.csv";
     if (!writeMppiDebugTrajectoryCsv(opt_path, result.debug.optimized_trajectory)) {
@@ -772,6 +836,13 @@ int run(int argc, char ** argv)
       }
     }
 
+    if (!autoware::mppi_optimizer::writeMppiRolloutDiagnosticsCsv(
+          out_dir + "/" + tag + "_rollout_diagnostics.csv",
+          result.debug.rollout_iteration_diagnostics, result.debug.failed_rollout_iteration)) {
+      std::cerr << "Failed to write rollout diagnostics for " << tag << "\n";
+      return 1;
+    }
+
     {
       const std::string crash_path = out_dir + "/" + tag + "_crash_status.csv";
       std::ofstream crash_out(crash_path);
@@ -798,14 +869,17 @@ int run(int argc, char ** argv)
       breakdown_out << "running_total," << breakdown.running_total << "\n";
       breakdown_out << "terminal_total," << breakdown.terminal_total << "\n";
       breakdown_out << "evaluated_timesteps," << breakdown.evaluated_timesteps << "\n";
-      breakdown_out << "state/speed," << breakdown.speed << "\n";
+      breakdown_out << "state/spatial_overspeed," << breakdown.spatial_overspeed << "\n";
       breakdown_out << "state/track," << breakdown.track << "\n";
       breakdown_out << "state/heading," << breakdown.heading << "\n";
+      breakdown_out << "terminal/error," << breakdown.terminal_error << "\n";
+      breakdown_out << "terminal/heading," << breakdown.terminal_heading << "\n";
       breakdown_out << "state/lateral_distance," << breakdown.lateral_distance << "\n";
       breakdown_out << "state/lateral_boundary," << breakdown.lateral_boundary << "\n";
       breakdown_out << "state/lateral_yaw_error," << breakdown.lateral_yaw_error << "\n";
       breakdown_out << "state/remaining_distance," << breakdown.remaining_distance << "\n";
       breakdown_out << "state/path_overshoot," << breakdown.path_overshoot << "\n";
+      breakdown_out << "state/preferred_lane_center," << breakdown.preferred_lane_center << "\n";
       breakdown_out << "state/track_center," << breakdown.track_center << "\n";
       breakdown_out << "state/corner_buffer," << breakdown.corner_buffer << "\n";
       breakdown_out << "state/drivable_area," << breakdown.drivable_area << "\n";
@@ -817,6 +891,7 @@ int run(int argc, char ** argv)
       breakdown_out << "comfort/lateral_jerk," << breakdown.lateral_jerk << "\n";
       breakdown_out << "comfort/longitudinal_jerk," << breakdown.longitudinal_jerk << "\n";
       breakdown_out << "comfort/steering_rate," << breakdown.steering_rate << "\n";
+      breakdown_out << "mppi/initial_steering_rate," << breakdown.initial_steering_rate << "\n";
       breakdown_out << "kinematic/velocity_overlimit," << breakdown.kinematic_velocity_overlimit
                     << "\n";
       breakdown_out << "kinematic/acceleration_overlimit,"

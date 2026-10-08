@@ -37,7 +37,32 @@ struct TrajectoryOptimizationParams
     double weight_yaw{0.5};
     double weight_velocity{0.1};
     double snap_distance_m{1.0};
+    /// Drop the latch when ego-to-goal exceeds this time horizon times speed.
+    /// <= 0 disables the far-away unlatch. Far-away unlatch does not clear previous-plan
+    /// memory; a route-goal position change does.
+    double unlatch_horizon_s{8.0};
+    /// Floor on speed used by the far-away range: range = horizon * max(|v|, this).
+    double unlatch_min_speed_mps{3.0};
   } goal;
+
+  /**
+   * @brief Weakly track the previous cycle's solved plan (same idea as autoware_ml_planner).
+   *
+   * Lon/lat axes use the current tracking yaw. The previous plan is sampled by arc length
+   * along the current reference, not by timestamp; stages past the previous path have no
+   * temporal term (takeoff is then uncovered without a speed threshold). Terminal node
+   * omitted. Skipped on road-border shift or goal-snap latch mismatch.
+   */
+  struct TemporalConsistencyParams
+  {
+    bool enable{false};
+    double weight_longitudinal{0.004};
+    double weight_lateral{0.2};
+    double weight_yaw{0.002};
+    double weight_velocity{0.004};
+    double decay_time_constant_s{1.0};
+    double far_weight_ratio{0.5};
+  } temporal_consistency;
 
   double min_velocity_mps{0.0};
   double max_velocity_mps{30.0};
