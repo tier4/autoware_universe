@@ -17,17 +17,12 @@
             "base_model_directory": {
               "type": "string",
               "default": "$(var data_path)/ml_planner",
-              "description": "Base directory containing the ONNX model and args file. Same ROS parameter name as autoware_diffusion_planner so both nodes can switch artifacts by setting this once."
+              "description": "Base directory containing the ONNX model. Same ROS parameter name as autoware_diffusion_planner so both nodes can switch artifacts by setting this once."
             },
             "onnx_model_filename": {
               "type": "string",
               "default": "ml_planner_sampler.onnx",
               "description": "ONNX model filename relative to base_model_directory"
-            },
-            "args_filename": {
-              "type": "string",
-              "default": "ml_planner.param.json",
-              "description": "Args/configuration JSON filename relative to base_model_directory. Same ROS parameter name as autoware_diffusion_planner."
             },
             "backend": {
               "type": "string",
@@ -52,8 +47,7 @@
             "precision",
             "use_cuda_graph",
             "base_model_directory",
-            "onnx_model_filename",
-            "args_filename"
+            "onnx_model_filename"
           ]
         },
         "planning_frequency_hz": {
