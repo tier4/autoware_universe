@@ -353,11 +353,11 @@ void MLPlanner::set_up_params()
   auto & virtual_pose = params_.virtual_pose;
   virtual_pose.enable = this->declare_parameter<bool>("virtual_pose.enable", true);
   virtual_pose.max_longitudinal_error_m =
-    this->declare_parameter<double>("virtual_pose.max_longitudinal_error_m", 0.5);
+    this->declare_parameter<double>("virtual_pose.max_longitudinal_error_m", 5.0);
   virtual_pose.max_lateral_error_m =
-    this->declare_parameter<double>("virtual_pose.max_lateral_error_m", 0.3);
+    this->declare_parameter<double>("virtual_pose.max_lateral_error_m", 3.0);
   virtual_pose.max_yaw_error_deg =
-    this->declare_parameter<double>("virtual_pose.max_yaw_error_deg", 5.0);
+    this->declare_parameter<double>("virtual_pose.max_yaw_error_deg", 30.0);
   virtual_pose.max_search_segment_count =
     this->declare_parameter<int64_t>("virtual_pose.max_search_segment_count", 5);
   virtual_pose.yaw_fit_half_window_m =

@@ -40,8 +40,8 @@ struct VirtualPoseParams
   bool enable;
   // Reset when the vehicle is farther than these from the virtual pose, measured along / across the
   // virtual heading.
-  double max_longitudinal_error_m{0.5};
-  double max_lateral_error_m{0.3};
+  double max_longitudinal_error_m{5.0};
+  double max_lateral_error_m{3.0};
   double max_yaw_error_deg;
   // Leading segments of the previous trajectory searched for the closest point.
   int64_t max_search_segment_count;
