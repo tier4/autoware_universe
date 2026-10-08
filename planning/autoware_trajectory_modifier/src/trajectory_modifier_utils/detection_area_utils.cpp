@@ -27,7 +27,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace
+namespace autoware::trajectory_modifier::utils::detection_area
 {
 std::pair<lanelet::BasicPoint2d, double> get_smallest_enclosing_circle(
   const lanelet::ConstPolygon2d & polygon)
@@ -65,8 +65,9 @@ std::pair<lanelet::BasicPoint2d, double> get_smallest_enclosing_circle(
         const double c = (point_k - point_i).squaredNorm();
         const double twice_area = cross(point_i - point_k, point_j - point_k);
         if (std::abs(twice_area) < epsilon) continue;
+        // Each squared side length weights its opposite vertex.
         center =
-          (a * (b + c - a) * point_i + b * (c + a - b) * point_j + c * (a + b - c) * point_k) /
+          (a * (b + c - a) * point_k + b * (c + a - b) * point_i + c * (a + b - c) * point_j) /
           (4.0 * twice_area * twice_area);
         radius_squared = (center - point_i).squaredNorm() + epsilon;
       }
@@ -74,10 +75,7 @@ std::pair<lanelet::BasicPoint2d, double> get_smallest_enclosing_circle(
   }
   return {center, radius_squared};
 }
-}  // namespace
 
-namespace autoware::trajectory_modifier::utils::detection_area
-{
 std::optional<double> get_stop_point(
   const Trajectory & path, const lanelet::ConstLineString3d & stop_line, const double margin,
   const double vehicle_offset)

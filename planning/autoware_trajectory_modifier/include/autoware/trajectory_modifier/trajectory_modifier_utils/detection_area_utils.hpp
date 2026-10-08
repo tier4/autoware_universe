@@ -39,6 +39,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_modifier::utils::detection_area
@@ -63,6 +64,10 @@ struct TargetFiltering
   bool over_drivable{false};
   bool under_drivable{false};
 };
+
+// Returns the center and squared radius of a circle enclosing every polygon vertex.
+std::pair<lanelet::BasicPoint2d, double> get_smallest_enclosing_circle(
+  const lanelet::ConstPolygon2d & polygon);
 
 std::optional<double> get_stop_point(
   const Trajectory & path, const lanelet::ConstLineString3d & stop_line, double margin,

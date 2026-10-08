@@ -62,6 +62,18 @@ lanelet::ConstPolygons3d make_area()
   area.push_back(lanelet::Point3d(lanelet::utils::getId(), 3.0, -1.0, 0.0));
   return {area};
 }
+
+lanelet::Polygon3d make_irregular_area()
+{
+  // The enclosing circle is supported by (2, 4), (5, 1), and (1, 1).
+  lanelet::Polygon3d area;
+  area.push_back(lanelet::Point3d(lanelet::utils::getId(), 2.0, 4.0, 0.0));
+  area.push_back(lanelet::Point3d(lanelet::utils::getId(), 4.0, 3.0, 0.0));
+  area.push_back(lanelet::Point3d(lanelet::utils::getId(), 5.0, 1.0, 0.0));
+  area.push_back(lanelet::Point3d(lanelet::utils::getId(), 1.0, 1.0, 0.0));
+  area.push_back(lanelet::Point3d(lanelet::utils::getId(), 1.0, 2.0, 0.0));
+  return area;
+}
 }  // namespace
 
 TEST(DetectionAreaUtils, StopPointUsesIntersectionMarginAndVehicleOffset)
@@ -93,6 +105,38 @@ TEST(DetectionAreaUtils, PointCloudDetectionUsesPolygonInterior)
     autoware::trajectory_modifier::utils::detection_area::get_obstacle_points(make_area(), points);
   ASSERT_EQ(obstacles.size(), 1U);
   EXPECT_DOUBLE_EQ(obstacles.front().x, 2.0);
+}
+
+TEST(DetectionAreaUtils, EnclosingCircleContainsAllIrregularPolygonVertices)
+{
+  const auto polygon = lanelet::utils::to2D(make_irregular_area());
+  const auto [center, radius_squared] =
+    autoware::trajectory_modifier::utils::detection_area::get_smallest_enclosing_circle(polygon);
+
+  for (const auto & vertex : polygon) {
+    EXPECT_LE((center - vertex.basicPoint2d()).squaredNorm(), radius_squared)
+      << "Vertex (" << vertex.x() << ", " << vertex.y() << ") is outside the enclosing circle";
+  }
+}
+
+TEST(DetectionAreaUtils, PointCloudDetectionIncludesInteriorNearEveryIrregularPolygonVertex)
+{
+  const auto area = make_irregular_area();
+  const lanelet::BasicPoint2d centroid{2.6, 2.2};
+  for (const auto & vertex : area) {
+    // Move inside the polygon because points on its boundary are not considered within it.
+    const lanelet::BasicPoint2d vertex_position{vertex.x(), vertex.y()};
+    const lanelet::BasicPoint2d interior = 0.99 * vertex_position + 0.01 * centroid;
+    autoware::trajectory_modifier::utils::detection_area::PointCloud points;
+    points.emplace_back(static_cast<float>(interior.x()), static_cast<float>(interior.y()), 0.0F);
+    const auto obstacles =
+      autoware::trajectory_modifier::utils::detection_area::get_obstacle_points({area}, points);
+
+    ASSERT_EQ(obstacles.size(), 1U)
+      << "Interior point near vertex (" << vertex.x() << ", " << vertex.y() << ") was missed";
+    EXPECT_DOUBLE_EQ(obstacles.front().x, points.front().x);
+    EXPECT_DOUBLE_EQ(obstacles.front().y, points.front().y);
+  }
 }
 
 TEST(DetectionAreaUtils, TargetFilteringUsesHighestProbabilityClassification)
