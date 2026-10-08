@@ -110,6 +110,13 @@ void TrajectoryOptimizer::accept(const size_t batch_index, const OptimizationRes
   }
 }
 
+void TrajectoryOptimizer::drop_previous_solutions()
+{
+  for (auto & previous : previous_solutions_) {
+    previous.reset();
+  }
+}
+
 OptimizationResult TrajectoryOptimizer::optimize(
   const Trajectory & reference, const Odometry & ego_odometry,
   const double current_steering_angle_rad, const size_t batch_index) const

@@ -367,6 +367,17 @@ Odometry MLPlannerCore::build_frame_ego()
       measured.pose.pose, polyline, prefix_count, params_.virtual_pose);
   }
 
+  if (virtual_pose_result_->reset) {
+    // The frame pose jumps onto the vehicle: a past of earlier virtual poses would end in that
+    // jump, which the model reads as a sudden lateral motion. Restart the past from the measured
+    // poses, which end at the new frame pose.
+    virtual_history_.clear();
+    for (const auto & msg : ego_history_.msgs()) {
+      virtual_history_.push_back(msg);
+    }
+    return measured;
+  }
+
   Odometry frame = measured;
   frame.pose.pose = virtual_pose_result_->pose;
   virtual_history_.push_back(frame);
@@ -564,6 +575,11 @@ PlannerOutput MLPlannerCore::create_planner_output(
   if (trajectory_optimizer_) {
     trajectory_optimizer_->set_goal(
       route_ptr_ ? std::make_optional(route_ptr_->goal_pose) : std::nullopt, kinematic_state);
+    // A reset moved the planning start onto the vehicle: the previous plan started at the old
+    // virtual pose, so neither its warm start nor its temporal pull may shape this one.
+    if (params_.virtual_pose.enable && virtual_pose_result_ && virtual_pose_result_->reset) {
+      trajectory_optimizer_->drop_previous_solutions();
+    }
   }
 #endif
 
