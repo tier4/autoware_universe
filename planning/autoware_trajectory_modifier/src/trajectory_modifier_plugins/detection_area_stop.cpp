@@ -547,8 +547,9 @@ std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::evaluate_modul
 
   const double current_velocity = cycle_odometry_->twist.twist.linear.x;
   const double braking_distance =
-    std::max(0.0, current_velocity) * params_.delay_response_time +
-    feasible_stop_distance_by_max_acceleration(current_velocity, params_.max_deceleration);
+    std::max(0.0, current_velocity) * stopping_params_.delay_response_time +
+    feasible_stop_distance_by_max_acceleration(
+      current_velocity, stopping_params_.maximum_deceleration);
   const bool has_enough_distance = is_stopped || distance_to_stop > braking_distance;
 
   if (!has_enough_distance) {
@@ -562,7 +563,8 @@ std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::evaluate_modul
     if (params_.unstoppable_policy == "stop_after_stopline") {
       decision.policy = "stop_after_stopline";
       const double offset = std::max(
-        feasible_stop_distance_by_max_acceleration(current_velocity, params_.max_deceleration) -
+        feasible_stop_distance_by_max_acceleration(
+          current_velocity, stopping_params_.maximum_deceleration) -
           distance_to_stop,
         0.0);
       target_stop_s = stop_point_s + offset;

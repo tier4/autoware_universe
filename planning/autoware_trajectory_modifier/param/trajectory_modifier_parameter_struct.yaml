@@ -1695,20 +1695,6 @@ trajectory_modifier_params:
       default_value: stop_after_stopline
       description: Policy when the vehicle cannot stop before the stop line
       read_only: false
-    max_deceleration:
-      type: double
-      default_value: 1.0
-      description: Maximum deceleration used for unstoppable detection area handling [m/s^2]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
-    delay_response_time:
-      type: double
-      default_value: 0.5
-      description: Response delay used for braking distance estimation [s]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
     state_clear_time:
       type: double
       default_value: 2.0

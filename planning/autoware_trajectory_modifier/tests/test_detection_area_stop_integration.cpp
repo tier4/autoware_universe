@@ -253,17 +253,15 @@ protected:
     params_.use_detection_area_stop = true;
     params_.trajectory_time_step = 0.1;
     params_.stopping_constraints.nominal_deceleration = 1.0;
-    params_.stopping_constraints.maximum_deceleration = 4.0;
+    // Keep the nominal 5 m/s fixture stoppable with the 0.5 s response delay.
+    // Unstoppable-policy tests override the shared deceleration below.
+    params_.stopping_constraints.maximum_deceleration = 5.0;
+    params_.stopping_constraints.delay_response_time = 0.5;
     params_.stopping_constraints.jerk_limit = 3.0;
     params_.stopping_constraints.arrived_distance_threshold = 0.5;
     params_.detection_area_stop.target_filtering.pointcloud = false;
     params_.detection_area_stop.target_filtering.car = true;
     params_.detection_area_stop.stop_margin = 0.0;
-    // 5 m/s at the 10 m stop-line fixture is stoppable with BVP's delay (0.5 s) only if
-    // max_deceleration is above ~3.4 m/s^2. Keep the BVP delay, raise deceleration so nominal
-    // tests insert at the stop line; unstoppable tests override this back down.
-    params_.detection_area_stop.max_deceleration = 5.0;
-    params_.detection_area_stop.delay_response_time = 0.5;
     context_ = std::make_shared<TrajectoryModifierContext>(node_.get());
     plugin_ = std::make_unique<DetectionAreaStop>();
     plugin_->initialize("test_detection_area_stop", node_.get(), time_keeper_, context_, params_);
@@ -527,11 +525,33 @@ TEST_F(DetectionAreaStopIntegrationTest, DebugPublishersAreAvailable)
   EXPECT_NO_THROW(plugin_->publish_debug_data("trajectory_0"));
 }
 
+TEST_F(DetectionAreaStopIntegrationTest, SharedResponseDelayUpdateChangesStoppingFeasibility)
+{
+  params_.detection_area_stop.unstoppable_policy = "go";
+  params_.stopping_constraints.delay_response_time = 2.0;
+  plugin_->update_params(params_);
+  const auto map = make_map();
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  auto input = make_input(map, route, make_car_in_area());
+  auto trajectory = make_trajectory();
+  const auto original = trajectory;
+  input.candidate_index = 0U;
+  EXPECT_FALSE(process_candidate(trajectory, input));
+  EXPECT_EQ(trajectory, original);
+
+  params_.stopping_constraints.delay_response_time = 0.0;
+  plugin_->update_params(params_);
+  input.candidate_index = 0U;
+  trajectory = make_trajectory();
+  ASSERT_TRUE(process_candidate(trajectory, input));
+  expect_stop_before_stop_line(trajectory);
+}
+
 TEST_F(DetectionAreaStopIntegrationTest, UnstoppableGoPolicyDoesNotInsertStop)
 {
   params_.detection_area_stop.unstoppable_policy = "go";
-  params_.detection_area_stop.max_deceleration = 0.1;
-  params_.detection_area_stop.delay_response_time = 0.5;
+  params_.stopping_constraints.maximum_deceleration = 0.1;
+  params_.stopping_constraints.delay_response_time = 0.5;
   plugin_->update_params(params_);
   const auto map = make_map();
   const auto route = make_route(map->laneletLayer.begin()->id());
@@ -546,8 +566,8 @@ TEST_F(DetectionAreaStopIntegrationTest, UnstoppableGoPolicyDoesNotInsertStop)
 TEST_F(DetectionAreaStopIntegrationTest, UnstoppableForceStopStillInsertsStop)
 {
   params_.detection_area_stop.unstoppable_policy = "force_stop";
-  params_.detection_area_stop.max_deceleration = 0.1;
-  params_.detection_area_stop.delay_response_time = 0.5;
+  params_.stopping_constraints.maximum_deceleration = 0.1;
+  params_.stopping_constraints.delay_response_time = 0.5;
   plugin_->update_params(params_);
   const auto map = make_map();
   const auto route = make_route(map->laneletLayer.begin()->id());
@@ -561,8 +581,8 @@ TEST_F(DetectionAreaStopIntegrationTest, UnstoppableForceStopStillInsertsStop)
 TEST_F(DetectionAreaStopIntegrationTest, UnstoppableStopAfterStoplineMovesStopForward)
 {
   params_.detection_area_stop.unstoppable_policy = "stop_after_stopline";
-  params_.detection_area_stop.max_deceleration = 0.1;
-  params_.detection_area_stop.delay_response_time = 0.5;
+  params_.stopping_constraints.maximum_deceleration = 0.1;
+  params_.stopping_constraints.delay_response_time = 0.5;
   plugin_->update_params(params_);
   const auto map = make_map();
   const auto route = make_route(map->laneletLayer.begin()->id());
@@ -824,7 +844,7 @@ TEST_F(DetectionAreaStopIntegrationTest, ReleaseMustNotCancelUnrelatedZeroTrajec
 TEST_F(DetectionAreaStopIntegrationTest, ForwardOffsetMustClearAfterObstacleEpisode)
 {
   params_.detection_area_stop.unstoppable_policy = "stop_after_stopline";
-  params_.detection_area_stop.max_deceleration = 1.0;
+  params_.stopping_constraints.maximum_deceleration = 1.0;
   params_.detection_area_stop.state_clear_time = 0.01;
   plugin_->update_params(params_);
   const auto map = make_map();
@@ -854,7 +874,7 @@ TEST_F(DetectionAreaStopIntegrationTest, CandidatesAreIndependentForEveryPolicy)
   auto input = make_input(map, make_route(map->laneletLayer.begin()->id()), make_car_in_area());
   for (const auto & policy : {"go", "force_stop", "stop_after_stopline"}) {
     params_.detection_area_stop.unstoppable_policy = policy;
-    params_.detection_area_stop.max_deceleration = 2.0;
+    params_.stopping_constraints.maximum_deceleration = 2.0;
     plugin_->update_params(params_);
     const auto straight = make_trajectory();
     auto curved = straight;
@@ -951,7 +971,7 @@ TEST_F(DetectionAreaStopIntegrationTest, ClearedObstacleAllowsNewMovingCandidate
 TEST_F(DetectionAreaStopIntegrationTest, StopAfterLineContinuesWhenLineIsBehindCandidate)
 {
   params_.detection_area_stop.unstoppable_policy = "stop_after_stopline";
-  params_.detection_area_stop.max_deceleration = 1.0;
+  params_.stopping_constraints.maximum_deceleration = 1.0;
   plugin_->update_params(params_);
   const auto map = make_map();
   auto input = make_input(map, make_route(map->laneletLayer.begin()->id()), make_car_in_area());

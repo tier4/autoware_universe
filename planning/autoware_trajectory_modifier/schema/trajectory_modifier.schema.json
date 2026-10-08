@@ -1747,16 +1747,6 @@
               ],
               "default": "stop_after_stopline"
             },
-            "max_deceleration": {
-              "type": "number",
-              "default": 1.0,
-              "minimum": 0.0
-            },
-            "delay_response_time": {
-              "type": "number",
-              "default": 0.5,
-              "minimum": 0.0
-            },
             "state_clear_time": {
               "type": "number",
               "default": 2.0,
