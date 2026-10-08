@@ -25,6 +25,10 @@
 #include "autoware/ml_planner/inference/onnxruntime_inference.hpp"
 #endif
 
+#include <autoware_utils/math/normalization.hpp>
+#include <autoware_utils/math/unit_conversion.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
+
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/generator_info.hpp>
 
@@ -262,6 +266,10 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   const LaneletRoute::ConstSharedPtr & route_ptr)
 {
   if (route_ptr) {
+    if (route_ptr_ && route_ptr->uuid != route_ptr_->uuid) {
+      // A new route: the previous plan and the virtual pose taken from it belong to the old one.
+      clear_virtual_pose_state();
+    }
     route_ptr_ = route_ptr;
   }
   for (const auto & msg : ego_kinematic_states) {
@@ -309,15 +317,146 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
     return tl::unexpected(std::move(error));
   }
 
+  const std::pair<bool, std::string> virtual_pose_mode{
+    params_.virtual_pose.enable, params_.virtual_pose.reference};
+  if (last_virtual_pose_mode_ && *last_virtual_pose_mode_ != virtual_pose_mode) {
+    // Turned on or off, or another reference: the planning start and the previous trajectory it is
+    // taken from change meaning, so start over from the vehicle.
+    clear_virtual_pose_state();
+  }
+  last_virtual_pose_mode_ = virtual_pose_mode;
+
+  if (params_.virtual_pose.enable) {
+    frame_ego_ = build_frame_ego();
+  } else {
+    frame_ego_ = ego_history_.back();
+    virtual_pose_result_.reset();
+    virtual_history_.clear();
+  }
+  const auto & frame_ego_history =
+    params_.virtual_pose.enable ? virtual_history_.msgs() : ego_history_.msgs();
+
   return preprocess::FrameInputs{
     frame_time(),
-    preprocess::MessageView<nav_msgs::msg::Odometry>{ego_history_.msgs()},
+    preprocess::MessageView<nav_msgs::msg::Odometry>{frame_ego_history},
     preprocess::MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport>{
       turn_indicators_history_.msgs()},
     preprocess::MessageView<autoware_perception_msgs::msg::TrackedObjects>{objects_history_.msgs()},
     preprocess::MessageView<autoware_perception_msgs::msg::TrafficLightGroupArray>{
       traffic_signals_history_.msgs()},
     *route_ptr_};
+}
+
+void MLPlannerCore::clear_virtual_pose_state()
+{
+  virtual_history_.clear();
+  virtual_pose_result_.reset();
+  previous_frame_pose_.reset();
+  previous_ego_prediction_.clear();
+  hold_anchor_.reset();
+  restart_optimizer_ = true;
+}
+
+Odometry MLPlannerCore::build_frame_ego()
+{
+  const Odometry & measured = ego_history_.back();
+  if (virtual_history_.empty()) {
+    for (const auto & msg : ego_history_.msgs()) {
+      virtual_history_.push_back(msg);
+    }
+  }
+
+  // Standstill: while the vehicle stays where it stopped, keep the frame pose. Snapping again onto
+  // each new plan would only move it with the plan's jitter and the localization drift. The hold
+  // ends once the vehicle has moved or turned beyond the tolerances, e.g. on take-off.
+  // The reset limits still apply to the held pose.
+  const auto & vp = params_.virtual_pose;
+  if (
+    vp.hold_at_standstill && hold_anchor_ && virtual_pose_result_ && !virtual_history_.empty() &&
+    utils::hold_continues(measured.pose.pose, *hold_anchor_, vp)) {
+    const geometry_msgs::msg::Pose held = virtual_history_.back().pose.pose;
+    const auto offset = utils::pose_offset(
+      measured.pose.pose, Eigen::Vector2d(held.position.x, held.position.y),
+      autoware_utils_geometry::get_rpy(held.orientation).z);
+    if (!utils::exceeds_reset_limits(offset, vp)) {
+      Odometry frame = measured;
+      frame.pose.pose = held;
+      virtual_pose_result_->pose = held;
+      virtual_pose_result_->reset = false;
+      virtual_pose_result_->position_error_m = offset.position_m;
+      virtual_pose_result_->yaw_error_deg = offset.yaw_deg;
+      virtual_history_.push_or_replace_back(frame);
+      return frame;
+    }
+  }
+  hold_anchor_.reset();
+  if (vp.hold_at_standstill && std::abs(measured.twist.twist.linear.x) < vp.hold_max_speed_mps) {
+    hold_anchor_ = measured.pose.pose;
+  }
+
+  virtual_pose_result_ = utils::VirtualPoseResult{measured.pose.pose, false, false, 0.0, 0.0};
+  const bool has_previous_trajectory = previous_frame_pose_ && !previous_ego_prediction_.empty();
+  if (has_previous_trajectory) {
+    // Earlier frame poses, oldest first, at least 5 cm apart, excluding the previous frame pose
+    // itself (the newest history entry), then the previous frame pose and its prediction.
+    constexpr double MIN_PREFIX_SPACING_M = 0.05;
+    std::vector<Eigen::Matrix4d> newest_first;
+    Eigen::Vector2d successor = previous_frame_pose_->block<2, 1>(0, 3);
+    const auto & past = virtual_history_.msgs();
+    for (auto it = past.rbegin(); it != past.rend() && static_cast<int64_t>(newest_first.size()) <
+                                                         params_.virtual_pose.history_prefix_count;
+         ++it) {
+      const Eigen::Matrix4d pose = utils::pose_to_matrix4d(it->pose.pose);
+      if ((pose.block<2, 1>(0, 3) - successor).norm() < MIN_PREFIX_SPACING_M) {
+        continue;
+      }
+      newest_first.push_back(pose);
+      successor = pose.block<2, 1>(0, 3);
+    }
+    std::vector<Eigen::Matrix4d> polyline(newest_first.rbegin(), newest_first.rend());
+    const auto prefix_count = static_cast<int64_t>(polyline.size());
+    polyline.push_back(*previous_frame_pose_);
+    polyline.insert(
+      polyline.end(), previous_ego_prediction_.begin(), previous_ego_prediction_.end());
+
+    virtual_pose_result_ =
+      utils::compute_virtual_pose(measured.pose.pose, polyline, prefix_count, params_.virtual_pose);
+  }
+
+  // The frame pose also falls back onto the vehicle when no closest point is found on the previous
+  // trajectory (e.g. a degenerate one); that is a jump like a reset when the last frame pose was
+  // elsewhere.
+  bool back_on_vehicle = false;
+  if (!virtual_pose_result_->snapped && has_previous_trajectory && !virtual_history_.empty()) {
+    constexpr double SAME_POSITION_M = 0.01;
+    constexpr double SAME_YAW_DEG = 0.1;
+    const auto & last = virtual_history_.back().pose.pose;
+    const auto offset = utils::pose_offset(
+      measured.pose.pose, Eigen::Vector2d(last.position.x, last.position.y),
+      autoware_utils_geometry::get_rpy(last.orientation).z);
+    back_on_vehicle = offset.position_m > SAME_POSITION_M || offset.yaw_deg > SAME_YAW_DEG;
+  }
+  if (virtual_pose_result_->reset || back_on_vehicle) {
+    // The frame pose jumps onto the vehicle: a past of earlier virtual poses would end in that
+    // jump, which the model reads as a sudden lateral motion. Restart the past from the measured
+    // poses, which end at the new frame pose, and the optimizer from the vehicle.
+    virtual_history_.clear();
+    for (const auto & msg : ego_history_.msgs()) {
+      virtual_history_.push_back(msg);
+    }
+    // The trajectory just left must not be snapped onto again if this cycle's planning fails.
+    previous_frame_pose_.reset();
+    previous_ego_prediction_.clear();
+    restart_optimizer_ = true;
+    return measured;
+  }
+
+  Odometry frame = measured;
+  frame.pose.pose = virtual_pose_result_->pose;
+  // Replaces the measured entry seeded with the same stamp, and a frame pose of a cycle without a
+  // new odometry message, so the past always ends at the frame pose the output is decoded in.
+  virtual_history_.push_or_replace_back(frame);
+  return frame;
 }
 
 preprocess::TensorMapResult MLPlannerCore::create_input_data(
@@ -396,8 +535,22 @@ RefinedCandidate MLPlannerCore::refine_candidate(
     candidate.avoidance_debug.unresolved_points = static_cast<int>(check.num_unresolved_points);
     shift_reference(
       candidate.reference, raw_trajectory, raw_trajectory, check.trajectory, max_shift_m);
-    candidate.trajectory = candidate.reference;
   }
+
+  // Post-processing for the path without the optimizer, from the planning start pose so the
+  // published trajectory and a virtual pose taken from it never return onto the vehicle.
+  if (params_.path_smoothing.enable) {
+    postprocess::smooth_initial_path(
+      candidate.reference, ego_pose, kinematic_state.twist.twist.linear.x, params_.path_smoothing);
+    postprocess::smooth_path_tail(candidate.reference, params_.path_smoothing);
+  }
+  if (params_.velocity_smoothing.enable) {
+    postprocess::smooth_initial_velocity(candidate.reference, params_.velocity_smoothing);
+  }
+  if (params_.curve_speed_limit.enable) {
+    postprocess::limit_curve_speed(candidate.reference, params_.curve_speed_limit);
+  }
+  candidate.trajectory = candidate.reference;
 
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (!trajectory_optimizer_) {
@@ -461,9 +614,17 @@ PlannerOutput MLPlannerCore::create_planner_output(
   const InferenceOutput & inference_output, const rclcpp::Time & timestamp,
   const UUID & generator_uuid, const double current_steering_angle_rad)
 {
-  // Derive the frame state from the raw message buffers
+  // The model output is in the frame it was given (frame_ego_, the virtual pose when enabled).
+  // Everything downstream (border avoidance, smoothing, optimization) starts from that same
+  // pose: started at the measured pose, the optimized trajectory (and a virtual pose taken from
+  // it) would return onto the vehicle every cycle. Speed and steering stay measured so the start
+  // is physically consistent.
   const Odometry & kinematic_state = ego_history_.back();
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(kinematic_state.pose.pose);
+  Odometry planning_start = kinematic_state;
+  if (params_.virtual_pose.enable) {
+    planning_start.pose.pose = frame_ego_.pose.pose;
+  }
+  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(frame_ego_.pose.pose);
 
   const auto & raw_predictions = inference_output.trajectory;
   const auto & turn_indicator_logits = inference_output.turn_indicator_logits;
@@ -480,22 +641,32 @@ PlannerOutput MLPlannerCore::create_planner_output(
 
   const auto agent_poses =
     postprocess::parse_predictions(denormalized_predictions, ego_to_map_transform);
+  if (params_.virtual_pose.reference == "raw") {
+    previous_frame_pose_ = ego_to_map_transform;
+    previous_ego_prediction_ = agent_poses.front().front();
+  }
 
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (trajectory_optimizer_) {
     trajectory_optimizer_->set_goal(
       route_ptr_ ? std::make_optional(route_ptr_->goal_pose) : std::nullopt, kinematic_state);
+    // The planning start jumped (see restart_optimizer_): the previous plan started elsewhere, so
+    // neither its warm start nor its temporal pull may shape this one.
+    if (restart_optimizer_) {
+      trajectory_optimizer_->drop_previous_solutions();
+      restart_optimizer_ = false;
+    }
   }
 #endif
 
   PlannerOutput output;
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
-    auto trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, kinematic_state.pose.pose.position, i);
+    auto trajectory =
+      postprocess::create_ego_trajectory(agent_poses, timestamp, frame_ego_.pose.pose.position, i);
 
     auto refined = refine_candidate(
-      trajectory, static_cast<size_t>(i), kinematic_state, current_steering_angle_rad);
+      trajectory, static_cast<size_t>(i), planning_start, current_steering_angle_rad);
     if (i == 0) {
       // Keep the untouched model output for the debug topics.
       output.raw_trajectory = trajectory;
@@ -573,6 +744,19 @@ PlannerOutput MLPlannerCore::create_planner_output(
   output.predicted_objects =
     postprocess::create_predicted_objects(agent_poses, selected_agents_, timestamp, batch_idx);
 
+  // With the optimized reference, the next virtual pose is taken from the trajectory that is
+  // actually published. A cycle whose optimization failed publishes none and keeps the previous
+  // one.
+  if (
+    params_.virtual_pose.reference == "optimized" && output.trajectory &&
+    output.trajectory->points.size() >= 2) {
+    const auto & points = output.trajectory->points;
+    previous_frame_pose_ = utils::pose_to_matrix4d(points.front().pose);
+    previous_ego_prediction_.clear();
+    for (size_t k = 1; k < points.size(); ++k) {
+      previous_ego_prediction_.push_back(utils::pose_to_matrix4d(points[k].pose));
+    }
+  }
   return output;
 }
 

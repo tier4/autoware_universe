@@ -39,7 +39,9 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -70,6 +72,8 @@ struct MLPlannerDebugParams
   bool publish_debug_route{true};
   bool publish_debug_map{false};
   bool publish_debug_linestrings{true};
+  // Mesh drawn at the virtual pose; empty draws a box of the vehicle size.
+  std::string virtual_pose_vehicle_mesh;
 };
 
 struct MLPlannerPlanningFactorParams
@@ -217,6 +221,13 @@ private:
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_avoidance_shifted_count_{nullptr};
   // Stop point fixing debug topic (published when the fixing is enabled)
   rclcpp::Publisher<Trajectory>::SharedPtr pub_pre_stop_fixing_trajectory_{nullptr};
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_virtual_pose_{nullptr};
+  // [snapped, reset, position_error_m, yaw_error_deg] of the current frame.
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_virtual_pose_status_{nullptr};
+  // Vehicle body at the virtual pose (red, translucent): where the planner thinks the vehicle is.
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_virtual_pose_vehicle_{nullptr};
+  // The body marker is shown and must be deleted once there is no virtual pose (feature turned off).
+  bool virtual_pose_vehicle_shown_{false};
 
   // Start service: while enabled, ego velocity in the model input is overwritten (1 m/s).
   // Cleared automatically once the measured ego velocity reaches that value.
