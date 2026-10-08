@@ -458,11 +458,6 @@ bool DetectionAreaStop::modify_trajectory(
     module.candidate_policy = decision->policy;
   }
   if (!decision) {
-    if (should_hold_stop_at_ego(path)) {
-      last_candidate_modified_ = hold_stop_at_ego(traj_points, input);
-      publish_debug_string();
-      return last_candidate_modified_;
-    }
     publish_debug_string();
     return false;
   }
@@ -653,53 +648,6 @@ bool DetectionAreaStop::set_stop_point(
     "[TM DetectionAreaStop] Inserted stop for DetectionArea %ld (%s) at arc length %f m",
     module.regulatory_element->id(), module.detection_source.c_str(),
     decision.stop_point_arc_length);
-  return true;
-}
-
-bool DetectionAreaStop::candidate_relates_to_active_stop(
-  const Trajectory & path, const Module & module) const
-{
-  const auto self_s = autoware::experimental::trajectory::find_first_nearest_index(
-    path, cycle_odometry_->pose.pose, ego_nearest_distance, ego_nearest_yaw_deviation);
-  if (!self_s) return false;
-
-  const auto stop_line = module.regulatory_element->stopLine();
-  const auto stop_point_s = get_stop_point(
-    path, stop_line, params_.stop_margin, context_->vehicle_info.max_longitudinal_offset_m);
-  if (!stop_point_s) return false;
-
-  if (params_.use_dead_line) {
-    const auto dead_line_s = get_stop_point(
-      path, stop_line, -params_.dead_line_margin, context_->vehicle_info.max_longitudinal_offset_m);
-    if (dead_line_s && *dead_line_s - *self_s < 0.0) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool DetectionAreaStop::should_hold_stop_at_ego(const Trajectory & path) const
-{
-  const bool is_stopped = !utils::is_ego_vehicle_moving(
-    cycle_odometry_->twist.twist, stopping_params_.ego_stopped_vel_th);
-  if (!is_stopped) return false;
-
-  for (const auto & module : modules_) {
-    if (module.state != State::STOP) continue;
-
-    if (!candidate_relates_to_active_stop(path, module)) {
-      continue;
-    }
-    return true;
-  }
-  return false;
-}
-
-bool DetectionAreaStop::hold_stop_at_ego(
-  TrajectoryPoints & traj_points, const TrajectoryModifierData & /*input*/)
-{
-  utils::replace_trajectory_with_stop_point(
-    traj_points, cycle_odometry_->pose.pose, trajectory_time_step_);
   return true;
 }
 
