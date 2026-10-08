@@ -420,34 +420,37 @@ bool DetectionAreaStop::modify_trajectory(
     return false;
   }
 
+  const auto path_result = Trajectory::Builder{}.build(traj_points);
+  if (!path_result) {
+    publish_debug_string();
+    return false;
+  }
+  const auto & path = *path_result;
+
   // Candidate debug is separate from the immutable physical/observation snapshot.
-  const auto debug_path = Trajectory::Builder{}.build(traj_points);
-  if (debug_path) {
-    const auto ego_s = autoware::experimental::trajectory::find_first_nearest_index(
-      *debug_path, cycle_odometry_->pose.pose, ego_nearest_distance, ego_nearest_yaw_deviation);
-    for (auto & module : modules_) {
-      const auto stop_s = get_stop_point(
-        *debug_path, module.regulatory_element->stopLine(), params_.stop_margin,
+  const auto ego_s = autoware::experimental::trajectory::find_first_nearest_index(
+    path, cycle_odometry_->pose.pose, ego_nearest_distance, ego_nearest_yaw_deviation);
+  for (auto & module : modules_) {
+    const auto stop_s = get_stop_point(
+      path, module.regulatory_element->stopLine(), params_.stop_margin,
+      context_->vehicle_info.max_longitudinal_offset_m);
+    if (stop_s) {
+      module.stop_point_arc_length = *stop_s;
+      module.stop_pose = path.compute(std::clamp(*stop_s, 0.0, path.length())).pose;
+    }
+    if (params_.use_dead_line) {
+      const auto deadline = get_stop_point(
+        path, module.regulatory_element->stopLine(), -params_.dead_line_margin,
         context_->vehicle_info.max_longitudinal_offset_m);
-      if (stop_s) {
-        module.stop_point_arc_length = *stop_s;
-        module.stop_pose = debug_path->compute(std::clamp(*stop_s, 0.0, debug_path->length())).pose;
-      }
-      if (params_.use_dead_line) {
-        const auto deadline = get_stop_point(
-          *debug_path, module.regulatory_element->stopLine(), -params_.dead_line_margin,
-          context_->vehicle_info.max_longitudinal_offset_m);
-        if (deadline) {
-          module.dead_line_pose =
-            debug_path->compute(std::clamp(*deadline, 0.0, debug_path->length())).pose;
-          module.dead_line_passed = ego_s && *deadline < *ego_s;
-        } else {
-          module.dead_line_passed = module.physical_deadline_passed;
-        }
+      if (deadline) {
+        module.dead_line_pose = path.compute(std::clamp(*deadline, 0.0, path.length())).pose;
+        module.dead_line_passed = ego_s && *deadline < *ego_s;
+      } else {
+        module.dead_line_passed = module.physical_deadline_passed;
       }
     }
   }
-  auto decision = find_stop_decision(traj_points, input);
+  auto decision = find_stop_decision(path, traj_points);
   if (decision) {
     auto & module = modules_.at(decision->module_index);
     module.stop_pose = decision->stop_pose;
@@ -455,7 +458,7 @@ bool DetectionAreaStop::modify_trajectory(
     module.candidate_policy = decision->policy;
   }
   if (!decision) {
-    if (should_hold_stop_at_ego(traj_points, input)) {
+    if (should_hold_stop_at_ego(path)) {
       last_candidate_modified_ = hold_stop_at_ego(traj_points, input);
       publish_debug_string();
       return last_candidate_modified_;
@@ -470,11 +473,11 @@ bool DetectionAreaStop::modify_trajectory(
 }
 
 std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::find_stop_decision(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input) const
+  const Trajectory & path, const TrajectoryPoints & traj_points) const
 {
   std::optional<StopDecision> nearest;
   for (const auto & module : modules_) {
-    auto decision = evaluate_module(module, traj_points, input);
+    auto decision = evaluate_module(module, path, traj_points);
     if (!decision) continue;
     if (!nearest || decision->stop_point_arc_length < nearest->stop_point_arc_length) {
       nearest = std::move(decision);
@@ -484,15 +487,8 @@ std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::find_stop_deci
 }
 
 std::optional<DetectionAreaStop::StopDecision> DetectionAreaStop::evaluate_module(
-  const Module & module, const TrajectoryPoints & traj_points,
-  const TrajectoryModifierData & /*input*/) const
+  const Module & module, const Trajectory & path, const TrajectoryPoints & traj_points) const
 {
-  const auto path_result = Trajectory::Builder{}.build(traj_points);
-  if (!path_result) {
-    return std::nullopt;
-  }
-  const auto & path = *path_result;
-
   const auto self_s = autoware::experimental::trajectory::find_first_nearest_index(
     path, cycle_odometry_->pose.pose, ego_nearest_distance, ego_nearest_yaw_deviation);
   if (!self_s) {
@@ -661,13 +657,8 @@ bool DetectionAreaStop::set_stop_point(
 }
 
 bool DetectionAreaStop::candidate_relates_to_active_stop(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & /*input*/,
-  const Module & module) const
+  const Trajectory & path, const Module & module) const
 {
-  const auto path_result = Trajectory::Builder{}.build(traj_points);
-  if (!path_result) return false;
-  const auto & path = *path_result;
-
   const auto self_s = autoware::experimental::trajectory::find_first_nearest_index(
     path, cycle_odometry_->pose.pose, ego_nearest_distance, ego_nearest_yaw_deviation);
   if (!self_s) return false;
@@ -687,8 +678,7 @@ bool DetectionAreaStop::candidate_relates_to_active_stop(
   return true;
 }
 
-bool DetectionAreaStop::should_hold_stop_at_ego(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input) const
+bool DetectionAreaStop::should_hold_stop_at_ego(const Trajectory & path) const
 {
   const bool is_stopped = !utils::is_ego_vehicle_moving(
     cycle_odometry_->twist.twist, stopping_params_.ego_stopped_vel_th);
@@ -697,7 +687,7 @@ bool DetectionAreaStop::should_hold_stop_at_ego(
   for (const auto & module : modules_) {
     if (module.state != State::STOP) continue;
 
-    if (!candidate_relates_to_active_stop(traj_points, input, module)) {
+    if (!candidate_relates_to_active_stop(path, module)) {
       continue;
     }
     return true;

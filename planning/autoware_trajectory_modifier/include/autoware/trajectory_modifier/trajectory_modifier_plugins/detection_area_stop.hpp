@@ -117,18 +117,15 @@ private:
 
   [[nodiscard]] bool check_inputs(const TrajectoryModifierData & input) const;
   std::optional<StopDecision> find_stop_decision(
-    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input) const;
+    const Trajectory & path, const TrajectoryPoints & traj_points) const;
   std::optional<StopDecision> evaluate_module(
-    const Module & module, const TrajectoryPoints & traj_points,
-    const TrajectoryModifierData & input) const;
+    const Module & module, const Trajectory & path, const TrajectoryPoints & traj_points) const;
   bool set_stop_point(
     TrajectoryPoints & traj_points, const TrajectoryModifierData & input, StopDecision & decision);
-  [[nodiscard]] bool should_hold_stop_at_ego(
-    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input) const;
+  [[nodiscard]] bool should_hold_stop_at_ego(const Trajectory & path) const;
   bool hold_stop_at_ego(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
   [[nodiscard]] bool candidate_relates_to_active_stop(
-    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input,
-    const Module & module) const;
+    const Trajectory & path, const Module & module) const;
 
   void reset_candidate_debug();
   void set_state(Module & module, State state);
