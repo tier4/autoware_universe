@@ -28,6 +28,7 @@
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
+    use_detection_area_stop: false
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
     use_model_planning_factor_id: true
@@ -189,7 +190,6 @@
       limit_velocity_from_map_debug_lanelet_ids: [0]
       limit_velocity_from_map_debug_max_velocities: [1000.0]
 
-    use_detection_area_stop: false
     detection_area:
       stop_margin: 0.0 # [m]
       target_filtering:
