@@ -14,21 +14,54 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/detection_area_utils.hpp"
 
-#include "autoware/trajectory_modifier/trajectory_modifier_utils/stop_line_geometry.hpp"
-
+#include <autoware/trajectory/utils/crossed.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 
+#include <boost/geometry/algorithms/intersection.hpp>
 #include <lanelet2_core/geometry/Point.h>
 #include <lanelet2_core/geometry/Polygon.h>
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace autoware::trajectory_modifier::utils::detection_area
 {
+namespace
+{
+// Extend only the checking geometry: a short base_link trajectory may still carry
+// the vehicle front over a line. Output trajectory geometry and velocities are untouched.
+std::vector<double> crossed_with_front_offset(
+  const Trajectory & path, const lanelet::ConstLineString3d & line, const double front_offset)
+{
+  auto collisions = autoware::experimental::trajectory::crossed(path, line);
+  if (front_offset <= 0.0 || line.size() < 2) return collisions;
+
+  const auto pose = path.compute(path.length()).pose;
+  const auto front = autoware_utils::calc_offset_pose(pose, front_offset, 0.0, 0.0);
+  const autoware_utils::LineString2d extension{
+    {pose.position.x, pose.position.y}, {front.position.x, front.position.y}};
+  autoware_utils::LineString2d stop_line;
+  for (const auto & p : line) stop_line.emplace_back(p.x(), p.y());
+  std::vector<autoware_utils::Point2d> intersections;
+  boost::geometry::intersection(extension, stop_line, intersections);
+  for (const auto & p : intersections) {
+    collisions.push_back(
+      path.length() + std::hypot(p.x() - pose.position.x, p.y() - pose.position.y));
+  }
+  std::sort(collisions.begin(), collisions.end());
+  collisions.erase(
+    std::unique(
+      collisions.begin(), collisions.end(),
+      [](const double a, const double b) { return std::abs(a - b) < 1e-6; }),
+    collisions.end());
+  return collisions;
+}
+}  // namespace
+
 std::pair<lanelet::BasicPoint2d, double> get_smallest_enclosing_circle(
   const lanelet::ConstPolygon2d & polygon)
 {
@@ -80,7 +113,7 @@ std::optional<double> get_stop_point(
   const Trajectory & path, const lanelet::ConstLineString3d & stop_line, const double margin,
   const double vehicle_offset)
 {
-  const auto collisions = utils::crossed_with_front_offset(path, stop_line, vehicle_offset);
+  const auto collisions = crossed_with_front_offset(path, stop_line, vehicle_offset);
   if (collisions.empty()) return std::nullopt;
   return collisions.front() - margin - vehicle_offset;
 }
