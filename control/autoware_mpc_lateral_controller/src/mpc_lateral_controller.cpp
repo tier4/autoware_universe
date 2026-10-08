@@ -383,11 +383,18 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   }
 
   if (!mpc_solved_status.result) {
-    debug_throttle("MPC is not solved, use stop control command");
     predicted_traj.points.clear();
-    // Not under control the vehicle steers by itself: follow the measured steering instead of
-    // holding the last command, which would be stale by the time control is enabled.
-    ctrl_cmd = is_under_control ? getStopControlCommand() : getInitialControlCommand();
+    if (is_under_control) {
+      debug_throttle("MPC is not solved, use stop control command");
+      ctrl_cmd = getStopControlCommand();
+    } else {
+      // Not under control the vehicle steers by itself: follow the measured steering instead of
+      // holding the last command, which would be stale by the time control is enabled. The
+      // initial command is offset-compensated like the MPC state; the published one is not.
+      debug_throttle("MPC is not solved, follow the measured steering (not under control)");
+      ctrl_cmd = getInitialControlCommand();
+      ctrl_cmd.steering_tire_angle -= static_cast<float>(m_steering_offset_filtered_);
+    }
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
   } else if (
     !use_steering_direct_passthrough && m_enable_confidence_steer_slew_limit &&
