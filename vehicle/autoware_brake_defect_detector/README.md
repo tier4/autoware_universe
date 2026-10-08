@@ -15,7 +15,7 @@ This node passively compares requested deceleration with measured longitudinal a
 | `~/output/cusum_statistic`       | `std_msgs/msg/Float64`                           | Upper-side CUSUM statistic, in m/s                                               |
 | `/diagnostic`                    | `diagnostic_msgs/msg/DiagnosticArray`            | Fault level and all detector outputs in one diagnostic status                    |
 
-The launch file maps the inputs to the standard Autoware control and localization topics. Launch it with `ros2 launch autoware_brake_defect_detector brake_defect_detector.launch.xml`.
+The launch file maps the inputs to `/control/command/control_cmd`, `/control/command/actuation_cmd`, `/localization/kinematic_state`, and `/localization/acceleration`, matching the recorded vehicle topics. It publishes diagnostics on `/diagnostic` by default. Launch it with `ros2 launch autoware_brake_defect_detector brake_defect_detector.launch.xml`.
 
 The `/diagnostic` status reports `brake_defect_detected`, `filtered_residual`, `cusum_statistic`, and `valid_condition` as key-value fields. Its level is `ERROR` for a detected defect, `STALE` when inputs are missing or invalid or the delay history is warming up, and `OK` when monitoring is active without a defect or inactive under normal guardrails.
 
@@ -25,4 +25,4 @@ The command history is timestamped at reception. At each acceleration sample, th
 
 Detection requires the current and delayed commands to request deceleration, brake command within the configured range, speed above the minimum, and no active settling lockout. A fast command transition starts the lockout. Outside valid conditions, the CUSUM decays and the fault flag is false. Missing, stale, nonfinite, or time-reversed data reset the detector and publish a false flag with zero metrics. The command history must warm up for the configured delay before evaluation starts.
 
-Brake command units depend on the vehicle interface. Set `brake_cmd_min` and `brake_cmd_max` for the actual command scale before using the detector. The other thresholds and delays are set in `config/brake_defect_detector.param.yaml`.
+The default CUSUM threshold is `0.05 m/s`, selected to flag the confirmed October 1 case 3 defect in replay. This setting still needs evaluation against alarms outside the six event clips. Brake command units depend on the vehicle interface; the default `0.05`–`0.35` range covers the low-command region observed in those bags. The thresholds and delays are set in `config/brake_defect_detector.param.yaml`.

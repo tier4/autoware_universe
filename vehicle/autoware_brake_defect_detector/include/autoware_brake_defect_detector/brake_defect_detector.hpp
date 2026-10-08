@@ -25,7 +25,7 @@ struct DetectorParams
 {
   double actuation_delay_sec{0.20};
   double cusum_drift_k{0.15};
-  double cusum_threshold_h{0.8};
+  double cusum_threshold_h{0.05};
   double min_speed_mps{1.5};
   double max_decel_cmd{-0.1};
   double brake_cmd_min{0.05};
