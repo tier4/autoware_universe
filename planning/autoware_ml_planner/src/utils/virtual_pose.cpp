@@ -178,6 +178,38 @@ std::optional<ClosestPoint> closest_point_on_previous_trajectory(
 }
 }  // namespace
 
+PoseOffset pose_offset(
+  const geometry_msgs::msg::Pose & measured_pose, const Eigen::Vector2d & reference_position,
+  const double reference_yaw)
+{
+  const double measured_yaw = autoware_utils_geometry::get_rpy(measured_pose.orientation).z;
+  const Eigen::Vector2d offset =
+    Eigen::Vector2d(measured_pose.position.x, measured_pose.position.y) - reference_position;
+  return PoseOffset{
+    std::abs(std::cos(reference_yaw) * offset.x() + std::sin(reference_yaw) * offset.y()),
+    std::abs(-std::sin(reference_yaw) * offset.x() + std::cos(reference_yaw) * offset.y()),
+    offset.norm(),
+    autoware_utils::rad2deg(
+      std::abs(autoware_utils::normalize_radian(reference_yaw - measured_yaw)))};
+}
+
+bool exceeds_reset_limits(const PoseOffset & offset, const VirtualPoseParams & params)
+{
+  return offset.longitudinal_m > params.max_longitudinal_error_m ||
+         offset.lateral_m > params.max_lateral_error_m || offset.yaw_deg > params.max_yaw_error_deg;
+}
+
+bool hold_continues(
+  const geometry_msgs::msg::Pose & measured_pose, const geometry_msgs::msg::Pose & hold_anchor,
+  const VirtualPoseParams & params)
+{
+  const auto offset = pose_offset(
+    measured_pose, Eigen::Vector2d(hold_anchor.position.x, hold_anchor.position.y),
+    autoware_utils_geometry::get_rpy(hold_anchor.orientation).z);
+  return offset.position_m < params.hold_position_tolerance_m &&
+         offset.yaw_deg < params.hold_yaw_tolerance_deg;
+}
+
 VirtualPoseResult compute_virtual_pose(
   const geometry_msgs::msg::Pose & measured_pose, const std::vector<Eigen::Matrix4d> & polyline,
   const int64_t prefix_count, const VirtualPoseParams & params)
@@ -192,18 +224,11 @@ VirtualPoseResult compute_virtual_pose(
   const double virtual_yaw = closest->tangent_yaw.value_or(measured_yaw);
   const double yaw_change = autoware_utils::normalize_radian(virtual_yaw - measured_yaw);
   // Vehicle offset from the virtual pose, split along and across the virtual heading.
-  const Eigen::Vector2d offset =
-    Eigen::Vector2d(measured_pose.position.x, measured_pose.position.y) - closest->position;
-  const double longitudinal_error_m =
-    std::abs(std::cos(virtual_yaw) * offset.x() + std::sin(virtual_yaw) * offset.y());
-  const double lateral_error_m =
-    std::abs(-std::sin(virtual_yaw) * offset.x() + std::cos(virtual_yaw) * offset.y());
-  const double position_error_m = offset.norm();
-  const double yaw_error_deg = autoware_utils::rad2deg(std::abs(yaw_change));
+  const auto offset = pose_offset(measured_pose, closest->position, virtual_yaw);
+  const double position_error_m = offset.position_m;
+  const double yaw_error_deg = offset.yaw_deg;
 
-  if (
-    longitudinal_error_m > params.max_longitudinal_error_m ||
-    lateral_error_m > params.max_lateral_error_m || yaw_error_deg > params.max_yaw_error_deg) {
+  if (exceeds_reset_limits(offset, params)) {
     return VirtualPoseResult{measured_pose, true, true, position_error_m, yaw_error_deg};
   }
 

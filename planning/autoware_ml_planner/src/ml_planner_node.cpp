@@ -357,7 +357,7 @@ void MLPlanner::set_up_params()
   virtual_pose.max_lateral_error_m =
     this->declare_parameter<double>("virtual_pose.max_lateral_error_m", 3.0);
   virtual_pose.max_yaw_error_deg =
-    this->declare_parameter<double>("virtual_pose.max_yaw_error_deg", 30.0);
+    this->declare_parameter<double>("virtual_pose.max_yaw_error_deg", 20.0);
   virtual_pose.max_search_segment_count =
     this->declare_parameter<int64_t>("virtual_pose.max_search_segment_count", 5);
   virtual_pose.yaw_fit_half_window_m =
@@ -561,7 +561,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     parameters, "virtual_pose.max_longitudinal_error_m", virtual_pose.max_longitudinal_error_m);
   update_param<double>(
     parameters, "virtual_pose.max_lateral_error_m", virtual_pose.max_lateral_error_m);
-  update_param<double>(parameters, "virtual_pose.max_yaw_error_deg", virtual_pose.max_yaw_error_deg);
+  update_param<double>(
+    parameters, "virtual_pose.max_yaw_error_deg", virtual_pose.max_yaw_error_deg);
   update_param<int64_t>(
     parameters, "virtual_pose.max_search_segment_count", virtual_pose.max_search_segment_count);
   update_param<double>(
@@ -571,8 +572,10 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<int64_t>(
     parameters, "virtual_pose.history_prefix_count", virtual_pose.history_prefix_count);
   update_param<std::string>(parameters, "virtual_pose.reference", virtual_pose.reference);
-  update_param<bool>(parameters, "virtual_pose.hold_at_standstill", virtual_pose.hold_at_standstill);
-  update_param<double>(parameters, "virtual_pose.hold_max_speed_mps", virtual_pose.hold_max_speed_mps);
+  update_param<bool>(
+    parameters, "virtual_pose.hold_at_standstill", virtual_pose.hold_at_standstill);
+  update_param<double>(
+    parameters, "virtual_pose.hold_max_speed_mps", virtual_pose.hold_max_speed_mps);
   update_param<double>(
     parameters, "virtual_pose.hold_position_tolerance_m", virtual_pose.hold_position_tolerance_m);
   update_param<double>(
@@ -599,11 +602,12 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<bool>(
     parameters, "debug_params.publish_debug_linestrings",
     new_debug_params.publish_debug_linestrings);
-  if (update_param<std::string>(
-        parameters, "debug_params.virtual_pose_vehicle_mesh",
-        new_debug_params.virtual_pose_vehicle_mesh) &&
-      !new_debug_params.virtual_pose_vehicle_mesh.empty() &&
-      !mesh_resource_exists(new_debug_params.virtual_pose_vehicle_mesh)) {
+  if (
+    update_param<std::string>(
+      parameters, "debug_params.virtual_pose_vehicle_mesh",
+      new_debug_params.virtual_pose_vehicle_mesh) &&
+    !new_debug_params.virtual_pose_vehicle_mesh.empty() &&
+    !mesh_resource_exists(new_debug_params.virtual_pose_vehicle_mesh)) {
     RCLCPP_WARN(
       get_logger(), "virtual_pose_vehicle_mesh '%s' not found: drawing a box of the vehicle size",
       new_debug_params.virtual_pose_vehicle_mesh.c_str());
@@ -734,6 +738,11 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     return failure(
       "virtual_pose error limits, yaw fit lengths and history_prefix_count must be non-negative, "
       "max_search_segment_count positive");
+  }
+  if (
+    virtual_pose.hold_max_speed_mps < 0.0 || virtual_pose.hold_position_tolerance_m < 0.0 ||
+    virtual_pose.hold_yaw_tolerance_deg < 0.0) {
+    return failure("virtual_pose hold speed and tolerances must be non-negative");
   }
 
   const bool reload_model = new_params.model_path != params_.model_path ||

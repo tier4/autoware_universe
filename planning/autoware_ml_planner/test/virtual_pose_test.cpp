@@ -14,13 +14,17 @@
 
 #include "autoware/ml_planner/utils/virtual_pose.hpp"
 
+#include "autoware/ml_planner/utils/timed_buffer.hpp"
+
 #include <Eigen/Dense>
+#include <rclcpp/time.hpp>
 
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <vector>
 
 namespace autoware::ml_planner::test
@@ -68,6 +72,57 @@ TEST(VirtualPoseTest, ResetLimitsAreSplitAlongAndAcrossTheVirtualHeading)
   // 0.25 m beside the trajectory: within the lateral limit; 0.35 m: beyond it.
   EXPECT_FALSE(utils::compute_virtual_pose(vehicle_at(1.0, 0.25), polyline, 0, params).reset);
   EXPECT_TRUE(utils::compute_virtual_pose(vehicle_at(1.0, 0.35), polyline, 0, params).reset);
+}
+
+namespace
+{
+geometry_msgs::msg::Pose pose_xy_yaw(const double x, const double y, const double yaw)
+{
+  geometry_msgs::msg::Pose pose;
+  pose.position.x = x;
+  pose.position.y = y;
+  pose.orientation.z = std::sin(yaw / 2.0);
+  pose.orientation.w = std::cos(yaw / 2.0);
+  return pose;
+}
+}  // namespace
+
+TEST(VirtualPoseTest, HoldEndsBeyondThePositionOrYawTolerance)
+{
+  utils::VirtualPoseParams params{};
+  params.hold_position_tolerance_m = 0.2;
+  params.hold_yaw_tolerance_deg = 0.5;
+  const auto anchor = pose_xy_yaw(10.0, 5.0, 0.3);
+  // Localization drift at standstill stays within the hold.
+  EXPECT_TRUE(utils::hold_continues(pose_xy_yaw(10.15, 5.0, 0.3), anchor, params));
+  EXPECT_TRUE(
+    utils::hold_continues(pose_xy_yaw(10.0, 5.0, 0.3 + 0.4 * M_PI / 180.0), anchor, params));
+  // Take-off: 0.25 m from where the hold began.
+  EXPECT_FALSE(utils::hold_continues(pose_xy_yaw(10.25, 5.0, 0.3), anchor, params));
+  // Turning on the spot beyond 0.5 deg.
+  EXPECT_FALSE(
+    utils::hold_continues(pose_xy_yaw(10.0, 5.0, 0.3 + 0.6 * M_PI / 180.0), anchor, params));
+}
+
+TEST(TimedBufferTest, PushOrReplaceBackReplacesTheNewestEntryWithTheSameStamp)
+{
+  struct Sample
+  {
+    double stamp;
+    double value;
+  };
+  utils::TimedBuffer<Sample> buffer{
+    10.0, [](const Sample & s) { return rclcpp::Time(static_cast<int64_t>(s.stamp * 1e9)); }};
+  buffer.push_back({1.0, 1.0});
+  // A frame pose with the stamp of the seeded measurement replaces it instead of being dropped.
+  buffer.push_or_replace_back({1.0, 2.0});
+  ASSERT_EQ(buffer.msgs().size(), 1U);
+  EXPECT_DOUBLE_EQ(buffer.back().value, 2.0);
+  // A newer stamp appends; plain push_back with the same stamp is still ignored.
+  buffer.push_or_replace_back({2.0, 3.0});
+  buffer.push_back({2.0, 4.0});
+  ASSERT_EQ(buffer.msgs().size(), 2U);
+  EXPECT_DOUBLE_EQ(buffer.back().value, 3.0);
 }
 
 }  // namespace autoware::ml_planner::test

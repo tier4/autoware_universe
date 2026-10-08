@@ -48,6 +48,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::ml_planner
@@ -339,6 +340,13 @@ private:
   std::vector<Eigen::Matrix4d> previous_ego_prediction_;
   // hold_at_standstill: measured pose at which the current hold began.
   std::optional<geometry_msgs::msg::Pose> hold_anchor_;
+  // The planning start jumped (reset, frame pose back on the vehicle, virtual pose mode or route
+  // change): the optimizer's previous solutions must not shape the next plan. Kept until a
+  // planning cycle reaches the optimizer.
+  bool restart_optimizer_{false};
+  // virtual_pose.enable and virtual_pose.reference of the previous cycle.
+  std::optional<std::pair<bool, std::string>> last_virtual_pose_mode_;
+  void clear_virtual_pose_state();
   Odometry build_frame_ego();
 
   std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_;

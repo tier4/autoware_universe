@@ -266,6 +266,10 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   const LaneletRoute::ConstSharedPtr & route_ptr)
 {
   if (route_ptr) {
+    if (route_ptr_ && route_ptr->uuid != route_ptr_->uuid) {
+      // A new route: the previous plan and the virtual pose taken from it belong to the old one.
+      clear_virtual_pose_state();
+    }
     route_ptr_ = route_ptr;
   }
   for (const auto & msg : ego_kinematic_states) {
@@ -313,6 +317,15 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
     return tl::unexpected(std::move(error));
   }
 
+  const std::pair<bool, std::string> virtual_pose_mode{
+    params_.virtual_pose.enable, params_.virtual_pose.reference};
+  if (last_virtual_pose_mode_ && *last_virtual_pose_mode_ != virtual_pose_mode) {
+    // Turned on or off, or another reference: the planning start and the previous trajectory it is
+    // taken from change meaning, so start over from the vehicle.
+    clear_virtual_pose_state();
+  }
+  last_virtual_pose_mode_ = virtual_pose_mode;
+
   if (params_.virtual_pose.enable) {
     frame_ego_ = build_frame_ego();
   } else {
@@ -334,6 +347,16 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
     *route_ptr_};
 }
 
+void MLPlannerCore::clear_virtual_pose_state()
+{
+  virtual_history_.clear();
+  virtual_pose_result_.reset();
+  previous_frame_pose_.reset();
+  previous_ego_prediction_.clear();
+  hold_anchor_.reset();
+  restart_optimizer_ = true;
+}
+
 Odometry MLPlannerCore::build_frame_ego()
 {
   const Odometry & measured = ego_history_.back();
@@ -346,21 +369,23 @@ Odometry MLPlannerCore::build_frame_ego()
   // Standstill: while the vehicle stays where it stopped, keep the frame pose. Snapping again onto
   // each new plan would only move it with the plan's jitter and the localization drift. The hold
   // ends once the vehicle has moved or turned beyond the tolerances, e.g. on take-off.
+  // The reset limits still apply to the held pose.
   const auto & vp = params_.virtual_pose;
-  if (vp.hold_at_standstill && hold_anchor_ && virtual_pose_result_ && !virtual_history_.empty()) {
-    const double moved_m = std::hypot(
-      measured.pose.pose.position.x - hold_anchor_->position.x,
-      measured.pose.pose.position.y - hold_anchor_->position.y);
-    const double turned_rad = std::abs(autoware_utils::normalize_radian(
-      autoware_utils_geometry::get_rpy(measured.pose.pose.orientation).z -
-      autoware_utils_geometry::get_rpy(hold_anchor_->orientation).z));
-    if (
-      moved_m < vp.hold_position_tolerance_m &&
-      turned_rad < autoware_utils::deg2rad(vp.hold_yaw_tolerance_deg)) {
+  if (
+    vp.hold_at_standstill && hold_anchor_ && virtual_pose_result_ && !virtual_history_.empty() &&
+    utils::hold_continues(measured.pose.pose, *hold_anchor_, vp)) {
+    const geometry_msgs::msg::Pose held = virtual_history_.back().pose.pose;
+    const auto offset = utils::pose_offset(
+      measured.pose.pose, Eigen::Vector2d(held.position.x, held.position.y),
+      autoware_utils_geometry::get_rpy(held.orientation).z);
+    if (!utils::exceeds_reset_limits(offset, vp)) {
       Odometry frame = measured;
-      frame.pose.pose = virtual_history_.back().pose.pose;
+      frame.pose.pose = held;
+      virtual_pose_result_->pose = held;
       virtual_pose_result_->reset = false;
-      virtual_history_.push_back(frame);
+      virtual_pose_result_->position_error_m = offset.position_m;
+      virtual_pose_result_->yaw_error_deg = offset.yaw_deg;
+      virtual_history_.push_or_replace_back(frame);
       return frame;
     }
   }
@@ -370,7 +395,8 @@ Odometry MLPlannerCore::build_frame_ego()
   }
 
   virtual_pose_result_ = utils::VirtualPoseResult{measured.pose.pose, false, false, 0.0, 0.0};
-  if (previous_frame_pose_ && !previous_ego_prediction_.empty()) {
+  const bool has_previous_trajectory = previous_frame_pose_ && !previous_ego_prediction_.empty();
+  if (has_previous_trajectory) {
     // Earlier frame poses, oldest first, at least 5 cm apart, excluding the previous frame pose
     // itself (the newest history entry), then the previous frame pose and its prediction.
     constexpr double MIN_PREFIX_SPACING_M = 0.05;
@@ -393,24 +419,40 @@ Odometry MLPlannerCore::build_frame_ego()
     polyline.insert(
       polyline.end(), previous_ego_prediction_.begin(), previous_ego_prediction_.end());
 
-    virtual_pose_result_ = utils::compute_virtual_pose(
-      measured.pose.pose, polyline, prefix_count, params_.virtual_pose);
+    virtual_pose_result_ =
+      utils::compute_virtual_pose(measured.pose.pose, polyline, prefix_count, params_.virtual_pose);
   }
 
-  if (virtual_pose_result_->reset) {
+  // The frame pose also falls back onto the vehicle when no closest point is found on the previous
+  // trajectory (e.g. a degenerate one); that is a jump like a reset when the last frame pose was
+  // elsewhere.
+  bool back_on_vehicle = false;
+  if (!virtual_pose_result_->snapped && has_previous_trajectory && !virtual_history_.empty()) {
+    constexpr double SAME_POSITION_M = 0.01;
+    constexpr double SAME_YAW_DEG = 0.1;
+    const auto & last = virtual_history_.back().pose.pose;
+    const auto offset = utils::pose_offset(
+      measured.pose.pose, Eigen::Vector2d(last.position.x, last.position.y),
+      autoware_utils_geometry::get_rpy(last.orientation).z);
+    back_on_vehicle = offset.position_m > SAME_POSITION_M || offset.yaw_deg > SAME_YAW_DEG;
+  }
+  if (virtual_pose_result_->reset || back_on_vehicle) {
     // The frame pose jumps onto the vehicle: a past of earlier virtual poses would end in that
     // jump, which the model reads as a sudden lateral motion. Restart the past from the measured
-    // poses, which end at the new frame pose.
+    // poses, which end at the new frame pose, and the optimizer from the vehicle.
     virtual_history_.clear();
     for (const auto & msg : ego_history_.msgs()) {
       virtual_history_.push_back(msg);
     }
+    restart_optimizer_ = true;
     return measured;
   }
 
   Odometry frame = measured;
   frame.pose.pose = virtual_pose_result_->pose;
-  virtual_history_.push_back(frame);
+  // Replaces the measured entry seeded with the same stamp, and a frame pose of a cycle without a
+  // new odometry message, so the past always ends at the frame pose the output is decoded in.
+  virtual_history_.push_or_replace_back(frame);
   return frame;
 }
 
@@ -605,10 +647,11 @@ PlannerOutput MLPlannerCore::create_planner_output(
   if (trajectory_optimizer_) {
     trajectory_optimizer_->set_goal(
       route_ptr_ ? std::make_optional(route_ptr_->goal_pose) : std::nullopt, kinematic_state);
-    // A reset moved the planning start onto the vehicle: the previous plan started at the old
-    // virtual pose, so neither its warm start nor its temporal pull may shape this one.
-    if (params_.virtual_pose.enable && virtual_pose_result_ && virtual_pose_result_->reset) {
+    // The planning start jumped (see restart_optimizer_): the previous plan started elsewhere, so
+    // neither its warm start nor its temporal pull may shape this one.
+    if (restart_optimizer_) {
       trajectory_optimizer_->drop_previous_solutions();
+      restart_optimizer_ = false;
     }
   }
 #endif

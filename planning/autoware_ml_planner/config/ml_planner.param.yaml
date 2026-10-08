@@ -64,7 +64,7 @@
       enable: true                  # give the model the closest point of its previous trajectory instead of the measured pose
       max_longitudinal_error_m: 5.0  # [m] reset the virtual pose onto the vehicle when the vehicle is farther than this from it along the virtual heading
       max_lateral_error_m: 3.0       # [m] ... or farther than this across it
-      max_yaw_error_deg: 30.0       # [deg] reset when the headings differ by more than this
+      max_yaw_error_deg: 20.0       # [deg] reset when the headings differ by more than this (trajectory feasibility check: 0.35 rad)
       max_search_segment_count: 5   # leading segments of the previous trajectory searched for the closest point
       yaw_fit_half_window_m: 1.0    # [m] arc length on each side of the closest point over which the tangent is averaged
       yaw_fit_min_length_m: 0.2     # [m] below this window length the measured heading is used
