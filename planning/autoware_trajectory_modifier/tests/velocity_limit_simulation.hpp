@@ -292,8 +292,6 @@ struct UpstreamPlanner
 {
   UpstreamProfile profile{UpstreamProfile::EgoAnchored};
   double cruise_velocity{kmph(60.0)};
-  // The jerk matches the nominal plugin jerk: an upstream that releases an inherited braking more
-  // slowly than the plugin would request lower speeds than the limit profile.
   JerkLimits limits{1.0, 1.0, 3.0};
   std::optional<double> stop_s;     ///< Stop line arc length; capped by a braking curve.
   double stop_deceleration{1.0};    ///< Deceleration of the braking curve to the stop line.
@@ -304,8 +302,10 @@ struct UpstreamPlanner
   {
     constexpr double gain = 2.0;
     const bool anchored = profile == UpstreamProfile::EgoAnchored;
+    // An anchored upstream requests the cruise speed; it keeps a positive ego acceleration but does
+    // not inherit braking caused by the velocity limits.
     double velocity = anchored ? ego.velocity : cruise_velocity;
-    double acceleration = anchored ? ego.acceleration : 0.0;
+    double acceleration = anchored ? std::max(0.0, ego.acceleration) : 0.0;
     double s = ego.s;
     TrajectoryPoints points(time_stamps.size());
     for (std::size_t i = 0; i < time_stamps.size(); ++i) {
@@ -320,10 +320,12 @@ struct UpstreamPlanner
       }
       double point_s = s + 0.5 * (previous_velocity + velocity) * dt;
       if (stop_s) {
+        // Constant deceleration along the braking curve; once stopped, the planner stays stopped.
+        const bool stopped = i > 0 && previous_velocity <= 0.0;
         const double cap = std::sqrt(2.0 * stop_deceleration * std::max(0.0, *stop_s - point_s));
-        if (velocity > cap) {
-          velocity = cap;
-          acceleration = cap > 0.0 ? -stop_deceleration : 0.0;
+        if (stopped || velocity > cap) {
+          velocity = stopped ? 0.0 : std::max(cap, previous_velocity - stop_deceleration * dt);
+          acceleration = velocity > 0.0 ? -stop_deceleration : 0.0;
           point_s = s + 0.5 * (previous_velocity + velocity) * dt;
         }
       }
@@ -404,7 +406,7 @@ struct Expectations
   double steady_acceleration_tolerance{0.1};
   std::size_t max_jerk_sign_changes{4};   ///< In a steady window; more indicates chattering.
   double premature_braking_margin{10.0};  ///< Allowed braking ahead of the latest point [m].
-  double max_velocity_increase{0.05};     ///< A limit stage must never raise a point's speed.
+  double max_velocity_increase{0.05};     ///< Output above input at the same arc length [m/s].
   double max_pose_error{0.5};             ///< Pose arc length vs. integrated velocity [m].
   bool check_jerk{true};                  ///< Disabled when the upstream itself has a jerk step.
   std::vector<SteadyWindow> steady_windows;
@@ -433,8 +435,8 @@ struct Scenario
   std::vector<SpeedZone> zones;
   std::vector<ExternalLimitEvent> external_events;
   std::vector<StageKind> stages;
-  double nominal_deceleration{1.0};
-  double nominal_jerk{3.0};
+  /// Plugin parameters velocity_limits.max_acceleration, max_deceleration and max_jerk.
+  plugin::detail::VelocityLimitConstraints constraints{1.0, 1.0, 3.0};
   SimulationConfig config;
   Expectations expectations;
 
@@ -472,10 +474,10 @@ struct Scenario
   }
 
   /// @brief Deceleration and jerk that an external limit is expected to use. Zero message
-  /// constraints fall back to the nominal parameters, as they would otherwise disable braking.
+  /// constraints fall back to the parameters, as they would otherwise disable braking.
   [[nodiscard]] JerkLimits expected_external_constraints(const VelocityLimit & message) const
   {
-    JerkLimits limits{upstream.limits.max_acceleration, nominal_deceleration, nominal_jerk};
+    JerkLimits limits = map_constraints();
     if (message.use_constraints) {
       if (std::abs(message.constraints.min_acceleration) > 0.0F) {
         limits.max_deceleration = std::abs(message.constraints.min_acceleration);
@@ -489,7 +491,7 @@ struct Scenario
 
   [[nodiscard]] JerkLimits map_constraints() const
   {
-    return {upstream.limits.max_acceleration, nominal_deceleration, nominal_jerk};
+    return {constraints.max_acceleration, constraints.max_deceleration, constraints.max_jerk};
   }
 };
 
@@ -521,13 +523,14 @@ inline Stage make_external_stage(const Scenario & scenario)
             if (!message || !std::isfinite(message->max_velocity) || message->max_velocity < 0.0F) {
               return ProcessingResult::Unchanged;
             }
-            const double deceleration = plugin::detail::get_external_velocity_limit_deceleration(
-              *message, scenario.nominal_deceleration);
-            const double jerk =
-              plugin::detail::get_external_velocity_limit_min_jerk(*message, scenario.nominal_jerk);
+            auto constraints = scenario.constraints;
+            constraints.max_deceleration = plugin::detail::get_external_velocity_limit_deceleration(
+              *message, scenario.constraints.max_deceleration);
+            constraints.max_jerk = plugin::detail::get_external_velocity_limit_min_jerk(
+              *message, scenario.constraints.max_jerk);
             const double max_velocity = message->max_velocity;
             return plugin::detail::apply_velocity_limits(
-                     points, deceleration, jerk,
+                     points, constraints,
                      [max_velocity](const geometry_msgs::msg::Point &) {
                        return std::optional<double>{max_velocity};
                      },
@@ -542,8 +545,7 @@ inline Stage make_map_stage(const Scenario & scenario)
 {
   return {"map", [&scenario](TrajectoryPoints & points, const EgoState & ego) {
             return plugin::detail::apply_velocity_limits(
-                     points, std::abs(scenario.nominal_deceleration),
-                     std::abs(scenario.nominal_jerk),
+                     points, scenario.constraints,
                      [&scenario](const geometry_msgs::msg::Point & position) {
                        return scenario.zone_limit_at(scenario.path.project(position));
                      },
@@ -574,7 +576,7 @@ struct Sample
   double acceleration{0.0};          ///< Slope of the executed velocity segment.
   double plan_acceleration{0.0};     ///< acceleration_mps2 field of the plan, for comparison.
   double implied_acceleration{0.0};  ///< Velocity difference over one cycle (shows steps).
-  double jerk{0.0};                  ///< Acceleration difference over one cycle.
+  double jerk{0.0};                  ///< Acceleration change over one cycle.
   double upstream_velocity{0.0};     ///< Upstream request at the same time.
   std::optional<double> expected_limit;
   std::size_t cycle{0U};
@@ -583,8 +585,7 @@ struct Sample
 struct StageRecord
 {
   ProcessingResult status{ProcessingResult::Unchanged};
-  double max_velocity_increase{0.0};       ///< Over every point but the last one.
-  double terminal_velocity_increase{0.0};  ///< Last point, often a zero-velocity terminal.
+  double max_velocity_increase{0.0};  ///< Output above input at the same arc length.
 };
 
 struct CycleRecord
@@ -617,30 +618,66 @@ struct PlanState
   double velocity{0.0};
   double acceleration{0.0};  ///< Interpolated acceleration_mps2 field.
   double distance{0.0};
-  double slope{0.0};  ///< Velocity slope of the segment ending at or containing the time.
+  double executed_acceleration{0.0};  ///< Acceleration of the motion driven by the follower.
 };
 
-/// @brief Plan state at a time: linear velocity and acceleration field, exact distance integral.
-/// The follower executes the velocity profile; its acceleration is the velocity slope, which does
-/// not depend on whether a plugin writes point or segment accelerations into the field.
-inline PlanState sample_plan(const TrajectoryPoints & points, const double time)
+/// @brief Whether the acceleration field holds the acceleration at each point (velocities follow
+/// its trapezoidal integral) rather than over the segment starting there (Euler integral).
+inline bool has_point_accelerations(const TrajectoryPoints & points)
+{
+  double trapezoid_error = 0.0;
+  double euler_error = 0.0;
+  for (std::size_t i = 0; i + 1 < points.size(); ++i) {
+    const double h = seconds(points[i + 1].time_from_start) - seconds(points[i].time_from_start);
+    const double dv = points[i + 1].longitudinal_velocity_mps - points[i].longitudinal_velocity_mps;
+    const double a0 = points[i].acceleration_mps2;
+    const double a1 = points[i + 1].acceleration_mps2;
+    trapezoid_error += std::abs(dv - 0.5 * (a0 + a1) * h);
+    euler_error += std::abs(dv - a0 * h);
+  }
+  return trapezoid_error <= euler_error;
+}
+
+/// @brief Motion over one plan segment, a duration `tau` after its first point. With point
+/// accelerations, the follower drives the linearly interpolated acceleration field (the jerk of
+/// the plan); otherwise it drives the linearly interpolated velocity and its acceleration is the
+/// slope. The follower thus executes what each plan describes, whatever its convention.
+inline PlanState sample_segment(
+  const TrajectoryPoints::value_type & first, const TrajectoryPoints::value_type & second,
+  const double duration, const double tau, const bool point_accelerations)
+{
+  const double v0 = first.longitudinal_velocity_mps;
+  const double v1 = second.longitudinal_velocity_mps;
+  const double a0 = first.acceleration_mps2;
+  const double a1 = second.acceleration_mps2;
+  const double h = duration;
+  const double field = h > 0.0 ? a0 + tau / h * (a1 - a0) : a1;
+  if (!point_accelerations || h <= 0.0) {
+    const double velocity = h > 0.0 ? v0 + tau / h * (v1 - v0) : v1;
+    return {velocity, field, 0.5 * (v0 + velocity) * tau, h > 0.0 ? (v1 - v0) / h : 0.0};
+  }
+  const double jerk = (a1 - a0) / h;
+  return {
+    v0 + a0 * tau + 0.5 * jerk * tau * tau, field,
+    v0 * tau + 0.5 * a0 * tau * tau + jerk * tau * tau * tau / 6.0, field};
+}
+
+/// @brief Plan state at a time after its first point.
+inline PlanState sample_plan(
+  const TrajectoryPoints & points, const double time, const bool point_accelerations)
 {
   double distance = 0.0;
   for (std::size_t i = 0; i + 1 < points.size(); ++i) {
     const double t0 = seconds(points[i].time_from_start);
     const double t1 = seconds(points[i + 1].time_from_start);
-    const double v0 = points[i].longitudinal_velocity_mps;
-    const double v1 = points[i + 1].longitudinal_velocity_mps;
     if (time <= t1) {
-      const double tau = std::max(0.0, time - t0);
-      const double ratio = t1 > t0 ? tau / (t1 - t0) : 1.0;
-      const double velocity = v0 + ratio * (v1 - v0);
-      const double a0 = points[i].acceleration_mps2;
-      const double a1 = points[i + 1].acceleration_mps2;
-      const double slope = t1 > t0 ? (v1 - v0) / (t1 - t0) : 0.0;
-      return {velocity, a0 + ratio * (a1 - a0), distance + 0.5 * (v0 + velocity) * tau, slope};
+      auto state = sample_segment(
+        points[i], points[i + 1], t1 - t0, std::max(0.0, time - t0), point_accelerations);
+      state.distance += distance;
+      return state;
     }
-    distance += 0.5 * (v0 + v1) * (t1 - t0);
+    distance +=
+      sample_segment(points[i], points[i + 1], t1 - t0, t1 - t0, point_accelerations).distance;
   }
   const auto & last = points.back();
   const double remaining = std::max(0.0, time - seconds(last.time_from_start));
@@ -649,13 +686,50 @@ inline PlanState sample_plan(const TrajectoryPoints & points, const double time)
     distance + last.longitudinal_velocity_mps * remaining, 0.0};
 }
 
+/// @brief Largest amount by which `after` is faster than `before` at the same arc length. Like the
+/// velocity limit plugins, a velocity drop at the last point of `before` is ignored (horizon end,
+/// not a stop).
+inline double max_velocity_increase(
+  const ReferencePath & path, const TrajectoryPoints & before, const TrajectoryPoints & after)
+{
+  std::vector<std::pair<double, double>> input;
+  for (std::size_t i = 0; i < before.size(); ++i) {
+    double velocity = before[i].longitudinal_velocity_mps;
+    if (i > 0 && i + 1 == before.size()) {
+      velocity = std::max(velocity, static_cast<double>(before[i - 1].longitudinal_velocity_mps));
+    }
+    input.emplace_back(path.project(before[i].pose.position), velocity);
+  }
+  const auto input_at = [&input](const double s) {
+    if (s <= input.front().first) {
+      return input.front().second;
+    }
+    for (std::size_t i = 1; i < input.size(); ++i) {
+      if (s <= input[i].first) {
+        const auto & [s0, v0] = input[i - 1];
+        const auto & [s1, v1] = input[i];
+        return s1 > s0 ? v0 + (s - s0) / (s1 - s0) * (v1 - v0) : v1;
+      }
+    }
+    return input.back().second;
+  };
+  double increase = 0.0;
+  for (const auto & point : after) {
+    increase = std::max(
+      increase, point.longitudinal_velocity_mps - input_at(path.project(point.pose.position)));
+  }
+  return increase;
+}
+
 /// @brief Largest gap between each point's arc length and the distance implied by its speed.
 inline double pose_error(
   const ReferencePath & path, const TrajectoryPoints & points, const double s0)
 {
+  const bool point_accelerations = has_point_accelerations(points);
   double error = 0.0;
   for (const auto & point : points) {
-    const double driven = sample_plan(points, seconds(point.time_from_start)).distance;
+    const double driven =
+      sample_plan(points, seconds(point.time_from_start), point_accelerations).distance;
     error = std::max(error, std::abs(path.project(point.pose.position) - s0 - driven));
   }
   return error;
@@ -692,19 +766,7 @@ inline SimulationLog run_closed_loop(const Scenario & scenario, const std::vecto
       const auto before = output;
       StageRecord stage_record;
       stage_record.status = stage.process(output, measured);
-      if (output.size() == before.size()) {
-        const auto increase = [&](const std::size_t i) {
-          return static_cast<double>(output[i].longitudinal_velocity_mps) -
-                 before[i].longitudinal_velocity_mps;
-        };
-        for (std::size_t i = 0; i + 1 < output.size(); ++i) {
-          stage_record.max_velocity_increase =
-            std::max(stage_record.max_velocity_increase, increase(i));
-        }
-        stage_record.terminal_velocity_increase = increase(output.size() - 1);
-      } else {
-        stage_record.max_velocity_increase = std::numeric_limits<double>::infinity();
-      }
+      stage_record.max_velocity_increase = max_velocity_increase(scenario.path, before, output);
       record.stages.push_back(stage_record);
     }
     record.pose_error = pose_error(scenario.path, output, ego.s);
@@ -713,36 +775,40 @@ inline SimulationLog run_closed_loop(const Scenario & scenario, const std::vecto
       log.plans.push_back({cycle, ego.time, input, output});
     }
 
+    const bool output_points = has_point_accelerations(output);
+    const bool input_points = has_point_accelerations(input);
     if (cycle == 0) {
       Sample sample;
       sample.time = ego.time;
       sample.s = ego.s;
       sample.velocity = ego.velocity;
       sample.acceleration = ego.acceleration;
-      sample.plan_acceleration = sample_plan(output, 0.0).acceleration;
-      sample.upstream_velocity = sample_plan(input, 0.0).velocity;
+      sample.plan_acceleration = sample_plan(output, 0.0, output_points).acceleration;
+      sample.upstream_velocity = sample_plan(input, 0.0, input_points).velocity;
       log.samples.push_back(sample);
     }
     for (std::size_t step = 1; step <= sub_steps; ++step) {
       const double tau = config.sample_period * static_cast<double>(step);
-      const auto state = sample_plan(output, tau);
+      const auto state = sample_plan(output, tau, output_points);
       Sample sample;
       sample.time = ego.time + tau;
       sample.s = ego.s + state.distance;
       sample.velocity = state.velocity;
-      sample.acceleration = state.slope;
+      sample.acceleration = state.executed_acceleration;
       sample.plan_acceleration = state.acceleration;
-      sample.upstream_velocity = sample_plan(input, tau).velocity;
+      sample.upstream_velocity = sample_plan(input, tau, input_points).velocity;
       sample.cycle = cycle;
       log.samples.push_back(sample);
     }
-    const auto end = sample_plan(output, config.cycle_period);
-    ego = {ego.time + config.cycle_period, ego.s + end.distance, end.velocity, end.slope};
+    const auto end = sample_plan(output, config.cycle_period, output_points);
+    ego = {
+      ego.time + config.cycle_period, ego.s + end.distance, end.velocity,
+      end.executed_acceleration};
   }
 
-  // Differences over one planning cycle, the resolution at which the plugin limits the jerk. A
-  // step in the executed velocity or acceleration therefore appears as step / cycle_period.
-  // Before the start, the initial state is extrapolated with its constant acceleration.
+  // Velocity and acceleration changes over one planning cycle: the average acceleration and jerk
+  // over that window, so a step appears as step / cycle_period. Before the start, the initial
+  // state is extrapolated with its constant acceleration.
   const auto & initial = config.initial_state;
   for (std::size_t i = 0; i < log.samples.size(); ++i) {
     auto & sample = log.samples[i];
@@ -861,25 +927,22 @@ inline void evaluate_global_bounds(
   const Scenario & scenario, const SimulationLog & log, Evaluation & evaluation)
 {
   const auto & expectations = scenario.expectations;
-  for (const bool terminal : {false, true}) {
-    double max_increase = 0.0;
-    std::string detail = "no stage raised a point's velocity";
-    for (const auto & cycle : log.cycles) {
-      for (std::size_t i = 0; i < cycle.stages.size(); ++i) {
-        const double increase = terminal ? cycle.stages[i].terminal_velocity_increase
-                                         : cycle.stages[i].max_velocity_increase;
-        if (increase > max_increase) {
-          max_increase = increase;
-          detail = "stage '" + log.stage_names[i] + "' at t=" + format_number(cycle.ego.time, 1) +
-                   " s raised " + (terminal ? "the last point" : "a point") + " by " +
-                   format_number(max_increase) + " m/s above its input";
-        }
+  double max_increase = 0.0;
+  std::string increase_detail = "no stage output was faster than its input at the same arc length";
+  for (const auto & cycle : log.cycles) {
+    for (std::size_t i = 0; i < cycle.stages.size(); ++i) {
+      if (cycle.stages[i].max_velocity_increase > max_increase) {
+        max_increase = cycle.stages[i].max_velocity_increase;
+        increase_detail = "stage '" + log.stage_names[i] +
+                          "' at t=" + format_number(cycle.ego.time, 1) + " s was " +
+                          format_number(max_increase) +
+                          " m/s faster than its input at the same arc length";
       }
     }
-    evaluation.checks.push_back(make_upper_check(
-      terminal ? "terminal_point_never_faster_than_input" : "output_never_faster_than_input",
-      max_increase, expectations.max_velocity_increase, detail));
   }
+  evaluation.checks.push_back(make_upper_check(
+    "output_never_faster_than_input", max_increase, expectations.max_velocity_increase,
+    increase_detail));
 
   double max_pose_error = 0.0;
   double pose_error_time = 0.0;
@@ -914,8 +977,9 @@ inline void evaluate_global_bounds(
       jerk_bound = std::max(jerk_bound, limits.jerk);
     }
   }
-  const double acceleration_bound =
-    std::max(scenario.upstream.limits.max_acceleration, scenario.config.initial_state.acceleration);
+  const double acceleration_bound = std::max(
+    {scenario.upstream.limits.max_acceleration, scenario.constraints.max_acceleration,
+     scenario.config.initial_state.acceleration});
 
   double min_acceleration = std::numeric_limits<double>::infinity();
   double max_acceleration = -std::numeric_limits<double>::infinity();
@@ -1271,8 +1335,11 @@ inline void write_meta(
   stream << "  \"level\": " << json_string(scenario.level) << ",\n";
   stream << "  \"passed\": " << (evaluation.passed() ? "true" : "false") << ",\n";
   stream << "  \"cycle_period\": " << json_number(scenario.config.cycle_period) << ",\n";
-  stream << "  \"nominal_deceleration\": " << json_number(scenario.nominal_deceleration) << ",\n";
-  stream << "  \"nominal_jerk\": " << json_number(scenario.nominal_jerk) << ",\n";
+  stream << "  \"max_acceleration\": " << json_number(scenario.constraints.max_acceleration)
+         << ",\n";
+  stream << "  \"max_deceleration\": " << json_number(scenario.constraints.max_deceleration)
+         << ",\n";
+  stream << "  \"max_jerk\": " << json_number(scenario.constraints.max_jerk) << ",\n";
   stream << "  \"upstream\": {\"profile\": "
          << json_string(
               upstream.profile == UpstreamProfile::EgoAnchored ? "ego-anchored" : "constant-speed")
@@ -1364,8 +1431,7 @@ inline std::filesystem::path write_outputs(
              << format_number(cycle.input_end_s, 2) << ',' << format_number(cycle.pose_error, 3);
       for (const auto & stage : cycle.stages) {
         stream << ',' << status_name(stage.status) << ','
-               << csv_number(
-                    std::max(stage.max_velocity_increase, stage.terminal_velocity_increase));
+               << csv_number(stage.max_velocity_increase);
       }
       stream << '\n';
     }

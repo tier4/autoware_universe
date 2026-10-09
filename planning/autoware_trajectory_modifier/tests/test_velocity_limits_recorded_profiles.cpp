@@ -33,6 +33,8 @@ namespace
 using autoware::trajectory_modifier::plugin::ProcessingResult;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
 using autoware::trajectory_modifier::plugin::detail::apply_velocity_limits;
+using autoware::trajectory_modifier::plugin::detail::jerk_limited_braking_distance;
+using autoware::trajectory_modifier::plugin::detail::VelocityLimitConstraints;
 using autoware::trajectory_modifier::plugin::detail::VelocityLimitOptions;
 
 TrajectoryPoints load_recorded_input(const std::string & filename)
@@ -79,6 +81,41 @@ double speed_at_time(const TrajectoryPoints & points, const double time)
   return point->longitudinal_velocity_mps;
 }
 
+double arc_length(const TrajectoryPoints & points, const std::size_t index)
+{
+  double s = 0.0;
+  for (std::size_t i = 1; i <= index; ++i) {
+    const auto & p0 = points[i - 1].pose.position;
+    const auto & p1 = points[i].pose.position;
+    s += std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+  }
+  return s;
+}
+
+/// @brief The limit is reached where the zone starts: directly when the output gets there,
+/// otherwise braking from the last point must still reach it in time.
+void expect_reaches_limit_at(
+  const TrajectoryPoints & output, const double zone_s, const double limit,
+  const VelocityLimitConstraints & constraints)
+{
+  for (std::size_t i = 1; i < output.size(); ++i) {
+    const double s0 = arc_length(output, i - 1);
+    const double s1 = arc_length(output, i);
+    if (s1 >= zone_s && s1 > s0) {
+      const double v0 = output[i - 1].longitudinal_velocity_mps;
+      const double v1 = output[i].longitudinal_velocity_mps;
+      EXPECT_LE(v0 + (zone_s - s0) / (s1 - s0) * (v1 - v0), limit + 0.2);
+      return;
+    }
+  }
+  const auto & last = output.back();
+  EXPECT_LE(
+    jerk_limited_braking_distance(
+      last.longitudinal_velocity_mps, last.acceleration_mps2, limit, constraints.max_deceleration,
+      constraints.max_jerk),
+    zone_s - arc_length(output, output.size() - 1) + 0.5);
+}
+
 void expect_consistent_motion(const TrajectoryPoints & input, const TrajectoryPoints & output)
 {
   ASSERT_EQ(input.size(), output.size());
@@ -110,7 +147,7 @@ TEST(VelocityLimitsRecordedProfiles, ExternalThirtyDoesNotInstantlyClipPositiveA
   options.current_ego_velocity = 9.2015;
   options.current_ego_acceleration = 0.1975;
   const auto result = apply_velocity_limits(
-    points, 2.0, 0.6,
+    points, VelocityLimitConstraints{1.0, 2.0, 0.6},
     [](const geometry_msgs::msg::Point &) { return std::optional<double>{8.3333333}; }, options);
 
   ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
@@ -128,16 +165,18 @@ TEST(VelocityLimitsRecordedProfiles, MapThirtyBrakesBeforeLimitedLanelet)
   VelocityLimitOptions options;
   options.current_ego_velocity = 12.4737;
   options.current_ego_acceleration = 0.2214;
+  const VelocityLimitConstraints constraints{1.0, 1.0, 3.0};
   const auto result = apply_velocity_limits(
-    points, 1.0, 3.0,
+    points, constraints,
     [first_limited_y](const geometry_msgs::msg::Point & position) {
       return std::optional<double>{position.y <= first_limited_y ? 8.3333333 : 16.6666667};
     },
     options);
 
   ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
-  EXPECT_LT(speed_at_time(points, 1.5), options.current_ego_velocity.value());
-  EXPECT_LE(speed_at_time(points, 4.8), 8.5333333);
+  // No acceleration toward the lower limit ahead; braking starts as late as possible.
+  EXPECT_LE(speed_at_time(points, 1.5), options.current_ego_velocity.value() + 0.05);
+  expect_reaches_limit_at(points, arc_length(input, 66), 8.3333333, constraints);
   for (const auto & point : points) {
     EXPECT_LE(point.longitudinal_velocity_mps, 16.7666667);
   }
@@ -152,8 +191,9 @@ TEST(VelocityLimitsRecordedProfiles, MapFiftyStartsBrakingBeforeTargetLanelet)
   VelocityLimitOptions options;
   options.current_ego_velocity = 15.4009;
   options.current_ego_acceleration = 0.2152;
+  const VelocityLimitConstraints constraints{1.0, 1.0, 3.0};
   const auto result = apply_velocity_limits(
-    points, 1.0, 3.0,
+    points, constraints,
     [first_limited_y](const geometry_msgs::msg::Point & position) {
       return std::optional<double>{position.y <= first_limited_y ? 13.8888889 : 16.6666667};
     },
@@ -161,7 +201,8 @@ TEST(VelocityLimitsRecordedProfiles, MapFiftyStartsBrakingBeforeTargetLanelet)
 
   ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
   EXPECT_NEAR(points.front().longitudinal_velocity_mps, 15.4009, 0.1);
-  EXPECT_LE(speed_at_time(points, 3.0), 14.0888889);
+  EXPECT_LE(speed_at_time(points, 1.0), options.current_ego_velocity.value() + 0.05);
+  expect_reaches_limit_at(points, arc_length(input, 37), 13.8888889, constraints);
   expect_consistent_motion(input, points);
 }
 }  // namespace

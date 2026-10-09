@@ -355,8 +355,9 @@ def render(prefix, output_dir):
         f"{meta['description']}\n"
         f"level: {meta['level']}   stages: {' -> '.join(meta['stages'])}   targets: "
         f"{meta['targets']}   upstream: {upstream['profile']} {upstream['cruise_velocity']:.2f} m/s"
-        f", {upstream['points']} points   nominal: {meta['nominal_deceleration']} m/s², "
-        f"{meta['nominal_jerk']} m/s³   cycle: {meta['cycle_period']} s"
+        f", {upstream['points']} points   limits: {meta['max_acceleration']} / "
+        f"-{meta['max_deceleration']} m/s², {meta['max_jerk']} m/s³   "
+        f"cycle: {meta['cycle_period']} s"
     )
     fig.text(0.04, 1.0 - 0.6 / height, subtitle, fontsize=8.5, color=TEXT_SECONDARY, va="top")
     checks_text(fig, meta, check_height, height)

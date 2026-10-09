@@ -126,8 +126,9 @@ TrajectoryModifierParams make_params()
   TrajectoryModifierParams params;
   params.use_external_velocity_limit = true;
   params.use_map_velocity_limits = true;
-  params.stopping_constraints.nominal_deceleration = 1.0;
-  params.stopping_constraints.jerk_limit = 3.0;
+  params.velocity_limits.max_acceleration = 1.0;
+  params.velocity_limits.max_deceleration = 1.0;
+  params.velocity_limits.max_jerk = 3.0;
   return params;
 }
 

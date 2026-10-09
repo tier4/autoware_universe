@@ -14,8 +14,6 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/external_velocity_limit.hpp"
 
-#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
-
 #include <rclcpp/rclcpp.hpp>
 
 #include <cmath>
@@ -27,22 +25,22 @@ namespace autoware::trajectory_modifier::plugin
 
 namespace detail
 {
+// A zero constraint would make braking impossible, so it falls back to the default as well.
 double get_external_velocity_limit_deceleration(
   const autoware_internal_planning_msgs::msg::VelocityLimit & velocity_limit,
-  const double nominal_deceleration)
+  const double default_deceleration)
 {
-  return velocity_limit.use_constraints
-           ? std::abs(static_cast<double>(velocity_limit.constraints.min_acceleration))
-           : std::abs(nominal_deceleration);
+  const double deceleration = std::abs(velocity_limit.constraints.min_acceleration);
+  return velocity_limit.use_constraints && deceleration > 0.0 ? deceleration
+                                                              : std::abs(default_deceleration);
 }
 
 double get_external_velocity_limit_min_jerk(
   const autoware_internal_planning_msgs::msg::VelocityLimit & velocity_limit,
-  const double nominal_jerk)
+  const double default_jerk)
 {
-  return velocity_limit.use_constraints
-           ? std::abs(static_cast<double>(velocity_limit.constraints.min_jerk))
-           : std::abs(nominal_jerk);
+  const double jerk = std::abs(velocity_limit.constraints.min_jerk);
+  return velocity_limit.use_constraints && jerk > 0.0 ? jerk : std::abs(default_jerk);
 }
 }  // namespace detail
 
@@ -57,8 +55,9 @@ void ExternalVelocityLimit::on_initialize(const TrajectoryModifierParams & param
 void ExternalVelocityLimit::update_params(const TrajectoryModifierParams & params)
 {
   enabled_ = params.use_external_velocity_limit;
-  nominal_deceleration_ = params.stopping_constraints.nominal_deceleration;
-  nominal_jerk_ = params.stopping_constraints.jerk_limit;
+  constraints_.max_acceleration = params.velocity_limits.max_acceleration;
+  constraints_.max_deceleration = params.velocity_limits.max_deceleration;
+  constraints_.max_jerk = params.velocity_limits.max_jerk;
 }
 
 ProcessingResult ExternalVelocityLimit::process(
@@ -75,20 +74,18 @@ ProcessingResult ExternalVelocityLimit::process(
     return ProcessingResult::Unchanged;
   }
 
-  const double deceleration =
-    detail::get_external_velocity_limit_deceleration(*velocity_limit, nominal_deceleration_);
+  auto constraints = constraints_;
+  constraints.max_deceleration = detail::get_external_velocity_limit_deceleration(
+    *velocity_limit, constraints_.max_deceleration);
+  constraints.max_jerk =
+    detail::get_external_velocity_limit_min_jerk(*velocity_limit, constraints_.max_jerk);
   const double max_velocity = velocity_limit->max_velocity;
-  detail::VelocityLimitOptions options;
-  options.current_ego_velocity = input.current_odometry->twist.twist.linear.x;
-  options.current_ego_acceleration = input.current_acceleration->accel.accel.linear.x;
-  const double min_jerk =
-    detail::get_external_velocity_limit_min_jerk(*velocity_limit, nominal_jerk_);
   const auto result = detail::apply_velocity_limits(
-    traj_points, deceleration, min_jerk,
+    traj_points, constraints,
     [max_velocity](const geometry_msgs::msg::Point &) {
       return std::optional<double>{max_velocity};
     },
-    options);
+    detail::make_velocity_limit_options(input));
   return result.status;
 }
 

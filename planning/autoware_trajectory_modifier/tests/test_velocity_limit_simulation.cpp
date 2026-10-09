@@ -17,12 +17,13 @@
 // plot_velocity_limit_simulation.py, so a failing scenario also documents the defect.
 //
 // Expected behavior encoded here:
-// - a limit stage never raises a point above its input (it never accelerates on its own and never
-//   removes an upstream deceleration or stop);
+// - a limit stage is never faster than its input at the same arc length (it never accelerates on
+//   its own and never removes an upstream deceleration or stop);
+// - the acceleration, deceleration and jerk limits are never violated;
 // - the ego converges to min(limit, upstream request) within the reference settle time;
 // - a map zone is entered at its limit when feasible, and braking does not start much earlier than
 //   the latest feasible point;
-// - zero deceleration or jerk in an external limit message falls back to the nominal values.
+// - zero deceleration or jerk in an external limit message falls back to the parameters.
 
 #include "velocity_limit_simulation.hpp"
 
