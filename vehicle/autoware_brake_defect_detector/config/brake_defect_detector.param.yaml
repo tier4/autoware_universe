@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    actuation_delay_sec: 0.20       # [s], command-to-acceleration transport delay
+    cusum_drift_k: 0.15             # [m/s^2], tolerated model error
+    cusum_threshold_h: 0.05         # [m/s], CUSUM trigger threshold
+    min_speed_mps: 1.5              # [m/s]
+    max_decel_cmd: -0.1             # [m/s^2], commands must be below this value
+    brake_cmd_min: 0.05             # brake command units; tune for the vehicle
+    brake_cmd_max: 0.35             # brake command units; tune for the vehicle
+    jerk_limit_mps3: 3.0            # [m/s^3]
+    settling_time_sec: 0.5          # [s], lockout following a fast command change
+    residual_filter_tau_sec: 0.25   # [s], zero disables filtering
+    max_update_gap_sec: 0.5         # [s], resets on a measurement gap
+    input_timeout_sec: 0.5          # [s], stale-input timeout
