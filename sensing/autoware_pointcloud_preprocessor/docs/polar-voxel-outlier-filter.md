@@ -174,7 +174,7 @@ The filter uses different algorithms based on the `use_return_type_classificatio
 4. **Return Type Classification**: Points are classified as primary or secondary returns
 5. **Two-Criteria Filtering**:
    - **Criterion 1**: Primary returns ≥ `voxel_points_threshold`
-   - **Criterion 2**: Secondary returns ≤ `secondary_noise_threshold`
+   - **Criterion 2**: Secondary returns with intensity ≤ `filter_ratio_intensity_threshold` do not exceed `filter_ratio_secondary_returns_threshold`
    - **Both criteria must be satisfied** for a voxel to be kept
 6. **Range-Aware Visibility**: Visibility calculation limited to voxels within `visibility_estimation_max_range_m`, `visibility_estimation_(min|max)_azimuth_rad`, and `visibility_estimation_(min|max)_elevation_rad`, with low-visibility candidates constrained by entropy, anisotropy, average intensity, secondary-return ratio, and `visibility_estimation_max_secondary_voxel_count`
 7. **Secondary Return Filtering**: Optional exclusion of secondary returns from output
@@ -185,7 +185,7 @@ The filter uses different algorithms based on the `use_return_type_classificatio
 When enabled, for each voxel both criteria must be satisfied:
 
 - **Primary Return Threshold**: `primary_count >= voxel_points_threshold`
-- **Secondary Return Threshold**: `secondary_count <= secondary_noise_threshold`
+- **Secondary Return Threshold**: `filter_ratio_secondary_count <= filter_ratio_secondary_returns_threshold`
 - **Final Decision**: `valid_voxel = (primary_threshold_met AND secondary_threshold_met)`
 
 ### Key Features
@@ -246,11 +246,14 @@ This implementation inherits `autoware::pointcloud_preprocessor::Filter` class, 
 
 - **use_return_type_classification**: Must be `true` to enable advanced two-criteria filtering
 - **filter_secondary_returns**: When `true`, only primary returns appear in output (advanced mode only)
-- **secondary_noise_threshold**: Only used when `use_return_type_classification=true`
+- **low_visibility_intensity_threshold**: Maximum point intensity counted toward low-visibility secondary returns
+- **low_visibility_secondary_returns_threshold**: Maximum low-intensity secondary-return count before a voxel becomes a low-visibility candidate
+- **filter_ratio_intensity_threshold**: Maximum point intensity counted toward filter-ratio secondary returns
+- **filter_ratio_secondary_returns_threshold**: Maximum low-intensity secondary-return count for a filter-ratio-valid voxel
 - **low_visibility_entropy_threshold**: Minimum normalized geometric entropy for low-visibility candidate selection when `use_return_type_classification=true` (default: 0.3)
 - **low_visibility_anisotropy_threshold**: Maximum geometric anisotropy for low-visibility candidate selection when `use_return_type_classification=true` (default: 0.95)
 - **low_visibility_average_intensity_threshold**: Maximum voxel average intensity for visibility candidate selection when `use_return_type_classification=true`
-- **low-visibility voxels**: In-range secondary-noise candidate voxels are constrained by entropy, anisotropy, and average intensity thresholds. Sparse in-range voxels with fewer than `low_visibility_sparse_voxel_point_count_threshold` points, `voxel_secondary_return_ratio > low_visibility_sparse_voxel_secondary_return_ratio_threshold`, and average intensity below `low_visibility_average_intensity_threshold` are also selected as low-visibility voxels
+- **low-visibility voxels**: In-range secondary-return candidate voxels are constrained by entropy, anisotropy, and average intensity thresholds. Sparse in-range voxels with fewer than `low_visibility_sparse_voxel_point_count_threshold` points, `voxel_secondary_return_ratio > low_visibility_sparse_voxel_secondary_return_ratio_threshold`, and average intensity below `low_visibility_average_intensity_threshold` are also selected as low-visibility voxels
 - **visibility_estimation_max_secondary_voxel_count**: Only used when `use_return_type_classification=true`, limits secondary voxel counting in visibility calculations
 - **primary_return_types**: Only used when `use_return_type_classification=true`
 - **visibility_estimation_max_range_m**: Limits visibility calculation to reliable sensor range (advanced mode only)
@@ -268,7 +271,10 @@ This implementation inherits `autoware::pointcloud_preprocessor::Filter` class, 
 visibility_estimation_only: true
 use_return_type_classification: true
 voxel_points_threshold: 2
-secondary_noise_threshold: 4
+low_visibility_intensity_threshold: 2
+low_visibility_secondary_returns_threshold: 4
+filter_ratio_intensity_threshold: 2
+filter_ratio_secondary_returns_threshold: 4
 low_visibility_entropy_threshold: 0.3
 low_visibility_anisotropy_threshold: 0.95
 low_visibility_average_intensity_threshold: 2.0
@@ -303,7 +309,10 @@ publish_noise_cloud: true # Enable for debugging
 # Two-criteria filtering with return type classification
 use_return_type_classification: true
 voxel_points_threshold: 2 # Primary return threshold
-secondary_noise_threshold: 4 # Secondary return threshold
+low_visibility_intensity_threshold: 2 # Intensity threshold for visibility secondary returns
+low_visibility_secondary_returns_threshold: 4 # Secondary-return threshold for visibility
+filter_ratio_intensity_threshold: 2 # Intensity threshold for filter-ratio secondary returns
+filter_ratio_secondary_returns_threshold: 4 # Secondary-return threshold for filter ratio
 low_visibility_entropy_threshold: 0.3 # Min normalized geometric entropy for visibility candidates
 low_visibility_anisotropy_threshold: 0.95 # Max geometric anisotropy for visibility candidates
 low_visibility_average_intensity_threshold: 255.0 # Max voxel average intensity for visibility candidates
@@ -426,7 +435,10 @@ The filter includes robust error handling:
 #   <param name="radial_resolution_m" value="0.5"/>
 #   <param name="azimuth_resolution_rad" value="0.0175"/>
 #   <param name="voxel_points_threshold" value="2"/>
-#   <param name="secondary_noise_threshold" value="4"/>
+#   <param name="low_visibility_intensity_threshold" value="2"/>
+#   <param name="low_visibility_secondary_returns_threshold" value="4"/>
+#   <param name="filter_ratio_intensity_threshold" value="2"/>
+#   <param name="filter_ratio_secondary_returns_threshold" value="4"/>
 #   <param name="visibility_estimation_max_secondary_voxel_count" value="500"/>
 #   <param name="primary_return_types" value="[1,6,8,10]"/>
 #   <param name="visibility_estimation_max_range_m" value="20.0"/>
@@ -683,7 +695,7 @@ To enable advanced filtering on existing systems:
 3. **Configure return types**: Set `primary_return_types` for your sensor
 4. **Set visibility range**: Configure `visibility_estimation_max_range_m`, `visibility_estimation_(min|max)_azimuth_rad`, and `visibility_estimation_(min|max)_elevation_rad` for your application
 5. **Configure secondary voxel limiting**: Set `visibility_estimation_max_secondary_voxel_count` based on requirements
-6. **Tune thresholds**: Adjust `secondary_noise_threshold` based on requirements
+6. **Tune thresholds**: Adjust the `low_visibility_*` and `filter_ratio_*` intensity and secondary-return thresholds independently
 7. **Monitor diagnostics**: Use range-aware visibility metrics for performance assessment
 
 ### Disabling Advanced Mode
