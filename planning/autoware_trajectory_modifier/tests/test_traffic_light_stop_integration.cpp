@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -120,7 +121,8 @@ AccelWithCovarianceStamped::ConstSharedPtr make_acceleration(double accel_x)
   return std::make_shared<const AccelWithCovarianceStamped>(acceleration);
 }
 
-TrafficLightGroupArray::ConstSharedPtr make_traffic_light_signal(lanelet::Id id, uint8_t color)
+TrafficLightGroupArray::ConstSharedPtr make_traffic_light_signal(
+  lanelet::Id id, uint8_t color, const std::optional<rclcpp::Time> & stamp = std::nullopt)
 {
   TrafficLightGroup group;
   group.traffic_light_group_id = id;
@@ -134,6 +136,9 @@ TrafficLightGroupArray::ConstSharedPtr make_traffic_light_signal(lanelet::Id id,
 
   auto signals = std::make_shared<TrafficLightGroupArray>();
   signals->traffic_light_groups.push_back(group);
+  if (stamp.has_value()) {
+    signals->stamp = *stamp;
+  }
   return signals;
 }
 
@@ -246,6 +251,7 @@ protected:
     tl.amber_rejection.th_hysteresis = 0.0;
     tl.amber_rejection.reject_if_stop_detected = false;
     tl.crossing_time_limit = 2.75;
+    tl.signal_timeout = 0.5;
   }
 
   void create_and_set_map(lanelet::Id light_id, double stop_line_x)
@@ -255,9 +261,11 @@ protected:
     stop_line_x_ = stop_line_x;
   }
 
-  void set_traffic_light_signal(lanelet::Id id, uint8_t color)
+  void set_traffic_light_signal(
+    lanelet::Id id, uint8_t color, const std::optional<rclcpp::Time> & stamp = std::nullopt)
   {
-    traffic_light_signals_ = make_traffic_light_signal(id, color);
+    // The plugin rejects signals older than signal_timeout, so use a fresh stamp by default.
+    traffic_light_signals_ = make_traffic_light_signal(id, color, stamp.value_or(node_->now()));
   }
 
   InputData make_default_input(double velocity = 5.0)
@@ -417,12 +425,12 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryModifiedWithRedLightFrontOverh
 TEST_F(TrafficLightStopIntegrationTest, TrajectoryModifiedWithAmberLightCanStop)
 {
   const lanelet::Id light_id = 200;
-  const double stop_x = 10.0;
+  const double stop_x = 15.0;
 
   create_and_set_map(light_id, stop_x);
   set_traffic_light_signal(light_id, TrafficLightElement::AMBER);
 
-  auto trajectory = create_straight_trajectory(0.0, 11.0, 5.0);
+  auto trajectory = create_straight_trajectory(0.0, 16.0, 5.0);
   expect_modified_with_stop_before_stop_line(
     trajectory, make_default_input(), "Should insert stop point when amber light is stoppable");
 }
@@ -541,4 +549,70 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWhenRejectIfStopDet
   expect_not_modified(
     crossing_trajectory, make_default_input(10.0),
     "Input trajectory should not be modified when reject_if_stop_detected is false");
+}
+
+TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWithStaleSignals)
+{
+  const lanelet::Id light_id = 500;
+  const double stop_x = 15.0;
+
+  create_and_set_map(light_id, stop_x);
+  const auto age = rclcpp::Duration::from_seconds(params_.traffic_light_stop.signal_timeout + 1.0);
+  set_traffic_light_signal(light_id, TrafficLightElement::RED, node_->now() - age);
+
+  auto trajectory = create_straight_trajectory(0.0, 16.0, 5.0);
+  expect_not_modified(
+    trajectory, make_default_input(),
+    "Signals older than signal_timeout should skip the traffic light check");
+}
+
+TEST_F(TrafficLightStopIntegrationTest, HoldsPositionWhenStoppedNearTargetStopPoint)
+{
+  const lanelet::Id light_id = 500;
+  const auto ego_front_offset = context_->vehicle_info.max_longitudinal_offset_m;
+  // Target stop ~1.5 m ahead of ego (within hold_position_distance_threshold).
+  const double target_stop_arc_length = 1.5;
+  const double stop_x =
+    target_stop_arc_length + params_.traffic_light_stop.stop_margin + ego_front_offset;
+
+  create_and_set_map(light_id, stop_x);
+  set_traffic_light_signal(light_id, TrafficLightElement::RED);
+
+  params_.stopping_constraints.ego_stopped_vel_th = 0.1;
+  params_.traffic_light_stop.hold_position_when_stopped = true;
+  params_.traffic_light_stop.hold_position_distance_threshold = 2.0;
+  plugin_->update_params(params_);
+
+  // Lookahead trajectory crosses the stop line while ego odometry velocity is 0.
+  auto trajectory = create_straight_trajectory(0.0, stop_x + 1.0, 1.0);
+  const bool modified = plugin_->modify_trajectory(trajectory, make_default_input(0.0));
+  ASSERT_TRUE(modified) << "Should modify trajectory for red light while ego is stopped";
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_NEAR(trajectory.back().pose.position.x, 0.0, 0.05)
+    << "Stopped ego near the stop point should hold in place instead of pulling forward";
+}
+
+TEST_F(TrafficLightStopIntegrationTest, PullsForwardWhenStoppedFarFromStopPoint)
+{
+  const lanelet::Id light_id = 501;
+  const auto ego_front_offset = context_->vehicle_info.max_longitudinal_offset_m;
+  // Target stop ~3.0 m ahead of ego (beyond hold_position_distance_threshold).
+  const double target_stop_arc_length = 3.0;
+  const double stop_x =
+    target_stop_arc_length + params_.traffic_light_stop.stop_margin + ego_front_offset;
+
+  create_and_set_map(light_id, stop_x);
+  set_traffic_light_signal(light_id, TrafficLightElement::RED);
+
+  params_.stopping_constraints.ego_stopped_vel_th = 0.1;
+  params_.traffic_light_stop.hold_position_when_stopped = true;
+  params_.traffic_light_stop.hold_position_distance_threshold = 2.0;
+  plugin_->update_params(params_);
+
+  auto trajectory = create_straight_trajectory(0.0, stop_x + 1.0, 1.0);
+  const bool modified = plugin_->modify_trajectory(trajectory, make_default_input(0.0));
+  ASSERT_TRUE(modified) << "Should modify trajectory for red light while ego is stopped";
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_NEAR(trajectory.back().pose.position.x, target_stop_arc_length, 0.5)
+    << "Stopped ego far from the stop point should still be allowed to pull forward";
 }

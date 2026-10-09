@@ -26,6 +26,7 @@
       maximum_deceleration: 4.0 # [m/s^2]
       jerk_limit: 3.0 # [m/s^3]
       arrived_distance_threshold: 0.5 # threshold to check if the ego vehicle has arrived at the stop point [m]
+      ego_stopped_vel_th: 0.1  # [m/s] velocity threshold below which ego is considered stopped
 
     # Obstacle Stop Plugin Parameters
     obstacle_stop:
@@ -96,9 +97,18 @@
       th_stable_duration_amber: 0.2 # [s]
       th_stable_duration_unknown: 0.5 # [s]
       crossing_time_limit: 2.75 # [s]
+      signal_timeout: 0.36 # [s] maximum age of the traffic light signals before the check is skipped
+      hold_position_when_stopped: true # hold in place when already stopped near the stop point (avoids red-light creep)
+      hold_position_distance_threshold: 2.0 # [m] hold only if target stop is within this distance
       amber_rejection:
         th_hysteresis: 0.5 # [s]
         reject_if_stop_detected: true # reject if we detect a previous stop attempt from input trajectory
+      v2i_handling:
+        use_v2i_remaining_time: false
+        get_last_time_allowed_to_pass_from_map: false
+        last_time_allowed_to_pass: 4.0
+        velocity_threshold: 0.5 # [m/s]
+        required_time_to_departure: 5.0 # [s]
 
     # Surround Obstacle Stop Plugin Parameters
     surround_obstacle_stop:
@@ -143,4 +153,3 @@
         pointcloud: 0.5
       hysteresis_distance: 0.1
       hysteresis_time: 0.2
-      ego_stopped_vel_th: 0.1 # [m/s]

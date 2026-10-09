@@ -25,10 +25,15 @@
 #include <lanelet2_core/geometry/LineString.h>
 
 #include <cstdint>
+#include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::traffic_light_compliance_checker
 {
+
+/// @brief route lanelet id per traffic light id, for the traffic lights of the current route
+using RouteTrafficLightIndex = std::unordered_map<lanelet::Id, lanelet::Id>;
 
 /// @brief input data for traffic light compliance check
 struct Inputs
@@ -47,10 +52,11 @@ struct StopLineInfo
 {
   lanelet::BasicLineString2d line;
   int64_t traffic_light_id;
+  int64_t traffic_light_lanelet_id;
 };
 
 /// @brief type of traffic light violation
-enum class ViolationType { RED_LIGHT, AMBER_LIGHT };
+enum class ViolationType { RED_LIGHT, AMBER_LIGHT, V2I };
 
 /// @brief violation detail
 struct Violation
@@ -93,6 +99,15 @@ struct StatusTrackerParameters
   double stable_duration_threshold_unknown;
 };
 
+/// @brief part of the trajectory to check against stop lines
+struct PreparedTrajectory
+{
+  std::vector<autoware_planning_msgs::msg::TrajectoryPoint> points;
+  lanelet::BasicLineString2d linestring;
+  std::optional<lanelet::BasicPoint2d> stop_point;
+  double backward_length{0.0};
+};
+
 /// @brief parameters for traffic light compliance check
 struct Parameters
 {
@@ -117,6 +132,13 @@ struct Parameters
     double hysteresis_duration;
     bool reject_if_stop_detected;
   } amber_rejection;
+  struct V2IHandling
+  {
+    bool get_last_time_allowed_to_pass_from_map;
+    double last_time_allowed_to_pass;
+    double velocity_threshold;
+    double required_time_to_departure;
+  } v2i_handling;
 };
 
 }  // namespace autoware::traffic_light_compliance_checker

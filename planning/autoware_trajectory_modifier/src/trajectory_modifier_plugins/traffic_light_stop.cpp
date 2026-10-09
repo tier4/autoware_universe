@@ -18,6 +18,7 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 
@@ -47,6 +48,11 @@ autoware::traffic_light_compliance_checker::Parameters to_checker_params(
   p.amber_rejection.reject_if_stop_detected = tl_stop_p.amber_rejection.reject_if_stop_detected;
   p.checked_trajectory_length.deceleration_limit = stopping_params.nominal_deceleration;
   p.checked_trajectory_length.jerk_limit = stopping_params.jerk_limit;
+  p.v2i_handling.get_last_time_allowed_to_pass_from_map =
+    tl_stop_p.v2i_handling.get_last_time_allowed_to_pass_from_map;
+  p.v2i_handling.last_time_allowed_to_pass = tl_stop_p.v2i_handling.last_time_allowed_to_pass;
+  p.v2i_handling.required_time_to_departure = tl_stop_p.v2i_handling.required_time_to_departure;
+  p.v2i_handling.velocity_threshold = tl_stop_p.v2i_handling.velocity_threshold;
   return p;
 }
 }  // namespace
@@ -109,17 +115,32 @@ bool TrafficLightStop::check_traffic_lights(
   autoware_utils_debug::ScopedTimeTrack st(
     "TrafficLightStop::check_traffic_lights", *get_time_keeper());
 
+  // The signal subscriber keeps the last message forever, so a dead feed looks like a valid one.
+  // Reject signals that are too old before the checker consumes them.
+  const auto current_time = get_clock()->now();
+  const auto signal_age =
+    std::abs((current_time - rclcpp::Time(input.traffic_light_signals->stamp)).seconds());
+  if (signal_age > params_.signal_timeout) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 1000,
+      "[TM TrafficLightStop] Traffic light signals are stale: age %.2f s exceeds signal_timeout "
+      "%.2f s. Skipping the traffic light check.",
+      signal_age, params_.signal_timeout);
+    return false;
+  }
+
   const traffic_light_compliance_checker::Inputs inputs{
     traj_points,
     input.lanelet_map,
     *input.route,
     *input.traffic_light_signals,
-    get_clock()->now(),
+    current_time,
     input.current_odometry->twist.twist.linear.x,
     input.current_acceleration->accel.accel.linear.x};
 
-  const auto result =
-    checker_->check(inputs, params_.stop_for_red_light, params_.stop_for_amber_light);
+  const auto result = checker_->check(
+    inputs, params_.stop_for_red_light, params_.stop_for_amber_light,
+    params_.v2i_handling.use_v2i_remaining_time);
   if (!result) {
     RCLCPP_ERROR(
       get_node_ptr()->get_logger(), "Failed to check traffic lights: %s", result.error().c_str());
@@ -177,8 +198,16 @@ bool TrafficLightStop::set_stop_point(TrajectoryPoints & traj_points, const Inpu
     return false;
   }
 
+  // Mitigation for red-light creep: if ego is already stopped and the target stop is
+  // only a short distance ahead, hold in place instead of chasing the stop point.
+  const bool hold_in_place =
+    params_.hold_position_when_stopped &&
+    !utils::is_ego_vehicle_moving(
+      input.current_odometry->twist.twist, stopping_params_.ego_stopped_vel_th) &&
+    target_stop_point_arc_length <= params_.hold_position_distance_threshold;
+
   if (
-    target_stop_point_arc_length < stopping_params_.arrived_distance_threshold ||
+    hold_in_place || target_stop_point_arc_length < stopping_params_.arrived_distance_threshold ||
     !utils::insert_stop_point(traj_points, target_stop_point_arc_length)) {
     utils::replace_trajectory_with_stop_point(
       traj_points, input.current_odometry->pose.pose, trajectory_time_step_);

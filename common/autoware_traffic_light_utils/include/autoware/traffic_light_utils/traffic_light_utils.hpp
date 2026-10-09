@@ -85,6 +85,16 @@ bool isTrafficSignalStop(
   const lanelet::ConstLanelet & lanelet,
   const autoware_perception_msgs::msg::TrafficLightGroup & tl_state);
 
+/**
+ * @brief check if the traffic signal is red stop.
+ * @param lanelet
+ * @param elements
+ * @return true if the traffic signal is red stop, false otherwise.
+ */
+bool isTrafficSignalStop(
+  const lanelet::ConstLanelet & lanelet,
+  const std::vector<autoware_perception_msgs::msg::TrafficLightElement> & elements);
+
 tf2::Vector3 getTrafficLightTopLeft(const lanelet::ConstLineString3d & traffic_light);
 
 tf2::Vector3 getTrafficLightBottomRight(const lanelet::ConstLineString3d & traffic_light);
