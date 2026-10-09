@@ -23,6 +23,7 @@
   <depend>autoware_avoidance_target_detector</depend>
   <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_internal_planning_msgs</depend>
+  <depend>autoware_lanelet2_extension</depend>
   <depend>autoware_lanelet2_utils</depend>
   <depend>autoware_map_msgs</depend>
   <depend>autoware_motion_utils</depend>
@@ -58,6 +59,7 @@
   <depend>tf2_eigen</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>tf2_ros</depend>
+  <depend>tier4_v2x_msgs</depend>
   <depend>visualization_msgs</depend>
   <exec_depend>autoware_core_planning</exec_depend>
   <exec_depend>python3-matplotlib</exec_depend>

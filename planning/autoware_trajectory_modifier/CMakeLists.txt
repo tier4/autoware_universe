@@ -147,6 +147,7 @@ ament_auto_add_library(autoware_trajectory_modifier_plugins SHARED
   src/trajectory_modifier_plugins/traffic_light_stop.cpp
   src/trajectory_modifier_plugins/map_velocity_limits.cpp
   src/trajectory_modifier_plugins/velocity_limits.cpp
+  src/trajectory_modifier_plugins/virtual_traffic_light_stop.cpp
   src/trajectory_modifier_plugins/model_planning_factor_id.cpp
 )
 

@@ -11,6 +11,7 @@
       - "autoware::trajectory_modifier::plugin::SurroundObstacleStop"
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
       - "autoware::trajectory_modifier::plugin::TrafficLightStop"
+      - "autoware::trajectory_modifier::plugin::VirtualTrafficLightStop"
       - "autoware::trajectory_modifier::plugin::VelocityModifier"
       - "autoware::trajectory_modifier::plugin::TrajectoryTemporalMPTOptimizer"
       - "autoware::trajectory_modifier::plugin::TrajectoryPointFixer"
@@ -27,6 +28,7 @@
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
+    use_virtual_traffic_light_stop: true
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
     use_model_planning_factor_id: true
@@ -191,6 +193,14 @@
     map_velocity_limits:
       limit_velocity_from_map_debug_lanelet_ids: [0]
       limit_velocity_from_map_debug_max_velocities: [1000.0]
+
+    virtual_traffic_light_stop:
+      max_delay_sec: 3.0 # [s]
+      near_line_distance: 1.0 # [m]
+      dead_line_margin: 1.0 # [m]
+      max_yaw_deviation_deg: 90.0 # [deg]
+      check_timeout_after_stop_line: true
+      min_hold_trajectory_length: 5.0 # [m]
 
     # ModelPlanningFactorID: inspect kinematics and publish
     # /planning/planning_factors/diffusion_planner. Does not mutate.

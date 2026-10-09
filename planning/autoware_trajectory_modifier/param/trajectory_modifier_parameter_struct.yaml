@@ -10,6 +10,7 @@ trajectory_modifier_params:
       - autoware::trajectory_modifier::plugin::SurroundObstacleStop
       - autoware::trajectory_modifier::plugin::ObstacleStop
       - autoware::trajectory_modifier::plugin::TrafficLightStop
+      - autoware::trajectory_modifier::plugin::VirtualTrafficLightStop
       - autoware::trajectory_modifier::plugin::VelocityModifier
       - autoware::trajectory_modifier::plugin::TrajectoryTemporalMPTOptimizer
       - autoware::trajectory_modifier::plugin::TrajectoryPointFixer
@@ -52,6 +53,11 @@ trajectory_modifier_params:
     type: bool
     default_value: true
     description: Enable the use of surround obstacle stop
+    read_only: false
+  use_virtual_traffic_light_stop:
+    type: bool
+    default_value: false
+    description: Enable the use of virtual traffic light stop
     read_only: false
   use_traffic_light_stop:
     type: bool
@@ -1595,4 +1601,46 @@ trajectory_modifier_params:
       type: double_array
       default_value: []
       description: Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs
+      read_only: false
+
+  virtual_traffic_light_stop:
+    max_delay_sec:
+      type: double
+      default_value: 3.0
+      description: Maximum accepted delay of a virtual traffic light state [s]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    near_line_distance:
+      type: double
+      default_value: 1.0
+      description: Distance to an end line considered near [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    dead_line_margin:
+      type: double
+      default_value: 1.0
+      description: Margin used to determine whether a line has been crossed [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    max_yaw_deviation_deg:
+      type: double
+      default_value: 90.0
+      description: Maximum yaw deviation used for ego nearest point matching [deg]
+      validation:
+        bounds<>: [0.0, 180.0]
+      read_only: false
+    check_timeout_after_stop_line:
+      type: bool
+      default_value: true
+      description: Check virtual traffic light state timeout after crossing the stop line
+      read_only: false
+    min_hold_trajectory_length:
+      type: double
+      default_value: 5.0
+      description: Minimum output trajectory length while holding at an end line [m]
+      validation:
+        bounds<>: [0.0, 100.0]
       read_only: false
