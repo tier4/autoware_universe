@@ -47,9 +47,12 @@ struct SafetyPlannerResult
 class SafetyPlanner
 {
 public:
-  SafetyPlanner(const Params & params, std::shared_ptr<TimeKeeper> time_keeper);
+  SafetyPlanner(
+    const Params & params, std::shared_ptr<TimeKeeper> time_keeper, rclcpp::Node * node);
 
   tl::expected<SafetyPlannerResult, std::string> plan(const SafetyPlannerInput & input);
+
+  void publish_planning_factors();
 
   std::vector<std::string> get_constraint_generator_plugin_names() const;
 
@@ -87,7 +90,7 @@ private:
    * @{
    */
 
-  void load_trajectory_planner_plugin();
+  void load_trajectory_planner_plugin(rclcpp::Node * node);
 
   using TrajectoryPlannerLoader = pluginlib::ClassLoader<TrajectoryPlannerInterface>;
   std::unique_ptr<TrajectoryPlannerLoader> trajectory_planner_loader_;

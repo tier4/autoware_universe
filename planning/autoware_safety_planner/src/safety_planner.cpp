@@ -242,11 +242,12 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
 }
 }  // namespace
 
-SafetyPlanner::SafetyPlanner(const Params & params, std::shared_ptr<TimeKeeper> time_keeper)
+SafetyPlanner::SafetyPlanner(
+  const Params & params, std::shared_ptr<TimeKeeper> time_keeper, rclcpp::Node * const node)
 : params_(params), time_keeper_(std::move(time_keeper))
 {
   load_constraint_generator_plugins();
-  load_trajectory_planner_plugin();
+  load_trajectory_planner_plugin(node);
 }
 
 void SafetyPlanner::load_constraint_generator_plugins()
@@ -281,7 +282,7 @@ std::vector<std::string> SafetyPlanner::get_constraint_generator_plugin_names() 
   return names;
 }
 
-void SafetyPlanner::load_trajectory_planner_plugin()
+void SafetyPlanner::load_trajectory_planner_plugin(rclcpp::Node * const node)
 {
   const auto logger = rclcpp::get_logger("safety_planner");
   trajectory_planner_loader_ = std::make_unique<TrajectoryPlannerLoader>(
@@ -290,13 +291,20 @@ void SafetyPlanner::load_trajectory_planner_plugin()
   const auto & class_name = params_.trajectory_planner_plugin;
   try {
     trajectory_planner_ = trajectory_planner_loader_->createSharedInstance(class_name);
-    trajectory_planner_->on_initialize(time_keeper_, params_);
+    trajectory_planner_->on_initialize(time_keeper_, params_, node);
     RCLCPP_INFO(
       logger, "Loaded trajectory planner plugin: %s (%s)", trajectory_planner_->get_name().c_str(),
       class_name.c_str());
   } catch (const pluginlib::PluginlibException & e) {
     RCLCPP_ERROR(
       logger, "Failed to load trajectory planner plugin '%s': %s", class_name.c_str(), e.what());
+  }
+}
+
+void SafetyPlanner::publish_planning_factors()
+{
+  if (trajectory_planner_) {
+    trajectory_planner_->publish_planning_factors();
   }
 }
 
