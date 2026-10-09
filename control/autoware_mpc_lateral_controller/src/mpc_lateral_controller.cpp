@@ -383,9 +383,18 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   }
 
   if (!mpc_solved_status.result) {
-    debug_throttle("MPC is not solved, use stop control command");
     predicted_traj.points.clear();
-    ctrl_cmd = getStopControlCommand();
+    if (is_under_control) {
+      debug_throttle("MPC is not solved, use stop control command");
+      ctrl_cmd = getStopControlCommand();
+    } else {
+      // Not under control the vehicle steers by itself: follow the measured steering instead of
+      // holding the last command, which would be stale by the time control is enabled. The
+      // initial command is offset-compensated like the MPC state; the published one is not.
+      debug_throttle("MPC is not solved, follow the measured steering (not under control)");
+      ctrl_cmd = getInitialControlCommand();
+      ctrl_cmd.steering_tire_angle -= static_cast<float>(m_steering_offset_filtered_);
+    }
     syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
   } else if (
     !use_steering_direct_passthrough && m_enable_confidence_steer_slew_limit &&
@@ -487,8 +496,11 @@ Lateral MpcLateralController::getStopControlCommand() const
 
 Lateral MpcLateralController::getInitialControlCommand() const
 {
+  // The driver can steer past the controller's limit; the command starts within it.
+  const auto steer_lim = static_cast<float>(m_mpc->m_steer_lim);
   Lateral cmd;
-  cmd.steering_tire_angle = m_current_steering.steering_tire_angle;
+  cmd.steering_tire_angle =
+    std::clamp(m_current_steering.steering_tire_angle, -steer_lim, steer_lim);
   cmd.steering_tire_rotation_rate = 0.0;
   return cmd;
 }
