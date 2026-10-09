@@ -170,6 +170,20 @@ if(BUILD_TESTING)
     autoware_trajectory_modifier_utils
     acados_interface_time_seq
   )
+
+  # Closed-loop velocity limit simulations write CSV data here (overridden at run time by the
+  # VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR environment variable); the plot test renders it.
+  set(VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/velocity_limit_simulation")
+  target_compile_definitions(test_autoware_trajectory_modifier PRIVATE
+    VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR="${VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR}"
+  )
+  add_test(NAME plot_velocity_limit_simulation
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/plot_velocity_limit_simulation.py
+      ${VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR}
+  )
+  set_tests_properties(plot_velocity_limit_simulation PROPERTIES
+    DEPENDS test_autoware_trajectory_modifier
+  )
 endif()
 
 install(TARGETS acados_interface_temporal acados_interface_time_seq
