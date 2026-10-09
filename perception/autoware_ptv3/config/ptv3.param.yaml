@@ -50,6 +50,20 @@
         iou_nms_search_distance_2d: 10.0
         iou_nms_threshold: 0.1
         yaw_norm_thresholds: [0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.1, 0.0, 0.0]
+        use_velocity: false
+        bbox_adjustment:
+          margins:
+            # -x, -y, -z, x, y, z
+            UNKNOWN: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            CAR: [0.0, -0.05, 0.0, 0.0, -0.05, 0.0]
+            TRUCK: [0.0, -0.1, 0.0, 0.0, -0.1, 0.0]
+            BUS: [0.0, -0.1, 0.0, 0.0, -0.1, 0.0]
+            TRAILER: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            MOTORCYCLE: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            BICYCLE: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            PEDESTRIAN: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            ANIMAL: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            HAZARD: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
       detection_score_thresholds:
         distance_bin_upper_limits: [50.0, 90.0, 121.0, 200.0]
         min_confidence_scores:

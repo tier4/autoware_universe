@@ -23,6 +23,7 @@
 
 #include <autoware_perception_msgs/msg/detected_object.hpp>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -85,6 +86,45 @@ std::uint8_t get_classification_type(const std::string & class_name);
 std::unordered_map<std::string, std::string> declare_class_mapping(
   rclcpp::Node & node, const std::vector<std::string> & class_names,
   const rcl_interfaces::msg::ParameterDescriptor & descriptor);
+
+/// Face displacements [-x, -y, -z, x, y, z] in meters in the box frame, positive moves a face
+/// outward.
+using BboxMargins = std::array<double, 6>;
+
+/**
+ * @brief Declare and resolve detection3d.post_process_params.bbox_adjustment.
+ *
+ * @details One `bbox_adjustment.margins.<class>` parameter is declared per ObjectClassification
+ * label from UNKNOWN to HAZARD, and zero margins leave a class unadjusted.
+ *
+ * @param node Node used to declare the parameters.
+ * @param descriptor Descriptor applied to each declared parameter.
+ * @return ObjectClassification label to margins, one entry per label.
+ * @throws rclcpp::exceptions::UninitializedStaticallyTypedParameterException If a class has no
+ * margins.
+ * @throws std::runtime_error If the margins of a class are not 6 finite values.
+ */
+std::unordered_map<std::uint8_t, BboxMargins> declare_bbox_adjustment(
+  rclcpp::Node & node, const rcl_interfaces::msg::ParameterDescriptor & descriptor);
+
+/**
+ * @brief Move the faces of a bounding box by the margins of its class.
+ *
+ * @details The center moves by half the difference of opposite margins, rotated by the object
+ * orientation. Each face moving inward is trimmed on its own to stop half of min_dimensions before
+ * the original center, so a shrunk box keeps the original center and at least min_dimensions, and a
+ * dimension already below it is not shrunk.
+ *
+ * @param margins_by_label ObjectClassification label to margins. Objects of other classes and
+ * shapes other than a bounding box are left unchanged.
+ * @param min_dimensions Smallest length, width and height in meters a shrink leaves.
+ * @param obj Object to adjust.
+ * @return Whether a face was trimmed.
+ */
+bool adjust_bbox(
+  const std::unordered_map<std::uint8_t, BboxMargins> & margins_by_label,
+  const std::array<double, 3> & min_dimensions,
+  autoware_perception_msgs::msg::DetectedObject & obj);
 
 }  // namespace autoware::ptv3
 
