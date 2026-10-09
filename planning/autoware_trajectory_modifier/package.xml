@@ -23,6 +23,7 @@
   <depend>autoware_avoidance_target_detector</depend>
   <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_internal_planning_msgs</depend>
+  <depend>autoware_lanelet2_extension</depend>
   <depend>autoware_lanelet2_utils</depend>
   <depend>autoware_map_msgs</depend>
   <depend>autoware_motion_utils</depend>
@@ -48,6 +49,7 @@
   <depend>generate_parameter_library</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>pcl_conversions</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>

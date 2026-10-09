@@ -11,6 +11,7 @@
       - "autoware::trajectory_modifier::plugin::SurroundObstacleStop"
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
       - "autoware::trajectory_modifier::plugin::TrafficLightStop"
+      - "autoware::trajectory_modifier::plugin::DetectionAreaStop"
       - "autoware::trajectory_modifier::plugin::VelocityModifier"
       - "autoware::trajectory_modifier::plugin::TrajectoryTemporalMPTOptimizer"
       - "autoware::trajectory_modifier::plugin::TrajectoryPointFixer"
@@ -27,6 +28,7 @@
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
+    use_detection_area_stop: false
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
     use_model_planning_factor_id: true
@@ -191,6 +193,31 @@
     map_velocity_limits:
       limit_velocity_from_map_debug_lanelet_ids: [0]
       limit_velocity_from_map_debug_max_velocities: [1000.0]
+
+    detection_area_stop:
+      stop_margin: 0.0 # [m]
+      target_filtering:
+        pointcloud: true
+        unknown: false
+        car: false
+        truck: false
+        bus: false
+        trailer: false
+        motorcycle: false
+        bicycle: false
+        pedestrian: false
+        animal: false
+        hazard: false
+        over_drivable: false
+        under_drivable: false
+      use_dead_line: false
+      dead_line_margin: 5.0 # [m]
+      unstoppable_policy: "stop_after_stopline"
+      state_clear_time: 2.0 # [s]
+      hold_stop_margin_distance: 0.0 # [m]
+      distance_to_judge_over_stop_line: 0.5 # [m]
+      suppress_pass_judge_when_stopping: false
+      enable_detected_obstacle_logging: false
 
     # ModelPlanningFactorID: inspect kinematics and publish
     # /planning/planning_factors/diffusion_planner. Does not mutate.
