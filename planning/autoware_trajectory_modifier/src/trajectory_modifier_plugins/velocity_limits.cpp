@@ -17,6 +17,7 @@
 #include <autoware/interpolation/linear_interpolation.hpp>
 #include <autoware/interpolation/spherical_linear_interpolation.hpp>
 #include <rclcpp/duration.hpp>
+#include <rclcpp/time.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -509,6 +510,211 @@ VelocityLimitResult apply_velocity_limits(
 
   resample_poses(points, original, times);
   return {ProcessingResult::Modified, {}};
+}
+
+namespace
+{
+struct PlanSample
+{
+  double velocity{0.0};
+  double acceleration{0.0};
+  geometry_msgs::msg::Point position;
+};
+
+/// @brief State of a plan `elapsed` seconds after the ego state it was planned from; none beyond
+/// its last point. Where the velocities follow the trapezoidal integral of the accelerations, the
+/// motion between points has a constant jerk; otherwise the velocity is linear.
+std::optional<PlanSample> sample_plan(const TrajectoryPoints & plan, const double elapsed)
+{
+  const auto time_of = [](const auto & point) {
+    return rclcpp::Duration(point.time_from_start).seconds();
+  };
+  if (plan.empty() || elapsed > time_of(plan.back())) {
+    return std::nullopt;
+  }
+  if (elapsed <= time_of(plan.front())) {
+    return PlanSample{
+      plan.front().longitudinal_velocity_mps, plan.front().acceleration_mps2,
+      plan.front().pose.position};
+  }
+  for (std::size_t i = 0; i + 1 < plan.size(); ++i) {
+    const double t0 = time_of(plan[i]);
+    const double t1 = time_of(plan[i + 1]);
+    if (elapsed > t1) {
+      continue;
+    }
+    const double h = t1 - t0;
+    const double u = elapsed - t0;
+    const double v0 = plan[i].longitudinal_velocity_mps;
+    const double v1 = plan[i + 1].longitudinal_velocity_mps;
+    const double a0 = plan[i].acceleration_mps2;
+    const double a1 = plan[i + 1].acceleration_mps2;
+    const double jerk = (a1 - a0) / h;
+    const bool constant_jerk = std::abs(v1 - v0 - 0.5 * (a0 + a1) * h) <= 5e-3;
+    const auto travelled = [&](const double time) {
+      return constant_jerk ? v0 * time + 0.5 * a0 * time * time + jerk * time * time * time / 6.0
+                           : v0 * time + 0.5 * (v1 - v0) / h * time * time;
+    };
+    PlanSample sample;
+    sample.velocity = constant_jerk ? v0 + a0 * u + 0.5 * jerk * u * u : v0 + u / h * (v1 - v0);
+    sample.acceleration = a0 + u / h * (a1 - a0);
+    const double length = travelled(h);
+    const double ratio = length > 1e-6 ? std::clamp(travelled(u) / length, 0.0, 1.0) : u / h;
+    const auto & p0 = plan[i].pose.position;
+    const auto & p1 = plan[i + 1].pose.position;
+    sample.position.x = autoware::interpolation::lerp(p0.x, p1.x, ratio);
+    sample.position.y = autoware::interpolation::lerp(p0.y, p1.y, ratio);
+    sample.position.z = autoware::interpolation::lerp(p0.z, p1.z, ratio);
+    return sample;
+  }
+  return std::nullopt;
+}
+
+/// @brief Measurement time of the ego state of a plugin input; none when unset.
+std::optional<double> measurement_time(const TrajectoryModifierData & data)
+{
+  if (!data.current_odometry) {
+    return std::nullopt;
+  }
+  const auto & stamp = data.current_odometry->header.stamp;
+  if (stamp.sec == 0 && stamp.nanosec == 0) {
+    return std::nullopt;
+  }
+  return rclcpp::Time(stamp).seconds();
+}
+}  // namespace
+
+bool operator==(const FixedProfileParameters & lhs, const FixedProfileParameters & rhs)
+{
+  return lhs.enable == rhs.enable && lhs.reset_velocity_deviation == rhs.reset_velocity_deviation &&
+         lhs.reset_acceleration_deviation == rhs.reset_acceleration_deviation &&
+         lhs.reset_distance_deviation == rhs.reset_distance_deviation &&
+         lhs.reset_time_gap == rhs.reset_time_gap;
+}
+
+VelocityLimitConstraints make_velocity_limit_constraints(const TrajectoryModifierParams & params)
+{
+  return {
+    params.velocity_limits.max_acceleration, params.velocity_limits.max_deceleration,
+    params.velocity_limits.max_jerk};
+}
+
+FixedProfileParameters make_fixed_profile_parameters(const TrajectoryModifierParams & params)
+{
+  const auto & fixed = params.velocity_limits.fixed_profile;
+  return {
+    fixed.enable, fixed.reset_velocity_deviation, fixed.reset_acceleration_deviation,
+    fixed.reset_distance_deviation, fixed.reset_time_gap};
+}
+
+const char * to_string(const ProfileStart start)
+{
+  switch (start) {
+    case ProfileStart::Measured:
+      return "measured";
+    case ProfileStart::NoPreviousPlan:
+      return "no_previous_plan";
+    case ProfileStart::PreviousPlan:
+      return "previous_plan";
+    case ProfileStart::ResetTimeGap:
+      return "reset_time_gap";
+    case ProfileStart::ResetVelocity:
+      return "reset_velocity";
+    case ProfileStart::ResetAcceleration:
+      return "reset_acceleration";
+    case ProfileStart::ResetDistance:
+      return "reset_distance";
+  }
+  return "unknown";
+}
+
+bool is_reset(const ProfileStart start)
+{
+  return start == ProfileStart::ResetTimeGap || start == ProfileStart::ResetVelocity ||
+         start == ProfileStart::ResetAcceleration || start == ProfileStart::ResetDistance;
+}
+
+void FixedProfileMemory::set_parameters(const FixedProfileParameters & parameters)
+{
+  if (!(parameters == parameters_)) {
+    parameters_ = parameters;
+    clear();
+  }
+}
+
+ProfileStartResult FixedProfileMemory::start(
+  const std::size_t candidate, const std::optional<double> & time,
+  const geometry_msgs::msg::Point & position, const VelocityLimitOptions & measured) const
+{
+  if (!parameters_.enable) {
+    return {measured, ProfileStart::Measured};
+  }
+  if (!time || candidate >= plans_.size() || !plans_[candidate]) {
+    return {measured, ProfileStart::NoPreviousPlan};
+  }
+  const auto & previous = *plans_[candidate];
+  const double elapsed = *time - previous.time;
+  const auto sample = elapsed >= 0.0 && elapsed <= parameters_.reset_time_gap
+                        ? sample_plan(previous.points, elapsed)
+                        : std::nullopt;
+  if (!sample) {
+    return {measured, ProfileStart::ResetTimeGap};
+  }
+  if (
+    measured.current_ego_velocity && std::abs(*measured.current_ego_velocity - sample->velocity) >
+                                       parameters_.reset_velocity_deviation) {
+    return {measured, ProfileStart::ResetVelocity};
+  }
+  if (
+    measured.current_ego_acceleration &&
+    std::abs(*measured.current_ego_acceleration - sample->acceleration) >
+      parameters_.reset_acceleration_deviation) {
+    return {measured, ProfileStart::ResetAcceleration};
+  }
+  const double distance = std::hypot(
+    position.x - sample->position.x, position.y - sample->position.y,
+    position.z - sample->position.z);
+  if (distance > parameters_.reset_distance_deviation) {
+    return {measured, ProfileStart::ResetDistance};
+  }
+  VelocityLimitOptions options;
+  options.current_ego_velocity = sample->velocity;
+  options.current_ego_acceleration = sample->acceleration;
+  return {options, ProfileStart::PreviousPlan};
+}
+
+ProfileStartResult FixedProfileMemory::start(const TrajectoryModifierData & data) const
+{
+  const auto measured = make_velocity_limit_options(data);
+  if (!data.current_odometry) {
+    return {measured, parameters_.enable ? ProfileStart::NoPreviousPlan : ProfileStart::Measured};
+  }
+  return start(
+    data.candidate_index, measurement_time(data), data.current_odometry->pose.pose.position,
+    measured);
+}
+
+void FixedProfileMemory::store(
+  const std::size_t candidate, const std::size_t candidate_count,
+  const std::optional<double> & time, const TrajectoryPoints & plan)
+{
+  // Candidates beyond the current count belong to an earlier batch.
+  plans_.resize(std::max(candidate_count, candidate + 1));
+  if (time && !plan.empty() && parameters_.enable) {
+    plans_[candidate] = Plan{*time, plan};
+  } else {
+    plans_[candidate].reset();
+  }
+}
+
+void FixedProfileMemory::store(const TrajectoryModifierData & data, const TrajectoryPoints & plan)
+{
+  store(data.candidate_index, data.candidate_count, measurement_time(data), plan);
+}
+
+void FixedProfileMemory::clear()
+{
+  plans_.clear();
 }
 
 }  // namespace autoware::trajectory_modifier::plugin::detail

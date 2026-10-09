@@ -40,6 +40,7 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -409,7 +410,31 @@ struct Expectations
   double max_velocity_increase{0.05};     ///< Output above input at the same arc length [m/s].
   double max_pose_error{0.5};             ///< Pose arc length vs. integrated velocity [m].
   bool check_jerk{true};                  ///< Disabled when the upstream itself has a jerk step.
+  /// Bounds on the executed motion; disabled when the follower adds disturbances. The plans are
+  /// always checked.
+  bool check_executed_constraints{true};
   std::vector<SteadyWindow> steady_windows;
+  std::optional<std::size_t> max_profile_resets;  ///< Fixed profile restarts allowed.
+  /// [begin, end] time windows in each of which a fixed profile restart is expected.
+  std::vector<std::pair<double, double>> expected_reset_windows;
+};
+
+/// @brief Acceleration added to the executed motion between `begin` and `end`, ramped in and out
+/// over `ramp` (e.g. a slope or an actuator error).
+struct AccelerationDisturbance
+{
+  double begin{0.0};
+  double end{0.0};
+  double value{0.0};
+  double ramp{0.2};
+
+  [[nodiscard]] double at(const double time) const
+  {
+    if (time <= begin || time >= end) {
+      return 0.0;
+    }
+    return value * std::min({1.0, (time - begin) / ramp, (end - time) / ramp});
+  }
 };
 
 struct SimulationConfig
@@ -421,6 +446,11 @@ struct SimulationConfig
   double acceleration_noise_stddev{0.0};  ///< Noise on the acceleration given to the plugins.
   unsigned int noise_seed{42U};
   EgoState initial_state;
+  /// Without a gain, the follower drives each plan exactly. With one, it tracks the planned
+  /// velocity with this feedback gain [1/s], so it can deviate from a plan that does not start at
+  /// the ego state, and the disturbances apply.
+  std::optional<double> tracking_gain;
+  std::vector<AccelerationDisturbance> disturbances;
 };
 
 struct Scenario
@@ -437,6 +467,8 @@ struct Scenario
   std::vector<StageKind> stages;
   /// Plugin parameters velocity_limits.max_acceleration, max_deceleration and max_jerk.
   plugin::detail::VelocityLimitConstraints constraints{1.0, 1.0, 3.0};
+  /// Plugin parameters velocity_limits.fixed_profile; disabled when not set.
+  std::optional<plugin::detail::FixedProfileParameters> fixed_profile;
   SimulationConfig config;
   Expectations expectations;
 
@@ -499,11 +531,17 @@ struct Scenario
 // Plugin stages
 // ---------------------------------------------------------------------------------------------
 
+struct StageOutcome
+{
+  ProcessingResult status{ProcessingResult::Unchanged};
+  std::string start{"-"};  ///< How the profile was started (see plugin::detail::ProfileStart).
+};
+
 /// @brief One entry of the modifier chain; receives the (possibly noisy) measured ego state.
 struct Stage
 {
   std::string name;
-  std::function<ProcessingResult(TrajectoryPoints &, const EgoState &)> process;
+  std::function<StageOutcome(TrajectoryPoints &, const EgoState &)> process;
 };
 
 inline plugin::detail::VelocityLimitOptions make_options(const EgoState & ego)
@@ -514,44 +552,79 @@ inline plugin::detail::VelocityLimitOptions make_options(const EgoState & ego)
   return options;
 }
 
+using Memory = std::shared_ptr<plugin::detail::FixedProfileMemory>;
+
+inline Memory make_memory(const Scenario & scenario)
+{
+  if (!scenario.fixed_profile) {
+    return nullptr;
+  }
+  auto memory = std::make_shared<plugin::detail::FixedProfileMemory>();
+  memory->set_parameters(*scenario.fixed_profile);
+  return memory;
+}
+
+/// @brief Same flow as the plugins: start from the previous plan when the fixed profile allows
+/// it, limit, and remember the output.
+inline StageOutcome limit_with_memory(
+  const Scenario & scenario, const Memory & memory, TrajectoryPoints & points, const EgoState & ego,
+  const plugin::detail::VelocityLimitConstraints & constraints,
+  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & limit)
+{
+  plugin::detail::ProfileStartResult start{
+    make_options(ego), plugin::detail::ProfileStart::Measured};
+  if (memory) {
+    start = memory->start(0, ego.time, scenario.path.pose_at(ego.s).position, make_options(ego));
+  }
+  const auto result =
+    plugin::detail::apply_velocity_limits(points, constraints, limit, start.options);
+  if (memory) {
+    memory->store(0, 1, ego.time, points);
+  }
+  return {result.status, plugin::detail::to_string(start.start)};
+}
+
 /// @brief Same computation as ExternalVelocityLimit::process() for the message active at the ego
 /// time.
 inline Stage make_external_stage(const Scenario & scenario)
 {
-  return {"external", [&scenario](TrajectoryPoints & points, const EgoState & ego) {
-            const auto message = scenario.external_limit_at(ego.time);
-            if (!message || !std::isfinite(message->max_velocity) || message->max_velocity < 0.0F) {
-              return ProcessingResult::Unchanged;
-            }
-            auto constraints = scenario.constraints;
-            constraints.max_deceleration = plugin::detail::get_external_velocity_limit_deceleration(
-              *message, scenario.constraints.max_deceleration);
-            constraints.max_jerk = plugin::detail::get_external_velocity_limit_min_jerk(
-              *message, scenario.constraints.max_jerk);
-            const double max_velocity = message->max_velocity;
-            return plugin::detail::apply_velocity_limits(
-                     points, constraints,
-                     [max_velocity](const geometry_msgs::msg::Point &) {
-                       return std::optional<double>{max_velocity};
-                     },
-                     make_options(ego))
-              .status;
-          }};
+  return {
+    "external",
+    [&scenario, memory = make_memory(scenario)](TrajectoryPoints & points, const EgoState & ego) {
+      const auto message = scenario.external_limit_at(ego.time);
+      if (!message || !std::isfinite(message->max_velocity) || message->max_velocity < 0.0F) {
+        if (memory) {
+          memory->store(0, 1, ego.time, points);
+        }
+        return StageOutcome{};
+      }
+      auto constraints = scenario.constraints;
+      constraints.max_deceleration = plugin::detail::get_external_velocity_limit_deceleration(
+        *message, scenario.constraints.max_deceleration);
+      constraints.max_jerk = plugin::detail::get_external_velocity_limit_min_jerk(
+        *message, scenario.constraints.max_jerk);
+      const double max_velocity = message->max_velocity;
+      return limit_with_memory(
+        scenario, memory, points, ego, constraints,
+        [max_velocity](const geometry_msgs::msg::Point &) {
+          return std::optional<double>{max_velocity};
+        });
+    }};
 }
 
 /// @brief Same computation as MapVelocityLimits::process(), resolving the lanelet limit from the
 /// scenario zones by projecting each point onto the reference path.
 inline Stage make_map_stage(const Scenario & scenario)
 {
-  return {"map", [&scenario](TrajectoryPoints & points, const EgoState & ego) {
-            return plugin::detail::apply_velocity_limits(
-                     points, scenario.constraints,
-                     [&scenario](const geometry_msgs::msg::Point & position) {
-                       return scenario.zone_limit_at(scenario.path.project(position));
-                     },
-                     make_options(ego))
-              .status;
-          }};
+  return {
+    "map",
+    [&scenario, memory = make_memory(scenario)](TrajectoryPoints & points, const EgoState & ego) {
+      return limit_with_memory(
+        scenario, memory, points, ego, scenario.constraints,
+        [&scenario](const geometry_msgs::msg::Point & position) {
+          return scenario.zone_limit_at(scenario.path.project(position));
+        });
+    }};
 }
 
 inline std::vector<Stage> make_helper_stages(const Scenario & scenario)
@@ -585,7 +658,16 @@ struct Sample
 struct StageRecord
 {
   ProcessingResult status{ProcessingResult::Unchanged};
+  std::string start;
   double max_velocity_increase{0.0};  ///< Output above input at the same arc length.
+};
+
+/// @brief Acceleration bounds and jerk of a plan, computed from its points.
+struct PlanMotion
+{
+  double min_acceleration{0.0};
+  double max_acceleration{0.0};
+  double max_jerk{0.0};
 };
 
 struct CycleRecord
@@ -595,6 +677,7 @@ struct CycleRecord
   double input_end_s{0.0};
   double pose_error{0.0};
   std::vector<StageRecord> stages;
+  std::optional<PlanMotion> plan;  ///< Of the output, when a stage modified it.
 };
 
 struct PlanRecord
@@ -721,6 +804,23 @@ inline double max_velocity_increase(
   return increase;
 }
 
+inline PlanMotion plan_motion(const TrajectoryPoints & points)
+{
+  PlanMotion motion{
+    std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(), 0.0};
+  for (std::size_t i = 0; i < points.size(); ++i) {
+    const double acceleration = points[i].acceleration_mps2;
+    motion.min_acceleration = std::min(motion.min_acceleration, acceleration);
+    motion.max_acceleration = std::max(motion.max_acceleration, acceleration);
+    if (i > 0) {
+      const double dt = seconds(points[i].time_from_start) - seconds(points[i - 1].time_from_start);
+      motion.max_jerk =
+        std::max(motion.max_jerk, std::abs(acceleration - points[i - 1].acceleration_mps2) / dt);
+    }
+  }
+  return motion;
+}
+
 /// @brief Largest gap between each point's arc length and the distance implied by its speed.
 inline double pose_error(
   const ReferencePath & path, const TrajectoryPoints & points, const double s0)
@@ -762,12 +862,19 @@ inline SimulationLog run_closed_loop(const Scenario & scenario, const std::vecto
     record.index = cycle;
     record.ego = ego;
     record.input_end_s = scenario.path.project(input.back().pose.position);
+    bool modified = false;
     for (const auto & stage : stages) {
       const auto before = output;
       StageRecord stage_record;
-      stage_record.status = stage.process(output, measured);
+      const auto outcome = stage.process(output, measured);
+      stage_record.status = outcome.status;
+      stage_record.start = outcome.start;
       stage_record.max_velocity_increase = max_velocity_increase(scenario.path, before, output);
+      modified |= outcome.status == ProcessingResult::Modified;
       record.stages.push_back(stage_record);
+    }
+    if (modified) {
+      record.plan = plan_motion(output);
     }
     record.pose_error = pose_error(scenario.path, output, ego.s);
     log.cycles.push_back(record);
@@ -787,23 +894,46 @@ inline SimulationLog run_closed_loop(const Scenario & scenario, const std::vecto
       sample.upstream_velocity = sample_plan(input, 0.0, input_points).velocity;
       log.samples.push_back(sample);
     }
+    EgoState tracked = ego;
     for (std::size_t step = 1; step <= sub_steps; ++step) {
       const double tau = config.sample_period * static_cast<double>(step);
       const auto state = sample_plan(output, tau, output_points);
       Sample sample;
       sample.time = ego.time + tau;
-      sample.s = ego.s + state.distance;
-      sample.velocity = state.velocity;
-      sample.acceleration = state.executed_acceleration;
+      if (config.tracking_gain) {
+        // Feedback on the planned velocity, plus disturbances, integrated over the sample period.
+        double disturbance = 0.0;
+        for (const auto & event : config.disturbances) {
+          disturbance += event.at(sample.time);
+        }
+        const double acceleration = state.executed_acceleration +
+                                    *config.tracking_gain * (state.velocity - tracked.velocity) +
+                                    disturbance;
+        const double velocity =
+          std::max(0.0, tracked.velocity + acceleration * config.sample_period);
+        tracked = {
+          sample.time, tracked.s + 0.5 * (tracked.velocity + velocity) * config.sample_period,
+          velocity, acceleration};
+        sample.s = tracked.s;
+        sample.velocity = tracked.velocity;
+        sample.acceleration = tracked.acceleration;
+      } else {
+        sample.s = ego.s + state.distance;
+        sample.velocity = state.velocity;
+        sample.acceleration = state.executed_acceleration;
+      }
       sample.plan_acceleration = state.acceleration;
       sample.upstream_velocity = sample_plan(input, tau, input_points).velocity;
       sample.cycle = cycle;
       log.samples.push_back(sample);
     }
     const auto end = sample_plan(output, config.cycle_period, output_points);
-    ego = {
-      ego.time + config.cycle_period, ego.s + end.distance, end.velocity,
-      end.executed_acceleration};
+    const auto ego_state_with_tracking_gain =
+      EgoState{ego.time + config.cycle_period, tracked.s, tracked.velocity, tracked.acceleration};
+    ego = config.tracking_gain ? ego_state_with_tracking_gain
+                               : EgoState{
+                                   ego.time + config.cycle_period, ego.s + end.distance,
+                                   end.velocity, end.executed_acceleration};
   }
 
   // Velocity and acceleration changes over one planning cycle: the average acceleration and jerk
@@ -923,6 +1053,9 @@ inline ReferenceCurve distance_reference(
   return curve;
 }
 
+inline void evaluate_constraints(
+  const Scenario & scenario, const SimulationLog & log, Evaluation & evaluation);
+
 inline void evaluate_global_bounds(
   const Scenario & scenario, const SimulationLog & log, Evaluation & evaluation)
 {
@@ -957,6 +1090,19 @@ inline void evaluate_global_bounds(
     "largest gap between point arc length and integrated speed at t=" +
       format_number(pose_error_time, 1) + " s"));
 
+  evaluate_constraints(scenario, log, evaluation);
+}
+
+/// @brief Acceleration, deceleration and jerk bounds of a scenario's profiles.
+struct MotionBounds
+{
+  double acceleration{0.0};
+  double deceleration{0.0};
+  double jerk{0.0};
+};
+
+inline MotionBounds motion_bounds(const Scenario & scenario)
+{
   // Bounds that any profile built from the configured constraints should satisfy.
   double deceleration_bound = scenario.upstream.limits.max_deceleration;
   double jerk_bound = scenario.upstream.limits.jerk;
@@ -980,6 +1126,39 @@ inline void evaluate_global_bounds(
   const double acceleration_bound = std::max(
     {scenario.upstream.limits.max_acceleration, scenario.constraints.max_acceleration,
      scenario.config.initial_state.acceleration});
+  return {acceleration_bound, deceleration_bound, jerk_bound};
+}
+
+/// @brief The plans of the limit stages must respect the bounds; so must the executed motion when
+/// the follower adds no disturbance.
+inline void evaluate_constraints(
+  const Scenario & scenario, const SimulationLog & log, Evaluation & evaluation)
+{
+  const auto & expectations = scenario.expectations;
+  const auto bounds = motion_bounds(scenario);
+  PlanMotion plan{0.0, 0.0, 0.0};
+  for (const auto & cycle : log.cycles) {
+    if (cycle.plan) {
+      plan.min_acceleration = std::min(plan.min_acceleration, cycle.plan->min_acceleration);
+      plan.max_acceleration = std::max(plan.max_acceleration, cycle.plan->max_acceleration);
+      plan.max_jerk = std::max(plan.max_jerk, cycle.plan->max_jerk);
+    }
+  }
+  evaluation.checks.push_back(make_upper_check(
+    "plan_deceleration_within_bound", -plan.min_acceleration, bounds.deceleration + 0.01,
+    "strongest deceleration in the plans modified by a limit stage"));
+  evaluation.checks.push_back(make_upper_check(
+    "plan_acceleration_within_bound", plan.max_acceleration, bounds.acceleration + 0.01,
+    "strongest acceleration in the plans modified by a limit stage"));
+  evaluation.checks.push_back(make_upper_check(
+    "plan_jerk_within_bound", plan.max_jerk, bounds.jerk + 0.01,
+    "largest jerk between points of the plans modified by a limit stage"));
+  if (!expectations.check_executed_constraints) {
+    return;
+  }
+  const double deceleration_bound = bounds.deceleration;
+  const double acceleration_bound = bounds.acceleration;
+  const double jerk_bound = bounds.jerk;
 
   double min_acceleration = std::numeric_limits<double>::infinity();
   double max_acceleration = -std::numeric_limits<double>::infinity();
@@ -1246,6 +1425,34 @@ inline void evaluate_stop(
     make_upper_check("stopped_at_end", log.samples.back().velocity, 0.05, "final velocity"));
 }
 
+/// @brief Fixed profile restarts: at most the allowed count, and one in each expected window.
+inline void evaluate_profile_resets(
+  const Scenario & scenario, const SimulationLog & log, Evaluation & evaluation)
+{
+  const auto & expectations = scenario.expectations;
+  std::vector<double> times;
+  for (const auto & cycle : log.cycles) {
+    for (const auto & stage : cycle.stages) {
+      if (stage.start.rfind("reset", 0) == 0) {
+        times.push_back(cycle.ego.time);
+      }
+    }
+  }
+  if (expectations.max_profile_resets) {
+    evaluation.checks.push_back(make_upper_check(
+      "profile_resets", static_cast<double>(times.size()),
+      static_cast<double>(*expectations.max_profile_resets),
+      "fixed profile restarts from the measured ego state"));
+  }
+  for (const auto & [begin, end] : expectations.expected_reset_windows) {
+    const bool found = std::any_of(
+      times.begin(), times.end(), [&](const double time) { return time >= begin && time <= end; });
+    evaluation.checks.push_back(
+      {"profile_reset_in_t[" + format_number(begin, 1) + "," + format_number(end, 1) + "]", found,
+       found ? 1.0 : 0.0, 1.0, "a fixed profile restart is expected in this window"});
+  }
+}
+
 inline Evaluation evaluate(const Scenario & scenario, const SimulationLog & log)
 {
   Evaluation evaluation;
@@ -1254,6 +1461,7 @@ inline Evaluation evaluate(const Scenario & scenario, const SimulationLog & log)
   evaluate_zones(scenario, log, evaluation);
   evaluate_steady_windows(scenario, log, evaluation);
   evaluate_stop(scenario, log, evaluation);
+  evaluate_profile_resets(scenario, log, evaluation);
   return evaluation;
 }
 
@@ -1323,7 +1531,8 @@ inline void write_plans(
 }
 
 inline void write_meta(
-  const std::filesystem::path & file, const Scenario & scenario, const Evaluation & evaluation)
+  const std::filesystem::path & file, const Scenario & scenario, const SimulationLog & log,
+  const Evaluation & evaluation)
 {
   const auto & upstream = scenario.upstream;
   std::ofstream stream(file);
@@ -1383,6 +1592,19 @@ inline void write_meta(
            << ", \"end\": " << json_number(window.end)
            << ", \"target\": " << json_number(window.target) << "}";
   }
+  stream << "],\n  \"fixed_profile\": " << (scenario.fixed_profile ? "true" : "false")
+         << ",\n  \"profile_resets\": [";
+  bool first_reset = true;
+  for (const auto & cycle : log.cycles) {
+    for (std::size_t i = 0; i < cycle.stages.size(); ++i) {
+      if (cycle.stages[i].start.rfind("reset", 0) == 0) {
+        stream << (first_reset ? "" : ", ") << "{\"time\": " << json_number(cycle.ego.time)
+               << ", \"stage\": " << json_string(log.stage_names[i])
+               << ", \"reason\": " << json_string(cycle.stages[i].start) << "}";
+        first_reset = false;
+      }
+    }
+  }
   stream << "],\n  \"checks\": [\n";
   for (std::size_t i = 0; i < evaluation.checks.size(); ++i) {
     const auto & check = evaluation.checks[i];
@@ -1421,7 +1643,7 @@ inline std::filesystem::path write_outputs(
     std::ofstream stream(prefix.string() + ".cycles.csv");
     stream << "cycle,time,s,velocity,acceleration,input_end_s,pose_error";
     for (const auto & name : log.stage_names) {
-      stream << ',' << name << "_status," << name << "_velocity_increase";
+      stream << ',' << name << "_status," << name << "_start," << name << "_velocity_increase";
     }
     stream << '\n';
     for (const auto & cycle : log.cycles) {
@@ -1430,7 +1652,7 @@ inline std::filesystem::path write_outputs(
              << format_number(cycle.ego.acceleration, 4) << ','
              << format_number(cycle.input_end_s, 2) << ',' << format_number(cycle.pose_error, 3);
       for (const auto & stage : cycle.stages) {
-        stream << ',' << status_name(stage.status) << ','
+        stream << ',' << status_name(stage.status) << ',' << stage.start << ','
                << csv_number(stage.max_velocity_increase);
       }
       stream << '\n';
@@ -1448,7 +1670,7 @@ inline std::filesystem::path write_outputs(
   }
   write_plans(prefix.string() + ".plans.csv", scenario, log);
   auto meta = prefix.string() + ".meta.json";
-  write_meta(meta, scenario, evaluation);
+  write_meta(meta, scenario, log, evaluation);
   return meta;
 }
 

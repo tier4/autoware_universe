@@ -55,14 +55,17 @@ void ExternalVelocityLimit::on_initialize(const TrajectoryModifierParams & param
 void ExternalVelocityLimit::update_params(const TrajectoryModifierParams & params)
 {
   enabled_ = params.use_external_velocity_limit;
-  constraints_.max_acceleration = params.velocity_limits.max_acceleration;
-  constraints_.max_deceleration = params.velocity_limits.max_deceleration;
-  constraints_.max_jerk = params.velocity_limits.max_jerk;
+  constraints_ = detail::make_velocity_limit_constraints(params);
+  fixed_profile_.set_parameters(detail::make_fixed_profile_parameters(params));
+  if (!enabled_) {
+    fixed_profile_.clear();
+  }
 }
 
 ProcessingResult ExternalVelocityLimit::process(
   TrajectoryPoints & traj_points, TrajectoryModifierData & input)
 {
+  last_profile_start_ = detail::ProfileStart::Measured;
   if (!enabled_ || traj_points.empty() || !input.current_odometry) {
     return ProcessingResult::Unchanged;
   }
@@ -71,6 +74,7 @@ ProcessingResult ExternalVelocityLimit::process(
   if (
     !velocity_limit || !std::isfinite(velocity_limit->max_velocity) ||
     velocity_limit->max_velocity < 0.0F) {
+    fixed_profile_.store(input, traj_points);
     return ProcessingResult::Unchanged;
   }
 
@@ -80,12 +84,20 @@ ProcessingResult ExternalVelocityLimit::process(
   constraints.max_jerk =
     detail::get_external_velocity_limit_min_jerk(*velocity_limit, constraints_.max_jerk);
   const double max_velocity = velocity_limit->max_velocity;
+  const auto start = fixed_profile_.start(input);
+  last_profile_start_ = start.start;
+  if (detail::is_reset(start.start)) {
+    RCLCPP_DEBUG(
+      get_node_ptr()->get_logger(), "%s: candidate %zu restarted from the measured ego state (%s)",
+      get_short_name().c_str(), input.candidate_index, detail::to_string(start.start));
+  }
   const auto result = detail::apply_velocity_limits(
     traj_points, constraints,
     [max_velocity](const geometry_msgs::msg::Point &) {
       return std::optional<double>{max_velocity};
     },
-    detail::make_velocity_limit_options(input));
+    start.options);
+  fixed_profile_.store(input, traj_points);
   return result.status;
 }
 

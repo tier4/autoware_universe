@@ -1619,3 +1619,37 @@ trajectory_modifier_params:
       validation:
         bounds<>: [0.01, 10.0]
       read_only: false
+    fixed_profile:
+      enable:
+        type: bool
+        default_value: true
+        description: Start each profile from the previous plan at the current time instead of the measured ego state, while the ego tracks that plan.
+        read_only: false
+      reset_velocity_deviation:
+        type: double
+        default_value: 0.5
+        description: Measured velocity deviation from the previous plan above which the profile restarts from the measured ego state [m/s].
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_acceleration_deviation:
+        type: double
+        default_value: 0.5
+        description: Measured acceleration deviation from the previous plan above which the profile restarts from the measured ego state [m/s^2]. Must exceed the noise of the acceleration estimate.
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_distance_deviation:
+        type: double
+        default_value: 1.0
+        description: Distance between the ego and its planned position above which the profile restarts from the measured ego state [m].
+        validation:
+          bounds<>: [0.0, 100.0]
+        read_only: false
+      reset_time_gap:
+        type: double
+        default_value: 0.5
+        description: Age of the previous plan above which it is not reused [s].
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false

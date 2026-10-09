@@ -47,6 +47,10 @@ public:
 
   void update_params(const TrajectoryModifierParams & params) override;
 
+  /// @brief How the profile of the latest processed candidate was started (Measured when no
+  /// profile was generated).
+  [[nodiscard]] detail::ProfileStart last_profile_start() const { return last_profile_start_; }
+
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
@@ -56,6 +60,8 @@ private:
   std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
     velocity_limit_sub_;
   detail::VelocityLimitConstraints constraints_;
+  detail::FixedProfileMemory fixed_profile_;
+  detail::ProfileStart last_profile_start_{detail::ProfileStart::Measured};
 };
 
 }  // namespace autoware::trajectory_modifier::plugin

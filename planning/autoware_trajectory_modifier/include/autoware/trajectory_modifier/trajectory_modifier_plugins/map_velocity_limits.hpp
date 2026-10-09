@@ -44,6 +44,10 @@ public:
 
   void update_params(const TrajectoryModifierParams & params) override;
 
+  /// @brief How the profile of the latest processed candidate was started (Measured when no
+  /// profile was generated).
+  [[nodiscard]] detail::ProfileStart last_profile_start() const { return last_profile_start_; }
+
 protected:
   autoware_planning_msgs::msg::LaneletRoute::_uuid_type previous_route_uuid_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
@@ -51,6 +55,8 @@ protected:
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     limit_overrides_;
   detail::VelocityLimitConstraints constraints_;
+  detail::FixedProfileMemory fixed_profile_;
+  detail::ProfileStart last_profile_start_{detail::ProfileStart::Measured};
 
   void on_initialize(const TrajectoryModifierParams & params) override;
 };

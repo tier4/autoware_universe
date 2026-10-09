@@ -217,6 +217,32 @@ acceleration, deceleration and jerk limits:
 The point count and every `time_from_start` are kept. The first pose is kept and the other poses are
 re-sampled along the input polyline so that the positions match the new velocities.
 
+###### Fixed profile
+
+With `velocity_limits.fixed_profile.enable` (default `true`), each plugin remembers the trajectory it
+sent for each candidate and starts the next profile from that plan's velocity and acceleration at
+the current odometry time, instead of the measured ego state. The profile then no longer follows
+measurement noise or small tracking errors; the controller corrects those. Limits and the input are
+still evaluated every cycle, so a changed limit, a new zone or a binding input deceleration are
+followed without restarting. Since the forward simulation is deterministic, starting from the
+previous plan reproduces it when nothing changes.
+
+The profile restarts from the measured ego state when the previous plan cannot be used or the ego no
+longer tracks it:
+
+| Parameter                                                    | Default | Restart when                                                          |
+| ------------------------------------------------------------ | ------- | --------------------------------------------------------------------- |
+| `velocity_limits.fixed_profile.reset_velocity_deviation`     | `0.5`   | the measured velocity differs from the plan by more than this [m/s].  |
+| `velocity_limits.fixed_profile.reset_acceleration_deviation` | `0.5`   | the measured acceleration differs by more than this [m/s²].           |
+| `velocity_limits.fixed_profile.reset_distance_deviation`     | `1.0`   | the ego is farther than this from its planned position [m].           |
+| `velocity_limits.fixed_profile.reset_time_gap`               | `0.5`   | the previous plan is older than this, or newer than the odometry [s]. |
+
+Previous plans are kept per candidate index; a plan from another candidate is only used if it passes
+the same checks against the measured state. They are forgotten when a parameter of the group changes
+or the plugin is disabled. A restart moves the first point to the measured velocity, a step of at most
+`reset_velocity_deviation`. Since an upstream trajectory usually starts at the measured velocity, a
+fixed profile can start above it by up to the same amount.
+
 ##### ModelPlanningFactorID
 
 Inspection-only plugin. It reads the current trajectory speed/acceleration, never mutates points, and publishes stop/slowdown factors on `/planning/planning_factors/diffusion_planner` with `module` `diffusion_planner` so existing RViz, FOA, and API consumers stay aligned.

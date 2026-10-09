@@ -58,6 +58,7 @@ using autoware::trajectory_modifier::TrajectoryModifierParams;
 using autoware::trajectory_modifier::plugin::ExternalVelocityLimit;
 using autoware::trajectory_modifier::plugin::MapVelocityLimits;
 using autoware::trajectory_modifier::plugin::ProcessingResult;
+namespace detail = autoware::trajectory_modifier::plugin::detail;
 using autoware_internal_planning_msgs::msg::VelocityLimit;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::LaneletRoute;
@@ -143,6 +144,7 @@ sim::Scenario road_scenario(
   scenario.description = description;
   scenario.targets = targets;
   scenario.level = "plugin";
+  scenario.fixed_profile = detail::FixedProfileParameters{};  // Default plugin parameters.
   scenario.stages = {stage};
   scenario.upstream.time_stamps = sim::uniform_time_stamps(0.1, 80);
   scenario.config.initial_state = {0.0, 0.0, kmph(60.0), 0.0};
@@ -184,6 +186,8 @@ protected:
   {
     TrajectoryModifierData data;
     auto odometry = std::make_shared<nav_msgs::msg::Odometry>();
+    // Stamped so that the fixed profile (enabled by default) can measure elapsed times.
+    odometry->header.stamp = rclcpp::Time(static_cast<int64_t>((100.0 + ego.time) * 1e9));
     odometry->pose.pose = scenario.path.pose_at(ego.s);
     odometry->twist.twist.linear.x = ego.velocity;
     data.current_odometry = odometry;
@@ -219,7 +223,8 @@ protected:
           before(ego);
         }
         auto data = make_data(scenario, ego);
-        return plugin.process(points, data);
+        const auto status = plugin.process(points, data);
+        return sim::StageOutcome{status, detail::to_string(plugin.last_profile_start())};
       }};
   }
 
@@ -324,6 +329,49 @@ TEST_F(VelocityLimitPluginSimulation, P03_plugin_map_debug_override_mps)
   MapVelocityLimits plugin;
   initialize(plugin, "MapVelocityLimits", params);
   sim::run_and_expect(scenario, {make_stage("map", plugin, scenario)});
+}
+
+TEST_F(VelocityLimitPluginSimulation, P04_plugin_map_fixed_profile_two_candidates)
+{
+  auto scenario = road_scenario(
+    "P04_plugin_map_fixed_profile_two_candidates", "Plugin: fixed profile with two candidates",
+    "Real MapVelocityLimits with the default fixed profile, processing a second candidate that "
+    "requests 40 km/h after the first one every cycle. Each candidate keeps its own previous "
+    "plan, so the first one never restarts.",
+    "fixed profile, candidates", sim::StageKind::Map);
+  scenario.zones = {
+    {-100.0, 300.0, kmph(60.0)},
+    {300.0, 450.0, kmph(30.0), kmph(60.0)},
+    {450.0, 1500.0, kmph(60.0)}};
+  scenario.config.duration = 65.0;
+  scenario.expectations.max_profile_resets = 0;
+  scenario.expectations.steady_windows = {
+    {sim::WindowDomain::Distance, 330.0, 445.0, kmph(30.0)},
+    {sim::WindowDomain::Distance, 620.0, 700.0, kmph(60.0)}};
+
+  auto params = make_params();
+  for (std::size_t i = first_zone_lanelet; i <= last_zone_lanelet; ++i) {
+    params.map_velocity_limits.limit_velocity_from_map_debug_lanelet_ids.push_back(lanelet_id(i));
+    params.map_velocity_limits.limit_velocity_from_map_debug_max_velocities.push_back(kmph(30.0));
+  }
+  MapVelocityLimits plugin;
+  initialize(plugin, "MapVelocityLimits", params);
+  auto second = scenario.upstream;
+  second.cruise_velocity = kmph(40.0);
+
+  const sim::Stage stage{"map", [&](sim::TrajectoryPoints & points, const sim::EgoState & ego) {
+                           auto data = make_data(scenario, ego);
+                           data.candidate_count = 2;
+                           const auto status = plugin.process(points, data);
+                           const auto start = plugin.last_profile_start();
+                           auto second_points = second.generate(scenario.path, ego);
+                           auto second_data = make_data(scenario, ego);
+                           second_data.candidate_index = 1;
+                           second_data.candidate_count = 2;
+                           plugin.process(second_points, second_data);
+                           return sim::StageOutcome{status, detail::to_string(start)};
+                         }};
+  sim::run_and_expect(scenario, {stage});
 }
 
 TEST_F(VelocityLimitPluginSimulation, MapPluginToleratesMissingAcceleration)

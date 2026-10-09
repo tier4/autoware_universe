@@ -59,9 +59,11 @@ void MapVelocityLimits::update_params(const TrajectoryModifierParams & params)
 {
   enabled_ = params.use_map_velocity_limits;
   limit_overrides_ = make_velocity_limit_overrides(params);
-  constraints_.max_acceleration = params.velocity_limits.max_acceleration;
-  constraints_.max_deceleration = params.velocity_limits.max_deceleration;
-  constraints_.max_jerk = params.velocity_limits.max_jerk;
+  constraints_ = detail::make_velocity_limit_constraints(params);
+  fixed_profile_.set_parameters(detail::make_fixed_profile_parameters(params));
+  if (!enabled_) {
+    fixed_profile_.clear();
+  }
 }
 
 bool MapVelocityLimits::is_trajectory_modification_required(
@@ -83,17 +85,28 @@ bool MapVelocityLimits::is_trajectory_modification_required(
 ProcessingResult MapVelocityLimits::process(
   TrajectoryPoints & traj_points, TrajectoryModifierData & input)
 {
-  if (
-    !enabled_ || traj_points.empty() || !input.current_odometry ||
-    !is_trajectory_modification_required(traj_points, input)) {
+  last_profile_start_ = detail::ProfileStart::Measured;
+  if (!enabled_ || traj_points.empty() || !input.current_odometry) {
     return ProcessingResult::Unchanged;
+  }
+  if (!is_trajectory_modification_required(traj_points, input)) {
+    fixed_profile_.store(input, traj_points);
+    return ProcessingResult::Unchanged;
+  }
+  const auto start = fixed_profile_.start(input);
+  last_profile_start_ = start.start;
+  if (detail::is_reset(start.start)) {
+    RCLCPP_DEBUG(
+      get_node_ptr()->get_logger(), "%s: candidate %zu restarted from the measured ego state (%s)",
+      get_short_name().c_str(), input.candidate_index, detail::to_string(start.start));
   }
   const auto result = detail::apply_velocity_limits(
     traj_points, constraints_,
     [this](const geometry_msgs::msg::Point & position) {
       return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
     },
-    detail::make_velocity_limit_options(input));
+    start.options);
+  fixed_profile_.store(input, traj_points);
   return result.status;
 }
 

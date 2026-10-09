@@ -468,6 +468,87 @@ Scenario r02_noisy_acceleration_feedback()
   return s;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Fixed profile (velocity_limits.fixed_profile)
+// ---------------------------------------------------------------------------------------------
+
+/// @brief A scenario with the default fixed profile parameters and no restart allowed.
+Scenario with_fixed_profile(
+  Scenario scenario, const std::string & title, const std::string & description)
+{
+  scenario.title = title;
+  scenario.description = description;
+  scenario.targets = "fixed profile";
+  scenario.fixed_profile = autoware::trajectory_modifier::plugin::detail::FixedProfileParameters{};
+  scenario.expectations.max_profile_resets = 0;
+  return scenario;
+}
+
+Scenario f01_fixed_external_cruise_60_to_30()
+{
+  return with_fixed_profile(
+    e01_external_cruise_60_to_30(), "Fixed profile: cruise 60 km/h, limit 30 km/h at t=2 s",
+    "Same as E01 with the fixed profile: every cycle continues the previous plan, without "
+    "restart.");
+}
+
+Scenario f02_fixed_noisy_acceleration()
+{
+  return with_fixed_profile(
+    r02_noisy_acceleration_feedback(), "Fixed profile: noisy acceleration feedback",
+    "Same as R02 with the fixed profile: the plans no longer start from the noisy measurement, so "
+    "the acceleration does not chatter.");
+}
+
+Scenario f03_fixed_tracking_disturbance()
+{
+  auto s = with_fixed_profile(
+    e01_external_cruise_60_to_30(), "Fixed profile: vehicle braking harder than planned",
+    "Same as E01 with a follower that tracks the planned velocity (gain 0.5/s) and an extra "
+    "-0.4 m/s^2 between t=4 and 8 s. The velocity falls behind the plan until it deviates by more "
+    "than 0.5 m/s; the profile then restarts from the measured state and is fixed again.");
+  s.config.tracking_gain = 0.5;
+  s.config.disturbances = {{4.0, 8.0, -0.4}};
+  s.expectations.check_executed_constraints = false;  // The disturbance is outside the plan.
+  // The input starts at the measured velocity, which may lag the fixed plan up to the threshold.
+  s.expectations.max_velocity_increase = 0.55;
+  s.expectations.max_profile_resets = 3;
+  s.expectations.expected_reset_windows = {{5.0, 8.5}};
+  return s;
+}
+
+Scenario f04_fixed_map_stepped_zones()
+{
+  return with_fixed_profile(
+    m04_map_stepped_zones(), "Fixed profile: 60 -> 40 -> 20 -> 50 km/h zones",
+    "Same as M04 with the fixed profile.");
+}
+
+Scenario f05_fixed_limit_lowered_while_braking()
+{
+  auto s = with_fixed_profile(
+    e01_external_cruise_60_to_30(), "Fixed profile: limit lowered to 20 km/h while braking",
+    "Limit 30 km/h at t=2 s, then 20 km/h at t=6 s during the braking. The limits are evaluated "
+    "every cycle, so the fixed profile follows the change without a restart.");
+  s.external_events = {{2.0, make_external_limit(v30)}, {6.0, make_external_limit(v20)}};
+  s.expectations.steady_windows = {steady_time(20.0, 30.0, v20)};
+  return s;
+}
+
+Scenario f06_fixed_map_recorded_30kph_turn()
+{
+  return with_fixed_profile(
+    m08_map_recorded_30kph_turn(), "Fixed profile: recorded 30 km/h turn",
+    "Same as M08 with the fixed profile.");
+}
+
+Scenario f07_fixed_chain_external_stricter_than_map()
+{
+  return with_fixed_profile(
+    c01_chain_external_stricter_than_map(), "Fixed profile: external 20 km/h and map 30 km/h",
+    "Same as C01 with the fixed profile; each stage keeps its own previous plan.");
+}
+
 struct ScenarioCase
 {
   std::string name;
@@ -507,6 +588,13 @@ std::vector<ScenarioCase> scenario_cases()
     {"C02_chain_map_stricter_than_external", c02_chain_map_stricter_than_external},
     {"R01_coarse_trajectory_sampling", r01_coarse_trajectory_sampling},
     {"R02_noisy_acceleration_feedback", r02_noisy_acceleration_feedback},
+    {"F01_fixed_external_cruise_60_to_30", f01_fixed_external_cruise_60_to_30},
+    {"F02_fixed_noisy_acceleration", f02_fixed_noisy_acceleration},
+    {"F03_fixed_tracking_disturbance", f03_fixed_tracking_disturbance},
+    {"F04_fixed_map_stepped_zones", f04_fixed_map_stepped_zones},
+    {"F05_fixed_limit_lowered_while_braking", f05_fixed_limit_lowered_while_braking},
+    {"F06_fixed_map_recorded_30kph_turn", f06_fixed_map_recorded_30kph_turn},
+    {"F07_fixed_chain_external_stricter_than_map", f07_fixed_chain_external_stricter_than_map},
   };
 }
 

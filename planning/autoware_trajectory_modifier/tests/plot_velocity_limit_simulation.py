@@ -32,6 +32,7 @@ import json
 import math
 import os
 import sys
+import textwrap
 
 import matplotlib
 
@@ -231,8 +232,27 @@ def velocity_panel(ax, meta, samples, plans, references, domain):
     shown = velocity + column(samples, "upstream_velocity") + column(plans, "velocity")
     top = max(v for v in shown if not math.isnan(v))
     ax.set_ylim(-0.3, top * 1.12 + 0.5)
+    if domain == "time":
+        mark_resets(ax, meta)
     style_axis(ax, "velocity [m/s]")
     legend_above(ax, 7)
+
+
+def mark_resets(ax, meta):
+    """Mark the cycles where a fixed profile restarted from the measured ego state."""
+    times = [reset["time"] for reset in meta.get("profile_resets", [])]
+    if times:
+        top = ax.get_ylim()[1]
+        ax.plot(
+            times,
+            [top] * len(times),
+            linestyle="none",
+            marker="v",
+            markersize=7,
+            color=TEXT_SECONDARY,
+            clip_on=False,
+            label="fixed profile restart",
+        )
 
 
 def acceleration_panel(ax, meta, samples):
@@ -352,12 +372,13 @@ def render(prefix, output_dir):
     )
     upstream = meta["upstream"]
     subtitle = (
-        f"{meta['description']}\n"
+        f"{textwrap.fill(meta['description'], 190)}\n"
         f"level: {meta['level']}   stages: {' -> '.join(meta['stages'])}   targets: "
         f"{meta['targets']}   upstream: {upstream['profile']} {upstream['cruise_velocity']:.2f} m/s"
         f", {upstream['points']} points   limits: {meta['max_acceleration']} / "
         f"-{meta['max_deceleration']} m/s², {meta['max_jerk']} m/s³   "
-        f"cycle: {meta['cycle_period']} s"
+        f"cycle: {meta['cycle_period']} s   "
+        f"fixed profile: {'on' if meta.get('fixed_profile') else 'off'}"
     )
     fig.text(0.04, 1.0 - 0.6 / height, subtitle, fontsize=8.5, color=TEXT_SECONDARY, va="top")
     checks_text(fig, meta, check_height, height)
