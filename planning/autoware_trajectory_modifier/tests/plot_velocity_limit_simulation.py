@@ -50,6 +50,7 @@ LIMIT = "#eb6834"  # slot 2
 UPSTREAM = "#1baf7a"  # slot 3
 REFERENCE = "#eda100"  # slot 4
 IMPLIED = "#e87ba4"  # slot 5
+PLAN_FIELD = "#008300"  # slot 6
 GOOD = "#0ca30c"
 CRITICAL = "#d03b3b"
 
@@ -239,8 +240,16 @@ def acceleration_panel(ax, meta, samples):
     t = column(samples, "time")
     acceleration = column(samples, "acceleration")
     implied = column(samples, "implied_acceleration")
-    ax.plot(t, implied, color=IMPLIED, linewidth=1.0, label="dv/dt of executed velocity")
-    ax.plot(t, acceleration, color=EGO, linewidth=2.0, label="ego acceleration (plan field)")
+    if "plan_acceleration" in samples[0]:
+        ax.plot(
+            t,
+            column(samples, "plan_acceleration"),
+            color=PLAN_FIELD,
+            linewidth=0.8,
+            label="plan acceleration_mps2 field",
+        )
+    ax.plot(t, implied, color=IMPLIED, linewidth=1.0, label="velocity change over 0.1 s")
+    ax.plot(t, acceleration, color=EGO, linewidth=2.0, label="ego acceleration (executed)")
     deceleration = check_bound(meta, "deceleration_within_bound") or 1.0
     acceleration_bound = check_bound(meta, "acceleration_within_bound") or 1.0
     ax.axhline(-deceleration, color=BOUND, linewidth=1.0, label="bounds")
@@ -249,7 +258,7 @@ def acceleration_panel(ax, meta, samples):
         ax, t, implied, -1.6 * deceleration - 0.2, 1.6 * acceleration_bound + 0.2, IMPLIED
     )
     style_axis(ax, "acceleration [m/s²]")
-    legend_above(ax, 3)
+    legend_above(ax, 4)
 
 
 def jerk_panel(ax, meta, samples):

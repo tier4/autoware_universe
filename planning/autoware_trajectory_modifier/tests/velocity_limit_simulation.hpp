@@ -571,9 +571,10 @@ struct Sample
   double time{0.0};
   double s{0.0};
   double velocity{0.0};
-  double acceleration{0.0};          ///< Acceleration field of the executed plan.
-  double implied_acceleration{0.0};  ///< Finite difference of the executed velocity.
-  double jerk{0.0};                  ///< Finite difference of the acceleration field.
+  double acceleration{0.0};          ///< Slope of the executed velocity segment.
+  double plan_acceleration{0.0};     ///< acceleration_mps2 field of the plan, for comparison.
+  double implied_acceleration{0.0};  ///< Velocity difference over one cycle (shows steps).
+  double jerk{0.0};                  ///< Acceleration difference over one cycle.
   double upstream_velocity{0.0};     ///< Upstream request at the same time.
   std::optional<double> expected_limit;
   std::size_t cycle{0U};
@@ -614,11 +615,14 @@ struct SimulationLog
 struct PlanState
 {
   double velocity{0.0};
-  double acceleration{0.0};
+  double acceleration{0.0};  ///< Interpolated acceleration_mps2 field.
   double distance{0.0};
+  double slope{0.0};  ///< Velocity slope of the segment ending at or containing the time.
 };
 
-/// @brief Plan state at a time: linear velocity and acceleration, exact distance integral.
+/// @brief Plan state at a time: linear velocity and acceleration field, exact distance integral.
+/// The follower executes the velocity profile; its acceleration is the velocity slope, which does
+/// not depend on whether a plugin writes point or segment accelerations into the field.
 inline PlanState sample_plan(const TrajectoryPoints & points, const double time)
 {
   double distance = 0.0;
@@ -633,7 +637,8 @@ inline PlanState sample_plan(const TrajectoryPoints & points, const double time)
       const double velocity = v0 + ratio * (v1 - v0);
       const double a0 = points[i].acceleration_mps2;
       const double a1 = points[i + 1].acceleration_mps2;
-      return {velocity, a0 + ratio * (a1 - a0), distance + 0.5 * (v0 + velocity) * tau};
+      const double slope = t1 > t0 ? (v1 - v0) / (t1 - t0) : 0.0;
+      return {velocity, a0 + ratio * (a1 - a0), distance + 0.5 * (v0 + velocity) * tau, slope};
     }
     distance += 0.5 * (v0 + v1) * (t1 - t0);
   }
@@ -641,7 +646,7 @@ inline PlanState sample_plan(const TrajectoryPoints & points, const double time)
   const double remaining = std::max(0.0, time - seconds(last.time_from_start));
   return {
     last.longitudinal_velocity_mps, last.acceleration_mps2,
-    distance + last.longitudinal_velocity_mps * remaining};
+    distance + last.longitudinal_velocity_mps * remaining, 0.0};
 }
 
 /// @brief Largest gap between each point's arc length and the distance implied by its speed.
@@ -714,6 +719,7 @@ inline SimulationLog run_closed_loop(const Scenario & scenario, const std::vecto
       sample.s = ego.s;
       sample.velocity = ego.velocity;
       sample.acceleration = ego.acceleration;
+      sample.plan_acceleration = sample_plan(output, 0.0).acceleration;
       sample.upstream_velocity = sample_plan(input, 0.0).velocity;
       log.samples.push_back(sample);
     }
@@ -724,28 +730,33 @@ inline SimulationLog run_closed_loop(const Scenario & scenario, const std::vecto
       sample.time = ego.time + tau;
       sample.s = ego.s + state.distance;
       sample.velocity = state.velocity;
-      sample.acceleration = state.acceleration;
+      sample.acceleration = state.slope;
+      sample.plan_acceleration = state.acceleration;
       sample.upstream_velocity = sample_plan(input, tau).velocity;
       sample.cycle = cycle;
       log.samples.push_back(sample);
     }
     const auto end = sample_plan(output, config.cycle_period);
-    ego = {ego.time + config.cycle_period, ego.s + end.distance, end.velocity, end.acceleration};
+    ego = {ego.time + config.cycle_period, ego.s + end.distance, end.velocity, end.slope};
   }
 
   // Differences over one planning cycle, the resolution at which the plugin limits the jerk. A
   // step in the executed velocity or acceleration therefore appears as step / cycle_period.
+  // Before the start, the initial state is extrapolated with its constant acceleration.
+  const auto & initial = config.initial_state;
   for (std::size_t i = 0; i < log.samples.size(); ++i) {
     auto & sample = log.samples[i];
     sample.expected_limit = scenario.expected_limit(sample.time, sample.s);
-    if (i > 0) {
-      const auto & previous = log.samples[i - std::min(i, sub_steps)];
-      const double dt = sample.time - previous.time;
-      sample.implied_acceleration = (sample.velocity - previous.velocity) / dt;
-      sample.jerk = (sample.acceleration - previous.acceleration) / dt;
+    double previous_velocity = initial.velocity - initial.acceleration * config.cycle_period;
+    double previous_acceleration = initial.acceleration;
+    if (i >= sub_steps) {
+      previous_velocity = log.samples[i - sub_steps].velocity;
+      previous_acceleration = log.samples[i - sub_steps].acceleration;
     } else {
-      sample.implied_acceleration = sample.acceleration;
+      previous_velocity += initial.acceleration * (sample.time - initial.time);
     }
+    sample.implied_acceleration = (sample.velocity - previous_velocity) / config.cycle_period;
+    sample.jerk = (sample.acceleration - previous_acceleration) / config.cycle_period;
   }
   return log;
 }
@@ -1329,13 +1340,14 @@ inline std::filesystem::path write_outputs(
   {
     std::ofstream stream(prefix.string() + ".samples.csv");
     stream << "time,s,velocity,acceleration,implied_acceleration,jerk,expected_limit,"
-              "upstream_velocity,cycle\n";
+              "upstream_velocity,cycle,plan_acceleration\n";
     for (const auto & sample : log.samples) {
       stream << format_number(sample.time, 3) << ',' << format_number(sample.s, 3) << ','
              << format_number(sample.velocity, 4) << ',' << format_number(sample.acceleration, 4)
              << ',' << format_number(sample.implied_acceleration, 4) << ','
              << format_number(sample.jerk, 4) << ',' << csv_number(sample.expected_limit) << ','
-             << format_number(sample.upstream_velocity, 4) << ',' << sample.cycle << '\n';
+             << format_number(sample.upstream_velocity, 4) << ',' << sample.cycle << ','
+             << format_number(sample.plan_acceleration, 4) << '\n';
     }
   }
   {
