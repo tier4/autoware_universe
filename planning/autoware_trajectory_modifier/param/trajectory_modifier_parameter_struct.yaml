@@ -1062,7 +1062,7 @@ trajectory_modifier_params:
       enable:
         type: bool
         default_value: true
-        description: Add a weak cost that tracks the previous solved plan by path distance
+        description: Add a weak cost that tracks the previous solved plan resampled by timestamp
         read_only: false
       weight_longitudinal:
         type: double

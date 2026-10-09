@@ -83,58 +83,24 @@ void sample_previous(
     previous.inputs[input_lower], previous.inputs[input_upper], input_index - input_lower, *input);
 }
 
-void fill_arc_length(
-  const SolverSolution & solution, std::array<double, opt_horizon + 1> & arc)
+void fill_time_aligned_temporal(
+  const SolverSolution & previous_local, const std::array<StageReference, opt_horizon> & references,
+  const double stage_shift, std::array<StageTemporalReference, opt_horizon> & out)
 {
-  arc[0] = 0.0;
-  for (size_t i = 1; i <= opt_horizon; ++i) {
-    const auto & a = solution.states[i - 1];
-    const auto & b = solution.states[i];
-    arc[i] = arc[i - 1] + std::hypot(b[kX] - a[kX], b[kY] - a[kY]);
+  for (size_t k = 0; k < opt_horizon; ++k) {
+    // Same index as ml_planner: published stage k is previous state (k+1) + age/dt.
+    const double index =
+      std::min(static_cast<double>(k + 1) + stage_shift, static_cast<double>(opt_horizon));
+    std::array<double, opt_nx> sampled{};
+    sample_previous(previous_local, index, sampled, nullptr);
+    StageTemporalReference & ref = out[k];
+    ref.x = sampled[kX];
+    ref.y = sampled[kY];
+    ref.yaw =
+      references[k].yaw + autoware_utils_math::normalize_radian(sampled[kPsi] - references[k].yaw);
+    ref.velocity = sampled[kV];
+    ref.valid = true;
   }
-}
-
-/// Interpolate the previous plan at path station `query_s`. False if `query_s` is past the
-/// previous polyline (no clamp to the last point).
-bool sample_previous_at_s(
-  const SolverSolution & previous, const std::array<double, opt_horizon + 1> & arc,
-  const double query_s, std::array<double, opt_nx> & state)
-{
-  constexpr double slack_m = 1.0e-6;
-  if (query_s > arc.back() + slack_m) {
-    return false;
-  }
-  if (query_s <= arc.front()) {
-    state = previous.states[0];
-    return true;
-  }
-  for (size_t i = 0; i < opt_horizon; ++i) {
-    if (query_s <= arc[i + 1] + slack_m) {
-      const double ds = arc[i + 1] - arc[i];
-      const double ratio = ds > slack_m ? (query_s - arc[i]) / ds : 0.0;
-      lerp_state(
-        previous.states[i], previous.states[i + 1], std::clamp(ratio, 0.0, 1.0), state);
-      return true;
-    }
-  }
-  return false;
-}
-
-/// Mean chord speed of the first three time-indexed points: (|p1-p0| + |p2-p1|) / (2 dt).
-double average_speed_from_first_three_points(const Trajectory & trajectory)
-{
-  constexpr size_t n_points = 3;
-  if (trajectory.points.size() < 2) {
-    return 0.0;
-  }
-  const size_t last = std::min(n_points, trajectory.points.size()) - 1;
-  double path_length_m = 0.0;
-  for (size_t i = 0; i < last; ++i) {
-    const auto & a = trajectory.points[i].pose.position;
-    const auto & b = trajectory.points[i + 1].pose.position;
-    path_length_m += std::hypot(b.x - a.x, b.y - a.y);
-  }
-  return path_length_m / (opt_dt_s * static_cast<double>(last));
 }
 }  // namespace
 
@@ -168,7 +134,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
   const double base_y = ego_pose.position.y;
   const double yaw0 = yaw_from_quaternion(ego_pose.orientation);
   const double v0 = std::clamp(
-    average_speed_from_first_three_points(raw_trajectory), params_.min_velocity_mps,
+    static_cast<double>(ego_odometry.twist.twist.linear.x), params_.min_velocity_mps,
     params_.max_velocity_mps);
 
   double delta0 = 0.0;
@@ -293,8 +259,8 @@ OptimizationResult TrajectoryOptimizer::optimize(
 
   std::array<StageTemporalReference, opt_horizon> temporal_references;
   const std::array<StageTemporalReference, opt_horizon> * temporal_references_ptr = nullptr;
-  const bool allow_temporal = params_.temporal_consistency.enable && !reference_was_shifted &&
-                              warm_start_ptr != nullptr && temporal_goal_compatible;
+  const bool allow_temporal = params_.temporal_consistency.enable && warm_start_ptr != nullptr &&
+                              temporal_goal_compatible && !reference_was_shifted;
   if (!params_.temporal_consistency.enable) {
     result.temporal_skip_reason = "disabled";
   } else if (reference_was_shifted) {
@@ -304,41 +270,11 @@ OptimizationResult TrajectoryOptimizer::optimize(
   }
   result.temporal_applied = false;
   if (allow_temporal && previous_local) {
-    std::array<double, opt_horizon + 1> previous_s{};
-    fill_arc_length(*previous_local, previous_s);
-    double acc_s = 0.0;
-    double prev_x = 0.0;
-    double prev_y = 0.0;
-    bool past_old_path = false;
-    size_t valid_stages = 0;
-    for (size_t k = 0; k < opt_horizon; ++k) {
-      acc_s += std::hypot(references[k].x - prev_x, references[k].y - prev_y);
-      prev_x = references[k].x;
-      prev_y = references[k].y;
-      if (past_old_path) {
-        continue;
-      }
-      std::array<double, opt_nx> sampled{};
-      if (!sample_previous_at_s(*previous_local, previous_s, acc_s, sampled)) {
-        past_old_path = true;
-        continue;
-      }
-      StageTemporalReference & ref = temporal_references[k];
-      ref.x = sampled[kX];
-      ref.y = sampled[kY];
-      ref.yaw =
-        references[k].yaw + autoware_utils_math::normalize_radian(sampled[kPsi] - references[k].yaw);
-      ref.velocity = sampled[kV];
-      ref.valid = true;
-      ++valid_stages;
-    }
-    result.temporal_valid_stages = valid_stages;
-    if (valid_stages > 0) {
-      temporal_references_ptr = &temporal_references;
-      result.temporal_applied = true;
-    } else {
-      result.temporal_skip_reason = "beyond_previous_path";
-    }
+    const double stage_shift = result.warm_start_age_s / opt_dt_s;
+    fill_time_aligned_temporal(*previous_local, references, stage_shift, temporal_references);
+    result.temporal_valid_stages = opt_horizon;
+    temporal_references_ptr = &temporal_references;
+    result.temporal_applied = true;
   }
 
   SolverSolution solution = solver_->solve(

@@ -136,8 +136,20 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, IgnoresIncomingTrajectorySpeed)
     EXPECT_LT(std::abs(point.longitudinal_velocity_mps), 20.0F);
     EXPECT_GT(point.longitudinal_velocity_mps, 1.0F);
   }
-  // Initial v is chord-speed of the first three poses (~8 m/s), not the fake 99 m/s field.
+  // Initial v is odometry twist (~8 m/s), not the fake 99 m/s field.
   EXPECT_NEAR(result.trajectory.points.front().longitudinal_velocity_mps, 8.0F, 2.0F);
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, SeedsSpeedFromOdometryTwist)
+{
+  TrajectoryOptimizationParams params;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  odometry_.twist.twist.linear.x = 0.0;
+  const auto raw = make_noisy_trajectory(8.0, 0.05);
+  const auto result = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(result.optimized) << "acados status: " << result.solver_status;
+  EXPECT_NEAR(result.initial_speed_mps, 0.0, 1e-9);
 }
 
 TEST_F(TimeSequenceTrajectoryOptimizerTest, InitialAccelerationContinuity)
@@ -308,7 +320,7 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencyAppliesWhenGoalSn
   EXPECT_STREQ(second.temporal_skip_reason, "none");
 }
 
-TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedPastPreviousPathLength)
+TEST_F(TimeSequenceTrajectoryOptimizerTest, TimeSampledTemporalCoversTakeoff)
 {
   TrajectoryOptimizationParams params;
   params.temporal_consistency.enable = true;
@@ -325,35 +337,9 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencySkippedPastPrevio
   moving.header.stamp.nanosec = 100000000;
   const auto second = optimizer.optimize(moving, odometry_, 0.0, 0.0, 0);
   ASSERT_TRUE(second.optimized);
-  EXPECT_FALSE(second.temporal_applied);
-  EXPECT_EQ(second.temporal_valid_stages, 0u);
-  EXPECT_STREQ(second.temporal_skip_reason, "beyond_previous_path");
-}
-
-TEST_F(TimeSequenceTrajectoryOptimizerTest, TemporalConsistencyUncoversStagesPastOldPath)
-{
-  TrajectoryOptimizationParams params;
-  params.temporal_consistency.enable = true;
-  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
-
-  constexpr double slow = 2.0;
-  constexpr double fast = 8.0;
-  odometry_.twist.twist.linear.x = slow;
-  auto first_raw = make_straight_trajectory(0.0, slow);
-  first_raw.header.stamp.sec = 0;
-  const auto first = optimizer.optimize(first_raw, odometry_, 0.0, 0.0, 0);
-  ASSERT_TRUE(first.optimized);
-
-  odometry_.twist.twist.linear.x = fast;
-  auto second_raw = make_straight_trajectory(0.0, fast);
-  second_raw.header.stamp.nanosec = 100000000;
-  const auto second = optimizer.optimize(second_raw, odometry_, 0.0, 0.0, 0);
-  ASSERT_TRUE(second.optimized);
   EXPECT_TRUE(second.temporal_applied);
+  EXPECT_EQ(second.temporal_valid_stages, opt_horizon);
   EXPECT_STREQ(second.temporal_skip_reason, "none");
-  // New path is ~64 m, old path ~16 m; only the overlapping prefix gets the loss.
-  EXPECT_GT(second.temporal_valid_stages, 0u);
-  EXPECT_LT(second.temporal_valid_stages, opt_horizon);
 }
 
 TEST_F(TimeSequenceTrajectoryOptimizerTest, DoesNotLatchGoalSnapWhenEgoIsFar)

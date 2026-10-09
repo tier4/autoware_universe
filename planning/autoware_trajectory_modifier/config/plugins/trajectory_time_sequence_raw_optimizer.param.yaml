@@ -20,7 +20,7 @@
         # Far-away unlatch does not clear the previous-plan buffer; a new route goal does.
         unlatch_horizon_s: 8.0
         unlatch_min_speed_mps: 3.0
-      # Previous plan sampled by path distance, not timestamp. Skipped on
+      # Previous plan resampled by timestamp like ml_planner. Skipped on
       # road-border shift or goal-snap latch mismatch.
       temporal_consistency:
         enable: true
