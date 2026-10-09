@@ -77,6 +77,21 @@ struct RoadBorderAvoidanceDebug
   bool active{false};
   int shifted_points{0};
   int unresolved_points{0};
+  /// Re-optimizations run because the optimized trajectory still overlapped a road border.
+  int reoptimizations{0};
+  /// Points of the final optimized trajectory that still overlap a road border.
+  int remaining_overlapping_points{0};
+};
+
+/// One candidate after road border avoidance and trajectory optimization.
+struct RefinedCandidate
+{
+  /// Nullopt when the optimization was attempted and failed.
+  std::optional<Trajectory> trajectory;
+  /// Reference of the solution used: the raw output shifted away from the road borders.
+  Trajectory reference;
+  RoadBorderAvoidanceDebug avoidance_debug;
+  TrajectoryOptimizationDebug optimization_debug;
 };
 
 struct PlannerOutput
@@ -261,6 +276,19 @@ public:
   const LaneletRoute::ConstSharedPtr & get_route() const { return route_ptr_; }
 
 private:
+  /**
+   * @brief Road border avoidance and trajectory optimization of one raw candidate.
+   *
+   * The raw output is checked against the road borders and shifted into the reference, which
+   * is optimized. The optimized trajectory is checked the same way; while it still overlaps,
+   * the reference is pushed out by the missing clearance and solved again (at most
+   * road_border_avoidance.max_reoptimizations times). Total offset from the raw output stays
+   * within road_border_avoidance.max_lateral_shift_m.
+   */
+  RefinedCandidate refine_candidate(
+    const Trajectory & raw_trajectory, size_t batch_index, const Odometry & kinematic_state,
+    double current_steering_angle_rad);
+
   // Parameters
   MLPlannerParams params_;
   VehicleInfo vehicle_info_;
@@ -274,7 +302,7 @@ private:
   std::unique_ptr<optimization::TrajectoryOptimizer> trajectory_optimizer_{nullptr};
 #endif
 
-  // Road border avoidance shift applied to the raw model output (nullptr when disabled)
+  // Road border check and shift of the raw and optimized trajectories (nullptr when disabled)
   std::unique_ptr<postprocess::RoadBorderAvoidance> road_border_avoidance_{nullptr};
 
   // Postprocessing
