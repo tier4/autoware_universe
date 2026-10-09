@@ -128,6 +128,18 @@ See paper [2] for more details.
 
 It is possible to apply a maximum lateral acceleration constraint to generated vehicle paths. This check verifies if it is possible for the vehicle to perform the predicted path without surpassing a lateral acceleration threshold `max_lateral_accel` when taking a curve. If it is not possible, it checks if the vehicle can slow down on time to take the curve with a deceleration of `min_acceleration_before_curve` and comply with the constraint. If that is also not possible, the path is eliminated.
 
+The check is applied to every segment of the predicted path. For a segment starting at an arc length
+$s$ from the beginning of the path, the vehicle is assumed to brake at $a_{decel} =
+|\text{min\_acceleration\_before\_curve}|$ from its initial speed $v_0$, so the lowest speed it can
+enter the segment with is given by $v^2 = v_0^2 - 2 a_{decel} s$. The segment curvature is
+$\kappa = |\Delta\theta| / \Delta s$, using the yaw difference and the distance between the two path
+points. The path is eliminated when any segment violates
+
+$$\kappa v^2 > \text{max\_lateral\_accel}$$
+
+Note that $v^2$ may become negative, which means the vehicle is able to stop before the segment and
+therefore trivially satisfies the constraint.
+
 Currently we provide three parameters to tune the lateral acceleration constraint:
 
 - `check_lateral_acceleration_constraints_`: to enable the constraint check.
