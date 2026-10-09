@@ -70,6 +70,9 @@ public:
     TEMPORAL_OBSERVATION_USED = 40,
     TEMPORAL_WINDOW_MIN = 41,
     TEMPORAL_WINDOW_MAX = 42,
+    BRAKE_KEEPING_STATE = 43,
+    IS_STOPPED_WITH_DELAY = 44,
+    HAS_STOP_POINT = 45,
 
     SIZE  // this is the number of enum elements
   };
