@@ -63,7 +63,8 @@ InputBuilderResult create_input_data_map(
 
   // Ego history
   input_data_map["ego_agent_past"] = create_ego_history(
-    frame_inputs.ego_history, EGO_HISTORY_SHAPE[1], map_to_ego_transform, frame_inputs.frame_time);
+    frame_inputs.ego_history, frame_inputs.steering_history, EGO_HISTORY_SHAPE[1],
+    map_to_ego_transform, frame_inputs.frame_time);
 
   // Neighbor agents on ego reference frame. Return this exact selection so
   // callers can preserve the tensor row-to-object correspondence.
@@ -129,7 +130,8 @@ InputBuilderResult create_input_data_map(
 
   // Ego shape
   input_data_map["ego_shape"] = create_ego_shape(
-    vehicle_spec.base_link_to_front, vehicle_spec.vehicle_length, vehicle_spec.vehicle_width);
+    vehicle_spec.base_link_to_front, vehicle_spec.vehicle_length, vehicle_spec.vehicle_width,
+    vehicle_spec.wheel_base);
 
   input_data_map["turn_indicators"] = create_turn_indicators(
     frame_inputs.turn_indicators_history, frame_inputs.frame_time, INPUT_T_WITH_CURRENT,
