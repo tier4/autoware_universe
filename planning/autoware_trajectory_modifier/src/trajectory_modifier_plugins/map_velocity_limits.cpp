@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <memory>
+#include <stdexcept>
 #include <utility>
 
 namespace autoware::trajectory_modifier::plugin
@@ -57,8 +58,19 @@ void MapVelocityLimits::on_initialize(const TrajectoryModifierParams & params)
 
 void MapVelocityLimits::update_params(const TrajectoryModifierParams & params)
 {
+  try {
+    limit_overrides_ = make_velocity_limit_overrides(params);
+  } catch (const std::invalid_argument & error) {
+    enabled_ = false;
+    limit_overrides_.clear();
+    fixed_profile_.clear();
+    RCLCPP_ERROR(
+      get_node_ptr()->get_logger(),
+      "%s: invalid map velocity limit parameters: %s; disabling map velocity limits",
+      get_short_name().c_str(), error.what());
+    return;
+  }
   enabled_ = params.use_map_velocity_limits;
-  limit_overrides_ = make_velocity_limit_overrides(params);
   constraints_ = detail::make_velocity_limit_constraints(params);
   fixed_profile_.set_parameters(detail::make_fixed_profile_parameters(params));
   if (!enabled_) {

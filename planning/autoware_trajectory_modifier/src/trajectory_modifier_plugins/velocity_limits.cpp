@@ -19,9 +19,12 @@
 #include <rclcpp/duration.hpp>
 #include <rclcpp/time.hpp>
 
+#include <geometry_msgs/msg/pose.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <optional>
@@ -42,6 +45,7 @@ constexpr double k_start_ratio = 0.95;
 constexpr double k_continue_ratio = 0.5;
 constexpr double k_decelerating = -0.05;    // [m/s^2] acceleration below which the ego decelerates
 constexpr double k_limit_tolerance = 1e-3;  // [m/s] input velocity tolerated above a limit
+constexpr double k_limit_change_epsilon = 1e-6;  // [m/s] negligible map limit change
 
 struct LongitudinalState
 {
@@ -76,6 +80,15 @@ double resolve_limit(
                                                          : std::numeric_limits<double>::infinity();
 }
 
+bool limits_differ(const double lhs, const double rhs)
+{
+  // Resolved limits are finite and non-negative, or positive infinity for an absent limit.
+  if (!std::isfinite(lhs) || !std::isfinite(rhs)) {
+    return std::isfinite(lhs) != std::isfinite(rhs);
+  }
+  return std::abs(lhs - rhs) > k_limit_change_epsilon;
+}
+
 /// @brief Ratio along a segment where the limit changes from its value at the segment start.
 double find_limit_change(
   const LimitFunction & velocity_limit, const geometry_msgs::msg::Point & from,
@@ -83,13 +96,14 @@ double find_limit_change(
 {
   double low = 0.0;
   double high = 1.0;
+  // Twelve bisections locate the change within 1/4096 of the segment length.
   for (int iteration = 0; iteration < 12; ++iteration) {
     const double middle = 0.5 * (low + high);
     geometry_msgs::msg::Point position;
     position.x = autoware::interpolation::lerp(from.x, to.x, middle);
     position.y = autoware::interpolation::lerp(from.y, to.y, middle);
     position.z = autoware::interpolation::lerp(from.z, to.z, middle);
-    (resolve_limit(velocity_limit, position) == start_limit ? low : high) = middle;
+    (limits_differ(resolve_limit(velocity_limit, position), start_limit) ? high : low) = middle;
   }
   return high;
 }
@@ -107,7 +121,7 @@ struct PathBounds
   std::vector<double> lowest_limit_after;
   /// Nodes where the cap stops decreasing (zone entries, stops, bottoms of dips). Braking ends
   /// there, while a decreasing stretch before one is satisfied by braking for it or followed.
-  std::vector<bool> local_minimum;
+  std::vector<std::uint8_t> local_minimum;
 
   [[nodiscard]] std::size_t size() const { return s.size(); }
 
@@ -157,6 +171,10 @@ PathBounds make_path_bounds(
   }
 
   PathBounds bounds;
+  bounds.s.reserve(count * 2);
+  bounds.input.reserve(count * 2);
+  bounds.input_acceleration.reserve(count * 2);
+  bounds.limit.reserve(count * 2);
   for (std::size_t i = 0; i < count; ++i) {
     const double length = i + 1 < count ? arc_lengths[i + 1] - arc_lengths[i] : 0.0;
     const double acceleration =
@@ -164,7 +182,7 @@ PathBounds make_path_bounds(
         ? (velocities[i + 1] * velocities[i + 1] - velocities[i] * velocities[i]) / (2.0 * length)
         : 0.0;
     bounds.add_node(arc_lengths[i], velocities[i], acceleration, limits[i]);
-    if (i + 1 < count && limits[i] != limits[i + 1]) {
+    if (i + 1 < count && limits_differ(limits[i], limits[i + 1])) {
       const double ratio = find_limit_change(
         velocity_limit, points[i].pose.position, points[i + 1].pose.position, limits[i]);
       bounds.add_node(
@@ -180,7 +198,7 @@ PathBounds make_path_bounds(
     bounds.lowest_limit_after[i - 1] = std::min(bounds.limit[i], bounds.lowest_limit_after[i]);
   }
   constexpr double epsilon = 1e-6;
-  bounds.local_minimum.assign(nodes, false);
+  bounds.local_minimum.assign(nodes, 0);
   for (std::size_t i = 1; i < nodes; ++i) {
     const bool decreasing_into = bounds.cap(i) < bounds.cap(i - 1) - epsilon;
     const bool not_decreasing_after = i + 1 == nodes || bounds.cap(i + 1) > bounds.cap(i) - epsilon;
@@ -199,7 +217,7 @@ public:
   LimitedProfileSimulation(
     const PathBounds & bounds, const VelocityLimitConstraints & constraints,
     const LongitudinalState & initial)
-  : bounds_{bounds}, constraints_{constraints}, state_{initial}, latched_(bounds.size(), false)
+  : bounds_{bounds}, constraints_{constraints}, state_{initial}, latched_(bounds.size(), 0)
   {
   }
 
@@ -285,7 +303,7 @@ private:
         if (distance <= 0.0 || distance + k_braking_margin < bounds_.s[j] - predicted.s) {
           continue;
         }
-        latched_[j] = true;
+        latched_[j] = 1;
       }
       lowest = std::min(lowest, cap);
       command = std::min(command, braking_command(j));
@@ -314,6 +332,7 @@ private:
       return high;
     }
     double low = 0.0;
+    // Twenty bisections leave at most max_deceleration / 2^20 of uncertainty.
     for (int iteration = 0; iteration < 20; ++iteration) {
       const double middle = 0.5 * (low + high);
       (distance(middle) <= available ? high : low) = middle;
@@ -325,7 +344,7 @@ private:
   {
     return std::any_of(
       latched_.begin() + static_cast<std::ptrdiff_t>(index), latched_.end(),
-      [](const bool latched) { return latched; });
+      [](const std::uint8_t latched) { return latched != 0; });
   }
 
   /// @brief Brake toward a target and release so that the acceleration reaches zero there.
@@ -353,19 +372,20 @@ private:
   const PathBounds & bounds_;
   const VelocityLimitConstraints & constraints_;
   LongitudinalState state_;
-  std::vector<bool> latched_;
+  std::vector<std::uint8_t> latched_;
   std::size_t segment_{0};
 };
 
 /// @brief Move every pose but the first along the input polyline to match the new velocities.
 void resample_poses(
-  TrajectoryPoints & points, const TrajectoryPoints & original, const std::vector<double> & times)
+  TrajectoryPoints & points, const std::vector<geometry_msgs::msg::Pose> & original,
+  const std::vector<double> & times)
 {
   const auto count = points.size();
   std::vector<double> original_s(count, 0.0);
   for (std::size_t i = 1; i < count; ++i) {
-    const auto & p0 = original[i - 1].pose.position;
-    const auto & p1 = original[i].pose.position;
+    const auto & p0 = original[i - 1].position;
+    const auto & p1 = original[i].position;
     original_s[i] = original_s[i - 1] + std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
   }
 
@@ -384,13 +404,13 @@ void resample_poses(
     }
 
     if (segment + 1 == count) {
-      points[i].pose = original.back().pose;
+      points[i].pose = original.back();
     } else {
       const double segment_length = original_s[segment + 1] - original_s[segment];
       const double ratio = (new_s[i] - original_s[segment]) / std::max(segment_length, 1e-6);
 
-      const auto & p0 = original[segment].pose;
-      const auto & p1 = original[segment + 1].pose;
+      const auto & p0 = original[segment];
+      const auto & p1 = original[segment + 1];
       auto & pose = points[i].pose;
 
       pose.position.x = autoware::interpolation::lerp(p0.position.x, p1.position.x, ratio);
@@ -479,23 +499,27 @@ VelocityLimitResult apply_velocity_limits(
     return {ProcessingResult::Unchanged, {}};
   }
 
-  const auto original = points;
   LongitudinalState initial;
   initial.velocity = std::max(
     0.0, options.current_ego_velocity && std::isfinite(*options.current_ego_velocity)
            ? *options.current_ego_velocity
-           : static_cast<double>(original.front().longitudinal_velocity_mps));
+           : static_cast<double>(points.front().longitudinal_velocity_mps));
   // A measured acceleration outside the limits (e.g. noise) is clamped so that the profile never
   // violates them.
   initial.acceleration =
-    options.current_ego_acceleration.value_or(original.front().acceleration_mps2);
+    options.current_ego_acceleration.value_or(points.front().acceleration_mps2);
   initial.acceleration =
     std::isfinite(initial.acceleration)
       ? std::clamp(
           initial.acceleration, -constraints.max_deceleration, constraints.max_acceleration)
       : 0.0;
 
-  const auto bounds = make_path_bounds(original, limits, velocity_limit);
+  const auto bounds = make_path_bounds(points, limits, velocity_limit);
+  std::vector<geometry_msgs::msg::Pose> original_poses;
+  original_poses.reserve(count);
+  for (const auto & point : points) {
+    original_poses.push_back(point.pose);
+  }
   LimitedProfileSimulation simulation(bounds, constraints, initial);
   double time = 0.0;
   for (std::size_t i = 0; i < count; ++i) {
@@ -508,7 +532,7 @@ VelocityLimitResult apply_velocity_limits(
     points[i].acceleration_mps2 = static_cast<float>(simulation.state().acceleration);
   }
 
-  resample_poses(points, original, times);
+  resample_poses(points, original_poses, times);
   return {ProcessingResult::Modified, {}};
 }
 
@@ -544,6 +568,11 @@ std::optional<PlanSample> sample_plan(const TrajectoryPoints & plan, const doubl
       continue;
     }
     const double h = t1 - t0;
+    if (h <= 1e-6) {
+      return PlanSample{
+        plan[i + 1].longitudinal_velocity_mps, plan[i + 1].acceleration_mps2,
+        plan[i + 1].pose.position};
+    }
     const double u = elapsed - t0;
     const double v0 = plan[i].longitudinal_velocity_mps;
     const double v1 = plan[i + 1].longitudinal_velocity_mps;

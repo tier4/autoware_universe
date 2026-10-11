@@ -31,8 +31,9 @@ double get_external_velocity_limit_deceleration(
   const double default_deceleration)
 {
   const double deceleration = std::abs(velocity_limit.constraints.min_acceleration);
-  return velocity_limit.use_constraints && deceleration > 0.0 ? deceleration
-                                                              : std::abs(default_deceleration);
+  return velocity_limit.use_constraints && std::isfinite(deceleration) && deceleration > 0.0
+           ? deceleration
+           : std::abs(default_deceleration);
 }
 
 double get_external_velocity_limit_min_jerk(
@@ -40,7 +41,9 @@ double get_external_velocity_limit_min_jerk(
   const double default_jerk)
 {
   const double jerk = std::abs(velocity_limit.constraints.min_jerk);
-  return velocity_limit.use_constraints && jerk > 0.0 ? jerk : std::abs(default_jerk);
+  return velocity_limit.use_constraints && std::isfinite(jerk) && jerk > 0.0
+           ? jerk
+           : std::abs(default_jerk);
 }
 }  // namespace detail
 
