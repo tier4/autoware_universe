@@ -20,6 +20,7 @@
 
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 
 #include <memory>
@@ -59,6 +60,7 @@ private:
 
   std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
     velocity_limit_sub_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr profile_reset_pub_;
   detail::VelocityLimitConstraints constraints_;
   detail::FixedProfileMemory fixed_profile_;
   detail::ProfileStart last_profile_start_{detail::ProfileStart::Measured};

@@ -21,6 +21,8 @@
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
+
 #include <memory>
 
 namespace autoware::trajectory_modifier::plugin
@@ -54,6 +56,7 @@ protected:
     extended_route_handler_;
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     limit_overrides_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr profile_reset_pub_;
   detail::VelocityLimitConstraints constraints_;
   detail::FixedProfileMemory fixed_profile_;
   detail::ProfileStart last_profile_start_{detail::ProfileStart::Measured};

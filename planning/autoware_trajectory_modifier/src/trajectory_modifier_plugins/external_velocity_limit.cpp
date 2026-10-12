@@ -19,6 +19,7 @@
 #include <cmath>
 #include <memory>
 #include <optional>
+#include <string>
 
 namespace autoware::trajectory_modifier::plugin
 {
@@ -53,6 +54,9 @@ void ExternalVelocityLimit::on_initialize(const TrajectoryModifierParams & param
   velocity_limit_sub_ =
     std::make_shared<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>(
       get_node_ptr(), "~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+  profile_reset_pub_ =
+    get_node_ptr()->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
+      "~/debug/velocity_profile_reset", rclcpp::QoS{10}.reliable().durability_volatile());
 }
 
 void ExternalVelocityLimit::update_params(const TrajectoryModifierParams & params)
@@ -93,6 +97,11 @@ ProcessingResult ExternalVelocityLimit::process(
     RCLCPP_DEBUG(
       get_node_ptr()->get_logger(), "%s: candidate %zu restarted from the measured ego state (%s)",
       get_short_name().c_str(), input.candidate_index, detail::to_string(start.start));
+    autoware_internal_debug_msgs::msg::StringStamped reset;
+    reset.stamp = get_clock()->now();
+    reset.data = "plugin=" + get_name() + " candidate=" + std::to_string(input.candidate_index) +
+                 " reason=" + detail::to_string(start.start);
+    profile_reset_pub_->publish(reset);
   }
   const auto result = detail::apply_velocity_limits(
     traj_points, constraints,

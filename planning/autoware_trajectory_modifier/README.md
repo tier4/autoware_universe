@@ -294,6 +294,12 @@ This package depends on the following packages:
 
 - **Input**: `autoware_internal_planning_msgs::msg::CandidateTrajectories`
 - **Output**: Modified `autoware_internal_planning_msgs::msg::CandidateTrajectories` and selected `autoware_planning_msgs::msg::Trajectory`
+- **Velocity profile resets**: `~/debug/velocity_profile_reset`
+  (`autoware_internal_debug_msgs::msg::StringStamped`). The map and external velocity limit
+  plugins publish one event per candidate reset. The stamp is the publication time, and `data`
+  contains `plugin=<instance> candidate=<index> reason=<reason>`. Reasons are `reset_time_gap`,
+  `reset_velocity`, `reset_acceleration`, and `reset_distance`. The topic uses reliable, volatile
+  QoS with a depth of 10.
 
 The node also subscribes to odometry, acceleration, steering status, predicted and tracked objects, point cloud data, traffic signals, route, and vector map topics for plugin use.
 
