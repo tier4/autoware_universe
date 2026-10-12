@@ -85,7 +85,9 @@ void MapVelocityLimits::update_params(const TrajectoryModifierParams & params)
 bool MapVelocityLimits::is_trajectory_modification_required(
   [[maybe_unused]] const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
 {
-  if (!input.lanelet_map_bin || !input.route) {
+  if (
+    !input.lanelet_map_bin || !input.route ||
+    (input.current_odometry && input.current_odometry->twist.twist.linear.x < 0.1)) {
     return false;
   }
   if (!extended_route_handler_ || previous_route_uuid_ != input.route->uuid) {
