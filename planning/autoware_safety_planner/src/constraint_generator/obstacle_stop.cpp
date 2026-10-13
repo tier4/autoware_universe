@@ -16,18 +16,17 @@
 
 #include "../utils/frenet_utils.hpp"
 
-#include <autoware/trajectory/utils/closest.hpp>
-#include <autoware_utils_geometry/boost_polygon_utils.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
-#include <exception>
-#include <iterator>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,265 +37,298 @@ namespace autoware::safety_planner::experimental
 namespace
 {
 
-Pose2d to_pose2d(const geometry_msgs::msg::Pose & pose)
-{
-  return Pose2d{
-    Point2d{pose.position.x, pose.position.y}, autoware_utils_geometry::get_rpy(pose).z};
-}
+using autoware::trajectory_modifier::utils::clamp_stop_point_arc_length;
+using autoware::trajectory_modifier::utils::obstacle_stop::build_trajectory_footprint_index;
+using autoware::trajectory_modifier::utils::obstacle_stop::get_nearest_object_collision;
+using autoware::trajectory_modifier::utils::obstacle_stop::LateralMarginMap;
+using autoware::trajectory_modifier::utils::obstacle_stop::ObjectDecelMap;
+using autoware::trajectory_modifier::utils::obstacle_stop::ObjectFilter;
+using autoware::trajectory_modifier::utils::obstacle_stop::ObjectType;
+using autoware::trajectory_modifier::utils::obstacle_stop::TargetObject;
+using autoware::trajectory_modifier::utils::obstacle_stop::TargetObjects;
+using autoware::trajectory_modifier::utils::obstacle_stop::TrajectoryShape;
 
-bool is_finite(const Pose2d & pose)
+TrajectoryPoints make_trajectory_points(
+  const PathPointTrajectory & path, const double s_ego, const geometry_msgs::msg::Point & ego_point)
 {
-  return std::isfinite(pose.position.x()) && std::isfinite(pose.position.y()) &&
-         std::isfinite(pose.yaw);
-}
+  constexpr double RESAMPLE_INTERVAL_M = 0.5;
 
-//! The most likely predicted path, ties broken by the order in the message so that the choice is
-//! deterministic. nullptr when the object has none.
-const autoware_perception_msgs::msg::PredictedPath * select_most_confident_path(
-  const autoware_perception_msgs::msg::PredictedObject & object)
-{
-  const autoware_perception_msgs::msg::PredictedPath * best = nullptr;
-  for (const auto & path : object.kinematics.predicted_paths) {
-    if (path.path.empty() || !std::isfinite(path.confidence)) {
-      continue;
-    }
-    if (best == nullptr || path.confidence > best->confidence) {
-      best = &path;
-    }
+  TrajectoryPoints points;
+  const auto push = [&](const double s) {
+    const auto & point = path.compute(s).point;
+    TrajectoryPoint trajectory_point;
+    trajectory_point.pose = point.pose;
+    trajectory_point.longitudinal_velocity_mps = point.longitudinal_velocity_mps;
+    trajectory_point.lateral_velocity_mps = point.lateral_velocity_mps;
+    trajectory_point.heading_rate_rps = point.heading_rate_rps;
+    points.push_back(trajectory_point);
+  };
+  for (double s = s_ego; s + 1e-3 < path.length(); s += RESAMPLE_INTERVAL_M) {
+    push(s);
   }
-  return best;
+  push(path.length());
+  autoware::motion_utils::calculate_time_from_start(points, ego_point);
+  return points;
+}
+
+MarkerArray make_debug_markers(
+  const TrajectoryShape & shape, const TargetObjects & target_objects,
+  const builtin_interfaces::msg::Time & stamp, const double ego_z)
+{
+  using autoware_utils_geometry::calc_offset_pose;
+  using autoware_utils_geometry::create_point;
+  using autoware_utils_visualization::create_default_marker;
+  using autoware_utils_visualization::create_marker_color;
+  using autoware_utils_visualization::create_marker_scale;
+
+  const auto white = create_marker_color(1.0, 1.0, 1.0, 1.0);
+  const auto yellow = create_marker_color(1.0, 1.0, 0.0, 1.0);
+  const auto magenta = create_marker_color(1.0, 0.0, 1.0, 1.0);
+
+  MarkerArray marker_array;
+  Marker delete_all;
+  delete_all.action = Marker::DELETEALL;
+  marker_array.markers.push_back(delete_all);
+
+  const auto add_polygon_marker = [&](
+                                    const Polygon2d & polygon, const std::string & ns, const int id,
+                                    const std_msgs::msg::ColorRGBA & color) {
+    auto marker = create_default_marker(
+      "map", stamp, ns, id, Marker::LINE_STRIP, create_marker_scale(0.1, 0.1, 0.1), color);
+    for (const auto & p : polygon.outer()) {
+      marker.points.push_back(create_point(p.x(), p.y(), ego_z));
+    }
+    if (!marker.points.empty()) {
+      marker.points.push_back(marker.points.front());
+    }
+    marker_array.markers.push_back(marker);
+  };
+
+  int id = 0;
+  {
+    const auto half_width = shape.ego_half_width;
+    const auto front_offset = std::abs(shape.ego_front_offset);
+    const auto back_offset = std::abs(shape.ego_back_offset);
+    auto marker = create_default_marker(
+      "map", stamp, "traj_polygon", id, Marker::LINE_LIST, create_marker_scale(0.1, 0.1, 0.1),
+      yellow);
+    auto dist = 0.0;
+    for (const auto & footprint : shape.footprints) {
+      if (footprint.arc_length - dist < 1.0) continue;
+      dist = footprint.arc_length;
+      const auto front_left = calc_offset_pose(footprint.pose, front_offset, -half_width, 0.0);
+      const auto front_right = calc_offset_pose(footprint.pose, front_offset, half_width, 0.0);
+      const auto rear_right = calc_offset_pose(footprint.pose, -back_offset, half_width, 0.0);
+      const auto rear_left = calc_offset_pose(footprint.pose, -back_offset, -half_width, 0.0);
+      for (const auto * pose :
+           {&rear_left, &front_left, &front_left, &front_right, &front_right, &rear_right,
+            &rear_right, &rear_left}) {
+        marker.points.push_back(pose->position);
+      }
+    }
+    marker_array.markers.push_back(marker);
+    id++;
+  }
+
+  {
+    const auto & bounding_box = shape.bounding_box;
+    Polygon2d polygon;
+    polygon.outer().emplace_back(bounding_box.min_corner());
+    polygon.outer().emplace_back(bounding_box.min_corner().x(), bounding_box.max_corner().y());
+    polygon.outer().emplace_back(bounding_box.max_corner());
+    polygon.outer().emplace_back(bounding_box.max_corner().x(), bounding_box.min_corner().y());
+    add_polygon_marker(polygon, "traj_bounding_box", id, white);
+    id++;
+  }
+
+  for (const auto & obj : target_objects) {
+    add_polygon_marker(obj.polygon, "target_objects", id, magenta);
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2);
+    ss << "safe: " << (obj.is_safe ? "true" : "false") << "\n";
+    ss << "rss_safe_dist: " << obj.safe_distance << " m" << "\n";
+    ss << "dist_from_ego: " << obj.distance_from_ego << " m";
+    auto text = create_default_marker(
+      "map", stamp, "target_objects_text", id, Marker::TEXT_VIEW_FACING,
+      create_marker_scale(0.4, 0.4, 0.4), white);
+    text.pose = obj.object.kinematics.initial_pose_with_covariance.pose;
+    text.pose.position.z += 1.0;
+    text.text = ss.str();
+    marker_array.markers.push_back(text);
+    if (!obj.is_safe)
+      add_polygon_marker(obj.ego_footprint, "overlapping_ego_footprint", id, magenta);
+    id++;
+  }
+
+  return marker_array;
 }
 
 }  // namespace
-
-std::vector<Constraint> make_obstacle_keep_out_constraints(
-  const PredictedObjects & objects, const rclcpp::Time & t_plan, const double margin_m)
-{
-  // Times are seconds relative to t_plan. The perception stamp does not match the odometry stamp,
-  // so their difference goes into the t of the waypoints as an offset. A negative stamp would make
-  // rclcpp::Time throw, and falls back to no offset
-  const double base_offset_s =
-    objects.header.stamp.sec < 0 ? 0.0 : (rclcpp::Time(objects.header.stamp) - t_plan).seconds();
-
-  std::vector<Constraint> constraints;
-  constraints.reserve(objects.objects.size());
-  for (const auto & object : objects.objects) {
-    // Calling to_polygon2d with the identity pose absorbs the shape type (BOUNDING_BOX /
-    // CYLINDER / POLYGON) and yields the body-local polygon, clockwise and closed as the IR
-    // requires. A degenerate shape (an empty POLYGON, ...) can be published, and drops the object
-    Polygon2d shape;
-    try {
-      shape = autoware_utils_geometry::to_polygon2d(geometry_msgs::msg::Pose{}, object.shape);
-    } catch (const std::exception &) {
-      continue;
-    }
-    if (shape.outer().size() < 4) {  // a closed ring of fewer than 4 points has no area
-      continue;
-    }
-    // The IR carries no margin, so the clearance is baked into the shape
-    shape = autoware_utils_geometry::expand_polygon(shape, margin_m);
-
-    const auto initial_pose = to_pose2d(object.kinematics.initial_pose_with_covariance.pose);
-    if (!is_finite(initial_pose)) {
-      continue;
-    }
-
-    std::vector<TimedPose> waypoints;
-    if (const auto * path = select_most_confident_path(object)) {
-      const double time_step_s = rclcpp::Duration(path->time_step).seconds();
-      waypoints.reserve(path->path.size());
-      for (std::size_t i = 0; i < path->path.size(); ++i) {
-        TimedPose waypoint;
-        waypoint.t = base_offset_s + static_cast<double>(i) * time_step_s;
-        waypoint.pose = to_pose2d(path->path[i]);
-        if (!std::isfinite(waypoint.t) || !is_finite(waypoint.pose)) {
-          continue;  // drop the degenerate waypoint and keep the rest
-        }
-        waypoints.push_back(waypoint);
-      }
-    }
-    if (waypoints.empty()) {
-      // No predicted path means a static object: a single waypoint occupies the current position
-      // for all times
-      waypoints.push_back(TimedPose{0.0, initial_pose});
-    }
-
-    Constraint constraint;
-    constraint.certainty = Certainty::DEFINITE;
-    // The time window is left at default: outside the times of the waypoints the KeepOut is
-    // undefined anyway
-    constraint.payload = KeepOut{std::move(shape), std::move(waypoints)};
-    constraint.source = Source{
-      "obstacle_stop", autoware_utils_uuid::to_hex_string(object.object_id), "dynamic_obstacle"};
-    constraints.push_back(std::move(constraint));
-  }
-  return constraints;
-}
-
-std::vector<Constraint> make_obstacle_stop_line_constraints(
-  const PredictedObjects & objects, const PathPointTrajectory & reference_path, const double s_ego,
-  const double corridor_half_width_m, const double stop_distance_m,
-  const double max_object_speed_mps)
-{
-  std::vector<Constraint> constraints;
-  for (const auto & object : objects.objects) {
-    if (
-      std::abs(object.kinematics.initial_twist_with_covariance.twist.linear.x) >
-      max_object_speed_mps) {
-      continue;
-    }
-    // World-frame footprint at the current pose (the same conversion the KeepOut uses)
-    Polygon2d footprint;
-    try {
-      footprint = autoware_utils_geometry::to_polygon2d(
-        object.kinematics.initial_pose_with_covariance.pose, object.shape);
-    } catch (const std::exception &) {
-      continue;
-    }
-    if (footprint.outer().size() < 4) {
-      continue;
-    }
-
-    // (s, l) extent of the footprint on the reference path. The chord approximation of
-    // closest() is enough here: the stop line is placed stop_distance_m away anyway
-    double s_min = std::numeric_limits<double>::infinity();
-    double s_max = -std::numeric_limits<double>::infinity();
-    double l_min = std::numeric_limits<double>::infinity();
-    double l_max = -std::numeric_limits<double>::infinity();
-    bool finite = true;
-    for (const auto & vertex : footprint.outer()) {
-      if (!std::isfinite(vertex.x()) || !std::isfinite(vertex.y())) {
-        finite = false;
-        break;
-      }
-      geometry_msgs::msg::Point q;
-      q.x = vertex.x();
-      q.y = vertex.y();
-      const double s = autoware::experimental::trajectory::closest(reference_path, q);
-      s_min = std::min(s_min, s);
-      s_max = std::max(s_max, s);
-      const double l = lateral_offset_at(reference_path, s, vertex);
-      l_min = std::min(l_min, l);
-      l_max = std::max(l_max, l);
-    }
-    if (!finite || s_max <= s_ego) {
-      continue;  // behind the ego
-    }
-    if (l_max < -corridor_half_width_m || l_min > corridor_half_width_m) {
-      continue;  // beside the path, not on it
-    }
-    // If the object is already closer than stop_distance_m, the line is placed at the ego so that
-    // every forward candidate is rejected and the planner falls back to the stop trajectory
-    const double s_stop = std::clamp(s_min - stop_distance_m, s_ego, reference_path.length());
-
-    // Only the crossing with the centerline matters for the projection (StopBarEntry); the width
-    // just has to cover the corridor
-    const auto left = to_world_pose(reference_path, s_stop, corridor_half_width_m).position;
-    const auto right = to_world_pose(reference_path, s_stop, -corridor_half_width_m).position;
-
-    Constraint constraint;
-    constraint.certainty = Certainty::DEFINITE;
-    // Gate: left of first -> second is forbidden, so first = left end, second = right end makes
-    // the far side (along the path) forbidden
-    constraint.payload = Gate{Segment2d{left, right}};
-    constraint.source =
-      Source{"obstacle_stop", autoware_utils_uuid::to_hex_string(object.object_id), "stop_line"};
-    constraints.push_back(std::move(constraint));
-  }
-  return constraints;
-}
 
 ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
   const PlannerContext & context)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  ConstraintGeneratorOutput output;
-  if (!context.predicted_objects) {
-    return output;  // nothing received yet; an empty output keeps the pipeline running
-  }
+  const auto & p = params_.obstacle_stop;
+  const auto & vehicle_info = context.vehicle_info;
+  const auto & ego_pose = context.odometry.pose.pose;
+  const double ego_vel = context.odometry.twist.twist.linear.x;
+  const double ego_accel = context.acceleration.accel.accel.linear.x;
+  const rclcpp::Time now(context.odometry.header.stamp);
 
-  output.constraints = make_obstacle_keep_out_constraints(
-    *context.predicted_objects, rclcpp::Time(context.odometry.header.stamp),
-    params_.obstacle_stop.margin_m);
-  if (params_.obstacle_stop.stop_distance_m > 0.0) {
-    auto stop_lines = make_obstacle_stop_line_constraints(
-      *context.predicted_objects, context.reference_path, compute_ego_frenet_state(context).s,
-      context.vehicle_info.vehicle_width_m / 2.0 + params_.obstacle_stop.margin_m,
-      params_.obstacle_stop.stop_distance_m, params_.obstacle_stop.stop_line_max_object_speed_mps);
-    output.constraints.insert(
-      output.constraints.end(), std::make_move_iterator(stop_lines.begin()),
-      std::make_move_iterator(stop_lines.end()));
-  }
+  const double s_ego = compute_ego_frenet_state(context).s;
+  const auto traj_points = make_trajectory_points(context.reference_path, s_ego, ego_pose.position);
+  // NOTE(odashima): Why not ego_accel as is: the deceleration for this very stop would shorten the
+  // detection range until the obstacle drops out of it, releasing the stop mid-way
+  const auto trajectory_shape = build_trajectory_footprint_index(
+    traj_points, ego_pose, vehicle_info, ego_vel, std::max(ego_accel, 0.0),
+    p.nominal_stopping_decel, p.stopping_jerk, p.stop_margin, p.delay_response_time);
 
-  // --- debug marker: the footprint at the current pose and the predicted path ---
-  {
-    using autoware_utils_visualization::create_default_marker;
-    using autoware_utils_visualization::create_marker_color;
-    using autoware_utils_visualization::create_marker_scale;
+  TargetObjects target_objects;
+  std::optional<CollisionPoint> collision_point;
+  std::string colliding_object_id;
+  if (context.predicted_objects && !context.predicted_objects->objects.empty()) {
+    const ObjectDecelMap object_decel_map = {
+      {ObjectType::CAR, p.rss_params.object_decel.car},
+      {ObjectType::TRUCK, p.rss_params.object_decel.truck},
+      {ObjectType::BUS, p.rss_params.object_decel.bus},
+      {ObjectType::TRAILER, p.rss_params.object_decel.trailer},
+      {ObjectType::MOTORCYCLE, p.rss_params.object_decel.motorcycle},
+      {ObjectType::BICYCLE, p.rss_params.object_decel.bicycle},
+      {ObjectType::PEDESTRIAN, p.rss_params.object_decel.pedestrian}};
+    const auto & lm = p.objects.lateral_margin;
+    const LateralMarginMap lateral_margin_map = {
+      {ObjectType::CAR, lm.car},
+      {ObjectType::TRUCK, lm.truck},
+      {ObjectType::BUS, lm.bus},
+      {ObjectType::TRAILER, lm.trailer},
+      {ObjectType::MOTORCYCLE, lm.motorcycle},
+      {ObjectType::BICYCLE, lm.bicycle},
+      {ObjectType::PEDESTRIAN, lm.pedestrian},
+      {ObjectType::HAZARD, lm.hazard},
+      {ObjectType::UNKNOWN, lm.unknown}};
 
-    const double z = context.odometry.pose.pose.position.z;
-    MarkerArray marker_array;
-    // The number of objects changes between cycles, so clear the markers of the previous one
-    Marker delete_all;
-    delete_all.action = Marker::DELETEALL;
-    marker_array.markers.push_back(delete_all);
-
-    std::int32_t id = 0;
-    for (const auto & constraint : output.constraints) {
-      if (const auto * gate = std::get_if<Gate>(&constraint.payload)) {
-        auto stop_line_marker = create_default_marker(
-          "map", rclcpp::Time(0, 0, RCL_ROS_TIME), "obstacle_stop_stop_line", id,
-          Marker::LINE_STRIP, create_marker_scale(0.2, 0.0, 0.0),
-          create_marker_color(1.0, 0.0, 0.0, 0.9));
-        for (const auto & end : {gate->line.first, gate->line.second}) {
-          geometry_msgs::msg::Point q;
-          q.x = end.x();
-          q.y = end.y();
-          q.z = z;
-          stop_line_marker.points.push_back(q);
-        }
-        marker_array.markers.push_back(stop_line_marker);
-        ++id;
-        continue;
-      }
-      const auto & keep_out = std::get<KeepOut>(constraint.payload);
-      const auto & anchor = keep_out.waypoints.front().pose;
-      const double c = std::cos(anchor.yaw);
-      const double s = std::sin(anchor.yaw);
-
-      auto footprint_marker = create_default_marker(
-        "map", rclcpp::Time(0, 0, RCL_ROS_TIME), "obstacle_stop_footprint", id, Marker::LINE_STRIP,
-        create_marker_scale(0.1, 0.0, 0.0), create_marker_color(1.0, 0.2, 0.2, 0.9));
-      for (const auto & point : keep_out.shape.outer()) {
-        geometry_msgs::msg::Point q;
-        q.x = anchor.position.x() + c * point.x() - s * point.y();
-        q.y = anchor.position.y() + s * point.x() + c * point.y();
-        q.z = z;
-        footprint_marker.points.push_back(q);
-      }
-      marker_array.markers.push_back(footprint_marker);
-
-      auto path_marker = create_default_marker(
-        "map", rclcpp::Time(0, 0, RCL_ROS_TIME), "obstacle_stop_predicted_path", id,
-        Marker::LINE_STRIP, create_marker_scale(0.05, 0.0, 0.0),
-        create_marker_color(1.0, 0.5, 0.2, 0.7));
-      for (const auto & waypoint : keep_out.waypoints) {
-        geometry_msgs::msg::Point q;
-        q.x = waypoint.pose.position.x();
-        q.y = waypoint.pose.position.y();
-        q.z = z;
-        path_marker.points.push_back(q);
-      }
-      if (path_marker.points.size() >= 2) {
-        marker_array.markers.push_back(path_marker);
-      }
-      ++id;
+    ObjectFilter object_filter(
+      p.objects.target_objects.bbox, p.objects.target_objects.polygon,
+      p.objects.stopped_velocity_th, p.objects.max_lateral_velocity_th, p.objects.safety_buffer);
+    auto filtered_objects = *context.predicted_objects;
+    object_filter.filter_objects(filtered_objects);
+    target_objects.reserve(filtered_objects.objects.size());
+    for (const auto & object : filtered_objects.objects) {
+      target_objects.emplace_back(object);
     }
-    output.debug_markers = std::move(marker_array);
+    object_filter.filter_by_target_area(
+      target_objects, traj_points, vehicle_info, trajectory_shape, lateral_margin_map);
+
+    collision_point = get_nearest_object_collision(
+      target_objects, traj_points, vehicle_info, object_decel_map, p.rss_params.ego_decel,
+      p.delay_response_time, p.stop_margin, p.rss_params.safety_margin,
+      p.objects.stopped_velocity_th, p.rss_params.lookahead_horizon, p.rss_params.enable);
+    if (collision_point) {
+      const auto it = std::find_if(
+        target_objects.begin(), target_objects.end(),
+        [](const TargetObject & object) { return !object.is_safe; });
+      if (it != target_objects.end()) {
+        colliding_object_id = autoware_utils_uuid::to_hex_string(it->object.object_id);
+      }
+    }
   }
 
+  update_collision_points_buffer(traj_points, collision_point, now);
+
+  ConstraintGeneratorOutput output;
+  if (const auto nearest_collision_point = get_nearest_collision_point()) {
+    const auto stop_margin = p.stop_margin + vehicle_info.max_longitudinal_offset_m;
+    auto target_stop_point_arc_length = clamp_stop_point_arc_length(
+      nearest_collision_point->arc_length - stop_margin, trajectory_shape.trajectory_length,
+      ego_vel, ego_accel, p.maximum_stopping_decel, p.stopping_jerk, p.delay_response_time);
+    if (target_stop_point_arc_length < p.arrived_distance_threshold) {
+      target_stop_point_arc_length = 0.0;
+    }
+
+    const auto & path = context.reference_path;
+    const double s_gate = std::min(
+      s_ego + target_stop_point_arc_length + vehicle_info.max_longitudinal_offset_m, path.length());
+    const double half_width = vehicle_info.vehicle_width_m / 2.0;
+    const auto left = to_world_pose(path, s_gate, half_width).position;
+    const auto right = to_world_pose(path, s_gate, -half_width).position;
+
+    Constraint constraint;
+    constraint.certainty = Certainty::DEFINITE;
+    constraint.payload = Gate{Segment2d{left, right}};
+    constraint.source = Source{get_name(), colliding_object_id, "stop_line"};
+    output.constraints.push_back(std::move(constraint));
+  }
+
+  output.debug_markers = make_debug_markers(
+    trajectory_shape, target_objects, context.odometry.header.stamp, ego_pose.position.z);
   return output;
+}
+
+void ObstacleStopConstraintGenerator::update_collision_points_buffer(
+  const TrajectoryPoints & traj_points, const std::optional<CollisionPoint> & collision_point,
+  const rclcpp::Time & now)
+{
+  const auto & p = params_.obstacle_stop;
+  constexpr double close_distance_threshold = 1.0;
+
+  // prune obsolete collision points
+  collision_points_buffer_.erase(
+    std::remove_if(
+      collision_points_buffer_.begin(), collision_points_buffer_.end(),
+      [&](CollisionPoint & cp) {
+        if (cp.is_active) return (now - cp.last_seen).seconds() > p.off_time_buffer;
+        return !collision_point;
+      }),
+    collision_points_buffer_.end());
+
+  if (!collision_point) return;
+
+  // find nearest tracked collision
+  auto nearest_collision_point_it = collision_points_buffer_.end();
+  auto nearest_distance_diff = std::numeric_limits<double>::max();
+  for (auto it = collision_points_buffer_.begin(); it != collision_points_buffer_.end(); ++it) {
+    const auto estimated_shift = std::abs(it->obstacle_lon_vel) * (now - it->last_seen).seconds();
+    it->arc_length = autoware::motion_utils::calcSignedArcLength(traj_points, 0LU, it->point);
+    const auto expected_arc_length = it->arc_length + estimated_shift;
+    const auto distance_diff = collision_point->arc_length - expected_arc_length;
+    if (
+      std::abs(distance_diff) > close_distance_threshold ||
+      std::abs(distance_diff) > std::abs(nearest_distance_diff))
+      continue;
+    nearest_collision_point_it = it;
+    nearest_distance_diff = distance_diff;
+  }
+
+  constexpr double eps = 1e-3;
+  if (nearest_collision_point_it == collision_points_buffer_.end()) {
+    collision_points_buffer_.emplace_back(*collision_point, now, now, p.on_time_buffer < eps);
+    return;
+  }
+
+  if ((now - nearest_collision_point_it->first_seen).seconds() > p.on_time_buffer) {
+    nearest_collision_point_it->is_active = true;
+  }
+
+  nearest_collision_point_it->last_seen = now;
+  nearest_collision_point_it->obstacle_lon_vel = collision_point->obstacle_lon_vel;
+  nearest_collision_point_it->is_dynamic = collision_point->is_dynamic;
+  nearest_collision_point_it->point = collision_point->point;
+  nearest_collision_point_it->arc_length = collision_point->arc_length;
+}
+
+std::optional<ObstacleStopConstraintGenerator::CollisionPoint>
+ObstacleStopConstraintGenerator::get_nearest_collision_point() const
+{
+  std::optional<CollisionPoint> nearest_collision_point = std::nullopt;
+  auto minimum_arc_length = std::numeric_limits<double>::max();
+  for (const auto & cp : collision_points_buffer_) {
+    if (cp.arc_length >= minimum_arc_length || !cp.is_active) continue;
+    nearest_collision_point = cp;
+    minimum_arc_length = cp.arc_length;
+  }
+  return nearest_collision_point;
 }
 
 }  // namespace autoware::safety_planner::experimental
