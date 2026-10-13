@@ -30,6 +30,7 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -139,12 +140,12 @@ public:
     accel_pub->publish(acc_msg);
   };
 
-  void publish_autonomous_operation_mode()
+  void publish_autonomous_operation_mode(const bool is_autoware_control_enabled = true)
   {
     OperationModeState msg;
     msg.stamp = node->now();
     msg.mode = OperationModeState::AUTONOMOUS;
-    msg.is_autoware_control_enabled = true;
+    msg.is_autoware_control_enabled = is_autoware_control_enabled;
     operation_mode_pub->publish(msg);
   };
 
@@ -317,6 +318,52 @@ TEST_F(FakeNodeFixture, left_turn)
   EXPECT_GT(tester.cmd_msg->lateral.steering_tire_angle, 0.0f);
   EXPECT_GT(tester.cmd_msg->lateral.steering_tire_rotation_rate, 0.0f);
   EXPECT_GT(rclcpp::Time(tester.cmd_msg->stamp), rclcpp::Time(traj_msg.header.stamp));
+}
+
+// The driver steers beyond the steering limit in manual while the reference ends just ahead (low
+// reference confidence, so the published command is slew-limited from the measured steering),
+// then straightens the wheel and engages: the lateral command must follow the wheel. Before the
+// fix the MPC state was synced beyond the limit, every QP was infeasible and the stale command
+// was held until the vehicle stopped.
+TEST_F(FakeNodeFixture, manual_steering_beyond_limit_does_not_latch)
+{
+  const auto node_options = makeNodeOptions();
+  ControllerTester tester(this, node_options);
+  tester.send_default_transform();
+  tester.publish_default_acc();
+  tester.publish_autonomous_operation_mode(false);
+
+  const auto publish_straight_trajectory = [&](const double end_x) {
+    Trajectory traj_msg;
+    traj_msg.header.stamp = tester.node->now();
+    traj_msg.header.frame_id = "map";
+    for (double x = -10.0; x <= end_x + 1e-6; x += 0.1) {
+      traj_msg.points.push_back(make_traj_point(x, 0.0, 3.0f));
+    }
+    tester.traj_pub->publish(traj_msg);
+  };
+  const auto command_with = [&](const double measured_steer) {
+    tester.publish_odom_vx(3.0);
+    tester.publish_steer_angle(measured_steer);
+    tester.received_control_command = false;
+    test_utils::waitForMessage(tester.node, this, tester.received_control_command);
+    EXPECT_TRUE(tester.received_control_command);
+    return tester.cmd_msg->lateral.steering_tire_angle;
+  };
+
+  constexpr double max_steer_angle = 0.70;  // test_vehicle_info.param.yaml
+  publish_straight_trajectory(0.7);
+  for (int i = 0; i < 10; ++i) {
+    command_with(max_steer_angle + 0.1);
+  }
+  publish_straight_trajectory(30.0);
+  for (int i = 0; i < 10; ++i) {
+    command_with(0.0);
+  }
+  tester.publish_autonomous_operation_mode(true);
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_LT(std::abs(command_with(0.0)), 0.1);
+  }
 }
 
 TEST_F(FakeNodeFixture, stopped)

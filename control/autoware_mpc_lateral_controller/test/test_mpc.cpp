@@ -289,6 +289,36 @@ TEST_F(MPCTest, OsqpCalculate)
   EXPECT_EQ(ctrl_cmd_horizon.controls.front().steering_tire_rotation_rate, 0.0f);
 }
 
+TEST_F(MPCTest, OsqpCalculateAfterSyncBeyondSteerLimit)
+{
+  auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
+  auto mpc = std::make_unique<MPC>(node);
+  initializeMPC(*mpc);
+  const auto current_kinematics = makeOdometry(dummy_straight_trajectory.points.front().pose, 0.0);
+  mpc->setReferenceTrajectory(dummy_straight_trajectory, trajectory_param, current_kinematics);
+
+  std::shared_ptr<VehicleModelInterface> vehicle_model_ptr =
+    std::make_shared<KinematicsBicycleModel>(wheelbase, steer_limit, steer_tau);
+  mpc->setVehicleModel(vehicle_model_ptr);
+  std::shared_ptr<QPSolverInterface> qpsolver_ptr =
+    std::make_shared<QPSolverOSQP>(logger, node.get_clock());
+  mpc->setQPSolver(qpsolver_ptr);
+
+  // A command beyond the steering limit synced into the MPC state (e.g. the published command
+  // while the driver steers past the limit) must not make the next QP infeasible: the first
+  // steering-rate constraint would exclude every angle within the limit.
+  mpc->resetSteeringCmdFilter(steer_lim + 0.15);
+
+  Lateral ctrl_cmd;
+  Trajectory pred_traj;
+  Float32MultiArrayStamped diag;
+  LateralHorizon ctrl_cmd_horizon;
+  const auto odom = makeOdometry(pose_zero, default_velocity);
+  EXPECT_TRUE(
+    mpc->calculateMPC(neutral_steer, odom, ctrl_cmd, pred_traj, diag, ctrl_cmd_horizon).result);
+  EXPECT_LE(std::abs(ctrl_cmd.steering_tire_angle), steer_lim + 1e-6);
+}
+
 TEST_F(MPCTest, OsqpCalculateRightTurn)
 {
   auto node = rclcpp::Node("mpc_test_node", rclcpp::NodeOptions{});
