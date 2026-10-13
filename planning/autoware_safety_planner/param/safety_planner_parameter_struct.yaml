@@ -365,15 +365,22 @@ safety_planner:
         read_only: true
         description: the shape of an object is expanded by this much [m]
       lateral_margin:
-        car: { type: double, default_value: 0.2, read_only: true, description: "[m]" }
-        truck: { type: double, default_value: 0.2, read_only: true, description: "[m]" }
-        bus: { type: double, default_value: 0.2, read_only: true, description: "[m]" }
-        trailer: { type: double, default_value: 0.2, read_only: true, description: "[m]" }
-        motorcycle: { type: double, default_value: 0.2, read_only: true, description: "[m]" }
-        bicycle: { type: double, default_value: 0.2, read_only: true, description: "[m]" }
-        pedestrian: { type: double, default_value: 0.2, read_only: true, description: "[m]" }
-        hazard: { type: double, default_value: 0.2, read_only: true, description: "[m]" }
-        unknown: { type: double, default_value: 0.2, read_only: true, description: "[m]" }
+        base:
+          &default_margin {
+            type: double,
+            default_value: 0.2,
+            read_only: true,
+            description: "Per-class lateral margin [m]",
+          }
+        car: *default_margin
+        truck: *default_margin
+        bus: *default_margin
+        trailer: *default_margin
+        motorcycle: *default_margin
+        bicycle: *default_margin
+        pedestrian: *default_margin
+        hazard: *default_margin
+        unknown: *default_margin
     rss_params:
       enable:
         type: bool
