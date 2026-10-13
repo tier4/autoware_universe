@@ -183,7 +183,8 @@ TrajectoryShape build_trajectory_footprint_index(
 
   auto add_sample =
     [&](const geometry_msgs::msg::Pose & pose, const size_t traj_index, const double arc_length) {
-      shape.footprints.push_back(EgoFootprint{pose, traj_index, arc_length});
+      const auto lon_vel = detection_traj[traj_index].longitudinal_velocity_mps;
+      shape.footprints.push_back(EgoFootprint{pose, traj_index, arc_length, lon_vel});
     };
 
   const auto to_original_index = [&](const size_t detection_idx) {

@@ -124,7 +124,12 @@ inline static const std::unordered_map<PointCloudClassification, ObjectType>
     {PointCloudClassification::INVALID, ObjectType::UNKNOWN}};
 
 using ObjectDecelMap = std::unordered_map<ObjectType, double>;
-using LateralMarginMap = std::unordered_map<ObjectType, double>;
+
+struct LateralMargin {
+  double normal{0.0};
+  double low_velocity{0.0};
+};
+using LateralMarginMap = std::unordered_map<ObjectType, LateralMargin>;
 
 inline ObjectType to_object_type(const PredictedObject & object)
 {
@@ -142,7 +147,7 @@ inline ObjectType to_object_type(const PointCloudClassification classification)
   return it != pcd_class_to_object_type.end() ? it->second : ObjectType::UNKNOWN;
 }
 
-inline double get_lateral_margin(const LateralMarginMap & map, const ObjectType type)
+inline LateralMargin get_lateral_margin(const LateralMarginMap & map, const ObjectType type)
 {
   if (const auto it = map.find(type); it != map.end()) {
     return it->second;
@@ -150,7 +155,7 @@ inline double get_lateral_margin(const LateralMarginMap & map, const ObjectType 
   if (const auto it = map.find(ObjectType::UNKNOWN); it != map.end()) {
     return it->second;
   }
-  return 0.0;
+  return LateralMargin{0.0, 0.0};
 }
 
 struct CollisionPoint
@@ -211,6 +216,7 @@ struct EgoFootprint
   geometry_msgs::msg::Pose pose;
   size_t traj_index{0};    ///< nearest original trajectory index
   double arc_length{0.0};  ///< arc length from trajectory start to this pose (baselink)
+  double lon_vel{0.0};    ///< target longitudinal velocity along trajectory at this pose
 };
 
 using FootprintNode = std::pair<autoware_utils_geometry::Box2d, size_t>;
@@ -357,14 +363,16 @@ struct ObjectFilter
    * @param stopped_velocity_th Used when filtering by target area for "moving" vs stopped.
    * @param max_lateral_velocity_th Lateral speed threshold for the exiting-object heuristic [m/s].
    * @param safety_buffer Safety buffer to expand object shape [m].
+   * @param traj_low_velocity_th Low velocity threshold for the trajectory [m/s].
    */
   ObjectFilter(
     const std::vector<std::string> & bbox_object_type_strings,
     const std::vector<std::string> & polygon_object_type_strings, const double stopped_velocity_th,
-    const double max_lateral_velocity_th, const double safety_buffer)
+    const double max_lateral_velocity_th, const double safety_buffer, const double traj_low_velocity_th)
   : stopped_velocity_th_(stopped_velocity_th),
     max_lateral_velocity_th_(max_lateral_velocity_th),
-    safety_buffer_(safety_buffer)
+    safety_buffer_(safety_buffer),
+    traj_low_velocity_th_(traj_low_velocity_th)
   {
     for (const auto & object_type_string : bbox_object_type_strings) {
       if (string_to_object_type.count(object_type_string) == 0) continue;
@@ -422,7 +430,7 @@ struct ObjectFilter
   void set_params(
     const std::vector<std::string> & bbox_object_type_strings,
     const std::vector<std::string> & polygon_object_type_strings, const double stopped_velocity_th,
-    const double max_lateral_velocity_th, const double safety_buffer)
+    const double max_lateral_velocity_th, const double safety_buffer, const double traj_low_velocity_th)
   {
     bbox_object_types_.clear();
     polygon_object_types_.clear();
@@ -437,6 +445,7 @@ struct ObjectFilter
     stopped_velocity_th_ = stopped_velocity_th;
     max_lateral_velocity_th_ = max_lateral_velocity_th;
     safety_buffer_ = safety_buffer;
+    traj_low_velocity_th_ = traj_low_velocity_th;
   }
 
 private:
@@ -445,6 +454,7 @@ private:
   double stopped_velocity_th_;
   double max_lateral_velocity_th_;
   double safety_buffer_;
+  double traj_low_velocity_th_;
 };
 
 /// Range and semantic-label filtering plus object masking for obstacle point clouds.
