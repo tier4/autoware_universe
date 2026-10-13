@@ -293,7 +293,7 @@ using QueryResult = std::pair<size_t, Polygon2d>;
  * nearest hit pose frame, or nullopt if none contain the point.
  */
 std::optional<QueryResult> query_overlapping_footprint(
-  const TrajectoryShape & shape, const Point2d & point, const double lat_margin);
+  const TrajectoryShape & shape, const Point2d & point, const LateralMargin lat_margin, const double traj_low_velocity_th);
 
 /**
  * @brief Find the nearest ego footprint that intersects the given object polygon.
@@ -304,7 +304,7 @@ std::optional<QueryResult> query_overlapping_footprint(
  * nearest hit pose frame, or nullopt if none intersect.
  */
 std::optional<QueryResult> query_overlapping_footprint(
-  const TrajectoryShape & shape, const Polygon2d & polygon, const double lat_margin);
+  const TrajectoryShape & shape, const Polygon2d & polygon, const LateralMargin lat_margin, const double traj_low_velocity_th);
 
 /**
  * @brief Find the closest point-cloud obstacle that overlaps an ego footprint.
@@ -314,12 +314,13 @@ std::optional<QueryResult> query_overlapping_footprint(
  * @param trajectory_shape Ego footprint index from build_trajectory_footprint_index().
  * @param pointcloud Input points in the same frame as the trajectory.
  * @param lateral_margin_map Per-class lateral expansion of the ego footprint [m].
+ * @param traj_low_velocity_th Low velocity threshold for the trajectory [m/s].
  * @param[out] target_pcd_points Points that overlapped at least one footprint.
  * @return Nearest collision by arc length, or nullopt if the cloud is empty or none intersect.
  */
 std::optional<CollisionPoint> get_nearest_pcd_collision(
   const TrajectoryShape & trajectory_shape, const PointCloud::Ptr & pointcloud,
-  const LateralMarginMap & lateral_margin_map,
+  const LateralMarginMap & lateral_margin_map, const double traj_low_velocity_th,
   std::vector<geometry_msgs::msg::Point> & target_pcd_points);
 
 /**

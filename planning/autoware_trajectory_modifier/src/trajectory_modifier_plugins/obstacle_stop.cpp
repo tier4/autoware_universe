@@ -427,7 +427,7 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
     autoware_utils_debug::ScopedTimeTrack stt(
       "ObstacleStop::get_nearest_pcd_collision", *get_time_keeper());
     collision_point = get_nearest_pcd_collision(
-      debug_data_.trajectory_shape, active_points, lateral_margin_map_,
+      debug_data_.trajectory_shape, active_points, lateral_margin_map_, params_.objects.low_velocity_th,
       debug_data_.target_pcd_points);
   }
 
