@@ -48,10 +48,9 @@ struct TrajectoryOptimizationParams
   /**
    * @brief Weakly track the previous cycle's solved plan (same idea as autoware_ml_planner).
    *
-   * Lon/lat axes use the current tracking yaw. The previous plan is sampled by arc length
-   * along the current reference, not by timestamp; stages past the previous path have no
-   * temporal term (takeoff is then uncovered without a speed threshold). Terminal node
-   * omitted. Skipped on road-border shift or goal-snap latch mismatch.
+   * Previous plan is resampled by timestamp: current stage k ← previous index (k+1) + age/dt
+   * (clamp to the previous terminal). Terminal node omitted (goal-snap vs stale end heading).
+   * Skipped on road-border shift or goal-snap latch mismatch.
    */
   struct TemporalConsistencyParams
   {

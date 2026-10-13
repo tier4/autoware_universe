@@ -52,6 +52,7 @@ private:
   VehicleCmdFilter transition_filter_;
   VehicleStatus vehicle_status_;
   bool enable_command_limit_filter_;
+  bool enable_steer_accel_limit_;
   bool transition_flag_;
   std::optional<rclcpp::Time> prev_time_;
   double steer_angle_rate_clip_integral_ = 0.0;

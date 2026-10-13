@@ -16,6 +16,7 @@
     diag_timeout_error_duration: 2.0
     stop_check_duration: 1.0
     enable_command_limit_filter: true
+    enable_steer_accel_limit: false
     nominal_filter:
       vel_lim: 25.0
       reference_speed_points: [0.1, 0.3, 1.0, 3.0, 5.0, 20.0, 30.0]
@@ -27,7 +28,6 @@
       lat_jerk_lim_for_steer_cmd: [7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 6.0]
       lat_jerk_lim_for_steer_rate: 10.0
       steer_cmd_diff_lim_from_current_steer: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.8]
-      enable_steer_accel_limit: false
       steer_accel_lim_for_steer_cmd: [0.8, 0.76, 0.64, 0.39, 0.3, 0.3, 0.3]
       steer_accel_clip_integral_th_diag: 0.2
     transition_filter:
@@ -41,6 +41,5 @@
       lat_jerk_lim_for_steer_cmd: [7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 6.0]
       lat_jerk_lim_for_steer_rate: 10.0
       steer_cmd_diff_lim_from_current_steer: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.8]
-      enable_steer_accel_limit: false
       steer_accel_lim_for_steer_cmd: [0.8, 0.76, 0.64, 0.39, 0.3, 0.3, 0.3]
       steer_accel_clip_integral_th_diag: 0.2

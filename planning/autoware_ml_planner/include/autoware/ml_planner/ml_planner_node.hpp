@@ -127,7 +127,7 @@ private:
   void set_up_params();
 
   /**
-   * @brief Load TensorRT model from model.base_model_directory and filenames.
+   * @brief Load TensorRT model from model.base_model_directory and the ONNX filename.
    *
    * @throws std::runtime_error if the model path is invalid or engine setup fails.
    */

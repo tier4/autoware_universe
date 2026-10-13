@@ -214,35 +214,6 @@ TEST(SteerAccelLimit, RotationRateIsLimitedIndependently)
   }
 }
 
-TEST(SteerAccelLimit, DisabledFlagLeavesCommandUntouched)
-{
-  std::mt19937 engine(2);
-  std::uniform_real_distribution<double> uniform(-1.0, 1.0);
-  VehicleCmdFilter filter;
-  filter.setParam(make_filter_param());
-  for (const double dt : {0.0, 0.002, 0.03, 2.5}) {
-    Control prev;
-    prev.lateral.steering_tire_angle = static_cast<float>(uniform(engine));
-    prev.lateral.steering_tire_rotation_rate = static_cast<float>(uniform(engine));
-    filter.setPrevCmd(prev);
-    filter.setPrevSteerRates(uniform(engine), uniform(engine));
-    filter.setCurrentSpeed(10.0 * (uniform(engine) + 1.0));
-    Control cmd;
-    cmd.lateral.steering_tire_angle = static_cast<float>(uniform(engine));
-    cmd.lateral.steering_tire_rotation_rate = static_cast<float>(2.0 * uniform(engine));
-    cmd.longitudinal.velocity = static_cast<float>(10.0 * uniform(engine));
-    cmd.longitudinal.acceleration = static_cast<float>(uniform(engine));
-    cmd.longitudinal.jerk = static_cast<float>(uniform(engine));
-    auto out = cmd;
-    double clip = -1.0;
-    double clip_field = -1.0;
-    filter.limitLateralSteerAccel(dt, out, clip, clip_field);
-    EXPECT_TRUE(out == cmd) << "dt=" << dt;
-    EXPECT_EQ(clip, 0.0);
-    EXPECT_EQ(clip_field, 0.0);
-  }
-}
-
 TEST(SteerAccelLimit, SkipsShortCycleAndRestoresRotationRate)
 {
   for (const double dt : {0.0, 0.004999, 0.005, 0.005001}) {
@@ -380,10 +351,8 @@ TEST(SteerAccelLimit, ExistingStageConstraintsHoldForRandomInputs)
 
     std::vector<Control> finals;
     for (const bool enable : {true, false}) {
-      auto p = make_filter_param();
-      p.enable_steer_accel_limit = enable;
       VehicleCmdFilter filter;
-      filter.setParam(p);
+      filter.setParam(make_filter_param());
       filter.setCurrentSpeed(speed);
       filter.setPrevCmd(prev);
       filter.setPrevSteerRates(prev_rate, prev.lateral.steering_tire_rotation_rate);
@@ -391,7 +360,9 @@ TEST(SteerAccelLimit, ExistingStageConstraintsHoldForRandomInputs)
       auto c = cmd;
       double clip = 0.0;
       double clip_field = 0.0;
-      filter.limitLateralSteerAccel(dt, c, clip, clip_field);
+      if (enable) {
+        filter.limitLateralSteerAccel(dt, c, clip, clip_field);
+      }
       filter.limitLateralSteer(c);
       EXPECT_LE(std::abs(c.lateral.steering_tire_angle), 1.0 + eps) << tag;
       filter.limitLateralSteerRate(dt, c);
@@ -417,7 +388,7 @@ TEST(SteerAccelLimit, ExistingStageConstraintsHoldForRandomInputs)
 
       auto out = cmd;
       IsFilterActivated activated;
-      filter.filterAll(dt, current_steer, out, activated, true, clip, clip_field);
+      filter.filterAll(dt, current_steer, out, activated, enable, clip, clip_field);
       EXPECT_TRUE(out == c) << tag;
       finals.push_back(out);
     }
