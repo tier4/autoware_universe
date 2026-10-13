@@ -15,8 +15,10 @@
 #include "autoware/ml_planner/dimensions.hpp"
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 
-#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <Eigen/Core>
+
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
+
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -87,8 +89,7 @@ TEST_F(LaneSegmentSplitTest, ShortLaneletIsIdenticalToUnsplit)
   for (size_t i = 0; i < unsplit.lane_segments[0].centerline.size(); ++i) {
     EXPECT_EQ(split.lane_segments[0].centerline[i], unsplit.lane_segments[0].centerline[i]);
     EXPECT_EQ(split.lane_segments[0].left_boundary[i], unsplit.lane_segments[0].left_boundary[i]);
-    EXPECT_EQ(
-      split.lane_segments[0].right_boundary[i], unsplit.lane_segments[0].right_boundary[i]);
+    EXPECT_EQ(split.lane_segments[0].right_boundary[i], unsplit.lane_segments[0].right_boundary[i]);
   }
 }
 
@@ -117,44 +118,43 @@ TEST_F(LaneSegmentSplitTest, LongLaneletIsSplitIntoContiguousEqualPieces)
 
 TEST_F(LaneSegmentSplitTest, DefaultSplitsWithHardcodedMaxLength)
 {
-  // The default uses constants::LANE_SEGMENT_MAX_LENGTH_M (20 m): 100 m -> 5 pieces.
+  // The default uses constants::LANE_SEGMENT_MAX_LENGTH_M (40 m): ceil(100 / 40) = 3 pieces.
   const auto map = convert_to_internal_lanelet_map(lanelet_map_ptr_);
-  EXPECT_EQ(map.lane_segments.size(), 5u);
+  EXPECT_EQ(map.lane_segments.size(), 3u);
 }
 
 TEST_F(LaneSegmentSplitTest, RouteSelectionStartsFromClosestPiece)
 {
   const preprocess::LaneSegmentContext context(lanelet_map_ptr_);
   const auto & id_to_indices = context.get_lanelet_id_to_array_index();
-  ASSERT_EQ(id_to_indices.at(lanelet_id_).size(), 5u);
+  ASSERT_EQ(id_to_indices.at(lanelet_id_).size(), 3u);
 
   autoware_planning_msgs::msg::LaneletRoute route;
   autoware_planning_msgs::msg::LaneletSegment route_segment;
   route_segment.preferred_primitive.id = lanelet_id_;
   route.segments.push_back(route_segment);
 
-  // Ego at x = 70 m lies on the fourth piece [60, 80]; the pieces behind it are dropped.
-  const std::vector<int64_t> selected =
-    context.select_route_segment_indices(
-      route, ego_at(70.0), 70.0, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
-  const std::vector<int64_t> expected{3, 4};
+  // Ego at x = 50 m lies on the second piece [33.3, 66.7]; the piece behind it is dropped.
+  const std::vector<int64_t> selected = context.select_route_segment_indices(
+    route, ego_at(50.0), 50.0, 0.0, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
+  const std::vector<int64_t> expected{1, 2};
   EXPECT_EQ(selected, expected);
 }
 
 TEST_F(LaneSegmentSplitTest, LaneSelectionKeepsFiftyMetresBehind)
 {
   const preprocess::LaneSegmentContext context(lanelet_map_ptr_);
-  // Pieces are [0,20], [20,40], [40,60], [60,80], [80,100]. Facing +x at x = 100, only points
-  // with x >= 50 are inside, so the first two pieces are dropped.
+  // Pieces are [0, 33.3], [33.3, 66.7], [66.7, 100]. Facing +x at x = 100, only points with
+  // x >= 50 are inside, so the first piece is dropped.
   std::vector<int64_t> forward =
     context.select_lane_segment_indices(ego_at(100.0), NUM_SEGMENTS_IN_LANE);
   std::sort(forward.begin(), forward.end());
-  EXPECT_EQ(forward, (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(forward, (std::vector<int64_t>{1, 2}));
 
   // Facing -x at the same spot, the whole lanelet lies ahead within 150 m.
   const std::vector<int64_t> backward =
     context.select_lane_segment_indices(ego_at(100.0, M_PI), NUM_SEGMENTS_IN_LANE);
-  EXPECT_EQ(backward.size(), 5u);
+  EXPECT_EQ(backward.size(), 3u);
 }
 
 }  // namespace autoware::ml_planner::test
