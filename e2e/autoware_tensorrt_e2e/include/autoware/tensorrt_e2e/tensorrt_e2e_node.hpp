@@ -23,7 +23,9 @@
 #include "autoware/tensorrt_e2e/providers/context_input_provider.hpp"
 #include "autoware/tensorrt_e2e/rolling_latency.hpp"
 #include "autoware/tensorrt_e2e/timestamped_buffer.hpp"
+#include "autoware/tensorrt_e2e/turn_indicator_filter.hpp"
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
+#include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <autoware_vehicle_msgs/msg/velocity_report.hpp>
 
 #include <autoware/diffusion_planner/utils/arg_reader.hpp>
@@ -237,6 +239,12 @@ private:
   std::optional<rclcpp::Time> previous_run_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_;
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
+  //! Only when the model has a turn-indicator output (`postprocess.turn_indicator.tensor`).
+  rclcpp::Publisher<autoware_vehicle_msgs::msg::TurnIndicatorsCommand>::SharedPtr
+    pub_turn_indicators_;
+  std::unique_ptr<TurnIndicatorFilter> turn_indicator_filter_;
+  std::string turn_indicator_tensor_;
+  TurnIndicatorFilter::Params turn_indicator_params_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
   using SteeringReport = autoware_vehicle_msgs::msg::SteeringReport;

@@ -113,6 +113,13 @@
     postprocess:
       velocity_smoothing_window: 8
       stopping_threshold: 0.3
+      # Used only when the model's ml_package file names a turn_indicator tensor.
+      # A new state must lead with at least min_probability for confirm_cycles
+      # consecutive cycles, and hold_s must have passed since the last change.
+      turn_indicator:
+        min_probability: 0.6
+        confirm_cycles: 3
+        hold_s: 1.0
 
     # Stop and slow-down factors derived from the published trajectory, the way
     # autoware_diffusion_planner derives them, for the consumers of a trajectory

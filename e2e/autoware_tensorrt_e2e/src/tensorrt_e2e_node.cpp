@@ -69,6 +69,11 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
 
   pub_trajectory_ = create_publisher<Trajectory>("~/output/trajectory", 1);
   pub_trajectories_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
+  if (!turn_indicator_tensor_.empty()) {
+    pub_turn_indicators_ =
+      create_publisher<autoware_vehicle_msgs::msg::TurnIndicatorsCommand>(
+        "~/output/turn_indicators", 1);
+  }
   pub_processing_time_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
   diagnostics_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
@@ -347,6 +352,15 @@ void TensorrtE2eNode::set_up_params()
     declare_parameter<double>("postprocess.stopping_threshold", 0.3);
   postprocess_params_.generator_name =
     declare_parameter<std::string>("postprocess.generator_name", "TensorrtE2e");
+  // The turn-indicator output: empty tensor = the model has none and nothing is published.
+  // The thresholds are deployment behaviour, so they live in e2e_planner.param.yaml.
+  turn_indicator_tensor_ = declare_parameter<std::string>("postprocess.turn_indicator.tensor", "");
+  turn_indicator_params_.min_probability =
+    declare_parameter<double>("postprocess.turn_indicator.min_probability", 0.6);
+  turn_indicator_params_.confirm_cycles =
+    static_cast<int>(declare_parameter<int64_t>("postprocess.turn_indicator.confirm_cycles", 3));
+  turn_indicator_params_.hold_s =
+    declare_parameter<double>("postprocess.turn_indicator.hold_s", 1.0);
 
   planning_factor_params_.enable_stop =
     declare_parameter<bool>("planning_factor.enable_stop", false);
@@ -480,6 +494,15 @@ void TensorrtE2eNode::initialize_pipeline()
 
   postprocessor_ = std::make_unique<TrajectoryPostprocessor>(postprocess_params_);
   postprocessor_->validate_output_specs(engine_->output_specs());
+  if (!turn_indicator_tensor_.empty()) {
+    const TensorSpec * spec = find_spec(engine_->output_specs(), turn_indicator_tensor_);
+    if (!spec || spec->shape.size() != 2 || spec->shape[1] != TurnIndicatorFilter::kNumClasses) {
+      throw std::runtime_error(
+        "postprocess.turn_indicator.tensor '" + turn_indicator_tensor_ +
+        "' must be a model output of shape [B, 3] (DISABLE, ENABLE_LEFT, ENABLE_RIGHT)");
+    }
+    turn_indicator_filter_ = std::make_unique<TurnIndicatorFilter>(turn_indicator_params_);
+  }
 
   if (!params_.args_path.empty()) {
     normalization_map_ = dp::utils::load_normalization_stats(params_.args_path);
@@ -783,6 +806,21 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
 
   pub_trajectory_->publish(output.trajectory);
   pub_trajectories_->publish(output.candidate_trajectories);
+  if (turn_indicator_filter_) {
+    const auto logits = result.outputs->find(turn_indicator_tensor_);
+    if (logits == result.outputs->end() || logits->second.host_data.size() < 3) {
+      RCLCPP_ERROR_STREAM_THROTTLE(
+        get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
+        "Turn indicator output '" << turn_indicator_tensor_ << "' missing from the inference");
+    } else {
+      autoware_vehicle_msgs::msg::TurnIndicatorsCommand command;
+      command.stamp = ego->stamp;
+      command.command = turn_indicator_filter_->update(
+        std::vector<float>(logits->second.host_data.begin(), logits->second.host_data.begin() + 3),
+        ego->stamp.seconds());
+      pub_turn_indicators_->publish(command);
+    }
+  }
   publish_planning_factor(output.trajectory);
 
   // Timing: the whole tick must fit in the planning period to sustain the output rate.
