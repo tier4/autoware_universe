@@ -61,6 +61,21 @@ public:
     }
   }
 
+  /**
+   * @brief Append a message, or replace the newest entry when the stamps are equal.
+   *
+   * For a buffer whose newest entry is recomputed within the same frame (e.g. a frame pose that is
+   * first seeded from a measurement and then replaced by a pose derived from it).
+   */
+  void push_or_replace_back(const MsgT & msg)
+  {
+    if (!msgs_.empty() && stamp_of_(msg).seconds() == stamp_of_(msgs_.back()).seconds()) {
+      msgs_.back() = msg;
+      return;
+    }
+    push_back(msg);
+  }
+
   void clear() { msgs_.clear(); }
   [[nodiscard]] bool empty() const { return msgs_.empty(); }
   [[nodiscard]] const MsgT & back() const { return msgs_.back(); }

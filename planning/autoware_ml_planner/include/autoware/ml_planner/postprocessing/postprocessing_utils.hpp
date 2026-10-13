@@ -27,6 +27,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 
 #include <cassert>
 #include <cstddef>
@@ -89,8 +90,7 @@ PredictedObjects create_predicted_objects(
  */
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const geometry_msgs::msg::Point & base_position,
-  int64_t batch_index);
+  const rclcpp::Time & stamp, const geometry_msgs::msg::Point & base_position, int64_t batch_index);
 
 /**
  * @brief Counts valid elements in a tensor with shape (B, len, dim2, dim3).
@@ -127,6 +127,97 @@ struct StopPointFixingParams
  */
 std::optional<size_t> fix_stop_points(
   Trajectory & trajectory, const StopPointFixingParams & params);
+
+struct VelocitySmoothingParams
+{
+  bool enable{false};
+  double horizon_sec{1.5};
+};
+
+/**
+ * @brief Replace the finite-difference velocity and acceleration of the leading points.
+ *
+ * The speed of the model output is differentiated from its poses, so a few centimetres of
+ * spacing noise become several m/s^2 of acceleration. This fits a quadratic of the arc length
+ * over time to the points within the horizon and takes the velocity and the (constant)
+ * acceleration from the fit. Points after the horizon are left unchanged. Poses are not touched.
+ *
+ * @param trajectory Trajectory to modify in place.
+ * @param params Smoothing parameters.
+ */
+void smooth_initial_velocity(Trajectory & trajectory, const VelocitySmoothingParams & params);
+
+struct CurveSpeedLimitParams
+{
+  bool enable{false};
+  double max_lateral_acceleration_mps2{1.0};
+  double max_deceleration_mps2{1.0};
+};
+
+/**
+ * @brief Cap the speed in curves by a lateral acceleration and brake for the cap in advance.
+ *
+ * Without the trajectory optimizer (whose lateral acceleration constraint slows the vehicle in
+ * curves) the model speed is kept through tight curves, and the controller cuts them. The curvature
+ * of each point comes from the circle through it and its neighbours at least 1 m away along the
+ * path; the speed is capped at sqrt(max lateral acceleration / curvature), then a backward pass
+ * limits the deceleration toward each cap. Accelerations are recomputed where the speed changed.
+ * Poses and times are not changed.
+ *
+ * @param trajectory Trajectory to modify in place.
+ * @param params Limit parameters.
+ */
+void limit_curve_speed(Trajectory & trajectory, const CurveSpeedLimitParams & params);
+
+struct PathSmoothingParams
+{
+  bool enable{false};
+  double horizon_sec{1.5};
+  double blend_sec{0.5};
+  double tail_half_window_sec{0.5};
+};
+
+/**
+ * @brief Replace the leading points by a smooth path that starts at the vehicle.
+ *
+ * Without the trajectory optimizer the model output starts a few centimetres beside the
+ * vehicle and its first points jitter sideways, so the leading headings jump by several
+ * degrees from one cycle to the next. In the vehicle frame this fits x(t) = v t + a t^2 + b t^3
+ * and y(t) = c t^2 + d t^3 to the points up to horizon + blend: the path starts at the vehicle
+ * with its heading and speed. Points up to the horizon take the fitted pose (heading from the
+ * fitted direction of travel), points in the blend window move linearly back to the model
+ * output, later points are left unchanged. Velocities are not changed.
+ *
+ * With the virtual pose the path starts at the virtual pose (the pose the model planned from), not
+ * at the measured vehicle: started at the vehicle, a virtual pose taken from this trajectory would
+ * return onto the vehicle every cycle.
+ *
+ * @param trajectory Trajectory to modify in place.
+ * @param ego_pose Pose the path starts at (the planning pose: virtual pose when enabled).
+ * @param ego_speed_mps Speed at that pose.
+ * @param params Smoothing parameters.
+ */
+void smooth_initial_path(
+  Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose, double ego_speed_mps,
+  const PathSmoothingParams & params);
+
+/**
+ * @brief Smooth the points after the path smoothing horizon and take their headings from the path.
+ *
+ * Without the trajectory optimizer the model output wobbles a few centimetres sideways and its
+ * point headings do not follow its own geometry: the controller tracks a path whose heading jumps,
+ * and a spline through the points (the virtual pose) disagrees with the point headings. Each point
+ * after the horizon takes the value at its time of a quadratic fit of x(t) and y(t) to the points
+ * within the half window around it (shrunk near the end so it stays symmetric), and the fitted
+ * direction of travel as its heading. A point whose fitted speed is too low for a direction, and
+ * the last points (window of fewer than five points), keep the heading of the point before it.
+ * Points up to the horizon (see smooth_initial_path) and velocities are not changed; a zero half
+ * window disables this.
+ *
+ * @param trajectory Trajectory to modify in place.
+ * @param params Smoothing parameters.
+ */
+void smooth_path_tail(Trajectory & trajectory, const PathSmoothingParams & params);
 
 }  // namespace autoware::ml_planner::postprocess
 #endif  // AUTOWARE__ML_PLANNER__POSTPROCESSING__POSTPROCESSING_UTILS_HPP_
