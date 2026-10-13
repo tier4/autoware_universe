@@ -21,6 +21,8 @@
 #include "autoware/ml_planner/utils/object_remap.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
@@ -30,11 +32,13 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iomanip>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -74,6 +78,31 @@ std::string compute_file_hash_hex(const std::string & path)
   oss << std::hex << std::setw(sizeof(std::size_t) * 2) << std::setfill('0') << combined;
   return oss.str();
 }
+
+// Whether a package:// or file:// mesh resource points at an existing file.
+bool mesh_resource_exists(const std::string & resource)
+{
+  constexpr std::string_view package_scheme = "package://";
+  constexpr std::string_view file_scheme = "file://";
+  try {
+    if (resource.rfind(package_scheme, 0) == 0) {
+      const std::string rest = resource.substr(package_scheme.size());
+      const auto slash = rest.find('/');
+      if (slash == std::string::npos) {
+        return false;
+      }
+      const std::filesystem::path share =
+        ament_index_cpp::get_package_share_directory(rest.substr(0, slash));
+      return std::filesystem::is_regular_file(share / rest.substr(slash + 1));
+    }
+    if (resource.rfind(file_scheme, 0) == 0) {
+      return std::filesystem::is_regular_file(resource.substr(file_scheme.size()));
+    }
+  } catch (const std::exception &) {  // package not found
+    return false;
+  }
+  return false;
+}
 }  // namespace
 
 MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
@@ -111,6 +140,12 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
     "~/debug/road_border_avoidance/shifted_point_count", 1);
   pub_pre_stop_fixing_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/stop_point_fixing/unfixed_trajectory", 1);
+  pub_virtual_pose_ =
+    this->create_publisher<geometry_msgs::msg::PoseStamped>("~/debug/virtual_pose", 1);
+  pub_virtual_pose_status_ =
+    this->create_publisher<std_msgs::msg::Float64MultiArray>("~/debug/virtual_pose_status", 1);
+  pub_virtual_pose_vehicle_ =
+    this->create_publisher<MarkerArray>("~/debug/virtual_pose_vehicle", 1);
 
   set_up_params();
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -197,7 +232,7 @@ void MLPlanner::set_up_params()
 
   // trajectory optimization params
   auto & opt = params_.trajectory_optimization;
-  opt.enable = this->declare_parameter<bool>("trajectory_optimization.enable", false);
+  opt.enable = this->declare_parameter<bool>("trajectory_optimization.enable", true);
   opt.weight_longitudinal =
     this->declare_parameter<double>("trajectory_optimization.weight_longitudinal", 0.5);
   opt.weight_lateral =
@@ -292,6 +327,59 @@ void MLPlanner::set_up_params()
   stop_fixing.min_deceleration_duration_sec =
     this->declare_parameter<double>("stop_point_fixing.min_deceleration_duration_sec", 1.0);
 
+  // path smoothing params
+  auto & path_smoothing = params_.path_smoothing;
+  path_smoothing.enable = this->declare_parameter<bool>("path_smoothing.enable", false);
+  path_smoothing.horizon_sec = this->declare_parameter<double>("path_smoothing.horizon_sec", 1.5);
+  path_smoothing.blend_sec = this->declare_parameter<double>("path_smoothing.blend_sec", 0.5);
+  path_smoothing.tail_half_window_sec =
+    this->declare_parameter<double>("path_smoothing.tail_half_window_sec", 0.5);
+
+  // velocity smoothing params
+  auto & velocity_smoothing = params_.velocity_smoothing;
+  velocity_smoothing.enable = this->declare_parameter<bool>("velocity_smoothing.enable", false);
+  velocity_smoothing.horizon_sec =
+    this->declare_parameter<double>("velocity_smoothing.horizon_sec", 1.5);
+
+  // curve speed limit params
+  auto & curve_speed_limit = params_.curve_speed_limit;
+  curve_speed_limit.enable = this->declare_parameter<bool>("curve_speed_limit.enable", false);
+  curve_speed_limit.max_lateral_acceleration_mps2 =
+    this->declare_parameter<double>("curve_speed_limit.max_lateral_acceleration_mps2", 1.0);
+  curve_speed_limit.max_deceleration_mps2 =
+    this->declare_parameter<double>("curve_speed_limit.max_deceleration_mps2", 1.0);
+
+  // virtual ego pose params
+  auto & virtual_pose = params_.virtual_pose;
+  virtual_pose.enable = this->declare_parameter<bool>("virtual_pose.enable", true);
+  virtual_pose.max_longitudinal_error_m =
+    this->declare_parameter<double>("virtual_pose.max_longitudinal_error_m", 5.0);
+  virtual_pose.max_lateral_error_m =
+    this->declare_parameter<double>("virtual_pose.max_lateral_error_m", 3.0);
+  virtual_pose.max_yaw_error_deg =
+    this->declare_parameter<double>("virtual_pose.max_yaw_error_deg", 20.0);
+  virtual_pose.max_search_segment_count =
+    this->declare_parameter<int64_t>("virtual_pose.max_search_segment_count", 5);
+  virtual_pose.yaw_fit_half_window_m =
+    this->declare_parameter<double>("virtual_pose.yaw_fit_half_window_m", 1.0);
+  virtual_pose.yaw_fit_min_length_m =
+    this->declare_parameter<double>("virtual_pose.yaw_fit_min_length_m", 0.2);
+  virtual_pose.history_prefix_count =
+    this->declare_parameter<int64_t>("virtual_pose.history_prefix_count", 10);
+  virtual_pose.reference =
+    this->declare_parameter<std::string>("virtual_pose.reference", "optimized");
+  virtual_pose.hold_at_standstill =
+    this->declare_parameter<bool>("virtual_pose.hold_at_standstill", true);
+  virtual_pose.hold_max_speed_mps =
+    this->declare_parameter<double>("virtual_pose.hold_max_speed_mps", 0.1);
+  virtual_pose.hold_position_tolerance_m =
+    this->declare_parameter<double>("virtual_pose.hold_position_tolerance_m", 0.2);
+  virtual_pose.hold_yaw_tolerance_deg =
+    this->declare_parameter<double>("virtual_pose.hold_yaw_tolerance_deg", 0.5);
+  if (const auto error = utils::validate(virtual_pose)) {
+    throw std::runtime_error(*error);
+  }
+
   // planning factor params
   planning_factor_params_.enable_stop =
     this->declare_parameter<bool>("planning_factor.enable_stop", false);
@@ -311,6 +399,16 @@ void MLPlanner::set_up_params()
     this->declare_parameter<bool>("debug_params.publish_debug_route", true);
   debug_params_.publish_debug_linestrings =
     this->declare_parameter<bool>("debug_params.publish_debug_linestrings", true);
+  debug_params_.virtual_pose_vehicle_mesh =
+    this->declare_parameter<std::string>("debug_params.virtual_pose_vehicle_mesh", "");
+  if (
+    !debug_params_.virtual_pose_vehicle_mesh.empty() &&
+    !mesh_resource_exists(debug_params_.virtual_pose_vehicle_mesh)) {
+    RCLCPP_WARN(
+      get_logger(), "virtual_pose_vehicle_mesh '%s' not found: drawing a box of the vehicle size",
+      debug_params_.virtual_pose_vehicle_mesh.c_str());
+    debug_params_.virtual_pose_vehicle_mesh.clear();
+  }
 }
 
 void MLPlanner::load_model()
@@ -440,6 +538,48 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "stop_point_fixing.min_deceleration_duration_sec",
     stop_fixing.min_deceleration_duration_sec);
+  auto & path_smoothing = new_params.path_smoothing;
+  update_param<bool>(parameters, "path_smoothing.enable", path_smoothing.enable);
+  update_param<double>(parameters, "path_smoothing.horizon_sec", path_smoothing.horizon_sec);
+  update_param<double>(parameters, "path_smoothing.blend_sec", path_smoothing.blend_sec);
+  update_param<double>(
+    parameters, "path_smoothing.tail_half_window_sec", path_smoothing.tail_half_window_sec);
+  auto & velocity_smoothing = new_params.velocity_smoothing;
+  update_param<bool>(parameters, "velocity_smoothing.enable", velocity_smoothing.enable);
+  update_param<double>(
+    parameters, "velocity_smoothing.horizon_sec", velocity_smoothing.horizon_sec);
+  auto & curve_speed_limit = new_params.curve_speed_limit;
+  update_param<bool>(parameters, "curve_speed_limit.enable", curve_speed_limit.enable);
+  update_param<double>(
+    parameters, "curve_speed_limit.max_lateral_acceleration_mps2",
+    curve_speed_limit.max_lateral_acceleration_mps2);
+  update_param<double>(
+    parameters, "curve_speed_limit.max_deceleration_mps2", curve_speed_limit.max_deceleration_mps2);
+  auto & virtual_pose = new_params.virtual_pose;
+  update_param<bool>(parameters, "virtual_pose.enable", virtual_pose.enable);
+  update_param<double>(
+    parameters, "virtual_pose.max_longitudinal_error_m", virtual_pose.max_longitudinal_error_m);
+  update_param<double>(
+    parameters, "virtual_pose.max_lateral_error_m", virtual_pose.max_lateral_error_m);
+  update_param<double>(
+    parameters, "virtual_pose.max_yaw_error_deg", virtual_pose.max_yaw_error_deg);
+  update_param<int64_t>(
+    parameters, "virtual_pose.max_search_segment_count", virtual_pose.max_search_segment_count);
+  update_param<double>(
+    parameters, "virtual_pose.yaw_fit_half_window_m", virtual_pose.yaw_fit_half_window_m);
+  update_param<double>(
+    parameters, "virtual_pose.yaw_fit_min_length_m", virtual_pose.yaw_fit_min_length_m);
+  update_param<int64_t>(
+    parameters, "virtual_pose.history_prefix_count", virtual_pose.history_prefix_count);
+  update_param<std::string>(parameters, "virtual_pose.reference", virtual_pose.reference);
+  update_param<bool>(
+    parameters, "virtual_pose.hold_at_standstill", virtual_pose.hold_at_standstill);
+  update_param<double>(
+    parameters, "virtual_pose.hold_max_speed_mps", virtual_pose.hold_max_speed_mps);
+  update_param<double>(
+    parameters, "virtual_pose.hold_position_tolerance_m", virtual_pose.hold_position_tolerance_m);
+  update_param<double>(
+    parameters, "virtual_pose.hold_yaw_tolerance_deg", virtual_pose.hold_yaw_tolerance_deg);
 
   update_param<bool>(
     parameters, "planning_factor.enable_stop", new_planning_factor_params.enable_stop);
@@ -462,6 +602,17 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<bool>(
     parameters, "debug_params.publish_debug_linestrings",
     new_debug_params.publish_debug_linestrings);
+  if (
+    update_param<std::string>(
+      parameters, "debug_params.virtual_pose_vehicle_mesh",
+      new_debug_params.virtual_pose_vehicle_mesh) &&
+    !new_debug_params.virtual_pose_vehicle_mesh.empty() &&
+    !mesh_resource_exists(new_debug_params.virtual_pose_vehicle_mesh)) {
+    RCLCPP_WARN(
+      get_logger(), "virtual_pose_vehicle_mesh '%s' not found: drawing a box of the vehicle size",
+      new_debug_params.virtual_pose_vehicle_mesh.c_str());
+    new_debug_params.virtual_pose_vehicle_mesh.clear();
+  }
 
   auto failure = [](const std::string & reason) {
     SetParametersResult result;
@@ -560,6 +711,24 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   }
   if (stop_fixing.velocity_threshold_mps < 0.0 || stop_fixing.min_deceleration_duration_sec < 0.0) {
     return failure("stop point fixing thresholds must be non-negative");
+  }
+  if (
+    path_smoothing.horizon_sec <= 0.0 || path_smoothing.blend_sec < 0.0 ||
+    path_smoothing.tail_half_window_sec < 0.0) {
+    return failure(
+      "path_smoothing.horizon_sec must be positive, blend_sec and tail_half_window_sec "
+      "non-negative");
+  }
+  if (velocity_smoothing.horizon_sec <= 0.0) {
+    return failure("velocity_smoothing.horizon_sec must be positive");
+  }
+  if (
+    curve_speed_limit.max_lateral_acceleration_mps2 <= 0.0 ||
+    curve_speed_limit.max_deceleration_mps2 <= 0.0) {
+    return failure("curve_speed_limit accelerations must be positive");
+  }
+  if (const auto error = utils::validate(virtual_pose)) {
+    return failure(*error);
   }
 
   const bool reload_model = new_params.model_path != params_.model_path ||
@@ -744,6 +913,65 @@ void MLPlanner::on_timer()
   }
   TensorMap input_data_map = std::move(input_data_result.value());
   const rclcpp::Time frame_time = core_->frame_time();
+
+  if (const auto & virtual_pose = core_->virtual_pose_result()) {
+    geometry_msgs::msg::PoseStamped pose_msg;
+    pose_msg.header = core_->measured_ego().header;
+    pose_msg.pose = virtual_pose->pose;
+    pub_virtual_pose_->publish(pose_msg);
+    std_msgs::msg::Float64MultiArray status_msg;
+    status_msg.data = {
+      virtual_pose->snapped ? 1.0 : 0.0, virtual_pose->reset ? 1.0 : 0.0,
+      virtual_pose->position_error_m, virtual_pose->yaw_error_deg};
+    pub_virtual_pose_status_->publish(status_msg);
+
+    visualization_msgs::msg::Marker body;
+    body.header.frame_id = "map";
+    body.header.stamp = pose_msg.header.stamp;
+    body.ns = "virtual_pose_vehicle";
+    body.id = 0;
+    body.action = visualization_msgs::msg::Marker::ADD;
+    if (!debug_params_.virtual_pose_vehicle_mesh.empty()) {
+      // The vehicle mesh is modelled around base_link, like the ego in rviz.
+      body.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
+      body.mesh_resource = debug_params_.virtual_pose_vehicle_mesh;
+      body.mesh_use_embedded_materials = false;
+      body.pose = virtual_pose->pose;
+      body.scale.x = body.scale.y = body.scale.z = 1.0;
+    } else {
+      // The box is centred ahead of base_link (rear axle) by half its length minus the rear
+      // overhang, and sideways by half the left/right overhang difference.
+      body.type = visualization_msgs::msg::Marker::CUBE;
+      body.pose = autoware_utils_geometry::calc_offset_pose(
+        virtual_pose->pose, 0.5 * vehicle_info_.vehicle_length_m - vehicle_info_.rear_overhang_m,
+        0.5 * (vehicle_info_.left_overhang_m - vehicle_info_.right_overhang_m),
+        0.5 * vehicle_info_.vehicle_height_m);
+      body.scale.x = vehicle_info_.vehicle_length_m;
+      body.scale.y = vehicle_info_.vehicle_width_m;
+      body.scale.z = vehicle_info_.vehicle_height_m;
+    }
+    body.color.r = 1.0F;
+    body.color.g = 0.1F;
+    body.color.b = 0.1F;
+    body.color.a = 0.4F;
+    MarkerArray body_markers;
+    body_markers.markers.push_back(body);
+    pub_virtual_pose_vehicle_->publish(body_markers);
+    virtual_pose_vehicle_shown_ = true;
+  } else if (virtual_pose_vehicle_shown_) {
+    // The marker has no lifetime: without a delete, rviz keeps the last body after the virtual
+    // pose is turned off at runtime.
+    visualization_msgs::msg::Marker body;
+    body.header.frame_id = "map";
+    body.header.stamp = core_->measured_ego().header.stamp;
+    body.ns = "virtual_pose_vehicle";
+    body.id = 0;
+    body.action = visualization_msgs::msg::Marker::DELETE;
+    MarkerArray body_markers;
+    body_markers.markers.push_back(body);
+    pub_virtual_pose_vehicle_->publish(body_markers);
+    virtual_pose_vehicle_shown_ = false;
+  }
 
   if (start_velocity_override_enabled_) {
     auto & ego_agent_past = input_data_map.at("ego_agent_past");

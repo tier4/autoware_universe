@@ -110,6 +110,10 @@ public:
   /// clears it).
   void accept(size_t batch_index, const OptimizationResult & result);
 
+  /// Forget the previous solutions: the next cycle has no warm start and no temporal
+  /// consistency term (used when the planning start jumped, e.g. a virtual pose reset).
+  void drop_previous_solutions();
+
 private:
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;

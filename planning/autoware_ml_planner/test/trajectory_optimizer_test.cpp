@@ -311,4 +311,41 @@ TEST_F(TrajectoryOptimizerTest, GoalPositionChangeClearsPreviousSolutions)
   EXPECT_FALSE(changed.temporal_applied);
 }
 
+TEST_F(TrajectoryOptimizerTest, DropPreviousSolutionsSkipsTemporalConsistency)
+{
+  TrajectoryOptimizationParams params;
+  params.enable = true;
+  params.temporal_consistency.enable = true;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  constexpr double x0 = 50.0;
+  constexpr double speed = 8.0;
+  odometry_.pose.pose.position.x = x0;
+  odometry_.twist.twist.linear.x = speed;
+  auto raw = make_straight_trajectory(x0, speed);
+  raw.header.stamp.sec = 0;
+  // Far beyond the snap range: no goal latch interferes.
+  const auto goal = make_pose(x0 + 1000.0, 0.0);
+
+  const auto first = run_cycle(optimizer, raw, goal);
+  ASSERT_TRUE(first.optimized);
+
+  raw.header.stamp.nanosec = 100000000;
+  const auto second = run_cycle(optimizer, raw, goal);
+  ASSERT_TRUE(second.optimized);
+  EXPECT_TRUE(second.temporal_applied);
+
+  // A virtual pose reset: the next cycle must not be pulled toward the previous plan.
+  optimizer.drop_previous_solutions();
+  raw.header.stamp.nanosec = 200000000;
+  const auto after_reset = run_cycle(optimizer, raw, goal);
+  ASSERT_TRUE(after_reset.optimized) << "acados status: " << after_reset.solver_status;
+  EXPECT_FALSE(after_reset.temporal_applied);
+
+  raw.header.stamp.nanosec = 300000000;
+  const auto next = run_cycle(optimizer, raw, goal);
+  ASSERT_TRUE(next.optimized);
+  EXPECT_TRUE(next.temporal_applied);
+}
+
 }  // namespace autoware::ml_planner::test
