@@ -489,9 +489,16 @@ PlannerOutput MLPlannerCore::create_planner_output(
   const InferenceOutput & inference_output, const rclcpp::Time & timestamp,
   const UUID & generator_uuid, const double current_steering_angle_rad)
 {
-  // The model output is in the frame it was given (frame_ego_, the virtual pose when enabled);
-  // everything downstream (border avoidance, optimization) starts from the measured state.
+  // The model output is in the frame it was given (frame_ego_, the virtual pose when enabled).
+  // Everything downstream (border avoidance, smoothing, optimization) starts from that same
+  // pose: started at the measured pose, the optimized trajectory (and a virtual pose taken from
+  // it) would return onto the vehicle every cycle. Speed and steering stay measured so the start
+  // is physically consistent.
   const Odometry & kinematic_state = ego_history_.back();
+  Odometry planning_start = kinematic_state;
+  if (params_.virtual_pose.enable) {
+    planning_start.pose.pose = frame_ego_.pose.pose;
+  }
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(frame_ego_.pose.pose);
 
   const auto & raw_predictions = inference_output.trajectory;
@@ -515,13 +522,11 @@ PlannerOutput MLPlannerCore::create_planner_output(
   }
 
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
-  if (trajectory_optimizer_) {
-    // The planning start jumped (see restart_optimizer_): the previous plan started elsewhere, so
-    // neither its warm start nor its temporal pull may shape this one.
-    if (restart_optimizer_) {
-      trajectory_optimizer_->drop_previous_solutions();
-      restart_optimizer_ = false;
-    }
+  // The planning start jumped (see restart_optimizer_): the previous plan started elsewhere, so
+  // neither its warm start nor its temporal pull may shape this one.
+  if (trajectory_optimizer_ && restart_optimizer_) {
+    trajectory_optimizer_->drop_previous_solutions();
+    restart_optimizer_ = false;
   }
 #endif
 
@@ -537,7 +542,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
     }
 
     if (road_border_avoidance_) {
-      auto avoidance_result = road_border_avoidance_->adjust(trajectory, frame_ego_.pose.pose);
+      auto avoidance_result = road_border_avoidance_->adjust(trajectory, planning_start.pose.pose);
       if (i == 0) {
         output.avoidance_debug.active = true;
         output.avoidance_debug.shifted_points =
@@ -549,11 +554,12 @@ PlannerOutput MLPlannerCore::create_planner_output(
       trajectory = std::move(avoidance_result.trajectory);
     }
 
+    // Post-processing for the path without the optimizer, from the planning start pose so the
+    // published trajectory and a virtual pose taken from it never return onto the vehicle.
     if (params_.path_smoothing.enable) {
-      // From the pose the model planned from (the virtual pose when enabled), so the published
-      // trajectory and a virtual pose taken from it never return onto the vehicle.
       postprocess::smooth_initial_path(
-        trajectory, frame_ego_.pose.pose, frame_ego_.twist.twist.linear.x, params_.path_smoothing);
+        trajectory, planning_start.pose.pose, planning_start.twist.twist.linear.x,
+        params_.path_smoothing);
       postprocess::smooth_path_tail(trajectory, params_.path_smoothing);
     }
     if (params_.velocity_smoothing.enable) {
@@ -573,16 +579,8 @@ PlannerOutput MLPlannerCore::create_planner_output(
       if (route_ptr_) {
         goal_pose = route_ptr_->goal_pose;
       }
-      // With the virtual pose the optimization starts from it, like the model: started at the
-      // measured pose, the optimized trajectory (and a virtual pose taken from it) would return
-      // onto the vehicle every cycle. Speed and steering stay measured so the start is physically
-      // consistent.
-      Odometry optimizer_start = kinematic_state;
-      if (params_.virtual_pose.enable) {
-        optimizer_start.pose.pose = frame_ego_.pose.pose;
-      }
       auto optimization_result = trajectory_optimizer_->optimize(
-        trajectory, optimizer_start, current_steering_angle_rad, static_cast<size_t>(i), goal_pose);
+        trajectory, planning_start, current_steering_angle_rad, static_cast<size_t>(i), goal_pose);
       if (i == 0) {
         output.optimization_debug.attempted = true;
         output.optimization_debug.optimized = optimization_result.optimized;
