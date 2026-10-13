@@ -64,14 +64,13 @@ struct GoalTerminalReference
   double velocity{0.0};
 };
 
-/// Previous plan sampled at the same path distance as this stage (solver local frame).
+/// Previous plan sampled for this stage (solver local frame).
 struct StageTemporalReference
 {
   double x{0.0};
   double y{0.0};
   double yaw{0.0};
   double velocity{0.0};
-  /// False when this stage's station is beyond the previous plan (no clamp).
   bool valid{false};
 };
 

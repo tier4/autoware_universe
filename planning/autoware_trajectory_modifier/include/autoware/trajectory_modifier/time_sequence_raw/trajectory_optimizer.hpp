@@ -40,24 +40,23 @@ struct OptimizationResult
   bool optimized{false};
   int solver_status{0};
   double solve_time_ms{0.0};
-  /// Chord-speed seed for acados x0 (first three poses), not ego twist.
+  /// OCP x0 speed: stamp-aligned odometry twist.
   double initial_speed_mps{0.0};
   double initial_accel_mps2{0.0};
   bool temporal_applied{false};
   bool goal_snap_active{false};
   /// Literal: none | disabled | border_shift | no_warm_start | stamp_rewind |
-  ///          warm_start_stale | goal_flag_mismatch | beyond_previous_path
+  ///          warm_start_stale | goal_flag_mismatch
   const char * temporal_skip_reason{"disabled"};
-  /// Stages 0..N-1 whose station is still on the previous path (consistency loss applied).
+  /// Stages that received the time-resampled temporal term (N when applied).
   size_t temporal_valid_stages{0};
   /// Age of the stored previous solution, or -1 if none existed this cycle.
   double warm_start_age_s{-1.0};
 };
 
 /// Tracks a pose-only time-indexed trajectory with a kinematic bicycle OCP.
-/// Initial pose/steering come from ego odometry + measured steering; initial speed is the
-/// average chord speed of the first three trajectory points (not ego twist). Initial
-/// acceleration comes from measured ego longitudinal acceleration.
+/// Initial pose, speed, steering and acceleration come from stamp-aligned ego (when the
+/// plugin buffer is on). Temporal consistency resamples the previous plan by timestamp.
 class TrajectoryOptimizer
 {
 public:
