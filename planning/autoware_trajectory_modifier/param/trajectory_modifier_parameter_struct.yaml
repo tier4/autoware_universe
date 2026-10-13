@@ -289,84 +289,33 @@ trajectory_modifier_params:
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
-      lateral_margin:
-        car:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for car objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        truck:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for truck objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        bus:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for bus objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        trailer:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for trailer objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        motorcycle:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for motorcycle objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        bicycle:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for bicycle objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        pedestrian:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for pedestrian objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        hazard:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for hazard objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        structure:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for structure pointcloud [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        vegetation:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for vegetation pointcloud [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        unknown:
-          type: double
-          default_value: 0.0
-          description: Lateral margin on top of ego width for unknown objects and unclassified pointcloud [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
+      lateral_margin: &base_lateral_margin
+        base: &default_margin {
+          type: double,
+          default_value: 0.1,
+          description: Per-class lateral margin on top of ego width,
+          validation: { bounds<>: [0.0, 10.0] },
+          read_only: false,
+        }
+        car: *default_margin
+        truck: *default_margin
+        bus: *default_margin
+        trailer: *default_margin
+        motorcycle: *default_margin
+        bicycle: *default_margin
+        pedestrian: *default_margin
+        hazard: *default_margin
+        structure: *default_margin
+        vegetation: *default_margin
+        unknown: *default_margin
+      low_velocity_lateral_margin: *base_lateral_margin
+      low_velocity_th:
+        type: double
+        default_value: 2.0
+        description: Ego trajectory velocity threshold to apply low speed lateral margins [m/s]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
 
     rss_params:
       enable:
