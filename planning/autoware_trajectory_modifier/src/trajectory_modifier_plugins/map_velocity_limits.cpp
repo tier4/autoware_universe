@@ -58,6 +58,8 @@ void MapVelocityLimits::on_initialize(const TrajectoryModifierParams & params)
   profile_reset_pub_ =
     get_node_ptr()->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
       "~/debug/velocity_profile_reset", rclcpp::QoS{10}.reliable().durability_volatile());
+  debug_trajectory_pub_ = get_node_ptr()->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+    "~/debug/map_velocity_limits/trajectory", rclcpp::QoS{1});
 }
 
 void MapVelocityLimits::update_params(const TrajectoryModifierParams & params)
@@ -106,11 +108,13 @@ ProcessingResult MapVelocityLimits::process(
 {
   last_profile_start_ = detail::ProfileStart::Measured;
   if (!enabled_ || traj_points.empty() || !input.current_odometry) {
+    publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
     return ProcessingResult::Unchanged;
   }
   const auto stop_state = detail::make_fixed_profile_stop_state(traj_points);
   if (!is_trajectory_modification_required(traj_points, input)) {
     fixed_profile_.store(input, traj_points, stop_state);
+    publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
     return ProcessingResult::Unchanged;
   }
   const auto start = fixed_profile_.start(input, stop_state, traj_points);
@@ -132,6 +136,7 @@ ProcessingResult MapVelocityLimits::process(
     },
     start.options);
   fixed_profile_.store(input, traj_points, stop_state);
+  publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
   return result.status;
 }
 

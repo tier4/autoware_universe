@@ -171,6 +171,16 @@ true, the absolute values of `constraints.min_acceleration` and `constraints.min
 the parameter. The velocity profile is generated as described in
 [Velocity limit profile](#velocity-limit-profile).
 
+A `VelocityLimitClearCommand` with `command=true` on
+`~/input/velocity_limit_clear_command` clears the active external limit when its `sender` matches
+the active limit's `sender`. The plugin drops its fixed profile, and the downstream velocity
+optimizer returns to its configured `max_vel` cap. A later `VelocityLimit` starts a new profile.
+The launch default for the clear topic is `/planning/scenario_planning/clear_velocity_limit`.
+Map and other trajectory limits continue to apply.
+
+`~/debug/external_velocity_limit/trajectory` publishes the selected candidate (index 0)
+immediately after this plugin, including cycles where the external limit is inactive.
+
 | Parameter                          | Default | Description                                                          |
 | ---------------------------------- | ------- | -------------------------------------------------------------------- |
 | `use_external_velocity_limit`      | `true`  | Enable the plugin when included in `plugin_names`.                   |
@@ -184,6 +194,9 @@ The `autoware::trajectory_modifier::plugin::MapVelocityLimits` plugin limits tra
 speed limits of the route lanelets at each point (lanelet `speed_limit` attributes are in km/h).
 The velocity profile is generated as described in
 [Velocity limit profile](#velocity-limit-profile).
+
+`~/debug/map_velocity_limits/trajectory` publishes the selected candidate (index 0)
+immediately after this plugin, including cycles where no map limit is applied.
 
 | Parameter                                                          | Default | Description                                                |
 | ------------------------------------------------------------------ | ------- | ---------------------------------------------------------- |

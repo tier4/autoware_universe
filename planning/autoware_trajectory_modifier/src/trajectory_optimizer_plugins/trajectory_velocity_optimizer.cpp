@@ -66,10 +66,6 @@ void TrajectoryVelocityOptimizer::on_initialize(const TrajectoryModifierParams &
   cjs.max_jerk = params.limit.max_jerk;
   cjs.min_jerk = params.limit.min_jerk;
 
-  sub_planning_velocity_ =
-    std::make_shared<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>(
-      node_ptr, "~/input/external_velocity_limit_mps", rclcpp::QoS{1});
-
   pub_velocity_limit_ = node_ptr->create_publisher<VelocityLimit>(
     "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
 
@@ -83,6 +79,9 @@ void TrajectoryVelocityOptimizer::on_initialize(const TrajectoryModifierParams &
 ProcessingResult TrajectoryVelocityOptimizer::process(
   TrajectoryPoints & traj_points, TrajectoryModifierData & data)
 {
+  if (!data.has_external_velocity_limit_snapshot) {
+    context_->refresh_external_velocity_limit();
+  }
   if (!enabled_ || !data.current_odometry || !data.current_acceleration) {
     return ProcessingResult::Unchanged;
   }
@@ -110,7 +109,12 @@ ProcessingResult TrajectoryVelocityOptimizer::process(
 
   // Apply global speed limit to trajectory and max velocity array
   if (velocity_params_.limit_speed) {
-    const auto external_velocity_limit = sub_planning_velocity_->take_data();
+    const auto external_velocity_limit = data.has_external_velocity_limit_snapshot
+                                           ? data.external_velocity_limit
+                                           : context_->external_velocity_limit.active_limit();
+    const auto clear_revision = data.has_external_velocity_limit_snapshot
+                                  ? data.external_velocity_limit_clear_revision
+                                  : context_->external_velocity_limit.clear_revision();
     const auto max_speed_mps = (external_velocity_limit)
                                  ? static_cast<float>(external_velocity_limit->max_velocity)
                                  : static_cast<float>(velocity_params_.default_max_velocity_mps);
@@ -125,6 +129,12 @@ ProcessingResult TrajectoryVelocityOptimizer::process(
     }
     if (external_velocity_limit) {
       pub_velocity_limit_->publish(*external_velocity_limit);
+    } else if (last_published_clear_revision_ != clear_revision) {
+      VelocityLimit default_limit;
+      default_limit.stamp = get_node_ptr()->now();
+      default_limit.max_velocity = static_cast<float>(velocity_params_.default_max_velocity_mps);
+      pub_velocity_limit_->publish(default_limit);
+      last_published_clear_revision_ = clear_revision;
     }
   }
 
