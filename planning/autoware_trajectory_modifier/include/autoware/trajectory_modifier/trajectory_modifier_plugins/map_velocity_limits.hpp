@@ -22,6 +22,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
 
 #include <memory>
 
@@ -57,6 +58,7 @@ protected:
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     limit_overrides_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr profile_reset_pub_;
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_trajectory_pub_;
   detail::VelocityLimitConstraints constraints_;
   detail::FixedProfileMemory fixed_profile_;
   detail::ProfileStart last_profile_start_{detail::ProfileStart::Measured};

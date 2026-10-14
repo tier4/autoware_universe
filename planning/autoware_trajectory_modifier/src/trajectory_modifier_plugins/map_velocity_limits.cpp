@@ -58,6 +58,8 @@ void MapVelocityLimits::on_initialize(const TrajectoryModifierParams & params)
   profile_reset_pub_ =
     get_node_ptr()->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
       "~/debug/velocity_profile_reset", rclcpp::QoS{10}.reliable().durability_volatile());
+  debug_trajectory_pub_ = get_node_ptr()->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+    "~/debug/map_velocity_limits/trajectory", rclcpp::QoS{1});
 }
 
 void MapVelocityLimits::update_params(const TrajectoryModifierParams & params)
@@ -85,9 +87,7 @@ void MapVelocityLimits::update_params(const TrajectoryModifierParams & params)
 bool MapVelocityLimits::is_trajectory_modification_required(
   [[maybe_unused]] const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
 {
-  if (
-    !input.lanelet_map_bin || !input.route ||
-    (input.current_odometry && input.current_odometry->twist.twist.linear.x < 0.1)) {
+  if (!input.lanelet_map_bin || !input.route) {
     return false;
   }
   if (!extended_route_handler_ || previous_route_uuid_ != input.route->uuid) {
@@ -97,6 +97,9 @@ bool MapVelocityLimits::is_trajectory_modification_required(
     extended_route_handler_ = handler;
     previous_route_uuid_ = input.route->uuid;
   }
+  if (input.current_odometry && input.current_odometry->twist.twist.linear.x < 0.1) {
+    return false;
+  }
   return true;
 }
 
@@ -105,13 +108,16 @@ ProcessingResult MapVelocityLimits::process(
 {
   last_profile_start_ = detail::ProfileStart::Measured;
   if (!enabled_ || traj_points.empty() || !input.current_odometry) {
+    publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
     return ProcessingResult::Unchanged;
   }
+  const auto stop_state = detail::make_fixed_profile_stop_state(traj_points);
   if (!is_trajectory_modification_required(traj_points, input)) {
-    fixed_profile_.store(input, traj_points);
+    fixed_profile_.store(input, traj_points, stop_state);
+    publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
     return ProcessingResult::Unchanged;
   }
-  const auto start = fixed_profile_.start(input);
+  const auto start = fixed_profile_.start(input, stop_state, traj_points);
   last_profile_start_ = start.start;
   if (detail::is_reset(start.start)) {
     RCLCPP_DEBUG(
@@ -129,7 +135,12 @@ ProcessingResult MapVelocityLimits::process(
       return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
     },
     start.options);
-  fixed_profile_.store(input, traj_points);
+  if (result.status == ProcessingResult::Unchanged && !result.error.empty()) {
+    fixed_profile_.store(input, TrajectoryPoints{}, stop_state);
+  } else {
+    fixed_profile_.store(input, traj_points, stop_state);
+  }
+  publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
   return result.status;
 }
 

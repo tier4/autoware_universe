@@ -28,6 +28,7 @@
 #include <functional>
 #include <limits>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace autoware::trajectory_modifier::plugin::detail
@@ -210,7 +211,9 @@ PathBounds make_path_bounds(
 /// @brief Forward simulation of the limited profile. Each step follows the input and the limit at
 /// the current position and, for each local minimum of the bounds ahead, starts braking at the
 /// latest step that still reaches it with the deceleration and jerk limits. A triggered minimum
-/// stays latched until it is passed.
+/// stays latched until it is passed. The deceleration limit only bounds the braking for the
+/// limits: following the input, the profile brakes as hard as the input does. The jerk limit
+/// always holds.
 class LimitedProfileSimulation
 {
 public:
@@ -228,6 +231,13 @@ public:
     while (segment_ + 1 < bounds_.size() && bounds_.s[segment_ + 1] <= state_.s) {
       ++segment_;
     }
+    // The hardest input braking stays allowed until the profile stops braking, so that following
+    // it does not weaken past the input braking (e.g. after a stop that the jerk limit overshoots).
+    const double input_deceleration =
+      std::max(constraints_.max_deceleration, -bounds_.input_acceleration[segment_]);
+    input_deceleration_ = state_.acceleration < k_decelerating
+                            ? std::max(input_deceleration_, input_deceleration)
+                            : input_deceleration;
     double command = local_command();
     const auto predicted = step(command, dt);
     command = std::min(command, lookahead_command(predicted));
@@ -236,12 +246,16 @@ public:
 
 private:
   /// @brief Brake above the bounds at the current position, hold between them and the lowest
-  /// limit ahead, and accelerate below it.
+  /// limit ahead, and accelerate below it. Following the input brakes as hard as the input does
+  /// when that exceeds the deceleration limit.
   [[nodiscard]] double local_command() const
   {
-    return std::clamp(
-      std::min(input_command(), limit_command()), -constraints_.max_deceleration,
+    const double input = std::clamp(
+      std::max(input_command(), release_command()), -input_deceleration_,
       constraints_.max_acceleration);
+    const double limit =
+      std::clamp(limit_command(), -constraints_.max_deceleration, constraints_.max_acceleration);
+    return std::min(input, limit);
   }
 
   /// @brief Follow the input velocity at the current position, with its acceleration as
@@ -254,6 +268,35 @@ private:
     const double velocity =
       state_.velocity + relative * std::abs(relative) / (2.0 * constraints_.max_jerk);
     return acceleration + k_tracking_gain * (bounds_.input_at(state_.s, segment_) - velocity);
+  }
+
+  /// @brief Where the input braking ends before a release of the braking with the jerk limit
+  /// would complete, land on the lowest input velocity until then instead of following the input
+  /// braking to its end and falling below the input while releasing. None otherwise.
+  [[nodiscard]] double release_command() const
+  {
+    constexpr double none = -std::numeric_limits<double>::infinity();
+    if (state_.acceleration >= 0.0) {
+      return none;
+    }
+    const double jerk = constraints_.max_jerk;
+    const double velocity = release_velocity(state_.velocity, state_.acceleration, jerk);
+    const double duration = -state_.acceleration / jerk;
+    // The ego stops before the release completes when the release velocity is negative.
+    const double end =
+      velocity > 0.0 ? integrate(state_, jerk, duration).s : state_.s + state_.velocity * duration;
+    std::size_t node = segment_;
+    double lowest = bounds_.input_at(state_.s, node);
+    while (node + 1 < bounds_.size() && bounds_.s[node + 1] <= end) {
+      ++node;
+      lowest = std::min(lowest, bounds_.input[node]);
+    }
+    // While the input keeps braking past the release, following it leads the release.
+    if (bounds_.input_acceleration[node] < k_decelerating) {
+      return none;
+    }
+    lowest = std::min(lowest, bounds_.input_at(end, node));
+    return k_tracking_gain * (lowest - velocity);
   }
 
   /// @brief Brake above the limit at the current position, do not accelerate above the lowest
@@ -270,7 +313,9 @@ private:
     return velocity >= ceiling ? 0.0 : k_tracking_gain * (ceiling - velocity);
   }
 
-  /// @brief Lowest braking command of the bounds ahead that require braking now.
+  /// @brief Lowest braking command of the bounds ahead that require braking now. Braking starts
+  /// as if limited by the deceleration limit; when that is not enough to reach a bound set by the
+  /// input, the braking may be as hard as the input's own braking before that bound.
   [[nodiscard]] double lookahead_command(const LongitudinalState & predicted)
   {
     const auto braking_distance = [this, &predicted](
@@ -284,7 +329,9 @@ private:
     const double reach = braking_distance(0.0, constraints_.max_deceleration) + k_braking_margin;
     double command = std::numeric_limits<double>::infinity();
     double lowest = std::numeric_limits<double>::infinity();
+    double input_deceleration = input_deceleration_;  // Hardest input braking up to j.
     for (std::size_t j = segment_ + 1; j < bounds_.size(); ++j) {
+      input_deceleration = std::max(input_deceleration, -bounds_.input_acceleration[j - 1]);
       if (!bounds_.local_minimum[j] && !latched_[j]) {
         continue;
       }
@@ -306,28 +353,35 @@ private:
         latched_[j] = 1;
       }
       lowest = std::min(lowest, cap);
-      command = std::min(command, braking_command(j));
+      const bool input_bound = bounds_.input[j] <= bounds_.limit[j];
+      command = std::min(
+        command,
+        braking_command(j, input_bound ? input_deceleration : constraints_.max_deceleration));
     }
     return command;
   }
 
-  /// @brief Decelerate as much as needed to reach a bound where it begins, then release onto it.
-  [[nodiscard]] double braking_command(const std::size_t index) const
+  /// @brief Decelerate as much as needed, up to `max_deceleration`, to reach a bound where it
+  /// begins, then release onto it.
+  [[nodiscard]] double braking_command(const std::size_t index, const double max_deceleration) const
   {
     const double target = bounds_.cap(index);
     const double available = bounds_.s[index] - state_.s - k_braking_margin;
-    return std::max(-required_deceleration(target, available), landing_command(target));
+    return std::max(
+      -required_deceleration(target, available, max_deceleration),
+      landing_command(target, max_deceleration));
   }
 
-  /// @brief Smallest deceleration, up to the limit, whose jerk-limited braking profile from the
-  /// current state reaches the target within the available distance.
-  [[nodiscard]] double required_deceleration(const double target, const double available) const
+  /// @brief Smallest deceleration, up to `max_deceleration`, whose jerk-limited braking profile
+  /// from the current state reaches the target within the available distance.
+  [[nodiscard]] double required_deceleration(
+    const double target, const double available, const double max_deceleration) const
   {
     const auto distance = [this, target](const double deceleration) {
       return jerk_limited_braking_distance(
         state_.velocity, state_.acceleration, target, deceleration, constraints_.max_jerk);
     };
-    double high = constraints_.max_deceleration;
+    double high = max_deceleration;
     if (available <= 0.0 || distance(high) >= available) {
       return high;
     }
@@ -347,24 +401,31 @@ private:
       [](const std::uint8_t latched) { return latched != 0; });
   }
 
-  /// @brief Brake toward a target and release so that the acceleration reaches zero there.
-  [[nodiscard]] double landing_command(const double target) const
+  /// @brief Brake toward a target, up to `max_deceleration`, and release so that the acceleration
+  /// reaches zero there.
+  [[nodiscard]] double landing_command(const double target, const double max_deceleration) const
   {
     const double velocity =
       release_velocity(state_.velocity, state_.acceleration, constraints_.max_jerk);
-    return std::clamp(k_tracking_gain * (target - velocity), -constraints_.max_deceleration, 0.0);
+    return std::clamp(k_tracking_gain * (target - velocity), -max_deceleration, 0.0);
   }
 
   /// @brief State after one step toward the commanded acceleration under the jerk limit.
   [[nodiscard]] LongitudinalState step(const double command, const double dt) const
   {
+    if (
+      state_.velocity <= 0.0 && state_.acceleration <= 0.0 &&
+      (state_.acceleration < 0.0 || command <= 0.0)) {
+      // Keep the vehicle stopped while releasing residual braking acceleration, or while no
+      // positive acceleration is commanded. Once released, a positive command may start it.
+      return {state_.s, 0.0, std::min(0.0, state_.acceleration + constraints_.max_jerk * dt)};
+    }
     const double jerk_step = constraints_.max_jerk * dt;
     const double acceleration =
       std::clamp(command, state_.acceleration - jerk_step, state_.acceleration + jerk_step);
     auto next = integrate(state_, (acceleration - state_.acceleration) / dt, dt);
     if (next.velocity < 0.0) {
       next.velocity = 0.0;
-      next.acceleration = std::max(next.acceleration, 0.0);
     }
     return next;
   }
@@ -374,16 +435,17 @@ private:
   LongitudinalState state_;
   std::vector<std::uint8_t> latched_;
   std::size_t segment_{0};
+  double input_deceleration_{constraints_.max_deceleration};  ///< Allowed to follow the input.
 };
 
-/// @brief Move every pose but the first along the input polyline to match the new velocities.
-void resample_poses(
+/// @brief Move representable poses along the input polyline and return their count.
+std::size_t resample_poses(
   TrajectoryPoints & points, const std::vector<geometry_msgs::msg::Pose> & original,
   const std::vector<double> & times)
 {
   const auto count = points.size();
-  std::vector<double> original_s(count, 0.0);
-  for (std::size_t i = 1; i < count; ++i) {
+  std::vector<double> original_s(original.size(), 0.0);
+  for (std::size_t i = 1; i < original.size(); ++i) {
     const auto & p0 = original[i - 1].position;
     const auto & p1 = original[i].position;
     original_s[i] = original_s[i - 1] + std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
@@ -397,13 +459,23 @@ void resample_poses(
       0.5 * (points[i - 1].longitudinal_velocity_mps + points[i].longitudinal_velocity_mps) * dt;
   }
 
-  std::size_t segment = 0;
+  // The polyline cannot represent motion beyond its end. Leave those points to the caller's
+  // stop or moving-horizon policy instead of pinning moving points to the last pose.
+  std::size_t valid_count = count;
   for (std::size_t i = 1; i < count; ++i) {
-    while (segment + 1 < count && original_s[segment + 1] <= new_s[i]) {
+    if (new_s[i] > original_s.back() + 1e-3) {
+      valid_count = i;
+      break;
+    }
+  }
+
+  std::size_t segment = 0;
+  for (std::size_t i = 1; i < valid_count; ++i) {
+    while (segment + 1 < original.size() && original_s[segment + 1] <= new_s[i]) {
       ++segment;
     }
 
-    if (segment + 1 == count) {
+    if (segment + 1 == original.size()) {
       points[i].pose = original.back();
     } else {
       const double segment_length = original_s[segment + 1] - original_s[segment];
@@ -420,6 +492,7 @@ void resample_poses(
         autoware::interpolation::lerpOrientation(p0.orientation, p1.orientation, ratio);
     }
   }
+  return valid_count;
 }
 }  // namespace
 
@@ -499,27 +572,47 @@ VelocityLimitResult apply_velocity_limits(
     return {ProcessingResult::Unchanged, {}};
   }
 
+  const auto bounds = make_path_bounds(points, limits, velocity_limit);
   LongitudinalState initial;
   initial.velocity = std::max(
     0.0, options.current_ego_velocity && std::isfinite(*options.current_ego_velocity)
            ? *options.current_ego_velocity
            : static_cast<double>(points.front().longitudinal_velocity_mps));
   // A measured acceleration outside the limits (e.g. noise) is clamped so that the profile never
-  // violates them.
+  // violates them. Braking as hard as the input at its start is kept.
+  const double initial_deceleration =
+    std::max(constraints.max_deceleration, -bounds.input_acceleration.front());
   initial.acceleration =
     options.current_ego_acceleration.value_or(points.front().acceleration_mps2);
   initial.acceleration =
     std::isfinite(initial.acceleration)
-      ? std::clamp(
-          initial.acceleration, -constraints.max_deceleration, constraints.max_acceleration)
+      ? std::clamp(initial.acceleration, -initial_deceleration, constraints.max_acceleration)
       : 0.0;
 
-  const auto bounds = make_path_bounds(points, limits, velocity_limit);
   std::vector<geometry_msgs::msg::Pose> original_poses;
   original_poses.reserve(count);
+  std::optional<double> input_stop_s;
+  double input_path_s = 0.0;
+  for (std::size_t i = 1; i < count; ++i) {
+    const auto & p0 = points[i - 1].pose.position;
+    const auto & p1 = points[i].pose.position;
+    input_path_s += std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+    if (
+      !input_stop_s && i + 1 < count &&
+      points[i - 1].longitudinal_velocity_mps > k_fixed_profile_stop_velocity_threshold_mps &&
+      points[i].longitudinal_velocity_mps <= k_fixed_profile_stop_velocity_threshold_mps) {
+      input_stop_s = input_path_s;
+    }
+  }
+  const bool has_zero_limit = std::any_of(limits.begin(), limits.end(), [](const double limit) {
+    return limit <= k_fixed_profile_stop_velocity_threshold_mps;
+  });
   for (const auto & point : points) {
     original_poses.push_back(point.pose);
   }
+  // Build the proposed profile separately. An infeasible stop or horizon must leave the plugin
+  // input byte-for-byte unchanged when the limit is skipped.
+  auto output = points;
   LimitedProfileSimulation simulation(bounds, constraints, initial);
   double time = 0.0;
   for (std::size_t i = 0; i < count; ++i) {
@@ -528,11 +621,35 @@ VelocityLimitResult apply_velocity_limits(
       simulation.advance(dt);
       time += dt;
     }
-    points[i].longitudinal_velocity_mps = static_cast<float>(simulation.state().velocity);
-    points[i].acceleration_mps2 = static_cast<float>(simulation.state().acceleration);
+    output[i].longitudinal_velocity_mps = static_cast<float>(simulation.state().velocity);
+    output[i].acceleration_mps2 = static_cast<float>(simulation.state().acceleration);
   }
 
-  resample_poses(points, original_poses, times);
+  const auto valid_count = resample_poses(output, original_poses, times);
+  double planned_travel = 0.0;
+  for (std::size_t i = 1; i < count; ++i) {
+    planned_travel +=
+      0.5 * (output[i - 1].longitudinal_velocity_mps + output[i].longitudinal_velocity_mps) *
+      (times[i] - times[i - 1]);
+  }
+  const bool missed_input_stop = input_stop_s && planned_travel > *input_stop_s + 0.1;
+  if (
+    missed_input_stop ||
+    (valid_count < count && (input_stop_s || has_zero_limit || valid_count < 3))) {
+    // The requested profile does not fit the available input geometry. Do not publish any part
+    // of it; the input's stop and horizon are owned by the upstream planner.
+    return {
+      ProcessingResult::Unchanged,
+      "Velocity profile needs " + std::to_string(planned_travel) + " m but the input has " +
+        std::to_string(input_stop_s.value_or(input_path_s)) +
+        (input_stop_s ? " m to its stop" : " m of path") + "; leaving input unchanged"};
+  }
+  if (valid_count < count) {
+    output.resize(valid_count);
+    points.swap(output);
+    return {ProcessingResult::Modified, "Velocity profile truncated at the input path horizon"};
+  }
+  points.swap(output);
   return {ProcessingResult::Modified, {}};
 }
 
@@ -599,6 +716,56 @@ std::optional<PlanSample> sample_plan(const TrajectoryPoints & plan, const doubl
   return std::nullopt;
 }
 
+/// @brief Whether the input asks for a velocity lower than a plan by more than `margin`, `elapsed`
+/// seconds after the ego state the plan was planned from. Each input point is compared with the
+/// plan where it projects onto the plan polyline, searching forward from the plan segment at
+/// `elapsed`. Input points beyond the plan are ignored, as is the last input point (horizon end,
+/// not a stop).
+bool input_below_plan(
+  const TrajectoryPoints & plan, const double elapsed, const TrajectoryPoints & input,
+  const double margin)
+{
+  if (plan.size() < 2) {
+    return false;
+  }
+  std::size_t segment = 0;
+  while (segment + 2 < plan.size() &&
+         rclcpp::Duration(plan[segment + 1].time_from_start).seconds() <= elapsed) {
+    ++segment;
+  }
+  // Ratio of the projection along a segment; a segment without length (stopped plan) is skipped.
+  const auto project = [&plan](const std::size_t index, const geometry_msgs::msg::Point & point) {
+    const auto & p0 = plan[index].pose.position;
+    const auto & p1 = plan[index + 1].pose.position;
+    const double dx = p1.x - p0.x;
+    const double dy = p1.y - p0.y;
+    const double dz = p1.z - p0.z;
+    const double squared_length = dx * dx + dy * dy + dz * dz;
+    return squared_length > 1e-12
+             ? ((point.x - p0.x) * dx + (point.y - p0.y) * dy + (point.z - p0.z) * dz) /
+                 squared_length
+             : std::numeric_limits<double>::infinity();
+  };
+  for (std::size_t i = 0; i + 1 < input.size(); ++i) {
+    const auto & position = input[i].pose.position;
+    double ratio = project(segment, position);
+    while (ratio > 1.0 && segment + 2 < plan.size()) {
+      ++segment;
+      ratio = project(segment, position);
+    }
+    if (ratio > 1.0) {
+      return false;  // This input point and the following ones are beyond the plan.
+    }
+    const double planned = autoware::interpolation::lerp(
+      static_cast<double>(plan[segment].longitudinal_velocity_mps),
+      static_cast<double>(plan[segment + 1].longitudinal_velocity_mps), std::max(0.0, ratio));
+    if (input[i].longitudinal_velocity_mps < planned - margin) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// @brief Measurement time of the ego state of a plugin input; none when unset.
 std::optional<double> measurement_time(const TrajectoryModifierData & data)
 {
@@ -618,7 +785,34 @@ bool operator==(const FixedProfileParameters & lhs, const FixedProfileParameters
   return lhs.enable == rhs.enable && lhs.reset_velocity_deviation == rhs.reset_velocity_deviation &&
          lhs.reset_acceleration_deviation == rhs.reset_acceleration_deviation &&
          lhs.reset_distance_deviation == rhs.reset_distance_deviation &&
-         lhs.reset_time_gap == rhs.reset_time_gap;
+         lhs.reset_time_gap == rhs.reset_time_gap &&
+         lhs.reset_on_new_stop == rhs.reset_on_new_stop &&
+         lhs.new_stop_match_distance == rhs.new_stop_match_distance &&
+         lhs.reset_on_lower_input == rhs.reset_on_lower_input &&
+         lhs.lower_input_velocity_margin == rhs.lower_input_velocity_margin;
+}
+
+FixedProfileStopState make_fixed_profile_stop_state(
+  const TrajectoryPoints & input, const bool zero_speed_limit)
+{
+  FixedProfileStopState state;
+  state.zero_speed_limit = zero_speed_limit;
+  // A zero only at the horizon end is not a stop in apply_velocity_limits().
+  for (std::size_t i = 0; i + 1 < input.size(); ++i) {
+    const double velocity = input[i].longitudinal_velocity_mps;
+    const bool stopped =
+      std::isfinite(velocity) && std::abs(velocity) <= k_fixed_profile_stop_velocity_threshold_mps;
+    const bool previous_stopped = i > 0 && std::isfinite(input[i - 1].longitudinal_velocity_mps) &&
+                                  std::abs(input[i - 1].longitudinal_velocity_mps) <=
+                                    k_fixed_profile_stop_velocity_threshold_mps;
+    const auto & position = input[i].pose.position;
+    if (
+      stopped && !previous_stopped && std::isfinite(position.x) && std::isfinite(position.y) &&
+      std::isfinite(position.z)) {
+      state.input_stops.push_back(input[i].pose.position);
+    }
+  }
+  return state;
 }
 
 VelocityLimitConstraints make_velocity_limit_constraints(const TrajectoryModifierParams & params)
@@ -632,8 +826,15 @@ FixedProfileParameters make_fixed_profile_parameters(const TrajectoryModifierPar
 {
   const auto & fixed = params.velocity_limits.fixed_profile;
   return {
-    fixed.enable, fixed.reset_velocity_deviation, fixed.reset_acceleration_deviation,
-    fixed.reset_distance_deviation, fixed.reset_time_gap};
+    fixed.enable,
+    fixed.reset_velocity_deviation,
+    fixed.reset_acceleration_deviation,
+    fixed.reset_distance_deviation,
+    fixed.reset_time_gap,
+    fixed.reset_on_new_stop,
+    fixed.new_stop_match_distance,
+    fixed.reset_on_lower_input,
+    fixed.lower_input_velocity_margin};
 }
 
 const char * to_string(const ProfileStart start)
@@ -653,6 +854,10 @@ const char * to_string(const ProfileStart start)
       return "reset_acceleration";
     case ProfileStart::ResetDistance:
       return "reset_distance";
+    case ProfileStart::ResetNewStop:
+      return "reset_new_stop";
+    case ProfileStart::ResetLowerInput:
+      return "reset_lower_input";
   }
   return "unknown";
 }
@@ -660,7 +865,8 @@ const char * to_string(const ProfileStart start)
 bool is_reset(const ProfileStart start)
 {
   return start == ProfileStart::ResetTimeGap || start == ProfileStart::ResetVelocity ||
-         start == ProfileStart::ResetAcceleration || start == ProfileStart::ResetDistance;
+         start == ProfileStart::ResetAcceleration || start == ProfileStart::ResetDistance ||
+         start == ProfileStart::ResetNewStop || start == ProfileStart::ResetLowerInput;
 }
 
 void FixedProfileMemory::set_parameters(const FixedProfileParameters & parameters)
@@ -673,7 +879,8 @@ void FixedProfileMemory::set_parameters(const FixedProfileParameters & parameter
 
 ProfileStartResult FixedProfileMemory::start(
   const std::size_t candidate, const std::optional<double> & time,
-  const geometry_msgs::msg::Point & position, const VelocityLimitOptions & measured) const
+  const geometry_msgs::msg::Point & position, const VelocityLimitOptions & measured,
+  const FixedProfileStopState & stop_state, const TrajectoryPoints & input) const
 {
   if (!parameters_.enable) {
     return {measured, ProfileStart::Measured};
@@ -688,6 +895,14 @@ ProfileStartResult FixedProfileMemory::start(
                         : std::nullopt;
   if (!sample) {
     return {measured, ProfileStart::ResetTimeGap};
+  }
+  // A stopped previous plan is not a valid starting state while the ego is still creeping.
+  // The ordinary 0.5 m/s tracking tolerance would otherwise keep publishing an all-zero plan.
+  if (
+    stop_state.zero_speed_limit && measured.current_ego_velocity &&
+    sample->velocity <= k_fixed_profile_stop_velocity_threshold_mps &&
+    *measured.current_ego_velocity > k_fixed_profile_stop_velocity_threshold_mps) {
+    return {measured, ProfileStart::ResetVelocity};
   }
   if (
     measured.current_ego_velocity && std::abs(*measured.current_ego_velocity - sample->velocity) >
@@ -706,13 +921,33 @@ ProfileStartResult FixedProfileMemory::start(
   if (distance > parameters_.reset_distance_deviation) {
     return {measured, ProfileStart::ResetDistance};
   }
+  if (parameters_.reset_on_new_stop) {
+    const auto & previous_stops = previous.stop_state.input_stops;
+    const bool new_input_stop = std::any_of(
+      stop_state.input_stops.begin(), stop_state.input_stops.end(), [&](const auto & stop) {
+        return std::none_of(previous_stops.begin(), previous_stops.end(), [&](const auto & prior) {
+          return std::hypot(stop.x - prior.x, stop.y - prior.y, stop.z - prior.z) <=
+                 parameters_.new_stop_match_distance;
+        });
+      });
+    if (new_input_stop || (stop_state.zero_speed_limit && !previous.stop_state.zero_speed_limit)) {
+      return {measured, ProfileStart::ResetNewStop};
+    }
+  }
+  if (
+    parameters_.reset_on_lower_input &&
+    input_below_plan(previous.points, elapsed, input, parameters_.lower_input_velocity_margin)) {
+    return {measured, ProfileStart::ResetLowerInput};
+  }
   VelocityLimitOptions options;
   options.current_ego_velocity = sample->velocity;
   options.current_ego_acceleration = sample->acceleration;
   return {options, ProfileStart::PreviousPlan};
 }
 
-ProfileStartResult FixedProfileMemory::start(const TrajectoryModifierData & data) const
+ProfileStartResult FixedProfileMemory::start(
+  const TrajectoryModifierData & data, const FixedProfileStopState & stop_state,
+  const TrajectoryPoints & input) const
 {
   const auto measured = make_velocity_limit_options(data);
   if (!data.current_odometry) {
@@ -720,25 +955,28 @@ ProfileStartResult FixedProfileMemory::start(const TrajectoryModifierData & data
   }
   return start(
     data.candidate_index, measurement_time(data), data.current_odometry->pose.pose.position,
-    measured);
+    measured, stop_state, input);
 }
 
 void FixedProfileMemory::store(
   const std::size_t candidate, const std::size_t candidate_count,
-  const std::optional<double> & time, const TrajectoryPoints & plan)
+  const std::optional<double> & time, const TrajectoryPoints & plan,
+  const FixedProfileStopState & stop_state)
 {
   // Candidates beyond the current count belong to an earlier batch.
   plans_.resize(std::max(candidate_count, candidate + 1));
   if (time && !plan.empty() && parameters_.enable) {
-    plans_[candidate] = Plan{*time, plan};
+    plans_[candidate] = Plan{*time, plan, stop_state};
   } else {
     plans_[candidate].reset();
   }
 }
 
-void FixedProfileMemory::store(const TrajectoryModifierData & data, const TrajectoryPoints & plan)
+void FixedProfileMemory::store(
+  const TrajectoryModifierData & data, const TrajectoryPoints & plan,
+  const FixedProfileStopState & stop_state)
 {
-  store(data.candidate_index, data.candidate_count, measurement_time(data), plan);
+  store(data.candidate_index, data.candidate_count, measurement_time(data), plan, stop_state);
 }
 
 void FixedProfileMemory::clear()

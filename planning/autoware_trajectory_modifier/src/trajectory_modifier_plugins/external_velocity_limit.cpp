@@ -51,12 +51,11 @@ double get_external_velocity_limit_min_jerk(
 void ExternalVelocityLimit::on_initialize(const TrajectoryModifierParams & params)
 {
   update_params(params);
-  velocity_limit_sub_ =
-    std::make_shared<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>(
-      get_node_ptr(), "~/input/external_velocity_limit_mps", rclcpp::QoS{1});
   profile_reset_pub_ =
     get_node_ptr()->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
       "~/debug/velocity_profile_reset", rclcpp::QoS{10}.reliable().durability_volatile());
+  debug_trajectory_pub_ = get_node_ptr()->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+    "~/debug/external_velocity_limit/trajectory", rclcpp::QoS{1});
 }
 
 void ExternalVelocityLimit::update_params(const TrajectoryModifierParams & params)
@@ -73,15 +72,28 @@ ProcessingResult ExternalVelocityLimit::process(
   TrajectoryPoints & traj_points, TrajectoryModifierData & input)
 {
   last_profile_start_ = detail::ProfileStart::Measured;
+  if (!input.has_external_velocity_limit_snapshot) {
+    context_->refresh_external_velocity_limit();
+  }
+  const auto clear_revision = input.has_external_velocity_limit_snapshot
+                                ? input.external_velocity_limit_clear_revision
+                                : context_->external_velocity_limit.clear_revision();
+  if (last_clear_revision_ != clear_revision) {
+    fixed_profile_.clear();
+    last_clear_revision_ = clear_revision;
+  }
   if (!enabled_ || traj_points.empty() || !input.current_odometry) {
+    publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
     return ProcessingResult::Unchanged;
   }
 
-  const auto velocity_limit = velocity_limit_sub_->take_data();
-  if (
-    !velocity_limit || !std::isfinite(velocity_limit->max_velocity) ||
-    velocity_limit->max_velocity < 0.0F) {
-    fixed_profile_.store(input, traj_points);
+  auto stop_state = detail::make_fixed_profile_stop_state(traj_points);
+  const auto velocity_limit = input.has_external_velocity_limit_snapshot
+                                ? input.external_velocity_limit
+                                : context_->external_velocity_limit.active_limit();
+  if (!velocity_limit) {
+    fixed_profile_.clear();
+    publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
     return ProcessingResult::Unchanged;
   }
 
@@ -91,7 +103,8 @@ ProcessingResult ExternalVelocityLimit::process(
   constraints.max_jerk =
     detail::get_external_velocity_limit_min_jerk(*velocity_limit, constraints_.max_jerk);
   const double max_velocity = velocity_limit->max_velocity;
-  const auto start = fixed_profile_.start(input);
+  stop_state.zero_speed_limit = max_velocity <= detail::k_fixed_profile_stop_velocity_threshold_mps;
+  const auto start = fixed_profile_.start(input, stop_state, traj_points);
   last_profile_start_ = start.start;
   if (detail::is_reset(start.start)) {
     RCLCPP_DEBUG(
@@ -109,7 +122,19 @@ ProcessingResult ExternalVelocityLimit::process(
       return std::optional<double>{max_velocity};
     },
     start.options);
-  fixed_profile_.store(input, traj_points);
+  if (!result.error.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 1000, "%s: candidate %zu: %s",
+      get_short_name().c_str(), input.candidate_index, result.error.c_str());
+  }
+  // An unchanged result with a diagnostic rejected the proposed profile. Forget the previous
+  // plan so the next cycle starts from the measured state instead of reusing an invalid one.
+  if (result.status == ProcessingResult::Unchanged && !result.error.empty()) {
+    fixed_profile_.store(input, TrajectoryPoints{}, stop_state);
+  } else {
+    fixed_profile_.store(input, traj_points, stop_state);
+  }
+  publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
   return result.status;
 }
 
