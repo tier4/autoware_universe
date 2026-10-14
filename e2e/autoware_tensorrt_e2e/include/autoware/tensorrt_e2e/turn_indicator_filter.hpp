@@ -44,8 +44,8 @@ public:
 
   struct Params
   {
-    double min_probability{0.6};
-    int confirm_cycles{3};
+    double min_probability{0.7};
+    int confirm_cycles{1};
     double hold_s{1.0};
   };
 

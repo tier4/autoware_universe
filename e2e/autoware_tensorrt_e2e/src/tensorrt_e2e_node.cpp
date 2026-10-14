@@ -356,9 +356,9 @@ void TensorrtE2eNode::set_up_params()
   // The thresholds are deployment behaviour, so they live in e2e_planner.param.yaml.
   turn_indicator_tensor_ = declare_parameter<std::string>("postprocess.turn_indicator.tensor", "");
   turn_indicator_params_.min_probability =
-    declare_parameter<double>("postprocess.turn_indicator.min_probability", 0.6);
+    declare_parameter<double>("postprocess.turn_indicator.min_probability", 0.7);
   turn_indicator_params_.confirm_cycles =
-    static_cast<int>(declare_parameter<int64_t>("postprocess.turn_indicator.confirm_cycles", 3));
+    static_cast<int>(declare_parameter<int64_t>("postprocess.turn_indicator.confirm_cycles", 1));
   turn_indicator_params_.hold_s =
     declare_parameter<double>("postprocess.turn_indicator.hold_s", 1.0);
 

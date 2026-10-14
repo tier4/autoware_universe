@@ -518,13 +518,13 @@
                   "description": "A new state needs at least this softmax probability.",
                   "minimum": 0.0,
                   "maximum": 1.0,
-                  "default": 0.6
+                  "default": 0.7
                 },
                 "confirm_cycles": {
                   "type": "integer",
                   "description": "Consecutive cycles a new state must lead before the command changes.",
                   "minimum": 1,
-                  "default": 3
+                  "default": 1
                 },
                 "hold_s": {
                   "type": "number",
