@@ -63,15 +63,21 @@ double jerk_limited_braking_distance(
 /// The callback resolves the limit at a position: one external limit everywhere, or spatially
 /// varying map limits. When any point exceeds its limit, the profile is regenerated from the ego
 /// state (the first point when no ego state is given) by a forward simulation that never violates
-/// the constraints. At every arc length it stays at or below the input velocity and the limit,
-/// except where reaching them in time would violate the constraints; such a limit is exceeded
-/// temporarily. Braking for a lower limit ahead starts when 95% of the deceleration limit is needed
-/// to reach it where it begins, and the profile does not accelerate above the lowest limit ahead.
-/// Limit changes between input points are located by querying the callback. A velocity
-/// drop at the last input point is ignored, since planners commonly end their horizon with a zero
-/// velocity that is not a stop. A measured acceleration outside the constraints is clamped into
-/// them. The first pose, the point count and every timestamp are kept, and the other poses are
-/// re-sampled along the input polyline to match the new profile.
+/// the acceleration and jerk limits. The deceleration limit bounds the braking for the limits; the
+/// input's own braking is kept even where it is harder, so the profile never brakes harder than
+/// the deceleration limit except as hard as the input does. At every arc length the profile stays
+/// at or below the input velocity and the limit, except where reaching them in time would violate
+/// these constraints: then it is temporarily above them. Braking for a lower limit or input
+/// velocity ahead starts when 95% of the deceleration limit is needed to reach it where it begins,
+/// and the braking for an input velocity that cannot be reached that way may be as hard as the
+/// input's braking before it. Braking that follows the input is released early enough to settle
+/// on the input instead of falling below it. The profile does not accelerate above the lowest
+/// limit ahead. Limit changes between input points are located by querying the callback. A
+/// velocity drop at the last input point is ignored, since planners commonly end their horizon
+/// with a zero velocity that is not a stop. A measured acceleration outside the constraints, or
+/// braking harder than the input at its start, is clamped into them. The first pose, the point
+/// count and every timestamp are kept, and the other poses are re-sampled along the input polyline
+/// to match the new profile.
 VelocityLimitResult apply_velocity_limits(
   TrajectoryPoints & points, const VelocityLimitConstraints & constraints,
   const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit,

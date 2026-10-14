@@ -210,7 +210,9 @@ PathBounds make_path_bounds(
 /// @brief Forward simulation of the limited profile. Each step follows the input and the limit at
 /// the current position and, for each local minimum of the bounds ahead, starts braking at the
 /// latest step that still reaches it with the deceleration and jerk limits. A triggered minimum
-/// stays latched until it is passed.
+/// stays latched until it is passed. The deceleration limit only bounds the braking for the
+/// limits: following the input, the profile brakes as hard as the input does. The jerk limit
+/// always holds.
 class LimitedProfileSimulation
 {
 public:
@@ -228,6 +230,13 @@ public:
     while (segment_ + 1 < bounds_.size() && bounds_.s[segment_ + 1] <= state_.s) {
       ++segment_;
     }
+    // The hardest input braking stays allowed until the profile stops braking, so that following
+    // it does not weaken past the input braking (e.g. after a stop that the jerk limit overshoots).
+    const double input_deceleration =
+      std::max(constraints_.max_deceleration, -bounds_.input_acceleration[segment_]);
+    input_deceleration_ = state_.acceleration < k_decelerating
+                            ? std::max(input_deceleration_, input_deceleration)
+                            : input_deceleration;
     double command = local_command();
     const auto predicted = step(command, dt);
     command = std::min(command, lookahead_command(predicted));
@@ -236,12 +245,16 @@ public:
 
 private:
   /// @brief Brake above the bounds at the current position, hold between them and the lowest
-  /// limit ahead, and accelerate below it.
+  /// limit ahead, and accelerate below it. Following the input brakes as hard as the input does
+  /// when that exceeds the deceleration limit.
   [[nodiscard]] double local_command() const
   {
-    return std::clamp(
-      std::min(input_command(), limit_command()), -constraints_.max_deceleration,
+    const double input = std::clamp(
+      std::max(input_command(), release_command()), -input_deceleration_,
       constraints_.max_acceleration);
+    const double limit =
+      std::clamp(limit_command(), -constraints_.max_deceleration, constraints_.max_acceleration);
+    return std::min(input, limit);
   }
 
   /// @brief Follow the input velocity at the current position, with its acceleration as
@@ -254,6 +267,35 @@ private:
     const double velocity =
       state_.velocity + relative * std::abs(relative) / (2.0 * constraints_.max_jerk);
     return acceleration + k_tracking_gain * (bounds_.input_at(state_.s, segment_) - velocity);
+  }
+
+  /// @brief Where the input braking ends before a release of the braking with the jerk limit
+  /// would complete, land on the lowest input velocity until then instead of following the input
+  /// braking to its end and falling below the input while releasing. None otherwise.
+  [[nodiscard]] double release_command() const
+  {
+    constexpr double none = -std::numeric_limits<double>::infinity();
+    if (state_.acceleration >= 0.0) {
+      return none;
+    }
+    const double jerk = constraints_.max_jerk;
+    const double velocity = release_velocity(state_.velocity, state_.acceleration, jerk);
+    const double duration = -state_.acceleration / jerk;
+    // The ego stops before the release completes when the release velocity is negative.
+    const double end =
+      velocity > 0.0 ? integrate(state_, jerk, duration).s : state_.s + state_.velocity * duration;
+    std::size_t node = segment_;
+    double lowest = bounds_.input_at(state_.s, node);
+    while (node + 1 < bounds_.size() && bounds_.s[node + 1] <= end) {
+      ++node;
+      lowest = std::min(lowest, bounds_.input[node]);
+    }
+    // While the input keeps braking past the release, following it leads the release.
+    if (bounds_.input_acceleration[node] < k_decelerating) {
+      return none;
+    }
+    lowest = std::min(lowest, bounds_.input_at(end, node));
+    return k_tracking_gain * (lowest - velocity);
   }
 
   /// @brief Brake above the limit at the current position, do not accelerate above the lowest
@@ -270,7 +312,9 @@ private:
     return velocity >= ceiling ? 0.0 : k_tracking_gain * (ceiling - velocity);
   }
 
-  /// @brief Lowest braking command of the bounds ahead that require braking now.
+  /// @brief Lowest braking command of the bounds ahead that require braking now. Braking starts
+  /// as if limited by the deceleration limit; when that is not enough to reach a bound set by the
+  /// input, the braking may be as hard as the input's own braking before that bound.
   [[nodiscard]] double lookahead_command(const LongitudinalState & predicted)
   {
     const auto braking_distance = [this, &predicted](
@@ -284,7 +328,9 @@ private:
     const double reach = braking_distance(0.0, constraints_.max_deceleration) + k_braking_margin;
     double command = std::numeric_limits<double>::infinity();
     double lowest = std::numeric_limits<double>::infinity();
+    double input_deceleration = input_deceleration_;  // Hardest input braking up to j.
     for (std::size_t j = segment_ + 1; j < bounds_.size(); ++j) {
+      input_deceleration = std::max(input_deceleration, -bounds_.input_acceleration[j - 1]);
       if (!bounds_.local_minimum[j] && !latched_[j]) {
         continue;
       }
@@ -306,28 +352,35 @@ private:
         latched_[j] = 1;
       }
       lowest = std::min(lowest, cap);
-      command = std::min(command, braking_command(j));
+      const bool input_bound = bounds_.input[j] <= bounds_.limit[j];
+      command = std::min(
+        command,
+        braking_command(j, input_bound ? input_deceleration : constraints_.max_deceleration));
     }
     return command;
   }
 
-  /// @brief Decelerate as much as needed to reach a bound where it begins, then release onto it.
-  [[nodiscard]] double braking_command(const std::size_t index) const
+  /// @brief Decelerate as much as needed, up to `max_deceleration`, to reach a bound where it
+  /// begins, then release onto it.
+  [[nodiscard]] double braking_command(const std::size_t index, const double max_deceleration) const
   {
     const double target = bounds_.cap(index);
     const double available = bounds_.s[index] - state_.s - k_braking_margin;
-    return std::max(-required_deceleration(target, available), landing_command(target));
+    return std::max(
+      -required_deceleration(target, available, max_deceleration),
+      landing_command(target, max_deceleration));
   }
 
-  /// @brief Smallest deceleration, up to the limit, whose jerk-limited braking profile from the
-  /// current state reaches the target within the available distance.
-  [[nodiscard]] double required_deceleration(const double target, const double available) const
+  /// @brief Smallest deceleration, up to `max_deceleration`, whose jerk-limited braking profile
+  /// from the current state reaches the target within the available distance.
+  [[nodiscard]] double required_deceleration(
+    const double target, const double available, const double max_deceleration) const
   {
     const auto distance = [this, target](const double deceleration) {
       return jerk_limited_braking_distance(
         state_.velocity, state_.acceleration, target, deceleration, constraints_.max_jerk);
     };
-    double high = constraints_.max_deceleration;
+    double high = max_deceleration;
     if (available <= 0.0 || distance(high) >= available) {
       return high;
     }
@@ -347,12 +400,13 @@ private:
       [](const std::uint8_t latched) { return latched != 0; });
   }
 
-  /// @brief Brake toward a target and release so that the acceleration reaches zero there.
-  [[nodiscard]] double landing_command(const double target) const
+  /// @brief Brake toward a target, up to `max_deceleration`, and release so that the acceleration
+  /// reaches zero there.
+  [[nodiscard]] double landing_command(const double target, const double max_deceleration) const
   {
     const double velocity =
       release_velocity(state_.velocity, state_.acceleration, constraints_.max_jerk);
-    return std::clamp(k_tracking_gain * (target - velocity), -constraints_.max_deceleration, 0.0);
+    return std::clamp(k_tracking_gain * (target - velocity), -max_deceleration, 0.0);
   }
 
   /// @brief State after one step toward the commanded acceleration under the jerk limit.
@@ -374,6 +428,7 @@ private:
   LongitudinalState state_;
   std::vector<std::uint8_t> latched_;
   std::size_t segment_{0};
+  double input_deceleration_{constraints_.max_deceleration};  ///< Allowed to follow the input.
 };
 
 /// @brief Move every pose but the first along the input polyline to match the new velocities.
@@ -499,22 +554,23 @@ VelocityLimitResult apply_velocity_limits(
     return {ProcessingResult::Unchanged, {}};
   }
 
+  const auto bounds = make_path_bounds(points, limits, velocity_limit);
   LongitudinalState initial;
   initial.velocity = std::max(
     0.0, options.current_ego_velocity && std::isfinite(*options.current_ego_velocity)
            ? *options.current_ego_velocity
            : static_cast<double>(points.front().longitudinal_velocity_mps));
   // A measured acceleration outside the limits (e.g. noise) is clamped so that the profile never
-  // violates them.
+  // violates them. Braking as hard as the input at its start is kept.
+  const double initial_deceleration =
+    std::max(constraints.max_deceleration, -bounds.input_acceleration.front());
   initial.acceleration =
     options.current_ego_acceleration.value_or(points.front().acceleration_mps2);
   initial.acceleration =
     std::isfinite(initial.acceleration)
-      ? std::clamp(
-          initial.acceleration, -constraints.max_deceleration, constraints.max_acceleration)
+      ? std::clamp(initial.acceleration, -initial_deceleration, constraints.max_acceleration)
       : 0.0;
 
-  const auto bounds = make_path_bounds(points, limits, velocity_limit);
   std::vector<geometry_msgs::msg::Pose> original_poses;
   original_poses.reserve(count);
   for (const auto & point : points) {

@@ -92,13 +92,15 @@ VelocityLimitOptions make_options(const double velocity, const double accelerati
   return options;
 }
 
-void expect_within_constraints(const TrajectoryPoints & points, const double initial_acceleration)
+void expect_within_constraints(
+  const TrajectoryPoints & points, const double initial_acceleration,
+  const double max_deceleration = constraints.max_deceleration)
 {
   constexpr double tolerance = 1e-4;
   double previous = initial_acceleration;
   for (std::size_t i = 0; i < points.size(); ++i) {
     const double acceleration = points[i].acceleration_mps2;
-    EXPECT_GE(acceleration, -constraints.max_deceleration - tolerance) << i;
+    EXPECT_GE(acceleration, -max_deceleration - tolerance) << i;
     EXPECT_LE(acceleration, constraints.max_acceleration + tolerance) << i;
     EXPECT_LE(std::abs(acceleration - previous), constraints.max_jerk * dt + tolerance) << i;
     EXPECT_GE(points[i].longitudinal_velocity_mps, 0.0F) << i;
@@ -229,6 +231,92 @@ TEST(VelocityLimits, AnticipatesSteeperUpstreamStop)
   }
   EXPECT_LE(points.back().pose.position.x, stop_x + 0.1);
   EXPECT_NEAR(points.back().longitudinal_velocity_mps, 0.0, 0.05);
+}
+
+double min_acceleration(const TrajectoryPoints & points)
+{
+  return std::min_element(
+           points.begin(), points.end(),
+           [](const auto & lhs, const auto & rhs) {
+             return lhs.acceleration_mps2 < rhs.acceleration_mps2;
+           })
+    ->acceleration_mps2;
+}
+
+/// @brief Distance travelled at the velocities of the points, regardless of their poses.
+double travelled_distance(const TrajectoryPoints & points)
+{
+  double distance = 0.0;
+  for (std::size_t i = 1; i < points.size(); ++i) {
+    distance +=
+      0.5 * (points[i - 1].longitudinal_velocity_mps + points[i].longitudinal_velocity_mps) * dt;
+  }
+  return distance;
+}
+
+TEST(VelocityLimits, BrakesAsHardAsAnInputStopTooCloseForTheDecelerationLimit)
+{
+  // The input stops at 2 m/s^2 from 6 m/s, within 9 m; at 1 m/s^2 the ego would need 19 m.
+  auto points = make_trajectory(60, [](const double t) { return std::max(0.0, 6.0 - 2.0 * t); });
+  const auto result = apply_velocity_limits(
+    points, constraints,
+    [](const geometry_msgs::msg::Point &) { return std::optional<double>{5.0}; },
+    make_options(6.0, 0.0));
+
+  ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
+  // As hard as the input, never harder, and still within the jerk limit.
+  expect_within_constraints(points, 0.0, 2.0);
+  EXPECT_LT(min_acceleration(points), -1.9);
+  // Only the jerk limit delays the stop (11 m), which the deceleration limit would delay to 19 m.
+  EXPECT_LE(
+    travelled_distance(points), jerk_limited_braking_distance(6.0, 0.0, 0.0, 2.0, 3.0) + 0.5);
+  EXPECT_NEAR(points.back().longitudinal_velocity_mps, 0.0, 0.05);
+}
+
+TEST(VelocityLimits, SettlesOnTheInputWhereItsHarderBrakingEnds)
+{
+  // The input ramps up to a 2 m/s^2 braking with the jerk limit, then holds 4 m/s from t = 4.4 s.
+  constexpr double ramp = 2.0 / 3.0;
+  auto points = make_trajectory(100, [](const double t) {
+    return t <= ramp ? 12.0 - 1.5 * t * t
+                     : std::max(4.0, 12.0 - 1.5 * ramp * ramp - 2.0 * (t - ramp));
+  });
+  const auto input = points;
+  const auto result = apply_velocity_limits(
+    points, constraints,
+    [](const geometry_msgs::msg::Point &) { return std::optional<double>{11.5}; },
+    make_options(12.0, 0.0));
+
+  ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
+  expect_within_constraints(points, 0.0, 2.0);
+  EXPECT_LT(min_acceleration(points), -1.9);
+  // Releasing early keeps the profile from falling below 4 m/s; releasing at the end of the input
+  // braking would undershoot by 2^2 / (2 * 3) = 0.67 m/s. Releasing early is above the input near
+  // the end of its braking instead, by 2^2 / (8 * 3) = 0.17 m/s plus the early landing start.
+  for (std::size_t i = 0; i + 1 < points.size(); ++i) {
+    EXPECT_GE(points[i].longitudinal_velocity_mps, 4.0 - 0.05) << i;
+    EXPECT_LE(
+      points[i].longitudinal_velocity_mps, velocity_at_x(input, points[i].pose.position.x) + 0.35)
+      << i;
+  }
+  EXPECT_NEAR(points.back().longitudinal_velocity_mps, 4.0, 0.05);
+}
+
+TEST(VelocityLimits, KeepsTheEgoBrakingAsHardAsTheInputAtItsStart)
+{
+  const auto braking = [](const double t) { return std::max(4.0, 10.0 - 2.0 * t); };
+  const auto limit = [](const geometry_msgs::msg::Point &) { return std::optional<double>{9.5}; };
+
+  auto points = make_trajectory(60, braking);
+  ASSERT_EQ(
+    apply_velocity_limits(points, constraints, limit, make_options(10.0, -2.0)).status,
+    ProcessingResult::Modified);
+  EXPECT_NEAR(points.front().acceleration_mps2, -2.0, 1e-3);
+
+  // Braking harder than the input is measurement noise.
+  points = make_trajectory(60, braking);
+  apply_velocity_limits(points, constraints, limit, make_options(10.0, -3.0));
+  EXPECT_NEAR(points.front().acceleration_mps2, -2.0, 1e-3);
 }
 
 }  // namespace
