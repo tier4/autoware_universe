@@ -269,6 +269,8 @@ TEST(VehicleConstraintFilterTest, HighCautionWhenNearestTrajectoryPointExceedsLa
   params.trajectory_feasibility.max_deceleration = 10.0;
   params.trajectory_feasibility.max_steering_angle = 1.0;
   params.trajectory_feasibility.max_steering_rate = 1.0;
+  params.trajectory_feasibility.speed_limit_tolerance.speed_limits_kmph = {10.0};
+  params.trajectory_feasibility.speed_limit_tolerance.tolerances_kmph = {0.0};
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
@@ -769,6 +771,160 @@ TEST(IsLaneletSpeedLimitOkTest, FalseWhenSpeedAboveRoadLimitAndACrosswalkIsNeare
 
   EXPECT_DOUBLE_EQ(observed_speed, 15.0);
   EXPECT_FALSE(is_ok);
+}
+
+TEST(CalcSpeedLimitToleranceMpsTest, InterpolatesAndClampsTheTable)
+{
+  const std::vector<double> speed_limits_kmph = {10.0, 20.0, 30.0, 40.0};
+  const std::vector<double> tolerances_kmph = {1.0, 2.0, 3.0, 5.0};
+  const auto calc = [&](const double speed_limit_kmph) {
+    return calc_speed_limit_tolerance_mps(
+             speed_limit_kmph / 3.6, speed_limits_kmph, tolerances_kmph) *
+           3.6;
+  };
+
+  EXPECT_NEAR(calc(5.0), 1.0, 1e-9);  // clamped below the table
+  EXPECT_NEAR(calc(10.0), 1.0, 1e-9);
+  EXPECT_NEAR(calc(25.0), 2.5, 1e-9);
+  EXPECT_NEAR(calc(35.0), 4.0, 1e-9);
+  EXPECT_NEAR(calc(60.0), 5.0, 1e-9);  // clamped above the table
+}
+
+TEST(CalcSpeedLimitToleranceMpsTest, ZeroWhenTableIsInvalid)
+{
+  EXPECT_DOUBLE_EQ(calc_speed_limit_tolerance_mps(5.0, {}, {}), 0.0);
+  EXPECT_DOUBLE_EQ(calc_speed_limit_tolerance_mps(5.0, {10.0, 20.0}, {1.0}), 0.0);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenOvershootIsWithinSpeedTolerance)
+{
+  // The 30 km/h limit has a 3 km/h tolerance, so up to 33 km/h (9.17 m/s) is allowed.
+  const auto traj_points = create_straight_trajectory(9.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_lanelet_map_with_speed_limit(speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context, 3.0 / 3.6);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 9.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, FalseWhenOvershootIsAboveSpeedTolerance)
+{
+  const auto traj_points = create_straight_trajectory(9.5);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_lanelet_map_with_speed_limit(speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context, 3.0 / 3.6);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 9.5);
+  EXPECT_FALSE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenSpeedIsBelowTransitionSpeed)
+{
+  const auto traj_points = create_straight_trajectory(10.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_lanelet_map_with_speed_limit(speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context, 0.0, 10.0);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 10.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(TrajectoryFeasibilityFilterTest, LaneletSpeedLimitAllowsDecelerationAfterSpeedLimitDrop)
+{
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  TrajectoryFeasibilityFilter filter;
+  validator::Params params;
+  params.trajectory_feasibility.max_deceleration = 2.0;
+  params.trajectory_feasibility.speed_limit_tolerance.speed_limits_kmph = {10.0};
+  params.trajectory_feasibility.speed_limit_tolerance.tolerances_kmph = {0.0};
+  filter.update_parameters(params);
+  filter.set_vehicle_info(vehicle_info);
+
+  const auto high_limit_map = create_lanelet_map_with_speed_limit(30.0);  // 8.33 m/s
+  const auto low_limit_map = create_lanelet_map_with_speed_limit(10.0);   // 2.78 m/s
+
+  // Returns the risk level of the lanelet speed limit metric at time `t` (s).
+  const auto evaluate = [&](
+                          const std::shared_ptr<lanelet::LaneletMap> & map, const double t,
+                          const double trajectory_speed) {
+    FilterContext context;
+    auto odometry = create_odometry(5.1, 0.0, 0.0, 8.0);
+    odometry->header.stamp.sec = static_cast<int32_t>(t);
+    odometry->header.stamp.nanosec = static_cast<uint32_t>((t - std::floor(t)) * 1e9);
+    context.odometry = odometry;
+    context.lanelet_map = map;
+    CandidateTrajectory candidate_trajectory;
+    candidate_trajectory.points = create_straight_trajectory(trajectory_speed);
+    const auto result = filter.is_feasible(candidate_trajectory, context);
+    const auto & metrics = result.value().metrics;
+    const auto it = std::find_if(metrics.begin(), metrics.end(), [](const auto & metric) {
+      return metric.metric_name == "lanelet_speed_limit";
+    });
+    return it->risk.level;
+  };
+
+  // Ego drives in the 30 km/h (8.33 m/s) lanelet.
+  EXPECT_EQ(evaluate(high_limit_map, 0.0, 8.0), RiskLevel::SAFE);
+  // Ego enters the 10 km/h lanelet at t = 1.0 s. The allowed speed starts at the old limit.
+  EXPECT_EQ(evaluate(low_limit_map, 1.0, 8.0), RiskLevel::SAFE);
+  // At t = 2.0 s, the allowed speed is 8.33 - 2.0 * 1.0 = 6.33 m/s.
+  EXPECT_EQ(evaluate(low_limit_map, 2.0, 6.0), RiskLevel::SAFE);
+  EXPECT_EQ(evaluate(low_limit_map, 2.0, 7.0), RiskLevel::HIGH_CAUTION);
+  // At t = 5.0 s, the deceleration time is over and the speed limit applies again.
+  EXPECT_EQ(evaluate(low_limit_map, 5.0, 5.0), RiskLevel::HIGH_CAUTION);
+}
+
+TEST(TrajectoryFeasibilityFilterTest, LaneletSpeedLimitResetsTransitionWhenTimeGoesBackward)
+{
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  TrajectoryFeasibilityFilter filter;
+  validator::Params params;
+  params.trajectory_feasibility.max_deceleration = 2.0;
+  params.trajectory_feasibility.speed_limit_tolerance.speed_limits_kmph = {10.0};
+  params.trajectory_feasibility.speed_limit_tolerance.tolerances_kmph = {0.0};
+  filter.update_parameters(params);
+  filter.set_vehicle_info(vehicle_info);
+
+  const auto high_limit_map = create_lanelet_map_with_speed_limit(30.0);  // 8.33 m/s
+  const auto low_limit_map = create_lanelet_map_with_speed_limit(10.0);   // 2.78 m/s
+
+  const auto evaluate = [&](
+                          const std::shared_ptr<lanelet::LaneletMap> & map, const double t,
+                          const double trajectory_speed) {
+    FilterContext context;
+    auto odometry = create_odometry(5.1, 0.0, 0.0, 8.0);
+    odometry->header.stamp.sec = static_cast<int32_t>(t);
+    odometry->header.stamp.nanosec = static_cast<uint32_t>((t - std::floor(t)) * 1e9);
+    context.odometry = odometry;
+    context.lanelet_map = map;
+    CandidateTrajectory candidate_trajectory;
+    candidate_trajectory.points = create_straight_trajectory(trajectory_speed);
+    const auto result = filter.is_feasible(candidate_trajectory, context);
+    const auto & metrics = result.value().metrics;
+    const auto it = std::find_if(metrics.begin(), metrics.end(), [](const auto & metric) {
+      return metric.metric_name == "lanelet_speed_limit";
+    });
+    return it->risk.level;
+  };
+
+  EXPECT_EQ(evaluate(high_limit_map, 10.0, 8.0), RiskLevel::SAFE);
+  EXPECT_EQ(evaluate(low_limit_map, 11.0, 8.0), RiskLevel::SAFE);
+  // The time goes back to t = 1.0 s, so the state resets and only the 10 km/h limit applies.
+  EXPECT_EQ(evaluate(low_limit_map, 1.0, 8.0), RiskLevel::HIGH_CAUTION);
 }
 
 // --- is_acceleration_ok(...) tests ---
