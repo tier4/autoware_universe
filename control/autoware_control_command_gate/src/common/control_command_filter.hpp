@@ -41,7 +41,6 @@ struct VehicleCmdFilterParam
   LimitArray steer_rate_lim_for_steer_cmd;
   LimitArray steer_cmd_diff_lim_from_current_steer;
   double lat_jerk_lim_for_steer_rate;
-  bool enable_steer_accel_limit;
   LimitArray steer_accel_lim_for_steer_cmd;
   double steer_accel_clip_integral_th_diag;
 };

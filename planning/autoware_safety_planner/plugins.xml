@@ -26,5 +26,9 @@
            base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
       <description>Samples terminal states in Frenet coordinates and joins them with quintic polynomials, then takes the cheapest candidate that passes the projected views of the constraint IR</description>
     </class>
+    <class type="autoware::safety_planner::experimental::ReferencePathFollowingPlanner"
+           base_class_type="autoware::safety_planner::TrajectoryPlannerInterface">
+      <description>Follows the reference_path as it is and plans only the velocity, with a QP under the speed bounds, the lateral acceleration, the steer rate, the stop bars and the goal</description>
+    </class>
   </library>
 </class_libraries>
