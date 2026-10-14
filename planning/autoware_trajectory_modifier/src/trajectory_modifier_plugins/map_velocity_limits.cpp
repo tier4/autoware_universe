@@ -108,11 +108,12 @@ ProcessingResult MapVelocityLimits::process(
   if (!enabled_ || traj_points.empty() || !input.current_odometry) {
     return ProcessingResult::Unchanged;
   }
+  const auto stop_state = detail::make_fixed_profile_stop_state(traj_points);
   if (!is_trajectory_modification_required(traj_points, input)) {
-    fixed_profile_.store(input, traj_points);
+    fixed_profile_.store(input, traj_points, stop_state);
     return ProcessingResult::Unchanged;
   }
-  const auto start = fixed_profile_.start(input);
+  const auto start = fixed_profile_.start(input, stop_state);
   last_profile_start_ = start.start;
   if (detail::is_reset(start.start)) {
     RCLCPP_DEBUG(
@@ -130,7 +131,7 @@ ProcessingResult MapVelocityLimits::process(
       return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
     },
     start.options);
-  fixed_profile_.store(input, traj_points);
+  fixed_profile_.store(input, traj_points, stop_state);
   return result.status;
 }
 

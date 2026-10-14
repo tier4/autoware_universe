@@ -28,6 +28,7 @@ using autoware::trajectory_modifier::plugin::ProcessingResult;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
 using detail::FixedProfileMemory;
 using detail::FixedProfileParameters;
+using detail::FixedProfileStopState;
 using detail::ProfileStart;
 using detail::VelocityLimitConstraints;
 using detail::VelocityLimitOptions;
@@ -95,13 +96,14 @@ protected:
   /// @brief Start at t = 10.1 s from a measurement offset from the plan's second point.
   [[nodiscard]] detail::ProfileStartResult start_with_offsets(
     const double velocity, const double acceleration, const double distance,
-    const double time = 10.1) const
+    const double time = 10.1, const FixedProfileStopState & stop_state = {}) const
   {
     const auto & planned = plan_[1];
     return memory_.start(
       0, time, point_at(planned.pose.position.x + distance),
       make_options(
-        planned.longitudinal_velocity_mps + velocity, planned.acceleration_mps2 + acceleration));
+        planned.longitudinal_velocity_mps + velocity, planned.acceleration_mps2 + acceleration),
+      stop_state);
   }
 
   TrajectoryPoints plan_;
@@ -188,6 +190,99 @@ TEST_F(FixedProfile, ParameterChangeForgetsPreviousPlans)
   parameters.reset_velocity_deviation = 0.3;
   memory_.set_parameters(parameters);
   EXPECT_EQ(start_with_offsets(0.0, 0.0, 0.0).start, ProfileStart::NoPreviousPlan);
+}
+
+TEST(FixedProfileStops, ExtractsNewStopsButIgnoresTheTerminalHorizonPoint)
+{
+  auto input = make_input(40.0, 12);
+  input[4].longitudinal_velocity_mps = 0.0F;
+  input[5].longitudinal_velocity_mps = 0.0F;
+  input[8].longitudinal_velocity_mps = 0.0F;
+  input.back().longitudinal_velocity_mps = 0.0F;
+
+  const auto stops = detail::make_fixed_profile_stop_state(input);
+  ASSERT_EQ(stops.input_stops.size(), 2U);
+  EXPECT_DOUBLE_EQ(stops.input_stops[0].x, input[4].pose.position.x);
+  EXPECT_DOUBLE_EQ(stops.input_stops[1].x, input[8].pose.position.x);
+
+  auto terminal_only = make_input(40.0, 12);
+  terminal_only.back().longitudinal_velocity_mps = 0.0F;
+  EXPECT_TRUE(detail::make_fixed_profile_stop_state(terminal_only).input_stops.empty());
+
+  auto already_stopped = make_input(40.0, 12);
+  for (auto & point : already_stopped) {
+    point.longitudinal_velocity_mps = 0.0F;
+  }
+  const auto stopped_state = detail::make_fixed_profile_stop_state(already_stopped);
+  ASSERT_EQ(stopped_state.input_stops.size(), 1U);
+  EXPECT_DOUBLE_EQ(stopped_state.input_stops.front().x, already_stopped.front().pose.position.x);
+}
+
+TEST_F(FixedProfile, NewInputStopResetsOnlyOnceAcrossMovingHorizons)
+{
+  auto input = make_input(40.0);
+  input[50].longitudinal_velocity_mps = 0.0F;
+  const auto stop_state = detail::make_fixed_profile_stop_state(input);
+  ASSERT_EQ(stop_state.input_stops.size(), 1U);
+
+  const auto reset = start_with_offsets(0.2, 0.0, 0.0, 10.1, stop_state);
+  ASSERT_EQ(reset.start, ProfileStart::ResetNewStop);
+  EXPECT_DOUBLE_EQ(*reset.options.current_ego_velocity, plan_[1].longitudinal_velocity_mps + 0.2);
+  EXPECT_TRUE(detail::is_reset(reset.start));
+  EXPECT_STREQ(detail::to_string(reset.start), "reset_new_stop");
+
+  memory_.store(0, 1, 10.1, plan_, stop_state);
+  auto shifted_input = make_input(40.0 + cruise * dt);
+  shifted_input[49].longitudinal_velocity_mps = 0.0F;
+  const auto shifted_stops = detail::make_fixed_profile_stop_state(shifted_input);
+  EXPECT_EQ(
+    start_with_offsets(0.2, 0.0, 0.0, 10.2, shifted_stops).start, ProfileStart::PreviousPlan);
+}
+
+TEST_F(FixedProfile, ResetsWhenAnAdditionalOrMovedStopAppears)
+{
+  auto input = make_input(40.0);
+  input[50].longitudinal_velocity_mps = 0.0F;
+  const auto original_stops = detail::make_fixed_profile_stop_state(input);
+  memory_.store(0, 1, 10.0, plan_, original_stops);
+
+  input[60].longitudinal_velocity_mps = 0.0F;
+  EXPECT_EQ(
+    start_with_offsets(0.0, 0.0, 0.0, 10.1, detail::make_fixed_profile_stop_state(input)).start,
+    ProfileStart::ResetNewStop);
+
+  auto moved = make_input(40.0);
+  moved[50].longitudinal_velocity_mps = 0.0F;
+  moved[50].pose.position.x += 1.5;
+  EXPECT_EQ(
+    start_with_offsets(0.0, 0.0, 0.0, 10.1, detail::make_fixed_profile_stop_state(moved)).start,
+    ProfileStart::ResetNewStop);
+
+  moved[50].pose.position.x = input[50].pose.position.x + 0.5;
+  EXPECT_EQ(
+    start_with_offsets(0.0, 0.0, 0.0, 10.1, detail::make_fixed_profile_stop_state(moved)).start,
+    ProfileStart::PreviousPlan);
+}
+
+TEST_F(FixedProfile, NewZeroSpeedExternalLimitResetsOnce)
+{
+  const auto zero_limit = detail::make_fixed_profile_stop_state(make_input(40.0), true);
+  EXPECT_EQ(start_with_offsets(0.0, 0.0, 0.0, 10.1, zero_limit).start, ProfileStart::ResetNewStop);
+  memory_.store(0, 1, 10.1, plan_, zero_limit);
+  EXPECT_EQ(start_with_offsets(0.0, 0.0, 0.0, 10.2, zero_limit).start, ProfileStart::PreviousPlan);
+}
+
+TEST_F(FixedProfile, CanDisableTheNewStopReset)
+{
+  FixedProfileParameters parameters;
+  parameters.reset_on_new_stop = false;
+  memory_.set_parameters(parameters);
+  memory_.store(0, 1, 10.0, plan_);
+  auto input = make_input(40.0);
+  input[50].longitudinal_velocity_mps = 0.0F;
+  EXPECT_EQ(
+    start_with_offsets(0.0, 0.0, 0.0, 10.1, detail::make_fixed_profile_stop_state(input)).start,
+    ProfileStart::PreviousPlan);
 }
 
 TEST(FixedProfileReplanning, StartingFromThePreviousPlanReproducesIt)

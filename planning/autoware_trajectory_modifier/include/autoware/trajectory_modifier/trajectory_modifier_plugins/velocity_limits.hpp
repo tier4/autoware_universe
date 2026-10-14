@@ -85,9 +85,24 @@ struct FixedProfileParameters
   double reset_acceleration_deviation{0.5};  ///< [m/s^2]
   double reset_distance_deviation{1.0};      ///< [m]
   double reset_time_gap{0.5};                ///< [s]
+  bool reset_on_new_stop{true};
+  double new_stop_match_distance{1.0};  ///< [m] Position tolerance across replanned inputs.
 };
 
 bool operator==(const FixedProfileParameters & lhs, const FixedProfileParameters & rhs);
+
+inline constexpr double k_fixed_profile_stop_velocity_threshold_mps = 0.05;
+
+/// @brief Stop constraints seen before a velocity limit plugin modifies its input.
+struct FixedProfileStopState
+{
+  std::vector<geometry_msgs::msg::Point> input_stops;
+  bool zero_speed_limit{false};
+};
+
+/// @brief Extract nonterminal near-zero velocity transitions from a plugin input.
+FixedProfileStopState make_fixed_profile_stop_state(
+  const TrajectoryPoints & input, bool zero_speed_limit = false);
 
 /// @brief Constraints of the velocity_limits parameter group.
 VelocityLimitConstraints make_velocity_limit_constraints(const TrajectoryModifierParams & params);
@@ -104,6 +119,7 @@ enum class ProfileStart {
   ResetVelocity,      ///< Measured velocity too far from the previous plan.
   ResetAcceleration,  ///< Measured acceleration too far from the previous plan.
   ResetDistance,      ///< Ego too far from its planned position.
+  ResetNewStop,       ///< A new input stop or zero-speed limit appeared.
 };
 
 const char * to_string(ProfileStart start);
@@ -121,7 +137,8 @@ struct ProfileStartResult
 /// the current time instead of the measured ego state ("fixed profile"). The profile then no longer
 /// follows measurement noise or tracking errors; it restarts from the measured ego state when that
 /// state deviates from the previous plan by more than the reset thresholds. The limits and the
-/// input are still evaluated every cycle, so constraint changes are followed without a reset.
+/// input are still evaluated every cycle. A new input stop or zero-speed limit also resets the plan
+/// when reset_on_new_stop is enabled.
 class FixedProfileMemory
 {
 public:
@@ -129,22 +146,26 @@ public:
   void set_parameters(const FixedProfileParameters & parameters);
 
   /// @brief Starting state for a candidate, from the measured ego state at `time` (unknown when
-  /// not given) and `position`.
+  /// not given), `position`, and the current plugin input's stop constraints.
   [[nodiscard]] ProfileStartResult start(
     std::size_t candidate, const std::optional<double> & time,
-    const geometry_msgs::msg::Point & position, const VelocityLimitOptions & measured) const;
+    const geometry_msgs::msg::Point & position, const VelocityLimitOptions & measured,
+    const FixedProfileStopState & stop_state = {}) const;
 
   /// @brief Starting state for the candidate and the ego state of a plugin input.
-  [[nodiscard]] ProfileStartResult start(const TrajectoryModifierData & data) const;
+  [[nodiscard]] ProfileStartResult start(
+    const TrajectoryModifierData & data, const FixedProfileStopState & stop_state = {}) const;
 
-  /// @brief Remember the trajectory sent for a candidate, planned from the ego state at `time`.
+  /// @brief Remember the output trajectory and pre-modification input stops for a candidate.
   /// Without a time the candidate's plan is forgotten, as are candidates beyond `candidate_count`.
   void store(
     std::size_t candidate, std::size_t candidate_count, const std::optional<double> & time,
-    const TrajectoryPoints & plan);
+    const TrajectoryPoints & plan, const FixedProfileStopState & stop_state = {});
 
   /// @brief Remember the trajectory sent for the candidate of a plugin input.
-  void store(const TrajectoryModifierData & data, const TrajectoryPoints & plan);
+  void store(
+    const TrajectoryModifierData & data, const TrajectoryPoints & plan,
+    const FixedProfileStopState & stop_state = {});
 
   void clear();
 
@@ -153,6 +174,7 @@ private:
   {
     double time{0.0};
     TrajectoryPoints points;
+    FixedProfileStopState stop_state;
   };
 
   FixedProfileParameters parameters_;

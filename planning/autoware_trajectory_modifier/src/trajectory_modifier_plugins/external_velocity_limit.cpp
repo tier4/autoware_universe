@@ -77,11 +77,12 @@ ProcessingResult ExternalVelocityLimit::process(
     return ProcessingResult::Unchanged;
   }
 
+  auto stop_state = detail::make_fixed_profile_stop_state(traj_points);
   const auto velocity_limit = velocity_limit_sub_->take_data();
   if (
     !velocity_limit || !std::isfinite(velocity_limit->max_velocity) ||
     velocity_limit->max_velocity < 0.0F) {
-    fixed_profile_.store(input, traj_points);
+    fixed_profile_.store(input, traj_points, stop_state);
     return ProcessingResult::Unchanged;
   }
 
@@ -91,7 +92,8 @@ ProcessingResult ExternalVelocityLimit::process(
   constraints.max_jerk =
     detail::get_external_velocity_limit_min_jerk(*velocity_limit, constraints_.max_jerk);
   const double max_velocity = velocity_limit->max_velocity;
-  const auto start = fixed_profile_.start(input);
+  stop_state.zero_speed_limit = max_velocity <= detail::k_fixed_profile_stop_velocity_threshold_mps;
+  const auto start = fixed_profile_.start(input, stop_state);
   last_profile_start_ = start.start;
   if (detail::is_reset(start.start)) {
     RCLCPP_DEBUG(
@@ -109,7 +111,7 @@ ProcessingResult ExternalVelocityLimit::process(
       return std::optional<double>{max_velocity};
     },
     start.options);
-  fixed_profile_.store(input, traj_points);
+  fixed_profile_.store(input, traj_points, stop_state);
   return result.status;
 }
 

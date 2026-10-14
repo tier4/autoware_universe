@@ -618,7 +618,32 @@ bool operator==(const FixedProfileParameters & lhs, const FixedProfileParameters
   return lhs.enable == rhs.enable && lhs.reset_velocity_deviation == rhs.reset_velocity_deviation &&
          lhs.reset_acceleration_deviation == rhs.reset_acceleration_deviation &&
          lhs.reset_distance_deviation == rhs.reset_distance_deviation &&
-         lhs.reset_time_gap == rhs.reset_time_gap;
+         lhs.reset_time_gap == rhs.reset_time_gap &&
+         lhs.reset_on_new_stop == rhs.reset_on_new_stop &&
+         lhs.new_stop_match_distance == rhs.new_stop_match_distance;
+}
+
+FixedProfileStopState make_fixed_profile_stop_state(
+  const TrajectoryPoints & input, const bool zero_speed_limit)
+{
+  FixedProfileStopState state;
+  state.zero_speed_limit = zero_speed_limit;
+  // A zero only at the horizon end is not a stop in apply_velocity_limits().
+  for (std::size_t i = 0; i + 1 < input.size(); ++i) {
+    const double velocity = input[i].longitudinal_velocity_mps;
+    const bool stopped =
+      std::isfinite(velocity) && std::abs(velocity) <= k_fixed_profile_stop_velocity_threshold_mps;
+    const bool previous_stopped = i > 0 && std::isfinite(input[i - 1].longitudinal_velocity_mps) &&
+                                  std::abs(input[i - 1].longitudinal_velocity_mps) <=
+                                    k_fixed_profile_stop_velocity_threshold_mps;
+    const auto & position = input[i].pose.position;
+    if (
+      stopped && !previous_stopped && std::isfinite(position.x) && std::isfinite(position.y) &&
+      std::isfinite(position.z)) {
+      state.input_stops.push_back(input[i].pose.position);
+    }
+  }
+  return state;
 }
 
 VelocityLimitConstraints make_velocity_limit_constraints(const TrajectoryModifierParams & params)
@@ -632,8 +657,13 @@ FixedProfileParameters make_fixed_profile_parameters(const TrajectoryModifierPar
 {
   const auto & fixed = params.velocity_limits.fixed_profile;
   return {
-    fixed.enable, fixed.reset_velocity_deviation, fixed.reset_acceleration_deviation,
-    fixed.reset_distance_deviation, fixed.reset_time_gap};
+    fixed.enable,
+    fixed.reset_velocity_deviation,
+    fixed.reset_acceleration_deviation,
+    fixed.reset_distance_deviation,
+    fixed.reset_time_gap,
+    fixed.reset_on_new_stop,
+    fixed.new_stop_match_distance};
 }
 
 const char * to_string(const ProfileStart start)
@@ -653,6 +683,8 @@ const char * to_string(const ProfileStart start)
       return "reset_acceleration";
     case ProfileStart::ResetDistance:
       return "reset_distance";
+    case ProfileStart::ResetNewStop:
+      return "reset_new_stop";
   }
   return "unknown";
 }
@@ -660,7 +692,8 @@ const char * to_string(const ProfileStart start)
 bool is_reset(const ProfileStart start)
 {
   return start == ProfileStart::ResetTimeGap || start == ProfileStart::ResetVelocity ||
-         start == ProfileStart::ResetAcceleration || start == ProfileStart::ResetDistance;
+         start == ProfileStart::ResetAcceleration || start == ProfileStart::ResetDistance ||
+         start == ProfileStart::ResetNewStop;
 }
 
 void FixedProfileMemory::set_parameters(const FixedProfileParameters & parameters)
@@ -673,7 +706,8 @@ void FixedProfileMemory::set_parameters(const FixedProfileParameters & parameter
 
 ProfileStartResult FixedProfileMemory::start(
   const std::size_t candidate, const std::optional<double> & time,
-  const geometry_msgs::msg::Point & position, const VelocityLimitOptions & measured) const
+  const geometry_msgs::msg::Point & position, const VelocityLimitOptions & measured,
+  const FixedProfileStopState & stop_state) const
 {
   if (!parameters_.enable) {
     return {measured, ProfileStart::Measured};
@@ -706,13 +740,27 @@ ProfileStartResult FixedProfileMemory::start(
   if (distance > parameters_.reset_distance_deviation) {
     return {measured, ProfileStart::ResetDistance};
   }
+  if (parameters_.reset_on_new_stop) {
+    const auto & previous_stops = previous.stop_state.input_stops;
+    const bool new_input_stop = std::any_of(
+      stop_state.input_stops.begin(), stop_state.input_stops.end(), [&](const auto & stop) {
+        return std::none_of(previous_stops.begin(), previous_stops.end(), [&](const auto & prior) {
+          return std::hypot(stop.x - prior.x, stop.y - prior.y, stop.z - prior.z) <=
+                 parameters_.new_stop_match_distance;
+        });
+      });
+    if (new_input_stop || (stop_state.zero_speed_limit && !previous.stop_state.zero_speed_limit)) {
+      return {measured, ProfileStart::ResetNewStop};
+    }
+  }
   VelocityLimitOptions options;
   options.current_ego_velocity = sample->velocity;
   options.current_ego_acceleration = sample->acceleration;
   return {options, ProfileStart::PreviousPlan};
 }
 
-ProfileStartResult FixedProfileMemory::start(const TrajectoryModifierData & data) const
+ProfileStartResult FixedProfileMemory::start(
+  const TrajectoryModifierData & data, const FixedProfileStopState & stop_state) const
 {
   const auto measured = make_velocity_limit_options(data);
   if (!data.current_odometry) {
@@ -720,25 +768,28 @@ ProfileStartResult FixedProfileMemory::start(const TrajectoryModifierData & data
   }
   return start(
     data.candidate_index, measurement_time(data), data.current_odometry->pose.pose.position,
-    measured);
+    measured, stop_state);
 }
 
 void FixedProfileMemory::store(
   const std::size_t candidate, const std::size_t candidate_count,
-  const std::optional<double> & time, const TrajectoryPoints & plan)
+  const std::optional<double> & time, const TrajectoryPoints & plan,
+  const FixedProfileStopState & stop_state)
 {
   // Candidates beyond the current count belong to an earlier batch.
   plans_.resize(std::max(candidate_count, candidate + 1));
   if (time && !plan.empty() && parameters_.enable) {
-    plans_[candidate] = Plan{*time, plan};
+    plans_[candidate] = Plan{*time, plan, stop_state};
   } else {
     plans_[candidate].reset();
   }
 }
 
-void FixedProfileMemory::store(const TrajectoryModifierData & data, const TrajectoryPoints & plan)
+void FixedProfileMemory::store(
+  const TrajectoryModifierData & data, const TrajectoryPoints & plan,
+  const FixedProfileStopState & stop_state)
 {
-  store(data.candidate_index, data.candidate_count, measurement_time(data), plan);
+  store(data.candidate_index, data.candidate_count, measurement_time(data), plan, stop_state);
 }
 
 void FixedProfileMemory::clear()

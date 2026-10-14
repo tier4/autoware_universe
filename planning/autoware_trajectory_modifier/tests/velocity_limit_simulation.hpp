@@ -569,17 +569,20 @@ inline Memory make_memory(const Scenario & scenario)
 inline StageOutcome limit_with_memory(
   const Scenario & scenario, const Memory & memory, TrajectoryPoints & points, const EgoState & ego,
   const plugin::detail::VelocityLimitConstraints & constraints,
-  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & limit)
+  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & limit,
+  const bool zero_speed_limit = false)
 {
+  const auto stop_state = plugin::detail::make_fixed_profile_stop_state(points, zero_speed_limit);
   plugin::detail::ProfileStartResult start{
     make_options(ego), plugin::detail::ProfileStart::Measured};
   if (memory) {
-    start = memory->start(0, ego.time, scenario.path.pose_at(ego.s).position, make_options(ego));
+    start = memory->start(
+      0, ego.time, scenario.path.pose_at(ego.s).position, make_options(ego), stop_state);
   }
   const auto result =
     plugin::detail::apply_velocity_limits(points, constraints, limit, start.options);
   if (memory) {
-    memory->store(0, 1, ego.time, points);
+    memory->store(0, 1, ego.time, points, stop_state);
   }
   return {result.status, plugin::detail::to_string(start.start)};
 }
@@ -594,7 +597,8 @@ inline Stage make_external_stage(const Scenario & scenario)
       const auto message = scenario.external_limit_at(ego.time);
       if (!message || !std::isfinite(message->max_velocity) || message->max_velocity < 0.0F) {
         if (memory) {
-          memory->store(0, 1, ego.time, points);
+          memory->store(
+            0, 1, ego.time, points, plugin::detail::make_fixed_profile_stop_state(points));
         }
         return StageOutcome{};
       }
@@ -608,7 +612,8 @@ inline Stage make_external_stage(const Scenario & scenario)
         scenario, memory, points, ego, constraints,
         [max_velocity](const geometry_msgs::msg::Point &) {
           return std::optional<double>{max_velocity};
-        });
+        },
+        max_velocity <= plugin::detail::k_fixed_profile_stop_velocity_threshold_mps);
     }};
 }
 

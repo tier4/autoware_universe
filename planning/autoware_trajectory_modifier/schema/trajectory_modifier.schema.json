@@ -105,6 +105,17 @@
                   "default": 0.5,
                   "minimum": 0.0,
                   "description": "Age of the previous plan above which it is not reused [s]"
+                },
+                "reset_on_new_stop": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Restart from the measured ego state when an unmatched input stop or a new zero-speed external limit appears"
+                },
+                "new_stop_match_distance": {
+                  "type": "number",
+                  "default": 1.0,
+                  "minimum": 0.0,
+                  "description": "Maximum distance between input stop positions in successive plans to treat them as the same stop [m]"
                 }
               },
               "additionalProperties": false
