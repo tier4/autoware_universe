@@ -487,6 +487,27 @@
               "description": "Maximum allowed steering rate [rad/s].",
               "default": 0.3,
               "minimum": 0.0
+            },
+            "speed_limit_tolerance": {
+              "type": "object",
+              "properties": {
+                "speed_limits_kmph": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "description": "Lanelet speed limits for the tolerance table, in increasing order [km/h].",
+                  "default": [10.0, 20.0, 30.0, 40.0],
+                  "minItems": 1
+                },
+                "tolerances_kmph": {
+                  "type": "array",
+                  "items": { "type": "number", "minimum": 0.0 },
+                  "description": "Speed above the lanelet speed limit that is still allowed, one per speed limit [km/h].",
+                  "default": [1.0, 2.0, 3.0, 5.0],
+                  "minItems": 1
+                }
+              },
+              "required": ["speed_limits_kmph", "tolerances_kmph"],
+              "additionalProperties": false
             }
           },
           "required": [],
