@@ -114,7 +114,7 @@
           structure: 0.05
           vegetation: 0.0
           unknown: 0.0
-        low_velocity_th: 2.0 # [m/s]
+        low_velocity_th: 4.0 # [m/s]
 
       rss_params:
         enable: true
