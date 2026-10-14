@@ -18,6 +18,7 @@
 #include "interface.hpp"
 
 #include <autoware/agnocast_wrapper/node.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <string>
 

@@ -16,7 +16,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE "src")
 
 autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::trajectory_gate::TrajectoryGate"
-  EXECUTABLE "trajectory_gate_node"
+  EXECUTABLE trajectory_gate_node
   ROS2_EXECUTOR SingleThreadedExecutor
   AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
