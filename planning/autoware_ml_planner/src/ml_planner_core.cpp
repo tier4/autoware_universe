@@ -661,15 +661,16 @@ PlannerOutput MLPlannerCore::create_planner_output(
 
   // With the optimized reference, the next virtual pose is taken from the trajectory that is
   // actually published. A cycle whose optimization failed publishes none and keeps the previous
-  // one.
+  // one. The published points start one time step after the frame pose, so the frame pose itself
+  // begins the search: started at the first point, the virtual pose would advance by a step every
+  // cycle even while the vehicle lags behind it.
   if (
     params_.virtual_pose.reference == "optimized" && output.trajectory &&
-    output.trajectory->points.size() >= 2) {
-    const auto & points = output.trajectory->points;
-    previous_frame_pose_ = utils::pose_to_matrix4d(points.front().pose);
+    !output.trajectory->points.empty()) {
+    previous_frame_pose_ = ego_to_map_transform;
     previous_ego_prediction_.clear();
-    for (size_t k = 1; k < points.size(); ++k) {
-      previous_ego_prediction_.push_back(utils::pose_to_matrix4d(points[k].pose));
+    for (const auto & point : output.trajectory->points) {
+      previous_ego_prediction_.push_back(utils::pose_to_matrix4d(point.pose));
     }
   }
   return output;
