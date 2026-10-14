@@ -24,6 +24,8 @@
 #include <autoware/signal_processing/lowpass_filter_1d.hpp>
 #include <autoware_control_validator/control_validator_parameters.hpp>
 #include <autoware_control_validator/msg/control_validator_status.hpp>
+#include <autoware_control_validator/msg/hazard_alert.hpp>
+#include <autoware_control_validator/msg/hazard_candidate_array.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -31,12 +33,18 @@
 #include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
+#include <cmath>
 #include <cstdint>
+#include <deque>
+#include <fstream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,16 +55,28 @@ namespace autoware::control_validator
 {
 namespace boundary_departure_checker = autoware::boundary_departure_checker;
 
+namespace hazard
+{
+class PointCloudPreprocessor;
+class CollisionSweep;
+class HazardWarning;
+struct CollisionEvaluation;
+}  // namespace hazard
+
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_control_msgs::msg::Control;
 using autoware_control_validator::msg::ControlValidatorStatus;
+using autoware_control_validator::msg::HazardAlert;
+using autoware_control_validator::msg::HazardCandidateArray;
 using autoware_map_msgs::msg::LaneletMapBin;
+using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using diagnostic_updater::DiagnosticStatusWrapper;
 using diagnostic_updater::Updater;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
+using sensor_msgs::msg::PointCloud2;
 using Params = ::control_validator::Params;
 
 /**
@@ -279,12 +299,29 @@ public:
     params_.enable_developer_marker =
       params.uncrossable_bound_departure_validator.enable_developer_marker;
     params_.boundary_types_to_detect = params.uncrossable_bound_departure_validator.boundary_types;
+    // CAUTION stage for the hazard warning. NaN (undecided) or a value not looser than the
+    // CRITICAL margin disables the stage (-inf).
+    const auto caution_th =
+      params.uncrossable_bound_departure_validator.caution_departure_lateral_th_m;
+    params_.caution_departure_lateral_th_m =
+      (std::isfinite(caution_th) && caution_th > params_.critical_departure_lateral_th_m)
+        ? caution_th
+        : -std::numeric_limits<double>::infinity();
+    params_.caution_on_time_buffer_s =
+      params.uncrossable_bound_departure_validator.caution_on_time_buffer_s;
+    params_.caution_off_time_buffer_s =
+      params.uncrossable_bound_departure_validator.caution_off_time_buffer_s;
     if (checker_) {
       checker_->update_parameters(params_);
     }
   }
 
-  void validate(
+  /**
+   * @brief Validate the predicted trajectory against uncrossable boundaries.
+   * @return the departure result of this cycle, nullopt when the check was skipped (disabled,
+   *   no map, empty trajectory)
+   */
+  std::optional<boundary_departure_checker::DepartureResult> validate(
     ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
     const Odometry & kinematics, const AccelWithCovarianceStamped & acceleration,
     const lanelet::LaneletMapPtr & lanelet_map,
@@ -296,7 +333,7 @@ private:
   rclcpp::Logger logger_;
   boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
   std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> checker_;
-  boundary_departure_checker::HysteresisState hysteresis_state_;
+  boundary_departure_checker::HysteresisStates hysteresis_states_;
 };
 
 /**
@@ -312,6 +349,7 @@ public:
    * @param options Node options
    */
   explicit ControlValidator(const rclcpp::NodeOptions & options);
+  ~ControlValidator() override;
 
   /**
    * @brief Callback function for the control component output.
@@ -376,6 +414,43 @@ private:
    */
   void validation_filtering(ControlValidatorStatus & res);
 
+  /**
+   * @brief Create the hazard warning objects from the current parameters
+   */
+  void setup_hazard_warning();
+
+  /**
+   * @brief Push the hazard warning parameters to the hazard objects
+   */
+  void update_hazard_parameters();
+
+  /**
+   * @brief Ego pose from the odometry history closest to the given stamp
+   * @return nullopt when no odometry is within pointcloud.max_stamp_gap_s
+   */
+  std::optional<geometry_msgs::msg::Pose> select_ego_pose_at(const rclcpp::Time & stamp) const;
+
+  /**
+   * @brief Objects from the history closest to the given stamp
+   * @return nullopt when no objects message is within objects.max_stamp_gap_s
+   */
+  PredictedObjects::ConstSharedPtr select_objects_at(const rclcpp::Time & stamp) const;
+
+  /**
+   * @brief Pointcloud preprocessing, object / cluster selection and the footprint sweep
+   * @return nullopt when an input is missing or the evaluation failed
+   */
+  std::optional<hazard::CollisionEvaluation> evaluate_collision(
+    const Trajectory & predicted_trajectory, const Odometry & kinematics);
+
+  /**
+   * @brief Hazard warning of one cycle: evaluation, judgement and publishing
+   * @param departure boundary departure result of this cycle, if evaluated
+   */
+  void run_hazard_warning(
+    const Trajectory & predicted_trajectory, const Odometry & kinematics,
+    const std::optional<boundary_departure_checker::DepartureResult> & departure);
+
   // Subscribers and publishers
   rclcpp::Subscription<Control>::SharedPtr sub_control_cmd_;
   autoware_utils::InterProcessPollingSubscriber<OperationModeState>::SharedPtr
@@ -386,10 +461,30 @@ private:
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>::SharedPtr
     sub_measured_acc_;
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_lanelet_map_;
+  autoware_utils::InterProcessPollingSubscriber<PredictedObjects>::SharedPtr sub_objects_;
+  autoware_utils::InterProcessPollingSubscriber<PointCloud2>::SharedPtr sub_pointcloud_;
   rclcpp::Publisher<ControlValidatorStatus>::SharedPtr pub_status_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
+  rclcpp::Publisher<HazardAlert>::SharedPtr pub_hazard_alert_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    pub_hazard_processing_time_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_hazard_markers_;
+  rclcpp::Publisher<HazardCandidateArray>::SharedPtr pub_hazard_candidates_;
+
+  // hazard warning
+  static constexpr size_t kOdometryHistorySize = 10;
+  static constexpr size_t kObjectsHistorySize = 10;
+  std::deque<Odometry> odometry_history_;
+  std::deque<PredictedObjects::ConstSharedPtr> objects_history_;
+  std::unique_ptr<hazard::PointCloudPreprocessor> pointcloud_preprocessor_;
+  std::unique_ptr<hazard::CollisionSweep> collision_sweep_;
+  std::unique_ptr<hazard::HazardWarning> hazard_warning_;
+  std::ofstream hazard_csv_;
+  std::ofstream hazard_candidates_csv_;
+  std::optional<rclcpp::Time> hazard_csv_last_flush_;
+  autoware_utils::StopWatch<std::chrono::milliseconds> hazard_stop_watch_;
 
   // parameters (generated by generate_parameter_library)
   ::control_validator::ParamListener param_listener_;

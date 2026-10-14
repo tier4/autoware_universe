@@ -27,6 +27,54 @@
       off_time_buffer_s: 0.10
       enable_align_to_ego_pose: true
       enable_developer_marker: false
+      caution_departure_lateral_th_m: 0.3
+      caution_on_time_buffer_s: 0.20
+      caution_off_time_buffer_s: 0.10
+
+    hazard_warning:
+      enable: true
+      ttc_threshold_on: 3.0
+      ttc_thresholds: [3.0, 2.0, 1.0] # descending; first element = ttc_threshold_on
+      collision_cos_threshold: 0.0 # -1 disables the collision angle condition
+      min_alert_duration: 0.5
+      prediction_horizon: 5.0
+      time_resolution: 0.1
+      enabled_object_classes: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian]
+      enable_pointcloud: true
+      enable_road_border: true
+      max_evaluations:
+        object: 10
+        pointcloud: 10
+      max_objects_stamp_gap_s: 0.5
+      objects:
+        max_stamp_gap_s: 0.1
+      sector:
+        radius_m: 60.0
+        boundary_tolerance_deg: 1.0
+        range:
+          front: [-10.0, 10.0]
+          front_left: [10.0, 30.0]
+          left: [30.0, 150.0]
+          rear_left: [150.0, 170.0]
+          rear: [170.0, -170.0]
+          rear_right: [-170.0, -150.0]
+          right: [-150.0, -30.0]
+          front_right: [-30.0, -10.0]
+      pointcloud:
+        roi:
+          rear: 2.0
+          front_margin: 2.0
+          lateral: 5.0
+          z_margin_low: 0.0 # added to the vehicle min height offset (ground)
+          z_margin_high: 0.0 # added to the vehicle max height offset (vehicle height)
+        max_points: 20000
+        voxel_size: 0.10
+        cluster_tolerance: 0.30
+        min_cluster_size: 3
+        max_stamp_gap_s: 0.1
+      debug:
+        publish_markers: true
+        csv_path: ""
 
     latency_validator:
       nominal_latency: 0.01

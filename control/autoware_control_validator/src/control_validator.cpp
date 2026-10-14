@@ -19,15 +19,23 @@
 #include "autoware/motion_utils/trajectory/interpolation.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
+#include "hazard/collision_sweep.hpp"
+#include "hazard/hazard_warning.hpp"
+#include "hazard/pointcloud_preprocessor.hpp"
 
 #include <autoware_utils_geometry/geometry.hpp>
+
+#include <autoware_perception_msgs/msg/object_classification.hpp>
 
 #include <angles/angles.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,6 +43,93 @@
 namespace autoware::control_validator
 {
 using diagnostic_msgs::msg::DiagnosticStatus;
+
+namespace
+{
+std::optional<uint8_t> label_from_name(const std::string & name)
+{
+  using autoware_perception_msgs::msg::ObjectClassification;
+  std::string upper(name);
+  std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+  if (upper == "UNKNOWN") return ObjectClassification::UNKNOWN;
+  if (upper == "CAR") return ObjectClassification::CAR;
+  if (upper == "TRUCK") return ObjectClassification::TRUCK;
+  if (upper == "BUS") return ObjectClassification::BUS;
+  if (upper == "TRAILER") return ObjectClassification::TRAILER;
+  if (upper == "MOTORCYCLE") return ObjectClassification::MOTORCYCLE;
+  if (upper == "BICYCLE") return ObjectClassification::BICYCLE;
+  if (upper == "PEDESTRIAN") return ObjectClassification::PEDESTRIAN;
+  if (upper == "ANIMAL") return ObjectClassification::ANIMAL;
+  if (upper == "HAZARD") return ObjectClassification::HAZARD;
+  return std::nullopt;
+}
+
+hazard::HazardWarningParam to_hazard_warning_param(const Params & params)
+{
+  const auto & p = params.hazard_warning;
+  hazard::HazardWarningParam out;
+  out.ttc_threshold_on = p.ttc_threshold_on;
+  out.ttc_thresholds = p.ttc_thresholds;
+  out.collision_cos_threshold = p.collision_cos_threshold;
+  out.min_alert_duration = p.min_alert_duration;
+  out.enable_road_border = p.enable_road_border;
+  out.sector_radius_m = p.sector.radius_m;
+  out.sector_boundary_tolerance_deg = p.sector.boundary_tolerance_deg;
+  const auto range = [](const std::vector<double> & v) -> std::array<double, 2> {
+    if (v.size() != 2) {
+      throw std::invalid_argument("hazard_warning.sector.range entries must have 2 elements");
+    }
+    return {v[0], v[1]};
+  };
+  out.sector_ranges[HazardAlert::FRONT] = range(p.sector.range.front);
+  out.sector_ranges[HazardAlert::FRONT_RIGHT] = range(p.sector.range.front_right);
+  out.sector_ranges[HazardAlert::RIGHT] = range(p.sector.range.right);
+  out.sector_ranges[HazardAlert::REAR_RIGHT] = range(p.sector.range.rear_right);
+  out.sector_ranges[HazardAlert::REAR] = range(p.sector.range.rear);
+  out.sector_ranges[HazardAlert::REAR_LEFT] = range(p.sector.range.rear_left);
+  out.sector_ranges[HazardAlert::LEFT] = range(p.sector.range.left);
+  out.sector_ranges[HazardAlert::FRONT_LEFT] = range(p.sector.range.front_left);
+  return out;
+}
+
+hazard::PointCloudParam to_pointcloud_param(const Params & params)
+{
+  const auto & p = params.hazard_warning.pointcloud;
+  hazard::PointCloudParam out;
+  out.roi_rear = p.roi.rear;
+  out.roi_front_margin = p.roi.front_margin;
+  out.roi_lateral = p.roi.lateral;
+  out.z_margin_low = p.roi.z_margin_low;
+  out.z_margin_high = p.roi.z_margin_high;
+  out.max_points = static_cast<size_t>(std::max<int64_t>(p.max_points, 0));
+  out.voxel_size = p.voxel_size;
+  out.cluster_tolerance = p.cluster_tolerance;
+  out.min_cluster_size = static_cast<size_t>(std::max<int64_t>(p.min_cluster_size, 1));
+  return out;
+}
+
+hazard::SweepLimits to_sweep_limits(const Params & params, const rclcpp::Logger & logger)
+{
+  const auto & p = params.hazard_warning;
+  hazard::SweepLimits out;
+  out.max_time = p.prediction_horizon;
+  out.n_eval_object = static_cast<size_t>(std::max<int64_t>(p.max_evaluations.object, 0));
+  out.n_eval_pointcloud = static_cast<size_t>(std::max<int64_t>(p.max_evaluations.pointcloud, 0));
+  out.enable_pointcloud = p.enable_pointcloud;
+  out.max_objects_stamp_gap_s = p.max_objects_stamp_gap_s;
+  for (const auto & name : p.enabled_object_classes) {
+    const auto label = label_from_name(name);
+    if (!label) {
+      RCLCPP_ERROR(
+        logger, "hazard_warning.enabled_object_classes: unknown class name '%s' is ignored.",
+        name.c_str());
+      continue;
+    }
+    out.enabled_labels.push_back(*label);
+  }
+  return out;
+}
+}  // namespace
 
 void LatencyValidator::validate(
   ControlValidatorStatus & res, const Control & control_cmd, rclcpp::Node & node) const
@@ -253,7 +348,8 @@ void YawValidator::validate(
   res.is_warn_yaw = res.yaw_deviation > params_.yaw_deviation_warn;
 }
 
-void UncrossableBoundDepartureValidator::validate(
+std::optional<boundary_departure_checker::DepartureResult>
+UncrossableBoundDepartureValidator::validate(
   ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
   const Odometry & kinematics, const AccelWithCovarianceStamped & acceleration,
   const lanelet::LaneletMapPtr & lanelet_map, const vehicle_info_utils::VehicleInfo & vehicle_info,
@@ -261,18 +357,18 @@ void UncrossableBoundDepartureValidator::validate(
 {
   if (!enable_) {
     res.will_cross_uncrossable_bound = false;
-    return;
+    return std::nullopt;
   }
 
   if (!lanelet_map || lanelet_map->lineStringLayer.empty()) {
     RCLCPP_DEBUG(logger_, "Lanelet map is not available yet. Skipping boundary departure check.");
     res.will_cross_uncrossable_bound = false;
-    return;
+    return std::nullopt;
   }
 
   if (predicted_trajectory.points.empty()) {
     res.will_cross_uncrossable_bound = false;
-    return;
+    return std::nullopt;
   }
 
   if (!checker_) {
@@ -287,7 +383,7 @@ void UncrossableBoundDepartureValidator::validate(
   ego_state.current_time_s = rclcpp::Time(kinematics.header.stamp).seconds();
 
   auto status =
-    checker_->update_departure_status(predicted_trajectory.points, ego_state, hysteresis_state_);
+    checker_->update_departure_status(predicted_trajectory.points, ego_state, hysteresis_states_);
 
   res.will_cross_uncrossable_bound =
     status.status == boundary_departure_checker::DepartureType::CRITICAL;
@@ -297,6 +393,8 @@ void UncrossableBoundDepartureValidator::validate(
       status.debug_markers.markers.begin(), status.debug_markers.markers.end(),
       std::back_inserter(debug_markers.markers));
   }
+  status.debug_markers.markers.clear();
+  return status;
 }
 
 ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
@@ -335,6 +433,11 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
   sub_lanelet_map_ = create_subscription<LaneletMapBin>(
     "~/input/lanelet2_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&ControlValidator::on_lanelet_map, this, _1));
+  sub_objects_ =
+    autoware_utils::InterProcessPollingSubscriber<PredictedObjects>::create_subscription(
+      this, "~/input/objects", 1);
+  sub_pointcloud_ = autoware_utils::InterProcessPollingSubscriber<PointCloud2>::create_subscription(
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
 
   pub_status_ = create_publisher<ControlValidatorStatus>("~/output/validation_status", 1);
 
@@ -343,13 +446,87 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
   pub_processing_time_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
 
+  pub_hazard_alert_ = create_publisher<HazardAlert>("~/output/hazard_alert", 1);
+  pub_hazard_processing_time_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "~/debug/hazard/processing_time_ms", 1);
+  pub_hazard_markers_ =
+    create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/hazard/markers", 1);
+  pub_hazard_candidates_ = create_publisher<HazardCandidateArray>("~/debug/hazard/candidates", 1);
+
   debug_pose_publisher_ = std::make_shared<ControlValidatorDebugMarkerPublisher>(this);
 
   setup_parameters();
 
+  setup_hazard_warning();
+
   validation_filtering(validation_status_);
 
   setup_diag();
+}
+
+ControlValidator::~ControlValidator()
+{
+  if (hazard_csv_.is_open()) {
+    hazard_csv_.flush();
+  }
+  if (hazard_candidates_csv_.is_open()) {
+    hazard_candidates_csv_.flush();
+  }
+}
+
+void ControlValidator::setup_hazard_warning()
+{
+  try {
+    hazard_warning_ = std::make_unique<hazard::HazardWarning>(
+      get_logger(), to_hazard_warning_param(params_), vehicle_info_);
+    collision_sweep_ = std::make_unique<hazard::CollisionSweep>(
+      vehicle_info_, params_.hazard_warning.time_resolution);
+    pointcloud_preprocessor_ =
+      std::make_unique<hazard::PointCloudPreprocessor>(to_pointcloud_param(params_), vehicle_info_);
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(get_logger(), "hazard warning setup failed: %s. Warning disabled.", e.what());
+    hazard_warning_.reset();
+    collision_sweep_.reset();
+    pointcloud_preprocessor_.reset();
+  }
+
+  const auto & csv_path = params_.hazard_warning.debug.csv_path;
+  if (!csv_path.empty()) {
+    hazard_csv_.open(csv_path, std::ios::out | std::ios::app);
+    if (!hazard_csv_.is_open()) {
+      RCLCPP_ERROR(get_logger(), "hazard_warning.debug.csv_path: cannot open %s", csv_path.c_str());
+    } else {
+      hazard_csv_ << "stamp,predicted_stamp,kinematics_stamp,objects_stamp,pointcloud_stamp,v,"
+                     "n_clusters,n_points,n_candidates";
+      for (size_t s = 0; s < hazard::kNumSectors; ++s) hazard_csv_ << ",ttc_s" << s;
+      for (size_t s = 0; s < hazard::kNumSectors; ++s) hazard_csv_ << ",level" << s;
+      hazard_csv_ << ",departure_status,lat_dist,processing_ms\n";
+    }
+    const auto dot = csv_path.rfind('.');
+    const auto candidates_path =
+      (dot == std::string::npos ? csv_path : csv_path.substr(0, dot)) + "_candidates.csv";
+    hazard_candidates_csv_.open(candidates_path, std::ios::out | std::ios::app);
+    if (!hazard_candidates_csv_.is_open()) {
+      RCLCPP_ERROR(
+        get_logger(), "hazard_warning.debug.csv_path: cannot open %s", candidates_path.c_str());
+    } else {
+      hazard_candidates_csv_ << "source_stamp,kind,label,ttc,cos,sector,level\n";
+    }
+  }
+}
+
+void ControlValidator::update_hazard_parameters()
+{
+  if (!hazard_warning_) {
+    return;
+  }
+  try {
+    hazard_warning_->update_parameters(to_hazard_warning_param(params_));
+    collision_sweep_->set_time_resolution(params_.hazard_warning.time_resolution);
+    pointcloud_preprocessor_->update_parameters(to_pointcloud_param(params_));
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(get_logger(), "hazard warning parameter update failed: %s", e.what());
+  }
 }
 
 void ControlValidator::setup_parameters()
@@ -493,6 +670,7 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     overrun_validator.update_parameters(params_);
     yaw_validator.update_parameters(params_);
     uncrossable_bound_departure_validator.update_parameters(params_);
+    update_hazard_parameters();
   }
 
   // prepare ros topics
@@ -534,6 +712,26 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     return waiting(sub_measured_acc_->subscriber()->get_topic_name());
   }
 
+  // odometry / objects history for placing pointcloud frames (hazard warning)
+  if (
+    odometry_history_.empty() || rclcpp::Time(odometry_history_.back().header.stamp) !=
+                                   rclcpp::Time(kinematics_msg->header.stamp)) {
+    odometry_history_.push_back(*kinematics_msg);
+    while (odometry_history_.size() > kOdometryHistorySize) {
+      odometry_history_.pop_front();
+    }
+  }
+  if (const auto objects_msg = sub_objects_->take_data()) {
+    if (
+      objects_history_.empty() || rclcpp::Time(objects_history_.back()->header.stamp) !=
+                                    rclcpp::Time(objects_msg->header.stamp)) {
+      objects_history_.push_back(objects_msg);
+      while (objects_history_.size() > kObjectsHistorySize) {
+        objects_history_.pop_front();
+      }
+    }
+  }
+
   // pre process
   debug_pose_publisher_->clear_markers();
   validation_status_.stamp = get_clock()->now();
@@ -545,6 +743,7 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     validation_status_, *kinematics_msg, *control_cmd_msg, vehicle_info_.wheel_base_m);
 
   visualization_msgs::msg::MarkerArray boundary_departure_markers;
+  std::optional<boundary_departure_checker::DepartureResult> departure_result;
   if (predicted_trajectory_msg->points.size() < 2) {
     // TODO(takagi): This check should be moved into each of the individual validate() functions.
     // Passing the rclcpp::Logger as an argument to the validate() function is necessary.
@@ -552,7 +751,7 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   } else {
     trajectory_validator.validate(
       validation_status_, *predicted_trajectory_msg, *reference_trajectory_msg);
-    uncrossable_bound_departure_validator.validate(
+    departure_result = uncrossable_bound_departure_validator.validate(
       validation_status_, *predicted_trajectory_msg, *kinematics_msg, *acceleration_msg,
       lanelet_map_ptr_, vehicle_info_, boundary_departure_markers);
   }
@@ -563,6 +762,13 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   yaw_validator.validate(validation_status_, *reference_trajectory_msg, *kinematics_msg);
 
   publish_boundary_departure_markers(std::move(boundary_departure_markers));
+
+  // hazard warning: independent of the diagnostics, evaluated before validation_filtering()
+  if (
+    params_.hazard_warning.enable && hazard_warning_ && hazard_warning_->enabled() &&
+    predicted_trajectory_msg->points.size() >= 2) {
+    run_hazard_warning(*predicted_trajectory_msg, *kinematics_msg, departure_result);
+  }
 
   if (!flag_autonomous_control_enabled_) {
     // if warnings or errors are being suppressed, printing simple logs
@@ -617,6 +823,199 @@ void ControlValidator::publish_boundary_departure_markers(
     markers.markers.begin(), markers.markers.end(), std::back_inserter(output_markers.markers));
 
   pub_markers_->publish(output_markers);
+}
+
+std::optional<geometry_msgs::msg::Pose> ControlValidator::select_ego_pose_at(
+  const rclcpp::Time & stamp) const
+{
+  const Odometry * best = nullptr;
+  double best_gap = std::numeric_limits<double>::infinity();
+  for (const auto & odom : odometry_history_) {
+    const double gap = std::abs((rclcpp::Time(odom.header.stamp) - stamp).seconds());
+    if (gap < best_gap) {
+      best_gap = gap;
+      best = &odom;
+    }
+  }
+  if (!best || best_gap > params_.hazard_warning.pointcloud.max_stamp_gap_s) {
+    return std::nullopt;
+  }
+  return best->pose.pose;
+}
+
+PredictedObjects::ConstSharedPtr ControlValidator::select_objects_at(
+  const rclcpp::Time & stamp) const
+{
+  PredictedObjects::ConstSharedPtr best;
+  double best_gap = std::numeric_limits<double>::infinity();
+  for (const auto & objects : objects_history_) {
+    const double gap = std::abs((rclcpp::Time(objects->header.stamp) - stamp).seconds());
+    if (gap < best_gap) {
+      best_gap = gap;
+      best = objects;
+    }
+  }
+  if (!best || best_gap > params_.hazard_warning.objects.max_stamp_gap_s) {
+    return nullptr;
+  }
+  return best;
+}
+
+std::optional<hazard::CollisionEvaluation> ControlValidator::evaluate_collision(
+  const Trajectory & predicted_trajectory, const Odometry & kinematics)
+{
+  if (objects_history_.empty()) {
+    RCLCPP_INFO_SKIPFIRST_THROTTLE(
+      get_logger(), *get_clock(), 5000, "hazard warning: waiting for %s",
+      sub_objects_->subscriber()->get_topic_name());
+    return std::nullopt;
+  }
+  const auto & objects_msg = objects_history_.back();
+
+  const auto limits = to_sweep_limits(params_, get_logger());
+  const double horizon = std::min(
+    limits.max_time,
+    rclcpp::Duration(predicted_trajectory.points.back().time_from_start).seconds());
+
+  hazard::CollisionEvaluation evaluation;
+  evaluation.objects_stamp = objects_msg->header.stamp;
+
+  std::vector<hazard::PointCluster> clusters;
+  if (limits.enable_pointcloud) {
+    const auto pointcloud_msg = sub_pointcloud_->take_data();
+    if (!pointcloud_msg) {
+      RCLCPP_INFO_SKIPFIRST_THROTTLE(
+        get_logger(), *get_clock(), 5000, "hazard warning: waiting for %s",
+        sub_pointcloud_->subscriber()->get_topic_name());
+      return std::nullopt;
+    }
+    const rclcpp::Time cloud_stamp(pointcloud_msg->header.stamp);
+    const auto & last_stamp = pointcloud_preprocessor_->last_stamp();
+    if (!last_stamp.has_value() || *last_stamp != cloud_stamp) {
+      if (pointcloud_msg->header.frame_id != hazard::PointCloudPreprocessor::kExpectedFrame) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "hazard warning: pointcloud frame_id is '%s', expected '%s'. Frame dropped.",
+          pointcloud_msg->header.frame_id.c_str(), hazard::PointCloudPreprocessor::kExpectedFrame);
+      } else if (const auto ego_at_cloud = select_ego_pose_at(cloud_stamp)) {
+        geometry_msgs::msg::Pose base_link;
+        base_link.orientation.w = 1.0;
+        pointcloud_preprocessor_->process(
+          *pointcloud_msg, *ego_at_cloud, kinematics.twist.twist.linear.x, horizon,
+          collision_sweep_->ego_polygon(base_link));
+      } else {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "hazard warning: no odometry within %.2f s of the pointcloud stamp. Frame dropped.",
+          params_.hazard_warning.pointcloud.max_stamp_gap_s);
+      }
+    }
+
+    // Drop clusters that duplicate a known object, judged against the objects closest in time
+    // to the pointcloud. Without such objects every cluster is kept.
+    if (const auto & processed_stamp = pointcloud_preprocessor_->last_stamp()) {
+      evaluation.pointcloud_stamp = *processed_stamp;
+      if (const auto objects_at_cloud = select_objects_at(*processed_stamp)) {
+        clusters = hazard::remove_clusters_inside_objects(
+          pointcloud_preprocessor_->clusters(), *objects_at_cloud, limits.enabled_labels,
+          *processed_stamp);
+      } else {
+        clusters = pointcloud_preprocessor_->clusters();
+      }
+    }
+    for (const auto & cluster : clusters) {
+      evaluation.points.insert(
+        evaluation.points.end(), cluster.points.begin(), cluster.points.end());
+    }
+  }
+
+  evaluation.n_clusters = clusters.size();
+  evaluation.stamp = get_clock()->now();
+  evaluation.candidates = collision_sweep_->evaluate(
+    predicted_trajectory, kinematics, *objects_msg, clusters, evaluation.pointcloud_stamp, limits);
+  return evaluation;
+}
+
+void ControlValidator::run_hazard_warning(
+  const Trajectory & predicted_trajectory, const Odometry & kinematics,
+  const std::optional<boundary_departure_checker::DepartureResult> & departure)
+{
+  hazard_stop_watch_.tic();
+
+  std::optional<hazard::CollisionEvaluation> evaluation;
+  try {
+    evaluation = evaluate_collision(predicted_trajectory, kinematics);
+  } catch (const std::exception & e) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000, "hazard warning: evaluation skipped: %s", e.what());
+    return;
+  }
+  if (!evaluation) {
+    return;
+  }
+
+  const auto now = get_clock()->now();
+  std::vector<hazard::CandidateJudgement> judgements;
+  const auto alert = hazard_warning_->run(*evaluation, departure, kinematics, now, &judgements);
+  pub_hazard_alert_->publish(alert);
+
+  const double processing_ms = hazard_stop_watch_.toc();
+  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
+  processing_time_msg.stamp = now;
+  processing_time_msg.data = processing_ms;
+  pub_hazard_processing_time_->publish(processing_time_msg);
+
+  pub_hazard_candidates_->publish(hazard::create_candidate_array(*evaluation, judgements, now));
+
+  if (params_.hazard_warning.debug.publish_markers) {
+    pub_hazard_markers_->publish(
+      hazard::create_hazard_markers(
+        *evaluation, judgements, alert, hazard_warning_->wedges(), kinematics));
+  }
+
+  if (hazard_csv_.is_open()) {
+    const auto sec = [](const builtin_interfaces::msg::Time & t) {
+      return rclcpp::Time(t).seconds();
+    };
+    hazard_csv_ << now.seconds() << ',' << sec(predicted_trajectory.header.stamp) << ','
+                << sec(kinematics.header.stamp) << ',' << sec(evaluation->objects_stamp) << ','
+                << sec(evaluation->pointcloud_stamp) << ',' << kinematics.twist.twist.linear.x
+                << ',' << evaluation->n_clusters << ',' << evaluation->points.size() << ','
+                << evaluation->candidates.size();
+    for (size_t s = 0; s < hazard::kNumSectors; ++s) hazard_csv_ << ',' << alert.ttc_s[s];
+    for (size_t s = 0; s < hazard::kNumSectors; ++s) {
+      hazard_csv_ << ',' << static_cast<int>(alert.level[s]);
+    }
+    hazard_csv_ << ',' << (departure ? static_cast<int>(departure->status) : -1) << ','
+                << alert.boundary_lateral_distance_m << ',' << processing_ms << '\n';
+    if (hazard_candidates_csv_.is_open()) {
+      for (size_t i = 0; i < evaluation->candidates.size(); ++i) {
+        const auto & c = evaluation->candidates[i];
+        const auto & j = judgements[i];
+        const auto kind = c.kind == hazard::SweepCandidate::Kind::OBJECT ? "object" : "pointcloud";
+        const auto write_row =
+          [&](const int sector) {
+            hazard_candidates_csv_
+              << sec(c.source_stamp) << ',' << kind << ',' << static_cast<int>(c.label) << ','
+              << c.ttc.value_or(std::numeric_limits<double>::quiet_NaN()) << ','
+              << c.cos_collision.value_or(std::numeric_limits<double>::quiet_NaN()) << ',' << sector
+              << ',' << static_cast<int>(j.level) << '\n';
+          };
+        if (j.sectors.empty()) {
+          write_row(-1);
+        } else {
+          for (const auto s : j.sectors) write_row(static_cast<int>(s));
+        }
+      }
+    }
+    if (
+      !hazard_csv_last_flush_.has_value() ||
+      (now.nanoseconds() - hazard_csv_last_flush_->nanoseconds()) >= 1000000000LL) {
+      hazard_csv_.flush();
+      if (hazard_candidates_csv_.is_open()) hazard_candidates_csv_.flush();
+      hazard_csv_last_flush_ = now;
+    }
+  }
 }
 
 bool ControlValidator::is_all_valid(const ControlValidatorStatus & s)

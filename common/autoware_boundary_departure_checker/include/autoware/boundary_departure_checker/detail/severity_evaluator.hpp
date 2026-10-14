@@ -74,6 +74,13 @@ Side<std::optional<DeparturePointPair>> evaluate_projections_severity(
 bool is_critical(const Side<std::optional<DeparturePointPair>> & evaluated_projections);
 
 /**
+ * @brief Check if any side has a CAUTION or CRITICAL departure.
+ * @param[in] evaluated_projections evaluated critical point pairs for both sides
+ * @return true if CAUTION or CRITICAL
+ */
+bool is_caution_or_above(const Side<std::optional<DeparturePointPair>> & evaluated_projections);
+
+/**
  * @brief Check if any side is near an uncrossable boundary.
  * @param[in] evaluated_projections evaluated departure point pairs for both sides
  * @return true if near boundary
