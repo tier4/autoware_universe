@@ -157,8 +157,22 @@ The ML Planner relies on an ONNX model for inference.
 
 The sampler model consumes the `turn_indicators` history tensor and returns both `trajectory`
 and `turn_indicator_logits`. The three logit classes are DISABLE, ENABLE_LEFT, and ENABLE_RIGHT.
-To ensure compatibility between models and the ROS 2 node implementation, the model versioning scheme follows **major** and **minor** numbers:
-The model version is defined by the directory name provided to the node.
+To ensure compatibility between models and the ROS 2 node implementation, the model versioning scheme follows **major**, **minor** and **patch** numbers.
+
+Starting from v6, the version is embedded in the ONNX `ModelProto.model_version` (int64) as
+`major * 10**12 + minor * 10**6 + patch` (minor and patch must be below 10**6):
+
+```python
+import onnx
+
+m = onnx.load("ml_planner.onnx")
+m.model_version = 6 * 10**12 + 0 * 10**6 + 0  # 6.0.0
+onnx.save(m, "ml_planner.onnx")
+```
+
+On load, the node rejects models whose major version differs from `ML_PLANNER_WEIGHT_MAJOR_VERSION` in
+`CMakeLists.txt`. Models without an embedded version (`model_version == 0`) are treated as 0.0.0
+and are rejected.
 
 - **Major version**
   Incremented when there are changes in the model **inputs/outputs or architecture**.
