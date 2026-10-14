@@ -119,6 +119,7 @@ Parameters can be set via YAML (see `config/ml_planner.param.yaml`).
 | `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information                                             |
 | `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                    |
 | `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (used by the trajectory optimization) |
+| `~/input/control_mode`    | autoware_vehicle_msgs/msg/ControlModeReport         | Vehicle control mode (the virtual pose applies only in AUTONOMOUS) |
 
 ## Services
 

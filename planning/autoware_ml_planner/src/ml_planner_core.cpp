@@ -285,16 +285,18 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
     return tl::unexpected(std::move(error));
   }
 
+  virtual_pose_active_ = params_.virtual_pose.enable && autoware_in_control_;
   const std::pair<bool, std::string> virtual_pose_mode{
-    params_.virtual_pose.enable, params_.virtual_pose.reference};
+    virtual_pose_active_, params_.virtual_pose.reference};
   if (last_virtual_pose_mode_ && *last_virtual_pose_mode_ != virtual_pose_mode) {
-    // Turned on or off, or another reference: the planning start and the previous trajectory it is
-    // taken from change meaning, so start over from the vehicle.
+    // Turned on or off, Autoware took or gave up control, or another reference: the planning
+    // start and the previous trajectory it is taken from change meaning, so start over from the
+    // vehicle.
     clear_virtual_pose_state();
   }
   last_virtual_pose_mode_ = virtual_pose_mode;
 
-  if (params_.virtual_pose.enable) {
+  if (virtual_pose_active_) {
     frame_ego_ = build_frame_ego();
   } else {
     frame_ego_ = ego_history_.back();
@@ -302,7 +304,7 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
     virtual_history_.clear();
   }
   const auto & frame_ego_history =
-    params_.virtual_pose.enable ? virtual_history_.msgs() : ego_history_.msgs();
+    virtual_pose_active_ ? virtual_history_.msgs() : ego_history_.msgs();
 
   return preprocess::FrameInputs{
     frame_time(),
@@ -496,7 +498,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
   // is physically consistent.
   const Odometry & kinematic_state = ego_history_.back();
   Odometry planning_start = kinematic_state;
-  if (params_.virtual_pose.enable) {
+  if (virtual_pose_active_) {
     planning_start.pose.pose = frame_ego_.pose.pose;
   }
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(frame_ego_.pose.pose);

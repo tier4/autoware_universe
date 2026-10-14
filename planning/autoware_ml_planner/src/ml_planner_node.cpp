@@ -876,6 +876,15 @@ void MLPlanner::on_timer()
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
   auto steering_ptr = sub_steering_.take_data();
+  if (const auto control_mode_ptr = sub_control_mode_.take_data()) {
+    control_mode_ = control_mode_ptr->mode;
+  }
+  if (params_.virtual_pose.enable && !control_mode_) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+      "Control mode not received: the virtual pose stays on the vehicle");
+  }
+  core_->set_autoware_in_control(control_mode_ == ControlModeReport::AUTONOMOUS);
 
   if (!steering_ptr) {
     constexpr auto message = "Steering status is not available";

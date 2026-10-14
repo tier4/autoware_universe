@@ -191,6 +191,15 @@ public:
     const LaneletRoute::ConstSharedPtr & route_ptr);
 
   /**
+   * @brief Tell whether Autoware currently drives the vehicle (control mode AUTONOMOUS).
+   *
+   * The virtual pose assumes the controller follows the published plan. While a driver steers
+   * (manual mode, an override), the vehicle leaves the plan by intent, so the frame pose stays on
+   * the vehicle and the published plan starts where the vehicle is, as the engage check expects.
+   */
+  void set_autoware_in_control(const bool in_control) { autoware_in_control_ = in_control; }
+
+  /**
    * @brief Build normalized-shape model inputs from a validated buffer snapshot.
    */
   preprocess::TensorMapResult create_input_data(const preprocess::FrameInputs & frame_inputs);
@@ -323,7 +332,12 @@ private:
   // change): the optimizer's previous solutions must not shape the next plan. Kept until a
   // planning cycle reaches the optimizer.
   bool restart_optimizer_{false};
-  // virtual_pose.enable and virtual_pose.reference of the previous cycle.
+  // See set_autoware_in_control().
+  bool autoware_in_control_{false};
+  // Whether the virtual pose is applied in the current frame: virtual_pose.enable while Autoware
+  // drives the vehicle.
+  bool virtual_pose_active_{false};
+  // virtual_pose_active_ and virtual_pose.reference of the previous cycle.
   std::optional<std::pair<bool, std::string>> last_virtual_pose_mode_;
   void clear_virtual_pose_state();
   Odometry build_frame_ego();
