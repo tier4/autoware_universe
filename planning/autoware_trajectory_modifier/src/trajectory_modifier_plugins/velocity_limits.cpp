@@ -599,6 +599,56 @@ std::optional<PlanSample> sample_plan(const TrajectoryPoints & plan, const doubl
   return std::nullopt;
 }
 
+/// @brief Whether the input asks for a velocity lower than a plan by more than `margin`, `elapsed`
+/// seconds after the ego state the plan was planned from. Each input point is compared with the
+/// plan where it projects onto the plan polyline, searching forward from the plan segment at
+/// `elapsed`. Input points beyond the plan are ignored, as is the last input point (horizon end,
+/// not a stop).
+bool input_below_plan(
+  const TrajectoryPoints & plan, const double elapsed, const TrajectoryPoints & input,
+  const double margin)
+{
+  if (plan.size() < 2) {
+    return false;
+  }
+  std::size_t segment = 0;
+  while (segment + 2 < plan.size() &&
+         rclcpp::Duration(plan[segment + 1].time_from_start).seconds() <= elapsed) {
+    ++segment;
+  }
+  // Ratio of the projection along a segment; a segment without length (stopped plan) is skipped.
+  const auto project = [&plan](const std::size_t index, const geometry_msgs::msg::Point & point) {
+    const auto & p0 = plan[index].pose.position;
+    const auto & p1 = plan[index + 1].pose.position;
+    const double dx = p1.x - p0.x;
+    const double dy = p1.y - p0.y;
+    const double dz = p1.z - p0.z;
+    const double squared_length = dx * dx + dy * dy + dz * dz;
+    return squared_length > 1e-12
+             ? ((point.x - p0.x) * dx + (point.y - p0.y) * dy + (point.z - p0.z) * dz) /
+                 squared_length
+             : std::numeric_limits<double>::infinity();
+  };
+  for (std::size_t i = 0; i + 1 < input.size(); ++i) {
+    const auto & position = input[i].pose.position;
+    double ratio = project(segment, position);
+    while (ratio > 1.0 && segment + 2 < plan.size()) {
+      ++segment;
+      ratio = project(segment, position);
+    }
+    if (ratio > 1.0) {
+      return false;  // This input point and the following ones are beyond the plan.
+    }
+    const double planned = autoware::interpolation::lerp(
+      static_cast<double>(plan[segment].longitudinal_velocity_mps),
+      static_cast<double>(plan[segment + 1].longitudinal_velocity_mps), std::max(0.0, ratio));
+    if (input[i].longitudinal_velocity_mps < planned - margin) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// @brief Measurement time of the ego state of a plugin input; none when unset.
 std::optional<double> measurement_time(const TrajectoryModifierData & data)
 {
@@ -620,7 +670,9 @@ bool operator==(const FixedProfileParameters & lhs, const FixedProfileParameters
          lhs.reset_distance_deviation == rhs.reset_distance_deviation &&
          lhs.reset_time_gap == rhs.reset_time_gap &&
          lhs.reset_on_new_stop == rhs.reset_on_new_stop &&
-         lhs.new_stop_match_distance == rhs.new_stop_match_distance;
+         lhs.new_stop_match_distance == rhs.new_stop_match_distance &&
+         lhs.reset_on_lower_input == rhs.reset_on_lower_input &&
+         lhs.lower_input_velocity_margin == rhs.lower_input_velocity_margin;
 }
 
 FixedProfileStopState make_fixed_profile_stop_state(
@@ -663,7 +715,9 @@ FixedProfileParameters make_fixed_profile_parameters(const TrajectoryModifierPar
     fixed.reset_distance_deviation,
     fixed.reset_time_gap,
     fixed.reset_on_new_stop,
-    fixed.new_stop_match_distance};
+    fixed.new_stop_match_distance,
+    fixed.reset_on_lower_input,
+    fixed.lower_input_velocity_margin};
 }
 
 const char * to_string(const ProfileStart start)
@@ -685,6 +739,8 @@ const char * to_string(const ProfileStart start)
       return "reset_distance";
     case ProfileStart::ResetNewStop:
       return "reset_new_stop";
+    case ProfileStart::ResetLowerInput:
+      return "reset_lower_input";
   }
   return "unknown";
 }
@@ -693,7 +749,7 @@ bool is_reset(const ProfileStart start)
 {
   return start == ProfileStart::ResetTimeGap || start == ProfileStart::ResetVelocity ||
          start == ProfileStart::ResetAcceleration || start == ProfileStart::ResetDistance ||
-         start == ProfileStart::ResetNewStop;
+         start == ProfileStart::ResetNewStop || start == ProfileStart::ResetLowerInput;
 }
 
 void FixedProfileMemory::set_parameters(const FixedProfileParameters & parameters)
@@ -707,7 +763,7 @@ void FixedProfileMemory::set_parameters(const FixedProfileParameters & parameter
 ProfileStartResult FixedProfileMemory::start(
   const std::size_t candidate, const std::optional<double> & time,
   const geometry_msgs::msg::Point & position, const VelocityLimitOptions & measured,
-  const FixedProfileStopState & stop_state) const
+  const FixedProfileStopState & stop_state, const TrajectoryPoints & input) const
 {
   if (!parameters_.enable) {
     return {measured, ProfileStart::Measured};
@@ -753,6 +809,11 @@ ProfileStartResult FixedProfileMemory::start(
       return {measured, ProfileStart::ResetNewStop};
     }
   }
+  if (
+    parameters_.reset_on_lower_input &&
+    input_below_plan(previous.points, elapsed, input, parameters_.lower_input_velocity_margin)) {
+    return {measured, ProfileStart::ResetLowerInput};
+  }
   VelocityLimitOptions options;
   options.current_ego_velocity = sample->velocity;
   options.current_ego_acceleration = sample->acceleration;
@@ -760,7 +821,8 @@ ProfileStartResult FixedProfileMemory::start(
 }
 
 ProfileStartResult FixedProfileMemory::start(
-  const TrajectoryModifierData & data, const FixedProfileStopState & stop_state) const
+  const TrajectoryModifierData & data, const FixedProfileStopState & stop_state,
+  const TrajectoryPoints & input) const
 {
   const auto measured = make_velocity_limit_options(data);
   if (!data.current_odometry) {
@@ -768,7 +830,7 @@ ProfileStartResult FixedProfileMemory::start(
   }
   return start(
     data.candidate_index, measurement_time(data), data.current_odometry->pose.pose.position,
-    measured, stop_state);
+    measured, stop_state, input);
 }
 
 void FixedProfileMemory::store(

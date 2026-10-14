@@ -87,6 +87,8 @@ struct FixedProfileParameters
   double reset_time_gap{0.5};                ///< [s]
   bool reset_on_new_stop{true};
   double new_stop_match_distance{1.0};  ///< [m] Position tolerance across replanned inputs.
+  bool reset_on_lower_input{true};
+  double lower_input_velocity_margin{0.5};  ///< [m/s] Input drop below the plan that is ignored.
 };
 
 bool operator==(const FixedProfileParameters & lhs, const FixedProfileParameters & rhs);
@@ -120,6 +122,7 @@ enum class ProfileStart {
   ResetAcceleration,  ///< Measured acceleration too far from the previous plan.
   ResetDistance,      ///< Ego too far from its planned position.
   ResetNewStop,       ///< A new input stop or zero-speed limit appeared.
+  ResetLowerInput,    ///< The input velocity dropped below the previous plan.
 };
 
 const char * to_string(ProfileStart start);
@@ -138,7 +141,8 @@ struct ProfileStartResult
 /// follows measurement noise or tracking errors; it restarts from the measured ego state when that
 /// state deviates from the previous plan by more than the reset thresholds. The limits and the
 /// input are still evaluated every cycle. A new input stop or zero-speed limit also resets the plan
-/// when reset_on_new_stop is enabled.
+/// when reset_on_new_stop is enabled, and so does an input velocity below the previous plan when
+/// reset_on_lower_input is enabled.
 class FixedProfileMemory
 {
 public:
@@ -146,15 +150,17 @@ public:
   void set_parameters(const FixedProfileParameters & parameters);
 
   /// @brief Starting state for a candidate, from the measured ego state at `time` (unknown when
-  /// not given), `position`, and the current plugin input's stop constraints.
+  /// not given), `position`, and the current plugin input's stop constraints and points (before
+  /// any modification; an empty input is never below the previous plan).
   [[nodiscard]] ProfileStartResult start(
     std::size_t candidate, const std::optional<double> & time,
     const geometry_msgs::msg::Point & position, const VelocityLimitOptions & measured,
-    const FixedProfileStopState & stop_state = {}) const;
+    const FixedProfileStopState & stop_state = {}, const TrajectoryPoints & input = {}) const;
 
   /// @brief Starting state for the candidate and the ego state of a plugin input.
   [[nodiscard]] ProfileStartResult start(
-    const TrajectoryModifierData & data, const FixedProfileStopState & stop_state = {}) const;
+    const TrajectoryModifierData & data, const FixedProfileStopState & stop_state = {},
+    const TrajectoryPoints & input = {}) const;
 
   /// @brief Remember the output trajectory and pre-modification input stops for a candidate.
   /// Without a time the candidate's plan is forgotten, as are candidates beyond `candidate_count`.

@@ -93,7 +93,7 @@ ProcessingResult ExternalVelocityLimit::process(
     detail::get_external_velocity_limit_min_jerk(*velocity_limit, constraints_.max_jerk);
   const double max_velocity = velocity_limit->max_velocity;
   stop_state.zero_speed_limit = max_velocity <= detail::k_fixed_profile_stop_velocity_threshold_mps;
-  const auto start = fixed_profile_.start(input, stop_state);
+  const auto start = fixed_profile_.start(input, stop_state, traj_points);
   last_profile_start_ = start.start;
   if (detail::is_reset(start.start)) {
     RCLCPP_DEBUG(

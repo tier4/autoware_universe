@@ -113,7 +113,7 @@ ProcessingResult MapVelocityLimits::process(
     fixed_profile_.store(input, traj_points, stop_state);
     return ProcessingResult::Unchanged;
   }
-  const auto start = fixed_profile_.start(input, stop_state);
+  const auto start = fixed_profile_.start(input, stop_state, traj_points);
   last_profile_start_ = start.start;
   if (detail::is_reset(start.start)) {
     RCLCPP_DEBUG(

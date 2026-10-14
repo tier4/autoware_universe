@@ -1695,7 +1695,7 @@ trajectory_modifier_params:
       default_value: stop_after_stopline
       description: Policy when the vehicle cannot stop before the stop line
       validation:
-        one_of<>: [["go", "force_stop", "stop_after_stopline"]]
+        one_of<>: [[go, force_stop, stop_after_stopline]]
       read_only: false
     state_clear_time:
       type: double
@@ -1794,6 +1794,18 @@ trajectory_modifier_params:
         type: double
         default_value: 1.0
         description: Maximum distance between input stop positions in successive plans to treat them as the same stop [m].
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_on_lower_input:
+        type: bool
+        default_value: true
+        description: Restart from the measured ego state when the input velocity drops below the previous plan at the same position.
+        read_only: false
+      lower_input_velocity_margin:
+        type: double
+        default_value: 0.5
+        description: Input velocity drop below the previous plan above which the profile restarts from the measured ego state [m/s].
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false

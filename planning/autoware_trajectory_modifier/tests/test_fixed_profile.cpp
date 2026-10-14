@@ -106,6 +106,26 @@ protected:
       stop_state);
   }
 
+  /// @brief Input from the plan's second point, with the plan's velocities shifted by `offset`.
+  [[nodiscard]] TrajectoryPoints input_along_plan(const double offset) const
+  {
+    TrajectoryPoints input(plan_.begin() + 1, plan_.end());
+    for (std::size_t i = 0; i < input.size(); ++i) {
+      input[i].time_from_start = rclcpp::Duration::from_seconds(dt * static_cast<double>(i));
+      input[i].longitudinal_velocity_mps += static_cast<float>(offset);
+    }
+    return input;
+  }
+
+  /// @brief Start at t = 10.1 s from the plan's second point with the given input.
+  [[nodiscard]] detail::ProfileStartResult start_with_input(const TrajectoryPoints & input) const
+  {
+    const auto & planned = plan_[1];
+    return memory_.start(
+      0, 10.1, planned.pose.position,
+      make_options(planned.longitudinal_velocity_mps, planned.acceleration_mps2), {}, input);
+  }
+
   TrajectoryPoints plan_;
   FixedProfileMemory memory_;
 };
@@ -285,11 +305,61 @@ TEST_F(FixedProfile, CanDisableTheNewStopReset)
     ProfileStart::PreviousPlan);
 }
 
+TEST_F(FixedProfile, RestartsWhenTheInputDropsBelowThePlan)
+{
+  // An input at or above the plan continues it.
+  EXPECT_EQ(start_with_input(input_along_plan(0.0)).start, ProfileStart::PreviousPlan);
+  EXPECT_EQ(start_with_input(input_along_plan(0.4)).start, ProfileStart::PreviousPlan);
+  EXPECT_EQ(
+    start_with_input(make_input(plan_[1].pose.position.x)).start, ProfileStart::PreviousPlan);
+
+  // A drop ahead within the margin is ignored; a larger one restarts from the measured state.
+  auto input = input_along_plan(0.0);
+  input[50].longitudinal_velocity_mps -= 0.4F;
+  EXPECT_EQ(start_with_input(input).start, ProfileStart::PreviousPlan);
+  input[50].longitudinal_velocity_mps -= 0.2F;
+  const auto reset = start_with_input(input);
+  ASSERT_EQ(reset.start, ProfileStart::ResetLowerInput);
+  EXPECT_DOUBLE_EQ(*reset.options.current_ego_velocity, plan_[1].longitudinal_velocity_mps);
+  EXPECT_TRUE(detail::is_reset(reset.start));
+  EXPECT_STREQ(detail::to_string(reset.start), "reset_lower_input");
+}
+
+TEST_F(FixedProfile, LowerInputIgnoresTheHorizonEndAndPointsBeyondThePlan)
+{
+  auto input = input_along_plan(0.0);
+  input.back().longitudinal_velocity_mps = 0.0F;
+  EXPECT_EQ(start_with_input(input).start, ProfileStart::PreviousPlan);
+
+  // The cruising input reaches beyond the end of the plan, which brakes for the zone.
+  auto longer = make_input(plan_[1].pose.position.x, 2 * plan_.size());
+  for (auto & point : longer) {
+    if (point.pose.position.x > plan_.back().pose.position.x + 1.0) {
+      point.longitudinal_velocity_mps = 1.0F;
+    }
+  }
+  EXPECT_EQ(start_with_input(longer).start, ProfileStart::PreviousPlan);
+}
+
+TEST_F(FixedProfile, LowerInputResetFollowsItsParameters)
+{
+  FixedProfileParameters parameters;
+  parameters.lower_input_velocity_margin = 0.3;
+  memory_.set_parameters(parameters);
+  memory_.store(0, 1, 10.0, plan_);
+  EXPECT_EQ(start_with_input(input_along_plan(-0.4)).start, ProfileStart::ResetLowerInput);
+
+  parameters.reset_on_lower_input = false;
+  memory_.set_parameters(parameters);
+  memory_.store(0, 1, 10.0, plan_);
+  EXPECT_EQ(start_with_input(input_along_plan(-1.0)).start, ProfileStart::PreviousPlan);
+}
+
 TEST(FixedProfileReplanning, StartingFromThePreviousPlanReproducesIt)
 {
   // Every cycle, a new input starts where the previous plan says the ego is, and the measured
   // state is off the plan by a small error. Starting from the previous plan, the successive plans
-  // continue the first one, including its braking for the zone.
+  // continue the first one, including its braking for the zone, which keeps them below the input.
   const auto first = make_plan();
   FixedProfileMemory memory;
   memory.set_parameters(FixedProfileParameters{});
@@ -299,12 +369,13 @@ TEST(FixedProfileReplanning, StartingFromThePreviousPlanReproducesIt)
     const double time = dt * static_cast<double>(cycle);
     const auto & planned = previous[1];
     const double error = cycle % 2 == 0 ? 0.2 : -0.2;
+    auto plan = make_input(planned.pose.position.x);
     const auto start = memory.start(
       0, time, planned.pose.position,
-      make_options(planned.longitudinal_velocity_mps + error, planned.acceleration_mps2 - error));
+      make_options(planned.longitudinal_velocity_mps + error, planned.acceleration_mps2 - error),
+      {}, plan);
     ASSERT_EQ(start.start, ProfileStart::PreviousPlan) << cycle;
 
-    auto plan = make_input(planned.pose.position.x);
     detail::apply_velocity_limits(plan, constraints, zone, start.options);
     memory.store(0, 1, time, plan);
     for (std::size_t i = 0; i + cycle < first.size(); ++i) {

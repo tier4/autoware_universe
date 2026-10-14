@@ -116,6 +116,17 @@
                   "default": 1.0,
                   "minimum": 0.0,
                   "description": "Maximum distance between input stop positions in successive plans to treat them as the same stop [m]"
+                },
+                "reset_on_lower_input": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Restart from the measured ego state when the input velocity drops below the previous plan at the same position"
+                },
+                "lower_input_velocity_margin": {
+                  "type": "number",
+                  "default": 0.5,
+                  "minimum": 0.0,
+                  "description": "Input velocity drop below the previous plan above which the profile restarts from the measured ego state [m/s]"
                 }
               },
               "additionalProperties": false
@@ -1774,11 +1785,7 @@
             },
             "unstoppable_policy": {
               "type": "string",
-              "enum": [
-                "go",
-                "force_stop",
-                "stop_after_stopline"
-              ],
+              "enum": ["go", "force_stop", "stop_after_stopline"],
               "default": "stop_after_stopline"
             },
             "state_clear_time": {

@@ -577,7 +577,7 @@ inline StageOutcome limit_with_memory(
     make_options(ego), plugin::detail::ProfileStart::Measured};
   if (memory) {
     start = memory->start(
-      0, ego.time, scenario.path.pose_at(ego.s).position, make_options(ego), stop_state);
+      0, ego.time, scenario.path.pose_at(ego.s).position, make_options(ego), stop_state, points);
   }
   const auto result =
     plugin::detail::apply_velocity_limits(points, constraints, limit, start.options);
