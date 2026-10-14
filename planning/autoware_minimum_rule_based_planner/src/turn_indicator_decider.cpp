@@ -386,9 +386,13 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(
   const auto pull_over = turn_indicator::decide_pull_over(
     dist_to_shift_start, dist_to_goal, goal_offset, ego_velocity, params_, arrived_at_goal_);
 
-  // Pull-out is suppressed inside the pull-over range so the two cannot fight over the direction.
+  // Pull-out is suppressed inside the pull-over range so the two cannot fight over the direction,
+  // but only for an off-centerline goal: an on-centerline one raises no pull-over and must not cut
+  // a pull-out short. The range check also covers the stop at the goal, after pull-over clears.
   const bool in_pull_over_range =
-    dist_to_shift_start <= turn_indicator::activation_distance(ego_velocity, params_);
+    dist_to_shift_start <= turn_indicator::activation_distance(ego_velocity, params_) &&
+    turn_indicator::direction_from_lateral_offset(
+      goal_offset, turn_indicator::k_lateral_shift_threshold) != TurnDirection::NONE;
   const auto lanes = ego_lanes(path, ego_index, route_context);
   const auto pull_out =
     lanes.empty()
