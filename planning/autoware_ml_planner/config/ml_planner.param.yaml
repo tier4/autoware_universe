@@ -36,6 +36,7 @@
       min_acceleration_mps2: -4.0    # [m/s^2]
       max_acceleration_mps2: 3.0     # [m/s^2]
       max_steering_rate_rps: 1.0     # [rad/s]
+      steering_angle_margin_rad: 0.0  # planned steering stays this far inside the vehicle's max_steer_angle [rad]
       max_lateral_acceleration_mps2: 3.0  # soft constraint bound [m/s^2]
       max_sqp_iterations: 50
       temporal_consistency:

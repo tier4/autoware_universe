@@ -72,6 +72,7 @@ bool optimization_params_changed(
          lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
          lhs.max_acceleration_mps2 != rhs.max_acceleration_mps2 ||
          lhs.max_steering_rate_rps != rhs.max_steering_rate_rps ||
+         lhs.steering_angle_margin_rad != rhs.steering_angle_margin_rad ||
          lhs.max_lateral_acceleration_mps2 != rhs.max_lateral_acceleration_mps2 ||
          lhs.max_sqp_iterations != rhs.max_sqp_iterations ||
          lhs.temporal_consistency.enable != rhs.temporal_consistency.enable ||

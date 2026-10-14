@@ -149,6 +149,14 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
 
   set_up_params();
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  {
+    const double margin = params_.trajectory_optimization.steering_angle_margin_rad;
+    if (margin < 0.0 || margin >= vehicle_info_.max_steer_angle_rad) {
+      throw std::runtime_error(
+        "trajectory_optimization.steering_angle_margin_rad must be non-negative and below the "
+        "vehicle's max_steer_angle");
+    }
+  }
   RCLCPP_INFO_STREAM(
     get_logger(),
     "vehicle_info: wheel_base_m=" << vehicle_info_.wheel_base_m
@@ -275,6 +283,8 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.max_acceleration_mps2", 3.0);
   opt.max_steering_rate_rps =
     this->declare_parameter<double>("trajectory_optimization.max_steering_rate_rps", 1.0);
+  opt.steering_angle_margin_rad =
+    this->declare_parameter<double>("trajectory_optimization.steering_angle_margin_rad", 0.0);
   opt.max_lateral_acceleration_mps2 =
     this->declare_parameter<double>("trajectory_optimization.max_lateral_acceleration_mps2", 3.0);
   opt.max_sqp_iterations =
@@ -497,6 +507,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "trajectory_optimization.max_steering_rate_rps", opt.max_steering_rate_rps);
   update_param<double>(
+    parameters, "trajectory_optimization.steering_angle_margin_rad",
+    opt.steering_angle_margin_rad);
+  update_param<double>(
     parameters, "trajectory_optimization.max_lateral_acceleration_mps2",
     opt.max_lateral_acceleration_mps2);
   update_param<int>(
@@ -691,6 +704,13 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     opt.max_steering_rate_rps < 0.0 || opt.max_lateral_acceleration_mps2 < 0.0 ||
     opt.max_sqp_iterations < 1) {
     return failure("trajectory optimization limits and max_sqp_iterations must be positive");
+  }
+  if (
+    opt.steering_angle_margin_rad < 0.0 ||
+    opt.steering_angle_margin_rad >= vehicle_info_.max_steer_angle_rad) {
+    return failure(
+      "trajectory_optimization.steering_angle_margin_rad must be non-negative and below the "
+      "vehicle's max_steer_angle");
   }
   {
     const auto & temporal = opt.temporal_consistency;

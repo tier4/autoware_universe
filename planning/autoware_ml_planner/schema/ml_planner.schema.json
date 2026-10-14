@@ -208,6 +208,12 @@
               "default": 1.0,
               "description": "Steering rate bound [rad/s]"
             },
+            "steering_angle_margin_rad": {
+              "type": "number",
+              "default": 0.0,
+              "minimum": 0.0,
+              "description": "Planned steering stays this far inside the vehicle's max_steer_angle, leaving the controller steering to correct with [rad]"
+            },
             "max_lateral_acceleration_mps2": {
               "type": "number",
               "default": 3.0,

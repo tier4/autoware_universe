@@ -47,9 +47,8 @@ TrajectoryOptimizer::TrajectoryOptimizer(
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const size_t batch_size)
 : params_(params),
   wheelbase_m_(vehicle_info.wheel_base_m),
-  max_steering_angle_rad_(vehicle_info.max_steer_angle_rad),
-  solver_(
-    std::make_unique<AcadosSolverWrapper>(params, wheelbase_m_, vehicle_info.max_steer_angle_rad)),
+  max_steering_angle_rad_(vehicle_info.max_steer_angle_rad - params.steering_angle_margin_rad),
+  solver_(std::make_unique<AcadosSolverWrapper>(params, wheelbase_m_, max_steering_angle_rad_)),
   previous_solutions_(batch_size)
 {
 }
