@@ -135,7 +135,11 @@ ProcessingResult MapVelocityLimits::process(
       return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
     },
     start.options);
-  fixed_profile_.store(input, traj_points, stop_state);
+  if (result.status == ProcessingResult::Unchanged && !result.error.empty()) {
+    fixed_profile_.store(input, TrajectoryPoints{}, stop_state);
+  } else {
+    fixed_profile_.store(input, traj_points, stop_state);
+  }
   publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
   return result.status;
 }

@@ -292,6 +292,37 @@ TEST_F(FixedProfile, NewZeroSpeedExternalLimitResetsOnce)
   EXPECT_EQ(start_with_offsets(0.0, 0.0, 0.0, 10.2, zero_limit).start, ProfileStart::PreviousPlan);
 }
 
+TEST_F(FixedProfile, StoppedPlanRestartsWhileEgoStillMoves)
+{
+  auto stopped_plan = make_input(40.0, 4);
+  for (auto & point : stopped_plan) {
+    point.pose.position.x = 40.0;
+    point.longitudinal_velocity_mps = 0.0F;
+    point.acceleration_mps2 = 0.0F;
+  }
+  FixedProfileStopState zero_limit;
+  zero_limit.zero_speed_limit = true;
+  memory_.store(0, 1, 10.0, stopped_plan, zero_limit);
+
+  const auto moving = memory_.start(0, 10.1, point_at(40.0), make_options(0.12, 0.0), zero_limit);
+  EXPECT_EQ(moving.start, ProfileStart::ResetVelocity);
+  EXPECT_DOUBLE_EQ(*moving.options.current_ego_velocity, 0.12);
+  auto moving_input = make_input(40.0);
+  const auto result = detail::apply_velocity_limits(
+    moving_input, {1.0, 2.0, 1.0}, [](const auto &) { return std::optional<double>{0.0}; },
+    moving.options);
+  ASSERT_EQ(result.status, ProcessingResult::Modified) << result.error;
+  EXPECT_GT(moving_input.front().longitudinal_velocity_mps, 0.05F);
+  EXPECT_EQ(
+    memory_.start(0, 10.1, point_at(40.0), make_options(0.03, 0.0), zero_limit).start,
+    ProfileStart::PreviousPlan);
+
+  memory_.store(0, 1, 10.1, TrajectoryPoints{}, zero_limit);
+  EXPECT_EQ(
+    memory_.start(0, 10.2, point_at(40.0), make_options(0.12, 0.0), zero_limit).start,
+    ProfileStart::NoPreviousPlan);
+}
+
 TEST_F(FixedProfile, CanDisableTheNewStopReset)
 {
   FixedProfileParameters parameters;

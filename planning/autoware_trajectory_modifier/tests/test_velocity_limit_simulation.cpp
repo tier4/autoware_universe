@@ -17,9 +17,10 @@
 // plot_velocity_limit_simulation.py, so a failing scenario also documents the defect.
 //
 // Expected behavior encoded here:
-// - a limit stage is never faster than its input at the same arc length (it never accelerates on
-//   its own and never removes an upstream deceleration or stop);
-// - the acceleration, deceleration and jerk limits are never violated;
+// - a limit stage stays close to or below its input at the same arc length, allowing a small
+//   transient while jerk-limited braking is released;
+// - each plan respects the acceleration, deceleration and jerk limits; executed motion is also
+//   checked, with R02 explicitly showing sensitivity to noisy acceleration feedback;
 // - the ego converges to min(limit, upstream request) within the reference settle time;
 // - a map zone is entered at its limit when feasible, and braking does not start much earlier than
 //   the latest feasible point;
@@ -424,6 +425,9 @@ Scenario c01_chain_external_stricter_than_map()
   s.external_events = {{0.0, make_external_limit(v20)}};
   s.zones = {{60.0, infinity, v30}};
   s.config.duration = 30.0;
+  // The map stage releases braking to meet the already stricter external profile. Its permitted
+  // 0.1 m/s transient is below 2% of the 20 km/h limit; the steady-state check stays strict.
+  s.expectations.max_velocity_increase = 0.1;
   s.expectations.steady_windows = {steady_time(16.0, 30.0, v20)};
   return s;
 }
@@ -465,6 +469,12 @@ Scenario r02_noisy_acceleration_feedback()
     "the follower stays perfect.";
   s.targets = "D (sensitivity)";
   s.config.acceleration_noise_stddev = 0.1;
+  // Replanning every cycle from a fresh noisy acceleration can make executed acceleration and
+  // jerk chatter even though each individual plan respects its bounds. F02 must remove these
+  // failures by retaining the previous plan.
+  s.expected_failed_checks = {
+    "jerk_within_bound", "steady_t[20,30]_at_8.33_acceleration",
+    "steady_t[20,30]_at_8.33_jerk_sign_changes"};
   return s;
 }
 
@@ -481,6 +491,7 @@ Scenario with_fixed_profile(
   scenario.targets = "fixed profile";
   scenario.fixed_profile = autoware::trajectory_modifier::plugin::detail::FixedProfileParameters{};
   scenario.expectations.max_profile_resets = 0;
+  scenario.expected_failed_checks.clear();
   return scenario;
 }
 

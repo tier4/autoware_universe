@@ -75,9 +75,10 @@ double jerk_limited_braking_distance(
 /// limit ahead. Limit changes between input points are located by querying the callback. A
 /// velocity drop at the last input point is ignored, since planners commonly end their horizon
 /// with a zero velocity that is not a stop. A measured acceleration outside the constraints, or
-/// braking harder than the input at its start, is clamped into them. The first pose, the point
-/// count and every timestamp are kept, and the other poses are re-sampled along the input polyline
-/// to match the new profile.
+/// braking harder than the input at its start, is clamped into them. Poses are re-sampled along
+/// the input polyline. If the profile cannot fit an input stop or zero-limit path, the function
+/// reports the conflict and leaves the input unchanged. A moving profile that exceeds a
+/// stop-free input horizon is truncated at the last representable point.
 VelocityLimitResult apply_velocity_limits(
   TrajectoryPoints & points, const VelocityLimitConstraints & constraints,
   const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit,

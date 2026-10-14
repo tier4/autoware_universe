@@ -28,6 +28,7 @@
 #include <functional>
 #include <limits>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace autoware::trajectory_modifier::plugin::detail
@@ -412,13 +413,19 @@ private:
   /// @brief State after one step toward the commanded acceleration under the jerk limit.
   [[nodiscard]] LongitudinalState step(const double command, const double dt) const
   {
+    if (
+      state_.velocity <= 0.0 && state_.acceleration <= 0.0 &&
+      (state_.acceleration < 0.0 || command <= 0.0)) {
+      // Keep the vehicle stopped while releasing residual braking acceleration, or while no
+      // positive acceleration is commanded. Once released, a positive command may start it.
+      return {state_.s, 0.0, std::min(0.0, state_.acceleration + constraints_.max_jerk * dt)};
+    }
     const double jerk_step = constraints_.max_jerk * dt;
     const double acceleration =
       std::clamp(command, state_.acceleration - jerk_step, state_.acceleration + jerk_step);
     auto next = integrate(state_, (acceleration - state_.acceleration) / dt, dt);
     if (next.velocity < 0.0) {
       next.velocity = 0.0;
-      next.acceleration = std::max(next.acceleration, 0.0);
     }
     return next;
   }
@@ -431,14 +438,14 @@ private:
   double input_deceleration_{constraints_.max_deceleration};  ///< Allowed to follow the input.
 };
 
-/// @brief Move every pose but the first along the input polyline to match the new velocities.
-void resample_poses(
+/// @brief Move representable poses along the input polyline and return their count.
+std::size_t resample_poses(
   TrajectoryPoints & points, const std::vector<geometry_msgs::msg::Pose> & original,
   const std::vector<double> & times)
 {
   const auto count = points.size();
-  std::vector<double> original_s(count, 0.0);
-  for (std::size_t i = 1; i < count; ++i) {
+  std::vector<double> original_s(original.size(), 0.0);
+  for (std::size_t i = 1; i < original.size(); ++i) {
     const auto & p0 = original[i - 1].position;
     const auto & p1 = original[i].position;
     original_s[i] = original_s[i - 1] + std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
@@ -452,13 +459,23 @@ void resample_poses(
       0.5 * (points[i - 1].longitudinal_velocity_mps + points[i].longitudinal_velocity_mps) * dt;
   }
 
-  std::size_t segment = 0;
+  // The polyline cannot represent motion beyond its end. Leave those points to the caller's
+  // stop or moving-horizon policy instead of pinning moving points to the last pose.
+  std::size_t valid_count = count;
   for (std::size_t i = 1; i < count; ++i) {
-    while (segment + 1 < count && original_s[segment + 1] <= new_s[i]) {
+    if (new_s[i] > original_s.back() + 1e-3) {
+      valid_count = i;
+      break;
+    }
+  }
+
+  std::size_t segment = 0;
+  for (std::size_t i = 1; i < valid_count; ++i) {
+    while (segment + 1 < original.size() && original_s[segment + 1] <= new_s[i]) {
       ++segment;
     }
 
-    if (segment + 1 == count) {
+    if (segment + 1 == original.size()) {
       points[i].pose = original.back();
     } else {
       const double segment_length = original_s[segment + 1] - original_s[segment];
@@ -475,6 +492,7 @@ void resample_poses(
         autoware::interpolation::lerpOrientation(p0.orientation, p1.orientation, ratio);
     }
   }
+  return valid_count;
 }
 }  // namespace
 
@@ -573,9 +591,28 @@ VelocityLimitResult apply_velocity_limits(
 
   std::vector<geometry_msgs::msg::Pose> original_poses;
   original_poses.reserve(count);
+  std::optional<double> input_stop_s;
+  double input_path_s = 0.0;
+  for (std::size_t i = 1; i < count; ++i) {
+    const auto & p0 = points[i - 1].pose.position;
+    const auto & p1 = points[i].pose.position;
+    input_path_s += std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+    if (
+      !input_stop_s && i + 1 < count &&
+      points[i - 1].longitudinal_velocity_mps > k_fixed_profile_stop_velocity_threshold_mps &&
+      points[i].longitudinal_velocity_mps <= k_fixed_profile_stop_velocity_threshold_mps) {
+      input_stop_s = input_path_s;
+    }
+  }
+  const bool has_zero_limit = std::any_of(limits.begin(), limits.end(), [](const double limit) {
+    return limit <= k_fixed_profile_stop_velocity_threshold_mps;
+  });
   for (const auto & point : points) {
     original_poses.push_back(point.pose);
   }
+  // Build the proposed profile separately. An infeasible stop or horizon must leave the plugin
+  // input byte-for-byte unchanged when the limit is skipped.
+  auto output = points;
   LimitedProfileSimulation simulation(bounds, constraints, initial);
   double time = 0.0;
   for (std::size_t i = 0; i < count; ++i) {
@@ -584,11 +621,35 @@ VelocityLimitResult apply_velocity_limits(
       simulation.advance(dt);
       time += dt;
     }
-    points[i].longitudinal_velocity_mps = static_cast<float>(simulation.state().velocity);
-    points[i].acceleration_mps2 = static_cast<float>(simulation.state().acceleration);
+    output[i].longitudinal_velocity_mps = static_cast<float>(simulation.state().velocity);
+    output[i].acceleration_mps2 = static_cast<float>(simulation.state().acceleration);
   }
 
-  resample_poses(points, original_poses, times);
+  const auto valid_count = resample_poses(output, original_poses, times);
+  double planned_travel = 0.0;
+  for (std::size_t i = 1; i < count; ++i) {
+    planned_travel +=
+      0.5 * (output[i - 1].longitudinal_velocity_mps + output[i].longitudinal_velocity_mps) *
+      (times[i] - times[i - 1]);
+  }
+  const bool missed_input_stop = input_stop_s && planned_travel > *input_stop_s + 0.1;
+  if (
+    missed_input_stop ||
+    (valid_count < count && (input_stop_s || has_zero_limit || valid_count < 3))) {
+    // The requested profile does not fit the available input geometry. Do not publish any part
+    // of it; the input's stop and horizon are owned by the upstream planner.
+    return {
+      ProcessingResult::Unchanged,
+      "Velocity profile needs " + std::to_string(planned_travel) + " m but the input has " +
+        std::to_string(input_stop_s.value_or(input_path_s)) +
+        (input_stop_s ? " m to its stop" : " m of path") + "; leaving input unchanged"};
+  }
+  if (valid_count < count) {
+    output.resize(valid_count);
+    points.swap(output);
+    return {ProcessingResult::Modified, "Velocity profile truncated at the input path horizon"};
+  }
+  points.swap(output);
   return {ProcessingResult::Modified, {}};
 }
 
@@ -834,6 +895,14 @@ ProfileStartResult FixedProfileMemory::start(
                         : std::nullopt;
   if (!sample) {
     return {measured, ProfileStart::ResetTimeGap};
+  }
+  // A stopped previous plan is not a valid starting state while the ego is still creeping.
+  // The ordinary 0.5 m/s tracking tolerance would otherwise keep publishing an all-zero plan.
+  if (
+    stop_state.zero_speed_limit && measured.current_ego_velocity &&
+    sample->velocity <= k_fixed_profile_stop_velocity_threshold_mps &&
+    *measured.current_ego_velocity > k_fixed_profile_stop_velocity_threshold_mps) {
+    return {measured, ProfileStart::ResetVelocity};
   }
   if (
     measured.current_ego_velocity && std::abs(*measured.current_ego_velocity - sample->velocity) >

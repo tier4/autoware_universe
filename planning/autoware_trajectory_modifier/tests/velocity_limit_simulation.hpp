@@ -471,6 +471,8 @@ struct Scenario
   std::optional<plugin::detail::FixedProfileParameters> fixed_profile;
   SimulationConfig config;
   Expectations expectations;
+  /// Diagnostic checks that this scenario must fail; the fixed-profile counterpart must pass.
+  std::vector<std::string> expected_failed_checks;
 
   [[nodiscard]] std::optional<VelocityLimit> external_limit_at(const double time) const
   {
@@ -993,6 +995,29 @@ struct Evaluation
     return std::all_of(checks.begin(), checks.end(), [](const auto & c) { return c.passed; });
   }
 };
+
+inline bool expects_check_failure(const Scenario & scenario, const std::string & name)
+{
+  return std::find(
+           scenario.expected_failed_checks.begin(), scenario.expected_failed_checks.end(), name) !=
+         scenario.expected_failed_checks.end();
+}
+
+inline bool matches_expected_checks(const Scenario & scenario, const Evaluation & evaluation)
+{
+  const bool checks_match =
+    std::all_of(evaluation.checks.begin(), evaluation.checks.end(), [&](const Check & check) {
+      return check.passed != expects_check_failure(scenario, check.name);
+    });
+  const bool expected_checks_exist = std::all_of(
+    scenario.expected_failed_checks.begin(), scenario.expected_failed_checks.end(),
+    [&](const std::string & name) {
+      return std::any_of(
+        evaluation.checks.begin(), evaluation.checks.end(),
+        [&](const Check & check) { return check.name == name; });
+    });
+  return checks_match && expected_checks_exist;
+}
 
 inline std::string format_number(const double value, const int precision = 3)
 {
@@ -1547,7 +1572,8 @@ inline void write_meta(
   stream << "  \"description\": " << json_string(scenario.description) << ",\n";
   stream << "  \"targets\": " << json_string(scenario.targets) << ",\n";
   stream << "  \"level\": " << json_string(scenario.level) << ",\n";
-  stream << "  \"passed\": " << (evaluation.passed() ? "true" : "false") << ",\n";
+  stream << "  \"passed\": " << (matches_expected_checks(scenario, evaluation) ? "true" : "false")
+         << ",\n";
   stream << "  \"cycle_period\": " << json_number(scenario.config.cycle_period) << ",\n";
   stream << "  \"max_acceleration\": " << json_number(scenario.constraints.max_acceleration)
          << ",\n";
@@ -1614,7 +1640,8 @@ inline void write_meta(
   for (std::size_t i = 0; i < evaluation.checks.size(); ++i) {
     const auto & check = evaluation.checks[i];
     stream << "    {\"name\": " << json_string(check.name)
-           << ", \"passed\": " << (check.passed ? "true" : "false")
+           << ", \"passed\": " << (check.passed ? "true" : "false") << ", \"expected_failure\": "
+           << (expects_check_failure(scenario, check.name) ? "true" : "false")
            << ", \"value\": " << json_number(check.value)
            << ", \"bound\": " << json_number(check.bound)
            << ", \"detail\": " << json_string(check.detail) << "}"
@@ -1679,16 +1706,28 @@ inline std::filesystem::path write_outputs(
   return meta;
 }
 
-/// @brief Run, evaluate and write a scenario; every failed check becomes a test failure.
+/// @brief Run, evaluate and write a scenario; diagnostic failures are asserted explicitly.
 inline void run_and_expect(const Scenario & scenario, const std::vector<Stage> & stages)
 {
   const auto log = run_closed_loop(scenario, stages);
   const auto evaluation = evaluate(scenario, log);
   const auto meta = write_outputs(scenario, log, evaluation);
   for (const auto & check : evaluation.checks) {
-    EXPECT_TRUE(check.passed) << check.name << ": value " << format_number(check.value)
-                              << " exceeds bound " << format_number(check.bound) << " ("
-                              << check.detail << ")\n  data: " << meta.string();
+    if (expects_check_failure(scenario, check.name)) {
+      EXPECT_FALSE(check.passed) << check.name << " unexpectedly passed; diagnostic sensitivity "
+                                 << "may have changed\n  data: " << meta.string();
+    } else {
+      EXPECT_TRUE(check.passed) << check.name << ": value " << format_number(check.value)
+                                << " exceeds bound " << format_number(check.bound) << " ("
+                                << check.detail << ")\n  data: " << meta.string();
+    }
+  }
+  for (const auto & name : scenario.expected_failed_checks) {
+    EXPECT_TRUE(
+      std::any_of(
+        evaluation.checks.begin(), evaluation.checks.end(),
+        [&](const Check & check) { return check.name == name; }))
+      << "Expected diagnostic check is missing: " << name << "\n  data: " << meta.string();
   }
 }
 

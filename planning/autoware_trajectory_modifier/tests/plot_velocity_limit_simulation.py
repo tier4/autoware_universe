@@ -303,7 +303,12 @@ def checks_text(fig, meta, top_inches, height):
     """Two lines per check: verdict, name, value and bound, then the detail."""
     y = top_inches
     for check in meta["checks"]:
-        status = "\u2713 PASS" if check["passed"] else "\u2717 FAIL"
+        expected_failure = check.get("expected_failure", False)
+        matches_expectation = check["passed"] != expected_failure
+        if expected_failure:
+            status = "\u2717 UNEXPECTED PASS" if check["passed"] else "\u2713 EXPECTED FAIL"
+        else:
+            status = "\u2713 PASS" if check["passed"] else "\u2717 FAIL"
         value = "inf" if check["value"] is None else f"{check['value']:.3f}"
         bound = "-" if check["bound"] is None else f"{check['bound']:.3f}"
         fig.text(
@@ -312,7 +317,7 @@ def checks_text(fig, meta, top_inches, height):
             f"{status}  {check['name']}: {value} (bound {bound})",
             fontsize=7.5,
             family="monospace",
-            color=GOOD if check["passed"] else CRITICAL,
+            color=GOOD if matches_expectation else CRITICAL,
             va="top",
         )
         fig.text(
@@ -411,7 +416,11 @@ def write_index(results, output_dir):
     """Write an HTML table linking every scenario plot."""
     rows = []
     for meta, path in results:
-        failed = [c["name"] for c in meta["checks"] if not c["passed"]]
+        failed = [
+            ("expected: " if c.get("expected_failure", False) else "") + c["name"]
+            for c in meta["checks"]
+            if not c["passed"]
+        ]
         verdict = "PASS" if meta["passed"] else "FAIL"
         rows.append(
             f"<tr><td class='{verdict.lower()}'>{verdict}</td>"

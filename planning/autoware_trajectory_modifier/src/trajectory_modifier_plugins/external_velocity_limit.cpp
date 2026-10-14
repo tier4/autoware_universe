@@ -122,7 +122,18 @@ ProcessingResult ExternalVelocityLimit::process(
       return std::optional<double>{max_velocity};
     },
     start.options);
-  fixed_profile_.store(input, traj_points, stop_state);
+  if (!result.error.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 1000, "%s: candidate %zu: %s",
+      get_short_name().c_str(), input.candidate_index, result.error.c_str());
+  }
+  // An unchanged result with a diagnostic rejected the proposed profile. Forget the previous
+  // plan so the next cycle starts from the measured state instead of reusing an invalid one.
+  if (result.status == ProcessingResult::Unchanged && !result.error.empty()) {
+    fixed_profile_.store(input, TrajectoryPoints{}, stop_state);
+  } else {
+    fixed_profile_.store(input, traj_points, stop_state);
+  }
   publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
   return result.status;
 }
