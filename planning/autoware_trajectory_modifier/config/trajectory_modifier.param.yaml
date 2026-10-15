@@ -204,6 +204,10 @@
         reset_acceleration_deviation: 0.5 # [m/s^2]
         reset_distance_deviation: 1.0 # [m]
         reset_time_gap: 0.5 # [s]
+        reset_on_new_stop: true
+        new_stop_match_distance: 1.0 # [m]
+        reset_on_lower_input: true
+        lower_input_velocity_margin: 0.5 # [m/s]
 
     # ModelPlanningFactorID: inspect kinematics and publish
     # /planning/planning_factors/diffusion_planner. Does not mutate.

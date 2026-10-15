@@ -24,6 +24,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <memory>
@@ -128,6 +129,23 @@ protected:
   [[nodiscard]] std::shared_ptr<autoware_utils_debug::TimeKeeper> get_time_keeper() const
   {
     return time_keeper_;
+  }
+
+  /// @brief Publish the stage output for the selected candidate without copying points when
+  /// nobody subscribes to the debug topic.
+  void publish_selected_debug_trajectory(
+    const rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr & publisher,
+    const TrajectoryPoints & points, const TrajectoryModifierData & data) const
+  {
+    if (
+      data.candidate_index != 0U || (publisher->get_subscription_count() == 0U &&
+                                     publisher->get_intra_process_subscription_count() == 0U)) {
+      return;
+    }
+    autoware_planning_msgs::msg::Trajectory trajectory;
+    trajectory.header = data.candidate_header;
+    trajectory.points = points;
+    publisher->publish(std::move(trajectory));
   }
 
   std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
