@@ -36,10 +36,12 @@
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <tier4_debug_msgs/msg/float64_stamped.hpp>
 #include <tier4_vehicle_msgs/msg/actuation_command_stamped.hpp>
 #include <tier4_vehicle_msgs/msg/actuation_status_stamped.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -104,6 +106,9 @@ public:
   // control_horizon is an experimental topic, but vehicle_adaptor uses it to improve performance,
   autoware_utils::InterProcessPollingSubscriber<ControlHorizon> sub_control_horizon_{
     this, "~/input/control_horizon"};
+  std::optional<
+    autoware_utils::InterProcessPollingSubscriber<tier4_debug_msgs::msg::Float64Stamped>>
+    sub_estimated_understeer_gradient_;
 
   rclcpp::TimerBase::SharedPtr timer_;
 
@@ -143,6 +148,9 @@ public:
   // For example, receive the steering wheel angle and calculate the steering wheel angle based on
   // the gear ratio. If false, the vehicle interface must publish steering_status.
   bool convert_actuation_to_steering_status_{false};  // !< @brief use actuation_status or not
+  bool use_dynamic_understeer_gradient_{false};
+  double static_understeer_gradient_{0.0};
+  double max_estimated_understeer_gradient_age_sec_{1.0};
 
   double calculateAccelMap(
     const double current_velocity, const double desired_acc, bool & accel_cmd_is_zero);
@@ -152,6 +160,7 @@ public:
   void onSteering(const Steering::ConstSharedPtr msg);
   void onActuationStatus(const ActuationStatusStamped::ConstSharedPtr msg);
   void publishActuationCmd();
+  void updateUndersteerGradient();
   // for debugging
   rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr debug_pub_steer_pid_;
   DebugValues debug_steer_;
