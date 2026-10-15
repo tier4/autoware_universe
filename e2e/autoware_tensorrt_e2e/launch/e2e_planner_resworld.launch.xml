@@ -34,6 +34,8 @@
 
   <arg name="output_trajectory" default="~/output/trajectory"/>
   <arg name="output_trajectories" default="~/output/trajectories"/>
+  <!-- Published only when the model declares postprocess.turn_indicator.tensor. -->
+  <arg name="output_turn_indicators" default="~/output/turn_indicators"/>
   <!-- The frozen BEVFusion detection head riding along on the extractor graph. Published
        once per LiDAR frame, in that cloud's frame, with autoware_bevfusion's own
        postprocessing; nothing in the planner path reads it. -->
@@ -58,6 +60,7 @@
     <remap from="~/input/turn_indicators" to="$(var input_turn_indicators)"/>
     <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
     <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
+    <remap from="~/output/turn_indicators" to="$(var output_turn_indicators)"/>
     <remap from="~/output/detected_objects" to="$(var output_detected_objects)"/>
   </node>
 
@@ -117,6 +120,7 @@
       <remap from="~/input/turn_indicators" to="$(var input_turn_indicators)"/>
       <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
       <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
+      <remap from="~/output/turn_indicators" to="$(var output_turn_indicators)"/>
       <remap from="~/output/detected_objects" to="$(var output_detected_objects)"/>
     </composable_node>
   </load_composable_node>
