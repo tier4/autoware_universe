@@ -23,8 +23,8 @@ It is implemented as a ROS 2 component node, making it easy to integrate into Au
 Make sure that the directory specified in `planning/autoware_ml_planner/config/ml_planner.param.yaml` points to the correct model version and contains the required model weight and parameter files.
 
 ```bash
-$ ls ~/autoware_data/ml_models/ml_planner/v4.0/
-ml_planner.onnx ml_planner.param.json
+$ ls ~/autoware_data/ml_models/ml_planner/v6.0/
+metadata.json ml_planner.onnx ml_planner.param.json
 ```
 
 This can be downloaded by following [Download artifacts](https://github.com/autowarefoundation/autoware/blob/main/ansible/roles/artifacts/README.md#download-artifacts).
@@ -157,8 +157,25 @@ The ML Planner relies on an ONNX model for inference.
 
 The sampler model consumes the `turn_indicators` history tensor and returns both `trajectory`
 and `turn_indicator_logits`. The three logit classes are DISABLE, ENABLE_LEFT, and ENABLE_RIGHT.
-To ensure compatibility between models and the ROS 2 node implementation, the model versioning scheme follows **major** and **minor** numbers:
-The model version is defined either by the directory name provided to the node or within the `ml_planner.param.json` configuration file.
+To ensure compatibility between models and the ROS 2 node implementation, the model versioning scheme follows **major** and **minor** numbers.
+
+A `metadata.json` must be placed in the same directory as the ONNX model:
+
+```json
+{
+  "major_version": 6,
+  "sha256": "<sha256sum of the ONNX model>"
+}
+```
+
+Other fields may be added freely; they are not interpreted by the node, but the whole file is printed to the log.
+On load, the node:
+
+1. checks that `sha256` matches the SHA-256 of the ONNX file (`sha256sum ml_planner.onnx`),
+2. prints the contents of `metadata.json` to the log,
+3. checks that `major_version` equals `ML_PLANNER_WEIGHT_MAJOR_VERSION` in `CMakeLists.txt`.
+
+If any check fails, the model is not loaded and inference is disabled.
 
 - **Major version**
   Incremented when there are changes in the model **inputs/outputs or architecture**.

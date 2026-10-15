@@ -18,9 +18,6 @@
 namespace autoware::ml_planner::constants
 {
 
-// WEIGHT_MAJOR_VERSION should match the major version in ml_planner.param.json
-constexpr int WEIGHT_MAJOR_VERSION = 5;
-
 // Velocity thresholds
 constexpr float MOVING_VELOCITY_THRESHOLD_MPS = 0.2f;
 
