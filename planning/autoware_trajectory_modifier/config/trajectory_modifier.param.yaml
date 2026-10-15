@@ -12,6 +12,27 @@
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
     trajectory_time_step: 0.1 # [s]
+    use_external_velocity_limit: true
+    use_map_velocity_limits: true
+
+    map_velocity_limits:
+      limit_velocity_from_map_debug_lanelet_ids: []
+      limit_velocity_from_map_debug_max_velocities: []
+
+    velocity_limits:
+      max_acceleration: 1.0 # [m/s^2]
+      max_deceleration: 1.0 # [m/s^2]
+      max_jerk: 3.0 # [m/s^3]
+      fixed_profile:
+        enable: true
+        reset_velocity_deviation: 0.5 # [m/s]
+        reset_acceleration_deviation: 0.5 # [m/s^2]
+        reset_distance_deviation: 1.0 # [m]
+        reset_time_gap: 0.5 # [s]
+        reset_on_new_stop: true
+        new_stop_match_distance: 1.0 # [m]
+        reset_on_lower_input: true
+        lower_input_velocity_margin: 0.5 # [m/s]
 
     # Stop Point Fixer Plugin Parameters
     stop_point_fixer:

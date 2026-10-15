@@ -7,6 +7,16 @@ trajectory_modifier_params:
       - autoware::trajectory_modifier::plugin::VelocityModifier,
     description: List of plugin names to load
     read_only: false
+  use_external_velocity_limit:
+    type: bool
+    default_value: true
+    description: Enable the external velocity limit plugin when loaded
+    read_only: false
+  use_map_velocity_limits:
+    type: bool
+    default_value: true
+    description: Enable the map velocity limits plugin when loaded
+    read_only: false
   use_stop_point_fixer:
     type: bool
     default_value: true
@@ -39,6 +49,99 @@ trajectory_modifier_params:
     read_only: false
     validation:
       bounds<>: [0.05, 1.0]
+
+  map_velocity_limits:
+    limit_velocity_from_map_debug_lanelet_ids:
+      type: int_array
+      default_value: []
+      description: Lanelet IDs whose map velocity limits are overridden
+      read_only: false
+    limit_velocity_from_map_debug_max_velocities:
+      type: double_array
+      default_value: []
+      description: Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs
+      read_only: false
+
+  velocity_limits:
+    max_acceleration:
+      type: double
+      default_value: 1.0
+      description: Maximum acceleration of generated velocity limit profiles [m/s^2]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
+    max_deceleration:
+      type: double
+      default_value: 1.0
+      description: Maximum deceleration used to reach limits [m/s^2]
+      validation:
+        bounds<>: [0.01, 10.0]
+      read_only: false
+    max_jerk:
+      type: double
+      default_value: 3.0
+      description: Maximum jerk of generated velocity limit profiles [m/s^3]
+      validation:
+        bounds<>: [0.01, 10.0]
+      read_only: false
+    fixed_profile:
+      enable:
+        type: bool
+        default_value: true
+        description: Reuse the previous candidate plan while the ego tracks it
+        read_only: false
+      reset_velocity_deviation:
+        type: double
+        default_value: 0.5
+        description: Maximum velocity deviation from the previous plan [m/s]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_acceleration_deviation:
+        type: double
+        default_value: 0.5
+        description: Maximum acceleration deviation from the previous plan [m/s^2]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_distance_deviation:
+        type: double
+        default_value: 1.0
+        description: Maximum distance from the previous planned position [m]
+        validation:
+          bounds<>: [0.0, 100.0]
+        read_only: false
+      reset_time_gap:
+        type: double
+        default_value: 0.5
+        description: Maximum age of the previous plan [s]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_on_new_stop:
+        type: bool
+        default_value: true
+        description: Reset when a new input stop or zero-speed limit appears
+        read_only: false
+      new_stop_match_distance:
+        type: double
+        default_value: 1.0
+        description: Position tolerance for matching input stops [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_on_lower_input:
+        type: bool
+        default_value: true
+        description: Reset when the input velocity falls below the previous plan
+        read_only: false
+      lower_input_velocity_margin:
+        type: double
+        default_value: 0.5
+        description: Tolerated input velocity drop below the previous plan [m/s]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
 
   stop_point_fixer:
     force_stop_long_stopped_trajectories:
