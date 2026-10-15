@@ -242,7 +242,8 @@ PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
   vp_params.optimizer.over_j_weight = vo.weights.over_jerk;
   const auto initial = calc_initial_motion(
     v_ego, context.acceleration.accel.accel.linear.x, previous_trajectory,
-    context.odometry.pose.pose.position, params_.engage_velocity.velocity_hard_mps);
+    context.odometry.pose.pose.position,
+    s_stop - s0 < vo.resolution_m ? 0.0 : params_.engage_velocity.velocity_hard_mps);
   const auto num_points =
     static_cast<std::size_t>(std::round(params_.trajectory_horizon_s / p.time_step_s)) + 1;
   auto points = plan_velocity(path, s0, initial, vp_params, num_points, p.time_step_s);
