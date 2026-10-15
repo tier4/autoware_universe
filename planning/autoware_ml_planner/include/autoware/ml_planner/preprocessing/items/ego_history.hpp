@@ -21,6 +21,7 @@
 #include <rclcpp/time.hpp>
 #include <xtensor/xarray.hpp>
 
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <cstddef>
@@ -36,14 +37,18 @@ namespace autoware::ml_planner::preprocess
  * backwards from the reference time.
  *
  * @param[in] odom_msgs Chronological deque of odometry messages
+ * @param[in] steering_msgs Chronological deque of steering reports; the steering tire angle is
+ * interpolated on the same grid and held at the edge values outside their range
  * @param[in] num_timesteps Number of timesteps to process
  * @param[in] map_to_ego_transform Transformation matrix from map to ego frame
  * @param[in] reference_time Time of the newest grid sample
- * @return Tensor with shape [num_timesteps, 6] containing
- * [x, y, cos_yaw, sin_yaw, velocity, yaw_rate]
+ * @return Tensor with shape [num_timesteps, 7] containing
+ * [x, y, cos_yaw, sin_yaw, velocity, steering_tire_angle, yaw_rate]
  */
 xt::xarray<float> create_ego_history(
-  const MessageView<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
+  const MessageView<nav_msgs::msg::Odometry> & odom_msgs,
+  const MessageView<autoware_vehicle_msgs::msg::SteeringReport> & steering_msgs,
+  size_t num_timesteps,
   const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & reference_time);
 
 }  // namespace autoware::ml_planner::preprocess
