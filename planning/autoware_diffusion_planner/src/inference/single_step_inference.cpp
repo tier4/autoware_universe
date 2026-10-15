@@ -21,6 +21,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,8 +32,9 @@ using autoware::tensorrt_common::ProfileDims;
 
 SingleStepInference::SingleStepInference(
   const std::string & model_path, const std::string & plugins_path, int batch_size,
-  const std::string & precision, bool use_cuda_graph)
+  const std::string & precision, bool use_cuda_graph, ModelInputType input_type)
 : batch_size_(batch_size),
+  input_type_(input_type),
   plugins_path_(plugins_path),
   precision_(precision),
   use_cuda_graph_(use_cuda_graph)
@@ -84,6 +86,10 @@ SingleStepInference::SingleStepInference(
   ego_shape_d_ = autoware::cuda_utils::make_unique<float[]>(ego_shape_size);
   turn_indicators_d_ = autoware::cuda_utils::make_unique<float[]>(turn_indicators_size);
   delay_d_ = autoware::cuda_utils::make_unique<float[]>(delay_size);
+  // Every buffer above is allocated in both modes - together they are a few MB - so only the
+  // engine bindings below actually differ per input type.
+  bev_image_d_ = autoware::cuda_utils::make_unique<uint8_t[]>(
+    batch_size_ * num_elements_without_batch(BEV_IMAGE_SHAPE));
 
   output_d_ = autoware::cuda_utils::make_unique<float[]>(output_size);
   turn_indicator_logit_d_ = autoware::cuda_utils::make_unique<float[]>(turn_indicator_logit_size);
@@ -119,22 +125,28 @@ void SingleStepInference::load_engine(const std::string & model_path)
   };
 
   add_input_tensor("sampled_trajectories", SAMPLED_TRAJECTORIES_SHAPE);
-  add_input_tensor("ego_agent_past", EGO_HISTORY_SHAPE);
-  add_input_tensor("ego_current_state", EGO_CURRENT_STATE_SHAPE);
   add_input_tensor("neighbor_agents_past", NEIGHBOR_SHAPE);
-  add_input_tensor("static_objects", STATIC_OBJECTS_SHAPE);
-  add_input_tensor("lanes", LANES_SHAPE);
-  add_input_tensor("lanes_has_speed_limit", LANES_HAS_SPEED_LIMIT_SHAPE);
-  add_input_tensor("lanes_speed_limit", LANES_SPEED_LIMIT_SHAPE);
-  add_input_tensor("route_lanes", ROUTE_LANES_SHAPE);
-  add_input_tensor("polygons", POLYGONS_SHAPE);
-  add_input_tensor("line_strings", LINE_STRINGS_SHAPE);
-  add_input_tensor("route_lanes_has_speed_limit", ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE);
-  add_input_tensor("route_lanes_speed_limit", ROUTE_LANES_SPEED_LIMIT_SHAPE);
-  add_input_tensor("goal_pose", GOAL_POSE_SHAPE);
-  add_input_tensor("ego_shape", EGO_SHAPE_SHAPE);
+  add_input_tensor("ego_current_state", EGO_CURRENT_STATE_SHAPE);
   add_input_tensor("turn_indicators", TURN_INDICATORS_SHAPE);
   add_input_tensor("delay", DELAY_SHAPE);
+  if (input_type_ == ModelInputType::IMAGE) {
+    // The raster replaces every drawable element; ego_agent_past, goal_pose and ego_shape are
+    // gone with them because the image encoder reads none of them (see image_encoder.py).
+    add_input_tensor("bev_image", BEV_IMAGE_SHAPE);
+  } else {
+    add_input_tensor("ego_agent_past", EGO_HISTORY_SHAPE);
+    add_input_tensor("static_objects", STATIC_OBJECTS_SHAPE);
+    add_input_tensor("lanes", LANES_SHAPE);
+    add_input_tensor("lanes_has_speed_limit", LANES_HAS_SPEED_LIMIT_SHAPE);
+    add_input_tensor("lanes_speed_limit", LANES_SPEED_LIMIT_SHAPE);
+    add_input_tensor("route_lanes", ROUTE_LANES_SHAPE);
+    add_input_tensor("polygons", POLYGONS_SHAPE);
+    add_input_tensor("line_strings", LINE_STRINGS_SHAPE);
+    add_input_tensor("route_lanes_has_speed_limit", ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE);
+    add_input_tensor("route_lanes_speed_limit", ROUTE_LANES_SPEED_LIMIT_SHAPE);
+    add_input_tensor("goal_pose", GOAL_POSE_SHAPE);
+    add_input_tensor("ego_shape", EGO_SHAPE_SHAPE);
+  }
 
   network_io.emplace_back("prediction", to_dynamic_dims(OUTPUT_SHAPE, batch_size_));
   network_io.emplace_back(
@@ -148,67 +160,62 @@ void SingleStepInference::load_engine(const std::string & model_path)
 
 void SingleStepInference::bindBuffers()
 {
-  // Set input shapes once (fixed batch_size)
-  network_trt_ptr_->setInputShape(
-    "sampled_trajectories", to_dims_with_batch(SAMPLED_TRAJECTORIES_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "ego_agent_past", to_dims_with_batch(EGO_HISTORY_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "ego_current_state", to_dims_with_batch(EGO_CURRENT_STATE_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "neighbor_agents_past", to_dims_with_batch(NEIGHBOR_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "static_objects", to_dims_with_batch(STATIC_OBJECTS_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape("lanes", to_dims_with_batch(LANES_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "lanes_has_speed_limit", to_dims_with_batch(LANES_HAS_SPEED_LIMIT_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "lanes_speed_limit", to_dims_with_batch(LANES_SPEED_LIMIT_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "route_lanes", to_dims_with_batch(ROUTE_LANES_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape("polygons", to_dims_with_batch(POLYGONS_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "line_strings", to_dims_with_batch(LINE_STRINGS_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "route_lanes_speed_limit", to_dims_with_batch(ROUTE_LANES_SPEED_LIMIT_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "route_lanes_has_speed_limit",
-    to_dims_with_batch(ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape("goal_pose", to_dims_with_batch(GOAL_POSE_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape("ego_shape", to_dims_with_batch(EGO_SHAPE_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape(
-    "turn_indicators", to_dims_with_batch(TURN_INDICATORS_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape("delay", to_dims_with_batch(DELAY_SHAPE, batch_size_));
+  // Set input shapes and bind addresses once: batch_size is fixed and the GPU buffers are stable.
+  const auto bind_float = [this](const char * name, const auto & shape, float * buffer) {
+    network_trt_ptr_->setInputShape(name, to_dims_with_batch(shape, batch_size_));
+    network_trt_ptr_->setTensorAddress(name, buffer);
+  };
+  const auto bind_bool = [this](const char * name, const auto & shape, bool * buffer) {
+    network_trt_ptr_->setInputShape(name, to_dims_with_batch(shape, batch_size_));
+    network_trt_ptr_->setTensorAddress(name, buffer);
+  };
 
-  // Bind tensor addresses once (GPU buffers are pre-allocated and stable)
-  network_trt_ptr_->setTensorAddress("sampled_trajectories", sampled_trajectories_d_.get());
-  network_trt_ptr_->setTensorAddress("ego_agent_past", ego_history_d_.get());
-  network_trt_ptr_->setTensorAddress("ego_current_state", ego_current_state_d_.get());
-  network_trt_ptr_->setTensorAddress("neighbor_agents_past", neighbor_agents_past_d_.get());
-  network_trt_ptr_->setTensorAddress("static_objects", static_objects_d_.get());
-  network_trt_ptr_->setTensorAddress("lanes", lanes_d_.get());
-  network_trt_ptr_->setTensorAddress("lanes_has_speed_limit", lanes_has_speed_limit_d_.get());
-  network_trt_ptr_->setTensorAddress("lanes_speed_limit", lanes_speed_limit_d_.get());
-  network_trt_ptr_->setTensorAddress("route_lanes", route_lanes_d_.get());
-  network_trt_ptr_->setTensorAddress("route_lanes_speed_limit", route_lanes_speed_limit_d_.get());
-  network_trt_ptr_->setTensorAddress(
-    "route_lanes_has_speed_limit", route_lanes_has_speed_limit_d_.get());
-  network_trt_ptr_->setTensorAddress("polygons", polygons_d_.get());
-  network_trt_ptr_->setTensorAddress("line_strings", line_strings_d_.get());
-  network_trt_ptr_->setTensorAddress("goal_pose", goal_pose_d_.get());
-  network_trt_ptr_->setTensorAddress("ego_shape", ego_shape_d_.get());
-  network_trt_ptr_->setTensorAddress("turn_indicators", turn_indicators_d_.get());
-  network_trt_ptr_->setTensorAddress("delay", delay_d_.get());
+  bind_float("sampled_trajectories", SAMPLED_TRAJECTORIES_SHAPE, sampled_trajectories_d_.get());
+  bind_float("neighbor_agents_past", NEIGHBOR_SHAPE, neighbor_agents_past_d_.get());
+  bind_float("ego_current_state", EGO_CURRENT_STATE_SHAPE, ego_current_state_d_.get());
+  bind_float("turn_indicators", TURN_INDICATORS_SHAPE, turn_indicators_d_.get());
+  bind_float("delay", DELAY_SHAPE, delay_d_.get());
+
+  if (input_type_ == ModelInputType::IMAGE) {
+    network_trt_ptr_->setInputShape("bev_image", to_dims_with_batch(BEV_IMAGE_SHAPE, batch_size_));
+    network_trt_ptr_->setTensorAddress("bev_image", bev_image_d_.get());
+  } else {
+    bind_float("ego_agent_past", EGO_HISTORY_SHAPE, ego_history_d_.get());
+    bind_float("static_objects", STATIC_OBJECTS_SHAPE, static_objects_d_.get());
+    bind_float("lanes", LANES_SHAPE, lanes_d_.get());
+    bind_float("lanes_speed_limit", LANES_SPEED_LIMIT_SHAPE, lanes_speed_limit_d_.get());
+    bind_bool("lanes_has_speed_limit", LANES_HAS_SPEED_LIMIT_SHAPE, lanes_has_speed_limit_d_.get());
+    bind_float("route_lanes", ROUTE_LANES_SHAPE, route_lanes_d_.get());
+    bind_float(
+      "route_lanes_speed_limit", ROUTE_LANES_SPEED_LIMIT_SHAPE, route_lanes_speed_limit_d_.get());
+    bind_bool(
+      "route_lanes_has_speed_limit", ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE,
+      route_lanes_has_speed_limit_d_.get());
+    bind_float("polygons", POLYGONS_SHAPE, polygons_d_.get());
+    bind_float("line_strings", LINE_STRINGS_SHAPE, line_strings_d_.get());
+    bind_float("goal_pose", GOAL_POSE_SHAPE, goal_pose_d_.get());
+    bind_float("ego_shape", EGO_SHAPE_SHAPE, ego_shape_d_.get());
+  }
+
   network_trt_ptr_->setTensorAddress("prediction", output_d_.get());
   network_trt_ptr_->setTensorAddress("turn_indicator_logit", turn_indicator_logit_d_.get());
 }
 
-void SingleStepInference::transferInputsToDevice(const preprocess::InputDataMap & input_data_map)
+void SingleStepInference::transferInputsToDevice(
+  const preprocess::InputDataMap & input_data_map, const std::vector<uint8_t> & bev_image)
 {
   transfer_float_input(input_data_map.at("sampled_trajectories"), sampled_trajectories_d_, stream_);
-  transfer_float_input(input_data_map.at("ego_agent_past"), ego_history_d_, stream_);
-  transfer_float_input(input_data_map.at("ego_current_state"), ego_current_state_d_, stream_);
   transfer_float_input(input_data_map.at("neighbor_agents_past"), neighbor_agents_past_d_, stream_);
+  transfer_float_input(input_data_map.at("ego_current_state"), ego_current_state_d_, stream_);
+  transfer_float_input(input_data_map.at("turn_indicators"), turn_indicators_d_, stream_);
+  transfer_float_input(input_data_map.at("delay"), delay_d_, stream_);
+
+  if (input_type_ == ModelInputType::IMAGE) {
+    transfer_uint8_input(bev_image, bev_image_d_, stream_);
+    return;
+  }
+
+  transfer_float_input(input_data_map.at("ego_agent_past"), ego_history_d_, stream_);
   transfer_float_input(input_data_map.at("static_objects"), static_objects_d_, stream_);
   transfer_float_input(input_data_map.at("lanes"), lanes_d_, stream_);
   transfer_float_input(input_data_map.at("lanes_speed_limit"), lanes_speed_limit_d_, stream_);
@@ -219,8 +226,6 @@ void SingleStepInference::transferInputsToDevice(const preprocess::InputDataMap 
   transfer_float_input(input_data_map.at("line_strings"), line_strings_d_, stream_);
   transfer_float_input(input_data_map.at("goal_pose"), goal_pose_d_, stream_);
   transfer_float_input(input_data_map.at("ego_shape"), ego_shape_d_, stream_);
-  transfer_float_input(input_data_map.at("turn_indicators"), turn_indicators_d_, stream_);
-  transfer_float_input(input_data_map.at("delay"), delay_d_, stream_);
 
   transfer_speed_mask(
     input_data_map.at("lanes_speed_limit"), lanes_has_speed_limit_d_,
@@ -231,11 +236,11 @@ void SingleStepInference::transferInputsToDevice(const preprocess::InputDataMap 
 }
 
 SingleStepInference::InferenceResult SingleStepInference::infer(
-  const preprocess::InputDataMap & input_data_map)
+  const preprocess::InputDataMap & input_data_map, const std::vector<uint8_t> & bev_image)
 {
   auto start = std::chrono::steady_clock::now();
 
-  transferInputsToDevice(input_data_map);
+  transferInputsToDevice(input_data_map, bev_image);
 
   const bool status = enqueue_trt(*network_trt_ptr_, network_cuda_graph_, stream_, use_cuda_graph_);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));

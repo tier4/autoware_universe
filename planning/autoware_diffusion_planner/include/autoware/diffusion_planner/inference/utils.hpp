@@ -110,6 +110,15 @@ void transfer_float_input(
 }
 
 template <class DevicePtr>
+void transfer_uint8_input(
+  const std::vector<uint8_t> & host_vec, const DevicePtr & device_ptr, cudaStream_t stream)
+{
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    device_ptr.get(), host_vec.data(), host_vec.size() * sizeof(uint8_t), cudaMemcpyHostToDevice,
+    stream));
+}
+
+template <class DevicePtr>
 void transfer_speed_mask(
   const std::vector<float> & speed_limit, const DevicePtr & device_ptr, const size_t count,
   cudaStream_t stream)
