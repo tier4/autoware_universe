@@ -90,7 +90,47 @@ bool road_border_avoidance_params_changed(
          lhs.footprint_margin_m != rhs.footprint_margin_m ||
          lhs.search_radius_m != rhs.search_radius_m || lhs.shift_step_m != rhs.shift_step_m ||
          lhs.max_lateral_shift_m != rhs.max_lateral_shift_m ||
-         lhs.propagate_shift != rhs.propagate_shift;
+         lhs.propagate_shift != rhs.propagate_shift ||
+         lhs.max_reoptimizations != rhs.max_reoptimizations;
+}
+
+/**
+ * @brief Move the reference by the shift the road border avoidance applied to `target`.
+ *
+ * Reference point k is moved by (adjusted[k] - target[k]), with its total offset from
+ * raw[k] capped at max_shift_m. Point k is the same stage (t = (k + 1) * 0.1 s) in all four
+ * trajectories. For the first check target is the raw output itself; afterwards it is the
+ * optimized trajectory, so the reference is pushed out by the clearance the solution lacked.
+ *
+ * @return false if no reference point moved (nothing to gain from solving again).
+ */
+bool shift_reference(
+  Trajectory & reference, const Trajectory & raw, const Trajectory & target,
+  const Trajectory & adjusted, const double max_shift_m)
+{
+  constexpr double min_move_m = 1e-3;
+  const size_t size = std::min(
+    {reference.points.size(), raw.points.size(), target.points.size(), adjusted.points.size()});
+  bool moved = false;
+  for (size_t k = 0; k < size; ++k) {
+    auto & position = reference.points[k].pose.position;
+    const auto & raw_position = raw.points[k].pose.position;
+    const auto & target_position = target.points[k].pose.position;
+    const auto & adjusted_position = adjusted.points[k].pose.position;
+    Eigen::Vector2d offset(
+      position.x - raw_position.x + adjusted_position.x - target_position.x,
+      position.y - raw_position.y + adjusted_position.y - target_position.y);
+    const double norm = offset.norm();
+    if (norm > max_shift_m) {
+      offset *= max_shift_m / norm;
+    }
+    const double new_x = raw_position.x + offset.x();
+    const double new_y = raw_position.y + offset.y();
+    moved = moved || std::hypot(new_x - position.x, new_y - position.y) > min_move_m;
+    position.x = new_x;
+    position.y = new_y;
+  }
+  return moved;
 }
 }  // namespace
 
@@ -346,6 +386,85 @@ InferenceResult MLPlannerCore::run_inference(const TensorMap & input_data_map)
   return ml_planner_inference_->infer(input_data_map);
 }
 
+RefinedCandidate MLPlannerCore::refine_candidate(
+  const Trajectory & raw_trajectory, const size_t batch_index, const Odometry & kinematic_state,
+  const double current_steering_angle_rad)
+{
+  RefinedCandidate candidate;
+  candidate.reference = raw_trajectory;
+  candidate.trajectory = raw_trajectory;
+  const auto & ego_pose = kinematic_state.pose.pose;
+  const double max_shift_m = params_.road_border_avoidance.max_lateral_shift_m;
+
+  // Road border check of the raw output: the shifted output becomes the reference.
+  if (road_border_avoidance_) {
+    const auto check = road_border_avoidance_->adjust(raw_trajectory, ego_pose);
+    candidate.avoidance_debug.active = true;
+    candidate.avoidance_debug.shifted_points = static_cast<int>(check.num_shifted_points);
+    candidate.avoidance_debug.unresolved_points = static_cast<int>(check.num_unresolved_points);
+    shift_reference(
+      candidate.reference, raw_trajectory, raw_trajectory, check.trajectory, max_shift_m);
+    candidate.trajectory = candidate.reference;
+  }
+
+#ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
+  if (!trajectory_optimizer_) {
+    return candidate;
+  }
+
+  trajectory_optimizer_->latch_goal_if_reached(candidate.reference);
+  const auto solve = [&](const Trajectory & reference) {
+    return trajectory_optimizer_->optimize(
+      reference, kinematic_state, current_steering_angle_rad, batch_index);
+  };
+  auto result = solve(candidate.reference);
+  double solve_time_ms = result.solve_time_ms;
+
+  // The solver trades the reference off against smoothness, so the optimized path may cut
+  // back into a border the reference was shifted away from. Check it the same way and, while
+  // it still overlaps, push the reference out by the missing clearance and solve again. All
+  // solves share the previous cycle's warm start; only the solution used is accepted.
+  int reoptimizations = 0;
+  while (road_border_avoidance_ && result.optimized) {
+    const auto check = road_border_avoidance_->adjust(result.trajectory, ego_pose);
+    candidate.avoidance_debug.remaining_overlapping_points =
+      static_cast<int>(check.num_shifted_points + check.num_unresolved_points);
+    if (!check.modified() || reoptimizations >= params_.road_border_avoidance.max_reoptimizations) {
+      break;
+    }
+    auto next_reference = candidate.reference;
+    if (!shift_reference(
+          next_reference, raw_trajectory, result.trajectory, check.trajectory, max_shift_m)) {
+      break;
+    }
+    auto retry = solve(next_reference);
+    ++reoptimizations;
+    solve_time_ms += retry.solve_time_ms;
+    if (!retry.optimized) {
+      // Keep the last solution that converged.
+      break;
+    }
+    candidate.reference = std::move(next_reference);
+    result = std::move(retry);
+  }
+  candidate.avoidance_debug.reoptimizations = reoptimizations;
+
+  trajectory_optimizer_->accept(batch_index, result);
+  auto & optimization_debug = candidate.optimization_debug;
+  optimization_debug.attempted = true;
+  optimization_debug.optimized = result.optimized;
+  optimization_debug.solver_status = result.solver_status;
+  optimization_debug.solve_time_ms = solve_time_ms;
+  candidate.trajectory =
+    result.optimized ? std::make_optional(std::move(result.trajectory)) : std::nullopt;
+#else
+  (void)batch_index;
+  (void)current_steering_angle_rad;
+#endif
+
+  return candidate;
+}
+
 PlannerOutput MLPlannerCore::create_planner_output(
   const InferenceOutput & inference_output, const rclcpp::Time & timestamp,
   const UUID & generator_uuid, const double current_steering_angle_rad)
@@ -370,58 +489,36 @@ PlannerOutput MLPlannerCore::create_planner_output(
   const auto agent_poses =
     postprocess::parse_predictions(denormalized_predictions, ego_to_map_transform);
 
+#ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
+  if (trajectory_optimizer_) {
+    trajectory_optimizer_->set_goal(
+      route_ptr_ ? std::make_optional(route_ptr_->goal_pose) : std::nullopt, kinematic_state);
+  }
+#endif
+
   PlannerOutput output;
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
       agent_poses, timestamp, kinematic_state.pose.pose.position, i);
 
+    auto refined = refine_candidate(
+      trajectory, static_cast<size_t>(i), kinematic_state, current_steering_angle_rad);
     if (i == 0) {
       // Keep the untouched model output for the debug topics.
       output.raw_trajectory = trajectory;
-    }
-
-    if (road_border_avoidance_) {
-      auto avoidance_result = road_border_avoidance_->adjust(trajectory, kinematic_state.pose.pose);
-      if (i == 0) {
-        output.avoidance_debug.active = true;
-        output.avoidance_debug.shifted_points =
-          static_cast<int>(avoidance_result.num_shifted_points);
-        output.avoidance_debug.unresolved_points =
-          static_cast<int>(avoidance_result.num_unresolved_points);
-        output.avoidance_adjusted_trajectory = avoidance_result.trajectory;
+      output.avoidance_debug = refined.avoidance_debug;
+      output.optimization_debug = refined.optimization_debug;
+      if (refined.avoidance_debug.active) {
+        output.avoidance_adjusted_trajectory = refined.reference;
       }
-      trajectory = std::move(avoidance_result.trajectory);
     }
-
     // A candidate whose optimization failed is dropped entirely rather than falling back to
     // the raw model output (see PlannerOutput::trajectory).
-    bool optimization_failed = false;
-
-#ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
-    if (trajectory_optimizer_) {
-      std::optional<geometry_msgs::msg::Pose> goal_pose;
-      if (route_ptr_) {
-        goal_pose = route_ptr_->goal_pose;
-      }
-      auto optimization_result = trajectory_optimizer_->optimize(
-        trajectory, kinematic_state, current_steering_angle_rad, static_cast<size_t>(i), goal_pose);
-      if (i == 0) {
-        output.optimization_debug.attempted = true;
-        output.optimization_debug.optimized = optimization_result.optimized;
-        output.optimization_debug.solver_status = optimization_result.solver_status;
-        output.optimization_debug.solve_time_ms = optimization_result.solve_time_ms;
-      }
-      optimization_failed = !optimization_result.optimized;
-      trajectory = std::move(optimization_result.trajectory);
-    }
-#else
-    (void)current_steering_angle_rad;
-#endif
-
-    if (optimization_failed) {
+    if (!refined.trajectory) {
       continue;
     }
+    trajectory = std::move(*refined.trajectory);
 
     if (params_.stop_point_fixing.enable) {
       if (i == 0) {
