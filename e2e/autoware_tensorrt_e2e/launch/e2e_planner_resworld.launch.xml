@@ -41,13 +41,11 @@
 
   <!-- Standalone, one process of its own: the default, and what a replay or
        a bench run wants. -->
-  <node pkg="autoware_tensorrt_e2e" exec="autoware_tensorrt_e2e_node" name="tensorrt_e2e"
-        output="both" launch-prefix="$(var launch_prefix)"
-        if="$(eval &quot;'$(var target_container)'==''&quot;)">
+  <node pkg="autoware_tensorrt_e2e" exec="autoware_tensorrt_e2e_node" name="tensorrt_e2e" output="both" launch-prefix="$(var launch_prefix)" if="$(eval &quot;'$(var target_container)'==''&quot;)">
     <param from="$(var model_param_path)" allow_substs="true"/>
     <param from="$(var ml_package_param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
-      <param name="build_only" value="$(var build_only)"/>
+    <param name="build_only" value="$(var build_only)"/>
     <remap from="~/input/pointcloud" to="$(var input_pointcloud)"/>
     <remap from="~/input/pointcloud/cuda" to="$(var input_pointcloud)/cuda"/>
     <remap from="~/input/odometry" to="$(var input_odometry)"/>
@@ -91,8 +89,7 @@
        same launch worked there. Reproduced 2026-09-14 in a bare container with
        valid artifacts: "intraprocess communication allowed only with volatile
        durability" 2 ms after "Engine inputs". -->
-  <load_composable_node target="$(var target_container)"
-                        unless="$(eval &quot;'$(var target_container)'==''&quot;)">
+  <load_composable_node target="$(var target_container)" unless="$(eval &quot;'$(var target_container)'==''&quot;)">
     <!-- No namespace attribute, deliberately. launch_ros combines a composable
          node's own namespace with the enclosing push-ros-namespace through
          prefix_namespace(), which returns the node's namespace unchanged when
@@ -103,9 +100,7 @@
          composed, and everything wired to the namespaced path would read an
          empty topic. Omitting it inherits, which is also "/" when nothing was
          pushed, so the container case is unchanged. -->
-    <composable_node pkg="autoware_tensorrt_e2e"
-                     plugin="autoware::tensorrt_e2e::TensorrtE2eNode"
-                     name="tensorrt_e2e">
+    <composable_node pkg="autoware_tensorrt_e2e" plugin="autoware::tensorrt_e2e::TensorrtE2eNode" name="tensorrt_e2e">
       <param from="$(var model_param_path)" allow_substs="true"/>
       <param from="$(var ml_package_param_path)" allow_substs="true"/>
       <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
@@ -125,5 +120,4 @@
       <remap from="~/output/detected_objects" to="$(var output_detected_objects)"/>
     </composable_node>
   </load_composable_node>
-
 </launch>
