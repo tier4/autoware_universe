@@ -96,6 +96,18 @@ public:
     const std_msgs::msg::Header & header, const TrackedObject & object,
     double objects_detected_time, visualization_msgs::msg::MarkerArray * debug_markers);
 
+  /**
+   * @brief check whether an object traveling on the trajectory can keep its lateral acceleration
+   * within `max_lateral_accel`, braking at `min_acceleration_before_curve` before a curve if needed
+   *
+   * The speed of the object is taken from the first point of the trajectory, since the trajectory
+   * is generated with that constant speed. This is public only to be unit tested.
+   *
+   * @param trajectory trajectory to be checked
+   * @return true if the constraint can be satisfied
+   */
+  bool isLateralAccelerationConstraintSatisfied(const TrajectoryPoints & trajectory) const;
+
 private:
   std::optional<size_t> searchProperStartingRefPathIndex(
     const TrackedObject & object, const PosePath & pose_path) const;
@@ -110,8 +122,6 @@ private:
   std::vector<double> calcTrajectoryCurvatureFrom3Points(
     const TrajectoryPoints & trajectory, size_t idx_dist);
   TrajectoryPoints toTrajectoryPoints(const PredictedPath & path, double velocity);
-  bool isLateralAccelerationConstraintSatisfied(
-    const TrajectoryPoints & trajectory, double delta_time);
 
   rclcpp::Node & node_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
