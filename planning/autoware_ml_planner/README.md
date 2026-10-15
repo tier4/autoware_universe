@@ -164,14 +164,14 @@ A `metadata.json` must be placed in the same directory as the ONNX model:
 ```json
 {
   "major_version": 6,
-  "sha256": "<sha256sum of the ONNX model>"
+  "onnx_sha256": "<sha256sum of the ONNX model>"
 }
 ```
 
 Other fields may be added freely; they are not interpreted by the node, but the whole file is printed to the log.
 On load, the node:
 
-1. checks that `sha256` matches the SHA-256 of the ONNX file (`sha256sum ml_planner.onnx`),
+1. checks that `onnx_sha256` matches the SHA-256 of the ONNX file (`sha256sum ml_planner.onnx`),
 2. prints the contents of `metadata.json` to the log,
 3. checks that `major_version` equals `ML_PLANNER_WEIGHT_MAJOR_VERSION` in `CMakeLists.txt`.
 

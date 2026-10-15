@@ -68,7 +68,7 @@ TEST_F(ModelMetadataTest, ComputeSha256)
 TEST_F(ModelMetadataTest, LoadAndVerify)
 {
   write_metadata(
-    std::string(R"({"major_version": 5, "sha256": ")") + ABC_SHA256 + R"(", "note": "x"})");
+    std::string(R"({"major_version": 5, "onnx_sha256": ")") + ABC_SHA256 + R"(", "note": "x"})");
   const auto metadata = utils::load_model_metadata(utils::model_metadata_path(model_path_));
   EXPECT_EQ(utils::verify_model_sha256(metadata, model_path_), ABC_SHA256);
   EXPECT_NO_THROW(utils::verify_model_major_version(metadata, 5));
@@ -79,13 +79,13 @@ TEST_F(ModelMetadataTest, Sha256IsCaseInsensitive)
 {
   std::string upper = ABC_SHA256;
   for (auto & c : upper) c = static_cast<char>(std::toupper(c));
-  const auto metadata = nlohmann::json{{"sha256", upper}};
+  const auto metadata = nlohmann::json{{"onnx_sha256", upper}};
   EXPECT_NO_THROW(utils::verify_model_sha256(metadata, model_path_));
 }
 
 TEST_F(ModelMetadataTest, Sha256Mismatch)
 {
-  const auto metadata = nlohmann::json{{"sha256", std::string(64, '0')}};
+  const auto metadata = nlohmann::json{{"onnx_sha256", std::string(64, '0')}};
   EXPECT_THROW(utils::verify_model_sha256(metadata, model_path_), std::runtime_error);
 }
 

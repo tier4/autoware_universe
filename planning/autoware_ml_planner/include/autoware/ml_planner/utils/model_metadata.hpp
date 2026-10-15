@@ -43,7 +43,7 @@ nlohmann::json load_model_metadata(const std::string & metadata_path);
 std::string compute_file_sha256_hex(const std::string & path);
 
 /**
- * @brief Check that metadata["sha256"] matches the SHA-256 of the model file.
+ * @brief Check that metadata["onnx_sha256"] matches the SHA-256 of the model file.
  * @return SHA-256 of the model file (lowercase hex).
  * @throws std::runtime_error if the field is missing or does not match.
  */

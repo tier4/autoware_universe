@@ -30,7 +30,7 @@ namespace autoware::ml_planner::utils
 
 namespace
 {
-constexpr const char * SHA256_KEY = "sha256";
+constexpr const char * SHA256_KEY = "onnx_sha256";
 constexpr const char * MAJOR_VERSION_KEY = "major_version";
 
 std::string to_lower(std::string str)
