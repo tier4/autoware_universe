@@ -364,13 +364,34 @@ std::optional<TrajectoryPoints> plan_velocity(
 
   constexpr double MIN_GRID_LENGTH_M = 0.01;
   const double length = std::min(path_length - s0, params.max_length_m);
-  if (length < MIN_GRID_LENGTH_M || (!initial.a && s_stop - s0 < params.resolution_m)) {
+  // Not the QP for a stop within one grid interval: it would step the velocity to 0 at the stop
+  const double stop_dist = s_stop - s0;
+  const bool near_stop = stop_dist < params.resolution_m;
+  const bool brake_to_stop =
+    near_stop && initial.a && initial.v > STOP_VELOCITY_MPS &&
+    initial.v * initial.v <= 2.0 * std::abs(params.optimizer.a_min) * stop_dist;
+  if (length < MIN_GRID_LENGTH_M || (near_stop && !brake_to_stop)) {
     TrajectoryPoints points;
     points.reserve(num_points);
     for (std::size_t k = 0; k < num_points; ++k) {
       const double ratio = static_cast<double>(k) / static_cast<double>(num_points - 1);
       points.push_back(make_trajectory_point(
-        path, s0 + ratio * (s_stop - s0), static_cast<double>(k) * time_step_s, 0.0, 0.0,
+        path, s0 + ratio * stop_dist, static_cast<double>(k) * time_step_s, 0.0, 0.0,
+        params.wheel_base_m));
+    }
+    return points;
+  }
+  if (brake_to_stop) {
+    const double decel = initial.v * initial.v / (2.0 * stop_dist);
+    const double t_stop = initial.v / decel;
+    TrajectoryPoints points;
+    points.reserve(num_points);
+    for (std::size_t k = 0; k < num_points; ++k) {
+      const double t_k = static_cast<double>(k) * time_step_s;
+      const double t = std::min(t_k, t_stop);
+      points.push_back(make_trajectory_point(
+        path, std::min(s0 + initial.v * t - 0.5 * decel * t * t, s_stop), t_k,
+        t_k < t_stop ? initial.v - decel * t : 0.0, t_k < t_stop ? -decel : 0.0,
         params.wheel_base_m));
     }
     return points;
