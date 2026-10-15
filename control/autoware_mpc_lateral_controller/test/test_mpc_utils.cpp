@@ -334,7 +334,7 @@ TEST(TestMPC, CalcNearestPoseInterpFallsBackWhenTimeWindowHasNoCandidates)
   EXPECT_NEAR(nearest_time, 0.2, 1e-6);
 }
 
-TEST(TestMPC, ShortTrajectoryCurvatureUsesGlobalTaubinOnArc)
+TEST(TestMPC, ShortTrajectoryCurvatureUsesAverageHeadingChangeOnArc)
 {
   constexpr int num_points = 20;
   constexpr double radius = 10.0;
@@ -348,7 +348,7 @@ TEST(TestMPC, ShortTrajectoryCurvatureUsesGlobalTaubinOnArc)
   ASSERT_EQ(curvature.size(), static_cast<size_t>(num_points));
   for (size_t i = 0; i < curvature.size(); ++i) {
     EXPECT_NEAR(curvature.at(i), curvature.at(0), 1e-9)
-      << "all points should share the same global Taubin curvature";
+      << "all points should share the same average curvature";
     EXPECT_NEAR(std::abs(curvature.at(i)), true_kappa, 0.02) << "curvature at index " << i;
   }
 }
@@ -383,10 +383,56 @@ TEST(TestMPC, LongTrajectoryCurvatureUsesPerPointThreePointFit)
   const size_t interior_idx = 20;
   EXPECT_NEAR(std::abs(curvature.at(interior_idx)), 1.0 / radius, 0.05);
 
-  // Short trajectory on the same arc triggers Taubin fallback and should agree roughly.
+  // Short trajectory on the same arc uses the average-curvature fallback and should agree roughly.
   const auto short_traj = makeCircularArcTrajectory(radius, 20, arc_length);
   const auto short_curvature = MPCUtils::calcTrajectoryCurvature(smoothing, short_traj, false);
   EXPECT_NEAR(std::abs(short_curvature.at(0)), std::abs(curvature.at(interior_idx)), 0.05);
+}
+
+TEST(TestMPC, ShortTrajectoryCurvatureIgnoresASmallLateralWiggle)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+
+  constexpr int num_points = 21;
+  constexpr double length = 2.0;
+  constexpr int smoothing = 15;
+
+  MPCTrajectory traj;
+  for (int i = 0; i < num_points; ++i) {
+    const double s = static_cast<double>(i) / static_cast<double>(num_points - 1) * length;
+    const double y = (i == num_points / 2) ? 0.02 : 0.0;
+    traj.push_back(s, y, 0.0, 0.0, 0.4, 0.0, 0.0, static_cast<double>(i) * 0.1);
+  }
+
+  const auto curvature = MPCUtils::calcTrajectoryCurvature(smoothing, traj, false);
+
+  ASSERT_EQ(curvature.size(), static_cast<size_t>(num_points));
+  for (const double k : curvature) {
+    EXPECT_NEAR(k, 0.0, 1e-6);
+  }
+}
+
+TEST(TestMPC, ShortTrajectoryCurvatureIsZeroBelowTheChordBaseline)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+
+  constexpr int num_points = 15;
+  constexpr double length = 0.4;
+  constexpr int smoothing = 15;
+
+  MPCTrajectory traj;
+  for (int i = 0; i < num_points; ++i) {
+    const double s = static_cast<double>(i) / static_cast<double>(num_points - 1) * length;
+    const double y = (i == num_points / 2) ? 0.05 : 0.0;
+    traj.push_back(s, y, 0.0, 0.0, 0.0, 0.0, 0.0, static_cast<double>(i) * 0.1);
+  }
+
+  const auto curvature = MPCUtils::calcTrajectoryCurvature(smoothing, traj, false);
+
+  ASSERT_EQ(curvature.size(), static_cast<size_t>(num_points));
+  for (const double k : curvature) {
+    EXPECT_NEAR(k, 0.0, 1e-9);
+  }
 }
 
 TEST(TestMPC, TemporalYawAndCurvatureStayStableForShortSegments)
