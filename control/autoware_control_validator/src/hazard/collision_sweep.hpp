@@ -42,6 +42,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -378,6 +379,16 @@ struct SweepLimits
   double stop_velocity{0.1};
 };
 
+struct EgoSweep;
+class ObjectMotion;
+
+struct ClusterAttachments
+{
+  const autoware_perception_msgs::msg::PredictedObjects * objects_at_cloud{nullptr};
+  std::vector<std::shared_ptr<const ObjectMotion>> motions;
+  std::vector<std::optional<size_t>> object_index;
+};
+
 class CollisionSweep
 {
 public:
@@ -390,8 +401,8 @@ public:
    * collision angle against objects (footprint sweep) and pointcloud clusters (point in
    * footprint). Object candidates are returned whether or not they collide; point candidates are
    * returned only for points that collide.
-   * @param point_clusters clusters already filtered by the caller (D3); the closest
-   *   n_eval_pointcloud clusters are evaluated with all their points
+   * @param point_clusters all clusters; those not attached to an object are static and the closest
+   *   n_eval_pointcloud of them are evaluated with all their points
    * @param pointcloud_stamp header.stamp of the pointcloud the clusters came from
    * @throws std::invalid_argument when the predicted trajectory cannot be interpolated
    */
@@ -399,13 +410,27 @@ public:
     const autoware_planning_msgs::msg::Trajectory & predicted, const nav_msgs::msg::Odometry & odom,
     const autoware_perception_msgs::msg::PredictedObjects & objects,
     const std::vector<PointCluster> & point_clusters,
-    const builtin_interfaces::msg::Time & pointcloud_stamp, const SweepLimits & limits) const;
+    const builtin_interfaces::msg::Time & pointcloud_stamp, const SweepLimits & limits,
+    const ClusterAttachments & attachments = {}) const;
+
+  std::vector<std::shared_ptr<const ObjectMotion>> build_object_motions(
+    const autoware_planning_msgs::msg::Trajectory & predicted,
+    const autoware_perception_msgs::msg::PredictedObjects & objects,
+    const SweepLimits & limits) const;
 
   Polygon2d ego_polygon(const geometry_msgs::msg::Pose & pose) const;
 
   static double distance_now(const Polygon2d & ego_now, const Polygon2d & candidate);
 
 private:
+  EgoSweep build_ego_sweep(
+    const autoware_planning_msgs::msg::Trajectory & predicted, const nav_msgs::msg::Odometry & odom,
+    const SweepLimits & limits) const;
+
+  std::shared_ptr<const ObjectMotion> make_object_motion(
+    const autoware_perception_msgs::msg::PredictedObject & object, double time_offset,
+    double horizon, const TimeTrajectory & static_times) const;
+
   trajectory::footprint::EgoDimensions ego_dimensions_;
   double time_resolution_;
 };

@@ -14,6 +14,8 @@
 
 #include "hazard/pointcloud_preprocessor.hpp"
 
+#include "hazard/collision_target.hpp"
+
 #include <autoware_utils_geometry/geometry.hpp>
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
@@ -181,17 +183,26 @@ bool PointCloudPreprocessor::process(
   return true;
 }
 
-std::vector<PointCluster> remove_clusters_inside_objects(
+std::vector<std::optional<size_t>> attach_clusters_to_objects(
   const std::vector<PointCluster> & clusters,
   const autoware_perception_msgs::msg::PredictedObjects & objects,
-  const std::vector<uint8_t> & enabled_labels, const builtin_interfaces::msg::Time & cloud_stamp,
-  const ObjectMargin & margin)
+  const std::vector<std::shared_ptr<const ObjectMotion>> & motions,
+  const std::vector<uint8_t> & enabled_labels, const double t_cloud, const ObjectMargin & margin)
 {
   using autoware_perception_msgs::msg::Shape;
-  const double dt = (rclcpp::Time(cloud_stamp) - rclcpp::Time(objects.header.stamp)).seconds();
-  std::vector<Polygon2d> object_polygons;
-  object_polygons.reserve(objects.objects.size());
-  for (const auto & object : objects.objects) {
+  struct ObjectArea
+  {
+    size_t index;
+    Polygon2d polygon;
+    Point2d origin;
+  };
+  std::vector<ObjectArea> areas;
+  areas.reserve(objects.objects.size());
+  for (size_t i = 0; i < objects.objects.size(); ++i) {
+    const auto & object = objects.objects[i];
+    if (i >= motions.size() || !motions[i]) {
+      continue;
+    }
     uint8_t label = 0;
     float best_probability = -1.0F;
     for (const auto & classification : object.classification) {
@@ -205,12 +216,8 @@ std::vector<PointCluster> remove_clusters_inside_objects(
     if (!enabled) {
       continue;
     }
-    // Move the object to the pointcloud time with its twist (object frame), ignoring the yaw rate.
-    auto pose = object.kinematics.initial_pose_with_covariance.pose;
-    const auto & twist = object.kinematics.initial_twist_with_covariance.twist.linear;
+    const auto pose = motions[i]->pose_at(t_cloud);
     const double yaw = autoware_utils_geometry::get_rpy(pose).z;
-    pose.position.x += (std::cos(yaw) * twist.x - std::sin(yaw) * twist.y) * dt;
-    pose.position.y += (std::sin(yaw) * twist.x + std::cos(yaw) * twist.y) * dt;
 
     const auto & shape = object.shape;
     double x_min = 0.0;
@@ -252,19 +259,26 @@ std::vector<PointCluster> remove_clusters_inside_objects(
         pose.position.y + std::sin(yaw) * lx + std::cos(yaw) * ly);
     }
     boost::geometry::correct(polygon);
-    object_polygons.push_back(std::move(polygon));
+    areas.push_back(ObjectArea{i, std::move(polygon), Point2d{pose.position.x, pose.position.y}});
   }
 
-  std::vector<PointCluster> kept;
-  kept.reserve(clusters.size());
+  std::vector<std::optional<size_t>> attached_to;
+  attached_to.reserve(clusters.size());
   for (const auto & cluster : clusters) {
-    const bool duplicates_object = std::any_of(
-      object_polygons.begin(), object_polygons.end(),
-      [&](const auto & polygon) { return boost::geometry::within(cluster.centroid, polygon); });
-    if (!duplicates_object) {
-      kept.push_back(cluster);
+    std::optional<size_t> best;
+    double best_distance = std::numeric_limits<double>::infinity();
+    for (const auto & area : areas) {
+      if (!boost::geometry::within(cluster.centroid, area.polygon)) {
+        continue;
+      }
+      const double distance = boost::geometry::distance(cluster.centroid, area.origin);
+      if (distance < best_distance) {
+        best_distance = distance;
+        best = area.index;
+      }
     }
+    attached_to.push_back(best);
   }
-  return kept;
+  return attached_to;
 }
 }  // namespace autoware::control_validator::hazard

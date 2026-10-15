@@ -116,7 +116,7 @@ control_validator:
     objects:
       max_stamp_gap_s:
         type: double
-        description: Maximum time difference between the pointcloud stamp and the objects used to remove duplicated clusters [s].
+        description: Maximum time difference between the pointcloud stamp and the objects used to attach clusters to objects [s].
     sector:
       radius_m:
         type: double
@@ -184,16 +184,16 @@ control_validator:
       object_margin:
         front:
           type: double
-          description: Margin added ahead of an object (object frame) when removing duplicated clusters [m].
+          description: Margin added ahead of an object (object frame) when attaching clusters to it [m].
         rear:
           type: double
-          description: Margin added behind an object (object frame) when removing duplicated clusters [m].
+          description: Margin added behind an object (object frame) when attaching clusters to it [m].
         left:
           type: double
-          description: Margin added to the left of an object (object frame) when removing duplicated clusters [m].
+          description: Margin added to the left of an object (object frame) when attaching clusters to it [m].
         right:
           type: double
-          description: Margin added to the right of an object (object frame) when removing duplicated clusters [m].
+          description: Margin added to the right of an object (object frame) when attaching clusters to it [m].
     debug:
       publish_markers:
         type: bool

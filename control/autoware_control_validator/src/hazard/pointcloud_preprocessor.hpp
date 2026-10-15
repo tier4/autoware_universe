@@ -26,6 +26,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -110,16 +111,19 @@ private:
   size_t last_roi_point_count_{0};
 };
 
+class ObjectMotion;
+
 /**
- * @brief Drop clusters whose centroid lies inside the polygon of a predicted object whose most
- * probable label is in `enabled_labels`. Each object is first moved by its twist from
- * objects.header.stamp to `cloud_stamp`, so that it is compared at the time the points were taken.
+ * @brief Attach clusters whose centroid lies inside the polygon of a predicted object whose most
+ * probable label is in `enabled_labels`. Each object is placed at its pose at `t_cloud` (time of
+ * the points on the ego time axis), so that it is compared at the time the points were taken.
+ * @return index in objects.objects of the object each cluster is attached to, nullopt if none
  */
-std::vector<PointCluster> remove_clusters_inside_objects(
+std::vector<std::optional<size_t>> attach_clusters_to_objects(
   const std::vector<PointCluster> & clusters,
   const autoware_perception_msgs::msg::PredictedObjects & objects,
-  const std::vector<uint8_t> & enabled_labels, const builtin_interfaces::msg::Time & cloud_stamp,
-  const ObjectMargin & margin);
+  const std::vector<std::shared_ptr<const ObjectMotion>> & motions,
+  const std::vector<uint8_t> & enabled_labels, double t_cloud, const ObjectMargin & margin);
 }  // namespace autoware::control_validator::hazard
 
 #endif  // HAZARD__POINTCLOUD_PREPROCESSOR_HPP_
