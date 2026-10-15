@@ -98,7 +98,7 @@ void PlanningValidatorNode::setData(const Trajectory::ConstSharedPtr & traj_msg)
   auto & data = context_->data;
   data->current_kinematics = sub_kinematics_.take_data();
   data->current_acceleration = sub_acceleration_.take_data();
-  data->obstacle_pointcloud = sub_pointcloud_.take_data();
+  data->obstacle_pointcloud = sub_pointcloud_->take_data();
   data->traffic_signals = sub_traffic_signals_.take_data();
   data->set_current_trajectory(traj_msg);
   data->set_route(sub_route_.take_data());

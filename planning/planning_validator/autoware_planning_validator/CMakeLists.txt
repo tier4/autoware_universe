@@ -21,6 +21,7 @@ ament_auto_add_library(autoware_planning_validator_component SHARED
 ament_target_dependencies(autoware_planning_validator_component
   autoware_adapi_v1_msgs
 )
+autoware_agnocast_wrapper_setup(autoware_planning_validator_component)
 
 rclcpp_components_register_node(${PROJECT_NAME}_component
   PLUGIN "autoware::planning_validator::PlanningValidatorNode"

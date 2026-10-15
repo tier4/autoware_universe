@@ -1,4 +1,6 @@
 <launch>
+  <!-- For ld_preload_value; container_package and container_executable are set below -->
+  <include file="$(find-pkg-share autoware_agnocast_wrapper)/launch/agnocast_env.launch.xml"/>
   <let name="use_agnocast" value="$(env ENABLE_AGNOCAST 0)"/>
   <let name="container_package" value="rclcpp_components" unless="$(eval &quot;'$(var use_agnocast)' == '1'&quot;)"/>
   <let name="container_package" value="agnocast_components" if="$(eval &quot;'$(var use_agnocast)' == '1'&quot;)"/>
@@ -48,6 +50,7 @@
 
   <group>
     <node_container pkg="$(var container_package)" exec="$(var container_executable)" name="planning_validator_container" namespace="" args="" output="both">
+      <env name="LD_PRELOAD" value="$(var ld_preload_value)"/>
       <composable_node pkg="autoware_planning_validator" plugin="autoware::planning_validator::PlanningValidatorNode" name="planning_validator" namespace="">
         <remap from="~/input/objects" to="$(var input_objects_topic_name)"/>
         <remap from="~/input/pointcloud" to="$(var input_pointcloud_topic_name)"/>
