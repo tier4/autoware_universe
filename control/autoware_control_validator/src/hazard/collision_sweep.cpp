@@ -420,7 +420,8 @@ TrajectoryData generate_static_trajectory(const Polygon2d & polygon, const TimeT
 namespace collision_timing_assessment
 {
 std::optional<CollisionTiming> find_collision_timing(
-  const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory)
+  const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
+  const std::vector<bool> & ref_stopped)
 {
   const auto overall_test_index_range = test_trajectory.resolve_covering_index_range(
     {ref_trajectory.getTimes().front(), ref_trajectory.getTimes().back()});
@@ -446,6 +447,9 @@ std::optional<CollisionTiming> find_collision_timing(
     };
 
   for (size_t k = 1; k < ref_trajectory.size(); ++k) {
+    if (k < ref_stopped.size() && ref_stopped[k]) {
+      continue;
+    }
     const TimeRange window{ref_trajectory.getTimes().at(k - 1), ref_trajectory.getTimes().at(k)};
     const IndexRange ref_index_range{k - 1, k};
     const auto test_index_range = test_trajectory.resolve_covering_index_range(window);
@@ -598,15 +602,17 @@ std::vector<SweepCandidate> CollisionSweep::evaluate(
 
   TimeTrajectory ego_times;
   PoseTrajectory ego_poses;
+  std::vector<bool> ego_stopped;
   ego_times.reserve(num_steps + 1);
   ego_poses.reserve(num_steps + 1);
+  ego_stopped.reserve(num_steps + 1);
   for (size_t k = 0; k <= num_steps; ++k) {
     const double t = static_cast<double>(k) * time_resolution_;
+    const auto state = interpolator.interpolate_state_from_time(
+      interpolator.reference_time_ + rclcpp::Duration::from_seconds(t));
     ego_times.push_back(t);
-    ego_poses.push_back(interpolator
-                          .interpolate_state_from_time(
-                            interpolator.reference_time_ + rclcpp::Duration::from_seconds(t))
-                          .pose);
+    ego_poses.push_back(state.pose);
+    ego_stopped.push_back(std::abs(state.longitudinal_velocity) < limits.stop_velocity);
   }
   const auto ego_footprints =
     trajectory::footprint::compute_footprint_trajectory(ego_poses, ego_dimensions_);
@@ -685,7 +691,8 @@ std::vector<SweepCandidate> CollisionSweep::evaluate(
       return trajectory::generate_static_trajectory(entry.candidate.polygon_now, ego_times);
     }();
 
-    const auto timing = collision_timing_assessment::find_collision_timing(ego, object_trajectory);
+    const auto timing =
+      collision_timing_assessment::find_collision_timing(ego, object_trajectory, ego_stopped);
     if (timing) {
       entry.candidate.ttc = timing->ttc;
       const auto k = static_cast<size_t>(std::llround(timing->ttc / time_resolution_));
@@ -725,7 +732,7 @@ std::vector<SweepCandidate> CollisionSweep::evaluate(
           continue;
         }
         for (size_t k = 0; k < ego_polygons.size(); ++k) {
-          if (!boost::geometry::within(point, ego_polygons[k])) {
+          if (ego_stopped[k] || !boost::geometry::within(point, ego_polygons[k])) {
             continue;
           }
           SweepCandidate candidate;

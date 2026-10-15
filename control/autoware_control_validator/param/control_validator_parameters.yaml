@@ -91,6 +91,9 @@ control_validator:
     time_resolution:
       type: double
       description: Time step of the footprint sweep [s].
+    stop_velocity:
+      type: double
+      description: Sweep steps where the absolute velocity of the predicted trajectory is below this value are not judged [m/s].
     enabled_object_classes:
       type: string_array
       description: Object classification labels that raise a collision warning.
@@ -174,10 +177,23 @@ control_validator:
         description: Euclidean clustering distance tolerance [m].
       min_cluster_size:
         type: int
-        description: Minimum number of points in a cluster.
+        description: Minimum sum of the raw (before voxel grid) point counts of the voxels in a cluster.
       max_stamp_gap_s:
         type: double
         description: Maximum time difference between the pointcloud stamp and the odometry used to place it [s].
+      object_margin:
+        front:
+          type: double
+          description: Margin added ahead of an object (object frame) when removing duplicated clusters [m].
+        rear:
+          type: double
+          description: Margin added behind an object (object frame) when removing duplicated clusters [m].
+        left:
+          type: double
+          description: Margin added to the left of an object (object frame) when removing duplicated clusters [m].
+        right:
+          type: double
+          description: Margin added to the right of an object (object frame) when removing duplicated clusters [m].
     debug:
       publish_markers:
         type: bool

@@ -117,6 +117,7 @@ hazard::SweepLimits to_sweep_limits(const Params & params, const rclcpp::Logger 
   out.n_eval_pointcloud = static_cast<size_t>(std::max<int64_t>(p.max_evaluations.pointcloud, 0));
   out.enable_pointcloud = p.enable_pointcloud;
   out.max_objects_stamp_gap_s = p.max_objects_stamp_gap_s;
+  out.stop_velocity = p.stop_velocity;
   for (const auto & name : p.enabled_object_classes) {
     const auto label = label_from_name(name);
     if (!label) {
@@ -916,9 +917,10 @@ std::optional<hazard::CollisionEvaluation> ControlValidator::evaluate_collision(
     if (const auto & processed_stamp = pointcloud_preprocessor_->last_stamp()) {
       evaluation.pointcloud_stamp = *processed_stamp;
       if (const auto objects_at_cloud = select_objects_at(*processed_stamp)) {
+        const auto & m = params_.hazard_warning.pointcloud.object_margin;
         clusters = hazard::remove_clusters_inside_objects(
           pointcloud_preprocessor_->clusters(), *objects_at_cloud, limits.enabled_labels,
-          *processed_stamp);
+          *processed_stamp, hazard::ObjectMargin{m.front, m.rear, m.left, m.right});
       } else {
         clusters = pointcloud_preprocessor_->clusters();
       }

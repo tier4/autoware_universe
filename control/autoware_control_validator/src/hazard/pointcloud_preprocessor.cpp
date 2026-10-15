@@ -14,7 +14,6 @@
 
 #include "hazard/pointcloud_preprocessor.hpp"
 
-#include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
@@ -29,6 +28,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -84,6 +84,7 @@ bool PointCloudPreprocessor::process(
     roi_cloud->push_back(pcl::PointXYZ(x, y, z));
   }
   last_roi_point_count_ = roi_cloud->size();
+  const auto raw_cloud = roi_cloud;
 
   // Uniform subsampling to bound the clustering time.
   if (param_.max_points > 0 && roi_cloud->size() > param_.max_points) {
@@ -100,14 +101,30 @@ bool PointCloudPreprocessor::process(
   std::vector<PointCluster> clusters;
   if (!roi_cloud->empty()) {
     pcl::PointCloud<pcl::PointXYZ>::Ptr voxel_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    std::vector<size_t> voxel_counts;
     if (param_.voxel_size > 0.0) {
       pcl::VoxelGrid<pcl::PointXYZ> voxel_grid;
       voxel_grid.setInputCloud(roi_cloud);
       const auto leaf = static_cast<float>(param_.voxel_size);
       voxel_grid.setLeafSize(leaf, leaf, leaf);
+      voxel_grid.setSaveLeafLayout(true);
       voxel_grid.filter(*voxel_cloud);
+      voxel_counts.assign(voxel_cloud->size(), 0);
+      const Eigen::Vector3i min_b = voxel_grid.getMinBoxCoordinates();
+      const Eigen::Vector3i max_b = voxel_grid.getMaxBoxCoordinates();
+      for (const auto & p : raw_cloud->points) {
+        const Eigen::Vector3i ijk = voxel_grid.getGridCoordinates(p.x, p.y, p.z);
+        if ((ijk.array() < min_b.array()).any() || (ijk.array() > max_b.array()).any()) {
+          continue;
+        }
+        const int index = voxel_grid.getCentroidIndexAt(ijk);
+        if (index >= 0 && static_cast<size_t>(index) < voxel_counts.size()) {
+          ++voxel_counts[static_cast<size_t>(index)];
+        }
+      }
     } else {
       voxel_cloud = roi_cloud;
+      voxel_counts.assign(voxel_cloud->size(), 1);
     }
 
     std::vector<pcl::PointIndices> cluster_indices;
@@ -116,7 +133,7 @@ bool PointCloudPreprocessor::process(
       tree->setInputCloud(voxel_cloud);
       pcl::EuclideanClusterExtraction<pcl::PointXYZ> extraction;
       extraction.setClusterTolerance(param_.cluster_tolerance);
-      extraction.setMinClusterSize(static_cast<int>(std::max<size_t>(param_.min_cluster_size, 1)));
+      extraction.setMinClusterSize(1);
       extraction.setMaxClusterSize(static_cast<int>(voxel_cloud->size()));
       extraction.setSearchMethod(tree);
       extraction.setInputCloud(voxel_cloud);
@@ -133,7 +150,15 @@ bool PointCloudPreprocessor::process(
       if (indices.indices.empty()) {
         continue;
       }
+      size_t raw_point_count = 0;
+      for (const auto index : indices.indices) {
+        raw_point_count += voxel_counts[static_cast<size_t>(index)];
+      }
+      if (raw_point_count < param_.min_cluster_size) {
+        continue;
+      }
       PointCluster cluster;
+      cluster.raw_point_count = raw_point_count;
       cluster.points.reserve(indices.indices.size());
       double sum_x = 0.0;
       double sum_y = 0.0;
@@ -159,8 +184,10 @@ bool PointCloudPreprocessor::process(
 std::vector<PointCluster> remove_clusters_inside_objects(
   const std::vector<PointCluster> & clusters,
   const autoware_perception_msgs::msg::PredictedObjects & objects,
-  const std::vector<uint8_t> & enabled_labels, const builtin_interfaces::msg::Time & cloud_stamp)
+  const std::vector<uint8_t> & enabled_labels, const builtin_interfaces::msg::Time & cloud_stamp,
+  const ObjectMargin & margin)
 {
+  using autoware_perception_msgs::msg::Shape;
   const double dt = (rclcpp::Time(cloud_stamp) - rclcpp::Time(objects.header.stamp)).seconds();
   std::vector<Polygon2d> object_polygons;
   object_polygons.reserve(objects.objects.size());
@@ -184,7 +211,48 @@ std::vector<PointCluster> remove_clusters_inside_objects(
     const double yaw = autoware_utils_geometry::get_rpy(pose).z;
     pose.position.x += (std::cos(yaw) * twist.x - std::sin(yaw) * twist.y) * dt;
     pose.position.y += (std::sin(yaw) * twist.x + std::cos(yaw) * twist.y) * dt;
-    object_polygons.push_back(autoware_utils_geometry::to_polygon2d(pose, object.shape));
+
+    const auto & shape = object.shape;
+    double x_min = 0.0;
+    double x_max = 0.0;
+    double y_min = 0.0;
+    double y_max = 0.0;
+    if (shape.type == Shape::BOUNDING_BOX) {
+      x_max = 0.5 * shape.dimensions.x;
+      x_min = -x_max;
+      y_max = 0.5 * shape.dimensions.y;
+      y_min = -y_max;
+    } else if (shape.type == Shape::CYLINDER) {
+      x_max = y_max = 0.5 * shape.dimensions.x;
+      x_min = y_min = -x_max;
+    } else {
+      if (shape.footprint.points.empty()) {
+        continue;
+      }
+      x_min = y_min = std::numeric_limits<double>::infinity();
+      x_max = y_max = -std::numeric_limits<double>::infinity();
+      for (const auto & p : shape.footprint.points) {
+        x_min = std::min(x_min, static_cast<double>(p.x));
+        x_max = std::max(x_max, static_cast<double>(p.x));
+        y_min = std::min(y_min, static_cast<double>(p.y));
+        y_max = std::max(y_max, static_cast<double>(p.y));
+      }
+    }
+    x_max += margin.front;
+    x_min -= margin.rear;
+    y_max += margin.left;
+    y_min -= margin.right;
+
+    Polygon2d polygon;
+    for (const auto & [lx, ly] :
+         {std::pair{x_max, y_max}, std::pair{x_min, y_max}, std::pair{x_min, y_min},
+          std::pair{x_max, y_min}}) {
+      polygon.outer().emplace_back(
+        pose.position.x + std::cos(yaw) * lx - std::sin(yaw) * ly,
+        pose.position.y + std::sin(yaw) * lx + std::cos(yaw) * ly);
+    }
+    boost::geometry::correct(polygon);
+    object_polygons.push_back(std::move(polygon));
   }
 
   std::vector<PointCluster> kept;

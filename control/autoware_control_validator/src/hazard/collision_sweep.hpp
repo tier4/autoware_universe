@@ -342,7 +342,8 @@ namespace collision_timing_assessment
  * footprints of both trajectories overlap. The TTC is t_k.
  */
 std::optional<CollisionTiming> find_collision_timing(
-  const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory);
+  const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
+  const std::vector<bool> & ref_stopped = {});
 }  // namespace collision_timing_assessment
 
 struct SweepCandidate
@@ -374,6 +375,7 @@ struct SweepLimits
   std::vector<uint8_t> enabled_labels;
   bool enable_pointcloud{true};
   double max_objects_stamp_gap_s{0.5};
+  double stop_velocity{0.1};
 };
 
 class CollisionSweep

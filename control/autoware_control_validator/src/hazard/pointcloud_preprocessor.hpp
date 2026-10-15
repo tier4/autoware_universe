@@ -45,7 +45,7 @@ struct PointCloudParam
   size_t max_points{20000};
   double voxel_size{0.10};
   double cluster_tolerance{0.30};
-  size_t min_cluster_size{3};
+  size_t min_cluster_size{5};
 };
 
 /// Points of one euclidean cluster and their centroid, in the map frame.
@@ -53,6 +53,15 @@ struct PointCluster
 {
   std::vector<Point2d> points;
   Point2d centroid;
+  size_t raw_point_count{0};
+};
+
+struct ObjectMargin
+{
+  double front{0.0};
+  double rear{0.0};
+  double left{0.0};
+  double right{0.0};
 };
 
 /**
@@ -109,7 +118,8 @@ private:
 std::vector<PointCluster> remove_clusters_inside_objects(
   const std::vector<PointCluster> & clusters,
   const autoware_perception_msgs::msg::PredictedObjects & objects,
-  const std::vector<uint8_t> & enabled_labels, const builtin_interfaces::msg::Time & cloud_stamp);
+  const std::vector<uint8_t> & enabled_labels, const builtin_interfaces::msg::Time & cloud_stamp,
+  const ObjectMargin & margin);
 }  // namespace autoware::control_validator::hazard
 
 #endif  // HAZARD__POINTCLOUD_PREPROCESSOR_HPP_
