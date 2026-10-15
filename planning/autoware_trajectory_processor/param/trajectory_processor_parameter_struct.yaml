@@ -876,21 +876,21 @@ trajectory_processor_params:
       default_value: 0.15
       description: First-order acceleration actuator time constant [s].
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     steer_time_constant:
       type: double
       default_value: 0.08
       description: First-order steering actuator time constant [s].
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     max_steer_rate:
       type: double
       default_value: 3.0
       description: Maximum absolute steering rate [rad/s].
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     use_previous_solution_warm_start:
       type: bool
@@ -934,42 +934,42 @@ trajectory_processor_params:
       default_value: 0.5
       description: Tracking weight along the reference heading [1/m^2]
       validation:
-        gt_eq<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     weight_lateral:
       type: double
       default_value: 0.5
       description: Tracking weight perpendicular to the reference heading [1/m^2]
       validation:
-        gt_eq<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     weight_yaw:
       type: double
       default_value: 0.05
       description: Tracking weight for heading [1/rad^2]
       validation:
-        gt_eq<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     weight_jerk:
       type: double
       default_value: 0.1
       description: Regularization weight on jerk input
       validation:
-        gt_eq<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     weight_steering_rate:
       type: double
       default_value: 10.0
       description: Regularization weight on steering rate input
       validation:
-        gt_eq<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     terminal_weight_scale:
       type: double
       default_value: 2.5
       description: Terminal state weight = scale * stage weight
       validation:
-        gt_eq<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     min_velocity_mps:
       type: double
@@ -981,7 +981,7 @@ trajectory_processor_params:
       default_value: 30.0
       description: Upper velocity bound [m/s]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     min_acceleration_mps2:
       type: double
@@ -1008,21 +1008,21 @@ trajectory_processor_params:
       default_value: 1.0
       description: Maximum absolute steering rate [rad/s]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     max_lateral_acceleration_mps2:
       type: double
       default_value: 3.0
       description: Soft lateral acceleration constraint bound [m/s^2]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     max_sqp_iterations:
       type: int
       default_value: 50
       description: Maximum SQP iterations for the acados solver
       validation:
-        gt<>: [0]
+        bounds<>: [0, 10000]
       read_only: false
     publish_debug_topics:
       type: bool
@@ -1039,28 +1039,28 @@ trajectory_processor_params:
       default_value: 1.0
       description: Localization history length for stamp-aligned OCP init [s]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     max_ego_stamp_mismatch_s:
       type: double
       default_value: 0.15
       description: Warn when matched odom stamp differs from trajectory stamp by more than this [s]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     stopped_velocity_threshold_mps:
       type: double
       default_value: 0.15
       description: Ego/reference speeds at or below this are treated as stopped [m/s]
       validation:
-        gt_eq<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     stopped_trajectory_max_length_m:
       type: double
       default_value: 1.5
       description: Maximum path length from the first point to the last for stopped detection [m]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     goal_steer_zero_enable:
       type: bool
@@ -1072,7 +1072,7 @@ trajectory_processor_params:
       default_value: 5.0
       description: Ego-to-route-goal distance below which zero steering is requested [m]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     goal_steer_zero_requires_stopped:
       type: bool
@@ -1091,28 +1091,28 @@ trajectory_processor_params:
       default_value: 0.2
       description: Ego footprint inflation for the overlap check [m]
       validation:
-        gt_eq<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     search_radius_m:
       type: double
       default_value: 120.0
       description: Road borders farther than this from ego are ignored [m]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     shift_step_m:
       type: double
       default_value: 0.1
       description: Increment for the first three lateral probes; remaining clearance uses bisection [m]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     max_lateral_shift_m:
       type: double
       default_value: 1.5
       description: Cap on the total lateral offset from the raw position [m]
       validation:
-        gt<>: [0.0]
+        bounds<>: [0.0, 10000.0]
       read_only: false
     propagate_shift:
       type: bool
@@ -1348,7 +1348,7 @@ trajectory_processor_params:
         default_value: 3000.0
         description: Weight for velocity limit violation slack
         validation:
-          bounds<>: [0.0, 100000.0]
+          bounds<>: [0.0, 10000.0]
         read_only: false
       over_a_weight:
         type: double
@@ -1463,3 +1463,84 @@ trajectory_processor_params:
       default_value: []
       description: Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs
       read_only: false
+
+  velocity_limits:
+    max_acceleration:
+      type: double
+      default_value: 1.0
+      description: Maximum acceleration of the profiles generated by the external and map velocity limits [m/s^2]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
+    max_deceleration:
+      type: double
+      default_value: 1.0
+      description: Maximum deceleration used to reach external and map velocity limits [m/s^2]. External limits with constraints use their own deceleration instead.
+      validation:
+        bounds<>: [0.01, 10.0]
+      read_only: false
+    max_jerk:
+      type: double
+      default_value: 3.0
+      description: Maximum jerk of the profiles generated by the external and map velocity limits [m/s^3]. External limits with constraints use their own jerk instead.
+      validation:
+        bounds<>: [0.01, 10.0]
+      read_only: false
+    fixed_profile:
+      enable:
+        type: bool
+        default_value: true
+        description: Start each profile from the previous plan at the current time instead of the measured ego state, while the ego tracks that plan.
+        read_only: false
+      reset_velocity_deviation:
+        type: double
+        default_value: 0.5
+        description: Measured velocity deviation from the previous plan above which the profile restarts from the measured ego state [m/s].
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_acceleration_deviation:
+        type: double
+        default_value: 0.5
+        description: Measured acceleration deviation from the previous plan above which the profile restarts from the measured ego state [m/s^2]. Must exceed the noise of the acceleration estimate.
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_distance_deviation:
+        type: double
+        default_value: 1.0
+        description: Distance between the ego and its planned position above which the profile restarts from the measured ego state [m].
+        validation:
+          bounds<>: [0.0, 100.0]
+        read_only: false
+      reset_time_gap:
+        type: double
+        default_value: 0.5
+        description: Age of the previous plan above which it is not reused [s].
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_on_new_stop:
+        type: bool
+        default_value: true
+        description: Restart from the measured ego state when an unmatched input stop or a new zero-speed external limit appears.
+        read_only: false
+      new_stop_match_distance:
+        type: double
+        default_value: 1.0
+        description: Maximum distance between input stop positions in successive plans to treat them as the same stop [m].
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_on_lower_input:
+        type: bool
+        default_value: true
+        description: Restart from the measured ego state when the input velocity drops below the previous plan at the same position.
+        read_only: false
+      lower_input_velocity_margin:
+        type: double
+        default_value: 0.5
+        description: Input velocity drop below the previous plan above which the profile restarts from the measured ego state [m/s].
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false

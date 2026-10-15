@@ -378,7 +378,7 @@ TEST_F(
   SurroundObstacleStopIntegrationTest, TrajectoryModifiedWhenLowPointcloudAndMinHeightIsLowered)
 {
   params_.surround_obstacle_stop.pcd_min_height = 0.0;
-  plugin_->update_params(TrajectoryModifierParams{params_});
+  plugin_->update_params(TrajectoryProcessorParams{params_});
   auto trajectory = create_straight_trajectory(10.0, 5.0);
   const auto pointcloud = make_pointcloud_in_base_link(0.0, 1.5, 0.1);
   const auto input = make_stopped_input(nullptr, pointcloud);

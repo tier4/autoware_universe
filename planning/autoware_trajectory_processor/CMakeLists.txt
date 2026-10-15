@@ -160,6 +160,9 @@ target_link_libraries(autoware_trajectory_modifier_plugins
   trajectory_processor_param
 )
 
+option(BUILD_VELOCITY_LIMIT_SIMULATION_TESTS
+  "Build and register the closed-loop velocity limit simulation tests" OFF)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
@@ -177,6 +180,13 @@ if(BUILD_TESTING)
 
   file(GLOB_RECURSE TEST_SOURCES tests/*.cpp)
   list(REMOVE_ITEM TEST_SOURCES ${NODE_TEST_SOURCES})
+
+  if(NOT BUILD_VELOCITY_LIMIT_SIMULATION_TESTS)
+    list(REMOVE_ITEM TEST_SOURCES
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_velocity_limit_simulation.cpp"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_velocity_limit_plugin_simulation.cpp"
+    )
+  endif()
 
   ament_add_ros_isolated_gtest(test_autoware_trajectory_processor
     ${TEST_SOURCES}
@@ -198,6 +208,22 @@ if(BUILD_TESTING)
       autoware_trajectory_optimizer_plugins
       autoware_trajectory_modifier_plugins
       autoware_trajectory_modifier_utils
+    )
+  endif()
+
+  if(BUILD_VELOCITY_LIMIT_SIMULATION_TESTS)
+    # Closed-loop simulations write CSV data here (overridden at run time by the
+    # VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR environment variable); the plot test renders it.
+    set(VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/velocity_limit_simulation")
+    target_compile_definitions(test_autoware_trajectory_processor PRIVATE
+      VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR="${VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR}"
+    )
+    add_test(NAME plot_velocity_limit_simulation
+      COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/plot_velocity_limit_simulation.py
+        ${VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR}
+    )
+    set_tests_properties(plot_velocity_limit_simulation PROPERTIES
+      DEPENDS test_autoware_trajectory_processor
     )
   endif()
 endif()

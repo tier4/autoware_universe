@@ -15,15 +15,16 @@
 #ifndef AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_PLUGINS__MAP_VELOCITY_LIMITS_HPP_
 #define AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_MODIFIER_PLUGINS__MAP_VELOCITY_LIMITS_HPP_
 
+#include "autoware/trajectory_processor/trajectory_modifier_plugins/velocity_limits.hpp"
 #include "autoware/trajectory_processor/trajectory_processor_plugin_base.hpp"
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <functional>
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
+
 #include <memory>
-#include <optional>
-#include <string>
 
 namespace autoware::trajectory_processor::plugin
 {
@@ -33,21 +34,6 @@ using autoware::trajectory_processor::plugin::ProcessingResult;
 using autoware::trajectory_processor::plugin::TrajectoryPoints;
 using autoware::trajectory_processor::plugin::TrajectoryProcessorPluginBase;
 using ModifierParams = trajectory_processor_params::Params;
-
-namespace detail
-{
-struct MapVelocityLimitResult
-{
-  ProcessingResult status{ProcessingResult::Unchanged};
-  std::string error;
-};
-
-// Retimes along the input polyline, keeping its first pose and every timestamp. The callback
-// permits checking the map again after resampling, independently of route-handler ownership.
-MapVelocityLimitResult apply_map_velocity_limits(
-  TrajectoryPoints & points, double deceleration,
-  const std::function<std::optional<double>(const geometry_msgs::msg::Point &)> & velocity_limit);
-}  // namespace detail
 
 class MapVelocityLimits : public TrajectoryProcessorPluginBase
 {
@@ -62,14 +48,21 @@ public:
 
   void update_params(const TrajectoryProcessorParams & params) override;
 
+  /// @brief How the profile of the latest processed candidate was started (Measured when no
+  /// profile was generated).
+  [[nodiscard]] detail::ProfileStart last_profile_start() const { return last_profile_start_; }
+
 protected:
   autoware_planning_msgs::msg::LaneletRoute::_uuid_type previous_route_uuid_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     limit_overrides_;
-  double constant_deceleration_{};
-  double max_jerk_{};
+  PublisherHandle<autoware_internal_debug_msgs::msg::StringStamped> profile_reset_pub_;
+  PublisherHandle<autoware_planning_msgs::msg::Trajectory> debug_trajectory_pub_;
+  detail::VelocityLimitConstraints constraints_;
+  detail::FixedProfileMemory fixed_profile_;
+  detail::ProfileStart last_profile_start_{detail::ProfileStart::Measured};
 
   void on_initialize(const TrajectoryProcessorParams & params) override;
 };

@@ -569,7 +569,7 @@ TEST_F(TrafficLightStopIntegrationTest, HoldsPositionWhenStoppedNearTargetStopPo
   params_.traffic_light_stop.hold_position_when_stopped = true;
   params_.stopping_constraints.ego_stopped_vel_th = 0.1;
   params_.traffic_light_stop.hold_position_distance_threshold = 2.0;
-  plugin_->update_params(TrajectoryModifierParams{params_});
+  plugin_->update_params(TrajectoryProcessorParams{params_});
 
   // Lookahead trajectory crosses the stop line while ego odometry velocity is 0.
   auto trajectory = create_straight_trajectory(0.0, stop_x + 1.0, 1.0);
@@ -595,7 +595,7 @@ TEST_F(TrafficLightStopIntegrationTest, PullsForwardWhenStoppedFarFromStopPoint)
   params_.traffic_light_stop.hold_position_when_stopped = true;
   params_.stopping_constraints.ego_stopped_vel_th = 0.1;
   params_.traffic_light_stop.hold_position_distance_threshold = 2.0;
-  plugin_->update_params(TrajectoryModifierParams{params_});
+  plugin_->update_params(TrajectoryProcessorParams{params_});
 
   auto trajectory = create_straight_trajectory(0.0, stop_x + 1.0, 1.0);
   const bool modified = process_plugin(*plugin_, trajectory, make_default_input(0.0));

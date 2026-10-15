@@ -26,6 +26,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <functional>
@@ -52,7 +53,9 @@ public:
   template <typename PublisherT>
   explicit PublisherHandle(PublisherT publisher)
   : publish_([publisher](const MessageT & msg) { publisher->publish(msg); }),
-    subscription_count_([publisher]() { return publisher->get_subscription_count(); })
+    subscription_count_([publisher]() { return publisher->get_subscription_count(); }),
+    intra_process_subscription_count_(
+      [publisher]() { return get_intra_process_subscription_count_or_zero(*publisher, 0); })
   {
   }
 
@@ -63,11 +66,31 @@ public:
     return subscription_count_ ? subscription_count_() : 0;
   }
 
+  /// @brief Number of intra-process subscriptions (0 when the publisher type does not support it).
+  [[nodiscard]] size_t get_intra_process_subscription_count() const
+  {
+    return intra_process_subscription_count_ ? intra_process_subscription_count_() : 0;
+  }
+
   explicit operator bool() const { return static_cast<bool>(publish_); }
 
 private:
+  template <typename PublisherT>
+  static auto get_intra_process_subscription_count_or_zero(PublisherT & publisher, int)
+    -> decltype(static_cast<size_t>(publisher.get_intra_process_subscription_count()))
+  {
+    return static_cast<size_t>(publisher.get_intra_process_subscription_count());
+  }
+
+  template <typename PublisherT>
+  static size_t get_intra_process_subscription_count_or_zero(PublisherT &, long)
+  {
+    return 0;
+  }
+
   std::function<void(const MessageT &)> publish_;
   std::function<size_t()> subscription_count_;
+  std::function<size_t()> intra_process_subscription_count_;
 };
 
 /// @brief Planning factor interface usable from either supported node type.
@@ -82,9 +105,8 @@ public:
   }
 
   PlanningFactorAdapter(autoware::agnocast_wrapper::Node * node, const std::string & name)
-  : agnocast_impl_(
-      std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceT<
-        autoware::agnocast_wrapper::Node>>(node, name))
+  : agnocast_impl_(std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceT<
+                     autoware::agnocast_wrapper::Node>>(node, name))
   {
   }
 
@@ -279,6 +301,24 @@ protected:
   [[nodiscard]] std::shared_ptr<autoware_utils_debug::TimeKeeper> get_time_keeper() const
   {
     return time_keeper_;
+  }
+
+  /// @brief Publish the stage output for the selected candidate without copying points when
+  /// nobody subscribes to the debug topic.
+  void publish_selected_debug_trajectory(
+    const PublisherHandle<autoware_planning_msgs::msg::Trajectory> & publisher,
+    const TrajectoryPoints & points, const TrajectoryProcessorData & data) const
+  {
+    if (
+      !publisher || data.candidate_index != 0U ||
+      (publisher.get_subscription_count() == 0U &&
+       publisher.get_intra_process_subscription_count() == 0U)) {
+      return;
+    }
+    autoware_planning_msgs::msg::Trajectory trajectory;
+    trajectory.header = data.candidate_header;
+    trajectory.points = points;
+    publisher(trajectory);
   }
 
   std::unique_ptr<PlanningFactorAdapter> planning_factor_interface_;

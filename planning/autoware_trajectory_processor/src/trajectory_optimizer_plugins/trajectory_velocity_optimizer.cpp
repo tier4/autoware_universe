@@ -64,8 +64,12 @@ void TrajectoryVelocityOptimizer::on_initialize(const TrajectoryProcessorParams 
   cjs.max_jerk = params.limit.max_jerk;
   cjs.min_jerk = params.limit.min_jerk;
 
-  sub_planning_velocity_ =
-    make_polling_subscriber<VelocityLimit>("~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+  // The shared context owns the external velocity limit (and its clear commands). Only plugins
+  // constructed without a context fall back to their own subscription.
+  if (!context_) {
+    sub_planning_velocity_ =
+      make_polling_subscriber<VelocityLimit>("~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+  }
 
   pub_velocity_limit_ = make_publisher<VelocityLimit>(
     "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
@@ -119,7 +123,15 @@ ProcessingResult TrajectoryVelocityOptimizer::process(
 
   // Apply global speed limit to trajectory and max velocity array
   if (velocity_params_.limit_speed) {
-    const auto external_velocity_limit = sub_planning_velocity_->take_data();
+    VelocityLimit::ConstSharedPtr external_velocity_limit;
+    if (data.has_external_velocity_limit_snapshot) {
+      external_velocity_limit = data.external_velocity_limit;
+    } else if (context_) {
+      context_->refresh_external_velocity_limit();
+      external_velocity_limit = context_->external_velocity_limit.active_limit();
+    } else {
+      external_velocity_limit = sub_planning_velocity_->take_data();
+    }
     const auto max_speed_mps = (external_velocity_limit)
                                  ? static_cast<float>(external_velocity_limit->max_velocity)
                                  : static_cast<float>(velocity_params_.default_max_velocity_mps);
