@@ -102,6 +102,7 @@ private:
 
   std::shared_ptr<TrajectoryModifierContext> context_;
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
+  autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr lanelet_map_bin_ptr_;
 };
 
 }  // namespace autoware::trajectory_modifier

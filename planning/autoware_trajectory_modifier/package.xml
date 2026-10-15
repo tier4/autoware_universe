@@ -17,8 +17,12 @@
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
 
+  <depend>autoware_avoidance_target_detector</depend>
+  <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_internal_planning_msgs</depend>
+  <depend>autoware_interpolation</depend>
   <depend>autoware_lanelet2_utils</depend>
+  <depend>autoware_map_msgs</depend>
   <depend>autoware_motion_utils</depend>
   <depend>autoware_object_recognition_utils</depend>
   <depend>autoware_obstacle_proximity_checker</depend>
@@ -40,6 +44,7 @@
   <depend>range-v3</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>std_msgs</depend>
   <depend>tf2_eigen</depend>
   <depend>tf2_ros</depend>
 
