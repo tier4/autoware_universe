@@ -77,7 +77,6 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
   const auto current_id = route_manager.current_lanelet().id();
   const double v_ego = std::max(0.0, context.odometry.twist.twist.linear.x);
 
-  // latch the limit of the current lanelet, as external_velocity_limit does
   if (satisfied_lanelet_id_ != current_id) {
     satisfied_lanelet_id_.reset();
   }
@@ -128,9 +127,6 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
     const auto & lanelet = lanelets[span.lanelet_index];
     const bool relax = lanelet.id() == current_id && !satisfied_lanelet_id_;
     add_zone(lanelet, relax);
-    // The shoulders beside it too: a path shifted off the lane (the connection to a goal on a
-    // shoulder) runs over them, and outside every zone it is bounded by the vehicle limit only. A
-    // shoulder shared by two lanelets gets two equal zones, which bound the path the same as one
     for (const auto & shoulder :
          {route_manager.left_shoulder_lanelet(lanelet),
           route_manager.right_shoulder_lanelet(lanelet)}) {
