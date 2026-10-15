@@ -94,6 +94,15 @@ bool road_border_avoidance_params_changed(
 }
 }  // namespace
 
+#ifndef ML_PLANNER_WEIGHT_MAJOR_VERSION
+#error "ML_PLANNER_WEIGHT_MAJOR_VERSION must be defined by CMake"
+#endif
+
+namespace
+{
+constexpr int64_t WEIGHT_MAJOR_VERSION = ML_PLANNER_WEIGHT_MAJOR_VERSION;
+}  // namespace
+
 #ifdef AUTOWARE_ML_PLANNER_USE_ONNXRUNTIME
 namespace
 {
@@ -151,6 +160,13 @@ void MLPlannerCore::load_model()
 {
   resolve_model_paths();
   ml_planner_inference_.reset();
+  model_metadata_ = utils::read_onnx_metadata(params_.model_path);
+  const auto model_version = model_metadata_.version();
+  if (model_version.major != WEIGHT_MAJOR_VERSION) {
+    throw std::runtime_error(
+      "Incompatible model version " + model_version.to_string() + " (" + params_.model_path +
+      "). This node requires major version " + std::to_string(WEIGHT_MAJOR_VERSION) + ".");
+  }
   if (params_.backend == "tensorrt") {
     ml_planner_inference_ = std::make_unique<SingleStepInference>(
       params_.model_path, params_.plugins_path, params_.batch_size, params_.trt_precision,

@@ -30,6 +30,10 @@ endif()
 
 autoware_package()
 
+# Major version of the ONNX weights this node is built against.
+# Checked against the major part of the ONNX ModelProto.model_version on load.
+set(ML_PLANNER_WEIGHT_MAJOR_VERSION 6)
+
 find_package(Boost REQUIRED)
 find_package(xtensor REQUIRED)
 
@@ -52,6 +56,7 @@ set(ML_PLANNER_SOURCES
   src/preprocessing/preprocessing_utils.cpp
   src/utils/marker_utils.cpp
   src/utils/object_remap.cpp
+  src/utils/onnx_metadata.cpp
   src/utils/planning_factor_utils.cpp
   src/utils/utils.cpp
 )
@@ -84,6 +89,10 @@ target_link_libraries(autoware_ml_planner_component
   MLPlanner::nvinfer
   MLPlanner::nvonnxparser
   xtensor
+)
+
+target_compile_definitions(autoware_ml_planner_component PRIVATE
+  ML_PLANNER_WEIGHT_MAJOR_VERSION=${ML_PLANNER_WEIGHT_MAJOR_VERSION}
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
