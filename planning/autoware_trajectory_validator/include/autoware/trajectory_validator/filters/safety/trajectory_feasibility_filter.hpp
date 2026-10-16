@@ -199,20 +199,38 @@ std::pair<double, bool> is_distance_deviation_ok(
   double max_distance_deviation);
 
 /**
- * @brief Check if the trajectory respects the maximum steering angle constraint.
+ * @brief Interpolate the maximum steering angle (rad) at the given speed from the table, clamped at
+ * both ends.
+ *
+ * @param speed_mps Speed at the trajectory point (m/s)
+ * @param velocities_kmph Speeds of the table, in strictly increasing order (km/h)
+ * @param max_steering_angles Maximum steering angle at each speed of the table (rad)
+ * @param default_max_steering_angle Limit used if the table is empty or invalid (rad)
+ * @return Maximum allowed steering angle at `speed` (rad)
+ */
+double calc_max_steering_angle(
+  double speed_mps, const std::vector<double> & velocities_kmph,
+  const std::vector<double> & max_steering_angles, double default_max_steering_angle);
+
+/**
+ * @brief Check if the trajectory respects the speed-dependent maximum steering angle constraint.
  *
  * The steering angle is derived from the path curvature with the bicycle model. The curvature is
  * estimated the same way as in `is_lateral_acceleration_ok()`, i.e. from three points spread at
- * least a fixed arc length (1.0 m) apart.
+ * least a fixed arc length (1.0 m) apart. The limit at each point comes from
+ * `calc_max_steering_angle()` with the speed at that point.
  *
  * @param traj_points Vector of trajectory points to check
  * @param vehicle_info Vehicle information needed to calculate steering angle
- * @param max_steering_angle Maximum allowed steering angle (rad)
+ * @param max_steering_angle Maximum allowed steering angle if the table is empty or invalid (rad)
+ * @param velocities_kmph Speeds of the steering angle table (km/h)
+ * @param max_steering_angles Maximum steering angle at each speed of the table (rad)
  * @return Pair of max observation and a boolean indicating if no point violated
  */
 std::pair<double, bool> is_steering_angle_ok(
-  const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info,
-  double max_steering_angle);
+  const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, double max_steering_angle,
+  const std::vector<double> & velocities_kmph = {},
+  const std::vector<double> & max_steering_angles = {});
 
 /**
  * @brief Check if the trajectory respects the maximum steering rate constraint.

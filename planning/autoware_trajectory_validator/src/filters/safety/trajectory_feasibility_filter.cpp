@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_validator/filters/safety/trajectory_feasibility_filter.hpp"
 
+#include <autoware/interpolation/linear_interpolation.hpp>
 #include <autoware/lanelet2_utils/kind.hpp>
 #include <autoware/lanelet2_utils/nn_search.hpp>
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
@@ -168,6 +169,26 @@ std::vector<std::optional<CurvatureSample>> to_curvature_samples(
 double to_steering_angle(const double curvature, const VehicleInfo & vehicle_info)
 {
   return std::atan(vehicle_info.wheel_base_m * curvature);
+}
+
+/**
+ * @brief Linearly interpolate the table (`xs`, `ys`) at `x`, clamped at both ends.
+ *
+ * @return std::nullopt if `x` is not finite, the table is empty, the sizes differ, or `xs` is not
+ * strictly increasing.
+ */
+std::optional<double> interpolate_table(
+  const double x, const std::vector<double> & xs, const std::vector<double> & ys)
+{
+  if (
+    !std::isfinite(x) || xs.empty() || xs.size() != ys.size() ||
+    !autoware::interpolation::isIncreasing(xs)) {
+    return std::nullopt;
+  }
+  if (xs.size() == 1) {
+    return ys.front();
+  }
+  return autoware::interpolation::lerp(xs, ys, std::clamp(x, xs.front(), xs.back()));
 }
 
 /**
@@ -420,8 +441,10 @@ MetricReport TrajectoryFeasibilityFilter::check_distance_deviation(
 MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
   const TrajectoryPoints & traj_points, const FilterContext &) const
 {
-  const auto [max_observed, is_ok] =
-    is_steering_angle_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_angle);
+  const auto [max_observed, is_ok] = is_steering_angle_ok(
+    traj_points, *vehicle_info_ptr_, params_.max_steering_angle,
+    params_.steering_angle_limit.velocities_kmph,
+    params_.steering_angle_limit.max_steering_angles_rad);
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
@@ -469,23 +492,18 @@ double calc_speed_limit_tolerance_mps(
   const double speed_limit_mps, const std::vector<double> & speed_limits_kmph,
   const std::vector<double> & tolerances_kmph)
 {
-  if (speed_limits_kmph.empty() || speed_limits_kmph.size() != tolerances_kmph.size()) {
-    return 0.0;
-  }
+  const auto tolerance_kmph = interpolate_table(
+    autoware_utils_math::mps2kmph(speed_limit_mps), speed_limits_kmph, tolerances_kmph);
+  return tolerance_kmph ? autoware_utils_math::kmph2mps(*tolerance_kmph) : 0.0;
+}
 
-  const double speed_limit_kmph = autoware_utils_math::mps2kmph(speed_limit_mps);
-  if (speed_limit_kmph <= speed_limits_kmph.front()) {
-    return autoware_utils_math::kmph2mps(tolerances_kmph.front());
-  }
-  for (size_t i = 1; i < speed_limits_kmph.size(); ++i) {
-    if (speed_limit_kmph <= speed_limits_kmph[i]) {
-      const double ratio = (speed_limit_kmph - speed_limits_kmph[i - 1]) /
-                           (speed_limits_kmph[i] - speed_limits_kmph[i - 1]);
-      return autoware_utils_math::kmph2mps(
-        tolerances_kmph[i - 1] + ratio * (tolerances_kmph[i] - tolerances_kmph[i - 1]));
-    }
-  }
-  return autoware_utils_math::kmph2mps(tolerances_kmph.back());
+double calc_max_steering_angle(
+  const double speed_mps, const std::vector<double> & velocities_kmph,
+  const std::vector<double> & max_steering_angles, const double default_max_steering_angle)
+{
+  return interpolate_table(
+           autoware_utils_math::mps2kmph(speed_mps), velocities_kmph, max_steering_angles)
+    .value_or(default_max_steering_angle);
 }
 
 std::pair<double, bool> is_lanelet_speed_limit_ok(
@@ -631,18 +649,22 @@ std::pair<double, bool> is_distance_deviation_ok(
 }
 
 std::pair<double, bool> is_steering_angle_ok(
-  const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, double max_steering_angle)
+  const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, double max_steering_angle,
+  const std::vector<double> & velocities_kmph, const std::vector<double> & max_steering_angles)
 {
   double max_observed = 0.0;
   bool is_ok = true;
 
   const auto samples = to_curvature_samples(traj_points);
-  for (const auto & sample : samples) {
+  for (size_t i = 0; i < samples.size(); ++i) {
+    const auto & sample = samples[i];
     if (!sample.has_value()) {
       continue;
     }
     const double steering_angle = std::abs(to_steering_angle(sample->curvature, vehicle_info));
-    if (steering_angle > max_steering_angle) {
+    const double limit = calc_max_steering_angle(
+      to_speed(traj_points[i]), velocities_kmph, max_steering_angles, max_steering_angle);
+    if (steering_angle > limit) {
       max_observed = std::max(max_observed, steering_angle);
       is_ok = false;
     }
