@@ -1138,7 +1138,7 @@ PidLongitudinalController::Motion PidLongitudinalController::keepBrakeBeforeStop
   const auto & p = m_brake_keeping_params;
 
   if (m_brake_keeping_state == BrakeKeepingState::NORMAL) {
-    if (D <= p.terminal_clip_dist_th) {
+    if (D >= 0.0 && D <= p.terminal_clip_dist_th) {
       m_brake_keeping_state = BrakeKeepingState::TERMINAL_CLIP;
       RCLCPP_DEBUG(logger_, "[keepBrake] NORMAL -> TERMINAL_CLIP");
     }
@@ -1146,9 +1146,10 @@ PidLongitudinalController::Motion PidLongitudinalController::keepBrakeBeforeStop
   else if (m_brake_keeping_state == BrakeKeepingState::TERMINAL_CLIP) {
     if (D > p.abort_dist_th) {
       m_brake_keeping_state = BrakeKeepingState::NORMAL;
-      RCLCPP_DEBUG(logger_, "[keepBrake] TERMINAL_CLIP -> NORMAL (Abort)");
-    } else if (m_is_stopped_with_delay) {
+      RCLCPP_DEBUG(logger_, "[keepBrake] TERMINAL_CLIP -> NORMAL");
+    } else if (m_is_stopped_with_delay && D > m_state_transition_params.drive_state_stop_dist) {
       m_brake_keeping_state = BrakeKeepingState::STOP_AND_GO;
+      m_pid_vel.reset();
       RCLCPP_DEBUG(logger_, "[keepBrake] TERMINAL_CLIP -> STOP_AND_GO");
     }
   }
@@ -1156,6 +1157,10 @@ PidLongitudinalController::Motion PidLongitudinalController::keepBrakeBeforeStop
     if (D > p.abort_dist_th) {
       m_brake_keeping_state = BrakeKeepingState::NORMAL;
       RCLCPP_DEBUG(logger_, "[keepBrake] STOP_AND_GO -> NORMAL");
+    }
+    else if (D <= m_state_transition_params.drive_state_stop_dist) {
+      m_brake_keeping_state = BrakeKeepingState::TERMINAL_CLIP;
+      RCLCPP_DEBUG(logger_, "[keepBrake] STOP_AND_GO -> TERMINAL_CLIP");
     }
   }
 
