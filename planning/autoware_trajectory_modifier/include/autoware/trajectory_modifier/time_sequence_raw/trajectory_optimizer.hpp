@@ -38,6 +38,8 @@ struct OptimizationResult
 {
   Trajectory trajectory;
   bool optimized{false};
+  /// 0 = acados success. -3 = solver not called (trajectory shorter than the horizon, or a bad
+  /// batch index). Any other value is the acados status; the input trajectory is left in place.
   int solver_status{0};
   double solve_time_ms{0.0};
   /// OCP x0 speed: stamp-aligned odometry twist.
