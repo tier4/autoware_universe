@@ -756,6 +756,11 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
     m_prev_keep_stopped_condition = std::nullopt;
   }
 
+  // Reset brake keeping sub-state when leaving DRIVE state
+  if (m_control_state != ControlState::DRIVE) {
+    m_brake_keeping_state = BrakeKeepingState::NORMAL;
+  }
+
   // transit state
   // in DRIVE state
   if (m_control_state == ControlState::DRIVE) {
