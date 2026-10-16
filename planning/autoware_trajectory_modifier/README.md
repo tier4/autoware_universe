@@ -51,6 +51,29 @@ The Traffic Light Stop plugin serves as a deterministic safety shield operating 
 
 The Velocity Modifier plugins is responsible for ensuring the velocity profile is smooth and feasible, and adjusts the velocity profile if an anomaly is detected while respecting deceleration and jerk constraints.
 
+#### External Velocity Limit and Map Velocity Limits
+
+`ExternalVelocityLimit` applies the latest valid `VelocityLimit` from
+`~/input/external_velocity_limit_mps` to each candidate. A matching-sender
+`VelocityLimitClearCommand` on `~/input/velocity_limit_clear_command` clears it. Message
+deceleration and jerk constraints take precedence when present and nonzero.
+
+`MapVelocityLimits` reads route lanelet `speed_limit` attributes (km/h) through
+`autoware_avoidance_target_detector::ExtendedRouteHandler`. Its debug override lanelet IDs and
+velocities are configured under `map_velocity_limits`; override velocities are in m/s.
+
+Both plugins use the `velocity_limits` acceleration, deceleration, jerk, and fixed-profile
+parameters. They keep one previous profile per candidate and reset it when the ego deviates from
+the plan, a new stop appears, or the input drops below the previous plan. Their debug trajectory
+topics publish candidate 0 immediately after the respective plugin stage.
+
+The plugins are registered but absent from the default `plugin_names` list. To use them, add
+`autoware::trajectory_modifier::plugin::ExternalVelocityLimit` and
+`autoware::trajectory_modifier::plugin::MapVelocityLimits` before the stop plugins in that list.
+The launch defaults connect the external limit to
+`/planning/scenario_planning/max_velocity_default` and the clear command to
+`/planning/scenario_planning/clear_velocity_limit`; both launch arguments can be remapped.
+
 ## Dependencies
 
 This package depends on the following packages:

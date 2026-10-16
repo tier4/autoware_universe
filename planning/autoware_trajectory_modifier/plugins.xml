@@ -1,5 +1,13 @@
 <?xml version="1.0"?>
 <library path="autoware_trajectory_modifier_plugins">
+  <class type="autoware::trajectory_modifier::plugin::ExternalVelocityLimit"
+         base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
+    <description>Limits trajectory velocity from the active external velocity limit</description>
+  </class>
+  <class type="autoware::trajectory_modifier::plugin::MapVelocityLimits"
+         base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
+    <description>Limits trajectory velocity from route lanelet speed limits</description>
+  </class>
   <class type="autoware::trajectory_modifier::plugin::StopPointFixer"
          base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
     <description>

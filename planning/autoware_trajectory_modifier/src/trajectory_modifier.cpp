@@ -70,6 +70,7 @@ void TrajectoryModifier::on_map(const autoware_map_msgs::msg::LaneletMapBin::Con
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
+  lanelet_map_bin_ptr_ = msg;
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
     autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg));
 }
@@ -90,8 +91,6 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
     RCLCPP_ERROR(get_logger(), "%s", input.error().c_str());
     return;
   }
-  const auto & input_data = input.value();
-
   CandidateTrajectories output_trajectories = *msg;
 
   if (param_listener_->is_old(params_)) {
@@ -101,6 +100,10 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
   auto trajectory_count = 0;
   std::string modified_plugins_str;
   for (auto & trajectory : output_trajectories.candidate_trajectories) {
+    auto input_data = input.value();
+    input_data.candidate_header = trajectory.header;
+    input_data.candidate_index = static_cast<std::size_t>(trajectory_count);
+    input_data.candidate_count = output_trajectories.candidate_trajectories.size();
     for (auto & modifier : plugins_) {
       const auto modified = modifier->modify_trajectory(trajectory.points, input_data);
       const auto ns = "trajectory_" + std::to_string(trajectory_count);
@@ -128,6 +131,11 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
 tl::expected<plugin::InputData, std::string> TrajectoryModifier::make_input_data()
 {
   plugin::InputData input;
+  context_->refresh_external_velocity_limit();
+  input.has_external_velocity_limit_snapshot = true;
+  input.external_velocity_limit = context_->external_velocity_limit.active_limit();
+  input.external_velocity_limit_clear_revision =
+    context_->external_velocity_limit.clear_revision();
   input.current_odometry = sub_current_odometry_.take_data();
   input.current_acceleration = sub_current_acceleration_.take_data();
   input.predicted_objects = sub_objects_.take_data();
@@ -135,6 +143,7 @@ tl::expected<plugin::InputData, std::string> TrajectoryModifier::make_input_data
   input.route = sub_route_.take_data();
   input.traffic_light_signals = sub_traffic_lights_.take_data();
   input.lanelet_map = lanelet_map_ptr_;
+  input.lanelet_map_bin = lanelet_map_bin_ptr_;
 
   if (!input.current_odometry) {
     return tl::make_unexpected("Data is not ready: current_odometry is not set");
