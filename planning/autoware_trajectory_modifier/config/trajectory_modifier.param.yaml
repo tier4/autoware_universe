@@ -102,6 +102,19 @@
           structure: 0.1
           vegetation: 0.1
           unknown: 0.0
+        low_velocity_lateral_margin:
+          car: 0.1
+          truck: 0.1
+          bus: 0.1
+          trailer: 0.1
+          motorcycle: 0.1
+          bicycle: 0.1
+          pedestrian: 0.1
+          hazard: 0.05
+          structure: 0.05
+          vegetation: 0.0
+          unknown: 0.0
+        low_velocity_th: 4.0 # [m/s]
 
       rss_params:
         enable: true
