@@ -19,19 +19,14 @@
  * straight reference (point 0 at the ego projection); optimizeTrajectory; feedback from
  * MPPI internal applied_plant.
  *
- * Example:
- *   ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim -- \
- *     --params-yaml $(ros2 pkg prefix
- * autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml \
- *     --simulator-yaml $(ros2 pkg prefix
- * j6_gen2_description)/share/j6_gen2_description/config/simulator_model.param.yaml \
- *     --vehicle-info-yaml $(ros2 pkg prefix
- * j6_gen2_description)/share/j6_gen2_description/config/vehicle_info.param.yaml \
- *     --out-dir "$HOME/.cache/autoware/mppi_open_loop_line_sim" --plot
+ * Example (after colcon build && source install/setup.bash):
+ *   ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim -- --plot
  */
 
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_trajectory_io.hpp"
+#include "mppi_open_loop_sim_params.hpp"
+#include "mppi_open_loop_sim_paths.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
@@ -71,6 +66,10 @@ using autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiOptimizationResult;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiRuntimeOptions;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiVehicleParams;
+using autoware::mppi_optimizer::open_loop_sim::defaultOutDir;
+using autoware::mppi_optimizer::open_loop_sim::defaultPlanningMppiParamsYaml;
+using autoware::mppi_optimizer::open_loop_sim::defaultVehicleDescriptionYaml;
+using autoware::mppi_optimizer::open_loop_sim::loadMppiOptimizerParamsFromYaml;
 using autoware::mppi_optimizer::quaternionFromYaw;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
@@ -99,7 +98,7 @@ void printUsage(const char * argv0)
   std::cerr
     << "Usage: " << argv0
     << " [options]\n"
-       "  --params-yaml FILE   Cost/runtime yaml (default: package share config)\n"
+       "  --params-yaml FILE   Cost/runtime yaml (default: autoware_launch neural_net, else package)\n"
        "  --simulator-yaml FILE  simulator_model.param.yaml (default: j6_gen2 if installed)\n"
        "  --vehicle-info-yaml FILE  vehicle_info.param.yaml (default: j6_gen2 if installed)\n"
        "  --out-dir DIR        CSV/PNG output directory\n"
@@ -114,16 +113,6 @@ void printUsage(const char * argv0)
        "  --help\n";
 }
 
-std::string trim(const std::string & s)
-{
-  const auto start = s.find_first_not_of(" \t\r\n");
-  if (start == std::string::npos) {
-    return "";
-  }
-  const auto end = s.find_last_not_of(" \t\r\n");
-  return s.substr(start, end - start + 1);
-}
-
 float wrapPi(const float yaw)
 {
   float wrapped = yaw;
@@ -134,125 +123,6 @@ float wrapPi(const float yaw)
     wrapped += 2.0F * static_cast<float>(M_PI);
   }
   return wrapped;
-}
-
-std::optional<bool> parseBool(const std::string & value)
-{
-  if (value == "true" || value == "True" || value == "1") {
-    return true;
-  }
-  if (value == "false" || value == "False" || value == "0") {
-    return false;
-  }
-  return std::nullopt;
-}
-
-void loadParamsYaml(
-  const std::string & path, FirstOrderDubinsMppiCostParams & cost,
-  FirstOrderDubinsMppiRuntimeOptions & runtime)
-{
-  std::ifstream in(path);
-  if (!in) {
-    throw std::runtime_error("Failed to open params yaml: " + path);
-  }
-
-  std::unordered_map<std::string, float *> cost_fields = {
-    {"lambda", &cost.lambda},
-    {"speed_coeff", &cost.speed_coeff},
-    {"track_coeff", &cost.track_coeff},
-    {"track_terminal_scale", &cost.track_terminal_scale},
-    {"heading_coeff", &cost.heading_coeff},
-    {"lateral_distance_coeff", &cost.lateral_distance_coeff},
-    {"lateral_yaw_error_coeff", &cost.lateral_yaw_error_coeff},
-    {"remaining_distance_coeff", &cost.remaining_distance_coeff},
-    {"path_overshoot_coeff", &cost.path_overshoot_coeff},
-    {"track_center_coeff", &cost.track_center_coeff},
-    {"corner_buffer_coeff", &cost.corner_buffer_coeff},
-    {"corner_safe_margin", &cost.corner_safe_margin},
-    {"boundary_threshold", &cost.boundary_threshold},
-    {"lateral_boundary_soft_margin", &cost.lateral_boundary_soft_margin},
-    {"accel_cmd_coeff", &cost.accel_cmd_coeff},
-    {"steer_cmd_coeff", &cost.steer_cmd_coeff},
-    {"steer_rate_coeff", &cost.steer_rate_coeff},
-    {"overlimit_coeff", &cost.overlimit_coeff},
-    {"accel_cmd_std_dev", &cost.accel_cmd_std_dev},
-    {"steer_cmd_std_dev", &cost.steer_cmd_std_dev},
-    {"accel_cmd_noise_exponent", &cost.accel_cmd_noise_exponent},
-    {"steer_cmd_noise_exponent", &cost.steer_cmd_noise_exponent},
-    {"nominal_curvature_min_chord_length_m", &cost.nominal_curvature_min_chord_length_m},
-    {"lateral_acceleration_coeff", &cost.lateral_acceleration_coeff},
-    {"lateral_jerk_coeff", &cost.lateral_jerk_coeff},
-    {"longitudinal_jerk_coeff", &cost.longitudinal_jerk_coeff},
-    {"obstacle_collision_margin", &cost.obstacle_collision_margin},
-    {"road_border_collision_margin", &cost.road_border_collision_margin},
-    {"obstacle_safe_margin", &cost.obstacle_safe_margin},
-    {"road_border_safe_margin", &cost.road_border_safe_margin},
-    {"drivable_area_safe_margin", &cost.drivable_area_safe_margin},
-    {"drivable_area_barrier_weight", &cost.drivable_area_barrier_weight},
-    {"crash_contact_penalty", &cost.crash_contact_penalty},
-  };
-
-  std::string line;
-  while (std::getline(in, line)) {
-    line = trim(line);
-    if (line.empty() || line[0] == '#' || line.find(':') == std::string::npos) {
-      continue;
-    }
-    const auto colon = line.find(':');
-    const std::string key = trim(line.substr(0, colon));
-    std::string value = trim(line.substr(colon + 1));
-    if (!value.empty() && value.front() == '"' && value.back() == '"') {
-      value = value.substr(1, value.size() - 2);
-    }
-
-    if (const auto flag = parseBool(value)) {
-      if (key == "use_temporal_mpt_as_nominal") {
-        runtime.use_temporal_mpt_as_nominal = *flag;
-      } else if (key == "use_last_control_as_nominal") {
-        runtime.use_last_control_as_nominal = *flag;
-      } else if (key == "enable_input_delay_compensation") {
-        runtime.enable_input_delay_compensation = *flag;
-      } else if (key == "prevent_reverse_velocity") {
-        runtime.prevent_reverse_velocity = *flag;
-      }
-      continue;
-    }
-
-    const auto it = cost_fields.find(key);
-    if (it == cost_fields.end()) {
-      continue;
-    }
-    try {
-      *it->second = std::stof(value);
-    } catch (const std::exception &) {
-    }
-  }
-}
-
-std::string defaultParamsYaml()
-{
-  try {
-    const auto share = ament_index_cpp::get_package_share_directory("autoware_mppi_optimizer");
-    const auto path = std::filesystem::path(share) / "config" / "mppi_optimizer.param.yaml";
-    if (std::filesystem::is_regular_file(path)) {
-      return path.string();
-    }
-  } catch (const std::exception &) {
-  }
-  return "";
-}
-
-std::string defaultVehicleDescriptionYaml(const char * filename)
-{
-  try {
-    const auto share = ament_index_cpp::get_package_share_directory("j6_gen2_description");
-    const auto path = std::filesystem::path(share) / "config" / filename;
-    if (std::filesystem::is_regular_file(path)) {
-      return path.string();
-    }
-  } catch (const std::exception &) {
-  }
-  return "";
 }
 
 FirstOrderDubinsMppiVehicleParams loadVehicleParamsFromYaml(
@@ -270,7 +140,6 @@ FirstOrderDubinsMppiVehicleParams loadVehicleParamsFromYaml(
   }
 
   rclcpp::NodeOptions options;
-  options.automatically_declare_parameters_from_overrides(true);
   options.arguments(
     {"--ros-args", "--params-file", vehicle_info_yaml, "--params-file", simulator_yaml});
   auto node = rclcpp::Node::make_shared("mppi_open_loop_line_sim_params", options);
@@ -287,20 +156,6 @@ void logVehicleParams(const FirstOrderDubinsMppiVehicleParams & vehicle)
             << " steer_delay=" << vehicle.steer_time_delay
             << " steer_rate_lim=" << vehicle.steer_rate_lim
             << " vel_rate_lim=" << vehicle.vel_rate_lim << "\n";
-}
-
-std::string defaultOutDir()
-{
-  const char * cache = std::getenv("XDG_CACHE_HOME");
-  std::filesystem::path root;
-  if (cache && cache[0] != '\0') {
-    root = std::filesystem::path(cache);
-  } else {
-    const char * home = std::getenv("HOME");
-    root = (home && home[0] != '\0') ? std::filesystem::path(home) / ".cache"
-                                     : std::filesystem::temp_directory_path();
-  }
-  return (root / "autoware" / "mppi_open_loop_line_sim").string();
 }
 
 /** Fixed Δs along y=0; matches one MPPI stage at the reference speed. */
@@ -520,10 +375,10 @@ int run(int argc, char ** argv)
     }
   } rclcpp_guard(argc, argv);
 
-  std::string params_yaml = defaultParamsYaml();
+  std::string params_yaml = defaultPlanningMppiParamsYaml();
   std::string simulator_yaml = defaultVehicleDescriptionYaml("simulator_model.param.yaml");
   std::string vehicle_info_yaml = defaultVehicleDescriptionYaml("vehicle_info.param.yaml");
-  std::string out_dir = defaultOutDir();
+  std::string out_dir = defaultOutDir("mppi_open_loop_line_sim");
   float duration_s = 8.0F;
   float speed = 8.0F;
   float goal_x = 0.0F;
@@ -586,25 +441,12 @@ int run(int argc, char ** argv)
 
   FirstOrderDubinsMppiCostParams cost_params;
   FirstOrderDubinsMppiRuntimeOptions runtime;
-  runtime.ignore_obstacles = true;
-  runtime.ignore_road_borders = true;
-  runtime.ignore_drivable_area = true;
-  runtime.force_cold_start_each_step = false;
-  runtime.skip_if_invalid = false;
-  runtime.min_optimization_length = 0.0F;
-  runtime.use_temporal_mpt_as_nominal = true;
-  runtime.use_last_control_as_nominal = true;
-  runtime.prevent_reverse_velocity = true;
-  runtime.enable_input_delay_compensation = false;
-  runtime.enable_debug_trajectory_log = false;
-
   if (!params_yaml.empty()) {
-    loadParamsYaml(params_yaml, cost_params, runtime);
-    std::cerr << "Loaded params from " << params_yaml << "\n";
+    loadMppiOptimizerParamsFromYaml(params_yaml, cost_params, runtime);
+    std::cerr << "Loaded mppi_optimizer params from " << params_yaml << "\n";
   } else {
-    std::cerr << "WARNING: no params yaml found; using compiled cost defaults\n";
+    std::cerr << "WARNING: no params yaml found; using struct defaults\n";
   }
-  runtime.skip_if_invalid = false;
   runtime.ignore_obstacles = true;
   runtime.ignore_road_borders = true;
   runtime.ignore_drivable_area = true;
@@ -667,6 +509,7 @@ int run(int argc, char ** argv)
   const Trajectory fixed_reference = makeFixedStraightLinePath(goal_x, speed, ref_ds, steps);
   std::cerr << "Straight-line plant sim: steps=" << steps << " dt=" << kDt << " v=" << speed
             << " goal_x=" << goal_x << " y0=" << y_offset
+            << " skip_if_invalid=" << (runtime.skip_if_invalid ? "on" : "off")
             << " t-MPT=" << (runtime.use_temporal_mpt_as_nominal ? "on" : "off")
             << " delay=" << (runtime.enable_input_delay_compensation ? "on" : "off") << "\n";
   if (runtime.use_temporal_mpt_as_nominal && runtime.enable_input_delay_compensation) {
@@ -679,15 +522,22 @@ int run(int argc, char ** argv)
   const std::size_t reference_points = static_cast<std::size_t>(kHorizon);
   std::cerr << "  fixed reference: " << fixed_reference.points.size() << " points, ds=" << ref_ds
             << " m; horizon anchored at ego arc length each step\n";
+  int rejected_steps = 0;
   for (int step = 0; step < steps; ++step) {
     const float sim_t = static_cast<float>(step) * kDt;
     const float s_ego = egoArcLengthOnPath(plant);
     const auto reference =
       sliceReferenceHorizonFromArcLength(fixed_reference, s_ego, ref_ds, reference_points, speed);
+    if (!plant.accel_cmd_buffer.empty() || !plant.steer_cmd_buffer.empty()) {
+      mppi.setInputDelayBuffer(plant.accel_cmd_buffer, plant.steer_cmd_buffer);
+    }
     const auto result = mppi.optimizeTrajectory(
       reference, makeOdometry(plant, sim_t), makeAccel(plant), makeSteering(plant), objects, {}, {},
       limits);
     updatePlantFromResult(plant, command, result);
+    if (result.debug.was_rejected) {
+      ++rejected_steps;
+    }
     const float t = static_cast<float>(step + 1) * kDt;
     rows.push_back(formatRow(t, plant, command));
     if ((step + 1) % 10 == 0 || step + 1 == steps) {
@@ -707,6 +557,8 @@ int run(int argc, char ** argv)
   if (!writePlantCsv(plant_csv, rows)) {
     throw std::runtime_error("Failed to write " + plant_csv);
   }
+  std::cerr << "Summary: final x=" << plant.x << " y=" << plant.y << " v=" << plant.velocity
+            << " rejected_steps=" << rejected_steps << "/" << steps << "\n";
   std::cerr << "Wrote " << plant_csv << "\n";
 
   if (plot) {

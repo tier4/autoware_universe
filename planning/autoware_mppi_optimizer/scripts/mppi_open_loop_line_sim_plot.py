@@ -38,6 +38,8 @@ if "--no-show" in sys.argv:
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Rectangle
+from matplotlib.transforms import Affine2D
 
 
 def hide_navigation_toolbar(fig: plt.Figure) -> None:
@@ -132,7 +134,40 @@ def load_csv(path: Path) -> Dict[str, np.ndarray]:
     return {name: np.asarray(values, dtype=float) for name, values in columns.items()}
 
 
-def plot(plant: Dict[str, np.ndarray], out_path: Path, show: bool) -> None:
+def add_oriented_boxes(ax: plt.Axes, obstacles: Dict[str, np.ndarray]) -> None:
+    for index, (x, y, yaw, length, width) in enumerate(
+        zip(
+            obstacles["x"],
+            obstacles["y"],
+            obstacles["yaw"],
+            obstacles["length"],
+            obstacles["width"],
+            strict=True,
+        )
+    ):
+        rect = Rectangle(
+            (-float(length) * 0.5, -float(width) * 0.5),
+            float(length),
+            float(width),
+            facecolor="0.35",
+            edgecolor="0.15",
+            alpha=0.55,
+            linewidth=1.2,
+            label="obstacle" if index == 0 else None,
+        )
+        transform = Affine2D().rotate(float(yaw)).translate(float(x), float(y)) + ax.transData
+        rect.set_transform(transform)
+        ax.add_patch(rect)
+
+
+def plot(
+    plant: Dict[str, np.ndarray],
+    out_path: Path,
+    show: bool,
+    reference: Dict[str, np.ndarray] | None = None,
+    obstacles: Dict[str, np.ndarray] | None = None,
+    title: str | None = None,
+) -> None:
     t = plant["t"]
     fig_kwargs = {"figsize": (12.0, 10.5), "layout": "constrained"}
     with matplotlib.rc_context({"toolbar": "none" if show else matplotlib.rcParams["toolbar"]}):
@@ -140,8 +175,20 @@ def plot(plant: Dict[str, np.ndarray], out_path: Path, show: bool) -> None:
     grid = fig.add_gridspec(4, 2, height_ratios=[1.2, 1.0, 1.0, 1.0])
 
     ax_xy = fig.add_subplot(grid[0, 0])
-    x_line = np.linspace(min(float(plant["x"].min()), 0.0), float(plant["x"].max()) + 5.0, 50)
-    ax_xy.plot(x_line, np.zeros_like(x_line), color="0.65", linestyle="--", label="reference")
+    if reference is not None and "x" in reference and "y" in reference:
+        ax_xy.plot(
+            reference["x"],
+            reference["y"],
+            color="0.65",
+            linestyle="--",
+            linewidth=1.8,
+            label="reference",
+        )
+    else:
+        x_line = np.linspace(min(float(plant["x"].min()), 0.0), float(plant["x"].max()) + 5.0, 50)
+        ax_xy.plot(x_line, np.zeros_like(x_line), color="0.65", linestyle="--", label="reference")
+    if obstacles is not None:
+        add_oriented_boxes(ax_xy, obstacles)
     ax_xy.plot(plant["x"], plant["y"], color="tab:red", linewidth=2.0, label="plant")
     ax_xy.scatter(plant["x"][0], plant["y"][0], color="tab:red", zorder=3)
     ax_xy.set_aspect("equal", adjustable="datalim")
@@ -197,7 +244,7 @@ def plot(plant: Dict[str, np.ndarray], out_path: Path, show: bool) -> None:
     ax_ud.set_title("Steer command")
     ax_ud.grid(True, alpha=0.3)
 
-    fig.suptitle("MPPI delay-bicycle open-loop straight-line tracking")
+    fig.suptitle(title or "MPPI delay-bicycle open-loop straight-line tracking")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=140)
     print(f"Wrote {out_path}")
@@ -220,6 +267,19 @@ def main() -> int:
         default=None,
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--reference-csv",
+        type=Path,
+        default=None,
+        help="reference path (s,x,y,yaw) from mppi_open_loop_lr_turn_sim",
+    )
+    parser.add_argument(
+        "--obstacles-csv",
+        type=Path,
+        default=None,
+        help="static obstacles (x,y,yaw,length,width) from lr turn sim",
+    )
+    parser.add_argument("--title", type=str, default=None, help="figure suptitle override")
     parser.add_argument("--out", type=Path, default=None, help="output PNG (default: next to csv)")
     parser.add_argument(
         "--no-show",
@@ -246,8 +306,26 @@ def main() -> int:
     if missing:
         raise SystemExit(f"csv missing columns: {sorted(missing)}")
 
+    reference = None
+    if args.reference_csv is not None:
+        reference = load_csv(args.reference_csv.expanduser().resolve())
+
+    obstacles = None
+    if args.obstacles_csv is not None:
+        obstacles = load_csv(args.obstacles_csv.expanduser().resolve())
+        missing_obstacle_cols = {"x", "y", "yaw", "length", "width"}.difference(obstacles)
+        if missing_obstacle_cols:
+            raise SystemExit(f"obstacles csv missing columns: {sorted(missing_obstacle_cols)}")
+
     out_path = args.out.expanduser().resolve() if args.out else csv_path.with_suffix(".png")
-    plot(plant, out_path, show=not args.no_show)
+    plot(
+        plant,
+        out_path,
+        show=not args.no_show,
+        reference=reference,
+        obstacles=obstacles,
+        title=args.title,
+    )
     return 0
 
 

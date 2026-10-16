@@ -2155,9 +2155,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     result.debug.was_rejected = true;
     RCLCPP_WARN(
       mppiLogger(),
-      "MPPI output rejected with invalidity_mask=%u at point=%s; returning the input trajectory "
+      "MPPI output rejected (reason=%s) at trajectory point=%s; returning the input trajectory "
       "unchanged",
-      static_cast<unsigned int>(validation.reasons),
+      validation_reasons.c_str(),
       validation.first_invalid_index.has_value()
         ? std::to_string(validation.first_invalid_index.value()).c_str()
         : "unknown");

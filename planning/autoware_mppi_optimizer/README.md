@@ -127,24 +127,80 @@ Adjust sliders, press **Retune** (or `r`). Overlay updates in place; metrics sho
 
 `mppi_open_loop_line_sim` runs MPPI in a receding-horizon loop on a fixed straight reference. The delay-bicycle plant is driven from MPPI’s internal applied control each step (no ROS stack). Obstacles, road borders, and drivable constraints are ignored by default in the tool.
 
-After building and sourcing the workspace:
+After `colcon build --packages-select autoware_mppi_optimizer` and `source install/setup.bash`, defaults resolve via the ament index (no workspace paths):
+
+- **Params:** `autoware_launch` → `config/planning/neural_net_planner/mppi_optimizer.param.yaml` when that package is installed (same file as diffusion planning sim); otherwise `autoware_mppi_optimizer` package config.
+- **Vehicle / simulator:** `j6_gen2_description` share configs when installed.
+- **Output:** `$XDG_CACHE_HOME/autoware/mppi_open_loop_line_sim` or `$HOME/.cache/autoware/...`.
+
+```bash
+ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim -- --plot
+```
+
+Optional explicit overrides (portable `ros2 pkg prefix` paths):
 
 ```bash
 ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim -- \
-  --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml \
-  --simulator-yaml $(ros2 pkg prefix j6_gen2_description)/share/j6_gen2_description/config/simulator_model.param.yaml \
-  --vehicle-info-yaml $(ros2 pkg prefix j6_gen2_description)/share/j6_gen2_description/config/vehicle_info.param.yaml \
-  --out-dir "$HOME/.cache/autoware/mppi_open_loop_line_sim" \
+  --params-yaml "$(ros2 pkg prefix autoware_launch)/share/autoware_launch/config/planning/neural_net_planner/mppi_optimizer.param.yaml" \
+  --simulator-yaml "$(ros2 pkg prefix j6_gen2_description)/share/j6_gen2_description/config/simulator_model.param.yaml" \
+  --vehicle-info-yaml "$(ros2 pkg prefix j6_gen2_description)/share/j6_gen2_description/config/vehicle_info.param.yaml" \
   --plot
 ```
 
-Writes `plant.csv` (and `plant.png` when `--plot` is set) under `--out-dir`. Simulator and vehicle YAML paths default to `j6_gen2_description` when that package is installed; omit those flags to use the defaults.
+Writes `plant.csv` (and `plant.png` when `--plot` is set) under the default or `--out-dir` cache folder.
 
-Plot only (after a run):
+Plot only (reuse the `--out-dir` you passed to the sim, or the default cache path above):
 
 ```bash
+OUT_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/autoware/mppi_open_loop_line_sim"
 ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- \
-  --csv "$HOME/.cache/autoware/mppi_open_loop_line_sim/plant.csv"
+  --csv "${OUT_DIR}/plant.csv"
 ```
 
 Useful options: `--duration`, `--speed`, `--y-offset`, `--yaw-offset-deg`, `--no-temporal-mpt`, `--no-delay`. Run with `--help` for the full list.
+
+## Open-loop left-then-right turn sim
+
+`mppi_open_loop_lr_turn_sim` uses the same MPPI plant loop on a fixed path: straight → left arc → straight → right arc → straight. Writes `reference.csv` for plotting.
+
+Same default param / vehicle / cache resolution as the straight-line sim (`mppi_open_loop_lr_turn_sim` subfolder under the autoware cache):
+
+```bash
+ros2 run autoware_mppi_optimizer mppi_open_loop_lr_turn_sim -- --plot
+```
+
+Writes `plant.csv`, `reference.csv`, and `plant.png` (with `--plot`) under the default or `--out-dir` cache folder.
+
+Plot only:
+
+```bash
+OUT_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/autoware/mppi_open_loop_lr_turn_sim"
+ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- \
+  --csv "${OUT_DIR}/plant.csv" \
+  --reference-csv "${OUT_DIR}/reference.csv"
+```
+
+Path tuning: `--straight-before`, `--straight-mid`, `--straight-after`, `--turn-radius`, `--turn-angle-deg` (default 45° left then 45° right). Default `--duration` is 22 s at 8 m/s. Run with `--help` for the full list.
+
+### Left/right turn with static obstacle (dodge example)
+
+Same path as above with a stationary box on the pre-turn straight (default arc length `max(22 m, straight_before − 3 m)`). Tracked objects use the same `TrackedObjects` / bounding-box fields as MPPI debug `*_objects.csv` (`existence_probability`, `BOUNDING_BOX`, zero twist). MPPI obstacle costs stay enabled (`ignore_obstacles` is off when `--static-obstacle` is set). Cost/runtime parameters use the same defaults as the non-obstacle sim (only `ignore_obstacles` / map-related ignores differ). When `skip_if_invalid` is true (default online), MPPI still applies its delay-bicycle control each cycle; `was_rejected` only means the published trajectory would stay unchanged in the modifier (the open-loop plant always follows `applied_plant`). Writes `obstacles.csv` for the plotter.
+
+```bash
+OUT_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/autoware/mppi_open_loop_lr_turn_obstacle_sim"
+ros2 run autoware_mppi_optimizer mppi_open_loop_lr_turn_sim -- \
+  --static-obstacle \
+  --out-dir "${OUT_DIR}" \
+  --plot
+```
+
+Plot (includes gray obstacle footprint on the XY panel):
+
+```bash
+ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- \
+  --csv "${OUT_DIR}/plant.csv" \
+  --reference-csv "${OUT_DIR}/reference.csv" \
+  --obstacles-csv "${OUT_DIR}/obstacles.csv"
+```
+
+Obstacle tuning: `--obstacle-path-s`, `--obstacle-lateral`, `--obstacle-length`, `--obstacle-width` (defaults **2.5 m × 1.0 m**).
