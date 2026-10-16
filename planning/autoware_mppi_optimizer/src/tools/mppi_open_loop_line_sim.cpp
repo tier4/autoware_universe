@@ -31,12 +31,12 @@
  */
 
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
+#include "autoware/mppi_optimizer/mppi_debug_trajectory_io.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
-#include "autoware/mppi_optimizer/mppi_debug_trajectory_io.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -661,7 +661,6 @@ int run(int argc, char ** argv)
 
   std::filesystem::create_directories(out_dir);
   const auto plant_csv = (std::filesystem::path(out_dir) / "plant.csv").string();
-  const auto horizon_csv = (std::filesystem::path(out_dir) / "horizon0.csv").string();
 
   const int steps = static_cast<int>(std::lround(duration_s / kDt));
   const float ref_ds = referenceSpacingMeters(speed);
@@ -688,12 +687,6 @@ int run(int argc, char ** argv)
     const auto result = mppi.optimizeTrajectory(
       reference, makeOdometry(plant, sim_t), makeAccel(plant), makeSteering(plant), objects, {}, {},
       limits);
-    if (step == 0) {
-      if (!autoware::mppi_optimizer::writeMppiDebugOptimalHorizonCsv(
-            horizon_csv, result.debug.optimal_horizon, kDt)) {
-        throw std::runtime_error("Failed to write first optimal horizon " + horizon_csv);
-      }
-    }
     updatePlantFromResult(plant, command, result);
     const float t = static_cast<float>(step + 1) * kDt;
     rows.push_back(formatRow(t, plant, command));
@@ -715,7 +708,6 @@ int run(int argc, char ** argv)
     throw std::runtime_error("Failed to write " + plant_csv);
   }
   std::cerr << "Wrote " << plant_csv << "\n";
-  std::cerr << "Wrote first optimal-horizon rollout " << horizon_csv << "\n";
 
   if (plot) {
     const auto script = findPlotScript(argv[0]);
@@ -725,8 +717,8 @@ int run(int argc, char ** argv)
                 << plant_csv << "\n";
     } else {
       const auto png = (std::filesystem::path(out_dir) / "plant.png").string();
-      const std::string cmd = "python3 \"" + script.string() + "\" --csv \"" + plant_csv +
-                              "\" --horizon-csv \"" + horizon_csv + "\" --out \"" + png + "\"";
+      const std::string cmd =
+        "python3 \"" + script.string() + "\" --csv \"" + plant_csv + "\" --out \"" + png + "\"";
       std::cerr << "Plotting: " << cmd << "\n";
       if (std::system(cmd.c_str()) != 0) {
         std::cerr << "WARNING: plotter exited non-zero\n";

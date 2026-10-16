@@ -122,3 +122,29 @@ ros2 run autoware_mppi_optimizer mppi_offline_tuner.py -- \
 ```
 
 Adjust sliders, press **Retune** (or `r`). Overlay updates in place; metrics show max position/velocity error vs the reference.
+
+## Open-loop straight-line sim
+
+`mppi_open_loop_line_sim` runs MPPI in a receding-horizon loop on a fixed straight reference. The delay-bicycle plant is driven from MPPI’s internal applied control each step (no ROS stack). Obstacles, road borders, and drivable constraints are ignored by default in the tool.
+
+After building and sourcing the workspace:
+
+```bash
+ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim -- \
+  --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml \
+  --simulator-yaml $(ros2 pkg prefix j6_gen2_description)/share/j6_gen2_description/config/simulator_model.param.yaml \
+  --vehicle-info-yaml $(ros2 pkg prefix j6_gen2_description)/share/j6_gen2_description/config/vehicle_info.param.yaml \
+  --out-dir "$HOME/.cache/autoware/mppi_open_loop_line_sim" \
+  --plot
+```
+
+Writes `plant.csv` (and `plant.png` when `--plot` is set) under `--out-dir`. Simulator and vehicle YAML paths default to `j6_gen2_description` when that package is installed; omit those flags to use the defaults.
+
+Plot only (after a run):
+
+```bash
+ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- \
+  --csv "$HOME/.cache/autoware/mppi_open_loop_line_sim/plant.csv"
+```
+
+Useful options: `--duration`, `--speed`, `--y-offset`, `--yaw-offset-deg`, `--no-temporal-mpt`, `--no-delay`. Run with `--help` for the full list.

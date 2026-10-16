@@ -861,7 +861,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     // Smooth-MPPI samples action derivatives and integrates with dt.
     sp.dt = kDt;
 #endif
-    sampler = SAMPLER(sp);
+    // ColoredNoiseDistribution is not copy-assignable (cuFFT / device buffers).
+    sampler.setParams(sp);
 
     const float lambda = user_cost_params_.lambda;
     controller = std::make_unique<MppiWithHistoryAccess>(
