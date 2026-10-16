@@ -21,12 +21,14 @@
  *   ros2 run autoware_mppi_optimizer mppi_open_loop_lr_turn_sim -- \
  *   ros2 run autoware_mppi_optimizer mppi_open_loop_lr_turn_sim -- --plot
  *   ros2 run autoware_mppi_optimizer mppi_open_loop_lr_turn_sim -- --static-obstacle --plot
+ *   ros2 run autoware_mppi_optimizer mppi_open_loop_lr_turn_sim -- --road-borders --plot
  */
 
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/tracked_objects_obstacles.hpp"
 #include "mppi_open_loop_arc_path.hpp"
 #include "mppi_open_loop_sim_params.hpp"
+#include "mppi_open_loop_sim_io.hpp"
 #include "mppi_open_loop_sim_paths.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_trajectory_io.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
@@ -62,6 +64,7 @@
 namespace
 {
 
+using autoware::mppi_optimizer::Segment;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiControl;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiCostParams;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
@@ -72,10 +75,15 @@ using autoware::mppi_optimizer::buildObstacleTrajectoryBuffersFromTrackedObjects
 using autoware::mppi_optimizer::makeStationaryTrackedBoxObjects;
 using autoware::mppi_optimizer::open_loop_sim::ArcLengthPath;
 using autoware::mppi_optimizer::open_loop_sim::defaultOutDir;
+using autoware::mppi_optimizer::open_loop_sim::writeEgoFootprintCsv;
 using autoware::mppi_optimizer::open_loop_sim::defaultPlanningMppiParamsYaml;
 using autoware::mppi_optimizer::open_loop_sim::defaultVehicleDescriptionYaml;
 using autoware::mppi_optimizer::open_loop_sim::loadMppiOptimizerParamsFromYaml;
 using autoware::mppi_optimizer::open_loop_sim::makeLeftThenRightTurnPath;
+using autoware::mppi_optimizer::open_loop_sim::kOpenLoopMaxRoadBorderSegments;
+using autoware::mppi_optimizer::open_loop_sim::lrTurnPathLayout;
+using autoware::mppi_optimizer::open_loop_sim::makeLrTurnRoadBorders;
+using autoware::mppi_optimizer::open_loop_sim::minRoadBorderHalfWidthForEgo;
 using autoware::mppi_optimizer::quaternionFromYaw;
 using autoware::mppi_optimizer::trackedObjectObstacleCount;
 using autoware_planning_msgs::msg::Trajectory;
@@ -126,6 +134,9 @@ void printUsage(const char * argv0)
        "  --obstacle-lateral M Lateral offset from path (+ = left) [m] (default 0)\n"
        "  --obstacle-length M  Box length [m] (default 2.5)\n"
        "  --obstacle-width M   Box width [m] (default 1.0)\n"
+       "  --road-borders       Enable lane-line segments parallel to the reference (MPPI borders)\n"
+       "  --road-border-half-width M  Corridor half-width on straights [m] (default 3.0)\n"
+       "  --road-border-turn-half-width M  Tighter outer edge in turns [m] (default 2.25)\n"
        "  --help\n";
 }
 
@@ -208,6 +219,20 @@ void logTrackedObjectsForMppi(const autoware_perception_msgs::msg::TrackedObject
               << " x0=" << x.front() << " y0=" << y.front();
   }
   std::cerr << "\n";
+}
+
+bool writeRoadBordersCsv(const std::string & path, const std::vector<Segment> & segments)
+{
+  std::ofstream out(path);
+  if (!out) {
+    return false;
+  }
+  out << "x0,y0,x1,y1\n";
+  out << std::setprecision(9) << std::fixed;
+  for (const auto & seg : segments) {
+    out << seg.x0 << "," << seg.y0 << "," << seg.x1 << "," << seg.y1 << "\n";
+  }
+  return true;
 }
 
 bool writeObstaclesCsv(
@@ -385,6 +410,9 @@ int run(int argc, char ** argv)
   bool no_delay = false;
   bool plot = false;
   bool static_obstacle = false;
+  bool road_borders_enabled = false;
+  float road_border_half_width = 3.0F;
+  float road_border_turn_half_width = 2.25F;
   float obstacle_path_s = -1.0F;
   float obstacle_lateral = 0.0F;
   float obstacle_length = 2.5F;
@@ -441,6 +469,12 @@ int run(int argc, char ** argv)
       obstacle_length = std::stof(require_value("--obstacle-length"));
     } else if (arg == "--obstacle-width") {
       obstacle_width = std::stof(require_value("--obstacle-width"));
+    } else if (arg == "--road-borders") {
+      road_borders_enabled = true;
+    } else if (arg == "--road-border-half-width") {
+      road_border_half_width = std::stof(require_value("--road-border-half-width"));
+    } else if (arg == "--road-border-turn-half-width") {
+      road_border_turn_half_width = std::stof(require_value("--road-border-turn-half-width"));
     } else if (arg == "--help" || arg == "-h") {
       printUsage(argv[0]);
       return 0;
@@ -469,7 +503,7 @@ int run(int argc, char ** argv)
     std::cerr << "WARNING: no params yaml found; using struct defaults\n";
   }
   runtime.ignore_obstacles = !static_obstacle;
-  runtime.ignore_road_borders = true;
+  runtime.ignore_road_borders = !road_borders_enabled;
   runtime.ignore_drivable_area = true;
   runtime.enable_debug_trajectory_log = false;
   if (no_temporal_mpt) {
@@ -524,6 +558,36 @@ int run(int argc, char ** argv)
       throw std::runtime_error("obstacle length and width must be positive");
     }
   }
+  if (road_borders_enabled && road_border_half_width <= 0.0F) {
+    throw std::runtime_error("road-border-half-width must be positive");
+  }
+  if (road_borders_enabled && road_border_turn_half_width <= 0.0F) {
+    throw std::runtime_error("road-border-turn-half-width must be positive");
+  }
+  if (road_borders_enabled && road_border_turn_half_width >= road_border_half_width) {
+    throw std::runtime_error(
+      "road-border-turn-half-width must be smaller than road-border-half-width (outer constriction)");
+  }
+  if (road_borders_enabled) {
+    const float min_half = minRoadBorderHalfWidthForEgo(
+      vehicle.ego_width, cost_params.road_border_collision_margin);
+    const float min_turn_outer = min_half + 0.35F;
+    if (road_border_half_width < min_half) {
+      std::cerr << "WARNING: road-border-half-width " << road_border_half_width
+                << " m is below ego clearance (~" << min_half
+                << " m); raising to fit ego_width + collision margin\n";
+      road_border_half_width = min_half;
+    }
+    if (road_border_turn_half_width < min_turn_outer) {
+      std::cerr << "WARNING: road-border-turn-half-width " << road_border_turn_half_width
+                << " m is too tight for ego on turn outer edge (~" << min_turn_outer
+                << " m with tracking slack); raising\n";
+      road_border_turn_half_width = min_turn_outer;
+      if (road_border_turn_half_width >= road_border_half_width) {
+        road_border_half_width = road_border_turn_half_width + 0.25F;
+      }
+    }
+  }
 
   FirstOrderDubinsMppiInterface mppi;
   mppi.setVehicleParams(vehicle);
@@ -548,6 +612,8 @@ int run(int argc, char ** argv)
   const auto plant_csv = (std::filesystem::path(out_dir) / "plant.csv").string();
   const auto reference_csv = (std::filesystem::path(out_dir) / "reference.csv").string();
   const auto obstacles_csv = (std::filesystem::path(out_dir) / "obstacles.csv").string();
+  const auto road_borders_csv = (std::filesystem::path(out_dir) / "road_borders.csv").string();
+  const auto ego_footprint_csv = (std::filesystem::path(out_dir) / "ego_footprint.csv").string();
 
   const int steps = static_cast<int>(std::lround(duration_s / kDt));
   const float ref_ds = referenceSpacingMeters(speed);
@@ -557,10 +623,14 @@ int run(int argc, char ** argv)
   if (!writeReferenceCsv(reference_csv, path_geom)) {
     throw std::runtime_error("Failed to write " + reference_csv);
   }
+  if (!writeEgoFootprintCsv(ego_footprint_csv, vehicle)) {
+    throw std::runtime_error("Failed to write " + ego_footprint_csv);
+  }
   std::cerr << "Left-then-right turn plant sim: steps=" << steps << " dt=" << kDt << " v=" << speed
             << " path_len=" << path_geom.totalLength() << " y0=" << y_offset
             << " R=" << turn_radius << " turn=" << turn_angle_deg << "deg"
             << " obstacles=" << (static_obstacle ? "on" : "off")
+            << " road_borders=" << (road_borders_enabled ? "on" : "off")
             << " skip_if_invalid=" << (runtime.skip_if_invalid ? "on" : "off")
             << " t-MPT=" << (runtime.use_temporal_mpt_as_nominal ? "on" : "off")
             << " delay=" << (runtime.enable_input_delay_compensation ? "on" : "off") << "\n";
@@ -582,6 +652,20 @@ int run(int argc, char ** argv)
               << " m\n";
     logTrackedObjectsForMppi(objects);
   }
+  std::vector<Segment> road_borders;
+  if (road_borders_enabled) {
+    const auto layout =
+      lrTurnPathLayout(straight_before, turn_radius, turn_angle_rad, straight_mid);
+    road_borders = makeLrTurnRoadBorders(
+      path_geom, layout, road_border_half_width, road_border_turn_half_width,
+      kPathIntegrationStep);
+    if (!writeRoadBordersCsv(road_borders_csv, road_borders)) {
+      throw std::runtime_error("Failed to write " + road_borders_csv);
+    }
+    std::cerr << "  road borders: segments=" << road_borders.size() << " (cap "
+              << kOpenLoopMaxRoadBorderSegments << ") straight_half=" << road_border_half_width
+              << " m turn_outer_half=" << road_border_turn_half_width << " m\n";
+  }
   autoware::mppi_optimizer::FirstOrderDubinsMppiKinematicLimits limits;
   const std::size_t reference_points = static_cast<std::size_t>(kHorizon);
   std::cerr << "  fixed reference: " << fixed_reference.points.size() << " points, ds=" << ref_ds
@@ -598,8 +682,8 @@ int run(int argc, char ** argv)
       mppi.setInputDelayBuffer(plant.accel_cmd_buffer, plant.steer_cmd_buffer);
     }
     const auto result = mppi.optimizeTrajectory(
-      reference, makeOdometry(plant, sim_t), makeAccel(plant), makeSteering(plant), objects, {}, {},
-      limits);
+      reference, makeOdometry(plant, sim_t), makeAccel(plant), makeSteering(plant), objects,
+      road_borders, {}, limits);
     updatePlantFromResult(plant, command, result);
     if (result.debug.was_rejected) {
       ++rejected_steps;
@@ -633,26 +717,41 @@ int run(int argc, char ** argv)
             << " rejected_steps=" << rejected_steps << "/" << steps << "\n";
   std::cerr << "Wrote " << plant_csv << "\n";
   std::cerr << "Wrote " << reference_csv << "\n";
+  std::cerr << "Wrote " << ego_footprint_csv << "\n";
   if (static_obstacle) {
     std::cerr << "Wrote " << obstacles_csv << "\n";
   }
+  if (road_borders_enabled) {
+    std::cerr << "Wrote " << road_borders_csv << "\n";
+  }
 
-  const std::string plot_title =
-    static_obstacle ? "MPPI open-loop left/right turn (static obstacle)" : "MPPI open-loop left/right turn";
-  const std::string obstacles_arg =
+  std::string plot_title = "MPPI open-loop left/right turn";
+  if (static_obstacle && road_borders_enabled) {
+    plot_title = "MPPI open-loop left/right turn (obstacle + road borders)";
+  } else if (static_obstacle) {
+    plot_title = "MPPI open-loop left/right turn (static obstacle)";
+  } else if (road_borders_enabled) {
+    plot_title = "MPPI open-loop left/right turn (road borders)";
+  }
+  std::string obstacles_arg =
     static_obstacle ? (" --obstacles-csv \"" + obstacles_csv + "\"") : std::string();
+  const std::string road_borders_arg =
+    road_borders_enabled ? (" --road-borders-csv \"" + road_borders_csv + "\"") : std::string();
+  const std::string ego_footprint_arg = " --ego-footprint-csv \"" + ego_footprint_csv + "\"";
 
   if (plot) {
     const auto script = findPlotScript(argv[0]);
     if (script.empty()) {
       std::cerr << "Plot script not found. Run:\n  ros2 run autoware_mppi_optimizer "
                    "mppi_open_loop_line_sim_plot.py -- --csv "
-                << plant_csv << " --reference-csv " << reference_csv << obstacles_arg << "\n";
+                << plant_csv << " --reference-csv " << reference_csv << obstacles_arg
+                << road_borders_arg << ego_footprint_arg << "\n";
     } else {
       const auto png = (std::filesystem::path(out_dir) / "plant.png").string();
       const std::string cmd = "python3 \"" + script.string() + "\" --csv \"" + plant_csv +
                               "\" --reference-csv \"" + reference_csv + "\"" + obstacles_arg +
-                              " --out \"" + png + "\" --title \"" + plot_title + "\"";
+                              road_borders_arg + ego_footprint_arg + " --out \"" + png +
+                              "\" --title \"" + plot_title + "\"";
       std::cerr << "Plotting: " << cmd << "\n";
       if (std::system(cmd.c_str()) != 0) {
         std::cerr << "WARNING: plotter exited non-zero\n";
@@ -662,7 +761,8 @@ int run(int argc, char ** argv)
     std::cerr
       << "Plot with:\n  ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- "
          "--csv "
-      << plant_csv << " --reference-csv " << reference_csv << obstacles_arg << "\n";
+      << plant_csv << " --reference-csv " << reference_csv << obstacles_arg << road_borders_arg
+      << ego_footprint_arg << "\n";
   }
   return 0;
 }

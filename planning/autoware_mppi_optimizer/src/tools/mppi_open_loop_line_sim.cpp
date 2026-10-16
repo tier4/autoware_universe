@@ -26,6 +26,7 @@
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_trajectory_io.hpp"
 #include "mppi_open_loop_sim_params.hpp"
+#include "mppi_open_loop_sim_io.hpp"
 #include "mppi_open_loop_sim_paths.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
@@ -67,6 +68,7 @@ using autoware::mppi_optimizer::FirstOrderDubinsMppiOptimizationResult;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiRuntimeOptions;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiVehicleParams;
 using autoware::mppi_optimizer::open_loop_sim::defaultOutDir;
+using autoware::mppi_optimizer::open_loop_sim::writeEgoFootprintCsv;
 using autoware::mppi_optimizer::open_loop_sim::defaultPlanningMppiParamsYaml;
 using autoware::mppi_optimizer::open_loop_sim::defaultVehicleDescriptionYaml;
 using autoware::mppi_optimizer::open_loop_sim::loadMppiOptimizerParamsFromYaml;
@@ -503,6 +505,10 @@ int run(int argc, char ** argv)
 
   std::filesystem::create_directories(out_dir);
   const auto plant_csv = (std::filesystem::path(out_dir) / "plant.csv").string();
+  const auto ego_footprint_csv = (std::filesystem::path(out_dir) / "ego_footprint.csv").string();
+  if (!writeEgoFootprintCsv(ego_footprint_csv, vehicle)) {
+    throw std::runtime_error("Failed to write " + ego_footprint_csv);
+  }
 
   const int steps = static_cast<int>(std::lround(duration_s / kDt));
   const float ref_ds = referenceSpacingMeters(speed);
@@ -560,6 +566,7 @@ int run(int argc, char ** argv)
   std::cerr << "Summary: final x=" << plant.x << " y=" << plant.y << " v=" << plant.velocity
             << " rejected_steps=" << rejected_steps << "/" << steps << "\n";
   std::cerr << "Wrote " << plant_csv << "\n";
+  std::cerr << "Wrote " << ego_footprint_csv << "\n";
 
   if (plot) {
     const auto script = findPlotScript(argv[0]);
@@ -569,8 +576,9 @@ int run(int argc, char ** argv)
                 << plant_csv << "\n";
     } else {
       const auto png = (std::filesystem::path(out_dir) / "plant.png").string();
-      const std::string cmd =
-        "python3 \"" + script.string() + "\" --csv \"" + plant_csv + "\" --out \"" + png + "\"";
+      const std::string cmd = "python3 \"" + script.string() + "\" --csv \"" + plant_csv +
+                              "\" --ego-footprint-csv \"" + ego_footprint_csv + "\" --out \"" +
+                              png + "\"";
       std::cerr << "Plotting: " << cmd << "\n";
       if (std::system(cmd.c_str()) != 0) {
         std::cerr << "WARNING: plotter exited non-zero\n";
@@ -580,7 +588,7 @@ int run(int argc, char ** argv)
     std::cerr
       << "Plot with:\n  ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- "
          "--csv "
-      << plant_csv << "\n";
+      << plant_csv << " --ego-footprint-csv " << ego_footprint_csv << "\n";
   }
   return 0;
 }

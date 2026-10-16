@@ -20,10 +20,13 @@
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace autoware::mppi_optimizer::open_loop_sim
@@ -266,6 +269,117 @@ inline ArcLengthPath makeLeftThenRightTurnPath(
   path.appendArc(turn_radius_m, -turn_angle_rad, integration_step_m);
   path.appendStraight(straight_after_m, integration_step_m);
   return path;
+}
+
+/** Matches `FirstOrderDubinsBicycleCost::kMaxRoadBorderSegments` (left + right polylines share this cap). */
+inline constexpr std::size_t kOpenLoopMaxRoadBorderSegments = 256U;
+
+/** Centerline-to-border distance that fits ego half-width + MPPI road-border collision margin. */
+inline float minRoadBorderHalfWidthForEgo(
+  const float ego_width, const float road_border_collision_margin)
+{
+  return 0.5F * ego_width + road_border_collision_margin + 0.15F;
+}
+
+/** Arc-length spans of the left / right turn sections (matches `makeLeftThenRightTurnPath`). */
+struct LrTurnPathLayout
+{
+  float s_left_arc_start{0.0F};
+  float s_left_arc_end{0.0F};
+  float s_right_arc_start{0.0F};
+  float s_right_arc_end{0.0F};
+};
+
+inline LrTurnPathLayout lrTurnPathLayout(
+  const float straight_before_m, const float turn_radius_m, const float turn_angle_rad,
+  const float straight_mid_m)
+{
+  const float arc_len = std::abs(turn_angle_rad) * turn_radius_m;
+  LrTurnPathLayout layout;
+  layout.s_left_arc_start = straight_before_m;
+  layout.s_left_arc_end = straight_before_m + arc_len;
+  layout.s_right_arc_start = layout.s_left_arc_end + straight_mid_m;
+  layout.s_right_arc_end = layout.s_right_arc_start + arc_len;
+  return layout;
+}
+
+/** Half-widths (+left / +right from centerline). Left turn: narrow the right (outer) edge. */
+inline std::pair<float, float> lrTurnRoadBorderHalfWidthsAtS(
+  const float s, const LrTurnPathLayout & layout, const float straight_half_width_m,
+  const float turn_outer_half_width_m)
+{
+  if (s >= layout.s_left_arc_start && s <= layout.s_left_arc_end) {
+    return {straight_half_width_m, turn_outer_half_width_m};
+  }
+  if (s >= layout.s_right_arc_start && s <= layout.s_right_arc_end) {
+    return {turn_outer_half_width_m, straight_half_width_m};
+  }
+  return {straight_half_width_m, straight_half_width_m};
+}
+
+inline std::vector<Segment> makeRoadBorderPolylines(
+  const ArcLengthPath & path, const float sample_step_m,
+  const std::function<std::pair<float, float>(float s)> & half_widths_at_s)
+{
+  if (path.empty() || sample_step_m <= 0.0F) {
+    return {};
+  }
+  const float total = path.totalLength();
+  const std::size_t max_intervals_per_edge =
+    std::max<std::size_t>(1U, kOpenLoopMaxRoadBorderSegments / 2U);
+  const float min_step_for_cap = total / static_cast<float>(max_intervals_per_edge);
+  const float step = std::max(sample_step_m, min_step_for_cap);
+  std::vector<std::array<float, 2>> left;
+  std::vector<std::array<float, 2>> right;
+  for (float s = 0.0F; s <= total + 1.0e-4F; s += step) {
+    const float s_clamped = std::min(s, total);
+    const auto on = path.sampleAtArcLength(s_clamped);
+    const auto [half_left, half_right] = half_widths_at_s(s_clamped);
+    const float nx = -std::sin(on.yaw);
+    const float ny = std::cos(on.yaw);
+    left.push_back({on.x + half_left * nx, on.y + half_left * ny});
+    right.push_back({on.x - half_right * nx, on.y - half_right * ny});
+  }
+  std::vector<Segment> segments;
+  if (left.size() < 2U) {
+    return segments;
+  }
+  segments.reserve(2U * (left.size() - 1U));
+  for (std::size_t i = 0; i + 1U < left.size(); ++i) {
+    segments.push_back(
+      Segment{left[i][0], left[i][1], left[i + 1U][0], left[i + 1U][1]});
+    segments.push_back(
+      Segment{right[i][0], right[i][1], right[i + 1U][0], right[i + 1U][1]});
+  }
+  return segments;
+}
+
+/** Uniform corridor (both sides). */
+inline std::vector<Segment> makeParallelRoadBorders(
+  const ArcLengthPath & path, const float half_width_m, const float sample_step_m)
+{
+  if (half_width_m <= 0.0F) {
+    return {};
+  }
+  return makeRoadBorderPolylines(
+    path, sample_step_m,
+    [half_width_m](float) { return std::pair<float, float>{half_width_m, half_width_m}; });
+}
+
+/** LR-turn demo: tighter outer lane line on each arc so MPPI must respect road borders in turns. */
+inline std::vector<Segment> makeLrTurnRoadBorders(
+  const ArcLengthPath & path, const LrTurnPathLayout & layout, const float straight_half_width_m,
+  const float turn_outer_half_width_m, const float sample_step_m)
+{
+  if (straight_half_width_m <= 0.0F || turn_outer_half_width_m <= 0.0F) {
+    return {};
+  }
+  return makeRoadBorderPolylines(
+    path, sample_step_m,
+    [&](const float s) {
+      return lrTurnRoadBorderHalfWidthsAtS(
+        s, layout, straight_half_width_m, turn_outer_half_width_m);
+    });
 }
 
 }  // namespace autoware::mppi_optimizer::open_loop_sim

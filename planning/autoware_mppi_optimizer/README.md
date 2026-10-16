@@ -147,7 +147,7 @@ ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim -- \
   --plot
 ```
 
-Writes `plant.csv` (and `plant.png` when `--plot` is set) under the default or `--out-dir` cache folder.
+Writes `plant.csv`, `ego_footprint.csv` (MPPI ego OBB size / axle offset), and `plant.png` when `--plot` is set, under the default or `--out-dir` cache folder. The plotter auto-loads `ego_footprint.csv` next to `plant.csv` and draws subsampled ego boxes on the XY panel (`--no-ego-boxes` to disable).
 
 Plot only (reuse the `--out-dir` you passed to the sim, or the default cache path above):
 
@@ -204,3 +204,26 @@ ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- \
 ```
 
 Obstacle tuning: `--obstacle-path-s`, `--obstacle-lateral`, `--obstacle-length`, `--obstacle-width` (defaults **2.5 m × 1.0 m**).
+
+### Left/right turn with road borders
+
+Parallel lane lines along the full reference (same `Segment` layout as MPPI debug `*_road_borders.csv`). With `--road-borders`, `ignore_road_borders` is off; obstacles stay off unless `--static-obstacle` is also set.
+
+```bash
+OUT_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/autoware/mppi_open_loop_lr_turn_road_borders_sim"
+ros2 run autoware_mppi_optimizer mppi_open_loop_lr_turn_sim -- \
+  --road-borders \
+  --out-dir "${OUT_DIR}" \
+  --plot
+```
+
+Plot (orange segments on the XY panel):
+
+```bash
+ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim_plot.py -- \
+  --csv "${OUT_DIR}/plant.csv" \
+  --reference-csv "${OUT_DIR}/reference.csv" \
+  --road-borders-csv "${OUT_DIR}/road_borders.csv"
+```
+
+Straights default to **3.0 m** half-width (`--road-border-half-width`). On each turn arc the **outer** lane line moves in to **2.25 m** (`--road-border-turn-half-width`) so turns are slightly tighter than straights while still fitting the loaded ego footprint (values below `ego_width/2 + road_border_collision_margin` are raised with a warning). Left turn narrows the right border; right turn narrows the left. Polylines are downsampled to at most **256** segments (MPPI GPU limit).

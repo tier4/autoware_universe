@@ -134,6 +134,53 @@ def load_csv(path: Path) -> Dict[str, np.ndarray]:
     return {name: np.asarray(values, dtype=float) for name, values in columns.items()}
 
 
+def load_ego_footprint(path: Path) -> tuple[float, float, float]:
+    data = load_csv(path)
+    required = {"length", "width", "axle_to_box_center"}
+    missing = required.difference(data)
+    if missing:
+        raise ValueError(f"ego footprint csv missing columns: {sorted(missing)}")
+    return float(data["length"][0]), float(data["width"][0]), float(data["axle_to_box_center"][0])
+
+
+def add_ego_boxes_at_plant(
+    ax: plt.Axes,
+    plant: Dict[str, np.ndarray],
+    length: float,
+    width: float,
+    axle_to_box_center: float,
+    stride: int = 8,
+) -> None:
+    """Draw MPPI-style ego OBBs at subsampled plant (rear-axle) states."""
+    n = int(plant["x"].shape[0])
+    if n == 0:
+        return
+    step = max(1, int(stride))
+    indices = np.arange(0, n, step, dtype=int)
+    if indices[-1] != n - 1:
+        indices = np.append(indices, n - 1)
+
+    for draw_index, index in enumerate(indices):
+        x = float(plant["x"][index])
+        y = float(plant["y"][index])
+        yaw = float(plant["yaw"][index])
+        cx = x + axle_to_box_center * np.cos(yaw)
+        cy = y + axle_to_box_center * np.sin(yaw)
+        rect = Rectangle(
+            (-length * 0.5, -width * 0.5),
+            length,
+            width,
+            facecolor="none",
+            edgecolor="tab:red",
+            alpha=0.45,
+            linewidth=0.9,
+            label="ego footprint" if draw_index == 0 else None,
+        )
+        transform = Affine2D().rotate(yaw).translate(cx, cy) + ax.transData
+        rect.set_transform(transform)
+        ax.add_patch(rect)
+
+
 def add_oriented_boxes(ax: plt.Axes, obstacles: Dict[str, np.ndarray]) -> None:
     for index, (x, y, yaw, length, width) in enumerate(
         zip(
@@ -160,12 +207,22 @@ def add_oriented_boxes(ax: plt.Axes, obstacles: Dict[str, np.ndarray]) -> None:
         ax.add_patch(rect)
 
 
+def add_road_border_segments(ax, road_borders: Dict[str, np.ndarray]) -> None:
+    for x0, y0, x1, y1 in zip(
+        road_borders["x0"], road_borders["y0"], road_borders["x1"], road_borders["y1"]
+    ):
+        ax.plot([x0, x1], [y0, y1], color="tab:orange", linewidth=1.4, alpha=0.85)
+
+
 def plot(
     plant: Dict[str, np.ndarray],
     out_path: Path,
     show: bool,
     reference: Dict[str, np.ndarray] | None = None,
     obstacles: Dict[str, np.ndarray] | None = None,
+    road_borders: Dict[str, np.ndarray] | None = None,
+    ego_footprint: tuple[float, float, float] | None = None,
+    ego_box_stride: int = 8,
     title: str | None = None,
 ) -> None:
     t = plant["t"]
@@ -189,6 +246,13 @@ def plot(
         ax_xy.plot(x_line, np.zeros_like(x_line), color="0.65", linestyle="--", label="reference")
     if obstacles is not None:
         add_oriented_boxes(ax_xy, obstacles)
+    if road_borders is not None:
+        add_road_border_segments(ax_xy, road_borders)
+    if ego_footprint is not None:
+        length, width, axle_offset = ego_footprint
+        add_ego_boxes_at_plant(
+            ax_xy, plant, length, width, axle_offset, stride=ego_box_stride
+        )
     ax_xy.plot(plant["x"], plant["y"], color="tab:red", linewidth=2.0, label="plant")
     ax_xy.scatter(plant["x"][0], plant["y"][0], color="tab:red", zorder=3)
     ax_xy.set_aspect("equal", adjustable="datalim")
@@ -279,6 +343,29 @@ def main() -> int:
         default=None,
         help="static obstacles (x,y,yaw,length,width) from lr turn sim",
     )
+    parser.add_argument(
+        "--road-borders-csv",
+        type=Path,
+        default=None,
+        help="road border segments (x0,y0,x1,y1) from lr turn sim",
+    )
+    parser.add_argument(
+        "--ego-footprint-csv",
+        type=Path,
+        default=None,
+        help="ego OBB params (length,width,axle_to_box_center); default: ego_footprint.csv next to plant",
+    )
+    parser.add_argument(
+        "--ego-box-stride",
+        type=int,
+        default=8,
+        help="draw one ego box every N plant samples (default: 8)",
+    )
+    parser.add_argument(
+        "--no-ego-boxes",
+        action="store_true",
+        help="do not draw ego oriented boxes on the XY plot",
+    )
     parser.add_argument("--title", type=str, default=None, help="figure suptitle override")
     parser.add_argument("--out", type=Path, default=None, help="output PNG (default: next to csv)")
     parser.add_argument(
@@ -317,6 +404,23 @@ def main() -> int:
         if missing_obstacle_cols:
             raise SystemExit(f"obstacles csv missing columns: {sorted(missing_obstacle_cols)}")
 
+    road_borders = None
+    if args.road_borders_csv is not None:
+        road_borders = load_csv(args.road_borders_csv.expanduser().resolve())
+        missing_border_cols = {"x0", "y0", "x1", "y1"}.difference(road_borders)
+        if missing_border_cols:
+            raise SystemExit(f"road borders csv missing columns: {sorted(missing_border_cols)}")
+
+    ego_footprint = None
+    if not args.no_ego_boxes:
+        footprint_path = args.ego_footprint_csv
+        if footprint_path is None:
+            default_footprint = csv_path.parent / "ego_footprint.csv"
+            if default_footprint.is_file():
+                footprint_path = default_footprint
+        if footprint_path is not None:
+            ego_footprint = load_ego_footprint(footprint_path.expanduser().resolve())
+
     out_path = args.out.expanduser().resolve() if args.out else csv_path.with_suffix(".png")
     plot(
         plant,
@@ -324,6 +428,9 @@ def main() -> int:
         show=not args.no_show,
         reference=reference,
         obstacles=obstacles,
+        road_borders=road_borders,
+        ego_footprint=ego_footprint,
+        ego_box_stride=args.ego_box_stride,
         title=args.title,
     )
     return 0
