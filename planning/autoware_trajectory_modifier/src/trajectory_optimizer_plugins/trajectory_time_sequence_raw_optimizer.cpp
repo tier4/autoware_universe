@@ -296,7 +296,6 @@ void TrajectoryTimeSequenceRawOptimizer::update_params(const TrajectoryModifierP
   optimizer_.reset();
   road_border_avoidance_.reset();
   cached_map_ = nullptr;
-  in_stopped_regime_ = false;
   in_steer_hold_ = false;
   in_goal_zero_regime_ = false;
   if (enabled_) {
@@ -508,36 +507,6 @@ TrajectoryTimeSequenceRawOptimizer::resolve_steer_stop_mode(
   return SteerStopMode::Track;
 }
 
-void TrajectoryTimeSequenceRawOptimizer::apply_stopped_reference(
-  TrajectoryPoints & traj_points, const autoware_planning_msgs::msg::Trajectory & reference,
-  const double steer_rad) const
-{
-  const size_t n_out = std::min(traj_points.size(), reference.points.size());
-  for (size_t i = 0; i < n_out; ++i) {
-    traj_points[i] = reference.points[i];
-    traj_points[i].longitudinal_velocity_mps = 0.0F;
-    traj_points[i].lateral_velocity_mps = 0.0F;
-    traj_points[i].acceleration_mps2 = 0.0F;
-    traj_points[i].heading_rate_rps = 0.0F;
-    traj_points[i].front_wheel_angle_rad = static_cast<float>(steer_rad);
-    traj_points[i].rear_wheel_angle_rad = 0.0F;
-  }
-
-  if (reference.points.size() > traj_points.size()) {
-    traj_points.insert(
-      traj_points.end(), reference.points.begin() + static_cast<std::ptrdiff_t>(n_out),
-      reference.points.end());
-    for (size_t i = n_out; i < traj_points.size(); ++i) {
-      traj_points[i].longitudinal_velocity_mps = 0.0F;
-      traj_points[i].lateral_velocity_mps = 0.0F;
-      traj_points[i].acceleration_mps2 = 0.0F;
-      traj_points[i].heading_rate_rps = 0.0F;
-      traj_points[i].front_wheel_angle_rad = static_cast<float>(steer_rad);
-      traj_points[i].rear_wheel_angle_rad = 0.0F;
-    }
-  }
-}
-
 ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   TrajectoryPoints & traj_points, TrajectoryModifierData & data)
 {
@@ -572,21 +541,13 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   last_adjusted_trajectory_ = reference;
 
   const auto steer_stop_mode = resolve_steer_stop_mode(reference, data);
-  // Goal steer-zero still replaces the trajectory and skips the solver. Steering hold does not:
-  // the OCP keeps running, and the latched tire angle overrides front_wheel_angle_rad afterward.
+  // Hold and goal steer-zero both keep the OCP running. Only front_wheel_angle_rad is replaced:
+  // the latched tire angle while holding, or 0.002 rad near the route goal.
+  const bool override_steer = steer_stop_mode != SteerStopMode::Track;
   if (steer_stop_mode == SteerStopMode::Zero) {
-    optimizer_->clear_warm_start(data.candidate_index);
     latched_steering_rad_ = 0.002;
-    apply_stopped_reference(traj_points, reference, latched_steering_rad_);
-    in_stopped_regime_ = true;
     in_steer_hold_ = false;
-    last_solver_status_ = -2;
-    last_solve_time_ms_ = 0.0;
-    return ProcessingResult::Modified;
-  }
-
-  const bool hold_steering = steer_stop_mode == SteerStopMode::Hold;
-  if (hold_steering) {
+  } else if (steer_stop_mode == SteerStopMode::Hold) {
     if (!in_steer_hold_) {
       latched_steering_rad_ =
         data.current_steering ? data.current_steering->steering_tire_angle : 0.001;
@@ -595,11 +556,6 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   } else {
     in_steer_hold_ = false;
   }
-
-  if (in_stopped_regime_) {
-    optimizer_->clear_warm_start(data.candidate_index);
-  }
-  in_stopped_regime_ = false;
 
   std::optional<geometry_msgs::msg::Pose> goal_pose;
   if (data.route) {
@@ -611,8 +567,8 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   last_solver_status_ = result.solver_status;
   last_solve_time_ms_ = result.solve_time_ms;
 
-  const auto apply_held_steer = [&](TrajectoryPoints & points) {
-    if (!hold_steering) {
+  const auto apply_steer_override = [&](TrajectoryPoints & points) {
+    if (!override_steer) {
       return;
     }
     for (auto & point : points) {
@@ -621,8 +577,11 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   };
 
   if (!result.optimized) {
-    // A failed QP (acados status 4) must not republish the chord-difference acceleration.
-    // Reuse the last successful solve when one exists.
+    // Do not publish the input acceleration. It is the chord difference of the model poses and
+    // spikes while stopped. Repeat the previous successful trajectory when one exists.
+    // That trajectory is in the map frame, same as this candidate, so its points stay where they
+    // were as ego moves and can be copied with no transform. An ego-frame trajectory would be
+    // stale after one cycle and would have to be shifted by the motion since that solve.
     if (!last_optimized_trajectory_.points.empty()) {
       RCLCPP_ERROR(
         get_node_ptr()->get_logger(),
@@ -630,14 +589,14 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
         "successful trajectory.",
         result.solver_status);
       replace_points(traj_points, last_optimized_trajectory_.points);
-      apply_held_steer(traj_points);
+      apply_steer_override(traj_points);
       return ProcessingResult::Modified;
     }
-    if (result.solver_status != 0 && hold_steering) {
+    if (result.solver_status != 0 && override_steer) {
       RCLCPP_ERROR(
         get_node_ptr()->get_logger(),
         "Time-sequence raw optimizer acados solve failed with status %d; no previous solution, "
-        "overriding front_wheel_angle_rad with the latched tire angle.",
+        "overriding front_wheel_angle_rad.",
         result.solver_status);
     } else if (result.solver_status != 0) {
       RCLCPP_ERROR(
@@ -646,8 +605,8 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
         "leaving input unchanged.",
         result.solver_status);
     }
-    if (hold_steering) {
-      apply_held_steer(traj_points);
+    if (override_steer) {
+      apply_steer_override(traj_points);
       return ProcessingResult::Modified;
     }
     return ProcessingResult::Unchanged;
@@ -660,7 +619,7 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   }
 
   replace_points(traj_points, result.trajectory.points);
-  apply_held_steer(traj_points);
+  apply_steer_override(traj_points);
   return ProcessingResult::Modified;
 }
 

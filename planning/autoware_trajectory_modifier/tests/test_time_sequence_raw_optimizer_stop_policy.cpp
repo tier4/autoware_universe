@@ -188,10 +188,14 @@ TEST_F(TimeSequenceRawOptimizerStopPolicyTest, ZerosSteeringNearGoalWhenStopped)
   data.route = make_route_near_ego(2.0, 0.0);
 
   ASSERT_TRUE(process_plugin(*plugin_, trajectory, data));
+  bool optimizer_replaced_acceleration = false;
   for (const auto & point : trajectory) {
     EXPECT_NEAR(point.front_wheel_angle_rad, 0.002F, 1e-5F);
-    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0F, 1e-5F);
+    if (std::abs(point.acceleration_mps2 - 1.0F) > 1e-3F) {
+      optimizer_replaced_acceleration = true;
+    }
   }
+  EXPECT_TRUE(optimizer_replaced_acceleration);
 }
 
 TEST_F(TimeSequenceRawOptimizerStopPolicyTest, ZerosSteeringNearGoalDespiteNoisyReferenceVelocity)
@@ -210,10 +214,14 @@ TEST_F(TimeSequenceRawOptimizerStopPolicyTest, ZerosSteeringNearGoalDespiteNoisy
   data.route = make_route_near_ego(2.0, 0.0);
 
   ASSERT_TRUE(process_plugin(*plugin_, trajectory, data));
+  bool optimizer_replaced_acceleration = false;
   for (const auto & point : trajectory) {
     EXPECT_NEAR(point.front_wheel_angle_rad, 0.002F, 1e-5F);
-    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0F, 1e-5F);
+    if (std::abs(point.acceleration_mps2 - 1.0F) > 1e-3F) {
+      optimizer_replaced_acceleration = true;
+    }
   }
+  EXPECT_TRUE(optimizer_replaced_acceleration);
 }
 
 TEST_F(TimeSequenceRawOptimizerStopPolicyTest, StaysInGoalZeroAfterBriefEgoMotion)
