@@ -18,6 +18,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 
 namespace autoware::mppi_optimizer::open_loop_sim
@@ -63,7 +64,9 @@ inline std::string defaultOutDir(const char * subdir)
   } else if (const char * home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
     root = std::filesystem::path(home) / ".cache";
   } else {
-    root = std::filesystem::temp_directory_path();
+    throw std::runtime_error(
+      "Cannot resolve default open-loop sim output directory: set HOME or XDG_CACHE_HOME, or "
+      "pass --out-dir");
   }
   return (root / "autoware" / subdir).string();
 }

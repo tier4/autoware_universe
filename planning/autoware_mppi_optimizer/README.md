@@ -196,7 +196,7 @@ After `colcon build --packages-select autoware_mppi_optimizer` and `source insta
 
 - **Params:** `autoware_launch` → `config/planning/neural_net_planner/mppi_optimizer.param.yaml` when that package is installed (same file as diffusion planning sim); otherwise `autoware_mppi_optimizer` package config.
 - **Vehicle / simulator:** `j6_gen2_description` share configs when installed.
-- **Output:** `$XDG_CACHE_HOME/autoware/mppi_open_loop_line_sim` or `$HOME/.cache/autoware/...`.
+- **Output:** `$XDG_CACHE_HOME/autoware/mppi_open_loop_line_sim` or `$HOME/.cache/autoware/...` (if neither env var is set, pass `--out-dir`).
 
 ```bash
 ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim -- --plot
