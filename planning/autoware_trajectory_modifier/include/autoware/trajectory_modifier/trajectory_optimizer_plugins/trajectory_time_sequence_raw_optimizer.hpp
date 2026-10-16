@@ -84,6 +84,7 @@ private:
   double goal_steer_zero_distance_m_{5.0};
   bool goal_steer_zero_requires_stopped_{true};
   bool in_stopped_regime_{false};
+  bool in_steer_hold_{false};
   bool in_goal_zero_regime_{false};
   double latched_steering_rad_{0.0};
 

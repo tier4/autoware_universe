@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -42,6 +43,22 @@ autoware_planning_msgs::msg::Trajectory to_trajectory_msg(
   trajectory.header = header;
   trajectory.points = points;
   return trajectory;
+}
+
+/// Replace `dst` with `src`. Used both for a successful solve and for the previous solve
+/// kept when acados fails.
+template <typename PointContainer>
+void replace_points(TrajectoryPoints & dst, const PointContainer & src)
+{
+  const size_t n = std::min(dst.size(), src.size());
+  for (size_t i = 0; i < n; ++i) {
+    dst[i] = src[i];
+  }
+  if (src.size() > dst.size()) {
+    dst.insert(dst.end(), std::next(src.begin(), static_cast<std::ptrdiff_t>(n)), src.end());
+  } else if (dst.size() > n) {
+    dst.resize(n);
+  }
 }
 
 time_sequence_raw::TrajectoryOptimizationParams to_opt_params(
@@ -280,6 +297,7 @@ void TrajectoryTimeSequenceRawOptimizer::update_params(const TrajectoryModifierP
   road_border_avoidance_.reset();
   cached_map_ = nullptr;
   in_stopped_regime_ = false;
+  in_steer_hold_ = false;
   in_goal_zero_regime_ = false;
   if (enabled_) {
     ensure_optimizer();
@@ -554,24 +572,28 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   last_adjusted_trajectory_ = reference;
 
   const auto steer_stop_mode = resolve_steer_stop_mode(reference, data);
-  if (steer_stop_mode != SteerStopMode::Track) {
+  // Goal steer-zero still replaces the trajectory and skips the solver. Steering hold does not:
+  // the OCP keeps running, and the latched tire angle overrides front_wheel_angle_rad afterward.
+  if (steer_stop_mode == SteerStopMode::Zero) {
     optimizer_->clear_warm_start(data.candidate_index);
+    latched_steering_rad_ = 0.002;
+    apply_stopped_reference(traj_points, reference, latched_steering_rad_);
+    in_stopped_regime_ = true;
+    in_steer_hold_ = false;
+    last_solver_status_ = -2;
+    last_solve_time_ms_ = 0.0;
+    return ProcessingResult::Modified;
+  }
 
-    if (steer_stop_mode == SteerStopMode::Zero) {
-      latched_steering_rad_ = 0.002;
-    } else if (steer_stop_mode == SteerStopMode::Hold && !in_stopped_regime_) {
+  const bool hold_steering = steer_stop_mode == SteerStopMode::Hold;
+  if (hold_steering) {
+    if (!in_steer_hold_) {
       latched_steering_rad_ =
         data.current_steering ? data.current_steering->steering_tire_angle : 0.001;
     }
-
-    const double output_steer_rad =
-      steer_stop_mode == SteerStopMode::Zero ? 0.002 : latched_steering_rad_;
-    apply_stopped_reference(traj_points, reference, output_steer_rad);
-
-    in_stopped_regime_ = true;
-    last_solver_status_ = steer_stop_mode == SteerStopMode::Zero ? -2 : -1;
-    last_solve_time_ms_ = 0.0;
-    return ProcessingResult::Modified;
+    in_steer_hold_ = true;
+  } else {
+    in_steer_hold_ = false;
   }
 
   if (in_stopped_regime_) {
@@ -589,12 +611,44 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
   last_solver_status_ = result.solver_status;
   last_solve_time_ms_ = result.solve_time_ms;
 
+  const auto apply_held_steer = [&](TrajectoryPoints & points) {
+    if (!hold_steering) {
+      return;
+    }
+    for (auto & point : points) {
+      point.front_wheel_angle_rad = static_cast<float>(latched_steering_rad_);
+    }
+  };
+
   if (!result.optimized) {
-    if (result.solver_status != 0) {
-      RCLCPP_WARN(
+    // A failed QP (acados status 4) must not republish the chord-difference acceleration.
+    // Reuse the last successful solve when one exists.
+    if (!last_optimized_trajectory_.points.empty()) {
+      RCLCPP_ERROR(
         get_node_ptr()->get_logger(),
-        "Time-sequence raw optimizer acados solve failed with status %d; leaving input unchanged.",
+        "Time-sequence raw optimizer acados solve failed with status %d; publishing the previous "
+        "successful trajectory.",
         result.solver_status);
+      replace_points(traj_points, last_optimized_trajectory_.points);
+      apply_held_steer(traj_points);
+      return ProcessingResult::Modified;
+    }
+    if (result.solver_status != 0 && hold_steering) {
+      RCLCPP_ERROR(
+        get_node_ptr()->get_logger(),
+        "Time-sequence raw optimizer acados solve failed with status %d; no previous solution, "
+        "overriding front_wheel_angle_rad with the latched tire angle.",
+        result.solver_status);
+    } else if (result.solver_status != 0) {
+      RCLCPP_ERROR(
+        get_node_ptr()->get_logger(),
+        "Time-sequence raw optimizer acados solve failed with status %d; no previous solution, "
+        "leaving input unchanged.",
+        result.solver_status);
+    }
+    if (hold_steering) {
+      apply_held_steer(traj_points);
+      return ProcessingResult::Modified;
     }
     return ProcessingResult::Unchanged;
   }
@@ -605,15 +659,8 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
     debug_optimized_pub_->publish(result.trajectory);
   }
 
-  const size_t n_out = std::min(traj_points.size(), result.trajectory.points.size());
-  for (size_t i = 0; i < n_out; ++i) {
-    traj_points[i] = result.trajectory.points[i];
-  }
-  if (result.trajectory.points.size() > traj_points.size()) {
-    traj_points.insert(
-      traj_points.end(), result.trajectory.points.begin() + static_cast<std::ptrdiff_t>(n_out),
-      result.trajectory.points.end());
-  }
+  replace_points(traj_points, result.trajectory.points);
+  apply_held_steer(traj_points);
   return ProcessingResult::Modified;
 }
 

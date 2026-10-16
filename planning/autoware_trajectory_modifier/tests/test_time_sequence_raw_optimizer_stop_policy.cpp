@@ -160,12 +160,17 @@ TEST_F(TimeSequenceRawOptimizerStopPolicyTest, LatchesSteeringOnStoppedReference
   data.current_steering = make_steering(0.35);
 
   ASSERT_TRUE(process_plugin(*plugin_, trajectory, data));
+  bool optimizer_replaced_acceleration = false;
   for (const auto & point : trajectory) {
     EXPECT_NEAR(point.front_wheel_angle_rad, 0.35F, 1e-5F);
-    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0F, 1e-5F);
-    EXPECT_NEAR(point.heading_rate_rps, 0.0F, 1e-5F);
+    if (std::abs(point.acceleration_mps2 - 1.0F) > 1e-3F) {
+      optimizer_replaced_acceleration = true;
+    }
   }
+  EXPECT_TRUE(optimizer_replaced_acceleration);
 
+  // A new stopped reference must keep the latched tire angle after the measured steer moves.
+  trajectory = make_stopped_trajectory(opt_horizon, 0.5);
   data.current_steering = make_steering(0.60);
   ASSERT_TRUE(process_plugin(*plugin_, trajectory, data));
   for (const auto & point : trajectory) {

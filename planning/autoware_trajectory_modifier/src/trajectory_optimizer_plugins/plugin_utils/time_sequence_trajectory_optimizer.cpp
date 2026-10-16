@@ -41,8 +41,8 @@ double yaw_from_quaternion(const geometry_msgs::msg::Quaternion & q)
 }
 
 void lerp_state(
-  const std::array<double, opt_nx> & from, const std::array<double, opt_nx> & to, const double ratio,
-  std::array<double, opt_nx> & out)
+  const std::array<double, opt_nx> & from, const std::array<double, opt_nx> & to,
+  const double ratio, std::array<double, opt_nx> & out)
 {
   for (size_t i = 0; i < opt_nx; ++i) {
     const double delta =
@@ -52,8 +52,8 @@ void lerp_state(
 }
 
 void lerp_input(
-  const std::array<double, opt_nu> & from, const std::array<double, opt_nu> & to, const double ratio,
-  std::array<double, opt_nu> & out)
+  const std::array<double, opt_nu> & from, const std::array<double, opt_nu> & to,
+  const double ratio, std::array<double, opt_nu> & out)
 {
   for (size_t i = 0; i < opt_nu; ++i) {
     out[i] = from[i] + ratio * (to[i] - from[i]);
@@ -65,8 +65,7 @@ void sample_previous(
   const SolverSolution & previous, const double index, std::array<double, opt_nx> & state,
   std::array<double, opt_nu> * input)
 {
-  const double state_index =
-    std::clamp(index, 0.0, static_cast<double>(opt_horizon));
+  const double state_index = std::clamp(index, 0.0, static_cast<double>(opt_horizon));
   const auto state_lower = static_cast<size_t>(std::floor(state_index));
   const size_t state_upper = std::min(state_lower + 1, opt_horizon);
   lerp_state(
@@ -75,8 +74,7 @@ void sample_previous(
   if (input == nullptr) {
     return;
   }
-  const double input_index =
-    std::clamp(index, 0.0, static_cast<double>(opt_horizon - 1));
+  const double input_index = std::clamp(index, 0.0, static_cast<double>(opt_horizon - 1));
   const auto input_lower = static_cast<size_t>(std::floor(input_index));
   const size_t input_upper = std::min(input_lower + 1, opt_horizon - 1);
   lerp_input(
@@ -126,6 +124,10 @@ OptimizationResult TrajectoryOptimizer::optimize(
   result.trajectory = raw_trajectory;
 
   if (raw_trajectory.points.size() < opt_horizon || batch_index >= previous_solutions_.size()) {
+    // Status 0 means a successful solve. This return never called the solver, so keep it
+    // distinct from success. Callers that see optimized==false and status==-3 published the input.
+    result.solver_status = -3;
+    result.temporal_skip_reason = "short_or_bad_index";
     return result;
   }
 
