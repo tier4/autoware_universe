@@ -31,6 +31,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -156,7 +157,10 @@ void MLPlanner::on_start_service(
 void MLPlanner::set_up_params()
 {
   // node params
-  params_.model_path = this->declare_parameter<std::string>("model.onnx_model_path", "");
+  params_.base_model_directory =
+    this->declare_parameter<std::string>("model.base_model_directory", "");
+  params_.onnx_model_filename =
+    this->declare_parameter<std::string>("model.onnx_model_filename", "ml_planner_sampler.onnx");
   params_.backend = this->declare_parameter<std::string>("model.backend", "tensorrt");
   params_.trt_precision = this->declare_parameter<std::string>("model.precision", "fp32");
   params_.use_cuda_graph = this->declare_parameter<bool>("model.use_cuda_graph", true);
@@ -199,6 +203,10 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.goal.weight_velocity", 0.1);
   opt.goal.snap_distance_m =
     this->declare_parameter<double>("trajectory_optimization.goal.snap_distance_m", 1.0);
+  opt.goal.unlatch_horizon_s =
+    this->declare_parameter<double>("trajectory_optimization.goal.unlatch_horizon_s", 8.0);
+  opt.goal.unlatch_min_speed_mps =
+    this->declare_parameter<double>("trajectory_optimization.goal.unlatch_min_speed_mps", 3.0);
   opt.min_velocity_mps =
     this->declare_parameter<double>("trajectory_optimization.min_velocity_mps", 0.0);
   opt.max_velocity_mps =
@@ -288,6 +296,10 @@ void MLPlanner::load_model()
   diagnostics_inference_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
   diagnostics_inference_->publish(get_clock()->now());
 
+  core_->update_params(params_);
+  const std::filesystem::path base_dir(params_.base_model_directory);
+  params_.model_path = (base_dir / params_.onnx_model_filename).string();
+
   // Verify the model against metadata.json before building the engine:
   // SHA-256 first, then the major version this node is built against.
   const auto metadata_path = utils::model_metadata_path(params_.model_path);
@@ -303,8 +315,7 @@ void MLPlanner::load_model()
   diagnostics_inference_->publish(get_clock()->now());
 
   RCLCPP_INFO_STREAM(
-    get_logger(),
-    "Loaded model.onnx_model_path=" << params_.model_path << " (sha256=" << sha256 << ")");
+    get_logger(), "Loaded model_path=" << params_.model_path << " (sha256=" << sha256 << ")");
 }
 
 SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter> & parameters)
@@ -316,7 +327,10 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   bool new_remap_unsupported_objects_to_pedestrian = remap_unsupported_objects_to_pedestrian_;
   bool requested_build_only = params_.build_only;
 
-  update_param<std::string>(parameters, "model.onnx_model_path", new_params.model_path);
+  update_param<std::string>(
+    parameters, "model.base_model_directory", new_params.base_model_directory);
+  update_param<std::string>(
+    parameters, "model.onnx_model_filename", new_params.onnx_model_filename);
   update_param<std::string>(parameters, "model.backend", new_params.backend);
   update_param<std::string>(parameters, "model.precision", new_params.trt_precision);
   update_param<bool>(parameters, "model.use_cuda_graph", new_params.use_cuda_graph);
@@ -357,6 +371,11 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     parameters, "trajectory_optimization.goal.weight_velocity", opt.goal.weight_velocity);
   update_param<double>(
     parameters, "trajectory_optimization.goal.snap_distance_m", opt.goal.snap_distance_m);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.unlatch_horizon_s", opt.goal.unlatch_horizon_s);
+  update_param<double>(
+    parameters, "trajectory_optimization.goal.unlatch_min_speed_mps",
+    opt.goal.unlatch_min_speed_mps);
   update_param<double>(
     parameters, "trajectory_optimization.min_velocity_mps", opt.min_velocity_mps);
   update_param<double>(
@@ -498,6 +517,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   if (opt.goal.snap_distance_m < 0.0) {
     return failure("trajectory_optimization.goal.snap_distance_m must be non-negative");
   }
+  if (opt.goal.unlatch_min_speed_mps < 0.0) {
+    return failure("trajectory_optimization.goal.unlatch_min_speed_mps must be non-negative");
+  }
   if (opt.min_acceleration_mps2 > opt.max_acceleration_mps2) {
     return failure(
       "trajectory_optimization.min_acceleration_mps2 must not exceed max_acceleration_mps2");
@@ -529,7 +551,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     return failure("stop point fixing thresholds must be non-negative");
   }
 
-  const bool reload_model = new_params.model_path != params_.model_path ||
+  const bool reload_model = new_params.base_model_directory != params_.base_model_directory ||
+                            new_params.onnx_model_filename != params_.onnx_model_filename ||
                             new_params.plugins_path != params_.plugins_path ||
                             new_params.batch_size != params_.batch_size ||
                             new_params.backend != params_.backend ||

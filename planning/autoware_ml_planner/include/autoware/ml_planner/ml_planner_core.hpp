@@ -102,6 +102,8 @@ struct PlannerOutput
 
 struct MLPlannerParams
 {
+  std::string base_model_directory;
+  std::string onnx_model_filename;
   std::string model_path;
   std::string plugins_path;
   std::string backend;
@@ -152,6 +154,14 @@ public:
    * @param params New parameters to apply
    */
   void update_params(const MLPlannerParams & params);
+
+  /**
+   * @brief Resolve the ONNX path from base_model_directory and onnx_model_filename.
+   *
+   * ml_planner ships only the ONNX file. Switching a model is a directory change
+   * (and an optional filename change).
+   */
+  void resolve_model_paths();
 
   /**
    * @brief Reference time of the current frame (stamp of the newest ego odometry).
