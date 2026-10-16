@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 namespace autoware::trajectory_modifier::time_sequence_raw
 {
