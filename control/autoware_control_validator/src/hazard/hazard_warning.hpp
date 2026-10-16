@@ -53,6 +53,7 @@ struct HazardWarningParam
   std::vector<double> ttc_thresholds;
   double collision_cos_threshold{-1.0};  // -1 disables the collision angle condition
   double min_alert_duration{0.5};
+  double rear_axle_ratio{0.3};
   bool enable_road_border{true};
   double sector_radius_m{60.0};
   double sector_boundary_tolerance_deg{1.0};

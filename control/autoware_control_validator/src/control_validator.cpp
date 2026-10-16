@@ -72,6 +72,7 @@ hazard::HazardWarningParam to_hazard_warning_param(const Params & params)
   out.ttc_thresholds = p.ttc_thresholds;
   out.collision_cos_threshold = p.collision_cos_threshold;
   out.min_alert_duration = p.min_alert_duration;
+  out.rear_axle_ratio = p.vehicle_yaw.rear_axle_ratio;
   out.enable_road_border = p.enable_road_border;
   out.sector_radius_m = p.sector.radius_m;
   out.sector_boundary_tolerance_deg = p.sector.boundary_tolerance_deg;
@@ -118,6 +119,7 @@ hazard::SweepLimits to_sweep_limits(const Params & params, const rclcpp::Logger 
   out.enable_pointcloud = p.enable_pointcloud;
   out.max_objects_stamp_gap_s = p.max_objects_stamp_gap_s;
   out.stop_velocity = p.stop_velocity;
+  out.rear_axle_ratio = p.vehicle_yaw.rear_axle_ratio;
   for (const auto & name : p.enabled_object_classes) {
     const auto label = label_from_name(name);
     if (!label) {

@@ -105,6 +105,13 @@ bool HazardWarning::validate_parameters() const
     RCLCPP_ERROR(logger_, "hazard_warning.min_alert_duration must be >= 0. Warning disabled.");
     return false;
   }
+  if (!std::isfinite(p.rear_axle_ratio) || p.rear_axle_ratio < 0.0 || p.rear_axle_ratio > 0.5) {
+    RCLCPP_ERROR(
+      logger_,
+      "hazard_warning.vehicle_yaw.rear_axle_ratio must be in [0, 0.5] (%f). Warning disabled.",
+      p.rear_axle_ratio);
+    return false;
+  }
   if (!std::isfinite(p.sector_radius_m) || p.sector_radius_m <= 0.0) {
     RCLCPP_ERROR(logger_, "hazard_warning.sector.radius_m must be > 0. Warning disabled.");
     return false;

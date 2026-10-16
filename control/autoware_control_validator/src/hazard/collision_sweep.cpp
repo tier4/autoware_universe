@@ -119,6 +119,28 @@ PoseTrajectory compute_pose_trajectory(
   }
   return pose_trajectory;
 }
+
+void correct_vehicle_yaw(
+  PoseTrajectory & poses, const double initial_yaw, const double rear_axle_length)
+{
+  if (poses.empty()) {
+    return;
+  }
+  double yaw = initial_yaw;
+  double rear_x = poses.front().position.x - rear_axle_length * std::cos(yaw);
+  double rear_y = poses.front().position.y - rear_axle_length * std::sin(yaw);
+  poses.front().orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
+  for (size_t k = 1; k < poses.size(); ++k) {
+    const double dx = poses[k].position.x - rear_x;
+    const double dy = poses[k].position.y - rear_y;
+    if (std::hypot(dx, dy) >= 1e-6) {
+      yaw = std::atan2(dy, dx);
+    }
+    rear_x = poses[k].position.x - rear_axle_length * std::cos(yaw);
+    rear_y = poses[k].position.y - rear_axle_length * std::sin(yaw);
+    poses[k].orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
+  }
+}
 }  // namespace pose
 
 namespace geometry
@@ -383,7 +405,8 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_time(
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   const autoware_perception_msgs::msg::PredictedPath & predicted_path, const double max_time,
-  const double time_offset, const double time_resolution)
+  const double time_offset, const double time_resolution,
+  const std::optional<double> rear_axle_length)
 {
   auto [times, distances] = time_distance::compute_motion_profile_1d(
     predicted_object.kinematics.initial_twist_with_covariance.twist, 0.0,
@@ -396,6 +419,14 @@ TrajectoryData generate_predicted_path_trajectory(
   }
 
   auto poses = pose::compute_pose_trajectory(predicted_path.path, distances);
+  if (rear_axle_length) {
+    pose::correct_vehicle_yaw(
+      poses,
+      autoware_utils_geometry::get_rpy(
+        predicted_object.kinematics.initial_pose_with_covariance.pose)
+        .z,
+      *rear_axle_length);
+  }
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(std::move(times), std::move(poses), std::move(footprints));
@@ -527,6 +558,50 @@ double sweep_horizon(
   return std::min(
     limits.max_time, rclcpp::Duration(predicted.points.back().time_from_start).seconds());
 }
+
+std::optional<double> vehicle_rear_axle_length(
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const autoware_perception_msgs::msg::PredictedPath & path, const double rear_axle_ratio)
+{
+  using autoware_perception_msgs::msg::ObjectClassification;
+  using autoware_perception_msgs::msg::Shape;
+  uint8_t label = ObjectClassification::UNKNOWN;
+  float best_probability = -1.0F;
+  for (const auto & classification : object.classification) {
+    if (classification.probability > best_probability) {
+      best_probability = classification.probability;
+      label = classification.label;
+    }
+  }
+  if (
+    label != ObjectClassification::CAR && label != ObjectClassification::TRUCK &&
+    label != ObjectClassification::BUS) {
+    return std::nullopt;
+  }
+  if (object.shape.type != Shape::BOUNDING_BOX) {
+    return std::nullopt;
+  }
+  if (path.path.empty()) {
+    return std::nullopt;
+  }
+  const auto & start = path.path.front().position;
+  const auto first_away = std::find_if(path.path.begin(), path.path.end(), [&](const auto & pose) {
+    return std::hypot(pose.position.x - start.x, pose.position.y - start.y) >= 0.05;
+  });
+  if (first_away == path.path.end()) {
+    return std::nullopt;
+  }
+  const double path_yaw =
+    std::atan2(first_away->position.y - start.y, first_away->position.x - start.x);
+  const double initial_yaw =
+    autoware_utils_geometry::get_rpy(object.kinematics.initial_pose_with_covariance.pose).z;
+  const double diff =
+    std::atan2(std::sin(path_yaw - initial_yaw), std::cos(path_yaw - initial_yaw));
+  if (std::abs(diff) > M_PI / 2.0) {
+    return std::nullopt;
+  }
+  return rear_axle_ratio * object.shape.dimensions.x;
+}
 }  // namespace
 
 EgoSweep CollisionSweep::build_ego_sweep(
@@ -562,7 +637,7 @@ EgoSweep CollisionSweep::build_ego_sweep(
 
 std::shared_ptr<const ObjectMotion> CollisionSweep::make_object_motion(
   const autoware_perception_msgs::msg::PredictedObject & object, const double time_offset,
-  const double horizon, const TimeTrajectory & static_times) const
+  const double horizon, const TimeTrajectory & static_times, const double rear_axle_ratio) const
 {
   const auto & paths = object.kinematics.predicted_paths;
   const auto best_path = std::max_element(
@@ -575,7 +650,8 @@ std::shared_ptr<const ObjectMotion> CollisionSweep::make_object_motion(
   if (best_path != paths.end() && !best_path->path.empty() && is_moving) {
     return std::make_shared<const ObjectMotion>(
       trajectory::generate_predicted_path_trajectory(
-        object, *best_path, horizon + std::abs(time_offset), time_offset, time_resolution_),
+        object, *best_path, horizon + std::abs(time_offset), time_offset, time_resolution_,
+        vehicle_rear_axle_length(object, *best_path, rear_axle_ratio)),
       false, initial_pose);
   }
   return std::make_shared<const ObjectMotion>(
@@ -604,7 +680,8 @@ std::vector<std::shared_ptr<const ObjectMotion>> CollisionSweep::build_object_mo
     (rclcpp::Time(objects.header.stamp) - rclcpp::Time(predicted.header.stamp)).seconds();
   motions.reserve(objects.objects.size());
   for (const auto & object : objects.objects) {
-    motions.push_back(make_object_motion(object, time_offset, horizon, static_times));
+    motions.push_back(
+      make_object_motion(object, time_offset, horizon, static_times, limits.rear_axle_ratio));
   }
   return motions;
 }
@@ -679,7 +756,8 @@ std::vector<SweepCandidate> CollisionSweep::evaluate(
     targets.push_back(
       std::make_unique<ObjectTarget>(
         std::move(entry.candidate),
-        make_object_motion(*entry.object, objects_time_offset, horizon, ego.times),
+        make_object_motion(
+          *entry.object, objects_time_offset, horizon, ego.times, limits.rear_axle_ratio),
         time_resolution_));
     selected_ids.push_back(entry.object->object_id.uuid);
   }

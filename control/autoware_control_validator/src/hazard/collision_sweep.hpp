@@ -276,6 +276,11 @@ Polygon2d to_polygon2d(const std::array<Point2d, 4> & quad);
 Polygon2d to_polygon2d(const std::vector<Point2d> & ring);
 }  // namespace geometry
 
+namespace pose
+{
+void correct_vehicle_yaw(PoseTrajectory & poses, double initial_yaw, double rear_axle_length);
+}  // namespace pose
+
 namespace trajectory
 {
 namespace footprint
@@ -328,7 +333,7 @@ public:
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   const autoware_perception_msgs::msg::PredictedPath & predicted_path, double max_time,
-  double time_offset, double time_resolution);
+  double time_offset, double time_resolution, std::optional<double> rear_axle_length);
 
 /**
  * @brief Trajectory of a static polygon: the same footprint at every sample time.
@@ -377,6 +382,7 @@ struct SweepLimits
   bool enable_pointcloud{true};
   double max_objects_stamp_gap_s{0.5};
   double stop_velocity{0.1};
+  double rear_axle_ratio{0.3};
 };
 
 struct EgoSweep;
@@ -429,7 +435,7 @@ private:
 
   std::shared_ptr<const ObjectMotion> make_object_motion(
     const autoware_perception_msgs::msg::PredictedObject & object, double time_offset,
-    double horizon, const TimeTrajectory & static_times) const;
+    double horizon, const TimeTrajectory & static_times, double rear_axle_ratio) const;
 
   trajectory::footprint::EgoDimensions ego_dimensions_;
   double time_resolution_;

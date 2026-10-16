@@ -94,6 +94,10 @@ control_validator:
     stop_velocity:
       type: double
       description: Sweep steps where the absolute velocity of the predicted trajectory is below this value are not judged [m/s].
+    vehicle_yaw:
+      rear_axle_ratio:
+        type: double
+        description: Distance from the object center to the rear axle divided by the object length, used to recompute the yaw of vehicle predicted paths. Must be in [0, 0.5].
     enabled_object_classes:
       type: string_array
       description: Object classification labels that raise a collision warning.
