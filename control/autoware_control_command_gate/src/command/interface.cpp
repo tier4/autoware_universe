@@ -24,9 +24,9 @@ CommandBridge::CommandBridge(std::unique_ptr<CommandOutput> && output)
   output_ = std::move(output);
 }
 
-void CommandBridge::on_control(const Control & msg)
+void CommandBridge::on_control(uint16_t source_id, const Control & msg)
 {
-  output_->on_control(msg);
+  output_->on_control(source_id, msg);
 }
 
 void CommandBridge::on_gear(const GearCommand & msg)
