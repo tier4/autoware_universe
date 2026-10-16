@@ -45,7 +45,7 @@ void CommandSource::set_output(CommandOutput * output)
 void CommandSource::send_control(const Control & msg)
 {
   timeout_->update();
-  if (output_) output_->on_control(msg);
+  if (output_) output_->on_control(source_id_, msg);
 }
 
 void CommandSource::send_gear(const GearCommand & msg)

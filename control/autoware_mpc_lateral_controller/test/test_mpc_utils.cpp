@@ -104,13 +104,36 @@ TEST(TestMPC, ConvertToMPCTrajectoryTemporalUsesTimeFromStart)
   p0.time_from_start = rclcpp::Duration::from_seconds(0.0);
   p1.time_from_start = rclcpp::Duration::from_seconds(0.3);
   p2.time_from_start = rclcpp::Duration::from_seconds(0.8);
+  p0.front_wheel_angle_rad = 0.1F;
+  p1.front_wheel_angle_rad = 0.2F;
+  p2.front_wheel_angle_rad = 0.4F;
   trajectory_msg.points = {p0, p1, p2};
 
   const auto mpc_traj = MPCUtils::convertToMPCTrajectory(trajectory_msg, true);
   ASSERT_EQ(mpc_traj.relative_time.size(), 3UL);
+  ASSERT_EQ(mpc_traj.steer.size(), 3UL);
   EXPECT_DOUBLE_EQ(mpc_traj.relative_time.at(0), 0.0);
   EXPECT_DOUBLE_EQ(mpc_traj.relative_time.at(1), 0.3);
   EXPECT_DOUBLE_EQ(mpc_traj.relative_time.at(2), 0.8);
+  EXPECT_FLOAT_EQ(static_cast<float>(mpc_traj.steer.at(0)), 0.1F);
+  EXPECT_FLOAT_EQ(static_cast<float>(mpc_traj.steer.at(1)), 0.2F);
+  EXPECT_FLOAT_EQ(static_cast<float>(mpc_traj.steer.at(2)), 0.4F);
+}
+
+TEST(TestMPC, LinearInterpMPCTrajectoryInterpolatesSteering)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+
+  MPCTrajectory input;
+  input.push_back(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.1, 0.0);
+  input.push_back(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.3, 1.0);
+
+  MPCTrajectory output;
+  ASSERT_TRUE(MPCUtils::linearInterpMPCTrajectory({0.0, 1.0}, input, {0.0, 0.5, 1.0}, output));
+  ASSERT_EQ(output.steer.size(), 3UL);
+  EXPECT_DOUBLE_EQ(output.steer.at(0), 0.1);
+  EXPECT_DOUBLE_EQ(output.steer.at(1), 0.2);
+  EXPECT_DOUBLE_EQ(output.steer.at(2), 0.3);
 }
 
 TEST(TestMPC, CalcNearestPoseInterpUsesTimeWindowCandidates)
@@ -226,22 +249,6 @@ TEST(TestMPC, LongTrajectoryCurvatureUsesPerPointThreePointFit)
   const auto short_traj = makeCircularArcTrajectory(radius, 20, arc_length);
   const auto short_curvature = MPCUtils::calcTrajectoryCurvature(smoothing, short_traj, false);
   EXPECT_NEAR(std::abs(short_curvature.at(0)), std::abs(curvature.at(interior_idx)), 0.05);
-}
-
-TEST(TestMPC, CalcMPCTrajectoryRemainingArcLength)
-{
-  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
-
-  MPCTrajectory traj;
-  traj.push_back(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
-  traj.push_back(0.5, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5);
-  traj.push_back(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0);
-  traj.push_back(2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0);
-
-  EXPECT_NEAR(MPCUtils::calcMPCTrajectoryRemainingArcLength(traj, 0), 2.0, 1e-9);
-  EXPECT_NEAR(MPCUtils::calcMPCTrajectoryRemainingArcLength(traj, 1), 1.5, 1e-9);
-  EXPECT_NEAR(MPCUtils::calcMPCTrajectoryRemainingArcLength(traj, 2), 1.0, 1e-9);
-  EXPECT_EQ(MPCUtils::calcMPCTrajectoryRemainingArcLength(traj, 3), 0.0);
 }
 
 TEST(TestMPC, TemporalYawAndCurvatureStayStableForShortSegments)

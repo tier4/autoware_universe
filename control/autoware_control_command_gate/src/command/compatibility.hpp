@@ -34,7 +34,7 @@ public:
   Compatibility(std::unique_ptr<CommandOutput> && output, rclcpp::Node & node);
   void publish();
   void set_prev_control(std::shared_ptr<Control> control) { prev_control_ = control; }
-  void on_control(const Control & msg) override;
+  void on_control(uint16_t source_id, const Control & msg) override;
 
 private:
   rclcpp::Node & node_;
