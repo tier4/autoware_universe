@@ -38,6 +38,8 @@ if "--no-show" in sys.argv:
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Rectangle
+from matplotlib.transforms import Affine2D
 
 
 def hide_navigation_toolbar(fig: plt.Figure) -> None:
@@ -132,23 +134,96 @@ def load_csv(path: Path) -> Dict[str, np.ndarray]:
     return {name: np.asarray(values, dtype=float) for name, values in columns.items()}
 
 
-def load_horizon_xy(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
-    if not path.is_file():
-        return None, None, None
+def load_ego_footprint(path: Path) -> tuple[float, float, float]:
     data = load_csv(path)
-    if "x" not in data or "y" not in data:
-        return None, None, None
-    t = data["t"] if "t" in data else None
-    return data["x"], data["y"], t
+    required = {"length", "width", "axle_to_box_center"}
+    missing = required.difference(data)
+    if missing:
+        raise ValueError(f"ego footprint csv missing columns: {sorted(missing)}")
+    return float(data["length"][0]), float(data["width"][0]), float(data["axle_to_box_center"][0])
+
+
+def add_ego_boxes_at_plant(
+    ax: plt.Axes,
+    plant: Dict[str, np.ndarray],
+    length: float,
+    width: float,
+    axle_to_box_center: float,
+    stride: int = 8,
+) -> None:
+    """Draw MPPI-style ego OBBs at subsampled plant (rear-axle) states."""
+    n = int(plant["x"].shape[0])
+    if n == 0:
+        return
+    step = max(1, int(stride))
+    indices = np.arange(0, n, step, dtype=int)
+    if indices[-1] != n - 1:
+        indices = np.append(indices, n - 1)
+
+    for draw_index, index in enumerate(indices):
+        x = float(plant["x"][index])
+        y = float(plant["y"][index])
+        yaw = float(plant["yaw"][index])
+        cx = x + axle_to_box_center * np.cos(yaw)
+        cy = y + axle_to_box_center * np.sin(yaw)
+        rect = Rectangle(
+            (-length * 0.5, -width * 0.5),
+            length,
+            width,
+            facecolor="none",
+            edgecolor="tab:red",
+            alpha=0.45,
+            linewidth=0.9,
+            label="ego footprint" if draw_index == 0 else None,
+        )
+        transform = Affine2D().rotate(yaw).translate(cx, cy) + ax.transData
+        rect.set_transform(transform)
+        ax.add_patch(rect)
+
+
+def add_oriented_boxes(ax: plt.Axes, obstacles: Dict[str, np.ndarray]) -> None:
+    for index, (x, y, yaw, length, width) in enumerate(
+        zip(
+            obstacles["x"],
+            obstacles["y"],
+            obstacles["yaw"],
+            obstacles["length"],
+            obstacles["width"],
+            strict=True,
+        )
+    ):
+        rect = Rectangle(
+            (-float(length) * 0.5, -float(width) * 0.5),
+            float(length),
+            float(width),
+            facecolor="0.35",
+            edgecolor="0.15",
+            alpha=0.55,
+            linewidth=1.2,
+            label="obstacle" if index == 0 else None,
+        )
+        transform = Affine2D().rotate(float(yaw)).translate(float(x), float(y)) + ax.transData
+        rect.set_transform(transform)
+        ax.add_patch(rect)
+
+
+def add_road_border_segments(ax, road_borders: Dict[str, np.ndarray]) -> None:
+    for x0, y0, x1, y1 in zip(
+        road_borders["x0"], road_borders["y0"], road_borders["x1"], road_borders["y1"]
+    ):
+        ax.plot([x0, x1], [y0, y1], color="tab:orange", linewidth=1.4, alpha=0.85)
 
 
 def plot(
     plant: Dict[str, np.ndarray],
-    horizon_x,
-    horizon_y,
-    horizon_t,
     out_path: Path,
     show: bool,
+    reference: Dict[str, np.ndarray] | None = None,
+    obstacles: Dict[str, np.ndarray] | None = None,
+    road_borders: Dict[str, np.ndarray] | None = None,
+    ego_footprint: tuple[float, float, float] | None = None,
+    ego_box_stride: int = 8,
+    title: str | None = None,
 ) -> None:
     t = plant["t"]
     fig_kwargs = {"figsize": (12.0, 10.5), "layout": "constrained"}
@@ -157,29 +232,28 @@ def plot(
     grid = fig.add_gridspec(4, 2, height_ratios=[1.2, 1.0, 1.0, 1.0])
 
     ax_xy = fig.add_subplot(grid[0, 0])
-    x_line = np.linspace(min(float(plant["x"].min()), 0.0), float(plant["x"].max()) + 5.0, 50)
-    ax_xy.plot(x_line, np.zeros_like(x_line), color="0.65", linestyle="--", label="reference")
-    if horizon_x is not None and horizon_y is not None:
+    if reference is not None and "x" in reference and "y" in reference:
         ax_xy.plot(
-            horizon_x,
-            horizon_y,
-            color="tab:cyan",
-            linewidth=1.5,
-            label="open-loop optimal @ t=0",
+            reference["x"],
+            reference["y"],
+            color="0.65",
+            linestyle="--",
+            linewidth=1.8,
+            label="reference",
         )
-        if horizon_t is not None and len(horizon_t) > 0:
-            horizon_end_t = float(horizon_t[-1])
-            plant_mask = t <= horizon_end_t + 1.0e-6
-            ax_xy.plot(
-                plant["x"][plant_mask],
-                plant["y"][plant_mask],
-                color="tab:red",
-                linewidth=1.2,
-                linestyle="--",
-                alpha=0.75,
-                label=f"plant (first {horizon_end_t:.1f}s)",
-            )
-    ax_xy.plot(plant["x"], plant["y"], color="tab:red", linewidth=2.0, label="plant (closed-loop)")
+    else:
+        x_line = np.linspace(min(float(plant["x"].min()), 0.0), float(plant["x"].max()) + 5.0, 50)
+        ax_xy.plot(x_line, np.zeros_like(x_line), color="0.65", linestyle="--", label="reference")
+    if obstacles is not None:
+        add_oriented_boxes(ax_xy, obstacles)
+    if road_borders is not None:
+        add_road_border_segments(ax_xy, road_borders)
+    if ego_footprint is not None:
+        length, width, axle_offset = ego_footprint
+        add_ego_boxes_at_plant(
+            ax_xy, plant, length, width, axle_offset, stride=ego_box_stride
+        )
+    ax_xy.plot(plant["x"], plant["y"], color="tab:red", linewidth=2.0, label="plant")
     ax_xy.scatter(plant["x"][0], plant["y"][0], color="tab:red", zorder=3)
     ax_xy.set_aspect("equal", adjustable="datalim")
     ax_xy.set_xlabel("x [m]")
@@ -234,7 +308,7 @@ def plot(
     ax_ud.set_title("Steer command")
     ax_ud.grid(True, alpha=0.3)
 
-    fig.suptitle("MPPI delay-bicycle open-loop straight-line tracking")
+    fig.suptitle(title or "MPPI delay-bicycle open-loop straight-line tracking")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=140)
     print(f"Wrote {out_path}")
@@ -255,8 +329,44 @@ def main() -> int:
         "--horizon-csv",
         type=Path,
         default=None,
-        help="optional first-horizon trajectory CSV (debug columns)",
+        help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--reference-csv",
+        type=Path,
+        default=None,
+        help="reference path (s,x,y,yaw) from mppi_open_loop_lr_turn_sim",
+    )
+    parser.add_argument(
+        "--obstacles-csv",
+        type=Path,
+        default=None,
+        help="static obstacles (x,y,yaw,length,width) from lr turn sim",
+    )
+    parser.add_argument(
+        "--road-borders-csv",
+        type=Path,
+        default=None,
+        help="road border segments (x0,y0,x1,y1) from lr turn sim",
+    )
+    parser.add_argument(
+        "--ego-footprint-csv",
+        type=Path,
+        default=None,
+        help="ego OBB params (length,width,axle_to_box_center); default: ego_footprint.csv next to plant",
+    )
+    parser.add_argument(
+        "--ego-box-stride",
+        type=int,
+        default=8,
+        help="draw one ego box every N plant samples (default: 8)",
+    )
+    parser.add_argument(
+        "--no-ego-boxes",
+        action="store_true",
+        help="do not draw ego oriented boxes on the XY plot",
+    )
+    parser.add_argument("--title", type=str, default=None, help="figure suptitle override")
     parser.add_argument("--out", type=Path, default=None, help="output PNG (default: next to csv)")
     parser.add_argument(
         "--no-show",
@@ -283,16 +393,46 @@ def main() -> int:
     if missing:
         raise SystemExit(f"csv missing columns: {sorted(missing)}")
 
-    horizon_csv = args.horizon_csv
-    if horizon_csv is None:
-        candidate = csv_path.with_name("horizon0.csv")
-        horizon_csv = candidate if candidate.is_file() else None
-    horizon_x = horizon_y = horizon_t = None
-    if horizon_csv is not None:
-        horizon_x, horizon_y, horizon_t = load_horizon_xy(horizon_csv.expanduser().resolve())
+    reference = None
+    if args.reference_csv is not None:
+        reference = load_csv(args.reference_csv.expanduser().resolve())
+
+    obstacles = None
+    if args.obstacles_csv is not None:
+        obstacles = load_csv(args.obstacles_csv.expanduser().resolve())
+        missing_obstacle_cols = {"x", "y", "yaw", "length", "width"}.difference(obstacles)
+        if missing_obstacle_cols:
+            raise SystemExit(f"obstacles csv missing columns: {sorted(missing_obstacle_cols)}")
+
+    road_borders = None
+    if args.road_borders_csv is not None:
+        road_borders = load_csv(args.road_borders_csv.expanduser().resolve())
+        missing_border_cols = {"x0", "y0", "x1", "y1"}.difference(road_borders)
+        if missing_border_cols:
+            raise SystemExit(f"road borders csv missing columns: {sorted(missing_border_cols)}")
+
+    ego_footprint = None
+    if not args.no_ego_boxes:
+        footprint_path = args.ego_footprint_csv
+        if footprint_path is None:
+            default_footprint = csv_path.parent / "ego_footprint.csv"
+            if default_footprint.is_file():
+                footprint_path = default_footprint
+        if footprint_path is not None:
+            ego_footprint = load_ego_footprint(footprint_path.expanduser().resolve())
 
     out_path = args.out.expanduser().resolve() if args.out else csv_path.with_suffix(".png")
-    plot(plant, horizon_x, horizon_y, horizon_t, out_path, show=not args.no_show)
+    plot(
+        plant,
+        out_path,
+        show=not args.no_show,
+        reference=reference,
+        obstacles=obstacles,
+        road_borders=road_borders,
+        ego_footprint=ego_footprint,
+        ego_box_stride=args.ego_box_stride,
+        title=args.title,
+    )
     return 0
 
 

@@ -1147,6 +1147,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     // Smooth-MPPI samples action derivatives and integrates with dt.
     sp.dt = kDt;
 #endif
+    // ColoredNoiseDistribution is not copy-assignable (cuFFT / device buffers).
     sampler.setParams(sp);
 
     const float lambda = user_cost_params_.lambda;
@@ -3285,9 +3286,9 @@ try {
     result.debug.was_rejected = true;
     RCLCPP_WARN(
       mppiLogger(),
-      "MPPI output rejected with invalidity_mask=%u at point=%s; returning the input trajectory "
+      "MPPI output rejected (reason=%s) at trajectory point=%s; returning the input trajectory "
       "unchanged",
-      static_cast<unsigned int>(validation.reasons),
+      validation_reasons.c_str(),
       validation.first_invalid_index.has_value()
         ? std::to_string(validation.first_invalid_index.value()).c_str()
         : "unknown");
