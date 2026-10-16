@@ -198,20 +198,21 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
       {ObjectType::BICYCLE, p.rss_params.object_decel.bicycle},
       {ObjectType::PEDESTRIAN, p.rss_params.object_decel.pedestrian}};
     const auto & lm = p.objects.lateral_margin;
+    const auto & low_velocity_lm = p.objects.low_velocity_lateral_margin;
     const LateralMarginMap lateral_margin_map = {
-      {ObjectType::CAR, lm.car},
-      {ObjectType::TRUCK, lm.truck},
-      {ObjectType::BUS, lm.bus},
-      {ObjectType::TRAILER, lm.trailer},
-      {ObjectType::MOTORCYCLE, lm.motorcycle},
-      {ObjectType::BICYCLE, lm.bicycle},
-      {ObjectType::PEDESTRIAN, lm.pedestrian},
-      {ObjectType::HAZARD, lm.hazard},
-      {ObjectType::UNKNOWN, lm.unknown}};
+      {ObjectType::CAR, {lm.car, low_velocity_lm.car}},
+      {ObjectType::TRUCK, {lm.truck, low_velocity_lm.truck}},
+      {ObjectType::BUS, {lm.bus, low_velocity_lm.bus}},
+      {ObjectType::TRAILER, {lm.trailer, low_velocity_lm.trailer}},
+      {ObjectType::MOTORCYCLE, {lm.motorcycle, low_velocity_lm.motorcycle}},
+      {ObjectType::BICYCLE, {lm.bicycle, low_velocity_lm.bicycle}},
+      {ObjectType::PEDESTRIAN, {lm.pedestrian, low_velocity_lm.pedestrian}},
+      {ObjectType::HAZARD, {lm.hazard, low_velocity_lm.hazard}},
+      {ObjectType::UNKNOWN, {lm.unknown, low_velocity_lm.unknown}}};
 
     ObjectFilter object_filter(
       p.objects.target_objects.bbox, p.objects.target_objects.polygon,
-      p.objects.stopped_velocity_th, p.objects.max_lateral_velocity_th, p.objects.safety_buffer);
+      p.objects.stopped_velocity_th, p.objects.max_lateral_velocity_th, p.objects.safety_buffer, p.objects.low_velocity_th);
     auto filtered_objects = *context.predicted_objects;
     object_filter.filter_objects(filtered_objects);
     target_objects.reserve(filtered_objects.objects.size());

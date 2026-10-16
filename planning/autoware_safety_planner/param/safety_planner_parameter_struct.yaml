@@ -364,7 +364,7 @@ safety_planner:
         default_value: 0.1
         read_only: true
         description: the shape of an object is expanded by this much [m]
-      lateral_margin:
+      lateral_margin: &base_lateral_margin
         base:
           &default_margin {
             type: double,
@@ -381,6 +381,14 @@ safety_planner:
         pedestrian: *default_margin
         hazard: *default_margin
         unknown: *default_margin
+      low_velocity_lateral_margin: *base_lateral_margin
+      low_velocity_th:
+        type: double
+        default_value: 4.0
+        description: Ego trajectory velocity threshold to apply low-velocity lateral margins [m/s]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: true
     rss_params:
       enable:
         type: bool
