@@ -159,6 +159,8 @@ TEST(TrajectoryProcessorParamsTest, PreservesDefaultCombinedPipelineOrder)
 {
   const TrajectoryProcessorParams params;
   const std::vector<std::string> expected = {
+    "autoware::trajectory_processor::plugin::ExternalVelocityLimit",
+    "autoware::trajectory_processor::plugin::MapVelocityLimits",
     "autoware::trajectory_processor::plugin::StopPointFixer",
     "autoware::trajectory_processor::plugin::SurroundObstacleStop",
     "autoware::trajectory_processor::plugin::ObstacleStop",
