@@ -14,11 +14,12 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/map_velocity_limits.hpp"
 
-#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
 
 #include <cmath>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace autoware::trajectory_modifier::plugin
@@ -54,14 +55,33 @@ make_velocity_limit_overrides(const TrajectoryModifierParams & params)
 void MapVelocityLimits::on_initialize(const TrajectoryModifierParams & params)
 {
   update_params(params);
+  profile_reset_pub_ =
+    get_node_ptr()->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
+      "~/debug/velocity_profile_reset", rclcpp::QoS{10}.reliable().durability_volatile());
+  debug_trajectory_pub_ = get_node_ptr()->create_publisher<autoware_planning_msgs::msg::Trajectory>(
+    "~/debug/map_velocity_limits/trajectory", rclcpp::QoS{1});
 }
 
 void MapVelocityLimits::update_params(const TrajectoryModifierParams & params)
 {
+  try {
+    limit_overrides_ = make_velocity_limit_overrides(params);
+  } catch (const std::invalid_argument & error) {
+    enabled_ = false;
+    limit_overrides_.clear();
+    fixed_profile_.clear();
+    RCLCPP_ERROR(
+      get_node_ptr()->get_logger(),
+      "%s: invalid map velocity limit parameters: %s; disabling map velocity limits",
+      get_short_name().c_str(), error.what());
+    return;
+  }
   enabled_ = params.use_map_velocity_limits;
-  limit_overrides_ = make_velocity_limit_overrides(params);
-  constant_deceleration_ = params.stopping_constraints.nominal_deceleration;
-  max_jerk_ = params.stopping_constraints.jerk_limit;
+  constraints_ = detail::make_velocity_limit_constraints(params);
+  fixed_profile_.set_parameters(detail::make_fixed_profile_parameters(params));
+  if (!enabled_) {
+    fixed_profile_.clear();
+  }
 }
 
 bool MapVelocityLimits::is_trajectory_modification_required(
@@ -77,26 +97,50 @@ bool MapVelocityLimits::is_trajectory_modification_required(
     extended_route_handler_ = handler;
     previous_route_uuid_ = input.route->uuid;
   }
+  if (input.current_odometry && input.current_odometry->twist.twist.linear.x < 0.1) {
+    return false;
+  }
   return true;
 }
 
 ProcessingResult MapVelocityLimits::process(
   TrajectoryPoints & traj_points, TrajectoryModifierData & input)
 {
-  if (
-    !enabled_ || traj_points.empty() || !input.current_odometry ||
-    !is_trajectory_modification_required(traj_points, input)) {
+  last_profile_start_ = detail::ProfileStart::Measured;
+  if (!enabled_ || traj_points.empty() || !input.current_odometry) {
+    publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
     return ProcessingResult::Unchanged;
   }
-  detail::VelocityLimitOptions options;
-  options.current_ego_velocity = input.current_odometry->twist.twist.linear.x;
-  options.current_ego_acceleration = input.current_acceleration->accel.accel.linear.x;
+  const auto stop_state = detail::make_fixed_profile_stop_state(traj_points);
+  if (!is_trajectory_modification_required(traj_points, input)) {
+    fixed_profile_.store(input, traj_points, stop_state);
+    publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
+    return ProcessingResult::Unchanged;
+  }
+  const auto start = fixed_profile_.start(input, stop_state, traj_points);
+  last_profile_start_ = start.start;
+  if (detail::is_reset(start.start)) {
+    RCLCPP_DEBUG(
+      get_node_ptr()->get_logger(), "%s: candidate %zu restarted from the measured ego state (%s)",
+      get_short_name().c_str(), input.candidate_index, detail::to_string(start.start));
+    autoware_internal_debug_msgs::msg::StringStamped reset;
+    reset.stamp = get_clock()->now();
+    reset.data = "plugin=" + get_name() + " candidate=" + std::to_string(input.candidate_index) +
+                 " reason=" + detail::to_string(start.start);
+    profile_reset_pub_->publish(reset);
+  }
   const auto result = detail::apply_velocity_limits(
-    traj_points, std::abs(constant_deceleration_), std::abs(max_jerk_),
+    traj_points, constraints_,
     [this](const geometry_msgs::msg::Point & position) {
       return extended_route_handler_->get_velocity_limit(position, limit_overrides_);
     },
-    options);
+    start.options);
+  if (result.status == ProcessingResult::Unchanged && !result.error.empty()) {
+    fixed_profile_.store(input, TrajectoryPoints{}, stop_state);
+  } else {
+    fixed_profile_.store(input, traj_points, stop_state);
+  }
+  publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
   return result.status;
 }
 

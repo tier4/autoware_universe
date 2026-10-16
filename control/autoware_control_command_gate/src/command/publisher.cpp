@@ -32,7 +32,7 @@ CommandPublisher::CommandPublisher(rclcpp::Node & node)
     node.create_publisher<HazardLightsCommand>("~/output/hazard_lights", volatile_qos);
 }
 
-void CommandPublisher::on_control(const Control & msg)
+void CommandPublisher::on_control(uint16_t, const Control & msg)
 {
   *prev_control_ = msg;
 

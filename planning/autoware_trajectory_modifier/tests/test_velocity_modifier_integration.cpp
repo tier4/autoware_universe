@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_modifier.hpp"
 #include "trajectory_modifier_test_utils.hpp"
 
@@ -27,6 +28,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -206,4 +208,39 @@ TEST_F(VelocityModifierIntegrationTest, TrajectoryModifiedForStepChangeZeroVeloc
   EXPECT_TRUE(modified);
   EXPECT_NEAR(trajectory.back().longitudinal_velocity_mps, 0.0, 0.1);
   EXPECT_NEAR(trajectory.back().acceleration_mps2, 0.0, 0.1);
+}
+
+TEST_F(VelocityModifierIntegrationTest, PreservesTimeSampledVelocityLimitStop)
+{
+  TrajectoryPoints trajectory(100);
+  for (std::size_t i = 0; i < trajectory.size(); ++i) {
+    trajectory[i] = create_trajectory_point(0.5 * i, 0.0, 5.0);
+    trajectory[i].time_from_start = rclcpp::Duration::from_seconds(0.1 * i);
+  }
+  autoware::trajectory_modifier::plugin::detail::VelocityLimitOptions options;
+  options.current_ego_velocity = 5.0;
+  options.current_ego_acceleration = 0.0;
+  const auto limit_result = autoware::trajectory_modifier::plugin::detail::apply_velocity_limits(
+    trajectory, {1.0, 2.0, 1.0},
+    [](const geometry_msgs::msg::Point &) { return std::optional<double>{0.0}; }, options);
+  ASSERT_TRUE(limit_result.error.empty()) << limit_result.error;
+  const auto before = trajectory;
+
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, TrajectoryModifierData{}));
+  ASSERT_EQ(trajectory.size(), before.size());
+  for (std::size_t i = 0; i < trajectory.size(); ++i) {
+    EXPECT_FLOAT_EQ(trajectory[i].longitudinal_velocity_mps, before[i].longitudinal_velocity_mps);
+    EXPECT_FLOAT_EQ(trajectory[i].acceleration_mps2, before[i].acceleration_mps2);
+    EXPECT_DOUBLE_EQ(trajectory[i].pose.position.x, before[i].pose.position.x);
+  }
+}
+
+TEST_F(VelocityModifierIntegrationTest, StillProcessesInconsistentTimedStop)
+{
+  auto trajectory = create_step_change_zero_velocity_trajectory(20.0, 10.0, 15.0);
+  for (std::size_t i = 0; i < trajectory.size(); ++i) {
+    trajectory[i].time_from_start = rclcpp::Duration::from_seconds(0.1 * i);
+  }
+
+  EXPECT_TRUE(plugin_->is_trajectory_modification_required(trajectory, TrajectoryModifierData{}));
 }

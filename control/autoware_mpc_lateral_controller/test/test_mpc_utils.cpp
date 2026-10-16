@@ -21,6 +21,7 @@
 #include "autoware_planning_msgs/msg/trajectory_point.hpp"
 
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -98,6 +99,53 @@ TEST(TestMPCUtils, InferForwardDrivingFromVelocitySign)
 
   EXPECT_EQ(MPCUtils::infer_forward_driving(forward_traj), std::optional<bool>(true));
   EXPECT_EQ(MPCUtils::infer_forward_driving(backward_traj), std::optional<bool>(false));
+}
+
+TEST(TestMPCUtils, IssuedSteeringUsesPostStepTimesAsIntervalEnds)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+  MPCTrajectory trajectory;
+  for (int i = 0; i < 4; ++i) {
+    trajectory.push_back(
+      static_cast<double>(i), 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, static_cast<double>(i + 1),
+      0.1 * static_cast<double>(i + 1));
+  }
+
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.04), 0U);
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.099), 0U);
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.1), 1U);
+  // The recorded follower cycle was 102 ms after its trajectory stamp. It must issue u[1],
+  // rather than looking another 180 ms ahead and interpolating u[2..3].
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.102), 1U);
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.2), 2U);
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.4), std::nullopt);
+}
+
+TEST(TestMPCUtils, IssuedSteeringRejectsInvalidTimes)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+  MPCTrajectory trajectory;
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.0), std::nullopt);
+  trajectory.push_back(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.1, 0.1);
+  trajectory.push_back(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.2, 0.2);
+  EXPECT_EQ(
+    MPCUtils::findIssuedSteeringCommandIndex(trajectory, std::numeric_limits<double>::quiet_NaN()),
+    std::nullopt);
+  trajectory.relative_time[1] = 0.0;
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.05), std::nullopt);
+}
+
+TEST(TestMPCUtils, IssuedSteeringWithZeroTimePointKeepsFirstCommandUntilNextSample)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+  MPCTrajectory trajectory;
+  trajectory.push_back(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.1, 0.0);
+  trajectory.push_back(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.2, 0.1);
+  trajectory.push_back(2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.3, 0.2);
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.0), 0U);
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.05), 0U);
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.1), 1U);
+  EXPECT_EQ(MPCUtils::findIssuedSteeringCommandIndex(trajectory, 0.2), std::nullopt);
 }
 
 TEST(TestMPCUtils, InferForwardDrivingIgnoresLeadingStopPoints)
@@ -339,22 +387,6 @@ TEST(TestMPC, LongTrajectoryCurvatureUsesPerPointThreePointFit)
   const auto short_traj = makeCircularArcTrajectory(radius, 20, arc_length);
   const auto short_curvature = MPCUtils::calcTrajectoryCurvature(smoothing, short_traj, false);
   EXPECT_NEAR(std::abs(short_curvature.at(0)), std::abs(curvature.at(interior_idx)), 0.05);
-}
-
-TEST(TestMPC, CalcMPCTrajectoryRemainingArcLength)
-{
-  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
-
-  MPCTrajectory traj;
-  traj.push_back(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
-  traj.push_back(0.5, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5);
-  traj.push_back(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0);
-  traj.push_back(2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0);
-
-  EXPECT_NEAR(MPCUtils::calcMPCTrajectoryRemainingArcLength(traj, 0), 2.0, 1e-9);
-  EXPECT_NEAR(MPCUtils::calcMPCTrajectoryRemainingArcLength(traj, 1), 1.5, 1e-9);
-  EXPECT_NEAR(MPCUtils::calcMPCTrajectoryRemainingArcLength(traj, 2), 1.0, 1e-9);
-  EXPECT_EQ(MPCUtils::calcMPCTrajectoryRemainingArcLength(traj, 3), 0.0);
 }
 
 TEST(TestMPC, TemporalYawAndCurvatureStayStableForShortSegments)

@@ -42,6 +42,7 @@ ament_auto_add_library(${PROJECT_NAME}_trajectory_planner_plugins SHARED
   src/trajectory_planner/frenet_sampling_based_planner/compiled_constraints_utils.cpp
   src/trajectory_planner/frenet_sampling_based_planner/constraints_compiler.cpp
   src/trajectory_planner/frenet_sampling_based_planner/frenet_sampling_based_planner.cpp
+  src/trajectory_planner/reference_path_following_planner/reference_path_following_planner.cpp
 )
 target_link_libraries(${PROJECT_NAME}_trajectory_planner_plugins
   safety_planner_parameters

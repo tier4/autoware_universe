@@ -155,23 +155,6 @@ std::vector<double> tabulate_lateral_bound(
   return window;
 }
 
-//! The base_link arc length to stop at: the goal at the end of the path, or the nearest stop bar
-//! (Gate) closed within the horizon if that comes first, where the footprint front just touches
-//! it (violates_stop_bar). Not behind s_min
-double stop_target_s(
-  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-  const double horizon, const double s_min)
-{
-  double s_stop = context.reference_path.length();
-  for (const auto & stop_bar : compiled_constraints.stop_bars) {
-    if (stop_bar.time.t1 < 0.0 || stop_bar.time.t0 > horizon) {
-      continue;
-    }
-    s_stop = std::min(s_stop, stop_bar.s_stop - context.vehicle_info.max_longitudinal_offset_m);
-  }
-  return std::max(s_stop, s_min);
-}
-
 }  // namespace
 
 FrenetSamplingBasedPlanner::ConstraintTables::ConstraintTables(

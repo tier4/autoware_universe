@@ -150,19 +150,6 @@ double calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory)
   return length;
 }
 
-double calcMPCTrajectoryRemainingArcLength(const MPCTrajectory & trajectory, const size_t start_idx)
-{
-  if (trajectory.size() < 2 || start_idx >= trajectory.size() - 1) {
-    return 0.0;
-  }
-
-  double length = 0.0;
-  for (size_t i = start_idx + 1; i < trajectory.size(); ++i) {
-    length += calcDistance2d(trajectory, i, i - 1);
-  }
-  return length;
-}
-
 std::pair<bool, MPCTrajectory> resampleMPCTrajectoryByDistance(
   const MPCTrajectory & input, const double resample_interval_dist, const size_t nearest_seg_idx,
   const double ego_offset_to_segment)
@@ -522,6 +509,26 @@ MPCTrajectory convertToMPCTrajectory(const Trajectory & input, const bool use_te
   }
 
   return output;
+}
+
+std::optional<std::size_t> findIssuedSteeringCommandIndex(
+  const MPCTrajectory & trajectory, const double elapsed_time)
+{
+  const auto & times = trajectory.relative_time;
+  if (
+    times.empty() || times.size() != trajectory.steer.size() || !std::isfinite(elapsed_time) ||
+    elapsed_time >= times.back()) {
+    return std::nullopt;
+  }
+  for (std::size_t i = 0; i < times.size(); ++i) {
+    if (!std::isfinite(times[i]) || (i > 0 && times[i] <= times[i - 1])) {
+      return std::nullopt;
+    }
+  }
+  const auto it = std::upper_bound(times.begin(), times.end(), elapsed_time);
+  const auto index = static_cast<std::size_t>(std::distance(times.begin(), it));
+  // A point at t=0 describes a command already valid at the trajectory origin.
+  return times.front() <= 0.0 && index > 0 ? index - 1 : index;
 }
 
 Trajectory convertToAutowareTrajectory(const MPCTrajectory & input, const double wheelbase)

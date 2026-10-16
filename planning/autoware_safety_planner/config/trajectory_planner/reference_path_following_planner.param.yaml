@@ -1,0 +1,12 @@
+/**:
+  ros__parameters:
+    reference_path_following_planner:
+      time_step_s: 0.1 # [s]
+      velocity_optimizer:
+        resolution_m: 1.0 # [m] arc length spacing of the QP grid
+        max_length_m: 150.0 # [m] arc length of the reference_path the QP covers
+        weights:
+          jerk: 10.0
+          over_velocity: 100000.0
+          over_acceleration: 5000.0
+          over_jerk: 2000.0

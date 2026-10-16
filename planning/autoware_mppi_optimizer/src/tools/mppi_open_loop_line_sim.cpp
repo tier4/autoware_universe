@@ -23,6 +23,7 @@
  *   ros2 run autoware_mppi_optimizer mppi_open_loop_line_sim -- --plot
  */
 
+#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_trajectory_io.hpp"
 #include "mppi_open_loop_sim_params.hpp"
@@ -61,10 +62,14 @@
 namespace
 {
 
+using autoware::mppi_optimizer::CurvatureAdaptiveSteeringFilter;
+using autoware::mppi_optimizer::CurvatureAdaptiveSteeringFilterParams;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiControl;
+using autoware::mppi_optimizer::FirstOrderDubinsMppiControlSequencePostprocessor;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiCostParams;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiOptimizationResult;
+using autoware::mppi_optimizer::FirstOrderDubinsMppiPostprocessingContext;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiRuntimeOptions;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiVehicleParams;
 using autoware::mppi_optimizer::open_loop_sim::defaultOutDir;
@@ -72,6 +77,7 @@ using autoware::mppi_optimizer::open_loop_sim::writeEgoFootprintCsv;
 using autoware::mppi_optimizer::open_loop_sim::defaultPlanningMppiParamsYaml;
 using autoware::mppi_optimizer::open_loop_sim::defaultVehicleDescriptionYaml;
 using autoware::mppi_optimizer::open_loop_sim::loadMppiOptimizerParamsFromYaml;
+using autoware::mppi_optimizer::open_loop_sim::OpenLoopSteeringFilterConfig;
 using autoware::mppi_optimizer::quaternionFromYaw;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
@@ -157,6 +163,12 @@ void logVehicleParams(const FirstOrderDubinsMppiVehicleParams & vehicle)
             << " acc_delay=" << vehicle.acc_time_delay
             << " steer_delay=" << vehicle.steer_time_delay
             << " steer_rate_lim=" << vehicle.steer_rate_lim
+            << " max_lateral_jerk_mps3=" << vehicle.max_lateral_jerk_mps3
+            << " standstill_steer_rate_lim=" << vehicle.standstill_steer_rate_lim
+            << " restart_steer_command_rate_lim=" << vehicle.restart_steer_command_rate_lim
+            << " restart_steer_command_acceleration_lim="
+            << vehicle.restart_steer_command_acceleration_lim
+            << " restart_velocity_threshold_mps=" << vehicle.restart_velocity_threshold_mps
             << " vel_rate_lim=" << vehicle.vel_rate_lim << "\n";
 }
 
@@ -278,8 +290,8 @@ Odometry makeOdometry(const SimPlantState & plant, const float sim_time_s)
   odometry.header.frame_id = "map";
   odometry.child_frame_id = "base_link";
   odometry.header.stamp.sec = static_cast<int32_t>(sim_time_s);
-  odometry.header.stamp.nanosec = static_cast<uint32_t>(
-    (sim_time_s - static_cast<float>(odometry.header.stamp.sec)) * 1.0E9F);
+  odometry.header.stamp.nanosec =
+    static_cast<uint32_t>((sim_time_s - static_cast<float>(odometry.header.stamp.sec)) * 1.0E9F);
   odometry.pose.pose.position.x = plant.x;
   odometry.pose.pose.position.y = plant.y;
   odometry.pose.pose.orientation = quaternionFromYaw(plant.yaw);
@@ -443,12 +455,15 @@ int run(int argc, char ** argv)
 
   FirstOrderDubinsMppiCostParams cost_params;
   FirstOrderDubinsMppiRuntimeOptions runtime;
+  OpenLoopSteeringFilterConfig steering_filter_config;
   if (!params_yaml.empty()) {
-    loadMppiOptimizerParamsFromYaml(params_yaml, cost_params, runtime);
+    loadMppiOptimizerParamsFromYaml(
+      params_yaml, cost_params, runtime, &steering_filter_config);
     std::cerr << "Loaded mppi_optimizer params from " << params_yaml << "\n";
   } else {
     std::cerr << "WARNING: no params yaml found; using struct defaults\n";
   }
+  runtime.skip_if_invalid = false;
   runtime.ignore_obstacles = true;
   runtime.ignore_road_borders = true;
   runtime.ignore_drivable_area = true;
@@ -490,6 +505,7 @@ int run(int argc, char ** argv)
   mppi.setVehicleParams(vehicle);
   mppi.setCostParams(cost_params);
   mppi.setRuntimeOptions(runtime);
+  CurvatureAdaptiveSteeringFilter steering_filter(steering_filter_config.params);
 
   SimPlantState plant;
   plant.x = 0.0F;
@@ -506,6 +522,7 @@ int run(int argc, char ** argv)
   std::filesystem::create_directories(out_dir);
   const auto plant_csv = (std::filesystem::path(out_dir) / "plant.csv").string();
   const auto ego_footprint_csv = (std::filesystem::path(out_dir) / "ego_footprint.csv").string();
+  const auto horizon_csv = (std::filesystem::path(out_dir) / "horizon0.csv").string();
   if (!writeEgoFootprintCsv(ego_footprint_csv, vehicle)) {
     throw std::runtime_error("Failed to write " + ego_footprint_csv);
   }
@@ -517,7 +534,8 @@ int run(int argc, char ** argv)
             << " goal_x=" << goal_x << " y0=" << y_offset
             << " skip_if_invalid=" << (runtime.skip_if_invalid ? "on" : "off")
             << " t-MPT=" << (runtime.use_temporal_mpt_as_nominal ? "on" : "off")
-            << " delay=" << (runtime.enable_input_delay_compensation ? "on" : "off") << "\n";
+            << " delay=" << (runtime.enable_input_delay_compensation ? "on" : "off")
+            << " steering_filter=" << (steering_filter_config.enabled ? "on" : "off") << "\n";
   if (runtime.use_temporal_mpt_as_nominal && runtime.enable_input_delay_compensation) {
     std::cerr << "NOTE: t-MPT OCP has no delay FIFOs; MPPI shifts its nominal by acc/steer delay "
                  "steps before seeding u_nom.\n";
@@ -537,9 +555,54 @@ int run(int argc, char ** argv)
     if (!plant.accel_cmd_buffer.empty() || !plant.steer_cmd_buffer.empty()) {
       mppi.setInputDelayBuffer(plant.accel_cmd_buffer, plant.steer_cmd_buffer);
     }
+    auto candidate_steering_filter = steering_filter;
+    FirstOrderDubinsMppiControlSequencePostprocessor control_postprocessor;
+    if (steering_filter_config.enabled) {
+      control_postprocessor = [&candidate_steering_filter, measured_steering = plant.steering](
+                                std::vector<FirstOrderDubinsMppiControl> & controls,
+                                const FirstOrderDubinsMppiPostprocessingContext & context) {
+        std::vector<float> steering_commands;
+        steering_commands.reserve(controls.size());
+        for (const auto & control : controls) {
+          steering_commands.push_back(control.steer_cmd);
+        }
+        if (context.short_reference_steering_hold_active && !steering_commands.empty()) {
+          std::fill(
+            steering_commands.begin(), steering_commands.end(),
+            context.standstill_steering_hold_command_rad);
+          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
+          candidate_steering_filter.filter(
+            steering_commands, context.standstill_steering_hold_command_rad,
+            /*preserve_first_command=*/true);
+        } else if (context.standstill_steering_hold_active && !steering_commands.empty()) {
+          steering_commands.front() = context.standstill_steering_hold_command_rad;
+          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
+          candidate_steering_filter.filter(
+            steering_commands, context.standstill_steering_hold_command_rad,
+            /*preserve_first_command=*/true);
+        } else {
+          candidate_steering_filter.filter(
+            steering_commands, measured_steering, context.preserve_first_steering_command);
+        }
+        for (std::size_t index = 0; index < controls.size(); ++index) {
+          controls[index].steer_cmd = steering_commands[index];
+        }
+      };
+    }
     const auto result = mppi.optimizeTrajectory(
       reference, makeOdometry(plant, sim_t), makeAccel(plant), makeSteering(plant), objects, {}, {},
-      limits);
+      limits, control_postprocessor);
+    if (!result.debug.was_rejected && result.optimized_point_count > 0U) {
+      steering_filter = candidate_steering_filter;
+    } else {
+      steering_filter.reset();
+    }
+    if (step == 0) {
+      if (!autoware::mppi_optimizer::writeMppiDebugOptimalHorizonCsv(
+            horizon_csv, result.debug.optimal_horizon, kDt)) {
+        throw std::runtime_error("Failed to write first optimal horizon " + horizon_csv);
+      }
+    }
     updatePlantFromResult(plant, command, result);
     if (result.debug.was_rejected) {
       ++rejected_steps;
@@ -567,6 +630,7 @@ int run(int argc, char ** argv)
             << " rejected_steps=" << rejected_steps << "/" << steps << "\n";
   std::cerr << "Wrote " << plant_csv << "\n";
   std::cerr << "Wrote " << ego_footprint_csv << "\n";
+  std::cerr << "Wrote first optimal-horizon rollout " << horizon_csv << "\n";
 
   if (plot) {
     const auto script = findPlotScript(argv[0]);
@@ -577,8 +641,8 @@ int run(int argc, char ** argv)
     } else {
       const auto png = (std::filesystem::path(out_dir) / "plant.png").string();
       const std::string cmd = "python3 \"" + script.string() + "\" --csv \"" + plant_csv +
-                              "\" --ego-footprint-csv \"" + ego_footprint_csv + "\" --out \"" +
-                              png + "\"";
+                              "\" --horizon-csv \"" + horizon_csv + "\" --ego-footprint-csv \"" +
+                              ego_footprint_csv + "\" --out \"" + png + "\"";
       std::cerr << "Plotting: " << cmd << "\n";
       if (std::system(cmd.c_str()) != 0) {
         std::cerr << "WARNING: plotter exited non-zero\n";

@@ -15,10 +15,12 @@
 #ifndef AUTOWARE__ML_PLANNER__CONSTANTS_HPP_
 #define AUTOWARE__ML_PLANNER__CONSTANTS_HPP_
 
+#include <cmath>
+
 namespace autoware::ml_planner::constants
 {
 
-// WEIGHT_MAJOR_VERSION should match the major version in ml_planner.param.json
+// Major version of the ONNX weights this node is built against.
 constexpr int WEIGHT_MAJOR_VERSION = 5;
 
 // Velocity thresholds
@@ -30,6 +32,7 @@ constexpr int LOG_THROTTLE_INTERVAL_MS = 5000;
 
 // Geometric constants
 constexpr double LANE_MASK_RANGE_M = 100.0;
+constexpr double MAX_ROUTE_SEGMENT_YAW_DIFF_RAD = M_PI / 3.0;
 
 }  // namespace autoware::ml_planner::constants
 

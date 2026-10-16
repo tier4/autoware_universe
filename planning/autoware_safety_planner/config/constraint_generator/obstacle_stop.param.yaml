@@ -1,6 +1,43 @@
 /**:
   ros__parameters:
     obstacle_stop:
-      margin_m: 0.5 # [m] the shape of an object is inflated by this much
-      stop_distance_m: 6.0 # [m] stop line this far before an object on the path (0 disables)
-      stop_line_max_object_speed_mps: 1.0 # [m/s] stop lines only for objects slower than this
+      stop_margin: 6.0 # [m]
+      nominal_stopping_decel: 1.0 # [m/s^2]
+      maximum_stopping_decel: 4.0 # [m/s^2]
+      stopping_jerk: 3.0 # [m/s^3]
+      delay_response_time: 0.5 # [s]
+      on_time_buffer: 0.5 # [s]
+      off_time_buffer: 0.7 # [s]
+      arrived_distance_threshold: 0.5 # [m]
+
+      objects:
+        target_objects:
+          bbox: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "unknown"]
+          polygon: ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "unknown"]
+        stopped_velocity_th: 0.3 # [m/s]
+        max_lateral_velocity_th: 1.0 # [m/s]
+        safety_buffer: 0.1 # [m]
+        lateral_margin:
+          car: 0.2
+          truck: 0.2
+          bus: 0.2
+          trailer: 0.2
+          motorcycle: 0.2
+          bicycle: 0.2
+          pedestrian: 0.2
+          hazard: 0.2
+          unknown: 0.2
+
+      rss_params:
+        enable: true
+        object_decel:
+          car: 1.6
+          truck: 1.6
+          bus: 1.6
+          trailer: 1.6
+          motorcycle: 2.0
+          bicycle: 3.0
+          pedestrian: 5.0
+        ego_decel: 2.0 # [m/s^2]
+        safety_margin: 1.5 # [m]
+        lookahead_horizon: 1.5 # [s]

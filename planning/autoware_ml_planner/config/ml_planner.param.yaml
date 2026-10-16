@@ -7,7 +7,6 @@
       use_cuda_graph: true
       base_model_directory: $(var data_path)/ml_planner
       onnx_model_filename: ml_planner_sampler.onnx
-      args_filename: ml_planner.param.json
     planning_frequency_hz: 10.0
     remap_unsupported_objects_to_pedestrian: false
     traffic_light_group_msg_timeout_seconds: 0.2

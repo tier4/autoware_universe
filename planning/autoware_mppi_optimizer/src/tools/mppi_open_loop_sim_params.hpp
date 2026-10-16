@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include "autoware/mppi_optimizer/trajectory_mppi_optimizer_param_conversion.hpp"
@@ -27,10 +28,17 @@
 namespace autoware::mppi_optimizer::open_loop_sim
 {
 
+struct OpenLoopSteeringFilterConfig
+{
+  bool enabled{true};
+  CurvatureAdaptiveSteeringFilterParams params{};
+};
+
 /** Load `mppi_optimizer.*` via the same generated ParamListener as the trajectory modifier. */
 inline void loadMppiOptimizerParamsFromYaml(
   const std::string & params_yaml, FirstOrderDubinsMppiCostParams & cost,
-  FirstOrderDubinsMppiRuntimeOptions & runtime)
+  FirstOrderDubinsMppiRuntimeOptions & runtime,
+  OpenLoopSteeringFilterConfig * steering_filter = nullptr)
 {
   if (params_yaml.empty()) {
     throw std::runtime_error("params yaml path is empty");
@@ -42,6 +50,11 @@ inline void loadMppiOptimizerParamsFromYaml(
   const auto params = listener.get_params();
   cost = costParamsFromTrajectoryMppiOptimizerParams(params);
   runtime = runtimeOptionsFromTrajectoryMppiOptimizerParams(params);
+  if (steering_filter != nullptr) {
+    steering_filter->enabled = params.enable_curvature_adaptive_steering_filter;
+    steering_filter->params =
+      curvatureAdaptiveSteeringFilterParamsFromTrajectoryMppiOptimizerParams(params);
+  }
 }
 
 }  // namespace autoware::mppi_optimizer::open_loop_sim

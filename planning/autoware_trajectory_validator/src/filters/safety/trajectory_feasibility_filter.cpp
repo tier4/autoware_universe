@@ -21,6 +21,7 @@
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_math/unit_conversion.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 
@@ -29,6 +30,7 @@
 #include <tf2/utils.h>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <utility>
@@ -46,6 +48,12 @@ double to_seconds(const builtin_interfaces::msg::Duration & duration)
   return static_cast<double>(duration.sec) + static_cast<double>(duration.nanosec) * 1e-9;
 }
 
+/** @brief Convert a Time message to seconds. */
+double to_seconds(const builtin_interfaces::msg::Time & time)
+{
+  return static_cast<double>(time.sec) + static_cast<double>(time.nanosec) * 1e-9;
+}
+
 /**
  * @brief Convert TrajectoryPoint to speed (m/s)
  */
@@ -57,63 +65,109 @@ double to_speed(const TrajectoryPoint & point)
 }
 
 /**
- * @brief Convert TrajectoryPoints to steering angle (rad)
+ * @brief Minimum arc length between the three points used to estimate the curvature (m).
+ *
+ * Using immediately adjacent points is numerically unstable when the trajectory is densely sampled
+ * (e.g. right after the vehicle starts moving, where the point interval can be a few centimeters):
+ * a sub-millimeter lateral jitter then yields a huge curvature. Spreading the three points over a
+ * fixed arc length makes the estimate independent of the sampling interval.
  */
-double to_steering_angle(
-  const TrajectoryPoint & prev_point, const TrajectoryPoint & curr_point,
-  const TrajectoryPoint & next_point, const VehicleInfo & vehicle_info)
-{
-  const auto & prev_p = prev_point.pose.position;
-  const auto & curr_p = curr_point.pose.position;
-  const auto & next_p = next_point.pose.position;
+constexpr double curvature_distance = 1.0;
 
-  try {
-    const double curvature = autoware_utils_geometry::calc_curvature(prev_p, curr_p, next_p);
-    return std::atan(vehicle_info.wheel_base_m * curvature);
-  } catch (...) {
-    return 0.0;  // throw exception if three points are too close
+/**
+ * @brief Curvature at a trajectory point together with the indices of the two points it was
+ * estimated from.
+ */
+struct CurvatureSample
+{
+  double curvature;   //!< Curvature at the point (1/m)
+  size_t prev_index;  //!< Index of the preceding point used for the estimate
+  size_t next_index;  //!< Index of the following point used for the estimate
+};
+
+/**
+ * @brief Estimate the curvature at each trajectory point from three points that are at least
+ * `curvature_distance` apart in arc length.
+ *
+ * Points near the ends of the trajectory that have no sufficiently distant neighbor reuse the
+ * sample of the nearest point that does. If no point satisfies the distance requirement (the
+ * trajectory is shorter than `2 * curvature_distance`), every sample is `std::nullopt`.
+ */
+std::vector<std::optional<CurvatureSample>> to_curvature_samples(
+  const TrajectoryPoints & traj_points)
+{
+  std::vector<std::optional<CurvatureSample>> samples(traj_points.size(), std::nullopt);
+  if (traj_points.size() < 3) {
+    return samples;
   }
+
+  std::vector<double> arc_length(traj_points.size(), 0.0);
+  for (size_t i = 1; i < traj_points.size(); ++i) {
+    arc_length[i] =
+      arc_length[i - 1] + autoware_utils_geometry::calc_distance2d(
+                            traj_points[i - 1].pose.position, traj_points[i].pose.position);
+  }
+
+  std::optional<size_t> first_valid_index;
+  std::optional<size_t> last_valid_index;
+  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
+    std::optional<size_t> prev_index;
+    for (size_t j = i; j-- > 0;) {
+      if (arc_length[i] - arc_length[j] >= curvature_distance) {
+        prev_index = j;
+        break;
+      }
+    }
+    if (!prev_index) {
+      continue;
+    }
+
+    std::optional<size_t> next_index;
+    for (size_t j = i + 1; j < traj_points.size(); ++j) {
+      if (arc_length[j] - arc_length[i] >= curvature_distance) {
+        next_index = j;
+        break;
+      }
+    }
+    if (!next_index) {
+      break;  // no later point can satisfy the requirement either
+    }
+
+    double curvature = 0.0;
+    try {
+      curvature = autoware_utils_geometry::calc_curvature(
+        traj_points[*prev_index].pose.position, traj_points[i].pose.position,
+        traj_points[*next_index].pose.position);
+    } catch (...) {
+      curvature = 0.0;  // points are too close, treat as straight
+    }
+    samples[i] = CurvatureSample{curvature, *prev_index, *next_index};
+    if (!first_valid_index) {
+      first_valid_index = i;
+    }
+    last_valid_index = i;
+  }
+
+  if (!first_valid_index) {
+    return samples;
+  }
+
+  // Extend the first/last valid sample to the points where the distance is not enough.
+  for (size_t i = 0; i < *first_valid_index; ++i) {
+    samples[i] = samples[*first_valid_index];
+  }
+  for (size_t i = *last_valid_index + 1; i < traj_points.size(); ++i) {
+    samples[i] = samples[*last_valid_index];
+  }
+  return samples;
 }
 
 /**
- * @brief Convert TrajectoryPoints to a vector of steering angles (rad), with optional smoothing.
+ * @brief Convert curvature to the front-wheel steering angle (rad) with the bicycle model.
  */
-std::vector<std::optional<double>> to_steering_angles(
-  const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, int smoothing_window_size)
+double to_steering_angle(const double curvature, const VehicleInfo & vehicle_info)
 {
-  std::vector<std::optional<double>> steering_angles(traj_points.size(), std::nullopt);
-  if (traj_points.size() < 3) {
-    return steering_angles;
-  }
-
-  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
-    steering_angles[i] =
-      to_steering_angle(traj_points[i - 1], traj_points[i], traj_points[i + 1], vehicle_info);
-  }
-
-  if (smoothing_window_size < 1) {
-    return steering_angles;
-  }
-
-  const size_t radius = static_cast<size_t>(std::max(1, smoothing_window_size) / 2);
-  std::vector<std::optional<double>> smoothed_angles(traj_points.size(), std::nullopt);
-  for (size_t i = radius; i < traj_points.size() - radius; ++i) {
-    double sum = 0.0;
-    size_t count = 0;
-    const size_t start_index = (i > radius) ? i - radius : 1;
-    const size_t end_index = std::min(traj_points.size() - 2, i + radius);
-    for (size_t sample_index = start_index; sample_index <= end_index; ++sample_index) {
-      if (!steering_angles[sample_index].has_value()) {
-        continue;
-      }
-      sum += steering_angles[sample_index].value();
-      ++count;
-    }
-    if (count > 0) {
-      smoothed_angles[i] = sum / static_cast<double>(count);
-    }
-  }
-  return smoothed_angles;
+  return std::atan(vehicle_info.wheel_base_m * curvature);
 }
 
 /**
@@ -192,6 +246,8 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
     return tl::make_unexpected("Vehicle info not set");
   }
 
+  speed_limit_transition_ = update_speed_limit_transition(speed_limit_transition_, context);
+
   // Each checker reports its own risk level. The core derives feasibility from the worst risk
   // level of these metrics, so a violated constraint reports HIGH_CAUTION and does not reject the
   // trajectory on its own.
@@ -202,6 +258,38 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
   }
 
   return ValidationResult{std::move(metrics)};
+}
+
+TrajectoryFeasibilityFilter::SpeedLimitTransition
+TrajectoryFeasibilityFilter::update_speed_limit_transition(
+  const SpeedLimitTransition & prev_state, const FilterContext & context) const
+{
+  if (!context.odometry || !context.lanelet_map) {
+    return prev_state;
+  }
+
+  // After a limit drop, decrease the old allowed speed with max deceleration and zero jerk.
+  const double now = to_seconds(context.odometry->header.stamp);
+  // Reset the state if the time goes backward (e.g. rosbag loop or simulator reset).
+  auto state = now < prev_state.last_limit_drop_time ? SpeedLimitTransition{} : prev_state;
+  const auto speed_limit_opt =
+    find_nearest_lanelet_speed_limit_mps(*context.lanelet_map, context.odometry->pose.pose);
+  if (
+    speed_limit_opt && state.prev_speed_limit &&
+    speed_limit_opt.value() < state.prev_speed_limit.value()) {
+    state.last_limit_drop_time = now;
+    state.last_limit_drop_allowed_speed =
+      state.prev_speed_limit.value() + state.speed_limit_tolerance;
+  }
+  if (speed_limit_opt) {
+    state.prev_speed_limit = speed_limit_opt;
+    state.speed_limit_tolerance = calc_speed_limit_tolerance_mps(
+      speed_limit_opt.value(), params_.speed_limit_tolerance.speed_limits_kmph,
+      params_.speed_limit_tolerance.tolerances_kmph);
+  }
+  state.transition_speed = state.last_limit_drop_allowed_speed -
+                           params_.max_deceleration * (now - state.last_limit_drop_time);
+  return state;
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_speed(
@@ -222,7 +310,9 @@ MetricReport TrajectoryFeasibilityFilter::check_speed(
 MetricReport TrajectoryFeasibilityFilter::check_lanelet_speed_limit(
   const TrajectoryPoints & traj_points, const FilterContext & context) const
 {
-  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(
+    traj_points, context, speed_limit_transition_.speed_limit_tolerance,
+    speed_limit_transition_.transition_speed);
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
@@ -375,8 +465,32 @@ std::pair<double, bool> is_speed_ok(const TrajectoryPoints & traj_points, double
   return {max_observed, is_ok};
 }
 
+double calc_speed_limit_tolerance_mps(
+  const double speed_limit_mps, const std::vector<double> & speed_limits_kmph,
+  const std::vector<double> & tolerances_kmph)
+{
+  if (speed_limits_kmph.empty() || speed_limits_kmph.size() != tolerances_kmph.size()) {
+    return 0.0;
+  }
+
+  const double speed_limit_kmph = autoware_utils_math::mps2kmph(speed_limit_mps);
+  if (speed_limit_kmph <= speed_limits_kmph.front()) {
+    return autoware_utils_math::kmph2mps(tolerances_kmph.front());
+  }
+  for (size_t i = 1; i < speed_limits_kmph.size(); ++i) {
+    if (speed_limit_kmph <= speed_limits_kmph[i]) {
+      const double ratio = (speed_limit_kmph - speed_limits_kmph[i - 1]) /
+                           (speed_limits_kmph[i] - speed_limits_kmph[i - 1]);
+      return autoware_utils_math::kmph2mps(
+        tolerances_kmph[i - 1] + ratio * (tolerances_kmph[i] - tolerances_kmph[i - 1]));
+    }
+  }
+  return autoware_utils_math::kmph2mps(tolerances_kmph.back());
+}
+
 std::pair<double, bool> is_lanelet_speed_limit_ok(
-  const TrajectoryPoints & traj_points, const FilterContext & context)
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  const double speed_limit_tolerance, const double transition_speed)
 {
   if (traj_points.empty() || !context.odometry || !context.lanelet_map) {
     return {0.0, true};
@@ -393,7 +507,9 @@ std::pair<double, bool> is_lanelet_speed_limit_ok(
     return {observed_speed, true};
   }
 
-  return {observed_speed, observed_speed <= *speed_limit_mps};
+  return {
+    observed_speed,
+    observed_speed <= std::max(*speed_limit_mps + speed_limit_tolerance, transition_speed)};
 }
 
 std::pair<double, bool> is_acceleration_ok(
@@ -470,26 +586,17 @@ std::pair<double, bool> is_lateral_acceleration_ok(
   double max_observed = 0.0;
   bool is_ok = true;
 
-  if (traj_points.size() < 3) {
-    return {max_observed, is_ok};
-  }
-
-  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
-    const auto & prev_p = traj_points[i - 1].pose.position;
-    const auto & curr_p = traj_points[i].pose.position;
-    const auto & next_p = traj_points[i + 1].pose.position;
-
-    try {
-      const double curvature = autoware_utils_geometry::calc_curvature(prev_p, curr_p, next_p);
-      const double longitudinal_velocity = traj_points[i].longitudinal_velocity_mps;
-      const double lateral_acceleration =
-        std::abs(longitudinal_velocity * longitudinal_velocity * curvature);
-      if (lateral_acceleration > max_lateral_acceleration) {
-        max_observed = std::max(max_observed, lateral_acceleration);
-        is_ok = false;
-      }
-    } catch (...) {  // skip if three points are too close
+  const auto samples = to_curvature_samples(traj_points);
+  for (size_t i = 0; i < traj_points.size(); ++i) {
+    if (!samples[i].has_value()) {
       continue;
+    }
+    const double longitudinal_velocity = traj_points[i].longitudinal_velocity_mps;
+    const double lateral_acceleration =
+      std::abs(longitudinal_velocity * longitudinal_velocity * samples[i]->curvature);
+    if (lateral_acceleration > max_lateral_acceleration) {
+      max_observed = std::max(max_observed, lateral_acceleration);
+      is_ok = false;
     }
   }
 
@@ -503,11 +610,23 @@ std::pair<double, bool> is_distance_deviation_ok(
   if (!context.odometry || traj_points.size() < 2) {
     return {0.0, true};
   }
-  const auto nearest_idx = autoware::motion_utils::findNearestSegmentIndex(
-    traj_points, context.odometry->pose.pose.position);
+
+  // calcLateralOffset() internally removes overlapping points and returns NaN when fewer than two
+  // distinct points remain (e.g. a stopped trajectory whose points share the same position).
+  // Guard against that case explicitly so the metric never reports NaN.
+  const auto overlap_removed_points = autoware::motion_utils::removeOverlapPoints(traj_points);
+  if (overlap_removed_points.size() < 2) {
+    return {0.0, true};
+  }
+
+  const auto & ego_position = context.odometry->pose.pose.position;
+  const auto nearest_idx =
+    autoware::motion_utils::findNearestSegmentIndex(overlap_removed_points, ego_position);
   const double distance_deviation = std::abs(
-    autoware::motion_utils::calcLateralOffset(
-      traj_points, context.odometry->pose.pose.position, nearest_idx));
+    autoware::motion_utils::calcLateralOffset(overlap_removed_points, ego_position, nearest_idx));
+  if (!std::isfinite(distance_deviation)) {
+    return {0.0, true};
+  }
   return {distance_deviation, distance_deviation <= max_distance_deviation};
 }
 
@@ -516,14 +635,15 @@ std::pair<double, bool> is_steering_angle_ok(
 {
   double max_observed = 0.0;
   bool is_ok = true;
-  constexpr int smoothing_window_size = 5;
-  const auto steering_angles = to_steering_angles(traj_points, vehicle_info, smoothing_window_size);
-  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
-    if (!steering_angles[i].has_value()) {
+
+  const auto samples = to_curvature_samples(traj_points);
+  for (const auto & sample : samples) {
+    if (!sample.has_value()) {
       continue;
     }
-    if (std::abs(steering_angles[i].value()) > max_steering_angle) {
-      max_observed = std::max(max_observed, std::abs(steering_angles[i].value()));
+    const double steering_angle = std::abs(to_steering_angle(sample->curvature, vehicle_info));
+    if (steering_angle > max_steering_angle) {
+      max_observed = std::max(max_observed, steering_angle);
       is_ok = false;
     }
   }
@@ -535,16 +655,30 @@ std::pair<double, bool> is_steering_rate_ok(
 {
   double max_observed = 0.0;
   bool is_ok = true;
-  constexpr int smoothing_window_size = 5;
-  const auto steering_angles = to_steering_angles(traj_points, vehicle_info, smoothing_window_size);
-  for (size_t i = 2; i + 1 < traj_points.size(); ++i) {
-    if (!steering_angles[i].has_value() || !steering_angles[i - 1].has_value()) {
+
+  // The steering rate at a point is the change of steering angle between the two points used to
+  // estimate its curvature, divided by the time between them. Taking the difference over this arc
+  // length span (instead of between adjacent points) keeps the rate from blowing up where the
+  // trajectory is densely sampled and the time between adjacent points is tiny.
+  const auto samples = to_curvature_samples(traj_points);
+  for (const auto & sample : samples) {
+    if (!sample.has_value()) {
       continue;
     }
-    const double dt =
-      to_seconds(traj_points[i].time_from_start) - to_seconds(traj_points[i - 1].time_from_start);
-    const auto steering_rate =
-      dt > 0.0 ? std::abs(steering_angles[i].value() - steering_angles[i - 1].value()) / dt : 0.0;
+    const auto & prev_sample = samples[sample->prev_index];
+    const auto & next_sample = samples[sample->next_index];
+    if (!prev_sample.has_value() || !next_sample.has_value()) {
+      continue;
+    }
+    const double dt = to_seconds(traj_points[sample->next_index].time_from_start) -
+                      to_seconds(traj_points[sample->prev_index].time_from_start);
+    if (dt <= 0.0) {
+      continue;
+    }
+    const double steering_rate = std::abs(
+                                   to_steering_angle(next_sample->curvature, vehicle_info) -
+                                   to_steering_angle(prev_sample->curvature, vehicle_info)) /
+                                 dt;
     if (steering_rate > max_steering_rate) {
       max_observed = std::max(max_observed, steering_rate);
       is_ok = false;

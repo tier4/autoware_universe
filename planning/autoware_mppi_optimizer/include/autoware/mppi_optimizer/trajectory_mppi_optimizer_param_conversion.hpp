@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_PARAM_CONVERSION_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_PARAM_CONVERSION_HPP_
 
+#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include <autoware_mppi_optimizer/trajectory_mppi_optimizer_parameters.hpp>
@@ -26,6 +27,9 @@ FirstOrderDubinsMppiCostParams costParamsFromTrajectoryMppiOptimizerParams(
   const trajectory_mppi_optimizer::Params & params);
 
 FirstOrderDubinsMppiRuntimeOptions runtimeOptionsFromTrajectoryMppiOptimizerParams(
+  const trajectory_mppi_optimizer::Params & params);
+
+CurvatureAdaptiveSteeringFilterParams curvatureAdaptiveSteeringFilterParamsFromTrajectoryMppiOptimizerParams(
   const trajectory_mppi_optimizer::Params & params);
 
 }  // namespace autoware::mppi_optimizer

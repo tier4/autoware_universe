@@ -17,42 +17,31 @@
 
 #include "constraint_generator_interface.hpp"
 
-#include <rclcpp/time.hpp>
+#include <autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp>
 
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace autoware::safety_planner::experimental
 {
 
-//! Emits one rigid-body KeepOut with certainty = DEFINITE per predicted object. The waypoints are
-//! the most likely predicted path; an object without one becomes a single waypoint, i.e. a static
-//! object.
-//! Why not emit every predicted mode: binding the less likely modes as DEFINITE too makes the
-//! nominal trajectory needlessly stiff. Low-confidence modes belong to a plugin that emits
-//! POSSIBLE (run_out, ...).
 class ObstacleStopConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:
   std::string get_name() const override { return "obstacle_stop"; }
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
+
+private:
+  using CollisionPoint = trajectory_modifier::utils::obstacle_stop::CollisionPoint;
+
+  void update_collision_points_buffer(
+    const TrajectoryPoints & traj_points, const std::optional<CollisionPoint> & collision_point,
+    const rclcpp::Time & now);
+  std::optional<CollisionPoint> get_nearest_collision_point() const;
+
+  std::vector<CollisionPoint> collision_points_buffer_;
 };
-
-//! PredictedObjects -> KeepOut constraints. t_plan is the planning reference time, i.e. the stamp
-//! of the odometry; the offset to the perception stamp is folded into the t of the waypoints.
-//! Objects with a degenerate shape or a non-finite pose are dropped and the rest is kept.
-std::vector<Constraint> make_obstacle_keep_out_constraints(
-  const PredictedObjects & objects, const rclcpp::Time & t_plan, const double margin_m);
-
-//! One Gate (stop line) per slow object whose footprint overlaps the reference-path corridor
-//! ahead of the ego, placed stop_distance_m before the object's nearest point along the path.
-//! Objects faster than max_object_speed_mps get no stop line (the KeepOut handles them).
-//! Why not a stop line for every object: stopping 6 m behind a moving lead vehicle is wrong;
-//! following is the KeepOut's job.
-std::vector<Constraint> make_obstacle_stop_line_constraints(
-  const PredictedObjects & objects, const PathPointTrajectory & reference_path, const double s_ego,
-  const double corridor_half_width_m, const double stop_distance_m,
-  const double max_object_speed_mps);
 
 }  // namespace autoware::safety_planner::experimental
 
