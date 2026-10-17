@@ -380,6 +380,43 @@ std::vector<ObjectRssState> evaluate_object_states(
   const double stopped_vel_th);
 
 /**
+ * @brief RSS longitudinal safe distance between the ego and an object ahead.
+ * @param ego_vel Ego velocity [m/s].
+ * @param ego_decel Magnitude of ego deceleration [m/s^2].
+ * @param object_stopping_distance Object braking distance [m].
+ * @param reaction_time Ego reaction time [s].
+ * @param safety_margin Distance added to the required gap [m].
+ * @return Required gap from ego front to object [m]; may be negative.
+ */
+double get_safe_distance(
+  const double ego_vel, const double ego_decel, const double object_stopping_distance,
+  const double reaction_time, const double safety_margin);
+
+/**
+ * @brief Largest ego velocity whose RSS safe distance does not exceed the current gap.
+ * @details Inverse of get_safe_distance(): solves
+ * `gap = v * reaction_time + v^2 / (2 * ego_decel) - object_stopping_distance + safety_margin`
+ * for the non-negative root `v`.
+ * @param gap Distance from ego front to object [m].
+ * @param ego_decel Magnitude of ego deceleration [m/s^2].
+ * @param object_stopping_distance Object braking distance [m].
+ * @param reaction_time Ego reaction time [s].
+ * @param safety_margin Distance added to the required gap [m].
+ * @return Velocity [m/s], 0 if the gap does not exceed the required standstill distance.
+ */
+double compute_cruise_velocity(
+  const double gap, const double ego_decel, const double object_stopping_distance,
+  const double reaction_time, const double safety_margin);
+
+/**
+ * @brief Select the object to follow: the nearest along the path that moves forward.
+ * @param object_states States from evaluate_object_states().
+ * @return State of the nearest object with `is_dynamic` and positive `lon_vel`, or nullopt.
+ */
+std::optional<ObjectRssState> select_cruise_target(
+  const std::vector<ObjectRssState> & object_states);
+
+/**
  * @brief Find the nearest predicted object that is not longitudinally safe relative to the ego
  * path within a time horizon.
  * @details For each trajectory point up to `lookahead_horizon`, an RSS check is applied to the

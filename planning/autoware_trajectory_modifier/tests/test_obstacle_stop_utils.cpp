@@ -25,10 +25,14 @@
 
 namespace
 {
+using autoware::trajectory_modifier::utils::obstacle_stop::compute_cruise_velocity;
 using autoware::trajectory_modifier::utils::obstacle_stop::evaluate_object_states;
 using autoware::trajectory_modifier::utils::obstacle_stop::get_object_stopping_distance;
+using autoware::trajectory_modifier::utils::obstacle_stop::get_safe_distance;
 using autoware::trajectory_modifier::utils::obstacle_stop::ObjectDecelMap;
+using autoware::trajectory_modifier::utils::obstacle_stop::ObjectRssState;
 using autoware::trajectory_modifier::utils::obstacle_stop::ObjectType;
+using autoware::trajectory_modifier::utils::obstacle_stop::select_cruise_target;
 using autoware::trajectory_modifier::utils::obstacle_stop::TargetObject;
 using autoware::trajectory_modifier::utils::obstacle_stop::TargetObjects;
 using autoware::trajectory_modifier::utils::obstacle_stop::TrajectoryPoints;
@@ -181,4 +185,73 @@ TEST(EvaluateObjectStates, GapIsMeasuredFromEgoFront)
   EXPECT_EQ(states[1].index, 1U);
   EXPECT_NEAR(states[1].arc_length, 12.0, tolerance);
   EXPECT_DOUBLE_EQ(states[1].gap, 0.0);
+}
+
+TEST(ComputeCruiseVelocity, InverseOfSafeDistance)
+{
+  constexpr double ego_decel = 1.0;
+  constexpr double reaction_time = 0.5;
+  constexpr double safety_margin = 8.0;
+  for (const double gap : {10.0, 20.0, 40.0}) {
+    for (const double object_stopping_distance : {0.0, 5.0, 20.0}) {
+      const auto v = compute_cruise_velocity(
+        gap, ego_decel, object_stopping_distance, reaction_time, safety_margin);
+      ASSERT_GT(v, 0.0);
+      EXPECT_NEAR(
+        get_safe_distance(v, ego_decel, object_stopping_distance, reaction_time, safety_margin),
+        gap, 1e-9);
+    }
+  }
+}
+
+TEST(ComputeCruiseVelocity, ZeroWhenGapWithinStandstillDistance)
+{
+  EXPECT_DOUBLE_EQ(compute_cruise_velocity(8.0, 1.0, 0.0, 0.5, 8.0), 0.0);
+  EXPECT_DOUBLE_EQ(compute_cruise_velocity(5.0, 1.0, 2.0, 0.5, 8.0), 0.0);
+  EXPECT_DOUBLE_EQ(compute_cruise_velocity(0.0, 1.0, 0.0, 0.5, 8.0), 0.0);
+}
+
+TEST(ComputeCruiseVelocity, ZeroReactionTime)
+{
+  // v^2 / (2 * a) = gap - margin + d_obj
+  EXPECT_NEAR(compute_cruise_velocity(20.0, 2.0, 4.0, 0.0, 8.0), std::sqrt(2.0 * 2.0 * 16.0), 1e-9);
+}
+
+TEST(ComputeCruiseVelocity, IncreasesWithGapAndObjectStoppingDistance)
+{
+  const auto base = compute_cruise_velocity(20.0, 1.0, 5.0, 0.5, 8.0);
+  EXPECT_GT(compute_cruise_velocity(30.0, 1.0, 5.0, 0.5, 8.0), base);
+  EXPECT_GT(compute_cruise_velocity(20.0, 1.0, 10.0, 0.5, 8.0), base);
+  EXPECT_LT(compute_cruise_velocity(20.0, 1.0, 5.0, 1.0, 8.0), base);
+  EXPECT_LT(compute_cruise_velocity(20.0, 0.5, 5.0, 0.5, 8.0), base);
+}
+
+namespace
+{
+ObjectRssState make_state(const size_t index, const double arc_length, const double lon_vel)
+{
+  ObjectRssState state;
+  state.index = index;
+  state.arc_length = arc_length;
+  state.lon_vel = lon_vel;
+  state.is_dynamic = std::abs(lon_vel) > stopped_vel_th;
+  return state;
+}
+}  // namespace
+
+TEST(SelectCruiseTarget, NoTargetWithoutForwardMovingObject)
+{
+  EXPECT_FALSE(select_cruise_target({}).has_value());
+  EXPECT_FALSE(select_cruise_target({make_state(0, 20.0, 0.0), make_state(1, 30.0, -5.0)}));
+  EXPECT_FALSE(select_cruise_target({make_state(0, 20.0, 0.2)}));
+}
+
+TEST(SelectCruiseTarget, NearestForwardMovingObject)
+{
+  const auto target = select_cruise_target(
+    {make_state(0, 40.0, 5.0), make_state(1, 10.0, 0.0), make_state(2, 15.0, -5.0),
+     make_state(3, 25.0, 3.0)});
+  ASSERT_TRUE(target.has_value());
+  EXPECT_EQ(target->index, 3U);
+  EXPECT_DOUBLE_EQ(target->lon_vel, 3.0);
 }

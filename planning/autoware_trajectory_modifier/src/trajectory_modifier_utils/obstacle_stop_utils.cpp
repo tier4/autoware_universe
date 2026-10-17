@@ -527,6 +527,29 @@ std::vector<ObjectRssState> evaluate_object_states(
   return states;
 }
 
+double compute_cruise_velocity(
+  const double gap, const double ego_decel, const double object_stopping_distance,
+  const double reaction_time, const double safety_margin)
+{
+  constexpr double eps = 1e-3;
+  const auto ego_decel_mag = std::max(std::abs(ego_decel), eps);
+  const auto t_r = std::max(0.0, reaction_time);
+  const auto available_distance = gap - safety_margin + object_stopping_distance;
+  if (available_distance <= 0.0) return 0.0;
+  return ego_decel_mag * (-t_r + std::sqrt(t_r * t_r + 2.0 * available_distance / ego_decel_mag));
+}
+
+std::optional<ObjectRssState> select_cruise_target(
+  const std::vector<ObjectRssState> & object_states)
+{
+  std::optional<ObjectRssState> target;
+  for (const auto & state : object_states) {
+    if (!state.is_dynamic || state.lon_vel <= 0.0) continue;
+    if (!target || state.arc_length < target->arc_length) target = state;
+  }
+  return target;
+}
+
 std::optional<CollisionPoint> get_nearest_object_collision(
   TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
   const double stopped_vel_th)
