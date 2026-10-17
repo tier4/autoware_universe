@@ -485,6 +485,48 @@ double get_safe_distance(
   return safe_distance;
 }
 
+double get_object_stopping_distance(
+  const ObjectType type, const double lon_vel, const ObjectDecelMap & object_decel_map,
+  const double stopped_vel_th)
+{
+  constexpr double eps = 1e-3;
+  if (lon_vel < stopped_vel_th) return 0.0;
+  const auto it = object_decel_map.find(type);
+  if (it == object_decel_map.end()) return 0.0;
+  const auto object_decel_mag = std::max(std::abs(it->second), eps);
+  return lon_vel * lon_vel / (2 * object_decel_mag);
+}
+
+std::vector<ObjectRssState> evaluate_object_states(
+  const TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
+  const TrajectoryShape & trajectory_shape, const ObjectDecelMap & object_decel_map,
+  const double stopped_vel_th)
+{
+  std::vector<ObjectRssState> states;
+  if (target_objects.empty() || trajectory_points.size() < 2) return states;
+
+  const auto ego_front_arc_length =
+    trajectory_shape.ego_arc_length() + trajectory_shape.ego_front_offset;
+
+  states.reserve(target_objects.size());
+  for (size_t i = 0; i < target_objects.size(); ++i) {
+    const auto & object = target_objects[i].object;
+    const auto obj_state = get_object_state_at_time(trajectory_points, object, 0.0);
+    ObjectRssState state;
+    state.index = i;
+    state.type = to_object_type(object);
+    state.nearest_point = obj_state.nearest_point;
+    state.arc_length = obj_state.arc_length;
+    state.gap = std::max(0.0, obj_state.arc_length - ego_front_arc_length);
+    state.lon_vel = obj_state.lon_vel;
+    state.stopping_distance =
+      get_object_stopping_distance(state.type, obj_state.lon_vel, object_decel_map, stopped_vel_th);
+    state.is_dynamic = std::abs(obj_state.lon_vel) > stopped_vel_th;
+    states.push_back(state);
+  }
+  return states;
+}
+
 std::optional<CollisionPoint> get_nearest_object_collision(
   TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
   const double stopped_vel_th)
@@ -531,20 +573,6 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
   constexpr double eps = 1e-3;
 
-  auto get_object_stopping_distance = [&](const auto & object, const double obj_lon_vel) {
-    if (obj_lon_vel < stopped_vel_th) return 0.0;
-    const auto label =
-      object.classification.empty()
-        ? ObjectClassification::UNKNOWN
-        : autoware::object_recognition_utils::getHighestProbLabel(object.classification);
-    const auto obj_type = classification_to_object_type.at(label);
-    if (!object_decel_map.count(obj_type)) return 0.0;
-    const auto obj_decel = object_decel_map.at(obj_type);
-    const auto object_decel_mag = std::max(std::abs(obj_decel), eps);
-    const auto object_stopping_distance = obj_lon_vel * obj_lon_vel / (2 * object_decel_mag);
-    return object_stopping_distance;
-  };
-
   auto is_safe = [&](
                    const double obj_arc_length, const double obj_stopping_distance,
                    const double ego_arc_length,
@@ -566,6 +594,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   double obstacle_lon_vel = 0.0;
 
   for (auto & object : target_objects) {
+    const auto obj_type = to_object_type(object.object);
     auto last_p = trajectory_points.front().pose.position;
     auto curr_arc_length = 0.0;
     for (const auto & traj_p : trajectory_points) {
@@ -576,7 +605,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       const auto target_ego_vel = traj_p.longitudinal_velocity_mps;
       const auto obj_state = get_object_state_at_time(trajectory_points, object.object, t);
       const auto obj_stopping_distance =
-        get_object_stopping_distance(object.object, obj_state.lon_vel);
+        get_object_stopping_distance(obj_type, obj_state.lon_vel, object_decel_map, stopped_vel_th);
       std::tie(object.is_safe, object.safe_distance, object.distance_from_ego) =
         is_safe(obj_state.arc_length, obj_stopping_distance, curr_arc_length, target_ego_vel);
       if (object.is_safe) continue;

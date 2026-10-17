@@ -250,6 +250,19 @@ struct TargetObject
 };
 using TargetObjects = std::vector<TargetObject>;
 
+/// Current (t = 0) longitudinal state of a target object relative to the ego path.
+struct ObjectRssState
+{
+  size_t index{0};  ///< index into the evaluated TargetObjects
+  ObjectType type{ObjectType::UNKNOWN};
+  geometry_msgs::msg::Point nearest_point;  ///< object polygon vertex nearest along the path
+  double arc_length{0.0};         ///< arc length from trajectory start to nearest_point [m]
+  double gap{0.0};                ///< distance from ego front to nearest_point, >= 0 [m]
+  double lon_vel{0.0};            ///< object velocity projected on the path direction [m/s]
+  double stopping_distance{0.0};  ///< object braking distance, 0 if not moving forward [m]
+  bool is_dynamic{false};         ///< |lon_vel| > stopped velocity threshold
+};
+
 struct DebugData
 {
   PointCloud2::SharedPtr filtered_points;
@@ -322,6 +335,49 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
   const TrajectoryShape & trajectory_shape, const PointCloud::Ptr & pointcloud,
   const LateralMarginMap & lateral_margin_map, const double traj_low_velocity_th,
   std::vector<geometry_msgs::msg::Point> & target_pcd_points);
+
+/**
+ * @brief Predict the object state at time `t` relative to the trajectory.
+ * @details The object pose is taken from its most confident predicted path (falling back to
+ * constant-acceleration extrapolation), and its velocity is projected on the direction of the
+ * nearest trajectory segment.
+ * @param trajectory_points Reference path, at least 2 points.
+ * @param object Predicted object.
+ * @param t Time from now [s].
+ * @return Arc length (clamped to >= 0) and position of the object vertex nearest along the path,
+ * and the object longitudinal velocity along the path.
+ */
+ObjectState get_object_state_at_time(
+  const TrajectoryPoints & trajectory_points, const PredictedObject & object, const double t);
+
+/**
+ * @brief Braking distance of an object moving along the ego path.
+ * @param type Object type used to look up the braking deceleration.
+ * @param lon_vel Object longitudinal velocity along the ego path [m/s].
+ * @param object_decel_map Braking magnitude [m/s^2] per object type.
+ * @param stopped_vel_th Objects with `lon_vel` below this [m/s] have zero braking distance.
+ * @return Braking distance [m], 0 if the object is not moving forward or its type has no
+ * deceleration.
+ */
+double get_object_stopping_distance(
+  const ObjectType type, const double lon_vel, const ObjectDecelMap & object_decel_map,
+  const double stopped_vel_th);
+
+/**
+ * @brief Evaluate the current (t = 0) longitudinal state of each target object.
+ * @details The gap is measured from the ego front, located with the ego arc length and front
+ * offset of `trajectory_shape`, to the object vertex nearest along `trajectory_points`.
+ * @param target_objects Predicted objects to evaluate (already filtered).
+ * @param trajectory_points Reference path used to build `trajectory_shape`.
+ * @param trajectory_shape Ego footprint index from build_trajectory_footprint_index().
+ * @param object_decel_map Braking magnitude [m/s^2] per object type.
+ * @param stopped_vel_th Objects with |lon. velocity| below this [m/s] are considered static.
+ * @return One state per target object, in the same order; empty if inputs are invalid.
+ */
+std::vector<ObjectRssState> evaluate_object_states(
+  const TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
+  const TrajectoryShape & trajectory_shape, const ObjectDecelMap & object_decel_map,
+  const double stopped_vel_th);
 
 /**
  * @brief Find the nearest predicted object that is not longitudinally safe relative to the ego
