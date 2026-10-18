@@ -21,6 +21,7 @@
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_math/unit_conversion.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 
@@ -45,6 +46,12 @@ namespace
 double to_seconds(const builtin_interfaces::msg::Duration & duration)
 {
   return static_cast<double>(duration.sec) + static_cast<double>(duration.nanosec) * 1e-9;
+}
+
+/** @brief Convert a Time message to seconds. */
+double to_seconds(const builtin_interfaces::msg::Time & time)
+{
+  return static_cast<double>(time.sec) + static_cast<double>(time.nanosec) * 1e-9;
 }
 
 /**
@@ -239,6 +246,8 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
     return tl::make_unexpected("Vehicle info not set");
   }
 
+  speed_limit_transition_ = update_speed_limit_transition(speed_limit_transition_, context);
+
   // Each checker reports its own risk level. The core derives feasibility from the worst risk
   // level of these metrics, so a violated constraint reports HIGH_CAUTION and does not reject the
   // trajectory on its own.
@@ -249,6 +258,38 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
   }
 
   return ValidationResult{std::move(metrics)};
+}
+
+TrajectoryFeasibilityFilter::SpeedLimitTransition
+TrajectoryFeasibilityFilter::update_speed_limit_transition(
+  const SpeedLimitTransition & prev_state, const FilterContext & context) const
+{
+  if (!context.odometry || !context.lanelet_map) {
+    return prev_state;
+  }
+
+  // After a limit drop, decrease the old allowed speed with max deceleration and zero jerk.
+  const double now = to_seconds(context.odometry->header.stamp);
+  // Reset the state if the time goes backward (e.g. rosbag loop or simulator reset).
+  auto state = now < prev_state.last_limit_drop_time ? SpeedLimitTransition{} : prev_state;
+  const auto speed_limit_opt =
+    find_nearest_lanelet_speed_limit_mps(*context.lanelet_map, context.odometry->pose.pose);
+  if (
+    speed_limit_opt && state.prev_speed_limit &&
+    speed_limit_opt.value() < state.prev_speed_limit.value()) {
+    state.last_limit_drop_time = now;
+    state.last_limit_drop_allowed_speed =
+      state.prev_speed_limit.value() + state.speed_limit_tolerance;
+  }
+  if (speed_limit_opt) {
+    state.prev_speed_limit = speed_limit_opt;
+    state.speed_limit_tolerance = calc_speed_limit_tolerance_mps(
+      speed_limit_opt.value(), params_.speed_limit_tolerance.speed_limits_kmph,
+      params_.speed_limit_tolerance.tolerances_kmph);
+  }
+  state.transition_speed = state.last_limit_drop_allowed_speed -
+                           params_.max_deceleration * (now - state.last_limit_drop_time);
+  return state;
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_speed(
@@ -269,7 +310,9 @@ MetricReport TrajectoryFeasibilityFilter::check_speed(
 MetricReport TrajectoryFeasibilityFilter::check_lanelet_speed_limit(
   const TrajectoryPoints & traj_points, const FilterContext & context) const
 {
-  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(
+    traj_points, context, speed_limit_transition_.speed_limit_tolerance,
+    speed_limit_transition_.transition_speed);
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
@@ -422,8 +465,32 @@ std::pair<double, bool> is_speed_ok(const TrajectoryPoints & traj_points, double
   return {max_observed, is_ok};
 }
 
+double calc_speed_limit_tolerance_mps(
+  const double speed_limit_mps, const std::vector<double> & speed_limits_kmph,
+  const std::vector<double> & tolerances_kmph)
+{
+  if (speed_limits_kmph.empty() || speed_limits_kmph.size() != tolerances_kmph.size()) {
+    return 0.0;
+  }
+
+  const double speed_limit_kmph = autoware_utils_math::mps2kmph(speed_limit_mps);
+  if (speed_limit_kmph <= speed_limits_kmph.front()) {
+    return autoware_utils_math::kmph2mps(tolerances_kmph.front());
+  }
+  for (size_t i = 1; i < speed_limits_kmph.size(); ++i) {
+    if (speed_limit_kmph <= speed_limits_kmph[i]) {
+      const double ratio = (speed_limit_kmph - speed_limits_kmph[i - 1]) /
+                           (speed_limits_kmph[i] - speed_limits_kmph[i - 1]);
+      return autoware_utils_math::kmph2mps(
+        tolerances_kmph[i - 1] + ratio * (tolerances_kmph[i] - tolerances_kmph[i - 1]));
+    }
+  }
+  return autoware_utils_math::kmph2mps(tolerances_kmph.back());
+}
+
 std::pair<double, bool> is_lanelet_speed_limit_ok(
-  const TrajectoryPoints & traj_points, const FilterContext & context)
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  const double speed_limit_tolerance, const double transition_speed)
 {
   if (traj_points.empty() || !context.odometry || !context.lanelet_map) {
     return {0.0, true};
@@ -440,7 +507,9 @@ std::pair<double, bool> is_lanelet_speed_limit_ok(
     return {observed_speed, true};
   }
 
-  return {observed_speed, observed_speed <= *speed_limit_mps};
+  return {
+    observed_speed,
+    observed_speed <= std::max(*speed_limit_mps + speed_limit_tolerance, transition_speed)};
 }
 
 std::pair<double, bool> is_acceleration_ok(

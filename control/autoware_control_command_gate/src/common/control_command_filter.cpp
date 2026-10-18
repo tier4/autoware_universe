@@ -200,10 +200,6 @@ void VehicleCmdFilter::limitLateralSteerAccel(
   steer_angle_rate_clip = 0.0;
   steer_rotation_rate_clip = 0.0;
 
-  if (!param_.enable_steer_accel_limit) {
-    return;
-  }
-
   if (dt < DT_MIN_STEER_ACCEL_LIMIT) {
     input.lateral.steering_tire_rotation_rate = prev_steer_rotation_rate_;
     return;

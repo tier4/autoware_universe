@@ -225,8 +225,6 @@ PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
   debug.markers["reference_path_following_speed_limit"] =
     make_speed_limit_markers(path, s0, context.odometry.header.stamp);
 
-  // TODO(odashima): apply stopline as speed limit
-
   VelocityPlanningParams vp_params;
   vp_params.resolution_m = vo.resolution_m;
   vp_params.max_length_m = vo.max_length_m;

@@ -18,7 +18,7 @@
     </class>
     <class type="autoware::safety_planner::experimental::ObstacleStopConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
-      <description>Emits one rigid-body KeepOut per predicted object, along its most likely predicted path</description>
+      <description>The obstacle_stop of autoware_minimum_rule_based_planner, emitting its stop point as a Gate</description>
     </class>
   </library>
   <library path="autoware_safety_planner_trajectory_planner_plugins">

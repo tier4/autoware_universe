@@ -263,28 +263,153 @@ safety_planner:
       read_only: true
       description: Where the reference_path crosses a walkway lanelet, close the gap between the road_borders on each side of it with a hard boundary
 
+  # The obstacle_stop of autoware_minimum_rule_based_planner (objects only), emitted as a Gate
   obstacle_stop:
-    margin_m:
-      type: double
-      default_value: 0.5
-      read_only: true
-      description: "[m] the shape of an object is inflated by this much"
-      validation:
-        gt_eq<>: [0.0]
-    stop_distance_m:
+    stop_margin:
       type: double
       default_value: 6.0
       read_only: true
-      description: distance [m] between the stop line (Gate) and the nearest point of an object on the reference path corridor. 0 disables the stop line
+      description: distance [m] between the ego front and the obstacle at the stop
       validation:
         gt_eq<>: [0.0]
-    stop_line_max_object_speed_mps:
+    nominal_stopping_decel:
       type: double
       default_value: 1.0
       read_only: true
-      description: stop lines are issued only for objects slower than this [m/s] (a moving lead vehicle is handled by the KeepOut, not by a stop line)
+      description: deceleration [m/s^2] for the detection length of the trajectory footprint
+      validation:
+        gt<>: [0.0]
+    maximum_stopping_decel:
+      type: double
+      default_value: 4.0
+      read_only: true
+      description: deceleration [m/s^2] for the nearest feasible stop point
+      validation:
+        gt<>: [0.0]
+    stopping_jerk:
+      type: double
+      default_value: 3.0
+      read_only: true
+      description: jerk [m/s^3] for the stopping distance
+      validation:
+        gt<>: [0.0]
+    delay_response_time:
+      type: double
+      default_value: 0.5
+      read_only: true
+      description: response delay [s] for the stopping distance and the RSS
       validation:
         gt_eq<>: [0.0]
+    on_time_buffer:
+      type: double
+      default_value: 0.5
+      read_only: true
+      description: time [s] a collision must persist before the stop line is issued
+      validation:
+        gt_eq<>: [0.0]
+    off_time_buffer:
+      type: double
+      default_value: 0.7
+      read_only: true
+      description: time [s] a collision must be absent before the stop line is cleared
+      validation:
+        gt_eq<>: [0.0]
+    arrived_distance_threshold:
+      type: double
+      default_value: 0.5
+      read_only: true
+      description: distance [m] to the stop point below which the ego stops where it is
+      validation:
+        gt_eq<>: [0.0]
+    objects:
+      target_objects:
+        bbox:
+          type: string_array
+          default_value:
+            - car
+            - truck
+            - bus
+            - trailer
+            - motorcycle
+            - bicycle
+            - pedestrian
+            - hazard
+            - unknown
+          read_only: true
+          description: classes of the BOUNDING_BOX objects to stop for
+        polygon:
+          type: string_array
+          default_value:
+            - car
+            - truck
+            - bus
+            - trailer
+            - pedestrian
+            - hazard
+            - unknown
+          read_only: true
+          description: classes of the POLYGON objects to stop for
+      stopped_velocity_th:
+        type: double
+        default_value: 0.3
+        read_only: true
+        description: velocity [m/s] below which an object is considered stopped
+      max_lateral_velocity_th:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: lateral velocity [m/s] above which a moving object is considered leaving the path
+      safety_buffer:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: the shape of an object is expanded by this much [m]
+      lateral_margin:
+        base:
+          &default_margin {
+            type: double,
+            default_value: 0.2,
+            read_only: true,
+            description: "Per-class lateral margin [m]",
+          }
+        car: *default_margin
+        truck: *default_margin
+        bus: *default_margin
+        trailer: *default_margin
+        motorcycle: *default_margin
+        bicycle: *default_margin
+        pedestrian: *default_margin
+        hazard: *default_margin
+        unknown: *default_margin
+    rss_params:
+      enable:
+        type: bool
+        default_value: true
+        read_only: true
+        description: stop only for objects that violate the RSS distance; otherwise for every object on the path
+      object_decel:
+        car: { type: double, default_value: 1.6, read_only: true, description: "[m/s^2]" }
+        truck: { type: double, default_value: 1.6, read_only: true, description: "[m/s^2]" }
+        bus: { type: double, default_value: 1.6, read_only: true, description: "[m/s^2]" }
+        trailer: { type: double, default_value: 1.6, read_only: true, description: "[m/s^2]" }
+        motorcycle: { type: double, default_value: 2.0, read_only: true, description: "[m/s^2]" }
+        bicycle: { type: double, default_value: 3.0, read_only: true, description: "[m/s^2]" }
+        pedestrian: { type: double, default_value: 5.0, read_only: true, description: "[m/s^2]" }
+      ego_decel:
+        type: double
+        default_value: 2.0
+        read_only: true
+        description: "[m/s^2]"
+      safety_margin:
+        type: double
+        default_value: 1.5
+        read_only: true
+        description: "[m]"
+      lookahead_horizon:
+        type: double
+        default_value: 1.5
+        read_only: true
+        description: "[s]"
 
   frenet_sampling_based_planner:
     time_step_s:

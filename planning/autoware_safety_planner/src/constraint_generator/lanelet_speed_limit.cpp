@@ -77,6 +77,13 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
   const auto current_id = route_manager.current_lanelet().id();
   const double v_ego = std::max(0.0, context.odometry.twist.twist.linear.x);
 
+  if (satisfied_lanelet_id_ != current_id) {
+    satisfied_lanelet_id_.reset();
+  }
+  if (v_ego <= traffic_rules->speedLimit(route_manager.current_lanelet()).speedLimit.value()) {
+    satisfied_lanelet_id_ = current_id;
+  }
+
   struct LaneletSpan  // <'a>
   {
     std::size_t lanelet_index;  // <'a> of lanelets
@@ -103,8 +110,7 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
     }
   }
 
-  for (const auto & span : spans) {
-    const auto & lanelet = lanelets[span.lanelet_index];
+  const auto add_zone = [&](const lanelet::ConstLanelet & lanelet, const bool relax) {
     const double v_limit =
       static_cast<double>(traffic_rules->speedLimit(lanelet).speedLimit.value());
 
@@ -112,10 +118,22 @@ ConstraintGeneratorOutput LaneletSpeedLimitConstraintGenerator::generate_constra
     boost::geometry::convert(lanelet.polygon2d(), region);
 
     Constraint constraint;
-    constraint.payload = SpeedLimitZone{
-      std::move(region), lanelet.id() == current_id ? std::max(v_limit, v_ego) : v_limit};
+    constraint.payload =
+      SpeedLimitZone{std::move(region), relax ? std::max(v_limit, v_ego) : v_limit};
     constraint.source = Source{get_name(), std::to_string(lanelet.id()), "speed_limit"};
     output.constraints.push_back(std::move(constraint));
+  };
+  for (const auto & span : spans) {
+    const auto & lanelet = lanelets[span.lanelet_index];
+    const bool relax = lanelet.id() == current_id && !satisfied_lanelet_id_;
+    add_zone(lanelet, relax);
+    for (const auto & shoulder :
+         {route_manager.left_shoulder_lanelet(lanelet),
+          route_manager.right_shoulder_lanelet(lanelet)}) {
+      if (shoulder) {
+        add_zone(*shoulder, relax);
+      }
+    }
   }
 
   return output;
