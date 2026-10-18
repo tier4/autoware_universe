@@ -252,6 +252,14 @@ protected:
     p.rss_params.safety_margin = 2.0;
     p.rss_params.ego_decel = 4.0;
     p.rss_params.lookahead_horizon = 2.0;
+
+    p.cruise.enable = false;
+    p.cruise.min_distance = 8.0;
+    p.cruise.time_headway = 1.0;
+    p.cruise.ego_decel = 1.0;
+    p.cruise.max_acceleration = 1.0;
+    p.cruise.max_deceleration = 1.5;
+    p.cruise.max_jerk = 1.5;
   }
 
   std::shared_ptr<rclcpp::Node> node_;
@@ -260,6 +268,41 @@ protected:
   trajectory_modifier_params::Params params_;
   std::shared_ptr<TrajectoryModifierContext> context_;
 };
+
+TEST_F(ObstacleStopIntegrationTest, CruiseParamsKeptWhenValid)
+{
+  const auto & cruise = plugin_->get_params().cruise;
+  EXPECT_FALSE(cruise.enable);
+  EXPECT_DOUBLE_EQ(cruise.min_distance, 8.0);
+  EXPECT_DOUBLE_EQ(cruise.time_headway, 1.0);
+  EXPECT_DOUBLE_EQ(cruise.ego_decel, 1.0);
+  EXPECT_DOUBLE_EQ(cruise.max_acceleration, 1.0);
+  EXPECT_DOUBLE_EQ(cruise.max_deceleration, 1.5);
+  EXPECT_DOUBLE_EQ(cruise.max_jerk, 1.5);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseParamsClampedToStopParams)
+{
+  params_.obstacle_stop.cruise.min_distance = 2.0;
+  params_.obstacle_stop.cruise.ego_decel = 3.0;
+  params_.obstacle_stop.rss_params.ego_decel = 2.0;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  const auto & p = plugin_->get_params();
+  EXPECT_DOUBLE_EQ(p.cruise.min_distance, p.stop_margin);
+  EXPECT_DOUBLE_EQ(p.cruise.ego_decel, 2.0);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseDecelClampedToSanitizedRssDecel)
+{
+  params_.obstacle_stop.rss_params.ego_decel = 10.0;
+  params_.obstacle_stop.cruise.ego_decel = 6.0;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  const auto & p = plugin_->get_params();
+  EXPECT_DOUBLE_EQ(p.rss_params.ego_decel, params_.stopping_constraints.maximum_deceleration);
+  EXPECT_DOUBLE_EQ(p.cruise.ego_decel, params_.stopping_constraints.maximum_deceleration);
+}
 
 TEST_F(ObstacleStopIntegrationTest, TrajectoryNotModifiedWhenDisabled)
 {

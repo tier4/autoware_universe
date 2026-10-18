@@ -89,6 +89,8 @@ private:
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_filtered_pointcloud_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
+  void verify_params();
+
   void check_obstacles(const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
   std::optional<CollisionPoint> check_predicted_objects(
     const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);

@@ -58,11 +58,7 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
   enabled_ = params.use_obstacle_stop;
   trajectory_time_step_ = params.trajectory_time_step;
 
-  {
-    auto & p = params_.rss_params;
-    p.ego_decel = std::clamp(
-      p.ego_decel, stopping_params_.nominal_deceleration, stopping_params_.maximum_deceleration);
-  }
+  verify_params();
 
   {
     const auto & p = params_.objects;
@@ -115,11 +111,7 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
   enabled_ = params.use_obstacle_stop;
   trajectory_time_step_ = params.trajectory_time_step;
 
-  {
-    auto & p = params_.rss_params;
-    p.ego_decel = std::clamp(
-      p.ego_decel, stopping_params_.nominal_deceleration, stopping_params_.maximum_deceleration);
-  }
+  verify_params();
 
   {
     const auto & p = params_.objects;
@@ -161,6 +153,30 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
       {utils::obstacle_stop::ObjectType::BICYCLE, p.object_decel.bicycle},
       {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.object_decel.pedestrian},
       {utils::obstacle_stop::ObjectType::ANIMAL, p.object_decel.animal}};
+  }
+}
+
+void ObstacleStop::verify_params()
+{
+  auto & rss = params_.rss_params;
+  rss.ego_decel = std::clamp(
+    rss.ego_decel, stopping_params_.nominal_deceleration, stopping_params_.maximum_deceleration);
+
+  // cruise must stay softer than the RSS stop check, otherwise the two keep handing over control
+  auto & cruise = params_.cruise;
+  if (cruise.ego_decel > rss.ego_decel) {
+    RCLCPP_WARN(
+      get_node_ptr()->get_logger(),
+      "[TM ObstacleStop] cruise.ego_decel (%.2f) exceeds rss_params.ego_decel (%.2f), clamping",
+      cruise.ego_decel, rss.ego_decel);
+    cruise.ego_decel = rss.ego_decel;
+  }
+  if (cruise.min_distance < params_.stop_margin) {
+    RCLCPP_WARN(
+      get_node_ptr()->get_logger(),
+      "[TM ObstacleStop] cruise.min_distance (%.2f) is below stop_margin (%.2f), clamping",
+      cruise.min_distance, params_.stop_margin);
+    cruise.min_distance = params_.stop_margin;
   }
 }
 
