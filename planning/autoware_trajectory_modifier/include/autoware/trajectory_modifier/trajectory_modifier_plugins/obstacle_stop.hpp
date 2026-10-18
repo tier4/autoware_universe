@@ -16,6 +16,7 @@
 #define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__OBSTACLE_STOP_HPP_
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -86,6 +87,7 @@ private:
 
   std::unordered_map<utils::obstacle_stop::ObjectType, double> object_decel_map_;
   utils::obstacle_stop::LateralMarginMap lateral_margin_map_;
+  detail::FixedProfileMemory cruise_profile_;
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_filtered_pointcloud_;

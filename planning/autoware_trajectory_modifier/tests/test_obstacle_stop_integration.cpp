@@ -98,14 +98,16 @@ AccelWithCovarianceStamped::ConstSharedPtr make_acceleration(double accel_x)
 }
 
 PredictedObject create_box_object(
-  double x, double y, double size_x, double size_y, double size_z, uint8_t classification_label)
+  double x, double y, double size_x, double size_y, double size_z, uint8_t classification_label,
+  double velocity = 0.0, bool oncoming = false)
 {
   PredictedObject object;
   object.kinematics.initial_pose_with_covariance.pose.position.x = x;
   object.kinematics.initial_pose_with_covariance.pose.position.y = y;
   object.kinematics.initial_pose_with_covariance.pose.position.z = 0.0;
-  object.kinematics.initial_pose_with_covariance.pose.orientation.w = 1.0;
-  object.kinematics.initial_twist_with_covariance.twist.linear.x = 0.0;
+  object.kinematics.initial_pose_with_covariance.pose.orientation.z = oncoming ? 1.0 : 0.0;
+  object.kinematics.initial_pose_with_covariance.pose.orientation.w = oncoming ? 0.0 : 1.0;
+  object.kinematics.initial_twist_with_covariance.twist.linear.x = velocity;
 
   object.shape.type = Shape::BOUNDING_BOX;
   object.shape.dimensions.x = size_x;
@@ -120,7 +122,8 @@ PredictedObject create_box_object(
   return object;
 }
 
-PredictedObjects::ConstSharedPtr make_blocking_car(double x, double y)
+PredictedObjects::ConstSharedPtr make_car(
+  double x, double y, double velocity = 0.0, bool oncoming = false)
 {
   constexpr double car_size_x = 2.0;
   constexpr double car_size_y = 2.0;
@@ -128,9 +131,14 @@ PredictedObjects::ConstSharedPtr make_blocking_car(double x, double y)
 
   PredictedObjects predicted_objects;
   predicted_objects.header.frame_id = "map";
-  predicted_objects.objects.push_back(
-    create_box_object(x, y, car_size_x, car_size_y, car_size_z, ObjectClassification::CAR));
+  predicted_objects.objects.push_back(create_box_object(
+    x, y, car_size_x, car_size_y, car_size_z, ObjectClassification::CAR, velocity, oncoming));
   return std::make_shared<const PredictedObjects>(predicted_objects);
+}
+
+PredictedObjects::ConstSharedPtr make_blocking_car(double x, double y)
+{
+  return make_car(x, y);
 }
 
 // Build a dense blocking pointcloud the obstacle_stop pipeline will detect.
@@ -260,6 +268,13 @@ protected:
     p.cruise.max_acceleration = 1.0;
     p.cruise.max_deceleration = 1.5;
     p.cruise.max_jerk = 1.5;
+  }
+
+  bool process_with_hysteresis(TrajectoryPoints & trajectory, const TrajectoryModifierData & input)
+  {
+    process_plugin(*plugin_, trajectory, input);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    return process_plugin(*plugin_, trajectory, input);
   }
 
   std::shared_ptr<rclcpp::Node> node_;
@@ -542,4 +557,80 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
 
   const auto expected_stop_margin = 2.01;  // Computed based on max_decel limit and jerk limit
   EXPECT_NEAR(min_pcd_x - trajectory.back().pose.position.x, expected_stop_margin, 0.1);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseDisabledStillStopsForMovingLead)
+{
+  auto trajectory = create_straight_trajectory(40.0, 8.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(25.0, 0.0, 4.0));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseCapsVelocityForMovingLeadWithoutStop)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(40.0, 8.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(25.0, 0.0, 4.0));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_GT(trajectory.back().longitudinal_velocity_mps, 0.5F);
+  EXPECT_LT(trajectory.back().longitudinal_velocity_mps, 7.0F);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseFallsBackToStopWhenGapIsTooSmall)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 8.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(6.0, 0.0, 4.0));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseDoesNotCapStoppedCar)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 8.0);
+  const auto input =
+    create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(20.0, 0.0));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseDoesNotCapOncomingCar)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 8.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(20.0, 0.0, 5.0, true));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseLeavesAlreadySlowerInputUnchanged)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 2.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 2.0), make_acceleration(0.0), make_car(20.0, 0.0, 8.0));
+
+  EXPECT_FALSE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 2.0F);
 }

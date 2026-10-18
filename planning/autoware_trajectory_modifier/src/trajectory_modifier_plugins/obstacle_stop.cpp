@@ -14,18 +14,22 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/obstacle_stop.hpp"
 
+#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,13 +37,46 @@
 namespace autoware::trajectory_modifier::plugin
 {
 using utils::obstacle_stop::build_trajectory_footprint_index;
+using utils::obstacle_stop::compute_cruise_velocity;
 using utils::obstacle_stop::evaluate_object_states;
 using utils::obstacle_stop::get_nearest_object_collision;
 using utils::obstacle_stop::get_nearest_pcd_collision;
 using utils::obstacle_stop::PointCloud;
 using utils::obstacle_stop::PointCloud2;
+using utils::obstacle_stop::select_cruise_target;
 using utils::obstacle_stop::TargetObject;
 using utils::obstacle_stop::TargetObjects;
+
+namespace
+{
+void ensure_increasing_timestamps(TrajectoryPoints & points)
+{
+  if (points.size() < 2) return;
+
+  auto is_strictly_increasing = [&]() {
+    auto prev = rclcpp::Duration(points.front().time_from_start).seconds();
+    if (!std::isfinite(prev) || prev < 0.0) return false;
+    for (std::size_t i = 1; i < points.size(); ++i) {
+      const auto t = rclcpp::Duration(points[i].time_from_start).seconds();
+      if (!std::isfinite(t) || t <= prev) return false;
+      prev = t;
+    }
+    return true;
+  };
+  if (is_strictly_increasing()) return;
+
+  constexpr double min_dt = 1e-3;
+  points.front().time_from_start = rclcpp::Duration::from_seconds(0.0);
+  auto t = 0.0;
+  for (std::size_t i = 1; i < points.size(); ++i) {
+    const auto ds = autoware_utils_geometry::calc_distance2d(points[i - 1].pose, points[i].pose);
+    const auto speed =
+      std::max(static_cast<double>(std::abs(points[i - 1].longitudinal_velocity_mps)), min_dt);
+    t += std::max(ds / speed, min_dt);
+    points[i].time_from_start = rclcpp::Duration::from_seconds(t);
+  }
+}
+}  // namespace
 
 void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
 {
@@ -60,6 +97,10 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
   trajectory_time_step_ = params.trajectory_time_step;
 
   verify_params();
+  cruise_profile_.set_parameters(detail::make_fixed_profile_parameters(params));
+  if (!params_.cruise.enable) {
+    cruise_profile_.clear();
+  }
 
   {
     const auto & p = params_.objects;
@@ -113,6 +154,10 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
   trajectory_time_step_ = params.trajectory_time_step;
 
   verify_params();
+  cruise_profile_.set_parameters(detail::make_fixed_profile_parameters(params));
+  if (!params_.cruise.enable) {
+    cruise_profile_.clear();
+  }
 
   {
     const auto & p = params_.objects;
@@ -268,11 +313,54 @@ ProcessingResult ObstacleStop::process(
 }
 
 bool ObstacleStop::apply_cruise(
-  TrajectoryPoints & /*traj_points*/, const TrajectoryModifierData & /*input*/)
+  TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
 {
-  // Cruise velocity limiting is applied here once that path is wired. Left as a no-op so
-  // this restructure does not change behaviour.
-  return false;
+  autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::apply_cruise", *get_time_keeper());
+
+  if (!params_.cruise.enable) {
+    cruise_profile_.clear();
+    return false;
+  }
+  if (traj_points.size() < 2 || !input.current_odometry) {
+    return false;
+  }
+
+  const auto target = select_cruise_target(object_rss_states_);
+  if (!target) {
+    cruise_profile_.store(input, TrajectoryPoints{}, {});
+    return false;
+  }
+
+  const auto & cruise = params_.cruise;
+  const auto margin = std::max(cruise.min_distance, cruise.time_headway * target->lon_vel);
+  const auto v_cruise = compute_cruise_velocity(
+    target->gap, cruise.ego_decel, target->stopping_distance, stopping_params_.delay_response_time,
+    margin);
+
+  ensure_increasing_timestamps(traj_points);
+
+  const detail::VelocityLimitConstraints constraints{
+    cruise.max_acceleration, cruise.max_deceleration, cruise.max_jerk};
+  auto stop_state = detail::make_fixed_profile_stop_state(traj_points);
+  stop_state.zero_speed_limit = v_cruise <= detail::k_fixed_profile_stop_velocity_threshold_mps;
+  const auto start = cruise_profile_.start(input, stop_state, traj_points);
+  const auto result = detail::apply_velocity_limits(
+    traj_points, constraints,
+    [v_cruise](const geometry_msgs::msg::Point &) { return std::optional<double>{v_cruise}; },
+    start.options);
+
+  if (!result.error.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 1000,
+      "[TM ObstacleStop] Cruise velocity limit failed for candidate %zu: %s", input.candidate_index,
+      result.error.c_str());
+  }
+  if (result.status == ProcessingResult::Unchanged && !result.error.empty()) {
+    cruise_profile_.store(input, TrajectoryPoints{}, stop_state);
+    return false;
+  }
+  cruise_profile_.store(input, traj_points, stop_state);
+  return result.status == ProcessingResult::Modified;
 }
 
 bool ObstacleStop::set_stop_point(
