@@ -33,6 +33,7 @@
 namespace autoware::trajectory_modifier::plugin
 {
 using utils::obstacle_stop::build_trajectory_footprint_index;
+using utils::obstacle_stop::evaluate_object_states;
 using utils::obstacle_stop::get_nearest_object_collision;
 using utils::obstacle_stop::get_nearest_pcd_collision;
 using utils::obstacle_stop::PointCloud;
@@ -180,37 +181,48 @@ void ObstacleStop::verify_params()
   }
 }
 
-bool ObstacleStop::is_trajectory_modification_required(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
+void ObstacleStop::reset_cycle()
 {
   debug_data_ = DebugData();
   safety_factors_ = SafetyFactorArray{};
+  nearest_collision_point_ = std::nullopt;
+  object_rss_states_.clear();
+}
+
+void ObstacleStop::build_trajectory_shape(
+  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
+{
+  autoware_utils_debug::ScopedTimeTrack st(
+    "ObstacleStop::build_trajectory_footprint_index", *get_time_keeper());
+
+  debug_data_.trajectory_shape = build_trajectory_footprint_index(
+    traj_points, input.current_odometry->pose.pose, context_->vehicle_info,
+    input.current_odometry->twist.twist.linear.x, input.current_acceleration->accel.accel.linear.x,
+    stopping_params_.nominal_deceleration, stopping_params_.jerk_limit, params_.stop_margin,
+    stopping_params_.delay_response_time);
+}
+
+bool ObstacleStop::is_trajectory_modification_required(
+  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
+{
+  reset_cycle();
 
   if (traj_points.empty()) {
-    nearest_collision_point_ = std::nullopt;
     return false;
   }
 
-  {
-    autoware_utils_debug::ScopedTimeTrack st(
-      "ObstacleStop::build_trajectory_footprint_index", *get_time_keeper());
-
-    debug_data_.trajectory_shape = build_trajectory_footprint_index(
-      traj_points, input.current_odometry->pose.pose, context_->vehicle_info,
-      input.current_odometry->twist.twist.linear.x,
-      input.current_acceleration->accel.accel.linear.x, stopping_params_.nominal_deceleration,
-      stopping_params_.jerk_limit, params_.stop_margin, stopping_params_.delay_response_time);
-  }
-
-  check_obstacles(traj_points, input);
+  build_trajectory_shape(traj_points, input);
+  detect_objects(traj_points, input);
+  object_rss_states_ = evaluate_object_states(
+    debug_data_.target_objects, traj_points, debug_data_.trajectory_shape, object_decel_map_,
+    params_.objects.stopped_velocity_th);
+  const auto collision_point_pcd = check_pointcloud(traj_points, input);
+  const auto collision_point_objects = evaluate_object_collision(traj_points);
+  check_obstacles(collision_point_objects, collision_point_pcd);
 
   debug_data_.ego_z = input.current_odometry->pose.pose.position.z;
-
-  const bool is_safe = nearest_collision_point_ == std::nullopt;
-
-  publish_debug_string(is_safe);
-
-  return !is_safe;
+  publish_debug_string(nearest_collision_point_ == std::nullopt);
+  return nearest_collision_point_ != std::nullopt;
 }
 
 ProcessingResult ObstacleStop::process(
@@ -224,16 +236,43 @@ ProcessingResult ObstacleStop::process(
   utils::obstacle_stop::trim_trajectory_and_remove_duplicates(trajectory);
   if (trajectory.size() < 2) return ProcessingResult::Unchanged;
 
-  if (!is_trajectory_modification_required(trajectory, input)) {
-    return ProcessingResult::Unchanged;
+  reset_cycle();
+  build_trajectory_shape(trajectory, input);
+  detect_objects(trajectory, input);
+  object_rss_states_ = evaluate_object_states(
+    debug_data_.target_objects, trajectory, debug_data_.trajectory_shape, object_decel_map_,
+    params_.objects.stopped_velocity_th);
+
+  const bool cruise_modified = apply_cruise(trajectory, input);
+
+  const auto collision_point_pcd = check_pointcloud(trajectory, input);
+  const auto collision_point_objects = evaluate_object_collision(trajectory);
+  check_obstacles(collision_point_objects, collision_point_pcd);
+
+  debug_data_.ego_z = input.current_odometry->pose.pose.position.z;
+  publish_debug_string(nearest_collision_point_ == std::nullopt);
+
+  if (nearest_collision_point_) {
+    const bool stop_modified = set_stop_point(trajectory, input);
+    traj_points = std::move(trajectory);
+    return (cruise_modified || stop_modified) ? ProcessingResult::Modified
+                                              : ProcessingResult::Unchanged;
   }
 
-  if (!nearest_collision_point_) return ProcessingResult::Unchanged;
+  if (cruise_modified) {
+    traj_points = std::move(trajectory);
+    return ProcessingResult::Modified;
+  }
 
-  traj_points = std::move(trajectory);
+  return ProcessingResult::Unchanged;
+}
 
-  return set_stop_point(traj_points, input) ? ProcessingResult::Modified
-                                            : ProcessingResult::Unchanged;
+bool ObstacleStop::apply_cruise(
+  TrajectoryPoints & /*traj_points*/, const TrajectoryModifierData & /*input*/)
+{
+  // Cruise velocity limiting is applied here once that path is wired. Left as a no-op so
+  // this restructure does not change behaviour.
+  return false;
 }
 
 bool ObstacleStop::set_stop_point(
@@ -289,11 +328,10 @@ bool ObstacleStop::set_stop_point(
 }
 
 void ObstacleStop::check_obstacles(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
+  const std::optional<CollisionPoint> & collision_point_objects,
+  const std::optional<CollisionPoint> & collision_point_pcd)
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::check_obstacles", *get_time_keeper());
-  const auto collision_point_objects = check_predicted_objects(traj_points, input);
-  const auto collision_point_pcd = check_pointcloud(traj_points, input);
 
   auto get_safety_factor = [&](
                              const geometry_msgs::msg::Point & point,
@@ -341,12 +379,11 @@ void ObstacleStop::check_obstacles(
   });
 }
 
-std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
+void ObstacleStop::detect_objects(
   const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
 {
-  autoware_utils_debug::ScopedTimeTrack st(
-    "ObstacleStop::check_predicted_objects", *get_time_keeper());
-  if (!params_.use_objects || !input.predicted_objects) return std::nullopt;
+  autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::detect_objects", *get_time_keeper());
+  if (!params_.use_objects || !input.predicted_objects) return;
 
   debug_data_.filtered_objects = *input.predicted_objects;
 
@@ -358,6 +395,14 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   object_filter_->filter_by_target_area(
     debug_data_.target_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
     lateral_margin_map_);
+}
+
+std::optional<CollisionPoint> ObstacleStop::evaluate_object_collision(
+  const TrajectoryPoints & traj_points)
+{
+  autoware_utils_debug::ScopedTimeTrack st(
+    "ObstacleStop::evaluate_object_collision", *get_time_keeper());
+  if (debug_data_.target_objects.empty()) return std::nullopt;
 
   auto collision_point = get_nearest_object_collision(
     debug_data_.target_objects, traj_points, context_->vehicle_info, object_decel_map_,
@@ -443,8 +488,8 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
     autoware_utils_debug::ScopedTimeTrack stt(
       "ObstacleStop::get_nearest_pcd_collision", *get_time_keeper());
     collision_point = get_nearest_pcd_collision(
-      debug_data_.trajectory_shape, active_points, lateral_margin_map_, params_.objects.low_velocity_th,
-      debug_data_.target_pcd_points);
+      debug_data_.trajectory_shape, active_points, lateral_margin_map_,
+      params_.objects.low_velocity_th, debug_data_.target_pcd_points);
   }
 
   return collision_point;
