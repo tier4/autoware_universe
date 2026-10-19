@@ -23,6 +23,7 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -85,9 +86,24 @@ protected:
     route_.segments = {make_route_segment(eastbound_.id()), make_route_segment(northbound_.id())};
   }
 
-  int64_t array_index(const lanelet::Lanelet & lanelet) const
+  // Lanelet that the lane segment at `array_index` was split from.
+  lanelet::Id lanelet_id_of(const int64_t array_index) const
   {
-    return static_cast<int64_t>(context_->get_lanelet_id_to_array_index().at(lanelet.id()));
+    for (const auto & [id, indices] : context_->get_lanelet_id_to_array_index()) {
+      if (
+        std::find(indices.begin(), indices.end(), static_cast<size_t>(array_index)) !=
+        indices.end()) {
+        return id;
+      }
+    }
+    return lanelet::InvalId;
+  }
+
+  bool all_on(const std::vector<int64_t> & indices, const lanelet::Lanelet & lanelet) const
+  {
+    return std::all_of(indices.begin(), indices.end(), [&](const int64_t index) {
+      return lanelet_id_of(index) == lanelet.id();
+    });
   }
 
   lanelet::Lanelet eastbound_;
@@ -102,9 +118,9 @@ TEST_F(RouteSegmentSelectionTest, SelectsSegmentAlignedWithEgoAtSelfCrossing)
   const auto indices =
     context_->select_route_segment_indices(route_, 50.0, 0.3, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
 
-  ASSERT_EQ(indices.size(), 2U);
-  EXPECT_EQ(indices.front(), array_index(eastbound_));
-  EXPECT_EQ(indices.back(), array_index(northbound_));
+  ASSERT_FALSE(indices.empty());
+  EXPECT_EQ(lanelet_id_of(indices.front()), eastbound_.id());
+  EXPECT_EQ(lanelet_id_of(indices.back()), northbound_.id());
 }
 
 TEST_F(RouteSegmentSelectionTest, SelectsCrossingSegmentWhenEgoHeadsAlongIt)
@@ -112,8 +128,8 @@ TEST_F(RouteSegmentSelectionTest, SelectsCrossingSegmentWhenEgoHeadsAlongIt)
   const auto indices = context_->select_route_segment_indices(
     route_, 50.3, 0.0, 0.0, M_PI / 2.0, NUM_SEGMENTS_IN_ROUTE);
 
-  ASSERT_EQ(indices.size(), 1U);
-  EXPECT_EQ(indices.front(), array_index(northbound_));
+  ASSERT_FALSE(indices.empty());
+  EXPECT_TRUE(all_on(indices, northbound_));
 }
 
 TEST_F(RouteSegmentSelectionTest, FallsBackToClosestSegmentWhenNoSegmentIsAligned)
@@ -122,8 +138,8 @@ TEST_F(RouteSegmentSelectionTest, FallsBackToClosestSegmentWhenNoSegmentIsAligne
   const auto indices =
     context_->select_route_segment_indices(route_, 50.0, 3.0, 0.0, M_PI, NUM_SEGMENTS_IN_ROUTE);
 
-  ASSERT_EQ(indices.size(), 1U);
-  EXPECT_EQ(indices.front(), array_index(northbound_));
+  ASSERT_FALSE(indices.empty());
+  EXPECT_TRUE(all_on(indices, northbound_));
 }
 
 }  // namespace autoware::ml_planner::test

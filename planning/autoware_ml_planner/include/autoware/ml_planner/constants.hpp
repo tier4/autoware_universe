@@ -33,6 +33,9 @@ constexpr int LOG_THROTTLE_INTERVAL_MS = 5000;
 // Geometric constants
 constexpr double LANE_MASK_RANGE_M = 100.0;
 constexpr double MAX_ROUTE_SEGMENT_YAW_DIFF_RAD = M_PI / 3.0;
+// Lanelets whose centerline is longer than this are split into consecutive lane segments of
+// equal length, so a long lanelet keeps a fine point spacing in the fixed-size lane tensors.
+constexpr double LANE_SEGMENT_MAX_LENGTH_M = 40.0;
 
 }  // namespace autoware::ml_planner::constants
 
