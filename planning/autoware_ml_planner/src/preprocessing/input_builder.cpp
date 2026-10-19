@@ -129,7 +129,8 @@ InputBuilderResult create_input_data_map(
 
   // Ego shape
   input_data_map["ego_shape"] = create_ego_shape(
-    vehicle_spec.base_link_to_front, vehicle_spec.vehicle_length, vehicle_spec.vehicle_width);
+    vehicle_spec.base_link_to_front, vehicle_spec.vehicle_length, vehicle_spec.vehicle_width,
+    vehicle_spec.wheel_base);
 
   input_data_map["turn_indicators"] = create_turn_indicators(
     frame_inputs.turn_indicators_history, frame_inputs.frame_time, INPUT_T_WITH_CURRENT,

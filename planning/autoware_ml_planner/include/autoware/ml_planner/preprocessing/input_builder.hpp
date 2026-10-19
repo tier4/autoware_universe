@@ -48,19 +48,23 @@ struct VehicleSpec
   double base_link_to_front;
   double vehicle_length;
   double vehicle_width;
+  double wheel_base;
 
   VehicleSpec(
-    const double base_link_to_front, const double vehicle_length, const double vehicle_width)
+    const double base_link_to_front, const double vehicle_length, const double vehicle_width,
+    const double wheel_base)
   : base_link_to_front(base_link_to_front),
     vehicle_length(vehicle_length),
-    vehicle_width(vehicle_width)
+    vehicle_width(vehicle_width),
+    wheel_base(wheel_base)
   {
   }
 
   explicit VehicleSpec(const autoware::vehicle_info_utils::VehicleInfo & info)
   : base_link_to_front(info.wheel_base_m + info.front_overhang_m),
     vehicle_length(info.front_overhang_m + info.wheel_base_m + info.rear_overhang_m),
-    vehicle_width(info.left_overhang_m + info.wheel_tread_m + info.right_overhang_m)
+    vehicle_width(info.left_overhang_m + info.wheel_tread_m + info.right_overhang_m),
+    wheel_base(info.wheel_base_m)
   {
   }
 };
