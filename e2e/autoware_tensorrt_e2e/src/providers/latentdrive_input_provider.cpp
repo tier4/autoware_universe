@@ -379,6 +379,7 @@ LatentDriveInputProvider::LatentDriveInputProvider(rclcpp::Node & node) : node_(
   subgoal_ahead_m_ = node_.declare_parameter<double>("latentdrive.subgoal_ahead_m", 50.0);
   subgoal_divisor_ = node_.declare_parameter<double>("latentdrive.status_subgoal_divisor", 10.0);
   tick_log_ = node_.declare_parameter<bool>("latentdrive.tick_log", false);
+  image_decode_thread_ = node_.declare_parameter<bool>("latentdrive.image_decode_thread", true);
   subgoal_source_ = node_.declare_parameter<std::string>("latentdrive.subgoal_source", "route");
   route_points_m_ = node_.declare_parameter<std::vector<double>>(
     "latentdrive.route_points_m", std::vector<double>{});
@@ -427,6 +428,16 @@ LatentDriveInputProvider::LatentDriveInputProvider(rclcpp::Node & node) : node_(
   }
   if (subgoal_divisor_ <= 0.0) {
     throw std::runtime_error("latentdrive.status_subgoal_divisor must be positive");
+  }
+}
+
+LatentDriveInputProvider::~LatentDriveInputProvider()
+{
+  if (image_executor_) {
+    image_executor_->cancel();
+  }
+  if (image_thread_.joinable()) {
+    image_thread_.join();
   }
 }
 
@@ -519,15 +530,35 @@ std::vector<std::string> LatentDriveInputProvider::claim_inputs(
   frames_.assign(static_cast<size_t>(num_views_), {});
   for (size_t view = 0; view < static_cast<size_t>(num_views_); ++view) {
     const std::string image_topic = "~/input/camera" + std::to_string(view) + "/image";
+    rclcpp::SubscriptionOptions options;
+    if (image_decode_thread_) {
+      // Not added to the node's executor: the provider's own executor spins these groups.
+      image_groups_.push_back(node_.create_callback_group(
+        rclcpp::CallbackGroupType::MutuallyExclusive, /*automatically_add_to_executor_with_node=*/false));
+      options.callback_group = image_groups_.back();
+    }
     image_subs_.push_back(image_transport::create_subscription(
       &node_, node_.get_node_topics_interface()->resolve_topic_name(image_topic),
       [this, view](const sensor_msgs::msg::Image::ConstSharedPtr & msg) { on_image(view, msg); },
-      transport_, rmw_qos_profile_sensor_data));
+      transport_, rmw_qos_profile_sensor_data, options));
     const std::string age_topic = view == 0 ? "~/debug/latentdrive/frame_age_ms"
                                             : "~/debug/latentdrive/view" + std::to_string(view) +
                                                 "/frame_age_ms";
     pub_frame_ages_.push_back(
       node_.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(age_topic, 10));
+  }
+  if (image_decode_thread_) {
+    // One thread per view: each view's frames stay in order (mutually exclusive group), the views
+    // decode in parallel, and none of it waits for the planning tick. frames_ is guarded by mutex_.
+    image_executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>(
+      rclcpp::ExecutorOptions(), static_cast<size_t>(num_views_));
+    for (const auto & group : image_groups_) {
+      image_executor_->add_callback_group(group, node_.get_node_base_interface());
+    }
+    image_thread_ = std::thread([executor = image_executor_]() { executor->spin(); });
+    RCLCPP_INFO(
+      node_.get_logger(), "Camera decoding runs on its own executor: %ld thread(s), one per view",
+      num_views_);
   }
   if (num_views_ > 1) {
     RCLCPP_INFO(

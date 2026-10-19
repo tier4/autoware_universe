@@ -94,8 +94,10 @@ carries only the input contract, in `LatentDriveInputProvider`, and runs the gra
 common `InferenceEngine`.
 
 - `video` `[1, 3, T, H, W]`: `T` frames `latentdrive.frame_interval_seconds` apart (0.5 s),
-  oldest first, channel-major. Each frame is preprocessed once on arrival exactly as in the
-  training pipeline: RGB, centre-crop the height to width / 2, bilinear resize to `W x H`,
+  oldest first, channel-major. Each frame is decoded and preprocessed once on arrival, on the
+  provider's own executor thread(s) (one per view, `latentdrive.image_decode_thread`, on by
+  default) so the decoding never queues behind the planning tick, exactly as in the training
+  pipeline: RGB, centre-crop the height to width / 2, bilinear resize to `W x H`,
   scale to [0, 1], ImageNet-normalize. Frames are chosen by stamp, so a dropped camera frame
   shifts one slot to its neighbour rather than compressing the clip.
 - `status` `[1, 6]`: `(subgoal_x / 10, subgoal_y / 10, v_x, v_y, a_x, a_y)` in the ego frame.

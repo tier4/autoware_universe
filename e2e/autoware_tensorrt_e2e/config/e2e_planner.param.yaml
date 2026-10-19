@@ -77,6 +77,11 @@
       # is one period older than that. 200 ms dropped such ticks on the replay
       # host; 300 ms keeps the 10 Hz output without accepting a two-frame lag.
       max_delay_ms: 300.0
+      # Decode and preprocess the camera images on the provider's own executor (one thread per
+      # view) instead of the node's, so they no longer queue behind the planning tick. With three
+      # 2880x1860 cameras that queue was ~60 ms of every 100 ms on the addon and pushed frame ages
+      # past max_delay_ms. false restores the single-threaded behaviour.
+      image_decode_thread: true
       frame_interval_tolerance_seconds: 0.15
       # Two-view models: the telephoto frame paired with each chosen wide frame may be at most
       # this far from it in time (the cameras are not hardware-synchronised; 60 ms was used

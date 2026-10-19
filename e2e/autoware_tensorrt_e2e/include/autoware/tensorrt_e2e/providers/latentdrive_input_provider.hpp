@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <thread>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -229,6 +230,7 @@ class LatentDriveInputProvider : public InputProviderInterface
 {
 public:
   explicit LatentDriveInputProvider(rclcpp::Node & node);
+  ~LatentDriveInputProvider() override;
 
   std::string name() const override { return "latentdrive"; }
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
@@ -292,6 +294,14 @@ private:
 
   // ROS interfaces
   std::vector<image_transport::Subscriber> image_subs_;  //!< One per view.
+  //! latentdrive.image_decode_thread: the image subscriptions (JPEG decode + preprocessing) run on
+  //! their own executor thread(s), one callback group per view, instead of the node's executor,
+  //! where they queued behind the planning tick (three 2880x1860 cameras took ~60 ms of every
+  //! 100 ms there and pushed frame ages past max_delay_ms).
+  bool image_decode_thread_{true};
+  std::vector<rclcpp::CallbackGroup::SharedPtr> image_groups_;
+  std::shared_ptr<rclcpp::Executor> image_executor_;
+  std::thread image_thread_;
   rclcpp::Subscription<Trajectory>::SharedPtr trajectory_sub_;
   rclcpp::Subscription<LaneletRoute>::SharedPtr route_sub_;
   rclcpp::Subscription<LaneletMapBin>::SharedPtr map_sub_;
