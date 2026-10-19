@@ -26,6 +26,7 @@
 #include "autoware/ml_planner/preprocessing/input_builder.hpp"
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 #include "autoware/ml_planner/preprocessing/items/traffic_signals.hpp"
+#include "autoware/ml_planner/utils/onnx_metadata.hpp"
 #include "autoware/ml_planner/utils/timed_buffer.hpp"
 
 #include <Eigen/Dense>
@@ -206,6 +207,11 @@ public:
   bool is_model_loaded() const { return ml_planner_inference_ != nullptr; }
 
   /**
+   * @brief Metadata of the ONNX file read by the last load_model() call.
+   */
+  const utils::OnnxModelMetadata & model_metadata() const { return model_metadata_; }
+
+  /**
    * @brief Check if the map is loaded.
    *
    * @return true if map is loaded, false otherwise
@@ -268,6 +274,7 @@ private:
 
   // Inference engine
   std::unique_ptr<Inference> ml_planner_inference_{nullptr};
+  utils::OnnxModelMetadata model_metadata_;
 
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
   // acados-based trajectory optimization (nullptr when disabled by parameter)

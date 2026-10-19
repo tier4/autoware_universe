@@ -329,6 +329,15 @@ void MLPlanner::load_model()
   RCLCPP_INFO_STREAM(
     get_logger(), "Loaded model_path=" << params_.model_path << " (hash="
                                        << compute_file_hash_hex(params_.model_path) << ")");
+
+  const auto & metadata = core_->model_metadata();
+  std::ostringstream metadata_log;
+  metadata_log << "ONNX metadata: producer=" << metadata.producer_name << " "
+               << metadata.producer_version << ", model_version=" << metadata.version().to_string();
+  for (const auto & [key, value] : metadata.metadata_props) {
+    metadata_log << "\n  " << key << ": " << value;
+  }
+  RCLCPP_INFO_STREAM(get_logger(), metadata_log.str());
 }
 
 SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter> & parameters)
