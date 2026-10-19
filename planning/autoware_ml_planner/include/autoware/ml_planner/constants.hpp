@@ -38,6 +38,11 @@ constexpr double MAX_ROUTE_SEGMENT_YAW_DIFF_RAD = M_PI / 3.0;
 // sites this leaves out 0.1-0.6% of the lanelets within 150 m, all 6.4 m or more above or below.
 constexpr double MAX_SAME_LEVEL_HEIGHT_DIFF_M = 4.0;
 constexpr double SAME_LEVEL_HEIGHT_DIFF_PER_DISTANCE = 0.05;
+// Lane and route segments, intersection areas, stop lines and road borders are kept when a
+// point lies within this box in the ego frame: LANE_MASK_BACKWARD_M behind to
+// LANE_MASK_FORWARD_M ahead, and LANE_MASK_RANGE_M to either side.
+constexpr double LANE_MASK_BACKWARD_M = 50.0;
+constexpr double LANE_MASK_FORWARD_M = 150.0;
 
 }  // namespace autoware::ml_planner::constants
 

@@ -82,8 +82,8 @@ InputBuilderResult create_input_data_map(
   // Map data on ego reference frame, with the traffic light state history of
   // each selected lane segment
   {
-    const std::vector<int64_t> segment_indices = map_context.select_lane_segment_indices(
-      map_to_ego_transform, center_x, center_y, NUM_SEGMENTS_IN_LANE);
+    const std::vector<int64_t> segment_indices =
+      map_context.select_lane_segment_indices(map_to_ego_transform, NUM_SEGMENTS_IN_LANE);
     auto [lanes, lane_types, lanes_speed_limit] = map_context.create_tensor_data_from_indices(
       map_to_ego_transform, segment_indices, NUM_SEGMENTS_IN_LANE);
     input_data_map["lanes"] = std::move(lanes);
@@ -101,7 +101,8 @@ InputBuilderResult create_input_data_map(
   // Route data on ego reference frame
   {
     const std::vector<int64_t> segment_indices = map_context.select_route_segment_indices(
-      frame_inputs.route, center_x, center_y, center_z, center_yaw, NUM_SEGMENTS_IN_ROUTE);
+      frame_inputs.route, map_to_ego_transform, center_x, center_y, center_z, center_yaw,
+      NUM_SEGMENTS_IN_ROUTE);
     auto [route_lanes, route_lane_types, route_lanes_speed_limit] =
       map_context.create_tensor_data_from_indices(
         map_to_ego_transform, segment_indices, NUM_SEGMENTS_IN_ROUTE);
@@ -119,11 +120,9 @@ InputBuilderResult create_input_data_map(
 
   // Intersection areas, stop lines, and road borders
   input_data_map["intersection_area"] =
-    map_context.create_intersection_area_tensor(map_to_ego_transform, center_x, center_y);
-  input_data_map["stop_lines"] =
-    map_context.create_stop_line_tensor(map_to_ego_transform, center_x, center_y);
-  input_data_map["road_borders"] =
-    map_context.create_road_border_tensor(map_to_ego_transform, center_x, center_y);
+    map_context.create_intersection_area_tensor(map_to_ego_transform);
+  input_data_map["stop_lines"] = map_context.create_stop_line_tensor(map_to_ego_transform);
+  input_data_map["road_borders"] = map_context.create_road_border_tensor(map_to_ego_transform);
 
   input_data_map["goal_pose"] =
     create_goal_pose(frame_inputs.route.goal_pose, map_to_ego_transform);
