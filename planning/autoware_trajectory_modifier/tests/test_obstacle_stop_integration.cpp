@@ -20,6 +20,8 @@
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
+#include <autoware_internal_planning_msgs/msg/safety_factor.hpp>
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/shape.hpp>
@@ -30,6 +32,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <limits>
 #include <memory>
@@ -46,6 +49,8 @@ using autoware::trajectory_modifier::TrajectoryModifierParams;
 using autoware::trajectory_modifier::plugin::ObstacleStop;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
 using autoware::trajectory_modifier::test::process_plugin;
+using autoware_internal_planning_msgs::msg::PlanningFactor;
+using autoware_internal_planning_msgs::msg::SafetyFactor;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
@@ -274,6 +279,14 @@ protected:
     process_plugin(*plugin_, trajectory, input);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return process_plugin(*plugin_, trajectory, input);
+  }
+
+  bool has_planning_factor(const uint16_t behavior) const
+  {
+    const auto factors = plugin_->get_planning_factors();
+    return std::any_of(factors.begin(), factors.end(), [&](const auto & factor) {
+      return factor.behavior == behavior;
+    });
   }
 
   std::shared_ptr<rclcpp::Node> node_;
@@ -565,6 +578,8 @@ TEST_F(ObstacleStopIntegrationTest, CruiseDisabledStillStopsForMovingLead)
 
   ASSERT_TRUE(process_with_hysteresis(trajectory, input));
   EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_TRUE(has_planning_factor(PlanningFactor::STOP));
+  EXPECT_FALSE(has_planning_factor(PlanningFactor::SLOW_DOWN));
 }
 
 TEST_F(ObstacleStopIntegrationTest, CruiseCapsVelocityForMovingLeadWithoutStop)
@@ -579,6 +594,21 @@ TEST_F(ObstacleStopIntegrationTest, CruiseCapsVelocityForMovingLeadWithoutStop)
   ASSERT_TRUE(process_with_hysteresis(trajectory, input));
   EXPECT_GT(trajectory.back().longitudinal_velocity_mps, 0.5F);
   EXPECT_LT(trajectory.back().longitudinal_velocity_mps, 7.0F);
+  EXPECT_TRUE(has_planning_factor(PlanningFactor::SLOW_DOWN));
+  EXPECT_FALSE(has_planning_factor(PlanningFactor::STOP));
+
+  const auto factors = plugin_->get_planning_factors();
+  const auto slow_down = std::find_if(factors.begin(), factors.end(), [](const auto & factor) {
+    return factor.behavior == PlanningFactor::SLOW_DOWN;
+  });
+  ASSERT_NE(slow_down, factors.end());
+  ASSERT_EQ(slow_down->control_points.size(), 1U);
+  EXPECT_GT(slow_down->control_points.front().velocity, 0.0);
+  EXPECT_LT(slow_down->control_points.front().velocity, 8.0);
+  ASSERT_EQ(slow_down->safety_factors.factors.size(), 1U);
+  EXPECT_EQ(slow_down->safety_factors.factors.front().type, SafetyFactor::OBJECT);
+  ASSERT_EQ(slow_down->safety_factors.factors.front().points.size(), 1U);
+  EXPECT_NEAR(slow_down->safety_factors.factors.front().points.front().x, 25.0, 0.1);
 }
 
 TEST_F(ObstacleStopIntegrationTest, CruiseFallsBackToStopWhenGapIsTooSmall)
@@ -592,6 +622,7 @@ TEST_F(ObstacleStopIntegrationTest, CruiseFallsBackToStopWhenGapIsTooSmall)
 
   ASSERT_TRUE(process_with_hysteresis(trajectory, input));
   EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_TRUE(has_planning_factor(PlanningFactor::STOP));
 }
 
 TEST_F(ObstacleStopIntegrationTest, CruiseDoesNotCapStoppedCar)
@@ -631,4 +662,5 @@ TEST_F(ObstacleStopIntegrationTest, CruiseLeavesAlreadySlowerInputUnchanged)
 
   EXPECT_FALSE(process_with_hysteresis(trajectory, input));
   EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 2.0F);
+  EXPECT_FALSE(has_planning_factor(PlanningFactor::SLOW_DOWN));
 }

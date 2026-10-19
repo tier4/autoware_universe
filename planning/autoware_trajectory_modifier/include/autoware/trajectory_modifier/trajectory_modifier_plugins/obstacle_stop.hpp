@@ -24,6 +24,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -82,7 +83,15 @@ private:
 
   std::unique_ptr<utils::obstacle_stop::ObstacleTracker> obstacle_tracker_;
 
+  struct CruiseReport
+  {
+    double gap{0.0};
+    double target_velocity{0.0};
+    double cruise_velocity{0.0};
+  };
+
   SafetyFactorArray safety_factors_;
+  std::optional<CruiseReport> cruise_report_;
 
   std::unordered_map<utils::obstacle_stop::ObjectType, double> object_decel_map_;
   utils::obstacle_stop::LateralMarginMap lateral_margin_map_;
@@ -104,6 +113,7 @@ private:
     const std::optional<CollisionPoint> & collision_point_objects,
     const std::optional<CollisionPoint> & collision_point_pcd);
   bool apply_cruise(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
+  void add_cruise_planning_factor(const ObjectRssState & target, double cruise_velocity);
 
   bool set_stop_point(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 

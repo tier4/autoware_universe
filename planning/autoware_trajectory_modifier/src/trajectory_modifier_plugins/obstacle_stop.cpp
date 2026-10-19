@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -222,6 +223,7 @@ void ObstacleStop::reset_cycle()
 {
   debug_data_ = DebugData();
   safety_factors_ = SafetyFactorArray{};
+  cruise_report_.reset();
   nearest_collision_point_ = std::nullopt;
   object_rss_states_.clear();
 }
@@ -323,6 +325,7 @@ bool ObstacleStop::apply_cruise(
   const auto v_cruise = compute_cruise_velocity(
     target->gap, cruise.ego_decel, target->stopping_distance, stopping_params_.delay_response_time,
     margin);
+  cruise_report_ = CruiseReport{target->gap, target->lon_vel, v_cruise};
 
   ensure_increasing_timestamps(traj_points);
 
@@ -338,7 +341,34 @@ bool ObstacleStop::apply_cruise(
       "[TM ObstacleStop] Cruise velocity limit failed for candidate %zu: %s", input.candidate_index,
       result.error.c_str());
   }
-  return result.status == ProcessingResult::Modified;
+  if (result.status != ProcessingResult::Modified) {
+    return false;
+  }
+  add_cruise_planning_factor(*target, v_cruise);
+  return true;
+}
+
+void ObstacleStop::add_cruise_planning_factor(
+  const ObjectRssState & target, const double cruise_velocity)
+{
+  if (target.index >= debug_data_.target_objects.size()) {
+    return;
+  }
+  const auto & object = debug_data_.target_objects[target.index].object;
+  const auto & pose = object.kinematics.initial_pose_with_covariance.pose;
+
+  SafetyFactor safety_factor;
+  safety_factor.type = SafetyFactor::OBJECT;
+  safety_factor.object_id = object.object_id;
+  safety_factor.points = {pose.position};
+  safety_factor.is_safe = false;
+
+  SafetyFactorArray safety_factors;
+  safety_factors.is_safe = false;
+  safety_factors.factors.push_back(safety_factor);
+
+  planning_factor_interface_->add(
+    target.gap, pose, PlanningFactor::SLOW_DOWN, safety_factors, true, cruise_velocity);
 }
 
 bool ObstacleStop::set_stop_point(
@@ -582,6 +612,12 @@ void ObstacleStop::publish_debug_string(bool is_safe) const
        << "\n";
     ss << "\t\t"
        << "OBSTACLE TYPE: " << (nearest_collision_point_->is_dynamic ? "DYNAMIC" : "STATIC")
+       << "\n";
+  }
+  if (cruise_report_) {
+    ss << "\t\t"
+       << "CRUISE: gap " << cruise_report_->gap << " m, target " << cruise_report_->target_velocity
+       << " m/s, v_cruise " << cruise_report_->cruise_velocity << " m/s"
        << "\n";
   }
 
