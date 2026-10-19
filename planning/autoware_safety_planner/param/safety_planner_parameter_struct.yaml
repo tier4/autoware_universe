@@ -74,7 +74,7 @@ safety_planner:
         validation:
           gt_eq<>: [0.0]
     ego_blend:
-      on:
+      enable:
         type: bool
         default_value: true
         read_only: true

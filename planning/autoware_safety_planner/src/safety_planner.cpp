@@ -470,7 +470,7 @@ tl::expected<PathPointTrajectory, std::string> SafetyPlanner::build_reference_pa
   }
 
   const auto & ego_blend = params_.reference_path.ego_blend;
-  if (ego_blend.on) {
+  if (ego_blend.enable) {
     if (
       auto blended = blend_reference_path_to_ego(
         *reference_path, input.odometry.pose.pose, ego_blend.lateral_threshold_m,
