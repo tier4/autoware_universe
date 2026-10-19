@@ -513,8 +513,11 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
   const auto traffic_light_id_map = preprocess::create_traffic_signal_map(
     traffic_signals_history_.msgs(), frame_time(), params_.traffic_light_group_msg_timeout_seconds);
 
+  const Eigen::Matrix4d map_to_ego_transform = utils::inverse(utils::pose_to_matrix4d(pose_center));
+
   return lane_segment_context_->get_first_traffic_light_on_route(
-    *route_ptr_, center_x, center_y, center_z, center_yaw, traffic_light_id_map);
+    *route_ptr_, map_to_ego_transform, center_x, center_y, center_z, center_yaw,
+    traffic_light_id_map);
 }
 
 int64_t MLPlannerCore::count_valid_elements(
