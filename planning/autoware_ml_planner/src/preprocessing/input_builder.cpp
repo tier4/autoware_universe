@@ -63,7 +63,8 @@ InputBuilderResult create_input_data_map(
 
   // Ego history
   input_data_map["ego_agent_past"] = create_ego_history(
-    frame_inputs.ego_history, EGO_HISTORY_SHAPE[1], map_to_ego_transform, frame_inputs.frame_time);
+    frame_inputs.ego_history, frame_inputs.steering_history, EGO_HISTORY_SHAPE[1],
+    map_to_ego_transform, frame_inputs.frame_time);
 
   // Neighbor agents on ego reference frame. Return this exact selection so
   // callers can preserve the tensor row-to-object correspondence.
