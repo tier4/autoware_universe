@@ -508,9 +508,10 @@ safety_planner:
         default_value: false
         read_only: true
         description: >
-          Shift the reference_path along its normal where the footprint on it would cross a HARD
-          lateral bound (road_border) ahead of the ego, by a QP that keeps the shift smooth, the
-          curvature within the steering and the path near the centerline elsewhere
+          Shift the reference_path along its normal, from the ego's offset and heading back to the
+          centerline and clear of the HARD lateral bounds (road_border) ahead of the ego, by a QP
+          that keeps the shift smooth, the curvature within the steering and the path near the
+          centerline elsewhere; solved every cycle
       clearance_m:
         type: double
         default_value: 0.2
@@ -534,6 +535,15 @@ safety_planner:
         description: "[-] fraction of the curvature at full steer the shifted path is held within"
         validation:
           bounds<>: [0.0, 1.0]
+      stability_weight:
+        type: double
+        default_value: 0.0
+        read_only: true
+        description: >
+          weight on the squared offset from the shifted path of the previous cycle, measured along
+          the normals of this cycle's reference_path, against a smoothing term of 1; 0 disables
+        validation:
+          gt_eq<>: [0.0]
 
   mppi_planner:
     nominal_seed:

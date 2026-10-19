@@ -168,7 +168,8 @@ std::optional<PathPointTrajectory> smooth_reference_path(
 std::optional<std::vector<double>> optimize_goal_shift(
   const std::vector<double> & nominal, const std::vector<double> & centerline_curvature,
   const double ds, const double max_curvature, const std::vector<double> & lower_bound,
-  const std::vector<double> & upper_bound, const double deviation_weight)
+  const std::vector<double> & upper_bound, const double deviation_weight, const bool hold_end,
+  const std::vector<double> & previous, const double previous_weight)
 {
   //! The curvature of the offset path is nonlinear in l through 1 - k_ref l and l'; both are
   //! frozen at the profile of the previous pass and the QP re-run. k_ref * l reaches ~1 on the
@@ -191,9 +192,15 @@ std::optional<std::vector<double>> optimize_goal_shift(
   }
   // deviation_weight also keeps P positive definite; the second difference alone is singular on
   // constants and ramps
-  const Eigen::MatrixXd p_matrix =
+  Eigen::MatrixXd p_matrix =
     2.0 * (d2.transpose() * d2 + deviation_weight * Eigen::MatrixXd::Identity(ni, ni));
-  const std::vector<double> q_vector(n, 0.0);
+  std::vector<double> q_vector(n, 0.0);
+  for (std::size_t i = 0; i < previous.size(); ++i) {
+    if (std::isfinite(previous[i])) {
+      p_matrix(static_cast<int>(i), static_cast<int>(i)) += 2.0 * previous_weight;
+      q_vector[i] = -2.0 * previous_weight * previous[i];
+    }
+  }
 
   // Rows: the value and the slope at each end, the offset of every point, then the curvature of
   // every interior point. The second difference at the ends is left free on purpose: pinning it at
@@ -214,8 +221,9 @@ std::optional<std::vector<double>> optimize_goal_shift(
   const std::array<double, NUM_END_CONDITIONS> end_conditions{
     nominal.front(), nominal[1] - nominal.front(), nominal.back(), nominal.back() - nominal[n - 2]};
   for (std::size_t row = 0; row < NUM_END_CONDITIONS; ++row) {
-    lower[row] = end_conditions[row];
-    upper[row] = end_conditions[row];
+    const bool free = !hold_end && row >= 2;
+    lower[row] = free ? -std::numeric_limits<double>::infinity() : end_conditions[row];
+    upper[row] = free ? std::numeric_limits<double>::infinity() : end_conditions[row];
   }
   for (std::size_t i = 0; i < n; ++i) {
     lower[NUM_END_CONDITIONS + i] = lower_bound[i];

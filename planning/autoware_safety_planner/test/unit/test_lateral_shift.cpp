@@ -55,6 +55,31 @@ TEST(OptimizeGoalShift, LeavesTheCenterlineOnlyWhereTheBoundAsks)
   EXPECT_NEAR((*optimized)[55], 0.0, 0.05);
 }
 
+// Without a bound, the previous profile alone keeps the path off the centerline where it is given,
+// and the end left free follows it instead of returning to the centerline
+TEST(OptimizeGoalShift, StaysNearThePreviousProfileWithTheEndFree)
+{
+  constexpr double ds = 1.0;
+  constexpr std::size_t n = 40;
+  const std::vector<double> nominal(n, 0.0);
+  const std::vector<double> straight(n, 0.0);
+  const std::vector<double> lo(n, -INF);
+  const std::vector<double> hi(n, INF);
+  std::vector<double> previous(n, 0.5);
+  previous[0] = std::numeric_limits<double>::quiet_NaN();
+  previous[1] = std::numeric_limits<double>::quiet_NaN();
+
+  const auto without = optimize_goal_shift(nominal, straight, ds, 0.1, lo, hi, 1.0e-3, false);
+  const auto with =
+    optimize_goal_shift(nominal, straight, ds, 0.1, lo, hi, 1.0e-3, false, previous, 1.0);
+  ASSERT_TRUE(without.has_value());
+  ASSERT_TRUE(with.has_value());
+  EXPECT_NEAR((*without)[30], 0.0, 1.0e-3);
+  EXPECT_NEAR((*with)[30], 0.5, 0.05);
+  EXPECT_NEAR(with->back(), 0.5, 0.05);
+  EXPECT_NEAR(with->front(), 0.0, 1.0e-6);  // the start stays pinned
+}
+
 TEST(ShiftPathPoints, MovesTheSamplesAlongTheNormalAndTurnsTheHeadings)
 {
   std::vector<PathPointWithLaneId> points;

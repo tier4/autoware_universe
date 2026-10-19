@@ -22,6 +22,7 @@
 
 #include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils_math/normalization.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
 #include <pluginlib/class_list_macros.hpp>
 
@@ -29,6 +30,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -163,6 +165,40 @@ std::pair<std::vector<double>, std::vector<double>> lateral_room_within_hard_bou
   return {std::move(lower), std::move(upper)};
 }
 
+//! The offsets at the samples ss of path where its normal there crosses previous, the nearest
+//! crossing to the centerline; NaN where it does not cross. Measured along the normal rather than
+//! by projecting the points of previous onto path, which puts their feet off on a curve
+std::vector<double> project_onto_normals(
+  const PathPointTrajectory & path, const std::vector<double> & ss,
+  const PathPointTrajectory & previous)
+{
+  const auto points = previous.restore();
+  std::vector<double> offsets(ss.size(), std::numeric_limits<double>::quiet_NaN());
+  for (std::size_t i = 0; i < ss.size(); ++i) {
+    const auto & origin = path.compute(ss[i]).point.pose.position;
+    const double yaw = path.azimuth(ss[i]);
+    // (along the tangent, along the normal) of a point of previous
+    const auto to_local = [&](const geometry_msgs::msg::Point & q) {
+      const double dx = q.x - origin.x;
+      const double dy = q.y - origin.y;
+      return std::pair{
+        std::cos(yaw) * dx + std::sin(yaw) * dy, -std::sin(yaw) * dx + std::cos(yaw) * dy};
+    };
+    for (std::size_t j = 0; j + 1 < points.size(); ++j) {
+      const auto [x0, y0] = to_local(points[j].point.pose.position);
+      const auto [x1, y1] = to_local(points[j + 1].point.pose.position);
+      if ((x0 > 0.0) == (x1 > 0.0)) {
+        continue;
+      }
+      const double l = y0 + x0 / (x0 - x1) * (y1 - y0);
+      if (std::isnan(offsets[i]) || std::abs(l) < std::abs(offsets[i])) {
+        offsets[i] = l;
+      }
+    }
+  }
+  return offsets;
+}
+
 //! A LINE_LIST of the finite bounds, each side drawn between consecutive samples
 MarkerArray make_lateral_room_markers(
   const PathPointTrajectory & path, const std::vector<double> & ss,
@@ -244,7 +280,7 @@ TrajectoryPlannerResult ReferencePathFollowingPlanner::plan_trajectories(
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
     result.normal_trajectory = plan_one_side(
       normal_turn_indicator_decider_, input.context, input.normal_constraints,
-      normal_previous_trajectory_, result.normal_debug);
+      normal_previous_trajectory_, normal_previous_path_, result.normal_debug);
   }
   const bool cautious_differs = std::any_of(
     input.cautious_constraints.begin(), input.cautious_constraints.end(),
@@ -253,12 +289,13 @@ TrajectoryPlannerResult ReferencePathFollowingPlanner::plan_trajectories(
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
     result.cautious_trajectory = plan_one_side(
       cautious_turn_indicator_decider_, input.context, input.cautious_constraints,
-      cautious_previous_trajectory_, result.cautious_debug);
+      cautious_previous_trajectory_, cautious_previous_path_, result.cautious_debug);
   } else {
     // Not left empty, since the node publishes the cautious candidate every cycle
     result.cautious_trajectory = result.normal_trajectory;
     result.cautious_debug = result.normal_debug;
     cautious_previous_trajectory_ = normal_previous_trajectory_;
+    cautious_previous_path_ = normal_previous_path_;
   }
   return result;
 }
@@ -266,7 +303,7 @@ TrajectoryPlannerResult ReferencePathFollowingPlanner::plan_trajectories(
 PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
   TurnIndicatorDecider & turn_indicator_decider, const PlannerContext & context,
   const std::vector<Constraint> & constraints, std::optional<Trajectory> & previous_trajectory,
-  TrajectoryPlannerDebug & debug) const
+  std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const
 {
   const auto & p = params_.reference_path_following_planner;
   const auto & vo = p.velocity_optimizer;
@@ -276,19 +313,25 @@ PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
   auto compiled_constraints = compile_constraint_list(context, constraints);
   phase.reset();
 
-  // The path the velocity is planned on: the reference_path, or where the footprint on it would
-  // cross a road_border, the path shifted clear of it. The constraints are then compiled again on
-  // the shifted path, since the arc length of every projected view refers to the path it was
-  // projected on
+  // The path the velocity is planned on: the reference_path, or the path shifted from the ego back
+  // to it and clear of the road_borders. The constraints are then compiled again on the shifted
+  // path, since the arc length of every projected view refers to the path it was projected on
   std::optional<PlannerContext> shifted_context;
+  bool lateral_failed = false;
   if (p.lateral_optimization.enable) {
     phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
       "optimize_lateral_offset", *time_keeper_);
-    if (auto shifted = shift_path_within_hard_bounds(context, compiled_constraints, debug)) {
+    if (
+      auto shifted =
+        shift_path_within_hard_bounds(context, compiled_constraints, previous_path, debug)) {
       shifted_context.emplace(context);
       shifted_context->reference_path = std::move(*shifted);
       compiled_constraints = compile_constraint_list(*shifted_context, constraints);
+    } else {
+      lateral_failed = true;
     }
+    previous_path =
+      shifted_context ? std::make_optional(shifted_context->reference_path) : std::nullopt;
     phase.reset();
   }
   const PlannerContext & ctx = shifted_context ? *shifted_context : context;
@@ -344,7 +387,10 @@ PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
     context.odometry.pose.pose.position, params_.engage_velocity.velocity_hard_mps);
   const auto num_points =
     static_cast<std::size_t>(std::round(params_.trajectory_horizon_s / p.time_step_s)) + 1;
-  auto points = plan_velocity(path, s0, initial, vp_params, num_points, p.time_step_s);
+  std::optional<TrajectoryPoints> points;
+  if (!lateral_failed) {
+    points = plan_velocity(path, s0, initial, vp_params, num_points, p.time_step_s);
+  }
   phase.reset();
 
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>("to_trajectory", *time_keeper_);
@@ -354,10 +400,13 @@ PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
   if (points) {
     trajectory.points = std::move(*points);
   } else {
-    constexpr auto FAILURE = "velocity QP did not solve";
+    const char * FAILURE =
+      lateral_failed ? "lateral QP did not solve" : "velocity QP did not solve";
     RCLCPP_WARN_THROTTLE(logger(), steady_clock(), 5000, "%s", FAILURE);
     // No fallback on purpose, as the MPPI planner: the failure has to be visible downstream, so
-    // only the ego point is output and the reason is recorded as a marker
+    // only the ego point is output and the reason is recorded as a marker. That holds for the
+    // lateral QP too, although it stops the ego where the road is narrower than the footprint with
+    // its clearance
     TrajectoryPoint point;
     point.pose = context.odometry.pose.pose;
     trajectory.points.push_back(point);
@@ -374,7 +423,7 @@ PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
 
 std::optional<PathPointTrajectory> ReferencePathFollowingPlanner::shift_path_within_hard_bounds(
   const PlannerContext & context, const CompiledConstraints & compiled_constraints,
-  TrajectoryPlannerDebug & debug) const
+  const std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const
 {
   //! [m] sample spacing, 1 m as in the elastic band; an uneven spacing makes the QP unstable
   constexpr double SAMPLE_INTERVAL_M = 1.0;
@@ -382,70 +431,111 @@ std::optional<PathPointTrajectory> ReferencePathFollowingPlanner::shift_path_wit
   const auto & path = context.reference_path;
   const auto & stamp = context.odometry.header.stamp;
 
+  // The QP starts at the ego, at its offset and heading, so the path also connects the ego back to
+  // the centerline wherever it is off it
+  const auto ego = compute_ego_frenet_state(context);
   std::vector<double> ss;
-  for (double s = 0.0; s < path.length() - 0.5 * SAMPLE_INTERVAL_M; s += SAMPLE_INTERVAL_M) {
+  for (double s = ego.s; s < path.length() - 0.5 * SAMPLE_INTERVAL_M; s += SAMPLE_INTERVAL_M) {
     ss.push_back(s);
   }
   ss.push_back(path.length());
+  // l' = (1 - k l) tan(dyaw), as the tangent of the shifted path is (1 - k l) t + l' n
+  const double ego_slope =
+    (1.0 - path.curvature(ego.s) * ego.l) *
+    std::tan(
+      autoware_utils_math::normalize_radian(
+        autoware_utils_geometry::get_rpy(context.odometry.pose.pose).z - path.azimuth(ego.s)));
+
+  std::optional<std::vector<double>> offsets;
   if (ss.size() < 4) {
-    return std::nullopt;  // the end conditions of the QP leave nothing to optimize
-  }
+    // Too short for the end conditions of the QP (the ego within ~3 m of the path end): the path
+    // is continued straight along the ego heading, and is not connected to the goal
+    offsets.emplace();
+    for (const double s : ss) {
+      offsets->push_back(ego.l + (s - ego.s) * ego_slope);
+    }
+  } else {
+    std::vector<double> nominal(ss.size(), 0.0);
+    nominal[0] = ego.l;
+    nominal[1] = ego.l + ego_slope * (ss[1] - ss[0]);
 
-  const double s0 = compute_ego_frenet_state(context).s;
-  auto [lower, upper] =
-    lateral_room_within_hard_bounds(context, compiled_constraints, ss, s0, p.clearance_m);
-  // The end of the path is held on the centerline (it is the goal when the goal is in the window),
-  // so the run of samples up to it whose bounds exclude the centerline admits it instead: a goal
-  // within the clearance of a curb (on a shoulder) would otherwise make the QP infeasible and take
-  // the shift everywhere else with it. The path is followed as it is there, as before
-  for (std::size_t i = ss.size(); i-- > 0 && (lower[i] > 0.0 || upper[i] < 0.0);) {
-    lower[i] = std::min(lower[i], 0.0);
-    upper[i] = std::max(upper[i], 0.0);
-  }
-  debug.markers["reference_path_following_lateral_room"] =
-    make_lateral_room_markers(path, ss, lower, upper, stamp);
-  bool centerline_is_clear = true;
-  std::vector<double> curvature;
-  curvature.reserve(ss.size());
-  double curvature_max = 0.0;
-  for (std::size_t i = 0; i < ss.size(); ++i) {
-    centerline_is_clear = centerline_is_clear && lower[i] <= 0.0 && upper[i] >= 0.0;
-    curvature.push_back(path.curvature(ss[i]));
-    curvature_max = std::max(curvature_max, std::abs(curvature.back()));
-  }
-  const double steerable_curvature = p.curvature_margin *
-                                     std::tan(context.vehicle_info.max_steer_angle_rad) /
-                                     context.vehicle_info.wheel_base_m;
-  if (centerline_is_clear && curvature_max <= steerable_curvature) {
-    return std::nullopt;  // the common case: nothing to shift, and the output is left untouched
-  }
+    auto [lower, upper] =
+      lateral_room_within_hard_bounds(context, compiled_constraints, ss, ego.s, p.clearance_m);
+    // The first two samples are pinned to the ego, which may already be inside the clearance
+    for (std::size_t i = 0; i < 2; ++i) {
+      lower[i] = std::min(lower[i], nominal[i]);
+      upper[i] = std::max(upper[i], nominal[i]);
+    }
+    // The end of the path is held on the centerline (it is the goal when the goal is in the
+    // window), so the run of samples up to it whose bounds exclude the centerline admits it
+    // instead: a goal within the clearance of a curb (on a shoulder) would otherwise make the QP
+    // infeasible and take the shift everywhere else with it. The path is followed as it is there
+    for (std::size_t i = ss.size(); i-- > 0 && (lower[i] > 0.0 || upper[i] < 0.0);) {
+      lower[i] = std::min(lower[i], 0.0);
+      upper[i] = std::max(upper[i], 0.0);
+    }
+    debug.markers["reference_path_following_lateral_room"] =
+      make_lateral_room_markers(path, ss, lower, upper, stamp);
+    std::vector<double> curvature;
+    curvature.reserve(ss.size());
+    double curvature_max = 0.0;
+    for (std::size_t i = 0; i < ss.size(); ++i) {
+      curvature.push_back(path.curvature(ss[i]));
+      curvature_max = std::max(curvature_max, std::abs(curvature.back()));
+    }
+    const double steerable_curvature = p.curvature_margin *
+                                       std::tan(context.vehicle_info.max_steer_angle_rad) /
+                                       context.vehicle_info.wheel_base_m;
 
-  // A centerline beyond the steering (a kink between lanelets in a rotary) is shifted to within
-  // it where the bounds leave the room. Where they do not, the whole QP is infeasible, and it is
-  // solved again no tighter than the centerline already is, so the shift off the bounds elsewhere
-  // is not lost with it. The limit is one scalar, so that retry admits the corner's curvature
-  // everywhere; a per sample limit is not worth the change to the QP
-  const std::vector<double> centerline(ss.size(), 0.0);
-  auto offsets = optimize_goal_shift(
-    centerline, curvature, SAMPLE_INTERVAL_M, steerable_curvature, lower, upper,
-    p.deviation_weight);
-  if (!offsets && curvature_max > steerable_curvature) {
-    offsets = optimize_goal_shift(
-      centerline, curvature, SAMPLE_INTERVAL_M, curvature_max * 1.001, lower, upper,
-      p.deviation_weight);
+    // A centerline beyond the steering (a kink between lanelets in a rotary) is shifted to within
+    // it where the bounds leave the room. Where they do not, the whole QP is infeasible, and it is
+    // solved again no tighter than the centerline already is, so the shift off the bounds
+    // elsewhere is not lost with it. The limit is one scalar, so that retry admits the corner's
+    // curvature everywhere; a per sample limit is not worth the change to the QP. Last, the end
+    // is left free: a path from the ego that does not reach the goal is taken over none
+    const double relaxed_curvature = std::max(steerable_curvature, curvature_max * 1.001);
+    // The previous output measured on this cycle's reference_path, so that the shift does not
+    // jump between cycles where the bounds leave it a choice
+    const auto previous =
+      previous_path ? project_onto_normals(path, ss, *previous_path) : std::vector<double>{};
+    const auto solve = [&](const double max_curvature, const bool hold_end) {
+      return optimize_goal_shift(
+        nominal, curvature, SAMPLE_INTERVAL_M, max_curvature, lower, upper, p.deviation_weight,
+        hold_end, previous, p.stability_weight);
+    };
+    offsets = solve(steerable_curvature, true);
+    if (!offsets && curvature_max > steerable_curvature) {
+      offsets = solve(relaxed_curvature, true);
+    }
+    if (!offsets) {
+      offsets = solve(relaxed_curvature, false);
+    }
   }
   std::optional<PathPointTrajectory> shifted;
   if (offsets) {
-    shifted =
-      autoware::experimental::trajectory::pretty_build(shift_path_points(path, ss, *offsets));
+    // Behind the ego the path is continued straight along the ego heading, so that it has no step
+    // at the ego to catch the projection of the ego onto it. reference_path.backward_length_m
+    // keeps the ego meters from the rear end, so the original points left before the first
+    // sample here are not near it
+    std::vector<double> arc_lengths;
+    std::vector<double> all_offsets;
+    for (double s = ego.s - SAMPLE_INTERVAL_M; s > 0.5 * SAMPLE_INTERVAL_M;
+         s -= SAMPLE_INTERVAL_M) {
+      arc_lengths.push_back(s);
+    }
+    if (ego.s > 0.5 * SAMPLE_INTERVAL_M) {
+      arc_lengths.push_back(0.0);
+    }
+    std::reverse(arc_lengths.begin(), arc_lengths.end());
+    for (const double s : arc_lengths) {
+      all_offsets.push_back(ego.l - (ego.s - s) * ego_slope);
+    }
+    arc_lengths.insert(arc_lengths.end(), ss.begin(), ss.end());
+    all_offsets.insert(all_offsets.end(), offsets->begin(), offsets->end());
+    shifted = autoware::experimental::trajectory::pretty_build(
+      shift_path_points(path, arc_lengths, all_offsets));
   }
   if (!shifted) {
-    // The reference_path is followed as it is, since outputting only the ego point here would stop
-    // the ego wherever the road is narrower than the footprint with its clearance
-    constexpr auto FAILURE = "lateral QP did not solve, following the reference path";
-    RCLCPP_WARN_THROTTLE(logger(), steady_clock(), 5000, "%s", FAILURE);
-    debug.markers["reference_path_following_failure"].markers.push_back(
-      make_failure_marker(context, "reference_path_following_lateral_failure", FAILURE));
     return std::nullopt;
   }
 
