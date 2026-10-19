@@ -39,6 +39,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -245,6 +246,7 @@ public:
 
   std::string name() const override { return "latentdrive"; }
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
+  bool set_tick_trigger(std::function<void(const rclcpp::Time &)> on_input) override;
   bool collect(
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs,
     std::string & error) override;
@@ -317,6 +319,8 @@ private:
   std::string missing_view_fill_{"skip"};
   std::vector<float> zero_chw_;             //!< An all-zero image, normalised.
   std::condition_variable frame_cv_;        //!< Signalled whenever a frame is stored.
+  //! Tick trigger, called with each stored camera 0 frame's stamp.
+  std::function<void(const rclcpp::Time &)> on_anchor_frame_;
   std::vector<rclcpp::CallbackGroup::SharedPtr> image_groups_;
   std::shared_ptr<rclcpp::Executor> image_executor_;
   std::thread image_thread_;

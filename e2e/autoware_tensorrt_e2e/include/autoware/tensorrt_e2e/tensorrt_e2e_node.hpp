@@ -38,9 +38,13 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace autoware::tensorrt_e2e
@@ -61,6 +65,10 @@ struct TensorrtE2eParams
   std::string args_path;  //!< Optional normalization JSON ("" to disable normalization).
   bool build_only{false};
   double planning_frequency_hz{10.0};
+  //! "timer": tick every 1 / planning_frequency_hz on the node's clock. "camera": tick when a
+  //! provider's anchor input arrives (LatentDrive: each camera 0 frame), at most at
+  //! planning_frequency_hz; falls back to the timer when no provider can pace the tick.
+  std::string tick_trigger{"timer"};
   bool shift_x{false};
   //! Enabled sensor providers: "camera", "lidar", "latentdrive".
   std::vector<std::string> sensor_inputs;
@@ -79,6 +87,7 @@ class TensorrtE2eNode : public rclcpp::Node
 {
 public:
   explicit TensorrtE2eNode(const rclcpp::NodeOptions & options);
+  ~TensorrtE2eNode() override;
 
 private:
   void set_up_params();
@@ -94,6 +103,12 @@ private:
   std::unique_ptr<TrajectoryPostprocessor> create_postprocessor();
 
   void on_timer();
+
+  /// Hand the tick to a provider's input arrival; false when no provider can pace it.
+  bool start_input_triggered_ticks();
+  /// From a provider thread: an anchor input arrived; wake the tick thread if a tick is due.
+  void on_trigger_input(const rclcpp::Time & stamp);
+  void run_tick_thread();
 
   /**
    * @brief Build the per-tick ego frame from the latest odometry/acceleration.
@@ -125,6 +140,17 @@ private:
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_{tf_buffer_};
   rclcpp::TimerBase::SharedPtr timer_;
+
+  // Input-triggered ticks (tick_trigger "camera"): on_timer() runs on tick_thread_, woken by
+  // on_trigger_input(), so the node's executor stays free for the provider callbacks.
+  std::thread tick_thread_;
+  std::mutex tick_mutex_;
+  std::condition_variable tick_cv_;
+  bool tick_pending_{false};
+  bool tick_stop_{false};
+  std::optional<double> last_tick_input_stamp_;  //!< Stamp of the input that started the last tick.
+  std::optional<double> last_input_stamp_;
+  double input_gap_{0.0};  //!< Stamp interval between the last two trigger inputs [s].
   rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_;
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;

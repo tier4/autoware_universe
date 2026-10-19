@@ -663,7 +663,7 @@ void LatentDriveInputProvider::on_image(
   frame_age.data = (node_.get_clock()->now() - stamp).seconds() * 1e3;
   pub_frame_ages_[view]->publish(frame_age);
 
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::mutex> lock(mutex_);
   std::deque<Frame> & frames = frames_[view];
   if (!frames.empty() && (frames.back().stamp - stamp).seconds() > STAMP_JUMP_BACK_S) {
     RCLCPP_WARN(
@@ -687,6 +687,19 @@ void LatentDriveInputProvider::on_image(
     frames.pop_front();
   }
   frame_cv_.notify_all();  // a tick may be waiting for this view's partner frame
+  const auto on_anchor_frame = view == 0 ? on_anchor_frame_ : nullptr;
+  lock.unlock();
+  if (on_anchor_frame) {
+    on_anchor_frame(stamp);
+  }
+}
+
+bool LatentDriveInputProvider::set_tick_trigger(
+  std::function<void(const rclcpp::Time &)> on_input)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  on_anchor_frame_ = std::move(on_input);
+  return true;
 }
 
 bool LatentDriveInputProvider::build_video_tensor(

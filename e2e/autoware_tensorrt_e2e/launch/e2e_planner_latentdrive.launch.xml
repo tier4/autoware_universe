@@ -27,6 +27,7 @@
        every tick is untested by comparison, so match the benchmark before reading its numbers
        across. Turn smoothing off as well for that, since the benchmark drove the raw plan. -->
   <arg name="planning_frequency_hz" default="10.0"/>
+  <arg name="tick_trigger" default="camera" description="camera: tick on each camera0 frame (at most planning_frequency_hz) | timer: free-running timer at planning_frequency_hz"/>
   <arg name="smoothing" default="true" description="temporal smoothing of the plan (latentdrive.smoothing.enable); the raw plan stays published as the _raw candidate"/>
   <arg name="prepend_ego_pose" default="false" description="put the ego pose in front of the published trajectory (postprocess.prepend_ego_pose), so the controller's nearest reference point lies on the car"/>
   <arg name="publish_raw_candidate" default="true" description="publish the unfiltered plan as an extra candidate trajectory; it shares the filtered one's generator id, so turn it off where the candidates feed a planning chain"/>
@@ -82,6 +83,7 @@
     <!-- Typed: the node declares a double, and "planning_frequency_hz:=5" on the command line
          would otherwise arrive as an integer and be refused at startup. -->
     <param name="planning_frequency_hz" value="$(var planning_frequency_hz)" type="float"/>
+    <param name="tick_trigger" value="$(var tick_trigger)"/>
     <param name="latentdrive.smoothing.enable" value="$(var smoothing)"/>
     <param name="latentdrive.smoothing.publish_raw_candidate" value="$(var publish_raw_candidate)"/>
     <param name="postprocess.prepend_ego_pose" value="$(var prepend_ego_pose)"/>

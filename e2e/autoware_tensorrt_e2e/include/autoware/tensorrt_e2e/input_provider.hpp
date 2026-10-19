@@ -19,11 +19,32 @@
 
 #include <rclcpp/time.hpp>
 
+#include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace autoware::tensorrt_e2e
 {
+
+/**
+ * @brief Whether a trigger input (see InputProviderInterface::set_tick_trigger) starts a tick
+ * at a planning period of `period` seconds: the input whose stamp lands nearest one period after
+ * the input that started the last tick does. Judged on header stamps, which the camera trigger
+ * keeps exactly periodic, not on arrival, which decode and transport jitter by tens of ms.
+ * @param stamp This input's header stamp [s].
+ * @param last_tick_stamp The stamp of the input that started the last tick; nullopt before any.
+ * @param input_gap The stamp interval between consecutive inputs [s].
+ */
+inline bool trigger_input_due(
+  const double stamp, const std::optional<double> last_tick_stamp, const double input_gap,
+  const double period)
+{
+  if (!last_tick_stamp || stamp < *last_tick_stamp) {
+    return true;  // the first input, or the clock was rewound (a bag restarted)
+  }
+  return stamp - *last_tick_stamp >= period - 0.5 * input_gap;
+}
 
 /**
  * @class InputProviderInterface
@@ -61,6 +82,19 @@ public:
    */
   virtual bool collect(
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs, std::string & error) = 0;
+
+  /**
+   * @brief Let this provider pace the planning tick: it calls `on_input` with the input's header
+   * stamp whenever a new input the tick should run on has arrived (for LatentDrive, every stored
+   * camera 0 frame). Called after claim_inputs(); `on_input` may be called from any thread and
+   * must not block.
+   * @return false when the provider has no such input (the node then keeps its timer).
+   */
+  virtual bool set_tick_trigger(std::function<void(const rclcpp::Time &)> on_input)
+  {
+    (void)on_input;
+    return false;
+  }
 };
 
 }  // namespace autoware::tensorrt_e2e

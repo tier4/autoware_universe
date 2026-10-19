@@ -36,6 +36,9 @@
 
     # -- runtime --
     planning_frequency_hz: 10.0
+    # "timer" ticks every 1 / planning_frequency_hz; "camera" ticks on a provider's anchor input
+    # (LatentDrive: each camera 0 frame), at most at planning_frequency_hz.
+    tick_trigger: "timer"
     shift_x: false
 
     bev_feature:

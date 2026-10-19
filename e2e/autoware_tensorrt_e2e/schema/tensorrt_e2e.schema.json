@@ -37,6 +37,12 @@
           "default": 10.0,
           "exclusiveMinimum": 0.0
         },
+        "tick_trigger": {
+          "type": "string",
+          "enum": ["timer", "camera"],
+          "description": "What starts a planning tick: a timer at planning_frequency_hz, or the arrival of a provider's anchor input (LatentDrive: each camera 0 frame), at most at planning_frequency_hz. Falls back to the timer when no provider can pace the tick.",
+          "default": "timer"
+        },
         "shift_x": {
           "type": "boolean",
           "description": "Use the vehicle center (instead of base_link) as the model reference frame, mirroring the diffusion planner option.",

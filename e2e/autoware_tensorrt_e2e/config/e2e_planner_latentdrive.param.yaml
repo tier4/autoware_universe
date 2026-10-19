@@ -32,6 +32,11 @@
 
     # -- runtime --
     planning_frequency_hz: 10.0
+    # "camera": tick on each camera 0 frame as it arrives (at most planning_frequency_hz), so the
+    # newest frame is always as fresh as decode allows and the side views are paired the same way
+    # every tick. "timer": a free-running timer, whose phase against the camera trigger is set by
+    # when the node happened to start (newest frame 0-100 ms older, fixed for the run).
+    tick_trigger: "camera"
     shift_x: false
 
     latentdrive:

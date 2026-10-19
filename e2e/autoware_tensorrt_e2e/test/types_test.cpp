@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/tensorrt_e2e/input_provider.hpp"
 #include "autoware/tensorrt_e2e/types.hpp"
 
 #include <gtest/gtest.h>
@@ -60,6 +61,39 @@ TEST(TypesTest, FindSpec)
   EXPECT_EQ(find_spec(specs, "prediction")->shape, (std::vector<int64_t>{1, 1, 40, 4}));
   EXPECT_EQ(find_spec(specs, "lanes_has_speed_limit")->dtype, TensorDataType::kBOOL);
   EXPECT_EQ(find_spec(specs, "missing"), nullptr);
+}
+
+TEST(TickTriggerTest, EveryFrameAtTheCameraRateDespiteArrivalJitter)
+{
+  // 10 Hz camera, 10 Hz planning: every frame is due, whatever its arrival time was.
+  std::optional<double> last;
+  for (int i = 0; i < 20; ++i) {
+    const double stamp = 100.0 + 0.1 * i;
+    ASSERT_TRUE(trigger_input_due(stamp, last, 0.1, 0.1)) << i;
+    last = stamp;
+  }
+}
+
+TEST(TickTriggerTest, EveryEighthFrameAtOnePointTwoFiveHertz)
+{
+  std::optional<double> last;
+  int ticks = 0;
+  for (int i = 0; i < 80; ++i) {
+    const double stamp = 100.0 + 0.1 * i;
+    if (trigger_input_due(stamp, last, 0.1, 0.8)) {
+      EXPECT_EQ(i % 8, 0) << i;
+      last = stamp;
+      ++ticks;
+    }
+  }
+  EXPECT_EQ(ticks, 10);
+}
+
+TEST(TickTriggerTest, FirstInputAndRewoundClockAreDue)
+{
+  EXPECT_TRUE(trigger_input_due(100.0, std::nullopt, 0.0, 0.1));
+  EXPECT_TRUE(trigger_input_due(50.0, 100.0, 0.1, 0.1));  // bag restarted
+  EXPECT_FALSE(trigger_input_due(100.0, 100.0, 0.1, 0.1));  // the same frame again
 }
 
 }  // namespace autoware::tensorrt_e2e

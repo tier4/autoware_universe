@@ -242,8 +242,16 @@ Sizing it below what a graph needs does not merely cost performance: the builder
 
 ## Runtime behavior
 
-The node is timer-driven at `planning_frequency_hz` (10 Hz by default). Sensor callbacks only
-cache messages; expensive preprocessing and inference happen in the timer callback. Processing
+By default the node is timer-driven at `planning_frequency_hz` (10 Hz). With
+`tick_trigger: "camera"` (the LatentDrive configuration and launch default) a tick instead starts
+when camera 0's frame has been stored, on a thread of its own, at most at `planning_frequency_hz`
+(at a lower rate, the frame closest to one period after the last tick starts the next). A timer's
+phase against the lidar-triggered cameras is fixed by when the node started, so the newest frame
+was 0-100 ms older depending on the launch; triggered by the frame it is always as fresh as decode
+allows, and a side camera triggered just after camera 0 is waited for the same way every tick.
+Without frames the tick still runs every two periods, so diagnostics report the stale camera.
+`tick_trigger:=timer` restores the timer. Sensor callbacks only cache messages; inference
+happens in the tick. Processing
 time is published on `~/debug/processing_time_ms` and budget overruns are reported through
 diagnostics.
 

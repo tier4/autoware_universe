@@ -81,9 +81,89 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
     }
   }
 
+  if (params_.tick_trigger == "camera" && pipeline_ready_) {
+    if (start_input_triggered_ticks()) {
+      return;
+    }
+    RCLCPP_WARN(
+      get_logger(), "tick_trigger is \"camera\" but no input provider can pace the tick; "
+                    "using the %.1f Hz timer", params_.planning_frequency_hz);
+  }
   timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&TensorrtE2eNode::on_timer, this));
+}
+
+TensorrtE2eNode::~TensorrtE2eNode()
+{
+  if (tick_thread_.joinable()) {
+    {
+      std::lock_guard<std::mutex> lock(tick_mutex_);
+      tick_stop_ = true;
+    }
+    tick_cv_.notify_all();
+    tick_thread_.join();
+  }
+}
+
+bool TensorrtE2eNode::start_input_triggered_ticks()
+{
+  for (const auto & provider : providers_) {
+    if (provider->set_tick_trigger(
+          [this](const rclcpp::Time & stamp) { on_trigger_input(stamp); })) {
+      RCLCPP_INFO(
+        get_logger(), "Planning tick triggered by the [%s] input, at most %.1f Hz",
+        provider->name().c_str(), params_.planning_frequency_hz);
+      tick_thread_ = std::thread(&TensorrtE2eNode::run_tick_thread, this);
+      return true;
+    }
+  }
+  return false;
+}
+
+void TensorrtE2eNode::on_trigger_input(const rclcpp::Time & stamp)
+{
+  const double seconds = stamp.seconds();
+  {
+    std::lock_guard<std::mutex> lock(tick_mutex_);
+    if (last_input_stamp_ && seconds > *last_input_stamp_) {
+      input_gap_ = seconds - *last_input_stamp_;
+    }
+    last_input_stamp_ = seconds;
+    // At most planning_frequency_hz. A tick still running when the input arrives starts again
+    // as soon as it is done.
+    if (!trigger_input_due(
+          seconds, last_tick_input_stamp_, input_gap_, 1.0 / params_.planning_frequency_hz)) {
+      return;
+    }
+    last_tick_input_stamp_ = seconds;
+    tick_pending_ = true;
+  }
+  tick_cv_.notify_one();
+}
+
+void TensorrtE2eNode::run_tick_thread()
+{
+  // Without inputs the tick still runs, every two periods, so diagnostics report the stale input
+  // rather than going silent.
+  const auto timeout = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+    std::chrono::duration<double>(2.0 / params_.planning_frequency_hz));
+  while (true) {
+    std::unique_lock<std::mutex> lock(tick_mutex_);
+    const bool triggered =
+      tick_cv_.wait_for(lock, timeout, [this]() { return tick_pending_ || tick_stop_; });
+    if (tick_stop_) {
+      return;
+    }
+    tick_pending_ = false;
+    lock.unlock();
+    if (!triggered) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
+        "No trigger input for %.0f ms; ticking anyway", 2e3 / params_.planning_frequency_hz);
+    }
+    on_timer();
+  }
 }
 
 void TensorrtE2eNode::set_up_params()
@@ -95,6 +175,11 @@ void TensorrtE2eNode::set_up_params()
   params_.args_path = declare_parameter<std::string>("args_path", "");
   params_.build_only = declare_parameter<bool>("build_only", false);
   params_.planning_frequency_hz = declare_parameter<double>("planning_frequency_hz", 10.0);
+  params_.tick_trigger = declare_parameter<std::string>("tick_trigger", "timer");
+  if (params_.tick_trigger != "timer" && params_.tick_trigger != "camera") {
+    throw std::invalid_argument(
+      "tick_trigger must be \"timer\" or \"camera\", got \"" + params_.tick_trigger + "\"");
+  }
   params_.shift_x = declare_parameter<bool>("shift_x", false);
   params_.sensor_inputs = declare_parameter<std::vector<std::string>>(
     "sensor_inputs", std::vector<std::string>{});
