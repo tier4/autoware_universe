@@ -14,6 +14,8 @@
 
 #include "reference_path_smoother.hpp"
 
+#include "frenet_utils.hpp"
+
 #include <Eigen/Core>
 #include <autoware/osqp_interface/osqp_interface.hpp>
 #include <autoware/trajectory/utils/pretty_build.hpp>
@@ -166,10 +168,8 @@ std::optional<PathPointTrajectory> smooth_reference_path(
 std::optional<std::vector<double>> optimize_goal_shift(
   const std::vector<double> & nominal, const std::vector<double> & centerline_curvature,
   const double ds, const double max_curvature, const std::vector<double> & lower_bound,
-  const std::vector<double> & upper_bound)
+  const std::vector<double> & upper_bound, const double deviation_weight)
 {
-  //! keeps P positive definite; the second difference alone is singular on constants and ramps
-  constexpr double REGULARIZER = 1.0e-6;
   //! The curvature of the offset path is nonlinear in l through 1 - k_ref l and l'; both are
   //! frozen at the profile of the previous pass and the QP re-run. k_ref * l reaches ~1 on the
   //! tight lanelets this is for, so linearizing those terms away is not enough
@@ -189,8 +189,10 @@ std::optional<std::vector<double>> optimize_goal_shift(
     d2(i, i + 1) = -2.0;
     d2(i, i + 2) = 1.0;
   }
+  // deviation_weight also keeps P positive definite; the second difference alone is singular on
+  // constants and ramps
   const Eigen::MatrixXd p_matrix =
-    2.0 * (d2.transpose() * d2 + REGULARIZER * Eigen::MatrixXd::Identity(ni, ni));
+    2.0 * (d2.transpose() * d2 + deviation_weight * Eigen::MatrixXd::Identity(ni, ni));
   const std::vector<double> q_vector(n, 0.0);
 
   // Rows: the value and the slope at each end, the offset of every point, then the curvature of
@@ -260,6 +262,36 @@ std::optional<std::vector<double>> optimize_goal_shift(
     }
   }
   return profile;
+}
+
+std::vector<PathPointWithLaneId> shift_path_points(
+  const PathPointTrajectory & path, const std::vector<double> & arc_lengths,
+  const std::vector<double> & offsets)
+{
+  const auto original = path.restore();
+  const auto bases = path.get_underlying_bases();
+  std::vector<PathPointWithLaneId> points;
+  for (std::size_t i = 0; i < original.size() && bases[i] < arc_lengths.front(); ++i) {
+    points.push_back(original[i]);
+  }
+  // arc_lengths.front() itself is resampled rather than taken from the original points: it may
+  // already carry a lateral offset
+  const std::size_t first_shifted = points.size();
+  for (std::size_t i = 0; i < arc_lengths.size(); ++i) {
+    const auto shifted = to_world_pose(path, arc_lengths[i], offsets[i]);
+    auto point = path.compute(arc_lengths[i]);
+    point.point.pose.position.x = shifted.position.x();
+    point.point.pose.position.y = shifted.position.y();
+    points.push_back(point);
+  }
+  // The headings have to describe the shifted positions, not the centerline they came from
+  for (std::size_t i = std::max<std::size_t>(first_shifted, 1); i < points.size(); ++i) {
+    const auto & p0 = points[i - 1].point.pose.position;
+    const auto & p1 = points[i + 1 < points.size() ? i + 1 : i].point.pose.position;
+    points[i].point.pose.orientation =
+      autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(p1.y - p0.y, p1.x - p0.x));
+  }
+  return points;
 }
 
 }  // namespace autoware::safety_planner

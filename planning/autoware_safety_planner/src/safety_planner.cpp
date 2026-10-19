@@ -88,8 +88,6 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
   // is azimuth + atan(l' / (1 - k l)), not azimuth + atan(l'). On a tight lane 1 - k l is far from
   // 1 (~2 in a rotary) and leaving the factor out turns the path only half as far as the goal asks
   const double scale_at_goal = 1.0 - path.curvature(s_goal) * l_goal;
-  const auto original = path.restore();
-  const auto bases = path.get_underlying_bases();
 
   // Road lanelets off the route are not accepted: a goal in the neighboring lane would otherwise
   // be connected, i.e. a lane change, which is left to the driver / the other planner
@@ -151,27 +149,7 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
     };
 
     const auto build = [&](const std::vector<double> & profile) {
-      std::vector<PathPointWithLaneId> connected;
-      for (std::size_t i = 0; i < original.size() && bases[i] < s_begin; ++i) {
-        connected.push_back(original[i]);
-      }
-      // s_begin itself is resampled rather than taken from the original points: when the window
-      // starts inside the ramp it already carries a lateral offset
-      const std::size_t first_shifted = connected.size();
-      for (std::size_t i = 0; i <= n; ++i) {
-        const auto shifted = to_world_pose(path, arc_lengths[i], profile[i]);
-        auto point = path.compute(arc_lengths[i]);
-        point.point.pose.position.x = shifted.position.x();
-        point.point.pose.position.y = shifted.position.y();
-        connected.push_back(point);
-      }
-      // The headings have to describe the shifted positions, not the centerline they came from
-      for (std::size_t i = std::max<std::size_t>(first_shifted, 1); i < connected.size(); ++i) {
-        const auto & p0 = connected[i - 1].point.pose.position;
-        const auto & p1 = connected[i + 1 < connected.size() ? i + 1 : i].point.pose.position;
-        connected[i].point.pose.orientation =
-          autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(p1.y - p0.y, p1.x - p0.x));
-      }
+      auto connected = shift_path_points(path, arc_lengths, profile);
       connected.back().point.pose.position.x = goal.position.x;
       connected.back().point.pose.position.y = goal.position.y;
       connected.back().point.pose.orientation = goal.orientation;

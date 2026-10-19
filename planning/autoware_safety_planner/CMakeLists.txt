@@ -13,6 +13,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 ament_auto_add_library(${PROJECT_NAME}_common STATIC
   src/utils/boundary_simplifier.cpp
   src/utils/frenet_utils.cpp
+  src/utils/reference_path_smoother.cpp
   src/utils/route_tracking.cpp
   src/utils/trajectory_postprocess.cpp
   src/utils/turn_indicator_decider.cpp
@@ -72,7 +73,6 @@ pluginlib_export_plugin_description_file(${PROJECT_NAME} plugins.xml)
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/safety_planner.cpp
   src/safety_planner_node.cpp
-  src/utils/reference_path_smoother.cpp
 )
 target_link_libraries(${PROJECT_NAME}_lib
   safety_planner_parameters
