@@ -88,12 +88,6 @@
           "default": [1.0],
           "description": "Initial Gaussian noise scale for each batch item. Its length must equal batch_size."
         },
-        "line_string_max_step_m": {
-          "type": "number",
-          "default": 5.0,
-          "exclusiveMinimum": 0,
-          "description": "Maximum arc-length step per model point when resampling line strings [m]. Smaller values produce more fixed-size sub-segments per line string."
-        },
         "trajectory_optimization": {
           "type": "object",
           "properties": {
