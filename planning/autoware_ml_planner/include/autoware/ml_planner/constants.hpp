@@ -38,6 +38,9 @@ constexpr double MAX_ROUTE_SEGMENT_YAW_DIFF_RAD = M_PI / 3.0;
 // sites this leaves out 0.1-0.6% of the lanelets within 150 m, all 6.4 m or more above or below.
 constexpr double MAX_SAME_LEVEL_HEIGHT_DIFF_M = 4.0;
 constexpr double SAME_LEVEL_HEIGHT_DIFF_PER_DISTANCE = 0.05;
+// Lanelets whose centerline is longer than this are split into consecutive lane segments of
+// equal length, so a long lanelet keeps a fine point spacing in the fixed-size lane tensors.
+constexpr double LANE_SEGMENT_MAX_LENGTH_M = 40.0;
 
 }  // namespace autoware::ml_planner::constants
 
