@@ -33,6 +33,11 @@ constexpr int LOG_THROTTLE_INTERVAL_MS = 5000;
 // Geometric constants
 constexpr double LANE_MASK_RANGE_M = 100.0;
 constexpr double MAX_ROUTE_SEGMENT_YAW_DIFF_RAD = M_PI / 3.0;
+// Lane and route segments, intersection areas, stop lines and road borders are kept when a
+// point lies within this box in the ego frame: LANE_MASK_BACKWARD_M behind to
+// LANE_MASK_FORWARD_M ahead, and LANE_MASK_RANGE_M to either side.
+constexpr double LANE_MASK_BACKWARD_M = 50.0;
+constexpr double LANE_MASK_FORWARD_M = 150.0;
 // Lanelets whose centerline is longer than this are split into consecutive lane segments of
 // equal length, so a long lanelet keeps a fine point spacing in the fixed-size lane tensors.
 constexpr double LANE_SEGMENT_MAX_LENGTH_M = 40.0;

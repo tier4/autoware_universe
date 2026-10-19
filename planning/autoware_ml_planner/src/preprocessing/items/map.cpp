@@ -285,10 +285,9 @@ LaneletMap convert_to_internal_lanelet_map(
 
     const lanelet::AttributeMap & attrs = lanelet.attributes();
     const std::optional<float> speed_limit_mps =
-      attrs.find("speed_limit") != attrs.end()
-        ? std::make_optional(
-            autoware_utils_math::kmph2mps(std::stof(attrs.at("speed_limit").value())))
-        : std::nullopt;
+      attrs.find("speed_limit") != attrs.end() ? std::make_optional(autoware_utils_math::kmph2mps(
+                                                   std::stof(attrs.at("speed_limit").value())))
+                                               : std::nullopt;
 
     int64_t turn_direction = LaneSegment::TURN_DIRECTION_NONE;
     const std::map<std::string, int64_t> turn_direction_map = {
@@ -369,7 +368,7 @@ using autoware_perception_msgs::msg::TrafficLightElement;
 
 std::map<lanelet::Id, std::vector<size_t>> create_lane_id_to_array_index_map(
   const std::vector<LaneSegment> & lane_segments);
-bool is_segment_inside(const LaneSegment & segment, const double center_x, const double center_y);
+bool is_segment_inside(const LaneSegment & segment, const Eigen::Matrix4d & transform_matrix);
 std::optional<size_t> find_closest_segment_index(
   const std::vector<LaneSegment> & lane_segments, const std::vector<int64_t> & segment_indices,
   const lanelet::BasicPoint2d & point, const double yaw, const double yaw_threshold);
@@ -378,9 +377,10 @@ template <typename T>
 xt::xarray<float> create_line_tensor(
   const std::vector<T> & elements, const Eigen::Matrix4d & transform_matrix, double center_x,
   double center_y, int64_t num_elements, int64_t num_points, int64_t num_types);
+bool is_inside_lane_mask(const Eigen::Vector4d & ego_point);
 xt::xarray<float> create_polyline_tensor(
   const std::vector<MapPolyline> & elements, const Eigen::Matrix4d & transform_matrix,
-  double center_x, double center_y, int64_t num_elements, int64_t num_points);
+  int64_t num_elements, int64_t num_points);
 }  // namespace
 
 // LaneSegmentContext implementation
@@ -395,32 +395,31 @@ LaneSegmentContext::LaneSegmentContext(
 }
 
 xt::xarray<float> LaneSegmentContext::create_intersection_area_tensor(
-  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
+  const Eigen::Matrix4d & transform_matrix) const
 {
   return create_polyline_tensor(
-    lanelet_map_.intersection_areas, transform_matrix, center_x, center_y, NUM_INTERSECTION_AREAS,
+    lanelet_map_.intersection_areas, transform_matrix, NUM_INTERSECTION_AREAS,
     POINTS_PER_INTERSECTION_AREA);
 }
 
 xt::xarray<float> LaneSegmentContext::create_stop_line_tensor(
-  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
+  const Eigen::Matrix4d & transform_matrix) const
 {
   return create_polyline_tensor(
-    lanelet_map_.stop_lines, transform_matrix, center_x, center_y, NUM_STOP_LINES,
-    POINTS_PER_STOP_LINE);
+    lanelet_map_.stop_lines, transform_matrix, NUM_STOP_LINES, POINTS_PER_STOP_LINE);
 }
 
 xt::xarray<float> LaneSegmentContext::create_road_border_tensor(
-  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
+  const Eigen::Matrix4d & transform_matrix) const
 {
   return create_polyline_tensor(
-    lanelet_map_.road_borders, transform_matrix, center_x, center_y, NUM_ROAD_BORDERS,
-    POINTS_PER_ROAD_BORDER);
+    lanelet_map_.road_borders, transform_matrix, NUM_ROAD_BORDERS, POINTS_PER_ROAD_BORDER);
 }
 
 std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
-  const LaneletRoute & route, const double center_x, const double center_y,
-  [[maybe_unused]] const double center_z, const double center_yaw, const int64_t max_segments) const
+  const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+  const double center_y, [[maybe_unused]] const double center_z, const double center_yaw,
+  const int64_t max_segments) const
 {
   std::vector<int64_t> array_indices;
   for (const auto & route_segment : route.segments) {
@@ -457,7 +456,7 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   for (size_t i = closest_index.value_or(0); i < array_indices.size(); ++i) {
     const int64_t segment_idx = array_indices[i];
 
-    if (!is_segment_inside(lanelet_map_.lane_segments[segment_idx], center_x, center_y)) {
+    if (!is_segment_inside(lanelet_map_.lane_segments[segment_idx], transform_matrix)) {
       if (has_entered_valid_region) {
         break;
       }
@@ -477,15 +476,15 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
 
 autoware_perception_msgs::msg::TrafficLightGroup
 LaneSegmentContext::get_first_traffic_light_on_route(
-  const LaneletRoute & route, const double center_x, const double center_y, const double center_z,
-  const double center_yaw,
+  const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+  const double center_y, const double center_z, const double center_yaw,
   const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map) const
 {
   autoware_perception_msgs::msg::TrafficLightGroup result;
   result.traffic_light_group_id = 0;
 
   const std::vector<int64_t> segment_indices = select_route_segment_indices(
-    route, center_x, center_y, center_z, center_yaw, NUM_SEGMENTS_IN_ROUTE);
+    route, transform_matrix, center_x, center_y, center_z, center_yaw, NUM_SEGMENTS_IN_ROUTE);
 
   for (const int64_t segment_idx : segment_indices) {
     const LaneSegment & segment = lanelet_map_.lane_segments[segment_idx];
@@ -524,8 +523,7 @@ std::vector<std::pair<lanelet::Id, int64_t>> LaneSegmentContext::get_traffic_lig
 }
 
 std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
-  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-  const int64_t max_segments) const
+  const Eigen::Matrix4d & transform_matrix, const int64_t max_segments) const
 {
   struct ColWithDistance
   {
@@ -548,7 +546,7 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   for (size_t i = 0; i < lanelet_map_.lane_segments.size(); ++i) {
     const LaneSegment & segment = lanelet_map_.lane_segments[i];
 
-    if (!is_segment_inside(segment, center_x, center_y)) {
+    if (!is_segment_inside(segment, transform_matrix)) {
       continue;
     }
 
@@ -754,11 +752,8 @@ xt::xarray<float> create_line_tensor(
 
 xt::xarray<float> create_polyline_tensor(
   const std::vector<MapPolyline> & elements, const Eigen::Matrix4d & transform_matrix,
-  const double center_x, const double center_y, const int64_t num_elements,
-  const int64_t num_points)
+  const int64_t num_elements, const int64_t num_points)
 {
-  using autoware::ml_planner::constants::LANE_MASK_RANGE_M;
-
   struct PolylineWithDistance
   {
     Polyline points;
@@ -768,25 +763,20 @@ xt::xarray<float> create_polyline_tensor(
   selected.reserve(elements.size());
 
   for (const auto & element : elements) {
-    const bool is_inside =
-      std::any_of(element.points.begin(), element.points.end(), [&](const LanePoint & point) {
-        return point.x() > center_x - LANE_MASK_RANGE_M &&
-               point.x() < center_x + LANE_MASK_RANGE_M &&
-               point.y() > center_y - LANE_MASK_RANGE_M && point.y() < center_y + LANE_MASK_RANGE_M;
-      });
-    if (!is_inside) {
-      continue;
-    }
-
     Polyline transformed;
     transformed.reserve(element.points.size());
     double min_distance = std::numeric_limits<double>::max();
+    bool is_inside = false;
     for (const auto & point : element.points) {
       const Eigen::Vector4d transformed_point =
         transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
       transformed.emplace_back(transformed_point.x(), transformed_point.y(), transformed_point.z());
       min_distance =
         std::min(min_distance, std::hypot(transformed_point.x(), transformed_point.y()));
+      is_inside = is_inside || is_inside_lane_mask(transformed_point);
+    }
+    if (!is_inside) {
+      continue;
     }
     selected.push_back({std::move(transformed), min_distance});
   }
@@ -826,16 +816,23 @@ std::map<lanelet::Id, std::vector<size_t>> create_lane_id_to_array_index_map(
   return lane_id_to_index;
 }
 
-bool is_segment_inside(const LaneSegment & segment, const double center_x, const double center_y)
+bool is_inside_lane_mask(const Eigen::Vector4d & ego_point)
+{
+  using autoware::ml_planner::constants::LANE_MASK_BACKWARD_M;
+  using autoware::ml_planner::constants::LANE_MASK_FORWARD_M;
+  using autoware::ml_planner::constants::LANE_MASK_RANGE_M;
+  return ego_point.x() >= -LANE_MASK_BACKWARD_M && ego_point.x() <= LANE_MASK_FORWARD_M &&
+         std::abs(ego_point.y()) <= LANE_MASK_RANGE_M;
+}
+
+bool is_segment_inside(const LaneSegment & segment, const Eigen::Matrix4d & transform_matrix)
 {
   for (const auto & point : segment.centerline) {
-    if (
-      std::abs(point.x() - center_x) <= autoware::ml_planner::constants::LANE_MASK_RANGE_M &&
-      std::abs(point.y() - center_y) <= autoware::ml_planner::constants::LANE_MASK_RANGE_M) {
+    if (is_inside_lane_mask(
+          transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0))) {
       return true;
     }
   }
-
   return false;
 }
 
