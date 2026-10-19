@@ -129,6 +129,7 @@ struct LaneletMap
 /**
  * @brief Convert a lanelet map to line segment data
  * @param lanelet_map_ptr Pointer of loaded lanelet map.
+ * @param line_string_max_step_m Maximum arc-length step per point for resampled line strings.
  * @return LaneletMap
  */
 [[nodiscard]] LaneletMap convert_to_internal_lanelet_map(
@@ -157,6 +158,7 @@ public:
    * @brief Constructor that initializes the context with static data determined at initialization.
    *
    * @param lanelet_map_ptr Shared pointer to the lanelet map.
+   * @param line_string_max_step_m Maximum arc-length step per point for resampled line strings.
    */
   explicit LaneSegmentContext(
     const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
@@ -231,11 +233,12 @@ public:
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map) const;
 
   /**
-   * @brief Get the mapping from lanelet ID to array index.
+   * @brief Get the mapping from lanelet ID to array indices.
    *
-   * @return Map of lanelet IDs to their corresponding array indices.
+   * @return Map of lanelet IDs to the indices of their lane segments, in driving order. A lanelet
+   *         maps to several indices when it was split.
    */
-  const std::map<lanelet::Id, size_t> & get_lanelet_id_to_array_index() const
+  const std::map<lanelet::Id, std::vector<size_t>> & get_lanelet_id_to_array_index() const
   {
     return lanelet_id_to_array_index_;
   }
@@ -248,7 +251,7 @@ public:
 
 private:
   const autoware::ml_planner::LaneletMap lanelet_map_;
-  const std::map<lanelet::Id, size_t> lanelet_id_to_array_index_;
+  const std::map<lanelet::Id, std::vector<size_t>> lanelet_id_to_array_index_;
 };
 
 /**
