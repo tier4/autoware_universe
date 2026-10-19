@@ -80,6 +80,11 @@ def main() -> int:
     parser.add_argument("--route-points", default="5,10,15,20,30,50",
                         help="route-point models (status [1, 2K + 4], K > 1): arc lengths [m] of the "
                              "K points, comma-separated; the default is A-camfront-rptw-e2's")
+    parser.add_argument("--missing-view-fill", choices=("skip", "zeros"), default="skip",
+                        help="multi-view models: a side view with no frame within the sync "
+                             "tolerance skips the tick (skip, the two-view idx9 line never saw a "
+                             "padded view) or is fed an all-zero image (zeros, as the three-camera "
+                             "training did for a missing side camera)")
     parser.add_argument("--status-subgoal-divisor", type=float, default=10.0,
                         help="the subgoal is divided by this in the status vector")
     args = parser.parse_args()
@@ -163,6 +168,10 @@ def main() -> int:
          f"  # {num_route_points} route points ahead on the 1 m route"
          if num_route_points > 1 else f"      subgoal_ahead_m: {args.subgoal_ahead_m}"),
         f"      status_subgoal_divisor: {args.status_subgoal_divisor}",
+    ]
+    if num_views > 1:
+        lines.append(f"      missing_view_fill: \"{args.missing_view_fill}\"")
+    lines += [
         "",
         "    postprocess:",
         f"      prediction_tensor: \"{args.trajectory_tensor}\"",
@@ -180,6 +189,7 @@ def main() -> int:
     print(f"wrote {out_path}")
     print(f"  frames={num_frames} interval={args.frame_interval}s input={width}x{height} "
           f"views={num_views} waypoints={num_waypoints}"
+          + (f" missing_view_fill={args.missing_view_fill}" if num_views > 1 else "")
           + (f" route_points={route_points}" if num_route_points > 1 else "")
           + ("" if abs(plan_step - SUPPORTED_TIME_STEP) < 1e-9
              else f" ({plan_step:.3g}s apart, interpolated to {SUPPORTED_TIME_STEP}s)"))

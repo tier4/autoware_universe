@@ -149,6 +149,34 @@ TEST(LatentDriveViewAlignTest, RefusesAnAnchorFrameWithoutAPartnerInTolerance)
   EXPECT_FALSE(align_view(anchor, {}, 0.06).has_value());
 }
 
+TEST(LatentDriveViewAlignTest, PairsTheNearestFrameOnEitherSide)
+{
+  // Lidar-triggered phase: the left camera fires 14 ms before camera 0, so its next frame is
+  // 86 ms after. Nearest pairing must pick the earlier one, as training did.
+  const std::vector<double> anchor{100.0, 100.5};
+  const std::vector<double> left{99.986, 100.086, 100.486, 100.586};
+  const auto slots = align_view_slots(anchor, left, 0.05);
+  ASSERT_EQ(slots.size(), 2u);
+  EXPECT_EQ(slots[0], std::optional<size_t>(0));
+  EXPECT_EQ(slots[1], std::optional<size_t>(2));
+}
+
+TEST(LatentDriveViewAlignTest, MarksOnlyTheSlotsWithoutAPartner)
+{
+  const std::vector<double> anchor{100.0, 100.5, 101.0, 101.5};
+  // 101.0 has none within 50 ms (the right camera frame has not arrived yet).
+  const std::vector<double> right{100.014, 100.514};
+  const auto slots = align_view_slots(anchor, right, 0.05);
+  ASSERT_EQ(slots.size(), 4u);
+  EXPECT_EQ(slots[0], std::optional<size_t>(0));
+  EXPECT_EQ(slots[1], std::optional<size_t>(1));
+  EXPECT_FALSE(slots[2].has_value());
+  EXPECT_FALSE(slots[3].has_value());
+  for (const auto & slot : align_view_slots(anchor, {}, 0.05)) {
+    EXPECT_FALSE(slot.has_value());
+  }
+}
+
 TEST(LatentDriveMotionTest, PicksTheSampleNearestEachSlotOldestFirst)
 {
   std::deque<PoseSample> history;

@@ -145,8 +145,13 @@ provider into two-view mode: it subscribes to `~/input/camera0/image` and `~/inp
 camera2), preprocesses each frame with the same full-width 2:1 crop, and stacks one
 `[3, T, H, W]` block per view. View 0 anchors the clip; each of its chosen frames is paired with
 the other camera's frame nearest in time, within `latentdrive.view_sync_tolerance_seconds`
-(0.06, the cameras are not hardware-synchronised), and a tick with no partner that close is
-skipped rather than padded, because the model has only ever seen real telephoto frames. So
+(0.05). The cameras are not hardware-synchronised but are triggered by the lidar sweep at a
+fixed phase, so the nearest frame is the one training paired; a view triggered after camera 0
+that has not arrived when the tick runs is waited for, at most the tolerance after the camera 0
+frame arrived (with `image_decode_thread` only). A slot still without a partner is handled by
+`latentdrive.missing_view_fill`: `skip` (the default, the two-view model has only ever seen real
+telephoto frames) skips the tick, `zeros` feeds an all-zero image, as the three-camera
+(`camfront3`) training did for a missing side view; the model's ml_package file sets it. So
 choosing the single- or two-camera planner is a matter of `model_path`: the ml_package file
 that ships with each model carries its shape, nothing in the deployment configuration changes.
 

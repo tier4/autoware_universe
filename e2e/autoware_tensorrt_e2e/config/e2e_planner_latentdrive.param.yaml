@@ -47,10 +47,17 @@
       # host; 300 ms keeps the 10 Hz output without accepting a two-frame lag.
       max_delay_ms: 300.0
       frame_interval_tolerance_seconds: 0.15
-      # Two-view models: the telephoto frame paired with each chosen wide frame may be at most
-      # this far from it in time (the cameras are not hardware-synchronised; 60 ms was used
-      # offline). No frame that close skips the tick rather than padding the view.
-      view_sync_tolerance_seconds: 0.06
+      # Multi-view models: each chosen camera 0 frame is paired with the other camera's nearest
+      # frame, which may be at most this far from it in time. The cameras are triggered by the
+      # lidar sweep at a fixed phase (on 0ed0b1e4 the side cameras sit 14 ms before and after
+      # camera 0), so the nearest frame is always the one training paired. A view triggered after
+      # camera 0 that has not arrived yet is waited for, at most this long after the camera 0
+      # frame arrived. A view still missing then is handled by missing_view_fill.
+      view_sync_tolerance_seconds: 0.05
+      # "skip" (default) skips the tick; "zeros" feeds an all-zero image in that slot. Set per
+      # model by its ml_package file: the three-camera models were trained with zero-filled
+      # missing views, the two-view idx9 line was not.
+      missing_view_fill: "skip"
       # Temporal smoothing of the plan, ported from LatentDrive-TRT's display filter and
       # re-anchored on measured ego motion. On by default: the raw plan jitters by about
       # a metre in reach from tick to tick, and the filter trades roughly

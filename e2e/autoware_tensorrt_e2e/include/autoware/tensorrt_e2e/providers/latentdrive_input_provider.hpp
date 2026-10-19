@@ -35,13 +35,15 @@
 #include <lanelet2_core/LaneletMap.h>
 
 #include <array>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <memory>
-#include <thread>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace autoware::tensorrt_e2e
@@ -90,6 +92,15 @@ std::optional<std::vector<size_t>> select_frame_slots(
  *         has no partner within `tolerance` seconds.
  */
 std::optional<std::vector<size_t>> align_view(
+  const std::vector<double> & anchor_stamps, const std::vector<double> & view_stamps,
+  double tolerance);
+
+/**
+ * @brief Like align_view, but per anchor stamp: the nearest view frame within `tolerance`, or
+ * nullopt for that slot alone (the caller decides whether a missing slot skips the tick or is
+ * filled).
+ */
+std::vector<std::optional<size_t>> align_view_slots(
   const std::vector<double> & anchor_stamps, const std::vector<double> & view_stamps,
   double tolerance);
 
@@ -247,6 +258,7 @@ private:
   {
     rclcpp::Time stamp;
     std::shared_ptr<const std::vector<float>> chw;  //!< 3 * H * W, preprocessed.
+    std::chrono::steady_clock::time_point arrival;  //!< When it was stored (wall clock).
   };
 
   void on_image(size_t view, const sensor_msgs::msg::Image::ConstSharedPtr & msg);
@@ -299,6 +311,12 @@ private:
   //! where they queued behind the planning tick (three 2880x1860 cameras took ~60 ms of every
   //! 100 ms there and pushed frame ages past max_delay_ms).
   bool image_decode_thread_{true};
+  //! "skip": a view frame missing within view_sync_tolerance_s_ skips the tick (the two-view
+  //! models were never shown a padded view); "zeros": it is filled with an all-zero image before
+  //! normalisation, as the three-camera training did for a missing side view.
+  std::string missing_view_fill_{"skip"};
+  std::vector<float> zero_chw_;             //!< An all-zero image, normalised.
+  std::condition_variable frame_cv_;        //!< Signalled whenever a frame is stored.
   std::vector<rclcpp::CallbackGroup::SharedPtr> image_groups_;
   std::shared_ptr<rclcpp::Executor> image_executor_;
   std::thread image_thread_;

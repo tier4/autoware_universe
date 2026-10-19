@@ -125,9 +125,15 @@
             },
             "view_sync_tolerance_seconds": {
               "type": "number",
-              "description": "For a multi-view model, how far in time another camera's frame may sit from the anchor (camera 0) frame it is paired with; a view with no frame that close skips the tick.",
-              "default": 0.06,
+              "description": "For a multi-view model, how far in time another camera's frame may sit from the anchor (camera 0) frame it is paired with. A view triggered after camera 0 is waited for at most this long after the camera 0 frame arrived; one still missing is handled by missing_view_fill.",
+              "default": 0.05,
               "exclusiveMinimum": 0.0
+            },
+            "missing_view_fill": {
+              "type": "string",
+              "enum": ["skip", "zeros"],
+              "description": "For a multi-view model, what a view slot with no frame within view_sync_tolerance_seconds gets: skip the tick, or an all-zero image (before normalisation).",
+              "default": "skip"
             },
             "max_delay_ms": { "type": "number", "default": 200.0 },
             "normalization_mean": {

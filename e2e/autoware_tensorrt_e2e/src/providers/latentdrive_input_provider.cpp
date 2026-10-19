@@ -113,14 +113,11 @@ std::optional<std::vector<size_t>> select_frame_slots(
   return slots;
 }
 
-std::optional<std::vector<size_t>> align_view(
+std::vector<std::optional<size_t>> align_view_slots(
   const std::vector<double> & anchor_stamps, const std::vector<double> & view_stamps,
   const double tolerance)
 {
-  if (view_stamps.empty()) {
-    return std::nullopt;
-  }
-  std::vector<size_t> partners;
+  std::vector<std::optional<size_t>> partners;
   partners.reserve(anchor_stamps.size());
   for (const double target : anchor_stamps) {
     size_t best = 0;
@@ -132,10 +129,24 @@ std::optional<std::vector<size_t>> align_view(
         best = i;
       }
     }
-    if (best_distance > tolerance) {
+    partners.push_back(best_distance <= tolerance ? std::optional<size_t>(best) : std::nullopt);
+  }
+  return partners;
+}
+
+std::optional<std::vector<size_t>> align_view(
+  const std::vector<double> & anchor_stamps, const std::vector<double> & view_stamps,
+  const double tolerance)
+{
+  if (view_stamps.empty()) {
+    return std::nullopt;
+  }
+  std::vector<size_t> partners;
+  for (const auto & slot : align_view_slots(anchor_stamps, view_stamps, tolerance)) {
+    if (!slot) {
       return std::nullopt;
     }
-    partners.push_back(best);
+    partners.push_back(*slot);
   }
   return partners;
 }
@@ -374,12 +385,19 @@ LatentDriveInputProvider::LatentDriveInputProvider(rclcpp::Node & node) : node_(
   frame_tolerance_s_ =
     node_.declare_parameter<double>("latentdrive.frame_interval_tolerance_seconds", 0.15);
   view_sync_tolerance_s_ =
-    node_.declare_parameter<double>("latentdrive.view_sync_tolerance_seconds", 0.06);
+    node_.declare_parameter<double>("latentdrive.view_sync_tolerance_seconds", 0.05);
   max_delay_ms_ = node_.declare_parameter<double>("latentdrive.max_delay_ms", 200.0);
   subgoal_ahead_m_ = node_.declare_parameter<double>("latentdrive.subgoal_ahead_m", 50.0);
   subgoal_divisor_ = node_.declare_parameter<double>("latentdrive.status_subgoal_divisor", 10.0);
   tick_log_ = node_.declare_parameter<bool>("latentdrive.tick_log", false);
   image_decode_thread_ = node_.declare_parameter<bool>("latentdrive.image_decode_thread", true);
+  missing_view_fill_ =
+    node_.declare_parameter<std::string>("latentdrive.missing_view_fill", "skip");
+  if (missing_view_fill_ != "skip" && missing_view_fill_ != "zeros") {
+    throw std::runtime_error(
+      "latentdrive.missing_view_fill must be \"skip\" or \"zeros\", got \"" + missing_view_fill_ +
+      "\"");
+  }
   subgoal_source_ = node_.declare_parameter<std::string>("latentdrive.subgoal_source", "route");
   route_points_m_ = node_.declare_parameter<std::vector<double>>(
     "latentdrive.route_points_m", std::vector<double>{});
@@ -658,7 +676,7 @@ void LatentDriveInputProvider::on_image(
   while (position != frames.begin() && std::prev(position)->stamp > stamp) {
     --position;
   }
-  frames.insert(position, Frame{stamp, std::move(chw)});
+  frames.insert(position, Frame{stamp, std::move(chw), std::chrono::steady_clock::now()});
 
   // Other views keep a little more than the anchor's span, so a partner is still there for an
   // anchor frame that sits at the tolerance edge.
@@ -668,6 +686,7 @@ void LatentDriveInputProvider::on_image(
   while (!frames.empty() && (newest - frames.front().stamp).seconds() > span_s) {
     frames.pop_front();
   }
+  frame_cv_.notify_all();  // a tick may be waiting for this view's partner frame
 }
 
 bool LatentDriveInputProvider::build_video_tensor(
@@ -675,7 +694,36 @@ bool LatentDriveInputProvider::build_video_tensor(
 {
   std::vector<std::vector<Frame>> views(static_cast<size_t>(num_views_));
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
+    // The side cameras are triggered by the lidar sweep at a fixed phase, so a view triggered
+    // after camera 0 may not have arrived yet when the tick runs. Its partner for the newest
+    // camera 0 frame is worth waiting for while it can still be within the sync tolerance:
+    // at most the tolerance minus the time since that camera 0 frame arrived. Only with the
+    // decode thread, which is what delivers the frame while this thread waits.
+    if (image_decode_thread_ && num_views_ > 1 && !frames_[0].empty()) {
+      const double anchor = frames_[0].back().stamp.seconds();
+      const auto deadline =
+        frames_[0].back().arrival + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                      std::chrono::duration<double>(view_sync_tolerance_s_));
+      const auto partners_settled = [&]() {
+        for (size_t view = 1; view < frames_.size(); ++view) {
+          bool settled = false;
+          for (const auto & frame : frames_[view]) {
+            const double offset = frame.stamp.seconds() - anchor;
+            // A frame within the tolerance is the partner; one past it means none will come.
+            if (std::abs(offset) <= view_sync_tolerance_s_ || offset > view_sync_tolerance_s_) {
+              settled = true;
+              break;
+            }
+          }
+          if (!settled) {
+            return false;
+          }
+        }
+        return true;
+      };
+      frame_cv_.wait_until(lock, deadline, partners_settled);
+    }
     for (size_t view = 0; view < views.size(); ++view) {
       views[view].assign(frames_[view].begin(), frames_[view].end());
     }
@@ -707,39 +755,51 @@ bool LatentDriveInputProvider::build_video_tensor(
     return false;
   }
 
-  // The anchor's chosen frames, then each other view's nearest partner per anchor frame.
-  std::vector<std::vector<size_t>> picks(views.size());
-  picks[0] = *slots;
+  // The anchor's chosen frames, then each other view's nearest partner per anchor frame
+  // (nullopt: none within the sync tolerance).
+  std::vector<std::vector<std::optional<size_t>>> picks(views.size());
+  picks[0].assign(slots->begin(), slots->end());
   std::vector<double> anchor_stamps;
   anchor_stamps.reserve(slots->size());
   for (const size_t index : *slots) {
     anchor_stamps.push_back(stamps[index]);
   }
+  const bool fill_zeros = missing_view_fill_ == "zeros";
+  size_t filled = 0;
   for (size_t view = 1; view < views.size(); ++view) {
-    if (views[view].empty()) {
-      error = "No image from camera " + std::to_string(view) + " received yet";
-      return false;
-    }
     std::vector<double> view_stamps;
     view_stamps.reserve(views[view].size());
     for (const auto & frame : views[view]) {
       view_stamps.push_back(frame.stamp.seconds());
     }
-    const auto partners = latentdrive::align_view(anchor_stamps, view_stamps, view_sync_tolerance_s_);
-    if (!partners) {
-      error = "Camera " + std::to_string(view) + " has no frame within " +
-              std::to_string(std::lround(view_sync_tolerance_s_ * 1e3)) +
-              " ms of every chosen camera 0 frame (" + std::to_string(views[view].size()) +
-              " frames stored)";
+    picks[view] =
+      latentdrive::align_view_slots(anchor_stamps, view_stamps, view_sync_tolerance_s_);
+    const auto missing = static_cast<size_t>(
+      std::count(picks[view].begin(), picks[view].end(), std::nullopt));
+    if (missing > 0 && !fill_zeros) {
+      error = views[view].empty()
+                ? "No image from camera " + std::to_string(view) + " received yet"
+                : "Camera " + std::to_string(view) + " has no frame within " +
+                    std::to_string(std::lround(view_sync_tolerance_s_ * 1e3)) +
+                    " ms of every chosen camera 0 frame (" + std::to_string(views[view].size()) +
+                    " frames stored)";
       return false;
     }
-    picks[view] = *partners;
+    filled += missing;
+  }
+  if (filled > 0) {
+    RCLCPP_WARN_THROTTLE(
+      node_.get_logger(), *node_.get_clock(), 2000,
+      "%zu side-view frame(s) had no partner within %ld ms of camera 0; fed all-zero images",
+      filled, std::lround(view_sync_tolerance_s_ * 1e3));
   }
 
+  // A missing frame's age is reported as -1.
   last_frame_ages_ms_.clear();
   for (size_t view = 0; view < views.size(); ++view) {
-    for (const size_t index : picks[view]) {
-      last_frame_ages_ms_.push_back((now - views[view][index].stamp).seconds() * 1e3);
+    for (const auto & index : picks[view]) {
+      last_frame_ages_ms_.push_back(
+        index ? (now - views[view][*index].stamp).seconds() * 1e3 : -1.0);
     }
   }
 
@@ -747,9 +807,17 @@ bool LatentDriveInputProvider::build_video_tensor(
   // so each frame contributes one plane per channel.
   const size_t plane = static_cast<size_t>(height_) * static_cast<size_t>(width_);
   const size_t view_block = static_cast<size_t>(3 * num_frames_) * plane;
+  if (filled > 0 && zero_chw_.empty()) {
+    // An all-black image (0 before normalisation), per channel (0 - mean) / std.
+    zero_chw_.resize(3 * plane);
+    for (size_t c = 0; c < 3; ++c) {
+      std::fill_n(zero_chw_.begin() + c * plane, plane, -mean_[c] * inverse_std_[c]);
+    }
+  }
   for (size_t view = 0; view < views.size(); ++view) {
     for (int64_t t = 0; t < num_frames_; ++t) {
-      const std::vector<float> & chw = *views[view][picks[view][static_cast<size_t>(t)]].chw;
+      const auto & index = picks[view][static_cast<size_t>(t)];
+      const std::vector<float> & chw = index ? *views[view][*index].chw : zero_chw_;
       for (int64_t c = 0; c < 3; ++c) {
         std::memcpy(
           video_buffer_.data() + view * view_block + (c * num_frames_ + t) * plane,
