@@ -429,13 +429,6 @@ trajectory_modifier_params:
         validation:
           bounds<>: [0.1, 10.0]
         read_only: false
-      max_acceleration:
-        type: double
-        default_value: 1.0
-        description: Maximum acceleration of the cruise velocity profile [m/s^2]
-        validation:
-          bounds<>: [0.1, 10.0]
-        read_only: false
       max_deceleration:
         type: double
         default_value: 1.5

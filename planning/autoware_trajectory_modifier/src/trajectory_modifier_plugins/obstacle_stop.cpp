@@ -97,10 +97,6 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
   trajectory_time_step_ = params.trajectory_time_step;
 
   verify_params();
-  cruise_profile_.set_parameters(detail::make_fixed_profile_parameters(params));
-  if (!params_.cruise.enable) {
-    cruise_profile_.clear();
-  }
 
   {
     const auto & p = params_.objects;
@@ -154,10 +150,6 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
   trajectory_time_step_ = params.trajectory_time_step;
 
   verify_params();
-  cruise_profile_.set_parameters(detail::make_fixed_profile_parameters(params));
-  if (!params_.cruise.enable) {
-    cruise_profile_.clear();
-  }
 
   {
     const auto & p = params_.objects;
@@ -317,17 +309,12 @@ bool ObstacleStop::apply_cruise(
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::apply_cruise", *get_time_keeper());
 
-  if (!params_.cruise.enable) {
-    cruise_profile_.clear();
-    return false;
-  }
-  if (traj_points.size() < 2 || !input.current_odometry) {
+  if (!params_.cruise.enable || traj_points.size() < 2 || !input.current_odometry) {
     return false;
   }
 
   const auto target = select_cruise_target(object_rss_states_);
   if (!target) {
-    cruise_profile_.store(input, TrajectoryPoints{}, {});
     return false;
   }
 
@@ -339,15 +326,11 @@ bool ObstacleStop::apply_cruise(
 
   ensure_increasing_timestamps(traj_points);
 
-  const detail::VelocityLimitConstraints constraints{
-    cruise.max_acceleration, cruise.max_deceleration, cruise.max_jerk};
-  auto stop_state = detail::make_fixed_profile_stop_state(traj_points);
-  stop_state.zero_speed_limit = v_cruise <= detail::k_fixed_profile_stop_velocity_threshold_mps;
-  const auto start = cruise_profile_.start(input, stop_state, traj_points);
+  const detail::VelocityLimitConstraints constraints{0.0, cruise.max_deceleration, cruise.max_jerk};
   const auto result = detail::apply_velocity_limits(
     traj_points, constraints,
     [v_cruise](const geometry_msgs::msg::Point &) { return std::optional<double>{v_cruise}; },
-    start.options);
+    detail::make_velocity_limit_options(input));
 
   if (!result.error.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -355,11 +338,6 @@ bool ObstacleStop::apply_cruise(
       "[TM ObstacleStop] Cruise velocity limit failed for candidate %zu: %s", input.candidate_index,
       result.error.c_str());
   }
-  if (result.status == ProcessingResult::Unchanged && !result.error.empty()) {
-    cruise_profile_.store(input, TrajectoryPoints{}, stop_state);
-    return false;
-  }
-  cruise_profile_.store(input, traj_points, stop_state);
   return result.status == ProcessingResult::Modified;
 }
 
