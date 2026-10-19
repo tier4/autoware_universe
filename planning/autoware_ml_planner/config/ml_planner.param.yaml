@@ -12,7 +12,6 @@
     traffic_light_group_msg_timeout_seconds: 0.2
     batch_size: 1
     noise_scale: [0.0]
-    line_string_max_step_m: 5.0
     trajectory_optimization:
       enable: true
       weight_longitudinal: 0.5       # tracking weight along the reference heading [1/m^2]
