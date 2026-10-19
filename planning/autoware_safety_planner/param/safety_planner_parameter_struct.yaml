@@ -74,6 +74,11 @@ safety_planner:
         validation:
           gt_eq<>: [0.0]
     ego_blend:
+      on:
+        type: bool
+        default_value: true
+        read_only: true
+        description: whether to blend the reference path to the ego pose
       lateral_threshold_m:
         type: double
         default_value: 0.1

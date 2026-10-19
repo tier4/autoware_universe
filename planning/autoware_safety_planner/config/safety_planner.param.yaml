@@ -16,6 +16,7 @@
       smoother:
         clearance_m: 1.0 # [m]
       ego_blend:
+        on: true
         lateral_threshold_m: 0.1 # [m]
         forward_length_m: 30.0 # [m] arc length ahead of ego over which the path returns to the centerline
         backward_length_m: 5.0 # [m]
