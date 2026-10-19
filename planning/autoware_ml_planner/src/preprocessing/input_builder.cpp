@@ -34,9 +34,9 @@
 namespace autoware::ml_planner::preprocess
 {
 std::unique_ptr<LaneSegmentContext> build_map_context(
-  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr, double line_string_max_step_m)
+  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
 {
-  return std::make_unique<LaneSegmentContext>(lanelet_map_ptr, line_string_max_step_m);
+  return std::make_unique<LaneSegmentContext>(lanelet_map_ptr);
 }
 
 InputBuilderResult create_input_data_map(
