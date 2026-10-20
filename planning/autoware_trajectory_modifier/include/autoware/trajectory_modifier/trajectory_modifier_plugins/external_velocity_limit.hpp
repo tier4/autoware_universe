@@ -18,11 +18,11 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
-
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
 
+#include <cstddef>
 #include <memory>
 
 namespace autoware::trajectory_modifier::plugin
@@ -56,14 +56,12 @@ protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
 private:
-  using VelocityLimit = autoware_internal_planning_msgs::msg::VelocityLimit;
-
-  std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
-    velocity_limit_sub_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr profile_reset_pub_;
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_trajectory_pub_;
   detail::VelocityLimitConstraints constraints_;
   detail::FixedProfileMemory fixed_profile_;
   detail::ProfileStart last_profile_start_{detail::ProfileStart::Measured};
+  std::size_t last_clear_revision_{0U};
 };
 
 }  // namespace autoware::trajectory_modifier::plugin

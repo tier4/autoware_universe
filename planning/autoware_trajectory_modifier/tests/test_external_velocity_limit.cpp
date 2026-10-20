@@ -12,21 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/trajectory_modifier/trajectory_modifier_context.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/external_velocity_limit.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 
 #include <rclcpp/duration.hpp>
 
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
+#include <autoware_internal_planning_msgs/msg/velocity_limit_clear_command.hpp>
 
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace
 {
+using autoware::trajectory_modifier::ExternalVelocityLimitState;
 using autoware::trajectory_modifier::plugin::ProcessingResult;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
 using autoware::trajectory_modifier::plugin::detail::apply_velocity_limits;
@@ -35,6 +40,86 @@ using autoware::trajectory_modifier::plugin::detail::get_external_velocity_limit
 using autoware::trajectory_modifier::plugin::detail::VelocityLimitConstraints;
 using autoware::trajectory_modifier::plugin::detail::VelocityLimitOptions;
 using autoware_internal_planning_msgs::msg::VelocityLimit;
+using autoware_internal_planning_msgs::msg::VelocityLimitClearCommand;
+
+VelocityLimit::ConstSharedPtr make_limit(const float speed, const std::string & sender)
+{
+  auto limit = std::make_shared<VelocityLimit>();
+  limit->max_velocity = speed;
+  limit->sender = sender;
+  return limit;
+}
+
+VelocityLimitClearCommand::ConstSharedPtr make_clear(
+  const std::string & sender, const bool command = true)
+{
+  auto clear = std::make_shared<VelocityLimitClearCommand>();
+  clear->command = command;
+  clear->sender = sender;
+  return clear;
+}
+
+TEST(ExternalVelocityLimitState, ClearOnlyRemovesMatchingActiveSender)
+{
+  ExternalVelocityLimitState state;
+  state.update(make_limit(5.0F, "external"), nullptr);
+  ASSERT_TRUE(state.active_limit());
+
+  state.update(nullptr, make_clear("other"));
+  state.update(nullptr, make_clear("external", false));
+  ASSERT_TRUE(state.active_limit());
+  EXPECT_EQ(state.clear_revision(), 0U);
+
+  state.update(nullptr, make_clear("external"));
+  EXPECT_FALSE(state.active_limit());
+  EXPECT_EQ(state.clear_revision(), 1U);
+
+  state.update(nullptr, make_clear("external"));
+  EXPECT_EQ(state.clear_revision(), 1U);
+  state.update(make_limit(4.0F, "external"), nullptr);
+  ASSERT_TRUE(state.active_limit());
+  EXPECT_FLOAT_EQ(state.active_limit()->max_velocity, 4.0F);
+}
+
+TEST(ExternalVelocityLimitState, ClearWinsUnknownOrOlderLimitEvents)
+{
+  ExternalVelocityLimitState state;
+  state.update(make_limit(5.0F, "external"), make_clear("external"));
+  EXPECT_FALSE(state.active_limit());
+
+  const rclcpp::Time limit_time{10, 0, RCL_ROS_TIME};
+  const rclcpp::Time clear_time{11, 0, RCL_ROS_TIME};
+  state.update(make_limit(5.0F, "external"), make_clear("external"), limit_time, clear_time);
+  EXPECT_FALSE(state.active_limit());
+  state.update(make_limit(5.0F, "external"), nullptr, limit_time);
+  EXPECT_FALSE(state.active_limit());
+
+  state.update(make_limit(4.0F, "external"), nullptr, rclcpp::Time{12, 0, RCL_ROS_TIME});
+  ASSERT_TRUE(state.active_limit());
+  EXPECT_FLOAT_EQ(state.active_limit()->max_velocity, 4.0F);
+  state.update(nullptr, make_clear("external"), std::nullopt, clear_time);
+  EXPECT_TRUE(state.active_limit());
+}
+
+TEST(ExternalVelocityLimitState, NewerLimitAfterQueuedClearReactivates)
+{
+  ExternalVelocityLimitState state;
+  state.update(
+    make_limit(4.0F, "external"), make_clear("external"), rclcpp::Time{12, 0, RCL_ROS_TIME},
+    rclcpp::Time{11, 0, RCL_ROS_TIME});
+  ASSERT_TRUE(state.active_limit());
+  EXPECT_FLOAT_EQ(state.active_limit()->max_velocity, 4.0F);
+}
+
+TEST(ExternalVelocityLimitState, OtherSendersClearDoesNotForgetEarlierClear)
+{
+  ExternalVelocityLimitState state;
+  state.update(make_limit(5.0F, "external"), nullptr, rclcpp::Time{9, 0, RCL_ROS_TIME});
+  state.update(nullptr, make_clear("external"), std::nullopt, rclcpp::Time{10, 0, RCL_ROS_TIME});
+  state.update(nullptr, make_clear("other"), std::nullopt, rclcpp::Time{11, 0, RCL_ROS_TIME});
+  state.update(make_limit(5.0F, "external"), nullptr, rclcpp::Time{9, 0, RCL_ROS_TIME});
+  EXPECT_FALSE(state.active_limit());
+}
 
 auto constant_limit(const double velocity)
 {

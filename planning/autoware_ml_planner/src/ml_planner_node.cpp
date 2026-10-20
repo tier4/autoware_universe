@@ -18,6 +18,7 @@
 #include "autoware/ml_planner/dimensions.hpp"
 #include "autoware/ml_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/ml_planner/utils/marker_utils.hpp"
+#include "autoware/ml_planner/utils/model_metadata.hpp"
 #include "autoware/ml_planner/utils/object_remap.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
@@ -31,16 +32,16 @@
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
-#include <fstream>
 #include <functional>
-#include <iomanip>
 #include <memory>
-#include <sstream>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#ifndef ML_PLANNER_WEIGHT_MAJOR_VERSION
+#error "ML_PLANNER_WEIGHT_MAJOR_VERSION must be defined by CMake"
+#endif
 
 namespace autoware::ml_planner
 {
@@ -50,31 +51,6 @@ namespace
 {
 // Ego velocity [m/s] written into the model input while the start service is enabled.
 constexpr float start_service_ego_velocity_mps = 1.0F;
-
-std::string compute_file_hash_hex(const std::string & path)
-{
-  constexpr std::size_t HASH_READ_BUFFER_BYTES = 64 * 1024;
-  std::ifstream ifs(path, std::ios::binary);
-  if (!ifs) {
-    return "<failed to open>";
-  }
-  std::array<char, HASH_READ_BUFFER_BYTES> buffer{};
-  std::size_t combined = 0;
-  std::hash<std::string_view> hasher;
-  while (ifs) {
-    ifs.read(buffer.data(), buffer.size());
-    const std::streamsize n = ifs.gcount();
-    if (n <= 0) {
-      break;
-    }
-    const std::size_t chunk = hasher(std::string_view(buffer.data(), static_cast<std::size_t>(n)));
-    // boost::hash_combine: 0x9e3779b97f4a7c15 is 2^64 / golden ratio.
-    combined ^= chunk + 0x9e3779b97f4a7c15ULL + (combined << 6) + (combined >> 2);
-  }
-  std::ostringstream oss;
-  oss << std::hex << std::setw(sizeof(std::size_t) * 2) << std::setfill('0') << combined;
-  return oss.str();
-}
 }  // namespace
 
 MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
@@ -320,15 +296,26 @@ void MLPlanner::load_model()
   diagnostics_inference_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
   diagnostics_inference_->publish(get_clock()->now());
   core_->update_params(params_);
+
+  const std::filesystem::path base_dir(params_.base_model_directory);
+  params_.model_path = (base_dir / params_.onnx_model_filename).string();
+
+  // Verify the model against metadata.json before building the engine:
+  // SHA-256 first, then the major version this node is built against.
+  const auto metadata_path = utils::model_metadata_path(params_.model_path);
+  const auto metadata = utils::load_model_metadata(metadata_path);
+  const auto sha256 = utils::verify_model_sha256(metadata, params_.model_path);
+  RCLCPP_INFO_STREAM(
+    get_logger(), "Model metadata (" << metadata_path << "):\n"
+                                     << metadata.dump(2));
+  utils::verify_model_major_version(metadata, ML_PLANNER_WEIGHT_MAJOR_VERSION);
+
   core_->load_model();
   diagnostics_inference_->update_level_and_message(DiagnosticStatus::OK, "Model loaded");
   diagnostics_inference_->publish(get_clock()->now());
 
-  const std::filesystem::path base_dir(params_.base_model_directory);
-  params_.model_path = (base_dir / params_.onnx_model_filename).string();
   RCLCPP_INFO_STREAM(
-    get_logger(), "Loaded model_path=" << params_.model_path << " (hash="
-                                       << compute_file_hash_hex(params_.model_path) << ")");
+    get_logger(), "Loaded model_path=" << params_.model_path << " (sha256=" << sha256 << ")");
 }
 
 SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter> & parameters)

@@ -67,9 +67,6 @@ private:
 
   SteerStopMode resolve_steer_stop_mode(
     const autoware_planning_msgs::msg::Trajectory & reference, const TrajectoryModifierData & data);
-  void apply_stopped_reference(
-    TrajectoryPoints & traj_points, const autoware_planning_msgs::msg::Trajectory & reference,
-    const double steer_rad) const;
 
   time_sequence_raw::TrajectoryOptimizationParams opt_params_;
   time_sequence_raw::RoadBorderAvoidanceParams border_params_;
@@ -83,7 +80,7 @@ private:
   bool goal_steer_zero_enable_{true};
   double goal_steer_zero_distance_m_{5.0};
   bool goal_steer_zero_requires_stopped_{true};
-  bool in_stopped_regime_{false};
+  bool in_steer_hold_{false};
   bool in_goal_zero_regime_{false};
   double latched_steering_rad_{0.0};
 
@@ -93,6 +90,8 @@ private:
 
   mutable autoware_planning_msgs::msg::Trajectory last_raw_trajectory_;
   mutable autoware_planning_msgs::msg::Trajectory last_adjusted_trajectory_;
+  /// Last successful OCP output, in the map frame of the candidate. A failed solve copies these
+  /// points directly because map-frame poses do not move with ego.
   mutable autoware_planning_msgs::msg::Trajectory last_optimized_trajectory_;
   mutable autoware_planning_msgs::msg::Trajectory last_geometry_velocity_trajectory_;
   mutable int last_shifted_point_count_{0};

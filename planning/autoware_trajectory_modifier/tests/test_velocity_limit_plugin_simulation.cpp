@@ -19,6 +19,7 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_context.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/external_velocity_limit.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/map_velocity_limits.hpp"
+#include "autoware/trajectory_modifier/trajectory_optimizer_plugins/trajectory_velocity_optimizer.hpp"
 #include "velocity_limit_simulation.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
@@ -27,6 +28,7 @@
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_planning_msgs/msg/velocity_limit_clear_command.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -58,8 +60,10 @@ using autoware::trajectory_modifier::TrajectoryModifierParams;
 using autoware::trajectory_modifier::plugin::ExternalVelocityLimit;
 using autoware::trajectory_modifier::plugin::MapVelocityLimits;
 using autoware::trajectory_modifier::plugin::ProcessingResult;
+using autoware::trajectory_modifier::plugin::TrajectoryVelocityOptimizer;
 namespace detail = autoware::trajectory_modifier::plugin::detail;
 using autoware_internal_planning_msgs::msg::VelocityLimit;
+using autoware_internal_planning_msgs::msg::VelocityLimitClearCommand;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::LaneletRoute;
 using sim::kmph;
@@ -281,6 +285,89 @@ TEST_F(VelocityLimitPluginSimulation, P01_plugin_external_cruise_60_to_30)
   };
 
   sim::run_and_expect(scenario, {make_stage("external", plugin, scenario, publish_when_due)});
+}
+
+TEST_F(VelocityLimitPluginSimulation, ExternalLimitClearReleasesBothVelocityStages)
+{
+  auto params = make_params();
+  params.use_velocity_optimizer = true;
+  params.max_vel = 30.0;
+  params.trajectory_velocity_optimizer.limit_speed = true;
+  params.trajectory_velocity_optimizer.smooth_velocities = false;
+  params.trajectory_velocity_optimizer.set_engage_speed = false;
+
+  ExternalVelocityLimit external;
+  TrajectoryVelocityOptimizer optimizer;
+  initialize(external, "ExternalVelocityLimit", params);
+  initialize(optimizer, "TrajectoryVelocityOptimizer", params);
+  const auto limit_pub =
+    node_->create_publisher<VelocityLimit>("~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+  const auto clear_pub = node_->create_publisher<VelocityLimitClearCommand>(
+    "~/input/velocity_limit_clear_command", rclcpp::QoS{1}.transient_local());
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while ((limit_pub->get_subscription_count() == 0 || clear_pub->get_subscription_count() == 0) &&
+         std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_GT(limit_pub->get_subscription_count(), 0U);
+  ASSERT_GT(clear_pub->get_subscription_count(), 0U);
+
+  auto scenario = road_scenario("clear", "", "", "", sim::StageKind::External);
+  scenario.upstream.cruise_velocity = 10.0;
+  scenario.config.initial_state.velocity = 10.0;
+  const auto ego = scenario.config.initial_state;
+  const auto original = scenario.upstream.generate(scenario.path, ego);
+
+  VelocityLimit limit = sim::make_external_limit(5.0);
+  limit.sender = "test_external";
+  limit_pub->publish(limit);
+  while (!context_->external_velocity_limit.active_limit() &&
+         std::chrono::steady_clock::now() < deadline) {
+    context_->refresh_external_velocity_limit();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_TRUE(context_->external_velocity_limit.active_limit());
+  auto limited = original;
+  auto data = make_data(scenario, ego);
+  EXPECT_EQ(external.process(limited, data), ProcessingResult::Modified);
+
+  VelocityLimitClearCommand clear;
+  clear.command = true;
+  clear.sender = limit.sender;
+  clear_pub->publish(clear);
+  while (context_->external_velocity_limit.active_limit() &&
+         std::chrono::steady_clock::now() < deadline) {
+    context_->refresh_external_velocity_limit();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_FALSE(context_->external_velocity_limit.active_limit());
+
+  for (std::size_t candidate = 0; candidate < 2; ++candidate) {
+    auto released = original;
+    auto candidate_data = make_data(scenario, ego);
+    candidate_data.candidate_index = candidate;
+    candidate_data.candidate_count = 2;
+    EXPECT_EQ(external.process(released, candidate_data), ProcessingResult::Unchanged);
+    EXPECT_EQ(optimizer.process(released, candidate_data), ProcessingResult::Modified);
+    ASSERT_EQ(released.size(), original.size());
+    for (std::size_t i = 0; i < released.size(); ++i) {
+      EXPECT_FLOAT_EQ(released[i].longitudinal_velocity_mps, original[i].longitudinal_velocity_mps);
+    }
+  }
+
+  limit.max_velocity = 4.0F;
+  limit_pub->publish(limit);
+  while ((!context_->external_velocity_limit.active_limit() ||
+          context_->external_velocity_limit.active_limit()->max_velocity != 4.0F) &&
+         std::chrono::steady_clock::now() < deadline) {
+    context_->refresh_external_velocity_limit();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_TRUE(context_->external_velocity_limit.active_limit());
+  EXPECT_FLOAT_EQ(context_->external_velocity_limit.active_limit()->max_velocity, 4.0F);
+  auto relimited = original;
+  auto relimited_data = make_data(scenario, ego);
+  EXPECT_EQ(external.process(relimited, relimited_data), ProcessingResult::Modified);
 }
 
 TEST_F(VelocityLimitPluginSimulation, P02_plugin_map_speed_limit_attribute_kmph)

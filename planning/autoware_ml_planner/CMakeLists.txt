@@ -30,7 +30,12 @@ endif()
 
 autoware_package()
 
+# Major version of the ONNX weights this node is built against.
+# Checked against "major_version" in metadata.json next to the ONNX model on load.
+set(ML_PLANNER_WEIGHT_MAJOR_VERSION 6)
+
 find_package(Boost REQUIRED)
+find_package(OpenSSL REQUIRED)
 find_package(xtensor REQUIRED)
 
 set(ML_PLANNER_SOURCES
@@ -51,6 +56,7 @@ set(ML_PLANNER_SOURCES
   src/preprocessing/items/turn_indicators.cpp
   src/preprocessing/preprocessing_utils.cpp
   src/utils/marker_utils.cpp
+  src/utils/model_metadata.cpp
   src/utils/object_remap.cpp
   src/utils/planning_factor_utils.cpp
   src/utils/utils.cpp
@@ -83,7 +89,12 @@ target_link_libraries(autoware_ml_planner_component
   ${ML_PLANNER_CUBLAS_LIBRARIES}
   MLPlanner::nvinfer
   MLPlanner::nvonnxparser
+  OpenSSL::Crypto
   xtensor
+)
+
+target_compile_definitions(autoware_ml_planner_component PRIVATE
+  ML_PLANNER_WEIGHT_MAJOR_VERSION=${ML_PLANNER_WEIGHT_MAJOR_VERSION}
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -127,6 +138,7 @@ if(BUILD_TESTING)
     test/lanelet_integration_test.cpp
     test/lanelet_test.cpp
     test/marker_utils_test.cpp
+    test/model_metadata_test.cpp
     test/object_remap_test.cpp
     test/planning_factor_utils_test.cpp
     test/postprocessing_utils_test.cpp

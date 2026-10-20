@@ -10,6 +10,7 @@ trajectory_modifier_params:
       - autoware::trajectory_modifier::plugin::SurroundObstacleStop
       - autoware::trajectory_modifier::plugin::ObstacleStop
       - autoware::trajectory_modifier::plugin::TrafficLightStop
+      - autoware::trajectory_modifier::plugin::DetectionAreaStop
       - autoware::trajectory_modifier::plugin::VelocityModifier
       - autoware::trajectory_modifier::plugin::TrajectoryTemporalMPTOptimizer
       - autoware::trajectory_modifier::plugin::TrajectoryPointFixer
@@ -288,84 +289,33 @@ trajectory_modifier_params:
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
-      lateral_margin:
-        car:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for car objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        truck:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for truck objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        bus:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for bus objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        trailer:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for trailer objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        motorcycle:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for motorcycle objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        bicycle:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for bicycle objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        pedestrian:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for pedestrian objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        hazard:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for hazard objects [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        structure:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for structure pointcloud [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        vegetation:
-          type: double
-          default_value: 0.1
-          description: Lateral margin on top of ego width for vegetation pointcloud [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
-        unknown:
-          type: double
-          default_value: 0.0
-          description: Lateral margin on top of ego width for unknown objects and unclassified pointcloud [m]
-          validation:
-            bounds<>: [0.0, 10.0]
-          read_only: false
+      lateral_margin: &base_lateral_margin
+        base: &default_margin {
+          type: double,
+          default_value: 0.1,
+          description: Per-class lateral margin on top of ego width,
+          validation: { bounds<>: [0.0, 10.0] },
+          read_only: false,
+        }
+        car: *default_margin
+        truck: *default_margin
+        bus: *default_margin
+        trailer: *default_margin
+        motorcycle: *default_margin
+        bicycle: *default_margin
+        pedestrian: *default_margin
+        hazard: *default_margin
+        structure: *default_margin
+        vegetation: *default_margin
+        unknown: *default_margin
+      low_velocity_lateral_margin: *base_lateral_margin
+      low_velocity_th:
+        type: double
+        default_value: 2.0
+        description: Ego trajectory velocity threshold to apply low speed lateral margins [m/s]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
 
     rss_params:
       enable:
@@ -1597,6 +1547,137 @@ trajectory_modifier_params:
       description: Finite non-negative debug maximum velocities in m/s aligned with the lanelet IDs
       read_only: false
 
+  use_detection_area_stop:
+    type: bool
+    default_value: false
+    description: Enable the use of detection area stop
+    read_only: false
+
+  detection_area_stop:
+    stop_margin:
+      type: double
+      default_value: 0.0
+      description: Distance to maintain from a detection area stop line [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    target_filtering:
+      pointcloud:
+        type: bool
+        default_value: true
+        description: Enable pointcloud detection in detection areas
+        read_only: false
+      unknown:
+        type: bool
+        default_value: false
+        description: Detect unknown objects in detection areas
+        read_only: false
+      car:
+        type: bool
+        default_value: false
+        description: Detect cars in detection areas
+        read_only: false
+      truck:
+        type: bool
+        default_value: false
+        description: Detect trucks in detection areas
+        read_only: false
+      bus:
+        type: bool
+        default_value: false
+        description: Detect buses in detection areas
+        read_only: false
+      trailer:
+        type: bool
+        default_value: false
+        description: Detect trailers in detection areas
+        read_only: false
+      motorcycle:
+        type: bool
+        default_value: false
+        description: Detect motorcycles in detection areas
+        read_only: false
+      bicycle:
+        type: bool
+        default_value: false
+        description: Detect bicycles in detection areas
+        read_only: false
+      pedestrian:
+        type: bool
+        default_value: false
+        description: Detect pedestrians in detection areas
+        read_only: false
+      animal:
+        type: bool
+        default_value: false
+        description: Detect animals in detection areas
+        read_only: false
+      hazard:
+        type: bool
+        default_value: false
+        description: Detect hazards in detection areas
+        read_only: false
+      over_drivable:
+        type: bool
+        default_value: false
+        description: Detect over-drivable objects in detection areas
+        read_only: false
+      under_drivable:
+        type: bool
+        default_value: false
+        description: Detect under-drivable objects in detection areas
+        read_only: false
+    use_dead_line:
+      type: bool
+      default_value: false
+      description: Ignore detection area obstacles after the dead line
+      read_only: false
+    dead_line_margin:
+      type: double
+      default_value: 5.0
+      description: Detection area dead line margin [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    unstoppable_policy:
+      type: string
+      default_value: stop_after_stopline
+      description: Policy when the vehicle cannot stop before the stop line
+      validation:
+        one_of<>: [[go, force_stop, stop_after_stopline]]
+      read_only: false
+    state_clear_time:
+      type: double
+      default_value: 2.0
+      description: Time without an obstacle before clearing STOP state [s]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    hold_stop_margin_distance:
+      type: double
+      default_value: 0.0
+      description: Distance for holding an existing stop position [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    distance_to_judge_over_stop_line:
+      type: double
+      default_value: 0.5
+      description: Distance after the stop line at which new obstacles are ignored [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    suppress_pass_judge_when_stopping:
+      type: bool
+      default_value: false
+      description: Keep STOP state while the vehicle is stopped
+      read_only: false
+    enable_detected_obstacle_logging:
+      type: bool
+      default_value: false
+      description: Enable detailed detected obstacle logging
+      read_only: false
+
   velocity_limits:
     max_acceleration:
       type: double
@@ -1650,6 +1731,30 @@ trajectory_modifier_params:
         type: double
         default_value: 0.5
         description: Age of the previous plan above which it is not reused [s].
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_on_new_stop:
+        type: bool
+        default_value: true
+        description: Restart from the measured ego state when an unmatched input stop or a new zero-speed external limit appears.
+        read_only: false
+      new_stop_match_distance:
+        type: double
+        default_value: 1.0
+        description: Maximum distance between input stop positions in successive plans to treat them as the same stop [m].
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      reset_on_lower_input:
+        type: bool
+        default_value: true
+        description: Restart from the measured ego state when the input velocity drops below the previous plan at the same position.
+        read_only: false
+      lower_input_velocity_margin:
+        type: double
+        default_value: 0.5
+        description: Input velocity drop below the previous plan above which the profile restarts from the measured ego state [m/s].
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false

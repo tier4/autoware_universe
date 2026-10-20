@@ -116,6 +116,9 @@
       max_distance_deviation: 100.0 # m
       max_steering_angle: 0.8 # rad
       max_steering_rate: 0.3 # rad/s
+      speed_limit_tolerance: # linearly interpolated by the lanelet speed limit, clamped at both ends
+        speed_limits_kmph: [10.0, 20.0, 30.0, 40.0] # km/h
+        tolerances_kmph: [1.0, 2.0, 3.0, 5.0] # km/h
 
     crosswalk:
       object_types: ["pedestrian", "bicycle"]
