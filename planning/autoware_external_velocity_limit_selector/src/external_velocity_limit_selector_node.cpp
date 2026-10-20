@@ -14,7 +14,6 @@
 
 #include "autoware/external_velocity_limit_selector/external_velocity_limit_selector_node.hpp"
 
-#include <chrono>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -132,26 +131,15 @@ ExternalVelocityLimitSelectorNode::ExternalVelocityLimitSelectorNode(
     "input/velocity_limit_clear_command_from_internal", rclcpp::QoS{10}.transient_local(),
     std::bind(&ExternalVelocityLimitSelectorNode::onVelocityLimitClearCommand, this, _1));
 
-  // Output
-  pub_external_velocity_limit_ =
-    this->create_publisher<VelocityLimit>("output/external_velocity_limit", 1);
+  // Output. transient_local so a subscriber that starts later still receives max_vel.
+  pub_external_velocity_limit_ = this->create_publisher<VelocityLimit>(
+    "output/external_velocity_limit", rclcpp::QoS{1}.transient_local());
 
   pub_debug_string_ = this->create_publisher<StringStamped>("output/debug", 1);
 
   // Params
   param_listener_ = std::make_shared<::external_velocity_limit_selector::ParamListener>(
     this->get_node_parameters_interface());
-  updateVelocityLimit();
-  publishVelocityLimit(getCurrentVelocityLimit());
-
-  // The output QoS is volatile, and trajectory_modifier starts after this node.
-  // Keep publishing the current limit so ExternalVelocityLimit receives max_vel.
-  timer_ = this->create_wall_timer(
-    std::chrono::seconds(1), std::bind(&ExternalVelocityLimitSelectorNode::onTimer, this));
-}
-
-void ExternalVelocityLimitSelectorNode::onTimer()
-{
   updateVelocityLimit();
   publishVelocityLimit(getCurrentVelocityLimit());
 }

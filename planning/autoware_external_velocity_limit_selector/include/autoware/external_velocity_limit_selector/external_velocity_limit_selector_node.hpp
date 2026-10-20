@@ -51,10 +51,8 @@ private:
   rclcpp::Subscription<VelocityLimitClearCommand>::SharedPtr sub_velocity_limit_clear_command_;
   rclcpp::Publisher<VelocityLimit>::SharedPtr pub_external_velocity_limit_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_string_;
-  rclcpp::TimerBase::SharedPtr timer_;
 
   void publishVelocityLimit(const VelocityLimit & velocity_limit);
-  void onTimer();
   void setVelocityLimitFromAPI(const VelocityLimit & velocity_limit);
   void setVelocityLimitFromInternal(const VelocityLimit & velocity_limit);
   void clearVelocityLimit(const std::string & sender);
