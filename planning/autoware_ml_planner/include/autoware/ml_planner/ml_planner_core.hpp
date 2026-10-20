@@ -27,6 +27,7 @@
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 #include "autoware/ml_planner/preprocessing/items/traffic_signals.hpp"
 #include "autoware/ml_planner/utils/timed_buffer.hpp"
+#include "autoware/ml_planner/utils/virtual_pose.hpp"
 
 #include <Eigen/Dense>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
@@ -44,6 +45,7 @@
 
 #include <lanelet2_core/LaneletMap.h>
 
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -118,6 +120,7 @@ struct MLPlannerParams
   optimization::TrajectoryOptimizationParams trajectory_optimization;
   postprocess::RoadBorderAvoidanceParams road_border_avoidance;
   postprocess::StopPointFixingParams stop_point_fixing;
+  utils::VirtualPoseParams virtual_pose;
 };
 
 /**
@@ -185,11 +188,22 @@ public:
     const LaneletRoute::ConstSharedPtr & route_ptr);
 
   /**
+   * @brief Tell whether Autoware drives the vehicle (control mode AUTONOMOUS).
+   *
+   * The virtual pose assumes the controller follows the published trajectory, so it applies only
+   * while Autoware drives. Under a driver (manual mode, an override) the vehicle leaves the plan by
+   * intent, and the planning start stays on the vehicle as the engage check expects.
+   */
+  void set_autoware_in_control(const bool in_control) { autoware_in_control_ = in_control; }
+
+  /**
    * @brief Build normalized-shape model inputs from a validated buffer snapshot.
    */
   preprocess::TensorMapResult create_input_data(const preprocess::FrameInputs & frame_inputs);
 
-  const geometry_msgs::msg::Pose & ego_pose() const { return ego_history_.back().pose.pose; }
+  // Pose the current frame is planned from: the virtual pose while it applies, else the vehicle.
+  const geometry_msgs::msg::Pose & ego_pose() const { return frame_ego_history().back().pose.pose; }
+  bool virtual_pose_active() const { return virtual_pose_active_; }
 
   /**
    * @brief Set the lanelet map context.
@@ -293,6 +307,13 @@ private:
       HISTORY_WINDOW_S, [](const autoware_perception_msgs::msg::TrafficLightGroupArray & msg) {
         return rclcpp::Time(msg.stamp);
       }};
+
+  // Planning start taken from the published trajectory, and whether it applies in this frame
+  // (virtual_pose.enable while Autoware drives).
+  utils::VirtualPose virtual_pose_{HISTORY_WINDOW_S};
+  bool autoware_in_control_{false};
+  bool virtual_pose_active_{false};
+  const std::deque<Odometry> & frame_ego_history() const;
 
   // Lanelet map
   std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_;

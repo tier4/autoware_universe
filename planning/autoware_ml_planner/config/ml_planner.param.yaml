@@ -36,6 +36,7 @@
       min_acceleration_mps2: -4.0    # [m/s^2]
       max_acceleration_mps2: 3.0     # [m/s^2]
       max_steering_rate_rps: 1.0     # [rad/s]
+      steering_angle_margin_rad: 0.0  # planned steering stays this far inside the vehicle's max_steer_angle [rad]
       max_lateral_acceleration_mps2: 3.0  # soft constraint bound [m/s^2]
       max_sqp_iterations: 50
       temporal_consistency:
@@ -64,6 +65,14 @@
       enable: false
       velocity_threshold_mps: 0.3  # stop detection velocity threshold [m/s]
       min_deceleration_duration_sec: 1.0  # required continuous deceleration before fixing [s]
+    virtual_pose:
+      enable: false                  # plan from the closest point of the published trajectory instead of the vehicle while Autoware drives
+      max_longitudinal_error_m: 5.0  # reset onto the vehicle beyond this distance along the virtual heading [m]
+      max_lateral_error_m: 3.0       # ... or across it [m]
+      max_yaw_error_deg: 20.0        # ... or this heading difference [deg]
+      hold_max_speed_mps: 0.1        # hold the virtual pose below this speed [m/s]
+      hold_position_tolerance_m: 0.2  # the hold ends once the vehicle has moved this far [m]
+      hold_yaw_tolerance_deg: 0.5     # ... or turned this much [deg]
     planning_factor:
       enable_stop: true
       enable_slowdown: false
@@ -74,3 +83,4 @@
       publish_debug_route: true
       publish_debug_map: false
       publish_debug_linestrings: true
+      virtual_pose_vehicle_mesh: ""  # body mesh drawn at the virtual pose (package:// or file:// URI); empty: a box of the vehicle size

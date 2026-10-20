@@ -20,6 +20,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <random>
@@ -124,6 +125,57 @@ TEST_F(TrajectoryOptimizerTest, OptimizesNoisyTrajectory)
   for (const auto & point : result.trajectory.points) {
     EXPECT_LT(std::abs(point.pose.position.y), 0.5);
   }
+}
+
+TEST_F(TrajectoryOptimizerTest, SteeringAngleMarginKeepsThePlanInsideTheVehicleLimit)
+{
+  // A 90 deg turn tighter than the vehicle can drive (3 m radius needs ~0.74 rad with a 2.75 m
+  // wheelbase), then straight: without a margin the plan steers at the vehicle limit, with one it
+  // stays inside. Tracking weights as on the vehicle.
+  constexpr double radius_m = 3.0;
+  constexpr double speed_mps = 1.0;
+  const double arc_m = radius_m * M_PI / 2.0;
+  Trajectory raw;
+  raw.header.frame_id = "map";
+  for (size_t i = 1; i <= opt_horizon; ++i) {
+    const double s = speed_mps * opt_dt_s * static_cast<double>(i);
+    TrajectoryPoint point;
+    if (s < arc_m) {
+      const double angle = s / radius_m;
+      point.pose.position.x = radius_m * std::sin(angle);
+      point.pose.position.y = radius_m * (1.0 - std::cos(angle));
+      point.pose.orientation = autoware_utils::create_quaternion_from_yaw(angle);
+    } else {
+      point.pose.position.x = radius_m;
+      point.pose.position.y = radius_m + (s - arc_m);
+      point.pose.orientation = autoware_utils::create_quaternion_from_yaw(M_PI / 2.0);
+    }
+    raw.points.push_back(point);
+  }
+  odometry_.twist.twist.linear.x = speed_mps;
+
+  const auto max_planned_steering = [&](const double margin_rad) {
+    TrajectoryOptimizationParams params;
+    params.enable = true;
+    params.weight_lateral = 1.0;
+    params.weight_yaw = 10.0;
+    params.steering_angle_margin_rad = margin_rad;
+    TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+    const auto result = optimizer.optimize(raw, odometry_, 0.0, 0);
+    EXPECT_TRUE(result.optimized) << "acados status: " << result.solver_status;
+    double max_steering = 0.0;
+    for (const auto & point : result.trajectory.points) {
+      max_steering =
+        std::max(max_steering, std::abs(static_cast<double>(point.front_wheel_angle_rad)));
+    }
+    return max_steering;
+  };
+
+  EXPECT_NEAR(max_planned_steering(0.0), vehicle_info_.max_steer_angle_rad, 1e-3);
+  constexpr double margin_rad = 0.15;
+  const double with_margin = max_planned_steering(margin_rad);
+  EXPECT_LE(with_margin, vehicle_info_.max_steer_angle_rad - margin_rad + 1e-6);
+  EXPECT_NEAR(with_margin, vehicle_info_.max_steer_angle_rad - margin_rad, 1e-3);
 }
 
 TEST_F(TrajectoryOptimizerTest, FallsBackOnShortTrajectory)
@@ -294,6 +346,43 @@ TEST_F(TrajectoryOptimizerTest, GoalPositionChangeClearsPreviousSolutions)
   ASSERT_TRUE(changed.optimized) << "acados status: " << changed.solver_status;
   EXPECT_TRUE(changed.goal_snap_active);
   EXPECT_FALSE(changed.temporal_applied);
+}
+
+TEST_F(TrajectoryOptimizerTest, DropPreviousSolutionsSkipsTemporalConsistency)
+{
+  TrajectoryOptimizationParams params;
+  params.enable = true;
+  params.temporal_consistency.enable = true;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  constexpr double x0 = 50.0;
+  constexpr double speed = 8.0;
+  odometry_.pose.pose.position.x = x0;
+  odometry_.twist.twist.linear.x = speed;
+  auto raw = make_straight_trajectory(x0, speed);
+  raw.header.stamp.sec = 0;
+  // Far beyond the snap range: no goal latch interferes.
+  const auto goal = make_pose(x0 + 1000.0, 0.0);
+
+  const auto first = optimizer.optimize(raw, odometry_, 0.0, 0, goal);
+  ASSERT_TRUE(first.optimized);
+
+  raw.header.stamp.nanosec = 100000000;
+  const auto second = optimizer.optimize(raw, odometry_, 0.0, 0, goal);
+  ASSERT_TRUE(second.optimized);
+  EXPECT_TRUE(second.temporal_applied);
+
+  // A virtual pose reset: the next cycle must not be pulled toward the previous plan.
+  optimizer.drop_previous_solutions();
+  raw.header.stamp.nanosec = 200000000;
+  const auto after_reset = optimizer.optimize(raw, odometry_, 0.0, 0, goal);
+  ASSERT_TRUE(after_reset.optimized) << "acados status: " << after_reset.solver_status;
+  EXPECT_FALSE(after_reset.temporal_applied);
+
+  raw.header.stamp.nanosec = 300000000;
+  const auto next = optimizer.optimize(raw, odometry_, 0.0, 0, goal);
+  ASSERT_TRUE(next.optimized);
+  EXPECT_TRUE(next.temporal_applied);
 }
 
 }  // namespace autoware::ml_planner::test

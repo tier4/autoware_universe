@@ -16,12 +16,14 @@
 
 #include "autoware/ml_planner/dimensions.hpp"
 
+#include <autoware_utils_geometry/geometry.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
 #include <rclcpp/duration.hpp>
 
 #include <geometry_msgs/msg/detail/point__struct.hpp>
 #include <geometry_msgs/msg/point.hpp>  // Include the header for Point
 
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -263,6 +265,38 @@ MarkerArray create_lane_marker(
   }
 
   return marker_array;
+}
+
+Marker create_vehicle_marker(
+  const geometry_msgs::msg::Pose & pose,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const std::string & mesh_resource,
+  const Time & stamp, const rclcpp::Duration & lifetime, const std::array<float, 4> & colors,
+  const std::string & marker_namespace)
+{
+  ColorRGBA color;
+  color.r = colors[0];
+  color.g = colors[1];
+  color.b = colors[2];
+  color.a = colors[3];
+  Marker marker =
+    create_base_marker(stamp, "map", marker_namespace, 0, Marker::CUBE, color, lifetime, 1.0);
+  if (!mesh_resource.empty()) {
+    marker.type = Marker::MESH_RESOURCE;
+    marker.mesh_resource = mesh_resource;
+    marker.pose = pose;
+    marker.scale.y = marker.scale.z = 1.0;
+    return marker;
+  }
+  // The box centre is ahead of base_link (rear axle) by half the length minus the rear overhang,
+  // and sideways by half the difference of the side overhangs.
+  marker.pose = autoware_utils_geometry::calc_offset_pose(
+    pose, 0.5 * vehicle_info.vehicle_length_m - vehicle_info.rear_overhang_m,
+    0.5 * (vehicle_info.left_overhang_m - vehicle_info.right_overhang_m),
+    0.5 * vehicle_info.vehicle_height_m);
+  marker.scale.x = vehicle_info.vehicle_length_m;
+  marker.scale.y = vehicle_info.vehicle_width_m;
+  marker.scale.z = vehicle_info.vehicle_height_m;
+  return marker;
 }
 
 }  // namespace autoware::ml_planner::utils
