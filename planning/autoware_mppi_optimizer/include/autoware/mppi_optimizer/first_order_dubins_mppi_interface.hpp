@@ -662,6 +662,8 @@ public:
    * @param preferred_lane_centerline Optional map-frame preferred route centerline segments.
    *        Empty input clears this objective for the call; invalid/oversized input disables it
    *        with a debug status. It never replaces the diffusion-reference corridor.
+   * @param force_optimization Bypass the minimum stopping-reference length after a collision
+   *        trigger. Trajectories with fewer than two points still cannot be optimized.
    * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
@@ -674,7 +676,8 @@ public:
     const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor = {},
     bool defer_commit = false,
     const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt,
-    const PreferredLaneCenterlineInput & preferred_lane_centerline = {});
+    const PreferredLaneCenterlineInput & preferred_lane_centerline = {},
+    bool force_optimization = false);
 
   /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
    * This records an assumed first actuator command, not feedback from the downstream controller.

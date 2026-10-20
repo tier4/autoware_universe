@@ -2891,7 +2891,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
   const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor,
   const bool defer_commit, const std::optional<Trajectory> & mpc_predicted_trajectory,
-  const PreferredLaneCenterlineInput & preferred_lane_centerline)
+  const PreferredLaneCenterlineInput & preferred_lane_centerline, const bool force_optimization)
 try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -2900,8 +2900,8 @@ try {
   FirstOrderDubinsMppiOptimizationResult result;
   const auto not_enough_input_points = input.points.size() < 2U;
   const bool short_reference = impl_->referenceIsShortForSteeringHold(input);
-  const auto optimization_required =
-    detail::isOptimizationRequired(input, impl_->min_optimization_length);
+  const bool optimization_required =
+    force_optimization || detail::isOptimizationRequired(input, impl_->min_optimization_length);
   if (not_enough_input_points || !optimization_required) {
     const auto initial_state =
       detail::makeInitialState(odometry, acceleration, steering_status, impl_->vehicle_params);

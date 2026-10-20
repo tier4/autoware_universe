@@ -88,6 +88,13 @@ private:
   /** @brief Creates and configures the GPU optimizer on first use. */
   void ensure_optimizer();
 
+  /** @brief Cache vehicle, cost, and object-filter parameters without creating a GPU optimizer. */
+  void prepare_scene_parameters();
+
+  /** @brief Leave the primary candidate untouched and clear state from the previous MPPI pass. */
+  autoware::trajectory_modifier::plugin::ProcessingResult skip_optimization(
+    std::uint8_t level, const std::string & message, const std_msgs::msg::Header & header);
+
   /** @brief Publishes whether an optimized MPPI trajectory replaced the primary candidate. */
   void publish_enabled(bool applied) const;
 
@@ -120,6 +127,8 @@ private:
   std::unique_ptr<trajectory_mppi_optimizer::ParamListener> param_listener_;
   MppiParams params_;
   std::unique_ptr<FirstOrderDubinsMppiInterface> optimizer_;
+  std::optional<FirstOrderDubinsMppiCostParams> cost_params_;
+  std::optional<FirstOrderDubinsMppiVehicleParams> vehicle_params_;
   CurvatureAdaptiveSteeringFilter steering_filter_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;

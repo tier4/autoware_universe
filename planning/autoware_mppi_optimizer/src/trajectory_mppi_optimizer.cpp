@@ -18,6 +18,7 @@
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_kinematic_limits_conversion.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
+#include "autoware/mppi_optimizer/input_collision_gate.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
 #include <autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp>
@@ -214,6 +215,38 @@ std::vector<Segment> to_mppi_segments(const std::vector<Segment2d> & segments)
   return output;
 }
 
+bool is_input_collision_triggered(
+  const Trajectory & input, const TrackedObjects & static_objects,
+  const std::vector<Segment> & road_borders, const std::string & map_frame,
+  const FirstOrderDubinsMppiVehicleParams & vehicle,
+  const trajectory_mppi_optimizer::Params & params)
+{
+  if (!params.trigger_on_road_border_collision && !params.trigger_on_static_object_collision) {
+    return false;
+  }
+  if (
+    (params.trigger_on_road_border_collision && params.ignore_road_borders) ||
+    (params.trigger_on_static_object_collision && params.ignore_obstacles)) {
+    throw std::invalid_argument(
+      "An enabled MPPI input collision trigger cannot use ignored collision geometry");
+  }
+  if (
+    input.header.frame_id.empty() ||
+    (params.trigger_on_road_border_collision && !map_frame.empty() &&
+     input.header.frame_id != map_frame) ||
+    (params.trigger_on_static_object_collision && !static_objects.header.frame_id.empty() &&
+     input.header.frame_id != static_objects.header.frame_id)) {
+    throw std::invalid_argument("MPPI input collision geometry has mismatched coordinate frames");
+  }
+
+  const auto collision = checkInputTrajectoryCollisions(
+    input, static_objects, road_borders, vehicle,
+    static_cast<float>(params.obstacle_collision_margin),
+    static_cast<float>(params.road_border_collision_margin),
+    {params.trigger_on_road_border_collision, params.trigger_on_static_object_collision});
+  return collision.triggered();
+}
+
 /** @brief Planar distance [m] from ego odometry to the first DP reference point. */
 double ego_to_first_reference_point_distance_m(
   const nav_msgs::msg::Odometry & odometry, const Trajectory & reference)
@@ -383,40 +416,82 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   debug_pending_ = false;
 
   if (!params_.enabled) {
-    if (optimizer_) optimizer_->invalidateNominalWarmStart();
-    steering_filter_.reset();
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::STALE;
-    publish_enabled(false);
-    clear_markers(data.candidate_header);
-    publish_status_diagnostic(level, "MPPI disabled", rclcpp::Time{data.candidate_header.stamp});
-    previous_mppi_trajectory_applied_ = false;
-    return ProcessingResult::Unchanged;
+    return skip_optimization(level, "MPPI disabled", data.candidate_header);
+  }
+  if (
+    params_.optimize_only_on_input_collision && !params_.trigger_on_road_border_collision &&
+    !params_.trigger_on_static_object_collision) {
+    constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+    return skip_optimization(
+      level, "MPPI skipped: no input collision conditions enabled", data.candidate_header);
   }
 
   if (!data.current_odometry || !data.tracked_objects || !data.route || !data.lanelet_map_bin) {
-    if (optimizer_) optimizer_->invalidateNominalWarmStart();
-    steering_filter_.reset();
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-    publish_enabled(false);
-    clear_markers(data.candidate_header);
-    publish_status_diagnostic(
-      level, "MPPI input data is not ready", rclcpp::Time{data.candidate_header.stamp});
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
       "MPPI input data is not ready: odometry, tracked objects, route, or map is missing");
-    previous_mppi_trajectory_applied_ = false;
-    return ProcessingResult::Unchanged;
+    return skip_optimization(level, "MPPI input data is not ready", data.candidate_header);
   }
 
   try {
     update_route_context(data);
-    ensure_optimizer();
+    prepare_scene_parameters();
 
     Trajectory input;
     input.header = data.candidate_header;
     input.points = trajectory_points;
 
     const bool was_previous_mppi_trajectory_applied = previous_mppi_trajectory_applied_;
+    const auto objects_in_range = autoware::avoidance_target_detector::filter_objects_in_range(
+      *data.tracked_objects, input, object_filter_margin_m_, object_filter_prediction_extension_s_);
+    object_selector_.update_objects(
+      get_node_ptr()->now(), objects_in_range, input, *extended_route_handler_);
+    auto avoidance_targets = object_selector_.get_avoidance_targets(
+      objects_in_range, input, extended_route_handler_->get_extended_route_bounds());
+    const auto driving_along_targets =
+      object_selector_.get_driving_along_vehicles(objects_in_range);
+
+    auto all_targets = avoidance_targets;
+    all_targets.objects.insert(
+      all_targets.objects.end(), driving_along_targets.objects.begin(),
+      driving_along_targets.objects.end());
+
+    double boundary_query_margin = context_->vehicle_info.max_longitudinal_offset_m + 1.0;
+    if (params_.optimize_only_on_input_collision && params_.trigger_on_road_border_collision) {
+      const double max_longitudinal_offset = std::max(
+        std::abs(context_->vehicle_info.min_longitudinal_offset_m),
+        std::abs(context_->vehicle_info.max_longitudinal_offset_m));
+      const double max_lateral_offset = std::max(
+        std::abs(context_->vehicle_info.min_lateral_offset_m),
+        std::abs(context_->vehicle_info.max_lateral_offset_m));
+      boundary_query_margin = std::max(
+        boundary_query_margin, std::hypot(max_longitudinal_offset, max_lateral_offset) +
+                                 params_.road_border_collision_margin);
+    }
+    const auto road_borders =
+      extended_route_handler_->get_road_borders_around_trajectory(input, boundary_query_margin);
+    const auto mppi_road_borders = to_mppi_segments(road_borders);
+
+    if (params_.optimize_only_on_input_collision) {
+      if (input.points.size() < 2U) {
+        constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+        return skip_optimization(
+          level, "MPPI input trajectory has fewer than 2 points", input.header);
+      }
+      if (!is_input_collision_triggered(
+            input, avoidance_targets, mppi_road_borders, data.lanelet_map_bin->header.frame_id,
+            *vehicle_params_, params_)) {
+        constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+        return skip_optimization(level, "MPPI skipped: no enabled input collision", input.header);
+      }
+    }
+
+    ensure_optimizer();
+    const auto drivable_area =
+      extended_route_handler_->get_drivable_area_around_trajectory(input, boundary_query_margin);
+
     std::optional<Trajectory> mpc_predicted_trajectory;
     const auto latest_mpc_prediction = mpc_predicted_trajectory_sub_->take_data();
     bool mpc_prediction_fresh = false;
@@ -438,26 +513,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       mpc_seed_status == FirstOrderDubinsMppiMpcNominalSeedStatus::used && latest_mpc_prediction) {
       mpc_predicted_trajectory = *latest_mpc_prediction;
     }
-
-    const auto objects_in_range = autoware::avoidance_target_detector::filter_objects_in_range(
-      *data.tracked_objects, input, object_filter_margin_m_, object_filter_prediction_extension_s_);
-    object_selector_.update_objects(
-      get_node_ptr()->now(), objects_in_range, input, *extended_route_handler_);
-    auto avoidance_targets = object_selector_.get_avoidance_targets(
-      objects_in_range, input, extended_route_handler_->get_extended_route_bounds());
-    const auto driving_along_targets =
-      object_selector_.get_driving_along_vehicles(objects_in_range);
-
-    auto all_targets = avoidance_targets;
-    all_targets.objects.insert(
-      all_targets.objects.end(), driving_along_targets.objects.begin(),
-      driving_along_targets.objects.end());
-
-    const double boundary_query_margin = context_->vehicle_info.max_longitudinal_offset_m + 1.0;
-    const auto road_borders =
-      extended_route_handler_->get_road_borders_around_trajectory(input, boundary_query_margin);
-    const auto drivable_area =
-      extended_route_handler_->get_drivable_area_around_trajectory(input, boundary_query_margin);
 
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration =
       data.current_acceleration ? std::make_optional(*data.current_acceleration) : std::nullopt;
@@ -544,10 +599,10 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     }
 
     auto result = optimizer_->optimizeTrajectory(
-      input, *data.current_odometry, acceleration, steering, all_targets,
-      to_mppi_segments(road_borders), to_mppi_segments(drivable_area), kinematic_limits,
-      control_postprocessor, /*defer_commit=*/true, mpc_predicted_trajectory,
-      preferred_lane_centerline);
+      input, *data.current_odometry, acceleration, steering, all_targets, mppi_road_borders,
+      to_mppi_segments(drivable_area), kinematic_limits, control_postprocessor,
+      /*defer_commit=*/true, mpc_predicted_trajectory, preferred_lane_centerline,
+      /*force_optimization=*/params_.optimize_only_on_input_collision);
 
     result.debug.previous_mppi_trajectory_applied = was_previous_mppi_trajectory_applied;
     if (mpc_predicted_trajectory) {
@@ -699,8 +754,22 @@ ProcessingResult TrajectoryMppiOptimizer::process(
 void TrajectoryMppiOptimizer::reset_optimizer()
 {
   optimizer_.reset();
+  cost_params_.reset();
+  vehicle_params_.reset();
   steering_filter_.reset();
   object_selector_ = autoware::avoidance_target_detector::TrackedObjectSelector{};
+}
+
+ProcessingResult TrajectoryMppiOptimizer::skip_optimization(
+  const std::uint8_t level, const std::string & message, const std_msgs::msg::Header & header)
+{
+  if (optimizer_) optimizer_->invalidateNominalWarmStart();
+  steering_filter_.reset();
+  publish_enabled(false);
+  clear_markers(header);
+  publish_status_diagnostic(level, message, rclcpp::Time{header.stamp});
+  previous_mppi_trajectory_applied_ = false;
+  return ProcessingResult::Unchanged;
 }
 
 void TrajectoryMppiOptimizer::update_route_context(
@@ -747,6 +816,25 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
   if (optimizer_) {
     return;
   }
+  if (!cost_params_ || !vehicle_params_) {
+    prepare_scene_parameters();
+  }
+
+  const auto & cost_params = *cost_params_;
+  const auto & vehicle_params = *vehicle_params_;
+  auto optimizer = std::make_unique<FirstOrderDubinsMppiInterface>();
+  optimizer->setCostParams(cost_params);
+  optimizer->setVehicleParams(vehicle_params);
+  optimizer->setRuntimeOptions(make_runtime_options(params_));
+  optimizer_ = std::move(optimizer);
+  preferred_lane_max_acceleration_ = std::max(0.0F, vehicle_params.max_accel());
+}
+
+void TrajectoryMppiOptimizer::prepare_scene_parameters()
+{
+  if (cost_params_ && vehicle_params_) {
+    return;
+  }
 
   auto cost_params = make_cost_params(params_);
   auto vehicle_params = get_first_order_dubins_mppi_vehicle_params(*get_node_ptr());
@@ -758,11 +846,6 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
     static_cast<float>(params_.restart_steer_command_acceleration_lim);
   vehicle_params.restart_velocity_threshold_mps =
     static_cast<float>(params_.restart_velocity_threshold_mps);
-  optimizer_ = std::make_unique<FirstOrderDubinsMppiInterface>();
-  optimizer_->setCostParams(cost_params);
-  optimizer_->setVehicleParams(vehicle_params);
-  preferred_lane_max_acceleration_ = std::max(0.0F, vehicle_params.max_accel());
-  optimizer_->setRuntimeOptions(make_runtime_options(params_));
 
   const double max_longitudinal_offset = std::max(
     std::abs(context_->vehicle_info.min_longitudinal_offset_m),
@@ -782,6 +865,8 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
   const double delay_steps =
     std::max(0.0, std::round(max_vehicle_delay_s / autoware::mppi_optimizer::detail::kMppiDt));
   object_filter_prediction_extension_s_ = delay_steps * autoware::mppi_optimizer::detail::kMppiDt;
+  cost_params_ = cost_params;
+  vehicle_params_ = vehicle_params;
 }
 
 void TrajectoryMppiOptimizer::publish_enabled(const bool applied) const

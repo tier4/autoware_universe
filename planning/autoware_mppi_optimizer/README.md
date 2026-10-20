@@ -30,6 +30,12 @@ The plugin uses odometry, acceleration, steering, tracked objects, route, and ra
 
 Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory modifier node. The transient-local `enabled` debug topic is true only for a cycle where an optimized MPPI trajectory replaced the primary candidate; it is false when MPPI is disabled, skipped, rejected, or running in shadow mode.
 
+### Conditional optimization
+
+Set `optimize_only_on_input_collision: true` to run MPPI only when an enabled input collision condition is met. `trigger_on_road_border_collision` and `trigger_on_static_object_collision` are independent; either match starts optimization. Both triggers default to true, while conditional mode defaults to false to retain the existing behavior. When neither enabled condition matches, the plugin leaves all input points unchanged, including their velocity and steering fields, and publishes a skip diagnostic. With both triggers disabled, every cycle passes through unchanged.
+
+The check covers the first 80 input points, which are the points MPPI can replace. It samples between points and uses the same inflated vehicle footprint, object boxes, and road-border segment intersection routines as MPPI's output validation. The static-object condition uses the stationary avoidance targets selected by `autoware_avoidance_target_detector`; it does not include moving vehicles or stationary objects filtered out by that selector. A matched trigger overrides `min_optimization_length`, but a trajectory with fewer than two points still cannot be optimized. A trigger cannot be enabled alongside its corresponding `ignore_obstacles` or `ignore_road_borders` option.
+
 ### Steering output filtering
 
 The curvature-adaptive EMA uses the magnitude of the preceding **filtered** steering as its turn
