@@ -14,6 +14,7 @@
 
 #include "autoware/external_velocity_limit_selector/external_velocity_limit_selector_node.hpp"
 
+#include <chrono>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -141,6 +142,18 @@ ExternalVelocityLimitSelectorNode::ExternalVelocityLimitSelectorNode(
   param_listener_ = std::make_shared<::external_velocity_limit_selector::ParamListener>(
     this->get_node_parameters_interface());
   updateVelocityLimit();
+  publishVelocityLimit(getCurrentVelocityLimit());
+
+  // The output QoS is volatile, and trajectory_modifier starts after this node.
+  // Keep publishing the current limit so ExternalVelocityLimit receives max_vel.
+  timer_ = this->create_wall_timer(
+    std::chrono::seconds(1), std::bind(&ExternalVelocityLimitSelectorNode::onTimer, this));
+}
+
+void ExternalVelocityLimitSelectorNode::onTimer()
+{
+  updateVelocityLimit();
+  publishVelocityLimit(getCurrentVelocityLimit());
 }
 
 void ExternalVelocityLimitSelectorNode::onVelocityLimitFromAPI(

@@ -93,6 +93,7 @@ class TestExternalVelocityLimitSelector(unittest.TestCase):
         )
 
     def wait_for_output(self):
+        self.msg_buffer_ = None
         while not self.msg_buffer_:
             rclpy.spin_once(self.test_node, timeout_sec=0.1)
         self.velocity_limit_output_ = self.msg_buffer_
