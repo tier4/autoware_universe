@@ -65,6 +65,9 @@ struct TrajectoryOptimizationParams
   double min_acceleration_mps2{-4.0};
   double max_acceleration_mps2{3.0};
   double max_steering_rate_rps{1.0};
+  // Planned steering stays this far inside the vehicle's max_steer_angle, so the controller keeps
+  // that much steering to correct with when the vehicle falls off a plan drawn at full lock.
+  double steering_angle_margin_rad{0.0};
 
   // Soft nonlinear constraint |v^2 * tan(delta) / wheelbase| <= max_lateral_acceleration_mps2.
   double max_lateral_acceleration_mps2{3.0};
