@@ -32,7 +32,9 @@ namespace autoware::ml_planner::preprocess
 {
 
 xt::xarray<float> create_ego_history(
-  const MessageView<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
+  const MessageView<nav_msgs::msg::Odometry> & odom_msgs,
+  const MessageView<autoware_vehicle_msgs::msg::SteeringReport> & steering_msgs,
+  size_t num_timesteps,
   const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & reference_time)
 {
   constexpr size_t features_per_timestep = EGO_HISTORY_DIM;
@@ -110,6 +112,35 @@ xt::xarray<float> create_ego_history(
     }
 
     store_state(t, interpolated_pose, interpolated_velocity, interpolated_yaw_rate);
+  }
+
+  // The steering tire angle on the same grid, linearly interpolated and held at the edge values
+  // outside the reports.
+  if (!steering_msgs.empty()) {
+    const double steering_first_sec = stamp_to_sec(steering_msgs.front().stamp);
+    const double steering_last_sec = stamp_to_sec(steering_msgs.back().stamp);
+    size_t steering_index = 0;
+    for (size_t t = 0; t < num_timesteps; ++t) {
+      const double target_sec = ref_sec - static_cast<double>(num_timesteps - 1 - t) * dt;
+      double steering = 0.0;
+      if (target_sec <= steering_first_sec) {
+        steering = steering_msgs.front().steering_tire_angle;
+      } else if (target_sec >= steering_last_sec) {
+        steering = steering_msgs.back().steering_tire_angle;
+      } else {
+        while (steering_index + 1 < steering_msgs.size() &&
+               stamp_to_sec(steering_msgs[steering_index + 1].stamp) < target_sec) {
+          ++steering_index;
+        }
+        const double t0 = stamp_to_sec(steering_msgs[steering_index].stamp);
+        const double t1 = stamp_to_sec(steering_msgs[steering_index + 1].stamp);
+        const double ratio = (t1 > t0) ? (target_sec - t0) / (t1 - t0) : 0.0;
+        const double before = steering_msgs[steering_index].steering_tire_angle;
+        const double after = steering_msgs[steering_index + 1].steering_tire_angle;
+        steering = before + ratio * (after - before);
+      }
+      ego_agent_past(t, EGO_AGENT_PAST_IDX_STEERING) = static_cast<float>(steering);
+    }
   }
 
   return ego_agent_past;
