@@ -507,8 +507,7 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "trajectory_optimization.max_steering_rate_rps", opt.max_steering_rate_rps);
   update_param<double>(
-    parameters, "trajectory_optimization.steering_angle_margin_rad",
-    opt.steering_angle_margin_rad);
+    parameters, "trajectory_optimization.steering_angle_margin_rad", opt.steering_angle_margin_rad);
   update_param<double>(
     parameters, "trajectory_optimization.max_lateral_acceleration_mps2",
     opt.max_lateral_acceleration_mps2);
@@ -945,7 +944,8 @@ void MLPlanner::on_timer()
   TensorMap input_data_map = std::move(input_data_result.value());
   const rclcpp::Time frame_time = core_->frame_time();
 
-  if (const auto & virtual_pose = core_->virtual_pose_result()) {
+  const auto & virtual_pose = core_->virtual_pose_result();
+  if (virtual_pose) {
     geometry_msgs::msg::PoseStamped pose_msg;
     pose_msg.header = core_->measured_ego().header;
     pose_msg.pose = virtual_pose->pose;
@@ -955,10 +955,15 @@ void MLPlanner::on_timer()
       virtual_pose->snapped ? 1.0 : 0.0, virtual_pose->reset ? 1.0 : 0.0,
       virtual_pose->position_error_m, virtual_pose->yaw_error_deg};
     pub_virtual_pose_status_->publish(status_msg);
-
+  }
+  if (virtual_pose || core_->virtual_pose_enabled()) {
+    // Red at the virtual pose while it is applied; yellow on the vehicle while the feature is on
+    // but waits for Autoware to drive (manual mode, an override), so it shows the feature is on.
+    const geometry_msgs::msg::Pose & body_pose =
+      virtual_pose ? virtual_pose->pose : core_->measured_ego().pose.pose;
     visualization_msgs::msg::Marker body;
     body.header.frame_id = "map";
-    body.header.stamp = pose_msg.header.stamp;
+    body.header.stamp = core_->measured_ego().header.stamp;
     body.ns = "virtual_pose_vehicle";
     body.id = 0;
     body.action = visualization_msgs::msg::Marker::ADD;
@@ -967,14 +972,14 @@ void MLPlanner::on_timer()
       body.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
       body.mesh_resource = debug_params_.virtual_pose_vehicle_mesh;
       body.mesh_use_embedded_materials = false;
-      body.pose = virtual_pose->pose;
+      body.pose = body_pose;
       body.scale.x = body.scale.y = body.scale.z = 1.0;
     } else {
       // The box is centred ahead of base_link (rear axle) by half its length minus the rear
       // overhang, and sideways by half the left/right overhang difference.
       body.type = visualization_msgs::msg::Marker::CUBE;
       body.pose = autoware_utils_geometry::calc_offset_pose(
-        virtual_pose->pose, 0.5 * vehicle_info_.vehicle_length_m - vehicle_info_.rear_overhang_m,
+        body_pose, 0.5 * vehicle_info_.vehicle_length_m - vehicle_info_.rear_overhang_m,
         0.5 * (vehicle_info_.left_overhang_m - vehicle_info_.right_overhang_m),
         0.5 * vehicle_info_.vehicle_height_m);
       body.scale.x = vehicle_info_.vehicle_length_m;
@@ -982,7 +987,7 @@ void MLPlanner::on_timer()
       body.scale.z = vehicle_info_.vehicle_height_m;
     }
     body.color.r = 1.0F;
-    body.color.g = 0.1F;
+    body.color.g = virtual_pose ? 0.1F : 0.9F;
     body.color.b = 0.1F;
     body.color.a = 0.4F;
     MarkerArray body_markers;

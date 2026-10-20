@@ -213,6 +213,8 @@ public:
     return virtual_pose_result_;
   }
   const Odometry & measured_ego() const { return ego_history_.back(); }
+  // Whether the virtual pose is turned on, applied or not (it waits while Autoware does not drive).
+  bool virtual_pose_enabled() const { return params_.virtual_pose.enable; }
 
   /**
    * @brief Set the lanelet map context.
