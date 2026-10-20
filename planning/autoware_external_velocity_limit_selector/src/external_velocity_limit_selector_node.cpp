@@ -140,6 +140,7 @@ ExternalVelocityLimitSelectorNode::ExternalVelocityLimitSelectorNode(
   // Params
   param_listener_ = std::make_shared<::external_velocity_limit_selector::ParamListener>(
     this->get_node_parameters_interface());
+  updateVelocityLimit();
 }
 
 void ExternalVelocityLimitSelectorNode::onVelocityLimitFromAPI(
@@ -228,6 +229,7 @@ void ExternalVelocityLimitSelectorNode::clearVelocityLimit(const std::string & s
 {
   if (velocity_limit_table_.empty()) {
     RCLCPP_WARN(get_logger(), "no velocity limit has been set from internal.");
+    updateVelocityLimit();
     return;
   }
 
