@@ -208,6 +208,12 @@
               "default": 1.0,
               "description": "Steering rate bound [rad/s]"
             },
+            "steering_angle_margin_rad": {
+              "type": "number",
+              "default": 0.0,
+              "minimum": 0.0,
+              "description": "Planned steering stays this far inside the vehicle's max_steer_angle [rad]"
+            },
             "max_lateral_acceleration_mps2": {
               "type": "number",
               "default": 3.0,
@@ -339,6 +345,53 @@
           },
           "required": ["enable"]
         },
+        "virtual_pose": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": false,
+              "description": "Plan from the closest point of the published trajectory instead of the vehicle while Autoware drives"
+            },
+            "max_longitudinal_error_m": {
+              "type": "number",
+              "default": 5.0,
+              "minimum": 0.0,
+              "description": "Reset onto the vehicle beyond this distance along the virtual heading [m]"
+            },
+            "max_lateral_error_m": {
+              "type": "number",
+              "default": 3.0,
+              "minimum": 0.0,
+              "description": "Reset onto the vehicle beyond this distance across the virtual heading [m]"
+            },
+            "max_yaw_error_deg": {
+              "type": "number",
+              "default": 20.0,
+              "minimum": 0.0,
+              "description": "Reset onto the vehicle beyond this heading difference [deg]"
+            },
+            "hold_max_speed_mps": {
+              "type": "number",
+              "default": 0.1,
+              "minimum": 0.0,
+              "description": "Hold the virtual pose below this speed [m/s]"
+            },
+            "hold_position_tolerance_m": {
+              "type": "number",
+              "default": 0.2,
+              "minimum": 0.0,
+              "description": "The hold ends once the vehicle has moved this far [m]"
+            },
+            "hold_yaw_tolerance_deg": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0.0,
+              "description": "The hold ends once the vehicle has turned this much [deg]"
+            }
+          },
+          "required": ["enable"]
+        },
         "planning_factor": {
           "type": "object",
           "properties": {
@@ -393,6 +446,11 @@
               "type": "boolean",
               "default": true,
               "description": "Publish debug linestring markers"
+            },
+            "virtual_pose_vehicle_mesh": {
+              "type": "string",
+              "default": "",
+              "description": "Body mesh drawn at the virtual pose (package:// or file:// URI); empty draws a box of the vehicle size"
             }
           },
           "required": ["publish_debug_map", "publish_debug_route", "publish_debug_linestrings"]

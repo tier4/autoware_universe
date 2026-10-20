@@ -88,6 +88,10 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
     "~/debug/road_border_avoidance/shifted_point_count", 1);
   pub_pre_stop_fixing_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/stop_point_fixing/unfixed_trajectory", 1);
+  pub_virtual_pose_ =
+    this->create_publisher<geometry_msgs::msg::PoseStamped>("~/debug/virtual_pose/pose", 1);
+  pub_virtual_pose_vehicle_marker_ =
+    this->create_publisher<MarkerArray>("~/debug/virtual_pose/vehicle_marker", 1);
 
   set_up_params();
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -217,6 +221,8 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.max_acceleration_mps2", 3.0);
   opt.max_steering_rate_rps =
     this->declare_parameter<double>("trajectory_optimization.max_steering_rate_rps", 1.0);
+  opt.steering_angle_margin_rad =
+    this->declare_parameter<double>("trajectory_optimization.steering_angle_margin_rad", 0.0);
   opt.max_lateral_acceleration_mps2 =
     this->declare_parameter<double>("trajectory_optimization.max_lateral_acceleration_mps2", 3.0);
   opt.max_sqp_iterations =
@@ -270,6 +276,22 @@ void MLPlanner::set_up_params()
   stop_fixing.min_deceleration_duration_sec =
     this->declare_parameter<double>("stop_point_fixing.min_deceleration_duration_sec", 1.0);
 
+  // virtual pose params
+  auto & virtual_pose = params_.virtual_pose;
+  virtual_pose.enable = this->declare_parameter<bool>("virtual_pose.enable", false);
+  virtual_pose.max_longitudinal_error_m =
+    this->declare_parameter<double>("virtual_pose.max_longitudinal_error_m", 5.0);
+  virtual_pose.max_lateral_error_m =
+    this->declare_parameter<double>("virtual_pose.max_lateral_error_m", 3.0);
+  virtual_pose.max_yaw_error_deg =
+    this->declare_parameter<double>("virtual_pose.max_yaw_error_deg", 20.0);
+  virtual_pose.hold_max_speed_mps =
+    this->declare_parameter<double>("virtual_pose.hold_max_speed_mps", 0.1);
+  virtual_pose.hold_position_tolerance_m =
+    this->declare_parameter<double>("virtual_pose.hold_position_tolerance_m", 0.2);
+  virtual_pose.hold_yaw_tolerance_deg =
+    this->declare_parameter<double>("virtual_pose.hold_yaw_tolerance_deg", 0.5);
+
   // planning factor params
   planning_factor_params_.enable_stop =
     this->declare_parameter<bool>("planning_factor.enable_stop", false);
@@ -289,6 +311,8 @@ void MLPlanner::set_up_params()
     this->declare_parameter<bool>("debug_params.publish_debug_route", true);
   debug_params_.publish_debug_linestrings =
     this->declare_parameter<bool>("debug_params.publish_debug_linestrings", true);
+  debug_params_.virtual_pose_vehicle_mesh =
+    this->declare_parameter<std::string>("debug_params.virtual_pose_vehicle_mesh", "");
 }
 
 void MLPlanner::load_model()
@@ -387,6 +411,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "trajectory_optimization.max_steering_rate_rps", opt.max_steering_rate_rps);
   update_param<double>(
+    parameters, "trajectory_optimization.steering_angle_margin_rad", opt.steering_angle_margin_rad);
+  update_param<double>(
     parameters, "trajectory_optimization.max_lateral_acceleration_mps2",
     opt.max_lateral_acceleration_mps2);
   update_param<int>(
@@ -433,6 +459,21 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     parameters, "stop_point_fixing.min_deceleration_duration_sec",
     stop_fixing.min_deceleration_duration_sec);
 
+  auto & virtual_pose = new_params.virtual_pose;
+  update_param<bool>(parameters, "virtual_pose.enable", virtual_pose.enable);
+  update_param<double>(
+    parameters, "virtual_pose.max_longitudinal_error_m", virtual_pose.max_longitudinal_error_m);
+  update_param<double>(
+    parameters, "virtual_pose.max_lateral_error_m", virtual_pose.max_lateral_error_m);
+  update_param<double>(
+    parameters, "virtual_pose.max_yaw_error_deg", virtual_pose.max_yaw_error_deg);
+  update_param<double>(
+    parameters, "virtual_pose.hold_max_speed_mps", virtual_pose.hold_max_speed_mps);
+  update_param<double>(
+    parameters, "virtual_pose.hold_position_tolerance_m", virtual_pose.hold_position_tolerance_m);
+  update_param<double>(
+    parameters, "virtual_pose.hold_yaw_tolerance_deg", virtual_pose.hold_yaw_tolerance_deg);
+
   update_param<bool>(
     parameters, "planning_factor.enable_stop", new_planning_factor_params.enable_stop);
   update_param<bool>(
@@ -454,6 +495,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<bool>(
     parameters, "debug_params.publish_debug_linestrings",
     new_debug_params.publish_debug_linestrings);
+  update_param<std::string>(
+    parameters, "debug_params.virtual_pose_vehicle_mesh",
+    new_debug_params.virtual_pose_vehicle_mesh);
 
   auto failure = [](const std::string & reason) {
     SetParametersResult result;
@@ -529,6 +573,13 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     opt.max_sqp_iterations < 1) {
     return failure("trajectory optimization limits and max_sqp_iterations must be positive");
   }
+  if (
+    opt.steering_angle_margin_rad < 0.0 ||
+    opt.steering_angle_margin_rad >= vehicle_info_.max_steer_angle_rad) {
+    return failure(
+      "trajectory_optimization.steering_angle_margin_rad must be non-negative and below the "
+      "vehicle's max_steer_angle");
+  }
   {
     const auto & temporal = opt.temporal_consistency;
     if (
@@ -549,6 +600,12 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   }
   if (stop_fixing.velocity_threshold_mps < 0.0 || stop_fixing.min_deceleration_duration_sec < 0.0) {
     return failure("stop point fixing thresholds must be non-negative");
+  }
+  if (
+    virtual_pose.max_longitudinal_error_m < 0.0 || virtual_pose.max_lateral_error_m < 0.0 ||
+    virtual_pose.max_yaw_error_deg < 0.0 || virtual_pose.hold_max_speed_mps < 0.0 ||
+    virtual_pose.hold_position_tolerance_m < 0.0 || virtual_pose.hold_yaw_tolerance_deg < 0.0) {
+    return failure("virtual pose reset limits and hold tolerances must be non-negative");
   }
 
   const bool reload_model = new_params.base_model_directory != params_.base_model_directory ||
@@ -653,6 +710,27 @@ void MLPlanner::publish_debug_markers(
       road_border_markers.markers.end());
     pub_linestring_marker_->publish(map_markers);
   }
+
+  if (params_.virtual_pose.enable) {
+    // Red at the virtual pose while it applies, yellow on the vehicle while it waits for Autoware
+    // to drive (manual mode, an override).
+    const bool active = core_->virtual_pose_active();
+    if (active) {
+      geometry_msgs::msg::PoseStamped virtual_pose;
+      virtual_pose.header.stamp = timestamp;
+      virtual_pose.header.frame_id = "map";
+      virtual_pose.pose = core_->ego_pose();
+      pub_virtual_pose_->publish(virtual_pose);
+    }
+    MarkerArray vehicle_marker;
+    vehicle_marker.markers.push_back(utils::create_vehicle_marker(
+      core_->ego_pose(), vehicle_info_, debug_params_.virtual_pose_vehicle_mesh, timestamp,
+      rclcpp::Duration::from_seconds(0.2),
+      active ? std::array<float, 4>{1.0f, 0.1f, 0.1f, 0.4f}
+             : std::array<float, 4>{1.0f, 0.9f, 0.1f, 0.4f},
+      "virtual_pose_vehicle"));
+    pub_virtual_pose_vehicle_marker_->publish(vehicle_marker);
+  }
 }
 
 void MLPlanner::on_timer()
@@ -695,6 +773,15 @@ void MLPlanner::on_timer()
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
   auto steering_reports = sub_steering_.take_data();
+  if (const auto control_mode_ptr = sub_control_mode_.take_data()) {
+    control_mode_ = control_mode_ptr->mode;
+  }
+  if (params_.virtual_pose.enable && !control_mode_) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+      "Control mode is not available: the virtual pose stays on the vehicle");
+  }
+  core_->set_autoware_in_control(control_mode_ == ControlModeReport::AUTONOMOUS);
 
   if (traffic_signals.empty()) {
     RCLCPP_WARN_THROTTLE(
