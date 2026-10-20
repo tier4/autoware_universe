@@ -39,7 +39,7 @@ void TrajectoryVelocityOptimizer::initialize(
 
   sub_planning_velocity_ =
     std::make_shared<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>(
-      node_ptr, "~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+      node_ptr, "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
 
   pub_velocity_limit_ = node_ptr->create_publisher<VelocityLimit>(
     "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
