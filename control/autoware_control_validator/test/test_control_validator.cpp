@@ -506,12 +506,12 @@ protected:
       rclcpp::Parameter("hazard_warning.enable", hazard_enable),
       rclcpp::Parameter("hazard_warning.debug.publish_markers", false)};
     if (thresholds_decided) {
-      overrides.emplace_back("hazard_warning.ttc_threshold_on", 3.0);
-      overrides.emplace_back("hazard_warning.ttc_thresholds", std::vector<double>{3.0, 1.0});
+      overrides.emplace_back(
+        "hazard_warning.braking.reaction_times", std::vector<double>{2.0, 1.5, 1.0});
     } else {
       const double nan = std::numeric_limits<double>::quiet_NaN();
-      overrides.emplace_back("hazard_warning.ttc_threshold_on", nan);
-      overrides.emplace_back("hazard_warning.ttc_thresholds", std::vector<double>{nan});
+      overrides.emplace_back(
+        "hazard_warning.braking.reaction_times", std::vector<double>{nan, nan, nan});
     }
     options.parameter_overrides(overrides);
     return std::make_shared<ControlValidator>(options);
@@ -715,7 +715,7 @@ TEST_F(HazardWarningNodeTest, AlertIsPublishedWhileManualDrivingSuppressesTheDia
   ASSERT_TRUE(result.alert.has_value());
   EXPECT_TRUE(result.alert->has_object[HazardAlert::FRONT]);
   EXPECT_NEAR(result.alert->ttc_s[HazardAlert::FRONT], 1.1, 1e-3);
-  EXPECT_EQ(result.alert->level[HazardAlert::FRONT], 1);
+  EXPECT_EQ(result.alert->level[HazardAlert::FRONT], 3);
   EXPECT_FALSE(result.alert->has_object[HazardAlert::REAR]);
   EXPECT_FALSE(result.alert->is_boundary_departure);
 }

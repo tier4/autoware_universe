@@ -402,6 +402,27 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_time(
       static_cast<double>(trajectory_points_.at(upper_idx).longitudinal_velocity_mps), ratio)};
 }
 
+InterpolatedState TrajectoryInterpolator::interpolate_state_from_dist(
+  const double target_dist) const
+{
+  if (trajectory_points_.size() == 1) {
+    const auto & point = trajectory_points_.front();
+    return InterpolatedState{0.0, point.pose, point.longitudinal_velocity_mps};
+  }
+
+  const auto [lower_idx, upper_idx, ratio] = resolve_interpolation(dist_from_fronts_, target_dist);
+
+  const auto lerp = [](const double a, const double b, const double r) { return a + r * (b - a); };
+  const auto pose = pose::interpolate_pose(
+    trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio);
+
+  return InterpolatedState{
+    lerp(dist_from_fronts_.at(lower_idx), dist_from_fronts_.at(upper_idx), ratio), pose,
+    lerp(
+      static_cast<double>(trajectory_points_.at(lower_idx).longitudinal_velocity_mps),
+      static_cast<double>(trajectory_points_.at(upper_idx).longitudinal_velocity_mps), ratio)};
+}
+
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   const autoware_perception_msgs::msg::PredictedPath & predicted_path, const double max_time,
@@ -606,13 +627,24 @@ std::optional<double> vehicle_rear_axle_length(
 
 EgoSweep CollisionSweep::build_ego_sweep(
   const autoware_planning_msgs::msg::Trajectory & predicted, const nav_msgs::msg::Odometry & odom,
-  const SweepLimits & limits) const
+  const SweepLimits & limits, const std::optional<BrakingParam> & braking) const
 {
   // Ego: resample the predicted trajectory at t_k = k * dt up to min(max_time, last point).
   const trajectory::TrajectoryInterpolator interpolator(predicted);
   const double horizon = std::min(limits.max_time, interpolator.time_from_refs_.back());
   const auto num_steps =
     static_cast<size_t>(std::floor(horizon / time_resolution_ + TIME_INDEX_EPSILON));
+  const auto state_at = [&](const double t) {
+    return interpolator.interpolate_state_from_time(
+      interpolator.reference_time_ + rclcpp::Duration::from_seconds(t));
+  };
+
+  std::optional<trajectory::InterpolatedState> braking_start;
+  double braking_velocity = 0.0;
+  if (braking) {
+    braking_start = state_at(braking->reaction_time);
+    braking_velocity = std::abs(braking_start->longitudinal_velocity);
+  }
 
   TimeTrajectory ego_times;
   PoseTrajectory ego_poses;
@@ -622,11 +654,19 @@ EgoSweep CollisionSweep::build_ego_sweep(
   ego_stopped.reserve(num_steps + 1);
   for (size_t k = 0; k <= num_steps; ++k) {
     const double t = static_cast<double>(k) * time_resolution_;
-    const auto state = interpolator.interpolate_state_from_time(
-      interpolator.reference_time_ + rclcpp::Duration::from_seconds(t));
     ego_times.push_back(t);
+    if (braking && t >= braking->reaction_time) {
+      const double elapsed =
+        std::min(t - braking->reaction_time, braking_velocity / braking->deceleration);
+      const double distance = braking_start->distance + braking_velocity * elapsed -
+                              0.5 * braking->deceleration * elapsed * elapsed;
+      ego_poses.push_back(interpolator.interpolate_state_from_dist(distance).pose);
+      ego_stopped.push_back(false);
+      continue;
+    }
+    const auto state = state_at(t);
     ego_poses.push_back(state.pose);
-    ego_stopped.push_back(std::abs(state.longitudinal_velocity) < limits.stop_velocity);
+    ego_stopped.push_back(!braking && std::abs(state.longitudinal_velocity) < limits.stop_velocity);
   }
   const auto ego_footprints =
     trajectory::footprint::compute_footprint_trajectory(ego_poses, ego_dimensions_);
@@ -818,8 +858,9 @@ std::vector<SweepCandidate> CollisionSweep::evaluate(
     }
   }
 
+  BrakedSweeps braked(*this, predicted, odom, limits);
   for (const auto & target : targets) {
-    target->evaluate(ego, candidates);
+    target->evaluate(ego, braked, candidates);
   }
   return candidates;
 }

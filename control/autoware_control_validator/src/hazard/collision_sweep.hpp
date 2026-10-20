@@ -324,6 +324,7 @@ public:
 
   explicit TrajectoryInterpolator(const autoware_planning_msgs::msg::Trajectory & trajectory);
   InterpolatedState interpolate_state_from_time(const rclcpp::Time & target_time) const;
+  InterpolatedState interpolate_state_from_dist(double target_dist) const;
 };
 
 /**
@@ -361,6 +362,7 @@ struct SweepCandidate
   double distance_now{0.0};
   std::optional<double> ttc;
   std::optional<double> cos_collision;  // cosine of the collision angle at the TTC (set with ttc)
+  uint8_t brake_level{0};
   builtin_interfaces::msg::Time source_stamp;  // header.stamp of the objects / pointcloud message
 };
 
@@ -383,10 +385,19 @@ struct SweepLimits
   double max_objects_stamp_gap_s{0.5};
   double stop_velocity{0.1};
   double rear_axle_ratio{0.3};
+  std::array<double, 3> reaction_times{2.0, 1.5, 1.0};
+  double braking_deceleration{6.0};
+};
+
+struct BrakingParam
+{
+  double reaction_time;
+  double deceleration;
 };
 
 struct EgoSweep;
 class ObjectMotion;
+class BrakedSweeps;
 
 struct ClusterAttachments
 {
@@ -429,9 +440,11 @@ public:
   static double distance_now(const Polygon2d & ego_now, const Polygon2d & candidate);
 
 private:
+  friend class BrakedSweeps;
+
   EgoSweep build_ego_sweep(
     const autoware_planning_msgs::msg::Trajectory & predicted, const nav_msgs::msg::Odometry & odom,
-    const SweepLimits & limits) const;
+    const SweepLimits & limits, const std::optional<BrakingParam> & braking = std::nullopt) const;
 
   std::shared_ptr<const ObjectMotion> make_object_motion(
     const autoware_perception_msgs::msg::PredictedObject & object, double time_offset,

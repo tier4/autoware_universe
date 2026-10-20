@@ -58,40 +58,36 @@ void HazardWarning::update_parameters(const HazardWarningParam & param)
 bool HazardWarning::validate_parameters() const
 {
   const auto & p = param_;
-  if (!std::isfinite(p.ttc_threshold_on) || p.ttc_threshold_on <= 0.0) {
-    RCLCPP_ERROR(
-      logger_, "hazard_warning.ttc_threshold_on is undecided or invalid (%f). Warning disabled.",
-      p.ttc_threshold_on);
-    return false;
-  }
-  if (p.ttc_thresholds.empty()) {
-    RCLCPP_ERROR(logger_, "hazard_warning.ttc_thresholds is empty. Warning disabled.");
-    return false;
-  }
-  for (const auto th : p.ttc_thresholds) {
-    if (!std::isfinite(th) || th <= 0.0) {
-      RCLCPP_ERROR(
-        logger_,
-        "hazard_warning.ttc_thresholds contains an undecided or invalid value (%f). "
-        "Warning disabled.",
-        th);
-      return false;
-    }
-  }
-  if (std::abs(p.ttc_thresholds.front() - p.ttc_threshold_on) > 1e-9) {
+  if (p.reaction_times.size() != 3) {
     RCLCPP_ERROR(
       logger_,
-      "hazard_warning.ttc_thresholds[0] (%f) must equal ttc_threshold_on (%f). "
-      "Warning disabled.",
-      p.ttc_thresholds.front(), p.ttc_threshold_on);
+      "hazard_warning.braking.reaction_times must have 3 elements (%zu). Warning disabled.",
+      p.reaction_times.size());
     return false;
   }
-  for (size_t i = 1; i < p.ttc_thresholds.size(); ++i) {
-    if (p.ttc_thresholds[i] >= p.ttc_thresholds[i - 1]) {
+  for (const auto tau : p.reaction_times) {
+    if (!std::isfinite(tau) || tau < 0.0) {
       RCLCPP_ERROR(
-        logger_, "hazard_warning.ttc_thresholds must be strictly descending. Warning disabled.");
+        logger_,
+        "hazard_warning.braking.reaction_times contains an undecided or invalid value (%f). "
+        "Warning disabled.",
+        tau);
       return false;
     }
+  }
+  for (size_t i = 1; i < p.reaction_times.size(); ++i) {
+    if (p.reaction_times[i] >= p.reaction_times[i - 1]) {
+      RCLCPP_ERROR(
+        logger_,
+        "hazard_warning.braking.reaction_times must be strictly descending. Warning disabled.");
+      return false;
+    }
+  }
+  if (!std::isfinite(p.braking_deceleration) || p.braking_deceleration <= 0.0) {
+    RCLCPP_ERROR(
+      logger_, "hazard_warning.braking.deceleration must be > 0 (%f). Warning disabled.",
+      p.braking_deceleration);
+    return false;
   }
   if (
     !std::isfinite(p.collision_cos_threshold) || p.collision_cos_threshold < -1.0 ||
@@ -152,14 +148,6 @@ void HazardWarning::build_wedges()
   }
 }
 
-uint8_t HazardWarning::level_of(const double ttc) const
-{
-  const auto count = std::count_if(
-    param_.ttc_thresholds.begin(), param_.ttc_thresholds.end(),
-    [ttc](const double th) { return ttc < th; });
-  return static_cast<uint8_t>(std::min<std::ptrdiff_t>(count, 255));
-}
-
 Polygon2d HazardWarning::to_base_link(
   const Polygon2d & polygon_map, const geometry_msgs::msg::Pose & ego_pose)
 {
@@ -176,7 +164,7 @@ Polygon2d HazardWarning::to_base_link(
 
 bool HazardWarning::passes_thresholds(const SweepCandidate & candidate) const
 {
-  if (!candidate.ttc.has_value() || !(*candidate.ttc < param_.ttc_threshold_on)) {
+  if (!candidate.ttc.has_value() || candidate.brake_level < 1) {
     return false;
   }
   if (param_.collision_cos_threshold <= -1.0) {
@@ -199,6 +187,7 @@ HazardAlert HazardWarning::run(
   std::array<bool, kNumSectors> raw{};
   std::array<double, kNumSectors> ttc_min{};
   ttc_min.fill(std::numeric_limits<double>::infinity());
+  std::array<uint8_t, kNumSectors> level_max{};
 
   if (judgements) {
     judgements->assign(evaluation.candidates.size(), CandidateJudgement{});
@@ -220,10 +209,11 @@ HazardAlert HazardWarning::run(
         }
         raw[s] = true;
         ttc_min[s] = std::min(ttc_min[s], *candidate.ttc);
+        level_max[s] = std::max(level_max[s], candidate.brake_level);
         if (judgements) {
           (*judgements)[i].raised = true;
           (*judgements)[i].sectors.push_back(static_cast<uint8_t>(s));
-          (*judgements)[i].level = level_of(*candidate.ttc);
+          (*judgements)[i].level = candidate.brake_level;
         }
       }
     }
@@ -234,7 +224,7 @@ HazardAlert HazardWarning::run(
     alert.has_object[s] = on;
     if (raw[s]) {
       alert.ttc_s[s] = static_cast<float>(ttc_min[s]);
-      last_level_[s] = level_of(ttc_min[s]);
+      last_level_[s] = level_max[s];
     } else {
       alert.ttc_s[s] = std::numeric_limits<float>::quiet_NaN();
       if (!on) {
@@ -343,9 +333,9 @@ HazardCandidateArray create_candidate_array(
       candidate.ttc ? static_cast<float>(*candidate.ttc) : std::numeric_limits<float>::quiet_NaN();
     out.cos_collision = candidate.cos_collision ? static_cast<float>(*candidate.cos_collision)
                                                 : std::numeric_limits<float>::quiet_NaN();
+    out.level = candidate.brake_level;
     if (i < judgements.size()) {
       out.sectors = judgements[i].sectors;
-      out.level = judgements[i].level;
     }
     array.candidates.push_back(std::move(out));
   }

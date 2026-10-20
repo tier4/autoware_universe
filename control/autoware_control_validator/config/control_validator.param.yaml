@@ -33,8 +33,9 @@
 
     hazard_warning:
       enable: true
-      ttc_threshold_on: 3.0
-      ttc_thresholds: [3.0, 2.0, 1.0] # descending; first element = ttc_threshold_on
+      braking:
+        reaction_times: [2.0, 1.5, 1.0] # descending; hazard levels 1 to 3
+        deceleration: 6.0
       collision_cos_threshold: 0.0 # -1 disables the collision angle condition
       min_alert_duration: 0.5
       prediction_horizon: 5.0

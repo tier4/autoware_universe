@@ -19,9 +19,11 @@
 #include <boost/geometry.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -108,7 +110,88 @@ SweepCandidate make_point_candidate(
   candidate.cos_collision = compute_cos_collision(ego.poses[k], ego.forward, hit_point);
   return candidate;
 }
+
+struct LocalSweep
+{
+  std::vector<Eigen::Isometry2d> object_to_map;
+  std::vector<Polygon2d> footprints;
+  std::optional<Box2d> envelope;
+};
+
+LocalSweep make_local_sweep(const EgoSweep & ego, const ObjectMotion & motion)
+{
+  const size_t num_steps = ego.polygons.size();
+  LocalSweep local;
+  local.object_to_map.resize(num_steps);
+  local.footprints.resize(num_steps);
+  for (size_t k = 0; k < num_steps; ++k) {
+    local.object_to_map[k] = geometry::pose_to_isometry(motion.pose_at(ego.times[k]));
+    if (ego.stopped[k]) {
+      continue;
+    }
+    const Eigen::Isometry2d map_to_object = local.object_to_map[k].inverse();
+    auto & footprint = local.footprints[k];
+    footprint.outer().reserve(ego.polygons[k].outer().size());
+    for (const auto & vertex : ego.polygons[k].outer()) {
+      footprint.outer().push_back(geometry::transform_point(map_to_object, vertex));
+    }
+    Box2d box;
+    boost::geometry::envelope(footprint, box);
+    if (local.envelope) {
+      boost::geometry::expand(*local.envelope, box);
+    } else {
+      local.envelope = box;
+    }
+  }
+  return local;
+}
+
+std::optional<size_t> first_hit_step(
+  const Point2d & point, const std::vector<Polygon2d> & footprints,
+  const std::vector<bool> & stopped, const Box2d & envelope)
+{
+  if (!boost::geometry::covered_by(point, envelope)) {
+    return std::nullopt;
+  }
+  for (size_t k = 0; k < footprints.size(); ++k) {
+    if (!stopped[k] && boost::geometry::within(point, footprints[k])) {
+      return k;
+    }
+  }
+  return std::nullopt;
+}
+
+template <typename CollidesWhenBraking>
+uint8_t brake_level_of(const CollidesWhenBraking & collides_when_braking)
+{
+  uint8_t level = 0;
+  for (size_t i = 1; i <= BrakedSweeps::kNumLevels; ++i) {
+    if (!collides_when_braking(i)) {
+      break;
+    }
+    level = static_cast<uint8_t>(i);
+  }
+  return level;
+}
 }  // namespace
+
+BrakedSweeps::BrakedSweeps(
+  const CollisionSweep & sweep, const autoware_planning_msgs::msg::Trajectory & predicted,
+  const nav_msgs::msg::Odometry & odom, const SweepLimits & limits)
+: sweep_(sweep), predicted_(predicted), odom_(odom), limits_(limits)
+{
+}
+
+const EgoSweep & BrakedSweeps::at(const size_t level) const
+{
+  auto & sweep = sweeps_.at(level - 1);
+  if (!sweep) {
+    sweep.emplace(sweep_.build_ego_sweep(
+      predicted_, odom_, limits_,
+      BrakingParam{limits_.reaction_times.at(level - 1), limits_.braking_deceleration}));
+  }
+  return *sweep;
+}
 
 EgoSweep::EgoSweep(
   TimeTrajectory times_in, PoseTrajectory poses_in, const FootprintTrajectory & footprints,
@@ -182,7 +265,8 @@ ObjectTarget::ObjectTarget(
 {
 }
 
-void ObjectTarget::evaluate(const EgoSweep & ego, std::vector<SweepCandidate> & out) const
+void ObjectTarget::evaluate(
+  const EgoSweep & ego, BrakedSweeps & braked, std::vector<SweepCandidate> & out) const
 {
   auto candidate = candidate_;
   const auto & object_trajectory = motion_->trajectory();
@@ -198,6 +282,12 @@ void ObjectTarget::evaluate(const EgoSweep & ego, std::vector<SweepCandidate> & 
       object_range ? object_trajectory.get_or_compute_convex(*object_range) : candidate.polygon_now;
     const auto hit = object_hit_point(ego.polygons[k_ego], object_at_hit);
     candidate.cos_collision = compute_cos_collision(ego.poses[k_ego], ego.forward, hit);
+    candidate.brake_level = brake_level_of([&](const size_t level) {
+      const auto & braked_ego = braked.at(level);
+      return collision_timing_assessment::find_collision_timing(
+               braked_ego.trajectory, object_trajectory, braked_ego.stopped)
+        .has_value();
+    });
   }
   out.push_back(std::move(candidate));
 }
@@ -209,78 +299,68 @@ PointClusterTarget::PointClusterTarget(
 {
 }
 
-void PointClusterTarget::evaluate(const EgoSweep & ego, std::vector<SweepCandidate> & out) const
+void PointClusterTarget::evaluate(
+  const EgoSweep & ego, BrakedSweeps & braked, std::vector<SweepCandidate> & out) const
 {
   if (!motion_ || motion_->is_static()) {
-    evaluate_static(ego, out);
+    evaluate_static(ego, braked, out);
   } else {
-    evaluate_attached(ego, out);
+    evaluate_attached(ego, braked, out);
   }
 }
 
 void PointClusterTarget::evaluate_static(
-  const EgoSweep & ego, std::vector<SweepCandidate> & out) const
+  const EgoSweep & ego, BrakedSweeps & braked, std::vector<SweepCandidate> & out) const
 {
   for (const auto & point : points_) {
-    if (!boost::geometry::covered_by(point, ego.envelope)) {
+    const auto k = first_hit_step(point, ego.polygons, ego.stopped, ego.envelope);
+    if (!k) {
       continue;
     }
-    for (size_t k = 0; k < ego.polygons.size(); ++k) {
-      if (ego.stopped[k] || !boost::geometry::within(point, ego.polygons[k])) {
-        continue;
-      }
-      out.push_back(make_point_candidate(ego, source_stamp_, point, k, point));
-      break;
-    }
+    auto candidate = make_point_candidate(ego, source_stamp_, point, *k, point);
+    candidate.brake_level = brake_level_of([&](const size_t level) {
+      const auto & braked_ego = braked.at(level);
+      return first_hit_step(point, braked_ego.polygons, braked_ego.stopped, braked_ego.envelope)
+        .has_value();
+    });
+    out.push_back(std::move(candidate));
   }
 }
 
 void PointClusterTarget::evaluate_attached(
-  const EgoSweep & ego, std::vector<SweepCandidate> & out) const
+  const EgoSweep & ego, BrakedSweeps & braked, std::vector<SweepCandidate> & out) const
 {
-  const size_t num_steps = ego.polygons.size();
-  std::vector<Eigen::Isometry2d> object_to_map(num_steps);
-  std::vector<Polygon2d> local_footprints(num_steps);
-  Box2d local_envelope;
-  bool has_envelope = false;
-  for (size_t k = 0; k < num_steps; ++k) {
-    object_to_map[k] = geometry::pose_to_isometry(motion_->pose_at(ego.times[k]));
-    if (ego.stopped[k]) {
-      continue;
-    }
-    const Eigen::Isometry2d map_to_object = object_to_map[k].inverse();
-    auto & footprint = local_footprints[k];
-    footprint.outer().reserve(ego.polygons[k].outer().size());
-    for (const auto & vertex : ego.polygons[k].outer()) {
-      footprint.outer().push_back(geometry::transform_point(map_to_object, vertex));
-    }
-    Box2d box;
-    boost::geometry::envelope(footprint, box);
-    if (has_envelope) {
-      boost::geometry::expand(local_envelope, box);
-    } else {
-      local_envelope = box;
-      has_envelope = true;
-    }
-  }
-  if (!has_envelope) {
+  const auto local = make_local_sweep(ego, *motion_);
+  if (!local.envelope) {
     return;
   }
+  std::array<std::optional<LocalSweep>, BrakedSweeps::kNumLevels> braked_local;
+  const auto braked_local_at = [&](const size_t level) -> const LocalSweep & {
+    auto & sweep = braked_local.at(level - 1);
+    if (!sweep) {
+      sweep = make_local_sweep(braked.at(level), *motion_);
+    }
+    return *sweep;
+  };
 
   const auto object_to_map_now = geometry::pose_to_isometry(motion_->pose_at(ego.times.front()));
   for (const auto & point : points_) {
-    if (!boost::geometry::covered_by(point, local_envelope)) {
+    const auto k = first_hit_step(point, local.footprints, ego.stopped, *local.envelope);
+    if (!k) {
       continue;
     }
-    for (size_t k = 0; k < num_steps; ++k) {
-      if (ego.stopped[k] || !boost::geometry::within(point, local_footprints[k])) {
-        continue;
-      }
-      const auto point_now = geometry::transform_point(object_to_map_now, point);
-      const auto hit_point = geometry::transform_point(object_to_map[k], point);
-      out.push_back(make_point_candidate(ego, source_stamp_, point_now, k, hit_point));
-      break;
-    }
+    const auto point_now = geometry::transform_point(object_to_map_now, point);
+    const auto hit_point = geometry::transform_point(local.object_to_map[*k], point);
+    auto candidate = make_point_candidate(ego, source_stamp_, point_now, *k, hit_point);
+    candidate.brake_level = brake_level_of([&](const size_t level) {
+      const auto & braked_ego = braked.at(level);
+      const auto & braked_sweep = braked_local_at(level);
+      return braked_sweep.envelope &&
+             first_hit_step(
+               point, braked_sweep.footprints, braked_ego.stopped, *braked_sweep.envelope)
+               .has_value();
+    });
+    out.push_back(std::move(candidate));
   }
 }
 }  // namespace autoware::control_validator::hazard

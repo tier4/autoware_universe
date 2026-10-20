@@ -73,12 +73,13 @@ control_validator:
     enable:
       type: bool
       description: If true, run the collision / boundary departure hazard warning.
-    ttc_threshold_on:
-      type: double
-      description: TTC below which a collision warning is raised [s]. NaN disables the warning.
-    ttc_thresholds:
-      type: double_array
-      description: Hazard level boundaries in descending order [s]. The first element equals ttc_threshold_on.
+    braking:
+      reaction_times:
+        type: double_array
+        description: Delays before braking for hazard levels 1 to 3, three values in strictly descending order [s]. NaN disables the warning.
+      deceleration:
+        type: double
+        description: Deceleration of the ego vehicle after the delay [m/s^2].
     collision_cos_threshold:
       type: double
       description: Lower bound of the cosine of the collision angle for a collision warning. -1 disables the condition.

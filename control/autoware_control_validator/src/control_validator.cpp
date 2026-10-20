@@ -68,8 +68,8 @@ hazard::HazardWarningParam to_hazard_warning_param(const Params & params)
 {
   const auto & p = params.hazard_warning;
   hazard::HazardWarningParam out;
-  out.ttc_threshold_on = p.ttc_threshold_on;
-  out.ttc_thresholds = p.ttc_thresholds;
+  out.reaction_times = p.braking.reaction_times;
+  out.braking_deceleration = p.braking.deceleration;
   out.collision_cos_threshold = p.collision_cos_threshold;
   out.min_alert_duration = p.min_alert_duration;
   out.rear_axle_ratio = p.vehicle_yaw.rear_axle_ratio;
@@ -119,6 +119,10 @@ hazard::SweepLimits to_sweep_limits(const Params & params, const rclcpp::Logger 
   out.enable_pointcloud = p.enable_pointcloud;
   out.max_objects_stamp_gap_s = p.max_objects_stamp_gap_s;
   out.stop_velocity = p.stop_velocity;
+  for (size_t i = 0; i < out.reaction_times.size() && i < p.braking.reaction_times.size(); ++i) {
+    out.reaction_times[i] = p.braking.reaction_times[i];
+  }
+  out.braking_deceleration = p.braking.deceleration;
   out.rear_axle_ratio = p.vehicle_yaw.rear_axle_ratio;
   for (const auto & name : p.enabled_object_classes) {
     const auto label = label_from_name(name);
@@ -1011,7 +1015,7 @@ void ControlValidator::run_hazard_warning(
               << sec(c.source_stamp) << ',' << kind << ',' << static_cast<int>(c.label) << ','
               << c.ttc.value_or(std::numeric_limits<double>::quiet_NaN()) << ','
               << c.cos_collision.value_or(std::numeric_limits<double>::quiet_NaN()) << ',' << sector
-              << ',' << static_cast<int>(j.level) << '\n';
+              << ',' << static_cast<int>(c.brake_level) << '\n';
           };
         if (j.sectors.empty()) {
           write_row(-1);

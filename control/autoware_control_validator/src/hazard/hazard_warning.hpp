@@ -49,8 +49,8 @@ constexpr size_t kNumSectors = 8;
 
 struct HazardWarningParam
 {
-  double ttc_threshold_on{std::numeric_limits<double>::quiet_NaN()};
-  std::vector<double> ttc_thresholds;
+  std::vector<double> reaction_times;
+  double braking_deceleration{6.0};
   double collision_cos_threshold{-1.0};  // -1 disables the collision angle condition
   double min_alert_duration{0.5};
   double rear_axle_ratio{0.3};
@@ -107,8 +107,6 @@ public:
   /// Sector wedges in base_link.
   const std::array<Polygon2d, kNumSectors> & wedges() const { return wedges_; }
 
-  size_t num_levels() const { return param_.ttc_thresholds.size(); }
-
   /// Candidate polygon (map) expressed in base_link of the given ego pose.
   static Polygon2d to_base_link(
     const Polygon2d & polygon_map, const geometry_msgs::msg::Pose & ego_pose);
@@ -116,7 +114,6 @@ public:
 private:
   bool validate_parameters() const;
   void build_wedges();
-  uint8_t level_of(double ttc) const;
   bool passes_thresholds(const SweepCandidate & candidate) const;
 
   rclcpp::Logger logger_;
