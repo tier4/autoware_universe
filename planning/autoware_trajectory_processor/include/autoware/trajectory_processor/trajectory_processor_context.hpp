@@ -126,7 +126,7 @@ struct TrajectoryProcessorContext
     tf_listener{tf_buffer},
     external_limit_sub{make_polling_subscriber<
       ExternalVelocityLimitState::Limit, autoware_utils_rclcpp::polling_policy::Newest>(
-      node, "~/input/external_velocity_limit_mps", rclcpp::QoS{1})},
+      node, "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local())},
     external_limit_clear_sub{make_polling_subscriber<
       ExternalVelocityLimitState::ClearCommand, autoware_utils_rclcpp::polling_policy::All>(
       node, "~/input/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local())}

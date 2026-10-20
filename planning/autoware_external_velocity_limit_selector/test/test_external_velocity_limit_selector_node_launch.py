@@ -93,6 +93,7 @@ class TestExternalVelocityLimitSelector(unittest.TestCase):
         )
 
     def wait_for_output(self):
+        self.msg_buffer_ = None
         while not self.msg_buffer_:
             rclpy.spin_once(self.test_node, timeout_sec=0.1)
         self.velocity_limit_output_ = self.msg_buffer_
@@ -136,8 +137,8 @@ class TestExternalVelocityLimitSelector(unittest.TestCase):
         clear_cmd = VelocityLimitClearCommand(command=True)
         self.pub_clear_limit_.publish(clear_cmd)
         self.wait_for_output()
-        # velocity limit is 0 before any limit is set
-        self.assertEqual(self.velocity_limit_output_.max_velocity, 0.0)
+        # no sender has published a limit, so the output is the configured max_vel
+        self.assertEqual(self.velocity_limit_output_.max_velocity, 15.0)
 
         # Send velocity limits
         # new API velocity limit: higher than the node param -> limit is set to the param value

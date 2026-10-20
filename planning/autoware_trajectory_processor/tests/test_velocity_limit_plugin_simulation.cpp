@@ -253,8 +253,8 @@ TEST_F(VelocityLimitPluginSimulation, P01_plugin_external_cruise_60_to_30)
 
   ExternalVelocityLimit plugin;
   initialize(plugin, "ExternalVelocityLimit", make_params());
-  const auto publisher =
-    node_->create_publisher<VelocityLimit>("~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+  const auto publisher = node_->create_publisher<VelocityLimit>(
+    "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
 
   // Publish when the limit becomes active and wait until the plugin has received it.
   bool published = false;
@@ -300,8 +300,8 @@ TEST_F(VelocityLimitPluginSimulation, ExternalLimitClearReleasesBothVelocityStag
   TrajectoryVelocityOptimizer optimizer;
   initialize(external, "ExternalVelocityLimit", params);
   initialize(optimizer, "TrajectoryVelocityOptimizer", params);
-  const auto limit_pub =
-    node_->create_publisher<VelocityLimit>("~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+  const auto limit_pub = node_->create_publisher<VelocityLimit>(
+    "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
   const auto clear_pub = node_->create_publisher<VelocityLimitClearCommand>(
     "~/input/velocity_limit_clear_command", rclcpp::QoS{1}.transient_local());
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
