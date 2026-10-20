@@ -85,9 +85,11 @@ private:
 
   struct CruiseReport
   {
-    double gap{0.0};
-    double target_velocity{0.0};
+    ObjectRssState target;
     double cruise_velocity{0.0};
+
+    [[nodiscard]] double gap() const { return target.gap; }
+    [[nodiscard]] double target_velocity() const { return target.lon_vel; }
   };
 
   SafetyFactorArray safety_factors_;
@@ -113,7 +115,7 @@ private:
     const std::optional<CollisionPoint> & collision_point_objects,
     const std::optional<CollisionPoint> & collision_point_pcd);
   bool apply_cruise(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
-  void add_cruise_planning_factor(const ObjectRssState & target, double cruise_velocity);
+  void add_cruise_planning_factor(const CruiseReport & report);
 
   bool set_stop_point(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 

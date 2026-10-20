@@ -291,19 +291,18 @@ ProcessingResult ObstacleStop::process(
   debug_data_.ego_z = input.current_odometry->pose.pose.position.z;
   publish_debug_string(nearest_collision_point_ == std::nullopt);
 
-  if (nearest_collision_point_) {
-    const bool stop_modified = set_stop_point(trajectory, input);
-    traj_points = std::move(trajectory);
-    return (cruise_modified || stop_modified) ? ProcessingResult::Modified
-                                              : ProcessingResult::Unchanged;
+  const auto stop_modified = nearest_collision_point_ ? set_stop_point(trajectory, input) : false;
+
+  if (!cruise_modified && !stop_modified) {
+    return ProcessingResult::Unchanged;
   }
 
-  if (cruise_modified) {
-    traj_points = std::move(trajectory);
-    return ProcessingResult::Modified;
+  if (!stop_modified && cruise_report_) {
+    add_cruise_planning_factor(cruise_report_.value());
   }
 
-  return ProcessingResult::Unchanged;
+  traj_points = std::move(trajectory);
+  return ProcessingResult::Modified;
 }
 
 bool ObstacleStop::apply_cruise(
@@ -325,7 +324,7 @@ bool ObstacleStop::apply_cruise(
   const auto v_cruise = compute_cruise_velocity(
     target->gap, cruise.ego_decel, target->stopping_distance, stopping_params_.delay_response_time,
     margin);
-  cruise_report_ = CruiseReport{target->gap, target->lon_vel, v_cruise};
+  cruise_report_ = CruiseReport{*target, v_cruise};
 
   ensure_increasing_timestamps(traj_points);
 
@@ -344,17 +343,15 @@ bool ObstacleStop::apply_cruise(
   if (result.status != ProcessingResult::Modified) {
     return false;
   }
-  add_cruise_planning_factor(*target, v_cruise);
   return true;
 }
 
-void ObstacleStop::add_cruise_planning_factor(
-  const ObjectRssState & target, const double cruise_velocity)
+void ObstacleStop::add_cruise_planning_factor(const CruiseReport & report)
 {
-  if (target.index >= debug_data_.target_objects.size()) {
+  if (report.target.index >= debug_data_.target_objects.size()) {
     return;
   }
-  const auto & object = debug_data_.target_objects[target.index].object;
+  const auto & object = debug_data_.target_objects[report.target.index].object;
   const auto & pose = object.kinematics.initial_pose_with_covariance.pose;
 
   SafetyFactor safety_factor;
@@ -368,7 +365,7 @@ void ObstacleStop::add_cruise_planning_factor(
   safety_factors.factors.push_back(safety_factor);
 
   planning_factor_interface_->add(
-    target.gap, pose, PlanningFactor::SLOW_DOWN, safety_factors, true, cruise_velocity);
+    report.gap(), pose, PlanningFactor::SLOW_DOWN, safety_factors, true, report.cruise_velocity);
 }
 
 bool ObstacleStop::set_stop_point(
@@ -616,7 +613,7 @@ void ObstacleStop::publish_debug_string(bool is_safe) const
   }
   if (cruise_report_) {
     ss << "\t\t"
-       << "CRUISE: gap " << cruise_report_->gap << " m, target " << cruise_report_->target_velocity
+       << "CRUISE: gap " << cruise_report_->gap() << " m, target " << cruise_report_->target_velocity()
        << " m/s, v_cruise " << cruise_report_->cruise_velocity << " m/s"
        << "\n";
   }

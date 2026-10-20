@@ -623,6 +623,7 @@ TEST_F(ObstacleStopIntegrationTest, CruiseFallsBackToStopWhenGapIsTooSmall)
   ASSERT_TRUE(process_with_hysteresis(trajectory, input));
   EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
   EXPECT_TRUE(has_planning_factor(PlanningFactor::STOP));
+  EXPECT_FALSE(has_planning_factor(PlanningFactor::SLOW_DOWN));
 }
 
 TEST_F(ObstacleStopIntegrationTest, CruiseDoesNotCapStoppedCar)
