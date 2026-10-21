@@ -29,6 +29,7 @@ CommandFilter::CommandFilter(std::unique_ptr<CommandOutput> && output, rclcpp::N
 : CommandBridge(std::move(output)), node_(node), vehicle_status_(node)
 {
   enable_command_limit_filter_ = node_.declare_parameter<bool>("enable_command_limit_filter");
+  enable_steer_accel_limit_ = node_.declare_parameter<bool>("enable_steer_accel_limit");
   transition_flag_ = false;
   debug_pub_ = node_.create_publisher<Float32MultiArrayStamped>("~/debug/steer_accel_limit", 1);
 }
@@ -86,7 +87,8 @@ Control CommandFilter::filter_command(uint16_t source_id, const Control & msg)
   double steer_angle_rate_clip = 0.0;
   double steer_rotation_rate_clip = 0.0;
   filter.filterAll(
-    dt, current_steering, out, is_filter_activated, apply_steer_accel_limit, steer_angle_rate_clip,
+    dt, current_steering, out, is_filter_activated,
+    enable_steer_accel_limit_ && apply_steer_accel_limit, steer_angle_rate_clip,
     steer_rotation_rate_clip);
 
   // set prev value for both to keep consistency over switching:

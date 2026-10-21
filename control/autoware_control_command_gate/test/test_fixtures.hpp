@@ -111,6 +111,7 @@ public:
     options.parameter_overrides({
       rclcpp::Parameter("use_sim_time", true),
       rclcpp::Parameter("enable_command_limit_filter", true),
+      rclcpp::Parameter("enable_steer_accel_limit", true),
       rclcpp::Parameter("stop_check_duration", 1.0),
     });
     node_ = std::make_shared<rclcpp::Node>("command_filter_test", options);

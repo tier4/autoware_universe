@@ -44,7 +44,6 @@ inline VehicleCmdFilterParam make_filter_param()
   p.lat_jerk_lim_for_steer_cmd = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
   p.lat_jerk_lim_for_steer_rate = 1.0;
   p.steer_cmd_diff_lim_from_current_steer = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.8};
-  p.enable_steer_accel_limit = false;
   p.steer_accel_lim_for_steer_cmd = {0.8, 0.76, 0.64, 0.39, 0.3, 0.3, 0.3};
   p.steer_accel_clip_integral_th_diag = 0.2;
   return p;
@@ -52,9 +51,7 @@ inline VehicleCmdFilterParam make_filter_param()
 
 inline VehicleCmdFilterParam make_steer_accel_param()
 {
-  auto p = make_filter_param();
-  p.enable_steer_accel_limit = true;
-  return p;
+  return make_filter_param();
 }
 
 inline VehicleCmdFilterParam make_isolated_steer_accel_param()

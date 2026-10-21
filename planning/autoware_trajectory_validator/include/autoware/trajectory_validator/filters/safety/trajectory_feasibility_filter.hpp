@@ -18,6 +18,7 @@
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <array>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +40,19 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
+  /** @brief State to allow the deceleration after ego enters a lower speed limit lanelet. */
+  struct SpeedLimitTransition
+  {
+    std::optional<double> prev_speed_limit;     //!< Speed limit at ego in the last update (m/s)
+    double speed_limit_tolerance{0.0};          //!< Tolerance of `prev_speed_limit` (m/s)
+    double last_limit_drop_time{0.0};           //!< Time of the last speed limit drop (s)
+    double last_limit_drop_allowed_speed{0.0};  //!< Allowed speed before the last drop (m/s)
+    double transition_speed{0.0};               //!< Speed allowed while ego decelerates (m/s)
+  };
+
+  SpeedLimitTransition update_speed_limit_transition(
+    const SpeedLimitTransition & state, const FilterContext & context) const;
+
   MetricReport check_speed(
     const TrajectoryPoints & traj_points, const FilterContext & context) const;
   MetricReport check_lanelet_speed_limit(
@@ -77,6 +91,7 @@ private:
   }};  //!< Array of checker functions
 
   validator::Params::TrajectoryFeasibility params_;  //!< Parameters for this filter
+  SpeedLimitTransition speed_limit_transition_;      //!< State for the lanelet speed limit check
 };
 
 // --- Helper functions for constraint checks ---
@@ -90,17 +105,27 @@ private:
  */
 std::pair<double, bool> is_speed_ok(const TrajectoryPoints & traj_points, double max_speed);
 
+/** @brief Interpolate the speed limit tolerance (m/s) from the table, clamped at both ends. */
+double calc_speed_limit_tolerance_mps(
+  double speed_limit_mps, const std::vector<double> & speed_limits_kmph,
+  const std::vector<double> & tolerances_kmph);
+
 /**
  * @brief Check if the trajectory respects the speed limit of the lanelet nearest to the ego pose.
  *
+ * The allowed speed is `max(speed_limit + tolerance, transition_speed)`.
+ *
  * @param traj_points Vector of trajectory points to check
  * @param context Evaluation context containing current odometry and the lanelet map
+ * @param speed_limit_tolerance Speed above the speed limit that is still allowed (m/s)
+ * @param transition_speed Speed allowed while ego decelerates after a speed limit drop (m/s)
  * @return Pair of the observed speed and a boolean indicating if the speed limit was not violated.
  * Returns `{0.0, true}` if odometry or the lanelet map is unavailable, and reports the observed
  * speed as OK if no nearby lanelet declares a speed limit.
  */
 std::pair<double, bool> is_lanelet_speed_limit_ok(
-  const TrajectoryPoints & traj_points, const FilterContext & context);
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  double speed_limit_tolerance = 0.0, double transition_speed = 0.0);
 
 /**
  * @brief Check if the trajectory respects the maximum acceleration constraint.
@@ -174,20 +199,38 @@ std::pair<double, bool> is_distance_deviation_ok(
   double max_distance_deviation);
 
 /**
- * @brief Check if the trajectory respects the maximum steering angle constraint.
+ * @brief Interpolate the maximum steering angle (rad) at the given speed from the table, clamped at
+ * both ends.
+ *
+ * @param speed_mps Speed at the trajectory point (m/s)
+ * @param velocities_kmph Speeds of the table, in strictly increasing order (km/h)
+ * @param max_steering_angles Maximum steering angle at each speed of the table (rad)
+ * @param default_max_steering_angle Limit used if the table is empty or invalid (rad)
+ * @return Maximum allowed steering angle at `speed` (rad)
+ */
+double calc_max_steering_angle(
+  double speed_mps, const std::vector<double> & velocities_kmph,
+  const std::vector<double> & max_steering_angles, double default_max_steering_angle);
+
+/**
+ * @brief Check if the trajectory respects the speed-dependent maximum steering angle constraint.
  *
  * The steering angle is derived from the path curvature with the bicycle model. The curvature is
  * estimated the same way as in `is_lateral_acceleration_ok()`, i.e. from three points spread at
- * least a fixed arc length (1.0 m) apart.
+ * least a fixed arc length (1.0 m) apart. The limit at each point comes from
+ * `calc_max_steering_angle()` with the speed at that point.
  *
  * @param traj_points Vector of trajectory points to check
  * @param vehicle_info Vehicle information needed to calculate steering angle
- * @param max_steering_angle Maximum allowed steering angle (rad)
+ * @param max_steering_angle Maximum allowed steering angle if the table is empty or invalid (rad)
+ * @param velocities_kmph Speeds of the steering angle table (km/h)
+ * @param max_steering_angles Maximum steering angle at each speed of the table (rad)
  * @return Pair of max observation and a boolean indicating if no point violated
  */
 std::pair<double, bool> is_steering_angle_ok(
-  const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info,
-  double max_steering_angle);
+  const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, double max_steering_angle,
+  const std::vector<double> & velocities_kmph = {},
+  const std::vector<double> & max_steering_angles = {});
 
 /**
  * @brief Check if the trajectory respects the maximum steering rate constraint.
