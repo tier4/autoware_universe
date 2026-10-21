@@ -243,8 +243,11 @@ private:
   BufferingPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
     this, "~/input/turn_indicators"};
   BufferingPollingSubscriber<SteeringReport> sub_steering_{this, "~/input/steering_status"};
+<<<<<<< HEAD
   NewestPollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped> sub_acceleration_{
     this, "~/input/acceleration"};
+=======
+>>>>>>> 7f70f6e643 (feat(ml_planner): build the steering angle and wheel base, keep feeding major version 6 models (#3629))
   NewestPollingSubscriber<LaneletRoute> route_subscriber_{
     this, "~/input/route", rclcpp::QoS{1}.transient_local()};
   NewestPollingSubscriber<LaneletMapBin> vector_map_subscriber_{
