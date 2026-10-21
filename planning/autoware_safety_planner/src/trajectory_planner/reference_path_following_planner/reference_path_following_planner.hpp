@@ -16,6 +16,7 @@
 #define TRAJECTORY_PLANNER__REFERENCE_PATH_FOLLOWING_PLANNER__REFERENCE_PATH_FOLLOWING_PLANNER_HPP_
 
 #include "../../utils/turn_indicator_decider.hpp"
+#include "../frenet_sampling_based_planner/constraints_compiler.hpp"
 #include "../trajectory_planner_interface.hpp"
 
 #include <memory>
@@ -41,7 +42,15 @@ private:
   PlannedTrajectory plan_one_side(
     TurnIndicatorDecider & turn_indicator_decider, const PlannerContext & context,
     const std::vector<Constraint> & constraints, std::optional<Trajectory> & previous_trajectory,
-    TrajectoryPlannerDebug & debug) const;
+    std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const;
+
+  //! The reference_path shifted along its normal from the ego's offset and heading, so that the
+  //! footprint keeps clear of the HARD lateral bounds ahead of the ego and the curvature within the
+  //! steering, held near previous_path, or nullopt when the QP does not solve even with the end
+  //! left free
+  std::optional<PathPointTrajectory> shift_path_within_hard_bounds(
+    const PlannerContext & context, const CompiledConstraints & compiled_constraints,
+    const std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const;
 
   // One decider per output, since each holds its own anti-chatter and latch state
   TurnIndicatorDecider normal_turn_indicator_decider_{TurnSignalParams{}};
@@ -49,6 +58,9 @@ private:
   //! Output of the previous cycle, one per side, where the initial acceleration is read from
   std::optional<Trajectory> normal_previous_trajectory_;
   std::optional<Trajectory> cautious_previous_trajectory_;
+  //! The shifted path of the previous cycle, one per side, which the lateral QP is held near
+  std::optional<PathPointTrajectory> normal_previous_path_;
+  std::optional<PathPointTrajectory> cautious_previous_path_;
 };
 
 }  // namespace autoware::safety_planner::experimental
