@@ -64,6 +64,15 @@ int main() {
     assert(std::abs(position - target * 1e-9 * 10.0) < 1e-9);
   }
   std::cout << "31-pose 10 Hz grid from irregular odometry: PASS\n";
+  // covers(): every sample stamped at or before the target has arrived once one stamped at
+  // or after it is here -- the acceleration a pass waits for at its planning stamp.
+  TimestampedBuffer<double> stream;
+  assert(!stream.covers(0));
+  stream.insert(1000, 1.0, 1000000);
+  assert(stream.covers(999) && stream.covers(1000) && !stream.covers(1001));
+  stream.insert(1020, 2.0, 1000000);
+  assert(stream.covers(1020) && !stream.covers(1040));
+  std::cout << "Stream coverage of a target stamp: PASS\n";
   std::cout << "Timestamp buffer: interpolation, duration retention, "
                "duplicate, bounds, staleness and reset PASS\n";
 }

@@ -44,6 +44,12 @@
     # is not reported as a dropout.
     input_timeout_seconds: 1.0
 
+    # Localization publishes the acceleration beside the odometry, with the same stamp and a
+    # fraction of a millisecond after it. A pass that would read it before it arrives waits for
+    # it (it is read at or before the planning stamp) for at most this long, then takes the
+    # latest earlier sample. 0 never waits.
+    acceleration_max_wait_ms: 50.0
+
     # Debug only. A directory here makes the node write every host-side input
     # tensor and every output tensor of its first `dump_max_frames` inferences
     # as raw float32 files plus a JSONL manifest (stamp, ego pose/twist,

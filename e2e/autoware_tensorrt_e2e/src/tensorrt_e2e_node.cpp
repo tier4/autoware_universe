@@ -338,6 +338,10 @@ void TensorrtE2eNode::set_up_params()
     declare_parameter<std::vector<std::string>>("sensor_inputs", std::vector<std::string>{});
   params_.enable_context_inputs = declare_parameter<bool>("enable_context_inputs", true);
   params_.input_timeout_seconds = declare_parameter<double>("input_timeout_seconds", 1.0);
+  params_.acceleration_max_wait_ms = declare_parameter<double>("acceleration_max_wait_ms", 50.0);
+  if (!std::isfinite(params_.acceleration_max_wait_ms) || params_.acceleration_max_wait_ms < 0.0) {
+    throw std::invalid_argument("acceleration_max_wait_ms must be finite and non-negative");
+  }
 
   postprocess_params_.prediction_tensor =
     declare_parameter<std::string>("postprocess.prediction_tensor", "prediction");
@@ -544,8 +548,9 @@ std::optional<Odometry> TensorrtE2eNode::interpolate_odometry(const int64_t stam
   return odometry;
 }
 
-std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
+std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame(bool & deferred)
 {
+  deferred = false;
   waiting_for_ego_ = true;
   if (odometry_history_.samples.empty())
     return std::nullopt;
@@ -567,6 +572,29 @@ std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
   const auto at_target = target == sensor_ns ? at_sensor : interpolate_odometry(target);
   if (!at_target)
     return std::nullopt;
+  // The acceleration is read at or before the planning stamp. Localization publishes it
+  // beside the odometry, with the same stamp and a fraction of a millisecond after it, so
+  // a pass that started between the two used to read the previous sample: the input
+  // depended on arrival order. Until the stream reaches the planning stamp the pass is
+  // deferred, and the acceleration callback runs it again; past acceleration_max_wait_ms
+  // the latest earlier sample is used, so a late or stalled stream costs at most that much.
+  if (find_spec(engine_->input_specs(), "ego_current_state") &&
+      !acceleration_history_.covers(target)) {
+    const auto now = std::chrono::steady_clock::now();
+    if (!acceleration_wait_since_)
+      acceleration_wait_since_ = now;
+    const double waited_ms =
+        std::chrono::duration<double, std::milli>(now - *acceleration_wait_since_).count();
+    if (waited_ms < params_.acceleration_max_wait_ms) {
+      deferred = true;
+      return std::nullopt;
+    }
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
+        "No acceleration at the planning stamp after %.0f ms; using the latest earlier sample",
+        waited_ms);
+  }
+  acceleration_wait_since_.reset();
 
   EgoFrame ego;
   ego.localization_generation = localization_generation_;
@@ -680,7 +708,9 @@ void TensorrtE2eNode::run_once()
   // usually leaves the context unusable, so retrying every 100 ms would only fill the log.
   try {
     TickTiming timing;
-    run_tick(timing);
+    if (!run_tick(timing)) {
+      return;  // deferred: the input it waits for runs the pass again
+    }
     // Whatever a provider still owes runs now, whether the pass published or gave up:
     // a detection head's decode, say. It is off the trajectory's path on purpose, so the
     // consumer of the trajectory never waits for a message it does not read. It does
@@ -699,7 +729,7 @@ void TensorrtE2eNode::run_once()
   }
 }
 
-void TensorrtE2eNode::run_tick(TickTiming & timing)
+bool TensorrtE2eNode::run_tick(TickTiming & timing)
 {
   stop_watch_.tic("processing_time");
   diagnostics_->clear();
@@ -718,15 +748,21 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
       "Pipeline is not initialized. Inference is disabled (check the startup errors).");
     finish(DiagnosticStatus::ERROR, "Pipeline not initialized");
-    return;
+    return true;
   }
 
-  const auto ego = create_ego_frame();
+  bool deferred = false;
+  const auto ego = create_ego_frame(deferred);
+  if (deferred) {
+    // Not a failure and nothing to report: the acceleration at the planning stamp is
+    // about to arrive, and its callback runs the pass again.
+    return false;
+  }
   if (!ego) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "Waiting for timestamp-aligned ego state...");
     finish(DiagnosticStatus::WARN, "Waiting for timestamp-aligned ego state");
-    return;
+    return true;
   }
 
   // Collect all model inputs. The pacing provider goes last: its sensor callback already
@@ -755,7 +791,7 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
         get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
         "Input collection failed [" << provider->name() << "]: " << error);
       finish(DiagnosticStatus::WARN, "[" + provider->name() + "] " + error);
-      return;
+      return true;
     }
   }
 
@@ -766,7 +802,7 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
       "Input tensor '" << *invalid_tensor << "' contains invalid values");
     finish(DiagnosticStatus::WARN, "Input tensor '" + *invalid_tensor + "' has invalid values");
-    return;
+    return true;
   }
 
   // Inference.
@@ -779,7 +815,7 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
       "Inference failed: " << result.error_msg);
     finish(DiagnosticStatus::ERROR, result.error_msg);
-    return;
+    return true;
   }
 
   // The engine already completed its output wait on the shared stream. Query
@@ -795,7 +831,7 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), "Postprocessing failed: " << e.what());
     finish(DiagnosticStatus::ERROR, e.what());
-    return;
+    return true;
   }
 
   timing.postprocess_ms = stop_watch_.toc("postprocess");
@@ -867,6 +903,7 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       DiagnosticStatus::WARN, "Processing time exceeded the planning period");
   }
   diagnostics_->publish(now);
+  return true;
 }
 
 void TensorrtE2eNode::add_input_diagnostics(const TensorMap & inputs)

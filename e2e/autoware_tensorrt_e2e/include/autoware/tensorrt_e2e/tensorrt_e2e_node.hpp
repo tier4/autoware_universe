@@ -48,6 +48,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -78,6 +79,9 @@ struct TensorrtE2eParams
   //! diagnostic. Waiting is not a failure -- at start-up the LiDAR is usually not up
   //! yet -- but silence with no explanation is indistinguishable from a dead node.
   double input_timeout_seconds{1.0};
+  //! How long a pass waits for the acceleration at the planning stamp before it takes the
+  //! latest earlier sample; 0 never waits. See create_ego_frame().
+  double acceleration_max_wait_ms{50.0};
   //! Debug: directory the node writes every host-side input tensor and every output tensor
   //! of its first `dump_max_frames` inferences to ("" = off). What the network was actually
   //! fed, for comparing against what it was trained on; the 2026-09-15 goal-token skew was
@@ -165,14 +169,18 @@ private:
   void run_once();
   //! The pass itself, up to and including the trajectory. Fills `timing` as it goes and
   //! returns early when an input is missing.
-  void run_tick(TickTiming & timing);
+  //! @return false when the pass was deferred (see create_ego_frame()) and will run again.
+  bool run_tick(TickTiming & timing);
 
   /**
    * @brief The ego frame at the planning stamp (see PlanningTime), with the pose at the
    * pacing sensor timestamp beside it.
+   * @param[out] deferred Set when the frame is not ready yet but an input that is about to
+   *   arrive will make it so (the acceleration at the planning stamp): the pass is not a
+   *   failure, and that input's callback runs it again.
    * @return std::nullopt when either pose bracket or the required dynamics are unavailable.
    */
-  std::optional<EgoFrame> create_ego_frame();
+  std::optional<EgoFrame> create_ego_frame(bool & deferred);
 
   /**
    * @brief Odometry interpolated to `stamp_ns` between the two samples bracketing it.
@@ -262,6 +270,8 @@ private:
   uint64_t localization_generation_{0};
   RollingLatency pipeline_latency_, processing_latency_;
   bool waiting_for_ego_{false};
+  //! When the current pass started waiting for the acceleration at its planning stamp.
+  std::optional<std::chrono::steady_clock::time_point> acceleration_wait_since_;
   bool recorded_ego_dynamics_{false};
   //! The derived-data convention the model trained on (`derived_contract`).
   std::string derived_contract_;

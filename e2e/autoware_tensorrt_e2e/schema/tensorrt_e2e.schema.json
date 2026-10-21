@@ -29,6 +29,12 @@
           "description": "Optional normalization JSON in the diffusion planner observation_normalizer format. Empty to disable normalization.",
           "default": ""
         },
+        "acceleration_max_wait_ms": {
+          "type": "number",
+          "description": "How long a pass waits for the acceleration stamped at its planning stamp before it takes the latest earlier sample; 0 never waits.",
+          "default": 50.0,
+          "minimum": 0.0
+        },
         "build_only": {
           "type": "boolean",
           "description": "Shutdown the node after the TensorRT engine file is built.",

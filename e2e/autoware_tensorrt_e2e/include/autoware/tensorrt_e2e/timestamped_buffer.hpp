@@ -61,6 +61,12 @@ public:
     return std::make_pair(hi->stamp_ns == target_ns ? index : index - 1, index);
   }
 
+  // Whether every sample stamped at or before `target_ns` has arrived, for a stream
+  // delivered in stamp order: true once one stamped at or after it is here.
+  bool covers(int64_t target_ns) const {
+    return !samples.empty() && samples.back().stamp_ns >= target_ns;
+  }
+
   const T *at_or_before(int64_t target_ns, int64_t max_age_ns) const {
     const auto after =
         std::upper_bound(samples.begin(), samples.end(), target_ns,
