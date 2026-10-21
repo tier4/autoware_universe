@@ -54,6 +54,33 @@ inline geometry_msgs::msg::Quaternion quaternionFromYaw(const double yaw)
   return tf2::toMsg(q);
 }
 
+/** Same fields as *_objects.csv / loadMppiDebugObjectsCsv (stationary box center pose). */
+inline autoware_perception_msgs::msg::TrackedObject makeStationaryTrackedBoxObject(
+  const double x, const double y, const double yaw, const double length, const double width)
+{
+  autoware_perception_msgs::msg::TrackedObject object;
+  object.existence_probability = 1.0F;
+  object.kinematics.pose_with_covariance.pose.position.x = x;
+  object.kinematics.pose_with_covariance.pose.position.y = y;
+  object.kinematics.pose_with_covariance.pose.orientation = quaternionFromYaw(yaw);
+  object.kinematics.twist_with_covariance.twist.linear.x = 0.0;
+  object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+  object.shape.dimensions.x = length;
+  object.shape.dimensions.y = width;
+  object.shape.dimensions.z = 1.5;
+  return object;
+}
+
+inline autoware_perception_msgs::msg::TrackedObjects makeStationaryTrackedBoxObjects(
+  const double x, const double y, const double yaw, const double length, const double width,
+  const std::string & frame_id = "map")
+{
+  autoware_perception_msgs::msg::TrackedObjects objects;
+  objects.header.frame_id = frame_id;
+  objects.objects.push_back(makeStationaryTrackedBoxObject(x, y, yaw, length, width));
+  return objects;
+}
+
 inline bool writeMppiDebugTrajectoryCsv(
   const std::string & path, const autoware_planning_msgs::msg::Trajectory & trajectory)
 {

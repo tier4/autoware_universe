@@ -304,6 +304,20 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     CUDA_STANDARD 17
   )
 
+  add_library(mppi_optimizer_param_conversion STATIC
+    src/trajectory_mppi_optimizer_param_conversion.cpp
+  )
+  target_include_directories(mppi_optimizer_param_conversion PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  )
+  target_link_libraries(mppi_optimizer_param_conversion PUBLIC trajectory_mppi_optimizer_parameters)
+  set_target_properties(mppi_optimizer_param_conversion PROPERTIES
+    CXX_STANDARD 17
+    POSITION_INDEPENDENT_CODE ON
+  )
+  target_compile_options(mppi_optimizer_param_conversion PRIVATE -Wno-error=deprecated-declarations)
+
   ament_auto_add_library(${PROJECT_NAME} SHARED
     src/first_order_dubins_mppi_cost_params_ros.cpp
     src/first_order_dubins_mppi_runtime_options_ros.cpp
@@ -319,6 +333,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     first_order_dubins_mppi
     mppi_curvature_adaptive_steering_filter
     trajectory_mppi_optimizer_parameters
+    mppi_optimizer_param_conversion
     ${PROJECT_NAME}
   )
   mppi_link_acados_runtime(autoware_mppi_trajectory_modifier_plugin)
@@ -328,6 +343,9 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   add_executable(mppi_open_loop_line_sim
     src/tools/mppi_open_loop_line_sim.cpp
+  )
+  add_executable(mppi_open_loop_lr_turn_sim
+    src/tools/mppi_open_loop_lr_turn_sim.cpp
   )
   target_include_directories(mppi_offline_retune PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -355,6 +373,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(mppi_open_loop_line_sim
     first_order_dubins_mppi
+    mppi_optimizer_param_conversion
     mppi_curvature_adaptive_steering_filter
     ${PROJECT_NAME}
     rclcpp::rclcpp
@@ -370,6 +389,31 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     CXX_STANDARD 17
     POSITION_INDEPENDENT_CODE ON
   )
+  target_compile_options(mppi_open_loop_line_sim PRIVATE -Wno-error=deprecated-declarations)
+
+  target_include_directories(mppi_open_loop_lr_turn_sim PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tools>
+    $<INSTALL_INTERFACE:include>
+  )
+  target_link_libraries(mppi_open_loop_lr_turn_sim
+    first_order_dubins_mppi
+    mppi_optimizer_param_conversion
+    ${PROJECT_NAME}
+    rclcpp::rclcpp
+    ament_index_cpp::ament_index_cpp
+    tf2_geometry_msgs::tf2_geometry_msgs
+    autoware_perception_msgs::autoware_perception_msgs__rosidl_generator_cpp
+    autoware_planning_msgs::autoware_planning_msgs__rosidl_generator_cpp
+    autoware_vehicle_msgs::autoware_vehicle_msgs__rosidl_generator_cpp
+    geometry_msgs::geometry_msgs__rosidl_generator_cpp
+    nav_msgs::nav_msgs__rosidl_generator_cpp
+  )
+  set_target_properties(mppi_open_loop_lr_turn_sim PROPERTIES
+    CXX_STANDARD 17
+    POSITION_INDEPENDENT_CODE ON
+  )
+  target_compile_options(mppi_open_loop_lr_turn_sim PRIVATE -Wno-error=deprecated-declarations)
 
   if(BUILD_TESTING)
     ament_find_gtest()
@@ -505,6 +549,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   endif()
 
   install(TARGETS first_order_dubins_mppi mppi_offline_retune mppi_open_loop_line_sim
+    mppi_open_loop_lr_turn_sim
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION lib/${PROJECT_NAME}
