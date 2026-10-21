@@ -114,7 +114,10 @@
       max_velocity_deviation: 100.0 # m/s
       max_lateral_acceleration: 9.8 # m/s^2
       max_distance_deviation: 100.0 # m
-      max_steering_angle: 0.8 # rad
+      max_steering_angle: 0.8 # rad, used if steering_angle_limit is invalid
+      steering_angle_limit: # linearly interpolated by the speed at each point, clamped at both ends
+        velocities_kmph: [10.0, 20.0] # km/h
+        max_steering_angles_rad: [0.9, 0.8] # rad
       max_steering_rate: 0.3 # rad/s
       speed_limit_tolerance: # linearly interpolated by the lanelet speed limit, clamped at both ends
         speed_limits_kmph: [10.0, 20.0, 30.0, 40.0] # km/h

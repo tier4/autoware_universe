@@ -478,9 +478,30 @@
             },
             "max_steering_angle": {
               "type": "number",
-              "description": "Maximum allowed front-wheel steering angle [rad].",
+              "description": "Maximum allowed front-wheel steering angle, used if steering_angle_limit is invalid [rad].",
               "default": 0.8,
               "minimum": 0.0
+            },
+            "steering_angle_limit": {
+              "type": "object",
+              "properties": {
+                "velocities_kmph": {
+                  "type": "array",
+                  "items": { "type": "number", "minimum": 0.0 },
+                  "description": "Speeds for the steering angle table, in strictly increasing order [km/h].",
+                  "default": [10.0, 20.0],
+                  "minItems": 1
+                },
+                "max_steering_angles_rad": {
+                  "type": "array",
+                  "items": { "type": "number", "minimum": 0.0 },
+                  "description": "Maximum allowed front-wheel steering angle, one per speed [rad].",
+                  "default": [0.9, 0.8],
+                  "minItems": 1
+                }
+              },
+              "required": ["velocities_kmph", "max_steering_angles_rad"],
+              "additionalProperties": false
             },
             "max_steering_rate": {
               "type": "number",

@@ -227,6 +227,7 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   const std::vector<std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
     traffic_signals,
   const std::vector<std::shared_ptr<const TurnIndicatorsReport>> & turn_indicators,
+  const std::vector<std::shared_ptr<const SteeringReport>> & steering_reports,
   const LaneletRoute::ConstSharedPtr & route_ptr)
 {
   if (route_ptr) {
@@ -235,6 +236,11 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   for (const auto & msg : ego_kinematic_states) {
     if (msg) {
       ego_history_.push_back(*msg);
+    }
+  }
+  for (const auto & msg : steering_reports) {
+    if (msg) {
+      steering_history_.push_back(*msg);
     }
   }
   for (const auto & msg : turn_indicators) {
@@ -266,6 +272,9 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   if (turn_indicators_history_.empty()) {
     missing_inputs.emplace_back("turn indicators");
   }
+  if (steering_history_.empty()) {
+    missing_inputs.emplace_back("steering status");
+  }
   if (!missing_inputs.empty()) {
     std::string error{"Missing required input: "};
     for (size_t index = 0; index < missing_inputs.size(); ++index) {
@@ -280,6 +289,7 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   return preprocess::FrameInputs{
     frame_time(),
     preprocess::MessageView<nav_msgs::msg::Odometry>{ego_history_.msgs()},
+    preprocess::MessageView<SteeringReport>{steering_history_.msgs()},
     preprocess::MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport>{
       turn_indicators_history_.msgs()},
     preprocess::MessageView<autoware_perception_msgs::msg::TrackedObjects>{objects_history_.msgs()},
@@ -306,6 +316,7 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   auto builder_output = std::move(single_input_result.value());
   selected_agents_ = std::move(builder_output.selected_agents);
   TensorMap single_input_data_map = std::move(builder_output.tensors);
+  utils::drop_steering_and_wheel_base(single_input_data_map);
 
   // Replicate for batch
   TensorMap input_data_map;

@@ -73,6 +73,33 @@ safety_planner:
         description: "[m] how far the smoothing may move a point from its original position; the points around the ego and the last two before the goal are held fixed"
         validation:
           gt_eq<>: [0.0]
+    ego_blend:
+      enable:
+        type: bool
+        default_value: true
+        read_only: true
+        description: whether to blend the reference path to the ego pose
+      lateral_threshold_m:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: "[m] an ego lateral offset below this leaves the path as it is"
+        validation:
+          gt_eq<>: [0.0]
+      forward_length_m:
+        type: double
+        default_value: 30.0
+        read_only: true
+        description: "[m] arc length ahead of ego over which the path returns to the centerline; cut at the end of the path"
+        validation:
+          gt<>: [0.0]
+      backward_length_m:
+        type: double
+        default_value: 5.0
+        read_only: true
+        description: "[m] arc length behind ego over which the path leaves the centerline"
+        validation:
+          gt<>: [0.0]
     forward_length_m:
       type: double
       default_value: 200.0

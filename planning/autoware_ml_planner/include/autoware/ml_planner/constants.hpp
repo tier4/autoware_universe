@@ -20,9 +20,6 @@
 namespace autoware::ml_planner::constants
 {
 
-// Major version of the ONNX weights this node is built against.
-constexpr int WEIGHT_MAJOR_VERSION = 5;
-
 // Velocity thresholds
 constexpr float MOVING_VELOCITY_THRESHOLD_MPS = 0.2f;
 

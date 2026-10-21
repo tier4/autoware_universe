@@ -415,6 +415,54 @@ void calcTrajectoryCurvatureBySpatialResample(
   }
 }
 
+// Computes the average curvature of a polyline using the heading change
+// between two chords of min_baseline_m, divided by the arc length between the chord midpoints.
+double calcAverageCurvature(const MPCTrajectory & traj, const double min_baseline_m)
+{
+  const size_t n = traj.x.size();
+  if (n < 3 || min_baseline_m <= 0.0) return 0.0;
+
+  std::vector<double> arc_length;
+  calcMPCTrajectoryArcLength(traj, arc_length);
+  const double total = arc_length.back();
+  if (total < 2.0 * min_baseline_m) {
+    return 0.0;
+  }
+
+  // find start and end chords
+  size_t start_chord_back = 1;
+  while (start_chord_back + 1 < n && arc_length[start_chord_back] < min_baseline_m) {
+    ++start_chord_back;
+  }
+  if (arc_length[start_chord_back] < min_baseline_m) return 0.0;
+
+  size_t end_chord_front = n - 2;
+  while (end_chord_front > 0 && total - arc_length[end_chord_front] < min_baseline_m) {
+    --end_chord_front;
+  }
+  if (total - arc_length[end_chord_front] < min_baseline_m || start_chord_back > end_chord_front) return 0.0;
+
+  const double start_dx = traj.x[start_chord_back] - traj.x.front();
+  const double start_dy = traj.y[start_chord_back] - traj.y.front();
+  const double end_dx = traj.x.back() - traj.x[end_chord_front];
+  const double end_dy = traj.y.back() - traj.y[end_chord_front];
+  constexpr double min_chord_m = 1.0e-3;
+  if (std::hypot(start_dx, start_dy) < min_chord_m || std::hypot(end_dx, end_dy) < min_chord_m) {
+    return 0.0;
+  }
+
+  const double start_mid = 0.5 * arc_length[start_chord_back];
+  const double end_mid = 0.5 * (arc_length[end_chord_front] + total);
+  const double span = end_mid - start_mid;
+  if (span < min_chord_m) {
+    return 0.0;
+  }
+
+  const double yaw_start = std::atan2(start_dy, start_dx);
+  const double yaw_end = std::atan2(end_dy, end_dx);
+  return normalize_radian(yaw_end - yaw_start) / span;
+}
+
 std::vector<double> calcTrajectoryCurvature(
   const int curvature_smoothing_num, const MPCTrajectory & traj,
   const bool use_short_segment_protection)
@@ -427,15 +475,10 @@ std::vector<double> calcTrajectoryCurvature(
 
   const int max_smoothing_num = static_cast<int>(std::floor(0.5 * (static_cast<double>(n - 1))));
 
-  Eigen::MatrixX2d pts(static_cast<Eigen::Index>(n), 2);
   if (max_smoothing_num < curvature_smoothing_num) {
-    for (size_t i = 0; i < n; ++i) {
-      pts(static_cast<Eigen::Index>(i), 0) = traj.x.at(i);
-      pts(static_cast<Eigen::Index>(i), 1) = traj.y.at(i);
-    }
-    // Get a constant curvature and assign to all indices
-    const double kappa = taubin_curvature(pts).kappa;
-    curvature_vec.assign(n, kappa);
+    // The same 0.5 m baseline used when differentiating yaw. Below it, a heading is not observable.
+    constexpr double min_curvature_baseline_m = 0.5;
+    curvature_vec.assign(n, calcAverageCurvature(traj, min_curvature_baseline_m));
     return curvature_vec;
   }
 

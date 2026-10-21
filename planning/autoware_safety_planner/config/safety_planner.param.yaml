@@ -15,6 +15,11 @@
         curvature_margin: 0.9 # [-] fraction of the curvature at full steer the connection is held within
       smoother:
         clearance_m: 1.0 # [m]
+      ego_blend:
+        enable: true
+        lateral_threshold_m: 0.1 # [m]
+        forward_length_m: 30.0 # [m] arc length ahead of ego over which the path returns to the centerline
+        backward_length_m: 5.0 # [m]
       forward_length_m: 200.0 # [m]
       backward_length_m: 15.0 # [m]
 

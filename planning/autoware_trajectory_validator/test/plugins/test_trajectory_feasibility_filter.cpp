@@ -1242,6 +1242,107 @@ TEST(IsSteeringAngleOkTest, FalseForDenselySampledCurvedTrajectory)
   EXPECT_NEAR(max_observed, std::atan(vehicle_info.wheel_base_m / radius), 0.02);
 }
 
+TEST(CalcMaxSteeringAngleTest, InterpolatesAndClampsTheTable)
+{
+  const std::vector<double> velocities_kmph = {10.0, 20.0};
+  const std::vector<double> max_steering_angles = {0.9, 0.8};
+  const auto calc = [&](const double speed_kmph) {
+    return calc_max_steering_angle(speed_kmph / 3.6, velocities_kmph, max_steering_angles, 0.5);
+  };
+
+  EXPECT_NEAR(calc(0.0), 0.9, 1e-9);  // clamped below the table
+  EXPECT_NEAR(calc(10.0), 0.9, 1e-9);
+  EXPECT_NEAR(calc(15.0), 0.85, 1e-9);
+  EXPECT_NEAR(calc(20.0), 0.8, 1e-9);
+  EXPECT_NEAR(calc(40.0), 0.8, 1e-9);  // clamped above the table
+}
+
+TEST(CalcMaxSteeringAngleTest, DefaultWhenTableIsInvalid)
+{
+  EXPECT_DOUBLE_EQ(calc_max_steering_angle(3.0, {}, {}, 0.5), 0.5);
+  EXPECT_DOUBLE_EQ(calc_max_steering_angle(3.0, {10.0, 20.0}, {0.9}, 0.5), 0.5);
+  EXPECT_DOUBLE_EQ(calc_max_steering_angle(3.0, {20.0, 10.0}, {0.8, 0.9}, 0.5), 0.5);
+  EXPECT_DOUBLE_EQ(calc_max_steering_angle(3.0, {10.0, 10.0}, {0.9, 0.8}, 0.5), 0.5);
+  EXPECT_DOUBLE_EQ(
+    calc_max_steering_angle(
+      std::numeric_limits<double>::quiet_NaN(), {10.0, 20.0}, {0.9, 0.8}, 0.5),
+    0.5);
+}
+
+TEST(CalcMaxSteeringAngleTest, SinglePointTableIsUsedAtAllSpeeds)
+{
+  EXPECT_DOUBLE_EQ(calc_max_steering_angle(0.0, {3.0}, {0.7}, 0.5), 0.7);
+  EXPECT_DOUBLE_EQ(calc_max_steering_angle(10.0, {3.0}, {0.7}, 0.5), 0.7);
+}
+
+TEST(IsSteeringAngleOkTest, LargeSteeringAngleIsAllowedOnlyAtLowSpeed)
+{
+  // A rotary-like arc: atan(2.5 / 2.2) = 0.849 rad. The limit is 0.9 rad at 2.0 m/s (7.2 km/h)
+  // and 0.82 rad at 5.0 m/s (18 km/h).
+  constexpr double radius = 2.2;  // [m]
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+  const std::vector<double> velocities_kmph = {10.0, 20.0};
+  const std::vector<double> max_steering_angles = {0.9, 0.8};
+
+  const auto low_speed_points = create_dense_straight_then_arc_trajectory(0.0, radius, 4.0, 2.0);
+  const auto [low_speed_observed, low_speed_ok] =
+    is_steering_angle_ok(low_speed_points, vehicle_info, 0.8, velocities_kmph, max_steering_angles);
+  EXPECT_TRUE(low_speed_ok) << "max observed steering angle: " << low_speed_observed;
+
+  const auto high_speed_points = create_dense_straight_then_arc_trajectory(0.0, radius, 4.0, 5.0);
+  const auto [high_speed_observed, high_speed_ok] = is_steering_angle_ok(
+    high_speed_points, vehicle_info, 0.8, velocities_kmph, max_steering_angles);
+  EXPECT_FALSE(high_speed_ok);
+  EXPECT_NEAR(high_speed_observed, std::atan(vehicle_info.wheel_base_m / radius), 0.02);
+}
+
+TEST(IsSteeringAngleOkTest, FixedLimitIsUsedWhenTableIsInvalid)
+{
+  constexpr double radius = 2.2;  // [m]
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+  const auto traj_points = create_dense_straight_then_arc_trajectory(0.0, radius, 4.0, 2.0);
+
+  const auto [max_observed, is_ok] =
+    is_steering_angle_ok(traj_points, vehicle_info, 0.8, {10.0, 20.0}, {0.9});
+
+  EXPECT_FALSE(is_ok);
+}
+
+TEST(TrajectoryFeasibilityFilterTest, SteeringAngleUsesSpeedDependentLimit)
+{
+  constexpr double radius = 2.2;  // [m]
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  TrajectoryFeasibilityFilter filter;
+  validator::Params params;
+  params.trajectory_feasibility.max_steering_angle = 0.8;
+  params.trajectory_feasibility.steering_angle_limit.velocities_kmph = {10.0, 20.0};
+  params.trajectory_feasibility.steering_angle_limit.max_steering_angles_rad = {0.9, 0.8};
+  filter.update_parameters(params);
+  filter.set_vehicle_info(vehicle_info);
+
+  const auto steering_angle_risk = [&](const double velocity) {
+    CandidateTrajectory candidate_trajectory;
+    candidate_trajectory.points =
+      create_dense_straight_then_arc_trajectory(0.0, radius, 4.0, velocity);
+    const auto result = filter.is_feasible(candidate_trajectory, FilterContext{});
+    EXPECT_TRUE(result.has_value());
+    for (const auto & metric : result.value().metrics) {
+      if (metric.metric_name == "steering_angle") {
+        return metric.risk.level;
+      }
+    }
+    ADD_FAILURE() << "steering_angle metric is missing";
+    return RiskLevel::SAFE;
+  };
+
+  EXPECT_EQ(steering_angle_risk(2.0), RiskLevel::SAFE);
+  EXPECT_EQ(steering_angle_risk(5.0), RiskLevel::HIGH_CAUTION);
+}
+
 // --- is_steering_rate_ok(...) tests ---
 
 TEST(IsSteeringRateOkTest, TrueWhenAllSteeringRatesBelowMax)
