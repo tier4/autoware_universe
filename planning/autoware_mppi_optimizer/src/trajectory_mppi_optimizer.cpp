@@ -237,8 +237,8 @@ void TrajectoryMppiOptimizer::on_initialize(
   params_ = param_listener_->get_params();
   map_velocity_limit_overrides_ = make_velocity_limit_overrides(params_);
 
-  velocity_limit_sub_ =
-    make_polling_subscriber<VelocityLimit>("~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+  velocity_limit_sub_ = make_polling_subscriber<VelocityLimit>(
+    "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
 
   reference_trajectory_pub_ =
     make_publisher<Trajectory>("~/debug/mppi/reference_trajectory", 1);

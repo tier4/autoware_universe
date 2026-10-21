@@ -67,8 +67,8 @@ void TrajectoryVelocityOptimizer::on_initialize(const TrajectoryProcessorParams 
   // The shared context owns the external velocity limit (and its clear commands). Only plugins
   // constructed without a context fall back to their own subscription.
   if (!context_) {
-    sub_planning_velocity_ =
-      make_polling_subscriber<VelocityLimit>("~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+    sub_planning_velocity_ = make_polling_subscriber<VelocityLimit>(
+      "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
   }
 
   pub_velocity_limit_ = make_publisher<VelocityLimit>(

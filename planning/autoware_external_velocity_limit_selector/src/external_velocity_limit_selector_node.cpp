@@ -131,15 +131,17 @@ ExternalVelocityLimitSelectorNode::ExternalVelocityLimitSelectorNode(
     "input/velocity_limit_clear_command_from_internal", rclcpp::QoS{10}.transient_local(),
     std::bind(&ExternalVelocityLimitSelectorNode::onVelocityLimitClearCommand, this, _1));
 
-  // Output
-  pub_external_velocity_limit_ =
-    this->create_publisher<VelocityLimit>("output/external_velocity_limit", 1);
+  // Output. transient_local so a subscriber that starts later still receives max_vel.
+  pub_external_velocity_limit_ = this->create_publisher<VelocityLimit>(
+    "output/external_velocity_limit", rclcpp::QoS{1}.transient_local());
 
   pub_debug_string_ = this->create_publisher<StringStamped>("output/debug", 1);
 
   // Params
   param_listener_ = std::make_shared<::external_velocity_limit_selector::ParamListener>(
     this->get_node_parameters_interface());
+  updateVelocityLimit();
+  publishVelocityLimit(getCurrentVelocityLimit());
 }
 
 void ExternalVelocityLimitSelectorNode::onVelocityLimitFromAPI(
@@ -228,6 +230,7 @@ void ExternalVelocityLimitSelectorNode::clearVelocityLimit(const std::string & s
 {
   if (velocity_limit_table_.empty()) {
     RCLCPP_WARN(get_logger(), "no velocity limit has been set from internal.");
+    updateVelocityLimit();
     return;
   }
 
