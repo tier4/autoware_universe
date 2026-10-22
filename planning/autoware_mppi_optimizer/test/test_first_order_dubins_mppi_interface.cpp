@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
+#include "autoware/mppi_optimizer/detail/plant_prediction_utils.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
@@ -140,6 +141,23 @@ TrackedObjects makeStationaryBoxObstacle(
   object.shape.dimensions.x = length;
   object.shape.dimensions.y = width;
   return objects;
+}
+
+TEST(PlantPredictionUtils, ComparesMeasurementInAnchorFrameAtLargeMapCoordinates)
+{
+  detail::PlantPredictionReplayInput input;
+  input.anchor.valid = true;
+  input.anchor.frame.reset(88800.123456, 42800.654321, "map");
+  input.anchor.plant.valid = true;
+  input.anchor.plant.x = input.anchor.frame.origin_x;
+  input.anchor.plant.y = input.anchor.frame.origin_y;
+  input.measurement_stamp.nanosec = 100000000U;
+  input.measured_x = input.anchor.plant.x + 0.001;
+  input.measured_y = input.anchor.plant.y;
+  const auto accuracy = detail::evaluatePlantPredictionAccuracy(input);
+  ASSERT_TRUE(accuracy.valid);
+  EXPECT_NEAR(accuracy.predicted_x, input.anchor.plant.x, 1.0E-7);
+  EXPECT_NEAR(accuracy.pos_error_m, 0.001F, 1.0E-6F);
 }
 
 TEST(FirstOrderDubinsMppiInterface, PreferredLaneCenterCoefficientMustBeFiniteAndNonnegative)
@@ -947,6 +965,49 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, ProducesFinitePostStepTrajectoryAnd
        ++i) {
     EXPECT_TRUE(result.trajectory.points[i] == input.points[i]);
   }
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, PublishesPreciseMapPositionsAcrossOriginChange)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  interface_->setCostParams(costs);
+  auto input = makeStraightTrajectory(80U);
+  auto odometry = makeOdometry();
+  constexpr double map_x = 88800.123456;
+  constexpr double map_y = 42800.654321;
+  odometry.pose.pose.position.x = map_x;
+  odometry.pose.pose.position.y = map_y;
+  for (auto & point : input.points) {
+    point.pose.position.x += map_x;
+    point.pose.position.y += map_y;
+  }
+
+  const auto first = optimize(*interface_, input, odometry);
+  ASSERT_EQ(first.optimized_point_count, 80U);
+  ASSERT_FALSE(first.debug.was_rejected);
+  ASSERT_FALSE(first.debug.optimal_horizon.empty());
+  EXPECT_NEAR(first.debug.optimal_horizon.front().first, map_x, 1.0E-6);
+
+  const auto count_precise_points = [](const Trajectory & trajectory) {
+    return std::count_if(
+      trajectory.points.begin(), trajectory.points.begin() + 20, [](const auto & point) {
+        const double x = point.pose.position.x;
+        return std::abs(x - static_cast<double>(static_cast<float>(x))) > 1.0E-7;
+      });
+  };
+  EXPECT_GE(count_precise_points(first.trajectory), 15);
+
+  odometry.pose.pose.position.x += 40.0;
+  for (auto & point : input.points) {
+    point.pose.position.x += 40.0;
+  }
+  const auto after_recenter = optimize(*interface_, input, odometry);
+  ASSERT_EQ(after_recenter.optimized_point_count, 80U);
+  ASSERT_FALSE(after_recenter.debug.was_rejected);
+  EXPECT_GE(count_precise_points(after_recenter.trajectory), 15);
+  ASSERT_FALSE(after_recenter.debug.optimal_horizon.empty());
+  EXPECT_NEAR(after_recenter.debug.optimal_horizon.front().first, map_x + 40.0, 1.0E-6);
 }
 
 TEST_F(

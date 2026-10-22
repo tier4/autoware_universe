@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__DETAIL__PLANT_PREDICTION_UTILS_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__DETAIL__PLANT_PREDICTION_UTILS_HPP_
 
+#include "autoware/mppi_optimizer/detail/local_frame.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 
@@ -31,6 +32,7 @@ namespace autoware::mppi_optimizer::detail
 struct FirstOrderDubinsMppiPlantSnapshot
 {
   bool valid{false};
+  LocalFrame frame;
   builtin_interfaces::msg::Time stamp{};
   float sim_time{0.0F};
   FirstOrderDubinsMppiAppliedPlantState plant;
@@ -81,8 +83,8 @@ struct PlantPredictionReplayInput
   FirstOrderDubinsMppiPlantSnapshot anchor{};
   std::vector<FirstOrderDubinsMppiControlHistoryEntry> control_history{};
   builtin_interfaces::msg::Time measurement_stamp{};
-  float measured_x{0.0F};
-  float measured_y{0.0F};
+  double measured_x{0.0};
+  double measured_y{0.0};
   float measured_yaw{0.0F};
   float measured_vel{0.0F};
 };
