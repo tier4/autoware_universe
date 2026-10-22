@@ -25,7 +25,7 @@ namespace autoware::boundary_departure_checker::severity_evaluator
 {
 ProjectionsToBound filter_and_assign_departure_types(
   const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param,
-  const double min_braking_dist)
+  const double min_braking_dist, const std::optional<double> & min_braking_dist_caution)
 {
   ProjectionsToBound out;
   out.reserve(side_value.size());
@@ -39,6 +39,8 @@ ProjectionsToBound filter_and_assign_departure_types(
   thresholds.th_near_boundary =
     std::max(param.near_boundary_lateral_th_m, param.critical_departure_lateral_th_m);
   thresholds.th_lat_caution = param.caution_departure_lateral_th_m;
+  thresholds.min_braking_distance_caution = min_braking_dist_caution.value_or(min_braking_dist);
+  thresholds.cutoff_time_caution = param.caution_time_to_departure_cutoff_s;
 
   for (size_t idx = 0; idx < side_value.size(); ++idx) {
     const auto & original_candidate = side_value[idx];
@@ -99,7 +101,10 @@ DepartureType assign_departure_type(
   }
 
   const auto footprint_overlaps_caution_margin = metrics.lat_dist <= thresholds.th_lat_caution;
-  if (footprint_overlaps_caution_margin && ego_cannot_stop_before_departure) {
+  const auto ego_cannot_stop_before_caution_departure =
+    metrics.lon_dist_to_departure <= thresholds.min_braking_distance_caution ||
+    metrics.time_from_start <= thresholds.cutoff_time_caution;
+  if (footprint_overlaps_caution_margin && ego_cannot_stop_before_caution_departure) {
     return DepartureType::CAUTION;
   }
 
@@ -115,12 +120,15 @@ Side<std::optional<DeparturePointPair>> evaluate_projections_severity(
   const UncrossableBoundaryDepartureParam & param, const EgoDynamicState & ego_state,
   const vehicle_info_utils::VehicleInfo & vehicle_info)
 {
-  const auto min_braking_dist = calc_minimum_braking_distance(ego_state, param, vehicle_info);
+  const auto min_braking_dist =
+    calc_minimum_braking_distance(ego_state, param, vehicle_info, param.brake_delay_s);
+  const auto min_braking_dist_caution =
+    calc_minimum_braking_distance(ego_state, param, vehicle_info, param.caution_brake_delay_s);
 
   return projections_to_bound.transform_each_side(
     [&](const auto & side_value) -> std::optional<DeparturePointPair> {
-      const auto min_to_bounds =
-        filter_and_assign_departure_types(side_value, param, min_braking_dist);
+      const auto min_to_bounds = filter_and_assign_departure_types(
+        side_value, param, min_braking_dist, min_braking_dist_caution);
 
       if (min_to_bounds.empty()) return std::nullopt;
 
@@ -187,11 +195,11 @@ double get_min_lateral_distance_to_bound(
 
 double calc_minimum_braking_distance(
   const EgoDynamicState & ego_state, const UncrossableBoundaryDepartureParam & param,
-  const vehicle_info_utils::VehicleInfo & vehicle_info)
+  const vehicle_info_utils::VehicleInfo & vehicle_info, const double brake_delay_s)
 {
   const auto kinematic_stop_dist = motion_utils::calculate_stop_distance(
     ego_state.velocity, ego_state.acceleration, param.max_deceleration_mps2, param.max_jerk_mps3,
-    param.brake_delay_s);
+    brake_delay_s);
 
   return vehicle_info.front_overhang_m +
          (kinematic_stop_dist ? std::max(0.0, *kinematic_stop_dist) : 0.0);

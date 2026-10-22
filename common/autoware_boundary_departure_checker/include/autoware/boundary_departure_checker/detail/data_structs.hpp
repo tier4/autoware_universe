@@ -224,6 +224,8 @@ struct DepartureCheckThresholds
   double th_near_boundary{0.0};      ///< lateral distance threshold for near boundary [m]
   double th_lat_caution{-std::numeric_limits<double>::infinity()};  ///< lateral distance
                                                                     ///< threshold for caution [m]
+  double min_braking_distance_caution{0.0};  ///< minimum braking distance for caution [m]
+  double cutoff_time_caution{0.0};           ///< time cutoff for caution [s]
 };
 
 /**

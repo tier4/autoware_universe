@@ -15,18 +15,22 @@
 // Ported from autoware_trajectory_validator (autoware.universe 3eb3290355):
 //   src/filters/safety/collision_check_filter/types.hpp
 //   src/filters/safety/collision_check_filter/trajectory_utils.{hpp,cpp}
-//   src/filters/safety/collision_check_filter/assessment.cpp (find_collision_timing, TTC part)
+//   src/filters/safety/collision_check_filter/assessment.cpp (find_collision_timing, TTC part;
+//   assess_ego_drac, loop structure)
 // Changes from the source: namespace; TrajectoryIdentification / CandidateTrajectory /
-// FilterContext removed; braking profile, PET search, DRAC / RSS, caches and the constant
-// curvature predictor are not ported. This copy does not follow later changes of the source.
+// FilterContext removed; PET search, object DRAC, RSS, caches and the constant curvature predictor
+// are not ported; find_collision_timing renamed to find_first_collision and returns the indices of
+// the first colliding window; the yaw of vehicle predicted paths is replaced by a bicycle model;
+// the ego DRAC iterates over braking delays instead of decelerations. This copy does not follow
+// later changes of the source.
 
-#ifndef HAZARD__COLLISION_SWEEP_HPP_
-#define HAZARD__COLLISION_SWEEP_HPP_
+#ifndef AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_
+#define AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_
 
-#include "hazard/pointcloud_preprocessor.hpp"
+#include "autoware/control_validator/collision_validator/pointcloud_preprocessor.hpp"
+#include "autoware/control_validator/collision_validator/sweep_types.hpp"
 
 #include <Eigen/Geometry>
-#include <autoware_utils_geometry/boost_geometry.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/time.hpp>
@@ -41,163 +45,13 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
-#include <stdexcept>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace autoware::control_validator::hazard
 {
-using autoware_utils_geometry::Box2d;
-using autoware_utils_geometry::MultiPoint2d;
-using autoware_utils_geometry::Point2d;
-using autoware_utils_geometry::Polygon2d;
-
-static constexpr double TIME_INDEX_EPSILON = 1e-3;
-
-using IndexRange = std::pair<size_t, size_t>;
-using TimeRange = std::pair<double, double>;
-
-using TimeTrajectory = std::vector<double>;
-using TravelDistanceTrajectory = std::vector<double>;
-using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
-using QuadTrajectory = std::vector<std::array<Point2d, 4>>;
-using NgonTrajectory = std::vector<std::vector<Point2d>>;
-using FootprintTrajectory = std::variant<QuadTrajectory, NgonTrajectory>;
-
-struct CollisionTiming
-{
-  double ttc;
-};
-
-class TrajectoryData
-{
-private:
-  TimeTrajectory times_;
-  PoseTrajectory poses_;
-  FootprintTrajectory footprints_;
-  mutable std::map<IndexRange, Box2d> envelope_cache_;
-  mutable std::map<IndexRange, Polygon2d> convex_cache_;
-
-  size_t get_same_or_earlier_time_index(const double t) const
-  {
-    const auto it = std::upper_bound(times_.begin(), times_.end(), t + TIME_INDEX_EPSILON);
-    if (it == times_.begin()) return 0;
-    return std::distance(times_.begin(), it - 1);
-  }
-
-  size_t get_same_or_later_time_index(const double t) const
-  {
-    const auto it = std::lower_bound(times_.begin(), times_.end(), t - TIME_INDEX_EPSILON);
-    if (it == times_.end()) return times_.size() - 1;
-    return std::distance(times_.begin(), it);
-  }
-
-  Box2d compute_envelope(const IndexRange & key) const
-  {
-    Box2d box;
-    boost::geometry::assign_inverse(box);
-    std::visit(
-      [&](const auto & polygons) {
-        for (size_t i = key.first; i <= key.second; ++i) {
-          for (const auto & pt : polygons[i]) {
-            boost::geometry::expand(box, pt);
-          }
-        }
-      },
-      footprints_);
-    return box;
-  }
-
-  Polygon2d compute_convex(const IndexRange & key) const
-  {
-    MultiPoint2d all_points;
-    std::visit(
-      [&](const auto & polygons) {
-        size_t total_point_count = (key.second - key.first + 1U) * polygons[key.first].size();
-        all_points.reserve(total_point_count);
-        for (size_t i = key.first; i <= key.second; ++i) {
-          for (const auto & pt : polygons[i]) {
-            all_points.push_back(pt);
-          }
-        }
-      },
-      footprints_);
-
-    Polygon2d hull;
-    hull.outer().reserve(all_points.size());
-    boost::geometry::convex_hull(all_points, hull);
-    return hull;
-  }
-
-public:
-  TrajectoryData(TimeTrajectory times, PoseTrajectory poses, FootprintTrajectory footprints)
-  : times_(std::move(times)), poses_(std::move(poses)), footprints_(std::move(footprints))
-  {
-    if (times_.empty()) {
-      throw std::invalid_argument("Trajectory must not be empty");
-    }
-    if (times_.size() != poses_.size()) {
-      throw std::invalid_argument("Trajectory sizes mismatch (times vs poses)");
-    }
-    const auto footprint_size =
-      std::visit([](const auto & polygons) { return polygons.size(); }, footprints_);
-    if (times_.size() != footprint_size) {
-      throw std::invalid_argument("Trajectory sizes mismatch (times vs footprints)");
-    }
-    if (!std::is_sorted(times_.begin(), times_.end())) {
-      throw std::invalid_argument("Trajectory times must be in ascending order");
-    }
-  }
-
-  TrajectoryData() = delete;
-
-  const TimeTrajectory & getTimes() const { return times_; }
-  const PoseTrajectory & getPoses() const { return poses_; }
-  const FootprintTrajectory & getFootprints() const { return footprints_; }
-
-  size_t size() const { return times_.size(); }
-
-  std::optional<IndexRange> resolve_covering_index_range(const TimeRange & time_range) const
-  {
-    const bool has_no_overlap =
-      time_range.second < times_.front() || time_range.first > times_.back();
-    if (has_no_overlap) {
-      return std::nullopt;
-    }
-
-    const auto start_index = get_same_or_earlier_time_index(time_range.first);
-    const auto end_index = get_same_or_later_time_index(time_range.second);
-    return IndexRange{start_index, end_index};
-  }
-
-  const Box2d & get_or_compute_envelope(const IndexRange & key) const
-  {
-    auto [it, inserted] = envelope_cache_.try_emplace(key);
-    if (inserted) {
-      it->second = compute_envelope(key);
-    }
-    return it->second;
-  }
-
-  const Box2d & get_or_compute_overall_envelope() const
-  {
-    return get_or_compute_envelope(IndexRange{0U, times_.size() - 1});
-  }
-
-  const Polygon2d & get_or_compute_convex(const IndexRange & key) const
-  {
-    auto [it, inserted] = convex_cache_.try_emplace(key);
-    if (inserted) {
-      it->second = compute_convex(key);
-    }
-    return it->second;
-  }
-};
-
 namespace geometry
 {
 namespace detail
@@ -344,26 +198,41 @@ TrajectoryData generate_static_trajectory(const Polygon2d & polygon, const TimeT
 
 namespace collision_timing_assessment
 {
+struct CollisionStep
+{
+  size_t ego_index;
+  IndexRange target_index_range;
+};
+
 /**
- * @brief First time window [t_{k-1}, t_k] of `ref_trajectory` (k >= 1) in which the swept
- * footprints of both trajectories overlap. The TTC is t_k.
+ * @brief First time window [t_{k-1}, t_k] of `ego` (k >= 1) in which the swept footprints of both
+ * trajectories overlap. Windows whose end step is stopped are skipped.
  */
-std::optional<CollisionTiming> find_collision_timing(
-  const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
-  const std::vector<bool> & ref_stopped = {});
+std::optional<CollisionStep> find_first_collision(
+  const TrajectoryData & ego, const TrajectoryData & target,
+  const std::vector<bool> & ego_stopped = {});
+
+/**
+ * @brief First time window [t_{k-1}, t_k] of `ego` (k >= 1) whose swept footprint contains the
+ * point. Windows whose end step is stopped are skipped.
+ * @return k
+ */
+std::optional<size_t> find_first_collision(
+  const TrajectoryData & ego, const Point2d & point, const std::vector<bool> & ego_stopped = {});
 }  // namespace collision_timing_assessment
 
-struct SweepCandidate
+struct CollisionCandidate
 {
   enum class Kind { OBJECT, POINTCLOUD };
   Kind kind{Kind::OBJECT};
   uint8_t label{0};
-  Polygon2d polygon_now;  // map; a single-vertex degenerate polygon for a point
+  Polygon2d polygon_now;  // map; a degenerate polygon for a point
   double distance_now{0.0};
   std::optional<double> ttc;
-  std::optional<double> cos_collision;  // cosine of the collision angle at the TTC (set with ttc)
+  std::optional<double> cos_collision;  // cosine of the collision angle (set with ttc)
   uint8_t brake_level{0};
   builtin_interfaces::msg::Time source_stamp;  // header.stamp of the objects / pointcloud message
+  std::optional<size_t> cluster_index;
 };
 
 /**
@@ -375,18 +244,29 @@ struct SweepCandidate
 double compute_cos_collision(
   const geometry_msgs::msg::Pose & ego_pose_at_hit, bool forward, const Point2d & hit_point);
 
-struct SweepLimits
+struct ObjectMargin
+{
+  double front{0.0};
+  double rear{0.0};
+  double left{0.0};
+  double right{0.0};
+};
+
+struct CollisionEvaluatorParam
 {
   double max_time{5.0};
+  double time_resolution{0.1};
   size_t n_eval_object{10};
   size_t n_eval_pointcloud{10};
   std::vector<uint8_t> enabled_labels;
   bool enable_pointcloud{true};
   double max_objects_stamp_gap_s{0.5};
   double stop_velocity{0.1};
-  double rear_axle_ratio{0.3};
   std::array<double, 3> reaction_times{2.0, 1.5, 1.0};
   double braking_deceleration{6.0};
+  double cos_threshold{-1.0};
+  double rear_axle_ratio{0.3};
+  ObjectMargin object_margin;
 };
 
 struct BrakingParam
@@ -395,64 +275,73 @@ struct BrakingParam
   double deceleration;
 };
 
-struct EgoSweep;
-class ObjectMotion;
-class BrakedSweeps;
+class SweepsWithBraking;
 
-struct ClusterAttachments
-{
-  const autoware_perception_msgs::msg::PredictedObjects * objects_at_cloud{nullptr};
-  std::vector<std::shared_ptr<const ObjectMotion>> motions;
-  std::vector<std::optional<size_t>> object_index;
-};
-
-class CollisionSweep
+class CollisionEvaluator
 {
 public:
-  CollisionSweep(const vehicle_info_utils::VehicleInfo & vehicle_info, double time_resolution);
+  explicit CollisionEvaluator(const CollisionEvaluatorParam & param);
 
-  void set_time_resolution(double time_resolution);
+  void update_parameters(const CollisionEvaluatorParam & param);
 
   /**
-   * @brief Sweep the ego footprint along the predicted trajectory and compute the TTC and the
-   * collision angle against objects (footprint sweep) and pointcloud clusters (point in
-   * footprint). Object candidates are returned whether or not they collide; point candidates are
-   * returned only for points that collide.
-   * @param point_clusters all clusters; those not attached to an object are static and the closest
-   *   n_eval_pointcloud of them are evaluated with all their points
+   * @brief Sweep the ego footprint along the predicted trajectory and judge the collision with
+   * objects (footprint sweep), static points and points attached to objects. Object candidates
+   * are returned whether or not they collide; point candidates are returned only for points that
+   * collide. Colliding candidates get a brake_level.
+   * @param objects latest objects, evaluated as objects
+   * @param objects_at_pointcloud_stamp objects closest to the pointcloud stamp, used to attach
+   *   clusters; null evaluates every cluster as static
+   * @param point_clusters clusters in the map frame
    * @param pointcloud_stamp header.stamp of the pointcloud the clusters came from
    * @throws std::invalid_argument when the predicted trajectory cannot be interpolated
    */
-  std::vector<SweepCandidate> evaluate(
-    const autoware_planning_msgs::msg::Trajectory & predicted, const nav_msgs::msg::Odometry & odom,
+  std::vector<CollisionCandidate> evaluate(
+    const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
+    const nav_msgs::msg::Odometry & odom, const vehicle_info_utils::VehicleInfo & vehicle_info,
     const autoware_perception_msgs::msg::PredictedObjects & objects,
+    const autoware_perception_msgs::msg::PredictedObjects * objects_at_pointcloud_stamp,
     const std::vector<PointCluster> & point_clusters,
-    const builtin_interfaces::msg::Time & pointcloud_stamp, const SweepLimits & limits,
-    const ClusterAttachments & attachments = {}) const;
+    const builtin_interfaces::msg::Time & pointcloud_stamp) const;
 
-  std::vector<std::shared_ptr<const ObjectMotion>> build_object_motions(
-    const autoware_planning_msgs::msg::Trajectory & predicted,
-    const autoware_perception_msgs::msg::PredictedObjects & objects,
-    const SweepLimits & limits) const;
-
-  Polygon2d ego_polygon(const geometry_msgs::msg::Pose & pose) const;
+private:
+  friend class SweepsWithBraking;
 
   static double distance_now(const Polygon2d & ego_now, const Polygon2d & candidate);
 
-private:
-  friend class BrakedSweeps;
-
   EgoSweep build_ego_sweep(
-    const autoware_planning_msgs::msg::Trajectory & predicted, const nav_msgs::msg::Odometry & odom,
-    const SweepLimits & limits, const std::optional<BrakingParam> & braking = std::nullopt) const;
+    const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
+    const nav_msgs::msg::Odometry & odom, const vehicle_info_utils::VehicleInfo & vehicle_info,
+    const std::optional<BrakingParam> & braking = std::nullopt) const;
 
   std::shared_ptr<const ObjectMotion> make_object_motion(
     const autoware_perception_msgs::msg::PredictedObject & object, double time_offset,
-    double horizon, const TimeTrajectory & static_times, double rear_axle_ratio) const;
+    double horizon, const TimeTrajectory & static_times) const;
 
-  trajectory::footprint::EgoDimensions ego_dimensions_;
-  double time_resolution_;
+  std::vector<std::shared_ptr<const ObjectMotion>> build_object_motions(
+    const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
+    const autoware_perception_msgs::msg::PredictedObjects & objects_at_pointcloud_stamp) const;
+
+  std::vector<std::optional<size_t>> attach_clusters_to_objects(
+    const std::vector<PointCluster> & clusters,
+    const autoware_perception_msgs::msg::PredictedObjects & objects_at_pointcloud_stamp,
+    const std::vector<std::shared_ptr<const ObjectMotion>> & motions, double t_pointcloud) const;
+
+  CollisionCandidate evaluate_object(
+    const EgoSweep & ego, SweepsWithBraking & braked, CollisionCandidate candidate,
+    const ObjectMotion & motion) const;
+
+  void evaluate_static_points(
+    const EgoSweep & ego, SweepsWithBraking & braked, const std::vector<Point2d> & points,
+    const builtin_interfaces::msg::Time & stamp, std::vector<CollisionCandidate> & out) const;
+
+  void evaluate_attached_points(
+    const EgoSweep & ego, SweepsWithBraking & braked, const std::vector<Point2d> & points_local,
+    const ObjectMotion & motion, const builtin_interfaces::msg::Time & stamp,
+    std::vector<CollisionCandidate> & out) const;
+
+  CollisionEvaluatorParam param_;
 };
 }  // namespace autoware::control_validator::hazard
 
-#endif  // HAZARD__COLLISION_SWEEP_HPP_
+#endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_

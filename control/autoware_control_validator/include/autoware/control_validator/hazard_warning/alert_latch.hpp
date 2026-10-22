@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef HAZARD__ALERT_LATCH_HPP_
-#define HAZARD__ALERT_LATCH_HPP_
+#ifndef AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_
+#define AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_
 
 #include <rclcpp/time.hpp>
 
@@ -54,4 +54,4 @@ private:
 };
 }  // namespace autoware::control_validator::hazard
 
-#endif  // HAZARD__ALERT_LATCH_HPP_
+#endif  // AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_

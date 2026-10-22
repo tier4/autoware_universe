@@ -62,12 +62,24 @@ control_validator:
     caution_departure_lateral_th_m:
       type: double
       description: Lateral margin from the boundary for the CAUTION warning stage [m]. NaN disables the stage.
+    caution_time_to_departure_cutoff_s:
+      type: double
+      description: Time-to-departure cutoff for the CAUTION warning stage, not less than time_to_departure_cutoff_s [s]. NaN disables the stage.
+    caution_brake_delay_s:
+      type: double
+      description: Brake delay for the CAUTION minimum braking distance, not less than brake_delay_s [s]. NaN disables the stage.
     caution_on_time_buffer_s:
       type: double
       description: Continuous-violation time required to activate a CAUTION departure [s].
     caution_off_time_buffer_s:
       type: double
       description: Continuous-safety time required to deactivate a CAUTION departure [s].
+    enable_road_border:
+      type: bool
+      description: If true, a CAUTION boundary departure raises a departure warning.
+    departure_risk_level:
+      type: int
+      description: Risk level (1 to 3) of a departure warning.
 
   hazard_warning:
     enable:
@@ -105,9 +117,6 @@ control_validator:
     enable_pointcloud:
       type: bool
       description: If true, pointcloud clusters raise a collision warning.
-    enable_road_border:
-      type: bool
-      description: If true, a CAUTION boundary departure raises a departure warning.
     max_evaluations:
       object:
         type: int
@@ -171,9 +180,9 @@ control_validator:
         z_margin_high:
           type: double
           description: Margin added to the vehicle max height offset (vehicle height) for the ROI upper height bound [m].
-      max_points:
+      max_voxels:
         type: int
-        description: Points inside the ROI are subsampled down to this count before clustering.
+        description: Voxels are subsampled down to this count before clustering.
       voxel_size:
         type: double
         description: Voxel grid leaf size [m].
@@ -203,9 +212,6 @@ control_validator:
       publish_markers:
         type: bool
         description: If true, publish hazard debug markers.
-      csv_path:
-        type: string
-        description: If not empty, append one line per cycle to this CSV file.
 
   latency_validator:
     nominal_latency:

@@ -342,7 +342,9 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenMapIsUnavailable)
   visualization_msgs::msg::MarkerArray markers;
 
   ControlValidatorStatus res;
-  validator.validate(res, trajectory, odometry, acceleration, nullptr, vehicle_info_, markers);
+  hazard::HazardWarningSources hazard_sources;
+  validator.validate(
+    res, trajectory, odometry, acceleration, nullptr, vehicle_info_, markers, hazard_sources);
 
   EXPECT_TRUE(res.will_cross_uncrossable_bound);
 }
@@ -357,8 +359,10 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryTooShort)
   visualization_msgs::msg::MarkerArray markers;
 
   ControlValidatorStatus res;
+  hazard::HazardWarningSources hazard_sources;
   validator.validate(
-    res, trajectory, odometry, acceleration, make_road_border_map(), vehicle_info_, markers);
+    res, trajectory, odometry, acceleration, make_road_border_map(), vehicle_info_, markers,
+    hazard_sources);
 
   EXPECT_TRUE(res.will_cross_uncrossable_bound);
 }
@@ -372,9 +376,10 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryParallelToBoun
   visualization_msgs::msg::MarkerArray markers;
 
   ControlValidatorStatus res;
+  hazard::HazardWarningSources hazard_sources;
   validator.validate(
     res, trajectory, make_odometry(trajectory, 10.0, 0.0), acceleration, map, vehicle_info_,
-    markers);
+    markers, hazard_sources);
 
   EXPECT_TRUE(res.will_cross_uncrossable_bound);
 }
@@ -386,24 +391,101 @@ TEST_F(UncrossableBoundDepartureValidatorTest, InvalidWhenTrajectoryDepartsBound
   geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
   visualization_msgs::msg::MarkerArray markers;
   ControlValidatorStatus res;
+  hazard::HazardWarningSources hazard_sources;
 
   // Start safe, then steer toward the boundary and keep violating past the ON-time buffer so the
   // hysteresis promotes the departure to CRITICAL.
   const auto safe_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
   validator.validate(
     res, safe_trajectory, make_odometry(safe_trajectory, 10.0, 0.0), acceleration, map,
-    vehicle_info_, markers);
+    vehicle_info_, markers, hazard_sources);
   EXPECT_TRUE(res.will_cross_uncrossable_bound);
 
   const auto danger_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.2);
   for (double time_s = 0.1; time_s <= 0.6; time_s += 0.1) {
     validator.validate(
       res, danger_trajectory, make_odometry(danger_trajectory, 10.0, time_s), acceleration, map,
-      vehicle_info_, markers);
+      vehicle_info_, markers, hazard_sources);
   }
 
   EXPECT_FALSE(res.will_cross_uncrossable_bound);
   EXPECT_FALSE(markers.markers.empty());
+}
+
+TEST_F(UncrossableBoundDepartureValidatorTest, CautionDeparturePositionsAreHandedOverInBaseLink)
+{
+  UncrossableBoundDepartureValidator validator(node_->get_logger(), params_);
+  const auto map = make_road_border_map();
+  geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
+  visualization_msgs::msg::MarkerArray markers;
+  ControlValidatorStatus res;
+
+  const auto safe_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
+  hazard::HazardWarningSources safe_sources;
+  validator.validate(
+    res, safe_trajectory, make_odometry(safe_trajectory, 10.0, 0.0), acceleration, map,
+    vehicle_info_, markers, safe_sources);
+  ASSERT_TRUE(safe_sources.departure.has_value());
+  EXPECT_TRUE(safe_sources.departure->empty());
+  EXPECT_FALSE(safe_sources.collision.has_value());
+
+  const double yaw = 0.2;
+  const auto danger_trajectory = make_trajectory(0.0, -2.5, 10.0, yaw);
+  hazard::HazardWarningSources sources;
+  for (double time_s = 0.1; time_s <= 0.6; time_s += 0.1) {
+    sources = hazard::HazardWarningSources{};
+    validator.validate(
+      res, danger_trajectory, make_odometry(danger_trajectory, 10.0, time_s), acceleration, map,
+      vehicle_info_, markers, sources);
+  }
+
+  ASSERT_TRUE(sources.departure.has_value());
+  ASSERT_FALSE(sources.departure->empty());
+  const auto & ego = danger_trajectory.points.front().pose.position;
+  for (const auto & source : *sources.departure) {
+    EXPECT_EQ(
+      source.risk_level, params_.uncrossable_bound_departure_validator.departure_risk_level);
+    ASSERT_EQ(source.shape.outer().size(), 1U);
+    const auto & p = source.shape.outer().front();
+    EXPECT_NEAR(ego.y + std::sin(yaw) * p.x() + std::cos(yaw) * p.y(), 2.0, 1e-6);
+  }
+}
+
+TEST_F(UncrossableBoundDepartureValidatorTest, DepartureIsNotHandedOverWhenDisabledOrSkipped)
+{
+  const auto map = make_road_border_map();
+  const auto trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
+  const auto is_handed_over = [&](
+                                const ::control_validator::Params & params,
+                                const lanelet::LaneletMapPtr & lanelet_map,
+                                const Trajectory & predicted_trajectory) {
+    UncrossableBoundDepartureValidator validator(node_->get_logger(), params);
+    geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
+    visualization_msgs::msg::MarkerArray markers;
+    ControlValidatorStatus res;
+    hazard::HazardWarningSources sources;
+    validator.validate(
+      res, predicted_trajectory, make_odometry(trajectory, 10.0, 0.0), acceleration, lanelet_map,
+      vehicle_info_, markers, sources);
+    return sources.departure.has_value();
+  };
+
+  auto no_road_border = params_;
+  no_road_border.uncrossable_bound_departure_validator.enable_road_border = false;
+  auto level_zero = params_;
+  level_zero.uncrossable_bound_departure_validator.departure_risk_level = 0;
+  auto level_four = params_;
+  level_four.uncrossable_bound_departure_validator.departure_risk_level = 4;
+  auto disabled = params_;
+  disabled.uncrossable_bound_departure_validator.enable = false;
+
+  EXPECT_TRUE(is_handed_over(params_, map, trajectory));
+  EXPECT_FALSE(is_handed_over(no_road_border, map, trajectory));
+  EXPECT_FALSE(is_handed_over(level_zero, map, trajectory));
+  EXPECT_FALSE(is_handed_over(level_four, map, trajectory));
+  EXPECT_FALSE(is_handed_over(disabled, map, trajectory));
+  EXPECT_FALSE(is_handed_over(params_, nullptr, trajectory));
+  EXPECT_FALSE(is_handed_over(params_, map, Trajectory{}));
 }
 
 class VelocityValidatorTest
@@ -713,11 +795,10 @@ TEST_F(HazardWarningNodeTest, AlertIsPublishedWhileManualDrivingSuppressesTheDia
   EXPECT_FALSE(result.status->will_cross_uncrossable_bound);
 
   ASSERT_TRUE(result.alert.has_value());
-  EXPECT_TRUE(result.alert->has_object[HazardAlert::FRONT]);
-  EXPECT_NEAR(result.alert->ttc_s[HazardAlert::FRONT], 1.1, 1e-3);
-  EXPECT_EQ(result.alert->level[HazardAlert::FRONT], 3);
-  EXPECT_FALSE(result.alert->has_object[HazardAlert::REAR]);
-  EXPECT_FALSE(result.alert->is_boundary_departure);
+  EXPECT_TRUE(result.alert->sectors[HazardAlert::FRONT].has_object);
+  EXPECT_EQ(result.alert->sectors[HazardAlert::FRONT].risk_level, 3);
+  EXPECT_FALSE(result.alert->sectors[HazardAlert::REAR].has_object);
+  EXPECT_EQ(result.alert->sectors[HazardAlert::REAR].risk_level, 0);
 }
 
 TEST_F(HazardWarningNodeTest, UndecidedThresholdsDisableTheWarningButKeepTheValidator)

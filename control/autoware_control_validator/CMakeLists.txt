@@ -19,13 +19,13 @@ ament_auto_add_library(autoware_control_validator_helpers SHARED
 ament_auto_add_library(autoware_control_validator_component SHARED
   include/autoware/control_validator/control_validator.hpp
   src/control_validator.cpp
-  src/hazard/collision_sweep.cpp
-  src/hazard/collision_target.cpp
-  src/hazard/pointcloud_preprocessor.cpp
-  src/hazard/hazard_warning.cpp
+  src/collision_validator/collision_validator.cpp
+  src/collision_validator/collision_evaluator.cpp
+  src/collision_validator/sweep_types.cpp
+  src/collision_validator/pointcloud_preprocessor.cpp
+  src/hazard_warning/hazard_warning.cpp
 )
 target_include_directories(autoware_control_validator_component
-  PRIVATE src
   SYSTEM PUBLIC ${PCL_INCLUDE_DIRS}
 )
 target_link_libraries(autoware_control_validator_component
@@ -47,6 +47,7 @@ rosidl_generate_interfaces(
   "msg/ControlValidatorStatus.msg"
   "msg/HazardAlert.msg"
   "msg/HazardCandidate.msg"
+  "msg/HazardSector.msg"
   "msg/HazardCandidateArray.msg"
   DEPENDENCIES builtin_interfaces std_msgs
 )
@@ -69,7 +70,6 @@ if(BUILD_TESTING)
   ament_target_dependencies(test_autoware_control_validator
     ament_index_cpp
   )
-  target_include_directories(test_autoware_control_validator PRIVATE src)
   target_link_libraries(test_autoware_control_validator
     autoware_control_validator_component
     control_validator_parameters

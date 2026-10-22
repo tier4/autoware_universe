@@ -28,8 +28,12 @@
       enable_align_to_ego_pose: true
       enable_developer_marker: false
       caution_departure_lateral_th_m: 0.3
+      caution_time_to_departure_cutoff_s: 4.0
+      caution_brake_delay_s: 2.0
       caution_on_time_buffer_s: 0.20
       caution_off_time_buffer_s: 0.10
+      enable_road_border: true
+      departure_risk_level: 2
 
     hazard_warning:
       enable: true
@@ -45,7 +49,6 @@
         rear_axle_ratio: 0.3
       enabled_object_classes: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian]
       enable_pointcloud: true
-      enable_road_border: true
       max_evaluations:
         object: 10
         pointcloud: 10
@@ -71,7 +74,7 @@
           lateral: 5.0
           z_margin_low: 0.0 # added to the vehicle min height offset (ground)
           z_margin_high: -0.35 # added to the vehicle max height offset (vehicle height)
-        max_points: 20000
+        max_voxels: 20000
         voxel_size: 0.10
         cluster_tolerance: 0.30
         min_cluster_size: 10
@@ -83,7 +86,6 @@
           right: 0.4
       debug:
         publish_markers: true
-        csv_path: ""
 
     latency_validator:
       nominal_latency: 0.01

@@ -465,7 +465,8 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionIsSupersetOfCritical)
 TEST(UncrossableBoundaryCheckerTest, TestCautionRequiresTimeGate)
 {
   // 1-line summary: A point inside the caution band but beyond the braking distance and the
-  // time cutoff is not CAUTION.
+  // caution time cutoff is not CAUTION; inside the caution cutoff it is CAUTION even when it is
+  // beyond the critical cutoff.
   // Stopped ego (braking distance = front overhang) heading 0.04 rad toward the boundary: the
   // left edge enters the 0.5 m caution band from the point at t = 1.5 s onward.
   auto traj = create_trajectory(0.0, -2.5, 0.0, 0.04);
@@ -473,6 +474,7 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionRequiresTimeGate)
   auto param_gated_out = create_default_param();
   param_gated_out.caution_departure_lateral_th_m = 0.5;
   param_gated_out.time_to_departure_cutoff_s = 0.1;
+  param_gated_out.caution_time_to_departure_cutoff_s = 0.1;
   auto checker_out = create_checker_with_param(param_gated_out);
   HysteresisStates states_out;
   const auto res_out =
@@ -481,7 +483,7 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionRequiresTimeGate)
   EXPECT_NE(res_out.status, DepartureType::CRITICAL);
 
   auto param_gated_in = param_gated_out;
-  param_gated_in.time_to_departure_cutoff_s = 3.0;
+  param_gated_in.caution_time_to_departure_cutoff_s = 3.0;
   auto checker_in = create_checker_with_param(param_gated_in);
   HysteresisStates states_in;
   checker_in.update_departure_status(traj, create_ego_state(traj, 0.0, 0.0), states_in);
@@ -533,6 +535,7 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionPointPreferredOverClosestPoint)
   auto param = create_default_param();
   param.caution_departure_lateral_th_m = 0.7;
   param.time_to_departure_cutoff_s = 1.0;
+  param.caution_time_to_departure_cutoff_s = 1.0;
   auto checker = create_checker_with_param(param);
 
   HysteresisStates states;

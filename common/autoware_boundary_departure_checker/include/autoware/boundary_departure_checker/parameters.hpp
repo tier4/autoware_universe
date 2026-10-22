@@ -38,10 +38,12 @@ struct UncrossableBoundaryDepartureParam
   double on_time_buffer_s{0.15};           ///< buffer for activating departure detection [s]
   double off_time_buffer_s{0.15};          ///< buffer for deactivating departure detection [s]
   double caution_departure_lateral_th_m{
-    -std::numeric_limits<double>::infinity()};  ///< lateral distance to flag as caution [m];
-                                                ///< -inf disables the CAUTION stage
-  double caution_on_time_buffer_s{0.15};        ///< buffer for activating caution detection [s]
-  double caution_off_time_buffer_s{0.15};       ///< buffer for deactivating caution detection [s]
+    -std::numeric_limits<double>::infinity()};     ///< lateral distance to flag as caution [m];
+                                                   ///< -inf disables the CAUTION stage
+  double caution_time_to_departure_cutoff_s{2.0};  ///< time to departure cutoff for caution [s]
+  double caution_brake_delay_s{1.0};       ///< brake delay for the caution braking distance [s]
+  double caution_on_time_buffer_s{0.15};   ///< buffer for activating caution detection [s]
+  double caution_off_time_buffer_s{0.15};  ///< buffer for deactivating caution detection [s]
   bool enable_align_to_ego_pose{true};  ///< align trajectory poses to match the measured ego pose
   bool enable_developer_marker{true};   ///< flag marker only for developer
   std::vector<std::string> boundary_types_to_detect{"road_border"};  ///< boundary types to detect
