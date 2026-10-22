@@ -609,9 +609,14 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
     const bool is_vel_slow = control_data.current_motion.vel < m_adaptive_trajectory_velocity_th &&
                              m_slope_source == SlopeSource::TRAJECTORY_ADAPTIVE;
 
-    const double goal_dist = autoware::motion_utils::calcSignedArcLength(
-      control_data.interpolated_traj.points, current_pose.position,
-      control_data.interpolated_traj.points.size() - 1);
+    // Remove overlapping points to avoid NaN distance.
+    const auto geometric_points =
+      autoware::motion_utils::removeOverlapPoints(control_data.interpolated_traj.points);
+    const double goal_dist =
+      geometric_points.size() < 2
+        ? 0.0
+        : autoware::motion_utils::calcSignedArcLength(
+            geometric_points, current_pose.position, geometric_points.size() - 1);
     const bool is_close_to_trajectory_end =
       goal_dist < m_wheel_base && m_slope_source == SlopeSource::TRAJECTORY_GOAL_ADAPTIVE;
 
