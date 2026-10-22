@@ -44,6 +44,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <initializer_list>
 #include <iomanip>
 #include <memory>
 #include <numeric>
@@ -547,6 +548,8 @@ Trajectory buildNominalTrajectory(
   const int vel_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X);
   const int accel_state_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACCELERATION);
+  const int steer_state_idx =
+    static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE);
   const int accel_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
   const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
@@ -578,8 +581,7 @@ Trajectory buildNominalTrajectory(
     state.yaw = x(yaw_idx);
     state.velocity = x(vel_x_idx);
     state.acceleration = x(accel_state_idx);
-    // Publish steer_cmd (not tire angle) so the live viz δ_cmd panel shows u_nom.
-    state.steering = cmd.steer_cmd;
+    state.steering = x(steer_state_idx);
     states.push_back(state);
     controls.push_back(cmd);
   }
@@ -2481,6 +2483,149 @@ bool FirstOrderDubinsMppiInterface::isInitialized() const
   return impl_ && impl_->initialized;
 }
 
+namespace
+{
+
+using NamedFloat = std::pair<const char *, float>;
+
+void requireFiniteNonnegative(std::initializer_list<NamedFloat> values)
+{
+  for (const auto & [name, value] : values) {
+    if (!std::isfinite(value) || value < 0.0F) {
+      throw std::invalid_argument(std::string{name} + " must be finite and non-negative");
+    }
+  }
+}
+
+void requireFinitePositive(std::initializer_list<NamedFloat> values)
+{
+  for (const auto & [name, value] : values) {
+    if (!std::isfinite(value) || value <= 0.0F) {
+      throw std::invalid_argument(std::string{name} + " must be finite and positive");
+    }
+  }
+}
+
+void validateVehicleParams(const FirstOrderDubinsMppiVehicleParams & p)
+{
+  requireFinitePositive(
+    {{"ego_length", p.ego_length},
+     {"ego_width", p.ego_width},
+     {"wheel_base", p.wheel_base},
+     {"max_steer_angle", p.max_steer_angle},
+     {"acc_time_constant", p.acc_time_constant},
+     {"steer_time_constant", p.steer_time_constant}});
+  requireFiniteNonnegative(
+    {{"steer_rate_lim", p.steer_rate_lim},
+     {"vel_rate_lim", p.vel_rate_lim},
+     {"acc_time_delay", p.acc_time_delay},
+     {"steer_time_delay", p.steer_time_delay},
+     {"max_lateral_jerk_mps3", p.max_lateral_jerk_mps3},
+     {"standstill_steer_rate_lim", p.standstill_steer_rate_lim},
+     {"restart_steer_command_rate_lim", p.restart_steer_command_rate_lim},
+     {"restart_steer_command_acceleration_lim", p.restart_steer_command_acceleration_lim},
+     {"restart_velocity_threshold_mps", p.restart_velocity_threshold_mps}});
+  if (!std::isfinite(p.ego_axle_to_box_center)) {
+    throw std::invalid_argument("ego_axle_to_box_center must be finite");
+  }
+  constexpr float max_delay = FirstOrderDubinsBicycleParams::kMaxInputDelaySteps * kDt;
+  if (p.acc_time_delay > max_delay || p.steer_time_delay > max_delay) {
+    throw std::invalid_argument("Actuator delays exceed the MPPI model's delay capacity");
+  }
+}
+
+void validateCostWeights(const FirstOrderDubinsMppiCostParams & p)
+{
+  requireFiniteNonnegative(
+    {{"spatial_overspeed_coeff", p.spatial_overspeed_coeff},
+     {"track_coeff", p.track_coeff},
+     {"track_terminal_scale", p.track_terminal_scale},
+     {"terminal_error_coeff", p.terminal_error_coeff},
+     {"terminal_heading_coeff", p.terminal_heading_coeff},
+     {"heading_coeff", p.heading_coeff},
+     {"lateral_distance_coeff", p.lateral_distance_coeff},
+     {"lateral_yaw_error_coeff", p.lateral_yaw_error_coeff},
+     {"remaining_distance_coeff", p.remaining_distance_coeff},
+     {"path_overshoot_coeff", p.path_overshoot_coeff},
+     {"preferred_lane_center_coeff", p.preferred_lane_center_coeff},
+     {"track_center_coeff", p.track_center_coeff},
+     {"corner_buffer_coeff", p.corner_buffer_coeff},
+     {"lateral_acceleration_coeff", p.lateral_acceleration_coeff},
+     {"lateral_jerk_coeff", p.lateral_jerk_coeff},
+     {"longitudinal_jerk_coeff", p.longitudinal_jerk_coeff},
+     {"accel_cmd_coeff", p.accel_cmd_coeff},
+     {"steer_cmd_coeff", p.steer_cmd_coeff},
+     {"steer_rate_coeff", p.steer_rate_coeff},
+     {"initial_steer_rate_coeff", p.initial_steer_rate_coeff},
+     {"accel_cmd_rate_coeff", p.accel_cmd_rate_coeff},
+     {"steer_cmd_rate_coeff", p.steer_cmd_rate_coeff},
+     {"overlimit_coeff", p.overlimit_coeff},
+     {"drivable_area_barrier_weight", p.drivable_area_barrier_weight},
+     {"crash_contact_penalty", p.crash_contact_penalty}});
+}
+
+void validateCostMarginsAndNoise(const FirstOrderDubinsMppiCostParams & p)
+{
+  requireFiniteNonnegative(
+    {{"corner_safe_margin", p.corner_safe_margin},
+     {"boundary_threshold", p.boundary_threshold},
+     {"lateral_boundary_soft_margin", p.lateral_boundary_soft_margin},
+     {"obstacle_collision_margin", p.obstacle_collision_margin},
+     {"obstacle_safe_margin", p.obstacle_safe_margin},
+     {"road_border_collision_margin", p.road_border_collision_margin},
+     {"road_border_safe_margin", p.road_border_safe_margin},
+     {"drivable_area_safe_margin", p.drivable_area_safe_margin},
+     {"accel_cmd_noise_exponent", p.accel_cmd_noise_exponent},
+     {"steer_cmd_noise_exponent", p.steer_cmd_noise_exponent}});
+  requireFinitePositive(
+    {{"accel_cmd_std_dev", p.accel_cmd_std_dev},
+     {"steer_cmd_std_dev", p.steer_cmd_std_dev},
+     {"nominal_curvature_min_chord_length_m", p.nominal_curvature_min_chord_length_m},
+     {"nominal_curvature_fit_window_m", p.nominal_curvature_fit_window_m}});
+  if (
+    p.obstacle_safe_margin < p.obstacle_collision_margin ||
+    p.road_border_safe_margin < p.road_border_collision_margin) {
+    throw std::invalid_argument("MPPI safety margins must be at least their collision margins");
+  }
+  const auto finite_barrier = [&p](const float margin) {
+    const float m = std::max(margin, 1.0E-3F);
+    return std::isfinite(m * m) && std::isfinite(p.crash_contact_penalty / (m * m));
+  };
+  if (
+    !finite_barrier(p.lateral_boundary_soft_margin) || !finite_barrier(p.obstacle_safe_margin) ||
+    !finite_barrier(p.road_border_safe_margin)) {
+    throw std::invalid_argument(
+      "MPPI crash penalty and margins produce a non-finite barrier weight");
+  }
+}
+
+void validateCostParams(const FirstOrderDubinsMppiCostParams & p)
+{
+  validateCostWeights(p);
+  validateCostMarginsAndNoise(p);
+  requireFinitePositive(
+    {{"lambda", p.lambda}, {"lambda_min", p.lambda_min}, {"lambda_max", p.lambda_max}});
+  requireFiniteNonnegative({{"lambda_adaptation_gain", p.lambda_adaptation_gain}});
+  if (
+    p.lambda_min < 1.0E-6F || p.lambda_max < p.lambda_min || p.lambda < p.lambda_min ||
+    p.lambda > p.lambda_max || !std::isfinite(p.target_ess_ratio) || p.target_ess_ratio < 0.0F ||
+    p.target_ess_ratio > 1.0F || !std::isfinite(p.unsafe_rollout_fraction_threshold) ||
+    p.unsafe_rollout_fraction_threshold < 0.0F || p.unsafe_rollout_fraction_threshold > 1.0F ||
+    !std::isfinite(p.cost_normalization_percentile) || p.cost_normalization_percentile < 0.0F ||
+    p.cost_normalization_percentile > 1.0F || !std::isfinite(p.std_dev_decay) ||
+    p.std_dev_decay < 0.0F || p.std_dev_decay > 1.0F || p.max_iter < 1 ||
+    p.max_iter > kMaxMppiIterations) {
+    throw std::invalid_argument("MPPI lambda, ratios, noise decay, or max_iter are out of range");
+  }
+}
+
+}  // namespace
+
+void validateFirstOrderDubinsMppiCostParams(const FirstOrderDubinsMppiCostParams & params)
+{
+  validateCostParams(params);
+}
+
 void FirstOrderDubinsMppiInterface::setVehicleParams(
   const FirstOrderDubinsMppiVehicleParams & params)
 {
@@ -2488,19 +2633,7 @@ void FirstOrderDubinsMppiInterface::setVehicleParams(
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
-  if (
-    !std::isfinite(params.max_lateral_jerk_mps3) || params.max_lateral_jerk_mps3 < 0.0F ||
-    !std::isfinite(params.standstill_steer_rate_lim) || params.standstill_steer_rate_lim < 0.0F ||
-    !std::isfinite(params.restart_steer_command_rate_lim) ||
-    params.restart_steer_command_rate_lim < 0.0F ||
-    !std::isfinite(params.restart_steer_command_acceleration_lim) ||
-    params.restart_steer_command_acceleration_lim < 0.0F ||
-    !std::isfinite(params.restart_velocity_threshold_mps) ||
-    params.restart_velocity_threshold_mps < 0.0F) {
-    throw std::invalid_argument(
-      "Restart steering-rate, command-rate, command-acceleration, and release-speed limits must "
-      "be finite and non-negative");
-  }
+  validateVehicleParams(params);
   impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   if (impl_->initialized) {
     impl_->teardown();
@@ -2521,39 +2654,7 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
-  if (
-    !std::isfinite(params.preferred_lane_center_coeff) ||
-    params.preferred_lane_center_coeff < 0.0F || !std::isfinite(params.overlimit_coeff) ||
-    params.overlimit_coeff < 0.0F || !std::isfinite(params.initial_steer_rate_coeff) ||
-    params.initial_steer_rate_coeff < 0.0F || !std::isfinite(params.accel_cmd_rate_coeff) ||
-    params.accel_cmd_rate_coeff < 0.0F || !std::isfinite(params.steer_cmd_rate_coeff) ||
-    params.steer_cmd_rate_coeff < 0.0F ||
-
-    !std::isfinite(params.crash_contact_penalty) || params.crash_contact_penalty < 0.0F ||
-    !std::isfinite(params.std_dev_decay) || params.std_dev_decay < 0.0F ||
-    params.std_dev_decay > 1.0F || !std::isfinite(params.lambda) ||
-    !std::isfinite(params.lambda_min) || !std::isfinite(params.lambda_max) ||
-    !std::isfinite(params.target_ess_ratio) || !std::isfinite(params.lambda_adaptation_gain) ||
-    !std::isfinite(params.unsafe_rollout_fraction_threshold) ||
-    !std::isfinite(params.cost_normalization_percentile) || params.lambda_min < 1.0E-6F ||
-    params.lambda_max < params.lambda_min || params.lambda < params.lambda_min ||
-    params.lambda > params.lambda_max || params.target_ess_ratio < 0.0F ||
-    params.target_ess_ratio > 1.0F || params.lambda_adaptation_gain < 0.0F ||
-    params.unsafe_rollout_fraction_threshold < 0.0F ||
-    params.unsafe_rollout_fraction_threshold > 1.0F ||
-    params.cost_normalization_percentile < 0.0F || params.cost_normalization_percentile > 1.0F ||
-    !std::isfinite(params.nominal_curvature_min_chord_length_m) ||
-    params.nominal_curvature_min_chord_length_m <= 0.0F ||
-    !std::isfinite(params.nominal_curvature_fit_window_m) ||
-    params.nominal_curvature_fit_window_m <= 0.0F || params.max_iter <= 0) {
-    throw std::invalid_argument(
-      "MPPI cost parameters must have finite non-negative penalties, std_dev_decay in [0, 1], "
-      "lambda within [lambda_min, lambda_max] with lambda_min >= 1e-6, target_ess_ratio in [0, 1], "
-      "a "
-      "non-negative lambda_adaptation_gain, unsafe_rollout_fraction_threshold and "
-      "cost_normalization_percentile in [0, 1], positive nominal-curvature spans, and max_iter "
-      "greater than zero");
-  }
+  validateFirstOrderDubinsMppiCostParams(params);
   impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   if (impl_->initialized) {
     impl_->teardown();
@@ -2572,6 +2673,7 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     if (
       !std::isfinite(options.dynamic_obstacle_horizon_s) ||
       options.dynamic_obstacle_horizon_s < 0.0F ||
+      !std::isfinite(options.min_optimization_length) || options.min_optimization_length < 0.0F ||
       !std::isfinite(options.min_trajectory_progress_m) ||
       options.min_trajectory_progress_m < 0.0F ||
       !std::isfinite(options.steering_hold_reference_length_threshold_m) ||
@@ -2891,7 +2993,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
   const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor,
   const bool defer_commit, const std::optional<Trajectory> & mpc_predicted_trajectory,
-  const PreferredLaneCenterlineInput & preferred_lane_centerline, const bool force_optimization)
+  const PreferredLaneCenterlineInput & preferred_lane_centerline, const bool force_optimization,
+  const FirstOrderDubinsMppiOutputOptions & output_options)
 try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -3057,7 +3160,8 @@ try {
     optimized_controls.push_back(optimized_control);
   }
 
-  Trajectory output = detail::buildOptimizedTrajectory(input, optimized_states, optimized_controls);
+  Trajectory output =
+    detail::buildOptimizedTrajectory(input, optimized_states, optimized_controls, output_options);
   if (impl_->active_velocity_limit_profile.active) {
     // buildOptimizedTrajectory intentionally preserves the suffix outside the MPPI horizon.
     // An active velocity profile must not allow that suffix to jump back to its input speed.
@@ -3098,7 +3202,10 @@ try {
     !impl_->effective_max_velocity_by_reference_point.empty()
       ? impl_->effective_max_velocity_by_reference_point.front()
       : std::nullopt;
-  detail::setInitialEngageVelocity(output, initial_effective_maximum);
+  if (!output_options.acceleration_state) {
+    // The engage helper overwrites both velocity and acceleration with fixed values.
+    detail::setInitialEngageVelocity(output, initial_effective_maximum);
+  }
 
   result.trajectory = output;
   result.debug.reference_trajectory = input;

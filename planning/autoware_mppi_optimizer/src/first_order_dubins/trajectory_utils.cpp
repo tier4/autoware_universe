@@ -1027,7 +1027,8 @@ std::vector<FirstOrderDubinsMppiControl> shiftNominalControl(
 
 Trajectory buildOptimizedTrajectory(
   const Trajectory & input, const std::vector<OptimizedState> & post_step_states,
-  const std::vector<FirstOrderDubinsMppiControl> & controls)
+  const std::vector<FirstOrderDubinsMppiControl> & controls,
+  const FirstOrderDubinsMppiOutputOptions & output_options)
 {
   Trajectory output = input;
   const std::size_t optimized_count =
@@ -1041,11 +1042,10 @@ Trajectory buildOptimizedTrajectory(
     output_point.pose.position.z = input_point.pose.position.z;
     output_point.pose.orientation = quaternionFromYaw(state.yaw);
     output_point.longitudinal_velocity_mps = state.velocity;
-    // Plant longitudinal accel / tire angle (lag states), not undelayed cmds.
-    // output_point.acceleration_mps2 = state.acceleration;
-    // output_point.front_wheel_angle_rad = state.steering;
-    output_point.acceleration_mps2 = controls[i].accel_cmd;
-    output_point.front_wheel_angle_rad = controls[i].steer_cmd;
+    output_point.acceleration_mps2 =
+      output_options.acceleration_state ? state.acceleration : controls[i].accel_cmd;
+    output_point.front_wheel_angle_rad =
+      output_options.steering_state ? state.steering : controls[i].steer_cmd;
   }
   return output;
 }
