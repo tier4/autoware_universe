@@ -156,6 +156,30 @@ TEST(FirstOrderDubinsMppiInterface, PreferredLaneCenterCoefficientMustBeFiniteAn
   EXPECT_FALSE(interface.isInitialized());
 }
 
+TEST(FirstOrderDubinsMppiInterface, RejectsUnsafeCostParametersBeforeCudaSetup)
+{
+  FirstOrderDubinsMppiCostParams params;
+  params.track_coeff = std::numeric_limits<float>::infinity();
+  EXPECT_THROW(validateFirstOrderDubinsMppiCostParams(params), std::invalid_argument);
+
+  params = {};
+  params.accel_cmd_std_dev = 0.0F;
+  EXPECT_THROW(validateFirstOrderDubinsMppiCostParams(params), std::invalid_argument);
+
+  params = {};
+  params.crash_contact_penalty = 1.0E35F;
+  params.lateral_boundary_soft_margin = 0.0F;
+  EXPECT_THROW(validateFirstOrderDubinsMppiCostParams(params), std::invalid_argument);
+
+  params = {};
+  params.obstacle_safe_margin = params.obstacle_collision_margin - 0.1F;
+  EXPECT_THROW(validateFirstOrderDubinsMppiCostParams(params), std::invalid_argument);
+
+  params = {};
+  params.max_iter = kMaxMppiIterations + 1;
+  EXPECT_THROW(validateFirstOrderDubinsMppiCostParams(params), std::invalid_argument);
+}
+
 TEST(FirstOrderDubinsMppiInterface, SkippedInputsDoNotInitializeCuda)
 {
   FirstOrderDubinsMppiInterface interface;
@@ -201,10 +225,16 @@ TEST(FirstOrderDubinsMppiInterface, ShortSkippedReferenceHoldsMeasuredSteering)
   EXPECT_FALSE(interface.isInitialized());
 }
 
-TEST(FirstOrderDubinsMppiInterface, RejectsInvalidMinimumTrajectoryProgress)
+TEST(FirstOrderDubinsMppiInterface, RejectsInvalidOptimizationAndProgressLengths)
 {
   FirstOrderDubinsMppiInterface interface;
   FirstOrderDubinsMppiRuntimeOptions options;
+  options.min_optimization_length = -0.1F;
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+  options.min_optimization_length = std::numeric_limits<float>::infinity();
+  EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+
+  options = {};
   options.min_trajectory_progress_m = -0.1F;
   EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
   options.min_trajectory_progress_m = std::numeric_limits<float>::quiet_NaN();
@@ -244,6 +274,27 @@ TEST(FirstOrderDubinsMppiInterface, RejectsInvalidVelocityDependentSteeringRateP
 
   vehicle = {};
   vehicle.restart_velocity_threshold_mps = -0.1F;
+  EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
+  EXPECT_FALSE(interface.isInitialized());
+}
+
+TEST(FirstOrderDubinsMppiInterface, RejectsInvalidVehicleGeometryAndActuators)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 0.0F;
+  EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
+
+  vehicle = {};
+  vehicle.vel_rate_lim = -1.0F;
+  EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
+
+  vehicle = {};
+  vehicle.steer_time_constant = std::numeric_limits<float>::infinity();
+  EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
+
+  vehicle = {};
+  vehicle.steer_time_delay = 1.0F;
   EXPECT_THROW(interface.setVehicleParams(vehicle), std::invalid_argument);
   EXPECT_FALSE(interface.isInitialized());
 }
@@ -386,6 +437,8 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringFilterPreservesOnlyAccepted
 {
   FirstOrderDubinsMppiCostParams costs;
   costs.max_iter = 1;
+  // The postprocessor changes steering across the horizon; keep this test focused on filtering.
+  costs.boundary_threshold = 100.0F;
   interface_->setCostParams(costs);
   FirstOrderDubinsMppiRuntimeOptions options;
   options.use_last_control_as_nominal = true;
@@ -513,6 +566,8 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringDiscontinuityRejectsReusedN
 {
   FirstOrderDubinsMppiCostParams costs;
   costs.max_iter = 1;
+  // A forced turn must stay eligible so the next cycle can exercise nominal reuse.
+  costs.boundary_threshold = 100.0F;
   interface_->setCostParams(costs);
   FirstOrderDubinsMppiRuntimeOptions options;
   options.use_last_control_as_nominal = true;
@@ -901,6 +956,8 @@ TEST_F(
   FirstOrderDubinsMppiCostParams cost_params;
   cost_params.overlimit_coeff = 1.0E8F;
   cost_params.crash_contact_penalty = 100000.0F;
+  // This test targets kinematic-limit costs; keep lateral-boundary rejection out of the sample set.
+  cost_params.boundary_threshold = 1000.0F;
   interface_->setCostParams(cost_params);
 
   FirstOrderDubinsMppiKinematicLimits limits;
@@ -1299,13 +1356,16 @@ TEST_F(
 {
   FirstOrderDubinsMppiCostParams costs;
   costs.max_iter = 1;
-  // Fault injection: a state-cost term contaminates every rollout, even at zero tracking error.
-  costs.track_coeff = std::numeric_limits<float>::quiet_NaN();
+  // Finite configuration with an extreme initial offset overflows the track cost on every rollout.
+  costs.track_coeff = 1.0E38F;
+  costs.boundary_threshold = 1000.0F;
   interface_->setCostParams(costs);
   const auto input = makeStraightTrajectory(80U);
+  auto odometry = makeOdometry();
+  odometry.pose.pose.position.x = -10.0;
   bool postprocessed = false;
   const auto result = interface_->optimizeTrajectory(
-    input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
     [&](auto &, const auto &) { postprocessed = true; }, true);
 
   EXPECT_FALSE(postprocessed);

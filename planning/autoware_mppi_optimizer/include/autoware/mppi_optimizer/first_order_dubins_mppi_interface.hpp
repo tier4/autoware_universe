@@ -72,6 +72,13 @@ struct FirstOrderDubinsMppiControl
   float steer_cmd{0.0F};
 };
 
+/** Select which actuator values are written to optimized trajectory points. */
+struct FirstOrderDubinsMppiOutputOptions
+{
+  bool acceleration_state{false};
+  bool steering_state{false};
+};
+
 enum class FirstOrderDubinsMppiNominalSeedSource : std::uint8_t {
   diffusion_reference,
   previous_optimized,
@@ -664,6 +671,8 @@ public:
    *        with a debug status. It never replaces the diffusion-reference corridor.
    * @param force_optimization Bypass the minimum stopping-reference length after a collision
    *        trigger. Trajectories with fewer than two points still cannot be optimized.
+   * @param output_options Select predicted actuator states instead of issued commands in the
+   *        optimized prefix. Velocity is always taken from the predicted state.
    * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
@@ -677,7 +686,7 @@ public:
     bool defer_commit = false,
     const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt,
     const PreferredLaneCenterlineInput & preferred_lane_centerline = {},
-    bool force_optimization = false);
+    bool force_optimization = false, const FirstOrderDubinsMppiOutputOptions & output_options = {});
 
   /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
    * This records an assumed first actuator command, not feedback from the downstream controller.

@@ -191,7 +191,8 @@ float velocityDependentSteeringRateLimit(
 
 [[nodiscard]] Trajectory buildOptimizedTrajectory(
   const Trajectory & input, const std::vector<OptimizedState> & post_step_states,
-  const std::vector<FirstOrderDubinsMppiControl> & controls);
+  const std::vector<FirstOrderDubinsMppiControl> & controls,
+  const FirstOrderDubinsMppiOutputOptions & output_options = {});
 
 [[nodiscard]] float computeMengerCurvatureWithMinChord(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & points, std::size_t target_idx,

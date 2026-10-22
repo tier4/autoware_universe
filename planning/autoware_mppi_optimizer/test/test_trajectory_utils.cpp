@@ -911,6 +911,29 @@ TEST(OutputConversion, OverwritesOnlyAvailablePostStepSamples)
   EXPECT_TRUE(output.points[2] == input.points[2]);
 }
 
+TEST(OutputConversion, SelectsAccelerationAndSteeringStatesIndependently)
+{
+  const auto input = makeTrajectory(3U, 1.0, 2.0F);
+  const std::vector<OptimizedState> states = {{10.0F, 20.0F, 0.3F, 4.0F, 0.7F, 0.1F}};
+  const std::vector<FirstOrderDubinsMppiControl> controls = {{0.5F, -0.1F}};
+
+  const auto acceleration_state = buildOptimizedTrajectory(input, states, controls, {true, false});
+  EXPECT_FLOAT_EQ(acceleration_state.points[0].longitudinal_velocity_mps, 4.0F);
+  EXPECT_FLOAT_EQ(acceleration_state.points[0].acceleration_mps2, 0.7F);
+  EXPECT_FLOAT_EQ(acceleration_state.points[0].front_wheel_angle_rad, -0.1F);
+
+  const auto steering_state = buildOptimizedTrajectory(input, states, controls, {false, true});
+  EXPECT_FLOAT_EQ(steering_state.points[0].longitudinal_velocity_mps, 4.0F);
+  EXPECT_FLOAT_EQ(steering_state.points[0].acceleration_mps2, 0.5F);
+  EXPECT_FLOAT_EQ(steering_state.points[0].front_wheel_angle_rad, 0.1F);
+
+  const auto both_states = buildOptimizedTrajectory(input, states, controls, {true, true});
+  EXPECT_FLOAT_EQ(both_states.points[0].acceleration_mps2, 0.7F);
+  EXPECT_FLOAT_EQ(both_states.points[0].front_wheel_angle_rad, 0.1F);
+  EXPECT_TRUE(both_states.points[1] == input.points[1]);
+  EXPECT_TRUE(both_states.points[2] == input.points[2]);
+}
+
 TEST(EngageVelocity, ChangesAllLeadingStoppedPointsWhenMovementIsRequested)
 {
   auto trajectory = makeTrajectory(4U, 1.0, 0.0F);

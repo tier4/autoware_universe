@@ -9,6 +9,16 @@ trajectory_mppi_optimizer:
     default_value: false
     description: Run MPPI without replacing the input trajectory
     read_only: false
+  output_acceleration_state:
+    type: bool
+    default_value: false
+    description: Write predicted physical acceleration instead of the acceleration command to optimized trajectory points
+    read_only: false
+  output_steering_state:
+    type: bool
+    default_value: false
+    description: Write predicted physical tire angle instead of the steering command to optimized trajectory points
+    read_only: false
   optimize_only_on_input_collision:
     type: bool
     default_value: false
@@ -95,8 +105,8 @@ trajectory_mppi_optimizer:
   max_iter:
     type: int
     default_value: 20
-    description: Number of optimization iterations per MPPI update
-    validation: { gt<>: [0] }
+    description: Number of optimization iterations per MPPI update (1 to 100)
+    validation: { bounds<>: [1, 100] }
     read_only: false
   spatial_overspeed_coeff:
     type: double
@@ -429,7 +439,7 @@ trajectory_mppi_optimizer:
     read_only: false
   use_temporal_mpt_as_nominal:
     type: bool
-    default_value: true
+    default_value: false
     description: Seed the nominal control with temporal MPT
     read_only: false
   use_last_control_as_nominal:
