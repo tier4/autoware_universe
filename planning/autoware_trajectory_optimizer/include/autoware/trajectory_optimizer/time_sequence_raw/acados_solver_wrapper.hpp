@@ -20,6 +20,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <optional>
 
 namespace autoware::trajectory_optimizer::time_sequence_raw
 {
@@ -54,6 +55,25 @@ struct StageReference
   double yaw{0.0};
 };
 
+/// Extra terminal penalty pulling the end state onto the route goal.
+struct GoalTerminalReference
+{
+  double x{0.0};
+  double y{0.0};
+  double yaw{0.0};
+  double velocity{0.0};
+};
+
+/// Previous plan sampled for this stage (solver local frame).
+struct StageTemporalReference
+{
+  double x{0.0};
+  double y{0.0};
+  double yaw{0.0};
+  double velocity{0.0};
+  bool valid{false};
+};
+
 struct SolverSolution
 {
   int status{-1};
@@ -77,9 +97,16 @@ public:
   AcadosSolverWrapper(AcadosSolverWrapper &&) = delete;
   AcadosSolverWrapper & operator=(AcadosSolverWrapper &&) = delete;
 
+  /**
+   * @param warm_start Previous solution already resampled onto this cycle's stage times
+   *                   (index s = t_now + s*dt), or nullptr.
+   */
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,
-    const std::array<StageReference, opt_horizon> & references, const SolverSolution * warm_start);
+    const std::array<StageReference, opt_horizon> & references,
+    const std::optional<GoalTerminalReference> & goal_terminal_reference,
+    const std::array<StageTemporalReference, opt_horizon> * temporal_references,
+    const SolverSolution * warm_start);
 
 private:
   struct Impl;
