@@ -578,8 +578,11 @@ std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame(bool & deferred)
   // depended on arrival order. Until the stream reaches the planning stamp the pass is
   // deferred, and the acceleration callback runs it again; past acceleration_max_wait_ms
   // the latest earlier sample is used, so a late or stalled stream costs at most that much.
-  if (find_spec(engine_->input_specs(), "ego_current_state") &&
-      !acceleration_history_.covers(target)) {
+  // A cap of 0 turns the wait off: the latest earlier sample, as before, and no warning.
+  if (
+    params_.acceleration_max_wait_ms > 0.0 &&
+    find_spec(engine_->input_specs(), "ego_current_state") &&
+    !acceleration_history_.covers(target)) {
     const auto now = std::chrono::steady_clock::now();
     if (!acceleration_wait_since_)
       acceleration_wait_since_ = now;
@@ -594,7 +597,6 @@ std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame(bool & deferred)
         "No acceleration at the planning stamp after %.0f ms; using the latest earlier sample",
         waited_ms);
   }
-  acceleration_wait_since_.reset();
 
   EgoFrame ego;
   ego.localization_generation = localization_generation_;
@@ -758,6 +760,10 @@ bool TensorrtE2eNode::run_tick(TickTiming & timing)
     // about to arrive, and its callback runs the pass again.
     return false;
   }
+  // Any other outcome ends the wait, including a pass that returned before it got that far
+  // (no pose bracket yet, or the ego history was just reset): the next deferral waits its
+  // own acceleration_max_wait_ms, not what is left of a clock started by an earlier pass.
+  acceleration_wait_since_.reset();
   if (!ego) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "Waiting for timestamp-aligned ego state...");
