@@ -69,6 +69,25 @@ TEST(InputCollisionGate, DetectsRoadBorderBetweenTrajectoryPoints)
   EXPECT_FALSE(collision.static_object);
 }
 
+TEST(InputCollisionGate, DetectsCentimeterScaleBorderAtLargeMapCoordinates)
+{
+  constexpr double map_x = 88800.12345;
+  auto trajectory = make_trajectory({map_x, map_x + 0.02});
+  for (auto & point : trajectory.points) {
+    point.pose.position.y = 42800.54321;
+  }
+  const std::vector<Segment> borders{{map_x + 0.01, 42800.0, map_x + 0.01, 42801.0}};
+  const auto collision = checkInputTrajectoryCollisions(
+    trajectory, TrackedObjects{}, borders, make_vehicle(), 0.0F, 0.0F, {true, false});
+  EXPECT_TRUE(collision.road_border);
+
+  const double just_outside = trajectory.points.front().pose.position.y + 0.501;
+  const std::vector<Segment> clear_border{{map_x - 1.0, just_outside, map_x + 1.0, just_outside}};
+  const auto clear = checkInputTrajectoryCollisions(
+    trajectory, TrackedObjects{}, clear_border, make_vehicle(), 0.0F, 0.0F, {true, false});
+  EXPECT_FALSE(clear.road_border);
+}
+
 TEST(InputCollisionGate, DetectsStaticObjectBetweenTrajectoryPoints)
 {
   const auto trajectory = make_trajectory({0.0, 3.0});

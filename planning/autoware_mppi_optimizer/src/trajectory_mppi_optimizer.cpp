@@ -225,10 +225,8 @@ std::vector<Segment> to_mppi_segments(const std::vector<Segment2d> & segments)
   for (const auto & segment : segments) {
     output.push_back(
       Segment{
-        static_cast<float>(boost::geometry::get<0, 0>(segment)),
-        static_cast<float>(boost::geometry::get<0, 1>(segment)),
-        static_cast<float>(boost::geometry::get<1, 0>(segment)),
-        static_cast<float>(boost::geometry::get<1, 1>(segment))});
+        boost::geometry::get<0, 0>(segment), boost::geometry::get<0, 1>(segment),
+        boost::geometry::get<1, 0>(segment), boost::geometry::get<1, 1>(segment)});
   }
   return output;
 }
