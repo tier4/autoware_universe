@@ -30,6 +30,10 @@ The plugin uses odometry, acceleration, steering, tracked objects, route, and ra
 
 Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory modifier node. The transient-local `enabled` debug topic is true only for a cycle where an optimized MPPI trajectory replaced the primary candidate; it is false when MPPI is disabled, skipped, rejected, or running in shadow mode.
 
+`output_acceleration_state` and `output_steering_state` independently select the predicted physical actuator states for optimized trajectory points. Each defaults to `false`, which keeps the existing acceleration and steering command output. MPPI has no velocity command: optimized points use predicted velocity, except where the existing engage adjustment applies. Selecting the acceleration state disables that fixed initial velocity/acceleration adjustment so the optimized prefix remains a model prediction. Selecting the steering state keeps the predicted tire angle during a short-reference steering command hold.
+
+The selections apply to the optimized prefix only, up to 80 points. Remaining points and skipped or rejected outputs retain their existing behavior, including velocity-limit and steering-hold fallbacks. The debug `optimized_trajectory` uses the selected values; `nominal_control_trajectory` continues to show commands.
+
 ### Conditional optimization
 
 Set `optimize_only_on_input_collision: true` to run MPPI only when an enabled input collision condition is met. `trigger_on_road_border_collision` and `trigger_on_static_object_collision` are independent; either match starts optimization. Both triggers default to true, while conditional mode defaults to false to retain the existing behavior. When neither enabled condition matches, the plugin leaves all input points unchanged, including their velocity and steering fields, and publishes a skip diagnostic. With both triggers disabled, every cycle passes through unchanged.

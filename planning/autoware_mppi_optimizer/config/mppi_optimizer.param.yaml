@@ -3,6 +3,8 @@
     mppi_optimizer:
       enabled: true
       shadow_mode: false
+      output_acceleration_state: false
+      output_steering_state: true
       # Conditional mode is opt-in; either enabled collision condition activates MPPI.
       optimize_only_on_input_collision: false
       trigger_on_road_border_collision: true
