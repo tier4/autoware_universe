@@ -8,11 +8,14 @@ The plugin is listed first in `plugin_names` and stays **off** until `use_time_s
 
 - Rewrites the first horizon of a candidate with an independent acados kinematic-bicycle OCP (model `kinematic_bicycle_time_seq`, not Temporal MPT).
 - Optional road-border lateral shift before the OCP.
-- Stopped-regime steering policy:
-  - **TRACK** — moving: full acados
-  - **HOLD** (`solver_status: -1`) — ego stopped + short stopped reference: latch steering, skip acados
-  - **ZERO** (`solver_status: -2`) — near route goal: sticky zero steer, skip acados
-- Seeds OCP \(x_0\) from localization interpolated at `candidate_header.stamp` when `use_stamped_ego_state` is true ([#3407](https://github.com/tier4/autoware_universe/pull/3407)).
+- Stopped-regime steering policy. The OCP still runs; only `front_wheel_angle_rad` is overwritten:
+  - **TRACK** — moving: publish the solved trajectory
+  - **HOLD** — ego stopped and the reference is shorter than 1.5 m with every speed within 0.15 m/s: latch the measured tire angle on the first hold cycle
+  - **ZERO** — within `goal_steer_zero_distance_m` of the route goal, latched once ego has stopped: overwrite the tire angle with 0.002 rad
+- A failed acados solve publishes the previous successful map-frame trajectory. The first failure, before any success is stored, leaves the input unchanged.
+- Seeds OCP \(x_0\) speed from stamp-aligned ego twist ([#3590](https://github.com/tier4/autoware_universe/pull/3590)). Pose, steering, and acceleration still come from the stamped ego buffer when `use_stamped_ego_state` is true ([#3407](https://github.com/tier4/autoware_universe/pull/3407)).
+- Once the predicted endpoint is within `goal.snap_distance_m` of `route.goal_pose`, the terminal reference is the route goal and extra terminal weights stay latched ([#3515](https://github.com/tier4/autoware_universe/pull/3515)). Far-away unlatch drops the latch only. A route-goal position change clears the previous plan ([#3527](https://github.com/tier4/autoware_universe/pull/3527)).
+- Temporal consistency resamples the previous plan by timestamp (`k ← (k+1) + age/dt`) and stays on while goal snap is latched. It is skipped on a road-border shift, a stale warm start, or a one-cycle latch mismatch ([#3527](https://github.com/tier4/autoware_universe/pull/3527), [#3590](https://github.com/tier4/autoware_universe/pull/3590)).
 
 ## Enabling (companion set)
 

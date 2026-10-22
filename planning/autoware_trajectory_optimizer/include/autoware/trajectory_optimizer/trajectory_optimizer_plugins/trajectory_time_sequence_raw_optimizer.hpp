@@ -74,9 +74,6 @@ private:
   SteerStopMode resolve_steer_stop_mode(
     const autoware_planning_msgs::msg::Trajectory & reference,
     const TrajectoryOptimizerData & data);
-  void apply_stopped_reference(
-    TrajectoryPoints & traj_points, const autoware_planning_msgs::msg::Trajectory & reference,
-    double steer_rad) const;
 
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
   time_sequence_raw::TrajectoryOptimizationParams opt_params_;
@@ -91,7 +88,7 @@ private:
   bool goal_steer_zero_enable_{true};
   double goal_steer_zero_distance_m_{5.0};
   bool goal_steer_zero_requires_stopped_{true};
-  bool in_stopped_regime_{false};
+  bool in_steer_hold_{false};
   bool in_goal_zero_regime_{false};
   double latched_steering_rad_{0.0};
 
