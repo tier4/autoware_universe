@@ -9,6 +9,32 @@ trajectory_mppi_optimizer:
     default_value: false
     description: Run MPPI without replacing the input trajectory
     read_only: false
+  optimize_only_on_input_collision:
+    type: bool
+    default_value: false
+    description: Run MPPI only when an enabled input collision condition is met
+    read_only: false
+  trigger_on_road_border_collision:
+    type: bool
+    default_value: true
+    description: In conditional mode, run MPPI when the input footprint intersects a road border
+    read_only: false
+  trigger_on_static_object_collision:
+    type: bool
+    default_value: true
+    description: In conditional mode, run MPPI when the input footprint intersects a stationary avoidance target
+    read_only: false
+  use_soft_margins_for_input_collision:
+    type: bool
+    default_value: false
+    description: In conditional mode, add each obstacle or road-border safe margin to its collision margin for activation
+    read_only: false
+  min_input_collision_activation_duration_s:
+    type: double
+    default_value: 0.0
+    description: Minimum time in seconds to keep conditional MPPI active after the last matching input collision
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   limit_velocity_from_map:
     type: bool
     default_value: false

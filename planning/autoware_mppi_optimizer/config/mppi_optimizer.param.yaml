@@ -3,6 +3,12 @@
     mppi_optimizer:
       enabled: true
       shadow_mode: false
+      # Conditional mode is opt-in; either enabled collision condition activates MPPI.
+      optimize_only_on_input_collision: false
+      trigger_on_road_border_collision: true
+      trigger_on_static_object_collision: true
+      use_soft_margins_for_input_collision: false
+      min_input_collision_activation_duration_s: 0.0
       limit_velocity_from_map: false
       # Aligned debug override arrays: lanelet ID -> maximum velocity [m/s].
       limit_velocity_from_map_debug_lanelet_ids: [0]
