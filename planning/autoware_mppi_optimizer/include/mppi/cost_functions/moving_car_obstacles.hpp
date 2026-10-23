@@ -32,8 +32,8 @@ namespace cost
 /** Cross-traffic / dynamic vehicle with constant velocity. */
 struct MovingCarObstacle
 {
-  float x0 = 0.0F;
-  float y0 = 0.0F;
+  double x0 = 0.0;
+  double y0 = 0.0;
   float vx = 0.0F;
   float vy = 0.0F;
   float yaw = 0.0F;
@@ -46,8 +46,8 @@ struct MovingCarObstacle
   {
     ParkedCarObstacle car;
     const float elapsed = t - spawn_time;
-    car.ox = x0 + vx * elapsed;
-    car.oy = y0 + vy * elapsed;
+    car.ox = static_cast<float>(x0 + static_cast<double>(vx) * elapsed);
+    car.oy = static_cast<float>(y0 + static_cast<double>(vy) * elapsed);
     car.yaw = yaw;
     car.length = length;
     car.width = width;
@@ -78,7 +78,8 @@ inline std::vector<ParkedCarObstacle> movingCarPosesAt(
 inline void buildObstacleTrajectoryBuffers(
   const std::vector<MovingCarObstacle> & cars, const float horizon_start_time, const float dt,
   const int num_timesteps, std::vector<float> & x, std::vector<float> & y, std::vector<float> & yaw,
-  std::vector<float> & half_length, std::vector<float> & half_width)
+  std::vector<float> & half_length, std::vector<float> & half_width, const double origin_x = 0.0,
+  const double origin_y = 0.0)
 {
   const size_t n = std::min(cars.size(), static_cast<size_t>(64));
   const int nt = std::max(1, num_timesteps);
@@ -102,10 +103,10 @@ inline void buildObstacleTrajectoryBuffers(
       const float world_t = horizon_start_time + static_cast<float>(t) * dt;
       const size_t idx = i * static_cast<size_t>(nt) + static_cast<size_t>(t);
       if (car.isActiveAt(world_t)) {
-        const ParkedCarObstacle pose = car.poseAt(world_t);
-        x[idx] = pose.ox;
-        y[idx] = pose.oy;
-        yaw[idx] = pose.yaw;
+        const double elapsed = static_cast<double>(world_t - car.spawn_time);
+        x[idx] = static_cast<float>(car.x0 + static_cast<double>(car.vx) * elapsed - origin_x);
+        y[idx] = static_cast<float>(car.y0 + static_cast<double>(car.vy) * elapsed - origin_y);
+        yaw[idx] = car.yaw;
       } else {
         x[idx] = -1.0E4F;
         y[idx] = -1.0E4F;

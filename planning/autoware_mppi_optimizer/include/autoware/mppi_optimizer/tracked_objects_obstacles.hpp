@@ -42,7 +42,8 @@ using autoware_perception_msgs::msg::TrackedObjects;
 inline void buildObstacleTrajectoryBuffersFromTrackedObjects(
   const TrackedObjects & objects, const float dt, const int num_timesteps, std::vector<float> & x,
   std::vector<float> & y, std::vector<float> & yaw, std::vector<float> & half_length,
-  std::vector<float> & half_width, const float time_offset = 0.0F)
+  std::vector<float> & half_width, const float time_offset = 0.0F, const double origin_x = 0.0,
+  const double origin_y = 0.0)
 {
   if (objects.objects.size() > kMaxMppiObstacles) {
     throw std::length_error("Tracked objects exceed MPPI obstacle capacity");
@@ -59,8 +60,8 @@ inline void buildObstacleTrajectoryBuffersFromTrackedObjects(
   for (size_t obstacle_idx = 0; obstacle_idx < obstacle_count; ++obstacle_idx) {
     const auto & object = objects.objects[obstacle_idx];
     const auto & pose = object.kinematics.pose_with_covariance.pose;
-    const float x0 = static_cast<float>(pose.position.x);
-    const float y0 = static_cast<float>(pose.position.y);
+    const float x0 = static_cast<float>(pose.position.x - origin_x);
+    const float y0 = static_cast<float>(pose.position.y - origin_y);
     const float object_yaw = static_cast<float>(tf2::getYaw(pose.orientation));
     const float speed = static_cast<float>(object.kinematics.twist_with_covariance.twist.linear.x);
 
