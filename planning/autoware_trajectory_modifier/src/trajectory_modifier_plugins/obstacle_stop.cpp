@@ -365,7 +365,7 @@ void ObstacleStop::add_cruise_planning_factor(const CruiseReport & report, const
   safety_factors.factors.push_back(safety_factor);
 
   planning_factor_interface_->add(
-    report.gap(), ego_pose, PlanningFactor::SLOW_DOWN, safety_factors, true, report.cruise_velocity);
+    report.gap(), ego_pose, PlanningFactor::SLOW_DOWN, safety_factors, true, report.cruise_velocity, 0.0, "cruise");
 }
 
 bool ObstacleStop::set_stop_point(
