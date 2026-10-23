@@ -18,6 +18,7 @@
 #include "../../utils/velocity_optimizer.hpp"
 #include "../frenet_sampling_based_planner/compiled_constraints_utils.hpp"
 #include "../frenet_sampling_based_planner/constraints_compiler.hpp"
+#include "../planning_factors.hpp"
 
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
@@ -161,7 +162,7 @@ TrajectoryPlannerResult ReferencePathFollowingPlanner::plan_trajectories(
   TrajectoryPlannerResult result;
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
-    result.normal_trajectory = plan_one_side(
+    std::tie(result.normal_trajectory, result.normal_planning_factor_data) = plan_one_side(
       normal_turn_indicator_decider_, input.context, input.normal_constraints,
       normal_previous_trajectory_, result.normal_debug);
   }
@@ -170,19 +171,20 @@ TrajectoryPlannerResult ReferencePathFollowingPlanner::plan_trajectories(
     [](const Constraint & constraint) { return constraint.certainty == Certainty::POSSIBLE; });
   if (cautious_differs) {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
-    result.cautious_trajectory = plan_one_side(
+    std::tie(result.cautious_trajectory, result.cautious_planning_factor_data) = plan_one_side(
       cautious_turn_indicator_decider_, input.context, input.cautious_constraints,
       cautious_previous_trajectory_, result.cautious_debug);
   } else {
     // Not left empty, since the node publishes the cautious candidate every cycle
     result.cautious_trajectory = result.normal_trajectory;
+    result.cautious_planning_factor_data = result.normal_planning_factor_data;
     result.cautious_debug = result.normal_debug;
     cautious_previous_trajectory_ = normal_previous_trajectory_;
   }
   return result;
 }
 
-PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
+std::pair<PlannedTrajectory, PlanningFactorData> ReferencePathFollowingPlanner::plan_one_side(
   TurnIndicatorDecider & turn_indicator_decider, const PlannerContext & context,
   const std::vector<Constraint> & constraints, std::optional<Trajectory> & previous_trajectory,
   TrajectoryPlannerDebug & debug) const
@@ -193,6 +195,8 @@ PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
   auto phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
     "compile_constraint_list", *time_keeper_);
   const auto compiled_constraints = compile_constraint_list(context, constraints);
+  const auto planning_factor_data =
+    create_planning_factor_data(context, compiled_constraints, params_.trajectory_horizon_s);
   phase.reset();
 
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>("plan_velocity", *time_keeper_);
@@ -276,7 +280,7 @@ PlannedTrajectory ReferencePathFollowingPlanner::plan_one_side(
   autoware_utils_debug::ScopedTimeTrack turn_st("decide_turn_indicators", *time_keeper_);
   const auto turn_indicators = turn_indicator_decider.decide(context, trajectory);
   previous_trajectory = trajectory;
-  return PlannedTrajectory{std::move(trajectory), turn_indicators};
+  return {PlannedTrajectory{std::move(trajectory), turn_indicators}, planning_factor_data};
 }
 
 }  // namespace autoware::safety_planner::experimental
