@@ -21,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::safety_planner::experimental
@@ -38,7 +39,7 @@ public:
   TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) override;
 
 private:
-  PlannedTrajectory plan_one_side(
+  std::pair<PlannedTrajectory, PlanningFactorData> plan_one_side(
     TurnIndicatorDecider & turn_indicator_decider, const PlannerContext & context,
     const std::vector<Constraint> & constraints, std::optional<Trajectory> & previous_trajectory,
     TrajectoryPlannerDebug & debug) const;
