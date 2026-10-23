@@ -35,6 +35,8 @@ struct SafetyPlannerResult
 {
   std::optional<PlannedTrajectory> normal_trajectory;
   std::optional<PlannedTrajectory> cautious_trajectory;
+  std::optional<PlanningFactorData> normal_planning_factor_data;
+  std::optional<PlanningFactorData> cautious_planning_factor_data;
   struct Debug
   {
     std::map<std::string, ConstraintGeneratorOutput> constraint_generator_outputs;
@@ -47,12 +49,9 @@ struct SafetyPlannerResult
 class SafetyPlanner
 {
 public:
-  SafetyPlanner(
-    const Params & params, std::shared_ptr<TimeKeeper> time_keeper, rclcpp::Node * node);
+  SafetyPlanner(const Params & params, std::shared_ptr<TimeKeeper> time_keeper);
 
   tl::expected<SafetyPlannerResult, std::string> plan(const SafetyPlannerInput & input);
-
-  void publish_planning_factors();
 
   std::vector<std::string> get_constraint_generator_plugin_names() const;
 
@@ -90,7 +89,7 @@ private:
    * @{
    */
 
-  void load_trajectory_planner_plugin(rclcpp::Node * node);
+  void load_trajectory_planner_plugin();
 
   using TrajectoryPlannerLoader = pluginlib::ClassLoader<TrajectoryPlannerInterface>;
   std::unique_ptr<TrajectoryPlannerLoader> trajectory_planner_loader_;

@@ -42,6 +42,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::safety_planner::experimental
@@ -53,8 +54,8 @@ public:
   std::string get_name() const override { return "frenet_sampling_based_planner"; }
 
   void on_initialize(
-    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
-    rclcpp::Node * node) override;
+    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
+    const Params & params) override;
 
   TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) override;
 
@@ -218,11 +219,10 @@ private:
   };
 
   //! Not const: the boundary simplifier carries a cache
-  std::optional<Trajectory> plan_one_side(
+  std::pair<Trajectory, PlanningFactorData> plan_one_side(
     const PlannerContext & context, const ReferenceGrid & grid,
     const std::vector<Constraint> & constraints,
-    const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug,
-    PlanningFactorInterface * planning_factor_interface);
+    const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug);
 
   InitialState compute_initial_state(
     const PlannerContext & context, const ReferenceGrid & grid) const;

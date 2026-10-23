@@ -35,6 +35,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::safety_planner
@@ -51,18 +52,18 @@ public:
   std::string get_name() const override { return "mppi_planner"; }
 
   void on_initialize(
-    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
-    rclcpp::Node * node) override;
+    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
+    const Params & params) override;
 
   TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) override;
 
 private:
   using MppiInterface = autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
 
-  PlannedTrajectory plan_one_side(
+  std::pair<PlannedTrajectory, PlanningFactorData> plan_one_side(
     MppiInterface & optimizer, TurnIndicatorDecider & turn_indicator_decider,
     const PlannerContext & context, const std::vector<Constraint> & constraints,
-    TrajectoryPlannerDebug & debug, PlanningFactorInterface * planning_factor_interface);
+    TrajectoryPlannerDebug & debug);
 
   //! The ego at t = 0 followed by the reference_path centerline, one point per kMppiDt over the
   //! MPPI horizon, driven at the fastest profile under the speed bounds, the lateral acceleration,

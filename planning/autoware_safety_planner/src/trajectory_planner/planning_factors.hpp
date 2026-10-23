@@ -22,13 +22,10 @@
 namespace autoware::safety_planner
 {
 
-//! Records the stop bar, or the path end when there is none.
-void add_planning_factors(
-  PlanningFactorInterface * planning_factor_interface, const PlannerContext & context,
-  const CompiledConstraints & compiled_constraints, double horizon_s);
-
-//! The cautious side publishes the same factors when it reuses the normal trajectory
-void copy_planning_factors(const PlanningFactorInterface * from, PlanningFactorInterface * to);
+//! Create planning factor data for trajectory planner
+PlanningFactorData create_planning_factor_data(
+  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
+  double horizon_s);
 
 }  // namespace autoware::safety_planner
 

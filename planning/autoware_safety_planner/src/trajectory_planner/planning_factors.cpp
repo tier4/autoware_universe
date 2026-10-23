@@ -18,22 +18,17 @@
 
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
-#include <autoware_internal_planning_msgs/msg/safety_factor.hpp>
-#include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
-
 #include <algorithm>
 #include <string>
 #include <utility>
 
 namespace autoware::safety_planner
 {
-using autoware_internal_planning_msgs::msg::PlanningFactor;
-using autoware_internal_planning_msgs::msg::SafetyFactor;
-using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 
 namespace
 {
 
+//! Returns a string describing the source of the constraint.
 std::string detail_of(const Source & source)
 {
   if (source.plugin_name.empty()) {
@@ -72,11 +67,6 @@ SafetyFactorArray safety_factors_of(const Constraint & constraint, const Planner
   return safety_factors;
 }
 
-Pose pose_on_path(const PathPointTrajectory & path, const double s)
-{
-  return path.compute(std::clamp(s, 0.0, path.length())).point.pose;
-}
-
 //! The same bar stop_target_s / the MPPI reference stop at: the nearest one closed within the
 //! horizon, at the rear-axle arc length where the footprint front touches it
 const StopBarEntry * nearest_stop_bar(
@@ -105,52 +95,30 @@ const StopBarEntry * nearest_stop_bar(
 
 }  // namespace
 
-void add_planning_factors(
-  PlanningFactorInterface * const planning_factor_interface, const PlannerContext & context,
-  const CompiledConstraints & compiled_constraints, const double horizon_s)
+PlanningFactorData create_planning_factor_data(
+  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
+  const double horizon_s)
 {
-  if (planning_factor_interface == nullptr) {
-    return;
-  }
-
   const auto & path = context.reference_path;
   const double s_ego = compute_ego_frenet_state(context).s;
 
-  double s_stop = 0.0;
+  PlanningFactorData planning_factor_data;
+  double s_stop = path.length();
+
   if (
     const auto * bar = nearest_stop_bar(context, compiled_constraints, horizon_s, s_ego, s_stop)) {
     const auto & constraint = compiled_constraints.raw_constraints[bar->raw_index];
-    planning_factor_interface->add(
-      s_stop - s_ego, pose_on_path(path, s_stop), PlanningFactor::STOP,
-      safety_factors_of(constraint, context), true, 0.0, 0.0, detail_of(constraint.source));
+    planning_factor_data.safety_factors = safety_factors_of(constraint, context);
+    planning_factor_data.detail = detail_of(constraint.source);
   } else {
-    SafetyFactorArray safety_factors;
-    safety_factors.is_safe = true;
-    planning_factor_interface->add(
-      path.length() - s_ego, pose_on_path(path, path.length()), PlanningFactor::STOP,
-      safety_factors);
+    planning_factor_data.safety_factors.is_safe = true;
   }
-}
 
-void copy_planning_factors(
-  const PlanningFactorInterface * const from, PlanningFactorInterface * const to)
-{
-  if (from == nullptr || to == nullptr || from == to) {
-    return;
-  }
-  for (const auto & factor : from->get_factors()) {
-    const auto & points = factor.control_points;
-    if (points.size() == 1) {
-      to->add(
-        points[0].distance, points[0].pose, factor.behavior, factor.safety_factors,
-        factor.is_driving_forward, points[0].velocity, points[0].shift_length, factor.detail);
-    } else if (points.size() >= 2) {
-      to->add(
-        points[0].distance, points[1].distance, points[0].pose, points[1].pose, factor.behavior,
-        factor.safety_factors, factor.is_driving_forward, points[0].velocity, points[1].velocity,
-        points[0].shift_length, points[1].shift_length, factor.detail);
-    }
-  }
+  planning_factor_data.distance = s_stop - s_ego;
+  planning_factor_data.control_point_pose =
+    path.compute(std::clamp(s_stop, 0.0, path.length())).point.pose;
+
+  return planning_factor_data;
 }
 
 }  // namespace autoware::safety_planner

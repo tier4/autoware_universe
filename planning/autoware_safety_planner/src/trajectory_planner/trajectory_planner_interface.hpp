@@ -19,9 +19,7 @@
 #include "../context.hpp"
 #include "../type_alias.hpp"
 
-#include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <map>
 #include <memory>
@@ -52,15 +50,23 @@ struct PlannedTrajectory
   TurnIndicatorsCommand turn_indicators;
 };
 
+struct PlanningFactorData
+{
+  double distance;
+  Pose control_point_pose;
+  SafetyFactorArray safety_factors;
+  std::string detail;
+};
+
 struct TrajectoryPlannerResult
 {
   std::optional<PlannedTrajectory> normal_trajectory;
   std::optional<PlannedTrajectory> cautious_trajectory;
+  std::optional<PlanningFactorData> normal_planning_factor_data;
+  std::optional<PlanningFactorData> cautious_planning_factor_data;
   TrajectoryPlannerDebug normal_debug;
   TrajectoryPlannerDebug cautious_debug;
 };
-
-using PlanningFactorInterface = autoware::planning_factor_interface::PlanningFactorInterface;
 
 class TrajectoryPlannerInterface
 {
@@ -69,29 +75,10 @@ public:
   virtual ~TrajectoryPlannerInterface() = default;
 
   virtual void on_initialize(
-    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
-    rclcpp::Node * node)
+    const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params)
   {
     time_keeper_ = time_keeper;
     params_ = params;
-
-    if (node == nullptr) {
-      return;
-    }
-    normal_planning_factor_interface_ =
-      std::make_unique<PlanningFactorInterface>(node, "safety_planner_normal");
-    cautious_planning_factor_interface_ =
-      std::make_unique<PlanningFactorInterface>(node, "safety_planner_cautious");
-  }
-
-  void publish_planning_factors()
-  {
-    if (normal_planning_factor_interface_) {
-      normal_planning_factor_interface_->publish();
-    }
-    if (cautious_planning_factor_interface_) {
-      cautious_planning_factor_interface_->publish();
-    }
   }
 
   virtual std::string get_name() const = 0;
@@ -100,8 +87,6 @@ public:
 protected:
   mutable std::shared_ptr<TimeKeeper> time_keeper_{nullptr};
   Params params_;
-  std::unique_ptr<PlanningFactorInterface> normal_planning_factor_interface_;
-  std::unique_ptr<PlanningFactorInterface> cautious_planning_factor_interface_;
 };
 
 }  // namespace autoware::safety_planner
