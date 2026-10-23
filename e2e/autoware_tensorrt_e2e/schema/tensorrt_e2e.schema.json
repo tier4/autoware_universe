@@ -238,6 +238,12 @@
               "type": "number",
               "default": 200.0
             },
+            "warp_turn_lpf_tau_s": {
+              "type": "number",
+              "minimum": 0.0,
+              "default": 0.3,
+              "description": "Under planning_time, the turn during L in the pose the BEV maps are warped into is the yaw rate low-passed with this time constant (s) times L, instead of the measured turn, which carries the car's own steering wobble into the model. 0: the measured planning pose."
+            },
             "extractor": {
               "type": "object",
               "description": "Frozen BEVFusion-L feature extractor. The voxelization fields describe the network and are read from the model's ml_package file without defaults, as autoware_bevfusion reads its own.",

@@ -87,6 +87,12 @@ BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(no
       "bev_feature.warmup must be 'wait' or 'duplicate_current', got '" + warmup + "'");
   }
   cache_config_.duplicate_current_on_warmup = warmup == "duplicate_current";
+  const double warp_turn_lpf_tau_s =
+    node_.declare_parameter<double>("bev_feature.warp_turn_lpf_tau_s", 0.3);
+  if (!std::isfinite(warp_turn_lpf_tau_s) || warp_turn_lpf_tau_s < 0.0) {
+    throw std::runtime_error("bev_feature.warp_turn_lpf_tau_s must be finite and >= 0");
+  }
+  warp_target_ = BevWarpTarget(warp_turn_lpf_tau_s);
   cache_config_.pose_limits.translation_slack_m =
       node_.declare_parameter<double>("localization_reset.translation_slack_m",
                                       2.0);
@@ -424,6 +430,7 @@ bool BevFeatureInputProvider::collect(
     cache_->reset();
     history_ptr_ = nullptr;
     pending_inserted_ = false;
+    warp_target_.reset();
     localization_generation_ = ego.localization_generation;
   }
   if (!pending_inserted_) {
@@ -453,7 +460,14 @@ bool BevFeatureInputProvider::collect(
   // frame under cloud_stamp -- it is then copied, not warped -- and the newer planning
   // pose under planning_time, where the current map is warped like the older ones, as in
   // training. A pass that plans from a different pose than the last one rebuilds.
-  const auto target_pose = se2_pose(ego.odometry.pose.pose);
+  // Under planning_time the heading takes the turn during L from the low-passed yaw rate
+  // (BevWarpTarget): the measured one carries the car's own steering wobble into the model.
+  auto target_pose = se2_pose(ego.odometry.pose.pose);
+  if (warp_target_.enabled() && ego.stamp != ego.sensor_stamp) {
+    target_pose = warp_target_.update(
+      se2_pose(ego.sensor_pose), target_pose, ego.odometry.twist.twist.angular.z,
+      (ego.stamp - ego.sensor_stamp).seconds(), ego.stamp.seconds());
+  }
   if (!history_ptr_ || target_pose != history_target_pose_) {
     if (const int64_t substituted = cache_->substituted_frames(); substituted > 0) {
       RCLCPP_WARN_THROTTLE(

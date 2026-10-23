@@ -70,6 +70,11 @@
       substitute_max_seconds: 0.2
       warmup: "wait"  # "wait" or "duplicate_current"
       max_delay_ms: 200.0
+      # Under planning_time, the turn during L in the pose the BEV maps are warped into is the
+      # yaw rate low-passed with this time constant times L, not the measured turn, which
+      # carries the car's own steering wobble into the model (2026-10-23 taxi turns).
+      # 0: the measured planning pose.
+      warp_turn_lpf_tau_s: 0.3
       extractor:
         engine_path: ""  # empty: <onnx stem>.trt.engine beside the ONNX (its layer dump must not overwrite <stem>.json)
         onnx_path: $(var model_path)/$(var extractor_onnx)

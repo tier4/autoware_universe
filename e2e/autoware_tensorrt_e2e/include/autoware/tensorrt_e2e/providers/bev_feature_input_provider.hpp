@@ -17,6 +17,7 @@
 
 #include "autoware/tensorrt_e2e/bev_feature/temporal_bev_cache.hpp"
 #include "autoware/tensorrt_e2e/bev_feature/trt_bev_feature_extractor.hpp"
+#include "autoware/tensorrt_e2e/bev_warp_target.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
 #include "autoware/tensorrt_e2e/postprocess/detection_postprocessor.hpp"
 
@@ -177,6 +178,9 @@ private:
   const float * history_ptr_{nullptr};
   //! The pose `history_ptr_` was warped into (see collect()).
   std::array<double, 4> history_target_pose_{};
+  //! Under planning_time, the heading of that pose with the turn during L smoothed
+  //! (`bev_feature.warp_turn_lpf_tau_s`, see BevWarpTarget).
+  BevWarpTarget warp_target_{0.0};
 
   std::unique_ptr<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>
     pointcloud_sub_;
