@@ -41,6 +41,21 @@
     tick_trigger: "timer"
     shift_x: false
 
+    # Start assist: right after the vehicle is switched to autonomous (~/input/control_mode
+    # reports AUTONOMOUS) while slower than standstill_speed_mps, publish a straight
+    # acceleration ramp along the current heading instead of the model's plan: distance_m
+    # reached duration_s after engaging (2 * distance_m / duration_s^2), at most max_speed_mps.
+    # The model takes over once the measured speed reaches handover_speed_mps, or after
+    # timeout_s. Off by default: during the assist the model cannot stop the vehicle.
+    start_assist:
+      enable: false
+      distance_m: 5.0
+      duration_s: 4.0
+      max_speed_mps: 2.5
+      handover_speed_mps: 0.5
+      timeout_s: 4.0
+      standstill_speed_mps: 0.3
+
     bev_feature:
       # The deployment contract shipped with the artifacts is the source of
       # truth for cache semantics; the ml_package values are the fallback.

@@ -250,7 +250,19 @@ phase against the lidar-triggered cameras is fixed by when the node started, so 
 was 0-100 ms older depending on the launch; triggered by the frame it is always as fresh as decode
 allows, and a side camera triggered just after camera 0 is waited for the same way every tick.
 Without frames the tick still runs every two periods, so diagnostics report the stale camera.
-`tick_trigger:=timer` restores the timer. Sensor callbacks only cache messages; inference
+`tick_trigger:=timer` restores the timer.
+
+`start_assist` (off by default; launch arguments `start_assist`, `start_assist_distance_m`,
+`start_assist_duration_s`, `start_assist_max_speed_mps`, `start_assist_handover_speed_mps`) gets
+the vehicle moving when it is switched to autonomous at standstill, where the model tends to keep
+planning a stop. On the tick that first sees `~/input/control_mode`
+(`/vehicle/status/control_mode`) report AUTONOMOUS while the vehicle is slower than
+`standstill_speed_mps`, the published trajectory becomes a straight run along the current heading
+with a constant-acceleration ramp from the engagement (`distance_m` after `duration_s`, at most
+`max_speed_mps`). The model keeps running and its plan is published again once the measured speed
+reaches `handover_speed_mps` or after `timeout_s`. A stop later in the same autonomous session is
+the model's; so is an engagement while moving. `~/debug/start_assist/active` shows when it is in
+charge. Sensor callbacks only cache messages; inference
 happens in the tick. Processing
 time is published on `~/debug/processing_time_ms` and budget overruns are reported through
 diagnostics.

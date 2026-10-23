@@ -43,6 +43,19 @@
           "description": "What starts a planning tick: a timer at planning_frequency_hz, or the arrival of a provider's anchor input (LatentDrive: each camera 0 frame), at most at planning_frequency_hz. Falls back to the timer when no provider can pace the tick.",
           "default": "timer"
         },
+        "start_assist": {
+          "type": "object",
+          "description": "After engaging at standstill, publish a straight acceleration ramp instead of the model's plan until the vehicle moves.",
+          "properties": {
+            "enable": { "type": "boolean", "default": false },
+            "distance_m": { "type": "number", "default": 5.0, "exclusiveMinimum": 0.0, "description": "Distance reached duration_s after engaging." },
+            "duration_s": { "type": "number", "default": 4.0, "exclusiveMinimum": 0.0 },
+            "max_speed_mps": { "type": "number", "default": 2.5, "exclusiveMinimum": 0.0 },
+            "handover_speed_mps": { "type": "number", "default": 0.5, "minimum": 0.0, "description": "Measured speed at which the model takes over." },
+            "timeout_s": { "type": "number", "default": 4.0, "minimum": 0.0, "description": "The model takes over after this long regardless." },
+            "standstill_speed_mps": { "type": "number", "default": 0.3, "minimum": 0.0, "description": "The assist only starts when engaged slower than this." }
+          }
+        },
         "shift_x": {
           "type": "boolean",
           "description": "Use the vehicle center (instead of base_link) as the model reference frame, mirroring the diffusion planner option.",

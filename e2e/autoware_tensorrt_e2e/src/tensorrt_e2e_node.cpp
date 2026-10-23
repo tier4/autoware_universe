@@ -62,6 +62,18 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
   pub_objects_ = create_publisher<PredictedObjects>("~/output/predicted_objects", rclcpp::QoS(1));
   pub_processing_time_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
+  start_assist_ = std::make_unique<StartAssist>(start_assist_params_);
+  pub_start_assist_active_ = create_publisher<autoware_internal_debug_msgs::msg::BoolStamped>(
+    "~/debug/start_assist/active", 1);
+  if (start_assist_params_.enable) {
+    RCLCPP_INFO(
+      get_logger(),
+      "Start assist on: after engaging at standstill, %.1f m in %.1f s (%.2f m/s^2, at most "
+      "%.1f m/s) until %.2f m/s or %.1f s, then the model",
+      start_assist_params_.distance_m, start_assist_params_.duration_s,
+      start_assist_->acceleration(), start_assist_params_.max_speed_mps,
+      start_assist_params_.handover_speed_mps, start_assist_params_.timeout_s);
+  }
   diagnostics_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
 
   try {
@@ -200,6 +212,17 @@ void TensorrtE2eNode::set_up_params()
     declare_parameter<bool>("postprocess.prepend_ego_pose", false);
   postprocess_params_.generator_name =
     declare_parameter<std::string>("postprocess.generator_name", "TensorrtE2e");
+
+  start_assist_params_.enable = declare_parameter<bool>("start_assist.enable", false);
+  start_assist_params_.distance_m = declare_parameter<double>("start_assist.distance_m", 5.0);
+  start_assist_params_.duration_s = declare_parameter<double>("start_assist.duration_s", 4.0);
+  start_assist_params_.max_speed_mps =
+    declare_parameter<double>("start_assist.max_speed_mps", 2.5);
+  start_assist_params_.handover_speed_mps =
+    declare_parameter<double>("start_assist.handover_speed_mps", 0.5);
+  start_assist_params_.timeout_s = declare_parameter<double>("start_assist.timeout_s", 4.0);
+  start_assist_params_.standstill_speed_mps =
+    declare_parameter<double>("start_assist.standstill_speed_mps", 0.3);
 }
 
 void TensorrtE2eNode::create_providers()
@@ -365,6 +388,48 @@ std::optional<std::string> TensorrtE2eNode::find_invalid_tensor(const TensorMap 
   return std::nullopt;
 }
 
+void TensorrtE2eNode::apply_start_assist(
+  const EgoFrame & ego, const rclcpp::Time & now, TrajectoryPostprocessor::Output & output)
+{
+  using ControlModeReport = autoware_vehicle_msgs::msg::ControlModeReport;
+  const auto control_mode = sub_control_mode_.take_data();
+  const bool engaged = control_mode && control_mode->mode == ControlModeReport::AUTONOMOUS;
+  const double speed = ego.odometry.twist.twist.linear.x;
+  const double t = now.seconds();
+  switch (start_assist_->update(engaged, speed, t)) {
+    case StartAssist::Event::kStarted:
+      RCLCPP_INFO(get_logger(), "Start assist: engaged at %.2f m/s, ramping up", speed);
+      break;
+    case StartAssist::Event::kHandedOver:
+      RCLCPP_INFO(get_logger(), "Start assist: %.2f m/s reached, the model takes over", speed);
+      break;
+    case StartAssist::Event::kTimedOut:
+      RCLCPP_WARN(
+        get_logger(), "Start assist: timed out at %.2f m/s, the model takes over", speed);
+      break;
+    case StartAssist::Event::kDisengaged:
+      RCLCPP_INFO(get_logger(), "Start assist: disengaged, stopped");
+      break;
+    case StartAssist::Event::kNone:
+      break;
+  }
+  autoware_internal_debug_msgs::msg::BoolStamped active;
+  active.stamp = now;
+  active.data = start_assist_->active();
+  pub_start_assist_active_->publish(active);
+  if (!start_assist_->active()) {
+    return;
+  }
+  // The model still ran this tick (its frame and status history keep up); only its plan is
+  // replaced.
+  const auto points = start_assist_->make_points(
+    ego.odometry.pose.pose, t, postprocess_params_.time_step, postprocess_params_.horizon_seconds);
+  output.trajectory.points = points;
+  for (auto & candidate : output.candidate_trajectories.candidate_trajectories) {
+    candidate.points = points;
+  }
+}
+
 void TensorrtE2eNode::on_timer()
 {
   stop_watch_.tic("processing_time");
@@ -439,6 +504,8 @@ void TensorrtE2eNode::on_timer()
     finish(DiagnosticStatus::ERROR, e.what());
     return;
   }
+
+  apply_start_assist(*ego, now, output);
 
   pub_trajectory_->publish(output.trajectory);
   pub_trajectories_->publish(output.candidate_trajectories);

@@ -19,6 +19,7 @@
 #include "autoware/tensorrt_e2e/input_provider.hpp"
 #include "autoware/tensorrt_e2e/postprocess/trajectory_postprocessor.hpp"
 #include "autoware/tensorrt_e2e/providers/context_input_provider.hpp"
+#include "autoware/tensorrt_e2e/start_assist.hpp"
 
 #include <autoware/diffusion_planner/utils/arg_reader.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
@@ -27,10 +28,12 @@
 #include <autoware_utils_system/stop_watch.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_debug_msgs/msg/bool_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -159,6 +162,16 @@ private:
   autoware_utils::InterProcessPollingSubscriber<Odometry> sub_odometry_{this, "~/input/odometry"};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> sub_acceleration_{
     this, "~/input/acceleration"};
+
+  // Start assist: replaces the plan right after an engagement at standstill (see StartAssist).
+  void apply_start_assist(
+    const EgoFrame & ego, const rclcpp::Time & now, TrajectoryPostprocessor::Output & output);
+  StartAssistParams start_assist_params_;
+  std::unique_ptr<StartAssist> start_assist_;
+  autoware_utils::InterProcessPollingSubscriber<autoware_vehicle_msgs::msg::ControlModeReport>
+    sub_control_mode_{this, "~/input/control_mode"};
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::BoolStamped>::SharedPtr
+    pub_start_assist_active_;
   std::unique_ptr<DiagnosticsInterface> diagnostics_;
   unique_identifier_msgs::msg::UUID generator_uuid_;
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch_;
