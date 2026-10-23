@@ -39,8 +39,10 @@
             base: 0.3
             pedestrian: 0.5
             bicycle: 0.5
-          front: 1.0
-          rear: 0.0
+          front:
+            base: 1.0
+          rear:
+            base: 0.0
         ego_reaction_braking_delay:
           nominal: 0.5
           departure: 1.0
@@ -98,9 +100,12 @@
         stop_distance_margin: 2.0
         ego_total_braking_delay: 0.4
         ego_footprint_margin:
-          lateral: 0.0
-          front: 0.0
-          rear: 0.0
+          lateral:
+            base: 0.0
+          front:
+            base: 0.0
+          rear:
+            base: 0.0
         object_assumed_acceleration:
           base: -4.0
         error_threshold:

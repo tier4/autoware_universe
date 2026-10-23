@@ -363,9 +363,10 @@ struct RssParams
       extract_labeled_param<std::vector<std::string>>(rss.enable_assessment, key));
     stop_distance_margin = extract_labeled_param<double>(rss.stop_distance_margin, key);
     ego_total_braking_delay = extract_labeled_param<double>(rss.ego_total_braking_delay, key);
-    ego_footprint_margin.lateral = rss.ego_footprint_margin.lateral;
-    ego_footprint_margin.front = rss.ego_footprint_margin.front;
-    ego_footprint_margin.rear = rss.ego_footprint_margin.rear;
+    ego_footprint_margin.lateral =
+      extract_labeled_param<double>(rss.ego_footprint_margin.lateral, key);
+    ego_footprint_margin.front = extract_labeled_param<double>(rss.ego_footprint_margin.front, key);
+    ego_footprint_margin.rear = extract_labeled_param<double>(rss.ego_footprint_margin.rear, key);
     object_assumed_acceleration =
       extract_labeled_param<double>(rss.object_assumed_acceleration, key);
     error_threshold.ego_acceleration =
