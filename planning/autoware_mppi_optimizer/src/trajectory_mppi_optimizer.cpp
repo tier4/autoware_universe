@@ -431,6 +431,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   pending_debug_.reset();
   pending_markers_.markers.clear();
   debug_pending_ = false;
+  input_collision_activation_source_ = InputCollisionActivationSource::none;
 
   if (!params_.enabled) {
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::STALE;
@@ -500,9 +501,13 @@ ProcessingResult TrajectoryMppiOptimizer::process(
         return skip_optimization(
           level, "MPPI input trajectory has fewer than 2 points", input.header);
       }
-      if (!is_input_collision_triggered(
-            input, avoidance_targets, mppi_road_borders, data.lanelet_map_bin->header.frame_id,
-            *vehicle_params_, params_)) {
+      const bool collision_triggered = is_input_collision_triggered(
+        input, avoidance_targets, mppi_road_borders, data.lanelet_map_bin->header.frame_id,
+        *vehicle_params_, params_);
+      input_collision_activation_source_ = input_collision_activation_hold_.update(
+        collision_triggered, get_node_ptr()->now().seconds(),
+        params_.min_input_collision_activation_duration_s);
+      if (input_collision_activation_source_ == InputCollisionActivationSource::none) {
         constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::OK;
         return skip_optimization(level, "MPPI skipped: no enabled input collision", input.header);
       }
@@ -759,6 +764,8 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   } catch (const std::exception & error) {
     if (optimizer_) optimizer_->invalidateNominalWarmStart();
     steering_filter_.reset();
+    input_collision_activation_hold_.reset();
+    input_collision_activation_source_ = InputCollisionActivationSource::none;
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     publish_enabled(false);
     clear_markers(data.candidate_header);
@@ -777,6 +784,8 @@ void TrajectoryMppiOptimizer::reset_optimizer()
   cost_params_.reset();
   vehicle_params_.reset();
   steering_filter_.reset();
+  input_collision_activation_hold_.reset();
+  input_collision_activation_source_ = InputCollisionActivationSource::none;
   object_selector_ = autoware::avoidance_target_detector::TrackedObjectSelector{};
 }
 
@@ -785,6 +794,8 @@ ProcessingResult TrajectoryMppiOptimizer::skip_optimization(
 {
   if (optimizer_) optimizer_->invalidateNominalWarmStart();
   steering_filter_.reset();
+  input_collision_activation_hold_.reset();
+  input_collision_activation_source_ = InputCollisionActivationSource::none;
   publish_enabled(false);
   clear_markers(header);
   publish_status_diagnostic(level, message, rclcpp::Time{header.stamp});
@@ -959,6 +970,11 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
 {
   using diagnostic_msgs::msg::DiagnosticStatus;
   cost_diagnostics_->clear();
+  if (params_.optimize_only_on_input_collision) {
+    cost_diagnostics_->add_key_value(
+      "input_collision/activation_source",
+      std::string{to_string(input_collision_activation_source_)});
+  }
   const auto & cost = debug.cost_breakdown;
   cost_diagnostics_->add_key_value("controller_baseline_cost", debug.baseline_cost);
   cost_diagnostics_->add_key_value("mppi/lambda_used", debug.lambda_used);
@@ -1139,6 +1155,11 @@ void TrajectoryMppiOptimizer::publish_status_diagnostic(
   const std::uint8_t level, const std::string & message, const rclcpp::Time & stamp)
 {
   cost_diagnostics_->clear();
+  if (params_.optimize_only_on_input_collision) {
+    cost_diagnostics_->add_key_value(
+      "input_collision/activation_source",
+      std::string{to_string(input_collision_activation_source_)});
+  }
   cost_diagnostics_->add_key_value(
     "nominal/previous_mppi_trajectory_applied", previous_mppi_trajectory_applied_);
   cost_diagnostics_->add_key_value(

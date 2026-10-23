@@ -62,6 +62,12 @@ if(BUILD_TESTING)
   )
   target_include_directories(test_mppi_application_status PRIVATE include)
   set_target_properties(test_mppi_application_status PROPERTIES CXX_STANDARD 17)
+
+  ament_add_gtest(test_input_collision_activation_hold
+    test/test_input_collision_activation_hold.cpp
+  )
+  target_include_directories(test_input_collision_activation_hold PRIVATE include)
+  set_target_properties(test_input_collision_activation_hold PROPERTIES CXX_STANDARD 17)
 endif()
 
 # Find CUDA

@@ -29,6 +29,12 @@ trajectory_mppi_optimizer:
     default_value: false
     description: In conditional mode, add each obstacle or road-border safe margin to its collision margin for activation
     read_only: false
+  min_input_collision_activation_duration_s:
+    type: double
+    default_value: 0.0
+    description: Minimum time in seconds to keep conditional MPPI active after the last matching input collision
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   limit_velocity_from_map:
     type: bool
     default_value: false

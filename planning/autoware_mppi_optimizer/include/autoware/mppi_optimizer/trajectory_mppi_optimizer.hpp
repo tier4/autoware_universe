@@ -17,6 +17,7 @@
 
 #include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/input_collision_activation_hold.hpp"
 #include "autoware/mppi_optimizer/mppi_application_status.hpp"
 #include "autoware/mppi_optimizer/preferred_lane_centerline.hpp"
 
@@ -150,6 +151,9 @@ private:
 
   /** Application result from the preceding primary-candidate cycle. */
   bool previous_mppi_trajectory_applied_{false};
+  InputCollisionActivationHold input_collision_activation_hold_;
+  InputCollisionActivationSource input_collision_activation_source_{
+    InputCollisionActivationSource::none};
 
   rclcpp::Publisher<Trajectory>::SharedPtr reference_trajectory_pub_;
   rclcpp::Publisher<Trajectory>::SharedPtr nominal_control_trajectory_pub_;
