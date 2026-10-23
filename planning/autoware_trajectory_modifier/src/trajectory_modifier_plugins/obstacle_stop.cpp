@@ -298,7 +298,7 @@ ProcessingResult ObstacleStop::process(
   }
 
   if (!stop_modified && cruise_report_) {
-    add_cruise_planning_factor(cruise_report_.value());
+    add_cruise_planning_factor(cruise_report_.value(), input.current_odometry->pose.pose);
   }
 
   traj_points = std::move(trajectory);
@@ -346,7 +346,7 @@ bool ObstacleStop::apply_cruise(
   return true;
 }
 
-void ObstacleStop::add_cruise_planning_factor(const CruiseReport & report)
+void ObstacleStop::add_cruise_planning_factor(const CruiseReport & report, const geometry_msgs::msg::Pose & ego_pose)
 {
   if (report.target.index >= debug_data_.target_objects.size()) {
     return;
@@ -365,7 +365,7 @@ void ObstacleStop::add_cruise_planning_factor(const CruiseReport & report)
   safety_factors.factors.push_back(safety_factor);
 
   planning_factor_interface_->add(
-    report.gap(), pose, PlanningFactor::SLOW_DOWN, safety_factors, true, report.cruise_velocity);
+    report.gap(), ego_pose, PlanningFactor::SLOW_DOWN, safety_factors, true, report.cruise_velocity);
 }
 
 bool ObstacleStop::set_stop_point(
