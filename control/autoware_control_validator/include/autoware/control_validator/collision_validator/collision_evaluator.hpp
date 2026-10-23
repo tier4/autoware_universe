@@ -50,9 +50,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator::hazard
-{
-namespace geometry
+namespace autoware::control_validator::collision_validator
 {
 namespace detail
 {
@@ -100,7 +98,6 @@ bool has_separating_axis(
 
   return false;
 }
-}  // namespace detail
 
 template <typename ConvexPolygon>
 bool intersects_sat(const ConvexPolygon & poly_a, const ConvexPolygon & poly_b)
@@ -112,8 +109,8 @@ bool intersects_sat(const ConvexPolygon & poly_a, const ConvexPolygon & poly_b)
     return false;
   }
 
-  return !detail::has_separating_axis(ring_a, ring_a, ring_b) &&
-         !detail::has_separating_axis(ring_b, ring_a, ring_b);
+  return !has_separating_axis(ring_a, ring_a, ring_b) &&
+         !has_separating_axis(ring_b, ring_a, ring_b);
 }
 
 Eigen::Isometry2d pose_to_isometry(const geometry_msgs::msg::Pose & pose);
@@ -125,20 +122,8 @@ std::vector<Point2d> create_base_polygon(const autoware_perception_msgs::msg::Sh
 Polygon2d to_polygon2d(
   const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape);
 
-// Closed polygon of one footprint sample.
-Polygon2d to_polygon2d(const std::array<Point2d, 4> & quad);
-Polygon2d to_polygon2d(const std::vector<Point2d> & ring);
-}  // namespace geometry
-
-namespace pose
-{
 void correct_vehicle_yaw(PoseTrajectory & poses, double initial_yaw, double rear_axle_length);
-}  // namespace pose
 
-namespace trajectory
-{
-namespace footprint
-{
 struct EgoDimensions
 {
   double front_offset{0.0};
@@ -155,7 +140,6 @@ FootprintTrajectory compute_footprint_trajectory(
 
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const EgoDimensions & ego_dimensions);
-}  // namespace footprint
 
 TimeTrajectory serialize_times(const autoware_planning_msgs::msg::Trajectory & trajectory);
 TravelDistanceTrajectory serialize_distances(
@@ -194,10 +178,7 @@ TrajectoryData generate_predicted_path_trajectory(
  * @brief Trajectory of a static polygon: the same footprint at every sample time.
  */
 TrajectoryData generate_static_trajectory(const Polygon2d & polygon, const TimeTrajectory & times);
-}  // namespace trajectory
 
-namespace collision_timing_assessment
-{
 struct CollisionStep
 {
   size_t ego_index;
@@ -219,7 +200,7 @@ std::optional<CollisionStep> find_first_collision(
  */
 std::optional<size_t> find_first_collision(
   const TrajectoryData & ego, const Point2d & point, const std::vector<bool> & ego_stopped = {});
-}  // namespace collision_timing_assessment
+}  // namespace detail
 
 struct CollisionCandidate
 {
@@ -316,7 +297,7 @@ private:
 
   std::shared_ptr<const ObjectMotion> make_object_motion(
     const autoware_perception_msgs::msg::PredictedObject & object, double time_offset,
-    double horizon, const TimeTrajectory & static_times) const;
+    double horizon, const detail::TimeTrajectory & static_times) const;
 
   std::vector<std::shared_ptr<const ObjectMotion>> build_object_motions(
     const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
@@ -342,6 +323,6 @@ private:
 
   CollisionEvaluatorParam param_;
 };
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator::collision_validator
 
 #endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_

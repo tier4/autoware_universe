@@ -35,12 +35,19 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator
 {
 namespace
 {
 using autoware_control_validator::msg::HazardCandidate;
 using autoware_control_validator::msg::HazardCandidateArray;
+using collision_validator::CollisionCandidate;
+using collision_validator::CollisionEvaluatorParam;
+using collision_validator::ObjectMargin;
+using collision_validator::Point2d;
+using collision_validator::PointCloudParam;
+using collision_validator::PointCluster;
+using collision_validator::Polygon2d;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
@@ -62,9 +69,9 @@ std::optional<uint8_t> label_from_name(const std::string & name)
   return std::nullopt;
 }
 
-PointCloudParam to_pointcloud_param(const ::control_validator::Params & params)
+PointCloudParam to_pointcloud_param(const ::control_validator::Params::CollisionValidator & params)
 {
-  const auto & p = params.hazard_warning.pointcloud;
+  const auto & p = params.pointcloud;
   PointCloudParam out;
   out.roi_rear = p.roi.rear;
   out.roi_front_margin = p.roi.front_margin;
@@ -78,9 +85,10 @@ PointCloudParam to_pointcloud_param(const ::control_validator::Params & params)
   return out;
 }
 
-CollisionEvaluatorParam to_collision_evaluator_param(const ::control_validator::Params & params)
+CollisionEvaluatorParam to_collision_evaluator_param(
+  const ::control_validator::Params::CollisionValidator & params)
 {
-  const auto & p = params.hazard_warning;
+  const auto & p = params;
   CollisionEvaluatorParam out;
   out.max_time = p.prediction_horizon;
   out.time_resolution = p.time_resolution;
@@ -160,9 +168,9 @@ CollisionValidator::CollisionValidator(
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
 : logger_(logger),
   time_keeper_(time_keeper),
-  params_(params.hazard_warning),
-  pointcloud_preprocessor_(logger, to_pointcloud_param(params), time_keeper),
-  collision_evaluator_(to_collision_evaluator_param(params))
+  params_(params.collision_validator),
+  pointcloud_preprocessor_(logger, to_pointcloud_param(params.collision_validator), time_keeper),
+  collision_evaluator_(to_collision_evaluator_param(params.collision_validator))
 {
   update_parameters(params);
   if (node) {
@@ -175,94 +183,9 @@ CollisionValidator::CollisionValidator(
 
 void CollisionValidator::update_parameters(const ::control_validator::Params & params)
 {
-  params_ = params.hazard_warning;
-  enable_ = validate_parameters(params);
-  pointcloud_preprocessor_.update_parameters(to_pointcloud_param(params));
-  collision_evaluator_.update_parameters(to_collision_evaluator_param(params));
-}
-
-bool CollisionValidator::validate_parameters(const ::control_validator::Params & params) const
-{
-  const auto & p = params.hazard_warning;
-  const auto & times = p.braking.reaction_times;
-  if (times.size() != 3) {
-    RCLCPP_ERROR(
-      logger_,
-      "hazard_warning.braking.reaction_times must have 3 elements (%zu). Collision warning "
-      "disabled.",
-      times.size());
-    return false;
-  }
-  for (const auto tau : times) {
-    if (!std::isfinite(tau) || tau < 0.0) {
-      RCLCPP_ERROR(
-        logger_,
-        "hazard_warning.braking.reaction_times contains an undecided or invalid value (%f). "
-        "Collision warning disabled.",
-        tau);
-      return false;
-    }
-  }
-  for (size_t i = 1; i < times.size(); ++i) {
-    if (times[i] >= times[i - 1]) {
-      RCLCPP_ERROR(
-        logger_,
-        "hazard_warning.braking.reaction_times must be strictly descending. Collision warning "
-        "disabled.");
-      return false;
-    }
-  }
-  if (!std::isfinite(p.braking.deceleration) || p.braking.deceleration <= 0.0) {
-    RCLCPP_ERROR(
-      logger_, "hazard_warning.braking.deceleration must be > 0 (%f). Collision warning disabled.",
-      p.braking.deceleration);
-    return false;
-  }
-  if (
-    !std::isfinite(p.collision_cos_threshold) || p.collision_cos_threshold < -1.0 ||
-    p.collision_cos_threshold > 1.0) {
-    RCLCPP_ERROR(
-      logger_,
-      "hazard_warning.collision_cos_threshold must be in [-1, 1] (%f). Collision warning disabled.",
-      p.collision_cos_threshold);
-    return false;
-  }
-  const auto rear_axle_ratio = p.vehicle_yaw.rear_axle_ratio;
-  if (!std::isfinite(rear_axle_ratio) || rear_axle_ratio < 0.0 || rear_axle_ratio > 0.5) {
-    RCLCPP_ERROR(
-      logger_,
-      "hazard_warning.vehicle_yaw.rear_axle_ratio must be in [0, 0.5] (%f). Collision warning "
-      "disabled.",
-      rear_axle_ratio);
-    return false;
-  }
-  for (const auto & name : p.enabled_object_classes) {
-    if (!label_from_name(name)) {
-      RCLCPP_ERROR(
-        logger_,
-        "hazard_warning.enabled_object_classes: unknown class name '%s'. Collision warning "
-        "disabled.",
-        name.c_str());
-      return false;
-    }
-  }
-  if (!(p.time_resolution > 0.0)) {
-    RCLCPP_ERROR(
-      logger_, "hazard_warning.time_resolution must be > 0 (%f). Collision warning disabled.",
-      p.time_resolution);
-    return false;
-  }
-  const auto & pc = p.pointcloud;
-  if (
-    !(pc.voxel_size > 0.0) || !(pc.cluster_tolerance > 0.0) || pc.max_voxels < 1 ||
-    pc.min_cluster_size < 1) {
-    RCLCPP_ERROR(
-      logger_,
-      "hazard_warning.pointcloud: voxel_size and cluster_tolerance must be > 0, max_voxels and "
-      "min_cluster_size must be >= 1. Collision warning disabled.");
-    return false;
-  }
-  return true;
+  params_ = params.collision_validator;
+  pointcloud_preprocessor_.update_parameters(to_pointcloud_param(params_));
+  collision_evaluator_.update_parameters(to_collision_evaluator_param(params_));
 }
 
 bool CollisionValidator::is_valid_vehicle_info(const vehicle_info_utils::VehicleInfo & vehicle_info)
@@ -358,8 +281,8 @@ void CollisionValidator::validate(
 {
   update_history(odom, objects);
   if (
-    !params_.enable || !enable_ || predicted_trajectory.points.size() < 2 ||
-    objects_history_.empty() || (params_.enable_pointcloud && !pointcloud)) {
+    predicted_trajectory.points.size() < 2 || objects_history_.empty() ||
+    (params_.enable_pointcloud && !pointcloud)) {
     return;
   }
   if (!is_valid_vehicle_info(vehicle_info)) {
@@ -525,4 +448,4 @@ void CollisionValidator::publish_debug(
   }
   pub_collision_markers_->publish(markers);
 }
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator

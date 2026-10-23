@@ -43,9 +43,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
-#include <cmath>
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -291,33 +289,14 @@ public:
     params_.enable_developer_marker =
       params.uncrossable_bound_departure_validator.enable_developer_marker;
     params_.boundary_types_to_detect = params.uncrossable_bound_departure_validator.boundary_types;
-    // CAUTION stage for the hazard warning. NaN (undecided) or a value tighter than the CRITICAL
-    // counterpart disables the stage (-inf), so that CRITICAL stays a subset of CAUTION.
     const auto & p = params.uncrossable_bound_departure_validator;
-    const bool caution_valid =
-      std::isfinite(p.caution_departure_lateral_th_m) &&
-      p.caution_departure_lateral_th_m >= params_.critical_departure_lateral_th_m &&
-      std::isfinite(p.caution_time_to_departure_cutoff_s) &&
-      p.caution_time_to_departure_cutoff_s >= params_.time_to_departure_cutoff_s &&
-      std::isfinite(p.caution_brake_delay_s) && p.caution_brake_delay_s >= params_.brake_delay_s;
-    params_.caution_departure_lateral_th_m =
-      caution_valid ? p.caution_departure_lateral_th_m : -std::numeric_limits<double>::infinity();
-    params_.caution_time_to_departure_cutoff_s =
-      caution_valid ? p.caution_time_to_departure_cutoff_s : params_.time_to_departure_cutoff_s;
-    params_.caution_brake_delay_s = caution_valid ? p.caution_brake_delay_s : params_.brake_delay_s;
+    params_.enable_caution = p.enable_caution;
+    params_.caution_departure_lateral_th_m = p.caution_departure_lateral_th_m;
+    params_.caution_time_to_departure_cutoff_s = p.caution_time_to_departure_cutoff_s;
+    params_.caution_brake_delay_s = p.caution_brake_delay_s;
     params_.caution_on_time_buffer_s = p.caution_on_time_buffer_s;
     params_.caution_off_time_buffer_s = p.caution_off_time_buffer_s;
-    enable_road_border_ = p.enable_road_border;
-    departure_risk_level_.reset();
-    if (p.departure_risk_level >= 1 && p.departure_risk_level <= 3) {
-      departure_risk_level_ = static_cast<uint8_t>(p.departure_risk_level);
-    } else {
-      RCLCPP_ERROR(
-        logger_,
-        "uncrossable_bound_departure_validator.departure_risk_level must be 1 to 3 (%ld). "
-        "Departure warning disabled.",
-        static_cast<int64_t>(p.departure_risk_level));
-    }
+    departure_risk_level_ = static_cast<uint8_t>(p.departure_risk_level);
     if (checker_) {
       checker_->update_parameters(params_);
     }
@@ -333,17 +312,15 @@ public:
     const Odometry & kinematics, const AccelWithCovarianceStamped & acceleration,
     const lanelet::LaneletMapPtr & lanelet_map,
     const vehicle_info_utils::VehicleInfo & vehicle_info,
-    visualization_msgs::msg::MarkerArray & debug_markers,
-    hazard::HazardWarningSources & hazard_sources);
+    visualization_msgs::msg::MarkerArray & debug_markers, HazardWarningSources & hazard_sources);
 
 private:
   bool enable_{true};
   rclcpp::Logger logger_;
   boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
   std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> checker_;
-  boundary_departure_checker::HysteresisStates hysteresis_states_;
-  bool enable_road_border_{true};
-  std::optional<uint8_t> departure_risk_level_;
+  boundary_departure_checker::HysteresisStatePair hysteresis_state_pair_;
+  uint8_t departure_risk_level_{0};
 };
 
 /**
@@ -423,14 +400,6 @@ private:
    */
   void validation_filtering(ControlValidatorStatus & res);
 
-  /**
-   * @brief Hazard warning of one cycle: collision evaluation, alert assembly and publishing
-   * @param hazard_sources sources of this cycle; the departure field is already written
-   */
-  void run_hazard_warning(
-    const Trajectory & predicted_trajectory, const Odometry & kinematics,
-    hazard::HazardWarningSources & hazard_sources);
-
   // Subscribers and publishers
   rclcpp::Subscription<Control>::SharedPtr sub_control_cmd_;
   autoware_utils::InterProcessPollingSubscriber<OperationModeState>::SharedPtr
@@ -489,8 +458,8 @@ private:
   OverrunValidator overrun_validator;
   YawValidator yaw_validator;
   UncrossableBoundDepartureValidator uncrossable_bound_departure_validator;
-  hazard::CollisionValidator collision_validator;
-  hazard::HazardWarning hazard_warning;
+  CollisionValidator collision_validator;
+  HazardWarning hazard_warning;
 };
 }  // namespace autoware::control_validator
 

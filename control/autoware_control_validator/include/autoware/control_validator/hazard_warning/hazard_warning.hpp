@@ -35,23 +35,21 @@
 #include <memory>
 #include <optional>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator
 {
-using autoware_control_validator::msg::HazardAlert;
-using autoware_utils_geometry::Point2d;
-using autoware_utils_geometry::Polygon2d;
-
+namespace hazard_warning
+{
 constexpr size_t kNumSectors = 8;
 
 struct HazardWarningParam
 {
   bool enable{true};
   double min_alert_duration{0.5};
-  double sector_radius_m{60.0};
   double sector_boundary_tolerance_deg{1.0};
   /// Bearing ranges [deg] in HazardAlert sector order (FRONT, FRONT_RIGHT, ... FRONT_LEFT).
   std::array<std::array<double, 2>, kNumSectors> sector_ranges{};
 };
+}  // namespace hazard_warning
 
 /**
  * @brief Sector assignment and latching of the hazard sources, and assembly of HazardAlert.
@@ -71,39 +69,38 @@ public:
 
   void update_parameters(const ::control_validator::Params & params);
 
-  /// false when the parameters are invalid; make_alert() then returns nullopt.
-  bool enabled() const { return enable_; }
-
   /**
-   * @param vehicle_info footprint whose centroid is the apex of the sector wedges
+   * @param vehicle_info footprint whose centroid is the origin of the sector bearings
    * @return nullopt when disabled or when neither collision nor departure was evaluated
    */
-  std::optional<HazardAlert> make_alert(
+  std::optional<autoware_control_validator::msg::HazardAlert> make_alert(
     const HazardWarningSources & hazard_sources,
     const vehicle_info_utils::VehicleInfo & vehicle_info, const rclcpp::Time & now);
 
   /// Sector wedges in base_link.
-  const std::array<Polygon2d, kNumSectors> & wedges() const { return wedges_; }
+  const std::array<autoware_utils_geometry::Polygon2d, hazard_warning::kNumSectors> & wedges() const
+  {
+    return wedges_;
+  }
 
 private:
-  bool validate_parameters() const;
-  void build_wedges(const Point2d & apex);
+  void build_wedges(const autoware_utils_geometry::Point2d & apex);
   void assign_sectors(
+    const HazardWarningSources & hazard_sources, const autoware_utils_geometry::Point2d & apex,
+    std::array<uint8_t, hazard_warning::kNumSectors> & max_level) const;
+  void publish_debug(
     const HazardWarningSources & hazard_sources,
-    std::array<uint8_t, kNumSectors> & max_level) const;
-  void publish_debug(const HazardWarningSources & hazard_sources, const HazardAlert & alert) const;
+    const autoware_control_validator::msg::HazardAlert & alert) const;
 
   rclcpp::Logger logger_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
-  HazardWarningParam param_;
-  bool enable_{false};
+  hazard_warning::HazardWarningParam param_;
   bool publish_markers_{true};
-  std::optional<Point2d> wedge_apex_;
-  std::array<Polygon2d, kNumSectors> wedges_;
-  std::array<AlertLatch, kNumSectors> sector_latches_;
-  std::array<uint8_t, kNumSectors> last_level_{};
+  std::optional<autoware_utils_geometry::Point2d> wedge_apex_;
+  std::array<autoware_utils_geometry::Polygon2d, hazard_warning::kNumSectors> wedges_;
+  std::array<hazard_warning::AlertLatch, hazard_warning::kNumSectors> sector_latches_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
 };
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator
 
 #endif  // AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_HPP_

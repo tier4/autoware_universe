@@ -30,7 +30,7 @@
 #include <optional>
 #include <vector>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator::collision_validator
 {
 using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Polygon2d;
@@ -107,6 +107,6 @@ private:
   PointCloudParam param_;
   std::optional<PointCloudClusters> result_;
 };
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator::collision_validator
 
 #endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__POINTCLOUD_PREPROCESSOR_HPP_

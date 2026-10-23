@@ -342,7 +342,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenMapIsUnavailable)
   visualization_msgs::msg::MarkerArray markers;
 
   ControlValidatorStatus res;
-  hazard::HazardWarningSources hazard_sources;
+  HazardWarningSources hazard_sources;
   validator.validate(
     res, trajectory, odometry, acceleration, nullptr, vehicle_info_, markers, hazard_sources);
 
@@ -359,7 +359,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryTooShort)
   visualization_msgs::msg::MarkerArray markers;
 
   ControlValidatorStatus res;
-  hazard::HazardWarningSources hazard_sources;
+  HazardWarningSources hazard_sources;
   validator.validate(
     res, trajectory, odometry, acceleration, make_road_border_map(), vehicle_info_, markers,
     hazard_sources);
@@ -376,7 +376,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryParallelToBoun
   visualization_msgs::msg::MarkerArray markers;
 
   ControlValidatorStatus res;
-  hazard::HazardWarningSources hazard_sources;
+  HazardWarningSources hazard_sources;
   validator.validate(
     res, trajectory, make_odometry(trajectory, 10.0, 0.0), acceleration, map, vehicle_info_,
     markers, hazard_sources);
@@ -391,7 +391,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, InvalidWhenTrajectoryDepartsBound
   geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
   visualization_msgs::msg::MarkerArray markers;
   ControlValidatorStatus res;
-  hazard::HazardWarningSources hazard_sources;
+  HazardWarningSources hazard_sources;
 
   // Start safe, then steer toward the boundary and keep violating past the ON-time buffer so the
   // hysteresis promotes the departure to CRITICAL.
@@ -421,7 +421,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, CautionDeparturePositionsAreHande
   ControlValidatorStatus res;
 
   const auto safe_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
-  hazard::HazardWarningSources safe_sources;
+  HazardWarningSources safe_sources;
   validator.validate(
     res, safe_trajectory, make_odometry(safe_trajectory, 10.0, 0.0), acceleration, map,
     vehicle_info_, markers, safe_sources);
@@ -431,9 +431,9 @@ TEST_F(UncrossableBoundDepartureValidatorTest, CautionDeparturePositionsAreHande
 
   const double yaw = 0.2;
   const auto danger_trajectory = make_trajectory(0.0, -2.5, 10.0, yaw);
-  hazard::HazardWarningSources sources;
+  HazardWarningSources sources;
   for (double time_s = 0.1; time_s <= 0.6; time_s += 0.1) {
-    sources = hazard::HazardWarningSources{};
+    sources = HazardWarningSources{};
     validator.validate(
       res, danger_trajectory, make_odometry(danger_trajectory, 10.0, time_s), acceleration, map,
       vehicle_info_, markers, sources);
@@ -463,26 +463,20 @@ TEST_F(UncrossableBoundDepartureValidatorTest, DepartureIsNotHandedOverWhenDisab
     geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
     visualization_msgs::msg::MarkerArray markers;
     ControlValidatorStatus res;
-    hazard::HazardWarningSources sources;
+    HazardWarningSources sources;
     validator.validate(
       res, predicted_trajectory, make_odometry(trajectory, 10.0, 0.0), acceleration, lanelet_map,
       vehicle_info_, markers, sources);
     return sources.departure.has_value();
   };
 
-  auto no_road_border = params_;
-  no_road_border.uncrossable_bound_departure_validator.enable_road_border = false;
-  auto level_zero = params_;
-  level_zero.uncrossable_bound_departure_validator.departure_risk_level = 0;
-  auto level_four = params_;
-  level_four.uncrossable_bound_departure_validator.departure_risk_level = 4;
+  auto no_caution = params_;
+  no_caution.uncrossable_bound_departure_validator.enable_caution = false;
   auto disabled = params_;
   disabled.uncrossable_bound_departure_validator.enable = false;
 
   EXPECT_TRUE(is_handed_over(params_, map, trajectory));
-  EXPECT_FALSE(is_handed_over(no_road_border, map, trajectory));
-  EXPECT_FALSE(is_handed_over(level_zero, map, trajectory));
-  EXPECT_FALSE(is_handed_over(level_four, map, trajectory));
+  EXPECT_FALSE(is_handed_over(no_caution, map, trajectory));
   EXPECT_FALSE(is_handed_over(disabled, map, trajectory));
   EXPECT_FALSE(is_handed_over(params_, nullptr, trajectory));
   EXPECT_FALSE(is_handed_over(params_, map, Trajectory{}));
@@ -574,7 +568,8 @@ protected:
   void TearDown() override { rclcpp::shutdown(); }
 
   static std::shared_ptr<ControlValidator> make_node(
-    const bool hazard_enable, const bool thresholds_decided)
+    const bool hazard_enable, const bool enable_caution = true,
+    const std::vector<rclcpp::Parameter> & extra_overrides = {})
   {
     rclcpp::NodeOptions options;
     options.arguments(
@@ -586,15 +581,10 @@ protected:
          "/config/test_vehicle_info.param.yaml"});
     std::vector<rclcpp::Parameter> overrides = {
       rclcpp::Parameter("hazard_warning.enable", hazard_enable),
-      rclcpp::Parameter("hazard_warning.debug.publish_markers", false)};
-    if (thresholds_decided) {
-      overrides.emplace_back(
-        "hazard_warning.braking.reaction_times", std::vector<double>{2.0, 1.5, 1.0});
-    } else {
-      const double nan = std::numeric_limits<double>::quiet_NaN();
-      overrides.emplace_back(
-        "hazard_warning.braking.reaction_times", std::vector<double>{nan, nan, nan});
-    }
+      rclcpp::Parameter("hazard_warning.debug.publish_markers", false),
+      rclcpp::Parameter("collision_validator.debug.publish_markers", false),
+      rclcpp::Parameter("uncrossable_bound_departure_validator.enable_caution", enable_caution)};
+    overrides.insert(overrides.end(), extra_overrides.begin(), extra_overrides.end());
     options.parameter_overrides(overrides);
     return std::make_shared<ControlValidator>(options);
   }
@@ -750,12 +740,12 @@ TEST_F(HazardWarningNodeTest, ExistingStatusIsUnchangedByTheHazardWarning)
   // 1-line summary: ControlValidatorStatus is identical with the warning enabled and disabled.
   HazardCycleResult with_hazard;
   {
-    auto node = make_node(true, true);
+    auto node = make_node(true);
     with_hazard = run_cycle(node, true);
   }
   HazardCycleResult without_hazard;
   {
-    auto node = make_node(false, true);
+    auto node = make_node(false);
     without_hazard = run_cycle(node, true);
   }
   ASSERT_TRUE(with_hazard.status.has_value());
@@ -787,7 +777,7 @@ TEST_F(HazardWarningNodeTest, AlertIsPublishedWhileManualDrivingSuppressesTheDia
 {
   // 1-line summary: A stationary car 15 m ahead at 10 m/s (TTC ~1.1 s) raises FRONT even when
   // validation_filtering() overrides the diagnostics.
-  auto node = make_node(true, true);
+  auto node = make_node(true);
   const auto result = run_cycle(node, false);
 
   ASSERT_TRUE(result.status.has_value());
@@ -801,15 +791,42 @@ TEST_F(HazardWarningNodeTest, AlertIsPublishedWhileManualDrivingSuppressesTheDia
   EXPECT_EQ(result.alert->sectors[HazardAlert::REAR].risk_level, 0);
 }
 
-TEST_F(HazardWarningNodeTest, UndecidedThresholdsDisableTheWarningButKeepTheValidator)
+TEST_F(HazardWarningNodeTest, DisabledWarningKeepsTheValidator)
 {
-  // 1-line summary: With the shipped .nan thresholds the node starts, validates, and publishes
-  // no alert.
-  auto node = make_node(true, false);
+  // 1-line summary: With hazard_warning.enable and enable_caution false the node starts,
+  // validates, and publishes no alert.
+  auto node = make_node(false, false);
   const auto result = run_cycle(node, true);
 
   ASSERT_TRUE(result.status.has_value());
   EXPECT_FALSE(result.alert.has_value());
+}
+
+TEST_F(HazardWarningNodeTest, OutOfRangeParametersAreRejected)
+{
+  // 1-line summary: Values outside the schema validation fail the parameter loading, and a
+  // runtime change to such a value is rejected and keeps the previous value.
+  const std::vector<rclcpp::Parameter> invalid = {
+    rclcpp::Parameter("collision_validator.braking.reaction_times", std::vector<double>{2.0, 1.0}),
+    rclcpp::Parameter(
+      "collision_validator.braking.reaction_times", std::vector<double>{2.0, 1.5, -1.0}),
+    rclcpp::Parameter("collision_validator.braking.deceleration", 0.0),
+    rclcpp::Parameter("collision_validator.collision_cos_threshold", 1.5),
+    rclcpp::Parameter("hazard_warning.sector.range.left", std::vector<double>{30.0}),
+    rclcpp::Parameter(
+      "collision_validator.enabled_object_classes", std::vector<std::string>{"car", "spaceship"}),
+    rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 0),
+    rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 4)};
+  for (const auto & parameter : invalid) {
+    EXPECT_ANY_THROW(make_node(true, true, {parameter})) << parameter.get_name();
+  }
+
+  auto node = make_node(true);
+  const auto result = node->set_parameter(
+    rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 5));
+  EXPECT_FALSE(result.successful);
+  EXPECT_EQ(
+    node->get_parameter("uncrossable_bound_departure_validator.departure_risk_level").as_int(), 2);
 }
 
 }  // namespace autoware::control_validator

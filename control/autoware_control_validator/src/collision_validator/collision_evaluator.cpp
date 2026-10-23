@@ -35,9 +35,11 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator::collision_validator
 {
-namespace time_distance
+namespace detail
+{
+namespace
 {
 // trajectory_utils.cpp compute_motion_profile_1d() with braking_lag = 0 and
 // assumed_acceleration = 0 (constant velocity).
@@ -75,10 +77,7 @@ std::pair<TimeTrajectory, TravelDistanceTrajectory> compute_motion_profile_1d(
 
   return {times, distances};
 }
-}  // namespace time_distance
 
-namespace pose
-{
 geometry_msgs::msg::Pose interpolate_pose(
   const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & end_pose,
   const double ratio)
@@ -117,6 +116,7 @@ PoseTrajectory compute_pose_trajectory(
   }
   return pose_trajectory;
 }
+}  // namespace
 
 void correct_vehicle_yaw(
   PoseTrajectory & poses, const double initial_yaw, const double rear_axle_length)
@@ -139,10 +139,7 @@ void correct_vehicle_yaw(
     poses[k].orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
   }
 }
-}  // namespace pose
 
-namespace geometry
-{
 Eigen::Isometry2d pose_to_isometry(const geometry_msgs::msg::Pose & pose)
 {
   Eigen::Isometry2d transform = Eigen::Isometry2d::Identity();
@@ -186,13 +183,16 @@ std::vector<Point2d> create_base_polygon(const autoware_perception_msgs::msg::Sh
   throw std::logic_error("The shape type is not supported.");
 }
 
-std::vector<Point2d> create_base_polygon(const trajectory::footprint::EgoDimensions & ego)
+namespace
+{
+std::vector<Point2d> create_base_polygon(const EgoDimensions & ego)
 {
   const double half_width = ego.vehicle_width / 2.0;
   return {
     Point2d{ego.front_offset, half_width}, Point2d{ego.front_offset, -half_width},
     Point2d{-ego.rear_overhang, -half_width}, Point2d{-ego.rear_overhang, half_width}};
 }
+}  // namespace
 
 Polygon2d to_polygon2d(
   const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
@@ -231,12 +231,7 @@ Polygon2d to_polygon2d(const std::vector<Point2d> & ring)
   boost::geometry::correct(polygon);
   return polygon;
 }
-}  // namespace geometry
 
-namespace trajectory
-{
-namespace footprint
-{
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const std::vector<Point2d> & base_poly)
 {
@@ -245,14 +240,12 @@ FootprintTrajectory compute_footprint_trajectory(
     trajectory.reserve(pose_trajectory.size());
 
     for (const auto & pose : pose_trajectory) {
-      const auto iso = geometry::pose_to_isometry(pose);
+      const auto iso = pose_to_isometry(pose);
 
       trajectory.push_back(
         std::array<Point2d, 4>{
-          geometry::transform_point(iso, base_poly[0]),
-          geometry::transform_point(iso, base_poly[1]),
-          geometry::transform_point(iso, base_poly[2]),
-          geometry::transform_point(iso, base_poly[3])});
+          transform_point(iso, base_poly[0]), transform_point(iso, base_poly[1]),
+          transform_point(iso, base_poly[2]), transform_point(iso, base_poly[3])});
     }
     return trajectory;
   } else {
@@ -260,13 +253,13 @@ FootprintTrajectory compute_footprint_trajectory(
     trajectory.reserve(pose_trajectory.size());
 
     for (const auto & pose : pose_trajectory) {
-      const auto iso = geometry::pose_to_isometry(pose);
+      const auto iso = pose_to_isometry(pose);
 
       std::vector<Point2d> transformed_poly;
       transformed_poly.reserve(base_poly.size());
 
       for (const auto & pt : base_poly) {
-        transformed_poly.push_back(geometry::transform_point(iso, pt));
+        transformed_poly.push_back(transform_point(iso, pt));
       }
 
       trajectory.push_back(std::move(transformed_poly));
@@ -278,17 +271,17 @@ FootprintTrajectory compute_footprint_trajectory(
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const autoware_perception_msgs::msg::Shape & object_shape)
 {
-  return compute_footprint_trajectory(pose_trajectory, geometry::create_base_polygon(object_shape));
+  return compute_footprint_trajectory(pose_trajectory, create_base_polygon(object_shape));
 }
 
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const EgoDimensions & ego_dimensions)
 {
-  return compute_footprint_trajectory(
-    pose_trajectory, geometry::create_base_polygon(ego_dimensions));
+  return compute_footprint_trajectory(pose_trajectory, create_base_polygon(ego_dimensions));
 }
-}  // namespace footprint
 
+namespace
+{
 std::tuple<size_t, size_t, double> resolve_interpolation(
   const std::vector<double> & values, const double target_value)
 {
@@ -321,6 +314,7 @@ std::tuple<size_t, size_t, double> resolve_interpolation(
 
   return {lower_idx, upper_idx, ratio};
 }
+}  // namespace
 
 TimeTrajectory serialize_times(const autoware_planning_msgs::msg::Trajectory & trajectory)
 {
@@ -390,7 +384,7 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_time(
     resolve_interpolation(time_from_refs_, target_time_from_ref);
 
   const auto lerp = [](const double a, const double b, const double r) { return a + r * (b - a); };
-  const auto pose = pose::interpolate_pose(
+  const auto pose = interpolate_pose(
     trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio);
 
   return InterpolatedState{
@@ -411,7 +405,7 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_dist(
   const auto [lower_idx, upper_idx, ratio] = resolve_interpolation(dist_from_fronts_, target_dist);
 
   const auto lerp = [](const double a, const double b, const double r) { return a + r * (b - a); };
-  const auto pose = pose::interpolate_pose(
+  const auto pose = interpolate_pose(
     trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio);
 
   return InterpolatedState{
@@ -427,7 +421,7 @@ TrajectoryData generate_predicted_path_trajectory(
   const double time_offset, const double time_resolution,
   const std::optional<double> rear_axle_length)
 {
-  auto [times, distances] = time_distance::compute_motion_profile_1d(
+  auto [times, distances] = compute_motion_profile_1d(
     predicted_object.kinematics.initial_twist_with_covariance.twist, 0.0,
     std::min(
       max_time, predicted_path.path.size() * rclcpp::Duration(predicted_path.time_step).seconds()),
@@ -437,16 +431,16 @@ TrajectoryData generate_predicted_path_trajectory(
     t += time_offset;
   }
 
-  auto poses = pose::compute_pose_trajectory(predicted_path.path, distances);
+  auto poses = compute_pose_trajectory(predicted_path.path, distances);
   if (rear_axle_length) {
-    pose::correct_vehicle_yaw(
+    correct_vehicle_yaw(
       poses,
       autoware_utils_geometry::get_rpy(
         predicted_object.kinematics.initial_pose_with_covariance.pose)
         .z,
       *rear_axle_length);
   }
-  auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
+  auto footprints = compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(std::move(times), std::move(poses), std::move(footprints));
 }
@@ -469,10 +463,7 @@ TrajectoryData generate_static_trajectory(const Polygon2d & polygon, const TimeT
   NgonTrajectory footprints(times.size(), ring);
   return TrajectoryData(times, std::move(poses), std::move(footprints));
 }
-}  // namespace trajectory
 
-namespace collision_timing_assessment
-{
 std::optional<CollisionStep> find_first_collision(
   const TrajectoryData & ego, const TrajectoryData & target, const std::vector<bool> & ego_stopped)
 {
@@ -493,7 +484,7 @@ std::optional<CollisionStep> find_first_collision(
         boost::geometry::intersects(
           first_trajectory.get_or_compute_envelope(first_index_range),
           second_trajectory.get_or_compute_envelope(second_index_range)) &&
-        geometry::intersects_sat(
+        intersects_sat(
           first_trajectory.get_or_compute_convex(first_index_range),
           second_trajectory.get_or_compute_convex(second_index_range)));
     };
@@ -535,7 +526,7 @@ std::optional<size_t> find_first_collision(
   }
   return std::nullopt;
 }
-}  // namespace collision_timing_assessment
+}  // namespace detail
 
 double compute_cos_collision(
   const geometry_msgs::msg::Pose & ego_pose_at_hit, const bool forward, const Point2d & hit_point)
@@ -554,7 +545,12 @@ double compute_cos_collision(
 
 namespace
 {
-using collision_timing_assessment::find_first_collision;
+using detail::find_first_collision;
+using detail::FootprintTrajectory;
+using detail::PoseTrajectory;
+using detail::TIME_INDEX_EPSILON;
+using detail::TimeTrajectory;
+using detail::TrajectoryData;
 
 double sweep_horizon(
   const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
@@ -719,9 +715,9 @@ EgoInObjectFrame ego_trajectory_in_object_frame(const EgoSweep & ego, const Obje
   PoseTrajectory poses_local;
   poses_local.reserve(num_steps);
   for (size_t k = 0; k < num_steps; ++k) {
-    object_to_map[k] = geometry::pose_to_isometry(motion.pose_at(ego.times[k]));
+    object_to_map[k] = detail::pose_to_isometry(motion.pose_at(ego.times[k]));
     map_to_object[k] = object_to_map[k].inverse();
-    const auto local = map_to_object[k] * geometry::pose_to_isometry(ego.poses[k]);
+    const auto local = map_to_object[k] * detail::pose_to_isometry(ego.poses[k]);
     geometry_msgs::msg::Pose pose;
     pose.position.x = local.translation().x();
     pose.position.y = local.translation().y();
@@ -734,7 +730,7 @@ EgoInObjectFrame ego_trajectory_in_object_frame(const EgoSweep & ego, const Obje
       auto transformed = footprints;
       for (size_t k = 0; k < transformed.size(); ++k) {
         for (auto & vertex : transformed[k]) {
-          vertex = geometry::transform_point(map_to_object[k], vertex);
+          vertex = detail::transform_point(map_to_object[k], vertex);
         }
       }
       return transformed;
@@ -800,7 +796,7 @@ EgoSweep CollisionEvaluator::build_ego_sweep(
   const std::optional<BrakingParam> & braking) const
 {
   // Ego: resample the predicted trajectory at t_k = k * dt up to min(max_time, last point).
-  const trajectory::TrajectoryInterpolator interpolator(predicted_trajectory);
+  const detail::TrajectoryInterpolator interpolator(predicted_trajectory);
   const double horizon = std::min(param_.max_time, interpolator.time_from_refs_.back());
   const auto num_steps =
     static_cast<size_t>(std::floor(horizon / param_.time_resolution + TIME_INDEX_EPSILON));
@@ -809,7 +805,7 @@ EgoSweep CollisionEvaluator::build_ego_sweep(
       interpolator.reference_time_ + rclcpp::Duration::from_seconds(t));
   };
 
-  std::optional<trajectory::InterpolatedState> braking_start;
+  std::optional<detail::InterpolatedState> braking_start;
   double braking_velocity = 0.0;
   if (braking) {
     braking_start = state_at(braking->reaction_time);
@@ -838,11 +834,10 @@ EgoSweep CollisionEvaluator::build_ego_sweep(
     ego_poses.push_back(state.pose);
     ego_stopped.push_back(!braking && std::abs(state.longitudinal_velocity) < param_.stop_velocity);
   }
-  const trajectory::footprint::EgoDimensions ego_dimensions{
+  const detail::EgoDimensions ego_dimensions{
     vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
     vehicle_info.vehicle_width_m};
-  const auto ego_footprints =
-    trajectory::footprint::compute_footprint_trajectory(ego_poses, ego_dimensions);
+  const auto ego_footprints = detail::compute_footprint_trajectory(ego_poses, ego_dimensions);
   return EgoSweep(
     std::move(ego_times), std::move(ego_poses), ego_footprints, std::move(ego_stopped),
     odom.twist.twist.linear.x >= 0.0);
@@ -862,14 +857,14 @@ std::shared_ptr<const ObjectMotion> CollisionEvaluator::make_object_motion(
 
   if (best_path != paths.end() && !best_path->path.empty() && is_moving) {
     return std::make_shared<const ObjectMotion>(
-      trajectory::generate_predicted_path_trajectory(
+      detail::generate_predicted_path_trajectory(
         object, *best_path, horizon + std::abs(time_offset), time_offset, param_.time_resolution,
         vehicle_rear_axle_length(object, *best_path, param_.rear_axle_ratio)),
       false, initial_pose);
   }
   return std::make_shared<const ObjectMotion>(
-    trajectory::generate_static_trajectory(
-      geometry::to_polygon2d(initial_pose, object.shape), static_times),
+    detail::generate_static_trajectory(
+      detail::to_polygon2d(initial_pose, object.shape), static_times),
     true, initial_pose);
 }
 
@@ -1055,8 +1050,8 @@ void CollisionEvaluator::evaluate_attached_points(
     if (!k) {
       continue;
     }
-    const auto point_now = geometry::transform_point(ego_local.object_to_map.front(), point);
-    const auto hit_point = geometry::transform_point(ego_local.object_to_map[*k], point);
+    const auto point_now = detail::transform_point(ego_local.object_to_map.front(), point);
+    const auto hit_point = detail::transform_point(ego_local.object_to_map[*k], point);
     auto candidate = make_point_candidate(ego, stamp, point_now, *k, hit_point);
     if (passes_cos_threshold(candidate.cos_collision, param_.cos_threshold)) {
       candidate.brake_level = brake_level_of([&](const size_t level) {
@@ -1122,7 +1117,7 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
       candidate.label = label;
       candidate.source_stamp = objects.header.stamp;
       candidate.polygon_now =
-        geometry::to_polygon2d(object.kinematics.initial_pose_with_covariance.pose, object.shape);
+        detail::to_polygon2d(object.kinematics.initial_pose_with_covariance.pose, object.shape);
       if (boost::geometry::intersects(ego_now, candidate.polygon_now)) {
         continue;
       }
@@ -1182,11 +1177,11 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
       });
       continue;
     }
-    const auto map_to_object = geometry::pose_to_isometry(motion.pose_at(t_pointcloud)).inverse();
+    const auto map_to_object = detail::pose_to_isometry(motion.pose_at(t_pointcloud)).inverse();
     std::vector<Point2d> points_local;
     points_local.reserve(cluster.points.size());
     for (const auto & point : cluster.points) {
-      points_local.push_back(geometry::transform_point(map_to_object, point));
+      points_local.push_back(detail::transform_point(map_to_object, point));
     }
     evaluate_cluster_points(i, [&] {
       evaluate_attached_points(ego, braked, points_local, motion, pointcloud_stamp, candidates);
@@ -1207,4 +1202,4 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
 
   return candidates;
 }
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator::collision_validator

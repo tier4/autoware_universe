@@ -397,7 +397,7 @@ UncrossableBoundaryChecker create_checker_with_param(
 
 TEST(UncrossableBoundaryCheckerTest, TestCautionDisabledKeepsSingleStateResult)
 {
-  // 1-line summary: With caution_departure_lateral_th_m left at -inf, the HysteresisStates
+  // 1-line summary: With enable_caution left false, the HysteresisStatePair
   // overload reproduces the HysteresisState overload step by step.
   double safe_y = -2.5;
   double danger_yaw = 0.2;
@@ -405,10 +405,12 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionDisabledKeepsSingleStateResult)
   auto traj_safe = create_trajectory(0.0, safe_y, test_velocity, 0.0);
   auto traj_danger = create_trajectory(0.0, safe_y, test_velocity, danger_yaw);
 
+  auto param_disabled = create_default_param();
+  param_disabled.caution_departure_lateral_th_m = 0.5;
   auto checker_single = create_default_checker();
-  auto checker_multi = create_default_checker();
+  auto checker_multi = create_checker_with_param(param_disabled);
   HysteresisState single_state;
-  HysteresisStates multi_states;
+  HysteresisStatePair multi_states;
 
   const std::vector<std::pair<const TrajectoryPoints *, double>> steps = {
     {&traj_safe, 0.0},
@@ -425,7 +427,7 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionDisabledKeepsSingleStateResult)
     EXPECT_DOUBLE_EQ(
       res_single.lat_dist_to_uncrossable_bound, res_multi.lat_dist_to_uncrossable_bound);
   }
-  EXPECT_EQ(multi_states.count(DepartureType::CAUTION), 0U);
+  EXPECT_TRUE(multi_states.caution.critical_departure_history.all_empty());
 }
 
 TEST(UncrossableBoundaryCheckerTest, TestCautionIsSupersetOfCritical)
@@ -433,6 +435,7 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionIsSupersetOfCritical)
   // 1-line summary: A CRITICAL departure also drives the CAUTION state, and a lateral distance
   // inside the caution band but outside the critical margin yields CAUTION.
   auto param = create_default_param();
+  param.enable_caution = true;
   param.caution_departure_lateral_th_m = 0.5;
   auto checker = create_checker_with_param(param);
   double test_velocity = 10.0;
@@ -440,7 +443,7 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionIsSupersetOfCritical)
   // CRITICAL: the same danger sequence as TestTimeBufferingHysteresis.
   auto traj_safe = create_trajectory(0.0, -2.5, test_velocity, 0.0);
   auto traj_danger = create_trajectory(0.0, -2.5, test_velocity, 0.2);
-  HysteresisStates states;
+  HysteresisStatePair states;
   checker.update_departure_status(
     traj_safe, create_ego_state(traj_safe, test_velocity, 0.0), states);
   checker.update_departure_status(
@@ -448,12 +451,12 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionIsSupersetOfCritical)
   const auto res_critical = checker.update_departure_status(
     traj_danger, create_ego_state(traj_danger, test_velocity, 0.2), states);
   EXPECT_EQ(res_critical.status, DepartureType::CRITICAL);
-  EXPECT_FALSE(states[DepartureType::CAUTION].critical_departure_history.all_empty())
+  EXPECT_FALSE(states.caution.critical_departure_history.all_empty())
     << "CRITICAL points must also be latched by the CAUTION state.";
 
   // CAUTION only: parallel trajectory whose left edge (y + 3.32) is 0.28 m from the boundary.
   auto traj_caution = create_trajectory(0.0, -1.6, test_velocity, 0.0);
-  HysteresisStates caution_states;
+  HysteresisStatePair caution_states;
   checker.update_departure_status(
     traj_safe, create_ego_state(traj_safe, test_velocity, 0.0), caution_states);
   const auto res_caution = checker.update_departure_status(
@@ -472,11 +475,12 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionRequiresTimeGate)
   auto traj = create_trajectory(0.0, -2.5, 0.0, 0.04);
 
   auto param_gated_out = create_default_param();
+  param_gated_out.enable_caution = true;
   param_gated_out.caution_departure_lateral_th_m = 0.5;
   param_gated_out.time_to_departure_cutoff_s = 0.1;
   param_gated_out.caution_time_to_departure_cutoff_s = 0.1;
   auto checker_out = create_checker_with_param(param_gated_out);
-  HysteresisStates states_out;
+  HysteresisStatePair states_out;
   const auto res_out =
     checker_out.update_departure_status(traj, create_ego_state(traj, 0.0, 0.0), states_out);
   EXPECT_NE(res_out.status, DepartureType::CAUTION);
@@ -485,7 +489,7 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionRequiresTimeGate)
   auto param_gated_in = param_gated_out;
   param_gated_in.caution_time_to_departure_cutoff_s = 3.0;
   auto checker_in = create_checker_with_param(param_gated_in);
-  HysteresisStates states_in;
+  HysteresisStatePair states_in;
   checker_in.update_departure_status(traj, create_ego_state(traj, 0.0, 0.0), states_in);
   const auto res_in =
     checker_in.update_departure_status(traj, create_ego_state(traj, 0.0, 0.2), states_in);
@@ -496,6 +500,7 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionBuffersIndependentFromCritical)
 {
   // 1-line summary: The CAUTION OFF buffer keeps CAUTION after CRITICAL has already cleared.
   auto param = create_default_param();
+  param.enable_caution = true;
   param.caution_departure_lateral_th_m = 0.5;
   param.caution_on_time_buffer_s = 0.15;
   param.caution_off_time_buffer_s = 2.0;
@@ -504,7 +509,7 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionBuffersIndependentFromCritical)
   auto traj_safe = create_trajectory(0.0, -2.5, test_velocity, 0.0);
   auto traj_danger = create_trajectory(0.0, -2.5, test_velocity, 0.2);
 
-  HysteresisStates states;
+  HysteresisStatePair states;
   checker.update_departure_status(
     traj_safe, create_ego_state(traj_safe, test_velocity, 0.0), states);
   checker.update_departure_status(
@@ -533,12 +538,13 @@ TEST(UncrossableBoundaryCheckerTest, TestCautionPointPreferredOverClosestPoint)
   // 0.7 m band and a 1.0 s cutoff), the point at t = 2.0 s is closer but beyond the cutoff.
   auto traj = create_trajectory(0.0, -2.5, 0.0, 0.04);
   auto param = create_default_param();
+  param.enable_caution = true;
   param.caution_departure_lateral_th_m = 0.7;
   param.time_to_departure_cutoff_s = 1.0;
   param.caution_time_to_departure_cutoff_s = 1.0;
   auto checker = create_checker_with_param(param);
 
-  HysteresisStates states;
+  HysteresisStatePair states;
   checker.update_departure_status(traj, create_ego_state(traj, 0.0, 0.0), states);
   const auto res = checker.update_departure_status(traj, create_ego_state(traj, 0.0, 0.2), states);
   EXPECT_EQ(res.status, DepartureType::CAUTION);

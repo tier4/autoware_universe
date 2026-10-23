@@ -66,13 +66,13 @@ public:
    * @brief Update departure status along a predicted trajectory with per-level hysteresis.
    * @param[in] predicted_traj predicted trajectory
    * @param[in] ego_state current ego dynamic state
-   * @param[in,out] states hysteresis states keyed by level. CRITICAL is always evaluated;
-   *   CAUTION is evaluated only when caution_departure_lateral_th_m is finite.
+   * @param[in,out] states hysteresis states of CRITICAL and CAUTION. CRITICAL is always
+   *   evaluated; CAUTION is evaluated only when enable_caution is true.
    * @return departure result whose status is CRITICAL > CAUTION > NEAR_BOUNDARY > NONE
    */
   DepartureResult update_departure_status(
     const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state,
-    HysteresisStates & states);
+    HysteresisStatePair & states);
 
 private:
   struct TrajectoryEvaluation
@@ -82,8 +82,14 @@ private:
     std::optional<Side<std::optional<DeparturePointPair>>> evaluation_result;
   };
 
-  TrajectoryEvaluation evaluate_trajectory(
+  std::optional<TrajectoryEvaluation> evaluate_trajectory(
     const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state) const;
+
+  static std::optional<double> get_lat_dist_to_bound(const TrajectoryEvaluation & evaluated);
+
+  visualization_msgs::msg::MarkerArray create_debug_markers(
+    const HysteresisState & critical_state, const TrajectoryEvaluation & evaluated,
+    const EgoDynamicState & ego_state) const;
 
   UncrossableBoundaryDepartureParam param_;
   VehicleInfo vehicle_info_;

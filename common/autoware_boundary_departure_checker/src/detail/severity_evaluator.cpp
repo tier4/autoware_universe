@@ -38,7 +38,9 @@ ProjectionsToBound filter_and_assign_departure_types(
   // margin unclassified, so the advisory band always covers at least the critical margin.
   thresholds.th_near_boundary =
     std::max(param.near_boundary_lateral_th_m, param.critical_departure_lateral_th_m);
-  thresholds.th_lat_caution = param.caution_departure_lateral_th_m;
+  if (param.enable_caution) {
+    thresholds.th_lat_caution = param.caution_departure_lateral_th_m;
+  }
   thresholds.min_braking_distance_caution = min_braking_dist_caution.value_or(min_braking_dist);
   thresholds.cutoff_time_caution = param.caution_time_to_departure_cutoff_s;
 

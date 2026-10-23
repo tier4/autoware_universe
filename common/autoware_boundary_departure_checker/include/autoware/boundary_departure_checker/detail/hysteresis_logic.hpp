@@ -18,7 +18,6 @@
 #include "autoware/boundary_departure_checker/detail/data_structs.hpp"
 #include "autoware/boundary_departure_checker/parameters.hpp"
 
-#include <map>
 #include <optional>
 
 namespace autoware::boundary_departure_checker
@@ -34,9 +33,13 @@ struct HysteresisState
 };
 
 /**
- * @brief Hysteresis states keyed by the departure level they latch (CRITICAL, CAUTION).
+ * @brief Hysteresis states of the CRITICAL and CAUTION levels.
  */
-using HysteresisStates = std::map<DepartureType, HysteresisState>;
+struct HysteresisStatePair
+{
+  HysteresisState critical;
+  HysteresisState caution;
+};
 
 /**
  * @brief Result of hysteresis logic.

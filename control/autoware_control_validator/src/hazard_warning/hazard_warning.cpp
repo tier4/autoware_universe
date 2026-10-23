@@ -26,37 +26,90 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator
 {
 namespace
 {
+using autoware_control_validator::msg::HazardAlert;
+using autoware_utils_geometry::Point2d;
+using autoware_utils_geometry::Polygon2d;
+using hazard_warning::HazardWarningParam;
+using hazard_warning::kNumSectors;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
 constexpr double kWedgeArcStepDeg = 10.0;
+constexpr double kWedgeRadius = 60.0;
 
 double deg2rad(const double deg)
 {
   return deg * M_PI / 180.0;
 }
 
-std::optional<HazardWarningParam> to_hazard_warning_param(
-  const ::control_validator::Params & params)
+double normalize_deg(const double deg)
 {
-  const auto & p = params.hazard_warning;
+  const double normalized = std::fmod(deg, 360.0);
+  return normalized < 0.0 ? normalized + 360.0 : normalized;
+}
+
+struct BearingArc
+{
+  double start_deg;
+  double length_deg;
+};
+
+bool overlaps(const BearingArc & a, const BearingArc & b)
+{
+  return normalize_deg(b.start_deg - a.start_deg) <= a.length_deg ||
+         normalize_deg(a.start_deg - b.start_deg) <= b.length_deg;
+}
+
+std::optional<BearingArc> bearing_arc(const Polygon2d & shape, const Point2d & apex)
+{
+  const auto & ring = shape.outer();
+  if (ring.size() >= 3 && boost::geometry::covered_by(apex, shape)) {
+    return std::nullopt;
+  }
+  std::vector<double> bearings;
+  bearings.reserve(ring.size());
+  for (const auto & vertex : ring) {
+    bearings.push_back(
+      normalize_deg(std::atan2(vertex.y() - apex.y(), vertex.x() - apex.x()) * 180.0 / M_PI));
+  }
+  std::sort(bearings.begin(), bearings.end());
+  double max_gap = 360.0 - (bearings.back() - bearings.front());
+  size_t start_index = 0;
+  for (size_t i = 1; i < bearings.size(); ++i) {
+    const double gap = bearings[i] - bearings[i - 1];
+    if (gap > max_gap) {
+      max_gap = gap;
+      start_index = i;
+    }
+  }
+  return BearingArc{bearings[start_index], 360.0 - max_gap};
+}
+
+BearingArc sector_arc(const HazardWarningParam & param, const size_t sector)
+{
+  const double from_deg = param.sector_ranges[sector][0] - param.sector_boundary_tolerance_deg;
+  double to_deg = param.sector_ranges[sector][1] + param.sector_boundary_tolerance_deg;
+  while (to_deg <= from_deg) {
+    to_deg += 360.0;
+  }
+  return BearingArc{normalize_deg(from_deg), std::min(to_deg - from_deg, 360.0)};
+}
+
+HazardWarningParam to_hazard_warning_param(const ::control_validator::Params::HazardWarning & p)
+{
   HazardWarningParam out;
   out.enable = p.enable;
   out.min_alert_duration = p.min_alert_duration;
-  out.sector_radius_m = p.sector.radius_m;
   out.sector_boundary_tolerance_deg = p.sector.boundary_tolerance_deg;
   const std::array<const std::vector<double> *, kNumSectors> ranges{
     &p.sector.range.front,      &p.sector.range.front_right, &p.sector.range.right,
     &p.sector.range.rear_right, &p.sector.range.rear,        &p.sector.range.rear_left,
     &p.sector.range.left,       &p.sector.range.front_left};
   for (size_t s = 0; s < kNumSectors; ++s) {
-    if (ranges[s]->size() != 2) {
-      return std::nullopt;
-    }
     out.sector_ranges[s] = {(*ranges[s])[0], (*ranges[s])[1]};
   }
   return out;
@@ -161,42 +214,10 @@ HazardWarning::HazardWarning(
 void HazardWarning::update_parameters(const ::control_validator::Params & params)
 {
   publish_markers_ = params.hazard_warning.debug.publish_markers;
-  const auto param = to_hazard_warning_param(params);
-  if (!param) {
-    RCLCPP_ERROR(
-      logger_, "hazard_warning.sector.range entries must have 2 elements. Warning disabled.");
-    enable_ = false;
-    return;
-  }
-  param_ = *param;
-  enable_ = validate_parameters();
+  param_ = to_hazard_warning_param(params.hazard_warning);
   if (wedge_apex_) {
     build_wedges(*wedge_apex_);
   }
-}
-
-bool HazardWarning::validate_parameters() const
-{
-  if (!std::isfinite(param_.min_alert_duration) || param_.min_alert_duration < 0.0) {
-    RCLCPP_ERROR(logger_, "hazard_warning.min_alert_duration must be >= 0. Warning disabled.");
-    return false;
-  }
-  if (!std::isfinite(param_.sector_radius_m) || param_.sector_radius_m <= 0.0) {
-    RCLCPP_ERROR(logger_, "hazard_warning.sector.radius_m must be > 0. Warning disabled.");
-    return false;
-  }
-  if (!std::isfinite(param_.sector_boundary_tolerance_deg)) {
-    RCLCPP_ERROR(
-      logger_, "hazard_warning.sector.boundary_tolerance_deg must be finite. Warning disabled.");
-    return false;
-  }
-  for (const auto & range : param_.sector_ranges) {
-    if (!std::isfinite(range[0]) || !std::isfinite(range[1])) {
-      RCLCPP_ERROR(logger_, "hazard_warning.sector.range must be finite. Warning disabled.");
-      return false;
-    }
-  }
-  return true;
 }
 
 void HazardWarning::build_wedges(const Point2d & apex)
@@ -205,7 +226,7 @@ void HazardWarning::build_wedges(const Point2d & apex)
   // vehicle footprint (base_link), the angular range is widened by the boundary tolerance. The arc
   // is polygonised so that the whole radius is covered for wide sectors.
   wedge_apex_ = apex;
-  const double radius = param_.sector_radius_m;
+  const double radius = kWedgeRadius;
   for (size_t s = 0; s < kNumSectors; ++s) {
     const double from_deg = param_.sector_ranges[s][0] - param_.sector_boundary_tolerance_deg;
     double to_deg = param_.sector_ranges[s][1] + param_.sector_boundary_tolerance_deg;
@@ -230,7 +251,8 @@ void HazardWarning::build_wedges(const Point2d & apex)
 }
 
 void HazardWarning::assign_sectors(
-  const HazardWarningSources & hazard_sources, std::array<uint8_t, kNumSectors> & max_level) const
+  const HazardWarningSources & hazard_sources, const Point2d & apex,
+  std::array<uint8_t, kNumSectors> & max_level) const
 {
   max_level.fill(0);
   for (const auto * sources : {&hazard_sources.collision, &hazard_sources.departure}) {
@@ -241,12 +263,9 @@ void HazardWarning::assign_sectors(
       if (source.shape.outer().empty()) {
         continue;
       }
-      const bool is_point = source.shape.outer().size() == 1;
+      const auto arc = bearing_arc(source.shape, apex);
       for (size_t s = 0; s < kNumSectors; ++s) {
-        const bool in_sector = is_point
-                                 ? boost::geometry::within(source.shape.outer().front(), wedges_[s])
-                                 : boost::geometry::intersects(source.shape, wedges_[s]);
-        if (in_sector) {
+        if (!arc || overlaps(*arc, sector_arc(param_, s))) {
           max_level[s] = std::max(max_level[s], source.risk_level);
         }
       }
@@ -259,7 +278,7 @@ std::optional<HazardAlert> HazardWarning::make_alert(
   const rclcpp::Time & now)
 {
   if (
-    !param_.enable || !enable_ ||
+    !param_.enable ||
     (!hazard_sources.collision.has_value() && !hazard_sources.departure.has_value())) {
     return std::nullopt;
   }
@@ -272,21 +291,15 @@ std::optional<HazardAlert> HazardWarning::make_alert(
   }
 
   std::array<uint8_t, kNumSectors> max_level{};
-  assign_sectors(hazard_sources, max_level);
+  assign_sectors(hazard_sources, apex, max_level);
 
   HazardAlert alert;
   alert.header.stamp = now;
   alert.header.frame_id = "base_link";
   for (size_t s = 0; s < kNumSectors; ++s) {
-    const bool raw = max_level[s] >= 1;
-    const bool on = sector_latches_[s].update(raw, now, param_.min_alert_duration);
-    if (raw) {
-      last_level_[s] = max_level[s];
-    } else if (!on) {
-      last_level_[s] = 0;
-    }
-    alert.sectors[s].has_object = on;
-    alert.sectors[s].risk_level = on ? last_level_[s] : 0;
+    const auto level = sector_latches_[s].update(max_level[s], now, param_.min_alert_duration);
+    alert.sectors[s].has_object = level >= 1;
+    alert.sectors[s].risk_level = level;
   }
 
   time_keeper_->start_track("hazard_warning_publish_debug");
@@ -331,4 +344,4 @@ void HazardWarning::publish_debug(
   }
   pub_markers_->publish(markers);
 }
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator

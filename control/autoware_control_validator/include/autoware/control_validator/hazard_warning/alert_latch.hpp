@@ -17,41 +17,45 @@
 
 #include <rclcpp/time.hpp>
 
+#include <cstdint>
 #include <optional>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator::hazard_warning
 {
 /**
  * @brief Rising-edge immediate, falling-edge delayed latch.
  *
- * The output stays true until `t_min` has elapsed since the last cycle in which `raw` was true.
- * A clock going backwards resets the latch.
+ * The output is the input `level` while it is 1 or more, and the last such level until `t_min`
+ * has elapsed since then (0 afterwards). A clock going backwards resets the latch.
  */
 class AlertLatch
 {
 public:
-  bool update(const bool raw, const rclcpp::Time & now, const double t_min)
+  uint8_t update(const uint8_t level, const rclcpp::Time & now, const double t_min)
   {
-    if (raw) {
+    if (level >= 1) {
       last_on_time_ = now;
-      return true;
+      last_level_ = level;
+      return level;
     }
     if (last_on_time_.has_value()) {
       const double elapsed =
         static_cast<double>(now.nanoseconds() - last_on_time_->nanoseconds()) * 1e-9;
       if (elapsed >= 0.0 && elapsed <= t_min) {
-        return true;
+        return last_level_;
       }
     }
     last_on_time_.reset();
-    return false;
+    last_level_ = 0;
+    return 0;
   }
 
   bool is_on() const { return last_on_time_.has_value(); }
 
 private:
   std::optional<rclcpp::Time> last_on_time_;
+  uint8_t last_level_{0};
 };
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator::hazard_warning
 
 #endif  // AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_

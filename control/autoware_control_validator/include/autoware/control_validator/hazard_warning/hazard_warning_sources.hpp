@@ -22,7 +22,7 @@
 #include <optional>
 #include <vector>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator
 {
 struct HazardSource
 {
@@ -36,6 +36,6 @@ struct HazardWarningSources
   std::optional<std::vector<HazardSource>> departure;
   builtin_interfaces::msg::Time stamp{};
 };
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator
 
 #endif  // AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_SOURCES_HPP_

@@ -14,8 +14,6 @@
 
 #include "autoware/control_validator/collision_validator/sweep_types.hpp"
 
-#include "autoware/control_validator/collision_validator/collision_evaluator.hpp"
-
 #include <autoware_utils_geometry/geometry.hpp>
 
 #include <algorithm>
@@ -23,11 +21,12 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator::collision_validator
 {
 EgoSweep::EgoSweep(
-  TimeTrajectory times_in, PoseTrajectory poses_in, const FootprintTrajectory & footprints,
-  std::vector<bool> stopped_in, const bool forward_in)
+  detail::TimeTrajectory times_in, detail::PoseTrajectory poses_in,
+  const detail::FootprintTrajectory & footprints, std::vector<bool> stopped_in,
+  const bool forward_in)
 : times(std::move(times_in)),
   poses(std::move(poses_in)),
   stopped(std::move(stopped_in)),
@@ -38,13 +37,13 @@ EgoSweep::EgoSweep(
   for (size_t k = 0; k < times.size(); ++k) {
     polygons.push_back(
       std::visit(
-        [k](const auto & footprint) { return geometry::to_polygon2d(footprint.at(k)); },
-        footprints));
+        [k](const auto & footprint) { return detail::to_polygon2d(footprint.at(k)); }, footprints));
   }
 }
 
 ObjectMotion::ObjectMotion(
-  TrajectoryData trajectory, const bool is_static, const geometry_msgs::msg::Pose & initial_pose)
+  detail::TrajectoryData trajectory, const bool is_static,
+  const geometry_msgs::msg::Pose & initial_pose)
 : trajectory_(std::move(trajectory)), is_static_(is_static), initial_pose_(initial_pose)
 {
 }
@@ -91,4 +90,4 @@ geometry_msgs::msg::Pose ObjectMotion::pose_at(const double t) const
   pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw0 + r * diff);
   return pose;
 }
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator::collision_validator

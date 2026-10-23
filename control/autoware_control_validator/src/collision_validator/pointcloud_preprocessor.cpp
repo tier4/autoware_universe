@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator::collision_validator
 {
 namespace
 {
@@ -255,4 +255,4 @@ const std::optional<PointCloudClusters> & PointCloudPreprocessor::process(
   result_ = PointCloudClusters{std::move(clusters), stamp};
   return result_;
 }
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator::collision_validator

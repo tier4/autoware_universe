@@ -257,8 +257,7 @@ void UncrossableBoundDepartureValidator::validate(
   ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
   const Odometry & kinematics, const AccelWithCovarianceStamped & acceleration,
   const lanelet::LaneletMapPtr & lanelet_map, const vehicle_info_utils::VehicleInfo & vehicle_info,
-  visualization_msgs::msg::MarkerArray & debug_markers,
-  hazard::HazardWarningSources & hazard_sources)
+  visualization_msgs::msg::MarkerArray & debug_markers, HazardWarningSources & hazard_sources)
 {
   if (!enable_) {
     res.will_cross_uncrossable_bound = false;
@@ -287,8 +286,8 @@ void UncrossableBoundDepartureValidator::validate(
   ego_state.acceleration = acceleration.accel.accel.linear.x;
   ego_state.current_time_s = rclcpp::Time(kinematics.header.stamp).seconds();
 
-  auto status =
-    checker_->update_departure_status(predicted_trajectory.points, ego_state, hysteresis_states_);
+  auto status = checker_->update_departure_status(
+    predicted_trajectory.points, ego_state, hysteresis_state_pair_);
 
   res.will_cross_uncrossable_bound =
     status.status == boundary_departure_checker::DepartureType::CRITICAL;
@@ -299,21 +298,17 @@ void UncrossableBoundDepartureValidator::validate(
       std::back_inserter(debug_markers.markers));
   }
 
-  if (enable_road_border_ && departure_risk_level_) {
-    std::vector<hazard::HazardSource> departure;
-    const auto caution_state =
-      hysteresis_states_.find(boundary_departure_checker::DepartureType::CAUTION);
-    if (caution_state != hysteresis_states_.end()) {
-      caution_state->second.critical_departure_history.for_each_side([&](const auto & side) {
-        for (const auto & projection : side) {
-          autoware_utils_geometry::Polygon2d point;
-          point.outer().push_back(projection.pt_on_bound);
-          departure.push_back(
-            hazard::HazardSource{
-              transform_polygon_to_base_link(point, kinematics.pose.pose), *departure_risk_level_});
-        }
-      });
-    }
+  if (params_.enable_caution) {
+    std::vector<HazardSource> departure;
+    hysteresis_state_pair_.caution.critical_departure_history.for_each_side([&](const auto & side) {
+      for (const auto & projection : side) {
+        autoware_utils_geometry::Polygon2d point;
+        point.outer().push_back(projection.pt_on_bound);
+        departure.push_back(
+          HazardSource{
+            transform_polygon_to_base_link(point, kinematics.pose.pose), departure_risk_level_});
+      }
+    });
     hazard_sources.departure = std::move(departure);
   }
 }
@@ -568,8 +563,10 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   if (!acceleration_msg) {
     return waiting(sub_measured_acc_->subscriber()->get_topic_name());
   }
+  const auto objects_msg = sub_objects_->take_data();
+  const auto pointcloud_msg = sub_pointcloud_->take_data();
 
-  hazard::HazardWarningSources hazard_sources;
+  HazardWarningSources hazard_sources;
   hazard_sources.stamp = kinematics_msg->header.stamp;
 
   // pre process
@@ -590,9 +587,28 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   } else {
     trajectory_validator.validate(
       validation_status_, *predicted_trajectory_msg, *reference_trajectory_msg);
-    uncrossable_bound_departure_validator.validate(
-      validation_status_, *predicted_trajectory_msg, *kinematics_msg, *acceleration_msg,
-      lanelet_map_ptr_, vehicle_info_, boundary_departure_markers, hazard_sources);
+    autoware_utils_debug::ScopedTimeTrack st("hazard_warning", *hazard_time_keeper_);
+    hazard_stop_watch_.tic();
+    {
+      autoware_utils_debug::ScopedTimeTrack st_departure(
+        "uncrossable_bound_departure_validate", *hazard_time_keeper_);
+      uncrossable_bound_departure_validator.validate(
+        validation_status_, *predicted_trajectory_msg, *kinematics_msg, *acceleration_msg,
+        lanelet_map_ptr_, vehicle_info_, boundary_departure_markers, hazard_sources);
+    }
+    const auto now = get_clock()->now();
+    collision_validator.validate(
+      *predicted_trajectory_msg, *kinematics_msg, objects_msg, vehicle_info_, pointcloud_msg, now,
+      hazard_sources);
+    const auto alert = hazard_warning.make_alert(hazard_sources, vehicle_info_, now);
+    const double hazard_processing_time_ms = hazard_stop_watch_.toc();
+    if (alert) {
+      pub_hazard_alert_->publish(*alert);
+      autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
+      processing_time_msg.stamp = now;
+      processing_time_msg.data = hazard_processing_time_ms;
+      pub_hazard_processing_time_->publish(processing_time_msg);
+    }
   }
   acceleration_validator.validate(
     validation_status_, *kinematics_msg, *control_cmd_msg, *acceleration_msg);
@@ -601,9 +617,6 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   yaw_validator.validate(validation_status_, *reference_trajectory_msg, *kinematics_msg);
 
   publish_boundary_departure_markers(std::move(boundary_departure_markers));
-
-  // hazard warning: independent of the diagnostics, evaluated before validation_filtering()
-  run_hazard_warning(*predicted_trajectory_msg, *kinematics_msg, hazard_sources);
 
   if (!flag_autonomous_control_enabled_) {
     // if warnings or errors are being suppressed, printing simple logs
@@ -658,30 +671,6 @@ void ControlValidator::publish_boundary_departure_markers(
     markers.markers.begin(), markers.markers.end(), std::back_inserter(output_markers.markers));
 
   pub_markers_->publish(output_markers);
-}
-
-void ControlValidator::run_hazard_warning(
-  const Trajectory & predicted_trajectory, const Odometry & kinematics,
-  hazard::HazardWarningSources & hazard_sources)
-{
-  autoware_utils_debug::ScopedTimeTrack st("run_hazard_warning", *hazard_time_keeper_);
-  hazard_stop_watch_.tic();
-
-  const auto now = get_clock()->now();
-  collision_validator.validate(
-    predicted_trajectory, kinematics, sub_objects_->take_data(), vehicle_info_,
-    sub_pointcloud_->take_data(), now, hazard_sources);
-
-  const auto alert = hazard_warning.make_alert(hazard_sources, vehicle_info_, now);
-  if (!alert) {
-    return;
-  }
-  pub_hazard_alert_->publish(*alert);
-
-  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-  processing_time_msg.stamp = now;
-  processing_time_msg.data = hazard_stop_watch_.toc();
-  pub_hazard_processing_time_->publish(processing_time_msg);
 }
 
 bool ControlValidator::is_all_valid(const ControlValidatorStatus & s)

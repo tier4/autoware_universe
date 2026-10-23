@@ -40,7 +40,7 @@
 #include <optional>
 #include <vector>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator
 {
 /**
  * @brief Entry of the collision warning: odometry / objects history, pointcloud preprocessing,
@@ -83,12 +83,12 @@ private:
   autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr select_objects_at(
     const rclcpp::Time & stamp) const;
   static std::vector<HazardSource> to_hazard_sources(
-    const std::vector<CollisionCandidate> & candidates, const nav_msgs::msg::Odometry & odom);
-  bool validate_parameters(const ::control_validator::Params & params) const;
+    const std::vector<collision_validator::CollisionCandidate> & candidates,
+    const nav_msgs::msg::Odometry & odom);
   static bool is_valid_vehicle_info(const vehicle_info_utils::VehicleInfo & vehicle_info);
   void publish_debug(
-    const std::vector<CollisionCandidate> & candidates, const nav_msgs::msg::Odometry & odom,
-    const rclcpp::Time & now) const;
+    const std::vector<collision_validator::CollisionCandidate> & candidates,
+    const nav_msgs::msg::Odometry & odom, const rclcpp::Time & now) const;
 
   static constexpr size_t kOdometryHistorySize = 10;
   static constexpr size_t kObjectsHistorySize = 10;
@@ -96,16 +96,15 @@ private:
   rclcpp::Logger logger_;
   rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
-  ::control_validator::Params::HazardWarning params_;
-  bool enable_{false};
+  ::control_validator::Params::CollisionValidator params_;
   std::deque<nav_msgs::msg::Odometry> odometry_history_;
   std::deque<autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr> objects_history_;
-  PointCloudPreprocessor pointcloud_preprocessor_;
-  CollisionEvaluator collision_evaluator_;
+  collision_validator::PointCloudPreprocessor pointcloud_preprocessor_;
+  collision_validator::CollisionEvaluator collision_evaluator_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_collision_markers_;
   rclcpp::Publisher<autoware_control_validator::msg::HazardCandidateArray>::SharedPtr
     pub_hazard_candidates_;
 };
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator
 
 #endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_VALIDATOR_HPP_

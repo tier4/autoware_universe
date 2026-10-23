@@ -38,13 +38,15 @@
 #include <variant>
 #include <vector>
 
-namespace autoware::control_validator::hazard
+namespace autoware::control_validator::collision_validator
 {
 using autoware_utils_geometry::Box2d;
 using autoware_utils_geometry::MultiPoint2d;
 using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Polygon2d;
 
+namespace detail
+{
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
 using IndexRange = std::pair<size_t, size_t>;
@@ -182,17 +184,22 @@ public:
   }
 };
 
+// Closed polygon of one footprint sample.
+Polygon2d to_polygon2d(const std::array<Point2d, 4> & quad);
+Polygon2d to_polygon2d(const std::vector<Point2d> & ring);
+}  // namespace detail
+
 struct EgoSweep
 {
   EgoSweep(
-    TimeTrajectory times_in, PoseTrajectory poses_in, const FootprintTrajectory & footprints,
-    std::vector<bool> stopped_in, bool forward_in);
+    detail::TimeTrajectory times_in, detail::PoseTrajectory poses_in,
+    const detail::FootprintTrajectory & footprints, std::vector<bool> stopped_in, bool forward_in);
 
-  TimeTrajectory times;
-  PoseTrajectory poses;
+  detail::TimeTrajectory times;
+  detail::PoseTrajectory poses;
   std::vector<Polygon2d> polygons;
   std::vector<bool> stopped;
-  TrajectoryData trajectory;
+  detail::TrajectoryData trajectory;
   bool forward;
 
   const Polygon2d & now() const { return polygons.front(); }
@@ -202,17 +209,18 @@ class ObjectMotion
 {
 public:
   ObjectMotion(
-    TrajectoryData trajectory, bool is_static, const geometry_msgs::msg::Pose & initial_pose);
+    detail::TrajectoryData trajectory, bool is_static,
+    const geometry_msgs::msg::Pose & initial_pose);
 
-  const TrajectoryData & trajectory() const { return trajectory_; }
+  const detail::TrajectoryData & trajectory() const { return trajectory_; }
   geometry_msgs::msg::Pose pose_at(double t) const;
   bool is_static() const { return is_static_; }
 
 private:
-  TrajectoryData trajectory_;
+  detail::TrajectoryData trajectory_;
   bool is_static_;
   geometry_msgs::msg::Pose initial_pose_;
 };
-}  // namespace autoware::control_validator::hazard
+}  // namespace autoware::control_validator::collision_validator
 
 #endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__SWEEP_TYPES_HPP_
