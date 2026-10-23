@@ -20,11 +20,11 @@ It is implemented as a ROS 2 component node, making it easy to integrate into Au
 
 ### (1) Prerequisites
 
-Make sure that the directory specified in `planning/autoware_ml_planner/config/ml_planner.param.yaml` points to the correct model version and contains the required model weight and parameter files.
+Make sure that `model.base_model_directory` in `planning/autoware_ml_planner/config/ml_planner.param.yaml` points to the correct model version. The ONNX file is resolved as `base_model_directory / onnx_model_filename`. ml_planner does not ship an args JSON.
 
 ```bash
-$ ls ~/autoware_data/ml_models/ml_planner/v4.0/
-ml_planner.onnx ml_planner.param.json
+$ ls ~/autoware_data/ml_models/ml_planner/v6.0/
+metadata.json ml_planner.onnx
 ```
 
 This can be downloaded by following [Download artifacts](https://github.com/autowarefoundation/autoware/blob/main/ansible/roles/artifacts/README.md#download-artifacts).
@@ -74,7 +74,7 @@ The raw model output is a noisy, position-only 80-point sequence (x, y, cos(yaw)
 - **Horizon**: N = 80, dt = 0.1 s (aligned 1:1 with the model output)
 - **Cost**: tracks the raw positions (and weakly heading), penalizes velocity and steering-angle magnitude relative to zero, and regularizes acceleration and steering rate for smoothness. The position error is split along the reference heading — longitudinal (schedule/velocity-profile freedom) and lateral (path deviation) errors are weighted separately via a per-stage rotated 2x2 weight block. No velocity or steering reference is fabricated from the model output
 - **Constraints**: initial state fixed to the current ego state (base_link pose, odometry velocity, measured steering angle), velocity/steering/input box bounds, soft lateral acceleration bound
-- **Goal terminal penalty**: once the predicted endpoint enters `goal.snap_distance_m`, additional longitudinal, lateral, yaw, and zero-velocity terminal weights are latched until the route goal position changes
+- **Goal terminal penalty**: once the predicted endpoint enters `goal.snap_distance_m`, additional longitudinal, lateral, yaw, and zero-velocity terminal weights are latched until the route goal position changes, or until ego-to-goal exceeds `unlatch_horizon_s * max(|current_speed|, unlatch_min_speed_mps)` (set `unlatch_horizon_s <= 0` to disable). A route-goal change still clears the previous-cycle solutions. Far-away unlatch drops the terminal snap only, so temporal consistency is not reset; the temporal term itself is skipped for that one cycle while the latch flag changes, so a latched terminal does not keep pulling after a drive-away.
 - **Output**: 80 points (t = 0.1 .. 8.0 s, same timing convention as the raw output) that are dynamically consistent with the current ego state, with velocity, acceleration, steering angle, and heading rate profiles
 
 The OCP is defined in `scripts/generate_solver.py` (vehicle model in `scripts/vehicle_model.py`); the C code is generated at build time into the build tree. Cost weights and constraint bounds are injected at node startup from ROS parameters, so tuning does not require rebuilding. Building requires acados at `ACADOS_SOURCE_DIR` (default `/opt/acados`) with its Python venv; without it the package builds with optimization support disabled.
@@ -92,7 +92,7 @@ The trajectory is created with a naive velocity profile derived from the predict
 
 ### Road border avoidance
 
-When `road_border_avoidance.enable` is true, the raw model output is checked against the road borders of the lanelet map before being handed to the trajectory optimization. Points before `start_time_s` are left unchanged. For every point at or after that time, the ego footprint, inflated by `footprint_margin_m`, is placed at the point's pose and tested for overlap with the road border line strings (boost::geometry). Overlapping points are shifted perpendicular to their heading, away from the nearest border: up to three `shift_step_m` probes, then bisection to `max_lateral_shift_m` (linear fallback if the cap still collides). If the cap is reached the shift is kept as best effort and a warning is logged. With `propagate_shift` enabled (default) the offset is carried over to all subsequent points along each point's own lateral direction, so the path stays shifted after passing the border instead of snapping back to the raw output. Yaw and all other fields stay untouched. Debug topics: `~/debug/road_border_avoidance/adjusted_trajectory` (the shifted reference) and `~/debug/road_border_avoidance/shifted_point_count`.
+When `road_border_avoidance.enable` is true, the raw model output is checked against the road borders of the lanelet map before being handed to the trajectory optimization. Points before `start_time_s` are left unchanged. For every point at or after that time, the ego footprint, inflated by `footprint_margin_m`, is placed at the point's pose and tested for overlap with the road border line strings (boost::geometry). Overlapping points are shifted perpendicular to their heading, away from the nearest border: up to three `shift_step_m` probes, then bisection to `max_lateral_shift_m` (linear fallback if the cap still collides). If the cap is reached the shift is kept as best effort and a warning is logged. With `propagate_shift` enabled (default) the offset is carried over to all subsequent points along each point's own lateral direction, so the path stays shifted after passing the border instead of snapping back to the raw output. Yaw and all other fields stay untouched. To handle grade-separated roads (overpasses / underpasses), only road borders within 2.5 m of the reference height are checked; the reference height starts at the ego height and follows the nearest same-height border along the trajectory, so slopes are also handled. Debug topics: `~/debug/road_border_avoidance/adjusted_trajectory` (the shifted reference) and `~/debug/road_border_avoidance/shifted_point_count`.
 
 ### Stop point fixing
 
@@ -110,15 +110,15 @@ Parameters can be set via YAML (see `config/ml_planner.param.yaml`).
 
 ## Inputs
 
-| Topic                     | Message Type                                        | Description                                                   |
-| ------------------------- | --------------------------------------------------- | ------------------------------------------------------------- |
-| `~/input/odometry`        | nav_msgs/msg/Odometry                               | Ego vehicle odometry                                          |
-| `~/input/tracked_objects` | autoware_perception_msgs/msg/TrackedObjects         | Detected dynamic objects                                      |
-| `~/input/traffic_signals` | autoware_perception_msgs/msg/TrafficLightGroupArray | Traffic light states                                          |
-| `~/input/vector_map`      | autoware_map_msgs/msg/LaneletMapBin                 | Lanelet2 map                                                  |
-| `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information                                             |
-| `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                    |
-| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (used by the trajectory optimization) |
+| Topic                     | Message Type                                        | Description                                                                                                            |
+| ------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `~/input/odometry`        | nav_msgs/msg/Odometry                               | Ego vehicle odometry                                                                                                   |
+| `~/input/tracked_objects` | autoware_perception_msgs/msg/TrackedObjects         | Detected dynamic objects                                                                                               |
+| `~/input/traffic_signals` | autoware_perception_msgs/msg/TrafficLightGroupArray | Traffic light states                                                                                                   |
+| `~/input/vector_map`      | autoware_map_msgs/msg/LaneletMapBin                 | Lanelet2 map                                                                                                           |
+| `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information                                                                                                      |
+| `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                                                                             |
+| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (ego history preprocessing and trajectory optimization; major version 6 models do not read it) |
 
 ## Services
 
@@ -157,8 +157,25 @@ The ML Planner relies on an ONNX model for inference.
 
 The sampler model consumes the `turn_indicators` history tensor and returns both `trajectory`
 and `turn_indicator_logits`. The three logit classes are DISABLE, ENABLE_LEFT, and ENABLE_RIGHT.
-To ensure compatibility between models and the ROS 2 node implementation, the model versioning scheme follows **major** and **minor** numbers:
-The model version is defined either by the directory name provided to the node or within the `ml_planner.param.json` configuration file.
+To ensure compatibility between models and the ROS 2 node implementation, the model versioning scheme follows **major** and **minor** numbers.
+
+A `metadata.json` must be placed in the same directory as the ONNX model:
+
+```json
+{
+  "major_version": 6,
+  "onnx_sha256": "<sha256sum of the ONNX model>"
+}
+```
+
+Other fields may be added freely; they are not interpreted by the node, but the whole file is printed to the log.
+On load, the node:
+
+1. checks that `onnx_sha256` matches the SHA-256 of the ONNX file (`sha256sum <onnx_model_filename>`),
+2. prints the contents of `metadata.json` to the log,
+3. checks that `major_version` equals `ML_PLANNER_WEIGHT_MAJOR_VERSION` in `CMakeLists.txt`.
+
+If any check fails, the model is not loaded and inference is disabled.
 
 - **Major version**
   Incremented when there are changes in the model **inputs/outputs or architecture**.

@@ -50,6 +50,11 @@ struct TrajectoryOptimizationParams
     double weight_yaw{0.5};
     double weight_velocity{0.1};
     double snap_distance_m{1.0};
+    /// Drop the latch when ego-to-goal exceeds this time horizon times speed.
+    /// <= 0 disables the far-away unlatch.
+    double unlatch_horizon_s{8.0};
+    /// Floor on speed used by the far-away range: range = horizon * max(|v|, this).
+    double unlatch_min_speed_mps{3.0};
   } goal;
 
   // State bounds (stages 1..N). min_velocity_mps >= 0 prevents backward motion.

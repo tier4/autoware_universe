@@ -60,7 +60,7 @@ public:
       const auto & p = params_.objects;
       object_filter_->set_params(
         p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
-        p.max_lateral_velocity_th, p.safety_buffer);
+        p.max_lateral_velocity_th, p.safety_buffer, p.low_velocity_th);
       pointcloud_filter_->set_params(p.target_objects.pointcloud);
     }
 
@@ -115,19 +115,20 @@ private:
 
   void update_lateral_margin_map()
   {
-    const auto & p = params_.objects.lateral_margin;
+    const auto & normal = params_.objects.lateral_margin;
+    const auto & low = params_.objects.low_velocity_lateral_margin;
     lateral_margin_map_ = {
-      {ObjectType::CAR, p.car},
-      {ObjectType::TRUCK, p.truck},
-      {ObjectType::BUS, p.bus},
-      {ObjectType::TRAILER, p.trailer},
-      {ObjectType::MOTORCYCLE, p.motorcycle},
-      {ObjectType::BICYCLE, p.bicycle},
-      {ObjectType::PEDESTRIAN, p.pedestrian},
-      {ObjectType::HAZARD, p.hazard},
-      {ObjectType::STRUCTURE, p.structure},
-      {ObjectType::VEGETATION, p.vegetation},
-      {ObjectType::UNKNOWN, p.unknown}};
+      {ObjectType::CAR, {normal.car, low.car}},
+      {ObjectType::TRUCK, {normal.truck, low.truck}},
+      {ObjectType::BUS, {normal.bus, low.bus}},
+      {ObjectType::TRAILER, {normal.trailer, low.trailer}},
+      {ObjectType::MOTORCYCLE, {normal.motorcycle, low.motorcycle}},
+      {ObjectType::BICYCLE, {normal.bicycle, low.bicycle}},
+      {ObjectType::PEDESTRIAN, {normal.pedestrian, low.pedestrian}},
+      {ObjectType::HAZARD, {normal.hazard, low.hazard}},
+      {ObjectType::STRUCTURE, {normal.structure, low.structure}},
+      {ObjectType::VEGETATION, {normal.vegetation, low.vegetation}},
+      {ObjectType::UNKNOWN, {normal.unknown, low.unknown}}};
   }
 
   bool is_obstacle_detected(const TrajectoryPoints & traj_points, const ModifierData & data);

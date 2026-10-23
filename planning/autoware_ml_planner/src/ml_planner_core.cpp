@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -60,6 +61,8 @@ bool optimization_params_changed(
          lhs.goal.weight_yaw != rhs.goal.weight_yaw ||
          lhs.goal.weight_velocity != rhs.goal.weight_velocity ||
          lhs.goal.snap_distance_m != rhs.goal.snap_distance_m ||
+         lhs.goal.unlatch_horizon_s != rhs.goal.unlatch_horizon_s ||
+         lhs.goal.unlatch_min_speed_mps != rhs.goal.unlatch_min_speed_mps ||
          lhs.min_velocity_mps != rhs.min_velocity_mps ||
          lhs.max_velocity_mps != rhs.max_velocity_mps ||
          lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
@@ -138,8 +141,15 @@ MLPlannerCore::MLPlannerCore(const MLPlannerParams & params, const VehicleInfo &
   }
 }
 
+void MLPlannerCore::resolve_model_paths()
+{
+  const std::filesystem::path base_dir(params_.base_model_directory);
+  params_.model_path = (base_dir / params_.onnx_model_filename).string();
+}
+
 void MLPlannerCore::load_model()
 {
+  resolve_model_paths();
   ml_planner_inference_.reset();
   if (params_.backend == "tensorrt") {
     ml_planner_inference_ = std::make_unique<SingleStepInference>(
@@ -217,6 +227,7 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   const std::vector<std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
     traffic_signals,
   const std::vector<std::shared_ptr<const TurnIndicatorsReport>> & turn_indicators,
+  const std::vector<std::shared_ptr<const SteeringReport>> & steering_reports,
   const LaneletRoute::ConstSharedPtr & route_ptr)
 {
   if (route_ptr) {
@@ -225,6 +236,11 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   for (const auto & msg : ego_kinematic_states) {
     if (msg) {
       ego_history_.push_back(*msg);
+    }
+  }
+  for (const auto & msg : steering_reports) {
+    if (msg) {
+      steering_history_.push_back(*msg);
     }
   }
   for (const auto & msg : turn_indicators) {
@@ -256,6 +272,9 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   if (turn_indicators_history_.empty()) {
     missing_inputs.emplace_back("turn indicators");
   }
+  if (steering_history_.empty()) {
+    missing_inputs.emplace_back("steering status");
+  }
   if (!missing_inputs.empty()) {
     std::string error{"Missing required input: "};
     for (size_t index = 0; index < missing_inputs.size(); ++index) {
@@ -270,6 +289,7 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   return preprocess::FrameInputs{
     frame_time(),
     preprocess::MessageView<nav_msgs::msg::Odometry>{ego_history_.msgs()},
+    preprocess::MessageView<SteeringReport>{steering_history_.msgs()},
     preprocess::MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport>{
       turn_indicators_history_.msgs()},
     preprocess::MessageView<autoware_perception_msgs::msg::TrackedObjects>{objects_history_.msgs()},
@@ -296,6 +316,7 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   auto builder_output = std::move(single_input_result.value());
   selected_agents_ = std::move(builder_output.selected_agents);
   TensorMap single_input_data_map = std::move(builder_output.tensors);
+  utils::drop_steering_and_wheel_base(single_input_data_map);
 
   // Replicate for batch
   TensorMap input_data_map;
@@ -489,12 +510,13 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
   const double center_x = pose_center.position.x;
   const double center_y = pose_center.position.y;
   const double center_z = pose_center.position.z;
+  const double center_yaw = utils::yaw_from_quaternion(pose_center.orientation);
 
   const auto traffic_light_id_map = preprocess::create_traffic_signal_map(
     traffic_signals_history_.msgs(), frame_time(), params_.traffic_light_group_msg_timeout_seconds);
 
   return lane_segment_context_->get_first_traffic_light_on_route(
-    *route_ptr_, center_x, center_y, center_z, traffic_light_id_map);
+    *route_ptr_, center_x, center_y, center_z, center_yaw, traffic_light_id_map);
 }
 
 int64_t MLPlannerCore::count_valid_elements(

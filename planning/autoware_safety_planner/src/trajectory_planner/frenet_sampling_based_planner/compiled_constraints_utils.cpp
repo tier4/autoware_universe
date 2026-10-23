@@ -413,4 +413,18 @@ bool violates_stop_bar(
   return box.s_max > stop_bar.s_stop;
 }
 
+double stop_target_s(
+  const PlannerContext & context, const CompiledConstraints & compiled_constraints,
+  const double horizon, const double s_min)
+{
+  double s_stop = context.reference_path.length();
+  for (const auto & stop_bar : compiled_constraints.stop_bars) {
+    if (stop_bar.time.t1 < 0.0 || stop_bar.time.t0 > horizon) {
+      continue;
+    }
+    s_stop = std::min(s_stop, stop_bar.s_stop - context.vehicle_info.max_longitudinal_offset_m);
+  }
+  return std::max(s_stop, s_min);
+}
+
 }  // namespace autoware::safety_planner

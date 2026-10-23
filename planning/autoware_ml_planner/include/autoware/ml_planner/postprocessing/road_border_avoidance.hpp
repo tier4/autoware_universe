@@ -59,6 +59,13 @@ struct RoadBorderAvoidanceResult
   [[nodiscard]] bool modified() const { return num_shifted_points + num_unresolved_points > 0; }
 };
 
+/// Road border line string (map frame) with the height of each vertex.
+struct RoadBorder
+{
+  autoware_utils_geometry::LineString2d line;
+  std::vector<double> z;
+};
+
 /**
  * @brief Shifts raw model-output trajectory points laterally away from road borders.
  *
@@ -73,6 +80,10 @@ struct RoadBorderAvoidanceResult
  * passing the border instead of snapping back. Yaw and all non-position fields are left
  * untouched. The adjusted trajectory is meant to be fed to the acados-based trajectory
  * optimization as its tracking reference.
+ *
+ * To handle grade-separated roads (overpasses / underpasses), only border segments at the same
+ * height as the trajectory point are checked. The reference height starts at the ego height and
+ * follows the nearest same-height border along the trajectory, so it also follows slopes.
  */
 class RoadBorderAvoidance
 {
@@ -84,8 +95,12 @@ public:
   /// Extract and cache the road border line strings (map frame) from the lanelet map.
   void set_map(const lanelet::LaneletMap & lanelet_map);
 
-  /// Directly set the road borders (map frame). Used by set_map() and unit tests.
-  void set_road_borders(std::vector<autoware_utils_geometry::LineString2d> road_borders);
+  /// Directly set the road borders (map frame), stored as two-point segments. Used by set_map()
+  /// and unit tests.
+  void set_road_borders(std::vector<RoadBorder> road_borders);
+
+  /// Set road borders without height (all at z = 0). Used by unit tests.
+  void set_road_borders(const std::vector<autoware_utils_geometry::LineString2d> & road_borders);
 
   /**
    * @brief Check and adjust one raw trajectory (map frame).
@@ -99,8 +114,8 @@ private:
   RoadBorderAvoidanceParams params_;
   // Inflated ego footprint in base_link frame.
   autoware_utils_geometry::LinearRing2d base_footprint_;
-  // Road border line strings in map frame.
-  std::vector<autoware_utils_geometry::LineString2d> road_borders_;
+  // Road border segments (two points each) in map frame.
+  std::vector<RoadBorder> road_borders_;
 };
 
 }  // namespace autoware::ml_planner::postprocess

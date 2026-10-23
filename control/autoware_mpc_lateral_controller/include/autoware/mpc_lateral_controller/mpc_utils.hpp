@@ -28,6 +28,7 @@
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <optional>
 #include <string>
@@ -78,6 +79,15 @@ MPCTrajectory convertToMPCTrajectory(
   const Trajectory & input, const bool use_temporal_trajectory = true);
 
 /**
+ * MPPI stores issued control u[i] on the post-step trajectory point at time (i + 1) * dt.
+ * Select the control for the interval ending at that point. At an exact boundary, the next
+ * control becomes issuable. A trajectory starting at t=0 instead treats that first point as
+ * an immediately valid command.
+ */
+std::optional<std::size_t> findIssuedSteeringCommandIndex(
+  const MPCTrajectory & trajectory, double elapsed_time);
+
+/**
  * @brief convert the given MPCTrajectory to a Trajectory msg
  * @param [in] input MPCTrajectory to be converted
  * @param [in] wheelbase [m] wheelbase of the vehicle
@@ -98,15 +108,6 @@ void calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory, std::vector<do
  * @return total arc length
  */
 double calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory);
-
-/**
- * @brief calculate spatial arc length from a start index to the trajectory end
- * @param [in] trajectory trajectory to measure
- * @param [in] start_idx index from which to start accumulating distance
- * @return accumulated 2D distance from start_idx to the last point
- */
-double calcMPCTrajectoryRemainingArcLength(
-  const MPCTrajectory & trajectory, const size_t start_idx);
 
 /**
  * @brief resample the given trajectory with the given fixed interval

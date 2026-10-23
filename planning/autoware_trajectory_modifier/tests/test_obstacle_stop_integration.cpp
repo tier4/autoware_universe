@@ -317,6 +317,48 @@ TEST_F(ObstacleStopIntegrationTest, TrajectoryNotModifiedWhenObjectIsBesidePath)
   EXPECT_FALSE(modified);
 }
 
+TEST_F(ObstacleStopIntegrationTest, SlowTrajectoryIgnoresObjectOutsideLowSpeedMargin)
+{
+  // Vehicle half-width is 0.948 m. A 2 m wide car at y = 2.7 has its near edge at 1.7 m.
+  // That is outside the low-speed margin (0 m) and inside the normal margin (1.5 m).
+  auto & objects = params_.obstacle_stop.objects;
+  objects.lateral_margin.car = 1.5;
+  objects.low_velocity_lateral_margin.car = 0.0;
+  objects.low_velocity_th = 2.0;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 1.0);
+  const auto car_beside_path = make_blocking_car(20.0, 2.7);
+  const auto input =
+    create_input_data(make_odometry(0.0, 0.0, 1.0), make_acceleration(0.0), car_beside_path);
+
+  process_plugin(*plugin_, trajectory, input);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  const bool modified = process_plugin(*plugin_, trajectory, input);
+
+  EXPECT_FALSE(modified);
+}
+
+TEST_F(ObstacleStopIntegrationTest, FastTrajectoryStopsForObjectWithinNormalMargin)
+{
+  auto & objects = params_.obstacle_stop.objects;
+  objects.lateral_margin.car = 1.5;
+  objects.low_velocity_lateral_margin.car = 0.0;
+  objects.low_velocity_th = 2.0;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 8.0);
+  const auto car_beside_path = make_blocking_car(20.0, 2.7);
+  const auto input =
+    create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), car_beside_path);
+
+  process_plugin(*plugin_, trajectory, input);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  const bool modified = process_plugin(*plugin_, trajectory, input);
+
+  EXPECT_TRUE(modified);
+}
+
 TEST_F(ObstacleStopIntegrationTest, TrajectoryModifiedWhenObjectBlocksPath)
 {
   // Arrange

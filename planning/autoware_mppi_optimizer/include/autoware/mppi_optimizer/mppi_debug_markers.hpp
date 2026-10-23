@@ -202,38 +202,6 @@ inline MarkerArray createMppiDebugMarkers(
 
   marker_array.markers.push_back(makeDeleteAllMarker("mppi_rollout"));
 
-  if (!debug.rollouts.empty()) {
-    float min_best = std::numeric_limits<float>::max();
-    float max_best = std::numeric_limits<float>::lowest();
-    bool have_best = false;
-    for (const auto & rollout : debug.rollouts) {
-      if (rollout.is_worst) {
-        continue;
-      }
-      have_best = true;
-      min_best = std::min(min_best, rollout.cost);
-      max_best = std::max(max_best, rollout.cost);
-    }
-
-    int rollout_id = 1;
-    for (const auto & rollout : debug.rollouts) {
-      if (rollout.points.size() < 2U) {
-        continue;
-      }
-      std_msgs::msg::ColorRGBA color;
-      if (rollout.is_worst) {
-        // Warm red, low alpha — distinct from teal→purple top-weighted samples.
-        color = makeColor(0.85F, 0.15F, 0.10F, 0.25F);
-      } else if (have_best) {
-        color = costGradientColor(rollout.cost, min_best, max_best);
-      } else {
-        color = makeColor(0.55F, 0.15F, 0.75F, 0.5F);
-      }
-      marker_array.markers.push_back(
-        makeLineStripMarker("mppi_rollout", rollout_id, color, 0.04, rollout.points, z));
-      ++rollout_id;
-    }
-  }
   auto road_borders_marker = detail::create_mppi_line_list_marker(
     "mppi_road_borders", detail::create_marker_color(1.0F, 0.0F, 0.0F));
   for (const auto & road_border : road_borders) {
@@ -268,6 +236,47 @@ inline MarkerArray createMppiDebugMarkers(
   marker_array.markers.push_back(std::move(drivable_area_marker));
   marker_array.markers.push_back(std::move(avoidance_targets_marker));
   marker_array.markers.push_back(std::move(driving_along_targets_marker));
+  return marker_array;
+}
+
+inline MarkerArray create_mppi_rollout_markers(
+  const FirstOrderDubinsMppiDebug & debug, const double z)
+{
+  MarkerArray marker_array;
+  if (!debug.rollouts.empty()) {
+    float min_best = std::numeric_limits<float>::max();
+    float max_best = std::numeric_limits<float>::lowest();
+    bool have_best = false;
+    for (const auto & rollout : debug.rollouts) {
+      if (rollout.is_worst) {
+        continue;
+      }
+      have_best = true;
+      min_best = std::min(min_best, rollout.cost);
+      max_best = std::max(max_best, rollout.cost);
+    }
+
+    int rollout_id = 1;
+    for (const auto & rollout : debug.rollouts) {
+      if (rollout.points.size() < 2U) {
+        continue;
+      }
+      std_msgs::msg::ColorRGBA color;
+      if (rollout.is_worst) {
+        // Warm red, low alpha — distinct from teal→purple top-weighted samples.
+        color = makeColor(0.85F, 0.15F, 0.10F, 0.25F);
+      } else if (have_best) {
+        color = costGradientColor(rollout.cost, min_best, max_best);
+      } else {
+        color = makeColor(0.55F, 0.15F, 0.75F, 0.5F);
+      }
+      const std::string rollout_namespace =
+        rollout.iteration > 0 ? "iter" + std::to_string(rollout.iteration) : "mppi_rollout";
+      marker_array.markers.push_back(
+        makeLineStripMarker(rollout_namespace, rollout_id, color, 0.04, rollout.points, z));
+      ++rollout_id;
+    }
+  }
   return marker_array;
 }
 

@@ -119,6 +119,10 @@ void TrajectoryModifier::update_params()
 tl::expected<TrajectoryModifierData, std::string> TrajectoryModifier::make_input_data()
 {
   TrajectoryModifierData data;
+  context_->refresh_external_velocity_limit();
+  data.has_external_velocity_limit_snapshot = true;
+  data.external_velocity_limit = context_->external_velocity_limit.active_limit();
+  data.external_velocity_limit_clear_revision = context_->external_velocity_limit.clear_revision();
   data.current_odometry = sub_current_odometry_.take_data();
   data.current_acceleration = sub_current_acceleration_.take_data();
   data.current_steering = sub_current_steering_.take_data();
@@ -189,10 +193,12 @@ void TrajectoryModifier::on_trajectories(const CandidateTrajectories::ConstShare
     for (auto & modifier_plugin : plugins_) {
       const auto result = modifier_plugin->process(candidate.points, data);
       modifier_plugin->publish_debug_data("trajectory_" + std::to_string(candidate_index));
+      // Always publish so inspection-only plugins (ModelPlanningFactorID) can emit factors
+      // without mutating the trajectory. An empty publish also clears stale factors.
+      modifier_plugin->publish_planning_factor();
       if (result != plugin::ProcessingResult::Modified) {
         continue;
       }
-      modifier_plugin->publish_planning_factor();
       if (!modified_instances.empty()) {
         modified_instances += ", ";
       }

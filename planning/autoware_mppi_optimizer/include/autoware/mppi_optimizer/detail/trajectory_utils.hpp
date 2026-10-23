@@ -21,6 +21,7 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -120,14 +121,47 @@ void setInitialEngageVelocity(
 void applyActiveVelocityLimitProfile(
   Trajectory & trajectory, const ActiveVelocityLimitProfile & profile);
 
+/**
+ * Build a cold nominal from a spatially smoothed curvature fit. Horizon samples advance by the
+ * distance predicted from initial_velocity_mps and reference acceleration instead of by point
+ * index; a non-finite initial velocity retains the legacy reference-velocity fallback for tools.
+ */
 [[nodiscard]] std::vector<FirstOrderDubinsMppiControl> buildDiffusionNominalControl(
   const Trajectory & reference, std::size_t start_idx,
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, int horizon = kMppiHorizon,
-  float min_chord_length_m = 1.5F);
+  float min_chord_length_m = 1.5F, float curvature_fit_window_m = 4.0F, float dt = kMppiDt,
+  float initial_velocity_mps = std::numeric_limits<float>::quiet_NaN());
 
 [[nodiscard]] std::vector<FirstOrderDubinsMppiControl> buildForcedNominalControl(
   const std::vector<float> & acceleration_commands, const std::vector<float> & steering_commands,
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, int horizon = kMppiHorizon);
+
+/**
+ * Replace the nominal steering prefix with commands inferred from an MPC-predicted path.
+ * The first transition is anchored at the measured ego pose. Later transitions use consecutive
+ * predicted poses. Prediction time_from_start values are interpolated onto the MPPI timestep.
+ * Acceleration and any suffix beyond the prediction remain unchanged.
+ *
+ * @return Number of nominal steering commands replaced.
+ */
+std::size_t overlayNominalSteeringFromPredictedTrajectory(
+  std::vector<FirstOrderDubinsMppiControl> & nominal, const Trajectory & predicted_trajectory,
+  const InitialState & ego, const FirstOrderDubinsMppiVehicleParams & vehicle_params,
+  float dt = kMppiDt);
+
+/** Compute the steering actuator-rate bound used by host prediction and CUDA rollouts. */
+float velocityDependentSteeringRateLimit(
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, float velocity);
+
+/**
+ * Anchor nominal steer u[0] to the steering predicted after the existing input-delay queue drains.
+ * A non-positive maximum deviation disables the guard and preserves the command exactly.
+ */
+[[nodiscard]] FirstOrderDubinsMppiNominalSteeringContinuity guardInitialNominalSteeringCommand(
+  float nominal_steering_command, float current_steering,
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, int steering_delay_steps = 0,
+  const std::vector<float> & steering_delay_buffer = {}, float maximum_deviation_rad = 0.0F,
+  float dt = kMppiDt, float current_velocity = 0.0F);
 
 /**
  * Filter an MPPI nominal control sequence through optional longitudinal kinematic limits.
