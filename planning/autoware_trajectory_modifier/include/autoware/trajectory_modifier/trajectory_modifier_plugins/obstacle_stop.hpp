@@ -115,7 +115,8 @@ private:
     const std::optional<CollisionPoint> & collision_point_objects,
     const std::optional<CollisionPoint> & collision_point_pcd);
   bool apply_cruise(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
-  void add_cruise_planning_factor(const CruiseReport & report, const geometry_msgs::msg::Pose & ego_pose);
+  void add_cruise_planning_factor(
+    const CruiseReport & report, const geometry_msgs::msg::Pose & ego_pose);
 
   bool set_stop_point(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 

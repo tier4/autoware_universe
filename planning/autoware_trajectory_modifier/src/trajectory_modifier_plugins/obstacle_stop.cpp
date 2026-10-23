@@ -108,17 +108,28 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
       std::make_unique<utils::obstacle_stop::PointCloudFilter>(p.target_objects.pointcloud);
 
     lateral_margin_map_ = {
-      {utils::obstacle_stop::ObjectType::CAR, {p.lateral_margin.car, p.low_velocity_lateral_margin.car}},
-      {utils::obstacle_stop::ObjectType::TRUCK, {p.lateral_margin.truck, p.low_velocity_lateral_margin.truck}},
-      {utils::obstacle_stop::ObjectType::BUS, {p.lateral_margin.bus, p.low_velocity_lateral_margin.bus}},
-      {utils::obstacle_stop::ObjectType::TRAILER, {p.lateral_margin.trailer, p.low_velocity_lateral_margin.trailer}},
-      {utils::obstacle_stop::ObjectType::MOTORCYCLE, {p.lateral_margin.motorcycle, p.low_velocity_lateral_margin.motorcycle}},
-      {utils::obstacle_stop::ObjectType::BICYCLE, {p.lateral_margin.bicycle, p.low_velocity_lateral_margin.bicycle}},
-      {utils::obstacle_stop::ObjectType::PEDESTRIAN, {p.lateral_margin.pedestrian, p.low_velocity_lateral_margin.pedestrian}},
-      {utils::obstacle_stop::ObjectType::HAZARD, {p.lateral_margin.hazard, p.low_velocity_lateral_margin.hazard}},
-      {utils::obstacle_stop::ObjectType::STRUCTURE, {p.lateral_margin.structure, p.low_velocity_lateral_margin.structure}},
-      {utils::obstacle_stop::ObjectType::VEGETATION, {p.lateral_margin.vegetation, p.low_velocity_lateral_margin.vegetation}},
-      {utils::obstacle_stop::ObjectType::UNKNOWN, {p.lateral_margin.unknown, p.low_velocity_lateral_margin.unknown}},
+      {utils::obstacle_stop::ObjectType::CAR,
+       {p.lateral_margin.car, p.low_velocity_lateral_margin.car}},
+      {utils::obstacle_stop::ObjectType::TRUCK,
+       {p.lateral_margin.truck, p.low_velocity_lateral_margin.truck}},
+      {utils::obstacle_stop::ObjectType::BUS,
+       {p.lateral_margin.bus, p.low_velocity_lateral_margin.bus}},
+      {utils::obstacle_stop::ObjectType::TRAILER,
+       {p.lateral_margin.trailer, p.low_velocity_lateral_margin.trailer}},
+      {utils::obstacle_stop::ObjectType::MOTORCYCLE,
+       {p.lateral_margin.motorcycle, p.low_velocity_lateral_margin.motorcycle}},
+      {utils::obstacle_stop::ObjectType::BICYCLE,
+       {p.lateral_margin.bicycle, p.low_velocity_lateral_margin.bicycle}},
+      {utils::obstacle_stop::ObjectType::PEDESTRIAN,
+       {p.lateral_margin.pedestrian, p.low_velocity_lateral_margin.pedestrian}},
+      {utils::obstacle_stop::ObjectType::HAZARD,
+       {p.lateral_margin.hazard, p.low_velocity_lateral_margin.hazard}},
+      {utils::obstacle_stop::ObjectType::STRUCTURE,
+       {p.lateral_margin.structure, p.low_velocity_lateral_margin.structure}},
+      {utils::obstacle_stop::ObjectType::VEGETATION,
+       {p.lateral_margin.vegetation, p.low_velocity_lateral_margin.vegetation}},
+      {utils::obstacle_stop::ObjectType::UNKNOWN,
+       {p.lateral_margin.unknown, p.low_velocity_lateral_margin.unknown}},
     };
   }
 
@@ -160,17 +171,28 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
     pointcloud_filter_->set_params(p.target_objects.pointcloud);
 
     lateral_margin_map_ = {
-      {utils::obstacle_stop::ObjectType::CAR, {p.lateral_margin.car, p.low_velocity_lateral_margin.car}},
-      {utils::obstacle_stop::ObjectType::TRUCK, {p.lateral_margin.truck, p.low_velocity_lateral_margin.truck}},
-      {utils::obstacle_stop::ObjectType::BUS, {p.lateral_margin.bus, p.low_velocity_lateral_margin.bus}},
-      {utils::obstacle_stop::ObjectType::TRAILER, {p.lateral_margin.trailer, p.low_velocity_lateral_margin.trailer}},
-      {utils::obstacle_stop::ObjectType::MOTORCYCLE, {p.lateral_margin.motorcycle, p.low_velocity_lateral_margin.motorcycle}},
-      {utils::obstacle_stop::ObjectType::BICYCLE, {p.lateral_margin.bicycle, p.low_velocity_lateral_margin.bicycle}},
-      {utils::obstacle_stop::ObjectType::PEDESTRIAN, {p.lateral_margin.pedestrian, p.low_velocity_lateral_margin.pedestrian}},
-      {utils::obstacle_stop::ObjectType::HAZARD, {p.lateral_margin.hazard, p.low_velocity_lateral_margin.hazard}},
-      {utils::obstacle_stop::ObjectType::STRUCTURE, {p.lateral_margin.structure, p.low_velocity_lateral_margin.structure}},
-      {utils::obstacle_stop::ObjectType::VEGETATION, {p.lateral_margin.vegetation, p.low_velocity_lateral_margin.vegetation}},
-      {utils::obstacle_stop::ObjectType::UNKNOWN, {p.lateral_margin.unknown, p.low_velocity_lateral_margin.unknown}},
+      {utils::obstacle_stop::ObjectType::CAR,
+       {p.lateral_margin.car, p.low_velocity_lateral_margin.car}},
+      {utils::obstacle_stop::ObjectType::TRUCK,
+       {p.lateral_margin.truck, p.low_velocity_lateral_margin.truck}},
+      {utils::obstacle_stop::ObjectType::BUS,
+       {p.lateral_margin.bus, p.low_velocity_lateral_margin.bus}},
+      {utils::obstacle_stop::ObjectType::TRAILER,
+       {p.lateral_margin.trailer, p.low_velocity_lateral_margin.trailer}},
+      {utils::obstacle_stop::ObjectType::MOTORCYCLE,
+       {p.lateral_margin.motorcycle, p.low_velocity_lateral_margin.motorcycle}},
+      {utils::obstacle_stop::ObjectType::BICYCLE,
+       {p.lateral_margin.bicycle, p.low_velocity_lateral_margin.bicycle}},
+      {utils::obstacle_stop::ObjectType::PEDESTRIAN,
+       {p.lateral_margin.pedestrian, p.low_velocity_lateral_margin.pedestrian}},
+      {utils::obstacle_stop::ObjectType::HAZARD,
+       {p.lateral_margin.hazard, p.low_velocity_lateral_margin.hazard}},
+      {utils::obstacle_stop::ObjectType::STRUCTURE,
+       {p.lateral_margin.structure, p.low_velocity_lateral_margin.structure}},
+      {utils::obstacle_stop::ObjectType::VEGETATION,
+       {p.lateral_margin.vegetation, p.low_velocity_lateral_margin.vegetation}},
+      {utils::obstacle_stop::ObjectType::UNKNOWN,
+       {p.lateral_margin.unknown, p.low_velocity_lateral_margin.unknown}},
     };
   }
 
@@ -346,7 +368,8 @@ bool ObstacleStop::apply_cruise(
   return true;
 }
 
-void ObstacleStop::add_cruise_planning_factor(const CruiseReport & report, const geometry_msgs::msg::Pose & ego_pose)
+void ObstacleStop::add_cruise_planning_factor(
+  const CruiseReport & report, const geometry_msgs::msg::Pose & ego_pose)
 {
   if (report.target.index >= debug_data_.target_objects.size()) {
     return;
@@ -365,7 +388,8 @@ void ObstacleStop::add_cruise_planning_factor(const CruiseReport & report, const
   safety_factors.factors.push_back(safety_factor);
 
   planning_factor_interface_->add(
-    report.gap(), ego_pose, PlanningFactor::SLOW_DOWN, safety_factors, true, report.cruise_velocity, 0.0, "cruise");
+    report.gap(), ego_pose, PlanningFactor::SLOW_DOWN, safety_factors, true, report.cruise_velocity,
+    0.0, "cruise");
 }
 
 bool ObstacleStop::set_stop_point(
@@ -613,8 +637,9 @@ void ObstacleStop::publish_debug_string(bool is_safe) const
   }
   if (cruise_report_) {
     ss << "\t\t"
-       << "CRUISE: gap " << cruise_report_->gap() << " m, target " << cruise_report_->target_velocity()
-       << " m/s, v_cruise " << cruise_report_->cruise_velocity << " m/s"
+       << "CRUISE: gap " << cruise_report_->gap() << " m, target "
+       << cruise_report_->target_velocity() << " m/s, v_cruise " << cruise_report_->cruise_velocity
+       << " m/s"
        << "\n";
   }
 

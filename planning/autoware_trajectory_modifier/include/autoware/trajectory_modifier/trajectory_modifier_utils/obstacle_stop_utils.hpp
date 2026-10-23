@@ -125,7 +125,8 @@ inline static const std::unordered_map<PointCloudClassification, ObjectType>
 
 using ObjectDecelMap = std::unordered_map<ObjectType, double>;
 
-struct LateralMargin {
+struct LateralMargin
+{
   double normal{0.0};
   double low_velocity{0.0};
 };
@@ -216,7 +217,7 @@ struct EgoFootprint
   geometry_msgs::msg::Pose pose;
   size_t traj_index{0};    ///< nearest original trajectory index
   double arc_length{0.0};  ///< arc length from trajectory start to this pose (baselink)
-  double lon_vel{0.0};    ///< target longitudinal velocity along trajectory at this pose
+  double lon_vel{0.0};     ///< target longitudinal velocity along trajectory at this pose
 };
 
 using FootprintNode = std::pair<autoware_utils_geometry::Box2d, size_t>;
@@ -306,7 +307,8 @@ using QueryResult = std::pair<size_t, Polygon2d>;
  * nearest hit pose frame, or nullopt if none contain the point.
  */
 std::optional<QueryResult> query_overlapping_footprint(
-  const TrajectoryShape & shape, const Point2d & point, const LateralMargin lat_margin, const double traj_low_velocity_th);
+  const TrajectoryShape & shape, const Point2d & point, const LateralMargin lat_margin,
+  const double traj_low_velocity_th);
 
 /**
  * @brief Find the nearest ego footprint that intersects the given object polygon.
@@ -317,7 +319,8 @@ std::optional<QueryResult> query_overlapping_footprint(
  * nearest hit pose frame, or nullopt if none intersect.
  */
 std::optional<QueryResult> query_overlapping_footprint(
-  const TrajectoryShape & shape, const Polygon2d & polygon, const LateralMargin lat_margin, const double traj_low_velocity_th);
+  const TrajectoryShape & shape, const Polygon2d & polygon, const LateralMargin lat_margin,
+  const double traj_low_velocity_th);
 
 /**
  * @brief Find the closest point-cloud obstacle that overlaps an ego footprint.
@@ -462,7 +465,8 @@ struct ObjectFilter
   ObjectFilter(
     const std::vector<std::string> & bbox_object_type_strings,
     const std::vector<std::string> & polygon_object_type_strings, const double stopped_velocity_th,
-    const double max_lateral_velocity_th, const double safety_buffer, const double traj_low_velocity_th)
+    const double max_lateral_velocity_th, const double safety_buffer,
+    const double traj_low_velocity_th)
   : stopped_velocity_th_(stopped_velocity_th),
     max_lateral_velocity_th_(max_lateral_velocity_th),
     safety_buffer_(safety_buffer),
@@ -524,7 +528,8 @@ struct ObjectFilter
   void set_params(
     const std::vector<std::string> & bbox_object_type_strings,
     const std::vector<std::string> & polygon_object_type_strings, const double stopped_velocity_th,
-    const double max_lateral_velocity_th, const double safety_buffer, const double traj_low_velocity_th)
+    const double max_lateral_velocity_th, const double safety_buffer,
+    const double traj_low_velocity_th)
   {
     bbox_object_types_.clear();
     polygon_object_types_.clear();

@@ -212,7 +212,8 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
 
     ObjectFilter object_filter(
       p.objects.target_objects.bbox, p.objects.target_objects.polygon,
-      p.objects.stopped_velocity_th, p.objects.max_lateral_velocity_th, p.objects.safety_buffer, p.objects.low_velocity_th);
+      p.objects.stopped_velocity_th, p.objects.max_lateral_velocity_th, p.objects.safety_buffer,
+      p.objects.low_velocity_th);
     auto filtered_objects = *context.predicted_objects;
     object_filter.filter_objects(filtered_objects);
     target_objects.reserve(filtered_objects.objects.size());
