@@ -713,7 +713,7 @@
                 "min_distance": {
                   "type": "number",
                   "description": "Minimum distance to keep from the cruise target, raised to at least stop_margin [m]",
-                  "default": 8,
+                  "default": 7,
                   "minimum": 0,
                   "maximum": 100
                 },
@@ -734,14 +734,14 @@
                 "max_deceleration": {
                   "type": "number",
                   "description": "Maximum deceleration of the cruise velocity profile [m/s^2]",
-                  "default": 1.5,
+                  "default": 1.0,
                   "minimum": 0.1,
                   "maximum": 10
                 },
                 "max_jerk": {
                   "type": "number",
                   "description": "Maximum jerk of the cruise velocity profile [m/s^3]",
-                  "default": 1.5,
+                  "default": 1.0,
                   "minimum": 0.1,
                   "maximum": 10
                 }

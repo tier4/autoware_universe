@@ -411,7 +411,7 @@ trajectory_modifier_params:
         read_only: false
       min_distance:
         type: double
-        default_value: 8.0
+        default_value: 7.0
         description: Minimum distance to keep from the cruise target, raised to at least stop_margin [m]
         validation:
           bounds<>: [0.0, 100.0]
@@ -432,14 +432,14 @@ trajectory_modifier_params:
         read_only: false
       max_deceleration:
         type: double
-        default_value: 1.5
+        default_value: 1.0
         description: Maximum deceleration of the cruise velocity profile [m/s^2]
         validation:
           bounds<>: [0.1, 10.0]
         read_only: false
       max_jerk:
         type: double
-        default_value: 1.5
+        default_value: 1.0
         description: Maximum jerk of the cruise velocity profile [m/s^3]
         validation:
           bounds<>: [0.1, 10.0]
