@@ -199,14 +199,14 @@ InputCollisionResult checkInputTrajectoryCollisions(
   const autoware_planning_msgs::msg::Trajectory & trajectory,
   const autoware_perception_msgs::msg::TrackedObjects & static_objects,
   const std::vector<Segment> & road_borders, const FirstOrderDubinsMppiVehicleParams & vehicle,
-  const float obstacle_collision_margin, const float road_border_collision_margin,
+  const float obstacle_margin, const float road_border_margin,
   const InputCollisionConditions conditions)
 {
   InputCollisionResult result;
   if ((!conditions.road_border && !conditions.static_object) || trajectory.points.empty()) {
     return result;
   }
-  validate_geometry(vehicle, obstacle_collision_margin, road_border_collision_margin);
+  validate_geometry(vehicle, obstacle_margin, road_border_margin);
   const auto segments = conditions.road_border ? make_road_segments(road_borders) : RoadSegments{};
   const auto objects = conditions.static_object ? make_static_obstacles(static_objects)
                                                 : std::vector<StaticObstacle>{};
@@ -215,8 +215,7 @@ InputCollisionResult checkInputTrajectoryCollisions(
     std::min(trajectory.points.size(), static_cast<std::size_t>(detail::kMppiHorizon));
   auto previous = to_pose2d(trajectory.points.front().pose);
   check_pose(
-    previous, segments, objects, vehicle, obstacle_collision_margin, road_border_collision_margin,
-    conditions, result);
+    previous, segments, objects, vehicle, obstacle_margin, road_border_margin, conditions, result);
   for (std::size_t index = 1U; index < count && !result.triggered(); ++index) {
     const auto next = to_pose2d(trajectory.points[index].pose);
     const auto steps = interpolation_steps(previous, next, vehicle);
@@ -227,8 +226,7 @@ InputCollisionResult checkInputTrajectoryCollisions(
         previous.x + (next.x - previous.x) * ratio, previous.y + (next.y - previous.y) * ratio,
         previous.yaw + yaw_change * ratio};
       check_pose(
-        pose, segments, objects, vehicle, obstacle_collision_margin, road_border_collision_margin,
-        conditions, result);
+        pose, segments, objects, vehicle, obstacle_margin, road_border_margin, conditions, result);
     }
     previous = next;
   }

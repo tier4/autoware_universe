@@ -41,15 +41,15 @@ struct InputCollisionResult
 };
 
 /**
- * Check the input prefix that MPPI can replace, using the optimizer's exact collision geometry.
+ * Check the input prefix that MPPI can replace, using the optimizer's collision geometry
+ * inflated by the supplied activation margins.
  * The object argument contains stationary avoidance targets selected by the modifier plugin.
  */
 [[nodiscard]] InputCollisionResult checkInputTrajectoryCollisions(
   const autoware_planning_msgs::msg::Trajectory & trajectory,
   const autoware_perception_msgs::msg::TrackedObjects & static_objects,
   const std::vector<Segment> & road_borders, const FirstOrderDubinsMppiVehicleParams & vehicle,
-  float obstacle_collision_margin, float road_border_collision_margin,
-  InputCollisionConditions conditions);
+  float obstacle_margin, float road_border_margin, InputCollisionConditions conditions);
 
 }  // namespace autoware::mppi_optimizer
 

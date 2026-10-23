@@ -215,6 +215,19 @@ std::vector<Segment> to_mppi_segments(const std::vector<Segment2d> & segments)
   return output;
 }
 
+float input_activation_margin(
+  const double collision_margin, const double safe_margin, const bool use_soft_margins)
+{
+  const double margin = collision_margin + (use_soft_margins ? safe_margin : 0.0);
+  if (
+    !std::isfinite(margin) || margin < 0.0 ||
+    margin > static_cast<double>(std::numeric_limits<float>::max())) {
+    throw std::invalid_argument(
+      "MPPI input activation margin must be finite, non-negative, and representable as float");
+  }
+  return static_cast<float>(margin);
+}
+
 bool is_input_collision_triggered(
   const Trajectory & input, const TrackedObjects & static_objects,
   const std::vector<Segment> & road_borders, const std::string & map_frame,
@@ -241,8 +254,12 @@ bool is_input_collision_triggered(
 
   const auto collision = checkInputTrajectoryCollisions(
     input, static_objects, road_borders, vehicle,
-    static_cast<float>(params.obstacle_collision_margin),
-    static_cast<float>(params.road_border_collision_margin),
+    input_activation_margin(
+      params.obstacle_collision_margin, params.obstacle_safe_margin,
+      params.use_soft_margins_for_input_collision),
+    input_activation_margin(
+      params.road_border_collision_margin, params.road_border_safe_margin,
+      params.use_soft_margins_for_input_collision),
     {params.trigger_on_road_border_collision, params.trigger_on_static_object_collision});
   return collision.triggered();
 }
@@ -467,8 +484,11 @@ ProcessingResult TrajectoryMppiOptimizer::process(
         std::abs(context_->vehicle_info.min_lateral_offset_m),
         std::abs(context_->vehicle_info.max_lateral_offset_m));
       boundary_query_margin = std::max(
-        boundary_query_margin, std::hypot(max_longitudinal_offset, max_lateral_offset) +
-                                 params_.road_border_collision_margin);
+        boundary_query_margin,
+        std::hypot(max_longitudinal_offset, max_lateral_offset) +
+          input_activation_margin(
+            params_.road_border_collision_margin, params_.road_border_safe_margin,
+            params_.use_soft_margins_for_input_collision));
     }
     const auto road_borders =
       extended_route_handler_->get_road_borders_around_trajectory(input, boundary_query_margin);
@@ -859,6 +879,16 @@ void TrajectoryMppiOptimizer::prepare_scene_parameters()
   const double barrier_envelope_radius =
     std::hypot(max_longitudinal_offset, max_lateral_offset) + cost_params.obstacle_safe_margin;
   object_filter_margin_m_ = std::max(collision_envelope_radius, barrier_envelope_radius);
+  if (
+    params_.optimize_only_on_input_collision && params_.trigger_on_static_object_collision &&
+    params_.use_soft_margins_for_input_collision) {
+    const double activation_margin = input_activation_margin(
+      params_.obstacle_collision_margin, params_.obstacle_safe_margin,
+      params_.use_soft_margins_for_input_collision);
+    const double activation_envelope_radius = std::hypot(
+      max_longitudinal_offset + activation_margin, max_lateral_offset + activation_margin);
+    object_filter_margin_m_ = std::max(object_filter_margin_m_, activation_envelope_radius);
+  }
 
   const double max_vehicle_delay_s =
     std::max(vehicle_params.acc_time_delay, vehicle_params.steer_time_delay);

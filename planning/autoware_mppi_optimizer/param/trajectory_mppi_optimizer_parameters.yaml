@@ -24,6 +24,11 @@ trajectory_mppi_optimizer:
     default_value: true
     description: In conditional mode, run MPPI when the input footprint intersects a stationary avoidance target
     read_only: false
+  use_soft_margins_for_input_collision:
+    type: bool
+    default_value: false
+    description: In conditional mode, add each obstacle or road-border safe margin to its collision margin for activation
+    read_only: false
   limit_velocity_from_map:
     type: bool
     default_value: false
