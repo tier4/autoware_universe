@@ -346,6 +346,7 @@ using autoware_perception_msgs::msg::TrafficLightElement;
 std::map<lanelet::Id, size_t> create_lane_id_to_array_index_map(
   const std::vector<LaneSegment> & lane_segments);
 bool is_segment_inside(const LaneSegment & segment, const double center_x, const double center_y);
+bool is_on_ego_level(const Polyline & points_in_ego_frame);
 std::optional<size_t> find_closest_segment_index(
   const std::vector<LaneSegment> & lane_segments, const std::vector<int64_t> & segment_indices,
   const lanelet::BasicPoint2d & point, const double yaw, const double yaw_threshold);
@@ -506,12 +507,14 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
     float distance_squared;  //!< Squared distance from the center.
   };
 
-  auto calc_distance = [&](const LanePoint & point) {
+  auto to_ego_frame = [&](const LanePoint & point) {
     const Eigen::Vector4d transformed_point =
       transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
-    const float diff_x = transformed_point.x();
-    const float diff_y = transformed_point.y();
-    return std::sqrt(diff_x * diff_x + diff_y * diff_y);
+    return LanePoint(transformed_point.x(), transformed_point.y(), transformed_point.z());
+  };
+  auto calc_distance = [&](const LanePoint & point) {
+    const LanePoint transformed_point = to_ego_frame(point);
+    return std::hypot(transformed_point.x(), transformed_point.y());
   };
 
   // Step 1: Compute distances
@@ -528,6 +531,15 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
     const std::vector<LanePoint> & centerline = segment.centerline;
 
     if (centerline.size() < 2) {
+      continue;
+    }
+
+    Polyline centerline_in_ego_frame;
+    centerline_in_ego_frame.reserve(centerline.size());
+    std::transform(
+      centerline.begin(), centerline.end(), std::back_inserter(centerline_in_ego_frame),
+      to_ego_frame);
+    if (!is_on_ego_level(centerline_in_ego_frame)) {
       continue;
     }
 
@@ -687,6 +699,10 @@ xt::xarray<float> create_line_tensor(
         transformed_point.x(), transformed_point.y(), transformed_point.z());
     }
 
+    if (!is_on_ego_level(transformed_polyline)) {
+      continue;
+    }
+
     double min_distance = std::numeric_limits<double>::max();
     for (const auto & point : transformed_polyline) {
       const double distance = std::sqrt(point.x() * point.x() + point.y() * point.y());
@@ -761,6 +777,9 @@ xt::xarray<float> create_polyline_tensor(
       min_distance =
         std::min(min_distance, std::hypot(transformed_point.x(), transformed_point.y()));
     }
+    if (!is_on_ego_level(transformed)) {
+      continue;
+    }
     selected.push_back({std::move(transformed), min_distance});
   }
 
@@ -809,6 +828,23 @@ bool is_segment_inside(const LaneSegment & segment, const double center_x, const
   }
 
   return false;
+}
+
+bool is_on_ego_level(const Polyline & points_in_ego_frame)
+{
+  const auto closest = std::min_element(
+    points_in_ego_frame.begin(), points_in_ego_frame.end(),
+    [](const LanePoint & a, const LanePoint & b) {
+      return std::hypot(a.x(), a.y()) < std::hypot(b.x(), b.y());
+    });
+  using autoware::ml_planner::constants::MAX_SAME_LEVEL_HEIGHT_DIFF_M;
+  using autoware::ml_planner::constants::SAME_LEVEL_HEIGHT_DIFF_PER_DISTANCE;
+  if (closest == points_in_ego_frame.end()) {
+    return false;
+  }
+  const double distance = std::hypot(closest->x(), closest->y());
+  return std::abs(closest->z()) <=
+         MAX_SAME_LEVEL_HEIGHT_DIFF_M + SAME_LEVEL_HEIGHT_DIFF_PER_DISTANCE * distance;
 }
 
 std::optional<size_t> find_closest_segment_index(
