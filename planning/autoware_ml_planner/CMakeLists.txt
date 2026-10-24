@@ -143,6 +143,7 @@ if(BUILD_TESTING)
     test/planning_factor_utils_test.cpp
     test/postprocessing_utils_test.cpp
     test/postprocessing_utils_edge_case_test.cpp
+    test/map_level_selection_test.cpp
     test/road_border_avoidance_test.cpp
     test/route_segment_selection_test.cpp
     test/utils_test.cpp
