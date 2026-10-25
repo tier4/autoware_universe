@@ -20,6 +20,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <random>
@@ -80,6 +81,25 @@ protected:
     return trajectory;
   }
 
+  /// Straight candidate on the solver grid. `i` is 0 at the header stamp.
+  static Trajectory make_straight_timed_trajectory(
+    const double speed, const size_t first_index, const size_t last_index)
+  {
+    Trajectory trajectory;
+    trajectory.header.frame_id = "map";
+    trajectory.points.resize(last_index - first_index + 1);
+    for (size_t i = first_index; i <= last_index; ++i) {
+      const double t = opt_dt_s * static_cast<double>(i);
+      auto & point = trajectory.points[i - first_index];
+      point.pose.position.x = speed * t;
+      point.pose.orientation.w = 1.0;
+      point.time_from_start.sec = static_cast<int32_t>(std::floor(t));
+      point.time_from_start.nanosec =
+        static_cast<uint32_t>(std::llround((t - std::floor(t)) * 1e9));
+    }
+    return trajectory;
+  }
+
   static geometry_msgs::msg::Pose make_pose(const double x, const double y, const double yaw = 0.0)
   {
     geometry_msgs::msg::Pose pose;
@@ -87,6 +107,30 @@ protected:
     pose.position.y = y;
     pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
     return pose;
+  }
+
+  static double time_s(const TrajectoryPoint & point)
+  {
+    return static_cast<double>(point.time_from_start.sec) +
+           static_cast<double>(point.time_from_start.nanosec) * 1e-9;
+  }
+
+  /// Same clamp the temporal followers use: now is limited to the first published timestamp.
+  static double reference_x_at(const Trajectory & trajectory, const double query_s)
+  {
+    const double t_first = time_s(trajectory.points.front());
+    const double t_last = time_s(trajectory.points.back());
+    const double t = std::clamp(query_s, t_first, t_last);
+    size_t hi = 1;
+    while (hi + 1 < trajectory.points.size() && time_s(trajectory.points[hi]) < t) {
+      ++hi;
+    }
+    const auto & a = trajectory.points[hi - 1];
+    const auto & b = trajectory.points[hi];
+    const double t_a = time_s(a);
+    const double t_b = time_s(b);
+    const double ratio = (t_b > t_a) ? (t - t_a) / (t_b - t_a) : 0.0;
+    return a.pose.position.x + ratio * (b.pose.position.x - a.pose.position.x);
   }
 
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
@@ -187,36 +231,57 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, OptimizesTrajectoryShorterThanCompil
 
   // ResWorld shape: 61 samples at 0.1 s, t = 0 .. 6 s. The compiled horizon is 80 steps / 8 s.
   // Stages 1..60 track the message; the pose cost on the remaining stages is zero.
+  // The t = 0 ego point is published again so a query younger than dt does not clamp to 0.1 s.
   constexpr double speed = 8.0;
   constexpr double duration_s = 6.0;
-  constexpr size_t n_input = 61;
-  Trajectory raw;
-  raw.header.frame_id = "map";
-  raw.points.resize(n_input);
-  for (size_t i = 0; i < n_input; ++i) {
-    const double t = duration_s * static_cast<double>(i) / static_cast<double>(n_input - 1);
-    auto & point = raw.points[i];
-    point.pose.position.x = speed * t;
-    point.pose.orientation.w = 1.0;
-    point.time_from_start.sec = static_cast<int32_t>(std::floor(t));
-    point.time_from_start.nanosec =
-      static_cast<uint32_t>(std::llround((t - std::floor(t)) * 1e9));
-  }
+  const auto raw = make_straight_timed_trajectory(speed, 0, 60);
 
   const auto result = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
   ASSERT_TRUE(result.optimized) << "acados status: " << result.solver_status;
-  ASSERT_EQ(result.trajectory.points.size(), 60U);
+  ASSERT_EQ(result.trajectory.points.size(), 61U);
+
+  const auto & anchor = result.trajectory.points.front();
+  const auto & first_step = result.trajectory.points[1];
+  const auto & last = result.trajectory.points.back();
+  EXPECT_NEAR(time_s(anchor), 0.0, 1e-9);
+  EXPECT_NEAR(anchor.pose.position.x, 0.0, 0.15);
+  EXPECT_NEAR(time_s(first_step), opt_dt_s, 1e-9);
+  EXPECT_NEAR(time_s(last), duration_s, 1e-9);
+  EXPECT_NEAR(first_step.pose.position.x, speed * opt_dt_s, 0.5);
+  EXPECT_NEAR(last.pose.position.x, speed * duration_s, 1.0);
+
+  // A plan younger than one step must still see a state between the ego and the 0.1 s point.
+  constexpr double query_before_first_step_s = 0.05;
+  const double x_now = reference_x_at(result.trajectory, query_before_first_step_s);
+  const double x_at_dt = reference_x_at(result.trajectory, opt_dt_s);
+  EXPECT_LT(x_now, x_at_dt - 0.2);
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, SamplesDiffusionGridFromHeaderStamp)
+{
+  TrajectoryOptimizationParams params;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  // Diffusion shape: 80 points at 0.1 .. 8.0 s, no t = 0 anchor. Stage k tracks input time k*dt.
+  constexpr double speed = 8.0;
+  const auto raw = make_straight_timed_trajectory(speed, 1, opt_horizon);
+
+  const auto result = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(result.optimized) << "acados status: " << result.solver_status;
+  ASSERT_EQ(result.trajectory.points.size(), opt_horizon);
 
   const auto & first = result.trajectory.points.front();
   const auto & last = result.trajectory.points.back();
-  EXPECT_NEAR(
-    static_cast<double>(first.time_from_start.sec) + first.time_from_start.nanosec * 1e-9,
-    opt_dt_s, 1e-9);
-  EXPECT_NEAR(
-    static_cast<double>(last.time_from_start.sec) + last.time_from_start.nanosec * 1e-9, duration_s,
-    1e-9);
+  EXPECT_NEAR(time_s(first), opt_dt_s, 1e-9);
+  EXPECT_NEAR(time_s(last), opt_dt_s * static_cast<double>(opt_horizon), 1e-6);
   EXPECT_NEAR(first.pose.position.x, speed * opt_dt_s, 0.5);
-  EXPECT_NEAR(last.pose.position.x, speed * duration_s, 1.0);
+
+  constexpr double query_s = 2.0;
+  const auto at_query = std::find_if(
+    result.trajectory.points.begin(), result.trajectory.points.end(),
+    [&](const TrajectoryPoint & point) { return std::abs(time_s(point) - query_s) < 1e-6; });
+  ASSERT_NE(at_query, result.trajectory.points.end());
+  EXPECT_NEAR(at_query->pose.position.x, speed * query_s, 0.5);
 }
 
 TEST_F(TimeSequenceTrajectoryOptimizerTest, WarmStartAcrossCycles)

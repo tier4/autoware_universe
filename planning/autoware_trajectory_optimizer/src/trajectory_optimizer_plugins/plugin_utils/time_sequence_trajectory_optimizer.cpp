@@ -56,6 +56,13 @@ bool has_increasing_time(const Trajectory & trajectory)
          time_from_start_s(trajectory.points.front()) + 1e-3;
 }
 
+/// ResWorld prepends the ego pose at the header stamp. Diffusion candidates start at dt.
+bool starts_at_stamp(const Trajectory & trajectory)
+{
+  return !trajectory.points.empty() &&
+         std::abs(time_from_start_s(trajectory.points.front())) <= 1e-3;
+}
+
 struct SampledPose
 {
   double x{0.0};
@@ -222,18 +229,18 @@ OptimizationResult TrajectoryOptimizer::optimize(
 
   const std::array<double, opt_nx> initial_state{0.0, 0.0, yaw0, v0, delta0, a0};
 
-  // references[k] is the pose target for solver stage k+1, at time (k+1)*dt.
-  // Timed messages (ResWorld: 61 samples from t=0 to t=6 s) are sampled on that grid.
+  // references[k] is the pose target for solver stage k+1. Stage time is (k+1)*dt after
+  // the header stamp, which is where the initial state sits. Sampling from the first
+  // point's stamp would shift a diffusion candidate that starts at 0.1 s.
   // Messages without stamps keep the index convention used by the unit tests: point k
   // is the target for stage k+1.
   const bool timed = has_increasing_time(raw_trajectory);
   std::array<SampledPose, opt_horizon> sampled{};
   size_t tracked_stages = 0;
   if (timed) {
-    const double t0 = time_from_start_s(raw_trajectory.points.front());
     const double t_last = time_from_start_s(raw_trajectory.points.back());
     for (size_t k = 0; k < opt_horizon; ++k) {
-      const double t_stage = t0 + static_cast<double>(k + 1) * opt_dt_s;
+      const double t_stage = static_cast<double>(k + 1) * opt_dt_s;
       if (t_stage > t_last + 0.5 * opt_dt_s) {
         break;
       }
@@ -398,26 +405,39 @@ OptimizationResult TrajectoryOptimizer::optimize(
     return result;
   }
 
+  // A timed input that already contains the ego point at the header stamp keeps that
+  // anchor. Temporal followers clamp "now" up to the first timestamp, so dropping it
+  // makes a fresh plan use the 0.1 s state as the current reference. Diffusion inputs
+  // that start at dt, and untimed inputs, keep the stage-1 .. stage-N output.
+  const bool keep_stamp_anchor = timed && starts_at_stamp(raw_trajectory);
+
   Trajectory optimized;
   optimized.header = raw_trajectory.header;
-  optimized.points.reserve(tracked_stages);
+  optimized.points.reserve(tracked_stages + (keep_stamp_anchor ? 1U : 0U));
+
+  const auto append_state =
+    [&](const std::array<double, opt_nx> & state, const double time_s, const double z) {
+      TrajectoryPoint point;
+      point.time_from_start.sec = static_cast<int32_t>(time_s);
+      point.time_from_start.nanosec =
+        static_cast<uint32_t>((time_s - point.time_from_start.sec) * 1e9);
+      point.pose.position.x = state[0] + base_x;
+      point.pose.position.y = state[1] + base_y;
+      point.pose.position.z = z;
+      point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(
+        autoware_utils_math::normalize_radian(state[2]));
+      point.longitudinal_velocity_mps = static_cast<float>(state[kV]);
+      point.front_wheel_angle_rad = static_cast<float>(state[kDelta]);
+      point.acceleration_mps2 = static_cast<float>(state[kA]);
+      point.heading_rate_rps =
+        static_cast<float>(state[kV] * std::tan(state[kDelta]) / wheelbase_m_);
+      optimized.points.push_back(point);
+    };
+  if (keep_stamp_anchor) {
+    append_state(solution.states[0], 0.0, raw_trajectory.points.front().pose.position.z);
+  }
   for (size_t i = 1; i <= tracked_stages; ++i) {
-    const auto & state = solution.states[i];
-    TrajectoryPoint point;
-    const double time_s = opt_dt_s * static_cast<double>(i);
-    point.time_from_start.sec = static_cast<int32_t>(time_s);
-    point.time_from_start.nanosec =
-      static_cast<uint32_t>((time_s - point.time_from_start.sec) * 1e9);
-    point.pose.position.x = state[0] + base_x;
-    point.pose.position.y = state[1] + base_y;
-    point.pose.position.z = sampled[i - 1].z;
-    point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(
-      autoware_utils_math::normalize_radian(state[2]));
-    point.longitudinal_velocity_mps = static_cast<float>(state[kV]);
-    point.front_wheel_angle_rad = static_cast<float>(state[kDelta]);
-    point.acceleration_mps2 = static_cast<float>(state[kA]);
-    point.heading_rate_rps = static_cast<float>(state[kV] * std::tan(state[kDelta]) / wheelbase_m_);
-    optimized.points.push_back(point);
+    append_state(solution.states[i], opt_dt_s * static_cast<double>(i), sampled[i - 1].z);
   }
   result.trajectory = std::move(optimized);
   result.optimized = true;
