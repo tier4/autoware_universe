@@ -208,7 +208,10 @@ SolverSolution AcadosSolverWrapper::solve(
     unscale * impl_->params.weight_steering_rate;
   std::array<double, gen_ny> yref{};
   for (size_t stage = 0; stage < gen_n; ++stage) {
+    // Stage 0 tracks the measured ego pose. Later stages track the input only while
+    // references[stage - 1] is inside the trajectory; the tail keeps jerk / steer-rate cost.
     const bool is_initial_stage = stage == 0;
+    const bool track_pose = is_initial_stage || references[stage - 1].track_pose;
     const auto & ref = references[is_initial_stage ? 0 : stage - 1];
     const double yaw_ref = is_initial_stage ? x0[kPsi] : ref.yaw;
     const std::array<double, 2> position_ref = is_initial_stage
@@ -223,7 +226,14 @@ SolverSolution AcadosSolverWrapper::solve(
     double blended_yaw = yaw_ref;
     double blended_velocity = 0.0;
 
-    if (use_temporal && !is_initial_stage && (*temporal_references)[stage - 1].valid) {
+    if (!track_pose) {
+      block = {0.0, 0.0, 0.0};
+      blended_position = {0.0, 0.0};
+      yaw_weight = 0.0;
+      velocity_weight = 0.0;
+      blended_yaw = 0.0;
+      blended_velocity = 0.0;
+    } else if (use_temporal && !is_initial_stage && (*temporal_references)[stage - 1].valid) {
       const auto & previous = (*temporal_references)[stage - 1];
       const double scale = temporal_scale(stage);
       const double t_lon = scale * temporal.weight_longitudinal;
@@ -270,30 +280,39 @@ SolverSolution AcadosSolverWrapper::solve(
   }
 
   const double terminal_scale = impl_->params.terminal_weight_scale / unscale;
-  const auto & terminal_ref = references[gen_n - 1];
-  std::array<double, 2> terminal_position{terminal_ref.x, terminal_ref.y};
-  double terminal_yaw = terminal_ref.yaw;
+  // A message shorter than 8 s leaves the compiled terminal past the input. Pose cost there
+  // stays zero unless goal snap has latched that stage onto the route goal.
+  const bool track_terminal = references[gen_n - 1].track_pose;
+  std::array<double, 2> terminal_position{0.0, 0.0};
+  double terminal_yaw = 0.0;
   double terminal_velocity = 0.0;
-  if (goal_terminal_reference) {
-    terminal_position = {goal_terminal_reference->x, goal_terminal_reference->y};
-    terminal_yaw = goal_terminal_reference->yaw;
-    terminal_velocity = goal_terminal_reference->velocity;
-  }
-  auto terminal_block = position_block(terminal_yaw, w_lon, w_lat);
-  for (auto & entry : terminal_block) {
-    entry *= terminal_scale;
-  }
-  double terminal_yaw_weight = terminal_scale * impl_->params.weight_yaw;
+  std::array<double, 3> terminal_block{0.0, 0.0, 0.0};
+  double terminal_yaw_weight = 0.0;
   double terminal_velocity_weight = 0.0;
-  if (goal_terminal_reference) {
-    const auto & goal = impl_->params.goal;
-    const auto goal_block =
-      position_block(goal_terminal_reference->yaw, goal.weight_longitudinal, goal.weight_lateral);
-    for (size_t i = 0; i < terminal_block.size(); ++i) {
-      terminal_block[i] += goal_block[i];
+  if (track_terminal) {
+    const auto & terminal_ref = references[gen_n - 1];
+    terminal_position = {terminal_ref.x, terminal_ref.y};
+    terminal_yaw = terminal_ref.yaw;
+    if (goal_terminal_reference) {
+      terminal_position = {goal_terminal_reference->x, goal_terminal_reference->y};
+      terminal_yaw = goal_terminal_reference->yaw;
+      terminal_velocity = goal_terminal_reference->velocity;
     }
-    terminal_yaw_weight += goal.weight_yaw;
-    terminal_velocity_weight += goal.weight_velocity;
+    terminal_block = position_block(terminal_yaw, w_lon, w_lat);
+    for (auto & entry : terminal_block) {
+      entry *= terminal_scale;
+    }
+    terminal_yaw_weight = terminal_scale * impl_->params.weight_yaw;
+    if (goal_terminal_reference) {
+      const auto & goal = impl_->params.goal;
+      const auto goal_block = position_block(
+        goal_terminal_reference->yaw, goal.weight_longitudinal, goal.weight_lateral);
+      for (size_t i = 0; i < terminal_block.size(); ++i) {
+        terminal_block[i] += goal_block[i];
+      }
+      terminal_yaw_weight += goal.weight_yaw;
+      terminal_velocity_weight += goal.weight_velocity;
+    }
   }
   // Do not fold the previous terminal into yref_e. After age-based resampling the last
   // temporal sample is clamped to the previous horizon end, whose heading is often stale

@@ -168,18 +168,55 @@ TEST_F(TimeSequenceTrajectoryOptimizerTest, InitialAccelerationContinuity)
   EXPECT_NEAR(result.trajectory.points.front().acceleration_mps2, initial_accel_mps2, 0.5F);
 }
 
-TEST_F(TimeSequenceTrajectoryOptimizerTest, FallsBackOnShortTrajectory)
+TEST_F(TimeSequenceTrajectoryOptimizerTest, FallsBackOnEmptyTrajectory)
 {
   TrajectoryOptimizationParams params;
   TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
 
-  Trajectory short_trajectory;
-  short_trajectory.header.frame_id = "map";
-  short_trajectory.points.resize(3);
-
-  const auto result = optimizer.optimize(short_trajectory, odometry_, std::nullopt, 0.0, 0);
+  Trajectory empty;
+  empty.header.frame_id = "map";
+  const auto result = optimizer.optimize(empty, odometry_, std::nullopt, 0.0, 0);
   EXPECT_FALSE(result.optimized);
-  EXPECT_EQ(result.trajectory.points.size(), short_trajectory.points.size());
+  EXPECT_TRUE(result.trajectory.points.empty());
+}
+
+TEST_F(TimeSequenceTrajectoryOptimizerTest, OptimizesTrajectoryShorterThanCompiledHorizon)
+{
+  TrajectoryOptimizationParams params;
+  TrajectoryOptimizer optimizer(params, vehicle_info_, 1);
+
+  // ResWorld shape: 61 samples at 0.1 s, t = 0 .. 6 s. The compiled horizon is 80 steps / 8 s.
+  // Stages 1..60 track the message; the pose cost on the remaining stages is zero.
+  constexpr double speed = 8.0;
+  constexpr double duration_s = 6.0;
+  constexpr size_t n_input = 61;
+  Trajectory raw;
+  raw.header.frame_id = "map";
+  raw.points.resize(n_input);
+  for (size_t i = 0; i < n_input; ++i) {
+    const double t = duration_s * static_cast<double>(i) / static_cast<double>(n_input - 1);
+    auto & point = raw.points[i];
+    point.pose.position.x = speed * t;
+    point.pose.orientation.w = 1.0;
+    point.time_from_start.sec = static_cast<int32_t>(std::floor(t));
+    point.time_from_start.nanosec =
+      static_cast<uint32_t>(std::llround((t - std::floor(t)) * 1e9));
+  }
+
+  const auto result = optimizer.optimize(raw, odometry_, 0.0, 0.0, 0);
+  ASSERT_TRUE(result.optimized) << "acados status: " << result.solver_status;
+  ASSERT_EQ(result.trajectory.points.size(), 60U);
+
+  const auto & first = result.trajectory.points.front();
+  const auto & last = result.trajectory.points.back();
+  EXPECT_NEAR(
+    static_cast<double>(first.time_from_start.sec) + first.time_from_start.nanosec * 1e-9,
+    opt_dt_s, 1e-9);
+  EXPECT_NEAR(
+    static_cast<double>(last.time_from_start.sec) + last.time_from_start.nanosec * 1e-9, duration_s,
+    1e-9);
+  EXPECT_NEAR(first.pose.position.x, speed * opt_dt_s, 0.5);
+  EXPECT_NEAR(last.pose.position.x, speed * duration_s, 1.0);
 }
 
 TEST_F(TimeSequenceTrajectoryOptimizerTest, WarmStartAcrossCycles)
