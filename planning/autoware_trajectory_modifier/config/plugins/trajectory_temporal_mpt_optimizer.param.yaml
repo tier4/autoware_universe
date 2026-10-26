@@ -1,0 +1,16 @@
+/**:
+  ros__parameters:
+    trajectory_temporal_mpt_optimizer:
+      min_points_for_optimization: 2
+      # First-order actuator (match MPPI vehicle params when used as nominal seeder)
+      acc_time_constant: 0.15   # [s]
+      steer_time_constant: 0.08 # [s]
+      max_steer_rate: 3.0       # [rad/s]
+      # Shift previous acados solution as NLP warm-start each cycle.
+      use_previous_solution_warm_start: true
+      enable_debug_info: true
+      publish_debug_topics: true
+      write_replay_fixture: false
+      replay_fixture_directory: "~/.ros/autoware_temporal_mpt_replay"
+      log_replay_fixture_to_console: true
+      reroute_output: true
