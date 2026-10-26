@@ -204,23 +204,6 @@ struct EgoSweep
 
   const Polygon2d & now() const { return polygons.front(); }
 };
-
-class ObjectMotion
-{
-public:
-  ObjectMotion(
-    detail::TrajectoryData trajectory, bool is_static,
-    const geometry_msgs::msg::Pose & initial_pose);
-
-  const detail::TrajectoryData & trajectory() const { return trajectory_; }
-  geometry_msgs::msg::Pose pose_at(double t) const;
-  bool is_static() const { return is_static_; }
-
-private:
-  detail::TrajectoryData trajectory_;
-  bool is_static_;
-  geometry_msgs::msg::Pose initial_pose_;
-};
 }  // namespace autoware::control_validator::collision_validator
 
 #endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__SWEEP_TYPES_HPP_

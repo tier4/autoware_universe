@@ -667,18 +667,21 @@ Polygon2d point_polygon(const Point2d & point)
 }
 
 CollisionCandidate make_point_candidate(
-  const EgoSweep & ego_sweep, const builtin_interfaces::msg::Time & stamp,
-  const Point2d & point_now, const size_t k, const Point2d & hit_point)
+  const EgoSweep & ego_sweep, const builtin_interfaces::msg::Time & stamp, const Point2d & point)
 {
   CollisionCandidate candidate;
   candidate.kind = CollisionCandidate::Kind::POINTCLOUD;
   candidate.label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
   candidate.source_stamp = stamp;
-  candidate.polygon_now = point_polygon(point_now);
-  candidate.distance_now = boost::geometry::distance(ego_sweep.now(), point_now);
-  candidate.ttc = ego_sweep.times[k];
-  candidate.cos_collision = compute_cos_collision(ego_sweep.poses[k], ego_sweep.forward, hit_point);
+  candidate.polygon_now = point_polygon(point);
+  candidate.distance_now = boost::geometry::distance(ego_sweep.now(), point);
   return candidate;
+}
+
+bool is_all_stopped(const EgoSweep & ego_sweep)
+{
+  return std::all_of(
+    ego_sweep.stopped.begin(), ego_sweep.stopped.end(), [](const bool stopped) { return stopped; });
 }
 
 template <typename CollidesWhenBraking>
@@ -692,47 +695,6 @@ uint8_t brake_level_of(const CollidesWhenBraking & collides_when_braking)
     level = static_cast<uint8_t>(i);
   }
   return level;
-}
-
-struct EgoInObjectFrame
-{
-  TrajectoryData trajectory;
-  std::vector<Eigen::Isometry2d> object_to_map;
-};
-
-EgoInObjectFrame ego_trajectory_in_object_frame(
-  const EgoSweep & ego_sweep, const ObjectMotion & motion)
-{
-  const size_t num_samples = ego_sweep.times.size();
-  std::vector<Eigen::Isometry2d> object_to_map(num_samples);
-  std::vector<Eigen::Isometry2d> map_to_object(num_samples);
-  PoseTrajectory poses_local;
-  poses_local.reserve(num_samples);
-  for (size_t k = 0; k < num_samples; ++k) {
-    object_to_map[k] = detail::pose_to_isometry(motion.pose_at(ego_sweep.times[k]));
-    map_to_object[k] = object_to_map[k].inverse();
-    const auto local = map_to_object[k] * detail::pose_to_isometry(ego_sweep.poses[k]);
-    geometry_msgs::msg::Pose pose;
-    pose.position.x = local.translation().x();
-    pose.position.y = local.translation().y();
-    pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(
-      std::atan2(local.linear()(1, 0), local.linear()(0, 0)));
-    poses_local.push_back(pose);
-  }
-  auto footprints_local = std::visit(
-    [&](const auto & footprints) -> FootprintTrajectory {
-      auto transformed = footprints;
-      for (size_t k = 0; k < transformed.size(); ++k) {
-        for (auto & vertex : transformed[k]) {
-          vertex = detail::transform_point(map_to_object[k], vertex);
-        }
-      }
-      return transformed;
-    },
-    ego_sweep.trajectory.getFootprints());
-  return EgoInObjectFrame{
-    TrajectoryData(ego_sweep.times, std::move(poses_local), std::move(footprints_local)),
-    std::move(object_to_map)};
 }
 }  // namespace
 
@@ -866,7 +828,7 @@ EgoSweep CollisionEvaluator::build_ego_sweep(
     odom.twist.twist.linear.x >= 0.0);
 }
 
-std::shared_ptr<const ObjectMotion> CollisionEvaluator::make_object_motion(
+TrajectoryData CollisionEvaluator::make_object_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & object, const double time_offset,
   const double horizon, const TimeTrajectory & static_times) const
 {
@@ -879,126 +841,18 @@ std::shared_ptr<const ObjectMotion> CollisionEvaluator::make_object_motion(
   const auto & initial_pose = object.kinematics.initial_pose_with_covariance.pose;
 
   if (best_path != paths.end() && !best_path->path.empty() && is_moving) {
-    return std::make_shared<const ObjectMotion>(
-      detail::generate_predicted_path_trajectory(
-        object, *best_path, horizon + std::abs(time_offset), time_offset, param_.time_resolution,
-        vehicle_rear_axle_length(object, *best_path, param_.rear_axle_ratio)),
-      false, initial_pose);
+    return detail::generate_predicted_path_trajectory(
+      object, *best_path, horizon + std::abs(time_offset), time_offset, param_.time_resolution,
+      vehicle_rear_axle_length(object, *best_path, param_.rear_axle_ratio));
   }
-  return std::make_shared<const ObjectMotion>(
-    detail::generate_static_trajectory(
-      detail::to_polygon2d(initial_pose, object.shape), static_times),
-    true, initial_pose);
-}
-
-std::vector<std::shared_ptr<const ObjectMotion>> CollisionEvaluator::build_object_motions(
-  const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
-  const autoware_perception_msgs::msg::PredictedObjects & objects_at_pointcloud_stamp) const
-{
-  std::vector<std::shared_ptr<const ObjectMotion>> motions;
-  const double horizon = sweep_horizon(predicted_trajectory, param_);
-  const auto num_steps =
-    static_cast<size_t>(std::floor(horizon / param_.time_resolution + TIME_INDEX_EPSILON));
-  TimeTrajectory static_times;
-  static_times.reserve(num_steps + 1);
-  for (size_t k = 0; k <= num_steps; ++k) {
-    static_times.push_back(static_cast<double>(k) * param_.time_resolution);
-  }
-  const double time_offset = (rclcpp::Time(objects_at_pointcloud_stamp.header.stamp) -
-                              rclcpp::Time(predicted_trajectory.header.stamp))
-                               .seconds();
-  motions.reserve(objects_at_pointcloud_stamp.objects.size());
-  for (const auto & object : objects_at_pointcloud_stamp.objects) {
-    motions.push_back(make_object_motion(object, time_offset, horizon, static_times));
-  }
-  return motions;
-}
-
-std::vector<std::optional<size_t>> CollisionEvaluator::attach_clusters_to_objects(
-  const std::vector<PointCluster> & clusters,
-  const autoware_perception_msgs::msg::PredictedObjects & objects_at_pointcloud_stamp,
-  const std::vector<std::shared_ptr<const ObjectMotion>> & motions, const double t_pointcloud) const
-{
-  struct ObjectArea
-  {
-    size_t index;
-    Polygon2d polygon;
-    Point2d origin;
-  };
-  const auto & margin = param_.object_margin;
-  std::vector<ObjectArea> areas;
-  areas.reserve(objects_at_pointcloud_stamp.objects.size());
-  for (size_t i = 0; i < objects_at_pointcloud_stamp.objects.size(); ++i) {
-    const auto & object = objects_at_pointcloud_stamp.objects[i];
-    if (i >= motions.size() || !motions[i]) {
-      continue;
-    }
-    const auto label = most_probable_label(object);
-    const bool enabled =
-      std::find(param_.enabled_labels.begin(), param_.enabled_labels.end(), label) !=
-      param_.enabled_labels.end();
-    if (!enabled) {
-      continue;
-    }
-    const auto pose = motions[i]->pose_at(t_pointcloud);
-    const double yaw = autoware_utils_geometry::get_rpy(pose).z;
-
-    const auto base = detail::create_base_polygon(object.shape);
-    if (base.empty()) {
-      continue;
-    }
-    double x_min = std::numeric_limits<double>::infinity();
-    double x_max = -std::numeric_limits<double>::infinity();
-    double y_min = std::numeric_limits<double>::infinity();
-    double y_max = -std::numeric_limits<double>::infinity();
-    for (const auto & vertex : base) {
-      x_min = std::min(x_min, vertex.x());
-      x_max = std::max(x_max, vertex.x());
-      y_min = std::min(y_min, vertex.y());
-      y_max = std::max(y_max, vertex.y());
-    }
-    x_max += margin.front;
-    x_min -= margin.rear;
-    y_max += margin.left;
-    y_min -= margin.right;
-
-    Polygon2d polygon;
-    for (const auto & [local_x, local_y] :
-         {std::pair{x_max, y_max}, std::pair{x_min, y_max}, std::pair{x_min, y_min},
-          std::pair{x_max, y_min}}) {
-      polygon.outer().emplace_back(
-        pose.position.x + std::cos(yaw) * local_x - std::sin(yaw) * local_y,
-        pose.position.y + std::sin(yaw) * local_x + std::cos(yaw) * local_y);
-    }
-    boost::geometry::correct(polygon);
-    areas.push_back(ObjectArea{i, std::move(polygon), Point2d{pose.position.x, pose.position.y}});
-  }
-
-  std::vector<std::optional<size_t>> attached_to;
-  attached_to.reserve(clusters.size());
-  for (const auto & cluster : clusters) {
-    std::optional<size_t> best;
-    double best_distance = std::numeric_limits<double>::infinity();
-    for (const auto & area : areas) {
-      if (!boost::geometry::within(cluster.centroid, area.polygon)) {
-        continue;
-      }
-      const double distance = boost::geometry::distance(cluster.centroid, area.origin);
-      if (distance < best_distance) {
-        best_distance = distance;
-        best = area.index;
-      }
-    }
-    attached_to.push_back(best);
-  }
-  return attached_to;
+  return detail::generate_static_trajectory(
+    detail::to_polygon2d(initial_pose, object.shape), static_times);
 }
 
 CollisionCandidate CollisionEvaluator::evaluate_object(
   const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps, CollisionCandidate candidate,
-  const ObjectMotion & motion) const
+  const TrajectoryData & object_trajectory) const
 {
-  const auto & object_trajectory = motion.trajectory();
   const auto step =
     find_first_collision(ego_sweep.trajectory, object_trajectory, ego_sweep.stopped);
   if (!step) {
@@ -1034,75 +888,29 @@ CollisionCandidate CollisionEvaluator::evaluate_object(
   return candidate;
 }
 
-void CollisionEvaluator::evaluate_static_points(
+void CollisionEvaluator::evaluate_points(
   const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps,
   const std::vector<Point2d> & points, const builtin_interfaces::msg::Time & stamp,
   std::vector<CollisionCandidate> & out) const
 {
+  const bool all_stopped = is_all_stopped(ego_sweep);
   for (const auto & point : points) {
+    auto candidate = make_point_candidate(ego_sweep, stamp, point);
+    candidate.near = candidate.distance_now <= param_.proximity_distance && !all_stopped;
     const auto k = find_first_collision(ego_sweep.trajectory, point, ego_sweep.stopped);
-    if (!k) {
-      continue;
-    }
-    auto candidate = make_point_candidate(ego_sweep, stamp, point, *k, point);
-    candidate.brake_level = brake_level_of([&](const size_t level) {
-      const auto & braked_sweep = braked_sweeps.at(level);
-      return find_first_collision(braked_sweep.trajectory, point, braked_sweep.stopped).has_value();
-    });
-    out.push_back(std::move(candidate));
-  }
-}
-
-void CollisionEvaluator::evaluate_attached_points(
-  const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps,
-  const std::vector<Point2d> & points_local, const ObjectMotion & motion,
-  const builtin_interfaces::msg::Time & stamp, std::vector<CollisionCandidate> & out) const
-{
-  const auto ego_in_object = ego_trajectory_in_object_frame(ego_sweep, motion);
-  std::array<std::optional<EgoInObjectFrame>, 3> braked_in_object;
-  const auto braked_in_object_at = [&](const size_t level) -> const EgoInObjectFrame & {
-    auto & sweep = braked_in_object.at(level - 1);
-    if (!sweep) {
-      sweep.emplace(ego_trajectory_in_object_frame(braked_sweeps.at(level), motion));
-    }
-    return *sweep;
-  };
-  std::optional<EgoInObjectFrame> stationary_in_object;
-
-  for (const auto & point : points_local) {
-    const auto k = find_first_collision(ego_in_object.trajectory, point, ego_sweep.stopped);
-    if (!k) {
-      continue;
-    }
-    const auto point_now = detail::transform_point(ego_in_object.object_to_map.front(), point);
-    const auto hit_point = detail::transform_point(ego_in_object.object_to_map[*k], point);
-    auto candidate = make_point_candidate(ego_sweep, stamp, point_now, *k, hit_point);
-    if (*candidate.cos_collision >= param_.cos_threshold) {
-      std::optional<bool> hits_stationary;
+    if (k) {
+      candidate.ttc = ego_sweep.times[*k];
+      candidate.cos_collision =
+        compute_cos_collision(ego_sweep.poses[*k], ego_sweep.forward, point);
       candidate.brake_level = brake_level_of([&](const size_t level) {
         const auto & braked_sweep = braked_sweeps.at(level);
-        const auto braked_k =
-          find_first_collision(braked_in_object_at(level).trajectory, point, braked_sweep.stopped);
-        if (!braked_k) {
-          return false;
-        }
-        if (braked_sweep.times[*braked_k] < braked_sweeps.stop_time(level)) {
-          return true;
-        }
-        if (!hits_stationary) {
-          if (!stationary_in_object) {
-            stationary_in_object.emplace(
-              ego_trajectory_in_object_frame(braked_sweeps.stationary(), motion));
-          }
-          hits_stationary =
-            find_first_collision(
-              stationary_in_object->trajectory, point, braked_sweeps.stationary().stopped)
-              .has_value();
-        }
-        return !*hits_stationary;
+        return find_first_collision(braked_sweep.trajectory, point, braked_sweep.stopped)
+          .has_value();
       });
     }
-    out.push_back(std::move(candidate));
+    if (candidate.near || k) {
+      out.push_back(std::move(candidate));
+    }
   }
 }
 
@@ -1110,9 +918,7 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
   const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
   const nav_msgs::msg::Odometry & odom, const vehicle_info_utils::VehicleInfo & vehicle_info,
   const autoware_perception_msgs::msg::PredictedObjects * objects,
-  const autoware_perception_msgs::msg::PredictedObjects * objects_at_pointcloud_stamp,
-  const std::vector<PointCluster> & point_clusters,
-  const builtin_interfaces::msg::Time & pointcloud_stamp) const
+  const PointCloudClusters * point_clusters) const
 {
   std::vector<CollisionCandidate> candidates;
   if (predicted_trajectory.points.size() < 2 || !(param_.time_resolution > 0.0)) {
@@ -1167,83 +973,40 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
     object_entries.resize(param_.n_eval_object);
   }
 
-  std::vector<std::array<uint8_t, 16>> selected_ids;
-  selected_ids.reserve(object_entries.size());
+  const bool all_stopped = is_all_stopped(ego_sweep);
   for (auto & entry : object_entries) {
-    const auto motion =
-      make_object_motion(*entry.object, objects_time_offset, horizon, ego_sweep.times);
+    entry.candidate.near =
+      entry.candidate.distance_now <= param_.proximity_distance && !all_stopped;
+    const auto object_trajectory =
+      make_object_trajectory(*entry.object, objects_time_offset, horizon, ego_sweep.times);
     candidates.push_back(
-      evaluate_object(ego_sweep, braked_sweeps, std::move(entry.candidate), *motion));
-    selected_ids.push_back(entry.object->object_id.uuid);
+      evaluate_object(ego_sweep, braked_sweeps, std::move(entry.candidate), object_trajectory));
   }
 
-  if (!param_.enable_pointcloud) {
+  if (!param_.enable_pointcloud || !point_clusters) {
     return candidates;
   }
 
-  const double t_pointcloud =
-    (rclcpp::Time(pointcloud_stamp) - rclcpp::Time(predicted_trajectory.header.stamp)).seconds();
-  std::vector<std::shared_ptr<const ObjectMotion>> attach_target_motions;
-  std::vector<std::optional<size_t>> attached_to;
-  if (objects_at_pointcloud_stamp) {
-    attach_target_motions =
-      build_object_motions(predicted_trajectory, *objects_at_pointcloud_stamp);
-    attached_to = attach_clusters_to_objects(
-      point_clusters, *objects_at_pointcloud_stamp, attach_target_motions, t_pointcloud);
+  // Pointcloud: the closest n_eval_pointcloud clusters (by centroid), as static points.
+  const auto & clusters = point_clusters->clusters;
+  std::vector<std::pair<double, size_t>> selected_clusters;
+  selected_clusters.reserve(clusters.size());
+  for (size_t i = 0; i < clusters.size(); ++i) {
+    selected_clusters.emplace_back(boost::geometry::distance(ego_now, clusters[i].centroid), i);
   }
-
-  // Pointcloud: clusters attached to a selected object move with it; the closest
-  // n_eval_pointcloud of the other clusters (by centroid) are static.
-  const auto tag_cluster_index = [&](const size_t index, const auto & evaluate_points) {
+  std::stable_sort(
+    selected_clusters.begin(), selected_clusters.end(),
+    [](const auto & lhs, const auto & rhs) { return lhs.first < rhs.first; });
+  if (selected_clusters.size() > param_.n_eval_pointcloud) {
+    selected_clusters.resize(param_.n_eval_pointcloud);
+  }
+  const builtin_interfaces::msg::Time pointcloud_stamp = point_clusters->stamp;
+  for (const auto & [centroid_distance, index] : selected_clusters) {
     const size_t begin = candidates.size();
-    evaluate_points();
+    evaluate_points(ego_sweep, braked_sweeps, clusters[index].points, pointcloud_stamp, candidates);
     for (size_t i = begin; i < candidates.size(); ++i) {
       candidates[i].cluster_index = index;
     }
-  };
-  std::vector<std::pair<double, size_t>> static_clusters;
-  static_clusters.reserve(point_clusters.size());
-  for (size_t i = 0; i < point_clusters.size(); ++i) {
-    const auto & cluster = point_clusters[i];
-    const auto attached = i < attached_to.size() ? attached_to[i] : std::nullopt;
-    if (!attached) {
-      static_clusters.emplace_back(boost::geometry::distance(ego_now, cluster.centroid), i);
-      continue;
-    }
-    const auto & uuid = objects_at_pointcloud_stamp->objects[*attached].object_id.uuid;
-    if (std::find(selected_ids.begin(), selected_ids.end(), uuid) == selected_ids.end()) {
-      continue;
-    }
-    const auto & motion = *attach_target_motions[*attached];
-    if (motion.is_static()) {
-      tag_cluster_index(i, [&] {
-        evaluate_static_points(
-          ego_sweep, braked_sweeps, cluster.points, pointcloud_stamp, candidates);
-      });
-      continue;
-    }
-    const auto map_to_object = detail::pose_to_isometry(motion.pose_at(t_pointcloud)).inverse();
-    std::vector<Point2d> points_local;
-    points_local.reserve(cluster.points.size());
-    for (const auto & point : cluster.points) {
-      points_local.push_back(detail::transform_point(map_to_object, point));
-    }
-    tag_cluster_index(i, [&] {
-      evaluate_attached_points(
-        ego_sweep, braked_sweeps, points_local, motion, pointcloud_stamp, candidates);
-    });
-  }
-  std::stable_sort(
-    static_clusters.begin(), static_clusters.end(),
-    [](const auto & lhs, const auto & rhs) { return lhs.first < rhs.first; });
-  if (static_clusters.size() > param_.n_eval_pointcloud) {
-    static_clusters.resize(param_.n_eval_pointcloud);
-  }
-  for (const auto & [centroid_distance, index] : static_clusters) {
-    tag_cluster_index(index, [&] {
-      evaluate_static_points(
-        ego_sweep, braked_sweeps, point_clusters[index].points, pointcloud_stamp, candidates);
-    });
   }
 
   return candidates;

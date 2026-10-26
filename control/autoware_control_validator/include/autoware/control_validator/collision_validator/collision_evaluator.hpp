@@ -209,6 +209,7 @@ struct CollisionCandidate
   uint8_t label{0};
   Polygon2d polygon_now;  // map; a single vertex for a point
   double distance_now{0.0};
+  bool near{false};
   std::optional<double> ttc;
   std::optional<double> cos_collision;  // cosine of the collision angle (set with ttc)
   uint8_t brake_level{0};
@@ -225,14 +226,6 @@ struct CollisionCandidate
 double compute_cos_collision(
   const geometry_msgs::msg::Pose & ego_pose_at_hit, bool forward, const Point2d & hit_point);
 
-struct ObjectMargin
-{
-  double front{0.0};
-  double rear{0.0};
-  double left{0.0};
-  double right{0.0};
-};
-
 struct CollisionEvaluatorParam
 {
   double max_time{5.0};
@@ -243,11 +236,11 @@ struct CollisionEvaluatorParam
   bool enable_pointcloud{true};
   double max_objects_stamp_gap_s{0.5};
   double stop_velocity{0.1};
+  double proximity_distance{0.3};
   std::array<double, 3> reaction_times{2.0, 1.5, 1.0};
   double braking_deceleration{6.0};
   double cos_threshold{-1.0};
   double rear_axle_ratio{0.3};
-  ObjectMargin object_margin;
 };
 
 struct BrakingParam
@@ -266,24 +259,19 @@ public:
   void update_parameters(const CollisionEvaluatorParam & param);
 
   /**
-   * @brief Sweep the ego footprint along the predicted trajectory and judge the collision with
-   * objects (footprint sweep), static points and points attached to objects. Object candidates
-   * are returned whether or not they collide; point candidates are returned only for points that
-   * collide. Colliding candidates get a brake_level.
-   * @param objects latest objects, evaluated as objects; null evaluates no object
-   * @param objects_at_pointcloud_stamp objects closest to the pointcloud stamp, used to attach
-   *   clusters; null evaluates every cluster as static
-   * @param point_clusters clusters in the map frame
-   * @param pointcloud_stamp header.stamp of the pointcloud the clusters came from
+   * @brief Sweep the ego footprint along the predicted trajectory and judge the proximity and the
+   * collision with objects (footprint sweep) and static points. Object candidates are returned
+   * whether or not they are near or collide; point candidates are returned only for points that
+   * are near or collide. Colliding candidates get a brake_level.
+   * @param objects null evaluates no object
+   * @param point_clusters clusters in the map frame; null evaluates no point
    * @throws std::invalid_argument when the predicted trajectory cannot be interpolated
    */
   std::vector<CollisionCandidate> evaluate(
     const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
     const nav_msgs::msg::Odometry & odom, const vehicle_info_utils::VehicleInfo & vehicle_info,
     const autoware_perception_msgs::msg::PredictedObjects * objects,
-    const autoware_perception_msgs::msg::PredictedObjects * objects_at_pointcloud_stamp,
-    const std::vector<PointCluster> & point_clusters,
-    const builtin_interfaces::msg::Time & pointcloud_stamp) const;
+    const PointCloudClusters * point_clusters) const;
 
 private:
   friend class SweepsWithBraking;
@@ -293,32 +281,18 @@ private:
     const nav_msgs::msg::Odometry & odom, const vehicle_info_utils::VehicleInfo & vehicle_info,
     const std::optional<BrakingParam> & braking = std::nullopt) const;
 
-  std::shared_ptr<const ObjectMotion> make_object_motion(
+  detail::TrajectoryData make_object_trajectory(
     const autoware_perception_msgs::msg::PredictedObject & object, double time_offset,
     double horizon, const detail::TimeTrajectory & static_times) const;
 
-  std::vector<std::shared_ptr<const ObjectMotion>> build_object_motions(
-    const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
-    const autoware_perception_msgs::msg::PredictedObjects & objects_at_pointcloud_stamp) const;
-
-  std::vector<std::optional<size_t>> attach_clusters_to_objects(
-    const std::vector<PointCluster> & clusters,
-    const autoware_perception_msgs::msg::PredictedObjects & objects_at_pointcloud_stamp,
-    const std::vector<std::shared_ptr<const ObjectMotion>> & motions, double t_pointcloud) const;
-
   CollisionCandidate evaluate_object(
     const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps, CollisionCandidate candidate,
-    const ObjectMotion & motion) const;
+    const detail::TrajectoryData & object_trajectory) const;
 
-  void evaluate_static_points(
+  void evaluate_points(
     const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps,
     const std::vector<Point2d> & points, const builtin_interfaces::msg::Time & stamp,
     std::vector<CollisionCandidate> & out) const;
-
-  void evaluate_attached_points(
-    const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps,
-    const std::vector<Point2d> & points_local, const ObjectMotion & motion,
-    const builtin_interfaces::msg::Time & stamp, std::vector<CollisionCandidate> & out) const;
 
   CollisionEvaluatorParam param_;
 };

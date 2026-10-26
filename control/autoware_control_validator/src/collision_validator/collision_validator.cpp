@@ -43,10 +43,9 @@ using autoware_control_validator::msg::HazardCandidate;
 using autoware_control_validator::msg::HazardCandidateArray;
 using collision_validator::CollisionCandidate;
 using collision_validator::CollisionEvaluatorParam;
-using collision_validator::ObjectMargin;
 using collision_validator::Point2d;
+using collision_validator::PointCloudClusters;
 using collision_validator::PointCloudParam;
-using collision_validator::PointCluster;
 using collision_validator::Polygon2d;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
@@ -97,6 +96,7 @@ CollisionEvaluatorParam to_collision_evaluator_param(
   out.enable_pointcloud = params.enable_pointcloud;
   out.max_objects_stamp_gap_s = params.max_objects_stamp_gap_s;
   out.stop_velocity = params.stop_velocity;
+  out.proximity_distance = params.proximity_distance;
   std::copy_n(params.braking.reaction_times.begin(), 3, out.reaction_times.begin());
   out.braking_deceleration = params.braking.deceleration;
   out.cos_threshold = params.collision_cos_threshold;
@@ -106,9 +106,15 @@ CollisionEvaluatorParam to_collision_evaluator_param(
       out.enabled_labels.push_back(*label);
     }
   }
-  const auto & margin = params.pointcloud.object_margin;
-  out.object_margin = ObjectMargin{margin.front, margin.rear, margin.left, margin.right};
   return out;
+}
+
+uint8_t risk_level_of(const CollisionCandidate & candidate)
+{
+  const uint8_t near_level = candidate.near ? 1 : 0;
+  const uint8_t collision_level =
+    candidate.brake_level >= 1 ? static_cast<uint8_t>(candidate.brake_level + 1) : 0;
+  return std::max(near_level, collision_level);
 }
 
 std_msgs::msg::ColorRGBA make_color(const float r, const float g, const float b, const float a)
@@ -127,8 +133,10 @@ std_msgs::msg::ColorRGBA level_color(const uint8_t level)
     case 0:
       return make_color(0.3F, 0.8F, 0.3F, 0.8F);
     case 1:
-      return make_color(1.0F, 1.0F, 0.0F, 0.9F);
+      return make_color(0.0F, 0.8F, 1.0F, 0.9F);
     case 2:
+      return make_color(1.0F, 1.0F, 0.0F, 0.9F);
+    case 3:
       return make_color(1.0F, 0.5F, 0.0F, 0.9F);
     default:
       return make_color(1.0F, 0.0F, 0.0F, 0.9F);
@@ -185,9 +193,7 @@ void CollisionValidator::update_parameters(const ::control_validator::Params & p
   collision_evaluator_.update_parameters(to_collision_evaluator_param(params_));
 }
 
-void CollisionValidator::update_history(
-  const nav_msgs::msg::Odometry & odom,
-  const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr & objects)
+void CollisionValidator::update_history(const nav_msgs::msg::Odometry & odom)
 {
   if (
     odometry_history_.empty() ||
@@ -195,14 +201,6 @@ void CollisionValidator::update_history(
     odometry_history_.push_back(odom);
     while (odometry_history_.size() > kOdometryHistorySize) {
       odometry_history_.pop_front();
-    }
-  }
-  if (
-    objects && (objects_history_.empty() || rclcpp::Time(objects_history_.back()->header.stamp) !=
-                                              rclcpp::Time(objects->header.stamp))) {
-    objects_history_.push_back(objects);
-    while (objects_history_.size() > kObjectsHistorySize) {
-      objects_history_.pop_front();
     }
   }
 }
@@ -225,35 +223,17 @@ std::optional<geometry_msgs::msg::Pose> CollisionValidator::select_ego_pose_at(
   return best->pose.pose;
 }
 
-autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr
-CollisionValidator::select_objects_at(const rclcpp::Time & stamp) const
-{
-  autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr best;
-  double best_gap = std::numeric_limits<double>::infinity();
-  for (const auto & objects : objects_history_) {
-    const double gap = std::abs((rclcpp::Time(objects->header.stamp) - stamp).seconds());
-    if (gap < best_gap) {
-      best_gap = gap;
-      best = objects;
-    }
-  }
-  if (!best || best_gap > params_.objects.max_stamp_gap_s) {
-    return nullptr;
-  }
-  return best;
-}
-
 std::vector<HazardSource> CollisionValidator::to_hazard_sources(
   const std::vector<CollisionCandidate> & candidates, const nav_msgs::msg::Odometry & odom)
 {
   std::vector<HazardSource> sources;
   for (const auto & candidate : candidates) {
-    if (candidate.brake_level < 1) {
+    if (!candidate.near && candidate.brake_level < 1) {
       continue;
     }
     HazardSource source;
     source.shape = transform_polygon_to_base_link(candidate.polygon_now, odom.pose.pose);
-    source.risk_level = candidate.brake_level;
+    source.risk_level = risk_level_of(candidate);
     source.stamp = odom.header.stamp;
     sources.push_back(std::move(source));
   }
@@ -268,41 +248,34 @@ void CollisionValidator::validate(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pointcloud, const rclcpp::Time & now,
   HazardWarningSources & hazard_sources)
 {
-  update_history(odom, objects);
+  update_history(odom);
   if (predicted_trajectory.points.size() < 2) {
     return;
   }
 
-  const auto * latest_objects = objects_history_.empty() ? nullptr : objects_history_.back().get();
   const double horizon = std::min(
     params_.prediction_horizon,
     rclcpp::Duration(predicted_trajectory.points.back().time_from_start).seconds());
 
-  const std::vector<PointCluster> * clusters = nullptr;
-  builtin_interfaces::msg::Time pointcloud_stamp;
-  autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr objects_at_pointcloud_stamp;
+  const PointCloudClusters * clusters = nullptr;
   if (params_.enable_pointcloud && pointcloud) {
     const auto ego_pose_at_pointcloud_stamp =
       select_ego_pose_at(rclcpp::Time(pointcloud->header.stamp));
     const auto & result = pointcloud_preprocessor_.process(
       *pointcloud, ego_pose_at_pointcloud_stamp, odom.twist.twist.linear.x, horizon, vehicle_info);
     if (result) {
-      clusters = &result->clusters;
-      pointcloud_stamp = result->stamp;
-      objects_at_pointcloud_stamp = select_objects_at(result->stamp);
+      clusters = &*result;
     }
   }
-  if (!latest_objects && !clusters) {
+  if (!objects && !clusters) {
     return;
   }
 
-  const std::vector<PointCluster> no_clusters;
   std::vector<CollisionCandidate> candidates;
   try {
     autoware_utils_debug::ScopedTimeTrack st("collision_evaluator_evaluate", *time_keeper_);
     candidates = collision_evaluator_.evaluate(
-      predicted_trajectory, odom, vehicle_info, latest_objects, objects_at_pointcloud_stamp.get(),
-      clusters ? *clusters : no_clusters, pointcloud_stamp);
+      predicted_trajectory, odom, vehicle_info, objects.get(), clusters);
   } catch (const std::exception & e) {
     RCLCPP_WARN_THROTTLE(
       logger_, steady_clock_, 5000, "hazard warning: collision evaluation skipped: %s", e.what());
@@ -335,7 +308,7 @@ void CollisionValidator::publish_debug(
                                 : std::numeric_limits<float>::quiet_NaN();
       out.cos_collision = candidate.cos_collision ? static_cast<float>(*candidate.cos_collision)
                                                   : std::numeric_limits<float>::quiet_NaN();
-      out.level = candidate.brake_level;
+      out.level = risk_level_of(candidate);
       array.candidates.push_back(std::move(out));
     }
     pub_hazard_candidates_->publish(array);
@@ -347,21 +320,30 @@ void CollisionValidator::publish_debug(
     return;
   }
 
-  std::map<size_t, size_t> min_ttc_point_of_cluster;
+  const auto is_more_hazardous = [](
+                                   const CollisionCandidate & lhs, const CollisionCandidate & rhs) {
+    const auto lhs_level = risk_level_of(lhs);
+    const auto rhs_level = risk_level_of(rhs);
+    if (lhs_level != rhs_level) {
+      return lhs_level > rhs_level;
+    }
+    return lhs.ttc.value_or(std::numeric_limits<double>::infinity()) <
+           rhs.ttc.value_or(std::numeric_limits<double>::infinity());
+  };
+  std::map<size_t, size_t> representative_point_of_cluster;
   for (size_t i = 0; i < candidates.size(); ++i) {
     const auto & candidate = candidates[i];
-    if (
-      candidate.kind != CollisionCandidate::Kind::POINTCLOUD || !candidate.ttc ||
-      !candidate.cluster_index) {
+    if (candidate.kind != CollisionCandidate::Kind::POINTCLOUD || !candidate.cluster_index) {
       continue;
     }
-    const auto [it, inserted] = min_ttc_point_of_cluster.try_emplace(*candidate.cluster_index, i);
-    if (!inserted && *candidate.ttc < *candidates[it->second].ttc) {
+    const auto [it, inserted] =
+      representative_point_of_cluster.try_emplace(*candidate.cluster_index, i);
+    if (!inserted && is_more_hazardous(candidate, candidates[it->second])) {
       it->second = i;
     }
   }
   std::vector<bool> draw_point(candidates.size(), false);
-  for (const auto & [cluster_index, i] : min_ttc_point_of_cluster) {
+  for (const auto & [cluster_index, i] : representative_point_of_cluster) {
     draw_point[i] = true;
   }
 
@@ -372,7 +354,7 @@ void CollisionValidator::publish_debug(
   const double z = odom.pose.pose.position.z;
   for (size_t i = 0; i < candidates.size(); ++i) {
     const auto & candidate = candidates[i];
-    const auto color = level_color(candidate.brake_level);
+    const auto color = level_color(risk_level_of(candidate));
     const auto & stamp = candidate.source_stamp;
     const bool is_point = candidate.kind == CollisionCandidate::Kind::POINTCLOUD;
     const auto id = static_cast<int32_t>(i);

@@ -87,9 +87,9 @@ control_validator:
         gt_eq<>: [0.0]
     departure_risk_level:
       type: int
-      description: Risk level (1 to 3) of a departure warning.
+      description: Risk level (1 to 4) of a departure warning.
       validation:
-        bounds<>: [1, 3]
+        bounds<>: [1, 4]
 
   hazard_warning:
     enable:
@@ -154,7 +154,7 @@ control_validator:
     braking:
       reaction_times:
         type: double_array
-        description: Delays before braking for hazard levels 1 to 3, three values in descending order [s].
+        description: Delays before braking for hazard levels 2 to 4, three values in descending order [s].
         validation:
           fixed_size<>: [3]
           lower_element_bounds<>: [0.0]
@@ -181,6 +181,11 @@ control_validator:
     stop_velocity:
       type: double
       description: Sweep steps where the absolute velocity of the predicted trajectory is below this value are not judged [m/s].
+    proximity_distance:
+      type: double
+      description: Objects and points within this distance from the current ego footprint raise hazard level 1 [m].
+      validation:
+        gt<>: [0.0]
     vehicle_yaw:
       rear_axle_ratio:
         type: double
@@ -205,10 +210,6 @@ control_validator:
     max_objects_stamp_gap_s:
       type: double
       description: Objects older than this relative to the predicted trajectory are not evaluated [s].
-    objects:
-      max_stamp_gap_s:
-        type: double
-        description: Maximum time difference between the pointcloud stamp and the objects used to attach clusters to objects [s].
     pointcloud:
       roi:
         rear:
@@ -249,19 +250,6 @@ control_validator:
       max_stamp_gap_s:
         type: double
         description: Maximum time difference between the pointcloud stamp and the odometry used to place it [s].
-      object_margin:
-        front:
-          type: double
-          description: Margin added ahead of an object (object frame) when attaching clusters to it [m].
-        rear:
-          type: double
-          description: Margin added behind an object (object frame) when attaching clusters to it [m].
-        left:
-          type: double
-          description: Margin added to the left of an object (object frame) when attaching clusters to it [m].
-        right:
-          type: double
-          description: Margin added to the right of an object (object frame) when attaching clusters to it [m].
     debug:
       publish_markers:
         type: bool

@@ -14,10 +14,6 @@
 
 #include "autoware/control_validator/collision_validator/sweep_types.hpp"
 
-#include <autoware_utils_geometry/geometry.hpp>
-
-#include <algorithm>
-#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -39,52 +35,5 @@ EgoSweep::EgoSweep(
       std::visit(
         [k](const auto & footprint) { return detail::to_polygon2d(footprint.at(k)); }, footprints));
   }
-}
-
-ObjectMotion::ObjectMotion(
-  detail::TrajectoryData trajectory, const bool is_static,
-  const geometry_msgs::msg::Pose & initial_pose)
-: trajectory_(std::move(trajectory)), is_static_(is_static), initial_pose_(initial_pose)
-{
-}
-
-geometry_msgs::msg::Pose ObjectMotion::pose_at(const double t) const
-{
-  if (is_static_) {
-    return initial_pose_;
-  }
-  const auto & times = trajectory_.getTimes();
-  const auto & poses = trajectory_.getPoses();
-  if (times.size() == 1) {
-    return poses.front();
-  }
-  if (t <= times.front()) {
-    const double span = times[1] - times[0];
-    const double ratio = (t - times[0]) / span;
-    auto pose = poses[0];
-    pose.position.x += ratio * (poses[1].position.x - poses[0].position.x);
-    pose.position.y += ratio * (poses[1].position.y - poses[0].position.y);
-    pose.position.z += ratio * (poses[1].position.z - poses[0].position.z);
-    return pose;
-  }
-  if (t >= times.back()) {
-    return poses.back();
-  }
-  const auto upper = static_cast<size_t>(
-    std::distance(times.begin(), std::upper_bound(times.begin(), times.end(), t)));
-  const size_t lower = upper - 1;
-  const double span = times[upper] - times[lower];
-  const double ratio = span > 0.0 ? (t - times[lower]) / span : 0.0;
-  const auto & p0 = poses[lower];
-  const auto & p1 = poses[upper];
-  geometry_msgs::msg::Pose pose;
-  pose.position.x = p0.position.x + ratio * (p1.position.x - p0.position.x);
-  pose.position.y = p0.position.y + ratio * (p1.position.y - p0.position.y);
-  pose.position.z = p0.position.z + ratio * (p1.position.z - p0.position.z);
-  const double yaw0 = autoware_utils_geometry::get_rpy(p0).z;
-  const double yaw1 = autoware_utils_geometry::get_rpy(p1).z;
-  const double diff = std::atan2(std::sin(yaw1 - yaw0), std::cos(yaw1 - yaw0));
-  pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw0 + ratio * diff);
-  return pose;
 }
 }  // namespace autoware::control_validator::collision_validator

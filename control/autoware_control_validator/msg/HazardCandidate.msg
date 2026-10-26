@@ -8,4 +8,4 @@ uint8 kind
 uint8 label               # ObjectClassification label; 0 for a point
 float32 ttc_s             # time to collision [s]; NaN when the candidate does not collide
 float32 cos_collision     # cosine of the collision angle; NaN when the candidate does not collide
-uint8 level               # hazard level of this candidate (brake_level; 0 = not raised)
+uint8 level               # hazard level of this candidate (risk_level, 0 to 4; 0 = not raised)

@@ -133,8 +133,10 @@ std_msgs::msg::ColorRGBA level_color(const uint8_t level)
     case 0:
       return make_color(0.3F, 0.8F, 0.3F, 0.8F);
     case 1:
-      return make_color(1.0F, 1.0F, 0.0F, 0.9F);
+      return make_color(0.0F, 0.8F, 1.0F, 0.9F);
     case 2:
+      return make_color(1.0F, 1.0F, 0.0F, 0.9F);
+    case 3:
       return make_color(1.0F, 0.5F, 0.0F, 0.9F);
     default:
       return make_color(1.0F, 0.0F, 0.0F, 0.9F);
@@ -305,7 +307,6 @@ std::optional<HazardAlert> HazardWarning::make_alert(
   for (size_t sector = 0; sector < kNumSectors; ++sector) {
     const auto level =
       sector_latches_[sector].update(max_level[sector], now, param_.min_alert_duration);
-    alert.sectors[sector].has_object = level >= 1;
     alert.sectors[sector].risk_level = level;
     if (max_level[sector] >= 1) {
       last_on_sources_[sector] = std::move(sector_sources[sector]);
@@ -332,7 +333,7 @@ void HazardWarning::publish_debug(const HazardAlert & alert) const
 
   int32_t id = 0;
   for (size_t sector = 0; sector < kNumSectors; ++sector) {
-    if (!alert.sectors[sector].has_object) {
+    if (alert.sectors[sector].risk_level < 1) {
       continue;
     }
     for (const auto & source : last_on_sources_[sector]) {

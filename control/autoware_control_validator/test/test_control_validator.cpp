@@ -785,9 +785,7 @@ TEST_F(HazardWarningNodeTest, AlertIsPublishedWhileManualDrivingSuppressesTheDia
   EXPECT_FALSE(result.status->will_cross_uncrossable_bound);
 
   ASSERT_TRUE(result.alert.has_value());
-  EXPECT_TRUE(result.alert->sectors[HazardAlert::FRONT].has_object);
-  EXPECT_EQ(result.alert->sectors[HazardAlert::FRONT].risk_level, 3);
-  EXPECT_FALSE(result.alert->sectors[HazardAlert::REAR].has_object);
+  EXPECT_EQ(result.alert->sectors[HazardAlert::FRONT].risk_level, 4);
   EXPECT_EQ(result.alert->sectors[HazardAlert::REAR].risk_level, 0);
 }
 
@@ -815,8 +813,9 @@ TEST_F(HazardWarningNodeTest, OutOfRangeParametersAreRejected)
     rclcpp::Parameter("hazard_warning.sector.range.left", std::vector<double>{30.0}),
     rclcpp::Parameter(
       "collision_validator.enabled_object_classes", std::vector<std::string>{"car", "spaceship"}),
+    rclcpp::Parameter("collision_validator.proximity_distance", 0.0),
     rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 0),
-    rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 4)};
+    rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 5)};
   for (const auto & parameter : invalid) {
     EXPECT_ANY_THROW(make_node(true, true, {parameter})) << parameter.get_name();
   }
@@ -826,7 +825,7 @@ TEST_F(HazardWarningNodeTest, OutOfRangeParametersAreRejected)
     rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 5));
   EXPECT_FALSE(result.successful);
   EXPECT_EQ(
-    node->get_parameter("uncrossable_bound_departure_validator.departure_risk_level").as_int(), 2);
+    node->get_parameter("uncrossable_bound_departure_validator.departure_risk_level").as_int(), 3);
 }
 
 }  // namespace autoware::control_validator

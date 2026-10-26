@@ -43,7 +43,7 @@
 namespace autoware::control_validator
 {
 /**
- * @brief Entry of the collision warning: odometry / objects history, pointcloud preprocessing,
+ * @brief Entry of the collision warning: odometry history, pointcloud preprocessing,
  * collision evaluation, and the hand-over of the candidates to raise to HazardWarning.
  */
 class CollisionValidator
@@ -77,12 +77,8 @@ public:
     HazardWarningSources & hazard_sources);
 
 private:
-  void update_history(
-    const nav_msgs::msg::Odometry & odom,
-    const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr & objects);
+  void update_history(const nav_msgs::msg::Odometry & odom);
   std::optional<geometry_msgs::msg::Pose> select_ego_pose_at(const rclcpp::Time & stamp) const;
-  autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr select_objects_at(
-    const rclcpp::Time & stamp) const;
   static std::vector<HazardSource> to_hazard_sources(
     const std::vector<collision_validator::CollisionCandidate> & candidates,
     const nav_msgs::msg::Odometry & odom);
@@ -91,14 +87,12 @@ private:
     const nav_msgs::msg::Odometry & odom, const rclcpp::Time & now) const;
 
   static constexpr size_t kOdometryHistorySize = 10;
-  static constexpr size_t kObjectsHistorySize = 10;
 
   rclcpp::Logger logger_;
   rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   ::control_validator::Params::CollisionValidator params_;
   std::deque<nav_msgs::msg::Odometry> odometry_history_;
-  std::deque<autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr> objects_history_;
   collision_validator::PointCloudPreprocessor pointcloud_preprocessor_;
   collision_validator::CollisionEvaluator collision_evaluator_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_collision_markers_;
