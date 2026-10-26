@@ -18,7 +18,6 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp"
 #include "plugin_interface.hpp"
 
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
@@ -26,6 +25,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner::plugin
@@ -34,10 +34,10 @@ using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_internal_planning_msgs::msg::SafetyFactor;
 using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_planning_msgs::msg::TrajectoryPoint;
-using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
 using trajectory_modifier::utils::obstacle_stop::CollisionPoint;
 using trajectory_modifier::utils::obstacle_stop::DebugData;
+using trajectory_modifier::utils::obstacle_stop::LateralMarginMap;
 using trajectory_modifier::utils::obstacle_stop::ObjectDecelMap;
 using trajectory_modifier::utils::obstacle_stop::ObjectType;
 using visualization_msgs::msg::Marker;
@@ -59,18 +59,13 @@ public:
     {
       const auto & p = params_.objects;
       object_filter_->set_params(
-        p.object_types, p.stopped_velocity_th, p.max_lateral_velocity_th, p.safety_buffer);
-    }
-
-    {
-      const auto & p = params_.pointcloud;
-      pointcloud_filter_->set_params(
-        p.voxel_grid_filter.x, p.voxel_grid_filter.y, p.voxel_grid_filter.z,
-        p.voxel_grid_filter.min_size, p.clustering.tolerance, p.clustering.min_size,
-        p.clustering.max_size);
+        p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
+        p.max_lateral_velocity_th, p.safety_buffer, p.low_velocity_th);
+      pointcloud_filter_->set_params(p.target_objects.pointcloud);
     }
 
     update_object_decel_map();
+    update_lateral_margin_map();
   }
   const MinimumRuleBasedPlannerParams::ObstacleStop & get_params() const { return params_; }
 
@@ -99,9 +94,10 @@ private:
   std::unique_ptr<trajectory_modifier::utils::obstacle_stop::ObjectFilter> object_filter_;
 
   ObjectDecelMap object_decel_map_;
+  LateralMarginMap lateral_margin_map_;
 
   rclcpp::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_clustered_pointcloud_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_filtered_pointcloud_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
   void update_object_decel_map()
@@ -115,6 +111,24 @@ private:
       {ObjectType::MOTORCYCLE, p.object_decel.motorcycle},
       {ObjectType::BICYCLE, p.object_decel.bicycle},
       {ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
+  }
+
+  void update_lateral_margin_map()
+  {
+    const auto & normal = params_.objects.lateral_margin;
+    const auto & low = params_.objects.low_velocity_lateral_margin;
+    lateral_margin_map_ = {
+      {ObjectType::CAR, {normal.car, low.car}},
+      {ObjectType::TRUCK, {normal.truck, low.truck}},
+      {ObjectType::BUS, {normal.bus, low.bus}},
+      {ObjectType::TRAILER, {normal.trailer, low.trailer}},
+      {ObjectType::MOTORCYCLE, {normal.motorcycle, low.motorcycle}},
+      {ObjectType::BICYCLE, {normal.bicycle, low.bicycle}},
+      {ObjectType::PEDESTRIAN, {normal.pedestrian, low.pedestrian}},
+      {ObjectType::HAZARD, {normal.hazard, low.hazard}},
+      {ObjectType::STRUCTURE, {normal.structure, low.structure}},
+      {ObjectType::VEGETATION, {normal.vegetation, low.vegetation}},
+      {ObjectType::UNKNOWN, {normal.unknown, low.unknown}}};
   }
 
   bool is_obstacle_detected(const TrajectoryPoints & traj_points, const ModifierData & data);
@@ -134,7 +148,7 @@ private:
   void set_stop_point(TrajectoryPoints & traj_points, const ModifierData & data);
 
   void publish_debug_string(bool is_safe) const;
-  void publish_debug_data(const std::string & ns, const ModifierData & data) const;
+  void publish_debug_data(const std::string & ns) const;
 };
 
 }  // namespace autoware::minimum_rule_based_planner::plugin
