@@ -446,11 +446,6 @@
               "type": "boolean",
               "default": true,
               "description": "Publish debug linestring markers"
-            },
-            "virtual_pose_vehicle_mesh": {
-              "type": "string",
-              "default": "",
-              "description": "Body mesh drawn at the virtual pose (package:// or file:// URI); empty draws a box of the vehicle size"
             }
           },
           "required": ["publish_debug_map", "publish_debug_route", "publish_debug_linestrings"]

@@ -51,6 +51,7 @@
   <depend>rclcpp_components</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
+  <depend>urdf</depend>
   <depend>visualization_msgs</depend>
   <depend>xtensor</depend>
 

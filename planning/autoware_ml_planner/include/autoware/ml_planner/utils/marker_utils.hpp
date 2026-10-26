@@ -99,5 +99,15 @@ Marker create_vehicle_marker(
   const Time & stamp, const rclcpp::Duration & lifetime, const std::array<float, 4> & colors,
   const std::string & marker_namespace);
 
+/**
+ * @brief Finds the visual mesh of a link in a robot description.
+ *
+ * @param robot_description The URDF of the vehicle.
+ * @param link_name The link whose visual mesh is looked up.
+ * @return The mesh URI (package:// or file://); empty when the description cannot be parsed or the
+ * link has no visual mesh.
+ */
+std::string find_link_mesh(const std::string & robot_description, const std::string & link_name);
+
 }  // namespace autoware::ml_planner::utils
 #endif  // AUTOWARE__ML_PLANNER__UTILS__MARKER_UTILS_HPP_

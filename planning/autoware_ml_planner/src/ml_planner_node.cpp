@@ -311,8 +311,6 @@ void MLPlanner::set_up_params()
     this->declare_parameter<bool>("debug_params.publish_debug_route", true);
   debug_params_.publish_debug_linestrings =
     this->declare_parameter<bool>("debug_params.publish_debug_linestrings", true);
-  debug_params_.virtual_pose_vehicle_mesh =
-    this->declare_parameter<std::string>("debug_params.virtual_pose_vehicle_mesh", "");
 }
 
 void MLPlanner::load_model()
@@ -495,9 +493,6 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<bool>(
     parameters, "debug_params.publish_debug_linestrings",
     new_debug_params.publish_debug_linestrings);
-  update_param<std::string>(
-    parameters, "debug_params.virtual_pose_vehicle_mesh",
-    new_debug_params.virtual_pose_vehicle_mesh);
 
   auto failure = [](const std::string & reason) {
     SetParametersResult result;
@@ -724,7 +719,7 @@ void MLPlanner::publish_debug_markers(
     }
     MarkerArray vehicle_marker;
     vehicle_marker.markers.push_back(utils::create_vehicle_marker(
-      core_->ego_pose(), vehicle_info_, debug_params_.virtual_pose_vehicle_mesh, timestamp,
+      core_->ego_pose(), vehicle_info_, vehicle_mesh_, timestamp,
       rclcpp::Duration::from_seconds(0.2),
       active ? std::array<float, 4>{1.0f, 0.1f, 0.1f, 0.4f}
              : std::array<float, 4>{1.0f, 0.9f, 0.1f, 0.4f},
@@ -775,6 +770,9 @@ void MLPlanner::on_timer()
   auto steering_reports = sub_steering_.take_data();
   if (const auto control_mode_ptr = sub_control_mode_.take_data()) {
     control_mode_ = control_mode_ptr->mode;
+  }
+  if (const auto robot_description = sub_robot_description_.take_data()) {
+    vehicle_mesh_ = utils::find_link_mesh(robot_description->data, "base_link");
   }
   if (params_.virtual_pose.enable && !control_mode_) {
     RCLCPP_WARN_THROTTLE(

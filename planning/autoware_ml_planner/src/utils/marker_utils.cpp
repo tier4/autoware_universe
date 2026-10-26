@@ -23,6 +23,8 @@
 #include <geometry_msgs/msg/detail/point__struct.hpp>
 #include <geometry_msgs/msg/point.hpp>  // Include the header for Point
 
+#include <urdf/model.h>
+
 #include <array>
 #include <cstdint>
 #include <iostream>
@@ -297,6 +299,20 @@ Marker create_vehicle_marker(
   marker.scale.y = vehicle_info.vehicle_width_m;
   marker.scale.z = vehicle_info.vehicle_height_m;
   return marker;
+}
+
+std::string find_link_mesh(const std::string & robot_description, const std::string & link_name)
+{
+  urdf::Model model;
+  if (!model.initString(robot_description)) {
+    return "";
+  }
+  const auto link = model.getLink(link_name);
+  if (!link || !link->visual || !link->visual->geometry) {
+    return "";
+  }
+  const auto mesh = std::dynamic_pointer_cast<const urdf::Mesh>(link->visual->geometry);
+  return mesh ? mesh->filename : "";
 }
 
 }  // namespace autoware::ml_planner::utils
