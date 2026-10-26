@@ -60,14 +60,11 @@ geometry_msgs::msg::Pose ObjectMotion::pose_at(const double t) const
   }
   if (t <= times.front()) {
     const double span = times[1] - times[0];
-    if (span <= 0.0) {
-      return poses.front();
-    }
-    const double r = (t - times[0]) / span;
+    const double ratio = (t - times[0]) / span;
     auto pose = poses[0];
-    pose.position.x += r * (poses[1].position.x - poses[0].position.x);
-    pose.position.y += r * (poses[1].position.y - poses[0].position.y);
-    pose.position.z += r * (poses[1].position.z - poses[0].position.z);
+    pose.position.x += ratio * (poses[1].position.x - poses[0].position.x);
+    pose.position.y += ratio * (poses[1].position.y - poses[0].position.y);
+    pose.position.z += ratio * (poses[1].position.z - poses[0].position.z);
     return pose;
   }
   if (t >= times.back()) {
@@ -77,17 +74,17 @@ geometry_msgs::msg::Pose ObjectMotion::pose_at(const double t) const
     std::distance(times.begin(), std::upper_bound(times.begin(), times.end(), t)));
   const size_t lower = upper - 1;
   const double span = times[upper] - times[lower];
-  const double r = span > 0.0 ? (t - times[lower]) / span : 0.0;
+  const double ratio = span > 0.0 ? (t - times[lower]) / span : 0.0;
   const auto & p0 = poses[lower];
   const auto & p1 = poses[upper];
   geometry_msgs::msg::Pose pose;
-  pose.position.x = p0.position.x + r * (p1.position.x - p0.position.x);
-  pose.position.y = p0.position.y + r * (p1.position.y - p0.position.y);
-  pose.position.z = p0.position.z + r * (p1.position.z - p0.position.z);
+  pose.position.x = p0.position.x + ratio * (p1.position.x - p0.position.x);
+  pose.position.y = p0.position.y + ratio * (p1.position.y - p0.position.y);
+  pose.position.z = p0.position.z + ratio * (p1.position.z - p0.position.z);
   const double yaw0 = autoware_utils_geometry::get_rpy(p0).z;
   const double yaw1 = autoware_utils_geometry::get_rpy(p1).z;
   const double diff = std::atan2(std::sin(yaw1 - yaw0), std::cos(yaw1 - yaw0));
-  pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw0 + r * diff);
+  pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw0 + ratio * diff);
   return pose;
 }
 }  // namespace autoware::control_validator::collision_validator

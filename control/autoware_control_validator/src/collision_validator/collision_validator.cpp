@@ -71,45 +71,43 @@ std::optional<uint8_t> label_from_name(const std::string & name)
 
 PointCloudParam to_pointcloud_param(const ::control_validator::Params::CollisionValidator & params)
 {
-  const auto & p = params.pointcloud;
+  const auto & pointcloud = params.pointcloud;
   PointCloudParam out;
-  out.roi_rear = p.roi.rear;
-  out.roi_front_margin = p.roi.front_margin;
-  out.roi_lateral = p.roi.lateral;
-  out.z_margin_low = p.roi.z_margin_low;
-  out.z_margin_high = p.roi.z_margin_high;
-  out.max_voxels = static_cast<size_t>(std::max<int64_t>(p.max_voxels, 0));
-  out.voxel_size = p.voxel_size;
-  out.cluster_tolerance = p.cluster_tolerance;
-  out.min_cluster_size = static_cast<size_t>(std::max<int64_t>(p.min_cluster_size, 0));
+  out.roi_rear = pointcloud.roi.rear;
+  out.roi_front_margin = pointcloud.roi.front_margin;
+  out.roi_lateral = pointcloud.roi.lateral;
+  out.z_margin_low = pointcloud.roi.z_margin_low;
+  out.z_margin_high = pointcloud.roi.z_margin_high;
+  out.max_voxels = static_cast<size_t>(std::max<int64_t>(pointcloud.max_voxels, 0));
+  out.voxel_size = pointcloud.voxel_size;
+  out.cluster_tolerance = pointcloud.cluster_tolerance;
+  out.min_cluster_size = static_cast<size_t>(std::max<int64_t>(pointcloud.min_cluster_size, 0));
   return out;
 }
 
 CollisionEvaluatorParam to_collision_evaluator_param(
   const ::control_validator::Params::CollisionValidator & params)
 {
-  const auto & p = params;
   CollisionEvaluatorParam out;
-  out.max_time = p.prediction_horizon;
-  out.time_resolution = p.time_resolution;
-  out.n_eval_object = static_cast<size_t>(std::max<int64_t>(p.max_evaluations.object, 0));
-  out.n_eval_pointcloud = static_cast<size_t>(std::max<int64_t>(p.max_evaluations.pointcloud, 0));
-  out.enable_pointcloud = p.enable_pointcloud;
-  out.max_objects_stamp_gap_s = p.max_objects_stamp_gap_s;
-  out.stop_velocity = p.stop_velocity;
-  for (size_t i = 0; i < out.reaction_times.size() && i < p.braking.reaction_times.size(); ++i) {
-    out.reaction_times[i] = p.braking.reaction_times[i];
-  }
-  out.braking_deceleration = p.braking.deceleration;
-  out.cos_threshold = p.collision_cos_threshold;
-  out.rear_axle_ratio = p.vehicle_yaw.rear_axle_ratio;
-  for (const auto & name : p.enabled_object_classes) {
+  out.max_time = params.prediction_horizon;
+  out.time_resolution = params.time_resolution;
+  out.n_eval_object = static_cast<size_t>(std::max<int64_t>(params.max_evaluations.object, 0));
+  out.n_eval_pointcloud =
+    static_cast<size_t>(std::max<int64_t>(params.max_evaluations.pointcloud, 0));
+  out.enable_pointcloud = params.enable_pointcloud;
+  out.max_objects_stamp_gap_s = params.max_objects_stamp_gap_s;
+  out.stop_velocity = params.stop_velocity;
+  std::copy_n(params.braking.reaction_times.begin(), 3, out.reaction_times.begin());
+  out.braking_deceleration = params.braking.deceleration;
+  out.cos_threshold = params.collision_cos_threshold;
+  out.rear_axle_ratio = params.vehicle_yaw.rear_axle_ratio;
+  for (const auto & name : params.enabled_object_classes) {
     if (const auto label = label_from_name(name)) {
       out.enabled_labels.push_back(*label);
     }
   }
-  const auto & m = p.pointcloud.object_margin;
-  out.object_margin = ObjectMargin{m.front, m.rear, m.left, m.right};
+  const auto & margin = params.pointcloud.object_margin;
+  out.object_margin = ObjectMargin{margin.front, margin.rear, margin.left, margin.right};
   return out;
 }
 
@@ -172,7 +170,6 @@ CollisionValidator::CollisionValidator(
   pointcloud_preprocessor_(logger, to_pointcloud_param(params.collision_validator), time_keeper),
   collision_evaluator_(to_collision_evaluator_param(params.collision_validator))
 {
-  update_parameters(params);
   if (node) {
     pub_collision_markers_ =
       node->create_publisher<MarkerArray>("~/debug/hazard/collision/markers", 1);
@@ -186,12 +183,6 @@ void CollisionValidator::update_parameters(const ::control_validator::Params & p
   params_ = params.collision_validator;
   pointcloud_preprocessor_.update_parameters(to_pointcloud_param(params_));
   collision_evaluator_.update_parameters(to_collision_evaluator_param(params_));
-}
-
-bool CollisionValidator::is_valid_vehicle_info(const vehicle_info_utils::VehicleInfo & vehicle_info)
-{
-  return vehicle_info.vehicle_height_m > 0.0 && vehicle_info.vehicle_width_m > 0.0 &&
-         vehicle_info.vehicle_length_m > 0.0;
 }
 
 void CollisionValidator::update_history(
@@ -262,10 +253,8 @@ std::vector<HazardSource> CollisionValidator::to_hazard_sources(
     }
     HazardSource source;
     source.shape = transform_polygon_to_base_link(candidate.polygon_now, odom.pose.pose);
-    if (candidate.kind == CollisionCandidate::Kind::POINTCLOUD && !source.shape.outer().empty()) {
-      source.shape.outer().resize(1);
-    }
     source.risk_level = candidate.brake_level;
+    source.stamp = odom.header.stamp;
     sources.push_back(std::move(source));
   }
   return sources;
@@ -280,19 +269,11 @@ void CollisionValidator::validate(
   HazardWarningSources & hazard_sources)
 {
   update_history(odom, objects);
-  if (
-    predicted_trajectory.points.size() < 2 || objects_history_.empty() ||
-    (params_.enable_pointcloud && !pointcloud)) {
-    return;
-  }
-  if (!is_valid_vehicle_info(vehicle_info)) {
-    RCLCPP_ERROR_THROTTLE(
-      logger_, steady_clock_, 5000,
-      "hazard warning: invalid vehicle_info (height, width or length <= 0). Collision warning "
-      "skipped.");
+  if (predicted_trajectory.points.size() < 2) {
     return;
   }
 
+  const auto * latest_objects = objects_history_.empty() ? nullptr : objects_history_.back().get();
   const double horizon = std::min(
     params_.prediction_horizon,
     rclcpp::Duration(predicted_trajectory.points.back().time_from_start).seconds());
@@ -300,7 +281,7 @@ void CollisionValidator::validate(
   const std::vector<PointCluster> * clusters = nullptr;
   builtin_interfaces::msg::Time pointcloud_stamp;
   autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr objects_at_pointcloud_stamp;
-  if (params_.enable_pointcloud) {
+  if (params_.enable_pointcloud && pointcloud) {
     const auto ego_pose_at_pointcloud_stamp =
       select_ego_pose_at(rclcpp::Time(pointcloud->header.stamp));
     const auto & result = pointcloud_preprocessor_.process(
@@ -311,14 +292,17 @@ void CollisionValidator::validate(
       objects_at_pointcloud_stamp = select_objects_at(result->stamp);
     }
   }
+  if (!latest_objects && !clusters) {
+    return;
+  }
 
   const std::vector<PointCluster> no_clusters;
   std::vector<CollisionCandidate> candidates;
   try {
     autoware_utils_debug::ScopedTimeTrack st("collision_evaluator_evaluate", *time_keeper_);
     candidates = collision_evaluator_.evaluate(
-      predicted_trajectory, odom, vehicle_info, *objects_history_.back(),
-      objects_at_pointcloud_stamp.get(), clusters ? *clusters : no_clusters, pointcloud_stamp);
+      predicted_trajectory, odom, vehicle_info, latest_objects, objects_at_pointcloud_stamp.get(),
+      clusters ? *clusters : no_clusters, pointcloud_stamp);
   } catch (const std::exception & e) {
     RCLCPP_WARN_THROTTLE(
       logger_, steady_clock_, 5000, "hazard warning: collision evaluation skipped: %s", e.what());

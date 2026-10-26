@@ -28,13 +28,13 @@ struct HazardSource
 {
   autoware_utils_geometry::Polygon2d shape;  // base_link of the current ego; a point has 1 vertex
   uint8_t risk_level{0};
+  builtin_interfaces::msg::Time stamp{};  // odometry stamp used to express the shape in base_link
 };
 
 struct HazardWarningSources
 {
   std::optional<std::vector<HazardSource>> collision;  // nullopt when not evaluated this cycle
   std::optional<std::vector<HazardSource>> departure;
-  builtin_interfaces::msg::Time stamp{};
 };
 }  // namespace autoware::control_validator
 

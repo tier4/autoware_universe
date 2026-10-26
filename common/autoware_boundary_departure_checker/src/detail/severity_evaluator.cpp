@@ -140,13 +140,10 @@ Side<std::optional<DeparturePointPair>> evaluate_projections_severity(
 
       // A CAUTION point is preferred over the closest point so that a CAUTION inside the time
       // gate is not hidden by a closer point beyond the gate.
-      const auto has_caution = std::any_of(
-        min_to_bounds.begin(), min_to_bounds.end(),
-        [](const ProjectionToBound & pt) { return pt.is_caution_or_above(); });
       const auto closest_to_bound = std::min_element(
         min_to_bounds.begin(), min_to_bounds.end(),
-        [has_caution](const ProjectionToBound & lhs, const ProjectionToBound & rhs) {
-          if (has_caution && lhs.is_caution_or_above() != rhs.is_caution_or_above()) {
+        [](const ProjectionToBound & lhs, const ProjectionToBound & rhs) {
+          if (lhs.is_caution_or_above() != rhs.is_caution_or_above()) {
             return lhs.is_caution_or_above();
           }
           return lhs.lat_dist < rhs.lat_dist;

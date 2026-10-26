@@ -99,18 +99,20 @@ BearingArc sector_arc(const HazardWarningParam & param, const size_t sector)
   return BearingArc{normalize_deg(from_deg), std::min(to_deg - from_deg, 360.0)};
 }
 
-HazardWarningParam to_hazard_warning_param(const ::control_validator::Params::HazardWarning & p)
+HazardWarningParam to_hazard_warning_param(
+  const ::control_validator::Params::HazardWarning & params)
 {
   HazardWarningParam out;
-  out.enable = p.enable;
-  out.min_alert_duration = p.min_alert_duration;
-  out.sector_boundary_tolerance_deg = p.sector.boundary_tolerance_deg;
+  out.enable = params.enable;
+  out.min_alert_duration = params.min_alert_duration;
+  out.sector_boundary_tolerance_deg = params.sector.boundary_tolerance_deg;
   const std::array<const std::vector<double> *, kNumSectors> ranges{
-    &p.sector.range.front,      &p.sector.range.front_right, &p.sector.range.right,
-    &p.sector.range.rear_right, &p.sector.range.rear,        &p.sector.range.rear_left,
-    &p.sector.range.left,       &p.sector.range.front_left};
-  for (size_t s = 0; s < kNumSectors; ++s) {
-    out.sector_ranges[s] = {(*ranges[s])[0], (*ranges[s])[1]};
+    &params.sector.range.front, &params.sector.range.front_right,
+    &params.sector.range.right, &params.sector.range.rear_right,
+    &params.sector.range.rear,  &params.sector.range.rear_left,
+    &params.sector.range.left,  &params.sector.range.front_left};
+  for (size_t sector = 0; sector < kNumSectors; ++sector) {
+    out.sector_ranges[sector] = {(*ranges[sector])[0], (*ranges[sector])[1]};
   }
   return out;
 }
@@ -141,7 +143,8 @@ std_msgs::msg::ColorRGBA level_color(const uint8_t level)
 
 Marker make_polygon_marker(
   const Polygon2d & polygon, const std::string & ns, const int32_t id,
-  const std_msgs::msg::ColorRGBA & color, const builtin_interfaces::msg::Time & stamp)
+  const std_msgs::msg::ColorRGBA & color, const builtin_interfaces::msg::Time & stamp,
+  const bool frame_locked)
 {
   Marker marker;
   marker.header.frame_id = "base_link";
@@ -152,7 +155,7 @@ Marker make_polygon_marker(
   marker.pose.orientation.w = 1.0;
   marker.color = color;
   marker.lifetime = rclcpp::Duration::from_seconds(0.5);
-  marker.frame_locked = true;
+  marker.frame_locked = frame_locked;
   if (polygon.outer().size() == 1) {
     marker.type = Marker::SPHERE;
     marker.pose.position.x = polygon.outer().front().x();
@@ -174,7 +177,8 @@ Marker make_polygon_marker(
 }
 
 Marker make_risk_level_marker(
-  const HazardSource & source, const int32_t id, const builtin_interfaces::msg::Time & stamp)
+  const HazardSource & source, const int32_t id, const builtin_interfaces::msg::Time & stamp,
+  const bool frame_locked)
 {
   Marker marker;
   marker.header.frame_id = "base_link";
@@ -194,7 +198,7 @@ Marker make_risk_level_marker(
   marker.scale.z = 0.5;
   marker.color = level_color(source.risk_level);
   marker.lifetime = rclcpp::Duration::from_seconds(0.5);
-  marker.frame_locked = true;
+  marker.frame_locked = frame_locked;
   marker.text = "risk_level:" + std::to_string(source.risk_level);
   return marker;
 }
@@ -226,13 +230,10 @@ void HazardWarning::build_wedges(const Point2d & apex)
   // vehicle footprint (base_link), the angular range is widened by the boundary tolerance. The arc
   // is polygonised so that the whole radius is covered for wide sectors.
   wedge_apex_ = apex;
-  const double radius = kWedgeRadius;
-  for (size_t s = 0; s < kNumSectors; ++s) {
-    const double from_deg = param_.sector_ranges[s][0] - param_.sector_boundary_tolerance_deg;
-    double to_deg = param_.sector_ranges[s][1] + param_.sector_boundary_tolerance_deg;
-    while (to_deg <= from_deg) {
-      to_deg += 360.0;
-    }
+  for (size_t sector = 0; sector < kNumSectors; ++sector) {
+    const auto arc = sector_arc(param_, sector);
+    const double from_deg = arc.start_deg;
+    const double to_deg = from_deg + arc.length_deg;
     const auto num_arc_steps =
       std::max<size_t>(1, static_cast<size_t>(std::ceil((to_deg - from_deg) / kWedgeArcStepDeg)));
 
@@ -242,17 +243,20 @@ void HazardWarning::build_wedges(const Point2d & apex)
       const double angle =
         deg2rad(from_deg + (to_deg - from_deg) * static_cast<double>(i) / num_arc_steps);
       boost::geometry::append(
-        wedge, Point2d{apex.x() + radius * std::cos(angle), apex.y() + radius * std::sin(angle)});
+        wedge,
+        Point2d{
+          apex.x() + kWedgeRadius * std::cos(angle), apex.y() + kWedgeRadius * std::sin(angle)});
     }
     boost::geometry::append(wedge, apex);
     boost::geometry::correct(wedge);
-    wedges_[s] = wedge;
+    wedges_[sector] = wedge;
   }
 }
 
 void HazardWarning::assign_sectors(
   const HazardWarningSources & hazard_sources, const Point2d & apex,
-  std::array<uint8_t, kNumSectors> & max_level) const
+  std::array<uint8_t, kNumSectors> & max_level,
+  std::array<std::vector<HazardSource>, kNumSectors> & sector_sources) const
 {
   max_level.fill(0);
   for (const auto * sources : {&hazard_sources.collision, &hazard_sources.departure}) {
@@ -264,9 +268,10 @@ void HazardWarning::assign_sectors(
         continue;
       }
       const auto arc = bearing_arc(source.shape, apex);
-      for (size_t s = 0; s < kNumSectors; ++s) {
-        if (!arc || overlaps(*arc, sector_arc(param_, s))) {
-          max_level[s] = std::max(max_level[s], source.risk_level);
+      for (size_t sector = 0; sector < kNumSectors; ++sector) {
+        if (!arc || overlaps(*arc, sector_arc(param_, sector))) {
+          max_level[sector] = std::max(max_level[sector], source.risk_level);
+          sector_sources[sector].push_back(source);
         }
       }
     }
@@ -291,25 +296,31 @@ std::optional<HazardAlert> HazardWarning::make_alert(
   }
 
   std::array<uint8_t, kNumSectors> max_level{};
-  assign_sectors(hazard_sources, apex, max_level);
+  std::array<std::vector<HazardSource>, kNumSectors> sector_sources;
+  assign_sectors(hazard_sources, apex, max_level, sector_sources);
 
   HazardAlert alert;
   alert.header.stamp = now;
   alert.header.frame_id = "base_link";
-  for (size_t s = 0; s < kNumSectors; ++s) {
-    const auto level = sector_latches_[s].update(max_level[s], now, param_.min_alert_duration);
-    alert.sectors[s].has_object = level >= 1;
-    alert.sectors[s].risk_level = level;
+  for (size_t sector = 0; sector < kNumSectors; ++sector) {
+    const auto level =
+      sector_latches_[sector].update(max_level[sector], now, param_.min_alert_duration);
+    alert.sectors[sector].has_object = level >= 1;
+    alert.sectors[sector].risk_level = level;
+    if (max_level[sector] >= 1) {
+      last_on_sources_[sector] = std::move(sector_sources[sector]);
+    } else if (level == 0) {
+      last_on_sources_[sector].clear();
+    }
   }
 
   time_keeper_->start_track("hazard_warning_publish_debug");
-  publish_debug(hazard_sources, alert);
+  publish_debug(alert);
   time_keeper_->end_track("hazard_warning_publish_debug");
   return alert;
 }
 
-void HazardWarning::publish_debug(
-  const HazardWarningSources & hazard_sources, const HazardAlert & alert) const
+void HazardWarning::publish_debug(const HazardAlert & alert) const
 {
   if (!publish_markers_ || !pub_markers_ || pub_markers_->get_subscription_count() == 0) {
     return;
@@ -320,27 +331,20 @@ void HazardWarning::publish_debug(
   markers.markers.push_back(delete_all);
 
   int32_t id = 0;
-  for (const auto & [sources, ns] :
-       {std::pair{&hazard_sources.collision, "hazard_collision_sources"},
-        std::pair{&hazard_sources.departure, "hazard_departure_sources"}}) {
-    if (!sources->has_value()) {
+  for (size_t sector = 0; sector < kNumSectors; ++sector) {
+    if (!alert.sectors[sector].has_object) {
       continue;
     }
-    for (const auto & source : **sources) {
+    for (const auto & source : last_on_sources_[sector]) {
       if (!source.shape.outer().empty()) {
-        markers.markers.push_back(make_risk_level_marker(source, id, hazard_sources.stamp));
+        markers.markers.push_back(make_risk_level_marker(source, id, source.stamp, false));
       }
       markers.markers.push_back(make_polygon_marker(
-        source.shape, ns, id++, level_color(source.risk_level), hazard_sources.stamp));
-    }
-  }
-  for (size_t s = 0; s < kNumSectors; ++s) {
-    if (!alert.sectors[s].has_object) {
-      continue;
+        source.shape, "hazard_sources", id++, level_color(source.risk_level), source.stamp, false));
     }
     markers.markers.push_back(make_polygon_marker(
-      wedges_[s], "hazard_sectors", static_cast<int32_t>(s),
-      level_color(alert.sectors[s].risk_level), hazard_sources.stamp));
+      wedges_[sector], "hazard_sectors", static_cast<int32_t>(sector),
+      level_color(alert.sectors[sector].risk_level), alert.header.stamp, true));
   }
   pub_markers_->publish(markers);
 }

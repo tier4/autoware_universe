@@ -34,6 +34,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace autoware::control_validator
 {
@@ -87,10 +88,9 @@ private:
   void build_wedges(const autoware_utils_geometry::Point2d & apex);
   void assign_sectors(
     const HazardWarningSources & hazard_sources, const autoware_utils_geometry::Point2d & apex,
-    std::array<uint8_t, hazard_warning::kNumSectors> & max_level) const;
-  void publish_debug(
-    const HazardWarningSources & hazard_sources,
-    const autoware_control_validator::msg::HazardAlert & alert) const;
+    std::array<uint8_t, hazard_warning::kNumSectors> & max_level,
+    std::array<std::vector<HazardSource>, hazard_warning::kNumSectors> & sector_sources) const;
+  void publish_debug(const autoware_control_validator::msg::HazardAlert & alert) const;
 
   rclcpp::Logger logger_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
@@ -99,6 +99,7 @@ private:
   std::optional<autoware_utils_geometry::Point2d> wedge_apex_;
   std::array<autoware_utils_geometry::Polygon2d, hazard_warning::kNumSectors> wedges_;
   std::array<hazard_warning::AlertLatch, hazard_warning::kNumSectors> sector_latches_;
+  std::array<std::vector<HazardSource>, hazard_warning::kNumSectors> last_on_sources_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
 };
 }  // namespace autoware::control_validator

@@ -62,10 +62,11 @@ public:
   void update_parameters(const ::control_validator::Params & params);
 
   /**
-   * @brief Evaluate one cycle and write hazard_sources.collision (an empty vector when nothing is
-   * raised). hazard_sources.collision is left untouched when the evaluation is skipped.
+   * @brief Evaluate one cycle with whichever of objects / pointcloud is available and write
+   * hazard_sources.collision (an empty vector when nothing is raised). hazard_sources.collision is
+   * left untouched when neither input is available.
    * @param objects latest objects; may be null
-   * @param pointcloud latest pointcloud; may be null when the pointcloud is disabled
+   * @param pointcloud latest pointcloud; may be null
    */
   void validate(
     const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
@@ -85,7 +86,6 @@ private:
   static std::vector<HazardSource> to_hazard_sources(
     const std::vector<collision_validator::CollisionCandidate> & candidates,
     const nav_msgs::msg::Odometry & odom);
-  static bool is_valid_vehicle_info(const vehicle_info_utils::VehicleInfo & vehicle_info);
   void publish_debug(
     const std::vector<collision_validator::CollisionCandidate> & candidates,
     const nav_msgs::msg::Odometry & odom, const rclcpp::Time & now) const;

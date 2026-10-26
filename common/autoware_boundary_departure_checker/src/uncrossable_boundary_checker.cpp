@@ -65,24 +65,6 @@ UncrossableBoundaryChecker::evaluate_trajectory(
   return evaluated;
 }
 
-std::optional<double> UncrossableBoundaryChecker::get_lat_dist_to_bound(
-  const TrajectoryEvaluation & evaluated)
-{
-  if (!evaluated.evaluation_result) {
-    return std::nullopt;
-  }
-  return severity_evaluator::get_min_lateral_distance_to_bound(*evaluated.evaluation_result);
-}
-
-visualization_msgs::msg::MarkerArray UncrossableBoundaryChecker::create_debug_markers(
-  const HysteresisState & critical_state, const TrajectoryEvaluation & evaluated,
-  const EgoDynamicState & ego_state) const
-{
-  return debug::create_debug_markers(
-    critical_state, evaluated.footprints, evaluated.align_count, ego_state,
-    param_.enable_developer_marker);
-}
-
 DepartureResult UncrossableBoundaryChecker::update_departure_status(
   const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state,
   HysteresisState & state)
@@ -113,11 +95,14 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
     result.status = DepartureType::NEAR_BOUNDARY;
   }
 
-  if (const auto lat_dist = get_lat_dist_to_bound(*evaluated)) {
-    result.lat_dist_to_uncrossable_bound = *lat_dist;
+  if (evaluation_result) {
+    result.lat_dist_to_uncrossable_bound =
+      severity_evaluator::get_min_lateral_distance_to_bound(*evaluation_result);
   }
 
-  result.debug_markers = create_debug_markers(state, *evaluated, ego_state);
+  result.debug_markers = debug::create_debug_markers(
+    state, evaluated->footprints, evaluated->align_count, ego_state,
+    param_.enable_developer_marker);
   return result;
 }
 
@@ -166,11 +151,14 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
       footprint_is_close_to_bound ? DepartureType::NEAR_BOUNDARY : DepartureType::NONE;
   }
 
-  if (const auto lat_dist = get_lat_dist_to_bound(*evaluated)) {
-    result.lat_dist_to_uncrossable_bound = *lat_dist;
+  if (evaluation_result) {
+    result.lat_dist_to_uncrossable_bound =
+      severity_evaluator::get_min_lateral_distance_to_bound(*evaluation_result);
   }
 
-  result.debug_markers = create_debug_markers(states.critical, *evaluated, ego_state);
+  result.debug_markers = debug::create_debug_markers(
+    states.critical, evaluated->footprints, evaluated->align_count, ego_state,
+    param_.enable_developer_marker);
   return result;
 }
 

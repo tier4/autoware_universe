@@ -207,7 +207,7 @@ struct CollisionCandidate
   enum class Kind { OBJECT, POINTCLOUD };
   Kind kind{Kind::OBJECT};
   uint8_t label{0};
-  Polygon2d polygon_now;  // map; a degenerate polygon for a point
+  Polygon2d polygon_now;  // map; a single vertex for a point
   double distance_now{0.0};
   std::optional<double> ttc;
   std::optional<double> cos_collision;  // cosine of the collision angle (set with ttc)
@@ -270,7 +270,7 @@ public:
    * objects (footprint sweep), static points and points attached to objects. Object candidates
    * are returned whether or not they collide; point candidates are returned only for points that
    * collide. Colliding candidates get a brake_level.
-   * @param objects latest objects, evaluated as objects
+   * @param objects latest objects, evaluated as objects; null evaluates no object
    * @param objects_at_pointcloud_stamp objects closest to the pointcloud stamp, used to attach
    *   clusters; null evaluates every cluster as static
    * @param point_clusters clusters in the map frame
@@ -280,15 +280,13 @@ public:
   std::vector<CollisionCandidate> evaluate(
     const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
     const nav_msgs::msg::Odometry & odom, const vehicle_info_utils::VehicleInfo & vehicle_info,
-    const autoware_perception_msgs::msg::PredictedObjects & objects,
+    const autoware_perception_msgs::msg::PredictedObjects * objects,
     const autoware_perception_msgs::msg::PredictedObjects * objects_at_pointcloud_stamp,
     const std::vector<PointCluster> & point_clusters,
     const builtin_interfaces::msg::Time & pointcloud_stamp) const;
 
 private:
   friend class SweepsWithBraking;
-
-  static double distance_now(const Polygon2d & ego_now, const Polygon2d & candidate);
 
   EgoSweep build_ego_sweep(
     const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
@@ -309,17 +307,18 @@ private:
     const std::vector<std::shared_ptr<const ObjectMotion>> & motions, double t_pointcloud) const;
 
   CollisionCandidate evaluate_object(
-    const EgoSweep & ego, SweepsWithBraking & braked, CollisionCandidate candidate,
+    const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps, CollisionCandidate candidate,
     const ObjectMotion & motion) const;
 
   void evaluate_static_points(
-    const EgoSweep & ego, SweepsWithBraking & braked, const std::vector<Point2d> & points,
-    const builtin_interfaces::msg::Time & stamp, std::vector<CollisionCandidate> & out) const;
+    const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps,
+    const std::vector<Point2d> & points, const builtin_interfaces::msg::Time & stamp,
+    std::vector<CollisionCandidate> & out) const;
 
   void evaluate_attached_points(
-    const EgoSweep & ego, SweepsWithBraking & braked, const std::vector<Point2d> & points_local,
-    const ObjectMotion & motion, const builtin_interfaces::msg::Time & stamp,
-    std::vector<CollisionCandidate> & out) const;
+    const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps,
+    const std::vector<Point2d> & points_local, const ObjectMotion & motion,
+    const builtin_interfaces::msg::Time & stamp, std::vector<CollisionCandidate> & out) const;
 
   CollisionEvaluatorParam param_;
 };

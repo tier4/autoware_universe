@@ -306,7 +306,8 @@ void UncrossableBoundDepartureValidator::validate(
         point.outer().push_back(projection.pt_on_bound);
         departure.push_back(
           HazardSource{
-            transform_polygon_to_base_link(point, kinematics.pose.pose), departure_risk_level_});
+            transform_polygon_to_base_link(point, kinematics.pose.pose), departure_risk_level_,
+            kinematics.header.stamp});
       }
     });
     hazard_sources.departure = std::move(departure);
@@ -567,7 +568,6 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   const auto pointcloud_msg = sub_pointcloud_->take_data();
 
   HazardWarningSources hazard_sources;
-  hazard_sources.stamp = kinematics_msg->header.stamp;
 
   // pre process
   debug_pose_publisher_->clear_markers();

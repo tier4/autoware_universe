@@ -85,12 +85,6 @@ private:
   std::optional<TrajectoryEvaluation> evaluate_trajectory(
     const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state) const;
 
-  static std::optional<double> get_lat_dist_to_bound(const TrajectoryEvaluation & evaluated);
-
-  visualization_msgs::msg::MarkerArray create_debug_markers(
-    const HysteresisState & critical_state, const TrajectoryEvaluation & evaluated,
-    const EgoDynamicState & ego_state) const;
-
   UncrossableBoundaryDepartureParam param_;
   VehicleInfo vehicle_info_;
   std::unique_ptr<BoundaryDepartureEvaluator> evaluator_ptr_;

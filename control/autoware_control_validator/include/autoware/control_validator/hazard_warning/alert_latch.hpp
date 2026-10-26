@@ -50,8 +50,6 @@ public:
     return 0;
   }
 
-  bool is_on() const { return last_on_time_.has_value(); }
-
 private:
   std::optional<rclcpp::Time> last_on_time_;
   uint8_t last_level_{0};

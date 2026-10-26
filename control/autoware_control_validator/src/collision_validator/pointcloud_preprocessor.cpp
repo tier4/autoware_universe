@@ -49,20 +49,21 @@ struct Voxel
 std::vector<Voxel> voxelize(
   const std::vector<Point3d> & cropped_pointcloud, const double voxel_size)
 {
-  constexpr int64_t kOffset = int64_t{1} << 20;
-  constexpr uint64_t kMask = (uint64_t{1} << 21) - 1;
+  constexpr int64_t kGridOffset = int64_t{1} << 20;
+  constexpr uint64_t kAxisMask = (uint64_t{1} << 21) - 1;
   struct Accumulator
   {
-    double x{0.0};
-    double y{0.0};
-    double z{0.0};
+    double sum_x{0.0};
+    double sum_y{0.0};
+    double sum_z{0.0};
     size_t count{0};
   };
 
-  const double inverse_size = 1.0 / voxel_size;
-  const auto grid_key = [&](const double v) {
-    return static_cast<uint64_t>(static_cast<int64_t>(std::floor(v * inverse_size)) + kOffset) &
-           kMask;
+  const double inverse_voxel_size = 1.0 / voxel_size;
+  const auto grid_key = [&](const double coordinate) {
+    return static_cast<uint64_t>(
+             static_cast<int64_t>(std::floor(coordinate * inverse_voxel_size)) + kGridOffset) &
+           kAxisMask;
   };
 
   std::unordered_map<uint64_t, size_t> index_of_key;
@@ -75,17 +76,20 @@ std::vector<Voxel> voxelize(
       accumulators.emplace_back();
     }
     auto & accumulator = accumulators[it->second];
-    accumulator.x += p.x();
-    accumulator.y += p.y();
-    accumulator.z += p.z();
+    accumulator.sum_x += p.x();
+    accumulator.sum_y += p.y();
+    accumulator.sum_z += p.z();
     ++accumulator.count;
   }
 
   std::vector<Voxel> voxels;
   voxels.reserve(accumulators.size());
-  for (const auto & a : accumulators) {
-    const auto n = static_cast<double>(a.count);
-    voxels.push_back(Voxel{Point3d{a.x / n, a.y / n, a.z / n}, a.count});
+  for (const auto & accumulator : accumulators) {
+    const auto n = static_cast<double>(accumulator.count);
+    voxels.push_back(
+      Voxel{
+        Point3d{accumulator.sum_x / n, accumulator.sum_y / n, accumulator.sum_z / n},
+        accumulator.count});
   }
   return voxels;
 }
@@ -222,9 +226,6 @@ const std::optional<PointCloudClusters> & PointCloudPreprocessor::process(
     const double sin_yaw = std::sin(yaw);
     clusters.reserve(cluster_indices.size());
     for (const auto & indices : cluster_indices) {
-      if (indices.indices.empty()) {
-        continue;
-      }
       size_t raw_point_count = 0;
       for (const auto index : indices.indices) {
         raw_point_count += voxels[static_cast<size_t>(index)].raw_point_count;
@@ -239,11 +240,11 @@ const std::optional<PointCloudClusters> & PointCloudPreprocessor::process(
       double sum_y = 0.0;
       for (const auto index : indices.indices) {
         const auto & p = voxels[static_cast<size_t>(index)].centroid;
-        const double mx = ego_pose.position.x + cos_yaw * p.x() - sin_yaw * p.y();
-        const double my = ego_pose.position.y + sin_yaw * p.x() + cos_yaw * p.y();
-        cluster.points.emplace_back(mx, my);
-        sum_x += mx;
-        sum_y += my;
+        const double map_x = ego_pose.position.x + cos_yaw * p.x() - sin_yaw * p.y();
+        const double map_y = ego_pose.position.y + sin_yaw * p.x() + cos_yaw * p.y();
+        cluster.points.emplace_back(map_x, map_y);
+        sum_x += map_x;
+        sum_y += map_y;
       }
       const auto n = static_cast<double>(cluster.points.size());
       cluster.centroid = Point2d{sum_x / n, sum_y / n};
