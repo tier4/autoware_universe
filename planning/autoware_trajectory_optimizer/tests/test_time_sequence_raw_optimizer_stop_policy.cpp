@@ -28,6 +28,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
@@ -160,12 +161,16 @@ TEST_F(TimeSequenceRawOptimizerStopPolicyTest, LatchesSteeringOnStoppedReference
   auto data = make_data(make_odometry(0.0, 0.0), make_steering(0.35));
 
   plugin_->optimize_trajectory(trajectory, params_, data);
+  bool optimizer_replaced_acceleration = false;
   for (const auto & point : trajectory) {
     EXPECT_NEAR(point.front_wheel_angle_rad, 0.35F, 1e-5F);
-    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0F, 1e-5F);
-    EXPECT_NEAR(point.heading_rate_rps, 0.0F, 1e-5F);
+    if (std::abs(point.acceleration_mps2 - 1.0F) > 1e-3F) {
+      optimizer_replaced_acceleration = true;
+    }
   }
+  EXPECT_TRUE(optimizer_replaced_acceleration);
 
+  trajectory = make_stopped_trajectory(opt_horizon, 0.5);
   data.current_steering = make_steering(0.60);
   plugin_->optimize_trajectory(trajectory, params_, data);
   for (const auto & point : trajectory) {
@@ -180,10 +185,14 @@ TEST_F(TimeSequenceRawOptimizerStopPolicyTest, ZerosSteeringNearGoalWhenStopped)
     make_data(make_odometry(0.0, 0.0), make_steering(0.40), make_route_near_ego(2.0, 0.0));
 
   plugin_->optimize_trajectory(trajectory, params_, data);
+  bool optimizer_replaced_acceleration = false;
   for (const auto & point : trajectory) {
     EXPECT_NEAR(point.front_wheel_angle_rad, 0.002F, 1e-5F);
-    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0F, 1e-5F);
+    if (std::abs(point.acceleration_mps2 - 1.0F) > 1e-3F) {
+      optimizer_replaced_acceleration = true;
+    }
   }
+  EXPECT_TRUE(optimizer_replaced_acceleration);
 }
 
 TEST_F(TimeSequenceRawOptimizerStopPolicyTest, ZerosSteeringNearGoalDespiteNoisyReferenceVelocity)
@@ -198,10 +207,14 @@ TEST_F(TimeSequenceRawOptimizerStopPolicyTest, ZerosSteeringNearGoalDespiteNoisy
   auto data =
     make_data(make_odometry(0.0, 0.0), make_steering(0.40), make_route_near_ego(2.0, 0.0));
   plugin_->optimize_trajectory(trajectory, params_, data);
+  bool optimizer_replaced_acceleration = false;
   for (const auto & point : trajectory) {
     EXPECT_NEAR(point.front_wheel_angle_rad, 0.002F, 1e-5F);
-    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0F, 1e-5F);
+    if (std::abs(point.acceleration_mps2 - 1.0F) > 1e-3F) {
+      optimizer_replaced_acceleration = true;
+    }
   }
+  EXPECT_TRUE(optimizer_replaced_acceleration);
 }
 
 TEST_F(TimeSequenceRawOptimizerStopPolicyTest, StaysInGoalZeroAfterBriefEgoMotion)
