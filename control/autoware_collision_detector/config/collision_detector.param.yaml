@@ -5,7 +5,7 @@
     collision_distance: 0.1 # Distance at which an object is determined to have collided with ego [m]
     nearby_filter_radius: 5.0 # Radius to filter nearby objects [m]
     keep_ignoring_time: 10.0 # Time to keep filtering objects that first appeared in the vicinity
-    nearby_object_type_filters: # Classes subject to filtering for objects first appearing in the vicinity
+    nearby_object_type_filters: # Classes to hide for keep_ignoring_time when a new object first appears within nearby_filter_radius. Objects first seen outside the radius are not hidden.
       filter_car: false
       filter_truck: false
       filter_bus: false
@@ -18,6 +18,19 @@
       filter_over_drivable: true
       filter_under_drivable: true
       filter_unknown: true
+    permanent_object_type_filters: # Classes that are always removed, at any distance and any time
+      filter_car: false
+      filter_truck: false
+      filter_bus: false
+      filter_trailer: false
+      filter_bicycle: false
+      filter_motorcycle: false
+      filter_pedestrian: false
+      filter_animal: false
+      filter_hazard: false
+      filter_over_drivable: false
+      filter_under_drivable: false
+      filter_unknown: false
     ignore_behind_rear_axle: true  # If true, collisions detected behind the rear axle of the ego vehicle are ignored
     time_buffer:  # buffer to start or stop publishing the ERROR diagnostic
       on_duration: 0.2  # [s] minimum consecutive detection time before triggering the diagnostic
