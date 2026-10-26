@@ -211,6 +211,19 @@ TEST(PlanVelocity, StaysStoppedWithTheStopWithinTheResolution)
   EXPECT_NEAR(points->back().pose.position.x, 10.5, 1e-6);
 }
 
+TEST(PlanVelocity, BrakesAtAMinWhenMovingPastTheStop)
+{
+  auto path = make_straight_path(100.0, 10.0);
+  path.set_stopline(10.0);
+  const auto params = make_params();
+  const auto points = plan_velocity(path, 10.0, {0.5, 0.0}, params, NUM_POINTS, TIME_STEP_S);
+  ASSERT_TRUE(points);
+  for (const auto & point : *points) {
+    EXPECT_EQ(point.longitudinal_velocity_mps, 0.0);
+    EXPECT_EQ(point.acceleration_mps2, static_cast<float>(params.optimizer.a_min));
+  }
+}
+
 TEST(PlanVelocity, StartsFromStandstillWithTheStopBeyondTheResolution)
 {
   auto path = make_straight_path(100.0, 10.0);

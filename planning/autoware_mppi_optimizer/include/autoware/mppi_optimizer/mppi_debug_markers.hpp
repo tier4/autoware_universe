@@ -141,7 +141,7 @@ inline Marker makeDeleteAllMarker(const std::string & ns)
 
 inline Marker makeLineStripMarker(
   const std::string & ns, const int id, const ColorRGBA & color, const double line_width,
-  const std::vector<std::pair<float, float>> & points, const double z)
+  const std::vector<std::pair<double, double>> & points, const double z)
 {
   Marker marker;
   marker.header.frame_id = "map";
@@ -174,22 +174,20 @@ inline MarkerArray createMppiDebugMarkers(
   MarkerArray marker_array;
 
   if (!debug.reference_trajectory.points.empty()) {
-    std::vector<std::pair<float, float>> reference_points;
+    std::vector<std::pair<double, double>> reference_points;
     reference_points.reserve(debug.reference_trajectory.points.size());
     for (const auto & point : debug.reference_trajectory.points) {
-      reference_points.emplace_back(
-        static_cast<float>(point.pose.position.x), static_cast<float>(point.pose.position.y));
+      reference_points.emplace_back(point.pose.position.x, point.pose.position.y);
     }
     marker_array.markers.push_back(makeLineStripMarker(
       "mppi_reference", 0, makeColor(0.0F, 1.0F, 1.0F, 0.9F), 0.15, reference_points, z));
   }
 
   if (!debug.nominal_trajectory.points.empty()) {
-    std::vector<std::pair<float, float>> nominal_points;
+    std::vector<std::pair<double, double>> nominal_points;
     nominal_points.reserve(debug.nominal_trajectory.points.size());
     for (const auto & point : debug.nominal_trajectory.points) {
-      nominal_points.emplace_back(
-        static_cast<float>(point.pose.position.x), static_cast<float>(point.pose.position.y));
+      nominal_points.emplace_back(point.pose.position.x, point.pose.position.y);
     }
     marker_array.markers.push_back(makeLineStripMarker(
       "mppi_nominal", 0, makeColor(1.0F, 0.55F, 0.0F, 0.95F), 0.12, nominal_points, z));

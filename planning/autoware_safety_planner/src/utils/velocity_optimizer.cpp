@@ -371,12 +371,15 @@ std::optional<TrajectoryPoints> plan_velocity(
     near_stop && initial.a && initial.v > STOP_VELOCITY_MPS &&
     initial.v * initial.v <= 2.0 * std::abs(params.optimizer.a_min) * stop_dist;
   if (length < MIN_GRID_LENGTH_M || (near_stop && !brake_to_stop)) {
+    // a_min rather than 0 while the ego still moves: with no feedforward the controller brakes on
+    // the velocity error alone, too weakly at a crawl to overcome the creep of the vehicle
+    const double acc = initial.a && initial.v > STOP_VELOCITY_MPS ? params.optimizer.a_min : 0.0;
     TrajectoryPoints points;
     points.reserve(num_points);
     for (std::size_t k = 0; k < num_points; ++k) {
       const double ratio = static_cast<double>(k) / static_cast<double>(num_points - 1);
       points.push_back(make_trajectory_point(
-        path, s0 + ratio * stop_dist, static_cast<double>(k) * time_step_s, 0.0, 0.0,
+        path, s0 + ratio * stop_dist, static_cast<double>(k) * time_step_s, 0.0, acc,
         params.wheel_base_m));
     }
     return points;
