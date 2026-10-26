@@ -119,7 +119,8 @@ struct TrajectoryModifierContext
   : vehicle_info(autoware::vehicle_info_utils::VehicleInfoUtils(*node).getVehicleInfo()),
     tf_buffer{node->get_clock()},
     tf_listener{tf_buffer},
-    external_limit_sub{node, "~/input/external_velocity_limit_mps", rclcpp::QoS{1}},
+    external_limit_sub{
+      node, "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local()},
     external_limit_clear_sub{
       node, "~/input/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local()}
   {
