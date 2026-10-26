@@ -43,6 +43,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -75,8 +76,6 @@ struct MLPlannerDebugParams
   bool publish_debug_route{true};
   bool publish_debug_map{false};
   bool publish_debug_linestrings{true};
-  // Body mesh drawn at the virtual pose (package:// or file:// URI); empty draws a box.
-  std::string virtual_pose_vehicle_mesh;
 };
 
 struct MLPlannerPlanningFactorParams
@@ -255,6 +254,10 @@ private:
   NewestPollingSubscriber<ControlModeReport> sub_control_mode_{this, "~/input/control_mode"};
   // Latest control mode; std::nullopt until the first report arrives.
   std::optional<uint8_t> control_mode_;
+  NewestPollingSubscriber<std_msgs::msg::String> sub_robot_description_{
+    this, "~/input/robot_description", rclcpp::QoS{1}.transient_local()};
+  // Body mesh of base_link in the vehicle description; empty (a box is drawn) until it is known.
+  std::string vehicle_mesh_;
   NewestPollingSubscriber<LaneletRoute> route_subscriber_{
     this, "~/input/route", rclcpp::QoS{1}.transient_local()};
   NewestPollingSubscriber<LaneletMapBin> vector_map_subscriber_{

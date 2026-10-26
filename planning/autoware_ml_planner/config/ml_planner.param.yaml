@@ -83,4 +83,3 @@
       publish_debug_route: true
       publish_debug_map: false
       publish_debug_linestrings: true
-      virtual_pose_vehicle_mesh: ""  # body mesh drawn at the virtual pose (package:// or file:// URI); empty: a box of the vehicle size
