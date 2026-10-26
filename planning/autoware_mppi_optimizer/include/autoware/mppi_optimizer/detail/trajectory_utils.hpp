@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__DETAIL__TRAJECTORY_UTILS_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__DETAIL__TRAJECTORY_UTILS_HPP_
 
+#include "autoware/mppi_optimizer/detail/local_frame.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
@@ -33,8 +34,9 @@ inline constexpr float kMppiDt = 0.1F;
 
 struct InitialState
 {
-  float x{0.0F};
-  float y{0.0F};
+  /** Map-frame position; nominal solvers and MPC-prediction seeding retain double precision. */
+  double x{0.0};
+  double y{0.0};
   float yaw{0.0F};
   float velocity{0.0F};
   float acceleration{0.0F};
@@ -44,6 +46,7 @@ struct InitialState
 struct ReferenceSample
 {
   float time{0.0F};
+  /** Local-frame position supplied to GPU rollout costs. */
   float x{0.0F};
   float y{0.0F};
   float yaw{0.0F};
@@ -55,6 +58,7 @@ struct ReferenceSample
 
 struct OptimizedState
 {
+  /** Local-frame post-step position; add the origin when publishing. */
   float x{0.0F};
   float y{0.0F};
   float yaw{0.0F};
@@ -94,7 +98,8 @@ void setInitialEngageVelocity(
   const Trajectory & trajectory, const InitialState & ego, const int horizon = kMppiHorizon,
   const float dt = kMppiDt, const size_t start_idx = 0U,
   const std::vector<float> * cumulative_chord_length_s = nullptr,
-  const std::vector<std::optional<float>> * maximum_velocities = nullptr);
+  const std::vector<std::optional<float>> * maximum_velocities = nullptr,
+  const LocalFrame & frame = {});
 
 /** Resolve the external/map minimum at every reference point. */
 [[nodiscard]] std::vector<std::optional<float>> buildEffectiveMaximumVelocityProfile(
@@ -191,7 +196,8 @@ float velocityDependentSteeringRateLimit(
 
 [[nodiscard]] Trajectory buildOptimizedTrajectory(
   const Trajectory & input, const std::vector<OptimizedState> & post_step_states,
-  const std::vector<FirstOrderDubinsMppiControl> & controls);
+  const std::vector<FirstOrderDubinsMppiControl> & controls,
+  const FirstOrderDubinsMppiOutputOptions & output_options = {}, const LocalFrame & frame = {});
 
 [[nodiscard]] float computeMengerCurvatureWithMinChord(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & points, std::size_t target_idx,

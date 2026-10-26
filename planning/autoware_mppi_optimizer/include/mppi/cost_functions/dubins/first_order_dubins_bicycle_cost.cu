@@ -750,14 +750,17 @@ std::string FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DY
   bool changed = count != data.num_preferred_lane_center_segments_;
   for (int i = 0; i < count; ++i) {
     const auto & s = segments[i];
-    changed = changed || data.preferred_lane_center_x0_[i] != s.x0 ||
-              data.preferred_lane_center_y0_[i] != s.y0 ||
-              data.preferred_lane_center_x1_[i] != s.x1 ||
-              data.preferred_lane_center_y1_[i] != s.y1;
-    data.preferred_lane_center_x0_[i] = s.x0;
-    data.preferred_lane_center_y0_[i] = s.y0;
-    data.preferred_lane_center_x1_[i] = s.x1;
-    data.preferred_lane_center_y1_[i] = s.y1;
+    const float x0 = static_cast<float>(s.x0);
+    const float y0 = static_cast<float>(s.y0);
+    const float x1 = static_cast<float>(s.x1);
+    const float y1 = static_cast<float>(s.y1);
+    changed = changed || data.preferred_lane_center_x0_[i] != x0 ||
+              data.preferred_lane_center_y0_[i] != y0 || data.preferred_lane_center_x1_[i] != x1 ||
+              data.preferred_lane_center_y1_[i] != y1;
+    data.preferred_lane_center_x0_[i] = x0;
+    data.preferred_lane_center_y0_[i] = y0;
+    data.preferred_lane_center_x1_[i] = x1;
+    data.preferred_lane_center_y1_[i] = y1;
   }
   data.num_preferred_lane_center_segments_ = count;
   preferred_lane_center_geometry_dirty_ |= changed;
@@ -819,17 +822,17 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   const int n = static_cast<int>(segments.size());
   bool geometry_changed = n != runtimeData().num_road_border_segments_;
   for (int i = 0; i < n && !geometry_changed; ++i) {
-    geometry_changed = runtimeData().road_border_x0_[i] != segments[i].x0 ||
-                       runtimeData().road_border_y0_[i] != segments[i].y0 ||
-                       runtimeData().road_border_x1_[i] != segments[i].x1 ||
-                       runtimeData().road_border_y1_[i] != segments[i].y1;
+    geometry_changed = runtimeData().road_border_x0_[i] != static_cast<float>(segments[i].x0) ||
+                       runtimeData().road_border_y0_[i] != static_cast<float>(segments[i].y0) ||
+                       runtimeData().road_border_x1_[i] != static_cast<float>(segments[i].x1) ||
+                       runtimeData().road_border_y1_[i] != static_cast<float>(segments[i].y1);
   }
   runtimeData().num_road_border_segments_ = n;
   for (int i = 0; i < n; ++i) {
-    runtimeData().road_border_x0_[i] = segments[i].x0;
-    runtimeData().road_border_y0_[i] = segments[i].y0;
-    runtimeData().road_border_x1_[i] = segments[i].x1;
-    runtimeData().road_border_y1_[i] = segments[i].y1;
+    runtimeData().road_border_x0_[i] = static_cast<float>(segments[i].x0);
+    runtimeData().road_border_y0_[i] = static_cast<float>(segments[i].y0);
+    runtimeData().road_border_x1_[i] = static_cast<float>(segments[i].x1);
+    runtimeData().road_border_y1_[i] = static_cast<float>(segments[i].y1);
   }
   dataToDevice();
   refreshDistanceMapTextures(false, geometry_changed, false);
@@ -855,17 +858,17 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   const int n = static_cast<int>(segments.size());
   bool geometry_changed = n != runtimeData().num_drivable_area_segments_;
   for (int i = 0; i < n && !geometry_changed; ++i) {
-    geometry_changed = runtimeData().drivable_area_x0_[i] != segments[i].x0 ||
-                       runtimeData().drivable_area_y0_[i] != segments[i].y0 ||
-                       runtimeData().drivable_area_x1_[i] != segments[i].x1 ||
-                       runtimeData().drivable_area_y1_[i] != segments[i].y1;
+    geometry_changed = runtimeData().drivable_area_x0_[i] != static_cast<float>(segments[i].x0) ||
+                       runtimeData().drivable_area_y0_[i] != static_cast<float>(segments[i].y0) ||
+                       runtimeData().drivable_area_x1_[i] != static_cast<float>(segments[i].x1) ||
+                       runtimeData().drivable_area_y1_[i] != static_cast<float>(segments[i].y1);
   }
   runtimeData().num_drivable_area_segments_ = n;
   for (int i = 0; i < n; ++i) {
-    runtimeData().drivable_area_x0_[i] = segments[i].x0;
-    runtimeData().drivable_area_y0_[i] = segments[i].y0;
-    runtimeData().drivable_area_x1_[i] = segments[i].x1;
-    runtimeData().drivable_area_y1_[i] = segments[i].y1;
+    runtimeData().drivable_area_x0_[i] = static_cast<float>(segments[i].x0);
+    runtimeData().drivable_area_y0_[i] = static_cast<float>(segments[i].y0);
+    runtimeData().drivable_area_x1_[i] = static_cast<float>(segments[i].x1);
+    runtimeData().drivable_area_y1_[i] = static_cast<float>(segments[i].y1);
   }
   dataToDevice();
   refreshDistanceMapTextures(false, false, geometry_changed);

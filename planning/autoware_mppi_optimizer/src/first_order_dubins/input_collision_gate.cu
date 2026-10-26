@@ -58,7 +58,7 @@ struct RoadSegments
 };
 
 template <class Pose>
-Pose2d to_pose2d(const Pose & pose)
+Pose2d to_pose2d(const Pose & pose, const detail::LocalFrame & frame)
 {
   const auto & q = pose.orientation;
   const double norm_squared = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
@@ -68,15 +68,15 @@ Pose2d to_pose2d(const Pose & pose)
     throw std::invalid_argument("MPPI input collision gate received an invalid pose");
   }
   const Pose2d result{
-    static_cast<float>(pose.position.x), static_cast<float>(pose.position.y),
-    static_cast<float>(tf2::getYaw(q))};
+    frame.x(pose.position.x), frame.y(pose.position.y), static_cast<float>(tf2::getYaw(q))};
   if (!std::isfinite(result.x) || !std::isfinite(result.y) || !std::isfinite(result.yaw)) {
     throw std::invalid_argument("MPPI input collision gate received an invalid pose");
   }
   return result;
 }
 
-RoadSegments make_road_segments(const std::vector<Segment> & segments)
+RoadSegments make_road_segments(
+  const std::vector<Segment> & segments, const detail::LocalFrame & frame)
 {
   RoadSegments result;
   result.x0.reserve(segments.size());
@@ -89,21 +89,21 @@ RoadSegments make_road_segments(const std::vector<Segment> & segments)
       !std::isfinite(segment.y1)) {
       throw std::invalid_argument("MPPI input collision gate received an invalid road border");
     }
-    result.x0.push_back(segment.x0);
-    result.y0.push_back(segment.y0);
-    result.x1.push_back(segment.x1);
-    result.y1.push_back(segment.y1);
+    result.x0.push_back(frame.x(segment.x0));
+    result.y0.push_back(frame.y(segment.y0));
+    result.x1.push_back(frame.x(segment.x1));
+    result.y1.push_back(frame.y(segment.y1));
   }
   return result;
 }
 
 std::vector<StaticObstacle> make_static_obstacles(
-  const autoware_perception_msgs::msg::TrackedObjects & objects)
+  const autoware_perception_msgs::msg::TrackedObjects & objects, const detail::LocalFrame & frame)
 {
   std::vector<StaticObstacle> result;
   result.reserve(objects.objects.size());
   for (const auto & object : objects.objects) {
-    const auto pose = to_pose2d(object.kinematics.pose_with_covariance.pose);
+    const auto pose = to_pose2d(object.kinematics.pose_with_covariance.pose, frame);
     float length = kDefaultObstacleLength;
     float width = kDefaultObstacleWidth;
     obstacleFootprintFromShape(object.shape, length, width);
@@ -207,17 +207,21 @@ InputCollisionResult checkInputTrajectoryCollisions(
     return result;
   }
   validate_geometry(vehicle, obstacle_margin, road_border_margin);
-  const auto segments = conditions.road_border ? make_road_segments(road_borders) : RoadSegments{};
-  const auto objects = conditions.static_object ? make_static_obstacles(static_objects)
+  detail::LocalFrame frame;
+  const auto & first_position = trajectory.points.front().pose.position;
+  frame.reset(first_position.x, first_position.y, trajectory.header.frame_id);
+  const auto segments =
+    conditions.road_border ? make_road_segments(road_borders, frame) : RoadSegments{};
+  const auto objects = conditions.static_object ? make_static_obstacles(static_objects, frame)
                                                 : std::vector<StaticObstacle>{};
   if (segments.x0.empty() && objects.empty()) return result;
   const std::size_t count =
     std::min(trajectory.points.size(), static_cast<std::size_t>(detail::kMppiHorizon));
-  auto previous = to_pose2d(trajectory.points.front().pose);
+  auto previous = to_pose2d(trajectory.points.front().pose, frame);
   check_pose(
     previous, segments, objects, vehicle, obstacle_margin, road_border_margin, conditions, result);
   for (std::size_t index = 1U; index < count && !result.triggered(); ++index) {
-    const auto next = to_pose2d(trajectory.points[index].pose);
+    const auto next = to_pose2d(trajectory.points[index].pose, frame);
     const auto steps = interpolation_steps(previous, next, vehicle);
     const float yaw_change = std::remainder(next.yaw - previous.yaw, kTwoPi);
     for (std::size_t step = 1U; step <= steps && !result.triggered(); ++step) {
