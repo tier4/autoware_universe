@@ -21,6 +21,9 @@
 #include "autoware/tensorrt_e2e/training_ego_shape.hpp"
 #include <iostream>
 #include <limits>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <vector>
 using namespace autoware::tensorrt_e2e;
 void check(bool ok) {
   if (!ok)
@@ -55,6 +58,43 @@ int main(int argc, char **argv) {
   std::ofstream(engine) << "engine two";
   check(!engine_identity_matches(file.string(), engine.string()));
   record_engine_identity(file.string(), engine.string());
+  // A load whose identity matches writes nothing: no temporary, no rename.
+  const auto identity = std::filesystem::path(engine.string() + ".identity");
+  const auto old_time = std::filesystem::file_time_type::clock::now() - std::chrono::hours(1);
+  std::filesystem::last_write_time(identity, old_time);
+  std::filesystem::permissions(root, std::filesystem::perms::owner_read |
+                                         std::filesystem::perms::owner_exec);
+  record_engine_identity(file.string(), engine.string());  // a read-only directory
+  std::filesystem::permissions(root, std::filesystem::perms::owner_all);
+  check(std::filesystem::last_write_time(identity) == old_time);
+  // Processes building the same engine at once: each replaces the engine whole and records
+  // it; none fails, nothing is left behind, and the pair the last one leaves matches.
+  std::vector<pid_t> children;
+  for (int child = 0; child < 8; ++child) {
+    const pid_t pid = fork();
+    if (pid == 0) {
+      try {
+        for (int round = 0; round < 50; ++round) {
+          write_file_atomically(engine, "engine " + std::to_string(child));
+          record_engine_identity(file.string(), engine.string());
+        }
+      } catch (const std::exception &e) {
+        std::cerr << e.what() << "\n";
+        _exit(1);
+      }
+      _exit(0);
+    }
+    check(pid > 0);
+    children.push_back(pid);
+  }
+  for (const pid_t pid : children) {
+    int status = 0;
+    check(waitpid(pid, &status, 0) == pid && WIFEXITED(status) &&
+          WEXITSTATUS(status) == 0);
+  }
+  check(engine_identity_matches(file.string(), engine.string()));
+  for (const auto &entry : std::filesystem::directory_iterator(root))
+    check(entry.path().string().find(".tmp") == std::string::npos);
   std::ofstream(file) << "wrong graph";
   check(file_sha256(file) != digest);
   check(!engine_identity_matches(file.string(), engine.string()));
