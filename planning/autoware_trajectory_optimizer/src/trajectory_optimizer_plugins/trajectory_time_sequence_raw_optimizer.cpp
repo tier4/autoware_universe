@@ -732,6 +732,8 @@ void TrajectoryTimeSequenceRawOptimizer::optimize_trajectory(
 
   last_optimized_trajectory_ = result.trajectory;
   publish_velocity_diagnostics(reference, result.trajectory, result, ocp_odom);
+  // Replace the whole candidate. A 6 s input is shorter than the compiled 8 s horizon, and
+  // the optimized prefix must not keep the raw tail glued on the end.
   replace_points(traj_points, result.trajectory.points);
   apply_steer_override(traj_points);
   publish_debug_data();
