@@ -48,11 +48,14 @@ constexpr size_t kYDeltaRate = opt_nx + kDeltaRate;
 
 /// Per-stage tracking reference (positions in the solver's local frame).
 /// Only pose is tracked: incoming trajectory speed is ignored.
+/// `track_pose == false` means this stage is past the input trajectory. The compiled
+/// horizon stays `opt_horizon`; the wrapper zeros the pose cost on those stages.
 struct StageReference
 {
   double x{0.0};
   double y{0.0};
   double yaw{0.0};
+  bool track_pose{false};
 };
 
 /// Extra terminal penalty pulling the end state onto the route goal.

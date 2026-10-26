@@ -618,6 +618,8 @@ ProcessingResult TrajectoryTimeSequenceRawOptimizer::process(
     debug_optimized_pub_->publish(result.trajectory);
   }
 
+  // Replace the whole candidate. A 6 s input is shorter than the compiled 8 s horizon, and
+  // the optimized prefix must not keep the raw tail glued on the end.
   replace_points(traj_points, result.trajectory.points);
   apply_steer_override(traj_points);
   return ProcessingResult::Modified;
