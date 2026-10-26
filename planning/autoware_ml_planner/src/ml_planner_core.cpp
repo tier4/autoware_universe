@@ -68,6 +68,7 @@ bool optimization_params_changed(
          lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
          lhs.max_acceleration_mps2 != rhs.max_acceleration_mps2 ||
          lhs.max_steering_rate_rps != rhs.max_steering_rate_rps ||
+         lhs.steering_angle_margin_rad != rhs.steering_angle_margin_rad ||
          lhs.max_lateral_acceleration_mps2 != rhs.max_lateral_acceleration_mps2 ||
          lhs.max_sqp_iterations != rhs.max_sqp_iterations ||
          lhs.temporal_consistency.enable != rhs.temporal_consistency.enable ||
@@ -79,6 +80,18 @@ bool optimization_params_changed(
          lhs.temporal_consistency.decay_time_constant_s !=
            rhs.temporal_consistency.decay_time_constant_s ||
          lhs.temporal_consistency.far_weight_ratio != rhs.temporal_consistency.far_weight_ratio;
+}
+
+// The steering margin leaves the controller steering to bring the vehicle back onto a plan that
+// starts from the virtual pose; without the virtual pose the plan starts from the vehicle and the
+// margin is not applied.
+optimization::TrajectoryOptimizationParams optimizer_params(const MLPlannerParams & params)
+{
+  auto optimizer_params = params.trajectory_optimization;
+  if (!params.virtual_pose.enable) {
+    optimizer_params.steering_angle_margin_rad = 0.0;
+  }
+  return optimizer_params;
 }
 #endif
 
@@ -132,7 +145,7 @@ MLPlannerCore::MLPlannerCore(const MLPlannerParams & params, const VehicleInfo &
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (params_.trajectory_optimization.enable) {
     trajectory_optimizer_ = std::make_unique<optimization::TrajectoryOptimizer>(
-      params_.trajectory_optimization, vehicle_info, static_cast<size_t>(params_.batch_size));
+      optimizer_params(params_), vehicle_info, static_cast<size_t>(params_.batch_size));
   }
 #endif
   if (params_.road_border_avoidance.enable) {
@@ -182,7 +195,7 @@ void MLPlannerCore::update_params(const MLPlannerParams & params)
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
   const bool rebuild_optimizer =
     params.batch_size != params_.batch_size ||
-    optimization_params_changed(params.trajectory_optimization, params_.trajectory_optimization);
+    optimization_params_changed(optimizer_params(params), optimizer_params(params_));
 #endif
   const bool rebuild_avoidance = road_border_avoidance_params_changed(
     params.road_border_avoidance, params_.road_border_avoidance);
@@ -194,7 +207,7 @@ void MLPlannerCore::update_params(const MLPlannerParams & params)
     trajectory_optimizer_.reset();
     if (params_.trajectory_optimization.enable) {
       trajectory_optimizer_ = std::make_unique<optimization::TrajectoryOptimizer>(
-        params_.trajectory_optimization, vehicle_info_, static_cast<size_t>(params_.batch_size));
+        optimizer_params(params_), vehicle_info_, static_cast<size_t>(params_.batch_size));
     }
   }
 #endif
@@ -231,6 +244,10 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   const LaneletRoute::ConstSharedPtr & route_ptr)
 {
   if (route_ptr) {
+    if (route_ptr_ && route_ptr->uuid != route_ptr_->uuid) {
+      // The published trajectory belongs to the previous route.
+      virtual_pose_.reset();
+    }
     route_ptr_ = route_ptr;
   }
   for (const auto & msg : ego_kinematic_states) {
@@ -286,9 +303,19 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
     return tl::unexpected(std::move(error));
   }
 
+  const bool virtual_pose_active = params_.virtual_pose.enable && autoware_in_control_;
+  if (virtual_pose_active != virtual_pose_active_) {
+    // Turned on or off, or Autoware took or gave up control: start over from the vehicle.
+    virtual_pose_.reset();
+    virtual_pose_active_ = virtual_pose_active;
+  }
+  if (virtual_pose_active_) {
+    virtual_pose_.update(ego_history_, params_.virtual_pose);
+  }
+
   return preprocess::FrameInputs{
     frame_time(),
-    preprocess::MessageView<nav_msgs::msg::Odometry>{ego_history_.msgs()},
+    preprocess::MessageView<nav_msgs::msg::Odometry>{frame_ego_history()},
     preprocess::MessageView<SteeringReport>{steering_history_.msgs()},
     preprocess::MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport>{
       turn_indicators_history_.msgs()},
@@ -344,6 +371,11 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   return input_data_map;
 }
 
+const std::deque<Odometry> & MLPlannerCore::frame_ego_history() const
+{
+  return virtual_pose_active_ ? virtual_pose_.history() : ego_history_.msgs();
+}
+
 rclcpp::Time MLPlannerCore::frame_time() const
 {
   return rclcpp::Time(ego_history_.back().header.stamp);
@@ -361,9 +393,12 @@ PlannerOutput MLPlannerCore::create_planner_output(
   const InferenceOutput & inference_output, const rclcpp::Time & timestamp,
   const UUID & generator_uuid, const double current_steering_angle_rad)
 {
-  // Derive the frame state from the raw message buffers
-  const Odometry & kinematic_state = ego_history_.back();
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(kinematic_state.pose.pose);
+  // The model output is in the frame it was planned from, and everything downstream starts from
+  // that pose: started at the vehicle, the published trajectory (and a virtual pose taken from it)
+  // would return onto the vehicle every cycle. Speed and steering stay measured.
+  Odometry planning_start = ego_history_.back();
+  planning_start.pose.pose = ego_pose();
+  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(planning_start.pose.pose);
 
   const auto & raw_predictions = inference_output.trajectory;
   const auto & turn_indicator_logits = inference_output.turn_indicator_logits;
@@ -381,11 +416,19 @@ PlannerOutput MLPlannerCore::create_planner_output(
   const auto agent_poses =
     postprocess::parse_predictions(denormalized_predictions, ego_to_map_transform);
 
+#ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
+  // The planning start jumped onto the vehicle: the previous solutions started elsewhere, so
+  // neither their warm start nor their temporal pull may shape this plan.
+  if (trajectory_optimizer_ && virtual_pose_.take_restart()) {
+    trajectory_optimizer_->drop_previous_solutions();
+  }
+#endif
+
   PlannerOutput output;
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, kinematic_state.pose.pose.position, i);
+      agent_poses, timestamp, planning_start.pose.pose.position, i);
 
     if (i == 0) {
       // Keep the untouched model output for the debug topics.
@@ -393,7 +436,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
     }
 
     if (road_border_avoidance_) {
-      auto avoidance_result = road_border_avoidance_->adjust(trajectory, kinematic_state.pose.pose);
+      auto avoidance_result = road_border_avoidance_->adjust(trajectory, planning_start.pose.pose);
       if (i == 0) {
         output.avoidance_debug.active = true;
         output.avoidance_debug.shifted_points =
@@ -416,7 +459,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
         goal_pose = route_ptr_->goal_pose;
       }
       auto optimization_result = trajectory_optimizer_->optimize(
-        trajectory, kinematic_state, current_steering_angle_rad, static_cast<size_t>(i), goal_pose);
+        trajectory, planning_start, current_steering_angle_rad, static_cast<size_t>(i), goal_pose);
       if (i == 0) {
         output.optimization_debug.attempted = true;
         output.optimization_debug.optimized = optimization_result.optimized;
@@ -495,6 +538,11 @@ PlannerOutput MLPlannerCore::create_planner_output(
   output.predicted_objects =
     postprocess::create_predicted_objects(agent_poses, selected_agents_, timestamp, batch_idx);
 
+  // The next virtual pose is taken from the trajectory actually published; a cycle whose
+  // optimization failed publishes none and keeps the previous one.
+  if (virtual_pose_active_ && output.trajectory) {
+    virtual_pose_.set_published_trajectory(*output.trajectory);
+  }
   return output;
 }
 

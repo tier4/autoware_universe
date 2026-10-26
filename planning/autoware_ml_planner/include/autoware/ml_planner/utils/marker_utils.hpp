@@ -16,10 +16,12 @@
 #define AUTOWARE__ML_PLANNER__UTILS__MARKER_UTILS_HPP_
 
 #include <Eigen/Dense>
+#include <autoware_vehicle_info_utils/vehicle_info.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/time.hpp>
 #include <xtensor/xarray.hpp>
 
+#include <geometry_msgs/msg/pose.hpp>
 #include <std_msgs/msg/detail/color_rgba__struct.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -78,5 +80,34 @@ MarkerArray create_map_polyline_marker(
   const std::vector<int64_t> & shape, const Time & stamp, const rclcpp::Duration & lifetime,
   const std::array<float, 4> & colors, const std::string & marker_namespace,
   const std::string & frame_id = "base_link");
+/**
+ * @brief Creates a marker of the vehicle body at a pose.
+ *
+ * @param pose Pose of base_link in the map frame.
+ * @param vehicle_info Vehicle dimensions, for the box drawn without a mesh.
+ * @param mesh_resource Body mesh modelled around base_link (package:// or file:// URI); empty
+ * draws a box of the vehicle size.
+ * @param stamp The timestamp to assign to the marker.
+ * @param lifetime The duration for which the marker should remain visible.
+ * @param colors An array of 4 floats specifying the RGBA marker color.
+ * @param marker_namespace The namespace assigned to the marker.
+ * @return Marker of the vehicle body in the map frame.
+ */
+Marker create_vehicle_marker(
+  const geometry_msgs::msg::Pose & pose,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const std::string & mesh_resource,
+  const Time & stamp, const rclcpp::Duration & lifetime, const std::array<float, 4> & colors,
+  const std::string & marker_namespace);
+
+/**
+ * @brief Finds the visual mesh of a link in a robot description.
+ *
+ * @param robot_description The URDF of the vehicle.
+ * @param link_name The link whose visual mesh is looked up.
+ * @return The mesh URI (package:// or file://); empty when the description cannot be parsed or the
+ * link has no visual mesh.
+ */
+std::string find_link_mesh(const std::string & robot_description, const std::string & link_name);
+
 }  // namespace autoware::ml_planner::utils
 #endif  // AUTOWARE__ML_PLANNER__UTILS__MARKER_UTILS_HPP_

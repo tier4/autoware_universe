@@ -37,14 +37,19 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -54,6 +59,7 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
+using autoware_vehicle_msgs::msg::ControlModeReport;
 using autoware_vehicle_msgs::msg::SteeringReport;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
@@ -215,6 +221,9 @@ private:
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_avoidance_shifted_count_{nullptr};
   // Stop point fixing debug topic (published when the fixing is enabled)
   rclcpp::Publisher<Trajectory>::SharedPtr pub_pre_stop_fixing_trajectory_{nullptr};
+  // Virtual pose debug topics (published while the virtual pose is enabled)
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_virtual_pose_{nullptr};
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_virtual_pose_vehicle_marker_{nullptr};
 
   // Start service: while enabled, ego velocity in the model input is overwritten (1 m/s).
   // Cleared automatically once the measured ego velocity reaches that value.
@@ -242,6 +251,13 @@ private:
   BufferingPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
     this, "~/input/turn_indicators"};
   BufferingPollingSubscriber<SteeringReport> sub_steering_{this, "~/input/steering_status"};
+  NewestPollingSubscriber<ControlModeReport> sub_control_mode_{this, "~/input/control_mode"};
+  // Latest control mode; std::nullopt until the first report arrives.
+  std::optional<uint8_t> control_mode_;
+  NewestPollingSubscriber<std_msgs::msg::String> sub_robot_description_{
+    this, "~/input/robot_description", rclcpp::QoS{1}.transient_local()};
+  // Body mesh of base_link in the vehicle description; empty (a box is drawn) until it is known.
+  std::string vehicle_mesh_;
   NewestPollingSubscriber<LaneletRoute> route_subscriber_{
     this, "~/input/route", rclcpp::QoS{1}.transient_local()};
   NewestPollingSubscriber<LaneletMapBin> vector_map_subscriber_{

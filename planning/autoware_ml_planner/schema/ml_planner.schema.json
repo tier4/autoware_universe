@@ -208,6 +208,12 @@
               "default": 1.0,
               "description": "Steering rate bound [rad/s]"
             },
+            "steering_angle_margin_rad": {
+              "type": "number",
+              "default": 0.0,
+              "minimum": 0.0,
+              "description": "Planned steering stays this far inside the vehicle's max_steer_angle while virtual_pose.enable is true [rad]"
+            },
             "max_lateral_acceleration_mps2": {
               "type": "number",
               "default": 3.0,
@@ -335,6 +341,53 @@
               "default": 1.0,
               "minimum": 0.0,
               "description": "Minimum continuous deceleration duration required before fixing the stop point [s]"
+            }
+          },
+          "required": ["enable"]
+        },
+        "virtual_pose": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": false,
+              "description": "Plan from the closest point of the published trajectory instead of the vehicle while Autoware drives"
+            },
+            "max_longitudinal_error_m": {
+              "type": "number",
+              "default": 5.0,
+              "minimum": 0.0,
+              "description": "Reset onto the vehicle beyond this distance along the virtual heading [m]"
+            },
+            "max_lateral_error_m": {
+              "type": "number",
+              "default": 3.0,
+              "minimum": 0.0,
+              "description": "Reset onto the vehicle beyond this distance across the virtual heading [m]"
+            },
+            "max_yaw_error_deg": {
+              "type": "number",
+              "default": 20.0,
+              "minimum": 0.0,
+              "description": "Reset onto the vehicle beyond this heading difference [deg]"
+            },
+            "hold_max_speed_mps": {
+              "type": "number",
+              "default": 0.1,
+              "minimum": 0.0,
+              "description": "Hold the virtual pose below this speed [m/s]"
+            },
+            "hold_position_tolerance_m": {
+              "type": "number",
+              "default": 0.2,
+              "minimum": 0.0,
+              "description": "The hold ends once the vehicle has moved this far [m]"
+            },
+            "hold_yaw_tolerance_deg": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0.0,
+              "description": "The hold ends once the vehicle has turned this much [deg]"
             }
           },
           "required": ["enable"]

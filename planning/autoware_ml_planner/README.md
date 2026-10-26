@@ -98,6 +98,10 @@ When `road_border_avoidance.enable` is true, the raw model output is checked aga
 
 When `stop_point_fixing.enable` is true, the optimized trajectory is post-processed so that a stopping maneuver ends in a clean stop. The first point at or below `velocity_threshold_mps` after at least `min_deceleration_duration_sec` of continuous deceleration becomes the stop point. A non-decelerating point resets the measured duration. The stop point and all subsequent points are fixed to its pose with zero velocity, acceleration, and heading rate. The trajectory before the fixing is published on `~/debug/stop_point_fixing/unfixed_trajectory`. This prevents the small residual velocities of the optimized solution from making the vehicle creep past the intended stop point.
 
+### Virtual pose
+
+When `virtual_pose.enable` is true and Autoware drives the vehicle (control mode AUTONOMOUS), the model plans from the point of its last published trajectory closest to the vehicle (the virtual pose) instead of the measured pose, as if that trajectory had been followed exactly; the controller alone corrects the vehicle's deviation from it. The closest point is searched on a cubic spline through the published trajectory, preceded by earlier virtual poses, and the heading is the mean spline tangent around it. The model's ego history is made of the virtual poses of earlier cycles, and road border avoidance and the trajectory optimization start from the virtual pose with the measured speed and steering, and the planned steering stays `trajectory_optimization.steering_angle_margin_rad` inside the vehicle's `max_steer_angle`, leaving the controller steering to bring the vehicle back onto the plan. The virtual pose is reset onto the vehicle when the vehicle is farther than `max_longitudinal_error_m` / `max_lateral_error_m` from it along / across its heading, or the headings differ by more than `max_yaw_error_deg`; the history then restarts from the measured poses and the optimizer drops its previous solutions. At standstill (below `hold_max_speed_mps`) the virtual pose is held until the vehicle has moved `hold_position_tolerance_m` or turned `hold_yaw_tolerance_deg`. Debug topics: `~/debug/virtual_pose/pose` and `~/debug/virtual_pose/vehicle_marker` (the vehicle body, red at the virtual pose, yellow on the vehicle while Autoware does not drive; drawn with the `base_link` mesh of the vehicle description, or as a box of the vehicle size until that is received).
+
 ---
 
 ## Parameters
@@ -110,15 +114,17 @@ Parameters can be set via YAML (see `config/ml_planner.param.yaml`).
 
 ## Inputs
 
-| Topic                     | Message Type                                        | Description                                                                                                            |
-| ------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `~/input/odometry`        | nav_msgs/msg/Odometry                               | Ego vehicle odometry                                                                                                   |
-| `~/input/tracked_objects` | autoware_perception_msgs/msg/TrackedObjects         | Detected dynamic objects                                                                                               |
-| `~/input/traffic_signals` | autoware_perception_msgs/msg/TrafficLightGroupArray | Traffic light states                                                                                                   |
-| `~/input/vector_map`      | autoware_map_msgs/msg/LaneletMapBin                 | Lanelet2 map                                                                                                           |
-| `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information                                                                                                      |
-| `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                                                                             |
-| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (ego history preprocessing and trajectory optimization; major version 6 models do not read it) |
+| Topic                       | Message Type                                        | Description                                                                                                            |
+| --------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `~/input/odometry`          | nav_msgs/msg/Odometry                               | Ego vehicle odometry                                                                                                   |
+| `~/input/tracked_objects`   | autoware_perception_msgs/msg/TrackedObjects         | Detected dynamic objects                                                                                               |
+| `~/input/traffic_signals`   | autoware_perception_msgs/msg/TrafficLightGroupArray | Traffic light states                                                                                                   |
+| `~/input/vector_map`        | autoware_map_msgs/msg/LaneletMapBin                 | Lanelet2 map                                                                                                           |
+| `~/input/route`             | autoware_planning_msgs/msg/LaneletRoute             | Route information                                                                                                      |
+| `~/input/turn_indicators`   | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                                                                             |
+| `~/input/steering_status`   | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (ego history preprocessing and trajectory optimization; major version 6 models do not read it) |
+| `~/input/control_mode`      | autoware_vehicle_msgs/msg/ControlModeReport         | Vehicle control mode (the virtual pose applies in AUTONOMOUS)                                                          |
+| `~/input/robot_description` | std_msgs/msg/String                                 | Vehicle URDF (body mesh of the virtual pose vehicle marker)                                                            |
 
 ## Services
 

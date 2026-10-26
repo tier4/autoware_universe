@@ -29,6 +29,7 @@ namespace autoware::ml_planner::test
 {
 
 using autoware::ml_planner::utils::create_lane_marker;
+using autoware::ml_planner::utils::find_link_mesh;
 using std_msgs::msg::ColorRGBA;
 using visualization_msgs::msg::MarkerArray;
 
@@ -52,6 +53,28 @@ TEST(MarkerUtilsTest, CreateLaneMarkerBasic)
     EXPECT_GT(marker.points.size(), 0u);
     EXPECT_GT(marker.color.a, 0.0f);
   }
+}
+
+TEST(MarkerUtilsTest, FindLinkMeshReadsTheVehicleBody)
+{
+  const std::string urdf = R"(<robot name="vehicle">
+  <link name="base_link">
+    <visual>
+      <geometry><mesh filename="package://my_vehicle_description/mesh/body.dae" scale="1 1 1"/></geometry>
+    </visual>
+  </link>
+  <link name="sensor_kit_base_link">
+    <visual><geometry><box size="1 1 1"/></geometry></visual>
+  </link>
+  <joint name="sensor_kit_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="sensor_kit_base_link"/>
+  </joint>
+</robot>)";
+  EXPECT_EQ(find_link_mesh(urdf, "base_link"), "package://my_vehicle_description/mesh/body.dae");
+  EXPECT_EQ(find_link_mesh(urdf, "sensor_kit_base_link"), "");  // a box, not a mesh
+  EXPECT_EQ(find_link_mesh(urdf, "missing_link"), "");
+  EXPECT_EQ(find_link_mesh("not a urdf", "base_link"), "");
 }
 
 }  // namespace autoware::ml_planner::test
