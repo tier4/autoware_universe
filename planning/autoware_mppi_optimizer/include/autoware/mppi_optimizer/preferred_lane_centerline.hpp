@@ -134,9 +134,7 @@ public:
         const double end = position + distance;
         if (distance > 1.0E-6 && end >= lower && position <= upper) {
           // No artificial segment is inserted between lanelets or across preference changes.
-          Segment segment{
-            static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(b.x),
-            static_cast<float>(b.y)};
+          Segment segment{a.x, a.y, b.x, b.y};
           if (
             !std::isfinite(segment.x0) || !std::isfinite(segment.y0) ||
             !std::isfinite(segment.x1) || !std::isfinite(segment.y1) ||

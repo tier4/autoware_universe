@@ -62,6 +62,12 @@ if(BUILD_TESTING)
   )
   target_include_directories(test_mppi_application_status PRIVATE include)
   set_target_properties(test_mppi_application_status PROPERTIES CXX_STANDARD 17)
+
+  ament_add_gtest(test_input_collision_activation_hold
+    test/test_input_collision_activation_hold.cpp
+  )
+  target_include_directories(test_input_collision_activation_hold PRIVATE include)
+  set_target_properties(test_input_collision_activation_hold PROPERTIES CXX_STANDARD 17)
 endif()
 
 # Find CUDA
@@ -262,6 +268,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   cuda_add_library(first_order_dubins_mppi SHARED
     src/first_order_dubins/distance_map_texture_visualizer.cu
     src/first_order_dubins/first_order_dubins_mppi_interface.cu
+    src/first_order_dubins/input_collision_gate.cu
   )
   find_package(autoware_trajectory_modifier REQUIRED)
   ament_auto_add_library(mppi_temporal_mpt_nominal SHARED
@@ -374,6 +381,12 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   if(BUILD_TESTING)
     ament_find_gtest()
 
+    ament_add_gtest(test_input_collision_gate test/test_input_collision_gate.cpp)
+    target_link_libraries(test_input_collision_gate first_order_dubins_mppi ${CUDA_LIBRARIES})
+    mppi_link_acados_runtime(test_input_collision_gate)
+    set_target_properties(test_input_collision_gate PROPERTIES CXX_STANDARD 17)
+    set_tests_properties(test_input_collision_gate PROPERTIES LABELS "cpu;unit" TIMEOUT 30)
+
     ament_add_gtest(test_first_order_dubins_mppi_interface
       test/test_first_order_dubins_mppi_interface.cpp
     )
@@ -389,7 +402,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CUDA_STANDARD 17
     )
     target_compile_options(test_first_order_dubins_mppi_interface PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
+      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
     )
     set_tests_properties(test_first_order_dubins_mppi_interface PROPERTIES
       LABELS "gpu"
@@ -432,7 +445,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CUDA_STANDARD 17
     )
     target_compile_options(test_mppi_trajectory_validator PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
+      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
     )
     ament_add_gtest_test(test_mppi_trajectory_validator)
     set_tests_properties(test_mppi_trajectory_validator PROPERTIES
@@ -456,7 +469,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CUDA_STANDARD 17
     )
     target_compile_options(test_costs PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
+      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
     )
     # Analytical checks remain runnable without a CUDA device; parity has its own GPU label.
     ament_add_gtest_test(test_costs ENV "GTEST_FILTER=-GpuCostEvaluation.*")
@@ -495,7 +508,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CUDA_STANDARD 17
     )
     target_compile_options(test_distance_map PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;--diag_suppress=177>
+      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
     )
     ament_add_gtest_test(test_distance_map)
     set_tests_properties(test_distance_map PROPERTIES

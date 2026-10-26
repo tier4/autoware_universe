@@ -17,6 +17,7 @@
 
 #include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/input_collision_activation_hold.hpp"
 #include "autoware/mppi_optimizer/mppi_application_status.hpp"
 #include "autoware/mppi_optimizer/preferred_lane_centerline.hpp"
 
@@ -88,6 +89,13 @@ private:
   /** @brief Creates and configures the GPU optimizer on first use. */
   void ensure_optimizer();
 
+  /** @brief Cache vehicle, cost, and object-filter parameters without creating a GPU optimizer. */
+  void prepare_scene_parameters();
+
+  /** @brief Leave the primary candidate untouched and clear state from the previous MPPI pass. */
+  autoware::trajectory_modifier::plugin::ProcessingResult skip_optimization(
+    std::uint8_t level, const std::string & message, const std_msgs::msg::Header & header);
+
   /** @brief Publishes whether an optimized MPPI trajectory replaced the primary candidate. */
   void publish_enabled(bool applied) const;
 
@@ -120,6 +128,8 @@ private:
   std::unique_ptr<trajectory_mppi_optimizer::ParamListener> param_listener_;
   MppiParams params_;
   std::unique_ptr<FirstOrderDubinsMppiInterface> optimizer_;
+  std::optional<FirstOrderDubinsMppiCostParams> cost_params_;
+  std::optional<FirstOrderDubinsMppiVehicleParams> vehicle_params_;
   CurvatureAdaptiveSteeringFilter steering_filter_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
@@ -141,6 +151,9 @@ private:
 
   /** Application result from the preceding primary-candidate cycle. */
   bool previous_mppi_trajectory_applied_{false};
+  InputCollisionActivationHold input_collision_activation_hold_;
+  InputCollisionActivationSource input_collision_activation_source_{
+    InputCollisionActivationSource::none};
 
   rclcpp::Publisher<Trajectory>::SharedPtr reference_trajectory_pub_;
   rclcpp::Publisher<Trajectory>::SharedPtr nominal_control_trajectory_pub_;

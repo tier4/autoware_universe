@@ -86,8 +86,8 @@ InitialState makeInitialState(
   const FirstOrderDubinsMppiVehicleParams & vehicle_params)
 {
   InitialState state;
-  state.x = static_cast<float>(odometry.pose.pose.position.x);
-  state.y = static_cast<float>(odometry.pose.pose.position.y);
+  state.x = odometry.pose.pose.position.x;
+  state.y = odometry.pose.pose.position.y;
   state.yaw = static_cast<float>(tf2::getYaw(odometry.pose.pose.orientation));
   state.velocity = static_cast<float>(odometry.twist.twist.linear.x);
   const float acceleration_value =
@@ -117,15 +117,15 @@ std::vector<float> computeCumulativeChordLength(const Trajectory & trajectory)
 std::vector<ReferenceSample> buildReferenceHorizon(
   const Trajectory & trajectory, const InitialState & ego, const int horizon, const float dt,
   const size_t start_idx, const std::vector<float> * cumulative_chord_length_s,
-  const std::vector<std::optional<float>> * maximum_velocities)
+  const std::vector<std::optional<float>> * maximum_velocities, const LocalFrame & frame)
 {
   const size_t sample_count = std::max(0, horizon);
   std::vector<ReferenceSample> reference(static_cast<std::size_t>(sample_count));
 
   if (trajectory.points.empty()) {
     for (auto & reference_sample : reference) {
-      reference_sample.x = ego.x;
-      reference_sample.y = ego.y;
+      reference_sample.x = frame.valid ? frame.x(ego.x) : static_cast<float>(ego.x);
+      reference_sample.y = frame.valid ? frame.y(ego.y) : static_cast<float>(ego.y);
       reference_sample.yaw = ego.yaw;
       reference_sample.velocity = ego.velocity;
       reference_sample.arc_length_s = 0.0F;
@@ -148,8 +148,10 @@ std::vector<ReferenceSample> buildReferenceHorizon(
     const std::size_t source_idx = std::min(k + start_idx, trajectory.points.size() - 1U);
     const auto & point = trajectory.points[source_idx];
 
-    sample.x = static_cast<float>(point.pose.position.x);
-    sample.y = static_cast<float>(point.pose.position.y);
+    sample.x =
+      frame.valid ? frame.x(point.pose.position.x) : static_cast<float>(point.pose.position.x);
+    sample.y =
+      frame.valid ? frame.y(point.pose.position.y) : static_cast<float>(point.pose.position.y);
     sample.yaw = static_cast<float>(tf2::getYaw(point.pose.orientation));
     sample.velocity = point.longitudinal_velocity_mps;
     if (maximum_velocities && source_idx < maximum_velocities->size()) {
@@ -1027,7 +1029,8 @@ std::vector<FirstOrderDubinsMppiControl> shiftNominalControl(
 
 Trajectory buildOptimizedTrajectory(
   const Trajectory & input, const std::vector<OptimizedState> & post_step_states,
-  const std::vector<FirstOrderDubinsMppiControl> & controls)
+  const std::vector<FirstOrderDubinsMppiControl> & controls,
+  const FirstOrderDubinsMppiOutputOptions & output_options, const LocalFrame & frame)
 {
   Trajectory output = input;
   const std::size_t optimized_count =
@@ -1036,16 +1039,15 @@ Trajectory buildOptimizedTrajectory(
     const auto & state = post_step_states[i];
     const auto & input_point = input.points[i];
     auto & output_point = output.points[i];
-    output_point.pose.position.x = state.x;
-    output_point.pose.position.y = state.y;
+    output_point.pose.position.x = frame.valid ? frame.worldX(state.x) : state.x;
+    output_point.pose.position.y = frame.valid ? frame.worldY(state.y) : state.y;
     output_point.pose.position.z = input_point.pose.position.z;
     output_point.pose.orientation = quaternionFromYaw(state.yaw);
     output_point.longitudinal_velocity_mps = state.velocity;
-    // Plant longitudinal accel / tire angle (lag states), not undelayed cmds.
-    // output_point.acceleration_mps2 = state.acceleration;
-    // output_point.front_wheel_angle_rad = state.steering;
-    output_point.acceleration_mps2 = controls[i].accel_cmd;
-    output_point.front_wheel_angle_rad = controls[i].steer_cmd;
+    output_point.acceleration_mps2 =
+      output_options.acceleration_state ? state.acceleration : controls[i].accel_cmd;
+    output_point.front_wheel_angle_rad =
+      output_options.steering_state ? state.steering : controls[i].steer_cmd;
   }
   return output;
 }
