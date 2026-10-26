@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -44,6 +45,22 @@ autoware_planning_msgs::msg::Trajectory to_trajectory_msg(
   trajectory.header = header;
   trajectory.points = points;
   return trajectory;
+}
+
+/// Replace `dst` with `src`. Used both for a successful solve and for the previous solve
+/// kept when acados fails. The stored plan is already in the map frame.
+template <typename PointContainer>
+void replace_points(TrajectoryPoints & dst, const PointContainer & src)
+{
+  const size_t n = std::min(dst.size(), src.size());
+  for (size_t i = 0; i < n; ++i) {
+    dst[i] = src[i];
+  }
+  if (src.size() > dst.size()) {
+    dst.insert(dst.end(), std::next(src.begin(), static_cast<std::ptrdiff_t>(n)), src.end());
+  } else if (dst.size() > n) {
+    dst.resize(n);
+  }
 }
 
 double duration_to_sec(const builtin_interfaces::msg::Duration & duration)
@@ -142,6 +159,34 @@ void TrajectoryTimeSequenceRawOptimizer::set_up_params()
     get_or_declare_parameter<double>(*node_ptr, "time_sequence_raw_optimizer.weight_steering_rate");
   opt_params_.terminal_weight_scale = get_or_declare_parameter<double>(
     *node_ptr, "time_sequence_raw_optimizer.terminal_weight_scale");
+  opt_params_.goal.weight_longitudinal = get_or_declare_parameter<double>(
+    *node_ptr, "time_sequence_raw_optimizer.goal.weight_longitudinal");
+  opt_params_.goal.weight_lateral =
+    get_or_declare_parameter<double>(*node_ptr, "time_sequence_raw_optimizer.goal.weight_lateral");
+  opt_params_.goal.weight_yaw =
+    get_or_declare_parameter<double>(*node_ptr, "time_sequence_raw_optimizer.goal.weight_yaw");
+  opt_params_.goal.weight_velocity =
+    get_or_declare_parameter<double>(*node_ptr, "time_sequence_raw_optimizer.goal.weight_velocity");
+  opt_params_.goal.snap_distance_m =
+    get_or_declare_parameter<double>(*node_ptr, "time_sequence_raw_optimizer.goal.snap_distance_m");
+  opt_params_.goal.unlatch_horizon_s = get_or_declare_parameter<double>(
+    *node_ptr, "time_sequence_raw_optimizer.goal.unlatch_horizon_s");
+  opt_params_.goal.unlatch_min_speed_mps = get_or_declare_parameter<double>(
+    *node_ptr, "time_sequence_raw_optimizer.goal.unlatch_min_speed_mps");
+  opt_params_.temporal_consistency.enable = get_or_declare_parameter<bool>(
+    *node_ptr, "time_sequence_raw_optimizer.temporal_consistency.enable");
+  opt_params_.temporal_consistency.weight_longitudinal = get_or_declare_parameter<double>(
+    *node_ptr, "time_sequence_raw_optimizer.temporal_consistency.weight_longitudinal");
+  opt_params_.temporal_consistency.weight_lateral = get_or_declare_parameter<double>(
+    *node_ptr, "time_sequence_raw_optimizer.temporal_consistency.weight_lateral");
+  opt_params_.temporal_consistency.weight_yaw = get_or_declare_parameter<double>(
+    *node_ptr, "time_sequence_raw_optimizer.temporal_consistency.weight_yaw");
+  opt_params_.temporal_consistency.weight_velocity = get_or_declare_parameter<double>(
+    *node_ptr, "time_sequence_raw_optimizer.temporal_consistency.weight_velocity");
+  opt_params_.temporal_consistency.decay_time_constant_s = get_or_declare_parameter<double>(
+    *node_ptr, "time_sequence_raw_optimizer.temporal_consistency.decay_time_constant_s");
+  opt_params_.temporal_consistency.far_weight_ratio = get_or_declare_parameter<double>(
+    *node_ptr, "time_sequence_raw_optimizer.temporal_consistency.far_weight_ratio");
   opt_params_.min_velocity_mps =
     get_or_declare_parameter<double>(*node_ptr, "time_sequence_raw_optimizer.min_velocity_mps");
   opt_params_.max_velocity_mps =
@@ -212,6 +257,46 @@ rcl_interfaces::msg::SetParametersResult TrajectoryTimeSequenceRawOptimizer::on_
     parameters, "time_sequence_raw_optimizer.terminal_weight_scale",
     opt_params_.terminal_weight_scale);
   update_param(
+    parameters, "time_sequence_raw_optimizer.goal.weight_longitudinal",
+    opt_params_.goal.weight_longitudinal);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.goal.weight_lateral", opt_params_.goal.weight_lateral);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.goal.weight_yaw", opt_params_.goal.weight_yaw);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.goal.weight_velocity",
+    opt_params_.goal.weight_velocity);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.goal.snap_distance_m",
+    opt_params_.goal.snap_distance_m);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.goal.unlatch_horizon_s",
+    opt_params_.goal.unlatch_horizon_s);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.goal.unlatch_min_speed_mps",
+    opt_params_.goal.unlatch_min_speed_mps);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.temporal_consistency.enable",
+    opt_params_.temporal_consistency.enable);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.temporal_consistency.weight_longitudinal",
+    opt_params_.temporal_consistency.weight_longitudinal);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.temporal_consistency.weight_lateral",
+    opt_params_.temporal_consistency.weight_lateral);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.temporal_consistency.weight_yaw",
+    opt_params_.temporal_consistency.weight_yaw);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.temporal_consistency.weight_velocity",
+    opt_params_.temporal_consistency.weight_velocity);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.temporal_consistency.decay_time_constant_s",
+    opt_params_.temporal_consistency.decay_time_constant_s);
+  update_param(
+    parameters, "time_sequence_raw_optimizer.temporal_consistency.far_weight_ratio",
+    opt_params_.temporal_consistency.far_weight_ratio);
+  update_param(
     parameters, "time_sequence_raw_optimizer.min_velocity_mps", opt_params_.min_velocity_mps);
   update_param(
     parameters, "time_sequence_raw_optimizer.max_velocity_mps", opt_params_.max_velocity_mps);
@@ -267,7 +352,7 @@ rcl_interfaces::msg::SetParametersResult TrajectoryTimeSequenceRawOptimizer::on_
   optimizer_.reset();
   road_border_avoidance_.reset();
   cached_map_ = nullptr;
-  in_stopped_regime_ = false;
+  in_steer_hold_ = false;
   in_goal_zero_regime_ = false;
 
   rcl_interfaces::msg::SetParametersResult result;
@@ -543,36 +628,6 @@ TrajectoryTimeSequenceRawOptimizer::resolve_steer_stop_mode(
   return SteerStopMode::Track;
 }
 
-void TrajectoryTimeSequenceRawOptimizer::apply_stopped_reference(
-  TrajectoryPoints & traj_points, const autoware_planning_msgs::msg::Trajectory & reference,
-  const double steer_rad) const
-{
-  const size_t n_out = std::min(traj_points.size(), reference.points.size());
-  for (size_t i = 0; i < n_out; ++i) {
-    traj_points[i] = reference.points[i];
-    traj_points[i].longitudinal_velocity_mps = 0.0F;
-    traj_points[i].lateral_velocity_mps = 0.0F;
-    traj_points[i].acceleration_mps2 = 0.0F;
-    traj_points[i].heading_rate_rps = 0.0F;
-    traj_points[i].front_wheel_angle_rad = static_cast<float>(steer_rad);
-    traj_points[i].rear_wheel_angle_rad = 0.0F;
-  }
-
-  if (reference.points.size() > traj_points.size()) {
-    traj_points.insert(
-      traj_points.end(), reference.points.begin() + static_cast<std::ptrdiff_t>(n_out),
-      reference.points.end());
-    for (size_t i = n_out; i < traj_points.size(); ++i) {
-      traj_points[i].longitudinal_velocity_mps = 0.0F;
-      traj_points[i].lateral_velocity_mps = 0.0F;
-      traj_points[i].acceleration_mps2 = 0.0F;
-      traj_points[i].heading_rate_rps = 0.0F;
-      traj_points[i].front_wheel_angle_rad = static_cast<float>(steer_rad);
-      traj_points[i].rear_wheel_angle_rad = 0.0F;
-    }
-  }
-}
-
 void TrajectoryTimeSequenceRawOptimizer::optimize_trajectory(
   TrajectoryPoints & traj_points, const TrajectoryOptimizerParams & params,
   TrajectoryOptimizerData & data)
@@ -608,60 +663,77 @@ void TrajectoryTimeSequenceRawOptimizer::optimize_trajectory(
   last_adjusted_trajectory_ = reference;
 
   const auto steer_stop_mode = resolve_steer_stop_mode(reference, data);
-  if (steer_stop_mode != SteerStopMode::Track) {
-    optimizer_->clear_warm_start(data.candidate_index);
-
-    if (steer_stop_mode == SteerStopMode::Zero) {
-      latched_steering_rad_ = 0.002;
-    } else if (steer_stop_mode == SteerStopMode::Hold && !in_stopped_regime_) {
+  // Hold and goal steer-zero both keep the OCP running. Only front_wheel_angle_rad is replaced:
+  // the latched tire angle while holding, or 0.002 rad near the route goal.
+  const bool override_steer = steer_stop_mode != SteerStopMode::Track;
+  if (steer_stop_mode == SteerStopMode::Zero) {
+    latched_steering_rad_ = 0.002;
+    in_steer_hold_ = false;
+  } else if (steer_stop_mode == SteerStopMode::Hold) {
+    if (!in_steer_hold_) {
       latched_steering_rad_ =
         data.current_steering ? data.current_steering->steering_tire_angle : 0.001;
     }
-
-    const double output_steer_rad =
-      steer_stop_mode == SteerStopMode::Zero ? 0.002 : latched_steering_rad_;
-    apply_stopped_reference(traj_points, reference, output_steer_rad);
-
-    in_stopped_regime_ = true;
-    last_solver_status_ = steer_stop_mode == SteerStopMode::Zero ? -2 : -1;
-    last_solve_time_ms_ = 0.0;
-    publish_debug_data();
-    return;
+    in_steer_hold_ = true;
+  } else {
+    in_steer_hold_ = false;
   }
 
-  if (in_stopped_regime_) {
-    optimizer_->clear_warm_start(data.candidate_index);
+  std::optional<geometry_msgs::msg::Pose> goal_pose;
+  if (data.route) {
+    goal_pose = data.route->goal_pose;
   }
-  in_stopped_regime_ = false;
-
-  const auto result =
-    optimizer_->optimize(reference, ocp_odom, steering, accel_mps2, data.candidate_index);
+  const auto result = optimizer_->optimize(
+    reference, ocp_odom, steering, accel_mps2, data.candidate_index, goal_pose,
+    last_shifted_point_count_ > 0);
   last_solver_status_ = result.solver_status;
   last_solve_time_ms_ = result.solve_time_ms;
 
+  const auto apply_steer_override = [&](TrajectoryPoints & points) {
+    if (!override_steer) {
+      return;
+    }
+    for (auto & point : points) {
+      point.front_wheel_angle_rad = static_cast<float>(latched_steering_rad_);
+    }
+  };
+
   if (!result.optimized) {
-    if (result.solver_status != 0) {
-      RCLCPP_WARN(
+    // The input acceleration is the chord difference of the model poses and spikes while stopped.
+    // Repeat the previous successful map-frame trajectory when one exists.
+    if (!last_optimized_trajectory_.points.empty()) {
+      RCLCPP_ERROR(
         get_node_ptr()->get_logger(),
-        "Time-sequence raw optimizer acados solve failed with status %d; leaving input unchanged",
+        "Time-sequence raw optimizer acados solve failed with status %d; publishing the previous "
+        "successful trajectory.",
+        result.solver_status);
+      replace_points(traj_points, last_optimized_trajectory_.points);
+      apply_steer_override(traj_points);
+      publish_debug_data();
+      return;
+    }
+    if (result.solver_status != 0 && override_steer) {
+      RCLCPP_ERROR(
+        get_node_ptr()->get_logger(),
+        "Time-sequence raw optimizer acados solve failed with status %d; no previous solution, "
+        "overriding front_wheel_angle_rad.",
+        result.solver_status);
+    } else if (result.solver_status != 0) {
+      RCLCPP_ERROR(
+        get_node_ptr()->get_logger(),
+        "Time-sequence raw optimizer acados solve failed with status %d; no previous solution, "
+        "leaving input unchanged.",
         result.solver_status);
     }
+    apply_steer_override(traj_points);
     publish_debug_data();
     return;
   }
 
   last_optimized_trajectory_ = result.trajectory;
   publish_velocity_diagnostics(reference, result.trajectory, result, ocp_odom);
-
-  const size_t n_out = std::min(traj_points.size(), result.trajectory.points.size());
-  for (size_t i = 0; i < n_out; ++i) {
-    traj_points[i] = result.trajectory.points[i];
-  }
-  if (result.trajectory.points.size() > traj_points.size()) {
-    traj_points.insert(
-      traj_points.end(), result.trajectory.points.begin() + static_cast<std::ptrdiff_t>(n_out),
-      result.trajectory.points.end());
-  }
+  replace_points(traj_points, result.trajectory.points);
+  apply_steer_override(traj_points);
   publish_debug_data();
 }
 
