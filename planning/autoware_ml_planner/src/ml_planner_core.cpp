@@ -81,6 +81,18 @@ bool optimization_params_changed(
            rhs.temporal_consistency.decay_time_constant_s ||
          lhs.temporal_consistency.far_weight_ratio != rhs.temporal_consistency.far_weight_ratio;
 }
+
+// The steering margin leaves the controller steering to bring the vehicle back onto a plan that
+// starts from the virtual pose; without the virtual pose the plan starts from the vehicle and the
+// margin is not applied.
+optimization::TrajectoryOptimizationParams optimizer_params(const MLPlannerParams & params)
+{
+  auto optimizer_params = params.trajectory_optimization;
+  if (!params.virtual_pose.enable) {
+    optimizer_params.steering_angle_margin_rad = 0.0;
+  }
+  return optimizer_params;
+}
 #endif
 
 bool road_border_avoidance_params_changed(
@@ -133,7 +145,7 @@ MLPlannerCore::MLPlannerCore(const MLPlannerParams & params, const VehicleInfo &
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (params_.trajectory_optimization.enable) {
     trajectory_optimizer_ = std::make_unique<optimization::TrajectoryOptimizer>(
-      params_.trajectory_optimization, vehicle_info, static_cast<size_t>(params_.batch_size));
+      optimizer_params(params_), vehicle_info, static_cast<size_t>(params_.batch_size));
   }
 #endif
   if (params_.road_border_avoidance.enable) {
@@ -183,7 +195,7 @@ void MLPlannerCore::update_params(const MLPlannerParams & params)
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
   const bool rebuild_optimizer =
     params.batch_size != params_.batch_size ||
-    optimization_params_changed(params.trajectory_optimization, params_.trajectory_optimization);
+    optimization_params_changed(optimizer_params(params), optimizer_params(params_));
 #endif
   const bool rebuild_avoidance = road_border_avoidance_params_changed(
     params.road_border_avoidance, params_.road_border_avoidance);
@@ -195,7 +207,7 @@ void MLPlannerCore::update_params(const MLPlannerParams & params)
     trajectory_optimizer_.reset();
     if (params_.trajectory_optimization.enable) {
       trajectory_optimizer_ = std::make_unique<optimization::TrajectoryOptimizer>(
-        params_.trajectory_optimization, vehicle_info_, static_cast<size_t>(params_.batch_size));
+        optimizer_params(params_), vehicle_info_, static_cast<size_t>(params_.batch_size));
     }
   }
 #endif
