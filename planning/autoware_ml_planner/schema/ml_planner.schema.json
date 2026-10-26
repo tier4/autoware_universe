@@ -212,7 +212,7 @@
               "type": "number",
               "default": 0.0,
               "minimum": 0.0,
-              "description": "Planned steering stays this far inside the vehicle's max_steer_angle [rad]"
+              "description": "Planned steering stays this far inside the vehicle's max_steer_angle while virtual_pose.enable is true [rad]"
             },
             "max_lateral_acceleration_mps2": {
               "type": "number",
