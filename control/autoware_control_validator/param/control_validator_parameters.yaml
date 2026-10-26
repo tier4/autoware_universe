@@ -250,10 +250,6 @@ control_validator:
       max_stamp_gap_s:
         type: double
         description: Maximum time difference between the pointcloud stamp and the odometry used to place it [s].
-    debug:
-      publish_markers:
-        type: bool
-        description: If true, publish the collision debug markers.
 
   latency_validator:
     nominal_latency:

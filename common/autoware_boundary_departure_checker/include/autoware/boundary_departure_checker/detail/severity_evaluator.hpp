@@ -29,14 +29,12 @@ namespace autoware::boundary_departure_checker::severity_evaluator
  * @param[in] side_value list of projections for a side
  * @param[in] param checker parameters
  * @param[in] min_braking_dist minimum braking distance [m]
- * @param[in] min_braking_dist_caution minimum braking distance for caution [m]; nullopt uses
- *   min_braking_dist
+ * @param[in] min_braking_dist_caution minimum braking distance for caution [m]
  * @return filtered projections with assigned types
  */
 ProjectionsToBound filter_and_assign_departure_types(
   const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param,
-  const double min_braking_dist,
-  const std::optional<double> & min_braking_dist_caution = std::nullopt);
+  const double min_braking_dist, const double min_braking_dist_caution);
 
 /**
  * @brief Apply backward buffer to projections and filter them.

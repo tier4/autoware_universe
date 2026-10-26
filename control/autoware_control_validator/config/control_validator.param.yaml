@@ -81,8 +81,6 @@
         cluster_tolerance: 0.30
         min_cluster_size: 10
         max_stamp_gap_s: 0.1
-      debug:
-        publish_markers: true
 
     latency_validator:
       nominal_latency: 0.01

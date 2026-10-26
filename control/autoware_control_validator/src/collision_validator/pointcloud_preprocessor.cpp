@@ -184,7 +184,7 @@ const std::optional<PointCloudClusters> & PointCloudPreprocessor::process(
   auto voxels = voxelize(cropped_pointcloud, param_.voxel_size);
 
   // Uniform subsampling of the voxels to bound the clustering time.
-  if (param_.max_voxels > 0 && voxels.size() > param_.max_voxels) {
+  if (voxels.size() > param_.max_voxels) {
     const size_t stride = (voxels.size() + param_.max_voxels - 1) / param_.max_voxels;
     std::vector<Voxel> subsampled;
     subsampled.reserve(voxels.size() / stride + 1);

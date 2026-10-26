@@ -15,21 +15,13 @@
 #include "autoware/control_validator/control_validator.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
-#include <autoware_control_validator/msg/control_validator_status.hpp>
-#include <autoware_control_validator/msg/hazard_alert.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/node_options.hpp>
 #include <tf2/LinearMath/Quaternion.hpp>
 
-#include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
-#include <autoware_control_msgs/msg/control.hpp>
-#include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
-#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <gtest/gtest-param-test.h>
@@ -37,15 +29,9 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/LineString.h>
 
-#include <chrono>
 #include <cmath>
-#include <iostream>
-#include <limits>
 #include <memory>
-#include <optional>
-#include <string>
 #include <tuple>
-#include <vector>
 
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
@@ -451,37 +437,6 @@ TEST_F(UncrossableBoundDepartureValidatorTest, CautionDeparturePositionsAreHande
   }
 }
 
-TEST_F(UncrossableBoundDepartureValidatorTest, DepartureIsNotHandedOverWhenDisabledOrSkipped)
-{
-  const auto map = make_road_border_map();
-  const auto trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
-  const auto is_handed_over = [&](
-                                const ::control_validator::Params & params,
-                                const lanelet::LaneletMapPtr & lanelet_map,
-                                const Trajectory & predicted_trajectory) {
-    UncrossableBoundDepartureValidator validator(node_->get_logger(), params);
-    geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
-    visualization_msgs::msg::MarkerArray markers;
-    ControlValidatorStatus res;
-    HazardWarningSources sources;
-    validator.validate(
-      res, predicted_trajectory, make_odometry(trajectory, 10.0, 0.0), acceleration, lanelet_map,
-      vehicle_info_, markers, sources);
-    return sources.departure.has_value();
-  };
-
-  auto no_caution = params_;
-  no_caution.uncrossable_bound_departure_validator.enable_caution = false;
-  auto disabled = params_;
-  disabled.uncrossable_bound_departure_validator.enable = false;
-
-  EXPECT_TRUE(is_handed_over(params_, map, trajectory));
-  EXPECT_FALSE(is_handed_over(no_caution, map, trajectory));
-  EXPECT_FALSE(is_handed_over(disabled, map, trajectory));
-  EXPECT_FALSE(is_handed_over(params_, nullptr, trajectory));
-  EXPECT_FALSE(is_handed_over(params_, map, Trajectory{}));
-}
-
 class VelocityValidatorTest
 : public ::testing::TestWithParam<std::tuple<double, double, bool, bool>>
 {
@@ -549,283 +504,5 @@ INSTANTIATE_TEST_SUITE_P(
     std::make_tuple(1.0, 5.0, false, true),
     // reverse driving with matching signs is not rollback
     std::make_tuple(-1.0, -1.0, false, false)));
-
-// ==============================================================================
-// Hazard warning: node level
-// ==============================================================================
-
-struct HazardCycleResult
-{
-  std::optional<ControlValidatorStatus> status;
-  std::optional<HazardAlert> alert;
-  std::optional<double> hazard_processing_ms;
-};
-
-class HazardWarningNodeTest : public ::testing::Test
-{
-protected:
-  void SetUp() override { rclcpp::init(0, nullptr); }
-  void TearDown() override { rclcpp::shutdown(); }
-
-  static std::shared_ptr<ControlValidator> make_node(
-    const bool hazard_enable, const bool enable_caution = true,
-    const std::vector<rclcpp::Parameter> & extra_overrides = {})
-  {
-    rclcpp::NodeOptions options;
-    options.arguments(
-      {"--ros-args", "--params-file",
-       ament_index_cpp::get_package_share_directory("autoware_control_validator") +
-         "/config/control_validator.param.yaml",
-       "--params-file",
-       ament_index_cpp::get_package_share_directory("autoware_test_utils") +
-         "/config/test_vehicle_info.param.yaml"});
-    std::vector<rclcpp::Parameter> overrides = {
-      rclcpp::Parameter("hazard_warning.enable", hazard_enable),
-      rclcpp::Parameter("hazard_warning.debug.publish_markers", false),
-      rclcpp::Parameter("collision_validator.debug.publish_markers", false),
-      rclcpp::Parameter("uncrossable_bound_departure_validator.enable_caution", enable_caution)};
-    overrides.insert(overrides.end(), extra_overrides.begin(), extra_overrides.end());
-    options.parameter_overrides(overrides);
-    return std::make_shared<ControlValidator>(options);
-  }
-
-  static Trajectory make_timed_trajectory(
-    const rclcpp::Time & stamp, const double velocity, const double duration)
-  {
-    Trajectory trajectory;
-    trajectory.header.stamp = stamp;
-    trajectory.header.frame_id = "map";
-    const auto n = static_cast<size_t>(std::round(duration / 0.1)) + 1;
-    for (size_t i = 0; i < n; ++i) {
-      const double t = static_cast<double>(i) * 0.1;
-      TrajectoryPoint point;
-      point.pose.position.x = velocity * t;
-      point.pose.orientation.w = 1.0;
-      point.longitudinal_velocity_mps = static_cast<float>(velocity);
-      point.time_from_start = rclcpp::Duration::from_seconds(t);
-      trajectory.points.push_back(point);
-    }
-    return trajectory;
-  }
-
-  static sensor_msgs::msg::PointCloud2 make_cloud(const rclcpp::Time & stamp)
-  {
-    sensor_msgs::msg::PointCloud2 cloud;
-    cloud.header.stamp = stamp;
-    cloud.header.frame_id = "base_link";
-    sensor_msgs::PointCloud2Modifier modifier(cloud);
-    modifier.setPointCloud2FieldsByString(1, "xyz");
-    // 25 points at x = 40 m: inside the ROI, far enough not to raise with a 3 s threshold.
-    modifier.resize(25);
-    sensor_msgs::PointCloud2Iterator<float> it_x(cloud, "x");
-    sensor_msgs::PointCloud2Iterator<float> it_y(cloud, "y");
-    sensor_msgs::PointCloud2Iterator<float> it_z(cloud, "z");
-    for (int i = 0; i < 5; ++i) {
-      for (int j = 0; j < 5; ++j) {
-        *it_x = 40.0F + 0.1F * i;
-        *it_y = -0.2F + 0.1F * j;
-        *it_z = 1.0F;
-        ++it_x;
-        ++it_y;
-        ++it_z;
-      }
-    }
-    cloud.height = 1;
-    cloud.width = 25;
-    return cloud;
-  }
-
-  // Publishes one set of inputs (a stationary car 15 m ahead, ego at 10 m/s), triggers one
-  // control_cmd callback and collects the outputs.
-  static HazardCycleResult run_cycle(
-    const std::shared_ptr<ControlValidator> & node, const bool autonomous)
-  {
-    using autoware_adapi_v1_msgs::msg::OperationModeState;
-    using autoware_perception_msgs::msg::ObjectClassification;
-    using autoware_perception_msgs::msg::PredictedObject;
-    using autoware_perception_msgs::msg::PredictedObjects;
-    using autoware_perception_msgs::msg::Shape;
-
-    auto helper = std::make_shared<rclcpp::Node>("hazard_test_helper");
-    const std::string ns = "/control_validator";
-    auto pub_cmd = helper->create_publisher<Control>(ns + "/input/control_cmd", 1);
-    auto pub_kin = helper->create_publisher<Odometry>(ns + "/input/kinematics", 1);
-    auto pub_ref = helper->create_publisher<Trajectory>(ns + "/input/reference_trajectory", 1);
-    auto pub_pred = helper->create_publisher<Trajectory>(ns + "/input/predicted_trajectory", 1);
-    auto pub_acc = helper->create_publisher<geometry_msgs::msg::AccelWithCovarianceStamped>(
-      ns + "/input/measured_acceleration", 1);
-    auto pub_mode =
-      helper->create_publisher<OperationModeState>(ns + "/input/operational_mode_state", 1);
-    auto pub_objects = helper->create_publisher<PredictedObjects>(ns + "/input/objects", 1);
-    auto pub_cloud =
-      helper->create_publisher<sensor_msgs::msg::PointCloud2>(ns + "/input/pointcloud", 1);
-
-    HazardCycleResult result;
-    auto sub_status = helper->create_subscription<ControlValidatorStatus>(
-      ns + "/output/validation_status", 1,
-      [&](const ControlValidatorStatus::ConstSharedPtr msg) { result.status = *msg; });
-    auto sub_alert = helper->create_subscription<HazardAlert>(
-      ns + "/output/hazard_alert", 1,
-      [&](const HazardAlert::ConstSharedPtr msg) { result.alert = *msg; });
-    auto sub_time = helper->create_subscription<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      ns + "/debug/hazard/processing_time_ms", 1,
-      [&](const autoware_internal_debug_msgs::msg::Float64Stamped::ConstSharedPtr msg) {
-        result.hazard_processing_ms = msg->data;
-      });
-
-    rclcpp::executors::SingleThreadedExecutor executor;
-    executor.add_node(node);
-    executor.add_node(helper);
-
-    const auto now = node->now();
-    const auto trajectory = make_timed_trajectory(now, 10.0, 5.0);
-    Odometry kinematics;
-    kinematics.header.stamp = now;
-    kinematics.header.frame_id = "map";
-    kinematics.pose.pose.orientation.w = 1.0;
-    kinematics.twist.twist.linear.x = 10.0;
-    geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
-    acceleration.header.stamp = now;
-    OperationModeState mode;
-    mode.stamp = now;
-    mode.mode = autonomous ? OperationModeState::AUTONOMOUS : OperationModeState::STOP;
-    mode.is_autoware_control_enabled = autonomous;
-    PredictedObjects objects;
-    objects.header.stamp = now;
-    objects.header.frame_id = "map";
-    PredictedObject car;
-    ObjectClassification classification;
-    classification.label = ObjectClassification::CAR;
-    classification.probability = 1.0;
-    car.classification.push_back(classification);
-    car.kinematics.initial_pose_with_covariance.pose.position.x = 15.0;
-    car.kinematics.initial_pose_with_covariance.pose.orientation.w = 1.0;
-    car.shape.type = Shape::BOUNDING_BOX;
-    car.shape.dimensions.x = 1.0;
-    car.shape.dimensions.y = 1.0;
-    car.shape.dimensions.z = 1.5;
-    objects.objects.push_back(car);
-
-    // Inputs first, then wait until the polling subscribers can take them.
-    for (int i = 0; i < 20; ++i) {
-      pub_kin->publish(kinematics);
-      pub_ref->publish(trajectory);
-      pub_pred->publish(trajectory);
-      pub_acc->publish(acceleration);
-      pub_mode->publish(mode);
-      pub_objects->publish(objects);
-      pub_cloud->publish(make_cloud(now));
-      executor.spin_some(std::chrono::milliseconds(50));
-    }
-
-    Control control_cmd;
-    control_cmd.stamp = node->now();
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (!result.status && std::chrono::steady_clock::now() < deadline) {
-      pub_cmd->publish(control_cmd);
-      executor.spin_some(std::chrono::milliseconds(100));
-    }
-    // Give the alert of the same cycle time to arrive.
-    for (int i = 0; i < 5 && !result.alert; ++i) {
-      executor.spin_some(std::chrono::milliseconds(50));
-    }
-    executor.remove_node(helper);
-    executor.remove_node(node);
-    return result;
-  }
-};
-
-TEST_F(HazardWarningNodeTest, ExistingStatusIsUnchangedByTheHazardWarning)
-{
-  // 1-line summary: ControlValidatorStatus is identical with the warning enabled and disabled.
-  HazardCycleResult with_hazard;
-  {
-    auto node = make_node(true);
-    with_hazard = run_cycle(node, true);
-  }
-  HazardCycleResult without_hazard;
-  {
-    auto node = make_node(false);
-    without_hazard = run_cycle(node, true);
-  }
-  ASSERT_TRUE(with_hazard.status.has_value());
-  ASSERT_TRUE(without_hazard.status.has_value());
-  EXPECT_TRUE(with_hazard.alert.has_value());
-  EXPECT_FALSE(without_hazard.alert.has_value());
-
-  const auto & a = *with_hazard.status;
-  const auto & b = *without_hazard.status;
-  EXPECT_EQ(a.is_valid_max_distance_deviation, b.is_valid_max_distance_deviation);
-  EXPECT_EQ(a.is_valid_acc, b.is_valid_acc);
-  EXPECT_EQ(a.is_rolling_back, b.is_rolling_back);
-  EXPECT_EQ(a.is_over_velocity, b.is_over_velocity);
-  EXPECT_EQ(a.is_valid_lateral_jerk, b.is_valid_lateral_jerk);
-  EXPECT_EQ(a.has_overrun_stop_point, b.has_overrun_stop_point);
-  EXPECT_EQ(a.will_overrun_stop_point, b.will_overrun_stop_point);
-  EXPECT_EQ(a.is_valid_yaw, b.is_valid_yaw);
-  EXPECT_EQ(a.is_warn_yaw, b.is_warn_yaw);
-  EXPECT_EQ(a.will_cross_uncrossable_bound, b.will_cross_uncrossable_bound);
-  EXPECT_EQ(a.invalid_count, b.invalid_count);
-
-  if (with_hazard.hazard_processing_ms) {
-    std::cout << "[ hazard   ] processing time: " << *with_hazard.hazard_processing_ms << " ms"
-              << std::endl;
-  }
-}
-
-TEST_F(HazardWarningNodeTest, AlertIsPublishedWhileManualDrivingSuppressesTheDiagnostics)
-{
-  // 1-line summary: A stationary car 15 m ahead at 10 m/s (TTC ~1.1 s) raises FRONT even when
-  // validation_filtering() overrides the diagnostics.
-  auto node = make_node(true);
-  const auto result = run_cycle(node, false);
-
-  ASSERT_TRUE(result.status.has_value());
-  EXPECT_TRUE(result.status->is_valid_max_distance_deviation);
-  EXPECT_FALSE(result.status->will_cross_uncrossable_bound);
-
-  ASSERT_TRUE(result.alert.has_value());
-  EXPECT_EQ(result.alert->sectors[HazardAlert::FRONT].risk_level, 4);
-  EXPECT_EQ(result.alert->sectors[HazardAlert::REAR].risk_level, 0);
-}
-
-TEST_F(HazardWarningNodeTest, DisabledWarningKeepsTheValidator)
-{
-  // 1-line summary: With hazard_warning.enable and enable_caution false the node starts,
-  // validates, and publishes no alert.
-  auto node = make_node(false, false);
-  const auto result = run_cycle(node, true);
-
-  ASSERT_TRUE(result.status.has_value());
-  EXPECT_FALSE(result.alert.has_value());
-}
-
-TEST_F(HazardWarningNodeTest, OutOfRangeParametersAreRejected)
-{
-  // 1-line summary: Values outside the schema validation fail the parameter loading, and a
-  // runtime change to such a value is rejected and keeps the previous value.
-  const std::vector<rclcpp::Parameter> invalid = {
-    rclcpp::Parameter("collision_validator.braking.reaction_times", std::vector<double>{2.0, 1.0}),
-    rclcpp::Parameter(
-      "collision_validator.braking.reaction_times", std::vector<double>{2.0, 1.5, -1.0}),
-    rclcpp::Parameter("collision_validator.braking.deceleration", 0.0),
-    rclcpp::Parameter("collision_validator.collision_cos_threshold", 1.5),
-    rclcpp::Parameter("hazard_warning.sector.range.left", std::vector<double>{30.0}),
-    rclcpp::Parameter(
-      "collision_validator.enabled_object_classes", std::vector<std::string>{"car", "spaceship"}),
-    rclcpp::Parameter("collision_validator.proximity_distance", 0.0),
-    rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 0),
-    rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 5)};
-  for (const auto & parameter : invalid) {
-    EXPECT_ANY_THROW(make_node(true, true, {parameter})) << parameter.get_name();
-  }
-
-  auto node = make_node(true);
-  const auto result = node->set_parameter(
-    rclcpp::Parameter("uncrossable_bound_departure_validator.departure_risk_level", 5));
-  EXPECT_FALSE(result.successful);
-  EXPECT_EQ(
-    node->get_parameter("uncrossable_bound_departure_validator.departure_risk_level").as_int(), 3);
-}
 
 }  // namespace autoware::control_validator

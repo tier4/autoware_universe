@@ -20,12 +20,10 @@
 #include "autoware/control_validator/hazard_warning/hazard_warning_sources.hpp"
 
 #include <autoware_control_validator/control_validator_parameters.hpp>
-#include <autoware_control_validator/msg/hazard_candidate_array.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
 #include <rclcpp/clock.hpp>
 #include <rclcpp/logger.hpp>
-#include <rclcpp/node.hpp>
 #include <rclcpp/time.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -33,7 +31,6 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <deque>
 #include <memory>
@@ -49,13 +46,8 @@ namespace autoware::control_validator
 class CollisionValidator
 {
 public:
-  /**
-   * @param node when given, the debug publishers are created on it; null (unit tests) publishes
-   *   nothing with the same judgement
-   */
   CollisionValidator(
     const rclcpp::Logger & logger, const ::control_validator::Params & params,
-    rclcpp::Node * node = nullptr,
     std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper =
       std::make_shared<autoware_utils_debug::TimeKeeper>());
 
@@ -73,7 +65,7 @@ public:
     const nav_msgs::msg::Odometry & odom,
     const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr & objects,
     const vehicle_info_utils::VehicleInfo & vehicle_info,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pointcloud, const rclcpp::Time & now,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pointcloud,
     HazardWarningSources & hazard_sources);
 
 private:
@@ -82,9 +74,6 @@ private:
   static std::vector<HazardSource> to_hazard_sources(
     const std::vector<collision_validator::CollisionCandidate> & candidates,
     const nav_msgs::msg::Odometry & odom);
-  void publish_debug(
-    const std::vector<collision_validator::CollisionCandidate> & candidates,
-    const nav_msgs::msg::Odometry & odom, const rclcpp::Time & now) const;
 
   static constexpr size_t kOdometryHistorySize = 10;
 
@@ -95,9 +84,6 @@ private:
   std::deque<nav_msgs::msg::Odometry> odometry_history_;
   collision_validator::PointCloudPreprocessor pointcloud_preprocessor_;
   collision_validator::CollisionEvaluator collision_evaluator_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_collision_markers_;
-  rclcpp::Publisher<autoware_control_validator::msg::HazardCandidateArray>::SharedPtr
-    pub_hazard_candidates_;
 };
 }  // namespace autoware::control_validator
 

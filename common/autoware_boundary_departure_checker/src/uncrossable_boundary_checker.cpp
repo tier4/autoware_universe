@@ -78,8 +78,8 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
   }
   const auto & evaluation_result = evaluated->evaluation_result;
 
-  const auto hysteresis_result =
-    update_and_judge(state, evaluation_result, param_, ego_state.current_time_s);
+  const auto hysteresis_result = update_and_judge(
+    state, evaluation_result, param_, ego_state.current_time_s, DepartureType::CRITICAL);
 
   state = hysteresis_result.updated_state;
 
@@ -119,15 +119,14 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
   }
   const auto & evaluation_result = evaluated->evaluation_result;
 
-  const auto critical_result =
-    update_and_judge(states.critical, evaluation_result, param_, ego_state.current_time_s);
+  const auto critical_result = update_and_judge(
+    states.critical, evaluation_result, param_, ego_state.current_time_s, DepartureType::CRITICAL);
   states.critical = critical_result.updated_state;
 
   DepartureType caution_status = DepartureType::NONE;
   if (param_.enable_caution) {
     const auto caution_result = update_and_judge(
-      states.caution, evaluation_result, ego_state.current_time_s, DepartureType::CAUTION,
-      param_.caution_on_time_buffer_s, param_.caution_off_time_buffer_s);
+      states.caution, evaluation_result, param_, ego_state.current_time_s, DepartureType::CAUTION);
     states.caution = caution_result.updated_state;
     caution_status = caution_result.status;
   }

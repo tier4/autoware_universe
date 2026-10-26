@@ -179,13 +179,13 @@ Marker make_polygon_marker(
 }
 
 Marker make_risk_level_marker(
-  const HazardSource & source, const int32_t id, const builtin_interfaces::msg::Time & stamp,
-  const bool frame_locked)
+  const HazardSource & source, const std::string & ns, const int32_t id,
+  const builtin_interfaces::msg::Time & stamp, const bool frame_locked)
 {
   Marker marker;
   marker.header.frame_id = "base_link";
   marker.header.stamp = stamp;
-  marker.ns = "hazard_risk_level";
+  marker.ns = ns;
   marker.id = id;
   marker.type = Marker::TEXT_VIEW_FACING;
   marker.action = Marker::ADD;
@@ -228,9 +228,9 @@ void HazardWarning::update_parameters(const ::control_validator::Params & params
 
 void HazardWarning::build_wedges(const Point2d & apex)
 {
-  // Same construction as autoware_proximity_hazard_checker: the wedge apex is the centroid of the
-  // vehicle footprint (base_link), the angular range is widened by the boundary tolerance. The arc
-  // is polygonised so that the whole radius is covered for wide sectors.
+  // The wedge apex is the centroid of the vehicle footprint (base_link), the angular range is
+  // widened by the boundary tolerance. The arc is polygonised so that the whole radius is covered
+  // for wide sectors.
   wedge_apex_ = apex;
   for (size_t sector = 0; sector < kNumSectors; ++sector) {
     const auto arc = sector_arc(param_, sector);
@@ -258,14 +258,16 @@ void HazardWarning::build_wedges(const Point2d & apex)
 void HazardWarning::assign_sectors(
   const HazardWarningSources & hazard_sources, const Point2d & apex,
   std::array<uint8_t, kNumSectors> & max_level,
-  std::array<std::vector<HazardSource>, kNumSectors> & sector_sources) const
+  std::array<HazardWarningSources, kNumSectors> & sector_sources) const
 {
   max_level.fill(0);
-  for (const auto * sources : {&hazard_sources.collision, &hazard_sources.departure}) {
-    if (!sources->has_value()) {
-      continue;
+  const auto assign = [&](
+                        const std::optional<std::vector<HazardSource>> & sources,
+                        std::optional<std::vector<HazardSource>> HazardWarningSources::* member) {
+    if (!sources) {
+      return;
     }
-    for (const auto & source : **sources) {
+    for (const auto & source : *sources) {
       if (source.shape.outer().empty()) {
         continue;
       }
@@ -273,11 +275,17 @@ void HazardWarning::assign_sectors(
       for (size_t sector = 0; sector < kNumSectors; ++sector) {
         if (!arc || overlaps(*arc, sector_arc(param_, sector))) {
           max_level[sector] = std::max(max_level[sector], source.risk_level);
-          sector_sources[sector].push_back(source);
+          auto & assigned = sector_sources[sector].*member;
+          if (!assigned) {
+            assigned.emplace();
+          }
+          assigned->push_back(source);
         }
       }
     }
-  }
+  };
+  assign(hazard_sources.collision, &HazardWarningSources::collision);
+  assign(hazard_sources.departure, &HazardWarningSources::departure);
 }
 
 std::optional<HazardAlert> HazardWarning::make_alert(
@@ -298,7 +306,7 @@ std::optional<HazardAlert> HazardWarning::make_alert(
   }
 
   std::array<uint8_t, kNumSectors> max_level{};
-  std::array<std::vector<HazardSource>, kNumSectors> sector_sources;
+  std::array<HazardWarningSources, kNumSectors> sector_sources;
   assign_sectors(hazard_sources, apex, max_level, sector_sources);
 
   HazardAlert alert;
@@ -311,7 +319,8 @@ std::optional<HazardAlert> HazardWarning::make_alert(
     if (max_level[sector] >= 1) {
       last_on_sources_[sector] = std::move(sector_sources[sector]);
     } else if (level == 0) {
-      last_on_sources_[sector].clear();
+      last_on_sources_[sector].collision.reset();
+      last_on_sources_[sector].departure.reset();
     }
   }
 
@@ -332,17 +341,27 @@ void HazardWarning::publish_debug(const HazardAlert & alert) const
   markers.markers.push_back(delete_all);
 
   int32_t id = 0;
+  const auto draw_sources = [&](
+                              const std::optional<std::vector<HazardSource>> & sources,
+                              const std::string & sources_ns, const std::string & risk_level_ns) {
+    if (!sources) {
+      return;
+    }
+    for (const auto & source : *sources) {
+      if (!source.shape.outer().empty()) {
+        markers.markers.push_back(
+          make_risk_level_marker(source, risk_level_ns, id, source.stamp, false));
+      }
+      markers.markers.push_back(make_polygon_marker(
+        source.shape, sources_ns, id++, level_color(source.risk_level), source.stamp, false));
+    }
+  };
   for (size_t sector = 0; sector < kNumSectors; ++sector) {
     if (alert.sectors[sector].risk_level < 1) {
       continue;
     }
-    for (const auto & source : last_on_sources_[sector]) {
-      if (!source.shape.outer().empty()) {
-        markers.markers.push_back(make_risk_level_marker(source, id, source.stamp, false));
-      }
-      markers.markers.push_back(make_polygon_marker(
-        source.shape, "hazard_sources", id++, level_color(source.risk_level), source.stamp, false));
-    }
+    draw_sources(last_on_sources_[sector].collision, "collision_sources", "collision_risk_level");
+    draw_sources(last_on_sources_[sector].departure, "departure_sources", "departure_risk_level");
     markers.markers.push_back(make_polygon_marker(
       wedges_[sector], "hazard_sectors", static_cast<int32_t>(sector),
       level_color(alert.sectors[sector].risk_level), alert.header.stamp, true));

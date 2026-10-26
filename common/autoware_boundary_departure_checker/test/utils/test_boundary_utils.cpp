@@ -390,7 +390,8 @@ TEST(UncrossableBoundaryUtilsTest, TestNearBoundaryThresholdBelowCriticalMargin)
   projection.time_from_start = 3.0;
 
   // Act:
-  const auto out = severity_evaluator::filter_and_assign_departure_types({projection}, param, 10.0);
+  const auto out =
+    severity_evaluator::filter_and_assign_departure_types({projection}, param, 10.0, 10.0);
 
   // Assert:
   ASSERT_EQ(out.size(), 1U);

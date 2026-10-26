@@ -666,13 +666,9 @@ Polygon2d point_polygon(const Point2d & point)
   return polygon;
 }
 
-CollisionCandidate make_point_candidate(
-  const EgoSweep & ego_sweep, const builtin_interfaces::msg::Time & stamp, const Point2d & point)
+CollisionCandidate make_point_candidate(const EgoSweep & ego_sweep, const Point2d & point)
 {
   CollisionCandidate candidate;
-  candidate.kind = CollisionCandidate::Kind::POINTCLOUD;
-  candidate.label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
-  candidate.source_stamp = stamp;
   candidate.polygon_now = point_polygon(point);
   candidate.distance_now = boost::geometry::distance(ego_sweep.now(), point);
   return candidate;
@@ -859,11 +855,11 @@ CollisionCandidate CollisionEvaluator::evaluate_object(
     return candidate;
   }
   const size_t k = step->ego_index;
-  candidate.ttc = ego_sweep.times[k];
   const auto hit_point = object_hit_point(
     ego_sweep.polygons[k], object_trajectory.get_or_compute_convex(step->target_index_range));
-  candidate.cos_collision = compute_cos_collision(ego_sweep.poses[k], ego_sweep.forward, hit_point);
-  if (*candidate.cos_collision < param_.cos_threshold) {
+  if (
+    compute_cos_collision(ego_sweep.poses[k], ego_sweep.forward, hit_point) <
+    param_.cos_threshold) {
     return candidate;
   }
   std::optional<bool> hits_stationary;
@@ -890,25 +886,20 @@ CollisionCandidate CollisionEvaluator::evaluate_object(
 
 void CollisionEvaluator::evaluate_points(
   const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps,
-  const std::vector<Point2d> & points, const builtin_interfaces::msg::Time & stamp,
-  std::vector<CollisionCandidate> & out) const
+  const std::vector<Point2d> & points, std::vector<CollisionCandidate> & out) const
 {
   const bool all_stopped = is_all_stopped(ego_sweep);
   for (const auto & point : points) {
-    auto candidate = make_point_candidate(ego_sweep, stamp, point);
+    auto candidate = make_point_candidate(ego_sweep, point);
     candidate.near = candidate.distance_now <= param_.proximity_distance && !all_stopped;
-    const auto k = find_first_collision(ego_sweep.trajectory, point, ego_sweep.stopped);
-    if (k) {
-      candidate.ttc = ego_sweep.times[*k];
-      candidate.cos_collision =
-        compute_cos_collision(ego_sweep.poses[*k], ego_sweep.forward, point);
+    if (find_first_collision(ego_sweep.trajectory, point, ego_sweep.stopped)) {
       candidate.brake_level = brake_level_of([&](const size_t level) {
         const auto & braked_sweep = braked_sweeps.at(level);
         return find_first_collision(braked_sweep.trajectory, point, braked_sweep.stopped)
           .has_value();
       });
     }
-    if (candidate.near || k) {
+    if (candidate.near || candidate.brake_level >= 1) {
       out.push_back(std::move(candidate));
     }
   }
@@ -953,9 +944,6 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
         continue;
       }
       CollisionCandidate candidate;
-      candidate.kind = CollisionCandidate::Kind::OBJECT;
-      candidate.label = label;
-      candidate.source_stamp = objects->header.stamp;
       candidate.polygon_now =
         detail::to_polygon2d(object.kinematics.initial_pose_with_covariance.pose, object.shape);
       if (boost::geometry::intersects(ego_now, candidate.polygon_now)) {
@@ -979,11 +967,14 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
       entry.candidate.distance_now <= param_.proximity_distance && !all_stopped;
     const auto object_trajectory =
       make_object_trajectory(*entry.object, objects_time_offset, horizon, ego_sweep.times);
-    candidates.push_back(
-      evaluate_object(ego_sweep, braked_sweeps, std::move(entry.candidate), object_trajectory));
+    auto candidate =
+      evaluate_object(ego_sweep, braked_sweeps, std::move(entry.candidate), object_trajectory);
+    if (candidate.near || candidate.brake_level >= 1) {
+      candidates.push_back(std::move(candidate));
+    }
   }
 
-  if (!param_.enable_pointcloud || !point_clusters) {
+  if (!point_clusters) {
     return candidates;
   }
 
@@ -1000,13 +991,8 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
   if (selected_clusters.size() > param_.n_eval_pointcloud) {
     selected_clusters.resize(param_.n_eval_pointcloud);
   }
-  const builtin_interfaces::msg::Time pointcloud_stamp = point_clusters->stamp;
   for (const auto & [centroid_distance, index] : selected_clusters) {
-    const size_t begin = candidates.size();
-    evaluate_points(ego_sweep, braked_sweeps, clusters[index].points, pointcloud_stamp, candidates);
-    for (size_t i = begin; i < candidates.size(); ++i) {
-      candidates[i].cluster_index = index;
-    }
+    evaluate_points(ego_sweep, braked_sweeps, clusters[index].points, candidates);
   }
 
   return candidates;

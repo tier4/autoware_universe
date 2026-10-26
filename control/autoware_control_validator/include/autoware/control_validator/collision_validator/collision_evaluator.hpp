@@ -32,7 +32,6 @@
 
 #include <Eigen/Geometry>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
-#include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/time.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -204,17 +203,10 @@ std::optional<size_t> find_first_collision(
 
 struct CollisionCandidate
 {
-  enum class Kind { OBJECT, POINTCLOUD };
-  Kind kind{Kind::OBJECT};
-  uint8_t label{0};
   Polygon2d polygon_now;  // map; a single vertex for a point
   double distance_now{0.0};
   bool near{false};
-  std::optional<double> ttc;
-  std::optional<double> cos_collision;  // cosine of the collision angle (set with ttc)
   uint8_t brake_level{0};
-  builtin_interfaces::msg::Time source_stamp;  // header.stamp of the objects / pointcloud message
-  std::optional<size_t> cluster_index;
 };
 
 /**
@@ -233,7 +225,6 @@ struct CollisionEvaluatorParam
   size_t n_eval_object{10};
   size_t n_eval_pointcloud{10};
   std::vector<uint8_t> enabled_labels;
-  bool enable_pointcloud{true};
   double max_objects_stamp_gap_s{0.5};
   double stop_velocity{0.1};
   double proximity_distance{0.3};
@@ -260,9 +251,8 @@ public:
 
   /**
    * @brief Sweep the ego footprint along the predicted trajectory and judge the proximity and the
-   * collision with objects (footprint sweep) and static points. Object candidates are returned
-   * whether or not they are near or collide; point candidates are returned only for points that
-   * are near or collide. Colliding candidates get a brake_level.
+   * collision with objects (footprint sweep) and static points. Only the objects and points that
+   * are near or have a brake_level of 1 or more are returned.
    * @param objects null evaluates no object
    * @param point_clusters clusters in the map frame; null evaluates no point
    * @throws std::invalid_argument when the predicted trajectory cannot be interpolated
@@ -291,8 +281,7 @@ private:
 
   void evaluate_points(
     const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps,
-    const std::vector<Point2d> & points, const builtin_interfaces::msg::Time & stamp,
-    std::vector<CollisionCandidate> & out) const;
+    const std::vector<Point2d> & points, std::vector<CollisionCandidate> & out) const;
 
   CollisionEvaluatorParam param_;
 };

@@ -51,34 +51,20 @@ struct HysteresisResult
 };
 
 /**
- * @brief Pure function to determine departure status using hysteresis.
- * @param[in] state current hysteresis state
- * @param[in] evaluation_result result from stateless evaluator
- * @param[in] param parameters
- * @param[in] current_time_s current time in seconds
- * @return updated status and state
- */
-HysteresisResult update_and_judge(
-  const HysteresisState & state,
-  const std::optional<Side<std::optional<DeparturePointPair>>> & evaluation_result,
-  const UncrossableBoundaryDepartureParam & param, const double current_time_s);
-
-/**
  * @brief Pure function to determine departure status using hysteresis for a given level.
  * @param[in] state current hysteresis state
  * @param[in] evaluation_result result from stateless evaluator
+ * @param[in] param parameters; the on/off time buffers of the target level are used
  * @param[in] current_time_s current time in seconds
  * @param[in] target level to latch: CRITICAL matches CRITICAL points only, CAUTION matches
  *   CAUTION and CRITICAL points
- * @param[in] on_time_buffer_s continuous-violation time required to activate [s]
- * @param[in] off_time_buffer_s continuous-safety time required to deactivate [s]
  * @return updated status (NONE or target) and state
  */
 HysteresisResult update_and_judge(
   const HysteresisState & state,
   const std::optional<Side<std::optional<DeparturePointPair>>> & evaluation_result,
-  const double current_time_s, const DepartureType target, const double on_time_buffer_s,
-  const double off_time_buffer_s);
+  const UncrossableBoundaryDepartureParam & param, const double current_time_s,
+  const DepartureType target);
 
 }  // namespace autoware::boundary_departure_checker
 

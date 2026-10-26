@@ -65,8 +65,7 @@ struct PointCloudClusters
 /**
  * @brief Ego-footprint exclusion -> ROI crop -> voxel grid (raw point counts) -> subsample ->
  * euclidean clustering, keeping only the points that belong to a cluster. Points are expressed in
- * the map frame through the ego pose at the pointcloud stamp. No hull is built: the points
- * themselves are the output.
+ * the map frame through the ego pose at the pointcloud stamp.
  */
 class PointCloudPreprocessor
 {

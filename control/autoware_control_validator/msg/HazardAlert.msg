@@ -1,6 +1,6 @@
 std_msgs/Header header  # stamp = evaluation time, frame_id = base_link
 
-# Sector indices (same order as ProximityHazardObjects)
+# Sector indices
 uint8 FRONT=0
 uint8 FRONT_RIGHT=1
 uint8 RIGHT=2

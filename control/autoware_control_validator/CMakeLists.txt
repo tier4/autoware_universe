@@ -46,9 +46,7 @@ rosidl_generate_interfaces(
   ${PROJECT_NAME}
   "msg/ControlValidatorStatus.msg"
   "msg/HazardAlert.msg"
-  "msg/HazardCandidate.msg"
   "msg/HazardSector.msg"
-  "msg/HazardCandidateArray.msg"
   DEPENDENCIES builtin_interfaces std_msgs
 )
 

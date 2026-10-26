@@ -21,19 +21,14 @@ namespace autoware::boundary_departure_checker
 HysteresisResult update_and_judge(
   const HysteresisState & state,
   const std::optional<Side<std::optional<DeparturePointPair>>> & evaluation_result,
-  const UncrossableBoundaryDepartureParam & param, const double current_time_s)
+  const UncrossableBoundaryDepartureParam & param, const double current_time_s,
+  const DepartureType target)
 {
-  return update_and_judge(
-    state, evaluation_result, current_time_s, DepartureType::CRITICAL, param.on_time_buffer_s,
-    param.off_time_buffer_s);
-}
-
-HysteresisResult update_and_judge(
-  const HysteresisState & state,
-  const std::optional<Side<std::optional<DeparturePointPair>>> & evaluation_result,
-  const double current_time_s, const DepartureType target, const double on_time_buffer_s,
-  const double off_time_buffer_s)
-{
+  const bool is_critical_target = target == DepartureType::CRITICAL;
+  const double on_time_buffer_s =
+    is_critical_target ? param.on_time_buffer_s : param.caution_on_time_buffer_s;
+  const double off_time_buffer_s =
+    is_critical_target ? param.off_time_buffer_s : param.caution_off_time_buffer_s;
   const auto is_target_level = [target](const ProjectionToBound & pt) {
     return target == DepartureType::CRITICAL ? pt.is_critical() : pt.is_caution_or_above();
   };

@@ -25,7 +25,7 @@ namespace autoware::boundary_departure_checker::severity_evaluator
 {
 ProjectionsToBound filter_and_assign_departure_types(
   const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param,
-  const double min_braking_dist, const std::optional<double> & min_braking_dist_caution)
+  const double min_braking_dist, const double min_braking_dist_caution)
 {
   ProjectionsToBound out;
   out.reserve(side_value.size());
@@ -38,10 +38,9 @@ ProjectionsToBound filter_and_assign_departure_types(
   // margin unclassified, so the advisory band always covers at least the critical margin.
   thresholds.th_near_boundary =
     std::max(param.near_boundary_lateral_th_m, param.critical_departure_lateral_th_m);
-  if (param.enable_caution) {
-    thresholds.th_lat_caution = param.caution_departure_lateral_th_m;
-  }
-  thresholds.min_braking_distance_caution = min_braking_dist_caution.value_or(min_braking_dist);
+  thresholds.enable_caution = param.enable_caution;
+  thresholds.th_lat_caution = param.caution_departure_lateral_th_m;
+  thresholds.min_braking_distance_caution = min_braking_dist_caution;
   thresholds.cutoff_time_caution = param.caution_time_to_departure_cutoff_s;
 
   for (size_t idx = 0; idx < side_value.size(); ++idx) {
@@ -106,7 +105,9 @@ DepartureType assign_departure_type(
   const auto ego_cannot_stop_before_caution_departure =
     metrics.lon_dist_to_departure <= thresholds.min_braking_distance_caution ||
     metrics.time_from_start <= thresholds.cutoff_time_caution;
-  if (footprint_overlaps_caution_margin && ego_cannot_stop_before_caution_departure) {
+  if (
+    thresholds.enable_caution && footprint_overlaps_caution_margin &&
+    ego_cannot_stop_before_caution_departure) {
     return DepartureType::CAUTION;
   }
 

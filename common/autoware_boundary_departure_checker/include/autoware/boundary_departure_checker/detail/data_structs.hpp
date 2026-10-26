@@ -47,7 +47,7 @@ enum class DepartureType {
   NONE = 0,       ///< no departure
   NEAR_BOUNDARY,  ///< footprint is within the near boundary lateral threshold
   CRITICAL,       ///< critical departure from the boundary
-  CAUTION,        ///< warning stage before CRITICAL (appended last to keep existing values)
+  CAUTION,        ///< warning stage before CRITICAL
 };
 
 /**
@@ -222,8 +222,8 @@ struct DepartureCheckThresholds
   double cutoff_time{0.0};           ///< time cutoff for departure check [s]
   double th_lat_critical{0.0};       ///< lateral distance threshold for critical departure [m]
   double th_near_boundary{0.0};      ///< lateral distance threshold for near boundary [m]
-  double th_lat_caution{-std::numeric_limits<double>::infinity()};  ///< lateral distance
-                                                                    ///< threshold for caution [m]
+  bool enable_caution{false};        ///< evaluate the CAUTION stage
+  double th_lat_caution{0.0};        ///< lateral distance threshold for caution [m]
   double min_braking_distance_caution{0.0};  ///< minimum braking distance for caution [m]
   double cutoff_time_caution{0.0};           ///< time cutoff for caution [s]
 };

@@ -327,7 +327,7 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
   overrun_validator(params_),
   yaw_validator(params_),
   uncrossable_bound_departure_validator(get_logger(), params_),
-  collision_validator(get_logger(), params_, this, hazard_time_keeper_),
+  collision_validator(get_logger(), params_, hazard_time_keeper_),
   hazard_warning(get_logger(), params_, this, hazard_time_keeper_)
 {
   using std::placeholders::_1;
@@ -598,7 +598,7 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     }
     const auto now = get_clock()->now();
     collision_validator.validate(
-      *predicted_trajectory_msg, *kinematics_msg, objects_msg, vehicle_info_, pointcloud_msg, now,
+      *predicted_trajectory_msg, *kinematics_msg, objects_msg, vehicle_info_, pointcloud_msg,
       hazard_sources);
     const auto alert = hazard_warning.make_alert(hazard_sources, vehicle_info_, now);
     const double hazard_processing_time_ms = hazard_stop_watch_.toc();
