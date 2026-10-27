@@ -6,12 +6,14 @@
 
 ## Algorithm Overview
 
-1. Candidate trajectories arrive on two separate input topics. `~/input/trajectories_generative` acts as an **anchor**: receiving a message on this topic triggers an immediate concatenation and validation cycle. `~/input/trajectories_backup` messages are buffered and processed in the next cycle.
-2. A 100 ms timer also fires periodically to ensure output is published even if the anchor input is delayed or missing. The timer is reset whenever an anchor message is received.
-3. During each cycle (triggered by the anchor or the timer), the concatenator prunes stale entries (older than `duration_time`) and returns the merged trajectory set from all registered generators.
-4. If any mandatory sensor input (odometry, predicted objects, acceleration, or HD map) is unavailable, the cycle returns early without publishing.
-5. The validator runs all loaded plugins against each trajectory. Trajectories rejected by any enforced plugin (listed in `filter_names`) are removed from the output set.
-6. The surviving trajectories are published to `~/output/trajectories`.
+1. Candidate trajectories arrive on two input topics: `~/input/trajectories_generative` and `~/input/trajectories_backup`. The node buffers each message and uses a trigger mode to select the input that starts a concatenation and validation cycle.
+2. In generative trigger mode, a generative message starts a cycle immediately. The node buffers backup messages for the next cycle. If no generative message arrives within `fallback_period_ms`, the fallback timer starts a cycle. Each generative message resets this timer.
+3. When the fallback timer fires in generative trigger mode, the node changes to backup trigger mode. In backup trigger mode, a backup message starts a cycle immediately and resets the timer. If no backup message arrives within `fallback_period_ms`, the fallback timer starts a cycle.
+4. When a generative message arrives in backup trigger mode, the node changes back to generative trigger mode.
+5. During each cycle, the concatenator removes entries older than `duration_time`. It then returns the merged trajectory set from all registered generators.
+6. If any mandatory sensor input (odometry, predicted objects, acceleration, or HD map) is unavailable, the cycle returns early without publishing.
+7. The validator runs all loaded plugins against each trajectory. Trajectories rejected by any enforced plugin (listed in `filter_names`) are removed from the output set.
+8. The surviving trajectories are published to `~/output/trajectories`.
 
 ## Interface
 
