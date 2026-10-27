@@ -35,7 +35,8 @@
 namespace
 {
 using autoware::motion::control::trajectory_follower::InputData;
-using autoware::motion::control::trajectory_follower::LateralControllerBase;
+using autoware::motion::control::trajectory_follower::LateralControllerInterface;
+using autoware::motion::control::trajectory_follower::LateralOutput;
 using autoware::pure_pursuit::PurePursuitLateralControllerNode;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
@@ -43,6 +44,12 @@ using autoware_planning_msgs::msg::TrajectoryPoint;
 int64_t to_nanoseconds(const double seconds)
 {
   return static_cast<int64_t>(seconds * 1e9);
+}
+
+/// Time of a control cycle, given in seconds [s].
+rclcpp::Time at(const double seconds)
+{
+  return rclcpp::Time(to_nanoseconds(seconds), RCL_ROS_TIME);
 }
 
 geometry_msgs::msg::Quaternion make_orientation(const double yaw)
@@ -200,8 +207,8 @@ protected:
   /// circle itself, so the command misses that angle by a small amount.
   static constexpr double arc_relative_tolerance = 0.01;
 
-  /// Two times a test sets the clock to [s]. The controller stamps the command with the time
-  /// it reads, and these two differ so that a stamp names the cycle the command was made in.
+  /// Two times of a control cycle [s]. The controller stamps the command with the time of the
+  /// cycle, and these two differ so that a stamp names the cycle the command was made in.
   static constexpr double first_cycle_time = 1.0;
   static constexpr double second_cycle_time = 1.5;
 
@@ -238,15 +245,6 @@ protected:
   void SetUp() override { rclcpp::init(0, nullptr); }
   void TearDown() override { rclcpp::shutdown(); }
 
-  /// Set the time the controller reads. Every controller is built with a simulated clock, so
-  /// a test sets the time itself and no result depends on how fast the machine runs.
-  void set_clock(const double seconds)
-  {
-    const auto result =
-      rcl_set_ros_time_override(node_->get_clock()->get_clock_handle(), to_nanoseconds(seconds));
-    ASSERT_EQ(result, RCL_RET_OK);
-  }
-
   rclcpp::NodeOptions make_node_options(const bool enable_path_smoothing)
   {
     const auto share_dir = ament_index_cpp::get_package_share_directory("autoware_pure_pursuit");
@@ -268,14 +266,13 @@ protected:
     options.append_parameter_override("vehicle_height", 2.5);
     options.append_parameter_override("max_steer_angle", 0.70);
 
-    options.append_parameter_override("use_sim_time", true);
-
     return options;
   }
 
-  /// Build the controller behind the base class interface, so that the tests only use the
-  /// interface the trajectory follower node uses.
-  std::unique_ptr<LateralControllerBase> make_controller(const bool enable_path_smoothing = false)
+  /// Build the controller behind the interface, so that the tests only use the interface the
+  /// trajectory follower node uses.
+  std::unique_ptr<LateralControllerInterface> make_controller(
+    const bool enable_path_smoothing = false)
   {
     // Kept alive for the whole test: a controller holds a reference to the node it was built
     // from, and a test may build two controllers and compare their commands.
@@ -288,7 +285,7 @@ protected:
   /// trajectory it publishes on ~/output/predicted_trajectory. Empty if none arrives within
   /// message_timeout. The controller has to be the one built last.
   std::optional<Trajectory> let_controller_publish_predicted_trajectory(
-    LateralControllerBase & controller, const InputData & input)
+    LateralControllerInterface & controller, const InputData & input)
   {
     std::optional<Trajectory> received;
     const auto subscription = node_->create_subscription<Trajectory>(
@@ -300,7 +297,7 @@ protected:
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    controller.run(input);
+    run_cycle(controller, input);
 
     const auto received_by = std::chrono::steady_clock::now() + message_timeout;
     while (!received && std::chrono::steady_clock::now() < received_by) {
@@ -308,6 +305,14 @@ protected:
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return received;
+  }
+
+  /// Let the controller run one cycle at the given time [s], and return its output.
+  static LateralOutput run_cycle(
+    LateralControllerInterface & controller, const InputData & input,
+    const double seconds = first_cycle_time)
+  {
+    return controller.run(input, at(seconds)).value();
   }
 
   static constexpr auto message_timeout = std::chrono::seconds(5);
@@ -339,7 +344,7 @@ TEST_F(PurePursuitLateralControllerTest, StraightPathKeepsTheSteeringNeutral)
   auto controller = make_controller();
   const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   EXPECT_NEAR(output.control_cmd.steering_tire_angle, 0.0, 1e-6);
 }
@@ -352,7 +357,7 @@ TEST_F(PurePursuitLateralControllerTest, LeftArcIsSteeredAtTheAngleTheRadiusRequ
   auto controller = make_controller();
   const auto input = Input().following(arc_path(arc_radius)).planned_at(1.0).driving_at(1.0);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   const double angle_holding_the_circle = std::atan(wheel_base / arc_radius);
   EXPECT_NEAR(
@@ -365,7 +370,7 @@ TEST_F(PurePursuitLateralControllerTest, RightArcIsSteeredAtTheAngleTheRadiusReq
   auto controller = make_controller();
   const auto input = Input().following(arc_path(-arc_radius)).planned_at(1.0).driving_at(1.0);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   const double angle_holding_the_circle = -std::atan(wheel_base / arc_radius);
   EXPECT_NEAR(
@@ -379,7 +384,7 @@ TEST_F(PurePursuitLateralControllerTest, EgoLeftOfThePathIsSteeredToTheRight)
   const auto input =
     Input().following(straight_path()).planned_at(1.0).driving_at(1.0).beside_the_path(0.2);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   EXPECT_LT(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -390,7 +395,7 @@ TEST_F(PurePursuitLateralControllerTest, EgoRightOfThePathIsSteeredToTheLeft)
   const auto input =
     Input().following(straight_path()).planned_at(1.0).driving_at(1.0).beside_the_path(-0.2);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   EXPECT_GT(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -408,11 +413,13 @@ TEST_F(PurePursuitLateralControllerTest, LateralDistancePastTheThresholdReducesT
       .beside_the_path(distance);
   };
   auto inside = make_controller();
-  const auto command_inside = inside->run(at_distance(lateral_error_threshold - lateral_error_step))
-                                .control_cmd.steering_tire_angle;
+  const auto command_inside =
+    run_cycle(*inside, at_distance(lateral_error_threshold - lateral_error_step))
+      .control_cmd.steering_tire_angle;
   auto outside = make_controller();
 
-  const auto output = outside->run(at_distance(lateral_error_threshold + lateral_error_step));
+  const auto output =
+    run_cycle(*outside, at_distance(lateral_error_threshold + lateral_error_step));
 
   EXPECT_GT(output.control_cmd.steering_tire_angle, command_inside);
 }
@@ -430,10 +437,11 @@ TEST_F(PurePursuitLateralControllerTest, ReversePathReducesTheCommand)
       .beside_the_path(0.2);
   };
   auto forward = make_controller();
-  const auto command_forward = forward->run(at_planned_speed(1.0)).control_cmd.steering_tire_angle;
+  const auto command_forward =
+    run_cycle(*forward, at_planned_speed(1.0)).control_cmd.steering_tire_angle;
   auto reverse = make_controller();
 
-  const auto output = reverse->run(at_planned_speed(-1.0));
+  const auto output = run_cycle(*reverse, at_planned_speed(-1.0));
 
   EXPECT_GT(output.control_cmd.steering_tire_angle, command_forward);
 }
@@ -450,7 +458,7 @@ TEST_F(PurePursuitLateralControllerTest, PathWithTooFewSamplesKeepsTheSteeringNe
                        .driving_at(1.0)
                        .beside_the_path(0.2);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -461,17 +469,15 @@ TEST_F(PurePursuitLateralControllerTest, PathWithTooFewSamplesKeepsTheSteeringNe
 TEST_F(PurePursuitLateralControllerTest, PathBeyondTheSearchRadiusRepeatsThePreviousCommand)
 {
   auto controller = make_controller();
-  set_clock(first_cycle_time);
   const auto on_the_path = Input().following(arc_path(arc_radius)).planned_at(1.0).driving_at(1.0);
-  const auto previous = controller->run(on_the_path).control_cmd;
-  set_clock(second_cycle_time);
+  const auto previous = run_cycle(*controller, on_the_path, first_cycle_time).control_cmd;
   const auto far_from_the_path = Input()
                                    .following(arc_path(arc_radius))
                                    .planned_at(1.0)
                                    .driving_at(1.0)
                                    .beside_the_path(2.0 * nearest_search_radius);
 
-  const auto output = controller->run(far_from_the_path);
+  const auto output = run_cycle(*controller, far_from_the_path, second_cycle_time);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, previous.steering_tire_angle);
   EXPECT_EQ(
@@ -479,13 +485,12 @@ TEST_F(PurePursuitLateralControllerTest, PathBeyondTheSearchRadiusRepeatsThePrev
     rclcpp::Time(previous.stamp).nanoseconds());
 }
 
-TEST_F(PurePursuitLateralControllerTest, CommandCarriesTheTimeTheControllerReads)
+TEST_F(PurePursuitLateralControllerTest, CommandCarriesTheTimeOfTheCycle)
 {
   auto controller = make_controller();
-  set_clock(first_cycle_time);
   const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input, first_cycle_time);
 
   EXPECT_EQ(rclcpp::Time(output.control_cmd.stamp).nanoseconds(), to_nanoseconds(first_cycle_time));
 }
@@ -501,7 +506,7 @@ TEST_F(PurePursuitLateralControllerTest, MeasuredAngleCloseToTheCommandConverges
                        .driving_at(1.0)
                        .steering_at(0.5 * converged_steer_rad);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   EXPECT_TRUE(output.sync_data.is_steer_converged);
 }
@@ -515,7 +520,7 @@ TEST_F(PurePursuitLateralControllerTest, MeasuredAngleFarFromTheCommandHoldsTheS
                        .driving_at(1.0)
                        .steering_at(2.0 * converged_steer_rad);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   EXPECT_FALSE(output.sync_data.is_steer_converged);
 }
@@ -528,10 +533,10 @@ TEST_F(PurePursuitLateralControllerTest, PathSmoothingRaisesTheCommandOnACurve)
 {
   const auto input = Input().following(arc_path(arc_radius)).planned_at(1.0).driving_at(1.0);
   auto plain = make_controller();
-  const auto command_plain = plain->run(input).control_cmd.steering_tire_angle;
+  const auto command_plain = run_cycle(*plain, input).control_cmd.steering_tire_angle;
   auto smoothing = make_controller(/*enable_path_smoothing=*/true);
 
-  const auto output = smoothing->run(input);
+  const auto output = run_cycle(*smoothing, input);
 
   EXPECT_GT(output.control_cmd.steering_tire_angle, command_plain);
 }
@@ -549,7 +554,7 @@ TEST_F(PurePursuitLateralControllerTest, LookaheadDistanceStopsAtTheUpperLimit)
   const auto input =
     Input().following(straight_path()).planned_at(speed).driving_at(speed).beside_the_path(offset);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   // The ego stands `offset` to the left of a straight path, so the point it aims at lies
   // `offset` to its right.
@@ -609,7 +614,7 @@ TEST_F(PurePursuitLateralControllerTest, DISABLED_CurvatureOfThePathShortensTheL
                        .driving_at(speed)
                        .beside_the_path(-offset);
 
-  const auto output = controller->run(input);
+  const auto output = run_cycle(*controller, input);
 
   const double d = ld_velocity_ratio * speed - ld_curvature_ratio / arc_radius;
   // The ego stands at (0, -offset) and the path circle has its centre at (0, arc_radius). The
