@@ -16,6 +16,8 @@
 #include "trajectory_modifier_test_utils.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoware/point_types/memory.hpp>
+#include <autoware/point_types/types.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -163,35 +165,33 @@ PredictedObjects::ConstSharedPtr make_blocking_car(double x, double y)
   return make_car(x, y);
 }
 
-// Build a dense blocking pointcloud the obstacle_stop pipeline will detect.
-sensor_msgs::msg::PointCloud2::ConstSharedPtr make_blocking_pointcloud_cluster(
-  double center_x, double center_y, double height)
+// Build a single blocking PointXYZCPE point. obstacle_stop evaluates points independently
+// (no voxel/clustering), so a dense cluster is unnecessary and can confuse the tracker when
+// neighboring points fall within pcd_distance_th.
+sensor_msgs::msg::PointCloud2::ConstSharedPtr make_blocking_pointcloud(double x, double y, double z)
 {
-  constexpr int voxel_count_x = 4;
-  constexpr int voxel_count_y = 3;
-  constexpr int points_per_voxel = 3;
+  using autoware::point_types::PointCloudClassification;
+  using autoware::point_types::PointXYZCPE;
 
   sensor_msgs::msg::PointCloud2 cloud;
   cloud.header.frame_id = "map";
-  sensor_msgs::PointCloud2Modifier modifier(cloud);
-  modifier.setPointCloud2FieldsByString(1, "xyz");
-  modifier.resize(voxel_count_x * voxel_count_y * points_per_voxel);
+  cloud.height = 1;
+  cloud.width = 1;
+  cloud.is_dense = true;
+  cloud.is_bigendian = false;
+  cloud.fields = autoware::point_types::create_fields_point_xyzcpe();
+  cloud.point_step = sizeof(PointXYZCPE);
+  cloud.row_step = cloud.point_step * cloud.width;
+  cloud.data.resize(cloud.row_step);
 
-  sensor_msgs::PointCloud2Iterator<float> iter_x(cloud, "x");
-  sensor_msgs::PointCloud2Iterator<float> iter_y(cloud, "y");
-  sensor_msgs::PointCloud2Iterator<float> iter_z(cloud, "z");
-  for (int xi = 0; xi < voxel_count_x; ++xi) {
-    for (int yi = 0; yi < voxel_count_y; ++yi) {
-      for (int p = 0; p < points_per_voxel; ++p) {
-        *iter_x = static_cast<float>(center_x + 0.2 * xi + 0.05 + 0.01 * p);
-        *iter_y = static_cast<float>(center_y + 0.2 * yi + 0.05);
-        *iter_z = static_cast<float>(height);
-        ++iter_x;
-        ++iter_y;
-        ++iter_z;
-      }
-    }
-  }
+  PointXYZCPE point;
+  point.x = static_cast<float>(x);
+  point.y = static_cast<float>(y);
+  point.z = static_cast<float>(z);
+  // INVALID maps to target type "unknown" used by the integration test params.
+  point.class_id = static_cast<std::uint8_t>(PointCloudClassification::INVALID);
+  point.probability = 1.0F;
+  std::memcpy(cloud.data.data(), &point, sizeof(PointXYZCPE));
 
   return std::make_shared<const sensor_msgs::msg::PointCloud2>(cloud);
 }
@@ -256,6 +256,7 @@ protected:
     params_.stopping_constraints.maximum_deceleration = 4.0;
     params_.stopping_constraints.jerk_limit = 3.0;
     params_.stopping_constraints.arrived_distance_threshold = 0.5;
+    params_.stopping_constraints.delay_response_time = 0.0;
 
     auto & p = params_.obstacle_stop;
     p.use_objects = true;
@@ -519,8 +520,7 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
   // Arrange
   constexpr double cluster_center_x = 25.0;
   auto trajectory = create_straight_trajectory(30.0, 8.0);
-  const auto pointcloud_blocking_path =
-    make_blocking_pointcloud_cluster(cluster_center_x, 0.0, 0.7);
+  const auto pointcloud_blocking_path = make_blocking_pointcloud(cluster_center_x, 0.0, 0.7);
   const auto input = create_input_data(
     make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), nullptr, pointcloud_blocking_path);
 
@@ -556,8 +556,7 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
   // Arrange
   constexpr double cluster_center_x = 15.0;
   auto trajectory = create_straight_trajectory(30.0, 8.0);
-  const auto pointcloud_blocking_path =
-    make_blocking_pointcloud_cluster(cluster_center_x, 0.0, 0.7);
+  const auto pointcloud_blocking_path = make_blocking_pointcloud(cluster_center_x, 0.0, 0.7);
   const auto input = create_input_data(
     make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), nullptr, pointcloud_blocking_path);
 
