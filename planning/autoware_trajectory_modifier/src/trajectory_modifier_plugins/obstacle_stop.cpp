@@ -48,37 +48,6 @@ using utils::obstacle_stop::select_cruise_target;
 using utils::obstacle_stop::TargetObject;
 using utils::obstacle_stop::TargetObjects;
 
-namespace
-{
-void ensure_increasing_timestamps(TrajectoryPoints & points)
-{
-  if (points.size() < 2) return;
-
-  auto is_strictly_increasing = [&]() {
-    auto prev = rclcpp::Duration(points.front().time_from_start).seconds();
-    if (!std::isfinite(prev) || prev < 0.0) return false;
-    for (std::size_t i = 1; i < points.size(); ++i) {
-      const auto t = rclcpp::Duration(points[i].time_from_start).seconds();
-      if (!std::isfinite(t) || t <= prev) return false;
-      prev = t;
-    }
-    return true;
-  };
-  if (is_strictly_increasing()) return;
-
-  constexpr double min_dt = 1e-3;
-  points.front().time_from_start = rclcpp::Duration::from_seconds(0.0);
-  auto t = 0.0;
-  for (std::size_t i = 1; i < points.size(); ++i) {
-    const auto ds = autoware_utils_geometry::calc_distance2d(points[i - 1].pose, points[i].pose);
-    const auto speed =
-      std::max(static_cast<double>(std::abs(points[i - 1].longitudinal_velocity_mps)), min_dt);
-    t += std::max(ds / speed, min_dt);
-    points[i].time_from_start = rclcpp::Duration::from_seconds(t);
-  }
-}
-}  // namespace
-
 void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
 {
   const auto node_ptr = get_node_ptr();
@@ -347,8 +316,6 @@ bool ObstacleStop::apply_cruise(
     target->gap, cruise.ego_decel, target->stopping_distance, stopping_params_.delay_response_time,
     margin);
   cruise_report_ = CruiseReport{*target, v_cruise};
-
-  ensure_increasing_timestamps(traj_points);
 
   const detail::VelocityLimitConstraints constraints{0.0, cruise.max_deceleration, cruise.max_jerk};
   const auto result = detail::apply_velocity_limits(

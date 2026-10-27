@@ -34,6 +34,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>
@@ -81,6 +83,21 @@ TrajectoryPoints create_straight_trajectory(double length, double velocity, doub
     trajectory.push_back(create_trajectory_point(x, 0.0, velocity));
   }
   return trajectory;
+}
+
+// The velocity limiter rejects a candidate whose time_from_start is not strictly increasing.
+void stamp_time_from_start(TrajectoryPoints & points, double velocity)
+{
+  const auto speed = std::max(std::abs(velocity), 1e-3);
+  for (std::size_t i = 0; i < points.size(); ++i) {
+    const auto ds = i == 0 ? 0.0
+                           : std::hypot(
+                               points[i].pose.position.x - points[i - 1].pose.position.x,
+                               points[i].pose.position.y - points[i - 1].pose.position.y);
+    const auto t =
+      i == 0 ? 0.0 : rclcpp::Duration(points[i - 1].time_from_start).seconds() + ds / speed;
+    points[i].time_from_start = rclcpp::Duration::from_seconds(t);
+  }
 }
 
 Odometry::ConstSharedPtr make_odometry(double x, double y, double velocity)
@@ -588,6 +605,7 @@ TEST_F(ObstacleStopIntegrationTest, CruiseCapsVelocityForMovingLeadWithoutStop)
   plugin_->update_params(TrajectoryModifierParams{params_});
 
   auto trajectory = create_straight_trajectory(40.0, 8.0);
+  stamp_time_from_start(trajectory, 8.0);
   const auto input = create_input_data(
     make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(25.0, 0.0, 4.0));
 
@@ -617,6 +635,7 @@ TEST_F(ObstacleStopIntegrationTest, CruiseFallsBackToStopWhenGapIsTooSmall)
   plugin_->update_params(TrajectoryModifierParams{params_});
 
   auto trajectory = create_straight_trajectory(30.0, 8.0);
+  stamp_time_from_start(trajectory, 8.0);
   const auto input = create_input_data(
     make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(6.0, 0.0, 4.0));
 
@@ -658,6 +677,7 @@ TEST_F(ObstacleStopIntegrationTest, CruiseLeavesAlreadySlowerInputUnchanged)
   plugin_->update_params(TrajectoryModifierParams{params_});
 
   auto trajectory = create_straight_trajectory(30.0, 2.0);
+  stamp_time_from_start(trajectory, 2.0);
   const auto input = create_input_data(
     make_odometry(0.0, 0.0, 2.0), make_acceleration(0.0), make_car(20.0, 0.0, 8.0));
 
