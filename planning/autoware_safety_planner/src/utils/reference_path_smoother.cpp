@@ -235,7 +235,20 @@ std::optional<std::vector<double>> optimize_goal_shift(
     upper[NUM_END_CONDITIONS + i] = upper_bound[i];
   }
 
+  osqp_interface::OSQPInterface solver(OSQP_EPS_ABS, true);
+  // The default 1e-4 takes thousands of iterations when the curvature rate is tight (the steer
+  // rate at speed), past the iteration limit; 1e-3 is well under a millimeter on the offsets
+  solver.updateEpsRel(OSQP_EPS_REL);
   std::vector<double> profile = nominal;
+  // The previous output is the linearization point where it is known: the nominal falls off the
+  // ego to the centerline in one step, and the curvature rows linearized on that step are
+  // infeasible with the ego meters off a tight centerline
+  for (std::size_t i = 2; i < previous.size() && i + 2 < n; ++i) {
+    if (std::isfinite(previous[i])) {
+      profile[i] = previous[i];
+    }
+  }
+  std::vector<double> dual;
   for (int pass = 0; pass < NUM_PASSES; ++pass) {
     // The exact curvature of the offset path, with a = 1 - k_ref l and l' from the previous pass:
     // (a^2 k_ref + a l'' + 2 k_ref l'^2) / (a^2 + l'^2)^(3/2). Only l'' is a variable, so the row
@@ -275,11 +288,13 @@ std::optional<std::vector<double>> optimize_goal_shift(
       upper[static_cast<std::size_t>(row)] = max_curvature_rate * ds - constant;
     }
 
-    osqp_interface::OSQPInterface solver(OSQP_EPS_ABS, true);
-    // The default 1e-4 takes thousands of iterations when the curvature rate is tight (the steer
-    // rate at speed), past the iteration limit; 1e-3 is well under a millimeter on the offsets
-    solver.updateEpsRel(OSQP_EPS_REL);
-    const auto result = solver.optimize(p_matrix, a_matrix, q_vector, lower, upper);
+    // Started from the previous pass, not cold: the passes differ by the linearization only, and
+    // from zero each takes thousands of iterations at a corner beyond the steering at speed
+    solver.initializeProblem(p_matrix, a_matrix, q_vector, lower, upper);
+    if (pass > 0) {
+      solver.setWarmStart(profile, dual);
+    }
+    const auto result = solver.optimize();
     if (
       result.solution_status != OSQP_SOLVED ||
       static_cast<int>(result.primal_solution.size()) != ni) {
@@ -293,6 +308,7 @@ std::optional<std::vector<double>> optimize_goal_shift(
       change = std::max(change, std::abs(result.primal_solution[i] - profile[i]));
     }
     profile = result.primal_solution;
+    dual = result.lagrange_multipliers;
     if (change < CONVERGED_M) {
       break;
     }
