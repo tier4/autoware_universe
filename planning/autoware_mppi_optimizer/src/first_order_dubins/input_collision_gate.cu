@@ -149,17 +149,44 @@ bool intersects_static_object(
   return false;
 }
 
+bool intersects_vegetation(
+  const Pose2d & pose, const std::vector<VegetationPoint> & points,
+  const FirstOrderDubinsMppiVehicleParams & vehicle, const float margin)
+{
+  if (points.empty()) return false;
+  const float cos_yaw = std::cos(pose.yaw);
+  const float sin_yaw = std::sin(pose.yaw);
+  const float center_x = pose.x + vehicle.ego_axle_to_box_center * cos_yaw;
+  const float center_y = pose.y + vehicle.ego_axle_to_box_center * sin_yaw;
+  const float half_length = vehicle.ego_length * 0.5F + margin;
+  const float half_width = vehicle.ego_width * 0.5F + margin;
+  for (const auto & point : points) {
+    const float dx = point.x - center_x;
+    const float dy = point.y - center_y;
+    if (
+      std::abs(dx * cos_yaw + dy * sin_yaw) <= half_length &&
+      std::abs(-dx * sin_yaw + dy * cos_yaw) <= half_width) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void check_pose(
   const Pose2d & pose, const RoadSegments & segments, const std::vector<StaticObstacle> & objects,
+  const std::vector<VegetationPoint> & vegetation_points,
   const FirstOrderDubinsMppiVehicleParams & vehicle, const float obstacle_margin,
-  const float border_margin, const InputCollisionConditions conditions,
-  InputCollisionResult & result)
+  const float border_margin, const float vegetation_margin,
+  const InputCollisionConditions conditions, InputCollisionResult & result)
 {
   if (conditions.road_border && !result.road_border) {
     result.road_border = intersects_road_border(pose, segments, vehicle, border_margin);
   }
   if (conditions.static_object && !result.static_object) {
     result.static_object = intersects_static_object(pose, objects, vehicle, obstacle_margin);
+  }
+  if (conditions.static_object && !result.vegetation) {
+    result.vegetation = intersects_vegetation(pose, vegetation_points, vehicle, vegetation_margin);
   }
 }
 
@@ -200,13 +227,17 @@ InputCollisionResult checkInputTrajectoryCollisions(
   const autoware_perception_msgs::msg::TrackedObjects & static_objects,
   const std::vector<Segment> & road_borders, const FirstOrderDubinsMppiVehicleParams & vehicle,
   const float obstacle_margin, const float road_border_margin,
-  const InputCollisionConditions conditions)
+  const InputCollisionConditions conditions, const std::vector<VegetationPoint> & vegetation_points,
+  const float vegetation_margin)
 {
   InputCollisionResult result;
   if ((!conditions.road_border && !conditions.static_object) || trajectory.points.empty()) {
     return result;
   }
   validate_geometry(vehicle, obstacle_margin, road_border_margin);
+  if (!std::isfinite(vegetation_margin) || vegetation_margin < 0.0F) {
+    throw std::invalid_argument("MPPI input collision gate received an invalid vegetation margin");
+  }
   detail::LocalFrame frame;
   const auto & first_position = trajectory.points.front().pose.position;
   frame.reset(first_position.x, first_position.y, trajectory.header.frame_id);
@@ -214,12 +245,24 @@ InputCollisionResult checkInputTrajectoryCollisions(
     conditions.road_border ? make_road_segments(road_borders, frame) : RoadSegments{};
   const auto objects = conditions.static_object ? make_static_obstacles(static_objects, frame)
                                                 : std::vector<StaticObstacle>{};
-  if (segments.x0.empty() && objects.empty()) return result;
+  std::vector<VegetationPoint> local_vegetation;
+  if (conditions.static_object) {
+    local_vegetation.reserve(vegetation_points.size());
+    for (const auto & point : vegetation_points) {
+      if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+        throw std::invalid_argument(
+          "MPPI input collision gate received an invalid vegetation point");
+      }
+      local_vegetation.push_back({frame.x(point.x), frame.y(point.y)});
+    }
+  }
+  if (segments.x0.empty() && objects.empty() && local_vegetation.empty()) return result;
   const std::size_t count =
     std::min(trajectory.points.size(), static_cast<std::size_t>(detail::kMppiHorizon));
   auto previous = to_pose2d(trajectory.points.front().pose, frame);
   check_pose(
-    previous, segments, objects, vehicle, obstacle_margin, road_border_margin, conditions, result);
+    previous, segments, objects, local_vegetation, vehicle, obstacle_margin, road_border_margin,
+    vegetation_margin, conditions, result);
   for (std::size_t index = 1U; index < count && !result.triggered(); ++index) {
     const auto next = to_pose2d(trajectory.points[index].pose, frame);
     const auto steps = interpolation_steps(previous, next, vehicle);
@@ -230,7 +273,8 @@ InputCollisionResult checkInputTrajectoryCollisions(
         previous.x + (next.x - previous.x) * ratio, previous.y + (next.y - previous.y) * ratio,
         previous.yaw + yaw_change * ratio};
       check_pose(
-        pose, segments, objects, vehicle, obstacle_margin, road_border_margin, conditions, result);
+        pose, segments, objects, local_vegetation, vehicle, obstacle_margin, road_border_margin,
+        vegetation_margin, conditions, result);
     }
     previous = next;
   }

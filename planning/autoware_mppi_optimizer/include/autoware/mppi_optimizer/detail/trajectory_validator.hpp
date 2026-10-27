@@ -49,6 +49,9 @@ template <class Cost>
     if (cost.egoIntersectsObstacleAtStep(state.x, state.y, state.yaw, timestep)) {
       reasons = reasons | FirstOrderDubinsMppiInvalidityReason::obstacle;
     }
+    if (cost.egoIntersectsVegetation(state.x, state.y, state.yaw)) {
+      reasons = reasons | FirstOrderDubinsMppiInvalidityReason::obstacle;
+    }
     if (cost.egoIntersectsRoadBorder(state.x, state.y, state.yaw)) {
       reasons = reasons | FirstOrderDubinsMppiInvalidityReason::road_border;
     }

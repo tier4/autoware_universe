@@ -21,18 +21,23 @@
 #include "autoware/mppi_optimizer/input_collision_gate.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
+#include <autoware/point_types/types.hpp>
 #include <autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <pluginlib/class_list_macros.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_field.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 
 #include <tf2/utils.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <limits>
 #include <memory>
@@ -48,7 +53,90 @@ namespace
 {
 
 using autoware::trajectory_modifier::plugin::ProcessingResult;
+using autoware_planning_msgs::msg::Trajectory;
 using autoware_utils_geometry::Segment2d;
+
+double squared_distance_to_reference(
+  const double x, const double y, const autoware_planning_msgs::msg::Trajectory & trajectory,
+  const std::size_t count)
+{
+  double nearest = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0; i < count; ++i) {
+    const auto & a = trajectory.points[i].pose.position;
+    const auto & b = trajectory.points[std::min(i + 1, count - 1)].pose.position;
+    const double dx = b.x - a.x;
+    const double dy = b.y - a.y;
+    const double length_squared = dx * dx + dy * dy;
+    const double ratio =
+      length_squared > 0.0
+        ? std::clamp(((x - a.x) * dx + (y - a.y) * dy) / length_squared, 0.0, 1.0)
+        : 0.0;
+    const double error_x = x - a.x - ratio * dx;
+    const double error_y = y - a.y - ratio * dy;
+    nearest = std::min(nearest, error_x * error_x + error_y * error_y);
+  }
+  return nearest;
+}
+
+bool has_point_field(
+  const sensor_msgs::msg::PointCloud2 & cloud, const std::string & name, const std::uint8_t type,
+  const std::uint32_t size)
+{
+  return std::any_of(cloud.fields.begin(), cloud.fields.end(), [&](const auto & field) {
+    return field.name == name && field.datatype == type && field.count == 1U &&
+           field.offset <= cloud.point_step && size <= cloud.point_step - field.offset;
+  });
+}
+
+std::vector<VegetationPoint> select_vegetation_points(
+  const sensor_msgs::msg::PointCloud2 & cloud, const Trajectory & trajectory,
+  const Eigen::Affine3d & cloud_to_trajectory, const double minimum_z, const double maximum_z,
+  const double corridor_radius)
+{
+  std::vector<VegetationPoint> result;
+  if (trajectory.points.empty() || cloud.data.empty()) return result;
+  const std::size_t trajectory_count = trajectory.points.size();
+  double minimum_x = std::numeric_limits<double>::infinity();
+  double maximum_x = -minimum_x;
+  double minimum_y = minimum_x;
+  double maximum_y = -minimum_x;
+  for (std::size_t i = 0; i < trajectory_count; ++i) {
+    const auto & point = trajectory.points[i];
+    minimum_x = std::min(minimum_x, point.pose.position.x);
+    maximum_x = std::max(maximum_x, point.pose.position.x);
+    minimum_y = std::min(minimum_y, point.pose.position.y);
+    maximum_y = std::max(maximum_y, point.pose.position.y);
+  }
+  const double radius_squared = corridor_radius * corridor_radius;
+  sensor_msgs::PointCloud2ConstIterator<float> x(cloud, "x");
+  sensor_msgs::PointCloud2ConstIterator<float> y(cloud, "y");
+  sensor_msgs::PointCloud2ConstIterator<float> z(cloud, "z");
+  sensor_msgs::PointCloud2ConstIterator<std::uint8_t> class_id(cloud, "class_id");
+  const auto vegetation_class =
+    static_cast<std::uint8_t>(autoware::point_types::PointCloudClassification::VEGETATION);
+  result.reserve(
+    std::min<std::size_t>(static_cast<std::size_t>(cloud.width) * cloud.height, 4096U));
+  for (; x != x.end(); ++x, ++y, ++z, ++class_id) {
+    if (
+      *class_id != vegetation_class || !std::isfinite(*x) || !std::isfinite(*y) ||
+      !std::isfinite(*z)) {
+      continue;
+    }
+    const Eigen::Vector3d point = cloud_to_trajectory * Eigen::Vector3d(*x, *y, *z);
+    if (
+      point.z() < minimum_z || point.z() > maximum_z || point.x() < minimum_x - corridor_radius ||
+      point.x() > maximum_x + corridor_radius || point.y() < minimum_y - corridor_radius ||
+      point.y() > maximum_y + corridor_radius) {
+      continue;
+    }
+    if (
+      squared_distance_to_reference(point.x(), point.y(), trajectory, trajectory_count) <=
+      radius_squared) {
+      result.push_back({point.x(), point.y()});
+    }
+  }
+  return result;
+}
 
 void validate_cost_parameter_combinations(const trajectory_mppi_optimizer::Params & params)
 {
@@ -67,6 +155,18 @@ void validate_cost_parameter_combinations(const trajectory_mppi_optimizer::Param
     throw std::invalid_argument(
       "mppi_optimizer.road_border_safe_margin must be greater than or equal to "
       "mppi_optimizer.road_border_collision_margin");
+  }
+  if (params.vegetation_safe_margin < params.vegetation_collision_margin) {
+    throw std::invalid_argument(
+      "mppi_optimizer.vegetation_safe_margin must be greater than or equal to "
+      "mppi_optimizer.vegetation_collision_margin");
+  }
+  if (
+    !std::isfinite(params.vegetation_min_height_m) ||
+    !std::isfinite(params.vegetation_height_buffer_m) || params.vegetation_min_height_m < 0.0 ||
+    params.vegetation_height_buffer_m < 0.0) {
+    throw std::invalid_argument(
+      "MPPI vegetation height parameters must be finite and non-negative");
   }
 }
 
@@ -123,6 +223,8 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   output.obstacle_collision_margin = static_cast<float>(params.obstacle_collision_margin);
   output.road_border_collision_margin = static_cast<float>(params.road_border_collision_margin);
   output.obstacle_safe_margin = static_cast<float>(params.obstacle_safe_margin);
+  output.vegetation_collision_margin = static_cast<float>(params.vegetation_collision_margin);
+  output.vegetation_safe_margin = static_cast<float>(params.vegetation_safe_margin);
   output.road_border_safe_margin = static_cast<float>(params.road_border_safe_margin);
   output.drivable_area_safe_margin = static_cast<float>(params.drivable_area_safe_margin);
   output.drivable_area_barrier_weight = static_cast<float>(params.drivable_area_barrier_weight);
@@ -246,8 +348,8 @@ float input_activation_margin(
 
 bool is_input_collision_triggered(
   const Trajectory & input, const TrackedObjects & static_objects,
-  const std::vector<Segment> & road_borders, const std::string & map_frame,
-  const FirstOrderDubinsMppiVehicleParams & vehicle,
+  const std::vector<Segment> & road_borders, const std::vector<VegetationPoint> & vegetation_points,
+  const std::string & map_frame, const FirstOrderDubinsMppiVehicleParams & vehicle,
   const trajectory_mppi_optimizer::Params & params)
 {
   if (!params.trigger_on_road_border_collision && !params.trigger_on_static_object_collision) {
@@ -276,7 +378,11 @@ bool is_input_collision_triggered(
     input_activation_margin(
       params.road_border_collision_margin, params.road_border_safe_margin,
       params.use_soft_margins_for_input_collision),
-    {params.trigger_on_road_border_collision, params.trigger_on_static_object_collision});
+    {params.trigger_on_road_border_collision, params.trigger_on_static_object_collision},
+    vegetation_points,
+    input_activation_margin(
+      params.vegetation_collision_margin, params.vegetation_safe_margin,
+      params.use_soft_margins_for_input_collision));
   return collision.triggered();
 }
 
@@ -480,6 +586,46 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     input.header = data.candidate_header;
     input.points = trajectory_points;
 
+    std::vector<VegetationPoint> vegetation_points;
+    if (
+      params_.use_vegetation_pointcloud && !params_.ignore_obstacles && data.obstacle_pointcloud) {
+      const auto & cloud = *data.obstacle_pointcloud;
+      constexpr auto float32 = sensor_msgs::msg::PointField::FLOAT32;
+      constexpr auto uint8 = sensor_msgs::msg::PointField::UINT8;
+      const bool contiguous =
+        cloud.point_step > 0U &&
+        static_cast<std::size_t>(cloud.row_step) ==
+          static_cast<std::size_t>(cloud.width) * cloud.point_step &&
+        cloud.data.size() == static_cast<std::size_t>(cloud.row_step) * cloud.height;
+      if (
+        !contiguous || cloud.is_bigendian || !has_point_field(cloud, "x", float32, 4U) ||
+        !has_point_field(cloud, "y", float32, 4U) || !has_point_field(cloud, "z", float32, 4U) ||
+        !has_point_field(cloud, "class_id", uint8, 1U)) {
+        RCLCPP_WARN_THROTTLE(
+          get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+          "MPPI vegetation pointcloud has an unsupported layout or missing class_id field");
+      } else {
+        try {
+          Eigen::Affine3d cloud_to_trajectory = Eigen::Affine3d::Identity();
+          if (cloud.header.frame_id != input.header.frame_id) {
+            const auto transform = context_->tf_buffer.lookupTransform(
+              input.header.frame_id, cloud.header.frame_id, rclcpp::Time{cloud.header.stamp},
+              rclcpp::Duration::from_seconds(0.1));
+            cloud_to_trajectory = tf2::transformToEigen(transform.transform);
+          }
+          const double ego_z = data.current_odometry->pose.pose.position.z;
+          vegetation_points = select_vegetation_points(
+            cloud, input, cloud_to_trajectory, ego_z + params_.vegetation_min_height_m,
+            ego_z + context_->vehicle_info.vehicle_height_m + params_.vegetation_height_buffer_m,
+            vegetation_filter_margin_m_);
+        } catch (const std::exception & error) {
+          RCLCPP_WARN_THROTTLE(
+            get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+            "MPPI vegetation pointcloud unavailable: %s", error.what());
+        }
+      }
+    }
+
     const bool was_previous_mppi_trajectory_applied = previous_mppi_trajectory_applied_;
     const auto objects_in_range = autoware::avoidance_target_detector::filter_objects_in_range(
       *data.tracked_objects, input, object_filter_margin_m_, object_filter_prediction_extension_s_);
@@ -521,8 +667,8 @@ ProcessingResult TrajectoryMppiOptimizer::process(
           level, "MPPI input trajectory has fewer than 2 points", input.header);
       }
       const bool collision_triggered = is_input_collision_triggered(
-        input, avoidance_targets, mppi_road_borders, data.lanelet_map_bin->header.frame_id,
-        *vehicle_params_, params_);
+        input, avoidance_targets, mppi_road_borders, vegetation_points,
+        data.lanelet_map_bin->header.frame_id, *vehicle_params_, params_);
       input_collision_activation_source_ = input_collision_activation_hold_.update(
         collision_triggered, get_node_ptr()->now().seconds(),
         params_.min_input_collision_activation_duration_s);
@@ -648,7 +794,8 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       input, *data.current_odometry, acceleration, steering, all_targets, mppi_road_borders,
       to_mppi_segments(drivable_area), kinematic_limits, control_postprocessor,
       /*defer_commit=*/true, mpc_predicted_trajectory, preferred_lane_centerline,
-      /*force_optimization=*/params_.optimize_only_on_input_collision, output_options);
+      /*force_optimization=*/params_.optimize_only_on_input_collision, output_options,
+      vegetation_points);
 
     result.debug.previous_mppi_trajectory_applied = was_previous_mppi_trajectory_applied;
     if (mpc_predicted_trajectory) {
@@ -915,6 +1062,10 @@ void TrajectoryMppiOptimizer::prepare_scene_parameters()
   const double barrier_envelope_radius =
     std::hypot(max_longitudinal_offset, max_lateral_offset) + cost_params.obstacle_safe_margin;
   object_filter_margin_m_ = std::max(collision_envelope_radius, barrier_envelope_radius);
+  vegetation_filter_margin_m_ = std::hypot(max_longitudinal_offset, max_lateral_offset) +
+                                static_cast<double>(cost_params.vegetation_collision_margin) +
+                                static_cast<double>(cost_params.vegetation_safe_margin) +
+                                params_.boundary_threshold + 0.5;
   if (
     params_.optimize_only_on_input_collision && params_.trigger_on_static_object_collision &&
     params_.use_soft_margins_for_input_collision) {

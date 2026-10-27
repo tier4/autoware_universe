@@ -41,6 +41,13 @@ using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
 
+/** Trajectory-frame obstacle point retained after semantic, height, and trajectory filtering. */
+struct VegetationPoint
+{
+  double x{0.0};
+  double y{0.0};
+};
+
 /** Open-loop plant replay vs measured ego over elapsed wall time since the previous MPPI cycle. */
 struct FirstOrderDubinsMppiPredictionAccuracy
 {
@@ -690,7 +697,8 @@ public:
     bool defer_commit = false,
     const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt,
     const PreferredLaneCenterlineInput & preferred_lane_centerline = {},
-    bool force_optimization = false, const FirstOrderDubinsMppiOutputOptions & output_options = {});
+    bool force_optimization = false, const FirstOrderDubinsMppiOutputOptions & output_options = {},
+    const std::vector<VegetationPoint> & vegetation_points = {});
 
   /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
    * This records an assumed first actuator command, not feedback from the downstream controller.

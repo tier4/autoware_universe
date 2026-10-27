@@ -92,6 +92,9 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float road_border_collision_margin = 0.2F;
   float obstacle_safe_margin = 0.5F;
   float obstacle_barrier_weight = 0.0F;
+  float vegetation_collision_margin = 0.2F;
+  float vegetation_safe_margin = 0.4F;
+  float vegetation_barrier_weight = 0.0F;
   float road_border_safe_margin = 0.3F;
   float road_border_barrier_weight = 0.0F;
   float drivable_area_safe_margin = 0.0F;
@@ -325,6 +328,9 @@ public:
 
   void clearObstacles();
 
+  /** Local-frame vegetation points; rebuilt into the third static distance-map channel. */
+  void setVegetationPoints(const std::vector<autoware::mppi_optimizer::VegetationPoint> & points);
+
   void setRoadBorderSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments);
 
   void clearRoadBorders();
@@ -398,6 +404,9 @@ public:
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep,
     int * intersecting_obstacle = nullptr) const;
+
+  __host__ __device__ bool egoIntersectsVegetation(float x, float y, float yaw) const;
+  __host__ __device__ float distanceToClosestVegetation(float x, float y, float yaw) const;
 
   /**
    * Signed clearance from the ego's four-circle spine approximation to the closest obstacle.
@@ -487,7 +496,8 @@ private:
   __host__ void ensurePreferredLaneCenterResources();
   __host__ void ensureDistanceMapResources();
   __host__ void ensureNearestSegmentMapResources();
-  __host__ void rebuildStaticDistanceTexture(bool update_road_border, bool update_drivable_area);
+  __host__ void rebuildStaticDistanceTexture(
+    bool update_road_border, bool update_drivable_area, bool update_vegetation);
   __host__ void rebuildObstacleDistanceTexture();
   __host__ void rebuildNearestSegmentTexture();
   __host__ void refreshNearestSegmentTexture(bool geometry_changed);
@@ -497,7 +507,7 @@ private:
     bool drivable_area_geometry_changed);
   __host__ void refreshDistanceMapTexturesNow(
     bool obstacle_geometry_changed, bool road_border_geometry_changed,
-    bool drivable_area_geometry_changed);
+    bool drivable_area_geometry_changed, bool vegetation_geometry_changed);
   __host__ void distanceMapStateToDevice();
   __host__ void releaseDistanceMapResources();
 
@@ -509,6 +519,10 @@ private:
   bool obstacle_geometry_dirty_ = false;
   bool road_border_geometry_dirty_ = false;
   bool drivable_area_geometry_dirty_ = false;
+  bool vegetation_geometry_dirty_ = false;
+  std::vector<autoware::mppi_optimizer::VegetationPoint> vegetation_points_;
+  mppi::memory::PinnedHostBuffer<float> vegetation_distance_upload_{};
+  float * vegetation_distance_device_ = nullptr;
   bool nearest_segment_refresh_pending_ = false;
   bool nearest_segment_geometry_dirty_ = false;
 };

@@ -83,6 +83,11 @@
       obstacle_collision_margin: 0.2
       road_border_collision_margin: 0.2
       obstacle_safe_margin: 0.3
+      use_vegetation_pointcloud: false
+      vegetation_collision_margin: 0.2
+      vegetation_safe_margin: 0.3
+      vegetation_min_height_m: 0.2
+      vegetation_height_buffer_m: 0.2
       road_border_safe_margin: 0.3
       # Hard output validation remains the final collision gate. A 50k soft target strongly
       # separates unsafe rollouts without compressing all normal costs against a 100k outlier.

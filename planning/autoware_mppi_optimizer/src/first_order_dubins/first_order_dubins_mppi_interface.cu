@@ -452,10 +452,14 @@ void applyUserCostParams(
   cost_params.lateral_jerk_coeff = user.lateral_jerk_coeff;
   cost_params.longitudinal_jerk_coeff = user.longitudinal_jerk_coeff;
   cost_params.obstacle_collision_margin = user.obstacle_collision_margin;
+  cost_params.vegetation_collision_margin = user.vegetation_collision_margin;
   cost_params.road_border_collision_margin = user.road_border_collision_margin;
   cost_params.obstacle_safe_margin = user.obstacle_safe_margin;
   cost_params.obstacle_barrier_weight =
     calc_weight(user.crash_contact_penalty, user.obstacle_safe_margin);
+  cost_params.vegetation_safe_margin = user.vegetation_safe_margin;
+  cost_params.vegetation_barrier_weight =
+    calc_weight(user.crash_contact_penalty, user.vegetation_safe_margin);
   cost_params.road_border_safe_margin = user.road_border_safe_margin;
   cost_params.road_border_barrier_weight =
     calc_weight(user.crash_contact_penalty, user.road_border_safe_margin);
@@ -861,6 +865,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   /** Cumulative chord length [m] along diffusion_reference.points (s[0]=0). */
   std::vector<float> diffusion_reference_chord_length_s;
   TrackedObjects tracked_objects;
+  std::vector<VegetationPoint> vegetation_points;
   PreferredLaneCenterlineInput preferred_lane_centerline;
   std::vector<Segment> road_borders;
   std::vector<Segment> drivable_area;
@@ -2035,6 +2040,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects_in, const std::vector<Segment> & road_borders_in,
     const std::vector<Segment> & drivable_area_in,
+    const std::vector<VegetationPoint> & vegetation_points_in,
     const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
     const std::optional<Trajectory> & mpc_predicted_trajectory,
     const PreferredLaneCenterlineInput & preferred_input = {})
@@ -2124,6 +2130,16 @@ struct FirstOrderDubinsMppiInterface::Impl
     syncKinematicLimitsToModel();
     diffusion_reference_chord_length_s = detail::computeCumulativeChordLength(diffusion_reference);
     tracked_objects = ignore_obstacles ? TrackedObjects{} : tracked_objects_in;
+    vegetation_points.clear();
+    if (!ignore_obstacles) {
+      vegetation_points.reserve(vegetation_points_in.size());
+      for (const auto & point : vegetation_points_in) {
+        if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+          throw std::invalid_argument("MPPI vegetation point has non-finite coordinates");
+        }
+        vegetation_points.push_back({frame.x(point.x), frame.y(point.y)});
+      }
+    }
     road_borders = ignore_road_borders ? std::vector<Segment>() : road_borders_in;
     drivable_area = ignore_drivable_area ? std::vector<Segment>() : drivable_area_in;
     obstacles.clear();
@@ -2411,6 +2427,7 @@ struct FirstOrderDubinsMppiInterface::Impl
         obstacle_count > 0 ? obs_traj_yaw.data() : nullptr,
         obstacle_count > 0 ? obs_half_length.data() : nullptr,
         obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
+      cost.setVegetationPoints(vegetation_points);
       uploadBoundarySegments();
       cost.commitDataUpdate();
     }
@@ -2635,6 +2652,8 @@ void validateCostMarginsAndNoise(const FirstOrderDubinsMppiCostParams & p)
      {"lateral_boundary_soft_margin", p.lateral_boundary_soft_margin},
      {"obstacle_collision_margin", p.obstacle_collision_margin},
      {"obstacle_safe_margin", p.obstacle_safe_margin},
+     {"vegetation_collision_margin", p.vegetation_collision_margin},
+     {"vegetation_safe_margin", p.vegetation_safe_margin},
      {"road_border_collision_margin", p.road_border_collision_margin},
      {"road_border_safe_margin", p.road_border_safe_margin},
      {"drivable_area_safe_margin", p.drivable_area_safe_margin},
@@ -2647,6 +2666,7 @@ void validateCostMarginsAndNoise(const FirstOrderDubinsMppiCostParams & p)
      {"nominal_curvature_fit_window_m", p.nominal_curvature_fit_window_m}});
   if (
     p.obstacle_safe_margin < p.obstacle_collision_margin ||
+    p.vegetation_safe_margin < p.vegetation_collision_margin ||
     p.road_border_safe_margin < p.road_border_collision_margin) {
     throw std::invalid_argument("MPPI safety margins must be at least their collision margins");
   }
@@ -2656,7 +2676,7 @@ void validateCostMarginsAndNoise(const FirstOrderDubinsMppiCostParams & p)
   };
   if (
     !finite_barrier(p.lateral_boundary_soft_margin) || !finite_barrier(p.obstacle_safe_margin) ||
-    !finite_barrier(p.road_border_safe_margin)) {
+    !finite_barrier(p.vegetation_safe_margin) || !finite_barrier(p.road_border_safe_margin)) {
     throw std::invalid_argument(
       "MPPI crash penalty and margins produce a non-finite barrier weight");
   }
@@ -3057,7 +3077,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor,
   const bool defer_commit, const std::optional<Trajectory> & mpc_predicted_trajectory,
   const PreferredLaneCenterlineInput & preferred_lane_centerline, const bool force_optimization,
-  const FirstOrderDubinsMppiOutputOptions & output_options)
+  const FirstOrderDubinsMppiOutputOptions & output_options,
+  const std::vector<VegetationPoint> & vegetation_points)
 try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -3105,7 +3126,7 @@ try {
 
   impl_->updateDiffusionReference(
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
-    kinematic_limits, mpc_predicted_trajectory, preferred_lane_centerline);
+    vegetation_points, kinematic_limits, mpc_predicted_trajectory, preferred_lane_centerline);
   Impl::TrackingTransaction transaction(*impl_);
   result.debug.preferred_lane_center_status = impl_->preferred_lane_centerline.status;
   result.debug.preferred_lane_center_segment_count =

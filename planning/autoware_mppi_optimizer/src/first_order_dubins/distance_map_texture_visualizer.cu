@@ -111,8 +111,8 @@ __global__ void colorizeStaticDistanceMapKernel(
          x += static_cast<int>(blockDim.x * gridDim.x)) {
       float distance = 0.0F;
       if (valid) {
-        const float2 distances =
-          tex2D<float2>(input, static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F);
+        const float4 distances =
+          tex2D<float4>(input, static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F);
         distance = channel == 0 ? distances.x : distances.y;
       }
       surf2Dwrite(

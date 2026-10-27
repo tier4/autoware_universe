@@ -324,6 +324,35 @@ trajectory_mppi_optimizer:
     description: Obstacle safety margin in meters
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  use_vegetation_pointcloud:
+    type: bool
+    default_value: false
+    description: Include VEGETATION points from the obstacle pointcloud in MPPI avoidance
+    read_only: false
+  vegetation_collision_margin:
+    type: double
+    default_value: 0.2
+    description: Hard clearance from the ego footprint to vegetation points in meters
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  vegetation_safe_margin:
+    type: double
+    default_value: 0.4
+    description: Additional soft clearance outside the vegetation collision margin in meters
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  vegetation_min_height_m:
+    type: double
+    default_value: 0.2
+    description: Minimum vegetation point height above ego position in meters
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  vegetation_height_buffer_m:
+    type: double
+    default_value: 0.2
+    description: Height added above ego vehicle height when filtering vegetation points in meters
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   road_border_safe_margin:
     type: double
     default_value: 0.2
