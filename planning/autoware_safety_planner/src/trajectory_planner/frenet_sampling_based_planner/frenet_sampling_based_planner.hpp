@@ -42,6 +42,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::safety_planner::experimental
@@ -218,7 +219,7 @@ private:
   };
 
   //! Not const: the boundary simplifier carries a cache
-  std::optional<Trajectory> plan_one_side(
+  std::pair<Trajectory, PlanningFactorData> plan_one_side(
     const PlannerContext & context, const ReferenceGrid & grid,
     const std::vector<Constraint> & constraints,
     const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug);
