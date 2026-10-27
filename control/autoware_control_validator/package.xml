@@ -35,12 +35,13 @@
   <depend>autoware_utils_geometry</depend>
   <depend>autoware_vehicle_info_utils</depend>
   <depend>diagnostic_updater</depend>
+  <depend>eigen</depend>
   <depend>generate_parameter_library</depend>
   <depend>geometry_msgs</depend>
   <depend>lanelet2_core</depend>
+  <depend>libboost-dev</depend>
+  <depend>libpcl-all-dev</depend>
   <depend>nav_msgs</depend>
-  <depend>pcl_conversions</depend>
-  <depend>pcl_ros</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
