@@ -50,10 +50,20 @@ struct PlannedTrajectory
   TurnIndicatorsCommand turn_indicators;
 };
 
+struct PlanningFactorData
+{
+  double distance;
+  Pose control_point_pose;
+  SafetyFactorArray safety_factors;
+  std::string detail;
+};
+
 struct TrajectoryPlannerResult
 {
   std::optional<PlannedTrajectory> normal_trajectory;
   std::optional<PlannedTrajectory> cautious_trajectory;
+  std::optional<PlanningFactorData> normal_planning_factor_data;
+  std::optional<PlanningFactorData> cautious_planning_factor_data;
   TrajectoryPlannerDebug normal_debug;
   TrajectoryPlannerDebug cautious_debug;
 };

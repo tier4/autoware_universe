@@ -35,6 +35,8 @@ struct SafetyPlannerResult
 {
   std::optional<PlannedTrajectory> normal_trajectory;
   std::optional<PlannedTrajectory> cautious_trajectory;
+  std::optional<PlanningFactorData> normal_planning_factor_data;
+  std::optional<PlanningFactorData> cautious_planning_factor_data;
   struct Debug
   {
     std::map<std::string, ConstraintGeneratorOutput> constraint_generator_outputs;
