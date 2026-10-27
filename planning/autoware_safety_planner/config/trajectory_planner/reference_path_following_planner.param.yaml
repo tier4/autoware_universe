@@ -10,3 +10,9 @@
           over_velocity: 100000.0
           over_acceleration: 5000.0
           over_jerk: 2000.0
+      lateral_optimization:
+        enable: false
+        clearance_m: 0.2 # [m] clearance between the footprint and the road_borders
+        deviation_weight: 0.001 # [-] weight on the offset from the centerline, against a smoothing term of 1
+        curvature_margin: 0.9 # [-] fraction of the curvature at full steer the shifted path is held within
+        stability_weight: 0.0 # [-] weight on the offset from the previous cycle's shifted path, against a smoothing term of 1
