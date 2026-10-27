@@ -19,6 +19,7 @@
 #include <autoware/trajectory/trajectory_point.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace autoware::trajectory_modifier::plugin
@@ -42,6 +43,39 @@ bool VelocityModifier::is_trajectory_modification_required(
 
   const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj_points);
   if (!stop_idx.has_value() || stop_idx.value() == 0) return false;
+
+  // A time-sampled velocity-limit profile already supplies a spatially and jerk-consistent stop.
+  // Rebuilding it with the spatial stop heuristic can introduce a much sharper deceleration.
+  // Spatial trajectories without useful timestamps still take the regular modification path.
+  if (stop_idx.value() >= 2) {
+    bool consistent = true;
+    for (std::size_t i = 1; i <= stop_idx.value(); ++i) {
+      const auto & previous = traj_points[i - 1];
+      const auto & current = traj_points[i];
+      const double dt =
+        (rclcpp::Duration(current.time_from_start) - rclcpp::Duration(previous.time_from_start))
+          .seconds();
+      const auto & p0 = previous.pose.position;
+      const auto & p1 = current.pose.position;
+      const double ds = std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+      const double expected_ds =
+        0.5 * (previous.longitudinal_velocity_mps + current.longitudinal_velocity_mps) * dt;
+      const double expected_dv =
+        0.5 * (previous.acceleration_mps2 + current.acceleration_mps2) * dt;
+      if (
+        !std::isfinite(dt) || dt <= 0.0 || dt > 1.0 ||
+        std::abs(ds - expected_ds) > 0.05 + 0.02 * expected_ds ||
+        std::abs(
+          current.longitudinal_velocity_mps - previous.longitudinal_velocity_mps - expected_dv) >
+          0.2 ||
+        std::abs(current.acceleration_mps2 - previous.acceleration_mps2) >
+          std::abs(params_.jerk_limit) * dt + 0.02) {
+        consistent = false;
+        break;
+      }
+    }
+    if (consistent) return false;
+  }
 
   const auto & stop_point = traj_points.at(stop_idx.value());
   const auto & prev_point = traj_points.at(stop_idx.value() - 1);

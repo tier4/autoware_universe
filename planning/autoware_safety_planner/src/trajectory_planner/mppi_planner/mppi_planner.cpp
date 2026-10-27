@@ -467,7 +467,6 @@ void MppiPlanner::ensure_initialized(
 
   autoware::mppi_optimizer::FirstOrderDubinsMppiCostParams cost;
   cost.lambda = static_cast<float>(p.cost.lambda);
-  cost.speed_coeff = static_cast<float>(p.cost.speed);
   cost.track_coeff = 0.0F;
   cost.heading_coeff = 0.0F;
   cost.track_center_coeff = static_cast<float>(p.cost.track_center);

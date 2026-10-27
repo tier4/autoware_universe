@@ -127,9 +127,7 @@ private:
   void set_up_params();
 
   /**
-   * @brief Load TensorRT model and normalization statistics.
-   *
-   * Updates the normalization_map_ and ml_planner_inference_ member variables.
+   * @brief Load TensorRT model from model.base_model_directory and the ONNX filename.
    *
    * @throws std::runtime_error if the model path is invalid or engine setup fails.
    */
@@ -243,7 +241,7 @@ private:
     sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
   BufferingPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
     this, "~/input/turn_indicators"};
-  NewestPollingSubscriber<SteeringReport> sub_steering_{this, "~/input/steering_status"};
+  BufferingPollingSubscriber<SteeringReport> sub_steering_{this, "~/input/steering_status"};
   NewestPollingSubscriber<LaneletRoute> route_subscriber_{
     this, "~/input/route", rclcpp::QoS{1}.transient_local()};
   NewestPollingSubscriber<LaneletMapBin> vector_map_subscriber_{

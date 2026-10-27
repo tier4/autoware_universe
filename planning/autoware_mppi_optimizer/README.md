@@ -26,9 +26,52 @@ autoware_mppi_optimizer/
 
 Configure `autoware::mppi_optimizer::plugin::TrajectoryMppiOptimizer` in the `plugin_names` list of `autoware_trajectory_modifier`. Place it first to optimize the primary candidate before other modifiers and optimizers.
 
-The plugin uses odometry, acceleration, steering, tracked objects, route, and raw lanelet map data from the modifier. It returns the input points when MPPI is disabled, runs in shadow mode, rejects a result, or reports an error.
+The plugin uses odometry, acceleration, steering, tracked objects, route, and raw lanelet map data from the modifier. It returns the input points when MPPI is disabled, skipped, running in shadow mode, or reports an error. A rejected result preserves the input geometry and may still apply its deterministic velocity-limit fallback.
 
-Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory modifier node.
+Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory modifier node. The transient-local `enabled` debug topic is true only for a cycle where an optimized MPPI trajectory replaced the primary candidate; it is false when MPPI is disabled, skipped, rejected, or running in shadow mode.
+
+`output_acceleration_state` and `output_steering_state` independently select the predicted physical actuator states for optimized trajectory points. Each defaults to `false`, which keeps the existing acceleration and steering command output. MPPI has no velocity command: optimized points use predicted velocity, except where the existing engage adjustment applies. Selecting the acceleration state disables that fixed initial velocity/acceleration adjustment so the optimized prefix remains a model prediction. Selecting the steering state keeps the predicted tire angle during a short-reference steering command hold.
+
+The selections apply to the optimized prefix only, up to 80 points. Remaining points and skipped or rejected outputs retain their existing behavior, including velocity-limit and steering-hold fallbacks. The debug `optimized_trajectory` uses the selected values; `nominal_control_trajectory` continues to show commands.
+
+### Conditional optimization
+
+Set `optimize_only_on_input_collision: true` to run MPPI only when an enabled input collision condition is met. `trigger_on_road_border_collision` and `trigger_on_static_object_collision` are independent; either match starts optimization. Both triggers default to true, while conditional mode defaults to false to retain the existing behavior. When neither enabled condition matches, the plugin leaves all input points unchanged, including their velocity and steering fields, and publishes a skip diagnostic. With both triggers disabled, every cycle passes through unchanged.
+
+By default, activation uses `obstacle_collision_margin` and `road_border_collision_margin`. Set `use_soft_margins_for_input_collision: true` to also use the soft-cost zones: the object trigger uses `obstacle_collision_margin + obstacle_safe_margin`, and the road-border trigger uses `road_border_collision_margin + road_border_safe_margin`. This changes when MPPI starts; it does not change the MPPI costs or output collision validation.
+
+`min_input_collision_activation_duration_s` keeps the conditional gate open for at least that many seconds after the last matching collision check. Every matching cycle refreshes the hold. The default `0.0` disables the hold. The timer uses the node's ROS clock, so paused simulation time pauses the hold; a backward clock jump clears it. Disabling MPPI, missing required inputs, short trajectories, parameter updates, route or map changes, and processing errors also clear it. The hold requests an MPPI optimization, but output validation can still reject the result. The diagnostic `input_collision/activation_source` reports `condition`, `hold`, or `none`; `~/debug/mppi/enabled` continues to report whether an optimized output was applied.
+
+The check covers the first 80 input points, which are the points MPPI can replace. It samples between points and uses the same inflated vehicle footprint, object boxes, and road-border segment intersection routines as MPPI's output validation. The static-object condition uses the stationary avoidance targets selected by `autoware_avoidance_target_detector`; it does not include moving vehicles or stationary objects filtered out by that selector. A matched trigger overrides `min_optimization_length`, but a trajectory with fewer than two points still cannot be optimized. A trigger cannot be enabled alongside its corresponding `ignore_obstacles` or `ignore_road_borders` option.
+
+### Steering output filtering
+
+The curvature-adaptive EMA uses the magnitude of the preceding **filtered** steering as its turn
+estimate. A new target cannot increase its own smoothing factor. `steering_filter_alpha_turn`
+defaults to `0.5`, retaining smoothing through turns, turn exits, and reversals; setting it to `1`
+explicitly allows unfiltered transitions once the preceding steering reaches the turn threshold.
+The filter is not a hard steering-rate limiter.
+
+When the nominal sequence is shifted from the previous accepted MPPI output, its first seed command
+has already been filtered. The host preserves it only when GPU optimization leaves it unchanged;
+otherwise the new first command is filtered with the rest of the horizon. The MPPI interface passes
+the seed source, shift count, and preservation decision through
+`FirstOrderDubinsMppiPostprocessingContext`, then recomputes predicted states from the final
+controls.
+
+Filter history is committed only for filtered output selected for publication. A limited fallback
+is filtered from the pre-candidate history; an unfiltered fallback, skipped optimization, or error
+invalidates history so resumed filtering starts from measured steering. Turn smoothing introduces
+response lag, so assess tracking and clearance together with steering continuity when tuning alpha.
+
+## Live distance-texture visualization
+
+Set `enable_distance_map_texture_debug: true` under `mppi_optimizer` to open the CUDA-OpenGL
+distance-map viewer. It displays road-border, drivable-boundary, and dynamic-obstacle ESDF panels.
+Drag the slider below the obstacle panel, or use the arrow/Home/End keys, to select its horizon
+timestep. Red is at or inside the boundary, green is at or beyond the configured safe margin, and
+gray means that texture channel is not valid yet. The viewer requires a graphical display; it is
+disabled by default and closing its window stops its updates.
 
 ## Offline debug logging + retune
 
@@ -66,7 +109,16 @@ ignore_road_borders: true
 ignore_drivable_area: true
 force_cold_start_each_step: true
 min_optimization_length: 0.0
+steering_hold_reference_length_threshold_m: 0.5
 use_last_control_as_nominal: true
+max_lateral_jerk_mps3: 2.5
+standstill_steer_rate_lim: 0.15
+restart_steer_command_rate_lim: 0.15
+restart_steer_command_acceleration_lim: 0.5
+restart_velocity_threshold_mps: 0.5
+use_mpc_predicted_trajectory_as_nominal_steering: false
+mpc_predicted_trajectory_max_age_s: 0.5
+nominal_initial_steering_max_deviation_rad: 0.1
 ```
 
 Then restart the trajectory modifier and compare live MPPI to offline retune.
@@ -77,12 +129,39 @@ Notes:
 - `ignore_road_borders` drops static road-border segments before MPPI.
 - `ignore_drivable_area` is retained as an ablation flag; on this stack boundary crash is already
   disabled in the cost (`isEgoOutsideDrivableArea` always false).
-- `force_cold_start_each_step` only resets tracking counters / arc-length (control is already
-  re-seeded via `updateImportanceSampler(u_nom)` each cycle).
+- `force_cold_start_each_step` invalidates only the reusable nominal horizon. It preserves actuator
+  delay FIFOs and execution-history diagnostics.
 - `min_optimization_length` skips MPPI for a stopping reference shorter than the configured arc
   length in meters; `0.0` disables the length-based skip.
-- `use_last_control_as_nominal` warm-starts `u_nom` from the shifted previous optimized control
-  sequence when available; otherwise (and on cold start) reseeds from the diffusion reference.
+- Rollout steering propagation smoothly releases `standstill_steer_rate_lim` up to
+  `restart_velocity_threshold_mps`. Issued steering commands also obey the restart command-rate
+  and command-acceleration limits. Above the release speed, physical steering rate is the smaller
+  of hardware `steer_rate_lim` and `max_lateral_jerk_mps3 * wheel_base / velocity^2`.
+- The diffusion-reference nominal derives curvature from a local least-squares path fit over
+  `nominal_curvature_fit_window_m`. It advances through the path by predicted travel distance, so
+  a stopped vehicle does not consume one noisy reference point per controller tick.
+- Restart command continuity uses the last accepted command and command rate independently of the
+  reusable trajectory warm start, which is still invalidated while stopped.
+- On entry to the stopped state, MPPI latches the last accepted steering command (or the measured
+  steering fallback) and holds it exactly. Rollouts release the hold once predicted absolute
+  velocity reaches `last_control_warm_start_stop_exit_velocity_mps`, after which the restart
+  command-rate and command-acceleration limits provide the transition back to optimized steering.
+- The same command is held across the entire output when the current reference arc length is at or
+  below `steering_hold_reference_length_threshold_m`. This also applies when short stopping
+  references skip MPPI optimization. Set the threshold to `0.0` to disable the length trigger.
+- `use_last_control_as_nominal` warm-starts `u_nom` from the previous applied MPPI result when its
+  timestamp, plant replay, and shifted reference remain continuous. The elapsed timestamp selects
+  the shift count, and the current diffusion seed fills the newly exposed tail.
+- `use_mpc_predicted_trajectory_as_nominal_steering` replaces the nominal steering prefix with
+  steering inferred from the fresh MPC-predicted path only when MPPI was not applied on the
+  preceding primary-candidate cycle. The MPC trajectory is read from
+  `~/input/mpc_predicted_trajectory`; `mpc_predicted_trajectory_max_age_s` rejects stale input.
+  Acceleration and the nominal suffix continue to come from the configured diffusion or temporal
+  seed.
+- `nominal_initial_steering_max_deviation_rad` limits `u_nom[0]` around the steering predicted when
+  that command reaches the actuator after the existing steering-delay queue. A discontinuous
+  reused horizon is discarded before the current-reference seed is clamped; `0.0` disables the
+  guard.
 
 ### Replay only
 

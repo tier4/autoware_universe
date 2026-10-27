@@ -15,12 +15,14 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__DETAIL__TRAJECTORY_UTILS_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__DETAIL__TRAJECTORY_UTILS_HPP_
 
+#include "autoware/mppi_optimizer/detail/local_frame.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -32,8 +34,9 @@ inline constexpr float kMppiDt = 0.1F;
 
 struct InitialState
 {
-  float x{0.0F};
-  float y{0.0F};
+  /** Map-frame position; nominal solvers and MPC-prediction seeding retain double precision. */
+  double x{0.0};
+  double y{0.0};
   float yaw{0.0F};
   float velocity{0.0F};
   float acceleration{0.0F};
@@ -43,6 +46,7 @@ struct InitialState
 struct ReferenceSample
 {
   float time{0.0F};
+  /** Local-frame position supplied to GPU rollout costs. */
   float x{0.0F};
   float y{0.0F};
   float yaw{0.0F};
@@ -54,6 +58,7 @@ struct ReferenceSample
 
 struct OptimizedState
 {
+  /** Local-frame post-step position; add the origin when publishing. */
   float x{0.0F};
   float y{0.0F};
   float yaw{0.0F};
@@ -93,7 +98,8 @@ void setInitialEngageVelocity(
   const Trajectory & trajectory, const InitialState & ego, const int horizon = kMppiHorizon,
   const float dt = kMppiDt, const size_t start_idx = 0U,
   const std::vector<float> * cumulative_chord_length_s = nullptr,
-  const std::vector<std::optional<float>> * maximum_velocities = nullptr);
+  const std::vector<std::optional<float>> * maximum_velocities = nullptr,
+  const LocalFrame & frame = {});
 
 /** Resolve the external/map minimum at every reference point. */
 [[nodiscard]] std::vector<std::optional<float>> buildEffectiveMaximumVelocityProfile(
@@ -120,14 +126,47 @@ void setInitialEngageVelocity(
 void applyActiveVelocityLimitProfile(
   Trajectory & trajectory, const ActiveVelocityLimitProfile & profile);
 
+/**
+ * Build a cold nominal from a spatially smoothed curvature fit. Horizon samples advance by the
+ * distance predicted from initial_velocity_mps and reference acceleration instead of by point
+ * index; a non-finite initial velocity retains the legacy reference-velocity fallback for tools.
+ */
 [[nodiscard]] std::vector<FirstOrderDubinsMppiControl> buildDiffusionNominalControl(
   const Trajectory & reference, std::size_t start_idx,
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, int horizon = kMppiHorizon,
-  float min_chord_length_m = 1.5F);
+  float min_chord_length_m = 1.5F, float curvature_fit_window_m = 4.0F, float dt = kMppiDt,
+  float initial_velocity_mps = std::numeric_limits<float>::quiet_NaN());
 
 [[nodiscard]] std::vector<FirstOrderDubinsMppiControl> buildForcedNominalControl(
   const std::vector<float> & acceleration_commands, const std::vector<float> & steering_commands,
   const FirstOrderDubinsMppiVehicleParams & vehicle_params, int horizon = kMppiHorizon);
+
+/**
+ * Replace the nominal steering prefix with commands inferred from an MPC-predicted path.
+ * The first transition is anchored at the measured ego pose. Later transitions use consecutive
+ * predicted poses. Prediction time_from_start values are interpolated onto the MPPI timestep.
+ * Acceleration and any suffix beyond the prediction remain unchanged.
+ *
+ * @return Number of nominal steering commands replaced.
+ */
+std::size_t overlayNominalSteeringFromPredictedTrajectory(
+  std::vector<FirstOrderDubinsMppiControl> & nominal, const Trajectory & predicted_trajectory,
+  const InitialState & ego, const FirstOrderDubinsMppiVehicleParams & vehicle_params,
+  float dt = kMppiDt);
+
+/** Compute the steering actuator-rate bound used by host prediction and CUDA rollouts. */
+float velocityDependentSteeringRateLimit(
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, float velocity);
+
+/**
+ * Anchor nominal steer u[0] to the steering predicted after the existing input-delay queue drains.
+ * A non-positive maximum deviation disables the guard and preserves the command exactly.
+ */
+[[nodiscard]] FirstOrderDubinsMppiNominalSteeringContinuity guardInitialNominalSteeringCommand(
+  float nominal_steering_command, float current_steering,
+  const FirstOrderDubinsMppiVehicleParams & vehicle_params, int steering_delay_steps = 0,
+  const std::vector<float> & steering_delay_buffer = {}, float maximum_deviation_rad = 0.0F,
+  float dt = kMppiDt, float current_velocity = 0.0F);
 
 /**
  * Filter an MPPI nominal control sequence through optional longitudinal kinematic limits.
@@ -157,7 +196,8 @@ void applyActiveVelocityLimitProfile(
 
 [[nodiscard]] Trajectory buildOptimizedTrajectory(
   const Trajectory & input, const std::vector<OptimizedState> & post_step_states,
-  const std::vector<FirstOrderDubinsMppiControl> & controls);
+  const std::vector<FirstOrderDubinsMppiControl> & controls,
+  const FirstOrderDubinsMppiOutputOptions & output_options = {}, const LocalFrame & frame = {});
 
 [[nodiscard]] float computeMengerCurvatureWithMinChord(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & points, std::size_t target_idx,

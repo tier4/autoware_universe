@@ -17,6 +17,9 @@
 
 #include "constraint_generator_interface.hpp"
 
+#include <lanelet2_core/Forward.h>
+
+#include <optional>
 #include <string>
 
 namespace autoware::safety_planner::experimental
@@ -24,18 +27,27 @@ namespace autoware::safety_planner::experimental
 
 //! Turns the speed limit of the map into one SpeedLimitZone per lanelet of the lane sequence on the
 //! route: the region is the lanelet itself, the bound the limit the traffic rules of lanelet2
-//! report for it (the speed_limit tag of the lanelet, or the default of the rule set).
+//! report for it (the speed_limit tag of the lanelet, or the default of the rule set). The road
+//! shoulders on either side of those lanelets get a zone of their own limit the same way.
 //!
 //! The zone of the lanelet the ego is on is never put below the current speed, the way
 //! external_velocity_limit holds its global bound: a bound the ego already exceeds is violated by
 //! the first point of every candidate, and the node stops emitting a trajectory altogether. What
 //! brings the ego down to the limit are the zones of the lanelets ahead, which the planner reaches
 //! by braking.
+//! As there, that only holds until the ego has met the limit of the lanelet it is on: from then
+//! on the zone stays at the limit, or a tracking error of a few cm/s over it would lift the zone
+//! to the ego speed and the plan with it.
 class LaneletSpeedLimitConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:
   std::string get_name() const override { return "lanelet_speed_limit"; }
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
+
+private:
+  //! The lanelet whose limit the ego has already been seen to meet, held while it is the current
+  //! one
+  std::optional<lanelet::Id> satisfied_lanelet_id_{std::nullopt};
 };
 
 }  // namespace autoware::safety_planner::experimental

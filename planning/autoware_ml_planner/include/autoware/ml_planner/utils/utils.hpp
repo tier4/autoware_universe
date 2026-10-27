@@ -45,6 +45,14 @@ bool check_input_map(const std::unordered_map<std::string, xt::xarray<float>> & 
 Eigen::Matrix4d pose_to_matrix4d(const geometry_msgs::msg::Pose & pose);
 
 /**
+ * @brief Extracts yaw angle from a quaternion.
+ *
+ * @param quaternion The quaternion representing an orientation.
+ * @return Yaw angle [rad].
+ */
+double yaw_from_quaternion(const geometry_msgs::msg::Quaternion & quaternion);
+
+/**
  * @brief Extracts yaw angle from rotation matrix and converts to cos/sin representation.
  *
  * @param rotation_matrix 3x3 rotation matrix.
@@ -69,6 +77,14 @@ Eigen::Matrix4d inverse(const Eigen::Matrix4d & mat);
  * @return Tensor with a leading batch dimension.
  */
 xt::xarray<float> replicate_for_batch(const xt::xarray<float> & single_data, int batch_size);
+
+/**
+ * @brief Remove the steering angle from ego_agent_past and the wheel base from ego_shape, which
+ * the preprocessing builds but the model does not read (see EGO_HISTORY_SHAPE).
+ * @param input_map Tensors of one frame, before replicate_for_batch: ego_agent_past is
+ * (time, EGO_HISTORY_DIM) and ego_shape has the wheel base last.
+ */
+void drop_steering_and_wheel_base(std::unordered_map<std::string, xt::xarray<float>> & input_map);
 
 }  // namespace autoware::ml_planner::utils
 #endif  // AUTOWARE__ML_PLANNER__UTILS__UTILS_HPP_

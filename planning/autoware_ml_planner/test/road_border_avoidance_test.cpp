@@ -23,6 +23,7 @@
 
 namespace autoware::ml_planner::test
 {
+using autoware::ml_planner::postprocess::RoadBorder;
 using autoware::ml_planner::postprocess::RoadBorderAvoidance;
 using autoware::ml_planner::postprocess::RoadBorderAvoidanceParams;
 using autoware_planning_msgs::msg::Trajectory;
@@ -217,6 +218,64 @@ TEST_F(RoadBorderAvoidanceTest, IgnoresBordersOutsideSearchRadius)
   far_border.emplace_back(100.0, 1.0);
   far_border.emplace_back(150.0, 1.0);
   avoidance.set_road_borders({far_border});
+
+  const auto raw = make_straight_trajectory(0.0);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_EQ(result.num_shifted_points, 0U);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+}
+
+TEST_F(RoadBorderAvoidanceTest, IgnoresBordersOnAnotherLevel)
+{
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  // Overpass borders crossing the path perpendicularly, 6 m above the ego road.
+  std::vector<RoadBorder> borders;
+  for (const double x : {9.0, 11.0}) {
+    RoadBorder border;
+    border.line.emplace_back(x, -20.0);
+    border.line.emplace_back(x, 20.0);
+    border.z = {6.0, 6.0};
+    borders.push_back(border);
+  }
+  avoidance.set_road_borders(borders);
+
+  const auto raw = make_straight_trajectory(0.0);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_EQ(result.num_shifted_points, 0U);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+}
+
+TEST_F(RoadBorderAvoidanceTest, FollowsBorderHeightOnSlope)
+{
+  params_.propagate_shift = false;  // every point must detect the border by itself
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  // Ramp climbing 10 % while the trajectory keeps the ego height (as the model output does).
+  // The left border at y = 1.0 rises 6 m over 60 m but is still on the ego road.
+  RoadBorder border;
+  border.line = make_parallel_border(1.0);
+  border.z = {-1.0, 5.0};
+  avoidance.set_road_borders(std::vector<RoadBorder>{border});
+
+  const auto raw = make_straight_trajectory(0.0, 40);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+  for (const auto & point : result.trajectory.points) {
+    EXPECT_LT(point.pose.position.y, 0.0);
+  }
+}
+
+TEST_F(RoadBorderAvoidanceTest, IgnoresOverpassPartOfBorderOnEgoLevel)
+{
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  // One line string: runs on the ego level at y = 1.5 (clear of the footprint), climbs, and
+  // crosses over the path at x = 10 on an overpass 6 m above.
+  RoadBorder border;
+  border.line.emplace_back(-10.0, 1.5);
+  border.line.emplace_back(9.0, 1.5);
+  border.line.emplace_back(10.0, 1.5);
+  border.line.emplace_back(10.0, -20.0);
+  border.z = {0.0, 0.0, 6.0, 6.0};
+  avoidance.set_road_borders(std::vector<RoadBorder>{border});
 
   const auto raw = make_straight_trajectory(0.0);
   const auto result = avoidance.adjust(raw, ego_pose_);

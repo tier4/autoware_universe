@@ -321,7 +321,7 @@ TEST_F(FakeNodeFixture, left_turn)
 
 TEST_F(FakeNodeFixture, stopped)
 {
-  const auto node_options = makeNodeOptions();
+  auto node_options = makeNodeOptions();
   ControllerTester tester(this, node_options);
 
   tester.send_default_transform();

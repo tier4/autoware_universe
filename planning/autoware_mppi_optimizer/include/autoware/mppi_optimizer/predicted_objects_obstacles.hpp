@@ -68,7 +68,7 @@ inline void obstacleFootprintFromShape(
 inline void buildObstacleTrajectoryBuffersFromPredictedObjects(
   const PredictedObjects & objects, const float dt, const int num_timesteps, std::vector<float> & x,
   std::vector<float> & y, std::vector<float> & yaw, std::vector<float> & half_length,
-  std::vector<float> & half_width)
+  std::vector<float> & half_width, const double origin_x = 0.0, const double origin_y = 0.0)
 {
   const size_t obstacle_count =
     std::min(objects.objects.size(), static_cast<size_t>(kMaxMppiObstacles));
@@ -103,12 +103,12 @@ inline void buildObstacleTrajectoryBuffersFromPredictedObjects(
           static_cast<int>(std::lround(relative_time / path_dt)),
           static_cast<int>(predicted_path->path.size()) - 1);
         const auto & pose = predicted_path->path[static_cast<size_t>(path_idx)];
-        x[buffer_idx] = static_cast<float>(pose.position.x);
-        y[buffer_idx] = static_cast<float>(pose.position.y);
+        x[buffer_idx] = static_cast<float>(pose.position.x - origin_x);
+        y[buffer_idx] = static_cast<float>(pose.position.y - origin_y);
         yaw[buffer_idx] = static_cast<float>(tf2::getYaw(pose.orientation));
       } else {
-        x[buffer_idx] = static_cast<float>(fallback_pose.position.x);
-        y[buffer_idx] = static_cast<float>(fallback_pose.position.y);
+        x[buffer_idx] = static_cast<float>(fallback_pose.position.x - origin_x);
+        y[buffer_idx] = static_cast<float>(fallback_pose.position.y - origin_y);
         yaw[buffer_idx] = fallback_yaw;
       }
     }

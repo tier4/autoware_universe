@@ -38,6 +38,7 @@
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -59,6 +60,7 @@ using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
+using autoware_vehicle_msgs::msg::SteeringReport;
 using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using nav_msgs::msg::Odometry;
 using unique_identifier_msgs::msg::UUID;
@@ -102,6 +104,8 @@ struct PlannerOutput
 
 struct MLPlannerParams
 {
+  std::string base_model_directory;
+  std::string onnx_model_filename;
   std::string model_path;
   std::string plugins_path;
   std::string backend;
@@ -154,6 +158,14 @@ public:
   void update_params(const MLPlannerParams & params);
 
   /**
+   * @brief Resolve the ONNX path from base_model_directory and onnx_model_filename.
+   *
+   * ml_planner ships only the ONNX file. Switching a model is a directory change
+   * (and an optional filename change).
+   */
+  void resolve_model_paths();
+
+  /**
    * @brief Reference time of the current frame (stamp of the newest ego odometry).
    *
    * Only valid after create_input_data() succeeds.
@@ -172,6 +184,7 @@ public:
       std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
       traffic_signals,
     const std::vector<std::shared_ptr<const TurnIndicatorsReport>> & turn_indicators,
+    const std::vector<std::shared_ptr<const SteeringReport>> & steering_reports,
     const LaneletRoute::ConstSharedPtr & route_ptr);
 
   /**
@@ -180,6 +193,11 @@ public:
   preprocess::TensorMapResult create_input_data(const preprocess::FrameInputs & frame_inputs);
 
   const geometry_msgs::msg::Pose & ego_pose() const { return ego_history_.back().pose.pose; }
+
+  double current_steering_angle() const
+  {
+    return static_cast<double>(steering_history_.back().steering_tire_angle);
+  }
 
   /**
    * @brief Set the lanelet map context.
@@ -274,6 +292,8 @@ private:
   // All derived history data is computed statelessly from these buffers.
   utils::TimedBuffer<Odometry> ego_history_{
     HISTORY_WINDOW_S, [](const Odometry & msg) { return rclcpp::Time(msg.header.stamp); }};
+  utils::TimedBuffer<SteeringReport> steering_history_{
+    HISTORY_WINDOW_S, [](const SteeringReport & msg) { return rclcpp::Time(msg.stamp); }};
   utils::TimedBuffer<TurnIndicatorsReport> turn_indicators_history_{
     HISTORY_WINDOW_S, [](const TurnIndicatorsReport & msg) { return rclcpp::Time(msg.stamp); }};
   utils::TimedBuffer<TrackedObjects> objects_history_{

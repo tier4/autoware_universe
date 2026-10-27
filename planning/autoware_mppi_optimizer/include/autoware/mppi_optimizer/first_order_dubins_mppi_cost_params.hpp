@@ -18,56 +18,90 @@
 namespace autoware::mppi_optimizer
 {
 
-/** Host-side MPPI tunables; defaults match mppi_optimizer.param.yaml. */
+// Keep this limit in sync with the max_iter bound in the parameter schema.
+inline constexpr int kMaxMppiIterations = 100;
+
+/** Host-side MPPI tunables; defaults match trajectory_mppi_optimizer_parameters.yaml. */
 struct FirstOrderDubinsMppiCostParams
 {
   /** Softmax temperature for trajectory weighting (higher = softer weighting). */
-  float lambda{1500.0F};
-  float speed_coeff{500.0F};
-  float track_coeff{1000.0F};
+  float lambda{0.1F};
+  /** Bounds and eligible-population ESS target for bounded log-ratio temperature feedback. */
+  float lambda_min{0.01F};
+  float lambda_max{2.0F};
+  float target_ess_ratio{0.2F};
+  float lambda_adaptation_gain{0.1F};
+  /** Diagnostic unsafe-population threshold; never overrides the weighting temperature. */
+  float unsafe_rollout_fraction_threshold{0.95F};
+  /** Exact upper percentile of finite, safe costs used for normalization before weighting. */
+  float cost_normalization_percentile{0.95F};
+  /** Number of optimization iterations performed for each MPPI update. */
+  int max_iter{20};
+  /** Penalizes velocity above the spatially interpolated reference velocity. */
+  float spatial_overspeed_coeff{0.0F};
+  float track_coeff{0.0F};
   float track_terminal_scale{10.0F};
-  float heading_coeff{500.0F};
-  float lateral_distance_coeff{0.0F};
-  float lateral_yaw_error_coeff{0.0F};
+  /** Terminal-only squared XY error to the final reference point. */
+  float terminal_error_coeff{0.0F};
+  /** Terminal-only squared shortest-angle error to the final reference heading. */
+  float terminal_heading_coeff{0.0F};
+  float heading_coeff{0.0F};
+  float lateral_distance_coeff{4000.0F};
+  float lateral_yaw_error_coeff{500.0F};
   /** Soft cost on remaining corridor chord length [m]; 0 disables. */
-  float remaining_distance_coeff{0.0F};
+  float remaining_distance_coeff{40.0F};
   /** Soft cost on along-track overshoot past the corridor tip [m]; 0 disables. */
-  float path_overshoot_coeff{0.0F};
+  float path_overshoot_coeff{1000.0F};
+  /** Squared rear-axle distance to preferred route centerlines; zero disables. */
+  float preferred_lane_center_coeff{0.0F};
   float track_center_coeff{0.0F};
   float corner_buffer_coeff{0.0F};
   float corner_safe_margin{0.3F};
-  float boundary_threshold{1.5F};
+  float boundary_threshold{0.8F};
   /** Distance inside boundary_threshold at which the gradual lateral barrier activates. */
   float lateral_boundary_soft_margin{0.2F};
   float lateral_boundary_barrier_weight{};
-  float accel_cmd_coeff{0.0F};
-  float steer_cmd_coeff{0.0F};
-  float steer_rate_coeff{0.0F};
+  float accel_cmd_coeff{50.0F};
+  float steer_cmd_coeff{250.0F};
+  /** Weight on squared physical steering-angle increments / dt, after lag and saturation. */
+  float steer_rate_coeff{20000.0F};
+  /** One-shot cost on the first steering command relative to the measured steering state. */
+  float initial_steer_rate_coeff{0.0F};
+  /** Independent weights on squared command increments / dt, for horizon t >= 1. */
+  float accel_cmd_rate_coeff{0.0F};
+  float steer_cmd_rate_coeff{0.0F};
   /** Shared weight for optional VelocityLimit interval violations. */
   float overlimit_coeff{10000.0F};
   /** Gaussian sampling std-dev on acceleration command [m/s^2] around u_nom. */
-  float accel_cmd_std_dev{0.35F};
+  float accel_cmd_std_dev{0.1F};
   /** Gaussian sampling std-dev on steer command [rad] around u_nom. */
-  float steer_cmd_std_dev{0.024F};
+  float steer_cmd_std_dev{0.02F};
+  /** Per-iteration multiplier applied to the sampling standard deviation. */
+  float std_dev_decay{0.84F};
   /** Power-law PSD exponent for acceleration-command sampling noise. */
   float accel_cmd_noise_exponent{1.0F};
   /** Power-law PSD exponent for steering-command sampling noise. */
   float steer_cmd_noise_exponent{1.0F};
   /** Spatial window used only when deriving a cold-start nominal steer from the reference. */
   float nominal_curvature_min_chord_length_m{1.5F};
-  float lateral_acceleration_coeff{300.0F};
-  float lateral_jerk_coeff{300.0F};
-  float longitudinal_jerk_coeff{10.0F};
-  float obstacle_collision_margin{0.5F};
-  float road_border_collision_margin{0.3F};
-  float obstacle_safe_margin{0.5F};
+  /** Arc-length span used by the local least-squares curvature fit. */
+  float nominal_curvature_fit_window_m{4.0F};
+  float lateral_acceleration_coeff{100.0F};
+  float lateral_jerk_coeff{10.0F};
+  float longitudinal_jerk_coeff{100.0F};
+  float obstacle_collision_margin{0.2F};
+  float road_border_collision_margin{0.1F};
+  float obstacle_safe_margin{0.4F};
   float obstacle_barrier_weight{};
-  float road_border_safe_margin{0.3F};
+  float road_border_safe_margin{0.2F};
   float road_border_barrier_weight{};
   float drivable_area_safe_margin{0.0F};
-  float drivable_area_barrier_weight{2000.0F};
+  float drivable_area_barrier_weight{0.0F};
   float crash_contact_penalty{100000.0F};
 };
+
+/** Validates parameter ranges and derived barrier weights before optimizer setup. */
+void validateFirstOrderDubinsMppiCostParams(const FirstOrderDubinsMppiCostParams & params);
 
 }  // namespace autoware::mppi_optimizer
 

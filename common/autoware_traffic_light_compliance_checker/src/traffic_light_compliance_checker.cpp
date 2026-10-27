@@ -145,7 +145,8 @@ tl::expected<ComplianceResult, std::string> TrafficLightComplianceChecker::check
     params_.checked_trajectory_length.jerk_limit, params_.delay_response_time);
 
   auto result = check_with_filtered_signals(
-    input, filtered_signals, force_reject_amber_ids, check_red_lights, check_amber_lights);
+    input, filtered_signals, force_reject_amber_ids, check_red_lights, check_amber_lights,
+    is_ego_stopped);
 
   cleanup_amber_rejection_history(input.current_time);
 
@@ -292,7 +293,7 @@ ComplianceResult TrafficLightComplianceChecker::check_with_filtered_signals(
   const Inputs & input,
   const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
   const std::vector<int64_t> & force_reject_amber_ids, const bool check_red_lights,
-  const bool check_amber_lights) const
+  const bool check_amber_lights, const bool is_ego_stopped) const
 {
   if (input.trajectory.empty() || (!check_red_lights && !check_amber_lights)) {
     return ComplianceResult{};
@@ -328,6 +329,8 @@ ComplianceResult TrafficLightComplianceChecker::check_with_filtered_signals(
   const auto min_lookahead_distance =
     std::max(params_.min_lookahead_distance, max_prev_violation_distance);
 
+  const auto forward_stop_point_offset = is_ego_stopped ? 0.25 : 0.0;
+
   // Floor by min_lookahead_distance so low ego speed still covers nearby stop lines,
   // while keeping the comfortable-stop cap so far lights are not over-checked
   // (important for traffic_light_filter which rejects trajectories).
@@ -354,7 +357,9 @@ ComplianceResult TrafficLightComplianceChecker::check_with_filtered_signals(
     trajectory_ls.emplace_back(lanelet_p);
 
     // search for a stop point beyond the current ego position
-    if (length > 0.0 && p.longitudinal_velocity_mps <= params_.ego_stopped_velocity_threshold) {
+    if (
+      length > forward_stop_point_offset &&
+      p.longitudinal_velocity_mps <= params_.ego_stopped_velocity_threshold) {
       stop_point = trajectory_ls.back();
       break;
     }

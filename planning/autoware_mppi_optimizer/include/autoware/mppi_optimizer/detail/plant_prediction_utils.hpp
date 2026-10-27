@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__DETAIL__PLANT_PREDICTION_UTILS_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__DETAIL__PLANT_PREDICTION_UTILS_HPP_
 
+#include "autoware/mppi_optimizer/detail/local_frame.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 
@@ -31,9 +32,13 @@ namespace autoware::mppi_optimizer::detail
 struct FirstOrderDubinsMppiPlantSnapshot
 {
   bool valid{false};
+  LocalFrame frame;
   builtin_interfaces::msg::Time stamp{};
   float sim_time{0.0F};
   FirstOrderDubinsMppiAppliedPlantState plant;
+  bool standstill_steering_hold_active{false};
+  bool short_reference_steering_hold_active{false};
+  float standstill_steering_hold_command_rad{0.0F};
 };
 
 /** Applied control issued at a wall-clock stamp (piecewise-constant replay). */
@@ -74,11 +79,12 @@ struct PlantPredictionReplayInput
   FirstOrderDubinsMppiVehicleParams vehicle{};
   bool enable_input_delay_compensation{true};
   float integration_dt{0.1F};
+  float standstill_steering_hold_exit_velocity_mps{0.08F};
   FirstOrderDubinsMppiPlantSnapshot anchor{};
   std::vector<FirstOrderDubinsMppiControlHistoryEntry> control_history{};
   builtin_interfaces::msg::Time measurement_stamp{};
-  float measured_x{0.0F};
-  float measured_y{0.0F};
+  double measured_x{0.0};
+  double measured_y{0.0};
   float measured_yaw{0.0F};
   float measured_vel{0.0F};
 };

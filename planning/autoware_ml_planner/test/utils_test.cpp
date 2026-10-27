@@ -102,6 +102,16 @@ TEST_F(UtilsTest, GetTransformMatrixRotation)
     for (int j = 0; j < 3; ++j) EXPECT_NEAR(map2bl(i, j), R.transpose()(i, j), 1e-6);
 }
 
+TEST_F(UtilsTest, YawFromQuaternion)
+{
+  for (const double angle : {0.0, M_PI_2, -M_PI_2, 3.0, -3.0}) {
+    geometry_msgs::msg::Quaternion quaternion;
+    quaternion.z = std::sin(angle / 2);
+    quaternion.w = std::cos(angle / 2);
+    EXPECT_NEAR(utils::yaw_from_quaternion(quaternion), angle, 1e-6);
+  }
+}
+
 TEST_F(UtilsTest, CheckInputMapValid)
 {
   std::unordered_map<std::string, xt::xarray<float>> input_map;
@@ -142,6 +152,21 @@ TEST_F(UtilsTest, ReplicateForBatchPreservesSampleShape)
   EXPECT_EQ(batch_data.shape()[2], 2);
   EXPECT_EQ(batch_data(0, 2, 1), 6.0f);
   EXPECT_EQ(batch_data(1, 2, 1), 6.0f);
+}
+
+TEST_F(UtilsTest, DropSteeringAndWheelBase)
+{
+  std::unordered_map<std::string, xt::xarray<float>> input_map;
+  // Two timesteps of [x, y, cos_yaw, sin_yaw, velocity, steering_tire_angle, yaw_rate].
+  input_map["ego_agent_past"] = {{0, 1, 2, 3, 4, 5, 6}, {10, 11, 12, 13, 14, 15, 16}};
+  input_map["ego_shape"] = {5.8f, 6.99f, 2.3f, 4.76f};
+
+  utils::drop_steering_and_wheel_base(input_map);
+
+  const xt::xarray<float> expected_history = {{0, 1, 2, 3, 4, 6}, {10, 11, 12, 13, 14, 16}};
+  const xt::xarray<float> expected_shape = {5.8f, 6.99f, 2.3f};
+  EXPECT_EQ(input_map.at("ego_agent_past"), expected_history);
+  EXPECT_EQ(input_map.at("ego_shape"), expected_shape);
 }
 
 }  // namespace autoware::ml_planner::test
