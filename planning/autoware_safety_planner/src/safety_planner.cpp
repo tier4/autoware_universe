@@ -279,7 +279,7 @@ std::optional<PathPointTrajectory> blend_reference_path_to_ego(
   for (std::size_t i = 0; i < original.size() && bases[i] < s_begin; ++i) {
     blended.push_back(original[i]);
   }
-  const std::size_t first_shifted = blended.size();
+  // const std::size_t first_shifted = blended.size();
   const auto resample = [&](const double s) {
     const double l = (s > s_begin && s < s_end) ? offset_at(s) : 0.0;  // 0 at both ends
     const auto shifted = to_world_pose(path, s, l);
@@ -299,24 +299,8 @@ std::optional<PathPointTrajectory> blend_reference_path_to_ego(
     add_range(s_begin, s_ego);
   }
   add_range(s_ego, s_end);
-  resample(s_end);
-  const std::size_t last_shifted = blended.size() - 1;
-  for (std::size_t i = 0; i < original.size(); ++i) {
-    if (bases[i] > s_end) {
-      blended.push_back(original[i]);
-    }
-  }
+  // resample(s_end);
 
-  // The headings have to describe the shifted positions, not the centerline they came from
-  for (std::size_t i = first_shifted; i <= last_shifted; ++i) {
-    if (i == 0 || i + 1 == blended.size()) {
-      continue;
-    }
-    const auto & p0 = blended[i - 1].point.pose.position;
-    const auto & p1 = blended[i + 1].point.pose.position;
-    blended[i].point.pose.orientation =
-      autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(p1.y - p0.y, p1.x - p0.x));
-  }
   return experimental::trajectory::pretty_build(blended);
 }
 }  // namespace
