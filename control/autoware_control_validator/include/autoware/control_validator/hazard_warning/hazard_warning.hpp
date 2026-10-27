@@ -46,9 +46,6 @@ struct HazardWarningParam
 {
   bool enable{true};
   double min_alert_duration{0.5};
-  double sector_boundary_tolerance_deg{1.0};
-  /// Bearing ranges [deg] in HazardAlert sector order (FRONT, FRONT_RIGHT, ... FRONT_LEFT).
-  std::array<std::array<double, 2>, kNumSectors> sector_ranges{};
 };
 }  // namespace hazard_warning
 
@@ -95,7 +92,6 @@ private:
   rclcpp::Logger logger_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   hazard_warning::HazardWarningParam param_;
-  bool publish_markers_{true};
   std::optional<autoware_utils_geometry::Point2d> wedge_apex_;
   std::array<autoware_utils_geometry::Polygon2d, hazard_warning::kNumSectors> wedges_;
   std::array<hazard_warning::AlertLatch, hazard_warning::kNumSectors> sector_latches_;

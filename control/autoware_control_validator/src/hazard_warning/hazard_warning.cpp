@@ -40,6 +40,17 @@ using visualization_msgs::msg::MarkerArray;
 
 constexpr double kWedgeArcStepDeg = 10.0;
 constexpr double kWedgeRadius = 60.0;
+constexpr double kSectorBoundaryToleranceDeg = 1.0;
+constexpr std::array<std::array<double, 2>, kNumSectors> kSectorRanges{{
+  {-10.0, 10.0},
+  {-30.0, -10.0},
+  {-150.0, -30.0},
+  {-170.0, -150.0},
+  {170.0, -170.0},
+  {150.0, 170.0},
+  {30.0, 150.0},
+  {10.0, 30.0},
+}};
 
 double deg2rad(const double deg)
 {
@@ -89,10 +100,10 @@ std::optional<BearingArc> bearing_arc(const Polygon2d & shape, const Point2d & a
   return BearingArc{bearings[start_index], 360.0 - max_gap};
 }
 
-BearingArc sector_arc(const HazardWarningParam & param, const size_t sector)
+BearingArc sector_arc(const size_t sector)
 {
-  const double from_deg = param.sector_ranges[sector][0] - param.sector_boundary_tolerance_deg;
-  double to_deg = param.sector_ranges[sector][1] + param.sector_boundary_tolerance_deg;
+  const double from_deg = kSectorRanges[sector][0] - kSectorBoundaryToleranceDeg;
+  double to_deg = kSectorRanges[sector][1] + kSectorBoundaryToleranceDeg;
   while (to_deg <= from_deg) {
     to_deg += 360.0;
   }
@@ -105,15 +116,6 @@ HazardWarningParam to_hazard_warning_param(
   HazardWarningParam out;
   out.enable = params.enable;
   out.min_alert_duration = params.min_alert_duration;
-  out.sector_boundary_tolerance_deg = params.sector.boundary_tolerance_deg;
-  const std::array<const std::vector<double> *, kNumSectors> ranges{
-    &params.sector.range.front, &params.sector.range.front_right,
-    &params.sector.range.right, &params.sector.range.rear_right,
-    &params.sector.range.rear,  &params.sector.range.rear_left,
-    &params.sector.range.left,  &params.sector.range.front_left};
-  for (size_t sector = 0; sector < kNumSectors; ++sector) {
-    out.sector_ranges[sector] = {(*ranges[sector])[0], (*ranges[sector])[1]};
-  }
   return out;
 }
 
@@ -219,11 +221,7 @@ HazardWarning::HazardWarning(
 
 void HazardWarning::update_parameters(const ::control_validator::Params & params)
 {
-  publish_markers_ = params.hazard_warning.debug.publish_markers;
   param_ = to_hazard_warning_param(params.hazard_warning);
-  if (wedge_apex_) {
-    build_wedges(*wedge_apex_);
-  }
 }
 
 void HazardWarning::build_wedges(const Point2d & apex)
@@ -233,7 +231,7 @@ void HazardWarning::build_wedges(const Point2d & apex)
   // for wide sectors.
   wedge_apex_ = apex;
   for (size_t sector = 0; sector < kNumSectors; ++sector) {
-    const auto arc = sector_arc(param_, sector);
+    const auto arc = sector_arc(sector);
     const double from_deg = arc.start_deg;
     const double to_deg = from_deg + arc.length_deg;
     const auto num_arc_steps =
@@ -273,7 +271,7 @@ void HazardWarning::assign_sectors(
       }
       const auto arc = bearing_arc(source.shape, apex);
       for (size_t sector = 0; sector < kNumSectors; ++sector) {
-        if (!arc || overlaps(*arc, sector_arc(param_, sector))) {
+        if (!arc || overlaps(*arc, sector_arc(sector))) {
           max_level[sector] = std::max(max_level[sector], source.risk_level);
           auto & assigned = sector_sources[sector].*member;
           if (!assigned) {
@@ -332,7 +330,7 @@ std::optional<HazardAlert> HazardWarning::make_alert(
 
 void HazardWarning::publish_debug(const HazardAlert & alert) const
 {
-  if (!publish_markers_ || !pub_markers_ || pub_markers_->get_subscription_count() == 0) {
+  if (!pub_markers_ || pub_markers_->get_subscription_count() == 0) {
     return;
   }
   MarkerArray markers;

@@ -100,55 +100,6 @@ control_validator:
       description: Minimum time a raised warning is held after the last raw detection [s].
       validation:
         gt_eq<>: [0.0]
-    sector:
-      boundary_tolerance_deg:
-        type: double
-        description: Angular tolerance added to both ends of each sector [deg].
-      range:
-        front:
-          type: double_array
-          description: Bearing range of the FRONT sector [deg].
-          validation:
-            fixed_size<>: [2]
-        front_left:
-          type: double_array
-          description: Bearing range of the FRONT_LEFT sector [deg].
-          validation:
-            fixed_size<>: [2]
-        left:
-          type: double_array
-          description: Bearing range of the LEFT sector [deg].
-          validation:
-            fixed_size<>: [2]
-        rear_left:
-          type: double_array
-          description: Bearing range of the REAR_LEFT sector [deg].
-          validation:
-            fixed_size<>: [2]
-        rear:
-          type: double_array
-          description: Bearing range of the REAR sector [deg].
-          validation:
-            fixed_size<>: [2]
-        rear_right:
-          type: double_array
-          description: Bearing range of the REAR_RIGHT sector [deg].
-          validation:
-            fixed_size<>: [2]
-        right:
-          type: double_array
-          description: Bearing range of the RIGHT sector [deg].
-          validation:
-            fixed_size<>: [2]
-        front_right:
-          type: double_array
-          description: Bearing range of the FRONT_RIGHT sector [deg].
-          validation:
-            fixed_size<>: [2]
-    debug:
-      publish_markers:
-        type: bool
-        description: If true, publish the hazard warning debug markers.
 
   collision_validator:
     braking:

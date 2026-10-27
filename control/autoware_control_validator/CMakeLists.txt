@@ -21,7 +21,6 @@ ament_auto_add_library(autoware_control_validator_component SHARED
   src/control_validator.cpp
   src/collision_validator/collision_validator.cpp
   src/collision_validator/collision_evaluator.cpp
-  src/collision_validator/sweep_types.cpp
   src/collision_validator/pointcloud_preprocessor.cpp
   src/hazard_warning/hazard_warning.cpp
 )

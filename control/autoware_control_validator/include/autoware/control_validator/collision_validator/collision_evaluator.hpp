@@ -180,25 +180,25 @@ TrajectoryData generate_static_trajectory(const Polygon2d & polygon, const TimeT
 
 struct CollisionStep
 {
-  size_t ego_index;
-  IndexRange target_index_range;
+  size_t ref_index;
+  IndexRange test_index_range;
 };
 
 /**
- * @brief First time window [t_{k-1}, t_k] of `ego` (k >= 1) in which the swept footprints of both
+ * @brief First time window [t_{k-1}, t_k] of `ref` (k >= 1) in which the swept footprints of both
  * trajectories overlap. Windows whose end step is stopped are skipped.
  */
 std::optional<CollisionStep> find_first_collision(
-  const TrajectoryData & ego, const TrajectoryData & target,
-  const std::vector<bool> & ego_stopped = {});
+  const TrajectoryData & ref, const TrajectoryData & test,
+  const std::vector<bool> & ref_stopped = {});
 
 /**
- * @brief First time window [t_{k-1}, t_k] of `ego` (k >= 1) whose swept footprint contains the
+ * @brief First time window [t_{k-1}, t_k] of `ref` (k >= 1) whose swept footprint contains the
  * point. Windows whose end step is stopped are skipped.
  * @return k
  */
 std::optional<size_t> find_first_collision(
-  const TrajectoryData & ego, const Point2d & point, const std::vector<bool> & ego_stopped = {});
+  const TrajectoryData & ref, const Point2d & point, const std::vector<bool> & ref_stopped = {});
 }  // namespace detail
 
 struct CollisionCandidate
@@ -273,7 +273,7 @@ private:
 
   detail::TrajectoryData make_object_trajectory(
     const autoware_perception_msgs::msg::PredictedObject & object, double time_offset,
-    double horizon, const detail::TimeTrajectory & static_times) const;
+    const detail::TimeTrajectory & static_times) const;
 
   CollisionCandidate evaluate_object(
     const EgoSweep & ego_sweep, SweepsWithBraking & braked_sweeps, CollisionCandidate candidate,
