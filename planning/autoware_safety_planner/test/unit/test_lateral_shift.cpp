@@ -80,6 +80,53 @@ TEST(OptimizeGoalShift, StaysNearThePreviousProfileWithTheEndFree)
   EXPECT_NEAR(with->front(), 0.0, 1.0e-6);  // the start stays pinned
 }
 
+// The ego off the centerline and diverging from it with the wheels turned away: the return starts
+// at the wheel curvature and turns the wheels no faster than the rate allows, instead of taking
+// full opposite lock at the ego
+TEST(OptimizeGoalShift, StartsAtTheEgoCurvatureAndTurnsWithinTheRate)
+{
+  constexpr double ds = 1.0;
+  constexpr std::size_t n = 120;
+  constexpr double max_curvature = 0.15;
+  constexpr double ego_curvature = 0.05;
+  constexpr double max_curvature_rate = 0.01;
+  std::vector<double> nominal(n, 0.0);
+  nominal[0] = 3.0;
+  nominal[1] = 3.0 + 0.2 * ds;
+  const std::vector<double> straight(n, 0.0);
+  const std::vector<double> lo(n, -INF);
+  const std::vector<double> hi(n, INF);
+
+  const auto optimized = optimize_goal_shift(
+    nominal, straight, ds, max_curvature, lo, hi, 1.0e-3, true, {}, 0.0, ego_curvature,
+    max_curvature_rate);
+  ASSERT_TRUE(optimized.has_value());
+  const auto & l = *optimized;
+  // On a straight centerline the curvature of the offset path is l'' / (1 + l'^2)^(3/2)
+  const auto curvature_at = [&](const std::size_t i) {
+    const double dl = (l[i + 1] - l[i - 1]) / (2.0 * ds);
+    return (l[i + 1] - 2.0 * l[i] + l[i - 1]) / (ds * ds) / std::pow(1.0 + dl * dl, 1.5);
+  };
+  EXPECT_NEAR(curvature_at(1), ego_curvature, 1.0e-3);
+  // The rate holds in the linearization of the curvature, which at a tight rate from a pinned
+  // start is off by up to half of it on the exact curvature; still far from the opposite lock
+  for (std::size_t i = 1; i + 2 < n; ++i) {
+    EXPECT_LE(std::abs(curvature_at(i + 1) - curvature_at(i)), 1.6 * max_curvature_rate * ds) << i;
+    EXPECT_LE(std::abs(curvature_at(i)), max_curvature + 1.0e-3) << i;
+  }
+  EXPECT_NEAR(l.back(), 0.0, 1.0e-6);
+
+  // Without the continuity the path takes the opposite lock right away
+  const auto unconstrained =
+    optimize_goal_shift(nominal, straight, ds, max_curvature, lo, hi, 1.0e-3);
+  ASSERT_TRUE(unconstrained.has_value());
+  const double dl = ((*unconstrained)[2] - (*unconstrained)[0]) / (2.0 * ds);
+  EXPECT_LT(
+    ((*unconstrained)[2] - 2.0 * (*unconstrained)[1] + (*unconstrained)[0]) / (ds * ds) /
+      std::pow(1.0 + dl * dl, 1.5),
+    -0.1);
+}
+
 TEST(ShiftPathPoints, MovesTheSamplesAlongTheNormalAndTurnsTheHeadings)
 {
   std::vector<PathPointWithLaneId> points;

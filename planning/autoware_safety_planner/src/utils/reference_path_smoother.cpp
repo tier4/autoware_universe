@@ -169,14 +169,16 @@ std::optional<std::vector<double>> optimize_goal_shift(
   const std::vector<double> & nominal, const std::vector<double> & centerline_curvature,
   const double ds, const double max_curvature, const std::vector<double> & lower_bound,
   const std::vector<double> & upper_bound, const double deviation_weight, const bool hold_end,
-  const std::vector<double> & previous, const double previous_weight)
+  const std::vector<double> & previous, const double previous_weight,
+  const std::optional<double> start_curvature, const double max_curvature_rate)
 {
   //! The curvature of the offset path is nonlinear in l through 1 - k_ref l and l'; both are
   //! frozen at the profile of the previous pass and the QP re-run. k_ref * l reaches ~1 on the
   //! tight lanelets this is for, so linearizing those terms away is not enough
   constexpr int NUM_PASSES = 3;
   constexpr double CONVERGED_M = 1.0e-3;
-  constexpr double OSQP_EPS_ABS = 1.0e-6;
+  constexpr double OSQP_EPS_ABS = 1.0e-4;
+  constexpr double OSQP_EPS_REL = 1.0e-3;
 
   const auto n = nominal.size();
   if (n < 4) {
@@ -202,12 +204,15 @@ std::optional<std::vector<double>> optimize_goal_shift(
     }
   }
 
-  // Rows: the value and the slope at each end, the offset of every point, then the curvature of
-  // every interior point. The second difference at the ends is left free on purpose: pinning it at
-  // the start of the ramp takes away the freedom the tight lanelets need
+  // Rows: the value and the slope at each end, the offset of every point, the curvature of every
+  // interior point, then the change of the curvature between consecutive interior points when it
+  // is limited. The second difference at the ends is left free on purpose: pinning it at the start
+  // of the ramp takes away the freedom the tight lanelets need
   constexpr int NUM_END_CONDITIONS = 4;
-  const int num_rows = NUM_END_CONDITIONS + ni + ni - 2;
+  const bool limit_rate = std::isfinite(max_curvature_rate);
+  const int num_rows = NUM_END_CONDITIONS + ni + ni - 2 + (limit_rate ? ni - 3 : 0);
   const int curvature_row = NUM_END_CONDITIONS + ni;
+  const int rate_row = curvature_row + ni - 2;
   Eigen::MatrixXd a_matrix = Eigen::MatrixXd::Zero(num_rows, ni);
   a_matrix(0, 0) = 1.0;
   a_matrix(1, 0) = -1.0;
@@ -234,7 +239,10 @@ std::optional<std::vector<double>> optimize_goal_shift(
   for (int pass = 0; pass < NUM_PASSES; ++pass) {
     // The exact curvature of the offset path, with a = 1 - k_ref l and l' from the previous pass:
     // (a^2 k_ref + a l'' + 2 k_ref l'^2) / (a^2 + l'^2)^(3/2). Only l'' is a variable, so the row
-    // carries the a and the rest goes into the bounds
+    // carries the a and the rest goes into the bounds. The start curvature is held at the second
+    // sample, the first one with a second difference
+    std::vector<double> coefficient(n, 0.0);  // curvature_i = coefficient_i * l''_i + offset_i
+    std::vector<double> offset(n, 0.0);
     for (int i = 1; i + 1 < ni; ++i) {
       const auto idx = static_cast<std::size_t>(i);
       const double k_ref = centerline_curvature[idx];
@@ -242,15 +250,35 @@ std::optional<std::vector<double>> optimize_goal_shift(
       const double dl = (profile[idx + 1] - profile[idx - 1]) / (2.0 * ds);
       const double denominator = std::pow(a * a + dl * dl, 1.5);
       const double constant = a * a * k_ref + 2.0 * k_ref * dl * dl;
+      coefficient[idx] = a / (denominator * ds * ds);
+      offset[idx] = constant / denominator;
       const int row = curvature_row + i - 1;
       a_matrix(row, i - 1) = a / (ds * ds);
       a_matrix(row, i) = -2.0 * a / (ds * ds);
       a_matrix(row, i + 1) = a / (ds * ds);
-      lower[static_cast<std::size_t>(row)] = -max_curvature * denominator - constant;
-      upper[static_cast<std::size_t>(row)] = max_curvature * denominator - constant;
+      const double limit = i == 1 && start_curvature
+                             ? std::clamp(*start_curvature, -max_curvature, max_curvature)
+                             : max_curvature;
+      lower[static_cast<std::size_t>(row)] =
+        (i == 1 && start_curvature ? limit : -limit) * denominator - constant;
+      upper[static_cast<std::size_t>(row)] = limit * denominator - constant;
+    }
+    for (int i = 1; limit_rate && i + 2 < ni; ++i) {
+      const auto idx = static_cast<std::size_t>(i);
+      const int row = rate_row + i - 1;
+      a_matrix(row, i - 1) = -coefficient[idx];
+      a_matrix(row, i) = coefficient[idx + 1] + 2.0 * coefficient[idx];
+      a_matrix(row, i + 1) = -2.0 * coefficient[idx + 1] - coefficient[idx];
+      a_matrix(row, i + 2) = coefficient[idx + 1];
+      const double constant = offset[idx + 1] - offset[idx];
+      lower[static_cast<std::size_t>(row)] = -max_curvature_rate * ds - constant;
+      upper[static_cast<std::size_t>(row)] = max_curvature_rate * ds - constant;
     }
 
     osqp_interface::OSQPInterface solver(OSQP_EPS_ABS, true);
+    // The default 1e-4 takes thousands of iterations when the curvature rate is tight (the steer
+    // rate at speed), past the iteration limit; 1e-3 is well under a millimeter on the offsets
+    solver.updateEpsRel(OSQP_EPS_REL);
     const auto result = solver.optimize(p_matrix, a_matrix, q_vector, lower, upper);
     if (
       result.solution_status != OSQP_SOLVED ||
