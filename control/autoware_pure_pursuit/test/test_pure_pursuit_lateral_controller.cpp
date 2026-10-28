@@ -446,10 +446,8 @@ TEST_F(PurePursuitLateralControllerTest, ReversePathReducesTheCommand)
   EXPECT_GT(output.control_cmd.steering_tire_angle, command_forward);
 }
 
-/// The ego stands beside the path, which the controller answers with a command away from
-/// neutral on any path it accepts. The command is neutral here because the controller
-/// ignores a path of too few samples.
-TEST_F(PurePursuitLateralControllerTest, PathWithTooFewSamplesKeepsTheSteeringNeutral)
+/// The controller ignores a path of too few samples, so it has no command to give.
+TEST_F(PurePursuitLateralControllerTest, PathWithTooFewSamplesReturnsAnError)
 {
   auto controller = make_controller();
   const auto input = Input()
@@ -458,31 +456,28 @@ TEST_F(PurePursuitLateralControllerTest, PathWithTooFewSamplesKeepsTheSteeringNe
                        .driving_at(1.0)
                        .beside_the_path(0.2);
 
-  const auto output = run_cycle(*controller, input);
+  const auto output = controller->run(input, at(first_cycle_time));
 
-  EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, 0.0f);
+  EXPECT_FALSE(output);
 }
 
 /// The controller looks for the path within a fixed distance of the ego. An ego further away
-/// than that leaves the controller with no point to aim at, and the controller repeats the
-/// command of the last cycle it could solve, including the time stamped on that command.
-TEST_F(PurePursuitLateralControllerTest, PathBeyondTheSearchRadiusRepeatsThePreviousCommand)
+/// than that leaves the controller with no point to aim at, so it has no command to give, even
+/// after a cycle it could solve.
+TEST_F(PurePursuitLateralControllerTest, PathBeyondTheSearchRadiusReturnsAnError)
 {
   auto controller = make_controller();
   const auto on_the_path = Input().following(arc_path(arc_radius)).planned_at(1.0).driving_at(1.0);
-  const auto previous = run_cycle(*controller, on_the_path, first_cycle_time).control_cmd;
+  run_cycle(*controller, on_the_path, first_cycle_time);
   const auto far_from_the_path = Input()
                                    .following(arc_path(arc_radius))
                                    .planned_at(1.0)
                                    .driving_at(1.0)
                                    .beside_the_path(2.0 * nearest_search_radius);
 
-  const auto output = run_cycle(*controller, far_from_the_path, second_cycle_time);
+  const auto output = controller->run(far_from_the_path, at(second_cycle_time));
 
-  EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, previous.steering_tire_angle);
-  EXPECT_EQ(
-    rclcpp::Time(output.control_cmd.stamp).nanoseconds(),
-    rclcpp::Time(previous.stamp).nanoseconds());
+  EXPECT_FALSE(output);
 }
 
 TEST_F(PurePursuitLateralControllerTest, CommandCarriesTheTimeOfTheCycle)

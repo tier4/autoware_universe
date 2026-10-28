@@ -95,7 +95,7 @@ struct PurePursuitLateralControllerResult
 {
   LateralOutput output;
   std::optional<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped> lookahead_debug_values;
-  std::optional<Trajectory> predicted_trajectory;
+  Trajectory predicted_trajectory;
 };
 
 class PurePursuitLateralController : public LateralControllerInterface
@@ -105,9 +105,9 @@ public:
   PurePursuitLateralController(
     const PurePursuitLateralControllerConfig & config, const LogWriter & writer);
 
-  /// Compute the command of one control cycle.
+  /// Compute the command of one control cycle, or the reason why the controller cannot compute it.
   /// \param stamp Time of the cycle. The command and the lookahead debug values have this stamp.
-  PurePursuitLateralControllerResult runDetailed(
+  tl::expected<PurePursuitLateralControllerResult, std::string> runDetailed(
     const InputData & input_data, const rclcpp::Time & stamp);
 
   /// Compute the command of one control cycle. The debug values are dropped.
@@ -122,7 +122,6 @@ private:
   autoware_planning_msgs::msg::Trajectory trajectory_;
   nav_msgs::msg::Odometry current_odometry_;
   autoware_vehicle_msgs::msg::SteeringReport current_steering_;
-  std::optional<Lateral> prev_cmd_;
 
   void setResampledTrajectory();
 
@@ -150,7 +149,7 @@ private:
   std::optional<Trajectory> generatePredictedTrajectory(
     const rclcpp::Time & stamp, PurePursuitLateralControllerResult & result);
 
-  Lateral generateOutputControlCmd(
+  std::optional<Lateral> generateOutputControlCmd(
     const rclcpp::Time & stamp, PurePursuitLateralControllerResult & result);
 
   bool calcIsSteerConverged(const Lateral & cmd);

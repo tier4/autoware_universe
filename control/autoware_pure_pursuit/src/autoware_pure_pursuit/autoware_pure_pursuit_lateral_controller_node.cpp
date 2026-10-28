@@ -109,16 +109,17 @@ tl::expected<LateralOutput, std::string> PurePursuitLateralControllerNode::run(
   autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch;
 
   const auto result = controller_->runDetailed(input_data, stamp);
+  if (!result) {
+    return tl::make_unexpected(result.error());
+  }
 
-  if (result.lookahead_debug_values) {
-    pub_debug_values_->publish(*result.lookahead_debug_values);
+  if (result->lookahead_debug_values) {
+    pub_debug_values_->publish(*result->lookahead_debug_values);
   }
-  if (result.predicted_trajectory) {
-    pub_predicted_trajectory_->publish(*result.predicted_trajectory);
-  }
+  pub_predicted_trajectory_->publish(result->predicted_trajectory);
 
   publish_processing_time(pub_processing_time_ms_, stop_watch, *clock_);
 
-  return result.output;
+  return result->output;
 }
 }  // namespace autoware::pure_pursuit

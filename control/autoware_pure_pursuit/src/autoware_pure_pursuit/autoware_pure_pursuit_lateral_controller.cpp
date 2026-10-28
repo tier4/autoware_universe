@@ -306,11 +306,13 @@ std::optional<Trajectory> PurePursuitLateralController::generatePredictedTraject
 tl::expected<LateralOutput, std::string> PurePursuitLateralController::run(
   const InputData & input_data, const rclcpp::Time & stamp)
 {
-  return runDetailed(input_data, stamp).output;
+  return runDetailed(input_data, stamp).map([](const PurePursuitLateralControllerResult & result) {
+    return result.output;
+  });
 }
 
-PurePursuitLateralControllerResult PurePursuitLateralController::runDetailed(
-  const InputData & input_data, const rclcpp::Time & stamp)
+tl::expected<PurePursuitLateralControllerResult, std::string>
+PurePursuitLateralController::runDetailed(const InputData & input_data, const rclcpp::Time & stamp)
 {
   PurePursuitLateralControllerResult result;
   current_pose_ = input_data.current_odometry.pose.pose;
@@ -323,15 +325,19 @@ PurePursuitLateralControllerResult PurePursuitLateralController::runDetailed(
     averageFilterTrajectory(*trajectory_resampled_);
   }
   const auto cmd_msg = generateOutputControlCmd(stamp, result);
+  if (!cmd_msg) {
+    return tl::make_unexpected("failed to solve pure_pursuit for control command calculation");
+  }
 
-  result.output.control_cmd = cmd_msg;
-  result.output.sync_data.is_steer_converged = calcIsSteerConverged(cmd_msg);
+  result.output.control_cmd = *cmd_msg;
+  result.output.sync_data.is_steer_converged = calcIsSteerConverged(*cmd_msg);
 
   // calculate predicted trajectory with iterative calculation
-  result.predicted_trajectory = generatePredictedTrajectory(stamp, result);
-  if (!result.predicted_trajectory) {
-    AW_PP_ERROR(writer_, "Failed to generate predicted trajectory.");
+  const auto predicted_trajectory = generatePredictedTrajectory(stamp, result);
+  if (!predicted_trajectory) {
+    return tl::make_unexpected("failed to generate predicted trajectory");
   }
+  result.predicted_trajectory = *predicted_trajectory;
 
   return result;
 }
@@ -342,26 +348,14 @@ bool PurePursuitLateralController::calcIsSteerConverged(const Lateral & cmd)
          static_cast<float>(param_.converged_steer_rad_);
 }
 
-Lateral PurePursuitLateralController::generateOutputControlCmd(
+std::optional<Lateral> PurePursuitLateralController::generateOutputControlCmd(
   const rclcpp::Time & stamp, PurePursuitLateralControllerResult & result)
 {
-  // Generate the control command
   const auto pp_output = calcTargetCurvature(true, current_odometry_.pose.pose, stamp, result);
-  Lateral output_cmd;
-
-  if (pp_output) {
-    output_cmd = generateCtrlCmdMsg(pp_output->curvature, stamp);
-    prev_cmd_ = std::optional<Lateral>(output_cmd);
-  } else {
-    AW_PP_WARN_THROTTLE(
-      writer_, 5.0, "failed to solve pure_pursuit for control command calculation");
-    if (prev_cmd_) {
-      output_cmd = *prev_cmd_;
-    } else {
-      output_cmd = generateCtrlCmdMsg(0.0, stamp);
-    }
+  if (!pp_output) {
+    return std::nullopt;
   }
-  return output_cmd;
+  return generateCtrlCmdMsg(pp_output->curvature, stamp);
 }
 
 Lateral PurePursuitLateralController::generateCtrlCmdMsg(
