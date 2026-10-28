@@ -59,30 +59,30 @@ control_validator:
     enable_developer_marker:
       type: bool
       description: If true, publish developer debug markers from the boundary departure checker.
-    enable_caution:
+    enable_warning:
       type: bool
-      description: If true, evaluate the CAUTION warning stage and raise a departure warning from it.
-    caution_departure_lateral_th_m:
+      description: If true, evaluate the warning boundary departure checker and raise a departure warning from it, independently of enable.
+    warning_lateral_th_m:
       type: double
-      description: Lateral margin from the boundary for the CAUTION warning stage [m].
-    caution_time_to_departure_cutoff_s:
+      description: Lateral margin from the boundary for the departure warning [m].
+    warning_time_to_departure_cutoff_s:
       type: double
-      description: Time-to-departure cutoff for the CAUTION warning stage, not less than time_to_departure_cutoff_s [s].
+      description: Time-to-departure cutoff for the departure warning, not less than time_to_departure_cutoff_s [s].
       validation:
         gt_eq<>: [0.0]
-    caution_brake_delay_s:
+    warning_brake_delay_s:
       type: double
-      description: Brake delay for the CAUTION minimum braking distance, not less than brake_delay_s [s].
+      description: Brake delay for the minimum braking distance of the departure warning, not less than brake_delay_s [s].
       validation:
         gt_eq<>: [0.0]
-    caution_on_time_buffer_s:
+    warning_on_time_buffer_s:
       type: double
-      description: Continuous-violation time required to activate a CAUTION departure [s].
+      description: Continuous-violation time required to activate a departure warning [s].
       validation:
         gt_eq<>: [0.0]
-    caution_off_time_buffer_s:
+    warning_off_time_buffer_s:
       type: double
-      description: Continuous-safety time required to deactivate a CAUTION departure [s].
+      description: Continuous-safety time required to deactivate a departure warning [s].
       validation:
         gt_eq<>: [0.0]
     departure_risk_level:
@@ -92,9 +92,6 @@ control_validator:
         bounds<>: [1, 4]
 
   hazard_warning:
-    enable:
-      type: bool
-      description: If true, publish the collision / boundary departure hazard warning.
     min_alert_duration:
       type: double
       description: Minimum time a raised warning is held after the last raw detection [s].
@@ -102,6 +99,9 @@ control_validator:
         gt_eq<>: [0.0]
 
   collision_validator:
+    enable_warning:
+      type: bool
+      description: If true, evaluate collisions and raise a collision warning.
     braking:
       reaction_times:
         type: double_array

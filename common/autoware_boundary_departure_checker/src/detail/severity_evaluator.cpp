@@ -25,7 +25,7 @@ namespace autoware::boundary_departure_checker::severity_evaluator
 {
 ProjectionsToBound filter_and_assign_departure_types(
   const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param,
-  const double min_braking_dist, const double min_braking_dist_caution)
+  const double min_braking_dist)
 {
   ProjectionsToBound out;
   out.reserve(side_value.size());
@@ -38,10 +38,6 @@ ProjectionsToBound filter_and_assign_departure_types(
   // margin unclassified, so the advisory band always covers at least the critical margin.
   thresholds.th_near_boundary =
     std::max(param.near_boundary_lateral_th_m, param.critical_departure_lateral_th_m);
-  thresholds.enable_caution = param.enable_caution;
-  thresholds.th_lat_caution = param.caution_departure_lateral_th_m;
-  thresholds.min_braking_distance_caution = min_braking_dist_caution;
-  thresholds.cutoff_time_caution = param.caution_time_to_departure_cutoff_s;
 
   for (size_t idx = 0; idx < side_value.size(); ++idx) {
     const auto & original_candidate = side_value[idx];
@@ -101,16 +97,6 @@ DepartureType assign_departure_type(
     return DepartureType::CRITICAL;
   }
 
-  const auto footprint_overlaps_caution_margin = metrics.lat_dist <= thresholds.th_lat_caution;
-  const auto ego_cannot_stop_before_caution_departure =
-    metrics.lon_dist_to_departure <= thresholds.min_braking_distance_caution ||
-    metrics.time_from_start <= thresholds.cutoff_time_caution;
-  if (
-    thresholds.enable_caution && footprint_overlaps_caution_margin &&
-    ego_cannot_stop_before_caution_departure) {
-    return DepartureType::CAUTION;
-  }
-
   if (metrics.lat_dist <= thresholds.th_near_boundary) {
     return DepartureType::NEAR_BOUNDARY;
   }
@@ -123,15 +109,12 @@ Side<std::optional<DeparturePointPair>> evaluate_projections_severity(
   const UncrossableBoundaryDepartureParam & param, const EgoDynamicState & ego_state,
   const vehicle_info_utils::VehicleInfo & vehicle_info)
 {
-  const auto min_braking_dist =
-    calc_minimum_braking_distance(ego_state, param, vehicle_info, param.brake_delay_s);
-  const auto min_braking_dist_caution =
-    calc_minimum_braking_distance(ego_state, param, vehicle_info, param.caution_brake_delay_s);
+  const auto min_braking_dist = calc_minimum_braking_distance(ego_state, param, vehicle_info);
 
   return projections_to_bound.transform_each_side(
     [&](const auto & side_value) -> std::optional<DeparturePointPair> {
-      const auto min_to_bounds = filter_and_assign_departure_types(
-        side_value, param, min_braking_dist, min_braking_dist_caution);
+      const auto min_to_bounds =
+        filter_and_assign_departure_types(side_value, param, min_braking_dist);
 
       if (min_to_bounds.empty()) return std::nullopt;
 
@@ -139,14 +122,9 @@ Side<std::optional<DeparturePointPair>> evaluate_projections_severity(
         return apply_backward_buffer_and_filter(min_to_bounds, param);
       }
 
-      // A CAUTION point is preferred over the closest point so that a CAUTION inside the time
-      // gate is not hidden by a closer point beyond the gate.
       const auto closest_to_bound = std::min_element(
         min_to_bounds.begin(), min_to_bounds.end(),
         [](const ProjectionToBound & lhs, const ProjectionToBound & rhs) {
-          if (lhs.is_caution_or_above() != rhs.is_caution_or_above()) {
-            return lhs.is_caution_or_above();
-          }
           return lhs.lat_dist < rhs.lat_dist;
         });
 
@@ -159,14 +137,6 @@ bool is_critical(const Side<std::optional<DeparturePointPair>> & evaluated_proje
   return evaluated_projections.any_of_side([](const auto & critical_pair_opt) {
     return critical_pair_opt.has_value() &&
            critical_pair_opt->physical_departure_point.is_critical();
-  });
-}
-
-bool is_caution_or_above(const Side<std::optional<DeparturePointPair>> & evaluated_projections)
-{
-  return evaluated_projections.any_of_side([](const auto & departure_pair_opt) {
-    return departure_pair_opt.has_value() &&
-           departure_pair_opt->physical_departure_point.is_caution_or_above();
   });
 }
 
@@ -195,11 +165,11 @@ double get_min_lateral_distance_to_bound(
 
 double calc_minimum_braking_distance(
   const EgoDynamicState & ego_state, const UncrossableBoundaryDepartureParam & param,
-  const vehicle_info_utils::VehicleInfo & vehicle_info, const double brake_delay_s)
+  const vehicle_info_utils::VehicleInfo & vehicle_info)
 {
   const auto kinematic_stop_dist = motion_utils::calculate_stop_distance(
     ego_state.velocity, ego_state.acceleration, param.max_deceleration_mps2, param.max_jerk_mps3,
-    brake_delay_s);
+    param.brake_delay_s);
 
   return vehicle_info.front_overhang_m +
          (kinematic_stop_dist ? std::max(0.0, *kinematic_stop_dist) : 0.0);

@@ -259,11 +259,6 @@ void UncrossableBoundDepartureValidator::validate(
   const lanelet::LaneletMapPtr & lanelet_map, const vehicle_info_utils::VehicleInfo & vehicle_info,
   visualization_msgs::msg::MarkerArray & debug_markers, HazardWarningSources & hazard_sources)
 {
-  if (!enable_) {
-    res.will_cross_uncrossable_bound = false;
-    return;
-  }
-
   if (!lanelet_map || lanelet_map->lineStringLayer.empty()) {
     RCLCPP_DEBUG(logger_, "Lanelet map is not available yet. Skipping boundary departure check.");
     res.will_cross_uncrossable_bound = false;
@@ -275,32 +270,43 @@ void UncrossableBoundDepartureValidator::validate(
     return;
   }
 
-  if (!checker_) {
-    checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
-      lanelet_map, params_, vehicle_info);
-  }
-
   boundary_departure_checker::EgoDynamicState ego_state;
   ego_state.pose_with_cov = kinematics.pose;
   ego_state.velocity = kinematics.twist.twist.linear.x;
   ego_state.acceleration = acceleration.accel.accel.linear.x;
   ego_state.current_time_s = rclcpp::Time(kinematics.header.stamp).seconds();
 
-  auto status = checker_->update_departure_status(
-    predicted_trajectory.points, ego_state, hysteresis_state_pair_);
+  if (!enable_) {
+    res.will_cross_uncrossable_bound = false;
+  } else {
+    if (!checker_) {
+      checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
+        lanelet_map, params_, vehicle_info);
+    }
 
-  res.will_cross_uncrossable_bound =
-    status.status == boundary_departure_checker::DepartureType::CRITICAL;
+    auto status =
+      checker_->update_departure_status(predicted_trajectory.points, ego_state, hysteresis_state_);
 
-  if (res.will_cross_uncrossable_bound) {
-    std::move(
-      status.debug_markers.markers.begin(), status.debug_markers.markers.end(),
-      std::back_inserter(debug_markers.markers));
+    res.will_cross_uncrossable_bound =
+      status.status == boundary_departure_checker::DepartureType::CRITICAL;
+
+    if (res.will_cross_uncrossable_bound) {
+      std::move(
+        status.debug_markers.markers.begin(), status.debug_markers.markers.end(),
+        std::back_inserter(debug_markers.markers));
+    }
   }
 
-  if (params_.enable_caution) {
+  if (enable_warning_) {
+    if (!warning_checker_) {
+      warning_checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
+        lanelet_map, warning_params_, vehicle_info);
+    }
+    warning_checker_->update_departure_status(
+      predicted_trajectory.points, ego_state, warning_hysteresis_state_);
+
     std::vector<HazardSource> departure;
-    hysteresis_state_pair_.caution.critical_departure_history.for_each_side([&](const auto & side) {
+    warning_hysteresis_state_.critical_departure_history.for_each_side([&](const auto & side) {
       for (const auto & projection : side) {
         autoware_utils_geometry::Polygon2d point;
         point.outer().push_back(projection.pt_on_bound);

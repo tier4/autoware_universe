@@ -47,7 +47,6 @@ enum class DepartureType {
   NONE = 0,       ///< no departure
   NEAR_BOUNDARY,  ///< footprint is within the near boundary lateral threshold
   CRITICAL,       ///< critical departure from the boundary
-  CAUTION,        ///< warning stage before CRITICAL
 };
 
 /**
@@ -89,15 +88,6 @@ struct ProjectionToBound
    * @return true if CRITICAL
    */
   [[nodiscard]] bool is_critical() const { return departure_type == DepartureType::CRITICAL; }
-
-  /**
-   * @brief Check if the departure type is CAUTION or CRITICAL.
-   * @return true if CAUTION or CRITICAL
-   */
-  [[nodiscard]] bool is_caution_or_above() const
-  {
-    return departure_type == DepartureType::CAUTION || departure_type == DepartureType::CRITICAL;
-  }
 
   DepartureType departure_type{DepartureType::NONE};  ///< type of departure
   Point2d pt_on_ego;                                  ///< point on the ego footprint
@@ -222,10 +212,6 @@ struct DepartureCheckThresholds
   double cutoff_time{0.0};           ///< time cutoff for departure check [s]
   double th_lat_critical{0.0};       ///< lateral distance threshold for critical departure [m]
   double th_near_boundary{0.0};      ///< lateral distance threshold for near boundary [m]
-  bool enable_caution{false};        ///< evaluate the CAUTION stage
-  double th_lat_caution{0.0};        ///< lateral distance threshold for caution [m]
-  double min_braking_distance_caution{0.0};  ///< minimum braking distance for caution [m]
-  double cutoff_time_caution{0.0};           ///< time cutoff for caution [s]
 };
 
 /**

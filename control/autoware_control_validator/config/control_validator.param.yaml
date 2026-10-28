@@ -27,19 +27,19 @@
       off_time_buffer_s: 0.10
       enable_align_to_ego_pose: true
       enable_developer_marker: false
-      enable_caution: true
-      caution_departure_lateral_th_m: 0.01
-      caution_time_to_departure_cutoff_s: 4.0
-      caution_brake_delay_s: 2.0
-      caution_on_time_buffer_s: 0.20
-      caution_off_time_buffer_s: 0.10
+      enable_warning: true
+      warning_lateral_th_m: 0.01
+      warning_time_to_departure_cutoff_s: 4.0
+      warning_brake_delay_s: 2.0
+      warning_on_time_buffer_s: 0.20
+      warning_off_time_buffer_s: 0.10
       departure_risk_level: 3
 
     hazard_warning:
-      enable: true
       min_alert_duration: 0.5
 
     collision_validator:
+      enable_warning: true
       braking:
         reaction_times: [2.0, 1.5, 1.0] # descending; hazard levels 2 to 4
         deceleration: 6.0

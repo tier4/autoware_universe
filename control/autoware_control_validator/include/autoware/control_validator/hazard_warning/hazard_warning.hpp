@@ -44,7 +44,6 @@ constexpr size_t kNumSectors = 8;
 
 struct HazardWarningParam
 {
-  bool enable{true};
   double min_alert_duration{0.5};
 };
 }  // namespace hazard_warning

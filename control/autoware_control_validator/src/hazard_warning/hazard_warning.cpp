@@ -114,7 +114,6 @@ HazardWarningParam to_hazard_warning_param(
   const ::control_validator::Params::HazardWarning & params)
 {
   HazardWarningParam out;
-  out.enable = params.enable;
   out.min_alert_duration = params.min_alert_duration;
   return out;
 }
@@ -290,9 +289,7 @@ std::optional<HazardAlert> HazardWarning::make_alert(
   const HazardWarningSources & hazard_sources, const vehicle_info_utils::VehicleInfo & vehicle_info,
   const rclcpp::Time & now)
 {
-  if (
-    !param_.enable ||
-    (!hazard_sources.collision.has_value() && !hazard_sources.departure.has_value())) {
+  if (!hazard_sources.collision.has_value() && !hazard_sources.departure.has_value()) {
     return std::nullopt;
   }
 

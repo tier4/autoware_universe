@@ -21,18 +21,8 @@ namespace autoware::boundary_departure_checker
 HysteresisResult update_and_judge(
   const HysteresisState & state,
   const std::optional<Side<std::optional<DeparturePointPair>>> & evaluation_result,
-  const UncrossableBoundaryDepartureParam & param, const double current_time_s,
-  const DepartureType target)
+  const UncrossableBoundaryDepartureParam & param, const double current_time_s)
 {
-  const bool is_critical_target = target == DepartureType::CRITICAL;
-  const double on_time_buffer_s =
-    is_critical_target ? param.on_time_buffer_s : param.caution_on_time_buffer_s;
-  const double off_time_buffer_s =
-    is_critical_target ? param.off_time_buffer_s : param.caution_off_time_buffer_s;
-  const auto is_target_level = [target](const ProjectionToBound & pt) {
-    return target == DepartureType::CRITICAL ? pt.is_critical() : pt.is_caution_or_above();
-  };
-
   HysteresisResult result;
   result.updated_state = state;
   result.status = DepartureType::NONE;
@@ -44,28 +34,28 @@ HysteresisResult update_and_judge(
     return result;
   }
 
-  const bool current_is_target = evaluation_result->any_of_side([&](const auto & side_value) {
-    return side_value.has_value() && is_target_level(side_value->physical_departure_point);
-  });
+  const bool current_is_critical = severity_evaluator::is_critical(*evaluation_result);
 
-  if (current_is_target) {
-    const bool is_imminent_target = evaluation_result->any_of_side([&](const auto & side_value) {
-      return side_value.has_value() && is_target_level(side_value->physical_departure_point) &&
-             side_value->physical_departure_point.time_from_start < on_time_buffer_s;
-    });
+  if (current_is_critical) {
+    const bool is_imminent_critical =
+      evaluation_result->any_of_side([&param](const auto & side_value) {
+        return side_value.has_value() && side_value->physical_departure_point.is_critical() &&
+               side_value->physical_departure_point.time_from_start < param.on_time_buffer_s;
+      });
 
     if (
-      is_imminent_target || current_time_s - state.last_no_critical_dpt_time >= on_time_buffer_s) {
+      is_imminent_critical ||
+      current_time_s - state.last_no_critical_dpt_time >= param.on_time_buffer_s) {
       result.updated_state.last_found_critical_dpt_time = current_time_s;
       result.updated_state.critical_departure_history.for_each_side(
         [](auto & side) { side.clear(); });
       evaluation_result->for_each([&](auto key_constant, auto & side_value) {
-        if (side_value.has_value() && is_target_level(side_value->safety_buffer_start)) {
+        if (side_value.has_value() && side_value->safety_buffer_start.is_critical()) {
           result.updated_state.critical_departure_history[key_constant.value].push_back(
             side_value->physical_departure_point);
         }
       });
-      result.status = target;
+      result.status = DepartureType::CRITICAL;
       return result;
     }
     return result;
@@ -74,8 +64,8 @@ HysteresisResult update_and_judge(
   result.updated_state.last_no_critical_dpt_time = current_time_s;
 
   if (!state.critical_departure_history.all_empty()) {
-    if (current_time_s - state.last_found_critical_dpt_time < off_time_buffer_s) {
-      result.status = target;
+    if (current_time_s - state.last_found_critical_dpt_time < param.off_time_buffer_s) {
+      result.status = DepartureType::CRITICAL;
       return result;
     }
     result.updated_state.critical_departure_history.for_each_side(

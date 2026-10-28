@@ -17,7 +17,6 @@
 
 #include "autoware/boundary_departure_checker/detail/boundary_departure_evaluator.hpp"
 #include "autoware/boundary_departure_checker/detail/data_structs.hpp"
-#include "autoware/boundary_departure_checker/detail/footprints_generator.hpp"
 #include "autoware/boundary_departure_checker/detail/hysteresis_logic.hpp"
 #include "autoware/boundary_departure_checker/parameters.hpp"
 
@@ -27,7 +26,6 @@
 #include <lanelet2_core/LaneletMap.h>
 
 #include <memory>
-#include <optional>
 
 namespace autoware::boundary_departure_checker
 {
@@ -62,29 +60,7 @@ public:
     const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state,
     HysteresisState & state);
 
-  /**
-   * @brief Update departure status along a predicted trajectory with per-level hysteresis.
-   * @param[in] predicted_traj predicted trajectory
-   * @param[in] ego_state current ego dynamic state
-   * @param[in,out] states hysteresis states of CRITICAL and CAUTION. CRITICAL is always
-   *   evaluated; CAUTION is evaluated only when enable_caution is true.
-   * @return departure result whose status is CRITICAL > CAUTION > NEAR_BOUNDARY > NONE
-   */
-  DepartureResult update_departure_status(
-    const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state,
-    HysteresisStatePair & states);
-
 private:
-  struct TrajectoryEvaluation
-  {
-    footprints::Footprints footprints;
-    size_t align_count{0};
-    std::optional<Side<std::optional<DeparturePointPair>>> evaluation_result;
-  };
-
-  std::optional<TrajectoryEvaluation> evaluate_trajectory(
-    const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state) const;
-
   UncrossableBoundaryDepartureParam param_;
   VehicleInfo vehicle_info_;
   std::unique_ptr<BoundaryDepartureEvaluator> evaluator_ptr_;

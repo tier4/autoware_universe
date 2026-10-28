@@ -336,8 +336,8 @@ TEST(UncrossableBoundaryUtilsTest, TestEvaluateProjectionsSeverityBackwardBuffer
 
   // Act:
   auto result = input.transform_each_side([&](const auto & side_value) {
-    const auto min_to_bounds = severity_evaluator::filter_and_assign_departure_types(
-      side_value, param, min_braking_dist, min_braking_dist);
+    const auto min_to_bounds =
+      severity_evaluator::filter_and_assign_departure_types(side_value, param, min_braking_dist);
     return severity_evaluator::apply_backward_buffer_and_filter(min_to_bounds, param);
   });
 

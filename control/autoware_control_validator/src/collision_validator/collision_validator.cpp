@@ -177,6 +177,9 @@ void CollisionValidator::validate(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pointcloud,
   HazardWarningSources & hazard_sources)
 {
+  if (!params_.enable_warning) {
+    return;
+  }
   update_history(odom);
   if (predicted_trajectory.points.size() < 2) {
     return;

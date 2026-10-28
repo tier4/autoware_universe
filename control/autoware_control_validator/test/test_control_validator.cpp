@@ -398,7 +398,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, InvalidWhenTrajectoryDepartsBound
   EXPECT_FALSE(markers.markers.empty());
 }
 
-TEST_F(UncrossableBoundDepartureValidatorTest, CautionDeparturePositionsAreHandedOverInBaseLink)
+TEST_F(UncrossableBoundDepartureValidatorTest, WarningDeparturePositionsAreHandedOverInBaseLink)
 {
   UncrossableBoundDepartureValidator validator(node_->get_logger(), params_);
   const auto map = make_road_border_map();
@@ -435,6 +435,36 @@ TEST_F(UncrossableBoundDepartureValidatorTest, CautionDeparturePositionsAreHande
     const auto & p = source.shape.outer().front();
     EXPECT_NEAR(ego.y + std::sin(yaw) * p.x() + std::cos(yaw) * p.y(), 2.0, 1e-6);
   }
+}
+
+TEST_F(
+  UncrossableBoundDepartureValidatorTest, DepartureOnlyWithinTheWarningGateRaisesOnlyTheWarning)
+{
+  UncrossableBoundDepartureValidator validator(node_->get_logger(), params_);
+  const auto map = make_road_border_map();
+  geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
+  visualization_msgs::msg::MarkerArray markers;
+
+  const double velocity = 2.0;
+  auto trajectory = make_trajectory(0.0, -2.5, velocity, 0.2);
+  for (size_t i = 0; i < trajectory.points.size(); ++i) {
+    trajectory.points[i].time_from_start =
+      rclcpp::Duration::from_seconds(static_cast<double>(i) * 5.0 / velocity);
+  }
+
+  ControlValidatorStatus res;
+  HazardWarningSources sources;
+  for (double time_s = 0.1; time_s <= 0.6; time_s += 0.1) {
+    res = ControlValidatorStatus{};
+    sources = HazardWarningSources{};
+    validator.validate(
+      res, trajectory, make_odometry(trajectory, velocity, time_s), acceleration, map,
+      vehicle_info_, markers, sources);
+  }
+
+  EXPECT_FALSE(res.will_cross_uncrossable_bound);
+  ASSERT_TRUE(sources.departure.has_value());
+  EXPECT_FALSE(sources.departure->empty());
 }
 
 class VelocityValidatorTest

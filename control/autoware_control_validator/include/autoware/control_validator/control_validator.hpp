@@ -290,22 +290,26 @@ public:
       params.uncrossable_bound_departure_validator.enable_developer_marker;
     params_.boundary_types_to_detect = params.uncrossable_bound_departure_validator.boundary_types;
     const auto & p = params.uncrossable_bound_departure_validator;
-    params_.enable_caution = p.enable_caution;
-    params_.caution_departure_lateral_th_m = p.caution_departure_lateral_th_m;
-    params_.caution_time_to_departure_cutoff_s = p.caution_time_to_departure_cutoff_s;
-    params_.caution_brake_delay_s = p.caution_brake_delay_s;
-    params_.caution_on_time_buffer_s = p.caution_on_time_buffer_s;
-    params_.caution_off_time_buffer_s = p.caution_off_time_buffer_s;
+    enable_warning_ = p.enable_warning;
+    warning_params_ = params_;
+    warning_params_.critical_departure_lateral_th_m = p.warning_lateral_th_m;
+    warning_params_.time_to_departure_cutoff_s = p.warning_time_to_departure_cutoff_s;
+    warning_params_.brake_delay_s = p.warning_brake_delay_s;
+    warning_params_.on_time_buffer_s = p.warning_on_time_buffer_s;
+    warning_params_.off_time_buffer_s = p.warning_off_time_buffer_s;
     departure_risk_level_ = static_cast<uint8_t>(p.departure_risk_level);
     if (checker_) {
       checker_->update_parameters(params_);
+    }
+    if (warning_checker_) {
+      warning_checker_->update_parameters(warning_params_);
     }
   }
 
   /**
    * @brief Validate the predicted trajectory against uncrossable boundaries.
-   * @param hazard_sources departure positions of the CAUTION hysteresis are written to its
-   *   departure field when the check ran and the departure warning is enabled
+   * @param hazard_sources departure positions of the warning checker's hysteresis are written to
+   *   its departure field when the check ran and the departure warning is enabled
    */
   void validate(
     ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
@@ -319,7 +323,11 @@ private:
   rclcpp::Logger logger_;
   boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
   std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> checker_;
-  boundary_departure_checker::HysteresisStatePair hysteresis_state_pair_;
+  boundary_departure_checker::HysteresisState hysteresis_state_;
+  bool enable_warning_{true};
+  boundary_departure_checker::UncrossableBoundaryDepartureParam warning_params_;
+  std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> warning_checker_;
+  boundary_departure_checker::HysteresisState warning_hysteresis_state_;
   uint8_t departure_risk_level_{0};
 };
 

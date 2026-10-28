@@ -29,12 +29,11 @@ namespace autoware::boundary_departure_checker::severity_evaluator
  * @param[in] side_value list of projections for a side
  * @param[in] param checker parameters
  * @param[in] min_braking_dist minimum braking distance [m]
- * @param[in] min_braking_dist_caution minimum braking distance for caution [m]
  * @return filtered projections with assigned types
  */
 ProjectionsToBound filter_and_assign_departure_types(
   const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param,
-  const double min_braking_dist, const double min_braking_dist_caution);
+  const double min_braking_dist);
 
 /**
  * @brief Apply backward buffer to projections and filter them.
@@ -75,13 +74,6 @@ Side<std::optional<DeparturePointPair>> evaluate_projections_severity(
 bool is_critical(const Side<std::optional<DeparturePointPair>> & evaluated_projections);
 
 /**
- * @brief Check if any side has a CAUTION or CRITICAL departure.
- * @param[in] evaluated_projections evaluated critical point pairs for both sides
- * @return true if CAUTION or CRITICAL
- */
-bool is_caution_or_above(const Side<std::optional<DeparturePointPair>> & evaluated_projections);
-
-/**
  * @brief Check if any side is near an uncrossable boundary.
  * @param[in] evaluated_projections evaluated departure point pairs for both sides
  * @return true if near boundary
@@ -101,12 +93,11 @@ double get_min_lateral_distance_to_bound(
  * @param[in] ego_state current ego dynamic state
  * @param[in] param checker parameters
  * @param[in] vehicle_info vehicle information
- * @param[in] brake_delay_s brake delay used for the stop distance [s]
  * @return minimum braking distance [m]
  */
 double calc_minimum_braking_distance(
   const EgoDynamicState & ego_state, const UncrossableBoundaryDepartureParam & param,
-  const vehicle_info_utils::VehicleInfo & vehicle_info, const double brake_delay_s);
+  const vehicle_info_utils::VehicleInfo & vehicle_info);
 
 }  // namespace autoware::boundary_departure_checker::severity_evaluator
 

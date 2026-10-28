@@ -20,7 +20,6 @@
 
 #include <autoware_utils_system/stop_watch.hpp>
 
-#include <algorithm>
 #include <memory>
 
 namespace autoware::boundary_departure_checker
@@ -39,15 +38,16 @@ void UncrossableBoundaryChecker::update_parameters(const UncrossableBoundaryDepa
   evaluator_ptr_->update_parameters(param);
 }
 
-std::optional<UncrossableBoundaryChecker::TrajectoryEvaluation>
-UncrossableBoundaryChecker::evaluate_trajectory(
-  const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state) const
+DepartureResult UncrossableBoundaryChecker::update_departure_status(
+  const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state,
+  HysteresisState & state)
 {
-  if (predicted_traj.empty()) {
-    return std::nullopt;
-  }
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  TrajectoryEvaluation evaluated;
+  DepartureResult result;
+  if (predicted_traj.empty()) {
+    return result;
+  }
 
   // An align distance of zero leaves the trajectory that the generator gives.
   const auto align_dist_m =
@@ -57,29 +57,15 @@ UncrossableBoundaryChecker::evaluate_trajectory(
   const auto aligned_traj =
     footprints::align_to_ego_pose(predicted_traj, ego_state.pose_with_cov.pose, expected_alignment);
 
-  evaluated.footprints = footprints::generate(aligned_traj, vehicle_info_, ego_state.pose_with_cov);
-  evaluated.align_count = expected_alignment.align_count;
-  const auto footprints_sides = footprints::get_sides_from_footprints(evaluated.footprints);
+  const auto footprints =
+    footprints::generate(aligned_traj, vehicle_info_, ego_state.pose_with_cov);
+  const auto footprints_sides = footprints::get_sides_from_footprints(footprints);
 
-  evaluated.evaluation_result = evaluator_ptr_->evaluate(aligned_traj, footprints_sides, ego_state);
-  return evaluated;
-}
+  const auto evaluation_result =
+    evaluator_ptr_->evaluate(aligned_traj, footprints_sides, ego_state);
 
-DepartureResult UncrossableBoundaryChecker::update_departure_status(
-  const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state,
-  HysteresisState & state)
-{
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-
-  DepartureResult result;
-  const auto evaluated = evaluate_trajectory(predicted_traj, ego_state);
-  if (!evaluated) {
-    return result;
-  }
-  const auto & evaluation_result = evaluated->evaluation_result;
-
-  const auto hysteresis_result = update_and_judge(
-    state, evaluation_result, param_, ego_state.current_time_s, DepartureType::CRITICAL);
+  const auto hysteresis_result =
+    update_and_judge(state, evaluation_result, param_, ego_state.current_time_s);
 
   state = hysteresis_result.updated_state;
 
@@ -101,63 +87,7 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
   }
 
   result.debug_markers = debug::create_debug_markers(
-    state, evaluated->footprints, evaluated->align_count, ego_state,
-    param_.enable_developer_marker);
-  return result;
-}
-
-DepartureResult UncrossableBoundaryChecker::update_departure_status(
-  const TrajectoryPoints & predicted_traj, const EgoDynamicState & ego_state,
-  HysteresisStatePair & states)
-{
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-
-  DepartureResult result;
-  const auto evaluated = evaluate_trajectory(predicted_traj, ego_state);
-  if (!evaluated) {
-    return result;
-  }
-  const auto & evaluation_result = evaluated->evaluation_result;
-
-  const auto critical_result = update_and_judge(
-    states.critical, evaluation_result, param_, ego_state.current_time_s, DepartureType::CRITICAL);
-  states.critical = critical_result.updated_state;
-
-  DepartureType caution_status = DepartureType::NONE;
-  if (param_.enable_caution) {
-    const auto caution_result = update_and_judge(
-      states.caution, evaluation_result, param_, ego_state.current_time_s, DepartureType::CAUTION);
-    states.caution = caution_result.updated_state;
-    caution_status = caution_result.status;
-  }
-
-  if (critical_result.status == DepartureType::CRITICAL) {
-    result.status = DepartureType::CRITICAL;
-  } else if (caution_status == DepartureType::CAUTION) {
-    result.status = DepartureType::CAUTION;
-  } else {
-    // Same non-latching NEAR_BOUNDARY promotion as the single-state overload. A suppressed
-    // CAUTION point counts as close only when it is also inside the near-boundary band.
-    const auto th_near_boundary =
-      std::max(param_.near_boundary_lateral_th_m, param_.critical_departure_lateral_th_m);
-    const auto footprint_is_close_to_bound =
-      evaluation_result && (severity_evaluator::is_near_boundary(*evaluation_result) ||
-                            severity_evaluator::is_critical(*evaluation_result) ||
-                            (severity_evaluator::is_caution_or_above(*evaluation_result) &&
-                             severity_evaluator::get_min_lateral_distance_to_bound(
-                               *evaluation_result) <= th_near_boundary));
-    result.status =
-      footprint_is_close_to_bound ? DepartureType::NEAR_BOUNDARY : DepartureType::NONE;
-  }
-
-  if (evaluation_result) {
-    result.lat_dist_to_uncrossable_bound =
-      severity_evaluator::get_min_lateral_distance_to_bound(*evaluation_result);
-  }
-
-  result.debug_markers = debug::create_debug_markers(
-    states.critical, evaluated->footprints, evaluated->align_count, ego_state,
-    param_.enable_developer_marker);
+    state, footprints, expected_alignment.align_count, ego_state, param_.enable_developer_marker);
   return result;
 }
 
