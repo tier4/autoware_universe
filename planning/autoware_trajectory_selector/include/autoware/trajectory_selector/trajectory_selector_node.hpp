@@ -60,7 +60,7 @@ using trajectory_ranker::TrajectorySource;
 using trajectory_validator::ValidationReports;
 
 /** @brief Input that triggers the selector processing cycle. */
-enum class TriggerMode { GENERATIVE, BACKUP };
+enum class TriggerMode { MAIN, BACKUP };
 
 /**
  * @brief Concatenates candidate trajectories from multiple planners, validates them, ranks them,
@@ -140,7 +140,7 @@ private:
   std::unique_ptr<trajectory_ranker::TrajectoryRankerWrapper> ranker_ptr_;
   std::unique_ptr<trajectory_adapter::TrajectoryAdapterWrapper> adapter_ptr_;
   rclcpp::TimerBase::SharedPtr timer_;
-  TriggerMode trigger_mode_{TriggerMode::GENERATIVE};
+  TriggerMode trigger_mode_{TriggerMode::MAIN};
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   LaneletRoute::ConstSharedPtr route_ptr_;
   std::shared_ptr<route_handler::RouteHandler> route_handler_ptr_;

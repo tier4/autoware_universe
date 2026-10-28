@@ -104,7 +104,7 @@ void TrajectorySelectorNode::route_callback(
 void TrajectorySelectorNode::on_anchor_trajectories(const CandidateTrajectories::ConstSharedPtr msg)
 {
   concatenator_ptr_->add_candidate(*msg);
-  trigger_mode_ = TriggerMode::GENERATIVE;
+  trigger_mode_ = TriggerMode::MAIN;
   process_trajectories();
   timer_->reset();
 }
