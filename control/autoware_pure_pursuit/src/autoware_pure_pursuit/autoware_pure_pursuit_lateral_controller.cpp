@@ -337,7 +337,7 @@ PurePursuitLateralController::runDetailed(const InputData & input_data, const rc
   if (!predicted_trajectory) {
     return tl::make_unexpected("failed to generate predicted trajectory");
   }
-  result.predicted_trajectory = *predicted_trajectory;
+  result.output.predicted_trajectory = *predicted_trajectory;
 
   return result;
 }

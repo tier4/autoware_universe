@@ -23,6 +23,7 @@
 #include <tl_expected/expected.hpp>
 
 #include "autoware_control_msgs/msg/lateral.hpp"
+#include "autoware_planning_msgs/msg/trajectory.hpp"
 
 #include <string>
 
@@ -34,6 +35,8 @@ struct LateralOutput
   Lateral control_cmd;
   LateralHorizon control_cmd_horizon;
   LateralSyncData sync_data;
+  /// What the controller expects the vehicle to follow.
+  autoware_planning_msgs::msg::Trajectory predicted_trajectory;
 };
 
 class LateralControllerInterface
