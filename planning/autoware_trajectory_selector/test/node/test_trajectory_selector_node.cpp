@@ -79,10 +79,11 @@ protected:
 
     output_sub_ =
       test_node_->create_subscription<autoware_internal_planning_msgs::msg::CandidateTrajectories>(
-        "/trajectory_selector_node/output/trajectories", 1,
+        "/trajectory_selector_node/output/validated_trajectories", 1,
         [this](
           const autoware_internal_planning_msgs::msg::CandidateTrajectories::ConstSharedPtr msg) {
           last_output_ = msg;
+          ++output_count_;
         });
 
     // Seed the simulated clock at t = 1 s to avoid zero-time edge cases.
@@ -177,6 +178,32 @@ protected:
     tl_pub_->publish(tl_signals);
   }
 
+  /**
+   * Publish a generative message and wait for the output, so that the node is in generative
+   * trigger mode and its fallback timer restarts at the current sim_time_.
+   */
+  bool enter_generative_mode()
+  {
+    CandidateTrajectories msg;
+    add_trajectory(msg, "GenerativePlanner", 10.0, sim_time_);
+    last_output_ = nullptr;
+    traj_pub_->publish(msg);
+    const bool received = spin_until(
+      [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(50)));
+    last_output_ = nullptr;
+    return received;
+  }
+
+  /**
+   * Advance sim time with no input past the generative fallback period, so that the fallback
+   * timer fires and the node switches to backup trigger mode.
+   */
+  void enter_backup_mode()
+  {
+    spin_until([] { return false; }, rclcpp::Duration(std::chrono::milliseconds(200)));
+    last_output_ = nullptr;
+  }
+
   static void add_trajectory(
     CandidateTrajectories & msg, std::string name, float start_vel, const rclcpp::Time & stamp)
   {
@@ -218,6 +245,7 @@ protected:
   rclcpp::Subscription<autoware_internal_planning_msgs::msg::CandidateTrajectories>::SharedPtr
     output_sub_;
   autoware_internal_planning_msgs::msg::CandidateTrajectories::ConstSharedPtr last_output_;
+  int output_count_{0};
 };
 
 TEST_F(TrajectorySelectorNodeTest, FiltersTrajectoriesViaPlugin)
@@ -260,23 +288,18 @@ TEST_F(TrajectorySelectorNodeTest, ImmediateOutputOnGenerativeInput)
   EXPECT_TRUE(received) << "Node should publish immediately on generative input";
 }
 
-TEST_F(TrajectorySelectorNodeTest, NoImmediateOutputOnBackupInput)
+TEST_F(TrajectorySelectorNodeTest, NoImmediateOutputOnBackupInputInGenerativeMode)
 {
   publish_context();
   spin_for_messages();
+  ASSERT_TRUE(enter_generative_mode());
 
-  const auto now = sim_time_;
   autoware_internal_planning_msgs::msg::CandidateTrajectories msg;
-  add_trajectory(msg, "BackupPlanner", 10.0, now);
-  bool received = spin_until(
-    [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(50)));
-  EXPECT_FALSE(received) << "Node should NOT publish without any input";
-
-  last_output_ = nullptr;
+  add_trajectory(msg, "BackupPlanner", 10.0, sim_time_);
   backup_traj_pub_->publish(msg);
 
   // Should NOT publish immediately
-  received = spin_until(
+  bool received = spin_until(
     [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(50)));
   EXPECT_FALSE(received) << "Node should NOT publish immediately on backup input";
 
@@ -284,6 +307,99 @@ TEST_F(TrajectorySelectorNodeTest, NoImmediateOutputOnBackupInput)
   received = spin_until(
     [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(200)));
   EXPECT_TRUE(received) << "Node should eventually publish on backup input via timer";
+}
+
+TEST_F(TrajectorySelectorNodeTest, ImmediateOutputOnBackupInputInBackupMode)
+{
+  publish_context();
+  spin_for_messages();
+  enter_backup_mode();
+
+  autoware_internal_planning_msgs::msg::CandidateTrajectories msg;
+  add_trajectory(msg, "BackupPlanner", 10.0, sim_time_);
+  backup_traj_pub_->publish(msg);
+
+  const bool received = spin_until(
+    [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(20)));
+  EXPECT_TRUE(received) << "Node should publish immediately on backup input in backup mode";
+}
+
+TEST_F(TrajectorySelectorNodeTest, BackupModeTimerUsesFallbackPeriod)
+{
+  publish_context();
+  spin_for_messages();
+  enter_backup_mode();
+
+  autoware_internal_planning_msgs::msg::CandidateTrajectories msg;
+  add_trajectory(msg, "BackupPlanner", 10.0, sim_time_);
+  backup_traj_pub_->publish(msg);
+  ASSERT_TRUE(spin_until(
+    [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(20))));
+  last_output_ = nullptr;
+
+  // The backup input resets the timer, so the next output comes from the 150 ms fallback timer
+  bool received = spin_until(
+    [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(130)));
+  EXPECT_FALSE(received) << "Node should NOT publish before the fallback period";
+
+  received = spin_until(
+    [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(40)));
+  EXPECT_TRUE(received) << "Node should publish via the 150 ms fallback timer";
+}
+
+TEST_F(TrajectorySelectorNodeTest, OneOutputPerJitteredBackupInput)
+{
+  publish_context();
+  spin_for_messages();
+  enter_backup_mode();
+
+  // A 10 Hz planner with jitter: each period is longer than 100 ms but shorter than the
+  // fallback period, so only the backup input must trigger an output.
+  constexpr int input_count = 5;
+  output_count_ = 0;
+  for (int index = 0; index < input_count; ++index) {
+    autoware_internal_planning_msgs::msg::CandidateTrajectories msg;
+    add_trajectory(msg, "BackupPlanner", 10.0, sim_time_);
+    backup_traj_pub_->publish(msg);
+    spin_until([] { return false; }, rclcpp::Duration(std::chrono::milliseconds(110)));
+  }
+  EXPECT_EQ(output_count_, input_count) << "Node should publish once per backup input";
+}
+
+TEST_F(TrajectorySelectorNodeTest, GenerativeInputRestoresGenerativeMode)
+{
+  publish_context();
+  spin_for_messages();
+  enter_backup_mode();
+  ASSERT_TRUE(enter_generative_mode());
+
+  autoware_internal_planning_msgs::msg::CandidateTrajectories msg;
+  add_trajectory(msg, "BackupPlanner", 10.0, sim_time_);
+  backup_traj_pub_->publish(msg);
+
+  const bool received = spin_until(
+    [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(50)));
+  EXPECT_FALSE(received) << "Node should NOT publish on backup input after generative returns";
+}
+
+TEST_F(TrajectorySelectorNodeTest, GenerativeDropoutSwitchesToBackupMode)
+{
+  publish_context();
+  spin_for_messages();
+  ASSERT_TRUE(enter_generative_mode());
+
+  // The generative input stops. The 150 ms fallback timer fires and switches to backup mode.
+  ASSERT_TRUE(spin_until(
+    [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(200))));
+  last_output_ = nullptr;
+
+  autoware_internal_planning_msgs::msg::CandidateTrajectories msg;
+  add_trajectory(msg, "BackupPlanner", 10.0, sim_time_);
+  backup_traj_pub_->publish(msg);
+
+  const bool received = spin_until(
+    [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(20)));
+  EXPECT_TRUE(received) << "Node should publish immediately on backup input after dropout";
 }
 
 TEST_F(TrajectorySelectorNodeTest, TimerOutputWithoutGenerativeInput)
@@ -398,13 +514,8 @@ TEST_F(TrajectorySelectorNodeTest, CustomFallbackPeriod)
     {rclcpp::Parameter("fallback_period_ms", 500), rclcpp::Parameter("duration_time", 1.0)});
   spin_for_messages();
 
-  const auto now = sim_time_;
-  autoware_internal_planning_msgs::msg::CandidateTrajectories msg;
-  add_trajectory(msg, "SomePlanner", 10.0, now);
-
-  // Publish only to backup, generative is never published
-  last_output_ = nullptr;
-  backup_traj_pub_->publish(msg);
+  // The generative input publishes once and then stops
+  ASSERT_TRUE(enter_generative_mode());
 
   // Should NOT publish within 400ms because fallback_period_ms is 500ms
   bool received = spin_until(
@@ -414,7 +525,7 @@ TEST_F(TrajectorySelectorNodeTest, CustomFallbackPeriod)
   // Should publish eventually via timer (timer is 500ms, so 600ms total should be enough)
   received = spin_until(
     [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(200)));
-  EXPECT_TRUE(received) << "Node should eventually publish on backup input via custom timer";
+  EXPECT_TRUE(received) << "Node should eventually publish via custom timer";
 }
 
 TEST_F(TrajectorySelectorNodeTest, ResetFallbackPeriod)
@@ -424,13 +535,8 @@ TEST_F(TrajectorySelectorNodeTest, ResetFallbackPeriod)
     {rclcpp::Parameter("fallback_period_ms", 500), rclcpp::Parameter("duration_time", 1.0)});
   spin_for_messages();
 
-  const auto now = sim_time_;
-  autoware_internal_planning_msgs::msg::CandidateTrajectories msg;
-  add_trajectory(msg, "SomePlanner", 10.0, now);
-
-  // Publish only to backup, generative is never published
-  last_output_ = nullptr;
-  backup_traj_pub_->publish(msg);
+  // The generative input publishes once and then stops
+  ASSERT_TRUE(enter_generative_mode());
 
   bool received = spin_until(
     [this] { return last_output_ != nullptr; }, rclcpp::Duration(std::chrono::milliseconds(400)));
