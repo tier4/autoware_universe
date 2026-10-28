@@ -165,10 +165,10 @@ control_validator:
       roi:
         rear:
           type: double
-          description: ROI extent behind base_link [m].
+          description: ROI extent behind the rear end of the vehicle, added to reverse velocity times horizon [m].
         front_margin:
           type: double
-          description: ROI extent ahead of base_link added to velocity times horizon [m].
+          description: ROI extent ahead of the front end of the vehicle, added to velocity times horizon [m].
         lateral:
           type: double
           description: ROI half width [m].

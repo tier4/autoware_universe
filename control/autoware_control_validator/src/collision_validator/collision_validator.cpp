@@ -190,10 +190,17 @@ void CollisionValidator::validate(
   if (params_.enable_pointcloud && pointcloud) {
     const auto ego_pose_at_pointcloud_stamp =
       select_ego_pose_at(rclcpp::Time(pointcloud->header.stamp));
-    const auto & result = pointcloud_preprocessor_.process(
-      *pointcloud, ego_pose_at_pointcloud_stamp, odom.twist.twist.linear.x, horizon, vehicle_info);
-    if (result) {
-      clusters = &*result;
+    try {
+      const auto & result = pointcloud_preprocessor_.process(
+        *pointcloud, ego_pose_at_pointcloud_stamp, odom.twist.twist.linear.x, horizon,
+        vehicle_info);
+      if (result) {
+        clusters = &*result;
+      }
+    } catch (const std::exception & e) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, steady_clock_, 5000, "hazard warning: pointcloud preprocessing skipped: %s",
+        e.what());
     }
   }
   if (!objects && !clusters) {

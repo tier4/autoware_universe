@@ -82,11 +82,12 @@ public:
    * @param pointcloud pointcloud in base_link
    * @param ego_pose_at_pointcloud_stamp ego pose (map) at the pointcloud stamp
    * @param v_ego ego longitudinal velocity [m/s]
-   * @param horizon_s evaluated time horizon, extends the ROI ahead by v_ego * horizon_s [s]
+   * @param horizon_s evaluated time horizon, extends the ROI ahead (behind when reversing) by
+   *   |v_ego| * horizon_s [s]
    * @param vehicle_info height range and footprint of the ego vehicle
    * @return clusters of the last processed frame; nullopt when no frame has been processed. The
-   *   same stamp as the last frame, a frame other than base_link, no ego pose or an empty cloud
-   *   is not processed.
+   *   same stamp as the last frame, a frame other than base_link or no ego pose is not processed.
+   *   An empty cloud gives no clusters.
    * @throws std::runtime_error when the cloud has no x / y / z fields
    */
   const std::optional<PointCloudClusters> & process(

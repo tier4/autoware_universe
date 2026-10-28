@@ -153,13 +153,16 @@ const std::optional<PointCloudClusters> & PointCloudPreprocessor::process(
     return result_;
   }
   if (pointcloud.width * pointcloud.height == 0) {
+    result_ = PointCloudClusters{{}, stamp};
     return result_;
   }
 
   // Ego-footprint exclusion and ROI crop, reading the fields by name so that any point layout is
   // accepted. The height bounds come from vehicle_info (base_link is on the ground plane).
-  const double x_min = -param_.roi_rear;
-  const double x_max = std::max(v_ego, 0.0) * horizon_s + param_.roi_front_margin;
+  const double x_min =
+    vehicle_info.min_longitudinal_offset_m - std::max(-v_ego, 0.0) * horizon_s - param_.roi_rear;
+  const double x_max = vehicle_info.max_longitudinal_offset_m + std::max(v_ego, 0.0) * horizon_s +
+                       param_.roi_front_margin;
   const double z_low = z_min(vehicle_info);
   const double z_high = z_max(vehicle_info);
   const auto footprint = ego_footprint_base_link(vehicle_info);
