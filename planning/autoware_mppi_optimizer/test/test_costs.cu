@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/mppi_optimizer/detail/colored_noise_params.hpp"
 #include "cost_test_report.hpp"
 #include "projection_test_cases.hpp"
 
 #include <mppi/core/mppi_common.cuh>
+#include <mppi/sampling_distributions/colored_noise/colored_noise.cuh>
 #include <mppi/sampling_distributions/gaussian/gaussian.cuh>
 
 #include <memory>
@@ -879,6 +881,56 @@ protected:
       tolerance + 1.0E-5 * std::abs(terminal.total));
   }
 };
+
+TEST_F(GpuCostEvaluation, ProductionColoredNoiseExploresBothFirstCommands)
+{
+  using Sampler =
+    mppi::sampling_distributions::ColoredNoiseDistribution<FirstOrderDubinsBicycleParams>;
+  constexpr int count = 512;
+  FirstOrderDubinsMppiCostParams costs;
+  Sampler::SAMPLING_PARAMS_T sampling;
+  sampling.num_rollouts = count;
+  sampling.num_timesteps = H;
+  sampling.num_distributions = 1;
+  sampling.std_dev[0] = costs.accel_cmd_std_dev;
+  sampling.std_dev[1] = costs.steer_cmd_std_dev;
+  sampling.std_dev_decay = costs.std_dev_decay;
+  detail::configureColoredNoise(
+    sampling, costs, static_cast<int>(C::ACCELERATION_CMD), static_cast<int>(C::STEER_CMD));
+  Sampler sampler(sampling);
+  sampler.GPUSetup();
+  const auto mean = Eigen::Matrix<float, Model::CONTROL_DIM, H>::Zero().eval();
+  sampler.copyImportanceSamplerToDevice(mean.data(), 0, true);
+  struct Generator
+  {
+    curandGenerator_t value{};
+    ~Generator()
+    {
+      if (value) curandDestroyGenerator(value);
+    }
+  } generator;
+  HANDLE_CURAND_ERROR(curandCreateGenerator(&generator.value, CURAND_RNG_PSEUDO_DEFAULT));
+  HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(generator.value, 42));
+  std::vector<float> samples(count * H * Model::CONTROL_DIM);
+  for (int iteration : {0, 1}) {
+    sampler.generateSamples(0, iteration, generator.value, true);
+    HANDLE_ERROR(cudaMemcpy(
+      samples.data(), sampler.getControlSample(0, 0, 0), samples.size() * sizeof(float),
+      cudaMemcpyDeviceToHost));
+    for (int channel = 0; channel < Model::CONTROL_DIM; ++channel) {
+      double sum = 0.0, squared_sum = 0.0;
+      // Skip the deterministic nominal and zero-control special rollouts.
+      for (int rollout = 2; rollout < count; ++rollout) {
+        const float value = samples[(rollout * H) * Model::CONTROL_DIM + channel];
+        ASSERT_TRUE(std::isfinite(value));
+        sum += value;
+        squared_sum += value * value;
+      }
+      const double variance = squared_sum / (count - 2) - std::pow(sum / (count - 2), 2);
+      EXPECT_GT(variance, 1.0E-6) << "channel=" << channel << " iteration=" << iteration;
+    }
+  }
+}
 
 TEST_F(GpuCostEvaluation, AdversarialProjectionCostsAndTerminalMatchHost)
 {

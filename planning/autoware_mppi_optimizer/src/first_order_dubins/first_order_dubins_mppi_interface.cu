@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/mppi_optimizer/detail/colored_noise_params.hpp"
 #include "autoware/mppi_optimizer/detail/plant_prediction_utils.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_validator.hpp"
@@ -1166,10 +1167,10 @@ struct FirstOrderDubinsMppiInterface::Impl
     sp.std_dev_decay = user_cost_params_.std_dev_decay;
     sp.sum_strides = std::max(32, (kNumRollouts + 1023) / 1024);
 #ifdef USE_COLOURED_NOISE
-    sp.exponents[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD)] =
-      user_cost_params_.accel_cmd_noise_exponent;
-    sp.exponents[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] =
-      user_cost_params_.steer_cmd_noise_exponent;
+    detail::configureColoredNoise(
+      sp, user_cost_params_,
+      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD),
+      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD));
 #elif defined(USE_SMOOTH_MPPI)
     // Smooth-MPPI samples action derivatives and integrates with dt.
     sp.dt = kDt;
