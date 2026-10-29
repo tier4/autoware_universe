@@ -262,6 +262,8 @@ public:
       out << "steering_hold_reference_length_threshold_m,"
           << options.steering_hold_reference_length_threshold_m << "\n";
       out << "min_trajectory_progress_m," << options.min_trajectory_progress_m << "\n";
+      out << "validation_interpolation_substeps," << options.validation_interpolation_substeps
+          << "\n";
       out << "use_last_control_as_nominal," << (options.use_last_control_as_nominal ? 1 : 0)
           << "\n";
       out << "nominal_initial_steering_max_deviation_rad,"

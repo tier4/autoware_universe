@@ -424,6 +424,12 @@ trajectory_mppi_optimizer:
     description: Minimum input arc length for optimization
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  validation_interpolation_substeps:
+    type: int
+    default_value: 1
+    description: Subdivisions between optimized post-step poses for final validation; 1 disables interpolation, moving objects are interpolated at the same times
+    validation: { bounds<>: [1, 100] }
+    read_only: false
   steering_hold_reference_length_threshold_m:
     type: double
     default_value: 0.5

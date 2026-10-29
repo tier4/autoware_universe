@@ -111,6 +111,7 @@
       ignore_drivable_area: true
       force_cold_start_each_step: false
       skip_if_invalid: true
+      validation_interpolation_substeps: 1  # >1 adds time-aligned intermediate validation samples
       min_optimization_length: 10.0
       # Hold the last accepted steering command when the remaining reference is very short.
       steering_hold_reference_length_threshold_m: 0.5

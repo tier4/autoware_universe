@@ -247,6 +247,8 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.ignore_drivable_area = params.ignore_drivable_area;
   output.force_cold_start_each_step = params.force_cold_start_each_step;
   output.skip_if_invalid = params.skip_if_invalid;
+  output.validation_interpolation_substeps =
+    static_cast<int>(params.validation_interpolation_substeps);
   output.min_optimization_length = static_cast<float>(params.min_optimization_length);
   output.steering_hold_reference_length_threshold_m =
     static_cast<float>(params.steering_hold_reference_length_threshold_m);

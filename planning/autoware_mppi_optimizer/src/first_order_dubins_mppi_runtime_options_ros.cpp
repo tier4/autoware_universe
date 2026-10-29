@@ -50,6 +50,9 @@ void declare_first_order_dubins_mppi_runtime_options(
     param_name(prefix, "force_cold_start_each_step"), defaults.force_cold_start_each_step);
   node.declare_parameter(param_name(prefix, "skip_if_invalid"), defaults.skip_if_invalid);
   node.declare_parameter(
+    param_name(prefix, "validation_interpolation_substeps"),
+    defaults.validation_interpolation_substeps);
+  node.declare_parameter(
     param_name(prefix, "min_optimization_length"), defaults.min_optimization_length);
   node.declare_parameter(
     param_name(prefix, "steering_hold_reference_length_threshold_m"),
@@ -117,6 +120,8 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.force_cold_start_each_step =
     node.get_parameter(param_name(prefix, "force_cold_start_each_step")).as_bool();
   options.skip_if_invalid = node.get_parameter(param_name(prefix, "skip_if_invalid")).as_bool();
+  options.validation_interpolation_substeps = static_cast<int>(
+    node.get_parameter(param_name(prefix, "validation_interpolation_substeps")).as_int());
   options.min_optimization_length = static_cast<float>(
     node.get_parameter(param_name(prefix, "min_optimization_length")).as_double());
   options.steering_hold_reference_length_threshold_m = static_cast<float>(

@@ -232,6 +232,19 @@ TEST(FirstOrderDubinsMppiInterface, CollisionActivationCannotBypassMinimumStoppi
   EXPECT_FALSE(interface.isInitialized());
 }
 
+TEST(FirstOrderDubinsMppiInterface, RejectsInvalidValidationInterpolationResolution)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiRuntimeOptions options;
+  for (int steps : {0, -1, 101}) {
+    options.validation_interpolation_substeps = steps;
+    EXPECT_THROW(interface.setRuntimeOptions(options), std::invalid_argument);
+  }
+  options.validation_interpolation_substeps = 10;
+  EXPECT_NO_THROW(interface.setRuntimeOptions(options));
+  EXPECT_FALSE(interface.isInitialized());
+}
+
 TEST(FirstOrderDubinsMppiInterface, ExpandedPredictionCapacityFailsBeforeCudaInitialization)
 {
   FirstOrderDubinsMppiInterface interface;

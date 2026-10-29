@@ -144,6 +144,8 @@ struct alignas(16) FirstOrderDubinsRuntimeData
   bool obs_is_static_[kMaxObstacles] = {};
   /** Moving obstacles participate only in this many post-step samples; static ones always do. */
   int dynamic_obstacle_timesteps_ = NUM_TIMESTEPS;
+  /** Fractional post-step index of the cutoff, retained for interpolated host validation. */
+  float dynamic_obstacle_last_step_ = static_cast<float>(NUM_TIMESTEPS - 1);
 
   __host__ __device__ bool obstacleActiveAtStep(const int obstacle, const int timestep) const
   {
@@ -404,6 +406,10 @@ public:
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep,
     int * intersecting_obstacle = nullptr) const;
+
+  /** Host output validation between post-step samples; interpolates object pose in time. */
+  __host__ bool egoIntersectsObstacleAtFractionalStep(
+    float x, float y, float yaw, float timestep) const;
 
   __host__ __device__ bool egoIntersectsVegetation(float x, float y, float yaw) const;
   __host__ __device__ float distanceToClosestVegetation(float x, float y, float yaw) const;

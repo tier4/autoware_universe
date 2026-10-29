@@ -40,6 +40,8 @@ struct FirstOrderDubinsMppiRuntimeOptions
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{true};
+  /** 1 checks post-step poses only; >1 also interpolates ego and obstacles between them. */
+  int validation_interpolation_substeps{1};
   /** Skip optimization for stopping trajectories shorter than this arc length in meters. */
   float min_optimization_length{0.0F};
   /** Hold the last accepted steering command while the reference is no longer than this. */

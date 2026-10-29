@@ -934,6 +934,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
+  int validation_interpolation_substeps{1};
   float min_optimization_length{0.0F};
   float steering_hold_reference_length_threshold_m{0.5F};
   float min_trajectory_progress_m{0.0F};
@@ -2709,6 +2710,11 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
       throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
     }
     if (
+      options.validation_interpolation_substeps < 1 ||
+      options.validation_interpolation_substeps > 100) {
+      throw std::invalid_argument("MPPI validation interpolation substeps must be in [1, 100]");
+    }
+    if (
       !std::isfinite(options.dynamic_obstacle_horizon_s) ||
       options.dynamic_obstacle_horizon_s < 0.0F ||
       !std::isfinite(options.min_optimization_length) || options.min_optimization_length < 0.0F ||
@@ -2749,6 +2755,7 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     impl_->steering_hold_reference_length_threshold_m =
       options.steering_hold_reference_length_threshold_m;
     impl_->min_trajectory_progress_m = options.min_trajectory_progress_m;
+    impl_->validation_interpolation_substeps = options.validation_interpolation_substeps;
     impl_->dynamic_obstacle_horizon_s = options.dynamic_obstacle_horizon_s;
     impl_->nominal_initial_steering_max_deviation_rad =
       options.nominal_initial_steering_max_deviation_rad;
@@ -2857,6 +2864,7 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   runtime.steering_hold_reference_length_threshold_m =
     impl_->steering_hold_reference_length_threshold_m;
   runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
+  runtime.validation_interpolation_substeps = impl_->validation_interpolation_substeps;
   runtime.use_last_control_as_nominal = use_last_control_as_nominal;
   runtime.nominal_initial_steering_max_deviation_rad =
     impl_->nominal_initial_steering_max_deviation_rad;
@@ -3223,7 +3231,8 @@ try {
   // Validate every published optimized state, including reconstructed x[H]. Obstacle slot i
   // represents the same post-step time (i + 1) * dt as optimized_states[i].
   auto validation = detail::validateOptimizedTrajectory(
-    impl_->cost, optimized_states, impl_->min_trajectory_progress_m);
+    impl_->cost, optimized_states, impl_->min_trajectory_progress_m,
+    impl_->validation_interpolation_substeps);
   if (no_eligible_rollouts) {
     validation.reasons =
       validation.reasons | FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts;
@@ -3372,6 +3381,7 @@ try {
       runtime.steering_hold_reference_length_threshold_m =
         impl_->steering_hold_reference_length_threshold_m;
       runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
+      runtime.validation_interpolation_substeps = impl_->validation_interpolation_substeps;
       runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
       runtime.last_control_warm_start_max_age_s = impl_->last_control_warm_start_max_age_s;
       runtime.last_control_warm_start_max_position_error_m =

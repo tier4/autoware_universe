@@ -659,8 +659,16 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       ++timesteps;
     }
   }
-  if (runtimeData().dynamic_obstacle_timesteps_ == timesteps) return;
+  const float last_step = horizon_s > 0.0F
+                            ? std::min(horizon_s / dt - 1.0F, static_cast<float>(NUM_TIMESTEPS - 1))
+                            : static_cast<float>(NUM_TIMESTEPS - 1);
+  if (
+    runtimeData().dynamic_obstacle_timesteps_ == timesteps &&
+    runtimeData().dynamic_obstacle_last_step_ == last_step) {
+    return;
+  }
   runtimeData().dynamic_obstacle_timesteps_ = timesteps;
+  runtimeData().dynamic_obstacle_last_step_ = last_step;
   dataToDevice();
   // The cutoff changes map contents even when obstacle poses have not changed.
   refreshDistanceMapTextures(true, false, false);
@@ -1106,6 +1114,37 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
           mppi::memory::loadReadOnly(&data.obs_half_length_[i]),
           mppi::memory::loadReadOnly(&data.obs_half_width_[i]))) {
       if (intersecting_obstacle != nullptr) *intersecting_obstacle = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ bool FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  egoIntersectsObstacleAtFractionalStep(
+    const float x, const float y, const float yaw, const float timestep) const
+{
+  const float t = std::clamp(timestep, 0.0F, static_cast<float>(NUM_TIMESTEPS - 1));
+  const int lo = static_cast<int>(t);
+  const int hi = std::min(lo + 1, NUM_TIMESTEPS - 1);
+  const float fraction = t - lo;
+  const float ego_cos = std::cos(yaw), ego_sin = std::sin(yaw);
+  const float cx = x + this->params_.ego_axle_to_box_center * ego_cos;
+  const float cy = y + this->params_.ego_axle_to_box_center * ego_sin;
+  const float margin = this->params_.obstacle_collision_margin;
+  const auto & data = runtimeData();
+  for (int i = 0; i < data.num_obstacles_; ++i) {
+    if (!data.obs_is_static_[i] && t > data.dynamic_obstacle_last_step_ + 1.0E-5F) continue;
+    const float ox = data.obs_x_[i][lo] + fraction * (data.obs_x_[i][hi] - data.obs_x_[i][lo]);
+    const float oy = data.obs_y_[i][lo] + fraction * (data.obs_y_[i][hi] - data.obs_y_[i][lo]);
+    const float angle =
+      data.obs_yaw_[i][lo] +
+      fraction * angle_utils::shortestAngularDistance(data.obs_yaw_[i][lo], data.obs_yaw_[i][hi]);
+    if (orientedBoxesOverlap(
+          cx, cy, ego_cos, ego_sin, this->params_.ego_length * 0.5F + margin,
+          this->params_.ego_width * 0.5F + margin, ox, oy, std::cos(angle), std::sin(angle),
+          data.obs_half_length_[i], data.obs_half_width_[i])) {
       return true;
     }
   }
