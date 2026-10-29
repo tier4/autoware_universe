@@ -50,7 +50,7 @@ struct StopLineInfo
 };
 
 /// @brief type of traffic light violation
-enum class ViolationType { RED_LIGHT, AMBER_LIGHT };
+enum class ViolationType { RED_LIGHT, AMBER_LIGHT, V2I };
 
 /// @brief violation detail
 struct Violation
@@ -125,6 +125,13 @@ struct Parameters
     double hysteresis_duration{0.0};
     bool reject_if_stop_detected{false};
   } amber_rejection;
+  struct V2IHandling
+  {
+    bool get_last_time_allowed_to_pass_from_map{false};
+    double last_time_allowed_to_pass{4.0};
+    double velocity_threshold{0.5};
+    double required_time_to_departure{5.0};
+  } v2i_handling;
 };
 
 }  // namespace autoware::traffic_light_compliance_checker

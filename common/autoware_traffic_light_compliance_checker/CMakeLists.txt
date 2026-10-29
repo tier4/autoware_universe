@@ -8,6 +8,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/traffic_light_compliance_checker.cpp
   src/traffic_light_status_tracker.cpp
   src/utils.cpp
+  src/v2i_handling.cpp
 )
 
 if(BUILD_TESTING)

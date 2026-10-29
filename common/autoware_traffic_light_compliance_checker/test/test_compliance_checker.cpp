@@ -477,3 +477,95 @@ TEST_F(ComplianceCheckerTest, NoViolationWithGreenRightArrow)
   ASSERT_TRUE(result.has_value());
   EXPECT_TRUE(result->violations.empty());
 }
+
+// ---------------------------------------------------------------------------
+// V2I cases
+// ---------------------------------------------------------------------------
+
+namespace
+{
+TrafficLightGroupArray make_green_signals_turning_red_at(const rclcpp::Time & red_time)
+{
+  auto signals = make_signals(make_element(TrafficLightElement::GREEN));
+  autoware_perception_msgs::msg::PredictedTrafficLightState prediction;
+  prediction.predicted_stamp = red_time;
+  prediction.simultaneous_elements.push_back(make_element(TrafficLightElement::RED));
+  prediction.reliability = 1.0f;
+  signals.traffic_light_groups.front().predictions.push_back(prediction);
+  return signals;
+}
+}  // namespace
+
+TEST_F(ComplianceCheckerTest, ViolationWithV2IPredictedRedBeforeCrossing)
+{
+  params_.v2i_handling.last_time_allowed_to_pass = 4.0;
+  checker_ = std::make_unique<TrafficLightComplianceChecker>(params_, make_vehicle_info());
+
+  // ego crosses the stop line 3 s from now, the light turns red 5 s from now (< 3 + 4)
+  const rclcpp::Time now(100, 0, RCL_ROS_TIME);
+  auto map = create_map();
+  auto input =
+    make_inputs(map, make_green_signals_turning_red_at(now + rclcpp::Duration(5, 0)), now);
+  const auto result = checker_->check(input, true, true, true);
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->violations.size(), 1u);
+  EXPECT_EQ(result->violations.front().type, ViolationType::V2I);
+  EXPECT_EQ(result->violations.front().traffic_light_id, k_light_id);
+  EXPECT_NEAR(result->violations.front().arc_length_to_cross_point, k_stop_line_x, 1e-3);
+}
+
+TEST_F(ComplianceCheckerTest, NoViolationWithV2IDisabled)
+{
+  const rclcpp::Time now(100, 0, RCL_ROS_TIME);
+  auto map = create_map();
+  auto input =
+    make_inputs(map, make_green_signals_turning_red_at(now + rclcpp::Duration(5, 0)), now);
+  const auto result = checker_->check(input, true, true, false);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result->violations.empty());
+}
+
+TEST_F(ComplianceCheckerTest, NoViolationWithV2IPredictedRedAfterPassing)
+{
+  params_.v2i_handling.last_time_allowed_to_pass = 4.0;
+  checker_ = std::make_unique<TrafficLightComplianceChecker>(params_, make_vehicle_info());
+
+  // ego crosses the stop line 3 s from now, the light turns red 10 s from now (> 3 + 4)
+  const rclcpp::Time now(100, 0, RCL_ROS_TIME);
+  auto map = create_map();
+  auto input =
+    make_inputs(map, make_green_signals_turning_red_at(now + rclcpp::Duration(10, 0)), now);
+  const auto result = checker_->check(input, true, true, true);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result->violations.empty());
+}
+
+TEST_F(ComplianceCheckerTest, NoViolationWithV2IPredictionInThePast)
+{
+  const rclcpp::Time now(100, 0, RCL_ROS_TIME);
+  auto map = create_map();
+  auto input =
+    make_inputs(map, make_green_signals_turning_red_at(now - rclcpp::Duration(5, 0)), now);
+  const auto result = checker_->check(input, true, true, true);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result->violations.empty());
+}
+
+TEST_F(ComplianceCheckerTest, ViolationWithV2IWhenStoppedUsesDepartureTime)
+{
+  params_.v2i_handling.last_time_allowed_to_pass = 0.0;
+  params_.v2i_handling.velocity_threshold = 0.5;
+  params_.v2i_handling.required_time_to_departure = 5.0;
+  checker_ = std::make_unique<TrafficLightComplianceChecker>(params_, make_vehicle_info());
+
+  // ego is stopped: the departure time (5 s) is used instead of the crossing time (3 s)
+  const rclcpp::Time now(100, 0, RCL_ROS_TIME);
+  auto map = create_map();
+  auto input =
+    make_inputs(map, make_green_signals_turning_red_at(now + rclcpp::Duration(4, 0)), now);
+  input.current_velocity = 0.0;
+  const auto result = checker_->check(input, true, true, true);
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->violations.size(), 1u);
+  EXPECT_EQ(result->violations.front().type, ViolationType::V2I);
+}

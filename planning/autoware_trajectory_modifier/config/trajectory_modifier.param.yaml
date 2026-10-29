@@ -147,12 +147,19 @@
       th_stable_duration_unknown: 0.5 # [s]
       hold_position_when_stopped: true # hold in place when already stopped near the stop point (avoids red-light creep)
       hold_position_distance_threshold: 2.0 # [m] hold only if target stop is within this distance
+      signal_timeout: 0.36 # [s] maximum age of the traffic light signals before the check is skipped
       amber_rejection:
         th_hysteresis: 0.5 # [s]
         reject_if_stop_detected: true # reject if we detect a previous stop attempt from input trajectory
         can_stop_decel: 2.8
         can_stop_jerk: 5.0
         crossing_time_limit: 2.75 # [s] trajectories crossing an amber light are rejected if they cannot cross before this time
+      v2i_handling:
+        use_v2i_remaining_time: false
+        get_last_time_allowed_to_pass_from_map: false
+        last_time_allowed_to_pass: 4.0
+        velocity_threshold: 0.5 # [m/s]
+        required_time_to_departure: 5.0 # [s]
 
     # Surround Obstacle Stop Plugin Parameters
     surround_obstacle_stop:

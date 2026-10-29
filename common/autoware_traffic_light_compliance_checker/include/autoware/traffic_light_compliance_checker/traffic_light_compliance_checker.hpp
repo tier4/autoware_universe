@@ -55,10 +55,13 @@ public:
   /**
    * @brief check if the trajectory complies with traffic lights
    * @param input input data for compliance check (raw signals are filtered internally)
+   * @param use_v2i_remaining_time also reject crossings of non-stop lights that V2I predicts to
+   * turn red before ego can pass
    * @return result of compliance check, or error message if check fails
    */
   [[nodiscard]] tl::expected<ComplianceResult, std::string> check(
-    const Inputs & input, const bool check_red_lights = true, const bool check_amber_lights = true);
+    const Inputs & input, const bool check_red_lights = true, const bool check_amber_lights = true,
+    const bool use_v2i_remaining_time = false);
 
   /**
    * @brief update parameters
@@ -109,6 +112,13 @@ private:
     const double time_to_cross_stop_line) const;
 
   bool is_allow_if_cannot_stop(const double distance_from_ego_front) const;
+
+  /// @brief return violations for the stop lines of non-stop lights that will turn red before ego
+  /// can pass them, based on the V2I signal predictions. Defined in v2i_handling.cpp.
+  [[nodiscard]] Violations get_v2i_violations(
+    const Inputs & input,
+    const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
+    const bool is_ego_stopped) const;
 
   void cleanup_violation_distance_history(
     const std::vector<StopLineInfo> & red_stop_lines,

@@ -125,7 +125,8 @@ void TrafficLightComplianceChecker::update_parameters(const Parameters & paramet
 }
 
 tl::expected<ComplianceResult, std::string> TrafficLightComplianceChecker::check(
-  const Inputs & input, const bool check_red_lights, const bool check_amber_lights)
+  const Inputs & input, const bool check_red_lights, const bool check_amber_lights,
+  const bool use_v2i_remaining_time)
 {
   if (input.map == nullptr) {
     return tl::make_unexpected("Lanelet map is not set");
@@ -147,6 +148,11 @@ tl::expected<ComplianceResult, std::string> TrafficLightComplianceChecker::check
   auto result = check_with_filtered_signals(
     input, filtered_signals, force_reject_amber_ids, check_red_lights, check_amber_lights,
     is_ego_stopped);
+
+  if (use_v2i_remaining_time) {
+    const auto v2i_violations = get_v2i_violations(input, filtered_signals, is_ego_stopped);
+    result.violations.insert(result.violations.end(), v2i_violations.begin(), v2i_violations.end());
+  }
 
   cleanup_amber_rejection_history(input.current_time);
 
