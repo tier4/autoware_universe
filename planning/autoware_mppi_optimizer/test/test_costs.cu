@@ -369,7 +369,7 @@ TEST_F(CostEvaluation, LateralBarrierThresholdsAreSymmetric)
         expected(
           b, &Breakdown::lateral_boundary, "lateral_boundary",
           w * std::pow(std::max(0.0F, offset - 1.5F), 2));
-        report.expect("lateral_crash", report.rows.back().crash != 0, w > 0 && offset >= 2, 0);
+        report.expect("lateral_crash", report.rows.back().crash != 0, offset >= 2, 0);
       }
   }
 }
@@ -422,8 +422,7 @@ TEST_F(CostEvaluation, GeometryClearanceSweeps)
         const float want = w * std::pow(std::max(0.0F, 1 - effective), 2) * (kind == 3 ? 2 : 1);
         expected(b, value, name, want);
         if (kind < 2)
-          report.expect(
-            "exact_contact_flag", report.rows.back().crash != 0, w > 0 && wall_y <= 1.0F, 0);
+          report.expect("exact_contact_flag", report.rows.back().crash != 0, wall_y <= 1.0F, 0);
       }
     }
   cost->setRoadBorderSegments({});
@@ -932,6 +931,27 @@ TEST_F(GpuCostEvaluation, ProductionColoredNoiseExploresBothFirstCommands)
   }
 }
 
+TEST_F(GpuCostEvaluation, ZeroSoftWeightsStillReportExactSafetyViolations)
+{
+  params = disabledParams();
+  params.boundary_threshold = 0.5F;
+  params.ego_length = params.ego_width = 1.0F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.obstacle_collision_margin = params.road_border_collision_margin = 0.0F;
+  apply();
+  obstacle(0.0F, 1.0F);
+  cost->setRoadBorderSegments({{-1.0, 1.0, 1.0, 1.0}});
+  auto y = Cost::output_array::Zero().eval();
+  y(static_cast<int>(O::BASELINK_POS_I_Y)) = 1.0F;
+  const auto u = Cost::control_array::Zero().eval();
+  int status = 0;
+  EXPECT_FLOAT_EQ(cost->computeRunningCost(y, u, 0, &status), 0.0F);
+  EXPECT_NE(status & mppi::safety::kLateral, 0);
+  EXPECT_NE(status & mppi::safety::kObstacle, 0);
+  EXPECT_NE(status & mppi::safety::kRoadBorder, 0);
+  for (bool shared : {false, true}) parity(y, u, 0, "zero weights", 1.0E-4, shared);
+}
+
 TEST_F(GpuCostEvaluation, AdversarialProjectionCostsAndTerminalMatchHost)
 {
   auto y = Cost::output_array::Zero().eval();
@@ -972,7 +992,7 @@ TEST_F(GpuCostEvaluation, AdversarialProjectionCostsAndTerminalMatchHost)
   }
 }
 
-TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
+TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjectionAndSafetyFlags)
 {
   // Deterministic zero controls isolate projection from random sampling. Both production
   // launchers use the same bicycle/cost specialization and the deployed block dimensions.
@@ -995,6 +1015,7 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
     sampler.getControlSample(0, 0, 0), 0, rollouts * H * Model::CONTROL_DIM * sizeof(float)));
   params = disabledParams();
   params.lateral_distance_coeff = 1.0F;
+  params.boundary_threshold = 0.5F;  // Safety still applies with a zero lateral barrier weight.
   apply();
   const float x[] = {0, 10, 10, 0};
   const float y[] = {0, 0, 10, 10};
@@ -1004,6 +1025,7 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
   state(static_cast<int>(S::POS_Y)) = 9.0F;
   DeviceBuffer<float> initial(Model::STATE_DIM), totals(rollouts);
   DeviceBuffer<float> outputs(rollouts * H * Model::OUTPUT_DIM);
+  DeviceBuffer<int> safety(rollouts);
   HANDLE_ERROR(cudaMemcpy(
     initial.data, state.data(), Model::STATE_DIM * sizeof(float), cudaMemcpyHostToDevice));
   for (bool texture : {true, false}) {
@@ -1015,11 +1037,18 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
       if (split) {
         mppi::kernels::launchSplitRolloutKernel(
           &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, outputs.data,
-          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true);
+          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true, safety.data);
       } else {
         mppi::kernels::launchRolloutKernel(
           &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
-          dim3(32, 2, 1), 0, true);
+          dim3(32, 2, 1), 0, true, safety.data);
+      }
+      std::array<int, rollouts> statuses{};
+      HANDLE_ERROR(
+        cudaMemcpy(statuses.data(), safety.data, sizeof(statuses), cudaMemcpyDeviceToHost));
+      for (const auto status : statuses) {
+        EXPECT_NE(status & mppi::safety::kLateral, 0);
+        EXPECT_EQ(mppi::safety::timestep(status), 0);
       }
       std::array<float, rollouts> actual{};
       HANDLE_ERROR(cudaMemcpy(actual.data(), totals.data, sizeof(actual), cudaMemcpyDeviceToHost));

@@ -511,6 +511,34 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, UsesEveryHighestConfidencePathAndIt
   EXPECT_THROW(interface_->commitPendingTrajectory(), std::logic_error);
 }
 
+TEST_F(
+  FirstOrderDubinsMppiInterfaceGpuTest, EligibleRolloutsDoNotGuaranteePostprocessedOutputSafety)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  costs.boundary_threshold = 0.5F;
+  interface_->setCostParams(costs);
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.skip_if_invalid = true;
+  interface_->setRuntimeOptions(options);
+  const auto input = makeStraightTrajectory(80U);
+  const auto unsafe_postprocessor = [](auto & controls, const auto &) {
+    for (auto & control : controls) control = {0.0F, 0.5F};
+  };
+  const auto result = interface_->optimizeTrajectory(
+    input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {},
+    unsafe_postprocessor, true);
+  ASSERT_FALSE(result.debug.rollout_iteration_diagnostics.empty());
+  EXPECT_GT(result.debug.rollout_iteration_diagnostics.front().eligible_count, 0);
+  EXPECT_FALSE(hasInvalidityReason(
+    result.debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts));
+  EXPECT_TRUE(hasInvalidityReason(
+    result.debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::lateral_boundary));
+  EXPECT_TRUE(result.debug.was_rejected);
+  EXPECT_EQ(result.trajectory, input);
+  EXPECT_THROW(interface_->commitPendingTrajectory(), std::logic_error);
+}
+
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, PostprocessingHistoryUsesOnlyCommittedCandidates)
 {
   FirstOrderDubinsMppiCostParams costs;

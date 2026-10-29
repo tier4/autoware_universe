@@ -1496,7 +1496,9 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
           distanceToDrivableArea(x, y, yaw), this->params_.drivable_area_safe_margin,
           this->params_.drivable_area_barrier_weight);
   obstacle_cost = 0.0F;
-  if (this->params_.obstacle_barrier_weight != 0.0F) {
+  if (
+    this->params_.obstacle_barrier_weight != 0.0F || safety_violation != nullptr ||
+    rollout_status != nullptr) {
     const float obstacle_distance = distanceToClosestObstacle(x, y, yaw, timestep);
     obstacle_cost = computeSmoothBarrierCost(
       obstacle_distance,
@@ -1531,7 +1533,9 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     markSafetyViolation(rollout_status, collision, 2, timestep, -1);
   }
   road_border_cost = 0.0F;
-  if (this->params_.road_border_barrier_weight != 0.0F) {
+  if (
+    this->params_.road_border_barrier_weight != 0.0F || safety_violation != nullptr ||
+    rollout_status != nullptr) {
     const float road_border_distance = distanceToRoadBorder(x, y, yaw);
     road_border_cost = computeSmoothBarrierCost(
       road_border_distance,
@@ -1572,7 +1576,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 
   result.track = this->params_.track_coeff * computeTrackValue(x_pos, y_pos, timestep);
   result.heading = this->params_.heading_coeff * computeHeadingValue(yaw, timestep);
-  if (needsLateralPathMetrics(this->params_)) {
+  if (crash_status != nullptr || needsLateralPathMetrics(this->params_)) {
     const LateralPathMetrics lateral = computeLateralPathMetrics(x_pos, y_pos, yaw);
     if (
       this->params_.spatial_overspeed_coeff > 0.0F &&
@@ -1588,9 +1592,8 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     result.lateral_distance =
       this->params_.lateral_distance_coeff * lateral.lateral_distance * lateral.lateral_distance;
     result.lateral_boundary = lateralBoundaryBarrierCost(this->params_, lateral.lateral_distance);
-    safety_violation = safety_violation || (this->params_.lateral_boundary_barrier_weight > 0.0F &&
-                                            absLateralDistance(lateral.lateral_distance) >=
-                                              this->params_.boundary_threshold);
+    safety_violation =
+      absLateralDistance(lateral.lateral_distance) >= this->params_.boundary_threshold;
     result.lateral_yaw_error = this->params_.lateral_yaw_error_coeff * lateral.lateral_yaw_error_sq;
     result.remaining_distance = this->params_.remaining_distance_coeff *
                                 lateral.remaining_distance_s * lateral.remaining_distance_s;
@@ -1709,7 +1712,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   float remaining_distance_cost = 0.0F;
   float path_overshoot_cost = 0.0F;
   bool safety_violation = false;
-  if (needsLateralPathMetrics(this->params_)) {
+  if (crash_status != nullptr || needsLateralPathMetrics(this->params_)) {
     const LateralPathMetrics lateral = computeLateralPathMetrics(x_pos, y_pos, yaw, theta_c);
     const float corridor_length =
       mppi::memory::loadReadOnly(&runtimeData().lateral_corridor_total_length_s_);
@@ -1725,7 +1728,6 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
       this->params_.lateral_distance_coeff * lateral.lateral_distance * lateral.lateral_distance;
     lateral_boundary_cost = lateralBoundaryBarrierCost(this->params_, lateral.lateral_distance);
     safety_violation =
-      this->params_.lateral_boundary_barrier_weight > 0.0F &&
       absLateralDistance(lateral.lateral_distance) >= this->params_.boundary_threshold;
     lateral_yaw_error_cost = this->params_.lateral_yaw_error_coeff * lateral.lateral_yaw_error_sq;
     remaining_distance_cost = this->params_.remaining_distance_coeff *
@@ -1769,7 +1771,7 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   float remaining_distance_cost = 0.0F;
   float path_overshoot_cost = 0.0F;
   bool safety_violation = false;
-  if (needsLateralPathMetrics(this->params_)) {
+  if (crash_status != nullptr || needsLateralPathMetrics(this->params_)) {
     const LateralPathMetrics lateral = computeLateralPathMetrics(x_pos, y_pos, yaw);
     if (
       this->params_.spatial_overspeed_coeff > 0.0F &&
@@ -1786,7 +1788,6 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
       this->params_.lateral_distance_coeff * lateral.lateral_distance * lateral.lateral_distance;
     lateral_boundary_cost = lateralBoundaryBarrierCost(this->params_, lateral.lateral_distance);
     safety_violation =
-      this->params_.lateral_boundary_barrier_weight > 0.0F &&
       absLateralDistance(lateral.lateral_distance) >= this->params_.boundary_threshold;
     lateral_yaw_error_cost = this->params_.lateral_yaw_error_coeff * lateral.lateral_yaw_error_sq;
     remaining_distance_cost = this->params_.remaining_distance_coeff *
