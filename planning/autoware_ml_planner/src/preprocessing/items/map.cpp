@@ -908,16 +908,10 @@ TrafficLightStatus identify_current_light_status(
       }));
   };
 
-  // First priority: Find arrows that include the lane direction
+  // First priority: Find elements with exactly matching direction
   std::vector<TrafficLightElement> matching_elements;
   for (const TrafficLightElement & element : effective_elements) {
-    const bool combined_arrow_matches = (element.shape == TrafficLightElement::UP_LEFT_ARROW &&
-                                         (target_shape == TrafficLightElement::UP_ARROW ||
-                                          target_shape == TrafficLightElement::LEFT_ARROW)) ||
-                                        (element.shape == TrafficLightElement::UP_RIGHT_ARROW &&
-                                         (target_shape == TrafficLightElement::UP_ARROW ||
-                                          target_shape == TrafficLightElement::RIGHT_ARROW));
-    if (element.shape == target_shape || combined_arrow_matches) {
+    if (element.shape == target_shape) {
       matching_elements.push_back(element);
     }
   }
