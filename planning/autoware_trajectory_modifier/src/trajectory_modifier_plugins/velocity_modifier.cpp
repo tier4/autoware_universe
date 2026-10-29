@@ -19,6 +19,7 @@
 #include <autoware/trajectory/trajectory_point.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace autoware::trajectory_modifier::plugin
@@ -36,12 +37,45 @@ void VelocityModifier::on_initialize(const TrajectoryModifierParams & params)
 }
 
 bool VelocityModifier::is_trajectory_modification_required(
-  const TrajectoryPoints & traj_points, [[maybe_unused]] const InputData & input)
+  const TrajectoryPoints & traj_points, [[maybe_unused]] const TrajectoryModifierData & input)
 {
   if (traj_points.size() < 2) return false;
 
   const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj_points);
   if (!stop_idx.has_value() || stop_idx.value() == 0) return false;
+
+  // A time-sampled velocity-limit profile already supplies a spatially and jerk-consistent stop.
+  // Rebuilding it with the spatial stop heuristic can introduce a much sharper deceleration.
+  // Spatial trajectories without useful timestamps still take the regular modification path.
+  if (stop_idx.value() >= 2) {
+    bool consistent = true;
+    for (std::size_t i = 1; i <= stop_idx.value(); ++i) {
+      const auto & previous = traj_points[i - 1];
+      const auto & current = traj_points[i];
+      const double dt =
+        (rclcpp::Duration(current.time_from_start) - rclcpp::Duration(previous.time_from_start))
+          .seconds();
+      const auto & p0 = previous.pose.position;
+      const auto & p1 = current.pose.position;
+      const double ds = std::hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+      const double expected_ds =
+        0.5 * (previous.longitudinal_velocity_mps + current.longitudinal_velocity_mps) * dt;
+      const double expected_dv =
+        0.5 * (previous.acceleration_mps2 + current.acceleration_mps2) * dt;
+      if (
+        !std::isfinite(dt) || dt <= 0.0 || dt > 1.0 ||
+        std::abs(ds - expected_ds) > 0.05 + 0.02 * expected_ds ||
+        std::abs(
+          current.longitudinal_velocity_mps - previous.longitudinal_velocity_mps - expected_dv) >
+          0.2 ||
+        std::abs(current.acceleration_mps2 - previous.acceleration_mps2) >
+          std::abs(params_.jerk_limit) * dt + 0.02) {
+        consistent = false;
+        break;
+      }
+    }
+    if (consistent) return false;
+  }
 
   const auto & stop_point = traj_points.at(stop_idx.value());
   const auto & prev_point = traj_points.at(stop_idx.value() - 1);
@@ -61,12 +95,15 @@ bool VelocityModifier::is_trajectory_modification_required(
   return std::abs(a_prev - expected_accel) > tolerance;
 }
 
-bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const InputData & input)
+ProcessingResult VelocityModifier::process(
+  TrajectoryPoints & traj_points, TrajectoryModifierData & input)
 {
-  if (!enabled_ || !is_trajectory_modification_required(traj_points, input)) return false;
+  if (!enabled_ || !is_trajectory_modification_required(traj_points, input)) {
+    return ProcessingResult::Unchanged;
+  }
 
   const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj_points);
-  if (!stop_idx.has_value() || stop_idx.value() == 0) return false;
+  if (!stop_idx.has_value() || stop_idx.value() == 0) return ProcessingResult::Unchanged;
 
   auto trajectory = traj_points;
 
@@ -95,7 +132,7 @@ bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const I
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,
       "[TM VelocityModifier] Failed to build interpolation trajectory");
-    return false;
+    return ProcessingResult::Unchanged;
   }
 
   const auto dt = trajectory_time_step_;
@@ -106,7 +143,7 @@ bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const I
       "[TM VelocityModifier] Invalid trajectory time step: %f, unable to interpolate trajectory",
       dt);
     traj_points = std::move(trajectory);
-    return true;
+    return ProcessingResult::Modified;
   }
 
   const auto s_max = trajectory_interpolation_util->length();
@@ -133,7 +170,7 @@ bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const I
     traj_points.push_back(p);
   }
 
-  return true;
+  return ProcessingResult::Modified;
 }
 
 size_t VelocityModifier::update_velocities(

@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_modifier.hpp"
+#include "trajectory_modifier_test_utils.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
@@ -26,6 +28,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -34,9 +37,11 @@
 namespace
 {
 using autoware::trajectory_modifier::TrajectoryModifierContext;
-using autoware::trajectory_modifier::plugin::InputData;
+using autoware::trajectory_modifier::TrajectoryModifierData;
+using autoware::trajectory_modifier::TrajectoryModifierParams;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
 using autoware::trajectory_modifier::plugin::VelocityModifier;
+using autoware::trajectory_modifier::test::process_plugin;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 
 TrajectoryPoint create_trajectory_point(
@@ -108,11 +113,13 @@ protected:
 
     set_up_default_params();
 
-    // Create the context and the plugin once. Tests build per-frame InputData inline,
+    // Create the context and the plugin once. Tests build per-frame TrajectoryModifierData inline,
     // and inject any required TF directly into context_->tf_buffer.
     context_ = std::make_shared<TrajectoryModifierContext>(node_.get());
     plugin_ = std::make_unique<VelocityModifier>();
-    plugin_->initialize("test_velocity_modifier", node_.get(), time_keeper_, context_, params_);
+    plugin_->initialize(
+      "test_velocity_modifier", node_.get(), time_keeper_, context_,
+      TrajectoryModifierParams{params_});
   }
 
   void TearDown() override
@@ -143,11 +150,11 @@ TEST_F(VelocityModifierIntegrationTest, TrajectoryNotModifiedWhenDisabled)
 {
   // Arrange
   params_.use_velocity_modifier = false;
-  plugin_->update_params(params_);
+  plugin_->update_params(TrajectoryModifierParams{params_});
   TrajectoryPoints trajectory;
 
   // Act
-  const bool modified = plugin_->modify_trajectory(trajectory, InputData{});
+  const bool modified = process_plugin(*plugin_, trajectory, TrajectoryModifierData{});
 
   // Assert
   EXPECT_FALSE(modified);
@@ -159,7 +166,7 @@ TEST_F(VelocityModifierIntegrationTest, TrajectoryNotModifiedForEmptyTrajectory)
   TrajectoryPoints trajectory;
 
   // Act
-  const bool modified = plugin_->modify_trajectory(trajectory, InputData{});
+  const bool modified = process_plugin(*plugin_, trajectory, TrajectoryModifierData{});
 
   // Assert
   EXPECT_FALSE(modified);
@@ -171,7 +178,7 @@ TEST_F(VelocityModifierIntegrationTest, TrajectoryNotModifiedWhenNoStopPoint)
   auto trajectory = create_constant_velocity_trajectory(20.0, 10.0);
 
   // Act
-  const bool modified = plugin_->modify_trajectory(trajectory, InputData{});
+  const bool modified = process_plugin(*plugin_, trajectory, TrajectoryModifierData{});
 
   // Assert
   EXPECT_FALSE(modified);
@@ -183,7 +190,7 @@ TEST_F(VelocityModifierIntegrationTest, TrajectoryNotModifiedForSmoothStoppingTr
   auto trajectory = create_constant_deceleration_trajectory(20.0, 10.0);
 
   // Act
-  const bool modified = plugin_->modify_trajectory(trajectory, InputData{});
+  const bool modified = process_plugin(*plugin_, trajectory, TrajectoryModifierData{});
 
   // Assert
   EXPECT_FALSE(modified);
@@ -195,10 +202,45 @@ TEST_F(VelocityModifierIntegrationTest, TrajectoryModifiedForStepChangeZeroVeloc
   auto trajectory = create_step_change_zero_velocity_trajectory(20.0, 10.0, 15.0);
 
   // Act
-  const bool modified = plugin_->modify_trajectory(trajectory, InputData{});
+  const bool modified = process_plugin(*plugin_, trajectory, TrajectoryModifierData{});
 
   // Assert
   EXPECT_TRUE(modified);
   EXPECT_NEAR(trajectory.back().longitudinal_velocity_mps, 0.0, 0.1);
   EXPECT_NEAR(trajectory.back().acceleration_mps2, 0.0, 0.1);
+}
+
+TEST_F(VelocityModifierIntegrationTest, PreservesTimeSampledVelocityLimitStop)
+{
+  TrajectoryPoints trajectory(100);
+  for (std::size_t i = 0; i < trajectory.size(); ++i) {
+    trajectory[i] = create_trajectory_point(0.5 * i, 0.0, 5.0);
+    trajectory[i].time_from_start = rclcpp::Duration::from_seconds(0.1 * i);
+  }
+  autoware::trajectory_modifier::plugin::detail::VelocityLimitOptions options;
+  options.current_ego_velocity = 5.0;
+  options.current_ego_acceleration = 0.0;
+  const auto limit_result = autoware::trajectory_modifier::plugin::detail::apply_velocity_limits(
+    trajectory, {1.0, 2.0, 1.0},
+    [](const geometry_msgs::msg::Point &) { return std::optional<double>{0.0}; }, options);
+  ASSERT_TRUE(limit_result.error.empty()) << limit_result.error;
+  const auto before = trajectory;
+
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, TrajectoryModifierData{}));
+  ASSERT_EQ(trajectory.size(), before.size());
+  for (std::size_t i = 0; i < trajectory.size(); ++i) {
+    EXPECT_FLOAT_EQ(trajectory[i].longitudinal_velocity_mps, before[i].longitudinal_velocity_mps);
+    EXPECT_FLOAT_EQ(trajectory[i].acceleration_mps2, before[i].acceleration_mps2);
+    EXPECT_DOUBLE_EQ(trajectory[i].pose.position.x, before[i].pose.position.x);
+  }
+}
+
+TEST_F(VelocityModifierIntegrationTest, StillProcessesInconsistentTimedStop)
+{
+  auto trajectory = create_step_change_zero_velocity_trajectory(20.0, 10.0, 15.0);
+  for (std::size_t i = 0; i < trajectory.size(); ++i) {
+    trajectory[i].time_from_start = rclcpp::Duration::from_seconds(0.1 * i);
+  }
+
+  EXPECT_TRUE(plugin_->is_trajectory_modification_required(trajectory, TrajectoryModifierData{}));
 }

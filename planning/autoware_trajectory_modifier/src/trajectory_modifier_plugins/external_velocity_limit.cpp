@@ -69,7 +69,7 @@ void ExternalVelocityLimit::update_params(const TrajectoryModifierParams & param
 }
 
 ProcessingResult ExternalVelocityLimit::process(
-  TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
+  TrajectoryPoints & traj_points, TrajectoryModifierData & input)
 {
   last_profile_start_ = detail::ProfileStart::Measured;
   if (!input.has_external_velocity_limit_snapshot) {

@@ -1,38 +1,50 @@
 /**:
   ros__parameters:
+    # Complete plugin execution order: modifiers followed by optimizers.
+    # TSO then ModelPlanningFactorID, then velocity limits / remaining plugins.
     plugin_names:
+      - "autoware::trajectory_modifier::plugin::TrajectoryTimeSequenceRawOptimizer"
+      - "autoware::trajectory_modifier::plugin::ModelPlanningFactorID"
+      - "autoware::trajectory_modifier::plugin::ExternalVelocityLimit"
+      - "autoware::trajectory_modifier::plugin::MapVelocityLimits"
       - "autoware::trajectory_modifier::plugin::StopPointFixer"
       - "autoware::trajectory_modifier::plugin::SurroundObstacleStop"
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
       - "autoware::trajectory_modifier::plugin::TrafficLightStop"
+      - "autoware::trajectory_modifier::plugin::DetectionAreaStop"
       - "autoware::trajectory_modifier::plugin::VelocityModifier"
+      - "autoware::trajectory_modifier::plugin::TrajectoryTemporalMPTOptimizer"
+      - "autoware::trajectory_modifier::plugin::TrajectoryPointFixer"
+      - "autoware::trajectory_modifier::plugin::TrajectoryKinematicFeasibilityEnforcer"
+      - "autoware::trajectory_modifier::plugin::TrajectoryQPSmoother"
+      - "autoware::trajectory_modifier::plugin::TrajectoryKinematicFeasibilityEnforcer"
+      - "autoware::trajectory_modifier::plugin::TrajectoryVelocityOptimizer"
+      - "autoware::trajectory_modifier::plugin::TrajectoryEBSmootherOptimizer"
+      - "autoware::trajectory_modifier::plugin::TrajectorySplineSmoother"
+      - "autoware::trajectory_modifier::plugin::TrajectoryMPTOptimizer"
+      - "autoware::trajectory_modifier::plugin::TrajectoryExtender"
+    use_external_velocity_limit: true
+    use_map_velocity_limits: true
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
+    use_detection_area_stop: false
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
+    use_model_planning_factor_id: true
+
+    use_akima_spline_interpolation: true
+    use_eb_smoother: false
+    use_qp_smoother: true
+    use_trajectory_point_fixer: true
+    use_velocity_optimizer: true
+    use_trajectory_extender: false
+    use_kinematic_feasibility_enforcer: true
+    use_mpt_optimizer: false
+    use_temporal_mpt_optimizer: true
+    use_time_sequence_raw_optimizer: false
+
     trajectory_time_step: 0.1 # [s]
-    use_external_velocity_limit: true
-    use_map_velocity_limits: true
-
-    map_velocity_limits:
-      limit_velocity_from_map_debug_lanelet_ids: []
-      limit_velocity_from_map_debug_max_velocities: []
-
-    velocity_limits:
-      max_acceleration: 1.0 # [m/s^2]
-      max_deceleration: 1.0 # [m/s^2]
-      max_jerk: 3.0 # [m/s^3]
-      fixed_profile:
-        enable: true
-        reset_velocity_deviation: 0.5 # [m/s]
-        reset_acceleration_deviation: 0.5 # [m/s^2]
-        reset_distance_deviation: 1.0 # [m]
-        reset_time_gap: 0.5 # [s]
-        reset_on_new_stop: true
-        new_stop_match_distance: 1.0 # [m]
-        reset_on_lower_input: true
-        lower_input_velocity_margin: 0.5 # [m/s]
 
     # Stop Point Fixer Plugin Parameters
     stop_point_fixer:
@@ -46,6 +58,7 @@
       nominal_deceleration: 1.0 # [m/s^2]
       maximum_deceleration: 4.0 # [m/s^2]
       jerk_limit: 3.0 # [m/s^3]
+      delay_response_time: 0.5 # [s] delay response time used to estimate the minimum ego stopping distance
       arrived_distance_threshold: 0.5 # threshold to check if the ego vehicle has arrived at the stop point [m]
       ego_stopped_vel_th: 0.1  # [m/s] velocity threshold below which ego is considered stopped
 
@@ -57,7 +70,6 @@
       enable_stop_for_pointcloud: false
       stop_margin: 6.0 # [m]
       minimum_stop_margin: 3.0 # [m]
-      lateral_margin: 0.2     # lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
       duplicate_check_threshold: 0.5 # threshold to check if the stop point is already in the trajectory [m]
 
       obstacle_tracking:
@@ -69,24 +81,40 @@
         grace_period: 0.2 # [s]
 
       objects:
-        object_types: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard"] # object types to consider for obstacle stop
+        target_objects:
+          bbox: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "unknown"]
+          polygon: ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "unknown"]
+          pointcloud: ["structure", "vegetation"]
         stopped_velocity_th: 0.3 # [m/s]
         max_lateral_velocity_th: 1.0 # [m/s] max lateral velocity (w.r.t ego traj) to consider for obstacle stop
         safety_buffer: 0.1 # [m] safety buffer to expand object shape
-
-      pointcloud:
-        height_buffer: 0.5  # height buffer to add above ego height [m]
-        min_height: 0.2  # minimum height of pointcloud [m]
-        voxel_grid_filter:
-          x: 0.2
-          y: 0.2
-          z: 0.2
-          min_size: 3
-        clustering:
-          tolerance: 0.5  #[m]
-          min_height: 0.5
-          min_size: 10
-          max_size: 10000
+        pointcloud_height_buffer: 0.2
+        pointcloud_min_height: 0.2
+        lateral_margin:
+          car: 0.1
+          truck: 0.1
+          bus: 0.1
+          trailer: 0.1
+          motorcycle: 0.1
+          bicycle: 0.1
+          pedestrian: 0.1
+          hazard: 0.1
+          structure: 0.1
+          vegetation: 0.1
+          unknown: 0.0
+        low_velocity_lateral_margin:
+          car: 0.1
+          truck: 0.1
+          bus: 0.1
+          trailer: 0.1
+          motorcycle: 0.1
+          bicycle: 0.1
+          pedestrian: 0.1
+          hazard: 0.05
+          structure: 0.05
+          vegetation: 0.0
+          unknown: 0.0
+        low_velocity_th: 4.0 # [m/s]
 
       rss_params:
         enable: true
@@ -100,30 +128,32 @@
           pedestrian: 5.0
           animal: 5.0
         ego_decel: 2.0 # [m/s^2]
-        reaction_time: 0.4 # [s]
-        safety_margin: 3.0 # [m]
+        safety_margin: 1.5 # [m]
         lookahead_horizon: 1.5 # [s]
 
     # Traffic Light Stop Plugin Parameters
     traffic_light_stop:
       stop_margin: 0.75 # [m]
       stop_for_red_light: true
-      stop_for_amber_light: false
+      stop_for_amber_light: true
       treat_amber_light_as_red: false
       treat_unknown_light_as_red: true
+      enable_arrow_aware_amber_passing: true # [-] allow Green->Amber on turn lanes with mapped static arrow
       overshoot_tolerance: 0.5 # [m]
       allow_if_cannot_stop_distance: 1.0 # [m]
       min_lookahead_distance: 20.0 # [m] minimum forward length to scan for stop lines even at low ego speed
       th_stable_duration_red: 0.2 # [s]
       th_stable_duration_amber: 0.2 # [s]
       th_stable_duration_unknown: 0.5 # [s]
-      crossing_time_limit: 2.75 # [s]
-      signal_timeout: 0.36 # [s] maximum age of the traffic light signals before the check is skipped
       hold_position_when_stopped: true # hold in place when already stopped near the stop point (avoids red-light creep)
       hold_position_distance_threshold: 2.0 # [m] hold only if target stop is within this distance
+      signal_timeout: 0.36 # [s] maximum age of the traffic light signals before the check is skipped
       amber_rejection:
         th_hysteresis: 0.5 # [s]
         reject_if_stop_detected: true # reject if we detect a previous stop attempt from input trajectory
+        can_stop_decel: 2.8
+        can_stop_jerk: 5.0
+        crossing_time_limit: 2.75 # [s] trajectories crossing an amber light are rejected if they cannot cross before this time
       v2i_handling:
         use_v2i_remaining_time: false
         get_last_time_allowed_to_pass_from_map: false
@@ -135,7 +165,10 @@
     surround_obstacle_stop:
       use_objects: true
       use_pointcloud: false
-      object_types: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "animal", "unknown"]
+      target_objects:
+        bbox: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "animal", "unknown"]
+        polygon: ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "animal", "unknown"]
+        pointcloud: ["hazard", "structure", "vegetation"]
       front_distance_th:
         car: 0.5
         truck: 0.5
@@ -174,3 +207,60 @@
         pointcloud: 0.5
       hysteresis_distance: 0.1
       hysteresis_time: 0.2
+      pcd_height_buffer: 0.5  # height buffer to add above ego height [m]
+      pcd_min_height: 0.2  # minimum height of pointcloud [m]
+
+    map_velocity_limits:
+      limit_velocity_from_map_debug_lanelet_ids: [0]
+      limit_velocity_from_map_debug_max_velocities: [1000.0]
+
+    detection_area_stop:
+      stop_margin: 0.0 # [m]
+      target_filtering:
+        pointcloud: true
+        unknown: false
+        car: false
+        truck: false
+        bus: false
+        trailer: false
+        motorcycle: false
+        bicycle: false
+        pedestrian: false
+        animal: false
+        hazard: false
+        over_drivable: false
+        under_drivable: false
+      use_dead_line: false
+      dead_line_margin: 5.0 # [m]
+      unstoppable_policy: "stop_after_stopline"
+      state_clear_time: 2.0 # [s]
+      hold_stop_margin_distance: 0.0 # [m]
+      distance_to_judge_over_stop_line: 0.5 # [m]
+      suppress_pass_judge_when_stopping: false
+      enable_detected_obstacle_logging: false
+
+    # Constraints of the profiles generated by ExternalVelocityLimit and MapVelocityLimits
+    velocity_limits:
+      max_acceleration: 1.0 # [m/s^2]
+      max_deceleration: 1.0 # [m/s^2]
+      max_jerk: 3.0 # [m/s^3]
+      # Start from the previous plan instead of the measured ego state while the ego tracks it
+      fixed_profile:
+        enable: true
+        reset_velocity_deviation: 0.5 # [m/s]
+        reset_acceleration_deviation: 0.5 # [m/s^2]
+        reset_distance_deviation: 1.0 # [m]
+        reset_time_gap: 0.5 # [s]
+        reset_on_new_stop: true
+        new_stop_match_distance: 1.0 # [m]
+        reset_on_lower_input: true
+        lower_input_velocity_margin: 0.5 # [m/s]
+
+    # ModelPlanningFactorID: inspect kinematics and publish
+    # /planning/planning_factors/diffusion_planner. Does not mutate.
+    model_planning_factor_id:
+      enable_stop: true
+      enable_slowdown: false
+      stop_velocity_threshold: 0.1       # [m/s]
+      stop_keep_duration_threshold: 1.0  # [s]
+      slowdown_accel_threshold: -0.3     # [m/s^2]
