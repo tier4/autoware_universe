@@ -294,6 +294,12 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
         "Model takes 'ego_curvature_bias' but not 'ego_current_state', whose values it filters");
     }
   }
+  if (const auto * spec = claim(START_ACCEL_PREVIOUS_TENSOR, start_accel_previous_shape_)) {
+    validate_shape(*spec, {1, 1}, "the start acceleration of the previous published plan, m/s^2");
+  }
+  if (const auto * spec = claim(START_ACCEL_DT_TENSOR, start_accel_dt_shape_)) {
+    validate_shape(*spec, {1, 1}, "seconds since the previous published plan's planning time");
+  }
   if (const auto * spec = claim("turn_indicators", turn_indicators_shape_)) {
     if (spec->shape.size() != 2 || spec->shape[0] != 1) {
       throw std::runtime_error(
@@ -313,6 +319,18 @@ std::vector<std::string> ContextInputProvider::claim_inputs(
   }
 
   return claimed;
+}
+
+void ContextInputProvider::on_published(const TensorMap & outputs, const EgoFrame & ego)
+{
+  if (start_accel_previous_shape_.empty()) {
+    return;
+  }
+  // The node checked at load that a graph taking the previous start returns this one.
+  const auto it = outputs.find(START_ACCEL_OUTPUT_TENSOR);
+  if (it != outputs.end() && !it->second.host_data.empty()) {
+    start_accel_.record(it->second.host_data.front(), ego.stamp.seconds());
+  }
 }
 
 void ContextInputProvider::create_subscriptions()
@@ -498,6 +516,14 @@ bool ContextInputProvider::collect_ego_tensors(
     // Raw 1/m; the graph never normalises it.
     inputs[CURVATURE_BIAS_TENSOR] =
       Tensor::from_host(curvature_bias_shape_, {curvature_bias_->value()});
+  }
+
+  if (!start_accel_previous_shape_.empty()) {
+    // Raw m/s^2 and seconds; the graph low-passes its own start against them (dt <= 0: none).
+    const auto [previous, dt_s] = start_accel_.inputs(ego.stamp.seconds());
+    inputs[START_ACCEL_PREVIOUS_TENSOR] =
+      Tensor::from_host(start_accel_previous_shape_, {previous});
+    inputs[START_ACCEL_DT_TENSOR] = Tensor::from_host(start_accel_dt_shape_, {dt_s});
   }
 
   if (!sensor_latency_shape_.empty()) {

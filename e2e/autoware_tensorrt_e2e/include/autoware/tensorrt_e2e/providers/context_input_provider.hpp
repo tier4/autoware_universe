@@ -18,6 +18,7 @@
 #include "autoware/tensorrt_e2e/curvature_bias.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
 #include "autoware/tensorrt_e2e/signal_history.hpp"
+#include "autoware/tensorrt_e2e/start_accel.hpp"
 
 #include <autoware/diffusion_planner/conversion/agent.hpp>
 #include <autoware/diffusion_planner/preprocessing/lane_segments.hpp>
@@ -83,6 +84,7 @@ public:
 
   std::string name() const override { return "context"; }
   std::vector<std::string> claim_inputs(const std::vector<TensorSpec> & engine_inputs) override;
+  void on_published(const TensorMap & outputs, const EgoFrame & ego) override;
   bool collect(
     const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs,
     std::string & error) override;
@@ -150,6 +152,11 @@ private:
   bool curvature_bias_enabled_{false};
   std::optional<CurvatureBiasFilter> curvature_bias_;
   std::optional<rclcpp::Time> curvature_bias_stamp_;
+  //! `start_accel_previous` / `start_accel_dt` `[1, 1]`, predicted-start graphs only: the
+  //! `start_accel` the graph returned with the last published plan, and its planning time.
+  std::vector<int64_t> start_accel_previous_shape_;
+  std::vector<int64_t> start_accel_dt_shape_;
+  StartAccelState start_accel_;
   //! `lane_signals` / `route_signals` `[1, rows, steps, 5]`, signal-history graphs only;
   //! each row followed by its segment over the ticks (cleared when the map is rebuilt).
   std::vector<int64_t> lane_signals_shape_;

@@ -17,6 +17,7 @@
 #include <autoware_utils_geometry/geometry.hpp>
 
 #include "autoware/tensorrt_e2e/input_provider_registry.hpp"
+#include "autoware/tensorrt_e2e/start_accel.hpp"
 
 #include <autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp>
 #include <autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp>
@@ -498,6 +499,12 @@ void TensorrtE2eNode::initialize_pipeline()
 
   postprocessor_ = std::make_unique<TrajectoryPostprocessor>(postprocess_params_);
   postprocessor_->validate_output_specs(engine_->output_specs());
+  // A predicted-start graph's state round trip (start_accel.hpp): its inputs are claimed by
+  // the context provider above, its output must be there for the provider to keep.
+  check_start_accel_tensors(
+    find_spec(engine_->input_specs(), START_ACCEL_PREVIOUS_TENSOR) != nullptr,
+    find_spec(engine_->input_specs(), START_ACCEL_DT_TENSOR) != nullptr,
+    find_spec(engine_->output_specs(), START_ACCEL_OUTPUT_TENSOR) != nullptr);
   if (!turn_indicator_tensor_.empty()) {
     const TensorSpec * spec = find_spec(engine_->output_specs(), turn_indicator_tensor_);
     if (!spec || spec->shape.size() != 2 || spec->shape[1] != TurnIndicatorFilter::kNumClasses) {
@@ -848,6 +855,9 @@ bool TensorrtE2eNode::run_tick(TickTiming & timing)
 
   pub_trajectory_->publish(output.trajectory);
   pub_trajectories_->publish(output.candidate_trajectories);
+  for (auto & provider : providers_) {
+    provider->on_published(*result.outputs, *ego);
+  }
   if (turn_indicator_filter_) {
     const auto logits = result.outputs->find(turn_indicator_tensor_);
     if (logits == result.outputs->end() || logits->second.host_data.size() < 3) {
