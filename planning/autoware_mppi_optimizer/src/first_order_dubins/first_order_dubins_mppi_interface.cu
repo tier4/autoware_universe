@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "autoware/mppi_optimizer/detail/plant_prediction_utils.hpp"
-#include "autoware/mppi_optimizer/detail/temporal_mpt_nominal.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_validator.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
@@ -953,13 +952,10 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool short_reference_steering_hold_active{false};
   bool standstill_steering_hold_valid{false};
   float standstill_steering_hold_command_rad{0.0F};
-  /** Cold-seed u_nom from acados temporal MPT instead of geometric diffusion seed. */
-  bool use_temporal_mpt_as_nominal{false};
   /** Prevent acceleration commands and integrated states from producing reverse velocity. */
   bool prevent_reverse_velocity{true};
   /** When false, force N_acc = N_steer = 0 (vehicle delay params ignored). */
   bool enable_input_delay_compensation{true};
-  detail::TemporalMptNominalSeeder temporal_mpt_nominal_seeder;
   /** Fill debug.rollouts with top-K weighted samples (CPU replay). Offline retune only by default.
    */
   bool enable_rollout_visualization{false};
@@ -1011,7 +1007,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::vector<detail::FirstOrderDubinsMppiControlHistoryEntry> prediction_control_history_{};
 
   // Execution history is committed only when the candidate is accepted. Sampler statistics
-  // and the optional temporal seed may evolve during candidate computation; they are proposals.
+  // may evolve during candidate computation; they are proposals.
   struct TrackingState
   {
     Mppi::control_trajectory controls;
@@ -1127,11 +1123,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     dyn.max_accel = vehicle_params.max_accel();
     dyn.prevent_reverse_velocity = prevent_reverse_velocity;
     model.setParams(dyn);
-    temporal_mpt_nominal_seeder.setBicycleParameters(
-      vehicle_params.wheel_base, vehicle_params.ego_axle_to_box_center,
-      vehicle_params.acc_time_constant, vehicle_params.steer_time_constant,
-      vehicle_params.steer_rate_lim);
-
     acc_delay_steps = enable_input_delay_compensation
                         ? sampledDelaySteps(0.0F, vehicle_params.acc_time_delay, kDt)
                         : 0;
@@ -1271,7 +1262,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     accel_delay_buffer.clear();
     steer_delay_buffer.clear();
     delay_buffer_seeded = false;
-    temporal_mpt_nominal_seeder.resetWarmStart();
     prediction_anchor_.valid = false;
     prediction_control_history_.clear();
     stopped_state_initialized = false;
@@ -1861,29 +1851,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
   }
 
-  bool seedNominalControlFromTemporalMpt(
-    const Trajectory & reference, const detail::InitialState & ego)
-  {
-    auto nominal = temporal_mpt_nominal_seeder.solve(reference, ego, vehicle_params, kMppiHorizon);
-    if (!nominal) {
-      temporal_mpt_nominal_seeder.resetWarmStart();
-      seedNominalControlFromDiffusionReference(reference, tracking_start_idx, ego.velocity);
-      return false;
-    }
-    if (enable_input_delay_compensation && (acc_delay_steps > 0 || steer_delay_steps > 0)) {
-      nominal =
-        detail::shiftNominalControlForInputDelay(*nominal, acc_delay_steps, steer_delay_steps);
-    }
-    const int accel_idx =
-      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
-    const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
-    for (int t = 0; t < kMppiHorizon; ++t) {
-      u_nom(accel_idx, t) = (*nominal)[static_cast<size_t>(t)].accel_cmd;
-      u_nom(steer_idx, t) = (*nominal)[static_cast<size_t>(t)].steer_cmd;
-    }
-    return true;
-  }
-
   void applyActiveVelocityLimitToNominal()
   {
     if (!active_velocity_limit_profile.active) {
@@ -1985,29 +1952,6 @@ struct FirstOrderDubinsMppiInterface::Impl
       return;
     }
 
-    if (use_temporal_mpt_as_nominal) {
-      // t-MPT warm-starts from its own previous x/u, shifted one stage. Do not inject MPPI u_opt.
-      if (stopped_state || step_count == 0) {
-        temporal_mpt_nominal_seeder.resetWarmStart();
-      }
-      const bool temporal_seeded = seedNominalControlFromTemporalMpt(reference, ego);
-      filterNominalControl(ego);
-      const bool mpc_seeded =
-        mpc_predicted_trajectory && overlayMpcPredictedSteering(*mpc_predicted_trajectory, ego);
-      applyNominalSteeringContinuityGuard(ego, steering_measurement_available);
-      nominal_seed_source =
-        mpc_seeded ? FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory
-                   : (temporal_seeded ? FirstOrderDubinsMppiNominalSeedSource::temporal_mpt
-                                      : FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
-      if (!force_cold_start_each_step) {
-        nominal_reset_reason = (mpc_seeded || temporal_seeded)
-                                 ? FirstOrderDubinsMppiNominalResetReason::none
-                                 : FirstOrderDubinsMppiNominalResetReason::unavailable;
-      }
-      snapshotNominalForLog();
-      return;
-    }
-
     // Always construct a current-reference seed. Reused controls overwrite its prefix while its
     // suffix supplies newly exposed horizon samples.
     seedNominalControlFromDiffusionReference(reference, start_idx, ego.velocity);
@@ -2077,7 +2021,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     const auto & position = odometry.pose.pose.position;
     if (frame.valid && frame.frame_id != odometry.header.frame_id) {
       invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::unavailable);
-      temporal_mpt_nominal_seeder.resetWarmStart();
       prediction_anchor_.valid = false;
     }
     if (frame.needsRecenter(position.x, position.y, odometry.header.frame_id)) {
@@ -2111,7 +2054,6 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     if (force_cold_start_each_step) {
       invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::forced_cold_start);
-      temporal_mpt_nominal_seeder.resetWarmStart();
     }
 
     diffusion_reference = reference;
@@ -2789,7 +2731,6 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     impl_->invalidateNominalWarmStart(
       FirstOrderDubinsMppiNominalResetReason::configuration_changed);
     impl_->prevent_reverse_velocity = options.prevent_reverse_velocity;
-    impl_->use_temporal_mpt_as_nominal = options.use_temporal_mpt_as_nominal;
     impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
     impl_->min_optimization_length = options.min_optimization_length;
     impl_->steering_hold_reference_length_threshold_m =
@@ -2847,9 +2788,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     }
     RCLCPP_INFO(
       mppiLogger(),
-      "MPPI nominal seed: use_temporal_mpt_as_nominal=%s enable_input_delay_compensation=%s "
+      "MPPI nominal seed: enable_input_delay_compensation=%s "
       "prevent_reverse_velocity=%s nominal_initial_steering_max_deviation_rad=%.3f",
-      options.use_temporal_mpt_as_nominal ? "true" : "false",
       options.enable_input_delay_compensation ? "true" : "false",
       options.prevent_reverse_velocity ? "true" : "false",
       options.nominal_initial_steering_max_deviation_rad);
@@ -2924,7 +2864,6 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
     impl_->last_control_warm_start_stop_enter_velocity_mps;
   runtime.last_control_warm_start_stop_exit_velocity_mps =
     impl_->last_control_warm_start_stop_exit_velocity_mps;
-  runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
   runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
   runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
   runtime.enable_iteration_rollout_debug = impl_->enable_iteration_rollout_debug;
@@ -3434,7 +3373,6 @@ try {
         impl_->last_control_warm_start_stop_enter_velocity_mps;
       runtime.last_control_warm_start_stop_exit_velocity_mps =
         impl_->last_control_warm_start_stop_exit_velocity_mps;
-      runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
       runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
       runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
       runtime.enable_iteration_rollout_debug = impl_->enable_iteration_rollout_debug;

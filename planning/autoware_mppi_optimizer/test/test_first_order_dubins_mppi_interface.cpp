@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/detail/plant_prediction_utils.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
@@ -451,37 +450,23 @@ FirstOrderDubinsMppiControlSequencePostprocessor fixedAcceleration(const float a
   };
 }
 
-TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringFilterPreservesOnlyAcceptedShiftedCommands)
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, PostprocessingHistoryUsesOnlyCommittedCandidates)
 {
   FirstOrderDubinsMppiCostParams costs;
   costs.max_iter = 1;
-  // The postprocessor changes steering across the horizon; keep this test focused on filtering.
+  // Deliberately replace the candidate controls to isolate execution-history bookkeeping.
   costs.boundary_threshold = 100.0F;
   interface_->setCostParams(costs);
   FirstOrderDubinsMppiRuntimeOptions options;
   options.use_last_control_as_nominal = true;
-  options.use_temporal_mpt_as_nominal = false;
   interface_->setRuntimeOptions(options);
   const auto input = makeStraightTrajectory(80U);
-  CurvatureAdaptiveSteeringFilter filter({0.1F, 0.5F, 0.02F});
-  auto candidate_filter = filter;
   std::optional<FirstOrderDubinsMppiPostprocessingContext> postprocessing_context;
-  float first_before_filter = 0.0F;
   const FirstOrderDubinsMppiControlSequencePostprocessor postprocessor =
     [&](auto & controls, const FirstOrderDubinsMppiPostprocessingContext & context) {
       postprocessing_context = context;
       ASSERT_FALSE(controls.empty());
-      if (context.seed_source != FirstOrderDubinsMppiNominalSeedSource::previous_optimized) {
-        // Deterministic cold horizon: the next command needs smoothing once before execution.
-        for (auto & control : controls) control.steer_cmd = 0.01F;
-        controls.front().steer_cmd = 0.0F;
-      }
-      first_before_filter = controls.front().steer_cmd;
-      std::vector<float> steering;
-      for (const auto & control : controls) steering.push_back(control.steer_cmd);
-      candidate_filter = filter;
-      candidate_filter.filter(steering, 0.0F, context.preserve_first_steering_command);
-      for (std::size_t i = 0; i < controls.size(); ++i) controls[i].steer_cmd = steering[i];
+      for (auto & control : controls) control = {0.0F, 0.01F};
     };
   std::int32_t stamp_nanoseconds = 0;
   float ego_x = 0.0F;
@@ -513,16 +498,14 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringFilterPreservesOnlyAccepted
   ASSERT_FALSE(accepted.debug.was_rejected);
   ASSERT_GT(accepted.optimized_point_count, 1U);
   const float next_command = accepted.trajectory.points[1].front_wheel_angle_rad;
-  ASSERT_NEAR(next_command, 0.001F, 1.0E-7F);
+  ASSERT_NEAR(next_command, 0.01F, 1.0E-7F);
   interface_->commitPendingTrajectory();
-  filter = candidate_filter;
 
   const auto following = preview();
   ASSERT_TRUE(postprocessing_context.has_value());
   EXPECT_EQ(
     postprocessing_context->seed_source, FirstOrderDubinsMppiNominalSeedSource::previous_optimized);
   EXPECT_EQ(postprocessing_context->shift_count, 1);
-  EXPECT_NEAR(first_before_filter, next_command, 1.0E-3F);
   EXPECT_EQ(following.debug.nominal_shift_count, 1);
   interface_->discardPendingTrajectory();
 
@@ -544,7 +527,6 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, WarmStartUsesElapsedShiftAndExpires
   interface_->setCostParams(costs);
   FirstOrderDubinsMppiRuntimeOptions options;
   options.use_last_control_as_nominal = true;
-  options.use_temporal_mpt_as_nominal = false;
   options.last_control_warm_start_max_age_s = 0.5F;
   options.last_control_warm_start_max_position_error_m = 100.0F;
   options.last_control_warm_start_max_yaw_error_rad = 100.0F;
@@ -589,7 +571,6 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, SteeringDiscontinuityRejectsReusedN
   interface_->setCostParams(costs);
   FirstOrderDubinsMppiRuntimeOptions options;
   options.use_last_control_as_nominal = true;
-  options.use_temporal_mpt_as_nominal = false;
   options.enable_input_delay_compensation = false;
   options.nominal_initial_steering_max_deviation_rad = 0.05F;
   options.last_control_warm_start_max_position_error_m = 100.0F;
@@ -640,7 +621,6 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, MpcPredictionReplacesOnlyNominalSte
   interface_->setCostParams(costs);
   FirstOrderDubinsMppiRuntimeOptions options;
   options.use_last_control_as_nominal = true;
-  options.use_temporal_mpt_as_nominal = false;
   options.enable_input_delay_compensation = false;
   interface_->setRuntimeOptions(options);
 
@@ -696,7 +676,6 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, ReferenceDiscontinuityInvalidatesWa
   interface_->setCostParams(costs);
   FirstOrderDubinsMppiRuntimeOptions options;
   options.use_last_control_as_nominal = true;
-  options.use_temporal_mpt_as_nominal = false;
   options.last_control_warm_start_max_position_error_m = 100.0F;
   options.last_control_warm_start_max_yaw_error_rad = 100.0F;
   options.last_control_warm_start_max_velocity_error_mps = 100.0F;
@@ -735,7 +714,6 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, StopHysteresisRequiresAFreshMovingA
   interface_->setCostParams(costs);
   FirstOrderDubinsMppiRuntimeOptions options;
   options.use_last_control_as_nominal = true;
-  options.use_temporal_mpt_as_nominal = false;
   options.last_control_warm_start_max_position_error_m = 100.0F;
   options.last_control_warm_start_max_yaw_error_rad = 100.0F;
   options.last_control_warm_start_max_velocity_error_mps = 100.0F;

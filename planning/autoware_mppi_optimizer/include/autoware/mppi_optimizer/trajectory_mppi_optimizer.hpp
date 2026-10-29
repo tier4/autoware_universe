@@ -15,7 +15,6 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 
-#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/input_collision_activation_hold.hpp"
 #include "autoware/mppi_optimizer/mppi_application_status.hpp"
@@ -130,7 +129,6 @@ private:
   std::unique_ptr<FirstOrderDubinsMppiInterface> optimizer_;
   std::optional<FirstOrderDubinsMppiCostParams> cost_params_;
   std::optional<FirstOrderDubinsMppiVehicleParams> vehicle_params_;
-  CurvatureAdaptiveSteeringFilter steering_filter_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;

@@ -90,7 +90,6 @@ struct FirstOrderDubinsMppiOutputOptions
 enum class FirstOrderDubinsMppiNominalSeedSource : std::uint8_t {
   diffusion_reference,
   previous_optimized,
-  temporal_mpt,
   forced,
   mpc_predicted_trajectory
 };
@@ -118,8 +117,6 @@ inline const char * to_string(const FirstOrderDubinsMppiNominalSeedSource source
       return "diffusion_reference";
     case FirstOrderDubinsMppiNominalSeedSource::previous_optimized:
       return "previous_optimized";
-    case FirstOrderDubinsMppiNominalSeedSource::temporal_mpt:
-      return "temporal_mpt";
     case FirstOrderDubinsMppiNominalSeedSource::forced:
       return "forced";
     case FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory:
@@ -652,8 +649,7 @@ public:
    * @brief Track a diffusion-planner reference (poses + velocities) with one MPPI step.
    *
    * Uses the diffusion trajectory directly as the MPPI reference horizon (x, y, yaw, v).
-   * When use_temporal_mpt_as_nominal is set, seeds u_nom from acados t-MPT (self warm-start).
-   * Otherwise seeds from the previous optimized controls when use_last_control_as_nominal is set
+   * Seeds from the previous optimized controls when use_last_control_as_nominal is set
    * (else from the reference trajectory). Returns the MPPI-predicted feasible state rollout.
    *
    * @param input Reference trajectory from the diffusion planner (map frame).

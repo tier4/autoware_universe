@@ -14,7 +14,6 @@
 
 #include "autoware/mppi_optimizer/trajectory_mppi_optimizer.hpp"
 
-#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_kinematic_limits_conversion.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
@@ -272,19 +271,9 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
     static_cast<float>(params.last_control_warm_start_stop_enter_velocity_mps);
   output.last_control_warm_start_stop_exit_velocity_mps =
     static_cast<float>(params.last_control_warm_start_stop_exit_velocity_mps);
-  output.use_temporal_mpt_as_nominal = params.use_temporal_mpt_as_nominal;
   output.prevent_reverse_velocity = params.prevent_reverse_velocity;
   output.enable_input_delay_compensation = params.enable_input_delay_compensation;
   return output;
-}
-
-CurvatureAdaptiveSteeringFilterParams make_steering_filter_params(
-  const trajectory_mppi_optimizer::Params & params)
-{
-  return {
-    static_cast<float>(params.steering_filter_alpha_straight),
-    static_cast<float>(params.steering_filter_alpha_turn),
-    static_cast<float>(params.steering_filter_turn_angle_rad)};
 }
 
 void hold_steering_from(Trajectory & trajectory, const std::size_t first_index, const float command)
@@ -491,7 +480,6 @@ void TrajectoryMppiOptimizer::on_initialize(
   params_ = param_listener_->get_params();
   validateFirstOrderDubinsMppiCostParams(make_cost_params(params_));
   map_velocity_limit_overrides_ = make_velocity_limit_overrides(params_);
-  steering_filter_.setParams(make_steering_filter_params(params_));
   declare_first_order_dubins_mppi_vehicle_dynamics_params(*node);
 
   velocity_limit_sub_ =
@@ -536,7 +524,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     try {
       validateFirstOrderDubinsMppiCostParams(make_cost_params(updated_params));
       auto map_overrides = make_velocity_limit_overrides(updated_params);
-      steering_filter_.setParams(make_steering_filter_params(updated_params));
       map_velocity_limit_overrides_ = std::move(map_overrides);
     } catch (const std::exception & error) {
       constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
@@ -724,44 +711,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       }
     }
 
-    CurvatureAdaptiveSteeringFilter candidate_steering_filter = steering_filter_;
-    FirstOrderDubinsMppiControlSequencePostprocessor control_postprocessor;
-    const bool filter_candidate =
-      params_.enable_curvature_adaptive_steering_filter && !params_.shadow_mode;
-    if (filter_candidate) {
-      const float measured_steering = steering ? steering->steering_tire_angle : 0.0F;
-      control_postprocessor = [&candidate_steering_filter, measured_steering](
-                                std::vector<FirstOrderDubinsMppiControl> & controls,
-                                const FirstOrderDubinsMppiPostprocessingContext & context) {
-        std::vector<float> steering_commands;
-        steering_commands.reserve(controls.size());
-        for (const auto & control : controls) {
-          steering_commands.push_back(control.steer_cmd);
-        }
-        if (context.short_reference_steering_hold_active && !steering_commands.empty()) {
-          std::fill(
-            steering_commands.begin(), steering_commands.end(),
-            context.standstill_steering_hold_command_rad);
-          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, context.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else if (context.standstill_steering_hold_active && !steering_commands.empty()) {
-          steering_commands.front() = context.standstill_steering_hold_command_rad;
-          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, context.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else {
-          candidate_steering_filter.filter(
-            steering_commands, measured_steering, context.preserve_first_steering_command);
-        }
-        for (std::size_t index = 0; index < controls.size(); ++index) {
-          controls[index].steer_cmd = steering_commands[index];
-        }
-      };
-    }
-
     PreferredLaneCenterlineInput preferred_lane_centerline;
     if (params_.preferred_lane_center_coeff > 0.0) {
       if (
@@ -792,7 +741,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       params_.output_acceleration_state, params_.output_steering_state};
     auto result = optimizer_->optimizeTrajectory(
       input, *data.current_odometry, acceleration, steering, all_targets, mppi_road_borders,
-      to_mppi_segments(drivable_area), kinematic_limits, control_postprocessor,
+      to_mppi_segments(drivable_area), kinematic_limits, {},
       /*defer_commit=*/true, mpc_predicted_trajectory, preferred_lane_centerline,
       /*force_optimization=*/params_.optimize_only_on_input_collision, output_options,
       vegetation_points);
@@ -820,47 +769,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     const bool steering_hold_only_applied =
       !params_.shadow_mode && result.debug.short_reference_steering_hold_active &&
       !result.trajectory.points.empty() && !application.output_applied;
-    if (filter_candidate && application.output_applied) {
-      if (application.fallback_applied) {
-        // The interface replaced the optimized result with its longitudinally limited reference.
-        // Filter the fallback that is actually published from the pre-cycle filter state.
-        candidate_steering_filter = steering_filter_;
-        const std::size_t optimized_count =
-          std::min(result.trajectory.points.size(), result.optimized_point_count);
-        std::vector<float> steering_commands;
-        steering_commands.reserve(optimized_count);
-        for (std::size_t index = 0; index < optimized_count; ++index) {
-          steering_commands.push_back(result.trajectory.points[index].front_wheel_angle_rad);
-        }
-        if (result.debug.short_reference_steering_hold_active && !steering_commands.empty()) {
-          std::fill(
-            steering_commands.begin(), steering_commands.end(),
-            result.debug.standstill_steering_hold_command_rad);
-          candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, result.debug.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else if (result.debug.standstill_steering_hold_active && !steering_commands.empty()) {
-          steering_commands.front() = result.debug.standstill_steering_hold_command_rad;
-          candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, result.debug.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else {
-          candidate_steering_filter.filter(
-            steering_commands, steering ? steering->steering_tire_angle : 0.0F);
-        }
-        for (std::size_t index = 0; index < optimized_count; ++index) {
-          result.trajectory.points[index].front_wheel_angle_rad = steering_commands[index];
-          result.debug.optimized_trajectory.points[index].front_wheel_angle_rad =
-            steering_commands[index];
-        }
-      }
-    }
-    if (filter_candidate && steering_hold_only_applied) {
-      candidate_steering_filter = steering_filter_;
-      candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
-    }
     const bool optimized_steering_state_available = output_options.steering_state &&
                                                     result.optimized_point_count > 0U &&
                                                     !result.debug.was_rejected;
@@ -923,19 +831,11 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     } else {
       optimizer_->discardPendingTrajectory();
     }
-    if (filter_candidate && (application.output_applied || steering_hold_only_applied)) {
-      steering_filter_ = std::move(candidate_steering_filter);
-    } else {
-      // Rejected/unfiltered fallbacks and skipped optimization do not execute the candidate's
-      // first command. Re-seed from measured steering when filtered output resumes.
-      steering_filter_.reset();
-    }
     previous_mppi_trajectory_applied_ = application.optimized_trajectory_applied;
     return application.output_applied || steering_hold_only_applied ? ProcessingResult::Modified
                                                                     : ProcessingResult::Unchanged;
   } catch (const std::exception & error) {
     if (optimizer_) optimizer_->invalidateNominalWarmStart();
-    steering_filter_.reset();
     input_collision_activation_hold_.reset();
     input_collision_activation_source_ = InputCollisionActivationSource::none;
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
@@ -955,7 +855,6 @@ void TrajectoryMppiOptimizer::reset_optimizer()
   optimizer_.reset();
   cost_params_.reset();
   vehicle_params_.reset();
-  steering_filter_.reset();
   input_collision_activation_hold_.reset();
   input_collision_activation_source_ = InputCollisionActivationSource::none;
   object_selector_ = autoware::avoidance_target_detector::TrackedObjectSelector{};
@@ -965,7 +864,6 @@ ProcessingResult TrajectoryMppiOptimizer::skip_optimization(
   const std::uint8_t level, const std::string & message, const std_msgs::msg::Header & header)
 {
   if (optimizer_) optimizer_->invalidateNominalWarmStart();
-  steering_filter_.reset();
   input_collision_activation_hold_.reset();
   input_collision_activation_source_ = InputCollisionActivationSource::none;
   publish_enabled(false);

@@ -89,8 +89,6 @@ void declare_first_order_dubins_mppi_runtime_options(
     param_name(prefix, "last_control_warm_start_stop_exit_velocity_mps"),
     defaults.last_control_warm_start_stop_exit_velocity_mps);
   node.declare_parameter(
-    param_name(prefix, "use_temporal_mpt_as_nominal"), defaults.use_temporal_mpt_as_nominal);
-  node.declare_parameter(
     param_name(prefix, "prevent_reverse_velocity"), defaults.prevent_reverse_velocity);
   node.declare_parameter(
     param_name(prefix, "enable_input_delay_compensation"),
@@ -158,8 +156,6 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.last_control_warm_start_stop_exit_velocity_mps = static_cast<float>(
     node.get_parameter(param_name(prefix, "last_control_warm_start_stop_exit_velocity_mps"))
       .as_double());
-  options.use_temporal_mpt_as_nominal =
-    node.get_parameter(param_name(prefix, "use_temporal_mpt_as_nominal")).as_bool();
   options.prevent_reverse_velocity =
     node.get_parameter(param_name(prefix, "prevent_reverse_velocity")).as_bool();
   options.enable_input_delay_compensation =

@@ -477,8 +477,6 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
   options.skip_if_invalid = as_bool("skip_if_invalid", options.skip_if_invalid);
   options.use_last_control_as_nominal =
     as_bool("use_last_control_as_nominal", options.use_last_control_as_nominal);
-  options.use_temporal_mpt_as_nominal =
-    as_bool("use_temporal_mpt_as_nominal", options.use_temporal_mpt_as_nominal);
   options.prevent_reverse_velocity =
     as_bool("prevent_reverse_velocity", options.prevent_reverse_velocity);
   options.enable_input_delay_compensation =

@@ -122,8 +122,6 @@
       restart_steer_command_acceleration_lim: 0.5
       restart_velocity_threshold_mps: 0.5
 
-      # Cold-seed u_nom from acados temporal MPT.
-      use_temporal_mpt_as_nominal: false
       use_last_control_as_nominal: true
       use_mpc_predicted_trajectory_as_nominal_steering: false
       mpc_predicted_trajectory_max_age_s: 0.5
@@ -137,12 +135,6 @@
       last_control_warm_start_max_reference_velocity_error_mps: 2.0
       last_control_warm_start_stop_enter_velocity_mps: 0.03
       last_control_warm_start_stop_exit_velocity_mps: 0.08
-
-      # Adapt from preceding filtered steering; retain smoothing in turns and reversals.
-      enable_curvature_adaptive_steering_filter: true
-      steering_filter_alpha_straight: 0.3
-      steering_filter_alpha_turn: 0.5
-      steering_filter_turn_angle_rad: 0.02
 
       # Expensive per-iteration sampled rollout markers.
       enable_iteration_rollout_debug: false

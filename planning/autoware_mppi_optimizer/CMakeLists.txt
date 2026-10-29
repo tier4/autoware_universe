@@ -12,10 +12,6 @@ ament_auto_add_library(mppi_trajectory_utils SHARED
   src/first_order_dubins/trajectory_utils.cpp
 )
 
-ament_auto_add_library(mppi_curvature_adaptive_steering_filter SHARED
-  src/curvature_adaptive_steering_filter.cpp
-)
-
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
@@ -50,12 +46,6 @@ if(BUILD_TESTING)
     mppi_trajectory_utils
   )
 
-  ament_add_gtest(test_curvature_adaptive_steering_filter
-    test/test_curvature_adaptive_steering_filter.cpp
-  )
-  target_link_libraries(test_curvature_adaptive_steering_filter
-    mppi_curvature_adaptive_steering_filter
-  )
 
   ament_add_gtest(test_mppi_application_status
     test/test_mppi_application_status.cpp
@@ -271,19 +261,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     src/first_order_dubins/input_collision_gate.cu
   )
   find_package(autoware_trajectory_modifier REQUIRED)
-  ament_auto_add_library(mppi_temporal_mpt_nominal SHARED
-    src/first_order_dubins/temporal_mpt_nominal.cpp
-  )
-  target_link_libraries(mppi_temporal_mpt_nominal
-    mppi_trajectory_utils
-    ${autoware_trajectory_modifier_LIBRARIES}
-    rclcpp::rclcpp
-    tf2::tf2
-    tf2_geometry_msgs::tf2_geometry_msgs
-    autoware_planning_msgs::autoware_planning_msgs__rosidl_generator_cpp
-  )
-  # Entry point for acados here: ${autoware_trajectory_modifier_LIBRARIES} above.
-  mppi_link_acados_runtime(mppi_temporal_mpt_nominal)
   target_include_directories(first_order_dubins_mppi PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
@@ -291,7 +268,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(first_order_dubins_mppi
     mppi_trajectory_utils
-    mppi_temporal_mpt_nominal
     mppi_extensions
     rclcpp::rclcpp
     tf2_geometry_msgs::tf2_geometry_msgs
@@ -324,7 +300,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(autoware_mppi_trajectory_modifier_plugin
     first_order_dubins_mppi
-    mppi_curvature_adaptive_steering_filter
     trajectory_mppi_optimizer_parameters
     ${PROJECT_NAME}
   )
@@ -362,7 +337,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(mppi_open_loop_line_sim
     first_order_dubins_mppi
-    mppi_curvature_adaptive_steering_filter
     ${PROJECT_NAME}
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp
@@ -393,7 +367,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     target_link_libraries(test_first_order_dubins_mppi_interface
       first_order_dubins_mppi
       mppi_trajectory_utils
-      mppi_curvature_adaptive_steering_filter
       ${CUDA_LIBRARIES}
     )
     mppi_link_acados_runtime(test_first_order_dubins_mppi_interface)
