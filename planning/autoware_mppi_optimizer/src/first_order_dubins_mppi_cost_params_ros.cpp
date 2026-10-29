@@ -14,7 +14,6 @@
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp"
 
-#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -126,7 +125,11 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "unsafe_rollout_fraction_threshold")).as_double());
   params.cost_normalization_percentile = static_cast<float>(
     node.get_parameter(param_name(prefix, "cost_normalization_percentile")).as_double());
-  params.max_iter = static_cast<int>(node.get_parameter(param_name(prefix, "max_iter")).as_int());
+  const auto max_iter = node.get_parameter(param_name(prefix, "max_iter")).as_int();
+  if (max_iter < 1 || max_iter > kMaxMppiIterations) {
+    throw std::invalid_argument("max_iter must be in [1, 100]");
+  }
+  params.max_iter = static_cast<int>(max_iter);
   params.spatial_overspeed_coeff = static_cast<float>(
     node.get_parameter(param_name(prefix, "spatial_overspeed_coeff")).as_double());
   params.track_coeff =
@@ -207,11 +210,7 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "drivable_area_barrier_weight")).as_double());
   params.crash_contact_penalty =
     static_cast<float>(node.get_parameter(param_name(prefix, "crash_contact_penalty")).as_double());
-  if (
-    !std::isfinite(params.preferred_lane_center_coeff) ||
-    params.preferred_lane_center_coeff < 0.0F) {
-    throw std::invalid_argument("preferred_lane_center_coeff must be finite and non-negative");
-  }
+  validateFirstOrderDubinsMppiCostParams(params);
   return params;
 }
 

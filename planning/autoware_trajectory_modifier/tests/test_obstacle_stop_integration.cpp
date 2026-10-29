@@ -16,10 +16,14 @@
 #include "trajectory_modifier_test_utils.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoware/point_types/memory.hpp>
+#include <autoware/point_types/types.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
+#include <autoware_internal_planning_msgs/msg/safety_factor.hpp>
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/shape.hpp>
@@ -30,7 +34,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>
@@ -46,6 +53,8 @@ using autoware::trajectory_modifier::TrajectoryModifierParams;
 using autoware::trajectory_modifier::plugin::ObstacleStop;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
 using autoware::trajectory_modifier::test::process_plugin;
+using autoware_internal_planning_msgs::msg::PlanningFactor;
+using autoware_internal_planning_msgs::msg::SafetyFactor;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
@@ -78,6 +87,21 @@ TrajectoryPoints create_straight_trajectory(double length, double velocity, doub
   return trajectory;
 }
 
+// The velocity limiter rejects a candidate whose time_from_start is not strictly increasing.
+void stamp_time_from_start(TrajectoryPoints & points, double velocity)
+{
+  const auto speed = std::max(std::abs(velocity), 1e-3);
+  for (std::size_t i = 0; i < points.size(); ++i) {
+    const auto ds = i == 0 ? 0.0
+                           : std::hypot(
+                               points[i].pose.position.x - points[i - 1].pose.position.x,
+                               points[i].pose.position.y - points[i - 1].pose.position.y);
+    const auto t =
+      i == 0 ? 0.0 : rclcpp::Duration(points[i - 1].time_from_start).seconds() + ds / speed;
+    points[i].time_from_start = rclcpp::Duration::from_seconds(t);
+  }
+}
+
 Odometry::ConstSharedPtr make_odometry(double x, double y, double velocity)
 {
   Odometry odometry;
@@ -98,14 +122,16 @@ AccelWithCovarianceStamped::ConstSharedPtr make_acceleration(double accel_x)
 }
 
 PredictedObject create_box_object(
-  double x, double y, double size_x, double size_y, double size_z, uint8_t classification_label)
+  double x, double y, double size_x, double size_y, double size_z, uint8_t classification_label,
+  double velocity = 0.0, bool oncoming = false)
 {
   PredictedObject object;
   object.kinematics.initial_pose_with_covariance.pose.position.x = x;
   object.kinematics.initial_pose_with_covariance.pose.position.y = y;
   object.kinematics.initial_pose_with_covariance.pose.position.z = 0.0;
-  object.kinematics.initial_pose_with_covariance.pose.orientation.w = 1.0;
-  object.kinematics.initial_twist_with_covariance.twist.linear.x = 0.0;
+  object.kinematics.initial_pose_with_covariance.pose.orientation.z = oncoming ? 1.0 : 0.0;
+  object.kinematics.initial_pose_with_covariance.pose.orientation.w = oncoming ? 0.0 : 1.0;
+  object.kinematics.initial_twist_with_covariance.twist.linear.x = velocity;
 
   object.shape.type = Shape::BOUNDING_BOX;
   object.shape.dimensions.x = size_x;
@@ -120,7 +146,8 @@ PredictedObject create_box_object(
   return object;
 }
 
-PredictedObjects::ConstSharedPtr make_blocking_car(double x, double y)
+PredictedObjects::ConstSharedPtr make_car(
+  double x, double y, double velocity = 0.0, bool oncoming = false)
 {
   constexpr double car_size_x = 2.0;
   constexpr double car_size_y = 2.0;
@@ -128,40 +155,43 @@ PredictedObjects::ConstSharedPtr make_blocking_car(double x, double y)
 
   PredictedObjects predicted_objects;
   predicted_objects.header.frame_id = "map";
-  predicted_objects.objects.push_back(
-    create_box_object(x, y, car_size_x, car_size_y, car_size_z, ObjectClassification::CAR));
+  predicted_objects.objects.push_back(create_box_object(
+    x, y, car_size_x, car_size_y, car_size_z, ObjectClassification::CAR, velocity, oncoming));
   return std::make_shared<const PredictedObjects>(predicted_objects);
 }
 
-// Build a dense blocking pointcloud the obstacle_stop pipeline will detect.
-sensor_msgs::msg::PointCloud2::ConstSharedPtr make_blocking_pointcloud_cluster(
-  double center_x, double center_y, double height)
+PredictedObjects::ConstSharedPtr make_blocking_car(double x, double y)
 {
-  constexpr int voxel_count_x = 4;
-  constexpr int voxel_count_y = 3;
-  constexpr int points_per_voxel = 3;
+  return make_car(x, y);
+}
+
+// Build a single blocking PointXYZCPE point. obstacle_stop evaluates points independently
+// (no voxel/clustering), so a dense cluster is unnecessary and can confuse the tracker when
+// neighboring points fall within pcd_distance_th.
+sensor_msgs::msg::PointCloud2::ConstSharedPtr make_blocking_pointcloud(double x, double y, double z)
+{
+  using autoware::point_types::PointCloudClassification;
+  using autoware::point_types::PointXYZCPE;
 
   sensor_msgs::msg::PointCloud2 cloud;
   cloud.header.frame_id = "map";
-  sensor_msgs::PointCloud2Modifier modifier(cloud);
-  modifier.setPointCloud2FieldsByString(1, "xyz");
-  modifier.resize(voxel_count_x * voxel_count_y * points_per_voxel);
+  cloud.height = 1;
+  cloud.width = 1;
+  cloud.is_dense = true;
+  cloud.is_bigendian = false;
+  cloud.fields = autoware::point_types::create_fields_point_xyzcpe();
+  cloud.point_step = sizeof(PointXYZCPE);
+  cloud.row_step = cloud.point_step * cloud.width;
+  cloud.data.resize(cloud.row_step);
 
-  sensor_msgs::PointCloud2Iterator<float> iter_x(cloud, "x");
-  sensor_msgs::PointCloud2Iterator<float> iter_y(cloud, "y");
-  sensor_msgs::PointCloud2Iterator<float> iter_z(cloud, "z");
-  for (int xi = 0; xi < voxel_count_x; ++xi) {
-    for (int yi = 0; yi < voxel_count_y; ++yi) {
-      for (int p = 0; p < points_per_voxel; ++p) {
-        *iter_x = static_cast<float>(center_x + 0.2 * xi + 0.05 + 0.01 * p);
-        *iter_y = static_cast<float>(center_y + 0.2 * yi + 0.05);
-        *iter_z = static_cast<float>(height);
-        ++iter_x;
-        ++iter_y;
-        ++iter_z;
-      }
-    }
-  }
+  PointXYZCPE point;
+  point.x = static_cast<float>(x);
+  point.y = static_cast<float>(y);
+  point.z = static_cast<float>(z);
+  // INVALID maps to target type "unknown" used by the integration test params.
+  point.class_id = static_cast<std::uint8_t>(PointCloudClassification::INVALID);
+  point.probability = 1.0F;
+  std::memcpy(cloud.data.data(), &point, sizeof(PointXYZCPE));
 
   return std::make_shared<const sensor_msgs::msg::PointCloud2>(cloud);
 }
@@ -226,6 +256,7 @@ protected:
     params_.stopping_constraints.maximum_deceleration = 4.0;
     params_.stopping_constraints.jerk_limit = 3.0;
     params_.stopping_constraints.arrived_distance_threshold = 0.5;
+    params_.stopping_constraints.delay_response_time = 0.0;
 
     auto & p = params_.obstacle_stop;
     p.use_objects = true;
@@ -252,6 +283,28 @@ protected:
     p.rss_params.safety_margin = 2.0;
     p.rss_params.ego_decel = 4.0;
     p.rss_params.lookahead_horizon = 2.0;
+
+    p.cruise.enable = false;
+    p.cruise.min_distance = 8.0;
+    p.cruise.time_headway = 1.0;
+    p.cruise.ego_decel = 1.0;
+    p.cruise.max_deceleration = 1.5;
+    p.cruise.max_jerk = 1.5;
+  }
+
+  bool process_with_hysteresis(TrajectoryPoints & trajectory, const TrajectoryModifierData & input)
+  {
+    process_plugin(*plugin_, trajectory, input);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    return process_plugin(*plugin_, trajectory, input);
+  }
+
+  bool has_planning_factor(const uint16_t behavior) const
+  {
+    const auto factors = plugin_->get_planning_factors();
+    return std::any_of(factors.begin(), factors.end(), [&](const auto & factor) {
+      return factor.behavior == behavior;
+    });
   }
 
   std::shared_ptr<rclcpp::Node> node_;
@@ -260,6 +313,40 @@ protected:
   trajectory_modifier_params::Params params_;
   std::shared_ptr<TrajectoryModifierContext> context_;
 };
+
+TEST_F(ObstacleStopIntegrationTest, CruiseParamsKeptWhenValid)
+{
+  const auto & cruise = plugin_->get_params().cruise;
+  EXPECT_FALSE(cruise.enable);
+  EXPECT_DOUBLE_EQ(cruise.min_distance, 8.0);
+  EXPECT_DOUBLE_EQ(cruise.time_headway, 1.0);
+  EXPECT_DOUBLE_EQ(cruise.ego_decel, 1.0);
+  EXPECT_DOUBLE_EQ(cruise.max_deceleration, 1.5);
+  EXPECT_DOUBLE_EQ(cruise.max_jerk, 1.5);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseParamsClampedToStopParams)
+{
+  params_.obstacle_stop.cruise.min_distance = 2.0;
+  params_.obstacle_stop.cruise.ego_decel = 3.0;
+  params_.obstacle_stop.rss_params.ego_decel = 2.0;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  const auto & p = plugin_->get_params();
+  EXPECT_DOUBLE_EQ(p.cruise.min_distance, p.stop_margin);
+  EXPECT_DOUBLE_EQ(p.cruise.ego_decel, 2.0);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseDecelClampedToSanitizedRssDecel)
+{
+  params_.obstacle_stop.rss_params.ego_decel = 10.0;
+  params_.obstacle_stop.cruise.ego_decel = 6.0;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  const auto & p = plugin_->get_params();
+  EXPECT_DOUBLE_EQ(p.rss_params.ego_decel, params_.stopping_constraints.maximum_deceleration);
+  EXPECT_DOUBLE_EQ(p.cruise.ego_decel, params_.stopping_constraints.maximum_deceleration);
+}
 
 TEST_F(ObstacleStopIntegrationTest, TrajectoryNotModifiedWhenDisabled)
 {
@@ -433,8 +520,7 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
   // Arrange
   constexpr double cluster_center_x = 25.0;
   auto trajectory = create_straight_trajectory(30.0, 8.0);
-  const auto pointcloud_blocking_path =
-    make_blocking_pointcloud_cluster(cluster_center_x, 0.0, 0.7);
+  const auto pointcloud_blocking_path = make_blocking_pointcloud(cluster_center_x, 0.0, 0.7);
   const auto input = create_input_data(
     make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), nullptr, pointcloud_blocking_path);
 
@@ -470,8 +556,7 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
   // Arrange
   constexpr double cluster_center_x = 15.0;
   auto trajectory = create_straight_trajectory(30.0, 8.0);
-  const auto pointcloud_blocking_path =
-    make_blocking_pointcloud_cluster(cluster_center_x, 0.0, 0.7);
+  const auto pointcloud_blocking_path = make_blocking_pointcloud(cluster_center_x, 0.0, 0.7);
   const auto input = create_input_data(
     make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), nullptr, pointcloud_blocking_path);
 
@@ -499,4 +584,103 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
 
   const auto expected_stop_margin = 2.01;  // Computed based on max_decel limit and jerk limit
   EXPECT_NEAR(min_pcd_x - trajectory.back().pose.position.x, expected_stop_margin, 0.1);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseDisabledStillStopsForMovingLead)
+{
+  auto trajectory = create_straight_trajectory(40.0, 8.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(25.0, 0.0, 4.0));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_TRUE(has_planning_factor(PlanningFactor::STOP));
+  EXPECT_FALSE(has_planning_factor(PlanningFactor::SLOW_DOWN));
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseCapsVelocityForMovingLeadWithoutStop)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(40.0, 8.0);
+  stamp_time_from_start(trajectory, 8.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(25.0, 0.0, 4.0));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_GT(trajectory.back().longitudinal_velocity_mps, 0.5F);
+  EXPECT_LT(trajectory.back().longitudinal_velocity_mps, 7.0F);
+  EXPECT_TRUE(has_planning_factor(PlanningFactor::SLOW_DOWN));
+  EXPECT_FALSE(has_planning_factor(PlanningFactor::STOP));
+
+  const auto factors = plugin_->get_planning_factors();
+  const auto slow_down = std::find_if(factors.begin(), factors.end(), [](const auto & factor) {
+    return factor.behavior == PlanningFactor::SLOW_DOWN;
+  });
+  ASSERT_NE(slow_down, factors.end());
+  ASSERT_EQ(slow_down->control_points.size(), 1U);
+  EXPECT_GT(slow_down->control_points.front().velocity, 0.0);
+  EXPECT_LT(slow_down->control_points.front().velocity, 8.0);
+  ASSERT_EQ(slow_down->safety_factors.factors.size(), 1U);
+  EXPECT_EQ(slow_down->safety_factors.factors.front().type, SafetyFactor::OBJECT);
+  ASSERT_EQ(slow_down->safety_factors.factors.front().points.size(), 1U);
+  EXPECT_NEAR(slow_down->safety_factors.factors.front().points.front().x, 25.0, 0.1);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseFallsBackToStopWhenGapIsTooSmall)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 8.0);
+  stamp_time_from_start(trajectory, 8.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(6.0, 0.0, 4.0));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_TRUE(has_planning_factor(PlanningFactor::STOP));
+  EXPECT_FALSE(has_planning_factor(PlanningFactor::SLOW_DOWN));
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseDoesNotCapStoppedCar)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 8.0);
+  const auto input =
+    create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(20.0, 0.0));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseDoesNotCapOncomingCar)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 8.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(20.0, 0.0, 5.0, true));
+
+  ASSERT_TRUE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
+}
+
+TEST_F(ObstacleStopIntegrationTest, CruiseLeavesAlreadySlowerInputUnchanged)
+{
+  params_.obstacle_stop.cruise.enable = true;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 2.0);
+  stamp_time_from_start(trajectory, 2.0);
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 2.0), make_acceleration(0.0), make_car(20.0, 0.0, 8.0));
+
+  EXPECT_FALSE(process_with_hysteresis(trajectory, input));
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 2.0F);
+  EXPECT_FALSE(has_planning_factor(PlanningFactor::SLOW_DOWN));
 }

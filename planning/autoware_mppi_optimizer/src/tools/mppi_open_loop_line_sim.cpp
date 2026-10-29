@@ -88,8 +88,8 @@ float wrapPi(const float yaw);
 
 struct SimPlantState
 {
-  float x{0.0F};
-  float y{0.0F};
+  double x{0.0};
+  double y{0.0};
   float yaw{0.0F};
   float velocity{0.0F};
   float acceleration{0.0F};

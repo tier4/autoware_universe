@@ -104,12 +104,22 @@ void TrajectorySelectorNode::route_callback(
 void TrajectorySelectorNode::on_anchor_trajectories(const CandidateTrajectories::ConstSharedPtr msg)
 {
   concatenator_ptr_->add_candidate(*msg);
+  trigger_mode_ = TriggerMode::MAIN;
   process_trajectories();
   timer_->reset();
 }
 void TrajectorySelectorNode::on_trajectories(const CandidateTrajectories::ConstSharedPtr msg)
 {
   concatenator_ptr_->add_candidate(*msg);
+  if (trigger_mode_ != TriggerMode::BACKUP) return;
+  process_trajectories();
+  timer_->reset();
+}
+
+void TrajectorySelectorNode::on_fallback_timer()
+{
+  trigger_mode_ = TriggerMode::BACKUP;
+  process_trajectories();
 }
 
 tl::expected<trajectory_validator::FilterContext, std::string>
@@ -292,7 +302,7 @@ void TrajectorySelectorNode::update_fallback_timer()
     selector_params_.fallback_period_ms);
   timer_ = rclcpp::create_timer(
     this, get_clock(), std::chrono::milliseconds(selector_params_.fallback_period_ms),
-    std::bind(&TrajectorySelectorNode::process_trajectories, this));
+    std::bind(&TrajectorySelectorNode::on_fallback_timer, this));
 }
 }  // namespace autoware::trajectory_selector
 
