@@ -857,7 +857,9 @@ TrafficLightStatus identify_current_light_status(
 {
   auto is_arrow_shape = [](const uint8_t shape) {
     return shape == TrafficLightElement::LEFT_ARROW || shape == TrafficLightElement::RIGHT_ARROW ||
-           shape == TrafficLightElement::UP_ARROW || shape == TrafficLightElement::DOWN_ARROW ||
+           shape == TrafficLightElement::UP_ARROW || shape == TrafficLightElement::UP_LEFT_ARROW ||
+           shape == TrafficLightElement::UP_RIGHT_ARROW ||
+           shape == TrafficLightElement::DOWN_ARROW ||
            shape == TrafficLightElement::DOWN_LEFT_ARROW ||
            shape == TrafficLightElement::DOWN_RIGHT_ARROW;
   };
@@ -906,10 +908,16 @@ TrafficLightStatus identify_current_light_status(
       }));
   };
 
-  // First priority: Find elements with exactly matching direction
+  // First priority: Find arrows that include the lane direction
   std::vector<TrafficLightElement> matching_elements;
   for (const TrafficLightElement & element : effective_elements) {
-    if (element.shape == target_shape) {
+    const bool combined_arrow_matches = (element.shape == TrafficLightElement::UP_LEFT_ARROW &&
+                                         (target_shape == TrafficLightElement::UP_ARROW ||
+                                          target_shape == TrafficLightElement::LEFT_ARROW)) ||
+                                        (element.shape == TrafficLightElement::UP_RIGHT_ARROW &&
+                                         (target_shape == TrafficLightElement::UP_ARROW ||
+                                          target_shape == TrafficLightElement::RIGHT_ARROW));
+    if (element.shape == target_shape || combined_arrow_matches) {
       matching_elements.push_back(element);
     }
   }
