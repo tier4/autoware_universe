@@ -217,6 +217,21 @@ TEST(FirstOrderDubinsMppiInterface, SkippedInputsDoNotInitializeCuda)
   EXPECT_FALSE(interface.isInitialized());
 }
 
+TEST(FirstOrderDubinsMppiInterface, CollisionActivationCannotBypassMinimumStoppingLength)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.min_optimization_length = 4.0F;
+  interface.setRuntimeOptions(options);
+  auto input = makeStraightTrajectory(3U);
+  input.points.back().longitudinal_velocity_mps = 0.0F;
+  const auto result = interface.optimizeTrajectory(
+    input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, false,
+    std::nullopt, {}, true);
+  EXPECT_EQ(result.optimized_point_count, 0U);
+  EXPECT_FALSE(interface.isInitialized());
+}
+
 TEST(FirstOrderDubinsMppiInterface, ExpandedPredictionCapacityFailsBeforeCudaInitialization)
 {
   FirstOrderDubinsMppiInterface interface;
@@ -509,6 +524,27 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, UsesEveryHighestConfidencePathAndIt
   EXPECT_EQ(diagnostic.first_violation_geometry_index, 1);
   EXPECT_EQ(diagnostic.first_violation_object_id, "42000000-0000-0000-0000-000000000000");
   EXPECT_THROW(interface_->commitPendingTrajectory(), std::logic_error);
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, EngageAdjustmentAppliesToBothAccelerationOutputs)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  costs.boundary_threshold = 100.0F;
+  interface_->setCostParams(costs);
+  auto odometry = makeOdometry();
+  odometry.twist.twist.linear.x = 0.0;
+  for (bool acceleration_state : {false, true}) {
+    const auto result = interface_->optimizeTrajectory(
+      makeStraightTrajectory(80U), odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {},
+      {}, fixedAcceleration(1.0F), true, std::nullopt, {}, false, {acceleration_state, false});
+    ASSERT_FALSE(result.debug.was_rejected);
+    ASSERT_EQ(result.optimized_point_count, 80U);
+    EXPECT_GT(result.trajectory.points.back().longitudinal_velocity_mps, 0.25F);
+    EXPECT_FLOAT_EQ(result.trajectory.points.front().longitudinal_velocity_mps, 0.25F);
+    EXPECT_FLOAT_EQ(result.trajectory.points.front().acceleration_mps2, 0.25F);
+    interface_->discardPendingTrajectory();
+  }
 }
 
 TEST_F(

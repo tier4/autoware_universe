@@ -359,6 +359,12 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   if(BUILD_TESTING)
     ament_find_gtest()
 
+    ament_add_gtest(test_trajectory_mppi_optimizer test/test_trajectory_mppi_optimizer.cpp)
+    target_link_libraries(test_trajectory_mppi_optimizer autoware_mppi_trajectory_modifier_plugin)
+    mppi_link_acados_runtime(test_trajectory_mppi_optimizer)
+    set_target_properties(test_trajectory_mppi_optimizer PROPERTIES CXX_STANDARD 17)
+    set_tests_properties(test_trajectory_mppi_optimizer PROPERTIES LABELS "cpu;unit" TIMEOUT 30)
+
     ament_add_gtest(test_input_collision_gate test/test_input_collision_gate.cpp)
     target_link_libraries(test_input_collision_gate first_order_dubins_mppi ${CUDA_LIBRARIES})
     mppi_link_acados_runtime(test_input_collision_gate)

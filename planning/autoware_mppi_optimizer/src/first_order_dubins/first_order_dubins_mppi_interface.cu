@@ -3040,8 +3040,10 @@ try {
   FirstOrderDubinsMppiOptimizationResult result;
   const auto not_enough_input_points = input.points.size() < 2U;
   const bool short_reference = impl_->referenceIsShortForSteeringHold(input);
+  // A collision trigger never overrides the minimum stopping-reference length.
+  (void)force_optimization;  // Retained for source compatibility with existing callers.
   const bool optimization_required =
-    force_optimization || detail::isOptimizationRequired(input, impl_->min_optimization_length);
+    detail::isOptimizationRequired(input, impl_->min_optimization_length);
   if (not_enough_input_points || !optimization_required) {
     const auto initial_state =
       detail::makeInitialState(odometry, acceleration, steering_status, impl_->vehicle_params);
@@ -3242,10 +3244,8 @@ try {
     !impl_->effective_max_velocity_by_reference_point.empty()
       ? impl_->effective_max_velocity_by_reference_point.front()
       : std::nullopt;
-  if (!output_options.acceleration_state) {
-    // The engage helper overwrites both velocity and acceleration with fixed values.
-    detail::setInitialEngageVelocity(output, initial_effective_maximum);
-  }
+  // Engage adjustment applies to both command and physical-acceleration output modes.
+  detail::setInitialEngageVelocity(output, initial_effective_maximum);
 
   result.trajectory = output;
   result.debug.reference_trajectory = input;

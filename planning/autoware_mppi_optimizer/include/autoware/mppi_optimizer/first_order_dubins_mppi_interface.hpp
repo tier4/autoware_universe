@@ -679,8 +679,7 @@ public:
    * @param preferred_lane_centerline Optional map-frame preferred route centerline segments.
    *        Empty input clears this objective for the call; invalid/oversized input disables it
    *        with a debug status. It never replaces the diffusion-reference corridor.
-   * @param force_optimization Bypass the minimum stopping-reference length after a collision
-   *        trigger. Trajectories with fewer than two points still cannot be optimized.
+   * @param force_optimization Deprecated, ignored. Activation never bypasses reference eligibility.
    * @param output_options Select predicted actuator states instead of issued commands in the
    *        optimized prefix. Velocity is always taken from the predicted state.
    * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.

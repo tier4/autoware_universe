@@ -518,6 +518,10 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   TrajectoryPoints & trajectory_points,
   autoware::trajectory_modifier::TrajectoryModifierData & data)
 {
+  // Secondary candidates must not consume parameter updates or mutate primary-cycle history.
+  if (data.candidate_index != 0U) {
+    return ProcessingResult::Unchanged;
+  }
   autoware_utils_debug::ScopedTimeTrack st(__func__, *get_time_keeper());
 
   auto updated_params = params_;
@@ -537,10 +541,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     params_ = std::move(updated_params);
     reset_optimizer();
   }
-  if (data.candidate_index != 0U) {
-    return ProcessingResult::Unchanged;
-  }
-
   pending_debug_.reset();
   pending_markers_.markers.clear();
   debug_pending_ = false;
@@ -573,6 +573,11 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     Trajectory input;
     input.header = data.candidate_header;
     input.points = trajectory_points;
+    if (!detail::hasMppiTimeStep(input)) {
+      RCLCPP_WARN_THROTTLE(
+        get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+        "MPPI requires input trajectory timestamps spaced by 0.1 s; input times are preserved");
+    }
 
     std::vector<VegetationPoint> vegetation_points;
     if (
@@ -653,7 +658,12 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       extended_route_handler_->get_road_borders_around_trajectory(input, boundary_query_margin);
     const auto mppi_road_borders = to_mppi_segments(road_borders);
 
-    if (params_.optimize_only_on_input_collision) {
+    const bool reference_eligible =
+      detail::isOptimizationRequired(input, params_.min_optimization_length);
+    if (!reference_eligible || !params_.optimize_only_on_input_collision) {
+      input_collision_activation_hold_.reset();
+    }
+    if (params_.optimize_only_on_input_collision && reference_eligible) {
       if (input.points.size() < 2U) {
         constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         return skip_optimization(
@@ -749,7 +759,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       input, *data.current_odometry, acceleration, steering, all_targets, mppi_road_borders,
       to_mppi_segments(drivable_area), kinematic_limits, {},
       /*defer_commit=*/true, mpc_predicted_trajectory, preferred_lane_centerline,
-      /*force_optimization=*/params_.optimize_only_on_input_collision, output_options, vegetation_points,
+      /*force_optimization=*/false, output_options, vegetation_points,
       data.predicted_objects ? *data.predicted_objects : PredictedObjects{});
 
     result.debug.previous_mppi_trajectory_applied = was_previous_mppi_trajectory_applied;

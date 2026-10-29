@@ -22,6 +22,7 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <vector>
@@ -31,6 +32,21 @@ namespace autoware::mppi_optimizer::detail
 
 inline constexpr int kMppiHorizon = 80;
 inline constexpr float kMppiDt = 0.1F;
+
+/** Input times are preserved at publication; only their spacing is checked, not the time origin. */
+inline bool hasMppiTimeStep(const Trajectory & trajectory)
+{
+  std::int64_t previous = 0;
+  for (std::size_t i = 0; i < trajectory.points.size(); ++i) {
+    const auto & time = trajectory.points[i].time_from_start;
+    if (time.sec < 0 || time.nanosec >= 1000000000U) return false;
+    const std::int64_t current = static_cast<std::int64_t>(time.sec) * 1000000000LL + time.nanosec;
+    const auto difference = current - previous;
+    if (i > 0U && (difference < 99999000LL || difference > 100001000LL)) return false;
+    previous = current;
+  }
+  return true;
+}
 
 struct InitialState
 {

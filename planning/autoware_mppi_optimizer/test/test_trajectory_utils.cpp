@@ -72,6 +72,21 @@ void appendPosition(Trajectory & trajectory, const double x, const double y)
   trajectory.points.push_back(point);
 }
 
+TEST(TrajectoryTiming, ChecksSpacingWithoutRewritingTheTimeOrigin)
+{
+  auto trajectory = makeTrajectory(25U, 0.2, 2.0F);
+  for (std::size_t i = 0; i < trajectory.points.size(); ++i) {
+    const auto tick = i + 1U;
+    trajectory.points[i].time_from_start.sec = static_cast<int32_t>(tick / 10U);
+    trajectory.points[i].time_from_start.nanosec = static_cast<uint32_t>(tick % 10U) * 100000000U;
+  }
+  EXPECT_TRUE(hasMppiTimeStep(trajectory));
+  trajectory.points[10].time_from_start.nanosec += 10000U;
+  EXPECT_FALSE(hasMppiTimeStep(trajectory));
+  trajectory.points[10].time_from_start = trajectory.points[9].time_from_start;
+  EXPECT_FALSE(hasMppiTimeStep(trajectory));
+}
+
 TEST(TrajectoryEligibility, SkipsOnlyTrajectoriesThatAreBothShortAndStopping)
 {
   auto short_stopping = makeTrajectory(3U, 1.0, 1.0F);
