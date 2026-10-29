@@ -570,9 +570,10 @@ protected:
   {
     int device_count = 0;
     const cudaError_t error = cudaGetDeviceCount(&device_count);
-    if (error != cudaSuccess || device_count == 0) {
+    if (error == cudaErrorNoDevice || (error == cudaSuccess && device_count == 0)) {
       GTEST_SKIP() << "A CUDA device is required: " << cudaGetErrorString(error);
     }
+    ASSERT_EQ(error, cudaSuccess) << cudaGetErrorString(error);
     stream_ = std::make_unique<CudaStream>();
     cost_ = std::make_unique<TestCost>(stream_->get());
     cost_->GPUSetup();
@@ -998,9 +999,10 @@ TEST(DistanceMapResourceTest, DestructorReleasesDistanceMapAllocations)
 {
   int device_count = 0;
   const cudaError_t device_error = cudaGetDeviceCount(&device_count);
-  if (device_error != cudaSuccess || device_count == 0) {
+  if (device_error == cudaErrorNoDevice || (device_error == cudaSuccess && device_count == 0)) {
     GTEST_SKIP() << "A CUDA device is required: " << cudaGetErrorString(device_error);
   }
+  ASSERT_EQ(device_error, cudaSuccess) << cudaGetErrorString(device_error);
   CudaStream stream;
   const auto allocate_and_release = [&stream]() {
     TestCost cost(stream.get());

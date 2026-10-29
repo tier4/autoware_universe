@@ -45,9 +45,10 @@ protected:
   {
     int device_count = 0;
     const cudaError_t error = cudaGetDeviceCount(&device_count);
-    if (error != cudaSuccess || device_count == 0) {
+    if (error == cudaErrorNoDevice || (error == cudaSuccess && device_count == 0)) {
       GTEST_SKIP() << "A CUDA device is required by the MPPI cost object";
     }
+    ASSERT_EQ(error, cudaSuccess) << cudaGetErrorString(error);
     cost_ = std::make_unique<TestCost>();
     cost_->GPUSetup();
   }

@@ -838,8 +838,11 @@ protected:
   void SetUp() override
   {
     int count = 0;
-    if (cudaGetDeviceCount(&count) != cudaSuccess || count == 0)
+    const auto error = cudaGetDeviceCount(&count);
+    if (error == cudaErrorNoDevice || (error == cudaSuccess && count == 0)) {
       GTEST_SKIP() << "CUDA device required for parity";
+    }
+    ASSERT_EQ(error, cudaSuccess) << cudaGetErrorString(error);
     CostEvaluation::SetUp();
     cost->GPUSetup();
     reference();

@@ -183,6 +183,37 @@ TEST(MpcPredictedNominalSteering, ReplacesOnlyTheTimeAlignedSteeringPrefix)
   EXPECT_FLOAT_EQ(nominal[4].steer_cmd, -0.15F);
 }
 
+TEST(MpcPredictedNominalSteering, ResamplesChangingCurvatureAtDeclaredPredictionTimes)
+{
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 2.5F;
+  vehicle.max_steer_angle = 0.6F;
+  InitialState ego;
+  Trajectory prediction;
+  double x = 0.0, y = 0.0, yaw = 0.0;
+  const std::vector<float> commands{0.1F, 0.3F, -0.1F};
+  for (std::size_t i = 0; i < commands.size(); ++i) {
+    x += 0.4 * std::cos(yaw);
+    y += 0.4 * std::sin(yaw);
+    yaw += 0.4 * std::tan(commands[i]) / vehicle.wheel_base;
+    autoware_planning_msgs::msg::TrajectoryPoint point;
+    point.pose.position.x = x;
+    point.pose.position.y = y;
+    point.pose.orientation = makeQuaternion(yaw);
+    // The MPC seed associates each inferred transition with its supplied point timestamp.
+    point.time_from_start.nanosec = static_cast<uint32_t>(i) * 200000000U;
+    prediction.points.push_back(point);
+  }
+  std::vector<FirstOrderDubinsMppiControl> nominal(6, {0.7F, -0.4F});
+  ASSERT_EQ(
+    overlayNominalSteeringFromPredictedTrajectory(nominal, prediction, ego, vehicle, 0.1F), 5U);
+  const std::vector<float> expected{0.1F, 0.2F, 0.3F, 0.1F, -0.1F, -0.4F};
+  for (std::size_t i = 0; i < nominal.size(); ++i) {
+    EXPECT_NEAR(nominal[i].steer_cmd, expected[i], 1.0E-5F);
+    EXPECT_FLOAT_EQ(nominal[i].accel_cmd, 0.7F);
+  }
+}
+
 TEST(MpcPredictedNominalSteering, DoesNotExtendPredictionBeyondTimeTolerance)
 {
   FirstOrderDubinsMppiVehicleParams vehicle;
@@ -679,6 +710,32 @@ TEST(MengerCurvature, EndpointsAndNearEndpointsRemainFinite)
     0U, 1U, trajectory.points.size() - 2U, trajectory.points.size() - 1U};
   for (const std::size_t i : indices) {
     EXPECT_TRUE(std::isfinite(computeMengerCurvatureWithMinChord(trajectory.points, i, 1.5F)));
+  }
+}
+
+TEST(NominalControl, ProductionLeastSquaresSeedMatchesCircularCurvatureAndTurnSign)
+{
+  constexpr double radius = 10.0;
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.wheel_base = 2.5F;
+  for (double sign : {-1.0, 1.0}) {
+    Trajectory reference;
+    for (std::size_t i = 0; i < 200U; ++i) {
+      const double angle = static_cast<double>(i) * 0.01;
+      autoware_planning_msgs::msg::TrajectoryPoint point;
+      point.pose.position.x = radius * std::sin(angle);
+      point.pose.position.y = sign * radius * (1.0 - std::cos(angle));
+      point.pose.orientation = makeQuaternion(sign * angle);
+      point.longitudinal_velocity_mps = 2.0F;
+      reference.points.push_back(point);
+    }
+    const auto controls =
+      buildDiffusionNominalControl(reference, 50U, vehicle, 10, 1.5F, 2.0F, 0.1F, 2.0F);
+    ASSERT_EQ(controls.size(), 10U);
+    for (const auto & control : controls) {
+      EXPECT_NEAR(control.steer_cmd, sign * std::atan(vehicle.wheel_base / radius), 0.004);
+      EXPECT_FLOAT_EQ(control.accel_cmd, 0.0F);
+    }
   }
 }
 

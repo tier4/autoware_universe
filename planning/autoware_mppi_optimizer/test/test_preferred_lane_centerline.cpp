@@ -66,10 +66,11 @@ TEST(PreferredLaneCenterline, DoesNotConnectLaneletEndpoints)
 TEST(PreferredLaneCenterline, ElevationAndHeadingDisambiguateCrossings)
 {
   Selector selector;
-  selector.reset({section(0, 20), section(50, 60), section(0, 20, 0, 5)});
+  selector.reset({section(0, 20), section(50, 60), section(0, 20, 0.2, 5)});
   const auto result = selector.select({5, 0, 5}, 0, 5, 0);
   ASSERT_EQ(result.status, "active");
   ASSERT_EQ(result.segments.size(), 1U);
+  EXPECT_DOUBLE_EQ(result.segments.front().y0, 0.2);
   EXPECT_EQ(selector.select({5, 0, 5}, 3.141592653589793, 5).status, "ego_not_associated");
 }
 

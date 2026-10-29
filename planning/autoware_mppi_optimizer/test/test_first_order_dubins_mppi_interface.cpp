@@ -446,9 +446,10 @@ protected:
   {
     int device_count = 0;
     const cudaError_t error = cudaGetDeviceCount(&device_count);
-    if (error != cudaSuccess || device_count == 0) {
+    if (error == cudaErrorNoDevice || (error == cudaSuccess && device_count == 0)) {
       GTEST_SKIP() << "A CUDA device is required for the MPPI integration test";
     }
+    ASSERT_EQ(error, cudaSuccess) << cudaGetErrorString(error);
     interface_ = std::make_unique<FirstOrderDubinsMppiInterface>();
 
     // Keep tests that are unrelated to actuator delay aligned with the raw odometry state.
@@ -662,6 +663,7 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, WarmStartUsesElapsedShiftAndExpires
 {
   FirstOrderDubinsMppiCostParams costs;
   costs.max_iter = 1;
+  costs.boundary_threshold = 100.0F;
   interface_->setCostParams(costs);
   FirstOrderDubinsMppiRuntimeOptions options;
   options.use_last_control_as_nominal = true;
@@ -676,8 +678,12 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, WarmStartUsesElapsedShiftAndExpires
 
   auto odometry = makeOdometry();
   odometry.header.stamp.sec = 123;
+  const auto distinctive_controls = [](auto & controls, const auto &) {
+    for (auto & control : controls) control = {0.0F, 0.01F};
+  };
   const auto accepted = interface_->optimizeTrajectory(
-    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, {}, true);
+    input, odometry, std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, distinctive_controls,
+    true);
   ASSERT_FALSE(accepted.debug.was_rejected);
   interface_->commitPendingTrajectory();
 
@@ -688,6 +694,19 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, WarmStartUsesElapsedShiftAndExpires
   EXPECT_EQ(
     shifted.debug.nominal_seed_source, FirstOrderDubinsMppiNominalSeedSource::previous_optimized);
   EXPECT_EQ(shifted.debug.nominal_shift_count, 2);
+  ASSERT_EQ(shifted.debug.nominal_trajectory.points.size(), 80U);
+  for (std::size_t i = 0; i < 75U; ++i) {
+    EXPECT_FLOAT_EQ(
+      shifted.debug.nominal_trajectory.points[i].front_wheel_angle_rad,
+      accepted.trajectory.points[i + 2U].front_wheel_angle_rad);
+  }
+  // The final three reused commands blend into the fresh straight-reference tail.
+  EXPECT_FLOAT_EQ(shifted.debug.nominal_trajectory.points[75].front_wheel_angle_rad, 0.0075F);
+  EXPECT_FLOAT_EQ(shifted.debug.nominal_trajectory.points[76].front_wheel_angle_rad, 0.005F);
+  EXPECT_FLOAT_EQ(shifted.debug.nominal_trajectory.points[77].front_wheel_angle_rad, 0.0025F);
+  // New tail samples come from this straight reference, not copies of the old terminal command.
+  EXPECT_FLOAT_EQ(shifted.debug.nominal_trajectory.points[78].front_wheel_angle_rad, 0.0F);
+  EXPECT_FLOAT_EQ(shifted.debug.nominal_trajectory.points[79].front_wheel_angle_rad, 0.0F);
   interface_->discardPendingTrajectory();
 
   odometry.header.stamp.nanosec = 600000000U;
@@ -988,7 +1007,9 @@ TEST_F(
   interface_->discardPendingTrajectory();
 }
 
-TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, CudaFailureDisablesFurtherWorkUntilExplicitRecovery)
+TEST_F(
+  FirstOrderDubinsMppiInterfaceGpuTest,
+  InjectedCudaExceptionDisablesFurtherWorkUntilExplicitRecovery)
 {
   FirstOrderDubinsMppiCostParams costs;
   costs.max_iter = 1;
@@ -1336,6 +1357,8 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, AppliesADecreasingPointwiseVelocity
 
   const auto result = optimize(*interface_, input, makeOdometry(), TrackedObjects{}, {}, limits);
 
+  ASSERT_FALSE(result.debug.was_rejected);
+  ASSERT_EQ(result.optimized_point_count, 80U);
   EXPECT_TRUE(result.debug.map_velocity_limit_active);
   EXPECT_TRUE(result.debug.velocity_limit_profile_active);
   EXPECT_FALSE(result.debug.external_velocity_limit_active);
@@ -1345,7 +1368,23 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, AppliesADecreasingPointwiseVelocity
   EXPECT_FLOAT_EQ(*result.debug.effective_max_velocity_by_reference_point[19], 2.0F);
   EXPECT_FLOAT_EQ(*result.debug.effective_max_velocity_by_reference_point[20], 0.5F);
   EXPECT_LT(result.trajectory.points[19].longitudinal_velocity_mps, 2.0F);
-  EXPECT_NEAR(result.trajectory.points.back().longitudinal_velocity_mps, 0.5F, 0.1F);
+  // Limits shape a dynamically integrated braking profile, not instantaneous velocity clips.
+  // Check bounded deceleration and convergence, including the preserved suffix.
+  float previous_velocity = static_cast<float>(makeOdometry().twist.twist.linear.x);
+  for (std::size_t i = 0; i < result.trajectory.points.size(); ++i) {
+    SCOPED_TRACE(i);
+    const float velocity = result.trajectory.points[i].longitudinal_velocity_mps;
+    const float acceleration = (velocity - previous_velocity) / detail::kMppiDt;
+    EXPECT_GE(velocity, 0.0F);
+    // Braking can undershoot; recovery toward the limit must stay below it.
+    EXPECT_LE(velocity, std::max(previous_velocity, 0.5F) + 1.0E-3F);
+    EXPECT_GE(acceleration, *limits.min_longitudinal_acceleration - 1.0E-3F);
+    EXPECT_LE(acceleration, *limits.max_longitudinal_acceleration + 1.0E-3F);
+    if (i >= result.optimized_point_count - 1U) {
+      EXPECT_NEAR(velocity, 0.5F, 1.0E-3F);
+    }
+    previous_velocity = velocity;
+  }
 }
 
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, UsesMinimumOfExternalAndPointwiseVelocityLimits)
@@ -1399,7 +1438,18 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, AppliesPerChannelActuatorDelayWitho
   interface_->setVehicleParams(vehicle_params);
 
   const auto input = makeStraightTrajectory(85U);
-  const auto result = optimize(*interface_, input);
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  costs.boundary_threshold = 100.0F;
+  interface_->setCostParams(costs);
+  const auto step_commands = [](auto & controls, const auto &) {
+    for (auto & control : controls) control = {1.0F, 0.1F};
+  };
+  const auto result = interface_->optimizeTrajectory(
+    input, makeOdometry(), std::nullopt, std::nullopt, TrackedObjects{}, {}, {}, {}, step_commands,
+    false, std::nullopt, {}, false, {true, true});
+  ASSERT_FALSE(result.debug.was_rejected);
+  ASSERT_EQ(result.optimized_point_count, 80U);
 
   ASSERT_TRUE(interface_->isInitialized());
   ASSERT_EQ(result.trajectory.points.size(), input.points.size());
@@ -1410,6 +1460,12 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, AppliesPerChannelActuatorDelayWitho
   EXPECT_NEAR(first.pose.position.x, 0.2, 1.0E-5);
   EXPECT_NEAR(first.pose.position.y, 0.0, 1.0E-5);
   EXPECT_NEAR(first.longitudinal_velocity_mps, 2.0F, 1.0E-5F);
+  EXPECT_FLOAT_EQ(first.acceleration_mps2, 0.0F);
+  EXPECT_GT(result.trajectory.points[1].acceleration_mps2, 0.0F);
+  for (std::size_t i = 0; i < 3U; ++i) {
+    EXPECT_FLOAT_EQ(result.trajectory.points[i].front_wheel_angle_rad, 0.0F);
+  }
+  EXPECT_GT(result.trajectory.points[3].front_wheel_angle_rad, 0.0F);
 }
 
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, RejectsBeyondLateralBoundaryThreshold)

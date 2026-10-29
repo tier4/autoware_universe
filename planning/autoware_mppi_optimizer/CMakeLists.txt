@@ -84,23 +84,7 @@ else()
   set(CUDA_AVAIL OFF)
 endif()
 
-# Find TensorRT libraries
-option(TRT_AVAIL "TensorRT available" OFF)
-find_library(NVINFER nvinfer)
-find_library(NVONNXPARSER nvonnxparser)
-if(NVINFER AND NVONNXPARSER)
-  if(CUDA_VERBOSE)
-    message(STATUS "TensorRT is available!")
-    message(STATUS "NVINFER: ${NVINFER}")
-    message(STATUS "NVONNXPARSER: ${NVONNXPARSER}")
-  endif()
-  set(TRT_AVAIL ON)
-else()
-  message(WARNING "TensorRT is NOT Available")
-  set(TRT_AVAIL OFF)
-endif()
-
-if(CUDA_AVAIL AND TRT_AVAIL)
+if(CUDA_AVAIL)
   set(MPPI_CUDA_ARCH_LIST "Auto" CACHE STRING "CUDA architectures (Auto or e.g. 8.9 for headless Ada builds)")
   find_package(MPPI-Generic REQUIRED)
   find_package(ament_index_cpp REQUIRED)
@@ -373,6 +357,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
 
     ament_add_gtest(test_first_order_dubins_mppi_interface
       test/test_first_order_dubins_mppi_interface.cpp
+      ENV "GTEST_FILTER=FirstOrderDubinsMppiInterfaceGpuTest.*"
     )
     target_link_libraries(test_first_order_dubins_mppi_interface
       first_order_dubins_mppi
@@ -384,13 +369,25 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CXX_STANDARD 17
       CUDA_STANDARD 17
     )
-    target_compile_options(test_first_order_dubins_mppi_interface PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
-    )
     set_tests_properties(test_first_order_dubins_mppi_interface PROPERTIES
       LABELS "gpu"
       TIMEOUT 180
     )
+
+    # Host cases share the CUDA-linked executables but do not require a CUDA device.
+    function(mppi_add_host_cases target filter)
+      set(name "${target}_cpu")
+      set(result "${AMENT_TEST_RESULTS_DIR}/${PROJECT_NAME}/${name}.gtest.xml")
+      ament_add_test(${name}
+        COMMAND "$<TARGET_FILE:${target}>" "--gtest_filter=${filter}"
+          "--gtest_output=xml:${result}"
+        OUTPUT_FILE "${CMAKE_BINARY_DIR}/ament_cmake_gtest/${name}.txt"
+        RESULT_FILE "${result}"
+        TIMEOUT 120)
+      set_tests_properties(${name} PROPERTIES LABELS "cpu;unit;gtest")
+    endfunction()
+    mppi_add_host_cases(test_first_order_dubins_mppi_interface
+      "-FirstOrderDubinsMppiInterfaceGpuTest.*")
 
     find_package(rcutils REQUIRED)
     ament_add_gtest(test_performance_benchmarks
@@ -411,8 +408,12 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       RUN_SERIAL TRUE
     )
 
+    # FindCUDA uses custom NVCC commands: target_compile_options with a CUDA language
+    # expression never reaches them. Suppress GoogleTest's unused registration-member
+    # diagnostics only for these test translation units, leaving production warnings enabled.
     cuda_add_executable(test_mppi_trajectory_validator
       test/test_trajectory_validator.cu
+      OPTIONS --diag-suppress=177
     )
     target_link_libraries(test_mppi_trajectory_validator
       first_order_dubins_mppi
@@ -427,17 +428,18 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CXX_STANDARD 17
       CUDA_STANDARD 17
     )
-    target_compile_options(test_mppi_trajectory_validator PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
-    )
-    ament_add_gtest_test(test_mppi_trajectory_validator)
+    ament_add_gtest_test(test_mppi_trajectory_validator
+      ENV "GTEST_FILTER=TrajectoryValidatorTest.*")
     set_tests_properties(test_mppi_trajectory_validator PROPERTIES
       LABELS "gpu"
       TIMEOUT 60
     )
 
+    mppi_add_host_cases(test_mppi_trajectory_validator "-TrajectoryValidatorTest.*")
+
     cuda_add_executable(test_costs
       test/test_costs.cu
+      OPTIONS --diag-suppress=177
     )
     target_link_libraries(test_costs
       first_order_dubins_mppi
@@ -451,13 +453,10 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CXX_STANDARD 17
       CUDA_STANDARD 17
     )
-    target_compile_options(test_costs PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
-    )
     # Analytical checks remain runnable without a CUDA device; parity has its own GPU label.
     ament_add_gtest_test(test_costs ENV "GTEST_FILTER=-GpuCostEvaluation.*")
     set_tests_properties(test_costs PROPERTIES
-      LABELS "cost;gtest"
+      LABELS "cpu;cost;gtest"
       TIMEOUT 120
     )
     set(cost_gpu_result "${AMENT_TEST_RESULTS_DIR}/${PROJECT_NAME}/test_costs_gpu.gtest.xml")
@@ -482,6 +481,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     )
     cuda_add_executable(test_distance_map
       test/test_distance_map.cpp
+      OPTIONS --diag-suppress=177
     )
     target_link_libraries(test_distance_map
       first_order_dubins_mppi
@@ -495,14 +495,13 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CXX_STANDARD 17
       CUDA_STANDARD 17
     )
-    target_compile_options(test_distance_map PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
-    )
-    ament_add_gtest_test(test_distance_map)
+    ament_add_gtest_test(test_distance_map
+      ENV "GTEST_FILTER=DistanceMapGpuTest.*:DistanceMapResourceTest.*")
     set_tests_properties(test_distance_map PROPERTIES
       LABELS "gpu"
       TIMEOUT 180
     )
+    mppi_add_host_cases(test_distance_map "-DistanceMapGpuTest.*:DistanceMapResourceTest.*")
   endif()
 
   install(TARGETS first_order_dubins_mppi mppi_offline_retune mppi_open_loop_line_sim
@@ -519,7 +518,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
 endif()
 
 ament_export_include_directories(include)
-if(CUDA_AVAIL AND TRT_AVAIL)
+if(CUDA_AVAIL)
   ament_export_libraries(first_order_dubins_mppi)
   ament_export_dependencies(MPPI-Generic OpenGL glfw3)
 endif()
