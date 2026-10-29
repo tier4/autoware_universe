@@ -470,6 +470,11 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     )
     set_tests_properties(test_costs_gpu PROPERTIES LABELS "cost;gpu;gtest")
 
+    add_test(NAME test_cost_report_round_trip
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_cost_report_round_trip.py"
+        "$<TARGET_FILE:test_costs>")
+    set_tests_properties(test_cost_report_round_trip PROPERTIES LABELS "cpu;cost;unit" TIMEOUT 120)
+
     # Keep the descriptive .cpp filename while compiling the texture-sampling test kernels with
     # NVCC. FindCUDA treats a non-.cu source as CUDA when this property is set.
     set_source_files_properties(test/test_distance_map.cpp PROPERTIES
