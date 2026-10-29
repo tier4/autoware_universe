@@ -164,6 +164,7 @@ safety_planner:
       - autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator
       - autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator
       - autoware::safety_planner::experimental::ObstacleStopConstraintGenerator
+      - autoware::safety_planner::experimental::SurroundObstacleStopConstraintGenerator
     read_only: true
     description: fully qualified class names of the constraint generator plugins to load
 
@@ -445,6 +446,77 @@ safety_planner:
         default_value: 1.5
         read_only: true
         description: "[s]"
+
+  # The surround_obstacle_stop of autoware_minimum_rule_based_planner, emitting a Gate at the ego front while an object is too close and the ego is stopped
+  surround_obstacle_stop:
+    enable:
+      type: bool
+      default_value: true
+      read_only: true
+      description: enable surround obstacle stop
+    target_objects:
+      bbox:
+        type: string_array
+        default_value:
+          - car
+          - truck
+          - bus
+          - trailer
+          - motorcycle
+          - bicycle
+          - pedestrian
+          - hazard
+          - animal
+          - unknown
+        read_only: true
+        description: classes of the BOUNDING_BOX objects to stop for
+      polygon:
+        type: string_array
+        default_value:
+          - car
+          - truck
+          - bus
+          - trailer
+          - pedestrian
+          - hazard
+          - animal
+          - unknown
+        read_only: true
+        description: classes of the POLYGON objects to stop for
+    front_distance_th: &surround_obstacle_stop_distance_template
+      car:
+        &surround_obstacle_stop_distance_default {
+          type: double,
+          default_value: 0.5,
+          read_only: true,
+          description: "[m]",
+        }
+      truck: *surround_obstacle_stop_distance_default
+      bus: *surround_obstacle_stop_distance_default
+      trailer: *surround_obstacle_stop_distance_default
+      motorcycle: *surround_obstacle_stop_distance_default
+      bicycle: *surround_obstacle_stop_distance_default
+      pedestrian: *surround_obstacle_stop_distance_default
+      hazard: *surround_obstacle_stop_distance_default
+      animal: *surround_obstacle_stop_distance_default
+      unknown: *surround_obstacle_stop_distance_default
+    side_distance_th: *surround_obstacle_stop_distance_template
+    back_distance_th: *surround_obstacle_stop_distance_template
+    hysteresis_distance:
+      type: double
+      default_value: 0.1
+      read_only: true
+      description: distance [m] the obstacle must clear beyond its threshold before an active stop is released
+    hysteresis_time:
+      type: double
+      default_value: 0.2
+      read_only: true
+      description: time [s] the obstacle may be within hysteresis_distance before an active stop is released
+    ego_stopped_vel_th:
+      type: double
+      default_value: 0.1
+      read_only: true
+      description: speed [m/s] above which the ego is considered moving and the check does not run
 
   frenet_sampling_based_planner:
     time_step_s:
