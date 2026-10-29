@@ -217,6 +217,24 @@ TEST(FirstOrderDubinsMppiInterface, SkippedInputsDoNotInitializeCuda)
   EXPECT_FALSE(interface.isInitialized());
 }
 
+TEST(FirstOrderDubinsMppiInterface, ExpandedPredictionCapacityFailsBeforeCudaInitialization)
+{
+  FirstOrderDubinsMppiInterface interface;
+  auto tracked = makeStationaryBoxObstacle(10.0, 10.0, 0.2, 0.2);
+  PredictedObjects predictions;
+  predictions.objects.resize(1);
+  auto & object = predictions.objects.front();
+  object.object_id = tracked.objects.front().object_id;
+  object.kinematics.predicted_paths.resize(65);
+  for (auto & path : object.kinematics.predicted_paths) path.confidence = 1.0F;
+  EXPECT_THROW(
+    interface.optimizeTrajectory(
+      makeStraightTrajectory(80U), makeOdometry(), std::nullopt, std::nullopt, tracked, {}, {}, {},
+      {}, false, std::nullopt, {}, false, {}, {}, predictions),
+    std::length_error);
+  EXPECT_FALSE(interface.isInitialized());
+}
+
 TEST(FirstOrderDubinsMppiInterface, ShortSkippedReferenceHoldsMeasuredSteering)
 {
   FirstOrderDubinsMppiInterface interface;
@@ -448,6 +466,49 @@ FirstOrderDubinsMppiControlSequencePostprocessor fixedAcceleration(const float a
            const FirstOrderDubinsMppiPostprocessingContext &) {
     for (auto & control : controls) control = {acceleration, 0.0F};
   };
+}
+
+TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, UsesEveryHighestConfidencePathAndItsSourceUuid)
+{
+  FirstOrderDubinsMppiCostParams costs;
+  costs.max_iter = 1;
+  costs.boundary_threshold = 100.0F;
+  interface_->setCostParams(costs);
+  auto tracked = makeStationaryBoxObstacle(10.0, 10.0, 0.2, 0.2);
+  tracked.objects.front().object_id.uuid[0] = 0x42;
+  PredictedObjects predictions;
+  predictions.objects.resize(1);
+  auto & object = predictions.objects.front();
+  object.object_id = tracked.objects.front().object_id;
+  object.shape = tracked.objects.front().shape;
+  autoware_perception_msgs::msg::PredictedPath clear, colliding;
+  clear.confidence = 1.0F;
+  clear.time_step.nanosec = 100000000U;
+  clear.path = {tracked.objects.front().kinematics.pose_with_covariance.pose};
+  colliding = clear;
+  colliding.confidence = 0.5F;
+  colliding.path.front().position.x = 0.2;
+  colliding.path.front().position.y = 0.0;
+  object.kinematics.predicted_paths = {clear, colliding};
+  const auto run = [&]() {
+    return interface_->optimizeTrajectory(
+      makeStraightTrajectory(80U), makeOdometry(), std::nullopt, std::nullopt, tracked, {}, {}, {},
+      {}, true, std::nullopt, {}, false, {}, {}, predictions);
+  };
+  const auto clear_result = run();
+  ASSERT_FALSE(clear_result.debug.was_rejected);  // Ignore the lower-confidence collision.
+  interface_->discardPendingTrajectory();
+  object.kinematics.predicted_paths.back().confidence = 1.0F;
+  const auto tied_result = run();
+  EXPECT_TRUE(tied_result.debug.was_rejected);
+  EXPECT_TRUE(hasInvalidityReason(
+    tied_result.debug.validation.reasons, FirstOrderDubinsMppiInvalidityReason::obstacle));
+  ASSERT_FALSE(tied_result.debug.rollout_iteration_diagnostics.empty());
+  const auto & diagnostic = tied_result.debug.rollout_iteration_diagnostics.front();
+  EXPECT_EQ(diagnostic.eligible_count, 0);
+  EXPECT_EQ(diagnostic.first_violation_geometry_index, 1);
+  EXPECT_EQ(diagnostic.first_violation_object_id, "42000000-0000-0000-0000-000000000000");
+  EXPECT_THROW(interface_->commitPendingTrajectory(), std::logic_error);
 }
 
 TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, PostprocessingHistoryUsesOnlyCommittedCandidates)

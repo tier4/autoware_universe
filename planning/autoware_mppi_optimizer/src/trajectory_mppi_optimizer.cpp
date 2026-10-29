@@ -19,6 +19,7 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 #include "autoware/mppi_optimizer/input_collision_gate.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
+#include "autoware/mppi_optimizer/tracked_objects_obstacles.hpp"
 
 #include <autoware/point_types/types.hpp>
 #include <autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp>
@@ -614,8 +615,13 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     }
 
     const bool was_previous_mppi_trajectory_applied = previous_mppi_trajectory_applied_;
-    const auto objects_in_range = autoware::avoidance_target_detector::filter_objects_in_range(
+    auto objects_in_range = autoware::avoidance_target_detector::filter_objects_in_range(
       *data.tracked_objects, input, object_filter_margin_m_, object_filter_prediction_extension_s_);
+    if (data.predicted_objects && !params_.ignore_obstacles) {
+      includePredictedPathTargets(
+        objects_in_range, *data.tracked_objects, *data.predicted_objects, input,
+        object_filter_margin_m_);
+    }
     object_selector_.update_objects(
       get_node_ptr()->now(), objects_in_range, input, *extended_route_handler_);
     auto avoidance_targets = object_selector_.get_avoidance_targets(
@@ -743,8 +749,8 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       input, *data.current_odometry, acceleration, steering, all_targets, mppi_road_borders,
       to_mppi_segments(drivable_area), kinematic_limits, {},
       /*defer_commit=*/true, mpc_predicted_trajectory, preferred_lane_centerline,
-      /*force_optimization=*/params_.optimize_only_on_input_collision, output_options,
-      vegetation_points);
+      /*force_optimization=*/params_.optimize_only_on_input_collision, output_options, vegetation_points,
+      data.predicted_objects ? *data.predicted_objects : PredictedObjects{});
 
     result.debug.previous_mppi_trajectory_applied = was_previous_mppi_trajectory_applied;
     if (mpc_predicted_trajectory) {

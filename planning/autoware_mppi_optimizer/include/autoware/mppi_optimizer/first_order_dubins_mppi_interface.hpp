@@ -19,6 +19,7 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
@@ -37,6 +38,7 @@
 namespace autoware::mppi_optimizer
 {
 
+using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
@@ -656,8 +658,9 @@ public:
    * @param odometry Current ego odometry in the same frame as the trajectory.
    * @param acceleration Optional ego longitudinal acceleration [m/s^2] in base_link.
    * @param steering_status Optional ego tire steering angle [rad] from vehicle status.
-   * @param tracked_objects Perception tracked objects used as dynamic obstacles
-   * (constant-velocity).
+   * @param tracked_objects Selected objects; supplied predictions are associated by UUID.
+   * @param predicted_objects Highest-confidence paths (including ties); missing paths fall back
+   *        to constant longitudinal velocity. No message-age offset is applied.
    * @param road_borders Static road-border segments used by the gradual optimizer cost and hard
    *        output validator.
    * @param drivable_area Static drivable-area boundary segments used as a gradual constraint.
@@ -694,7 +697,8 @@ public:
     const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt,
     const PreferredLaneCenterlineInput & preferred_lane_centerline = {},
     bool force_optimization = false, const FirstOrderDubinsMppiOutputOptions & output_options = {},
-    const std::vector<VegetationPoint> & vegetation_points = {});
+    const std::vector<VegetationPoint> & vegetation_points = {},
+    const PredictedObjects & predicted_objects = PredictedObjects{});
 
   /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
    * This records an assumed first actuator command, not feedback from the downstream controller.

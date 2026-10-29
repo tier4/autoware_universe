@@ -863,7 +863,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   Trajectory diffusion_reference;
   /** Cumulative chord length [m] along diffusion_reference.points (s[0]=0). */
   std::vector<float> diffusion_reference_chord_length_s;
-  TrackedObjects tracked_objects;
+  PredictedObjects predicted_objects;
+  std::vector<std::size_t> obstacle_source_indices;
   std::vector<VegetationPoint> vegetation_points;
   PreferredLaneCenterlineInput preferred_lane_centerline;
   std::vector<Segment> road_borders;
@@ -1987,7 +1988,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     const std::vector<VegetationPoint> & vegetation_points_in,
     const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
     const std::optional<Trajectory> & mpc_predicted_trajectory,
-    const PreferredLaneCenterlineInput & preferred_input = {})
+    const PreferredLaneCenterlineInput & preferred_input, const PredictedObjects & predictions_in)
   {
     const auto check_capacity = [](std::size_t count, std::size_t capacity, const char * kind) {
       if (count > capacity) {
@@ -1998,6 +1999,11 @@ struct FirstOrderDubinsMppiInterface::Impl
     };
     if (!ignore_obstacles)
       check_capacity(tracked_objects_in.objects.size(), COST::kMaxObstacles, "tracked objects");
+    auto selected_predictions =
+      ignore_obstacles ? PredictedObjects{}
+                       : predictionsForTrackedObjects(tracked_objects_in, predictions_in);
+    // Account for all highest-confidence ties before changing controller state or GPU data.
+    predictedObjectObstacleCount(selected_predictions);
     if (!ignore_road_borders)
       check_capacity(road_borders_in.size(), COST::kMaxRoadBorderSegments, "road borders");
     if (!ignore_drivable_area)
@@ -2071,7 +2077,13 @@ struct FirstOrderDubinsMppiInterface::Impl
     cost.setKinematicLimits(makeKinematicLimitCostData(cost_limits));
     syncKinematicLimitsToModel();
     diffusion_reference_chord_length_s = detail::computeCumulativeChordLength(diffusion_reference);
-    tracked_objects = ignore_obstacles ? TrackedObjects{} : tracked_objects_in;
+    predicted_objects = std::move(selected_predictions);
+    obstacle_source_indices.clear();
+    for (std::size_t i = 0; i < predicted_objects.objects.size(); ++i) {
+      const auto count =
+        std::max(std::size_t{1}, selectPredictedPaths(predicted_objects.objects[i]).size());
+      obstacle_source_indices.insert(obstacle_source_indices.end(), count, i);
+    }
     vegetation_points.clear();
     if (!ignore_obstacles) {
       vegetation_points.reserve(vegetation_points_in.size());
@@ -2345,11 +2357,11 @@ struct FirstOrderDubinsMppiInterface::Impl
 
       int obstacle_count = 0;
       cost.setDynamicObstacleHorizon(dynamic_obstacle_horizon_s, kDt);
-      if (!tracked_objects.objects.empty()) {
-        buildObstacleTrajectoryBuffersFromTrackedObjects(
-          tracked_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw, obs_half_length,
-          obs_half_width, 0.0F, frame.origin_x, frame.origin_y);
-        obstacle_count = trackedObjectObstacleCount(tracked_objects);
+      if (!predicted_objects.objects.empty()) {
+        buildObstacleTrajectoryBuffersFromPredictedObjects(
+          predicted_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw,
+          obs_half_length, obs_half_width, frame.origin_x, frame.origin_y);
+        obstacle_count = predictedObjectObstacleCount(predicted_objects);
       } else if (!obstacles.empty()) {
         mppi::cost::buildObstacleTrajectoryBuffers(
           obstacles, sim_time, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw,
@@ -3017,7 +3029,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const bool defer_commit, const std::optional<Trajectory> & mpc_predicted_trajectory,
   const PreferredLaneCenterlineInput & preferred_lane_centerline, const bool force_optimization,
   const FirstOrderDubinsMppiOutputOptions & output_options,
-  const std::vector<VegetationPoint> & vegetation_points)
+  const std::vector<VegetationPoint> & vegetation_points,
+  const PredictedObjects & predicted_objects)
 try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -3065,7 +3078,8 @@ try {
 
   impl_->updateDiffusionReference(
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
-    vegetation_points, kinematic_limits, mpc_predicted_trajectory, preferred_lane_centerline);
+    vegetation_points, kinematic_limits, mpc_predicted_trajectory, preferred_lane_centerline,
+    predicted_objects);
   Impl::TrackingTransaction transaction(*impl_);
   result.debug.preferred_lane_center_status = impl_->preferred_lane_centerline.status;
   result.debug.preferred_lane_center_segment_count =
@@ -3275,8 +3289,10 @@ try {
         mppi::safety::geometryIndex(stats.first_violation_status);
       const int index = diagnostic.first_violation_geometry_index;
       if (
-        reason == 2 && index >= 0 && static_cast<size_t>(index) < tracked_objects.objects.size()) {
-        const auto & uuid = tracked_objects.objects[static_cast<size_t>(index)].object_id.uuid;
+        reason == 2 && index >= 0 &&
+        static_cast<size_t>(index) < impl_->obstacle_source_indices.size()) {
+        const auto source_index = impl_->obstacle_source_indices[static_cast<size_t>(index)];
+        const auto & uuid = impl_->predicted_objects.objects[source_index].object_id.uuid;
         constexpr char hex[] = "0123456789abcdef";
         for (size_t byte = 0; byte < uuid.size(); ++byte) {
           if (byte == 4 || byte == 6 || byte == 8 || byte == 10)

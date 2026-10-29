@@ -46,6 +46,10 @@ if(BUILD_TESTING)
     mppi_trajectory_utils
   )
 
+  ament_add_gtest(test_predicted_objects_obstacles test/test_predicted_objects_obstacles.cpp)
+  target_link_libraries(test_predicted_objects_obstacles mppi_trajectory_utils)
+  set_target_properties(test_predicted_objects_obstacles PROPERTIES CXX_STANDARD 17)
+  set_tests_properties(test_predicted_objects_obstacles PROPERTIES LABELS "cpu;unit" TIMEOUT 30)
 
   ament_add_gtest(test_mppi_application_status
     test/test_mppi_application_status.cpp
