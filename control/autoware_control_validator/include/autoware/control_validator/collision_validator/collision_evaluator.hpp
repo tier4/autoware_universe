@@ -253,15 +253,14 @@ public:
    * @brief Sweep the ego footprint along the predicted trajectory and judge the proximity and the
    * collision with objects (footprint sweep) and static points. Only the objects and points that
    * are near or have a brake_level of 1 or more are returned.
-   * @param objects null evaluates no object
-   * @param point_clusters clusters in the map frame; null evaluates no point
-   * @throws std::invalid_argument when the predicted trajectory cannot be interpolated
+   * @param objects nullptr evaluates no object
+   * @param point_clusters clusters in the map frame; nullopt evaluates no point
    */
   std::vector<CollisionCandidate> evaluate(
     const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
     const nav_msgs::msg::Odometry & odom, const vehicle_info_utils::VehicleInfo & vehicle_info,
-    const autoware_perception_msgs::msg::PredictedObjects * objects,
-    const PointCloudClusters * point_clusters) const;
+    const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr & objects,
+    const std::optional<PointCloudClusters> & point_clusters) const;
 
 private:
   friend class SweepsWithBraking;

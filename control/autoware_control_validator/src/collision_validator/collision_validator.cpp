@@ -140,19 +140,16 @@ void CollisionValidator::update_history(const nav_msgs::msg::Odometry & odom)
 std::optional<geometry_msgs::msg::Pose> CollisionValidator::select_ego_pose_at(
   const rclcpp::Time & stamp) const
 {
-  const nav_msgs::msg::Odometry * best = nullptr;
+  std::optional<geometry_msgs::msg::Pose> best;
   double best_gap = std::numeric_limits<double>::infinity();
   for (const auto & odom : odometry_history_) {
     const double gap = std::abs((rclcpp::Time(odom.header.stamp) - stamp).seconds());
-    if (gap < best_gap) {
+    if (gap < best_gap && gap <= params_.pointcloud.max_stamp_gap_s) {
       best_gap = gap;
-      best = &odom;
+      best = odom.pose.pose;
     }
   }
-  if (!best || best_gap > params_.pointcloud.max_stamp_gap_s) {
-    return std::nullopt;
-  }
-  return best->pose.pose;
+  return best;
 }
 
 std::vector<HazardSource> CollisionValidator::to_hazard_sources(
@@ -184,28 +181,31 @@ void CollisionValidator::validate(
   if (predicted_trajectory.points.size() < 2) {
     return;
   }
+  const auto & points = predicted_trajectory.points;
+  const bool is_time_sorted =
+    std::is_sorted(points.begin(), points.end(), [](const auto & lhs, const auto & rhs) {
+      return rclcpp::Duration(lhs.time_from_start) < rclcpp::Duration(rhs.time_from_start);
+    });
+  const bool is_position_finite = std::all_of(points.begin(), points.end(), [](const auto & point) {
+    return std::isfinite(point.pose.position.x) && std::isfinite(point.pose.position.y);
+  });
+  if (!is_time_sorted || !is_position_finite) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, steady_clock_, 5000, "invalid predicted trajectory. Collision evaluation skipped.");
+    return;
+  }
 
   const double horizon = std::min(
     params_.prediction_horizon,
     rclcpp::Duration(predicted_trajectory.points.back().time_from_start).seconds());
 
-  const PointCloudClusters * clusters = nullptr;
-  if (params_.enable_pointcloud && pointcloud) {
-    const auto ego_pose_at_pointcloud_stamp =
-      select_ego_pose_at(rclcpp::Time(pointcloud->header.stamp));
-    try {
-      const auto & result = pointcloud_preprocessor_.process(
-        *pointcloud, ego_pose_at_pointcloud_stamp, odom.twist.twist.linear.x, horizon,
-        vehicle_info);
-      if (result) {
-        clusters = &*result;
-      }
-    } catch (const std::exception & e) {
-      RCLCPP_WARN_THROTTLE(
-        logger_, steady_clock_, 5000, "hazard warning: pointcloud preprocessing skipped: %s",
-        e.what());
-    }
-  }
+  const std::optional<PointCloudClusters> no_clusters;
+  const auto & clusters =
+    params_.enable_pointcloud && pointcloud
+      ? pointcloud_preprocessor_.process(
+          *pointcloud, select_ego_pose_at(rclcpp::Time(pointcloud->header.stamp)),
+          odom.twist.twist.linear.x, horizon, vehicle_info)
+      : no_clusters;
   if (!objects && !clusters) {
     return;
   }
@@ -213,11 +213,11 @@ void CollisionValidator::validate(
   std::vector<CollisionCandidate> candidates;
   try {
     autoware_utils_debug::ScopedTimeTrack st("collision_evaluator_evaluate", *time_keeper_);
-    candidates = collision_evaluator_.evaluate(
-      predicted_trajectory, odom, vehicle_info, objects.get(), clusters);
+    candidates =
+      collision_evaluator_.evaluate(predicted_trajectory, odom, vehicle_info, objects, clusters);
   } catch (const std::exception & e) {
     RCLCPP_WARN_THROTTLE(
-      logger_, steady_clock_, 5000, "hazard warning: collision evaluation skipped: %s", e.what());
+      logger_, steady_clock_, 5000, "collision evaluation skipped: %s", e.what());
     return;
   }
 

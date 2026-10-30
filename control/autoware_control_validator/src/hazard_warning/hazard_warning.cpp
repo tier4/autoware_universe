@@ -208,14 +208,12 @@ Marker make_risk_level_marker(
 }  // namespace
 
 HazardWarning::HazardWarning(
-  const rclcpp::Logger & logger, const ::control_validator::Params & params, rclcpp::Node * node,
+  const rclcpp::Logger & logger, const ::control_validator::Params & params,
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_markers,
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
-: logger_(logger), time_keeper_(std::move(time_keeper))
+: logger_(logger), time_keeper_(std::move(time_keeper)), pub_markers_(std::move(pub_markers))
 {
   update_parameters(params);
-  if (node) {
-    pub_markers_ = node->create_publisher<MarkerArray>("~/debug/hazard/markers", 1);
-  }
 }
 
 void HazardWarning::update_parameters(const ::control_validator::Params & params)

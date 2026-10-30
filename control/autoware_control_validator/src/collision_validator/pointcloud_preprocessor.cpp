@@ -93,19 +93,6 @@ std::vector<Voxel> voxelize(
   }
   return voxels;
 }
-
-Polygon2d ego_footprint_base_link(const vehicle_info_utils::VehicleInfo & vehicle_info)
-{
-  const double front = vehicle_info.max_longitudinal_offset_m;
-  const double rear = vehicle_info.min_longitudinal_offset_m;
-  const double half_width = vehicle_info.vehicle_width_m / 2.0;
-  Polygon2d footprint;
-  footprint.outer() = {
-    {front, half_width}, {front, -half_width}, {rear, -half_width}, {rear, half_width}};
-  footprint.outer().push_back(footprint.outer().front());
-  boost::geometry::correct(footprint);
-  return footprint;
-}
 }  // namespace
 
 PointCloudPreprocessor::PointCloudPreprocessor(
@@ -135,21 +122,34 @@ const std::optional<PointCloudClusters> & PointCloudPreprocessor::process(
   const std::optional<geometry_msgs::msg::Pose> & ego_pose_at_pointcloud_stamp, const double v_ego,
   const double horizon_s, const vehicle_info_utils::VehicleInfo & vehicle_info)
 {
+  try {
+    return process_frame(pointcloud, ego_pose_at_pointcloud_stamp, v_ego, horizon_s, vehicle_info);
+  } catch (const std::exception & e) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, steady_clock_, 5000, "pointcloud preprocessing skipped: %s", e.what());
+    result_ = std::nullopt;
+    return result_;
+  }
+}
+
+const std::optional<PointCloudClusters> & PointCloudPreprocessor::process_frame(
+  const sensor_msgs::msg::PointCloud2 & pointcloud,
+  const std::optional<geometry_msgs::msg::Pose> & ego_pose_at_pointcloud_stamp, const double v_ego,
+  const double horizon_s, const vehicle_info_utils::VehicleInfo & vehicle_info)
+{
   const rclcpp::Time stamp(pointcloud.header.stamp);
   if (result_ && result_->stamp == stamp) {
     return result_;
   }
   if (pointcloud.header.frame_id != kExpectedFrame) {
     RCLCPP_WARN_THROTTLE(
-      logger_, steady_clock_, 5000,
-      "hazard warning: pointcloud frame_id is '%s', expected '%s'. Frame dropped.",
+      logger_, steady_clock_, 5000, "pointcloud frame_id is '%s', expected '%s'. Frame dropped.",
       pointcloud.header.frame_id.c_str(), kExpectedFrame);
     return result_;
   }
   if (!ego_pose_at_pointcloud_stamp) {
     RCLCPP_WARN_THROTTLE(
-      logger_, steady_clock_, 5000,
-      "hazard warning: no odometry close to the pointcloud stamp. Frame dropped.");
+      logger_, steady_clock_, 5000, "no odometry close to the pointcloud stamp. Frame dropped.");
     return result_;
   }
   if (pointcloud.width * pointcloud.height == 0) {
@@ -165,7 +165,9 @@ const std::optional<PointCloudClusters> & PointCloudPreprocessor::process(
                        param_.roi_front_margin;
   const double z_low = z_min(vehicle_info);
   const double z_high = z_max(vehicle_info);
-  const auto footprint = ego_footprint_base_link(vehicle_info);
+  Polygon2d footprint;
+  footprint.outer() = vehicle_info.createFootprint(0.0);
+  boost::geometry::correct(footprint);
   std::vector<Point3d> cropped_pointcloud;
   cropped_pointcloud.reserve(pointcloud.width * pointcloud.height);
   sensor_msgs::PointCloud2ConstIterator<float> it_x(pointcloud, "x");

@@ -24,7 +24,7 @@
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
 #include <rclcpp/logger.hpp>
-#include <rclcpp/node.hpp>
+#include <rclcpp/publisher.hpp>
 #include <rclcpp/time.hpp>
 
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -56,11 +56,11 @@ class HazardWarning
 {
 public:
   /**
-   * @param node when given, the debug publisher is created on it; null publishes nothing
+   * @param pub_markers debug marker publisher; null publishes nothing
    */
   HazardWarning(
     const rclcpp::Logger & logger, const ::control_validator::Params & params,
-    rclcpp::Node * node = nullptr,
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers = nullptr,
     std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper =
       std::make_shared<autoware_utils_debug::TimeKeeper>());
 

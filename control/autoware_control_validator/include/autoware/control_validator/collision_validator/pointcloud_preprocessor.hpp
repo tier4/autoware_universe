@@ -87,8 +87,8 @@ public:
    * @param vehicle_info height range and footprint of the ego vehicle
    * @return clusters of the last processed frame; nullopt when no frame has been processed. The
    *   same stamp as the last frame, a frame other than base_link or no ego pose is not processed.
-   *   An empty cloud gives no clusters.
-   * @throws std::runtime_error when the cloud has no x / y / z fields
+   *   An empty cloud gives no clusters. A frame that fails to be processed (e.g. no x / y / z
+   *   fields) gives nullopt.
    */
   const std::optional<PointCloudClusters> & process(
     const sensor_msgs::msg::PointCloud2 & pointcloud,
@@ -98,6 +98,11 @@ public:
   static constexpr const char * kExpectedFrame = "base_link";
 
 private:
+  const std::optional<PointCloudClusters> & process_frame(
+    const sensor_msgs::msg::PointCloud2 & pointcloud,
+    const std::optional<geometry_msgs::msg::Pose> & ego_pose_at_pointcloud_stamp, double v_ego,
+    double horizon_s, const vehicle_info_utils::VehicleInfo & vehicle_info);
+
   double z_min(const vehicle_info_utils::VehicleInfo & vehicle_info) const;
   double z_max(const vehicle_info_utils::VehicleInfo & vehicle_info) const;
 

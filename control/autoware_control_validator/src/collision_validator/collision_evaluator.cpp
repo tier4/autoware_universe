@@ -26,7 +26,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -353,24 +355,6 @@ TrajectoryInterpolator::TrajectoryInterpolator(
   time_from_refs_(serialize_times(trajectory)),
   dist_from_fronts_(serialize_distances(trajectory))
 {
-  if (trajectory_points_.empty()) {
-    throw std::invalid_argument("points must not be empty");
-  }
-
-  const auto is_finite = [](const double value) { return std::isfinite(value); };
-  if (!std::all_of(time_from_refs_.begin(), time_from_refs_.end(), is_finite)) {
-    throw std::invalid_argument("time_from_refs must contain only finite values");
-  }
-  if (!std::all_of(dist_from_fronts_.begin(), dist_from_fronts_.end(), is_finite)) {
-    throw std::invalid_argument("dist_from_fronts must contain only finite values");
-  }
-
-  if (!std::is_sorted(time_from_refs_.begin(), time_from_refs_.end())) {
-    throw std::invalid_argument("time_from_refs must be in non-decreasing order");
-  }
-  if (!std::is_sorted(dist_from_fronts_.begin(), dist_from_fronts_.end())) {
-    throw std::invalid_argument("dist_from_fronts must be in non-decreasing order");
-  }
 }
 
 InterpolatedState TrajectoryInterpolator::interpolate_state_from_time(
@@ -902,8 +886,8 @@ void CollisionEvaluator::evaluate_points(
 std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
   const autoware_planning_msgs::msg::Trajectory & predicted_trajectory,
   const nav_msgs::msg::Odometry & odom, const vehicle_info_utils::VehicleInfo & vehicle_info,
-  const autoware_perception_msgs::msg::PredictedObjects * objects,
-  const PointCloudClusters * point_clusters) const
+  const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr & objects,
+  const std::optional<PointCloudClusters> & point_clusters) const
 {
   std::vector<CollisionCandidate> candidates;
   if (predicted_trajectory.points.size() < 2 || !(param_.time_resolution > 0.0)) {
@@ -923,7 +907,7 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
       : 0.0;
   struct ObjectEntry
   {
-    const autoware_perception_msgs::msg::PredictedObject * object;
+    std::reference_wrapper<const autoware_perception_msgs::msg::PredictedObject> object;
     CollisionCandidate candidate;
   };
   std::vector<ObjectEntry> object_entries;
@@ -943,7 +927,7 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
         continue;
       }
       candidate.distance_now = boost::geometry::distance(ego_now, candidate.polygon_now);
-      object_entries.push_back(ObjectEntry{&object, std::move(candidate)});
+      object_entries.push_back(ObjectEntry{object, std::move(candidate)});
     }
   }
   std::stable_sort(
@@ -951,7 +935,9 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
       return lhs.candidate.distance_now < rhs.candidate.distance_now;
     });
   if (object_entries.size() > param_.n_eval_object) {
-    object_entries.resize(param_.n_eval_object);
+    object_entries.erase(
+      object_entries.begin() + static_cast<std::ptrdiff_t>(param_.n_eval_object),
+      object_entries.end());
   }
 
   const bool all_stopped = is_all_stopped(ego_sweep);
@@ -959,7 +945,7 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
     entry.candidate.near =
       entry.candidate.distance_now <= param_.proximity_distance && !all_stopped;
     const auto object_trajectory =
-      make_object_trajectory(*entry.object, objects_time_offset, ego_sweep.times);
+      make_object_trajectory(entry.object.get(), objects_time_offset, ego_sweep.times);
     auto candidate =
       evaluate_object(ego_sweep, braked_sweeps, std::move(entry.candidate), object_trajectory);
     if (candidate.near || candidate.brake_level >= 1) {

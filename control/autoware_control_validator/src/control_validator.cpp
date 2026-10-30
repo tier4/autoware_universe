@@ -334,7 +334,10 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
   yaw_validator(params_),
   uncrossable_bound_departure_validator(get_logger(), params_),
   collision_validator(get_logger(), params_, hazard_time_keeper_),
-  hazard_warning(get_logger(), params_, this, hazard_time_keeper_)
+  hazard_warning(
+    get_logger(), params_,
+    create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/hazard/markers", 1),
+    hazard_time_keeper_)
 {
   using std::placeholders::_1;
 
