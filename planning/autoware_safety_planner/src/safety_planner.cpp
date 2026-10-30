@@ -241,37 +241,21 @@ std::optional<PathPointTrajectory> connect_reference_path_to_goal(
   return std::nullopt;
 }
 
-//! Where ego is off the path laterally, the path is bent through ego: the lateral offset from the
-//! centerline is linear, 0 at backward_length_m behind ego, ego's offset at ego and 0 again at
-//! forward_length_m ahead
+//! Where ego is off the path laterally, the path is bent through ego: the stretch from
+//! backward_length_m behind ego to forward_length_m ahead is replaced by the spline that
+//! pretty_build() draws through the path pose behind, the ego pose and the path pose ahead
 std::optional<PathPointTrajectory> blend_reference_path_to_ego(
   const PathPointTrajectory & path, const Pose & ego, const double lateral_threshold_m,
   const double forward_length_m, const double backward_length_m)
 {
-  //! [m] spacing at which the blended stretch is resampled
-  constexpr double BLEND_STEP_M = 1.0;
-  //! [m] the shortest return to the centerline worth shaping; shorter is left to the planner
-  constexpr double MIN_FORWARD_LENGTH_M = 3.0;
-
   const double s_ego = experimental::trajectory::closest(path, ego.position);
   const double l_ego = lateral_offset_at(path, s_ego, Point2d{ego.position.x, ego.position.y});
   if (std::abs(l_ego) < lateral_threshold_m) {
     return std::nullopt;
   }
   // Not past the end of the path: the end (e.g. the goal) is where the offset has to be gone
-  const double forward_length = std::min(forward_length_m, path.length() - s_ego);
-  if (forward_length < MIN_FORWARD_LENGTH_M) {
-    return std::nullopt;
-  }
-  const double backward_length = std::min(backward_length_m, s_ego);
-
-  const auto offset_at = [&](const double s) {
-    return s >= s_ego ? l_ego * (1.0 - (s - s_ego) / forward_length)
-                      : l_ego * (1.0 - (s_ego - s) / backward_length);
-  };
-
-  const double s_begin = s_ego - backward_length;
-  const double s_end = s_ego + forward_length;
+  const double s_end = std::min(s_ego + forward_length_m, path.length());
+  const double s_begin = std::max(s_ego - backward_length_m, 0.0);
   const auto original = path.restore();
   const auto bases = path.get_underlying_bases();
 
@@ -279,27 +263,18 @@ std::optional<PathPointTrajectory> blend_reference_path_to_ego(
   for (std::size_t i = 0; i < original.size() && bases[i] < s_begin; ++i) {
     blended.push_back(original[i]);
   }
-  // const std::size_t first_shifted = blended.size();
-  const auto resample = [&](const double s) {
-    const double l = (s > s_begin && s < s_end) ? offset_at(s) : 0.0;  // 0 at both ends
-    const auto shifted = to_world_pose(path, s, l);
-    auto point = path.compute(s);
-    point.point.pose.position.x = shifted.position.x();
-    point.point.pose.position.y = shifted.position.y();
-    blended.push_back(point);
-  };
-  // s_ego is a sample of its own so that ego is exactly on the blended path
-  const auto add_range = [&](const double from, const double to) {
-    const auto n = std::max<std::size_t>(1, std::ceil((to - from) / BLEND_STEP_M));
-    for (std::size_t i = 0; i < n; ++i) {
-      resample(from + (to - from) * static_cast<double>(i) / static_cast<double>(n));
-    }
-  };
-  if (backward_length > 0.0) {
-    add_range(s_begin, s_ego);
+  blended.push_back(path.compute(s_begin));
+  {
+    auto ego_point = path.compute(s_ego);
+    ego_point.point.pose = ego;
+    blended.push_back(ego_point);
   }
-  add_range(s_ego, s_end);
-  // resample(s_end);
+  blended.push_back(path.compute(s_end));
+  for (std::size_t i = 0; i < original.size(); ++i) {
+    if (bases[i] > s_end) {
+      blended.push_back(original[i]);
+    }
+  }
 
   return experimental::trajectory::pretty_build(blended);
 }
