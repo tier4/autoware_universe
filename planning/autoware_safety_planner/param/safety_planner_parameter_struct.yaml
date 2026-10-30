@@ -704,6 +704,28 @@ safety_planner:
           the normals of this cycle's reference_path, against a smoothing term of 1; 0 disables
         validation:
           gt_eq<>: [0.0]
+      start_curvature:
+        stop_velocity_mps:
+          type: double
+          default_value: 0.2
+          read_only: true
+          description: "[m/s] below this the start curvature of the shifted path is left free, as is its rate: the wheels are turned in place"
+          validation:
+            gt_eq<>: [0.0]
+        low_velocity_mps:
+          type: double
+          default_value: 2.2222
+          read_only: true
+          description: "[m/s] up to this the shifted path starts at the curvature of the previous one at the ego, from here it is blended linearly into the curvature of the wheels"
+          validation:
+            gt_eq<>: [0.0]
+        high_velocity_mps:
+          type: double
+          default_value: 4.1667
+          read_only: true
+          description: "[m/s] from this on the shifted path starts at the curvature of the wheels; not below low_velocity_mps"
+          validation:
+            gt_eq<>: [0.0]
 
   mppi_planner:
     nominal_seed:

@@ -165,15 +165,18 @@ std::pair<std::vector<double>, std::vector<double>> lateral_room_within_hard_bou
   return {std::move(lower), std::move(upper)};
 }
 
-//! The offsets at the samples ss of path where its normal there crosses previous, the nearest
-//! crossing to the centerline; NaN where it does not cross. Measured along the normal rather than
-//! by projecting the points of previous onto path, which puts their feet off on a curve
+//! The offsets at the samples ss of path where its normal there crosses previous, the crossing
+//! nearest to the one at the sample before (to start_offset at the first); NaN where it does not
+//! cross. Measured along the normal rather than by projecting the points of previous onto path,
+//! which puts their feet off on a curve. Not the nearest to the centerline: with the ego near the
+//! center of curvature of a tight centerline the normals also cross the other leg of previous
 std::vector<double> project_onto_normals(
   const PathPointTrajectory & path, const std::vector<double> & ss,
-  const PathPointTrajectory & previous)
+  const PathPointTrajectory & previous, const double start_offset)
 {
   const auto points = previous.restore();
   std::vector<double> offsets(ss.size(), std::numeric_limits<double>::quiet_NaN());
+  double hint = start_offset;
   for (std::size_t i = 0; i < ss.size(); ++i) {
     const auto & origin = path.compute(ss[i]).point.pose.position;
     const double yaw = path.azimuth(ss[i]);
@@ -191,9 +194,12 @@ std::vector<double> project_onto_normals(
         continue;
       }
       const double l = y0 + x0 / (x0 - x1) * (y1 - y0);
-      if (std::isnan(offsets[i]) || std::abs(l) < std::abs(offsets[i])) {
+      if (std::isnan(offsets[i]) || std::abs(l - hint) < std::abs(offsets[i] - hint)) {
         offsets[i] = l;
       }
+    }
+    if (std::isfinite(offsets[i])) {
+      hint = offsets[i];
     }
   }
   return offsets;
@@ -449,11 +455,49 @@ std::optional<PathPointTrajectory> ReferencePathFollowingPlanner::shift_path_wit
     std::tan(
       autoware_utils_math::normalize_radian(
         autoware_utils_geometry::get_rpy(context.odometry.pose.pose).z - path.azimuth(ego.s)));
-  // The path starts at the curvature the wheels are at, and turns them no faster than the steer
+  // The path starts at the curvature planned at the ego, and turns no faster than the steer
   // rate allows at the ego speed: a return to the centerline that needs full opposite lock right
   // at the ego is otherwise planned, and plan_velocity then brakes to a crawl for it
   const double wheel_base = context.vehicle_info.wheel_base_m;
-  const double ego_curvature = std::tan(context.steering.steering_tire_angle) / wheel_base;
+  // The previous output measured on this cycle's reference_path, so that the shift does not
+  // jump between cycles where the bounds leave it a choice
+  const auto previous =
+    previous_path ? project_onto_normals(path, ss, *previous_path, ego.l) : std::vector<double>{};
+  // The curvature at ss[1] of the offset path l on ss, as the QP takes it: not off the spline or
+  // the arc length of the path, so that the previous output read back is a fixed point
+  const auto offset_path_curvature = [&](const std::vector<double> & l) {
+    const double k_ref = path.curvature(ss[1]);
+    const double a = 1.0 - k_ref * l[1];
+    const double dl = (l[2] - l[0]) / (2.0 * SAMPLE_INTERVAL_M);
+    const double ddl = (l[2] - 2.0 * l[1] + l[0]) / (SAMPLE_INTERVAL_M * SAMPLE_INTERVAL_M);
+    return (a * a * k_ref + a * ddl + 2.0 * k_ref * dl * dl) / std::pow(a * a + dl * dl, 1.5);
+  };
+  const double steer_curvature = std::tan(context.steering.steering_tire_angle) / wheel_base;
+  // Standing, the wheels may point anywhere and are turned in place: nothing is pinned. Slow, the
+  // previous output: the wheels lag the command on the tight curves driven there, so pinned to
+  // them the path re-plans the turn-in from the lagging steer every cycle and never reaches it.
+  // Fast, the wheels: the curvature changes slowly there, and a step from a path the ego was not
+  // following (the one of another planner before the switch) costs a lateral acceleration v^2 dk
+  const double v_ego = context.odometry.twist.twist.linear.x;
+  const auto & anchor = p.start_curvature;
+  std::optional<double> ego_curvature;
+  if (v_ego >= anchor.stop_velocity_mps) {
+    //! [m] beyond this from the ego the previous output is not being followed
+    constexpr double MAX_PREVIOUS_GAP_M = 1.0;
+    const bool follows_previous = previous.size() >= 3 &&
+                                  std::abs(previous[0] - ego.l) < MAX_PREVIOUS_GAP_M &&
+                                  std::isfinite(previous[1]) && std::isfinite(previous[2]);
+    const double previous_curvature =
+      follows_previous ? offset_path_curvature(previous) : steer_curvature;
+    // Written so that low_velocity_mps == high_velocity_mps is a step rather than 0/0
+    const double ratio = v_ego >= anchor.high_velocity_mps
+                           ? 1.0
+                           : std::clamp(
+                               (v_ego - anchor.low_velocity_mps) /
+                                 (anchor.high_velocity_mps - anchor.low_velocity_mps),
+                               0.0, 1.0);
+    ego_curvature = previous_curvature + ratio * (steer_curvature - previous_curvature);
+  }
   //! [m/s] below this the steer rate per meter is not tightened further
   constexpr double MIN_SPEED_FOR_STEER_RATE_MPS = 1.0;
   //! The spline rebuilt through the samples overshoots a step of the discrete curvature by about
@@ -463,15 +507,6 @@ std::optional<PathPointTrajectory> ReferencePathFollowingPlanner::shift_path_wit
     CURVATURE_RATE_MARGIN *
     global_hard_bound_max(compiled_constraints, BoundedQuantity::STEER_RATE) /
     (std::max(context.odometry.twist.twist.linear.x, MIN_SPEED_FOR_STEER_RATE_MPS) * wheel_base);
-  // l'' at the ego for the path to have ego_curvature there, from the curvature of the offset path
-  // (a^2 k_ref + a l'' + 2 k_ref l'^2) / (a^2 + l'^2)^(3/2) with a = 1 - k_ref l
-  const double ego_second_derivative = [&]() {
-    const double k_ref = path.curvature(ego.s);
-    const double a = 1.0 - k_ref * ego.l;
-    return (ego_curvature * std::pow(a * a + ego_slope * ego_slope, 1.5) - a * a * k_ref -
-            2.0 * k_ref * ego_slope * ego_slope) /
-           a;
-  }();
 
   std::optional<std::vector<double>> offsets;
   if (ss.size() < 4) {
@@ -521,17 +556,12 @@ std::optional<PathPointTrajectory> ReferencePathFollowingPlanner::shift_path_wit
     // curvature everywhere; a per sample limit is not worth the change to the QP. Last, the end
     // is left free: a path from the ego that does not reach the goal is taken over none
     const double relaxed_curvature = std::max(steerable_curvature, curvature_max * 1.001);
-    // The previous output measured on this cycle's reference_path, so that the shift does not
-    // jump between cycles where the bounds leave it a choice
-    const auto previous =
-      previous_path ? project_onto_normals(path, ss, *previous_path) : std::vector<double>{};
     const auto solve =
       [&](const double max_curvature, const bool hold_end, const bool continuous_steer) {
         return optimize_goal_shift(
           nominal, curvature, SAMPLE_INTERVAL_M, max_curvature, lower, upper, p.deviation_weight,
-          hold_end, previous, p.stability_weight,
-          continuous_steer ? std::make_optional(ego_curvature) : std::nullopt,
-          continuous_steer ? max_curvature_rate : INF);
+          hold_end, previous, p.stability_weight, continuous_steer ? ego_curvature : std::nullopt,
+          continuous_steer && ego_curvature ? max_curvature_rate : INF);
       };
     offsets = solve(steerable_curvature, true, true);
     if (!offsets && curvature_max > steerable_curvature) {
@@ -562,6 +592,19 @@ std::optional<PathPointTrajectory> ReferencePathFollowingPlanner::shift_path_wit
       arc_lengths.push_back(0.0);
     }
     std::reverse(arc_lengths.begin(), arc_lengths.end());
+    // Unpinned, the curvature the QP chose at the start, so that the extension meets it smoothly
+    const double start_curvature = ego_curvature          ? *ego_curvature
+                                   : offsets->size() >= 3 ? offset_path_curvature(*offsets)
+                                                          : steer_curvature;
+    // l'' at the ego for the path to have start_curvature there, from the curvature of the offset
+    // path (a^2 k_ref + a l'' + 2 k_ref l'^2) / (a^2 + l'^2)^(3/2) with a = 1 - k_ref l
+    const double ego_second_derivative = [&]() {
+      const double k_ref = path.curvature(ego.s);
+      const double a = 1.0 - k_ref * ego.l;
+      return (start_curvature * std::pow(a * a + ego_slope * ego_slope, 1.5) - a * a * k_ref -
+              2.0 * k_ref * ego_slope * ego_slope) /
+             a;
+    }();
     // On the grid of the QP, whose slope is the forward difference and whose second difference
     // is the curvature term: the samples behind continue both, so the spline sees no bend at the
     // ego

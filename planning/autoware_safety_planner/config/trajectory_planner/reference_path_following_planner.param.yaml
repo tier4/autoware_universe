@@ -16,3 +16,7 @@
         deviation_weight: 0.001 # [-] weight on the offset from the centerline, against a smoothing term of 1
         curvature_margin: 0.9 # [-] fraction of the curvature at full steer the shifted path is held within
         stability_weight: 0.0 # [-] weight on the offset from the previous cycle's shifted path, against a smoothing term of 1
+        start_curvature: # the curvature the shifted path starts at, by the ego speed
+          stop_velocity_mps: 0.2 # [m/s] below this left free (the wheels are turned in place)
+          low_velocity_mps: 2.2222 # [m/s] (8 km/h) up to this the previous path's curvature at the ego
+          high_velocity_mps: 4.1667 # [m/s] (15 km/h) from this the curvature of the wheels, blended linearly in between
