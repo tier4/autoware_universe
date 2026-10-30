@@ -97,6 +97,18 @@ public:
    */
   virtual void finish_tick() {}
   /**
+   * @brief Called after a tick's trajectory is published, with the outputs it came from.
+   *
+   * A provider whose inputs are the graph's own outputs from the previous tick (the
+   * predicted-start graph's `start_accel`) keeps them here. Not called on a tick that
+   * published nothing, so the next tick's inputs refer to the last plan the car was given.
+   */
+  virtual void on_published(const TensorMap & outputs, const EgoFrame & ego)
+  {
+    (void)outputs;
+    (void)ego;
+  }
+  /**
    * @brief Add this provider's key-values to the tick's diagnostics, after a successful collect().
    *
    * The node knows nothing about what a provider measures; a sensor provider reports what its
