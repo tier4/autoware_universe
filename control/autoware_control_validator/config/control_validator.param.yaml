@@ -27,6 +27,47 @@
       off_time_buffer_s: 0.10
       enable_align_to_ego_pose: true
       enable_developer_marker: false
+      enable_warning: true
+      warning_lateral_th_m: 0.01
+      warning_time_to_departure_cutoff_s: 4.0
+      warning_brake_delay_s: 2.0
+      warning_on_time_buffer_s: 0.20
+      warning_off_time_buffer_s: 0.10
+      departure_risk_level: 3
+
+    hazard_warning:
+      min_alert_duration: 0.5
+
+    collision_validator:
+      enable_warning: true
+      braking:
+        reaction_times: [2.0, 1.5, 1.0] # descending; hazard levels 2 to 4
+        deceleration: 6.0
+      collision_cos_threshold: 0.0 # -1 disables the collision angle condition
+      prediction_horizon: 5.0
+      time_resolution: 0.1
+      stop_velocity: 0.1
+      proximity_distance: 0.3
+      vehicle_yaw:
+        rear_axle_ratio: 0.3
+      enabled_object_classes: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian]
+      enable_pointcloud: false
+      max_evaluations:
+        object: 10
+        pointcloud: 10
+      max_objects_stamp_gap_s: 0.5
+      pointcloud:
+        roi:
+          rear: 2.0
+          front_margin: 2.0
+          lateral: 5.0
+          z_margin_low: 0.0 # added to the vehicle min height offset (ground)
+          z_margin_high: -0.35 # added to the vehicle max height offset (vehicle height)
+        max_voxels: 10000
+        voxel_size: 0.10
+        cluster_tolerance: 0.30
+        min_cluster_size: 10
+        max_stamp_gap_s: 0.1
 
     latency_validator:
       nominal_latency: 0.01
