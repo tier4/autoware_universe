@@ -55,7 +55,7 @@ class CollisionDetectorNode : public rclcpp::Node
 public:
   explicit CollisionDetectorNode(const rclcpp::NodeOptions & node_options);
 
-  struct NearbyObjectTypeFilters
+  struct ObjectTypeFilters
   {
     bool filter_car{false};
     bool filter_truck{false};
@@ -78,7 +78,8 @@ public:
     double collision_distance{};
     double nearby_filter_radius{};
     double keep_ignoring_time{};
-    NearbyObjectTypeFilters nearby_object_type_filters;
+    ObjectTypeFilters nearby_object_type_filters;
+    ObjectTypeFilters permanent_object_type_filters;
     bool ignore_behind_rear_axle{};
     struct
     {
@@ -101,8 +102,9 @@ private:
     std::vector<TimestampedObject> & container, const rclcpp::Time & current_time,
     const rclcpp::Duration & duration_sec);
 
-  bool shouldBeExcluded(
-    const autoware_perception_msgs::msg::ObjectClassification::_label_type & classification) const;
+  static bool shouldBeExcluded(
+    const autoware_perception_msgs::msg::ObjectClassification::_label_type & classification,
+    const ObjectTypeFilters & filters);
 
   void checkCollision(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
