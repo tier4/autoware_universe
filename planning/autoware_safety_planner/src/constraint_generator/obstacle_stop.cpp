@@ -181,9 +181,15 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
   const auto traj_points = make_trajectory_points(context.reference_path, s_ego, ego_pose.position);
   // NOTE(odashima): Why not ego_accel as is: the deceleration for this very stop would shorten the
   // detection range until the obstacle drops out of it, releasing the stop mid-way
+  const auto active_collision_point = get_nearest_collision_point();
+  const double detection_margin = active_collision_point
+                                    ? std::max(
+                                        p.stop_margin, active_collision_point->arc_length -
+                                                         vehicle_info.max_longitudinal_offset_m)
+                                    : p.stop_margin;
   const auto trajectory_shape = build_trajectory_footprint_index(
     traj_points, ego_pose, vehicle_info, ego_vel, std::max(ego_accel, 0.0),
-    p.nominal_stopping_decel, p.stopping_jerk, p.stop_margin, p.delay_response_time);
+    p.nominal_stopping_decel, p.stopping_jerk, detection_margin, p.delay_response_time);
 
   TargetObjects target_objects;
   std::optional<CollisionPoint> collision_point;
