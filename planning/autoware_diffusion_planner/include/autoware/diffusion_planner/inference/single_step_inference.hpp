@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__INFERENCE__SINGLE_STEP_INFERENCE_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__INFERENCE__SINGLE_STEP_INFERENCE_HPP_
 
+#include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/inference/inference.hpp"
 #include "autoware/diffusion_planner/inference/utils.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
@@ -24,6 +25,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -45,10 +47,11 @@ public:
    * @param model_path Path to the TensorRT model file.
    * @param plugins_path Path to TensorRT plugin shared libraries.
    * @param batch_size Batch size for inference buffers and shapes.
+   * @param input_type Scene representation the exported graph takes.
    */
   SingleStepInference(
     const std::string & model_path, const std::string & plugins_path, int batch_size,
-    const std::string & precision = "fp32", bool use_cuda_graph = false);
+    const std::string & precision, bool use_cuda_graph, ModelInputType input_type);
   ~SingleStepInference() override;
 
   /**
@@ -56,7 +59,9 @@ public:
    * @param input_data_map Input tensor data keyed by input names.
    * @return InferenceResult containing outputs or error message.
    */
-  InferenceResult infer(const preprocess::InputDataMap & input_data_map) override;
+  InferenceResult infer(
+    const preprocess::InputDataMap & input_data_map,
+    const std::vector<uint8_t> & bev_image) override;
   /**
    * @brief Load or rebuild the TensorRT engine from the given model path.
    * @param model_path Path to the TensorRT model file.
@@ -65,6 +70,7 @@ public:
 
 private:
   int batch_size_{1};
+  ModelInputType input_type_{ModelInputType::VECTOR};
   std::string plugins_path_;
   std::string precision_{"fp32"};
   bool use_cuda_graph_{false};
@@ -90,6 +96,9 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> ego_shape_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> turn_indicators_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> delay_d_;
+  // Bound only in ModelInputType::IMAGE; the graph declares it as uint8, straight from the
+  // renderer.
+  autoware::cuda_utils::CudaUniquePtr<uint8_t[]> bev_image_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> output_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> turn_indicator_logit_d_;
 
@@ -102,7 +111,8 @@ private:
   cudaStream_t stream_{nullptr};
 
   void bindBuffers();
-  void transferInputsToDevice(const preprocess::InputDataMap & input_data_map);
+  void transferInputsToDevice(
+    const preprocess::InputDataMap & input_data_map, const std::vector<uint8_t> & bev_image);
 };
 
 }  // namespace autoware::diffusion_planner
