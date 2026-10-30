@@ -526,6 +526,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   }
   autoware_utils_debug::ScopedTimeTrack st(__func__, *get_time_keeper());
 
+  selection_result_.reset();
   auto updated_params = params_;
   if (param_listener_->try_update_params(updated_params)) {
     try {
@@ -621,6 +622,21 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       }
     }
 
+    object_selector_.update_objects(
+      get_node_ptr()->now(), *data.tracked_objects, input, *extended_route_handler_);
+    const auto & route_bounds = extended_route_handler_->get_extended_route_bounds();
+    const autoware::avoidance_target_detector::SelectionGeometryParams selection_geometry{
+      object_filter_margin_m_, object_filter_prediction_extension_s_};
+    if (object_selector_.status() != autoware::avoidance_target_detector::SelectionStatus::ready) {
+      selection_result_ =
+        object_selector_.evaluate(*data.tracked_objects, route_bounds, selection_geometry);
+      return skip_optimization(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        std::string{"MPPI selector unavailable: "} +
+          autoware::avoidance_target_detector::to_string(selection_result_->status),
+        input.header);
+    }
+
     const bool was_previous_mppi_trajectory_applied = previous_mppi_trajectory_applied_;
     auto objects_in_range = autoware::avoidance_target_detector::filter_objects_in_range(
       *data.tracked_objects, input, object_filter_margin_m_, object_filter_prediction_extension_s_);
@@ -629,12 +645,17 @@ ProcessingResult TrajectoryMppiOptimizer::process(
         objects_in_range, *data.tracked_objects, *data.predicted_objects, input,
         object_filter_margin_m_);
     }
-    object_selector_.update_objects(
-      get_node_ptr()->now(), objects_in_range, input, *extended_route_handler_);
-    auto avoidance_targets = object_selector_.get_avoidance_targets(
-      objects_in_range, input, extended_route_handler_->get_extended_route_bounds());
-    const auto driving_along_targets =
-      object_selector_.get_driving_along_vehicles(objects_in_range);
+    selection_result_ =
+      object_selector_.evaluate(objects_in_range, route_bounds, selection_geometry);
+    if (selection_result_->status != autoware::avoidance_target_detector::SelectionStatus::ready) {
+      return skip_optimization(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        std::string{"MPPI selector unavailable: "} +
+          autoware::avoidance_target_detector::to_string(selection_result_->status),
+        input.header);
+    }
+    const auto & avoidance_targets = selection_result_->avoidance_targets;
+    const auto & driving_along_targets = selection_result_->driving_along_vehicles;
 
     auto all_targets = avoidance_targets;
     all_targets.objects.insert(
@@ -1056,12 +1077,54 @@ void TrajectoryMppiOptimizer::publish_debug_data(const std::string &) const
   debug_pending_ = false;
 }
 
+void TrajectoryMppiOptimizer::append_selector_diagnostics()
+{
+  using autoware::avoidance_target_detector::to_string;
+  cost_diagnostics_->add_key_value(
+    "selector/status",
+    std::string{selection_result_ ? to_string(selection_result_->status) : "not_evaluated"});
+  if (!selection_result_) return;
+  cost_diagnostics_->add_key_value(
+    "selector/avoidance_count", selection_result_->avoidance_targets.objects.size());
+  cost_diagnostics_->add_key_value(
+    "selector/driving_along_count", selection_result_->driving_along_vehicles.objects.size());
+  cost_diagnostics_->add_key_value(
+    "selector/yield_count", selection_result_->yield_targets.objects.size());
+  constexpr char hex[] = "0123456789abcdef";
+  for (const auto & decision : selection_result_->decisions) {
+    std::string id;
+    id.reserve(32);
+    for (const auto byte : decision.object_id) {
+      id.push_back(hex[byte >> 4U]);
+      id.push_back(hex[byte & 0x0fU]);
+    }
+    const auto key = "selector/objects/" + id + "/";
+    cost_diagnostics_->add_key_value(
+      key + "disposition", std::string{to_string(decision.disposition)});
+    cost_diagnostics_->add_key_value(key + "reason", decision.reason);
+    cost_diagnostics_->add_key_value(key + "measurement_age_s", decision.measurement_age_s);
+    cost_diagnostics_->add_key_value(key + "interest_probability", decision.interest_probability);
+    cost_diagnostics_->add_key_value(
+      key + "stationary_probability", decision.stationary_probability);
+    cost_diagnostics_->add_key_value(key + "deviation_probability", decision.deviation_probability);
+    if (decision.lane_center_offset_m) {
+      cost_diagnostics_->add_key_value(
+        key + "lane_center_offset_m", *decision.lane_center_offset_m);
+    }
+    if (decision.trajectory_distance_m) {
+      cost_diagnostics_->add_key_value(
+        key + "trajectory_distance_m", *decision.trajectory_distance_m);
+    }
+  }
+}
+
 void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   const FirstOrderDubinsMppiDebug & debug, const MppiApplicationStatus & application,
   const rclcpp::Time & stamp)
 {
   using diagnostic_msgs::msg::DiagnosticStatus;
   cost_diagnostics_->clear();
+  append_selector_diagnostics();
   if (params_.optimize_only_on_input_collision) {
     cost_diagnostics_->add_key_value(
       "input_collision/activation_source",
@@ -1249,6 +1312,7 @@ void TrajectoryMppiOptimizer::publish_status_diagnostic(
   const std::uint8_t level, const std::string & message, const rclcpp::Time & stamp)
 {
   cost_diagnostics_->clear();
+  append_selector_diagnostics();
   if (params_.optimize_only_on_input_collision) {
     cost_diagnostics_->add_key_value(
       "input_collision/activation_source",

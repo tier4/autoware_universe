@@ -98,6 +98,9 @@ private:
   /** @brief Publishes whether an optimized MPPI trajectory replaced the primary candidate. */
   void publish_enabled(bool applied) const;
 
+  /** @brief Appends selector status and per-object reasons to the current diagnostics. */
+  void append_selector_diagnostics();
+
   /** @brief Publishes the MPPI cost breakdown and result status. */
   void publish_cost_diagnostics(
     const FirstOrderDubinsMppiDebug & debug, const MppiApplicationStatus & application,
@@ -132,6 +135,9 @@ private:
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
+  std::optional<autoware::avoidance_target_detector::ObjectSelectionResult<
+    autoware_perception_msgs::msg::TrackedObjects>>
+    selection_result_;
   autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr current_map_;
   std::optional<unique_identifier_msgs::msg::UUID> current_route_uuid_;
   std::vector<autoware_planning_msgs::msg::LaneletSegment> current_route_segments_;

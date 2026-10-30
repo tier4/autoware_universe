@@ -39,14 +39,14 @@ struct MovingObjectFilterParams
     1.0;  ///< Objects with linear velocity norm above this are regarded as moving [m/s].
 };
 
-/** Parameters for on-trajectory d-coordinate validation (filter-out). */
+/** Parameters for reference-alignment diagnostics (not avoidance eligibility). */
 struct OnTrajectoryDValidationParams
 {
-  static constexpr std::size_t sample_count_m = 5;      ///< Number of trajectory samples (M).
+  static constexpr std::size_t sample_count_m = 5;      ///< Terminal window length [m].
   static constexpr double magnitude_threshold_m = 1.5;  ///< Max |d(k)| threshold [m].
-  static constexpr double deviation_threshold_m = 0.3;  ///< Max |d(k) - d(k-1)| threshold [m].
+  static constexpr double deviation_threshold_m = 0.3;  ///< Max |delta d| / delta s [m/m].
   static constexpr double near_s_range_m = 15.0;        ///< s-range around footprint (S) [m].
-  static constexpr double s_sample_interval_m = 1.0;    ///< Fallback s sampling interval [m].
+  static constexpr double s_sample_interval_m = 1.0;    ///< Spatial sampling interval [m].
 };
 
 /** Parameters for longitudinal distance filtering using trajectory arc length. */
@@ -65,9 +65,17 @@ struct LateralDistanceFilterParams
 struct FilterManagerParams
 {
   static constexpr double stale_threshold_seconds = 1.0;
+  static constexpr double future_stamp_tolerance_seconds = 0.1;
   static constexpr double static_hysteresis_seconds = 0.5;
   static constexpr double moving_hysteresis_seconds = 5.0;
   static constexpr uint8_t count_threshold = 3;
+};
+
+/** Conservative parked/yield policy, independent of the candidate reference. */
+struct ParkedObjectPolicyParams
+{
+  static constexpr double minimum_lane_center_offset_m = 1.5;
+  static constexpr double recently_moving_seconds = 5.0;
 };
 
 }  // namespace autoware::avoidance_target_detector
