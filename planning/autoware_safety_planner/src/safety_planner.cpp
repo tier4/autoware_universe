@@ -523,6 +523,8 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
     }
     result.normal_trajectory = std::move(planner_result.normal_trajectory);
     result.cautious_trajectory = std::move(planner_result.cautious_trajectory);
+    result.normal_planning_factor_data = std::move(planner_result.normal_planning_factor_data);
+    result.cautious_planning_factor_data = std::move(planner_result.cautious_planning_factor_data);
     result.debug.normal = std::move(planner_result.normal_debug);
     result.debug.cautious = std::move(planner_result.cautious_debug);
   }
