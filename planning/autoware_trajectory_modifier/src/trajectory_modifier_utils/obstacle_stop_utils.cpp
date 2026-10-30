@@ -257,7 +257,8 @@ std::vector<FootprintNode> query_rtree_candidates(
   return candidates;
 }
 
-void sort_candidates_by_arc_length(const TrajectoryShape & shape, std::vector<FootprintNode> & candidates)
+void sort_candidates_by_arc_length(
+  const TrajectoryShape & shape, std::vector<FootprintNode> & candidates)
 {
   std::sort(candidates.begin(), candidates.end(), [&](const auto & a, const auto & b) {
     return shape.footprints[a.second].arc_length < shape.footprints[b.second].arc_length;
@@ -302,7 +303,8 @@ Polygon2d transform_polygon(
 }  // namespace
 
 std::optional<QueryResult> query_overlapping_footprint(
-  const TrajectoryShape & shape, const Polygon2d & polygon, const LateralMargin lat_margin, const double low_vel_th)
+  const TrajectoryShape & shape, const Polygon2d & polygon, const LateralMargin lat_margin,
+  const double low_vel_th)
 {
   if (polygon.outer().empty()) return std::nullopt;
 
@@ -318,11 +320,11 @@ std::optional<QueryResult> query_overlapping_footprint(
 
   for (const auto & node : candidates) {
     const auto & footprint = shape.footprints[node.second];
-    const auto ego_polygon = std::abs(footprint.lon_vel) < low_vel_th ? ego_local_low_vel : ego_local;
+    const auto ego_polygon =
+      std::abs(footprint.lon_vel) < low_vel_th ? ego_local_low_vel : ego_local;
     const auto object_local = transform_polygon(polygon, footprint.pose, true);
     if (autoware_utils_geometry::sat::intersects(ego_polygon, object_local)) {
-      const auto overlap_polygon = transform_polygon(
-        ego_polygon, footprint.pose);
+      const auto overlap_polygon = transform_polygon(ego_polygon, footprint.pose);
       return QueryResult(node.second, overlap_polygon);
     }
   }
@@ -331,7 +333,8 @@ std::optional<QueryResult> query_overlapping_footprint(
 }
 
 std::optional<QueryResult> query_overlapping_footprint(
-  const TrajectoryShape & shape, const Point2d & point, const LateralMargin lat_margin, const double low_vel_th)
+  const TrajectoryShape & shape, const Point2d & point, const LateralMargin lat_margin,
+  const double low_vel_th)
 {
   const auto query_margin = std::max(lat_margin.normal, lat_margin.low_velocity);
   const autoware_utils_geometry::Box2d query_box{
@@ -343,10 +346,11 @@ std::optional<QueryResult> query_overlapping_footprint(
 
   for (const auto & node : candidates) {
     const auto & footprint = shape.footprints[node.second];
-    const auto margin = std::abs(footprint.lon_vel) < low_vel_th ? lat_margin.low_velocity : lat_margin.normal;
+    const auto margin =
+      std::abs(footprint.lon_vel) < low_vel_th ? lat_margin.low_velocity : lat_margin.normal;
     if (is_point_within_footprint(shape, footprint, point, margin)) {
-      const auto overlap_polygon = transform_polygon(
-        make_local_ego_polygon(shape, margin), footprint.pose);
+      const auto overlap_polygon =
+        transform_polygon(make_local_ego_polygon(shape, margin), footprint.pose);
       return QueryResult(node.second, overlap_polygon);
     }
   }
@@ -369,7 +373,8 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
     const auto classification = static_cast<PointCloudClassification>(point.class_id);
     const auto lat_margin = get_lateral_margin(lateral_margin_map, to_object_type(classification));
     const Point2d query_point{point.x, point.y};
-    const auto result = query_overlapping_footprint(trajectory_shape, query_point, lat_margin, traj_low_velocity_th);
+    const auto result =
+      query_overlapping_footprint(trajectory_shape, query_point, lat_margin, traj_low_velocity_th);
     if (!result) continue;
 
     const auto & [index, overlap_polygon] = result.value();
@@ -485,6 +490,71 @@ double get_safe_distance(
   return safe_distance;
 }
 
+double get_object_stopping_distance(
+  const ObjectType type, const double lon_vel, const ObjectDecelMap & object_decel_map,
+  const double stopped_vel_th)
+{
+  constexpr double eps = 1e-3;
+  if (lon_vel < stopped_vel_th) return 0.0;
+  const auto it = object_decel_map.find(type);
+  if (it == object_decel_map.end()) return 0.0;
+  const auto object_decel_mag = std::max(std::abs(it->second), eps);
+  return lon_vel * lon_vel / (2 * object_decel_mag);
+}
+
+std::vector<ObjectRssState> evaluate_object_states(
+  const TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
+  const TrajectoryShape & trajectory_shape, const ObjectDecelMap & object_decel_map,
+  const double stopped_vel_th)
+{
+  std::vector<ObjectRssState> states;
+  if (target_objects.empty() || trajectory_points.size() < 2) return states;
+
+  const auto ego_front_arc_length =
+    trajectory_shape.ego_arc_length() + trajectory_shape.ego_front_offset;
+
+  states.reserve(target_objects.size());
+  for (size_t i = 0; i < target_objects.size(); ++i) {
+    const auto & object = target_objects[i].object;
+    const auto obj_state = get_object_state_at_time(trajectory_points, object, 0.0);
+    ObjectRssState state;
+    state.index = i;
+    state.type = to_object_type(object);
+    state.nearest_point = obj_state.nearest_point;
+    state.arc_length = obj_state.arc_length;
+    state.gap = std::max(0.0, obj_state.arc_length - ego_front_arc_length);
+    state.lon_vel = obj_state.lon_vel;
+    state.stopping_distance =
+      get_object_stopping_distance(state.type, obj_state.lon_vel, object_decel_map, stopped_vel_th);
+    state.is_dynamic = std::abs(obj_state.lon_vel) > stopped_vel_th;
+    states.push_back(state);
+  }
+  return states;
+}
+
+double compute_cruise_velocity(
+  const double gap, const double ego_decel, const double object_stopping_distance,
+  const double reaction_time, const double safety_margin)
+{
+  constexpr double eps = 1e-3;
+  const auto ego_decel_mag = std::max(std::abs(ego_decel), eps);
+  const auto t_r = std::max(0.0, reaction_time);
+  const auto available_distance = gap - safety_margin + object_stopping_distance;
+  if (available_distance <= 0.0) return 0.0;
+  return ego_decel_mag * (-t_r + std::sqrt(t_r * t_r + 2.0 * available_distance / ego_decel_mag));
+}
+
+std::optional<ObjectRssState> select_cruise_target(
+  const std::vector<ObjectRssState> & object_states)
+{
+  std::optional<ObjectRssState> target;
+  for (const auto & state : object_states) {
+    if (!state.is_dynamic || state.lon_vel <= 0.0) continue;
+    if (!target || state.arc_length < target->arc_length) target = state;
+  }
+  return target;
+}
+
 std::optional<CollisionPoint> get_nearest_object_collision(
   TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
   const double stopped_vel_th)
@@ -531,20 +601,6 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
   constexpr double eps = 1e-3;
 
-  auto get_object_stopping_distance = [&](const auto & object, const double obj_lon_vel) {
-    if (obj_lon_vel < stopped_vel_th) return 0.0;
-    const auto label =
-      object.classification.empty()
-        ? ObjectClassification::UNKNOWN
-        : autoware::object_recognition_utils::getHighestProbLabel(object.classification);
-    const auto obj_type = classification_to_object_type.at(label);
-    if (!object_decel_map.count(obj_type)) return 0.0;
-    const auto obj_decel = object_decel_map.at(obj_type);
-    const auto object_decel_mag = std::max(std::abs(obj_decel), eps);
-    const auto object_stopping_distance = obj_lon_vel * obj_lon_vel / (2 * object_decel_mag);
-    return object_stopping_distance;
-  };
-
   auto is_safe = [&](
                    const double obj_arc_length, const double obj_stopping_distance,
                    const double ego_arc_length,
@@ -566,6 +622,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   double obstacle_lon_vel = 0.0;
 
   for (auto & object : target_objects) {
+    const auto obj_type = to_object_type(object.object);
     auto last_p = trajectory_points.front().pose.position;
     auto curr_arc_length = 0.0;
     for (const auto & traj_p : trajectory_points) {
@@ -576,7 +633,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       const auto target_ego_vel = traj_p.longitudinal_velocity_mps;
       const auto obj_state = get_object_state_at_time(trajectory_points, object.object, t);
       const auto obj_stopping_distance =
-        get_object_stopping_distance(object.object, obj_state.lon_vel);
+        get_object_stopping_distance(obj_type, obj_state.lon_vel, object_decel_map, stopped_vel_th);
       std::tie(object.is_safe, object.safe_distance, object.distance_from_ego) =
         is_safe(obj_state.arc_length, obj_stopping_distance, curr_arc_length, target_ego_vel);
       if (object.is_safe) continue;
@@ -713,8 +770,8 @@ void ObjectFilter::filter_by_target_area(
     if (!t_to_obj_current_pos) return true;
     const auto obj_pred_pose = get_predicted_obj_pose_at_time(object, t_to_obj_current_pos.value());
     const auto obj_pred_polygon = get_object_polygon(obj_pred_pose, object.shape);
-    return query_overlapping_footprint(trajectory_shape, obj_pred_polygon, lat_margin, traj_low_velocity_th_) ==
-           std::nullopt;
+    return query_overlapping_footprint(
+             trajectory_shape, obj_pred_polygon, lat_margin, traj_low_velocity_th_) == std::nullopt;
   };
 
   target_objects.erase(
@@ -725,8 +782,8 @@ void ObjectFilter::filter_by_target_area(
         const auto lat_margin = get_lateral_margin(lateral_margin_map, to_object_type(object));
         const auto object_pose = object.kinematics.initial_pose_with_covariance.pose;
         const auto object_polygon = get_object_polygon(object_pose, object.shape);
-        const auto query_result =
-          query_overlapping_footprint(trajectory_shape, object_polygon, lat_margin, traj_low_velocity_th_);
+        const auto query_result = query_overlapping_footprint(
+          trajectory_shape, object_polygon, lat_margin, traj_low_velocity_th_);
         if (!query_result) return true;
         if (is_exiting(object, lat_margin)) return true;
         obj.polygon = object_polygon;

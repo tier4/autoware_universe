@@ -52,16 +52,17 @@ struct FirstOrderDubinsMppiPredictionAccuracy
   float pos_error_m{0.0F};
   float yaw_error_rad{0.0F};
   float vel_error_mps{0.0F};
-  float predicted_x{0.0F};
-  float predicted_y{0.0F};
+  double predicted_x{0.0};
+  double predicted_y{0.0};
   float predicted_yaw{0.0F};
   float predicted_vel{0.0F};
 };
 
 struct FirstOrderDubinsMppiState
 {
-  float x{0.0F};
-  float y{0.0F};
+  /** Map-frame position at the public interface boundary. */
+  double x{0.0};
+  double y{0.0};
   float yaw{0.0F};
   float vel_x{0.0F};
 };
@@ -70,6 +71,13 @@ struct FirstOrderDubinsMppiControl
 {
   float accel_cmd{0.0F};
   float steer_cmd{0.0F};
+};
+
+/** Select which actuator values are written to optimized trajectory points. */
+struct FirstOrderDubinsMppiOutputOptions
+{
+  bool acceleration_state{false};
+  bool steering_state{false};
 };
 
 enum class FirstOrderDubinsMppiNominalSeedSource : std::uint8_t {
@@ -233,7 +241,8 @@ struct FirstOrderDubinsMppiNominalSteeringContinuity
 
 struct FirstOrderDubinsMppiRollout
 {
-  std::vector<std::pair<float, float>> points;
+  /** Map-frame points for visualization and offline logs. */
+  std::vector<std::pair<double, double>> points;
   float cost{0.0F};
   /** One-based MPPI optimization iteration; zero denotes a legacy/offline aggregate sample. */
   int iteration{0};
@@ -395,8 +404,9 @@ struct FirstOrderDubinsMppiTiming
 /** Post-step delay-bicycle state after u₀ (internal MPPI plant; for closed-loop sim feedback). */
 struct FirstOrderDubinsMppiAppliedPlantState
 {
-  float x{0.0F};
-  float y{0.0F};
+  /** Map-frame position after the applied control. */
+  double x{0.0};
+  double y{0.0};
   float yaw{0.0F};
   float velocity{0.0F};
   float acceleration{0.0F};
@@ -435,7 +445,8 @@ struct FirstOrderDubinsMppiDebug
   Trajectory optimized_trajectory;
   /** Open-loop rollout of the seeded u_nom warm-start (accel/steer cmds in a / front_wheel). */
   Trajectory nominal_trajectory;
-  std::vector<std::pair<float, float>> optimal_horizon;
+  /** Map-frame positions of the selected rollout. */
+  std::vector<std::pair<double, double>> optimal_horizon;
   std::vector<FirstOrderDubinsMppiRollout> rollouts;
   FirstOrderDubinsMppiNominalControlProfile nominal_control_profile;
   /** Cost of the pre-optimization nominal control rollout. */
@@ -507,10 +518,10 @@ struct FirstOrderDubinsMppiOptimizationResult
 /** Static 2D line segment supplied to the MPPI cost function in map coordinates. */
 struct Segment
 {
-  float x0{0.0F};
-  float y0{0.0F};
-  float x1{0.0F};
-  float y1{0.0F};
+  double x0{0.0};
+  double y0{0.0};
+  double x1{0.0};
+  double y1{0.0};
 };
 
 inline constexpr std::size_t kMaxPreferredLaneCenterSegments = 256;
@@ -664,6 +675,8 @@ public:
    *        with a debug status. It never replaces the diffusion-reference corridor.
    * @param force_optimization Bypass the minimum stopping-reference length after a collision
    *        trigger. Trajectories with fewer than two points still cannot be optimized.
+   * @param output_options Select predicted actuator states instead of issued commands in the
+   *        optimized prefix. Velocity is always taken from the predicted state.
    * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
@@ -677,7 +690,7 @@ public:
     bool defer_commit = false,
     const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt,
     const PreferredLaneCenterlineInput & preferred_lane_centerline = {},
-    bool force_optimization = false);
+    bool force_optimization = false, const FirstOrderDubinsMppiOutputOptions & output_options = {});
 
   /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
    * This records an assumed first actuator command, not feedback from the downstream controller.

@@ -44,6 +44,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <initializer_list>
 #include <iomanip>
 #include <memory>
 #include <numeric>
@@ -463,20 +464,37 @@ void applyUserCostParams(
   cost_params.crash_contact_penalty = user.crash_contact_penalty;
 }
 
-FirstOrderDubinsMppiState toHostState(const DYN::state_array & x)
+std::vector<Segment> toLocalSegments(
+  const std::vector<Segment> & segments, const detail::LocalFrame & frame)
+{
+  std::vector<Segment> local;
+  local.reserve(segments.size());
+  for (const auto & segment : segments) {
+    local.push_back(
+      {frame.x(segment.x0), frame.y(segment.y0), frame.x(segment.x1), frame.y(segment.y1)});
+  }
+  return local;
+}
+
+FirstOrderDubinsMppiState toHostState(const DYN::state_array & x, const detail::LocalFrame & frame)
 {
   FirstOrderDubinsMppiState state;
-  state.x = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X));
-  state.y = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y));
+  const float local_x = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X));
+  const float local_y = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y));
+  state.x = frame.valid ? frame.worldX(local_x) : local_x;
+  state.y = frame.valid ? frame.worldY(local_y) : local_y;
   state.yaw = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW));
   state.vel_x = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X));
   return state;
 }
 
-void fromHostState(DYN::state_array & x, const FirstOrderDubinsMppiState & state)
+void fromHostState(
+  DYN::state_array & x, const FirstOrderDubinsMppiState & state, const detail::LocalFrame & frame)
 {
-  x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)) = state.x;
-  x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)) = state.y;
+  x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)) =
+    frame.valid ? frame.x(state.x) : static_cast<float>(state.x);
+  x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)) =
+    frame.valid ? frame.y(state.y) : static_cast<float>(state.y);
   x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW)) = state.yaw;
   x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X)) = state.vel_x;
 }
@@ -532,7 +550,8 @@ void checkCuda(const char * where)
 /** Open-loop integrate logged u_nom from the optimization IC; post-step states aligned to DP. */
 Trajectory buildNominalTrajectory(
   DYN & model, const DYN::state_array & x0, const Trajectory & input,
-  const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd)
+  const std::vector<float> & accel_cmd, const std::vector<float> & steer_cmd,
+  const detail::LocalFrame & frame)
 {
   const size_t n = std::min(
     {input.points.size(), accel_cmd.size(), steer_cmd.size(),
@@ -547,6 +566,8 @@ Trajectory buildNominalTrajectory(
   const int vel_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X);
   const int accel_state_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACCELERATION);
+  const int steer_state_idx =
+    static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE);
   const int accel_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
   const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
@@ -578,24 +599,23 @@ Trajectory buildNominalTrajectory(
     state.yaw = x(yaw_idx);
     state.velocity = x(vel_x_idx);
     state.acceleration = x(accel_state_idx);
-    // Publish steer_cmd (not tire angle) so the live viz δ_cmd panel shows u_nom.
-    state.steering = cmd.steer_cmd;
+    state.steering = x(steer_state_idx);
     states.push_back(state);
     controls.push_back(cmd);
   }
-  return detail::buildOptimizedTrajectory(input, states, controls);
+  return detail::buildOptimizedTrajectory(input, states, controls, {}, frame);
 }
 
 void replayRolloutPoints(
   DYN & model, const DYN::state_array & x0, const float * controls, const int horizon,
-  const float dt, std::vector<std::pair<float, float>> & points)
+  const float dt, std::vector<std::pair<double, double>> & points, const detail::LocalFrame & frame)
 {
   const int pos_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X);
   const int pos_y_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y);
 
   points.clear();
   points.reserve(static_cast<size_t>(horizon) + 1U);
-  points.emplace_back(x0(pos_x_idx), x0(pos_y_idx));
+  points.emplace_back(frame.worldX(x0(pos_x_idx)), frame.worldY(x0(pos_y_idx)));
 
   DYN::state_array x = x0;
   DYN::state_array x_next = model.getZeroState();
@@ -610,13 +630,14 @@ void replayRolloutPoints(
     }
     model.enforceConstraints(x, u);
     model.step(x, x_next, xdot, u, y, static_cast<float>(t), dt);
-    points.emplace_back(x_next(pos_x_idx), x_next(pos_y_idx));
+    points.emplace_back(frame.worldX(x_next(pos_x_idx)), frame.worldY(x_next(pos_y_idx)));
     x = x_next;
   }
 }
 
 void fillOptimalHorizonPoints(
-  const Mppi::state_trajectory & state_trajectory, std::vector<std::pair<float, float>> & points)
+  const Mppi::state_trajectory & state_trajectory, std::vector<std::pair<double, double>> & points,
+  const detail::LocalFrame & frame)
 {
   const int pos_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X);
   const int pos_y_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y);
@@ -625,7 +646,9 @@ void fillOptimalHorizonPoints(
   points.clear();
   points.reserve(static_cast<size_t>(horizon));
   for (int col = 0; col < horizon; ++col) {
-    points.emplace_back(state_trajectory(pos_x_idx, col), state_trajectory(pos_y_idx, col));
+    points.emplace_back(
+      frame.worldX(state_trajectory(pos_x_idx, col)),
+      frame.worldY(state_trajectory(pos_y_idx, col)));
   }
 }
 
@@ -730,7 +753,7 @@ void selectWorstRolloutIndices(
 void appendReplayedRollouts(
   DYN & model, const DYN::state_array & x0, const std::vector<float> & host_controls,
   const std::vector<float> & selected_costs, const bool is_worst,
-  std::vector<FirstOrderDubinsMppiRollout> & rollouts)
+  std::vector<FirstOrderDubinsMppiRollout> & rollouts, const detail::LocalFrame & frame)
 {
   size_t out_idx = 0;
   for (const float cost : selected_costs) {
@@ -739,7 +762,7 @@ void appendReplayedRollouts(
     rollout.is_worst = is_worst;
     const float * controls = host_controls.data() + out_idx * static_cast<size_t>(kMppiHorizon) *
                                                       static_cast<size_t>(DYN::CONTROL_DIM);
-    replayRolloutPoints(model, x0, controls, kMppiHorizon, kDt, rollout.points);
+    replayRolloutPoints(model, x0, controls, kMppiHorizon, kDt, rollout.points, frame);
     rollouts.push_back(std::move(rollout));
     ++out_idx;
   }
@@ -747,10 +770,11 @@ void appendReplayedRollouts(
 
 void buildRolloutVisualization(
   MppiWithHistoryAccess & controller, SAMPLER & sampler, DYN & model,
-  const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug)
+  const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug,
+  const detail::LocalFrame & frame)
 {
   const Mppi::state_trajectory state_trajectory = controller.getActualStateSeq();
-  fillOptimalHorizonPoints(state_trajectory, debug.optimal_horizon);
+  fillOptimalHorizonPoints(state_trajectory, debug.optimal_horizon, frame);
   debug.baseline_cost = controller.getBaselineCost();
 
   controller.downloadImportanceWeightsToHost();
@@ -791,18 +815,20 @@ void buildRolloutVisualization(
   const std::vector<float> top_controls(
     host_controls.begin(), host_controls.begin() + static_cast<std::ptrdiff_t>(std::min(
                                                      top_ctrl_floats, host_controls.size())));
-  appendReplayedRollouts(model, x_at_optimization, top_controls, top_costs, false, debug.rollouts);
+  appendReplayedRollouts(
+    model, x_at_optimization, top_controls, top_costs, false, debug.rollouts, frame);
   if (!worst_indices.empty()) {
     const std::vector<float> worst_controls(
       host_controls.begin() + static_cast<std::ptrdiff_t>(top_ctrl_floats), host_controls.end());
     appendReplayedRollouts(
-      model, x_at_optimization, worst_controls, worst_costs, true, debug.rollouts);
+      model, x_at_optimization, worst_controls, worst_costs, true, debug.rollouts, frame);
   }
 }
 
 void buildIterationDebugRollouts(
   const std::vector<MppiWithHistoryAccess::IterationRolloutSnapshot> & snapshots, DYN & model,
-  const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug)
+  const DYN::state_array & x_at_optimization, FirstOrderDubinsMppiDebug & debug,
+  const detail::LocalFrame & frame)
 {
   debug.rollouts.clear();
   debug.rollouts.reserve(snapshots.size() * static_cast<std::size_t>(kSampledDebugRollouts));
@@ -821,7 +847,7 @@ void buildIterationDebugRollouts(
       const float * controls = snapshot.controls.data() + rollout_index * controls_per_rollout;
       // Preserve the existing debug convention: initial state plus horizon - 1 post-step states.
       replayRolloutPoints(
-        model, x_at_optimization, controls, kMppiHorizon - 1, kDt, rollout.points);
+        model, x_at_optimization, controls, kMppiHorizon - 1, kDt, rollout.points, frame);
       debug.rollouts.push_back(std::move(rollout));
     }
   }
@@ -874,6 +900,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   FirstOrderDubinsMppiNominalSteeringContinuity nominal_steering_continuity;
   FirstOrderDubinsMppiPredictionAccuracy prediction_accuracy;
   DYN::state_array x = DYN::state_array::Zero();
+  detail::LocalFrame frame;
 
   std::vector<float> obs_traj_x;
   std::vector<float> obs_traj_y;
@@ -985,6 +1012,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     Mppi::control_trajectory controls;
     AcceptedWarmStart warm_start;
     DYN::state_array state;
+    detail::LocalFrame frame;
     int steps;
     float time;
     std::vector<float> accel_delay;
@@ -1002,6 +1030,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       u_opt,
       accepted_warm_start,
       x,
+      frame,
       step_count,
       sim_time,
       accel_delay_buffer,
@@ -1018,6 +1047,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     u_opt = state.controls;
     accepted_warm_start = std::move(state.warm_start);
     x = state.state;
+    frame = std::move(state.frame);
     step_count = state.steps;
     sim_time = state.time;
     accel_delay_buffer = std::move(state.accel_delay);
@@ -1224,6 +1254,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   void resetExecutionState()
   {
     step_count = 0;
+    frame = {};
     u_opt.setZero();
     accepted_warm_start = {};
     nominal_seed_source = FirstOrderDubinsMppiNominalSeedSource::diffusion_reference;
@@ -2026,14 +2057,44 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (!initialized) {
       setup();
     }
+    if (
+      !reference.header.frame_id.empty() && !odometry.header.frame_id.empty() &&
+      reference.header.frame_id != odometry.header.frame_id) {
+      throw std::invalid_argument("MPPI reference and odometry use different map frames");
+    }
+    if (
+      !tracked_objects_in.objects.empty() && !tracked_objects_in.header.frame_id.empty() &&
+      !odometry.header.frame_id.empty() &&
+      tracked_objects_in.header.frame_id != odometry.header.frame_id) {
+      throw std::invalid_argument("MPPI tracked objects and odometry use different map frames");
+    }
+    const auto & position = odometry.pose.pose.position;
+    if (frame.valid && frame.frame_id != odometry.header.frame_id) {
+      invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::unavailable);
+      temporal_mpt_nominal_seeder.resetWarmStart();
+      prediction_anchor_.valid = false;
+    }
+    if (frame.needsRecenter(position.x, position.y, odometry.header.frame_id)) {
+      frame.reset(position.x, position.y, odometry.header.frame_id);
+    }
     cost.beginDataUpdate();
     preferred_lane_centerline = preferred_input;
     if (!(user_cost_params_.preferred_lane_center_coeff > 0.0F)) {
       preferred_lane_centerline = {};
       preferred_lane_centerline.status = "disabled";
     }
-    const auto preferred_status =
-      cost.setPreferredLaneCenterSegments(preferred_lane_centerline.segments);
+    const bool preferred_geometry_invalid_or_overflow =
+      preferred_lane_centerline.segments.size() > kMaxPreferredLaneCenterSegments ||
+      std::any_of(
+        preferred_lane_centerline.segments.begin(), preferred_lane_centerline.segments.end(),
+        [](const Segment & segment) {
+          return !std::isfinite(segment.x0) || !std::isfinite(segment.y0) ||
+                 !std::isfinite(segment.x1) || !std::isfinite(segment.y1);
+        });
+    const auto preferred_status = cost.setPreferredLaneCenterSegments(
+      preferred_geometry_invalid_or_overflow
+        ? preferred_lane_centerline.segments
+        : toLocalSegments(preferred_lane_centerline.segments, frame));
     if (preferred_status != "active") {
       preferred_lane_centerline.segments.clear();
       if (preferred_status != "unavailable" || preferred_lane_centerline.status == "active")
@@ -2140,8 +2201,10 @@ struct FirstOrderDubinsMppiInterface::Impl
       nominal_steering_continuity.guarded_command_rad);
 
     x = model.getZeroState();
-    x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)) = initial_state.x;
-    x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)) = initial_state.y;
+    x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)) =
+      frame.x(initial_state.x);
+    x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)) =
+      frame.y(initial_state.y);
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW)) = initial_state.yaw;
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X)) = initial_state.velocity;
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACCELERATION)) =
@@ -2168,6 +2231,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   {
     using S = FirstOrderDubinsBicycleParams::StateIndex;
     prediction_anchor_.valid = true;
+    prediction_anchor_.frame = frame;
     prediction_anchor_.stamp = odometry.header.stamp;
     prediction_anchor_.sim_time = sim_time;
     prediction_anchor_.standstill_steering_hold_active =
@@ -2178,8 +2242,8 @@ struct FirstOrderDubinsMppiInterface::Impl
       x(static_cast<int>(S::PREVIOUS_STEER_CMD));
     auto & plant = prediction_anchor_.plant;
     plant.valid = true;
-    plant.x = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X));
-    plant.y = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y));
+    plant.x = frame.worldX(x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)));
+    plant.y = frame.worldY(x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)));
     plant.yaw = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW));
     plant.velocity = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X));
     plant.acceleration =
@@ -2204,8 +2268,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     input.anchor = prediction_anchor_;
     input.control_history = prediction_control_history_;
     input.measurement_stamp = odometry.header.stamp;
-    input.measured_x = static_cast<float>(odometry.pose.pose.position.x);
-    input.measured_y = static_cast<float>(odometry.pose.pose.position.y);
+    input.measured_x = odometry.pose.pose.position.x;
+    input.measured_y = odometry.pose.pose.position.y;
     input.measured_yaw = yawFromOdometry(odometry);
     input.measured_vel = static_cast<float>(odometry.twist.twist.linear.x);
     return detail::evaluatePlantPredictionAccuracy(input);
@@ -2230,12 +2294,12 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (road_borders.empty()) {
       cost.clearRoadBorders();
     } else {
-      cost.setRoadBorderSegments(road_borders);
+      cost.setRoadBorderSegments(toLocalSegments(road_borders, frame));
     }
     if (drivable_area.empty()) {
       cost.clearDrivableAreaSegments();
     } else {
-      cost.setDrivableAreaSegments(drivable_area);
+      cost.setDrivableAreaSegments(toLocalSegments(drivable_area, frame));
     }
   }
 
@@ -2247,8 +2311,8 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     // Measured ego IC; per-channel delay lives in dynamics taps (no host pre-roll / ref shift).
     detail::InitialState ego;
-    ego.x = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X));
-    ego.y = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y));
+    ego.x = frame.worldX(x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)));
+    ego.y = frame.worldY(x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)));
     ego.yaw = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW));
     ego.velocity = x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X));
     std::vector<mppi::path::PathReferenceSample> ref;
@@ -2258,7 +2322,8 @@ struct FirstOrderDubinsMppiInterface::Impl
       auto prepared_reference = detail::buildReferenceHorizon(
         diffusion_reference, ego, kRefHorizon, kDt, tracking_start_idx,
         &diffusion_reference_chord_length_s,
-        uniform_effective_max_velocity ? nullptr : &effective_max_velocity_by_reference_point);
+        uniform_effective_max_velocity ? nullptr : &effective_max_velocity_by_reference_point,
+        frame);
       if (uniform_effective_max_velocity && !active_velocity_limit_profile.active) {
         for (auto & sample : prepared_reference) {
           sample.velocity = std::clamp(sample.velocity, 0.0F, *uniform_effective_max_velocity);
@@ -2280,8 +2345,8 @@ struct FirstOrderDubinsMppiInterface::Impl
       mppi::path::PathReferenceSample terminal_reference = ref.back();
       if (!diffusion_reference.points.empty()) {
         const auto & terminal_point = diffusion_reference.points.back();
-        terminal_reference.x = static_cast<float>(terminal_point.pose.position.x);
-        terminal_reference.y = static_cast<float>(terminal_point.pose.position.y);
+        terminal_reference.x = frame.x(terminal_point.pose.position.x);
+        terminal_reference.y = frame.y(terminal_point.pose.position.y);
         terminal_reference.yaw = static_cast<float>(tf2::getYaw(terminal_point.pose.orientation));
       }
       mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(
@@ -2302,9 +2367,9 @@ struct FirstOrderDubinsMppiInterface::Impl
             const int src =
               (n_src <= max_n) ? i : ((i == n - 1) ? (n_src - 1) : (i * (n_src - 1) / (n - 1)));
             corridor_x[static_cast<size_t>(i)] =
-              static_cast<float>(pts[static_cast<size_t>(src)].pose.position.x);
+              frame.x(pts[static_cast<size_t>(src)].pose.position.x);
             corridor_y[static_cast<size_t>(i)] =
-              static_cast<float>(pts[static_cast<size_t>(src)].pose.position.y);
+              frame.y(pts[static_cast<size_t>(src)].pose.position.y);
             corridor_s[static_cast<size_t>(i)] =
               (static_cast<size_t>(src) < diffusion_reference_chord_length_s.size())
                 ? diffusion_reference_chord_length_s[static_cast<size_t>(src)]
@@ -2325,12 +2390,12 @@ struct FirstOrderDubinsMppiInterface::Impl
       if (!tracked_objects.objects.empty()) {
         buildObstacleTrajectoryBuffersFromTrackedObjects(
           tracked_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw, obs_half_length,
-          obs_half_width, 0.0F);
+          obs_half_width, 0.0F, frame.origin_x, frame.origin_y);
         obstacle_count = trackedObjectObstacleCount(tracked_objects);
       } else if (!obstacles.empty()) {
         mppi::cost::buildObstacleTrajectoryBuffers(
           obstacles, sim_time, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw,
-          obs_half_length, obs_half_width);
+          obs_half_length, obs_half_width, frame.origin_x, frame.origin_y);
         obstacle_count =
           static_cast<int>(std::min(obstacles.size(), static_cast<size_t>(kMaxMppiObstacles)));
       } else {
@@ -2481,6 +2546,149 @@ bool FirstOrderDubinsMppiInterface::isInitialized() const
   return impl_ && impl_->initialized;
 }
 
+namespace
+{
+
+using NamedFloat = std::pair<const char *, float>;
+
+void requireFiniteNonnegative(std::initializer_list<NamedFloat> values)
+{
+  for (const auto & [name, value] : values) {
+    if (!std::isfinite(value) || value < 0.0F) {
+      throw std::invalid_argument(std::string{name} + " must be finite and non-negative");
+    }
+  }
+}
+
+void requireFinitePositive(std::initializer_list<NamedFloat> values)
+{
+  for (const auto & [name, value] : values) {
+    if (!std::isfinite(value) || value <= 0.0F) {
+      throw std::invalid_argument(std::string{name} + " must be finite and positive");
+    }
+  }
+}
+
+void validateVehicleParams(const FirstOrderDubinsMppiVehicleParams & p)
+{
+  requireFinitePositive(
+    {{"ego_length", p.ego_length},
+     {"ego_width", p.ego_width},
+     {"wheel_base", p.wheel_base},
+     {"max_steer_angle", p.max_steer_angle},
+     {"acc_time_constant", p.acc_time_constant},
+     {"steer_time_constant", p.steer_time_constant}});
+  requireFiniteNonnegative(
+    {{"steer_rate_lim", p.steer_rate_lim},
+     {"vel_rate_lim", p.vel_rate_lim},
+     {"acc_time_delay", p.acc_time_delay},
+     {"steer_time_delay", p.steer_time_delay},
+     {"max_lateral_jerk_mps3", p.max_lateral_jerk_mps3},
+     {"standstill_steer_rate_lim", p.standstill_steer_rate_lim},
+     {"restart_steer_command_rate_lim", p.restart_steer_command_rate_lim},
+     {"restart_steer_command_acceleration_lim", p.restart_steer_command_acceleration_lim},
+     {"restart_velocity_threshold_mps", p.restart_velocity_threshold_mps}});
+  if (!std::isfinite(p.ego_axle_to_box_center)) {
+    throw std::invalid_argument("ego_axle_to_box_center must be finite");
+  }
+  constexpr float max_delay = FirstOrderDubinsBicycleParams::kMaxInputDelaySteps * kDt;
+  if (p.acc_time_delay > max_delay || p.steer_time_delay > max_delay) {
+    throw std::invalid_argument("Actuator delays exceed the MPPI model's delay capacity");
+  }
+}
+
+void validateCostWeights(const FirstOrderDubinsMppiCostParams & p)
+{
+  requireFiniteNonnegative(
+    {{"spatial_overspeed_coeff", p.spatial_overspeed_coeff},
+     {"track_coeff", p.track_coeff},
+     {"track_terminal_scale", p.track_terminal_scale},
+     {"terminal_error_coeff", p.terminal_error_coeff},
+     {"terminal_heading_coeff", p.terminal_heading_coeff},
+     {"heading_coeff", p.heading_coeff},
+     {"lateral_distance_coeff", p.lateral_distance_coeff},
+     {"lateral_yaw_error_coeff", p.lateral_yaw_error_coeff},
+     {"remaining_distance_coeff", p.remaining_distance_coeff},
+     {"path_overshoot_coeff", p.path_overshoot_coeff},
+     {"preferred_lane_center_coeff", p.preferred_lane_center_coeff},
+     {"track_center_coeff", p.track_center_coeff},
+     {"corner_buffer_coeff", p.corner_buffer_coeff},
+     {"lateral_acceleration_coeff", p.lateral_acceleration_coeff},
+     {"lateral_jerk_coeff", p.lateral_jerk_coeff},
+     {"longitudinal_jerk_coeff", p.longitudinal_jerk_coeff},
+     {"accel_cmd_coeff", p.accel_cmd_coeff},
+     {"steer_cmd_coeff", p.steer_cmd_coeff},
+     {"steer_rate_coeff", p.steer_rate_coeff},
+     {"initial_steer_rate_coeff", p.initial_steer_rate_coeff},
+     {"accel_cmd_rate_coeff", p.accel_cmd_rate_coeff},
+     {"steer_cmd_rate_coeff", p.steer_cmd_rate_coeff},
+     {"overlimit_coeff", p.overlimit_coeff},
+     {"drivable_area_barrier_weight", p.drivable_area_barrier_weight},
+     {"crash_contact_penalty", p.crash_contact_penalty}});
+}
+
+void validateCostMarginsAndNoise(const FirstOrderDubinsMppiCostParams & p)
+{
+  requireFiniteNonnegative(
+    {{"corner_safe_margin", p.corner_safe_margin},
+     {"boundary_threshold", p.boundary_threshold},
+     {"lateral_boundary_soft_margin", p.lateral_boundary_soft_margin},
+     {"obstacle_collision_margin", p.obstacle_collision_margin},
+     {"obstacle_safe_margin", p.obstacle_safe_margin},
+     {"road_border_collision_margin", p.road_border_collision_margin},
+     {"road_border_safe_margin", p.road_border_safe_margin},
+     {"drivable_area_safe_margin", p.drivable_area_safe_margin},
+     {"accel_cmd_noise_exponent", p.accel_cmd_noise_exponent},
+     {"steer_cmd_noise_exponent", p.steer_cmd_noise_exponent}});
+  requireFinitePositive(
+    {{"accel_cmd_std_dev", p.accel_cmd_std_dev},
+     {"steer_cmd_std_dev", p.steer_cmd_std_dev},
+     {"nominal_curvature_min_chord_length_m", p.nominal_curvature_min_chord_length_m},
+     {"nominal_curvature_fit_window_m", p.nominal_curvature_fit_window_m}});
+  if (
+    p.obstacle_safe_margin < p.obstacle_collision_margin ||
+    p.road_border_safe_margin < p.road_border_collision_margin) {
+    throw std::invalid_argument("MPPI safety margins must be at least their collision margins");
+  }
+  const auto finite_barrier = [&p](const float margin) {
+    const float m = std::max(margin, 1.0E-3F);
+    return std::isfinite(m * m) && std::isfinite(p.crash_contact_penalty / (m * m));
+  };
+  if (
+    !finite_barrier(p.lateral_boundary_soft_margin) || !finite_barrier(p.obstacle_safe_margin) ||
+    !finite_barrier(p.road_border_safe_margin)) {
+    throw std::invalid_argument(
+      "MPPI crash penalty and margins produce a non-finite barrier weight");
+  }
+}
+
+void validateCostParams(const FirstOrderDubinsMppiCostParams & p)
+{
+  validateCostWeights(p);
+  validateCostMarginsAndNoise(p);
+  requireFinitePositive(
+    {{"lambda", p.lambda}, {"lambda_min", p.lambda_min}, {"lambda_max", p.lambda_max}});
+  requireFiniteNonnegative({{"lambda_adaptation_gain", p.lambda_adaptation_gain}});
+  if (
+    p.lambda_min < 1.0E-6F || p.lambda_max < p.lambda_min || p.lambda < p.lambda_min ||
+    p.lambda > p.lambda_max || !std::isfinite(p.target_ess_ratio) || p.target_ess_ratio < 0.0F ||
+    p.target_ess_ratio > 1.0F || !std::isfinite(p.unsafe_rollout_fraction_threshold) ||
+    p.unsafe_rollout_fraction_threshold < 0.0F || p.unsafe_rollout_fraction_threshold > 1.0F ||
+    !std::isfinite(p.cost_normalization_percentile) || p.cost_normalization_percentile < 0.0F ||
+    p.cost_normalization_percentile > 1.0F || !std::isfinite(p.std_dev_decay) ||
+    p.std_dev_decay < 0.0F || p.std_dev_decay > 1.0F || p.max_iter < 1 ||
+    p.max_iter > kMaxMppiIterations) {
+    throw std::invalid_argument("MPPI lambda, ratios, noise decay, or max_iter are out of range");
+  }
+}
+
+}  // namespace
+
+void validateFirstOrderDubinsMppiCostParams(const FirstOrderDubinsMppiCostParams & params)
+{
+  validateCostParams(params);
+}
+
 void FirstOrderDubinsMppiInterface::setVehicleParams(
   const FirstOrderDubinsMppiVehicleParams & params)
 {
@@ -2488,19 +2696,7 @@ void FirstOrderDubinsMppiInterface::setVehicleParams(
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
-  if (
-    !std::isfinite(params.max_lateral_jerk_mps3) || params.max_lateral_jerk_mps3 < 0.0F ||
-    !std::isfinite(params.standstill_steer_rate_lim) || params.standstill_steer_rate_lim < 0.0F ||
-    !std::isfinite(params.restart_steer_command_rate_lim) ||
-    params.restart_steer_command_rate_lim < 0.0F ||
-    !std::isfinite(params.restart_steer_command_acceleration_lim) ||
-    params.restart_steer_command_acceleration_lim < 0.0F ||
-    !std::isfinite(params.restart_velocity_threshold_mps) ||
-    params.restart_velocity_threshold_mps < 0.0F) {
-    throw std::invalid_argument(
-      "Restart steering-rate, command-rate, command-acceleration, and release-speed limits must "
-      "be finite and non-negative");
-  }
+  validateVehicleParams(params);
   impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   if (impl_->initialized) {
     impl_->teardown();
@@ -2521,39 +2717,7 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
-  if (
-    !std::isfinite(params.preferred_lane_center_coeff) ||
-    params.preferred_lane_center_coeff < 0.0F || !std::isfinite(params.overlimit_coeff) ||
-    params.overlimit_coeff < 0.0F || !std::isfinite(params.initial_steer_rate_coeff) ||
-    params.initial_steer_rate_coeff < 0.0F || !std::isfinite(params.accel_cmd_rate_coeff) ||
-    params.accel_cmd_rate_coeff < 0.0F || !std::isfinite(params.steer_cmd_rate_coeff) ||
-    params.steer_cmd_rate_coeff < 0.0F ||
-
-    !std::isfinite(params.crash_contact_penalty) || params.crash_contact_penalty < 0.0F ||
-    !std::isfinite(params.std_dev_decay) || params.std_dev_decay < 0.0F ||
-    params.std_dev_decay > 1.0F || !std::isfinite(params.lambda) ||
-    !std::isfinite(params.lambda_min) || !std::isfinite(params.lambda_max) ||
-    !std::isfinite(params.target_ess_ratio) || !std::isfinite(params.lambda_adaptation_gain) ||
-    !std::isfinite(params.unsafe_rollout_fraction_threshold) ||
-    !std::isfinite(params.cost_normalization_percentile) || params.lambda_min < 1.0E-6F ||
-    params.lambda_max < params.lambda_min || params.lambda < params.lambda_min ||
-    params.lambda > params.lambda_max || params.target_ess_ratio < 0.0F ||
-    params.target_ess_ratio > 1.0F || params.lambda_adaptation_gain < 0.0F ||
-    params.unsafe_rollout_fraction_threshold < 0.0F ||
-    params.unsafe_rollout_fraction_threshold > 1.0F ||
-    params.cost_normalization_percentile < 0.0F || params.cost_normalization_percentile > 1.0F ||
-    !std::isfinite(params.nominal_curvature_min_chord_length_m) ||
-    params.nominal_curvature_min_chord_length_m <= 0.0F ||
-    !std::isfinite(params.nominal_curvature_fit_window_m) ||
-    params.nominal_curvature_fit_window_m <= 0.0F || params.max_iter <= 0) {
-    throw std::invalid_argument(
-      "MPPI cost parameters must have finite non-negative penalties, std_dev_decay in [0, 1], "
-      "lambda within [lambda_min, lambda_max] with lambda_min >= 1e-6, target_ess_ratio in [0, 1], "
-      "a "
-      "non-negative lambda_adaptation_gain, unsafe_rollout_fraction_threshold and "
-      "cost_normalization_percentile in [0, 1], positive nominal-curvature spans, and max_iter "
-      "greater than zero");
-  }
+  validateFirstOrderDubinsMppiCostParams(params);
   impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::configuration_changed);
   if (impl_->initialized) {
     impl_->teardown();
@@ -2572,6 +2736,7 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     if (
       !std::isfinite(options.dynamic_obstacle_horizon_s) ||
       options.dynamic_obstacle_horizon_s < 0.0F ||
+      !std::isfinite(options.min_optimization_length) || options.min_optimization_length < 0.0F ||
       !std::isfinite(options.min_trajectory_progress_m) ||
       options.min_trajectory_progress_m < 0.0F ||
       !std::isfinite(options.steering_hold_reference_length_threshold_m) ||
@@ -2867,11 +3032,11 @@ FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
         "FirstOrderDubinsMppiInterface must be initialized before computeStep");
     }
 
-    fromHostState(impl_->x, state);
+    fromHostState(impl_->x, state, impl_->frame);
     impl_->sim_time = sim_time;
     impl_->cost.beginDataUpdate();
     const FirstOrderDubinsMppiControl control = impl_->runStep({});
-    state = toHostState(impl_->x);
+    state = toHostState(impl_->x, impl_->frame);
     // Advance the vendor control history after the applied command is consumed so the
     // next cycle's Savitzky-Golay left-edge taps are the previously applied controls.
     impl_->controller->slideControlSequence(1);
@@ -2891,7 +3056,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
   const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor,
   const bool defer_commit, const std::optional<Trajectory> & mpc_predicted_trajectory,
-  const PreferredLaneCenterlineInput & preferred_lane_centerline, const bool force_optimization)
+  const PreferredLaneCenterlineInput & preferred_lane_centerline, const bool force_optimization,
+  const FirstOrderDubinsMppiOutputOptions & output_options)
 try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -2979,8 +3145,10 @@ try {
 
   FirstOrderDubinsMppiAppliedPlantState & applied_plant = result.debug.applied_plant;
   applied_plant.valid = true;
-  applied_plant.x = impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X));
-  applied_plant.y = impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y));
+  applied_plant.x = impl_->frame.worldX(
+    impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)));
+  applied_plant.y = impl_->frame.worldY(
+    impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)));
   applied_plant.yaw = impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW));
   applied_plant.velocity =
     impl_->x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X));
@@ -3057,7 +3225,8 @@ try {
     optimized_controls.push_back(optimized_control);
   }
 
-  Trajectory output = detail::buildOptimizedTrajectory(input, optimized_states, optimized_controls);
+  Trajectory output = detail::buildOptimizedTrajectory(
+    input, optimized_states, optimized_controls, output_options, impl_->frame);
   if (impl_->active_velocity_limit_profile.active) {
     // buildOptimizedTrajectory intentionally preserves the suffix outside the MPPI horizon.
     // An active velocity profile must not allow that suffix to jump back to its input speed.
@@ -3087,8 +3256,8 @@ try {
   for (size_t i = 0; i < optimized_states.size(); ++i) {
     const auto & state = optimized_states[i];
     const auto & in_point = input.points[i];
-    const float ref_x = static_cast<float>(in_point.pose.position.x);
-    const float ref_y = static_cast<float>(in_point.pose.position.y);
+    const float ref_x = impl_->frame.x(in_point.pose.position.x);
+    const float ref_y = impl_->frame.y(in_point.pose.position.y);
     const float ref_v = in_point.longitudinal_velocity_mps;
     max_pos_delta = std::max(max_pos_delta, std::hypot(state.x - ref_x, state.y - ref_y));
     max_vel_delta = std::max(max_vel_delta, std::abs(state.velocity - ref_v));
@@ -3098,7 +3267,10 @@ try {
     !impl_->effective_max_velocity_by_reference_point.empty()
       ? impl_->effective_max_velocity_by_reference_point.front()
       : std::nullopt;
-  detail::setInitialEngageVelocity(output, initial_effective_maximum);
+  if (!output_options.acceleration_state) {
+    // The engage helper overwrites both velocity and acceleration with fixed values.
+    detail::setInitialEngageVelocity(output, initial_effective_maximum);
+  }
 
   result.trajectory = output;
   result.debug.reference_trajectory = input;
@@ -3109,7 +3281,7 @@ try {
   result.debug.map_velocity_limit_active = impl_->has_map_velocity_limit;
   result.debug.nominal_trajectory = buildNominalTrajectory(
     impl_->model, x_at_optimization, input, impl_->logged_nominal_accel,
-    impl_->logged_nominal_steer);
+    impl_->logged_nominal_steer, impl_->frame);
   result.debug.timing.seed_nominal_ms = impl_->last_seed_nominal_ms;
   result.debug.nominal_control_profile.time_step_s = kDt;
   result.debug.nominal_control_profile.acceleration_commands_mps2 = impl_->logged_nominal_accel;
@@ -3181,15 +3353,16 @@ try {
       "MPPI/build_ros_visualization", mppi::instrumentation::NvtxColor::DEBUG);
     if (impl_->enable_rollout_visualization) {
       buildRolloutVisualization(
-        *impl_->controller, impl_->sampler, impl_->model, x_at_optimization, result.debug);
+        *impl_->controller, impl_->sampler, impl_->model, x_at_optimization, result.debug,
+        impl_->frame);
     } else {
       fillOptimalHorizonPoints(
-        impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
+        impl_->controller->getActualStateSeq(), result.debug.optimal_horizon, impl_->frame);
       result.debug.baseline_cost = impl_->controller->getBaselineCost();
       if (impl_->enable_iteration_rollout_debug) {
         buildIterationDebugRollouts(
           impl_->controller->iterationRolloutSnapshots(), impl_->model, x_at_optimization,
-          result.debug);
+          result.debug, impl_->frame);
       }
     }
     if (impl_->debug_trajectory_logger.enabled() && n_state > 0 && n_ctrl > 0) {
@@ -3371,12 +3544,13 @@ float wrapPiForPrediction(const float yaw)
 }
 
 void loadPlantIntoStateForPrediction(
-  const FirstOrderDubinsMppiAppliedPlantState & plant, FirstOrderDubinsBicycle::state_array & x)
+  const FirstOrderDubinsMppiAppliedPlantState & plant, FirstOrderDubinsBicycle::state_array & x,
+  const detail::LocalFrame & frame)
 {
   using S = FirstOrderDubinsBicycleParams::StateIndex;
   x = FirstOrderDubinsBicycle::state_array::Zero();
-  x(static_cast<int>(S::POS_X)) = plant.x;
-  x(static_cast<int>(S::POS_Y)) = plant.y;
+  x(static_cast<int>(S::POS_X)) = frame.valid ? frame.x(plant.x) : static_cast<float>(plant.x);
+  x(static_cast<int>(S::POS_Y)) = frame.valid ? frame.y(plant.y) : static_cast<float>(plant.y);
   x(static_cast<int>(S::YAW)) = plant.yaw;
   x(static_cast<int>(S::VEL_X)) = plant.velocity;
   x(static_cast<int>(S::ACCELERATION)) = plant.acceleration;
@@ -3541,7 +3715,7 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
     input.standstill_steering_hold_exit_velocity_mps));
 
   FirstOrderDubinsBicycle::state_array x = FirstOrderDubinsBicycle::state_array::Zero();
-  loadPlantIntoStateForPrediction(input.anchor.plant, x);
+  loadPlantIntoStateForPrediction(input.anchor.plant, x, input.anchor.frame);
   std::vector<float> accel_delay_buffer = input.anchor.plant.accel_cmd_delay_buffer;
   std::vector<float> steer_delay_buffer = input.anchor.plant.steer_cmd_delay_buffer;
   loadDelayPipesIntoStateForPrediction(
@@ -3623,8 +3797,12 @@ FirstOrderDubinsMppiPredictionAccuracy evaluatePlantPredictionAccuracy(
   }
 
   result.valid = true;
-  result.predicted_x = x(static_cast<int>(S::POS_X));
-  result.predicted_y = x(static_cast<int>(S::POS_Y));
+  result.predicted_x = input.anchor.frame.valid
+                         ? input.anchor.frame.worldX(x(static_cast<int>(S::POS_X)))
+                         : static_cast<double>(x(static_cast<int>(S::POS_X)));
+  result.predicted_y = input.anchor.frame.valid
+                         ? input.anchor.frame.worldY(x(static_cast<int>(S::POS_Y)))
+                         : static_cast<double>(x(static_cast<int>(S::POS_Y)));
   result.predicted_yaw = x(static_cast<int>(S::YAW));
   result.predicted_vel = x(static_cast<int>(S::VEL_X));
   result.pos_error_m =

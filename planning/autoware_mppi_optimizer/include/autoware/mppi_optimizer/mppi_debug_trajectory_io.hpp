@@ -77,7 +77,7 @@ inline bool writeMppiDebugTrajectoryCsv(
 
 /** World-frame MPPI optimal rollout (includes ego IC at step 0); matches RViz mppi_optimal. */
 inline bool writeMppiDebugOptimalHorizonCsv(
-  const std::string & path, const std::vector<std::pair<float, float>> & optimal_horizon,
+  const std::string & path, const std::vector<std::pair<double, double>> & optimal_horizon,
   const float dt)
 {
   std::ofstream out(path);
@@ -302,10 +302,10 @@ inline bool loadMppiDebugSegmentsCsv(const std::string & path, std::vector<Segme
       continue;
     }
     Segment seg;
-    seg.x0 = static_cast<float>(vals[0]);
-    seg.y0 = static_cast<float>(vals[1]);
-    seg.x1 = static_cast<float>(vals[2]);
-    seg.y1 = static_cast<float>(vals[3]);
+    seg.x0 = vals[0];
+    seg.y0 = vals[1];
+    seg.x1 = vals[2];
+    seg.y1 = vals[3];
     segments.push_back(seg);
   }
   return true;

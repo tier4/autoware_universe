@@ -50,9 +50,14 @@ namespace
 using autoware::trajectory_modifier::plugin::ProcessingResult;
 using autoware_utils_geometry::Segment2d;
 
-/** @brief Converts modifier parameters into MPPI cost parameters. */
-FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer::Params & params)
+void validate_cost_parameter_combinations(const trajectory_mppi_optimizer::Params & params)
 {
+  if (!(params.lambda_min <= params.lambda && params.lambda <= params.lambda_max)) {
+    throw std::invalid_argument("mppi_optimizer.lambda must be within [lambda_min, lambda_max]");
+  }
+  if (params.max_iter < 1 || params.max_iter > kMaxMppiIterations) {
+    throw std::invalid_argument("mppi_optimizer.max_iter must be in [1, 100]");
+  }
   if (params.obstacle_safe_margin < params.obstacle_collision_margin) {
     throw std::invalid_argument(
       "mppi_optimizer.obstacle_safe_margin must be greater than or equal to "
@@ -63,6 +68,12 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
       "mppi_optimizer.road_border_safe_margin must be greater than or equal to "
       "mppi_optimizer.road_border_collision_margin");
   }
+}
+
+/** @brief Converts modifier parameters into MPPI cost parameters. */
+FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer::Params & params)
+{
+  validate_cost_parameter_combinations(params);
 
   FirstOrderDubinsMppiCostParams output;
   output.lambda = static_cast<float>(params.lambda);
@@ -174,6 +185,13 @@ CurvatureAdaptiveSteeringFilterParams make_steering_filter_params(
     static_cast<float>(params.steering_filter_turn_angle_rad)};
 }
 
+void hold_steering_from(Trajectory & trajectory, const std::size_t first_index, const float command)
+{
+  for (std::size_t index = first_index; index < trajectory.points.size(); ++index) {
+    trajectory.points[index].front_wheel_angle_rad = command;
+  }
+}
+
 autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
 make_velocity_limit_overrides(const trajectory_mppi_optimizer::Params & params)
 {
@@ -207,10 +225,8 @@ std::vector<Segment> to_mppi_segments(const std::vector<Segment2d> & segments)
   for (const auto & segment : segments) {
     output.push_back(
       Segment{
-        static_cast<float>(boost::geometry::get<0, 0>(segment)),
-        static_cast<float>(boost::geometry::get<0, 1>(segment)),
-        static_cast<float>(boost::geometry::get<1, 0>(segment)),
-        static_cast<float>(boost::geometry::get<1, 1>(segment))});
+        boost::geometry::get<0, 0>(segment), boost::geometry::get<0, 1>(segment),
+        boost::geometry::get<1, 0>(segment), boost::geometry::get<1, 1>(segment)});
   }
   return output;
 }
@@ -367,6 +383,7 @@ void TrajectoryMppiOptimizer::on_initialize(
   param_listener_ =
     std::make_unique<trajectory_mppi_optimizer::ParamListener>(node, "mppi_optimizer");
   params_ = param_listener_->get_params();
+  validateFirstOrderDubinsMppiCostParams(make_cost_params(params_));
   map_velocity_limit_overrides_ = make_velocity_limit_overrides(params_);
   steering_filter_.setParams(make_steering_filter_params(params_));
   declare_first_order_dubins_mppi_vehicle_dynamics_params(*node);
@@ -411,8 +428,10 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   auto updated_params = params_;
   if (param_listener_->try_update_params(updated_params)) {
     try {
-      map_velocity_limit_overrides_ = make_velocity_limit_overrides(updated_params);
+      validateFirstOrderDubinsMppiCostParams(make_cost_params(updated_params));
+      auto map_overrides = make_velocity_limit_overrides(updated_params);
       steering_filter_.setParams(make_steering_filter_params(updated_params));
+      map_velocity_limit_overrides_ = std::move(map_overrides);
     } catch (const std::exception & error) {
       constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       publish_enabled(false);
@@ -623,11 +642,13 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       preferred_lane_centerline.status = "disabled";
     }
 
+    const FirstOrderDubinsMppiOutputOptions output_options{
+      params_.output_acceleration_state, params_.output_steering_state};
     auto result = optimizer_->optimizeTrajectory(
       input, *data.current_odometry, acceleration, steering, all_targets, mppi_road_borders,
       to_mppi_segments(drivable_area), kinematic_limits, control_postprocessor,
       /*defer_commit=*/true, mpc_predicted_trajectory, preferred_lane_centerline,
-      /*force_optimization=*/params_.optimize_only_on_input_collision);
+      /*force_optimization=*/params_.optimize_only_on_input_collision, output_options);
 
     result.debug.previous_mppi_trajectory_applied = was_previous_mppi_trajectory_applied;
     if (mpc_predicted_trajectory) {
@@ -693,13 +714,17 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       candidate_steering_filter = steering_filter_;
       candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
     }
+    const bool optimized_steering_state_available = output_options.steering_state &&
+                                                    result.optimized_point_count > 0U &&
+                                                    !result.debug.was_rejected;
     if (result.debug.short_reference_steering_hold_active) {
-      for (auto & point : result.trajectory.points) {
-        point.front_wheel_angle_rad = result.debug.standstill_steering_hold_command_rad;
-      }
-      for (auto & point : result.debug.optimized_trajectory.points) {
-        point.front_wheel_angle_rad = result.debug.standstill_steering_hold_command_rad;
-      }
+      const std::size_t first_held_index =
+        optimized_steering_state_available ? result.optimized_point_count : 0U;
+      hold_steering_from(
+        result.trajectory, first_held_index, result.debug.standstill_steering_hold_command_rad);
+      hold_steering_from(
+        result.debug.optimized_trajectory, first_held_index,
+        result.debug.standstill_steering_hold_command_rad);
     }
 
     pending_debug_ = result.debug;
@@ -1105,6 +1130,8 @@ void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   cost_diagnostics_->add_key_value(
     "velocity_limit_profile_active", debug.velocity_limit_profile_active);
   cost_diagnostics_->add_key_value("optimization_succeeded", application.optimization_succeeded);
+  cost_diagnostics_->add_key_value("output_acceleration_state", params_.output_acceleration_state);
+  cost_diagnostics_->add_key_value("output_steering_state", params_.output_steering_state);
   cost_diagnostics_->add_key_value(
     "optimized_trajectory_applied", application.optimized_trajectory_applied);
   cost_diagnostics_->add_key_value("fallback_applied", application.fallback_applied);
@@ -1169,6 +1196,8 @@ void TrajectoryMppiOptimizer::publish_status_diagnostic(
         ? FirstOrderDubinsMppiMpcNominalSeedStatus::optimization_not_run
         : FirstOrderDubinsMppiMpcNominalSeedStatus::disabled)});
   cost_diagnostics_->add_key_value("optimization_succeeded", false);
+  cost_diagnostics_->add_key_value("output_acceleration_state", params_.output_acceleration_state);
+  cost_diagnostics_->add_key_value("output_steering_state", params_.output_steering_state);
   cost_diagnostics_->add_key_value("optimized_trajectory_applied", false);
   cost_diagnostics_->add_key_value("fallback_applied", false);
   cost_diagnostics_->add_key_value("output_applied", false);

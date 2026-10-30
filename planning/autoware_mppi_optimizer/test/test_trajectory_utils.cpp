@@ -14,6 +14,7 @@
 
 #include "autoware/mppi_optimizer/detail/plant_prediction_utils.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
+#include "autoware/mppi_optimizer/tracked_objects_obstacles.hpp"
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -909,6 +910,105 @@ TEST(OutputConversion, OverwritesOnlyAvailablePostStepSamples)
   EXPECT_FLOAT_EQ(output.points[0].front_wheel_angle_rad, controls[0].steer_cmd);
   EXPECT_FLOAT_EQ(output.points[0].lateral_velocity_mps, input.points[0].lateral_velocity_mps);
   EXPECT_TRUE(output.points[2] == input.points[2]);
+}
+
+TEST(OutputConversion, SelectsAccelerationAndSteeringStatesIndependently)
+{
+  const auto input = makeTrajectory(3U, 1.0, 2.0F);
+  const std::vector<OptimizedState> states = {{10.0F, 20.0F, 0.3F, 4.0F, 0.7F, 0.1F}};
+  const std::vector<FirstOrderDubinsMppiControl> controls = {{0.5F, -0.1F}};
+
+  const auto acceleration_state = buildOptimizedTrajectory(input, states, controls, {true, false});
+  EXPECT_FLOAT_EQ(acceleration_state.points[0].longitudinal_velocity_mps, 4.0F);
+  EXPECT_FLOAT_EQ(acceleration_state.points[0].acceleration_mps2, 0.7F);
+  EXPECT_FLOAT_EQ(acceleration_state.points[0].front_wheel_angle_rad, -0.1F);
+
+  const auto steering_state = buildOptimizedTrajectory(input, states, controls, {false, true});
+  EXPECT_FLOAT_EQ(steering_state.points[0].longitudinal_velocity_mps, 4.0F);
+  EXPECT_FLOAT_EQ(steering_state.points[0].acceleration_mps2, 0.5F);
+  EXPECT_FLOAT_EQ(steering_state.points[0].front_wheel_angle_rad, 0.1F);
+
+  const auto both_states = buildOptimizedTrajectory(input, states, controls, {true, true});
+  EXPECT_FLOAT_EQ(both_states.points[0].acceleration_mps2, 0.7F);
+  EXPECT_FLOAT_EQ(both_states.points[0].front_wheel_angle_rad, 0.1F);
+  EXPECT_TRUE(both_states.points[1] == input.points[1]);
+  EXPECT_TRUE(both_states.points[2] == input.points[2]);
+}
+
+TEST(LocalFrame, RetainsSmallOffsetsAtLargeMapCoordinatesAndRecenters)
+{
+  LocalFrame frame;
+  frame.reset(88800.123456789, 42800.987654321, "map");
+  EXPECT_FALSE(frame.needsRecenter(frame.origin_x + 31.0, frame.origin_y, "map"));
+  EXPECT_TRUE(frame.needsRecenter(frame.origin_x + 33.0, frame.origin_y, "map"));
+  EXPECT_TRUE(frame.needsRecenter(frame.origin_x, frame.origin_y, "other_map"));
+
+  const double world_x = frame.origin_x + 0.103456789;
+  const double world_y = frame.origin_y - 0.087654321;
+  EXPECT_NEAR(frame.worldX(frame.x(world_x)), world_x, 1.0E-8);
+  EXPECT_NEAR(frame.worldY(frame.y(world_y)), world_y, 1.0E-8);
+}
+
+TEST(LocalFrame, ReferenceAndOutputUseTheSameOrigin)
+{
+  LocalFrame frame;
+  frame.reset(88800.25, 42800.75, "map");
+  auto input = makeTrajectory(3U, 0.1, 2.0F);
+  for (std::size_t i = 0; i < input.points.size(); ++i) {
+    input.points[i].pose.position.x = frame.origin_x + 0.1 * static_cast<double>(i);
+    input.points[i].pose.position.y = frame.origin_y + 0.03 * static_cast<double>(i);
+  }
+  InitialState ego;
+  ego.x = frame.origin_x;
+  ego.y = frame.origin_y;
+  const auto reference = buildReferenceHorizon(input, ego, 3, 0.1F, 0U, nullptr, nullptr, frame);
+  ASSERT_EQ(reference.size(), 3U);
+  EXPECT_NEAR(reference[1].x, 0.1F, 1.0E-6F);
+  EXPECT_NEAR(reference[1].y, 0.03F, 1.0E-6F);
+
+  const std::vector<OptimizedState> states = {{0.101234F, -0.004321F, 0.0F, 2.0F, 0.0F, 0.0F}};
+  const std::vector<FirstOrderDubinsMppiControl> controls = {{0.0F, 0.0F}};
+  const auto output = buildOptimizedTrajectory(input, states, controls, {}, frame);
+  EXPECT_NEAR(output.points[0].pose.position.x, frame.origin_x + 0.101234, 1.0E-8);
+  EXPECT_NEAR(output.points[0].pose.position.y, frame.origin_y - 0.004321, 1.0E-8);
+  EXPECT_TRUE(output.points[1] == input.points[1]);
+}
+
+TEST(LocalFrame, TrackedObstacleBufferSubtractsOriginBeforeFloatConversion)
+{
+  TrackedObjects objects;
+  objects.objects.emplace_back();
+  auto & object = objects.objects.back();
+  object.kinematics.pose_with_covariance.pose.position.x = 88800.123456;
+  object.kinematics.pose_with_covariance.pose.position.y = 42800.654321;
+  object.kinematics.pose_with_covariance.pose.orientation.w = 1.0;
+  std::vector<float> x, y, yaw, half_length, half_width;
+  buildObstacleTrajectoryBuffersFromTrackedObjects(
+    objects, 0.1F, 1, x, y, yaw, half_length, half_width, 0.0F, 88800.12, 42800.65);
+  ASSERT_EQ(x.size(), 1U);
+  EXPECT_NEAR(x.front(), 0.003456F, 1.0E-7F);
+  EXPECT_NEAR(y.front(), 0.004321F, 1.0E-7F);
+}
+
+TEST(LocalFrame, PublishedStraightHeadingHasNoMapFloatStairSteps)
+{
+  LocalFrame frame;
+  frame.reset(88800.123456, 42800.654321, "map");
+  auto input = makeTrajectory(30U, 0.2, 2.0F);
+  std::vector<OptimizedState> states;
+  std::vector<FirstOrderDubinsMppiControl> controls(input.points.size());
+  const float yaw = std::atan2(0.001F, 0.2F);
+  for (std::size_t i = 0; i < input.points.size(); ++i) {
+    const float index = static_cast<float>(i);
+    states.push_back({0.2F * index, 0.001F * index, yaw, 2.0F, 0.0F, 0.0F});
+  }
+  const auto output = buildOptimizedTrajectory(input, states, controls, {}, frame);
+  for (std::size_t i = 1; i < output.points.size(); ++i) {
+    const auto & previous = output.points[i - 1U].pose.position;
+    const auto & current = output.points[i].pose.position;
+    const double geometric_yaw = std::atan2(current.y - previous.y, current.x - previous.x);
+    EXPECT_NEAR(geometric_yaw, yaw, 1.0E-4);
+  }
 }
 
 TEST(EngageVelocity, ChangesAllLeadingStoppedPointsWhenMovementIsRequested)

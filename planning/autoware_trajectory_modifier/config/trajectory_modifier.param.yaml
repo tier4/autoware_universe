@@ -131,6 +131,14 @@
         safety_margin: 1.5 # [m]
         lookahead_horizon: 1.5 # [s]
 
+      cruise:
+        enable: true
+        min_distance: 7.0 # [m] raised to at least stop_margin
+        time_headway: 1.0 # [s] kept distance = max(min_distance, time_headway * target velocity)
+        ego_decel: 1.0 # [m/s^2] lowered to at most rss_params.ego_decel
+        max_deceleration: 1.0 # [m/s^2]
+        max_jerk: 1.0 # [m/s^3]
+
     # Traffic Light Stop Plugin Parameters
     traffic_light_stop:
       stop_margin: 0.75 # [m]
