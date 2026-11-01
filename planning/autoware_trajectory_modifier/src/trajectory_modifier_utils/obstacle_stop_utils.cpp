@@ -24,7 +24,6 @@
 #include <autoware_utils/geometry/sat_2d.hpp>
 #include <autoware_utils/transform/transforms.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
-#include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
 
 #include <boost/geometry.hpp>
 
@@ -643,8 +642,6 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       if (object.is_safe) continue;
       found_collision = true;
       auto collision_arc_length = obj_state.arc_length + obj_stopping_distance;
-
-      RCLCPP_INFO(rclcpp::get_logger("ObstacleStopUtils"), "Found collision: object. %f", collision_arc_length);
       if (collision_arc_length < min_collision_arc_length) {
         min_collision_arc_length = collision_arc_length;
         const auto collision_point = motion_utils::calcLongitudinalOffsetPose(
