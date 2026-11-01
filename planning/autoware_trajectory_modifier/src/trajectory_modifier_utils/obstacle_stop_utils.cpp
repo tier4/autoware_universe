@@ -18,10 +18,13 @@
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/object_recognition_utils/predicted_path_utils.hpp>
+#include <autoware/trajectory_time_overlap/footprints.hpp>
+#include <autoware/trajectory_time_overlap/overlap.hpp>
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/geometry/sat_2d.hpp>
 #include <autoware_utils/transform/transforms.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
 
 #include <boost/geometry.hpp>
 
@@ -29,6 +32,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <optional>
 #include <tuple>
 #include <utility>
@@ -639,6 +643,8 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       if (object.is_safe) continue;
       found_collision = true;
       auto collision_arc_length = obj_state.arc_length + obj_stopping_distance;
+
+      RCLCPP_INFO(rclcpp::get_logger("ObstacleStopUtils"), "Found collision: object. %f", collision_arc_length);
       if (collision_arc_length < min_collision_arc_length) {
         min_collision_arc_length = collision_arc_length;
         const auto collision_point = motion_utils::calcLongitudinalOffsetPose(
@@ -721,24 +727,11 @@ void ObjectFilter::filter_by_target_area(
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
   const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map)
 {
-  const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
-  constexpr double time_buffer = 0.5;
-  auto time_to_obj_current_pos =
-    [&](const auto & object_pose, const size_t nearest_seg_idx) -> std::optional<double> {
-    const auto t_to_nearest_seg =
-      rclcpp::Duration(trajectory_points.at(nearest_seg_idx).time_from_start).seconds();
-    const auto lon_offset_dist =
-      motion_utils::calcSignedArcLength(trajectory_points, nearest_seg_idx, object_pose.position);
-    const auto nearest_seg_vel = trajectory_points.at(nearest_seg_idx).longitudinal_velocity_mps;
-    if (nearest_seg_vel < 1e-3) {
-      if (lon_offset_dist > ego_front_offset) return std::nullopt;
-      return std::max(0.0, t_to_nearest_seg - time_buffer);
-    }
-    const auto ego_front_time_offset = ego_front_offset / nearest_seg_vel;
-    const auto t_to_obj =
-      t_to_nearest_seg + (lon_offset_dist / nearest_seg_vel) - ego_front_time_offset - time_buffer;
-    return std::max(0.0, t_to_obj);
-  };
+  constexpr double time_margin = 0.5;
+  constexpr double kinematic_horizon = 10.0;
+  constexpr double kinematic_time_step = 0.5;
+  // Parameter remains so existing configs load; the time-overlap check does not use it.
+  (void)max_lateral_velocity_th_;
 
   auto get_object_polygon = [&](const auto & pose, const auto & shape) {
     if (shape.type != Shape::POLYGON) {
@@ -751,27 +744,84 @@ void ObjectFilter::filter_by_target_area(
     return autoware_utils::expand_polygon(polygon, safety_buffer_);
   };
 
+  std::map<double, trajectory_time_overlap::TrajectoryCornerFootprint> ego_footprints;
+  auto ego_footprint_for = [&](const double lateral_margin)
+    -> const trajectory_time_overlap::TrajectoryCornerFootprint * {
+    if (trajectory_points.size() < 2) return nullptr;
+    const auto it = ego_footprints.find(lateral_margin);
+    if (it != ego_footprints.end()) return &it->second;
+    const auto inserted = ego_footprints.emplace(
+      lateral_margin, trajectory_time_overlap::calculate_trajectory_corner_footprint(
+                        trajectory_points, vehicle_info, lateral_margin, 0.0));
+    return &inserted.first->second;
+  };
+
+  auto outline_in_object_frame =
+    [](const geometry_msgs::msg::Pose & pose, const Polygon2d & polygon)
+    -> std::vector<universe_utils::Point2d> {
+    std::vector<universe_utils::Point2d> outline;
+    const auto & outer = polygon.outer();
+    if (outer.empty()) return outline;
+    const bool closed =
+      outer.size() > 1 && std::abs(outer.front().x() - outer.back().x()) < 1e-6 &&
+      std::abs(outer.front().y() - outer.back().y()) < 1e-6;
+    const auto count = closed ? outer.size() - 1 : outer.size();
+    outline.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+      const autoware_utils_geometry::Point2d point(outer[i].x(), outer[i].y());
+      const auto relative = autoware_utils::inverse_transform_point(point.to_3d(), pose);
+      outline.emplace_back(relative.x(), relative.y());
+    }
+    return outline;
+  };
+
   auto is_exiting = [&](const auto & object, const LateralMargin lat_margin) -> bool {
     const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
     const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
     const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
-    const auto obj_vel_vector = (obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y));
-    if (obj_vel_vector.norm() < stopped_velocity_th_) return false;  // object is stopped
-    const auto nearest_seg =
-      motion_utils::findNearestSegmentIndex(trajectory_points, object_pose.position);
-    const auto p1 = trajectory_points.at(nearest_seg).pose.position;
-    const auto p2 = trajectory_points.at(nearest_seg + 1).pose.position;
-    const auto traj_dir = Eigen::Vector2d(p2.x - p1.x, p2.y - p1.y).normalized();
-    const auto traj_lat_dir = Eigen::Vector2d(traj_dir.y(), -traj_dir.x());
-    const auto obj_lon_vel = std::abs(obj_vel_vector.dot(traj_dir));
-    const auto obj_lat_vel = std::abs(obj_vel_vector.dot(traj_lat_dir));
-    if (obj_lat_vel < max_lateral_velocity_th_ && obj_lat_vel < obj_lon_vel) return false;
-    const auto t_to_obj_current_pos = time_to_obj_current_pos(object_pose, nearest_seg);
-    if (!t_to_obj_current_pos) return true;
-    const auto obj_pred_pose = get_predicted_obj_pose_at_time(object, t_to_obj_current_pos.value());
-    const auto obj_pred_polygon = get_object_polygon(obj_pred_pose, object.shape);
-    return query_overlapping_footprint(
-             trajectory_shape, obj_pred_polygon, lat_margin, traj_low_velocity_th_) == std::nullopt;
+    const auto obj_vel_vector = obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y);
+    if (obj_vel_vector.norm() < stopped_velocity_th_) return false;
+
+    const auto * ego_footprint =
+      ego_footprint_for(std::max(lat_margin.normal, lat_margin.low_velocity));
+    if (!ego_footprint) return false;
+
+    const auto local_outline =
+      outline_in_object_frame(object_pose, get_object_polygon(object_pose, object.shape));
+    if (local_outline.empty()) return false;
+
+    const autoware_perception_msgs::msg::PredictedPath * best_path = nullptr;
+    for (const auto & path : object.kinematics.predicted_paths) {
+      if (path.path.size() < 2) continue;
+      if (!best_path || path.confidence > best_path->confidence) best_path = &path;
+    }
+
+    std::vector<geometry_msgs::msg::Pose> poses;
+    double time_step = 0.0;
+    if (best_path) {
+      poses = best_path->path;
+      time_step = rclcpp::Duration(best_path->time_step).seconds();
+    } else {
+      time_step = kinematic_time_step;
+      for (double t = 0.0; t <= kinematic_horizon + 1e-6; t += kinematic_time_step) {
+        poses.push_back(extrapolate_object_pose_from_kinematics(object, t));
+      }
+    }
+    if (poses.size() < 2 || time_step <= 1e-6) return false;
+
+    const auto object_footprint =
+      trajectory_time_overlap::build_object_path_footprint(poses, time_step, local_outline);
+    const auto intervals = trajectory_time_overlap::calculate_ego_and_object_time_overlap_intervals(
+      *ego_footprint, object_footprint);
+    const auto leaves_longitudinally = [](const auto & interval) {
+      const auto position = interval.object.last_intersection.position;
+      return position == trajectory_time_overlap::front ||
+             position == trajectory_time_overlap::rear;
+    };
+    if (std::any_of(intervals.begin(), intervals.end(), leaves_longitudinally)) return false;
+
+    const auto combined = trajectory_time_overlap::combine_time_overlap_intervals(intervals, 0.0);
+    return trajectory_time_overlap::cleared_before_ego(combined, time_margin);
   };
 
   target_objects.erase(
