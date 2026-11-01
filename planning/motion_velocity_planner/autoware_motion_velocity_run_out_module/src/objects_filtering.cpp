@@ -18,6 +18,7 @@
 #include "types.hpp"
 
 #include <autoware/motion_velocity_planner_common/planner_data.hpp>
+#include <autoware/trajectory_time_overlap/footprints.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -157,23 +158,22 @@ void calculate_predicted_path_footprints(
     }
     half_length = width / 2.0;
   }
-  // calculate footprint
+  geometry_msgs::msg::Pose origin;
+  origin.orientation.w = 1.0;
+  const auto local_polygon =
+    autoware_utils::to_footprint(origin, half_length, half_length, width);
+  std::vector<universe_utils::Point2d> local_outline;
+  if (local_polygon.outer().size() > 1UL) {
+    local_outline.reserve(local_polygon.outer().size() - 1UL);
+    for (auto i = 0UL; i + 1 < local_polygon.outer().size(); ++i) {
+      local_outline.emplace_back(local_polygon.outer()[i].x(), local_polygon.outer()[i].y());
+    }
+  }
   for (const auto & path :
        filter_by_confidence(predicted_object.kinematics.predicted_paths, object.label, params)) {
-    ObjectPredictedPathFootprint footprint;
-    footprint.time_step = rclcpp::Duration(path.time_step).seconds();
-    for (const auto & p : path.path) {
-      const auto object_polygon = autoware_utils::to_footprint(p, half_length, half_length, width);
-      footprint.predicted_path_footprint.corner_linestrings[front_left].push_back(
-        object_polygon.outer()[0]);
-      footprint.predicted_path_footprint.corner_linestrings[front_right].push_back(
-        object_polygon.outer()[1]);
-      footprint.predicted_path_footprint.corner_linestrings[rear_right].push_back(
-        object_polygon.outer()[2]);
-      footprint.predicted_path_footprint.corner_linestrings[rear_left].push_back(
-        object_polygon.outer()[3]);
-    }
-    object.predicted_path_footprints.push_back(footprint);
+    object.predicted_path_footprints.push_back(
+      trajectory_time_overlap::build_object_path_footprint(
+        path.path, rclcpp::Duration(path.time_step).seconds(), local_outline));
   }
 }
 
@@ -183,12 +183,10 @@ void cut_predicted_path_footprint(
 {
   const auto standstill_indexes =
     static_cast<size_t>(standstill_duration_after_cut / footprint.time_step);
-  for (const auto pos : {front_left, front_right, rear_left, rear_right}) {
-    footprint.predicted_path_footprint.corner_linestrings[pos].resize(cut_index);
+  for (auto & linestring : footprint.outline_linestrings) {
+    linestring.resize(cut_index);
     if (cut_index > 0UL) {
-      footprint.predicted_path_footprint.corner_linestrings[pos].resize(
-        cut_index + standstill_indexes,
-        footprint.predicted_path_footprint.corner_linestrings[pos].back());
+      linestring.resize(cut_index + standstill_indexes, linestring.back());
     }
   }
 }
@@ -210,8 +208,7 @@ std::optional<size_t> get_cut_predicted_path_index(
     return false;
   };
   std::optional<size_t> cut_index;
-  for (const auto & corner : {front_left, front_right, rear_left, rear_right}) {
-    const auto & ls = path.predicted_path_footprint.corner_linestrings[corner];
+  for (const auto & ls : path.outline_linestrings) {
     for (auto i = 0UL; i + 1 < ls.size(); ++i) {
       const auto & segment = universe_utils::Segment2d(ls[i], ls[i + 1]);
       if (crosses_cut_line_in_map(segment)) {
@@ -230,9 +227,12 @@ size_t get_preserved_cut_index(
   if (time == 0.0 && distance == 0.0) {
     return 0UL;
   }
+  if (path.outline_linestrings.empty()) {
+    return 0UL;
+  }
   double t = 0.0;
   double d = 0.0;
-  const auto & ls = path.predicted_path_footprint.corner_linestrings[front_left];
+  const auto & ls = path.outline_linestrings.front();
   for (auto i = 0UL; i + 1 < ls.size(); ++i) {
     const auto & segment = universe_utils::Segment2d(ls[i], ls[i + 1]);
     t += path.time_step;
@@ -241,7 +241,7 @@ size_t get_preserved_cut_index(
       return i + 1;
     }
   }
-  return path.predicted_path_footprint.size() == 0 ? 0UL : path.predicted_path_footprint.size() - 1;
+  return path.size() == 0UL ? 0UL : path.size() - 1UL;
 }
 
 void filter_predicted_paths(
