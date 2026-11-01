@@ -24,6 +24,7 @@
 #include <autoware_utils/geometry/sat_2d.hpp>
 #include <autoware_utils/transform/transforms.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
 
 #include <boost/geometry.hpp>
 
@@ -642,6 +643,8 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       if (object.is_safe) continue;
       found_collision = true;
       auto collision_arc_length = obj_state.arc_length + obj_stopping_distance;
+
+      RCLCPP_INFO(rclcpp::get_logger("ObstacleStopUtils"), "Found collision: object. %f", collision_arc_length);
       if (collision_arc_length < min_collision_arc_length) {
         min_collision_arc_length = collision_arc_length;
         const auto collision_point = motion_utils::calcLongitudinalOffsetPose(
@@ -727,6 +730,8 @@ void ObjectFilter::filter_by_target_area(
   constexpr double time_margin = 0.5;
   constexpr double kinematic_horizon = 10.0;
   constexpr double kinematic_time_step = 0.5;
+  // Parameter remains so existing configs load; the time-overlap check does not use it.
+  (void)max_lateral_velocity_th_;
 
   auto get_object_polygon = [&](const auto & pose, const auto & shape) {
     if (shape.type != Shape::POLYGON) {
@@ -740,8 +745,8 @@ void ObjectFilter::filter_by_target_area(
   };
 
   std::map<double, trajectory_time_overlap::TrajectoryCornerFootprint> ego_footprints;
-  auto ego_footprint_for =
-    [&](const double lateral_margin) -> const trajectory_time_overlap::TrajectoryCornerFootprint * {
+  auto ego_footprint_for = [&](const double lateral_margin)
+    -> const trajectory_time_overlap::TrajectoryCornerFootprint * {
     if (trajectory_points.size() < 2) return nullptr;
     const auto it = ego_footprints.find(lateral_margin);
     if (it != ego_footprints.end()) return &it->second;
@@ -752,14 +757,14 @@ void ObjectFilter::filter_by_target_area(
   };
 
   auto outline_in_object_frame =
-    [](
-      const geometry_msgs::msg::Pose & pose,
-      const Polygon2d & polygon) -> std::vector<universe_utils::Point2d> {
+    [](const geometry_msgs::msg::Pose & pose, const Polygon2d & polygon)
+    -> std::vector<universe_utils::Point2d> {
     std::vector<universe_utils::Point2d> outline;
     const auto & outer = polygon.outer();
     if (outer.empty()) return outline;
-    const bool closed = outer.size() > 1 && std::abs(outer.front().x() - outer.back().x()) < 1e-6 &&
-                        std::abs(outer.front().y() - outer.back().y()) < 1e-6;
+    const bool closed =
+      outer.size() > 1 && std::abs(outer.front().x() - outer.back().x()) < 1e-6 &&
+      std::abs(outer.front().y() - outer.back().y()) < 1e-6;
     const auto count = closed ? outer.size() - 1 : outer.size();
     outline.reserve(count);
     for (size_t i = 0; i < count; ++i) {
@@ -770,9 +775,7 @@ void ObjectFilter::filter_by_target_area(
     return outline;
   };
 
-  auto is_exiting = [&](
-                      const auto & object, const LateralMargin lat_margin,
-                      std::vector<geometry_msgs::msg::Pose> & overlap_path) -> bool {
+  auto is_exiting = [&](const auto & object, const LateralMargin lat_margin) -> bool {
     const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
     const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
     const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
@@ -805,7 +808,6 @@ void ObjectFilter::filter_by_target_area(
       }
     }
     if (poses.size() < 2 || time_step <= 1e-6) return false;
-    overlap_path = poses;
 
     const auto object_footprint =
       trajectory_time_overlap::build_object_path_footprint(poses, time_step, local_outline);
