@@ -458,8 +458,7 @@ struct ObjectFilter
    * @brief Construct a filter from allowed type names and speed thresholds.
    * @param object_type_strings Allowed object classes (see string_to_object_type).
    * @param stopped_velocity_th Used when filtering by target area for "moving" vs stopped.
-   * @param max_lateral_velocity_th Retained so existing configs still load. The leave check uses
-   * predicted-path time overlap and does not read this threshold.
+   * @param max_lateral_velocity_th Lateral speed threshold for the exiting-object heuristic [m/s].
    * @param safety_buffer Safety buffer to expand object shape [m].
    * @param traj_low_velocity_th Low velocity threshold for the trajectory [m/s].
    */
