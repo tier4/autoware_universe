@@ -458,7 +458,8 @@ struct ObjectFilter
    * @brief Construct a filter from allowed type names and speed thresholds.
    * @param object_type_strings Allowed object classes (see string_to_object_type).
    * @param stopped_velocity_th Used when filtering by target area for "moving" vs stopped.
-   * @param max_lateral_velocity_th Lateral speed threshold for the exiting-object heuristic [m/s].
+   * @param max_lateral_velocity_th Retained so existing configs still load. The leave check uses
+   * predicted-path time overlap and does not read this threshold.
    * @param safety_buffer Safety buffer to expand object shape [m].
    * @param traj_low_velocity_th Low velocity threshold for the trajectory [m/s].
    */
@@ -507,10 +508,11 @@ struct ObjectFilter
   }
 
   /**
-   * @brief Keep only objects that intersect ego footprints, dropping those leaving laterally.
-   * @details Objects with no overlapping footprint (expanded by `lat_margin`) are removed. Moving
-   * objects judged to be exiting the corridor (using lateral velocity and a short prediction
-   * horizon) are also removed.
+   * @brief Keep only objects that intersect ego footprints, dropping lateral departures.
+   * @details Objects with no overlapping footprint (expanded by `lat_margin`) are removed. A moving
+   * object is also removed when its highest-confidence predicted path leaves through a side of the
+   * ego corridor before ego's time_from_start reaches that overlap. A path that leaves through the
+   * front or rear of the corridor is kept.
    * @param[in,out] objects Predicted objects to filter in place.
    * @param trajectory_points Reference path for time and geometry queries.
    * @param trajectory_shape Ego footprint index used for overlap queries.
