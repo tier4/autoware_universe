@@ -257,13 +257,8 @@ void UncrossableBoundDepartureValidator::validate(
   ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
   const Odometry & kinematics, const AccelWithCovarianceStamped & acceleration,
   const lanelet::LaneletMapPtr & lanelet_map, const vehicle_info_utils::VehicleInfo & vehicle_info,
-  visualization_msgs::msg::MarkerArray & debug_markers)
+  visualization_msgs::msg::MarkerArray & debug_markers, HazardWarningSources & hazard_sources)
 {
-  if (!enable_) {
-    res.will_cross_uncrossable_bound = false;
-    return;
-  }
-
   if (!lanelet_map || lanelet_map->lineStringLayer.empty()) {
     RCLCPP_DEBUG(logger_, "Lanelet map is not available yet. Skipping boundary departure check.");
     res.will_cross_uncrossable_bound = false;
@@ -275,27 +270,53 @@ void UncrossableBoundDepartureValidator::validate(
     return;
   }
 
-  if (!checker_) {
-    checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
-      lanelet_map, params_, vehicle_info);
-  }
-
   boundary_departure_checker::EgoDynamicState ego_state;
   ego_state.pose_with_cov = kinematics.pose;
   ego_state.velocity = kinematics.twist.twist.linear.x;
   ego_state.acceleration = acceleration.accel.accel.linear.x;
   ego_state.current_time_s = rclcpp::Time(kinematics.header.stamp).seconds();
 
-  auto status =
-    checker_->update_departure_status(predicted_trajectory.points, ego_state, hysteresis_state_);
+  if (!enable_) {
+    res.will_cross_uncrossable_bound = false;
+  } else {
+    if (!checker_) {
+      checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
+        lanelet_map, params_, vehicle_info);
+    }
 
-  res.will_cross_uncrossable_bound =
-    status.status == boundary_departure_checker::DepartureType::CRITICAL;
+    auto status =
+      checker_->update_departure_status(predicted_trajectory.points, ego_state, hysteresis_state_);
 
-  if (res.will_cross_uncrossable_bound) {
-    std::move(
-      status.debug_markers.markers.begin(), status.debug_markers.markers.end(),
-      std::back_inserter(debug_markers.markers));
+    res.will_cross_uncrossable_bound =
+      status.status == boundary_departure_checker::DepartureType::CRITICAL;
+
+    if (res.will_cross_uncrossable_bound) {
+      std::move(
+        status.debug_markers.markers.begin(), status.debug_markers.markers.end(),
+        std::back_inserter(debug_markers.markers));
+    }
+  }
+
+  if (enable_warning_) {
+    if (!warning_checker_) {
+      warning_checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
+        lanelet_map, warning_params_, vehicle_info);
+    }
+    warning_checker_->update_departure_status(
+      predicted_trajectory.points, ego_state, warning_hysteresis_state_);
+
+    std::vector<HazardSource> departure;
+    warning_hysteresis_state_.critical_departure_history.for_each_side([&](const auto & side) {
+      for (const auto & projection : side) {
+        autoware_utils_geometry::Polygon2d point;
+        point.outer().push_back(projection.pt_on_bound);
+        departure.push_back(
+          HazardSource{
+            transform_polygon_to_base_link(point, kinematics.pose.pose), departure_risk_level_,
+            kinematics.header.stamp});
+      }
+    });
+    hazard_sources.departure = std::move(departure);
   }
 }
 
@@ -311,7 +332,12 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
   velocity_validator(params_),
   overrun_validator(params_),
   yaw_validator(params_),
-  uncrossable_bound_departure_validator(get_logger(), params_)
+  uncrossable_bound_departure_validator(get_logger(), params_),
+  collision_validator(get_logger(), params_, hazard_time_keeper_),
+  hazard_warning(
+    get_logger(), params_,
+    create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/hazard/markers", 1),
+    hazard_time_keeper_)
 {
   using std::placeholders::_1;
 
@@ -335,6 +361,11 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
   sub_lanelet_map_ = create_subscription<LaneletMapBin>(
     "~/input/lanelet2_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&ControlValidator::on_lanelet_map, this, _1));
+  sub_objects_ =
+    autoware_utils::InterProcessPollingSubscriber<PredictedObjects>::create_subscription(
+      this, "~/input/objects", 1);
+  sub_pointcloud_ = autoware_utils::InterProcessPollingSubscriber<PointCloud2>::create_subscription(
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
 
   pub_status_ = create_publisher<ControlValidatorStatus>("~/output/validation_status", 1);
 
@@ -342,6 +373,13 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
 
   pub_processing_time_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
+
+  pub_hazard_alert_ = create_publisher<HazardAlert>("~/output/hazard_alert", 1);
+  pub_hazard_processing_time_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "~/debug/hazard/processing_time_ms", 1);
+  pub_hazard_processing_time_detail_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
+    "~/debug/hazard/processing_time_detail_ms", 1);
+  hazard_time_keeper_->add_reporter(pub_hazard_processing_time_detail_);
 
   debug_pose_publisher_ = std::make_shared<ControlValidatorDebugMarkerPublisher>(this);
 
@@ -493,6 +531,8 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     overrun_validator.update_parameters(params_);
     yaw_validator.update_parameters(params_);
     uncrossable_bound_departure_validator.update_parameters(params_);
+    collision_validator.update_parameters(params_);
+    hazard_warning.update_parameters(params_);
   }
 
   // prepare ros topics
@@ -533,6 +573,10 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   if (!acceleration_msg) {
     return waiting(sub_measured_acc_->subscriber()->get_topic_name());
   }
+  const auto objects_msg = sub_objects_->take_data();
+  const auto pointcloud_msg = sub_pointcloud_->take_data();
+
+  HazardWarningSources hazard_sources;
 
   // pre process
   debug_pose_publisher_->clear_markers();
@@ -552,9 +596,28 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   } else {
     trajectory_validator.validate(
       validation_status_, *predicted_trajectory_msg, *reference_trajectory_msg);
-    uncrossable_bound_departure_validator.validate(
-      validation_status_, *predicted_trajectory_msg, *kinematics_msg, *acceleration_msg,
-      lanelet_map_ptr_, vehicle_info_, boundary_departure_markers);
+    autoware_utils_debug::ScopedTimeTrack st("hazard_warning", *hazard_time_keeper_);
+    hazard_stop_watch_.tic();
+    {
+      autoware_utils_debug::ScopedTimeTrack st_departure(
+        "uncrossable_bound_departure_validate", *hazard_time_keeper_);
+      uncrossable_bound_departure_validator.validate(
+        validation_status_, *predicted_trajectory_msg, *kinematics_msg, *acceleration_msg,
+        lanelet_map_ptr_, vehicle_info_, boundary_departure_markers, hazard_sources);
+    }
+    const auto now = get_clock()->now();
+    collision_validator.validate(
+      *predicted_trajectory_msg, *kinematics_msg, objects_msg, vehicle_info_, pointcloud_msg,
+      hazard_sources);
+    const auto alert = hazard_warning.make_alert(hazard_sources, vehicle_info_, now);
+    const double hazard_processing_time_ms = hazard_stop_watch_.toc();
+    if (alert) {
+      pub_hazard_alert_->publish(*alert);
+      autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
+      processing_time_msg.stamp = now;
+      processing_time_msg.data = hazard_processing_time_ms;
+      pub_hazard_processing_time_->publish(processing_time_msg);
+    }
   }
   acceleration_validator.validate(
     validation_status_, *kinematics_msg, *control_cmd_msg, *acceleration_msg);

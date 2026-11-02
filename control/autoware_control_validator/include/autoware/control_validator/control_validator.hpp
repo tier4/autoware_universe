@@ -15,7 +15,10 @@
 #ifndef AUTOWARE__CONTROL_VALIDATOR__CONTROL_VALIDATOR_HPP_
 #define AUTOWARE__CONTROL_VALIDATOR__CONTROL_VALIDATOR_HPP_
 
+#include "autoware/control_validator/collision_validator/collision_validator.hpp"
 #include "autoware/control_validator/debug_marker.hpp"
+#include "autoware/control_validator/hazard_warning/hazard_warning.hpp"
+#include "autoware/control_validator/hazard_warning/hazard_warning_sources.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info.hpp"
 #include "diagnostic_updater/diagnostic_updater.hpp"
@@ -24,17 +27,21 @@
 #include <autoware/signal_processing/lowpass_filter_1d.hpp>
 #include <autoware_control_validator/control_validator_parameters.hpp>
 #include <autoware_control_validator/msg/control_validator_status.hpp>
+#include <autoware_control_validator/msg/hazard_alert.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -50,13 +57,16 @@ namespace boundary_departure_checker = autoware::boundary_departure_checker;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_control_msgs::msg::Control;
 using autoware_control_validator::msg::ControlValidatorStatus;
+using autoware_control_validator::msg::HazardAlert;
 using autoware_map_msgs::msg::LaneletMapBin;
+using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using diagnostic_updater::DiagnosticStatusWrapper;
 using diagnostic_updater::Updater;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
+using sensor_msgs::msg::PointCloud2;
 using Params = ::control_validator::Params;
 
 /**
@@ -279,17 +289,34 @@ public:
     params_.enable_developer_marker =
       params.uncrossable_bound_departure_validator.enable_developer_marker;
     params_.boundary_types_to_detect = params.uncrossable_bound_departure_validator.boundary_types;
+    const auto & p = params.uncrossable_bound_departure_validator;
+    enable_warning_ = p.enable_warning;
+    warning_params_ = params_;
+    warning_params_.critical_departure_lateral_th_m = p.warning_lateral_th_m;
+    warning_params_.time_to_departure_cutoff_s = p.warning_time_to_departure_cutoff_s;
+    warning_params_.brake_delay_s = p.warning_brake_delay_s;
+    warning_params_.on_time_buffer_s = p.warning_on_time_buffer_s;
+    warning_params_.off_time_buffer_s = p.warning_off_time_buffer_s;
+    departure_risk_level_ = static_cast<uint8_t>(p.departure_risk_level);
     if (checker_) {
       checker_->update_parameters(params_);
     }
+    if (warning_checker_) {
+      warning_checker_->update_parameters(warning_params_);
+    }
   }
 
+  /**
+   * @brief Validate the predicted trajectory against uncrossable boundaries.
+   * @param hazard_sources departure positions of the warning checker's hysteresis are written to
+   *   its departure field when the check ran and the departure warning is enabled
+   */
   void validate(
     ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
     const Odometry & kinematics, const AccelWithCovarianceStamped & acceleration,
     const lanelet::LaneletMapPtr & lanelet_map,
     const vehicle_info_utils::VehicleInfo & vehicle_info,
-    visualization_msgs::msg::MarkerArray & debug_markers);
+    visualization_msgs::msg::MarkerArray & debug_markers, HazardWarningSources & hazard_sources);
 
 private:
   bool enable_{true};
@@ -297,6 +324,11 @@ private:
   boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
   std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> checker_;
   boundary_departure_checker::HysteresisState hysteresis_state_;
+  bool enable_warning_{true};
+  boundary_departure_checker::UncrossableBoundaryDepartureParam warning_params_;
+  std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> warning_checker_;
+  boundary_departure_checker::HysteresisState warning_hysteresis_state_;
+  uint8_t departure_risk_level_{0};
 };
 
 /**
@@ -386,10 +418,21 @@ private:
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>::SharedPtr
     sub_measured_acc_;
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_lanelet_map_;
+  autoware_utils::InterProcessPollingSubscriber<PredictedObjects>::SharedPtr sub_objects_;
+  autoware_utils::InterProcessPollingSubscriber<PointCloud2>::SharedPtr sub_pointcloud_;
   rclcpp::Publisher<ControlValidatorStatus>::SharedPtr pub_status_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
+  rclcpp::Publisher<HazardAlert>::SharedPtr pub_hazard_alert_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    pub_hazard_processing_time_;
+  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+    pub_hazard_processing_time_detail_;
+
+  autoware_utils::StopWatch<std::chrono::milliseconds> hazard_stop_watch_;
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> hazard_time_keeper_ =
+    std::make_shared<autoware_utils_debug::TimeKeeper>();
 
   // parameters (generated by generate_parameter_library)
   ::control_validator::ParamListener param_listener_;
@@ -423,6 +466,8 @@ private:
   OverrunValidator overrun_validator;
   YawValidator yaw_validator;
   UncrossableBoundDepartureValidator uncrossable_bound_departure_validator;
+  CollisionValidator collision_validator;
+  HazardWarning hazard_warning;
 };
 }  // namespace autoware::control_validator
 

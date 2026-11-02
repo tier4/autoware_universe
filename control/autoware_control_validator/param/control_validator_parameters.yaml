@@ -59,6 +59,148 @@ control_validator:
     enable_developer_marker:
       type: bool
       description: If true, publish developer debug markers from the boundary departure checker.
+    enable_warning:
+      type: bool
+      description: If true, evaluate the warning boundary departure checker and raise a departure warning from it, independently of enable.
+    warning_lateral_th_m:
+      type: double
+      description: Lateral margin from the boundary for the departure warning [m].
+    warning_time_to_departure_cutoff_s:
+      type: double
+      description: Time-to-departure cutoff for the departure warning, not less than time_to_departure_cutoff_s [s].
+      validation:
+        gt_eq<>: [0.0]
+    warning_brake_delay_s:
+      type: double
+      description: Brake delay for the minimum braking distance of the departure warning, not less than brake_delay_s [s].
+      validation:
+        gt_eq<>: [0.0]
+    warning_on_time_buffer_s:
+      type: double
+      description: Continuous-violation time required to activate a departure warning [s].
+      validation:
+        gt_eq<>: [0.0]
+    warning_off_time_buffer_s:
+      type: double
+      description: Continuous-safety time required to deactivate a departure warning [s].
+      validation:
+        gt_eq<>: [0.0]
+    departure_risk_level:
+      type: int
+      description: Risk level (1 to 4) of a departure warning.
+      validation:
+        bounds<>: [1, 4]
+
+  hazard_warning:
+    min_alert_duration:
+      type: double
+      description: Minimum time a raised warning is held after the last raw detection [s].
+      validation:
+        gt_eq<>: [0.0]
+
+  collision_validator:
+    enable_warning:
+      type: bool
+      description: If true, evaluate collisions and raise a collision warning.
+    braking:
+      reaction_times:
+        type: double_array
+        description: Delays before braking for hazard levels 2 to 4, three values in descending order [s].
+        validation:
+          fixed_size<>: [3]
+          lower_element_bounds<>: [0.0]
+      deceleration:
+        type: double
+        description: Deceleration of the ego vehicle after the delay [m/s^2].
+        validation:
+          gt<>: [0.0]
+    collision_cos_threshold:
+      type: double
+      description: Lower bound of the cosine of the collision angle for a collision warning. -1 passes every collision.
+      validation:
+        bounds<>: [-1.0, 1.0]
+    prediction_horizon:
+      type: double
+      description: Upper bound of the evaluated time horizon of the predicted trajectory [s].
+      validation:
+        gt<>: [0.0]
+    time_resolution:
+      type: double
+      description: Time step of the footprint sweep [s].
+      validation:
+        gt<>: [0.0]
+    stop_velocity:
+      type: double
+      description: Sweep steps where the absolute velocity of the predicted trajectory is below this value are not judged [m/s].
+    proximity_distance:
+      type: double
+      description: Objects and points within this distance from the current ego footprint raise hazard level 1 [m].
+      validation:
+        gt<>: [0.0]
+    vehicle_yaw:
+      rear_axle_ratio:
+        type: double
+        description: Distance from the object center to the rear axle divided by the object length, used to recompute the yaw of vehicle predicted paths. Must be in [0, 0.5].
+        validation:
+          bounds<>: [0.0, 0.5]
+    enabled_object_classes:
+      type: string_array
+      description: Object classification labels that raise a collision warning.
+      validation:
+        subset_of<>: [[unknown, car, truck, bus, trailer, motorcycle, bicycle, pedestrian]]
+    enable_pointcloud:
+      type: bool
+      description: If true, pointcloud clusters raise a collision warning.
+    max_evaluations:
+      object:
+        type: int
+        description: Maximum number of objects evaluated per cycle (closest first).
+      pointcloud:
+        type: int
+        description: Maximum number of pointcloud clusters evaluated per cycle (closest first).
+    max_objects_stamp_gap_s:
+      type: double
+      description: Objects older than this relative to the predicted trajectory are not evaluated [s].
+    pointcloud:
+      roi:
+        rear:
+          type: double
+          description: ROI extent behind the rear end of the vehicle, added to reverse velocity times horizon [m].
+        front_margin:
+          type: double
+          description: ROI extent ahead of the front end of the vehicle, added to velocity times horizon [m].
+        lateral:
+          type: double
+          description: ROI half width [m].
+        z_margin_low:
+          type: double
+          description: Margin added to the vehicle min height offset (ground) for the ROI lower height bound [m].
+        z_margin_high:
+          type: double
+          description: Margin added to the vehicle max height offset (vehicle height) for the ROI upper height bound [m].
+      max_voxels:
+        type: int
+        description: Voxels are subsampled down to this count before clustering.
+        validation:
+          gt_eq<>: [1]
+      voxel_size:
+        type: double
+        description: Voxel grid leaf size [m].
+        validation:
+          gt<>: [0.0]
+      cluster_tolerance:
+        type: double
+        description: Euclidean clustering distance tolerance [m].
+        validation:
+          gt<>: [0.0]
+      min_cluster_size:
+        type: int
+        description: Minimum sum of the raw (before voxel grid) point counts of the voxels in a cluster.
+        validation:
+          gt_eq<>: [1]
+      max_stamp_gap_s:
+        type: double
+        description: Maximum time difference between the pointcloud stamp and the odometry used to place it [s].
 
   latency_validator:
     nominal_latency:
