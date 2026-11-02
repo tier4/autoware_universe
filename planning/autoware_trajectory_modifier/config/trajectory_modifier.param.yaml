@@ -139,6 +139,7 @@
         max_acceleration: 1.0 # [m/s^2]
         max_deceleration: 1.0 # [m/s^2]
         max_jerk: 1.0 # [m/s^3]
+        reuse_previous_profile: true
 
     # Traffic Light Stop Plugin Parameters
     traffic_light_stop:

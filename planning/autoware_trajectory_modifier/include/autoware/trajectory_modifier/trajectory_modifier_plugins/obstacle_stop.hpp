@@ -16,6 +16,7 @@
 #define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__OBSTACLE_STOP_HPP_
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -65,6 +66,13 @@ public:
 
   void publish_debug_data(const std::string & ns) const override;
 
+  /// @brief How the cruise profile of the latest apply_cruise call was started (Measured when
+  /// cruise did not generate a profile).
+  [[nodiscard]] detail::ProfileStart last_cruise_profile_start() const
+  {
+    return last_cruise_profile_start_;
+  }
+
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
@@ -94,6 +102,8 @@ private:
 
   SafetyFactorArray safety_factors_;
   std::optional<CruiseReport> cruise_report_;
+  detail::FixedProfileMemory cruise_fixed_profile_;
+  detail::ProfileStart last_cruise_profile_start_{detail::ProfileStart::Measured};
 
   std::unordered_map<utils::obstacle_stop::ObjectType, double> object_decel_map_;
   utils::obstacle_stop::LateralMarginMap lateral_margin_map_;
@@ -101,8 +111,10 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_filtered_pointcloud_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
+  rclcpp::Publisher<StringStamped>::SharedPtr cruise_profile_reset_pub_;
 
   void verify_params();
+  void configure_cruise_fixed_profile(const TrajectoryModifierParams & params);
 
   void reset_cycle();
   void build_trajectory_shape(
