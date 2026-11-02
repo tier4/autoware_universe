@@ -624,10 +624,33 @@ ProcessingResult TrajectoryMppiOptimizer::process(
 
     object_selector_.update_objects(
       get_node_ptr()->now(), *data.tracked_objects, input, *extended_route_handler_);
+    // A zero-extent reference cannot form selector geometry, but still needs the interface's
+    // measured/latched steering hold. Do not enter the collision gate or GPU optimizer.
+    using autoware::avoidance_target_detector::SelectionStatus;
+    if (
+      detail::hasZeroPlanarExtent(input) &&
+      object_selector_.status() == SelectionStatus::invalid_reference) {
+      selection_result_ = object_selector_.evaluate(*data.tracked_objects, {}, {});
+      ensure_optimizer();
+      const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration =
+        data.current_acceleration ? std::make_optional(*data.current_acceleration) : std::nullopt;
+      const std::optional<autoware_vehicle_msgs::msg::SteeringReport> steering =
+        data.current_steering ? std::make_optional(*data.current_steering) : std::nullopt;
+      const auto result = optimizer_->optimizeTrajectory(
+        input, *data.current_odometry, acceleration, steering, TrackedObjects{}, {}, {});
+      const bool apply_steering_hold = !params_.shadow_mode &&
+                                       result.debug.short_reference_steering_hold_active &&
+                                       !result.trajectory.points.empty();
+      const auto skipped = skip_optimization(
+        diagnostic_msgs::msg::DiagnosticStatus::OK, "MPPI skipped: no planar reference extent",
+        input.header);
+      if (apply_steering_hold) trajectory_points = result.trajectory.points;
+      return apply_steering_hold ? ProcessingResult::Modified : skipped;
+    }
     const auto & route_bounds = extended_route_handler_->get_extended_route_bounds();
-    const autoware::avoidance_target_detector::SelectionGeometryParams selection_geometry{
+    autoware::avoidance_target_detector::SelectionGeometryParams selection_geometry{
       object_filter_margin_m_, object_filter_prediction_extension_s_};
-    if (object_selector_.status() != autoware::avoidance_target_detector::SelectionStatus::ready) {
+    if (object_selector_.status() != SelectionStatus::ready) {
       selection_result_ =
         object_selector_.evaluate(*data.tracked_objects, route_bounds, selection_geometry);
       return skip_optimization(
@@ -643,11 +666,11 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     if (data.predicted_objects && !params_.ignore_obstacles) {
       includePredictedPathTargets(
         objects_in_range, *data.tracked_objects, *data.predicted_objects, input,
-        object_filter_margin_m_);
+        object_filter_margin_m_, &selection_geometry.predicted_path_target_ids);
     }
     selection_result_ =
       object_selector_.evaluate(objects_in_range, route_bounds, selection_geometry);
-    if (selection_result_->status != autoware::avoidance_target_detector::SelectionStatus::ready) {
+    if (selection_result_->status != SelectionStatus::ready) {
       return skip_optimization(
         diagnostic_msgs::msg::DiagnosticStatus::WARN,
         std::string{"MPPI selector unavailable: "} +

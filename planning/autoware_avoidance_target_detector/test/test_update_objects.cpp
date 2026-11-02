@@ -897,6 +897,31 @@ TYPED_TEST(UpdateObjectsTest, EnvelopePreservesObjectsOutsideRouteAndFutureCreep
     1U);
 }
 
+TYPED_TEST(UpdateObjectsTest, SuppliedPathAdmissionSurvivesEnvelopeWithoutChangingOwnership)
+{
+  typename TestFixture::Selector selector;
+  const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 5.0, -8.0)});
+  const auto trajectory = make_timed_filter_trajectory();
+  selector.update_objects(make_time(0), objects, trajectory, route_handler());
+
+  SelectionGeometryParams geometry{2.0};
+  EXPECT_TRUE(selector.evaluate(objects, {}, geometry).avoidance_targets.objects.empty());
+  geometry.predicted_path_target_ids.push_back(objects.objects.front().object_id.uuid);
+  const auto selected = selector.evaluate(objects, {}, geometry);
+  ASSERT_EQ(selected.avoidance_targets.objects.size(), 1U);
+  EXPECT_EQ(selected.decisions.front().disposition, ObjectDisposition::avoidance);
+
+  // A prediction cannot promote a lane-centred vehicle into the parked-vehicle class.
+  auto lane_objects = make_objects<TypeParam>({make_object<TypeParam>(2, 5.0, 0.0)});
+  lane_objects.header.stamp = make_time(1);
+  selector.update_objects(make_time(1), lane_objects, trajectory, route_handler());
+  geometry.predicted_path_target_ids = {lane_objects.objects.front().object_id.uuid};
+  const auto lane_result = selector.evaluate(lane_objects, {}, geometry);
+  EXPECT_TRUE(lane_result.avoidance_targets.objects.empty());
+  ASSERT_EQ(lane_result.decisions.size(), 1U);
+  EXPECT_EQ(lane_result.decisions.front().disposition, ObjectDisposition::yield);
+}
+
 TYPED_TEST(UpdateObjectsTest, InvalidNonemptyRouteBoundsHaveExplicitStatus)
 {
   typename TestFixture::Selector selector;

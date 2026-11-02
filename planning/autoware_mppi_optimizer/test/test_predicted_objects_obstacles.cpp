@@ -19,7 +19,10 @@
 #include <gtest/gtest.h>
 #include <tf2/LinearMath/Quaternion.h>
 
+#include <array>
+#include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace autoware::mppi_optimizer
 {
@@ -168,11 +171,16 @@ TEST_F(PredictedObstacles, AssociatesByUuidAndIncludesCrossingHypothesesInBroadP
   reference.points[1].pose = pose(1000003.0, 0.0);
   TrackedObjects in_range;
   in_range.header = tracked.header;
-  includePredictedPathTargets(in_range, tracked, objects, reference, 0.1);
+  std::vector<std::array<std::uint8_t, 16>> reaching_ids;
+  includePredictedPathTargets(in_range, tracked, objects, reference, 0.1, &reaching_ids);
   ASSERT_EQ(in_range.objects.size(), 1U);
   EXPECT_EQ(in_range.objects.front().object_id, tracked.objects[1].object_id);
-  includePredictedPathTargets(in_range, tracked, objects, reference, 0.1);
+  ASSERT_EQ(reaching_ids.size(), 1U);
+  EXPECT_EQ(reaching_ids.front(), tracked.objects[1].object_id.uuid);
+  reaching_ids.clear();
+  includePredictedPathTargets(in_range, tracked, objects, reference, 0.1, &reaching_ids);
   EXPECT_EQ(in_range.objects.size(), 1U);  // Never duplicate the tracked object for tied paths.
+  EXPECT_EQ(reaching_ids.size(), 1U);      // The selector still needs its prediction admission.
   objects.objects.push_back(prediction);
   EXPECT_THROW(predictionsForTrackedObjects(tracked, objects), std::invalid_argument);
   objects.objects.pop_back();

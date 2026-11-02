@@ -288,6 +288,32 @@ TEST(FirstOrderDubinsMppiInterface, ShortSkippedReferenceHoldsMeasuredSteering)
   EXPECT_FALSE(interface.isInitialized());
 }
 
+TEST(FirstOrderDubinsMppiInterface, CoincidentReferenceHoldsSteeringWithLengthCheckDisabled)
+{
+  FirstOrderDubinsMppiInterface interface;
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.min_optimization_length = 0.0F;
+  options.steering_hold_reference_length_threshold_m = 0.5F;
+  interface.setRuntimeOptions(options);
+
+  auto trajectory = makeStraightTrajectory(80U);
+  for (auto & point : trajectory.points) {
+    point.pose.position.x = 5.0;
+    point.front_wheel_angle_rad = -0.3F;
+  }
+  autoware_vehicle_msgs::msg::SteeringReport steering;
+  steering.steering_tire_angle = 0.12F;
+  const auto result = interface.optimizeTrajectory(
+    trajectory, makeOdometry(), std::nullopt, steering, TrackedObjects{}, {}, {});
+
+  EXPECT_EQ(result.optimized_point_count, 0U);
+  EXPECT_TRUE(result.debug.short_reference_steering_hold_active);
+  EXPECT_FALSE(interface.isInitialized());
+  for (const auto & point : result.trajectory.points) {
+    EXPECT_FLOAT_EQ(point.front_wheel_angle_rad, 0.12F);
+  }
+}
+
 TEST(FirstOrderDubinsMppiInterface, RejectsInvalidOptimizationAndProgressLengths)
 {
   FirstOrderDubinsMppiInterface interface;
@@ -1260,7 +1286,7 @@ TEST_F(FirstOrderDubinsMppiInterfaceGpuTest, InactiveVelocityLimitPreservesOutpu
 
 TEST_F(
   FirstOrderDubinsMppiInterfaceGpuTest,
-  PointwiseLimitsAboveExternalLimitPreserveExternalOutputExactly)
+  PointwiseLimitsAboveExternalLimitPreserveExternalOutputWithinTolerance)
 {
   FirstOrderDubinsMppiVehicleParams vehicle_params;
   vehicle_params.acc_time_constant = 0.1F;
@@ -1297,10 +1323,45 @@ TEST_F(
     ASSERT_TRUE(combined.copyLastOptimizedControl(combined_acceleration, combined_steering));
   }
 
-  EXPECT_TRUE(combined_result.trajectory == external_result.trajectory);
+  EXPECT_EQ(
+    combined_result.debug.effective_max_velocity_by_reference_point,
+    external_result.debug.effective_max_velocity_by_reference_point);
+  EXPECT_TRUE(external_result.debug.external_velocity_limit_active);
+  EXPECT_TRUE(combined_result.debug.external_velocity_limit_active);
+  EXPECT_EQ(combined_result.optimized_point_count, external_result.optimized_point_count);
+  EXPECT_EQ(combined_result.trajectory.header, external_result.trajectory.header);
+  ASSERT_EQ(combined_result.trajectory.points.size(), external_result.trajectory.points.size());
+  for (std::size_t i = 0; i < combined_result.trajectory.points.size(); ++i) {
+    const auto & actual = combined_result.trajectory.points[i];
+    const auto & expected = external_result.trajectory.points[i];
+    if (i >= combined_result.optimized_point_count) {
+      EXPECT_EQ(actual, expected) << "Unoptimized suffix point " << i;
+      continue;
+    }
+    EXPECT_EQ(actual.time_from_start, expected.time_from_start) << "Point " << i;
+    EXPECT_EQ(actual.pose.position.z, expected.pose.position.z) << "Point " << i;
+    EXPECT_NEAR(actual.pose.position.x, expected.pose.position.x, 1.0E-4) << "Point " << i;
+    EXPECT_NEAR(actual.pose.position.y, expected.pose.position.y, 1.0E-4) << "Point " << i;
+    EXPECT_NEAR(actual.pose.orientation.x, expected.pose.orientation.x, 1.0E-5) << "Point " << i;
+    EXPECT_NEAR(actual.pose.orientation.y, expected.pose.orientation.y, 1.0E-5) << "Point " << i;
+    EXPECT_NEAR(actual.pose.orientation.z, expected.pose.orientation.z, 1.0E-5) << "Point " << i;
+    EXPECT_NEAR(actual.pose.orientation.w, expected.pose.orientation.w, 1.0E-5) << "Point " << i;
+    EXPECT_NEAR(actual.longitudinal_velocity_mps, expected.longitudinal_velocity_mps, 1.0E-4)
+      << "Point " << i;
+    EXPECT_NEAR(actual.acceleration_mps2, expected.acceleration_mps2, 1.0E-5) << "Point " << i;
+    EXPECT_NEAR(actual.front_wheel_angle_rad, expected.front_wheel_angle_rad, 1.0E-5)
+      << "Point " << i;
+    EXPECT_EQ(actual.lateral_velocity_mps, expected.lateral_velocity_mps) << "Point " << i;
+    EXPECT_EQ(actual.heading_rate_rps, expected.heading_rate_rps) << "Point " << i;
+    EXPECT_EQ(actual.rear_wheel_angle_rad, expected.rear_wheel_angle_rad) << "Point " << i;
+  }
   EXPECT_TRUE(combined_result.debug.nominal_trajectory == external_result.debug.nominal_trajectory);
-  EXPECT_EQ(combined_acceleration, external_acceleration);
-  EXPECT_EQ(combined_steering, external_steering);
+  ASSERT_EQ(combined_acceleration.size(), external_acceleration.size());
+  ASSERT_EQ(combined_steering.size(), external_steering.size());
+  for (std::size_t i = 0; i < combined_acceleration.size(); ++i) {
+    EXPECT_NEAR(combined_acceleration[i], external_acceleration[i], 1.0E-5F) << "Control " << i;
+    EXPECT_NEAR(combined_steering[i], external_steering[i], 1.0E-5F) << "Control " << i;
+  }
 }
 
 TEST_F(

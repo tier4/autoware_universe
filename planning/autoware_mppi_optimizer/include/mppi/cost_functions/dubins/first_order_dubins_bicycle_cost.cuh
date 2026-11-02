@@ -134,6 +134,10 @@ struct alignas(16) FirstOrderDubinsRuntimeData
   bool lateral_corridor_has_s_ = false;
   /** Measured steering state at the start of the current rollout. */
   float initial_steering_angle_ = 0.0F;
+  /** Ego-local vegetation points, sorted by x for exact collision queries after the texture check.
+   */
+  const float2 * vegetation_collision_points_ = nullptr;
+  int num_vegetation_collision_points_ = 0;
   int num_obstacles_ = 0;
   float obs_x_[kMaxObstacles][NUM_TIMESTEPS] = {};
   float obs_y_[kMaxObstacles][NUM_TIMESTEPS] = {};
@@ -515,6 +519,7 @@ private:
     bool obstacle_geometry_changed, bool road_border_geometry_changed,
     bool drivable_area_geometry_changed, bool vegetation_geometry_changed);
   __host__ void distanceMapStateToDevice();
+  __host__ void uploadVegetationCollisionPoints();
   __host__ void releaseDistanceMapResources();
 
   bool preferred_lane_center_geometry_dirty_ = false;
@@ -529,6 +534,10 @@ private:
   std::vector<autoware::mppi_optimizer::VegetationPoint> vegetation_points_;
   mppi::memory::PinnedHostBuffer<float> vegetation_distance_upload_{};
   float * vegetation_distance_device_ = nullptr;
+  mppi::memory::PinnedHostBuffer<float2> vegetation_collision_upload_{};
+  float2 * vegetation_collision_device_ = nullptr;
+  std::size_t vegetation_collision_capacity_ = 0U;
+  cudaEvent_t vegetation_collision_upload_done_ = nullptr;
   bool nearest_segment_refresh_pending_ = false;
   bool nearest_segment_geometry_dirty_ = false;
 };

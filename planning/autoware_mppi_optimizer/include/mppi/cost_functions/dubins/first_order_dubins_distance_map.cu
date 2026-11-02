@@ -6,6 +6,7 @@
 #include <cfloat>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 
 namespace
@@ -630,6 +631,69 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::uploadVegetationCollisionPoints()
+{
+  auto & data = this->runtimeData();
+  if (!this->GPUMemStatus_) {
+    data.vegetation_collision_points_ = nullptr;
+    data.num_vegetation_collision_points_ = 0;
+    return;
+  }
+  if (vegetation_points_.empty()) {
+    data.vegetation_collision_points_ = nullptr;
+    data.num_vegetation_collision_points_ = 0;
+    this->dataToDevice();
+    return;
+  }
+  if (vegetation_points_.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::length_error("MPPI vegetation point count exceeds GPU indexing capacity");
+  }
+
+  std::vector<float2> sorted_points;
+  sorted_points.reserve(vegetation_points_.size());
+  for (const auto & point : vegetation_points_) {
+    if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+      throw std::invalid_argument("MPPI vegetation point has non-finite coordinates");
+    }
+    sorted_points.push_back(make_float2(static_cast<float>(point.x), static_cast<float>(point.y)));
+  }
+  std::sort(sorted_points.begin(), sorted_points.end(), [](const float2 & a, const float2 & b) {
+    return a.x < b.x || (a.x == b.x && a.y < b.y);
+  });
+
+  if (vegetation_collision_upload_done_ != nullptr) {
+    // The previous H2D copy must stop reading pinned storage before it is rewritten or resized.
+    HANDLE_ERROR(cudaEventSynchronize(vegetation_collision_upload_done_));
+  }
+  if (sorted_points.size() > vegetation_collision_capacity_) {
+    float2 * allocation = nullptr;
+    HANDLE_ERROR(cudaMalloc(&allocation, sorted_points.size() * sizeof(float2)));
+    if (vegetation_collision_device_ != nullptr) {
+      // cudaFree waits for prior users of the old allocation before it is replaced.
+      HANDLE_ERROR(cudaFree(vegetation_collision_device_));
+    }
+    vegetation_collision_device_ = allocation;
+    vegetation_collision_capacity_ = sorted_points.size();
+  }
+  if (sorted_points.size() > vegetation_collision_upload_.size()) {
+    vegetation_collision_upload_.resize(sorted_points.size());
+  }
+  std::copy(sorted_points.begin(), sorted_points.end(), vegetation_collision_upload_.data());
+  if (vegetation_collision_upload_done_ == nullptr) {
+    HANDLE_ERROR(
+      cudaEventCreateWithFlags(&vegetation_collision_upload_done_, cudaEventDisableTiming));
+  }
+  HANDLE_ERROR(cudaMemcpyAsync(
+    vegetation_collision_device_, vegetation_collision_upload_.data(),
+    sorted_points.size() * sizeof(float2), cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaEventRecord(vegetation_collision_upload_done_, this->stream_));
+  data.vegetation_collision_points_ = vegetation_collision_device_;
+  data.num_vegetation_collision_points_ = static_cast<int>(sorted_points.size());
+  this->dataToDevice();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   rebuildStaticDistanceTexture(
     const bool update_road_border, const bool update_drivable_area, const bool update_vegetation)
@@ -853,7 +917,8 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     this->texture_state_.preferred_lane_center_surface_ == 0 &&
     this->texture_state_.nearest_segment_surface_ == 0 &&
     this->texture_state_.static_distance_array_ == nullptr &&
-    vegetation_distance_device_ == nullptr &&
+    vegetation_distance_device_ == nullptr && vegetation_collision_device_ == nullptr &&
+    vegetation_collision_upload_done_ == nullptr &&
     this->texture_state_.obstacle_distance_array_ == nullptr &&
     this->texture_state_.preferred_lane_center_array_ == nullptr &&
     this->texture_state_.nearest_segment_array_ == nullptr) {
@@ -919,6 +984,18 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     vegetation_distance_device_ = nullptr;
   }
   vegetation_distance_upload_.resetNoThrow();
+  if (vegetation_collision_device_ != nullptr) {
+    gpuAssert(cudaFree(vegetation_collision_device_), __FILE__, __LINE__, false);
+    vegetation_collision_device_ = nullptr;
+  }
+  if (vegetation_collision_upload_done_ != nullptr) {
+    gpuAssert(cudaEventDestroy(vegetation_collision_upload_done_), __FILE__, __LINE__, false);
+    vegetation_collision_upload_done_ = nullptr;
+  }
+  vegetation_collision_capacity_ = 0U;
+  vegetation_collision_upload_.resetNoThrow();
+  this->runtimeData().vegetation_collision_points_ = nullptr;
+  this->runtimeData().num_vegetation_collision_points_ = 0;
   if (this->texture_state_.obstacle_distance_array_ != nullptr) {
     gpuAssert(
       cudaFreeArray(this->texture_state_.obstacle_distance_array_), __FILE__, __LINE__, false);

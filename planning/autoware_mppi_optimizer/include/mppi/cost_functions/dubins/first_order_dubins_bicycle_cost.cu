@@ -287,6 +287,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   // Managed copies the embedded device snapshot, including values set before GPU setup.
   runtime_data_device_ = runtime_data_.data()[0];
   PARENT_CLASS::GPUSetup();
+  if (!vegetation_points_.empty()) uploadVegetationCollisionPoints();
   setDistanceMapTextureDebugEnabled(distance_map_texture_debug_enabled_);
   if (!data_update_active_) refreshPreferredLaneCenterTexture();
 }
@@ -746,6 +747,7 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 {
   if (points.empty() && vegetation_points_.empty()) return;
   vegetation_points_ = points;
+  uploadVegetationCollisionPoints();
   vegetation_geometry_dirty_ = true;
   refreshDistanceMapTextures(false, false, false);
 }
@@ -1272,8 +1274,52 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
 {
 #ifdef __CUDA_ARCH__
   if (!texture_state_.vegetation_texture_valid_) return false;
-  return distanceToClosestVegetation(x, y, yaw) <=
-         1.414214F * this->params_.vegetation_collision_margin;
+  // The circles and quantized distance texture are conservative. Confirm possible contact
+  // against the original points so a safe rollout is not excluded by that approximation.
+  if (
+    distanceToClosestVegetation(x, y, yaw) >
+    1.414214F * this->params_.vegetation_collision_margin) {
+    return false;
+  }
+  const auto & data = runtimeData();
+  if (data.num_vegetation_collision_points_ <= 0 || !data.vegetation_collision_points_) {
+    return false;
+  }
+  const float cos_yaw = cosf(yaw);
+  const float sin_yaw = sinf(yaw);
+  const float center_x = x + this->params_.ego_axle_to_box_center * cos_yaw;
+  const float center_y = y + this->params_.ego_axle_to_box_center * sin_yaw;
+  const float half_length =
+    this->params_.ego_length * 0.5F + this->params_.vegetation_collision_margin;
+  const float half_width =
+    this->params_.ego_width * 0.5F + this->params_.vegetation_collision_margin;
+  const float x_radius = fabsf(cos_yaw) * half_length + fabsf(sin_yaw) * half_width;
+  const float y_radius = fabsf(sin_yaw) * half_length + fabsf(cos_yaw) * half_width;
+  const float minimum_x = center_x - x_radius;
+  const float maximum_x = center_x + x_radius;
+  const auto * points = data.vegetation_collision_points_;
+  int low = 0;
+  int high = data.num_vegetation_collision_points_;
+  while (low < high) {
+    const int middle = low + (high - low) / 2;
+    if (points[middle].x < minimum_x)
+      low = middle + 1;
+    else
+      high = middle;
+  }
+  for (int index = low; index < data.num_vegetation_collision_points_; ++index) {
+    const float2 point = points[index];
+    if (point.x > maximum_x) break;
+    const float dx = point.x - center_x;
+    const float dy = point.y - center_y;
+    if (fabsf(dy) > y_radius) continue;
+    if (
+      fabsf(dx * cos_yaw + dy * sin_yaw) <= half_length &&
+      fabsf(-dx * sin_yaw + dy * cos_yaw) <= half_width) {
+      return true;
+    }
+  }
+  return false;
 #else
   const float cos_yaw = std::cos(yaw);
   const float sin_yaw = std::sin(yaw);
@@ -1284,8 +1330,8 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   const float half_width =
     this->params_.ego_width * 0.5F + this->params_.vegetation_collision_margin;
   for (const auto & point : vegetation_points_) {
-    const float dx = point.x - center_x;
-    const float dy = point.y - center_y;
+    const float dx = static_cast<float>(point.x) - center_x;
+    const float dy = static_cast<float>(point.y) - center_y;
     if (
       std::abs(dx * cos_yaw + dy * sin_yaw) <= half_length &&
       std::abs(-dx * sin_yaw + dy * cos_yaw) <= half_width) {

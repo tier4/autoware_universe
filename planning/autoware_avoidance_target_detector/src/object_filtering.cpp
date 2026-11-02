@@ -1370,7 +1370,11 @@ ObjectSelectorBase<ObjectT>::evaluate(
             0.0,
             boost::geometry::distance(reference_line, motion) - circular_footprint_radius(object));
         }
-        if (envelope_distance > *geometry.trajectory_envelope_radius_m) {
+        const bool predicted_path_reaches =
+          std::find(
+            geometry.predicted_path_target_ids.begin(), geometry.predicted_path_target_ids.end(),
+            object.object_id.uuid) != geometry.predicted_path_target_ids.end();
+        if (!predicted_path_reaches && envelope_distance > *geometry.trajectory_envelope_radius_m) {
           decision.disposition = ObjectDisposition::ignored;
           decision.reason = "outside_trajectory_envelope";
         }

@@ -3047,12 +3047,13 @@ try {
   impl_->pending_trajectory_.reset();
   FirstOrderDubinsMppiOptimizationResult result;
   const auto not_enough_input_points = input.points.size() < 2U;
+  const bool degenerate_reference = detail::hasZeroPlanarExtent(input);
   const bool short_reference = impl_->referenceIsShortForSteeringHold(input);
   // A collision trigger never overrides the minimum stopping-reference length.
   (void)force_optimization;  // Retained for source compatibility with existing callers.
   const bool optimization_required =
     detail::isOptimizationRequired(input, impl_->min_optimization_length);
-  if (not_enough_input_points || !optimization_required) {
+  if (degenerate_reference || !optimization_required) {
     const auto initial_state =
       detail::makeInitialState(odometry, acceleration, steering_status, impl_->vehicle_params);
     const bool steering_measurement_available =
@@ -3061,8 +3062,10 @@ try {
     impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::skipped);
     RCLCPP_WARN(
       mppiLogger(), "MPPI skipped: %s",
-      not_enough_input_points ? "trajectory has fewer than 2 points"
-                              : "trajectory does not require optimization");
+      not_enough_input_points
+        ? "trajectory has fewer than 2 points"
+        : (degenerate_reference ? "trajectory has no planar extent"
+                                : "trajectory does not require optimization"));
 
     result.trajectory = input;
     if (impl_->short_reference_steering_hold_active && impl_->standstill_steering_hold_valid) {

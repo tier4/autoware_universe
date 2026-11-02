@@ -84,10 +84,23 @@ struct ObjectSelectionDecision
 
 struct SelectionGeometryParams
 {
+  SelectionGeometryParams() = default;
+  SelectionGeometryParams(
+    std::optional<double> envelope_radius, double extension_s = 0.0,
+    std::vector<ObjectId> predicted_ids = {})
+  : trajectory_envelope_radius_m(envelope_radius),
+    prediction_extension_s(extension_s),
+    predicted_path_target_ids(std::move(predicted_ids))
+  {
+  }
+
   /// Conservative radius about base_link, including the collision gate's vehicle and margins.
   /// When supplied, this envelope replaces endpoint/corridor pruning.
   std::optional<double> trajectory_envelope_radius_m;
   double prediction_extension_s{0.0};
+  /// IDs whose supplied prediction reaches the reference. This only overrides envelope pruning;
+  /// classification, parked-vehicle policy, and temporal tracking still apply.
+  std::vector<ObjectId> predicted_path_target_ids;
 };
 
 template <typename ObjectsT>

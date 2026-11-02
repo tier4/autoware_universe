@@ -23,8 +23,10 @@
 #include <tf2/utils.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -109,7 +111,7 @@ inline bool predictedPathsReachTrajectory(
 inline void includePredictedPathTargets(
   TrackedObjects & in_range, const TrackedObjects & all_tracked,
   const PredictedObjects & predictions, const autoware_planning_msgs::msg::Trajectory & trajectory,
-  const double margin)
+  const double margin, std::vector<std::array<std::uint8_t, 16>> * reaching_ids = nullptr)
 {
   if (!predictions.objects.empty() && predictions.header.frame_id != all_tracked.header.frame_id) {
     throw std::invalid_argument("MPPI tracked and predicted objects use different frames");
@@ -118,10 +120,10 @@ inline void includePredictedPathTargets(
     const bool already_selected = std::any_of(
       in_range.objects.begin(), in_range.objects.end(),
       [&object](const auto & candidate) { return candidate.object_id == object.object_id; });
-    if (already_selected) continue;
     const auto * prediction = findObjectPrediction(object, predictions);
     if (prediction && predictedPathsReachTrajectory(*prediction, trajectory, margin)) {
-      in_range.objects.push_back(object);
+      if (reaching_ids) reaching_ids->push_back(object.object_id.uuid);
+      if (!already_selected) in_range.objects.push_back(object);
     }
   }
 }

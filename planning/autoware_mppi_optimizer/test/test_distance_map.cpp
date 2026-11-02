@@ -29,6 +29,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 struct DistanceMapTextureTestAccess
@@ -203,6 +204,17 @@ __global__ void sampleVegetationCollisionKernel(
   const TestCost * cost, const float x, const float y, bool * output)
 {
   output[0] = cost->egoIntersectsVegetation(x, y, 0.0F);
+}
+
+__global__ void sampleVegetationRolloutSafetyKernel(
+  const TestCost * cost, const float x, const float y, bool * output)
+{
+  float drivable_cost = 0.0F;
+  float obstacle_cost = 0.0F;
+  float road_cost = 0.0F;
+  bool unsafe = false;
+  cost->computeGradualCrashCosts(x, y, 0.0F, 0, drivable_cost, obstacle_cost, road_cost, &unsafe);
+  output[0] = unsafe;
 }
 
 __global__ void sampleObstacleTextureKernel(
@@ -387,6 +399,18 @@ bool sampleVegetationCollision(
 {
   DeviceBuffer<bool> output(1);
   sampleVegetationCollisionKernel<<<1, 1, 0, stream>>>(cost.cost_d_, x, y, output.get());
+  CUDA_CHECK(cudaGetLastError());
+  bool result = false;
+  output.copyToHost(&result, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  return result;
+}
+
+bool sampleVegetationRolloutSafety(
+  const TestCost & cost, const float x, const float y, const cudaStream_t stream)
+{
+  DeviceBuffer<bool> output(1);
+  sampleVegetationRolloutSafetyKernel<<<1, 1, 0, stream>>>(cost.cost_d_, x, y, output.get());
   CUDA_CHECK(cudaGetLastError());
   bool result = false;
   output.copyToHost(&result, stream);
@@ -693,6 +717,30 @@ TEST_F(DistanceMapGpuTest, VegetationUsesThirdStaticChannelAndClearsBetweenCycle
   EXPECT_FALSE(cost_->texture_state_.vegetation_texture_valid_);
   EXPECT_FALSE(cost_->egoIntersectsVegetation(5.0F, 0.0F, 0.0F));
   EXPECT_FALSE(sampleVegetationCollision(*cost_, 5.0F, 0.0F, stream()));
+}
+
+TEST_F(DistanceMapGpuTest, VegetationRolloutSafetyMatchesExactFootprintNearClearance)
+{
+  auto params = cost_->getParams();
+  params.ego_length = 1.0F;
+  params.ego_width = 1.0F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.vegetation_collision_margin = 0.2F;
+  cost_->setParams(params);
+  cost_->setVegetationPoints({{5.0, 0.0}});
+
+  for (const auto & [x, y, expected] : std::array<std::tuple<float, float, bool>, 4>{
+         {{5.0F, 0.69F, true}, {5.0F, 0.8F, false}, {5.8F, 0.8F, false}, {500.0F, 0.0F, false}}}) {
+    EXPECT_EQ(cost_->egoIntersectsVegetation(x, y, 0.0F), expected);
+    EXPECT_EQ(sampleVegetationCollision(*cost_, x, y, stream()), expected);
+    EXPECT_EQ(sampleVegetationRolloutSafety(*cost_, x, y, stream()), expected);
+  }
+
+  cost_->setVegetationPoints({{8.0, 0.0}, {5.0, 0.0}});
+  EXPECT_TRUE(sampleVegetationCollision(*cost_, 8.0F, 0.0F, stream()));
+  cost_->setVegetationPoints({{8.0, 0.0}});
+  EXPECT_FALSE(sampleVegetationCollision(*cost_, 5.0F, 0.0F, stream()));
+  EXPECT_TRUE(sampleVegetationRolloutSafety(*cost_, 8.0F, 0.0F, stream()));
 }
 
 TEST_F(DistanceMapGpuTest, SingleSegmentProducesExpectedDistances)
