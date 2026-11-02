@@ -32,7 +32,7 @@ autoware_package()
 
 # Major version of the ONNX weights this node is built against.
 # Checked against "major_version" in metadata.json next to the ONNX model on load.
-set(ML_PLANNER_WEIGHT_MAJOR_VERSION 6)
+set(ML_PLANNER_WEIGHT_MAJOR_VERSION 7)
 
 find_package(Boost REQUIRED)
 find_package(OpenSSL REQUIRED)
